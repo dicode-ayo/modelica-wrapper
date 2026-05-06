@@ -1,0 +1,31 @@
+{
+  "name": "@modelica-wrapper/omc-client",
+  "version": "0.0.1",
+  "private": true,
+  "description": "TypeScript client for OpenModelica's interactive ZeroMQ scripting API. Typed wrappers, Zod-validated outputs, no VSCode dependencies.",
+  "type": "commonjs",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./api/*": "./src/api/*"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "OMC_INTEGRATION=0 vitest run"
+  },
+  "dependencies": {
+    "zeromq": "^6.1.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

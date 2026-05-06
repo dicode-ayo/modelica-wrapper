@@ -1,52 +1,23 @@
 {
-  "name": "modelica-wrapper",
-  "displayName": "Modelica",
-  "description": "Graphical model editor and simulation runner for Modelica, backed by OpenModelica.",
-  "version": "0.0.1",
-  "publisher": "drojdestvensky",
+  "name": "modelica-wrapper-workspace",
+  "version": "0.0.0",
   "private": true,
+  "description": "Monorepo root for the modelica-wrapper VSCode extension and the @modelica-wrapper/omc-client package.",
   "engines": {
-    "vscode": "^1.95.0",
     "node": ">=20"
   },
-  "categories": ["Programming Languages", "Visualization", "Other"],
-  "main": "./out/extension.js",
-  "activationEvents": [],
-  "contributes": {
-    "commands": [
-      {
-        "command": "modelica.getOmcVersion",
-        "title": "Modelica: Show OMC Version"
-      }
-    ],
-    "configuration": {
-      "title": "Modelica",
-      "properties": {
-        "modelica.omcPath": {
-          "type": "string",
-          "default": "",
-          "description": "Path to the omc binary. Leave empty to use 'omc' from PATH."
-        }
-      }
-    }
-  },
   "scripts": {
-    "build": "node esbuild.config.mjs",
-    "watch": "node esbuild.config.mjs --watch",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:unit": "OMC_INTEGRATION=0 vitest run",
-    "lint": "tsc --noEmit && vitest run"
+    "build": "pnpm --filter modelica-wrapper build",
+    "watch": "pnpm --filter modelica-wrapper watch",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:unit": "pnpm -r test:unit"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "@types/vscode": "^1.95.0",
-    "esbuild": "^0.24.0",
-    "typescript": "^5.6.0",
-    "vitest": "^2.1.0"
+    "typescript": "^5.6.0"
   },
-  "dependencies": {
-    "zeromq": "^6.1.0"
+  "packageManager": "pnpm@10.25.0",
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "zeromq"]
   }
 }

@@ -144,7 +144,9 @@ Streaming uses JSON-RPC notifications (server → client) during long-running op
 
 ## Annotation parsing
 
-OMEdit’s `StringHandler::getStrings()` is positional, brittle splitting on the strings OMC returns from `getIconAnnotation` etc. **Don’t copy this approach.** Use `nom` or feed strings through `tree-sitter-modelica`. Single biggest source of inherited bugs if done naively.
+OMEdit’s `StringHandler::getStrings()` is positional, brittle splitting on the strings OMC returns from `getIconAnnotation` etc. **Don’t copy this approach.** Single biggest source of inherited bugs if done naively.
+
+Our approach: a small recursive-descent parser turns OMC's response strings into a tagged-union `Value` tree (`StringV`/`BoolV`/`IntV`/`FloatV`/`IdentV`/`ListV`/`CallV`/`NullV`). Then a typed-traversal layer reads each shape's positional arguments **directly from Modelica spec §18.6** and emits typed `Shape` records. No regex splitting, no string fragility — argument order comes from the spec, not from probing OMC and inferring.
 
 Five shape primitives to support, all inheriting `GraphicItem` (origin, rotation, visible) + `FilledShape` (lineColor, fillColor, linePattern, fillPattern, lineThickness):
 
@@ -273,11 +275,24 @@ modelica-vscode/
 
 ## References
 
+**Audit runbook (run an agent against the omc-client package periodically):**
+
+- [`packages/omc-client/docs/audit.md`](packages/omc-client/docs/audit.md) — read-only consistency check between our wrappers and the upstream OMC scripting docs. Run it as: "audit the omc-client package using `packages/omc-client/docs/audit.md`."
+
+**Authoritative — read these before reverse-engineering anything:**
+
+- **OpenModelica.Scripting API reference** (auto-generated from OMC source, lists every function's return type as a Modelica signature): <https://build.openmodelica.org/Documentation/OpenModelica.Scripting.html>
+- **Modelica specification ch. 18 — Annotations** (§18.6 lists the exact positional-argument order for every shape primitive — transcribe from here, do not guess): <https://specification.modelica.org/maint/3.6/annotations.html>
+
+**Reference implementations (parser/client cross-checks):**
+
+- **OMPython** (de-facto reference parser, `OMTypedParser.py` uses pyparsing): <https://github.com/OpenModelica/OMPython>
+- **OMJulia.jl** (Julia client, second perspective on parser behavior): <https://github.com/OpenModelica/OMJulia.jl>
+- **OMEdit source** (the reference graphical editor we’re learning UI flows from; do **not** copy `StringHandler::getStrings()`): <https://github.com/OpenModelica/OMEdit>
+
+**Project / ecosystem:**
+
 - OpenModelica source: <https://github.com/OpenModelica/OpenModelica>
-- OMEdit source (the reference graphical editor we’re learning from): <https://github.com/OpenModelica/OMEdit>
-- Modelica specification ch. 18 (graphical annotations): <https://specification.modelica.org/maint/3.6/annotations.html>
 - FMI standard: <https://fmi-standard.org/>
 - OMSimulator: <https://github.com/OpenModelica/OMSimulator>
-- tree-sitter-modelica: <https://github.com/OpenModelica/tree-sitter-modelica>
-- `fmi` Rust crate: <https://crates.io/crates/fmi>
-- `vscode-jsonrpc`: <https://www.npmjs.com/package/vscode-jsonrpc>
+- tree-sitter-modelica (for in-process `.mo` IDE features later — not used yet): <https://github.com/OpenModelica/tree-sitter-modelica>

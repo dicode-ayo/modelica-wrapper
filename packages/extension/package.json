@@ -1,0 +1,55 @@
+{
+  "name": "modelica-wrapper",
+  "displayName": "Modelica",
+  "description": "Graphical model editor and simulation runner for Modelica, backed by OpenModelica.",
+  "version": "0.0.1",
+  "publisher": "drojdestvensky",
+  "private": true,
+  "engines": {
+    "vscode": "^1.95.0",
+    "node": ">=20"
+  },
+  "categories": [
+    "Programming Languages",
+    "Visualization",
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "modelica.getOmcVersion",
+        "title": "Modelica: Show OMC Version"
+      }
+    ],
+    "configuration": {
+      "title": "Modelica",
+      "properties": {
+        "modelica.omcPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the omc binary. Leave empty to use 'omc' from PATH."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "test:unit": "OMC_INTEGRATION=0 vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@modelica-wrapper/omc-client": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.95.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
