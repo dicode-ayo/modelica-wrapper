@@ -4,7 +4,7 @@ Tracks which functions in [`src/registry.ts`](../src/registry.ts) are exercised 
 
 **Pinned OMC version:** `1.26.7` (see [`../src/version.ts`](../src/version.ts)). Drift probe re-run on 2026-05-06 against a freshly-upgraded local 1.26.7; the 5 ⛔ wrappers remain identically broken — these are not 1.26.1-specific quirks but a permanent gap in OMC 1.26.x's interactive scripting surface.
 **Last updated:** 2026-05-07.
-**Current coverage:** 75 / 130 functions (58%).
+**Current coverage:** 76 / 130 functions (58%).
 
 > Run `pnpm --filter @modelica-wrapper/omc-client test` to exercise the integration suite. It auto-skips when `omc` isn't on PATH.
 
@@ -81,8 +81,8 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `getDocumentationAnnotation` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getDocumentationAnnotation.html) |
 | `listFile` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.listFile.html) |
 | `instantiateModel` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.instantiateModel.html) |
-| `getModelInstance` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getModelInstance.html) |
-| `getModelInstanceAnnotation` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getModelInstanceAnnotation.html) |
+| `getModelInstance` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getModelInstance.html) — collapses the multi-call diagram-read path into one structured-AST call (fixtures: [`../test/fixtures/`](../test/fixtures/)) |
+| `getModelInstanceAnnotation` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getModelInstanceAnnotation.html) — annotation-only subset, useful for thumbnails |
 | `modifierToJSON` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.modifierToJSON.html) |
 | `getConnectionList` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getConnectionList.html) |
 | `getNthConnector` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getNthConnector.html) |
@@ -225,7 +225,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | Category | Covered | Total | Notes |
 |---|---|---|---|
 | Browsing | 17 | 24 | All Tier 4 predicates wired; common predicates verified, niche ones 🟡 |
-| Reading model contents | 14 | 21 | Tier 1 modern read path + Tier 5 connector helpers added; smoke-tested `getModelInstance` and core reads |
+| Reading model contents | 14 | 21 | Tier 1 modern read path + Tier 5 connector helpers added; both `getModelInstance` and `getModelInstanceAnnotation` exercised against fixtures (the structured-AST endpoint replaces the per-call diagram assembly) |
 | Lifecycle | 12 | 16 | 4 ⛔ — `createClass`, `createSubClass`, `moveClass` (cross-package relocate only), and `save` (deprecated). The two in-place reorderers `moveClassToTop`/`moveClassToBottom` work despite `moveClass` being missing — found via the drift probe. |
 | Parameters & modifiers | 5 | 11 | 1 ⛔ (`removeComponentModifiers`, confirmed missing), `getParameterNames` ✅, mutations 🟡 |
 | Editing | 10 | 15 | 1 ⛔ (`updateConnection`, confirmed missing), 4 🟡 (state-machine fixture for transitions; new `setClassComment`/`setDocumentationAnnotation` need throwaway fixtures) |
@@ -234,7 +234,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | Solver / runtime config | 8 | 8 | All verified |
 | Execution | 3 | 9 | 6 🐢 deferred to a heavy-test gate |
 | Results | 0 | 5 | All 📦 — wire with the heavy execution tests |
-| **Total** | **75** | **130** | **58%** |
+| **Total** | **76** | **130** | **58%** |
 
 ---
 

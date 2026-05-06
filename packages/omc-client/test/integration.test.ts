@@ -215,6 +215,70 @@ describeIf("OmcClient against real OMC", () => {
     expect(flatSource.length).toBeGreaterThan(500);
   });
 
+  it("getModelInstance returns a structured tree for a leaf block", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { instance } = await client.getModelInstance({
+      typeName: "Modelica.Blocks.Math.Sin",
+    });
+    expect(instance.name).toBe("Modelica.Blocks.Math.Sin");
+    expect(instance.restriction).toBe("block");
+    const elements = (instance.elements ?? []) as Array<{ $kind: string }>;
+    expect(elements.some((e) => e.$kind === "extends")).toBe(true);
+    const icon = instance.annotation?.Icon as
+      | { graphics?: unknown[] }
+      | undefined;
+    expect(Array.isArray(icon?.graphics)).toBe(true);
+    expect((icon?.graphics ?? []).length).toBeGreaterThan(0);
+  });
+
+  it("getModelInstance prettyPrint produces structurally identical content", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const cls = "Modelica.Blocks.Math.Sin";
+    const compact = await client.getModelInstance({ typeName: cls });
+    const pretty = await client.getModelInstance({
+      typeName: cls,
+      prettyPrint: true,
+    });
+    expect(pretty.instance).toEqual(compact.instance);
+  });
+
+  it("getModelInstanceAnnotation is a strict subset of getModelInstance for a leaf block", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const cls = "Modelica.Blocks.Math.Sin";
+    const ann = await client.getModelInstanceAnnotation({ typeName: cls });
+    expect(ann.instance.name).toBe(cls);
+    const icon = ann.instance.annotation?.Icon as
+      | { graphics?: unknown[] }
+      | undefined;
+    expect(Array.isArray(icon?.graphics)).toBe(true);
+    expect((icon?.graphics ?? []).length).toBeGreaterThan(0);
+
+    const annJson = JSON.stringify(ann.instance);
+    const full = await client.getModelInstance({ typeName: cls });
+    const fullJson = JSON.stringify(full.instance);
+    // The annotation-only payload is materially smaller — subcomponent type
+    // expansions are pruned. ~3.8 KB vs ~8 KB on Sin.
+    expect(annJson.length).toBeLessThan(fullJson.length);
+  });
+
+  it("getModelInstance returns connections with cref paths and Line points for a diagram model", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { instance } = await client.getModelInstance({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+    });
+    const connections = (instance.connections ?? []) as Array<{
+      lhs: { $kind: string; parts: Array<{ name: string }> };
+      rhs: { $kind: string; parts: Array<{ name: string }> };
+      annotation?: { Line?: { points?: number[][] } };
+    }>;
+    expect(connections.length).toBeGreaterThan(0);
+    for (const c of connections) {
+      expect(c.lhs.$kind).toBe("cref");
+      expect(c.rhs.$kind).toBe("cref");
+      expect(c.lhs.parts.length).toBeGreaterThan(0);
+    }
+  });
+
   it("assembles a full diagram view (canvas + components + connections)", async () => {
     await client.loadModel({ typeName: "Modelica" });
     const cls = "Modelica.Blocks.Examples.PID_Controller";
