@@ -1,0 +1,8 @@
+{
+  "claudeCode.environmentVariables": [
+    {
+      "name": "CLAUDE_CONFIG_DIR",
+      "value": "/home/dr14/dicode/dicode-home/.claude"
+    }
+  ]
+}
