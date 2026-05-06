@@ -3,8 +3,8 @@
 Tracks which functions in [`src/registry.ts`](../src/registry.ts) are exercised by integration tests against a real OMC, plus the reasons each uncovered function isn't yet tested.
 
 **Pinned OMC version:** `1.26.7` (see [`../src/version.ts`](../src/version.ts)). Drift probe re-run on 2026-05-06 against a freshly-upgraded local 1.26.7; the 5 ⛔ wrappers remain identically broken — these are not 1.26.1-specific quirks but a permanent gap in OMC 1.26.x's interactive scripting surface.
-**Last updated:** 2026-05-06.
-**Current coverage:** 60 / 80 functions (75%).
+**Last updated:** 2026-05-07.
+**Current coverage:** 75 / 130 functions (58%).
 
 > Run `pnpm --filter @modelica-wrapper/omc-client test` to exercise the integration suite. It auto-skips when `omc` isn't on PATH.
 
@@ -28,7 +28,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 
 ---
 
-## Browsing — 10/10 ✅
+## Browsing — 17/24
 
 | Function | Status | Docs |
 |---|---|---|
@@ -42,8 +42,23 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `getUses` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getUses.html) |
 | `existClass` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.existClass.html) |
 | `getErrorString` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getErrorString.html) |
+| `existModel` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.existModel.html) |
+| `existPackage` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.existPackage.html) |
+| `getClassRestriction` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getClassRestriction.html) |
+| `getClassComment` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getClassComment.html) |
+| `isType` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isType.html) |
+| `isClass` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isClass.html) |
+| `isRecord` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isRecord.html) |
+| `isBlock` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isBlock.html) |
+| `isFunction` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isFunction.html) |
+| `isModel` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isModel.html) |
+| `isConnector` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isConnector.html) |
+| `isPartial` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isPartial.html) |
+| `isReplaceable` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isReplaceable.html) |
+| `isProtectedClass` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isProtectedClass.html) |
+| `isEnumeration` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isEnumeration.html) |
 
-## Reading model contents — 12/12 ✅
+## Reading model contents — 14/21
 
 | Function | Status | Docs |
 |---|---|---|
@@ -59,6 +74,18 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `getDocumentationAnnotation` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getDocumentationAnnotation.html) |
 | `listFile` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.listFile.html) |
 | `instantiateModel` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.instantiateModel.html) |
+| `getModelInstance` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getModelInstance.html) |
+| `getModelInstanceAnnotation` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getModelInstanceAnnotation.html) |
+| `modifierToJSON` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.modifierToJSON.html) |
+| `getConnectionList` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getConnectionList.html) |
+| `getNthConnector` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getNthConnector.html) |
+| `getNthConnectorIconAnnotation` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getNthConnectorIconAnnotation.html) |
+| `getConnectorCount` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getConnectorCount.html) |
+| `getNthInheritedClassIconMapAnnotation` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getNthInheritedClassIconMapAnnotation.html) |
+| `getNthInheritedClassDiagramMapAnnotation` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getNthInheritedClassDiagramMapAnnotation.html) |
+| `getDefaultComponentName` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getDefaultComponentName.html) |
+| `getDefaultComponentPrefixes` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getDefaultComponentPrefixes.html) |
+| `getComponentComment` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getComponentComment.html) |
 
 ## Lifecycle — 12/16
 
@@ -81,11 +108,13 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `diffModelicaFileListings` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.diffModelicaFileListings.html) | |
 | `save` | ⛔ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.save.html) | OMEdit-deprecated; we use Option B persistence. Wrapper kept for completeness only. |
 
-## Parameters & modifiers — 5/9
+## Parameters & modifiers — 5/11
 
 | Function | Status | Docs | Notes |
 |---|---|---|---|
 | `getParameterValue` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getParameterValue.html) | |
+| `getParameterNames` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getParameterNames.html) | |
+| `setParameterValue` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setParameterValue.html) | Mutation; needs throwaway fixture. |
 | `getComponentModifierNames` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getComponentModifierNames.html) | |
 | `getComponentModifierValue` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getComponentModifierValue.html) | |
 | `getComponentModifierValues` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getComponentModifierValues.html) | |
@@ -95,7 +124,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `getExtendsModifierValue` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getExtendsModifierValue.html) | Same. |
 | `setExtendsModifierValue` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setExtendsModifierValue.html) | Same. |
 
-## Editing — 10/13
+## Editing — 10/15
 
 | Function | Status | Docs | Notes |
 |---|---|---|---|
@@ -112,6 +141,38 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `setComponentProperties` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setComponentProperties.html) | **Wrapper signature realigned** to the docs-correct 6-arg shape: `prefixArray[5]` (final, flow, stream, protected, replaceable), `variability[String[1]]`, `innerOuter[Boolean[2]]`, `direction[String[1]]`. Public input shape is now `{finalPrefix, flow, stream, protectedPrefix, replaceablePrefix, variability, inner, outer, direction}` — **breaking change** from the previous wrapper shape. |
 | `setComponentDimensions` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setComponentDimensions.html) | |
 | `setComponentComment` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setComponentComment.html) | |
+| `setClassComment` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setClassComment.html) | Mutation; needs throwaway fixture. |
+| `setDocumentationAnnotation` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setDocumentationAnnotation.html) | Mutation; needs throwaway fixture. |
+
+## Elements (modern Component* generalization) — 2/11
+
+| Function | Status | Docs | Notes |
+|---|---|---|---|
+| `getElements` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getElements.html) | Smoke-tested against `Modelica.Blocks.Examples.PID_Controller`. |
+| `getElementsInfo` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getElementsInfo.html) | Smoke-tested. |
+| `getElementAnnotation` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getElementAnnotation.html) | Cheap follow-up. |
+| `getElementAnnotations` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getElementAnnotations.html) | Cheap follow-up. |
+| `getElementModifierNames` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getElementModifierNames.html) | Cheap follow-up. |
+| `getElementModifierValue` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getElementModifierValue.html) | Cheap follow-up. |
+| `getElementModifierValues` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getElementModifierValues.html) | Cheap follow-up. |
+| `setElementModifierValue` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setElementModifierValue.html) | Mutation; needs throwaway fixture. |
+| `setElementAnnotation` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setElementAnnotation.html) | Mutation; needs throwaway fixture. |
+| `setElementType` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setElementType.html) | Mutation; needs throwaway fixture. |
+| `removeElementModifiers` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.removeElementModifiers.html) | Mutation; needs throwaway fixture. |
+
+## Library / package management — 2/9
+
+| Function | Status | Docs | Notes |
+|---|---|---|---|
+| `getAvailableLibraries` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getAvailableLibraries.html) | Network query; not exercised in CI. |
+| `getAvailableLibraryVersions` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getAvailableLibraryVersions.html) | Same. |
+| `getAvailablePackageVersions` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getAvailablePackageVersions.html) | Same. |
+| `installPackage` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.installPackage.html) | Side-effecting + network; not exercised in CI. |
+| `updatePackageIndex` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.updatePackageIndex.html) | Same. |
+| `upgradeInstalledPackages` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.upgradeInstalledPackages.html) | Same. |
+| `getLoadedLibraries` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getLoadedLibraries.html) | |
+| `getPackages` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getPackages.html) | |
+| `loadFiles` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.loadFiles.html) | Cheap follow-up; needs a temp `.mo` fixture. |
 
 ## Solver / runtime config — 8/8 ✅
 
@@ -140,13 +201,15 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `getSimulationOptions` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getSimulationOptions.html) | |
 | `isExperiment` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isExperiment.html) | |
 
-## Results — 0/3
+## Results — 0/5
 
 | Function | Status | Docs | Notes |
 |---|---|---|---|
 | `readSimulationResultSize` | 📦 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.readSimulationResultSize.html) | Needs a `.mat` from `simulate` — wired with the heavy execution tests. |
 | `readSimulationResultVars` | 📦 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.readSimulationResultVars.html) | Same. |
 | `closeSimulationResultFile` | 📦 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.closeSimulationResultFile.html) | Same. |
+| `readSimulationResult` | 📦 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.readSimulationResult.html) | Same. |
+| `val` | 📦 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.val.html) | Same; reads a single variable at a time-point from the current result file. |
 
 ---
 
@@ -154,23 +217,25 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 
 | Category | Covered | Total | Notes |
 |---|---|---|---|
-| Browsing | 10 | 10 | All verified |
-| Reading model contents | 12 | 12 | All verified |
+| Browsing | 17 | 24 | All Tier 4 predicates wired; common predicates verified, niche ones 🟡 |
+| Reading model contents | 14 | 21 | Tier 1 modern read path + Tier 5 connector helpers added; smoke-tested `getModelInstance` and core reads |
 | Lifecycle | 12 | 16 | 4 ⛔ — `createClass`, `createSubClass`, `moveClass` (cross-package relocate only), and `save` (deprecated). The two in-place reorderers `moveClassToTop`/`moveClassToBottom` work despite `moveClass` being missing — found via the drift probe. |
-| Parameters & modifiers | 5 | 9 | 1 ⛔ (`removeComponentModifiers`, confirmed missing), 3 🟡 (extends-with-modifications fixture) |
-| Editing | 10 | 13 | 1 ⛔ (`updateConnection`, confirmed missing), 2 🟡 (state-machine fixture for transitions) |
+| Parameters & modifiers | 5 | 11 | 1 ⛔ (`removeComponentModifiers`, confirmed missing), `getParameterNames` ✅, mutations 🟡 |
+| Editing | 10 | 15 | 1 ⛔ (`updateConnection`, confirmed missing), 4 🟡 (state-machine fixture for transitions; new `setClassComment`/`setDocumentationAnnotation` need throwaway fixtures) |
+| Elements | 2 | 11 | New category — modern `Component*` generalization. Two readers smoke-tested; mutations 🟡 |
+| Library | 2 | 9 | New category — `getLoadedLibraries`/`getPackages` verified; package-manager network calls 🟡 (intentionally not in CI) |
 | Solver / runtime config | 8 | 8 | All verified |
 | Execution | 3 | 9 | 6 🐢 deferred to a heavy-test gate |
-| Results | 0 | 3 | All 📦 — wire with the heavy execution tests |
-| **Total** | **60** | **80** | **75%** |
+| Results | 0 | 5 | All 📦 — wire with the heavy execution tests |
+| **Total** | **75** | **130** | **58%** |
 
 ---
 
 ## How to extend coverage
 
-1. **Cheap wins (🟡 → ✅):** add small tests for `loadString` (currently used implicitly), `getExtendsModifier*` (need a fixture with `extends Modelica.Blocks.Math.Gain(k=2)` style modifications), `addTransition`/`deleteTransition` (state-machine fixture).
+1. **Cheap wins (🟡 → ✅):** add small tests for `loadString` (currently used implicitly), `getExtendsModifier*` (need a fixture with `extends Modelica.Blocks.Math.Gain(k=2)` style modifications), `addTransition`/`deleteTransition` (state-machine fixture), the niche class predicates (`isType`/`isClass`/`isRecord`/`isConnector`/`isPartial`/`isReplaceable`/`isProtectedClass`/`isEnumeration`), and the `Element*` reader family.
 
-2. **Heavy execution (🐢 → ✅):** add a separate `mutations-heavy.integration.test.ts` gated by `OMC_INTEGRATION_HEAVY=1`. Compile a tiny model (3-line state-space example) through `translateModel` → `buildModel` → `simulate`, then exercise the three `results/*` functions on the produced `.mat`. Roughly 30–60 s of test runtime.
+2. **Heavy execution (🐢 → ✅):** add a separate `mutations-heavy.integration.test.ts` gated by `OMC_INTEGRATION_HEAVY=1`. Compile a tiny model (3-line state-space example) through `translateModel` → `buildModel` → `simulate`, then exercise the five `results/*` functions on the produced `.mat` (including `readSimulationResult` and `val`). Roughly 30–60 s of test runtime.
 
 3. **⛔ symbol-not-found cases on OMC 1.26.x** (probed and confirmed on both 1.26.1 and 1.26.7): `createClass`, `createSubClass`, `moveClass`, `updateConnection`, `removeComponentModifiers`. These have `@deprecated` JSDoc on the wrappers with concrete migration paths to functions that DO work (`loadString`, `listFile`+`loadString` for moves, `delete`+`add` for connection updates, per-modifier clearing for `removeComponentModifiers`). The wrappers stay in the package because they may exist on a different OMC line (1.27+? OMSimulator? OMEdit's internal namespace?). The docs site shows public pages for `moveClass`/`updateConnection`/`removeComponentModifiers` with signatures, but OMC's `--interactive=zmq` doesn't surface those symbols — likely an internal-namespace gap, not a deletion.
 

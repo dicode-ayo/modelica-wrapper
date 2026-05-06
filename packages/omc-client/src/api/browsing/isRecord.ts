@@ -1,0 +1,37 @@
+/**
+ * OMC: `function isRecord`
+ *
+ * ```modelica
+ * function isRecord
+ *   input TypeName cl;
+ *   output Boolean b;
+ * end isRecord;
+ * ```
+ */
+
+import { z } from "zod";
+
+import type { CallContext } from "../../_shared/callContext.js";
+import { TypeNameInput } from "../../_shared/inputs.js";
+import { parseOutput } from "../../_shared/parseOutput.js";
+import { expectBool, parse } from "../../parse.js";
+
+export const IsRecordInputSchema = TypeNameInput;
+export type IsRecordInput = z.input<typeof IsRecordInputSchema>;
+
+export const IsRecordOutputSchema = z.object({
+  b: z.boolean(),
+});
+export type IsRecordOutput = z.infer<typeof IsRecordOutputSchema>;
+
+export async function isRecord(
+  ctx: CallContext,
+  input: IsRecordInput,
+): Promise<IsRecordOutput> {
+  const raw = await ctx.call(`isRecord(${input.typeName})`);
+  return parseOutput(
+    IsRecordOutputSchema,
+    { b: expectBool(parse(raw)) },
+    "isRecord",
+  );
+}

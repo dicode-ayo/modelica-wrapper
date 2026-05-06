@@ -7,7 +7,7 @@ import {
 } from "./registry.js";
 
 describe("registry", () => {
-  it("includes all 8 categories", () => {
+  it("includes all 10 categories", () => {
     const cats = new Set(
       omcFunctionNames.map((n) => REGISTRY[n].category),
     );
@@ -18,6 +18,8 @@ describe("registry", () => {
         "lifecycle",
         "parameters",
         "editing",
+        "elements",
+        "library",
         "solver",
         "execution",
         "results",
@@ -31,6 +33,8 @@ describe("registry", () => {
     expect(byCat["contents"]).toContain("getComponents");
     expect(byCat["lifecycle"]).toContain("loadModel");
     expect(byCat["editing"]).toContain("addComponent");
+    expect(byCat["elements"]).toContain("getElements");
+    expect(byCat["library"]).toContain("getLoadedLibraries");
     expect(byCat["execution"]).toContain("simulate");
     expect(byCat["results"]).toContain("readSimulationResultSize");
   });

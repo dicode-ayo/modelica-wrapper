@@ -372,6 +372,104 @@ describeIf("OmcClient against real OMC", () => {
     expect(typeof v2).toBe("string");
   });
 
+  // === Class predicates (Tier 4) ===
+
+  it("class predicates classify Modelica entries correctly", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+
+    const { b: isPkg } = await client.isPackage({ typeName: "Modelica.Blocks" });
+    expect(isPkg).toBe(true);
+
+    const { b: isFn } = await client.isFunction({
+      typeName: "Modelica.Math.sin",
+    });
+    expect(isFn).toBe(true);
+
+    const { b: isBlk } = await client.isBlock({
+      typeName: "Modelica.Blocks.Math.Sin",
+    });
+    expect(isBlk).toBe(true);
+
+    const { b: isMod } = await client.isModel({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+    });
+    expect(isMod).toBe(true);
+
+    const { restriction } = await client.getClassRestriction({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+    });
+    expect(restriction).toBe("model");
+
+    const { b: existsModel } = await client.existModel({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+    });
+    expect(existsModel).toBe(true);
+
+    const { b: existsPkg } = await client.existPackage({
+      typeName: "Modelica.Blocks",
+    });
+    expect(existsPkg).toBe(true);
+  });
+
+  // === Elements (Tier 2) ===
+
+  it("getElements returns a non-null Value tree for a known class", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { elements } = await client.getElements({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+    });
+    expect(["list", "call"]).toContain(elements.kind);
+  });
+
+  it("getElementsInfo returns a non-null Value tree", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { result } = await client.getElementsInfo({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+    });
+    expect(["list", "call", "string"]).toContain(result.kind);
+  });
+
+  // === Library / packages (Tier 3) ===
+
+  it("getLoadedLibraries lists loaded libraries", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { libraries } = await client.getLoadedLibraries();
+    expect(libraries.length).toBeGreaterThan(0);
+    const names = libraries.map((p) => p[0]);
+    expect(names).toContain("Modelica");
+  });
+
+  it("getPackages returns at least the loaded packages", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { classNames } = await client.getPackages();
+    expect(Array.isArray(classNames)).toBe(true);
+    expect(classNames.length).toBeGreaterThan(0);
+  });
+
+  // === Modern read path (Tier 1) ===
+
+  it("getModelInstance returns a non-empty JSON string", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { result } = await client.getModelInstance({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+    });
+    expect(typeof result).toBe("string");
+    expect(result.length).toBeGreaterThan(10);
+    // Light shape sanity — JSON should start with `{`.
+    expect(result.trim().startsWith("{")).toBe(true);
+  });
+
+  // === Parameter parity (Tier 6) ===
+
+  it("getParameterNames returns the parameter list for a model", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { parameters } = await client.getParameterNames({
+      typeName: "Modelica.Blocks.Continuous.PID",
+    });
+    expect(Array.isArray(parameters)).toBe(true);
+    expect(parameters.length).toBeGreaterThan(0);
+  });
+
   // === Concurrency ===
 
   it("serializes concurrent calls without REQ/REP corruption", async () => {

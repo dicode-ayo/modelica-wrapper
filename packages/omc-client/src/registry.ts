@@ -22,7 +22,9 @@ import type { CallContext } from "./_shared/callContext.js";
 import * as browsing from "./api/browsing/index.js";
 import * as contents from "./api/contents/index.js";
 import * as editing from "./api/editing/index.js";
+import * as elements from "./api/elements/index.js";
 import * as execution from "./api/execution/index.js";
+import * as library from "./api/library/index.js";
 import * as lifecycle from "./api/lifecycle/index.js";
 import * as parameters from "./api/parameters/index.js";
 import * as results from "./api/results/index.js";
@@ -74,6 +76,21 @@ export const REGISTRY = {
   getUses: entry("browsing", browsing.getUses, browsing.GetUsesInputSchema, browsing.GetUsesOutputSchema),
   existClass: entry("browsing", browsing.existClass, browsing.ExistClassInputSchema, browsing.ExistClassOutputSchema),
   getErrorString: entry("browsing", browsing.getErrorString, browsing.GetErrorStringInputSchema, browsing.GetErrorStringOutputSchema),
+  existModel: entry("browsing", browsing.existModel, browsing.ExistModelInputSchema, browsing.ExistModelOutputSchema),
+  existPackage: entry("browsing", browsing.existPackage, browsing.ExistPackageInputSchema, browsing.ExistPackageOutputSchema),
+  getClassRestriction: entry("browsing", browsing.getClassRestriction, browsing.GetClassRestrictionInputSchema, browsing.GetClassRestrictionOutputSchema),
+  getClassComment: entry("browsing", browsing.getClassComment, browsing.GetClassCommentInputSchema, browsing.GetClassCommentOutputSchema),
+  isType: entry("browsing", browsing.isType, browsing.IsTypeInputSchema, browsing.IsTypeOutputSchema),
+  isClass: entry("browsing", browsing.isClass, browsing.IsClassInputSchema, browsing.IsClassOutputSchema),
+  isRecord: entry("browsing", browsing.isRecord, browsing.IsRecordInputSchema, browsing.IsRecordOutputSchema),
+  isBlock: entry("browsing", browsing.isBlock, browsing.IsBlockInputSchema, browsing.IsBlockOutputSchema),
+  isFunction: entry("browsing", browsing.isFunction, browsing.IsFunctionInputSchema, browsing.IsFunctionOutputSchema),
+  isModel: entry("browsing", browsing.isModel, browsing.IsModelInputSchema, browsing.IsModelOutputSchema),
+  isConnector: entry("browsing", browsing.isConnector, browsing.IsConnectorInputSchema, browsing.IsConnectorOutputSchema),
+  isPartial: entry("browsing", browsing.isPartial, browsing.IsPartialInputSchema, browsing.IsPartialOutputSchema),
+  isReplaceable: entry("browsing", browsing.isReplaceable, browsing.IsReplaceableInputSchema, browsing.IsReplaceableOutputSchema),
+  isProtectedClass: entry("browsing", browsing.isProtectedClass, browsing.IsProtectedClassInputSchema, browsing.IsProtectedClassOutputSchema),
+  isEnumeration: entry("browsing", browsing.isEnumeration, browsing.IsEnumerationInputSchema, browsing.IsEnumerationOutputSchema),
 
   // --- Reading model contents ---
   getComponents: entry("contents", contents.getComponents, contents.GetComponentsInputSchema, contents.GetComponentsOutputSchema),
@@ -88,6 +105,18 @@ export const REGISTRY = {
   getDocumentationAnnotation: entry("contents", contents.getDocumentationAnnotation, contents.GetDocumentationAnnotationInputSchema, contents.GetDocumentationAnnotationOutputSchema),
   listFile: entry("contents", contents.listFile, contents.ListFileInputSchema, contents.ListFileOutputSchema),
   instantiateModel: entry("contents", contents.instantiateModel, contents.InstantiateModelInputSchema, contents.InstantiateModelOutputSchema),
+  getModelInstance: entry("contents", contents.getModelInstance, contents.GetModelInstanceInputSchema, contents.GetModelInstanceOutputSchema),
+  getModelInstanceAnnotation: entry("contents", contents.getModelInstanceAnnotation, contents.GetModelInstanceAnnotationInputSchema, contents.GetModelInstanceAnnotationOutputSchema),
+  modifierToJSON: entry("contents", contents.modifierToJSON, contents.ModifierToJSONInputSchema, contents.ModifierToJSONOutputSchema),
+  getConnectionList: entry("contents", contents.getConnectionList, contents.GetConnectionListInputSchema, contents.GetConnectionListOutputSchema),
+  getNthConnector: entry("contents", contents.getNthConnector, contents.GetNthConnectorInputSchema, contents.GetNthConnectorOutputSchema),
+  getNthConnectorIconAnnotation: entry("contents", contents.getNthConnectorIconAnnotation, contents.GetNthConnectorIconAnnotationInputSchema, contents.GetNthConnectorIconAnnotationOutputSchema),
+  getConnectorCount: entry("contents", contents.getConnectorCount, contents.GetConnectorCountInputSchema, contents.GetConnectorCountOutputSchema),
+  getNthInheritedClassIconMapAnnotation: entry("contents", contents.getNthInheritedClassIconMapAnnotation, contents.GetNthInheritedClassIconMapAnnotationInputSchema, contents.GetNthInheritedClassIconMapAnnotationOutputSchema),
+  getNthInheritedClassDiagramMapAnnotation: entry("contents", contents.getNthInheritedClassDiagramMapAnnotation, contents.GetNthInheritedClassDiagramMapAnnotationInputSchema, contents.GetNthInheritedClassDiagramMapAnnotationOutputSchema),
+  getDefaultComponentName: entry("contents", contents.getDefaultComponentName, contents.GetDefaultComponentNameInputSchema, contents.GetDefaultComponentNameOutputSchema),
+  getDefaultComponentPrefixes: entry("contents", contents.getDefaultComponentPrefixes, contents.GetDefaultComponentPrefixesInputSchema, contents.GetDefaultComponentPrefixesOutputSchema),
+  getComponentComment: entry("contents", contents.getComponentComment, contents.GetComponentCommentInputSchema, contents.GetComponentCommentOutputSchema),
 
   // --- Lifecycle ---
   loadFile: entry("lifecycle", lifecycle.loadFile, lifecycle.LoadFileInputSchema, lifecycle.LoadFileOutputSchema),
@@ -117,6 +146,32 @@ export const REGISTRY = {
   getExtendsModifierNames: entry("parameters", parameters.getExtendsModifierNames, parameters.GetExtendsModifierNamesInputSchema, parameters.GetExtendsModifierNamesOutputSchema),
   getExtendsModifierValue: entry("parameters", parameters.getExtendsModifierValue, parameters.GetExtendsModifierValueInputSchema, parameters.GetExtendsModifierValueOutputSchema),
   setExtendsModifierValue: entry("parameters", parameters.setExtendsModifierValue, parameters.SetExtendsModifierValueInputSchema, parameters.SetExtendsModifierValueOutputSchema),
+  getParameterNames: entry("parameters", parameters.getParameterNames, parameters.GetParameterNamesInputSchema, parameters.GetParameterNamesOutputSchema),
+  setParameterValue: entry("parameters", parameters.setParameterValue, parameters.SetParameterValueInputSchema, parameters.SetParameterValueOutputSchema),
+
+  // --- Elements (modern Component* generalization) ---
+  getElements: entry("elements", elements.getElements, elements.GetElementsInputSchema, elements.GetElementsOutputSchema),
+  getElementsInfo: entry("elements", elements.getElementsInfo, elements.GetElementsInfoInputSchema, elements.GetElementsInfoOutputSchema),
+  getElementAnnotation: entry("elements", elements.getElementAnnotation, elements.GetElementAnnotationInputSchema, elements.GetElementAnnotationOutputSchema),
+  getElementAnnotations: entry("elements", elements.getElementAnnotations, elements.GetElementAnnotationsInputSchema, elements.GetElementAnnotationsOutputSchema),
+  getElementModifierNames: entry("elements", elements.getElementModifierNames, elements.GetElementModifierNamesInputSchema, elements.GetElementModifierNamesOutputSchema),
+  getElementModifierValue: entry("elements", elements.getElementModifierValue, elements.GetElementModifierValueInputSchema, elements.GetElementModifierValueOutputSchema),
+  getElementModifierValues: entry("elements", elements.getElementModifierValues, elements.GetElementModifierValuesInputSchema, elements.GetElementModifierValuesOutputSchema),
+  setElementModifierValue: entry("elements", elements.setElementModifierValue, elements.SetElementModifierValueInputSchema, elements.SetElementModifierValueOutputSchema),
+  setElementAnnotation: entry("elements", elements.setElementAnnotation, elements.SetElementAnnotationInputSchema, elements.SetElementAnnotationOutputSchema),
+  setElementType: entry("elements", elements.setElementType, elements.SetElementTypeInputSchema, elements.SetElementTypeOutputSchema),
+  removeElementModifiers: entry("elements", elements.removeElementModifiers, elements.RemoveElementModifiersInputSchema, elements.RemoveElementModifiersOutputSchema),
+
+  // --- Library / package management ---
+  getAvailableLibraries: entry("library", library.getAvailableLibraries, library.GetAvailableLibrariesInputSchema, library.GetAvailableLibrariesOutputSchema),
+  getAvailableLibraryVersions: entry("library", library.getAvailableLibraryVersions, library.GetAvailableLibraryVersionsInputSchema, library.GetAvailableLibraryVersionsOutputSchema),
+  getAvailablePackageVersions: entry("library", library.getAvailablePackageVersions, library.GetAvailablePackageVersionsInputSchema, library.GetAvailablePackageVersionsOutputSchema),
+  installPackage: entry("library", library.installPackage, library.InstallPackageInputSchema, library.InstallPackageOutputSchema),
+  updatePackageIndex: entry("library", library.updatePackageIndex, library.UpdatePackageIndexInputSchema, library.UpdatePackageIndexOutputSchema),
+  upgradeInstalledPackages: entry("library", library.upgradeInstalledPackages, library.UpgradeInstalledPackagesInputSchema, library.UpgradeInstalledPackagesOutputSchema),
+  getLoadedLibraries: entry("library", library.getLoadedLibraries, library.GetLoadedLibrariesInputSchema, library.GetLoadedLibrariesOutputSchema),
+  getPackages: entry("library", library.getPackages, library.GetPackagesInputSchema, library.GetPackagesOutputSchema),
+  loadFiles: entry("library", library.loadFiles, library.LoadFilesInputSchema, library.LoadFilesOutputSchema),
 
   // --- Editing ---
   addComponent: entry("editing", editing.addComponent, editing.AddComponentInputSchema, editing.AddComponentOutputSchema),
@@ -132,6 +187,8 @@ export const REGISTRY = {
   setComponentProperties: entry("editing", editing.setComponentProperties, editing.SetComponentPropertiesInputSchema, editing.SetComponentPropertiesOutputSchema),
   setComponentDimensions: entry("editing", editing.setComponentDimensions, editing.SetComponentDimensionsInputSchema, editing.SetComponentDimensionsOutputSchema),
   setComponentComment: entry("editing", editing.setComponentComment, editing.SetComponentCommentInputSchema, editing.SetComponentCommentOutputSchema),
+  setClassComment: entry("editing", editing.setClassComment, editing.SetClassCommentInputSchema, editing.SetClassCommentOutputSchema),
+  setDocumentationAnnotation: entry("editing", editing.setDocumentationAnnotation, editing.SetDocumentationAnnotationInputSchema, editing.SetDocumentationAnnotationOutputSchema),
 
   // --- Solver / runtime config ---
   getSolverMethods: entry("solver", solver.getSolverMethods, solver.GetSolverMethodsInputSchema, solver.GetSolverMethodsOutputSchema),
@@ -158,6 +215,8 @@ export const REGISTRY = {
   readSimulationResultSize: entry("results", results.readSimulationResultSize, results.ReadSimulationResultSizeInputSchema, results.ReadSimulationResultSizeOutputSchema),
   readSimulationResultVars: entry("results", results.readSimulationResultVars, results.ReadSimulationResultVarsInputSchema, results.ReadSimulationResultVarsOutputSchema),
   closeSimulationResultFile: entry("results", results.closeSimulationResultFile, results.CloseSimulationResultFileInputSchema, results.CloseSimulationResultFileOutputSchema),
+  readSimulationResult: entry("results", results.readSimulationResult, results.ReadSimulationResultInputSchema, results.ReadSimulationResultOutputSchema),
+  val: entry("results", results.val, results.ValInputSchema, results.ValOutputSchema),
 } as const;
 
 /** Every OMC function name this package can dispatch to. */

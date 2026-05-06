@@ -26,6 +26,21 @@ export type OmcFunction =
   | "getInheritedClasses"
   | "getUses"
   | "existClass"
+  | "existModel"
+  | "existPackage"
+  | "getClassRestriction"
+  | "getClassComment"
+  | "isType"
+  | "isClass"
+  | "isRecord"
+  | "isBlock"
+  | "isFunction"
+  | "isModel"
+  | "isConnector"
+  | "isPartial"
+  | "isReplaceable"
+  | "isProtectedClass"
+  | "isEnumeration"
 
   // --- Reading model contents ---
   | "getComponents"
@@ -40,6 +55,18 @@ export type OmcFunction =
   | "getDocumentationAnnotation"
   | "listFile"
   | "instantiateModel"
+  | "getModelInstance"
+  | "getModelInstanceAnnotation"
+  | "modifierToJSON"
+  | "getConnectionList"
+  | "getNthConnector"
+  | "getNthConnectorIconAnnotation"
+  | "getConnectorCount"
+  | "getNthInheritedClassIconMapAnnotation"
+  | "getNthInheritedClassDiagramMapAnnotation"
+  | "getDefaultComponentName"
+  | "getDefaultComponentPrefixes"
+  | "getComponentComment"
 
   // --- Source / lifecycle ---
   | "loadFile"
@@ -61,6 +88,8 @@ export type OmcFunction =
 
   // --- Parameters & modifiers ---
   | "getParameterValue"
+  | "getParameterNames"
+  | "setParameterValue"
   | "getComponentModifierNames"
   | "getComponentModifierValue"
   | "getComponentModifierValues"
@@ -69,6 +98,30 @@ export type OmcFunction =
   | "getExtendsModifierNames"
   | "getExtendsModifierValue"
   | "setExtendsModifierValue"
+
+  // --- Elements (modern Component* generalization) ---
+  | "getElements"
+  | "getElementsInfo"
+  | "getElementAnnotation"
+  | "getElementAnnotations"
+  | "getElementModifierNames"
+  | "getElementModifierValue"
+  | "getElementModifierValues"
+  | "setElementModifierValue"
+  | "setElementAnnotation"
+  | "setElementType"
+  | "removeElementModifiers"
+
+  // --- Library / package management ---
+  | "getAvailableLibraries"
+  | "getAvailableLibraryVersions"
+  | "getAvailablePackageVersions"
+  | "installPackage"
+  | "updatePackageIndex"
+  | "upgradeInstalledPackages"
+  | "getLoadedLibraries"
+  | "getPackages"
+  | "loadFiles"
 
   // --- Editing ---
   | "addComponent"
@@ -84,6 +137,8 @@ export type OmcFunction =
   | "setComponentProperties"
   | "setComponentDimensions"
   | "setComponentComment"
+  | "setClassComment"
+  | "setDocumentationAnnotation"
 
   // --- Solver / runtime config ---
   | "getSolverMethods"
@@ -109,7 +164,9 @@ export type OmcFunction =
   // --- Results ---
   | "readSimulationResultSize"
   | "readSimulationResultVars"
-  | "closeSimulationResultFile";
+  | "closeSimulationResultFile"
+  | "readSimulationResult"
+  | "val";
 
 /**
  * A well-formed OMC RPC command string: a known function name followed by
