@@ -1,14 +1,8 @@
-# Go
-backend/bin/
-*.exe
-*.test
-*.out
-coverage.txt
 
 # Node / VSCode extension
-extension/node_modules/
-extension/out/
-extension/dist/
+node_modules/
+out/
+dist/
 *.vsix
 
 # Editor / OS

@@ -1,20 +1,37 @@
 /**
  * Integration tests against a real OMC install.
  *
- * Run with:
+ * Auto-runs whenever `omc` is on PATH or `OMC_PATH` points to a binary.
+ * Skips cleanly if no OMC is available, so the suite stays green on
+ * machines without OpenModelica installed (CI, contributors, etc.).
  *
- *     OMC_INTEGRATION=1 npx vitest run src/omc/client.integration.test.ts
- *
- * or via the npm script `npm run test:integration`.
- *
- * Skipped by default so `npm test` stays fast and offline-friendly.
+ * Override:
+ *   OMC_INTEGRATION=0  force skip
+ *   OMC_INTEGRATION=1  force run (missing OMC then becomes a real failure)
  */
 
+import { execSync } from "node:child_process";
+
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
 import { OmcClient } from "./client.js";
 
-const enabled = process.env.OMC_INTEGRATION === "1";
-const describeIf = enabled ? describe : describe.skip;
+function shouldRun(): boolean {
+  const flag = process.env.OMC_INTEGRATION;
+  if (flag === "0") return false;
+  if (flag === "1") return true;
+  if (process.env.OMC_PATH && process.env.OMC_PATH.length > 0) return true;
+  try {
+    execSync(process.platform === "win32" ? "where omc" : "command -v omc", {
+      stdio: "ignore",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const describeIf = shouldRun() ? describe : describe.skip;
 
 describeIf("OmcClient against real OMC", () => {
   let client: OmcClient;
@@ -107,6 +124,57 @@ describeIf("OmcClient against real OMC", () => {
     const ps = Array.from({ length: 8 }, () => client.getVersion());
     const versions = await Promise.all(ps);
     expect(new Set(versions).size).toBe(1);
+  });
+
+  it("instantiateModel returns flattened Modelica source", async () => {
+    await client.loadModel("Modelica");
+    const flat = await client.instantiateModel(
+      "Modelica.Blocks.Examples.PID_Controller",
+    );
+    // Post-elaboration source: should declare the top-level "model" and at
+    // least one inlined sub-component.
+    expect(flat).toMatch(/model\s+/);
+    expect(flat.length).toBeGreaterThan(500);
+  });
+
+  it("assembles a full diagram view (canvas + components + connections)", async () => {
+    // Gathers everything the diagram canvas would need for one class:
+    //   - canvas extents/grid via getDiagramAnnotation
+    //   - sub-components and their placement annotations
+    //   - all connections with their line annotations
+    // No flattening across inheritance here — that's a separate composition.
+    await client.loadModel("Modelica");
+    const clazz = "Modelica.Blocks.Examples.PID_Controller";
+
+    const canvas = await client.getDiagramAnnotation(clazz);
+    expect(canvas.kind).toBe("list"); // {x1,y1,x2,y2,gridVisible,...,{shapes}}
+
+    const components = await client.getComponents(clazz);
+    expect(components.length).toBeGreaterThan(0);
+    const placements = await client.getComponentAnnotations(clazz);
+    expect(placements.length).toBe(components.length);
+
+    const count = await client.getConnectionCount(clazz);
+    expect(count).toBeGreaterThan(0);
+    const connections = await Promise.all(
+      Array.from({ length: count }, (_, i) =>
+        Promise.all([
+          client.getNthConnection(clazz, i + 1),
+          client.getNthConnectionAnnotation(clazz, i + 1),
+        ]),
+      ),
+    );
+    expect(connections).toHaveLength(count);
+    for (const [conn, ann] of connections) {
+      expect(conn.from).toBeTruthy();
+      expect(conn.to).toBeTruthy();
+      // Connection annotations are typically Line(...) calls or null.
+      expect(["call", "list", "null"]).toContain(ann.kind);
+    }
+
+    // Sanity: at least one well-known sub-component exists.
+    const names = components.map((c) => c.name);
+    expect(names).toContain("PI");
   });
 
   it("rejects an unknown command gracefully via error string", async () => {
