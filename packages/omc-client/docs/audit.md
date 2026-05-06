@@ -13,10 +13,37 @@ The agent should produce a written report listing matches, mismatches, and missi
 This package targets a specific OMC version. The pin lives in source code:
 
 - File: [`packages/omc-client/src/version.ts`](../src/version.ts)
-- Constant: `SUPPORTED_OMC.primary` (currently **`1.26.1`**)
+- Constant: `SUPPORTED_OMC.primary` (Renovate-managed; check the file for the current value)
 - Audited-on date: `SUPPORTED_OMC.auditedOn`
 
-Before starting the audit, the agent MUST read the current value of `SUPPORTED_OMC.primary` and use that version's docs as the comparison target. **Do not just hit `build.openmodelica.org` and assume it matches the pin** — that site reflects the latest nightly build and may have drifted.
+### 0.1 Calibration check (do this FIRST, every audit)
+
+Before any per-function comparison, verify the three places the OMC version is recorded all agree:
+
+| Source | How to read it |
+|---|---|
+| **Pin** | Read `SUPPORTED_OMC.primary` from `packages/omc-client/src/version.ts` |
+| **Runtime** | Inspect the `FROM` line in `.devcontainer/Dockerfile` and the `matrix.omc` in `.github/workflows/ci.yml` — both should be `openmodelica/openmodelica:vX.Y.Z-minimal` matching the pin. The CI workflow has a guard that emits a `::warning::` on mismatch, but the audit should explicitly check. |
+| **Docs site** | WebFetch `https://build.openmodelica.org/Documentation/OpenModelica.Scripting.html` and look for "Generated at … by OpenModelica X.Y.Z" in the page footer. This is the version your per-function fetches will reflect. |
+
+Report all three at the top of the audit output, e.g.:
+
+```
+Pin (version.ts):    1.26.7
+Runtime (Dockerfile): 1.26.7
+Docs (build.openmodelica.org): 1.26.7  ← matches pin
+```
+
+**If the docs version diverges from the pin**, the audit's per-function comparisons are noisier — flag any mismatch as **"pinned-version uncertainty"** in the report (separate from bugs). When this happens, the resolution is usually a Renovate PR bumping the pin, then re-running the audit.
+
+Renovate will normally keep these aligned automatically. The CI infrastructure is set up so:
+
+- The `dockerfile` Renovate manager updates `.devcontainer/Dockerfile` and the CI matrix when a new OMC release is published.
+- A custom regex manager updates `SUPPORTED_OMC.primary` in `version.ts` from the same OpenModelica GitHub release datasource.
+- Both bumps land in **a single grouped PR** labeled `omc-update`.
+- The `omc-update-audit` workflow runs the integration suite against the new OMC and posts a checklist comment that points back to this runbook.
+
+### 0.2 Investigating discrepancies
 
 If the agent encounters a 404 or schema discrepancy, it should consider whether the function/field exists at the pinned version specifically:
 
@@ -32,6 +59,8 @@ The runtime mirror of the pin lives on `OmcClient`:
 When the pin needs to change (we move to a new OMC for testing), update `SUPPORTED_OMC` in `version.ts`, run a full audit, fix any drift, and commit together.
 
 **Before flagging missing tests as bugs**, consult [`coverage.md`](./coverage.md) — it tracks which wrappers are integration-verified at the pinned OMC version, which are knowingly unverified (and why), and which are deferred to heavy / FMU-dependent test runs. Many "uncovered" cases are intentional gaps the audit should categorize, not bug-flag.
+
+**For ⛔ wrappers, also consult the drift probe**: [`../test/drift-probe.integration.test.ts`](../test/drift-probe.integration.test.ts) sends each suspect call to OMC directly and reports verdicts (`✓ ok` / `⌀ empty` / `✗ symbol-missing` / `⚠ other-error`). The `omc-update-audit` CI workflow runs it on every Renovate OMC bump PR and pastes the result into the PR comment, so ground-truth on the *new* OMC version is available before the agent audit runs. Manual invocation: `OMC_DRIFT_PROBE=1 pnpm --filter @modelica-wrapper/omc-client vitest run test/drift-probe.integration.test.ts --reporter=verbose`.
 
 ---
 

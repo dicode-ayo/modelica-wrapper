@@ -4,8 +4,20 @@
  * Create a new top-level class. `restriction` is one of "model", "block",
  * "package", "function", "connector", "type", "record", etc.
  *
- * Failure path: returns `false` and stashes a diagnostic in OMC's error buffer
- * — surfaced via `ctx.getErrorString()` in OmcClient.callBool.
+ * @deprecated NOT AVAILABLE on OMC 1.26.x's interactive scripting (symbol
+ *             not found; verified absent on both 1.26.1 and 1.26.7).
+ *             Wrapper kept for forward/backward compatibility with OMC
+ *             versions that expose it.
+ *
+ *             **Migration on 1.26.x**: build a Modelica source string in
+ *             memory and load it with `loadString`:
+ *
+ *             ```ts
+ *             await client.loadString({
+ *               data: `model ${name}\nend ${name};`,
+ *               filename: `<runtime:${name}>`,
+ *             });
+ *             ```
  */
 
 import { z } from "zod";

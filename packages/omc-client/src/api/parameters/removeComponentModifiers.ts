@@ -4,6 +4,14 @@
  * Strip all modifiers from a component. `keepRedeclares = true` preserves
  * any `redeclare` modifiers (useful when you want to clear values but
  * preserve type substitutions).
+ *
+ * @deprecated NOT AVAILABLE on OMC 1.26.x's interactive scripting (symbol
+ *             not found; verified absent on both 1.26.1 and 1.26.7,
+ *             despite a public docs page existing for it). Wrapper kept
+ *             for forward/backward compatibility.
+ *             **Migration on 1.26.x**: enumerate modifiers with
+ *             `getComponentModifierNames` then clear each individually with
+ *             `setComponentModifierValue({..., expr: ""})`.
  */
 
 import { z } from "zod";

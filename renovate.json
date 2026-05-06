@@ -1,0 +1,67 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":dependencyDashboard"
+  ],
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "rangeStrategy": "bump",
+
+  "packageRules": [
+    {
+      "description": "Group all OMC bumps (Dockerfile FROM, CI matrix, version.ts pin) into one PR + label so the omc-update-audit workflow fires.",
+      "matchPackageNames": [
+        "openmodelica/openmodelica",
+        "OpenModelica/OpenModelica"
+      ],
+      "groupName": "OpenModelica",
+      "labels": ["dependencies", "omc-update"],
+      "commitMessageTopic": "OpenModelica",
+      "prBodyNotes": [
+        ":warning: This bump touches the OMC pin. The `omc-update-audit` workflow will run the integration suite against the new version and post a checklist. Walk the items in `packages/omc-client/docs/audit.md` (section 0 calibration first) before merging."
+      ]
+    },
+    {
+      "description": "Auto-merge low-risk dev dependency patches so the OMC update PRs stay readable.",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "automergeType": "branch"
+    }
+  ],
+
+  "customManagers": [
+    {
+      "description": "Keep SUPPORTED_OMC.primary in version.ts in lock-step with OpenModelica GitHub releases. Renovate matches the regex, looks up the latest non-prerelease v* tag from the OpenModelica repo, and bumps the version in the same PR as the Docker image.",
+      "customType": "regex",
+      "fileMatch": ["^packages/omc-client/src/version\\.ts$"],
+      "matchStrings": [
+        "primary:\\s*\"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""
+      ],
+      "depNameTemplate": "OpenModelica/OpenModelica",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.+)$"
+    }
+  ],
+
+  "dockerfile": {
+    "managerFilePatterns": [
+      "/^\\.devcontainer/Dockerfile$/",
+      "/Dockerfile$/"
+    ]
+  },
+
+  "github-actions": {
+    "managerFilePatterns": [
+      "/^\\.github/workflows/.+\\.ya?ml$/"
+    ]
+  },
+
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "automerge": false
+  }
+}

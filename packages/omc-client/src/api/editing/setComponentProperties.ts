@@ -1,7 +1,22 @@
 /**
  * OMC: `function setComponentProperties`
  *
- * Set the prefix flags + variability/causality/innerOuter on a component.
+ * ```modelica
+ * function setComponentProperties
+ *   input TypeName className;
+ *   input TypeName componentName;
+ *   input Boolean[:] prefixArray;       // {final, flow, stream, protected, replaceable}
+ *   input String[1] variability;        // {""|"constant"|"discrete"|"parameter"}
+ *   input Boolean[2] innerOuter;        // {inner, outer}
+ *   input String[1] direction;          // {""|"input"|"output"}
+ *   output Boolean success;
+ * end setComponentProperties;
+ * ```
+ *
+ * Note `prefixArray` is 5 booleans (final, flow, stream, protected, replaceable),
+ * `variability` and `direction` are 1-element string arrays, and `innerOuter`
+ * is a 2-element boolean array. Earlier OMC versions accepted a different
+ * shape; this wrapper targets the OMC 1.26 layout (verified 2026-05-05).
  */
 
 import { z } from "zod";
@@ -16,13 +31,14 @@ export const SetComponentPropertiesInputSchema = z.object({
   finalPrefix: z.boolean(),
   flow: z.boolean(),
   stream: z.boolean(),
+  protectedPrefix: z.boolean(),
   replaceablePrefix: z.boolean(),
   /** "constant" | "parameter" | "discrete" | "" (continuous). */
   variability: z.string(),
+  inner: z.boolean(),
+  outer: z.boolean(),
   /** "input" | "output" | "". */
-  causality: z.string(),
-  /** "inner" | "outer" | "inner outer" | "". */
-  innerOuter: z.string(),
+  direction: z.string(),
 });
 export type SetComponentPropertiesInput = z.input<
   typeof SetComponentPropertiesInputSchema
@@ -40,7 +56,7 @@ export async function setComponentProperties(
   input: SetComponentPropertiesInput,
 ): Promise<SetComponentPropertiesOutput> {
   const raw = await ctx.call(
-    `setComponentProperties(${input.typeName}, ${input.componentName}, {${mlBool(input.finalPrefix)},${mlBool(input.flow)},${mlBool(input.stream)},${mlBool(input.replaceablePrefix)}}, {${quote(input.variability)}, ${quote(input.causality)}, ${quote(input.innerOuter)}})`,
+    `setComponentProperties(${input.typeName}, ${input.componentName}, {${mlBool(input.finalPrefix)},${mlBool(input.flow)},${mlBool(input.stream)},${mlBool(input.protectedPrefix)},${mlBool(input.replaceablePrefix)}}, {${quote(input.variability)}}, {${mlBool(input.inner)},${mlBool(input.outer)}}, {${quote(input.direction)}})`,
   );
   return parseOutput(
     SetComponentPropertiesOutputSchema,

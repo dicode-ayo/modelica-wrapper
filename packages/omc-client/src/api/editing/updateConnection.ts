@@ -3,6 +3,14 @@
  *
  * Refresh the annotation for an existing connection (e.g. after a user
  * dragged a waypoint).
+ *
+ * @deprecated NOT AVAILABLE on OMC 1.26.x's interactive scripting (symbol
+ *             not found; verified absent on both 1.26.1 and 1.26.7,
+ *             despite a public docs page existing for it). Wrapper kept
+ *             for forward/backward compatibility.
+ *             **Migration on 1.26.x**: combine `deleteConnection` +
+ *             `addConnection` with the new annotation. Two RPC calls
+ *             instead of one, but functionally equivalent.
  */
 
 import { z } from "zod";

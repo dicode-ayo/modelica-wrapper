@@ -2,6 +2,12 @@
  * OMC: `function moveClassToTop`
  *
  * Move `cl` to the top of its enclosing package.
+ *
+ * Verified working on OMC 1.26.x via the drift probe (both 1.26.1 and
+ * 1.26.7) — note the asymmetry with the relocate-to-different-parent
+ * `moveClass`, which is missing across the 1.26 line. The two reorderers
+ * (`moveClassToTop` / `moveClassToBottom`) exist; only the cross-package
+ * relocate is gone.
  */
 
 import { z } from "zod";

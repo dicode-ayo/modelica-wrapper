@@ -1,7 +1,19 @@
 /**
  * OMC: `function createSubClass`
  *
- * Create a class nested inside `parent`. Same arg shape as createClass plus parent.
+ * Create a class nested inside `parent`.
+ *
+ * @deprecated NOT AVAILABLE on OMC 1.26.x's interactive scripting (symbol
+ *             not found; verified absent on both 1.26.1 and 1.26.7).
+ *             Wrapper kept for forward/backward compatibility.
+ *             **Migration on 1.26.x**: use `loadString` with a package body:
+ *
+ *             ```ts
+ *             await client.loadString({
+ *               data: `within ${parent};\nmodel ${name}\nend ${name};`,
+ *               filename: `<runtime:${parent}.${name}>`,
+ *             });
+ *             ```
  */
 
 import { z } from "zod";

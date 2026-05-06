@@ -273,6 +273,51 @@ modelica-vscode/
 
 -----
 
+## Development
+
+### Devcontainer (recommended)
+
+Open the repo in VSCode and accept the "Reopen in Container" prompt. The container ([`.devcontainer/Dockerfile`](.devcontainer/Dockerfile)) is built on top of `openmodelica/openmodelica:vX.Y.Z-minimal` with Node 20 + pnpm preinstalled. `omc` is on PATH at `/usr/bin/omc`, so the integration tests run out of the box.
+
+The OMC version is **pinned in three places** that Renovate keeps in lock-step:
+
+- [`.devcontainer/Dockerfile`](.devcontainer/Dockerfile) — `FROM openmodelica/openmodelica:vX.Y.Z-minimal`
+- [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — same image in the integration matrix
+- [`packages/omc-client/src/version.ts`](packages/omc-client/src/version.ts) — `SUPPORTED_OMC.primary` exposed at runtime via `OmcClient.getVersionStatus()`
+
+### Local dev without the container
+
+```sh
+# Pin OMC to whatever the package targets:
+omc --version  # should match packages/omc-client/src/version.ts SUPPORTED_OMC.primary
+
+pnpm install
+pnpm -r typecheck
+pnpm -r test          # runs unit + integration when omc is on PATH
+```
+
+### CI
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and PR:
+
+1. **Lint + unit** — typecheck and the parser/version/registry unit tests on plain ubuntu-latest.
+2. **Integration (OMC matrix)** — inside the pinned `openmodelica/openmodelica` container, runs the full integration suite + builds the extension bundle.
+
+[`.github/workflows/omc-update-audit.yml`](.github/workflows/omc-update-audit.yml) runs on PRs labeled `omc-update` (Renovate adds the label automatically when bumping OMC). It runs the integration suite against the *new* OMC and posts a comment with a checklist pointing back to [`packages/omc-client/docs/audit.md`](packages/omc-client/docs/audit.md).
+
+### Renovate
+
+[`renovate.json`](renovate.json) is configured to:
+
+- **Group OMC bumps** across the Dockerfile, CI workflow, and `version.ts` into a single PR labeled `omc-update`.
+- Track `openmodelica/openmodelica` Docker Hub tags via the `dockerfile` manager.
+- Track OpenModelica GitHub releases via a regex `customManager` keyed off `SUPPORTED_OMC.primary` — so a new OMC patch release bumps the runtime pin and the type-level `OmcClient.supportedOmcVersion` together.
+- Auto-merge dev-dependency patches; never auto-merge OMC bumps (we want the audit checklist walked first).
+
+To enable: install the Renovate GitHub App on the repo. The first run will read this config and start opening PRs.
+
+-----
+
 ## References
 
 **Audit runbook (run an agent against the omc-client package periodically):**

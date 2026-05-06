@@ -2,6 +2,10 @@
  * OMC: `function moveClassToBottom`
  *
  * Move `cl` to the bottom of its enclosing package.
+ *
+ * Verified working on OMC 1.26.x via the drift probe (both 1.26.1 and
+ * 1.26.7). See `moveClassToTop` for context on why the related `moveClass`
+ * (cross-package relocate) is deprecated while the two reorderers work.
  */
 
 import { z } from "zod";

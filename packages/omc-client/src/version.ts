@@ -26,12 +26,20 @@ export interface OmcVersion {
  * any wrappers whose schemas drifted, then commit together.
  */
 export const SUPPORTED_OMC = {
-  /** Exact version we tested against. */
-  primary: "1.26.1",
+  /**
+   * Exact version we tested against.
+   *
+   * **Renovate-managed** via the regex customManager in `renovate.json`. When
+   * Renovate proposes a bump, the audit workflow runs the test suite against
+   * the new OMC and a human reviews the resulting `coverage.md` deltas
+   * before merge. Do not edit by hand outside of a Renovate PR — keep
+   * `auditedOn` in sync.
+   */
+  primary: "1.26.7",
   /** Same major.minor is treated as compatible without warning. */
   compatibleMinor: { major: 1, minor: 26 },
   /** Audited against build.openmodelica.org docs on this date. */
-  auditedOn: "2026-05-05",
+  auditedOn: "2026-05-06",
 } as const;
 
 /** Parse OMC's `getVersion()` response into a structured version. */

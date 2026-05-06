@@ -1,0 +1,58 @@
+{
+  "name": "modelica-wrapper",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "remoteUser": "vscode",
+  "workspaceFolder": "/workspaces/modelica-wrapper",
+  "postCreateCommand": "pnpm install --frozen-lockfile",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "vitest.explorer"
+      ],
+      "settings": {
+        "modelica.omcPath": "/usr/bin/omc",
+        "vitest.nodeEnv": {}
+      }
+    }
+  },
+  "containerEnv": {
+    "OMC_PATH": "/usr/bin/omc"
+  },
+  // Forward host's ANTHROPIC_API_KEY (Console users). For Pro/Max/Team
+  // OAuth this isn't needed — credentials come from the mounted ~/.claude.
+  "remoteEnv": {
+    "ANTHROPIC_API_KEY": "${localEnv:ANTHROPIC_API_KEY}"
+  },
+  // Bind-mount the host's Claude Code config (memory, OAuth credentials,
+  // preferences) into the container at /home/vscode/.claude so the
+  // container picks up the same identity, recent sessions, and project
+  // memories as the host.
+  //
+  // The mount source reads $CLAUDE_CONFIG_DIR from the shell that
+  // launched VSCode. The variable MUST be exported in that shell — VSCode's
+  // extension-scoped setting (claudeCode.environmentVariables) doesn't
+  // count, since Docker isn't a child of the extension host.
+  //
+  // Make it stick across logins:
+  //
+  //   echo 'export CLAUDE_CONFIG_DIR="$HOME/.claude"' >> ~/.zshrc   # default path
+  //   # or for a custom path:
+  //   echo 'export CLAUDE_CONFIG_DIR="/your/custom/.claude"' >> ~/.zshrc
+  //
+  // (replace ~/.zshrc with ~/.bashrc / ~/.profile as appropriate, then
+  // restart VSCode from a fresh terminal so it inherits the value).
+  //
+  // If you'd rather start with a clean per-container config, delete the
+  // mount entry below — claude will create /home/vscode/.claude itself
+  // on first run.
+  "mounts": [
+    "source=${localEnv:CLAUDE_CONFIG_DIR},target=/home/vscode/.claude,type=bind,consistency=cached"
+  ],
+  "features": {}
+}

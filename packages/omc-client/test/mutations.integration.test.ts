@@ -142,6 +142,92 @@ end TestPkg;
       expect(typeof diff).toBe("string");
       expect(diff.length).toBeGreaterThan(0);
     });
+
+    it("renameClass renames a fixture's class and returns the new path(s)", async () => {
+      const newName = `${fixture.packageName}_Renamed`;
+      const { result } = await client.renameClass({
+        typeName: fixture.modelClass,
+        newName,
+      });
+      expect(Array.isArray(result)).toBe(true);
+      // After rename the original FQN should no longer resolve.
+      const { exists } = await client.existClass({
+        typeName: fixture.modelClass,
+      });
+      expect(exists).toBe(false);
+    });
+
+    it("deleteClass removes a loaded class", async () => {
+      // Load a sacrificial standalone package.
+      const victim = `MwTest_doomed_${Date.now()}`;
+      await client.loadString({
+        data: `model ${victim}\nend ${victim};\n`,
+        filename: `<runtime:${victim}>`,
+      });
+      const before = await client.existClass({ typeName: victim });
+      expect(before.exists).toBe(true);
+
+      const del = await client.deleteClass({ typeName: victim });
+      expect(del.success).toBe(true);
+
+      const after = await client.existClass({ typeName: victim });
+      expect(after.exists).toBe(false);
+    });
+
+    it("copyClass duplicates a class (destination must be a quoted String per OMC docs)", async () => {
+      const dupName = `${fixture.packageName}_Copy`;
+      const { result } = await client.copyClass({
+        source: fixture.modelClass,
+        destination: dupName,
+      });
+      expect(result).toBe(true);
+      const { exists } = await client.existClass({ typeName: dupName });
+      expect(exists).toBe(true);
+      await client.deleteClass({ typeName: dupName });
+    });
+
+    it("moveClassToTop / moveClassToBottom reorder children of a package", async () => {
+      // The default fixture only has one nested class. Load a richer
+      // package via loadString so we can observe the reorder.
+      const { randomBytes } = await import("node:crypto");
+      const id = randomBytes(4).toString("hex");
+      const pkg = `MwReorder_${id}`;
+      await client.loadString({
+        data: `package ${pkg}
+  model A
+  end A;
+  model B
+  end B;
+  model C
+  end C;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+      try {
+        // Move C to top — C should now precede A and B.
+        const top = await client.moveClassToTop({ typeName: `${pkg}.C` });
+        expect(top.success).toBe(true);
+        const afterTop = await client.getClassNames({
+          typeName: pkg,
+          qualified: false,
+        });
+        expect(afterTop.classNames[0]).toBe("C");
+
+        // Move C to bottom — C should now follow A and B.
+        const bot = await client.moveClassToBottom({ typeName: `${pkg}.C` });
+        expect(bot.success).toBe(true);
+        const afterBottom = await client.getClassNames({
+          typeName: pkg,
+          qualified: false,
+        });
+        expect(afterBottom.classNames[afterBottom.classNames.length - 1]).toBe(
+          "C",
+        );
+      } finally {
+        await client.deleteClass({ typeName: pkg });
+      }
+    });
   });
 
   // === Editing: components and connections ===
@@ -282,6 +368,34 @@ end TestPkg;
         typeName: fixture.modelClass,
       });
       expect(isExperiment).toBe(true);
+    });
+
+    it("setComponentProperties (6-arg shape on OMC 1.26)", async () => {
+      await client.addComponent({
+        componentName: "p",
+        componentClass: "Real",
+        intoTypeName: fixture.modelClass,
+      });
+      const { success } = await client.setComponentProperties({
+        typeName: fixture.modelClass,
+        componentName: "p",
+        finalPrefix: false,
+        flow: false,
+        stream: false,
+        protectedPrefix: false,
+        replaceablePrefix: false,
+        variability: "parameter",
+        inner: false,
+        outer: false,
+        direction: "",
+      });
+      expect(success).toBe(true);
+
+      const { components } = await client.getComponents({
+        typeName: fixture.modelClass,
+      });
+      const p = components.find((c) => c.name === "p");
+      expect(p?.variability).toBe("parameter");
     });
   });
 

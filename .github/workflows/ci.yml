@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-flight runs of this workflow when a new commit lands on the same ref.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fast feedback: lint, typecheck, parser tests. No OMC needed.
+  lint-and-unit:
+    name: Lint + unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        run: pnpm -r typecheck
+
+      - name: Unit tests (parser, version, registry)
+        env:
+          OMC_INTEGRATION: "0"
+        run: pnpm -r test
+
+  # Integration tests against the pinned OMC release. Renovate keeps the
+  # image tag in lock-step with `SUPPORTED_OMC.primary` via the regex manager
+  # in renovate.json.
+  integration:
+    name: Integration (OMC ${{ matrix.omc }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        omc: ["v1.26.7"]
+    container:
+      image: openmodelica/openmodelica:${{ matrix.omc }}-minimal
+      # GitHub Actions runs container jobs as root by default.
+      options: --user root
+    steps:
+      - name: Install Node 20 + git into the OMC container
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl gnupg git
+          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+          apt-get install -y --no-install-recommends nodejs
+          npm install -g pnpm@10.25.0
+
+      - uses: actions/checkout@v4
+
+      - name: Verify OMC matches the pin
+        run: |
+          OMC_RUNTIME=$(omc --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          OMC_PIN=$(grep -E '^\s*primary:' packages/omc-client/src/version.ts | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          echo "Container OMC: $OMC_RUNTIME"
+          echo "Pinned OMC:    $OMC_PIN"
+          if [ "$OMC_RUNTIME" != "$OMC_PIN" ]; then
+            echo "::warning::Pin/runtime mismatch — container is $OMC_RUNTIME, pin is $OMC_PIN. The integration tests still run, but a Renovate PR is probably needed to bump the pin."
+          fi
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Integration tests against real OMC
+        env:
+          OMC_INTEGRATION: "1"
+        run: pnpm --filter @modelica-wrapper/omc-client test
+
+      - name: Build the extension bundle
+        run: pnpm --filter modelica-wrapper build

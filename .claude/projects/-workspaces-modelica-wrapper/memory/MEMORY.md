@@ -1,0 +1,2 @@
+- [Backend is TypeScript, in VSCode extension host](project_language_choice.md) — settled 2026-05-05; no Go, no Rust, no separate backend process, no JSON-RPC layer.
+- [OMC RPC format and Modelica annotation grammar — authoritative sources](reference_omc_format_docs.md) — scripting API doc, Modelica spec §18, OMPython parser. Look these up; do not reverse-engineer.
