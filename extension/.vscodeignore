@@ -1,0 +1,10 @@
+.vscode/**
+.vscode-test/**
+src/**
+node_modules/**
+!node_modules/zeromq/**
+out/**/*.map
+**/*.test.ts
+**/tsconfig.json
+**/vitest.config.ts
+**/esbuild.config.mjs
