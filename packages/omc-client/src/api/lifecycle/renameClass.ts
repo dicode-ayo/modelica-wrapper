@@ -1,14 +1,22 @@
 /**
  * OMC: `function renameClass`
  *
- * Rename an existing class. Returns the new fully-qualified name.
+ * ```modelica
+ * function renameClass
+ *   input TypeName oldName "The path of the class to rename.";
+ *   input TypeName newName "The new non-qualified name of the class.";
+ *   output TypeName[:] result;
+ * end renameClass;
+ * ```
+ *
+ * Returns the renamed class names (the rename can affect multiple references).
  */
 
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
-import { expectString, parse } from "../../parse.js";
+import { expectStringList, parse } from "../../parse.js";
 
 export const RenameClassInputSchema = z.object({
   typeName: z.string(),
@@ -17,7 +25,7 @@ export const RenameClassInputSchema = z.object({
 export type RenameClassInput = z.input<typeof RenameClassInputSchema>;
 
 export const RenameClassOutputSchema = z.object({
-  newQualifiedName: z.string(),
+  result: z.array(z.string()),
 });
 export type RenameClassOutput = z.infer<typeof RenameClassOutputSchema>;
 
@@ -30,7 +38,7 @@ export async function renameClass(
   );
   return parseOutput(
     RenameClassOutputSchema,
-    { newQualifiedName: expectString(parse(raw)) },
+    { result: expectStringList(parse(raw)) },
     "renameClass",
   );
 }

@@ -8,8 +8,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { parseOutput } from "../../_shared/parseOutput.js";
-import { expectBool, parse } from "../../parse.js";
+import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
 
 export const UpdateConnectionInputSchema = z.object({
   from: z.string(),
@@ -37,7 +36,7 @@ export async function updateConnection(
   );
   return parseOutput(
     UpdateConnectionOutputSchema,
-    { success: expectBool(parse(raw)) },
+    { success: await parseMutationSuccess(ctx, raw, "updateConnection") },
     "updateConnection",
   );
 }

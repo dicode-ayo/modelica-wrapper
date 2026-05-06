@@ -31,6 +31,8 @@ The runtime mirror of the pin lives on `OmcClient`:
 
 When the pin needs to change (we move to a new OMC for testing), update `SUPPORTED_OMC` in `version.ts`, run a full audit, fix any drift, and commit together.
 
+**Before flagging missing tests as bugs**, consult [`coverage.md`](./coverage.md) — it tracks which wrappers are integration-verified at the pinned OMC version, which are knowingly unverified (and why), and which are deferred to heavy / FMU-dependent test runs. Many "uncovered" cases are intentional gaps the audit should categorize, not bug-flag.
+
 ---
 
 ## 1. Authoritative sources

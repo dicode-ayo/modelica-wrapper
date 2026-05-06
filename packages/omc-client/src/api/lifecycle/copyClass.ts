@@ -8,8 +8,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import type { OmcCommand } from "../../commands.js";
-import { parseOutput } from "../../_shared/parseOutput.js";
-import { expectBool, parse } from "../../parse.js";
+import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
 
 export const CopyClassInputSchema = z.object({
   source: z.string(),
@@ -35,7 +34,7 @@ export async function copyClass(
   const raw = await ctx.call(cmd);
   return parseOutput(
     CopyClassOutputSchema,
-    { success: expectBool(parse(raw)) },
+    { success: await parseMutationSuccess(ctx, raw, "copyClass") },
     "copyClass",
   );
 }

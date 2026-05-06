@@ -7,8 +7,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { parseOutput } from "../../_shared/parseOutput.js";
-import { expectBool, parse } from "../../parse.js";
+import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
 
 export const MoveClassInputSchema = z.object({
   typeName: z.string(),
@@ -30,7 +29,7 @@ export async function moveClass(
   );
   return parseOutput(
     MoveClassOutputSchema,
-    { success: expectBool(parse(raw)) },
+    { success: await parseMutationSuccess(ctx, raw, "moveClass") },
     "moveClass",
   );
 }

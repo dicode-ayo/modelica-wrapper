@@ -282,6 +282,96 @@ describeIf("OmcClient against real OMC", () => {
     expect(typeof result).toBe("string");
   });
 
+  // === Phase 1: cheap getters that don't need a fixture ===
+
+  it("listFile returns Modelica source for a class", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { contents: source } = await client.listFile({
+      typeName: "Modelica.Blocks.Math.Sin",
+    });
+    expect(source.length).toBeGreaterThan(0);
+    expect(source).toMatch(/Sin|sine/i);
+  });
+
+  it("getInitialStates returns an empty list for a non-state-machine class", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { initialStates } = await client.getInitialStates({
+      typeName: "Modelica.Blocks.Math.Sin",
+    });
+    expect(initialStates).toEqual([]);
+  });
+
+  it("getTransitions returns an empty list for a non-state-machine class", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { transitions } = await client.getTransitions({
+      typeName: "Modelica.Blocks.Math.Sin",
+    });
+    expect(transitions).toEqual([]);
+  });
+
+  it("solver list-getters all return arrays (possibly empty on OMC 1.26)", async () => {
+    const { jacobianMethods } = await client.getJacobianMethods();
+    const { initializationMethods } = await client.getInitializationMethods();
+    const { linearSolvers } = await client.getLinearSolvers();
+    const { nonLinearSolvers } = await client.getNonLinearSolvers();
+    expect(Array.isArray(jacobianMethods)).toBe(true);
+    expect(Array.isArray(initializationMethods)).toBe(true);
+    expect(Array.isArray(linearSolvers)).toBe(true);
+    expect(Array.isArray(nonLinearSolvers)).toBe(true);
+  });
+
+  it("solver setters return success", async () => {
+    // Pass non-destructive defaults that are accepted on every OMC build.
+    const a = await client.setMatchingAlgorithm({ algorithm: "PFPlusExt" });
+    expect(typeof a.success).toBe("boolean");
+    const b = await client.setIndexReductionMethod({
+      method: "dynamicStateSelection",
+    });
+    expect(typeof b.success).toBe("boolean");
+    const c = await client.setCommandLineOptions({
+      options: "--newBackend",
+    });
+    expect(typeof c.success).toBe("boolean");
+  });
+
+  it("getSourceFile returns a path for a loaded class (or empty for builtins)", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { fileName } = await client.getSourceFile({ typeName: "Modelica" });
+    expect(typeof fileName).toBe("string");
+    if (fileName.length > 0) {
+      expect(fileName).toMatch(/\.mo$/);
+    }
+  });
+
+  it("getParameterValue returns a string (possibly empty for unset params)", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const r = await client.getParameterValue({
+      typeName: "Modelica.Blocks.Continuous.PID",
+      name: "k",
+    });
+    expect(typeof r.value).toBe("string");
+  });
+
+  it("modifier read APIs all return arrays/strings", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const cls = "Modelica.Blocks.Examples.PID_Controller";
+    const { modifiers } = await client.getComponentModifierNames({
+      typeName: cls,
+      componentName: "PI",
+    });
+    expect(Array.isArray(modifiers)).toBe(true);
+    const { value: v1 } = await client.getComponentModifierValue({
+      typeName: cls,
+      modifier: "PI.k",
+    });
+    expect(typeof v1).toBe("string");
+    const { value: v2 } = await client.getComponentModifierValues({
+      typeName: cls,
+      modifier: "PI.k",
+    });
+    expect(typeof v2).toBe("string");
+  });
+
   // === Concurrency ===
 
   it("serializes concurrent calls without REQ/REP corruption", async () => {

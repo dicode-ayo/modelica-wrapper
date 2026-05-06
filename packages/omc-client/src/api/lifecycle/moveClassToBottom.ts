@@ -8,8 +8,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
-import { parseOutput } from "../../_shared/parseOutput.js";
-import { expectBool, parse } from "../../parse.js";
+import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
 
 export const MoveClassToBottomInputSchema = TypeNameInput;
 export type MoveClassToBottomInput = z.input<
@@ -30,7 +29,7 @@ export async function moveClassToBottom(
   const raw = await ctx.call(`moveClassToBottom(${input.typeName})`);
   return parseOutput(
     MoveClassToBottomOutputSchema,
-    { success: expectBool(parse(raw)) },
+    { success: await parseMutationSuccess(ctx, raw, "moveClassToBottom") },
     "moveClassToBottom",
   );
 }

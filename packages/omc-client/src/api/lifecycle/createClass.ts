@@ -12,8 +12,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { mlBool, quote } from "../../_shared/format.js";
-import { parseOutput } from "../../_shared/parseOutput.js";
-import { expectBool, parse } from "../../parse.js";
+import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
 
 export const CreateClassInputSchema = z.object({
   typeName: z.string(),
@@ -37,7 +36,7 @@ export async function createClass(
   );
   return parseOutput(
     CreateClassOutputSchema,
-    { success: expectBool(parse(raw)) },
+    { success: await parseMutationSuccess(ctx, raw, "createClass") },
     "createClass",
   );
 }
