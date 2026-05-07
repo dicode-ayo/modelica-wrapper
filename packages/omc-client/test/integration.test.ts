@@ -247,9 +247,7 @@ describeIf("OmcClient against real OMC", () => {
     const cls = "Modelica.Blocks.Math.Sin";
     const ann = await client.getModelInstanceAnnotation({ typeName: cls });
     expect(ann.instance.name).toBe(cls);
-    const icon = ann.instance.annotation?.Icon as
-      | { graphics?: unknown[] }
-      | undefined;
+    const icon = ann.instance.annotation?.Icon;
     expect(Array.isArray(icon?.graphics)).toBe(true);
     expect((icon?.graphics ?? []).length).toBeGreaterThan(0);
 
@@ -266,11 +264,7 @@ describeIf("OmcClient against real OMC", () => {
     const { instance } = await client.getModelInstance({
       typeName: "Modelica.Blocks.Examples.PID_Controller",
     });
-    const connections = (instance.connections ?? []) as Array<{
-      lhs: { $kind: string; parts: Array<{ name: string }> };
-      rhs: { $kind: string; parts: Array<{ name: string }> };
-      annotation?: { Line?: { points?: number[][] } };
-    }>;
+    const connections = instance.connections ?? [];
     expect(connections.length).toBeGreaterThan(0);
     for (const c of connections) {
       expect(c.lhs.$kind).toBe("cref");

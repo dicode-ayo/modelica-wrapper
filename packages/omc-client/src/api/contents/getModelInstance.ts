@@ -65,5 +65,5 @@ export async function getModelInstance(
     { instance: parsed },
     "getModelInstance",
   );
-  return { instance: validated.instance as ModelInstance };
+  return { instance: validated.instance };
 }

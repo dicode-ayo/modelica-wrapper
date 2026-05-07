@@ -59,6 +59,6 @@ export async function getModelInstanceAnnotation(
     "getModelInstanceAnnotation",
   );
   return {
-    instance: validated.instance as ModelInstanceAnnotation,
+    instance: validated.instance,
   };
 }
