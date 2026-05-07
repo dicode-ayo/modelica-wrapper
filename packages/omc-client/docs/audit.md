@@ -23,7 +23,7 @@ Before any per-function comparison, verify the three places the OMC version is r
 | Source | How to read it |
 |---|---|
 | **Pin** | Read `SUPPORTED_OMC.primary` from `packages/omc-client/src/version.ts` |
-| **Runtime** | Inspect the `FROM` line in `.devcontainer/Dockerfile` and the `matrix.omc` in `.github/workflows/ci.yml` — both should be `openmodelica/openmodelica:vX.Y.Z-minimal` matching the pin. The CI workflow has a guard that emits a `::warning::` on mismatch, but the audit should explicitly check. |
+| **Runtime** | Inspect the `FROM` line in `.devcontainer/Dockerfile` and the `matrix.omc` in `.github/workflows/ci.yml` — both should be `openmodelica/openmodelica:vX.Y.Z-minimal` matching the pin. The CI workflow has a guard that emits a `::warning::` on mismatch, but the audit should explicitly check. The `-minimal` image excludes the Modelica Standard Library; the integration job installs it at run time via `installPackage(Modelica, "4.1.0+maint.om", exactMatch=true)` from the OMC libraries index. |
 | **Docs site** | WebFetch `https://build.openmodelica.org/Documentation/OpenModelica.Scripting.html` and look for "Generated at … by OpenModelica X.Y.Z" in the page footer. This is the version your per-function fetches will reflect. |
 
 Report all three at the top of the audit output, e.g.:
@@ -85,7 +85,7 @@ These are the rules. A function is **consistent** if and only if all of these ho
 
 ### 2.1 File layout
 
-- Each OMC function gets its own file: `packages/omc-client/src/api/<category>/<functionName>.ts`. The 8 categories are: `browsing/`, `contents/`, `lifecycle/`, `parameters/`, `editing/`, `solver/`, `execution/`, `results/`.
+- Each OMC function gets its own file: `packages/omc-client/src/api/<category>/<functionName>.ts`. The 10 categories are: `browsing/`, `contents/`, `lifecycle/`, `parameters/`, `editing/`, `elements/`, `library/`, `solver/`, `execution/`, `results/`.
 - Each category has an `index.ts` barrel that re-exports its functions.
 - Reusable schemas live in `packages/omc-client/src/_shared/`. Today: `inputs.ts` (`TypeNameInput`, `OptionalTypeNameInput`), `value.ts` (`ValueSchema`), `parseOutput.ts`, `format.ts` (`quote`, `quoteList`, `mlBool`), `callContext.ts`.
 
@@ -135,7 +135,7 @@ The file's leading docstring must contain the **verbatim Modelica signature** co
 
 ## 3. The audit procedure
 
-Per category (8 total), per function (~80 total):
+Per category (10 total), per function (~130 total):
 
 ### Step A — inventory
 
@@ -199,6 +199,12 @@ These are deliberate decisions. If the audit finds them, mark them as **expected
 | `buildModelFMU` `includeResources` | "Deprecated and no effect" per OMC docs | Still passed through | Required positionally in the OMC signature |
 | `getSolverMethods` and friends 404 in scripting docs | Undocumented in public scripting API | Wrapped per OMEdit's usage | These are real builtins OMEdit calls; we mirror that — null-tolerance handling means empty responses become `[]` |
 | Output is wrapped in object even for single-field returns | OMC outputs are positional / scalar | Always `{ <field>: ... }` | Uniform consumer ergonomics; makes adding sibling fields source-compatible |
+| `getModelInstance` / `getModelInstanceAnnotation` / `modifierToJSON` output | OMC returns a JSON-encoded string | Wrapper returns the raw string verbatim (e.g. `{ result: string }`) | The wrapper does not parse the JSON — callers `JSON.parse(result)`. Keeps the wrapper dependency-free and lets callers project just what they need |
+| `getElements` output | OMC declares no formal output (external "C") | Wrapper returns the raw `Value` tree as `{ elements: Value }` | Element row layout varies across OMC versions; a typed projection would over-specify. Callers walk the tree |
+| `getElementsInfo` / `getElementAnnotations` / `getNthConnector*` / inherited-class map annotations output | OMC declares `Expression result` | Wrapper returns the raw `Value` tree as `{ result: Value }` | Same rationale; expression payloads are deeply nested and best left for caller-side projection |
+| `setElementType` second arg | OMC: `VariableName typeName` | Wrapper: `newTypeName` | Avoids collision with the package-wide TypeName-rename rule applied to the first arg (`elementName` → `typeName`) |
+| `getElementModifierValue` / `getElementModifierValues` / `setParameterValue` / `getComponentComment` second TypeName arg | OMC: `TypeName modifier` / `TypeName variableName` / `TypeName componentName` | Wrapper preserves the OMC name verbatim (no rename to `typeName`) | The package-wide TypeName-rename rule applies only to the *primary* class TypeName arg; secondary TypeName args (dotted member paths) keep the OMC docs name to avoid collision |
+| `setElementModifierValue` / `setElementAnnotation` / `setParameterValue` value arg | OMC takes `ExpressionOrModification` / `Expression` | Wrapper wraps user `expr` in `$Code(=expr)` | Same as `setComponentModifierValue` — required to bypass OMC's interactive RPC string-escaping |
 
 ---
 

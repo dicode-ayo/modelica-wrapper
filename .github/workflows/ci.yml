@@ -80,6 +80,14 @@ jobs:
       - name: Hand workspace to non-root user
         run: chown -R omcrunner:omcrunner "$GITHUB_WORKSPACE"
 
+      - name: Install Modelica Standard Library for omcrunner
+        run: |
+          cat > /tmp/install_msl.mos <<'EOF'
+          installPackage(Modelica, "4.1.0+maint.om", exactMatch=true);
+          getErrorString();
+          EOF
+          runuser -u omcrunner -- omc /tmp/install_msl.mos
+
       - name: Integration tests against real OMC
         env:
           OMC_INTEGRATION: "1"
