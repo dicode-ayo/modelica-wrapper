@@ -12,6 +12,9 @@
  *
  * `var` is a Modelica variable identifier (dotted path) emitted bare. The
  * default `fileName` `"<default>"` reads from `currentSimulationResult`.
+ *
+ * Note: input field is `var` (verbatim from OMC). JS keyword; safe as a property
+ * but quoted-key syntax improves readability: `client.val({ "var": "x.y" })`.
  */
 
 import { z } from "zod";
@@ -39,8 +42,12 @@ export async function val(
 ): Promise<ValOutput> {
   const timePoint = input.timePoint ?? 0.0;
   const fileName = input.fileName ?? "<default>";
+  // Omit fileName on the documented sentinel so OMC's parser-level default
+  // (currentSimulationResult) kicks in; passing the literal "<default>" string
+  // would not trigger the runtime sentinel path.
+  const fileArg = fileName === "<default>" ? "" : `, ${quote(fileName)}`;
   const raw = await ctx.call(
-    `val(${input.var}, ${timePoint}, ${quote(fileName)})`,
+    `val(${input.var}, ${timePoint}${fileArg})`,
   );
   return parseOutput(
     ValOutputSchema,

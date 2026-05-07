@@ -107,7 +107,7 @@ describe("registry", () => {
   it("omcFunctionNames is sorted and complete", () => {
     const sorted = [...omcFunctionNames].sort();
     expect(omcFunctionNames).toEqual(sorted);
-    // Sanity: we have ~80 functions across 8 categories.
+    // Sanity: we have ~130 functions across 10 categories.
     expect(omcFunctionNames.length).toBeGreaterThan(70);
   });
 });

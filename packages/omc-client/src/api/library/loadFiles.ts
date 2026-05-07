@@ -15,8 +15,9 @@
  * ```
  *
  * Batch variant of `loadFile`. The `numThreads` default in OMC is dynamic
- * (`numProcessors()`); we surface it as `0` and only emit the arg when the
- * caller passes a positive value, so OMC's default takes effect otherwise.
+ * (`numProcessors()`); we surface it as `0` and substitute the literal
+ * `OpenModelica.Scripting.numProcessors()` expression when the caller leaves
+ * it unset, so OMC evaluates the default at call time.
  */
 
 import { z } from "zod";
@@ -47,9 +48,10 @@ export async function loadFiles(
   input: LoadFilesInput,
 ): Promise<LoadFilesOutput> {
   const numThreads = input.numThreads ?? 0;
-  const threadsArg = numThreads > 0 ? `, numThreads=${numThreads}` : "";
+  const threadsArg =
+    numThreads > 0 ? `${numThreads}` : `OpenModelica.Scripting.numProcessors()`;
   const raw = await ctx.call(
-    `loadFiles(${quoteList(input.fileNames)}, ${quote(input.encoding ?? "UTF-8")}${threadsArg}, uses=${mlBool(input.uses ?? true)}, notify=${mlBool(input.notify ?? true)}, requireExactVersion=${mlBool(input.requireExactVersion ?? false)}, allowWithin=${mlBool(input.allowWithin ?? true)})`,
+    `loadFiles(${quoteList(input.fileNames)}, ${quote(input.encoding ?? "UTF-8")}, ${threadsArg}, uses=${mlBool(input.uses ?? true)}, notify=${mlBool(input.notify ?? true)}, requireExactVersion=${mlBool(input.requireExactVersion ?? false)}, allowWithin=${mlBool(input.allowWithin ?? true)})`,
   );
   return parseOutput(
     LoadFilesOutputSchema,

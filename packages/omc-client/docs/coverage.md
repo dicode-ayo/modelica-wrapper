@@ -30,6 +30,8 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 
 ## Browsing — 17/24
 
+### Original 10 (all ✅ verified)
+
 | Function | Status | Docs |
 |---|---|---|
 | `getVersion` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getVersion.html) |
@@ -42,6 +44,11 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `getUses` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getUses.html) |
 | `existClass` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.existClass.html) |
 | `getErrorString` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getErrorString.html) |
+
+### New 14 predicates (mostly 🟡)
+
+| Function | Status | Docs |
+|---|---|---|
 | `existModel` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.existModel.html) |
 | `existPackage` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.existPackage.html) |
 | `getClassRestriction` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getClassRestriction.html) |
