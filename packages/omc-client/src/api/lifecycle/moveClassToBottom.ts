@@ -12,6 +12,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
 
 export const MoveClassToBottomInputSchema = TypeNameInput;
@@ -19,9 +20,7 @@ export type MoveClassToBottomInput = z.input<
   typeof MoveClassToBottomInputSchema
 >;
 
-export const MoveClassToBottomOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const MoveClassToBottomOutputSchema = SuccessOutput;
 export type MoveClassToBottomOutput = z.infer<
   typeof MoveClassToBottomOutputSchema
 >;

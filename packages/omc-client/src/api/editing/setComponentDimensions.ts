@@ -9,21 +9,20 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { quoteList } from "../../_shared/format.js";
+import { TypeNameAndComponentNameInput } from "../../_shared/inputs.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const SetComponentDimensionsInputSchema = z.object({
-  typeName: z.string(),
-  componentName: z.string(),
-  dimensions: z.array(z.string()),
-});
+export const SetComponentDimensionsInputSchema =
+  TypeNameAndComponentNameInput.extend({
+    dimensions: z.array(z.string()),
+  });
 export type SetComponentDimensionsInput = z.input<
   typeof SetComponentDimensionsInputSchema
 >;
 
-export const SetComponentDimensionsOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const SetComponentDimensionsOutputSchema = SuccessOutput;
 export type SetComponentDimensionsOutput = z.infer<
   typeof SetComponentDimensionsOutputSchema
 >;

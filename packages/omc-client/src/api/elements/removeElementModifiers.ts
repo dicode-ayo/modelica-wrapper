@@ -18,20 +18,19 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { mlBool, quote } from "../../_shared/format.js";
+import { TypeNameAndComponentNameInput } from "../../_shared/inputs.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
 
-export const RemoveElementModifiersInputSchema = z.object({
-  typeName: z.string(),
-  componentName: z.string(),
-  keepRedeclares: z.boolean().optional().default(false),
-});
+export const RemoveElementModifiersInputSchema =
+  TypeNameAndComponentNameInput.extend({
+    keepRedeclares: z.boolean().optional().default(false),
+  });
 export type RemoveElementModifiersInput = z.input<
   typeof RemoveElementModifiersInputSchema
 >;
 
-export const RemoveElementModifiersOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const RemoveElementModifiersOutputSchema = SuccessOutput;
 export type RemoveElementModifiersOutput = z.infer<
   typeof RemoveElementModifiersOutputSchema
 >;

@@ -9,6 +9,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { mlBool, quote } from "../../_shared/format.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
@@ -24,9 +25,7 @@ export const DeleteTransitionInputSchema = z.object({
 });
 export type DeleteTransitionInput = z.input<typeof DeleteTransitionInputSchema>;
 
-export const DeleteTransitionOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const DeleteTransitionOutputSchema = SuccessOutput;
 export type DeleteTransitionOutput = z.infer<
   typeof DeleteTransitionOutputSchema
 >;

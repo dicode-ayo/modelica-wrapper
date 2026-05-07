@@ -9,15 +9,14 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
+import { StringResultOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
 
 export const CheckModelInputSchema = TypeNameInput;
 export type CheckModelInput = z.input<typeof CheckModelInputSchema>;
 
-export const CheckModelOutputSchema = z.object({
-  result: z.string(),
-});
+export const CheckModelOutputSchema = StringResultOutput;
 export type CheckModelOutput = z.infer<typeof CheckModelOutputSchema>;
 
 export async function checkModel(

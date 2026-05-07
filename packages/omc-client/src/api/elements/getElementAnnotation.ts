@@ -15,12 +15,11 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
 
-export const GetElementAnnotationInputSchema = z.object({
-  typeName: z.string(),
-});
+export const GetElementAnnotationInputSchema = TypeNameInput;
 export type GetElementAnnotationInput = z.input<
   typeof GetElementAnnotationInputSchema
 >;

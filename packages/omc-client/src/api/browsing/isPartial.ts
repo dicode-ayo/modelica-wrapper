@@ -13,15 +13,14 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
+import { BooleanBOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const IsPartialInputSchema = TypeNameInput;
 export type IsPartialInput = z.input<typeof IsPartialInputSchema>;
 
-export const IsPartialOutputSchema = z.object({
-  b: z.boolean(),
-});
+export const IsPartialOutputSchema = BooleanBOutput;
 export type IsPartialOutput = z.infer<typeof IsPartialOutputSchema>;
 
 export async function isPartial(

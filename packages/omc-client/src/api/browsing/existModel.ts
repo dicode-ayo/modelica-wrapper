@@ -9,15 +9,14 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
+import { BooleanBOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const ExistModelInputSchema = TypeNameInput;
 export type ExistModelInput = z.input<typeof ExistModelInputSchema>;
 
-export const ExistModelOutputSchema = z.object({
-  b: z.boolean(),
-});
+export const ExistModelOutputSchema = BooleanBOutput;
 export type ExistModelOutput = z.infer<typeof ExistModelOutputSchema>;
 
 export async function existModel(

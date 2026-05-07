@@ -16,6 +16,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { quote } from "../../_shared/format.js";
+import { BooleanBOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
@@ -27,9 +28,7 @@ export type IsProtectedClassInput = z.input<
   typeof IsProtectedClassInputSchema
 >;
 
-export const IsProtectedClassOutputSchema = z.object({
-  b: z.boolean(),
-});
+export const IsProtectedClassOutputSchema = BooleanBOutput;
 export type IsProtectedClassOutput = z.infer<
   typeof IsProtectedClassOutputSchema
 >;

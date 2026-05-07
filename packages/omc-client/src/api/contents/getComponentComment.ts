@@ -15,13 +15,11 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { TypeNameAndComponentNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
 
-export const GetComponentCommentInputSchema = z.object({
-  typeName: z.string(),
-  componentName: z.string(),
-});
+export const GetComponentCommentInputSchema = TypeNameAndComponentNameInput;
 export type GetComponentCommentInput = z.input<
   typeof GetComponentCommentInputSchema
 >;

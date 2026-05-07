@@ -7,6 +7,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
@@ -18,9 +19,7 @@ export const AddConnectionInputSchema = z.object({
 });
 export type AddConnectionInput = z.input<typeof AddConnectionInputSchema>;
 
-export const AddConnectionOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const AddConnectionOutputSchema = SuccessOutput;
 export type AddConnectionOutput = z.infer<typeof AddConnectionOutputSchema>;
 
 export async function addConnection(

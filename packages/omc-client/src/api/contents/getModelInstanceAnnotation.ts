@@ -18,6 +18,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { mlBool, quoteList } from "../../_shared/format.js";
+import { StringResultOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
 
@@ -30,9 +31,7 @@ export type GetModelInstanceAnnotationInput = z.input<
   typeof GetModelInstanceAnnotationInputSchema
 >;
 
-export const GetModelInstanceAnnotationOutputSchema = z.object({
-  result: z.string(),
-});
+export const GetModelInstanceAnnotationOutputSchema = StringResultOutput;
 export type GetModelInstanceAnnotationOutput = z.infer<
   typeof GetModelInstanceAnnotationOutputSchema
 >;

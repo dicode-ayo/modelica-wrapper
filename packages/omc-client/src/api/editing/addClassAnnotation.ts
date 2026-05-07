@@ -9,6 +9,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
@@ -20,9 +21,7 @@ export type AddClassAnnotationInput = z.input<
   typeof AddClassAnnotationInputSchema
 >;
 
-export const AddClassAnnotationOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const AddClassAnnotationOutputSchema = SuccessOutput;
 export type AddClassAnnotationOutput = z.infer<
   typeof AddClassAnnotationOutputSchema
 >;

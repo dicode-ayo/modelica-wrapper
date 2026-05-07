@@ -17,6 +17,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
@@ -29,9 +30,7 @@ export type SetElementModifierValueInput = z.input<
   typeof SetElementModifierValueInputSchema
 >;
 
-export const SetElementModifierValueOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const SetElementModifierValueOutputSchema = SuccessOutput;
 export type SetElementModifierValueOutput = z.infer<
   typeof SetElementModifierValueOutputSchema
 >;

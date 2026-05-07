@@ -131,6 +131,20 @@ The file's leading docstring must contain the **verbatim Modelica signature** co
 - The class method's input/output types must come from the api module — `import * as <category>` then reference `<category>.<Fn>Input`, `<category>.<Fn>Output`.
 - OmcClient method names must match the api function names exactly (e.g. `client.getClassInformation`, not `client.classInfo`).
 
+### 2.8 Shared schema reuse
+
+When the same input or output shape is declared in 3+ wrapper files, extract it to `_shared/inputs.ts` or `_shared/outputs.ts` and reuse via direct assignment (`<Fn>InputSchema = SharedSchema`) or `.extend(...)` for shape augmentation. Names describe the field set (e.g. `TypeNameAndModifierInput`, `SuccessOutput`, `BooleanBOutput`); output-side names keep OMC's verbatim field name (so `BooleanBOutput` exposes `b: boolean`, not `result: boolean`). Per-function files keep their 5-export structure and verbatim Modelica signature docstring.
+
+```ts
+// Direct alias when the shared shape matches exactly:
+export const IsModelOutputSchema = BooleanBOutput;
+
+// .extend() when the wrapper adds fields:
+export const SetComponentModifierValueInputSchema = TypeNameAndModifierInput.extend({
+  expr: z.string(),
+});
+```
+
 ---
 
 ## 3. The audit procedure

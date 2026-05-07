@@ -16,20 +16,17 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { TypeNameAndModifierInput } from "../../_shared/inputs.js";
+import { StringValueOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
 
-export const GetElementModifierValuesInputSchema = z.object({
-  typeName: z.string(),
-  modifier: z.string(),
-});
+export const GetElementModifierValuesInputSchema = TypeNameAndModifierInput;
 export type GetElementModifierValuesInput = z.input<
   typeof GetElementModifierValuesInputSchema
 >;
 
-export const GetElementModifierValuesOutputSchema = z.object({
-  value: z.string(),
-});
+export const GetElementModifierValuesOutputSchema = StringValueOutput;
 export type GetElementModifierValuesOutput = z.infer<
   typeof GetElementModifierValuesOutputSchema
 >;

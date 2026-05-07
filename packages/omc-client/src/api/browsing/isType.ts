@@ -13,15 +13,14 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
+import { BooleanBOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const IsTypeInputSchema = TypeNameInput;
 export type IsTypeInput = z.input<typeof IsTypeInputSchema>;
 
-export const IsTypeOutputSchema = z.object({
-  b: z.boolean(),
-});
+export const IsTypeOutputSchema = BooleanBOutput;
 export type IsTypeOutput = z.infer<typeof IsTypeOutputSchema>;
 
 export async function isType(

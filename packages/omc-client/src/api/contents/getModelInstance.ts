@@ -19,6 +19,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { mlBool, quote } from "../../_shared/format.js";
+import { StringResultOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
 
@@ -29,9 +30,7 @@ export const GetModelInstanceInputSchema = z.object({
 });
 export type GetModelInstanceInput = z.input<typeof GetModelInstanceInputSchema>;
 
-export const GetModelInstanceOutputSchema = z.object({
-  result: z.string(),
-});
+export const GetModelInstanceOutputSchema = StringResultOutput;
 export type GetModelInstanceOutput = z.infer<
   typeof GetModelInstanceOutputSchema
 >;

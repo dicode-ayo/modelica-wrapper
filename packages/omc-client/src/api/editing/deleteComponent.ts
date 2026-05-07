@@ -7,6 +7,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
@@ -16,9 +17,7 @@ export const DeleteComponentInputSchema = z.object({
 });
 export type DeleteComponentInput = z.input<typeof DeleteComponentInputSchema>;
 
-export const DeleteComponentOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const DeleteComponentOutputSchema = SuccessOutput;
 export type DeleteComponentOutput = z.infer<typeof DeleteComponentOutputSchema>;
 
 export async function deleteComponent(

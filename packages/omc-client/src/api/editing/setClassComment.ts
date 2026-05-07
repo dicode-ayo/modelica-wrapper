@@ -18,6 +18,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { quote } from "../../_shared/format.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
 
 export const SetClassCommentInputSchema = z.object({
@@ -26,9 +27,7 @@ export const SetClassCommentInputSchema = z.object({
 });
 export type SetClassCommentInput = z.input<typeof SetClassCommentInputSchema>;
 
-export const SetClassCommentOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const SetClassCommentOutputSchema = SuccessOutput;
 export type SetClassCommentOutput = z.infer<
   typeof SetClassCommentOutputSchema
 >;

@@ -9,15 +9,14 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const SaveInputSchema = TypeNameInput;
 export type SaveInput = z.input<typeof SaveInputSchema>;
 
-export const SaveOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const SaveOutputSchema = SuccessOutput;
 export type SaveOutput = z.infer<typeof SaveOutputSchema>;
 
 export async function save(

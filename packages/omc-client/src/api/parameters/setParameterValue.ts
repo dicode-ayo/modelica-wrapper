@@ -18,6 +18,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
@@ -30,9 +31,7 @@ export type SetParameterValueInput = z.input<
   typeof SetParameterValueInputSchema
 >;
 
-export const SetParameterValueOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const SetParameterValueOutputSchema = SuccessOutput;
 export type SetParameterValueOutput = z.infer<
   typeof SetParameterValueOutputSchema
 >;

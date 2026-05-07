@@ -16,14 +16,12 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { TypeNameAndIndexInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { ValueSchema } from "../../_shared/value.js";
 import { parse } from "../../parse.js";
 
-export const GetNthConnectorInputSchema = z.object({
-  typeName: z.string(),
-  n: z.number().int().positive(),
-});
+export const GetNthConnectorInputSchema = TypeNameAndIndexInput;
 export type GetNthConnectorInput = z.input<typeof GetNthConnectorInputSchema>;
 
 export const GetNthConnectorOutputSchema = z.object({
