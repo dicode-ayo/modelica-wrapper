@@ -1,95 +1,76 @@
 /**
- * Unit tests for `portFilePaths` — the OMC port-file path resolver.
+ * Unit tests for the OMC port-file path computation and env construction.
  *
- * OMC writes its ZMQ endpoint to `${tmpdir}/openmodelica.<user>.port.<id>`,
- * except when running as uid 0 some builds drop the user segment
- * (`openmodelica.port.<id>`). The resolver returns candidate paths in
- * priority order so `waitForPortFile` can probe both. These tests pin
- * that ordering for non-root, root-by-uid, root-by-name, and DOMAIN\-prefixed
- * usernames — without spawning a real OMC subprocess.
+ * OMC builds the port-file path from `${TMPDIR}/openmodelica.${USER}.port.${suffix}`
+ * (Windows: drops the user segment via a compile-time branch in `zeromqimpl.c`).
+ * We control the inputs by handing OMC its own per-spawn tempdir and a fixed
+ * sentinel `USER`. These tests pin the deterministic path computation and the
+ * env-override behavior on each platform without spawning OMC.
  */
 
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { describe, expect, it, vi } from "vitest";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { omcEnv, portFilePath } from "./process.js";
 
-vi.mock("node:os", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:os")>();
-  return {
-    ...actual,
-    userInfo: vi.fn(actual.userInfo),
-  };
-});
-
-import * as os from "node:os";
-
-import { portFilePaths } from "./process.js";
-
-const userInfoMock = vi.mocked(os.userInfo);
-
-afterEach(() => {
-  userInfoMock.mockReset();
-});
-
-describe("portFilePaths", () => {
+describe("portFilePath", () => {
+  const tempDir = "/tmp/mw-omc-abc";
   const suffix = "mw_test_suffix";
-  const tmp = tmpdir();
 
-  it("returns only the user-prefixed path for non-root users", () => {
-    userInfoMock.mockReturnValue({
-      username: "alice",
-      uid: 1000,
-      gid: 1000,
-      shell: "/bin/bash",
-      homedir: "/home/alice",
-    });
-
-    const paths = portFilePaths(suffix);
-    expect(paths).toEqual([join(tmp, `openmodelica.alice.port.${suffix}`)]);
+  it("includes the wrapper-sentinel user segment on Unix", () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("linux");
+    expect(portFilePath(tempDir, suffix)).toBe(
+      `${tempDir}/openmodelica.mw.port.${suffix}`,
+    );
   });
 
-  it("returns unprefixed path first, then user-prefixed, for uid 0 (root)", () => {
-    userInfoMock.mockReturnValue({
-      username: "root",
-      uid: 0,
-      gid: 0,
-      shell: "/bin/bash",
-      homedir: "/root",
-    });
-
-    const paths = portFilePaths(suffix);
-    expect(paths).toEqual([
-      join(tmp, `openmodelica.port.${suffix}`),
-      join(tmp, `openmodelica.root.port.${suffix}`),
-    ]);
+  it("matches Unix shape on macOS (darwin)", () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+    expect(portFilePath(tempDir, suffix)).toBe(
+      `${tempDir}/openmodelica.mw.port.${suffix}`,
+    );
   });
 
-  it("treats username 'root' as root even if uid is reported non-zero", () => {
-    // Some container setups report a non-zero uid for username 'root'.
-    userInfoMock.mockReturnValue({
-      username: "root",
-      uid: 1234,
-      gid: 0,
-      shell: "/bin/bash",
-      homedir: "/root",
-    });
+  it("drops the user segment on Windows", () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+    // path.join uses backslashes on Windows, but vitest is running on the host
+    // platform, so test the trailing component independent of separator.
+    expect(portFilePath(tempDir, suffix)).toMatch(
+      /openmodelica\.port\.mw_test_suffix$/,
+    );
+    expect(portFilePath(tempDir, suffix)).not.toContain("openmodelica.mw.");
+  });
+});
 
-    const paths = portFilePaths(suffix);
-    expect(paths[0]).toBe(join(tmp, `openmodelica.port.${suffix}`));
-    expect(paths).toContain(join(tmp, `openmodelica.root.port.${suffix}`));
+describe("omcEnv", () => {
+  const tempDir = "/tmp/mw-omc-abc";
+
+  it("sets TMPDIR and USER on Unix", () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("linux");
+    const env = omcEnv(tempDir);
+    expect(env.TMPDIR).toBe(tempDir);
+    expect(env.USER).toBe("mw");
+    expect(env.TMP).toBeUndefined();
   });
 
-  it("strips a DOMAIN\\ prefix from the username on edge-case setups", () => {
-    userInfoMock.mockReturnValue({
-      username: "DOMAIN\\bob",
-      uid: 1001,
-      gid: 1001,
-      shell: "/bin/bash",
-      homedir: "/home/bob",
-    });
+  it("sets TMP and TEMP on Windows; does not set USER", () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+    const env = omcEnv(tempDir);
+    expect(env.TMP).toBe(tempDir);
+    expect(env.TEMP).toBe(tempDir);
+    // USER segment is dropped at the C level on Windows; setting it is moot.
+    // The env block does not need to override it (callers may still have USER).
+    expect(env.TMPDIR).toBeUndefined();
+  });
 
-    const paths = portFilePaths(suffix);
-    expect(paths).toEqual([join(tmp, `openmodelica.bob.port.${suffix}`)]);
+  it("inherits other env vars from process.env", () => {
+    vi.spyOn(process, "platform", "get").mockReturnValue("linux");
+    process.env.MW_TEST_SENTINEL = "kept";
+    try {
+      const env = omcEnv(tempDir);
+      expect(env.MW_TEST_SENTINEL).toBe("kept");
+      expect(env.PATH).toBe(process.env.PATH);
+    } finally {
+      delete process.env.MW_TEST_SENTINEL;
+    }
   });
 });
