@@ -2,8 +2,10 @@
  * OMC subprocess management.
  *
  * Spawns `omc --interactive=zmq -z=<suffix>` and waits for OMC to drop its
- * port file at `${tmpdir}/openmodelica.${user}.port.${suffix}`. The file
- * contents are the ZMQ endpoint, e.g. `tcp://127.0.0.1:33421`.
+ * port file. The default location is `${tmpdir}/openmodelica.${user}.port.${suffix}`,
+ * but root-uid OMC builds drop the user segment (so e.g. CI containers running
+ * as root use `${tmpdir}/openmodelica.port.${suffix}`). The file contents are
+ * the ZMQ endpoint, e.g. `tcp://127.0.0.1:33421`.
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
@@ -33,18 +35,32 @@ export async function spawnOmc(
 ): Promise<OmcProcess> {
   const bin = omcPath && omcPath.length > 0 ? omcPath : "omc";
   const suffix = `mw_${randomBytes(8).toString("hex")}`;
-  const portFile = portFilePath(suffix);
+  const candidates = portFilePaths(suffix);
 
-  // Paranoid: clean any pre-existing file at this path. Suffix is random.
-  try {
-    await unlink(portFile);
-  } catch {
-    /* not present — fine */
+  // Paranoid: clean any pre-existing file at these paths. Suffix is random.
+  for (const p of candidates) {
+    try {
+      await unlink(p);
+    } catch {
+      /* not present — fine */
+    }
   }
 
+  const debug = process.env.OMC_DEBUG === "1";
   const child: ChildProcess = spawn(bin, ["--interactive=zmq", `-z=${suffix}`], {
-    stdio: ["ignore", "ignore", "inherit"],
+    stdio: ["ignore", debug ? "pipe" : "ignore", debug ? "pipe" : "inherit"],
   });
+
+  if (debug) {
+    // Vitest captures stderr verbatim into CI logs; route both streams there
+    // (prefixed) so test stdout is not conflated with OMC chatter.
+    child.stdout?.on("data", (chunk: Buffer | string) => {
+      process.stderr.write(`[omc] ${chunk}`);
+    });
+    child.stderr?.on("data", (chunk: Buffer | string) => {
+      process.stderr.write(`[omc] ${chunk}`);
+    });
+  }
 
   // Surface spawn failures (ENOENT for missing binary etc.) as rejection.
   const errorPromise = new Promise<never>((_, reject) => {
@@ -66,16 +82,18 @@ export async function spawnOmc(
         child.once("exit", () => resolve());
       });
     }
-    try {
-      await unlink(portFile);
-    } catch {
-      /* gone already — fine */
+    for (const p of candidates) {
+      try {
+        await unlink(p);
+      } catch {
+        /* gone already — fine */
+      }
     }
   };
 
   try {
     const endpoint = await Promise.race([
-      waitForPortFile(portFile, PORT_FILE_TIMEOUT_MS, signal),
+      waitForPortFile(candidates, PORT_FILE_TIMEOUT_MS, signal),
       errorPromise,
     ]);
     return { endpoint, stop };
@@ -85,36 +103,54 @@ export async function spawnOmc(
   }
 }
 
-/** OS-specific path where omc writes the port file when launched with -z=<suffix>. */
-function portFilePath(suffix: string): string {
+/**
+ * OS-specific candidate paths where omc may write the port file when launched
+ * with `-z=<suffix>`. Order matters: most likely first.
+ *
+ * Exported for testability; not part of the public package surface.
+ */
+export function portFilePaths(suffix: string): string[] {
   const tmp = tmpdir();
   if (process.platform === "win32") {
-    return join(tmp, `openmodelica.port.${suffix}`);
+    return [join(tmp, `openmodelica.port.${suffix}`)];
   }
-  let user = userInfo().username;
+  const info = userInfo();
+  let user = info.username;
   // Strip any DOMAIN\ prefix on edge-case Unix setups.
   const slash = user.lastIndexOf("\\");
   if (slash >= 0) user = user.slice(slash + 1);
-  return join(tmp, `openmodelica.${user}.port.${suffix}`);
+
+  const userPrefixed = join(tmp, `openmodelica.${user}.port.${suffix}`);
+  // Root-uid OMC builds drop the user segment from the port-file name.
+  const isRoot = info.uid === 0 || user === "root";
+  if (isRoot) {
+    const unprefixed = join(tmp, `openmodelica.port.${suffix}`);
+    return [unprefixed, userPrefixed];
+  }
+  return [userPrefixed];
 }
 
 async function waitForPortFile(
-  path: string,
+  paths: string[],
   timeoutMs: number,
   signal?: AbortSignal,
 ): Promise<string> {
   const deadline = Date.now() + timeoutMs;
   while (true) {
     if (signal?.aborted) throw new Error("aborted");
-    try {
-      const data = await readFile(path, "utf8");
-      const endpoint = data.trim();
-      if (endpoint.length > 0) return endpoint;
-    } catch {
-      /* not yet — keep polling */
+    for (const path of paths) {
+      try {
+        const data = await readFile(path, "utf8");
+        const endpoint = data.trim();
+        if (endpoint.length > 0) return endpoint;
+      } catch {
+        /* not yet — keep polling */
+      }
     }
     if (Date.now() > deadline) {
-      throw new Error(`timed out waiting for omc port file ${path}`);
+      throw new Error(
+        `timed out waiting for omc port file (probed: ${paths.join(", ")})`,
+      );
     }
     await sleep(50);
   }
