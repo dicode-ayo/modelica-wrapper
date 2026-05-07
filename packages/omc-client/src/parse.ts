@@ -4,6 +4,7 @@
  * OMC returns Modelica-syntax expressions, not JSON. The shapes we encounter:
  *
  *     "foo"                           StringV
+ *     'foo bar'                       IdentV (Q-IDENT, Modelica spec §2.3.1)
  *     true / false                    BoolV
  *     42 / 1.5 / 1e-6                 IntV / FloatV
  *     {a, b, c}                       ListV (brace list)
@@ -16,6 +17,14 @@
  *
  * Brace lists and paren tuples are both represented as `list`; consumers
  * disambiguate by knowing what shape each OMC call returns.
+ *
+ * Coverage: tracks OMPython's `OMTypedParser.py` (the de-facto authoritative
+ * parser; OMC's interactive RPC grammar is not formally documented). We are
+ * wider than OMTypedParser on `$`-idents, free-floating kwargs in parens, and
+ * bare-`-` null sentinels — productions OMC actually emits. Known gaps,
+ * deferred until a caller demands them:
+ *   - `$Code(= expr)` literals (modifier round-trips with code-quoted exprs)
+ *   - `record Name … end Name;` blocks (older diagnostic-only paths)
  */
 
 export type Value =
@@ -77,6 +86,7 @@ class Parser {
     const c = this.src[this.pos]!;
 
     if (c === '"') return this.parseString();
+    if (c === "'") return this.parseQuotedIdent();
     if (c === "{") return this.parseSeq("{", "}");
     if (c === "(") return this.parseSeq("(", ")");
 
@@ -108,16 +118,27 @@ class Parser {
   }
 
   private parseString(): Value {
-    if (this.src[this.pos] !== '"') {
-      throw new Error(`expected '"' at ${this.pos}`);
+    return { kind: "string", value: this.readQuoted('"') };
+  }
+
+  /** Q-IDENT per Modelica spec §2.3.1 — same escape rules as strings. */
+  private parseQuotedIdent(): Value {
+    return { kind: "ident", name: this.readQuoted("'") };
+  }
+
+  /** Reads `<quote>…<quote>` and returns the unescaped body. Consumes both quotes. */
+  private readQuoted(quote: '"' | "'"): string {
+    if (this.src[this.pos] !== quote) {
+      throw new Error(`expected ${quote} at ${this.pos}`);
     }
+    const start = this.pos;
     this.pos++;
     let out = "";
     while (this.pos < this.src.length) {
       const c = this.src[this.pos]!;
-      if (c === '"') {
+      if (c === quote) {
         this.pos++;
-        return { kind: "string", value: out };
+        return out;
       }
       if (c === "\\" && this.pos + 1 < this.src.length) {
         const next = this.src[this.pos + 1]!;
@@ -160,7 +181,7 @@ class Parser {
       out += c;
       this.pos++;
     }
-    throw new Error(`unterminated string starting at ${this.pos}`);
+    throw new Error(`unterminated ${quote}…${quote} starting at ${start}`);
   }
 
   private parseSeq(open: string, close: string): Value {

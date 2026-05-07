@@ -171,6 +171,33 @@ describe("parse: keyword arguments inside calls", () => {
   });
 });
 
+describe("parse: quoted identifiers (Q-IDENT, Modelica spec §2.3.1)", () => {
+  it("parses 'foo bar' as an identifier whose name has a space", () => {
+    expect(parse(`'foo bar'`)).toEqual({ kind: "ident", name: "foo bar" });
+  });
+
+  it("handles escaped single-quote inside the name", () => {
+    expect(parse(`'with \\'q\\''`)).toEqual({
+      kind: "ident",
+      name: "with 'q'",
+    });
+  });
+
+  it("handles a backslash escape inside the name", () => {
+    expect(parse(`'a\\\\b'`)).toEqual({ kind: "ident", name: "a\\b" });
+  });
+
+  it("reads a quoted ident inside a list", () => {
+    const v = parse(`{"x", 'a b', 1}`);
+    if (v.kind !== "list") throw new Error("expected list");
+    expect(v.items[1]).toEqual({ kind: "ident", name: "a b" });
+  });
+
+  it("throws on an unterminated quoted ident", () => {
+    expect(() => parse(`'unterminated`)).toThrow(/unterminated '/);
+  });
+});
+
 describe("parse: real OMC fixtures", () => {
   it("parses captured getElements response", () => {
     const v = parse(getElementsFixture);
