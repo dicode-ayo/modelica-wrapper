@@ -11,7 +11,7 @@
  *     node scripts/capture-modelinstance-fixtures.mjs
  */
 
-import { spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { tmpdir, userInfo } from "node:os";
@@ -19,6 +19,25 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Request } from "zeromq";
+
+/**
+ * Mirror of `shouldRun()` in `test/integration.test.ts`. We want a clear
+ * up-front error if `omc` isn't reachable rather than a confusing
+ * connection failure later in `spawnOmc`.
+ */
+function ensureOmcOnPath() {
+  if (process.env.OMC_PATH && process.env.OMC_PATH.length > 0) return;
+  try {
+    execSync(process.platform === "win32" ? "where omc" : "command -v omc", {
+      stdio: "ignore",
+    });
+  } catch {
+    console.error(
+      "capture-modelinstance-fixtures: `omc` not found on PATH. Install OpenModelica or set OMC_PATH=/path/to/omc.",
+    );
+    process.exit(1);
+  }
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = resolve(__dirname, "..");
@@ -98,6 +117,12 @@ async function call(sock, cmd) {
  * Strip a Modelica string literal: `"...escaped..."` → the JS string it
  * represents. OMC's getModelInstance returns its JSON wrapped in such a
  * literal. Handles the standard escape sequences.
+ *
+ * NOTE: kept as a deliberate copy of the same handling in
+ * `src/parse.ts` (`parse` + `expectString`) because this script is a
+ * standalone .mjs run pre-build and importing the TS source from a
+ * plain Node entrypoint would require a TS loader. Keep escape
+ * handling in sync with `src/parse.ts` if it changes.
  */
 function unwrapModelicaString(raw) {
   const text = raw.trim();
@@ -165,6 +190,7 @@ async function captureOne(sock, cmd, fixtureName) {
 }
 
 async function main() {
+  ensureOmcOnPath();
   await mkdir(FIXTURES_DIR, { recursive: true });
   const proc = await spawnOmc();
   const sock = new Request();
