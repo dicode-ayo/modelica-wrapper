@@ -1,3 +1,14 @@
+/**
+ * Unit tests for `portFilePaths` — the OMC port-file path resolver.
+ *
+ * OMC writes its ZMQ endpoint to `${tmpdir}/openmodelica.<user>.port.<id>`,
+ * except when running as uid 0 some builds drop the user segment
+ * (`openmodelica.port.<id>`). The resolver returns candidate paths in
+ * priority order so `waitForPortFile` can probe both. These tests pin
+ * that ordering for non-root, root-by-uid, root-by-name, and DOMAIN\-prefixed
+ * usernames — without spawning a real OMC subprocess.
+ */
+
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 

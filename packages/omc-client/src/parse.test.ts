@@ -1,14 +1,8 @@
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { describe, expect, it } from "vitest";
-import { isNull, parse, toJson } from "./parse.js";
 
-const FIXTURES = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "../test/fixtures",
-);
+import getElementsFixture from "../test/fixtures/getElements-Modelica.Blocks.Examples.PID_Controller.txt?raw";
+import getElementsInfoFixture from "../test/fixtures/getElementsInfo-Modelica.Blocks.Examples.PID_Controller.txt?raw";
+import { isNull, parse, toJson } from "./parse.js";
 
 describe("parse: scalars", () => {
   it.each([
@@ -179,11 +173,7 @@ describe("parse: keyword arguments inside calls", () => {
 
 describe("parse: real OMC fixtures", () => {
   it("parses captured getElements response", () => {
-    const raw = readFileSync(
-      resolve(FIXTURES, "getElements-Modelica.Blocks.Examples.PID_Controller.txt"),
-      "utf8",
-    );
-    const v = parse(raw);
+    const v = parse(getElementsFixture);
     expect(v.kind).toBe("list");
     if (v.kind !== "list") throw new Error("unreachable");
     expect(v.items.length).toBeGreaterThan(0);
@@ -194,14 +184,7 @@ describe("parse: real OMC fixtures", () => {
   });
 
   it("parses captured getElementsInfo response", () => {
-    const raw = readFileSync(
-      resolve(
-        FIXTURES,
-        "getElementsInfo-Modelica.Blocks.Examples.PID_Controller.txt",
-      ),
-      "utf8",
-    );
-    const v = parse(raw);
+    const v = parse(getElementsInfoFixture);
     expect(v.kind).toBe("list");
     if (v.kind !== "list") throw new Error("unreachable");
     expect(v.items.length).toBeGreaterThan(0);
