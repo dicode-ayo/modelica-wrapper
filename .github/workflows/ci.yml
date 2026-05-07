@@ -61,6 +61,7 @@ jobs:
           curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
           apt-get install -y --no-install-recommends nodejs
           npm install -g pnpm@10.25.0
+          useradd -m -s /bin/bash omcrunner
 
       - uses: actions/checkout@v4
 
@@ -76,10 +77,14 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Hand workspace to non-root user
+        run: chown -R omcrunner:omcrunner "$GITHUB_WORKSPACE"
+
       - name: Integration tests against real OMC
         env:
           OMC_INTEGRATION: "1"
-        run: pnpm --filter @modelica-wrapper/omc-client test
+          OMC_DEBUG: "1"
+        run: runuser -u omcrunner -- pnpm --filter @modelica-wrapper/omc-client test
 
       - name: Build the extension bundle
         run: pnpm --filter modelica-wrapper build
