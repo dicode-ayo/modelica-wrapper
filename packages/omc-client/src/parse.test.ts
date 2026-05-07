@@ -1,5 +1,14 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 import { isNull, parse, toJson } from "./parse.js";
+
+const FIXTURES = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../test/fixtures",
+);
 
 describe("parse: scalars", () => {
   it.each([
@@ -118,5 +127,94 @@ describe("toJson", () => {
 
   it("renders null as null", () => {
     expect(toJson(parse(`{a, -, b}`))).toEqual(["a", null, "b"]);
+  });
+});
+
+describe("parse: $-prefixed identifiers", () => {
+  it("parses $Any as an identifier", () => {
+    expect(parse(`$Any`)).toEqual({ kind: "ident", name: "$Any" });
+  });
+
+  it("parses a list containing $Any", () => {
+    const v = parse(`{"x", $Any, {}}`);
+    if (v.kind !== "list") throw new Error("expected list");
+    expect(v.items[1]).toEqual({ kind: "ident", name: "$Any" });
+  });
+});
+
+describe("parse: keyword arguments inside calls", () => {
+  it("parses a record-style call with kwargs", () => {
+    const v = parse(`rec(name = "x", value = 42, flag = false)`);
+    expect(v.kind).toBe("call");
+    if (v.kind !== "call") throw new Error("unreachable");
+    expect(v.name).toBe("rec");
+    expect(v.args).toEqual([
+      { kind: "kwarg", name: "name", value: { kind: "string", value: "x" } },
+      { kind: "kwarg", name: "value", value: { kind: "int", value: 42 } },
+      { kind: "kwarg", name: "flag", value: { kind: "bool", value: false } },
+    ]);
+  });
+
+  it("parses kwargs whose value is a brace list", () => {
+    const v = parse(`rec(names = {a, "b"})`);
+    if (v.kind !== "call") throw new Error("unreachable");
+    const kw = v.args[0];
+    if (!kw || kw.kind !== "kwarg") throw new Error("expected kwarg");
+    expect(kw.name).toBe("names");
+    expect(kw.value.kind).toBe("list");
+  });
+
+  it("parses kwargs alongside positional args", () => {
+    const v = parse(`f(1, "x", flag = true)`);
+    if (v.kind !== "call") throw new Error("unreachable");
+    expect(v.args[0]).toEqual({ kind: "int", value: 1 });
+    expect(v.args[1]).toEqual({ kind: "string", value: "x" });
+    expect(v.args[2]).toEqual({
+      kind: "kwarg",
+      name: "flag",
+      value: { kind: "bool", value: true },
+    });
+  });
+});
+
+describe("parse: real OMC fixtures", () => {
+  it("parses captured getElements response", () => {
+    const raw = readFileSync(
+      resolve(FIXTURES, "getElements-Modelica.Blocks.Examples.PID_Controller.txt"),
+      "utf8",
+    );
+    const v = parse(raw);
+    expect(v.kind).toBe("list");
+    if (v.kind !== "list") throw new Error("unreachable");
+    expect(v.items.length).toBeGreaterThan(0);
+    // Each row is itself a list; the 13th column is the `$Any` ident.
+    const first = v.items[0];
+    if (!first || first.kind !== "list") throw new Error("expected list row");
+    expect(first.items).toContainEqual({ kind: "ident", name: "$Any" });
+  });
+
+  it("parses captured getElementsInfo response", () => {
+    const raw = readFileSync(
+      resolve(
+        FIXTURES,
+        "getElementsInfo-Modelica.Blocks.Examples.PID_Controller.txt",
+      ),
+      "utf8",
+    );
+    const v = parse(raw);
+    expect(v.kind).toBe("list");
+    if (v.kind !== "list") throw new Error("unreachable");
+    expect(v.items.length).toBeGreaterThan(0);
+    // Each entry is `{ rec(...) }` — a singleton list wrapping a call.
+    const first = v.items[0];
+    if (!first || first.kind !== "list") throw new Error("expected list row");
+    const inner = first.items[0];
+    if (!inner || inner.kind !== "call") throw new Error("expected call");
+    expect(inner.name).toBe("rec");
+    expect(
+      inner.args.some(
+        (a) => a.kind === "kwarg" && a.name === "elementvisibility",
+      ),
+    ).toBe(true);
   });
 });

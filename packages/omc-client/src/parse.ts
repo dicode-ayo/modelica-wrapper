@@ -9,7 +9,9 @@
  *     {a, b, c}                       ListV (brace list)
  *     ("x", 1, true)                  ListV (paren tuple — same TS type)
  *     Modelica.Blocks.Math.Sin        IdentV
+ *     $Any / $Code                    IdentV (OMC builtin names start with `$`)
  *     Polygon(true, {0,0}, ...)       CallV (used inside icon annotations)
+ *     rec(name=value, ...)            CallV with KwargV entries (getElementsInfo)
  *     -      (between commas)         NullV
  *
  * Brace lists and paren tuples are both represented as `list`; consumers
@@ -24,6 +26,7 @@ export type Value =
   | { kind: "ident"; name: string }
   | { kind: "list"; items: Value[] }
   | { kind: "call"; name: string; args: Value[] }
+  | { kind: "kwarg"; name: string; value: Value }
   | { kind: "null" };
 
 const NULL: Value = { kind: "null" };
@@ -181,8 +184,20 @@ class Parser {
         this.pos++;
         continue;
       }
-      items.push(this.value());
+      const head = this.value();
       this.skipSpace();
+      if (
+        head.kind === "ident" &&
+        this.pos < this.src.length &&
+        this.src[this.pos] === "="
+      ) {
+        this.pos++;
+        const rhs = this.value();
+        items.push({ kind: "kwarg", name: head.name, value: rhs });
+        this.skipSpace();
+      } else {
+        items.push(head);
+      }
       if (this.pos < this.src.length && this.src[this.pos] === ",") {
         this.pos++;
         continue;
@@ -253,7 +268,9 @@ class Parser {
 }
 
 function isIdentStart(c: string): boolean {
-  return (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c === "_";
+  return (
+    (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c === "_" || c === "$"
+  );
 }
 function isIdentPart(c: string): boolean {
   return isIdentStart(c) || (c >= "0" && c <= "9");
@@ -370,6 +387,8 @@ export function toJson(v: Value): Json {
       return v.items.map(toJson);
     case "call":
       return { _call: v.name, args: v.args.map(toJson) };
+    case "kwarg":
+      return { _kwarg: v.name, value: toJson(v.value) };
     case "null":
       return null;
   }
