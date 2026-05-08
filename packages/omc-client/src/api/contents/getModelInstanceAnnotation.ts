@@ -17,6 +17,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { prettyPrint } from "../../_shared/fields.js";
 import { mlBool, quoteList } from "../../_shared/format.js";
 import { StringResultOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -25,7 +26,7 @@ import { asString, parse } from "../../parse.js";
 export const GetModelInstanceAnnotationInputSchema = z.object({
   typeName: z.string(),
   filter: z.array(z.string()).optional().default([]).describe("Annotation names to include (empty array returns all)."),
-  prettyPrint: z.boolean().optional().default(false).describe("Indent the JSON output for human readability when true."),
+  prettyPrint,
 });
 export type GetModelInstanceAnnotationInput = z.input<
   typeof GetModelInstanceAnnotationInputSchema

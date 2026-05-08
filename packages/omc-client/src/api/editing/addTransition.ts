@@ -7,6 +7,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { connectionAnnotation } from "../../_shared/fields.js";
 import { mlBool, quote } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -22,7 +23,7 @@ export const AddTransitionInputSchema = z.object({
   reset: z.boolean().describe("Modelica `reset` flag on the transition."),
   synchronize: z.boolean().describe("Modelica `synchronize` flag on the transition."),
   priority: z.number().int().describe("Transition priority (lower numbers fire first when conditions overlap)."),
-  annotation: z.string().optional().default("").describe('Raw Modelica `Line(...)` annotation (no `annotate=` prefix); "" yields the default Line.'),
+  annotation: connectionAnnotation,
 });
 export type AddTransitionInput = z.input<typeof AddTransitionInputSchema>;
 

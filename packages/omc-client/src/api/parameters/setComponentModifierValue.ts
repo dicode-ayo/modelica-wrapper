@@ -10,6 +10,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { expr } from "../../_shared/fields.js";
 import { TypeNameAndModifierInput } from "../../_shared/inputs.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -17,7 +18,7 @@ import { expectBool, parse } from "../../parse.js";
 
 export const SetComponentModifierValueInputSchema =
   TypeNameAndModifierInput.extend({
-    expr: z.string().describe("Raw Modelica expression for the new modifier value (wrapped in `$Code(=…)` for OMC); empty removes the modifier."),
+    expr,
   });
 export type SetComponentModifierValueInput = z.input<
   typeof SetComponentModifierValueInputSchema

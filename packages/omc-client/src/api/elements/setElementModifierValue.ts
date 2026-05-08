@@ -17,6 +17,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { expr } from "../../_shared/fields.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
@@ -24,7 +25,9 @@ import { expectBool, parse } from "../../parse.js";
 export const SetElementModifierValueInputSchema = z.object({
   typeName: z.string().describe("Class containing the element."),
   elementName: z.string().describe("Dotted element path within the class (OMC `elementName`, emitted bare)."),
-  expr: z.string().describe("Modelica expression to bind to the modifier; empty clears the modifier."),
+  expr: expr.describe(
+    "Modelica expression to bind to the modifier; empty clears the modifier.",
+  ),
 });
 export type SetElementModifierValueInput = z.input<
   typeof SetElementModifierValueInputSchema

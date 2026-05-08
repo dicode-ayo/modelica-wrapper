@@ -13,4 +13,13 @@ export {
   StringResultOutput,
   StringValueOutput,
 } from "./outputs.js";
+export {
+  prettyPrint,
+  requireExactVersion,
+  typeNameOfConnection,
+  typeNameOfExtends,
+  connectionAnnotation,
+  extendsBase,
+  expr,
+} from "./fields.js";
 export { ValueSchema } from "./value.js";

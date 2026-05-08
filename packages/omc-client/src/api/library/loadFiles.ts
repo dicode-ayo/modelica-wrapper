@@ -23,6 +23,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { requireExactVersion } from "../../_shared/fields.js";
 import { mlBool, quote, quoteList } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -34,7 +35,7 @@ export const LoadFilesInputSchema = z.object({
   numThreads: z.number().int().optional().default(0).describe("Number of parallel threads; 0 substitutes the literal `OpenModelica.Scripting.numProcessors()` so OMC evaluates the default at call time."),
   uses: z.boolean().optional().default(true).describe("Honor `uses` annotations to load dependencies when true."),
   notify: z.boolean().optional().default(true).describe("Emit OMC notifications during loading when true."),
-  requireExactVersion: z.boolean().optional().default(false).describe("Require exact version matches when resolving library references."),
+  requireExactVersion,
   allowWithin: z.boolean().optional().default(true).describe("Permit `within` clauses in the loaded files when true."),
 });
 export type LoadFilesInput = z.input<typeof LoadFilesInputSchema>;

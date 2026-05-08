@@ -136,16 +136,34 @@ The file's leading docstring must contain the **verbatim Modelica signature** co
 
 ### 2.8 Shared schema reuse
 
-When the same input or output shape is declared in 3+ wrapper files, extract it to `_shared/inputs.ts` or `_shared/outputs.ts` and reuse via direct assignment (`<Fn>InputSchema = SharedSchema`) or `.extend(...)` for shape augmentation. Names describe the field set (e.g. `TypeNameAndModifierInput`, `SuccessOutput`, `BooleanBOutput`); output-side names keep OMC's verbatim field name (so `BooleanBOutput` exposes `b: boolean`, not `result: boolean`). Per-function files keep their 6-export structure and verbatim Modelica signature docstring.
+Two layers of reuse, both gated by the same 3-callers minimum:
+
+1. **Whole-object schemas** in `_shared/inputs.ts` / `_shared/outputs.ts` — when 3+ wrappers share the same complete object shape. Reuse via direct assignment (`<Fn>InputSchema = SharedSchema`) or `.extend(...)` for shape augmentation. Names describe the field set (e.g. `TypeNameAndModifierInput`, `SuccessOutput`, `BooleanBOutput`); output-side names keep OMC's verbatim field name (so `BooleanBOutput` exposes `b: boolean`, not `result: boolean`).
+2. **Atomic field schemas** in `_shared/fields.ts` — when 3+ wrappers share the same single-field declaration with the same `.describe(...)` text (e.g. `prettyPrint`, `requireExactVersion`, `connectionAnnotation`). Per-function consumers import via property shorthand and may override the description with `.describe(...)` at the use site when OMC docs give a more specific phrasing. Naming convention: lowercase atomic field names (`prettyPrint`) vs. PascalCase whole-object names (`SuccessOutput`); specialized variants of a common field name carry a contextual suffix (`typeNameOfConnection`, `typeNameOfExtends`).
+
+Per-function files keep their 6-export structure and verbatim Modelica signature docstring regardless of which layer they pull from.
 
 ```ts
-// Direct alias when the shared shape matches exactly:
+// Layer 1 — whole-object: direct alias when the shared shape matches exactly:
 export const IsModelOutputSchema = BooleanBOutput;
 
-// .extend() when the wrapper adds fields:
+// Layer 1 — whole-object: .extend() when the wrapper adds fields:
 export const SetComponentModifierValueInputSchema = TypeNameAndModifierInput.extend({
-  expr: z.string(),
+  expr,
 });
+
+// Layer 2 — atomic field: property shorthand inside z.object(...):
+import { prettyPrint, typeNameOfConnection } from "../../_shared/fields.js";
+
+export const GetNthConnectionInputSchema = z.object({
+  typeName: typeNameOfConnection,
+  index: z.number().int().positive().describe("1-based connection index, …"),
+});
+
+// Layer 2 — atomic field with a more-specific OMC-docs description:
+extendsBase: extendsBase.describe(
+  "TypeName of the base class on the `extends` clause to mutate.",
+),
 ```
 
 ### 2.9 Descriptions (MCP metadata)

@@ -7,6 +7,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { connectionAnnotation } from "../../_shared/fields.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
@@ -15,7 +16,7 @@ export const AddConnectionInputSchema = z.object({
   from: z.string().describe("Left-hand-side connector reference for the new connection."),
   to: z.string().describe("Right-hand-side connector reference for the new connection."),
   typeName: z.string().describe("Class to which the connection is added."),
-  annotation: z.string().optional().default("").describe('Raw Modelica `Line(...)` annotation (no `annotate=` prefix); "" yields the default Line.'),
+  annotation: connectionAnnotation,
 });
 export type AddConnectionInput = z.input<typeof AddConnectionInputSchema>;
 

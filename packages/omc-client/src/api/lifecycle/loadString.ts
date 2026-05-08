@@ -22,6 +22,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { requireExactVersion } from "../../_shared/fields.js";
 import { mlBool, quote } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -34,7 +35,7 @@ export const LoadStringInputSchema = z.object({
   merge: z.boolean().optional().default(false).describe("When true, merge the parsed AST into the existing one; otherwise replace."),
   uses: z.boolean().optional().default(true).describe("Honor `uses` annotations and load referenced libraries."),
   notify: z.boolean().optional().default(true).describe("Emit OMC notification messages while loading."),
-  requireExactVersion: z.boolean().optional().default(false).describe("Require exact version matches when resolving library references."),
+  requireExactVersion,
 });
 export type LoadStringInput = z.input<typeof LoadStringInputSchema>;
 

@@ -8,15 +8,22 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import {
+  expr,
+  extendsBase,
+  typeNameOfExtends,
+} from "../../_shared/fields.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const SetExtendsModifierValueInputSchema = z.object({
-  typeName: z.string().describe("Class containing the `extends` clause."),
-  extendsBase: z.string().describe("TypeName of the base class on the `extends` clause to mutate."),
+  typeName: typeNameOfExtends,
+  extendsBase: extendsBase.describe(
+    "TypeName of the base class on the `extends` clause to mutate.",
+  ),
   modifier: z.string().describe("Dotted path identifying the modifier within the extends clause."),
-  expr: z.string().describe("Raw Modelica expression for the new modifier value (wrapped in `$Code(=…)` for OMC); empty removes the modifier."),
+  expr,
 });
 export type SetExtendsModifierValueInput = z.input<
   typeof SetExtendsModifierValueInputSchema

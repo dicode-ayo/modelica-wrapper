@@ -21,6 +21,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { requireExactVersion } from "../../_shared/fields.js";
 import { mlBool, quote } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -31,7 +32,7 @@ export const LoadFileInputSchema = z.object({
   encoding: z.string().optional().default("UTF-8").describe("Text encoding of the file (default UTF-8)."),
   uses: z.boolean().optional().default(true).describe("Honor `uses` annotations and load referenced libraries."),
   notify: z.boolean().optional().default(true).describe("Emit OMC notification messages while loading."),
-  requireExactVersion: z.boolean().optional().default(false).describe("Require exact version matches when resolving library references."),
+  requireExactVersion,
   allowWithin: z.boolean().optional().default(true).describe("Allow `within` clauses beyond the default in the loaded file."),
 });
 export type LoadFileInput = z.input<typeof LoadFileInputSchema>;

@@ -7,13 +7,17 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import {
+  extendsBase,
+  typeNameOfExtends,
+} from "../../_shared/fields.js";
 import { mlBool } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
 export const GetExtendsModifierNamesInputSchema = z.object({
-  typeName: z.string().describe("Class containing the `extends` clause."),
-  extendsBase: z.string().describe("TypeName of the base class on the `extends` clause to inspect."),
+  typeName: typeNameOfExtends,
+  extendsBase,
   useQuotes: z.boolean().optional().default(false).describe("Quote string fields in the OMC raw response when true."),
 });
 export type GetExtendsModifierNamesInput = z.input<

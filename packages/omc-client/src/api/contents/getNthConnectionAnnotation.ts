@@ -8,12 +8,13 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { typeNameOfConnection } from "../../_shared/fields.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { ValueSchema } from "../../_shared/value.js";
 import { parse } from "../../parse.js";
 
 export const GetNthConnectionAnnotationInputSchema = z.object({
-  typeName: z.string().describe("Class containing the connection."),
+  typeName: typeNameOfConnection,
   index: z.number().int().positive().describe("1-based connection index, between 1 and `getConnectionCount`."),
 });
 export type GetNthConnectionAnnotationInput = z.input<

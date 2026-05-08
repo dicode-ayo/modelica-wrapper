@@ -7,6 +7,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { typeNameOfConnection } from "../../_shared/fields.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
@@ -14,7 +15,7 @@ import { expectBool, parse } from "../../parse.js";
 export const DeleteConnectionInputSchema = z.object({
   from: z.string().describe("Left-hand-side connector reference of the connection to remove."),
   to: z.string().describe("Right-hand-side connector reference of the connection to remove."),
-  typeName: z.string().describe("Class containing the connection."),
+  typeName: typeNameOfConnection,
 });
 export type DeleteConnectionInput = z.input<typeof DeleteConnectionInputSchema>;
 

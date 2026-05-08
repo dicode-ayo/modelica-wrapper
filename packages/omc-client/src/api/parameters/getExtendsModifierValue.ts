@@ -7,13 +7,17 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import {
+  extendsBase,
+  typeNameOfExtends,
+} from "../../_shared/fields.js";
 import { StringValueOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
 
 export const GetExtendsModifierValueInputSchema = z.object({
-  typeName: z.string().describe("Class containing the `extends` clause."),
-  extendsBase: z.string().describe("TypeName of the base class on the `extends` clause to inspect."),
+  typeName: typeNameOfExtends,
+  extendsBase,
   modifier: z.string().describe("Dotted path identifying the modifier within the extends clause."),
 });
 export type GetExtendsModifierValueInput = z.input<

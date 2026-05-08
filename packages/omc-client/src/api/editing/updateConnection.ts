@@ -16,14 +16,18 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import {
+  connectionAnnotation,
+  typeNameOfConnection,
+} from "../../_shared/fields.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
 
 export const UpdateConnectionInputSchema = z.object({
   from: z.string().describe("Left-hand-side connector reference for the connection to update."),
   to: z.string().describe("Right-hand-side connector reference for the connection to update."),
-  typeName: z.string().describe("Class containing the connection."),
-  annotation: z.string().optional().default("").describe('Raw Modelica `Line(...)` annotation (no `annotate=` prefix); "" yields the default Line.'),
+  typeName: typeNameOfConnection,
+  annotation: connectionAnnotation,
 });
 export type UpdateConnectionInput = z.input<typeof UpdateConnectionInputSchema>;
 

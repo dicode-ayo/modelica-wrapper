@@ -17,11 +17,12 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { typeNameOfConnection } from "../../_shared/fields.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
 export const GetNthConnectionInputSchema = z.object({
-  typeName: z.string().describe("Class containing the connection."),
+  typeName: typeNameOfConnection,
   index: z.number().int().positive().describe("1-based connection index, between 1 and `getConnectionCount`."),
 });
 export type GetNthConnectionInput = z.input<

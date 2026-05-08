@@ -21,6 +21,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { requireExactVersion } from "../../_shared/fields.js";
 import { mlBool, quote, quoteList } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -31,7 +32,7 @@ export const LoadModelInputSchema = z.object({
   priorityVersion: z.array(z.string()).optional().default(["default"]).describe('Version priority list. "default" means: no version > highest main release > highest pre-release > lexical sort.'),
   notify: z.boolean().optional().default(false).describe("Emit OMC notification messages while loading."),
   languageStandard: z.string().optional().default("").describe('Modelica language standard to enforce when loading (e.g. "3.2"); empty means use OMC default.'),
-  requireExactVersion: z.boolean().optional().default(false).describe("Require exact version matches when resolving library references."),
+  requireExactVersion,
 });
 export type LoadModelInput = z.input<typeof LoadModelInputSchema>;
 
