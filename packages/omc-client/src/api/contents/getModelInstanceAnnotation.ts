@@ -1,6 +1,12 @@
 /**
  * OMC: `function getModelInstanceAnnotation`
  *
+ * Returns the annotation-only subset of the structured model tree. Same
+ * root shape as `getModelInstance`, but prunes subcomponent type definitions
+ * — Icon/Diagram on the class itself and on direct `extends` are populated;
+ * the deep type expansions used by full layout assembly are omitted. Useful
+ * for thumbnails / icon previews where the diagram contents are irrelevant.
+ *
  * ```modelica
  * function getModelInstanceAnnotation
  *   input TypeName className;
@@ -10,48 +16,49 @@
  * end getModelInstanceAnnotation;
  * ```
  *
- * The result is a JSON document carrying the requested annotations. Wrappers
- * do not parse the JSON; callers `JSON.parse(result)` themselves.
+ * Like `getModelInstance`, OMC returns the JSON wrapped in a Modelica string
+ * literal. We unwrap and `JSON.parse` it.
  */
 
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { prettyPrint } from "../../_shared/fields.js";
-import { mlBool, quoteList } from "../../_shared/format.js";
-import { StringResultOutput } from "../../_shared/outputs.js";
+import { TypeNameInput } from "../../_shared/inputs.js";
+import {
+  ModelInstanceAnnotationSchema,
+  type ModelInstanceAnnotation,
+} from "../../_shared/modelInstance.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
-import { asString, parse } from "../../parse.js";
+import { expectString, parse } from "../../parse.js";
 
-export const GetModelInstanceAnnotationInputSchema = z.object({
-  typeName: z.string(),
-  filter: z.array(z.string()).optional().default([]).describe("Annotation names to include (empty array returns all)."),
-  prettyPrint,
-});
+export const GetModelInstanceAnnotationInputSchema = TypeNameInput;
 export type GetModelInstanceAnnotationInput = z.input<
   typeof GetModelInstanceAnnotationInputSchema
 >;
 
-export const GetModelInstanceAnnotationOutputSchema = StringResultOutput;
-export type GetModelInstanceAnnotationOutput = z.infer<
-  typeof GetModelInstanceAnnotationOutputSchema
->;
+export const GetModelInstanceAnnotationOutputSchema = z.object({
+  instance: ModelInstanceAnnotationSchema,
+});
+export interface GetModelInstanceAnnotationOutput {
+  instance: ModelInstanceAnnotation;
+}
 
 export const GetModelInstanceAnnotationDescription =
-  "Return the requested annotations from a model instance as a JSON document; the wrapper does not parse the JSON.";
+  "Return the annotation-only subset of the structured model tree (Icon/Diagram on the class and direct `extends`, with deep type expansions pruned). Useful for thumbnails and icon previews where diagram contents are irrelevant.";
 
 export async function getModelInstanceAnnotation(
   ctx: CallContext,
   input: GetModelInstanceAnnotationInput,
 ): Promise<GetModelInstanceAnnotationOutput> {
-  const filter = input.filter ?? [];
-  const prettyPrint = input.prettyPrint ?? false;
-  const raw = await ctx.call(
-    `getModelInstanceAnnotation(${input.typeName}, ${quoteList(filter)}, ${mlBool(prettyPrint)})`,
-  );
-  return parseOutput(
+  const raw = await ctx.call(`getModelInstanceAnnotation(${input.typeName})`);
+  const json = expectString(parse(raw));
+  const parsed: unknown = JSON.parse(json);
+  const validated = parseOutput(
     GetModelInstanceAnnotationOutputSchema,
-    { result: asString(parse(raw)) ?? "" },
+    { instance: parsed },
     "getModelInstanceAnnotation",
   );
+  return {
+    instance: validated.instance,
+  };
 }

@@ -1,6 +1,13 @@
 /**
  * OMC: `function getModelInstance`
  *
+ * Returns the entire elaborated model AST as a structured JSON tree —
+ * annotations preserved, inheritance auto-walked, sub-component types
+ * expanded, connections tagged with `cref` paths and `Line.points`. One call
+ * replaces the multi-call assembly of `getIcon/Diagram/Components/
+ * ComponentAnnotations/NthConnection*` plus the per-base-class inheritance
+ * walk and per-subcomponent type lookup (~30+ round-trips → 1).
+ *
  * ```modelica
  * function getModelInstance
  *   input TypeName className;
@@ -10,47 +17,53 @@
  * end getModelInstance;
  * ```
  *
- * The result is a JSON document describing the model instance (parameters,
- * components, connections, inheritance, etc.). Wrappers do not parse the JSON;
- * callers `JSON.parse(result)` themselves.
+ * OMC wraps the JSON in a single Modelica string literal; we unwrap and
+ * `JSON.parse` it. `prettyPrint=true` returns the same content indented
+ * (~3x bytes) — useful for fixture capture / debug, not for production.
  */
 
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { prettyPrint } from "../../_shared/fields.js";
-import { mlBool, quote } from "../../_shared/format.js";
-import { StringResultOutput } from "../../_shared/outputs.js";
+import { TypeNameInput } from "../../_shared/inputs.js";
+import {
+  ModelInstanceSchema,
+  type ModelInstance,
+} from "../../_shared/modelInstance.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
-import { asString, parse } from "../../parse.js";
+import { expectString, parse } from "../../parse.js";
 
-export const GetModelInstanceInputSchema = z.object({
-  typeName: z.string(),
-  modifier: z.string().optional().default("").describe("Optional modifier expression applied to the class before instantiation; empty for none."),
+export const GetModelInstanceInputSchema = TypeNameInput.extend({
   prettyPrint,
 });
 export type GetModelInstanceInput = z.input<typeof GetModelInstanceInputSchema>;
 
-export const GetModelInstanceOutputSchema = StringResultOutput;
-export type GetModelInstanceOutput = z.infer<
-  typeof GetModelInstanceOutputSchema
->;
+export const GetModelInstanceOutputSchema = z.object({
+  instance: ModelInstanceSchema,
+});
+export interface GetModelInstanceOutput {
+  instance: ModelInstance;
+}
 
 export const GetModelInstanceDescription =
-  "Return a JSON document describing the model instance (parameters, components, connections, inheritance). The wrapper does not parse the JSON; callers `JSON.parse(result)` themselves.";
+  "Return the entire elaborated model AST as a structured JSON tree — annotations preserved, inheritance auto-walked, sub-component types expanded, connections tagged with `cref` paths and `Line.points`. Replaces ~30+ round-trips (getIcon/Diagram/Components/ComponentAnnotations/NthConnection* plus per-base-class inheritance walk) with one call.";
 
 export async function getModelInstance(
   ctx: CallContext,
   input: GetModelInstanceInput,
 ): Promise<GetModelInstanceOutput> {
-  const modifier = input.modifier ?? "";
-  const prettyPrint = input.prettyPrint ?? false;
-  const raw = await ctx.call(
-    `getModelInstance(${input.typeName}, ${quote(modifier)}, ${mlBool(prettyPrint)})`,
-  );
-  return parseOutput(
+  const args =
+    input.prettyPrint === true
+      ? `${input.typeName}, prettyPrint=true`
+      : `${input.typeName}`;
+  const raw = await ctx.call(`getModelInstance(${args})`);
+  const json = expectString(parse(raw));
+  const parsed: unknown = JSON.parse(json);
+  const validated = parseOutput(
     GetModelInstanceOutputSchema,
-    { result: asString(parse(raw)) ?? "" },
+    { instance: parsed },
     "getModelInstance",
   );
+  return { instance: validated.instance };
 }
