@@ -43,11 +43,27 @@ export async function spawnOmc(
   const bin = omcPath && omcPath.length > 0 ? omcPath : "omc";
   const suffix = `mw_${randomBytes(8).toString("hex")}`;
   const tempDir = await mkdtemp(join(tmpdir(), "mw-omc-"));
-  const portFile = portFilePath(tempDir, suffix);
+
+  // Windows OMC drops the user segment unconditionally (compile-time branch
+  // in `zeromqimpl.c`), Unix includes it.
+  const portFile =
+    process.platform === "win32"
+      ? join(tempDir, `openmodelica.port.${suffix}`)
+      : join(tempDir, `openmodelica.${WRAPPER_USER}.port.${suffix}`);
+
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  if (process.platform === "win32") {
+    // GetTempPath() consults TMP, then TEMP, then USERPROFILE.
+    env.TMP = tempDir;
+    env.TEMP = tempDir;
+  } else {
+    env.TMPDIR = tempDir;
+    env.USER = WRAPPER_USER;
+  }
 
   const debug = process.env.OMC_DEBUG === "1";
   const child: ChildProcess = spawn(bin, ["--interactive=zmq", `-z=${suffix}`], {
-    env: omcEnv(tempDir),
+    env,
     stdio: ["ignore", debug ? "pipe" : "ignore", debug ? "pipe" : "inherit"],
   });
 
@@ -94,39 +110,6 @@ export async function spawnOmc(
     await stop();
     throw err;
   }
-}
-
-/**
- * Computes the deterministic port-file path OMC will write under a controlled
- * tempdir. Windows OMC drops the user segment unconditionally (compile-time
- * branch in `zeromqimpl.c`), Unix includes it.
- *
- * Exported for testability; not part of the public package surface.
- */
-export function portFilePath(tempDir: string, suffix: string): string {
-  if (process.platform === "win32") {
-    return join(tempDir, `openmodelica.port.${suffix}`);
-  }
-  return join(tempDir, `openmodelica.${WRAPPER_USER}.port.${suffix}`);
-}
-
-/**
- * Builds the env block we pass to OMC. We override the temp-dir env vars (and
- * `USER` on Unix) so the port-file path becomes fully deterministic.
- *
- * Exported for testability; not part of the public package surface.
- */
-export function omcEnv(tempDir: string): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env };
-  if (process.platform === "win32") {
-    // GetTempPath() consults TMP, then TEMP, then USERPROFILE.
-    env.TMP = tempDir;
-    env.TEMP = tempDir;
-  } else {
-    env.TMPDIR = tempDir;
-    env.USER = WRAPPER_USER;
-  }
-  return env;
 }
 
 async function waitForPortFile(
