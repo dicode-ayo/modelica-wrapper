@@ -1,12 +1,21 @@
 #!/usr/bin/env node
 /**
- * One-off capture script. Spawns OMC, asks for `getModelInstance` /
- * `getModelInstanceAnnotation` against a small leaf block and a full diagram
- * model, and writes the raw JSON trees to `test/fixtures/`. Those fixtures
- * drive the offline schema unit tests and serve as a regression marker if
- * OMC ever changes the shape.
+ * On-demand capture script. Spawns OMC, asks for `getModelInstance` /
+ * `getModelInstanceAnnotation` against a small leaf block and a full
+ * diagram model, and writes the raw JSON trees to `test/fixtures/`.
  *
- * Run from the package root:
+ * The captured fixtures are NOT committed to git (see `.gitignore` —
+ * `*.modelInstance*.json` is excluded). They exist only for offline
+ * inspection: schema validation runs against live OMC each test run via
+ * `test/modelInstance.integration.test.ts`. Use this script when you want
+ * to look at a captured payload (e.g. spot-check a new `$kind` variant or
+ * diff against a previous OMC release).
+ *
+ * Run from anywhere via the package script:
+ *
+ *     pnpm --filter @modelica-wrapper/omc-client capture-modelinstance-fixtures
+ *
+ * Or directly from the package root:
  *
  *     node scripts/capture-modelinstance-fixtures.mjs
  */

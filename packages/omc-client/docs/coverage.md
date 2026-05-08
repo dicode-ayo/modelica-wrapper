@@ -81,7 +81,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `getDocumentationAnnotation` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getDocumentationAnnotation.html) |
 | `listFile` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.listFile.html) |
 | `instantiateModel` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.instantiateModel.html) |
-| `getModelInstance` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getModelInstance.html) — collapses the multi-call diagram-read path into one structured-AST call (fixtures: [`../test/fixtures/`](../test/fixtures/)) |
+| `getModelInstance` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getModelInstance.html) — collapses the multi-call diagram-read path into one structured-AST call. Schema is validated live against Sin + PID_Controller in [`../test/modelInstance.integration.test.ts`](../test/modelInstance.integration.test.ts); captures are regenerable via `pnpm capture-modelinstance-fixtures` (gitignored). |
 | `getModelInstanceAnnotation` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getModelInstanceAnnotation.html) — annotation-only subset, useful for thumbnails |
 | `modifierToJSON` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.modifierToJSON.html) |
 | `getConnectionList` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getConnectionList.html) |
@@ -225,7 +225,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | Category | Covered | Total | Notes |
 |---|---|---|---|
 | Browsing | 17 | 24 | All Tier 4 predicates wired; common predicates verified, niche ones 🟡 |
-| Reading model contents | 14 | 21 | Tier 1 modern read path + Tier 5 connector helpers added; both `getModelInstance` and `getModelInstanceAnnotation` exercised against fixtures (the structured-AST endpoint replaces the per-call diagram assembly) |
+| Reading model contents | 14 | 21 | Tier 1 modern read path + Tier 5 connector helpers added; both `getModelInstance` and `getModelInstanceAnnotation` validated live each test run (the structured-AST endpoint replaces the per-call diagram assembly) |
 | Lifecycle | 12 | 16 | 4 ⛔ — `createClass`, `createSubClass`, `moveClass` (cross-package relocate only), and `save` (deprecated). The two in-place reorderers `moveClassToTop`/`moveClassToBottom` work despite `moveClass` being missing — found via the drift probe. |
 | Parameters & modifiers | 5 | 11 | 1 ⛔ (`removeComponentModifiers`, confirmed missing), `getParameterNames` ✅, mutations 🟡 |
 | Editing | 10 | 15 | 1 ⛔ (`updateConnection`, confirmed missing), 4 🟡 (state-machine fixture for transitions; new `setClassComment`/`setDocumentationAnnotation` need throwaway fixtures) |

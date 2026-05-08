@@ -10,3 +10,9 @@ dist/
 Thumbs.db
 *.swp
 .idea/
+
+# Regenerated on demand by `pnpm --filter @modelica-wrapper/omc-client capture-modelinstance-fixtures`.
+# These captures are large (~40k lines for PID_Controller alone) and easy to
+# reproduce from any OMC install — keep them out of git.
+packages/omc-client/test/fixtures/*.modelInstance.json
+packages/omc-client/test/fixtures/*.modelInstanceAnnotation.json

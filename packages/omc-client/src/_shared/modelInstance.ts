@@ -3,10 +3,13 @@
  *
  * Drives both `getModelInstance` and `getModelInstanceAnnotation` (the
  * annotation-only variant is a strict subset — same root shape, fewer
- * populated fields). The schema design is fixture-driven against OMC 1.26.7
- * captures of `Modelica.Blocks.Math.Sin` (leaf block) and
+ * populated fields). The schema design was originally derived from OMC
+ * 1.26.7 captures of `Modelica.Blocks.Math.Sin` (leaf block) and
  * `Modelica.Blocks.Examples.PID_Controller` (full diagram with inheritance,
- * sub-component types, connections, and Dialog-enable expressions).
+ * sub-component types, connections, and Dialog-enable expressions); those
+ * same two classes are now re-captured live each test run by
+ * `test/modelInstance.integration.test.ts`. Regenerate inspectable fixtures
+ * on demand with `pnpm capture-modelinstance-fixtures` (gitignored output).
  *
  * Every object that can carry OMC-version-specific extras uses
  * `.passthrough()`: we'd rather forward unknown fields verbatim than throw on
