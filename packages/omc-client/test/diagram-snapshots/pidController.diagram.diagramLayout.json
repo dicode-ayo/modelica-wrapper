@@ -1,0 +1,6401 @@
+{
+  "kind": "diagram",
+  "className": "Modelica.Blocks.Examples.PID_Controller",
+  "source": {
+    "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Blocks/package.mo",
+    "lineStart": 12,
+    "columnStart": 3,
+    "lineEnd": 159,
+    "columnEnd": 21
+  },
+  "iconLayers": [
+    {
+      "from": "Modelica.Icons.Example",
+      "shapes": [
+        {
+          "kind": "ellipse",
+          "extent": [
+            [
+              -100,
+              -100
+            ],
+            [
+              100,
+              100
+            ]
+          ],
+          "lineColor": [
+            75,
+            138,
+            73
+          ],
+          "fillColor": [
+            255,
+            255,
+            255
+          ],
+          "pattern": "Solid",
+          "fillPattern": "Solid",
+          "lineThickness": 0.25,
+          "startAngle": 0,
+          "endAngle": 360,
+          "closure": "Chord"
+        },
+        {
+          "kind": "polygon",
+          "points": [
+            [
+              -36,
+              60
+            ],
+            [
+              64,
+              0
+            ],
+            [
+              -36,
+              -60
+            ],
+            [
+              -36,
+              60
+            ]
+          ],
+          "lineColor": [
+            0,
+            0,
+            255
+          ],
+          "fillColor": [
+            75,
+            138,
+            73
+          ],
+          "pattern": "None",
+          "fillPattern": "Solid",
+          "lineThickness": 0.25,
+          "smooth": "None"
+        }
+      ],
+      "coordinateSystem": {
+        "extent": [
+          [
+            -100,
+            -100
+          ],
+          [
+            100,
+            100
+          ]
+        ],
+        "preserveAspectRatio": false
+      }
+    }
+  ],
+  "diagramLayers": [
+    {
+      "from": "Modelica.Blocks.Examples.PID_Controller",
+      "shapes": [
+        {
+          "kind": "rectangle",
+          "extent": [
+            [
+              -99,
+              48
+            ],
+            [
+              -32,
+              8
+            ]
+          ],
+          "lineColor": [
+            255,
+            0,
+            0
+          ],
+          "fillColor": [
+            0,
+            0,
+            0
+          ],
+          "pattern": "Solid",
+          "fillPattern": "None",
+          "lineThickness": 0.25,
+          "borderPattern": "None",
+          "radius": 0
+        },
+        {
+          "kind": "text",
+          "extent": [
+            [
+              -98,
+              59
+            ],
+            [
+              -31,
+              51
+            ]
+          ],
+          "textString": "reference speed generation",
+          "fontSize": 0,
+          "textColor": [
+            255,
+            0,
+            0
+          ],
+          "textStyle": [],
+          "horizontalAlignment": "Center"
+        },
+        {
+          "kind": "text",
+          "extent": [
+            [
+              -98,
+              -46
+            ],
+            [
+              -60,
+              -52
+            ]
+          ],
+          "textString": "PI controller",
+          "fontSize": 0,
+          "textColor": [
+            255,
+            0,
+            0
+          ],
+          "textStyle": [],
+          "horizontalAlignment": "Center"
+        },
+        {
+          "kind": "line",
+          "points": [
+            [
+              -76,
+              -44
+            ],
+            [
+              -57,
+              -23
+            ]
+          ],
+          "color": [
+            255,
+            0,
+            0
+          ],
+          "pattern": "Solid",
+          "thickness": 0.25,
+          "arrow": [
+            "None",
+            "Filled"
+          ],
+          "arrowSize": 3,
+          "smooth": "None"
+        },
+        {
+          "kind": "rectangle",
+          "extent": [
+            [
+              -25,
+              6
+            ],
+            [
+              99,
+              -50
+            ]
+          ],
+          "lineColor": [
+            255,
+            0,
+            0
+          ],
+          "fillColor": [
+            0,
+            0,
+            0
+          ],
+          "pattern": "Solid",
+          "fillPattern": "None",
+          "lineThickness": 0.25,
+          "borderPattern": "None",
+          "radius": 0
+        },
+        {
+          "kind": "text",
+          "extent": [
+            [
+              4,
+              14
+            ],
+            [
+              71,
+              7
+            ]
+          ],
+          "textString": "plant (simple drive train)",
+          "fontSize": 0,
+          "textColor": [
+            255,
+            0,
+            0
+          ],
+          "textStyle": [],
+          "horizontalAlignment": "Center"
+        }
+      ],
+      "coordinateSystem": {
+        "extent": [
+          [
+            -100,
+            -100
+          ],
+          [
+            100,
+            100
+          ]
+        ],
+        "preserveAspectRatio": true
+      }
+    }
+  ],
+  "labels": [
+    {
+      "text": "reference speed generation",
+      "extent": [
+        [
+          -98,
+          59
+        ],
+        [
+          -31,
+          51
+        ]
+      ],
+      "rotation": 0,
+      "fontSize": 0,
+      "textColor": [
+        255,
+        0,
+        0
+      ]
+    },
+    {
+      "text": "PI controller",
+      "extent": [
+        [
+          -98,
+          -46
+        ],
+        [
+          -60,
+          -52
+        ]
+      ],
+      "rotation": 0,
+      "fontSize": 0,
+      "textColor": [
+        255,
+        0,
+        0
+      ]
+    },
+    {
+      "text": "plant (simple drive train)",
+      "extent": [
+        [
+          4,
+          14
+        ],
+        [
+          71,
+          7
+        ]
+      ],
+      "rotation": 0,
+      "fontSize": 0,
+      "textColor": [
+        255,
+        0,
+        0
+      ]
+    }
+  ],
+  "classes": {
+    "Modelica.Blocks.Continuous.LimPID": {
+      "name": "Modelica.Blocks.Continuous.LimPID",
+      "restriction": "block",
+      "iconLayers": [
+        {
+          "from": "Modelica.Blocks.Icons.Block",
+          "shapes": [
+            {
+              "kind": "rectangle",
+              "extent": [
+                [
+                  -100,
+                  -100
+                ],
+                [
+                  100,
+                  100
+                ]
+              ],
+              "lineColor": [
+                0,
+                0,
+                127
+              ],
+              "fillColor": [
+                255,
+                255,
+                255
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "borderPattern": "None",
+              "radius": 0
+            },
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  -150,
+                  150
+                ],
+                [
+                  150,
+                  110
+                ]
+              ],
+              "textString": "%name",
+              "fontSize": 0,
+              "textColor": [
+                0,
+                0,
+                255
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        },
+        {
+          "from": "Modelica.Blocks.Continuous.LimPID",
+          "shapes": [
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -80,
+                  78
+                ],
+                [
+                  -80,
+                  -90
+                ]
+              ],
+              "color": [
+                192,
+                192,
+                192
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "polygon",
+              "points": [
+                [
+                  -80,
+                  90
+                ],
+                [
+                  -88,
+                  68
+                ],
+                [
+                  -72,
+                  68
+                ],
+                [
+                  -80,
+                  90
+                ]
+              ],
+              "lineColor": [
+                192,
+                192,
+                192
+              ],
+              "fillColor": [
+                192,
+                192,
+                192
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -90,
+                  -80
+                ],
+                [
+                  82,
+                  -80
+                ]
+              ],
+              "color": [
+                192,
+                192,
+                192
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "polygon",
+              "points": [
+                [
+                  90,
+                  -80
+                ],
+                [
+                  68,
+                  -72
+                ],
+                [
+                  68,
+                  -88
+                ],
+                [
+                  90,
+                  -80
+                ]
+              ],
+              "lineColor": [
+                192,
+                192,
+                192
+              ],
+              "fillColor": [
+                192,
+                192,
+                192
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -80,
+                  -80
+                ],
+                [
+                  -80,
+                  -20
+                ],
+                [
+                  30,
+                  60
+                ],
+                [
+                  80,
+                  60
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                127
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  -20,
+                  -20
+                ],
+                [
+                  80,
+                  -60
+                ]
+              ],
+              "textString": "%controllerType",
+              "fontSize": 0,
+              "textColor": [
+                192,
+                192,
+                192
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  30,
+                  60
+                ],
+                [
+                  81,
+                  60
+                ]
+              ],
+              "color": [
+                255,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        }
+      ],
+      "connectors": {
+        "u_s": {
+          "name": "u_s",
+          "typeName": "Modelica.Blocks.Interfaces.RealInput",
+          "placement": {
+            "extent": [
+              [
+                -140,
+                -20
+              ],
+              [
+                -100,
+                20
+              ]
+            ]
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Blocks.Interfaces.RealInput",
+              "shapes": [
+                {
+                  "kind": "polygon",
+                  "points": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      0
+                    ],
+                    [
+                      -100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    127
+                  ],
+                  "fillColor": [
+                    0,
+                    0,
+                    127
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "smooth": "None"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true,
+                "initialScale": 0.2
+              }
+            }
+          ],
+          "from": "Modelica.Blocks.Interfaces.SVcontrol",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Blocks/Interfaces.mo",
+            "lineStart": 7,
+            "columnStart": 3,
+            "lineEnd": 36,
+            "columnEnd": 11
+          }
+        },
+        "u_m": {
+          "name": "u_m",
+          "typeName": "Modelica.Blocks.Interfaces.RealInput",
+          "placement": {
+            "extent": [
+              [
+                20,
+                -20
+              ],
+              [
+                -20,
+                20
+              ]
+            ],
+            "origin": [
+              0,
+              -120
+            ],
+            "rotation": 270
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Blocks.Interfaces.RealInput",
+              "shapes": [
+                {
+                  "kind": "polygon",
+                  "points": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      0
+                    ],
+                    [
+                      -100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    127
+                  ],
+                  "fillColor": [
+                    0,
+                    0,
+                    127
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "smooth": "None"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true,
+                "initialScale": 0.2
+              }
+            }
+          ],
+          "from": "Modelica.Blocks.Interfaces.SVcontrol",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Blocks/Interfaces.mo",
+            "lineStart": 7,
+            "columnStart": 3,
+            "lineEnd": 36,
+            "columnEnd": 11
+          }
+        },
+        "y": {
+          "name": "y",
+          "typeName": "Modelica.Blocks.Interfaces.RealOutput",
+          "placement": {
+            "extent": [
+              [
+                100,
+                -10
+              ],
+              [
+                120,
+                10
+              ]
+            ]
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Blocks.Interfaces.RealOutput",
+              "shapes": [
+                {
+                  "kind": "polygon",
+                  "points": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      0
+                    ],
+                    [
+                      -100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    127
+                  ],
+                  "fillColor": [
+                    255,
+                    255,
+                    255
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "smooth": "None"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true
+              }
+            }
+          ],
+          "from": "Modelica.Blocks.Interfaces.SVcontrol",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Blocks/Interfaces.mo",
+            "lineStart": 38,
+            "columnStart": 3,
+            "lineEnd": 66,
+            "columnEnd": 11
+          }
+        },
+        "u_ff": {
+          "name": "u_ff",
+          "typeName": "Modelica.Blocks.Interfaces.RealInput",
+          "placement": {
+            "extent": [
+              [
+                20,
+                -20
+              ],
+              [
+                -20,
+                20
+              ]
+            ],
+            "origin": [
+              60,
+              -120
+            ],
+            "rotation": 270
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Blocks.Interfaces.RealInput",
+              "shapes": [
+                {
+                  "kind": "polygon",
+                  "points": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      0
+                    ],
+                    [
+                      -100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    127
+                  ],
+                  "fillColor": [
+                    0,
+                    0,
+                    127
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "smooth": "None"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true,
+                "initialScale": 0.2
+              }
+            }
+          ],
+          "from": "Modelica.Blocks.Continuous.LimPID",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Blocks/Interfaces.mo",
+            "lineStart": 7,
+            "columnStart": 3,
+            "lineEnd": 36,
+            "columnEnd": 11
+          }
+        }
+      },
+      "coordinateSystem": {
+        "extent": [
+          [
+            -100,
+            -100
+          ],
+          [
+            100,
+            100
+          ]
+        ],
+        "preserveAspectRatio": true
+      }
+    },
+    "Modelica.Blocks.Interfaces.RealInput": {
+      "name": "Modelica.Blocks.Interfaces.RealInput",
+      "restriction": "connector",
+      "iconLayers": [
+        {
+          "from": "Modelica.Blocks.Interfaces.RealInput",
+          "shapes": [
+            {
+              "kind": "polygon",
+              "points": [
+                [
+                  -100,
+                  100
+                ],
+                [
+                  100,
+                  0
+                ],
+                [
+                  -100,
+                  -100
+                ]
+              ],
+              "lineColor": [
+                0,
+                0,
+                127
+              ],
+              "fillColor": [
+                0,
+                0,
+                127
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "smooth": "None"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true,
+            "initialScale": 0.2
+          }
+        }
+      ],
+      "connectors": {},
+      "coordinateSystem": {
+        "extent": [
+          [
+            -100,
+            -100
+          ],
+          [
+            100,
+            100
+          ]
+        ],
+        "preserveAspectRatio": true,
+        "initialScale": 0.2
+      }
+    },
+    "Modelica.Blocks.Interfaces.RealOutput": {
+      "name": "Modelica.Blocks.Interfaces.RealOutput",
+      "restriction": "connector",
+      "iconLayers": [
+        {
+          "from": "Modelica.Blocks.Interfaces.RealOutput",
+          "shapes": [
+            {
+              "kind": "polygon",
+              "points": [
+                [
+                  -100,
+                  100
+                ],
+                [
+                  100,
+                  0
+                ],
+                [
+                  -100,
+                  -100
+                ]
+              ],
+              "lineColor": [
+                0,
+                0,
+                127
+              ],
+              "fillColor": [
+                255,
+                255,
+                255
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "smooth": "None"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        }
+      ],
+      "connectors": {},
+      "coordinateSystem": {
+        "extent": [
+          [
+            -100,
+            -100
+          ],
+          [
+            100,
+            100
+          ]
+        ],
+        "preserveAspectRatio": true
+      }
+    },
+    "Modelica.Mechanics.Rotational.Components.Inertia": {
+      "name": "Modelica.Mechanics.Rotational.Components.Inertia",
+      "restriction": "model",
+      "iconLayers": [
+        {
+          "from": "Modelica.Mechanics.Rotational.Components.Inertia",
+          "shapes": [
+            {
+              "kind": "rectangle",
+              "extent": [
+                [
+                  -100,
+                  -10
+                ],
+                [
+                  -50,
+                  10
+                ]
+              ],
+              "lineColor": [
+                64,
+                64,
+                64
+              ],
+              "fillColor": [
+                192,
+                192,
+                192
+              ],
+              "pattern": "Solid",
+              "fillPattern": "HorizontalCylinder",
+              "lineThickness": 0.25,
+              "borderPattern": "None",
+              "radius": 0
+            },
+            {
+              "kind": "rectangle",
+              "extent": [
+                [
+                  50,
+                  -10
+                ],
+                [
+                  100,
+                  10
+                ]
+              ],
+              "lineColor": [
+                64,
+                64,
+                64
+              ],
+              "fillColor": [
+                192,
+                192,
+                192
+              ],
+              "pattern": "Solid",
+              "fillPattern": "HorizontalCylinder",
+              "lineThickness": 0.25,
+              "borderPattern": "None",
+              "radius": 0
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -80,
+                  -25
+                ],
+                [
+                  -60,
+                  -25
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  60,
+                  -25
+                ],
+                [
+                  80,
+                  -25
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -70,
+                  -25
+                ],
+                [
+                  -70,
+                  -70
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  70,
+                  -25
+                ],
+                [
+                  70,
+                  -70
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -80,
+                  25
+                ],
+                [
+                  -60,
+                  25
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  60,
+                  25
+                ],
+                [
+                  80,
+                  25
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -70,
+                  45
+                ],
+                [
+                  -70,
+                  25
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  70,
+                  45
+                ],
+                [
+                  70,
+                  25
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -70,
+                  -70
+                ],
+                [
+                  70,
+                  -70
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "rectangle",
+              "extent": [
+                [
+                  -50,
+                  -50
+                ],
+                [
+                  50,
+                  50
+                ]
+              ],
+              "lineColor": [
+                64,
+                64,
+                64
+              ],
+              "fillColor": [
+                255,
+                255,
+                255
+              ],
+              "pattern": "Solid",
+              "fillPattern": "HorizontalCylinder",
+              "lineThickness": 0.25,
+              "borderPattern": "None",
+              "radius": 10
+            },
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  -150,
+                  60
+                ],
+                [
+                  150,
+                  100
+                ]
+              ],
+              "textString": "%name",
+              "fontSize": 0,
+              "textColor": [
+                0,
+                0,
+                255
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            },
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  -150,
+                  -120
+                ],
+                [
+                  150,
+                  -80
+                ]
+              ],
+              "textString": "J=%J",
+              "fontSize": 0,
+              "textColor": [
+                -1,
+                -1,
+                -1
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            },
+            {
+              "kind": "rectangle",
+              "extent": [
+                [
+                  -50,
+                  -50
+                ],
+                [
+                  50,
+                  50
+                ]
+              ],
+              "lineColor": [
+                64,
+                64,
+                64
+              ],
+              "fillColor": [
+                255,
+                255,
+                255
+              ],
+              "pattern": "Solid",
+              "fillPattern": "None",
+              "lineThickness": 0.25,
+              "borderPattern": "None",
+              "radius": 10
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        }
+      ],
+      "connectors": {
+        "flange_a": {
+          "name": "flange_a",
+          "typeName": "Modelica.Mechanics.Rotational.Interfaces.Flange_a",
+          "placement": {
+            "extent": [
+              [
+                -110,
+                -10
+              ],
+              [
+                -90,
+                10
+              ]
+            ]
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Mechanics.Rotational.Interfaces.Flange_a",
+              "shapes": [
+                {
+                  "kind": "ellipse",
+                  "extent": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "fillColor": [
+                    95,
+                    95,
+                    95
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "startAngle": 0,
+                  "endAngle": 360,
+                  "closure": "Chord"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true
+              }
+            }
+          ],
+          "from": "Modelica.Mechanics.Rotational.Interfaces.PartialTwoFlanges",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Mechanics/Rotational/Interfaces/Flange_a.mo",
+            "lineStart": 2,
+            "columnStart": 1,
+            "lineEnd": 55,
+            "columnEnd": 13
+          }
+        },
+        "flange_b": {
+          "name": "flange_b",
+          "typeName": "Modelica.Mechanics.Rotational.Interfaces.Flange_b",
+          "placement": {
+            "extent": [
+              [
+                90,
+                -10
+              ],
+              [
+                110,
+                10
+              ]
+            ]
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Mechanics.Rotational.Interfaces.Flange_b",
+              "shapes": [
+                {
+                  "kind": "ellipse",
+                  "extent": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "fillColor": [
+                    255,
+                    255,
+                    255
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "startAngle": 0,
+                  "endAngle": 360,
+                  "closure": "Chord"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true
+              }
+            }
+          ],
+          "from": "Modelica.Mechanics.Rotational.Interfaces.PartialTwoFlanges",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Mechanics/Rotational/Interfaces/Flange_b.mo",
+            "lineStart": 2,
+            "columnStart": 1,
+            "lineEnd": 56,
+            "columnEnd": 13
+          }
+        }
+      },
+      "coordinateSystem": {
+        "extent": [
+          [
+            -100,
+            -100
+          ],
+          [
+            100,
+            100
+          ]
+        ],
+        "preserveAspectRatio": true
+      }
+    },
+    "Modelica.Mechanics.Rotational.Interfaces.Flange_a": {
+      "name": "Modelica.Mechanics.Rotational.Interfaces.Flange_a",
+      "restriction": "connector",
+      "iconLayers": [
+        {
+          "from": "Modelica.Mechanics.Rotational.Interfaces.Flange_a",
+          "shapes": [
+            {
+              "kind": "ellipse",
+              "extent": [
+                [
+                  -100,
+                  100
+                ],
+                [
+                  100,
+                  -100
+                ]
+              ],
+              "lineColor": [
+                0,
+                0,
+                0
+              ],
+              "fillColor": [
+                95,
+                95,
+                95
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "startAngle": 0,
+              "endAngle": 360,
+              "closure": "Chord"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        }
+      ],
+      "connectors": {},
+      "coordinateSystem": {
+        "extent": [
+          [
+            -100,
+            -100
+          ],
+          [
+            100,
+            100
+          ]
+        ],
+        "preserveAspectRatio": true
+      }
+    },
+    "Modelica.Mechanics.Rotational.Interfaces.Flange_b": {
+      "name": "Modelica.Mechanics.Rotational.Interfaces.Flange_b",
+      "restriction": "connector",
+      "iconLayers": [
+        {
+          "from": "Modelica.Mechanics.Rotational.Interfaces.Flange_b",
+          "shapes": [
+            {
+              "kind": "ellipse",
+              "extent": [
+                [
+                  -100,
+                  100
+                ],
+                [
+                  100,
+                  -100
+                ]
+              ],
+              "lineColor": [
+                0,
+                0,
+                0
+              ],
+              "fillColor": [
+                255,
+                255,
+                255
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "startAngle": 0,
+              "endAngle": 360,
+              "closure": "Chord"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        }
+      ],
+      "connectors": {},
+      "coordinateSystem": {
+        "extent": [
+          [
+            -100,
+            -100
+          ],
+          [
+            100,
+            100
+          ]
+        ],
+        "preserveAspectRatio": true
+      }
+    },
+    "Modelica.Mechanics.Rotational.Sources.Torque": {
+      "name": "Modelica.Mechanics.Rotational.Sources.Torque",
+      "restriction": "model",
+      "iconLayers": [
+        {
+          "from": "Modelica.Mechanics.Rotational.Interfaces.PartialElementaryOneFlangeAndSupport2",
+          "shapes": [
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -50,
+                  -120
+                ],
+                [
+                  -30,
+                  -100
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -30,
+                  -120
+                ],
+                [
+                  -10,
+                  -100
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -10,
+                  -120
+                ],
+                [
+                  10,
+                  -100
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  10,
+                  -120
+                ],
+                [
+                  30,
+                  -100
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -30,
+                  -100
+                ],
+                [
+                  30,
+                  -100
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        },
+        {
+          "from": "Modelica.Mechanics.Rotational.Sources.Torque",
+          "shapes": [
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  -150,
+                  110
+                ],
+                [
+                  150,
+                  70
+                ]
+              ],
+              "textString": "%name",
+              "fontSize": 0,
+              "textColor": [
+                0,
+                0,
+                255
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            },
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  -62,
+                  -29
+                ],
+                [
+                  -141,
+                  -70
+                ]
+              ],
+              "textString": "tau",
+              "fontSize": 0,
+              "textColor": [
+                -1,
+                -1,
+                -1
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            },
+            {
+              "kind": "polygon",
+              "points": [
+                [
+                  86,
+                  0
+                ],
+                [
+                  66,
+                  58
+                ],
+                [
+                  37,
+                  27
+                ],
+                [
+                  86,
+                  0
+                ]
+              ],
+              "lineColor": [
+                0,
+                0,
+                0
+              ],
+              "fillColor": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  0,
+                  -10
+                ],
+                [
+                  0,
+                  -101
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "polygon",
+              "points": [
+                [
+                  -53,
+                  -54
+                ],
+                [
+                  -36,
+                  -30
+                ],
+                [
+                  -50,
+                  -24
+                ],
+                [
+                  -53,
+                  -54
+                ]
+              ],
+              "lineColor": [
+                0,
+                0,
+                0
+              ],
+              "fillColor": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -84,
+                  0
+                ],
+                [
+                  -78,
+                  18
+                ],
+                [
+                  -56,
+                  46
+                ],
+                [
+                  -20,
+                  60
+                ],
+                [
+                  20,
+                  60
+                ],
+                [
+                  60,
+                  40
+                ],
+                [
+                  82,
+                  8
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.5,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "Bezier"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -50,
+                  -40
+                ],
+                [
+                  -38,
+                  -24
+                ],
+                [
+                  -18,
+                  -12
+                ],
+                [
+                  0,
+                  -10
+                ],
+                [
+                  18,
+                  -12
+                ],
+                [
+                  38,
+                  -24
+                ],
+                [
+                  50,
+                  -40
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "Bezier"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        }
+      ],
+      "connectors": {
+        "flange": {
+          "name": "flange",
+          "typeName": "Modelica.Mechanics.Rotational.Interfaces.Flange_b",
+          "placement": {
+            "extent": [
+              [
+                90,
+                -10
+              ],
+              [
+                110,
+                10
+              ]
+            ]
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Mechanics.Rotational.Interfaces.Flange_b",
+              "shapes": [
+                {
+                  "kind": "ellipse",
+                  "extent": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "fillColor": [
+                    255,
+                    255,
+                    255
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "startAngle": 0,
+                  "endAngle": 360,
+                  "closure": "Chord"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true
+              }
+            }
+          ],
+          "from": "Modelica.Mechanics.Rotational.Interfaces.PartialElementaryOneFlangeAndSupport2",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Mechanics/Rotational/Interfaces/Flange_b.mo",
+            "lineStart": 2,
+            "columnStart": 1,
+            "lineEnd": 56,
+            "columnEnd": 13
+          }
+        },
+        "support": {
+          "name": "support",
+          "typeName": "Modelica.Mechanics.Rotational.Interfaces.Support",
+          "placement": {
+            "extent": [
+              [
+                -10,
+                -110
+              ],
+              [
+                10,
+                -90
+              ]
+            ]
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Mechanics.Rotational.Interfaces.Support",
+              "shapes": [
+                {
+                  "kind": "ellipse",
+                  "extent": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "fillColor": [
+                    95,
+                    95,
+                    95
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "startAngle": 0,
+                  "endAngle": 360,
+                  "closure": "Chord"
+                },
+                {
+                  "kind": "rectangle",
+                  "extent": [
+                    [
+                      -150,
+                      150
+                    ],
+                    [
+                      150,
+                      -150
+                    ]
+                  ],
+                  "lineColor": [
+                    192,
+                    192,
+                    192
+                  ],
+                  "fillColor": [
+                    192,
+                    192,
+                    192
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "borderPattern": "None",
+                  "radius": 0
+                },
+                {
+                  "kind": "ellipse",
+                  "extent": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "fillColor": [
+                    95,
+                    95,
+                    95
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "startAngle": 0,
+                  "endAngle": 360,
+                  "closure": "Chord"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true
+              }
+            }
+          ],
+          "from": "Modelica.Mechanics.Rotational.Interfaces.PartialElementaryOneFlangeAndSupport2",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Mechanics/Rotational/Interfaces/Support.mo",
+            "lineStart": 2,
+            "columnStart": 1,
+            "lineEnd": 62,
+            "columnEnd": 12
+          }
+        },
+        "tau": {
+          "name": "tau",
+          "typeName": "Modelica.Blocks.Interfaces.RealInput",
+          "placement": {
+            "extent": [
+              [
+                -140,
+                -20
+              ],
+              [
+                -100,
+                20
+              ]
+            ]
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Blocks.Interfaces.RealInput",
+              "shapes": [
+                {
+                  "kind": "polygon",
+                  "points": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      0
+                    ],
+                    [
+                      -100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    127
+                  ],
+                  "fillColor": [
+                    0,
+                    0,
+                    127
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "smooth": "None"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true,
+                "initialScale": 0.2
+              }
+            }
+          ],
+          "from": "Modelica.Mechanics.Rotational.Sources.Torque",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Blocks/Interfaces.mo",
+            "lineStart": 7,
+            "columnStart": 3,
+            "lineEnd": 36,
+            "columnEnd": 11
+          }
+        }
+      },
+      "coordinateSystem": {
+        "extent": [
+          [
+            -100,
+            -100
+          ],
+          [
+            100,
+            100
+          ]
+        ],
+        "preserveAspectRatio": true
+      }
+    },
+    "Modelica.Mechanics.Rotational.Interfaces.Support": {
+      "name": "Modelica.Mechanics.Rotational.Interfaces.Support",
+      "restriction": "connector",
+      "iconLayers": [
+        {
+          "from": "Modelica.Mechanics.Rotational.Interfaces.Support",
+          "shapes": [
+            {
+              "kind": "ellipse",
+              "extent": [
+                [
+                  -100,
+                  100
+                ],
+                [
+                  100,
+                  -100
+                ]
+              ],
+              "lineColor": [
+                0,
+                0,
+                0
+              ],
+              "fillColor": [
+                95,
+                95,
+                95
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "startAngle": 0,
+              "endAngle": 360,
+              "closure": "Chord"
+            },
+            {
+              "kind": "rectangle",
+              "extent": [
+                [
+                  -150,
+                  150
+                ],
+                [
+                  150,
+                  -150
+                ]
+              ],
+              "lineColor": [
+                192,
+                192,
+                192
+              ],
+              "fillColor": [
+                192,
+                192,
+                192
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "borderPattern": "None",
+              "radius": 0
+            },
+            {
+              "kind": "ellipse",
+              "extent": [
+                [
+                  -100,
+                  100
+                ],
+                [
+                  100,
+                  -100
+                ]
+              ],
+              "lineColor": [
+                0,
+                0,
+                0
+              ],
+              "fillColor": [
+                95,
+                95,
+                95
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "startAngle": 0,
+              "endAngle": 360,
+              "closure": "Chord"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        }
+      ],
+      "connectors": {},
+      "coordinateSystem": {
+        "extent": [
+          [
+            -100,
+            -100
+          ],
+          [
+            100,
+            100
+          ]
+        ],
+        "preserveAspectRatio": true
+      }
+    },
+    "Modelica.Mechanics.Rotational.Components.SpringDamper": {
+      "name": "Modelica.Mechanics.Rotational.Components.SpringDamper",
+      "restriction": "model",
+      "iconLayers": [
+        {
+          "from": "Modelica.Mechanics.Rotational.Components.SpringDamper",
+          "shapes": [
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -80,
+                  40
+                ],
+                [
+                  -60,
+                  40
+                ],
+                [
+                  -45,
+                  10
+                ],
+                [
+                  -15,
+                  70
+                ],
+                [
+                  15,
+                  10
+                ],
+                [
+                  45,
+                  70
+                ],
+                [
+                  60,
+                  40
+                ],
+                [
+                  80,
+                  40
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -80,
+                  40
+                ],
+                [
+                  -80,
+                  -40
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -80,
+                  -40
+                ],
+                [
+                  -50,
+                  -40
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "rectangle",
+              "extent": [
+                [
+                  -50,
+                  -10
+                ],
+                [
+                  40,
+                  -70
+                ]
+              ],
+              "lineColor": [
+                0,
+                0,
+                0
+              ],
+              "fillColor": [
+                192,
+                192,
+                192
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "borderPattern": "None",
+              "radius": 0
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -50,
+                  -10
+                ],
+                [
+                  70,
+                  -10
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -50,
+                  -70
+                ],
+                [
+                  70,
+                  -70
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  40,
+                  -40
+                ],
+                [
+                  80,
+                  -40
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  80,
+                  40
+                ],
+                [
+                  80,
+                  -40
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -90,
+                  0
+                ],
+                [
+                  -80,
+                  0
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  80,
+                  0
+                ],
+                [
+                  90,
+                  0
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  -150,
+                  -144
+                ],
+                [
+                  150,
+                  -104
+                ]
+              ],
+              "textString": "d=%d",
+              "fontSize": 0,
+              "textColor": [
+                -1,
+                -1,
+                -1
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            },
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  -190,
+                  110
+                ],
+                [
+                  190,
+                  70
+                ]
+              ],
+              "textString": "%name",
+              "fontSize": 0,
+              "textColor": [
+                0,
+                0,
+                255
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            },
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  -150,
+                  -108
+                ],
+                [
+                  150,
+                  -68
+                ]
+              ],
+              "textString": "c=%c",
+              "fontSize": 0,
+              "textColor": [
+                -1,
+                -1,
+                -1
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -100,
+                  -100
+                ],
+                [
+                  -100,
+                  -55
+                ],
+                [
+                  -5,
+                  -55
+                ]
+              ],
+              "color": [
+                191,
+                0,
+                0
+              ],
+              "pattern": "Dot",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        }
+      ],
+      "connectors": {
+        "flange_a": {
+          "name": "flange_a",
+          "typeName": "Modelica.Mechanics.Rotational.Interfaces.Flange_a",
+          "placement": {
+            "extent": [
+              [
+                -110,
+                -10
+              ],
+              [
+                -90,
+                10
+              ]
+            ]
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Mechanics.Rotational.Interfaces.Flange_a",
+              "shapes": [
+                {
+                  "kind": "ellipse",
+                  "extent": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "fillColor": [
+                    95,
+                    95,
+                    95
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "startAngle": 0,
+                  "endAngle": 360,
+                  "closure": "Chord"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true
+              }
+            }
+          ],
+          "from": "Modelica.Mechanics.Rotational.Interfaces.PartialCompliantWithRelativeStates",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Mechanics/Rotational/Interfaces/Flange_a.mo",
+            "lineStart": 2,
+            "columnStart": 1,
+            "lineEnd": 55,
+            "columnEnd": 13
+          }
+        },
+        "flange_b": {
+          "name": "flange_b",
+          "typeName": "Modelica.Mechanics.Rotational.Interfaces.Flange_b",
+          "placement": {
+            "extent": [
+              [
+                90,
+                -10
+              ],
+              [
+                110,
+                10
+              ]
+            ]
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Mechanics.Rotational.Interfaces.Flange_b",
+              "shapes": [
+                {
+                  "kind": "ellipse",
+                  "extent": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "fillColor": [
+                    255,
+                    255,
+                    255
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "startAngle": 0,
+                  "endAngle": 360,
+                  "closure": "Chord"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true
+              }
+            }
+          ],
+          "from": "Modelica.Mechanics.Rotational.Interfaces.PartialCompliantWithRelativeStates",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Mechanics/Rotational/Interfaces/Flange_b.mo",
+            "lineStart": 2,
+            "columnStart": 1,
+            "lineEnd": 56,
+            "columnEnd": 13
+          }
+        },
+        "heatPort": {
+          "name": "heatPort",
+          "typeName": "Modelica.Thermal.HeatTransfer.Interfaces.HeatPort_a",
+          "placement": {
+            "extent": [
+              [
+                -110,
+                -110
+              ],
+              [
+                -90,
+                -90
+              ]
+            ]
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Thermal.HeatTransfer.Interfaces.HeatPort_a",
+              "shapes": [
+                {
+                  "kind": "rectangle",
+                  "extent": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    191,
+                    0,
+                    0
+                  ],
+                  "fillColor": [
+                    191,
+                    0,
+                    0
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "borderPattern": "None",
+                  "radius": 0
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true
+              }
+            }
+          ],
+          "from": "Modelica.Thermal.HeatTransfer.Interfaces.PartialElementaryConditionalHeatPortWithoutT",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Thermal/HeatTransfer/Interfaces/HeatPort_a.mo",
+            "lineStart": 2,
+            "columnStart": 1,
+            "lineEnd": 37,
+            "columnEnd": 15
+          }
+        }
+      },
+      "coordinateSystem": {
+        "extent": [
+          [
+            -100,
+            -100
+          ],
+          [
+            100,
+            100
+          ]
+        ],
+        "preserveAspectRatio": true
+      }
+    },
+    "Modelica.Thermal.HeatTransfer.Interfaces.HeatPort_a": {
+      "name": "Modelica.Thermal.HeatTransfer.Interfaces.HeatPort_a",
+      "restriction": "connector",
+      "iconLayers": [
+        {
+          "from": "Modelica.Thermal.HeatTransfer.Interfaces.HeatPort_a",
+          "shapes": [
+            {
+              "kind": "rectangle",
+              "extent": [
+                [
+                  -100,
+                  100
+                ],
+                [
+                  100,
+                  -100
+                ]
+              ],
+              "lineColor": [
+                191,
+                0,
+                0
+              ],
+              "fillColor": [
+                191,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "borderPattern": "None",
+              "radius": 0
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        }
+      ],
+      "connectors": {},
+      "coordinateSystem": {
+        "extent": [
+          [
+            -100,
+            -100
+          ],
+          [
+            100,
+            100
+          ]
+        ],
+        "preserveAspectRatio": true
+      }
+    },
+    "Modelica.Blocks.Sources.KinematicPTP": {
+      "name": "Modelica.Blocks.Sources.KinematicPTP",
+      "restriction": "block",
+      "iconLayers": [
+        {
+          "from": "Modelica.Blocks.Icons.Block",
+          "shapes": [
+            {
+              "kind": "rectangle",
+              "extent": [
+                [
+                  -100,
+                  -100
+                ],
+                [
+                  100,
+                  100
+                ]
+              ],
+              "lineColor": [
+                0,
+                0,
+                127
+              ],
+              "fillColor": [
+                255,
+                255,
+                255
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "borderPattern": "None",
+              "radius": 0
+            },
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  -150,
+                  150
+                ],
+                [
+                  150,
+                  110
+                ]
+              ],
+              "textString": "%name",
+              "fontSize": 0,
+              "textColor": [
+                0,
+                0,
+                255
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        },
+        {
+          "from": "Modelica.Blocks.Sources.KinematicPTP",
+          "shapes": [
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -80,
+                  78
+                ],
+                [
+                  -80,
+                  -82
+                ]
+              ],
+              "color": [
+                192,
+                192,
+                192
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "polygon",
+              "points": [
+                [
+                  -80,
+                  90
+                ],
+                [
+                  -88,
+                  68
+                ],
+                [
+                  -72,
+                  68
+                ],
+                [
+                  -80,
+                  88
+                ],
+                [
+                  -80,
+                  90
+                ]
+              ],
+              "lineColor": [
+                192,
+                192,
+                192
+              ],
+              "fillColor": [
+                192,
+                192,
+                192
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -90,
+                  0
+                ],
+                [
+                  82,
+                  0
+                ]
+              ],
+              "color": [
+                192,
+                192,
+                192
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "polygon",
+              "points": [
+                [
+                  90,
+                  0
+                ],
+                [
+                  68,
+                  8
+                ],
+                [
+                  68,
+                  -8
+                ],
+                [
+                  90,
+                  0
+                ]
+              ],
+              "lineColor": [
+                192,
+                192,
+                192
+              ],
+              "fillColor": [
+                192,
+                192,
+                192
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -80,
+                  0
+                ],
+                [
+                  -70,
+                  0
+                ],
+                [
+                  -70,
+                  70
+                ],
+                [
+                  -30,
+                  70
+                ],
+                [
+                  -30,
+                  0
+                ],
+                [
+                  20,
+                  0
+                ],
+                [
+                  20,
+                  -70
+                ],
+                [
+                  60,
+                  -70
+                ],
+                [
+                  60,
+                  0
+                ],
+                [
+                  68,
+                  0
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  2,
+                  80
+                ],
+                [
+                  80,
+                  20
+                ]
+              ],
+              "textString": "acc",
+              "fontSize": 0,
+              "textColor": [
+                192,
+                192,
+                192
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            },
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  -150,
+                  -150
+                ],
+                [
+                  150,
+                  -110
+                ]
+              ],
+              "textString": "deltaq=%deltaq",
+              "fontSize": 0,
+              "textColor": [
+                -1,
+                -1,
+                -1
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        }
+      ],
+      "connectors": {
+        "y": {
+          "name": "y",
+          "typeName": "Modelica.Blocks.Interfaces.RealOutput",
+          "placement": {
+            "extent": [
+              [
+                100,
+                -10
+              ],
+              [
+                120,
+                10
+              ]
+            ]
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Blocks.Interfaces.RealOutput",
+              "shapes": [
+                {
+                  "kind": "polygon",
+                  "points": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      0
+                    ],
+                    [
+                      -100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    127
+                  ],
+                  "fillColor": [
+                    255,
+                    255,
+                    255
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "smooth": "None"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true
+              }
+            }
+          ],
+          "from": "Modelica.Blocks.Interfaces.MO",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Blocks/Interfaces.mo",
+            "lineStart": 38,
+            "columnStart": 3,
+            "lineEnd": 66,
+            "columnEnd": 11
+          }
+        }
+      },
+      "coordinateSystem": {
+        "extent": [
+          [
+            -100,
+            -100
+          ],
+          [
+            100,
+            100
+          ]
+        ],
+        "preserveAspectRatio": true
+      }
+    },
+    "Modelica.Blocks.Continuous.Integrator": {
+      "name": "Modelica.Blocks.Continuous.Integrator",
+      "restriction": "block",
+      "iconLayers": [
+        {
+          "from": "Modelica.Blocks.Icons.Block",
+          "shapes": [
+            {
+              "kind": "rectangle",
+              "extent": [
+                [
+                  -100,
+                  -100
+                ],
+                [
+                  100,
+                  100
+                ]
+              ],
+              "lineColor": [
+                0,
+                0,
+                127
+              ],
+              "fillColor": [
+                255,
+                255,
+                255
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "borderPattern": "None",
+              "radius": 0
+            },
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  -150,
+                  150
+                ],
+                [
+                  150,
+                  110
+                ]
+              ],
+              "textString": "%name",
+              "fontSize": 0,
+              "textColor": [
+                0,
+                0,
+                255
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        },
+        {
+          "from": "Modelica.Blocks.Continuous.Integrator",
+          "shapes": [
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -80,
+                  78
+                ],
+                [
+                  -80,
+                  -90
+                ]
+              ],
+              "color": [
+                192,
+                192,
+                192
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "polygon",
+              "points": [
+                [
+                  -80,
+                  90
+                ],
+                [
+                  -88,
+                  68
+                ],
+                [
+                  -72,
+                  68
+                ],
+                [
+                  -80,
+                  90
+                ]
+              ],
+              "lineColor": [
+                192,
+                192,
+                192
+              ],
+              "fillColor": [
+                192,
+                192,
+                192
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -90,
+                  -80
+                ],
+                [
+                  82,
+                  -80
+                ]
+              ],
+              "color": [
+                192,
+                192,
+                192
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "polygon",
+              "points": [
+                [
+                  90,
+                  -80
+                ],
+                [
+                  68,
+                  -72
+                ],
+                [
+                  68,
+                  -88
+                ],
+                [
+                  90,
+                  -80
+                ]
+              ],
+              "lineColor": [
+                192,
+                192,
+                192
+              ],
+              "fillColor": [
+                192,
+                192,
+                192
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "smooth": "None"
+            },
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  0,
+                  -70
+                ],
+                [
+                  60,
+                  -10
+                ]
+              ],
+              "textString": "I",
+              "fontSize": 0,
+              "textColor": [
+                192,
+                192,
+                192
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            },
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  -150,
+                  -150
+                ],
+                [
+                  150,
+                  -110
+                ]
+              ],
+              "textString": "k=%k",
+              "fontSize": 0,
+              "textColor": [
+                -1,
+                -1,
+                -1
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -80,
+                  -80
+                ],
+                [
+                  80,
+                  80
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                127
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  60,
+                  -100
+                ],
+                [
+                  60,
+                  -80
+                ]
+              ],
+              "color": [
+                255,
+                0,
+                255
+              ],
+              "pattern": "Dot",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  -28,
+                  -62
+                ],
+                [
+                  94,
+                  -86
+                ]
+              ],
+              "textString": "reset",
+              "fontSize": 0,
+              "textColor": [
+                -1,
+                -1,
+                -1
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        }
+      ],
+      "connectors": {
+        "u": {
+          "name": "u",
+          "typeName": "Modelica.Blocks.Interfaces.RealInput",
+          "placement": {
+            "extent": [
+              [
+                -140,
+                -20
+              ],
+              [
+                -100,
+                20
+              ]
+            ]
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Blocks.Interfaces.RealInput",
+              "shapes": [
+                {
+                  "kind": "polygon",
+                  "points": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      0
+                    ],
+                    [
+                      -100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    127
+                  ],
+                  "fillColor": [
+                    0,
+                    0,
+                    127
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "smooth": "None"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true,
+                "initialScale": 0.2
+              }
+            }
+          ],
+          "from": "Modelica.Blocks.Interfaces.SISO",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Blocks/Interfaces.mo",
+            "lineStart": 7,
+            "columnStart": 3,
+            "lineEnd": 36,
+            "columnEnd": 11
+          }
+        },
+        "y": {
+          "name": "y",
+          "typeName": "Modelica.Blocks.Interfaces.RealOutput",
+          "placement": {
+            "extent": [
+              [
+                100,
+                -10
+              ],
+              [
+                120,
+                10
+              ]
+            ]
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Blocks.Interfaces.RealOutput",
+              "shapes": [
+                {
+                  "kind": "polygon",
+                  "points": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      0
+                    ],
+                    [
+                      -100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    127
+                  ],
+                  "fillColor": [
+                    255,
+                    255,
+                    255
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "smooth": "None"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true
+              }
+            }
+          ],
+          "from": "Modelica.Blocks.Interfaces.SISO",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Blocks/Interfaces.mo",
+            "lineStart": 38,
+            "columnStart": 3,
+            "lineEnd": 66,
+            "columnEnd": 11
+          }
+        },
+        "reset": {
+          "name": "reset",
+          "typeName": "Modelica.Blocks.Interfaces.BooleanInput",
+          "placement": {
+            "extent": [
+              [
+                -20,
+                -20
+              ],
+              [
+                20,
+                20
+              ]
+            ],
+            "origin": [
+              60,
+              -120
+            ],
+            "rotation": 90
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Blocks.Interfaces.BooleanInput",
+              "shapes": [
+                {
+                  "kind": "polygon",
+                  "points": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      0
+                    ],
+                    [
+                      -100,
+                      -100
+                    ],
+                    [
+                      -100,
+                      100
+                    ]
+                  ],
+                  "lineColor": [
+                    255,
+                    0,
+                    255
+                  ],
+                  "fillColor": [
+                    255,
+                    0,
+                    255
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "smooth": "None"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true,
+                "initialScale": 0.2
+              }
+            }
+          ],
+          "from": "Modelica.Blocks.Continuous.Integrator",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Blocks/Interfaces.mo",
+            "lineStart": 68,
+            "columnStart": 3,
+            "lineEnd": 94,
+            "columnEnd": 11
+          }
+        },
+        "set": {
+          "name": "set",
+          "typeName": "Modelica.Blocks.Interfaces.RealInput",
+          "placement": {
+            "extent": [
+              [
+                -20,
+                -20
+              ],
+              [
+                20,
+                20
+              ]
+            ],
+            "origin": [
+              60,
+              120
+            ],
+            "rotation": 270
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Blocks.Interfaces.RealInput",
+              "shapes": [
+                {
+                  "kind": "polygon",
+                  "points": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      0
+                    ],
+                    [
+                      -100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    127
+                  ],
+                  "fillColor": [
+                    0,
+                    0,
+                    127
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "smooth": "None"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true,
+                "initialScale": 0.2
+              }
+            }
+          ],
+          "from": "Modelica.Blocks.Continuous.Integrator",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Blocks/Interfaces.mo",
+            "lineStart": 7,
+            "columnStart": 3,
+            "lineEnd": 36,
+            "columnEnd": 11
+          }
+        }
+      },
+      "coordinateSystem": {
+        "extent": [
+          [
+            -100,
+            -100
+          ],
+          [
+            100,
+            100
+          ]
+        ],
+        "preserveAspectRatio": true
+      }
+    },
+    "Modelica.Blocks.Interfaces.BooleanInput": {
+      "name": "Modelica.Blocks.Interfaces.BooleanInput",
+      "restriction": "connector",
+      "iconLayers": [
+        {
+          "from": "Modelica.Blocks.Interfaces.BooleanInput",
+          "shapes": [
+            {
+              "kind": "polygon",
+              "points": [
+                [
+                  -100,
+                  100
+                ],
+                [
+                  100,
+                  0
+                ],
+                [
+                  -100,
+                  -100
+                ],
+                [
+                  -100,
+                  100
+                ]
+              ],
+              "lineColor": [
+                255,
+                0,
+                255
+              ],
+              "fillColor": [
+                255,
+                0,
+                255
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "smooth": "None"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true,
+            "initialScale": 0.2
+          }
+        }
+      ],
+      "connectors": {},
+      "coordinateSystem": {
+        "extent": [
+          [
+            -100,
+            -100
+          ],
+          [
+            100,
+            100
+          ]
+        ],
+        "preserveAspectRatio": true,
+        "initialScale": 0.2
+      }
+    },
+    "Modelica.Mechanics.Rotational.Sensors.SpeedSensor": {
+      "name": "Modelica.Mechanics.Rotational.Sensors.SpeedSensor",
+      "restriction": "model",
+      "iconLayers": [
+        {
+          "from": "Modelica.Icons.RoundSensor",
+          "shapes": [
+            {
+              "kind": "ellipse",
+              "extent": [
+                [
+                  -70,
+                  -70
+                ],
+                [
+                  70,
+                  70
+                ]
+              ],
+              "lineColor": [
+                0,
+                0,
+                0
+              ],
+              "fillColor": [
+                245,
+                245,
+                245
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "startAngle": 0,
+              "endAngle": 360,
+              "closure": "Chord"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  0,
+                  70
+                ],
+                [
+                  0,
+                  40
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  22.9,
+                  32.8
+                ],
+                [
+                  40.2,
+                  57.3
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -22.9,
+                  32.8
+                ],
+                [
+                  -40.2,
+                  57.3
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  37.6,
+                  13.7
+                ],
+                [
+                  65.8,
+                  23.9
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -37.6,
+                  13.7
+                ],
+                [
+                  -65.8,
+                  23.9
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "ellipse",
+              "extent": [
+                [
+                  -12,
+                  -12
+                ],
+                [
+                  12,
+                  12
+                ]
+              ],
+              "lineColor": [
+                64,
+                64,
+                64
+              ],
+              "fillColor": [
+                255,
+                255,
+                255
+              ],
+              "pattern": "Solid",
+              "fillPattern": "None",
+              "lineThickness": 0.25,
+              "startAngle": 0,
+              "endAngle": 360,
+              "closure": "Chord"
+            },
+            {
+              "kind": "polygon",
+              "points": [
+                [
+                  -5,
+                  0
+                ],
+                [
+                  -2,
+                  60
+                ],
+                [
+                  0,
+                  65
+                ],
+                [
+                  2,
+                  60
+                ],
+                [
+                  5,
+                  0
+                ]
+              ],
+              "lineColor": [
+                0,
+                0,
+                0
+              ],
+              "fillColor": [
+                64,
+                64,
+                64
+              ],
+              "pattern": "None",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "smooth": "None"
+            },
+            {
+              "kind": "ellipse",
+              "extent": [
+                [
+                  -7,
+                  -7
+                ],
+                [
+                  7,
+                  7
+                ]
+              ],
+              "lineColor": [
+                0,
+                0,
+                0
+              ],
+              "fillColor": [
+                64,
+                64,
+                64
+              ],
+              "pattern": "None",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "startAngle": 0,
+              "endAngle": 360,
+              "closure": "Chord"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": false
+          }
+        },
+        {
+          "from": "Modelica.Mechanics.Rotational.Interfaces.PartialAbsoluteSensor",
+          "shapes": [
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -70,
+                  0
+                ],
+                [
+                  -90,
+                  0
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  70,
+                  0
+                ],
+                [
+                  100,
+                  0
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                127
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  -150,
+                  80
+                ],
+                [
+                  150,
+                  120
+                ]
+              ],
+              "textString": "%name",
+              "fontSize": 0,
+              "textColor": [
+                0,
+                0,
+                255
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        },
+        {
+          "from": "Modelica.Mechanics.Rotational.Sensors.SpeedSensor",
+          "shapes": [
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  -50,
+                  -14
+                ],
+                [
+                  50,
+                  -54
+                ]
+              ],
+              "textString": "rad/s",
+              "fontSize": 0,
+              "textColor": [
+                64,
+                64,
+                64
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        }
+      ],
+      "connectors": {
+        "flange": {
+          "name": "flange",
+          "typeName": "Modelica.Mechanics.Rotational.Interfaces.Flange_a",
+          "placement": {
+            "extent": [
+              [
+                -110,
+                -10
+              ],
+              [
+                -90,
+                10
+              ]
+            ]
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Mechanics.Rotational.Interfaces.Flange_a",
+              "shapes": [
+                {
+                  "kind": "ellipse",
+                  "extent": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "fillColor": [
+                    95,
+                    95,
+                    95
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "startAngle": 0,
+                  "endAngle": 360,
+                  "closure": "Chord"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true
+              }
+            }
+          ],
+          "from": "Modelica.Mechanics.Rotational.Interfaces.PartialAbsoluteSensor",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Mechanics/Rotational/Interfaces/Flange_a.mo",
+            "lineStart": 2,
+            "columnStart": 1,
+            "lineEnd": 55,
+            "columnEnd": 13
+          }
+        },
+        "w": {
+          "name": "w",
+          "typeName": "Modelica.Blocks.Interfaces.RealOutput",
+          "placement": {
+            "extent": [
+              [
+                100,
+                -10
+              ],
+              [
+                120,
+                10
+              ]
+            ]
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Blocks.Interfaces.RealOutput",
+              "shapes": [
+                {
+                  "kind": "polygon",
+                  "points": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      0
+                    ],
+                    [
+                      -100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    127
+                  ],
+                  "fillColor": [
+                    255,
+                    255,
+                    255
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "smooth": "None"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true
+              }
+            }
+          ],
+          "from": "Modelica.Mechanics.Rotational.Sensors.SpeedSensor",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Blocks/Interfaces.mo",
+            "lineStart": 38,
+            "columnStart": 3,
+            "lineEnd": 66,
+            "columnEnd": 11
+          }
+        }
+      },
+      "coordinateSystem": {
+        "extent": [
+          [
+            -100,
+            -100
+          ],
+          [
+            100,
+            100
+          ]
+        ],
+        "preserveAspectRatio": true
+      }
+    },
+    "Modelica.Mechanics.Rotational.Sources.ConstantTorque": {
+      "name": "Modelica.Mechanics.Rotational.Sources.ConstantTorque",
+      "restriction": "model",
+      "iconLayers": [
+        {
+          "from": "Modelica.Mechanics.Rotational.Interfaces.PartialElementaryOneFlangeAndSupport2",
+          "shapes": [
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -50,
+                  -120
+                ],
+                [
+                  -30,
+                  -100
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -30,
+                  -120
+                ],
+                [
+                  -10,
+                  -100
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -10,
+                  -120
+                ],
+                [
+                  10,
+                  -100
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  10,
+                  -120
+                ],
+                [
+                  30,
+                  -100
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -30,
+                  -100
+                ],
+                [
+                  30,
+                  -100
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        },
+        {
+          "from": "Modelica.Mechanics.Rotational.Interfaces.PartialTorque",
+          "shapes": [
+            {
+              "kind": "rectangle",
+              "extent": [
+                [
+                  -96,
+                  96
+                ],
+                [
+                  96,
+                  -96
+                ]
+              ],
+              "lineColor": [
+                255,
+                255,
+                255
+              ],
+              "fillColor": [
+                255,
+                255,
+                255
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "borderPattern": "None",
+              "radius": 0
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  0,
+                  -62
+                ],
+                [
+                  0,
+                  -100
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  -150,
+                  150
+                ],
+                [
+                  150,
+                  110
+                ]
+              ],
+              "textString": "%name",
+              "fontSize": 0,
+              "textColor": [
+                0,
+                0,
+                255
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            },
+            {
+              "kind": "polygon",
+              "points": [
+                [
+                  94,
+                  26
+                ],
+                [
+                  80,
+                  84
+                ],
+                [
+                  50,
+                  62
+                ],
+                [
+                  94,
+                  26
+                ]
+              ],
+              "lineColor": [
+                0,
+                0,
+                0
+              ],
+              "fillColor": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "smooth": "None"
+            },
+            {
+              "kind": "polygon",
+              "points": [
+                [
+                  -50,
+                  -98
+                ],
+                [
+                  -30,
+                  -80
+                ],
+                [
+                  -42,
+                  -72
+                ],
+                [
+                  -50,
+                  -98
+                ]
+              ],
+              "lineColor": [
+                0,
+                0,
+                0
+              ],
+              "fillColor": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "fillPattern": "Solid",
+              "lineThickness": 0.25,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -50,
+                  -120
+                ],
+                [
+                  -30,
+                  -100
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -30,
+                  -120
+                ],
+                [
+                  -10,
+                  -100
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -10,
+                  -120
+                ],
+                [
+                  10,
+                  -100
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  10,
+                  -120
+                ],
+                [
+                  30,
+                  -100
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -30,
+                  -100
+                ],
+                [
+                  30,
+                  -100
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -48,
+                  -92
+                ],
+                [
+                  -38,
+                  -76
+                ],
+                [
+                  -18,
+                  -64
+                ],
+                [
+                  0,
+                  -60
+                ],
+                [
+                  18,
+                  -64
+                ],
+                [
+                  38,
+                  -76
+                ],
+                [
+                  48,
+                  -92
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "Bezier"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -86,
+                  40
+                ],
+                [
+                  -74,
+                  66
+                ],
+                [
+                  -56,
+                  86
+                ],
+                [
+                  -20,
+                  100
+                ],
+                [
+                  20,
+                  100
+                ],
+                [
+                  60,
+                  80
+                ],
+                [
+                  82,
+                  48
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                0
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "Bezier"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        },
+        {
+          "from": "Modelica.Mechanics.Rotational.Sources.ConstantTorque",
+          "shapes": [
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -75,
+                  10
+                ],
+                [
+                  75,
+                  10
+                ]
+              ],
+              "color": [
+                192,
+                192,
+                192
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  0,
+                  60
+                ],
+                [
+                  0,
+                  0
+                ]
+              ],
+              "color": [
+                192,
+                192,
+                192
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "line",
+              "points": [
+                [
+                  -75,
+                  30
+                ],
+                [
+                  75,
+                  30
+                ]
+              ],
+              "color": [
+                0,
+                0,
+                127
+              ],
+              "pattern": "Solid",
+              "thickness": 0.25,
+              "arrow": [
+                "None",
+                "None"
+              ],
+              "arrowSize": 3,
+              "smooth": "None"
+            },
+            {
+              "kind": "text",
+              "extent": [
+                [
+                  -120,
+                  -40
+                ],
+                [
+                  120,
+                  -10
+                ]
+              ],
+              "textString": "%tau_constant",
+              "fontSize": 0,
+              "textColor": [
+                -1,
+                -1,
+                -1
+              ],
+              "textStyle": [],
+              "horizontalAlignment": "Center"
+            }
+          ],
+          "coordinateSystem": {
+            "extent": [
+              [
+                -100,
+                -100
+              ],
+              [
+                100,
+                100
+              ]
+            ],
+            "preserveAspectRatio": true
+          }
+        }
+      ],
+      "connectors": {
+        "flange": {
+          "name": "flange",
+          "typeName": "Modelica.Mechanics.Rotational.Interfaces.Flange_b",
+          "placement": {
+            "extent": [
+              [
+                90,
+                -10
+              ],
+              [
+                110,
+                10
+              ]
+            ]
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Mechanics.Rotational.Interfaces.Flange_b",
+              "shapes": [
+                {
+                  "kind": "ellipse",
+                  "extent": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "fillColor": [
+                    255,
+                    255,
+                    255
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "startAngle": 0,
+                  "endAngle": 360,
+                  "closure": "Chord"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true
+              }
+            }
+          ],
+          "from": "Modelica.Mechanics.Rotational.Interfaces.PartialElementaryOneFlangeAndSupport2",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Mechanics/Rotational/Interfaces/Flange_b.mo",
+            "lineStart": 2,
+            "columnStart": 1,
+            "lineEnd": 56,
+            "columnEnd": 13
+          }
+        },
+        "support": {
+          "name": "support",
+          "typeName": "Modelica.Mechanics.Rotational.Interfaces.Support",
+          "placement": {
+            "extent": [
+              [
+                -10,
+                -110
+              ],
+              [
+                10,
+                -90
+              ]
+            ]
+          },
+          "iconLayers": [
+            {
+              "from": "Modelica.Mechanics.Rotational.Interfaces.Support",
+              "shapes": [
+                {
+                  "kind": "ellipse",
+                  "extent": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "fillColor": [
+                    95,
+                    95,
+                    95
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "startAngle": 0,
+                  "endAngle": 360,
+                  "closure": "Chord"
+                },
+                {
+                  "kind": "rectangle",
+                  "extent": [
+                    [
+                      -150,
+                      150
+                    ],
+                    [
+                      150,
+                      -150
+                    ]
+                  ],
+                  "lineColor": [
+                    192,
+                    192,
+                    192
+                  ],
+                  "fillColor": [
+                    192,
+                    192,
+                    192
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "borderPattern": "None",
+                  "radius": 0
+                },
+                {
+                  "kind": "ellipse",
+                  "extent": [
+                    [
+                      -100,
+                      100
+                    ],
+                    [
+                      100,
+                      -100
+                    ]
+                  ],
+                  "lineColor": [
+                    0,
+                    0,
+                    0
+                  ],
+                  "fillColor": [
+                    95,
+                    95,
+                    95
+                  ],
+                  "pattern": "Solid",
+                  "fillPattern": "Solid",
+                  "lineThickness": 0.25,
+                  "startAngle": 0,
+                  "endAngle": 360,
+                  "closure": "Chord"
+                }
+              ],
+              "coordinateSystem": {
+                "extent": [
+                  [
+                    -100,
+                    -100
+                  ],
+                  [
+                    100,
+                    100
+                  ]
+                ],
+                "preserveAspectRatio": true
+              }
+            }
+          ],
+          "from": "Modelica.Mechanics.Rotational.Interfaces.PartialElementaryOneFlangeAndSupport2",
+          "source": {
+            "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Mechanics/Rotational/Interfaces/Support.mo",
+            "lineStart": 2,
+            "columnStart": 1,
+            "lineEnd": 62,
+            "columnEnd": 12
+          }
+        }
+      },
+      "coordinateSystem": {
+        "extent": [
+          [
+            -100,
+            -100
+          ],
+          [
+            100,
+            100
+          ]
+        ],
+        "preserveAspectRatio": true
+      }
+    }
+  },
+  "components": {
+    "PI": {
+      "name": "PI",
+      "classRef": "Modelica.Blocks.Continuous.LimPID",
+      "placement": {
+        "extent": [
+          [
+            -56,
+            -20
+          ],
+          [
+            -36,
+            0
+          ]
+        ]
+      },
+      "modifiers": {
+        "k": "100",
+        "Ti": "0.1",
+        "yMax": "12",
+        "Ni": "0.1",
+        "initType": "Modelica.Blocks.Types.Init.SteadyState",
+        "controllerType": "Modelica.Blocks.Types.SimpleController.PI",
+        "limiter": {
+          "u": {
+            "start": "0"
+          }
+        },
+        "Td": "0.1"
+      },
+      "source": {
+        "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Blocks/Continuous.mo",
+        "lineStart": 759,
+        "columnStart": 3,
+        "lineEnd": 1117,
+        "columnEnd": 13
+      }
+    },
+    "inertia1": {
+      "name": "inertia1",
+      "classRef": "Modelica.Mechanics.Rotational.Components.Inertia",
+      "placement": {
+        "extent": [
+          [
+            2,
+            -20
+          ],
+          [
+            22,
+            0
+          ]
+        ]
+      },
+      "modifiers": {
+        "phi": {
+          "fixed": "true",
+          "start": "0"
+        },
+        "J": "1",
+        "a": {
+          "fixed": "true",
+          "start": "0"
+        }
+      },
+      "source": {
+        "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Mechanics/Rotational/Components/Inertia.mo",
+        "lineStart": 2,
+        "columnStart": 1,
+        "lineEnd": 65,
+        "columnEnd": 12
+      }
+    },
+    "torque": {
+      "name": "torque",
+      "classRef": "Modelica.Mechanics.Rotational.Sources.Torque",
+      "placement": {
+        "extent": [
+          [
+            -25,
+            -20
+          ],
+          [
+            -5,
+            0
+          ]
+        ]
+      },
+      "source": {
+        "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Mechanics/Rotational/Sources/Torque.mo",
+        "lineStart": 2,
+        "columnStart": 1,
+        "lineEnd": 43,
+        "columnEnd": 11
+      }
+    },
+    "spring": {
+      "name": "spring",
+      "classRef": "Modelica.Mechanics.Rotational.Components.SpringDamper",
+      "placement": {
+        "extent": [
+          [
+            32,
+            -20
+          ],
+          [
+            52,
+            0
+          ]
+        ]
+      },
+      "modifiers": {
+        "c": "1e4",
+        "d": "100",
+        "stateSelect": "StateSelect.prefer",
+        "w_rel": {
+          "fixed": "true"
+        }
+      },
+      "source": {
+        "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Mechanics/Rotational/Components/SpringDamper.mo",
+        "lineStart": 2,
+        "columnStart": 1,
+        "lineEnd": 66,
+        "columnEnd": 17
+      }
+    },
+    "inertia2": {
+      "name": "inertia2",
+      "classRef": "Modelica.Mechanics.Rotational.Components.Inertia",
+      "placement": {
+        "extent": [
+          [
+            60,
+            -20
+          ],
+          [
+            80,
+            0
+          ]
+        ]
+      },
+      "modifiers": {
+        "J": "2"
+      },
+      "source": {
+        "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Mechanics/Rotational/Components/Inertia.mo",
+        "lineStart": 2,
+        "columnStart": 1,
+        "lineEnd": 65,
+        "columnEnd": 12
+      }
+    },
+    "kinematicPTP": {
+      "name": "kinematicPTP",
+      "classRef": "Modelica.Blocks.Sources.KinematicPTP",
+      "placement": {
+        "extent": [
+          [
+            -92,
+            20
+          ],
+          [
+            -72,
+            40
+          ]
+        ]
+      },
+      "modifiers": {
+        "startTime": "0.5",
+        "deltaq": "{driveAngle}",
+        "qd_max": "{1}",
+        "qdd_max": "{1}"
+      },
+      "source": {
+        "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Blocks/Sources.mo",
+        "lineStart": 987,
+        "columnStart": 3,
+        "lineEnd": 1117,
+        "columnEnd": 19
+      }
+    },
+    "integrator": {
+      "name": "integrator",
+      "classRef": "Modelica.Blocks.Continuous.Integrator",
+      "placement": {
+        "extent": [
+          [
+            -63,
+            20
+          ],
+          [
+            -43,
+            40
+          ]
+        ]
+      },
+      "modifiers": {
+        "initType": "Modelica.Blocks.Types.Init.InitialState"
+      },
+      "source": {
+        "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Blocks/Continuous.mo",
+        "lineStart": 8,
+        "columnStart": 3,
+        "lineEnd": 125,
+        "columnEnd": 17
+      }
+    },
+    "speedSensor": {
+      "name": "speedSensor",
+      "classRef": "Modelica.Mechanics.Rotational.Sensors.SpeedSensor",
+      "placement": {
+        "extent": [
+          [
+            22,
+            -50
+          ],
+          [
+            2,
+            -30
+          ]
+        ]
+      },
+      "source": {
+        "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Mechanics/Rotational/Sensors/SpeedSensor.mo",
+        "lineStart": 2,
+        "columnStart": 1,
+        "lineEnd": 27,
+        "columnEnd": 16
+      }
+    },
+    "loadTorque": {
+      "name": "loadTorque",
+      "classRef": "Modelica.Mechanics.Rotational.Sources.ConstantTorque",
+      "placement": {
+        "extent": [
+          [
+            98,
+            -15
+          ],
+          [
+            88,
+            -5
+          ]
+        ]
+      },
+      "modifiers": {
+        "tau_constant": "10",
+        "useSupport": "false"
+      },
+      "source": {
+        "filename": "/home/dr14/.openmodelica/libraries/Modelica 4.0.0+maint.om/Mechanics/Rotational/Sources/ConstantTorque.mo",
+        "lineStart": 2,
+        "columnStart": 1,
+        "lineEnd": 31,
+        "columnEnd": 19
+      }
+    }
+  },
+  "connectors": {},
+  "connections": [
+    {
+      "lhs": {
+        "component": "spring",
+        "port": "flange_b"
+      },
+      "rhs": {
+        "component": "inertia2",
+        "port": "flange_a"
+      },
+      "waypoints": [
+        [
+          52,
+          -10
+        ],
+        [
+          60,
+          -10
+        ]
+      ]
+    },
+    {
+      "lhs": {
+        "component": "inertia1",
+        "port": "flange_b"
+      },
+      "rhs": {
+        "component": "spring",
+        "port": "flange_a"
+      },
+      "waypoints": [
+        [
+          22,
+          -10
+        ],
+        [
+          32,
+          -10
+        ]
+      ]
+    },
+    {
+      "lhs": {
+        "component": "torque",
+        "port": "flange"
+      },
+      "rhs": {
+        "component": "inertia1",
+        "port": "flange_a"
+      },
+      "waypoints": [
+        [
+          -5,
+          -10
+        ],
+        [
+          2,
+          -10
+        ]
+      ]
+    },
+    {
+      "lhs": {
+        "component": "kinematicPTP",
+        "port": "y"
+      },
+      "rhs": {
+        "component": "integrator",
+        "port": "u"
+      },
+      "waypoints": [
+        [
+          -71,
+          30
+        ],
+        [
+          -65,
+          30
+        ]
+      ]
+    },
+    {
+      "lhs": {
+        "component": "speedSensor",
+        "port": "flange"
+      },
+      "rhs": {
+        "component": "inertia1",
+        "port": "flange_b"
+      },
+      "waypoints": [
+        [
+          22,
+          -40
+        ],
+        [
+          22,
+          -10
+        ]
+      ]
+    },
+    {
+      "lhs": {
+        "component": "loadTorque",
+        "port": "flange"
+      },
+      "rhs": {
+        "component": "inertia2",
+        "port": "flange_b"
+      },
+      "waypoints": [
+        [
+          88,
+          -10
+        ],
+        [
+          80,
+          -10
+        ]
+      ]
+    },
+    {
+      "lhs": {
+        "component": "PI",
+        "port": "y"
+      },
+      "rhs": {
+        "component": "torque",
+        "port": "tau"
+      },
+      "waypoints": [
+        [
+          -35,
+          -10
+        ],
+        [
+          -27,
+          -10
+        ]
+      ]
+    },
+    {
+      "lhs": {
+        "component": "speedSensor",
+        "port": "w"
+      },
+      "rhs": {
+        "component": "PI",
+        "port": "u_m"
+      },
+      "waypoints": [
+        [
+          1,
+          -40
+        ],
+        [
+          -46,
+          -40
+        ],
+        [
+          -46,
+          -22
+        ]
+      ]
+    },
+    {
+      "lhs": {
+        "component": "integrator",
+        "port": "y"
+      },
+      "rhs": {
+        "component": "PI",
+        "port": "u_s"
+      },
+      "waypoints": [
+        [
+          -42,
+          30
+        ],
+        [
+          -37,
+          30
+        ],
+        [
+          -37,
+          11
+        ],
+        [
+          -67,
+          11
+        ],
+        [
+          -67,
+          -10
+        ],
+        [
+          -58,
+          -10
+        ]
+      ]
+    }
+  ],
+  "coordinateSystem": {
+    "extent": [
+      [
+        -100,
+        -100
+      ],
+      [
+        100,
+        100
+      ]
+    ],
+    "preserveAspectRatio": true
+  }
+}
