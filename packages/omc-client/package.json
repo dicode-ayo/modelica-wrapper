@@ -18,13 +18,15 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "OMC_INTEGRATION=0 vitest run",
-    "capture-modelinstance-fixtures": "node scripts/capture-modelinstance-fixtures.mjs"
+    "capture-modelinstance-fixtures": "node scripts/capture-modelinstance-fixtures.mjs",
+    "check-modelinstance-schema-drift": "node scripts/check-modelinstance-schema-drift.mjs"
   },
   "dependencies": {
     "zeromq": "^6.1.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@apidevtools/json-schema-ref-parser": "^15.3.5",
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"

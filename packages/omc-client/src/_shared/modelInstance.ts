@@ -1,15 +1,28 @@
 /**
  * Recursive Zod schemas for OMC's `getModelInstance` JSON tree.
  *
+ * Source of truth: OpenModelica's canonical JSON Schemas, vendored at
+ * `packages/omc-client/_schemas/{getModelInstance,expression}.schema.json`.
+ * Those files include the upstream commit hash and license attribution; see
+ * `_schemas/README.md`. Drift against upstream is monitored via
+ * `pnpm check-modelinstance-schema-drift` (also runnable from CI on a cron).
+ *
+ * Why hand-rolled despite the canonical source: codegen tools we tried
+ * (`json-schema-to-zod`) either dropped the `description` metadata that PR #4's
+ * MCP-generation pipeline depends on, or unrolled the recursive Model→Element→
+ * Component cycle into a 15k-line single expression. A small hand-rolled module
+ * with `z.lazy()` seams and `z.discriminatedUnion` for `$kind` produces cleaner
+ * Zod and trivial diffs against future upstream schema bumps. The drift script
+ * tells us when to re-cross-check.
+ *
  * Drives both `getModelInstance` and `getModelInstanceAnnotation` (the
  * annotation-only variant is a strict subset — same root shape, fewer
- * populated fields). The schema design was originally derived from OMC
- * 1.26.7 captures of `Modelica.Blocks.Math.Sin` (leaf block) and
- * `Modelica.Blocks.Examples.PID_Controller` (full diagram with inheritance,
- * sub-component types, connections, and Dialog-enable expressions); those
- * same two classes are now re-captured live each test run by
- * `test/modelInstance.integration.test.ts`. Regenerate inspectable fixtures
- * on demand with `pnpm capture-modelinstance-fixtures` (gitignored output).
+ * populated fields). Cross-checked against OMC 1.26.7 captures of
+ * `Modelica.Blocks.Math.Sin` (leaf block) and `Modelica.Blocks.Examples.PID_Controller`
+ * (full diagram with inheritance, sub-component types, connections, and
+ * Dialog-enable expressions); those same classes are re-captured live each
+ * test run by `test/modelInstance.integration.test.ts`. Regenerate inspectable
+ * fixtures on demand with `pnpm capture-modelinstance-fixtures` (gitignored output).
  *
  * Every object that can carry OMC-version-specific extras uses
  * `.passthrough()`: we'd rather forward unknown fields verbatim than throw on
