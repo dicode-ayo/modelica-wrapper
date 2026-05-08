@@ -1,6 +1,10 @@
 /**
  * OMC: `function buildModelFMU`
  *
+ * Translates a Modelica model into a Functional Mockup Unit (FMU). All
+ * arguments other than `className` have defaults; returns the path to the
+ * generated `.fmu` file.
+ *
  * ```modelica
  * function buildModelFMU
  *   input TypeName className;
@@ -22,19 +26,22 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
 
 export const BuildModelFMUInputSchema = z.object({
-  typeName: z.string(),
-  version: z.enum(["1.0", "2.0", "3.0"]).optional().default("2.0"),
-  fmuType: z.enum(["me", "cs", "me_cs"]).optional().default("me"),
-  fileNamePrefix: z.string().optional().default("<default>"),
-  platforms: z.array(z.string()).optional().default(["static"]),
-  includeResources: z.boolean().optional().default(false),
+  typeName: z.string().describe("Class to export as an FMU."),
+  version: z.enum(["1.0", "2.0", "3.0"]).optional().default("2.0").describe("FMI specification version to target."),
+  fmuType: z.enum(["me", "cs", "me_cs"]).optional().default("me").describe("FMU kind: model exchange (`me`), co-simulation (`cs`), or both (`me_cs`)."),
+  fileNamePrefix: z.string().optional().default("<default>").describe('Prefix for generated FMU filename; "<default>" lets OMC pick.'),
+  platforms: z.array(z.string()).optional().default(["static"]).describe('Target platforms for the FMU binaries (e.g. ["static"], ["x86_64-linux-gnu"]).'),
+  includeResources: z.boolean().optional().default(false).describe("Include resource files in the FMU. (OMC docs: deprecated and has no effect; passed through positionally.)"),
 });
 export type BuildModelFMUInput = z.input<typeof BuildModelFMUInputSchema>;
 
 export const BuildModelFMUOutputSchema = z.object({
-  generatedFileName: z.string(),
+  generatedFileName: z.string().describe("Path to the generated `.fmu` file on disk."),
 });
 export type BuildModelFMUOutput = z.infer<typeof BuildModelFMUOutputSchema>;
+
+export const BuildModelFMUDescription =
+  "Translate a Modelica model into a Functional Mockup Unit (FMU) and return the generated file path.";
 
 export async function buildModelFMU(
   ctx: CallContext,

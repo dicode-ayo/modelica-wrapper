@@ -22,7 +22,7 @@ import { expectBool, parse } from "../../parse.js";
 
 export const IsProtectedClassInputSchema = z.object({
   typeName: z.string(),
-  c2: z.string(),
+  c2: z.string().describe("Local name of the child class to check inside `typeName`."),
 });
 export type IsProtectedClassInput = z.input<
   typeof IsProtectedClassInputSchema
@@ -32,6 +32,9 @@ export const IsProtectedClassOutputSchema = BooleanBOutput;
 export type IsProtectedClassOutput = z.infer<
   typeof IsProtectedClassOutputSchema
 >;
+
+export const IsProtectedClassDescription =
+  "Check whether the child class `c2` inside the given class is declared in a protected section.";
 
 export async function isProtectedClass(
   ctx: CallContext,

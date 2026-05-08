@@ -19,6 +19,9 @@ export type CheckModelInput = z.input<typeof CheckModelInputSchema>;
 export const CheckModelOutputSchema = StringResultOutput;
 export type CheckModelOutput = z.infer<typeof CheckModelOutputSchema>;
 
+export const CheckModelDescription =
+  "Check a model and return a diagnostic string with the number of variables and equations (or compiler errors).";
+
 export async function checkModel(
   ctx: CallContext,
   input: CheckModelInput,

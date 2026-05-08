@@ -1,6 +1,8 @@
 /**
  * OMC: `function getClassComment`
  *
+ * Returns the description-string comment of the class (the quoted text after the class name).
+ *
  * ```modelica
  * function getClassComment
  *   input TypeName cl;
@@ -20,11 +22,14 @@ export const GetClassCommentInputSchema = TypeNameInput;
 export type GetClassCommentInput = z.input<typeof GetClassCommentInputSchema>;
 
 export const GetClassCommentOutputSchema = z.object({
-  comment: z.string(),
+  comment: z.string().describe("Class description-string comment (the quoted text after the class name); empty if none."),
 });
 export type GetClassCommentOutput = z.infer<
   typeof GetClassCommentOutputSchema
 >;
+
+export const GetClassCommentDescription =
+  "Return the description-string comment of the class (the quoted text after the class name).";
 
 export async function getClassComment(
   ctx: CallContext,

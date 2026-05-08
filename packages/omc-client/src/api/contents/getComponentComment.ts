@@ -25,11 +25,13 @@ export type GetComponentCommentInput = z.input<
 >;
 
 export const GetComponentCommentOutputSchema = z.object({
-  comment: z.string(),
+  comment: z.string().describe("Component description-string comment; empty if none."),
 });
 export type GetComponentCommentOutput = z.infer<
   typeof GetComponentCommentOutputSchema
 >;
+
+export const GetComponentCommentDescription = "Return the description-string comment on a component declaration within a class.";
 
 export async function getComponentComment(
   ctx: CallContext,

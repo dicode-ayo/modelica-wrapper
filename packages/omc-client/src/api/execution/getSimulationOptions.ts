@@ -1,6 +1,10 @@
 /**
  * OMC: `function getSimulationOptions`
  *
+ * Returns the startTime, stopTime, tolerance, numberOfIntervals, and interval
+ * declared by the class's `experiment` annotation, falling back to the
+ * `default*` inputs when the annotation is absent or partial.
+ *
  * ```modelica
  * function getSimulationOptions
  *   input TypeName name;
@@ -31,27 +35,30 @@ import {
 } from "../../parse.js";
 
 export const GetSimulationOptionsInputSchema = z.object({
-  typeName: z.string(),
-  defaultStartTime: z.number().optional().default(0.0),
-  defaultStopTime: z.number().optional().default(1.0),
-  defaultTolerance: z.number().optional().default(1e-6),
-  defaultNumberOfIntervals: z.number().int().optional().default(500),
-  defaultInterval: z.number().optional().default(0.0),
+  typeName: z.string().describe("Class whose experiment annotation is read."),
+  defaultStartTime: z.number().optional().default(0.0).describe("Fallback startTime if the experiment annotation has none."),
+  defaultStopTime: z.number().optional().default(1.0).describe("Fallback stopTime if the experiment annotation has none."),
+  defaultTolerance: z.number().optional().default(1e-6).describe("Fallback tolerance if the experiment annotation has none."),
+  defaultNumberOfIntervals: z.number().int().optional().default(500).describe("Fallback numberOfIntervals if the experiment annotation has none."),
+  defaultInterval: z.number().optional().default(0.0).describe("Fallback interval if the experiment annotation has none."),
 });
 export type GetSimulationOptionsInput = z.input<
   typeof GetSimulationOptionsInputSchema
 >;
 
 export const GetSimulationOptionsOutputSchema = z.object({
-  startTime: z.number(),
-  stopTime: z.number(),
-  tolerance: z.number(),
-  numberOfIntervals: z.number().int(),
-  interval: z.number(),
+  startTime: z.number().describe("Resolved simulation start time."),
+  stopTime: z.number().describe("Resolved simulation stop time."),
+  tolerance: z.number().describe("Resolved solver tolerance."),
+  numberOfIntervals: z.number().int().describe("Resolved number of output intervals."),
+  interval: z.number().describe("Resolved output interval (`(stopTime-startTime)/numberOfIntervals` when zero)."),
 });
 export type GetSimulationOptionsOutput = z.infer<
   typeof GetSimulationOptionsOutputSchema
 >;
+
+export const GetSimulationOptionsDescription =
+  "Return the startTime, stopTime, tolerance, numberOfIntervals, and interval based on the class's experiment annotation (with caller-supplied fallbacks).";
 
 export async function getSimulationOptions(
   ctx: CallContext,

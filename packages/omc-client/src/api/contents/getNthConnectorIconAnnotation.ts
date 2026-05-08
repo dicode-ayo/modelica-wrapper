@@ -1,6 +1,8 @@
 /**
  * OMC: `function getNthConnectorIconAnnotation`
  *
+ * Returns the icon annotation of the n-th connector of a class as the raw `Value` expression tree.
+ *
  * ```modelica
  * function getNthConnectorIconAnnotation
  *   input TypeName className;
@@ -24,11 +26,14 @@ export type GetNthConnectorIconAnnotationInput = z.input<
 >;
 
 export const GetNthConnectorIconAnnotationOutputSchema = z.object({
-  result: ValueSchema,
+  result: ValueSchema.describe("Connector icon annotation as a Modelica expression tree (raw `Value`)."),
 });
 export type GetNthConnectorIconAnnotationOutput = z.infer<
   typeof GetNthConnectorIconAnnotationOutputSchema
 >;
+
+export const GetNthConnectorIconAnnotationDescription =
+  "Return the icon annotation of the n-th connector of a class as the raw `Value` expression tree.";
 
 export async function getNthConnectorIconAnnotation(
   ctx: CallContext,

@@ -50,6 +50,15 @@ describe("registry", () => {
     }
   });
 
+  it("each entry has a non-empty plain-English description", () => {
+    for (const name of omcFunctionNames) {
+      const entry = REGISTRY[name];
+      expect(typeof entry.description).toBe("string");
+      // Reject empty, whitespace-only, or placeholder-y descriptions.
+      expect(entry.description.trim().length).toBeGreaterThan(0);
+    }
+  });
+
   it("output schemas reject malformed outputs", () => {
     // getVersion expects { version: string } — a plain string should fail.
     expect(() => REGISTRY.getVersion.outputSchema.parse("1.26.1")).toThrow();

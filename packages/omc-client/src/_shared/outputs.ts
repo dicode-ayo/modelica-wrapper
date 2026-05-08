@@ -6,6 +6,10 @@
  * etc. The output field names are kept verbatim from the OMC docs (per
  * audit.md §2.4), which is why `BooleanBOutput` keeps the field `b` rather
  * than renaming to `result` or `success`.
+ *
+ * Every field carries a generic `.describe(...)` for the MCP-generation
+ * pipeline. Per-function files only override these when the OMC docs say
+ * something more specific.
  */
 
 import { z } from "zod";
@@ -16,7 +20,9 @@ import { z } from "zod";
  * this shape covers the dominant case where the docs say `output Boolean success`.
  */
 export const SuccessOutput = z.object({
-  success: z.boolean(),
+  success: z
+    .boolean()
+    .describe("True if the OMC operation completed without error."),
 });
 export type SuccessOutput = z.infer<typeof SuccessOutput>;
 
@@ -26,7 +32,11 @@ export type SuccessOutput = z.infer<typeof SuccessOutput>;
  * `output Boolean b;` — keeping it preserves the audit convention.
  */
 export const BooleanBOutput = z.object({
-  b: z.boolean(),
+  b: z
+    .boolean()
+    .describe(
+      "True if the predicate matches; field name `b` is OMC verbatim (predicate output).",
+    ),
 });
 export type BooleanBOutput = z.infer<typeof BooleanBOutput>;
 
@@ -37,7 +47,9 @@ export type BooleanBOutput = z.infer<typeof BooleanBOutput>;
  * differently (e.g. `modifierToJSON` → `json`) keep their per-function shape.
  */
 export const StringResultOutput = z.object({
-  result: z.string(),
+  result: z
+    .string()
+    .describe("Raw string returned by OMC; field name `result` is OMC verbatim."),
 });
 export type StringResultOutput = z.infer<typeof StringResultOutput>;
 
@@ -47,6 +59,10 @@ export type StringResultOutput = z.infer<typeof StringResultOutput>;
  * etc.) where OMC's output is named `value`.
  */
 export const StringValueOutput = z.object({
-  value: z.string(),
+  value: z
+    .string()
+    .describe(
+      "Modifier or parameter value as a Modelica expression string; field name `value` is OMC verbatim.",
+    ),
 });
 export type StringValueOutput = z.infer<typeof StringValueOutput>;

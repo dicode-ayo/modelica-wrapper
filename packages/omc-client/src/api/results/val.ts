@@ -25,16 +25,19 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectFloat, parse } from "../../parse.js";
 
 export const ValInputSchema = z.object({
-  var: z.string(),
-  timePoint: z.number().optional().default(0.0),
-  fileName: z.string().optional().default("<default>"),
+  var: z.string().describe("Variable identifier (dotted path) emitted bare; field name `var` is OMC verbatim."),
+  timePoint: z.number().optional().default(0.0).describe("Time at which to evaluate the variable (seconds)."),
+  fileName: z.string().optional().default("<default>").describe("Result file to read from; the default `<default>` reads from `currentSimulationResult`."),
 });
 export type ValInput = z.input<typeof ValInputSchema>;
 
 export const ValOutputSchema = z.object({
-  valAtTime: z.number(),
+  valAtTime: z.number().describe("Variable value at the requested time point."),
 });
 export type ValOutput = z.infer<typeof ValOutputSchema>;
+
+export const ValDescription =
+  "Return the value of a variable at a specific time point in the simulation result; defaults to time 0 of the current simulation result file.";
 
 export async function val(
   ctx: CallContext,

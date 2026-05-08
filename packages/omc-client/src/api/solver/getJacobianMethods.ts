@@ -16,11 +16,13 @@ export type GetJacobianMethodsInput = z.input<
 >;
 
 export const GetJacobianMethodsOutputSchema = z.object({
-  jacobianMethods: z.array(z.string()),
+  jacobianMethods: z.array(z.string()).describe("Names of available Jacobian-computation methods."),
 });
 export type GetJacobianMethodsOutput = z.infer<
   typeof GetJacobianMethodsOutputSchema
 >;
+
+export const GetJacobianMethodsDescription = "List the available Jacobian-computation methods. (OMC docs page is 404.)";
 
 export async function getJacobianMethods(
   ctx: CallContext,

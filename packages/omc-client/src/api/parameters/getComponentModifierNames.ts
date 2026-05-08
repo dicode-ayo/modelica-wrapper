@@ -17,11 +17,13 @@ export type GetComponentModifierNamesInput = z.input<
 >;
 
 export const GetComponentModifierNamesOutputSchema = z.object({
-  modifiers: z.array(z.string()),
+  modifiers: z.array(z.string()).describe("Modifier names declared on the component."),
 });
 export type GetComponentModifierNamesOutput = z.infer<
   typeof GetComponentModifierNamesOutputSchema
 >;
+
+export const GetComponentModifierNamesDescription = "List the modifier names declared on a component of a class.";
 
 export async function getComponentModifierNames(
   ctx: CallContext,

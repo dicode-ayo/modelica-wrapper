@@ -17,7 +17,7 @@ import { expectBool, parse } from "../../parse.js";
 
 export const SetComponentModifierValueInputSchema =
   TypeNameAndModifierInput.extend({
-    expr: z.string(),
+    expr: z.string().describe("Raw Modelica expression for the new modifier value (wrapped in `$Code(=…)` for OMC); empty removes the modifier."),
   });
 export type SetComponentModifierValueInput = z.input<
   typeof SetComponentModifierValueInputSchema
@@ -27,6 +27,9 @@ export const SetComponentModifierValueOutputSchema = SuccessOutput;
 export type SetComponentModifierValueOutput = z.infer<
   typeof SetComponentModifierValueOutputSchema
 >;
+
+export const SetComponentModifierValueDescription =
+  "Set a modifier on a component (OMC: deprecated alias for setElementModifierValue).";
 
 export async function setComponentModifierValue(
   ctx: CallContext,

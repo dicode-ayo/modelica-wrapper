@@ -1,6 +1,8 @@
 /**
  * OMC: `function setDocumentationAnnotation`
  *
+ * Sets the `Documentation` annotation on a class (info section and revisions section).
+ *
  * ```modelica
  * function setDocumentationAnnotation
  *   input TypeName class_;
@@ -18,20 +20,23 @@ import { quote } from "../../_shared/format.js";
 import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
 
 export const SetDocumentationAnnotationInputSchema = z.object({
-  typeName: z.string(),
-  info: z.string().optional().default(""),
-  revisions: z.string().optional().default(""),
+  typeName: z.string().describe("Class to annotate."),
+  info: z.string().optional().default("").describe("HTML body for the Documentation `info` section; empty clears it."),
+  revisions: z.string().optional().default("").describe("HTML body for the Documentation `revisions` section; empty clears it."),
 });
 export type SetDocumentationAnnotationInput = z.input<
   typeof SetDocumentationAnnotationInputSchema
 >;
 
 export const SetDocumentationAnnotationOutputSchema = z.object({
-  bool: z.boolean(),
+  bool: z.boolean().describe("True if the OMC operation completed without error; field name `bool` is OMC verbatim."),
 });
 export type SetDocumentationAnnotationOutput = z.infer<
   typeof SetDocumentationAnnotationOutputSchema
 >;
+
+export const SetDocumentationAnnotationDescription =
+  "Set the `Documentation` annotation on a class (info section and revisions section).";
 
 export async function setDocumentationAnnotation(
   ctx: CallContext,

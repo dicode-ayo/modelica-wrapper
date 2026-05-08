@@ -29,18 +29,21 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const LoadFilesInputSchema = z.object({
-  fileNames: z.array(z.string()),
-  encoding: z.string().optional().default("UTF-8"),
-  numThreads: z.number().int().optional().default(0),
-  uses: z.boolean().optional().default(true),
-  notify: z.boolean().optional().default(true),
-  requireExactVersion: z.boolean().optional().default(false),
-  allowWithin: z.boolean().optional().default(true),
+  fileNames: z.array(z.string()).describe("Paths of Modelica files to load."),
+  encoding: z.string().optional().default("UTF-8").describe("Source encoding for the files."),
+  numThreads: z.number().int().optional().default(0).describe("Number of parallel threads; 0 substitutes the literal `OpenModelica.Scripting.numProcessors()` so OMC evaluates the default at call time."),
+  uses: z.boolean().optional().default(true).describe("Honor `uses` annotations to load dependencies when true."),
+  notify: z.boolean().optional().default(true).describe("Emit OMC notifications during loading when true."),
+  requireExactVersion: z.boolean().optional().default(false).describe("Require exact version matches when resolving library references."),
+  allowWithin: z.boolean().optional().default(true).describe("Permit `within` clauses in the loaded files when true."),
 });
 export type LoadFilesInput = z.input<typeof LoadFilesInputSchema>;
 
 export const LoadFilesOutputSchema = SuccessOutput;
 export type LoadFilesOutput = z.infer<typeof LoadFilesOutputSchema>;
+
+export const LoadFilesDescription =
+  "Load multiple Modelica files in a single call, optionally in parallel; batch variant of `loadFile`.";
 
 export async function loadFiles(
   ctx: CallContext,

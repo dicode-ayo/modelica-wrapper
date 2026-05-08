@@ -21,15 +21,18 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
 
 export const ModifierToJSONInputSchema = z.object({
-  modifier: z.string(),
-  prettyPrint: z.boolean().optional().default(false),
+  modifier: z.string().describe("Raw Modelica modifier expression to convert."),
+  prettyPrint: z.boolean().optional().default(false).describe("Indent the JSON output for human readability when true."),
 });
 export type ModifierToJSONInput = z.input<typeof ModifierToJSONInputSchema>;
 
 export const ModifierToJSONOutputSchema = z.object({
-  json: z.string(),
+  json: z.string().describe("JSON encoding of the modifier expression; field name `json` is OMC verbatim."),
 });
 export type ModifierToJSONOutput = z.infer<typeof ModifierToJSONOutputSchema>;
+
+export const ModifierToJSONDescription =
+  "Convert a Modelica modifier expression string into its JSON form; the wrapper does not parse the JSON, callers `JSON.parse(json)` themselves.";
 
 export async function modifierToJSON(
   ctx: CallContext,

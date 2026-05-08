@@ -1,6 +1,9 @@
 /**
  * OMC: `function setComponentProperties`
  *
+ * Sets the prefix flags, variability, inner/outer, and direction of a
+ * component in a class.
+ *
  * ```modelica
  * function setComponentProperties
  *   input TypeName className;
@@ -29,17 +32,17 @@ import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js"
 
 export const SetComponentPropertiesInputSchema =
   TypeNameAndComponentNameInput.extend({
-    finalPrefix: z.boolean(),
-    flow: z.boolean(),
-    stream: z.boolean(),
-    protectedPrefix: z.boolean(),
-    replaceablePrefix: z.boolean(),
+    finalPrefix: z.boolean().describe("Set the `final` prefix on the component."),
+    flow: z.boolean().describe("Set the `flow` prefix."),
+    stream: z.boolean().describe("Set the `stream` prefix."),
+    protectedPrefix: z.boolean().describe("Place the component in a `protected` section when true."),
+    replaceablePrefix: z.boolean().describe("Set the `replaceable` prefix on the component."),
     /** "constant" | "parameter" | "discrete" | "" (continuous). */
-    variability: z.string(),
-    inner: z.boolean(),
-    outer: z.boolean(),
+    variability: z.string().describe('"constant" | "parameter" | "discrete" | "" (continuous).'),
+    inner: z.boolean().describe("Set the `inner` prefix."),
+    outer: z.boolean().describe("Set the `outer` prefix."),
     /** "input" | "output" | "". */
-    direction: z.string(),
+    direction: z.string().describe('"input" | "output" | "".'),
   });
 export type SetComponentPropertiesInput = z.input<
   typeof SetComponentPropertiesInputSchema
@@ -49,6 +52,9 @@ export const SetComponentPropertiesOutputSchema = SuccessOutput;
 export type SetComponentPropertiesOutput = z.infer<
   typeof SetComponentPropertiesOutputSchema
 >;
+
+export const SetComponentPropertiesDescription =
+  "Set the properties of a component in a class (prefix flags, variability, inner/outer, direction).";
 
 export async function setComponentProperties(
   ctx: CallContext,

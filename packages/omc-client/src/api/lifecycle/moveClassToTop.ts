@@ -23,6 +23,8 @@ export type MoveClassToTopInput = z.input<typeof MoveClassToTopInputSchema>;
 export const MoveClassToTopOutputSchema = SuccessOutput;
 export type MoveClassToTopOutput = z.infer<typeof MoveClassToTopOutputSchema>;
 
+export const MoveClassToTopDescription = "Move a class to the top of its enclosing class.";
+
 export async function moveClassToTop(
   ctx: CallContext,
   input: MoveClassToTopInput,

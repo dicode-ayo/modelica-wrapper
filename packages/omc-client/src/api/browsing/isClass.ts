@@ -1,6 +1,8 @@
 /**
  * OMC: `function isClass`
  *
+ * Checks whether the given identifier resolves to any kind of class in OMC's symbol table.
+ *
  * ```modelica
  * function isClass
  *   input TypeName cl;
@@ -22,6 +24,9 @@ export type IsClassInput = z.input<typeof IsClassInputSchema>;
 
 export const IsClassOutputSchema = BooleanBOutput;
 export type IsClassOutput = z.infer<typeof IsClassOutputSchema>;
+
+export const IsClassDescription =
+  "Check whether the given identifier resolves to any kind of class in OMC's symbol table.";
 
 export async function isClass(
   ctx: CallContext,

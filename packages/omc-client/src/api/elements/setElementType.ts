@@ -22,13 +22,15 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const SetElementTypeInputSchema = z.object({
-  typeName: z.string(),
-  newTypeName: z.string(),
+  typeName: z.string().describe("Dotted element path within the class (OMC `elementName`, mapped to `typeName` per the package convention)."),
+  newTypeName: z.string().describe("New type to assign to the element (OMC `typeName`, renamed to avoid collision with the package-wide TypeName-rename)."),
 });
 export type SetElementTypeInput = z.input<typeof SetElementTypeInputSchema>;
 
 export const SetElementTypeOutputSchema = SuccessOutput;
 export type SetElementTypeOutput = z.infer<typeof SetElementTypeOutputSchema>;
+
+export const SetElementTypeDescription = "Change the declared type of an element to a new TypeName.";
 
 export async function setElementType(
   ctx: CallContext,

@@ -25,8 +25,8 @@ import { asString, parse } from "../../parse.js";
 
 export const GetModelInstanceInputSchema = z.object({
   typeName: z.string(),
-  modifier: z.string().optional().default(""),
-  prettyPrint: z.boolean().optional().default(false),
+  modifier: z.string().optional().default("").describe("Optional modifier expression applied to the class before instantiation; empty for none."),
+  prettyPrint: z.boolean().optional().default(false).describe("Indent the JSON output for human readability when true."),
 });
 export type GetModelInstanceInput = z.input<typeof GetModelInstanceInputSchema>;
 
@@ -34,6 +34,9 @@ export const GetModelInstanceOutputSchema = StringResultOutput;
 export type GetModelInstanceOutput = z.infer<
   typeof GetModelInstanceOutputSchema
 >;
+
+export const GetModelInstanceDescription =
+  "Return a JSON document describing the model instance (parameters, components, connections, inheritance). The wrapper does not parse the JSON; callers `JSON.parse(result)` themselves.";
 
 export async function getModelInstance(
   ctx: CallContext,

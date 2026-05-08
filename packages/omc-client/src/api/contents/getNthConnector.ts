@@ -25,11 +25,14 @@ export const GetNthConnectorInputSchema = TypeNameAndIndexInput;
 export type GetNthConnectorInput = z.input<typeof GetNthConnectorInputSchema>;
 
 export const GetNthConnectorOutputSchema = z.object({
-  result: ValueSchema,
+  result: ValueSchema.describe("Connector declaration as a Modelica expression tree (raw `Value`)."),
 });
 export type GetNthConnectorOutput = z.infer<
   typeof GetNthConnectorOutputSchema
 >;
+
+export const GetNthConnectorDescription =
+  "Return the n-th connector declaration of a class as the raw `Value` expression tree.";
 
 export async function getNthConnector(
   ctx: CallContext,

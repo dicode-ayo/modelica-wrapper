@@ -1,6 +1,8 @@
 /**
  * OMC: `function getNthConnection`
  *
+ * Returns the n-th connection in a class as `(from, to, comment)`.
+ *
  * ```modelica
  * function getNthConnection
  *   input TypeName className;
@@ -19,21 +21,23 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
 export const GetNthConnectionInputSchema = z.object({
-  typeName: z.string(),
-  index: z.number().int().positive(),
+  typeName: z.string().describe("Class containing the connection."),
+  index: z.number().int().positive().describe("1-based connection index, between 1 and `getConnectionCount`."),
 });
 export type GetNthConnectionInput = z.input<
   typeof GetNthConnectionInputSchema
 >;
 
 export const GetNthConnectionOutputSchema = z.object({
-  from: z.string(),
-  to: z.string(),
-  comment: z.string(),
+  from: z.string().describe("Left-hand-side connector reference."),
+  to: z.string().describe("Right-hand-side connector reference."),
+  comment: z.string().describe("Description string on the connection, if any."),
 });
 export type GetNthConnectionOutput = z.infer<
   typeof GetNthConnectionOutputSchema
 >;
+
+export const GetNthConnectionDescription = "Return the n-th connection in a class as `(from, to, comment)`.";
 
 export async function getNthConnection(
   ctx: CallContext,

@@ -1,6 +1,8 @@
 /**
  * OMC: `function isRecord`
  *
+ * Checks whether the given class has the `record` restriction.
+ *
  * ```modelica
  * function isRecord
  *   input TypeName cl;
@@ -22,6 +24,8 @@ export type IsRecordInput = z.input<typeof IsRecordInputSchema>;
 
 export const IsRecordOutputSchema = BooleanBOutput;
 export type IsRecordOutput = z.infer<typeof IsRecordOutputSchema>;
+
+export const IsRecordDescription = "Check whether the given class has the `record` restriction.";
 
 export async function isRecord(
   ctx: CallContext,

@@ -26,11 +26,14 @@ export type GetElementAnnotationsInput = z.input<
 >;
 
 export const GetElementAnnotationsOutputSchema = z.object({
-  result: ValueSchema,
+  result: ValueSchema.describe("Per-element annotation list as a Modelica expression tree (raw `Value`)."),
 });
 export type GetElementAnnotationsOutput = z.infer<
   typeof GetElementAnnotationsOutputSchema
 >;
+
+export const GetElementAnnotationsDescription =
+  "Return the per-element annotation list of a class as a Modelica expression tree (raw `Value`); callers walk the tree.";
 
 export async function getElementAnnotations(
   ctx: CallContext,

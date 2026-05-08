@@ -17,11 +17,13 @@ export type GetConnectionCountInput = z.input<
 >;
 
 export const GetConnectionCountOutputSchema = z.object({
-  count: z.number().int(),
+  count: z.number().int().describe("Number of `connect(...)` equations declared in the class."),
 });
 export type GetConnectionCountOutput = z.infer<
   typeof GetConnectionCountOutputSchema
 >;
+
+export const GetConnectionCountDescription = "Count the number of `connect(...)` equations in a class.";
 
 export async function getConnectionCount(
   ctx: CallContext,

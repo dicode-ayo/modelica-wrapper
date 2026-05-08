@@ -24,7 +24,7 @@ import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js"
 
 export const RemoveComponentModifiersInputSchema =
   TypeNameAndComponentNameInput.extend({
-    keepRedeclares: z.boolean().optional().default(false),
+    keepRedeclares: z.boolean().optional().default(false).describe("Preserve `redeclare` modifiers (type substitutions) when true."),
   });
 export type RemoveComponentModifiersInput = z.input<
   typeof RemoveComponentModifiersInputSchema
@@ -34,6 +34,9 @@ export const RemoveComponentModifiersOutputSchema = SuccessOutput;
 export type RemoveComponentModifiersOutput = z.infer<
   typeof RemoveComponentModifiersOutputSchema
 >;
+
+export const RemoveComponentModifiersDescription =
+  "Remove all modifiers from a component, optionally preserving redeclares. (Symbol absent on OMC 1.26.x — see file docstring for migration.)";
 
 export async function removeComponentModifiers(
   ctx: CallContext,

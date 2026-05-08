@@ -12,9 +12,9 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const DeleteConnectionInputSchema = z.object({
-  from: z.string(),
-  to: z.string(),
-  typeName: z.string(),
+  from: z.string().describe("Left-hand-side connector reference of the connection to remove."),
+  to: z.string().describe("Right-hand-side connector reference of the connection to remove."),
+  typeName: z.string().describe("Class containing the connection."),
 });
 export type DeleteConnectionInput = z.input<typeof DeleteConnectionInputSchema>;
 
@@ -22,6 +22,8 @@ export const DeleteConnectionOutputSchema = SuccessOutput;
 export type DeleteConnectionOutput = z.infer<
   typeof DeleteConnectionOutputSchema
 >;
+
+export const DeleteConnectionDescription = "Delete a connection in the given class.";
 
 export async function deleteConnection(
   ctx: CallContext,

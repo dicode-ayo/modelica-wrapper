@@ -1,6 +1,10 @@
 /**
  * OMC: `function getClassInformation`
  *
+ * Returns detailed metadata about a class — restriction kind, doc comment,
+ * partial/final/encapsulated prefixes, source file location, dimensions,
+ * version info, and revision id — in a single round trip.
+ *
  * ```modelica
  * function getClassInformation
  *   input TypeName cl;
@@ -44,32 +48,35 @@ export type GetClassInformationInput = z.input<
 >;
 
 export const GetClassInformationOutputSchema = z.object({
-  restriction: z.string(),
-  comment: z.string(),
-  partialPrefix: z.boolean(),
-  finalPrefix: z.boolean(),
-  encapsulatedPrefix: z.boolean(),
-  fileName: z.string(),
-  fileReadOnly: z.boolean(),
-  lineNumberStart: z.number().int(),
-  columnNumberStart: z.number().int(),
-  lineNumberEnd: z.number().int(),
-  columnNumberEnd: z.number().int(),
-  dimensions: z.array(z.string()),
-  isProtectedClass: z.boolean(),
-  isDocumentationClass: z.boolean(),
-  version: z.string(),
-  preferredView: z.string(),
-  state: z.boolean(),
-  access: z.string(),
-  versionDate: z.string(),
-  versionBuild: z.string(),
-  dateModified: z.string(),
-  revisionId: z.string(),
+  restriction: z.string().describe("Class restriction kind (model, package, function, block, …)."),
+  comment: z.string().describe("Leading documentation comment on the class."),
+  partialPrefix: z.boolean().describe("True if the class is declared `partial`."),
+  finalPrefix: z.boolean().describe("True if the class is declared `final`."),
+  encapsulatedPrefix: z.boolean().describe("True if the class is declared `encapsulated`."),
+  fileName: z.string().describe("Source file path containing the class definition."),
+  fileReadOnly: z.boolean().describe("True when the source file is read-only on disk."),
+  lineNumberStart: z.number().int().describe("Source line where the class declaration begins (1-based)."),
+  columnNumberStart: z.number().int().describe("Source column where the class declaration begins (1-based)."),
+  lineNumberEnd: z.number().int().describe("Source line where the class declaration ends (1-based)."),
+  columnNumberEnd: z.number().int().describe("Source column where the class declaration ends (1-based)."),
+  dimensions: z.array(z.string()).describe("Array dimensions as raw expression strings (per OMC docs: not evaluated to integers)."),
+  isProtectedClass: z.boolean().describe("True if the class lives in a protected section."),
+  isDocumentationClass: z.boolean().describe("True if the class is annotated as a documentation-only class."),
+  version: z.string().describe("Library version string from the version annotation, when present."),
+  preferredView: z.string().describe('Preferred view as set in annotations (e.g. "info", "diagram").'),
+  state: z.boolean().describe("True if the class participates as a state machine state."),
+  access: z.string().describe("Access annotation value controlling library protection levels."),
+  versionDate: z.string().describe("Version-date string from the version annotation."),
+  versionBuild: z.string().describe("Version-build string from the version annotation."),
+  dateModified: z.string().describe("Date-modified string from the version annotation."),
+  revisionId: z.string().describe("Revision id string from the version annotation."),
 });
 export type GetClassInformationOutput = z.infer<
   typeof GetClassInformationOutputSchema
 >;
+
+export const GetClassInformationDescription =
+  "Return detailed metadata for a class: restriction kind, doc comment, partial/final/encapsulated flags, source file location, dimensions, version info, and revision id.";
 
 export async function getClassInformation(
   ctx: CallContext,

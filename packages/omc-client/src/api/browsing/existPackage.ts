@@ -18,6 +18,9 @@ export type ExistPackageInput = z.input<typeof ExistPackageInputSchema>;
 export const ExistPackageOutputSchema = BooleanBOutput;
 export type ExistPackageOutput = z.infer<typeof ExistPackageOutputSchema>;
 
+export const ExistPackageDescription =
+  "Alias for `isPackage`: report whether the given class resolves to a `package` restriction.";
+
 export async function existPackage(
   ctx: CallContext,
   input: ExistPackageInput,

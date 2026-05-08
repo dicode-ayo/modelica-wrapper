@@ -1,6 +1,8 @@
 /**
  * OMC: `function getNthInheritedClassDiagramMapAnnotation`
  *
+ * Returns the diagram-map annotation of the n-th inherited class as the raw `Value` expression tree.
+ *
  * ```modelica
  * function getNthInheritedClassDiagramMapAnnotation
  *   input TypeName className;
@@ -25,11 +27,14 @@ export type GetNthInheritedClassDiagramMapAnnotationInput = z.input<
 >;
 
 export const GetNthInheritedClassDiagramMapAnnotationOutputSchema = z.object({
-  result: ValueSchema,
+  result: ValueSchema.describe("Inherited class diagram-map annotation as a Modelica expression tree (raw `Value`)."),
 });
 export type GetNthInheritedClassDiagramMapAnnotationOutput = z.infer<
   typeof GetNthInheritedClassDiagramMapAnnotationOutputSchema
 >;
+
+export const GetNthInheritedClassDiagramMapAnnotationDescription =
+  "Return the diagram-map annotation of the n-th inherited class as the raw `Value` expression tree.";
 
 export async function getNthInheritedClassDiagramMapAnnotation(
   ctx: CallContext,

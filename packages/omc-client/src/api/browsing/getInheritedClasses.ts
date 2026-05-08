@@ -1,6 +1,8 @@
 /**
  * OMC: `function getInheritedClasses`
  *
+ * Returns the list of classes inherited via `extends` clauses in the given class.
+ *
  * ```modelica
  * function getInheritedClasses
  *   input TypeName name;
@@ -22,11 +24,13 @@ export type GetInheritedClassesInput = z.input<
 >;
 
 export const GetInheritedClassesOutputSchema = z.object({
-  inheritedClasses: z.array(z.string()),
+  inheritedClasses: z.array(z.string()).describe("Fully qualified TypeNames of classes inherited via `extends`."),
 });
 export type GetInheritedClassesOutput = z.infer<
   typeof GetInheritedClassesOutputSchema
 >;
+
+export const GetInheritedClassesDescription = "Return the list of classes inherited via `extends` clauses in the given class.";
 
 export async function getInheritedClasses(
   ctx: CallContext,

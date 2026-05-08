@@ -28,15 +28,18 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
 
 export const CreateClassInputSchema = z.object({
-  typeName: z.string(),
-  restriction: z.string(),
-  partial: z.boolean().optional().default(false),
-  encapsulated: z.boolean().optional().default(false),
+  typeName: z.string().describe("Name to give the new class."),
+  restriction: z.string().describe('Class restriction kind: "model", "block", "package", "function", "connector", "type", "record", …'),
+  partial: z.boolean().optional().default(false).describe("Declare the class as `partial`."),
+  encapsulated: z.boolean().optional().default(false).describe("Declare the class as `encapsulated`."),
 });
 export type CreateClassInput = z.input<typeof CreateClassInputSchema>;
 
 export const CreateClassOutputSchema = SuccessOutput;
 export type CreateClassOutput = z.infer<typeof CreateClassOutputSchema>;
+
+export const CreateClassDescription =
+  "Create a new top-level class with the given restriction. (OMC docs page is 404; symbol absent on OMC 1.26.x — see file docstring for migration.)";
 
 export async function createClass(
   ctx: CallContext,

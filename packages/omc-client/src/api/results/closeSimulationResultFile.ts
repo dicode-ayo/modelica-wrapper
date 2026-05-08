@@ -21,6 +21,9 @@ export type CloseSimulationResultFileOutput = z.infer<
   typeof CloseSimulationResultFileOutputSchema
 >;
 
+export const CloseSimulationResultFileDescription =
+  "Close the current simulation results file (Windows-only requirement before re-running on the same output).";
+
 export async function closeSimulationResultFile(
   ctx: CallContext,
   _input: CloseSimulationResultFileInput = {},

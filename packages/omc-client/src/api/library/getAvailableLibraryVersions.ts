@@ -1,6 +1,8 @@
 /**
  * OMC: `function getAvailableLibraryVersions`
  *
+ * Returns the available versions of a named library from OMC's package index.
+ *
  * ```modelica
  * function getAvailableLibraryVersions
  *   input TypeName libraryName;
@@ -22,11 +24,13 @@ export type GetAvailableLibraryVersionsInput = z.input<
 >;
 
 export const GetAvailableLibraryVersionsOutputSchema = z.object({
-  librariesAndVersions: z.array(z.string()),
+  librariesAndVersions: z.array(z.string()).describe("Available versions of the library, as `name version` strings."),
 });
 export type GetAvailableLibraryVersionsOutput = z.infer<
   typeof GetAvailableLibraryVersionsOutputSchema
 >;
+
+export const GetAvailableLibraryVersionsDescription = "List the available versions of a named library from OMC's package index.";
 
 export async function getAvailableLibraryVersions(
   ctx: CallContext,

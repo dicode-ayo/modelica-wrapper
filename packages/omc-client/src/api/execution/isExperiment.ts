@@ -15,9 +15,12 @@ export const IsExperimentInputSchema = TypeNameInput;
 export type IsExperimentInput = z.input<typeof IsExperimentInputSchema>;
 
 export const IsExperimentOutputSchema = z.object({
-  isExperiment: z.boolean(),
+  isExperiment: z.boolean().describe("True if the class is a non-partial model or block with an experiment annotation."),
 });
 export type IsExperimentOutput = z.infer<typeof IsExperimentOutputSchema>;
+
+export const IsExperimentDescription =
+  "Check whether a class qualifies as an experiment (non-partial model/block with an experiment annotation).";
 
 export async function isExperiment(
   ctx: CallContext,

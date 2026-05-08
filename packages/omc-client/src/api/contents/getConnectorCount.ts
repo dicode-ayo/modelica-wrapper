@@ -1,6 +1,8 @@
 /**
  * OMC: `function getConnectorCount`
  *
+ * Returns the number of connector declarations in a class.
+ *
  * ```modelica
  * function getConnectorCount
  *   input TypeName className;
@@ -22,11 +24,13 @@ export type GetConnectorCountInput = z.input<
 >;
 
 export const GetConnectorCountOutputSchema = z.object({
-  count: z.number().int(),
+  count: z.number().int().describe("Number of connector declarations in the class."),
 });
 export type GetConnectorCountOutput = z.infer<
   typeof GetConnectorCountOutputSchema
 >;
+
+export const GetConnectorCountDescription = "Return the number of connector declarations in a class.";
 
 export async function getConnectorCount(
   ctx: CallContext,

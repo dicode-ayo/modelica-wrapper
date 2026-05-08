@@ -19,6 +19,8 @@ export type TranslateModelInput = z.input<typeof TranslateModelInputSchema>;
 export const TranslateModelOutputSchema = SuccessOutput;
 export type TranslateModelOutput = z.infer<typeof TranslateModelOutputSchema>;
 
+export const TranslateModelDescription = "Translate a Modelica model into C code without building it.";
+
 export async function translateModel(
   ctx: CallContext,
   input: TranslateModelInput,

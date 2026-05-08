@@ -1,6 +1,8 @@
 /**
  * OMC: `function getElementModifierValues`
  *
+ * Returns the bound expression of a modifier on an element of a class, including any sub-modifications.
+ *
  * ```modelica
  * function getElementModifierValues
  *   input TypeName className;
@@ -30,6 +32,9 @@ export const GetElementModifierValuesOutputSchema = StringValueOutput;
 export type GetElementModifierValuesOutput = z.infer<
   typeof GetElementModifierValuesOutputSchema
 >;
+
+export const GetElementModifierValuesDescription =
+  "Return the bound expression of a modifier on an element of a class, including any sub-modifications.";
 
 export async function getElementModifierValues(
   ctx: CallContext,

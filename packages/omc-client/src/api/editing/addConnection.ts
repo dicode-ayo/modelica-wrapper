@@ -12,15 +12,17 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const AddConnectionInputSchema = z.object({
-  from: z.string(),
-  to: z.string(),
-  typeName: z.string(),
-  annotation: z.string().optional().default(""),
+  from: z.string().describe("Left-hand-side connector reference for the new connection."),
+  to: z.string().describe("Right-hand-side connector reference for the new connection."),
+  typeName: z.string().describe("Class to which the connection is added."),
+  annotation: z.string().optional().default("").describe('Raw Modelica `Line(...)` annotation (no `annotate=` prefix); "" yields the default Line.'),
 });
 export type AddConnectionInput = z.input<typeof AddConnectionInputSchema>;
 
 export const AddConnectionOutputSchema = SuccessOutput;
 export type AddConnectionOutput = z.infer<typeof AddConnectionOutputSchema>;
+
+export const AddConnectionDescription = "Add a `connect(from, to)` to the given class with an optional Line annotation.";
 
 export async function addConnection(
   ctx: CallContext,

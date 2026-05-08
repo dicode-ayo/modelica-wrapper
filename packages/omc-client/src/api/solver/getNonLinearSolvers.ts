@@ -16,11 +16,13 @@ export type GetNonLinearSolversInput = z.input<
 >;
 
 export const GetNonLinearSolversOutputSchema = z.object({
-  nonLinearSolvers: z.array(z.string()),
+  nonLinearSolvers: z.array(z.string()).describe("Names of available nonlinear solvers."),
 });
 export type GetNonLinearSolversOutput = z.infer<
   typeof GetNonLinearSolversOutputSchema
 >;
+
+export const GetNonLinearSolversDescription = "List the available nonlinear solvers. (OMC docs page is 404.)";
 
 export async function getNonLinearSolvers(
   ctx: CallContext,

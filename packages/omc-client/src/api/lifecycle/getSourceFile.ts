@@ -16,9 +16,11 @@ export const GetSourceFileInputSchema = TypeNameInput;
 export type GetSourceFileInput = z.input<typeof GetSourceFileInputSchema>;
 
 export const GetSourceFileOutputSchema = z.object({
-  fileName: z.string(),
+  fileName: z.string().describe("Source file path for the class, or empty when no file is bound."),
 });
 export type GetSourceFileOutput = z.infer<typeof GetSourceFileOutputSchema>;
+
+export const GetSourceFileDescription = "Return the source filename associated with the class in OMC's symbol table.";
 
 export async function getSourceFile(
   ctx: CallContext,

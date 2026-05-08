@@ -13,19 +13,21 @@ import { ValueSchema } from "../../_shared/value.js";
 import { parse } from "../../parse.js";
 
 export const GetNthConnectionAnnotationInputSchema = z.object({
-  typeName: z.string(),
-  index: z.number().int().positive(),
+  typeName: z.string().describe("Class containing the connection."),
+  index: z.number().int().positive().describe("1-based connection index, between 1 and `getConnectionCount`."),
 });
 export type GetNthConnectionAnnotationInput = z.input<
   typeof GetNthConnectionAnnotationInputSchema
 >;
 
 export const GetNthConnectionAnnotationOutputSchema = z.object({
-  annotation: ValueSchema,
+  annotation: ValueSchema.describe("Parsed annotation Value tree (typically `Line(...)`); `null` when no annotation is set."),
 });
 export type GetNthConnectionAnnotationOutput = z.infer<
   typeof GetNthConnectionAnnotationOutputSchema
 >;
+
+export const GetNthConnectionAnnotationDescription = "Return the annotation of the n-th `connect` clause in the class.";
 
 export async function getNthConnectionAnnotation(
   ctx: CallContext,

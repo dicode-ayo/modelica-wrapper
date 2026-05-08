@@ -12,9 +12,9 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
 
 export const GetExtendsModifierValueInputSchema = z.object({
-  typeName: z.string(),
-  extendsBase: z.string(),
-  modifier: z.string(),
+  typeName: z.string().describe("Class containing the `extends` clause."),
+  extendsBase: z.string().describe("TypeName of the base class on the `extends` clause to inspect."),
+  modifier: z.string().describe("Dotted path identifying the modifier within the extends clause."),
 });
 export type GetExtendsModifierValueInput = z.input<
   typeof GetExtendsModifierValueInputSchema
@@ -24,6 +24,8 @@ export const GetExtendsModifierValueOutputSchema = StringValueOutput;
 export type GetExtendsModifierValueOutput = z.infer<
   typeof GetExtendsModifierValueOutputSchema
 >;
+
+export const GetExtendsModifierValueDescription = "Return the modifier value for a modifier on an `extends` clause.";
 
 export async function getExtendsModifierValue(
   ctx: CallContext,

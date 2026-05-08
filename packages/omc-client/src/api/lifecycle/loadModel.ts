@@ -1,6 +1,11 @@
 /**
  * OMC: `function loadModel`
  *
+ * Loads a Modelica library by searching the MODELICAPATH for candidate
+ * packages matching `className`. Version selection follows priorityVersion;
+ * when "default", OMC prefers no version > highest main release > highest
+ * pre-release > lexical sort.
+ *
  * ```modelica
  * function loadModel
  *   input TypeName className;
@@ -22,16 +27,19 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const LoadModelInputSchema = z.object({
-  typeName: z.string(),
-  priorityVersion: z.array(z.string()).optional().default(["default"]),
-  notify: z.boolean().optional().default(false),
-  languageStandard: z.string().optional().default(""),
-  requireExactVersion: z.boolean().optional().default(false),
+  typeName: z.string().describe("Library to load (e.g. \"Modelica\"); resolved against the MODELICAPATH."),
+  priorityVersion: z.array(z.string()).optional().default(["default"]).describe('Version priority list. "default" means: no version > highest main release > highest pre-release > lexical sort.'),
+  notify: z.boolean().optional().default(false).describe("Emit OMC notification messages while loading."),
+  languageStandard: z.string().optional().default("").describe('Modelica language standard to enforce when loading (e.g. "3.2"); empty means use OMC default.'),
+  requireExactVersion: z.boolean().optional().default(false).describe("Require exact version matches when resolving library references."),
 });
 export type LoadModelInput = z.input<typeof LoadModelInputSchema>;
 
 export const LoadModelOutputSchema = SuccessOutput;
 export type LoadModelOutput = z.infer<typeof LoadModelOutputSchema>;
+
+export const LoadModelDescription =
+  "Load a Modelica library by searching the MODELICAPATH for the named package, honoring the priorityVersion order.";
 
 export async function loadModel(
   ctx: CallContext,

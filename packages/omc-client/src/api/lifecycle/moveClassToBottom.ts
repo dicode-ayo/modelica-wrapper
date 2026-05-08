@@ -25,6 +25,8 @@ export type MoveClassToBottomOutput = z.infer<
   typeof MoveClassToBottomOutputSchema
 >;
 
+export const MoveClassToBottomDescription = "Move a class to the bottom of its enclosing class.";
+
 export async function moveClassToBottom(
   ctx: CallContext,
   input: MoveClassToBottomInput,

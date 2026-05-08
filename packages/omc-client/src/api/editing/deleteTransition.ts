@@ -14,14 +14,14 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const DeleteTransitionInputSchema = z.object({
-  typeName: z.string(),
-  from: z.string(),
-  to: z.string(),
-  condition: z.string(),
-  immediate: z.boolean(),
-  reset: z.boolean(),
-  synchronize: z.boolean(),
-  priority: z.number().int(),
+  typeName: z.string().describe("Class containing the state machine."),
+  from: z.string().describe("Source state of the transition to remove."),
+  to: z.string().describe("Target state of the transition to remove."),
+  condition: z.string().describe("Raw Modelica boolean expression originally used as the guard."),
+  immediate: z.boolean().describe("`immediate` flag matching the original transition."),
+  reset: z.boolean().describe("`reset` flag matching the original transition."),
+  synchronize: z.boolean().describe("`synchronize` flag matching the original transition."),
+  priority: z.number().int().describe("Priority value matching the original transition."),
 });
 export type DeleteTransitionInput = z.input<typeof DeleteTransitionInputSchema>;
 
@@ -29,6 +29,9 @@ export const DeleteTransitionOutputSchema = SuccessOutput;
 export type DeleteTransitionOutput = z.infer<
   typeof DeleteTransitionOutputSchema
 >;
+
+export const DeleteTransitionDescription =
+  "Delete a transition from a class; caller must supply the same identifying fields used when it was added.";
 
 export async function deleteTransition(
   ctx: CallContext,

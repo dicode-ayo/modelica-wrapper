@@ -9,13 +9,22 @@
  * Composite shapes used by 3+ wrapper files are exposed here too. Files with
  * extra fields can `.extend(...)` these (e.g. `TypeNameAndModifierInput.extend({
  * expr: z.string() })`).
+ *
+ * Every field carries a generic `.describe(...)` for the MCP-generation
+ * pipeline. Per-function files only override these when the OMC docs say
+ * something specifically different (e.g. `loadModel.typeName` means "library
+ * to load", not "class to inspect").
  */
 
 import { z } from "zod";
 
 /** A required `TypeName` input. Used by isPackage, existClass, getInheritanceCount, etc. */
 export const TypeNameInput = z.object({
-  typeName: z.string(),
+  typeName: z
+    .string()
+    .describe(
+      'Fully qualified Modelica TypeName (e.g. "Modelica.Blocks.Examples.PID_Controller"); emitted bare to OMC.',
+    ),
 });
 export type TypeNameInput = z.input<typeof TypeNameInput>;
 
@@ -24,7 +33,12 @@ export type TypeNameInput = z.input<typeof TypeNameInput>;
  * `AllLoadedClasses`, `getVersion` defaults to `OpenModelica`). Caller may omit.
  */
 export const OptionalTypeNameInput = z.object({
-  typeName: z.string().optional(),
+  typeName: z
+    .string()
+    .optional()
+    .describe(
+      "Fully qualified Modelica TypeName; emitted bare to OMC. Omit to use the OMC-side default for this function.",
+    ),
 });
 export type OptionalTypeNameInput = z.input<typeof OptionalTypeNameInput>;
 
@@ -34,8 +48,16 @@ export type OptionalTypeNameInput = z.input<typeof OptionalTypeNameInput>;
  * fields (e.g. `setComponentModifierValue` with `expr`) extend this.
  */
 export const TypeNameAndModifierInput = z.object({
-  typeName: z.string(),
-  modifier: z.string(),
+  typeName: z
+    .string()
+    .describe(
+      'Fully qualified Modelica TypeName (e.g. "Modelica.Blocks.Examples.PID_Controller"); emitted bare to OMC.',
+    ),
+  modifier: z
+    .string()
+    .describe(
+      "Dotted modifier path within the class (e.g. `controller.k`); emitted bare to OMC.",
+    ),
 });
 export type TypeNameAndModifierInput = z.input<typeof TypeNameAndModifierInput>;
 
@@ -45,8 +67,16 @@ export type TypeNameAndModifierInput = z.input<typeof TypeNameAndModifierInput>;
  * fields extend this.
  */
 export const TypeNameAndComponentNameInput = z.object({
-  typeName: z.string(),
-  componentName: z.string(),
+  typeName: z
+    .string()
+    .describe(
+      'Fully qualified Modelica TypeName (e.g. "Modelica.Blocks.Examples.PID_Controller"); emitted bare to OMC.',
+    ),
+  componentName: z
+    .string()
+    .describe(
+      "Component (variable) name within the class; emitted bare to OMC.",
+    ),
 });
 export type TypeNameAndComponentNameInput = z.input<
   typeof TypeNameAndComponentNameInput
@@ -59,7 +89,17 @@ export type TypeNameAndComponentNameInput = z.input<
  * docs and stay distinct).
  */
 export const TypeNameAndIndexInput = z.object({
-  typeName: z.string(),
-  n: z.number().int().positive(),
+  typeName: z
+    .string()
+    .describe(
+      'Fully qualified Modelica TypeName (e.g. "Modelica.Blocks.Examples.PID_Controller"); emitted bare to OMC.',
+    ),
+  n: z
+    .number()
+    .int()
+    .positive()
+    .describe(
+      "1-based index into the OMC list (Modelica indices start at 1, not 0).",
+    ),
 });
 export type TypeNameAndIndexInput = z.input<typeof TypeNameAndIndexInput>;

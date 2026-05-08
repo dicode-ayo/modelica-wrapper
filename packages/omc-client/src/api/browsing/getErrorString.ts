@@ -1,6 +1,9 @@
 /**
  * OMC: `function getErrorString`
  *
+ * Returns the user-readable text of any errors stored by the most recent OMC
+ * call, optionally treating warnings as errors.
+ *
  * ```modelica
  * function getErrorString
  *   input Boolean warningsAsErrors = false;
@@ -21,12 +24,12 @@ import { expectString, parse } from "../../parse.js";
 import type { OmcCommand } from "../../commands.js";
 
 export const GetErrorStringInputSchema = z.object({
-  warningsAsErrors: z.boolean().optional().default(false),
+  warningsAsErrors: z.boolean().optional().default(false).describe("Treat OMC warnings as errors when assembling the diagnostic text."),
 });
 export type GetErrorStringInput = z.input<typeof GetErrorStringInputSchema>;
 
 export const GetErrorStringOutputSchema = z.object({
-  errorString: z.string(),
+  errorString: z.string().describe("User-readable text of any errors stored by the most recent OMC call; empty when none."),
 });
 export type GetErrorStringOutput = z.infer<typeof GetErrorStringOutputSchema>;
 
@@ -37,6 +40,9 @@ export type GetErrorStringOutput = z.infer<typeof GetErrorStringOutputSchema>;
 export interface ErrorStringCaller {
   call(cmd: OmcCommand): Promise<string>;
 }
+
+export const GetErrorStringDescription =
+  "Return the user-readable text of any errors stored by the most recent OMC call (optionally treating warnings as errors).";
 
 export async function getErrorString(
   caller: ErrorStringCaller,

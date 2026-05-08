@@ -22,6 +22,8 @@ export type GetComponentModifierValueOutput = z.infer<
   typeof GetComponentModifierValueOutputSchema
 >;
 
+export const GetComponentModifierValueDescription = "Return the binding value (without sub-modifiers) of a single component modifier.";
+
 export async function getComponentModifierValue(
   ctx: CallContext,
   input: GetComponentModifierValueInput,
