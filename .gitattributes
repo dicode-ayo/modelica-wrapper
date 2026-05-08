@@ -1,0 +1,7 @@
+# Captured OMC RPC responses are byte-exact fixtures. The parser tolerates
+# CRLF, but pinning LF avoids accidental drift on Windows checkouts where
+# core.autocrlf=true would otherwise rewrite line endings on `git checkout`.
+packages/omc-client/test/fixtures/*.txt text eol=lf
+
+# Same rationale for any future captured raw responses.
+*.fixture.txt text eol=lf

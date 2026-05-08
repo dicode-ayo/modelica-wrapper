@@ -21,6 +21,11 @@ export const ValueSchema: z.ZodType<Value> = z.lazy(() =>
       name: z.string(),
       args: z.array(ValueSchema),
     }),
+    z.object({
+      kind: z.literal("kwarg"),
+      name: z.string(),
+      value: ValueSchema,
+    }),
     z.object({ kind: z.literal("null") }),
   ]),
 );
