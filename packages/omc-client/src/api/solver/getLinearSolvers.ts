@@ -16,11 +16,13 @@ export type GetLinearSolversInput = z.input<
 >;
 
 export const GetLinearSolversOutputSchema = z.object({
-  linearSolvers: z.array(z.string()),
+  linearSolvers: z.array(z.string()).describe("Names of available linear solvers."),
 });
 export type GetLinearSolversOutput = z.infer<
   typeof GetLinearSolversOutputSchema
 >;
+
+export const GetLinearSolversDescription = "List the available linear solvers. (OMC docs page is 404.)";
 
 export async function getLinearSolvers(
   ctx: CallContext,

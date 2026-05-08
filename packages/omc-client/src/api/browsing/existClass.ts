@@ -1,6 +1,8 @@
 /**
  * OMC: `function existClass`
  *
+ * Reports whether the given class is defined in the OMC symbol table.
+ *
  * ```modelica
  * function existClass
  *   input TypeName cl;
@@ -20,9 +22,11 @@ export const ExistClassInputSchema = TypeNameInput;
 export type ExistClassInput = z.input<typeof ExistClassInputSchema>;
 
 export const ExistClassOutputSchema = z.object({
-  exists: z.boolean(),
+  exists: z.boolean().describe("True if a class with this TypeName is loaded."),
 });
 export type ExistClassOutput = z.infer<typeof ExistClassOutputSchema>;
+
+export const ExistClassDescription = "Report whether the given class is defined in the OMC symbol table.";
 
 export async function existClass(
   ctx: CallContext,

@@ -22,11 +22,13 @@ export type GetLoadedLibrariesInput = z.input<
 >;
 
 export const GetLoadedLibrariesOutputSchema = z.object({
-  libraries: z.array(z.tuple([z.string(), z.string()])),
+  libraries: z.array(z.tuple([z.string(), z.string()])).describe("One `[name, version]` pair per loaded library."),
 });
 export type GetLoadedLibrariesOutput = z.infer<
   typeof GetLoadedLibrariesOutputSchema
 >;
+
+export const GetLoadedLibrariesDescription = "List currently loaded libraries as `(name, version)` pairs.";
 
 export async function getLoadedLibraries(
   ctx: CallContext,

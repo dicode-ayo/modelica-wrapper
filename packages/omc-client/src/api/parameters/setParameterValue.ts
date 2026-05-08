@@ -23,9 +23,9 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const SetParameterValueInputSchema = z.object({
-  typeName: z.string(),
-  variableName: z.string(),
-  value: z.string(),
+  typeName: z.string().describe("Class containing the parameter."),
+  variableName: z.string().describe("Dotted variable path within the class (OMC `variableName`, kept verbatim per the secondary-TypeName convention)."),
+  value: z.string().describe("Modelica expression to bind to the parameter; empty clears the binding."),
 });
 export type SetParameterValueInput = z.input<
   typeof SetParameterValueInputSchema
@@ -35,6 +35,9 @@ export const SetParameterValueOutputSchema = SuccessOutput;
 export type SetParameterValueOutput = z.infer<
   typeof SetParameterValueOutputSchema
 >;
+
+export const SetParameterValueDescription =
+  "Set or clear the binding expression of a parameter in a class. The value is wrapped in `$Code(=...)` to bypass OMC's string-escaping; empty clears the binding.";
 
 export async function setParameterValue(
   ctx: CallContext,

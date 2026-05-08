@@ -1,6 +1,10 @@
 /**
  * OMC: `function getComponents`
  *
+ * Retrieves information about every component declared in a class — type, name,
+ * description, public/protected, prefixes (final, flow, stream, replaceable),
+ * variability, inner/outer, causality, and array dimensions.
+ *
  * ```modelica
  * function getComponents
  *   input TypeName className;
@@ -27,39 +31,42 @@ import {
 } from "../../parse.js";
 
 export const GetComponentsInputSchema = z.object({
-  typeName: z.string(),
-  useQuotes: z.boolean().optional().default(false),
+  typeName: z.string().describe("Class to inspect."),
+  useQuotes: z.boolean().optional().default(false).describe("Quote string fields in the OMC raw response when true."),
 });
 export type GetComponentsInput = z.input<typeof GetComponentsInputSchema>;
 
 export const ComponentInfoSchema = z.object({
   /** Type of the component (e.g. "Modelica.Blocks.Math.Gain"). */
-  className: z.string(),
+  className: z.string().describe('Type of the component (e.g. "Modelica.Blocks.Math.Gain").'),
   /** Local instance name. */
-  name: z.string(),
+  name: z.string().describe("Local instance name."),
   /** Description string. */
-  comment: z.string(),
+  comment: z.string().describe("Description string attached to the component."),
   /** "public" | "protected". */
-  protection: z.string(),
-  isFinal: z.boolean(),
-  isFlow: z.boolean(),
-  isStream: z.boolean(),
-  isReplaceable: z.boolean(),
+  protection: z.string().describe('"public" or "protected".'),
+  isFinal: z.boolean().describe("True if declared `final`."),
+  isFlow: z.boolean().describe("True if declared `flow`."),
+  isStream: z.boolean().describe("True if declared `stream`."),
+  isReplaceable: z.boolean().describe("True if declared `replaceable`."),
   /** "constant" | "parameter" | "discrete" | "" (continuous). */
-  variability: z.string(),
+  variability: z.string().describe('"constant" | "parameter" | "discrete" | "" (continuous).'),
   /** "inner" | "outer" | "inner outer" | "". */
-  innerOuter: z.string(),
+  innerOuter: z.string().describe('"inner" | "outer" | "inner outer" | "".'),
   /** "input" | "output" | "". */
-  causality: z.string(),
+  causality: z.string().describe('"input" | "output" | "".'),
   /** Array dimensions as raw expression strings. */
-  dimensions: z.array(z.string()),
+  dimensions: z.array(z.string()).describe("Array dimensions as raw expression strings (not numerically evaluated)."),
 });
 export type ComponentInfo = z.infer<typeof ComponentInfoSchema>;
 
 export const GetComponentsOutputSchema = z.object({
-  components: z.array(ComponentInfoSchema),
+  components: z.array(ComponentInfoSchema).describe("One entry per declared component in the class."),
 });
 export type GetComponentsOutput = z.infer<typeof GetComponentsOutputSchema>;
+
+export const GetComponentsDescription =
+  "Retrieve information about every component declared in a class: type, name, description, protection, final/flow/stream/replaceable prefixes, variability, inner/outer, causality, and array dimensions.";
 
 export async function getComponents(
   ctx: CallContext,

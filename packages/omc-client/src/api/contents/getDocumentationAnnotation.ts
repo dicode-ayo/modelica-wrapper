@@ -1,6 +1,9 @@
 /**
  * OMC: `function getDocumentationAnnotation`
  *
+ * Returns the `Documentation` annotation defined on the class, split into the
+ * three OMC-documented strings: info, revision, and infoHeader.
+ *
  * ```modelica
  * function getDocumentationAnnotation
  *   input TypeName cl;
@@ -22,13 +25,16 @@ export type GetDocumentationAnnotationInput = z.input<
 >;
 
 export const GetDocumentationAnnotationOutputSchema = z.object({
-  info: z.string(),
-  revision: z.string(),
-  infoHeader: z.string(),
+  info: z.string().describe("`info` HTML body of the Documentation annotation."),
+  revision: z.string().describe("`revisions` HTML body of the Documentation annotation."),
+  infoHeader: z.string().describe("`infoHeader` HTML body of the Documentation annotation."),
 });
 export type GetDocumentationAnnotationOutput = z.infer<
   typeof GetDocumentationAnnotationOutputSchema
 >;
+
+export const GetDocumentationAnnotationDescription =
+  "Return the `Documentation` annotation defined on the class, split into info, revision, and infoHeader.";
 
 export async function getDocumentationAnnotation(
   ctx: CallContext,

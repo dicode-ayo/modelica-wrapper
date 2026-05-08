@@ -19,13 +19,16 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
 
 export const MoveClassInputSchema = z.object({
-  typeName: z.string(),
-  newParent: z.string(),
+  typeName: z.string().describe("Class to move."),
+  newParent: z.string().describe("TypeName of the destination parent class for the relocation."),
 });
 export type MoveClassInput = z.input<typeof MoveClassInputSchema>;
 
 export const MoveClassOutputSchema = SuccessOutput;
 export type MoveClassOutput = z.infer<typeof MoveClassOutputSchema>;
+
+export const MoveClassDescription =
+  "Relocate a class within the package hierarchy. (Symbol absent on OMC 1.26.x — see file docstring for migration.)";
 
 export async function moveClass(
   ctx: CallContext,

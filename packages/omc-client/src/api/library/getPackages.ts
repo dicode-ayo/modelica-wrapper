@@ -19,14 +19,17 @@ import { expectStringList, parse } from "../../parse.js";
 import type { OmcCommand } from "../../commands.js";
 
 export const GetPackagesInputSchema = z.object({
-  typeName: z.string().optional(),
+  typeName: z.string().optional().describe("Class to inspect; omit to default to OMC's AllLoadedClasses."),
 });
 export type GetPackagesInput = z.input<typeof GetPackagesInputSchema>;
 
 export const GetPackagesOutputSchema = z.object({
-  classNames: z.array(z.string()),
+  classNames: z.array(z.string()).describe("Names of package classes inside the requested class."),
 });
 export type GetPackagesOutput = z.infer<typeof GetPackagesOutputSchema>;
+
+export const GetPackagesDescription =
+  "List the package classes inside the given class (defaults to AllLoadedClasses, returning all top-level packages).";
 
 export async function getPackages(
   ctx: CallContext,

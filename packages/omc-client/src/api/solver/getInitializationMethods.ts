@@ -16,11 +16,13 @@ export type GetInitializationMethodsInput = z.input<
 >;
 
 export const GetInitializationMethodsOutputSchema = z.object({
-  initializationMethods: z.array(z.string()),
+  initializationMethods: z.array(z.string()).describe("Names of available initialization methods."),
 });
 export type GetInitializationMethodsOutput = z.infer<
   typeof GetInitializationMethodsOutputSchema
 >;
+
+export const GetInitializationMethodsDescription = "List the available initialization methods. (OMC docs page is 404.)";
 
 export async function getInitializationMethods(
   ctx: CallContext,

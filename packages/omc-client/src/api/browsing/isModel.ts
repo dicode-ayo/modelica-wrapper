@@ -1,6 +1,8 @@
 /**
  * OMC: `function isModel`
  *
+ * Checks whether the given class has the `model` restriction.
+ *
  * ```modelica
  * function isModel
  *   input TypeName cl;
@@ -22,6 +24,8 @@ export type IsModelInput = z.input<typeof IsModelInputSchema>;
 
 export const IsModelOutputSchema = BooleanBOutput;
 export type IsModelOutput = z.infer<typeof IsModelOutputSchema>;
+
+export const IsModelDescription = "Check whether the given class has the `model` restriction.";
 
 export async function isModel(
   ctx: CallContext,

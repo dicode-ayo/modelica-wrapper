@@ -17,11 +17,14 @@ export type TranslateModelXMLInput = z.input<
 >;
 
 export const TranslateModelXMLOutputSchema = z.object({
-  generatedFileName: z.string(),
+  generatedFileName: z.string().describe("Path to the generated XML model description on disk."),
 });
 export type TranslateModelXMLOutput = z.infer<
   typeof TranslateModelXMLOutputSchema
 >;
+
+export const TranslateModelXMLDescription =
+  "Emit the XML description of a model and return the generated filename. (OMC docs page is 404.)";
 
 export async function translateModelXML(
   ctx: CallContext,

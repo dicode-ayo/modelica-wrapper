@@ -16,7 +16,7 @@ import { expectBool, parse } from "../../parse.js";
 
 export const SetComponentDimensionsInputSchema =
   TypeNameAndComponentNameInput.extend({
-    dimensions: z.array(z.string()),
+    dimensions: z.array(z.string()).describe('Array dimensions as raw Modelica expressions (e.g. ["3"], [":"], ["n+1"]).'),
   });
 export type SetComponentDimensionsInput = z.input<
   typeof SetComponentDimensionsInputSchema
@@ -26,6 +26,8 @@ export const SetComponentDimensionsOutputSchema = SuccessOutput;
 export type SetComponentDimensionsOutput = z.infer<
   typeof SetComponentDimensionsOutputSchema
 >;
+
+export const SetComponentDimensionsDescription = "Set the array dimensions of a component as raw Modelica dimension expressions.";
 
 export async function setComponentDimensions(
   ctx: CallContext,

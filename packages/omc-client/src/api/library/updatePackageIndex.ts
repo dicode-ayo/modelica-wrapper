@@ -23,11 +23,14 @@ export type UpdatePackageIndexInput = z.input<
 >;
 
 export const UpdatePackageIndexOutputSchema = z.object({
-  result: z.boolean(),
+  result: z.boolean().describe("True if the index refresh succeeded; field name `result` is OMC verbatim."),
 });
 export type UpdatePackageIndexOutput = z.infer<
   typeof UpdatePackageIndexOutputSchema
 >;
+
+export const UpdatePackageIndexDescription =
+  "Refresh OMC's local copy of the package index from the registry. Network side-effect.";
 
 export async function updatePackageIndex(
   ctx: CallContext,

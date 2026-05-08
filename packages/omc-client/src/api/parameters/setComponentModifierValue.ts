@@ -10,6 +10,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { expr } from "../../_shared/fields.js";
 import { TypeNameAndModifierInput } from "../../_shared/inputs.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
@@ -17,7 +18,7 @@ import { expectBool, parse } from "../../parse.js";
 
 export const SetComponentModifierValueInputSchema =
   TypeNameAndModifierInput.extend({
-    expr: z.string(),
+    expr,
   });
 export type SetComponentModifierValueInput = z.input<
   typeof SetComponentModifierValueInputSchema
@@ -27,6 +28,9 @@ export const SetComponentModifierValueOutputSchema = SuccessOutput;
 export type SetComponentModifierValueOutput = z.infer<
   typeof SetComponentModifierValueOutputSchema
 >;
+
+export const SetComponentModifierValueDescription =
+  "Set a modifier on a component (OMC: deprecated alias for setElementModifierValue).";
 
 export async function setComponentModifierValue(
   ctx: CallContext,

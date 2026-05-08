@@ -19,6 +19,9 @@ export type ExistModelInput = z.input<typeof ExistModelInputSchema>;
 export const ExistModelOutputSchema = BooleanBOutput;
 export type ExistModelOutput = z.infer<typeof ExistModelOutputSchema>;
 
+export const ExistModelDescription =
+  "Alias for `isModel`: report whether the given class resolves to a `model` restriction.";
+
 export async function existModel(
   ctx: CallContext,
   input: ExistModelInput,

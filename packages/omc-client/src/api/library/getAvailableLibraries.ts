@@ -1,6 +1,8 @@
 /**
  * OMC: `function getAvailableLibraries`
  *
+ * Returns the names of all libraries known to OMC (installable from the package index plus already-loaded libraries).
+ *
  * ```modelica
  * function getAvailableLibraries
  *   output String[:] libraries;
@@ -20,11 +22,14 @@ export type GetAvailableLibrariesInput = z.input<
 >;
 
 export const GetAvailableLibrariesOutputSchema = z.object({
-  libraries: z.array(z.string()),
+  libraries: z.array(z.string()).describe("Names of libraries OMC knows about (installable + already-loaded)."),
 });
 export type GetAvailableLibrariesOutput = z.infer<
   typeof GetAvailableLibrariesOutputSchema
 >;
+
+export const GetAvailableLibrariesDescription =
+  "List all libraries known to OMC (installable from the package index plus already-loaded libraries).";
 
 export async function getAvailableLibraries(
   ctx: CallContext,

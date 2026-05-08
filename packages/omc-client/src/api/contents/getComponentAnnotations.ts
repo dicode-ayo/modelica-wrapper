@@ -20,11 +20,13 @@ export type GetComponentAnnotationsInput = z.input<
 >;
 
 export const GetComponentAnnotationsOutputSchema = z.object({
-  annotations: z.array(ValueSchema),
+  annotations: z.array(ValueSchema).describe("One annotation per declared component, as a parsed Value tree (often `Placement(...)`)."),
 });
 export type GetComponentAnnotationsOutput = z.infer<
   typeof GetComponentAnnotationsOutputSchema
 >;
+
+export const GetComponentAnnotationsDescription = "Return the annotations of the components in the given class.";
 
 export async function getComponentAnnotations(
   ctx: CallContext,

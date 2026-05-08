@@ -19,11 +19,13 @@ export type InstantiateModelInput = z.input<
 >;
 
 export const InstantiateModelOutputSchema = z.object({
-  flatSource: z.string(),
+  flatSource: z.string().describe("Flattened Modelica source after frontend elaboration; what the backend solver consumes."),
 });
 export type InstantiateModelOutput = z.infer<
   typeof InstantiateModelOutputSchema
 >;
+
+export const InstantiateModelDescription = "Instantiate a model and return the flattened Modelica source.";
 
 export async function instantiateModel(
   ctx: CallContext,

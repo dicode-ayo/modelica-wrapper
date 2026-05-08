@@ -19,6 +19,9 @@ export type SaveInput = z.input<typeof SaveInputSchema>;
 export const SaveOutputSchema = SuccessOutput;
 export type SaveOutput = z.infer<typeof SaveOutputSchema>;
 
+export const SaveDescription =
+  "Save a class to the file(s) it's defined in. (OMEdit-deprecated; production paths use Option B persistence.)";
+
 export async function save(
   ctx: CallContext,
   input: SaveInput,

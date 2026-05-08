@@ -17,6 +17,9 @@ export type DeleteClassInput = z.input<typeof DeleteClassInputSchema>;
 export const DeleteClassOutputSchema = SuccessOutput;
 export type DeleteClassOutput = z.infer<typeof DeleteClassOutputSchema>;
 
+export const DeleteClassDescription =
+  "Unload a class — remove it from the OMC symbol table without touching the file on disk.";
+
 export async function deleteClass(
   ctx: CallContext,
   input: DeleteClassInput,

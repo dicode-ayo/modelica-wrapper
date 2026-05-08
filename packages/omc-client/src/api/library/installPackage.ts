@@ -1,6 +1,8 @@
 /**
  * OMC: `function installPackage`
  *
+ * Installs a package from the OMC package index. With `exactMatch=true`, requires the version to match exactly.
+ *
  * ```modelica
  * function installPackage
  *   input TypeName pkg;
@@ -19,16 +21,19 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const InstallPackageInputSchema = z.object({
-  typeName: z.string(),
-  version: z.string().optional().default(""),
-  exactMatch: z.boolean().optional().default(false),
+  typeName: z.string().describe("Package name to install (OMC `pkg`, mapped to `typeName` per the package convention)."),
+  version: z.string().optional().default("").describe("Version to install; empty selects OMC's default."),
+  exactMatch: z.boolean().optional().default(false).describe("Require an exact version match when true."),
 });
 export type InstallPackageInput = z.input<typeof InstallPackageInputSchema>;
 
 export const InstallPackageOutputSchema = z.object({
-  result: z.boolean(),
+  result: z.boolean().describe("True if the install succeeded; field name `result` is OMC verbatim."),
 });
 export type InstallPackageOutput = z.infer<typeof InstallPackageOutputSchema>;
+
+export const InstallPackageDescription =
+  "Install a package from the OMC package index. With `exactMatch=true`, requires the version to match exactly.";
 
 export async function installPackage(
   ctx: CallContext,

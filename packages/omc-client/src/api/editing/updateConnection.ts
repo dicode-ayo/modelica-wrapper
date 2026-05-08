@@ -16,14 +16,18 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import {
+  connectionAnnotation,
+  typeNameOfConnection,
+} from "../../_shared/fields.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
 
 export const UpdateConnectionInputSchema = z.object({
-  from: z.string(),
-  to: z.string(),
-  typeName: z.string(),
-  annotation: z.string().optional().default(""),
+  from: z.string().describe("Left-hand-side connector reference for the connection to update."),
+  to: z.string().describe("Right-hand-side connector reference for the connection to update."),
+  typeName: typeNameOfConnection,
+  annotation: connectionAnnotation,
 });
 export type UpdateConnectionInput = z.input<typeof UpdateConnectionInputSchema>;
 
@@ -31,6 +35,9 @@ export const UpdateConnectionOutputSchema = SuccessOutput;
 export type UpdateConnectionOutput = z.infer<
   typeof UpdateConnectionOutputSchema
 >;
+
+export const UpdateConnectionDescription =
+  "Update the annotation on an existing connection. (Symbol absent on OMC 1.26.x — see file docstring for migration.)";
 
 export async function updateConnection(
   ctx: CallContext,

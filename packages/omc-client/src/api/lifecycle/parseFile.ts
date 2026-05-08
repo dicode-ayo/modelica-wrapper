@@ -13,15 +13,18 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
 export const ParseFileInputSchema = z.object({
-  fileName: z.string(),
-  encoding: z.string().optional().default("UTF-8"),
+  fileName: z.string().describe("Path to the `.mo` Modelica file to parse."),
+  encoding: z.string().optional().default("UTF-8").describe("Text encoding of the file (default UTF-8)."),
 });
 export type ParseFileInput = z.input<typeof ParseFileInputSchema>;
 
 export const ParseFileOutputSchema = z.object({
-  classNames: z.array(z.string()),
+  classNames: z.array(z.string()).describe("Top-level class names declared in the file."),
 });
 export type ParseFileOutput = z.infer<typeof ParseFileOutputSchema>;
+
+export const ParseFileDescription =
+  "Parse a Modelica file and return the top-level class names declared in it (without loading into the symbol table).";
 
 export async function parseFile(
   ctx: CallContext,

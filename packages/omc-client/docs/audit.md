@@ -91,21 +91,23 @@ These are the rules. A function is **consistent** if and only if all of these ho
 
 ### 2.2 Per-file structure
 
-Every per-function file exports exactly five things, in this order:
+Every per-function file exports exactly six things, in this order:
 
 1. `<Fn>InputSchema` — the Zod input schema
 2. `<Fn>Input` — `z.input<typeof <Fn>InputSchema>` (NOT `z.infer` — `.default()` fields should remain optional for callers)
 3. `<Fn>OutputSchema` — the Zod output schema
 4. `<Fn>Output` — `z.infer<typeof <Fn>OutputSchema>`
-5. `async function <fn>(ctx: CallContext, input: <Fn>Input): Promise<<Fn>Output>` — the implementation
+5. `<Fn>Description` — a `string` constant with a plain-English description of the function (see §2.9)
+6. `async function <fn>(ctx: CallContext, input: <Fn>Input): Promise<<Fn>Output>` — the implementation
 
-The file's leading docstring must contain the **verbatim Modelica signature** copied from the OMC docs page.
+The file's leading docstring must contain the **verbatim Modelica signature** copied from the OMC docs page, prefixed by a one-or-two-sentence plain-English description (mirroring the `<Fn>Description` constant).
 
 ### 2.3 Input naming
 
 - For OMC parameters typed `TypeName`, the property name is **always** `typeName`, regardless of what OMC named the parameter (`cl`, `class_`, `name`, `pack`, `className`, etc.). Reuse `_shared/inputs.ts:TypeNameInput` or `OptionalTypeNameInput`.
 - For all other inputs (String, Boolean, Integer, Real, String[]), the property name **matches the OMC parameter name exactly**.
 - Optional parameters with OMC defaults use `.optional().default(...)`; the default value must match the OMC docs.
+- Every Zod field on every input schema MUST carry a `.describe("…")`. The MCP-generation pipeline reads these descriptions through `zod-to-json-schema` (or equivalent) when building MCP tool definitions; missing descriptions silently produce inferior tool docs. Shared schemas in `_shared/inputs.ts` already carry generic descriptions — per-function files only override when the docs-specific semantics warrant it.
 
 ### 2.4 Output naming
 
@@ -113,6 +115,7 @@ The file's leading docstring must contain the **verbatim Modelica signature** co
 - Even single-field outputs are wrapped in an object — e.g. `getVersion` returns `{ version: string }`, not `string`.
 - For OMC functions whose output is a positional tuple/array (e.g. `getClassInformation`, `getNthConnection`, `getSimulationOptions`), the schema's field names must match the docs' `output ...` declaration order and names.
 - For OMC functions that are external `"C"` and don't declare named output fields (notably `getComponents`), the documented intended record is OMEdit's de-facto naming. Reference `OMEdit/OMCProxy.cpp`'s `OMCProxy::getComponents` parser if uncertain — it's the closest thing to a spec.
+- Every Zod field on every output schema MUST carry a `.describe("…")`. Same MCP-generation rationale as §2.3.
 
 ### 2.5 Validation
 
@@ -133,17 +136,54 @@ The file's leading docstring must contain the **verbatim Modelica signature** co
 
 ### 2.8 Shared schema reuse
 
-When the same input or output shape is declared in 3+ wrapper files, extract it to `_shared/inputs.ts` or `_shared/outputs.ts` and reuse via direct assignment (`<Fn>InputSchema = SharedSchema`) or `.extend(...)` for shape augmentation. Names describe the field set (e.g. `TypeNameAndModifierInput`, `SuccessOutput`, `BooleanBOutput`); output-side names keep OMC's verbatim field name (so `BooleanBOutput` exposes `b: boolean`, not `result: boolean`). Per-function files keep their 5-export structure and verbatim Modelica signature docstring.
+Two layers of reuse, both gated by the same 3-callers minimum:
+
+1. **Whole-object schemas** in `_shared/inputs.ts` / `_shared/outputs.ts` — when 3+ wrappers share the same complete object shape. Reuse via direct assignment (`<Fn>InputSchema = SharedSchema`) or `.extend(...)` for shape augmentation. Names describe the field set (e.g. `TypeNameAndModifierInput`, `SuccessOutput`, `BooleanBOutput`); output-side names keep OMC's verbatim field name (so `BooleanBOutput` exposes `b: boolean`, not `result: boolean`).
+2. **Atomic field schemas** in `_shared/fields.ts` — when 3+ wrappers share the same single-field declaration with the same `.describe(...)` text (e.g. `prettyPrint`, `requireExactVersion`, `connectionAnnotation`). Per-function consumers import via property shorthand and may override the description with `.describe(...)` at the use site when OMC docs give a more specific phrasing. Naming convention: lowercase atomic field names (`prettyPrint`) vs. PascalCase whole-object names (`SuccessOutput`); specialized variants of a common field name carry a contextual suffix (`typeNameOfConnection`, `typeNameOfExtends`).
+
+Per-function files keep their 6-export structure and verbatim Modelica signature docstring regardless of which layer they pull from.
 
 ```ts
-// Direct alias when the shared shape matches exactly:
+// Layer 1 — whole-object: direct alias when the shared shape matches exactly:
 export const IsModelOutputSchema = BooleanBOutput;
 
-// .extend() when the wrapper adds fields:
+// Layer 1 — whole-object: .extend() when the wrapper adds fields:
 export const SetComponentModifierValueInputSchema = TypeNameAndModifierInput.extend({
-  expr: z.string(),
+  expr,
 });
+
+// Layer 2 — atomic field: property shorthand inside z.object(...):
+import { prettyPrint, typeNameOfConnection } from "../../_shared/fields.js";
+
+export const GetNthConnectionInputSchema = z.object({
+  typeName: typeNameOfConnection,
+  index: z.number().int().positive().describe("1-based connection index, …"),
+});
+
+// Layer 2 — atomic field with a more-specific OMC-docs description:
+extendsBase: extendsBase.describe(
+  "TypeName of the base class on the `extends` clause to mutate.",
+),
 ```
+
+### 2.9 Descriptions (MCP metadata)
+
+Each per-function file exports a `<Fn>Description` string constant, sourced from the OpenModelica scripting documentation. The same string is also stored on the `RegistryEntry.description` field. Together with the `.describe()` annotations on every Zod input/output schema field, these descriptions are the authoritative source for the MCP-generation pipeline that derives a Modelica MCP server from this registry.
+
+**Sourcing policy.** For each function, fetch `https://build.openmodelica.org/Documentation/OpenModelica.Scripting.<fn>.html` and extract the prose paragraph above or below the signature. The description constant should be one or two sentences; the leading docstring above the verbatim signature should reflect the same text (possibly slightly expanded with implementation notes the wrapper carries).
+
+**Fallback hierarchy** when the docs page is sparse:
+
+1. Use the docs prose verbatim (lightly reworded for grammar) when present.
+2. If no prose is present, derive a one-sentence description from the function name and signature. Be honest: say "List the available linear solvers." not "Comprehensive linear-algebra subsystem inspection."
+3. For per-output fields with no docs, infer from the field name + type. For OMC's verbatim conventions like `b: Boolean` (predicate output), say something like *"True if the predicate matches; field name `b` is OMC verbatim."*.
+4. **Never invent specifics that aren't in the docs.** If the meaning of a parameter is unclear, say "OMC parameter `<name>`; see the OMC docs page for details." Better honest-vague than wrong-specific.
+
+**Shared-schema descriptions stay generic.** `_shared/inputs.ts` carries descriptions like `"Fully qualified Modelica TypeName … emitted bare to OMC."`. Per-function files only override this on their own schema when the function-specific semantics actually differ (e.g. `loadModel.typeName` means "library to load", not "class to inspect"; `renameClass.typeName` means "old name to rename"). Otherwise the generic description suffices.
+
+**Output `success` and predicate fields.** Boolean success outputs get the canonical phrase `"True if the OMC operation completed without error."`; predicate outputs whose field name is OMC-verbatim (`b`, `result`) note that fact in their description.
+
+**Pinned-OMC drift.** When a function's docs page returns 404 (some `solver/*` functions, `parseFile`, `createClass`, `createSubClass`), the description is derived from the function name + signature and notes the 404 status. The description constant still gets exported — the MCP-generation pipeline must not treat undocumented functions as un-describable.
 
 ---
 

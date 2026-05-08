@@ -15,18 +15,20 @@ import { expectBool, parse } from "../../parse.js";
 
 export const AddComponentInputSchema = z.object({
   /** Local instance name to give the new component. */
-  componentName: z.string(),
+  componentName: z.string().describe("Local instance name to give the new component."),
   /** Type to instantiate (e.g. "Modelica.Blocks.Math.Gain"). */
-  componentClass: z.string(),
+  componentClass: z.string().describe('Type to instantiate (e.g. "Modelica.Blocks.Math.Gain").'),
   /** Class to insert into. */
-  intoTypeName: z.string(),
+  intoTypeName: z.string().describe("Class into which the new component is inserted."),
   /** Raw Modelica `Placement(...)` expression; "" → default. */
-  annotation: z.string().optional().default(""),
+  annotation: z.string().optional().default("").describe('Raw Modelica `Placement(...)` annotation (no `annotate=` prefix); "" yields the default placement.'),
 });
 export type AddComponentInput = z.input<typeof AddComponentInputSchema>;
 
 export const AddComponentOutputSchema = SuccessOutput;
 export type AddComponentOutput = z.infer<typeof AddComponentOutputSchema>;
+
+export const AddComponentDescription = "Insert a new component into a class with an optional Placement annotation.";
 
 export async function addComponent(
   ctx: CallContext,

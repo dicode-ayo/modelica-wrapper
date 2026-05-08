@@ -24,16 +24,19 @@ import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
 
 export const CreateSubClassInputSchema = z.object({
-  typeName: z.string(),
-  parent: z.string(),
-  restriction: z.string(),
-  partial: z.boolean().optional().default(false),
-  encapsulated: z.boolean().optional().default(false),
+  typeName: z.string().describe("Local name to give the new sub-class."),
+  parent: z.string().describe("TypeName of the existing parent class to nest the new class inside."),
+  restriction: z.string().describe('Class restriction kind: "model", "block", "package", "function", "connector", "type", "record", …'),
+  partial: z.boolean().optional().default(false).describe("Declare the class as `partial`."),
+  encapsulated: z.boolean().optional().default(false).describe("Declare the class as `encapsulated`."),
 });
 export type CreateSubClassInput = z.input<typeof CreateSubClassInputSchema>;
 
 export const CreateSubClassOutputSchema = SuccessOutput;
 export type CreateSubClassOutput = z.infer<typeof CreateSubClassOutputSchema>;
+
+export const CreateSubClassDescription =
+  "Create a class nested inside an existing parent class. (OMC docs page is 404; symbol absent on OMC 1.26.x — see file docstring for migration.)";
 
 export async function createSubClass(
   ctx: CallContext,

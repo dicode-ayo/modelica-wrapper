@@ -12,8 +12,8 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { asBool, asFloat, asInt, asString, isNull, parse } from "../../parse.js";
 
 export const GetParameterValueInputSchema = z.object({
-  typeName: z.string(),
-  name: z.string(),
+  typeName: z.string().describe("Class containing the parameter."),
+  name: z.string().describe("Parameter name to read (dotted path for nested parameters)."),
 });
 export type GetParameterValueInput = z.input<
   typeof GetParameterValueInputSchema
@@ -23,6 +23,8 @@ export const GetParameterValueOutputSchema = StringValueOutput;
 export type GetParameterValueOutput = z.infer<
   typeof GetParameterValueOutputSchema
 >;
+
+export const GetParameterValueDescription = "Return the value of a parameter of the class as the literal text of its binding.";
 
 export async function getParameterValue(
   ctx: CallContext,

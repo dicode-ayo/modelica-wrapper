@@ -1,6 +1,8 @@
 /**
  * OMC: `function getElementModifierValue`
  *
+ * Returns the bound expression of a single modifier on an element of a class.
+ *
  * ```modelica
  * function getElementModifierValue
  *   input TypeName className;
@@ -29,6 +31,8 @@ export const GetElementModifierValueOutputSchema = StringValueOutput;
 export type GetElementModifierValueOutput = z.infer<
   typeof GetElementModifierValueOutputSchema
 >;
+
+export const GetElementModifierValueDescription = "Return the bound expression of a single modifier on an element of a class.";
 
 export async function getElementModifierValue(
   ctx: CallContext,

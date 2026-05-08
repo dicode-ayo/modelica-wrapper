@@ -1,6 +1,9 @@
 /**
  * OMC: `function getUses`
  *
+ * Returns the libraries used by a package via its `uses` annotation, as a list
+ * of `(libraryName, version)` pairs.
+ *
  * ```modelica
  * function getUses
  *   input TypeName pack;
@@ -22,9 +25,12 @@ export const GetUsesInputSchema = TypeNameInput;
 export type GetUsesInput = z.input<typeof GetUsesInputSchema>;
 
 export const GetUsesOutputSchema = z.object({
-  uses: z.array(z.tuple([z.string(), z.string()])),
+  uses: z.array(z.tuple([z.string(), z.string()])).describe("List of (libraryName, version) pairs declared in the package's `uses` annotation."),
 });
 export type GetUsesOutput = z.infer<typeof GetUsesOutputSchema>;
+
+export const GetUsesDescription =
+  "Return the libraries used by a package, as `(libraryName, version)` pairs taken from the `uses` annotation.";
 
 export async function getUses(
   ctx: CallContext,

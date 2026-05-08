@@ -12,13 +12,15 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const DeleteComponentInputSchema = z.object({
-  componentName: z.string(),
-  typeName: z.string(),
+  componentName: z.string().describe("Local instance name of the component to delete."),
+  typeName: z.string().describe("Class containing the component to delete."),
 });
 export type DeleteComponentInput = z.input<typeof DeleteComponentInputSchema>;
 
 export const DeleteComponentOutputSchema = SuccessOutput;
 export type DeleteComponentOutput = z.infer<typeof DeleteComponentOutputSchema>;
+
+export const DeleteComponentDescription = "Delete a component from the given class.";
 
 export async function deleteComponent(
   ctx: CallContext,

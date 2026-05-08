@@ -24,11 +24,13 @@ export type GetIconAnnotationInput = z.input<
 >;
 
 export const GetIconAnnotationOutputSchema = z.object({
-  annotation: ValueSchema,
+  annotation: ValueSchema.describe("Parsed Icon annotation Value tree (CoordinateSystem + graphics list)."),
 });
 export type GetIconAnnotationOutput = z.infer<
   typeof GetIconAnnotationOutputSchema
 >;
+
+export const GetIconAnnotationDescription = "Return the Icon annotation for a given class as a parsed Value tree.";
 
 export async function getIconAnnotation(
   ctx: CallContext,

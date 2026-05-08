@@ -22,15 +22,18 @@ import { ValueSchema } from "../../_shared/value.js";
 import { parse } from "../../parse.js";
 
 export const GetElementsInputSchema = z.object({
-  typeName: z.string(),
-  useQuotes: z.boolean().optional().default(false),
+  typeName: z.string().describe("Class whose elements should be enumerated."),
+  useQuotes: z.boolean().optional().default(false).describe("Quote string-typed fields in the result when true."),
 });
 export type GetElementsInput = z.input<typeof GetElementsInputSchema>;
 
 export const GetElementsOutputSchema = z.object({
-  elements: ValueSchema,
+  elements: ValueSchema.describe("Element rows as a Modelica expression tree (raw `Value`); shape varies across OMC versions."),
 });
 export type GetElementsOutput = z.infer<typeof GetElementsOutputSchema>;
+
+export const GetElementsDescription =
+  "Return all elements declared in a class (extends, components, short class definitions) as the raw `Value` tree; callers walk the structure.";
 
 export async function getElements(
   ctx: CallContext,

@@ -13,7 +13,7 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const SetIndexReductionMethodInputSchema = z.object({
-  method: z.string(),
+  method: z.string().describe('Index-reduction method name, e.g. "dynamicStateSelection".'),
 });
 export type SetIndexReductionMethodInput = z.input<
   typeof SetIndexReductionMethodInputSchema
@@ -23,6 +23,8 @@ export const SetIndexReductionMethodOutputSchema = SuccessOutput;
 export type SetIndexReductionMethodOutput = z.infer<
   typeof SetIndexReductionMethodOutputSchema
 >;
+
+export const SetIndexReductionMethodDescription = "Set the index-reduction method applied by OMC's backend after pre-optimization.";
 
 export async function setIndexReductionMethod(
   ctx: CallContext,

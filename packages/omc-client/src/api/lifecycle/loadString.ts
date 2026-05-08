@@ -1,6 +1,10 @@
 /**
  * OMC: `function loadString`
  *
+ * Parses Modelica definitions from a string and merges (or replaces) them with
+ * the already-loaded AST. `filename` is used only for diagnostics. Encoding is
+ * deprecated by OMC — strings are UTF-8.
+ *
  * ```modelica
  * function loadString
  *   input String data;
@@ -18,24 +22,28 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { requireExactVersion } from "../../_shared/fields.js";
 import { mlBool, quote } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const LoadStringInputSchema = z.object({
-  data: z.string(),
-  filename: z.string().optional().default("<interactive>"),
-  encoding: z.string().optional().default("UTF-8"),
-  merge: z.boolean().optional().default(false),
-  uses: z.boolean().optional().default(true),
-  notify: z.boolean().optional().default(true),
-  requireExactVersion: z.boolean().optional().default(false),
+  data: z.string().describe("Modelica source code to parse and load."),
+  filename: z.string().optional().default("<interactive>").describe("Pseudo-filename used in OMC diagnostics for the loaded code."),
+  encoding: z.string().optional().default("UTF-8").describe("Encoding label (deprecated by OMC; strings are UTF-8)."),
+  merge: z.boolean().optional().default(false).describe("When true, merge the parsed AST into the existing one; otherwise replace."),
+  uses: z.boolean().optional().default(true).describe("Honor `uses` annotations and load referenced libraries."),
+  notify: z.boolean().optional().default(true).describe("Emit OMC notification messages while loading."),
+  requireExactVersion,
 });
 export type LoadStringInput = z.input<typeof LoadStringInputSchema>;
 
 export const LoadStringOutputSchema = SuccessOutput;
 export type LoadStringOutput = z.infer<typeof LoadStringOutputSchema>;
+
+export const LoadStringDescription =
+  "Parse Modelica definitions from a string and merge (or replace) them with the already-loaded AST.";
 
 export async function loadString(
   ctx: CallContext,

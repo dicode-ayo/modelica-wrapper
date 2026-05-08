@@ -16,9 +16,12 @@ export const ListFileInputSchema = TypeNameInput;
 export type ListFileInput = z.input<typeof ListFileInputSchema>;
 
 export const ListFileOutputSchema = z.object({
-  contents: z.string(),
+  contents: z.string().describe("Pretty-printed Modelica source for the class as one string."),
 });
 export type ListFileOutput = z.infer<typeof ListFileOutputSchema>;
+
+export const ListFileDescription =
+  "List the contents of the file backing a class — returns the pretty-printed Modelica source.";
 
 export async function listFile(
   ctx: CallContext,

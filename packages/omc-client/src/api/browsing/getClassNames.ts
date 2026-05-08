@@ -1,6 +1,10 @@
 /**
  * OMC: `function getClassNames`
  *
+ * Returns the list of class names defined inside `class_` (defaulting to
+ * `AllLoadedClasses`), with flags to walk recursively, qualify the names, sort
+ * them, include built-ins, expose protected classes, and include constants.
+ *
  * ```modelica
  * function getClassNames
  *   input TypeName class_ = $Code(AllLoadedClasses);
@@ -24,20 +28,23 @@ import { expectStringList, parse } from "../../parse.js";
 import type { OmcCommand } from "../../commands.js";
 
 export const GetClassNamesInputSchema = z.object({
-  typeName: z.string().optional(),
-  recursive: z.boolean().optional().default(false),
-  qualified: z.boolean().optional().default(false),
-  sort: z.boolean().optional().default(false),
-  builtin: z.boolean().optional().default(false),
-  showProtected: z.boolean().optional().default(false),
-  includeConstants: z.boolean().optional().default(false),
+  typeName: z.string().optional().describe("Class to inspect; omit to default to OMC's AllLoadedClasses (every loaded top-level class)."),
+  recursive: z.boolean().optional().default(false).describe("Walk into nested classes when true; only direct children otherwise."),
+  qualified: z.boolean().optional().default(false).describe("Return fully qualified dotted names instead of bare local names."),
+  sort: z.boolean().optional().default(false).describe("Sort the returned class names alphabetically."),
+  builtin: z.boolean().optional().default(false).describe("Include OMC built-in classes (Real, Integer, …) in the result."),
+  showProtected: z.boolean().optional().default(false).describe("Include classes declared in protected sections."),
+  includeConstants: z.boolean().optional().default(false).describe("Include `constant` declarations in the result."),
 });
 export type GetClassNamesInput = z.input<typeof GetClassNamesInputSchema>;
 
 export const GetClassNamesOutputSchema = z.object({
-  classNames: z.array(z.string()),
+  classNames: z.array(z.string()).describe("Class names found inside the requested class, per the input flags."),
 });
 export type GetClassNamesOutput = z.infer<typeof GetClassNamesOutputSchema>;
+
+export const GetClassNamesDescription =
+  "List the class names defined inside a class (defaults to AllLoadedClasses), with flags for recursion, qualification, sorting, built-ins, protected classes, and constants.";
 
 export async function getClassNames(
   ctx: CallContext,

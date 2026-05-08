@@ -24,7 +24,7 @@ import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js"
 
 export const RemoveElementModifiersInputSchema =
   TypeNameAndComponentNameInput.extend({
-    keepRedeclares: z.boolean().optional().default(false),
+    keepRedeclares: z.boolean().optional().default(false).describe("Preserve `redeclare` modifiers when true; clear all modifiers when false."),
   });
 export type RemoveElementModifiersInput = z.input<
   typeof RemoveElementModifiersInputSchema
@@ -34,6 +34,9 @@ export const RemoveElementModifiersOutputSchema = SuccessOutput;
 export type RemoveElementModifiersOutput = z.infer<
   typeof RemoveElementModifiersOutputSchema
 >;
+
+export const RemoveElementModifiersDescription =
+  "Remove the modifiers attached to an element. With `keepRedeclares=true`, preserves any `redeclare` modifiers.";
 
 export async function removeElementModifiers(
   ctx: CallContext,

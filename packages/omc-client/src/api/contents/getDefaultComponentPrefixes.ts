@@ -25,11 +25,14 @@ export type GetDefaultComponentPrefixesInput = z.input<
 >;
 
 export const GetDefaultComponentPrefixesOutputSchema = z.object({
-  prefixes: z.string(),
+  prefixes: z.string().describe("Value of the class's `defaultComponentPrefixes` annotation; empty if not set."),
 });
 export type GetDefaultComponentPrefixesOutput = z.infer<
   typeof GetDefaultComponentPrefixesOutputSchema
 >;
+
+export const GetDefaultComponentPrefixesDescription =
+  "Return the value of the class's `defaultComponentPrefixes` annotation (e.g. `inner`, `parameter`) used by editors when creating instances.";
 
 export async function getDefaultComponentPrefixes(
   ctx: CallContext,
