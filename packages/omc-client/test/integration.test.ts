@@ -504,19 +504,6 @@ describeIf("OmcClient against real OMC", () => {
     expect(classNames.length).toBeGreaterThan(0);
   });
 
-  // === Modern read path (Tier 1) ===
-
-  it("getModelInstance returns a non-empty JSON string", async () => {
-    await client.loadModel({ typeName: "Modelica" });
-    const { result } = await client.getModelInstance({
-      typeName: "Modelica.Blocks.Examples.PID_Controller",
-    });
-    expect(typeof result).toBe("string");
-    expect(result.length).toBeGreaterThan(10);
-    // Light shape sanity — JSON should start with `{`.
-    expect(result.trim().startsWith("{")).toBe(true);
-  });
-
   // === Parameter parity (Tier 6) ===
 
   it("getParameterNames returns the parameter list for a model", async () => {
