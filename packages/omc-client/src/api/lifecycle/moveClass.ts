@@ -15,6 +15,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
 
 export const MoveClassInputSchema = z.object({
@@ -23,9 +24,7 @@ export const MoveClassInputSchema = z.object({
 });
 export type MoveClassInput = z.input<typeof MoveClassInputSchema>;
 
-export const MoveClassOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const MoveClassOutputSchema = SuccessOutput;
 export type MoveClassOutput = z.infer<typeof MoveClassOutputSchema>;
 
 export async function moveClass(

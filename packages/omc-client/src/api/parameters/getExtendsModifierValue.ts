@@ -7,6 +7,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { StringValueOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
 
@@ -19,9 +20,7 @@ export type GetExtendsModifierValueInput = z.input<
   typeof GetExtendsModifierValueInputSchema
 >;
 
-export const GetExtendsModifierValueOutputSchema = z.object({
-  value: z.string(),
-});
+export const GetExtendsModifierValueOutputSchema = StringValueOutput;
 export type GetExtendsModifierValueOutput = z.infer<
   typeof GetExtendsModifierValueOutputSchema
 >;

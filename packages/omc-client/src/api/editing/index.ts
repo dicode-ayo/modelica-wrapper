@@ -14,3 +14,5 @@ export * from "./addClassAnnotation.js";
 export * from "./setComponentProperties.js";
 export * from "./setComponentDimensions.js";
 export * from "./setComponentComment.js";
+export * from "./setClassComment.js";
+export * from "./setDocumentationAnnotation.js";

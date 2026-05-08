@@ -20,6 +20,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { mlBool, quote } from "../../_shared/format.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
 
 export const CreateSubClassInputSchema = z.object({
@@ -31,9 +32,7 @@ export const CreateSubClassInputSchema = z.object({
 });
 export type CreateSubClassInput = z.input<typeof CreateSubClassInputSchema>;
 
-export const CreateSubClassOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const CreateSubClassOutputSchema = SuccessOutput;
 export type CreateSubClassOutput = z.infer<typeof CreateSubClassOutputSchema>;
 
 export async function createSubClass(

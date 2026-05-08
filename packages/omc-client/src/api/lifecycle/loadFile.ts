@@ -18,6 +18,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { mlBool, quote } from "../../_shared/format.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
@@ -31,9 +32,7 @@ export const LoadFileInputSchema = z.object({
 });
 export type LoadFileInput = z.input<typeof LoadFileInputSchema>;
 
-export const LoadFileOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const LoadFileOutputSchema = SuccessOutput;
 export type LoadFileOutput = z.infer<typeof LoadFileOutputSchema>;
 
 export async function loadFile(

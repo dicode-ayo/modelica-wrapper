@@ -7,20 +7,17 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { TypeNameAndModifierInput } from "../../_shared/inputs.js";
+import { StringValueOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
 
-export const GetComponentModifierValueInputSchema = z.object({
-  typeName: z.string(),
-  modifier: z.string(),
-});
+export const GetComponentModifierValueInputSchema = TypeNameAndModifierInput;
 export type GetComponentModifierValueInput = z.input<
   typeof GetComponentModifierValueInputSchema
 >;
 
-export const GetComponentModifierValueOutputSchema = z.object({
-  value: z.string(),
-});
+export const GetComponentModifierValueOutputSchema = StringValueOutput;
 export type GetComponentModifierValueOutput = z.infer<
   typeof GetComponentModifierValueOutputSchema
 >;

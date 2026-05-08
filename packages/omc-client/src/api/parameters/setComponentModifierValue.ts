@@ -10,21 +10,20 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { TypeNameAndModifierInput } from "../../_shared/inputs.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const SetComponentModifierValueInputSchema = z.object({
-  typeName: z.string(),
-  modifier: z.string(),
-  expr: z.string(),
-});
+export const SetComponentModifierValueInputSchema =
+  TypeNameAndModifierInput.extend({
+    expr: z.string(),
+  });
 export type SetComponentModifierValueInput = z.input<
   typeof SetComponentModifierValueInputSchema
 >;
 
-export const SetComponentModifierValueOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const SetComponentModifierValueOutputSchema = SuccessOutput;
 export type SetComponentModifierValueOutput = z.infer<
   typeof SetComponentModifierValueOutputSchema
 >;

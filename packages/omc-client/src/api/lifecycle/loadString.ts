@@ -19,6 +19,7 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { mlBool, quote } from "../../_shared/format.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
@@ -33,9 +34,7 @@ export const LoadStringInputSchema = z.object({
 });
 export type LoadStringInput = z.input<typeof LoadStringInputSchema>;
 
-export const LoadStringOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const LoadStringOutputSchema = SuccessOutput;
 export type LoadStringOutput = z.infer<typeof LoadStringOutputSchema>;
 
 export async function loadString(

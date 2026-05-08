@@ -16,6 +16,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
 
 export const UpdateConnectionInputSchema = z.object({
@@ -26,9 +27,7 @@ export const UpdateConnectionInputSchema = z.object({
 });
 export type UpdateConnectionInput = z.input<typeof UpdateConnectionInputSchema>;
 
-export const UpdateConnectionOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const UpdateConnectionOutputSchema = SuccessOutput;
 export type UpdateConnectionOutput = z.infer<
   typeof UpdateConnectionOutputSchema
 >;

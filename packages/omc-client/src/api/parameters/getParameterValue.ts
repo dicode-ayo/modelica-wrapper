@@ -7,6 +7,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { StringValueOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asBool, asFloat, asInt, asString, isNull, parse } from "../../parse.js";
 
@@ -18,9 +19,7 @@ export type GetParameterValueInput = z.input<
   typeof GetParameterValueInputSchema
 >;
 
-export const GetParameterValueOutputSchema = z.object({
-  value: z.string(),
-});
+export const GetParameterValueOutputSchema = StringValueOutput;
 export type GetParameterValueOutput = z.infer<
   typeof GetParameterValueOutputSchema
 >;

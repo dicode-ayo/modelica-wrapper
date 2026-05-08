@@ -23,30 +23,29 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { mlBool, quote } from "../../_shared/format.js";
+import { TypeNameAndComponentNameInput } from "../../_shared/inputs.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
 
-export const SetComponentPropertiesInputSchema = z.object({
-  typeName: z.string(),
-  componentName: z.string(),
-  finalPrefix: z.boolean(),
-  flow: z.boolean(),
-  stream: z.boolean(),
-  protectedPrefix: z.boolean(),
-  replaceablePrefix: z.boolean(),
-  /** "constant" | "parameter" | "discrete" | "" (continuous). */
-  variability: z.string(),
-  inner: z.boolean(),
-  outer: z.boolean(),
-  /** "input" | "output" | "". */
-  direction: z.string(),
-});
+export const SetComponentPropertiesInputSchema =
+  TypeNameAndComponentNameInput.extend({
+    finalPrefix: z.boolean(),
+    flow: z.boolean(),
+    stream: z.boolean(),
+    protectedPrefix: z.boolean(),
+    replaceablePrefix: z.boolean(),
+    /** "constant" | "parameter" | "discrete" | "" (continuous). */
+    variability: z.string(),
+    inner: z.boolean(),
+    outer: z.boolean(),
+    /** "input" | "output" | "". */
+    direction: z.string(),
+  });
 export type SetComponentPropertiesInput = z.input<
   typeof SetComponentPropertiesInputSchema
 >;
 
-export const SetComponentPropertiesOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const SetComponentPropertiesOutputSchema = SuccessOutput;
 export type SetComponentPropertiesOutput = z.infer<
   typeof SetComponentPropertiesOutputSchema
 >;

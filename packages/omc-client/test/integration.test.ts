@@ -372,6 +372,104 @@ describeIf("OmcClient against real OMC", () => {
     expect(typeof v2).toBe("string");
   });
 
+  // === Class predicates (Tier 4) ===
+
+  it("class predicates classify Modelica entries correctly", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+
+    const { b: isPkg } = await client.isPackage({ typeName: "Modelica.Blocks" });
+    expect(isPkg).toBe(true);
+
+    const { b: isFn } = await client.isFunction({
+      typeName: "Modelica.Math.sin",
+    });
+    expect(isFn).toBe(true);
+
+    const { b: isBlk } = await client.isBlock({
+      typeName: "Modelica.Blocks.Math.Sin",
+    });
+    expect(isBlk).toBe(true);
+
+    const { b: isMod } = await client.isModel({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+    });
+    expect(isMod).toBe(true);
+
+    const { restriction } = await client.getClassRestriction({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+    });
+    expect(restriction).toBe("model");
+
+    const { b: existsModel } = await client.existModel({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+    });
+    expect(existsModel).toBe(true);
+
+    const { b: existsPkg } = await client.existPackage({
+      typeName: "Modelica.Blocks",
+    });
+    expect(existsPkg).toBe(true);
+  });
+
+  // === Elements (Tier 2) ===
+
+  it("getElements returns a non-null Value tree for a known class", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { elements } = await client.getElements({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+    });
+    expect(["list", "call"]).toContain(elements.kind);
+  });
+
+  it("getElementsInfo returns a non-null Value tree", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { result } = await client.getElementsInfo({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+    });
+    expect(["list", "call", "string"]).toContain(result.kind);
+  });
+
+  // === Library / packages (Tier 3) ===
+
+  it("getLoadedLibraries lists loaded libraries", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { libraries } = await client.getLoadedLibraries();
+    expect(libraries.length).toBeGreaterThan(0);
+    const names = libraries.map((p) => p[0]);
+    expect(names).toContain("Modelica");
+  });
+
+  it("getPackages returns at least the loaded packages", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { classNames } = await client.getPackages();
+    expect(Array.isArray(classNames)).toBe(true);
+    expect(classNames.length).toBeGreaterThan(0);
+  });
+
+  // === Modern read path (Tier 1) ===
+
+  it("getModelInstance returns a non-empty JSON string", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { result } = await client.getModelInstance({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+    });
+    expect(typeof result).toBe("string");
+    expect(result.length).toBeGreaterThan(10);
+    // Light shape sanity — JSON should start with `{`.
+    expect(result.trim().startsWith("{")).toBe(true);
+  });
+
+  // === Parameter parity (Tier 6) ===
+
+  it("getParameterNames returns the parameter list for a model", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { parameters } = await client.getParameterNames({
+      typeName: "Modelica.Blocks.Continuous.PID",
+    });
+    expect(Array.isArray(parameters)).toBe(true);
+    expect(parameters.length).toBeGreaterThan(0);
+  });
+
   // === Concurrency ===
 
   it("serializes concurrent calls without REQ/REP corruption", async () => {
@@ -379,4 +477,144 @@ describeIf("OmcClient against real OMC", () => {
     const versions = (await Promise.all(ps)).map((r) => r.version);
     expect(new Set(versions).size).toBe(1);
   });
+
+  // === Coverage placeholders (it.todo) for new functions ===
+  //
+  // Each todo below corresponds to a new wrapper added in this PR that doesn't
+  // yet have an integration test. The reason after the colon should help a
+  // future contributor decide whether they can promote the todo to a real
+  // test (e.g. add a fixture, gate behind OMC_INTEGRATION_HEAVY, etc.).
+
+  // contents — readers needing a fixture with declared connectors / inheritance
+  it.todo(
+    "getModelInstanceAnnotation: needs a class with annotations and a filter assertion; deferred",
+  );
+  it.todo(
+    "modifierToJSON: needs a sample modifier expression to assert JSON shape; deferred",
+  );
+  it.todo(
+    "getConnectionList: needs a fixture with multiple connections; could share PID_Controller setup",
+  );
+  it.todo(
+    "getNthConnector: needs a fixture with declared connectors; deferred",
+  );
+  it.todo(
+    "getNthConnectorIconAnnotation: needs a fixture with declared connectors; deferred",
+  );
+  it.todo(
+    "getConnectorCount: cheap follow-up; can wire to PID_Controller fixture",
+  );
+  it.todo(
+    "getNthInheritedClassIconMapAnnotation: needs a fixture with inheritance + IconMap annotation; deferred",
+  );
+  it.todo(
+    "getNthInheritedClassDiagramMapAnnotation: needs a fixture with inheritance + DiagramMap annotation; deferred",
+  );
+  it.todo(
+    "getDefaultComponentName: untested smoke; can wire to PID_Controller fixture in follow-up",
+  );
+  it.todo(
+    "getDefaultComponentPrefixes: untested smoke; can wire to PID_Controller fixture in follow-up",
+  );
+  it.todo(
+    "getComponentComment: cheap follow-up; needs a class with a documented component",
+  );
+
+  // elements — readers + mutations
+  it.todo(
+    "getElementAnnotation: needs a fixture model with annotations on elements",
+  );
+  it.todo(
+    "getElementAnnotations: needs a fixture model with annotations on elements",
+  );
+  it.todo(
+    "getElementModifierNames: cheap follow-up; can wire to PID_Controller's PI element",
+  );
+  it.todo(
+    "getElementModifierValue: cheap follow-up; can wire to PID_Controller's PI element",
+  );
+  it.todo(
+    "getElementModifierValues: cheap follow-up; can wire to PID_Controller's PI element",
+  );
+  it.todo(
+    "setElementModifierValue: mutation; needs throwaway loadString fixture; deferred to next PR",
+  );
+  it.todo(
+    "setElementAnnotation: mutation; needs throwaway loadString fixture; deferred to next PR",
+  );
+  it.todo(
+    "setElementType: mutation; needs throwaway loadString fixture; deferred to next PR",
+  );
+  it.todo(
+    "removeElementModifiers: mutation; needs throwaway loadString fixture; deferred to next PR",
+  );
+
+  // library — package manager calls hit the network
+  it.todo(
+    "getAvailableLibraries: network side-effect; intentionally skipped in CI",
+  );
+  it.todo(
+    "getAvailableLibraryVersions: network side-effect; intentionally skipped in CI",
+  );
+  it.todo(
+    "getAvailablePackageVersions: network side-effect; intentionally skipped in CI",
+  );
+  it.todo(
+    "installPackage: network side-effect; intentionally skipped in CI",
+  );
+  it.todo(
+    "updatePackageIndex: network side-effect; intentionally skipped in CI",
+  );
+  it.todo(
+    "upgradeInstalledPackages: network side-effect; intentionally skipped in CI",
+  );
+  it.todo(
+    "loadFiles: cheap follow-up; needs a temp .mo fixture and OMC's numProcessors() default to evaluate",
+  );
+
+  // browsing — niche class predicates
+  it.todo(
+    "getClassComment: cheap follow-up; can wire to a class with a documented comment string",
+  );
+  it.todo("isType: cheap follow-up; can wire to a Modelica type alias");
+  it.todo("isClass: cheap follow-up; can wire to a Modelica class");
+  it.todo(
+    "isRecord: cheap follow-up; can wire to a Modelica record (e.g. Modelica.SIunits)",
+  );
+  it.todo(
+    "isConnector: cheap follow-up; can wire to Modelica.Blocks.Interfaces.RealInput",
+  );
+  it.todo(
+    "isPartial: cheap follow-up; can wire to Modelica.Blocks.Interfaces.SISO",
+  );
+  it.todo(
+    "isReplaceable: cheap follow-up; needs a class element with `replaceable` keyword",
+  );
+  it.todo(
+    "isProtectedClass: cheap follow-up; needs a fixture with a protected child class",
+  );
+  it.todo(
+    "isEnumeration: cheap follow-up; can wire to a Modelica enumeration type",
+  );
+
+  // editing — mutations
+  it.todo(
+    "setClassComment: mutation; needs throwaway loadString fixture; deferred to next PR",
+  );
+  it.todo(
+    "setDocumentationAnnotation: mutation; needs throwaway loadString fixture; deferred to next PR",
+  );
+
+  // parameters — mutation
+  it.todo(
+    "setParameterValue: mutation; needs throwaway loadString fixture; deferred to next PR",
+  );
+
+  // results — depend on a heavy simulate run producing a .mat
+  it.todo(
+    "val: depends on .mat from a heavy simulate run; gate with OMC_INTEGRATION_HEAVY=1",
+  );
+  it.todo(
+    "readSimulationResult: depends on .mat from a heavy simulate run; gate with OMC_INTEGRATION_HEAVY=1",
+  );
 });

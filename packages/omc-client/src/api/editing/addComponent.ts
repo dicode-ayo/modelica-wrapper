@@ -9,6 +9,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
@@ -24,9 +25,7 @@ export const AddComponentInputSchema = z.object({
 });
 export type AddComponentInput = z.input<typeof AddComponentInputSchema>;
 
-export const AddComponentOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const AddComponentOutputSchema = SuccessOutput;
 export type AddComponentOutput = z.infer<typeof AddComponentOutputSchema>;
 
 export async function addComponent(

@@ -8,21 +8,20 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { quote } from "../../_shared/format.js";
+import { TypeNameAndComponentNameInput } from "../../_shared/inputs.js";
+import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
-export const SetComponentCommentInputSchema = z.object({
-  typeName: z.string(),
-  componentName: z.string(),
-  comment: z.string(),
-});
+export const SetComponentCommentInputSchema =
+  TypeNameAndComponentNameInput.extend({
+    comment: z.string(),
+  });
 export type SetComponentCommentInput = z.input<
   typeof SetComponentCommentInputSchema
 >;
 
-export const SetComponentCommentOutputSchema = z.object({
-  success: z.boolean(),
-});
+export const SetComponentCommentOutputSchema = SuccessOutput;
 export type SetComponentCommentOutput = z.infer<
   typeof SetComponentCommentOutputSchema
 >;

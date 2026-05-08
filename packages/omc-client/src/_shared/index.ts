@@ -1,4 +1,16 @@
 export type { CallContext } from "./callContext.js";
 export { parseOutput, parseMutationSuccess } from "./parseOutput.js";
-export { TypeNameInput, OptionalTypeNameInput } from "./inputs.js";
+export {
+  TypeNameInput,
+  OptionalTypeNameInput,
+  TypeNameAndModifierInput,
+  TypeNameAndComponentNameInput,
+  TypeNameAndIndexInput,
+} from "./inputs.js";
+export {
+  SuccessOutput,
+  BooleanBOutput,
+  StringResultOutput,
+  StringValueOutput,
+} from "./outputs.js";
 export { ValueSchema } from "./value.js";
