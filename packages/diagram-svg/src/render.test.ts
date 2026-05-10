@@ -354,3 +354,115 @@ describe("renderClassIconToSvg", () => {
     expect(svg).toContain('viewBox="-10 -10 20 20"');
   });
 });
+
+describe("gradient fill patterns", () => {
+  function withGradientRect(
+    fillPattern: string,
+    fillColor: [number, number, number] = [192, 192, 192],
+    lineColor: [number, number, number] | undefined = [64, 64, 64],
+  ): string {
+    const shape: RectangleShape = {
+      kind: "rectangle",
+      extent: [
+        [-50, -25],
+        [50, 25],
+      ],
+      fillColor,
+      fillPattern,
+      ...(lineColor !== undefined ? { lineColor } : {}),
+    };
+    return renderIconLayersToSvg([makeLayer("Test.Cyl", [shape])]);
+  }
+
+  it("HorizontalCylinder emits a <linearGradient> with vertical axis and references it via url(#…)", () => {
+    const svg = withGradientRect("HorizontalCylinder");
+    // Linear gradient with vertical axis: x1=y1=x2=0, y2=1.
+    expect(svg).toMatch(/<linearGradient id="dsvg-hcyl-[^"]+" x1="0" y1="0" x2="0" y2="1">/);
+    // Three stops: edge (lineColor), middle (fillColor), edge.
+    expect(svg).toContain('<stop offset="0%" stop-color="rgb(64,64,64)"/>');
+    expect(svg).toContain('<stop offset="50%" stop-color="rgb(192,192,192)"/>');
+    expect(svg).toContain('<stop offset="100%" stop-color="rgb(64,64,64)"/>');
+    // Rectangle references the gradient rather than the solid fillColor.
+    expect(svg).toMatch(/<rect [^>]*fill="url\(#dsvg-hcyl-[^"]+\)"/);
+    // Gradient def lives inside <defs>, before the layer group.
+    const defsIdx = svg.indexOf("<defs>");
+    const layerIdx = svg.indexOf('class="diagram-svg-layer"');
+    expect(defsIdx).toBeGreaterThan(-1);
+    expect(defsIdx).toBeLessThan(layerIdx);
+  });
+
+  it("VerticalCylinder emits a <linearGradient> with horizontal axis", () => {
+    const svg = withGradientRect("VerticalCylinder");
+    expect(svg).toMatch(/<linearGradient id="dsvg-vcyl-[^"]+" x1="0" y1="0" x2="1" y2="0">/);
+    expect(svg).toMatch(/<rect [^>]*fill="url\(#dsvg-vcyl-[^"]+\)"/);
+  });
+
+  it("Sphere emits a <radialGradient> from middle (fillColor) to edge (lineColor)", () => {
+    const svg = withGradientRect("Sphere");
+    expect(svg).toMatch(/<radialGradient id="dsvg-sphere-[^"]+" cx="0.5" cy="0.5" r="0.5">/);
+    // For sphere: 0% = middle, 100% = edge (the brighter colour radiates out).
+    expect(svg).toMatch(
+      /<radialGradient[^>]*>\s*<stop offset="0%" stop-color="rgb\(192,192,192\)"\/>\s*<stop offset="100%" stop-color="rgb\(64,64,64\)"\/>/,
+    );
+  });
+
+  it("dedupes gradient defs across shapes that share (kind, edge, middle)", () => {
+    const svg = renderIconLayersToSvg([
+      makeLayer("Test.Multi", [
+        {
+          kind: "rectangle",
+          extent: [[-50, -25], [50, 25]],
+          fillColor: [192, 192, 192],
+          lineColor: [64, 64, 64],
+          fillPattern: "HorizontalCylinder",
+        },
+        {
+          kind: "rectangle",
+          extent: [[60, -25], [160, 25]],
+          fillColor: [192, 192, 192],
+          lineColor: [64, 64, 64],
+          fillPattern: "HorizontalCylinder",
+        },
+      ]),
+    ]);
+    // Exactly one <linearGradient> def even though two rects use it.
+    const matches = svg.match(/<linearGradient /g) ?? [];
+    expect(matches).toHaveLength(1);
+  });
+
+  it("falls back to a darkened fillColor when lineColor is absent", () => {
+    // Inline the shape so no default lineColor sneaks in via the helper's
+    // default parameter (JS resolves `undefined` to the default).
+    const svg = renderIconLayersToSvg([
+      makeLayer("Test.NoLine", [
+        {
+          kind: "rectangle",
+          extent: [
+            [-50, -25],
+            [50, 25],
+          ],
+          fillColor: [200, 100, 50],
+          fillPattern: "HorizontalCylinder",
+        },
+      ]),
+    ]);
+    // 50% of each fillColor channel: [100, 50, 25].
+    expect(svg).toContain('<stop offset="0%" stop-color="rgb(100,50,25)"/>');
+    expect(svg).toContain('<stop offset="50%" stop-color="rgb(200,100,50)"/>');
+  });
+
+  it("omits gradient defs entirely when no shape uses a gradient fill", () => {
+    const svg = renderIconLayersToSvg([
+      makeLayer("Test.Plain", [
+        {
+          kind: "rectangle",
+          extent: [[-50, -25], [50, 25]],
+          fillColor: [10, 20, 30],
+          fillPattern: "Solid",
+        },
+      ]),
+    ]);
+    expect(svg).not.toContain("<defs>");
+    expect(svg).not.toContain("<linearGradient");
+  });
+});
