@@ -14,9 +14,10 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "OMC_INTEGRATION=0 vitest run",
     "test:watch": "vitest",
-    "test:unit": "vitest run",
+    "test:unit": "OMC_INTEGRATION=0 vitest run",
+    "capture-icons": "OMC_INTEGRATION=1 vitest run test/capture-icon-fixtures.integration.test.ts",
     "storybook": "storybook dev -p 6006 --no-open",
     "build-storybook": "storybook build"
   },
