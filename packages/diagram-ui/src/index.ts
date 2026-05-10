@@ -47,6 +47,14 @@ export {
   type GridOptions,
   type GridMeshes,
 } from "./axis/grid-build.js";
+export { OmShapeElement } from "./base/shape-element.js";
+export { OmShapeNode } from "./base/shape-node.js";
+export {
+  applyPlacement,
+  coordSystemSize,
+  defaultCoordSystemSize,
+  type AppliedTransform,
+} from "./base/placement-math.js";
 export { OmIconProvider } from "./icon-provider/icon-provider.component.js";
 export {
   IconCache,
