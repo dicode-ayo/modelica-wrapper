@@ -41,7 +41,7 @@ importers:
         version: 5.4.21(@types/node@22.19.17)
       vitest:
         specifier: ^2.1.0
-        version: 2.1.9(@types/node@22.19.17)
+        version: 2.1.9(@types/node@22.19.17)(happy-dom@15.11.7)
 
   packages/diagram-ui:
     dependencies:
@@ -64,15 +64,33 @@ importers:
         specifier: ^3.2.0
         version: 3.3.2
     devDependencies:
+      '@storybook/addon-essentials':
+        specifier: ^8.4.0
+        version: 8.6.14(@types/react@19.2.14)(storybook@8.6.18)
+      '@storybook/web-components':
+        specifier: ^8.4.0
+        version: 8.6.18(lit@3.3.2)(storybook@8.6.18)
+      '@storybook/web-components-vite':
+        specifier: ^8.4.0
+        version: 8.6.18(lit@3.3.2)(storybook@8.6.18)(vite@5.4.21(@types/node@22.19.17))
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.17
+      happy-dom:
+        specifier: ^15.11.0
+        version: 15.11.7
+      storybook:
+        specifier: ^8.4.0
+        version: 8.6.18
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
+      vite:
+        specifier: ^5.4.0
+        version: 5.4.21(@types/node@22.19.17)
       vitest:
         specifier: ^2.1.0
-        version: 2.1.9(@types/node@22.19.17)
+        version: 2.1.9(@types/node@22.19.17)(happy-dom@15.11.7)
 
   packages/extension:
     dependencies:
@@ -94,7 +112,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^2.1.0
-        version: 2.1.9(@types/node@22.19.17)
+        version: 2.1.9(@types/node@22.19.17)(happy-dom@15.11.7)
 
   packages/omc-client:
     dependencies:
@@ -116,7 +134,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^2.1.0
-        version: 2.1.9(@types/node@22.19.17)
+        version: 2.1.9(@types/node@22.19.17)(happy-dom@15.11.7)
 
 packages:
 
@@ -704,6 +722,19 @@ packages:
     peerDependencies:
       storybook: ^8.2.0 || ^8.3.0-0 || ^8.4.0-0 || ^8.5.0-0 || ^8.6.0-0
 
+  '@storybook/web-components-vite@8.6.18':
+    resolution: {integrity: sha512-Nls1FBb4vYkrbJJ/ojleR7zLFoRPSmG/twNPj36YP50iGWHy12H5+eJ8kRDzNXPma9HICHdzKYOTSmOar86jjA==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      storybook: ^8.6.18
+
+  '@storybook/web-components@8.6.18':
+    resolution: {integrity: sha512-keHYAuFQtixM9fOYO022Yc6zslqc1UpxNTFR/NkWo4Bn/o7CLQKv2L9rbmZrCWyV0HsZgxvsvI3OPlRSqkksVg==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      lit: ^2.0.0 || ^3.0.0
+      storybook: ^8.6.18
+
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
@@ -844,6 +875,10 @@ packages:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
     engines: {node: '>= 0.4'}
 
+  entities@4.5.0:
+    resolution: {integrity: sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw==}
+    engines: {node: '>=0.12'}
+
   es-define-property@1.0.1:
     resolution: {integrity: sha512-e3nRfgfUZ4rNGL232gUgX06QNyyez04KdjFrF+LTRoOXmrOgFKDg4BCdsjW8EnT69eqdYGmRpJwiPVYNrCaW3g==}
     engines: {node: '>= 0.4'}
@@ -913,6 +948,10 @@ packages:
   gopd@1.2.0:
     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}
     engines: {node: '>= 0.4'}
+
+  happy-dom@15.11.7:
+    resolution: {integrity: sha512-KyrFvnl+J9US63TEzwoiJOQzZBJY7KgBushJA8X61DMbNsH+2ONkDuLDnCnwUiPTF42tLoEmrPyoqbenVA5zrg==}
+    engines: {node: '>=18.0.0'}
 
   has-property-descriptors@1.0.2:
     resolution: {integrity: sha512-55JNKuIW+vq4Ke1BjOTjM2YctQIvCT7GFzHwmfZPGo5wnrgkid0YQtnAleFSqumZm4az3n2BS+erby5ipJdgrg==}
@@ -1205,8 +1244,16 @@ packages:
       jsdom:
         optional: true
 
+  webidl-conversions@7.0.0:
+    resolution: {integrity: sha512-VwddBukDzu71offAQR975unBIGqfKZpM+8ZX6ySk8nYhVoo5CYaZyzt3YBvYtRtO+aoGlqxPg/B87NGVZ/fu6g==}
+    engines: {node: '>=12'}
+
   webpack-virtual-modules@0.6.2:
     resolution: {integrity: sha512-66/V2i5hQanC51vBQKPH4aI8NMAcBW59FVBs+rC7eGHupMyfn34q7rZIE+ETlJ+XTevqfUhVVBgSUNSW2flEUQ==}
+
+  whatwg-mimetype@3.0.0:
+    resolution: {integrity: sha512-nt+N2dzIutVRxARx1nghPKGv1xHikU7HKdfafKkLNLindmPU/ch3U31NOCGGA/dmPcmb1VlofO0vnKAcsm0o/Q==}
+    engines: {node: '>=12'}
 
   which-typed-array@1.1.20:
     resolution: {integrity: sha512-LYfpUkmqwl0h9A2HL09Mms427Q1RZWuOHsukfVcKRq9q95iQxdw0ix1JQrqbcDR9PH1QDwf5Qo8OZb5lksZ8Xg==}
@@ -1660,6 +1707,28 @@ snapshots:
     dependencies:
       storybook: 8.6.18
 
+  '@storybook/web-components-vite@8.6.18(lit@3.3.2)(storybook@8.6.18)(vite@5.4.21(@types/node@22.19.17))':
+    dependencies:
+      '@storybook/builder-vite': 8.6.18(storybook@8.6.18)(vite@5.4.21(@types/node@22.19.17))
+      '@storybook/web-components': 8.6.18(lit@3.3.2)(storybook@8.6.18)
+      magic-string: 0.30.21
+      storybook: 8.6.18
+    transitivePeerDependencies:
+      - lit
+      - vite
+
+  '@storybook/web-components@8.6.18(lit@3.3.2)(storybook@8.6.18)':
+    dependencies:
+      '@storybook/components': 8.6.18(storybook@8.6.18)
+      '@storybook/global': 5.0.0
+      '@storybook/manager-api': 8.6.18(storybook@8.6.18)
+      '@storybook/preview-api': 8.6.18(storybook@8.6.18)
+      '@storybook/theming': 8.6.18(storybook@8.6.18)
+      lit: 3.3.2
+      storybook: 8.6.18
+      tiny-invariant: 1.3.3
+      ts-dedent: 2.2.0
+
   '@types/estree@1.0.8': {}
 
   '@types/json-schema@7.0.15': {}
@@ -1795,6 +1864,8 @@ snapshots:
       es-errors: 1.3.0
       gopd: 1.2.0
 
+  entities@4.5.0: {}
+
   es-define-property@1.0.1: {}
 
   es-errors@1.3.0: {}
@@ -1904,6 +1975,12 @@ snapshots:
       es-object-atoms: 1.1.1
 
   gopd@1.2.0: {}
+
+  happy-dom@15.11.7:
+    dependencies:
+      entities: 4.5.0
+      webidl-conversions: 7.0.0
+      whatwg-mimetype: 3.0.0
 
   has-property-descriptors@1.0.2:
     dependencies:
@@ -2166,7 +2243,7 @@ snapshots:
       '@types/node': 22.19.17
       fsevents: 2.3.3
 
-  vitest@2.1.9(@types/node@22.19.17):
+  vitest@2.1.9(@types/node@22.19.17)(happy-dom@15.11.7):
     dependencies:
       '@vitest/expect': 2.1.9
       '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@22.19.17))
@@ -2190,6 +2267,7 @@ snapshots:
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 22.19.17
+      happy-dom: 15.11.7
     transitivePeerDependencies:
       - less
       - lightningcss
@@ -2201,7 +2279,11 @@ snapshots:
       - supports-color
       - terser
 
+  webidl-conversions@7.0.0: {}
+
   webpack-virtual-modules@0.6.2: {}
+
+  whatwg-mimetype@3.0.0: {}
 
   which-typed-array@1.1.20:
     dependencies:

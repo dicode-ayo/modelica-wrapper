@@ -16,7 +16,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:unit": "vitest run"
+    "test:unit": "vitest run",
+    "storybook": "storybook dev -p 6007 --no-open",
+    "build-storybook": "storybook build"
   },
   "dependencies": {
     "@babylonjs/core": "^7.39.0",
@@ -27,8 +29,14 @@
     "lit": "^3.2.0"
   },
   "devDependencies": {
+    "@storybook/addon-essentials": "^8.4.0",
+    "@storybook/web-components": "^8.4.0",
+    "@storybook/web-components-vite": "^8.4.0",
     "@types/node": "^22.0.0",
+    "happy-dom": "^15.11.0",
+    "storybook": "^8.4.0",
     "typescript": "^5.6.0",
+    "vite": "^5.4.0",
     "vitest": "^2.1.0"
   }
 }
