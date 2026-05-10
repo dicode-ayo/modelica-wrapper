@@ -40,3 +40,10 @@ export {
   type CanvasSize,
   type DiagramPoint,
 } from "./scene/view-math.js";
+export { OmGridAxis } from "./axis/grid-axis.component.js";
+export {
+  buildGrid,
+  DEFAULT_GRID_OPTIONS,
+  type GridOptions,
+  type GridMeshes,
+} from "./axis/grid-build.js";
