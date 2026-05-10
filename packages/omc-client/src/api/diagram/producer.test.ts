@@ -8,7 +8,7 @@
  * the regeneration-target `*.modelInstance.json` files.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,12 +19,17 @@ import type {
   ConnectionNode,
   ModelInstance,
 } from "../../_shared/modelInstance.js";
+import type {
+  DiagramLayout,
+  IconLayer,
+  Placement,
+  Shape,
+} from "../../_shared/diagramLayout.js";
 import { produceDiagramLayout } from "./producer.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = resolve(__dirname, "..", "..", "..");
 const FIXTURES = resolve(PKG_ROOT, "test", "fixtures");
-const SNAPSHOTS = resolve(PKG_ROOT, "test", "diagram-snapshots");
 
 function loadFixture(name: string): ModelInstance {
   const path = resolve(FIXTURES, name);
@@ -33,13 +38,169 @@ function loadFixture(name: string): ModelInstance {
   return ModelInstanceSchema.parse(parsed);
 }
 
-function writeSnapshot(name: string, value: unknown): void {
-  mkdirSync(SNAPSHOTS, { recursive: true });
-  writeFileSync(
-    resolve(SNAPSHOTS, name),
-    JSON.stringify(value, null, 2) + "\n",
-    "utf8",
+/**
+ * Coordinate-array predicate: a [number, number] pair.
+ * Modelica annotations encode points and extent corners this way.
+ */
+function isXY(v: unknown): v is [number, number] {
+  return (
+    Array.isArray(v) &&
+    v.length === 2 &&
+    typeof v[0] === "number" &&
+    typeof v[1] === "number"
   );
+}
+
+function assertValidExtent(
+  ext: unknown,
+  ctx: string,
+): asserts ext is [[number, number], [number, number]] {
+  expect(Array.isArray(ext), `${ctx}: extent should be an array`).toBe(true);
+  const arr = ext as unknown[];
+  expect(arr.length, `${ctx}: extent should have 2 corners`).toBe(2);
+  expect(isXY(arr[0]), `${ctx}: extent[0] should be [x, y]`).toBe(true);
+  expect(isXY(arr[1]), `${ctx}: extent[1] should be [x, y]`).toBe(true);
+}
+
+function assertValidPlacement(p: Placement | undefined, ctx: string): void {
+  expect(p, `${ctx}: placement is required`).toBeDefined();
+  assertValidExtent(p?.extent, `${ctx}.placement`);
+  if (p?.origin !== undefined) {
+    expect(isXY(p.origin), `${ctx}.placement.origin should be [x, y]`).toBe(
+      true,
+    );
+  }
+  if (p?.rotation !== undefined) {
+    expect(typeof p.rotation, `${ctx}.placement.rotation`).toBe("number");
+  }
+}
+
+function assertValidShape(s: Shape, ctx: string): void {
+  expect(typeof s.kind, `${ctx}: shape.kind required`).toBe("string");
+  switch (s.kind) {
+    case "line":
+    case "polygon": {
+      expect(Array.isArray(s.points), `${ctx}: ${s.kind}.points required`).toBe(
+        true,
+      );
+      for (const [i, pt] of s.points.entries()) {
+        expect(isXY(pt), `${ctx}: ${s.kind}.points[${i}] not [x, y]`).toBe(
+          true,
+        );
+      }
+      break;
+    }
+    case "rectangle":
+    case "ellipse":
+    case "bitmap":
+      assertValidExtent(s.extent, `${ctx}: ${s.kind}`);
+      break;
+    case "text":
+      assertValidExtent(s.extent, `${ctx}: text`);
+      expect(s.textString, `${ctx}: text.textString required`).toBeDefined();
+      break;
+    default: {
+      const _exhaustive: never = s;
+      throw new Error(`${ctx}: unknown shape.kind ${JSON.stringify(_exhaustive)}`);
+    }
+  }
+}
+
+function assertValidIconLayer(layer: IconLayer, ctx: string): void {
+  expect(typeof layer.from, `${ctx}: iconLayer.from required`).toBe("string");
+  expect(layer.from.length, `${ctx}: iconLayer.from non-empty`).toBeGreaterThan(0);
+  expect(Array.isArray(layer.shapes), `${ctx}: iconLayer.shapes required`).toBe(
+    true,
+  );
+  for (const [i, s] of layer.shapes.entries()) {
+    assertValidShape(s, `${ctx}.shapes[${i}]`);
+  }
+}
+
+/**
+ * Walk a fully-produced layout and assert every element carries the
+ * fields the renderer needs. The aim is to catch regressions where the
+ * producer drops a field or emits a malformed sub-tree, without depending
+ * on a specific fixture's content.
+ */
+function assertWellFormed(layout: DiagramLayout): void {
+  expect(layout.kind === "icon" || layout.kind === "diagram").toBe(true);
+  expect(typeof layout.className).toBe("string");
+  expect(layout.className.length).toBeGreaterThan(0);
+
+  for (const [i, l] of layout.iconLayers.entries()) {
+    assertValidIconLayer(l, `iconLayers[${i}]`);
+  }
+  for (const [i, l] of layout.diagramLayers.entries()) {
+    assertValidIconLayer(l, `diagramLayers[${i}]`);
+  }
+
+  for (const [name, comp] of Object.entries(layout.components)) {
+    const ctx = `components[${name}]`;
+    expect(comp.name, `${ctx}: name == key`).toBe(name);
+    expect(typeof comp.classRef, `${ctx}: classRef`).toBe("string");
+    expect(
+      layout.classes[comp.classRef],
+      `${ctx}: classRef ${comp.classRef} resolves`,
+    ).toBeDefined();
+    assertValidPlacement(comp.placement, ctx);
+  }
+
+  for (const [name, conn] of Object.entries(layout.connectors)) {
+    const ctx = `connectors[${name}]`;
+    expect(conn.name, `${ctx}: name == key`).toBe(name);
+    expect(typeof conn.classRef, `${ctx}: classRef`).toBe("string");
+    expect(
+      layout.classes[conn.classRef],
+      `${ctx}: classRef ${conn.classRef} resolves`,
+    ).toBeDefined();
+    assertValidPlacement(conn.placement, ctx);
+  }
+
+  for (const [key, cls] of Object.entries(layout.classes)) {
+    const ctx = `classes[${key}]`;
+    expect(cls.name, `${ctx}: name == key`).toBe(key);
+    expect(typeof cls.restriction, `${ctx}: restriction`).toBe("string");
+    expect(cls.restriction.length).toBeGreaterThan(0);
+    expect(Array.isArray(cls.iconLayers), `${ctx}: iconLayers`).toBe(true);
+    for (const [i, l] of cls.iconLayers.entries()) {
+      assertValidIconLayer(l, `${ctx}.iconLayers[${i}]`);
+    }
+
+    for (const [pname, port] of Object.entries(cls.connectors)) {
+      const pctx = `${ctx}.connectors[${pname}]`;
+      expect(port.name, `${pctx}: name == key`).toBe(pname);
+      expect(typeof port.typeName).toBe("string");
+      expect(port.typeName.length).toBeGreaterThan(0);
+      expect(typeof port.from).toBe("string");
+      expect(port.from.length).toBeGreaterThan(0);
+      assertValidPlacement(port.placement, pctx);
+      expect(Array.isArray(port.iconLayers)).toBe(true);
+      for (const [i, l] of port.iconLayers.entries()) {
+        assertValidIconLayer(l, `${pctx}.iconLayers[${i}]`);
+      }
+    }
+  }
+
+  for (const [i, c] of layout.connections.entries()) {
+    const ctx = `connections[${i}]`;
+    expect(typeof c.lhs.port, `${ctx}.lhs.port`).toBe("string");
+    expect(c.lhs.port.length).toBeGreaterThan(0);
+    expect(typeof c.rhs.port, `${ctx}.rhs.port`).toBe("string");
+    expect(c.rhs.port.length).toBeGreaterThan(0);
+    if (c.lhs.component !== undefined) {
+      expect(typeof c.lhs.component).toBe("string");
+      expect(c.lhs.component.length).toBeGreaterThan(0);
+    }
+    if (c.rhs.component !== undefined) {
+      expect(typeof c.rhs.component).toBe("string");
+      expect(c.rhs.component.length).toBeGreaterThan(0);
+    }
+    expect(Array.isArray(c.waypoints), `${ctx}.waypoints`).toBe(true);
+    for (const [j, w] of c.waypoints.entries()) {
+      expect(isXY(w), `${ctx}.waypoints[${j}] should be [x, y]`).toBe(true);
+    }
+  }
 }
 
 describe("produceDiagramLayout: Sin (icon)", () => {
@@ -299,27 +460,22 @@ describe("produceDiagramLayout: connection filter on synthetic input", () => {
   });
 });
 
-describe("produceDiagramLayout: writes inspectable JSON snapshots", () => {
-  it("writes Sin and PID_Controller layouts under test/diagram-snapshots/", () => {
+describe("produceDiagramLayout: well-formedness", () => {
+  it("Sin (icon): every element carries its required fields", () => {
     const sin = loadFixture("sin.modelInstance.fixture.json");
-    const sinIcon = produceDiagramLayout(sin, "icon");
-    writeSnapshot("sin.icon.diagramLayout.json", sinIcon);
+    const layout = produceDiagramLayout(sin, "icon");
+    assertWellFormed(layout);
+  });
 
+  it("PID_Controller (icon): every element carries its required fields", () => {
     const pid = loadFixture("pidController.modelInstance.fixture.json");
-    const pidIcon = produceDiagramLayout(pid, "icon");
-    writeSnapshot("pidController.icon.diagramLayout.json", pidIcon);
+    const layout = produceDiagramLayout(pid, "icon");
+    assertWellFormed(layout);
+  });
 
-    const pidDiagram = produceDiagramLayout(pid, "diagram");
-    writeSnapshot("pidController.diagram.diagramLayout.json", pidDiagram);
-
-    // The dumps should at least be parseable on read-back.
-    for (const f of [
-      "sin.icon.diagramLayout.json",
-      "pidController.icon.diagramLayout.json",
-      "pidController.diagram.diagramLayout.json",
-    ]) {
-      const content = readFileSync(resolve(SNAPSHOTS, f), "utf8");
-      expect(() => JSON.parse(content)).not.toThrow();
-    }
+  it("PID_Controller (diagram): every element carries its required fields", () => {
+    const pid = loadFixture("pidController.modelInstance.fixture.json");
+    const layout = produceDiagramLayout(pid, "diagram");
+    assertWellFormed(layout);
   });
 });
