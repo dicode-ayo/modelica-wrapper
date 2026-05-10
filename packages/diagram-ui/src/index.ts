@@ -47,3 +47,15 @@ export {
   type GridOptions,
   type GridMeshes,
 } from "./axis/grid-build.js";
+export { OmIconProvider } from "./icon-provider/icon-provider.component.js";
+export {
+  IconCache,
+  type IconRequest,
+  type SvgRenderFn,
+  type RasterizeFn,
+} from "./icon-provider/icon-cache.js";
+export {
+  iconProviderContext,
+  type IconProviderContext,
+} from "./icon-provider/icon-provider-context.js";
+export { rasterizeSvgToTexture } from "./icon-provider/svg-rasterizer.js";
