@@ -1,0 +1,115 @@
+{
+  "className": "Modelica.Blocks.Math.Gain",
+  "iconLayers": [
+    {
+      "from": "Modelica.Blocks.Math.Gain",
+      "shapes": [
+        {
+          "kind": "polygon",
+          "points": [
+            [
+              -100,
+              -100
+            ],
+            [
+              -100,
+              100
+            ],
+            [
+              100,
+              0
+            ],
+            [
+              -100,
+              -100
+            ]
+          ],
+          "lineColor": [
+            0,
+            0,
+            127
+          ],
+          "fillColor": [
+            255,
+            255,
+            255
+          ],
+          "pattern": "Solid",
+          "fillPattern": "Solid",
+          "lineThickness": 0.25,
+          "smooth": "None"
+        },
+        {
+          "kind": "text",
+          "extent": [
+            [
+              -150,
+              -140
+            ],
+            [
+              150,
+              -100
+            ]
+          ],
+          "textString": "k=%k",
+          "fontSize": 0,
+          "textColor": [
+            -1,
+            -1,
+            -1
+          ],
+          "textStyle": [],
+          "horizontalAlignment": "Center"
+        },
+        {
+          "kind": "text",
+          "extent": [
+            [
+              -150,
+              140
+            ],
+            [
+              150,
+              100
+            ]
+          ],
+          "textString": "%name",
+          "fontSize": 0,
+          "textColor": [
+            0,
+            0,
+            255
+          ],
+          "textStyle": [],
+          "horizontalAlignment": "Center"
+        }
+      ],
+      "coordinateSystem": {
+        "extent": [
+          [
+            -100,
+            -100
+          ],
+          [
+            100,
+            100
+          ]
+        ],
+        "preserveAspectRatio": true
+      }
+    }
+  ],
+  "coordinateSystem": {
+    "extent": [
+      [
+        -100,
+        -100
+      ],
+      [
+        100,
+        100
+      ]
+    ],
+    "preserveAspectRatio": true
+  }
+}

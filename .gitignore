@@ -16,3 +16,4 @@ Thumbs.db
 # reproduce from any OMC install — keep them out of git.
 packages/omc-client/test/fixtures/*.modelInstance.json
 packages/omc-client/test/fixtures/*.modelInstanceAnnotation.json
+storybook-static/
