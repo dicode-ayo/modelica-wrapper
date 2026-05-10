@@ -89,4 +89,55 @@ describe("<om-scene>", () => {
     // Babylon marks disposed scenes with `isDisposed = true`.
     expect(scene?.isDisposed).toBe(true);
   });
+
+  it("clientToDiagram maps the canvas centre to (panX, panY)", async () => {
+    const el = await mountScene();
+    el.zoom = 100;
+    el.panX = 5;
+    el.panY = -3;
+    await el.updateComplete;
+    const canvas = el.shadowRoot!.querySelector("canvas")!;
+    canvas.getBoundingClientRect = () =>
+      ({
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: 800,
+        bottom: 400,
+        width: 800,
+        height: 400,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const pt = el.clientToDiagram(400, 200);
+    expect(pt).not.toBeNull();
+    expect(pt!.x).toBeCloseTo(5);
+    expect(pt!.y).toBeCloseTo(-3);
+  });
+
+  it("emits om-view-change events when PanZoom updates the view", async () => {
+    const el = await mountScene();
+    const canvas = el.shadowRoot!.querySelector("canvas")!;
+    canvas.getBoundingClientRect = () =>
+      ({
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: 800,
+        bottom: 400,
+        width: 800,
+        height: 400,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    let received: { zoom: number; panX: number; panY: number } | null = null;
+    el.addEventListener("om-view-change", (e) => {
+      received = (e as CustomEvent).detail;
+    });
+    canvas.dispatchEvent(
+      new WheelEvent("wheel", { deltaY: -100, clientX: 400, clientY: 200 }),
+    );
+    expect(received).not.toBeNull();
+    expect(received!.zoom).toBeLessThan(100);
+  });
 });

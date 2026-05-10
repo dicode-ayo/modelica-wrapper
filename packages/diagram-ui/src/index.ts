@@ -24,3 +24,19 @@ export const PACKAGE_NAME = "@modelica-wrapper/diagram-ui";
 export { OmScene, type EngineFactory } from "./scene/scene.component.js";
 export { sceneContext, type SceneContext } from "./scene/scene-context.js";
 export { parentNodeContext } from "./base/parent-node-context.js";
+export {
+  PanZoom,
+  DEFAULT_PAN_ZOOM_BOUNDS,
+  DEFAULT_ZOOM_STEP,
+  type PanZoomBounds,
+  type PanZoomOptions,
+} from "./scene/pan-zoom.js";
+export {
+  clientToDiagram,
+  diagramToClient,
+  applyPanDelta,
+  applyZoomAroundCursor,
+  type ViewState,
+  type CanvasSize,
+  type DiagramPoint,
+} from "./scene/view-math.js";

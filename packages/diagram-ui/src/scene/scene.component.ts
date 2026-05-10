@@ -21,6 +21,12 @@ import {
   FALLBACK_CANVAS_HEIGHT,
   FALLBACK_CANVAS_WIDTH,
 } from "../constants.js";
+import { PanZoom } from "./pan-zoom.js";
+import {
+  clientToDiagram as computeClientToDiagram,
+  diagramToClient as computeDiagramToClient,
+  type ViewState,
+} from "./view-math.js";
 
 /**
  * Factory injected by tests so the scene can mount under Babylon's
@@ -102,7 +108,14 @@ export class OmScene extends LitElement {
   private engine: AbstractEngine | null = null;
   private babylonScene: Scene | null = null;
   private camera: ArcRotateCamera | null = null;
+  private panZoom: PanZoom | null = null;
   private renderLoopAttached = false;
+  /**
+   * Set while `PanZoom` is feeding new view state back into the
+   * element's properties so `updated()` doesn't re-trigger
+   * `applyView()` (it's already applied directly).
+   */
+  private updatingFromUser = false;
 
   private readonly sceneProvider = new ContextProvider(this, {
     context: sceneContext,
@@ -127,7 +140,7 @@ export class OmScene extends LitElement {
   }
 
   override updated(changed: Map<string, unknown>): void {
-    if (!this.camera) {
+    if (!this.camera || this.updatingFromUser) {
       return;
     }
     if (changed.has("zoom") || changed.has("panX") || changed.has("panY")) {
@@ -190,6 +203,12 @@ export class OmScene extends LitElement {
     this.handleResize();
     this.applyView();
 
+    this.panZoom = new PanZoom(
+      canvas,
+      () => ({ zoom: this.zoom, panX: this.panX, panY: this.panY }),
+      (next) => this.onViewChangeFromUser(next),
+    );
+
     this.resizeObserver.observe(this);
 
     engine.runRenderLoop(() => {
@@ -200,8 +219,82 @@ export class OmScene extends LitElement {
     this.renderLoopAttached = true;
   }
 
+  /**
+   * Converts a viewport pixel coordinate (e.g. `event.clientX/Y`) to
+   * diagram coordinates. Returns `null` until the canvas has a non-zero
+   * bounding rect.
+   */
+  clientToDiagram(
+    clientX: number,
+    clientY: number,
+  ): { x: number; y: number } | null {
+    const canvas = this.canvasRef.value;
+    if (!canvas) {
+      return null;
+    }
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+    return computeClientToDiagram(
+      this.currentView(),
+      { width: rect.width, height: rect.height },
+      clientX - rect.left,
+      clientY - rect.top,
+    );
+  }
+
+  /**
+   * Converts diagram coordinates to a viewport pixel position. Useful
+   * for placing HTML overlays above scene entities. Returns `null`
+   * until the canvas has a non-zero bounding rect.
+   */
+  diagramToClient(
+    diagramX: number,
+    diagramY: number,
+  ): { x: number; y: number } | null {
+    const canvas = this.canvasRef.value;
+    if (!canvas) {
+      return null;
+    }
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return null;
+    }
+    const pt = computeDiagramToClient(
+      this.currentView(),
+      { width: rect.width, height: rect.height },
+      diagramX,
+      diagramY,
+    );
+    return { x: pt.x + rect.left, y: pt.y + rect.top };
+  }
+
+  private currentView(): ViewState {
+    return { zoom: this.zoom, panX: this.panX, panY: this.panY };
+  }
+
+  private onViewChangeFromUser(next: ViewState): void {
+    this.updatingFromUser = true;
+    this.zoom = next.zoom;
+    this.panX = next.panX;
+    this.panY = next.panY;
+    this.updatingFromUser = false;
+    // Apply directly — `updated()` is suppressed by the flag above.
+    this.applyView();
+    this.dispatchEvent(
+      new CustomEvent<ViewState>("om-view-change", {
+        detail: { ...next },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
   private unmount(): void {
     this.resizeObserver.disconnect();
+    this.panZoom?.destroy();
+    this.panZoom = null;
     if (this.renderLoopAttached && this.engine) {
       this.engine.stopRenderLoop();
       this.renderLoopAttached = false;
