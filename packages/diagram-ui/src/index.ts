@@ -17,10 +17,10 @@
  *   Lit→Babylon bridge that consumes its parent node, creates one
  *   `TransformNode`, syncs Lit properties to Babylon state, and provides
  *   itself as the parent context to its own children.
- *
- * The public surface fills out as the B-stage commits land. For now this
- * is a scaffold that proves the package wires up via `pnpm -r typecheck`
- * and `pnpm -r test`.
  */
 
 export const PACKAGE_NAME = "@modelica-wrapper/diagram-ui";
+
+export { OmScene, type EngineFactory } from "./scene/scene.component.js";
+export { sceneContext, type SceneContext } from "./scene/scene-context.js";
+export { parentNodeContext } from "./base/parent-node-context.js";
