@@ -1,0 +1,63 @@
+name: Chromatic
+
+# Publishes the @modelica-wrapper/diagram-svg Storybook to Chromatic on every
+# push and PR so the rendered SVG icons are inspectable live (and visual diffs
+# are flagged for review on subsequent runs).
+#
+# Setup: this workflow expects a CHROMATIC_PROJECT_TOKEN repo secret. Set it
+# once with:
+#
+#   gh secret set CHROMATIC_PROJECT_TOKEN -b "<your chpt_… token>"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# One in-flight Chromatic build per ref is enough — newer pushes supersede.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  chromatic:
+    name: Publish Storybook to Chromatic
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Chromatic needs full git history to find baselines for diffing.
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Build inside the workspace so pnpm resolves @modelica-wrapper/omc-client
+      # via the workspace link rather than npm. Chromatic's action accepts a
+      # pre-built directory via `storybookBuildDir`.
+      - name: Build Storybook
+        run: pnpm --filter @modelica-wrapper/diagram-svg build-storybook
+
+      - name: Publish to Chromatic
+        uses: chromaui/action@v11
+        with:
+          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          workingDir: packages/diagram-svg
+          storybookBuildDir: storybook-static
+          # Don't fail the workflow on visual diffs — they go to the Chromatic
+          # UI for review. Build-breaking errors (test failures, missing token)
+          # still fail.
+          exitZeroOnChanges: true
+          # TurboSnap: skip stories whose dependency tree didn't change in
+          # this commit. Needs the full git history above to be effective.
+          onlyChanged: true
