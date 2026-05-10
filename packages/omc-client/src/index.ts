@@ -111,6 +111,7 @@ export {
 // --- Functional API (re-export by category) ---
 export * as browsing from "./api/browsing/index.js";
 export * as contents from "./api/contents/index.js";
+export * as diagram from "./api/diagram/index.js";
 export * as editing from "./api/editing/index.js";
 export * as elements from "./api/elements/index.js";
 export * as execution from "./api/execution/index.js";
