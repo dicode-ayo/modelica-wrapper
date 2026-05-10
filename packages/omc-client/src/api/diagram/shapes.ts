@@ -12,8 +12,8 @@
  * positional fields follow.
  *
  * IMPORTANT: the positional layout below was cross-checked against actual
- * OMC 1.26.7 captures (`test/fixtures/sin.modelInstance.fixture.json`,
- * `test/fixtures/pidController.modelInstance.fixture.json`). For `Text`,
+ * OMC 1.26.7 captures of `Modelica.Blocks.Math.Sin` and
+ * `Modelica.Blocks.Examples.PID_Controller`. For `Text`,
  * OMC's emission order differs from the spec wording: it produces
  * `extent, textString, fontSize, textColor, fontName, textStyle,
  * horizontalAlignment` rather than the spec's

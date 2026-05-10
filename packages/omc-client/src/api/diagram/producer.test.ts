@@ -1,23 +1,35 @@
 /**
- * Fixture-driven tests for the DiagramLayout producer.
+ * Tests for the DiagramLayout producer.
  *
- * No OMC contact. The fixtures are JSON copies of getModelInstance output
- * captured against OMC 1.26.7 (`Modelica.Blocks.Math.Sin`,
- * `Modelica.Blocks.Examples.PID_Controller`) and committed under
- * `*.modelInstance.fixture.json` to escape the gitignore that excludes
- * the regeneration-target `*.modelInstance.json` files.
+ * No OMC contact, no on-disk fixtures. The producer is a pure function of
+ * `ModelInstance`, so we synthesize a minimal `ModelInstance` literal that
+ * exercises every behavior in one shot:
+ *
+ *  - host extends a base class that contributes its own Icon shapes
+ *    (extends-chain icon walker)
+ *  - host has standalone connectors `u`, `y` registered into the catalog
+ *  - host has two sub-components of the same type (class-registry dedup),
+ *    each with distinct modifiers (per-instance preservation)
+ *  - host has a Real-typed parameter (`restriction: "type"`) that must be
+ *    filtered out of `components`
+ *  - sub-component class itself extends a base that defines connectors
+ *    (extends-chain port walker)
+ *  - host has three connections: two routed via `annotation.Line`, one
+ *    equation-only (no annotation) that must be filtered
+ *  - one routed connection's lhs is a 1-part cref (host port), the other's
+ *    is a 2-part cref (sub-component port) — exercises both flatten cases
+ *
+ * The synthetic literal is round-tripped through `ModelInstanceSchema` so
+ * any divergence between our hand-built shape and the schema fails the
+ * test rather than the producer.
  */
-
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { ModelInstanceSchema } from "../../_shared/modelInstance.js";
-import type {
-  ConnectionNode,
-  ModelInstance,
+import {
+  ModelInstanceSchema,
+  type ConnectionNode,
+  type ModelInstance,
 } from "../../_shared/modelInstance.js";
 import type {
   DiagramLayout,
@@ -27,21 +39,260 @@ import type {
 } from "../../_shared/diagramLayout.js";
 import { produceDiagramLayout } from "./producer.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PKG_ROOT = resolve(__dirname, "..", "..", "..");
-const FIXTURES = resolve(PKG_ROOT, "test", "fixtures");
+// =====================================================================
+// Synthetic ModelInstance builders.
+// =====================================================================
+//
+// Modelica §18.6 records are positional, so each shape builder fills the
+// full field list — even fields we don't care about — to keep the indexes
+// the decoder expects in alignment.
 
-function loadFixture(name: string): ModelInstance {
-  const path = resolve(FIXTURES, name);
-  const raw = readFileSync(path, "utf8");
-  const parsed = JSON.parse(raw);
-  return ModelInstanceSchema.parse(parsed);
+const SOLID_LINE = { $kind: "enum", name: "LinePattern.Solid", index: 1 };
+const SOLID_FILL = { $kind: "enum", name: "FillPattern.Solid", index: 1 };
+const NO_BORDER = { $kind: "enum", name: "BorderPattern.None", index: 1 };
+const NO_SMOOTH = { $kind: "enum", name: "Smooth.None", index: 1 };
+const NO_ARROW = { $kind: "enum", name: "Arrow.None", index: 1 };
+
+function rectShape(extent: [[number, number], [number, number]]): unknown {
+  return {
+    $kind: "record",
+    name: "Rectangle",
+    elements: [
+      true,           // visible
+      [0, 0],         // origin
+      0,              // rotation
+      [0, 0, 0],      // lineColor
+      [255, 255, 255],// fillColor
+      SOLID_LINE,     // pattern
+      SOLID_FILL,     // fillPattern
+      1,              // lineThickness
+      NO_BORDER,      // borderPattern
+      extent,         // extent
+      0,              // radius
+    ],
+  };
 }
 
-/**
- * Coordinate-array predicate: a [number, number] pair.
- * Modelica annotations encode points and extent corners this way.
- */
+function polygonShape(points: [number, number][]): unknown {
+  return {
+    $kind: "record",
+    name: "Polygon",
+    elements: [
+      true, [0, 0], 0,
+      [0, 0, 0], [128, 128, 128], SOLID_LINE, SOLID_FILL, 1,
+      points,
+      NO_SMOOTH,
+    ],
+  };
+}
+
+function lineShape(points: [number, number][]): unknown {
+  return {
+    $kind: "record",
+    name: "Line",
+    elements: [
+      true, [0, 0], 0,
+      points,
+      [0, 0, 0],      // color
+      SOLID_LINE,     // pattern
+      0.5,            // thickness
+      [NO_ARROW, NO_ARROW],
+      3,              // arrowSize
+      NO_SMOOTH,
+    ],
+  };
+}
+
+function placementAnno(
+  extent: [[number, number], [number, number]],
+): unknown {
+  return { Placement: { transformation: { extent } } };
+}
+
+// ----- Class definitions used by Synth.Host -----
+
+const RealInputClass: unknown = {
+  name: "Synth.Interfaces.RealInput",
+  restriction: "connector",
+  annotation: {
+    Icon: {
+      coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+      graphics: [polygonShape([[-100, 100], [100, 0], [-100, -100]])],
+    },
+  },
+};
+
+const RealOutputClass: unknown = {
+  name: "Synth.Interfaces.RealOutput",
+  restriction: "connector",
+  annotation: {
+    Icon: {
+      coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+      graphics: [polygonShape([[-100, 100], [100, 0], [-100, -100]])],
+    },
+  },
+};
+
+/** Host's base — contributes one Icon layer to Synth.Host's iconLayers. */
+const BaseFrameClass: unknown = {
+  name: "Synth.BaseFrame",
+  restriction: "block",
+  annotation: {
+    Icon: {
+      coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+      graphics: [rectShape([[-100, -100], [100, 100]])],
+    },
+  },
+};
+
+/** Gain's base — defines `u`/`y` connectors that Gain inherits. */
+const GainBaseClass: unknown = {
+  name: "Synth.GainBase",
+  restriction: "block",
+  elements: [
+    {
+      $kind: "component",
+      name: "u",
+      type: RealInputClass,
+      annotation: placementAnno([[-110, -10], [-90, 10]]),
+    },
+    {
+      $kind: "component",
+      name: "y",
+      type: RealOutputClass,
+      annotation: placementAnno([[90, -10], [110, 10]]),
+    },
+  ],
+};
+
+/** Sub-component class with extends-chain connectors + own connector + own icon. */
+const GainClass: unknown = {
+  name: "Synth.Gain",
+  restriction: "block",
+  elements: [
+    { $kind: "extends", baseClass: GainBaseClass },
+    {
+      $kind: "component",
+      name: "kFF",
+      type: RealInputClass,
+      annotation: placementAnno([[-110, 40], [-90, 60]]),
+    },
+  ],
+  annotation: {
+    Icon: {
+      coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+      graphics: [polygonShape([[-100, -50], [100, 0], [-100, 50]])],
+    },
+  },
+};
+
+/** Sub-component class with no extends — direct connector declaration. */
+const ProcessorClass: unknown = {
+  name: "Synth.Processor",
+  restriction: "block",
+  elements: [
+    {
+      $kind: "component",
+      name: "in_",
+      type: RealInputClass,
+      annotation: placementAnno([[-110, -10], [-90, 10]]),
+    },
+  ],
+  annotation: {
+    Icon: { graphics: [rectShape([[-50, -50], [50, 50]])] },
+  },
+};
+
+/** A Modelica `type` alias. The producer must NOT register this as a sub-component. */
+const TypeAlias: unknown = {
+  name: "Synth.Units.Time",
+  restriction: "type",
+};
+
+/** The host model under test. */
+function makeHostModelInstance(): ModelInstance {
+  const hostLiteral: unknown = {
+    name: "Synth.Host",
+    restriction: "model",
+    annotation: {
+      Icon: {
+        coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+        graphics: [polygonShape([[-50, -50], [50, -50], [0, 50]])],
+      },
+      Diagram: {
+        coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+        graphics: [],
+      },
+    },
+    elements: [
+      // host extends base
+      { $kind: "extends", baseClass: BaseFrameClass },
+      // standalone connectors on host
+      {
+        $kind: "component",
+        name: "u",
+        type: RealInputClass,
+        annotation: placementAnno([[-110, -10], [-90, 10]]),
+      },
+      {
+        $kind: "component",
+        name: "y",
+        type: RealOutputClass,
+        annotation: placementAnno([[90, -10], [110, 10]]),
+      },
+      // sub-components — two of the same type (dedup), one of another type
+      {
+        $kind: "component",
+        name: "gain1",
+        type: GainClass,
+        modifiers: { k: "1" },
+        annotation: placementAnno([[-50, -50], [-30, -30]]),
+      },
+      {
+        $kind: "component",
+        name: "gain2",
+        type: GainClass,
+        modifiers: { k: "2" },
+        annotation: placementAnno([[10, -50], [30, -30]]),
+      },
+      {
+        $kind: "component",
+        name: "proc",
+        type: ProcessorClass,
+        annotation: placementAnno([[50, -50], [70, -30]]),
+      },
+      // Modelica `type` alias — must be filtered from components
+      { $kind: "component", name: "tau", type: TypeAlias },
+    ],
+    connections: [
+      // routed: 1-part lhs (host port) → 2-part rhs (sub-component port)
+      {
+        lhs: { $kind: "cref", parts: [{ name: "u" }] },
+        rhs: { $kind: "cref", parts: [{ name: "gain1" }, { name: "u" }] },
+        annotation: { Line: { points: [[-90, 0], [-50, -40]] } },
+      },
+      // unrouted: NO annotation — must be skipped
+      {
+        lhs: { $kind: "cref", parts: [{ name: "gain1" }, { name: "y" }] },
+        rhs: { $kind: "cref", parts: [{ name: "gain2" }, { name: "u" }] },
+      },
+      // routed: 2-part lhs → 2-part rhs
+      {
+        lhs: { $kind: "cref", parts: [{ name: "gain2" }, { name: "y" }] },
+        rhs: { $kind: "cref", parts: [{ name: "proc" }, { name: "in_" }] },
+        annotation: { Line: { points: [[30, -40], [50, -40]] } },
+      },
+    ],
+  };
+  return ModelInstanceSchema.parse(hostLiteral);
+}
+
+// =====================================================================
+// Well-formedness helpers — walk a layout and assert every element
+// carries the fields the renderer needs. Independent of any specific
+// fixture's content.
+// =====================================================================
+
 function isXY(v: unknown): v is [number, number] {
   return (
     Array.isArray(v) &&
@@ -101,7 +352,9 @@ function assertValidShape(s: Shape, ctx: string): void {
       break;
     default: {
       const _exhaustive: never = s;
-      throw new Error(`${ctx}: unknown shape.kind ${JSON.stringify(_exhaustive)}`);
+      throw new Error(
+        `${ctx}: unknown shape.kind ${JSON.stringify(_exhaustive)}`,
+      );
     }
   }
 }
@@ -117,12 +370,6 @@ function assertValidIconLayer(layer: IconLayer, ctx: string): void {
   }
 }
 
-/**
- * Walk a fully-produced layout and assert every element carries the
- * fields the renderer needs. The aim is to catch regressions where the
- * producer drops a field or emits a malformed sub-tree, without depending
- * on a specific fixture's content.
- */
 function assertWellFormed(layout: DiagramLayout): void {
   expect(layout.kind === "icon" || layout.kind === "diagram").toBe(true);
   expect(typeof layout.className).toBe("string");
@@ -166,7 +413,6 @@ function assertWellFormed(layout: DiagramLayout): void {
     for (const [i, l] of cls.iconLayers.entries()) {
       assertValidIconLayer(l, `${ctx}.iconLayers[${i}]`);
     }
-
     for (const [pname, port] of Object.entries(cls.connectors)) {
       const pctx = `${ctx}.connectors[${pname}]`;
       expect(port.name, `${pctx}: name == key`).toBe(pname);
@@ -203,279 +449,162 @@ function assertWellFormed(layout: DiagramLayout): void {
   }
 }
 
-describe("produceDiagramLayout: Sin (icon)", () => {
-  it("collects the host's own icon shapes plus ancestor layers", () => {
-    const sin = loadFixture("sin.modelInstance.fixture.json");
-    const layout = produceDiagramLayout(sin, "icon");
+// =====================================================================
+// Tests
+// =====================================================================
+
+describe("produceDiagramLayout: icon layers", () => {
+  it("collects host's own icon plus ancestor layer in draw order", () => {
+    const layout = produceDiagramLayout(makeHostModelInstance(), "icon");
 
     expect(layout.kind).toBe("icon");
-    expect(layout.className).toBe("Modelica.Blocks.Math.Sin");
-    expect(layout.iconLayers.length).toBeGreaterThanOrEqual(1);
+    expect(layout.className).toBe("Synth.Host");
 
-    const last = layout.iconLayers[layout.iconLayers.length - 1];
-    expect(last?.from).toBe("Modelica.Blocks.Math.Sin");
-    expect(last?.shapes.length).toBe(6);
+    // post-order: ancestors first, host last (so host paints on top)
+    expect(layout.iconLayers.map((l) => l.from)).toEqual([
+      "Synth.BaseFrame",
+      "Synth.Host",
+    ]);
 
-    const blockLayer = layout.iconLayers.find(
-      (l) => l.from === "Modelica.Blocks.Icons.Block",
-    );
-    expect(blockLayer).toBeDefined();
-    expect(blockLayer?.shapes.length).toBe(2);
+    // host contributes its polygon, base contributes its rectangle
+    const host = layout.iconLayers.find((l) => l.from === "Synth.Host");
+    expect(host?.shapes.map((s) => s.kind)).toEqual(["polygon"]);
+
+    const base = layout.iconLayers.find((l) => l.from === "Synth.BaseFrame");
+    expect(base?.shapes.map((s) => s.kind)).toEqual(["rectangle"]);
   });
+});
 
-  it("has no sub-component classes (Sin is leaf-shaped)", () => {
-    const sin = loadFixture("sin.modelInstance.fixture.json");
-    const layout = produceDiagramLayout(sin, "icon");
-
-    // Only connector classes should appear (RealInput, RealOutput) —
-    // those come in via the standalone-connector path.
-    const subComponentClasses = Object.values(layout.classes).filter(
-      (c) => c.restriction !== "connector",
-    );
-    expect(subComponentClasses).toHaveLength(0);
-    expect(Object.keys(layout.components)).toHaveLength(0);
-  });
-
-  it("registers RealInput `u` and RealOutput `y` as standalone connectors", () => {
-    const sin = loadFixture("sin.modelInstance.fixture.json");
-    const layout = produceDiagramLayout(sin, "icon");
+describe("produceDiagramLayout: standalone connectors", () => {
+  it("registers host ports `u`/`y` and resolves classRef into the catalog", () => {
+    const layout = produceDiagramLayout(makeHostModelInstance(), "icon");
 
     expect(Object.keys(layout.connectors).sort()).toEqual(["u", "y"]);
-    expect(layout.connectors.u?.classRef).toBe(
-      "Modelica.Blocks.Interfaces.RealInput",
-    );
-    expect(layout.connectors.y?.classRef).toBe(
-      "Modelica.Blocks.Interfaces.RealOutput",
-    );
+    expect(layout.connectors.u?.classRef).toBe("Synth.Interfaces.RealInput");
+    expect(layout.connectors.y?.classRef).toBe("Synth.Interfaces.RealOutput");
 
-    // Each connector's classRef resolves to a ClassDef in `classes`
-    // with its own iconLayers.
-    const realInput = layout.classes["Modelica.Blocks.Interfaces.RealInput"];
+    const realInput = layout.classes["Synth.Interfaces.RealInput"];
     expect(realInput).toBeDefined();
     expect(realInput?.iconLayers.length).toBeGreaterThan(0);
 
-    const realOutput = layout.classes["Modelica.Blocks.Interfaces.RealOutput"];
+    const realOutput = layout.classes["Synth.Interfaces.RealOutput"];
     expect(realOutput).toBeDefined();
     expect(realOutput?.iconLayers.length).toBeGreaterThan(0);
   });
 });
 
-describe("produceDiagramLayout: PID_Controller (icon)", () => {
-  it("collects host's own icon through Modelica.Icons.Example", () => {
-    const pid = loadFixture("pidController.modelInstance.fixture.json");
-    const layout = produceDiagramLayout(pid, "icon");
-
-    expect(layout.iconLayers.length).toBeGreaterThanOrEqual(1);
-
-    // PID_Controller has no own Icon graphics — confirmed by the host's
-    // own layer either being absent or having zero shapes.
-    const hostLayer = layout.iconLayers.find(
-      (l) => l.from === "Modelica.Blocks.Examples.PID_Controller",
-    );
-    if (hostLayer) {
-      expect(hostLayer.shapes).toHaveLength(0);
-    }
-
-    const exampleLayer = layout.iconLayers.find(
-      (l) => l.from === "Modelica.Icons.Example",
-    );
-    expect(exampleLayer).toBeDefined();
-    expect((exampleLayer?.shapes.length ?? 0)).toBeGreaterThan(0);
-  });
-
+describe("produceDiagramLayout: sub-component instances", () => {
   it("registers each named sub-component", () => {
-    const pid = loadFixture("pidController.modelInstance.fixture.json");
-    const layout = produceDiagramLayout(pid, "icon");
-
-    const wantNames = [
-      "PI",
-      "inertia1",
-      "inertia2",
-      "spring",
-      "torque",
-      "kinematicPTP",
-      "integrator",
-    ];
-    for (const name of wantNames) {
-      expect(layout.components, `expected component ${name}`).toHaveProperty(name);
-    }
+    const layout = produceDiagramLayout(makeHostModelInstance(), "icon");
+    expect(Object.keys(layout.components).sort()).toEqual([
+      "gain1",
+      "gain2",
+      "proc",
+    ]);
   });
 
-  it("dedupes Inertia: inertia1.classRef === inertia2.classRef and the class appears exactly once", () => {
-    const pid = loadFixture("pidController.modelInstance.fixture.json");
-    const layout = produceDiagramLayout(pid, "icon");
-
-    const inertia1 = layout.components.inertia1;
-    const inertia2 = layout.components.inertia2;
-    expect(inertia1).toBeDefined();
-    expect(inertia2).toBeDefined();
-    expect(inertia1?.classRef).toBe(
-      "Modelica.Mechanics.Rotational.Components.Inertia",
-    );
-    expect(inertia1?.classRef).toBe(inertia2?.classRef);
-
-    const inertiaKey = "Modelica.Mechanics.Rotational.Components.Inertia";
-    expect(layout.classes[inertiaKey]).toBeDefined();
-    const occurrences = Object.keys(layout.classes).filter(
-      (k) => k === inertiaKey,
-    );
-    expect(occurrences).toHaveLength(1);
-  });
-
-  it("LimPID's connector list walks the extends chain (u_s, u_m, y from SVcontrol; u_ff direct)", () => {
-    const pid = loadFixture("pidController.modelInstance.fixture.json");
-    const layout = produceDiagramLayout(pid, "icon");
-
-    const lim = layout.classes["Modelica.Blocks.Continuous.LimPID"];
-    expect(lim).toBeDefined();
-    const portNames = Object.keys(lim?.connectors ?? {}).sort();
-    for (const want of ["u_ff", "u_m", "u_s", "y"]) {
-      expect(portNames, `expected port ${want}`).toContain(want);
-    }
-  });
-
-  it("does not list Real-typed parameters as components (driveAngle has restriction='type')", () => {
-    const pid = loadFixture("pidController.modelInstance.fixture.json");
-    const layout = produceDiagramLayout(pid, "icon");
-    expect(layout.components.driveAngle).toBeUndefined();
+  it("filters out type-alias components (restriction='type')", () => {
+    const layout = produceDiagramLayout(makeHostModelInstance(), "icon");
+    expect(layout.components.tau).toBeUndefined();
+    expect(layout.classes["Synth.Units.Time"]).toBeUndefined();
   });
 });
 
-describe("produceDiagramLayout: PID_Controller (diagram)", () => {
-  it("emits exactly the connections that have annotation.Line", () => {
-    const pid = loadFixture("pidController.modelInstance.fixture.json");
-    const layout = produceDiagramLayout(pid, "diagram");
+describe("produceDiagramLayout: class-registry dedup", () => {
+  it("collapses two Gain instances to one catalog entry", () => {
+    const layout = produceDiagramLayout(makeHostModelInstance(), "icon");
 
-    // Cross-check against the fixture itself — the count we emit must
-    // equal the count of source connections with a non-null Line.
-    const expected = (pid.connections ?? []).filter(
-      (c) =>
-        (c.annotation as { Line?: unknown } | undefined)?.Line !== undefined &&
-        (c.annotation as { Line?: unknown } | undefined)?.Line !== null,
-    ).length;
-    expect(layout.connections).toHaveLength(expected);
-    // The fixture currently has 9 such connections — pinning the count
-    // catches accidental filter-rule regressions even if the fixture is
-    // re-captured later.
-    expect(layout.connections).toHaveLength(9);
+    const gain1 = layout.components.gain1;
+    const gain2 = layout.components.gain2;
+    expect(gain1?.classRef).toBe("Synth.Gain");
+    expect(gain1?.classRef).toBe(gain2?.classRef);
+    expect(layout.classes["Synth.Gain"]).toBeDefined();
   });
 
-  it("every emitted connection has at least one waypoint (the fixture supplies them)", () => {
-    const pid = loadFixture("pidController.modelInstance.fixture.json");
-    const layout = produceDiagramLayout(pid, "diagram");
+  it("preserves modifiers per-instance even when classRef is shared", () => {
+    const layout = produceDiagramLayout(makeHostModelInstance(), "icon");
+    expect(layout.components.gain1?.modifiers).toBeDefined();
+    expect(layout.components.gain2?.modifiers).toBeDefined();
+    // The two instances carry distinct modifier values.
+    expect(layout.components.gain1?.modifiers).not.toEqual(
+      layout.components.gain2?.modifiers,
+    );
+  });
+});
+
+describe("produceDiagramLayout: connector list walks the extends chain", () => {
+  it("Synth.Gain's connector list includes inherited (u, y) and own (kFF)", () => {
+    const layout = produceDiagramLayout(makeHostModelInstance(), "icon");
+
+    const gain = layout.classes["Synth.Gain"];
+    expect(gain).toBeDefined();
+    expect(Object.keys(gain?.connectors ?? {}).sort()).toEqual([
+      "kFF",
+      "u",
+      "y",
+    ]);
+
+    // Provenance: u/y declared on the base; kFF on Synth.Gain itself.
+    expect(gain?.connectors.u?.from).toBe("Synth.GainBase");
+    expect(gain?.connectors.y?.from).toBe("Synth.GainBase");
+    expect(gain?.connectors.kFF?.from).toBe("Synth.Gain");
+  });
+});
+
+describe("produceDiagramLayout: connection filter and cref flatten", () => {
+  it("emits only connections that have an annotation.Line", () => {
+    const layout = produceDiagramLayout(makeHostModelInstance(), "diagram");
+    // 3 source connections; 1 has no annotation. Layout shows 2.
+    expect(layout.connections).toHaveLength(2);
+  });
+
+  it("flattens 1-part cref to a host-port endpoint and 2-part cref to a component-port endpoint", () => {
+    const layout = produceDiagramLayout(makeHostModelInstance(), "diagram");
+    const first = layout.connections[0];
+    expect(first?.lhs).toEqual({ component: undefined, port: "u" });
+    expect(first?.rhs).toEqual({ component: "gain1", port: "u" });
+  });
+
+  it("every emitted connection has its full waypoint list", () => {
+    const layout = produceDiagramLayout(makeHostModelInstance(), "diagram");
     for (const c of layout.connections) {
       expect(c.waypoints.length).toBeGreaterThan(0);
     }
   });
-
-  it("flattens the first connection cref correctly: spring.flange_b → inertia2.flange_a", () => {
-    const pid = loadFixture("pidController.modelInstance.fixture.json");
-    const layout = produceDiagramLayout(pid, "diagram");
-    const first = layout.connections[0];
-    expect(first?.lhs).toEqual({ component: "spring", port: "flange_b" });
-    expect(first?.rhs).toEqual({ component: "inertia2", port: "flange_a" });
-  });
-
-  it("preserves per-instance modifiers and dedupes the type", () => {
-    const pid = loadFixture("pidController.modelInstance.fixture.json");
-    const layout = produceDiagramLayout(pid, "diagram");
-
-    // inertia1 in the fixture has J=1 with phi/a start/fixed modifiers.
-    expect(layout.components.inertia1?.modifiers).toBeDefined();
-
-    // inertia2 also has modifiers (J=2 in the fixture).
-    expect(layout.components.inertia2?.modifiers).toBeDefined();
-
-    // Yet only one Inertia entry in the catalog.
-    expect(
-      Object.keys(layout.classes).filter(
-        (k) => k === "Modelica.Mechanics.Rotational.Components.Inertia",
-      ),
-    ).toHaveLength(1);
-  });
 });
 
-describe("produceDiagramLayout: connection filter on synthetic input", () => {
-  /**
-   * Build a tiny synthetic ModelInstance carrying two connect(...) calls:
-   * one with annotation.Line.points and one with no annotation. The
-   * producer must emit only the first.
-   */
-  function makeFixture(): ModelInstance {
-    const stubConn = (
-      lhsName: [string, string],
-      rhsName: [string, string],
-      withLine: boolean,
-    ): ConnectionNode => {
-      const node: ConnectionNode = {
-        lhs: {
-          $kind: "cref",
-          parts: [{ name: lhsName[0] }, { name: lhsName[1] }],
-        },
-        rhs: {
-          $kind: "cref",
-          parts: [{ name: rhsName[0] }, { name: rhsName[1] }],
-        },
-      };
-      if (withLine) {
-        node.annotation = {
-          Line: { points: [[0, 0], [10, 10]] },
-        } as unknown as ConnectionNode["annotation"];
-      }
-      return node;
-    };
-    return {
+describe("produceDiagramLayout: connection filter on edge cases", () => {
+  /** Build a tiny ModelInstance with hand-crafted connection variants. */
+  function withConnections(connections: ConnectionNode[]): ModelInstance {
+    return ModelInstanceSchema.parse({
       name: "Synth.Tiny",
       restriction: "model",
-      connections: [
-        stubConn(["a", "p"], ["b", "p"], true),
-        stubConn(["c", "p"], ["d", "p"], false),
-      ],
-    };
+      connections,
+    });
   }
 
-  it("emits only the connection that has an annotation.Line", () => {
-    const layout = produceDiagramLayout(makeFixture(), "diagram");
-    expect(layout.connections).toHaveLength(1);
-    expect(layout.connections[0]?.lhs).toEqual({
-      component: "a",
-      port: "p",
-    });
-  });
-
-  it("normalizes a missing/empty waypoints list to []", () => {
-    const node: ConnectionNode = {
-      lhs: { $kind: "cref", parts: [{ name: "a" }, { name: "p" }] },
-      rhs: { $kind: "cref", parts: [{ name: "b" }, { name: "p" }] },
-      annotation: { Line: {} } as unknown as ConnectionNode["annotation"],
-    };
-    const fixture: ModelInstance = {
-      name: "Synth.Tiny2",
-      restriction: "model",
-      connections: [node],
-    };
-    const layout = produceDiagramLayout(fixture, "diagram");
+  it("normalizes a Line with no points to an empty waypoints array", () => {
+    const layout = produceDiagramLayout(
+      withConnections([
+        {
+          lhs: { $kind: "cref", parts: [{ name: "a" }, { name: "p" }] },
+          rhs: { $kind: "cref", parts: [{ name: "b" }, { name: "p" }] },
+          annotation: { Line: {} } as unknown as ConnectionNode["annotation"],
+        },
+      ]),
+      "diagram",
+    );
     expect(layout.connections).toHaveLength(1);
     expect(layout.connections[0]?.waypoints).toEqual([]);
   });
 });
 
 describe("produceDiagramLayout: well-formedness", () => {
-  it("Sin (icon): every element carries its required fields", () => {
-    const sin = loadFixture("sin.modelInstance.fixture.json");
-    const layout = produceDiagramLayout(sin, "icon");
-    assertWellFormed(layout);
+  it("icon layout: every element carries its required fields", () => {
+    assertWellFormed(produceDiagramLayout(makeHostModelInstance(), "icon"));
   });
 
-  it("PID_Controller (icon): every element carries its required fields", () => {
-    const pid = loadFixture("pidController.modelInstance.fixture.json");
-    const layout = produceDiagramLayout(pid, "icon");
-    assertWellFormed(layout);
-  });
-
-  it("PID_Controller (diagram): every element carries its required fields", () => {
-    const pid = loadFixture("pidController.modelInstance.fixture.json");
-    const layout = produceDiagramLayout(pid, "diagram");
-    assertWellFormed(layout);
+  it("diagram layout: every element carries its required fields", () => {
+    assertWellFormed(produceDiagramLayout(makeHostModelInstance(), "diagram"));
   });
 });
