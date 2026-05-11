@@ -49,6 +49,14 @@ export {
 } from "./axis/grid-build.js";
 export { OmComponent } from "./component/component.component.js";
 export { OmConnector } from "./connector/connector.component.js";
+export { OmEdge } from "./connection/edge.component.js";
+export {
+  buildEdge,
+  DEFAULT_EDGE_WIDTH,
+  DEFAULT_EDGE_COLOR,
+  EDGE_Z_OFFSET,
+  type EdgeOptions,
+} from "./connection/edge-build.js";
 export { OmShapeElement } from "./base/shape-element.js";
 export { OmShapeNode } from "./base/shape-node.js";
 export {
