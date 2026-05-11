@@ -20,7 +20,15 @@ export async function rasterizeSvgToTexture(
   scene: Scene,
   size: number,
 ): Promise<Texture> {
-  const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+  // diagram-svg's renderer deliberately omits width/height on its
+  // root <svg> so the icon can scale to its host container. That
+  // works for HTML embedding but breaks the <img> path: Chrome /
+  // Safari load such an SVG with naturalWidth = 0, and drawImage
+  // then paints nothing. Inject explicit pixel dimensions before
+  // handing the SVG to the browser image decoder so the rasterised
+  // canvas actually receives bitmap data.
+  const sized = ensureSvgDimensions(svg, size);
+  const blob = new Blob([sized], { type: "image/svg+xml;charset=utf-8" });
   const objectUrl = URL.createObjectURL(blob);
   try {
     const img = await loadImage(objectUrl, size);
@@ -44,6 +52,29 @@ export async function rasterizeSvgToTexture(
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
+}
+
+/**
+ * Ensures the root `<svg>` carries explicit `width` / `height`
+ * attributes. If both already exist they're left as-is; otherwise
+ * they're inserted right after `<svg`. A missing root tag returns
+ * the input unchanged — the downstream image load will fail and the
+ * IconCache will evict + retry, which is the correct fallback.
+ *
+ * Exported for unit tests; production code reaches it through
+ * `rasterizeSvgToTexture`.
+ */
+export function ensureSvgDimensions(svg: string, size: number): string {
+  const open = svg.match(/<svg\b[^>]*>/i);
+  if (!open) {
+    return svg;
+  }
+  const tag = open[0];
+  if (/\bwidth\s*=/i.test(tag) && /\bheight\s*=/i.test(tag)) {
+    return svg;
+  }
+  const injected = tag.replace(/^<svg\b/i, `<svg width="${size}" height="${size}"`);
+  return svg.replace(tag, injected);
 }
 
 function loadImage(src: string, size: number): Promise<HTMLImageElement> {
