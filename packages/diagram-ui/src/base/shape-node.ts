@@ -41,12 +41,15 @@ export class OmShapeNode {
     this.transform = new TransformNode(name, scene);
     this.transform.parent = parent;
 
+    // Unlit setup: lighting disabled, colour comes from the emissive
+    // texture. Using emissive (not diffuse) keeps the icon rendering
+    // identical regardless of any lights the host scene may add later
+    // for MultiBody overlays.
     this.material = new StandardMaterial(`${name}-mat`, scene);
     this.material.disableLighting = true;
     this.material.specularColor = new Color3(0, 0, 0);
     this.material.emissiveColor = new Color3(1, 1, 1);
     this.material.backFaceCulling = false;
-    this.material.useAlphaFromDiffuseTexture = true;
 
     this.mesh = MeshBuilder.CreatePlane(
       `${name}-mesh`,
@@ -89,7 +92,7 @@ export class OmShapeNode {
     if (texture) {
       texture.hasAlpha = true;
     }
-    this.material.diffuseTexture = texture;
+    this.material.emissiveTexture = texture;
     this.material.opacityTexture = texture;
   }
 
