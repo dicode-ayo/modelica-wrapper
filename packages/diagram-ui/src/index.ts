@@ -50,6 +50,8 @@ export {
 export { OmComponent } from "./component/component.component.js";
 export { OmConnector } from "./connector/connector.component.js";
 export { OmEdge } from "./connection/edge.component.js";
+export { OmLabel } from "./label/label.component.js";
+export { ensureLabelTexture } from "./label/label-texture.js";
 export {
   buildEdge,
   DEFAULT_EDGE_WIDTH,
