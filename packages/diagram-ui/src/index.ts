@@ -47,6 +47,7 @@ export {
   type GridOptions,
   type GridMeshes,
 } from "./axis/grid-build.js";
+export { OmGraphicalLayout } from "./graphical-layout/graphical-layout.component.js";
 export { OmComponent } from "./component/component.component.js";
 export { OmConnector } from "./connector/connector.component.js";
 export { OmEdge } from "./connection/edge.component.js";

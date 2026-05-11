@@ -1,0 +1,462 @@
+import { LitElement, css, html, nothing, type TemplateResult } from "lit";
+import { customElement, property, query, state } from "lit/decorators.js";
+import { repeat } from "lit/directives/repeat.js";
+import type {
+  ComponentInstance,
+  ConnectorInstance,
+  DiagramLayout,
+} from "@modelica-wrapper/omc-client";
+
+import "../icon-provider/icon-provider.component.js";
+import "../scene/scene.component.js";
+import "../axis/grid-axis.component.js";
+import "../component/component.component.js";
+import "../connector/connector.component.js";
+import "../connection/connection.component.js";
+import "../label/label.component.js";
+import "../connection/edge.component.js";
+import type { OmScene, EngineFactory } from "../scene/scene.component.js";
+import type { RasterizeFn, SvgRenderFn } from "../icon-provider/icon-cache.js";
+import {
+  InteractionManager,
+  defaultPicker,
+  type InteractionEvents,
+} from "../interaction/interaction-manager.js";
+import {
+  DragController,
+  type DragEvents,
+} from "../interaction/drag-controller.js";
+import {
+  applyDeltaMove,
+  applyDelete,
+  applyFlip,
+  applyRotate,
+  selectByDiagramRect,
+} from "../interaction/layout-ops.js";
+import { formatKey, parseKey } from "../interaction/node-keys.js";
+
+/**
+ * Top-level `<om-graphical-layout>` element. Renders one Modelica
+ * `DiagramLayout` and ties together every B/C/D/E piece:
+ *
+ *   <om-icon-provider>
+ *     <om-scene>
+ *       <om-grid-axis>
+ *       <om-component>...<om-connector>     # nested ports
+ *       <om-connector>                       # host-level ports
+ *       <om-connection>                      # routed edges + junctions
+ *       <om-label>                           # host-level text
+ *     </om-scene>
+ *   </om-icon-provider>
+ *
+ * Interaction wiring (driven by E1 + E3 + E4):
+ *   - InteractionManager → hover / select / double-click / context-menu
+ *   - DragController     → move / resize / rubber-band / connection
+ *
+ * State:
+ *   - `selectedKeys` (Set<string>) of currently selected entities
+ *   - `draftLayout` — set during a drag; cleared on commit. Rendered
+ *     in place of `layout` while non-null so the user sees live
+ *     feedback. On commit a `om-graphical-layout-change` CustomEvent
+ *     fires with the new layout.
+ *
+ * Events emitted on `this`:
+ *   - `om-graphical-layout-change` { detail: DiagramLayout }
+ *   - `om-selection-change`        { detail: { keys: string[] } }
+ *   - `om-double-click`            { detail: { key: string } }
+ *   - `om-context-menu`            { detail: { key, clientX, clientY } }
+ *   - `om-connection-create`       { detail: { fromKey, toKey } }
+ */
+@customElement("om-graphical-layout")
+export class OmGraphicalLayout extends LitElement {
+  static override styles = css`
+    :host {
+      display: block;
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    om-scene {
+      width: 100%;
+      height: 100%;
+    }
+  `;
+
+  @property({ attribute: false })
+  layout: DiagramLayout | null = null;
+
+  @property({ type: Boolean, reflect: true })
+  readonly = false;
+
+  /** Optional engine factory forwarded to the inner `<om-scene>`. Used
+   *  by tests to inject a `NullEngine`. */
+  @property({ attribute: false })
+  engineFactory: EngineFactory | undefined = undefined;
+
+  /** Optional SVG renderer override forwarded to `<om-icon-provider>`. */
+  @property({ attribute: false })
+  renderSvg: SvgRenderFn | undefined = undefined;
+
+  /** Optional rasteriser override forwarded to `<om-icon-provider>`. */
+  @property({ attribute: false })
+  rasterize: RasterizeFn | undefined = undefined;
+
+  @state() private selectedKeys: Set<string> = new Set();
+  @state() private draftLayout: DiagramLayout | null = null;
+  @state() private hoverKey: string | null = null;
+  @state() private inProgressConnection: {
+    from: string;
+    to: { x: number; y: number };
+    toKey: string | null;
+  } | null = null;
+
+  @query("om-scene") private sceneEl?: OmScene;
+
+  private interactionManager: InteractionManager | null = null;
+  private dragController: DragController | null = null;
+
+  override render(): TemplateResult {
+    const active = this.draftLayout ?? this.layout;
+    if (!active) {
+      return html``;
+    }
+    const componentEntries = Object.entries(active.components);
+    const connectorEntries = Object.entries(active.connectors);
+    return html`
+      <om-icon-provider
+        .renderSvg=${this.renderSvg ?? undefined}
+        .rasterize=${this.rasterize ?? undefined}
+      >
+        <om-scene
+          .engineFactory=${this.engineFactory ?? undefined}
+          @om-view-change=${this.onViewChange}
+          tabindex="0"
+          @keydown=${this.onKeyDown}
+        >
+          <om-grid-axis .extent=${500}></om-grid-axis>
+          ${repeat(
+            componentEntries,
+            ([id]) => id,
+            ([id, comp]) => this.renderComponent(id, comp, active),
+          )}
+          ${repeat(
+            connectorEntries,
+            ([id]) => id,
+            ([id, conn]) => this.renderStandaloneConnector(id, conn, active),
+          )}
+          ${repeat(
+            active.connections,
+            (_, idx) => `conn:${idx}`,
+            (conn, idx) =>
+              html`<om-connection
+                .nodeId=${String(idx)}
+                .path=${conn.waypoints}
+                ?selected=${this.selectedKeys.has(formatKey("edge", String(idx)))}
+              ></om-connection>`,
+          )}
+          ${repeat(
+            active.labels,
+            (_, idx) => `lbl:${idx}`,
+            (label, idx) =>
+              html`<om-label
+                .nodeId=${String(idx)}
+                .text=${label.text}
+                .x=${(label.extent[0][0] + label.extent[1][0]) / 2}
+                .y=${(label.extent[0][1] + label.extent[1][1]) / 2}
+                .rotation=${label.rotation}
+                .fontSize=${label.fontSize ?? 12}
+              ></om-label>`,
+          )}
+          ${this.renderInProgressEdge()}
+        </om-scene>
+      </om-icon-provider>
+    `;
+  }
+
+  override firstUpdated(): void {
+    this.attachManagers();
+  }
+
+  override updated(changed: Map<string, unknown>): void {
+    if (changed.has("layout")) {
+      this.draftLayout = null;
+      if (!this.isInternalLayoutChange()) {
+        this.selectedKeys = new Set();
+      }
+      this.internalLayoutChange = false;
+    }
+    if (!this.interactionManager && this.sceneEl?.canvasElement) {
+      this.attachManagers();
+    }
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this.detachManagers();
+  }
+
+  private internalLayoutChange = false;
+  private isInternalLayoutChange(): boolean {
+    return this.internalLayoutChange;
+  }
+
+  private renderComponent(
+    id: string,
+    comp: ComponentInstance,
+    layout: DiagramLayout,
+  ): TemplateResult {
+    const cls = layout.classes[comp.classRef];
+    const key = formatKey("component", id);
+    return html`<om-component
+      .nodeId=${id}
+      .placement=${comp.placement}
+      .layers=${cls?.iconLayers ?? []}
+      .coordinateSystem=${cls?.coordinateSystem ?? undefined}
+      ?selected=${this.selectedKeys.has(key)}
+      ?readonly=${this.readonly}
+    >
+      ${cls
+        ? Object.entries(cls.connectors).map(
+            ([pid, port]) => html`<om-connector
+              .nodeId=${pid}
+              .placement=${port.placement}
+              .layers=${port.iconLayers}
+              .coordinateSystem=${cls.coordinateSystem ?? undefined}
+              ?readonly=${this.readonly}
+            ></om-connector>`,
+          )
+        : nothing}
+    </om-component>`;
+  }
+
+  private renderStandaloneConnector(
+    id: string,
+    conn: ConnectorInstance,
+    layout: DiagramLayout,
+  ): TemplateResult {
+    const cls = layout.classes[conn.classRef];
+    const key = formatKey("connector", id);
+    return html`<om-connector
+      .nodeId=${id}
+      .placement=${conn.placement}
+      .layers=${cls?.iconLayers ?? []}
+      .coordinateSystem=${cls?.coordinateSystem ?? undefined}
+      ?selected=${this.selectedKeys.has(key)}
+      ?readonly=${this.readonly}
+    ></om-connector>`;
+  }
+
+  private renderInProgressEdge(): TemplateResult | typeof nothing {
+    const ip = this.inProgressConnection;
+    if (!ip) {
+      return nothing;
+    }
+    // Start point: we don't have the connector's diagram position here
+    // without walking the layout; use the to-point as a placeholder
+    // marker so the user sees the drag is active. F1's job is the wire
+    // — endpoint snapping refinement happens upstream.
+    return html`<om-edge
+      .nodeId=${"in-progress"}
+      .path=${[
+        [ip.to.x, ip.to.y],
+        [ip.to.x, ip.to.y],
+      ]}
+      .stroke=${"#3b82f6"}
+    ></om-edge>`;
+  }
+
+  private attachManagers(): void {
+    if (this.interactionManager) {
+      return;
+    }
+    const sceneEl = this.sceneEl;
+    const ctx = sceneEl?.sceneContextValue;
+    const canvas = sceneEl?.canvasElement;
+    if (!ctx || !canvas) {
+      return;
+    }
+    const picker = defaultPicker(ctx.scene, canvas);
+    this.interactionManager = new InteractionManager(canvas, picker, (type, detail) =>
+      this.onInteraction(type, detail),
+    );
+    this.dragController = new DragController(
+      canvas,
+      picker,
+      (cx, cy) => sceneEl!.clientToDiagram(cx, cy),
+      () => Array.from(this.selectedKeys),
+      (type, detail) => this.onDrag(type, detail),
+    );
+  }
+
+  private detachManagers(): void {
+    this.interactionManager?.destroy();
+    this.dragController?.destroy();
+    this.interactionManager = null;
+    this.dragController = null;
+  }
+
+  private onViewChange = (_e: Event): void => {
+    // Future hooks (fit-to-view, etc.); currently a no-op.
+  };
+
+  private onInteraction<K extends keyof InteractionEvents>(
+    type: K,
+    detail: InteractionEvents[K],
+  ): void {
+    switch (type) {
+      case "hover": {
+        const d = detail as InteractionEvents["hover"];
+        if (this.hoverKey !== d.key) {
+          this.hoverKey = d.key;
+        }
+        return;
+      }
+      case "select": {
+        const d = detail as InteractionEvents["select"];
+        this.applySelection(d.key, d.addToSelection);
+        return;
+      }
+      case "doubleClick": {
+        const d = detail as InteractionEvents["doubleClick"];
+        this.emit("om-double-click", { key: d.key });
+        return;
+      }
+      case "contextMenu": {
+        const d = detail as InteractionEvents["contextMenu"];
+        this.emit("om-context-menu", d);
+        return;
+      }
+    }
+  }
+
+  private applySelection(key: string, additive: boolean): void {
+    const next = additive ? new Set(this.selectedKeys) : new Set<string>();
+    if (additive && next.has(key)) {
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    this.selectedKeys = next;
+    this.emit("om-selection-change", { keys: Array.from(next) });
+  }
+
+  private onDrag<K extends keyof DragEvents>(
+    type: K,
+    detail: DragEvents[K],
+  ): void {
+    if (this.readonly || !this.layout) {
+      return;
+    }
+    switch (type) {
+      case "drag": {
+        const d = detail as DragEvents["drag"];
+        const updated = applyDeltaMove(this.layout, d.keys, d.dx, d.dy);
+        if (d.draft) {
+          this.draftLayout = updated;
+        } else {
+          this.commitLayout(updated);
+        }
+        return;
+      }
+      case "rubberBand": {
+        const d = detail as DragEvents["rubberBand"];
+        if (d.draft) {
+          // Live selection preview.
+          this.selectedKeys = selectByDiagramRect(this.layout, d.rect);
+        } else {
+          const keys = selectByDiagramRect(this.layout, d.rect);
+          this.selectedKeys = keys;
+          this.emit("om-selection-change", { keys: Array.from(keys) });
+        }
+        return;
+      }
+      case "connection": {
+        const d = detail as DragEvents["connection"];
+        if (!d.commit) {
+          this.inProgressConnection = {
+            from: d.from,
+            to: d.to,
+            toKey: d.toKey,
+          };
+        } else {
+          this.inProgressConnection = null;
+          if (d.toKey) {
+            this.emit("om-connection-create", {
+              fromKey: d.from,
+              toKey: d.toKey,
+            });
+          }
+        }
+        return;
+      }
+      case "resize":
+        // Resize commit emits a request for an absolute extent — the
+        // host should compute that via applyComponentExtent. v1 just
+        // forwards the event so callers can wire in custom logic
+        // (e.g. snap-to-grid before committing).
+        this.emit("om-resize", detail as DragEvents["resize"]);
+        return;
+    }
+  }
+
+  private commitLayout(layout: DiagramLayout): void {
+    this.draftLayout = null;
+    this.internalLayoutChange = true;
+    this.layout = layout;
+    this.emit("om-graphical-layout-change", layout);
+  }
+
+  private onKeyDown = (e: KeyboardEvent): void => {
+    if (this.readonly || !this.layout || this.selectedKeys.size === 0) {
+      return;
+    }
+    if (e.key === "Delete" || e.key === "Backspace") {
+      const updated = applyDelete(this.layout, this.selectedKeys);
+      if (updated !== this.layout) {
+        this.commitLayout(updated);
+        this.selectedKeys = new Set();
+        e.preventDefault();
+      }
+      return;
+    }
+    if (e.key === "r" || e.key === "R") {
+      const updated = applyRotate(this.layout, this.selectedKeys, !e.shiftKey);
+      if (updated !== this.layout) {
+        this.commitLayout(updated);
+        e.preventDefault();
+      }
+      return;
+    }
+    if (e.key === "f" || e.key === "F") {
+      const updated = applyFlip(this.layout, this.selectedKeys, !e.shiftKey);
+      if (updated !== this.layout) {
+        this.commitLayout(updated);
+        e.preventDefault();
+      }
+    }
+  };
+
+  private emit<T>(name: string, detail: T): void {
+    this.dispatchEvent(
+      new CustomEvent(name, { detail, bubbles: true, composed: true }),
+    );
+  }
+
+  /** Returns the current selection as an array of canonical keys. */
+  get selection(): string[] {
+    return Array.from(this.selectedKeys);
+  }
+
+  /** Convenience for callers that want to drive selection externally. */
+  setSelection(keys: Iterable<string>): void {
+    this.selectedKeys = new Set(
+      Array.from(keys).filter((k) => parseKey(k) !== null),
+    );
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "om-graphical-layout": OmGraphicalLayout;
+  }
+}

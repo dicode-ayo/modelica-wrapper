@@ -81,10 +81,10 @@ export class OmScene extends LitElement {
   /**
    * Engine factory override. Tests pass a `NullEngine` factory so the
    * scene mounts without a WebGL context. Setting this after mount has
-   * no effect.
+   * no effect. `undefined` falls back to the real-WebGL default.
    */
   @property({ attribute: false })
-  engineFactory: EngineFactory = defaultEngineFactory;
+  engineFactory: EngineFactory | undefined = undefined;
 
   /**
    * Diagram half-extent currently shown by the orthographic camera (in
@@ -169,7 +169,8 @@ export class OmScene extends LitElement {
   }
 
   private mount(canvas: HTMLCanvasElement): void {
-    const engine = this.engineFactory(canvas);
+    const factory = this.engineFactory ?? defaultEngineFactory;
+    const engine = factory(canvas);
     const scene = new Scene(engine);
     scene.clearColor = new Color4(0, 0, 0, 0);
 
