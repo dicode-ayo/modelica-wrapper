@@ -10,8 +10,16 @@ import {
   type Texture,
   type TransformNode,
 } from "@babylonjs/core";
+import type {
+  CoordinateSystem,
+  IconLayer,
+} from "@modelica-wrapper/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
+import {
+  iconProviderContext,
+  type IconProviderContext,
+} from "../icon-provider/icon-provider-context.js";
 
 /**
  * `<om-debug-plane>` — diagnostic single-plane element used by the
@@ -57,14 +65,34 @@ export class OmDebugPlane extends LitElement {
    * Async factory that returns the texture to display, or `null` for
    * "no texture" (fallbackColor only). Receives the live `Scene` so
    * the factory can construct DynamicTextures / Textures inline.
+   *
+   * If both `textureFactory` and `layers` are set, `layers` wins —
+   * lets a story drop into the production icon-provider path with
+   * one line.
    */
   @property({ attribute: false })
   textureFactory:
     | ((scene: Scene) => Texture | null | Promise<Texture | null>)
     | undefined = undefined;
 
+  /**
+   * Drives the plane through the production `iconProviderContext`
+   * instead of an inline factory. Lets the IconProvider stories show
+   * exactly what `<om-component>` would see for a given fixture.
+   */
+  @property({ attribute: false })
+  layers: IconLayer[] | undefined = undefined;
+
+  /** Optional coordinate system forwarded to the icon-provider when
+   *  `layers` is set. Falls back to the renderer's default extent. */
+  @property({ attribute: false })
+  coordinateSystem: CoordinateSystem | undefined = undefined;
+
   @consume({ context: parentNodeContext, subscribe: true })
   private parentTransform: TransformNode | null = null;
+
+  @consume({ context: iconProviderContext, subscribe: true })
+  private iconProvider: IconProviderContext | null = null;
 
   private mesh: Mesh | null = null;
   private material: StandardMaterial | null = null;
@@ -129,8 +157,18 @@ export class OmDebugPlane extends LitElement {
     if (!mesh || !material) {
       return;
     }
-    const factory = this.textureFactory;
-    if (!factory) {
+    // Resolve which source to use this update.
+    let source: ((scene: Scene) => Texture | null | Promise<Texture | null>) | undefined;
+    if (this.layers && this.layers.length > 0 && this.iconProvider) {
+      const layers = this.layers;
+      const coordinateSystem = this.coordinateSystem;
+      const provider = this.iconProvider;
+      source = () =>
+        provider.textureForLayers(layers, coordinateSystem) as Promise<Texture>;
+    } else {
+      source = this.textureFactory;
+    }
+    if (!source) {
       material.emissiveTexture = null;
       material.diffuseTexture = null;
       material.emissiveColor.copyFrom(this.fallbackColor);
@@ -140,7 +178,7 @@ export class OmDebugPlane extends LitElement {
     this.pendingToken = token;
     const scene = mesh.getScene();
     try {
-      const tex = await factory(scene);
+      const tex = await source(scene);
       if (this.pendingToken !== token) {
         return;
       }
