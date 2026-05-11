@@ -23,6 +23,8 @@
   "dependencies": {
     "@babylonjs/core": "^7.39.0",
     "@babylonjs/gui": "^7.39.0",
+    "@babylonjs/inspector": "^7.39.0",
+    "@babylonjs/serializers": "^7.39.0",
     "@lit/context": "^1.1.4",
     "@modelica-wrapper/diagram-svg": "workspace:*",
     "@modelica-wrapper/omc-client": "workspace:*",

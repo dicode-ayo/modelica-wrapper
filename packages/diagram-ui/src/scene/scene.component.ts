@@ -27,6 +27,7 @@ import {
   diagramToClient as computeDiagramToClient,
   type ViewState,
 } from "./view-math.js";
+import { setRasterizerDebug } from "../icon-provider/svg-rasterizer.js";
 
 /**
  * Factory injected by tests so the scene can mount under Babylon's
@@ -116,6 +117,18 @@ export class OmScene extends LitElement {
   @property({ type: String, reflect: true, attribute: "camera-mode" })
   cameraMode: "2d" | "3d" = "2d";
 
+  /**
+   * When true, opens Babylon's Inspector (right-side panel showing
+   * scene graph, materials, textures, render stats) and enables
+   * verbose console logging in the icon-provider rasteriser. Toggle
+   * from any story or programmatically via the property.
+   *
+   * Loaded lazily on first activation — the inspector pulls in
+   * ~1 MB of devtools that should never ship to production.
+   */
+  @property({ type: Boolean, reflect: true })
+  debug = false;
+
   private readonly canvasRef = createRef<HTMLCanvasElement>();
   private readonly resizeObserver = new ResizeObserver(() => this.handleResize());
 
@@ -162,6 +175,9 @@ export class OmScene extends LitElement {
     }
     if (changed.has("cameraMode")) {
       this.applyCameraMode();
+    }
+    if (changed.has("debug")) {
+      void this.applyDebugMode();
     }
   }
 
@@ -330,6 +346,36 @@ export class OmScene extends LitElement {
     this.babylonScene = null;
     this.engine = null;
     this.camera = null;
+  }
+
+  private async applyDebugMode(): Promise<void> {
+    const scene = this.babylonScene;
+    if (!scene) {
+      return;
+    }
+    setRasterizerDebug(this.debug);
+    if (this.debug) {
+      // Lazy-load the inspector so it never ships in production
+      // bundles. Side-effect import — attaches `scene.debugLayer.show()`.
+      try {
+        await import("@babylonjs/inspector");
+        await scene.debugLayer.show({
+          embedMode: false,
+          overlay: true,
+          handleResize: true,
+        });
+        // eslint-disable-next-line no-console
+        console.info(
+          "[diagram-ui] Babylon Inspector loaded. Open the right-side panel " +
+            "to inspect meshes, materials, and textures.",
+        );
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[diagram-ui] Failed to load Babylon Inspector:", err);
+      }
+    } else if (scene.debugLayer.isVisible()) {
+      scene.debugLayer.hide();
+    }
   }
 
   private handleResize(): void {

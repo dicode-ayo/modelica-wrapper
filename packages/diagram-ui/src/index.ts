@@ -119,4 +119,7 @@ export {
   iconProviderContext,
   type IconProviderContext,
 } from "./icon-provider/icon-provider-context.js";
-export { rasterizeSvgToTexture } from "./icon-provider/svg-rasterizer.js";
+export {
+  rasterizeSvgToTexture,
+  setRasterizerDebug,
+} from "./icon-provider/svg-rasterizer.js";

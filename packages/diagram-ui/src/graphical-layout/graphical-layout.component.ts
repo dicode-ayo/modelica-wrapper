@@ -101,6 +101,11 @@ export class OmGraphicalLayout extends LitElement {
   @property({ attribute: false })
   rasterize: RasterizeFn | undefined = undefined;
 
+  /** Forwarded to `<om-scene>`: opens Babylon's Inspector + enables
+   *  verbose rasteriser logging when `true`. */
+  @property({ type: Boolean, reflect: true })
+  debug = false;
+
   @state() private selectedKeys: Set<string> = new Set();
   @state() private draftLayout: DiagramLayout | null = null;
   @state() private hoverKey: string | null = null;
@@ -129,6 +134,7 @@ export class OmGraphicalLayout extends LitElement {
       >
         <om-scene
           .engineFactory=${this.engineFactory ?? undefined}
+          ?debug=${this.debug}
           @om-view-change=${this.onViewChange}
           tabindex="0"
           @keydown=${this.onKeyDown}

@@ -43,15 +43,44 @@ export async function rasterizeSvgToTexture(
       Texture.BILINEAR_SAMPLINGMODE,
       () => {
         tex.hasAlpha = true;
+        if (DEBUG_RASTERIZER) {
+          // eslint-disable-next-line no-console
+          console.debug(
+            "[diagram-ui] SVG texture ready",
+            {
+              size: { w: tex.getSize().width, h: tex.getSize().height },
+              hasAlpha: tex.hasAlpha,
+              svgPreview: svg.slice(0, 200),
+            },
+          );
+        }
         resolve(tex);
       },
       (message, exception) => {
         // eslint-disable-next-line no-console
-        console.error("[diagram-ui] SVG → Texture load failed:", message, exception);
+        console.error(
+          "[diagram-ui] SVG → Texture load failed:",
+          message,
+          exception,
+          { svgPreview: svg.slice(0, 200) },
+        );
         reject(new Error(`Failed to decode SVG: ${message ?? "unknown"}`));
       },
     );
   });
+}
+
+/**
+ * Flip to `true` to log every successful texture load with size,
+ * hasAlpha, and a 200-char SVG preview. Useful when icons render but
+ * with the wrong content. Off by default to keep production console
+ * noise low.
+ */
+let DEBUG_RASTERIZER = false;
+
+/** Toggle the rasteriser's verbose logging at runtime. */
+export function setRasterizerDebug(enabled: boolean): void {
+  DEBUG_RASTERIZER = enabled;
 }
 
 /** Base64-encode a UTF-8 string. `btoa` chokes on non-ASCII; this path

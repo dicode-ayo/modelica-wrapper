@@ -18,6 +18,14 @@ import type {
 const HIGHLIGHT_COLOR = new Color3(0.38, 0.6, 0.98);
 
 /**
+ * Faint magenta — visible against the white scene background but soft
+ * enough not to be mistaken for an actual icon colour. Replaces the
+ * pure-black fallback that the previous "icons black" reports showed
+ * (mesh rendered, no texture bound).
+ */
+const MISSING_TEXTURE_COLOR = new Color3(1, 0.6, 0.9);
+
+/**
  * Babylon-side wrapper around the TransformNode + textured plane mesh
  * pair that every entity element drives. The wrapper exposes a small
  * imperative surface (`setPlacement`, `setTexture`, `setSelected`,
@@ -52,9 +60,11 @@ export class OmShapeNode {
     // Unlit-with-alpha setup. The StandardMaterial fragment shader
     // emits `emissiveTexture.rgb * intensity + emissiveColor` when an
     // emissive texture is bound, so `emissiveColor` MUST stay at
-    // (0, 0, 0) — anything else gets *added* to the texture sample
-    // and clamped to white, which is exactly the "every icon is a
-    // white rectangle" symptom we hit. Two texture slots:
+    // (0, 0, 0) when a texture is bound — anything else gets *added*
+    // and clamped to white. Before a texture loads we use a faint
+    // magenta tint (classic "missing texture") so the plane is
+    // visibly distinct from a successfully-rendered icon. setTexture
+    // resets `emissiveColor` to black once the real texture lands.
     //
     //   - `emissiveTexture` supplies the icon colour. `disableLighting`
     //     skips diffuse + ambient so the output is the texture pixel
@@ -67,7 +77,7 @@ export class OmShapeNode {
     this.material = new StandardMaterial(`${name}-mat`, scene);
     this.material.disableLighting = true;
     this.material.specularColor = new Color3(0, 0, 0);
-    this.material.emissiveColor = new Color3(0, 0, 0);
+    this.material.emissiveColor = MISSING_TEXTURE_COLOR.clone();
     this.material.backFaceCulling = false;
     this.material.useAlphaFromDiffuseTexture = true;
 
@@ -141,6 +151,14 @@ export class OmShapeNode {
     this.material.emissiveTexture = texture;
     this.material.diffuseTexture = texture;
     this.material.opacityTexture = null;
+    // With a texture bound the shader does `sample + emissiveColor`,
+    // so set the fallback colour to black; revert to the
+    // missing-texture magenta if the binding is cleared.
+    if (texture) {
+      this.material.emissiveColor.set(0, 0, 0);
+    } else {
+      this.material.emissiveColor.copyFrom(MISSING_TEXTURE_COLOR);
+    }
   }
 
   setSelected(selected: boolean): void {
