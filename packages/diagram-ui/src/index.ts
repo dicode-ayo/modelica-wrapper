@@ -69,6 +69,25 @@ export {
   type EntityKind,
 } from "./interaction/node-keys.js";
 export {
+  applyDeltaMove,
+  applyComponentExtent,
+  applyConnectorExtent,
+  applyDelete,
+  applyRotate,
+  applyFlip,
+  normaliseRect,
+  selectByDiagramRect,
+  type DiagramRect,
+} from "./interaction/layout-ops.js";
+export {
+  DragController,
+  type Picker as DragPicker,
+  type ClientToDiagram,
+  type DragEvents,
+  type DragEmit,
+  type SelectionProvider,
+} from "./interaction/drag-controller.js";
+export {
   buildEdge,
   DEFAULT_EDGE_WIDTH,
   DEFAULT_EDGE_COLOR,
