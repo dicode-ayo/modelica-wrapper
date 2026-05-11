@@ -134,8 +134,11 @@ describe("DragController", () => {
       new PointerEvent("pointerup", { button: 0, clientX: 5, clientY: 5 }),
     );
 
-    const drag = events.find((e) => e.type === "drag")!;
-    expect(drag.detail.keys.sort()).toEqual(["c:C1", "c:R1"]);
+    const drag = events.find((e) => e.type === "drag") as
+      | CapturedEvent<"drag">
+      | undefined;
+    expect(drag).toBeDefined();
+    expect(drag!.detail.keys.sort()).toEqual(["c:C1", "c:R1"]);
     cleanup();
     dispose();
   });

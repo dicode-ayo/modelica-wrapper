@@ -57,6 +57,20 @@ export interface DragEvents {
     rect: { x1: number; y1: number; x2: number; y2: number };
     draft: boolean;
   };
+  /**
+   * In-progress connection drag: user pulls from a connector's port
+   * indicator. `from` is the source connector key (e.g. `k:p`), `to`
+   * is the live cursor position in diagram coords. `commit=false`
+   * while dragging; `commit=true` on pointerup. When committed and
+   * `toKey` is present the host element should treat that as a
+   * connection-create request.
+   */
+  connection: {
+    from: string;
+    to: { x: number; y: number };
+    toKey: string | null;
+    commit: boolean;
+  };
 }
 
 export type DragEmit = <K extends keyof DragEvents>(
@@ -86,7 +100,16 @@ interface RubberBandState {
   startY: number;
 }
 
-type DragState = MoveState | ResizeState | RubberBandState;
+interface ConnectionState {
+  kind: "connection";
+  fromKey: string;
+}
+
+type DragState =
+  | MoveState
+  | ResizeState
+  | RubberBandState
+  | ConnectionState;
 
 const MOVE_KINDS: ReadonlySet<EntityKind> = new Set([
   "component",
@@ -131,6 +154,23 @@ export class DragController {
     const entity = node ? entityKeyForNode(node) : null;
     const pt = this.clientToDiagram(e.clientX, e.clientY);
     if (!pt) {
+      return;
+    }
+
+    if (entity?.kind === "port") {
+      const ownerKey = ownerOfPort(node);
+      if (!ownerKey) {
+        return;
+      }
+      this.state = { kind: "connection", fromKey: ownerKey };
+      this.pointerId = e.pointerId;
+      capture(this.canvas, e.pointerId);
+      this.emit("connection", {
+        from: ownerKey,
+        to: { x: pt.x, y: pt.y },
+        toKey: null,
+        commit: false,
+      });
       return;
     }
 
@@ -221,8 +261,35 @@ export class DragController {
           draft: true,
         });
         return;
+      case "connection":
+        this.emit("connection", {
+          from: this.state.fromKey,
+          to: { x: pt.x, y: pt.y },
+          toKey: this.snapKey(e.clientX, e.clientY, this.state.fromKey),
+          commit: false,
+        });
+        return;
     }
   };
+
+  private snapKey(
+    clientX: number,
+    clientY: number,
+    excludeKey: string,
+  ): string | null {
+    const node = this.picker(clientX, clientY);
+    const entity = node ? entityKeyForNode(node) : null;
+    if (!entity) {
+      return null;
+    }
+    if (entity.kind !== "connector") {
+      // Snap target must be a connector (we picked through the port
+      // indicator originally — its `node` resolves to the connector).
+      return null;
+    }
+    const key = formatKey(entity.kind, entity.nodeId);
+    return key === excludeKey ? null : key;
+  }
 
   private readonly onPointerUp = (e: PointerEvent): void => {
     if (!this.state || e.pointerId !== this.pointerId) {
@@ -265,6 +332,14 @@ export class DragController {
           draft: false,
         });
         return;
+      case "connection":
+        this.emit("connection", {
+          from: state.fromKey,
+          to: { x: pt.x, y: pt.y },
+          toKey: this.snapKey(e.clientX, e.clientY, state.fromKey),
+          commit: true,
+        });
+        return;
     }
   };
 }
@@ -296,6 +371,23 @@ function ownerOfHandle(start: Node | null, _corner: string): string | null {
     const m = cur.name?.match(/^om-(component|connector):(.*)$/);
     if (m) {
       return formatKey(m[1] as EntityKind, m[2] ?? "");
+    }
+    cur = cur.parent;
+  }
+  return null;
+}
+
+/**
+ * Port indicator meshes carry `metadata.kind = "port"` but they're
+ * physically parented inside the connector's TransformNode. Walk up
+ * looking for the nearest `om-connector:` ancestor and return its key.
+ */
+function ownerOfPort(start: Node | null): string | null {
+  let cur: Node | null = start;
+  while (cur) {
+    const m = cur.name?.match(/^om-connector:(.*)$/);
+    if (m) {
+      return `k:${m[1] ?? ""}`;
     }
     cur = cur.parent;
   }
