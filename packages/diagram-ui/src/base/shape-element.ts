@@ -78,6 +78,16 @@ export abstract class OmShapeElement extends LitElement {
     /* default: no-op */
   }
 
+  /**
+   * Z-axis offset (in parent local units) used to layer entities. The
+   * default `0` puts components on the diagram plane; subclasses
+   * override to lift themselves slightly toward the camera (which sits
+   * on +Z), e.g. connectors render on top of components.
+   */
+  protected zOffset(): number {
+    return 0;
+  }
+
   override render() {
     return html`<slot></slot>`;
   }
@@ -85,7 +95,11 @@ export abstract class OmShapeElement extends LitElement {
   override updated(_changed: Map<string, unknown>): void {
     this.ensureShapeNode();
     if (this.shapeNode) {
-      this.shapeNode.setPlacement(this.placement, this.coordinateSystem);
+      this.shapeNode.setPlacement(
+        this.placement,
+        this.coordinateSystem,
+        this.zOffset(),
+      );
       this.shapeNode.setSelected(this.selected);
       this.refreshTexture();
     }

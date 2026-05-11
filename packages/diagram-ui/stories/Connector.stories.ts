@@ -122,11 +122,16 @@ interface NestedArgs {
 
 export const NestedOnComponent: StoryObj<NestedArgs> = {
   args: {
-    connectorPlacementX: 80,
+    // Default places the port at the right edge of the Gain block.
+    // The component's icon coord system is [-100, 100]² so x=110
+    // sits just past the boundary — like a real Modelica port.
+    connectorPlacementX: 110,
     zoom: 100,
   },
   argTypes: {
-    connectorPlacementX: { control: { type: "range", min: -100, max: 100, step: 5 } },
+    connectorPlacementX: {
+      control: { type: "range", min: -120, max: 120, step: 5 },
+    },
     zoom: { control: { type: "range", min: 30, max: 250, step: 5 } },
   },
   render: ({ connectorPlacementX, zoom }): TemplateResult => {

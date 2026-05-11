@@ -48,6 +48,21 @@ export class OmConnector extends OmShapeElement {
     return this.nodeId ? `om-connector:${this.nodeId}` : "om-connector";
   }
 
+  /**
+   * Connectors paint on top of components by lifting their TransformNode
+   * a fraction toward the camera. The host-coord units used here are
+   * tiny compared to entity sizes so the offset is invisible
+   * geometrically — only the depth ordering changes.
+   *
+   * Note: the offset stacks with the parent component's local scaling,
+   * so the actual world delta is `parent.scale * 1.5`. Even on a very
+   * small component (`scale = 0.01`) that still gives 0.015 world units
+   * of separation — comfortably above the ortho depth-test resolution.
+   */
+  protected override zOffset(): number {
+    return 1.5;
+  }
+
   protected override onShapeNodeReady(node: OmShapeNode): void {
     const scene = node.transform.getScene();
     const icon = coordSystemSize(this.coordinateSystem);

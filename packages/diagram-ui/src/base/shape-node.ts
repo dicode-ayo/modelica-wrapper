@@ -78,8 +78,9 @@ export class OmShapeNode {
   setPlacement(
     placement: Placement,
     iconCoordSystem: CoordinateSystem | undefined,
+    zOffset: number = 0,
   ): AppliedTransform {
-    const t = applyPlacement(placement, iconCoordSystem);
+    const t = applyPlacement(placement, iconCoordSystem, zOffset);
     this.transform.position.set(t.position.x, t.position.y, t.position.z);
     this.transform.scaling.set(t.scale.x, t.scale.y, t.scale.z);
     this.transform.rotation.set(0, 0, t.rotationZ);
