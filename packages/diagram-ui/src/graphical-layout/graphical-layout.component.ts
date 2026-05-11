@@ -35,6 +35,53 @@ import {
 } from "../interaction/layout-ops.js";
 import { formatKey, parseKey } from "../interaction/node-keys.js";
 
+interface BBox {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+function layoutBoundingBox(layout: DiagramLayout): BBox | null {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let seen = false;
+  const addPlacement = (
+    placement: import("@modelica-wrapper/omc-client").Placement,
+  ): void => {
+    const [[x1, y1], [x2, y2]] = placement.extent;
+    const ox = placement.origin?.[0] ?? 0;
+    const oy = placement.origin?.[1] ?? 0;
+    const lo = Math.min(x1, x2);
+    const hi = Math.max(x1, x2);
+    const bo = Math.min(y1, y2);
+    const to = Math.max(y1, y2);
+    minX = Math.min(minX, ox + lo);
+    maxX = Math.max(maxX, ox + hi);
+    minY = Math.min(minY, oy + bo);
+    maxY = Math.max(maxY, oy + to);
+    seen = true;
+  };
+  for (const c of Object.values(layout.components)) {
+    addPlacement(c.placement);
+  }
+  for (const k of Object.values(layout.connectors)) {
+    addPlacement(k.placement);
+  }
+  for (const conn of layout.connections) {
+    for (const [x, y] of conn.waypoints) {
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+      seen = true;
+    }
+  }
+  return seen ? { minX, minY, maxX, maxY } : null;
+}
+
 /**
  * Top-level `<om-graphical-layout>` element. Renders one Modelica
  * `DiagramLayout` and ties together every B/C/D/E piece:
@@ -201,6 +248,62 @@ export class OmGraphicalLayout extends LitElement {
     if (!this.interactionManager && this.sceneEl?.canvasElement) {
       this.attachManagers();
     }
+    // First layout → auto-fit so icons fill the viewport. Mirrors the
+    // OMEdit / dyad-ui behaviour where opening a diagram zooms to its
+    // content. Once the user pans / zooms manually we never re-fit
+    // automatically; they can call `fitToContent()` to redo it.
+    if (changed.has("layout") && !this.hasAutoFit && this.layout) {
+      // Defer until after the scene has finished its own firstUpdated
+      // so `clientToDiagram` / canvas size are valid.
+      void this.scheduleAutoFit();
+    }
+  }
+
+  private hasAutoFit = false;
+
+  private async scheduleAutoFit(): Promise<void> {
+    await this.updateComplete;
+    await new Promise((r) => requestAnimationFrame(r));
+    if (this.hasAutoFit) {
+      return;
+    }
+    if (this.fitToContent()) {
+      this.hasAutoFit = true;
+    }
+  }
+
+  /**
+   * Compute the bounding box of all components + connectors in the
+   * current layout, then set the scene's zoom + pan so the box fills
+   * the viewport with a small padding. Returns `true` if the fit was
+   * applied, `false` if the layout was empty or the scene wasn't
+   * mounted yet.
+   */
+  fitToContent(padding = 1.2): boolean {
+    const layout = this.draftLayout ?? this.layout;
+    const sceneEl = this.sceneEl;
+    if (!layout || !sceneEl?.canvasElement) {
+      return false;
+    }
+    const bbox = layoutBoundingBox(layout);
+    if (!bbox) {
+      return false;
+    }
+    const rect = sceneEl.canvasElement.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return false;
+    }
+    const aspect = rect.width / rect.height;
+    const w = bbox.maxX - bbox.minX;
+    const h = bbox.maxY - bbox.minY;
+    // Pick the half-height that contains the bbox under the current
+    // aspect ratio. The wider dimension drives the zoom.
+    const halfHForWidth = (w * padding) / (2 * aspect);
+    const halfHForHeight = (h * padding) / 2;
+    sceneEl.zoom = Math.max(halfHForWidth, halfHForHeight, 5);
+    sceneEl.panX = (bbox.minX + bbox.maxX) / 2;
+    sceneEl.panY = (bbox.minY + bbox.maxY) / 2;
+    return true;
   }
 
   override disconnectedCallback(): void {
