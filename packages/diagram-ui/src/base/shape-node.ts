@@ -9,10 +9,13 @@ import {
 } from "@babylonjs/core";
 
 import { applyPlacement, type AppliedTransform } from "./placement-math.js";
+import { ResizeHandles, ensureHighlightLayer } from "./selection-overlay.js";
 import type {
   CoordinateSystem,
   Placement,
 } from "@modelica-wrapper/omc-client";
+
+const HIGHLIGHT_COLOR = new Color3(0.38, 0.6, 0.98);
 
 /**
  * Babylon-side wrapper around the TransformNode + textured plane mesh
@@ -35,9 +38,14 @@ export class OmShapeNode {
 
   private currentIconWidth = 1;
   private currentIconHeight = 1;
+  private currentIconCx = 0;
+  private currentIconCy = 0;
   private selected = false;
+  private resizeHandles: ResizeHandles | null = null;
+  private readonly scene: Scene;
 
   constructor(scene: Scene, parent: TransformNode, name = "om-shape") {
+    this.scene = scene;
     this.transform = new TransformNode(name, scene);
     this.transform.parent = parent;
 
@@ -83,9 +91,30 @@ export class OmShapeNode {
       this.currentIconWidth = t.iconSize.width;
       this.currentIconHeight = t.iconSize.height;
       this.mesh.scaling.set(t.iconSize.width, t.iconSize.height, 1);
+      // Resize handles are pinned to the icon corners — rebuild if size
+      // changed.
+      if (this.resizeHandles) {
+        const wasVisible = this.resizeHandles.isVisible();
+        this.resizeHandles.dispose();
+        this.resizeHandles = this.createHandles();
+        this.resizeHandles.setVisible(wasVisible);
+      }
     }
+    this.currentIconCx = t.meshLocal.x;
+    this.currentIconCy = t.meshLocal.y;
     this.mesh.position.set(t.meshLocal.x, t.meshLocal.y, 0);
     return t;
+  }
+
+  private createHandles(): ResizeHandles {
+    return new ResizeHandles(
+      this.scene,
+      this.transform,
+      this.currentIconWidth,
+      this.currentIconHeight,
+      this.currentIconCx,
+      this.currentIconCy,
+    );
   }
 
   setTexture(texture: Texture | null): void {
@@ -97,9 +126,30 @@ export class OmShapeNode {
   }
 
   setSelected(selected: boolean): void {
+    if (this.selected === selected) {
+      return;
+    }
     this.selected = selected;
-    // Selection visuals land in stage E2 (HighlightLayer + resize handles);
-    // here we only track the flag so the element can read it back.
+
+    // Highlight outline (no-op under NullEngine).
+    const layer = ensureHighlightLayer(this.scene);
+    if (layer) {
+      if (selected) {
+        layer.addMesh(this.mesh, HIGHLIGHT_COLOR);
+      } else {
+        layer.removeMesh(this.mesh);
+      }
+    }
+
+    // Resize handles.
+    if (selected) {
+      if (!this.resizeHandles) {
+        this.resizeHandles = this.createHandles();
+      }
+      this.resizeHandles.setVisible(true);
+    } else if (this.resizeHandles) {
+      this.resizeHandles.setVisible(false);
+    }
   }
 
   isSelected(): boolean {
@@ -107,6 +157,13 @@ export class OmShapeNode {
   }
 
   dispose(): void {
+    // Remove from HighlightLayer first while the mesh is still alive.
+    const layer = ensureHighlightLayer(this.scene);
+    if (layer && this.selected) {
+      layer.removeMesh(this.mesh);
+    }
+    this.resizeHandles?.dispose();
+    this.resizeHandles = null;
     this.mesh.dispose();
     this.material.dispose();
     this.transform.dispose();

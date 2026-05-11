@@ -78,6 +78,10 @@ export {
 export { OmShapeElement } from "./base/shape-element.js";
 export { OmShapeNode } from "./base/shape-node.js";
 export {
+  ResizeHandles,
+  ensureHighlightLayer,
+} from "./base/selection-overlay.js";
+export {
   applyPlacement,
   coordSystemSize,
   defaultCoordSystemSize,
