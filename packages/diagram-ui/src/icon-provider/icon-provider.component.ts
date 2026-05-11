@@ -21,19 +21,33 @@ import {
 } from "./icon-provider-context.js";
 import { rasterizeSvgToTexture } from "./svg-rasterizer.js";
 
-const DEFAULT_RENDER_SIZE = 512;
+/**
+ * Default base resolution for the rasterised PNG behind each icon
+ * texture. 1024 × 1024 RGBA8 + auto-generated mipmap chain ≈ 5.3 MB
+ * GPU memory per unique class. With cache dedup across instances,
+ * a PID-class diagram (~9 unique classes) consumes ~50 MB — fine.
+ * Larger diagrams should override via the `<om-icon-provider>`'s
+ * `resolution` property.
+ *
+ * 512 (the previous default) saved memory but produced visibly
+ * blurry icons even with trilinear mipmap sampling, especially on
+ * the LimPID / SpringDamper fixtures that have small detail.
+ */
+const DEFAULT_RENDER_SIZE = 1024;
 
-// Pass `size` through to diagram-svg so the emitted root <svg>
-// carries explicit width / height attributes. Without those, browser
-// image decoders report `naturalWidth = 0` for the SVG and any
-// downstream rasterisation paints nothing.
-const defaultRenderSvg: SvgRenderFn = (layers, coordinateSystem) => {
-  const opts: RenderOptions = { size: DEFAULT_RENDER_SIZE };
-  if (coordinateSystem) {
-    opts.coordinateSystem = coordinateSystem;
-  }
-  return renderIconLayersToSvg(layers, opts);
-};
+function buildRenderSvg(size: number): SvgRenderFn {
+  return (layers, coordinateSystem) => {
+    // `size` is baked into the SVG's root `width`/`height` so the
+    // browser image decoder doesn't report naturalWidth = 0 when
+    // loading the data URL into an <img>.
+    const opts: RenderOptions = { size };
+    if (coordinateSystem) {
+      opts.coordinateSystem = coordinateSystem;
+    }
+    return renderIconLayersToSvg(layers, opts);
+  };
+}
+
 
 /**
  * `<om-icon-provider>` — host element that provides an
@@ -77,6 +91,17 @@ export class OmIconProvider extends LitElement {
   @property({ attribute: false })
   rasterize: RasterizeFn | undefined = undefined;
 
+  /**
+   * Base pixel size for the rasterised PNG behind each icon texture
+   * (RGBA + mipmap chain). Higher = sharper at all zoom levels but
+   * more GPU memory per unique class. Default `1024`.
+   *
+   * Set lower (e.g., 512) for very large diagrams with many unique
+   * classes; higher (e.g., 2048) for kiosk / print-quality displays.
+   */
+  @property({ type: Number })
+  resolution: number = DEFAULT_RENDER_SIZE;
+
   @consume({ context: sceneContext, subscribe: true })
   private sceneCtx: SceneContext | null = null;
 
@@ -93,22 +118,31 @@ export class OmIconProvider extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    this.cache = new IconCache(
-      this.renderSvg ?? defaultRenderSvg,
-      this.rasterize ?? rasterizeSvgToTexture,
-    );
-    this.contextProvider.setValue(this.buildContext());
+    this.rebuildCache();
   }
 
   override updated(changed: Map<string, unknown>): void {
-    if (changed.has("renderSvg") || changed.has("rasterize")) {
+    if (
+      changed.has("renderSvg") ||
+      changed.has("rasterize") ||
+      changed.has("resolution")
+    ) {
       void this.cache?.destroy();
-      this.cache = new IconCache(
-        this.renderSvg ?? defaultRenderSvg,
-        this.rasterize ?? rasterizeSvgToTexture,
-      );
-      this.contextProvider.setValue(this.buildContext());
+      this.rebuildCache();
     }
+  }
+
+  private rebuildCache(): void {
+    const size = this.resolution;
+    // Default renderer reused but baked with the current resolution so
+    // the SVG width/height match the rasterizer pixel size — keeps
+    // the cache key stable and avoids browsers down-scaling on draw.
+    const renderSvg = this.renderSvg ?? buildRenderSvg(size);
+    this.cache = new IconCache(
+      renderSvg,
+      this.rasterize ?? rasterizeSvgToTexture,
+    );
+    this.contextProvider.setValue(this.buildContext());
   }
 
   override disconnectedCallback(): void {
@@ -124,11 +158,15 @@ export class OmIconProvider extends LitElement {
   }
 
   private buildContext(): IconProviderContext {
-    const get = (): { cache: IconCache; ctx: SceneContext } | null => {
+    const get = (): {
+      cache: IconCache;
+      ctx: SceneContext;
+      size: number;
+    } | null => {
       if (!this.cache || !this.sceneCtx) {
         return null;
       }
-      return { cache: this.cache, ctx: this.sceneCtx };
+      return { cache: this.cache, ctx: this.sceneCtx, size: this.resolution };
     };
     return {
       textureFor(req: IconRequest): Promise<Texture> {
@@ -138,7 +176,9 @@ export class OmIconProvider extends LitElement {
             new Error("icon-provider not connected to a scene"),
           );
         }
-        return live.cache.resolve(live.ctx.scene, req);
+        const merged: IconRequest =
+          req.size === undefined ? { ...req, size: live.size } : req;
+        return live.cache.resolve(live.ctx.scene, merged);
       },
       textureForLayers(
         layers: IconLayer[],
@@ -150,7 +190,11 @@ export class OmIconProvider extends LitElement {
             new Error("icon-provider not connected to a scene"),
           );
         }
-        return live.cache.resolve(live.ctx.scene, { layers, coordinateSystem });
+        return live.cache.resolve(live.ctx.scene, {
+          layers,
+          coordinateSystem,
+          size: live.size,
+        });
       },
     };
   }
