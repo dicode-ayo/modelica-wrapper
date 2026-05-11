@@ -35,17 +35,27 @@ export async function rasterizeSvgToTexture(
   const dataUrl = `data:image/svg+xml;base64,${base64}`;
 
   return new Promise<Texture>((resolve, reject) => {
-    // `noMipmap = false` asks Babylon to auto-generate the mipmap
-    // chain when the texture finishes uploading. `TRILINEAR` sampling
-    // (= `LINEAR_LINEAR_MIPLINEAR`) actually *reads* those mips at
-    // sample time, so an icon drawn small on screen filters through
-    // a smaller mip level instead of aliasing across the high-res
-    // mip 0. The earlier `BILINEAR_SAMPLINGMODE` (= `LINEAR_LINEAR`,
-    // no mip sampling) generated the chain and then ignored it.
+    // Sampling setup tuned for vector-icon style content (sharp edges,
+    // mostly flat fills). Three things at play:
     //
-    // `anisotropicFilteringLevel = 4` smooths icons viewed at oblique
-    // angles — matters once the 3D camera mode lands; cheap to leave
-    // on in 2D.
+    //   1. Mipmaps are generated (`noMipmap = false`) and read via
+    //      `TRILINEAR_SAMPLINGMODE` (= LINEAR_LINEAR_MIPLINEAR). This
+    //      kills the aliasing/sparkle on small on-screen sizes that
+    //      the previous BILINEAR (no-mip) setup produced.
+    //
+    //   2. `anisotropicFilteringLevel = 16` (hardware max on most
+    //      modern GPUs; Babylon clamps if not supported). Standard
+    //      explanation: helps oblique angles. The under-told story:
+    //      anisotropic also dramatically improves *minification*
+    //      quality on perpendicular views by oversampling the
+    //      texture per fragment instead of averaging adjacent
+    //      texels. That's the bulk of the "icons blurry when zoomed
+    //      out" fix.
+    //
+    //   3. `wrapU/wrapV = CLAMP_ADDRESSMODE`. Default `WRAP` repeats
+    //      the texture — at low mip levels the rightmost texel
+    //      bleeds with the leftmost (and vice versa), softening
+    //      edges of the icon's bounding rectangle. CLAMP stops that.
     const tex: Texture = new Texture(
       dataUrl,
       scene,
@@ -54,7 +64,9 @@ export async function rasterizeSvgToTexture(
       Texture.TRILINEAR_SAMPLINGMODE,
       () => {
         tex.hasAlpha = true;
-        tex.anisotropicFilteringLevel = 4;
+        tex.anisotropicFilteringLevel = 16;
+        tex.wrapU = Texture.CLAMP_ADDRESSMODE;
+        tex.wrapV = Texture.CLAMP_ADDRESSMODE;
         if (DEBUG_RASTERIZER) {
           // eslint-disable-next-line no-console
           console.debug(
