@@ -45,6 +45,7 @@ export { OmMultibodyRoot } from "./multibody/multibody-root.component.js";
 export {
   buildGrid,
   DEFAULT_GRID_OPTIONS,
+  GRID_Z,
   type GridOptions,
   type GridMeshes,
 } from "./axis/grid-build.js";
@@ -91,7 +92,6 @@ export {
 } from "./interaction/drag-controller.js";
 export {
   buildEdge,
-  DEFAULT_EDGE_WIDTH,
   DEFAULT_EDGE_COLOR,
   EDGE_Z_OFFSET,
   type EdgeOptions,

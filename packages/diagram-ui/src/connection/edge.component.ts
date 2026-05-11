@@ -8,16 +8,15 @@ import { parentNodeContext } from "../base/parent-node-context.js";
 import { buildEdge, DEFAULT_EDGE_COLOR } from "./edge-build.js";
 
 /**
- * `<om-edge>` — renders a single connection route as a stroked
- * polyline (GreasedLine). Multiple `<om-edge>` elements compose into
- * a `<om-connection>` (D5) when a connection has multiple routes.
+ * `<om-edge>` — renders a single connection route as a 1-pixel GL
+ * `LinesMesh` (or `DashedLinesMesh` when `clocked`). Multiple
+ * `<om-edge>` elements compose into a `<om-connection>` (D5) when a
+ * connection has multiple routes.
  *
  * Properties:
  *   - `path`     — diagram-coord waypoints (>=2 points)
  *   - `stroke`   — CSS-style `#rrggbb` colour, optional
  *   - `clocked`  — dashed pattern for synchronous-clock connections
- *   - `width`    — line width in pixels (`sizeAttenuation: false` so
- *                  zoom doesn't grow/shrink the stroke)
  */
 @customElement("om-edge")
 export class OmEdge extends LitElement {
@@ -31,7 +30,6 @@ export class OmEdge extends LitElement {
   @property({ attribute: false }) path: Point[] = [];
   @property() stroke: string | undefined = undefined;
   @property({ type: Boolean }) clocked = false;
-  @property({ type: Number }) width: number | undefined = undefined;
 
   @consume({ context: parentNodeContext, subscribe: true })
   private parentTransform: TransformNode | null = null;
@@ -71,7 +69,6 @@ export class OmEdge extends LitElement {
         points: this.path,
         clocked: this.clocked,
         color: color ?? DEFAULT_EDGE_COLOR,
-        ...(this.width !== undefined ? { width: this.width } : {}),
       },
     );
     if (this.mesh) {
