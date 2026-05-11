@@ -23,12 +23,14 @@
  *  - arc rendering for ellipse `startAngle`/`endAngle` (TODO; v1 emits the
  *    bounding ellipse)
  *  - line arrow markers (TODO; v1 ignores `arrow` / `arrowSize`)
- *  - exotic fill patterns (Hatch, Cross, Sphere, Cylinder — see pattern.ts)
+ *  - hatch fill patterns (Horizontal/Vertical/Cross/Forward/Backward/CrossDiag —
+ *    they need `<pattern>` tile defs; out of scope for v1). Cylinder and
+ *    Sphere ARE handled via gradient defs (see pattern.ts).
  */
 
 import { colorToCss } from "./color.js";
 import { expressionToString } from "./expression.js";
-import { fillPatternToFill, linePatternToDashArray } from "./pattern.js";
+import { linePatternToDashArray, resolveFill } from "./pattern.js";
 import type {
   BitmapShape,
   ClassDef,
@@ -94,10 +96,19 @@ export function renderIconLayersToSvg(
   const sizeAttrs = renderSizeAttributes(opts.size);
   const background = renderBackground(extent, opts.background);
 
-  const layerGroups = layers.map(renderLayer).join("");
+  // Render shapes first so the gradient-def collector populates before we
+  // serialize. Each cylinder/sphere fill registers one entry per unique
+  // (kind, edge, middle) tuple; identical fills across shapes share a def.
+  const ctx: RenderContext = { defs: new Map() };
+  const layerGroups = layers.map((l) => renderLayer(l, ctx)).join("");
+  const defsBlock =
+    ctx.defs.size > 0
+      ? `<defs>${Array.from(ctx.defs.values()).join("")}</defs>`
+      : "";
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg"${sizeAttrs} viewBox="${viewBox}">`,
+    defsBlock,
     background,
     `<g transform="scale(1,-1)">`,
     layerGroups,
@@ -206,21 +217,31 @@ function renderBackground(
 
 // ---------- layer + shape rendering ----------
 
-function renderLayer(layer: IconLayer): string {
-  const shapes = layer.shapes.map(renderShape).join("");
+/**
+ * Per-render state passed through shape mappers. Currently just collects
+ * unique gradient defs so cylinder/sphere fills can share `<defs>` entries
+ * across shapes. The `defs` Map is keyed by gradient id (already
+ * deterministic in `pattern.ts`) so duplicates are no-ops.
+ */
+interface RenderContext {
+  defs: Map<string, string>;
+}
+
+function renderLayer(layer: IconLayer, ctx: RenderContext): string {
+  const shapes = layer.shapes.map((s) => renderShape(s, ctx)).join("");
   return `<g class="diagram-svg-layer" data-from="${escapeAttr(layer.from)}">${shapes}</g>`;
 }
 
-function renderShape(shape: Shape): string {
+function renderShape(shape: Shape, ctx: RenderContext): string {
   switch (shape.kind) {
     case "line":
       return renderLine(shape);
     case "polygon":
-      return renderPolygon(shape);
+      return renderPolygon(shape, ctx);
     case "rectangle":
-      return renderRectangle(shape);
+      return renderRectangle(shape, ctx);
     case "ellipse":
-      return renderEllipse(shape);
+      return renderEllipse(shape, ctx);
     case "text":
       return renderText(shape);
     case "bitmap":
@@ -233,6 +254,23 @@ function renderShape(shape: Shape): string {
       return "";
     }
   }
+}
+
+/**
+ * Look up + emit a `fill` attribute value, registering any gradient def
+ * in the render context. Used by every filled shape mapper.
+ */
+function fillFor(
+  fillColor: Color | undefined,
+  lineColor: Color | undefined,
+  pattern: string | undefined,
+  ctx: RenderContext,
+): string {
+  const resolved = resolveFill({ fillColor, lineColor, pattern });
+  if (resolved.def && !ctx.defs.has(resolved.def.id)) {
+    ctx.defs.set(resolved.def.id, resolved.def.xml);
+  }
+  return resolved.value;
 }
 
 // ---- line ----
@@ -251,10 +289,10 @@ function renderLine(s: LineShape): string {
 
 // ---- polygon ----
 
-function renderPolygon(s: PolygonShape): string {
+function renderPolygon(s: PolygonShape, ctx: RenderContext): string {
   const points = pointsToAttr(s.points);
   const stroke = colorToCss(s.lineColor, "rgb(0,0,0)");
-  const fill = fillPatternToFill(colorToCss(s.fillColor, "none"), s.fillPattern);
+  const fill = fillFor(s.fillColor, s.lineColor, s.fillPattern, ctx);
   const thickness = s.lineThickness ?? 0.25;
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
@@ -263,10 +301,10 @@ function renderPolygon(s: PolygonShape): string {
 
 // ---- rectangle ----
 
-function renderRectangle(s: RectangleShape): string {
+function renderRectangle(s: RectangleShape, ctx: RenderContext): string {
   const { x, y, width, height } = extentToRect(s.extent);
   const stroke = colorToCss(s.lineColor, "rgb(0,0,0)");
-  const fill = fillPatternToFill(colorToCss(s.fillColor, "none"), s.fillPattern);
+  const fill = fillFor(s.fillColor, s.lineColor, s.fillPattern, ctx);
   const thickness = s.lineThickness ?? 0.25;
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
@@ -276,14 +314,14 @@ function renderRectangle(s: RectangleShape): string {
 
 // ---- ellipse ----
 
-function renderEllipse(s: EllipseShape): string {
+function renderEllipse(s: EllipseShape, ctx: RenderContext): string {
   const { x, y, width, height } = extentToRect(s.extent);
   const cx = x + width / 2;
   const cy = y + height / 2;
   const rx = width / 2;
   const ry = height / 2;
   const stroke = colorToCss(s.lineColor, "rgb(0,0,0)");
-  const fill = fillPatternToFill(colorToCss(s.fillColor, "none"), s.fillPattern);
+  const fill = fillFor(s.fillColor, s.lineColor, s.fillPattern, ctx);
   const thickness = s.lineThickness ?? 0.25;
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
