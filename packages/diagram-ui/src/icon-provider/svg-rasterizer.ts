@@ -1,54 +1,62 @@
-import { Texture } from "@babylonjs/core";
+import { DynamicTexture, Texture } from "@babylonjs/core";
 import type { Scene } from "@babylonjs/core";
 
 /**
- * Browser-side rasteriser: turns an SVG string into a Babylon `Texture`
- * by routing it through `<img>` → `<canvas>` → PNG data URL → Texture.
+ * Browser-side rasteriser: turns an SVG string into a Babylon
+ * `DynamicTexture` whose backing canvas is the rasterised icon.
  *
- * Babylon supports loading directly from an SVG data URL on most
- * platforms, but going through a canvas gives us:
- *   - explicit, deterministic pixel size (no DPR surprises)
- *   - a single texture object reused across uploads
- *   - mipmaps generated from a concrete bitmap (better minification)
+ * Architecture:
+ *   1. Inject explicit width/height into the root `<svg>` if missing
+ *      — without them, `<img>` reports `naturalWidth = 0` and
+ *      `drawImage` paints nothing.
+ *   2. Load the SVG into an `<img>` via a Blob `object: URL`.
+ *   3. Create a Babylon `DynamicTexture` (canvas-backed, owned by
+ *      Babylon and uploaded to GPU on `update()`); draw the image
+ *      into the texture's canvas; call `update()` to push pixels to
+ *      the GPU.
  *
- * Returns a Promise that resolves once the image finishes loading. The
- * Promise rejects if the browser fails to decode the SVG, in which
- * case the caller (IconCache) drops the entry so a retry is possible.
+ * `DynamicTexture` replaces the older canvas → `toDataURL` →
+ * `Texture` chain that had two failure modes:
+ *   - `toDataURL` taints the canvas if the browser ever inferred a
+ *     cross-origin trace from the SVG, throwing SecurityError.
+ *   - `new Texture(dataUrl, scene)` re-decodes the PNG asynchronously
+ *     after we already paid the canvas-to-PNG cost, so the texture
+ *     wasn't always ready by the time the next frame rendered.
+ *
+ * `DynamicTexture` skips both — its canvas is already a render
+ * target, `update()` is synchronous, and there's no PNG round trip.
+ *
+ * The Promise resolves once `<img>.onload` fires; subsequent
+ * `update()` is synchronous. Rejection on `<img>.onerror` lets the
+ * IconCache evict the entry so a retry is possible.
  */
 export async function rasterizeSvgToTexture(
   svg: string,
   scene: Scene,
   size: number,
 ): Promise<Texture> {
-  // diagram-svg's renderer deliberately omits width/height on its
-  // root <svg> so the icon can scale to its host container. That
-  // works for HTML embedding but breaks the <img> path: Chrome /
-  // Safari load such an SVG with naturalWidth = 0, and drawImage
-  // then paints nothing. Inject explicit pixel dimensions before
-  // handing the SVG to the browser image decoder so the rasterised
-  // canvas actually receives bitmap data.
   const sized = ensureSvgDimensions(svg, size);
   const blob = new Blob([sized], { type: "image/svg+xml;charset=utf-8" });
   const objectUrl = URL.createObjectURL(blob);
   try {
     const img = await loadImage(objectUrl, size);
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      throw new Error("No 2D context available");
-    }
-    ctx.clearRect(0, 0, size, size);
-    ctx.drawImage(img, 0, 0, size, size);
-    const dataUrl = canvas.toDataURL("image/png");
-    return new Texture(
-      dataUrl,
+    const dt = new DynamicTexture(
+      "om-icon",
+      { width: size, height: size },
       scene,
-      false /* noMipmap */,
-      true /* invertY */,
+      false /* generateMipMaps */,
       Texture.TRILINEAR_SAMPLINGMODE,
     );
+    const ctx = dt.getContext() as CanvasRenderingContext2D;
+    ctx.clearRect(0, 0, size, size);
+    ctx.drawImage(img, 0, 0, size, size);
+    // `invertY = false` because the Babylon DynamicTexture canvas
+    // already matches the upright image we just drew (image-y down,
+    // which the diagram-svg renderer pre-flipped to compensate for
+    // Modelica's y-up convention).
+    dt.update(false);
+    dt.hasAlpha = true;
+    return dt;
   } finally {
     URL.revokeObjectURL(objectUrl);
   }

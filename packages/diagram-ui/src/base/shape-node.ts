@@ -49,26 +49,25 @@ export class OmShapeNode {
     this.transform = new TransformNode(name, scene);
     this.transform.parent = parent;
 
-    // Unlit-with-alpha setup. Two texture slots cover the two things
-    // we need from the icon PNG:
+    // Unlit-with-alpha setup. The StandardMaterial fragment shader
+    // emits `emissiveTexture.rgb * intensity + emissiveColor` when an
+    // emissive texture is bound, so `emissiveColor` MUST stay at
+    // (0, 0, 0) — anything else gets *added* to the texture sample
+    // and clamped to white, which is exactly the "every icon is a
+    // white rectangle" symptom we hit. Two texture slots:
     //
-    //   - `emissiveTexture` supplies the colour. With `disableLighting`
-    //     on, the shader skips diffuse + ambient and outputs
-    //     `emissiveColor * emissiveTexture.rgb` — exact icon colour,
-    //     ignoring any scene lights MultiBody mode might add.
+    //   - `emissiveTexture` supplies the icon colour. `disableLighting`
+    //     skips diffuse + ambient so the output is the texture pixel
+    //     as-is, regardless of scene lights MultiBody mode may add.
     //   - `diffuseTexture` + `useAlphaFromDiffuseTexture` makes the
     //     fragment alpha track the texture's alpha channel.
-    //     `opacityTexture` would have used the RED channel instead
-    //     (Babylon convention) which turned coloured strokes
-    //     translucent and white interiors opaque — the visible "all
-    //     white rectangle" bug.
     //
     // `backFaceCulling = false` keeps the icon visible from both sides
     // (useful when the camera flips into 3D mode for MultiBody view).
     this.material = new StandardMaterial(`${name}-mat`, scene);
     this.material.disableLighting = true;
     this.material.specularColor = new Color3(0, 0, 0);
-    this.material.emissiveColor = new Color3(1, 1, 1);
+    this.material.emissiveColor = new Color3(0, 0, 0);
     this.material.backFaceCulling = false;
     this.material.useAlphaFromDiffuseTexture = true;
 
