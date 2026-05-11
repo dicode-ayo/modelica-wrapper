@@ -10,6 +10,8 @@ import * as vscode from "vscode";
 
 import { OmcClient } from "@modelica-wrapper/omc-client";
 
+import { openDiagram } from "./diagram/open-diagram.js";
+
 let client: OmcClient | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -21,6 +23,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         await vscode.window.showInformationMessage(version);
       } catch (err) {
         await vscode.window.showErrorMessage(`OMC: ${(err as Error).message}`);
+      }
+    }),
+    vscode.commands.registerCommand("modelica.openDiagram", async (arg) => {
+      try {
+        const c = await ensureClient();
+        await openDiagram(context, c, arg);
+      } catch (err) {
+        await vscode.window.showErrorMessage(
+          `Modelica: openDiagram failed: ${(err as Error).message}`,
+        );
       }
     }),
   );

@@ -4,6 +4,10 @@
     "rootDir": "src",
     "outDir": "out"
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "out", "**/*.test.ts"]
+  "include": [
+    "src/extension.ts",
+    "src/diagram/**/*.ts",
+    "src/webview/protocol.ts"
+  ],
+  "exclude": ["node_modules", "out", "**/*.test.ts", "src/webview/webview-entry.ts"]
 }

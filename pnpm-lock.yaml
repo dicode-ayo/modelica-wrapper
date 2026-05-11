@@ -94,6 +94,9 @@ importers:
 
   packages/extension:
     dependencies:
+      '@modelica-wrapper/diagram-ui':
+        specifier: workspace:*
+        version: link:../diagram-ui
       '@modelica-wrapper/omc-client':
         specifier: workspace:*
         version: link:../omc-client

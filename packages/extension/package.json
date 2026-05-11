@@ -21,6 +21,10 @@
       {
         "command": "modelica.getOmcVersion",
         "title": "Modelica: Show OMC Version"
+      },
+      {
+        "command": "modelica.openDiagram",
+        "title": "Modelica: Open Diagram"
       }
     ],
     "configuration": {
@@ -37,12 +41,13 @@
   "scripts": {
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.webview.json",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "test:unit": "OMC_INTEGRATION=0 vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@modelica-wrapper/diagram-ui": "workspace:*",
     "@modelica-wrapper/omc-client": "workspace:*"
   },
   "devDependencies": {
