@@ -41,6 +41,7 @@ export {
   type DiagramPoint,
 } from "./scene/view-math.js";
 export { OmGridAxis } from "./axis/grid-axis.component.js";
+export { OmMultibodyRoot } from "./multibody/multibody-root.component.js";
 export {
   buildGrid,
   DEFAULT_GRID_OPTIONS,

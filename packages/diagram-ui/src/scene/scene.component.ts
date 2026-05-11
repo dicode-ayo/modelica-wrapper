@@ -102,6 +102,17 @@ export class OmScene extends LitElement {
   @property({ type: Number, reflect: true, attribute: "pan-y" })
   panY = 0;
 
+  /**
+   * Camera projection mode:
+   *  - `"2d"` (default): orthographic, top-down. Use for the diagram
+   *    editor. Pan/zoom is owned by `PanZoom`.
+   *  - `"3d"`: perspective, free `ArcRotateCamera` orbit. Used by the
+   *    optional MultiBody view. Babylon's built-in camera inputs take
+   *    over (mouse drag orbits, wheel zooms in radius).
+   */
+  @property({ type: String, reflect: true, attribute: "camera-mode" })
+  cameraMode: "2d" | "3d" = "2d";
+
   private readonly canvasRef = createRef<HTMLCanvasElement>();
   private readonly resizeObserver = new ResizeObserver(() => this.handleResize());
 
@@ -145,6 +156,9 @@ export class OmScene extends LitElement {
     }
     if (changed.has("zoom") || changed.has("panX") || changed.has("panY")) {
       this.applyView();
+    }
+    if (changed.has("cameraMode")) {
+      this.applyCameraMode();
     }
   }
 
@@ -346,6 +360,36 @@ export class OmScene extends LitElement {
     // still needs a position to derive the view matrix.
     camera.alpha = Math.PI / 2;
     camera.beta = Math.PI / 2;
+  }
+
+  private applyCameraMode(): void {
+    const camera = this.camera;
+    const canvas = this.canvasRef.value;
+    if (!camera || !canvas) {
+      return;
+    }
+    if (this.cameraMode === "2d") {
+      camera.mode = CAMERA_MODE_ORTHO;
+      camera.detachControl();
+      camera.inputs.clear();
+      this.applyView();
+      if (!this.panZoom) {
+        this.panZoom = new PanZoom(
+          canvas,
+          () => ({ zoom: this.zoom, panX: this.panX, panY: this.panY }),
+          (next) => this.onViewChangeFromUser(next),
+        );
+      }
+    } else {
+      camera.mode = 0; // Babylon.Camera.PERSPECTIVE_CAMERA
+      this.panZoom?.destroy();
+      this.panZoom = null;
+      camera.inputs.addMouseWheel();
+      camera.inputs.addPointers();
+      camera.attachControl(canvas, true);
+      camera.lowerRadiusLimit = 10;
+      camera.upperRadiusLimit = 5000;
+    }
   }
 }
 
