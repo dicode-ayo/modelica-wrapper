@@ -49,15 +49,28 @@ export class OmShapeNode {
     this.transform = new TransformNode(name, scene);
     this.transform.parent = parent;
 
-    // Unlit setup: lighting disabled, colour comes from the emissive
-    // texture. Using emissive (not diffuse) keeps the icon rendering
-    // identical regardless of any lights the host scene may add later
-    // for MultiBody overlays.
+    // Unlit-with-alpha setup. Two texture slots cover the two things
+    // we need from the icon PNG:
+    //
+    //   - `emissiveTexture` supplies the colour. With `disableLighting`
+    //     on, the shader skips diffuse + ambient and outputs
+    //     `emissiveColor * emissiveTexture.rgb` — exact icon colour,
+    //     ignoring any scene lights MultiBody mode might add.
+    //   - `diffuseTexture` + `useAlphaFromDiffuseTexture` makes the
+    //     fragment alpha track the texture's alpha channel.
+    //     `opacityTexture` would have used the RED channel instead
+    //     (Babylon convention) which turned coloured strokes
+    //     translucent and white interiors opaque — the visible "all
+    //     white rectangle" bug.
+    //
+    // `backFaceCulling = false` keeps the icon visible from both sides
+    // (useful when the camera flips into 3D mode for MultiBody view).
     this.material = new StandardMaterial(`${name}-mat`, scene);
     this.material.disableLighting = true;
     this.material.specularColor = new Color3(0, 0, 0);
     this.material.emissiveColor = new Color3(1, 1, 1);
     this.material.backFaceCulling = false;
+    this.material.useAlphaFromDiffuseTexture = true;
 
     this.mesh = MeshBuilder.CreatePlane(
       `${name}-mesh`,
@@ -122,8 +135,13 @@ export class OmShapeNode {
     if (texture) {
       texture.hasAlpha = true;
     }
+    // diffuseTexture carries the alpha channel for transparency;
+    // emissiveTexture carries the colour for unlit rendering. Same
+    // Babylon Texture object on both slots — Babylon dedupes the
+    // GPU upload internally, so this is one resource.
     this.material.emissiveTexture = texture;
-    this.material.opacityTexture = texture;
+    this.material.diffuseTexture = texture;
+    this.material.opacityTexture = null;
   }
 
   setSelected(selected: boolean): void {
