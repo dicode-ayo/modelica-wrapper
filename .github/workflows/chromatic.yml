@@ -59,9 +59,12 @@ jobs:
           # UI for review. Build-breaking errors (test failures, missing token)
           # still fail.
           exitZeroOnChanges: true
-          # TurboSnap: skip stories whose dependency tree didn't change in
-          # this commit. Needs the full git history above to be effective.
-          onlyChanged: true
+          # NOTE: `onlyChanged: true` requires `preview-stats.json` from the
+          # Storybook build (TurboSnap input). The Vite Storybook builder
+          # doesn't emit one by default; with `onlyChanged: true` set, the
+          # Chromatic CLI then fails the whole job. Disabled until we wire
+          # `--stats-json` into `build-storybook` or migrate to a builder
+          # that emits stats out of the box.
 
   diagram-ui:
     name: Publish diagram-ui Storybook
@@ -107,4 +110,5 @@ jobs:
           workingDir: packages/diagram-ui
           storybookBuildDir: storybook-static
           exitZeroOnChanges: true
-          onlyChanged: true
+          # See note in the diagram-svg job: TurboSnap disabled until the
+          # Vite Storybook build emits preview-stats.json.
