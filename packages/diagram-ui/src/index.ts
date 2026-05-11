@@ -54,6 +54,21 @@ export { OmConnection } from "./connection/connection.component.js";
 export { OmLabel } from "./label/label.component.js";
 export { ensureLabelTexture } from "./label/label-texture.js";
 export {
+  InteractionManager,
+  defaultPicker,
+  type PickerFn,
+  type EmitFn,
+  type InteractionEvents,
+  type InteractionManagerOptions,
+  type EntityKey,
+} from "./interaction/interaction-manager.js";
+export {
+  entityKeyForNode,
+  formatKey,
+  parseKey,
+  type EntityKind,
+} from "./interaction/node-keys.js";
+export {
   buildEdge,
   DEFAULT_EDGE_WIDTH,
   DEFAULT_EDGE_COLOR,

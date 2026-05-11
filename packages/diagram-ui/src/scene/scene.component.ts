@@ -162,6 +162,12 @@ export class OmScene extends LitElement {
     return this.sceneProvider.value;
   }
 
+  /** Exposes the internal `<canvas>` for siblings that need to attach
+   *  pointer listeners (e.g. the interaction manager in stage E1). */
+  get canvasElement(): HTMLCanvasElement | null {
+    return this.canvasRef.value ?? null;
+  }
+
   private mount(canvas: HTMLCanvasElement): void {
     const engine = this.engineFactory(canvas);
     const scene = new Scene(engine);

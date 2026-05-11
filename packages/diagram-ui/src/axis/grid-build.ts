@@ -91,6 +91,10 @@ export function buildGrid(
   minorMesh.parent = root;
   majorMesh.parent = root;
   axesMesh.parent = root;
+  // The grid is decorative — don't let it eat picks meant for entities.
+  for (const m of [minorMesh, majorMesh, axesMesh]) {
+    m.isPickable = false;
+  }
 
   return { root, minor: minorMesh, major: majorMesh, axes: axesMesh };
 }
