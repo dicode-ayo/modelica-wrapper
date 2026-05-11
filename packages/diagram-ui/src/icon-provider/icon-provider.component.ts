@@ -65,18 +65,17 @@ export class OmIconProvider extends LitElement {
   /**
    * Override the SVG renderer (default: `renderIconLayersToSvg` from
    * `@modelica-wrapper/diagram-svg`). Useful for tests and custom
-   * styling layers.
+   * styling layers. `undefined` is allowed and falls back to the
+   * default — important because the parent host element
+   * (`<om-graphical-layout>`) forwards its own optional property
+   * verbatim and would otherwise clobber the default.
    */
   @property({ attribute: false })
-  renderSvg: SvgRenderFn = defaultRenderSvg;
+  renderSvg: SvgRenderFn | undefined = undefined;
 
-  /**
-   * Override the SVG-to-Texture rasteriser. Tests can stub this to
-   * resolve a `RawTexture` (or any stand-in object) without needing a
-   * real browser image-decoder.
-   */
+  /** Same fallback behaviour as `renderSvg`. */
   @property({ attribute: false })
-  rasterize: RasterizeFn = rasterizeSvgToTexture;
+  rasterize: RasterizeFn | undefined = undefined;
 
   @consume({ context: sceneContext, subscribe: true })
   private sceneCtx: SceneContext | null = null;
@@ -94,14 +93,20 @@ export class OmIconProvider extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    this.cache = new IconCache(this.renderSvg, this.rasterize);
+    this.cache = new IconCache(
+      this.renderSvg ?? defaultRenderSvg,
+      this.rasterize ?? rasterizeSvgToTexture,
+    );
     this.contextProvider.setValue(this.buildContext());
   }
 
   override updated(changed: Map<string, unknown>): void {
     if (changed.has("renderSvg") || changed.has("rasterize")) {
       void this.cache?.destroy();
-      this.cache = new IconCache(this.renderSvg, this.rasterize);
+      this.cache = new IconCache(
+        this.renderSvg ?? defaultRenderSvg,
+        this.rasterize ?? rasterizeSvgToTexture,
+      );
       this.contextProvider.setValue(this.buildContext());
     }
   }

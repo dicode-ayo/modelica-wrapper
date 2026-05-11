@@ -127,17 +127,24 @@ export class OmGraphicalLayout extends LitElement {
     }
     const componentEntries = Object.entries(active.components);
     const connectorEntries = Object.entries(active.connectors);
+    // Topology: scene OUTSIDE, icon-provider INSIDE. Lit contexts only
+    // flow down, so the icon-provider has to be a descendant of the
+    // scene to `@consume(sceneContext)`. The reverse (icon-provider as
+    // wrapper) leaves the provider unable to see the scene and every
+    // textureFor* call rejects with "icon-provider not connected to
+    // a scene" — that was the real reason every icon rendered as the
+    // fallback colour.
     return html`
-      <om-icon-provider
-        .renderSvg=${this.renderSvg ?? undefined}
-        .rasterize=${this.rasterize ?? undefined}
+      <om-scene
+        .engineFactory=${this.engineFactory ?? undefined}
+        ?debug=${this.debug}
+        @om-view-change=${this.onViewChange}
+        tabindex="0"
+        @keydown=${this.onKeyDown}
       >
-        <om-scene
-          .engineFactory=${this.engineFactory ?? undefined}
-          ?debug=${this.debug}
-          @om-view-change=${this.onViewChange}
-          tabindex="0"
-          @keydown=${this.onKeyDown}
+        <om-icon-provider
+          .renderSvg=${this.renderSvg ?? undefined}
+          .rasterize=${this.rasterize ?? undefined}
         >
           <om-grid-axis .extent=${500}></om-grid-axis>
           ${repeat(
@@ -174,8 +181,8 @@ export class OmGraphicalLayout extends LitElement {
               ></om-label>`,
           )}
           ${this.renderInProgressEdge()}
-        </om-scene>
-      </om-icon-provider>
+        </om-icon-provider>
+      </om-scene>
     `;
   }
 

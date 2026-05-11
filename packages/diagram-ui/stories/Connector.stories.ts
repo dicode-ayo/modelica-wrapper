@@ -75,8 +75,8 @@ const standaloneMeta: Meta<StandaloneArgs> = {
           the hover affordance (E1 will drive this from real pointer events).
         </p>
         <div class="om-story-canvas-host">
-          <om-icon-provider>
-            <om-scene .zoom=${zoom}>
+          <om-scene .zoom=${zoom}>
+            <om-icon-provider>
               <om-grid-axis .extent=${500}></om-grid-axis>
               <om-connector
                 nodeId="p"
@@ -90,8 +90,8 @@ const standaloneMeta: Meta<StandaloneArgs> = {
                   el.setPortIndicatorVisible(showPortIndicator);
                 }}
               ></om-connector>
-            </om-scene>
-          </om-icon-provider>
+            </om-icon-provider>
+          </om-scene>
         </div>
       </div>
     `;
@@ -154,8 +154,8 @@ export const NestedOnComponent: StoryObj<NestedArgs> = {
           block's local frame.
         </p>
         <div class="om-story-canvas-host">
-          <om-icon-provider>
-            <om-scene .zoom=${zoom}>
+          <om-scene .zoom=${zoom}>
+            <om-icon-provider>
               <om-grid-axis .extent=${500}></om-grid-axis>
               <om-component
                 nodeId="g1"
@@ -169,8 +169,8 @@ export const NestedOnComponent: StoryObj<NestedArgs> = {
                   .layers=${PLACEHOLDER_CONNECTOR_LAYERS}
                 ></om-connector>
               </om-component>
-            </om-scene>
-          </om-icon-provider>
+            </om-icon-provider>
+          </om-scene>
         </div>
       </div>
     `;

@@ -81,8 +81,8 @@ export const MipmapLadder: Story = {
         if not you'll see jagged shimmering on the right side.
       </p>
       <div class="om-story-canvas-host">
-        <om-icon-provider>
-          <om-scene zoom="80" ?debug=${debug}>
+        <om-scene zoom="80" ?debug=${debug}>
+          <om-icon-provider>
             <om-grid-axis .extent=${500}></om-grid-axis>
             <om-debug-plane
               .x=${-70}
@@ -119,8 +119,8 @@ export const MipmapLadder: Story = {
               .layers=${GAIN.iconLayers}
               .coordinateSystem=${GAIN.coordinateSystem ?? undefined}
             ></om-debug-plane>
-          </om-scene>
-        </om-icon-provider>
+          </om-icon-provider>
+        </om-scene>
       </div>
     </div>
   `,
@@ -142,8 +142,8 @@ export const IconCatalog: Story = {
         generated PNG and its mipmap chain.
       </p>
       <div class="om-story-canvas-host">
-        <om-icon-provider>
-          <om-scene zoom="80" ?debug=${debug}>
+        <om-scene zoom="80" ?debug=${debug}>
+          <om-icon-provider>
             <om-grid-axis .extent=${500}></om-grid-axis>
             <om-debug-plane
               .x=${-50}
@@ -166,8 +166,8 @@ export const IconCatalog: Story = {
               .layers=${SPRINGDAMPER.iconLayers}
               .coordinateSystem=${SPRINGDAMPER.coordinateSystem ?? undefined}
             ></om-debug-plane>
-          </om-scene>
-        </om-icon-provider>
+          </om-icon-provider>
+        </om-scene>
       </div>
     </div>
   `,

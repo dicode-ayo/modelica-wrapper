@@ -68,8 +68,8 @@ const meta: Meta<StoryArgs> = {
           → canvas rasteriser → Babylon Texture → plane mesh.
         </p>
         <div class="om-story-canvas-host">
-          <om-icon-provider>
-            <om-scene .zoom=${zoom}>
+          <om-scene .zoom=${zoom}>
+            <om-icon-provider>
               <om-grid-axis .extent=${500}></om-grid-axis>
               <om-component
                 nodeId="demo"
@@ -77,8 +77,8 @@ const meta: Meta<StoryArgs> = {
                 .layers=${f.iconLayers}
                 .coordinateSystem=${f.coordinateSystem ?? undefined}
               ></om-component>
-            </om-scene>
-          </om-icon-provider>
+            </om-icon-provider>
+          </om-scene>
         </div>
       </div>
     `;
