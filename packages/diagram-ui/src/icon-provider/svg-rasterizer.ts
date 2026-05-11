@@ -35,14 +35,26 @@ export async function rasterizeSvgToTexture(
   const dataUrl = `data:image/svg+xml;base64,${base64}`;
 
   return new Promise<Texture>((resolve, reject) => {
+    // `noMipmap = false` asks Babylon to auto-generate the mipmap
+    // chain when the texture finishes uploading. `TRILINEAR` sampling
+    // (= `LINEAR_LINEAR_MIPLINEAR`) actually *reads* those mips at
+    // sample time, so an icon drawn small on screen filters through
+    // a smaller mip level instead of aliasing across the high-res
+    // mip 0. The earlier `BILINEAR_SAMPLINGMODE` (= `LINEAR_LINEAR`,
+    // no mip sampling) generated the chain and then ignored it.
+    //
+    // `anisotropicFilteringLevel = 4` smooths icons viewed at oblique
+    // angles — matters once the 3D camera mode lands; cheap to leave
+    // on in 2D.
     const tex: Texture = new Texture(
       dataUrl,
       scene,
       false /* noMipmap */,
       true /* invertY */,
-      Texture.BILINEAR_SAMPLINGMODE,
+      Texture.TRILINEAR_SAMPLINGMODE,
       () => {
         tex.hasAlpha = true;
+        tex.anisotropicFilteringLevel = 4;
         if (DEBUG_RASTERIZER) {
           // eslint-disable-next-line no-console
           console.debug(
