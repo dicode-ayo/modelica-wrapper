@@ -123,3 +123,4 @@ export {
   rasterizeSvgToTexture,
   setRasterizerDebug,
 } from "./icon-provider/svg-rasterizer.js";
+export { OmDebugPlane } from "./debug/debug-plane.component.js";
