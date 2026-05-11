@@ -36,9 +36,12 @@ import {
 export type EngineFactory = (canvas: HTMLCanvasElement) => AbstractEngine;
 
 const defaultEngineFactory: EngineFactory = (canvas) =>
+  // `stencil: true` is required by Babylon's HighlightLayer (the
+  // selection outline). Without it, the layer warns and silently
+  // skips its render pass.
   new Engine(canvas, true, {
     preserveDrawingBuffer: false,
-    stencil: false,
+    stencil: true,
     disableWebGL2Support: false,
   });
 

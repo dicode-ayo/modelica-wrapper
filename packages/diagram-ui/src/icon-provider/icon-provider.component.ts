@@ -21,10 +21,17 @@ import {
 } from "./icon-provider-context.js";
 import { rasterizeSvgToTexture } from "./svg-rasterizer.js";
 
+const DEFAULT_RENDER_SIZE = 512;
+
+// Pass `size` through to diagram-svg so the emitted root <svg>
+// carries explicit width / height attributes. Without those, browser
+// image decoders report `naturalWidth = 0` for the SVG and any
+// downstream rasterisation paints nothing.
 const defaultRenderSvg: SvgRenderFn = (layers, coordinateSystem) => {
-  const opts: RenderOptions = coordinateSystem
-    ? { coordinateSystem }
-    : {};
+  const opts: RenderOptions = { size: DEFAULT_RENDER_SIZE };
+  if (coordinateSystem) {
+    opts.coordinateSystem = coordinateSystem;
+  }
   return renderIconLayersToSvg(layers, opts);
 };
 

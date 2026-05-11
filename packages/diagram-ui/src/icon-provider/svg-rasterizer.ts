@@ -1,95 +1,77 @@
-import { DynamicTexture, Texture } from "@babylonjs/core";
+import { Texture } from "@babylonjs/core";
 import type { Scene } from "@babylonjs/core";
 
 /**
  * Browser-side rasteriser: turns an SVG string into a Babylon
- * `DynamicTexture` whose backing canvas is the rasterised icon.
+ * `Texture` by feeding the SVG as a base64 data URL straight to
+ * Babylon's image loader. The previous canvas → toDataURL → Texture
+ * chain (and its DynamicTexture replacement) had multiple failure
+ * modes that all manifested as "icon is a black/white rectangle":
  *
- * Architecture:
- *   1. Inject explicit width/height into the root `<svg>` if missing
- *      — without them, `<img>` reports `naturalWidth = 0` and
- *      `drawImage` paints nothing.
- *   2. Load the SVG into an `<img>` via a Blob `object: URL`.
- *   3. Create a Babylon `DynamicTexture` (canvas-backed, owned by
- *      Babylon and uploaded to GPU on `update()`); draw the image
- *      into the texture's canvas; call `update()` to push pixels to
- *      the GPU.
+ *  - `toDataURL` could throw `SecurityError` if the canvas was
+ *    inferred to be cross-origin tainted.
+ *  - `drawImage(svgImg, ...)` painted nothing when the SVG was
+ *    missing explicit `width`/`height` (`<img>.naturalWidth = 0`).
+ *  - `DynamicTexture.update()` masked GPU upload errors silently
+ *    and we never learned why the texture was zeroed.
  *
- * `DynamicTexture` replaces the older canvas → `toDataURL` →
- * `Texture` chain that had two failure modes:
- *   - `toDataURL` taints the canvas if the browser ever inferred a
- *     cross-origin trace from the SVG, throwing SecurityError.
- *   - `new Texture(dataUrl, scene)` re-decodes the PNG asynchronously
- *     after we already paid the canvas-to-PNG cost, so the texture
- *     wasn't always ready by the time the next frame rendered.
+ * Going straight to `new Texture(dataUrl, scene, ..., onLoad, onError)`:
+ *  - Babylon owns the `<img>` element and texture upload.
+ *  - `onError` surfaces decode failures on the console for visibility.
+ *  - The SVG is guaranteed to have explicit dimensions because the
+ *    icon-provider passes `size` to `renderIconLayersToSvg`.
  *
- * `DynamicTexture` skips both — its canvas is already a render
- * target, `update()` is synchronous, and there's no PNG round trip.
- *
- * The Promise resolves once `<img>.onload` fires; subsequent
- * `update()` is synchronous. Rejection on `<img>.onerror` lets the
- * IconCache evict the entry so a retry is possible.
+ * The Promise resolves once the texture's `onLoadObservable` fires,
+ * matching the IconCache's "promise-per-request" contract.
  */
 export async function rasterizeSvgToTexture(
   svg: string,
   scene: Scene,
   size: number,
 ): Promise<Texture> {
-  const sized = ensureSvgDimensions(svg, size);
-  const blob = new Blob([sized], { type: "image/svg+xml;charset=utf-8" });
-  const objectUrl = URL.createObjectURL(blob);
-  try {
-    const img = await loadImage(objectUrl, size);
-    const dt = new DynamicTexture(
-      "om-icon",
-      { width: size, height: size },
+  void size; // size is baked into the SVG by the icon-provider
+  // unescape() is deprecated; use the unicode-safe base64 path.
+  const base64 = base64EncodeUnicode(svg);
+  const dataUrl = `data:image/svg+xml;base64,${base64}`;
+
+  return new Promise<Texture>((resolve, reject) => {
+    const tex: Texture = new Texture(
+      dataUrl,
       scene,
-      false /* generateMipMaps */,
-      Texture.TRILINEAR_SAMPLINGMODE,
+      false /* noMipmap */,
+      true /* invertY */,
+      Texture.BILINEAR_SAMPLINGMODE,
+      () => {
+        tex.hasAlpha = true;
+        resolve(tex);
+      },
+      (message, exception) => {
+        // eslint-disable-next-line no-console
+        console.error("[diagram-ui] SVG → Texture load failed:", message, exception);
+        reject(new Error(`Failed to decode SVG: ${message ?? "unknown"}`));
+      },
     );
-    const ctx = dt.getContext() as CanvasRenderingContext2D;
-    ctx.clearRect(0, 0, size, size);
-    ctx.drawImage(img, 0, 0, size, size);
-    // `invertY = false` because the Babylon DynamicTexture canvas
-    // already matches the upright image we just drew (image-y down,
-    // which the diagram-svg renderer pre-flipped to compensate for
-    // Modelica's y-up convention).
-    dt.update(false);
-    dt.hasAlpha = true;
-    return dt;
-  } finally {
-    URL.revokeObjectURL(objectUrl);
+  });
+}
+
+/** Base64-encode a UTF-8 string. `btoa` chokes on non-ASCII; this path
+ *  re-encodes through a Uint8Array → binary string so any unicode
+ *  glyphs in the SVG text labels survive. */
+function base64EncodeUnicode(input: string): string {
+  const bytes = new TextEncoder().encode(input);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]!);
   }
+  return btoa(binary);
 }
 
 /**
- * Ensures the root `<svg>` carries explicit `width` / `height`
- * attributes. If both already exist they're left as-is; otherwise
- * they're inserted right after `<svg`. A missing root tag returns
- * the input unchanged — the downstream image load will fail and the
- * IconCache will evict + retry, which is the correct fallback.
- *
- * Exported for unit tests; production code reaches it through
- * `rasterizeSvgToTexture`.
+ * Retained for backward compatibility with the previous SVG-injection
+ * path. Now a pass-through: the icon-provider passes an explicit
+ * `size` to `renderIconLayersToSvg`, so the SVG already has explicit
+ * `width` / `height` attributes by the time we see it.
  */
-export function ensureSvgDimensions(svg: string, size: number): string {
-  const open = svg.match(/<svg\b[^>]*>/i);
-  if (!open) {
-    return svg;
-  }
-  const tag = open[0];
-  if (/\bwidth\s*=/i.test(tag) && /\bheight\s*=/i.test(tag)) {
-    return svg;
-  }
-  const injected = tag.replace(/^<svg\b/i, `<svg width="${size}" height="${size}"`);
-  return svg.replace(tag, injected);
-}
-
-function loadImage(src: string, size: number): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image(size, size);
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("Failed to decode SVG"));
-    img.src = src;
-  });
+export function ensureSvgDimensions(svg: string, _size: number): string {
+  return svg;
 }
