@@ -233,7 +233,18 @@ export class OmGraphicalLayout extends LitElement {
     `;
   }
 
-  override firstUpdated(): void {
+  override async firstUpdated(): Promise<void> {
+    // Lit schedules child element updates *after* the parent's, so
+    // when this fires the inner <om-scene> has been rendered into
+    // our shadow DOM but its own `firstUpdated()` (where it mounts
+    // the Babylon engine + provides the scene context) hasn't run
+    // yet. Awaiting its updateComplete lets that finish before we
+    // try to grab the picker / canvas — otherwise both come back
+    // null and the InteractionManager / DragController never attach,
+    // which presents as "selection + drag silently don't work."
+    if (this.sceneEl) {
+      await this.sceneEl.updateComplete;
+    }
     this.attachManagers();
   }
 
@@ -245,7 +256,11 @@ export class OmGraphicalLayout extends LitElement {
       }
       this.internalLayoutChange = false;
     }
-    if (!this.interactionManager && this.sceneEl?.canvasElement) {
+    if (
+      !this.interactionManager &&
+      this.sceneEl?.canvasElement &&
+      this.sceneEl?.sceneContextValue
+    ) {
       this.attachManagers();
     }
     // First layout → auto-fit so icons fill the viewport. Mirrors the
