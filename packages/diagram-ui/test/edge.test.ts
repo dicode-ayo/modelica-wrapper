@@ -52,15 +52,18 @@ describe("buildEdge", () => {
   it("builds a GreasedLine mesh parented to the provided node", () => {
     const s = makeScene();
     teardowns.push(s.dispose);
-    const mesh = buildEdge(s.scene, s.parent, "edge", {
+    const result = buildEdge(s.scene, s.parent, "edge", {
       points: [
         [0, 0],
         [10, 0],
         [10, 10],
       ],
     });
-    expect(mesh).not.toBeNull();
-    expect(mesh!.parent).toBe(s.parent);
+    expect(result).not.toBeNull();
+    expect(result!.line.parent).toBe(s.parent);
+    expect(result!.hitArea.parent).toBe(s.parent);
+    expect(result!.hitArea.isPickable).toBe(true);
+    expect(result!.hitArea.isVisible).toBe(false);
   });
 });
 
@@ -116,8 +119,9 @@ describe("<om-edge>", () => {
     ];
     scene.appendChild(edge);
     await edge.updateComplete;
-    const mesh = edge.edgeMesh;
+    const meshes = edge.edgeMesh;
     edge.remove();
-    expect(mesh?.isDisposed()).toBe(true);
+    expect(meshes?.line.isDisposed()).toBe(true);
+    expect(meshes?.hitArea.isDisposed()).toBe(true);
   });
 });

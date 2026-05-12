@@ -18,10 +18,18 @@ import { parseKey, type EntityKind } from "./node-keys.js";
  * decide what to do with stale references.
  */
 
+interface JunctionRef {
+  connIdx: number;
+  waypointIdx: number;
+}
+
 interface KeySet {
   components: Set<string>;
   connectors: Set<string>;
+  /** Whole-connection ops (edge selection / deletion). */
   connections: Set<number>;
+  /** Per-waypoint refs from junction keys (`junc:<conn>/<wp>`). */
+  junctions: JunctionRef[];
 }
 
 function partitionKeys(keys: Iterable<string>): KeySet {
@@ -29,6 +37,7 @@ function partitionKeys(keys: Iterable<string>): KeySet {
     components: new Set(),
     connectors: new Set(),
     connections: new Set(),
+    junctions: [],
   };
   for (const k of keys) {
     const parsed = parseKey(k);
@@ -48,14 +57,27 @@ function routeKey(out: KeySet, kind: EntityKind, id: string): void {
     case "connector":
       out.connectors.add(id);
       break;
-    case "edge":
-    case "junction":
-      // Stored as index into layout.connections.
+    case "edge": {
+      // Whole-connection key — `id` is the connection index.
       const idx = Number(id);
       if (!Number.isNaN(idx)) {
         out.connections.add(idx);
       }
       break;
+    }
+    case "junction": {
+      // Compound key `<conn>/<waypointIdx>`.
+      const slash = id.indexOf("/");
+      if (slash < 0) {
+        return;
+      }
+      const connIdx = Number(id.slice(0, slash));
+      const waypointIdx = Number(id.slice(slash + 1));
+      if (!Number.isNaN(connIdx) && !Number.isNaN(waypointIdx)) {
+        out.junctions.push({ connIdx, waypointIdx });
+      }
+      break;
+    }
     default:
       break;
   }
@@ -102,14 +124,40 @@ export function applyDeltaMove(
     connectors[id] = { ...c, placement: shiftPlacement(c.placement, dx, dy) };
     mutated = true;
   }
-  // Connection waypoints aren't moved on delta — that's E4 territory
-  // (edge dragging). Selecting connections + components together still
-  // moves the components but leaves the connection paths untouched,
-  // which matches OMEdit's behaviour.
+  // Junctions: shift the specific waypoint they refer to. Multiple
+  // junction refs on the same connection share one new array.
+  let connections = layout.connections;
+  if (set.junctions.length > 0) {
+    const byConn = new Map<number, Set<number>>();
+    for (const { connIdx, waypointIdx } of set.junctions) {
+      let wps = byConn.get(connIdx);
+      if (!wps) {
+        wps = new Set();
+        byConn.set(connIdx, wps);
+      }
+      wps.add(waypointIdx);
+    }
+    let connsMutated = false;
+    connections = layout.connections.map((conn, idx) => {
+      const wpIdxs = byConn.get(idx);
+      if (!wpIdxs || wpIdxs.size === 0) {
+        return conn;
+      }
+      const waypoints = conn.waypoints.map((wp, i) =>
+        wpIdxs.has(i) ? ([wp[0] + dx, wp[1] + dy] as Point) : wp,
+      );
+      connsMutated = true;
+      return { ...conn, waypoints };
+    });
+    if (connsMutated) {
+      mutated = true;
+    }
+  }
+
   if (!mutated) {
     return layout;
   }
-  return { ...layout, components, connectors };
+  return { ...layout, components, connectors, connections };
 }
 
 /** Sets the absolute placement extent of a single component. */

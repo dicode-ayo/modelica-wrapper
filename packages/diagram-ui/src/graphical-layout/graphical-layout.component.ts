@@ -211,7 +211,7 @@ export class OmGraphicalLayout extends LitElement {
               html`<om-connection
                 .nodeId=${String(idx)}
                 .path=${conn.waypoints}
-                ?selected=${this.selectedKeys.has(formatKey("edge", String(idx)))}
+                .selectedKeys=${this.selectedKeys}
               ></om-connection>`,
           )}
           ${repeat(

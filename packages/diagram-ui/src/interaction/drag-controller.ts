@@ -210,6 +210,15 @@ export class DragController {
       return;
     }
 
+    if (entity?.kind === "edge") {
+      // Clicking on an edge selects it (the InteractionManager fires
+      // the select event in parallel) but doesn't start a drag — edge
+      // waypoint reshape isn't implemented yet. Without this early
+      // return the click would fall through to rubber-band, which
+      // looks like the click "did nothing visible."
+      return;
+    }
+
     // Empty-space click: rubber-band start.
     this.state = {
       kind: "rubber-band",
