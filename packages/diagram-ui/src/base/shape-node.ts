@@ -25,11 +25,6 @@ const HIGHLIGHT_COLOR = new Color3(0.38, 0.6, 0.98);
  */
 const MISSING_TEXTURE_COLOR = new Color3(1, 0.6, 0.9);
 
-/** Material alpha applied when a shape is selected; combined with the
- *  HighlightLayer outline + resize handles to make the selection
- *  state obvious without obscuring the underlying icon. */
-const SELECTED_ALPHA = 0.55;
-
 /**
  * Babylon-side wrapper around the TransformNode + textured plane mesh
  * pair that every entity element drives. The wrapper exposes a small
@@ -190,12 +185,6 @@ export class OmShapeNode {
         layer.removeMesh(this.mesh);
       }
     }
-
-    // Translucent icon while selected — combines with the highlight
-    // outline + resize handles for an unambiguous "this is selected"
-    // signal. `useAlphaFromDiffuseTexture` is already on, so the
-    // material's `alpha` multiplies through cleanly.
-    this.material.alpha = selected ? SELECTED_ALPHA : 1;
 
     // Resize handles.
     if (selected) {
