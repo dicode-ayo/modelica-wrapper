@@ -11,7 +11,12 @@ export interface PanZoomBounds {
 
 export interface PanZoomOptions {
   bounds: PanZoomBounds;
-  /** Multiplicative zoom step per wheel tick (>1 zooms out). */
+  /**
+   * Reference multiplicative zoom step (per ~100 px of wheel deltaY).
+   * Touchpad pinch events arrive with small deltaY values so we scale
+   * by `|deltaY| / 100` to keep zoom smooth on trackpads while still
+   * giving a meaningful jump on a discrete mouse wheel tick.
+   */
   zoomStep: number;
 }
 
@@ -19,17 +24,19 @@ export const DEFAULT_PAN_ZOOM_BOUNDS: PanZoomBounds = { min: 1, max: 5000 };
 export const DEFAULT_ZOOM_STEP = 1.1;
 
 /**
- * Owns the pointer / wheel listeners on the scene's canvas and turns
- * them into `ViewState` changes. Renderer-agnostic — talks to
- * `<om-scene>` only through `getView` / `onViewChange`.
+ * Owns the pointer / wheel listeners on the scene's canvas. Touchpad-
+ * friendly bindings, matching the Figma-style convention used in the
+ * dyad-ui Pixi renderer:
  *
- * Bindings:
- *   - wheel        → zoom around cursor
- *   - middle drag  → pan
- *   - shift + left → pan
+ *   - plain wheel             → pan       (2-finger touchpad scroll)
+ *   - ctrl / meta + wheel     → zoom      (browsers send `ctrlKey=true`
+ *                                          for trackpad pinch)
+ *   - middle (or any non-primary) mouse button drag → pan
  *
- * Plain left-drag is reserved for the future interaction manager
- * (selection / move). Right-drag stays available for context menu.
+ * The primary mouse button stays available for the interaction layer
+ * (selection / move) and the right button stays available for the
+ * in-app context menu. We swallow the browser's default context menu
+ * so the host can wire its own.
  */
 export class PanZoom {
   private readonly canvas: HTMLCanvasElement;
@@ -59,8 +66,6 @@ export class PanZoom {
     canvas.addEventListener("pointermove", this.handlePointerMove);
     canvas.addEventListener("pointerup", this.handlePointerUp);
     canvas.addEventListener("pointercancel", this.handlePointerUp);
-    // The browser scrolls the parent if the canvas is fully inside a
-    // scrollable region; that breaks ctrl/cmd wheel for zoom too.
     canvas.addEventListener("contextmenu", this.preventContextMenu);
   }
 
@@ -82,10 +87,18 @@ export class PanZoom {
 
   private readonly handleWheel = (e: WheelEvent): void => {
     e.preventDefault();
+    if (isZoomWheel(e)) {
+      this.applyWheelZoom(e);
+    } else {
+      this.applyWheelPan(e);
+    }
+  };
+
+  private applyWheelZoom(e: WheelEvent): void {
     const rect = this.canvas.getBoundingClientRect();
     const cursorX = e.clientX - rect.left;
     const cursorY = e.clientY - rect.top;
-    const factor = e.deltaY > 0 ? this.zoomStep : 1 / this.zoomStep;
+    const factor = wheelZoomFactor(e, this.zoomStep);
     const view = this.getView();
     const next = applyZoomAroundCursor(
       view,
@@ -96,10 +109,30 @@ export class PanZoom {
       this.bounds,
     );
     this.onViewChange(next);
-  };
+  }
+
+  private applyWheelPan(e: WheelEvent): void {
+    // Convention: `wheel` deltaX/Y positive = scroll right / down, so
+    // panning to "reveal what's right/below" means the camera target
+    // moves IN THE SAME DIRECTION as the wheel delta. `applyPanDelta`
+    // expects a pointer-drag delta (drag-content semantics, opposite
+    // sign), so negate to convert scroll → drag.
+    const rect = this.canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return;
+    }
+    const view = this.getView();
+    const { panX, panY } = applyPanDelta(
+      view,
+      { width: rect.width, height: rect.height },
+      -e.deltaX,
+      -e.deltaY,
+    );
+    this.onViewChange({ ...view, panX, panY });
+  }
 
   private readonly handlePointerDown = (e: PointerEvent): void => {
-    if (!isPanGesture(e)) {
+    if (!isPanPointer(e)) {
       return;
     }
     e.preventDefault();
@@ -148,21 +181,64 @@ export class PanZoom {
   };
 
   private readonly preventContextMenu = (e: MouseEvent): void => {
-    // Block the browser context menu so a future right-click handler
-    // can drive an in-app context menu instead.
     e.preventDefault();
   };
 }
 
-function isPanGesture(e: PointerEvent): boolean {
-  // Middle button: bitmask test against `buttons` since `button` is 1
-  // for middle in PointerEvent.
-  if (e.button === 1) {
-    return true;
+/**
+ * Wheel events are classified as "zoom" when the user holds
+ * Ctrl/Meta, OR when the browser synthesises a pinch gesture. Every
+ * major browser delivers pinch as a `wheel` event with `ctrlKey=true`
+ * regardless of the actual keyboard state, so a single test covers
+ * both cases.
+ */
+function isZoomWheel(e: WheelEvent): boolean {
+  return e.ctrlKey || e.metaKey;
+}
+
+/**
+ * Non-primary mouse buttons (button !== 0) are the pan gesture. This
+ * matches the Figma / dyad-ui convention:
+ *   - middle button (1)  → primary pan
+ *   - right button  (2)  → "context menu" but ALSO pans while held
+ *                          (matches dyad-ui's `button !== 0`)
+ *   - auxiliary  (3, 4)  → pan
+ *
+ * The browser context menu is suppressed so a right-drag pan doesn't
+ * surface the OS menu mid-gesture.
+ */
+function isPanPointer(e: PointerEvent): boolean {
+  return e.button !== 0;
+}
+
+/**
+ * Scale the multiplicative zoom factor with `|deltaY|`. Touchpad
+ * pinch events deliver many small deltaYs (often 1-10 px); a single
+ * mouse-wheel notch is typically ~100 px. Using
+ *
+ *   factor = zoomStep ^ (|deltaY| / 100)
+ *
+ * keeps a mouse-wheel notch close to the historical `zoomStep` (1.1)
+ * while making a slow pinch produce gentle ~1% steps.
+ */
+function wheelZoomFactor(e: WheelEvent, zoomStep: number): number {
+  // Normalise line/page wheel modes to pixel-equivalents. Most
+  // browsers/devices already emit pixel mode (deltaMode === 0).
+  const pixels = normaliseDeltaY(e);
+  const magnitude = Math.min(1, Math.abs(pixels) / 100);
+  // deltaY < 0 (wheel up / pinch out) → zoom IN → factor < 1.
+  return pixels > 0
+    ? Math.pow(zoomStep, magnitude)
+    : Math.pow(zoomStep, -magnitude);
+}
+
+function normaliseDeltaY(e: WheelEvent): number {
+  switch (e.deltaMode) {
+    case 1: // DOM_DELTA_LINE
+      return e.deltaY * 16;
+    case 2: // DOM_DELTA_PAGE
+      return e.deltaY * 100;
+    default:
+      return e.deltaY;
   }
-  // Shift + primary button.
-  if (e.button === 0 && e.shiftKey) {
-    return true;
-  }
-  return false;
 }

@@ -155,7 +155,16 @@ export class OmScene extends LitElement {
   });
 
   override render() {
-    return html`<canvas ${ref(this.canvasRef)} tabindex="0"></canvas>`;
+    // The <slot> sits AFTER the canvas so light-DOM descendants
+    // (icon-provider, components, ...) are part of the rendered layout
+    // tree. The Babylon mesh path works without the slot — meshes
+    // render directly into the canvas — but HTML overlays (e.g. the
+    // per-component SVG icon overlay in OmShapeElement) need a real
+    // positioning chain. The scene host is `position: relative`, so
+    // descendants' `position: absolute` resolves here. Document-order
+    // painting puts the slotted overlays above the canvas.
+    return html`<canvas ${ref(this.canvasRef)} tabindex="0"></canvas
+      ><slot></slot>`;
   }
 
   override firstUpdated(): void {

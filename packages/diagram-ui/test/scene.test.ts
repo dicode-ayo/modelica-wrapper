@@ -136,9 +136,17 @@ describe("<om-scene>", () => {
     el.addEventListener("om-view-change", (e) => {
       received = (e as CustomEvent).detail;
     });
-    canvas.dispatchEvent(
-      new WheelEvent("wheel", { deltaY: -100, clientX: 400, clientY: 200 }),
-    );
+    // Wheel with ctrlKey to trigger the zoom path (plain wheel is
+    // pan after the touchpad-friendly rebinding). happy-dom drops
+    // modifier keys from the constructor init, so we patch the event
+    // after construction.
+    const e = new WheelEvent("wheel", {
+      deltaY: -100,
+      clientX: 400,
+      clientY: 200,
+    });
+    Object.defineProperty(e, "ctrlKey", { value: true });
+    canvas.dispatchEvent(e);
     expect(received).not.toBeNull();
     expect(received!.zoom).toBeLessThan(100);
   });

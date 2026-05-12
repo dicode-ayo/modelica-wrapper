@@ -3,6 +3,25 @@ import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { PanZoom } from "../src/scene/pan-zoom.js";
 import type { ViewState } from "../src/scene/view-math.js";
 
+/**
+ * happy-dom's `WheelEvent` constructor silently drops `ctrlKey` /
+ * `metaKey` from its init dict. Build the event normally, then patch
+ * the modifier keys onto the instance — they're readonly via the
+ * spec, but the JS prototype field is writable enough for tests.
+ */
+function wheelEvent(
+  init: WheelEventInit & { ctrlKey?: boolean; metaKey?: boolean },
+): WheelEvent {
+  const e = new WheelEvent("wheel", init);
+  if (init.ctrlKey !== undefined) {
+    Object.defineProperty(e, "ctrlKey", { value: init.ctrlKey });
+  }
+  if (init.metaKey !== undefined) {
+    Object.defineProperty(e, "metaKey", { value: init.metaKey });
+  }
+  return e;
+}
+
 function makeCanvas(width = 800, height = 400): HTMLCanvasElement {
   const c = document.createElement("canvas");
   document.body.appendChild(c);
@@ -47,21 +66,103 @@ afterEach(() => {
 });
 
 describe("PanZoom", () => {
-  it("zoom-in on wheel up shrinks the visible region", () => {
+  // ---- wheel: classification ----
+
+  it("plain wheel pans (no zoom) — touchpad two-finger scroll", () => {
     canvas.dispatchEvent(
-      new WheelEvent("wheel", { deltaY: -100, clientX: 400, clientY: 200 }),
+      wheelEvent({
+        deltaX: 40,
+        deltaY: 0,
+        clientX: 400,
+        clientY: 200,
+      }),
+    );
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.zoom).toBe(100);
+    // Scroll-right (deltaX > 0) reveals content to the right →
+    // camera target X increases.
+    expect(captured[0]!.panX).toBeGreaterThan(0);
+  });
+
+  it("plain wheel deltaY pans vertically", () => {
+    canvas.dispatchEvent(
+      wheelEvent({
+        deltaX: 0,
+        deltaY: 40,
+        clientX: 400,
+        clientY: 200,
+      }),
+    );
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.zoom).toBe(100);
+    // Scroll-down reveals content below → camera target Y decreases
+    // (our +Y is up).
+    expect(captured[0]!.panY).toBeLessThan(0);
+  });
+
+  it("ctrl + wheel up zooms in (shrinks visible region)", () => {
+    canvas.dispatchEvent(
+      wheelEvent({
+        deltaY: -100,
+        clientX: 400,
+        clientY: 200,
+        ctrlKey: true,
+      }),
     );
     expect(captured).toHaveLength(1);
     expect(captured[0]!.zoom).toBeLessThan(100);
   });
 
-  it("zoom-out on wheel down grows the visible region", () => {
+  it("ctrl + wheel down zooms out (grows visible region)", () => {
     canvas.dispatchEvent(
-      new WheelEvent("wheel", { deltaY: 100, clientX: 400, clientY: 200 }),
+      wheelEvent({
+        deltaY: 100,
+        clientX: 400,
+        clientY: 200,
+        ctrlKey: true,
+      }),
     );
     expect(captured).toHaveLength(1);
     expect(captured[0]!.zoom).toBeGreaterThan(100);
   });
+
+  it("meta + wheel zooms (macOS pinch convention)", () => {
+    canvas.dispatchEvent(
+      wheelEvent({
+        deltaY: -100,
+        clientX: 400,
+        clientY: 200,
+        metaKey: true,
+      }),
+    );
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.zoom).toBeLessThan(100);
+  });
+
+  it("small touchpad pinch deltas zoom by less than a full mouse notch", () => {
+    canvas.dispatchEvent(
+      wheelEvent({
+        deltaY: -5,
+        clientX: 400,
+        clientY: 200,
+        ctrlKey: true,
+      }),
+    );
+    canvas.dispatchEvent(
+      wheelEvent({
+        deltaY: -100,
+        clientX: 400,
+        clientY: 200,
+        ctrlKey: true,
+      }),
+    );
+    expect(captured).toHaveLength(2);
+    const smallStep = 100 / captured[0]!.zoom;
+    const fullStep = captured[0]!.zoom / captured[1]!.zoom;
+    expect(smallStep).toBeLessThan(fullStep);
+  });
+
+  // ---- pointer: classification ----
 
   it("middle-mouse drag pans", () => {
     canvas.dispatchEvent(
@@ -93,7 +194,29 @@ describe("PanZoom", () => {
     expect(final.panY).not.toBe(0);
   });
 
-  it("primary button without shift does not pan", () => {
+  it("right-button drag pans (button !== 0 is pan)", () => {
+    canvas.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        pointerId: 1,
+        button: 2,
+        clientX: 100,
+        clientY: 100,
+      }),
+    );
+    canvas.dispatchEvent(
+      new PointerEvent("pointermove", {
+        pointerId: 1,
+        clientX: 150,
+        clientY: 100,
+      }),
+    );
+    canvas.dispatchEvent(
+      new PointerEvent("pointerup", { pointerId: 1, button: 2 }),
+    );
+    expect(captured.length).toBeGreaterThan(0);
+  });
+
+  it("primary button drag does NOT pan (reserved for selection)", () => {
     canvas.dispatchEvent(
       new PointerEvent("pointerdown", {
         pointerId: 1,
@@ -110,28 +233,5 @@ describe("PanZoom", () => {
       }),
     );
     expect(captured).toHaveLength(0);
-  });
-
-  it("shift + primary drag does pan", () => {
-    canvas.dispatchEvent(
-      new PointerEvent("pointerdown", {
-        pointerId: 1,
-        button: 0,
-        clientX: 100,
-        clientY: 100,
-        shiftKey: true,
-      }),
-    );
-    canvas.dispatchEvent(
-      new PointerEvent("pointermove", {
-        pointerId: 1,
-        clientX: 150,
-        clientY: 100,
-      }),
-    );
-    canvas.dispatchEvent(
-      new PointerEvent("pointerup", { pointerId: 1, button: 0 }),
-    );
-    expect(captured.length).toBeGreaterThan(0);
   });
 });

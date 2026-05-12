@@ -98,6 +98,7 @@ export {
 } from "./connection/edge-build.js";
 export { OmShapeElement } from "./base/shape-element.js";
 export { OmShapeNode } from "./base/shape-node.js";
+export { OmIconOverlay } from "./base/icon-overlay.component.js";
 export {
   ResizeHandles,
   ensureHighlightLayer,
