@@ -70,7 +70,10 @@ export async function runLoadString(
       return false;
     }
     ctx.libraryTree.refresh();
-    ctx.sourceProvider.refreshAll();
+    // No specific typeName here — `runLoadString` is used by class creation,
+    // which loads a fresh class and we don't know if other open buffers are
+    // affected. Invalidate every open `modelica-source:` editor.
+    ctx.sourceProvider.notifySourceChanged();
     return true;
   } catch (err) {
     await vscode.window.showErrorMessage(
