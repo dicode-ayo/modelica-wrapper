@@ -2,8 +2,20 @@ import * as esbuild from "esbuild";
 
 const watch = process.argv.includes("--watch");
 
+/**
+ * Two-bundle build:
+ *
+ *   1. extension.js  — Node.js host code (CommonJS, externals for
+ *      `vscode` + `zeromq`).
+ *
+ *   2. webview.js    — browser bundle of the diagram-ui custom
+ *      elements, loaded by the webview HTML to mount
+ *      `<om-graphical-layout>` against the layout posted from the
+ *      extension. Babylon + Lit get tree-shaken into one IIFE.
+ */
+
 /** @type {import('esbuild').BuildOptions} */
-const config = {
+const extensionConfig = {
   entryPoints: ["src/extension.ts"],
   bundle: true,
   outfile: "out/extension.js",
@@ -15,9 +27,28 @@ const config = {
   logLevel: "info",
 };
 
+/** @type {import('esbuild').BuildOptions} */
+const webviewConfig = {
+  entryPoints: ["src/webview/webview-entry.ts"],
+  bundle: true,
+  outfile: "out/webview.js",
+  platform: "browser",
+  target: "es2022",
+  format: "iife",
+  sourcemap: true,
+  logLevel: "info",
+  loader: {
+    ".json": "json",
+  },
+};
+
 if (watch) {
-  const ctx = await esbuild.context(config);
-  await ctx.watch();
+  const a = await esbuild.context(extensionConfig);
+  const b = await esbuild.context(webviewConfig);
+  await Promise.all([a.watch(), b.watch()]);
 } else {
-  await esbuild.build(config);
+  await Promise.all([
+    esbuild.build(extensionConfig),
+    esbuild.build(webviewConfig),
+  ]);
 }

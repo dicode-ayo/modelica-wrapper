@@ -1,13 +1,14 @@
 name: Chromatic
 
-# Publishes the @modelica-wrapper/diagram-svg Storybook to Chromatic on every
-# push and PR so the rendered SVG icons are inspectable live (and visual diffs
-# are flagged for review on subsequent runs).
+# Publishes the Storybook bundles for both visual-eval packages to
+# Chromatic on every push and PR so reviewers can inspect the live
+# rendering on the PR and visual diffs flag for follow-up.
 #
-# Setup: this workflow expects a CHROMATIC_PROJECT_TOKEN repo secret. Set it
-# once with:
+# Setup: each package has its own Chromatic project, so each job needs
+# its own repo secret:
 #
-#   gh secret set CHROMATIC_PROJECT_TOKEN -b "<your chpt_… token>"
+#   gh secret set CHROMATIC_PROJECT_TOKEN            -b "<chpt_… for diagram-svg>"
+#   gh secret set CHROMATIC_DIAGRAM_UI_PROJECT_TOKEN -b "<chpt_… for diagram-ui>"
 
 on:
   push:
@@ -21,8 +22,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  chromatic:
-    name: Publish Storybook to Chromatic
+  diagram-svg:
+    name: Publish diagram-svg Storybook
     runs-on: ubuntu-latest
 
     steps:
@@ -58,6 +59,56 @@ jobs:
           # UI for review. Build-breaking errors (test failures, missing token)
           # still fail.
           exitZeroOnChanges: true
-          # TurboSnap: skip stories whose dependency tree didn't change in
-          # this commit. Needs the full git history above to be effective.
-          onlyChanged: true
+          # NOTE: `onlyChanged: true` requires `preview-stats.json` from the
+          # Storybook build (TurboSnap input). The Vite Storybook builder
+          # doesn't emit one by default; with `onlyChanged: true` set, the
+          # Chromatic CLI then fails the whole job. Disabled until we wire
+          # `--stats-json` into `build-storybook` or migrate to a builder
+          # that emits stats out of the box.
+
+  diagram-ui:
+    name: Publish diagram-ui Storybook
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build Storybook
+        run: pnpm --filter @modelica-wrapper/diagram-ui build-storybook
+
+      # Guarded so a missing CHROMATIC_DIAGRAM_UI_PROJECT_TOKEN secret
+      # doesn't fail CI before the project is created on Chromatic.
+      # Once the secret is set, this step publishes normally.
+      - name: Check token
+        id: token
+        run: |
+          if [ -n "${{ secrets.CHROMATIC_DIAGRAM_UI_PROJECT_TOKEN }}" ]; then
+            echo "has=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::CHROMATIC_DIAGRAM_UI_PROJECT_TOKEN is unset; skipping Chromatic publish for diagram-ui. Set it once with: gh secret set CHROMATIC_DIAGRAM_UI_PROJECT_TOKEN -b '<chpt_… token>'"
+          fi
+
+      - name: Publish to Chromatic
+        if: steps.token.outputs.has == 'true'
+        uses: chromaui/action@v11
+        with:
+          projectToken: ${{ secrets.CHROMATIC_DIAGRAM_UI_PROJECT_TOKEN }}
+          workingDir: packages/diagram-ui
+          storybookBuildDir: storybook-static
+          exitZeroOnChanges: true
+          # See note in the diagram-svg job: TurboSnap disabled until the
+          # Vite Storybook build emits preview-stats.json.
