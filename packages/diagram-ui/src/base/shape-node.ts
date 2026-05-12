@@ -1,10 +1,8 @@
 import {
   Color3,
-  Material,
   Mesh,
   MeshBuilder,
   StandardMaterial,
-  Texture,
   TransformNode,
   type Scene,
 } from "@babylonjs/core";
@@ -12,101 +10,87 @@ import {
 import { applyPlacement, type AppliedTransform } from "./placement-math.js";
 import { ResizeHandles, setMeshHighlight } from "./selection-overlay.js";
 import { requestSceneRender } from "../scene/render-scheduler.js";
+import {
+  buildShapeMeshes,
+  type ShapeGroup,
+} from "./shape-builder.js";
 import type {
   CoordinateSystem,
+  IconLayer,
   Placement,
 } from "@modelica-wrapper/omc-client";
 
 const HIGHLIGHT_COLOR = new Color3(0.38, 0.6, 0.98);
 
 /**
- * Faint magenta — visible against the white scene background but soft
- * enough not to be mistaken for an actual icon colour. Replaces the
- * pure-black fallback that the previous "icons black" reports showed
- * (mesh rendered, no texture bound).
- */
-const MISSING_TEXTURE_COLOR = new Color3(1, 0.6, 0.9);
-
-/**
- * Babylon-side wrapper around the TransformNode + textured plane mesh
- * pair that every entity element drives. The wrapper exposes a small
- * imperative surface (`setPlacement`, `setTexture`, `setSelected`,
- * `dispose`) so the Lit element layer stays focused on lifecycle.
+ * Babylon-side wrapper for one entity element. Owns:
  *
- * Coordinate behaviour matches `placement-math.ts`:
- *   - The TransformNode is anchored at the placement origin + extent
- *     centre in the parent's coord system.
- *   - The plane mesh is sized to the icon coord system (`width` ×
- *     `height`) and offset to the icon centre, so children attaching
- *     directly to `transform` get the icon's local coord system.
- *   - Rotation is around `transform.position` (the placement origin).
+ *  - `transform` — the entity TransformNode (anchored at the placement
+ *    origin + extent centre in the parent's coord system; rotation
+ *    pivots here).
+ *  - `mesh` — a transparent "hit plane" sized to the icon extent. It's
+ *    the picking + highlight target, so picks land on the full
+ *    component box and the selection outline traces the extent
+ *    regardless of which individual shape was clicked.
+ *  - `shapeGroup` — the native Babylon meshes built from `IconLayer[]`
+ *    (replaces the SVG-rasterised texture approach). Rebuilt whenever
+ *    `setLayers()` is called with a new layer set.
+ *
+ * Children of `transform` see the icon's local coord system, so
+ * `<om-connector>` and friends still attach in icon coords as before.
  */
 export class OmShapeNode {
   readonly transform: TransformNode;
-  private readonly material: StandardMaterial;
+  private readonly hitMaterial: StandardMaterial;
   readonly mesh: Mesh;
 
   private currentIconWidth = 1;
   private currentIconHeight = 1;
   private currentIconCx = 0;
   private currentIconCy = 0;
+  private shapeGroup: ShapeGroup | null = null;
   private selected = false;
   private resizeHandles: ResizeHandles | null = null;
   private readonly scene: Scene;
+  private readonly baseName: string;
 
   constructor(scene: Scene, parent: TransformNode, name = "om-shape") {
     this.scene = scene;
+    this.baseName = name;
     this.transform = new TransformNode(name, scene);
     this.transform.parent = parent;
 
-    // Unlit-with-alpha setup. The StandardMaterial fragment shader
-    // emits `emissiveTexture.rgb * intensity + emissiveColor` when an
-    // emissive texture is bound, so `emissiveColor` MUST stay at
-    // (0, 0, 0) when a texture is bound — anything else gets *added*
-    // and clamped to white. Before a texture loads we use a faint
-    // magenta tint (classic "missing texture") so the plane is
-    // visibly distinct from a successfully-rendered icon. setTexture
-    // resets `emissiveColor` to black once the real texture lands.
-    //
-    //   - `emissiveTexture` supplies the icon colour. `disableLighting`
-    //     skips diffuse + ambient so the output is the texture pixel
-    //     as-is, regardless of scene lights MultiBody mode may add.
-    //   - `diffuseTexture` + `useAlphaFromDiffuseTexture` makes the
-    //     fragment alpha track the texture's alpha channel.
-    //
-    // `backFaceCulling = false` keeps the icon visible from both sides
-    // (useful when the camera flips into 3D mode for MultiBody view).
-    this.material = new StandardMaterial(`${name}-mat`, scene);
-    this.material.disableLighting = true;
-    this.material.specularColor = new Color3(0, 0, 0);
-    this.material.emissiveColor = MISSING_TEXTURE_COLOR.clone();
-    this.material.backFaceCulling = false;
-    this.material.useAlphaFromDiffuseTexture = true;
+    // Hit plane: transparent, pickable, covers the icon extent. We
+    // intentionally leave the material at alpha = 0 (rather than
+    // `isVisible = false`) so the HighlightLayer's offscreen pass
+    // still renders the silhouette and produces a selection outline
+    // around the extent box.
+    this.hitMaterial = new StandardMaterial(`${name}-hit-mat`, scene);
+    this.hitMaterial.disableLighting = true;
+    this.hitMaterial.alpha = 0;
+    this.hitMaterial.specularColor = new Color3(0, 0, 0);
+    this.hitMaterial.emissiveColor = new Color3(0, 0, 0);
+    this.hitMaterial.backFaceCulling = false;
 
-    // Mesh name uses a `plane.<owner>` prefix instead of
-    // `<owner>-mesh` because `entityKeyForNode`'s regex matches
-    // `^om-(component|connector|label):` and would otherwise capture
-    // `gain1-mesh` as the nodeId — breaking selection and drag (the
-    // key wouldn't match `layout.components["gain1"]`). The new
-    // prefix doesn't start with `om-` so it's transparent to the
-    // entity-key walker; the walker resolves the owner via the
-    // parent TransformNode instead. Inspector readability is the
-    // same — the prefix tells you which entity it belongs to.
+    // Mesh name uses a `plane.<owner>` prefix so it doesn't satisfy
+    // `entityKeyForNode`'s `^om-(component|connector|label):` regex —
+    // the walker resolves the owner via the parent TransformNode
+    // (named `om-component:<id>` etc.) instead.
     this.mesh = MeshBuilder.CreatePlane(
       `plane.${name}`,
       { width: 1, height: 1, sideOrientation: Mesh.DOUBLESIDE },
       scene,
     );
-    this.mesh.material = this.material;
+    this.mesh.material = this.hitMaterial;
     this.mesh.parent = this.transform;
     this.mesh.isPickable = true;
   }
 
   /**
    * Applies a placement (extent + optional origin + optional rotation
-   * in degrees) and resizes the plane mesh to the icon coordinate
-   * system so children can attach directly to `transform` using
-   * icon-coord units.
+   * in degrees) and resizes the hit plane to the icon coordinate
+   * system. Returns the resolved transform so callers (and tests) can
+   * read the icon-local origin and size.
    */
   setPlacement(
     placement: Placement,
@@ -118,15 +102,13 @@ export class OmShapeNode {
     this.transform.scaling.set(t.scale.x, t.scale.y, t.scale.z);
     this.transform.rotation.set(0, 0, t.rotationZ);
 
-    if (
+    const sizeChanged =
       this.currentIconWidth !== t.iconSize.width ||
-      this.currentIconHeight !== t.iconSize.height
-    ) {
+      this.currentIconHeight !== t.iconSize.height;
+    if (sizeChanged) {
       this.currentIconWidth = t.iconSize.width;
       this.currentIconHeight = t.iconSize.height;
       this.mesh.scaling.set(t.iconSize.width, t.iconSize.height, 1);
-      // Resize handles are pinned to the icon corners — rebuild if size
-      // changed.
       if (this.resizeHandles) {
         const wasVisible = this.resizeHandles.isVisible();
         this.resizeHandles.dispose();
@@ -141,6 +123,30 @@ export class OmShapeNode {
     return t;
   }
 
+  /**
+   * Rebuild the shape meshes from the supplied layer list. Replaces
+   * the previous group entirely — no diffing — because icon updates
+   * are rare and the simple path is easier to keep correct.
+   */
+  setLayers(
+    layers: ReadonlyArray<IconLayer>,
+    coordinateSystem: CoordinateSystem | undefined,
+  ): void {
+    this.shapeGroup?.dispose();
+    if (layers.length === 0) {
+      this.shapeGroup = null;
+      return;
+    }
+    this.shapeGroup = buildShapeMeshes(
+      this.scene,
+      this.transform,
+      layers,
+      coordinateSystem,
+      this.baseName,
+    );
+    requestSceneRender(this.scene);
+  }
+
   private createHandles(): ResizeHandles {
     return new ResizeHandles(
       this.scene,
@@ -150,54 +156,6 @@ export class OmShapeNode {
       this.currentIconCx,
       this.currentIconCy,
     );
-  }
-
-  setTexture(texture: Texture | null): void {
-    if (texture) {
-      texture.hasAlpha = true;
-    }
-    // diffuseTexture carries the alpha channel for transparency;
-    // emissiveTexture carries the colour for unlit rendering. Same
-    // Babylon Texture object on both slots — Babylon dedupes the
-    // GPU upload internally, so this is one resource.
-    this.material.emissiveTexture = texture;
-    this.material.diffuseTexture = texture;
-    this.material.opacityTexture = null;
-    // With a texture bound the shader does `sample + emissiveColor`,
-    // so set the fallback colour to black; revert to the
-    // missing-texture magenta if the binding is cleared.
-    if (texture) {
-      this.material.emissiveColor.set(0, 0, 0);
-    } else {
-      this.material.emissiveColor.copyFrom(MISSING_TEXTURE_COLOR);
-    }
-    requestSceneRender(this.scene);
-  }
-
-  /**
-   * Toggle whether the in-canvas textured plane paints anything. When
-   * the HTML overlay is the visible icon (orthographic camera) we
-   * flip this off — the overlay covers the same area, so the
-   * texture rasterisation + GPU sample is wasted work.
-   *
-   * Implementation notes:
-   *   - Toggle `material.alpha` (0 / 1) instead of
-   *     `mesh.isVisible = false`. `HighlightLayer._internalRender`
-   *     skips invisible meshes, and we still want the selection
-   *     outline in 2D mode — material alpha is independent of the
-   *     highlight silhouette pass.
-   *   - The transparency mode STAYS `MATERIAL_ALPHABLEND` in both
-   *     states. Icon SVGs have transparent background pixels with
-   *     RGB = (0,0,0) and alpha = 0; under `MATERIAL_OPAQUE` the
-   *     alpha is ignored and those pixels render as solid black,
-   *     swallowing rectangular blocks behind a black square. Alpha
-   *     blending respects the texture alpha so only the visible
-   *     shape strokes/fills show.
-   */
-  setInCanvasVisible(visible: boolean): void {
-    this.material.alpha = visible ? 1 : 0;
-    this.material.transparencyMode = Material.MATERIAL_ALPHABLEND;
-    requestSceneRender(this.scene);
   }
 
   setSelected(selected: boolean): void {
@@ -211,7 +169,6 @@ export class OmShapeNode {
     // it when the last mesh is removed.
     setMeshHighlight(this.scene, this.mesh, selected ? HIGHLIGHT_COLOR : null);
 
-    // Resize handles.
     if (selected) {
       if (!this.resizeHandles) {
         this.resizeHandles = this.createHandles();
@@ -228,9 +185,8 @@ export class OmShapeNode {
 
   /**
    * Resize the corner handles to a constant screen-pixel size. Call
-   * when the camera's zoom or canvas aspect changes — `OmShapeElement`
-   * does this from its view-state subscription. No-op when handles are
-   * not currently visible.
+   * when the camera's zoom or canvas aspect changes. No-op when
+   * handles are not currently visible.
    */
   rescaleResizeHandles(): void {
     this.resizeHandles?.rescale();
@@ -243,10 +199,10 @@ export class OmShapeNode {
     }
     this.resizeHandles?.dispose();
     this.resizeHandles = null;
+    this.shapeGroup?.dispose();
+    this.shapeGroup = null;
     this.mesh.dispose();
-    this.material.dispose();
+    this.hitMaterial.dispose();
     this.transform.dispose();
-    // Disposing the material leaves the texture alive — textures are
-    // owned by the icon-provider cache and shared across nodes.
   }
 }

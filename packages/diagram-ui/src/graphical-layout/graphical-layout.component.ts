@@ -8,7 +8,6 @@ import type {
   DiagramLayout,
 } from "@modelica-wrapper/omc-client";
 
-import "../icon-provider/icon-provider.component.js";
 import "../scene/scene.component.js";
 import "../axis/grid-axis.component.js";
 import "../component/component.component.js";
@@ -21,7 +20,6 @@ import "../library-browser/library-browser.component.js";
 import type { OmScene, EngineFactory } from "../scene/scene.component.js";
 import type { OmConnector } from "../connector/connector.component.js";
 import type { OmComponent } from "../component/component.component.js";
-import type { RasterizeFn, SvgRenderFn } from "../icon-provider/icon-cache.js";
 import type { LibraryBrowserDataSource } from "../library-browser/library-browser.component.js";
 import {
   InteractionManager,
@@ -120,15 +118,13 @@ function layoutBoundingBox(layout: DiagramLayout): BBox | null {
  * Top-level `<om-graphical-layout>` element. Renders one Modelica
  * `DiagramLayout` and ties together every B/C/D/E piece:
  *
- *   <om-icon-provider>
- *     <om-scene>
- *       <om-grid-axis>
- *       <om-component>...<om-connector>     # nested ports
- *       <om-connector>                       # host-level ports
- *       <om-connection>                      # routed edges + junctions
- *       <om-label>                           # host-level text
- *     </om-scene>
- *   </om-icon-provider>
+ *   <om-scene>
+ *     <om-grid-axis>
+ *     <om-component>...<om-connector>     # nested ports
+ *     <om-connector>                       # host-level ports
+ *     <om-connection>                      # routed edges + junctions
+ *     <om-label>                           # host-level text
+ *   </om-scene>
  *
  * Interaction wiring (driven by E1 + E3 + E4):
  *   - InteractionManager → hover / select / double-click / context-menu
@@ -180,16 +176,7 @@ export class OmGraphicalLayout extends LitElement {
   @property({ attribute: false })
   engineFactory: EngineFactory | undefined = undefined;
 
-  /** Optional SVG renderer override forwarded to `<om-icon-provider>`. */
-  @property({ attribute: false })
-  renderSvg: SvgRenderFn | undefined = undefined;
-
-  /** Optional rasteriser override forwarded to `<om-icon-provider>`. */
-  @property({ attribute: false })
-  rasterize: RasterizeFn | undefined = undefined;
-
-  /** Forwarded to `<om-scene>`: opens Babylon's Inspector + enables
-   *  verbose rasteriser logging when `true`. */
+  /** Forwarded to `<om-scene>`: opens Babylon's Inspector when `true`. */
   @property({ type: Boolean, reflect: true })
   debug = false;
 
@@ -203,10 +190,10 @@ export class OmGraphicalLayout extends LitElement {
   cameraMode: "2d" | "3d" = "2d";
 
   /**
-   * Stroke-width multiplier forwarded to every entity's SVG renderer
-   * (overlay path) AND to `<om-icon-provider>` (in-canvas textured
-   * plane). `undefined` falls back to the renderer's default — see
-   * `RenderOptions.lineThicknessScale` for the rationale.
+   * Stroke-width multiplier forwarded to every entity. Currently a
+   * no-op under the primitives renderer (line widths come straight
+   * from Modelica annotations); kept on the public API for forward-
+   * compat with hosts that already set it.
    */
   @property({ type: Number, attribute: "line-thickness-scale" })
   lineThicknessScale: number | undefined = undefined;
@@ -308,13 +295,6 @@ export class OmGraphicalLayout extends LitElement {
     }
     const componentEntries = Object.entries(active.components);
     const connectorEntries = Object.entries(active.connectors);
-    // Topology: scene OUTSIDE, icon-provider INSIDE. Lit contexts only
-    // flow down, so the icon-provider has to be a descendant of the
-    // scene to `@consume(sceneContext)`. The reverse (icon-provider as
-    // wrapper) leaves the provider unable to see the scene and every
-    // textureFor* call rejects with "icon-provider not connected to
-    // a scene" — that was the real reason every icon rendered as the
-    // fallback colour.
     return html`
       <om-scene
         .engineFactory=${this.engineFactory ?? undefined}
@@ -324,51 +304,45 @@ export class OmGraphicalLayout extends LitElement {
         tabindex="0"
         @keydown=${this.onKeyDown}
       >
-        <om-icon-provider
-          .renderSvg=${this.renderSvg ?? undefined}
-          .rasterize=${this.rasterize ?? undefined}
-          .lineThicknessScale=${this.lineThicknessScale}
-        >
-          <om-grid-axis
-            .extent=${500}
-            .coordinateSystem=${active.coordinateSystem ?? undefined}
-          ></om-grid-axis>
-          ${repeat(
-            componentEntries,
-            ([id]) => id,
-            ([id, comp]) => this.renderComponent(id, comp, active),
-          )}
-          ${repeat(
-            connectorEntries,
-            ([id]) => id,
-            ([id, conn]) => this.renderStandaloneConnector(id, conn, active),
-          )}
-          ${repeat(
-            active.connections,
-            (_, idx) => `conn:${idx}`,
-            (conn, idx) =>
-              html`<om-connection
-                .nodeId=${String(idx)}
-                .path=${conn.waypoints}
-                .selectedKeys=${this.selectedKeys}
-              ></om-connection>`,
-          )}
-          ${repeat(
-            active.labels,
-            (_, idx) => `lbl:${idx}`,
-            (label, idx) =>
-              html`<om-label
-                .nodeId=${String(idx)}
-                .text=${label.text}
-                .x=${(label.extent[0][0] + label.extent[1][0]) / 2}
-                .y=${(label.extent[0][1] + label.extent[1][1]) / 2}
-                .rotation=${label.rotation}
-                .fontSize=${label.fontSize ?? 12}
-              ></om-label>`,
-          )}
-          ${this.renderInProgressEdge()}
-          <om-perf-hud ?show=${this.perfHud}></om-perf-hud>
-        </om-icon-provider>
+        <om-grid-axis
+          .extent=${500}
+          .coordinateSystem=${active.coordinateSystem ?? undefined}
+        ></om-grid-axis>
+        ${repeat(
+          componentEntries,
+          ([id]) => id,
+          ([id, comp]) => this.renderComponent(id, comp, active),
+        )}
+        ${repeat(
+          connectorEntries,
+          ([id]) => id,
+          ([id, conn]) => this.renderStandaloneConnector(id, conn, active),
+        )}
+        ${repeat(
+          active.connections,
+          (_, idx) => `conn:${idx}`,
+          (conn, idx) =>
+            html`<om-connection
+              .nodeId=${String(idx)}
+              .path=${conn.waypoints}
+              .selectedKeys=${this.selectedKeys}
+            ></om-connection>`,
+        )}
+        ${repeat(
+          active.labels,
+          (_, idx) => `lbl:${idx}`,
+          (label, idx) =>
+            html`<om-label
+              .nodeId=${String(idx)}
+              .text=${label.text}
+              .x=${(label.extent[0][0] + label.extent[1][0]) / 2}
+              .y=${(label.extent[0][1] + label.extent[1][1]) / 2}
+              .rotation=${label.rotation}
+              .fontSize=${label.fontSize ?? 12}
+            ></om-label>`,
+        )}
+        ${this.renderInProgressEdge()}
+        <om-perf-hud ?show=${this.perfHud}></om-perf-hud>
       </om-scene>
       ${this.libraryBrowserOpen
         ? html`<om-library-browser
