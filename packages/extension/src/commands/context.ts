@@ -17,8 +17,11 @@ export interface CommandContext {
   readonly ensureClient: () => Promise<OmcClient>;
   /** Activity-bar library tree; commands call `.refresh()` after mutations. */
   readonly libraryTree: LibraryTreeProvider;
-  /** Virtual `modelica-source://` text provider; commands call `.refreshAll()` after mutations. */
+  /** Virtual `modelica-source:` file-system provider; commands fire `notifySourceChanged(typeName)`
+   *  after mutations to invalidate any open editors backed by this scheme. */
   readonly sourceProvider: ModelicaSourceProvider;
+  /** Shared `vscode.DiagnosticCollection("modelica")` for OMC-emitted diagnostics. */
+  readonly diagnostics: vscode.DiagnosticCollection;
 }
 
 /**

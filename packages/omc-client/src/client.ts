@@ -236,6 +236,12 @@ export class OmcClient implements CallContext {
     return browsing.getErrorString(this, input);
   }
 
+  getMessagesStringInternal(
+    input: browsing.GetMessagesStringInternalInput = {},
+  ): Promise<browsing.GetMessagesStringInternalOutput> {
+    return browsing.getMessagesStringInternal(this, input);
+  }
+
   existModel(
     input: browsing.ExistModelInput,
   ): Promise<browsing.ExistModelOutput> {

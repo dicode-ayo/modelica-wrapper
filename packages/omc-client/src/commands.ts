@@ -15,7 +15,9 @@ export type OmcFunction =
   // --- Lifecycle / transport ---
   | "quit"
   | "getErrorString"
+  | "getMessagesStringInternal"
   | "getVersion"
+  | "parseString"
 
   // --- Browsing ---
   | "getClassNames"

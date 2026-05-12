@@ -84,6 +84,7 @@ export const REGISTRY = {
   getUses: entry("browsing", browsing.getUses, browsing.GetUsesInputSchema, browsing.GetUsesOutputSchema, browsing.GetUsesDescription),
   existClass: entry("browsing", browsing.existClass, browsing.ExistClassInputSchema, browsing.ExistClassOutputSchema, browsing.ExistClassDescription),
   getErrorString: entry("browsing", browsing.getErrorString, browsing.GetErrorStringInputSchema, browsing.GetErrorStringOutputSchema, browsing.GetErrorStringDescription),
+  getMessagesStringInternal: entry("browsing", browsing.getMessagesStringInternal, browsing.GetMessagesStringInternalInputSchema, browsing.GetMessagesStringInternalOutputSchema, browsing.GetMessagesStringInternalDescription),
   existModel: entry("browsing", browsing.existModel, browsing.ExistModelInputSchema, browsing.ExistModelOutputSchema, browsing.ExistModelDescription),
   existPackage: entry("browsing", browsing.existPackage, browsing.ExistPackageInputSchema, browsing.ExistPackageOutputSchema, browsing.ExistPackageDescription),
   getClassRestriction: entry("browsing", browsing.getClassRestriction, browsing.GetClassRestrictionInputSchema, browsing.GetClassRestrictionOutputSchema, browsing.GetClassRestrictionDescription),

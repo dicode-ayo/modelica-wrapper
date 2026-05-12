@@ -6,6 +6,7 @@
 
 import type * as vscode from "vscode";
 
+import { registerCheckModelCommand } from "./check-model.js";
 import { registerClassCommands } from "./class.js";
 import { registerDiagramCommands } from "./diagram.js";
 import { registerLibraryCommands } from "./library.js";
@@ -25,5 +26,6 @@ export function registerCommands(ctx: CommandContext): vscode.Disposable[] {
     ...registerClassCommands(ctx),
     ...registerPackageCommands(ctx),
     ...registerDiagramCommands(ctx),
+    registerCheckModelCommand(ctx),
   ];
 }
