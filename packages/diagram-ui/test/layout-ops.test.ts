@@ -89,6 +89,41 @@ describe("applyDeltaMove", () => {
       [54, 2],
     ]);
   });
+
+  it("drags the rhs endpoint waypoint when its component moves", () => {
+    // baseLayout has connection { lhs: p (host connector), rhs: R1.p }
+    // with waypoints [[0,0], [10,10]]. Moving R1 by (5, -3) shifts the
+    // last waypoint by (5, -3); the first stays put (lhs is on the
+    // standalone connector p, which didn't move).
+    const l = applyDeltaMove(baseLayout(), ["c:R1"], 5, -3);
+    expect(l.connections[0]!.waypoints).toEqual([
+      [0, 0],
+      [15, 7],
+    ]);
+  });
+
+  it("drags the lhs endpoint waypoint when its standalone connector moves", () => {
+    const l = applyDeltaMove(baseLayout(), ["k:p"], 4, 2);
+    expect(l.connections[0]!.waypoints).toEqual([
+      [4, 2],
+      [10, 10],
+    ]);
+  });
+
+  it("drags both endpoints when both entities move", () => {
+    const l = applyDeltaMove(baseLayout(), ["k:p", "c:R1"], 1, 1);
+    expect(l.connections[0]!.waypoints).toEqual([
+      [1, 1],
+      [11, 11],
+    ]);
+  });
+
+  it("does not touch connection waypoints when no endpoint entity moves", () => {
+    const base = baseLayout();
+    // Move only C1, which is not on either endpoint of the connection.
+    const l = applyDeltaMove(base, ["c:C1"], 7, 7);
+    expect(l.connections[0]!.waypoints).toBe(base.connections[0]!.waypoints);
+  });
 });
 
 describe("applyDelete", () => {

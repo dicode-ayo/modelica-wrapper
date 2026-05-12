@@ -124,28 +124,59 @@ export function applyDeltaMove(
     connectors[id] = { ...c, placement: shiftPlacement(c.placement, dx, dy) };
     mutated = true;
   }
-  // Junctions: shift the specific waypoint they refer to. Multiple
-  // junction refs on the same connection share one new array.
+  // Connections get touched for two reasons:
+  //   - a junction key in `set.junctions` shifts a specific internal
+  //     waypoint, OR
+  //   - the connection's lhs / rhs endpoint sits on a component or
+  //     standalone connector that's in `set.components` /
+  //     `set.connectors` — in which case waypoints[0] (lhs) and / or
+  //     waypoints[last] (rhs) follow the entity by the same dx/dy.
+  // We make one pass so a connection that needs both stays consistent.
   let connections = layout.connections;
-  if (set.junctions.length > 0) {
-    const byConn = new Map<number, Set<number>>();
-    for (const { connIdx, waypointIdx } of set.junctions) {
-      let wps = byConn.get(connIdx);
-      if (!wps) {
-        wps = new Set();
-        byConn.set(connIdx, wps);
-      }
-      wps.add(waypointIdx);
+  const junctionsByConn = new Map<number, Set<number>>();
+  for (const { connIdx, waypointIdx } of set.junctions) {
+    let wps = junctionsByConn.get(connIdx);
+    if (!wps) {
+      wps = new Set();
+      junctionsByConn.set(connIdx, wps);
     }
+    wps.add(waypointIdx);
+  }
+  if (
+    junctionsByConn.size > 0 ||
+    set.components.size > 0 ||
+    set.connectors.size > 0
+  ) {
     let connsMutated = false;
     connections = layout.connections.map((conn, idx) => {
-      const wpIdxs = byConn.get(idx);
-      if (!wpIdxs || wpIdxs.size === 0) {
+      const wpIdxs = junctionsByConn.get(idx);
+      const lhsMoves =
+        (conn.lhs.component !== undefined &&
+          set.components.has(conn.lhs.component)) ||
+        (conn.lhs.component === undefined && set.connectors.has(conn.lhs.port));
+      const rhsMoves =
+        (conn.rhs.component !== undefined &&
+          set.components.has(conn.rhs.component)) ||
+        (conn.rhs.component === undefined && set.connectors.has(conn.rhs.port));
+      if (!wpIdxs && !lhsMoves && !rhsMoves) {
         return conn;
       }
-      const waypoints = conn.waypoints.map((wp, i) =>
-        wpIdxs.has(i) ? ([wp[0] + dx, wp[1] + dy] as Point) : wp,
-      );
+      if (conn.waypoints.length === 0) {
+        // No persisted route; the renderer will auto-route from the
+        // (now-moved) connector positions on next draw. Nothing for
+        // us to shift.
+        return conn;
+      }
+      const lastIdx = conn.waypoints.length - 1;
+      const waypoints = conn.waypoints.map((wp, i) => {
+        const moveByJunction = wpIdxs?.has(i) ?? false;
+        const moveByLhs = i === 0 && lhsMoves;
+        const moveByRhs = i === lastIdx && rhsMoves;
+        if (moveByJunction || moveByLhs || moveByRhs) {
+          return [wp[0] + dx, wp[1] + dy] as Point;
+        }
+        return wp;
+      });
       connsMutated = true;
       return { ...conn, waypoints };
     });
