@@ -5,6 +5,7 @@ export * from "./loadFile.js";
 export * from "./loadString.js";
 export * from "./loadModel.js";
 export * from "./parseFile.js";
+export * from "./parseString.js";
 export * from "./createClass.js";
 export * from "./createSubClass.js";
 export * from "./renameClass.js";

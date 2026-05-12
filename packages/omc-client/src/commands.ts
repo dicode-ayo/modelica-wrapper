@@ -17,7 +17,6 @@ export type OmcFunction =
   | "getErrorString"
   | "getMessagesStringInternal"
   | "getVersion"
-  | "parseString"
 
   // --- Browsing ---
   | "getClassNames"
@@ -75,6 +74,7 @@ export type OmcFunction =
   | "loadString"
   | "loadModel"
   | "parseFile"
+  | "parseString"
   | "createClass"
   | "createSubClass"
   | "renameClass"

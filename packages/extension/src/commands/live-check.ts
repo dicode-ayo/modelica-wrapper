@@ -135,9 +135,7 @@ async function runCheck(
     // OMC's state.
     const messages: ErrorMessage[] = [];
     try {
-      await client.call(
-        `parseString(${quote(text)}, ${quote(filename)})` as never,
-      );
+      await client.parseString({ data: text, filename });
     } catch (err) {
       log.error("liveCheck", "parseString failed", err);
     }
@@ -186,31 +184,3 @@ async function runCheck(
   });
 }
 
-/** Quote a string into a Modelica string literal for `parseString` arguments. */
-function quote(s: string): string {
-  let out = '"';
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i] as string;
-    switch (c) {
-      case '"':
-        out += '\\"';
-        break;
-      case "\\":
-        out += "\\\\";
-        break;
-      case "\n":
-        out += "\\n";
-        break;
-      case "\t":
-        out += "\\t";
-        break;
-      case "\r":
-        out += "\\r";
-        break;
-      default:
-        out += c;
-    }
-  }
-  out += '"';
-  return out;
-}

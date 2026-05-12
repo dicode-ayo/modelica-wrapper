@@ -490,6 +490,12 @@ export class OmcClient implements CallContext {
     return lifecycle.parseFile(this, input);
   }
 
+  parseString(
+    input: lifecycle.ParseStringInput,
+  ): Promise<lifecycle.ParseStringOutput> {
+    return lifecycle.parseString(this, input);
+  }
+
   createClass(
     input: lifecycle.CreateClassInput,
   ): Promise<lifecycle.CreateClassOutput> {
