@@ -177,20 +177,23 @@ export class OmShapeNode {
    * flip this off — the overlay covers the same area, so the
    * texture rasterisation + GPU sample is wasted work.
    *
-   * Implementation: switch the material to alpha-blended at
-   * `alpha = 0` rather than `mesh.isVisible = false`, because
-   * `HighlightLayer._internalRender` skips meshes whose `isVisible`
-   * is false — and we still want the selection outline in 2D mode.
-   * Material alpha is independent of HighlightLayer's silhouette pass.
+   * Implementation notes:
+   *   - Toggle `material.alpha` (0 / 1) instead of
+   *     `mesh.isVisible = false`. `HighlightLayer._internalRender`
+   *     skips invisible meshes, and we still want the selection
+   *     outline in 2D mode — material alpha is independent of the
+   *     highlight silhouette pass.
+   *   - The transparency mode STAYS `MATERIAL_ALPHABLEND` in both
+   *     states. Icon SVGs have transparent background pixels with
+   *     RGB = (0,0,0) and alpha = 0; under `MATERIAL_OPAQUE` the
+   *     alpha is ignored and those pixels render as solid black,
+   *     swallowing rectangular blocks behind a black square. Alpha
+   *     blending respects the texture alpha so only the visible
+   *     shape strokes/fills show.
    */
   setInCanvasVisible(visible: boolean): void {
-    if (visible) {
-      this.material.alpha = 1;
-      this.material.transparencyMode = Material.MATERIAL_OPAQUE;
-    } else {
-      this.material.alpha = 0;
-      this.material.transparencyMode = Material.MATERIAL_ALPHABLEND;
-    }
+    this.material.alpha = visible ? 1 : 0;
+    this.material.transparencyMode = Material.MATERIAL_ALPHABLEND;
   }
 
   setSelected(selected: boolean): void {

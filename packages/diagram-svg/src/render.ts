@@ -81,7 +81,30 @@ export interface RenderOptions {
    * system extent. The HTML overlay path opts in.
    */
   expandViewBoxToShapes?: boolean | undefined;
+  /**
+   * Multiplier applied to every `stroke-width` (the bumped
+   * spec-default fallback AND explicit `lineThickness` annotations).
+   * Modelica thicknesses are in icon coordinate units; at the
+   * canonical `[-100,100]` extent rendered at ~200 CSS pixels they
+   * produce hair-thin strokes that disappear on high-density
+   * displays. Default `4` keeps strokes legible at typical zoom
+   * while still preserving the relative weights modellers intend.
+   *
+   * Pass `1` to render at the literal annotation thickness.
+   */
+  lineThicknessScale?: number | undefined;
 }
+
+const DEFAULT_LINE_THICKNESS_SCALE = 4;
+/**
+ * Fallback stroke width when a shape's annotation omits `thickness` /
+ * `lineThickness`. Modelica's spec default is `0.25` icon units, but
+ * that renders as a hair-thin near-invisible line at typical zoom. We
+ * lift the fallback to `0.25 × 5 = 1.25` so unspecified strokes stay
+ * legible. Explicit annotation values are NOT touched here — they
+ * only get the uniform `lineThicknessScale` multiplier.
+ */
+const SPEC_DEFAULT_THICKNESS = 0.25 * 5;
 
 /** Axis-aligned box in icon coordinates. */
 export interface IconBounds {
@@ -121,7 +144,10 @@ export function renderIconLayersToSvg(
   // Render shapes first so the gradient-def collector populates before we
   // serialize. Each cylinder/sphere fill registers one entry per unique
   // (kind, edge, middle) tuple; identical fills across shapes share a def.
-  const ctx: RenderContext = { defs: new Map() };
+  const ctx: RenderContext = {
+    defs: new Map(),
+    lineThicknessScale: opts.lineThicknessScale ?? DEFAULT_LINE_THICKNESS_SCALE,
+  };
   const layerGroups = layers.map((l) => renderLayer(l, ctx)).join("");
   const defsBlock =
     ctx.defs.size > 0
@@ -319,13 +345,15 @@ function renderBackground(
 // ---------- layer + shape rendering ----------
 
 /**
- * Per-render state passed through shape mappers. Currently just collects
- * unique gradient defs so cylinder/sphere fills can share `<defs>` entries
- * across shapes. The `defs` Map is keyed by gradient id (already
- * deterministic in `pattern.ts`) so duplicates are no-ops.
+ * Per-render state passed through shape mappers. Collects unique
+ * gradient defs so cylinder/sphere fills can share `<defs>` entries
+ * across shapes (the `defs` Map is keyed by gradient id — see
+ * `pattern.ts` — so duplicates are no-ops), and carries the
+ * stroke-width scale so every shape mapper applies it uniformly.
  */
 interface RenderContext {
   defs: Map<string, string>;
+  lineThicknessScale: number;
 }
 
 function renderLayer(layer: IconLayer, ctx: RenderContext): string {
@@ -336,7 +364,7 @@ function renderLayer(layer: IconLayer, ctx: RenderContext): string {
 function renderShape(shape: Shape, ctx: RenderContext): string {
   switch (shape.kind) {
     case "line":
-      return renderLine(shape);
+      return renderLine(shape, ctx);
     case "polygon":
       return renderPolygon(shape, ctx);
     case "rectangle":
@@ -358,6 +386,20 @@ function renderShape(shape: Shape, ctx: RenderContext): string {
 }
 
 /**
+ * Apply the user's `lineThicknessScale` to an annotation's
+ * (explicit-or-default) stroke width. Modelica's spec default of
+ * `0.25` icon units is too thin on most displays — see
+ * `RenderOptions.lineThicknessScale` for why. Defaults to `2× spec`.
+ */
+function scaledThickness(
+  raw: number | undefined,
+  ctx: RenderContext,
+): number {
+  const base = raw ?? SPEC_DEFAULT_THICKNESS;
+  return base * ctx.lineThicknessScale;
+}
+
+/**
  * Look up + emit a `fill` attribute value, registering any gradient def
  * in the render context. Used by every filled shape mapper.
  */
@@ -376,10 +418,10 @@ function fillFor(
 
 // ---- line ----
 
-function renderLine(s: LineShape): string {
+function renderLine(s: LineShape, ctx: RenderContext): string {
   const points = pointsToAttr(s.points);
   const stroke = colorToCss(s.color, "rgb(0,0,0)");
-  const thickness = s.thickness ?? 0.25;
+  const thickness = scaledThickness(s.thickness, ctx);
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
   // TODO: arrow / arrowSize -> marker-start / marker-end via <defs>; v1
@@ -394,7 +436,7 @@ function renderPolygon(s: PolygonShape, ctx: RenderContext): string {
   const points = pointsToAttr(s.points);
   const stroke = colorToCss(s.lineColor, "rgb(0,0,0)");
   const fill = fillFor(s.fillColor, s.lineColor, s.fillPattern, ctx);
-  const thickness = s.lineThickness ?? 0.25;
+  const thickness = scaledThickness(s.lineThickness, ctx);
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
   return `<polygon points="${points}" fill="${fill}" stroke="${stroke}" stroke-width="${thickness}"${dashAttr}/>`;
@@ -406,7 +448,7 @@ function renderRectangle(s: RectangleShape, ctx: RenderContext): string {
   const { x, y, width, height } = extentToRect(s.extent);
   const stroke = colorToCss(s.lineColor, "rgb(0,0,0)");
   const fill = fillFor(s.fillColor, s.lineColor, s.fillPattern, ctx);
-  const thickness = s.lineThickness ?? 0.25;
+  const thickness = scaledThickness(s.lineThickness, ctx);
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
   const radiusAttr = s.radius && s.radius > 0 ? ` rx="${s.radius}" ry="${s.radius}"` : "";
@@ -423,7 +465,7 @@ function renderEllipse(s: EllipseShape, ctx: RenderContext): string {
   const ry = height / 2;
   const stroke = colorToCss(s.lineColor, "rgb(0,0,0)");
   const fill = fillFor(s.fillColor, s.lineColor, s.fillPattern, ctx);
-  const thickness = s.lineThickness ?? 0.25;
+  const thickness = scaledThickness(s.lineThickness, ctx);
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
   // TODO: honor startAngle / endAngle / closure ("None" | "Chord" | "Radial").

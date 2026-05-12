@@ -71,6 +71,16 @@ export abstract class OmShapeElement extends LitElement {
   @property({ attribute: false })
   coordinateSystem: CoordinateSystem | undefined = undefined;
 
+  /**
+   * Stroke-width multiplier forwarded to `renderIconLayersToSvg`. See
+   * the renderer doc for full semantics — short version: spec-default
+   * `0.25` icon-unit strokes are too thin on high-density displays,
+   * and a value of `2` keeps them visible without re-authoring icon
+   * annotations. `undefined` keeps the renderer's own default.
+   */
+  @property({ type: Number, attribute: "line-thickness-scale" })
+  lineThicknessScale: number | undefined = undefined;
+
   /** Selection state — purely a flag for now (E2 wires visuals). */
   @property({ type: Boolean, reflect: true })
   selected = false;
@@ -99,6 +109,7 @@ export abstract class OmShapeElement extends LitElement {
   private overlaySrcKey: {
     layers: IconLayer[];
     cs: CoordinateSystem | undefined;
+    scale: number | undefined;
   } | null = null;
   /**
    * Cached union of `coord-system extent ∪ every shape extent`. Used
@@ -270,19 +281,25 @@ export abstract class OmShapeElement extends LitElement {
     if (
       this.overlaySrcKey &&
       this.overlaySrcKey.layers === this.layers &&
-      this.overlaySrcKey.cs === this.coordinateSystem
+      this.overlaySrcKey.cs === this.coordinateSystem &&
+      this.overlaySrcKey.scale === this.lineThicknessScale
     ) {
       return;
     }
-    const svg = renderIconLayersToSvg(this.layers, {
+    const renderOpts: import("@modelica-wrapper/diagram-svg").RenderOptions = {
       coordinateSystem: this.coordinateSystem,
       expandViewBoxToShapes: true,
-    });
+    };
+    if (this.lineThicknessScale !== undefined) {
+      renderOpts.lineThicknessScale = this.lineThicknessScale;
+    }
+    const svg = renderIconLayersToSvg(this.layers, renderOpts);
     overlay.src = svgToDataUrl(svg);
     this.iconBounds = computeIconBounds(this.layers, this.coordinateSystem);
     this.overlaySrcKey = {
       layers: this.layers,
       cs: this.coordinateSystem,
+      scale: this.lineThicknessScale,
     };
   }
 

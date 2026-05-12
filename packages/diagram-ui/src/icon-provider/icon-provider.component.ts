@@ -35,7 +35,10 @@ import { rasterizeSvgToTexture } from "./svg-rasterizer.js";
  */
 const DEFAULT_RENDER_SIZE = 1024;
 
-function buildRenderSvg(size: number): SvgRenderFn {
+function buildRenderSvg(
+  size: number,
+  lineThicknessScale: number | undefined,
+): SvgRenderFn {
   return (layers, coordinateSystem) => {
     // `size` is baked into the SVG's root `width`/`height` so the
     // browser image decoder doesn't report naturalWidth = 0 when
@@ -43,6 +46,9 @@ function buildRenderSvg(size: number): SvgRenderFn {
     const opts: RenderOptions = { size };
     if (coordinateSystem) {
       opts.coordinateSystem = coordinateSystem;
+    }
+    if (lineThicknessScale !== undefined) {
+      opts.lineThicknessScale = lineThicknessScale;
     }
     return renderIconLayersToSvg(layers, opts);
   };
@@ -102,6 +108,15 @@ export class OmIconProvider extends LitElement {
   @property({ type: Number })
   resolution: number = DEFAULT_RENDER_SIZE;
 
+  /**
+   * Stroke-width scale forwarded to `renderIconLayersToSvg` when the
+   * provider builds its default SVG renderer. Only used when the
+   * caller does NOT supply a custom `renderSvg` override. `undefined`
+   * keeps the renderer's own default (currently `4`).
+   */
+  @property({ type: Number, attribute: "line-thickness-scale" })
+  lineThicknessScale: number | undefined = undefined;
+
   @consume({ context: sceneContext, subscribe: true })
   private sceneCtx: SceneContext | null = null;
 
@@ -125,7 +140,8 @@ export class OmIconProvider extends LitElement {
     if (
       changed.has("renderSvg") ||
       changed.has("rasterize") ||
-      changed.has("resolution")
+      changed.has("resolution") ||
+      changed.has("lineThicknessScale")
     ) {
       void this.cache?.destroy();
       this.rebuildCache();
@@ -137,7 +153,8 @@ export class OmIconProvider extends LitElement {
     // Default renderer reused but baked with the current resolution so
     // the SVG width/height match the rasterizer pixel size — keeps
     // the cache key stable and avoids browsers down-scaling on draw.
-    const renderSvg = this.renderSvg ?? buildRenderSvg(size);
+    const renderSvg =
+      this.renderSvg ?? buildRenderSvg(size, this.lineThicknessScale);
     this.cache = new IconCache(
       renderSvg,
       this.rasterize ?? rasterizeSvgToTexture,

@@ -46,11 +46,16 @@ const pidLayout = produceDiagramLayout(
 interface StoryArgs {
   readonly: boolean;
   cameraMode: "2d" | "3d";
+  lineThicknessScale: number;
 }
 
 const meta: Meta<StoryArgs> = {
   title: "diagram-ui/GraphicalLayoutPID",
-  render: ({ readonly, cameraMode }: StoryArgs): TemplateResult => html`
+  render: ({
+    readonly,
+    cameraMode,
+    lineThicknessScale,
+  }: StoryArgs): TemplateResult => html`
     <div class="om-story">
       <h3>
         &lt;om-graphical-layout&gt; — Modelica.Blocks.Examples.PID_Controller
@@ -75,6 +80,7 @@ const meta: Meta<StoryArgs> = {
           .layout=${pidLayout}
           ?readonly=${readonly}
           camera-mode=${cameraMode}
+          .lineThicknessScale=${lineThicknessScale}
           @om-graphical-layout-change=${(e: CustomEvent) => {
             // eslint-disable-next-line no-console
             console.log("layout change", e.detail);
@@ -94,6 +100,10 @@ const meta: Meta<StoryArgs> = {
       options: ["2d", "3d"],
       name: "camera-mode",
     },
+    lineThicknessScale: {
+      control: { type: "range", min: 0.5, max: 10, step: 0.25 },
+      name: "line-thickness-scale",
+    },
   },
 };
 
@@ -102,13 +112,17 @@ export default meta;
 type Story = StoryObj<StoryArgs>;
 
 export const Editable: Story = {
-  args: { readonly: false, cameraMode: "2d" },
+  args: { readonly: false, cameraMode: "2d", lineThicknessScale: 4 },
 };
 
 export const Readonly: Story = {
-  args: { readonly: true, cameraMode: "2d" },
+  args: { readonly: true, cameraMode: "2d", lineThicknessScale: 4 },
 };
 
 export const Orbit3D: Story = {
-  args: { readonly: true, cameraMode: "3d" },
+  args: { readonly: true, cameraMode: "3d", lineThicknessScale: 4 },
+};
+
+export const ThickLines: Story = {
+  args: { readonly: true, cameraMode: "2d", lineThicknessScale: 8 },
 };

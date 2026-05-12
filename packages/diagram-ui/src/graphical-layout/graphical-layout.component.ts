@@ -162,6 +162,15 @@ export class OmGraphicalLayout extends LitElement {
   @property({ type: String, reflect: true, attribute: "camera-mode" })
   cameraMode: "2d" | "3d" = "2d";
 
+  /**
+   * Stroke-width multiplier forwarded to every entity's SVG renderer
+   * (overlay path) AND to `<om-icon-provider>` (in-canvas textured
+   * plane). `undefined` falls back to the renderer's default — see
+   * `RenderOptions.lineThicknessScale` for the rationale.
+   */
+  @property({ type: Number, attribute: "line-thickness-scale" })
+  lineThicknessScale: number | undefined = undefined;
+
   @state() private selectedKeys: Set<string> = new Set();
   @state() private draftLayout: DiagramLayout | null = null;
   @state() private hoverKey: string | null = null;
@@ -202,6 +211,7 @@ export class OmGraphicalLayout extends LitElement {
         <om-icon-provider
           .renderSvg=${this.renderSvg ?? undefined}
           .rasterize=${this.rasterize ?? undefined}
+          .lineThicknessScale=${this.lineThicknessScale}
         >
           <om-grid-axis
             .extent=${500}
@@ -356,6 +366,7 @@ export class OmGraphicalLayout extends LitElement {
       .placement=${comp.placement}
       .layers=${cls?.iconLayers ?? []}
       .coordinateSystem=${cls?.coordinateSystem ?? undefined}
+      .lineThicknessScale=${this.lineThicknessScale}
       ?selected=${this.selectedKeys.has(key)}
       ?readonly=${this.readonly}
     >
@@ -366,6 +377,7 @@ export class OmGraphicalLayout extends LitElement {
               .placement=${port.placement}
               .layers=${port.iconLayers}
               .coordinateSystem=${cls.coordinateSystem ?? undefined}
+              .lineThicknessScale=${this.lineThicknessScale}
               ?readonly=${this.readonly}
             ></om-connector>`,
           )
@@ -385,6 +397,7 @@ export class OmGraphicalLayout extends LitElement {
       .placement=${conn.placement}
       .layers=${cls?.iconLayers ?? []}
       .coordinateSystem=${cls?.coordinateSystem ?? undefined}
+      .lineThicknessScale=${this.lineThicknessScale}
       ?selected=${this.selectedKeys.has(key)}
       ?readonly=${this.readonly}
     ></om-connector>`;
