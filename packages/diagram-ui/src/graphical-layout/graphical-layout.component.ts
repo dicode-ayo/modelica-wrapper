@@ -153,6 +153,15 @@ export class OmGraphicalLayout extends LitElement {
   @property({ type: Boolean, reflect: true })
   debug = false;
 
+  /**
+   * Forwarded to `<om-scene>` — `"2d"` (orthographic top-down editor)
+   * or `"3d"` (free `ArcRotateCamera` orbit). The shape-element
+   * overlay layer auto-hides in non-orthographic mode and the
+   * in-canvas textured planes become the visible icon.
+   */
+  @property({ type: String, reflect: true, attribute: "camera-mode" })
+  cameraMode: "2d" | "3d" = "2d";
+
   @state() private selectedKeys: Set<string> = new Set();
   @state() private draftLayout: DiagramLayout | null = null;
   @state() private hoverKey: string | null = null;
@@ -185,6 +194,7 @@ export class OmGraphicalLayout extends LitElement {
       <om-scene
         .engineFactory=${this.engineFactory ?? undefined}
         ?debug=${this.debug}
+        camera-mode=${this.cameraMode}
         @om-view-change=${this.onViewChange}
         tabindex="0"
         @keydown=${this.onKeyDown}
@@ -193,7 +203,10 @@ export class OmGraphicalLayout extends LitElement {
           .renderSvg=${this.renderSvg ?? undefined}
           .rasterize=${this.rasterize ?? undefined}
         >
-          <om-grid-axis .extent=${500}></om-grid-axis>
+          <om-grid-axis
+            .extent=${500}
+            .coordinateSystem=${active.coordinateSystem ?? undefined}
+          ></om-grid-axis>
           ${repeat(
             componentEntries,
             ([id]) => id,
