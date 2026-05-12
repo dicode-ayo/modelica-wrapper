@@ -1,21 +1,29 @@
 /**
- * Expression resolver + scene producer for the MultiBody visual data
- * path. All pure functions; no OMC contact and no file I/O. Inputs:
+ * Expression resolver + scene producer + ModelInstance join for the
+ * MultiBody visual data path. All pure functions; no OMC contact and no
+ * file I/O. Inputs:
  *
  *  - `VisualXmlDocument` from `parseVisualXml(xml)`
  *  - `env: Map<string, number>` from `readResultRowZero(_res.mat)`
  *    (later PR; the resolver doesn't care where the values came from)
+ *  - `ModelInstance` from `getModelInstance`
  *
- * Outputs `VisualScene` — every numeric slot is a `number`; shapes
- * whose expression tree still references an unknown cref carry
- * `unresolved: true` so the renderer can show a placeholder.
+ * Outputs:
  *
- * `joinWithModelInstance` (added in the next commit) layers a
- * `componentRef` onto each visualizer by first-dotted-path-segment
- * lookup against the `ModelInstance` tree.
+ *  - `VisualScene` — every numeric slot is a `number`; shapes whose
+ *    expression tree still references an unknown cref carry
+ *    `unresolved: true` so the renderer can show a placeholder
+ *  - `MultibodyScene` — same shape with `componentRef` populated by
+ *    first-dotted-path-segment lookup against the `ModelInstance` tree
  */
 
 import type {
+  ComponentElement,
+  ComponentRef,
+  ModelInstance,
+} from "./modelInstance.js";
+import type {
+  MultibodyScene,
   Vec3,
   VisualScene,
   VisualShape,
@@ -254,4 +262,68 @@ export function produceVisualScene(
   env: Map<string, number>,
 ): VisualScene {
   return resolveExpressions(doc, env);
+}
+
+// =====================================================================
+// joinWithModelInstance — shape <ident> ↔ ComponentElement
+// =====================================================================
+
+/**
+ * Index every top-level `ComponentElement` on `mi` by name. The join rule
+ * is "first dotted-path segment of `<ident>` is a component name on the
+ * host model". Nested compositions resolve via the top-level wrapper —
+ * e.g. a `BodyShape` inside a sub-model is still selectable through the
+ * top-level instance it lives under.
+ */
+function indexComponents(mi: ModelInstance): Map<string, ComponentElement> {
+  const out = new Map<string, ComponentElement>();
+  for (const el of mi.elements ?? []) {
+    if (el.$kind !== "component") continue;
+    out.set(el.name, el);
+  }
+  return out;
+}
+
+function componentRefFor(name: string): ComponentRef {
+  return { $kind: "cref", parts: [{ name }] };
+}
+
+function firstSegment(ident: string): string {
+  const dot = ident.indexOf(".");
+  return dot === -1 ? ident : ident.slice(0, dot);
+}
+
+/**
+ * Attach `componentRef` to every visualizer in `scene`. The lookup is
+ * pure structural: split `ident` on `.`, take segment 0, look it up in
+ * the top-level component index. A hit gives a one-part `ComponentRef`;
+ * a miss leaves `componentRef = null` so the renderer can recognize
+ * synthetic shapes (gravity arrow, world frame triad) and skip
+ * selection wiring for them.
+ *
+ * Already-set `componentRef` values are preserved verbatim — callers can
+ * pre-populate (e.g. for fixture-built scenes in tests) without losing
+ * the override.
+ */
+export function joinWithModelInstance(
+  scene: VisualScene,
+  mi: ModelInstance,
+): MultibodyScene {
+  const index = indexComponents(mi);
+  const attach = <T extends { ident: string; componentRef?: ComponentRef | null | undefined }>(
+    entry: T,
+  ): T => {
+    if (entry.componentRef !== undefined) return entry;
+    const segment = firstSegment(entry.ident);
+    const hit = index.get(segment);
+    const next: T = { ...entry };
+    next.componentRef = hit ? componentRefFor(segment) : null;
+    return next;
+  };
+
+  return {
+    shapes: scene.shapes.map(attach),
+    vectors: scene.vectors.map(attach),
+    surfaces: scene.surfaces.map(attach),
+  };
 }

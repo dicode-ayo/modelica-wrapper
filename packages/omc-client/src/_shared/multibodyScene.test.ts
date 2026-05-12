@@ -1,7 +1,7 @@
 /**
- * Tests for the expression resolver and scene producer. Each block
- * hand-builds the smallest input that exercises the behavior under
- * test — no fixture files.
+ * Tests for the expression resolver, scene producer, and ModelInstance
+ * join. Each block hand-builds the smallest input that exercises the
+ * behavior under test — no fixture files.
  *
  * Coverage matrix (per the design doc's "Producer responsibilities"):
  *  - literal-only shape: resolver substitutes nothing; result is fully
@@ -9,11 +9,15 @@
  *  - cref-bearing shape, env hit: substitutes correctly
  *  - cref-bearing shape, env miss: shape flagged unresolved, no crash
  *  - nested binary + call: arithmetic + cos/sin/sqrt
+ *  - join: 2-segment ident `bodyShape1.shape_1` → component
+ *    `bodyShape1`; synthetic `world.gravityArrow.shape_1` → null
  */
 
 import { describe, expect, it } from "vitest";
 
+import { ModelInstanceSchema } from "./modelInstance.js";
 import {
+  joinWithModelInstance,
   produceVisualScene,
   resolveExpressions,
 } from "./multibodyScene.js";
@@ -184,5 +188,77 @@ describe("produceVisualScene: combined parse + resolve helper", () => {
     expect(produceVisualScene(doc, env)).toEqual(
       resolveExpressions(doc, env),
     );
+  });
+});
+
+// =====================================================================
+// joinWithModelInstance
+// =====================================================================
+
+const HOST_MI = ModelInstanceSchema.parse({
+  name: "Synth.MbHost",
+  restriction: "model",
+  elements: [
+    {
+      $kind: "component",
+      name: "bodyShape1",
+      type: {
+        name: "Modelica.Mechanics.MultiBody.Parts.BodyShape",
+        restriction: "model",
+      },
+    },
+    {
+      $kind: "component",
+      name: "world",
+      type: {
+        name: "Modelica.Mechanics.MultiBody.World",
+        restriction: "model",
+      },
+    },
+  ],
+});
+
+describe("joinWithModelInstance: bodyShape1.shape_1 → component bodyShape1", () => {
+  it("attaches a 1-part ComponentRef to the matching component", () => {
+    const xml = wrap([shapeXml({ ident: "bodyShape1.shape_1" })]);
+    const scene = produceVisualScene(parseVisualXml(xml), new Map());
+    const joined = joinWithModelInstance(scene, HOST_MI);
+    expect(joined.shapes[0]?.componentRef).toEqual({
+      $kind: "cref",
+      parts: [{ name: "bodyShape1" }],
+    });
+  });
+});
+
+describe("joinWithModelInstance: synthetic shapes get componentRef=null", () => {
+  it("leaves a shape unattached when the first segment is not a component on the host", () => {
+    const xml = wrap([
+      shapeXml({ ident: "ghost.gravityArrow.shape_1" }),
+    ]);
+    const scene = produceVisualScene(parseVisualXml(xml), new Map());
+    const joined = joinWithModelInstance(scene, HOST_MI);
+    expect(joined.shapes[0]?.componentRef).toBeNull();
+  });
+
+  it("attaches when the first segment matches even for nested idents like world.gravityArrow.shape_1", () => {
+    // `world` IS a top-level component on HOST_MI, so this joins.
+    const xml = wrap([
+      shapeXml({ ident: "world.gravityArrow.shape_1" }),
+    ]);
+    const scene = produceVisualScene(parseVisualXml(xml), new Map());
+    const joined = joinWithModelInstance(scene, HOST_MI);
+    expect(joined.shapes[0]?.componentRef).toEqual({
+      $kind: "cref",
+      parts: [{ name: "world" }],
+    });
+  });
+});
+
+describe("joinWithModelInstance: parameterSource left undefined in PR 1", () => {
+  it("does not populate parameterSource yet (reserved for the authoring PR)", () => {
+    const xml = wrap([shapeXml({ ident: "bodyShape1.shape_1" })]);
+    const scene = produceVisualScene(parseVisualXml(xml), new Map());
+    const joined = joinWithModelInstance(scene, HOST_MI);
+    expect(joined.shapes[0]?.parameterSource).toBeUndefined();
   });
 });
