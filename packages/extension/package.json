@@ -37,19 +37,14 @@
         "icon": "$(refresh)"
       },
       {
-        "command": "modelica.createPackage",
-        "title": "Modelica: New Package...",
-        "icon": "$(new-folder)"
+        "command": "modelica.createClass",
+        "title": "Modelica: New Class...",
+        "icon": "$(add)"
       },
       {
         "command": "modelica.savePackage",
         "title": "Modelica: Save Package As...",
         "icon": "$(save-as)"
-      },
-      {
-        "command": "modelica.createComponent",
-        "title": "Modelica: New Component...",
-        "icon": "$(add)"
       },
       {
         "command": "modelica.viewSource",
@@ -60,6 +55,11 @@
         "command": "modelica.openDiagramFromSource",
         "title": "Modelica: Open Diagram",
         "icon": "$(circuit-board)"
+      },
+      {
+        "command": "modelica.showLogs",
+        "title": "Modelica: Show Logs",
+        "icon": "$(output)"
       }
     ],
     "viewsContainers": {
@@ -95,31 +95,26 @@
           "group": "navigation@1"
         },
         {
-          "command": "modelica.createPackage",
+          "command": "modelica.createClass",
           "when": "view == modelica.libraries",
           "group": "navigation@2"
         },
         {
-          "command": "modelica.createComponent",
-          "when": "view == modelica.libraries",
-          "group": "navigation@3"
-        },
-        {
           "command": "modelica.tree.refresh",
           "when": "view == modelica.libraries",
-          "group": "navigation@4"
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [
         {
-          "command": "modelica.createPackage",
+          "command": "modelica.createClass",
           "when": "view == modelica.libraries && viewItem =~ /^modelica-(library|package)$/",
-          "group": "1_create@1"
+          "group": "inline@1"
         },
         {
-          "command": "modelica.createComponent",
+          "command": "modelica.createClass",
           "when": "view == modelica.libraries && viewItem =~ /^modelica-(library|package)$/",
-          "group": "1_create@2"
+          "group": "1_create@1"
         },
         {
           "command": "modelica.viewSource",

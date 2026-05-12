@@ -1,8 +1,12 @@
 /**
- * `modelica.getOmcVersion` — quick "is OMC alive" smoke test.
+ * Misc/debug commands:
+ * - `modelica.getOmcVersion` — quick "is OMC alive" smoke test.
+ * - `modelica.showLogs` — focus the Modelica Output channel.
  */
 
 import * as vscode from "vscode";
+
+import { log } from "../logger.js";
 
 import type { CommandContext } from "./context.js";
 
@@ -16,6 +20,9 @@ export function registerOmcCommands(ctx: CommandContext): vscode.Disposable[] {
       } catch (err) {
         await vscode.window.showErrorMessage(`OMC: ${(err as Error).message}`);
       }
+    }),
+    vscode.commands.registerCommand("modelica.showLogs", () => {
+      log.show();
     }),
   ];
 }

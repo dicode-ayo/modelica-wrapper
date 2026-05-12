@@ -55,6 +55,11 @@ const webviewConfig = {
   loader: {
     ".json": "json",
   },
+  // Stamped into the bundle so the runtime can prove which build it is —
+  // changes only on rebuild, not on webview reload.
+  define: {
+    __WEBVIEW_BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: watch ? [watchMarkers] : [],
 };
 

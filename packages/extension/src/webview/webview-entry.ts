@@ -19,6 +19,14 @@ import type {
   WebviewToExtension,
 } from "./protocol.js";
 
+// Injected by esbuild `define`. Captures the build's wall-clock time so we
+// can tell at a glance whether the iframe is running freshly-bundled JS.
+declare const __WEBVIEW_BUILD_TIME__: string;
+
+console.log(
+  `[webview boot] build=${__WEBVIEW_BUILD_TIME__} loaded=${new Date().toISOString()}`,
+);
+
 interface VsCodeApi {
   postMessage(msg: WebviewToExtension): void;
   getState(): unknown;

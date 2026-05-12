@@ -1,7 +1,7 @@
 /**
- * Package lifecycle commands:
- * - `modelica.createPackage` — in-memory package via loadString.
- * - `modelica.savePackage` — Option-B persistence (listFile → write → setSourceFile).
+ * `modelica.savePackage` — Option-B persistence: read the class source via
+ * `listFile`, write it to disk ourselves, then tell OMC where it now lives
+ * with `setSourceFile`. Works on any package or library node.
  */
 
 import * as vscode from "vscode";
@@ -9,32 +9,10 @@ import { writeFile } from "node:fs/promises";
 
 import type { LibraryNode } from "../tree/library-tree.js";
 
-import {
-  parentFromNode,
-  runLoadString,
-  validateIdentifier,
-  type CommandContext,
-} from "./context.js";
+import type { CommandContext } from "./context.js";
 
 export function registerPackageCommands(ctx: CommandContext): vscode.Disposable[] {
   return [
-    vscode.commands.registerCommand(
-      "modelica.createPackage",
-      async (node?: LibraryNode) => {
-        const parent = parentFromNode(node);
-        const name = await vscode.window.showInputBox({
-          prompt: parent ? `New package inside ${parent}` : "New top-level package",
-          placeHolder: "MyPackage",
-          validateInput: validateIdentifier,
-        });
-        if (!name) return;
-        const qualified = parent ? `${parent}.${name}` : name;
-        const data = parent
-          ? `within ${parent};\npackage ${name}\nend ${name};\n`
-          : `package ${name}\nend ${name};\n`;
-        await runLoadString(ctx, data, qualified, "Modelica: failed to create");
-      },
-    ),
     vscode.commands.registerCommand(
       "modelica.savePackage",
       async (node?: LibraryNode) => {

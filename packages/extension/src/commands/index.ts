@@ -6,7 +6,7 @@
 
 import type * as vscode from "vscode";
 
-import { registerComponentCommands } from "./component.js";
+import { registerClassCommands } from "./class.js";
 import { registerDiagramCommands } from "./diagram.js";
 import { registerLibraryCommands } from "./library.js";
 import { registerOmcCommands } from "./omc.js";
@@ -22,8 +22,8 @@ export function registerCommands(ctx: CommandContext): vscode.Disposable[] {
     ...registerOmcCommands(ctx),
     ...registerLibraryCommands(ctx),
     ...registerTreeCommands(ctx),
+    ...registerClassCommands(ctx),
     ...registerPackageCommands(ctx),
-    ...registerComponentCommands(ctx),
     ...registerDiagramCommands(ctx),
   ];
 }

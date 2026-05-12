@@ -11,6 +11,7 @@ import * as vscode from "vscode";
 import { OmcClient } from "@modelica-wrapper/omc-client";
 
 import { registerCommands } from "./commands/index.js";
+import { log } from "./logger.js";
 import {
   MODELICA_SOURCE_SCHEME,
   ModelicaSourceProvider,
@@ -20,6 +21,7 @@ import { LibraryTreeProvider } from "./tree/library-tree.js";
 let client: OmcClient | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  log.info("activate", "extension activating");
   const libraryTree = new LibraryTreeProvider(ensureClient);
   const libraryView = vscode.window.createTreeView("modelica.libraries", {
     treeDataProvider: libraryTree,
@@ -49,6 +51,7 @@ export async function deactivate(): Promise<void> {
     client = undefined;
     await c.close();
   }
+  log.dispose();
 }
 
 async function ensureClient(): Promise<OmcClient> {
