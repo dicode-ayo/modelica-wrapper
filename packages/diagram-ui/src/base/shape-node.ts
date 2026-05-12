@@ -81,8 +81,17 @@ export class OmShapeNode {
     this.material.backFaceCulling = false;
     this.material.useAlphaFromDiffuseTexture = true;
 
+    // Mesh name uses a `plane.<owner>` prefix instead of
+    // `<owner>-mesh` because `entityKeyForNode`'s regex matches
+    // `^om-(component|connector|label):` and would otherwise capture
+    // `gain1-mesh` as the nodeId — breaking selection and drag (the
+    // key wouldn't match `layout.components["gain1"]`). The new
+    // prefix doesn't start with `om-` so it's transparent to the
+    // entity-key walker; the walker resolves the owner via the
+    // parent TransformNode instead. Inspector readability is the
+    // same — the prefix tells you which entity it belongs to.
     this.mesh = MeshBuilder.CreatePlane(
-      `${name}-mesh`,
+      `plane.${name}`,
       { width: 1, height: 1, sideOrientation: Mesh.DOUBLESIDE },
       scene,
     );

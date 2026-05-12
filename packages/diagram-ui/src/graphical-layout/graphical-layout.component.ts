@@ -532,6 +532,15 @@ export class OmGraphicalLayout extends LitElement {
 
   private commitLayout(layout: DiagramLayout): void {
     this.draftLayout = null;
+    // `applyDeltaMove` / `applyRotate` / `applyFlip` / `applyDelete`
+    // all short-circuit to the same reference when there's no actual
+    // change (zero delta, empty keys, etc). Don't fire a change
+    // event in that case — consumers downstream (the extension's
+    // diff layer) would treat it as a real edit and round-trip OMC
+    // for nothing.
+    if (layout === this.layout) {
+      return;
+    }
     this.internalLayoutChange = true;
     this.layout = layout;
     this.emit("om-graphical-layout-change", layout);
