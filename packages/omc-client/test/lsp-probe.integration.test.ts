@@ -137,29 +137,36 @@ describeIf("OMC LSP-feasibility probe", () => {
       // a structured record list with file/line/col on the broken samples,
       // we wire the LSP diagnostics provider straight to it and skip the
       // regex parse of `getErrorString`.
+      //
+      // IMPORTANT: do NOT call getErrorString before the candidate
+      // endpoint — getErrorString drains the diagnostic buffer.
       // -------------------------------------------------------------------
       // eslint-disable-next-line no-console
       console.log("--- Probe 1: positioned-diagnostic endpoints ---");
-
-      // Prime the buffer by loading one broken sample, then ask both
-      // candidate endpoints what they have to say about it.
-      await client.getErrorString();
-      await client.call(
-        `loadString("${brokenSamples[0].src.replace(/\n/g, "\\n").replace(/"/g, '\\"')}", "mw-probe-syntax.mo")` as OmcCommand,
-      );
 
       for (const cmd of [
         "getMessagesString()",
         "getMessagesStringInternal()",
       ] as const) {
+        // Drain, then trigger a fresh syntax error, THEN ask the endpoint.
+        // (Triggering via loadString — a syntax error will populate the
+        // buffer without draining it.)
         await client.getErrorString();
+        const escaped = brokenSamples[0].src
+          .replace(/\\/g, "\\\\")
+          .replace(/"/g, '\\"')
+          .replace(/\n/g, "\\n");
+        await client.call(
+          `loadString("${escaped}", "mw-probe-syntax.mo")` as OmcCommand,
+        );
         const raw = (await client.call(cmd as OmcCommand)).trim();
+        // After the candidate call, see what's left in getErrorString.
         const { errorString: err } = await client.getErrorString();
         const verdict = classify(raw, err);
         // eslint-disable-next-line no-console
         console.log(`${verdictGlyph[verdict]} [${verdict}] ${cmd}`);
         // eslint-disable-next-line no-console
-        console.log(`  raw: ${raw.length === 0 ? "(empty)" : truncate(raw)}`);
+        console.log(`  raw: ${raw.length === 0 ? "(empty)" : truncate(raw, 640)}`);
         // eslint-disable-next-line no-console
         console.log(`  err: ${err.length === 0 ? "(none)" : truncate(err)}`);
         // eslint-disable-next-line no-console
@@ -179,19 +186,38 @@ describeIf("OMC LSP-feasibility probe", () => {
         // Use a unique pseudo-filename per sample so we can spot whether
         // OMC echoes it back into the diagnostic.
         const filename = `mw-probe-${sample.label.replace(/[^a-z0-9]+/gi, "-")}.mo`;
+        const className = `MwProbe${sample.label.replace(/[^a-z0-9]+/gi, "")}`;
         const escaped = sample.src
           .replace(/\\/g, "\\\\")
           .replace(/"/g, '\\"')
           .replace(/\n/g, "\\n");
+
+        // Step 1: loadString — surfaces syntax errors.
         await client.getErrorString();
         await client.call(
           `loadString("${escaped}", "${filename}")` as OmcCommand,
         );
-        const { errorString: err } = await client.getErrorString();
+        const { errorString: loadErr } = await client.getErrorString();
+
+        // Step 2: checkModel — surfaces semantic errors (undefined name,
+        // type mismatch). Only run if load succeeded enough to register
+        // the class (i.e. for the name/type samples).
+        let checkErr = "";
+        if (loadErr.length === 0) {
+          await client.call(`checkModel(${className})` as OmcCommand);
+          checkErr = (await client.getErrorString()).errorString;
+        }
+
         // eslint-disable-next-line no-console
-        console.log(`• ${sample.label}  (filename=${filename})`);
+        console.log(`• ${sample.label}  (filename=${filename}, class=${className})`);
         // eslint-disable-next-line no-console
-        console.log(`  err: ${err.length === 0 ? "(none)" : truncate(err, 640)}`);
+        console.log(
+          `  loadString err: ${loadErr.length === 0 ? "(none)" : truncate(loadErr, 640)}`,
+        );
+        // eslint-disable-next-line no-console
+        console.log(
+          `  checkModel err: ${checkErr.length === 0 ? (loadErr.length === 0 ? "(none)" : "(skipped — load failed)") : truncate(checkErr, 640)}`,
+        );
         // eslint-disable-next-line no-console
         console.log("");
       }
@@ -243,7 +269,8 @@ describeIf("OMC LSP-feasibility probe", () => {
         console.log("");
       }
 
-      // getModelInstance is large; only peek at the source-provenance keys.
+      // getModelInstance is large; inspect what source-provenance keys
+      // actually appear on the response.
       await client.getErrorString();
       const miRaw = (
         await client.call(
@@ -255,14 +282,40 @@ describeIf("OMC LSP-feasibility probe", () => {
       console.log(
         `${verdictGlyph[classify(miRaw, miErr)]} getModelInstance(Modelica.Blocks.Math.Gain) — size=${miRaw.length} bytes`,
       );
-      const hasSourceField = /\"source\"\s*:/.test(miRaw);
-      const sampleSource = miRaw.match(/\"source\"\s*:\s*\{[^}]{0,200}\}/);
-      // eslint-disable-next-line no-console
-      console.log(`  has "source" field: ${hasSourceField}`);
-      // eslint-disable-next-line no-console
-      console.log(
-        `  sample: ${sampleSource ? truncate(sampleSource[0], 320) : "(no source field found)"}`,
+
+      // Search the raw JSON for any key that smells like source provenance.
+      const provenanceKeys = [
+        "source",
+        "info",
+        "sourceInfo",
+        "fileName",
+        "lineNumberStart",
+        "lineNumberEnd",
+        "columnNumberStart",
+        "columnNumberEnd",
+        "file",
+      ];
+      for (const key of provenanceKeys) {
+        const re = new RegExp(`\\"${key}\\"\\s*:`);
+        const hit = re.test(miRaw);
+        if (!hit) continue;
+        const sample = miRaw.match(
+          new RegExp(`\\"${key}\\"\\s*:\\s*(?:\\{[^}]{0,200}\\}|"[^"]{0,200}"|\\d+)`),
+        );
+        // eslint-disable-next-line no-console
+        console.log(
+          `  has "${key}": yes  sample: ${sample ? truncate(sample[0], 200) : "(?)"}`,
+        );
+      }
+      const hasAnyProvenance = provenanceKeys.some((k) =>
+        new RegExp(`\\"${k}\\"\\s*:`).test(miRaw),
       );
+      if (!hasAnyProvenance) {
+        // eslint-disable-next-line no-console
+        console.log("  no provenance keys found — top-level slice follows:");
+        // eslint-disable-next-line no-console
+        console.log(`  ${truncate(miRaw, 400)}`);
+      }
     } finally {
       for (const cls of [
         "MwProbeSyntax",

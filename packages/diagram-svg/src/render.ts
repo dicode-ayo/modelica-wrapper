@@ -70,6 +70,25 @@ export interface RenderOptions {
    * doesn't disappear against the page. Default: no background.
    */
   background?: string | undefined;
+  /**
+   * When `true`, the viewBox is enlarged to fit every shape extent in
+   * addition to the coordinate-system extent. Matches OMEdit, which
+   * shows labels (`%name`, parameter readouts) and other annotations
+   * placed outside the canonical icon box.
+   *
+   * Default `false` for backwards compatibility — the icon-provider
+   * cache and the in-canvas textured plane assume viewBox = coord-
+   * system extent. The HTML overlay path opts in.
+   */
+  expandViewBoxToShapes?: boolean | undefined;
+}
+
+/** Axis-aligned box in icon coordinates. */
+export interface IconBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
 }
 
 const DEFAULT_EXTENT: Extent = [
@@ -90,7 +109,10 @@ export function renderIconLayersToSvg(
   opts: RenderOptions = {},
 ): string {
   const cs = pickCoordinateSystem(layers, opts.coordinateSystem);
-  const extent = normaliseExtent(cs?.extent) ?? DEFAULT_EXTENT;
+  const baseExtent = normaliseExtent(cs?.extent) ?? DEFAULT_EXTENT;
+  const extent = opts.expandViewBoxToShapes
+    ? boundsToExtent(unionWithShapes(extentToBounds(baseExtent), layers))
+    : baseExtent;
   const viewBox = computeViewBox(extent);
 
   const sizeAttrs = renderSizeAttributes(opts.size);
@@ -132,6 +154,85 @@ export function renderClassIconToSvg(
       opts.coordinateSystem ?? cls.coordinateSystem ?? undefined,
   };
   return renderIconLayersToSvg(cls.iconLayers, merged);
+}
+
+// ---------- bounds (coord-system ∪ shapes) ----------
+
+/**
+ * Union of the coord-system extent (or Modelica default) with every
+ * shape extent across every layer. Use for sizing overlay containers,
+ * the in-canvas plane mesh, or any "where does this icon visually
+ * extend" calculation — including labels that Modelica annotations
+ * routinely place outside the canonical icon box (`%name`, parameter
+ * readouts, dimension callouts).
+ *
+ * Returns an axis-aligned box in icon coordinates.
+ */
+export function computeIconBounds(
+  layers: IconLayer[],
+  coordinateSystem?: CoordinateSystem | undefined,
+): IconBounds {
+  const cs = pickCoordinateSystem(layers, coordinateSystem);
+  const base = normaliseExtent(cs?.extent) ?? DEFAULT_EXTENT;
+  return unionWithShapes(extentToBounds(base), layers);
+}
+
+function extentToBounds(extent: Extent): IconBounds {
+  const [[x1, y1], [x2, y2]] = extent;
+  return {
+    minX: Math.min(x1, x2),
+    minY: Math.min(y1, y2),
+    maxX: Math.max(x1, x2),
+    maxY: Math.max(y1, y2),
+  };
+}
+
+function boundsToExtent(b: IconBounds): Extent {
+  return [
+    [b.minX, b.minY],
+    [b.maxX, b.maxY],
+  ];
+}
+
+function unionWithShapes(seed: IconBounds, layers: IconLayer[]): IconBounds {
+  let { minX, minY, maxX, maxY } = seed;
+  const visit = (x: number, y: number): void => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  };
+  for (const layer of layers) {
+    for (const shape of layer.shapes) {
+      visitShapeCorners(shape, visit);
+    }
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+function visitShapeCorners(
+  shape: import("./types.js").Shape,
+  visit: (x: number, y: number) => void,
+): void {
+  switch (shape.kind) {
+    case "line":
+    case "polygon": {
+      for (const [x, y] of shape.points) {
+        visit(x, y);
+      }
+      return;
+    }
+    case "rectangle":
+    case "ellipse":
+    case "text":
+    case "bitmap": {
+      const [[x1, y1], [x2, y2]] = shape.extent;
+      visit(x1, y1);
+      visit(x2, y2);
+      return;
+    }
+  }
 }
 
 // ---------- coordinate system / viewBox ----------

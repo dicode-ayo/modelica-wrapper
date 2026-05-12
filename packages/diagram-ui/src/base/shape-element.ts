@@ -9,7 +9,11 @@ import {
   type Observer,
   type Scene,
 } from "@babylonjs/core";
-import { renderIconLayersToSvg } from "@modelica-wrapper/diagram-svg";
+import {
+  computeIconBounds,
+  renderIconLayersToSvg,
+  type IconBounds,
+} from "@modelica-wrapper/diagram-svg";
 import type {
   CoordinateSystem,
   IconLayer,
@@ -96,6 +100,24 @@ export abstract class OmShapeElement extends LitElement {
     layers: IconLayer[];
     cs: CoordinateSystem | undefined;
   } | null = null;
+  /**
+   * Cached union of `coord-system extent ∪ every shape extent`. Used
+   * to size the overlay so labels placed outside the canonical icon
+   * box (Modelica `%name`, parameter readouts, dimension callouts —
+   * extremely common) stop being clipped at the SVG viewBox boundary.
+   * Recomputed alongside the SVG src whenever the layers identity
+   * changes.
+   */
+  private iconBounds: IconBounds | null = null;
+  /**
+   * Last camera-mode classification applied to the in-canvas plane.
+   *   `null`        — observer hasn't run yet, no decision made.
+   *   `"ortho"`     — overlay is the visible icon, in-canvas plane
+   *                   alpha=0, icon-provider fetch deferred.
+   *   `"perspective"` — in-canvas textured plane is the visible icon,
+   *                   icon-provider has been asked for the texture.
+   */
+  private inCanvasMode: "ortho" | "perspective" | null = null;
   /** Scratch buffers reused by the per-frame projection math. */
   private readonly tmpScale = new Vector3();
   private readonly tmpRot = new Quaternion();
@@ -157,14 +179,54 @@ export abstract class OmShapeElement extends LitElement {
     }
     const scene = parent.getScene();
     this.shapeNode = new OmShapeNode(scene, parent, this.babylonNodeName());
+    // Start with the in-canvas plane invisible. The first frame of
+    // the overlay observer will flip it back on if the camera turns
+    // out to be perspective. This avoids a one-frame magenta flash
+    // while the texture hasn't loaded yet.
+    this.shapeNode.setInCanvasVisible(false);
     this.childContextProvider.setValue(this.shapeNode.transform);
     this.onShapeNodeReady(this.shapeNode);
   }
 
+  /**
+   * Apply the camera-mode classification: toggle the in-canvas
+   * plane's material alpha (so the textured plane stops painting in
+   * 2D mode) and trigger or skip the icon-provider fetch
+   * accordingly. Idempotent — caller can invoke every frame.
+   */
+  private applyInCanvasMode(mode: "ortho" | "perspective"): void {
+    if (this.inCanvasMode === mode) {
+      return;
+    }
+    this.inCanvasMode = mode;
+    if (this.shapeNode) {
+      this.shapeNode.setInCanvasVisible(mode === "perspective");
+    }
+    // Mode just flipped — re-evaluate texture binding (fetch on enter
+    // perspective, unbind on enter ortho).
+    this.refreshTexture();
+  }
+
+  /**
+   * Fetch + bind the in-canvas texture, but ONLY when the in-canvas
+   * plane is currently the visible icon (`inCanvasMode === "perspective"`).
+   * Under orthographic projection the HTML overlay covers the canvas
+   * plane entirely, so any SVG rasterisation + GPU sample would be
+   * wasted work — we keep the texture unbound and lean on
+   * `OmShapeNode.setInCanvasVisible(false)` to skip rendering of the
+   * plane while preserving the HighlightLayer selection outline.
+   */
   private refreshTexture(): void {
     const node = this.shapeNode;
     const provider = this.iconProvider;
     if (!node) {
+      return;
+    }
+    // Defer texture fetch until we know the camera is in a mode where
+    // the in-canvas plane will actually be visible.
+    if (this.inCanvasMode !== "perspective") {
+      this.currentTextureToken = null;
+      node.setTexture(null);
       return;
     }
     if (!provider || this.layers.length === 0) {
@@ -202,6 +264,7 @@ export abstract class OmShapeElement extends LitElement {
     if (this.layers.length === 0) {
       overlay.src = "";
       this.overlaySrcKey = null;
+      this.iconBounds = null;
       return;
     }
     if (
@@ -213,8 +276,10 @@ export abstract class OmShapeElement extends LitElement {
     }
     const svg = renderIconLayersToSvg(this.layers, {
       coordinateSystem: this.coordinateSystem,
+      expandViewBoxToShapes: true,
     });
     overlay.src = svgToDataUrl(svg);
+    this.iconBounds = computeIconBounds(this.layers, this.coordinateSystem);
     this.overlaySrcKey = {
       layers: this.layers,
       cs: this.coordinateSystem,
@@ -264,7 +329,14 @@ export abstract class OmShapeElement extends LitElement {
     const camera = scene.activeCamera as Camera | null;
     const engine = scene.getEngine();
     const canvas = engine.getRenderingCanvas();
-    if (!camera || !canvas || !isOrthographic(camera) || !overlay.src) {
+    // Classify camera mode FIRST — even when we end up hiding the
+    // overlay (no canvas, no extents, etc.) we still want to apply
+    // the in-canvas plane visibility so it stays in sync with the
+    // user's actual view.
+    const cameraIsOrtho = !!camera && isOrthographic(camera);
+    this.applyInCanvasMode(cameraIsOrtho ? "ortho" : "perspective");
+
+    if (!camera || !canvas || !cameraIsOrtho || !overlay.src) {
       overlay.hide();
       return;
     }
@@ -280,14 +352,14 @@ export abstract class OmShapeElement extends LitElement {
       return;
     }
 
-    // Decompose the MESH's world matrix — combines every ancestor's
-    // scaling/rotation/translation. `mesh.scaling` is `iconSize` and
-    // `mesh.position` is the icon-coord centre, so the decomposed
-    // world translation is the icon centre in world space and the
-    // world scale is the icon's true world width/height (whether or
-    // not the entity is nested inside another scaled entity).
-    node.mesh.computeWorldMatrix(true);
-    const ok = node.mesh
+    // Decompose the TRANSFORM's world matrix (NOT the mesh's). The
+    // mesh has `iconSize` baked into its local scaling so its
+    // decomposed scale equals placement-in-world; we'd lose the
+    // information needed to apply a different (union) size. Decomposing
+    // the transform gives the icon-coord → world scale and the
+    // entity's accumulated rotation/translation directly.
+    node.transform.computeWorldMatrix(true);
+    const ok = node.transform
       .getWorldMatrix()
       .decompose(this.tmpScale, this.tmpRot, this.tmpTrans);
     if (!ok) {
@@ -298,18 +370,41 @@ export abstract class OmShapeElement extends LitElement {
     const pxPerUnitX = canvasW / (ortho.right - ortho.left);
     const pxPerUnitY = canvasH / (ortho.top - ortho.bottom);
 
-    // Screen pixel position of icon centre. Canvas Y is down; world Y
-    // is up — hence the sign flip on Y.
-    const sx = (this.tmpTrans.x - camera.position.x) * pxPerUnitX + canvasW / 2;
-    const sy = -(this.tmpTrans.y - camera.position.y) * pxPerUnitY + canvasH / 2;
+    // Bounds default to the icon's own size when we haven't computed
+    // a union yet (e.g. while layers are still empty). Fall back to
+    // `mesh.scaling` (= iconSize) so the overlay still tracks the
+    // entity.
+    const bounds = this.iconBounds;
+    const meshScaling = node.mesh.scaling;
+    const unionWidth = bounds
+      ? bounds.maxX - bounds.minX
+      : Math.abs(meshScaling.x);
+    const unionHeight = bounds
+      ? bounds.maxY - bounds.minY
+      : Math.abs(meshScaling.y);
+    const unionCenterX = bounds ? (bounds.minX + bounds.maxX) / 2 : 0;
+    const unionCenterY = bounds ? (bounds.minY + bounds.maxY) / 2 : 0;
 
-    const widthPx = Math.abs(this.tmpScale.x) * pxPerUnitX;
-    const heightPx = Math.abs(this.tmpScale.y) * pxPerUnitY;
+    // Convert the (icon-coord) union centre into world coords by
+    // applying the entity's accumulated rotation+scale.
+    const rotZ = quaternionToZ(this.tmpRot);
+    const cos = Math.cos(rotZ);
+    const sin = Math.sin(rotZ);
+    const localX = unionCenterX * this.tmpScale.x;
+    const localY = unionCenterY * this.tmpScale.y;
+    const worldX = this.tmpTrans.x + (localX * cos - localY * sin);
+    const worldY = this.tmpTrans.y + (localX * sin + localY * cos);
+
+    // Project to canvas pixels. Canvas Y is down; world Y is up.
+    const sx = (worldX - camera.position.x) * pxPerUnitX + canvasW / 2;
+    const sy = -(worldY - camera.position.y) * pxPerUnitY + canvasH / 2;
+
+    const widthPx = unionWidth * Math.abs(this.tmpScale.x) * pxPerUnitX;
+    const heightPx = unionHeight * Math.abs(this.tmpScale.y) * pxPerUnitY;
 
     // Modelica rotation: CCW positive (math Y-up). CSS rotate: CW
     // positive (screen Y-down). Negate when converting world → CSS.
-    const rotationRad = quaternionToZ(this.tmpRot);
-    const rotationDeg = -rotationRad * (180 / Math.PI);
+    const rotationDeg = -rotZ * (180 / Math.PI);
 
     overlay.setLayout(sx, sy, widthPx, heightPx, rotationDeg);
   }

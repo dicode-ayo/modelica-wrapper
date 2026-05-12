@@ -1,5 +1,6 @@
 import {
   Color3,
+  Material,
   Mesh,
   MeshBuilder,
   StandardMaterial,
@@ -167,6 +168,28 @@ export class OmShapeNode {
       this.material.emissiveColor.set(0, 0, 0);
     } else {
       this.material.emissiveColor.copyFrom(MISSING_TEXTURE_COLOR);
+    }
+  }
+
+  /**
+   * Toggle whether the in-canvas textured plane paints anything. When
+   * the HTML overlay is the visible icon (orthographic camera) we
+   * flip this off — the overlay covers the same area, so the
+   * texture rasterisation + GPU sample is wasted work.
+   *
+   * Implementation: switch the material to alpha-blended at
+   * `alpha = 0` rather than `mesh.isVisible = false`, because
+   * `HighlightLayer._internalRender` skips meshes whose `isVisible`
+   * is false — and we still want the selection outline in 2D mode.
+   * Material alpha is independent of HighlightLayer's silhouette pass.
+   */
+  setInCanvasVisible(visible: boolean): void {
+    if (visible) {
+      this.material.alpha = 1;
+      this.material.transparencyMode = Material.MATERIAL_OPAQUE;
+    } else {
+      this.material.alpha = 0;
+      this.material.transparencyMode = Material.MATERIAL_ALPHABLEND;
     }
   }
 

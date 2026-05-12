@@ -27,7 +27,9 @@
 export {
   renderIconLayersToSvg,
   renderClassIconToSvg,
+  computeIconBounds,
   type RenderOptions,
+  type IconBounds,
 } from "./render.js";
 
 export type {
