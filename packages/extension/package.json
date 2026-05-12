@@ -162,6 +162,17 @@
           "type": "string",
           "default": "",
           "description": "Path to the omc binary. Leave empty to use 'omc' from PATH."
+        },
+        "modelica.checkOnEdit": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run a debounced semantic check on each edit and surface diagnostics in the Problems panel."
+        },
+        "modelica.checkDebounceMs": {
+          "type": "number",
+          "default": 750,
+          "minimum": 250,
+          "description": "Debounce window (ms) between the last edit and the auto-check pipeline. Minimum 250 ms."
         }
       }
     }

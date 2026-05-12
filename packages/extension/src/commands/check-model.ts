@@ -30,6 +30,7 @@ import {
   qualifiedNameFromUri,
 } from "../source-provider.js";
 
+import { liveCheckLock } from "./check-lock.js";
 import type { CommandContext } from "./context.js";
 
 export function registerCheckModelCommand(
@@ -45,7 +46,11 @@ export function registerCheckModelCommand(
     }
     try {
       const client = await ctx.ensureClient();
-      await runCheckModel(client, ctx.diagnostics, className);
+      // Serialize against any in-flight live-check so we don't fight over
+      // the OMC error buffer or the shared diagnostic collection.
+      await liveCheckLock.acquire(() =>
+        runCheckModel(client, ctx.diagnostics, className),
+      );
     } catch (err) {
       log.error("checkModel", `failed for ${className}`, err);
       await vscode.window.showErrorMessage(
