@@ -20,16 +20,17 @@ export interface EdgeOptions {
   color?: Color3;
   clocked?: boolean;
   /**
-   * Z offset placed slightly above components (which sit at z = 0) so
-   * the line paints over the icon plane — matches OMEdit's drawing
-   * order where a routed wire is visible even when it crosses an
-   * intermediate component.
+   * Z offset placing the line in front of components (which sit at
+   * z = 0) so the routed wire is visible even when it crosses an
+   * intermediate component. The camera sits at -Z, so "closer to
+   * camera" means *negative* z — hence the negative default.
+   * Matches OMEdit's drawing order.
    */
   zOffset?: number;
 }
 
 export const DEFAULT_EDGE_COLOR = new Color3(0.1, 0.1, 0.18);
-export const EDGE_Z_OFFSET = 0.005;
+export const EDGE_Z_OFFSET = -0.005;
 
 /** Dash sizing tuned for diagram-coord paths (~10s of units long). */
 const DEFAULT_DASH_SIZE = 4;

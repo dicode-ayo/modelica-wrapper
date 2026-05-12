@@ -50,9 +50,11 @@ export class OmConnector extends OmShapeElement {
 
   /**
    * Connectors paint on top of components by lifting their TransformNode
-   * a fraction toward the camera. The host-coord units used here are
-   * tiny compared to entity sizes so the offset is invisible
-   * geometrically — only the depth ordering changes.
+   * a fraction toward the camera. The camera sits at -Z, so "toward
+   * the camera" is *negative* z — hence the negative value. The
+   * host-coord units used here are tiny compared to entity sizes so
+   * the offset is invisible geometrically — only the depth ordering
+   * changes.
    *
    * Note: the offset stacks with the parent component's local scaling,
    * so the actual world delta is `parent.scale * 1.5`. Even on a very
@@ -60,7 +62,7 @@ export class OmConnector extends OmShapeElement {
    * of separation — comfortably above the ortho depth-test resolution.
    */
   protected override zOffset(): number {
-    return 1.5;
+    return -1.5;
   }
 
   protected override onShapeNodeReady(node: OmShapeNode): void {
@@ -80,7 +82,9 @@ export class OmConnector extends OmShapeElement {
     );
     disc.material = mat;
     disc.parent = node.transform;
-    disc.position.set(icon.cx, icon.cy, 0.01);
+    // Negative z = closer to camera (sits at -Z) so the port
+    // indicator paints on top of the connector icon plane.
+    disc.position.set(icon.cx, icon.cy, -0.01);
     disc.isVisible = false;
     disc.isPickable = true;
     disc.metadata = { kind: "port" };

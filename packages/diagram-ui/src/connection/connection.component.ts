@@ -98,7 +98,10 @@ export class OmConnection extends LitElement {
       );
       disc.material = this.junctionMaterial;
       disc.parent = this.parentTransform;
-      disc.position.set(x, y, -0.005);
+      // Slightly more negative z than EDGE_Z_OFFSET (-0.005) so the
+      // junction dot paints on top of the edge line. Camera at -Z =
+      // more-negative z is closer to camera = drawn over.
+      disc.position.set(x, y, -0.01);
       disc.metadata = { kind: "junction", nodeId: this.nodeId };
       this.junctionMeshes.push(disc);
     }

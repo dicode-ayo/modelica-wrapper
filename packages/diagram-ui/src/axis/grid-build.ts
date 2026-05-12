@@ -13,14 +13,17 @@ import type { LinesMesh, Scene, TransformNode } from "@babylonjs/core";
  * for no visible gain. One LinesMesh per "layer" (minor / major / axes)
  * keeps each colour separate without per-vertex colour arrays.
  *
- * The grid lives at a small negative z (`GRID_Z`) so it paints behind
- * every entity layer:
+ * The grid lives at a small positive z (`GRID_Z`) so it paints behind
+ * every entity layer. After the camera-orientation fix in
+ * `scene.component.ts` (α = -π/2, camera at -Z), things closer to the
+ * camera have LOWER z — so the z-axis layering inverts from the
+ * intuitive "higher = closer":
  *
- *     grid          z = GRID_Z          (-0.05)
+ *     grid          z = GRID_Z          (+0.05, farthest)
  *     components    z =  0              (default OmShapeNode placement)
- *     edges         z = EDGE_Z_OFFSET   (+0.005)
- *     connectors    z = ~ +0.005 too    (zOffset hook from OmConnector)
- *     labels        z slightly higher
+ *     edges         z = EDGE_Z_OFFSET   (-0.005, in front of components)
+ *     connectors    z = ~ -0.005 too    (zOffset hook from OmConnector)
+ *     labels        z slightly lower (closer to camera)
  */
 export interface GridOptions {
   extent: number;
@@ -40,7 +43,7 @@ export const DEFAULT_GRID_OPTIONS: GridOptions = {
   axisColor: new Color3(0.27, 0.27, 0.43),
 };
 
-export const GRID_Z = -0.05;
+export const GRID_Z = 0.05;
 
 export interface GridMeshes {
   root: TransformNode;

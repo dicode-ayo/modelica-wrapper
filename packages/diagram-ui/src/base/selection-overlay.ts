@@ -86,7 +86,9 @@ export class ResizeHandles {
       );
       handle.material = this.material;
       handle.parent = parent;
-      handle.position.set(lx, ly, 0.02);
+      // Negative z = closer to camera (sits at -Z) so resize handles
+      // paint on top of every other entity.
+      handle.position.set(lx, ly, -0.02);
       handle.isVisible = false;
       handle.isPickable = true;
       handle.metadata = { kind: "handle", nodeId: corner };
