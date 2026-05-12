@@ -1,0 +1,3 @@
+PR 2 fills this directory with captured `<Model>_visual.xml` from a
+real OMC run (`-d=visxml` translateModel). PR 1 leaves it empty —
+all PR-1 tests build XML inline.
