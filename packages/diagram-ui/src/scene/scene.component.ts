@@ -211,9 +211,27 @@ export class OmScene extends LitElement {
     const diagramRoot = new TransformNode("om-diagram", scene);
     diagramRoot.parent = worldRoot;
 
+    // Camera sits at z = -DEFAULT_CAMERA_RADIUS, looking toward +Z.
+    //
+    // The (alpha = -π/2, beta = π/2) pairing follows from the
+    // ArcRotateCamera positioning formula in Babylon:
+    //   position.x = target.x + r * cos(α) * sin(β)   = 0
+    //   position.y = target.y + r * cos(β)            = 0
+    //   position.z = target.z + r * sin(α) * sin(β)   = -r
+    //
+    // It matters because Babylon is left-handed and uses
+    //   xAxis_camera = cross(up, forward)
+    // for the view matrix's right vector. With camera at +Z
+    // (α = +π/2), forward = -Z, and `cross((0,1,0), (0,0,-1)) =
+    // (-1, 0, 0)` — world +X projects to screen -X, mirroring the
+    // icons horizontally AND making mouse-drag direction reversed.
+    //
+    // With α = -π/2 camera ends up at -Z, forward = +Z, and
+    // `cross((0,1,0), (0,0,1)) = (1, 0, 0)`. Now world +X = screen
+    // right and world +Y = screen up — Modelica-friendly.
     const camera = new ArcRotateCamera(
       "om-camera",
-      Math.PI / 2,
+      -Math.PI / 2,
       Math.PI / 2,
       DEFAULT_CAMERA_RADIUS,
       Vector3.Zero(),
@@ -404,10 +422,10 @@ export class OmScene extends LitElement {
     camera.orthoBottom = -halfH;
     // Camera target shifts so diagram (panX, panY) appears at screen centre.
     camera.target.set(this.panX, this.panY, 0);
-    // Keep the camera on +Z axis at the target — radius stays constant in
-    // ortho mode (depth is informational, not visual), but ArcRotateCamera
-    // still needs a position to derive the view matrix.
-    camera.alpha = Math.PI / 2;
+    // Keep the camera on -Z axis at the target — radius is informational
+    // in ortho mode but the camera still needs a position to derive the
+    // view matrix. See the mount() comment for the α/β derivation.
+    camera.alpha = -Math.PI / 2;
     camera.beta = Math.PI / 2;
   }
 

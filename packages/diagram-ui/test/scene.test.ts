@@ -62,9 +62,11 @@ describe("<om-scene>", () => {
     expect(camera).toBeDefined();
     // ORTHOGRAPHIC_CAMERA mode is the integer constant 1 in Babylon.
     expect(camera?.mode).toBe(1);
-    // alpha = beta = π/2 puts the camera on +Z looking at the origin,
-    // making the XY plane the diagram plane.
-    expect(camera?.alpha).toBeCloseTo(Math.PI / 2);
+    // α = -π/2, β = π/2 puts the camera on -Z looking toward +Z. That
+    // orientation gives Babylon's left-handed view matrix a right-vector
+    // of +X, so world +X renders at screen-right (mirror-free) and drag
+    // direction matches mouse direction.
+    expect(camera?.alpha).toBeCloseTo(-Math.PI / 2);
     expect(camera?.beta).toBeCloseTo(Math.PI / 2);
   });
 
