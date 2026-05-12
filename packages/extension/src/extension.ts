@@ -3,37 +3,42 @@
  *
  * The OMC client is created lazily on first command use so we don't pay the
  * 1–3 s OMC startup cost for users who open the editor without using
- * Modelica features.
+ * Modelica features. Per-command logic lives in `./commands/*`.
  */
 
 import * as vscode from "vscode";
 
 import { OmcClient } from "@modelica-wrapper/omc-client";
 
-import { openDiagram } from "./diagram/open-diagram.js";
+import { registerCommands } from "./commands/index.js";
+import {
+  MODELICA_SOURCE_SCHEME,
+  ModelicaSourceProvider,
+} from "./source-provider.js";
+import { LibraryTreeProvider } from "./tree/library-tree.js";
 
 let client: OmcClient | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  const libraryTree = new LibraryTreeProvider(ensureClient);
+  const libraryView = vscode.window.createTreeView("modelica.libraries", {
+    treeDataProvider: libraryTree,
+    showCollapseAll: true,
+  });
+
+  const sourceProvider = new ModelicaSourceProvider(ensureClient);
+
   context.subscriptions.push(
-    vscode.commands.registerCommand("modelica.getOmcVersion", async () => {
-      try {
-        const c = await ensureClient();
-        const { version } = await c.getVersion();
-        await vscode.window.showInformationMessage(version);
-      } catch (err) {
-        await vscode.window.showErrorMessage(`OMC: ${(err as Error).message}`);
-      }
-    }),
-    vscode.commands.registerCommand("modelica.openDiagram", async (arg) => {
-      try {
-        const c = await ensureClient();
-        await openDiagram(context, c, arg);
-      } catch (err) {
-        await vscode.window.showErrorMessage(
-          `Modelica: openDiagram failed: ${(err as Error).message}`,
-        );
-      }
+    libraryView,
+    vscode.workspace.registerTextDocumentContentProvider(
+      MODELICA_SOURCE_SCHEME,
+      sourceProvider,
+    ),
+    ...registerCommands({
+      extensionContext: context,
+      ensureClient,
+      libraryTree,
+      sourceProvider,
     }),
   );
 }

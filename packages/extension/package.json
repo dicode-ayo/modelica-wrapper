@@ -25,8 +25,126 @@
       {
         "command": "modelica.openDiagram",
         "title": "Modelica: Open Diagram"
+      },
+      {
+        "command": "modelica.loadLibrary",
+        "title": "Modelica: Load Library...",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "modelica.tree.refresh",
+        "title": "Modelica: Refresh Libraries",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "modelica.createPackage",
+        "title": "Modelica: New Package...",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "modelica.savePackage",
+        "title": "Modelica: Save Package As...",
+        "icon": "$(save-as)"
+      },
+      {
+        "command": "modelica.createComponent",
+        "title": "Modelica: New Component...",
+        "icon": "$(add)"
+      },
+      {
+        "command": "modelica.viewSource",
+        "title": "Modelica: View Source",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "modelica.openDiagramFromSource",
+        "title": "Modelica: Open Diagram",
+        "icon": "$(circuit-board)"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "modelica-sidebar",
+          "title": "Modelica",
+          "icon": "$(symbol-namespace)"
+        }
+      ]
+    },
+    "views": {
+      "modelica-sidebar": [
+        {
+          "id": "modelica.libraries",
+          "name": "Libraries",
+          "icon": "$(library)",
+          "contextualTitle": "Modelica"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "modelica.libraries",
+        "contents": "No Modelica libraries are loaded yet.\n[Load Library...](command:modelica.loadLibrary)\nThe default \"Modelica\" name resolves the Modelica Standard Library from your MODELICAPATH."
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "modelica.loadLibrary",
+          "when": "view == modelica.libraries",
+          "group": "navigation@1"
+        },
+        {
+          "command": "modelica.createPackage",
+          "when": "view == modelica.libraries",
+          "group": "navigation@2"
+        },
+        {
+          "command": "modelica.createComponent",
+          "when": "view == modelica.libraries",
+          "group": "navigation@3"
+        },
+        {
+          "command": "modelica.tree.refresh",
+          "when": "view == modelica.libraries",
+          "group": "navigation@4"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "modelica.createPackage",
+          "when": "view == modelica.libraries && viewItem =~ /^modelica-(library|package)$/",
+          "group": "1_create@1"
+        },
+        {
+          "command": "modelica.createComponent",
+          "when": "view == modelica.libraries && viewItem =~ /^modelica-(library|package)$/",
+          "group": "1_create@2"
+        },
+        {
+          "command": "modelica.viewSource",
+          "when": "view == modelica.libraries && viewItem != modelica-library",
+          "group": "1_open@1"
+        },
+        {
+          "command": "modelica.savePackage",
+          "when": "view == modelica.libraries && viewItem =~ /^modelica-(library|package)$/",
+          "group": "2_persist@1"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "modelica.openDiagramFromSource",
+          "when": "resourceScheme == modelica-source",
+          "group": "navigation@1"
+        },
+        {
+          "command": "modelica.viewSource",
+          "when": "activeWebviewPanelId == modelicaDiagram",
+          "group": "navigation@1"
+        }
+      ]
+    },
     "configuration": {
       "title": "Modelica",
       "properties": {
@@ -48,7 +166,8 @@
   },
   "dependencies": {
     "@modelica-wrapper/diagram-ui": "workspace:*",
-    "@modelica-wrapper/omc-client": "workspace:*"
+    "@modelica-wrapper/omc-client": "workspace:*",
+    "zeromq": "^6.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

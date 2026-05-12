@@ -106,6 +106,9 @@ importers:
       '@modelica-wrapper/omc-client':
         specifier: workspace:*
         version: link:../omc-client
+      zeromq:
+        specifier: ^6.1.0
+        version: 6.5.0
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

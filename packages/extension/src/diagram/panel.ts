@@ -23,10 +23,18 @@ export interface DiagramPanelHandlers {
 
 export class DiagramPanel {
   private static readonly panels = new Map<string, DiagramPanel>();
+  /** Most-recently active diagram panel — used by toolbar toggle commands
+   *  that don't receive an argument. */
+  private static activePanel: DiagramPanel | undefined;
   private readonly panel: vscode.WebviewPanel;
   private readonly disposables: vscode.Disposable[] = [];
   private ready = false;
   private pendingInit: ExtensionToWebview | null = null;
+
+  /** Class name of the currently active diagram, or undefined if none. */
+  static activeClassName(): string | undefined {
+    return DiagramPanel.activePanel?.className;
+  }
 
   private constructor(
     private readonly className: string,
@@ -48,7 +56,17 @@ export class DiagramPanel {
     this.disposables.push(
       this.panel.webview.onDidReceiveMessage((m) => this.handleMessage(m)),
     );
+    this.disposables.push(
+      this.panel.onDidChangeViewState((e) => {
+        if (e.webviewPanel.active) {
+          DiagramPanel.activePanel = this;
+        } else if (DiagramPanel.activePanel === this) {
+          DiagramPanel.activePanel = undefined;
+        }
+      }),
+    );
     this.disposables.push(this.panel.onDidDispose(() => this.dispose()));
+    DiagramPanel.activePanel = this;
     this.pendingInit = {
       type: "init",
       layout: this.layout,
@@ -85,6 +103,9 @@ export class DiagramPanel {
 
   dispose(): void {
     DiagramPanel.panels.delete(this.className);
+    if (DiagramPanel.activePanel === this) {
+      DiagramPanel.activePanel = undefined;
+    }
     for (const d of this.disposables) {
       try {
         d.dispose();

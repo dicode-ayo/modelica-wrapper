@@ -3,6 +3,20 @@ import * as esbuild from "esbuild";
 const watch = process.argv.includes("--watch");
 
 /**
+ * Emits `[watch] build started` / `[watch] build finished` markers that the
+ * VSCode `tasks.json` problemMatcher uses to track rebuilds. esbuild prints
+ * "build finished" itself but no matching start line.
+ */
+const watchMarkers = {
+  name: "watch-markers",
+  setup(build) {
+    build.onStart(() => {
+      console.log("[watch] build started");
+    });
+  },
+};
+
+/**
  * Two-bundle build:
  *
  *   1. extension.js  — Node.js host code (CommonJS, externals for
@@ -25,6 +39,7 @@ const extensionConfig = {
   format: "cjs",
   sourcemap: true,
   logLevel: "info",
+  plugins: watch ? [watchMarkers] : [],
 };
 
 /** @type {import('esbuild').BuildOptions} */
@@ -40,6 +55,7 @@ const webviewConfig = {
   loader: {
     ".json": "json",
   },
+  plugins: watch ? [watchMarkers] : [],
 };
 
 if (watch) {
