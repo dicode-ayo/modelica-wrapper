@@ -39,8 +39,8 @@ export async function activate(
 
   const sourceProvider = new ModelicaSourceProvider(ensureClient);
 
-  // One DiagnosticCollection shared by the live-check pipeline (per-file
-  // updates). Reused by upcoming user-triggered Check Model command.
+  // One DiagnosticCollection shared by the user-triggered Check Model command
+  // (clear-all + replace) and the live-check pipeline (per-file updates).
   const diagnostics = vscode.languages.createDiagnosticCollection("modelica");
 
   context.subscriptions.push(
