@@ -20,6 +20,8 @@ export interface CommandContext {
   /** Virtual `modelica-source:` file-system provider; commands fire `notifySourceChanged(typeName)`
    *  after mutations to invalidate any open editors backed by this scheme. */
   readonly sourceProvider: ModelicaSourceProvider;
+  /** Shared `vscode.DiagnosticCollection("modelica")` for OMC-emitted diagnostics. */
+  readonly diagnostics: vscode.DiagnosticCollection;
 }
 
 /**

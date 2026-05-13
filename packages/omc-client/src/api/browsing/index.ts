@@ -18,6 +18,7 @@ export * from "./getInheritedClasses.js";
 export * from "./getUses.js";
 export * from "./existClass.js";
 export * from "./getErrorString.js";
+export * from "./getMessagesStringInternal.js";
 export * from "./existModel.js";
 export * from "./existPackage.js";
 export * from "./getClassRestriction.js";

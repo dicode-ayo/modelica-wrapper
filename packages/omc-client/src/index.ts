@@ -22,6 +22,12 @@
 // --- Class API ---
 export { OmcClient, type OmcClientOptions } from "./client.js";
 
+// --- Diagnostic record types (re-exported for VSCode-side mappers) ---
+export {
+  ErrorMessageSchema,
+  type ErrorMessage,
+} from "./api/browsing/getMessagesStringInternal.js";
+
 // --- Generic dispatcher with runtime input + output validation ---
 export {
   REGISTRY,

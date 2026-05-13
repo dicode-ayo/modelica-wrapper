@@ -10,9 +10,13 @@
  *     {a, b, c}                       ListV (brace list)
  *     ("x", 1, true)                  ListV (paren tuple — same TS type)
  *     Modelica.Blocks.Math.Sin        IdentV
+ *     .OpenModelica.Scripting.X.tag   IdentV (leading-dot fully-qualified names; enum literals)
  *     $Any / $Code                    IdentV (OMC builtin names start with `$`)
  *     Polygon(true, {0,0}, ...)       CallV (used inside icon annotations)
  *     rec(name=value, ...)            CallV with KwargV entries (getElementsInfo)
+ *     record Name field=v, ... end Name;   CallV with name=Name and KwargV entries
+ *                                          (legacy diagnostic-only record syntax used
+ *                                          by `getMessagesStringInternal`)
  *     -      (between commas)         NullV
  *
  * Brace lists and paren tuples are both represented as `list`; consumers
@@ -20,11 +24,11 @@
  *
  * Coverage: tracks OMPython's `OMTypedParser.py` (the de-facto authoritative
  * parser; OMC's interactive RPC grammar is not formally documented). We are
- * wider than OMTypedParser on `$`-idents, free-floating kwargs in parens, and
- * bare-`-` null sentinels — productions OMC actually emits. Known gaps,
- * deferred until a caller demands them:
+ * wider than OMTypedParser on `$`-idents, free-floating kwargs in parens,
+ * bare-`-` null sentinels, leading-dot qualified idents, and `record … end Name;`
+ * blocks — productions OMC actually emits. Known gaps, deferred until a caller
+ * demands them:
  *   - `$Code(= expr)` literals (modifier round-trips with code-quoted exprs)
- *   - `record Name … end Name;` blocks (older diagnostic-only paths)
  */
 
 export type Value =
@@ -89,6 +93,9 @@ class Parser {
     if (c === "'") return this.parseQuotedIdent();
     if (c === "{") return this.parseSeq("{", "}");
     if (c === "(") return this.parseSeq("(", ")");
+    // Leading-dot qualified ident: `.OpenModelica.Scripting.ErrorKind.syntax`.
+    // OMC emits these for fully-qualified enum literals in diagnostic records.
+    if (c === ".") return this.parseIdentOrCall();
 
     if (c === "-" || c === "+" || (c >= "0" && c <= "9")) {
       if (c === "-" && this.isNullDash()) {
@@ -98,9 +105,104 @@ class Parser {
       return this.parseNumber();
     }
 
-    if (isIdentStart(c)) return this.parseIdentOrCall();
+    if (isIdentStart(c)) {
+      // The keyword `record` opens a block `record <Name> kw=v, ... end <Name>;`
+      // which OMC uses for legacy diagnostic-record responses (e.g.
+      // `getMessagesStringInternal`). Detect it before the generic ident path.
+      if (this.peekKeyword("record")) {
+        return this.parseRecordBlock();
+      }
+      return this.parseIdentOrCall();
+    }
 
     throw new Error(`unexpected char ${JSON.stringify(c)} at pos ${this.pos}`);
+  }
+
+  /** True if the next token at `pos` is the bare keyword `kw` (followed by whitespace). */
+  private peekKeyword(kw: string): boolean {
+    if (this.src.slice(this.pos, this.pos + kw.length) !== kw) return false;
+    const after = this.src[this.pos + kw.length];
+    if (after === undefined) return false;
+    // Keyword boundary: whitespace or end. Any ident-continuation char means
+    // this is just an ident that happens to start with `record…`.
+    return (
+      after === " " ||
+      after === "\t" ||
+      after === "\n" ||
+      after === "\r" ||
+      after === "\v" ||
+      after === "\f"
+    );
+  }
+
+  /**
+   * Parse `record <DottedName> kw=v, kw=v, ... end <DottedName>;` and return
+   * a `call` Value whose name is the record's type name and whose args are
+   * the kwarg entries — i.e. the same shape we'd produce for `Name(kw=v,...)`.
+   *
+   * Trailing semicolons are tolerated; the closing `end <Name>;` consumes its
+   * terminator if present so the parent list/kwarg sees a clean boundary.
+   */
+  private parseRecordBlock(): Value {
+    // Consume `record`.
+    this.pos += "record".length;
+    this.skipSpace();
+    // Parse the record type name (dotted ident, possibly leading-dot).
+    const typeName = this.readDottedName();
+    this.skipSpace();
+    const kwargs: Value[] = [];
+    while (this.pos < this.src.length) {
+      this.skipSpace();
+      // `end <Name>;` terminates the block.
+      if (this.peekKeyword("end")) {
+        this.pos += "end".length;
+        this.skipSpace();
+        // Consume (and ignore) the closing type name.
+        this.readDottedName();
+        this.skipSpace();
+        // Optional trailing semicolon.
+        if (this.src[this.pos] === ";") this.pos++;
+        return { kind: "call", name: typeName, args: kwargs };
+      }
+      // Each entry: `<ident> = <value>` optionally followed by `,`.
+      const fieldName = this.readDottedName();
+      if (fieldName === "") {
+        throw new Error(`expected field name at ${this.pos} inside record block`);
+      }
+      this.skipSpace();
+      if (this.src[this.pos] !== "=") {
+        throw new Error(
+          `expected '=' after record field ${JSON.stringify(fieldName)} at ${this.pos}`,
+        );
+      }
+      this.pos++;
+      const rhs = this.value();
+      kwargs.push({ kind: "kwarg", name: fieldName, value: rhs });
+      this.skipSpace();
+      if (this.src[this.pos] === ",") {
+        this.pos++;
+        continue;
+      }
+      // No comma — next iteration should hit `end` or another field.
+    }
+    throw new Error("unterminated record block (missing `end <Name>;`)");
+  }
+
+  /**
+   * Read a possibly-leading-dot dotted ident (e.g. `foo`, `Modelica.Blocks.M.Gain`,
+   * `.OpenModelica.Scripting.ErrorKind.syntax`). Returns the raw text including
+   * the leading dot, if any. Caller is responsible for trimming if needed.
+   */
+  private readDottedName(): string {
+    const start = this.pos;
+    if (this.src[this.pos] === ".") this.pos++;
+    while (this.pos < this.src.length) {
+      const c = this.src[this.pos]!;
+      if (isIdentPart(c) || c === ".") {
+        this.pos++;
+      } else break;
+    }
+    return this.src.slice(start, this.pos);
   }
 
   /** Returns true if `-` at pos is the null sentinel (followed by `,` `}` `)`). */
@@ -266,6 +368,9 @@ class Parser {
 
   private parseIdentOrCall(): Value {
     const start = this.pos;
+    // Allow a single leading `.` for fully-qualified names like
+    // `.OpenModelica.Scripting.ErrorKind.syntax`.
+    if (this.src[this.pos] === ".") this.pos++;
     while (this.pos < this.src.length) {
       const c = this.src[this.pos]!;
       if (isIdentPart(c) || c === ".") {
