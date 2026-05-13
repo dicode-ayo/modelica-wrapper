@@ -198,6 +198,91 @@ describe("parse: quoted identifiers (Q-IDENT, Modelica spec §2.3.1)", () => {
   });
 });
 
+describe("parse: leading-dot qualified idents", () => {
+  it("parses a fully-qualified enum literal as a single ident", () => {
+    expect(parse(`.OpenModelica.Scripting.ErrorKind.syntax`)).toEqual({
+      kind: "ident",
+      name: ".OpenModelica.Scripting.ErrorKind.syntax",
+    });
+  });
+
+  it("preserves leading-dot idents inside a brace list", () => {
+    const v = parse(`{.A.B.C, 1}`);
+    if (v.kind !== "list") throw new Error("expected list");
+    expect(v.items[0]).toEqual({ kind: "ident", name: ".A.B.C" });
+    expect(v.items[1]).toEqual({ kind: "int", value: 1 });
+  });
+});
+
+describe("parse: record blocks (legacy diagnostic syntax)", () => {
+  it("parses a flat record into a call with kwargs", () => {
+    const src = `record OpenModelica.Scripting.SourceInfo
+    filename = "x.mo",
+    readonly = false,
+    lineStart = 3,
+    columnStart = 3,
+    lineEnd = 3,
+    columnEnd = 3
+end OpenModelica.Scripting.SourceInfo;`;
+    const v = parse(src);
+    expect(v.kind).toBe("call");
+    if (v.kind !== "call") throw new Error("unreachable");
+    expect(v.name).toBe("OpenModelica.Scripting.SourceInfo");
+    const names = v.args
+      .filter((a) => a.kind === "kwarg")
+      .map((a) => (a.kind === "kwarg" ? a.name : ""));
+    expect(names).toEqual([
+      "filename",
+      "readonly",
+      "lineStart",
+      "columnStart",
+      "lineEnd",
+      "columnEnd",
+    ]);
+  });
+
+  it("parses a nested record (info field holding a SourceInfo record)", () => {
+    const src = `{record OpenModelica.Scripting.ErrorMessage
+    info = record OpenModelica.Scripting.SourceInfo
+    filename = "mw-probe-syntax.mo",
+    readonly = false,
+    lineStart = 3,
+    columnStart = 3,
+    lineEnd = 3,
+    columnEnd = 3
+end OpenModelica.Scripting.SourceInfo;,
+    message = "Missing token: SEMICOLON",
+    kind = .OpenModelica.Scripting.ErrorKind.syntax,
+    level = .OpenModelica.Scripting.ErrorLevel.error,
+    id = 2
+end OpenModelica.Scripting.ErrorMessage;}`;
+    const v = parse(src);
+    if (v.kind !== "list") throw new Error("expected outer list");
+    expect(v.items).toHaveLength(1);
+    const rec = v.items[0]!;
+    if (rec.kind !== "call") throw new Error("expected call");
+    expect(rec.name).toBe("OpenModelica.Scripting.ErrorMessage");
+    const message = rec.args.find(
+      (a) => a.kind === "kwarg" && a.name === "message",
+    );
+    expect(message).toEqual({
+      kind: "kwarg",
+      name: "message",
+      value: { kind: "string", value: "Missing token: SEMICOLON" },
+    });
+    const kindKw = rec.args.find((a) => a.kind === "kwarg" && a.name === "kind");
+    if (!kindKw || kindKw.kind !== "kwarg") throw new Error("missing kind");
+    expect(kindKw.value).toEqual({
+      kind: "ident",
+      name: ".OpenModelica.Scripting.ErrorKind.syntax",
+    });
+    const info = rec.args.find((a) => a.kind === "kwarg" && a.name === "info");
+    if (!info || info.kind !== "kwarg") throw new Error("missing info");
+    if (info.value.kind !== "call") throw new Error("info value not a call");
+    expect(info.value.name).toBe("OpenModelica.Scripting.SourceInfo");
+  });
+});
+
 describe("parse: real OMC fixtures", () => {
   it("parses captured getElements response", () => {
     const v = parse(getElementsFixture);

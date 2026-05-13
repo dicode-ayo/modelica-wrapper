@@ -223,6 +223,69 @@ describeIf("OMC LSP-feasibility probe", () => {
       }
 
       // -------------------------------------------------------------------
+      // Probe 2b — URI-filename roundtrip
+      //
+      // Hand `loadString` a `modelica-source:/X.mo` URI as the pseudo-
+      // filename and inspect what comes back via
+      // `getMessagesStringInternal().messages[0].info.filename`. The
+      // extension passes a URI string when the user is editing a virtual
+      // `modelica-source:` document and expects to be able to look it up
+      // again on the diagnostic so squiggles render in the editor.
+      //
+      // Two outcomes:
+      //   (A) OMC echoes the URI verbatim → exact-match resolver works.
+      //   (B) OMC strips/transforms (e.g. takes last path segment, treats
+      //       `:` as a delimiter, URL-encodes the colon) → we need a
+      //       prefix-detect / reverse-map strategy in the resolver.
+      // -------------------------------------------------------------------
+      // eslint-disable-next-line no-console
+      console.log("--- Probe 2b: modelica-source: URI filename roundtrip ---");
+      {
+        const uriFilename = "modelica-source:/MwUriProbe.mo";
+        const src = brokenSamples[0].src
+          .replace(/MwProbeSyntax/g, "MwUriProbe");
+        const escaped = src
+          .replace(/\\/g, "\\\\")
+          .replace(/"/g, '\\"')
+          .replace(/\n/g, "\\n");
+
+        // Drain stale diagnostics, then trigger a fresh syntax error, then
+        // read getMessagesStringInternal FIRST (it preserves the buffer);
+        // getErrorString last because it drains.
+        await client.getErrorString();
+        await client.call(
+          `loadString("${escaped}", "${uriFilename}")` as OmcCommand,
+        );
+
+        let echoedFilename = "(no messages)";
+        try {
+          const { messages } = await client.getMessagesStringInternal();
+          if (messages.length > 0) {
+            echoedFilename = messages[0].info.filename;
+          }
+        } catch (err) {
+          echoedFilename = `(getMessagesStringInternal threw: ${(err as Error).message})`;
+        }
+        const { errorString: loadErr } = await client.getErrorString();
+
+        const verbatim = echoedFilename === uriFilename;
+        // eslint-disable-next-line no-console
+        console.log(`• input  filename: ${uriFilename}`);
+        // eslint-disable-next-line no-console
+        console.log(`• echoed filename: ${echoedFilename}`);
+        // eslint-disable-next-line no-console
+        console.log(
+          `• verbatim roundtrip: ${verbatim ? "YES — scenario (A)" : "NO  — scenario (B), extension needs prefix-detect resolver"}`,
+        );
+        // eslint-disable-next-line no-console
+        console.log(
+          `  loadString err: ${loadErr.length === 0 ? "(none)" : truncate(loadErr, 320)}`,
+        );
+        // eslint-disable-next-line no-console
+        console.log("");
+      }
+
+      // -------------------------------------------------------------------
       // Probe 3 — position-aware semantic queries
       //
       // Confirm what source provenance OMC gives us for a known class and
@@ -322,6 +385,7 @@ describeIf("OMC LSP-feasibility probe", () => {
         "MwProbeUndef",
         "MwProbeType",
         "MwProbeMulti",
+        "MwUriProbe",
         "M",
       ]) {
         await client.call(`deleteClass(${cls})` as OmcCommand).catch(() => {});

@@ -1,0 +1,91 @@
+/**
+ * Tiny `vscode` stand-in for vitest unit tests. The real `vscode` module is
+ * only available inside the extension host; for pure-logic tests we alias
+ * imports of "vscode" to this file via `vitest.config.ts`.
+ *
+ * Only the surface area exercised by the unit tests is filled in. Add more
+ * stubs here as new tests need them — keep them minimal and observable.
+ */
+
+export enum DiagnosticSeverity {
+  Error = 0,
+  Warning = 1,
+  Information = 2,
+  Hint = 3,
+}
+
+export class Position {
+  constructor(
+    public readonly line: number,
+    public readonly character: number,
+  ) {}
+}
+
+export class Range {
+  public readonly start: Position;
+  public readonly end: Position;
+  constructor(
+    startLineOrPos: number | Position,
+    startCharOrEndPos: number | Position,
+    endLine?: number,
+    endChar?: number,
+  ) {
+    if (startLineOrPos instanceof Position) {
+      this.start = startLineOrPos;
+      this.end = startCharOrEndPos as Position;
+    } else {
+      this.start = new Position(startLineOrPos, startCharOrEndPos as number);
+      this.end = new Position(endLine ?? 0, endChar ?? 0);
+    }
+  }
+}
+
+export class Diagnostic {
+  source?: string;
+  code?: string | number;
+  constructor(
+    public range: Range,
+    public message: string,
+    public severity: DiagnosticSeverity = DiagnosticSeverity.Error,
+  ) {}
+}
+
+class UriImpl {
+  private constructor(
+    public readonly scheme: string,
+    public readonly authority: string,
+    public readonly path: string,
+    public readonly query: string,
+    public readonly fragment: string,
+  ) {}
+
+  static file(fsPath: string): UriImpl {
+    return new UriImpl("file", "", fsPath, "", "");
+  }
+
+  static parse(value: string): UriImpl {
+    // Minimal scheme://path parser sufficient for our tests; full
+    // RFC-3986 handling isn't needed because callers pass simple
+    // `scheme:/path` forms.
+    const schemeIdx = value.indexOf(":");
+    if (schemeIdx === -1) return new UriImpl("file", "", value, "", "");
+    const scheme = value.slice(0, schemeIdx);
+    let rest = value.slice(schemeIdx + 1);
+    let authority = "";
+    if (rest.startsWith("//")) {
+      const end = rest.indexOf("/", 2);
+      authority = end === -1 ? rest.slice(2) : rest.slice(2, end);
+      rest = end === -1 ? "" : rest.slice(end);
+    }
+    return new UriImpl(scheme, authority, rest, "", "");
+  }
+
+  toString(): string {
+    return this.authority
+      ? `${this.scheme}://${this.authority}${this.path}`
+      : `${this.scheme}:${this.path}`;
+  }
+}
+
+export const Uri = UriImpl;
+export type Uri = UriImpl;

@@ -3,8 +3,8 @@
 Tracks which functions in [`src/registry.ts`](../src/registry.ts) are exercised by integration tests against a real OMC, plus the reasons each uncovered function isn't yet tested.
 
 **Pinned OMC version:** `1.26.7` (see [`../src/version.ts`](../src/version.ts)). Drift probe re-run on 2026-05-06 against a freshly-upgraded local 1.26.7; the 5 ⛔ wrappers remain identically broken — these are not 1.26.1-specific quirks but a permanent gap in OMC 1.26.x's interactive scripting surface.
-**Last updated:** 2026-05-07.
-**Current coverage:** 76 / 130 functions (58%).
+**Last updated:** 2026-05-12.
+**Current coverage:** 78 / 132 functions (59%).
 
 > Run `pnpm --filter @modelica-wrapper/omc-client test` to exercise the integration suite. It auto-skips when `omc` isn't on PATH.
 
@@ -28,7 +28,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 
 ---
 
-## Browsing — 17/24
+## Browsing — 18/25
 
 ### Original 10 (all ✅ verified)
 
@@ -44,6 +44,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `getUses` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getUses.html) |
 | `existClass` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.existClass.html) |
 | `getErrorString` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getErrorString.html) |
+| `getMessagesStringInternal` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getMessagesStringInternal.html) — structured `ErrorMessage[]` (file/line/col + kind/level/message), used by the extension's Check Model + auto-check diagnostic flows. |
 
 ### New 14 predicates (mostly 🟡)
 
@@ -94,7 +95,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `getDefaultComponentPrefixes` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getDefaultComponentPrefixes.html) |
 | `getComponentComment` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getComponentComment.html) |
 
-## Lifecycle — 12/16
+## Lifecycle — 13/17
 
 | Function | Status | Docs | Notes |
 |---|---|---|---|
@@ -102,6 +103,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `loadString` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.loadString.html) | Used by every fixture; verified through fixture creation. |
 | `loadModel` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.loadModel.html) | |
 | `parseFile` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.parseFile.html) | |
+| `parseString` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.parseString.html) | Used by extension's live-check pipeline — parses source text without polluting the symbol table. |
 | `createClass` | ⛔ | 404 | **Confirmed missing on OMC 1.26.x** — probe verdicts identical on 1.26.1 and 1.26.7 (`Class createClass not found in scope <global scope>`). Wrapper marked `@deprecated` with migration guidance to `loadString`. |
 | `createSubClass` | ⛔ | 404 | **Confirmed missing on OMC 1.26.x**. Same migration path as `createClass`. |
 | `renameClass` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.renameClass.html) | Output schema fixed to `{ result: string[] }` per OMC docs. |
@@ -224,9 +226,9 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 
 | Category | Covered | Total | Notes |
 |---|---|---|---|
-| Browsing | 17 | 24 | All Tier 4 predicates wired; common predicates verified, niche ones 🟡 |
+| Browsing | 18 | 25 | All Tier 4 predicates wired; common predicates verified, niche ones 🟡; structured `getMessagesStringInternal` added for positioned diagnostics. |
 | Reading model contents | 14 | 21 | Tier 1 modern read path + Tier 5 connector helpers added; both `getModelInstance` and `getModelInstanceAnnotation` validated live each test run (the structured-AST endpoint replaces the per-call diagram assembly) |
-| Lifecycle | 12 | 16 | 4 ⛔ — `createClass`, `createSubClass`, `moveClass` (cross-package relocate only), and `save` (deprecated). The two in-place reorderers `moveClassToTop`/`moveClassToBottom` work despite `moveClass` being missing — found via the drift probe. |
+| Lifecycle | 13 | 17 | 4 ⛔ — `createClass`, `createSubClass`, `moveClass` (cross-package relocate only), and `save` (deprecated). The two in-place reorderers `moveClassToTop`/`moveClassToBottom` work despite `moveClass` being missing — found via the drift probe. |
 | Parameters & modifiers | 5 | 11 | 1 ⛔ (`removeComponentModifiers`, confirmed missing), `getParameterNames` ✅, mutations 🟡 |
 | Editing | 10 | 15 | 1 ⛔ (`updateConnection`, confirmed missing), 4 🟡 (state-machine fixture for transitions; new `setClassComment`/`setDocumentationAnnotation` need throwaway fixtures) |
 | Elements | 2 | 11 | New category — modern `Component*` generalization. Two readers smoke-tested; mutations 🟡 |
@@ -234,7 +236,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | Solver / runtime config | 8 | 8 | All verified |
 | Execution | 3 | 9 | 6 🐢 deferred to a heavy-test gate |
 | Results | 0 | 5 | All 📦 — wire with the heavy execution tests |
-| **Total** | **76** | **130** | **58%** |
+| **Total** | **78** | **132** | **59%** |
 
 ---
 
