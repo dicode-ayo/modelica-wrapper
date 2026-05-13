@@ -126,13 +126,18 @@ async function runCheck(
     if (state.token !== capturedToken) return;
 
     // Drain pre-existing diagnostics so what we read after parseString /
-    // checkModel reflects this run only.
+    // checkModel reflects this run only. Both `getErrorString` and
+    // `getMessagesStringInternal` are destructive reads — they clear OMC's
+    // message buffer on call. We rely on `getMessagesStringInternal` as the
+    // single read point per stage so the structured records survive.
     await client.getErrorString();
     if (state.token !== capturedToken) return;
 
     // Syntax-only check first — `parseString` does NOT mutate the loaded
     // AST, so we can use it to detect malformed buffers without disturbing
-    // OMC's state.
+    // OMC's state. Read the structured messages directly; do NOT call
+    // `getErrorString` between parseString and the read, or the buffer
+    // is drained before `getMessagesStringInternal` can see it.
     const messages: ErrorMessage[] = [];
     try {
       await client.parseString({ data: text, filename });
@@ -140,11 +145,12 @@ async function runCheck(
       log.error("liveCheck", "parseString failed", err);
     }
     if (state.token !== capturedToken) return;
-    const parseErr = await client.getErrorString();
-    if (parseErr.errorString.length > 0) {
-      const { messages: m } = await client.getMessagesStringInternal();
-      messages.push(...m);
-    } else {
+    const { messages: parseMessages } = await client.getMessagesStringInternal();
+    messages.push(...parseMessages);
+    const hasParseError = parseMessages.some(
+      (m) => m.level === "error" || m.level === "internal",
+    );
+    if (!hasParseError) {
       // Syntax-clean — load into OMC and run the semantic check.
       try {
         await client.loadString({ data: text, filename });
@@ -168,10 +174,15 @@ async function runCheck(
         }
       }
       if (state.token !== capturedToken) return;
-      const { messages: m } = await client.getMessagesStringInternal();
-      messages.push(...m);
+      const { messages: semanticMessages } =
+        await client.getMessagesStringInternal();
+      messages.push(...semanticMessages);
     }
     if (state.token !== capturedToken) return;
+    log.info(
+      "liveCheck",
+      `${uri.toString()} → ${messages.length} message${messages.length === 1 ? "" : "s"}`,
+    );
 
     // Per-file replace. Map every OMC filename back to THIS uri when it
     // matches the pseudo-name we passed to parseString/loadString; that
