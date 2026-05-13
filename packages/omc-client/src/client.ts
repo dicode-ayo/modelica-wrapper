@@ -566,6 +566,10 @@ export class OmcClient implements CallContext {
     return lifecycle.save(this, input);
   }
 
+  cd(input: lifecycle.CdInput = {}): Promise<lifecycle.CdOutput> {
+    return lifecycle.cd(this, input);
+  }
+
   // === Parameters & modifiers ==========================================
 
   getParameterValue(

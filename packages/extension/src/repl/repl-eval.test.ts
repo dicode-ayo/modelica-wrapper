@@ -17,10 +17,13 @@ interface FakeClient {
   client: OmcClient;
   calls: string[];
   loadFileCalls: string[];
+  cdCalls: string[];
   /** Push a string here to make the next `getErrorString()` return non-empty. */
   errorQueue: string[];
   /** Replies for `call()` keyed by command — falls back to "" if missing. */
   callReplies: Map<string, string>;
+  /** Replies for `cd({ newWorkingDirectory })` keyed by input path. */
+  cdReplies: Map<string, string>;
   /** Replies for `loadFile()` — defaults to success=true. */
   loadFileSuccess: boolean;
   loadFileError?: string;
@@ -29,13 +32,17 @@ interface FakeClient {
 function makeClient(opts: { loadFileSuccess?: boolean } = {}): FakeClient {
   const calls: string[] = [];
   const loadFileCalls: string[] = [];
+  const cdCalls: string[] = [];
   const errorQueue: string[] = [];
   const callReplies = new Map<string, string>();
+  const cdReplies = new Map<string, string>();
   const state: FakeClient = {
     calls,
     loadFileCalls,
+    cdCalls,
     errorQueue,
     callReplies,
+    cdReplies,
     loadFileSuccess: opts.loadFileSuccess ?? true,
     client: undefined as unknown as OmcClient,
   };
@@ -54,6 +61,11 @@ function makeClient(opts: { loadFileSuccess?: boolean } = {}): FakeClient {
         errorQueue.push(state.loadFileError);
       }
       return { success: state.loadFileSuccess };
+    },
+    async cd({ newWorkingDirectory }: { newWorkingDirectory?: string } = {}) {
+      const arg = newWorkingDirectory ?? "";
+      cdCalls.push(arg);
+      return { workingDirectory: cdReplies.get(arg) ?? "" };
     },
     async close() {
       /* no-op */
@@ -184,19 +196,21 @@ describe("evalLine — meta commands", () => {
     expect(result.output).toContain(":load requires a path");
   });
 
-  it(":cd <path> forwards a raw cd(\"...\") call and returns the new cwd", async () => {
+  it(":cd <path> routes through the typed cd wrapper and returns the new cwd", async () => {
     const fake = makeClient();
-    fake.callReplies.set('cd("/tmp")', '"/tmp"');
+    fake.cdReplies.set("/tmp", "/tmp");
     const { deps } = makeDeps(fake.client);
     const result = await evalLine(":cd /tmp", deps);
-    expect(fake.calls).toEqual(['cd("/tmp")']);
+    expect(fake.cdCalls).toEqual(["/tmp"]);
+    // Must NOT have used the raw call path for our own constructed command.
+    expect(fake.calls).toHaveLength(0);
     expect(result.output).toBe("/tmp");
     expect(result.isError).toBe(false);
   });
 
-  it(":cd reports an error when OMC returns an empty cwd", async () => {
+  it(":cd reports an error when the cd wrapper returns an empty cwd", async () => {
     const fake = makeClient();
-    fake.callReplies.set('cd("/nope")', '""');
+    fake.cdReplies.set("/nope", "");
     fake.errorQueue.push("Error: Cannot change directory");
     const { deps } = makeDeps(fake.client);
     const result = await evalLine(":cd /nope", deps);

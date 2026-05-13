@@ -87,6 +87,7 @@ export type OmcFunction =
   | "setSourceFile"
   | "diffModelicaFileListings"
   | "save"
+  | "cd"
 
   // --- Parameters & modifiers ---
   | "getParameterValue"

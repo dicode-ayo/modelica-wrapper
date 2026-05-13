@@ -12,9 +12,11 @@
  * the same step (e.g. typing a malformed expression). We separately mark
  * the result as `isError: true` so the terminal can pick a color.
  *
- * Note: `:cd <path>` uses a raw `call('cd("...")')` because `OmcClient`
- * does not expose a dedicated `cd` wrapper today; if/when one lands, this
- * call can switch over without a behavioural change.
+ * Project rule: every OMC call constructed by this module must go through
+ * a typed wrapper on `OmcClient`. The bare `client.call(rawLine)` below is
+ * the one legitimate exception — it forwards free-form user input that we
+ * cannot pre-wrap. Meta-commands (`:load`, `:cd`, `:reset`, …) are our own
+ * code and use the typed surface (`client.loadFile`, `client.cd`, etc).
  */
 
 import type { OmcClient } from "@modelica-wrapper/omc-client";
@@ -176,26 +178,24 @@ async function metaCd(
   }
   try {
     const client = await deps.ensureClient();
-    // OMC's `cd("<path>")` returns the new working directory (or empty
-    // string on failure). No dedicated wrapper exists on OmcClient, so
-    // we route through `call()` directly. Quote characters in the path
-    // are escaped defensively.
-    const escaped = arg.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-    // `cd` isn't in the registered OmcFunction enum (it's an interactive
-    // scripting builtin), so the template literal doesn't match the
-    // typed `OmcCommand` union — cast through.
-    const reply = stripTrailingNewline(
-      await client.call(`cd("${escaped}")` as OmcCommand),
-    );
-    const newCwd = stripSurroundingQuotes(reply);
-    if (newCwd.length === 0) {
+    // Route through the typed wrapper. OMC's `cd` returns the new working
+    // directory (possibly normalized), or an empty string on failure on
+    // some OMC versions. On 1.26.x a bad path is a silent no-op that
+    // returns the prior cwd — distinguishing that from success would
+    // require comparing to the pre-call cwd, which isn't worth the cost
+    // for an interactive command. We treat empty-string output as the
+    // only "failed" signal here.
+    const { workingDirectory } = await client.cd({
+      newWorkingDirectory: arg,
+    });
+    if (workingDirectory.length === 0) {
       const { errorString } = await client.getErrorString();
       return {
         output: `error: cd failed${errorString ? `: ${errorString}` : ""}`,
         isError: true,
       };
     }
-    return { output: newCwd, isError: false };
+    return { output: workingDirectory, isError: false };
   } catch (err) {
     return {
       output: `error: ${(err as Error).message}`,
@@ -218,13 +218,6 @@ async function metaReset(deps: ReplDependencies): Promise<ReplResult> {
 
 function stripTrailingNewline(s: string): string {
   return s.replace(/\r?\n+$/, "");
-}
-
-function stripSurroundingQuotes(s: string): string {
-  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
-    return s.slice(1, -1);
-  }
-  return s;
 }
 
 /**

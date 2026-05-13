@@ -145,6 +145,7 @@ export const REGISTRY = {
   setSourceFile: entry("lifecycle", lifecycle.setSourceFile, lifecycle.SetSourceFileInputSchema, lifecycle.SetSourceFileOutputSchema, lifecycle.SetSourceFileDescription),
   diffModelicaFileListings: entry("lifecycle", lifecycle.diffModelicaFileListings, lifecycle.DiffModelicaFileListingsInputSchema, lifecycle.DiffModelicaFileListingsOutputSchema, lifecycle.DiffModelicaFileListingsDescription),
   save: entry("lifecycle", lifecycle.save, lifecycle.SaveInputSchema, lifecycle.SaveOutputSchema, lifecycle.SaveDescription),
+  cd: entry("lifecycle", lifecycle.cd, lifecycle.CdInputSchema, lifecycle.CdOutputSchema, lifecycle.CdDescription),
 
   // --- Parameters & modifiers ---
   getParameterValue: entry("parameters", parameters.getParameterValue, parameters.GetParameterValueInputSchema, parameters.GetParameterValueOutputSchema, parameters.GetParameterValueDescription),

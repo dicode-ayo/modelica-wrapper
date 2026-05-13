@@ -4,7 +4,7 @@ Tracks which functions in [`src/registry.ts`](../src/registry.ts) are exercised 
 
 **Pinned OMC version:** `1.26.7` (see [`../src/version.ts`](../src/version.ts)). Drift probe re-run on 2026-05-06 against a freshly-upgraded local 1.26.7; the 5 ⛔ wrappers remain identically broken — these are not 1.26.1-specific quirks but a permanent gap in OMC 1.26.x's interactive scripting surface.
 **Last updated:** 2026-05-12.
-**Current coverage:** 78 / 132 functions (59%).
+**Current coverage:** 79 / 133 functions (59%).
 
 > Run `pnpm --filter @modelica-wrapper/omc-client test` to exercise the integration suite. It auto-skips when `omc` isn't on PATH.
 
@@ -95,7 +95,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `getDefaultComponentPrefixes` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getDefaultComponentPrefixes.html) |
 | `getComponentComment` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getComponentComment.html) |
 
-## Lifecycle — 13/17
+## Lifecycle — 14/18
 
 | Function | Status | Docs | Notes |
 |---|---|---|---|
@@ -116,6 +116,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `setSourceFile` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setSourceFile.html) | |
 | `diffModelicaFileListings` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.diffModelicaFileListings.html) | |
 | `save` | ⛔ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.save.html) | OMEdit-deprecated; we use Option B persistence. Wrapper kept for completeness only. |
+| `cd` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.cd.html) | Get/set OMC's working directory. Empty input acts as a getter. Used by the REPL's `:cd` meta-command. |
 
 ## Parameters & modifiers — 5/11
 
@@ -228,7 +229,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 |---|---|---|---|
 | Browsing | 18 | 25 | All Tier 4 predicates wired; common predicates verified, niche ones 🟡; structured `getMessagesStringInternal` added for positioned diagnostics. |
 | Reading model contents | 14 | 21 | Tier 1 modern read path + Tier 5 connector helpers added; both `getModelInstance` and `getModelInstanceAnnotation` validated live each test run (the structured-AST endpoint replaces the per-call diagram assembly) |
-| Lifecycle | 13 | 17 | 4 ⛔ — `createClass`, `createSubClass`, `moveClass` (cross-package relocate only), and `save` (deprecated). The two in-place reorderers `moveClassToTop`/`moveClassToBottom` work despite `moveClass` being missing — found via the drift probe. |
+| Lifecycle | 14 | 18 | 4 ⛔ — `createClass`, `createSubClass`, `moveClass` (cross-package relocate only), and `save` (deprecated). The two in-place reorderers `moveClassToTop`/`moveClassToBottom` work despite `moveClass` being missing — found via the drift probe. `cd` added for the REPL's `:cd` meta-command. |
 | Parameters & modifiers | 5 | 11 | 1 ⛔ (`removeComponentModifiers`, confirmed missing), `getParameterNames` ✅, mutations 🟡 |
 | Editing | 10 | 15 | 1 ⛔ (`updateConnection`, confirmed missing), 4 🟡 (state-machine fixture for transitions; new `setClassComment`/`setDocumentationAnnotation` need throwaway fixtures) |
 | Elements | 2 | 11 | New category — modern `Component*` generalization. Two readers smoke-tested; mutations 🟡 |
@@ -236,7 +237,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | Solver / runtime config | 8 | 8 | All verified |
 | Execution | 3 | 9 | 6 🐢 deferred to a heavy-test gate |
 | Results | 0 | 5 | All 📦 — wire with the heavy execution tests |
-| **Total** | **78** | **132** | **59%** |
+| **Total** | **79** | **133** | **59%** |
 
 ---
 
