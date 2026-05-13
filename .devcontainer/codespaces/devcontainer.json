@@ -1,0 +1,31 @@
+{
+  "name": "modelica-wrapper (Codespaces preview)",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": "../.."
+  },
+  "remoteUser": "vscode",
+  "workspaceFolder": "/workspaces/modelica-wrapper",
+  "containerEnv": {
+    "OMC_PATH": "/usr/bin/omc"
+  },
+  "postCreateCommand": "bash .devcontainer/codespaces/postcreate.sh",
+  "postAttachCommand": "bash .devcontainer/codespaces/postattach.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ],
+      "settings": {
+        "modelica.omcPath": "/usr/bin/omc"
+      }
+    }
+  },
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "8gb",
+    "storage": "32gb"
+  },
+  "features": {}
+}
