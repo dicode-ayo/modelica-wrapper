@@ -2,7 +2,10 @@
  * `modelica.createClass` — single entry point for creating any kind of
  * Modelica class. Quick-picks a kind (package / model / block / connector /
  * function / record / type), prompts for a name, then loads
- * `within Parent;\n<kind> Name\nend Name;\n` via OMC.
+ * `within Parent;\n<kind> Name\nend Name;\n` via OMC. On success, the class
+ * is also materialized on disk under the workspace folder (creating any
+ * missing `package.mo` parents as needed) and OMC's symbol-table fileName
+ * is repointed at the new disk path via `setSourceFile`.
  *
  * Works from:
  *   - title bar (no parent → top-level class)
@@ -12,10 +15,13 @@
 import * as vscode from "vscode";
 
 import type { LibraryNode } from "../tree/library-tree.js";
+import {
+  linkPersistedClass,
+  persistClassUnderWorkspace,
+} from "../source-provider.js";
 
 import {
   parentFromNode,
-  runLoadString,
   validateIdentifier,
   type CommandContext,
 } from "./context.js";
@@ -51,7 +57,43 @@ export function registerClassCommands(ctx: CommandContext): vscode.Disposable[] 
         const qualified = parent ? `${parent}.${name}` : name;
         const body = `${kind} ${name}\nend ${name};\n`;
         const data = parent ? `within ${parent};\n${body}` : body;
-        await runLoadString(ctx, data, qualified, "Modelica: failed to create");
+        try {
+          const c = await ctx.ensureClient();
+          const { success } = await c.loadString({
+            data,
+            filename: `<runtime:${qualified}>`,
+            merge: true,
+          });
+          if (!success) {
+            const { errorString } = await c.getErrorString();
+            await vscode.window.showErrorMessage(
+              `Modelica: failed to create ${qualified}${errorString ? `: ${errorString}` : ""}`,
+            );
+            return;
+          }
+          const ws = vscode.workspace.workspaceFolders?.[0];
+          if (ws) {
+            // Persist to disk and rewrite OMC's fileName so subsequent
+            // saves write through to the same path.
+            const result = await persistClassUnderWorkspace(
+              c,
+              ws.uri.fsPath,
+              qualified,
+              data,
+            );
+            await linkPersistedClass(c, qualified, result);
+          } else {
+            await vscode.window.showWarningMessage(
+              `Modelica: ${qualified} created in OMC memory only — open a folder to enable on-disk save.`,
+            );
+          }
+          ctx.libraryTree.refresh();
+          ctx.sourceProvider.notifySourceChanged();
+        } catch (err) {
+          await vscode.window.showErrorMessage(
+            `Modelica: failed to create ${qualified}: ${(err as Error).message}`,
+          );
+        }
       },
     ),
   ];
