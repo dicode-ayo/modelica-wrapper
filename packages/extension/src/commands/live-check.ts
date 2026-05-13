@@ -175,10 +175,23 @@ async function runCheck(
 
     // Per-file replace. Map every OMC filename back to THIS uri when it
     // matches the pseudo-name we passed to parseString/loadString; that
-    // way squiggles land in the user's actual buffer.
-    const grouped = mapOmcMessagesToDiagnostics(messages, (name) =>
-      name === filename ? uri : undefined,
-    );
+    // way squiggles land in the user's actual buffer. The probe in
+    // `lsp-probe.integration.test.ts` (Probe 2b) confirms OMC echoes a
+    // `modelica-source:` URI verbatim, but as belt-and-suspenders the
+    // resolver also parses any modelica-source: URI string OMC might emit
+    // (in case a future OMC version normalizes the path).
+    const resolver = (name: string): vscode.Uri | undefined => {
+      if (name === filename) return uri;
+      if (name.startsWith(`${MODELICA_SOURCE_SCHEME}:`)) {
+        try {
+          return vscode.Uri.parse(name);
+        } catch {
+          return undefined;
+        }
+      }
+      return undefined;
+    };
+    const grouped = mapOmcMessagesToDiagnostics(messages, resolver);
     const diagsForUri = grouped.get(uri) ?? [];
     ctx.diagnostics.set(uri, diagsForUri);
   });

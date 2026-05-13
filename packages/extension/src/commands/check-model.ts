@@ -28,6 +28,7 @@ import { log } from "../logger.js";
 import {
   MODELICA_SOURCE_SCHEME,
   qualifiedNameFromUri,
+  sourceUriFor,
 } from "../source-provider.js";
 
 import { liveCheckLock } from "./check-lock.js";
@@ -75,6 +76,10 @@ async function runCheckModel(
   diagnostics: vscode.DiagnosticCollection,
   className: string,
 ): Promise<void> {
+  // Reveal the Modelica output channel so the user actually sees this run.
+  // `log.show()` passes preserveFocus=true so keyboard focus stays where it
+  // is (typing in the editor must not be interrupted).
+  log.show();
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
@@ -82,6 +87,34 @@ async function runCheckModel(
       title: `Checking ${className}`,
     },
     async (_progress, token) => {
+      // Best-effort: look up the class's on-disk source path so we can map
+      // OMC diagnostics referring to that path back to the user's virtual
+      // editor (`modelica-source:/<Class>.mo`). Errors here are non-fatal —
+      // the class may have failed to load and the resolver still handles the
+      // URI-prefix case below.
+      const info = await client
+        .getClassInformation({ typeName: className })
+        .catch(() => undefined);
+      const virtualUri = sourceUriFor(className);
+      const virtualUriString = virtualUri.toString();
+      const onDiskPath = info?.fileName ?? "";
+      const resolver = (name: string): vscode.Uri | undefined => {
+        // The class's on-disk source — map to virtual URI so squiggles land
+        // in the user's open `modelica-source:` editor.
+        if (onDiskPath && name === onDiskPath) return virtualUri;
+        if (name === virtualUriString) return virtualUri;
+        // Belt-and-suspenders: any modelica-source: URI string OMC echoes
+        // back (e.g. from a live-check buffer) parses to its URI.
+        if (name.startsWith(`${MODELICA_SOURCE_SCHEME}:`)) {
+          try {
+            return vscode.Uri.parse(name);
+          } catch {
+            return undefined;
+          }
+        }
+        return undefined;
+      };
+
       // Drain OMC's pre-existing diagnostic buffer so what we read after
       // checkModel reflects this run only.
       await client.getErrorString();
@@ -99,7 +132,7 @@ async function runCheckModel(
 
       // Clear-all + replace: this is the user-triggered "global refresh" path.
       diagnostics.clear();
-      const grouped = mapOmcMessagesToDiagnostics(messages);
+      const grouped = mapOmcMessagesToDiagnostics(messages, resolver);
       for (const [uri, diags] of grouped) {
         diagnostics.set(uri, diags);
       }
