@@ -7,9 +7,19 @@
  *
  * Behavior:
  *  - `readFile`  → OMC `listFile`
- *  - `writeFile` → OMC `loadString` (in-memory update); when the class has a
- *    writable on-disk source path (`fileName` non-empty + `fileReadOnly` ==
- *    false), the new text is also persisted to that file via node:fs/promises.
+ *  - `writeFile` → parse-validate via OMC `loadString`; on success, persist
+ *    to disk. Two paths:
+ *      (a) Class already has a real on-disk source (`fileName` is an
+ *          absolute disk path): write through to that path.
+ *      (b) Class is OMC-memory-only (fileName is empty or a pseudo-URI like
+ *          `<runtime:...>` / `modelica-source:...`): materialize under the
+ *          workspace folder as nested directories with `package.mo` files
+ *          mirroring the dotted name (e.g. `MyLib.Sub.Model` →
+ *          `<ws>/MyLib/package.mo` + `<ws>/MyLib/Sub/package.mo` +
+ *          `<ws>/MyLib/Sub/Model.mo`). Existing parent package.mo files are
+ *          left untouched; only missing ones are created. After writing,
+ *          `setSourceFile` tells OMC where the class now lives so subsequent
+ *          saves take path (a).
  *  - `stat`      → reports `Readonly` permission when OMC says the class
  *    sources are read-only (e.g. MSL libraries installed under
  *    `~/.openmodelica/libraries`). VSCode then refuses to write.
@@ -27,6 +37,15 @@
 import * as vscode from "vscode";
 
 import type { OmcClient } from "@modelica-wrapper/omc-client";
+
+import {
+  isLikelyDiskPath,
+  linkPersistedClass,
+  persistClassUnderWorkspace,
+} from "./persist.js";
+
+export { isLikelyDiskPath, linkPersistedClass, persistClassUnderWorkspace };
+export type { PersistResult } from "./persist.js";
 
 export const MODELICA_SOURCE_SCHEME = "modelica-source";
 
@@ -86,39 +105,60 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
     const client = await this.ensureClient();
     const text = Buffer.from(content).toString("utf8");
 
-    // Check read-only status BEFORE loadString — refuse to write to MSL etc.
+    // Snapshot fileName before loadString — loadString rewrites OMC's
+    // `fileName` field for the class to whatever pseudo-filename we pass it,
+    // so we'd lose the disk path otherwise.
     const info = await client.getClassInformation({ typeName });
     if (info.fileReadOnly) {
       throw vscode.FileSystemError.NoPermissions(uri);
     }
 
+    // Drain any stale errors so the post-loadString check below only sees
+    // diagnostics produced by this save.
+    await client.getErrorString();
+
     // Update OMC's in-memory AST. `merge=false` (the default) replaces the
     // existing class; we pass the source URI as a pseudo-filename so OMC's
-    // diagnostics point back at this buffer.
-    await client.loadString({
+    // diagnostics point back at this buffer until `setSourceFile` updates it.
+    const { success } = await client.loadString({
       data: text,
       filename: uri.toString(),
     });
     const { errorString } = await client.getErrorString();
-    if (errorString.length > 0 && /error/i.test(errorString)) {
+    if (!success || (errorString.length > 0 && /error/i.test(errorString))) {
       // Surface to VSCode so the editor keeps the dirty state and the user
       // sees a banner; the live-check pipeline will also pin the precise
       // squiggle. Keep the message short — the full text lives in the
       // Modelica output channel after `getMessagesStringInternal` runs.
+      const first = errorString.split("\n")[0]?.slice(0, 200) ?? errorString.slice(0, 200);
       throw vscode.FileSystemError.Unavailable(
-        `OMC rejected the source: ${errorString.split("\n")[0]?.slice(0, 200) ?? errorString.slice(0, 200)}`,
+        `OMC rejected the source${first ? `: ${first}` : ""}`,
       );
     }
 
-    // Persist to the on-disk source file when one exists. Class definitions
-    // created via `loadString` from an in-memory buffer report
-    // `fileName === ""` (or the pseudo-URI); skip disk writes in that case.
-    if (info.fileName && info.fileName.length > 0 && !info.fileReadOnly) {
-      // node:fs/promises — dynamic import keeps the bundle non-coupled in
-      // browser-target builds (the extension host target is node but webview
-      // imports the same module graph through diagram-ui types).
-      const { writeFile } = await import("node:fs/promises");
-      await writeFile(info.fileName, text, "utf8");
+    if (isLikelyDiskPath(info.fileName)) {
+      // (a) Write through to the existing on-disk source.
+      const fsp = await import("node:fs/promises");
+      await fsp.writeFile(info.fileName, text, "utf8");
+    } else {
+      // (b) OMC-memory-only class — materialize under the workspace folder.
+      const ws = vscode.workspace.workspaceFolders?.[0];
+      if (!ws) {
+        // No workspace folder open: we can't pick a disk location.
+        // Keep OMC's in-memory copy and warn — the buffer stays "saved"
+        // from VSCode's perspective so the user doesn't lose the edit.
+        await vscode.window.showWarningMessage(
+          `Modelica: ${typeName} updated in OMC memory only — open a folder to enable on-disk save.`,
+        );
+      } else {
+        const result = await persistClassUnderWorkspace(
+          client,
+          ws.uri.fsPath,
+          typeName,
+          text,
+        );
+        await linkPersistedClass(client, typeName, result);
+      }
     }
 
     this.bump(uri);
@@ -173,6 +213,7 @@ export function sourceUriFor(qualifiedName: string): vscode.Uri {
 
 export function qualifiedNameFromUri(uri: vscode.Uri): string | undefined {
   if (uri.scheme !== MODELICA_SOURCE_SCHEME) return undefined;
-  const path = uri.path.replace(/^\//, "");
-  return path.endsWith(".mo") ? path.slice(0, -3) : path;
+  const p = uri.path.replace(/^\//, "");
+  return p.endsWith(".mo") ? p.slice(0, -3) : p;
 }
+
