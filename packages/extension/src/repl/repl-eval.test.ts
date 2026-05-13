@@ -1,0 +1,225 @@
+/**
+ * Unit tests for the REPL line evaluator.
+ *
+ * `evalLine` only ever reaches OMC through the injected dependencies, so we
+ * mock `OmcClient` with a minimal fake that records calls and replays
+ * scripted responses. The integration test under `repl-eval.integration.test.ts`
+ * exercises the same path with a real OMC subprocess.
+ */
+
+import { describe, expect, it } from "vitest";
+
+import type { OmcClient } from "@modelica-wrapper/omc-client";
+
+import { HELP_TEXT, evalLine, type ReplDependencies } from "./repl-eval.js";
+
+interface FakeClient {
+  client: OmcClient;
+  calls: string[];
+  loadFileCalls: string[];
+  /** Push a string here to make the next `getErrorString()` return non-empty. */
+  errorQueue: string[];
+  /** Replies for `call()` keyed by command — falls back to "" if missing. */
+  callReplies: Map<string, string>;
+  /** Replies for `loadFile()` — defaults to success=true. */
+  loadFileSuccess: boolean;
+  loadFileError?: string;
+}
+
+function makeClient(opts: { loadFileSuccess?: boolean } = {}): FakeClient {
+  const calls: string[] = [];
+  const loadFileCalls: string[] = [];
+  const errorQueue: string[] = [];
+  const callReplies = new Map<string, string>();
+  const state: FakeClient = {
+    calls,
+    loadFileCalls,
+    errorQueue,
+    callReplies,
+    loadFileSuccess: opts.loadFileSuccess ?? true,
+    client: undefined as unknown as OmcClient,
+  };
+  state.client = {
+    async call(cmd: string) {
+      calls.push(cmd);
+      return callReplies.get(cmd) ?? "";
+    },
+    async getErrorString() {
+      const next = errorQueue.shift() ?? "";
+      return { errorString: next };
+    },
+    async loadFile({ fileName }: { fileName: string }) {
+      loadFileCalls.push(fileName);
+      if (!state.loadFileSuccess && state.loadFileError !== undefined) {
+        errorQueue.push(state.loadFileError);
+      }
+      return { success: state.loadFileSuccess };
+    },
+    async close() {
+      /* no-op */
+    },
+  } as unknown as OmcClient;
+  return state;
+}
+
+function makeDeps(client: OmcClient, opts: { resetReturn?: OmcClient } = {}): {
+  deps: ReplDependencies;
+  resetCount: number;
+} {
+  const wrap = { count: 0 };
+  const deps: ReplDependencies = {
+    ensureClient: async () => client,
+    resetClient: async () => {
+      wrap.count += 1;
+      return opts.resetReturn ?? client;
+    },
+  };
+  return {
+    deps,
+    get resetCount() {
+      return wrap.count;
+    },
+  };
+}
+
+describe("evalLine — plain OMC commands", () => {
+  it("forwards the raw line to client.call and returns the reply", async () => {
+    const fake = makeClient();
+    fake.callReplies.set("getVersion()", '"OpenModelica v1.22.0"');
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine("getVersion()", deps);
+    expect(fake.calls).toEqual(["getVersion()"]);
+    expect(result.output).toBe('"OpenModelica v1.22.0"');
+    expect(result.isError).toBe(false);
+  });
+
+  it("treats a non-empty error buffer after a call as an error result", async () => {
+    const fake = makeClient();
+    fake.callReplies.set("bogus", "");
+    fake.errorQueue.push("[<interactive>:1:1] Error: Lookup of class bogus failed.");
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine("bogus", deps);
+    expect(result.isError).toBe(true);
+    expect(result.output).toContain("error: ");
+    expect(result.output).toContain("Lookup of class bogus failed");
+  });
+
+  it("returns an empty result for blank input without calling OMC", async () => {
+    const fake = makeClient();
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine("   ", deps);
+    expect(result.output).toBe("");
+    expect(result.isError).toBe(false);
+    expect(fake.calls).toHaveLength(0);
+  });
+
+  it("captures a thrown error from client.call as an error result", async () => {
+    const fake = makeClient();
+    fake.client = {
+      async call() {
+        throw new Error("transport closed");
+      },
+      async getErrorString() {
+        return { errorString: "" };
+      },
+    } as unknown as OmcClient;
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine("getVersion()", deps);
+    expect(result.isError).toBe(true);
+    expect(result.output).toContain("transport closed");
+  });
+});
+
+describe("evalLine — meta commands", () => {
+  it(":help returns the help banner without touching OMC", async () => {
+    const fake = makeClient();
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine(":help", deps);
+    expect(result.output).toBe(HELP_TEXT);
+    expect(result.isError).toBe(false);
+    expect(fake.calls).toHaveLength(0);
+  });
+
+  it(":clear returns clearScreen=true with no client call", async () => {
+    const fake = makeClient();
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine(":clear", deps);
+    expect(result.clearScreen).toBe(true);
+    expect(result.isError).toBe(false);
+    expect(fake.calls).toHaveLength(0);
+  });
+
+  it(":exit returns closeTerminal=true", async () => {
+    const fake = makeClient();
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine(":exit", deps);
+    expect(result.closeTerminal).toBe(true);
+    expect(result.isError).toBe(false);
+  });
+
+  it(":load <path> calls client.loadFile and reports loaded", async () => {
+    const fake = makeClient();
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine(":load /some/path.mo", deps);
+    expect(fake.loadFileCalls).toEqual(["/some/path.mo"]);
+    expect(result.output).toBe("loaded");
+    expect(result.isError).toBe(false);
+  });
+
+  it(":load surfaces an OMC error when loadFile returns success=false", async () => {
+    const fake = makeClient({ loadFileSuccess: false });
+    fake.loadFileError = "Could not find file /missing.mo.";
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine(":load /missing.mo", deps);
+    expect(result.isError).toBe(true);
+    expect(result.output).toContain("/missing.mo".slice(1)); // path mentioned
+    expect(result.output).toContain("loadFile failed");
+  });
+
+  it(":load with no arg returns an error", async () => {
+    const fake = makeClient();
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine(":load", deps);
+    expect(result.isError).toBe(true);
+    expect(result.output).toContain(":load requires a path");
+  });
+
+  it(":cd <path> forwards a raw cd(\"...\") call and returns the new cwd", async () => {
+    const fake = makeClient();
+    fake.callReplies.set('cd("/tmp")', '"/tmp"');
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine(":cd /tmp", deps);
+    expect(fake.calls).toEqual(['cd("/tmp")']);
+    expect(result.output).toBe("/tmp");
+    expect(result.isError).toBe(false);
+  });
+
+  it(":cd reports an error when OMC returns an empty cwd", async () => {
+    const fake = makeClient();
+    fake.callReplies.set('cd("/nope")', '""');
+    fake.errorQueue.push("Error: Cannot change directory");
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine(":cd /nope", deps);
+    expect(result.isError).toBe(true);
+    expect(result.output).toContain("cd failed");
+  });
+
+  it(":reset invokes resetClient", async () => {
+    const fake = makeClient();
+    const wrap = makeDeps(fake.client);
+    const result = await evalLine(":reset", wrap.deps);
+    expect(wrap.resetCount).toBe(1);
+    expect(result.output).toBe("OMC reset (fresh state)");
+    expect(result.isError).toBe(false);
+  });
+
+  it("unknown meta-command returns an error result", async () => {
+    const fake = makeClient();
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine(":bogus", deps);
+    expect(result.isError).toBe(true);
+    expect(result.output).toContain(":bogus");
+    expect(result.output).toContain(":help");
+    expect(fake.calls).toHaveLength(0);
+  });
+});

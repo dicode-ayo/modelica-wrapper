@@ -15,6 +15,13 @@ export interface CommandContext {
   readonly extensionContext: vscode.ExtensionContext;
   /** Lazy OMC client accessor — spawns OMC on first call, then caches. */
   readonly ensureClient: () => Promise<OmcClient>;
+  /**
+   * Close the cached OMC subprocess and spawn a fresh one. Used by the
+   * REPL's `:reset` meta-command — the only flow that wants to wipe OMC
+   * state without ending the user's editor session. Optional so older
+   * `extension.ts` wirings still type-check.
+   */
+  readonly resetClient?: () => Promise<OmcClient>;
   /** Activity-bar library tree; commands call `.refresh()` after mutations. */
   readonly libraryTree: LibraryTreeProvider;
   /** Virtual `modelica-source:` file-system provider; commands fire `notifySourceChanged(typeName)`

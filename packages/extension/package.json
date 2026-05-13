@@ -67,6 +67,15 @@
         "command": "modelica.checkModel",
         "title": "Modelica: Check Model",
         "icon": "$(checklist)"
+      },
+      {
+        "command": "modelica.openRepl",
+        "title": "Modelica: Open REPL",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "modelica.repl.exec",
+        "title": "Modelica: Execute REPL Command (programmatic)"
       }
     ],
     "viewsContainers": {
@@ -110,6 +119,11 @@
           "command": "modelica.tree.refresh",
           "when": "view == modelica.libraries",
           "group": "navigation@3"
+        },
+        {
+          "command": "modelica.openRepl",
+          "when": "view == modelica.libraries",
+          "group": "navigation@10"
         }
       ],
       "view/item/context": [

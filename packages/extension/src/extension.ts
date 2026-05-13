@@ -18,6 +18,7 @@ import { OmcClient } from "@modelica-wrapper/omc-client";
 
 import { registerCommands } from "./commands/index.js";
 import { log } from "./logger.js";
+import { evalLine } from "./repl/repl-eval.js";
 import {
   MODELICA_SOURCE_SCHEME,
   ModelicaSourceProvider,
@@ -27,9 +28,21 @@ import { discoverEntryPoints } from "./workspace-scan.js";
 
 let client: OmcClient | undefined;
 
+/**
+ * Public shape returned from `activate()`. Other extensions can reach this
+ * via `vscode.extensions.getExtension('drojdestvensky.modelica-wrapper').exports`
+ * — only `repl.execute` is exposed today.
+ */
+export interface ModelicaExtensionApi {
+  readonly repl: {
+    /** Run a single REPL line (meta-commands and raw OMC). Throws on error. */
+    execute: (cmd: string) => Promise<string>;
+  };
+}
+
 export async function activate(
   context: vscode.ExtensionContext,
-): Promise<void> {
+): Promise<ModelicaExtensionApi> {
   log.info("activate", "extension activating");
   const libraryTree = new LibraryTreeProvider(ensureClient);
   const libraryView = vscode.window.createTreeView("modelica.libraries", {
@@ -54,6 +67,7 @@ export async function activate(
     ...registerCommands({
       extensionContext: context,
       ensureClient,
+      resetClient,
       libraryTree,
       sourceProvider,
       diagnostics,
@@ -62,6 +76,21 @@ export async function activate(
 
   // Non-blocking — we don't want to delay activation on OMC startup.
   void autoLoadWorkspaceModels(libraryTree);
+
+  // Exported API surface. Tested separately via the `repl-eval` integration
+  // suite; the wiring here is just plumbing.
+  return {
+    repl: {
+      execute: async (cmd: string): Promise<string> => {
+        const result = await evalLine(cmd, {
+          ensureClient,
+          resetClient,
+        });
+        if (result.isError) throw new Error(result.output);
+        return result.output;
+      },
+    },
+  };
 }
 
 export async function deactivate(): Promise<void> {
@@ -79,6 +108,21 @@ async function ensureClient(): Promise<OmcClient> {
   const omcPath = cfg.get<string>("omcPath") ?? "";
   client = await OmcClient.create({ omcPath });
   return client;
+}
+
+/**
+ * Tear down the cached OMC subprocess (if any) and spawn a fresh one.
+ * Used by the REPL's `:reset` meta-command — anything that survives in
+ * OMC's in-memory state (loaded classes, last simulation result, command-
+ * line options) is wiped.
+ */
+async function resetClient(): Promise<OmcClient> {
+  if (client) {
+    const c = client;
+    client = undefined;
+    await c.close();
+  }
+  return ensureClient();
 }
 
 /**
