@@ -32,9 +32,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     libraryView,
-    vscode.workspace.registerTextDocumentContentProvider(
+    vscode.workspace.registerFileSystemProvider(
       MODELICA_SOURCE_SCHEME,
       sourceProvider,
+      { isCaseSensitive: true },
     ),
     ...registerCommands({
       extensionContext: context,
