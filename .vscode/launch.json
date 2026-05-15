@@ -11,7 +11,7 @@
       "outFiles": [
         "${workspaceFolder}/packages/extension/out/**/*.js"
       ],
-      "preLaunchTask": "extension: watch",
+      "preLaunchTask": "extension: build",
       "sourceMaps": true
     }
   ]

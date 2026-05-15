@@ -125,6 +125,7 @@ export {
   setRasterizerDebug,
 } from "./icon-provider/svg-rasterizer.js";
 export { OmDebugPlane } from "./debug/debug-plane.component.js";
+export { OmPerfHud } from "./debug/perf-hud.component.js";
 export { OmActionPanel, type ActionPanelAnchor } from "./action-panel/action-panel.component.js";
 export {
   OmParameterForm,

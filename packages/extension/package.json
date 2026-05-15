@@ -204,6 +204,7 @@
   "dependencies": {
     "@modelica-wrapper/diagram-ui": "workspace:*",
     "@modelica-wrapper/omc-client": "workspace:*",
+    "lit": "^3.2.0",
     "zeromq": "^6.1.0"
   },
   "devDependencies": {

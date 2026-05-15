@@ -39,7 +39,13 @@ export class OmParameterPanel extends LitElement {
         justify-content: center;
         padding-top: var(--om-modal-offset-top);
         background: var(--om-modal-backdrop);
-        backdrop-filter: blur(var(--om-modal-backdrop-blur));
+        /*
+         * No backdrop-filter: blur on purpose. The Babylon canvas behind
+         * this modal redraws on every render loop tick, which forces the
+         * compositor to re-blur on every paint. Combined with the modal's
+         * own internal scroll, that pegged the GPU on real hardware. A
+         * solid darker backdrop reads as "focused" without the cost.
+         */
       }
 
       :host([open]) {

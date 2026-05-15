@@ -15,6 +15,7 @@ import "../connector/connector.component.js";
 import "../connection/connection.component.js";
 import "../label/label.component.js";
 import "../connection/edge.component.js";
+import "../debug/perf-hud.component.js";
 import type { OmScene, EngineFactory } from "../scene/scene.component.js";
 import type { RasterizeFn, SvgRenderFn } from "../icon-provider/icon-cache.js";
 import {
@@ -173,6 +174,13 @@ export class OmGraphicalLayout extends LitElement {
   @property({ type: Number, attribute: "line-thickness-scale" })
   lineThicknessScale: number | undefined = undefined;
 
+  /**
+   * Show the FPS / draw-call overlay (`<om-perf-hud>`). Off by default;
+   * flip on from the webview to diagnose render-loop perf.
+   */
+  @property({ type: Boolean, reflect: true, attribute: "perf-hud" })
+  perfHud = false;
+
   @state() private selectedKeys: Set<string> = new Set();
   @state() private draftLayout: DiagramLayout | null = null;
   @state() private hoverKey: string | null = null;
@@ -253,6 +261,7 @@ export class OmGraphicalLayout extends LitElement {
               ></om-label>`,
           )}
           ${this.renderInProgressEdge()}
+          <om-perf-hud ?show=${this.perfHud}></om-perf-hud>
         </om-icon-provider>
       </om-scene>
     `;

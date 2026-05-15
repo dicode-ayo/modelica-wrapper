@@ -227,10 +227,10 @@ export class DiagramPanel {
     <title>Modelica diagram: ${this.escapeHtml(this.className)}</title>
     <style>
       html, body { margin: 0; height: 100%; background: #f7f7f8; overflow: hidden; }
-      om-graphical-layout { width: 100%; height: 100%; display: block; }
     </style>
   </head>
   <body>
+    <om-webview-root></om-webview-root>
     <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
   </body>
 </html>`;

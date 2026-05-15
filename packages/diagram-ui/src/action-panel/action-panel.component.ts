@@ -47,7 +47,8 @@ export class OmActionPanel extends LitElement {
         border: 1px solid
           var(--vscode-editorWidget-border, rgba(0, 0, 0, 0.15));
         border-radius: var(--om-radius-md);
-        backdrop-filter: blur(var(--om-action-panel-blur));
+        /* No backdrop-filter: see parameter-panel for the same reasoning —
+         * blurring over a 60fps canvas pegs the GPU compositor. */
         font-family: var(--vscode-font-family, system-ui, sans-serif);
         font-size: var(--vscode-font-size, 13px);
         color: var(--vscode-foreground, #1f1f1f);

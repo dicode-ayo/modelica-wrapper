@@ -54,13 +54,11 @@ export const omTokens: CSSResult = css`
     --om-modal-max-vw: 90vw;
     --om-modal-max-height: 80vh;
     --om-modal-offset-top: 8vh;
-    --om-modal-backdrop: rgba(0, 0, 0, 0.35);
-    --om-modal-backdrop-blur: 2px;
+    --om-modal-backdrop: rgba(0, 0, 0, 0.55);
     --om-modal-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
 
     /* --- action panel --- */
     --om-action-panel-offset: 8px;
-    --om-action-panel-blur: 4px;
 
     /* --- typography --- */
     --om-title-size: 1.1em;
