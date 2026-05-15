@@ -116,6 +116,35 @@ describe("evalLine — plain OMC commands", () => {
     expect(result.output).toContain("Lookup of class bogus failed");
   });
 
+  it("prepends an actionable hint when OMC fails to find a known function", async () => {
+    // Simulates the classic quoted-TypeName mistake: the user wraps a
+    // dotted Modelica name in quotes, OMC can't match an overload, the
+    // diagnoser turns "Class X not found" into an explanatory hint with
+    // a corrected call suggestion.
+    const fake = makeClient();
+    const call =
+      'getElementAnnotation("Modelica.Blocks.Examples.PID_Controller")';
+    fake.callReplies.set(call, "");
+    fake.errorQueue.push(
+      "[<interactive>:1:1-1:0:writable] Error: Class getElementAnnotation not found in scope <global scope> (looking for a function or record).",
+    );
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine(call, deps);
+    expect(result.isError).toBe(true);
+    // Hint appears BEFORE OMC's raw message so the user reads the
+    // explanation first.
+    const hintIdx = result.output.indexOf("`getElementAnnotation` exists");
+    const omcIdx = result.output.indexOf("OMC said:");
+    expect(hintIdx).toBeGreaterThanOrEqual(0);
+    expect(omcIdx).toBeGreaterThan(hintIdx);
+    // The suggested rewrite has the quotes stripped.
+    expect(result.output).toContain(
+      "getElementAnnotation(Modelica.Blocks.Examples.PID_Controller)",
+    );
+    // OMC's original error string is preserved verbatim further down.
+    expect(result.output).toContain("not found in scope <global scope>");
+  });
+
   it("returns an empty result for blank input without calling OMC", async () => {
     const fake = makeClient();
     const { deps } = makeDeps(fake.client);
@@ -150,6 +179,36 @@ describe("evalLine — meta commands", () => {
     expect(result.output).toBe(HELP_TEXT);
     expect(result.isError).toBe(false);
     expect(fake.calls).toHaveLength(0);
+  });
+
+  it(":help <fnName> returns the function's signature without touching OMC", async () => {
+    const fake = makeClient();
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine(":help getClassInformation", deps);
+    expect(result.isError).toBe(false);
+    expect(result.output).toContain("getClassInformation");
+    expect(result.output).toContain("Parameters:");
+    expect(result.output).toContain("typeName");
+    expect(result.output).toContain("Returns:");
+    expect(fake.calls).toHaveLength(0);
+  });
+
+  it(":help <category> returns a function list", async () => {
+    const fake = makeClient();
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine(":help execution", deps);
+    expect(result.isError).toBe(false);
+    expect(result.output).toContain("execution");
+    expect(result.output).toContain("checkModel");
+    expect(result.output).toContain("simulate");
+  });
+
+  it(":help <unknown> returns an error result", async () => {
+    const fake = makeClient();
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine(":help definitelyNotAThing", deps);
+    expect(result.isError).toBe(true);
+    expect(result.output).toContain("definitelyNotAThing");
   });
 
   it(":clear returns clearScreen=true with no client call", async () => {

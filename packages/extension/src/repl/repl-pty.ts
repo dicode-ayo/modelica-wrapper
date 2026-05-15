@@ -23,6 +23,7 @@
 
 import * as vscode from "vscode";
 
+import { computeCompletion } from "./repl-complete.js";
 import { evalLine, type ReplDependencies, type ReplResult } from "./repl-eval.js";
 import { ReplHistory } from "./repl-history.js";
 
@@ -53,6 +54,16 @@ export class ModelicaReplPty implements vscode.Pseudoterminal {
   private busy = false;
   /** Pending input lines submitted while busy. Processed FIFO when busy goes false. */
   private queue: string[] = [];
+  /**
+   * Transcript lines submitted from outside the pty (e.g. Check Model
+   * tee-ing its result into the REPL). Drained after every `processLine`
+   * settles, and also immediately when nothing is in flight.
+   */
+  private externalQueue: Array<{
+    label: string;
+    output: string;
+    isError: boolean;
+  }> = [];
   /** True once `open()` has fired — we MUST NOT write before then. */
   private opened = false;
   /** Buffered output emitted before `open()`; flushed on open. */
@@ -105,6 +116,11 @@ export class ModelicaReplPty implements vscode.Pseudoterminal {
       }
       if (ch === "\x0c") {
         this.onCtrlL();
+        i += 1;
+        continue;
+      }
+      if (ch === "\x09") {
+        this.onTab();
         i += 1;
         continue;
       }
@@ -329,6 +345,35 @@ export class ModelicaReplPty implements vscode.Pseudoterminal {
     this.redrawInputLine();
   }
 
+  /**
+   * Tab completion. Behaviour mirrors a typical shell:
+   *   - 0 candidates       → no-op (no bell — VSCode terminals don't have one).
+   *   - 1 candidate        → insert the missing tail.
+   *   - N candidates with a longer common prefix → extend to that prefix.
+   *   - N candidates with no further common prefix → list them above the
+   *     prompt and redraw the input line so the user can keep typing.
+   */
+  private onTab(): void {
+    const plan = computeCompletion(this.buffer, this.cursor);
+    if (plan.candidates.length === 0) return;
+    const insertion = plan.commonPrefix.slice(plan.prefix.length);
+    if (insertion.length > 0) {
+      this.insertText(insertion);
+      // After a unique completion, append a space so the user can keep typing
+      // the next token without re-hitting space themselves.
+      if (plan.candidates.length === 1) {
+        this.insertText(" ");
+      }
+      return;
+    }
+    // No further unique characters → show the list.
+    this.write(CLEAR_LINE);
+    this.write(`${plan.candidates.join("  ")}\r\n`);
+    this.write(`${PROMPT}${this.buffer}`);
+    const back = this.buffer.length - this.cursor;
+    if (back > 0) this.write(`\x1b[${back}D`);
+  }
+
   // ── Eval pipeline ────────────────────────────────────────────────────
 
   private async processLine(line: string): Promise<void> {
@@ -377,17 +422,67 @@ export class ModelicaReplPty implements vscode.Pseudoterminal {
   private drainQueueOrUnlock(): void {
     if (this.queue.length === 0) {
       this.busy = false;
+      // No pending REPL lines — flush any external transcripts that
+      // arrived while we were busy. They print above the prompt now.
+      this.flushExternalQueue();
       return;
     }
     const next = this.queue.shift();
     if (next === undefined) {
       this.busy = false;
+      this.flushExternalQueue();
       return;
     }
     // Process FIFO. Note: we keep `busy = true` across the gap so a
     // subsequent Enter still queues rather than racing.
     this.busy = true;
     void this.processLine(next);
+  }
+
+  // ── External display API ─────────────────────────────────────────────
+
+  /**
+   * Print a transcript line that did NOT come from terminal input — e.g.
+   * the result of the Check Model command. Renders as
+   *   `omc> <label>\r\n<output>\r\n<prompt><current input>`
+   * with cursor restored. If an OMC call is in flight, the entry is
+   * queued and flushed after the in-flight call settles, so we never
+   * tear the busy "... working" line.
+   */
+  showExternal(label: string, output: string, isError = false): void {
+    if (this.busy) {
+      this.externalQueue.push({ label, output, isError });
+      return;
+    }
+    this.printExternal({ label, output, isError });
+  }
+
+  private flushExternalQueue(): void {
+    while (this.externalQueue.length > 0) {
+      const next = this.externalQueue.shift();
+      if (!next) break;
+      this.printExternal(next);
+    }
+  }
+
+  private printExternal(entry: {
+    label: string;
+    output: string;
+    isError: boolean;
+  }): void {
+    // Wipe the input line (prompt + user's in-progress buffer),
+    // print the transcript on its own lines, then redraw prompt+buffer.
+    this.write(CLEAR_LINE);
+    this.write(`${PROMPT}${entry.label}\r\n`);
+    if (entry.output.length > 0) {
+      this.writeResultText(entry.output, entry.isError);
+    }
+    this.write(`${PROMPT}${this.buffer}`);
+    // Restore cursor to its position within the buffer.
+    const back = this.buffer.length - this.cursor;
+    if (back > 0) {
+      this.write(`\x1b[${back}D`);
+    }
   }
 
   // ── Output helpers ───────────────────────────────────────────────────

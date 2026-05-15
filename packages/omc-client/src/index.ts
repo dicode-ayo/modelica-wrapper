@@ -38,6 +38,18 @@ export {
   type OmcOutput,
 } from "./registry.js";
 
+// --- Structured + plain-text help built on the registry ---
+export {
+  describeFunction,
+  describeFunctionAsJsonSchema,
+  renderFunctionHelp,
+  renderCategoryHelp,
+  renderOverview,
+  type FieldInfo,
+  type FunctionDescription,
+  type FunctionJsonSchema,
+} from "./help.js";
+
 // --- Supported OMC version pin (see docs/audit.md) ---
 export {
   SUPPORTED_OMC,

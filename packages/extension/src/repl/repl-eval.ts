@@ -22,6 +22,9 @@
 import type { OmcClient } from "@modelica-wrapper/omc-client";
 import type { OmcCommand } from "@modelica-wrapper/omc-client";
 
+import { diagnoseOmcError } from "./repl-diagnose.js";
+import { formatHelp } from "./repl-help.js";
+
 export interface ReplDependencies {
   /** Lazy/cached singleton OMC client. */
   ensureClient: () => Promise<OmcClient>;
@@ -40,16 +43,11 @@ export interface ReplResult {
   clearScreen?: boolean;
 }
 
-export const HELP_TEXT = [
-  "Modelica REPL meta-commands:",
-  "  :help            Show this help",
-  "  :clear           Clear the terminal screen (does not touch OMC state)",
-  "  :load <path>     Call loadFile on <path>",
-  "  :cd <path>       Change OMC's working directory",
-  "  :reset           Close the OMC subprocess and start a fresh one",
-  "  :exit            Close this REPL terminal",
-  "Anything else is forwarded verbatim to OMC via call().",
-].join("\n");
+/**
+ * Static help text — kept for tests that compare against the no-arg help.
+ * The full dynamic renderer lives in `repl-help.ts`.
+ */
+export const HELP_TEXT = formatHelp(undefined).output;
 
 /**
  * Dispatch a single line. Returns the formatted result (no trailing newline;
@@ -91,10 +89,18 @@ export async function evalLine(
     const trimmedReply = stripTrailingNewline(reply);
     if (errorString.length > 0) {
       const isError = looksLikeError(errorString);
+      // Try to translate OMC's misleading "Class X not found" into an
+      // actionable hint before showing the raw error. The hint goes on
+      // top so it's the first thing the user reads; OMC's original
+      // message follows verbatim for power users / debugging.
+      const hint = diagnoseOmcError(rawLine, errorString);
+      const errorBody = hint
+        ? `${hint}\n\nOMC said:\n  ${errorString}`
+        : `error: ${errorString}`;
       const combined =
         trimmedReply.length > 0
-          ? `${trimmedReply}\nerror: ${errorString}`
-          : `error: ${errorString}`;
+          ? `${trimmedReply}\n${errorBody}`
+          : errorBody;
       return { output: combined, isError };
     }
     return { output: trimmedReply, isError: false };
@@ -117,8 +123,10 @@ async function handleMeta(
   const arg = spaceIdx === -1 ? "" : line.slice(spaceIdx + 1).trim();
 
   switch (cmd) {
-    case ":help":
-      return { output: HELP_TEXT, isError: false };
+    case ":help": {
+      const { output, unknown } = formatHelp(arg);
+      return { output, isError: unknown };
+    }
 
     case ":clear":
       return { output: "", isError: false, clearScreen: true };

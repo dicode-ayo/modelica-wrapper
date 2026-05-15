@@ -13,6 +13,10 @@
  * Both commands lazily build their deps from `ctx.ensureClient` /
  * `ctx.resetClient` (falling back to a recreate-via-ensure if no reset
  * helper was wired — keeps the module robust if `CommandContext` changes).
+ *
+ * `showInRepl(label, output, isError?)` is the side-channel other commands
+ * (e.g. Check Model) use to mirror their output into the REPL so the user
+ * sees a unified transcript. It opens the REPL on first call.
  */
 
 import * as vscode from "vscode";
@@ -24,17 +28,36 @@ import { ModelicaReplPty } from "../repl/repl-pty.js";
 
 import type { CommandContext } from "./context.js";
 
+interface ActiveRepl {
+  pty: ModelicaReplPty;
+  terminal: vscode.Terminal;
+}
+
+/**
+ * Module-level singleton. The REPL terminal is a piece of UI state that's
+ * naturally global from the user's perspective ("the Modelica REPL"), and
+ * the only writer is `registerReplCommands` at activation time + the
+ * close listener.
+ */
+let activeRepl: ActiveRepl | undefined;
+
+/** Cached deps so `showInRepl()` can open the REPL on demand. */
+let cachedDeps: ReplDependencies | undefined;
+
 export function registerReplCommands(ctx: CommandContext): vscode.Disposable[] {
   const deps = buildDeps(ctx);
+  cachedDeps = deps;
+
+  const onClose = vscode.window.onDidCloseTerminal((t) => {
+    if (activeRepl && t === activeRepl.terminal) {
+      activeRepl = undefined;
+    }
+  });
 
   return [
+    onClose,
     vscode.commands.registerCommand("modelica.openRepl", () => {
-      const pty = new ModelicaReplPty(deps);
-      const terminal = vscode.window.createTerminal({
-        name: "Modelica REPL",
-        pty,
-      });
-      terminal.show();
+      openOrFocusRepl(deps);
     }),
 
     vscode.commands.registerCommand(
@@ -51,6 +74,43 @@ export function registerReplCommands(ctx: CommandContext): vscode.Disposable[] {
       },
     ),
   ];
+}
+
+function openOrFocusRepl(deps: ReplDependencies): ActiveRepl {
+  if (activeRepl) {
+    // `show(preserveFocus=true)` reveals without stealing keyboard focus —
+    // important for the tee path so an editor save doesn't yank the cursor.
+    activeRepl.terminal.show(true);
+    return activeRepl;
+  }
+  const pty = new ModelicaReplPty(deps);
+  const terminal = vscode.window.createTerminal({
+    name: "Modelica REPL",
+    pty,
+  });
+  terminal.show(true);
+  activeRepl = { pty, terminal };
+  return activeRepl;
+}
+
+/**
+ * Mirror an external command's output into the REPL transcript. Opens
+ * the REPL if it's not already visible. Safe to call before the REPL has
+ * processed `open()` — the pty buffers writes until then.
+ *
+ * Returns `false` if the REPL machinery hasn't been registered yet (would
+ * only happen if a caller fires before `activate()` finishes); the caller
+ * decides whether to fall back to logger-only.
+ */
+export function showInRepl(
+  label: string,
+  output: string,
+  isError = false,
+): boolean {
+  if (!cachedDeps) return false;
+  const r = openOrFocusRepl(cachedDeps);
+  r.pty.showExternal(label, output, isError);
+  return true;
 }
 
 /** Programmatic dependency factory — also re-used by the extension's exported API. */
