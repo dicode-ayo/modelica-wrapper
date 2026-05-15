@@ -10,6 +10,7 @@ import { writeFile } from "node:fs/promises";
 import type { LibraryNode } from "../tree/library-tree.js";
 
 import type { CommandContext } from "./context.js";
+import { createReplLog } from "./repl.js";
 
 export function registerPackageCommands(ctx: CommandContext): vscode.Disposable[] {
   return [
@@ -36,6 +37,7 @@ export function registerPackageCommands(ctx: CommandContext): vscode.Disposable[
           title: `Save ${node.qualifiedName} as`,
         });
         if (!target) return;
+        const log = createReplLog(`savePackage ${node.qualifiedName}`);
         try {
           const c = await ctx.ensureClient();
           const { contents } = await c.listFile({ typeName: node.qualifiedName });
@@ -45,10 +47,12 @@ export function registerPackageCommands(ctx: CommandContext): vscode.Disposable[
             fileName: target.fsPath,
           });
           ctx.libraryTree.refresh();
+          log.success(`saved to ${target.fsPath}`);
           await vscode.window.showInformationMessage(
             `Modelica: saved ${node.qualifiedName} to ${target.fsPath}`,
           );
         } catch (err) {
+          log.error((err as Error).message);
           await vscode.window.showErrorMessage(
             `Modelica: savePackage failed: ${(err as Error).message}`,
           );

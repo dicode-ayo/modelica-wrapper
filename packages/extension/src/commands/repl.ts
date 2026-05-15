@@ -113,6 +113,47 @@ export function showInRepl(
   return true;
 }
 
+/**
+ * Per-command logger that mirrors a command's result into the REPL,
+ * matching the transcript shape Check Model produces. Returned from
+ * `createReplLog(label)` so the command picks the label once and then
+ * calls `.success(body)` or `.error(body)` when the work completes.
+ *
+ * Usage idiom:
+ *
+ * ```
+ * const log = createReplLog(`loadLibrary(${name})`);
+ * try {
+ *   const { success } = await c.loadModel({ typeName: name });
+ *   if (!success) {
+ *     const { errorString } = await c.getErrorString();
+ *     log.error(errorString || "loadModel failed");
+ *     return;
+ *   }
+ *   log.success(`loaded ${name}`);
+ * } catch (err) {
+ *   log.error((err as Error).message);
+ * }
+ * ```
+ *
+ * Both methods are no-ops when the REPL hasn't been registered yet
+ * (extension still activating); the boolean return mirrors `showInRepl`
+ * for callers that care.
+ */
+export interface ReplLog {
+  /** Mirror a successful result line into the REPL (no error colouring). */
+  success(output: string): boolean;
+  /** Mirror an error result line into the REPL (red). */
+  error(output: string): boolean;
+}
+
+export function createReplLog(label: string): ReplLog {
+  return {
+    success: (output) => showInRepl(label, output, false),
+    error: (output) => showInRepl(label, output, true),
+  };
+}
+
 /** Programmatic dependency factory — also re-used by the extension's exported API. */
 export function buildDeps(ctx: CommandContext): ReplDependencies {
   return {

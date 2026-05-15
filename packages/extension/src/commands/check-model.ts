@@ -33,7 +33,7 @@ import {
 
 import { liveCheckLock } from "./check-lock.js";
 import type { CommandContext } from "./context.js";
-import { showInRepl } from "./repl.js";
+import { createReplLog } from "./repl.js";
 
 export function registerCheckModelCommand(
   ctx: CommandContext,
@@ -151,12 +151,14 @@ async function runCheckModel(
       log.info("checkModel", `<<< ${summary}`);
 
       // Mirror the run into the REPL transcript so the result is visible
-      // alongside the user's other interactive commands.
-      // `result` is OMC's own pretty output; we append our 1-line summary
-      // for at-a-glance status. Errors paint red in the REPL.
+      // alongside the user's other interactive commands. `result` is
+      // OMC's own pretty output; we append our 1-line summary for
+      // at-a-glance status. Errors paint red in the REPL.
+      const replLog = createReplLog(`checkModel ${className}`);
       const replOutput =
         (result.length > 0 ? result + "\n" : "") + summary;
-      showInRepl(`checkModel(${className})`, replOutput, errors > 0);
+      if (errors > 0) replLog.error(replOutput);
+      else replLog.success(replOutput);
 
       if (errors > 0) {
         await vscode.commands.executeCommand("workbench.action.problems.focus");
