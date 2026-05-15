@@ -64,6 +64,63 @@ function selectSource(buffer: string, prefix: string): string[] {
   return [...omcFunctionNames];
 }
 
+/**
+ * "Ghost text" suggestion — the tail of the alphabetically-first candidate
+ * that extends the prefix at the cursor. Empty string when there's nothing
+ * to suggest:
+ *   - cursor isn't at end-of-buffer (we don't visually shove text past the
+ *     user's edit point),
+ *   - buffer is empty (suggesting on empty input feels noisy),
+ *   - no candidate matches the trailing word,
+ *   - the prefix is empty (cursor is on a fresh word boundary — same
+ *     reasoning as "buffer empty").
+ *
+ * The tail is what we render in dim after the cursor; pressing → at
+ * end-of-buffer accepts it.
+ */
+export function computeGhost(buffer: string, cursor: number): string {
+  if (cursor !== buffer.length || buffer.length === 0) return "";
+  const plan = computeCompletion(buffer, cursor);
+  if (plan.candidates.length === 0 || plan.prefix.length === 0) return "";
+  return plan.candidates[0]!.slice(plan.prefix.length);
+}
+
+/**
+ * Lay `items` out as alphabetical columns that fit `cols` characters wide,
+ * matching bash/zsh `<Tab><Tab>` behaviour. Returns the lines to print, in
+ * order, without trailing newlines.
+ *
+ * Layout is column-major (reading top-to-bottom of column 1, then column 2,
+ * etc., produces the sorted order). Items are padded to a uniform column
+ * width with a `gap` between columns; the last column on each row is left
+ * un-padded so we don't trail whitespace.
+ */
+export function formatColumns(
+  items: ReadonlyArray<string>,
+  cols: number,
+  gap = 2,
+): string[] {
+  if (items.length === 0) return [];
+  const maxLen = items.reduce((m, s) => Math.max(m, s.length), 0);
+  const colWidth = maxLen + gap;
+  const numCols = Math.max(1, Math.floor(cols / colWidth));
+  const numRows = Math.ceil(items.length / numCols);
+  const lines: string[] = [];
+  for (let row = 0; row < numRows; row++) {
+    let line = "";
+    for (let col = 0; col < numCols; col++) {
+      const idx = col * numRows + row;
+      if (idx >= items.length) break; // sparse trailing slot
+      line += items[idx]!.padEnd(colWidth);
+    }
+    // Pad-then-trim is simpler than computing per-row last-column logic:
+    // intermediate columns keep their alignment, the row drops any tail
+    // whitespace either from the gap of the last item OR from unfilled slots.
+    lines.push(line.trimEnd());
+  }
+  return lines;
+}
+
 function longestCommonPrefix(words: ReadonlyArray<string>): string {
   if (words.length === 0) return "";
   if (words.length === 1) return words[0]!;

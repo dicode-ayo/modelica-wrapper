@@ -23,7 +23,11 @@
 
 import * as vscode from "vscode";
 
-import { computeCompletion } from "./repl-complete.js";
+import {
+  computeCompletion,
+  computeGhost,
+  formatColumns,
+} from "./repl-complete.js";
 import { evalLine, type ReplDependencies, type ReplResult } from "./repl-eval.js";
 import { ReplHistory } from "./repl-history.js";
 
@@ -31,6 +35,12 @@ const PROMPT_TEXT = "omc> ";
 const PROMPT = `\x1b[36m${PROMPT_TEXT}\x1b[0m`;
 const WORKING = "\x1b[2m... working\x1b[0m";
 const CLEAR_LINE = "\r\x1b[K";
+/** SGR codes for the autosuggest ghost — dim, reset at end. */
+const GHOST_OPEN = "\x1b[2m";
+const GHOST_CLOSE = "\x1b[0m";
+/** Fallback terminal width / height when no `setDimensions` has fired yet. */
+const DEFAULT_COLS = 80;
+const DEFAULT_ROWS = 24;
 // Wipe the entire screen and home the cursor — same effect as Ctrl+L in
 // most shells. ESC[2J clears the visible viewport, ESC[3J also drops the
 // scrollback (VSCode honours both).
@@ -68,6 +78,21 @@ export class ModelicaReplPty implements vscode.Pseudoterminal {
   private opened = false;
   /** Buffered output emitted before `open()`; flushed on open. */
   private earlyBuffer = "";
+  /**
+   * Autosuggest tail — rendered in dim after `buffer` when the cursor is at
+   * end-of-buffer. Accepted with → (and only when at end). Recomputed by
+   * `repaint()` so any state change re-syncs it with the buffer.
+   */
+  private ghost = "";
+  /** Latest known terminal width — used for the columnar Tab listing. */
+  private cols = DEFAULT_COLS;
+  /**
+   * Latest known terminal height. Used to decide whether the columnar
+   * listing fits in the visible viewport: if not, we fall back to a
+   * scroll-friendly redraw instead of trying to cursor-up past content
+   * that's already scrolled into the scrollback.
+   */
+  private rows = DEFAULT_ROWS;
 
   private readonly history = new ReplHistory();
 
@@ -75,14 +100,23 @@ export class ModelicaReplPty implements vscode.Pseudoterminal {
 
   // ── Pseudoterminal API ────────────────────────────────────────────────
 
-  open(_dim?: vscode.TerminalDimensions): void {
+  open(dim?: vscode.TerminalDimensions): void {
     this.opened = true;
+    if (dim) {
+      this.cols = dim.columns;
+      this.rows = dim.rows;
+    }
     if (this.earlyBuffer.length > 0) {
       this.writeEmitter.fire(this.earlyBuffer);
       this.earlyBuffer = "";
     }
     this.writeLine(BANNER);
     this.writePrompt();
+  }
+
+  setDimensions(dim: vscode.TerminalDimensions): void {
+    this.cols = dim.columns;
+    this.rows = dim.rows;
   }
 
   close(): void {
@@ -283,14 +317,14 @@ export class ModelicaReplPty implements vscode.Pseudoterminal {
     this.buffer =
       this.buffer.slice(0, this.cursor - 1) + this.buffer.slice(this.cursor);
     this.cursor -= 1;
-    this.redrawInputLine();
+    this.repaint();
   }
 
   private onDelete(): void {
     if (this.cursor >= this.buffer.length) return;
     this.buffer =
       this.buffer.slice(0, this.cursor) + this.buffer.slice(this.cursor + 1);
-    this.redrawInputLine();
+    this.repaint();
   }
 
   private onCtrlC(): void {
@@ -310,19 +344,29 @@ export class ModelicaReplPty implements vscode.Pseudoterminal {
   private onCtrlL(): void {
     this.write(CLEAR_SCREEN);
     this.writePrompt();
-    this.redrawInputLine();
+    this.repaint();
   }
 
   private onArrowLeft(): void {
     if (this.cursor === 0) return;
     this.cursor -= 1;
-    this.write("\x1b[D");
+    // Cursor leaving end-of-buffer means the ghost should disappear; a
+    // full repaint reasserts the line invariant in one place.
+    this.repaint();
   }
 
   private onArrowRight(): void {
-    if (this.cursor >= this.buffer.length) return;
-    this.cursor += 1;
-    this.write("\x1b[C");
+    if (this.cursor < this.buffer.length) {
+      this.cursor += 1;
+      // Cursor reaching end-of-buffer might bring the ghost back.
+      this.repaint();
+      return;
+    }
+    // At end-of-buffer: → accepts the ghost (autosuggest "complete-word"
+    // behaviour). Falls through to no-op if there's nothing to accept.
+    if (this.ghost.length > 0) {
+      this.insertText(this.ghost);
+    }
   }
 
   private onArrowUp(): void {
@@ -337,21 +381,22 @@ export class ModelicaReplPty implements vscode.Pseudoterminal {
 
   private onHome(): void {
     this.cursor = 0;
-    this.redrawInputLine();
+    this.repaint();
   }
 
   private onEnd(): void {
     this.cursor = this.buffer.length;
-    this.redrawInputLine();
+    this.repaint();
   }
 
   /**
    * Tab completion. Behaviour mirrors a typical shell:
    *   - 0 candidates       → no-op (no bell — VSCode terminals don't have one).
-   *   - 1 candidate        → insert the missing tail.
+   *   - 1 candidate        → insert the missing tail + trailing space.
    *   - N candidates with a longer common prefix → extend to that prefix.
-   *   - N candidates with no further common prefix → list them above the
-   *     prompt and redraw the input line so the user can keep typing.
+   *   - N candidates with no further common prefix → leave the current line
+   *     in place, print the candidate list in bash-style columns below,
+   *     then redraw the prompt on a fresh line.
    */
   private onTab(): void {
     const plan = computeCompletion(this.buffer, this.cursor);
@@ -366,12 +411,62 @@ export class ModelicaReplPty implements vscode.Pseudoterminal {
       }
       return;
     }
-    // No further unique characters → show the list.
-    this.write(CLEAR_LINE);
-    this.write(`${plan.candidates.join("  ")}\r\n`);
-    this.write(`${PROMPT}${this.buffer}`);
-    const back = this.buffer.length - this.cursor;
-    if (back > 0) this.write(`\x1b[${back}D`);
+    // No further unique characters → list the candidates.
+    const lines = formatColumns(plan.candidates, this.cols);
+    if (lines.length === 0) return;
+
+    // The cursor-restore path (bash-style, keeps input visible) only
+    // works when the listing fits inside the viewport. If we'd need
+    // more rows than the terminal has, the listing scrolls, the input
+    // moves into scrollback, and `\x1b[<n>A` would land on the wrong
+    // row. In that case, drop to a scroll-friendly redraw: reprint the
+    // input as a history line, print the listing, then repaint a fresh
+    // prompt below.
+    //
+    // The `+ 1` accounts for the input line itself; we also need room
+    // for at least one prompt line after, hence the strict `<`.
+    if (lines.length + 1 < this.rows) {
+      this.listInPlace(lines);
+    } else {
+      this.listScrolling(lines);
+    }
+  }
+
+  /**
+   * Print the candidate list on rows below the input line, then return
+   * the cursor to its original position so the user keeps typing in
+   * place. `\x1b[J` first wipes any prior listing further down — repeated
+   * Tabs don't leave orphan rows.
+   */
+  private listInPlace(lines: string[]): void {
+    this.write("\r\n\x1b[J");
+    for (const line of lines) {
+      this.write(`${line}\r\n`);
+    }
+    // Climb back to the input row. `\x1b[<n>A` is a relative cursor
+    // move, so this survives any scroll the listing may have caused.
+    this.write(`\x1b[${lines.length + 1}A`);
+    // `A` lands at column 0; advance back to the logical cursor column
+    // (prompt prefix + index inside the buffer). The ghost text on the
+    // input line was never touched, so it stays in place.
+    const col = PROMPT_TEXT.length + this.cursor;
+    if (col > 0) this.write(`\x1b[${col}C`);
+  }
+
+  /**
+   * Fallback used when the listing is taller than the viewport. The
+   * input line is reprinted as a "history" line above the listing, the
+   * candidates print on the rows below it, and a fresh prompt is
+   * repainted at the bottom. This is what older revisions of the REPL
+   * did unconditionally — it's the right thing when we'd otherwise be
+   * scrolling the input out of view anyway.
+   */
+  private listScrolling(lines: string[]): void {
+    this.write(`${CLEAR_LINE}${PROMPT}${this.buffer}\r\n`);
+    for (const line of lines) {
+      this.write(`${line}\r\n`);
+    }
+    this.repaint();
   }
 
   // ── Eval pipeline ────────────────────────────────────────────────────
@@ -472,17 +567,14 @@ export class ModelicaReplPty implements vscode.Pseudoterminal {
   }): void {
     // Wipe the input line (prompt + user's in-progress buffer),
     // print the transcript on its own lines, then redraw prompt+buffer.
+    // `redrawInputLine` puts the ghost back on the fresh prompt — the
+    // buffer didn't change, so we don't need to recompute it.
     this.write(CLEAR_LINE);
     this.write(`${PROMPT}${entry.label}\r\n`);
     if (entry.output.length > 0) {
       this.writeResultText(entry.output, entry.isError);
     }
-    this.write(`${PROMPT}${this.buffer}`);
-    // Restore cursor to its position within the buffer.
-    const back = this.buffer.length - this.cursor;
-    if (back > 0) {
-      this.write(`\x1b[${back}D`);
-    }
+    this.redrawInputLine();
   }
 
   // ── Output helpers ───────────────────────────────────────────────────
@@ -519,14 +611,31 @@ export class ModelicaReplPty implements vscode.Pseudoterminal {
   }
 
   /**
+   * Recompute the ghost suggestion and repaint the input line. Single
+   * source of truth for "the buffer / cursor changed, sync the screen."
+   */
+  private repaint(): void {
+    this.ghost = computeGhost(this.buffer, this.cursor);
+    this.redrawInputLine();
+  }
+
+  /**
    * Repaint the input area in place. `\r` returns the cursor to column 0,
    * `\x1b[K` clears from there to end of line, then we rewrite prompt +
-   * buffer and reposition the cursor to `this.cursor`.
+   * buffer, append the dim ghost tail (if any), and reposition the cursor.
+   *
+   * Cursor restore math: after the writes, the cursor sits at
+   * `buffer.length + ghost.length`. We move it back by
+   * `(buffer.length - this.cursor) + ghost.length` so it lands at the
+   * user's logical cursor — which is always at or before end-of-buffer
+   * (ghost is only ever non-empty when cursor is at end).
    */
   private redrawInputLine(): void {
     this.write(`${CLEAR_LINE}${PROMPT}${this.buffer}`);
-    // Move the cursor backwards from end-of-buffer to `this.cursor`.
-    const back = this.buffer.length - this.cursor;
+    if (this.ghost.length > 0) {
+      this.write(`${GHOST_OPEN}${this.ghost}${GHOST_CLOSE}`);
+    }
+    const back = this.buffer.length - this.cursor + this.ghost.length;
     if (back > 0) {
       this.write(`\x1b[${back}D`);
     }
@@ -535,7 +644,7 @@ export class ModelicaReplPty implements vscode.Pseudoterminal {
   private replaceBuffer(next: string): void {
     this.buffer = next;
     this.cursor = next.length;
-    this.redrawInputLine();
+    this.repaint();
   }
 
   private insertText(s: string): void {
@@ -543,6 +652,6 @@ export class ModelicaReplPty implements vscode.Pseudoterminal {
     this.buffer =
       this.buffer.slice(0, this.cursor) + s + this.buffer.slice(this.cursor);
     this.cursor += s.length;
-    this.redrawInputLine();
+    this.repaint();
   }
 }
