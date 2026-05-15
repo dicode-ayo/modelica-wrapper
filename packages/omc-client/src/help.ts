@@ -61,15 +61,22 @@ export interface FunctionDescription {
   returns: FieldInfo[];
 }
 
+/**
+ * Re-export of zod's JSON Schema 2020-12 node type so other packages
+ * (diagram-ui, …) can work with JSON Schema without needing a direct
+ * zod dependency. Equivalent to `z.core.JSONSchema.BaseSchema`.
+ */
+export type JsonSchema = z.core.JSONSchema.BaseSchema;
+
 /** A single function's JSON Schema slice + metadata. */
 export interface FunctionJsonSchema {
   name: OmcFnName;
   category: string;
   description: string;
   /** JSON Schema (draft 2020-12) of the input — `io: "input"` semantics. */
-  input: z.core.JSONSchema.BaseSchema;
+  input: JsonSchema;
   /** JSON Schema (draft 2020-12) of the output — `io: "output"` semantics. */
-  output: z.core.JSONSchema.BaseSchema;
+  output: JsonSchema;
 }
 
 /**

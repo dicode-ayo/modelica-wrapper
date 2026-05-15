@@ -125,3 +125,17 @@ export {
   setRasterizerDebug,
 } from "./icon-provider/svg-rasterizer.js";
 export { OmDebugPlane } from "./debug/debug-plane.component.js";
+export { OmActionPanel, type ActionPanelAnchor } from "./action-panel/action-panel.component.js";
+export {
+  OmParameterForm,
+  type ParameterFormChangeDetail,
+  type ParameterFormSubmitDetail,
+} from "./parameter-form/parameter-form.component.js";
+export { OmParameterPanel } from "./parameter-form/parameter-panel.component.js";
+export {
+  parameterFieldsFromSchema,
+  initialValuesFromFields,
+  isComplete,
+  type ParameterField,
+  type FieldKind,
+} from "./parameter-form/parameter-fields.js";

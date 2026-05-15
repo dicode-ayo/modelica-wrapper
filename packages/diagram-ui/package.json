@@ -13,6 +13,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "start": "storybook dev -p 6007 --no-open",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

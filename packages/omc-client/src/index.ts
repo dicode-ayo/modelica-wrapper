@@ -48,6 +48,7 @@ export {
   type FieldInfo,
   type FunctionDescription,
   type FunctionJsonSchema,
+  type JsonSchema,
 } from "./help.js";
 
 // --- Supported OMC version pin (see docs/audit.md) ---
