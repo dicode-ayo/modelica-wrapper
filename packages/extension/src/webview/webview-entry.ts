@@ -4,15 +4,25 @@
  *
  * The script:
  *   1. Defines the `<om-*>` custom elements by importing diagram-ui.
- *   2. Acquires the VSCode webview API (`acquireVsCodeApi`).
- *   3. Sends `{ type: "ready" }` to the extension and listens for the
- *      first `{ type: "init", layout }` message.
- *   4. Mounts `<om-graphical-layout>` against the layout and forwards
- *      its DOM events to the extension as protocol messages.
+ *   2. Mounts `<om-graphical-layout>` for the actual diagram, plus the
+ *      floating `<om-action-panel>` (Check / Simulate / Parameters) and
+ *      a modal `<om-parameter-panel>` driven by extension messages.
+ *   3. Acquires the VSCode webview API (`acquireVsCodeApi`), sends
+ *      `{ type: "ready" }`, then routes DOM events from each custom
+ *      element to the extension as protocol messages — and routes
+ *      incoming messages back into the elements' state.
  */
 
 import "@modelica-wrapper/diagram-ui";
-import type { DiagramLayout } from "@modelica-wrapper/omc-client";
+import type {
+  DiagramLayout,
+  JsonSchema,
+} from "@modelica-wrapper/omc-client";
+import type {
+  OmActionPanel,
+  OmParameterPanel,
+  ParameterFormSubmitDetail,
+} from "@modelica-wrapper/diagram-ui";
 
 import type {
   ExtensionToWebview,
@@ -41,25 +51,57 @@ function post(message: WebviewToExtension): void {
   vscode.postMessage(message);
 }
 
-function ensureRoot(): HTMLElement {
-  let root = document.getElementById("om-root");
-  if (!root) {
-    root = document.createElement("om-graphical-layout");
-    root.id = "om-root";
-    root.style.position = "absolute";
-    root.style.inset = "0";
+/** Tracks the `kind` of the currently-open parameter modal — needed so
+ *  cancel / submit messages can echo it back, letting the extension
+ *  route the result to the right command flow. */
+let activeParameterKind: string | null = null;
+
+interface DomBindings {
+  layout: HTMLElement;
+  actionPanel: OmActionPanel;
+  parameterPanel: OmParameterPanel;
+}
+
+function ensureDom(): DomBindings {
+  let layout = document.getElementById("om-root") as HTMLElement | null;
+  if (!layout) {
+    layout = document.createElement("om-graphical-layout") as HTMLElement;
+    layout.id = "om-root";
+    layout.style.position = "absolute";
+    layout.style.inset = "0";
     document.body.style.margin = "0";
     document.body.style.height = "100vh";
-    document.body.appendChild(root);
+    document.body.appendChild(layout);
   }
-  return root;
+  let actionPanel = document.getElementById("om-action-panel") as
+    | OmActionPanel
+    | null;
+  if (!actionPanel) {
+    actionPanel = document.createElement(
+      "om-action-panel",
+    ) as OmActionPanel;
+    actionPanel.id = "om-action-panel";
+    actionPanel.setAttribute("anchor", "top-right");
+    document.body.appendChild(actionPanel);
+  }
+  let parameterPanel = document.getElementById("om-parameter-panel") as
+    | OmParameterPanel
+    | null;
+  if (!parameterPanel) {
+    parameterPanel = document.createElement(
+      "om-parameter-panel",
+    ) as OmParameterPanel;
+    parameterPanel.id = "om-parameter-panel";
+    document.body.appendChild(parameterPanel);
+  }
+  return { layout, actionPanel, parameterPanel };
 }
 
 function bindLayout(root: HTMLElement, layout: DiagramLayout): void {
   (root as unknown as { layout: DiagramLayout }).layout = layout;
 }
 
-function wireEvents(root: HTMLElement): void {
+function wireLayoutEvents(root: HTMLElement): void {
   root.addEventListener("om-graphical-layout-change", (e) => {
     const detail = (e as CustomEvent<DiagramLayout>).detail;
     post({ type: "change", layout: detail });
@@ -74,28 +116,100 @@ function wireEvents(root: HTMLElement): void {
   });
 }
 
-function handle(message: ExtensionToWebview): void {
-  const root = ensureRoot();
+function wireActionPanel(panel: OmActionPanel): void {
+  panel.addEventListener("om-action-check", () =>
+    post({ type: "actionCheck" }),
+  );
+  panel.addEventListener("om-action-simulate", () =>
+    post({ type: "actionSimulate" }),
+  );
+  panel.addEventListener("om-action-parameters", () =>
+    post({ type: "actionParameters" }),
+  );
+}
+
+function wireParameterPanel(panel: OmParameterPanel): void {
+  panel.addEventListener("om-panel-submit", (e) => {
+    const detail = (e as CustomEvent<ParameterFormSubmitDetail>).detail;
+    if (activeParameterKind === null) return;
+    post({
+      type: "parametersSubmit",
+      kind: activeParameterKind,
+      values: detail.values,
+    });
+  });
+  panel.addEventListener("om-panel-cancel", () => {
+    if (activeParameterKind === null) return;
+    const kind = activeParameterKind;
+    // Close locally — the extension will not echo a close for cancels.
+    panel.open = false;
+    activeParameterKind = null;
+    post({ type: "parametersCancel", kind });
+  });
+}
+
+function openParameterPanel(
+  panel: OmParameterPanel,
+  kind: string,
+  schema: JsonSchema,
+  values: Record<string, unknown>,
+  title: string,
+  submitLabel: string | undefined,
+): void {
+  panel.schema = schema;
+  panel.values = values;
+  panel.title = title;
+  if (submitLabel !== undefined) {
+    panel.submitLabel = submitLabel;
+  }
+  activeParameterKind = kind;
+  panel.open = true;
+}
+
+function closeParameterPanel(panel: OmParameterPanel): void {
+  panel.open = false;
+  activeParameterKind = null;
+}
+
+function handle(
+  message: ExtensionToWebview,
+  dom: DomBindings,
+): void {
   switch (message.type) {
     case "init":
     case "layout":
-      bindLayout(root, message.layout);
+      bindLayout(dom.layout, message.layout);
       return;
     case "error":
       console.error("[diagram-ui] backend error:", message.message);
       return;
+    case "parametersOpen":
+      openParameterPanel(
+        dom.parameterPanel,
+        message.kind,
+        message.schema,
+        message.values,
+        message.title,
+        message.submitLabel,
+      );
+      return;
+    case "parametersClose":
+      closeParameterPanel(dom.parameterPanel);
+      return;
   }
 }
+
+// Mount before the first init so event wiring is in place.
+const dom = ensureDom();
+wireLayoutEvents(dom.layout);
+wireActionPanel(dom.actionPanel);
+wireParameterPanel(dom.parameterPanel);
 
 window.addEventListener("message", (e) => {
   const data = e.data as ExtensionToWebview | undefined;
   if (data && typeof data === "object" && "type" in data) {
-    handle(data);
+    handle(data, dom);
   }
 });
-
-// Mount before the first init so event wiring is in place.
-const root = ensureRoot();
-wireEvents(root);
 
 post({ type: "ready" });

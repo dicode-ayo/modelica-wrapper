@@ -122,6 +122,8 @@ export class OmGraphicalLayout extends LitElement {
       position: relative;
       width: 100%;
       height: 100%;
+      /* Belt-and-suspenders clip — see om-scene for the why. */
+      overflow: hidden;
     }
     om-scene {
       width: 100%;

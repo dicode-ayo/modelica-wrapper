@@ -30,7 +30,7 @@ export const META_COMMANDS: ReadonlyArray<{ name: string; summary: string }> = [
   { name: ":help", summary: "Show help (`:help <category|name>` for details)" },
   { name: ":clear", summary: "Clear the terminal screen" },
   { name: ":load", summary: "Call loadFile on a path (`:load <path>`)" },
-  { name: ":cd", summary: "Change OMC's working directory (`:cd <path>`)" },
+  { name: ":cd", summary: "Show or change OMC's working directory (`:cd` to print, `:cd <path>` to change)" },
   { name: ":reset", summary: "Close OMC and start a fresh subprocess" },
   { name: ":exit", summary: "Close this REPL terminal" },
 ];

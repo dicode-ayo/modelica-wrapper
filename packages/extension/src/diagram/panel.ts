@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { DiagramLayout } from "@modelica-wrapper/omc-client";
+import type { DiagramLayout, JsonSchema } from "@modelica-wrapper/omc-client";
 
 import type {
   ExtensionToWebview,
@@ -19,6 +19,29 @@ export interface DiagramPanelHandlers {
   onChange?: (layout: DiagramLayout) => void;
   onConnectionCreate?: (fromKey: string, toKey: string) => void;
   onSelectionChange?: (keys: string[]) => void;
+  /** Floating action panel — Check button. */
+  onActionCheck?: () => void;
+  /** Floating action panel — Simulate button. */
+  onActionSimulate?: () => void;
+  /** Floating action panel — Parameters button. */
+  onActionParameters?: () => void;
+  /** Parameter modal submitted; `kind` is whatever was passed to `openParameters`. */
+  onParametersSubmit?: (kind: string, values: Record<string, unknown>) => void;
+  /** Parameter modal dismissed without submit. */
+  onParametersCancel?: (kind: string) => void;
+}
+
+export interface OpenParametersOptions {
+  /** Opaque tag echoed back on submit/cancel so the host can route. */
+  kind: string;
+  /** JSON Schema 2020-12 describing the form (object schema). */
+  schema: JsonSchema;
+  /** Initial field values keyed by property name. */
+  values: Record<string, unknown>;
+  /** Modal title shown at the top of the form. */
+  title: string;
+  /** Submit-button label; defaults to "Apply" on the form side. */
+  submitLabel?: string;
 }
 
 export class DiagramPanel {
@@ -101,6 +124,26 @@ export class DiagramPanel {
     this.send({ type: "layout", layout });
   }
 
+  /** Tell the webview to open its parameter modal with this schema. */
+  openParameters(opts: OpenParametersOptions): void {
+    const msg: ExtensionToWebview = {
+      type: "parametersOpen",
+      kind: opts.kind,
+      schema: opts.schema,
+      values: opts.values,
+      title: opts.title,
+    };
+    if (opts.submitLabel !== undefined) {
+      msg.submitLabel = opts.submitLabel;
+    }
+    this.send(msg);
+  }
+
+  /** Tell the webview to dismiss the parameter modal. */
+  closeParameters(): void {
+    this.send({ type: "parametersClose" });
+  }
+
   dispose(): void {
     DiagramPanel.panels.delete(this.className);
     if (DiagramPanel.activePanel === this) {
@@ -141,6 +184,21 @@ export class DiagramPanel {
       case "selectionChange":
         this.handlers.onSelectionChange?.(message.keys);
         return;
+      case "actionCheck":
+        this.handlers.onActionCheck?.();
+        return;
+      case "actionSimulate":
+        this.handlers.onActionSimulate?.();
+        return;
+      case "actionParameters":
+        this.handlers.onActionParameters?.();
+        return;
+      case "parametersSubmit":
+        this.handlers.onParametersSubmit?.(message.kind, message.values);
+        return;
+      case "parametersCancel":
+        this.handlers.onParametersCancel?.(message.kind);
+        return;
       case "error":
         void vscode.window.showWarningMessage(
           `Modelica diagram: ${message.message}`,
@@ -168,7 +226,7 @@ export class DiagramPanel {
     <meta http-equiv="Content-Security-Policy" content="${csp}" />
     <title>Modelica diagram: ${this.escapeHtml(this.className)}</title>
     <style>
-      html, body { margin: 0; height: 100%; background: #f7f7f8; }
+      html, body { margin: 0; height: 100%; background: #f7f7f8; overflow: hidden; }
       om-graphical-layout { width: 100%; height: 100%; display: block; }
     </style>
   </head>

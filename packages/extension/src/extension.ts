@@ -107,7 +107,48 @@ async function ensureClient(): Promise<OmcClient> {
   const cfg = vscode.workspace.getConfiguration("modelica");
   const omcPath = cfg.get<string>("omcPath") ?? "";
   client = await OmcClient.create({ omcPath });
+  await cdIntoWorkspaceCacheDir(client);
   return client;
+}
+
+/**
+ * Park OMC's working directory in `<workspace>/.modelica/` so all the
+ * build artifacts (C files, object files, the simulate executable, the
+ * `.mat` result file, …) land in one tidy spot the user can `.gitignore`
+ * with a single entry — and DOESN'T pollute their workspace root.
+ *
+ * Mkdir-recursive the cache dir first so OMC's `cd(...)` doesn't fail
+ * with "directory does not exist" on a freshly-opened project. Errors
+ * here are non-fatal: we log and let OMC keep its default cwd.
+ */
+const WORKSPACE_CACHE_DIRNAME = ".modelica";
+
+async function cdIntoWorkspaceCacheDir(c: OmcClient): Promise<void> {
+  const ws = vscode.workspace.workspaceFolders?.[0];
+  if (!ws) return;
+  const path = await import("node:path");
+  const fsp = await import("node:fs/promises");
+  const cacheDir = path.join(ws.uri.fsPath, WORKSPACE_CACHE_DIRNAME);
+  try {
+    await fsp.mkdir(cacheDir, { recursive: true });
+  } catch (err) {
+    log.warn(
+      "ensureClient",
+      `mkdir ${cacheDir} failed: ${(err as Error).message}`,
+    );
+    return;
+  }
+  try {
+    const { workingDirectory } = await c.cd({
+      newWorkingDirectory: cacheDir,
+    });
+    log.info("ensureClient", `OMC cwd → ${workingDirectory}`);
+  } catch (err) {
+    log.warn(
+      "ensureClient",
+      `cd ${cacheDir} failed: ${(err as Error).message}`,
+    );
+  }
 }
 
 /**

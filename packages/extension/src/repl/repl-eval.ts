@@ -181,18 +181,16 @@ async function metaCd(
   arg: string,
   deps: ReplDependencies,
 ): Promise<ReplResult> {
-  if (arg.length === 0) {
-    return { output: "error: :cd requires a path", isError: true };
-  }
   try {
     const client = await deps.ensureClient();
-    // Route through the typed wrapper. OMC's `cd` returns the new working
-    // directory (possibly normalized), or an empty string on failure on
-    // some OMC versions. On 1.26.x a bad path is a silent no-op that
-    // returns the prior cwd — distinguishing that from success would
-    // require comparing to the pre-call cwd, which isn't worth the cost
-    // for an interactive command. We treat empty-string output as the
-    // only "failed" signal here.
+    // OMC's `cd` doubles as a getter: empty `newWorkingDirectory`
+    // returns the current cwd without changing it. So `:cd` with no
+    // argument prints the cwd (handy after the extension auto-cd's into
+    // `<workspace>/.modelica`), and `:cd <path>` changes it.
+    //
+    // OMC returns an empty string on failure on some versions; on
+    // 1.26.x a bad path is a silent no-op that returns the prior cwd.
+    // We treat empty-string output as the only "failed" signal here.
     const { workingDirectory } = await client.cd({
       newWorkingDirectory: arg,
     });

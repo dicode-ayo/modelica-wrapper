@@ -73,11 +73,39 @@ export async function simulate(
   ctx: CallContext,
   input: SimulateInput,
 ): Promise<SimulateOutput> {
-  const startTime =
-    input.startTime === undefined ? `"<default>"` : String(input.startTime);
-  const raw = await ctx.call(
-    `simulate(${input.typeName}, startTime=${startTime}, stopTime=${input.stopTime ?? 1.0}, numberOfIntervals=${input.numberOfIntervals ?? 500}, tolerance=${input.tolerance ?? 1e-6}, method=${quote(input.method ?? "<default>")}, fileNamePrefix=${quote(input.fileNamePrefix ?? "<default>")}, options=${quote(input.options ?? "<default>")}, outputFormat=${quote(input.outputFormat ?? "mat")}, variableFilter=${quote(input.variableFilter ?? ".*")}, cflags=${quote(input.cflags ?? "<default>")}, simflags=${quote(input.simflags ?? "<default>")})`,
-  );
+  // Build the named-argument list piecewise, omitting any parameter the
+  // caller didn't set OR explicitly set to the literal `"<default>"`.
+  //
+  // Why this matters: OMC's `simulate` declares every string parameter
+  // with the default value `"<default>"`. When OMC sees that exact
+  // string on the call site it substitutes whatever it considers a
+  // sane default at runtime. But for `fileNamePrefix` / `cflags` /
+  // `simflags` / `options`, OMC currently treats the literal `<default>`
+  // as a real string — splat into filenames and compiler flags, which
+  // then crashes `/bin/sh` at compile time (the `<` / `>` are parsed as
+  // redirection operators). The matching `val.ts` wrapper uses the same
+  // omit-when-default idiom for the same reason.
+  const parts: string[] = [input.typeName];
+  const num = (name: string, v: number | undefined): void => {
+    if (v !== undefined) parts.push(`${name}=${v}`);
+  };
+  const str = (name: string, v: string | undefined): void => {
+    if (v !== undefined && v !== "<default>") {
+      parts.push(`${name}=${quote(v)}`);
+    }
+  };
+  num("startTime", input.startTime);
+  num("stopTime", input.stopTime);
+  num("numberOfIntervals", input.numberOfIntervals);
+  num("tolerance", input.tolerance);
+  str("method", input.method);
+  str("fileNamePrefix", input.fileNamePrefix);
+  str("options", input.options);
+  str("outputFormat", input.outputFormat);
+  str("variableFilter", input.variableFilter);
+  str("cflags", input.cflags);
+  str("simflags", input.simflags);
+  const raw = await ctx.call(`simulate(${parts.join(", ")})`);
   return parseOutput(
     SimulateOutputSchema,
     { simulationResult: parse(raw) },

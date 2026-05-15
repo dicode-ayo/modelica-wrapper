@@ -267,6 +267,19 @@ describe("evalLine — meta commands", () => {
     expect(result.isError).toBe(false);
   });
 
+  it(":cd with no arg prints the current cwd (cd getter)", async () => {
+    // OMC's `cd("")` is documented as a pure getter — it returns the
+    // current cwd without changing it. The fake encodes that here: the
+    // pre-seeded reply for empty string is the current cwd.
+    const fake = makeClient();
+    fake.cdReplies.set("", "/some/where");
+    const { deps } = makeDeps(fake.client);
+    const result = await evalLine(":cd", deps);
+    expect(fake.cdCalls).toEqual([""]);
+    expect(result.output).toBe("/some/where");
+    expect(result.isError).toBe(false);
+  });
+
   it(":cd reports an error when the cd wrapper returns an empty cwd", async () => {
     const fake = makeClient();
     fake.cdReplies.set("/nope", "");

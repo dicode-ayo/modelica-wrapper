@@ -40,10 +40,18 @@ const defaultEngineFactory: EngineFactory = (canvas) =>
   // `stencil: true` is required by Babylon's HighlightLayer (the
   // selection outline). Without it, the layer warns and silently
   // skips its render pass.
+  //
+  // `alpha: false` makes the WebGL backbuffer opaque. With the
+  // default (transparent) backbuffer the browser's GPU compositor
+  // can present a half-painted frame during rapid pan/zoom — the
+  // big opaque shapes (white extent-rect, axis lines) read as a
+  // flicker against the CSS `:host` background. An opaque canvas
+  // sidesteps that path entirely.
   new Engine(canvas, true, {
     preserveDrawingBuffer: false,
     stencil: true,
     disableWebGL2Support: false,
+    alpha: false,
   });
 
 /**
@@ -73,6 +81,15 @@ export class OmScene extends LitElement {
       width: 100%;
       height: 100%;
       background: var(--om-scene-background, #f7f7f8);
+      /*
+       * Slotted HTML overlays (om-icon-overlay) are positioned absolute
+       * with translate() transforms driven by pan/zoom. Without
+       * overflow:hidden they extend past the host bounds during motion,
+       * which makes the page scrollbars oscillate on/off — and every
+       * such toggle triggers engine.resize() (black-framebuffer flash
+       * for one frame). Clipping here keeps the canvas size stable.
+       */
+      overflow: hidden;
     }
     canvas {
       display: block;
@@ -214,7 +231,10 @@ export class OmScene extends LitElement {
     const factory = this.engineFactory ?? defaultEngineFactory;
     const engine = factory(canvas);
     const scene = new Scene(engine);
-    scene.clearColor = new Color4(0, 0, 0, 0);
+    // Match the `:host` CSS background so the opaque backbuffer paints
+    // a seamless plate behind the diagram contents. Keeping these in
+    // sync avoids a 1-px hairline of either colour at the canvas edge.
+    scene.clearColor = new Color4(0.969, 0.969, 0.973, 1);
 
     const worldRoot = new TransformNode("om-world", scene);
     const diagramRoot = new TransformNode("om-diagram", scene);
