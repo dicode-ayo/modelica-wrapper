@@ -213,6 +213,13 @@ export class OmGraphicalLayout extends LitElement {
   private dragController: DragController | null = null;
   private dblClickPicker: PickerFn | null = null;
   private dblClickCanvas: HTMLCanvasElement | null = null;
+  /**
+   * Diagram-space position captured at the moment the user double-
+   * clicked empty canvas. Used as the drop point for whichever class
+   * they pick in the library browser; falls back to the view centre
+   * if `clientToDiagram` returns null (canvas not yet sized).
+   */
+  private pendingAddPosition: { x: number; y: number } | null = null;
 
   override render(): TemplateResult {
     const active = this.draftLayout ?? this.layout;
@@ -511,6 +518,11 @@ export class OmGraphicalLayout extends LitElement {
     if (this.dblClickPicker(e.clientX, e.clientY) !== null) {
       return;
     }
+    // Capture the diagram-space click position now: by the time the
+    // user picks a class in the library browser, the mouse may have
+    // moved arbitrarily and the original location is gone.
+    this.pendingAddPosition =
+      this.sceneEl?.clientToDiagram(e.clientX, e.clientY) ?? null;
     this.libraryBrowserOpen = true;
   };
 
@@ -520,19 +532,23 @@ export class OmGraphicalLayout extends LitElement {
     e.stopPropagation();
     const className = e.detail.className;
     this.libraryBrowserOpen = false;
-    // Place the new component at the current view centre. The pan
-    // coordinates are already in diagram space — the camera target
-    // is what's centred in the viewport.
+    // Prefer the diagram-space position captured at double-click
+    // time. Fall back to the current view centre if the capture
+    // failed (e.g. canvas wasn't sized yet). View centre is fine as
+    // a backstop because at least it lands in something the user
+    // can see — not arbitrary world origin.
     const sceneEl = this.sceneEl;
-    const position = sceneEl
-      ? { x: sceneEl.panX, y: sceneEl.panY }
-      : { x: 0, y: 0 };
+    const position =
+      this.pendingAddPosition ??
+      (sceneEl ? { x: sceneEl.panX, y: sceneEl.panY } : { x: 0, y: 0 });
+    this.pendingAddPosition = null;
     this.emit("om-add-component-request", { className, position });
   };
 
   private onLibraryCancel = (e: Event): void => {
     e.stopPropagation();
     this.libraryBrowserOpen = false;
+    this.pendingAddPosition = null;
   };
 
   private onViewChange = (_e: Event): void => {

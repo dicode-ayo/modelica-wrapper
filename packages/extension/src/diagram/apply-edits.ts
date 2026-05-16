@@ -21,10 +21,26 @@ export interface ApplyEditsResult {
   failed: Array<{ edit: LayoutEdit; error: string }>;
 }
 
+/**
+ * Callback invoked per edit after the OMC call resolves (success or
+ * failure). `command` is the raw OMC call we sent (`client.lastCall`),
+ * useful as a REPL transcript label. `error` is undefined on success.
+ *
+ * The caller passes a function that mirrors each step into the
+ * Modelica REPL, the same way the addComponent / simulate flows do.
+ * Kept optional so non-UI callers don't have to thread anything.
+ */
+export type ApplyEditsHook = (
+  edit: LayoutEdit,
+  command: string,
+  error: string | undefined,
+) => void;
+
 export async function applyEdits(
   client: OmcClient,
   hostClass: string,
   edits: ReadonlyArray<LayoutEdit>,
+  onApplied?: ApplyEditsHook,
 ): Promise<ApplyEditsResult> {
   const result: ApplyEditsResult = { applied: 0, failed: [] };
 
@@ -36,8 +52,11 @@ export async function applyEdits(
     try {
       await applyOne(client, hostClass, edit);
       result.applied++;
+      onApplied?.(edit, client.lastCall ?? "(no command)", undefined);
     } catch (err) {
-      result.failed.push({ edit, error: (err as Error).message });
+      const msg = (err as Error).message;
+      result.failed.push({ edit, error: msg });
+      onApplied?.(edit, client.lastCall ?? "(no command)", msg);
     }
   }
   return result;

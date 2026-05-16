@@ -19,6 +19,11 @@ import { customElement, property, state } from "lit/decorators.js";
 import { consume } from "@lit/context";
 
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
+import {
+  viewStateContext,
+  type ViewStateStore,
+} from "../scene/view-state-store.js";
+import { clientToDiagram } from "../scene/view-math.js";
 
 type PerfStats = {
   fps: number;
@@ -26,6 +31,10 @@ type PerfStats = {
   meshes: number;
   drawCalls: number;
 };
+
+/** Pointer position in diagram (Modelica) coordinates, or null when
+ *  the cursor is outside the canvas. */
+type DiagramPoint = { x: number; y: number } | null;
 
 /**
  * Pulls the GPU renderer string from `WEBGL_debug_renderer_info`. If
@@ -89,14 +98,24 @@ export class OmPerfHud extends LitElement {
   @consume({ context: sceneContext, subscribe: true })
   private ctx: SceneContext | null = null;
 
+  @consume({ context: viewStateContext, subscribe: true })
+  private viewStore: ViewStateStore | null = null;
+
   @state()
   private stats: PerfStats = { fps: 0, frameMs: 0, meshes: 0, drawCalls: 0 };
+
+  @state()
+  private pointer: DiagramPoint = null;
 
   /** Captured once on connect — used to surface software-renderer fallbacks. */
   private gpu = "";
 
   private rafId = 0;
   private lastSampleAt = 0;
+  /** Canvas the pointer listeners are bound to. Tracked so we can
+   *  remove them cleanly even if `ctx.engine.getRenderingCanvas()`
+   *  later returns a different element. */
+  private pointerCanvas: HTMLCanvasElement | null = null;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -111,7 +130,60 @@ export class OmPerfHud extends LitElement {
     super.disconnectedCallback();
     if (this.rafId) cancelAnimationFrame(this.rafId);
     this.rafId = 0;
+    this.detachPointerListeners();
   }
+
+  override updated(changed: Map<string, unknown>): void {
+    // Restart the rAF loop when the user flips `show` back on.
+    if (changed.has("show") && this.show && !this.rafId) {
+      this.rafId = requestAnimationFrame(this.tick);
+    }
+    // Pointer listeners need re-binding whenever the scene context
+    // resolves (or changes) — `ctx.engine.getRenderingCanvas()` is
+    // null until OmScene mounts the engine.
+    this.attachPointerListeners();
+  }
+
+  /**
+   * Bind `pointermove` / `pointerleave` to the active canvas so the
+   * HUD can show diagram-space cursor coordinates. Idempotent: a
+   * second call against the same canvas is a no-op.
+   */
+  private attachPointerListeners(): void {
+    const canvas = this.ctx?.engine.getRenderingCanvas() ?? null;
+    if (canvas === this.pointerCanvas) return;
+    this.detachPointerListeners();
+    if (!canvas) return;
+    canvas.addEventListener("pointermove", this.onPointerMove);
+    canvas.addEventListener("pointerleave", this.onPointerLeave);
+    this.pointerCanvas = canvas;
+  }
+
+  private detachPointerListeners(): void {
+    if (!this.pointerCanvas) return;
+    this.pointerCanvas.removeEventListener("pointermove", this.onPointerMove);
+    this.pointerCanvas.removeEventListener("pointerleave", this.onPointerLeave);
+    this.pointerCanvas = null;
+  }
+
+  private onPointerMove = (e: PointerEvent): void => {
+    const canvas = this.pointerCanvas;
+    const view = this.viewStore?.value;
+    if (!canvas || !view) return;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const p = clientToDiagram(
+      view,
+      { width: rect.width, height: rect.height },
+      e.clientX - rect.left,
+      e.clientY - rect.top,
+    );
+    this.pointer = { x: p.x, y: p.y };
+  };
+
+  private onPointerLeave = (): void => {
+    this.pointer = null;
+  };
 
   override render(): TemplateResult | typeof nothing {
     if (!this.show) return nothing;
@@ -121,10 +193,19 @@ export class OmPerfHud extends LitElement {
     // "Software" / "SwiftShader" in the GPU string almost always means
     // GPU acceleration is disabled — that alone halves the FPS.
     const gpuClass = /software|swiftshader/i.test(this.gpu) ? "bad" : "";
+    // Pointer line shows diagram-space (Modelica) coordinates. Renders
+    // a placeholder when the cursor is outside the canvas so the HUD
+    // height doesn't jitter on hover-out.
+    const pointerStr = this.pointer
+      ? `${this.pointer.x.toFixed(1).padStart(7)}, ${this.pointer.y
+          .toFixed(1)
+          .padStart(7)}`
+      : "      —,       —";
     return html`<span class=${fpsClass}
         >${fps.toFixed(0).padStart(3)} fps</span
       >  ${frameMs.toFixed(1).padStart(4)} ms
 meshes ${String(meshes).padStart(4)}   drawcalls ${String(drawCalls).padStart(4)}
+xy     ${pointerStr}
 <span class=${gpuClass}>gpu ${this.gpu}</span>`;
   }
 
@@ -157,13 +238,6 @@ meshes ${String(meshes).padStart(4)}   drawcalls ${String(drawCalls).padStart(4)
       this.rafId = requestAnimationFrame(this.tick);
     } else {
       this.rafId = 0;
-    }
-  }
-
-  override updated(changed: Map<string, unknown>): void {
-    // Restart the rAF loop when the user flips `show` back on.
-    if (changed.has("show") && this.show && !this.rafId) {
-      this.rafId = requestAnimationFrame(this.tick);
     }
   }
 }

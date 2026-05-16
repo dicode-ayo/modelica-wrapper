@@ -63,6 +63,23 @@ export const omTokens: CSSResult = css`
     /* --- typography --- */
     --om-title-size: 1.1em;
     --om-description-size: 0.92em;
+    --om-qualifier-size: 0.85em;
+    --om-badge-font-size: 10px;
+    --om-badge-font-weight: 700;
+
+    /* --- inline icons / badges ---
+     * icon-sm is for cursor-style affordances (chevrons, indicators
+     * inside text rows); icon-md is for full-sized badges and the
+     * library-browser restriction glyphs. */
+    --om-icon-size-sm: 0.85em;
+    --om-icon-size-md: 16px;
+
+    /* --- library browser ---
+     * Modal-internal layout: dialog width + minimum body height so the
+     * tree has room to breathe even on first paint before children
+     * lazy-load. */
+    --om-library-dialog-width: 560px;
+    --om-library-body-min-height: 320px;
 
     /* --- state --- */
     --om-disabled-opacity: 0.55;

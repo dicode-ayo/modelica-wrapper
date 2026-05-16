@@ -32,6 +32,8 @@ import "@awesome.me/webawesome/dist/components/tree-item/tree-item.js";
 import type WaDialog from "@awesome.me/webawesome/dist/components/dialog/dialog.js";
 import type WaTreeItem from "@awesome.me/webawesome/dist/components/tree-item/tree-item.js";
 
+import { omTokens } from "../base/om-tokens.js";
+
 /**
  * Modelica class restrictions surfaced in the palette. Mirrors OMC's
  * `getClassRestriction` output, plus an `"unknown"` fallback for
@@ -153,66 +155,109 @@ interface RootNode {
 
 @customElement("om-library-browser")
 export class OmLibraryBrowser extends LitElement {
-  static override styles = css`
-    :host {
-      display: contents;
-    }
+  static override styles = [
+    omTokens,
+    css`
+      :host {
+        display: contents;
+      }
 
-    /* Search input + tree share the dialog body's vertical rhythm. */
-    .body {
-      display: flex;
-      flex-direction: column;
-      gap: var(--wa-space-s, 8px);
-      min-height: 320px;
-    }
+      /* Search input + tree share the dialog body's vertical rhythm. */
+      .body {
+        display: flex;
+        flex-direction: column;
+        gap: var(--om-space-md);
+        min-height: var(--om-library-body-min-height);
+      }
 
-    .empty,
-    .loading,
-    .error {
-      padding: var(--wa-space-m, 12px);
-      color: var(--wa-color-text-quiet, #666);
-      font-size: 0.92em;
-    }
+      .empty,
+      .loading,
+      .error {
+        padding: var(--om-space-lg);
+        color: var(--wa-color-text-quiet, var(--vscode-descriptionForeground));
+        font-size: var(--om-description-size);
+      }
 
-    .error {
-      color: var(--wa-color-danger-fill-loud, #c33);
-    }
+      .error {
+        color: var(--wa-color-danger-fill-loud, var(--vscode-errorForeground));
+      }
 
-    /* Row content inside each wa-tree-item: icon badge + label, with
-     * an optional qualifier (used by search results to show the
-     * dotted path prefix). */
-    .row {
-      display: inline-flex;
-      align-items: center;
-      gap: var(--wa-space-xs, 4px);
-    }
+      /* Row content inside each wa-tree-item: icon badge + label, with
+       * an optional qualifier (used by search results to show the
+       * dotted path prefix). */
+      .row {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--om-space-xs);
+      }
 
-    .icon {
-      flex-shrink: 0;
-      width: 16px;
-      height: 16px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 2px;
-      font-size: 10px;
-      font-weight: 700;
-      line-height: 1;
-      font-family: var(--wa-font-family-code, ui-monospace, monospace);
-    }
+      .icon {
+        flex-shrink: 0;
+        width: var(--om-icon-size-md);
+        height: var(--om-icon-size-md);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: var(--om-radius-sm);
+        font-size: var(--om-badge-font-size);
+        font-weight: var(--om-badge-font-weight);
+        line-height: 1;
+        font-family: var(--wa-font-family-code, ui-monospace, monospace);
+      }
 
-    .qualifier {
-      font-size: 0.85em;
-      color: var(--wa-color-text-quiet, #666);
-      margin-left: var(--wa-space-xs, 4px);
-    }
+      .qualifier {
+        font-size: var(--om-qualifier-size);
+        color: var(--wa-color-text-quiet, var(--vscode-descriptionForeground));
+        margin-left: var(--om-space-xs);
+      }
 
-    .node-error {
-      padding: var(--wa-space-2xs, 2px) var(--wa-space-m, 12px);
-      color: var(--wa-color-danger-fill-loud, #c33);
-      font-size: 0.85em;
-    }
-  `;
+      .node-error {
+        padding: var(--om-space-2xs) var(--om-space-lg);
+        color: var(--wa-color-danger-fill-loud, var(--vscode-errorForeground));
+        font-size: var(--om-qualifier-size);
+      }
+
+      /*
+       * Pin the chevron colour to a VSCode token. wa-tree-item's default
+       * is --wa-color-text-quiet, which our bridge maps to
+       * descriptionForeground — that can be very dim against the
+       * dialog's editor-widget background. --vscode-icon-foreground
+       * (with a foreground fallback) gives the secondary contrast level
+       * VSCode uses for its own tree widgets, legible in every theme.
+       */
+      wa-tree-item::part(expand-button) {
+        color: var(
+          --vscode-icon-foreground,
+          var(--vscode-foreground, currentColor)
+        );
+      }
+
+      /* Inline chevron SVGs slotted into wa-tree. We provide our own
+       * because wa-icon library=system loads its glyph via fetch(),
+       * which the webview CSP blocks (default-src none, no connect-src).
+       * A raw <svg fill="currentColor"> inherits the expand-button
+       * colour above and needs no network. */
+      .chevron-icon {
+        width: var(--om-icon-size-sm);
+        height: var(--om-icon-size-sm);
+        display: block;
+      }
+    `,
+  ];
+
+  /** Reusable chevron template — same SVG goes in both expand and
+   *  collapse slots because wa-tree-item rotates the whole expand
+   *  button 90° when the item is open. */
+  private readonly chevronSlot = (slot: "expand-icon" | "collapse-icon") =>
+    html`<svg
+      slot=${slot}
+      class="chevron-icon"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M5.5 3.5 11 8l-5.5 4.5V3.5z" />
+    </svg>`;
 
   /** Whether the modal is shown. */
   @property({ type: Boolean, reflect: true })
@@ -320,6 +365,8 @@ export class OmLibraryBrowser extends LitElement {
         @wa-selection-change=${this.onSelectionChange}
         @wa-lazy-load=${this.onLazyLoad}
       >
+        ${this.chevronSlot("expand-icon")}
+        ${this.chevronSlot("collapse-icon")}
         ${repeat(
           roots,
           (n) => n.qualified,
@@ -390,6 +437,8 @@ export class OmLibraryBrowser extends LitElement {
         selection="single"
         @wa-selection-change=${this.onSelectionChange}
       >
+        ${this.chevronSlot("expand-icon")}
+        ${this.chevronSlot("collapse-icon")}
         ${repeat(
           results,
           (info) => info.qualified,

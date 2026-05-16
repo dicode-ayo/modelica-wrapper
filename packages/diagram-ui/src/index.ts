@@ -136,6 +136,8 @@ export { OmParameterPanel } from "./parameter-form/parameter-panel.component.js"
 export {
   OmLibraryBrowser,
   type LibraryBrowserDataSource,
+  type LibraryClassInfo,
+  type LibraryClassRestriction,
 } from "./library-browser/library-browser.component.js";
 export {
   parameterFieldsFromSchema,

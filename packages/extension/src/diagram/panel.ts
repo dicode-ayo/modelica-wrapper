@@ -3,6 +3,7 @@ import type { DiagramLayout, JsonSchema } from "@modelica-wrapper/omc-client";
 
 import type {
   ExtensionToWebview,
+  LibraryClassInfo,
   WebviewToExtension,
 } from "../webview/protocol.js";
 
@@ -29,6 +30,25 @@ export interface DiagramPanelHandlers {
   onParametersSubmit?: (kind: string, values: Record<string, unknown>) => void;
   /** Parameter modal dismissed without submit. */
   onParametersCancel?: (kind: string) => void;
+  /**
+   * Library-browser request: enumerate child classes of `parent`
+   * (null for top-level loaded packages). Return promises resolve into
+   * a `libraryChildren` reply; rejections become `{ error: msg }`.
+   */
+  onLibraryListChildren?: (
+    parent: string | null,
+  ) => Promise<LibraryClassInfo[]>;
+  /** Library-browser request: substring search of loaded class names. */
+  onLibrarySearch?: (query: string) => Promise<LibraryClassInfo[]>;
+  /**
+   * User picked a class in the library browser. `position` is the
+   * current view-centre in diagram coordinates — the host turns it
+   * into a Placement annotation for `addComponent`.
+   */
+  onAddComponent?: (
+    className: string,
+    position: { x: number; y: number },
+  ) => void;
 }
 
 export interface OpenParametersOptions {
@@ -199,11 +219,53 @@ export class DiagramPanel {
       case "parametersCancel":
         this.handlers.onParametersCancel?.(message.kind);
         return;
+      case "addComponent":
+        this.handlers.onAddComponent?.(message.className, message.position);
+        return;
+      case "libraryListChildren":
+        void this.handleLibraryRequest(
+          message.requestId,
+          "libraryChildren",
+          () =>
+            this.handlers.onLibraryListChildren?.(message.parent) ??
+            Promise.resolve([]),
+        );
+        return;
+      case "librarySearch":
+        void this.handleLibraryRequest(
+          message.requestId,
+          "librarySearchResult",
+          () =>
+            this.handlers.onLibrarySearch?.(message.query) ??
+            Promise.resolve([]),
+        );
+        return;
       case "error":
         void vscode.window.showWarningMessage(
           `Modelica diagram: ${message.message}`,
         );
         return;
+    }
+  }
+
+  /**
+   * Drive a library-browser request: run the provided async fetcher
+   * and post the matching response message with either `items` (on
+   * success) or `error` (on rejection). Errors are surfaced via the
+   * data-source's reject path; the host doesn't pop a toast because
+   * the browser already renders an inline error state.
+   */
+  private async handleLibraryRequest(
+    requestId: string,
+    responseType: "libraryChildren" | "librarySearchResult",
+    fetch: () => Promise<LibraryClassInfo[]>,
+  ): Promise<void> {
+    try {
+      const items = await fetch();
+      this.send({ type: responseType, requestId, items });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.send({ type: responseType, requestId, error: msg });
     }
   }
 
