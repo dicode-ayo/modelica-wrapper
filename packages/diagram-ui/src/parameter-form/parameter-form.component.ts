@@ -34,6 +34,12 @@
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 
+import "@awesome.me/webawesome/dist/components/button/button.js";
+import "@awesome.me/webawesome/dist/components/checkbox/checkbox.js";
+import "@awesome.me/webawesome/dist/components/input/input.js";
+import "@awesome.me/webawesome/dist/components/option/option.js";
+import "@awesome.me/webawesome/dist/components/select/select.js";
+
 import type { JsonSchema } from "@modelica-wrapper/omc-client";
 
 import { omTokens } from "../base/om-tokens.js";
@@ -67,7 +73,6 @@ export class OmParameterForm extends LitElement {
         font-family: var(--vscode-font-family, system-ui, sans-serif);
         font-size: var(--vscode-font-size, 13px);
         color: var(--vscode-foreground, #1f1f1f);
-        background: var(--vscode-editorWidget-background, #f3f3f3);
         padding: var(--om-space-lg) var(--om-space-xl);
         box-sizing: border-box;
       }
@@ -97,30 +102,10 @@ export class OmParameterForm extends LitElement {
         margin-left: var(--om-space-2xs);
       }
 
-      .control input[type="text"],
-      .control input[type="number"],
-      .control textarea,
-      .control select {
+      /* Make wa-input + wa-select stretch to fill the control column. */
+      .control wa-input,
+      .control wa-select {
         width: 100%;
-        box-sizing: border-box;
-        padding: var(--om-input-padding);
-        font: inherit;
-        color: var(--vscode-input-foreground, inherit);
-        background: var(--vscode-input-background, #fff);
-        border: 1px solid var(--vscode-input-border, #ccc);
-        border-radius: var(--om-radius-sm);
-      }
-
-      .control textarea {
-        min-height: var(--om-textarea-min-height);
-        resize: vertical;
-      }
-
-      .control input:focus,
-      .control textarea:focus,
-      .control select:focus {
-        outline: 1px solid var(--vscode-focusBorder, #007fd4);
-        outline-offset: -1px;
       }
 
       .description {
@@ -140,40 +125,6 @@ export class OmParameterForm extends LitElement {
         justify-content: flex-end;
         gap: var(--om-space-md);
         margin-top: var(--om-space-lg);
-      }
-
-      button {
-        font: inherit;
-        padding: var(--om-button-padding);
-        border: 1px solid var(--vscode-button-border, transparent);
-        border-radius: var(--om-radius-sm);
-        cursor: pointer;
-      }
-
-      button.primary {
-        color: var(--vscode-button-foreground, #fff);
-        background: var(--vscode-button-background, #0e639c);
-      }
-
-      button.primary:hover {
-        background: var(--vscode-button-hoverBackground, #1177bb);
-      }
-
-      button.primary[disabled] {
-        opacity: var(--om-disabled-opacity);
-        cursor: not-allowed;
-      }
-
-      button.secondary {
-        color: var(--vscode-button-secondaryForeground, inherit);
-        background: var(--vscode-button-secondaryBackground, transparent);
-      }
-
-      button.secondary:hover {
-        background: var(
-          --vscode-button-secondaryHoverBackground,
-          rgba(0, 0, 0, 0.05)
-        );
       }
     `,
   ];
@@ -217,16 +168,18 @@ export class OmParameterForm extends LitElement {
       <form @submit=${this.onSubmit}>
         ${this.fields.map((f) => this.renderField(f))}
         <div class="actions">
-          <button
+          <wa-button
             type="button"
-            class="secondary"
+            variant="neutral"
+            appearance="outlined"
             @click=${this.onCancel}
-          >${this.cancelLabel}</button>
-          <button
+          >${this.cancelLabel}</wa-button>
+          <wa-button
             type="submit"
-            class="primary"
+            variant="brand"
+            appearance="filled"
             ?disabled=${!canSubmit}
-          >${this.submitLabel}</button>
+          >${this.submitLabel}</wa-button>
         </div>
       </form>
     `;
@@ -250,43 +203,57 @@ export class OmParameterForm extends LitElement {
     const v = this.working[f.name];
     switch (f.kind) {
       case "enum":
+        // wa-select takes its value via the `.value` property (string
+        // or array for `multiple`). Options live in light DOM as
+        // wa-option children.
         return html`
-          <select
+          <wa-select
             id=${`f-${f.name}`}
-            @change=${(e: Event) =>
-              this.setField(f.name, (e.target as HTMLSelectElement).value)}
+            size="small"
+            .value=${v === undefined || v === null ? "" : String(v)}
+            @change=${(e: Event) => {
+              const next = (e.target as HTMLElement & { value: string }).value;
+              this.setField(f.name, next === "" ? undefined : next);
+            }}
           >
             ${!f.required && !f.defaultValue
-              ? html`<option value=""></option>`
+              ? html`<wa-option value=""></wa-option>`
               : nothing}
             ${f.enumValues.map(
-              (opt) => html`<option
-                value=${String(opt)}
-                ?selected=${String(v) === String(opt)}
-              >${String(opt)}</option>`,
+              (opt) => html`<wa-option value=${String(opt)}
+                >${String(opt)}</wa-option
+              >`,
             )}
-          </select>
+          </wa-select>
         `;
       case "boolean":
         return html`
-          <input
+          <wa-checkbox
             id=${`f-${f.name}`}
-            type="checkbox"
             ?checked=${Boolean(v)}
-            @change=${(e: Event) =>
-              this.setField(f.name, (e.target as HTMLInputElement).checked)}
-          />
+            @change=${(e: Event) => {
+              const checked = (e.target as HTMLElement & { checked: boolean })
+                .checked;
+              this.setField(f.name, checked);
+            }}
+          ></wa-checkbox>
         `;
       case "number":
       case "integer":
+        // wa-input accepts `step="any"` (typed `number | "any"`),
+        // matching the native input's sentinel for "no stepping".
+        // Without it, omitting `step` falls back to the default of
+        // 1 — which rejects fractional values like `0.000001` for
+        // the simulator's tolerance field.
         return html`
-          <input
+          <wa-input
             id=${`f-${f.name}`}
             type="number"
+            size="small"
             step=${f.kind === "integer" ? "1" : "any"}
             .value=${v === undefined || v === null ? "" : String(v)}
             @input=${(e: Event) => {
-              const text = (e.target as HTMLInputElement).value;
+              const text = (e.target as HTMLElement & { value: string }).value;
               if (text === "") {
                 this.setField(f.name, undefined);
                 return;
@@ -294,7 +261,7 @@ export class OmParameterForm extends LitElement {
               const n = f.kind === "integer" ? parseInt(text, 10) : Number(text);
               this.setField(f.name, Number.isFinite(n) ? n : undefined);
             }}
-          />
+          ></wa-input>
         `;
       case "array": {
         // Render as a comma-separated text input. OMC parameter arrays are
@@ -303,31 +270,36 @@ export class OmParameterForm extends LitElement {
         // is the caller's problem.
         const arr = Array.isArray(v) ? v : [];
         return html`
-          <input
+          <wa-input
             id=${`f-${f.name}`}
             type="text"
+            size="small"
             .value=${arr.map((x) => stringifyAtom(x)).join(", ")}
             placeholder=${`comma-separated ${f.itemKind ?? "string"} values`}
             @input=${(e: Event) =>
               this.setField(
                 f.name,
                 parseArrayInput(
-                  (e.target as HTMLInputElement).value,
+                  (e.target as HTMLElement & { value: string }).value,
                   f.itemKind ?? "string",
                 ),
               )}
-          />
+          ></wa-input>
         `;
       }
       case "string":
         return html`
-          <input
+          <wa-input
             id=${`f-${f.name}`}
             type="text"
+            size="small"
             .value=${v === undefined || v === null ? "" : String(v)}
             @input=${(e: Event) =>
-              this.setField(f.name, (e.target as HTMLInputElement).value)}
-          />
+              this.setField(
+                f.name,
+                (e.target as HTMLElement & { value: string }).value,
+              )}
+          ></wa-input>
         `;
       case "unsupported":
         return html`<span class="unsupported"

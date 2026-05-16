@@ -1,21 +1,21 @@
 /**
  * `<om-parameter-panel>` — modal wrapper around `<om-parameter-form>`.
  *
- * Renders a centered card with a backdrop. Visible/hidden via the `open`
- * boolean attribute so the host can toggle it declaratively. Forwards
- * the form's events out as `om-panel-*` so the embedder doesn't need to
+ * Backed by `<wa-dialog>`. Visible/hidden via the `open` boolean
+ * attribute so the host can toggle it declaratively. Forwards the
+ * form's events out as `om-panel-*` so the embedder doesn't need to
  * know about the form's internal API.
  *
- * The backdrop click and Escape key both fire `om-panel-cancel`. The
- * card itself stops click propagation so clicks inside don't dismiss.
+ * Escape, backdrop click (`light-dismiss`), and the form's own
+ * Cancel button all converge on `om-panel-cancel`.
  */
 
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
-import type { JsonSchema } from "@modelica-wrapper/omc-client";
+import "@awesome.me/webawesome/dist/components/dialog/dialog.js";
 
-import { omTokens } from "../base/om-tokens.js";
+import type { JsonSchema } from "@modelica-wrapper/omc-client";
 
 import "./parameter-form.component.js";
 import type {
@@ -27,43 +27,19 @@ type Schema = JsonSchema;
 
 @customElement("om-parameter-panel")
 export class OmParameterPanel extends LitElement {
-  static override styles = [
-    omTokens,
-    css`
-      :host {
-        position: fixed;
-        inset: 0;
-        z-index: var(--om-z-modal);
-        display: none;
-        align-items: flex-start;
-        justify-content: center;
-        padding-top: var(--om-modal-offset-top);
-        background: var(--om-modal-backdrop);
-        /*
-         * No backdrop-filter: blur on purpose. The Babylon canvas behind
-         * this modal redraws on every render loop tick, which forces the
-         * compositor to re-blur on every paint. Combined with the modal's
-         * own internal scroll, that pegged the GPU on real hardware. A
-         * solid darker backdrop reads as "focused" without the cost.
-         */
-      }
+  static override styles = css`
+    :host {
+      display: contents;
+    }
 
-      :host([open]) {
-        display: flex;
-      }
-
-      .card {
-        min-width: var(--om-modal-min-width);
-        max-width: min(var(--om-modal-max-width), var(--om-modal-max-vw));
-        max-height: var(--om-modal-max-height);
-        overflow-y: auto;
-        border-radius: var(--om-radius-lg);
-        box-shadow: var(--om-modal-shadow);
-        background: var(--vscode-editorWidget-background, #f3f3f3);
-        color: var(--vscode-foreground, #1f1f1f);
-      }
-    `,
-  ];
+    /* Give the parameter form a comfortable width that still respects
+     * the dialog's responsive shrink. wa-dialog exposes --width as a
+     * custom property; we pass it inline on the wa-dialog element. */
+    .form-host {
+      display: block;
+      min-width: 320px;
+    }
+  `;
 
   /** Whether the modal is shown. */
   @property({ type: Boolean, reflect: true })
@@ -80,29 +56,22 @@ export class OmParameterPanel extends LitElement {
   @property({ attribute: "submit-label" }) submitLabel = "Apply";
   @property({ attribute: "cancel-label" }) cancelLabel = "Cancel";
 
-  private readonly onKeyDown = (e: KeyboardEvent): void => {
-    if (e.key === "Escape" && this.open) {
-      this.fireCancel();
-    }
-  };
-
-  override connectedCallback(): void {
-    super.connectedCallback();
-    // Listen on the window so Escape works even when focus is outside
-    // the modal (e.g. the user just dismissed an enum dropdown).
-    window.addEventListener("keydown", this.onKeyDown);
-  }
-
-  override disconnectedCallback(): void {
-    window.removeEventListener("keydown", this.onKeyDown);
-    super.disconnectedCallback();
-  }
-
   override render(): TemplateResult {
+    // Only render the wa-dialog when open: wa-button (which the dialog
+    // uses internally for its close button) is form-associated and
+    // crashes happy-dom on connectedCallback. Same pattern as
+    // `<om-library-browser>`.
     if (!this.open) return html`${nothing}`;
     return html`
-      <div class="card" @click=${(e: Event) => e.stopPropagation()}>
+      <wa-dialog
+        open
+        label=${this.title}
+        light-dismiss
+        style="--width: var(--om-modal-max-width, 540px)"
+        @wa-hide=${this.onDialogHide}
+      >
         <om-parameter-form
+          class="form-host"
           .schema=${this.schema}
           .values=${this.values}
           title=${this.title}
@@ -112,13 +81,8 @@ export class OmParameterPanel extends LitElement {
           @om-parameter-submit=${this.onSubmit}
           @om-parameter-cancel=${this.fireCancel}
         ></om-parameter-form>
-      </div>
+      </wa-dialog>
     `;
-  }
-
-  /** Backdrop click handler — wired on the host itself. */
-  override firstUpdated(): void {
-    this.addEventListener("click", () => this.fireCancel());
   }
 
   private onChange(e: CustomEvent<ParameterFormChangeDetail>): void {
@@ -142,6 +106,17 @@ export class OmParameterPanel extends LitElement {
       }),
     );
   }
+
+  private onDialogHide = (e: Event): void => {
+    // wa-dialog's hide is cancellable; we never cancel — but we do stop
+    // propagation so the event doesn't escape and confuse other
+    // listeners on the page.
+    e.stopPropagation();
+    if (this.open) {
+      this.open = false;
+      this.fireCancel();
+    }
+  };
 
   private fireCancel = (): void => {
     this.dispatchEvent(

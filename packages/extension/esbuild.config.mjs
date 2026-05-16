@@ -67,6 +67,11 @@ const webviewConfig = {
   tsconfig: "tsconfig.webview.json",
   loader: {
     ".json": "json",
+    // Web Awesome ships its theme + native form-control reset as
+    // plain CSS files; importing them from JS lets esbuild collect
+    // and emit a sibling `webview.css` next to `webview.js`. The
+    // webview HTML in `diagram/panel.ts` <link>s to it directly.
+    ".css": "css",
   },
   // Stamped into the bundle so the runtime can prove which build it is —
   // changes only on rebuild, not on webview reload.

@@ -7,7 +7,8 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./webawesome-setup": "./src/base/webawesome-setup.ts"
   },
   "engines": {
     "node": ">=20"

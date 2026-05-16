@@ -211,6 +211,12 @@ export class DiagramPanel {
     const scriptUri = this.panel.webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, "out", "webview.js"),
     );
+    // esbuild collects every `import "*.css"` in the webview bundle
+    // (Web Awesome's theme + our vscode bridge) into a sibling
+    // `webview.css`. We <link> to it via the webview's cspSource.
+    const stylesUri = this.panel.webview.asWebviewUri(
+      vscode.Uri.joinPath(this.extensionUri, "out", "webview.css"),
+    );
     const nonce = randomNonce();
     const csp = [
       `default-src 'none'`,
@@ -225,6 +231,7 @@ export class DiagramPanel {
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="${csp}" />
     <title>Modelica diagram: ${this.escapeHtml(this.className)}</title>
+    <link rel="stylesheet" href="${stylesUri}" />
     <style>
       html, body { margin: 0; height: 100%; background: #f7f7f8; overflow: hidden; }
     </style>

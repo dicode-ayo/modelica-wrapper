@@ -21,6 +21,8 @@
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
+import "@awesome.me/webawesome/dist/components/button/button.js";
+
 import { omTokens } from "../base/om-tokens.js";
 
 export type ActionPanelAnchor =
@@ -70,30 +72,6 @@ export class OmActionPanel extends LitElement {
         bottom: var(--om-action-panel-offset);
         left: var(--om-action-panel-offset);
       }
-
-      button {
-        font: inherit;
-        padding: var(--om-button-padding);
-        border: 1px solid var(--vscode-button-border, transparent);
-        border-radius: var(--om-radius-sm);
-        cursor: pointer;
-        color: var(--vscode-button-foreground, #fff);
-        background: var(--vscode-button-background, #0e639c);
-      }
-
-      button:hover {
-        background: var(--vscode-button-hoverBackground, #1177bb);
-      }
-
-      button:focus-visible {
-        outline: 1px solid var(--vscode-focusBorder, #007fd4);
-        outline-offset: var(--om-space-2xs);
-      }
-
-      button[disabled] {
-        opacity: var(--om-disabled-opacity);
-        cursor: not-allowed;
-      }
     `,
   ];
 
@@ -114,25 +92,34 @@ export class OmActionPanel extends LitElement {
     return html`
       ${this.hideCheck
         ? nothing
-        : html`<button
+        : html`<wa-button
+            size="small"
+            variant="brand"
+            appearance="filled"
             ?disabled=${this.disabled}
             @click=${() => this.fire("om-action-check")}
             title="Check model (semantic check)"
-          >Check</button>`}
+          >Check</wa-button>`}
       ${this.hideSimulate
         ? nothing
-        : html`<button
+        : html`<wa-button
+            size="small"
+            variant="brand"
+            appearance="filled"
             ?disabled=${this.disabled}
             @click=${() => this.fire("om-action-simulate")}
             title="Simulate model"
-          >Simulate</button>`}
+          >Simulate</wa-button>`}
       ${this.hideParameters
         ? nothing
-        : html`<button
+        : html`<wa-button
+            size="small"
+            variant="brand"
+            appearance="filled"
             ?disabled=${this.disabled}
             @click=${() => this.fire("om-action-parameters")}
             title="Edit parameters"
-          >Parameters</button>`}
+          >Parameters</wa-button>`}
     `;
   }
 
