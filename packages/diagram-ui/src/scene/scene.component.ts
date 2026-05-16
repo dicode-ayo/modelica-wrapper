@@ -14,6 +14,7 @@ import {
 
 import { parentNodeContext } from "../base/parent-node-context.js";
 import { sceneContext, type SceneContext } from "./scene-context.js";
+import { ViewStateStore, viewStateContext } from "./view-state-store.js";
 import {
   CAMERA_MODE_ORTHO,
   DEFAULT_CAMERA_RADIUS,
@@ -169,6 +170,22 @@ export class OmScene extends LitElement {
   private readonly parentNodeProvider = new ContextProvider(this, {
     context: parentNodeContext,
     initialValue: null,
+  });
+
+  /**
+   * Behaviour-subject-shaped store of {zoom, panX, panY, version}.
+   * `applyView()` is the sole producer; every HTML overlay is a
+   * consumer (via `viewStateContext`). Lives for the element's
+   * lifetime — the value is replaced on remount, not the store.
+   */
+  private readonly viewStateStore = new ViewStateStore({
+    zoom: this.zoom,
+    panX: this.panX,
+    panY: this.panY,
+  });
+  private readonly viewStateProvider = new ContextProvider(this, {
+    context: viewStateContext,
+    initialValue: this.viewStateStore,
   });
 
   override render() {
@@ -367,7 +384,9 @@ export class OmScene extends LitElement {
     this.panX = next.panX;
     this.panY = next.panY;
     this.updatingFromUser = false;
-    // Apply directly — `updated()` is suppressed by the flag above.
+    // `applyView()` pushes to the internal viewStateStore (consumed by
+    // shape overlays). The DOM event below is the public-facing
+    // notification for external listeners (e.g. host webview).
     this.applyView();
     this.dispatchEvent(
       new CustomEvent<ViewState>("om-view-change", {
@@ -390,6 +409,7 @@ export class OmScene extends LitElement {
     this.engine?.dispose();
     this.sceneProvider.setValue(null);
     this.parentNodeProvider.setValue(null);
+    this.viewStateProvider.setValue(null);
     this.babylonScene = null;
     this.engine = null;
     this.camera = null;
@@ -456,6 +476,12 @@ export class OmScene extends LitElement {
     // view matrix. See the mount() comment for the α/β derivation.
     camera.alpha = -Math.PI / 2;
     camera.beta = Math.PI / 2;
+    // Push to the reactive store — every HTML overlay is subscribed
+    // and re-projects on emit. `version` is always bumped so a resize
+    // (zoom/pan unchanged, aspect different) still notifies. The
+    // `om-view-change` DOM event is preserved separately in
+    // onViewChangeFromUser for the public API.
+    this.viewStateStore.next(this.currentView());
   }
 
   private applyCameraMode(): void {

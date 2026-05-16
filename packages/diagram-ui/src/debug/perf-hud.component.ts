@@ -27,6 +27,31 @@ type PerfStats = {
   drawCalls: number;
 };
 
+/**
+ * Pulls the GPU renderer string from `WEBGL_debug_renderer_info`. If
+ * Chrome decided this page can't see it (privacy mode) we get the
+ * unmasked vendor anyway — still enough to tell SwiftShader / software
+ * fallback apart from "ANGLE (NVIDIA…)" or "Mesa Intel…".
+ */
+function readGpuRenderer(): string {
+  try {
+    const c = document.createElement("canvas");
+    const gl =
+      (c.getContext("webgl2") as WebGL2RenderingContext | null) ??
+      (c.getContext("webgl") as WebGLRenderingContext | null);
+    if (!gl) return "no-webgl";
+    const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+    if (dbg) {
+      const r = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL);
+      if (typeof r === "string" && r.length > 0) return r;
+    }
+    const v = gl.getParameter(gl.VENDOR);
+    return typeof v === "string" ? v : "unknown";
+  } catch {
+    return "error";
+  }
+}
+
 @customElement("om-perf-hud")
 export class OmPerfHud extends LitElement {
   static override styles = css`
@@ -67,12 +92,18 @@ export class OmPerfHud extends LitElement {
   @state()
   private stats: PerfStats = { fps: 0, frameMs: 0, meshes: 0, drawCalls: 0 };
 
+  /** Captured once on connect — used to surface software-renderer fallbacks. */
+  private gpu = "";
+
   private rafId = 0;
   private lastSampleAt = 0;
 
   override connectedCallback(): void {
     super.connectedCallback();
     this.tick = this.tick.bind(this);
+    this.gpu = readGpuRenderer();
+    // eslint-disable-next-line no-console
+    console.info(`[om-perf-hud] webgl renderer = ${this.gpu}`);
     this.rafId = requestAnimationFrame(this.tick);
   }
 
@@ -87,10 +118,14 @@ export class OmPerfHud extends LitElement {
     const { fps, frameMs, meshes, drawCalls } = this.stats;
     // Colour FPS by health band so the eye catches drops quickly.
     const fpsClass = fps >= 55 ? "" : fps >= 30 ? "warn" : "bad";
+    // "Software" / "SwiftShader" in the GPU string almost always means
+    // GPU acceleration is disabled — that alone halves the FPS.
+    const gpuClass = /software|swiftshader/i.test(this.gpu) ? "bad" : "";
     return html`<span class=${fpsClass}
         >${fps.toFixed(0).padStart(3)} fps</span
       >  ${frameMs.toFixed(1).padStart(4)} ms
-meshes ${String(meshes).padStart(4)}   drawcalls ${String(drawCalls).padStart(4)}`;
+meshes ${String(meshes).padStart(4)}   drawcalls ${String(drawCalls).padStart(4)}
+<span class=${gpuClass}>gpu ${this.gpu}</span>`;
   }
 
   private tick(): void {

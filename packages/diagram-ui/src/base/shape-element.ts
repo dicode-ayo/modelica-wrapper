@@ -1,13 +1,11 @@
 import { LitElement, css, html } from "lit";
 import { property } from "lit/decorators.js";
 import { createRef, ref } from "lit/directives/ref.js";
-import { ContextProvider, consume } from "@lit/context";
+import { ContextConsumer, ContextProvider, consume } from "@lit/context";
 import {
   Quaternion,
   Vector3,
   type Camera,
-  type Observer,
-  type Scene,
 } from "@babylonjs/core";
 import {
   computeIconBounds,
@@ -25,6 +23,10 @@ import {
   iconProviderContext,
   type IconProviderContext,
 } from "../icon-provider/icon-provider-context.js";
+import {
+  viewStateContext,
+  type ViewStateStore,
+} from "../scene/view-state-store.js";
 import { OmShapeNode } from "./shape-node.js";
 import { CAMERA_MODE_ORTHO } from "../constants.js";
 import "./icon-overlay.component.js";
@@ -95,6 +97,24 @@ export abstract class OmShapeElement extends LitElement {
   @consume({ context: iconProviderContext, subscribe: true })
   protected iconProvider: IconProviderContext | null = null;
 
+  /**
+   * Wire the per-instance ContextConsumer in the constructor (not as
+   * a field initialiser) so we don't have to hold a dangling
+   * reference just to keep tsc happy under `noUnusedLocals`. The
+   * consumer registers itself as a reactive controller on `this`, so
+   * the host element keeps it alive; we only care about the callback,
+   * which re-wires the store's `subscribe()` each time Lit hands us a
+   * new store reference (mount, scene teardown, hot reload).
+   */
+  constructor() {
+    super();
+    new ContextConsumer(this, {
+      context: viewStateContext,
+      subscribe: true,
+      callback: (store) => this.resubscribeViewState(store),
+    });
+  }
+
   protected readonly childContextProvider = new ContextProvider(this, {
     context: parentNodeContext,
     initialValue: null,
@@ -104,8 +124,8 @@ export abstract class OmShapeElement extends LitElement {
   private currentTextureToken: symbol | null = null;
 
   private readonly overlayRef = createRef<OmIconOverlay>();
-  private overlayObserver: Observer<Scene> | null = null;
-  private overlayScene: Scene | null = null;
+  /** Unsubscribe from the scene's view-state store; set on connect. */
+  private viewStateUnsubscribe: (() => void) | null = null;
   private overlaySrcKey: {
     layers: IconLayer[];
     cs: CoordinateSystem | undefined;
@@ -167,17 +187,57 @@ export abstract class OmShapeElement extends LitElement {
       this.shapeNode.setSelected(this.selected);
       this.refreshTexture();
       this.refreshOverlaySrc();
-      this.ensureOverlayObserver();
+      // Project this element's overlay now that geometry has been
+      // applied. Then walk descendants: when a parent moves (placement
+      // prop changed → Lit fires updated() on the parent only), child
+      // shape-elements' Lit props haven't changed, so their own
+      // updated() doesn't fire — but their world matrices sit at a
+      // new position because their TransformNodes are parented here.
+      // The walk re-projects them in sync.
+      this.updateOverlayLayout();
+      this.updateDescendantOverlays();
     }
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.viewStateUnsubscribe?.();
+    this.viewStateUnsubscribe = null;
     this.currentTextureToken = null;
-    this.detachOverlayObserver();
     this.shapeNode?.dispose();
     this.shapeNode = null;
     this.childContextProvider.setValue(null);
+  }
+
+  /**
+   * Attach the store subscription. The store's `subscribe()` fires
+   * once immediately with the current snapshot (behaviour-subject
+   * semantics) which positions the overlay correctly on first paint
+   * without waiting for a pan. Camera/canvas changes after that are
+   * delivered as additional emissions.
+   */
+  private resubscribeViewState(store: ViewStateStore | null): void {
+    this.viewStateUnsubscribe?.();
+    this.viewStateUnsubscribe = null;
+    if (!store) return;
+    this.viewStateUnsubscribe = store.subscribe(() =>
+      this.updateOverlayLayout(),
+    );
+  }
+
+  private updateDescendantOverlays(): void {
+    // Light-DOM walk: `<om-component>` slots its `<om-connector>` children,
+    // and `<om-connector>` could host its own sub-shapes. `children` is
+    // recursive via the closure; `instanceof OmShapeElement` is O(1).
+    const walk = (root: Element): void => {
+      for (const child of Array.from(root.children)) {
+        if (child instanceof OmShapeElement) {
+          child.updateOverlayLayout();
+        }
+        walk(child);
+      }
+    };
+    walk(this);
   }
 
   private ensureShapeNode(): void {
@@ -303,46 +363,25 @@ export abstract class OmShapeElement extends LitElement {
     };
   }
 
-  private ensureOverlayObserver(): void {
-    if (this.overlayObserver) {
-      return;
-    }
+  /**
+   * Derive the icon's screen-space rect from the mesh's world matrix
+   * (so nested entities — e.g. `<om-connector>` inside a scaled
+   * `<om-component>` — pick up accumulated parent scaling). Hide
+   * entirely if the camera isn't orthographic; the in-canvas texture
+   * takes over in that case.
+   *
+   * Public so a parent shape-element can re-project its descendants
+   * after its own Lit `updated()` runs, and so the scene's
+   * `om-view-change` listener can call it directly without going
+   * through the Lit lifecycle.
+   */
+  updateOverlayLayout(): void {
+    const overlay = this.overlayRef.value;
     const node = this.shapeNode;
-    if (!node) {
+    if (!overlay || !node) {
       return;
     }
     const scene = node.transform.getScene();
-    this.overlayScene = scene;
-    this.overlayObserver = scene.onBeforeRenderObservable.add(() =>
-      this.updateOverlayLayout(),
-    );
-    // Position immediately so the first paint doesn't show the overlay
-    // at (0, 0) before the first render-loop tick.
-    this.updateOverlayLayout();
-  }
-
-  private detachOverlayObserver(): void {
-    if (this.overlayObserver && this.overlayScene) {
-      this.overlayScene.onBeforeRenderObservable.remove(this.overlayObserver);
-    }
-    this.overlayObserver = null;
-    this.overlayScene = null;
-  }
-
-  /**
-   * Per-frame: derive the icon's screen-space rect from the mesh's
-   * world matrix (so nested entities — e.g. `<om-connector>` inside a
-   * scaled `<om-component>` — pick up accumulated parent scaling).
-   * Hide entirely if the camera isn't orthographic; the in-canvas
-   * texture takes over in that case.
-   */
-  private updateOverlayLayout(): void {
-    const overlay = this.overlayRef.value;
-    const node = this.shapeNode;
-    const scene = this.overlayScene;
-    if (!overlay || !node || !scene) {
-      return;
-    }
     const camera = scene.activeCamera as Camera | null;
     const engine = scene.getEngine();
     const canvas = engine.getRenderingCanvas();
@@ -413,8 +452,27 @@ export abstract class OmShapeElement extends LitElement {
     const worldY = this.tmpTrans.y + (localX * sin + localY * cos);
 
     // Project to canvas pixels. Canvas Y is down; world Y is up.
-    const sx = (worldX - camera.position.x) * pxPerUnitX + canvasW / 2;
-    const sy = -(worldY - camera.position.y) * pxPerUnitY + canvasH / 2;
+    //
+    // We read `camera.target`, not `camera.position`. ArcRotateCamera
+    // derives `position` from `(alpha, beta, radius, target)` and only
+    // recomputes it inside `_getViewMatrix()` at render time. The
+    // view-state store fires synchronously inside `<om-scene>.applyView()`
+    // — right after we write `camera.target` but BEFORE Babylon's next
+    // render — so `camera.position` still holds the previous frame's
+    // value. Reading `target` (the field we just set) keeps the overlay
+    // in lock-step with the canvas; otherwise icons "dance" one frame
+    // behind during pan/zoom.
+    //
+    // In this scene's ortho config (alpha = -π/2, beta = π/2),
+    // position.x == target.x and position.y == target.y by construction,
+    // so this is a strictly equivalent read. `target` lives on
+    // TargetCamera (and ArcRotateCamera), not on the abstract Camera —
+    // narrow via a structural cast since `<om-scene>` always installs
+    // an ArcRotateCamera here.
+    const target = (camera as Camera & { target: { x: number; y: number } })
+      .target;
+    const sx = (worldX - target.x) * pxPerUnitX + canvasW / 2;
+    const sy = -(worldY - target.y) * pxPerUnitY + canvasH / 2;
 
     const widthPx = unionWidth * Math.abs(this.tmpScale.x) * pxPerUnitX;
     const heightPx = unionHeight * Math.abs(this.tmpScale.y) * pxPerUnitY;

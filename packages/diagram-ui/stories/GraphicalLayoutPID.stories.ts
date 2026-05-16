@@ -47,6 +47,7 @@ interface StoryArgs {
   readonly: boolean;
   cameraMode: "2d" | "3d";
   lineThicknessScale: number;
+  perfHud: boolean;
 }
 
 const meta: Meta<StoryArgs> = {
@@ -55,6 +56,7 @@ const meta: Meta<StoryArgs> = {
     readonly,
     cameraMode,
     lineThicknessScale,
+    perfHud,
   }: StoryArgs): TemplateResult => html`
     <div class="om-story">
       <h3>
@@ -79,6 +81,7 @@ const meta: Meta<StoryArgs> = {
         <om-graphical-layout
           .layout=${pidLayout}
           ?readonly=${readonly}
+          ?perf-hud=${perfHud}
           camera-mode=${cameraMode}
           .lineThicknessScale=${lineThicknessScale}
           @om-graphical-layout-change=${(e: CustomEvent) => {
@@ -104,6 +107,10 @@ const meta: Meta<StoryArgs> = {
       control: { type: "range", min: 0.5, max: 10, step: 0.25 },
       name: "line-thickness-scale",
     },
+    perfHud: {
+      control: { type: "boolean" },
+      name: "perf-hud",
+    },
   },
 };
 
@@ -112,11 +119,11 @@ export default meta;
 type Story = StoryObj<StoryArgs>;
 
 export const Editable: Story = {
-  args: { readonly: false, cameraMode: "2d", lineThicknessScale: 4 },
+  args: { readonly: false, cameraMode: "2d", lineThicknessScale: 4, perfHud: true },
 };
 
 export const Readonly: Story = {
-  args: { readonly: true, cameraMode: "2d", lineThicknessScale: 4 },
+  args: { readonly: true, cameraMode: "2d", lineThicknessScale: 4, perfHud: true },
 };
 
 export const Orbit3D: Story = {
