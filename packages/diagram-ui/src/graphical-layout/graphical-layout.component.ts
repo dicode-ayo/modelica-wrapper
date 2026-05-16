@@ -16,12 +16,15 @@ import "../connection/connection.component.js";
 import "../label/label.component.js";
 import "../connection/edge.component.js";
 import "../debug/perf-hud.component.js";
+import "../library-browser/library-browser.component.js";
 import type { OmScene, EngineFactory } from "../scene/scene.component.js";
 import type { RasterizeFn, SvgRenderFn } from "../icon-provider/icon-cache.js";
+import type { LibraryBrowserDataSource } from "../library-browser/library-browser.component.js";
 import {
   InteractionManager,
   defaultPicker,
   type InteractionEvents,
+  type PickerFn,
 } from "../interaction/interaction-manager.js";
 import {
   DragController,
@@ -114,6 +117,10 @@ function layoutBoundingBox(layout: DiagramLayout): BBox | null {
  *   - `om-double-click`            { detail: { key: string } }
  *   - `om-context-menu`            { detail: { key, clientX, clientY } }
  *   - `om-connection-create`       { detail: { fromKey, toKey } }
+ *   - `om-add-component-request`   { detail: { className, position } }
+ *       — fired after the user picks a class from the library-browser
+ *         overlay (double-click on empty canvas). The host wires this
+ *         to `addComponent(...)` + a layout refresh.
  */
 @customElement("om-graphical-layout")
 export class OmGraphicalLayout extends LitElement {
@@ -181,6 +188,15 @@ export class OmGraphicalLayout extends LitElement {
   @property({ type: Boolean, reflect: true, attribute: "perf-hud" })
   perfHud = false;
 
+  /**
+   * Data source for the library-browser overlay opened by double-
+   * clicking empty canvas. When `null` (default), double-clicks on
+   * empty space are ignored — the embedder opts into the feature by
+   * supplying a source backed by `getClassNames` / a search index.
+   */
+  @property({ attribute: false })
+  libraryDataSource: LibraryBrowserDataSource | null = null;
+
   @state() private selectedKeys: Set<string> = new Set();
   @state() private draftLayout: DiagramLayout | null = null;
   @state() private hoverKey: string | null = null;
@@ -189,11 +205,14 @@ export class OmGraphicalLayout extends LitElement {
     to: { x: number; y: number };
     toKey: string | null;
   } | null = null;
+  @state() private libraryBrowserOpen = false;
 
   @query("om-scene") private sceneEl?: OmScene;
 
   private interactionManager: InteractionManager | null = null;
   private dragController: DragController | null = null;
+  private dblClickPicker: PickerFn | null = null;
+  private dblClickCanvas: HTMLCanvasElement | null = null;
 
   override render(): TemplateResult {
     const active = this.draftLayout ?? this.layout;
@@ -264,6 +283,14 @@ export class OmGraphicalLayout extends LitElement {
           <om-perf-hud ?show=${this.perfHud}></om-perf-hud>
         </om-icon-provider>
       </om-scene>
+      ${this.libraryBrowserOpen
+        ? html`<om-library-browser
+            open
+            .dataSource=${this.libraryDataSource}
+            @om-library-select=${this.onLibrarySelect}
+            @om-library-cancel=${this.onLibraryCancel}
+          ></om-library-browser>`
+        : nothing}
     `;
   }
 
@@ -454,6 +481,12 @@ export class OmGraphicalLayout extends LitElement {
       () => Array.from(this.selectedKeys),
       (type, detail) => this.onDrag(type, detail),
     );
+    // Native dblclick on empty canvas → open the library browser.
+    // InteractionManager's `doubleClick` only fires on hits; this path
+    // catches the empty-space case without changing its contract.
+    this.dblClickPicker = picker;
+    this.dblClickCanvas = canvas;
+    canvas.addEventListener("dblclick", this.onCanvasDblClick);
   }
 
   private detachManagers(): void {
@@ -461,7 +494,46 @@ export class OmGraphicalLayout extends LitElement {
     this.dragController?.destroy();
     this.interactionManager = null;
     this.dragController = null;
+    if (this.dblClickCanvas) {
+      this.dblClickCanvas.removeEventListener("dblclick", this.onCanvasDblClick);
+      this.dblClickCanvas = null;
+    }
+    this.dblClickPicker = null;
   }
+
+  private onCanvasDblClick = (e: MouseEvent): void => {
+    if (this.readonly || !this.libraryDataSource || !this.dblClickPicker) {
+      return;
+    }
+    // Only open on empty-canvas double-clicks — double-clicking a
+    // component is the "open parameters" gesture handled separately
+    // through InteractionManager's doubleClick event.
+    if (this.dblClickPicker(e.clientX, e.clientY) !== null) {
+      return;
+    }
+    this.libraryBrowserOpen = true;
+  };
+
+  private onLibrarySelect = (
+    e: CustomEvent<{ className: string }>,
+  ): void => {
+    e.stopPropagation();
+    const className = e.detail.className;
+    this.libraryBrowserOpen = false;
+    // Place the new component at the current view centre. The pan
+    // coordinates are already in diagram space — the camera target
+    // is what's centred in the viewport.
+    const sceneEl = this.sceneEl;
+    const position = sceneEl
+      ? { x: sceneEl.panX, y: sceneEl.panY }
+      : { x: 0, y: 0 };
+    this.emit("om-add-component-request", { className, position });
+  };
+
+  private onLibraryCancel = (e: Event): void => {
+    e.stopPropagation();
+    this.libraryBrowserOpen = false;
+  };
 
   private onViewChange = (_e: Event): void => {
     // Future hooks (fit-to-view, etc.); currently a no-op.

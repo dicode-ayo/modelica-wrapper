@@ -134,6 +134,10 @@ export {
 } from "./parameter-form/parameter-form.component.js";
 export { OmParameterPanel } from "./parameter-form/parameter-panel.component.js";
 export {
+  OmLibraryBrowser,
+  type LibraryBrowserDataSource,
+} from "./library-browser/library-browser.component.js";
+export {
   parameterFieldsFromSchema,
   initialValuesFromFields,
   isComplete,

@@ -1,0 +1,87 @@
+/*
+ * Theme bridge: map VSCode webview tokens onto Web Awesome's `--wa-*`
+ * tokens so `<wa-*>` components look native inside the extension's
+ * webview without forking the upstream theme.
+ *
+ * Loaded once at app startup AFTER Web Awesome's default theme
+ * (`@awesome.me/webawesome/dist/styles/themes/default.css`). The
+ * default theme defines every `--wa-*` token at `:where(:root)`; this
+ * file re-declares the ones we care about at `:root` so they win on
+ * specificity. `var(--vscode-…, fallback)` gracefully degrades to a
+ * Web-Awesome-default-ish value when running outside VSCode
+ * (Storybook, unit tests).
+ *
+ * Only colour + typography tokens are bridged. Spacing, radii, and
+ * animation curves stay at Web Awesome's defaults — they already feel
+ * native enough and re-skinning every WA component would be a
+ * different project.
+ */
+
+:root {
+  /* --- Typography ---------------------------------------------- */
+  --wa-font-family-body: var(
+    --vscode-font-family,
+    ui-sans-serif,
+    system-ui,
+    sans-serif
+  );
+  --wa-font-family-heading: var(
+    --vscode-font-family,
+    ui-sans-serif,
+    system-ui,
+    sans-serif
+  );
+  --wa-font-family-code: var(
+    --vscode-editor-font-family,
+    ui-monospace,
+    "SF Mono",
+    monospace
+  );
+  --wa-font-size-m: var(--vscode-font-size, 13px);
+
+  /* --- Surfaces ------------------------------------------------ */
+  --wa-color-surface-default: var(--vscode-editorWidget-background, #fff);
+  --wa-color-surface-raised: var(--vscode-editorWidget-background, #fff);
+  --wa-color-surface-lowered: var(--vscode-editor-background, #f3f3f3);
+  --wa-color-surface-border: var(
+    --vscode-editorWidget-border,
+    rgba(0, 0, 0, 0.12)
+  );
+
+  /* --- Text ---------------------------------------------------- */
+  --wa-color-text-normal: var(--vscode-foreground, #1f1f1f);
+  --wa-color-text-quiet: var(--vscode-descriptionForeground, #666);
+  --wa-color-text-link: var(--vscode-textLink-foreground, #0969da);
+
+  /* --- Modal backdrop ----------------------------------------- */
+  --wa-color-overlay-modal: var(
+    --vscode-widget-shadow,
+    rgba(0, 0, 0, 0.55)
+  );
+
+  /* --- Focus ring --------------------------------------------- */
+  --wa-color-focus: var(--vscode-focusBorder, #007fd4);
+
+  /* --- "Brand" → VSCode button colours ------------------------ */
+  --wa-color-brand-fill-loud: var(--vscode-button-background, #0e639c);
+  --wa-color-brand-on-loud: var(--vscode-button-foreground, #fff);
+  --wa-color-brand-border-loud: var(--vscode-button-border, transparent);
+
+  /* --- Inputs -------------------------------------------------- */
+  --wa-form-control-background-color: var(
+    --vscode-input-background,
+    #fff
+  );
+  --wa-form-control-border-color: var(
+    --vscode-input-border,
+    rgba(0, 0, 0, 0.2)
+  );
+  --wa-form-control-value-color: var(
+    --vscode-input-foreground,
+    inherit
+  );
+  --wa-form-control-placeholder-color: var(
+    --vscode-input-placeholderForeground,
+    #888
+  );
+}
