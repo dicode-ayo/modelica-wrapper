@@ -16,6 +16,11 @@ import { parentNodeContext } from "../base/parent-node-context.js";
 import { sceneContext, type SceneContext } from "./scene-context.js";
 import { ViewStateStore, viewStateContext } from "./view-state-store.js";
 import {
+  registerRenderScheduler,
+  requestSceneRender,
+  unregisterRenderScheduler,
+} from "./render-scheduler.js";
+import {
   CAMERA_MODE_ORTHO,
   DEFAULT_CAMERA_RADIUS,
   DEFAULT_EXTENT_HALF,
@@ -165,7 +170,9 @@ export class OmScene extends LitElement {
   private babylonScene: Scene | null = null;
   private camera: ArcRotateCamera | null = null;
   private panZoom: PanZoom | null = null;
-  private renderLoopAttached = false;
+  private schedulerRegistered = false;
+  /** Set while 3D mode is using Babylon's continuous render loop. */
+  private continuousLoopActive = false;
   /**
    * Set while `PanZoom` is feeding new view state back into the
    * element's properties so `updated()` doesn't re-trigger
@@ -326,12 +333,24 @@ export class OmScene extends LitElement {
 
     this.resizeObserver.observe(this);
 
-    engine.runRenderLoop(() => {
+    // On-demand rendering: instead of `engine.runRenderLoop`, register
+    // a scheduler so mutation sites can call `requestSceneRender(scene)`
+    // and coalesce repaints into a single rAF. With nothing changing,
+    // idle frames cost 0 — critical under software-rendered WebGL where
+    // a continuous 60 Hz loop would saturate the CPU.
+    registerRenderScheduler(scene, () => {
       if (this.babylonScene) {
         this.babylonScene.render();
       }
     });
-    this.renderLoopAttached = true;
+    this.schedulerRegistered = true;
+    // Auto-repaint when entities add or remove Babylon meshes. Covers
+    // component / connector / edge / junction / grid / label creation
+    // and disposal without each call site having to remember.
+    scene.onNewMeshAddedObservable.add(() => requestSceneRender(scene));
+    scene.onMeshRemovedObservable.add(() => requestSceneRender(scene));
+    // Initial paint.
+    requestSceneRender(scene);
   }
 
   /**
@@ -412,9 +431,13 @@ export class OmScene extends LitElement {
     this.resizeObserver.disconnect();
     this.panZoom?.destroy();
     this.panZoom = null;
-    if (this.renderLoopAttached && this.engine) {
+    if (this.continuousLoopActive && this.engine) {
       this.engine.stopRenderLoop();
-      this.renderLoopAttached = false;
+      this.continuousLoopActive = false;
+    }
+    if (this.schedulerRegistered && this.babylonScene) {
+      unregisterRenderScheduler(this.babylonScene);
+      this.schedulerRegistered = false;
     }
     this.babylonScene?.dispose();
     this.engine?.dispose();
@@ -493,12 +516,17 @@ export class OmScene extends LitElement {
     // `om-view-change` DOM event is preserved separately in
     // onViewChangeFromUser for the public API.
     this.viewStateStore.next(this.currentView());
+    // Camera changed → repaint.
+    if (this.babylonScene) {
+      requestSceneRender(this.babylonScene);
+    }
   }
 
   private applyCameraMode(): void {
     const camera = this.camera;
     const canvas = this.canvasRef.value;
-    if (!camera || !canvas) {
+    const engine = this.engine;
+    if (!camera || !canvas || !engine) {
       return;
     }
     if (this.cameraMode === "2d") {
@@ -513,6 +541,12 @@ export class OmScene extends LitElement {
           (next) => this.onViewChangeFromUser(next),
         );
       }
+      // 2D is the on-demand path — make sure no leftover continuous
+      // loop is running (e.g. after a 3D → 2D toggle).
+      if (this.continuousLoopActive) {
+        engine.stopRenderLoop();
+        this.continuousLoopActive = false;
+      }
     } else {
       camera.mode = 0; // Babylon.Camera.PERSPECTIVE_CAMERA
       this.panZoom?.destroy();
@@ -522,6 +556,19 @@ export class OmScene extends LitElement {
       camera.attachControl(canvas, true);
       camera.lowerRadiusLimit = 10;
       camera.upperRadiusLimit = 5000;
+      // 3D uses Babylon's built-in pointer/wheel handlers, which mutate
+      // the camera outside our `applyView` pipeline. Until the
+      // MultiBody view grows its own pointer-driven render trigger we
+      // fall back to a continuous loop here — orbit/zoom would
+      // otherwise leave the canvas frozen.
+      if (!this.continuousLoopActive) {
+        engine.runRenderLoop(() => {
+          if (this.babylonScene) {
+            this.babylonScene.render();
+          }
+        });
+        this.continuousLoopActive = true;
+      }
     }
   }
 }

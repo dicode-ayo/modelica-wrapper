@@ -130,7 +130,7 @@ export { OmShapeNode } from "./base/shape-node.js";
 export { OmIconOverlay } from "./base/icon-overlay.component.js";
 export {
   ResizeHandles,
-  ensureHighlightLayer,
+  setMeshHighlight,
 } from "./base/selection-overlay.js";
 export {
   applyPlacement,

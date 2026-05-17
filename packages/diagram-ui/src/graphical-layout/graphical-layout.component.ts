@@ -792,23 +792,39 @@ export class OmGraphicalLayout extends LitElement {
     switch (type) {
       case "hover": {
         const d = detail as InteractionEvents["hover"];
-        if (this.hoverKey !== d.key) {
-          this.hoverKey = d.key;
+        if (this.hoverKey === d.key) {
+          return;
+        }
+        this.hoverKey = d.key;
+        // While a non-connection drag is in progress (move / resize /
+        // rubber-band), the cursor sweeps over arbitrary entities as
+        // it tracks the dragged geometry. Without this gate, every
+        // pointermove would flip port indicators + hover outlines on
+        // the connectors the pointer happens to cross — reading on
+        // screen as flicker. Connection drags are deliberately
+        // excluded because their hover IS the snap-target signal.
+        // We still update `hoverKey` so `endInteraction()` can hand a
+        // fresh value to the state machine when the drag releases.
+        const stateKind = this.interactionStore.value.state.kind;
+        const inDrag =
+          stateKind === "moving" ||
+          stateKind === "resizing" ||
+          stateKind === "selecting";
+        if (!inDrag) {
           this.refreshPortIndicators();
-          // Hover state only updates the machine when there's no
-          // active drag — a drag preempts hover so `state.kind`
-          // stays on `moving` / `connecting` / etc. until release.
-          if (this.interactionStore.value.state.kind === "idle" ||
-              this.interactionStore.value.state.kind === "hovering") {
-            this.interactionStore.next({
-              hoverKey: d.key,
-              state: d.key
-                ? { kind: "hovering", key: d.key }
-                : { kind: "idle" },
-            });
-          } else {
-            this.interactionStore.next({ hoverKey: d.key });
-          }
+        }
+        // Hover state only updates the machine when there's no
+        // active drag — a drag preempts hover so `state.kind`
+        // stays on `moving` / `connecting` / etc. until release.
+        if (stateKind === "idle" || stateKind === "hovering") {
+          this.interactionStore.next({
+            hoverKey: d.key,
+            state: d.key
+              ? { kind: "hovering", key: d.key }
+              : { kind: "idle" },
+          });
+        } else {
+          this.interactionStore.next({ hoverKey: d.key });
         }
         return;
       }
@@ -857,6 +873,10 @@ export class OmGraphicalLayout extends LitElement {
     this.setInteractionState(
       hoverKey ? { kind: "hovering", key: hoverKey } : { kind: "idle" },
     );
+    // Port-indicator updates were suppressed during the drag (see the
+    // hover handler); reconcile the visible state against the current
+    // hover key now that the drag is over.
+    this.refreshPortIndicators();
   }
 
   private onDrag<K extends keyof DragEvents>(

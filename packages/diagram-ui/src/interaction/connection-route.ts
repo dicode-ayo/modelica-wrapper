@@ -1,6 +1,24 @@
 import type { Point } from "@modelica-wrapper/omc-client";
 
 /**
+ * Reference-tolerant content equality for waypoint arrays. After an OMC
+ * roundtrip the layout payload is a fresh object tree so identical
+ * paths arrive at the entities with new array identity — without this
+ * check, edge / junction meshes would be disposed + rebuilt every
+ * commit even when the geometry hasn't actually changed.
+ */
+export function pointsEqual(a: Point[] | null, b: Point[] | null): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i]!;
+    const q = b[i]!;
+    if (p[0] !== q[0] || p[1] !== q[1]) return false;
+  }
+  return true;
+}
+
+/**
  * Default routing for a freshly-created connection. Returns waypoints
  * (including both endpoints) forming an orthogonal "Z" between `from`
  * and `to`:

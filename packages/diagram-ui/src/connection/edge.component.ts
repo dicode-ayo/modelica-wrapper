@@ -5,6 +5,8 @@ import { Color3, type TransformNode } from "@babylonjs/core";
 import type { Point } from "@modelica-wrapper/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
+import { requestSceneRender } from "../scene/render-scheduler.js";
+import { pointsEqual } from "../interaction/connection-route.js";
 import {
   DEFAULT_EDGE_COLOR,
   buildEdge,
@@ -45,21 +47,29 @@ export class OmEdge extends LitElement {
 
   private meshes: EdgeMeshes | null = null;
   private baseColor: Color3 = DEFAULT_EDGE_COLOR;
+  /**
+   * Last waypoint list actually applied to the LinesMesh. Compared by
+   * content (not reference) so that an OMC-roundtripped layout that
+   * produces a fresh-but-equal `path` array is recognised as a no-op
+   * and skips the dispose/rebuild — see `pointsEqual` for the why.
+   */
+  private builtPath: Point[] | null = null;
 
   override render() {
     return html``;
   }
 
   override updated(changed: Map<string, unknown>): void {
-    // Recreate the geometry if the path or visual options change;
-    // selection is just a colour swap, no rebuild needed.
-    if (
-      changed.has("path") ||
+    // Recreate the geometry if the visual options change OR the path
+    // content actually differs. Selection is a colour swap on the
+    // existing mesh, never a rebuild.
+    const visualChanged =
       changed.has("stroke") ||
       changed.has("clocked") ||
-      changed.has("nodeId") ||
-      !this.meshes
-    ) {
+      changed.has("nodeId");
+    const pathChanged =
+      changed.has("path") && !pointsEqual(this.path, this.builtPath);
+    if (!this.meshes || visualChanged || pathChanged) {
       this.rebuild();
     }
     this.applySelection();
@@ -76,6 +86,7 @@ export class OmEdge extends LitElement {
     }
     this.disposeMeshes();
     if (this.path.length < 2) {
+      this.builtPath = null;
       return;
     }
     const scene = this.parentTransform.getScene();
@@ -95,6 +106,7 @@ export class OmEdge extends LitElement {
       this.meshes.line.metadata = meta;
       this.meshes.hitArea.metadata = meta;
     }
+    this.builtPath = this.path;
   }
 
   private applySelection(): void {
@@ -104,6 +116,7 @@ export class OmEdge extends LitElement {
     this.meshes.line.color = this.selected
       ? SELECTED_EDGE_COLOR
       : this.baseColor;
+    requestSceneRender(this.meshes.line.getScene());
   }
 
   private disposeMeshes(): void {
@@ -113,6 +126,7 @@ export class OmEdge extends LitElement {
     this.meshes.line.dispose(false, true);
     this.meshes.hitArea.dispose(false, true);
     this.meshes = null;
+    this.builtPath = null;
   }
 
   /** Test accessors. */

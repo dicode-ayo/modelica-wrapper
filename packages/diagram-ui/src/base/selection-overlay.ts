@@ -3,59 +3,120 @@ import {
   HighlightLayer,
   Mesh,
   MeshBuilder,
-  Observer,
   StandardMaterial,
   type ArcRotateCamera,
   type Scene,
   type TransformNode,
 } from "@babylonjs/core";
 
-/**
- * Per-scene HighlightLayer that wraps selection outlines for every
- * `OmShapeNode`. Lazily instantiated; one Babylon HighlightLayer
- * covers the whole scene.
- *
- * NullEngine doesn't support HighlightLayer (it relies on stencil
- * buffer), so the lookup is guarded — headless tests skip the
- * outline but still drive the `selected` state flag.
- */
-const META_KEY = "omHighlightLayer";
+import { requestSceneRender } from "../scene/render-scheduler.js";
 
-interface HighlightMeta {
-  [META_KEY]?: HighlightLayer | undefined;
+/**
+ * Per-scene HighlightLayer with refcounted lifecycle.
+ *
+ * Babylon's `HighlightLayer` runs render-to-texture + gaussian blur
+ * passes every frame whenever the layer exists, even when no mesh is
+ * currently highlighted. In software-rendered WebGL (Linux/VSCode with
+ * hardware acceleration off) those passes dominate the frame budget.
+ * The fix: create the layer only when the first mesh is added, dispose
+ * it again when the last mesh leaves. With nothing selected, there is
+ * no layer and no per-frame work.
+ *
+ * `NullEngine` doesn't support HighlightLayer (no stencil buffer), so
+ * the helpers are no-ops there — headless tests still drive the
+ * `selected` state flag on entities but skip the visual outline.
+ */
+const STATE_KEY = "omHighlightState";
+
+interface HighlightState {
+  layer: HighlightLayer | null;
+  members: Set<Mesh>;
 }
 
-export function ensureHighlightLayer(scene: Scene): HighlightLayer | null {
+interface SceneMeta {
+  [STATE_KEY]?: HighlightState | undefined;
+}
+
+function getOrCreateState(scene: Scene): HighlightState | null {
   if (scene.getEngine().constructor.name === "NullEngine") {
     return null;
   }
-  const md = (scene.metadata as HighlightMeta | null | undefined) ?? {};
-  if (md[META_KEY]) {
-    return md[META_KEY] ?? null;
+  const md = (scene.metadata as SceneMeta | null | undefined) ?? {};
+  let state = md[STATE_KEY];
+  if (state) {
+    return state;
   }
+  state = { layer: null, members: new Set() };
+  md[STATE_KEY] = state;
+  scene.metadata = md;
+  scene.onDisposeObservable.add(() => {
+    state!.layer?.dispose();
+    state!.layer = null;
+    state!.members.clear();
+    md[STATE_KEY] = undefined;
+  });
+  return state;
+}
+
+function createHighlightLayer(scene: Scene): HighlightLayer {
   const layer = new HighlightLayer("om-highlight", scene);
   layer.innerGlow = false;
   layer.outerGlow = true;
   layer.blurHorizontalSize = 0.6;
   layer.blurVerticalSize = 0.6;
-  md[META_KEY] = layer;
-  scene.metadata = md;
-  scene.onDisposeObservable.add(() => {
-    layer.dispose();
-    md[META_KEY] = undefined;
-  });
   return layer;
 }
 
 /**
+ * Toggle a mesh's highlight outline. Passing `color` adds (or recolours)
+ * the mesh; passing `null` removes it. The HighlightLayer itself is
+ * lazily created on the first add and disposed when the last mesh is
+ * removed — so a scene with no current selection pays zero per-frame
+ * cost for the layer's post-processing passes.
+ */
+export function setMeshHighlight(
+  scene: Scene,
+  mesh: Mesh,
+  color: Color3 | null,
+): void {
+  const state = getOrCreateState(scene);
+  if (!state) {
+    return;
+  }
+  if (color === null) {
+    if (!state.members.has(mesh)) {
+      return;
+    }
+    state.layer?.removeMesh(mesh);
+    state.members.delete(mesh);
+    if (state.members.size === 0 && state.layer) {
+      state.layer.dispose();
+      state.layer = null;
+    }
+    requestSceneRender(scene);
+    return;
+  }
+  if (!state.layer) {
+    state.layer = createHighlightLayer(scene);
+  }
+  // HighlightLayer keys by mesh, so a colour change is remove-then-add.
+  if (state.members.has(mesh)) {
+    state.layer.removeMesh(mesh);
+  }
+  state.layer.addMesh(mesh, color);
+  state.members.add(mesh);
+  requestSceneRender(scene);
+}
+
+/**
  * Four corner resize handles for a single shape node. Sized in screen
- * pixels (kept constant via an onBeforeRender observer that rescales
- * each handle against the camera's ortho extents).
+ * pixels (kept constant by `rescale()`, which the host calls whenever
+ * the view's zoom/aspect changes — see `OmShapeElement`'s view-state
+ * subscription).
  */
 export class ResizeHandles {
   private readonly handles: Mesh[] = [];
   private readonly material: StandardMaterial;
-  private readonly observer: Observer<Scene> | null = null;
   private currentVisible = false;
 
   constructor(
@@ -94,8 +155,6 @@ export class ResizeHandles {
       handle.metadata = { kind: "handle", nodeId: corner };
       this.handles.push(handle);
     }
-
-    this.observer = scene.onBeforeRenderObservable.add(() => this.rescale());
   }
 
   setVisible(visible: boolean): void {
@@ -106,6 +165,7 @@ export class ResizeHandles {
     if (visible) {
       this.rescale();
     }
+    requestSceneRender(this.scene);
   }
 
   isVisible(): boolean {
@@ -113,9 +173,6 @@ export class ResizeHandles {
   }
 
   dispose(): void {
-    if (this.observer) {
-      this.scene.onBeforeRenderObservable.remove(this.observer);
-    }
     for (const h of this.handles) {
       h.dispose();
     }
@@ -123,13 +180,15 @@ export class ResizeHandles {
     this.material.dispose();
   }
 
-  private rescale(): void {
+  /**
+   * Resize handles to a constant screen-pixel size given the camera's
+   * current orthographic extents. Call after any change that affects
+   * `worldPerPixel` — zoom or canvas resize. No-op while invisible.
+   */
+  rescale(): void {
     if (!this.currentVisible) {
       return;
     }
-    // Screen-pixel size derived from the camera's current orthographic
-    // extent + canvas dimensions. Falls back to a small constant when
-    // either is unavailable (e.g. before first resize).
     const camera = this.camera ?? findOrthoCamera(this.scene);
     if (!camera) {
       return;

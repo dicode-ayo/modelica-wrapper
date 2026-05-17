@@ -78,6 +78,73 @@ describe("<om-grid-axis>", () => {
     expect(meshes!.minor.parent?.parent).toBe(scene.sceneContextValue!.worldRoot);
   });
 
+  it("does not rebuild the grid when an equivalent coordinateSystem is reassigned", async () => {
+    // After an OMC layout roundtrip the `coordinateSystem` arrives as
+    // a fresh object with identical numbers. The grid's GL meshes must
+    // survive that intact — otherwise every commit/refresh blanks and
+    // repaints the axis underlay.
+    const sceneEl = document.createElement("om-scene") as OmScene;
+    sceneEl.engineFactory = () => makeNullEngine();
+    document.body.appendChild(sceneEl);
+    mounted.push(sceneEl);
+    await sceneEl.updateComplete;
+
+    const grid = document.createElement("om-grid-axis") as OmGridAxis;
+    grid.coordinateSystem = {
+      extent: [
+        [-100, -100],
+        [100, 100],
+      ],
+      grid: [2, 2],
+    };
+    sceneEl.appendChild(grid);
+    await grid.updateComplete;
+    const original = grid.gridMeshes;
+    expect(original).not.toBeNull();
+
+    grid.coordinateSystem = {
+      extent: [
+        [-100, -100],
+        [100, 100],
+      ],
+      grid: [2, 2],
+    };
+    await grid.updateComplete;
+    expect(grid.gridMeshes).toBe(original);
+    expect(original!.minor.isDisposed()).toBe(false);
+  });
+
+  it("rebuilds the grid when the coordinateSystem actually changes", async () => {
+    const sceneEl = document.createElement("om-scene") as OmScene;
+    sceneEl.engineFactory = () => makeNullEngine();
+    document.body.appendChild(sceneEl);
+    mounted.push(sceneEl);
+    await sceneEl.updateComplete;
+
+    const grid = document.createElement("om-grid-axis") as OmGridAxis;
+    grid.coordinateSystem = {
+      extent: [
+        [-100, -100],
+        [100, 100],
+      ],
+      grid: [2, 2],
+    };
+    sceneEl.appendChild(grid);
+    await grid.updateComplete;
+    const original = grid.gridMeshes;
+
+    grid.coordinateSystem = {
+      extent: [
+        [-200, -200],
+        [200, 200],
+      ],
+      grid: [2, 2],
+    };
+    await grid.updateComplete;
+    expect(grid.gridMeshes).not.toBe(original);
+    expect(original!.minor.isDisposed()).toBe(true);
+  });
+
   it("disposes meshes on disconnect", async () => {
     const sceneEl = document.createElement("om-scene") as OmScene;
     sceneEl.engineFactory = () => makeNullEngine();

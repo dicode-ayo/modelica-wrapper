@@ -98,6 +98,79 @@ describe("<om-edge>", () => {
     expect(edge.edgeMesh).not.toBeNull();
   });
 
+  it("does not rebuild the mesh when a fresh path with identical content is assigned", async () => {
+    // Simulates an OMC layout roundtrip: the host pushes a new
+    // DiagramLayout object whose connection waypoints have identical
+    // numbers but a fresh array identity. Lit fires updated() with
+    // `path` in `changed`, but the geometry is unchanged — we must
+    // keep the same LinesMesh, not dispose + recreate it.
+    const scene = document.createElement("om-scene") as OmScene;
+    scene.engineFactory = () =>
+      new NullEngine({
+        renderWidth: 200,
+        renderHeight: 200,
+        textureSize: 128,
+        deterministicLockstep: false,
+        lockstepMaxSteps: 1,
+      });
+    document.body.appendChild(scene);
+    teardowns.push(() => scene.remove());
+    await scene.updateComplete;
+
+    const edge = document.createElement("om-edge") as OmEdge;
+    edge.path = [
+      [0, 0],
+      [50, 0],
+      [50, 30],
+    ];
+    scene.appendChild(edge);
+    await edge.updateComplete;
+    const original = edge.edgeMesh;
+    expect(original).not.toBeNull();
+
+    edge.path = [
+      [0, 0],
+      [50, 0],
+      [50, 30],
+    ];
+    await edge.updateComplete;
+    expect(edge.edgeMesh).toBe(original);
+    expect(original!.line.isDisposed()).toBe(false);
+  });
+
+  it("rebuilds the mesh when the path content actually changes", async () => {
+    const scene = document.createElement("om-scene") as OmScene;
+    scene.engineFactory = () =>
+      new NullEngine({
+        renderWidth: 200,
+        renderHeight: 200,
+        textureSize: 128,
+        deterministicLockstep: false,
+        lockstepMaxSteps: 1,
+      });
+    document.body.appendChild(scene);
+    teardowns.push(() => scene.remove());
+    await scene.updateComplete;
+
+    const edge = document.createElement("om-edge") as OmEdge;
+    edge.path = [
+      [0, 0],
+      [50, 0],
+    ];
+    scene.appendChild(edge);
+    await edge.updateComplete;
+    const original = edge.edgeMesh;
+    expect(original).not.toBeNull();
+
+    edge.path = [
+      [0, 0],
+      [60, 0],
+    ];
+    await edge.updateComplete;
+    expect(edge.edgeMesh).not.toBe(original);
+    expect(original!.line.isDisposed()).toBe(true);
+  });
+
   it("disposes the mesh on disconnect", async () => {
     const scene = document.createElement("om-scene") as OmScene;
     scene.engineFactory = () =>

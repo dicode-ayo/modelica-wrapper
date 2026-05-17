@@ -11,7 +11,9 @@ import {
 import type { Point } from "@modelica-wrapper/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
-import { ensureHighlightLayer } from "../base/selection-overlay.js";
+import { setMeshHighlight } from "../base/selection-overlay.js";
+import { requestSceneRender } from "../scene/render-scheduler.js";
+import { pointsEqual } from "../interaction/connection-route.js";
 import "./edge.component.js";
 
 const JUNCTION_BASE_COLOR = new Color3(0.1, 0.1, 0.18);
@@ -67,6 +69,15 @@ export class OmConnection extends LitElement {
   private junctionMeshes: Mesh[] = [];
   private junctionMaterial: StandardMaterial | null = null;
   private highlightedJunctions = new Set<Mesh>();
+  /**
+   * Last waypoint list the junctions were built against. Compared by
+   * content so a fresh-but-equal `path` (typical after an OMC layout
+   * roundtrip) doesn't dispose + recreate the junction discs. Also
+   * acts as the "first build" sentinel so we don't keep re-running
+   * `rebuildJunctions()` every `updated()` when there are no internal
+   * waypoints (empty `junctionMeshes`).
+   */
+  private builtPath: Point[] | null = null;
 
   override render() {
     if (this.path.length < 2) {
@@ -82,14 +93,14 @@ export class OmConnection extends LitElement {
   }
 
   override updated(changed: Map<string, unknown>): void {
-    if (
-      changed.has("path") ||
+    const visualChanged =
       changed.has("stroke") ||
       changed.has("nodeId") ||
       changed.has("showJunctions") ||
-      changed.has("junctionRadius") ||
-      this.junctionMeshes.length === 0
-    ) {
+      changed.has("junctionRadius");
+    const pathChanged =
+      changed.has("path") && !pointsEqual(this.path, this.builtPath);
+    if (this.builtPath === null || visualChanged || pathChanged) {
       this.rebuildJunctions();
     }
     this.applyJunctionSelection();
@@ -102,14 +113,16 @@ export class OmConnection extends LitElement {
 
   private rebuildJunctions(): void {
     this.disposeJunctions();
+    this.builtPath = this.path;
     if (!this.showJunctions || !this.parentTransform) {
       return;
     }
+    const scene = this.parentTransform.getScene();
     const internal = this.path.slice(1, -1);
     if (internal.length === 0) {
+      requestSceneRender(scene);
       return;
     }
-    const scene = this.parentTransform.getScene();
     const stroke = this.stroke;
     this.junctionMaterial = new StandardMaterial("om-junction-mat", scene);
     this.junctionMaterial.disableLighting = true;
@@ -135,6 +148,7 @@ export class OmConnection extends LitElement {
       this.junctionMeshes.push(disc);
       waypointIdx++;
     }
+    requestSceneRender(scene);
   }
 
   private applyJunctionSelection(): void {
@@ -142,12 +156,12 @@ export class OmConnection extends LitElement {
     if (!parent) {
       return;
     }
-    const layer = ensureHighlightLayer(parent.getScene());
+    const scene = parent.getScene();
     // Remove highlights that no longer apply.
     for (const mesh of [...this.highlightedJunctions]) {
       const id = (mesh.metadata as { nodeId?: string } | null)?.nodeId;
       if (id && !this.selectedKeys.has(`junc:${id}`)) {
-        layer?.removeMesh(mesh);
+        setMeshHighlight(scene, mesh, null);
         this.highlightedJunctions.delete(mesh);
       }
     }
@@ -156,7 +170,7 @@ export class OmConnection extends LitElement {
       const id = (mesh.metadata as { nodeId?: string } | null)?.nodeId;
       if (id && this.selectedKeys.has(`junc:${id}`)) {
         if (!this.highlightedJunctions.has(mesh)) {
-          layer?.addMesh(mesh, SELECTED_COLOR);
+          setMeshHighlight(scene, mesh, SELECTED_COLOR);
           this.highlightedJunctions.add(mesh);
         }
       }
@@ -165,10 +179,10 @@ export class OmConnection extends LitElement {
 
   private disposeJunctions(): void {
     const parent = this.parentTransform;
-    const layer = parent ? ensureHighlightLayer(parent.getScene()) : null;
+    const scene = parent ? parent.getScene() : null;
     for (const m of this.junctionMeshes) {
-      if (layer && this.highlightedJunctions.has(m)) {
-        layer.removeMesh(m);
+      if (scene && this.highlightedJunctions.has(m)) {
+        setMeshHighlight(scene, m, null);
       }
       m.dispose();
     }
@@ -176,6 +190,10 @@ export class OmConnection extends LitElement {
     this.highlightedJunctions.clear();
     this.junctionMaterial?.dispose();
     this.junctionMaterial = null;
+    // Clear the "built against" sentinel so a reconnect (or any next
+    // `rebuildJunctions`) starts from a clean slate. `rebuildJunctions`
+    // re-sets it immediately after calling us; the order is fine.
+    this.builtPath = null;
   }
 
   get junctions(): Mesh[] {

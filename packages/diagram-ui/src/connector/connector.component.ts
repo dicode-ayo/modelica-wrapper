@@ -10,7 +10,8 @@ import {
 import { OmShapeElement } from "../base/shape-element.js";
 import type { OmShapeNode } from "../base/shape-node.js";
 import { coordSystemSize } from "../base/placement-math.js";
-import { ensureHighlightLayer } from "../base/selection-overlay.js";
+import { setMeshHighlight } from "../base/selection-overlay.js";
+import { requestSceneRender } from "../scene/render-scheduler.js";
 
 /**
  * `<om-connector>` — connector port. Behaves like `<om-component>` but
@@ -119,6 +120,7 @@ export class OmConnector extends OmShapeElement {
     this.indicatorVisible = visible;
     if (this.portIndicator) {
       this.portIndicator.isVisible = visible;
+      requestSceneRender(this.portIndicator.getScene());
     }
   }
 
@@ -159,12 +161,7 @@ export class OmConnector extends OmShapeElement {
     if (!node) {
       return;
     }
-    const layer = ensureHighlightLayer(node.transform.getScene());
-    if (!layer) {
-      // NullEngine / no stencil — outline isn't visible anyway, just
-      // remember the desired state for reapply-on-mount logic.
-      return;
-    }
+    const scene = node.transform.getScene();
     // `setSelected` already manages this mesh in the HighlightLayer
     // with the brighter selection colour. Don't fight it — when the
     // user selects + hovers the same connector, the selection
@@ -180,19 +177,16 @@ export class OmConnector extends OmShapeElement {
     if (wantColor === this.hoverLayerColor) {
       return;
     }
-    // HighlightLayer keys by mesh, so changing colour means
-    // remove-then-add.
-    if (this.hoverLayerAttached) {
-      layer.removeMesh(node.mesh);
-      this.hoverLayerAttached = false;
-    }
-    if (wantColor) {
-      layer.addMesh(
-        node.mesh,
-        wantColor === "error" ? HOVER_ERROR_COLOR : HOVER_COLOR,
-      );
-      this.hoverLayerAttached = true;
-    }
+    setMeshHighlight(
+      scene,
+      node.mesh,
+      wantColor === null
+        ? null
+        : wantColor === "error"
+          ? HOVER_ERROR_COLOR
+          : HOVER_COLOR,
+    );
+    this.hoverLayerAttached = wantColor !== null;
     this.hoverLayerColor = wantColor;
   }
 
@@ -220,10 +214,11 @@ export class OmConnector extends OmShapeElement {
     // will crash on next render if the mesh vanishes while still in
     // the layer.
     if (this.hoverLayerAttached && this.shapeNode) {
-      const layer = ensureHighlightLayer(
+      setMeshHighlight(
         this.shapeNode.transform.getScene(),
+        this.shapeNode.mesh,
+        null,
       );
-      layer?.removeMesh(this.shapeNode.mesh);
       this.hoverLayerAttached = false;
     }
     this.portIndicator?.dispose();

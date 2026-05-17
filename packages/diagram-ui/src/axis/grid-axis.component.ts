@@ -5,6 +5,7 @@ import { Color3, TransformNode } from "@babylonjs/core";
 import type { CoordinateSystem } from "@modelica-wrapper/omc-client";
 
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
+import { requestSceneRender } from "../scene/render-scheduler.js";
 import {
   DEFAULT_GRID_OPTIONS,
   buildGrid,
@@ -78,13 +79,35 @@ export class OmGridAxis extends LitElement {
 
   private meshes: GridMeshes | null = null;
   private ownNode: TransformNode | null = null;
+  /**
+   * Content-fingerprint of the `GridOptions` the meshes were built
+   * against. Same role as `OmEdge.builtPath` / `OmConnection.builtPath`
+   * — every property that can drive a grid rebuild flows through
+   * `computeOptions()`, so an OMC-roundtripped `coordinateSystem`
+   * (fresh object, identical numbers) collapses to the same key here
+   * and we skip the dispose + rebuild.
+   */
+  private builtKey: string | null = null;
 
   override render() {
     return nothing;
   }
 
   override updated(): void {
-    this.rebuild();
+    const ctx = this.sceneCtx;
+    if (!ctx) {
+      // No scene yet — clear any leftover state so the first real
+      // scene context triggers a full build.
+      this.disposeMeshes();
+      return;
+    }
+    const opts = this.computeOptions();
+    const key = optionsKey(opts);
+    if (key === this.builtKey && this.meshes) {
+      return;
+    }
+    this.rebuild(ctx, opts);
+    this.builtKey = key;
   }
 
   override disconnectedCallback(): void {
@@ -92,15 +115,12 @@ export class OmGridAxis extends LitElement {
     this.disposeMeshes();
   }
 
-  private rebuild(): void {
+  private rebuild(ctx: SceneContext, opts: GridOptions): void {
     this.disposeMeshes();
-    const ctx = this.sceneCtx;
-    if (!ctx) {
-      return;
-    }
     this.ownNode = new TransformNode("om-grid-axis", ctx.scene);
     this.ownNode.parent = ctx.worldRoot;
-    this.meshes = buildGrid(ctx.scene, this.ownNode, this.computeOptions());
+    this.meshes = buildGrid(ctx.scene, this.ownNode, opts);
+    requestSceneRender(ctx.scene);
   }
 
   private computeOptions(): GridOptions {
@@ -153,6 +173,9 @@ export class OmGridAxis extends LitElement {
       this.ownNode.dispose(false, true);
       this.ownNode = null;
     }
+    // Drop the cached key so the next `updated()` rebuilds from scratch
+    // (e.g. after a reconnect or scene-context teardown).
+    this.builtKey = null;
   }
 
   get gridMeshes(): GridMeshes | null {
@@ -202,6 +225,45 @@ function readExtent(
     return undefined;
   }
   return { x1, y1, x2, y2 };
+}
+
+/**
+ * Stable string fingerprint of a resolved `GridOptions`. Comparing the
+ * key (rather than re-running deep equality each frame) makes the
+ * no-op branch a single string compare. The `Color3` values are
+ * flattened to fixed-precision tuples so two distinct Babylon Color3
+ * instances representing the same RGB hash to the same key.
+ */
+function optionsKey(opts: GridOptions): string {
+  return JSON.stringify({
+    e: opts.extent,
+    mx: opts.minorStep,
+    my: opts.minorStepY,
+    Mx: opts.majorStep,
+    My: opts.majorStepY,
+    mc: colorKey(opts.minorColor),
+    Mc: colorKey(opts.majorColor),
+    ac: colorKey(opts.axisColor),
+    r: opts.extentRect
+      ? {
+          x1: opts.extentRect.x1,
+          y1: opts.extentRect.y1,
+          x2: opts.extentRect.x2,
+          y2: opts.extentRect.y2,
+          c: colorKey(opts.extentRect.color),
+          b:
+            opts.extentRect.borderColor === null
+              ? "none"
+              : colorKey(opts.extentRect.borderColor),
+        }
+      : null,
+  });
+}
+
+function colorKey(c: Color3 | undefined): string | null {
+  return c
+    ? `${c.r.toFixed(4)},${c.g.toFixed(4)},${c.b.toFixed(4)}`
+    : null;
 }
 
 function parseColor(input: string | undefined): Color3 | undefined {

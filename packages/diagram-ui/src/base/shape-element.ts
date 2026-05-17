@@ -220,9 +220,15 @@ export abstract class OmShapeElement extends LitElement {
     this.viewStateUnsubscribe?.();
     this.viewStateUnsubscribe = null;
     if (!store) return;
-    this.viewStateUnsubscribe = store.subscribe(() =>
-      this.updateOverlayLayout(),
-    );
+    this.viewStateUnsubscribe = store.subscribe(() => {
+      this.updateOverlayLayout();
+      // Resize handles are sized in screen pixels — they must rescale
+      // when the camera's worldPerPixel changes (zoom or canvas
+      // resize). The view-state store emits on every such change, so
+      // this replaces what used to be a per-frame onBeforeRender
+      // observer in `ResizeHandles`.
+      this.shapeNode?.rescaleResizeHandles();
+    });
   }
 
   private updateDescendantOverlays(): void {

@@ -59,12 +59,23 @@ describe("OmShapeNode selection", () => {
     expect(tl.isVisible).toBe(false);
   });
 
-  it("ensureHighlightLayer returns null under NullEngine", async () => {
-    const { scene } = makeScene();
-    const { ensureHighlightLayer } = await import(
+  it("setMeshHighlight is a no-op under NullEngine", async () => {
+    const { scene, parent } = makeScene();
+    const node = new OmShapeNode(scene, parent);
+    node.setPlacement(
+      { extent: [[-5, -5], [5, 5]] } as Placement,
+      undefined,
+    );
+    const { setMeshHighlight } = await import(
       "../src/base/selection-overlay.js"
     );
-    expect(ensureHighlightLayer(scene)).toBeNull();
+    // Should not throw and should not attach a HighlightLayer to the
+    // scene (NullEngine has no stencil buffer).
+    expect(() =>
+      setMeshHighlight(scene, node.mesh, null),
+    ).not.toThrow();
+    const meta = scene.metadata as { omHighlightState?: unknown } | null;
+    expect(meta?.omHighlightState).toBeUndefined();
   });
 
   it("disposes handles on shape-node dispose", () => {

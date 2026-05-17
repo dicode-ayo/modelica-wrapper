@@ -65,6 +65,38 @@ describe("<om-connection>", () => {
     expect(conn.junctions.length).toBe(0);
   });
 
+  it("does not rebuild junctions when a fresh path with identical content is assigned", async () => {
+    // Same OMC-roundtrip scenario as the OmEdge test: the connection
+    // sees a new `path` array reference but its contents are
+    // unchanged, so junction discs must survive intact.
+    const scene = await mountScene();
+    const conn = document.createElement("om-connection") as OmConnection;
+    conn.nodeId = "c1";
+    conn.path = [
+      [-10, 0],
+      [0, 0],
+      [0, 10],
+      [10, 10],
+    ];
+    conn.showJunctions = true;
+    scene.appendChild(conn);
+    await conn.updateComplete;
+    const original = conn.junctions.slice();
+    expect(original.length).toBe(2);
+
+    conn.path = [
+      [-10, 0],
+      [0, 0],
+      [0, 10],
+      [10, 10],
+    ];
+    await conn.updateComplete;
+    expect(conn.junctions).toEqual(original);
+    for (const m of original) {
+      expect(m.isDisposed()).toBe(false);
+    }
+  });
+
   it("disposes junction meshes on disconnect", async () => {
     const scene = await mountScene();
     const conn = document.createElement("om-connection") as OmConnection;
