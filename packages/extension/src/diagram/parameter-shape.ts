@@ -10,8 +10,10 @@
  */
 
 import type {
+  Annotation,
   ComponentElement,
   ExtendsElement,
+  Modifier,
   ModelInstance,
 } from "@modelica-wrapper/omc-client";
 
@@ -133,18 +135,116 @@ export function coerceToKind(raw: unknown, kind: PrimitiveKind): unknown {
 }
 
 /**
+ * Modelica Dialog-annotation defaults — see spec §18.7. We surface these
+ * exact strings on the field even when the source code didn't bother to
+ * spell them out, so the form's grouping logic always has something to
+ * key on.
+ */
+export const DEFAULT_DIALOG_TAB = "General";
+export const DEFAULT_DIALOG_GROUP = "Parameters";
+
+export interface DialogInfo {
+  tab: string;
+  group: string;
+}
+
+/**
+ * Extract `tab` / `group` from a parameter's `annotation.Dialog`. Falls
+ * back to the Modelica spec defaults when the annotation is missing or
+ * malformed. We don't surface `enable` / `showStartAttribute` /
+ * `groupImage` etc. yet — they're documented as future work in
+ * `parameter-form.component.ts`.
+ */
+export function readDialogInfo(
+  annotation: Annotation | undefined,
+): DialogInfo {
+  const fallback: DialogInfo = {
+    tab: DEFAULT_DIALOG_TAB,
+    group: DEFAULT_DIALOG_GROUP,
+  };
+  if (!annotation) return fallback;
+  const dlg = (annotation as { Dialog?: unknown }).Dialog;
+  if (!dlg || typeof dlg !== "object" || Array.isArray(dlg)) return fallback;
+  const obj = dlg as { tab?: unknown; group?: unknown };
+  return {
+    tab: typeof obj.tab === "string" ? obj.tab : DEFAULT_DIALOG_TAB,
+    group: typeof obj.group === "string" ? obj.group : DEFAULT_DIALOG_GROUP,
+  };
+}
+
+/**
+ * Best-effort one-line stringification for a parameter's current binding
+ * — used by the read-only display of "unsupported" (non-scalar / record /
+ * complex-expression) parameters so the user at least sees what's there.
+ *
+ * Preference order matches the editable path:
+ *   1. `value.value`   — OMC's evaluated literal
+ *   2. `value.binding` — raw binding (may be a tagged expression)
+ *   3. `modifiers`     — user-written modifier text
+ * Returns `""` when none of those carry anything renderable.
+ */
+export function renderCurrentBinding(el: ComponentElement): string {
+  const v = el.value;
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    const evaluated = (v as { value?: unknown }).value;
+    if (evaluated !== undefined && evaluated !== null) {
+      return stringifyForDisplay(evaluated);
+    }
+    const binding = (v as { binding?: unknown }).binding;
+    if (binding !== undefined && binding !== null) {
+      return stringifyForDisplay(binding);
+    }
+  }
+  if (el.modifiers !== undefined) {
+    return stringifyForDisplay(el.modifiers as Modifier);
+  }
+  return "";
+}
+
+function stringifyForDisplay(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  if (
+    typeof v === "string" ||
+    typeof v === "number" ||
+    typeof v === "boolean"
+  ) {
+    return String(v);
+  }
+  // Tagged-expression objects (`{$kind: "enum", name: "..."}`,
+  // `{$kind: "binary_op", ...}`) → take the most-useful field. Falls
+  // back to a JSON dump so the user sees *something* rather than
+  // `[object Object]`.
+  if (typeof v === "object") {
+    const obj = v as { $kind?: unknown; name?: unknown; op?: unknown };
+    if (obj.$kind === "enum" && typeof obj.name === "string") {
+      return obj.name;
+    }
+    try {
+      return JSON.stringify(v);
+    } catch {
+      return String(v);
+    }
+  }
+  return String(v);
+}
+
+/**
  * Translate a single submitted form value into the Modelica expression
  * `setElementModifierValue` expects. Mirrors `coerceToKind` in reverse:
  *  - numbers / booleans → their literal form (`12`, `true`)
  *  - strings (for string-typed params) → wrapped in `"..."`
  *  - enums → `<qualified>.<leaf>`
+ *  - `unsupported` → always `""` (the form never edits these, so the
+ *    submit translator must never produce a non-empty expression for
+ *    them; the caller separately filters them out before writing)
  *  - `undefined` / `""` → empty string (caller treats as "clear")
  */
 export function valueToExpr(
-  kind: PrimitiveKind | "enum",
+  kind: PrimitiveKind | "enum" | "unsupported",
   value: unknown,
   enumTypeName?: string,
 ): string {
+  if (kind === "unsupported") return "";
   if (value === undefined || value === null || value === "") return "";
   switch (kind) {
     case "boolean":

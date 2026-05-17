@@ -454,6 +454,8 @@ function editSummary(edit: LayoutEdit): string {
       return `connected ${edit.from} ↔ ${edit.to}`;
     case "connectionDeleted":
       return `disconnected ${edit.from} ↔ ${edit.to}`;
+    case "connectionWaypoints":
+      return `re-routed ${edit.from} ↔ ${edit.to} (${edit.waypoints.length} pts)`;
   }
 }
 
@@ -598,6 +600,9 @@ async function applyClassParameterEdits(
 ): Promise<void> {
   const failures: string[] = [];
   for (const [name, ref] of Object.entries(refs)) {
+    // Unsupported (record / complex) params are shown read-only on the
+    // form — never write them back regardless of what the form returns.
+    if (ref.kind === "unsupported") continue;
     const before = initialValues[name];
     const after = submitted[name];
     if (sameValue(before, after)) continue;
@@ -655,6 +660,7 @@ async function applyComponentParameterEdits(
 ): Promise<void> {
   const failures: string[] = [];
   for (const [name, ref] of Object.entries(refs)) {
+    if (ref.kind === "unsupported") continue;
     const before = initialValues[name];
     const after = submitted[name];
     if (sameValue(before, after)) continue;

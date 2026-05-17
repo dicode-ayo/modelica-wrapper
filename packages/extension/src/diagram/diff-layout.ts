@@ -10,12 +10,13 @@ import type { DiagramLayout, Extent } from "@modelica-wrapper/omc-client";
  *   - component deletion                  → `componentDeleted`
  *   - connection deletion                 → `connectionDeleted`
  *   - new connection                      → `connectionAdded`
+ *   - waypoint changes on existing connection → `connectionWaypoints`
+ *     (needed so a component drag's locally-re-routed connections
+ *     don't snap back to their old shape after the OMC round-trip)
  *
  * Out of scope (deferred):
  *   - component class swaps
  *   - connector mutations (rare in practice)
- *   - waypoint refinements on existing connections (treated as
- *     no-ops; OMEdit doesn't push these back either)
  */
 export type LayoutEdit =
   | {
@@ -39,6 +40,12 @@ export type LayoutEdit =
       kind: "connectionDeleted";
       from: string;
       to: string;
+    }
+  | {
+      kind: "connectionWaypoints";
+      from: string;
+      to: string;
+      waypoints: ReadonlyArray<readonly [number, number]>;
     };
 
 function endpointToCref(
@@ -85,10 +92,15 @@ export function diffLayouts(
     }
   }
 
-  // Connections: index-based comparison. A connection is identified by
-  // (lhs, rhs) endpoints; if a slot's endpoints change we treat it as
-  // delete-old + add-new because OMC's `updateConnection` is missing
-  // on 1.26.x.
+  // Connections: keyed by (lhs, rhs) endpoints. If a slot's endpoints
+  // change we treat it as delete-old + add-new because OMC's
+  // `updateConnection` is missing on 1.26.x. If endpoints stay but
+  // waypoints differ — typical of a component drag that drags adjacent
+  // routes with it — we emit `connectionWaypoints`. Without that edit
+  // the move's locally-re-routed waypoints never make it to OMC; the
+  // post-edit re-fetch then reads the stale `Line(points=...)` and the
+  // connections snap back to their old shape, visually detached from
+  // the now-moved component.
   const prevConns = prev.connections.map((c) => ({
     from: endpointToCref(c.lhs),
     to: endpointToCref(c.rhs),
@@ -99,17 +111,25 @@ export function diffLayouts(
     to: endpointToCref(c.rhs),
     waypoints: c.waypoints,
   }));
-  const nextKey = new Set(nextConns.map((c) => `${c.from}|${c.to}`));
-  const prevKey = new Set(prevConns.map((c) => `${c.from}|${c.to}`));
+  const prevByKey = new Map(prevConns.map((c) => [`${c.from}|${c.to}`, c]));
+  const nextByKey = new Map(nextConns.map((c) => [`${c.from}|${c.to}`, c]));
   for (const c of prevConns) {
-    if (!nextKey.has(`${c.from}|${c.to}`)) {
+    if (!nextByKey.has(`${c.from}|${c.to}`)) {
       edits.push({ kind: "connectionDeleted", from: c.from, to: c.to });
     }
   }
   for (const c of nextConns) {
-    if (!prevKey.has(`${c.from}|${c.to}`)) {
+    const before = prevByKey.get(`${c.from}|${c.to}`);
+    if (!before) {
       edits.push({
         kind: "connectionAdded",
+        from: c.from,
+        to: c.to,
+        waypoints: c.waypoints as ReadonlyArray<readonly [number, number]>,
+      });
+    } else if (!waypointsEqual(before.waypoints, c.waypoints)) {
+      edits.push({
+        kind: "connectionWaypoints",
         from: c.from,
         to: c.to,
         waypoints: c.waypoints as ReadonlyArray<readonly [number, number]>,
@@ -118,6 +138,17 @@ export function diffLayouts(
   }
 
   return edits;
+}
+
+function waypointsEqual(
+  a: ReadonlyArray<readonly [number, number]>,
+  b: ReadonlyArray<readonly [number, number]>,
+): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i]![0] !== b[i]![0] || a[i]![1] !== b[i]![1]) return false;
+  }
+  return true;
 }
 
 /** Builds a Modelica `Placement(...)` annotation string for `updateComponent`. */

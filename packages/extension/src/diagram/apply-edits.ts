@@ -72,6 +72,11 @@ function order(e: LayoutEdit): number {
       return 2;
     case "componentPlacement":
       return 3;
+    case "connectionWaypoints":
+      // Run after placement edits so the REPL transcript reads
+      // top-down: structural deletes/adds, then the moved component,
+      // then the re-routed wires that follow it.
+      return 4;
   }
 }
 
@@ -108,6 +113,26 @@ async function applyOne(
         from: edit.from,
         to: edit.to,
         typeName: hostClass,
+      });
+      return;
+    case "connectionWaypoints":
+      // OMC 1.26.x is missing `updateConnection` (verified absent on
+      // 1.26.1 / 1.26.7 — see updateConnection.ts docstring), so we
+      // re-route by deleting and re-adding with the new
+      // `Line(points=...)` annotation. Two RPCs, functionally
+      // equivalent. We leave `client.lastCall` pointing at the
+      // addConnection so the REPL hook labels this row with the call
+      // that landed the new shape.
+      await client.invoke("deleteConnection", {
+        from: edit.from,
+        to: edit.to,
+        typeName: hostClass,
+      });
+      await client.invoke("addConnection", {
+        from: edit.from,
+        to: edit.to,
+        typeName: hostClass,
+        annotation: lineAnnotation(edit.waypoints),
       });
       return;
   }

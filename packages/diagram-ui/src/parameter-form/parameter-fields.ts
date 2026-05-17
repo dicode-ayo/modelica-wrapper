@@ -40,6 +40,14 @@ export interface ParameterField {
   enumValues: ReadonlyArray<unknown>;
   /** Element kind for `kind === "array"`. Falls back to "string" if untyped. */
   itemKind: FieldKind | undefined;
+  /**
+   * Modelica Dialog tab / group, surfaced from the schema's
+   * `x-modelica-tab` / `x-modelica-group` extension keys. `undefined`
+   * when the schema doesn't set them (e.g. the curated simulate form,
+   * which renders flat).
+   */
+  tab: string | undefined;
+  group: string | undefined;
   /** The raw JSON Schema node — kept on the field so the renderer can read extras (min/max/pattern). */
   raw: Node;
 }
@@ -67,10 +75,17 @@ export function parameterFieldsFromSchema(schema: Node): ParameterField[] {
       description: field.description,
       enumValues: Array.isArray(field.enum) ? field.enum : [],
       itemKind: detectArrayItemKind(field),
+      tab: readString(field, "x-modelica-tab"),
+      group: readString(field, "x-modelica-group"),
       raw: field,
     });
   }
   return out;
+}
+
+function readString(node: Node, key: string): string | undefined {
+  const v = (node as Record<string, unknown>)[key];
+  return typeof v === "string" ? v : undefined;
 }
 
 /** True when every required field has a usable value in `values`. */

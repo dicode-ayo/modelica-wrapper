@@ -55,12 +55,19 @@ describe("buildClassParameterForm", () => {
         driveAngle: {
           type: "number",
           description: "Reference distance to move",
+          "x-modelica-tab": "General",
+          "x-modelica-group": "Parameters",
         },
       },
       required: ["driveAngle"],
     });
     expect(form.values).toEqual({ driveAngle: 1.5708 });
-    expect(form.refs.driveAngle).toEqual({ name: "driveAngle", kind: "number" });
+    expect(form.refs.driveAngle).toEqual({
+      name: "driveAngle",
+      kind: "number",
+      tab: "General",
+      group: "Parameters",
+    });
   });
 
   it("emits a boolean field for a Boolean parameter", () => {
@@ -74,7 +81,13 @@ describe("buildClassParameterForm", () => {
       },
     ]);
     const form = buildClassParameterForm(mi)!;
-    expect(form.schema.properties).toEqual({ useReset: { type: "boolean" } });
+    expect(form.schema.properties).toEqual({
+      useReset: {
+        type: "boolean",
+        "x-modelica-tab": "General",
+        "x-modelica-group": "Parameters",
+      },
+    });
     expect(form.values).toEqual({ useReset: false });
     expect(form.refs.useReset.kind).toBe("boolean");
   });
@@ -112,6 +125,8 @@ describe("buildClassParameterForm", () => {
         type: "string",
         enum: ["P", "PI", "PD", "PID"],
         description: "Type of controller",
+        "x-modelica-tab": "General",
+        "x-modelica-group": "Parameters",
       },
     });
     expect(form.values).toEqual({ controllerType: "PI" });
@@ -119,10 +134,12 @@ describe("buildClassParameterForm", () => {
       name: "controllerType",
       kind: "enum",
       enumTypeName: "Modelica.Blocks.Types.SimpleController",
+      tab: "General",
+      group: "Parameters",
     });
   });
 
-  it("skips parameters with record / unsupported types", () => {
+  it("emits a read-only entry for record / unsupported parameter types so they're visible on the form", () => {
     const mi = instance([
       {
         $kind: "component",
@@ -139,11 +156,62 @@ describe("buildClassParameterForm", () => {
           restriction: "record",
           elements: [],
         },
+        modifiers: { x: "1", y: "2" },
         prefixes: { variability: "parameter" },
       },
     ]);
     const form = buildClassParameterForm(mi)!;
-    expect(Object.keys(form.schema.properties ?? {})).toEqual(["ok"]);
+    expect(Object.keys(form.schema.properties ?? {})).toEqual(["ok", "weird"]);
+    // The unsupported one has no `type` (so parameter-fields classifies
+    // it as "unsupported"), keeps its Dialog metadata, and the displayed
+    // value is the stringified current binding.
+    const weird = form.schema.properties?.weird as Record<string, unknown>;
+    expect(weird.type).toBeUndefined();
+    expect(weird["x-modelica-tab"]).toBe("General");
+    expect(form.refs.weird.kind).toBe("unsupported");
+    // Unsupported entries must NOT be in `required` — the form's
+    // submit button stays enabled even without editing them.
+    expect(form.schema.required).toEqual(["ok"]);
+  });
+
+  it("reads Dialog tab + group from the annotation when present", () => {
+    const mi = instance([
+      {
+        $kind: "component",
+        name: "k",
+        type: "Real",
+        value: { binding: 1 },
+        prefixes: { variability: "parameter" },
+        annotation: {
+          Dialog: { tab: "Advanced", group: "Tuning" },
+        },
+      },
+      {
+        $kind: "component",
+        name: "Tstart",
+        type: "Real",
+        value: { binding: 0 },
+        prefixes: { variability: "parameter" },
+        annotation: { Dialog: { group: "Initialization" } },
+      },
+      {
+        $kind: "component",
+        name: "k2",
+        type: "Real",
+        value: { binding: 2 },
+        prefixes: { variability: "parameter" },
+      },
+    ]);
+    const form = buildClassParameterForm(mi)!;
+    expect(form.refs.k).toMatchObject({ tab: "Advanced", group: "Tuning" });
+    expect(form.refs.Tstart).toMatchObject({
+      tab: "General",
+      group: "Initialization",
+    });
+    expect(form.refs.k2).toMatchObject({
+      tab: "General",
+      group: "Parameters",
+    });
   });
 
   it("falls back to the user-written modifier expression when value isn't pre-evaluated", () => {

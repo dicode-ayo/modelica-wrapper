@@ -26,11 +26,14 @@ import type {
 import {
   coerceToKind,
   enumLeavesIfEnum,
+  readDialogInfo,
+  renderCurrentBinding,
   resolvePrimitive,
   stripPrefix,
   typeQualifiedName,
   unquoteString,
   valueToExpr,
+  type DialogInfo,
   type PrimitiveKind,
 } from "./parameter-shape.js";
 
@@ -41,8 +44,14 @@ export interface ComponentParameterRef {
    * `<componentName>.<name>`.
    */
   name: string;
-  kind: PrimitiveKind | "enum";
+  /**
+   * `"unsupported"` covers record / complex parameters we can't edit
+   * yet — surfaced read-only on the form rather than dropped.
+   */
+  kind: PrimitiveKind | "enum" | "unsupported";
   enumTypeName?: string;
+  tab: string;
+  group: string;
 }
 
 export interface ComponentParameterForm {
@@ -76,11 +85,12 @@ export function buildComponentParameterForm(
     if (el.$kind !== "component") continue;
     if (el.prefixes?.variability !== "parameter") continue;
     const built = buildField(el, overrides[el.name]);
-    if (!built) continue;
     properties[el.name] = built.schema;
     refs[el.name] = built.ref;
     if (built.value !== undefined) values[el.name] = built.value;
-    required.push(el.name);
+    if (built.ref.kind !== "unsupported") {
+      required.push(el.name);
+    }
   }
 
   if (Object.keys(properties).length === 0) return undefined;
@@ -101,29 +111,76 @@ interface BuiltField {
 function buildField(
   el: ComponentElement,
   override: Modifier | undefined,
-): BuiltField | undefined {
+): BuiltField {
   const description = el.comment ?? undefined;
+  const dialog: DialogInfo = readDialogInfo(el.annotation);
   const enumLeaves = enumLeavesIfEnum(el.type);
   if (enumLeaves) {
     const qualified = typeQualifiedName(el.type);
-    if (!qualified) return undefined;
-    const schema: JsonSchema = { type: "string", enum: enumLeaves };
+    if (qualified) {
+      const schema: JsonSchema = {
+        type: "string",
+        enum: enumLeaves,
+        ...dialogSchemaExt(dialog),
+      };
+      if (description) schema.description = description;
+      return {
+        schema,
+        value: enumCurrentLeaf(el, qualified, override),
+        ref: {
+          name: el.name,
+          kind: "enum",
+          enumTypeName: qualified,
+          tab: dialog.tab,
+          group: dialog.group,
+        },
+      };
+    }
+  }
+  const primitive = resolvePrimitive(el.type);
+  if (primitive) {
+    const schema: JsonSchema = {
+      type: primitive,
+      ...dialogSchemaExt(dialog),
+    };
     if (description) schema.description = description;
     return {
       schema,
-      value: enumCurrentLeaf(el, qualified, override),
-      ref: { name: el.name, kind: "enum", enumTypeName: qualified },
+      value: currentPrimitiveValue(el, primitive, override),
+      ref: {
+        name: el.name,
+        kind: primitive,
+        tab: dialog.tab,
+        group: dialog.group,
+      },
     };
   }
-  const primitive = resolvePrimitive(el.type);
-  if (!primitive) return undefined;
-  const schema: JsonSchema = { type: primitive };
+  // Unsupported (record / array / complex) — show the current binding
+  // read-only so the user at least sees what's there.
+  const display = renderCurrentBinding(el);
+  const schema: JsonSchema = {
+    default: display,
+    ...dialogSchemaExt(dialog),
+  };
   if (description) schema.description = description;
   return {
     schema,
-    value: currentPrimitiveValue(el, primitive, override),
-    ref: { name: el.name, kind: primitive },
+    value: display,
+    ref: {
+      name: el.name,
+      kind: "unsupported",
+      tab: dialog.tab,
+      group: dialog.group,
+    },
   };
+}
+
+/** Project-internal extension keys for `tab` / `group` carried on the schema property. */
+function dialogSchemaExt(d: DialogInfo): {
+  "x-modelica-tab": string;
+  "x-modelica-group": string;
+} {
+  return { "x-modelica-tab": d.tab, "x-modelica-group": d.group };
 }
 
 /**

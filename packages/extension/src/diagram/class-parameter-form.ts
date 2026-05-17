@@ -21,11 +21,14 @@ import type {
 import {
   coerceToKind,
   enumLeavesIfEnum,
+  readDialogInfo,
+  renderCurrentBinding,
   resolvePrimitive,
   stripPrefix,
   typeQualifiedName,
   unquoteString,
   valueToExpr,
+  type DialogInfo,
   type PrimitiveKind,
 } from "./parameter-shape.js";
 
@@ -40,13 +43,20 @@ import {
 export interface ClassParameterRef {
   /** Property name (== schema key, == component name on the host class). */
   name: string;
-  /** Modelica type kind we resolved this parameter to. */
-  kind: PrimitiveKind | "enum";
+  /**
+   * Modelica type kind. `"unsupported"` covers record / array / complex
+   * parameter types we can't yet edit — the form renders them as a
+   * read-only display so the user at least sees the current binding.
+   */
+  kind: PrimitiveKind | "enum" | "unsupported";
   /**
    * For enums, the qualified type name (e.g. `Modelica.Blocks.Types.Init`)
    * so we can emit `<typeName>.<leaf>` as the value expression.
    */
   enumTypeName?: string;
+  /** Dialog tab / group — defaults to Modelica spec ("General" / "Parameters"). */
+  tab: string;
+  group: string;
 }
 
 export interface ClassParameterForm {
@@ -74,14 +84,17 @@ export function buildClassParameterForm(
     if (el.$kind !== "component") continue;
     if (el.prefixes?.variability !== "parameter") continue;
     const built = buildField(el);
-    if (!built) continue;
     properties[el.name] = built.schema;
     refs[el.name] = built.ref;
     if (built.value !== undefined) values[el.name] = built.value;
     // Parameters always have a binding (either inherited default or the
     // user's modifier) so they're "required" in the form sense — the
-    // submit button stays enabled even without edits.
-    required.push(el.name);
+    // submit button stays enabled even without edits. We exclude the
+    // unsupported (read-only) kind because the form can't fulfil their
+    // required-ness via an edit.
+    if (built.ref.kind !== "unsupported") {
+      required.push(el.name);
+    }
   }
 
   if (Object.keys(properties).length === 0) return undefined;
@@ -98,29 +111,78 @@ interface BuiltField {
   ref: ClassParameterRef;
 }
 
-function buildField(el: ComponentElement): BuiltField | undefined {
+function buildField(el: ComponentElement): BuiltField {
   const description = el.comment ?? undefined;
+  const dialog: DialogInfo = readDialogInfo(el.annotation);
   const enumLeaves = enumLeavesIfEnum(el.type);
   if (enumLeaves) {
     const qualified = typeQualifiedName(el.type);
-    if (!qualified) return undefined;
-    const schema: JsonSchema = { type: "string", enum: enumLeaves };
+    if (qualified) {
+      const schema: JsonSchema = {
+        type: "string",
+        enum: enumLeaves,
+        ...dialogSchemaExt(dialog),
+      };
+      if (description) schema.description = description;
+      return {
+        schema,
+        value: enumCurrentLeaf(el, qualified),
+        ref: {
+          name: el.name,
+          kind: "enum",
+          enumTypeName: qualified,
+          tab: dialog.tab,
+          group: dialog.group,
+        },
+      };
+    }
+    // Fall through to "unsupported" if the enum has no qualified name.
+  }
+  const primitive = resolvePrimitive(el.type);
+  if (primitive) {
+    const schema: JsonSchema = {
+      type: primitive,
+      ...dialogSchemaExt(dialog),
+    };
     if (description) schema.description = description;
     return {
       schema,
-      value: enumCurrentLeaf(el, qualified),
-      ref: { name: el.name, kind: "enum", enumTypeName: qualified },
+      value: currentPrimitiveValue(el, primitive),
+      ref: {
+        name: el.name,
+        kind: primitive,
+        tab: dialog.tab,
+        group: dialog.group,
+      },
     };
   }
-  const primitive = resolvePrimitive(el.type);
-  if (!primitive) return undefined;
-  const schema: JsonSchema = { type: primitive };
+  // Unsupported (record / array / complex). Emit a property with no
+  // `type` (so `parameter-fields.ts` classifies it as "unsupported")
+  // and let the form display the current binding read-only.
+  const display = renderCurrentBinding(el);
+  const schema: JsonSchema = {
+    default: display,
+    ...dialogSchemaExt(dialog),
+  };
   if (description) schema.description = description;
   return {
     schema,
-    value: currentPrimitiveValue(el, primitive),
-    ref: { name: el.name, kind: primitive },
+    value: display,
+    ref: {
+      name: el.name,
+      kind: "unsupported",
+      tab: dialog.tab,
+      group: dialog.group,
+    },
   };
+}
+
+/** Project-internal extension keys for `tab` / `group` carried on the schema property. */
+function dialogSchemaExt(d: DialogInfo): {
+  "x-modelica-tab": string;
+  "x-modelica-group": string;
+} {
+  return { "x-modelica-tab": d.tab, "x-modelica-group": d.group };
 }
 
 /**

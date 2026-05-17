@@ -115,8 +115,36 @@ describe("buildComponentParameterForm", () => {
       name: "controllerType",
       kind: "enum",
       enumTypeName: "Modelica.Blocks.Types.SimpleController",
+      tab: "General",
+      group: "Parameters",
     });
     expect(form.refs.k.kind).toBe("number");
+  });
+
+  it("reads Dialog tab + group from sub-component parameter annotations", () => {
+    const c: ComponentElement = {
+      $kind: "component",
+      name: "PI",
+      type: {
+        name: "T",
+        restriction: "block",
+        elements: [
+          {
+            $kind: "component",
+            name: "init",
+            type: "Real",
+            value: { binding: 0 },
+            prefixes: { variability: "parameter" },
+            annotation: { Dialog: { tab: "Advanced", group: "Initialization" } },
+          },
+        ],
+      },
+    } as unknown as ComponentElement;
+    const form = buildComponentParameterForm(c)!;
+    expect(form.refs.init).toMatchObject({
+      tab: "Advanced",
+      group: "Initialization",
+    });
   });
 
   it("prefers parent-class modifier overrides over type-side defaults", () => {

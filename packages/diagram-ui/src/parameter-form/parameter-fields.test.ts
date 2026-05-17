@@ -181,3 +181,29 @@ describe("isComplete", () => {
     expect(isComplete(fields, { a: "ok" })).toBe(true);
   });
 });
+
+describe("Dialog metadata pass-through", () => {
+  it("reads `x-modelica-tab` and `x-modelica-group` onto the field", () => {
+    const [f] = parameterFieldsFromSchema({
+      type: "object",
+      properties: {
+        k: {
+          type: "number",
+          "x-modelica-tab": "Advanced",
+          "x-modelica-group": "Tuning",
+        } as never,
+      },
+    });
+    expect(f?.tab).toBe("Advanced");
+    expect(f?.group).toBe("Tuning");
+  });
+
+  it("leaves tab/group undefined when the schema doesn't set them (simulate form)", () => {
+    const [f] = parameterFieldsFromSchema({
+      type: "object",
+      properties: { startTime: { type: "number", default: 0 } },
+    });
+    expect(f?.tab).toBeUndefined();
+    expect(f?.group).toBeUndefined();
+  });
+});

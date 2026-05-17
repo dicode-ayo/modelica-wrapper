@@ -39,6 +39,9 @@ import "@awesome.me/webawesome/dist/components/checkbox/checkbox.js";
 import "@awesome.me/webawesome/dist/components/input/input.js";
 import "@awesome.me/webawesome/dist/components/option/option.js";
 import "@awesome.me/webawesome/dist/components/select/select.js";
+import "@awesome.me/webawesome/dist/components/tab/tab.js";
+import "@awesome.me/webawesome/dist/components/tab-group/tab-group.js";
+import "@awesome.me/webawesome/dist/components/tab-panel/tab-panel.js";
 
 import type { JsonSchema } from "@modelica-wrapper/omc-client";
 
@@ -51,6 +54,53 @@ import {
   type ParameterField,
   type FieldKind,
 } from "./parameter-fields.js";
+
+interface GroupBucket {
+  /** Group name from Dialog annotation, or `undefined` when the source
+   *  schema didn't set one (e.g. the curated simulate form). */
+  group: string | undefined;
+  fields: ParameterField[];
+}
+
+interface TabBucket {
+  tab: string;
+  groups: GroupBucket[];
+}
+
+/**
+ * Bucket fields by Dialog tab → group, preserving declaration order for
+ * both tabs and groups (and fields within a group). Fields with no
+ * `tab` AND no `group` collapse into a single un-named bucket so a
+ * schema lacking Dialog metadata (simulate) renders flat.
+ */
+function bucketByTab(fields: ReadonlyArray<ParameterField>): TabBucket[] {
+  const tabOrder: string[] = [];
+  const byTab = new Map<string, Map<string | undefined, ParameterField[]>>();
+  // Sentinel for "no tab metadata anywhere" — kept distinct from the
+  // user-defined "General" tab so a Dialog-using schema that omits tab
+  // on some fields still groups them under "General" via the builder's
+  // default, and a non-Dialog schema (simulate) gets the single bucket.
+  const NO_TAB = "";
+  for (const f of fields) {
+    const tab = f.tab ?? NO_TAB;
+    if (!byTab.has(tab)) {
+      byTab.set(tab, new Map());
+      tabOrder.push(tab);
+    }
+    const groups = byTab.get(tab)!;
+    const groupKey = f.group;
+    if (!groups.has(groupKey)) groups.set(groupKey, []);
+    groups.get(groupKey)!.push(f);
+  }
+  return tabOrder.map((tab) => {
+    const groupsMap = byTab.get(tab)!;
+    const groups: GroupBucket[] = [];
+    for (const [group, list] of groupsMap.entries()) {
+      groups.push({ group, fields: list });
+    }
+    return { tab, groups };
+  });
+}
 
 type Schema = JsonSchema;
 
@@ -120,6 +170,45 @@ export class OmParameterForm extends LitElement {
         font-style: italic;
       }
 
+      /* Read-only display widget for non-editable (record / complex)
+       * parameters. Same metrics as wa-input's small size so the column
+       * width matches editable rows. */
+      .readonly-display {
+        display: inline-block;
+        width: 100%;
+        padding: var(--om-space-xs) var(--om-space-sm);
+        background: var(--vscode-input-background, #f3f3f3);
+        color: var(--vscode-foreground, #1f1f1f);
+        border: 1px solid var(--vscode-input-border, #d4d4d4);
+        border-radius: var(--om-radius-sm, 4px);
+        font-family: var(--vscode-editor-font-family, monospace);
+        font-size: var(--om-description-size);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .group {
+        margin-top: var(--om-space-lg);
+      }
+      .group:first-child {
+        margin-top: 0;
+      }
+      .group-title {
+        font-weight: 600;
+        font-size: var(--om-description-size);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: var(--vscode-descriptionForeground, #666);
+        margin: 0 0 var(--om-space-sm) 0;
+        padding-bottom: var(--om-space-xs);
+        border-bottom: 1px solid var(--vscode-input-border, #e0e0e0);
+      }
+
+      wa-tab-panel {
+        padding-top: var(--om-space-md);
+      }
+
       .actions {
         display: flex;
         justify-content: flex-end;
@@ -166,7 +255,7 @@ export class OmParameterForm extends LitElement {
     return html`
       ${this.title ? html`<h3 class="title">${this.title}</h3>` : nothing}
       <form @submit=${this.onSubmit}>
-        ${this.fields.map((f) => this.renderField(f))}
+        ${this.renderBody()}
         <div class="actions">
           <wa-button
             type="button"
@@ -183,6 +272,55 @@ export class OmParameterForm extends LitElement {
         </div>
       </form>
     `;
+  }
+
+  /**
+   * Pick a layout based on the field metadata:
+   *  - Multiple distinct Dialog tabs → render `<wa-tab-group>` with one
+   *    panel per tab; inside each panel, group by Dialog group.
+   *  - Single tab but multiple groups → flat list with group headers.
+   *  - No tab/group metadata at all (e.g. the curated simulate form) →
+   *    plain flat list, preserves the original layout.
+   */
+  private renderBody(): TemplateResult {
+    const buckets = bucketByTab(this.fields);
+    if (buckets.length <= 1) {
+      const single = buckets[0];
+      if (!single) return html`${nothing}`;
+      return this.renderGroups(single.groups);
+    }
+    return html`
+      <wa-tab-group placement="top">
+        ${buckets.map(
+          (b, i) => html`<wa-tab slot="nav" panel=${`tab-${i}`}
+            >${b.tab}</wa-tab>`,
+        )}
+        ${buckets.map(
+          (b, i) => html`<wa-tab-panel name=${`tab-${i}`}
+            >${this.renderGroups(b.groups)}</wa-tab-panel
+          >`,
+        )}
+      </wa-tab-group>
+    `;
+  }
+
+  private renderGroups(groups: GroupBucket[]): TemplateResult {
+    // Suppress the group header when there's only one un-named group —
+    // a single "Parameters" header above a 3-field form is just noise.
+    const only = groups.length === 1 ? groups[0] : undefined;
+    if (only && only.group === undefined) {
+      return html`${only.fields.map((f) => this.renderField(f))}`;
+    }
+    return html`${groups.map(
+      (g) => html`
+        <div class="group">
+          ${g.group !== undefined
+            ? html`<div class="group-title">${g.group}</div>`
+            : nothing}
+          ${g.fields.map((f) => this.renderField(f))}
+        </div>
+      `,
+    )}`;
   }
 
   private renderField(f: ParameterField): TemplateResult {
@@ -301,10 +439,19 @@ export class OmParameterForm extends LitElement {
               )}
           ></wa-input>
         `;
-      case "unsupported":
-        return html`<span class="unsupported"
-          >(unsupported field type — read only)</span
+      case "unsupported": {
+        // Record / complex parameters can't be edited yet, but we still
+        // want the user to see what's currently bound. The builder
+        // passes the rendered binding as `defaultValue` so we don't
+        // need to know about Modelica shapes here.
+        const text = stringifyAtom(v ?? f.defaultValue ?? "");
+        return html`<span
+          class="readonly-display"
+          id=${`f-${f.name}`}
+          title=${text}
+          >${text === "" ? "(empty)" : text}</span
         >`;
+      }
     }
   }
 
