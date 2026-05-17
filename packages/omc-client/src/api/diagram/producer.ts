@@ -230,6 +230,21 @@ function portFromConnector(
     iconLayers,
     from,
   };
+  // Forward direction/flow/stream so connection-creation UIs can do
+  // a local compatibility check (input ↔ output, flow ↔ flow) before
+  // calling `addConnection`. `direction` is a free-form string from
+  // OMC; we narrow to the known causality values and drop anything
+  // else (Modelica reserves the field but doesn't constrain it).
+  const prefixes = el.prefixes;
+  if (prefixes) {
+    if (prefixes.direction === "input" || prefixes.direction === "output") {
+      port.direction = prefixes.direction;
+    } else if (prefixes.direction === "") {
+      port.direction = "";
+    }
+    if (prefixes.flow !== undefined) port.flow = prefixes.flow;
+    if (prefixes.stream !== undefined) port.stream = prefixes.stream;
+  }
   if (typeMi.source) port.source = typeMi.source;
   return port;
 }

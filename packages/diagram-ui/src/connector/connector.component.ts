@@ -45,7 +45,14 @@ export class OmConnector extends OmShapeElement {
   private portMaterial: StandardMaterial | null = null;
   private indicatorVisible = false;
   private hovered = false;
+  /**
+   * Hover variant. `"error"` paints the outline red so the user sees
+   * the target is an incompatible connection drop (e.g. input ↔ input).
+   * Set together with `hovered=true`.
+   */
+  private hoverVariant: "normal" | "error" = "normal";
   private hoverLayerAttached = false;
+  private hoverLayerColor: "normal" | "error" | null = null;
 
   protected override babylonNodeName(): string {
     return this.nodeId ? `om-connector:${this.nodeId}` : "om-connector";
@@ -76,6 +83,7 @@ export class OmConnector extends OmShapeElement {
     // this method restores hover if the user is still pointing at us.
     if (this.hovered) {
       this.hoverLayerAttached = false;
+      this.hoverLayerColor = null;
       this.applyHoverOutline();
     }
   }
@@ -119,22 +127,31 @@ export class OmConnector extends OmShapeElement {
   }
 
   /**
-   * Outline the connector icon to signal it's clickable. Independent
-   * of `setPortIndicatorVisible` — the port indicator is the click
-   * *target*, the hover outline is the click *affordance*. The two
-   * are toggled together by the host element but kept apart on the
-   * connector itself so a test can drive them in isolation.
+   * Outline the connector icon to signal it's clickable. The
+   * `variant` lets the host distinguish a normal hover (blue) from
+   * the snap target during a connection drag (`"error"` = red, used
+   * when the type/causality check rejects the drop).
+   *
+   * Independent of `setPortIndicatorVisible` — the port indicator is
+   * the click *target*, the hover outline is the click *affordance*.
+   * The two are toggled together by the host element but kept apart
+   * on the connector itself so a test can drive them in isolation.
    */
-  setHovered(hovered: boolean): void {
-    if (this.hovered === hovered) {
+  setHovered(hovered: boolean, variant: "normal" | "error" = "normal"): void {
+    if (this.hovered === hovered && this.hoverVariant === variant) {
       return;
     }
     this.hovered = hovered;
+    this.hoverVariant = variant;
     this.applyHoverOutline();
   }
 
   get isHovered(): boolean {
     return this.hovered;
+  }
+
+  get hoveredVariant(): "normal" | "error" {
+    return this.hoverVariant;
   }
 
   private applyHoverOutline(): void {
@@ -154,15 +171,29 @@ export class OmConnector extends OmShapeElement {
     // outline wins; we restore the hover outline on un-select.
     if (node.isSelected()) {
       this.hoverLayerAttached = false;
+      this.hoverLayerColor = null;
       return;
     }
-    if (this.hovered && !this.hoverLayerAttached) {
-      layer.addMesh(node.mesh, HOVER_COLOR);
-      this.hoverLayerAttached = true;
-    } else if (!this.hovered && this.hoverLayerAttached) {
+    const wantColor: "normal" | "error" | null = this.hovered
+      ? this.hoverVariant
+      : null;
+    if (wantColor === this.hoverLayerColor) {
+      return;
+    }
+    // HighlightLayer keys by mesh, so changing colour means
+    // remove-then-add.
+    if (this.hoverLayerAttached) {
       layer.removeMesh(node.mesh);
       this.hoverLayerAttached = false;
     }
+    if (wantColor) {
+      layer.addMesh(
+        node.mesh,
+        wantColor === "error" ? HOVER_ERROR_COLOR : HOVER_COLOR,
+      );
+      this.hoverLayerAttached = true;
+    }
+    this.hoverLayerColor = wantColor;
   }
 
   /**
@@ -205,6 +236,8 @@ export class OmConnector extends OmShapeElement {
 
 /** Softer blue than the selection outline. */
 const HOVER_COLOR = new Color3(0.61, 0.78, 1); // blue-300
+/** Red glow used when the connector is an incompatible drop target. */
+const HOVER_ERROR_COLOR = new Color3(0.97, 0.44, 0.44); // red-400
 
 declare global {
   interface HTMLElementTagNameMap {

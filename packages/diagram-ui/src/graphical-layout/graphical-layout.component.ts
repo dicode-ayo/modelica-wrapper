@@ -44,6 +44,11 @@ import {
 import { formatKey, parseKey } from "../interaction/node-keys.js";
 import { orthogonalRoute } from "../interaction/connection-route.js";
 import {
+  canConnect,
+  resolvePortInfo,
+  type CompatibilityResult,
+} from "../interaction/connection-compat.js";
+import {
   InteractionStateStore,
   interactionStateContext,
   type InteractionState,
@@ -244,6 +249,10 @@ export class OmGraphicalLayout extends LitElement {
     fromPoint: { x: number; y: number };
     to: { x: number; y: number };
     toKey: string | null;
+    /** `null` when no snap target. Otherwise the local compat check
+     *  result — used to red-light the rubber-band and the target
+     *  outline, and to refuse the drop on release. */
+    compat: { ok: boolean; reason?: string } | null;
   } | null = null;
   @state() private libraryBrowserOpen = false;
 
@@ -520,11 +529,18 @@ export class OmGraphicalLayout extends LitElement {
     // is the live diagram-space cursor (`ip.to`) — we don't snap to
     // the target connector centre even when `toKey` is set, so the
     // user keeps seeing their pointer until they release.
+    //
+    // Stroke colour reflects the compatibility check: blue while
+    // hovering empty space or a compatible target, red when the
+    // snap target is rejected by `canConnect`. The drop is refused
+    // on release in either red case.
+    const incompat = ip.compat ? !ip.compat.ok : false;
+    const stroke = incompat ? "#ef4444" : "#3b82f6";
     const path = orthogonalRoute(ip.fromPoint, ip.to);
     return html`<om-edge
       .nodeId=${"in-progress"}
       .path=${path}
-      .stroke=${"#3b82f6"}
+      .stroke=${stroke}
     ></om-edge>`;
   }
 
@@ -539,6 +555,25 @@ export class OmGraphicalLayout extends LitElement {
   ): { x: number; y: number } | null {
     const conn = this.findConnectorElement(key);
     return conn ? conn.getPortDiagramPosition() : null;
+  }
+
+  /**
+   * Run the local type / causality check between the connection-drag
+   * source and (potential) target. Returns `null` when there's no
+   * snap target yet — the renderer treats `null` the same as
+   * "compatible" (no red light) until the user lands on a target.
+   */
+  private evaluateCompat(
+    fromKey: string,
+    toKey: string | null,
+  ): CompatibilityResult | null {
+    if (!toKey) return null;
+    const layout = this.draftLayout ?? this.layout;
+    if (!layout) return null;
+    const from = resolvePortInfo(layout, fromKey);
+    const to = resolvePortInfo(layout, toKey);
+    if (!from || !to) return null;
+    return canConnect(from, to);
   }
 
   /**
@@ -627,14 +662,24 @@ export class OmGraphicalLayout extends LitElement {
         addByConnectorKey(ip.toKey);
       }
     }
+    // Identify the snap-target connector during an incompatible drag
+    // so its hover outline can be red-flagged. (The source connector
+    // and any non-target hovered connectors stay blue — we're only
+    // calling out the rejected drop.)
+    const errorTarget =
+      ip && ip.toKey && ip.compat && !ip.compat.ok
+        ? this.findConnectorElement(ip.toKey)
+        : null;
     for (const el of sceneEl.querySelectorAll("om-connector")) {
       const conn = el as OmConnector;
       const want = visible.has(conn);
+      const variant: "normal" | "error" =
+        conn === errorTarget ? "error" : "normal";
       if (conn.portIndicatorVisible !== want) {
         conn.setPortIndicatorVisible(want);
       }
-      if (conn.isHovered !== want) {
-        conn.setHovered(want);
+      if (conn.isHovered !== want || conn.hoveredVariant !== variant) {
+        conn.setHovered(want, variant);
       }
     }
   }
@@ -874,6 +919,7 @@ export class OmGraphicalLayout extends LitElement {
             fromPoint,
             to: d.to,
             toKey: d.toKey,
+            compat: this.evaluateCompat(d.from, d.toKey),
           };
           this.refreshPortIndicators();
           this.setInteractionState({
@@ -883,9 +929,15 @@ export class OmGraphicalLayout extends LitElement {
           });
         } else {
           const fromPoint = this.inProgressConnection?.fromPoint ?? null;
+          const compat = this.inProgressConnection?.compat ?? null;
           this.inProgressConnection = null;
           this.refreshPortIndicators();
-          if (d.toKey) {
+          // Only emit when we have a snap target AND the local check
+          // didn't reject it. Incompatible drops silently fail —
+          // matches what the user just saw (red rubber-band) and
+          // avoids a round-trip to OMC for a connection we already
+          // know it would reject.
+          if (d.toKey && (compat === null || compat.ok)) {
             const toPoint = this.connectorDiagramPosition(d.toKey);
             const waypoints =
               fromPoint && toPoint
