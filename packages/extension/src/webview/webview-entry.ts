@@ -248,8 +248,19 @@ class OmWebviewRoot extends LitElement {
   };
 
   private onConnectionCreate = (e: Event): void => {
-    const d = (e as CustomEvent<{ fromKey: string; toKey: string }>).detail;
-    this.post({ type: "connectionCreate", fromKey: d.fromKey, toKey: d.toKey });
+    const d = (
+      e as CustomEvent<{
+        fromKey: string;
+        toKey: string;
+        waypoints: ReadonlyArray<readonly [number, number]>;
+      }>
+    ).detail;
+    this.post({
+      type: "connectionCreate",
+      fromKey: d.fromKey,
+      toKey: d.toKey,
+      waypoints: d.waypoints,
+    });
   };
 
   private onSelectionChange = (e: Event): void => {

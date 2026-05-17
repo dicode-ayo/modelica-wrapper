@@ -70,9 +70,17 @@ export function parseKey(key: string): EntityKey | null {
  *
  *   - `name: "om-<kind>:<id>"`        — set by `OmShapeNode` /
  *     `<om-label>` for entities whose TransformNode owns the identity
+ *
+ * Nested connectors (a `<om-connector>` inside an `<om-component>`)
+ * are disambiguated by composing the parent component's id into the
+ * key: `om-connector:p` inside `om-component:R1` yields
+ * `{kind: "connector", nodeId: "R1.p"}`. Without this, two components
+ * each with a port `p` collide on `k:p` and the host element can't
+ * tell which one the user clicked.
  */
 export function entityKeyForNode(start: Node | null): EntityKey | null {
   let cur: Node | null = start;
+  let pendingConnector: string | null = null;
   while (cur) {
     const meta = cur.metadata as
       | { kind?: string; nodeId?: string }
@@ -87,9 +95,21 @@ export function entityKeyForNode(start: Node | null): EntityKey | null {
     const m = cur.name?.match(/^om-(component|connector|label):(.*)$/);
     if (m) {
       const kind = m[1] as EntityKind;
-      return { kind, nodeId: m[2] ?? "" };
+      const id = m[2] ?? "";
+      if (kind === "connector" && pendingConnector === null) {
+        // Keep walking — a connector might be nested inside a
+        // component, in which case we want the qualified key.
+        pendingConnector = id;
+      } else if (kind === "component" && pendingConnector !== null) {
+        return { kind: "connector", nodeId: `${id}.${pendingConnector}` };
+      } else {
+        return { kind, nodeId: id };
+      }
     }
     cur = cur.parent;
+  }
+  if (pendingConnector !== null) {
+    return { kind: "connector", nodeId: pendingConnector };
   }
   return null;
 }

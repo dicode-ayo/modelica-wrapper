@@ -16,7 +16,7 @@
 
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { consume } from "@lit/context";
+import { ContextConsumer, consume } from "@lit/context";
 
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
 import {
@@ -24,6 +24,13 @@ import {
   type ViewStateStore,
 } from "../scene/view-state-store.js";
 import { clientToDiagram } from "../scene/view-math.js";
+import {
+  interactionStateContext,
+  type InteractionSnapshot,
+  type InteractionState,
+  type InteractionStateStore,
+} from "../interaction/interaction-state.js";
+import { parseKey, type EntityKind } from "../interaction/node-keys.js";
 
 type PerfStats = {
   fps: number;
@@ -107,6 +114,14 @@ export class OmPerfHud extends LitElement {
   @state()
   private pointer: DiagramPoint = null;
 
+  @state()
+  private interaction: InteractionSnapshot = {
+    state: { kind: "idle" },
+    hoverKey: null,
+    selectedKeys: [],
+    version: 0,
+  };
+
   /** Captured once on connect — used to surface software-renderer fallbacks. */
   private gpu = "";
 
@@ -116,6 +131,21 @@ export class OmPerfHud extends LitElement {
    *  remove them cleanly even if `ctx.engine.getRenderingCanvas()`
    *  later returns a different element. */
   private pointerCanvas: HTMLCanvasElement | null = null;
+  /** Unsubscribe from the interaction store; rebound when the context
+   *  resolves to a new store (mount, scene teardown, hot reload). */
+  private interactionUnsub: (() => void) | null = null;
+
+  constructor() {
+    super();
+    // Behaviour-subject bridge: each new store hands us a snapshot
+    // immediately on subscribe, so the HUD lights up with the current
+    // state without waiting for the next user gesture.
+    new ContextConsumer(this, {
+      context: interactionStateContext,
+      subscribe: true,
+      callback: (store) => this.resubscribeInteraction(store),
+    });
+  }
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -126,11 +156,26 @@ export class OmPerfHud extends LitElement {
     this.rafId = requestAnimationFrame(this.tick);
   }
 
+  private resubscribeInteraction(
+    store: InteractionStateStore | null,
+  ): void {
+    this.interactionUnsub?.();
+    this.interactionUnsub = null;
+    if (!store) {
+      return;
+    }
+    this.interactionUnsub = store.subscribe((snap) => {
+      this.interaction = snap;
+    });
+  }
+
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     if (this.rafId) cancelAnimationFrame(this.rafId);
     this.rafId = 0;
     this.detachPointerListeners();
+    this.interactionUnsub?.();
+    this.interactionUnsub = null;
   }
 
   override updated(changed: Map<string, unknown>): void {
@@ -201,11 +246,17 @@ export class OmPerfHud extends LitElement {
           .toFixed(1)
           .padStart(7)}`
       : "      —,       —";
+    const stateLine = formatStateLine(this.interaction.state);
+    const hoverLine = formatHoverLine(this.interaction.hoverKey);
+    const selectionLine = formatSelectionLine(this.interaction.selectedKeys);
     return html`<span class=${fpsClass}
         >${fps.toFixed(0).padStart(3)} fps</span
       >  ${frameMs.toFixed(1).padStart(4)} ms
 meshes ${String(meshes).padStart(4)}   drawcalls ${String(drawCalls).padStart(4)}
 xy     ${pointerStr}
+state  ${stateLine}
+hover  ${hoverLine}
+sel    ${selectionLine}
 <span class=${gpuClass}>gpu ${this.gpu}</span>`;
   }
 
@@ -246,4 +297,49 @@ declare global {
   interface HTMLElementTagNameMap {
     "om-perf-hud": OmPerfHud;
   }
+}
+
+const ENTITY_LABEL: Record<EntityKind, string> = {
+  component: "component",
+  connector: "connector",
+  edge: "edge",
+  junction: "junction",
+  label: "label",
+  port: "port",
+  handle: "handle",
+};
+
+/** "moving 2 items" / "connecting c:R1.p → c:R2.in" / "idle" etc. */
+function formatStateLine(state: InteractionState): string {
+  switch (state.kind) {
+    case "idle":
+      return "idle";
+    case "hovering":
+      return `hovering ${state.key}`;
+    case "moving":
+      return state.keys.length === 1
+        ? `moving ${state.keys[0]}`
+        : `moving ${state.keys.length} items`;
+    case "resizing":
+      return `resizing ${state.key} (${state.corner})`;
+    case "selecting":
+      return "selecting (rubber-band)";
+    case "connecting":
+      return `connecting ${state.fromKey} → ${state.toKey ?? "—"}`;
+  }
+}
+
+/** "component R1" / "connector R1.p" / "—" */
+function formatHoverLine(key: string | null): string {
+  if (!key) return "—";
+  const parsed = parseKey(key);
+  if (!parsed) return key;
+  return `${ENTITY_LABEL[parsed.kind] ?? parsed.kind} ${parsed.nodeId}`;
+}
+
+/** "—" / "c:R1" / "c:R1 (+2 more)" */
+function formatSelectionLine(keys: readonly string[]): string {
+  if (keys.length === 0) return "—";
+  if (keys.length === 1) return keys[0] ?? "—";
+  return `${keys[0]} (+${keys.length - 1} more)`;
 }

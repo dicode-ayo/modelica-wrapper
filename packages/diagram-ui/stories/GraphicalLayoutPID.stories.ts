@@ -26,7 +26,10 @@ import { html, type TemplateResult } from "lit";
 // `OmcClient` + `spawnOmc` which depend on `zeromq` / `node:fs` and
 // can't bundle for the browser.
 import { produceDiagramLayout } from "@modelica-wrapper/omc-client/api/diagram/index.js";
-import type { ModelInstance } from "@modelica-wrapper/omc-client";
+import type {
+  DiagramLayout,
+  ModelInstance,
+} from "@modelica-wrapper/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
 import type {
@@ -36,6 +39,7 @@ import type {
 } from "../src/library-browser/library-browser.component.js";
 
 import pidFixture from "./fixtures/pidController.modelInstance.json";
+import { appendConnection } from "./fixtures/story-layout-state.js";
 
 // Minimal fake library source so double-clicking empty canvas in the
 // story opens a populated browser. The real extension wires this to
@@ -113,6 +117,11 @@ const pidLayout = produceDiagramLayout(
   "diagram",
 );
 
+// Mutable state — see GraphicalLayout.stories.ts for the rationale.
+// Stories share their own state; the PID fixture is large enough that
+// resetting on every render would be jarring (auto-fit re-runs).
+let currentLayout: DiagramLayout = pidLayout;
+
 interface StoryArgs {
   readonly: boolean;
   cameraMode: "2d" | "3d";
@@ -150,19 +159,26 @@ const meta: Meta<StoryArgs> = {
       </p>
       <div class="om-story-canvas-host" style="height: 600px;">
         <om-graphical-layout
-          .layout=${pidLayout}
+          .layout=${currentLayout}
           ?readonly=${readonly}
           ?perf-hud=${perfHud}
           camera-mode=${cameraMode}
           .lineThicknessScale=${lineThicknessScale}
           .libraryDataSource=${fakeLibrarySource}
-          @om-graphical-layout-change=${(e: CustomEvent) => {
-            // eslint-disable-next-line no-console
-            console.log("layout change", e.detail);
+          @om-graphical-layout-change=${(e: CustomEvent<DiagramLayout>) => {
+            currentLayout = e.detail;
           }}
           @om-connection-create=${(e: CustomEvent) => {
-            // eslint-disable-next-line no-console
-            console.log("connection create", e.detail);
+            const detail = e.detail as {
+              fromKey: string;
+              toKey: string;
+              waypoints: ReadonlyArray<readonly [number, number]>;
+            };
+            currentLayout = appendConnection(currentLayout, detail);
+            const el = e.currentTarget as HTMLElement & {
+              layout: DiagramLayout;
+            };
+            el.layout = currentLayout;
           }}
           @om-add-component-request=${(e: CustomEvent) => {
             // eslint-disable-next-line no-console

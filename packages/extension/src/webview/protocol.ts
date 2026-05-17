@@ -100,7 +100,17 @@ export type ExtensionToWebview =
 export type WebviewToExtension =
   | { type: "ready" }
   | { type: "change"; layout: DiagramLayout }
-  | { type: "connectionCreate"; fromKey: string; toKey: string }
+  | {
+      type: "connectionCreate";
+      fromKey: string;
+      toKey: string;
+      /**
+       * Waypoints (in diagram coords) describing the connection route,
+       * including endpoints. Empty means "let OMC auto-route" — the
+       * webview computes an orthogonal Z-shape by default.
+       */
+      waypoints: ReadonlyArray<readonly [number, number]>;
+    }
   | { type: "selectionChange"; keys: string[] }
   | { type: "error"; message: string }
   | { type: "actionCheck" }

@@ -90,7 +90,7 @@ export async function openDiagram(
         );
       }
     },
-    onConnectionCreate: async (fromKey, toKey) => {
+    onConnectionCreate: async (fromKey, toKey, waypoints) => {
       const from = keyToCref(prevLayout, fromKey);
       const to = keyToCref(prevLayout, toKey);
       if (!from || !to) {
@@ -104,7 +104,7 @@ export async function openDiagram(
           from,
           to,
           typeName: className,
-          annotation: lineAnnotation([]),
+          annotation: lineAnnotation(waypoints),
         });
         prevLayout = await fetchLayout(client, className);
         panel.update(prevLayout);
@@ -435,9 +435,11 @@ async function resolveClassName(arg: unknown): Promise<string | undefined> {
 }
 
 /**
- * Maps a UI entity key (`c:R1`, `k:p`) to the omc-client connector
- * reference (`R1.p` or `p`). The host class itself owns standalone
- * connectors directly; nested connectors live under a component.
+ * Maps a UI entity key (`c:R1`, `k:p`, `k:R1.p`) to the omc-client
+ * connector reference. Standalone connectors carry the bare port name;
+ * nested connectors arrive pre-qualified as `<compName>.<portName>`
+ * thanks to `entityKeyForNode`'s parent walk, so this is now a direct
+ * pass-through with light validation against the current layout.
  */
 function keyToCref(layout: DiagramLayout, key: string): string | null {
   const idx = key.indexOf(":");
@@ -446,22 +448,22 @@ function keyToCref(layout: DiagramLayout, key: string): string | null {
   }
   const prefix = key.slice(0, idx);
   const id = key.slice(idx + 1);
-  if (prefix === "k") {
-    // Could be host-level connector OR a port nested in a component;
-    // we can't tell from the bare key without context. The current
-    // emit path is `k:<portName>` for both. Prefer a match against
-    // host-level connectors first, then look for a component port
-    // exposing that name.
-    if (layout.connectors[id]) {
-      return id;
-    }
-    for (const [compName, comp] of Object.entries(layout.components)) {
-      const cls = layout.classes[comp.classRef];
-      if (cls && cls.connectors[id]) {
-        return `${compName}.${id}`;
-      }
-    }
-    return id;
+  if (prefix !== "k") {
+    return null;
   }
-  return null;
+  const dot = id.indexOf(".");
+  if (dot < 0) {
+    return layout.connectors[id] ? id : null;
+  }
+  const compName = id.slice(0, dot);
+  const portName = id.slice(dot + 1);
+  const comp = layout.components[compName];
+  if (!comp) {
+    return null;
+  }
+  const cls = layout.classes[comp.classRef];
+  if (!cls || !cls.connectors[portName]) {
+    return null;
+  }
+  return id;
 }

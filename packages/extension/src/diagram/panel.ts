@@ -18,7 +18,11 @@ import type {
 
 export interface DiagramPanelHandlers {
   onChange?: (layout: DiagramLayout) => void;
-  onConnectionCreate?: (fromKey: string, toKey: string) => void;
+  onConnectionCreate?: (
+    fromKey: string,
+    toKey: string,
+    waypoints: ReadonlyArray<readonly [number, number]>,
+  ) => void;
   onSelectionChange?: (keys: string[]) => void;
   /** Floating action panel — Check button. */
   onActionCheck?: () => void;
@@ -199,7 +203,11 @@ export class DiagramPanel {
         this.handlers.onChange?.(message.layout);
         return;
       case "connectionCreate":
-        this.handlers.onConnectionCreate?.(message.fromKey, message.toKey);
+        this.handlers.onConnectionCreate?.(
+          message.fromKey,
+          message.toKey,
+          message.waypoints,
+        );
         return;
       case "selectionChange":
         this.handlers.onSelectionChange?.(message.keys);

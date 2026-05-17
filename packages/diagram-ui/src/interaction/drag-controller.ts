@@ -111,9 +111,17 @@ type DragState =
   | RubberBandState
   | ConnectionState;
 
+/**
+ * Entity kinds that begin a move-drag on pointerdown. Connectors are
+ * deliberately excluded: clicking *anywhere* on a connector starts a
+ * connection-drag instead, matching OMEdit. The port-indicator disc
+ * was acting as the entire hit target before this — fine for a slow,
+ * precise click, but the 22%-of-icon disc is hard to land on with a
+ * fast cursor move. Nested connectors are positioned by their parent
+ * component anyway, so losing the move gesture costs nothing.
+ */
 const MOVE_KINDS: ReadonlySet<EntityKind> = new Set([
   "component",
-  "connector",
   "label",
   "junction",
 ]);
@@ -157,8 +165,16 @@ export class DragController {
       return;
     }
 
-    if (entity?.kind === "port") {
-      const ownerKey = ownerOfPort(node);
+    if (entity?.kind === "port" || entity?.kind === "connector") {
+      // Both port indicator and the bare connector icon resolve to a
+      // connection drag. The port path goes through `ownerOfPort` to
+      // walk past the indicator mesh; the connector path uses the
+      // entity directly because `entityKeyForNode` already returned
+      // a qualified key (`R1.p` for nested).
+      const ownerKey =
+        entity.kind === "port"
+          ? ownerOfPort(node)
+          : formatKey("connector", entity.nodeId);
       if (!ownerKey) {
         return;
       }
@@ -388,17 +404,15 @@ function ownerOfHandle(start: Node | null, _corner: string): string | null {
 
 /**
  * Port indicator meshes carry `metadata.kind = "port"` but they're
- * physically parented inside the connector's TransformNode. Walk up
- * looking for the nearest `om-connector:` ancestor and return its key.
+ * physically parented inside the connector's TransformNode. Resolve
+ * the owning connector via `entityKeyForNode` so nested connectors
+ * pick up the parent-component prefix (`k:R1.p`) instead of colliding
+ * on the bare port name (`k:p`).
  */
 function ownerOfPort(start: Node | null): string | null {
-  let cur: Node | null = start;
-  while (cur) {
-    const m = cur.name?.match(/^om-connector:(.*)$/);
-    if (m) {
-      return `k:${m[1] ?? ""}`;
-    }
-    cur = cur.parent;
+  const entity = entityKeyForNode(start?.parent ?? null);
+  if (!entity || entity.kind !== "connector") {
+    return null;
   }
-  return null;
+  return formatKey("connector", entity.nodeId);
 }

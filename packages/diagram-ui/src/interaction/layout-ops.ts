@@ -6,6 +6,7 @@ import type {
 } from "@modelica-wrapper/omc-client";
 
 import { parseKey, type EntityKind } from "./node-keys.js";
+import { snapPlacement, type SnapGrid } from "./snap-math.js";
 
 /**
  * Pure layout mutations. Each function takes a `DiagramLayout` and
@@ -189,6 +190,61 @@ export function applyDeltaMove(
     return layout;
   }
   return { ...layout, components, connectors, connections };
+}
+
+/**
+ * Snap every moved entity's placement to the active grid. Runs once
+ * on drag-commit so the final extent corners land on grid
+ * intersections regardless of where the component started — fixes
+ * the "off-grid component stays off-grid" failure mode where
+ * `snapDelta` only rounded the delta, preserving any pre-existing
+ * sub-grid offset.
+ *
+ * Only walks the keys the caller actually moved (components +
+ * connectors). Junction waypoints aren't snapped here: with no
+ * persisted route, they're auto-re-routed from the (already-snapped)
+ * connector positions on next paint; with a persisted route, the
+ * user explicitly placed them and a follow-up snap pass for
+ * waypoints lives next to that gesture.
+ *
+ * Returns the same reference when nothing changed (e.g. grid `[0,0]`
+ * or every placement was already aligned) so Lit's change tracking
+ * stays cheap.
+ */
+export function applySnapToExtents(
+  layout: DiagramLayout,
+  keys: Iterable<string>,
+  grid: SnapGrid,
+): DiagramLayout {
+  if (grid[0] <= 0 && grid[1] <= 0) {
+    return layout;
+  }
+  const set = partitionKeys(keys);
+  let mutated = false;
+  const components = { ...layout.components };
+  for (const id of set.components) {
+    const c = components[id];
+    if (!c) continue;
+    const snapped = snapPlacement(c.placement, grid);
+    if (snapped !== c.placement) {
+      components[id] = { ...c, placement: snapped };
+      mutated = true;
+    }
+  }
+  const connectors = { ...layout.connectors };
+  for (const id of set.connectors) {
+    const c = connectors[id];
+    if (!c) continue;
+    const snapped = snapPlacement(c.placement, grid);
+    if (snapped !== c.placement) {
+      connectors[id] = { ...c, placement: snapped };
+      mutated = true;
+    }
+  }
+  if (!mutated) {
+    return layout;
+  }
+  return { ...layout, components, connectors };
 }
 
 /** Sets the absolute placement extent of a single component. */

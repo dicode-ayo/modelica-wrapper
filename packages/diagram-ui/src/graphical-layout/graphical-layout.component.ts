@@ -1,5 +1,6 @@
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
+import { ContextProvider } from "@lit/context";
 import { repeat } from "lit/directives/repeat.js";
 import type {
   ComponentInstance,
@@ -18,6 +19,8 @@ import "../connection/edge.component.js";
 import "../debug/perf-hud.component.js";
 import "../library-browser/library-browser.component.js";
 import type { OmScene, EngineFactory } from "../scene/scene.component.js";
+import type { OmConnector } from "../connector/connector.component.js";
+import type { OmComponent } from "../component/component.component.js";
 import type { RasterizeFn, SvgRenderFn } from "../icon-provider/icon-cache.js";
 import type { LibraryBrowserDataSource } from "../library-browser/library-browser.component.js";
 import {
@@ -35,9 +38,22 @@ import {
   applyDelete,
   applyFlip,
   applyRotate,
+  applySnapToExtents,
   selectByDiagramRect,
 } from "../interaction/layout-ops.js";
 import { formatKey, parseKey } from "../interaction/node-keys.js";
+import { orthogonalRoute } from "../interaction/connection-route.js";
+import {
+  InteractionStateStore,
+  interactionStateContext,
+  type InteractionState,
+} from "../interaction/interaction-state.js";
+import {
+  resolveSnapGrid,
+  snapDelta,
+  snapPoint,
+  type SnapGrid,
+} from "../interaction/snap-math.js";
 
 interface BBox {
   minX: number;
@@ -116,7 +132,7 @@ function layoutBoundingBox(layout: DiagramLayout): BBox | null {
  *   - `om-selection-change`        { detail: { keys: string[] } }
  *   - `om-double-click`            { detail: { key: string } }
  *   - `om-context-menu`            { detail: { key, clientX, clientY } }
- *   - `om-connection-create`       { detail: { fromKey, toKey } }
+ *   - `om-connection-create`       { detail: { fromKey, toKey, waypoints } }
  *   - `om-add-component-request`   { detail: { className, position } }
  *       — fired after the user picks a class from the library-browser
  *         overlay (double-click on empty canvas). The host wires this
@@ -197,11 +213,35 @@ export class OmGraphicalLayout extends LitElement {
   @property({ attribute: false })
   libraryDataSource: LibraryBrowserDataSource | null = null;
 
+  /**
+   * Optional snap-to-grid override. Priority order:
+   *   1. This property (when non-null).
+   *   2. `layout.coordinateSystem.grid` from the Modelica annotation.
+   *   3. `[2, 2]` (Modelica spec / OMEdit default).
+   *
+   * Set to `[0, 0]` to disable snapping entirely. Exposed as a
+   * property (not an attribute) so a future settings UI can dial it
+   * in at runtime without round-tripping through HTML attributes.
+   */
+  @property({ attribute: false })
+  gridSnap: SnapGrid | null = null;
+
+  /** Resolved snap grid for the current frame's `onDrag`/add events.
+   *  Computed from `gridSnap` + `layout.coordinateSystem` each time we
+   *  need it — cheap, and dodges stale-cache risk on layout swap. */
+  private currentSnapGrid(): SnapGrid {
+    return resolveSnapGrid(
+      this.layout?.coordinateSystem,
+      this.gridSnap ?? undefined,
+    );
+  }
+
   @state() private selectedKeys: Set<string> = new Set();
   @state() private draftLayout: DiagramLayout | null = null;
   @state() private hoverKey: string | null = null;
   @state() private inProgressConnection: {
     from: string;
+    fromPoint: { x: number; y: number };
     to: { x: number; y: number };
     toKey: string | null;
   } | null = null;
@@ -220,6 +260,28 @@ export class OmGraphicalLayout extends LitElement {
    * if `clientToDiagram` returns null (canvas not yet sized).
    */
   private pendingAddPosition: { x: number; y: number } | null = null;
+
+  /**
+   * Authoritative interaction state. Every handler that changes "what
+   * the user is doing" pushes through this store; the HUD (and future
+   * overlays) subscribe via context. Kept separate from the `@state`
+   * fields because external observers shouldn't have to know about
+   * `draftLayout` etc. to read a state name.
+   *
+   * The `ContextProvider` is constructed for its side effect — it
+   * registers itself with `this` as a Lit ReactiveController and
+   * republishes the store value to any descendant consumer. We hold
+   * no reference because the store identity never changes for the
+   * element's lifetime, so we don't need to call `setValue` again.
+   */
+  private readonly interactionStore = new InteractionStateStore();
+  constructor() {
+    super();
+    new ContextProvider(this, {
+      context: interactionStateContext,
+      initialValue: this.interactionStore,
+    });
+  }
 
   override render(): TemplateResult {
     const active = this.draftLayout ?? this.layout;
@@ -321,6 +383,7 @@ export class OmGraphicalLayout extends LitElement {
       this.draftLayout = null;
       if (!this.isInternalLayoutChange()) {
         this.selectedKeys = new Set();
+        this.interactionStore.next({ selectedKeys: [] });
       }
       this.internalLayoutChange = false;
     }
@@ -453,18 +516,127 @@ export class OmGraphicalLayout extends LitElement {
     if (!ip) {
       return nothing;
     }
-    // Start point: we don't have the connector's diagram position here
-    // without walking the layout; use the to-point as a placeholder
-    // marker so the user sees the drag is active. F1's job is the wire
-    // — endpoint snapping refinement happens upstream.
+    // Preview matches the route we commit on release. The cursor end
+    // is the live diagram-space cursor (`ip.to`) — we don't snap to
+    // the target connector centre even when `toKey` is set, so the
+    // user keeps seeing their pointer until they release.
+    const path = orthogonalRoute(ip.fromPoint, ip.to);
     return html`<om-edge
       .nodeId=${"in-progress"}
-      .path=${[
-        [ip.to.x, ip.to.y],
-        [ip.to.x, ip.to.y],
-      ]}
+      .path=${path}
       .stroke=${"#3b82f6"}
     ></om-edge>`;
+  }
+
+  /**
+   * Look up the diagram-space position of the connector identified by
+   * `key` (`k:<id>` for standalone, `k:<compId>.<portId>` for nested).
+   * Resolves to the live `<om-connector>` element so the position
+   * reflects any in-flight drafts (mid-drag component moves, etc.).
+   */
+  private connectorDiagramPosition(
+    key: string,
+  ): { x: number; y: number } | null {
+    const conn = this.findConnectorElement(key);
+    return conn ? conn.getPortDiagramPosition() : null;
+  }
+
+  /**
+   * Find the live `<om-connector>` element for the given key, handling
+   * both standalone (`k:p`) and nested (`k:R1.p`) forms.
+   */
+  private findConnectorElement(key: string): OmConnector | null {
+    const parsed = parseKey(key);
+    if (!parsed || parsed.kind !== "connector") {
+      return null;
+    }
+    const root = this.sceneEl;
+    if (!root) {
+      return null;
+    }
+    const dot = parsed.nodeId.indexOf(".");
+    if (dot < 0) {
+      // Standalone: pick the first connector with this nodeId that
+      // isn't nested under a component.
+      for (const el of root.querySelectorAll("om-connector")) {
+        const conn = el as OmConnector;
+        if (conn.nodeId === parsed.nodeId && !conn.closest("om-component")) {
+          return conn;
+        }
+      }
+      return null;
+    }
+    const compId = parsed.nodeId.slice(0, dot);
+    const portId = parsed.nodeId.slice(dot + 1);
+    for (const el of root.querySelectorAll("om-component")) {
+      const comp = el as OmComponent;
+      if (comp.nodeId !== compId) continue;
+      for (const child of comp.querySelectorAll("om-connector")) {
+        const conn = child as OmConnector;
+        if (conn.nodeId === portId) {
+          return conn;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Recompute which connectors should show their port indicators and
+   * apply the change. The indicator is the "drag-here-to-make-a-
+   * connection" affordance — without it, the connector's port mesh is
+   * invisible (and therefore unpickable), so the user can't start a
+   * connection drag.
+   *
+   * Visible while either:
+   *   - the user hovers a component (show all its connectors' ports),
+   *   - the user hovers a connector (show that port),
+   *   - the user is mid connection drag (keep source + target visible).
+   */
+  private refreshPortIndicators(): void {
+    const sceneEl = this.sceneEl;
+    if (!sceneEl) {
+      return;
+    }
+    const visible = new Set<OmConnector>();
+    const addByConnectorKey = (key: string): void => {
+      const conn = this.findConnectorElement(key);
+      if (conn) {
+        visible.add(conn);
+      }
+    };
+    const addAllPortsOfComponent = (id: string): void => {
+      for (const el of sceneEl.querySelectorAll("om-component")) {
+        const comp = el as OmComponent;
+        if (comp.nodeId !== id) continue;
+        for (const child of comp.querySelectorAll("om-connector")) {
+          visible.add(child as OmConnector);
+        }
+      }
+    };
+    const parsedHover = this.hoverKey ? parseKey(this.hoverKey) : null;
+    if (parsedHover?.kind === "component") {
+      addAllPortsOfComponent(parsedHover.nodeId);
+    } else if (parsedHover && this.hoverKey) {
+      addByConnectorKey(this.hoverKey);
+    }
+    const ip = this.inProgressConnection;
+    if (ip) {
+      addByConnectorKey(ip.from);
+      if (ip.toKey) {
+        addByConnectorKey(ip.toKey);
+      }
+    }
+    for (const el of sceneEl.querySelectorAll("om-connector")) {
+      const conn = el as OmConnector;
+      const want = visible.has(conn);
+      if (conn.portIndicatorVisible !== want) {
+        conn.setPortIndicatorVisible(want);
+      }
+      if (conn.isHovered !== want) {
+        conn.setHovered(want);
+      }
+    }
   }
 
   private attachManagers(): void {
@@ -538,10 +710,15 @@ export class OmGraphicalLayout extends LitElement {
     // a backstop because at least it lands in something the user
     // can see — not arbitrary world origin.
     const sceneEl = this.sceneEl;
-    const position =
+    const raw =
       this.pendingAddPosition ??
       (sceneEl ? { x: sceneEl.panX, y: sceneEl.panY } : { x: 0, y: 0 });
     this.pendingAddPosition = null;
+    // Snap the drop point to the active grid so the new component
+    // lands on a grid intersection — same rule the drag handler
+    // applies, so subsequent moves don't visibly "correct" the
+    // position on first interaction.
+    const position = snapPoint(raw.x, raw.y, this.currentSnapGrid());
     this.emit("om-add-component-request", { className, position });
   };
 
@@ -564,6 +741,21 @@ export class OmGraphicalLayout extends LitElement {
         const d = detail as InteractionEvents["hover"];
         if (this.hoverKey !== d.key) {
           this.hoverKey = d.key;
+          this.refreshPortIndicators();
+          // Hover state only updates the machine when there's no
+          // active drag — a drag preempts hover so `state.kind`
+          // stays on `moving` / `connecting` / etc. until release.
+          if (this.interactionStore.value.state.kind === "idle" ||
+              this.interactionStore.value.state.kind === "hovering") {
+            this.interactionStore.next({
+              hoverKey: d.key,
+              state: d.key
+                ? { kind: "hovering", key: d.key }
+                : { kind: "idle" },
+            });
+          } else {
+            this.interactionStore.next({ hoverKey: d.key });
+          }
         }
         return;
       }
@@ -594,6 +786,24 @@ export class OmGraphicalLayout extends LitElement {
     }
     this.selectedKeys = next;
     this.emit("om-selection-change", { keys: Array.from(next) });
+    this.interactionStore.next({ selectedKeys: Array.from(next) });
+  }
+
+  /**
+   * Single entry point for state transitions driven by `DragController`.
+   * Centralised so a future test can assert the machine's behaviour
+   * against a sequence of events without re-wiring the whole host.
+   */
+  private setInteractionState(state: InteractionState): void {
+    this.interactionStore.next({ state });
+  }
+
+  /** Returns to either `hovering` (if a hover key exists) or `idle`. */
+  private endInteraction(): void {
+    const hoverKey = this.hoverKey;
+    this.setInteractionState(
+      hoverKey ? { kind: "hovering", key: hoverKey } : { kind: "idle" },
+    );
   }
 
   private onDrag<K extends keyof DragEvents>(
@@ -606,11 +816,25 @@ export class OmGraphicalLayout extends LitElement {
     switch (type) {
       case "drag": {
         const d = detail as DragEvents["drag"];
-        const updated = applyDeltaMove(this.layout, d.keys, d.dx, d.dy);
+        // Snap the drag delta to the active grid so components glide
+        // in whole-step increments. With grid {2,2} (the Modelica
+        // default) sub-step pointer moves render as no-ops, which
+        // gives the gesture an OMEdit-style "magnetic" feel.
+        const grid = this.currentSnapGrid();
+        const { dx, dy } = snapDelta(d.dx, d.dy, grid);
+        const moved = applyDeltaMove(this.layout, d.keys, dx, dy);
         if (d.draft) {
-          this.draftLayout = updated;
+          this.draftLayout = moved;
+          this.setInteractionState({ kind: "moving", keys: d.keys });
         } else {
-          this.commitLayout(updated);
+          // On commit, snap each moved entity's extent corners to
+          // the grid. `snapDelta` only rounds the delta, so a
+          // component that started off-grid would stay off-grid
+          // after any move — this pass pulls the final values onto
+          // grid intersections (matches OMEdit's "Snap to Grid" on
+          // mouse-up).
+          this.commitLayout(applySnapToExtents(moved, d.keys, grid));
+          this.endInteraction();
         }
         return;
       }
@@ -619,39 +843,83 @@ export class OmGraphicalLayout extends LitElement {
         if (d.draft) {
           // Live selection preview.
           this.selectedKeys = selectByDiagramRect(this.layout, d.rect);
+          this.interactionStore.next({
+            selectedKeys: Array.from(this.selectedKeys),
+          });
+          this.setInteractionState({ kind: "selecting" });
         } else {
           const keys = selectByDiagramRect(this.layout, d.rect);
           this.selectedKeys = keys;
           this.emit("om-selection-change", { keys: Array.from(keys) });
+          this.interactionStore.next({ selectedKeys: Array.from(keys) });
+          this.endInteraction();
         }
         return;
       }
       case "connection": {
         const d = detail as DragEvents["connection"];
         if (!d.commit) {
+          // Resolve the source position once per drag — the connector
+          // doesn't move mid-gesture, and we don't want to re-walk the
+          // shadow DOM on every pointermove. Subsequent events reuse
+          // the cached fromPoint; if the very first lookup fails (no
+          // shape node yet), fall back to the cursor so the user
+          // still sees feedback.
+          const fromPoint =
+            this.inProgressConnection?.fromPoint ??
+            this.connectorDiagramPosition(d.from) ??
+            d.to;
           this.inProgressConnection = {
             from: d.from,
+            fromPoint,
             to: d.to,
             toKey: d.toKey,
           };
+          this.refreshPortIndicators();
+          this.setInteractionState({
+            kind: "connecting",
+            fromKey: d.from,
+            toKey: d.toKey,
+          });
         } else {
+          const fromPoint = this.inProgressConnection?.fromPoint ?? null;
           this.inProgressConnection = null;
+          this.refreshPortIndicators();
           if (d.toKey) {
+            const toPoint = this.connectorDiagramPosition(d.toKey);
+            const waypoints =
+              fromPoint && toPoint
+                ? orthogonalRoute(fromPoint, toPoint)
+                : [];
             this.emit("om-connection-create", {
               fromKey: d.from,
               toKey: d.toKey,
+              waypoints,
             });
           }
+          this.endInteraction();
         }
         return;
       }
-      case "resize":
-        // Resize commit emits a request for an absolute extent — the
-        // host should compute that via applyComponentExtent. v1 just
-        // forwards the event so callers can wire in custom logic
-        // (e.g. snap-to-grid before committing).
-        this.emit("om-resize", detail as DragEvents["resize"]);
+      case "resize": {
+        // Snap the moving corner to the grid before the event leaves
+        // this component — embedders that compute an absolute extent
+        // downstream don't need to know about the grid themselves.
+        const d = detail as DragEvents["resize"];
+        const grid = this.currentSnapGrid();
+        const { x, y } = snapPoint(d.x, d.y, grid);
+        this.emit("om-resize", { ...d, x, y });
+        if (d.draft) {
+          this.setInteractionState({
+            kind: "resizing",
+            key: d.key,
+            corner: d.corner,
+          });
+        } else {
+          this.endInteraction();
+        }
         return;
+      }
     }
   }
 
@@ -680,6 +948,7 @@ export class OmGraphicalLayout extends LitElement {
       if (updated !== this.layout) {
         this.commitLayout(updated);
         this.selectedKeys = new Set();
+        this.interactionStore.next({ selectedKeys: [] });
         e.preventDefault();
       }
       return;
@@ -717,6 +986,15 @@ export class OmGraphicalLayout extends LitElement {
     this.selectedKeys = new Set(
       Array.from(keys).filter((k) => parseKey(k) !== null),
     );
+    this.interactionStore.next({
+      selectedKeys: Array.from(this.selectedKeys),
+    });
+  }
+
+  /** Read-only access to the live interaction state. Useful for tests
+   *  and external observers that want a snapshot without subscribing. */
+  get interactionState(): InteractionState {
+    return this.interactionStore.value.state;
   }
 }
 
