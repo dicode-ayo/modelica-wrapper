@@ -44,6 +44,16 @@ import "@awesome.me/webawesome/dist/components/tab-group/tab-group.js";
 import "@awesome.me/webawesome/dist/components/tab-panel/tab-panel.js";
 
 import type { JsonSchema } from "@modelica-wrapper/omc-client";
+// Sub-path import: pulls in the evaluator subtree only. The bare-name
+// import above is type-only (erased at build), so neither path drags
+// the OMC transport (zeromq / cmake-ts) into the webview bundle.
+import {
+  evaluateExpression,
+  prefixStrippingScope,
+  recordScope,
+  type EvalScope,
+  type EvalValue,
+} from "@modelica-wrapper/omc-client/eval";
 
 import { omTokens } from "../base/om-tokens.js";
 
@@ -230,6 +240,19 @@ export class OmParameterForm extends LitElement {
   @property({ attribute: "submit-label" }) submitLabel = "Apply";
   @property({ attribute: "cancel-label" }) cancelLabel = "Cancel";
 
+  /**
+   * Optional cref-prefix to strip when evaluating `Dialog.enable`
+   * expressions. Component-level parameter forms set this to the
+   * owning sub-component name so `PI.controllerType` in the
+   * expression resolves against the form's `controllerType` working
+   * value. Class-level forms leave it unset.
+   *
+   * Named `crefPrefix` rather than `prefix` because `prefix` is taken
+   * by DOM's `Element.prefix` (XML namespace).
+   */
+  @property({ attribute: "cref-prefix" })
+  crefPrefix: string | undefined = undefined;
+
   /** Tracks fields the user has actually touched — used by `change` payload. */
   @state()
   private dirty: Set<string> = new Set();
@@ -324,12 +347,13 @@ export class OmParameterForm extends LitElement {
   }
 
   private renderField(f: ParameterField): TemplateResult {
+    const enabled = this.isFieldEnabled(f);
     return html`
-      <div class="field">
+      <div class="field" ?data-disabled=${!enabled}>
         <label class="label" for=${`f-${f.name}`}
           >${f.name}${f.required ? html`<span class="required">*</span>` : nothing}</label
         >
-        <div class="control">${this.renderControl(f)}</div>
+        <div class="control">${this.renderControl(f, enabled)}</div>
         ${f.description
           ? html`<div class="description">${f.description}</div>`
           : nothing}
@@ -337,7 +361,56 @@ export class OmParameterForm extends LitElement {
     `;
   }
 
-  private renderControl(f: ParameterField): TemplateResult {
+  /**
+   * Evaluate the field's `Dialog.enable` expression against the live
+   * working values. Returns `true` when the field has no expression
+   * (always enabled), when the expression evaluates to `true`, or when
+   * the evaluator can't reduce it (default-enabled — same behaviour
+   * as if the annotation were absent). Returns `false` only when the
+   * expression is a literal `false` or evaluates to `false`.
+   */
+  private isFieldEnabled(f: ParameterField): boolean {
+    if (f.enable === undefined) return true;
+    if (f.enable === true) return true;
+    if (f.enable === false) return false;
+    const result = evaluateExpression(f.enable, this.buildEvalScope(), {
+      fallback: true,
+    });
+    return result !== false;
+  }
+
+  /**
+   * Compose the scope the evaluator looks crefs up against. Enum
+   * working values are qualified on the fly using the field's
+   * `enumTypeName` so equality against a fully-qualified enum literal
+   * in the expression works without the form having to qualify on
+   * every keystroke.
+   */
+  private buildEvalScope(): EvalScope {
+    const values: Record<string, EvalValue> = {};
+    for (const f of this.fields) {
+      const v = this.working[f.name];
+      if (v === undefined || v === null) continue;
+      if (
+        f.kind === "enum" &&
+        typeof v === "string" &&
+        f.enumTypeName !== undefined
+      ) {
+        values[f.name] = {
+          $kind: "enum",
+          name: `${f.enumTypeName}.${v}`,
+        };
+      } else {
+        values[f.name] = v as EvalValue;
+      }
+    }
+    const base = recordScope(values);
+    return this.crefPrefix
+      ? prefixStrippingScope(this.crefPrefix, base)
+      : base;
+  }
+
+  private renderControl(f: ParameterField, enabled: boolean): TemplateResult {
     const v = this.working[f.name];
     switch (f.kind) {
       case "enum":
@@ -348,6 +421,7 @@ export class OmParameterForm extends LitElement {
           <wa-select
             id=${`f-${f.name}`}
             size="small"
+            ?disabled=${!enabled}
             .value=${v === undefined || v === null ? "" : String(v)}
             @change=${(e: Event) => {
               const next = (e.target as HTMLElement & { value: string }).value;
@@ -369,6 +443,7 @@ export class OmParameterForm extends LitElement {
           <wa-checkbox
             id=${`f-${f.name}`}
             ?checked=${Boolean(v)}
+            ?disabled=${!enabled}
             @change=${(e: Event) => {
               const checked = (e.target as HTMLElement & { checked: boolean })
                 .checked;
@@ -389,6 +464,7 @@ export class OmParameterForm extends LitElement {
             type="number"
             size="small"
             step=${f.kind === "integer" ? "1" : "any"}
+            ?disabled=${!enabled}
             .value=${v === undefined || v === null ? "" : String(v)}
             @input=${(e: Event) => {
               const text = (e.target as HTMLElement & { value: string }).value;
@@ -412,6 +488,7 @@ export class OmParameterForm extends LitElement {
             id=${`f-${f.name}`}
             type="text"
             size="small"
+            ?disabled=${!enabled}
             .value=${arr.map((x) => stringifyAtom(x)).join(", ")}
             placeholder=${`comma-separated ${f.itemKind ?? "string"} values`}
             @input=${(e: Event) =>
@@ -431,6 +508,7 @@ export class OmParameterForm extends LitElement {
             id=${`f-${f.name}`}
             type="text"
             size="small"
+            ?disabled=${!enabled}
             .value=${v === undefined || v === null ? "" : String(v)}
             @input=${(e: Event) =>
               this.setField(

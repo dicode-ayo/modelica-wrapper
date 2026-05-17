@@ -48,12 +48,23 @@ const defaultEngineFactory: EngineFactory = (canvas) =>
   // big opaque shapes (white extent-rect, axis lines) read as a
   // flicker against the CSS `:host` background. An opaque canvas
   // sidesteps that path entirely.
-  new Engine(canvas, true, {
-    preserveDrawingBuffer: false,
-    stencil: true,
-    disableWebGL2Support: false,
-    alpha: false,
-  });
+  //
+  // 4th arg `adaptToDeviceRatio: true` sizes the WebGL backbuffer
+  // in physical pixels rather than CSS pixels. Without it, HiDPI
+  // displays render at 1× and the browser upscales to the device
+  // grid — 1-px GL lines (connection strokes) and small meshes
+  // (connector dots) look blurry.
+  new Engine(
+    canvas,
+    true,
+    {
+      preserveDrawingBuffer: false,
+      stencil: true,
+      disableWebGL2Support: false,
+      alpha: false,
+    },
+    true,
+  );
 
 /**
  * `<om-scene>` — root custom element for the graphical layout editor.

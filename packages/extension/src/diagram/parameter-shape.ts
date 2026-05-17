@@ -12,6 +12,7 @@
 import type {
   Annotation,
   ComponentElement,
+  Expression,
   ExtendsElement,
   Modifier,
   ModelInstance,
@@ -146,6 +147,14 @@ export const DEFAULT_DIALOG_GROUP = "Parameters";
 export interface DialogInfo {
   tab: string;
   group: string;
+  /**
+   * Raw `Dialog.enable` AST when present. The form's evaluator
+   * resolves crefs against the live working values, so the field's
+   * `disabled` state updates as the user edits peers — that's what
+   * OMC defers evaluation for. `undefined` means the field is
+   * always enabled.
+   */
+  enable: Expression | undefined;
 }
 
 /**
@@ -161,14 +170,18 @@ export function readDialogInfo(
   const fallback: DialogInfo = {
     tab: DEFAULT_DIALOG_TAB,
     group: DEFAULT_DIALOG_GROUP,
+    enable: undefined,
   };
   if (!annotation) return fallback;
   const dlg = (annotation as { Dialog?: unknown }).Dialog;
   if (!dlg || typeof dlg !== "object" || Array.isArray(dlg)) return fallback;
-  const obj = dlg as { tab?: unknown; group?: unknown };
+  const obj = dlg as { tab?: unknown; group?: unknown; enable?: unknown };
   return {
     tab: typeof obj.tab === "string" ? obj.tab : DEFAULT_DIALOG_TAB,
     group: typeof obj.group === "string" ? obj.group : DEFAULT_DIALOG_GROUP,
+    // `enable` is plain JSON (a literal boolean, or an Expression AST).
+    // Pass it through untouched; the evaluator handles every shape.
+    enable: obj.enable as Expression | undefined,
   };
 }
 

@@ -184,3 +184,14 @@ export * as lifecycle from "./api/lifecycle/index.js";
 export * as parameters from "./api/parameters/index.js";
 export * as results from "./api/results/index.js";
 export * as solver from "./api/solver/index.js";
+
+export {
+  evaluateExpression,
+  chainScopes,
+  prefixStrippingScope,
+  recordScope,
+  type EnumLiteralValue,
+  type EvalScope,
+  type EvalValue,
+  type EvaluateOptions,
+} from "./eval/index.js";

@@ -127,6 +127,7 @@ describe("buildClassParameterForm", () => {
         description: "Type of controller",
         "x-modelica-tab": "General",
         "x-modelica-group": "Parameters",
+        "x-modelica-enum-type": "Modelica.Blocks.Types.SimpleController",
       },
     });
     expect(form.values).toEqual({ controllerType: "PI" });
@@ -172,6 +173,38 @@ describe("buildClassParameterForm", () => {
     // Unsupported entries must NOT be in `required` — the form's
     // submit button stays enabled even without editing them.
     expect(form.schema.required).toEqual(["ok"]);
+  });
+
+  it("stashes Dialog.enable expression on the schema for the form's evaluator", () => {
+    const enableExpr = {
+      $kind: "binary_op" as const,
+      op: "==",
+      lhs: { $kind: "cref" as const, parts: [{ name: "use_reset" }] },
+      rhs: true,
+    };
+    const mi = instance([
+      {
+        $kind: "component",
+        name: "use_reset",
+        type: "Boolean",
+        value: { binding: false },
+        prefixes: { variability: "parameter" },
+      },
+      {
+        $kind: "component",
+        name: "y_reset",
+        type: "Real",
+        value: { binding: 0 },
+        prefixes: { variability: "parameter" },
+        annotation: { Dialog: { enable: enableExpr } },
+      },
+    ]);
+    const form = buildClassParameterForm(mi)!;
+    const yReset = form.schema.properties?.y_reset as Record<string, unknown>;
+    expect(yReset["x-modelica-enable"]).toEqual(enableExpr);
+    // The other field has no enable expression so the key must be absent.
+    const useReset = form.schema.properties?.use_reset as Record<string, unknown>;
+    expect(useReset["x-modelica-enable"]).toBeUndefined();
   });
 
   it("reads Dialog tab + group from the annotation when present", () => {

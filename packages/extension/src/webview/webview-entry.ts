@@ -152,6 +152,7 @@ class OmWebviewRoot extends LitElement {
   @state() private paramValues: Record<string, unknown> = {};
   @state() private paramTitle = "";
   @state() private paramSubmitLabel = "Apply";
+  @state() private paramCrefPrefix: string | undefined = undefined;
 
   /** Opaque tag the extension uses to route the modal's submit/cancel
    *  back to the right command flow. */
@@ -200,6 +201,7 @@ class OmWebviewRoot extends LitElement {
         .values=${this.paramValues}
         .title=${this.paramTitle}
         .submitLabel=${this.paramSubmitLabel}
+        .crefPrefix=${this.paramCrefPrefix}
         @om-panel-submit=${this.onParamSubmit}
         @om-panel-cancel=${this.onParamCancel}
       ></om-parameter-panel>
@@ -223,6 +225,7 @@ class OmWebviewRoot extends LitElement {
         this.paramValues = message.values;
         this.paramTitle = message.title;
         this.paramSubmitLabel = message.submitLabel ?? "Apply";
+        this.paramCrefPrefix = message.crefPrefix;
         this.paramKind = message.kind;
         this.paramOpen = true;
         return;

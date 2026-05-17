@@ -208,6 +208,11 @@ export async function openDiagram(
           values: form.values,
           title: `Parameters: ${componentName}${typeName ? ` (${typeName})` : ""}`,
           submitLabel: "Apply",
+          // `Dialog.enable` expressions on this component's parameters
+          // are written `<componentName>.<param>` against the parent
+          // class scope — strip the prefix so they resolve against the
+          // form's local working values.
+          crefPrefix: componentName,
         });
       } catch (err) {
         log.error(

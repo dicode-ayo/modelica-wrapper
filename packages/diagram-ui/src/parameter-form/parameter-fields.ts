@@ -11,7 +11,7 @@
  * Pure of Lit / DOM imports so it's testable with plain vitest.
  */
 
-import type { JsonSchema } from "@modelica-wrapper/omc-client";
+import type { Expression, JsonSchema } from "@modelica-wrapper/omc-client";
 
 /** Subset of JSON Schema 2020-12 we walk — alias for omc-client's re-export. */
 type Node = JsonSchema;
@@ -48,6 +48,20 @@ export interface ParameterField {
    */
   tab: string | undefined;
   group: string | undefined;
+  /**
+   * Raw `Dialog.enable` expression AST (from `x-modelica-enable`).
+   * Evaluated by the form against live working values so the control
+   * goes `disabled` when the condition is false. `undefined` means
+   * "always enabled".
+   */
+  enable: Expression | undefined;
+  /**
+   * Qualified type name for enum fields (from `x-modelica-enum-type`).
+   * The form needs it to qualify a leaf-name working value (`"PI"`)
+   * before equality-checking it against a fully-qualified enum literal
+   * from a Dialog.enable expression.
+   */
+  enumTypeName: string | undefined;
   /** The raw JSON Schema node — kept on the field so the renderer can read extras (min/max/pattern). */
   raw: Node;
 }
@@ -77,6 +91,8 @@ export function parameterFieldsFromSchema(schema: Node): ParameterField[] {
       itemKind: detectArrayItemKind(field),
       tab: readString(field, "x-modelica-tab"),
       group: readString(field, "x-modelica-group"),
+      enable: readExpression(field, "x-modelica-enable"),
+      enumTypeName: readString(field, "x-modelica-enum-type"),
       raw: field,
     });
   }
@@ -86,6 +102,14 @@ export function parameterFieldsFromSchema(schema: Node): ParameterField[] {
 function readString(node: Node, key: string): string | undefined {
   const v = (node as Record<string, unknown>)[key];
   return typeof v === "string" ? v : undefined;
+}
+
+function readExpression(node: Node, key: string): Expression | undefined {
+  // The schema-side encoding is "plain JSON the evaluator can walk" —
+  // the evaluator handles every shape, including malformed ones, by
+  // returning `undefined`. We don't validate here; trust the builder.
+  const v = (node as Record<string, unknown>)[key];
+  return v === undefined ? undefined : (v as Expression);
 }
 
 /** True when every required field has a usable value in `values`. */

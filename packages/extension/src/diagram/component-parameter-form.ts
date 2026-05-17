@@ -122,6 +122,7 @@ function buildField(
         type: "string",
         enum: enumLeaves,
         ...dialogSchemaExt(dialog),
+        "x-modelica-enum-type": qualified,
       };
       if (description) schema.description = description;
       return {
@@ -175,12 +176,16 @@ function buildField(
   };
 }
 
-/** Project-internal extension keys for `tab` / `group` carried on the schema property. */
-function dialogSchemaExt(d: DialogInfo): {
-  "x-modelica-tab": string;
-  "x-modelica-group": string;
-} {
-  return { "x-modelica-tab": d.tab, "x-modelica-group": d.group };
+/** Same extension-key set as the class-level builder. See its `dialogSchemaExt`. */
+function dialogSchemaExt(d: DialogInfo): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    "x-modelica-tab": d.tab,
+    "x-modelica-group": d.group,
+  };
+  if (d.enable !== undefined) {
+    out["x-modelica-enable"] = d.enable;
+  }
+  return out;
 }
 
 /**

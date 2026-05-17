@@ -68,6 +68,13 @@ export interface OpenParametersOptions {
   title: string;
   /** Submit-button label; defaults to "Apply" on the form side. */
   submitLabel?: string;
+  /**
+   * Cref-prefix the form's Dialog.enable evaluator should strip before
+   * looking up values — pass the sub-component name for
+   * `kind: "componentParams"` so `PI.controllerType` resolves against
+   * the form's `controllerType` working value.
+   */
+  crefPrefix?: string;
 }
 
 export class DiagramPanel {
@@ -161,6 +168,9 @@ export class DiagramPanel {
     };
     if (opts.submitLabel !== undefined) {
       msg.submitLabel = opts.submitLabel;
+    }
+    if (opts.crefPrefix !== undefined) {
+      msg.crefPrefix = opts.crefPrefix;
     }
     this.send(msg);
   }

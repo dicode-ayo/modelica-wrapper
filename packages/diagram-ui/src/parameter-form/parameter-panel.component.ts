@@ -56,6 +56,10 @@ export class OmParameterPanel extends LitElement {
   @property({ attribute: "submit-label" }) submitLabel = "Apply";
   @property({ attribute: "cancel-label" }) cancelLabel = "Cancel";
 
+  /** Forwarded straight to `<om-parameter-form>` — see its property docs. */
+  @property({ attribute: "cref-prefix" })
+  crefPrefix: string | undefined = undefined;
+
   override render(): TemplateResult {
     // Only render the wa-dialog when open: wa-button (which the dialog
     // uses internally for its close button) is form-associated and
@@ -74,6 +78,7 @@ export class OmParameterPanel extends LitElement {
           class="form-host"
           .schema=${this.schema}
           .values=${this.values}
+          .crefPrefix=${this.crefPrefix}
           title=${this.title}
           submit-label=${this.submitLabel}
           cancel-label=${this.cancelLabel}

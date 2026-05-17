@@ -84,6 +84,12 @@ export type ExtensionToWebview =
       values: Record<string, unknown>;
       title: string;
       submitLabel?: string;
+      /**
+       * Cref-prefix stripped by the form's Dialog.enable evaluator —
+       * the sub-component instance name for `kind: "componentParams"`,
+       * unset for class-level / simulate forms.
+       */
+      crefPrefix?: string;
     }
   | { type: "parametersClose" }
   | {
