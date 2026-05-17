@@ -1,10 +1,6 @@
 import type { Node, Scene } from "@babylonjs/core";
 
-import {
-  entityKeyForNode,
-  formatKey,
-  type EntityKey,
-} from "./node-keys.js";
+import { entityKeyForNode, formatKey } from "./node-keys.js";
 
 /**
  * Picker function: given client (viewport) pixel coords, return the
@@ -175,4 +171,3 @@ export function defaultPicker(
   };
 }
 
-export type { EntityKey };

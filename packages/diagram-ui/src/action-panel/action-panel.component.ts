@@ -31,6 +31,29 @@ export type ActionPanelAnchor =
   | "bottom-right"
   | "bottom-left";
 
+/**
+ * The action-panel events all carry no detail; their dedicated alias
+ * types exist so a listener can write
+ * `(e: CustomEvent<ActionCheckDetail>) => …` and stay consistent with
+ * the rest of the event-detail naming convention.
+ */
+export type ActionCheckDetail = undefined;
+export type ActionSimulateDetail = undefined;
+export type ActionParametersDetail = undefined;
+
+/**
+ * Event-name → detail-type map for `<om-action-panel>`. Listener types
+ * can come from here (`CustomEvent<ActionPanelEvents["om-action-check"]>`)
+ * or from the named aliases above.
+ */
+export interface ActionPanelEvents {
+  "om-action-check": ActionCheckDetail;
+  "om-action-simulate": ActionSimulateDetail;
+  "om-action-parameters": ActionParametersDetail;
+}
+
+export type ActionPanelEventName = keyof ActionPanelEvents;
+
 @customElement("om-action-panel")
 export class OmActionPanel extends LitElement {
   static override styles = [
@@ -123,9 +146,12 @@ export class OmActionPanel extends LitElement {
     `;
   }
 
-  private fire(type: string): void {
+  private fire(type: ActionPanelEventName): void {
     this.dispatchEvent(
-      new CustomEvent(type, { bubbles: true, composed: true }),
+      new CustomEvent<ActionPanelEvents[typeof type]>(type, {
+        bubbles: true,
+        composed: true,
+      }),
     );
   }
 }

@@ -24,10 +24,13 @@ import type {
   DiagramLayout,
   JsonSchema,
 } from "@modelica-wrapper/omc-client";
-import type {
-  LibraryBrowserDataSource,
-  LibraryClassInfo,
-  ParameterFormSubmitDetail,
+import {
+  isComponentKey,
+  parseKey,
+  type LayoutEvents,
+  type LibraryBrowserDataSource,
+  type LibraryClassInfo,
+  type ParameterFormSubmitDetail,
 } from "@modelica-wrapper/diagram-ui";
 
 import type {
@@ -183,6 +186,7 @@ class OmWebviewRoot extends LitElement {
         @om-connection-create=${this.onConnectionCreate}
         @om-selection-change=${this.onSelectionChange}
         @om-add-component-request=${this.onAddComponentRequest}
+        @om-double-click=${this.onDoubleClick}
       ></om-graphical-layout>
       <om-action-panel
         anchor="top-right"
@@ -242,53 +246,56 @@ class OmWebviewRoot extends LitElement {
     this.vscode?.postMessage(msg);
   }
 
-  private onLayoutChange = (e: Event): void => {
-    const detail = (e as CustomEvent<DiagramLayout>).detail;
-    this.post({ type: "change", layout: detail });
+  private onLayoutChange = (
+    e: CustomEvent<LayoutEvents["om-graphical-layout-change"]>,
+  ): void => {
+    this.post({ type: "change", layout: e.detail });
   };
 
-  private onConnectionCreate = (e: Event): void => {
-    const d = (
-      e as CustomEvent<{
-        fromKey: string;
-        toKey: string;
-        waypoints: ReadonlyArray<readonly [number, number]>;
-      }>
-    ).detail;
-    this.post({
-      type: "connectionCreate",
-      fromKey: d.fromKey,
-      toKey: d.toKey,
-      waypoints: d.waypoints,
-    });
+  private onConnectionCreate = (
+    e: CustomEvent<LayoutEvents["om-connection-create"]>,
+  ): void => {
+    const { fromKey, toKey, waypoints } = e.detail;
+    this.post({ type: "connectionCreate", fromKey, toKey, waypoints });
   };
 
-  private onSelectionChange = (e: Event): void => {
-    const d = (e as CustomEvent<{ keys: string[] }>).detail;
-    this.post({ type: "selectionChange", keys: d.keys });
+  private onSelectionChange = (
+    e: CustomEvent<LayoutEvents["om-selection-change"]>,
+  ): void => {
+    this.post({ type: "selectionChange", keys: e.detail.keys });
   };
 
-  private onAddComponentRequest = (e: Event): void => {
-    const d = (
-      e as CustomEvent<{
-        className: string;
-        position: { x: number; y: number };
-      }>
-    ).detail;
+  private onDoubleClick = (
+    e: CustomEvent<LayoutEvents["om-double-click"]>,
+  ): void => {
+    // Components are the only kind we route to the extension as an
+    // edit gesture. Connectors / labels / empty canvas double-clicks
+    // reach us via the same event but go through other gestures
+    // (library browser, etc.) — silently ignore them here.
+    const parsed = parseKey(e.detail.key);
+    if (!parsed || !isComponentKey(parsed) || parsed.nodeId.length === 0) {
+      return;
+    }
+    this.post({ type: "editComponent", componentName: parsed.nodeId });
+  };
+
+  private onAddComponentRequest = (
+    e: CustomEvent<LayoutEvents["om-add-component-request"]>,
+  ): void => {
+    const { className, position } = e.detail;
     this.post({
       type: "addComponent",
-      className: d.className,
-      position: d.position,
+      className,
+      position,
     });
   };
 
-  private onParamSubmit = (e: Event): void => {
+  private onParamSubmit = (e: CustomEvent<ParameterFormSubmitDetail>): void => {
     if (this.paramKind === null) return;
-    const detail = (e as CustomEvent<ParameterFormSubmitDetail>).detail;
     this.post({
       type: "parametersSubmit",
       kind: this.paramKind,
-      values: detail.values,
+      values: e.detail.values,
     });
   };
 

@@ -72,6 +72,24 @@ export interface LibraryClassInfo {
  * UI as an inline message; the overlay stays open so the user can
  * retry.
  */
+/** Class the user picked from the tree / search results. */
+export interface LibrarySelectDetail {
+  className: string;
+}
+
+/** `om-library-cancel` carries no detail; the type is here for symmetry. */
+export type LibraryCancelDetail = undefined;
+
+/**
+ * Event-name → detail-type map for `<om-library-browser>`. Consumers
+ * can write `(e: CustomEvent<LibraryEvents["om-library-select"]>) => …`
+ * or import `LibrarySelectDetail` directly.
+ */
+export interface LibraryEvents {
+  "om-library-select": LibrarySelectDetail;
+  "om-library-cancel": LibraryCancelDetail;
+}
+
 export interface LibraryBrowserDataSource {
   /**
    * List immediate child classes of `parent`. Pass `null` for the
@@ -617,10 +635,10 @@ export class OmLibraryBrowser extends LitElement {
     if (this.open) {
       this.open = false;
       this.dispatchEvent(
-        new CustomEvent("om-library-cancel", {
-          bubbles: true,
-          composed: true,
-        }),
+        new CustomEvent<LibraryEvents["om-library-cancel"]>(
+          "om-library-cancel",
+          { bubbles: true, composed: true },
+        ),
       );
     }
   };
@@ -633,11 +651,14 @@ export class OmLibraryBrowser extends LitElement {
       this.dialogEl.open = false;
     }
     this.dispatchEvent(
-      new CustomEvent<{ className: string }>("om-library-select", {
-        detail: { className },
-        bubbles: true,
-        composed: true,
-      }),
+      new CustomEvent<LibraryEvents["om-library-select"]>(
+        "om-library-select",
+        {
+          detail: { className },
+          bubbles: true,
+          composed: true,
+        },
+      ),
     );
   }
 }

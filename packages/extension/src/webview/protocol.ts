@@ -56,6 +56,8 @@ export interface LibraryClassInfo {
  *   - `selectionChange`     — selection set updated.
  *   - `error`               — diagnostic surface.
  *   - `actionCheck` / `actionSimulate` / `actionParameters` — toolbar.
+ *   - `editComponent`       — user double-clicked a sub-component on the
+ *                             diagram and wants its parameter modal.
  *   - `parametersSubmit` / `parametersCancel` — parameter modal.
  *   - `addComponent`        — user picked a class in the library
  *                             browser and we want to instantiate it
@@ -116,6 +118,7 @@ export type WebviewToExtension =
   | { type: "actionCheck" }
   | { type: "actionSimulate" }
   | { type: "actionParameters" }
+  | { type: "editComponent"; componentName: string }
   | {
       type: "parametersSubmit";
       kind: string;

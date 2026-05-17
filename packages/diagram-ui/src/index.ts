@@ -50,6 +50,18 @@ export {
   type GridMeshes,
 } from "./axis/grid-build.js";
 export { OmGraphicalLayout } from "./graphical-layout/graphical-layout.component.js";
+export type {
+  LayoutEvents,
+  LayoutEventName,
+  LayoutEvent,
+  LayoutChangeDetail,
+  SelectionChangeDetail,
+  DoubleClickDetail,
+  ContextMenuDetail,
+  ConnectionCreateDetail,
+  AddComponentRequestDetail,
+  ResizeDetail,
+} from "./graphical-layout/layout-events.js";
 export { OmComponent } from "./component/component.component.js";
 export { OmConnector } from "./connector/connector.component.js";
 export { OmEdge } from "./connection/edge.component.js";
@@ -63,13 +75,30 @@ export {
   type EmitFn,
   type InteractionEvents,
   type InteractionManagerOptions,
-  type EntityKey,
 } from "./interaction/interaction-manager.js";
 export {
   entityKeyForNode,
   formatKey,
+  formatComponentKey,
+  formatConnectorKey,
   parseKey,
+  isComponentKey,
+  isConnectorKey,
+  isEdgeKey,
+  isJunctionKey,
+  isLabelKey,
+  isPortKey,
+  isHandleKey,
+  isNestedConnector,
   type EntityKind,
+  type EntityKey,
+  type ComponentKey,
+  type ConnectorKey,
+  type EdgeKey,
+  type JunctionKey,
+  type LabelKey,
+  type PortKey,
+  type HandleKey,
 } from "./interaction/node-keys.js";
 export {
   applyDeltaMove,
@@ -126,7 +155,15 @@ export {
 } from "./icon-provider/svg-rasterizer.js";
 export { OmDebugPlane } from "./debug/debug-plane.component.js";
 export { OmPerfHud } from "./debug/perf-hud.component.js";
-export { OmActionPanel, type ActionPanelAnchor } from "./action-panel/action-panel.component.js";
+export {
+  OmActionPanel,
+  type ActionPanelAnchor,
+  type ActionPanelEvents,
+  type ActionPanelEventName,
+  type ActionCheckDetail,
+  type ActionSimulateDetail,
+  type ActionParametersDetail,
+} from "./action-panel/action-panel.component.js";
 export {
   OmParameterForm,
   type ParameterFormChangeDetail,
@@ -138,6 +175,9 @@ export {
   type LibraryBrowserDataSource,
   type LibraryClassInfo,
   type LibraryClassRestriction,
+  type LibraryEvents,
+  type LibrarySelectDetail,
+  type LibraryCancelDetail,
 } from "./library-browser/library-browser.component.js";
 export {
   parameterFieldsFromSchema,

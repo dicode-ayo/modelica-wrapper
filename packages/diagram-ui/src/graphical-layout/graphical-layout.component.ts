@@ -41,7 +41,15 @@ import {
   applySnapToExtents,
   selectByDiagramRect,
 } from "../interaction/layout-ops.js";
-import { formatKey, parseKey } from "../interaction/node-keys.js";
+import {
+  formatComponentKey,
+  formatConnectorKey,
+  isComponentKey,
+  isConnectorKey,
+  parseKey,
+} from "../interaction/node-keys.js";
+import type { LibraryEvents } from "../library-browser/library-browser.component.js";
+import type { ViewState } from "../scene/view-math.js";
 import { orthogonalRoute } from "../interaction/connection-route.js";
 import {
   canConnect,
@@ -59,6 +67,7 @@ import {
   snapPoint,
   type SnapGrid,
 } from "../interaction/snap-math.js";
+import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
 
 interface BBox {
   minX: number;
@@ -477,7 +486,7 @@ export class OmGraphicalLayout extends LitElement {
     layout: DiagramLayout,
   ): TemplateResult {
     const cls = layout.classes[comp.classRef];
-    const key = formatKey("component", id);
+    const key = formatComponentKey(id);
     return html`<om-component
       .nodeId=${id}
       .placement=${comp.placement}
@@ -508,7 +517,7 @@ export class OmGraphicalLayout extends LitElement {
     layout: DiagramLayout,
   ): TemplateResult {
     const cls = layout.classes[conn.classRef];
-    const key = formatKey("connector", id);
+    const key = formatConnectorKey(null, id);
     return html`<om-connector
       .nodeId=${id}
       .placement=${conn.placement}
@@ -582,33 +591,30 @@ export class OmGraphicalLayout extends LitElement {
    */
   private findConnectorElement(key: string): OmConnector | null {
     const parsed = parseKey(key);
-    if (!parsed || parsed.kind !== "connector") {
+    if (!parsed || !isConnectorKey(parsed)) {
       return null;
     }
     const root = this.sceneEl;
     if (!root) {
       return null;
     }
-    const dot = parsed.nodeId.indexOf(".");
-    if (dot < 0) {
-      // Standalone: pick the first connector with this nodeId that
+    if (parsed.componentName === null) {
+      // Standalone: pick the first connector with this portName that
       // isn't nested under a component.
       for (const el of root.querySelectorAll("om-connector")) {
         const conn = el as OmConnector;
-        if (conn.nodeId === parsed.nodeId && !conn.closest("om-component")) {
+        if (conn.nodeId === parsed.portName && !conn.closest("om-component")) {
           return conn;
         }
       }
       return null;
     }
-    const compId = parsed.nodeId.slice(0, dot);
-    const portId = parsed.nodeId.slice(dot + 1);
     for (const el of root.querySelectorAll("om-component")) {
       const comp = el as OmComponent;
-      if (comp.nodeId !== compId) continue;
+      if (comp.nodeId !== parsed.componentName) continue;
       for (const child of comp.querySelectorAll("om-connector")) {
         const conn = child as OmConnector;
-        if (conn.nodeId === portId) {
+        if (conn.nodeId === parsed.portName) {
           return conn;
         }
       }
@@ -650,7 +656,7 @@ export class OmGraphicalLayout extends LitElement {
       }
     };
     const parsedHover = this.hoverKey ? parseKey(this.hoverKey) : null;
-    if (parsedHover?.kind === "component") {
+    if (parsedHover && isComponentKey(parsedHover)) {
       addAllPortsOfComponent(parsedHover.nodeId);
     } else if (parsedHover && this.hoverKey) {
       addByConnectorKey(this.hoverKey);
@@ -744,7 +750,7 @@ export class OmGraphicalLayout extends LitElement {
   };
 
   private onLibrarySelect = (
-    e: CustomEvent<{ className: string }>,
+    e: CustomEvent<LibraryEvents["om-library-select"]>,
   ): void => {
     e.stopPropagation();
     const className = e.detail.className;
@@ -767,13 +773,15 @@ export class OmGraphicalLayout extends LitElement {
     this.emit("om-add-component-request", { className, position });
   };
 
-  private onLibraryCancel = (e: Event): void => {
+  private onLibraryCancel = (
+    e: CustomEvent<LibraryEvents["om-library-cancel"]>,
+  ): void => {
     e.stopPropagation();
     this.libraryBrowserOpen = false;
     this.pendingAddPosition = null;
   };
 
-  private onViewChange = (_e: Event): void => {
+  private onViewChange = (_e: CustomEvent<ViewState>): void => {
     // Future hooks (fit-to-view, etc.); currently a no-op.
   };
 
@@ -1022,9 +1030,16 @@ export class OmGraphicalLayout extends LitElement {
     }
   };
 
-  private emit<T>(name: string, detail: T): void {
+  private emit<K extends LayoutEventName>(
+    name: K,
+    detail: LayoutEvents[K],
+  ): void {
     this.dispatchEvent(
-      new CustomEvent(name, { detail, bubbles: true, composed: true }),
+      new CustomEvent<LayoutEvents[K]>(name, {
+        detail,
+        bubbles: true,
+        composed: true,
+      }),
     );
   }
 

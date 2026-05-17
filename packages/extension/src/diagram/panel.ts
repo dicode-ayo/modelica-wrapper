@@ -34,6 +34,8 @@ export interface DiagramPanelHandlers {
   onParametersSubmit?: (kind: string, values: Record<string, unknown>) => void;
   /** Parameter modal dismissed without submit. */
   onParametersCancel?: (kind: string) => void;
+  /** User double-clicked a sub-component on the diagram. */
+  onEditComponent?: (componentName: string) => void;
   /**
    * Library-browser request: enumerate child classes of `parent`
    * (null for top-level loaded packages). Return promises resolve into
@@ -229,6 +231,9 @@ export class DiagramPanel {
         return;
       case "addComponent":
         this.handlers.onAddComponent?.(message.className, message.position);
+        return;
+      case "editComponent":
+        this.handlers.onEditComponent?.(message.componentName);
         return;
       case "libraryListChildren":
         void this.handleLibraryRequest(

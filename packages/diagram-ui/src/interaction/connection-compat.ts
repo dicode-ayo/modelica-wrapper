@@ -19,7 +19,7 @@
 
 import type { DiagramLayout, PortDef } from "@modelica-wrapper/omc-client";
 
-import { parseKey } from "./node-keys.js";
+import { isConnectorKey, parseKey } from "./node-keys.js";
 
 export interface PortInfo {
   /** Qualified type name of the connector class. */
@@ -52,16 +52,15 @@ export function resolvePortInfo(
   key: string,
 ): PortInfo | null {
   const parsed = parseKey(key);
-  if (!parsed || parsed.kind !== "connector") {
+  if (!parsed || !isConnectorKey(parsed)) {
     return null;
   }
-  const dot = parsed.nodeId.indexOf(".");
-  if (dot < 0) {
+  if (parsed.componentName === null) {
     // Standalone host connector. Its type IS the connector class —
     // we don't have a per-instance PortDef so we can only read the
     // class name + suffix-infer direction. Flow/stream are unknown
     // without fetching the connector class definition.
-    const conn = layout.connectors[parsed.nodeId];
+    const conn = layout.connectors[parsed.portName];
     if (!conn) return null;
     return {
       typeName: conn.classRef,
@@ -71,13 +70,11 @@ export function resolvePortInfo(
     };
   }
   // Nested: walk component → class → connectors map.
-  const compId = parsed.nodeId.slice(0, dot);
-  const portId = parsed.nodeId.slice(dot + 1);
-  const comp = layout.components[compId];
+  const comp = layout.components[parsed.componentName];
   if (!comp) return null;
   const cls = layout.classes[comp.classRef];
   if (!cls) return null;
-  const port = cls.connectors[portId];
+  const port = cls.connectors[parsed.portName];
   if (!port) return null;
   return portInfoFromPortDef(port);
 }

@@ -4,13 +4,28 @@ import {
   asString,
   diagram,
   type DiagramLayout,
+  type ModelInstance,
   type Value,
 } from "@modelica-wrapper/omc-client";
+
+import { isConnectorKey, parseEntityKey } from "./entity-key.js";
 
 import { createReplLog } from "../commands/repl.js";
 import { log } from "../logger.js";
 
 import { applyEdits } from "./apply-edits.js";
+import {
+  buildClassParameterForm,
+  classParameterValueToExpr,
+  type ClassParameterRef,
+} from "./class-parameter-form.js";
+import {
+  buildComponentParameterForm,
+  componentParameterElementName,
+  componentParameterValueToExpr,
+  findSubComponent,
+  type ComponentParameterRef,
+} from "./component-parameter-form.js";
 import { diffLayouts, lineAnnotation, type LayoutEdit } from "./diff-layout.js";
 import { LibraryBrowserSource } from "./library-source.js";
 import { DiagramPanel } from "./panel.js";
@@ -56,6 +71,18 @@ export async function openDiagram(
   // OMC for restrictions already seen.
   const librarySource = new LibraryBrowserSource(client);
 
+  // Per-modal state for the top-level class-parameter editor. Captured
+  // here (vs. on the panel) because the panel only round-trips the
+  // form's `{schema, values}`; the submit translator needs the refs and
+  // initial values to compute the dirty set.
+  let classParamRefs: Record<string, ClassParameterRef> = {};
+  let classParamInitialValues: Record<string, unknown> = {};
+  // Same idea, for the sub-component parameter editor — plus the
+  // owning component name so submit knows where to address writes.
+  let componentParamRefs: Record<string, ComponentParameterRef> = {};
+  let componentParamInitialValues: Record<string, unknown> = {};
+  let componentParamComponentName: string | null = null;
+
   const panel = DiagramPanel.open(context.extensionUri, className, prevLayout, {
     onChange: async (next) => {
       const edits = diffLayouts(prevLayout, next);
@@ -99,6 +126,14 @@ export async function openDiagram(
         );
         return;
       }
+      // Match the addComponent / simulate pattern: pre-call placeholder
+      // label is replaced with the raw OMC call after the invocation
+      // so the REPL transcript shows the exact `addConnection(...)`
+      // line — same shape every other mutation prints.
+      let label = `addConnection ${from} ↔ ${to}`;
+      const refreshLabel = (): void => {
+        if (client.lastCall) label = client.lastCall;
+      };
       try {
         await client.invoke("addConnection", {
           from,
@@ -106,11 +141,16 @@ export async function openDiagram(
           typeName: className,
           annotation: lineAnnotation(waypoints),
         });
+        refreshLabel();
+        createReplLog(label).success(`connected ${from} ↔ ${to}`);
         prevLayout = await fetchLayout(client, className);
         panel.update(prevLayout);
       } catch (err) {
+        refreshLabel();
+        const msg = (err as Error).message;
+        createReplLog(label).error(msg);
         void vscode.window.showErrorMessage(
-          `Modelica: addConnection failed: ${(err as Error).message}`,
+          `Modelica: addConnection failed: ${msg}`,
         );
       }
     },
@@ -138,17 +178,125 @@ export async function openDiagram(
         );
       }
     },
-    onActionParameters: () => {
-      // Phase 4 hook — for now surface a stub so the button isn't a no-op
-      // and we can see end-to-end that the message round-trips.
-      void vscode.window.showInformationMessage(
-        "Modelica: component-parameter editing is coming soon.",
-      );
+    onEditComponent: async (componentName) => {
+      try {
+        const instance = await fetchModelInstance(client, className);
+        const component = findSubComponent(instance, componentName);
+        if (!component) {
+          void vscode.window.showInformationMessage(
+            `Modelica: component "${componentName}" not found on ${className}.`,
+          );
+          return;
+        }
+        const form = buildComponentParameterForm(component);
+        if (!form) {
+          void vscode.window.showInformationMessage(
+            `Modelica: ${componentName} has no editable scalar parameters.`,
+          );
+          return;
+        }
+        componentParamRefs = form.refs;
+        componentParamInitialValues = form.values;
+        componentParamComponentName = form.componentName;
+        const typeName =
+          typeof component.type === "object" && component.type !== null
+            ? component.type.name
+            : String(component.type ?? "");
+        panel.openParameters({
+          kind: "componentParams",
+          schema: form.schema,
+          values: form.values,
+          title: `Parameters: ${componentName}${typeName ? ` (${typeName})` : ""}`,
+          submitLabel: "Apply",
+        });
+      } catch (err) {
+        log.error(
+          "openComponentParameters",
+          `failed for ${className}.${componentName}`,
+          err,
+        );
+        void vscode.window.showErrorMessage(
+          `Modelica: could not open parameters for ${componentName}: ${(err as Error).message}`,
+        );
+      }
+    },
+    onActionParameters: async () => {
+      try {
+        const instance = await fetchModelInstance(client, className);
+        const form = buildClassParameterForm(instance);
+        if (!form) {
+          void vscode.window.showInformationMessage(
+            `Modelica: ${className} has no editable scalar parameters.`,
+          );
+          return;
+        }
+        classParamRefs = form.refs;
+        classParamInitialValues = form.values;
+        panel.openParameters({
+          kind: "classParams",
+          schema: form.schema,
+          values: form.values,
+          title: `Parameters: ${className}`,
+          submitLabel: "Apply",
+        });
+      } catch (err) {
+        log.error("openClassParameters", `failed for ${className}`, err);
+        void vscode.window.showErrorMessage(
+          `Modelica: could not open parameters for ${className}: ${(err as Error).message}`,
+        );
+      }
     },
     // ── Parameter modal ────────────────────────────────────────────────
     onParametersSubmit: async (kind, values) => {
       if (kind === "simulate") {
         await runSimulate(client, className, values);
+        panel.closeParameters();
+        return;
+      }
+      if (kind === "classParams") {
+        await applyClassParameterEdits(
+          client,
+          className,
+          classParamRefs,
+          classParamInitialValues,
+          values,
+        );
+        try {
+          prevLayout = await fetchLayout(client, className);
+          panel.update(prevLayout);
+        } catch (err) {
+          log.error("classParamsRefetch", `failed for ${className}`, err);
+        }
+        panel.closeParameters();
+        return;
+      }
+      if (kind === "componentParams") {
+        if (componentParamComponentName === null) {
+          log.warn(
+            "componentParamsSubmit",
+            "missing componentName — modal opened without state",
+          );
+          panel.closeParameters();
+          return;
+        }
+        await applyComponentParameterEdits(
+          client,
+          className,
+          componentParamComponentName,
+          componentParamRefs,
+          componentParamInitialValues,
+          values,
+        );
+        try {
+          prevLayout = await fetchLayout(client, className);
+          panel.update(prevLayout);
+        } catch (err) {
+          log.error(
+            "componentParamsRefetch",
+            `failed for ${className}`,
+            err,
+          );
+        }
         panel.closeParameters();
         return;
       }
@@ -417,10 +565,146 @@ async function fetchLayout(
   client: OmcClient,
   className: string,
 ): Promise<DiagramLayout> {
+  const instance = await fetchModelInstance(client, className);
+  return diagram.produceDiagramLayout(instance, "diagram");
+}
+
+async function fetchModelInstance(
+  client: OmcClient,
+  className: string,
+): Promise<ModelInstance> {
   const { instance } = await client.invoke("getModelInstance", {
     typeName: className,
   });
-  return diagram.produceDiagramLayout(instance, "diagram");
+  return instance;
+}
+
+/**
+ * Apply each dirty form field as a `setElementModifierValue(className,
+ * paramName, expr)` call against OMC. We compare submitted values to
+ * the initial snapshot so unchanged fields aren't rewritten — keeps
+ * the source file untouched and avoids spurious REPL noise.
+ *
+ * Failures are surfaced per-field via the REPL log + a single warning
+ * toast once the batch completes; we keep going on individual failures
+ * so a typo in one field doesn't strand the rest.
+ */
+async function applyClassParameterEdits(
+  client: OmcClient,
+  className: string,
+  refs: Record<string, ClassParameterRef>,
+  initialValues: Record<string, unknown>,
+  submitted: Record<string, unknown>,
+): Promise<void> {
+  const failures: string[] = [];
+  for (const [name, ref] of Object.entries(refs)) {
+    const before = initialValues[name];
+    const after = submitted[name];
+    if (sameValue(before, after)) continue;
+    const expr = classParameterValueToExpr(ref, after);
+    let label = `setElementModifierValue ${className} ${name}`;
+    try {
+      // Drain stale errors so any errorString we read on failure is
+      // strictly attributable to this edit (mirrors addComponent /
+      // simulate).
+      await client.getErrorString();
+      const { success } = await client.setElementModifierValue({
+        typeName: className,
+        elementName: name,
+        expr,
+      });
+      if (client.lastCall) label = client.lastCall;
+      const replLog = createReplLog(label);
+      if (success) {
+        replLog.success(
+          expr === "" ? `cleared ${name}` : `${name} := ${expr}`,
+        );
+      } else {
+        const { errorString } = await client.getErrorString();
+        const reason = errorString.trim() || "OMC returned success=false.";
+        replLog.error(reason);
+        failures.push(`${name}: ${reason}`);
+      }
+    } catch (err) {
+      if (client.lastCall) label = client.lastCall;
+      const msg = (err as Error).message;
+      createReplLog(label).error(msg);
+      failures.push(`${name}: ${msg}`);
+    }
+  }
+  if (failures.length > 0) {
+    void vscode.window.showWarningMessage(
+      `Modelica: ${failures.length} parameter edit(s) failed — ${failures[0]}`,
+    );
+  }
+}
+
+/**
+ * Sub-component variant of `applyClassParameterEdits`. Targets
+ * `setElementModifierValue(className, "<componentName>.<paramName>",
+ * expr)` so the modifier lands on the parent class — not on the type
+ * declaration. Same per-field REPL + summary-toast policy.
+ */
+async function applyComponentParameterEdits(
+  client: OmcClient,
+  className: string,
+  componentName: string,
+  refs: Record<string, ComponentParameterRef>,
+  initialValues: Record<string, unknown>,
+  submitted: Record<string, unknown>,
+): Promise<void> {
+  const failures: string[] = [];
+  for (const [name, ref] of Object.entries(refs)) {
+    const before = initialValues[name];
+    const after = submitted[name];
+    if (sameValue(before, after)) continue;
+    const expr = componentParameterValueToExpr(ref, after);
+    const elementName = componentParameterElementName(componentName, name);
+    let label = `setElementModifierValue ${className} ${elementName}`;
+    try {
+      await client.getErrorString();
+      const { success } = await client.setElementModifierValue({
+        typeName: className,
+        elementName,
+        expr,
+      });
+      if (client.lastCall) label = client.lastCall;
+      const replLog = createReplLog(label);
+      if (success) {
+        replLog.success(
+          expr === "" ? `cleared ${elementName}` : `${elementName} := ${expr}`,
+        );
+      } else {
+        const { errorString } = await client.getErrorString();
+        const reason = errorString.trim() || "OMC returned success=false.";
+        replLog.error(reason);
+        failures.push(`${elementName}: ${reason}`);
+      }
+    } catch (err) {
+      if (client.lastCall) label = client.lastCall;
+      const msg = (err as Error).message;
+      createReplLog(label).error(msg);
+      failures.push(`${elementName}: ${msg}`);
+    }
+  }
+  if (failures.length > 0) {
+    void vscode.window.showWarningMessage(
+      `Modelica: ${failures.length} parameter edit(s) failed — ${failures[0]}`,
+    );
+  }
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (
+    typeof a === "number" &&
+    typeof b === "number" &&
+    Number.isNaN(a) &&
+    Number.isNaN(b)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 async function resolveClassName(arg: unknown): Promise<string | undefined> {
@@ -436,34 +720,19 @@ async function resolveClassName(arg: unknown): Promise<string | undefined> {
 
 /**
  * Maps a UI entity key (`c:R1`, `k:p`, `k:R1.p`) to the omc-client
- * connector reference. Standalone connectors carry the bare port name;
- * nested connectors arrive pre-qualified as `<compName>.<portName>`
- * thanks to `entityKeyForNode`'s parent walk, so this is now a direct
- * pass-through with light validation against the current layout.
+ * connector reference, validating that the referenced port actually
+ * exists in the current layout. Returns the same dotted form OMC
+ * expects on `addConnection`.
  */
 function keyToCref(layout: DiagramLayout, key: string): string | null {
-  const idx = key.indexOf(":");
-  if (idx < 0) {
-    return null;
+  const parsed = parseEntityKey(key);
+  if (!parsed || !isConnectorKey(parsed)) return null;
+  if (parsed.componentName === null) {
+    return layout.connectors[parsed.portName] ? parsed.portName : null;
   }
-  const prefix = key.slice(0, idx);
-  const id = key.slice(idx + 1);
-  if (prefix !== "k") {
-    return null;
-  }
-  const dot = id.indexOf(".");
-  if (dot < 0) {
-    return layout.connectors[id] ? id : null;
-  }
-  const compName = id.slice(0, dot);
-  const portName = id.slice(dot + 1);
-  const comp = layout.components[compName];
-  if (!comp) {
-    return null;
-  }
+  const comp = layout.components[parsed.componentName];
+  if (!comp) return null;
   const cls = layout.classes[comp.classRef];
-  if (!cls || !cls.connectors[portName]) {
-    return null;
-  }
-  return id;
+  if (!cls || !cls.connectors[parsed.portName]) return null;
+  return parsed.nodeId;
 }
