@@ -58,6 +58,17 @@ export class OmcClient implements CallContext {
   /** Promise-chain mutex: every call awaits the previous before issuing. */
   private chain: Promise<unknown> = Promise.resolve();
   private closed = false;
+  /**
+   * Raw OMC command string from the most recent `call()` invocation, or
+   * `null` if none has happened yet. Captured eagerly (before the
+   * transport send) so it's still readable when the call throws or
+   * times out — which is exactly when consumers most want to know what
+   * we asked for. Read-only outside the class.
+   */
+  private _lastCall: string | null = null;
+  get lastCall(): string | null {
+    return this._lastCall;
+  }
 
   /** Spawn OMC, dial its ZMQ endpoint, and return a connected client. */
   static async create(opts: OmcClientOptions = {}): Promise<OmcClient> {
@@ -137,6 +148,9 @@ export class OmcClient implements CallContext {
    */
   async call(cmd: OmcCommand): Promise<string> {
     if (this.closed) throw new Error("omc client closed");
+    // Record the raw command before we enqueue / send, so it's already
+    // readable via `lastCall` even if the transport hangs or throws.
+    this._lastCall = cmd;
     const prev = this.chain;
     let release!: () => void;
     this.chain = new Promise<void>((resolve) => {
@@ -564,6 +578,10 @@ export class OmcClient implements CallContext {
 
   save(input: lifecycle.SaveInput): Promise<lifecycle.SaveOutput> {
     return lifecycle.save(this, input);
+  }
+
+  cd(input: lifecycle.CdInput = {}): Promise<lifecycle.CdOutput> {
+    return lifecycle.cd(this, input);
   }
 
   // === Parameters & modifiers ==========================================

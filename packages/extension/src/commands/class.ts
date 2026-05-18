@@ -25,6 +25,7 @@ import {
   validateIdentifier,
   type CommandContext,
 } from "./context.js";
+import { createReplLog } from "./repl.js";
 
 const CLASS_KINDS = [
   "package",
@@ -57,6 +58,7 @@ export function registerClassCommands(ctx: CommandContext): vscode.Disposable[] 
         const qualified = parent ? `${parent}.${name}` : name;
         const body = `${kind} ${name}\nend ${name};\n`;
         const data = parent ? `within ${parent};\n${body}` : body;
+        const log = createReplLog(`createClass ${kind} ${qualified}`);
         try {
           const c = await ctx.ensureClient();
           const { success } = await c.loadString({
@@ -66,12 +68,14 @@ export function registerClassCommands(ctx: CommandContext): vscode.Disposable[] 
           });
           if (!success) {
             const { errorString } = await c.getErrorString();
+            log.error(errorString || "loadString returned success=false");
             await vscode.window.showErrorMessage(
               `Modelica: failed to create ${qualified}${errorString ? `: ${errorString}` : ""}`,
             );
             return;
           }
           const ws = vscode.workspace.workspaceFolders?.[0];
+          let diskPath: string | undefined;
           if (ws) {
             // Persist to disk and rewrite OMC's fileName so subsequent
             // saves write through to the same path.
@@ -82,6 +86,7 @@ export function registerClassCommands(ctx: CommandContext): vscode.Disposable[] 
               data,
             );
             await linkPersistedClass(c, qualified, result);
+            diskPath = result.leafPath;
           } else {
             await vscode.window.showWarningMessage(
               `Modelica: ${qualified} created in OMC memory only — open a folder to enable on-disk save.`,
@@ -89,7 +94,13 @@ export function registerClassCommands(ctx: CommandContext): vscode.Disposable[] 
           }
           ctx.libraryTree.refresh();
           ctx.sourceProvider.notifySourceChanged();
+          log.success(
+            diskPath
+              ? `created ${qualified} → ${diskPath}`
+              : `created ${qualified} (OMC memory only — no workspace folder)`,
+          );
         } catch (err) {
+          log.error((err as Error).message);
           await vscode.window.showErrorMessage(
             `Modelica: failed to create ${qualified}: ${(err as Error).message}`,
           );

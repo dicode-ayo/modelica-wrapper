@@ -3,7 +3,14 @@ import { NullEngine, Scene, TransformNode, Mesh } from "@babylonjs/core";
 
 import {
   entityKeyForNode,
+  formatComponentKey,
+  formatConnectorKey,
   formatKey,
+  isComponentKey,
+  isConnectorKey,
+  isEdgeKey,
+  isHandleKey,
+  isNestedConnector,
   parseKey,
 } from "../src/interaction/node-keys.js";
 
@@ -20,25 +27,93 @@ function makeScene(): { scene: Scene; dispose: () => void } {
 }
 
 describe("formatKey / parseKey", () => {
-  it("round-trips for each kind", () => {
+  it("round-trips simple kinds (no decomposition)", () => {
     for (const [kind, id] of [
       ["component", "R1"],
-      ["connector", "p"],
       ["edge", "e0"],
       ["junction", "j0"],
       ["label", "lbl0"],
       ["port", "p"],
       ["handle", "tl"],
     ] as const) {
-      const key = formatKey(kind, id);
-      const parsed = parseKey(key);
+      const parsed = parseKey(formatKey(kind, id));
       expect(parsed).toEqual({ kind, nodeId: id });
     }
   });
 
-  it("returns null for unrecognised prefixes", () => {
+  it("decomposes standalone connector keys into a null componentName", () => {
+    const parsed = parseKey(formatKey("connector", "p"));
+    expect(parsed).toEqual({
+      kind: "connector",
+      nodeId: "p",
+      componentName: null,
+      portName: "p",
+    });
+  });
+
+  it("decomposes nested connector keys into componentName + portName", () => {
+    const parsed = parseKey(formatKey("connector", "R1.p"));
+    expect(parsed).toEqual({
+      kind: "connector",
+      nodeId: "R1.p",
+      componentName: "R1",
+      portName: "p",
+    });
+  });
+
+  it("returns null for unrecognised prefixes and missing colons", () => {
     expect(parseKey("nope:foo")).toBeNull();
     expect(parseKey("noColon")).toBeNull();
+  });
+});
+
+describe("format helpers", () => {
+  it("formatComponentKey writes a component wire key", () => {
+    expect(formatComponentKey("R1")).toBe("c:R1");
+  });
+
+  it("formatConnectorKey writes both standalone and nested forms", () => {
+    expect(formatConnectorKey(null, "p")).toBe("k:p");
+    expect(formatConnectorKey("R1", "p")).toBe("k:R1.p");
+  });
+
+  it("formatConnectorKey round-trips through parseKey", () => {
+    const parsed = parseKey(formatConnectorKey("R1", "p"));
+    expect(parsed).toMatchObject({
+      kind: "connector",
+      componentName: "R1",
+      portName: "p",
+    });
+  });
+});
+
+describe("type guards", () => {
+  it("narrow each branch so consumers can access kind-specific fields", () => {
+    const conn = parseKey("k:R1.p");
+    if (conn && isConnectorKey(conn)) {
+      // TS narrowing — these fields exist only on ConnectorKey:
+      expect(conn.componentName).toBe("R1");
+      expect(conn.portName).toBe("p");
+      expect(isNestedConnector(conn)).toBe(true);
+    } else {
+      throw new Error("expected a ConnectorKey");
+    }
+
+    const comp = parseKey("c:R1");
+    expect(comp && isComponentKey(comp)).toBe(true);
+    expect(comp && isConnectorKey(comp)).toBe(false);
+
+    const edge = parseKey("edge:e0");
+    expect(edge && isEdgeKey(edge)).toBe(true);
+
+    const handle = parseKey("h:tl");
+    expect(handle && isHandleKey(handle)).toBe(true);
+  });
+
+  it("isNestedConnector is false for standalone connectors", () => {
+    const conn = parseKey("k:p");
+    if (!conn || !isConnectorKey(conn)) throw new Error("unreachable");
+    expect(isNestedConnector(conn)).toBe(false);
   });
 });
 
@@ -65,11 +140,36 @@ describe("entityKeyForNode", () => {
     child.parent = parent;
     const grandchild = new Mesh("dot-mesh", scene);
     grandchild.parent = child;
-    // dot-mesh has no metadata; om-port: doesn't match the regex.
-    // The chain reaches om-component:R2 → that's the answer.
     expect(entityKeyForNode(grandchild)).toEqual({
       kind: "component",
       nodeId: "R2",
+    });
+    dispose();
+  });
+
+  it("qualifies a nested connector with its parent component and decomposes the parts", () => {
+    const { scene, dispose } = makeScene();
+    const comp = new TransformNode("om-component:R3", scene);
+    const conn = new TransformNode("om-connector:p", scene);
+    conn.parent = comp;
+    const found = entityKeyForNode(conn);
+    expect(found).toEqual({
+      kind: "connector",
+      nodeId: "R3.p",
+      componentName: "R3",
+      portName: "p",
+    });
+    dispose();
+  });
+
+  it("returns a standalone connector when no component ancestor is found", () => {
+    const { scene, dispose } = makeScene();
+    const conn = new TransformNode("om-connector:p", scene);
+    expect(entityKeyForNode(conn)).toEqual({
+      kind: "connector",
+      nodeId: "p",
+      componentName: null,
+      portName: "p",
     });
     dispose();
   });

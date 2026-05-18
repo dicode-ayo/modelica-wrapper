@@ -21,10 +21,26 @@ export interface ApplyEditsResult {
   failed: Array<{ edit: LayoutEdit; error: string }>;
 }
 
+/**
+ * Callback invoked per edit after the OMC call resolves (success or
+ * failure). `command` is the raw OMC call we sent (`client.lastCall`),
+ * useful as a REPL transcript label. `error` is undefined on success.
+ *
+ * The caller passes a function that mirrors each step into the
+ * Modelica REPL, the same way the addComponent / simulate flows do.
+ * Kept optional so non-UI callers don't have to thread anything.
+ */
+export type ApplyEditsHook = (
+  edit: LayoutEdit,
+  command: string,
+  error: string | undefined,
+) => void;
+
 export async function applyEdits(
   client: OmcClient,
   hostClass: string,
   edits: ReadonlyArray<LayoutEdit>,
+  onApplied?: ApplyEditsHook,
 ): Promise<ApplyEditsResult> {
   const result: ApplyEditsResult = { applied: 0, failed: [] };
 
@@ -36,8 +52,11 @@ export async function applyEdits(
     try {
       await applyOne(client, hostClass, edit);
       result.applied++;
+      onApplied?.(edit, client.lastCall ?? "(no command)", undefined);
     } catch (err) {
-      result.failed.push({ edit, error: (err as Error).message });
+      const msg = (err as Error).message;
+      result.failed.push({ edit, error: msg });
+      onApplied?.(edit, client.lastCall ?? "(no command)", msg);
     }
   }
   return result;
@@ -53,6 +72,11 @@ function order(e: LayoutEdit): number {
       return 2;
     case "componentPlacement":
       return 3;
+    case "connectionWaypoints":
+      // Run after placement edits so the REPL transcript reads
+      // top-down: structural deletes/adds, then the moved component,
+      // then the re-routed wires that follow it.
+      return 4;
   }
 }
 
@@ -89,6 +113,26 @@ async function applyOne(
         from: edit.from,
         to: edit.to,
         typeName: hostClass,
+      });
+      return;
+    case "connectionWaypoints":
+      // OMC 1.26.x is missing `updateConnection` (verified absent on
+      // 1.26.1 / 1.26.7 — see updateConnection.ts docstring), so we
+      // re-route by deleting and re-adding with the new
+      // `Line(points=...)` annotation. Two RPCs, functionally
+      // equivalent. We leave `client.lastCall` pointing at the
+      // addConnection so the REPL hook labels this row with the call
+      // that landed the new shape.
+      await client.invoke("deleteConnection", {
+        from: edit.from,
+        to: edit.to,
+        typeName: hostClass,
+      });
+      await client.invoke("addConnection", {
+        from: edit.from,
+        to: edit.to,
+        typeName: hostClass,
+        annotation: lineAnnotation(edit.waypoints),
       });
       return;
   }

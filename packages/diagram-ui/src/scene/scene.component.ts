@@ -14,6 +14,12 @@ import {
 
 import { parentNodeContext } from "../base/parent-node-context.js";
 import { sceneContext, type SceneContext } from "./scene-context.js";
+import { ViewStateStore, viewStateContext } from "./view-state-store.js";
+import {
+  registerRenderScheduler,
+  requestSceneRender,
+  unregisterRenderScheduler,
+} from "./render-scheduler.js";
 import {
   CAMERA_MODE_ORTHO,
   DEFAULT_CAMERA_RADIUS,
@@ -40,11 +46,30 @@ const defaultEngineFactory: EngineFactory = (canvas) =>
   // `stencil: true` is required by Babylon's HighlightLayer (the
   // selection outline). Without it, the layer warns and silently
   // skips its render pass.
-  new Engine(canvas, true, {
-    preserveDrawingBuffer: false,
-    stencil: true,
-    disableWebGL2Support: false,
-  });
+  //
+  // `alpha: false` makes the WebGL backbuffer opaque. With the
+  // default (transparent) backbuffer the browser's GPU compositor
+  // can present a half-painted frame during rapid pan/zoom — the
+  // big opaque shapes (white extent-rect, axis lines) read as a
+  // flicker against the CSS `:host` background. An opaque canvas
+  // sidesteps that path entirely.
+  //
+  // 4th arg `adaptToDeviceRatio: true` sizes the WebGL backbuffer
+  // in physical pixels rather than CSS pixels. Without it, HiDPI
+  // displays render at 1× and the browser upscales to the device
+  // grid — 1-px GL lines (connection strokes) and small meshes
+  // (connector dots) look blurry.
+  new Engine(
+    canvas,
+    true,
+    {
+      preserveDrawingBuffer: false,
+      stencil: true,
+      disableWebGL2Support: false,
+      alpha: false,
+    },
+    true,
+  );
 
 /**
  * `<om-scene>` — root custom element for the graphical layout editor.
@@ -73,6 +98,15 @@ export class OmScene extends LitElement {
       width: 100%;
       height: 100%;
       background: var(--om-scene-background, #f7f7f8);
+      /*
+       * Slotted HTML overlays (om-icon-overlay) are positioned absolute
+       * with translate() transforms driven by pan/zoom. Without
+       * overflow:hidden they extend past the host bounds during motion,
+       * which makes the page scrollbars oscillate on/off — and every
+       * such toggle triggers engine.resize() (black-framebuffer flash
+       * for one frame). Clipping here keeps the canvas size stable.
+       */
+      overflow: hidden;
     }
     canvas {
       display: block;
@@ -136,7 +170,9 @@ export class OmScene extends LitElement {
   private babylonScene: Scene | null = null;
   private camera: ArcRotateCamera | null = null;
   private panZoom: PanZoom | null = null;
-  private renderLoopAttached = false;
+  private schedulerRegistered = false;
+  /** Set while 3D mode is using Babylon's continuous render loop. */
+  private continuousLoopActive = false;
   /**
    * Set while `PanZoom` is feeding new view state back into the
    * element's properties so `updated()` doesn't re-trigger
@@ -152,6 +188,22 @@ export class OmScene extends LitElement {
   private readonly parentNodeProvider = new ContextProvider(this, {
     context: parentNodeContext,
     initialValue: null,
+  });
+
+  /**
+   * Behaviour-subject-shaped store of {zoom, panX, panY, version}.
+   * `applyView()` is the sole producer; every HTML overlay is a
+   * consumer (via `viewStateContext`). Lives for the element's
+   * lifetime — the value is replaced on remount, not the store.
+   */
+  private readonly viewStateStore = new ViewStateStore({
+    zoom: this.zoom,
+    panX: this.panX,
+    panY: this.panY,
+  });
+  private readonly viewStateProvider = new ContextProvider(this, {
+    context: viewStateContext,
+    initialValue: this.viewStateStore,
   });
 
   override render() {
@@ -214,7 +266,10 @@ export class OmScene extends LitElement {
     const factory = this.engineFactory ?? defaultEngineFactory;
     const engine = factory(canvas);
     const scene = new Scene(engine);
-    scene.clearColor = new Color4(0, 0, 0, 0);
+    // Match the `:host` CSS background so the opaque backbuffer paints
+    // a seamless plate behind the diagram contents. Keeping these in
+    // sync avoids a 1-px hairline of either colour at the canvas edge.
+    scene.clearColor = new Color4(0.969, 0.969, 0.973, 1);
 
     const worldRoot = new TransformNode("om-world", scene);
     const diagramRoot = new TransformNode("om-diagram", scene);
@@ -278,12 +333,24 @@ export class OmScene extends LitElement {
 
     this.resizeObserver.observe(this);
 
-    engine.runRenderLoop(() => {
+    // On-demand rendering: instead of `engine.runRenderLoop`, register
+    // a scheduler so mutation sites can call `requestSceneRender(scene)`
+    // and coalesce repaints into a single rAF. With nothing changing,
+    // idle frames cost 0 — critical under software-rendered WebGL where
+    // a continuous 60 Hz loop would saturate the CPU.
+    registerRenderScheduler(scene, () => {
       if (this.babylonScene) {
         this.babylonScene.render();
       }
     });
-    this.renderLoopAttached = true;
+    this.schedulerRegistered = true;
+    // Auto-repaint when entities add or remove Babylon meshes. Covers
+    // component / connector / edge / junction / grid / label creation
+    // and disposal without each call site having to remember.
+    scene.onNewMeshAddedObservable.add(() => requestSceneRender(scene));
+    scene.onMeshRemovedObservable.add(() => requestSceneRender(scene));
+    // Initial paint.
+    requestSceneRender(scene);
   }
 
   /**
@@ -347,7 +414,9 @@ export class OmScene extends LitElement {
     this.panX = next.panX;
     this.panY = next.panY;
     this.updatingFromUser = false;
-    // Apply directly — `updated()` is suppressed by the flag above.
+    // `applyView()` pushes to the internal viewStateStore (consumed by
+    // shape overlays). The DOM event below is the public-facing
+    // notification for external listeners (e.g. host webview).
     this.applyView();
     this.dispatchEvent(
       new CustomEvent<ViewState>("om-view-change", {
@@ -362,14 +431,19 @@ export class OmScene extends LitElement {
     this.resizeObserver.disconnect();
     this.panZoom?.destroy();
     this.panZoom = null;
-    if (this.renderLoopAttached && this.engine) {
+    if (this.continuousLoopActive && this.engine) {
       this.engine.stopRenderLoop();
-      this.renderLoopAttached = false;
+      this.continuousLoopActive = false;
+    }
+    if (this.schedulerRegistered && this.babylonScene) {
+      unregisterRenderScheduler(this.babylonScene);
+      this.schedulerRegistered = false;
     }
     this.babylonScene?.dispose();
     this.engine?.dispose();
     this.sceneProvider.setValue(null);
     this.parentNodeProvider.setValue(null);
+    this.viewStateProvider.setValue(null);
     this.babylonScene = null;
     this.engine = null;
     this.camera = null;
@@ -436,12 +510,23 @@ export class OmScene extends LitElement {
     // view matrix. See the mount() comment for the α/β derivation.
     camera.alpha = -Math.PI / 2;
     camera.beta = Math.PI / 2;
+    // Push to the reactive store — every HTML overlay is subscribed
+    // and re-projects on emit. `version` is always bumped so a resize
+    // (zoom/pan unchanged, aspect different) still notifies. The
+    // `om-view-change` DOM event is preserved separately in
+    // onViewChangeFromUser for the public API.
+    this.viewStateStore.next(this.currentView());
+    // Camera changed → repaint.
+    if (this.babylonScene) {
+      requestSceneRender(this.babylonScene);
+    }
   }
 
   private applyCameraMode(): void {
     const camera = this.camera;
     const canvas = this.canvasRef.value;
-    if (!camera || !canvas) {
+    const engine = this.engine;
+    if (!camera || !canvas || !engine) {
       return;
     }
     if (this.cameraMode === "2d") {
@@ -456,6 +541,12 @@ export class OmScene extends LitElement {
           (next) => this.onViewChangeFromUser(next),
         );
       }
+      // 2D is the on-demand path — make sure no leftover continuous
+      // loop is running (e.g. after a 3D → 2D toggle).
+      if (this.continuousLoopActive) {
+        engine.stopRenderLoop();
+        this.continuousLoopActive = false;
+      }
     } else {
       camera.mode = 0; // Babylon.Camera.PERSPECTIVE_CAMERA
       this.panZoom?.destroy();
@@ -465,6 +556,19 @@ export class OmScene extends LitElement {
       camera.attachControl(canvas, true);
       camera.lowerRadiusLimit = 10;
       camera.upperRadiusLimit = 5000;
+      // 3D uses Babylon's built-in pointer/wheel handlers, which mutate
+      // the camera outside our `applyView` pipeline. Until the
+      // MultiBody view grows its own pointer-driven render trigger we
+      // fall back to a continuous loop here — orbit/zoom would
+      // otherwise leave the canvas frozen.
+      if (!this.continuousLoopActive) {
+        engine.runRenderLoop(() => {
+          if (this.babylonScene) {
+            this.babylonScene.render();
+          }
+        });
+        this.continuousLoopActive = true;
+      }
     }
   }
 }

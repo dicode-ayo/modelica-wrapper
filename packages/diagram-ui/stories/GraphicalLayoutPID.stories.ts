@@ -26,11 +26,85 @@ import { html, type TemplateResult } from "lit";
 // `OmcClient` + `spawnOmc` which depend on `zeromq` / `node:fs` and
 // can't bundle for the browser.
 import { produceDiagramLayout } from "@modelica-wrapper/omc-client/api/diagram/index.js";
-import type { ModelInstance } from "@modelica-wrapper/omc-client";
+import type {
+  DiagramLayout,
+  ModelInstance,
+} from "@modelica-wrapper/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
+import type {
+  LibraryBrowserDataSource,
+  LibraryClassInfo,
+  LibraryClassRestriction,
+} from "../src/library-browser/library-browser.component.js";
 
 import pidFixture from "./fixtures/pidController.modelInstance.json";
+import { appendConnection } from "./fixtures/story-layout-state.js";
+
+// Minimal fake library source so double-clicking empty canvas in the
+// story opens a populated browser. The real extension wires this to
+// `client.getClassNames(...)` + `client.getClassRestriction(...)`.
+type FakeEntry = readonly [string, LibraryClassRestriction];
+const FAKE_TREE: Record<string, readonly FakeEntry[]> = {
+  __ROOT__: [
+    ["Modelica", "package"],
+    ["Complex", "operator record"],
+  ],
+  Modelica: [
+    ["Modelica.Blocks", "package"],
+    ["Modelica.Mechanics", "package"],
+    ["Modelica.Math", "package"],
+  ],
+  "Modelica.Blocks": [
+    ["Modelica.Blocks.Math", "package"],
+    ["Modelica.Blocks.Sources", "package"],
+    ["Modelica.Blocks.Continuous", "package"],
+  ],
+  "Modelica.Blocks.Math": [
+    ["Modelica.Blocks.Math.Gain", "block"],
+    ["Modelica.Blocks.Math.Add", "block"],
+    ["Modelica.Blocks.Math.Sum", "block"],
+  ],
+  "Modelica.Blocks.Sources": [
+    ["Modelica.Blocks.Sources.Constant", "block"],
+    ["Modelica.Blocks.Sources.Step", "block"],
+    ["Modelica.Blocks.Sources.Sine", "block"],
+  ],
+  "Modelica.Blocks.Continuous": [
+    ["Modelica.Blocks.Continuous.Integrator", "block"],
+    ["Modelica.Blocks.Continuous.PID", "block"],
+  ],
+  "Modelica.Math": [
+    ["Modelica.Math.sin", "function"],
+    ["Modelica.Math.cos", "function"],
+  ],
+};
+const ALL_FLAT: LibraryClassInfo[] = (() => {
+  const seen = new Set<string>();
+  const out: LibraryClassInfo[] = [];
+  for (const rows of Object.values(FAKE_TREE)) {
+    for (const [qualified, restriction] of rows) {
+      if (seen.has(qualified)) continue;
+      seen.add(qualified);
+      out.push({ qualified, restriction });
+    }
+  }
+  return out;
+})();
+const fakeLibrarySource: LibraryBrowserDataSource = {
+  async listChildren(parent) {
+    await new Promise((r) => setTimeout(r, 80));
+    const rows = FAKE_TREE[parent ?? "__ROOT__"] ?? [];
+    return rows.map(([qualified, restriction]) => ({ qualified, restriction }));
+  },
+  async searchAll(query) {
+    await new Promise((r) => setTimeout(r, 80));
+    const q = query.toLowerCase();
+    return ALL_FLAT.filter((info) =>
+      info.qualified.toLowerCase().includes(q),
+    );
+  },
+};
 
 // The fixture was captured against a real OMC and is known-valid
 // (the producer's own test suite validates it on every push). We
@@ -43,10 +117,16 @@ const pidLayout = produceDiagramLayout(
   "diagram",
 );
 
+// Mutable state — see GraphicalLayout.stories.ts for the rationale.
+// Stories share their own state; the PID fixture is large enough that
+// resetting on every render would be jarring (auto-fit re-runs).
+let currentLayout: DiagramLayout = pidLayout;
+
 interface StoryArgs {
   readonly: boolean;
   cameraMode: "2d" | "3d";
   lineThicknessScale: number;
+  perfHud: boolean;
 }
 
 const meta: Meta<StoryArgs> = {
@@ -55,6 +135,7 @@ const meta: Meta<StoryArgs> = {
     readonly,
     cameraMode,
     lineThicknessScale,
+    perfHud,
   }: StoryArgs): TemplateResult => html`
     <div class="om-story">
       <h3>
@@ -68,7 +149,8 @@ const meta: Meta<StoryArgs> = {
         ${cameraMode === "2d"
           ? html`In 2D mode: drag components, rubber-band select, Delete
               to remove, R/F to rotate/flip. Touchpad two-finger scroll
-              pans, pinch zooms.`
+              pans, pinch zooms. Double-click on empty canvas to open
+              the library browser (this story uses a fake catalog).`
           : html`In 3D mode: Babylon's ArcRotateCamera takes over —
               left-drag orbits, wheel dollies in/out. The SVG overlays
               hide automatically; the in-canvas textured planes are the
@@ -77,17 +159,30 @@ const meta: Meta<StoryArgs> = {
       </p>
       <div class="om-story-canvas-host" style="height: 600px;">
         <om-graphical-layout
-          .layout=${pidLayout}
+          .layout=${currentLayout}
           ?readonly=${readonly}
+          ?perf-hud=${perfHud}
           camera-mode=${cameraMode}
           .lineThicknessScale=${lineThicknessScale}
-          @om-graphical-layout-change=${(e: CustomEvent) => {
-            // eslint-disable-next-line no-console
-            console.log("layout change", e.detail);
+          .libraryDataSource=${fakeLibrarySource}
+          @om-graphical-layout-change=${(e: CustomEvent<DiagramLayout>) => {
+            currentLayout = e.detail;
           }}
           @om-connection-create=${(e: CustomEvent) => {
+            const detail = e.detail as {
+              fromKey: string;
+              toKey: string;
+              waypoints: ReadonlyArray<readonly [number, number]>;
+            };
+            currentLayout = appendConnection(currentLayout, detail);
+            const el = e.currentTarget as HTMLElement & {
+              layout: DiagramLayout;
+            };
+            el.layout = currentLayout;
+          }}
+          @om-add-component-request=${(e: CustomEvent) => {
             // eslint-disable-next-line no-console
-            console.log("connection create", e.detail);
+            console.log("add component request", e.detail);
           }}
         ></om-graphical-layout>
       </div>
@@ -104,6 +199,10 @@ const meta: Meta<StoryArgs> = {
       control: { type: "range", min: 0.5, max: 10, step: 0.25 },
       name: "line-thickness-scale",
     },
+    perfHud: {
+      control: { type: "boolean" },
+      name: "perf-hud",
+    },
   },
 };
 
@@ -112,11 +211,11 @@ export default meta;
 type Story = StoryObj<StoryArgs>;
 
 export const Editable: Story = {
-  args: { readonly: false, cameraMode: "2d", lineThicknessScale: 4 },
+  args: { readonly: false, cameraMode: "2d", lineThicknessScale: 4, perfHud: true },
 };
 
 export const Readonly: Story = {
-  args: { readonly: true, cameraMode: "2d", lineThicknessScale: 4 },
+  args: { readonly: true, cameraMode: "2d", lineThicknessScale: 4, perfHud: true },
 };
 
 export const Orbit3D: Story = {

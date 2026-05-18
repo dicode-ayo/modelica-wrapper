@@ -17,13 +17,21 @@
 
 import type { Meta, StoryObj } from "@storybook/web-components";
 import { html, type TemplateResult } from "lit";
+import type { DiagramLayout } from "@modelica-wrapper/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
 import { sampleLayout } from "./fixtures/sample-layout.js";
+import { appendConnection } from "./fixtures/story-layout-state.js";
 
 interface StoryArgs {
   readonly: boolean;
 }
+
+// Mutable state owned by this story file. In production the layout
+// round-trips through OMC; here we just append connection-create
+// events directly so dropped connections immediately show up on
+// screen with their orthogonal route.
+let currentLayout: DiagramLayout = sampleLayout();
 
 const meta: Meta<StoryArgs> = {
   title: "diagram-ui/GraphicalLayout",
@@ -33,18 +41,19 @@ const meta: Meta<StoryArgs> = {
       <p style="font-size:11px;color:#666;margin:4px 0;">
         Synthetic DiagramLayout (3 mechanical-rotational blocks +
         2 connections). Click to select, drag to move, shift+click for
-        multi-select, R/F for rotate/flip, Delete to remove.
+        multi-select, R/F for rotate/flip, Delete to remove. Hover a
+        component, then drag from its port indicator to another port
+        to create a new connection (orthogonal route).
       </p>
       <div
         class="om-story-canvas-host"
         style="height: 540px;"
       >
         <om-graphical-layout
-          .layout=${sampleLayout()}
+          .layout=${currentLayout}
           ?readonly=${readonly}
-          @om-graphical-layout-change=${(e: CustomEvent) => {
-            // eslint-disable-next-line no-console
-            console.log("layout change", e.detail);
+          @om-graphical-layout-change=${(e: CustomEvent<DiagramLayout>) => {
+            currentLayout = e.detail;
           }}
           @om-selection-change=${(e: CustomEvent) => {
             const status = (e.currentTarget as HTMLElement)
@@ -55,8 +64,16 @@ const meta: Meta<StoryArgs> = {
             }
           }}
           @om-connection-create=${(e: CustomEvent) => {
-            // eslint-disable-next-line no-console
-            console.log("connection create", e.detail);
+            const detail = e.detail as {
+              fromKey: string;
+              toKey: string;
+              waypoints: ReadonlyArray<readonly [number, number]>;
+            };
+            currentLayout = appendConnection(currentLayout, detail);
+            const el = e.currentTarget as HTMLElement & {
+              layout: DiagramLayout;
+            };
+            el.layout = currentLayout;
           }}
         ></om-graphical-layout>
       </div>

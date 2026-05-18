@@ -4,14 +4,23 @@ const watch = process.argv.includes("--watch");
 
 /**
  * Emits `[watch] build started` / `[watch] build finished` markers that the
- * VSCode `tasks.json` problemMatcher uses to track rebuilds. esbuild prints
- * "build finished" itself but no matching start line.
+ * VSCode `tasks.json` problemMatcher uses to track rebuilds. We emit both
+ * markers ourselves (instead of relying on esbuild's own "build finished,
+ * watching for changes..." line) and reference-count across the two parallel
+ * contexts so VSCode sees exactly one started/finished pair per rebuild —
+ * otherwise the EDH launch can race the second context's output and hang.
  */
+let activeBuilds = 0;
 const watchMarkers = {
   name: "watch-markers",
   setup(build) {
     build.onStart(() => {
-      console.log("[watch] build started");
+      if (activeBuilds === 0) console.log("[watch] build started");
+      activeBuilds++;
+    });
+    build.onEnd(() => {
+      activeBuilds--;
+      if (activeBuilds === 0) console.log("[watch] build finished");
     });
   },
 };
@@ -38,7 +47,7 @@ const extensionConfig = {
   target: "node20",
   format: "cjs",
   sourcemap: true,
-  logLevel: "info",
+  logLevel: watch ? "warning" : "info",
   plugins: watch ? [watchMarkers] : [],
 };
 
@@ -51,9 +60,18 @@ const webviewConfig = {
   target: "es2022",
   format: "iife",
   sourcemap: true,
-  logLevel: "info",
+  logLevel: watch ? "warning" : "info",
+  // The default tsconfig.json excludes the webview entry and doesn't set
+  // experimentalDecorators; without this override esbuild emits TC39
+  // stage-3 decorators and Lit throws "Unsupported decorator location".
+  tsconfig: "tsconfig.webview.json",
   loader: {
     ".json": "json",
+    // Web Awesome ships its theme + native form-control reset as
+    // plain CSS files; importing them from JS lets esbuild collect
+    // and emit a sibling `webview.css` next to `webview.js`. The
+    // webview HTML in `diagram/panel.ts` <link>s to it directly.
+    ".css": "css",
   },
   // Stamped into the bundle so the runtime can prove which build it is —
   // changes only on rebuild, not on webview reload.

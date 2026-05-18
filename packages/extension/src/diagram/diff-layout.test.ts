@@ -98,6 +98,49 @@ describe("diffLayouts", () => {
       waypoints: [],
     });
   });
+
+  it("emits connectionWaypoints when waypoints change but endpoints don't", () => {
+    const a = baseLayout();
+    const b = baseLayout();
+    // Move R1: applyDeltaMove would translate the first waypoint
+    // (anchored to R1) by the drag delta; the second is anchored to
+    // unmoved C1.
+    b.components.R1!.placement = { extent: [[-5, -5], [15, 5]] };
+    b.connections = [
+      {
+        lhs: { component: "R1", port: "p" },
+        rhs: { component: "C1", port: "n" },
+        waypoints: [
+          [5, 0],
+          [20, 0],
+        ],
+      },
+    ];
+    const edits = diffLayouts(a, b);
+    expect(edits).toContainEqual({
+      kind: "connectionWaypoints",
+      from: "R1.p",
+      to: "C1.n",
+      waypoints: [
+        [5, 0],
+        [20, 0],
+      ],
+    });
+    // The component move still fires as its own edit.
+    expect(edits.some((e) => e.kind === "componentPlacement")).toBe(true);
+    // And we don't double up by also emitting a delete + add for the
+    // same (from, to) pair.
+    expect(edits.some((e) => e.kind === "connectionDeleted")).toBe(false);
+    expect(edits.some((e) => e.kind === "connectionAdded")).toBe(false);
+  });
+
+  it("does not emit connectionWaypoints when waypoints are unchanged", () => {
+    const a = baseLayout();
+    const b = baseLayout();
+    expect(
+      diffLayouts(a, b).some((e) => e.kind === "connectionWaypoints"),
+    ).toBe(false);
+  });
 });
 
 describe("placementAnnotation", () => {

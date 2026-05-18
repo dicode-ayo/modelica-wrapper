@@ -1,10 +1,6 @@
 import type { Node, Scene } from "@babylonjs/core";
 
-import {
-  entityKeyForNode,
-  formatKey,
-  type EntityKey,
-} from "./node-keys.js";
+import { entityKeyForNode, formatKey } from "./node-keys.js";
 
 /**
  * Picker function: given client (viewport) pixel coords, return the
@@ -139,7 +135,20 @@ export class InteractionManager {
 
   private pickKey(clientX: number, clientY: number): string | null {
     const node = this.picker(clientX, clientY);
-    const entity = entityKeyForNode(node);
+    let entity = entityKeyForNode(node);
+    // A `port` indicator is a child of its connector's TransformNode.
+    // Once the indicator becomes visible (it lights up on hover), the
+    // next pointermove can pick it instead of the connector behind
+    // it — without this step the hover key would flip
+    // connector ↔ port every few pixels, and `refreshPortIndicators`
+    // would oscillate the indicator on/off. Resolving up to the
+    // owning connector keeps the hover state stable while the user's
+    // pointer stays over the entity. DragController keeps its own
+    // walk and still sees `kind: "port"` for the click-to-start-
+    // connection-drag gesture.
+    if (entity?.kind === "port" && node) {
+      entity = entityKeyForNode(node.parent ?? null);
+    }
     return entity ? formatKey(entity.kind, entity.nodeId) : null;
   }
 }
@@ -162,4 +171,3 @@ export function defaultPicker(
   };
 }
 
-export type { EntityKey };

@@ -62,6 +62,28 @@ export function parse(src: string): Value {
   return v;
 }
 
+/**
+ * Parse the leading Value from `src` and return both the value and any
+ * remaining (trimmed) trailing text.
+ *
+ * Unlike `parse`, this never throws on trailing input. Use it for OMC
+ * calls that may emit a diagnostic line after the documented return
+ * value — e.g. some mutations (`addComponent`, `addConnection`)
+ * append "Error occurred …" to the response when the call fails,
+ * which would otherwise crash strict `parse()` before the caller can
+ * inspect the boolean.
+ *
+ * Empty / whitespace input yields a null Value with empty trailing.
+ */
+export function parseLeading(src: string): { value: Value; trailing: string } {
+  const text = src.trim();
+  if (text === "") return { value: NULL, trailing: "" };
+  const p = new Parser(text);
+  const v = p.value();
+  p.skipSpace();
+  return { value: v, trailing: p.src.slice(p.pos).trim() };
+}
+
 class Parser {
   pos = 0;
   constructor(public readonly src: string) {}

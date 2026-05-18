@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import getElementsFixture from "../test/fixtures/getElements-Modelica.Blocks.Examples.PID_Controller.txt?raw";
 import getElementsInfoFixture from "../test/fixtures/getElementsInfo-Modelica.Blocks.Examples.PID_Controller.txt?raw";
-import { isNull, parse, toJson } from "./parse.js";
+import { isNull, parse, parseLeading, toJson } from "./parse.js";
 
 describe("parse: scalars", () => {
   it.each([
@@ -106,6 +106,63 @@ describe("parse: documentation strings with newlines", () => {
 describe("parse: trailing newline tolerated", () => {
   it("ignores OMC's trailing newline", () => {
     expect(parse(`true\n`)).toEqual({ kind: "bool", value: true });
+  });
+});
+
+describe("parseLeading: tolerant parse with trailing capture", () => {
+  it("parses a clean bool with empty trailing", () => {
+    expect(parseLeading(`true`)).toEqual({
+      value: { kind: "bool", value: true },
+      trailing: "",
+    });
+  });
+
+  it("treats a lone trailing newline as no trailing", () => {
+    expect(parseLeading(`false\n`)).toEqual({
+      value: { kind: "bool", value: false },
+      trailing: "",
+    });
+  });
+
+  it("captures a diagnostic line appended by OMC after a failed mutation", () => {
+    // Shape mirrors what some OMC builds emit for addComponent when
+    // building the AST fails — the bool, a newline, then prose.
+    const raw = `false\nError occurred building AST`;
+    expect(parseLeading(raw)).toEqual({
+      value: { kind: "bool", value: false },
+      trailing: "Error occurred building AST",
+    });
+  });
+
+  it("trims whitespace around the trailing diagnostic", () => {
+    const raw = `false\n  \n  some message  \n`;
+    expect(parseLeading(raw)).toEqual({
+      value: { kind: "bool", value: false },
+      trailing: "some message",
+    });
+  });
+
+  it("yields a null value with empty trailing for whitespace-only input", () => {
+    expect(parseLeading(`   \n  `)).toEqual({
+      value: { kind: "null" },
+      trailing: "",
+    });
+  });
+
+  it("works on non-boolean leading values too", () => {
+    // Generic primitive — also useful for list-returning mutations
+    // that may emit trailing diagnostics.
+    expect(parseLeading(`{1, 2, 3}\nwarning: deprecated`)).toEqual({
+      value: {
+        kind: "list",
+        items: [
+          { kind: "int", value: 1 },
+          { kind: "int", value: 2 },
+          { kind: "int", value: 3 },
+        ],
+      },
+      trailing: "warning: deprecated",
+    });
   });
 });
 

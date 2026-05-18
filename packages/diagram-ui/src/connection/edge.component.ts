@@ -5,9 +5,13 @@ import { Color3, type TransformNode } from "@babylonjs/core";
 import type { Point } from "@modelica-wrapper/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
+import { requestSceneRender } from "../scene/render-scheduler.js";
+import { pointsEqual } from "../interaction/connection-route.js";
 import {
   DEFAULT_EDGE_COLOR,
   buildEdge,
+  rebuildHitTube,
+  updateEdgePoints,
   type EdgeMeshes,
 } from "./edge-build.js";
 
@@ -45,24 +49,72 @@ export class OmEdge extends LitElement {
 
   private meshes: EdgeMeshes | null = null;
   private baseColor: Color3 = DEFAULT_EDGE_COLOR;
+  /**
+   * Last waypoint list actually applied to the LinesMesh. Compared by
+   * content (not reference) so that an OMC-roundtripped layout that
+   * produces a fresh-but-equal `path` array is recognised as a no-op
+   * and skips the dispose/rebuild — see `pointsEqual` for the why.
+   */
+  private builtPath: Point[] | null = null;
 
   override render() {
     return html``;
   }
 
   override updated(changed: Map<string, unknown>): void {
-    // Recreate the geometry if the path or visual options change;
-    // selection is just a colour swap, no rebuild needed.
-    if (
-      changed.has("path") ||
+    // Recreate the geometry on visual-option changes; for path-only
+    // changes prefer an in-place vertex update so a component drag
+    // (which shifts every connected edge's waypoints each pointermove)
+    // doesn't churn the GPU buffers. Selection is a colour swap on the
+    // existing mesh, never a rebuild.
+    const visualChanged =
       changed.has("stroke") ||
       changed.has("clocked") ||
-      changed.has("nodeId") ||
-      !this.meshes
-    ) {
+      changed.has("nodeId");
+    const pathChanged =
+      changed.has("path") && !pointsEqual(this.path, this.builtPath);
+    if (!this.meshes || visualChanged) {
       this.rebuild();
+    } else if (pathChanged) {
+      if (!this.tryUpdateInPlace()) {
+        this.rebuild();
+      }
     }
     this.applySelection();
+  }
+
+  /**
+   * Update the vertex buffer of the existing LinesMesh without
+   * disposing it. Returns `false` when the new path has a different
+   * number of points than the existing mesh was built with — Babylon's
+   * `instance` parameter on `CreateLines` rejects topology changes, so
+   * the caller must fall back to a full rebuild in that case.
+   *
+   * The hit tube (invisible merged mesh) can't be updated this way and
+   * is rebuilt anyway. Because it's invisible the rebuild costs nothing
+   * visually, only a small GPU upload.
+   */
+  private tryUpdateInPlace(): boolean {
+    if (!this.meshes || !this.builtPath || !this.parentTransform) {
+      return false;
+    }
+    if (this.path.length !== this.builtPath.length) {
+      return false;
+    }
+    const scene = this.parentTransform.getScene();
+    updateEdgePoints(scene, this.meshes.line, this.path, this.clocked);
+    const meta = this.meshes.hitArea.metadata;
+    this.meshes.hitArea.dispose(false, true);
+    this.meshes.hitArea = rebuildHitTube(
+      scene,
+      this.parentTransform,
+      `om-edge:${this.nodeId || "anon"}.hit`,
+      this.path,
+    );
+    this.meshes.hitArea.metadata = meta;
+    this.builtPath = this.path;
+    requestSceneRender(scene);
+    return true;
   }
 
   override disconnectedCallback(): void {
@@ -76,6 +128,7 @@ export class OmEdge extends LitElement {
     }
     this.disposeMeshes();
     if (this.path.length < 2) {
+      this.builtPath = null;
       return;
     }
     const scene = this.parentTransform.getScene();
@@ -95,6 +148,7 @@ export class OmEdge extends LitElement {
       this.meshes.line.metadata = meta;
       this.meshes.hitArea.metadata = meta;
     }
+    this.builtPath = this.path;
   }
 
   private applySelection(): void {
@@ -104,6 +158,7 @@ export class OmEdge extends LitElement {
     this.meshes.line.color = this.selected
       ? SELECTED_EDGE_COLOR
       : this.baseColor;
+    requestSceneRender(this.meshes.line.getScene());
   }
 
   private disposeMeshes(): void {
@@ -113,6 +168,7 @@ export class OmEdge extends LitElement {
     this.meshes.line.dispose(false, true);
     this.meshes.hitArea.dispose(false, true);
     this.meshes = null;
+    this.builtPath = null;
   }
 
   /** Test accessors. */

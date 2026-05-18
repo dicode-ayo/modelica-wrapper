@@ -9,9 +9,8 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { SuccessOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
-import { expectBool, parse } from "../../parse.js";
+import { asBool, parseLeading } from "../../parse.js";
 
 export const AddComponentInputSchema = z.object({
   /** Local instance name to give the new component. */
@@ -25,7 +24,29 @@ export const AddComponentInputSchema = z.object({
 });
 export type AddComponentInput = z.input<typeof AddComponentInputSchema>;
 
-export const AddComponentOutputSchema = SuccessOutput;
+/**
+ * `addComponent` returns `Boolean success` per the OMC docs, but real
+ * builds can emit two off-spec failure shapes:
+ *
+ *   1. `false\nError occurred building AST` — bool plus a trailing
+ *      diagnostic line.
+ *   2. `Error: <message>` — no bool at all, the whole response is the
+ *      error prose.
+ *
+ * The wrapper handles both: it captures whatever OMC wrote as
+ * `diagnostic` and reports `success: false` whenever the leading
+ * value isn't a boolean. The canonical error story is still
+ * `getErrorString()`; `diagnostic` is the best-effort hint.
+ */
+export const AddComponentOutputSchema = z.object({
+  success: z.boolean().describe("True if OMC reported the add succeeded."),
+  diagnostic: z
+    .string()
+    .optional()
+    .describe(
+      "OMC text appended after (or in place of) the success bool. Usually a short error message on failure; absent on clean success.",
+    ),
+});
 export type AddComponentOutput = z.infer<typeof AddComponentOutputSchema>;
 
 export const AddComponentDescription = "Insert a new component into a class with an optional Placement annotation.";
@@ -40,9 +61,17 @@ export async function addComponent(
   const raw = await ctx.call(
     `addComponent(${input.componentName}, ${input.componentClass}, ${input.intoTypeName}, ${ann})`,
   );
-  return parseOutput(
-    AddComponentOutputSchema,
-    { success: expectBool(parse(raw)) },
-    "addComponent",
-  );
+  const { value, trailing } = parseLeading(raw);
+  const bool = asBool(value);
+  const output: { success: boolean; diagnostic?: string } =
+    bool === undefined
+      ? // Leading value isn't a bool — OMC returned a raw error
+        // (e.g. `Error: ...`). Surface the whole response so the
+        // caller has something actionable to show in the toast / REPL.
+        { success: false, diagnostic: raw.trim() }
+      : { success: bool };
+  if (bool !== undefined && trailing.length > 0) {
+    output.diagnostic = trailing;
+  }
+  return parseOutput(AddComponentOutputSchema, output, "addComponent");
 }

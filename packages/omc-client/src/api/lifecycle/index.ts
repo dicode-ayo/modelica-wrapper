@@ -18,3 +18,4 @@ export * from "./getSourceFile.js";
 export * from "./setSourceFile.js";
 export * from "./diffModelicaFileListings.js";
 export * from "./save.js";
+export * from "./cd.js";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DiagramLayout } from "@modelica-wrapper/omc-client";
+import type { DiagramLayout, Point } from "@modelica-wrapper/omc-client";
 
 import {
   applyDelete,
@@ -50,6 +50,15 @@ function baseLayout(): DiagramLayout {
   };
 }
 
+/** baseLayout() with the connection's waypoints replaced by `route`. */
+function withRoute(route: Point[]): DiagramLayout {
+  const base = baseLayout();
+  return {
+    ...base,
+    connections: [{ ...base.connections[0]!, waypoints: route }],
+  };
+}
+
 describe("applyDeltaMove", () => {
   it("shifts a component's placement extent", () => {
     const l = applyDeltaMove(baseLayout(), ["c:R1"], 5, -3);
@@ -90,27 +99,38 @@ describe("applyDeltaMove", () => {
     ]);
   });
 
-  it("drags the rhs endpoint waypoint when its component moves", () => {
-    // baseLayout has connection { lhs: p (host connector), rhs: R1.p }
-    // with waypoints [[0,0], [10,10]]. Moving R1 by (5, -3) shifts the
-    // last waypoint by (5, -3); the first stays put (lhs is on the
-    // standalone connector p, which didn't move).
+  it("re-routes orthogonally when the rhs endpoint's component moves", () => {
+    // baseLayout has connection { lhs: p, rhs: R1.p } with waypoints
+    // [[0,0], [10,10]]. Moving R1 by (5, -3) shifts the rhs to (15, 7).
+    // The lhs stays at (0, 0). dx=15 > dy=7 → horizontal-first Z-route
+    // through midX = 7.5. The old behaviour (just shifting the last
+    // waypoint) left a diagonal kink; the new behaviour keeps every
+    // segment axis-aligned.
     const l = applyDeltaMove(baseLayout(), ["c:R1"], 5, -3);
     expect(l.connections[0]!.waypoints).toEqual([
       [0, 0],
+      [7.5, 0],
+      [7.5, 7],
       [15, 7],
     ]);
   });
 
-  it("drags the lhs endpoint waypoint when its standalone connector moves", () => {
+  it("re-routes orthogonally when the lhs endpoint's connector moves", () => {
+    // lhs (0,0) → (4,2); rhs stays at (10,10). dx=6, dy=8 → vertical-
+    // first Z-route through midY = 6.
     const l = applyDeltaMove(baseLayout(), ["k:p"], 4, 2);
     expect(l.connections[0]!.waypoints).toEqual([
       [4, 2],
+      [4, 6],
+      [10, 6],
       [10, 10],
     ]);
   });
 
-  it("drags both endpoints when both entities move", () => {
+  it("translates the route verbatim when both endpoints move together", () => {
+    // Both endpoints shift by the same (dx, dy) → the existing route
+    // is preserved (including any junctions); orthogonality follows
+    // because every waypoint shifted uniformly.
     const l = applyDeltaMove(baseLayout(), ["k:p", "c:R1"], 1, 1);
     expect(l.connections[0]!.waypoints).toEqual([
       [1, 1],
@@ -123,6 +143,84 @@ describe("applyDeltaMove", () => {
     // Move only C1, which is not on either endpoint of the connection.
     const l = applyDeltaMove(base, ["c:C1"], 7, 7);
     expect(l.connections[0]!.waypoints).toBe(base.connections[0]!.waypoints);
+  });
+
+  it("junction drag on a Z-route slides the adjacent V segment", () => {
+    // 4-point Z route. waypoint[1] is the first elbow; the segment
+    // before it is horizontal (endpoint-adjacent), the segment after
+    // it is vertical (internal). Dragging it by (3, 2) → dy clamps to
+    // 0 (would tilt segment 0-1), dx=3 slides both elbow waypoints.
+    const base = withRoute([
+      [0, 0],
+      [5, 0],
+      [5, 10],
+      [10, 10],
+    ]);
+    const l = applyDeltaMove(base, ["junc:0/1"], 3, 2);
+    expect(l.connections[0]!.waypoints).toEqual([
+      [0, 0],
+      [8, 0],
+      [8, 10],
+      [10, 10],
+    ]);
+  });
+
+  it("junction drag on a Z-route slides the adjacent V segment via the second elbow", () => {
+    // Drag waypoint[2] of the Z: segment 1-2 is V (internal, x=5),
+    // segment 2-3 is H (endpoint-adjacent, y=10). dy is clamped to
+    // 0 by the H-to-endpoint segment; dx propagates back to
+    // waypoint[1] so both elbows slide together along x.
+    const base = withRoute([
+      [0, 0],
+      [5, 0],
+      [5, 10],
+      [10, 10],
+    ]);
+    const l = applyDeltaMove(base, ["junc:0/2"], 4, 3);
+    expect(l.connections[0]!.waypoints).toEqual([
+      [0, 0],
+      [9, 0],
+      [9, 10],
+      [10, 10],
+    ]);
+  });
+
+  it("junction drag on a degenerate L-route is fully clamped", () => {
+    // 3-point L. Both adjacent segments are endpoint-adjacent, so
+    // both axes are clamped — the elbow can't move without breaking
+    // orthogonality. The user needs to add waypoints first.
+    const base = withRoute([
+      [0, 0],
+      [5, 0],
+      [5, 10],
+    ]);
+    const l = applyDeltaMove(base, ["junc:0/1"], 4, 3);
+    expect(l.connections[0]!.waypoints).toEqual([
+      [0, 0],
+      [5, 0],
+      [5, 10],
+    ]);
+  });
+
+  it("junction drag in the middle of a longer route propagates both ways", () => {
+    // 5-point route with all-internal junctions[1,2,3]. Dragging
+    // waypoint[2] (between two V/H elbows) propagates dx to waypoint[1]
+    // (V segment 1-2) and dy to waypoint[3] (H segment 2-3).
+    const base = withRoute([
+      [0, 0],
+      [10, 0],
+      [10, 10],
+      [20, 10],
+      [20, 20],
+    ]);
+    const l = applyDeltaMove(base, ["junc:0/2"], 3, 4);
+    expect(l.connections[0]!.waypoints).toEqual([
+      [0, 0],
+      [13, 0],
+      [13, 14],
+      [20, 14],
+      [20, 20],
+    ]);
   });
 });
 

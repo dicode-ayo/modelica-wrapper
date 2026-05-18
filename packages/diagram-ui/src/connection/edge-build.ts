@@ -66,6 +66,11 @@ export function buildEdge(
   }
   const z = options.zOffset ?? EDGE_Z_OFFSET;
   const points = options.points.map(([x, y]) => new Vector3(x, y, z));
+  // `updatable: true` lets `updateEdgePoints` rewrite the vertex
+  // buffer in place via the `instance` parameter on subsequent
+  // `CreateLines` calls. The cost (a slightly larger GPU buffer
+  // allocation) is negligible compared to disposing + recreating the
+  // mesh on every pointermove of a component drag.
   const line = options.clocked
     ? CreateDashedLines(
         name,
@@ -74,11 +79,11 @@ export function buildEdge(
           dashNb: DEFAULT_DASH_COUNT,
           dashSize: DEFAULT_DASH_SIZE,
           gapSize: DEFAULT_DASH_GAP,
-          updatable: false,
+          updatable: true,
         },
         scene,
       )
-    : CreateLines(name, { points, updatable: false }, scene);
+    : CreateLines(name, { points, updatable: true }, scene);
   line.color = options.color ?? DEFAULT_EDGE_COLOR;
   if (parent) {
     line.parent = parent;
@@ -94,6 +99,66 @@ export function buildEdge(
     hitArea.parent = parent;
   }
   return { line, hitArea };
+}
+
+/**
+ * In-place vertex update for the visible LinesMesh. Callers MUST
+ * already have verified that the new point count matches the mesh's
+ * original — Babylon's `instance` parameter accepts position updates
+ * but not topology changes (see the docstrings on `CreateLines` /
+ * `CreateDashedLines`). The hit tube is a merged mesh and can't be
+ * updated this way; the caller rebuilds it separately if needed.
+ */
+export function updateEdgePoints(
+  scene: Scene,
+  line: LinesMesh,
+  newPoints: Point[],
+  clocked: boolean,
+  zOffset: number = EDGE_Z_OFFSET,
+): void {
+  const points = newPoints.map(([x, y]) => new Vector3(x, y, zOffset));
+  if (clocked) {
+    CreateDashedLines(
+      line.name,
+      {
+        points,
+        dashNb: DEFAULT_DASH_COUNT,
+        dashSize: DEFAULT_DASH_SIZE,
+        gapSize: DEFAULT_DASH_GAP,
+        updatable: true,
+        instance: line,
+      },
+      scene,
+    );
+  } else {
+    CreateLines(
+      line.name,
+      { points, updatable: true, instance: line },
+      scene,
+    );
+  }
+}
+
+/**
+ * Rebuild the picking-hit tube against a new point set. Exported so
+ * `OmEdge` can refresh just the hit geometry after an in-place line
+ * update — the visible mesh stays alive, only the invisible tube is
+ * recycled.
+ */
+export function rebuildHitTube(
+  scene: Scene,
+  parent: TransformNode | null,
+  name: string,
+  newPoints: Point[],
+  hitRadius: number = DEFAULT_HIT_RADIUS,
+  zOffset: number = EDGE_Z_OFFSET,
+): Mesh {
+  const points = newPoints.map(([x, y]) => new Vector3(x, y, zOffset));
+  const hitArea = buildHitTube(scene, name, points, hitRadius);
+  if (parent) {
+    hitArea.parent = parent;
+  }
+  return hitArea;
 }
 
 /**

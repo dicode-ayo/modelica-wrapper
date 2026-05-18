@@ -7,6 +7,7 @@ import { expressionToString } from "@modelica-wrapper/diagram-svg";
 import type { Expression } from "@modelica-wrapper/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
+import { requestSceneRender } from "../scene/render-scheduler.js";
 import { ensureLabelTexture } from "./label-texture.js";
 
 /**
@@ -109,6 +110,7 @@ export class OmLabel extends LitElement {
       this.textBlock.color = this.color;
       this.textBlock.rotation = (this.rotation * Math.PI) / 180;
     }
+    requestSceneRender(this.anchor.getScene());
   }
 
   /** Returns the current text — useful for headless tests where the

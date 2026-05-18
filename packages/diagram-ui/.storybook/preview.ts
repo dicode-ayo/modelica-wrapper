@@ -1,5 +1,9 @@
 import type { Preview } from "@storybook/web-components";
 
+// Boot Web Awesome's theme + the vscode-token bridge once per page so
+// every story can use `<wa-*>` components with native-feeling chrome.
+import "../src/base/webawesome-setup.js";
+
 /**
  * Minimal global preview config:
  *  - Inject a CSS reset so the Babylon canvas fills its story container

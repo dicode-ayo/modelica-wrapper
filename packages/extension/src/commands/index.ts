@@ -13,6 +13,7 @@ import { registerLibraryCommands } from "./library.js";
 import { registerLiveCheck } from "./live-check.js";
 import { registerOmcCommands } from "./omc.js";
 import { registerPackageCommands } from "./package.js";
+import { registerReplCommands } from "./repl.js";
 import { registerTreeCommands } from "./tree.js";
 
 import type { CommandContext } from "./context.js";
@@ -27,6 +28,7 @@ export function registerCommands(ctx: CommandContext): vscode.Disposable[] {
     ...registerClassCommands(ctx),
     ...registerPackageCommands(ctx),
     ...registerDiagramCommands(ctx),
+    ...registerReplCommands(ctx),
     registerCheckModelCommand(ctx),
     registerLiveCheck(ctx),
   ];

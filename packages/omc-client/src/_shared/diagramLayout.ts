@@ -163,6 +163,23 @@ export interface PortDef {
   iconLayers: IconLayer[];
   /** Class that DECLARED this port — host class name, or an ancestor in its extends chain. */
   from: string;
+  /**
+   * Causality + flow prefixes lifted from `ComponentElement.prefixes`.
+   * Carried on the port so client-side compatibility checks (input ↔
+   * output, flow ↔ flow) can run without an extra OMC round-trip per
+   * connector.
+   *
+   *   - `direction`  — `"input"`, `"output"`, or `""` for acausal.
+   *                    For directional connector types like
+   *                    `RealInput`/`RealOutput` the direction is baked
+   *                    into the type and the per-component prefix may
+   *                    be empty — consumers should check both.
+   *   - `flow`       — flow variable connector (Modelica §9.1).
+   *   - `stream`     — stream variable connector (Modelica §15).
+   */
+  direction?: "input" | "output" | "" | undefined;
+  flow?: boolean | undefined;
+  stream?: boolean | undefined;
   source?: SourceLocation | undefined;
 }
 

@@ -10,7 +10,8 @@ import {
 } from "@babylonjs/core";
 
 import { applyPlacement, type AppliedTransform } from "./placement-math.js";
-import { ResizeHandles, ensureHighlightLayer } from "./selection-overlay.js";
+import { ResizeHandles, setMeshHighlight } from "./selection-overlay.js";
+import { requestSceneRender } from "../scene/render-scheduler.js";
 import type {
   CoordinateSystem,
   Placement,
@@ -136,6 +137,7 @@ export class OmShapeNode {
     this.currentIconCx = t.meshLocal.x;
     this.currentIconCy = t.meshLocal.y;
     this.mesh.position.set(t.meshLocal.x, t.meshLocal.y, 0);
+    requestSceneRender(this.scene);
     return t;
   }
 
@@ -169,6 +171,7 @@ export class OmShapeNode {
     } else {
       this.material.emissiveColor.copyFrom(MISSING_TEXTURE_COLOR);
     }
+    requestSceneRender(this.scene);
   }
 
   /**
@@ -194,6 +197,7 @@ export class OmShapeNode {
   setInCanvasVisible(visible: boolean): void {
     this.material.alpha = visible ? 1 : 0;
     this.material.transparencyMode = Material.MATERIAL_ALPHABLEND;
+    requestSceneRender(this.scene);
   }
 
   setSelected(selected: boolean): void {
@@ -202,15 +206,10 @@ export class OmShapeNode {
     }
     this.selected = selected;
 
-    // Highlight outline (no-op under NullEngine).
-    const layer = ensureHighlightLayer(this.scene);
-    if (layer) {
-      if (selected) {
-        layer.addMesh(this.mesh, HIGHLIGHT_COLOR);
-      } else {
-        layer.removeMesh(this.mesh);
-      }
-    }
+    // Highlight outline (no-op under NullEngine). `setMeshHighlight`
+    // creates the HighlightLayer lazily on the first add and disposes
+    // it when the last mesh is removed.
+    setMeshHighlight(this.scene, this.mesh, selected ? HIGHLIGHT_COLOR : null);
 
     // Resize handles.
     if (selected) {
@@ -227,11 +226,20 @@ export class OmShapeNode {
     return this.selected;
   }
 
+  /**
+   * Resize the corner handles to a constant screen-pixel size. Call
+   * when the camera's zoom or canvas aspect changes — `OmShapeElement`
+   * does this from its view-state subscription. No-op when handles are
+   * not currently visible.
+   */
+  rescaleResizeHandles(): void {
+    this.resizeHandles?.rescale();
+  }
+
   dispose(): void {
     // Remove from HighlightLayer first while the mesh is still alive.
-    const layer = ensureHighlightLayer(this.scene);
-    if (layer && this.selected) {
-      layer.removeMesh(this.mesh);
+    if (this.selected) {
+      setMeshHighlight(this.scene, this.mesh, null);
     }
     this.resizeHandles?.dispose();
     this.resizeHandles = null;

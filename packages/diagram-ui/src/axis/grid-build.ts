@@ -89,9 +89,11 @@ export const DEFAULT_GRID_OPTIONS: GridOptions = {
 
 export const GRID_Z = 0.05;
 export const EXTENT_RECT_Z = 0.1;
-// Border lines paint slightly in front of the fill (camera at -Z means
-// smaller z is closer) so they don't get z-fought by the fill plane.
-export const EXTENT_BORDER_Z = 0.099;
+// Border lines paint in front of the fill (camera at -Z means smaller
+// z is closer). Keep the gap wide enough to clear one depth-buffer bin
+// at the default ortho near/far (1, 10000) — `0.001` was right on the
+// edge and z-fought under camera motion.
+export const EXTENT_BORDER_Z = 0.09;
 
 const DEFAULT_EXTENT_RECT_COLOR = new Color3(1, 1, 1);
 const DEFAULT_EXTENT_BORDER_COLOR = new Color3(0.45, 0.45, 0.55);

@@ -1,8 +1,9 @@
 import * as vscode from "vscode";
-import type { DiagramLayout } from "@modelica-wrapper/omc-client";
+import type { DiagramLayout, JsonSchema } from "@modelica-wrapper/omc-client";
 
 import type {
   ExtensionToWebview,
+  LibraryClassInfo,
   WebviewToExtension,
 } from "../webview/protocol.js";
 
@@ -17,8 +18,63 @@ import type {
 
 export interface DiagramPanelHandlers {
   onChange?: (layout: DiagramLayout) => void;
-  onConnectionCreate?: (fromKey: string, toKey: string) => void;
+  onConnectionCreate?: (
+    fromKey: string,
+    toKey: string,
+    waypoints: ReadonlyArray<readonly [number, number]>,
+  ) => void;
   onSelectionChange?: (keys: string[]) => void;
+  /** Floating action panel — Check button. */
+  onActionCheck?: () => void;
+  /** Floating action panel — Simulate button. */
+  onActionSimulate?: () => void;
+  /** Floating action panel — Parameters button. */
+  onActionParameters?: () => void;
+  /** Parameter modal submitted; `kind` is whatever was passed to `openParameters`. */
+  onParametersSubmit?: (kind: string, values: Record<string, unknown>) => void;
+  /** Parameter modal dismissed without submit. */
+  onParametersCancel?: (kind: string) => void;
+  /** User double-clicked a sub-component on the diagram. */
+  onEditComponent?: (componentName: string) => void;
+  /**
+   * Library-browser request: enumerate child classes of `parent`
+   * (null for top-level loaded packages). Return promises resolve into
+   * a `libraryChildren` reply; rejections become `{ error: msg }`.
+   */
+  onLibraryListChildren?: (
+    parent: string | null,
+  ) => Promise<LibraryClassInfo[]>;
+  /** Library-browser request: substring search of loaded class names. */
+  onLibrarySearch?: (query: string) => Promise<LibraryClassInfo[]>;
+  /**
+   * User picked a class in the library browser. `position` is the
+   * current view-centre in diagram coordinates — the host turns it
+   * into a Placement annotation for `addComponent`.
+   */
+  onAddComponent?: (
+    className: string,
+    position: { x: number; y: number },
+  ) => void;
+}
+
+export interface OpenParametersOptions {
+  /** Opaque tag echoed back on submit/cancel so the host can route. */
+  kind: string;
+  /** JSON Schema 2020-12 describing the form (object schema). */
+  schema: JsonSchema;
+  /** Initial field values keyed by property name. */
+  values: Record<string, unknown>;
+  /** Modal title shown at the top of the form. */
+  title: string;
+  /** Submit-button label; defaults to "Apply" on the form side. */
+  submitLabel?: string;
+  /**
+   * Cref-prefix the form's Dialog.enable evaluator should strip before
+   * looking up values — pass the sub-component name for
+   * `kind: "componentParams"` so `PI.controllerType` resolves against
+   * the form's `controllerType` working value.
+   */
+  crefPrefix?: string;
 }
 
 export class DiagramPanel {
@@ -101,6 +157,29 @@ export class DiagramPanel {
     this.send({ type: "layout", layout });
   }
 
+  /** Tell the webview to open its parameter modal with this schema. */
+  openParameters(opts: OpenParametersOptions): void {
+    const msg: ExtensionToWebview = {
+      type: "parametersOpen",
+      kind: opts.kind,
+      schema: opts.schema,
+      values: opts.values,
+      title: opts.title,
+    };
+    if (opts.submitLabel !== undefined) {
+      msg.submitLabel = opts.submitLabel;
+    }
+    if (opts.crefPrefix !== undefined) {
+      msg.crefPrefix = opts.crefPrefix;
+    }
+    this.send(msg);
+  }
+
+  /** Tell the webview to dismiss the parameter modal. */
+  closeParameters(): void {
+    this.send({ type: "parametersClose" });
+  }
+
   dispose(): void {
     DiagramPanel.panels.delete(this.className);
     if (DiagramPanel.activePanel === this) {
@@ -136,10 +215,53 @@ export class DiagramPanel {
         this.handlers.onChange?.(message.layout);
         return;
       case "connectionCreate":
-        this.handlers.onConnectionCreate?.(message.fromKey, message.toKey);
+        this.handlers.onConnectionCreate?.(
+          message.fromKey,
+          message.toKey,
+          message.waypoints,
+        );
         return;
       case "selectionChange":
         this.handlers.onSelectionChange?.(message.keys);
+        return;
+      case "actionCheck":
+        this.handlers.onActionCheck?.();
+        return;
+      case "actionSimulate":
+        this.handlers.onActionSimulate?.();
+        return;
+      case "actionParameters":
+        this.handlers.onActionParameters?.();
+        return;
+      case "parametersSubmit":
+        this.handlers.onParametersSubmit?.(message.kind, message.values);
+        return;
+      case "parametersCancel":
+        this.handlers.onParametersCancel?.(message.kind);
+        return;
+      case "addComponent":
+        this.handlers.onAddComponent?.(message.className, message.position);
+        return;
+      case "editComponent":
+        this.handlers.onEditComponent?.(message.componentName);
+        return;
+      case "libraryListChildren":
+        void this.handleLibraryRequest(
+          message.requestId,
+          "libraryChildren",
+          () =>
+            this.handlers.onLibraryListChildren?.(message.parent) ??
+            Promise.resolve([]),
+        );
+        return;
+      case "librarySearch":
+        void this.handleLibraryRequest(
+          message.requestId,
+          "librarySearchResult",
+          () =>
+            this.handlers.onLibrarySearch?.(message.query) ??
+            Promise.resolve([]),
+        );
         return;
       case "error":
         void vscode.window.showWarningMessage(
@@ -149,9 +271,36 @@ export class DiagramPanel {
     }
   }
 
+  /**
+   * Drive a library-browser request: run the provided async fetcher
+   * and post the matching response message with either `items` (on
+   * success) or `error` (on rejection). Errors are surfaced via the
+   * data-source's reject path; the host doesn't pop a toast because
+   * the browser already renders an inline error state.
+   */
+  private async handleLibraryRequest(
+    requestId: string,
+    responseType: "libraryChildren" | "librarySearchResult",
+    fetch: () => Promise<LibraryClassInfo[]>,
+  ): Promise<void> {
+    try {
+      const items = await fetch();
+      this.send({ type: responseType, requestId, items });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.send({ type: responseType, requestId, error: msg });
+    }
+  }
+
   private renderHtml(): string {
     const scriptUri = this.panel.webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, "out", "webview.js"),
+    );
+    // esbuild collects every `import "*.css"` in the webview bundle
+    // (Web Awesome's theme + our vscode bridge) into a sibling
+    // `webview.css`. We <link> to it via the webview's cspSource.
+    const stylesUri = this.panel.webview.asWebviewUri(
+      vscode.Uri.joinPath(this.extensionUri, "out", "webview.css"),
     );
     const nonce = randomNonce();
     const csp = [
@@ -167,12 +316,13 @@ export class DiagramPanel {
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="${csp}" />
     <title>Modelica diagram: ${this.escapeHtml(this.className)}</title>
+    <link rel="stylesheet" href="${stylesUri}" />
     <style>
-      html, body { margin: 0; height: 100%; background: #f7f7f8; }
-      om-graphical-layout { width: 100%; height: 100%; display: block; }
+      html, body { margin: 0; height: 100%; background: #f7f7f8; overflow: hidden; }
     </style>
   </head>
   <body>
+    <om-webview-root></om-webview-root>
     <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
   </body>
 </html>`;
