@@ -145,10 +145,10 @@ describe("renderIconLayersToSvg", () => {
     expect(svg).toContain('stroke="rgb(255,0,0)"');
     expect(svg).toContain('fill="none"');
     expect(svg).toContain('stroke-dasharray="8 4"');
-    // Explicit `thickness: 2` × default `lineThicknessScale: 4` = 8.
+    // Explicit `thickness: 2` × default `lineThicknessScale: 10` = 20.
     // The scale applies uniformly to spec-default AND explicit values
     // so the relative weight of one shape vs another stays intact.
-    expect(svg).toContain('stroke-width="8"');
+    expect(svg).toContain('stroke-width="20"');
   });
 
   it("lineThicknessScale: 1 renders strokes at the raw annotation values", () => {
@@ -171,11 +171,11 @@ describe("renderIconLayersToSvg", () => {
     expect(svg).toContain('stroke-width="2"');
   });
 
-  it("uses the bumped spec-default (1.25 × 4 = 5) when thickness is omitted", () => {
+  it("uses the bumped spec-default (1.25 × 10 = 12.5) when thickness is omitted", () => {
     // SPEC_DEFAULT_THICKNESS = 0.25 × 5 (lifted from the literal
     // Modelica default so unspecified strokes stay legible at typical
-    // zoom). DEFAULT_LINE_THICKNESS_SCALE = 4 then multiplies it. The
-    // multiplier also applies to explicit annotation values.
+    // zoom). DEFAULT_LINE_THICKNESS_SCALE = 10 then multiplies it.
+    // The multiplier also applies to explicit annotation values.
     const svg = renderIconLayersToSvg([
       makeLayer("Test.Wire", [
         {
@@ -188,7 +188,7 @@ describe("renderIconLayersToSvg", () => {
         },
       ]),
     ]);
-    expect(svg).toContain('stroke-width="5"');
+    expect(svg).toContain('stroke-width="12.5"');
   });
 
   it("renders a text shape using the literal textString", () => {

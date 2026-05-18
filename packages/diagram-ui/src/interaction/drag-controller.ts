@@ -150,6 +150,22 @@ export class DragController {
     this.canvas.removeEventListener("pointercancel", this.onPointerUp);
   }
 
+  /**
+   * True from the moment a drag-committed `pointerdown` lands (move /
+   * resize / connection / rubber-band) until `pointerup` releases.
+   *
+   * Important: this flips earlier than the host's interaction-state
+   * machine, which only transitions to `"moving"` / etc. after the
+   * first `drag` event is emitted. The `InteractionManager`'s
+   * `pointermove` listener is registered before ours, so its hover
+   * emit races ahead of our state transition on the first move of a
+   * drag — host code that wants to suppress hover side-effects during
+   * a drag must gate on this flag, not on the interaction-store state.
+   */
+  get isActive(): boolean {
+    return this.state !== null;
+  }
+
   private readonly onPointerDown = (e: PointerEvent): void => {
     if (e.button !== 0 || e.shiftKey) {
       // primary + no shift: shift+primary is the pan modifier (see PanZoom).

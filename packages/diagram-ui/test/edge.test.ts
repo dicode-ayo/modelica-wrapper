@@ -138,7 +138,11 @@ describe("<om-edge>", () => {
     expect(original!.line.isDisposed()).toBe(false);
   });
 
-  it("rebuilds the mesh when the path content actually changes", async () => {
+  it("updates the line mesh in place when only point positions change", async () => {
+    // Per-pointermove path shifts during a component drag must NOT
+    // dispose + recreate the LinesMesh — that's the GPU-buffer churn
+    // we want to avoid. The line should stay alive and its vertex
+    // buffer should reflect the new positions.
     const scene = document.createElement("om-scene") as OmScene;
     scene.engineFactory = () =>
       new NullEngine({
@@ -159,16 +163,56 @@ describe("<om-edge>", () => {
     ];
     scene.appendChild(edge);
     await edge.updateComplete;
-    const original = edge.edgeMesh;
-    expect(original).not.toBeNull();
+    const originalLine = edge.edgeMesh!.line;
 
     edge.path = [
       [0, 0],
       [60, 0],
     ];
     await edge.updateComplete;
-    expect(edge.edgeMesh).not.toBe(original);
-    expect(original!.line.isDisposed()).toBe(true);
+    expect(edge.edgeMesh!.line).toBe(originalLine);
+    expect(originalLine.isDisposed()).toBe(false);
+    const positions = originalLine.getVerticesData("position");
+    expect(positions).not.toBeNull();
+    // CreateLines lays out vertices as [x, y, z, x, y, z, …]. The
+    // second vertex's x should reflect the new endpoint (60).
+    expect(positions![3]).toBeCloseTo(60);
+  });
+
+  it("rebuilds the mesh when the point count changes", async () => {
+    // Babylon's `instance` parameter rejects topology changes, so a
+    // path that adds or drops waypoints must fall back to a full
+    // dispose + recreate.
+    const scene = document.createElement("om-scene") as OmScene;
+    scene.engineFactory = () =>
+      new NullEngine({
+        renderWidth: 200,
+        renderHeight: 200,
+        textureSize: 128,
+        deterministicLockstep: false,
+        lockstepMaxSteps: 1,
+      });
+    document.body.appendChild(scene);
+    teardowns.push(() => scene.remove());
+    await scene.updateComplete;
+
+    const edge = document.createElement("om-edge") as OmEdge;
+    edge.path = [
+      [0, 0],
+      [50, 0],
+    ];
+    scene.appendChild(edge);
+    await edge.updateComplete;
+    const originalLine = edge.edgeMesh!.line;
+
+    edge.path = [
+      [0, 0],
+      [50, 0],
+      [50, 30],
+    ];
+    await edge.updateComplete;
+    expect(edge.edgeMesh!.line).not.toBe(originalLine);
+    expect(originalLine.isDisposed()).toBe(true);
   });
 
   it("disposes the mesh on disconnect", async () => {

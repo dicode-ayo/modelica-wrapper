@@ -498,14 +498,15 @@ export class OmGraphicalLayout extends LitElement {
     >
       ${cls
         ? Object.entries(cls.connectors).map(
-            ([pid, port]) => html`<om-connector
-              .nodeId=${pid}
-              .placement=${port.placement}
-              .layers=${port.iconLayers}
-              .coordinateSystem=${cls.coordinateSystem ?? undefined}
-              .lineThicknessScale=${this.lineThicknessScale}
-              ?readonly=${this.readonly}
-            ></om-connector>`,
+            ([pid, port]) =>
+              html`<om-connector
+                .nodeId=${pid}
+                .placement=${port.placement}
+                .layers=${port.iconLayers}
+                .coordinateSystem=${cls.coordinateSystem ?? undefined}
+                .lineThicknessScale=${this.lineThicknessScale}
+                ?readonly=${this.readonly}
+              ></om-connector>`,
           )
         : nothing}
     </om-component>`;
@@ -658,7 +659,7 @@ export class OmGraphicalLayout extends LitElement {
     const parsedHover = this.hoverKey ? parseKey(this.hoverKey) : null;
     if (parsedHover && isComponentKey(parsedHover)) {
       addAllPortsOfComponent(parsedHover.nodeId);
-    } else if (parsedHover && this.hoverKey) {
+    } else if (parsedHover && isConnectorKey(parsedHover) && this.hoverKey) {
       addByConnectorKey(this.hoverKey);
     }
     const ip = this.inProgressConnection;
@@ -688,6 +689,10 @@ export class OmGraphicalLayout extends LitElement {
         conn.setHovered(want, variant);
       }
     }
+    // Junction discs are now self-managed: `<om-connection>` subscribes
+    // to `interactionStateContext` and reacts to `hoverKey` changes
+    // directly, so we don't walk them here. See
+    // `connection.component.ts > resubscribeInteractionState`.
   }
 
   private attachManagers(): void {
@@ -701,8 +706,10 @@ export class OmGraphicalLayout extends LitElement {
       return;
     }
     const picker = defaultPicker(ctx.scene, canvas);
-    this.interactionManager = new InteractionManager(canvas, picker, (type, detail) =>
-      this.onInteraction(type, detail),
+    this.interactionManager = new InteractionManager(
+      canvas,
+      picker,
+      (type, detail) => this.onInteraction(type, detail),
     );
     this.dragController = new DragController(
       canvas,
@@ -725,7 +732,10 @@ export class OmGraphicalLayout extends LitElement {
     this.interactionManager = null;
     this.dragController = null;
     if (this.dblClickCanvas) {
-      this.dblClickCanvas.removeEventListener("dblclick", this.onCanvasDblClick);
+      this.dblClickCanvas.removeEventListener(
+        "dblclick",
+        this.onCanvasDblClick,
+      );
       this.dblClickCanvas = null;
     }
     this.dblClickPicker = null;
@@ -796,21 +806,26 @@ export class OmGraphicalLayout extends LitElement {
           return;
         }
         this.hoverKey = d.key;
-        // While a non-connection drag is in progress (move / resize /
-        // rubber-band), the cursor sweeps over arbitrary entities as
-        // it tracks the dragged geometry. Without this gate, every
-        // pointermove would flip port indicators + hover outlines on
-        // the connectors the pointer happens to cross — reading on
-        // screen as flicker. Connection drags are deliberately
-        // excluded because their hover IS the snap-target signal.
-        // We still update `hoverKey` so `endInteraction()` can hand a
-        // fresh value to the state machine when the drag releases.
+        // Drag-active gate: suppress port-indicator + outline refresh
+        // while any pointer drag is in flight (move / resize /
+        // rubber-band / connection-pending). Without this, every
+        // pointermove during a drag would flash dots and outlines on
+        // the connectors the cursor sweeps over — visible flicker.
+        //
+        // We read `dragController.isActive`, NOT
+        // `interactionStore.state.kind`, because the InteractionManager's
+        // pointermove listener is registered before DragController's
+        // and so its hover emit races ahead of the state-machine
+        // transition on the FIRST move of a drag. `isActive` flips on
+        // pointerdown, which is the earlier and correct signal.
+        //
+        // For active connection drags we keep refreshes flowing
+        // (refreshPortIndicators reads `inProgressConnection`, which
+        // is the snap-target signal).
         const stateKind = this.interactionStore.value.state.kind;
-        const inDrag =
-          stateKind === "moving" ||
-          stateKind === "resizing" ||
-          stateKind === "selecting";
-        if (!inDrag) {
+        const dragActive = this.dragController?.isActive ?? false;
+        const suppress = dragActive && stateKind !== "connecting";
+        if (!suppress) {
           this.refreshPortIndicators();
         }
         // Hover state only updates the machine when there's no
@@ -819,9 +834,7 @@ export class OmGraphicalLayout extends LitElement {
         if (stateKind === "idle" || stateKind === "hovering") {
           this.interactionStore.next({
             hoverKey: d.key,
-            state: d.key
-              ? { kind: "hovering", key: d.key }
-              : { kind: "idle" },
+            state: d.key ? { kind: "hovering", key: d.key } : { kind: "idle" },
           });
         } else {
           this.interactionStore.next({ hoverKey: d.key });
@@ -968,9 +981,7 @@ export class OmGraphicalLayout extends LitElement {
           if (d.toKey && (compat === null || compat.ok)) {
             const toPoint = this.connectorDiagramPosition(d.toKey);
             const waypoints =
-              fromPoint && toPoint
-                ? orthogonalRoute(fromPoint, toPoint)
-                : [];
+              fromPoint && toPoint ? orthogonalRoute(fromPoint, toPoint) : [];
             this.emit("om-connection-create", {
               fromKey: d.from,
               toKey: d.toKey,

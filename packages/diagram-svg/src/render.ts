@@ -87,7 +87,7 @@ export interface RenderOptions {
    * Modelica thicknesses are in icon coordinate units; at the
    * canonical `[-100,100]` extent rendered at ~200 CSS pixels they
    * produce hair-thin strokes that disappear on high-density
-   * displays. Default `4` keeps strokes legible at typical zoom
+   * displays. Default `10` keeps strokes legible at typical zoom
    * while still preserving the relative weights modellers intend.
    *
    * Pass `1` to render at the literal annotation thickness.
@@ -95,7 +95,7 @@ export interface RenderOptions {
   lineThicknessScale?: number | undefined;
 }
 
-const DEFAULT_LINE_THICKNESS_SCALE = 4;
+const DEFAULT_LINE_THICKNESS_SCALE = 10;
 /**
  * Fallback stroke width when a shape's annotation omits `thickness` /
  * `lineThickness`. Modelica's spec default is `0.25` icon units, but
