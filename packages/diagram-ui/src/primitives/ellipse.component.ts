@@ -1,0 +1,88 @@
+import { customElement, property } from "lit/decorators.js";
+import type { TransformNode } from "@babylonjs/core";
+import type { EllipseShape } from "@modelica-wrapper/omc-client";
+
+import { OmShapePrimitive } from "./shape-primitive.js";
+import {
+  DEFAULT_LINE_COLOR,
+  STROKE_Z_DELTA,
+  buildFanFromCenter,
+  buildStroke,
+  extentToRect,
+} from "./shape-utils.js";
+
+const ELLIPSE_SEGMENTS = 64;
+
+/**
+ * `<om-ellipse>` — one Modelica `EllipseShape`. Approximates the
+ * ellipse as a 64-segment fan for the fill and a closed polyline for
+ * the stroke. `startAngle` / `endAngle` / `closure` are not yet
+ * honoured — we always emit the full ellipse to match diagram-svg v1.
+ */
+@customElement("om-ellipse")
+export class OmEllipse extends OmShapePrimitive {
+  @property({ attribute: false })
+  shape: EllipseShape | null = null;
+
+  protected override fingerprint(): string {
+    return JSON.stringify(this.shape);
+  }
+
+  protected override buildMeshes(parent: TransformNode, z: number): void {
+    const s = this.shape;
+    if (!s) {
+      return;
+    }
+    const scene = parent.getScene();
+    const { x, y, width, height } = extentToRect(s.extent);
+    if (width <= 0 || height <= 0) {
+      return;
+    }
+    const cx = x + width / 2;
+    const cy = y + height / 2;
+    const rx = width / 2;
+    const ry = height / 2;
+
+    const ring: Array<[number, number]> = [];
+    for (let i = 0; i < ELLIPSE_SEGMENTS; i++) {
+      const t = (i / ELLIPSE_SEGMENTS) * Math.PI * 2;
+      ring.push([cx + Math.cos(t) * rx, cy + Math.sin(t) * ry]);
+    }
+
+    const baseName = `om-ellipse.${this.zOrder}`;
+    if (s.fillPattern !== "None" && s.fillColor) {
+      this.resources.push(
+        buildFanFromCenter(
+          scene,
+          parent,
+          cx,
+          cy,
+          ring,
+          s.fillColor,
+          z,
+          `${baseName}.fill`,
+        ),
+      );
+    }
+
+    const strokePoints = [...ring, ring[0]!];
+    const stroke = buildStroke(
+      scene,
+      parent,
+      strokePoints,
+      s.lineColor ?? DEFAULT_LINE_COLOR,
+      s.pattern,
+      z + STROKE_Z_DELTA,
+      `${baseName}.stroke`,
+    );
+    if (stroke) {
+      this.resources.push(stroke);
+    }
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "om-ellipse": OmEllipse;
+  }
+}

@@ -1,26 +1,38 @@
-import { LitElement, css, html } from "lit";
+import { LitElement, css, html, type TemplateResult } from "lit";
 import { property } from "lit/decorators.js";
 import { ContextProvider, consume } from "@lit/context";
 import type {
   CoordinateSystem,
   IconLayer,
   Placement,
+  Shape,
 } from "@modelica-wrapper/omc-client";
 
 import { parentNodeContext } from "./parent-node-context.js";
 import { OmShapeNode } from "./shape-node.js";
+
+// Side-effect imports register the `<om-*>` primitive custom elements
+// for use from `render()` below. Each component file is import-once
+// safe — they only call `customElements.define(...)` on first load.
+import "../primitives/rectangle.component.js";
+import "../primitives/polygon.component.js";
+import "../primitives/line.component.js";
+import "../primitives/ellipse.component.js";
+import "../primitives/text.component.js";
+import "../primitives/bitmap.component.js";
 
 /**
  * Base class for `<om-component>`, `<om-connector>`, and other shape-
  * carrying entities. Bridges the Lit lifecycle to a Babylon `OmShapeNode`:
  *
  *  - Consumes the parent `TransformNode` from the Lit context.
- *  - Hands `layers` + `coordinateSystem` to `OmShapeNode.setLayers`,
- *    which builds native Babylon meshes per shape (rectangles,
- *    polygons, lines, ellipses, text, bitmaps).
  *  - Provides its own `TransformNode` as the parent context for
- *    children (nested connectors, labels) — children attach in the
- *    entity's local icon coordinate system.
+ *    children (`<om-rectangle>`, `<om-text>`, …, plus nested
+ *    `<om-connector>` / labels) — children attach in the entity's
+ *    local icon coordinate system.
+ *  - Renders each shape in `layers` as a primitive custom element.
+ *    Each primitive owns its own Babylon meshes and lifecycle, so an
+ *    OMC roundtrip on a single shape only rebuilds that shape.
  *
  * Subclasses only need to:
  *   - Pick a `nodeName` for debugging
@@ -73,8 +85,6 @@ export abstract class OmShapeElement extends LitElement {
   });
 
   protected shapeNode: OmShapeNode | null = null;
-  private lastBuiltLayers: IconLayer[] | null = null;
-  private lastBuiltCoordSystem: CoordinateSystem | undefined = undefined;
 
   protected abstract babylonNodeName(): string;
 
@@ -93,8 +103,50 @@ export abstract class OmShapeElement extends LitElement {
     return 0;
   }
 
-  override render() {
-    return html`<slot></slot>`;
+  override render(): TemplateResult {
+    const items: TemplateResult[] = [];
+    let zOrder = 0;
+    for (const layer of this.layers) {
+      for (const shape of layer.shapes) {
+        items.push(this.renderShape(shape, zOrder));
+        zOrder++;
+      }
+    }
+    return html`${items}<slot></slot>`;
+  }
+
+  private renderShape(shape: Shape, zOrder: number): TemplateResult {
+    switch (shape.kind) {
+      case "rectangle":
+        return html`<om-rectangle
+          .shape=${shape}
+          .zOrder=${zOrder}
+        ></om-rectangle>`;
+      case "polygon":
+        return html`<om-polygon
+          .shape=${shape}
+          .zOrder=${zOrder}
+        ></om-polygon>`;
+      case "line":
+        return html`<om-line .shape=${shape} .zOrder=${zOrder}></om-line>`;
+      case "ellipse":
+        return html`<om-ellipse
+          .shape=${shape}
+          .zOrder=${zOrder}
+        ></om-ellipse>`;
+      case "text":
+        return html`<om-text .shape=${shape} .zOrder=${zOrder}></om-text>`;
+      case "bitmap":
+        return html`<om-bitmap
+          .shape=${shape}
+          .zOrder=${zOrder}
+        ></om-bitmap>`;
+      default: {
+        const _exhaustive: never = shape;
+        void _exhaustive;
+        return html``;
+      }
+    }
   }
 
   override updated(_changed: Map<string, unknown>): void {
@@ -106,14 +158,11 @@ export abstract class OmShapeElement extends LitElement {
         this.zOffset(),
       );
       this.shapeNode.setSelected(this.selected);
-      this.refreshLayers();
     }
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
-    this.lastBuiltLayers = null;
-    this.lastBuiltCoordSystem = undefined;
     this.shapeNode?.dispose();
     this.shapeNode = null;
     this.childContextProvider.setValue(null);
@@ -131,27 +180,5 @@ export abstract class OmShapeElement extends LitElement {
     this.shapeNode = new OmShapeNode(scene, parent, this.babylonNodeName());
     this.childContextProvider.setValue(this.shapeNode.transform);
     this.onShapeNodeReady(this.shapeNode);
-  }
-
-  /**
-   * Rebuild the shape meshes only if `layers` / `coordinateSystem`
-   * changed by reference. Identity-based comparison: producers emit
-   * stable references for unchanged layers, so the common case where
-   * only placement changes does not pay for a mesh rebuild.
-   */
-  private refreshLayers(): void {
-    const node = this.shapeNode;
-    if (!node) {
-      return;
-    }
-    if (
-      this.lastBuiltLayers === this.layers &&
-      this.lastBuiltCoordSystem === this.coordinateSystem
-    ) {
-      return;
-    }
-    this.lastBuiltLayers = this.layers;
-    this.lastBuiltCoordSystem = this.coordinateSystem;
-    node.setLayers(this.layers, this.coordinateSystem);
   }
 }

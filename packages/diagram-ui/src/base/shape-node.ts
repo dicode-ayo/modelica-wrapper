@@ -8,15 +8,10 @@ import {
 } from "@babylonjs/core";
 
 import { applyPlacement, type AppliedTransform } from "./placement-math.js";
-import { ResizeHandles, setMeshHighlight } from "./selection-overlay.js";
+import { ResizeHandles, SelectionOutline } from "./selection-overlay.js";
 import { requestSceneRender } from "../scene/render-scheduler.js";
-import {
-  buildShapeMeshes,
-  type ShapeGroup,
-} from "./shape-builder.js";
 import type {
   CoordinateSystem,
-  IconLayer,
   Placement,
 } from "@modelica-wrapper/omc-client";
 
@@ -32,12 +27,12 @@ const HIGHLIGHT_COLOR = new Color3(0.38, 0.6, 0.98);
  *    the picking + highlight target, so picks land on the full
  *    component box and the selection outline traces the extent
  *    regardless of which individual shape was clicked.
- *  - `shapeGroup` — the native Babylon meshes built from `IconLayer[]`
- *    (replaces the SVG-rasterised texture approach). Rebuilt whenever
- *    `setLayers()` is called with a new layer set.
+ *  - The selection outline + resize handles.
  *
- * Children of `transform` see the icon's local coord system, so
- * `<om-connector>` and friends still attach in icon coords as before.
+ * Icon graphics themselves are NOT owned here — the parent
+ * `OmShapeElement` renders one `<om-rectangle>` / `<om-text>` / …
+ * per Modelica shape inside its template, and those primitive
+ * components attach their meshes to this `transform` via Lit context.
  */
 export class OmShapeNode {
   readonly transform: TransformNode;
@@ -48,15 +43,13 @@ export class OmShapeNode {
   private currentIconHeight = 1;
   private currentIconCx = 0;
   private currentIconCy = 0;
-  private shapeGroup: ShapeGroup | null = null;
   private selected = false;
   private resizeHandles: ResizeHandles | null = null;
+  private outline: SelectionOutline | null = null;
   private readonly scene: Scene;
-  private readonly baseName: string;
 
   constructor(scene: Scene, parent: TransformNode, name = "om-shape") {
     this.scene = scene;
-    this.baseName = name;
     this.transform = new TransformNode(name, scene);
     this.transform.parent = parent;
 
@@ -119,32 +112,16 @@ export class OmShapeNode {
     this.currentIconCx = t.meshLocal.x;
     this.currentIconCy = t.meshLocal.y;
     this.mesh.position.set(t.meshLocal.x, t.meshLocal.y, 0);
+    if (this.outline && sizeChanged) {
+      this.outline.resize(
+        this.currentIconWidth,
+        this.currentIconHeight,
+        this.currentIconCx,
+        this.currentIconCy,
+      );
+    }
     requestSceneRender(this.scene);
     return t;
-  }
-
-  /**
-   * Rebuild the shape meshes from the supplied layer list. Replaces
-   * the previous group entirely — no diffing — because icon updates
-   * are rare and the simple path is easier to keep correct.
-   */
-  setLayers(
-    layers: ReadonlyArray<IconLayer>,
-    coordinateSystem: CoordinateSystem | undefined,
-  ): void {
-    this.shapeGroup?.dispose();
-    if (layers.length === 0) {
-      this.shapeGroup = null;
-      return;
-    }
-    this.shapeGroup = buildShapeMeshes(
-      this.scene,
-      this.transform,
-      layers,
-      coordinateSystem,
-      this.baseName,
-    );
-    requestSceneRender(this.scene);
   }
 
   private createHandles(): ResizeHandles {
@@ -164,18 +141,26 @@ export class OmShapeNode {
     }
     this.selected = selected;
 
-    // Highlight outline (no-op under NullEngine). `setMeshHighlight`
-    // creates the HighlightLayer lazily on the first add and disposes
-    // it when the last mesh is removed.
-    setMeshHighlight(this.scene, this.mesh, selected ? HIGHLIGHT_COLOR : null);
-
     if (selected) {
+      if (!this.outline) {
+        this.outline = new SelectionOutline(
+          this.scene,
+          this.transform,
+          this.currentIconWidth,
+          this.currentIconHeight,
+          this.currentIconCx,
+          this.currentIconCy,
+          HIGHLIGHT_COLOR,
+        );
+      }
+      this.outline.setVisible(true);
       if (!this.resizeHandles) {
         this.resizeHandles = this.createHandles();
       }
       this.resizeHandles.setVisible(true);
-    } else if (this.resizeHandles) {
-      this.resizeHandles.setVisible(false);
+    } else {
+      this.outline?.setVisible(false);
+      this.resizeHandles?.setVisible(false);
     }
   }
 
@@ -193,14 +178,10 @@ export class OmShapeNode {
   }
 
   dispose(): void {
-    // Remove from HighlightLayer first while the mesh is still alive.
-    if (this.selected) {
-      setMeshHighlight(this.scene, this.mesh, null);
-    }
+    this.outline?.dispose();
+    this.outline = null;
     this.resizeHandles?.dispose();
     this.resizeHandles = null;
-    this.shapeGroup?.dispose();
-    this.shapeGroup = null;
     this.mesh.dispose();
     this.hitMaterial.dispose();
     this.transform.dispose();
