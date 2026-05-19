@@ -13,11 +13,19 @@ import type { TextShape } from "@modelica-wrapper/omc-client";
 import { OmShapePrimitive } from "./shape-primitive.js";
 import { colorToCss, extentToRect } from "./shape-utils.js";
 
-/** Modelica's "auto-fit" font size 0 → 12 user units (matches diagram-svg). */
-const DEFAULT_FONT_SIZE = 12;
 /** Canvas pixels per icon unit when sizing the DynamicTexture. */
 const TEXT_TEXTURE_PIXELS_PER_UNIT = 4;
 const MIN_TEXT_TEXTURE_EDGE = 32;
+/**
+ * Em-size vs glyph-height fudge: a CSS `font-size: Npx` font has total
+ * cap+descender height ≈ 0.95N, with cap-height ≈ 0.72N. With
+ * `textBaseline = "middle"` we centre the em-box, but the cap usually
+ * extends above the box centre by `0.5 * cap-height ≈ 0.36N`. Pulling
+ * the rendered pixel font down by this factor keeps the glyphs from
+ * clipping the canvas top — at `fontSize == height` the cap would
+ * otherwise overshoot the texture by a few pixels and look chopped.
+ */
+const FONT_FIT_FACTOR = 0.7;
 
 /**
  * `<om-text>` — one Modelica `TextShape`. Backed by a `DynamicTexture`
@@ -50,8 +58,15 @@ export class OmText extends OmShapePrimitive {
       return;
     }
 
+    // Modelica `fontSize == 0` means "auto-fit to extent". Defaulting
+    // to the extent height (in icon units) makes the rendered font
+    // proportional to the box. `diagram-svg` defaults to a hard 12 here,
+    // which works for SVG (the browser handles overflow), but our
+    // texture-on-plane pipeline clips at the canvas edge and stretches
+    // the clipped slice onto the plane — produces a "huge font"
+    // artefact when the extent is shorter than 12 user units.
     const fontSize =
-      s.fontSize && s.fontSize > 0 ? s.fontSize : DEFAULT_FONT_SIZE;
+      s.fontSize && s.fontSize > 0 ? s.fontSize : height;
     const fontFamily =
       s.fontName && s.fontName.length > 0 ? s.fontName : "sans-serif";
 
@@ -76,7 +91,10 @@ export class OmText extends OmShapePrimitive {
     const ctx = texture.getContext() as CanvasRenderingContext2D | null;
     if (ctx) {
       ctx.clearRect(0, 0, texW, texH);
-      const pixelFont = Math.max(8, Math.round((fontSize / height) * texH));
+      const pixelFont = Math.max(
+        8,
+        Math.round((fontSize / height) * texH * FONT_FIT_FACTOR),
+      );
       ctx.font = `${pixelFont}px ${fontFamily}`;
       ctx.fillStyle = colorToCss(s.textColor, "rgb(0,0,0)");
 

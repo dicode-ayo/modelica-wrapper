@@ -40,6 +40,17 @@ export abstract class OmShapePrimitive extends LitElement {
   @property({ type: Number, attribute: "z-order" })
   zOrder = 0;
 
+  /**
+   * Larger-scale z offset added to `zForOrder(zOrder)`. Used by host-
+   * class shapes (rendered directly under `<om-scene>` as background)
+   * to sit safely behind component icons — camera sits at -Z, so a
+   * positive `zBias` pushes the mesh away from the camera. Default
+   * `0` keeps shape-inside-component primitives in the component's
+   * local plane.
+   */
+  @property({ type: Number, attribute: "z-bias" })
+  zBias = 0;
+
   @consume({ context: parentNodeContext, subscribe: true })
   protected parentTransform: TransformNode | null = null;
 
@@ -55,13 +66,13 @@ export abstract class OmShapePrimitive extends LitElement {
     if (!parent) {
       return;
     }
-    const key = `${this.zOrder}|${this.fingerprint()}`;
+    const key = `${this.zOrder}|${this.zBias}|${this.fingerprint()}`;
     if (key === this.lastBuiltKey) {
       return;
     }
     this.lastBuiltKey = key;
     this.tearDownMeshes();
-    this.buildMeshes(parent, zForOrder(this.zOrder));
+    this.buildMeshes(parent, this.zBias + zForOrder(this.zOrder));
     this.requestRender();
   }
 

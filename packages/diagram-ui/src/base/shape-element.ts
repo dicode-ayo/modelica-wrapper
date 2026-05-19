@@ -5,21 +5,11 @@ import type {
   CoordinateSystem,
   IconLayer,
   Placement,
-  Shape,
 } from "@modelica-wrapper/omc-client";
 
 import { parentNodeContext } from "./parent-node-context.js";
 import { OmShapeNode } from "./shape-node.js";
-
-// Side-effect imports register the `<om-*>` primitive custom elements
-// for use from `render()` below. Each component file is import-once
-// safe — they only call `customElements.define(...)` on first load.
-import "../primitives/rectangle.component.js";
-import "../primitives/polygon.component.js";
-import "../primitives/line.component.js";
-import "../primitives/ellipse.component.js";
-import "../primitives/text.component.js";
-import "../primitives/bitmap.component.js";
+import { renderLayers } from "../primitives/render-shape.js";
 
 /**
  * Base class for `<om-component>`, `<om-connector>`, and other shape-
@@ -104,49 +94,7 @@ export abstract class OmShapeElement extends LitElement {
   }
 
   override render(): TemplateResult {
-    const items: TemplateResult[] = [];
-    let zOrder = 0;
-    for (const layer of this.layers) {
-      for (const shape of layer.shapes) {
-        items.push(this.renderShape(shape, zOrder));
-        zOrder++;
-      }
-    }
-    return html`${items}<slot></slot>`;
-  }
-
-  private renderShape(shape: Shape, zOrder: number): TemplateResult {
-    switch (shape.kind) {
-      case "rectangle":
-        return html`<om-rectangle
-          .shape=${shape}
-          .zOrder=${zOrder}
-        ></om-rectangle>`;
-      case "polygon":
-        return html`<om-polygon
-          .shape=${shape}
-          .zOrder=${zOrder}
-        ></om-polygon>`;
-      case "line":
-        return html`<om-line .shape=${shape} .zOrder=${zOrder}></om-line>`;
-      case "ellipse":
-        return html`<om-ellipse
-          .shape=${shape}
-          .zOrder=${zOrder}
-        ></om-ellipse>`;
-      case "text":
-        return html`<om-text .shape=${shape} .zOrder=${zOrder}></om-text>`;
-      case "bitmap":
-        return html`<om-bitmap
-          .shape=${shape}
-          .zOrder=${zOrder}
-        ></om-bitmap>`;
-      default: {
-        const _exhaustive: never = shape;
-        void _exhaustive;
-        return html``;
-      }
-    }
+    return html`${renderLayers(this.layers)}<slot></slot>`;
   }
 
   override updated(_changed: Map<string, unknown>): void {

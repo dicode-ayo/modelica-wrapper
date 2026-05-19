@@ -8,6 +8,7 @@ import type {
   DiagramLayout,
 } from "@modelica-wrapper/omc-client";
 
+import { renderLayers } from "../primitives/render-shape.js";
 import "../scene/scene.component.js";
 import "../axis/grid-axis.component.js";
 import "../component/component.component.js";
@@ -66,6 +67,23 @@ import {
   type SnapGrid,
 } from "../interaction/snap-math.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
+
+/**
+ * World-z offset applied to the host class's own shapes so they sit
+ * behind every component / connector but IN FRONT of the grid's
+ * extent-rectangle (the white drawing-area plane). Stacking, camera
+ * at -Z so larger z = farther:
+ *
+ *   extent-rect  z = +0.10  (white background, drawn by `<om-grid-axis>`)
+ *   grid lines   z = +0.05
+ *   host shapes  z = +0.025 ← us
+ *   components   z =  0.0   (default `OmShapeNode` placement)
+ *
+ * A value at +0.5 (the original guess) put host shapes well behind
+ * the extent-rect — visible in scene.meshes but never painted because
+ * the white plane occluded them on every frame.
+ */
+const HOST_SHAPE_Z_BIAS = 0.025;
 
 interface BBox {
   minX: number;
@@ -308,6 +326,7 @@ export class OmGraphicalLayout extends LitElement {
           .extent=${500}
           .coordinateSystem=${active.coordinateSystem ?? undefined}
         ></om-grid-axis>
+        ${this.renderHostShapes(active)}
         ${repeat(
           componentEntries,
           ([id]) => id,
@@ -502,6 +521,25 @@ export class OmGraphicalLayout extends LitElement {
       ?selected=${this.selectedKeys.has(key)}
       ?readonly=${this.readonly}
     ></om-connector>`;
+  }
+
+  /**
+   * Render the host class's own shapes — the diagram-level visuals it
+   * authored. For a PID controller class, this is typically a labelled
+   * background rectangle plus annotations that frame the sub-component
+   * layout. Sat behind the components with a positive z-bias so the
+   * depth test puts them in the back layer; the camera lives at -Z, so
+   * positive z is away from the viewer.
+   *
+   * `kind` picks the layer set: `"diagram"` shows `diagramLayers`,
+   * `"icon"` shows `iconLayers`. The two are mutually exclusive in
+   * practice — the producer fills the one that matches the requested
+   * view.
+   */
+  private renderHostShapes(layout: DiagramLayout): TemplateResult[] {
+    const layers =
+      layout.kind === "icon" ? layout.iconLayers : layout.diagramLayers;
+    return renderLayers(layers, HOST_SHAPE_Z_BIAS);
   }
 
   private renderInProgressEdge(): TemplateResult | typeof nothing {
