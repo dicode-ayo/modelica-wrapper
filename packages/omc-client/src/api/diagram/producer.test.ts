@@ -730,12 +730,18 @@ describe("produceDiagramLayout: well-formedness", () => {
 
 describe("produceDiagramLayout: conditional gating", () => {
   /**
-   * Build a tiny model with two sub-components (`x`, `y`) and two
-   * standalone connectors (`pIn`, `pOut`), each guarded by a Boolean
-   * cref expression. The OMC interactive RPC stashes those guards on
-   * the `condition` field of each `ComponentElement`.
+   * Synthesize the shape OMC's `getModelInstance` actually emits: every
+   * `if`-predicate has been pre-reduced to a Boolean literal (Modelica
+   * §4.4.5 requires conditions to be parameter-expressible, so OMC can
+   * always evaluate them at instantiation). The two literal shapes we
+   * see live: `condition: false` and `condition: { binding: false }`.
    */
-  function makeGuardedHost(): ModelInstance {
+  function makeGuardedHost(opts: {
+    pIn: boolean | { binding: boolean };
+    pOut: boolean | { binding: boolean };
+    x: boolean | { binding: boolean };
+    y: boolean | { binding: boolean };
+  }): ModelInstance {
     const inst: unknown = {
       $kind: "model",
       name: "Pkg.Guarded",
@@ -756,14 +762,14 @@ describe("produceDiagramLayout: conditional gating", () => {
           name: "pIn",
           type: RealInputClass,
           annotation: placementAnno([[-110, -10], [-90, 10]]),
-          condition: { $kind: "cref", parts: [{ name: "use_in" }] },
+          condition: opts.pIn,
         },
         {
           $kind: "component",
           name: "pOut",
           type: RealOutputClass,
           annotation: placementAnno([[90, -10], [110, 10]]),
-          condition: { $kind: "cref", parts: [{ name: "use_out" }] },
+          condition: opts.pOut,
         },
         {
           $kind: "component",
@@ -771,7 +777,7 @@ describe("produceDiagramLayout: conditional gating", () => {
           type: GainClass,
           modifiers: { k: "1" },
           annotation: placementAnno([[-50, -50], [-30, -30]]),
-          condition: { $kind: "cref", parts: [{ name: "use_x" }] },
+          condition: opts.x,
         },
         {
           $kind: "component",
@@ -779,7 +785,7 @@ describe("produceDiagramLayout: conditional gating", () => {
           type: GainClass,
           modifiers: { k: "2" },
           annotation: placementAnno([[10, -50], [30, -30]]),
-          condition: { $kind: "cref", parts: [{ name: "use_y" }] },
+          condition: opts.y,
         },
       ],
       connections: [],
@@ -787,42 +793,77 @@ describe("produceDiagramLayout: conditional gating", () => {
     return ModelInstanceSchema.parse(inst);
   }
 
-  it("without resolvedParameters everything stays visible", () => {
-    const layout = produceDiagramLayout(makeGuardedHost(), "diagram");
+  it("keeps every element when all predicates reduced to true", () => {
+    const layout = produceDiagramLayout(
+      makeGuardedHost({ pIn: true, pOut: true, x: true, y: true }),
+      "diagram",
+    );
     expect(Object.keys(layout.components).sort()).toEqual(["x", "y"]);
     expect(Object.keys(layout.connectors).sort()).toEqual(["pIn", "pOut"]);
-    expect(layout.resolvedParameters).toBeUndefined();
   });
 
-  it("hides sub-components whose `condition` evaluates to false", () => {
-    const layout = produceDiagramLayout(makeGuardedHost(), "diagram", {
-      use_x: "true",
-      use_y: "false",
-      use_in: "true",
-      use_out: "true",
-    });
+  it("hides sub-components whose `condition` reduced to literal `false`", () => {
+    const layout = produceDiagramLayout(
+      makeGuardedHost({ pIn: true, pOut: true, x: true, y: false }),
+      "diagram",
+    );
     expect(Object.keys(layout.components).sort()).toEqual(["x"]);
     expect(Object.keys(layout.connectors).sort()).toEqual(["pIn", "pOut"]);
   });
 
-  it("hides standalone connectors whose `condition` evaluates to false", () => {
-    const layout = produceDiagramLayout(makeGuardedHost(), "diagram", {
-      use_x: "true",
-      use_y: "true",
-      use_in: "false",
-      use_out: "true",
-    });
+  it("hides standalone connectors whose `condition` reduced to literal `false`", () => {
+    const layout = produceDiagramLayout(
+      makeGuardedHost({ pIn: false, pOut: true, x: true, y: true }),
+      "diagram",
+    );
     expect(Object.keys(layout.connectors).sort()).toEqual(["pOut"]);
   });
 
-  it("echoes resolvedParameters onto the output", () => {
-    const params = { use_x: "true", use_y: "true" };
+  it("handles OMC's `{ binding: bool }` wrapper shape", () => {
+    // OMC sometimes emits the reduced literal wrapped in a `Value`
+    // record: `condition: { binding: false }`. Same outcome as bare.
     const layout = produceDiagramLayout(
-      makeGuardedHost(),
+      makeGuardedHost({
+        pIn: { binding: true },
+        pOut: { binding: false },
+        x: { binding: false },
+        y: { binding: true },
+      }),
+      "diagram",
+    );
+    expect(Object.keys(layout.components).sort()).toEqual(["y"]);
+    expect(Object.keys(layout.connectors).sort()).toEqual(["pIn"]);
+  });
+
+  it("echoes resolvedParameters onto the output (for label substitution)", () => {
+    // The resolvedParameters map is purely a renderer pass-through
+    // now — gating reads the pre-reduced `condition` field directly.
+    // Asserts the echo is still there for the label substitution path.
+    const params = { driveAngle: "1.57", k: "100" };
+    const layout = produceDiagramLayout(
+      makeGuardedHost({ pIn: true, pOut: true, x: true, y: true }),
       "diagram",
       params,
     );
     expect(layout.resolvedParameters).toEqual(params);
+  });
+
+  it("defaults to visible when `condition` is an unreduced shape", () => {
+    // OMC always reduces in practice, but if a future build ships an
+    // unreduced shape (or a caller hand-builds a ModelInstance) we
+    // default to visible — matches the form-side enable fallback.
+    const layout = produceDiagramLayout(
+      // Pass an object that isn't `{ binding: bool }` — the gate
+      // should leave the element visible.
+      makeGuardedHost({
+        pIn: true,
+        pOut: true,
+        x: { binding: "unknown" } as unknown as { binding: boolean },
+        y: true,
+      }),
+      "diagram",
+    );
+    expect(Object.keys(layout.components).sort()).toEqual(["x", "y"]);
   });
 
   it("hides per-instance ports whose type carries a literal `condition: false`", () => {
@@ -896,14 +937,4 @@ describe("produceDiagramLayout: conditional gating", () => {
     expect(inst!.hiddenPorts).toEqual(["support"]);
   });
 
-  it("defaults to visible when a guard's cref isn't in the resolved scope", () => {
-    // `use_y` missing from the map → evaluator can't reduce → wrapper
-    // treats as "visible" (the same way Dialog.enable falls back).
-    const layout = produceDiagramLayout(makeGuardedHost(), "diagram", {
-      use_x: "false",
-      use_in: "true",
-      use_out: "true",
-    });
-    expect(Object.keys(layout.components).sort()).toEqual(["y"]);
-  });
 });

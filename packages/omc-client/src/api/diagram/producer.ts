@@ -23,7 +23,6 @@
 import type {
   ComponentElement,
   ConnectionNode,
-  Expression,
   Modifier,
   ModelInstance,
   RecordValue,
@@ -42,11 +41,6 @@ import type {
   Shape,
   TextShape,
 } from "../../_shared/diagramLayout.js";
-import {
-  evaluateExpression,
-  type EvalScope,
-} from "../../eval/expression-evaluator.js";
-import { instantiatedParametersScope } from "./resolved-parameters.js";
 import { decodeShape } from "./shapes.js";
 import { flattenCref, placementFor } from "./placement.js";
 import {
@@ -61,33 +55,38 @@ import {
 
 /**
  * Decide whether a component or port should appear in the layout given
- * its `condition` field (e.g. `Real x if use_x;` carries the parsed
- * `use_x` Expression here).
+ * its `condition` field. OMC's `getModelInstance` pre-reduces every
+ * conditional predicate against the host's parameter modifiers before
+ * serialization — Modelica spec §4.4.5 requires `if`-conditions to be
+ * parameter-expressible, so OMC can always evaluate them. The two
+ * shapes the interactive RPC actually emits:
  *
- * Returns `true` when:
- *  - `condition` is undefined / null (no gate),
- *  - we have no host scope to evaluate against (preserve today's
- *    "always visible" behaviour for callers that don't pass the
- *    `getInstantiatedParametersAndValues` map),
- *  - or the expression evaluates to anything OTHER than literal `false`.
+ *   `condition: false`              — bare boolean literal
+ *   `condition: { binding: false }` — boolean inside OMC's Value wrapper
  *
- * Returns `false` only on a definitive `false` evaluation — i.e. the
- * gate is closed and OMC's instantiation would elide the element too.
+ * Anything else (undefined, unreduced AST that OMC couldn't fold, an
+ * unexpected shape) defaults to "visible". That preserves the
+ * pre-feature behaviour and matches the form-side Dialog.enable
+ * fallback policy.
+ *
+ * (Previous revisions ran an `evaluateExpression` against a scope built
+ * from `getInstantiatedParametersAndValues`. Probed against OMC 1.26.7:
+ * the AST branch was never reachable from real input — OMC always
+ * reduces. The evaluator stays in the package for the form's
+ * Dialog.enable use, which evaluates against the user's in-progress
+ * working values that OMC doesn't see.)
  */
-function isConditionTrue(
-  condition: unknown,
-  scope: EvalScope | undefined,
-): boolean {
+function isConditionTrue(condition: unknown): boolean {
   if (condition === undefined || condition === null) return true;
   if (typeof condition === "boolean") return condition;
-  if (scope === undefined) return true;
-  // The schema types `condition` as `unknown`; in practice OMC emits the
-  // same Expression AST shape `evaluateExpression` already handles
-  // (`{ $kind: "cref", ... }`, `{ $kind: "binary_op", ... }`, etc.).
-  const result = evaluateExpression(condition as Expression, scope, {
-    fallback: true,
-  });
-  return result !== false;
+  if (
+    typeof condition === "object" &&
+    "binding" in (condition as object) &&
+    typeof (condition as { binding: unknown }).binding === "boolean"
+  ) {
+    return (condition as { binding: boolean }).binding;
+  }
+  return true;
 }
 
 // ---------- parameter extraction ----------
@@ -529,15 +528,6 @@ export function produceDiagramLayout(
   resolvedParameters?: Record<string, string>,
 ): DiagramLayout {
   const registry = new Map<string, ClassDef>();
-  // Build the eval scope ONCE per layout — every component / port that
-  // carries a `condition` field gets evaluated against it. Skipped
-  // entirely (left undefined) when the caller doesn't supply resolved
-  // values, so conditional elements stay visible — preserving the
-  // pre-feature default.
-  const scope =
-    resolvedParameters !== undefined
-      ? instantiatedParametersScope(resolvedParameters)
-      : undefined;
 
   const iconLayers = collectLayers(mi, "icon");
   const diagramLayers = kind === "diagram" ? collectLayers(mi, "diagram") : [];
@@ -546,10 +536,9 @@ export function produceDiagramLayout(
   // Standalone connectors on the host class (and ancestors), inheritance-aware.
   const connectors: Record<string, ConnectorInstance> = {};
   for (const { element } of walkConnectors(mi)) {
-    // Gate first — `if use_x` connectors are elided when the predicate
-    // evaluates false. Without a scope every connector stays (pre-feature
-    // behaviour).
-    if (!isConditionTrue(element.condition, scope)) continue;
+    // Gate first — `if use_x` connectors are elided when OMC's
+    // pre-reduced predicate is the literal `false`.
+    if (!isConditionTrue(element.condition)) continue;
     // Also seed the connector's class into the registry so consumers can
     // look up its own icon via `classes[connector.classRef]`.
     const inst = instanceFromConnector(element, registry);
@@ -566,7 +555,7 @@ export function produceDiagramLayout(
   // are part of the ancestor's icon, NOT host-class instances).
   const components: Record<string, ComponentInstance> = {};
   for (const el of ownSubComponents(mi)) {
-    if (!isConditionTrue(el.condition, scope)) continue;
+    if (!isConditionTrue(el.condition)) continue;
     const inst = instanceFromSubComponent(el, kind === "icon" ? "icon" : "diagram", registry);
     if (inst) components[inst.name] = inst;
   }
@@ -578,7 +567,7 @@ export function produceDiagramLayout(
     if (klass === mi) continue;
     for (const el of ownSubComponents(klass)) {
       if (components[el.name]) continue;
-      if (!isConditionTrue(el.condition, scope)) continue;
+      if (!isConditionTrue(el.condition)) continue;
       const inst = instanceFromSubComponent(el, kind === "icon" ? "icon" : "diagram", registry);
       if (inst) components[inst.name] = inst;
     }

@@ -7,11 +7,7 @@
  * `_shared/modelInstance.ts` before calling `produceDiagramLayout`.
  */
 export { produceDiagramLayout } from "./producer.js";
-export {
-  parseInstantiatedParameters,
-  coerceInstantiatedValue,
-  instantiatedParametersScope,
-} from "./resolved-parameters.js";
+export { parseInstantiatedParameters } from "./resolved-parameters.js";
 export type {
   ClassDef,
   ComponentInstance,
