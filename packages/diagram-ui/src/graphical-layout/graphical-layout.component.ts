@@ -481,7 +481,11 @@ export class OmGraphicalLayout extends LitElement {
   ): TemplateResult {
     const cls = layout.classes[comp.classRef];
     const key = formatComponentKey(id);
-    const substitutions = buildSubstitutions(comp, cls);
+    const substitutions = buildSubstitutions(
+      comp,
+      cls,
+      layout.resolvedParameters,
+    );
     return html`<om-component
       .nodeId=${id}
       .placement=${comp.placement}

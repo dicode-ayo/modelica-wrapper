@@ -80,4 +80,39 @@ describe("buildSubstitutions", () => {
     );
     expect(subs.parameters?.d).toBe("0.5");
   });
+
+  it("layers host-resolved values BETWEEN class defaults and instance modifiers", () => {
+    // Class defaults provide the floor, host-resolved values overlay
+    // (for crefs the host bound externally), instance modifiers win.
+    const subs = buildSubstitutions(
+      makeInstance({ modifiers: { d: "instModOverride" } }),
+      makeClass({
+        c: { name: "c", value: "classDefault" },
+        d: { name: "d", value: "classDefault" },
+        k: { name: "k", value: "classDefault" },
+      }),
+      {
+        // Only entries prefixed with `<instance.name>.` apply — others
+        // are scoped to OTHER instances on the host.
+        "sd1.c": "hostResolved",
+        "sd1.d": "hostResolvedD",
+        "otherInstance.k": "shouldNotLeak",
+      },
+    );
+    expect(subs.parameters?.c).toBe("hostResolved"); // host overlay applied
+    expect(subs.parameters?.d).toBe("instModOverride"); // instance modifier wins
+    expect(subs.parameters?.k).toBe("classDefault"); // host map had no row → unchanged
+  });
+
+  it("only reads keys belonging to this instance (prefix filter)", () => {
+    const subs = buildSubstitutions(
+      makeInstance({ name: "gainA" }),
+      makeClass({ k: { name: "k", value: "1" } }),
+      {
+        "gainA.k": "fromHost",
+        "gainB.k": "differentInstance",
+      },
+    );
+    expect(subs.parameters?.k).toBe("fromHost");
+  });
 });

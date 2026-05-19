@@ -285,6 +285,16 @@ export interface DiagramLayout {
   connectors: Record<string, ConnectorInstance>;
   /** Only connections with `annotation.Line` are emitted here (see producer). */
   connections: ConnectionLayout[];
+  /**
+   * Optional flat `paramName → displayValue` map sourced from
+   * `getInstantiatedParametersAndValues(className)`. When present the
+   * producer uses it to gate conditional components / ports (`Real x if
+   * use_x` etc.), and renderers can overlay it onto label `%`-substitutions
+   * for cross-component cref resolution. Absent on hosts the caller couldn't
+   * instantiate (errors, syntactic-only loads) — gating then defaults to
+   * "visible", which preserves today's behaviour.
+   */
+  resolvedParameters?: Record<string, string> | undefined;
 }
 
 // ---------- Zod schemas ----------
@@ -490,6 +500,7 @@ const DiagramLayoutObject = z
     components: z.record(z.string(), ComponentInstanceSchema),
     connectors: z.record(z.string(), ConnectorInstanceSchema),
     connections: z.array(ConnectionLayoutSchema),
+    resolvedParameters: z.record(z.string(), z.string()).optional(),
   })
   .strict();
 export const DiagramLayoutSchema =

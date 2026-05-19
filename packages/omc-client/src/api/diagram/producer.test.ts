@@ -727,3 +727,112 @@ describe("produceDiagramLayout: well-formedness", () => {
     assertWellFormed(produceDiagramLayout(makeHostModelInstance(), "diagram"));
   });
 });
+
+describe("produceDiagramLayout: conditional gating", () => {
+  /**
+   * Build a tiny model with two sub-components (`x`, `y`) and two
+   * standalone connectors (`pIn`, `pOut`), each guarded by a Boolean
+   * cref expression. The OMC interactive RPC stashes those guards on
+   * the `condition` field of each `ComponentElement`.
+   */
+  function makeGuardedHost(): ModelInstance {
+    const inst: unknown = {
+      $kind: "model",
+      name: "Pkg.Guarded",
+      restriction: "model",
+      annotation: {
+        Icon: {
+          coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+          graphics: [],
+        },
+        Diagram: {
+          coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+          graphics: [],
+        },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "pIn",
+          type: RealInputClass,
+          annotation: placementAnno([[-110, -10], [-90, 10]]),
+          condition: { $kind: "cref", parts: [{ name: "use_in" }] },
+        },
+        {
+          $kind: "component",
+          name: "pOut",
+          type: RealOutputClass,
+          annotation: placementAnno([[90, -10], [110, 10]]),
+          condition: { $kind: "cref", parts: [{ name: "use_out" }] },
+        },
+        {
+          $kind: "component",
+          name: "x",
+          type: GainClass,
+          modifiers: { k: "1" },
+          annotation: placementAnno([[-50, -50], [-30, -30]]),
+          condition: { $kind: "cref", parts: [{ name: "use_x" }] },
+        },
+        {
+          $kind: "component",
+          name: "y",
+          type: GainClass,
+          modifiers: { k: "2" },
+          annotation: placementAnno([[10, -50], [30, -30]]),
+          condition: { $kind: "cref", parts: [{ name: "use_y" }] },
+        },
+      ],
+      connections: [],
+    };
+    return ModelInstanceSchema.parse(inst);
+  }
+
+  it("without resolvedParameters everything stays visible", () => {
+    const layout = produceDiagramLayout(makeGuardedHost(), "diagram");
+    expect(Object.keys(layout.components).sort()).toEqual(["x", "y"]);
+    expect(Object.keys(layout.connectors).sort()).toEqual(["pIn", "pOut"]);
+    expect(layout.resolvedParameters).toBeUndefined();
+  });
+
+  it("hides sub-components whose `condition` evaluates to false", () => {
+    const layout = produceDiagramLayout(makeGuardedHost(), "diagram", {
+      use_x: "true",
+      use_y: "false",
+      use_in: "true",
+      use_out: "true",
+    });
+    expect(Object.keys(layout.components).sort()).toEqual(["x"]);
+    expect(Object.keys(layout.connectors).sort()).toEqual(["pIn", "pOut"]);
+  });
+
+  it("hides standalone connectors whose `condition` evaluates to false", () => {
+    const layout = produceDiagramLayout(makeGuardedHost(), "diagram", {
+      use_x: "true",
+      use_y: "true",
+      use_in: "false",
+      use_out: "true",
+    });
+    expect(Object.keys(layout.connectors).sort()).toEqual(["pOut"]);
+  });
+
+  it("echoes resolvedParameters onto the output", () => {
+    const params = { use_x: "true", use_y: "true" };
+    const layout = produceDiagramLayout(
+      makeGuardedHost(),
+      "diagram",
+      params,
+    );
+    expect(layout.resolvedParameters).toEqual(params);
+  });
+
+  it("defaults to visible when a guard's cref isn't in the resolved scope", () => {
+    // `use_y` missing from the map → evaluator can't reduce → wrapper
+    // treats as "visible" (the same way Dialog.enable falls back).
+    const layout = produceDiagramLayout(makeGuardedHost(), "diagram", {
+      use_x: "false",
+      use_in: "true",
+      use_out: "true",
+    });
+    expect(Object.keys(layout.components).sort()).toEqual(["y"]);
+  });
+});

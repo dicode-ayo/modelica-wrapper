@@ -23,6 +23,7 @@
 import type {
   ComponentElement,
   ConnectionNode,
+  Expression,
   Modifier,
   ModelInstance,
   RecordValue,
@@ -41,6 +42,11 @@ import type {
   Shape,
   TextShape,
 } from "../../_shared/diagramLayout.js";
+import {
+  evaluateExpression,
+  type EvalScope,
+} from "../../eval/expression-evaluator.js";
+import { instantiatedParametersScope } from "./resolved-parameters.js";
 import { decodeShape } from "./shapes.js";
 import { flattenCref, placementFor } from "./placement.js";
 import {
@@ -50,6 +56,39 @@ import {
   walkConnectors,
   walkExtendsChain,
 } from "./walker.js";
+
+// ---------- condition gating ----------
+
+/**
+ * Decide whether a component or port should appear in the layout given
+ * its `condition` field (e.g. `Real x if use_x;` carries the parsed
+ * `use_x` Expression here).
+ *
+ * Returns `true` when:
+ *  - `condition` is undefined / null (no gate),
+ *  - we have no host scope to evaluate against (preserve today's
+ *    "always visible" behaviour for callers that don't pass the
+ *    `getInstantiatedParametersAndValues` map),
+ *  - or the expression evaluates to anything OTHER than literal `false`.
+ *
+ * Returns `false` only on a definitive `false` evaluation — i.e. the
+ * gate is closed and OMC's instantiation would elide the element too.
+ */
+function isConditionTrue(
+  condition: unknown,
+  scope: EvalScope | undefined,
+): boolean {
+  if (condition === undefined || condition === null) return true;
+  if (typeof condition === "boolean") return condition;
+  if (scope === undefined) return true;
+  // The schema types `condition` as `unknown`; in practice OMC emits the
+  // same Expression AST shape `evaluateExpression` already handles
+  // (`{ $kind: "cref", ... }`, `{ $kind: "binary_op", ... }`, etc.).
+  const result = evaluateExpression(condition as Expression, scope, {
+    fallback: true,
+  });
+  return result !== false;
+}
 
 // ---------- parameter extraction ----------
 
@@ -472,8 +511,18 @@ function emitConnection(c: ConnectionNode): ConnectionLayout | undefined {
 export function produceDiagramLayout(
   mi: ModelInstance,
   kind: "icon" | "diagram",
+  resolvedParameters?: Record<string, string>,
 ): DiagramLayout {
   const registry = new Map<string, ClassDef>();
+  // Build the eval scope ONCE per layout — every component / port that
+  // carries a `condition` field gets evaluated against it. Skipped
+  // entirely (left undefined) when the caller doesn't supply resolved
+  // values, so conditional elements stay visible — preserving the
+  // pre-feature default.
+  const scope =
+    resolvedParameters !== undefined
+      ? instantiatedParametersScope(resolvedParameters)
+      : undefined;
 
   const iconLayers = collectLayers(mi, "icon");
   const diagramLayers = kind === "diagram" ? collectLayers(mi, "diagram") : [];
@@ -482,6 +531,10 @@ export function produceDiagramLayout(
   // Standalone connectors on the host class (and ancestors), inheritance-aware.
   const connectors: Record<string, ConnectorInstance> = {};
   for (const { element } of walkConnectors(mi)) {
+    // Gate first — `if use_x` connectors are elided when the predicate
+    // evaluates false. Without a scope every connector stays (pre-feature
+    // behaviour).
+    if (!isConditionTrue(element.condition, scope)) continue;
     // Also seed the connector's class into the registry so consumers can
     // look up its own icon via `classes[connector.classRef]`.
     const inst = instanceFromConnector(element, registry);
@@ -498,6 +551,7 @@ export function produceDiagramLayout(
   // are part of the ancestor's icon, NOT host-class instances).
   const components: Record<string, ComponentInstance> = {};
   for (const el of ownSubComponents(mi)) {
+    if (!isConditionTrue(el.condition, scope)) continue;
     const inst = instanceFromSubComponent(el, kind === "icon" ? "icon" : "diagram", registry);
     if (inst) components[inst.name] = inst;
   }
@@ -509,6 +563,7 @@ export function produceDiagramLayout(
     if (klass === mi) continue;
     for (const el of ownSubComponents(klass)) {
       if (components[el.name]) continue;
+      if (!isConditionTrue(el.condition, scope)) continue;
       const inst = instanceFromSubComponent(el, kind === "icon" ? "icon" : "diagram", registry);
       if (inst) components[inst.name] = inst;
     }
@@ -561,6 +616,12 @@ export function produceDiagramLayout(
   };
   const cs = coordinateSystemForKind(mi, kind);
   if (cs) layout.coordinateSystem = cs;
+  // Echo the resolved-parameter map onto the output so downstream
+  // consumers (label substitution, post-fetch debug, future Dialog.enable
+  // shared scope) don't need to re-fetch it.
+  if (resolvedParameters !== undefined) {
+    layout.resolvedParameters = resolvedParameters;
+  }
   return layout;
 }
 
