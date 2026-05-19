@@ -599,6 +599,125 @@ describe("produceDiagramLayout: connection filter on edge cases", () => {
   });
 });
 
+describe("produceDiagramLayout: class parameter defaults", () => {
+  // SpringDamper-like class embedded as a sub-component of an outer
+  // host. The producer only registers sub-component classes in the
+  // catalog, so this is the only path that exercises `collectParameters`
+  // on a class with the SpringDamper-style `c`/`d` parameters.
+  const SpringDamperLike: unknown = {
+    name: "Synth.SpringDamper",
+    restriction: "model",
+    elements: [
+      // Plain Real parameter with a resolved binding.
+      {
+        $kind: "component",
+        name: "c",
+        type: "Real",
+        modifiers: { unit: "\"N.m/rad\"", $value: "100" },
+        value: { binding: 100 },
+        prefixes: { variability: "parameter" },
+        comment: "Spring constant",
+      },
+      // Parameter where the literal modifier expression is the only
+      // source — no `value.binding` present.
+      {
+        $kind: "component",
+        name: "d",
+        type: "Real",
+        modifiers: { $value: "0.5" },
+        prefixes: { variability: "parameter" },
+      },
+      // Non-parameter component (variable). Must NOT appear in parameters.
+      {
+        $kind: "component",
+        name: "phi_rel",
+        type: "Real",
+      },
+    ],
+  };
+
+  function makeOuterWithSpringDamper(): ModelInstance {
+    const literal: unknown = {
+      name: "Synth.Outer",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "component",
+          name: "sd1",
+          type: SpringDamperLike,
+          annotation: placementAnno([[-10, -10], [10, 10]]),
+        },
+      ],
+    };
+    return ModelInstanceSchema.parse(literal);
+  }
+
+  it("populates ClassDef.parameters with resolved bindings", () => {
+    const layout = produceDiagramLayout(makeOuterWithSpringDamper(), "icon");
+    const cls = layout.classes["Synth.SpringDamper"];
+    expect(cls).toBeDefined();
+    expect(cls?.parameters.c?.value).toBe("100");
+  });
+
+  it("falls back to the literal modifier $value when no binding exists", () => {
+    const layout = produceDiagramLayout(makeOuterWithSpringDamper(), "icon");
+    const cls = layout.classes["Synth.SpringDamper"];
+    expect(cls?.parameters.d?.value).toBe("0.5");
+  });
+
+  it("does not include non-parameter components", () => {
+    const layout = produceDiagramLayout(makeOuterWithSpringDamper(), "icon");
+    const cls = layout.classes["Synth.SpringDamper"];
+    expect(cls?.parameters.phi_rel).toBeUndefined();
+  });
+
+  it("strips surrounding quotes from unit modifiers", () => {
+    const layout = produceDiagramLayout(makeOuterWithSpringDamper(), "icon");
+    const cls = layout.classes["Synth.SpringDamper"];
+    expect(cls?.parameters.c?.unit).toBe("N.m/rad");
+  });
+
+  it("walks the extends chain so inherited parameters are included", () => {
+    const base: unknown = {
+      name: "Synth.Base",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "component",
+          name: "useHeatPort",
+          type: "Boolean",
+          value: { binding: false },
+          prefixes: { variability: "parameter" },
+        },
+      ],
+    };
+    const child: unknown = {
+      name: "Synth.Child",
+      restriction: "model",
+      elements: [{ $kind: "extends", baseClass: base }],
+    };
+    const outer: unknown = {
+      name: "Synth.OuterChild",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "component",
+          name: "c1",
+          type: child,
+          annotation: placementAnno([[-5, -5], [5, 5]]),
+        },
+      ],
+    };
+    const layout = produceDiagramLayout(
+      ModelInstanceSchema.parse(outer),
+      "icon",
+    );
+    expect(layout.classes["Synth.Child"]?.parameters.useHeatPort?.value).toBe(
+      "false",
+    );
+  });
+});
+
 describe("produceDiagramLayout: well-formedness", () => {
   it("icon layout: every element carries its required fields", () => {
     assertWellFormed(produceDiagramLayout(makeHostModelInstance(), "icon"));

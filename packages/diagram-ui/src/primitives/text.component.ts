@@ -1,4 +1,5 @@
 import { customElement, property } from "lit/decorators.js";
+import { consume } from "@lit/context";
 import {
   Color3,
   DynamicTexture,
@@ -7,11 +8,16 @@ import {
   StandardMaterial,
   type TransformNode,
 } from "@babylonjs/core";
-import { expressionToString } from "@modelica-wrapper/diagram-svg";
+import {
+  expressionToString,
+  interpolateTemplate,
+  type TextSubstitutions,
+} from "@modelica-wrapper/diagram-svg";
 import type { TextShape } from "@modelica-wrapper/omc-client";
 
 import { OmShapePrimitive } from "./shape-primitive.js";
 import { colorToCss, extentToRect } from "./shape-utils.js";
+import { substitutionsContext } from "../label/substitutions-context.js";
 
 /** Canvas pixels per icon unit when sizing the DynamicTexture. */
 const TEXT_TEXTURE_PIXELS_PER_UNIT = 4;
@@ -39,8 +45,33 @@ export class OmText extends OmShapePrimitive {
   @property({ attribute: false })
   shape: TextShape | null = null;
 
+  /**
+   * `%`-substitution values inherited from the surrounding
+   * `<om-component>` via Lit context. `null` outside a component
+   * subtree — `textString` then renders verbatim (Modelica icons
+   * outside any instance have no `%name` / `%paramName` to resolve).
+   */
+  @consume({ context: substitutionsContext, subscribe: true })
+  private substitutions: TextSubstitutions | null = null;
+
+  /** Body to draw — `textString` resolved against the in-scope
+   *  substitutions. Computed in `resolvedBody()` and cached only via
+   *  the fingerprint key so a modifier change rebuilds the texture. */
+  private resolvedBody(): string {
+    const s = this.shape;
+    if (!s) return "";
+    const raw = expressionToString(s.textString);
+    if (!raw) return "";
+    return this.substitutions
+      ? interpolateTemplate(raw, this.substitutions)
+      : raw;
+  }
+
   protected override fingerprint(): string {
-    return JSON.stringify(this.shape);
+    // Include the resolved body so a substitution change (e.g. the user
+    // edits a modifier and the parameters map updates) re-runs
+    // buildMeshes. The raw shape JSON alone wouldn't change.
+    return `${this.resolvedBody()}|${JSON.stringify(this.shape)}`;
   }
 
   protected override buildMeshes(parent: TransformNode, z: number): void {
@@ -53,7 +84,7 @@ export class OmText extends OmShapePrimitive {
     if (width <= 0 || height <= 0) {
       return;
     }
-    const body = expressionToString(s.textString);
+    const body = this.resolvedBody();
     if (!body) {
       return;
     }

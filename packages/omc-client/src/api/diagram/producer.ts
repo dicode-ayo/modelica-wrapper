@@ -23,6 +23,7 @@
 import type {
   ComponentElement,
   ConnectionNode,
+  Modifier,
   ModelInstance,
   RecordValue,
 } from "../../_shared/modelInstance.js";
@@ -35,6 +36,7 @@ import type {
   DiagramLayout,
   IconLayer,
   LabelLayout,
+  ParameterDef,
   PortDef,
   Shape,
   TextShape,
@@ -43,10 +45,131 @@ import { decodeShape } from "./shapes.js";
 import { flattenCref, placementFor } from "./placement.js";
 import {
   ownConnectors,
+  ownParameters,
   ownSubComponents,
   walkConnectors,
   walkExtendsChain,
 } from "./walker.js";
+
+// ---------- parameter extraction ----------
+
+/**
+ * Flatten a `Modifier` tree to a display string. Walks `$value` when
+ * present so a structured `{min: "0", $value: "1"}` collapses to `"1"`.
+ * Returns `""` for unsupported / missing shapes so the caller can fall
+ * through to the next source without special-casing.
+ */
+function modifierToDisplayString(mod: Modifier | undefined): string {
+  if (mod === undefined || mod === null) return "";
+  if (typeof mod === "string") return mod;
+  if (typeof mod === "number" || typeof mod === "boolean") return String(mod);
+  if (typeof mod === "object" && "$value" in mod) {
+    return modifierToDisplayString(mod.$value);
+  }
+  return "";
+}
+
+/**
+ * Format a `value.binding` payload as a display string. OMC emits the
+ * resolved binding as either a primitive or a tagged record (enum,
+ * function call, …). For text substitution we only need the primitive
+ * forms — anything richer falls back to `""` and the caller will try
+ * the literal modifier next.
+ */
+function bindingToDisplayString(binding: unknown): string {
+  if (binding === null || binding === undefined) return "";
+  if (typeof binding === "string") return binding;
+  if (typeof binding === "number" || typeof binding === "boolean") {
+    return String(binding);
+  }
+  if (
+    typeof binding === "object" &&
+    binding !== null &&
+    "$kind" in (binding as Record<string, unknown>)
+  ) {
+    const tagged = binding as { $kind: string; name?: unknown; index?: unknown };
+    if (tagged.$kind === "enum" && typeof tagged.name === "string") {
+      const dot = tagged.name.lastIndexOf(".");
+      return dot >= 0 ? tagged.name.slice(dot + 1) : tagged.name;
+    }
+  }
+  return "";
+}
+
+/**
+ * Extract the display value for a parameter component. Prefer the
+ * resolved `value.binding` (post-eval, what the user sees as the
+ * effective default); fall back to the literal `modifiers.$value`
+ * (pre-eval expression text) if no binding exists.
+ */
+function parameterDisplayValue(el: ComponentElement): string {
+  const value = el.value as { binding?: unknown } | undefined;
+  if (value && "binding" in value) {
+    const s = bindingToDisplayString(value.binding);
+    if (s.length > 0) return s;
+  }
+  return modifierToDisplayString(el.modifiers);
+}
+
+/**
+ * Pull `quantity` / `unit` modifiers (typically declared on SI-unit
+ * type aliases via `extends`) into a single `unit` string. Used for
+ * the optional `ParameterDef.unit` field; we don't surface quantity
+ * because no current consumer needs it.
+ */
+function parameterUnit(el: ComponentElement): string | undefined {
+  const direct = readModifierField(el.modifiers, "unit");
+  if (direct) return stripModelicaString(direct);
+  if (typeof el.type === "object" && el.type !== null) {
+    for (const child of el.type.elements ?? []) {
+      if (child.$kind === "extends") {
+        const u = readModifierField(child.modifiers, "unit");
+        if (u) return stripModelicaString(u);
+      }
+    }
+  }
+  return undefined;
+}
+
+function readModifierField(
+  mod: Modifier | undefined,
+  field: string,
+): string | undefined {
+  if (mod === undefined || mod === null) return undefined;
+  if (typeof mod !== "object") return undefined;
+  const v = (mod as Record<string, Modifier>)[field];
+  const s = modifierToDisplayString(v);
+  return s.length > 0 ? s : undefined;
+}
+
+function stripModelicaString(s: string): string {
+  // Modelica string literals come quoted ("Time", "\"s\""). Drop the
+  // outer pair if present so substitution gives users `s` not `"s"`.
+  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
+    return s.slice(1, -1);
+  }
+  return s;
+}
+
+function collectParameters(mi: ModelInstance): Record<string, ParameterDef> {
+  const out: Record<string, ParameterDef> = {};
+  // walkExtendsChain yields ancestors first, host last. Iterating in
+  // that order means more-derived declarations overwrite ancestor ones,
+  // which matches Modelica's redeclare / modifier override semantics.
+  for (const klass of walkExtendsChain(mi)) {
+    for (const el of ownParameters(klass)) {
+      const def: ParameterDef = {
+        name: el.name,
+        value: parameterDisplayValue(el),
+      };
+      const unit = parameterUnit(el);
+      if (unit !== undefined) def.unit = unit;
+      if (el.comment !== undefined) def.comment = el.comment;
+      out[el.name] = def;
+    }
+  }
+  return out;
+}
 
 // ---------- icon-layer collection ----------
 
@@ -170,6 +293,7 @@ function buildClassDef(typeMi: ModelInstance, registry: Map<string, ClassDef>): 
     restriction: typeMi.restriction,
     iconLayers,
     connectors,
+    parameters: collectParameters(typeMi),
   };
   if (cs) def.coordinateSystem = cs;
   return def;
@@ -194,6 +318,7 @@ function registerClass(typeMi: ModelInstance, registry: Map<string, ClassDef>): 
     restriction: typeMi.restriction,
     iconLayers: [],
     connectors: {},
+    parameters: {},
   };
   registry.set(key, placeholder);
   const built = buildClassDef(typeMi, registry);

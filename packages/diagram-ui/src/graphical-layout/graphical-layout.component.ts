@@ -9,6 +9,7 @@ import type {
 } from "@modelica-wrapper/omc-client";
 
 import { renderLayers } from "../primitives/render-shape.js";
+import { buildSubstitutions } from "../label/build-substitutions.js";
 import "../scene/scene.component.js";
 import "../axis/grid-axis.component.js";
 import "../component/component.component.js";
@@ -480,12 +481,14 @@ export class OmGraphicalLayout extends LitElement {
   ): TemplateResult {
     const cls = layout.classes[comp.classRef];
     const key = formatComponentKey(id);
+    const substitutions = buildSubstitutions(comp, cls);
     return html`<om-component
       .nodeId=${id}
       .placement=${comp.placement}
       .layers=${cls?.iconLayers ?? []}
       .coordinateSystem=${cls?.coordinateSystem ?? undefined}
       .lineThicknessScale=${this.lineThicknessScale}
+      .substitutions=${substitutions}
       ?selected=${this.selectedKeys.has(key)}
       ?readonly=${this.readonly}
     >

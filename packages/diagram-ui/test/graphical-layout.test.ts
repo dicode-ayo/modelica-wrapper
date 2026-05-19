@@ -19,6 +19,7 @@ function tinyLayout(): DiagramLayout {
         restriction: "block",
         iconLayers: [{ from: "Test.Block", shapes: [] }],
         connectors: {},
+        parameters: {},
       },
     },
     components: {

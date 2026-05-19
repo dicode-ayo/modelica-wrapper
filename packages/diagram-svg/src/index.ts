@@ -55,3 +55,7 @@ export type {
 export { colorToCss } from "./color.js";
 export { fillPatternToFill, linePatternToDashArray } from "./pattern.js";
 export { expressionToString } from "./expression.js";
+export {
+  interpolateTemplate,
+  type TextSubstitutions,
+} from "./text-template.js";

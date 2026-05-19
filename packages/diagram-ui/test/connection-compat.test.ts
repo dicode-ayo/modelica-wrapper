@@ -37,6 +37,7 @@ function layoutWithBlocks(): DiagramLayout {
             direction: "output",
           },
         },
+        parameters: {},
       },
       "Modelica.Electrical.Analog.Basic.Resistor": {
         name: "Modelica.Electrical.Analog.Basic.Resistor",
@@ -60,6 +61,7 @@ function layoutWithBlocks(): DiagramLayout {
             direction: "",
           },
         },
+        parameters: {},
       },
     },
     components: {
