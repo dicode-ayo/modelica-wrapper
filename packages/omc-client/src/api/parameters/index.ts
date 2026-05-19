@@ -12,3 +12,4 @@ export * from "./getExtendsModifierValue.js";
 export * from "./setExtendsModifierValue.js";
 export * from "./getParameterNames.js";
 export * from "./setParameterValue.js";
+export * from "./removeExtendsModifiers.js";

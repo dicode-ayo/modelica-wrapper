@@ -25,3 +25,6 @@ export * from "./getNthInheritedClassDiagramMapAnnotation.js";
 export * from "./getDefaultComponentName.js";
 export * from "./getDefaultComponentPrefixes.js";
 export * from "./getComponentComment.js";
+export * from "./getInstantiatedParametersAndValues.js";
+export * from "./getAnnotationNamedModifiers.js";
+export * from "./getAnnotationModifierValue.js";

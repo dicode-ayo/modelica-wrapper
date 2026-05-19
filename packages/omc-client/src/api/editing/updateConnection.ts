@@ -1,16 +1,25 @@
 /**
  * OMC: `function updateConnection`
  *
+ * ```modelica
+ * function updateConnection
+ *   input TypeName className;
+ *   input String from;
+ *   input String to;
+ *   input ExpressionOrModification annotate;
+ *   output Boolean result;
+ * end updateConnection;
+ * ```
+ *
  * Refresh the annotation for an existing connection (e.g. after a user
  * dragged a waypoint).
  *
- * @deprecated NOT AVAILABLE on OMC 1.26.x's interactive scripting (symbol
- *             not found; verified absent on both 1.26.1 and 1.26.7,
- *             despite a public docs page existing for it). Wrapper kept
- *             for forward/backward compatibility.
- *             **Migration on 1.26.x**: combine `deleteConnection` +
- *             `addConnection` with the new annotation. Two RPC calls
- *             instead of one, but functionally equivalent.
+ * NOTE on argument shape: `from` and `to` are OMC `String`s — they MUST
+ * be quoted. Also: the docs put `className` FIRST, then `from`, `to`,
+ * `annotate`. Earlier wrapper versions had the order wrong (from/to
+ * before className) and OMC reported the misleading "Class
+ * updateConnection not found in scope" diagnostic instead of a clear
+ * type/order error; see `docs/audit.md` §2.10 for the gotcha.
  */
 
 import { z } from "zod";
@@ -20,13 +29,15 @@ import {
   connectionAnnotation,
   typeNameOfConnection,
 } from "../../_shared/fields.js";
+import { quote } from "../../_shared/format.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
-import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
+import { parseOutput } from "../../_shared/parseOutput.js";
+import { expectBool, parse } from "../../parse.js";
 
 export const UpdateConnectionInputSchema = z.object({
+  typeName: typeNameOfConnection,
   from: z.string().describe("Left-hand-side connector reference for the connection to update."),
   to: z.string().describe("Right-hand-side connector reference for the connection to update."),
-  typeName: typeNameOfConnection,
   annotation: connectionAnnotation,
 });
 export type UpdateConnectionInput = z.input<typeof UpdateConnectionInputSchema>;
@@ -37,20 +48,20 @@ export type UpdateConnectionOutput = z.infer<
 >;
 
 export const UpdateConnectionDescription =
-  "Update the annotation on an existing connection. (Symbol absent on OMC 1.26.x — see file docstring for migration.)";
+  "Update the annotation on an existing connection.";
 
 export async function updateConnection(
   ctx: CallContext,
   input: UpdateConnectionInput,
 ): Promise<UpdateConnectionOutput> {
   const annotation = input.annotation ?? "";
-  const ann = annotation === "" ? "annotate=Line()" : `annotate=${annotation}`;
+  const ann = annotation === "" ? "Line()" : annotation;
   const raw = await ctx.call(
-    `updateConnection(${input.from}, ${input.to}, ${input.typeName}, ${ann})`,
+    `updateConnection(${input.typeName}, ${quote(input.from)}, ${quote(input.to)}, ${ann})`,
   );
   return parseOutput(
     UpdateConnectionOutputSchema,
-    { success: await parseMutationSuccess(ctx, raw, "updateConnection") },
+    { success: expectBool(parse(raw)) },
     "updateConnection",
   );
 }

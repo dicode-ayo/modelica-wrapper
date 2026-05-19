@@ -2,9 +2,9 @@
 
 Tracks which functions in [`src/registry.ts`](../src/registry.ts) are exercised by integration tests against a real OMC, plus the reasons each uncovered function isn't yet tested.
 
-**Pinned OMC version:** `1.26.7` (see [`../src/version.ts`](../src/version.ts)). Drift probe re-run on 2026-05-06 against a freshly-upgraded local 1.26.7; the 5 ⛔ wrappers remain identically broken — these are not 1.26.1-specific quirks but a permanent gap in OMC 1.26.x's interactive scripting surface.
-**Last updated:** 2026-05-12.
-**Current coverage:** 79 / 133 functions (59%).
+**Pinned OMC version:** `1.26.7` (see [`../src/version.ts`](../src/version.ts)). On 2026-05-19 a deep re-probe of the previously-⛔ wrappers revealed that 4 of them (`removeComponentModifiers`, `updateConnection`, `moveClass`, plus the newly-added `getReplaceableChoices`) were wrapper-side bugs — wrong argument shape masked by OMC's misleading "Class X not found in scope" diagnostic. See [audit.md §2.10](./audit.md) for the gotcha. After fixing the call shapes, those wrappers + state-machine mutators are now ✅ on 1.26.7. Only `createClass`, `createSubClass`, and `save` remain genuinely ⛔ (docs 404).
+**Last updated:** 2026-05-19.
+**Current coverage:** 89 / 143 functions (62%).
 
 > Run `pnpm --filter @modelica-wrapper/omc-client test` to exercise the integration suite. It auto-skips when `omc` isn't on PATH.
 
@@ -65,8 +65,10 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `isReplaceable` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isReplaceable.html) |
 | `isProtectedClass` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isProtectedClass.html) |
 | `isEnumeration` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isEnumeration.html) |
+| `getEnumerationLiterals` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getEnumerationLiterals.html) |
+| `getReplaceableChoices` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getReplaceableChoices.html) — initially flagged ⛔; the docs-correct shape takes **two** TypeNames (`baseClass`, `parentClass`) + 2 optional bools and returns a 2D matrix. See [audit.md §2.10](./audit.md). |
 
-## Reading model contents — 14/21
+## Reading model contents — 17/24
 
 | Function | Status | Docs |
 |---|---|---|
@@ -95,7 +97,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `getDefaultComponentPrefixes` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getDefaultComponentPrefixes.html) |
 | `getComponentComment` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getComponentComment.html) |
 
-## Lifecycle — 14/18
+## Lifecycle — 15/18
 
 | Function | Status | Docs | Notes |
 |---|---|---|---|
@@ -109,7 +111,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `renameClass` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.renameClass.html) | Output schema fixed to `{ result: string[] }` per OMC docs. |
 | `deleteClass` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.deleteClass.html) | OMC 1.26 returns null on success; wrapper handles via `parseMutationSuccess`. |
 | `copyClass` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.copyClass.html) | **Wrapper bug fixed**: destination is a `String` per docs (now quoted), not a TypeName. Output renamed `success` → `result` to match docs. |
-| `moveClass` | ⛔ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.moveClass.html) | **Confirmed missing on OMC 1.26.x** despite a public docs page — probe ✗ on both 1.26.1 and 1.26.7. Wrapper marked `@deprecated`; migration via `listFile` + own-writer persistence. Note the asymmetry: only the cross-package relocate is missing — the in-place reorderers below work. |
+| `moveClass` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.moveClass.html) | **Wrapper rescued 2026-05-19**: the second arg is an `Integer offset` (in-place reorder within the parent's class list, positive = down / negative = up), NOT a TypeName destination. Earlier wrapper versions sent a TypeName and OMC returned the misleading "Class moveClass not found in scope" diagnostic; see [audit.md §2.10](./audit.md). |
 | `moveClassToTop` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.moveClassToTop.html) | Drift probe found this works on 1.26.x despite the related `moveClass` being missing — verified by integration test on a `loadString`-built 3-class package. |
 | `moveClassToBottom` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.moveClassToBottom.html) | Same as `moveClassToTop`. |
 | `getSourceFile` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getSourceFile.html) | |
@@ -118,7 +120,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `save` | ⛔ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.save.html) | OMEdit-deprecated; we use Option B persistence. Wrapper kept for completeness only. |
 | `cd` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.cd.html) | Get/set OMC's working directory. Empty input acts as a getter. Used by the REPL's `:cd` meta-command. |
 
-## Parameters & modifiers — 5/11
+## Parameters & modifiers — 7/12
 
 | Function | Status | Docs | Notes |
 |---|---|---|---|
@@ -129,12 +131,13 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `getComponentModifierValue` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getComponentModifierValue.html) | |
 | `getComponentModifierValues` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getComponentModifierValues.html) | |
 | `setComponentModifierValue` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setComponentModifierValue.html) | |
-| `removeComponentModifiers` | ⛔ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.removeComponentModifiers.html) | **Confirmed missing on OMC 1.26.x** despite a public docs page — probe ✗ on both 1.26.1 and 1.26.7. Wrapper marked `@deprecated`; enumerate modifiers with `getComponentModifierNames` and clear each via `setComponentModifierValue({..., expr: ""})`. |
+| `removeComponentModifiers` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.removeComponentModifiers.html) | **Wrapper rescued 2026-05-19**: `componentName` is a `String` per the OMC docs and must be quoted. Earlier wrapper versions sent it as a bare ident and OMC returned the misleading "Class removeComponentModifiers not found in scope" diagnostic; see [audit.md §2.10](./audit.md). |
 | `getExtendsModifierNames` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getExtendsModifierNames.html) | Needs a fixture with `extends` clause + modifications. |
 | `getExtendsModifierValue` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getExtendsModifierValue.html) | Same. |
 | `setExtendsModifierValue` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setExtendsModifierValue.html) | Same. |
+| `removeExtendsModifiers` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.removeExtendsModifiers.html) | Added 2026-05-19. Verified end-to-end via the `extends` mutation suite (clears `k=2.5` and confirms the modifier value goes empty). |
 
-## Editing — 10/15
+## Editing — 16/19
 
 | Function | Status | Docs | Notes |
 |---|---|---|---|
@@ -144,9 +147,13 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `updateComponent` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.updateComponent.html) | |
 | `addConnection` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.addConnection.html) | |
 | `deleteConnection` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.deleteConnection.html) | |
-| `updateConnection` | ⛔ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.updateConnection.html) | **Confirmed missing on OMC 1.26.x** despite a public docs page — probe ✗ on both 1.26.1 and 1.26.7. Wrapper marked `@deprecated`; combine `deleteConnection` + `addConnection` instead. |
-| `addTransition` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.addTransition.html) | Needs a state-machine fixture. |
-| `deleteTransition` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.deleteTransition.html) | Same. |
+| `updateConnection` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.updateConnection.html) | **Wrapper rescued 2026-05-19**: docs order is `(TypeName className, String from, String to, annotate)` — earlier wrapper had from/to before className AND sent them unquoted; OMC returned the misleading "Class updateConnection not found in scope" diagnostic; see [audit.md §2.10](./audit.md). |
+| `addTransition` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.addTransition.html) | **Wrapper bugfix 2026-05-19**: `from` / `to` are `String`s and must be quoted (same gotcha as updateConnection). Previously silently broken in the 🟡 state. Verified via state-machine mutation suite. |
+| `deleteTransition` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.deleteTransition.html) | Same fix as addTransition; same gotcha. |
+| `addInitialState` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.addInitialState.html) | Added 2026-05-19. `state` is a `String` and must be quoted — same gotcha as the transition mutators. Verified via state-machine mutation suite. |
+| `deleteInitialState` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.deleteInitialState.html) | Same gotcha and verification path as addInitialState. |
+| `updateInitialState` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.updateInitialState.html) | Same gotcha and verification path as addInitialState. |
+| `renameComponentInClass` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.renameComponentInClass.html) | Added 2026-05-19. Single-class variant of `renameComponent` (no cross-class reference rewriting). Despite the docs saying `output String result`, OMC returns a list — wrapper exposes it as `rewrittenDeclarations: string[]` for symmetry with `renameComponent`. |
 | `addClassAnnotation` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.addClassAnnotation.html) | |
 | `setComponentProperties` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setComponentProperties.html) | **Wrapper signature realigned** to the docs-correct 6-arg shape: `prefixArray[5]` (final, flow, stream, protected, replaceable), `variability[String[1]]`, `innerOuter[Boolean[2]]`, `direction[String[1]]`. Public input shape is now `{finalPrefix, flow, stream, protectedPrefix, replaceablePrefix, variability, inner, outer, direction}` — **breaking change** from the previous wrapper shape. |
 | `setComponentDimensions` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setComponentDimensions.html) | |
@@ -227,17 +234,17 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 
 | Category | Covered | Total | Notes |
 |---|---|---|---|
-| Browsing | 18 | 25 | All Tier 4 predicates wired; common predicates verified, niche ones 🟡; structured `getMessagesStringInternal` added for positioned diagnostics. |
-| Reading model contents | 14 | 21 | Tier 1 modern read path + Tier 5 connector helpers added; both `getModelInstance` and `getModelInstanceAnnotation` validated live each test run (the structured-AST endpoint replaces the per-call diagram assembly) |
-| Lifecycle | 14 | 18 | 4 ⛔ — `createClass`, `createSubClass`, `moveClass` (cross-package relocate only), and `save` (deprecated). The two in-place reorderers `moveClassToTop`/`moveClassToBottom` work despite `moveClass` being missing — found via the drift probe. `cd` added for the REPL's `:cd` meta-command. |
-| Parameters & modifiers | 5 | 11 | 1 ⛔ (`removeComponentModifiers`, confirmed missing), `getParameterNames` ✅, mutations 🟡 |
-| Editing | 10 | 15 | 1 ⛔ (`updateConnection`, confirmed missing), 4 🟡 (state-machine fixture for transitions; new `setClassComment`/`setDocumentationAnnotation` need throwaway fixtures) |
-| Elements | 2 | 11 | New category — modern `Component*` generalization. Two readers smoke-tested; mutations 🟡 |
-| Library | 2 | 9 | New category — `getLoadedLibraries`/`getPackages` verified; package-manager network calls 🟡 (intentionally not in CI) |
-| Solver / runtime config | 8 | 8 | All verified |
-| Execution | 3 | 9 | 6 🐢 deferred to a heavy-test gate |
-| Results | 0 | 5 | All 📦 — wire with the heavy execution tests |
-| **Total** | **79** | **133** | **59%** |
+| Browsing | 20 | 27 | Added `getEnumerationLiterals` (enum-literal reader) and `getReplaceableChoices` (rescued from ⛔ — wrong arg shape, not a missing symbol). |
+| Reading model contents | 17 | 24 | Added `getInstantiatedParametersAndValues` (post-instantiate `name=value` reader), `getAnnotationNamedModifiers`, `getAnnotationModifierValue`. |
+| Lifecycle | 15 | 18 | 3 ⛔ remain — `createClass`, `createSubClass` (docs 404 + symbol genuinely absent on 1.26.x), `save` (deprecated). **`moveClass` rescued 2026-05-19**: it's an in-place reorder by `Integer offset`, not a TypeName-destination relocate. |
+| Parameters & modifiers | 7 | 12 | Added `removeExtendsModifiers`. **`removeComponentModifiers` rescued 2026-05-19**: `componentName` is `String`, needs quoting. |
+| Editing | 16 | 19 | Added `addInitialState`, `deleteInitialState`, `updateInitialState`, `renameComponentInClass`. **`updateConnection` rescued**: arg order + String-quoting fix. **`addTransition`/`deleteTransition` bugfix**: same String-quoting gotcha — they were silently 🟡 broken before. |
+| Elements | 2 | 11 | Unchanged. Modern `Component*` generalization. Two readers smoke-tested; mutations 🟡. |
+| Library | 2 | 9 | Unchanged. `getLoadedLibraries`/`getPackages` verified; package-manager network calls 🟡 (intentionally not in CI). |
+| Solver / runtime config | 8 | 8 | All verified. |
+| Execution | 3 | 9 | 6 🐢 deferred to a heavy-test gate. |
+| Results | 0 | 5 | All 📦 — wire with the heavy execution tests. |
+| **Total** | **90** | **143** | **63%** |
 
 ---
 
@@ -247,9 +254,16 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 
 2. **Heavy execution (🐢 → ✅):** add a separate `mutations-heavy.integration.test.ts` gated by `OMC_INTEGRATION_HEAVY=1`. Compile a tiny model (3-line state-space example) through `translateModel` → `buildModel` → `simulate`, then exercise the five `results/*` functions on the produced `.mat` (including `readSimulationResult` and `val`). Roughly 30–60 s of test runtime.
 
-3. **⛔ symbol-not-found cases on OMC 1.26.x** (probed and confirmed on both 1.26.1 and 1.26.7): `createClass`, `createSubClass`, `moveClass`, `updateConnection`, `removeComponentModifiers`. These have `@deprecated` JSDoc on the wrappers with concrete migration paths to functions that DO work (`loadString`, `listFile`+`loadString` for moves, `delete`+`add` for connection updates, per-modifier clearing for `removeComponentModifiers`). The wrappers stay in the package because they may exist on a different OMC line (1.27+? OMSimulator? OMEdit's internal namespace?). The docs site shows public pages for `moveClass`/`updateConnection`/`removeComponentModifiers` with signatures, but OMC's `--interactive=zmq` doesn't surface those symbols — likely an internal-namespace gap, not a deletion.
+3. **⛔ symbols genuinely absent on OMC 1.26.x** (docs 404 + drift-probe ✗): `createClass`, `createSubClass`, `save`. Wrappers marked `@deprecated` with concrete migration paths (`loadString` for create; Option B persistence for save). The wrappers stay in the package for forward-compat in case they return in a later OMC.
 
-4. **Resolved drift cases** (do not re-flag):
+4. **Wrappers rescued 2026-05-19** (do not re-flag — see [audit.md §2.10](./audit.md) for the "Class X not found in scope" diagnostic trap):
+   - `moveClass` — second arg is `Integer offset` (in-place reorder), not a TypeName destination. **Breaking change** to the input shape (`{ typeName, offset }`).
+   - `updateConnection` — docs arg order is `(className, from, to, annotate)` with `from`/`to` as Strings. **Breaking change** to the input shape; the input schema now exposes `typeName` first.
+   - `removeComponentModifiers` — `componentName` is a `String` and must be quoted (no public API change; wrapper just quotes internally now).
+   - `getReplaceableChoices` — two-TypeName signature `(baseClass, parentClass, includePartial?, sort?)` with a 2D matrix output. The first implementation here used the wrong (one-arg) shape. **Breaking change** to the wrapper's input/output schemas.
+   - `addTransition` / `deleteTransition` — `from`/`to` are Strings; previously emitted bare and silently broken in the 🟡 state. No public API change.
+
+5. **Resolved drift cases** (do not re-flag):
    - `copyClass` — destination is a `String` per docs; wrapper now quotes it correctly. Output is `result` not `success`.
    - `setComponentProperties` — wrapper realigned to the docs-correct 6-arg shape. **Breaking change** to the public input shape (`{finalPrefix, flow, stream, protectedPrefix, replaceablePrefix, variability, inner, outer, direction}`).
    - `renameClass` — output schema is `{ result: string[] }` per docs (was `{ newQualifiedName: string }` — the original was guesswork).

@@ -336,6 +336,18 @@ export class OmcClient implements CallContext {
     return browsing.isEnumeration(this, input);
   }
 
+  getEnumerationLiterals(
+    input: browsing.GetEnumerationLiteralsInput,
+  ): Promise<browsing.GetEnumerationLiteralsOutput> {
+    return browsing.getEnumerationLiterals(this, input);
+  }
+
+  getReplaceableChoices(
+    input: browsing.GetReplaceableChoicesInput,
+  ): Promise<browsing.GetReplaceableChoicesOutput> {
+    return browsing.getReplaceableChoices(this, input);
+  }
+
   // === Reading model contents =========================================
 
   getComponents(
@@ -478,6 +490,24 @@ export class OmcClient implements CallContext {
     input: contents.GetComponentCommentInput,
   ): Promise<contents.GetComponentCommentOutput> {
     return contents.getComponentComment(this, input);
+  }
+
+  getInstantiatedParametersAndValues(
+    input: contents.GetInstantiatedParametersAndValuesInput,
+  ): Promise<contents.GetInstantiatedParametersAndValuesOutput> {
+    return contents.getInstantiatedParametersAndValues(this, input);
+  }
+
+  getAnnotationNamedModifiers(
+    input: contents.GetAnnotationNamedModifiersInput,
+  ): Promise<contents.GetAnnotationNamedModifiersOutput> {
+    return contents.getAnnotationNamedModifiers(this, input);
+  }
+
+  getAnnotationModifierValue(
+    input: contents.GetAnnotationModifierValueInput,
+  ): Promise<contents.GetAnnotationModifierValueOutput> {
+    return contents.getAnnotationModifierValue(this, input);
   }
 
   // === Lifecycle =======================================================
@@ -650,6 +680,12 @@ export class OmcClient implements CallContext {
     input: parameters.SetParameterValueInput,
   ): Promise<parameters.SetParameterValueOutput> {
     return parameters.setParameterValue(this, input);
+  }
+
+  removeExtendsModifiers(
+    input: parameters.RemoveExtendsModifiersInput,
+  ): Promise<parameters.RemoveExtendsModifiersOutput> {
+    return parameters.removeExtendsModifiers(this, input);
   }
 
   // === Elements ========================================================
@@ -916,6 +952,30 @@ export class OmcClient implements CallContext {
     input: editing.SetDocumentationAnnotationInput,
   ): Promise<editing.SetDocumentationAnnotationOutput> {
     return editing.setDocumentationAnnotation(this, input);
+  }
+
+  addInitialState(
+    input: editing.AddInitialStateInput,
+  ): Promise<editing.AddInitialStateOutput> {
+    return editing.addInitialState(this, input);
+  }
+
+  deleteInitialState(
+    input: editing.DeleteInitialStateInput,
+  ): Promise<editing.DeleteInitialStateOutput> {
+    return editing.deleteInitialState(this, input);
+  }
+
+  updateInitialState(
+    input: editing.UpdateInitialStateInput,
+  ): Promise<editing.UpdateInitialStateOutput> {
+    return editing.updateInitialState(this, input);
+  }
+
+  renameComponentInClass(
+    input: editing.RenameComponentInClassInput,
+  ): Promise<editing.RenameComponentInClassOutput> {
+    return editing.renameComponentInClass(this, input);
   }
 
   // === Execution =======================================================

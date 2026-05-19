@@ -39,6 +39,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { OmcClient } from "../src/client.js";
 import {
   disposeFixture,
+  loadExtendsFixture,
   loadFixture,
   loadParameterFixture,
   type Fixture,
@@ -228,6 +229,40 @@ end ${pkg};
         await client.deleteClass({ typeName: pkg });
       }
     });
+
+    it("moveClass shifts a class by an integer offset within its parent", async () => {
+      // moveClass on OMC 1.26.x is an *in-place* reorder by signed Integer
+      // offset (positive = down, negative = up), NOT a cross-package
+      // relocate. Earlier wrapper versions treated the second arg as a
+      // TypeName destination and were silently broken; see audit.md §2.10.
+      const { randomBytes } = await import("node:crypto");
+      const id = randomBytes(4).toString("hex");
+      const pkg = `MwMove_${id}`;
+      await client.loadString({
+        data: `package ${pkg}
+  model A end A;
+  model B end B;
+  model C end C;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+      try {
+        // Move A down by 2 — order should become B, C, A.
+        const moved = await client.moveClass({
+          typeName: `${pkg}.A`,
+          offset: 2,
+        });
+        expect(moved.success).toBe(true);
+        const after = await client.getClassNames({
+          typeName: pkg,
+          qualified: false,
+        });
+        expect(after.classNames).toEqual(["B", "C", "A"]);
+      } finally {
+        await client.deleteClass({ typeName: pkg });
+      }
+    });
   });
 
   // === Editing: components and connections ===
@@ -272,6 +307,26 @@ end ${pkg};
       });
       expect(Array.isArray(ren.rewrittenDeclarations)).toBe(true);
 
+      // renameComponentInClass — single-class variant (no cross-class
+      // rewriting). Confirmed to work on OMC 1.26.7; returns a list with
+      // the target class as the sole entry.
+      const inClass = await client.renameComponentInClass({
+        typeName: fixture.modelClass,
+        oldName: "y",
+        newName: "z",
+      });
+      expect(inClass.rewrittenDeclarations).toContain(fixture.modelClass);
+      ({ components } = await client.getComponents({
+        typeName: fixture.modelClass,
+      }));
+      expect(components.map((c) => c.name)).toContain("z");
+      // Restore the name so the rest of the test (delete) still applies.
+      await client.renameComponentInClass({
+        typeName: fixture.modelClass,
+        oldName: "z",
+        newName: "y",
+      });
+
       ({ components } = await client.getComponents({
         typeName: fixture.modelClass,
       }));
@@ -289,6 +344,55 @@ end ${pkg};
         typeName: fixture.modelClass,
       }));
       expect(components.map((c) => c.name)).not.toContain("y");
+    });
+
+    it("addConnection / updateConnection / deleteConnection roundtrip", async () => {
+      await client.addComponent({
+        componentName: "uIn",
+        componentClass: "Modelica.Blocks.Interfaces.RealInput",
+        intoTypeName: fixture.modelClass,
+      });
+      await client.addComponent({
+        componentName: "yOut",
+        componentClass: "Modelica.Blocks.Interfaces.RealOutput",
+        intoTypeName: fixture.modelClass,
+      });
+      await client.addConnection({
+        from: "uIn",
+        to: "yOut",
+        typeName: fixture.modelClass,
+      });
+
+      // updateConnection now sends docs-correct (className, from, to, annotate)
+      // with from/to quoted. Earlier wrapper versions had the arg order
+      // wrong and were silently broken; see audit.md §2.10.
+      const upd = await client.updateConnection({
+        typeName: fixture.modelClass,
+        from: "uIn",
+        to: "yOut",
+        annotation: "Line(points={{-20,0},{20,0}}, thickness=0.5)",
+      });
+      expect(upd.success).toBe(true);
+
+      // Confirm the annotation actually changed — OMC normalizes kwargs
+      // into positional record fields, so we can't grep for `thickness`
+      // by name. Instead assert the Line() call appears with the 0.5
+      // thickness float somewhere in the positional payload.
+      const { annotation } = await client.getNthConnectionAnnotation({
+        typeName: fixture.modelClass,
+        index: 1,
+      });
+      expect(annotation.kind === "list" || annotation.kind === "call").toBe(
+        true,
+      );
+      expect(JSON.stringify(annotation)).toMatch(/"Line"/);
+      expect(JSON.stringify(annotation)).toContain("0.5");
+
+      await client.deleteConnection({
+        from: "uIn",
+        to: "yOut",
+        typeName: fixture.modelClass,
+      });
     });
 
     it("addConnection / deleteConnection on a model with two connectors", async () => {
@@ -425,6 +529,206 @@ end ${pkg};
         modifier: "k",
       });
       expect(value).toContain("42");
+    });
+
+    it("removeComponentModifiers clears modifiers on a typed sub-component", async () => {
+      // The parameter fixture's `Sample` has only a primitive `k` parameter
+      // — removeComponentModifiers needs a *typed* sub-component. Load a
+      // richer fixture inline.
+      const { randomBytes } = await import("node:crypto");
+      const pkg = `MwRcm_${randomBytes(4).toString("hex")}`;
+      const cls = `${pkg}.Sample`;
+      await client.loadString({
+        data: `package ${pkg}
+  model Sample
+    Modelica.Blocks.Math.Gain gain(k=2.5);
+  end Sample;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+      try {
+        // Sanity: k modifier is currently bound to 2.5.
+        const before = await client.getComponentModifierValue({
+          typeName: cls,
+          modifier: "gain.k",
+        });
+        expect(before.value).toContain("2.5");
+
+        const { success } = await client.removeComponentModifiers({
+          typeName: cls,
+          componentName: "gain",
+        });
+        expect(success).toBe(true);
+
+        const after = await client.getComponentModifierValue({
+          typeName: cls,
+          modifier: "gain.k",
+        });
+        expect(after.value).toBe("");
+      } finally {
+        await client.deleteClass({ typeName: pkg });
+      }
+    });
+  });
+
+  // === State-machine mutations ===
+
+  describe("state-machine", () => {
+    let pkg: string;
+    let cls: string;
+
+    beforeEach(async () => {
+      const { randomBytes } = await import("node:crypto");
+      pkg = `MwSm_${randomBytes(4).toString("hex")}`;
+      cls = `${pkg}.Sample`;
+      await client.loadString({
+        data: `package ${pkg}
+  block Sample
+    Boolean state1;
+    Boolean state2;
+    Boolean state3;
+  equation
+    initialState(state1);
+    transition(state1, state2, time > 1, immediate=true, reset=true, synchronize=false, priority=1);
+  end Sample;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+    });
+
+    afterEach(async () => {
+      await client.deleteClass({ typeName: pkg });
+    });
+
+    it("addInitialState marks an additional state initial", async () => {
+      const { success } = await client.addInitialState({
+        typeName: cls,
+        state: "state2",
+      });
+      expect(success).toBe(true);
+
+      const { initialStates } = await client.getInitialStates({ typeName: cls });
+      const names = initialStates.map((row) => row[0]);
+      expect(names).toContain("state1");
+      expect(names).toContain("state2");
+    });
+
+    it("updateInitialState replaces the annotation on an existing initial state", async () => {
+      const { success } = await client.updateInitialState({
+        typeName: cls,
+        state: "state1",
+        annotation: "Placement(visible=false)",
+      });
+      expect(success).toBe(true);
+
+      // OMC normalizes the kwarg `visible=false` into a positional
+      // `Placement(false)` record, so we can't match by name. Just
+      // assert the marker is still there and the annotation isn't empty.
+      const { initialStates } = await client.getInitialStates({ typeName: cls });
+      const row = initialStates.find((r) => r[0] === "state1");
+      expect(row).toBeDefined();
+      expect(row?.[1] ?? "").toMatch(/Placement/);
+    });
+
+    it("deleteInitialState clears the initial-state marker (state itself preserved)", async () => {
+      // Add state2 as initial first so we can delete it.
+      await client.addInitialState({ typeName: cls, state: "state2" });
+
+      const { success } = await client.deleteInitialState({
+        typeName: cls,
+        state: "state2",
+      });
+      expect(success).toBe(true);
+
+      const { initialStates } = await client.getInitialStates({ typeName: cls });
+      const names = initialStates.map((row) => row[0]);
+      expect(names).not.toContain("state2");
+      // state1 (the original initial state) is preserved.
+      expect(names).toContain("state1");
+    });
+
+    it("addTransition adds a transition between two states", async () => {
+      // Pre-existing wrapper had a bare-ident-from/to bug; now fixed.
+      const add = await client.addTransition({
+        typeName: cls,
+        from: "state2",
+        to: "state3",
+        condition: "time > 2",
+        immediate: false,
+        reset: false,
+        synchronize: false,
+        priority: 2,
+      });
+      expect(add.success).toBe(true);
+
+      const after = await client.getTransitions({ typeName: cls });
+      expect(after.transitions.length).toBe(2);
+      const newRow = after.transitions.find(
+        (r) => r[0] === "state2" && r[1] === "state3",
+      );
+      expect(newRow).toBeDefined();
+    });
+
+    it("deleteTransition removes the fixture's original transition", async () => {
+      // Read what OMC stored for the loadString'd transition, then ask it
+      // to delete using its own normalization. (Building synthetic input
+      // strings is flaky because OMC silently no-ops on any arg mismatch
+      // — `condition` whitespace is the usual culprit.)
+      const before = await client.getTransitions({ typeName: cls });
+      expect(before.transitions.length).toBe(1);
+      const [from, to, condition, immediate, reset, synchronize, priority] =
+        before.transitions[0]!;
+
+      const del = await client.deleteTransition({
+        typeName: cls,
+        from: from!,
+        to: to!,
+        condition: condition!,
+        immediate: immediate === "true",
+        reset: reset === "true",
+        synchronize: synchronize === "true",
+        priority: Number(priority),
+      });
+      expect(del.success).toBe(true);
+
+      const after = await client.getTransitions({ typeName: cls });
+      expect(after.transitions.length).toBe(0);
+    });
+  });
+
+  // === Extends-clause mutations ===
+
+  describe("extends", () => {
+    let fixture: Fixture;
+
+    beforeEach(async () => {
+      await client.loadModel({ typeName: "Modelica" });
+      fixture = await loadExtendsFixture(client);
+    });
+
+    afterEach(async () => {
+      await disposeFixture(client, fixture);
+    });
+
+    it("removeExtendsModifiers clears all modifiers on an extends clause", async () => {
+      // Sanity: the fixture's source carries `extends … Gain(k = 2.5)`.
+      const before = await client.listFile({ typeName: fixture.modelClass });
+      expect(before.contents).toContain("k = 2.5");
+
+      const { success } = await client.removeExtendsModifiers({
+        typeName: fixture.modelClass,
+        extendsBase: "Modelica.Blocks.Math.Gain",
+      });
+      expect(success).toBe(true);
+
+      // After clearing, the `k = 2.5` modifier should be gone from the
+      // listed source. (We round-trip via listFile because
+      // getExtendsModifierValue's read path doesn't surface modifiers on
+      // this OMC version — separately tracked.)
+      const after = await client.listFile({ typeName: fixture.modelClass });
+      expect(after.contents).not.toContain("k = 2.5");
     });
   });
 });

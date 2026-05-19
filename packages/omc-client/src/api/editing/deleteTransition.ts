@@ -3,6 +3,10 @@
  *
  * Remove a state-machine transition. Caller must supply the same identifying
  * fields (from, to, condition, flags, priority) as when it was added.
+ *
+ * NOTE on argument shape: `from` and `to` must be passed as Modelica String
+ * literals (quoted); see the docstring in `addTransition.ts` for the
+ * misleading-diagnostic story.
  */
 
 import { z } from "zod";
@@ -38,7 +42,7 @@ export async function deleteTransition(
   input: DeleteTransitionInput,
 ): Promise<DeleteTransitionOutput> {
   const raw = await ctx.call(
-    `deleteTransition(${input.typeName}, ${input.from}, ${input.to}, ${quote(input.condition)}, ${mlBool(input.immediate)}, ${mlBool(input.reset)}, ${mlBool(input.synchronize)}, ${input.priority})`,
+    `deleteTransition(${input.typeName}, ${quote(input.from)}, ${quote(input.to)}, ${quote(input.condition)}, ${mlBool(input.immediate)}, ${mlBool(input.reset)}, ${mlBool(input.synchronize)}, ${input.priority})`,
   );
   return parseOutput(
     DeleteTransitionOutputSchema,

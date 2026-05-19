@@ -1,26 +1,34 @@
 /**
  * OMC: `function removeComponentModifiers`
  *
+ * ```modelica
+ * function removeComponentModifiers
+ *   input TypeName class_;
+ *   input String componentName;
+ *   input Boolean keepRedeclares = false;
+ *   output Boolean success;
+ * end removeComponentModifiers;
+ * ```
+ *
  * Strip all modifiers from a component. `keepRedeclares = true` preserves
  * any `redeclare` modifiers (useful when you want to clear values but
  * preserve type substitutions).
  *
- * @deprecated NOT AVAILABLE on OMC 1.26.x's interactive scripting (symbol
- *             not found; verified absent on both 1.26.1 and 1.26.7,
- *             despite a public docs page existing for it). Wrapper kept
- *             for forward/backward compatibility.
- *             **Migration on 1.26.x**: enumerate modifiers with
- *             `getComponentModifierNames` then clear each individually with
- *             `setComponentModifierValue({..., expr: ""})`.
+ * NOTE on argument shape: `componentName` is an OMC `String`, not a
+ * TypeName — it MUST be quoted. Passing it unquoted triggers OMC's
+ * misleading `Class removeComponentModifiers not found in scope`
+ * diagnostic; see `docs/audit.md` §2.10 for the gotcha. This wrapper
+ * always quotes it.
  */
 
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { mlBool } from "../../_shared/format.js";
+import { mlBool, quote } from "../../_shared/format.js";
 import { TypeNameAndComponentNameInput } from "../../_shared/inputs.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
-import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
+import { parseOutput } from "../../_shared/parseOutput.js";
+import { expectBool, parse } from "../../parse.js";
 
 export const RemoveComponentModifiersInputSchema =
   TypeNameAndComponentNameInput.extend({
@@ -36,7 +44,7 @@ export type RemoveComponentModifiersOutput = z.infer<
 >;
 
 export const RemoveComponentModifiersDescription =
-  "Remove all modifiers from a component, optionally preserving redeclares. (Symbol absent on OMC 1.26.x — see file docstring for migration.)";
+  "Remove all modifiers from a component, optionally preserving redeclares.";
 
 export async function removeComponentModifiers(
   ctx: CallContext,
@@ -44,11 +52,11 @@ export async function removeComponentModifiers(
 ): Promise<RemoveComponentModifiersOutput> {
   const keepRedeclares = input.keepRedeclares ?? false;
   const raw = await ctx.call(
-    `removeComponentModifiers(${input.typeName}, ${input.componentName}, ${mlBool(keepRedeclares)})`,
+    `removeComponentModifiers(${input.typeName}, ${quote(input.componentName)}, ${mlBool(keepRedeclares)})`,
   );
   return parseOutput(
     RemoveComponentModifiersOutputSchema,
-    { success: await parseMutationSuccess(ctx, raw, "removeComponentModifiers") },
+    { success: expectBool(parse(raw)) },
     "removeComponentModifiers",
   );
 }

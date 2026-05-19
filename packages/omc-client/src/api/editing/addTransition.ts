@@ -2,6 +2,12 @@
  * OMC: `function addTransition`
  *
  * Add a state-machine transition.
+ *
+ * NOTE on argument shape: `from` and `to` must be passed as Modelica String
+ * literals (quoted), NOT bare identifiers. Passing them unquoted produces
+ * a misleading `Class addTransition not found in scope` diagnostic — OMC
+ * fails the ident lookup on the argument and then mis-attributes the
+ * failure to the function name. This wrapper always quotes them.
  */
 
 import { z } from "zod";
@@ -40,7 +46,7 @@ export async function addTransition(
   const annotation = input.annotation ?? "";
   const ann = annotation === "" ? "annotate=Line()" : `annotate=${annotation}`;
   const raw = await ctx.call(
-    `addTransition(${input.typeName}, ${input.from}, ${input.to}, ${quote(input.condition)}, ${mlBool(input.immediate)}, ${mlBool(input.reset)}, ${mlBool(input.synchronize)}, ${input.priority}, ${ann})`,
+    `addTransition(${input.typeName}, ${quote(input.from)}, ${quote(input.to)}, ${quote(input.condition)}, ${mlBool(input.immediate)}, ${mlBool(input.reset)}, ${mlBool(input.synchronize)}, ${input.priority}, ${ann})`,
   );
   return parseOutput(
     AddTransitionOutputSchema,

@@ -110,10 +110,10 @@ const probes: Probe[] = [
     cmd: 'createSubClass(MwProbeSub, MwProbeCreate, "model", false, false)' as OmcCommand,
   },
   {
-    label: "moveClass(bare)",
+    label: "moveClass(docs-correct Integer-offset shape)",
     wrapper: "lifecycle/moveClass.ts",
-    note: "Migration: listFile + edit + loadString.",
-    cmd: "moveClass(Modelica.Blocks.Math.Sin, Modelica.Blocks.Math)" as OmcCommand,
+    note: "Regression watch: this is the in-place reorder by Integer offset (NOT cross-package relocate). Earlier wrapper sent a TypeName here and OMC returned a misleading 'not found in scope' diagnostic; see audit.md §2.10.",
+    cmd: "moveClass(Modelica.Blocks.Math.Sin, 1)" as OmcCommand,
   },
   {
     label: "moveClassToTop(bare)",
@@ -139,12 +139,12 @@ const probes: Probe[] = [
     cmd: 'copyClass(Modelica.Blocks.Math.Sin, "MwProbeCopy")' as OmcCommand,
   },
 
-  // ----- Editing: updateConnection -----
+  // ----- Editing: updateConnection — currently ✅ after arg-order fix, kept as regression watch -----
   {
-    label: "updateConnection(on PID_Controller)",
+    label: "updateConnection(docs-correct shape)",
     wrapper: "editing/updateConnection.ts",
-    note: "Migration: deleteConnection + addConnection.",
-    cmd: 'updateConnection("spring.flange_b", "inertia2.flange_a", Modelica.Blocks.Examples.PID_Controller, annotate=Line())' as OmcCommand,
+    note: "Regression watch: arg order is (className, String from, String to, annotate). Earlier wrapper had from/to before className and OMC returned a misleading 'not found in scope' diagnostic; see audit.md §2.10.",
+    cmd: 'updateConnection(Modelica.Blocks.Examples.PID_Controller, "spring.flange_b", "inertia2.flange_a", Line())' as OmcCommand,
   },
 
   // ----- Editing: setComponentProperties — currently ✅, kept as a regression watch -----
@@ -155,11 +155,21 @@ const probes: Probe[] = [
     cmd: 'setComponentProperties(Modelica.Blocks.Examples.PID_Controller, PI, {false,false,false,false,false}, {""}, {false,false}, {""})' as OmcCommand,
   },
 
-  // ----- Parameters: removeComponentModifiers -----
+  // ----- Parameters: removeComponentModifiers — currently ✅ after String-quoting fix -----
   {
-    label: "removeComponentModifiers(on PID_Controller)",
+    label: "removeComponentModifiers(docs-correct quoted componentName)",
     wrapper: "parameters/removeComponentModifiers.ts",
-    note: "Migration: getComponentModifierNames + setComponentModifierValue('') per modifier.",
+    note: "Regression watch: componentName is `String`, must be quoted. Earlier wrapper sent it bare and OMC returned a misleading 'not found in scope' diagnostic; see audit.md §2.10.",
+    cmd: 'removeComponentModifiers(Modelica.Blocks.Examples.PID_Controller, "PI", false)' as OmcCommand,
+  },
+
+  // ----- Counter-examples: the bare-ident shapes that used to ship -----
+  // Keep these so the OMC error pattern stays documented. If a future
+  // OMC version starts accepting bare idents here too, drop these probes.
+  {
+    label: "removeComponentModifiers(bare ident — the OLD broken shape)",
+    wrapper: "parameters/removeComponentModifiers.ts",
+    note: "Counter-example: should ✗ because componentName is String-typed, not a TypeName.",
     cmd: "removeComponentModifiers(Modelica.Blocks.Examples.PID_Controller, PI, false)" as OmcCommand,
   },
 ];

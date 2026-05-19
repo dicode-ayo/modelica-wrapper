@@ -168,6 +168,57 @@ extendsBase: extendsBase.describe(
 ),
 ```
 
+### 2.10 The "Class X not found in scope" diagnostic trap
+
+OMC's interactive scripting emits the same error message for two very
+different failures:
+
+```text
+Error: Class <FunctionName> not found in scope <global scope>
+(looking for a function or record).
+```
+
+This message can mean either:
+
+1. **The function genuinely doesn't exist** at this OMC version (e.g.
+   `createClass` on 1.26.x — its docs page is also 404).
+2. **One of the call's *arguments* failed ident resolution.** OMC tries to
+   resolve an unquoted argument as a TypeName/ident, fails to find it in
+   scope, and then mis-attributes the failure to the outer function name.
+
+When you see this error during an audit or a new-wrapper bring-up, do NOT
+mark the wrapper ⛔ until you've ruled out (2). The discriminating step is
+to re-probe with every plausible argument variant:
+
+- **If the OMC docs declare an arg `String <name>`, quote it.** OMC will
+  not coerce a bare ident into a String — it will try to resolve the
+  ident as a name in scope and fail. Examples discovered this way on
+  OMC 1.26.7 (all were silently broken before):
+  - `removeComponentModifiers(cl, String componentName, …)` — componentName must be quoted
+  - `addTransition(cl, String from, String to, …)` — from/to must be quoted
+  - `deleteTransition(cl, String from, String to, …)` — same
+  - `addInitialState(cl, String state, …)` — state must be quoted
+  - `deleteInitialState(cl, String state)` — same
+  - `updateInitialState(cl, String state, …)` — same
+
+- **Re-check argument order.** OMC mis-attributes order errors the same
+  way. Example: `updateConnection` docs put `className` first but our
+  wrapper sent `(from, to, className, annotate)` — OMC reported "not
+  found in scope" instead of an order error.
+
+- **Re-check argument *type*.** Example: `moveClass`'s second arg is an
+  `Integer offset` (in-place reorder), not a `TypeName destination`
+  (cross-package relocate). Our wrapper sent a TypeName and got the same
+  misleading error.
+
+After fixing the call shape, the wrapper typically jumps from ⛔ to ✅
+on the same OMC version with no symbol movement.
+
+The drift probe at [`../test/drift-probe.integration.test.ts`](../test/drift-probe.integration.test.ts)
+keeps a "counter-example" entry for each fixed shape so the OMC error
+pattern stays documented and a future OMC bump won't re-introduce the
+bug silently.
+
 ### 2.9 Descriptions (MCP metadata)
 
 Each per-function file exports a `<Fn>Description` string constant, sourced from the OpenModelica scripting documentation. The same string is also stored on the `RegistryEntry.description` field. Together with the `.describe()` annotations on every Zod input/output schema field, these descriptions are the authoritative source for the MCP-generation pipeline that derives a Modelica MCP server from this registry.

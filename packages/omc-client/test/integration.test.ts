@@ -515,6 +515,88 @@ describeIf("OmcClient against real OMC", () => {
     expect(parameters.length).toBeGreaterThan(0);
   });
 
+  // === Deep-inspection readers (verified on OMC 1.26.7) ===
+
+  it("getEnumerationLiterals returns the literal names of a Modelica enum", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { literals } = await client.getEnumerationLiterals({
+      typeName: "Modelica.Blocks.Types.Init",
+    });
+    expect(literals).toEqual([
+      "NoInit",
+      "SteadyState",
+      "InitialState",
+      "InitialOutput",
+    ]);
+  });
+
+  it("getEnumerationLiterals returns an empty array for a non-enum class", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { literals } = await client.getEnumerationLiterals({
+      typeName: "Modelica.Blocks.Math.Sin",
+    });
+    expect(literals).toEqual([]);
+  });
+
+  it("getInstantiatedParametersAndValues returns name=value bindings", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { result } = await client.getInstantiatedParametersAndValues({
+      typeName: "Modelica.Blocks.Continuous.PID",
+    });
+    expect(result.length).toBeGreaterThan(0);
+    // Every entry should be a non-empty string containing `=`.
+    for (const entry of result) {
+      expect(entry).toMatch(/=/);
+    }
+    // PID has a `k` parameter — assert it appears with a default value.
+    expect(result.some((s) => /^\s*k\s*=/.test(s))).toBe(true);
+  });
+
+  it("getAnnotationNamedModifiers lists Icon's named modifiers", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { result } = await client.getAnnotationNamedModifiers({
+      typeName: "Modelica.Blocks.Math.Sin",
+      annotation: "Icon",
+    });
+    expect(result).toEqual(
+      expect.arrayContaining(["coordinateSystem", "graphics"]),
+    );
+  });
+
+  it("getAnnotationModifierValue returns the raw modifier text", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { value } = await client.getAnnotationModifierValue({
+      typeName: "Modelica.Blocks.Math.Sin",
+      annotation: "Icon",
+      modifier: "graphics",
+    });
+    // OMC wraps the value list in `$Code(…)` per graphic primitive.
+    expect(value).toContain("$Code(");
+  });
+
+  it("getReplaceableChoices returns the redeclare-choices matrix", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    // Modelica.Fluid.System declares `replaceable package Medium = …
+    // PartialMedium`. The choices are the concrete Medium classes.
+    const { choices } = await client.getReplaceableChoices({
+      baseClass: "Modelica.Media.Interfaces.PartialMedium",
+      parentClass: "Modelica.Fluid.System",
+    });
+    expect(choices.length).toBeGreaterThan(0);
+    // Each row is `[choiceClass, description]`; both should be non-empty
+    // strings except for the synthesized header row which uses the
+    // element name as the choice slot.
+    for (const row of choices) {
+      expect(row.length).toBe(2);
+      expect(typeof row[0]).toBe("string");
+      expect(typeof row[1]).toBe("string");
+    }
+    // The Modelica.Media.* concrete classes should appear somewhere in
+    // the matrix.
+    const classes = choices.map((r) => r[0]);
+    expect(classes.some((c) => c.startsWith("Modelica.Media."))).toBe(true);
+  });
+
   // === Concurrency ===
 
   it("serializes concurrent calls without REQ/REP corruption", async () => {
@@ -662,4 +744,5 @@ describeIf("OmcClient against real OMC", () => {
   it.todo(
     "readSimulationResult: depends on .mat from a heavy simulate run; gate with OMC_INTEGRATION_HEAVY=1",
   );
+
 });

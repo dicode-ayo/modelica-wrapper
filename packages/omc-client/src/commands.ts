@@ -42,6 +42,8 @@ export type OmcFunction =
   | "isReplaceable"
   | "isProtectedClass"
   | "isEnumeration"
+  | "getEnumerationLiterals"
+  | "getReplaceableChoices"
 
   // --- Reading model contents ---
   | "getComponents"
@@ -68,6 +70,9 @@ export type OmcFunction =
   | "getDefaultComponentName"
   | "getDefaultComponentPrefixes"
   | "getComponentComment"
+  | "getInstantiatedParametersAndValues"
+  | "getAnnotationNamedModifiers"
+  | "getAnnotationModifierValue"
 
   // --- Source / lifecycle ---
   | "loadFile"
@@ -101,6 +106,7 @@ export type OmcFunction =
   | "getExtendsModifierNames"
   | "getExtendsModifierValue"
   | "setExtendsModifierValue"
+  | "removeExtendsModifiers"
 
   // --- Elements (modern Component* generalization) ---
   | "getElements"
@@ -142,6 +148,10 @@ export type OmcFunction =
   | "setComponentComment"
   | "setClassComment"
   | "setDocumentationAnnotation"
+  | "addInitialState"
+  | "deleteInitialState"
+  | "updateInitialState"
+  | "renameComponentInClass"
 
   // --- Solver / runtime config ---
   | "getSolverMethods"

@@ -100,6 +100,8 @@ export const REGISTRY = {
   isReplaceable: entry("browsing", browsing.isReplaceable, browsing.IsReplaceableInputSchema, browsing.IsReplaceableOutputSchema, browsing.IsReplaceableDescription),
   isProtectedClass: entry("browsing", browsing.isProtectedClass, browsing.IsProtectedClassInputSchema, browsing.IsProtectedClassOutputSchema, browsing.IsProtectedClassDescription),
   isEnumeration: entry("browsing", browsing.isEnumeration, browsing.IsEnumerationInputSchema, browsing.IsEnumerationOutputSchema, browsing.IsEnumerationDescription),
+  getEnumerationLiterals: entry("browsing", browsing.getEnumerationLiterals, browsing.GetEnumerationLiteralsInputSchema, browsing.GetEnumerationLiteralsOutputSchema, browsing.GetEnumerationLiteralsDescription),
+  getReplaceableChoices: entry("browsing", browsing.getReplaceableChoices, browsing.GetReplaceableChoicesInputSchema, browsing.GetReplaceableChoicesOutputSchema, browsing.GetReplaceableChoicesDescription),
 
   // --- Reading model contents ---
   getComponents: entry("contents", contents.getComponents, contents.GetComponentsInputSchema, contents.GetComponentsOutputSchema, contents.GetComponentsDescription),
@@ -126,6 +128,9 @@ export const REGISTRY = {
   getDefaultComponentName: entry("contents", contents.getDefaultComponentName, contents.GetDefaultComponentNameInputSchema, contents.GetDefaultComponentNameOutputSchema, contents.GetDefaultComponentNameDescription),
   getDefaultComponentPrefixes: entry("contents", contents.getDefaultComponentPrefixes, contents.GetDefaultComponentPrefixesInputSchema, contents.GetDefaultComponentPrefixesOutputSchema, contents.GetDefaultComponentPrefixesDescription),
   getComponentComment: entry("contents", contents.getComponentComment, contents.GetComponentCommentInputSchema, contents.GetComponentCommentOutputSchema, contents.GetComponentCommentDescription),
+  getInstantiatedParametersAndValues: entry("contents", contents.getInstantiatedParametersAndValues, contents.GetInstantiatedParametersAndValuesInputSchema, contents.GetInstantiatedParametersAndValuesOutputSchema, contents.GetInstantiatedParametersAndValuesDescription),
+  getAnnotationNamedModifiers: entry("contents", contents.getAnnotationNamedModifiers, contents.GetAnnotationNamedModifiersInputSchema, contents.GetAnnotationNamedModifiersOutputSchema, contents.GetAnnotationNamedModifiersDescription),
+  getAnnotationModifierValue: entry("contents", contents.getAnnotationModifierValue, contents.GetAnnotationModifierValueInputSchema, contents.GetAnnotationModifierValueOutputSchema, contents.GetAnnotationModifierValueDescription),
 
   // --- Lifecycle ---
   loadFile: entry("lifecycle", lifecycle.loadFile, lifecycle.LoadFileInputSchema, lifecycle.LoadFileOutputSchema, lifecycle.LoadFileDescription),
@@ -159,6 +164,7 @@ export const REGISTRY = {
   setExtendsModifierValue: entry("parameters", parameters.setExtendsModifierValue, parameters.SetExtendsModifierValueInputSchema, parameters.SetExtendsModifierValueOutputSchema, parameters.SetExtendsModifierValueDescription),
   getParameterNames: entry("parameters", parameters.getParameterNames, parameters.GetParameterNamesInputSchema, parameters.GetParameterNamesOutputSchema, parameters.GetParameterNamesDescription),
   setParameterValue: entry("parameters", parameters.setParameterValue, parameters.SetParameterValueInputSchema, parameters.SetParameterValueOutputSchema, parameters.SetParameterValueDescription),
+  removeExtendsModifiers: entry("parameters", parameters.removeExtendsModifiers, parameters.RemoveExtendsModifiersInputSchema, parameters.RemoveExtendsModifiersOutputSchema, parameters.RemoveExtendsModifiersDescription),
 
   // --- Elements (modern Component* generalization) ---
   getElements: entry("elements", elements.getElements, elements.GetElementsInputSchema, elements.GetElementsOutputSchema, elements.GetElementsDescription),
@@ -200,6 +206,10 @@ export const REGISTRY = {
   setComponentComment: entry("editing", editing.setComponentComment, editing.SetComponentCommentInputSchema, editing.SetComponentCommentOutputSchema, editing.SetComponentCommentDescription),
   setClassComment: entry("editing", editing.setClassComment, editing.SetClassCommentInputSchema, editing.SetClassCommentOutputSchema, editing.SetClassCommentDescription),
   setDocumentationAnnotation: entry("editing", editing.setDocumentationAnnotation, editing.SetDocumentationAnnotationInputSchema, editing.SetDocumentationAnnotationOutputSchema, editing.SetDocumentationAnnotationDescription),
+  addInitialState: entry("editing", editing.addInitialState, editing.AddInitialStateInputSchema, editing.AddInitialStateOutputSchema, editing.AddInitialStateDescription),
+  deleteInitialState: entry("editing", editing.deleteInitialState, editing.DeleteInitialStateInputSchema, editing.DeleteInitialStateOutputSchema, editing.DeleteInitialStateDescription),
+  updateInitialState: entry("editing", editing.updateInitialState, editing.UpdateInitialStateInputSchema, editing.UpdateInitialStateOutputSchema, editing.UpdateInitialStateDescription),
+  renameComponentInClass: entry("editing", editing.renameComponentInClass, editing.RenameComponentInClassInputSchema, editing.RenameComponentInClassOutputSchema, editing.RenameComponentInClassDescription),
 
   // --- Solver / runtime config ---
   getSolverMethods: entry("solver", solver.getSolverMethods, solver.GetSolverMethodsInputSchema, solver.GetSolverMethodsOutputSchema, solver.GetSolverMethodsDescription),

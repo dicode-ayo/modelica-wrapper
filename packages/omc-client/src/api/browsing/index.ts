@@ -34,3 +34,5 @@ export * from "./isReplaceable.js";
 export * from "./isProtectedClass.js";
 export * from "./isEnumeration.js";
 export * from "./getClassComment.js";
+export * from "./getEnumerationLiterals.js";
+export * from "./getReplaceableChoices.js";

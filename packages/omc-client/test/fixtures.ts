@@ -80,6 +80,33 @@ end ${packageName};
   return { packageName, modelClass };
 }
 
+/**
+ * Load a fixture that `extends Modelica.Blocks.Math.Gain(k=2.5)` so tests
+ * can exercise extends-clause modifier reads/writes. Caller must have
+ * already loaded the `Modelica` library.
+ */
+export async function loadExtendsFixture(
+  client: OmcClient,
+): Promise<Fixture> {
+  const packageName = `MwTest_${randomBytes(4).toString("hex")}`;
+  const modelClass = `${packageName}.Sample`;
+  const data = `package ${packageName}
+  block Sample
+    extends Modelica.Blocks.Math.Gain(k=2.5);
+  end Sample;
+end ${packageName};
+`;
+  const { success } = await client.loadString({
+    data,
+    filename: `<fixture:${packageName}>`,
+  });
+  if (!success) {
+    const { errorString } = await client.getErrorString();
+    throw new Error(`loadExtendsFixture: ${errorString}`);
+  }
+  return { packageName, modelClass };
+}
+
 /** Best-effort cleanup. Errors are swallowed — the OMC subprocess dies anyway. */
 export async function disposeFixture(
   client: OmcClient,
