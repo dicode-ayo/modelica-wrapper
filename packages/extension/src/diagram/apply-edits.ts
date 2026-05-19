@@ -116,22 +116,15 @@ async function applyOne(
       });
       return;
     case "connectionWaypoints":
-      // OMC 1.26.x is missing `updateConnection` (verified absent on
-      // 1.26.1 / 1.26.7 — see updateConnection.ts docstring), so we
-      // re-route by deleting and re-adding with the new
-      // `Line(points=...)` annotation. Two RPCs, functionally
-      // equivalent. We leave `client.lastCall` pointing at the
-      // addConnection so the REPL hook labels this row with the call
-      // that landed the new shape.
-      await client.invoke("deleteConnection", {
+      // `updateConnection` was previously thought to be missing on
+      // OMC 1.26.x and we re-routed via delete+add. The wrapper has
+      // since been rescued (the OMC docs put `className` first and
+      // require `from` / `to` as quoted Strings — see
+      // packages/omc-client/docs/audit.md §2.10). Single RPC now.
+      await client.invoke("updateConnection", {
+        typeName: hostClass,
         from: edit.from,
         to: edit.to,
-        typeName: hostClass,
-      });
-      await client.invoke("addConnection", {
-        from: edit.from,
-        to: edit.to,
-        typeName: hostClass,
         annotation: lineAnnotation(edit.waypoints),
       });
       return;
