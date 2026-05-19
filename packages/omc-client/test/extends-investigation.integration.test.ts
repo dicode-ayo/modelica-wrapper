@@ -1,6 +1,8 @@
 /**
- * Investigation: why don't parameters / connections appear in the diagram
- * of a class that purely `extends` another?
+ * Regression coverage for diagram inheritance: a class that purely
+ * `extends` another must render with its ancestor's connections and
+ * parameters — both used to drop silently because the producer and the
+ * parameter-form builder only walked the host class's own elements.
  *
  * Two minimal Modelica models:
  *
@@ -18,33 +20,25 @@
  *     extends Base;
  *   end Derived;
  *
- * What the test confirms against a live OMC 1.26 (verbatim assertions
- * below):
+ * What the test confirms against a live OMC 1.26:
  *
- *   1. CONNECTIONS are missing from Derived's diagram.
- *      Root cause: `produceDiagramLayout` collects connections as
- *      `mi.connections ?? []` (see producer.ts:404). OMC keeps inherited
- *      equations under `elements[$kind=extends].baseClass.connections`,
- *      never flattened — so the producer never sees them.
- *      Fix shape: walk the extends chain the same way `walkExtendsChain`
- *      already does for sub-components and connectors. Dedup-policy is a
- *      design question (host overrides? cumulative?), but the simple
- *      "concat ancestor connections first, host last" matches Modelica
- *      flattening semantics.
+ *   1. OMC ground truth — `Derived.connections` is empty at the top
+ *      level; inherited equations live under
+ *      `elements[$kind=extends].baseClass.connections`. Pinned so the
+ *      producer fix's load-bearing assumption fails loud if upstream
+ *      ever starts flattening.
  *
- *   2. PARAMETERS on the HOST CLASS are missing — but for a different
- *      reason. `class-parameter-form.ts:75` (`buildClassParameterForm`)
- *      iterates `instance.elements ?? []` directly. Its file-level
- *      comment already calls this out:
- *        "Top-level (own) parameters only — inherited parameters from
- *         `extends` aren't surfaced yet."
- *      So this half is a known scope gap, not a hidden bug.
+ *   2. `produceDiagramLayout(Derived)` now surfaces those equations —
+ *      the producer's connection loop walks the extends chain
+ *      (ancestor-first, host-last, matching iconLayer ordering).
  *
- *   3. PER-INSTANCE modifiers on sub-components ARE inherited correctly
- *      (g1's k=3, src's k=k both survive). Sub-components themselves
- *      inherit via `walkExtendsChain` in the producer. So the icon
- *      rendering for Derived is mostly fine — what's missing is just
- *      the equation-routing (connections) layer on top.
+ *   3. Sub-components and standalone connectors continue to inherit
+ *      (they already did, via `walkExtendsChain`), and per-instance
+ *      `modifiers` survive the walk (g1's k=3, src's k=k).
+ *
+ * Parameter-form inheritance has its own coverage in
+ * `extension/src/diagram/class-parameter-form.test.ts` — kept there so
+ * the test doesn't need an OMC subprocess to assert it.
  *
  * Auto-skips when `omc` isn't on PATH.
  */
@@ -101,7 +95,7 @@ package ExtendsInvestigation
 end ExtendsInvestigation;
 `;
 
-describeIf("extends-investigation: missing connections in derived diagram", () => {
+describeIf("diagram inheritance: connections propagate through extends", () => {
   let client: OmcClient;
   let baseInstance: ModelInstance;
   let derivedInstance: ModelInstance;
@@ -197,22 +191,27 @@ describeIf("extends-investigation: missing connections in derived diagram", () =
     expect(Object.keys(layout.connectors).sort()).toEqual(["y"]);
   });
 
-  it("producer: Derived layout INHERITS sub-components but LOSES connections — BUG", () => {
+  it("producer: Derived inherits sub-components, standalone connectors, AND connections", () => {
     const layout = produceDiagramLayout(derivedInstance, "diagram");
 
-    // Sub-components inherit correctly — `produceDiagramLayout` walks
-    // `walkExtendsChain` and copies in ancestor components.
+    // Sub-components inherit via `walkExtendsChain` in the producer.
     expect(Object.keys(layout.components).sort()).toEqual(["g1", "src"]);
-    // Standalone connector inherits via walkConnectors — also correct.
+    // Standalone connector inherits via walkConnectors.
     expect(Object.keys(layout.connectors).sort()).toEqual(["y"]);
 
-    // But the two connections from Base are gone, because the producer
-    // only iterates `mi.connections` on the host and never descends
-    // through `elements[$kind=extends].baseClass.connections`.
-    //
-    // This assertion documents the bug. When the producer is fixed to
-    // walk the extends chain for connections, flip this to `toHaveLength(2)`.
-    expect(layout.connections).toHaveLength(0);
+    // Connections now inherit too — the producer walks the extends chain
+    // and concats ancestor connections (ancestor-first, host-last,
+    // matching the icon-layer ordering).
+    expect(layout.connections).toHaveLength(2);
+
+    // Endpoint shape is preserved through the walk.
+    const labels = layout.connections.map(
+      (c) =>
+        `${c.lhs.component ? `${c.lhs.component}.${c.lhs.port}` : c.lhs.port}` +
+        ` -> ` +
+        `${c.rhs.component ? `${c.rhs.component}.${c.rhs.port}` : c.rhs.port}`,
+    );
+    expect(labels.sort()).toEqual(["g1.y -> y", "src.y -> g1.u"]);
   });
 
   it("producer: per-instance modifiers ARE inherited (k=3 on g1, k=k on src)", () => {

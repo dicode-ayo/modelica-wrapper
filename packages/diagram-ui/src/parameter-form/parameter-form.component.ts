@@ -144,35 +144,66 @@ export class OmParameterForm extends LitElement {
       }
 
       .field {
+        margin-bottom: var(--om-space-sm);
+      }
+
+      .field[data-disabled] {
+        opacity: var(--om-disabled-opacity);
+      }
+
+      /* Horizontal label layout for wa-input / wa-select. Mirrors the
+       * WA docs example for "Customizing Label Position": override the
+       * host's vertical stacking with a grid, then style the label part
+       * (WA exposes it as form-control-label). The hint reflows under
+       * the input by snapping back into the second column. */
+      .field wa-input,
+      .field wa-select {
         display: grid;
         grid-template-columns: var(--om-form-label-width) 1fr;
-        column-gap: var(--om-space-lg);
-        row-gap: var(--om-space-xs);
-        align-items: baseline;
-        margin-bottom: var(--om-space-md);
+        align-items: center;
+        column-gap: var(--om-space-md);
+        row-gap: var(--om-space-2xs);
       }
 
-      .label {
-        color: var(--vscode-descriptionForeground, #555);
+      .field wa-input::part(form-control-label),
+      .field wa-select::part(form-control-label) {
         text-align: right;
+        color: var(--vscode-descriptionForeground, #555);
       }
 
-      .label .required {
-        color: var(--vscode-errorForeground, #c00);
-        margin-left: var(--om-space-2xs);
-      }
-
-      /* Make wa-input + wa-select stretch to fill the control column. */
-      .control wa-input,
-      .control wa-select {
-        width: 100%;
-      }
-
-      .description {
+      .field wa-input::part(hint),
+      .field wa-select::part(hint) {
         grid-column: 2 / 3;
         color: var(--vscode-descriptionForeground, #777);
         font-size: var(--om-description-size);
         line-height: 1.3;
+      }
+
+      /* Checkbox + unsupported rows can't use wa-input's internal label,
+       * so they reuse the same column layout via an external grid. */
+      .field.row {
+        display: grid;
+        grid-template-columns: var(--om-form-label-width) 1fr;
+        align-items: center;
+        column-gap: var(--om-space-md);
+        row-gap: var(--om-space-2xs);
+      }
+
+      .field.row > .label {
+        color: var(--vscode-descriptionForeground, #555);
+        text-align: right;
+      }
+
+      .field.row > .description {
+        grid-column: 2 / 3;
+        color: var(--vscode-descriptionForeground, #777);
+        font-size: var(--om-description-size);
+        line-height: 1.3;
+      }
+
+      .required {
+        color: var(--vscode-errorForeground, #c00);
+        margin-left: var(--om-space-2xs);
       }
 
       .unsupported {
@@ -181,12 +212,12 @@ export class OmParameterForm extends LitElement {
       }
 
       /* Read-only display widget for non-editable (record / complex)
-       * parameters. Same metrics as wa-input's small size so the column
-       * width matches editable rows. */
+       * parameters. Sized to match the xs inputs so the control column
+       * stays visually consistent across rows. */
       .readonly-display {
         display: inline-block;
         width: 100%;
-        padding: var(--om-space-xs) var(--om-space-sm);
+        padding: var(--om-space-2xs) var(--om-space-sm);
         background: var(--vscode-input-background, #f3f3f3);
         color: var(--vscode-foreground, #1f1f1f);
         border: 1px solid var(--vscode-input-border, #d4d4d4);
@@ -348,8 +379,20 @@ export class OmParameterForm extends LitElement {
 
   private renderField(f: ParameterField): TemplateResult {
     const enabled = this.isFieldEnabled(f);
+    // wa-input / wa-select host the label and hint internally (so WA's
+    // form-control-label part can position them adjacent to the input);
+    // wa-checkbox and the read-only "unsupported" display still need an
+    // external row that aligns with the same label column.
+    const hasInternalLabel = f.kind !== "boolean" && f.kind !== "unsupported";
+    if (hasInternalLabel) {
+      return html`
+        <div class="field" ?data-disabled=${!enabled}>
+          ${this.renderControl(f, enabled)}
+        </div>
+      `;
+    }
     return html`
-      <div class="field" ?data-disabled=${!enabled}>
+      <div class="field row" ?data-disabled=${!enabled}>
         <label class="label" for=${`f-${f.name}`}
           >${f.name}${f.required ? html`<span class="required">*</span>` : nothing}</label
         >
@@ -359,6 +402,21 @@ export class OmParameterForm extends LitElement {
           : nothing}
       </div>
     `;
+  }
+
+  /** Reusable label + hint slot content for wa-input / wa-select. */
+  private renderLabelSlot(f: ParameterField): TemplateResult {
+    return html`<span slot="label"
+      >${f.name}${f.required
+        ? html`<span class="required">*</span>`
+        : nothing}</span
+    >`;
+  }
+
+  private renderHintSlot(f: ParameterField): TemplateResult {
+    return f.description
+      ? html`<span slot="hint">${f.description}</span>`
+      : html`${nothing}`;
   }
 
   /**
@@ -420,7 +478,7 @@ export class OmParameterForm extends LitElement {
         return html`
           <wa-select
             id=${`f-${f.name}`}
-            size="small"
+            size="xs"
             ?disabled=${!enabled}
             .value=${v === undefined || v === null ? "" : String(v)}
             @change=${(e: Event) => {
@@ -428,6 +486,7 @@ export class OmParameterForm extends LitElement {
               this.setField(f.name, next === "" ? undefined : next);
             }}
           >
+            ${this.renderLabelSlot(f)}${this.renderHintSlot(f)}
             ${!f.required && !f.defaultValue
               ? html`<wa-option value=""></wa-option>`
               : nothing}
@@ -442,6 +501,7 @@ export class OmParameterForm extends LitElement {
         return html`
           <wa-checkbox
             id=${`f-${f.name}`}
+            size="xs"
             ?checked=${Boolean(v)}
             ?disabled=${!enabled}
             @change=${(e: Event) => {
@@ -462,7 +522,7 @@ export class OmParameterForm extends LitElement {
           <wa-input
             id=${`f-${f.name}`}
             type="number"
-            size="small"
+            size="xs"
             step=${f.kind === "integer" ? "1" : "any"}
             ?disabled=${!enabled}
             .value=${v === undefined || v === null ? "" : String(v)}
@@ -475,7 +535,7 @@ export class OmParameterForm extends LitElement {
               const n = f.kind === "integer" ? parseInt(text, 10) : Number(text);
               this.setField(f.name, Number.isFinite(n) ? n : undefined);
             }}
-          ></wa-input>
+          >${this.renderLabelSlot(f)}${this.renderHintSlot(f)}</wa-input>
         `;
       case "array": {
         // Render as a comma-separated text input. OMC parameter arrays are
@@ -487,7 +547,7 @@ export class OmParameterForm extends LitElement {
           <wa-input
             id=${`f-${f.name}`}
             type="text"
-            size="small"
+            size="xs"
             ?disabled=${!enabled}
             .value=${arr.map((x) => stringifyAtom(x)).join(", ")}
             placeholder=${`comma-separated ${f.itemKind ?? "string"} values`}
@@ -499,7 +559,7 @@ export class OmParameterForm extends LitElement {
                   f.itemKind ?? "string",
                 ),
               )}
-          ></wa-input>
+          >${this.renderLabelSlot(f)}${this.renderHintSlot(f)}</wa-input>
         `;
       }
       case "string":
@@ -507,7 +567,7 @@ export class OmParameterForm extends LitElement {
           <wa-input
             id=${`f-${f.name}`}
             type="text"
-            size="small"
+            size="xs"
             ?disabled=${!enabled}
             .value=${v === undefined || v === null ? "" : String(v)}
             @input=${(e: Event) =>
@@ -515,7 +575,7 @@ export class OmParameterForm extends LitElement {
                 f.name,
                 (e.target as HTMLElement & { value: string }).value,
               )}
-          ></wa-input>
+          >${this.renderLabelSlot(f)}${this.renderHintSlot(f)}</wa-input>
         `;
       case "unsupported": {
         // Record / complex parameters can't be edited yet, but we still

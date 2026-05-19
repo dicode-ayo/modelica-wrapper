@@ -57,6 +57,9 @@ export const omTokens: CSSResult = css`
     --om-modal-backdrop: rgba(0, 0, 0, 0.55);
     --om-modal-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
 
+    /* --- side drawer (parameter / simulation panel) --- */
+    --om-panel-drawer-size: 540px;
+
     /* --- action panel --- */
     --om-action-panel-offset: 8px;
 

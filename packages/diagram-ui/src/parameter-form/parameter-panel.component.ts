@@ -1,10 +1,11 @@
 /**
- * `<om-parameter-panel>` — modal wrapper around `<om-parameter-form>`.
+ * `<om-parameter-panel>` — side-drawer wrapper around `<om-parameter-form>`.
  *
- * Backed by `<wa-dialog>`. Visible/hidden via the `open` boolean
- * attribute so the host can toggle it declaratively. Forwards the
- * form's events out as `om-panel-*` so the embedder doesn't need to
- * know about the form's internal API.
+ * Backed by `<wa-drawer placement="end">` so the diagram stays visible
+ * while the user edits. Visible/hidden via the `open` boolean attribute
+ * so the host can toggle it declaratively. Forwards the form's events
+ * out as `om-panel-*` so the embedder doesn't need to know about the
+ * form's internal API.
  *
  * Escape, backdrop click (`light-dismiss`), and the form's own
  * Cancel button all converge on `om-panel-cancel`.
@@ -13,7 +14,7 @@
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
-import "@awesome.me/webawesome/dist/components/dialog/dialog.js";
+import "@awesome.me/webawesome/dist/components/drawer/drawer.js";
 
 import type { JsonSchema } from "@modelica-wrapper/omc-client";
 
@@ -32,9 +33,9 @@ export class OmParameterPanel extends LitElement {
       display: contents;
     }
 
-    /* Give the parameter form a comfortable width that still respects
-     * the dialog's responsive shrink. wa-dialog exposes --width as a
-     * custom property; we pass it inline on the wa-dialog element. */
+    /* The drawer auto-shrinks on small screens; the form just needs a
+     * sensible floor so its inputs don't squish. wa-drawer's width is
+     * controlled via --size, passed inline below. */
     .form-host {
       display: block;
       min-width: 320px;
@@ -61,18 +62,19 @@ export class OmParameterPanel extends LitElement {
   crefPrefix: string | undefined = undefined;
 
   override render(): TemplateResult {
-    // Only render the wa-dialog when open: wa-button (which the dialog
+    // Only render the wa-drawer when open: wa-button (which the drawer
     // uses internally for its close button) is form-associated and
     // crashes happy-dom on connectedCallback. Same pattern as
     // `<om-library-browser>`.
     if (!this.open) return html`${nothing}`;
     return html`
-      <wa-dialog
+      <wa-drawer
         open
+        placement="end"
         label=${this.title}
         light-dismiss
-        style="--width: var(--om-modal-max-width, 540px)"
-        @wa-hide=${this.onDialogHide}
+        style="--size: var(--om-panel-drawer-size)"
+        @wa-hide=${this.onDrawerHide}
       >
         <om-parameter-form
           class="form-host"
@@ -86,7 +88,7 @@ export class OmParameterPanel extends LitElement {
           @om-parameter-submit=${this.onSubmit}
           @om-parameter-cancel=${this.fireCancel}
         ></om-parameter-form>
-      </wa-dialog>
+      </wa-drawer>
     `;
   }
 
@@ -112,8 +114,12 @@ export class OmParameterPanel extends LitElement {
     );
   }
 
-  private onDialogHide = (e: Event): void => {
-    // wa-dialog's hide is cancellable; we never cancel — but we do stop
+  private onDrawerHide = (e: Event): void => {
+    // Ignore wa-hide events that bubble up from nested wa-* components
+    // (e.g. wa-select's listbox popover closing on option pick). Only
+    // act when the drawer itself is requesting to close.
+    if (e.target !== e.currentTarget) return;
+    // wa-drawer's hide is cancellable; we never cancel — but we do stop
     // propagation so the event doesn't escape and confuse other
     // listeners on the page.
     e.stopPropagation();

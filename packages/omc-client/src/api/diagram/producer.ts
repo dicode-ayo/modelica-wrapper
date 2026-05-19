@@ -527,9 +527,17 @@ export function produceDiagramLayout(
 
   const connections: ConnectionLayout[] = [];
   if (kind === "diagram") {
-    for (const c of mi.connections ?? []) {
-      const cl = emitConnection(c);
-      if (cl) connections.push(cl);
+    // Walk the extends chain in post-order so ancestor connections paint
+    // first and host-class equations sit on top — same ordering convention
+    // as `iconLayers`. OMC keeps inherited equations under
+    // `elements[$kind=extends].baseClass.connections`, never flattened; if
+    // we read `mi.connections` alone, a derived class that purely extends
+    // its base would render with zero edges.
+    for (const klass of walkExtendsChain(mi)) {
+      for (const c of klass.connections ?? []) {
+        const cl = emitConnection(c);
+        if (cl) connections.push(cl);
+      }
     }
   }
 
