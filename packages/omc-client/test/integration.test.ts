@@ -574,6 +574,143 @@ describeIf("OmcClient against real OMC", () => {
     expect(value).toContain("$Code(");
   });
 
+  // === Niche class predicates (Tier 4 promoted from 🟡 → ✅) ===
+
+  it("class predicates classify niche Modelica entries correctly", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+
+    const { b: isTypeTime } = await client.isType({
+      typeName: "Modelica.Units.SI.Time",
+    });
+    expect(isTypeTime).toBe(true);
+
+    const { b: isRecord } = await client.isRecord({
+      typeName: "Modelica.Media.Interfaces.PartialMedium.ThermodynamicState",
+    });
+    expect(isRecord).toBe(true);
+
+    const { b: isConnector } = await client.isConnector({
+      typeName: "Modelica.Blocks.Interfaces.RealInput",
+    });
+    expect(isConnector).toBe(true);
+
+    const { b: isPartial } = await client.isPartial({
+      typeName: "Modelica.Blocks.Interfaces.SISO",
+    });
+    expect(isPartial).toBe(true);
+  });
+
+  it("getClassComment returns the description string of a documented class", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { comment } = await client.getClassComment({
+      typeName: "Modelica.Blocks.Math.Sin",
+    });
+    expect(comment).toMatch(/sine/i);
+  });
+
+  // === Contents readers ===
+
+  it("getConnectionList returns parsed from/to/comment rows for a diagram model", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { result } = await client.getConnectionList({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+    });
+    expect(result.length).toBeGreaterThan(0);
+    for (const row of result) {
+      expect(typeof row.from).toBe("string");
+      expect(typeof row.to).toBe("string");
+      expect(typeof row.comment).toBe("string");
+    }
+    // The PID example wires PI.y → torque.tau among others.
+    expect(result.some((c) => c.from === "PI.y" && c.to === "torque.tau")).toBe(
+      true,
+    );
+  });
+
+  it("getDefaultComponentName / getDefaultComponentPrefixes return strings (possibly empty)", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { name } = await client.getDefaultComponentName({
+      typeName: "Modelica.Blocks.Math.Sin",
+    });
+    expect(typeof name).toBe("string");
+    const { prefixes } = await client.getDefaultComponentPrefixes({
+      typeName: "Modelica.Blocks.Math.Sin",
+    });
+    expect(typeof prefixes).toBe("string");
+  });
+
+  it("getComponentComment returns the comment string for a component (or empty)", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { comment } = await client.getComponentComment({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+      componentName: "PI",
+    });
+    expect(typeof comment).toBe("string");
+  });
+
+  it("modifierToJSON encodes a Modelica modifier as JSON", async () => {
+    const { json } = await client.modifierToJSON({ modifier: "k=2.5" });
+    expect(json.length).toBeGreaterThan(0);
+    // The value should be parseable JSON containing the literal.
+    const parsed = JSON.parse(json);
+    expect(String(parsed)).toContain("2.5");
+  });
+
+  it("getModelInstanceAnnotation returns the annotation subset of the structured AST", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { instance } = await client.getModelInstanceAnnotation({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+    });
+    expect(instance.name).toBe("Modelica.Blocks.Examples.PID_Controller");
+    expect(instance.restriction).toBe("model");
+    expect(instance.annotation).toBeDefined();
+  });
+
+  // === Element readers (modern Component* generalization) ===
+
+  it("getElementAnnotation returns the annotation string for an element", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { annotationString } = await client.getElementAnnotation({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+      elementName: "PI",
+    });
+    expect(annotationString.length).toBeGreaterThan(0);
+  });
+
+  it("getElementAnnotations returns a non-null Value tree", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { result } = await client.getElementAnnotations({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+    });
+    expect(["list", "call"]).toContain(result.kind);
+  });
+
+  it("getElementModifierNames lists the modifiers on a component element", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { modifiers } = await client.getElementModifierNames({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+      elementName: "PI",
+    });
+    expect(modifiers.length).toBeGreaterThan(0);
+    // PI is a PID controller — `k` is always one of its modifiers.
+    expect(modifiers).toContain("k");
+  });
+
+  it("getElementModifierValue and getElementModifierValues both return strings for PI.k", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const { value: valueOnly } = await client.getElementModifierValue({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+      modifier: "PI.k",
+    });
+    expect(valueOnly).toContain("100");
+    const { value: valueWithEq } = await client.getElementModifierValues({
+      typeName: "Modelica.Blocks.Examples.PID_Controller",
+      modifier: "PI.k",
+    });
+    // The Values variant includes the leading `= ` form.
+    expect(valueWithEq).toContain("100");
+  });
+
   it("getReplaceableChoices returns the redeclare-choices matrix", async () => {
     await client.loadModel({ typeName: "Modelica" });
     // Modelica.Fluid.System declares `replaceable package Medium = …
@@ -612,24 +749,15 @@ describeIf("OmcClient against real OMC", () => {
   // future contributor decide whether they can promote the todo to a real
   // test (e.g. add a fixture, gate behind OMC_INTEGRATION_HEAVY, etc.).
 
-  // contents — readers needing a fixture with declared connectors / inheritance
+  // contents — readers needing fixtures we don't have yet
   it.todo(
-    "getModelInstanceAnnotation: needs a class with annotations and a filter assertion; deferred",
+    "getNthConnector: needs a class that declares connectors directly (the readers above on stdlib classes return 0); deferred",
   );
   it.todo(
-    "modifierToJSON: needs a sample modifier expression to assert JSON shape; deferred",
+    "getNthConnectorIconAnnotation: same fixture requirement as getNthConnector",
   );
   it.todo(
-    "getConnectionList: needs a fixture with multiple connections; could share PID_Controller setup",
-  );
-  it.todo(
-    "getNthConnector: needs a fixture with declared connectors; deferred",
-  );
-  it.todo(
-    "getNthConnectorIconAnnotation: needs a fixture with declared connectors; deferred",
-  );
-  it.todo(
-    "getConnectorCount: cheap follow-up; can wire to PID_Controller fixture",
+    "getConnectorCount: same fixture requirement",
   );
   it.todo(
     "getNthInheritedClassIconMapAnnotation: needs a fixture with inheritance + IconMap annotation; deferred",
@@ -637,43 +765,19 @@ describeIf("OmcClient against real OMC", () => {
   it.todo(
     "getNthInheritedClassDiagramMapAnnotation: needs a fixture with inheritance + DiagramMap annotation; deferred",
   );
-  it.todo(
-    "getDefaultComponentName: untested smoke; can wire to PID_Controller fixture in follow-up",
-  );
-  it.todo(
-    "getDefaultComponentPrefixes: untested smoke; can wire to PID_Controller fixture in follow-up",
-  );
-  it.todo(
-    "getComponentComment: cheap follow-up; needs a class with a documented component",
-  );
 
-  // elements — readers + mutations
+  // elements — mutations (need throwaway loadString fixtures with annotations)
   it.todo(
-    "getElementAnnotation: needs a fixture model with annotations on elements",
+    "setElementModifierValue: mutation against an element fixture; deferred to next PR",
   );
   it.todo(
-    "getElementAnnotations: needs a fixture model with annotations on elements",
+    "setElementAnnotation: mutation against an element fixture; deferred to next PR",
   );
   it.todo(
-    "getElementModifierNames: cheap follow-up; can wire to PID_Controller's PI element",
+    "setElementType: mutation against an element fixture; deferred to next PR",
   );
   it.todo(
-    "getElementModifierValue: cheap follow-up; can wire to PID_Controller's PI element",
-  );
-  it.todo(
-    "getElementModifierValues: cheap follow-up; can wire to PID_Controller's PI element",
-  );
-  it.todo(
-    "setElementModifierValue: mutation; needs throwaway loadString fixture; deferred to next PR",
-  );
-  it.todo(
-    "setElementAnnotation: mutation; needs throwaway loadString fixture; deferred to next PR",
-  );
-  it.todo(
-    "setElementType: mutation; needs throwaway loadString fixture; deferred to next PR",
-  );
-  it.todo(
-    "removeElementModifiers: mutation; needs throwaway loadString fixture; deferred to next PR",
+    "removeElementModifiers: mutation against an element fixture; deferred to next PR",
   );
 
   // library — package manager calls hit the network
@@ -695,47 +799,23 @@ describeIf("OmcClient against real OMC", () => {
   it.todo(
     "upgradeInstalledPackages: network side-effect; intentionally skipped in CI",
   );
+  // (loadFiles now covered in mutations.integration.test.ts — needs the
+  //  temp-dir + writeFile machinery the editing suite already uses.)
+
+  // browsing — predicates that need fixtures (not covered by the
+  // niche-class-predicates test above on Modelica.* alone)
   it.todo(
-    "loadFiles: cheap follow-up; needs a temp .mo fixture and OMC's numProcessors() default to evaluate",
+    "isClass: needs a `class Foo end Foo;` fixture (stdlib doesn't use bare `class` restriction)",
+  );
+  it.todo(
+    "isReplaceable: needs a fixture with a `replaceable` element",
+  );
+  it.todo(
+    "isProtectedClass: needs a fixture with a protected nested class",
   );
 
-  // browsing — niche class predicates
-  it.todo(
-    "getClassComment: cheap follow-up; can wire to a class with a documented comment string",
-  );
-  it.todo("isType: cheap follow-up; can wire to a Modelica type alias");
-  it.todo("isClass: cheap follow-up; can wire to a Modelica class");
-  it.todo(
-    "isRecord: cheap follow-up; can wire to a Modelica record (e.g. Modelica.SIunits)",
-  );
-  it.todo(
-    "isConnector: cheap follow-up; can wire to Modelica.Blocks.Interfaces.RealInput",
-  );
-  it.todo(
-    "isPartial: cheap follow-up; can wire to Modelica.Blocks.Interfaces.SISO",
-  );
-  it.todo(
-    "isReplaceable: cheap follow-up; needs a class element with `replaceable` keyword",
-  );
-  it.todo(
-    "isProtectedClass: cheap follow-up; needs a fixture with a protected child class",
-  );
-  it.todo(
-    "isEnumeration: cheap follow-up; can wire to a Modelica enumeration type",
-  );
-
-  // editing — mutations
-  it.todo(
-    "setClassComment: mutation; needs throwaway loadString fixture; deferred to next PR",
-  );
-  it.todo(
-    "setDocumentationAnnotation: mutation; needs throwaway loadString fixture; deferred to next PR",
-  );
-
-  // parameters — mutation
-  it.todo(
-    "setParameterValue: mutation; needs throwaway loadString fixture; deferred to next PR",
-  );
+  // (editing-mutations setClassComment / setDocumentationAnnotation and
+  //  parameters setParameterValue now covered in mutations.integration.test.ts.)
 
   // results — exercised by `results-heavy.integration.test.ts` (gated by
   // OMC_INTEGRATION_HEAVY=1); that suite simulates a tiny ramp model in a

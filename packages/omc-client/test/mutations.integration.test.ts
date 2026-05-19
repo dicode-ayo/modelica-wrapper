@@ -132,6 +132,40 @@ end TestPkg;
       }
     });
 
+    it("loadFiles batch-loads multiple .mo files in one call", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "mw-loadfiles-"));
+      try {
+        const fileA = join(dir, "PkgA.mo");
+        const fileB = join(dir, "PkgB.mo");
+        const { randomBytes } = await import("node:crypto");
+        const id = randomBytes(4).toString("hex");
+        const pkgA = `MwLoad_A_${id}`;
+        const pkgB = `MwLoad_B_${id}`;
+        await writeFile(
+          fileA,
+          `package ${pkgA}\n  model M end M;\nend ${pkgA};\n`,
+          "utf8",
+        );
+        await writeFile(
+          fileB,
+          `package ${pkgB}\n  model M end M;\nend ${pkgB};\n`,
+          "utf8",
+        );
+        const { success } = await client.loadFiles({
+          fileNames: [fileA, fileB],
+        });
+        expect(success).toBe(true);
+        const aLoaded = await client.existClass({ typeName: pkgA });
+        const bLoaded = await client.existClass({ typeName: pkgB });
+        expect(aLoaded.exists).toBe(true);
+        expect(bLoaded.exists).toBe(true);
+        await client.deleteClass({ typeName: pkgA });
+        await client.deleteClass({ typeName: pkgB });
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
     it("diffModelicaFileListings returns a diff string", async () => {
       const before = "model M Real x; end M;";
       const after = "model M Real x; Real y; end M;";
@@ -474,6 +508,34 @@ end ${pkg};
       expect(isExperiment).toBe(true);
     });
 
+    it("setClassComment updates a class's description string", async () => {
+      const newComment = "Updated by the integration suite";
+      const { success } = await client.setClassComment({
+        typeName: fixture.modelClass,
+        filename: newComment,
+      });
+      expect(success).toBe(true);
+      const { comment } = await client.getClassComment({
+        typeName: fixture.modelClass,
+      });
+      expect(comment).toBe(newComment);
+    });
+
+    it("setDocumentationAnnotation writes info + revisions HTML", async () => {
+      const info = "<html><body><h1>Info</h1></body></html>";
+      const revisions = "<html><body><p>v1.0</p></body></html>";
+      const { bool } = await client.setDocumentationAnnotation({
+        typeName: fixture.modelClass,
+        info,
+        revisions,
+      });
+      expect(bool).toBe(true);
+      const { info: gotInfo } = await client.getDocumentationAnnotation({
+        typeName: fixture.modelClass,
+      });
+      expect(gotInfo).toContain("Info");
+    });
+
     it("setComponentProperties (6-arg shape on OMC 1.26)", async () => {
       await client.addComponent({
         componentName: "p",
@@ -529,6 +591,20 @@ end ${pkg};
         modifier: "k",
       });
       expect(value).toContain("42");
+    });
+
+    it("setParameterValue binds a new value to a parameter", async () => {
+      const { success } = await client.setParameterValue({
+        typeName: fixture.modelClass,
+        variableName: "k",
+        value: "7.5",
+      });
+      expect(success).toBe(true);
+      const { value } = await client.getParameterValue({
+        typeName: fixture.modelClass,
+        name: "k",
+      });
+      expect(value).toContain("7.5");
     });
 
     it("removeComponentModifiers clears modifiers on a typed sub-component", async () => {

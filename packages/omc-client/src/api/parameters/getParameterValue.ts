@@ -1,12 +1,27 @@
 /**
  * OMC: `function getParameterValue`
  *
+ * ```modelica
+ * function getParameterValue
+ *   input TypeName class_;
+ *   input String parameterName;
+ *   output String parameterValue;
+ * end getParameterValue;
+ * ```
+ *
  * Returns the literal text of a parameter's value, or "" if unset.
+ *
+ * NOTE on argument shape: `parameterName` is a Modelica `String`, NOT a
+ * TypeName — it must be quoted. Earlier wrapper versions sent it bare,
+ * which triggered OMC's misleading "Class getParameterValue not found
+ * in scope" diagnostic and made the call silently return "". See
+ * `docs/audit.md` §2.10 for the gotcha.
  */
 
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { quote } from "../../_shared/format.js";
 import { StringValueOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asBool, asFloat, asInt, asString, isNull, parse } from "../../parse.js";
@@ -31,7 +46,7 @@ export async function getParameterValue(
   input: GetParameterValueInput,
 ): Promise<GetParameterValueOutput> {
   const raw = await ctx.call(
-    `getParameterValue(${input.typeName}, ${input.name})`,
+    `getParameterValue(${input.typeName}, ${quote(input.name)})`,
   );
   const v = parse(raw);
   let value = "";
