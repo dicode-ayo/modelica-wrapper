@@ -1063,4 +1063,28 @@ export class OmcClient implements CallContext {
   val(input: results.ValInput): Promise<results.ValOutput> {
     return results.val(this, input);
   }
+
+  filterSimulationResults(
+    input: results.FilterSimulationResultsInput,
+  ): Promise<results.FilterSimulationResultsOutput> {
+    return results.filterSimulationResults(this, input);
+  }
+
+  compareSimulationResults(
+    input: results.CompareSimulationResultsInput,
+  ): Promise<results.CompareSimulationResultsOutput> {
+    return results.compareSimulationResults(this, input);
+  }
+
+  deltaSimulationResults(
+    input: results.DeltaSimulationResultsInput,
+  ): Promise<results.DeltaSimulationResultsOutput> {
+    return results.deltaSimulationResults(this, input);
+  }
+
+  diffSimulationResults(
+    input: results.DiffSimulationResultsInput,
+  ): Promise<results.DiffSimulationResultsOutput> {
+    return results.diffSimulationResults(this, input);
+  }
 }

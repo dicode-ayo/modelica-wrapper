@@ -179,7 +179,11 @@ export type OmcFunction =
   | "readSimulationResultVars"
   | "closeSimulationResultFile"
   | "readSimulationResult"
-  | "val";
+  | "val"
+  | "filterSimulationResults"
+  | "compareSimulationResults"
+  | "deltaSimulationResults"
+  | "diffSimulationResults";
 
 /**
  * A well-formed OMC RPC command string: a known function name followed by

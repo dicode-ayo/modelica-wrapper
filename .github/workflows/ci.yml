@@ -91,6 +91,7 @@ jobs:
       - name: Integration tests against real OMC
         env:
           OMC_INTEGRATION: "1"
+          OMC_INTEGRATION_HEAVY: "1"
           OMC_DEBUG: "1"
         run: runuser -u omcrunner -- pnpm --filter @modelica-wrapper/omc-client test
 

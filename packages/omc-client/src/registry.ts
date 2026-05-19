@@ -238,6 +238,10 @@ export const REGISTRY = {
   closeSimulationResultFile: entry("results", results.closeSimulationResultFile, results.CloseSimulationResultFileInputSchema, results.CloseSimulationResultFileOutputSchema, results.CloseSimulationResultFileDescription),
   readSimulationResult: entry("results", results.readSimulationResult, results.ReadSimulationResultInputSchema, results.ReadSimulationResultOutputSchema, results.ReadSimulationResultDescription),
   val: entry("results", results.val, results.ValInputSchema, results.ValOutputSchema, results.ValDescription),
+  filterSimulationResults: entry("results", results.filterSimulationResults, results.FilterSimulationResultsInputSchema, results.FilterSimulationResultsOutputSchema, results.FilterSimulationResultsDescription),
+  compareSimulationResults: entry("results", results.compareSimulationResults, results.CompareSimulationResultsInputSchema, results.CompareSimulationResultsOutputSchema, results.CompareSimulationResultsDescription),
+  deltaSimulationResults: entry("results", results.deltaSimulationResults, results.DeltaSimulationResultsInputSchema, results.DeltaSimulationResultsOutputSchema, results.DeltaSimulationResultsDescription),
+  diffSimulationResults: entry("results", results.diffSimulationResults, results.DiffSimulationResultsInputSchema, results.DiffSimulationResultsOutputSchema, results.DiffSimulationResultsDescription),
 } as const;
 
 /** Every OMC function name this package can dispatch to. */
