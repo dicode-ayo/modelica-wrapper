@@ -737,12 +737,8 @@ describeIf("OmcClient against real OMC", () => {
     "setParameterValue: mutation; needs throwaway loadString fixture; deferred to next PR",
   );
 
-  // results — depend on a heavy simulate run producing a .mat
-  it.todo(
-    "val: depends on .mat from a heavy simulate run; gate with OMC_INTEGRATION_HEAVY=1",
-  );
-  it.todo(
-    "readSimulationResult: depends on .mat from a heavy simulate run; gate with OMC_INTEGRATION_HEAVY=1",
-  );
+  // results — exercised by `results-heavy.integration.test.ts` (gated by
+  // OMC_INTEGRATION_HEAVY=1); that suite simulates a tiny ramp model in a
+  // temp directory and covers every results-category wrapper.
 
 });
