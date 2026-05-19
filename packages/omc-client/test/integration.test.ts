@@ -670,9 +670,11 @@ describeIf("OmcClient against real OMC", () => {
 
   it("getElementAnnotation returns the annotation string for an element", async () => {
     await client.loadModel({ typeName: "Modelica" });
+    // `typeName` is the FULL dotted element path per the wrapper's
+    // package-wide TypeName-rename convention (OMC's signature is
+    // `getElementAnnotation(TypeName elementName)`).
     const { annotationString } = await client.getElementAnnotation({
-      typeName: "Modelica.Blocks.Examples.PID_Controller",
-      elementName: "PI",
+      typeName: "Modelica.Blocks.Examples.PID_Controller.PI",
     });
     expect(annotationString.length).toBeGreaterThan(0);
   });
@@ -749,16 +751,7 @@ describeIf("OmcClient against real OMC", () => {
   // future contributor decide whether they can promote the todo to a real
   // test (e.g. add a fixture, gate behind OMC_INTEGRATION_HEAVY, etc.).
 
-  // contents — readers needing fixtures we don't have yet
-  it.todo(
-    "getNthConnector: needs a class that declares connectors directly (the readers above on stdlib classes return 0); deferred",
-  );
-  it.todo(
-    "getNthConnectorIconAnnotation: same fixture requirement as getNthConnector",
-  );
-  it.todo(
-    "getConnectorCount: same fixture requirement",
-  );
+  // contents — readers we haven't tackled yet
   it.todo(
     "getNthInheritedClassIconMapAnnotation: needs a fixture with inheritance + IconMap annotation; deferred",
   );
@@ -766,18 +759,13 @@ describeIf("OmcClient against real OMC", () => {
     "getNthInheritedClassDiagramMapAnnotation: needs a fixture with inheritance + DiagramMap annotation; deferred",
   );
 
-  // elements — mutations (need throwaway loadString fixtures with annotations)
+  // (getConnectorCount / getNthConnector / getNthConnectorIconAnnotation
+  //  now covered in mutations.integration.test.ts "connectors" describe.)
+
+  // (setElementModifierValue / setElementType / removeElementModifiers now
+  //  covered in mutations.integration.test.ts "element mutations" describe.)
   it.todo(
-    "setElementModifierValue: mutation against an element fixture; deferred to next PR",
-  );
-  it.todo(
-    "setElementAnnotation: mutation against an element fixture; deferred to next PR",
-  );
-  it.todo(
-    "setElementType: mutation against an element fixture; deferred to next PR",
-  );
-  it.todo(
-    "removeElementModifiers: mutation against an element fixture; deferred to next PR",
+    "setElementAnnotation: OMC 1.26.7 accepts `$Code(=Dialog(...))` (returns true) but the annotation is cleared from the source instead of replaced; needs OMC-side investigation to know the correct payload shape (no shape tested actually persists)",
   );
 
   // library — package manager calls hit the network
@@ -802,17 +790,9 @@ describeIf("OmcClient against real OMC", () => {
   // (loadFiles now covered in mutations.integration.test.ts — needs the
   //  temp-dir + writeFile machinery the editing suite already uses.)
 
-  // browsing — predicates that need fixtures (not covered by the
-  // niche-class-predicates test above on Modelica.* alone)
-  it.todo(
-    "isClass: needs a `class Foo end Foo;` fixture (stdlib doesn't use bare `class` restriction)",
-  );
-  it.todo(
-    "isReplaceable: needs a fixture with a `replaceable` element",
-  );
-  it.todo(
-    "isProtectedClass: needs a fixture with a protected nested class",
-  );
+  // (isClass / isReplaceable / isProtectedClass now covered in
+  //  mutations.integration.test.ts "class predicates with fixtures"
+  //  describe.)
 
   // (editing-mutations setClassComment / setDocumentationAnnotation and
   //  parameters setParameterValue now covered in mutations.integration.test.ts.)
