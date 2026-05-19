@@ -1,19 +1,22 @@
 /**
- * Heavy integration tests for the Results category — exercises every
- * wrapper that needs an actual `.mat` file to read from.
+ * Heavy integration tests for the Execution + Results categories —
+ * exercises every wrapper that needs to invoke the C toolchain or read
+ * an actual `.mat` file.
  *
  * The suite spins up a fresh OMC client, runs `simulate` inside a temp
  * directory on a tiny ramp model (so wall-clock cost is ~5–10 s), then
  * exercises:
  *
+ *   simulate (in beforeAll, also asserted in its own test)
+ *   translateModel / buildModel / translateModelXML
  *   readSimulationResultSize / readSimulationResultVars / readSimulationResult / val
  *   filterSimulationResults / compareSimulationResults / deltaSimulationResults / diffSimulationResults
  *   closeSimulationResultFile
  *
  * Gating: this suite runs only when `OMC_INTEGRATION_HEAVY=1` (in addition
- * to the normal `omc` PATH check). The `simulate` call invokes the C
- * compiler, which is too slow to run on every push. The standard
- * integration suite is unaffected.
+ * to the normal `omc` PATH check). Each translate/build/simulate call
+ * invokes the C compiler, which is too slow to run on every push of
+ * unrelated changes. The standard integration suite is unaffected.
  *
  * Cleanup: the temp directory and every emitted artifact are removed in
  * `afterAll`, regardless of test outcome.
@@ -134,11 +137,67 @@ end ${pkg};
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  // === Basic shape ===
+  // === Execution: simulate / translate / build ===
 
   it("simulate emits a .mat file at the path it reports", () => {
     expect(resultFile.endsWith(".mat")).toBe(true);
     expect(resultFile.startsWith(tempDir)).toBe(true);
+  });
+
+  it("simulate returns a SimulationResult record with `resultFile` + `messages`", async () => {
+    // The beforeAll already simulated; re-read the same record via a
+    // dedicated call so this test fails cleanly if the SimulationResult
+    // shape ever drifts. Use a separate fileNamePrefix so we don't
+    // clobber the .mat the rest of the suite reads.
+    const sim = await client.simulate({
+      typeName: modelClass,
+      startTime: 0,
+      stopTime: 0.1,
+      numberOfIntervals: 10,
+      fileNamePrefix: "Ramp_shape_check",
+    });
+    const rec = sim.simulationResult;
+    expect(rec.kind).toBe("call");
+    const fields = new Set<string>();
+    if (rec.kind === "call") {
+      for (const arg of rec.args) {
+        if (arg.kind === "kwarg") fields.add(arg.name);
+      }
+    }
+    // OMC's SimulationResult shape varies across versions but always
+    // carries these two fields.
+    expect(fields.has("resultFile")).toBe(true);
+    expect(fields.has("messages")).toBe(true);
+  });
+
+  it("translateModel reports success for a valid model", async () => {
+    const { success } = await client.translateModel({ typeName: modelClass });
+    expect(success).toBe(true);
+  });
+
+  it("buildModel returns the executable name and init file", async () => {
+    const { artifacts } = await client.buildModel({ typeName: modelClass });
+    expect(artifacts.length).toBe(2);
+    const [exeName, initFile] = artifacts as [string, string];
+    // OMC names the executable after the FQN'd model.
+    expect(exeName).toContain("Ramp");
+    // Init file is the runtime XML companion, by convention `<exe>_init.xml`.
+    expect(initFile).toMatch(/_init\.xml$/);
+  });
+
+  it("translateModelXML reports a .xml filename for the model", async () => {
+    const { generatedFileName } = await client.translateModelXML({
+      typeName: modelClass,
+    });
+    // OMC reports the filename it intends to write. The actual on-disk
+    // path is OMC-version-dependent (sometimes relative to cwd,
+    // sometimes to OMC's build-output dir); we only assert the
+    // wrapper's parse + the reported name shape here. The
+    // `simulate`/`buildModel`/`translateModel` tests above already
+    // prove the full toolchain works end-to-end.
+    expect(generatedFileName.length).toBeGreaterThan(0);
+    expect(generatedFileName).toMatch(/\.xml$/);
+    expect(generatedFileName).toContain("Ramp");
   });
 
   it("readSimulationResultSize reflects the stored row count", async () => {
