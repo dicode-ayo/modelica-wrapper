@@ -177,6 +177,60 @@ describe("buildComponentParameterForm", () => {
     )!;
     expect(Object.keys(form.schema.properties ?? {})).not.toContain("limiter");
   });
+
+  it("surfaces parameters declared on inherited base classes (the `Torque.useSupport` case)", () => {
+    // Models this shape:
+    //   Torque extends PartialElementaryOneFlangeAndSupport2;
+    //   PartialElementaryOneFlangeAndSupport2 has `parameter Boolean useSupport`
+    // — `useSupport` isn't on Torque's own elements, only on the
+    // ancestor. The form must walk the extends chain to pick it up.
+    const torque: ComponentElement = {
+      $kind: "component",
+      name: "torque",
+      type: {
+        name: "Modelica.Mechanics.Rotational.Sources.Torque",
+        restriction: "model",
+        elements: [
+          {
+            $kind: "extends",
+            baseClass: {
+              name: "Modelica.Mechanics.Rotational.Interfaces.PartialElementaryOneFlangeAndSupport2",
+              restriction: "partial model",
+              elements: [
+                {
+                  $kind: "component",
+                  name: "useSupport",
+                  type: "Boolean",
+                  value: { binding: false },
+                  prefixes: { variability: "parameter" },
+                  comment: "= true, if support flange enabled",
+                },
+              ],
+            },
+          },
+          // Torque's own elements — `tau` is an input connector, not
+          // a parameter; included so the test exercises BOTH the
+          // ancestor walk and the own-elements skip.
+          {
+            $kind: "component",
+            name: "tau",
+            type: "Real",
+            prefixes: { variability: "" },
+          },
+        ],
+      },
+    } as unknown as ComponentElement;
+
+    const form = buildComponentParameterForm(torque)!;
+    expect(Object.keys(form.schema.properties ?? {})).toContain("useSupport");
+    expect(form.refs.useSupport).toEqual({
+      name: "useSupport",
+      kind: "boolean",
+      tab: "General",
+      group: "Parameters",
+    });
+    expect(form.values.useSupport).toBe(false);
+  });
 });
 
 describe("componentParameterValueToExpr", () => {

@@ -81,15 +81,24 @@ export function buildComponentParameterForm(
   const values: Record<string, unknown> = {};
   const refs: Record<string, ComponentParameterRef> = {};
 
-  for (const el of type.elements ?? []) {
-    if (el.$kind !== "component") continue;
-    if (el.prefixes?.variability !== "parameter") continue;
-    const built = buildField(el, overrides[el.name]);
-    properties[el.name] = built.schema;
-    refs[el.name] = built.ref;
-    if (built.value !== undefined) values[el.name] = built.value;
-    if (built.ref.kind !== "unsupported") {
-      required.push(el.name);
+  // Walk the type's extends chain in post-order (ancestors first, type
+  // last) so a parameter that the type redeclares overrides the
+  // inherited entry. Mirrors `buildClassParameterForm` — without this,
+  // parameters declared on a parent class (e.g. `useSupport` on
+  // `PartialElementaryOneFlangeAndSupport2`, ancestor of every
+  // `Modelica.Mechanics.Rotational.Sources.*`) never surface in the
+  // sub-component panel.
+  for (const klass of walkExtendsChain(type)) {
+    for (const el of klass.elements ?? []) {
+      if (el.$kind !== "component") continue;
+      if (el.prefixes?.variability !== "parameter") continue;
+      const built = buildField(el, overrides[el.name]);
+      properties[el.name] = built.schema;
+      refs[el.name] = built.ref;
+      if (built.value !== undefined) values[el.name] = built.value;
+      if (built.ref.kind !== "unsupported") {
+        if (!required.includes(el.name)) required.push(el.name);
+      }
     }
   }
 
@@ -100,6 +109,21 @@ export function buildComponentParameterForm(
     refs,
     componentName: component.name,
   };
+}
+
+/**
+ * Post-order walk over `mi` and its `extends` ancestors. Same shape as
+ * `class-parameter-form.ts`'s walker — kept local to avoid pulling that
+ * file's exports across the form boundary. Ancestors are yielded first,
+ * host last, matching Modelica flattening order.
+ */
+function* walkExtendsChain(mi: ModelInstance): Iterable<ModelInstance> {
+  for (const e of mi.elements ?? []) {
+    if (e.$kind === "extends" && typeof e.baseClass === "object") {
+      yield* walkExtendsChain(e.baseClass);
+    }
+  }
+  yield mi;
 }
 
 interface BuiltField {
