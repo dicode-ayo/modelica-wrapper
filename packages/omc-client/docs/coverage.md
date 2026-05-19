@@ -4,7 +4,7 @@ Tracks which functions in [`src/registry.ts`](../src/registry.ts) are exercised 
 
 **Pinned OMC version:** `1.26.7` (see [`../src/version.ts`](../src/version.ts)). On 2026-05-19 a deep re-probe of the previously-⛔ wrappers revealed that 4 of them (`removeComponentModifiers`, `updateConnection`, `moveClass`, plus the newly-added `getReplaceableChoices`) were wrapper-side bugs — wrong argument shape masked by OMC's misleading "Class X not found in scope" diagnostic. See [audit.md §2.10](./audit.md) for the gotcha. After fixing the call shapes, those wrappers + state-machine mutators are now ✅ on 1.26.7. Only `createClass`, `createSubClass`, and `save` remain genuinely ⛔ (docs 404). Same session: added 4 results wrappers (filter / compare / delta / diff) and a heavy integration test that exercises every results wrapper against a real `.mat` file simulated inside a temp directory.
 **Last updated:** 2026-05-19.
-**Current coverage:** 103 / 147 functions (70%).
+**Current coverage:** 105 / 147 functions (71%).
 
 > Run `pnpm --filter @modelica-wrapper/omc-client test` to exercise the integration suite. It auto-skips when `omc` isn't on PATH.
 
@@ -204,7 +204,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `setIndexReductionMethod` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setIndexReductionMethod.html) |
 | `setCommandLineOptions` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setCommandLineOptions.html) |
 
-## Execution — 7/9
+## Execution — 9/9 ✅
 
 | Function | Status | Docs | Notes |
 |---|---|---|---|
@@ -212,9 +212,9 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `translateModel` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.translateModel.html) | Verified in [`../test/results-heavy.integration.test.ts`](../test/results-heavy.integration.test.ts) on the ramp model. |
 | `buildModel` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.buildModel.html) | Verified in [`../test/results-heavy.integration.test.ts`](../test/results-heavy.integration.test.ts) — asserts the returned `[executable, initFile]` shape. |
 | `simulate` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.simulate.html) | Verified end-to-end in [`../test/results-heavy.integration.test.ts`](../test/results-heavy.integration.test.ts); also has a shape assertion that the SimulationResult record exposes `resultFile` + `messages`. Output is the OMC `SimulationResult` record as a raw `Value` tree because it varies across OMC versions. |
-| `buildModelFMU` | 🐢 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.buildModelFMU.html) | Slow + needs FMI tooling. |
+| `buildModelFMU` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.buildModelFMU.html) | Verified end-to-end in the heavy suite — exports the ramp to a ~1 MB `.fmu`, then feeds it into `importFMU` to round-trip back to Modelica source. |
 | `translateModelXML` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.translateModelXML.html) | Verified in [`../test/results-heavy.integration.test.ts`](../test/results-heavy.integration.test.ts); asserts the returned `.xml` filename (on-disk path is OMC-version-dependent). |
-| `importFMU` | 🐢 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.importFMU.html) | Needs an .fmu fixture file. |
+| `importFMU` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.importFMU.html) | **Wrapper bugfix 2026-05-19**: `modelName` is a `TypeName` (bare ident), not a String — earlier versions quoted it and OMC returned the misleading "Class importFMU not found in scope" diagnostic (see [audit.md §2.10](./audit.md)). Wrapper now emits `Default` (bare) when omitted. Also realigned: `workdir` default `"<default>"` (was `""`), `loglevel` default `3` (was `0`). Tested by chaining off the `buildModelFMU` output — fully self-contained. |
 | `getSimulationOptions` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getSimulationOptions.html) | |
 | `isExperiment` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isExperiment.html) | |
 
@@ -261,9 +261,9 @@ right form; the three comparison wrappers above use it for their optional
 | Elements | 2 | 11 | Unchanged. Modern `Component*` generalization. Two readers smoke-tested; mutations 🟡. |
 | Library | 2 | 9 | Unchanged. `getLoadedLibraries`/`getPackages` verified; package-manager network calls 🟡 (intentionally not in CI). |
 | Solver / runtime config | 8 | 8 | All verified. |
-| Execution | 7 | 9 | 4 newly ✅ via the heavy suite (`translateModel`, `buildModel`, `simulate`, `translateModelXML`); only `buildModelFMU` + `importFMU` remain 🐢 (need FMI tooling / a fixture file). |
+| Execution | 9 | 9 | All ✅ via the heavy suite. The FMU pipeline (`buildModelFMU` → `importFMU`) is chained: build the ramp into a `.fmu`, then import it back to a Modelica wrapper. `importFMU` needed a wrapper bugfix on the way — `modelName` is a `TypeName` (bare ident), not a String (see [audit.md §2.10](./audit.md)). |
 | Results | 9 | 9 | All ✅ via [`../test/results-heavy.integration.test.ts`](../test/results-heavy.integration.test.ts) — simulates a tiny ramp model in a `mkdtemp` directory, exercises every results wrapper on the produced `.mat`, cleans up. Gated by `OMC_INTEGRATION_HEAVY=1`. |
-| **Total** | **103** | **147** | **70%** |
+| **Total** | **105** | **147** | **71%** |
 
 ---
 

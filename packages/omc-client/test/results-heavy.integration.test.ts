@@ -185,6 +185,32 @@ end ${pkg};
     expect(initFile).toMatch(/_init\.xml$/);
   });
 
+  it("buildModelFMU → importFMU pipeline produces a Modelica wrapper for the FMU", async () => {
+    // buildModelFMU exports the ramp as a `.fmu`; importFMU then
+    // generates a Modelica wrapper file referring back to it. We assert
+    // the round-trip end-to-end: produced .fmu exists on disk, the
+    // generated wrapper has a `.mo` extension and a non-trivial size.
+    const { generatedFileName: fmuPath } = await client.buildModelFMU({
+      typeName: modelClass,
+    });
+    expect(fmuPath.endsWith(".fmu")).toBe(true);
+    const fullFmu = fmuPath.startsWith("/") ? fmuPath : join(tempDir, fmuPath);
+    const { stat } = await import("node:fs/promises");
+    const fmuStat = await stat(fullFmu);
+    expect(fmuStat.size).toBeGreaterThan(1024);
+
+    const { generatedFileName: woPath } = await client.importFMU({
+      filename: fullFmu,
+    });
+    expect(woPath.endsWith(".mo")).toBe(true);
+    // OMC names the import after the FMU's modelName (`Ramp` → `Ramp_me_FMU.mo`).
+    expect(woPath).toMatch(/Ramp/);
+    // The .mo file should exist relative to the work directory.
+    const fullWo = woPath.startsWith("/") ? woPath : join(tempDir, woPath);
+    const woStat = await stat(fullWo);
+    expect(woStat.size).toBeGreaterThan(0);
+  });
+
   it("translateModelXML reports a .xml filename for the model", async () => {
     const { generatedFileName } = await client.translateModelXML({
       typeName: modelClass,
