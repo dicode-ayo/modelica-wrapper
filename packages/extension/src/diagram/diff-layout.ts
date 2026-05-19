@@ -93,12 +93,13 @@ export function diffLayouts(
   }
 
   // Connections: keyed by (lhs, rhs) endpoints. If a slot's endpoints
-  // change we treat it as delete-old + add-new because OMC's
-  // `updateConnection` is missing on 1.26.x. If endpoints stay but
-  // waypoints differ — typical of a component drag that drags adjacent
-  // routes with it — we emit `connectionWaypoints`. Without that edit
-  // the move's locally-re-routed waypoints never make it to OMC; the
-  // post-edit re-fetch then reads the stale `Line(points=...)` and the
+  // change we treat it as delete-old + add-new (OMC has no rename-edge
+  // API). If endpoints stay but waypoints differ — typical of a
+  // component drag that drags adjacent routes with it — we emit
+  // `connectionWaypoints`, which `apply-edits.ts` translates to a
+  // single `updateConnection` call. Without that edit the move's
+  // locally-re-routed waypoints never make it to OMC; the post-edit
+  // re-fetch then reads the stale `Line(points=...)` and the
   // connections snap back to their old shape, visually detached from
   // the now-moved component.
   const prevConns = prev.connections.map((c) => ({
