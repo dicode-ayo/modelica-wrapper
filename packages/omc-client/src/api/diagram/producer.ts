@@ -51,6 +51,44 @@ import {
   walkExtendsChain,
 } from "./walker.js";
 
+// ---------- condition gating ----------
+
+/**
+ * Decide whether a component or port should appear in the layout given
+ * its `condition` field. OMC's `getModelInstance` pre-reduces every
+ * conditional predicate against the host's parameter modifiers before
+ * serialization — Modelica spec §4.4.5 requires `if`-conditions to be
+ * parameter-expressible, so OMC can always evaluate them. The two
+ * shapes the interactive RPC actually emits:
+ *
+ *   `condition: false`              — bare boolean literal
+ *   `condition: { binding: false }` — boolean inside OMC's Value wrapper
+ *
+ * Anything else (undefined, unreduced AST that OMC couldn't fold, an
+ * unexpected shape) defaults to "visible". That preserves the
+ * pre-feature behaviour and matches the form-side Dialog.enable
+ * fallback policy.
+ *
+ * (Previous revisions ran an `evaluateExpression` against a scope built
+ * from `getInstantiatedParametersAndValues`. Probed against OMC 1.26.7:
+ * the AST branch was never reachable from real input — OMC always
+ * reduces. The evaluator stays in the package for the form's
+ * Dialog.enable use, which evaluates against the user's in-progress
+ * working values that OMC doesn't see.)
+ */
+function isConditionTrue(condition: unknown): boolean {
+  if (condition === undefined || condition === null) return true;
+  if (typeof condition === "boolean") return condition;
+  if (
+    typeof condition === "object" &&
+    "binding" in (condition as object) &&
+    typeof (condition as { binding: unknown }).binding === "boolean"
+  ) {
+    return (condition as { binding: boolean }).binding;
+  }
+  return true;
+}
+
 // ---------- parameter extraction ----------
 
 /**
@@ -393,6 +431,21 @@ function instanceFromSubComponent(
   if (el.modifiers !== undefined) instance.modifiers = el.modifiers;
   if (el.comment !== undefined) instance.comment = el.comment;
   if (el.type.source) instance.source = el.type.source;
+  // Per-instance port hiding: walk the type's connectors and collect
+  // any whose `condition` is literally `false`. OMC reduces the
+  // predicate against the use-site modifiers before serialization
+  // (e.g. `Torque(useSupport=false)` arrives with `support.condition
+  // = false`), so a plain literal check suffices for the common path.
+  // When the predicate stays as an unresolved Expression AST we keep
+  // the port visible — matches the host-level "default to visible"
+  // policy and lets the user toggle it via the form.
+  const hiddenPorts: string[] = [];
+  for (const { element } of walkConnectors(el.type)) {
+    if (element.condition === false) {
+      hiddenPorts.push(element.name);
+    }
+  }
+  if (hiddenPorts.length > 0) instance.hiddenPorts = hiddenPorts;
   return instance;
 }
 
@@ -472,6 +525,7 @@ function emitConnection(c: ConnectionNode): ConnectionLayout | undefined {
 export function produceDiagramLayout(
   mi: ModelInstance,
   kind: "icon" | "diagram",
+  resolvedParameters?: Record<string, string>,
 ): DiagramLayout {
   const registry = new Map<string, ClassDef>();
 
@@ -482,6 +536,9 @@ export function produceDiagramLayout(
   // Standalone connectors on the host class (and ancestors), inheritance-aware.
   const connectors: Record<string, ConnectorInstance> = {};
   for (const { element } of walkConnectors(mi)) {
+    // Gate first — `if use_x` connectors are elided when OMC's
+    // pre-reduced predicate is the literal `false`.
+    if (!isConditionTrue(element.condition)) continue;
     // Also seed the connector's class into the registry so consumers can
     // look up its own icon via `classes[connector.classRef]`.
     const inst = instanceFromConnector(element, registry);
@@ -498,6 +555,7 @@ export function produceDiagramLayout(
   // are part of the ancestor's icon, NOT host-class instances).
   const components: Record<string, ComponentInstance> = {};
   for (const el of ownSubComponents(mi)) {
+    if (!isConditionTrue(el.condition)) continue;
     const inst = instanceFromSubComponent(el, kind === "icon" ? "icon" : "diagram", registry);
     if (inst) components[inst.name] = inst;
   }
@@ -509,6 +567,7 @@ export function produceDiagramLayout(
     if (klass === mi) continue;
     for (const el of ownSubComponents(klass)) {
       if (components[el.name]) continue;
+      if (!isConditionTrue(el.condition)) continue;
       const inst = instanceFromSubComponent(el, kind === "icon" ? "icon" : "diagram", registry);
       if (inst) components[inst.name] = inst;
     }
@@ -561,6 +620,12 @@ export function produceDiagramLayout(
   };
   const cs = coordinateSystemForKind(mi, kind);
   if (cs) layout.coordinateSystem = cs;
+  // Echo the resolved-parameter map onto the output so downstream
+  // consumers (label substitution, post-fetch debug, future Dialog.enable
+  // shared scope) don't need to re-fetch it.
+  if (resolvedParameters !== undefined) {
+    layout.resolvedParameters = resolvedParameters;
+  }
   return layout;
 }
 

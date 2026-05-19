@@ -222,6 +222,21 @@ export interface ComponentInstance {
   modifiers?: Modifier | undefined;
   comment?: string | undefined;
   source?: SourceLocation | undefined;
+  /**
+   * Names of ports declared on this component's type whose `condition`
+   * predicate evaluates to false for THIS instance (e.g. a `Torque`
+   * with `useSupport=false` hides its `support` flange). The class
+   * catalog (`classes[classRef].connectors`) still lists every port
+   * — the renderer skips ones named here when drawing the instance.
+   *
+   * Computed PER INSTANCE rather than baked into `ClassDef.connectors`
+   * because two instances of the same type can differ on per-instance
+   * modifiers (one `Torque(useSupport=true)`, one `Torque(useSupport=false)`)
+   * — the class def is shared/cached, the visibility isn't.
+   *
+   * Absent or empty when no port is hidden.
+   */
+  hiddenPorts?: string[] | undefined;
 }
 
 export interface ConnectorInstance {
@@ -285,6 +300,16 @@ export interface DiagramLayout {
   connectors: Record<string, ConnectorInstance>;
   /** Only connections with `annotation.Line` are emitted here (see producer). */
   connections: ConnectionLayout[];
+  /**
+   * Optional flat `paramName → displayValue` map sourced from
+   * `getInstantiatedParametersAndValues(className)`. When present the
+   * producer uses it to gate conditional components / ports (`Real x if
+   * use_x` etc.), and renderers can overlay it onto label `%`-substitutions
+   * for cross-component cref resolution. Absent on hosts the caller couldn't
+   * instantiate (errors, syntactic-only loads) — gating then defaults to
+   * "visible", which preserves today's behaviour.
+   */
+  resolvedParameters?: Record<string, string> | undefined;
 }
 
 // ---------- Zod schemas ----------
@@ -438,6 +463,7 @@ export const ComponentInstanceSchema = z
     modifiers: ModifierSchema.optional(),
     comment: z.string().optional(),
     source: SourceLocationSchema.optional(),
+    hiddenPorts: z.array(z.string()).optional(),
   })
   .strict();
 
@@ -490,6 +516,7 @@ const DiagramLayoutObject = z
     components: z.record(z.string(), ComponentInstanceSchema),
     connectors: z.record(z.string(), ConnectorInstanceSchema),
     connections: z.array(ConnectionLayoutSchema),
+    resolvedParameters: z.record(z.string(), z.string()).optional(),
   })
   .strict();
 export const DiagramLayoutSchema =

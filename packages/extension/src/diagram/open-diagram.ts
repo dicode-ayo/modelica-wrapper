@@ -573,7 +573,30 @@ async function fetchLayout(
   className: string,
 ): Promise<DiagramLayout> {
   const instance = await fetchModelInstance(client, className);
-  return diagram.produceDiagramLayout(instance, "diagram");
+  // Best-effort pull of OMC's instantiation-reduced parameter values.
+  // Used by the producer to gate conditional components / ports and by
+  // the renderer for cross-component label `%`-substitution. If OMC
+  // can't instantiate (parse errors, partial loads), we still produce a
+  // layout — gating just defaults to "visible", matching pre-feature
+  // behaviour.
+  const resolvedParameters = await fetchResolvedParameters(client, className);
+  return diagram.produceDiagramLayout(instance, "diagram", resolvedParameters);
+}
+
+async function fetchResolvedParameters(
+  client: OmcClient,
+  className: string,
+): Promise<Record<string, string> | undefined> {
+  try {
+    const { result } = await client.invoke("getInstantiatedParametersAndValues", {
+      typeName: className,
+    });
+    return diagram.parseInstantiatedParameters(result);
+  } catch {
+    // Swallow — this is a pure UI enrichment. The producer falls back
+    // to "no gating" when the map is absent.
+    return undefined;
+  }
 }
 
 async function fetchModelInstance(

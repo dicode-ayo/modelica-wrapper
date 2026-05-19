@@ -727,3 +727,214 @@ describe("produceDiagramLayout: well-formedness", () => {
     assertWellFormed(produceDiagramLayout(makeHostModelInstance(), "diagram"));
   });
 });
+
+describe("produceDiagramLayout: conditional gating", () => {
+  /**
+   * Synthesize the shape OMC's `getModelInstance` actually emits: every
+   * `if`-predicate has been pre-reduced to a Boolean literal (Modelica
+   * §4.4.5 requires conditions to be parameter-expressible, so OMC can
+   * always evaluate them at instantiation). The two literal shapes we
+   * see live: `condition: false` and `condition: { binding: false }`.
+   */
+  function makeGuardedHost(opts: {
+    pIn: boolean | { binding: boolean };
+    pOut: boolean | { binding: boolean };
+    x: boolean | { binding: boolean };
+    y: boolean | { binding: boolean };
+  }): ModelInstance {
+    const inst: unknown = {
+      $kind: "model",
+      name: "Pkg.Guarded",
+      restriction: "model",
+      annotation: {
+        Icon: {
+          coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+          graphics: [],
+        },
+        Diagram: {
+          coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+          graphics: [],
+        },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "pIn",
+          type: RealInputClass,
+          annotation: placementAnno([[-110, -10], [-90, 10]]),
+          condition: opts.pIn,
+        },
+        {
+          $kind: "component",
+          name: "pOut",
+          type: RealOutputClass,
+          annotation: placementAnno([[90, -10], [110, 10]]),
+          condition: opts.pOut,
+        },
+        {
+          $kind: "component",
+          name: "x",
+          type: GainClass,
+          modifiers: { k: "1" },
+          annotation: placementAnno([[-50, -50], [-30, -30]]),
+          condition: opts.x,
+        },
+        {
+          $kind: "component",
+          name: "y",
+          type: GainClass,
+          modifiers: { k: "2" },
+          annotation: placementAnno([[10, -50], [30, -30]]),
+          condition: opts.y,
+        },
+      ],
+      connections: [],
+    };
+    return ModelInstanceSchema.parse(inst);
+  }
+
+  it("keeps every element when all predicates reduced to true", () => {
+    const layout = produceDiagramLayout(
+      makeGuardedHost({ pIn: true, pOut: true, x: true, y: true }),
+      "diagram",
+    );
+    expect(Object.keys(layout.components).sort()).toEqual(["x", "y"]);
+    expect(Object.keys(layout.connectors).sort()).toEqual(["pIn", "pOut"]);
+  });
+
+  it("hides sub-components whose `condition` reduced to literal `false`", () => {
+    const layout = produceDiagramLayout(
+      makeGuardedHost({ pIn: true, pOut: true, x: true, y: false }),
+      "diagram",
+    );
+    expect(Object.keys(layout.components).sort()).toEqual(["x"]);
+    expect(Object.keys(layout.connectors).sort()).toEqual(["pIn", "pOut"]);
+  });
+
+  it("hides standalone connectors whose `condition` reduced to literal `false`", () => {
+    const layout = produceDiagramLayout(
+      makeGuardedHost({ pIn: false, pOut: true, x: true, y: true }),
+      "diagram",
+    );
+    expect(Object.keys(layout.connectors).sort()).toEqual(["pOut"]);
+  });
+
+  it("handles OMC's `{ binding: bool }` wrapper shape", () => {
+    // OMC sometimes emits the reduced literal wrapped in a `Value`
+    // record: `condition: { binding: false }`. Same outcome as bare.
+    const layout = produceDiagramLayout(
+      makeGuardedHost({
+        pIn: { binding: true },
+        pOut: { binding: false },
+        x: { binding: false },
+        y: { binding: true },
+      }),
+      "diagram",
+    );
+    expect(Object.keys(layout.components).sort()).toEqual(["y"]);
+    expect(Object.keys(layout.connectors).sort()).toEqual(["pIn"]);
+  });
+
+  it("echoes resolvedParameters onto the output (for label substitution)", () => {
+    // The resolvedParameters map is purely a renderer pass-through
+    // now — gating reads the pre-reduced `condition` field directly.
+    // Asserts the echo is still there for the label substitution path.
+    const params = { driveAngle: "1.57", k: "100" };
+    const layout = produceDiagramLayout(
+      makeGuardedHost({ pIn: true, pOut: true, x: true, y: true }),
+      "diagram",
+      params,
+    );
+    expect(layout.resolvedParameters).toEqual(params);
+  });
+
+  it("defaults to visible when `condition` is an unreduced shape", () => {
+    // OMC always reduces in practice, but if a future build ships an
+    // unreduced shape (or a caller hand-builds a ModelInstance) we
+    // default to visible — matches the form-side enable fallback.
+    const layout = produceDiagramLayout(
+      // Pass an object that isn't `{ binding: bool }` — the gate
+      // should leave the element visible.
+      makeGuardedHost({
+        pIn: true,
+        pOut: true,
+        x: { binding: "unknown" } as unknown as { binding: boolean },
+        y: true,
+      }),
+      "diagram",
+    );
+    expect(Object.keys(layout.components).sort()).toEqual(["x", "y"]);
+  });
+
+  it("hides per-instance ports whose type carries a literal `condition: false`", () => {
+    // OMC's `getModelInstance` pre-reduces a sub-component's connector
+    // predicates against the use-site modifiers — so a port like
+    // `Torque.support` arrives with `condition: false` when the
+    // surrounding component sets `useSupport=false`. Synthesize that
+    // shape directly so the test doesn't depend on a fixture or OMC.
+    const gainWithConditionalPort: unknown = {
+      $kind: "model",
+      name: "Pkg.GainWithSupport",
+      restriction: "block",
+      annotation: {
+        Icon: {
+          coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+          graphics: [],
+        },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "u",
+          type: RealInputClass,
+          annotation: placementAnno([[-110, -10], [-90, 10]]),
+        },
+        {
+          $kind: "component",
+          name: "support",
+          type: RealInputClass,
+          annotation: placementAnno([[-10, -110], [10, -90]]),
+          // OMC's pre-reduction: the predicate has been resolved to
+          // a literal `false` at this use-site.
+          condition: false,
+        },
+      ],
+    };
+    const hostLiteral: unknown = {
+      $kind: "model",
+      name: "Pkg.Host",
+      restriction: "model",
+      annotation: {
+        Diagram: {
+          coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+          graphics: [],
+        },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "g",
+          type: gainWithConditionalPort,
+          annotation: placementAnno([[-20, -20], [20, 20]]),
+        },
+      ],
+      connections: [],
+    };
+    const layout = produceDiagramLayout(
+      ModelInstanceSchema.parse(hostLiteral),
+      "diagram",
+    );
+    const inst = layout.components.g;
+    expect(inst).toBeDefined();
+    // The catalog still lists every port on the type — the class def
+    // is shared across all instances, so we don't bake visibility in.
+    expect(layout.classes["Pkg.GainWithSupport"]).toBeDefined();
+    expect(
+      Object.keys(layout.classes["Pkg.GainWithSupport"]!.connectors).sort(),
+    ).toEqual(["support", "u"]);
+    // But the instance carries `hiddenPorts` so the renderer can mask
+    // the gated port for THIS instance only.
+    expect(inst!.hiddenPorts).toEqual(["support"]);
+  });
+
+});

@@ -10,11 +10,18 @@ import type { TextSubstitutions } from "@modelica-wrapper/diagram-svg";
  * suitable for `<om-component>.substitutions` (which republishes it
  * via Lit context to descendant `<om-text>` / `<om-label>` elements).
  *
- * Layering:
+ * Layering (last write wins):
  *  1. `cls.parameters[name].value` — class-level defaults (walked
  *     through the extends chain by the producer; later-declared wins).
- *  2. `instance.modifiers[name]` — per-instance overrides; flattened
- *     to a display string and merged on top of the defaults.
+ *  2. `hostResolvedParameters[<instance.name>.<paramName>]` — OMC's
+ *     instantiation-reduced value when the host class chose to bind
+ *     this sub-component's parameter from an outer cref (e.g. the
+ *     host's `freq` driving the sub-component's `frequency`). Only
+ *     applied when the host actually has a row for that nested path,
+ *     so simple components keep showing the type's default instead of
+ *     blanking when the host doesn't address the sub-param.
+ *  3. `instance.modifiers[name]` — per-instance literal overrides
+ *     from the model source; merged on top of the host-resolved layer.
  *
  * `%name` resolves to `instance.name`, `%class` to `instance.classRef`.
  * Unknown `%<paramName>` tokens fall through to `""` inside the
@@ -23,11 +30,20 @@ import type { TextSubstitutions } from "@modelica-wrapper/diagram-svg";
 export function buildSubstitutions(
   instance: ComponentInstance,
   cls: ClassDef | undefined,
+  hostResolvedParameters?: Record<string, string>,
 ): TextSubstitutions {
   const parameters: Record<string, string> = {};
   if (cls?.parameters) {
     for (const [name, def] of Object.entries(cls.parameters)) {
       parameters[name] = def.value;
+    }
+  }
+  if (hostResolvedParameters !== undefined) {
+    const prefix = `${instance.name}.`;
+    for (const [key, value] of Object.entries(hostResolvedParameters)) {
+      if (key.startsWith(prefix)) {
+        parameters[key.slice(prefix.length)] = value;
+      }
     }
   }
   const overrides = topLevelModifierMap(instance.modifiers);
