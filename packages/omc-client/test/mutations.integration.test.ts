@@ -807,4 +807,218 @@ end ${pkg};
       expect(after.contents).not.toContain("k = 2.5");
     });
   });
+
+  // === Class predicates needing custom fixtures ===
+  //
+  // The standard `Modelica` library doesn't expose top-level classes with
+  // the literal `class` restriction, `replaceable` elements, or protected
+  // nested classes — these tests load a tiny throwaway package that
+  // explicitly carries each construct.
+
+  describe("class predicates with fixtures", () => {
+    let pkg: string;
+
+    beforeEach(async () => {
+      const { randomBytes } = await import("node:crypto");
+      pkg = `MwPred_${randomBytes(4).toString("hex")}`;
+      await client.loadString({
+        data: `package ${pkg}
+  class Foo
+    Real x;
+  end Foo;
+
+  block Outer
+    replaceable Real r = 1.0;
+  protected
+    class Inner
+      Real y;
+    end Inner;
+  end Outer;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+    });
+
+    afterEach(async () => {
+      await client.deleteClass({ typeName: pkg });
+    });
+
+    it("isClass distinguishes `class` from `block` restrictions", async () => {
+      const fooIsClass = await client.isClass({ typeName: `${pkg}.Foo` });
+      expect(fooIsClass.b).toBe(true);
+      const outerIsClass = await client.isClass({ typeName: `${pkg}.Outer` });
+      // `block` is a separate restriction; isClass returns false.
+      expect(outerIsClass.b).toBe(false);
+    });
+
+    it("isReplaceable detects a `replaceable` element", async () => {
+      const { b } = await client.isReplaceable({
+        typeName: `${pkg}.Outer.r`,
+      });
+      expect(b).toBe(true);
+    });
+
+    it("isProtectedClass detects a protected nested class (with a counter-example)", async () => {
+      const protectedHit = await client.isProtectedClass({
+        typeName: `${pkg}.Outer`,
+        c2: "Inner",
+      });
+      expect(protectedHit.b).toBe(true);
+      // `r` is the public replaceable element — NOT a protected class.
+      const publicMiss = await client.isProtectedClass({
+        typeName: `${pkg}.Outer`,
+        c2: "r",
+      });
+      expect(publicMiss.b).toBe(false);
+    });
+  });
+
+  // === Connector readers needing a class that declares connectors directly ===
+
+  describe("connectors", () => {
+    let pkg: string;
+    let cls: string;
+
+    beforeEach(async () => {
+      const { randomBytes } = await import("node:crypto");
+      pkg = `MwConn_${randomBytes(4).toString("hex")}`;
+      cls = `${pkg}.WithConn`;
+      // `Modelica.*` blocks like `Math.Add` declare their connectors via
+      // extends inheritance, which `getConnectorCount` doesn't count.
+      // Declare the connectors directly here so the count is non-zero.
+      await client.loadModel({ typeName: "Modelica" });
+      await client.loadString({
+        data: `package ${pkg}
+  block WithConn
+    Modelica.Blocks.Interfaces.RealInput u;
+    Modelica.Blocks.Interfaces.RealOutput y;
+  equation
+    y = u;
+  end WithConn;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+    });
+
+    afterEach(async () => {
+      await client.deleteClass({ typeName: pkg });
+    });
+
+    it("getConnectorCount counts directly-declared connectors", async () => {
+      const { count } = await client.getConnectorCount({ typeName: cls });
+      expect(count).toBe(2);
+    });
+
+    it("getNthConnector returns the connector declaration as a Value tree", async () => {
+      const { result } = await client.getNthConnector({
+        typeName: cls,
+        n: 1,
+      });
+      expect(result.kind).toBe("list");
+      // The wrapper returns a Value tree of [name, typeName, ...]; serialize
+      // to JSON for a quick existence check on either of those fields.
+      const json = JSON.stringify(result);
+      expect(json).toMatch(/"u"|"y"/);
+      expect(json).toMatch(/Modelica\.Blocks\.Interfaces\.Real(Input|Output)/);
+    });
+
+    it("getNthConnectorIconAnnotation returns the icon annotation as a Value tree", async () => {
+      const { result } = await client.getNthConnectorIconAnnotation({
+        typeName: cls,
+        n: 1,
+      });
+      expect(result.kind).toBe("list");
+      // RealInput/Output icons declare extents like {{-100,-100},{100,100}}.
+      expect(JSON.stringify(result)).toContain("100");
+    });
+  });
+
+  // === Element mutations (round-trip via Element readers) ===
+  //
+  // These exercise OMC's modern `Component*` generalization. Two subtleties:
+  // - `setElementType`'s `typeName` is the FULL dotted element path
+  //   (e.g. `Pkg.Sample.k`), not the class name.
+  // - `setElementModifierValue`'s `elementName` is the modifier path, like
+  //   `k.start`. To clear a top-level parameter binding use
+  //   `setComponentModifierValue` / `setParameterValue` instead.
+
+  describe("element mutations", () => {
+    let pkg: string;
+    let cls: string;
+
+    beforeEach(async () => {
+      const { randomBytes } = await import("node:crypto");
+      pkg = `MwElem_${randomBytes(4).toString("hex")}`;
+      cls = `${pkg}.Sample`;
+      await client.loadModel({ typeName: "Modelica" });
+      await client.loadString({
+        data: `package ${pkg}
+  model Sample
+    parameter Real k = 1.0 annotation(Dialog(group="x"));
+    Modelica.Blocks.Math.Gain gain(k=2.5);
+    Real x;
+  equation
+    x = k + gain.y;
+  end Sample;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+    });
+
+    afterEach(async () => {
+      await client.deleteClass({ typeName: pkg });
+    });
+
+    it("setElementType changes the declared type of an element", async () => {
+      // `typeName` is the FULL dotted element path here, not the class name.
+      const { success } = await client.setElementType({
+        typeName: `${cls}.k`,
+        newTypeName: "Integer",
+      });
+      expect(success).toBe(true);
+      // Verify via listFile so we don't depend on a still-🟡 reader.
+      const { contents } = await client.listFile({ typeName: cls });
+      expect(contents).toMatch(/parameter\s+Integer\s+k/);
+    });
+
+    it("setElementModifierValue sets a sub-modifier on a typed sub-component", async () => {
+      // Modifier path `gain.k` — set the inner gain's `k` modifier to 7.0.
+      const { success } = await client.setElementModifierValue({
+        typeName: cls,
+        elementName: "gain.k",
+        expr: "7.0",
+      });
+      expect(success).toBe(true);
+      const { value } = await client.getElementModifierValue({
+        typeName: cls,
+        modifier: "gain.k",
+      });
+      expect(value).toContain("7.0");
+    });
+
+    it("removeElementModifiers clears all modifiers on a typed sub-component", async () => {
+      // Sanity: the fixture binds `gain.k = 2.5`.
+      const before = await client.getElementModifierValue({
+        typeName: cls,
+        modifier: "gain.k",
+      });
+      expect(before.value).toContain("2.5");
+
+      const { success } = await client.removeElementModifiers({
+        typeName: cls,
+        componentName: "gain",
+      });
+      expect(success).toBe(true);
+
+      // After clearing, gain.k's modifier value should be empty.
+      const after = await client.getElementModifierValue({
+        typeName: cls,
+        modifier: "gain.k",
+      });
+      expect(after.value).toBe("");
+    });
+  });
 });
