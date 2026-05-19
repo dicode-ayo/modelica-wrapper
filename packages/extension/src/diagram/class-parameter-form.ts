@@ -2,12 +2,15 @@
  * Helpers that turn the active class's `ModelInstance` into the
  * `{schema, values}` pair the parameter modal renders.
  *
- * Scope of this first cut:
- *  - Top-level (own) parameters only — inherited parameters from `extends`
- *    aren't surfaced yet. The form vocabulary is the small one
- *    `<om-parameter-form>` already understands (scalar number / integer
- *    / boolean / string + enum picker); types outside that vocabulary
- *    are skipped so the form doesn't show widgets it can't drive.
+ * Parameters declared on ancestors via `extends` are surfaced too: the
+ * walk visits ancestors first and the host last, so a parameter
+ * redeclared on the host overwrites the inherited entry (Modelica
+ * flattening semantics).
+ *
+ * The form vocabulary is the small one `<om-parameter-form>` already
+ * understands (scalar number / integer / boolean / string + enum
+ * picker); types outside that vocabulary are skipped so the form
+ * doesn't show widgets it can't drive.
  *
  * Pure of vscode / dom imports — tested with plain modelInstance JSON.
  */
@@ -67,10 +70,12 @@ export interface ClassParameterForm {
 }
 
 /**
- * Walk the class's own elements and emit one schema property per
- * scalar/enum parameter. Returns `undefined` if no editable parameters
- * were found — the caller should show a "no parameters" hint rather
- * than open an empty modal.
+ * Walk the class's extends chain in post-order and emit one schema
+ * property per scalar/enum parameter encountered (ancestors first,
+ * host last). A host-class redeclaration overwrites the inherited
+ * entry by name. Returns `undefined` if no editable parameters were
+ * found anywhere in the chain — the caller should show a "no
+ * parameters" hint rather than open an empty modal.
  */
 export function buildClassParameterForm(
   instance: ModelInstance,
@@ -79,23 +84,34 @@ export function buildClassParameterForm(
   const required: string[] = [];
   const values: Record<string, unknown> = {};
   const refs: Record<string, ClassParameterRef> = {};
+  const requiredSet = new Set<string>();
 
-  for (const el of instance.elements ?? []) {
-    if (el.$kind !== "component") continue;
-    if (el.prefixes?.variability !== "parameter") continue;
-    const built = buildField(el);
-    properties[el.name] = built.schema;
-    refs[el.name] = built.ref;
-    if (built.value !== undefined) values[el.name] = built.value;
-    // Parameters always have a binding (either inherited default or the
-    // user's modifier) so they're "required" in the form sense — the
-    // submit button stays enabled even without edits. We exclude the
-    // unsupported (read-only) kind because the form can't fulfil their
-    // required-ness via an edit.
-    if (built.ref.kind !== "unsupported") {
-      required.push(el.name);
+  for (const klass of walkExtendsChain(instance)) {
+    for (const el of klass.elements ?? []) {
+      if (el.$kind !== "component") continue;
+      if (el.prefixes?.variability !== "parameter") continue;
+      const built = buildField(el);
+      properties[el.name] = built.schema;
+      refs[el.name] = built.ref;
+      if (built.value !== undefined) {
+        values[el.name] = built.value;
+      } else {
+        delete values[el.name];
+      }
+      // Parameters always have a binding (either inherited default or the
+      // user's modifier) so they're "required" in the form sense — the
+      // submit button stays enabled even without edits. We exclude the
+      // unsupported (read-only) kind because the form can't fulfil their
+      // required-ness via an edit. Deduped against host-class overrides
+      // through the set.
+      if (built.ref.kind !== "unsupported") {
+        requiredSet.add(el.name);
+      } else {
+        requiredSet.delete(el.name);
+      }
     }
   }
+  for (const name of requiredSet) required.push(name);
 
   if (Object.keys(properties).length === 0) return undefined;
   return {
@@ -103,6 +119,23 @@ export function buildClassParameterForm(
     values,
     refs,
   };
+}
+
+/**
+ * Post-order walk over `mi` and its `extends` ancestors. Mirrors the
+ * producer's `walkExtendsChain` (kept inline here to avoid pulling a
+ * cross-package internal into the extension's public-facing surface).
+ * Ancestors are yielded first, host last, matching Modelica flattening
+ * order — callers can use last-write-wins to implement override
+ * semantics.
+ */
+function* walkExtendsChain(mi: ModelInstance): Iterable<ModelInstance> {
+  for (const e of mi.elements ?? []) {
+    if (e.$kind === "extends" && typeof e.baseClass === "object") {
+      yield* walkExtendsChain(e.baseClass);
+    }
+  }
+  yield mi;
 }
 
 interface BuiltField {

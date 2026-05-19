@@ -44,6 +44,7 @@ const PIN_LAYERS: IconLayer[] = [
 function makeClass(
   fixture: IconFixture,
   ports: ClassDef["connectors"] = {},
+  parameters: ClassDef["parameters"] = {},
 ): ClassDef {
   return {
     name: fixture.className,
@@ -51,6 +52,7 @@ function makeClass(
     iconLayers: fixture.iconLayers,
     coordinateSystem: fixture.coordinateSystem as ClassDef["coordinateSystem"],
     connectors: ports,
+    parameters,
   };
 }
 
@@ -59,6 +61,7 @@ const PIN_CLASS: ClassDef = {
   restriction: "connector",
   iconLayers: PIN_LAYERS,
   connectors: {},
+  parameters: {},
 };
 
 export function sampleLayout(): DiagramLayout {

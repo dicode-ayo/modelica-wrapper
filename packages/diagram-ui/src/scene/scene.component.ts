@@ -338,9 +338,27 @@ export class OmScene extends LitElement {
     // and coalesce repaints into a single rAF. With nothing changing,
     // idle frames cost 0 — critical under software-rendered WebGL where
     // a continuous 60 Hz loop would saturate the CPU.
+    //
+    // Catch-up rule: Babylon compiles material shaders lazily on first
+    // use, and `scene.render()` silently skips meshes whose shader is
+    // still compiling. A continuous render loop would catch the next
+    // frame; on-demand has no automatic follow-up, so an initial
+    // diagram load can paint blank until the user pans/zooms. After
+    // each render, if `scene.isReady()` is false we hand off to
+    // `executeWhenReady`, which fires once every material/texture has
+    // finished compiling and schedules one more render.
     registerRenderScheduler(scene, () => {
-      if (this.babylonScene) {
-        this.babylonScene.render();
+      const s = this.babylonScene;
+      if (!s) {
+        return;
+      }
+      s.render();
+      if (!s.isReady()) {
+        s.executeWhenReady(() => {
+          if (this.babylonScene) {
+            requestSceneRender(this.babylonScene);
+          }
+        });
       }
     });
     this.schedulerRegistered = true;

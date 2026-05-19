@@ -92,6 +92,24 @@ export function ownConnectors(mi: ModelInstance): ComponentElement[] {
 }
 
 /**
+ * `parameter` variables declared directly on `mi`. Identified by
+ * `prefixes.variability === "parameter"`. Includes parameters whose
+ * `type` is a primitive string (`"Real"`, `"Boolean"`, …) and those
+ * whose `type` is a `type`-restricted ModelInstance (SI unit aliases),
+ * since both can carry default values worth substituting.
+ *
+ * Used by the producer to populate `ClassDef.parameters` for the
+ * `%<paramName>` text-substitution fallback.
+ */
+export function ownParameters(mi: ModelInstance): ComponentElement[] {
+  const out: ComponentElement[] = [];
+  for (const e of ownComponents(mi)) {
+    if (e.prefixes?.variability === "parameter") out.push(e);
+  }
+  return out;
+}
+
+/**
  * Convenience: yield every `extends`-element directly on `mi` (not
  * recursive). Used by some callers to read the immediate parent chain.
  */

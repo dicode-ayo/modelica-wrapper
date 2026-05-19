@@ -261,6 +261,85 @@ describe("buildClassParameterForm", () => {
     expect(form.values).toEqual({ T0: 273.15 });
   });
 
+  it("surfaces parameters declared on an ancestor via extends", () => {
+    // Base class declares `k`; Derived purely extends Base and adds nothing.
+    // Expected: the form built for Derived still has a `k` property.
+    const mi: ModelInstance = {
+      name: "Test.Derived",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "extends",
+          baseClass: {
+            name: "Test.Base",
+            restriction: "model",
+            elements: [
+              {
+                $kind: "component",
+                name: "k",
+                type: "Real",
+                value: { binding: 2 },
+                prefixes: { variability: "parameter" },
+              },
+            ],
+          },
+        },
+      ],
+    } as unknown as ModelInstance;
+    const form = buildClassParameterForm(mi)!;
+    expect(form.schema.properties).toEqual({
+      k: {
+        type: "number",
+        "x-modelica-tab": "General",
+        "x-modelica-group": "Parameters",
+      },
+    });
+    expect(form.values).toEqual({ k: 2 });
+    expect(form.refs.k.kind).toBe("number");
+  });
+
+  it("host-class parameter overrides an ancestor's same-named parameter (last-write-wins)", () => {
+    // Both Base and Derived declare `k`; Derived's value wins. Use distinct
+    // values + comments so the test fails loud if the inheritance walk
+    // order ever flips.
+    const mi: ModelInstance = {
+      name: "Test.Derived",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "extends",
+          baseClass: {
+            name: "Test.Base",
+            restriction: "model",
+            elements: [
+              {
+                $kind: "component",
+                name: "k",
+                type: "Real",
+                value: { binding: 1 },
+                prefixes: { variability: "parameter" },
+                comment: "from Base",
+              },
+            ],
+          },
+        },
+        {
+          $kind: "component",
+          name: "k",
+          type: "Real",
+          value: { binding: 7 },
+          prefixes: { variability: "parameter" },
+          comment: "from Derived",
+        },
+      ],
+    } as unknown as ModelInstance;
+    const form = buildClassParameterForm(mi)!;
+    expect(form.values).toEqual({ k: 7 });
+    expect(
+      (form.schema.properties?.k as { description?: string }).description,
+    ).toBe("from Derived");
+  });
+
   it("prefers the evaluated literal when the binding is a complex expression", () => {
     const mi = instance([
       {

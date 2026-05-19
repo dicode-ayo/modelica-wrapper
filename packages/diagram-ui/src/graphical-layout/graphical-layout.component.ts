@@ -8,7 +8,8 @@ import type {
   DiagramLayout,
 } from "@modelica-wrapper/omc-client";
 
-import "../icon-provider/icon-provider.component.js";
+import { renderLayers } from "../primitives/render-shape.js";
+import { buildSubstitutions } from "../label/build-substitutions.js";
 import "../scene/scene.component.js";
 import "../axis/grid-axis.component.js";
 import "../component/component.component.js";
@@ -21,7 +22,6 @@ import "../library-browser/library-browser.component.js";
 import type { OmScene, EngineFactory } from "../scene/scene.component.js";
 import type { OmConnector } from "../connector/connector.component.js";
 import type { OmComponent } from "../component/component.component.js";
-import type { RasterizeFn, SvgRenderFn } from "../icon-provider/icon-cache.js";
 import type { LibraryBrowserDataSource } from "../library-browser/library-browser.component.js";
 import {
   InteractionManager,
@@ -68,6 +68,23 @@ import {
   type SnapGrid,
 } from "../interaction/snap-math.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
+
+/**
+ * World-z offset applied to the host class's own shapes so they sit
+ * behind every component / connector but IN FRONT of the grid's
+ * extent-rectangle (the white drawing-area plane). Stacking, camera
+ * at -Z so larger z = farther:
+ *
+ *   extent-rect  z = +0.10  (white background, drawn by `<om-grid-axis>`)
+ *   grid lines   z = +0.05
+ *   host shapes  z = +0.025 ← us
+ *   components   z =  0.0   (default `OmShapeNode` placement)
+ *
+ * A value at +0.5 (the original guess) put host shapes well behind
+ * the extent-rect — visible in scene.meshes but never painted because
+ * the white plane occluded them on every frame.
+ */
+const HOST_SHAPE_Z_BIAS = 0.025;
 
 interface BBox {
   minX: number;
@@ -120,15 +137,13 @@ function layoutBoundingBox(layout: DiagramLayout): BBox | null {
  * Top-level `<om-graphical-layout>` element. Renders one Modelica
  * `DiagramLayout` and ties together every B/C/D/E piece:
  *
- *   <om-icon-provider>
- *     <om-scene>
- *       <om-grid-axis>
- *       <om-component>...<om-connector>     # nested ports
- *       <om-connector>                       # host-level ports
- *       <om-connection>                      # routed edges + junctions
- *       <om-label>                           # host-level text
- *     </om-scene>
- *   </om-icon-provider>
+ *   <om-scene>
+ *     <om-grid-axis>
+ *     <om-component>...<om-connector>     # nested ports
+ *     <om-connector>                       # host-level ports
+ *     <om-connection>                      # routed edges + junctions
+ *     <om-label>                           # host-level text
+ *   </om-scene>
  *
  * Interaction wiring (driven by E1 + E3 + E4):
  *   - InteractionManager → hover / select / double-click / context-menu
@@ -180,16 +195,7 @@ export class OmGraphicalLayout extends LitElement {
   @property({ attribute: false })
   engineFactory: EngineFactory | undefined = undefined;
 
-  /** Optional SVG renderer override forwarded to `<om-icon-provider>`. */
-  @property({ attribute: false })
-  renderSvg: SvgRenderFn | undefined = undefined;
-
-  /** Optional rasteriser override forwarded to `<om-icon-provider>`. */
-  @property({ attribute: false })
-  rasterize: RasterizeFn | undefined = undefined;
-
-  /** Forwarded to `<om-scene>`: opens Babylon's Inspector + enables
-   *  verbose rasteriser logging when `true`. */
+  /** Forwarded to `<om-scene>`: opens Babylon's Inspector when `true`. */
   @property({ type: Boolean, reflect: true })
   debug = false;
 
@@ -203,10 +209,10 @@ export class OmGraphicalLayout extends LitElement {
   cameraMode: "2d" | "3d" = "2d";
 
   /**
-   * Stroke-width multiplier forwarded to every entity's SVG renderer
-   * (overlay path) AND to `<om-icon-provider>` (in-canvas textured
-   * plane). `undefined` falls back to the renderer's default — see
-   * `RenderOptions.lineThicknessScale` for the rationale.
+   * Stroke-width multiplier forwarded to every entity. Currently a
+   * no-op under the primitives renderer (line widths come straight
+   * from Modelica annotations); kept on the public API for forward-
+   * compat with hosts that already set it.
    */
   @property({ type: Number, attribute: "line-thickness-scale" })
   lineThicknessScale: number | undefined = undefined;
@@ -308,13 +314,6 @@ export class OmGraphicalLayout extends LitElement {
     }
     const componentEntries = Object.entries(active.components);
     const connectorEntries = Object.entries(active.connectors);
-    // Topology: scene OUTSIDE, icon-provider INSIDE. Lit contexts only
-    // flow down, so the icon-provider has to be a descendant of the
-    // scene to `@consume(sceneContext)`. The reverse (icon-provider as
-    // wrapper) leaves the provider unable to see the scene and every
-    // textureFor* call rejects with "icon-provider not connected to
-    // a scene" — that was the real reason every icon rendered as the
-    // fallback colour.
     return html`
       <om-scene
         .engineFactory=${this.engineFactory ?? undefined}
@@ -324,51 +323,46 @@ export class OmGraphicalLayout extends LitElement {
         tabindex="0"
         @keydown=${this.onKeyDown}
       >
-        <om-icon-provider
-          .renderSvg=${this.renderSvg ?? undefined}
-          .rasterize=${this.rasterize ?? undefined}
-          .lineThicknessScale=${this.lineThicknessScale}
-        >
-          <om-grid-axis
-            .extent=${500}
-            .coordinateSystem=${active.coordinateSystem ?? undefined}
-          ></om-grid-axis>
-          ${repeat(
-            componentEntries,
-            ([id]) => id,
-            ([id, comp]) => this.renderComponent(id, comp, active),
-          )}
-          ${repeat(
-            connectorEntries,
-            ([id]) => id,
-            ([id, conn]) => this.renderStandaloneConnector(id, conn, active),
-          )}
-          ${repeat(
-            active.connections,
-            (_, idx) => `conn:${idx}`,
-            (conn, idx) =>
-              html`<om-connection
-                .nodeId=${String(idx)}
-                .path=${conn.waypoints}
-                .selectedKeys=${this.selectedKeys}
-              ></om-connection>`,
-          )}
-          ${repeat(
-            active.labels,
-            (_, idx) => `lbl:${idx}`,
-            (label, idx) =>
-              html`<om-label
-                .nodeId=${String(idx)}
-                .text=${label.text}
-                .x=${(label.extent[0][0] + label.extent[1][0]) / 2}
-                .y=${(label.extent[0][1] + label.extent[1][1]) / 2}
-                .rotation=${label.rotation}
-                .fontSize=${label.fontSize ?? 12}
-              ></om-label>`,
-          )}
-          ${this.renderInProgressEdge()}
-          <om-perf-hud ?show=${this.perfHud}></om-perf-hud>
-        </om-icon-provider>
+        <om-grid-axis
+          .extent=${500}
+          .coordinateSystem=${active.coordinateSystem ?? undefined}
+        ></om-grid-axis>
+        ${this.renderHostShapes(active)}
+        ${repeat(
+          componentEntries,
+          ([id]) => id,
+          ([id, comp]) => this.renderComponent(id, comp, active),
+        )}
+        ${repeat(
+          connectorEntries,
+          ([id]) => id,
+          ([id, conn]) => this.renderStandaloneConnector(id, conn, active),
+        )}
+        ${repeat(
+          active.connections,
+          (_, idx) => `conn:${idx}`,
+          (conn, idx) =>
+            html`<om-connection
+              .nodeId=${String(idx)}
+              .path=${conn.waypoints}
+              .selectedKeys=${this.selectedKeys}
+            ></om-connection>`,
+        )}
+        ${repeat(
+          active.labels,
+          (_, idx) => `lbl:${idx}`,
+          (label, idx) =>
+            html`<om-label
+              .nodeId=${String(idx)}
+              .text=${label.text}
+              .x=${(label.extent[0][0] + label.extent[1][0]) / 2}
+              .y=${(label.extent[0][1] + label.extent[1][1]) / 2}
+              .rotation=${label.rotation}
+              .fontSize=${label.fontSize ?? 12}
+            ></om-label>`,
+        )}
+        ${this.renderInProgressEdge()}
+        <om-perf-hud ?show=${this.perfHud}></om-perf-hud>
       </om-scene>
       ${this.libraryBrowserOpen
         ? html`<om-library-browser
@@ -487,12 +481,14 @@ export class OmGraphicalLayout extends LitElement {
   ): TemplateResult {
     const cls = layout.classes[comp.classRef];
     const key = formatComponentKey(id);
+    const substitutions = buildSubstitutions(comp, cls);
     return html`<om-component
       .nodeId=${id}
       .placement=${comp.placement}
       .layers=${cls?.iconLayers ?? []}
       .coordinateSystem=${cls?.coordinateSystem ?? undefined}
       .lineThicknessScale=${this.lineThicknessScale}
+      .substitutions=${substitutions}
       ?selected=${this.selectedKeys.has(key)}
       ?readonly=${this.readonly}
     >
@@ -528,6 +524,25 @@ export class OmGraphicalLayout extends LitElement {
       ?selected=${this.selectedKeys.has(key)}
       ?readonly=${this.readonly}
     ></om-connector>`;
+  }
+
+  /**
+   * Render the host class's own shapes — the diagram-level visuals it
+   * authored. For a PID controller class, this is typically a labelled
+   * background rectangle plus annotations that frame the sub-component
+   * layout. Sat behind the components with a positive z-bias so the
+   * depth test puts them in the back layer; the camera lives at -Z, so
+   * positive z is away from the viewer.
+   *
+   * `kind` picks the layer set: `"diagram"` shows `diagramLayers`,
+   * `"icon"` shows `iconLayers`. The two are mutually exclusive in
+   * practice — the producer fills the one that matches the requested
+   * view.
+   */
+  private renderHostShapes(layout: DiagramLayout): TemplateResult[] {
+    const layers =
+      layout.kind === "icon" ? layout.iconLayers : layout.diagramLayers;
+    return renderLayers(layers, HOST_SHAPE_Z_BIAS);
   }
 
   private renderInProgressEdge(): TemplateResult | typeof nothing {

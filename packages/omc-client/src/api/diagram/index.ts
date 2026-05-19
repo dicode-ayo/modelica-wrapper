@@ -21,6 +21,7 @@ export type {
   LabelLayout,
   LineShape,
   Modifier,
+  ParameterDef,
   PolygonShape,
   RectangleShape,
   EllipseShape,

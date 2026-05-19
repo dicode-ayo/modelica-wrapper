@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { NullEngine, Texture, type Scene } from "@babylonjs/core";
+import { NullEngine } from "@babylonjs/core";
 import type { DiagramLayout } from "@modelica-wrapper/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
@@ -19,6 +19,7 @@ function tinyLayout(): DiagramLayout {
         restriction: "block",
         iconLayers: [{ from: "Test.Block", shapes: [] }],
         connectors: {},
+        parameters: {},
       },
     },
     components: {
@@ -54,8 +55,6 @@ async function mount(layout: DiagramLayout): Promise<OmGraphicalLayout> {
       deterministicLockstep: false,
       lockstepMaxSteps: 1,
     });
-  el.rasterize = (svg: string, s: Scene): Promise<Texture> =>
-    Promise.resolve(new Texture(`data:text/plain,${svg}`, s, true, false));
   el.layout = layout;
   document.body.appendChild(el);
   teardowns.push(() => el.remove());

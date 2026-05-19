@@ -183,6 +183,20 @@ export interface PortDef {
   source?: SourceLocation | undefined;
 }
 
+export interface ParameterDef {
+  name: string;
+  /**
+   * Default value as a flat display string — the resolved binding when
+   * available, otherwise the literal modifier `$value`. Empty when neither
+   * is set (e.g. a parameter declared without a default). Used as the
+   * fallback for `%<paramName>` substitution in `TextShape.textString`
+   * when an instance modifier doesn't override it.
+   */
+  value: string;
+  unit?: string | undefined;
+  comment?: string | undefined;
+}
+
 export interface ClassDef {
   name: string;
   restriction: string;
@@ -190,6 +204,13 @@ export interface ClassDef {
   coordinateSystem?: CoordinateSystem | undefined;
   /** Ports declared on this class or any of its ancestors. */
   connectors: Record<string, PortDef>;
+  /**
+   * Parameter defaults walked through the extends chain (later-declared
+   * wins). Keyed by parameter name. Renderers use these as the fallback
+   * for `%<paramName>` text substitution; per-instance overrides come
+   * from `ComponentInstance.modifiers`.
+   */
+  parameters: Record<string, ParameterDef>;
 }
 
 export interface ComponentInstance {
@@ -389,6 +410,15 @@ export const PortDefSchema = z
   })
   .strict();
 
+export const ParameterDefSchema = z
+  .object({
+    name: z.string(),
+    value: z.string(),
+    unit: z.string().optional(),
+    comment: z.string().optional(),
+  })
+  .strict();
+
 export const ClassDefSchema = z
   .object({
     name: z.string(),
@@ -396,6 +426,7 @@ export const ClassDefSchema = z
     iconLayers: z.array(IconLayerSchema),
     coordinateSystem: CoordinateSystemSchema.optional(),
     connectors: z.record(z.string(), PortDefSchema),
+    parameters: z.record(z.string(), ParameterDefSchema),
   })
   .strict();
 

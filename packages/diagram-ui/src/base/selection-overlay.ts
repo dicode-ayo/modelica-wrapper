@@ -1,9 +1,12 @@
 import {
   Color3,
+  CreateGreasedLine,
   HighlightLayer,
   Mesh,
   MeshBuilder,
   StandardMaterial,
+  Vector3,
+  type AbstractMesh,
   type ArcRotateCamera,
   type Scene,
   type TransformNode,
@@ -106,6 +109,95 @@ export function setMeshHighlight(
   state.layer.addMesh(mesh, color);
   state.members.add(mesh);
   requestSceneRender(scene);
+}
+
+/**
+ * Crisp rectangular outline around a shape's icon extent. Built from
+ * a single closed `GreasedLine`, so we get a multi-pixel-wide stroke
+ * without the gaussian-blur shimmer the old `HighlightLayer` produced
+ * over a field of opaque primitive meshes. Cheap to create and dispose;
+ * rebuilt on size change the same way `ResizeHandles` is.
+ */
+export class SelectionOutline {
+  private line: AbstractMesh;
+
+  constructor(
+    private readonly scene: Scene,
+    private readonly parent: TransformNode,
+    iconWidth: number,
+    iconHeight: number,
+    iconCx: number,
+    iconCy: number,
+    private color: Color3 = new Color3(0.38, 0.6, 0.98),
+    private widthPx: number = 4,
+  ) {
+    this.line = this.build(iconWidth, iconHeight, iconCx, iconCy);
+  }
+
+  private build(
+    iconWidth: number,
+    iconHeight: number,
+    iconCx: number,
+    iconCy: number,
+  ): AbstractMesh {
+    const x0 = iconCx - iconWidth / 2;
+    const x1 = iconCx + iconWidth / 2;
+    const y0 = iconCy - iconHeight / 2;
+    const y1 = iconCy + iconHeight / 2;
+    // Slight -Z bias keeps the outline above the icon primitives (camera
+    // sits on +Z). One step closer than the resize handles' -0.02 so
+    // the corner handles still paint on top of the outline.
+    const z = -0.01;
+    const points = [
+      new Vector3(x0, y0, z),
+      new Vector3(x1, y0, z),
+      new Vector3(x1, y1, z),
+      new Vector3(x0, y1, z),
+      new Vector3(x0, y0, z),
+    ];
+    const line = CreateGreasedLine(
+      "om-selection-outline",
+      { points },
+      {
+        width: this.widthPx,
+        sizeAttenuation: true,
+        color: this.color,
+      },
+      this.scene,
+    );
+    line.parent = this.parent;
+    line.isPickable = false;
+    line.isVisible = false;
+    return line;
+  }
+
+  /** Rebuild geometry after the icon extent changes. */
+  resize(
+    iconWidth: number,
+    iconHeight: number,
+    iconCx: number,
+    iconCy: number,
+  ): void {
+    const wasVisible = this.line.isVisible;
+    this.line.dispose();
+    this.line = this.build(iconWidth, iconHeight, iconCx, iconCy);
+    this.line.isVisible = wasVisible;
+    if (wasVisible) {
+      requestSceneRender(this.scene);
+    }
+  }
+
+  setVisible(visible: boolean): void {
+    if (this.line.isVisible === visible) {
+      return;
+    }
+    this.line.isVisible = visible;
+    requestSceneRender(this.scene);
+  }
+
+  dispose(): void {
+    this.line.dispose();
+  }
 }
 
 /**
