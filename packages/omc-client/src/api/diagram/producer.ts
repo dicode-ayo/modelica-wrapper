@@ -432,6 +432,21 @@ function instanceFromSubComponent(
   if (el.modifiers !== undefined) instance.modifiers = el.modifiers;
   if (el.comment !== undefined) instance.comment = el.comment;
   if (el.type.source) instance.source = el.type.source;
+  // Per-instance port hiding: walk the type's connectors and collect
+  // any whose `condition` is literally `false`. OMC reduces the
+  // predicate against the use-site modifiers before serialization
+  // (e.g. `Torque(useSupport=false)` arrives with `support.condition
+  // = false`), so a plain literal check suffices for the common path.
+  // When the predicate stays as an unresolved Expression AST we keep
+  // the port visible — matches the host-level "default to visible"
+  // policy and lets the user toggle it via the form.
+  const hiddenPorts: string[] = [];
+  for (const { element } of walkConnectors(el.type)) {
+    if (element.condition === false) {
+      hiddenPorts.push(element.name);
+    }
+  }
+  if (hiddenPorts.length > 0) instance.hiddenPorts = hiddenPorts;
   return instance;
 }
 

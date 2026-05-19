@@ -222,6 +222,21 @@ export interface ComponentInstance {
   modifiers?: Modifier | undefined;
   comment?: string | undefined;
   source?: SourceLocation | undefined;
+  /**
+   * Names of ports declared on this component's type whose `condition`
+   * predicate evaluates to false for THIS instance (e.g. a `Torque`
+   * with `useSupport=false` hides its `support` flange). The class
+   * catalog (`classes[classRef].connectors`) still lists every port
+   * — the renderer skips ones named here when drawing the instance.
+   *
+   * Computed PER INSTANCE rather than baked into `ClassDef.connectors`
+   * because two instances of the same type can differ on per-instance
+   * modifiers (one `Torque(useSupport=true)`, one `Torque(useSupport=false)`)
+   * — the class def is shared/cached, the visibility isn't.
+   *
+   * Absent or empty when no port is hidden.
+   */
+  hiddenPorts?: string[] | undefined;
 }
 
 export interface ConnectorInstance {
@@ -448,6 +463,7 @@ export const ComponentInstanceSchema = z
     modifiers: ModifierSchema.optional(),
     comment: z.string().optional(),
     source: SourceLocationSchema.optional(),
+    hiddenPorts: z.array(z.string()).optional(),
   })
   .strict();
 

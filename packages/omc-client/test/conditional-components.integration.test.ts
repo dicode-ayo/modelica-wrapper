@@ -184,3 +184,77 @@ end ${pkg};
     }
   });
 });
+
+describeIf("produceDiagramLayout: per-instance hiddenPorts (live OMC)", () => {
+  let client: OmcClient;
+  let pkg: string;
+  let cls: string;
+
+  beforeAll(async () => {
+    client = await OmcClient.create({ omcPath: process.env.OMC_PATH ?? "" });
+    await client.loadModel({ typeName: "Modelica" });
+    const { randomBytes } = await import("node:crypto");
+    pkg = `MwHidden_${randomBytes(4).toString("hex")}`;
+    cls = `${pkg}.Sample`;
+    // Two `Torque` instances with opposite `useSupport` settings — the
+    // textbook case the per-instance hiddenPorts approach is built for.
+    // Both sit on the same cached `Torque` ClassDef, so the visibility
+    // has to be carried on the instance, not the class.
+    const data = `package ${pkg}
+  model Sample
+    Modelica.Mechanics.Rotational.Sources.Torque tWith(useSupport=true)
+      annotation(Placement(transformation(extent={{-50,-10},{-30,10}})));
+    Modelica.Mechanics.Rotational.Sources.Torque tWithout(useSupport=false)
+      annotation(Placement(transformation(extent={{30,-10},{50,10}})));
+    Modelica.Blocks.Sources.Constant tau1(k=0)
+      annotation(Placement(transformation(extent={{-90,-10},{-70,10}})));
+    Modelica.Blocks.Sources.Constant tau2(k=0)
+      annotation(Placement(transformation(extent={{70,-10},{90,10}})));
+  equation
+    connect(tau1.y, tWith.tau);
+    connect(tau2.y, tWithout.tau);
+  end Sample;
+end ${pkg};
+`;
+    const { success } = await client.loadString({
+      data,
+      filename: `<hidden-fixture:${pkg}>`,
+    });
+    if (!success) {
+      const { errorString } = await client.getErrorString();
+      throw new Error(`loadString failed: ${errorString}`);
+    }
+  }, 60_000);
+
+  afterAll(async () => {
+    try {
+      await client.deleteClass({ typeName: pkg });
+    } catch {
+      // best-effort cleanup
+    }
+    await client.close();
+  });
+
+  it("hides `support` on the useSupport=false instance, keeps it on the useSupport=true instance", async () => {
+    const { instance } = await client.getModelInstance({ typeName: cls });
+    const layout = produceDiagramLayout(instance, "diagram");
+    // Same type for both instances — the class catalog lists `support`
+    // exactly once, with both `flange` and `support` present.
+    const torqueCls =
+      layout.classes["Modelica.Mechanics.Rotational.Sources.Torque"];
+    expect(torqueCls).toBeDefined();
+    const torqueConnectorNames = Object.keys(torqueCls!.connectors).sort();
+    expect(torqueConnectorNames).toContain("support");
+    expect(torqueConnectorNames).toContain("flange");
+
+    // Per-instance gating: tWith keeps every port; tWithout hides
+    // `support`. The producer's literal-`false` check on the
+    // pre-reduced condition is what makes this work.
+    const tWith = layout.components.tWith;
+    const tWithout = layout.components.tWithout;
+    expect(tWith).toBeDefined();
+    expect(tWithout).toBeDefined();
+    expect(tWith!.hiddenPorts ?? []).toEqual([]);
+    expect(tWithout!.hiddenPorts ?? []).toContain("support");
+  });
+});

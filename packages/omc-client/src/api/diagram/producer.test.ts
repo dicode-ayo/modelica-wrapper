@@ -825,6 +825,77 @@ describe("produceDiagramLayout: conditional gating", () => {
     expect(layout.resolvedParameters).toEqual(params);
   });
 
+  it("hides per-instance ports whose type carries a literal `condition: false`", () => {
+    // OMC's `getModelInstance` pre-reduces a sub-component's connector
+    // predicates against the use-site modifiers — so a port like
+    // `Torque.support` arrives with `condition: false` when the
+    // surrounding component sets `useSupport=false`. Synthesize that
+    // shape directly so the test doesn't depend on a fixture or OMC.
+    const gainWithConditionalPort: unknown = {
+      $kind: "model",
+      name: "Pkg.GainWithSupport",
+      restriction: "block",
+      annotation: {
+        Icon: {
+          coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+          graphics: [],
+        },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "u",
+          type: RealInputClass,
+          annotation: placementAnno([[-110, -10], [-90, 10]]),
+        },
+        {
+          $kind: "component",
+          name: "support",
+          type: RealInputClass,
+          annotation: placementAnno([[-10, -110], [10, -90]]),
+          // OMC's pre-reduction: the predicate has been resolved to
+          // a literal `false` at this use-site.
+          condition: false,
+        },
+      ],
+    };
+    const hostLiteral: unknown = {
+      $kind: "model",
+      name: "Pkg.Host",
+      restriction: "model",
+      annotation: {
+        Diagram: {
+          coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+          graphics: [],
+        },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "g",
+          type: gainWithConditionalPort,
+          annotation: placementAnno([[-20, -20], [20, 20]]),
+        },
+      ],
+      connections: [],
+    };
+    const layout = produceDiagramLayout(
+      ModelInstanceSchema.parse(hostLiteral),
+      "diagram",
+    );
+    const inst = layout.components.g;
+    expect(inst).toBeDefined();
+    // The catalog still lists every port on the type — the class def
+    // is shared across all instances, so we don't bake visibility in.
+    expect(layout.classes["Pkg.GainWithSupport"]).toBeDefined();
+    expect(
+      Object.keys(layout.classes["Pkg.GainWithSupport"]!.connectors).sort(),
+    ).toEqual(["support", "u"]);
+    // But the instance carries `hiddenPorts` so the renderer can mask
+    // the gated port for THIS instance only.
+    expect(inst!.hiddenPorts).toEqual(["support"]);
+  });
+
   it("defaults to visible when a guard's cref isn't in the resolved scope", () => {
     // `use_y` missing from the map → evaluator can't reduce → wrapper
     // treats as "visible" (the same way Dialog.enable falls back).

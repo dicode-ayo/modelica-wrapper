@@ -497,17 +497,26 @@ export class OmGraphicalLayout extends LitElement {
       ?readonly=${this.readonly}
     >
       ${cls
-        ? Object.entries(cls.connectors).map(
-            ([pid, port]) =>
-              html`<om-connector
-                .nodeId=${pid}
-                .placement=${port.placement}
-                .layers=${port.iconLayers}
-                .coordinateSystem=${cls.coordinateSystem ?? undefined}
-                .lineThicknessScale=${this.lineThicknessScale}
-                ?readonly=${this.readonly}
-              ></om-connector>`,
-          )
+        ? Object.entries(cls.connectors)
+            // Per-instance gating: a port that's listed in
+            // `comp.hiddenPorts` was elided by the producer because
+            // its `condition` predicate evaluates to false for THIS
+            // instance (e.g. `Torque(useSupport=false)` hides
+            // `support`). The class def itself still lists the port
+            // — sibling instances of the same type may have it
+            // visible.
+            .filter(([pid]) => !comp.hiddenPorts?.includes(pid))
+            .map(
+              ([pid, port]) =>
+                html`<om-connector
+                  .nodeId=${pid}
+                  .placement=${port.placement}
+                  .layers=${port.iconLayers}
+                  .coordinateSystem=${cls.coordinateSystem ?? undefined}
+                  .lineThicknessScale=${this.lineThicknessScale}
+                  ?readonly=${this.readonly}
+                ></om-connector>`,
+            )
         : nothing}
     </om-component>`;
   }
