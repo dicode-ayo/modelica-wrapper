@@ -106,26 +106,58 @@ describe("applyDisplayUnits", () => {
     expect(layout.classes["Test.Host"]!.parameters.a!.value).toBe("90 deg");
   });
 
-  it("leaves params untouched when displayUnit is absent or equals unit", async () => {
+  it("appends the bare unit when displayUnit is absent or equals unit (#71)", async () => {
     const layout = makeLayout({
       a: { name: "a", value: "1.57", unit: "rad" },
       b: { name: "b", value: "5", unit: "m", displayUnit: "m" },
+      j: { name: "j", value: "1", unit: "kg.m2" },
     });
     const resolve = vi.fn<ConvertUnitsResolver>(async () => RAD_TO_DEG);
     await applyDisplayUnits(layout, resolve);
-    expect(layout.classes["Test.Host"]!.parameters.a!.value).toBe("1.57");
-    expect(layout.classes["Test.Host"]!.parameters.b!.value).toBe("5");
+    expect(layout.classes["Test.Host"]!.parameters.a!.value).toBe("1.57 rad");
+    expect(layout.classes["Test.Host"]!.parameters.b!.value).toBe("5 m");
+    // The Inertia case from the issue title: J=1 kg.m2.
+    expect(layout.classes["Test.Host"]!.parameters.j!.value).toBe("1 kg.m2");
+    // Bare-append never needs convertUnits.
     expect(resolve).not.toHaveBeenCalled();
   });
 
-  it("leaves a non-numeric value untouched without calling the resolver", async () => {
+  it("leaves params with no/dimensionless unit untouched (#71)", async () => {
+    const layout = makeLayout({
+      a: { name: "a", value: "1", unit: "" },
+      b: { name: "b", value: "2", unit: "1" },
+      c: { name: "c", value: "3" },
+    });
+    const resolve = vi.fn<ConvertUnitsResolver>(async () => RAD_TO_DEG);
+    await applyDisplayUnits(layout, resolve);
+    expect(layout.classes["Test.Host"]!.parameters.a!.value).toBe("1");
+    expect(layout.classes["Test.Host"]!.parameters.b!.value).toBe("2");
+    expect(layout.classes["Test.Host"]!.parameters.c!.value).toBe("3");
+    expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it("leaves a non-numeric value untouched, with or without a displayUnit (#71)", async () => {
     const layout = makeLayout({
       a: { name: "a", value: "2 * pi", unit: "rad", displayUnit: "deg" },
+      // Non-numeric value with a plain unit must NOT get a stray suffix.
+      k: { name: "k", value: "k+1", unit: "kg.m2" },
     });
     const resolve = vi.fn<ConvertUnitsResolver>(async () => RAD_TO_DEG);
     await applyDisplayUnits(layout, resolve);
     expect(layout.classes["Test.Host"]!.parameters.a!.value).toBe("2 * pi");
+    expect(layout.classes["Test.Host"]!.parameters.k!.value).toBe("k+1");
     expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it("does not re-annotate a value that already carries its unit (#71)", async () => {
+    // An already-annotated value isn't literal-numeric, so the
+    // `parseNumeric` guard alone leaves it untouched — running the pass a
+    // second time on its own output is a no-op.
+    const layout = makeLayout({
+      j: { name: "j", value: "1 kg.m2", unit: "kg.m2" },
+    });
+    await applyDisplayUnits(layout, async () => RAD_TO_DEG);
+    expect(layout.classes["Test.Host"]!.parameters.j!.value).toBe("1 kg.m2");
   });
 
   it("keeps the source value (and warns) when units are incompatible", async () => {
