@@ -38,10 +38,15 @@ export async function getExtendsModifierValue(
   const raw = await ctx.call(
     `getExtendsModifierValue(${input.typeName}, ${input.extendsBase}, ${input.modifier})`,
   );
+  // Unlike `getComponentModifierValue` (which always quotes its result),
+  // `getExtendsModifierValue` returns the binding *bare* when it is numeric
+  // or boolean (e.g. `2.5`, `true`) and quoted when it is a string. `asString`
+  // only handles the quoted/ident case, so fall back to the trimmed raw text
+  // to preserve OMC's verbatim source rendering for scalar bindings.
   const v = parse(raw);
   return parseOutput(
     GetExtendsModifierValueOutputSchema,
-    { value: asString(v) ?? "" },
+    { value: asString(v) ?? raw.trim() },
     "getExtendsModifierValue",
   );
 }
