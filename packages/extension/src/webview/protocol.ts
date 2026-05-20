@@ -55,7 +55,8 @@ export interface LibraryClassInfo {
  *   - `connectionCreate`    — user dragged from one connector to another.
  *   - `selectionChange`     — selection set updated.
  *   - `error`               — diagnostic surface.
- *   - `actionCheck` / `actionSimulate` / `actionParameters` — toolbar.
+ *   - `actionUndo` / `actionCheck` / `actionSimulate` / `actionParameters`
+ *                             — toolbar.
  *   - `editComponent`       — user double-clicked a sub-component on the
  *                             diagram and wants its parameter modal.
  *   - `parametersSubmit` / `parametersCancel` — parameter modal.
@@ -121,6 +122,7 @@ export type WebviewToExtension =
     }
   | { type: "selectionChange"; keys: string[] }
   | { type: "error"; message: string }
+  | { type: "actionUndo" }
   | { type: "actionCheck" }
   | { type: "actionSimulate" }
   | { type: "actionParameters" }

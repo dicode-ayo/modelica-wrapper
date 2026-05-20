@@ -30,7 +30,9 @@ import {
 import { diffLayouts, lineAnnotation, type LayoutEdit } from "./diff-layout.js";
 import { applyDisplayUnits } from "./display-unit.js";
 import { LibraryBrowserSource } from "./library-source.js";
+import { captureSnapshot, restoreSnapshot } from "./omc-snapshot.js";
 import { DiagramPanel } from "./panel.js";
+import { SnapshotStack } from "./snapshot-stack.js";
 import {
   buildSimulateForm,
   simulateInputFromFormValues,
@@ -85,12 +87,40 @@ export async function openDiagram(
   let componentParamInitialValues: Record<string, unknown> = {};
   let componentParamComponentName: string | null = null;
 
+  // ── Diagram-local undo (issue #29, deferred half) ─────────────────────
+  //
+  // Diagram edits go straight to OMC (applyEdits / addConnection / param
+  // writes) — they never touch a VSCode TextDocument, so native Ctrl-Z can't
+  // see them. We keep a per-panel snapshot stack instead: BEFORE each
+  // mutating op we push a `captureSnapshot(client, className)` of the host
+  // class's source; the Undo action pops the top and replays it via
+  // `restoreSnapshot`. Capture is best-effort — a missing snapshot (built-in
+  // class, empty listFile) is skipped, so worst case Undo just has nothing
+  // to pop. Depth is capped (see SnapshotStack) to bound memory.
+  const undoStack = new SnapshotStack();
+  // Pull a snapshot of the current class source onto the undo stack. Called
+  // immediately before any mutation. Best-effort: a capture failure leaves
+  // the stack unchanged rather than aborting the user's edit.
+  const pushUndoSnapshot = async (): Promise<void> => {
+    try {
+      undoStack.push(await captureSnapshot(client, className));
+    } catch (err) {
+      log.warn(
+        "diagramUndoSnapshot",
+        `capture failed for ${className}: ${(err as Error).message}`,
+      );
+    }
+  };
+
   const panel = DiagramPanel.open(context.extensionUri, className, prevLayout, {
     onChange: async (next) => {
       const edits = diffLayouts(prevLayout, next);
       if (edits.length === 0) {
         return;
       }
+      // Snapshot the pre-edit class source so the diagram-local Undo can roll
+      // this whole batch back (issue #29). Best-effort — see pushUndoSnapshot.
+      await pushUndoSnapshot();
       // Mirror every applied edit into the REPL so the user has a
       // running transcript of moves / deletes / connection edits
       // alongside the addComponent + simulate lines they already see.
@@ -136,6 +166,8 @@ export async function openDiagram(
       const refreshLabel = (): void => {
         if (client.lastCall) label = client.lastCall;
       };
+      // Snapshot before the addConnection write so Undo can revert it (#29).
+      await pushUndoSnapshot();
       try {
         await client.invoke("addConnection", {
           from,
@@ -157,6 +189,50 @@ export async function openDiagram(
       }
     },
     // ── Action panel ───────────────────────────────────────────────────
+    onActionUndo: async () => {
+      // Diagram-local undo (issue #29): pop the most-recent pre-edit source
+      // snapshot and replay it via loadString. The empty-stack case is a
+      // REPL line + a toast — there's nothing to undo, which is normal at the
+      // start of a session or after an undo drained the stack.
+      const snapshot = undoStack.pop();
+      if (!snapshot) {
+        createReplLog(`diagram undo ${className}`).error(
+          "nothing to undo (snapshot stack empty)",
+        );
+        void vscode.window.showInformationMessage(
+          `Modelica: nothing to undo for ${className}.`,
+        );
+        return;
+      }
+      const label = `loadString <undo ${className}>`;
+      try {
+        const ok = await restoreSnapshot(client, snapshot);
+        const replLog = createReplLog(label);
+        if (!ok) {
+          // OMC rejected the replay — surface it and re-push so a retry (or a
+          // later undo) still has the snapshot to work from.
+          undoStack.push(snapshot);
+          const { errorString } = await client.getErrorString();
+          const reason = errorString.trim() || "OMC returned success=false.";
+          replLog.error(reason);
+          void vscode.window.showErrorMessage(
+            `Modelica: undo failed for ${className}: ${reason}`,
+          );
+          return;
+        }
+        replLog.success(`restored ${className} (${undoStack.size} undo step(s) left)`);
+        prevLayout = await fetchLayout(client, className);
+        panel.update(prevLayout);
+      } catch (err) {
+        // Replay threw — re-push so the snapshot isn't lost, then report.
+        undoStack.push(snapshot);
+        const msg = (err as Error).message;
+        createReplLog(label).error(msg);
+        void vscode.window.showErrorMessage(
+          `Modelica: undo failed for ${className}: ${msg}`,
+        );
+      }
+    },
     onActionCheck: () => {
       // Re-use the existing user-triggered Check Model command: it
       // resolves the active diagram via `DiagramPanel.activeClassName()`,
@@ -261,6 +337,9 @@ export async function openDiagram(
         return;
       }
       if (kind === "classParams") {
+        // Snapshot before the modifier writes so Undo reverts the whole
+        // parameter-form submit in one step (#29).
+        await pushUndoSnapshot();
         await applyClassParameterEdits(
           client,
           className,
@@ -286,6 +365,9 @@ export async function openDiagram(
           panel.closeParameters();
           return;
         }
+        // Snapshot before the component modifier writes so Undo reverts the
+        // whole sub-component parameter-form submit in one step (#29).
+        await pushUndoSnapshot();
         await applyComponentParameterEdits(
           client,
           className,
@@ -329,6 +411,8 @@ export async function openDiagram(
       const refreshLabel = (): void => {
         if (client.lastCall) label = client.lastCall;
       };
+      // Snapshot before the addComponent write so Undo can revert it (#29).
+      await pushUndoSnapshot();
       try {
         // Drain stale errors so anything we read from getErrorString()
         // after the call is strictly attributable to this addComponent.

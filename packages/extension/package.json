@@ -29,6 +29,11 @@
         "title": "Modelica: Open Diagram"
       },
       {
+        "command": "modelica.diagram.undo",
+        "title": "Modelica: Undo Diagram Edit",
+        "icon": "$(discard)"
+      },
+      {
         "command": "modelica.loadLibrary",
         "title": "Modelica: Load Library...",
         "icon": "$(cloud-download)"
@@ -168,9 +173,22 @@
           "command": "modelica.checkModel",
           "when": "activeWebviewPanelId == modelicaDiagram",
           "group": "navigation@2"
+        },
+        {
+          "command": "modelica.diagram.undo",
+          "when": "activeWebviewPanelId == modelicaDiagram",
+          "group": "navigation@0"
         }
       ]
     },
+    "keybindings": [
+      {
+        "command": "modelica.diagram.undo",
+        "key": "ctrl+z",
+        "mac": "cmd+z",
+        "when": "activeWebviewPanelId == modelicaDiagram"
+      }
+    ],
     "configuration": {
       "title": "Modelica",
       "properties": {

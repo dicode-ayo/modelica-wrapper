@@ -191,6 +191,7 @@ class OmWebviewRoot extends LitElement {
       ></om-graphical-layout>
       <om-action-panel
         anchor="top-right"
+        @om-action-undo=${() => this.post({ type: "actionUndo" })}
         @om-action-check=${() => this.post({ type: "actionCheck" })}
         @om-action-simulate=${() => this.post({ type: "actionSimulate" })}
         @om-action-parameters=${() => this.post({ type: "actionParameters" })}
