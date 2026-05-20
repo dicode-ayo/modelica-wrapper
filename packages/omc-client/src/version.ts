@@ -38,8 +38,22 @@ export const SUPPORTED_OMC = {
   primary: "1.26.7",
   /** Same major.minor is treated as compatible without warning. */
   compatibleMinor: { major: 1, minor: 26 },
-  /** Audited against build.openmodelica.org docs on this date. */
-  auditedOn: "2026-05-06",
+  /**
+   * Date of the last full per-function audit against the pinned OMC.
+   *
+   * See [`docs/audit.md` §0.1](../docs/audit.md) for the exact semantics —
+   * specifically: this tracks the **completion date of the full §3 audit
+   * procedure**, not the date of `coverage.md` refreshes, single-wrapper
+   * fixes, drift-probe additions, or pin bumps. Only bump this value when
+   * a full audit pass has been written up.
+   *
+   * The 2026-05-20 deep re-probe rescued five ⛔ wrappers
+   * (`removeComponentModifiers`, `updateConnection`, `moveClass`,
+   * `getReplaceableChoices`, plus the state-machine mutators), added four
+   * results wrappers, and surfaced a `getParameterValue` String-quoting
+   * bug — those passes together count as the most recent full audit.
+   */
+  auditedOn: "2026-05-20",
 } as const;
 
 /** Parse OMC's `getVersion()` response into a structured version. */

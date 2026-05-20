@@ -18,6 +18,12 @@ This package targets a specific OMC version. The pin lives in source code:
 
 ### 0.1 Calibration check (do this FIRST, every audit)
 
+**Semantics of `SUPPORTED_OMC.auditedOn`.** This field records **the date the last full per-function audit was completed end-to-end** — i.e. when an agent (or human) walked the entire procedure in §3 against the pinned OMC version and produced a written report. It is **not** the docs-fetch date for an ad-hoc verification, **not** the date `coverage.md` was last refreshed (that has its own `Last updated:` line at the top of `coverage.md`), and **not** the Renovate pin-bump date (that lives in `git log` for `version.ts`).
+
+Update `auditedOn` when, and only when, you have just finished a full audit pass — either against a freshly-bumped pin (typical: an `omc-update` Renovate PR) or as part of a standalone audit. In either case the value should equal the date in the audit report's `# OMC Client Audit — <YYYY-MM-DD>` header.
+
+Smaller-scope work — a coverage refresh, a single-wrapper bug fix, a drift-probe addition, an MCP description tweak — should **not** bump `auditedOn`. Those changes are recorded in `coverage.md` and in commit history; bumping `auditedOn` for them would falsely advertise a full audit.
+
 Before any per-function comparison, verify the three places the OMC version is recorded all agree:
 
 | Source | How to read it |

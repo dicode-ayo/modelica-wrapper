@@ -20,7 +20,8 @@
     "test:watch": "vitest",
     "test:unit": "OMC_INTEGRATION=0 vitest run",
     "capture-modelinstance-fixtures": "node scripts/capture-modelinstance-fixtures.mjs",
-    "check-modelinstance-schema-drift": "node scripts/check-modelinstance-schema-drift.mjs"
+    "check-modelinstance-schema-drift": "node scripts/check-modelinstance-schema-drift.mjs",
+    "coverage:recount": "node scripts/check-coverage-counts.mjs"
   },
   "dependencies": {
     "zeromq": "^6.1.0",

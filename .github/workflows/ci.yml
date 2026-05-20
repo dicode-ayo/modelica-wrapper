@@ -33,6 +33,9 @@ jobs:
       - name: Type-check
         run: pnpm -r typecheck
 
+      - name: coverage.md ↔ filesystem recount
+        run: pnpm --filter @modelica-wrapper/omc-client coverage:recount
+
       - name: Unit tests (parser, version, registry)
         env:
           OMC_INTEGRATION: "0"

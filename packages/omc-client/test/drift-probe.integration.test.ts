@@ -133,7 +133,6 @@ const probes: Probe[] = [
     note: "save is ⛔ on usefulness grounds, NOT symbol-missing. The symbol resolves and returns `true`, but for a loadString-defined class with no associated source file it persists NOTHING (no file written) — hence the project uses Option B (listFile + own writer). The probe harness loads MwProbeSave via loadString just before this entry runs (see the beforeEach-style preload). NON-DESTRUCTIVE: never targets the on-disk MSL tree. This is the counter-example save previously lacked.",
     cmd: "save(MwProbeSave)" as OmcCommand,
   },
-
   {
     label: "moveClass(docs-correct Integer-offset shape)",
     wrapper: "lifecycle/moveClass.ts",
