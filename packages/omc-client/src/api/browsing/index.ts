@@ -45,3 +45,8 @@ export * from "./isOptimization.js";
 export * from "./getClassComment.js";
 export * from "./getEnumerationLiterals.js";
 export * from "./getReplaceableChoices.js";
+export * from "./extendsFrom.js";
+export * from "./getAllSubtypeOf.js";
+export * from "./classAnnotationExists.js";
+export * from "./getNthInheritedClass.js";
+export * from "./isShortDefinition.js";

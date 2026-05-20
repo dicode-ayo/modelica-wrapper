@@ -53,6 +53,11 @@ export type OmcFunction =
   | "isOptimization"
   | "getEnumerationLiterals"
   | "getReplaceableChoices"
+  | "extendsFrom"
+  | "getAllSubtypeOf"
+  | "classAnnotationExists"
+  | "getNthInheritedClass"
+  | "isShortDefinition"
 
   // --- Reading model contents ---
   | "getComponents"
