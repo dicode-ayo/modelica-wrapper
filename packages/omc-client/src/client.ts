@@ -874,6 +874,36 @@ export class OmcClient implements CallContext {
     return solver.setCommandLineOptions(this, input);
   }
 
+  getMatchingAlgorithm(
+    input: solver.GetMatchingAlgorithmInput = {},
+  ): Promise<solver.GetMatchingAlgorithmOutput> {
+    return solver.getMatchingAlgorithm(this, input);
+  }
+
+  getAvailableMatchingAlgorithms(
+    input: solver.GetAvailableMatchingAlgorithmsInput = {},
+  ): Promise<solver.GetAvailableMatchingAlgorithmsOutput> {
+    return solver.getAvailableMatchingAlgorithms(this, input);
+  }
+
+  getIndexReductionMethod(
+    input: solver.GetIndexReductionMethodInput = {},
+  ): Promise<solver.GetIndexReductionMethodOutput> {
+    return solver.getIndexReductionMethod(this, input);
+  }
+
+  getAvailableIndexReductionMethods(
+    input: solver.GetAvailableIndexReductionMethodsInput = {},
+  ): Promise<solver.GetAvailableIndexReductionMethodsOutput> {
+    return solver.getAvailableIndexReductionMethods(this, input);
+  }
+
+  getAvailableTearingMethods(
+    input: solver.GetAvailableTearingMethodsInput = {},
+  ): Promise<solver.GetAvailableTearingMethodsOutput> {
+    return solver.getAvailableTearingMethods(this, input);
+  }
+
   // === Editing =========================================================
 
   addComponent(

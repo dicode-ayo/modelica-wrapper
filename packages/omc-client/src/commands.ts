@@ -164,6 +164,11 @@ export type OmcFunction =
   | "setMatchingAlgorithm"
   | "setIndexReductionMethod"
   | "setCommandLineOptions"
+  | "getMatchingAlgorithm"
+  | "getAvailableMatchingAlgorithms"
+  | "getIndexReductionMethod"
+  | "getAvailableIndexReductionMethods"
+  | "getAvailableTearingMethods"
 
   // --- Execution ---
   | "checkModel"
