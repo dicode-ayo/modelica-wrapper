@@ -58,6 +58,7 @@ import type { JsonSchema } from "@modelica-wrapper/omc-client";
 import { omTokens } from "../base/om-tokens.js";
 
 import {
+  enabledValues,
   initialValuesFromFields,
   isComplete,
   isFieldEnabled,
@@ -429,7 +430,7 @@ export class OmParameterForm extends LitElement {
   }
 
   override render(): TemplateResult {
-    const canSubmit = isComplete(this.fields, this.working);
+    const canSubmit = isComplete(this.fields, this.working, this.crefPrefix);
     return html`
       ${this.title ? html`<h3 class="title">${this.title}</h3>` : nothing}
       <form @submit=${this.onSubmit}>
@@ -841,9 +842,12 @@ export class OmParameterForm extends LitElement {
 
   private onSubmit(e: Event): void {
     e.preventDefault();
-    if (!isComplete(this.fields, this.working)) return;
+    if (!isComplete(this.fields, this.working, this.crefPrefix)) return;
     this.dispatchEvent(
       new CustomEvent<ParameterFormSubmitDetail>("om-parameter-submit", {
+        // `submitValues()` emits base-unit values AND drops disabled fields
+        // (issue #76, item 4) so we never write a stale binding the user can
+        // no longer see.
         detail: { values: this.submitValues() },
         bubbles: true,
         composed: true,
@@ -885,7 +889,10 @@ export class OmParameterForm extends LitElement {
         f.unitOptions,
       );
     }
-    return out;
+    // Drop disabled-field values (issue #76, item 4): OMEdit suppresses writes
+    // for a field whose `Dialog.enable` is false, so a stale value left behind
+    // when the user toggled a controller off must not be submitted.
+    return enabledValues(this.fields, out, this.crefPrefix);
   }
 
   private onCancel(): void {

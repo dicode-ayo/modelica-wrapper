@@ -193,17 +193,52 @@ function readExpression(node: Node, key: string): Expression | undefined {
   return v === undefined ? undefined : (v as Expression);
 }
 
-/** True when every required field has a usable value in `values`. */
+/**
+ * True when every required *and enabled* field has a usable value in
+ * `values`.
+ *
+ * A disabled field (its `Dialog.enable` evaluates to `false`) is skipped
+ * (issue #76, item 17): OMEdit greys such a field out and never submits it,
+ * so a disabled required-but-empty field must not block the OK button. The
+ * enabled check needs the full field list + the live committed values (and
+ * an optional `crefPrefix` for sub-component forms) so it can reuse
+ * `isFieldEnabled`'s evaluator.
+ */
 export function isComplete(
   fields: ReadonlyArray<ParameterField>,
   values: Record<string, unknown>,
+  crefPrefix?: string,
 ): boolean {
   for (const f of fields) {
     if (!f.required) continue;
+    if (!isFieldEnabled(f, fields, values, crefPrefix)) continue;
     const v = values[f.name];
     if (v === undefined || v === null || v === "") return false;
   }
   return true;
+}
+
+/**
+ * Project the working `values` down to only the fields whose `Dialog.enable`
+ * is currently true (issue #76, item 4).
+ *
+ * OMEdit suppresses writes for disabled fields: setting `Ti`, then flipping
+ * `controllerType` to `P` (which disables `Ti`), then submitting must NOT
+ * write the stale `Ti`. Dropping the key entirely lets the submit handler
+ * treat it as "no edit" rather than a value to push to OMC. A field with no
+ * `enable` (always enabled) is always kept.
+ */
+export function enabledValues(
+  fields: ReadonlyArray<ParameterField>,
+  values: Record<string, unknown>,
+  crefPrefix?: string,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const f of fields) {
+    if (!isFieldEnabled(f, fields, values, crefPrefix)) continue;
+    out[f.name] = values[f.name];
+  }
+  return out;
 }
 
 /**
