@@ -4,7 +4,7 @@ Tracks which functions in [`src/registry.ts`](../src/registry.ts) are exercised 
 
 **Pinned OMC version:** `1.26.7` (see [`../src/version.ts`](../src/version.ts)). On 2026-05-19 a deep re-probe of the previously-⛔ wrappers revealed that 4 of them (`removeComponentModifiers`, `updateConnection`, `moveClass`, plus the newly-added `getReplaceableChoices`) were wrapper-side bugs — wrong argument shape masked by OMC's misleading "Class X not found in scope" diagnostic. See [audit.md §2.10](./audit.md) for the gotcha. After fixing the call shapes, those wrappers + state-machine mutators are now ✅ on 1.26.7. Only `createClass`, `createSubClass`, and `save` remain genuinely ⛔ (docs 404). Same session: added 4 results wrappers (filter / compare / delta / diff) and a heavy integration test that exercises every results wrapper against a real `.mat` file simulated inside a temp directory.
 **Last updated:** 2026-05-20.
-**Current coverage:** **153 wrappers in package; 135 ✅ verified end-to-end, 15 🟡 cheap unverified, 3 ⛔ broken on pin (88% verified).** 2026-05-20: added 3 library version-conversion wrappers (`getConversionsFromVersions`, `getAvailablePackageConversionsFrom`, `getAvailablePackageConversionsTo`) and gated all 9 library/network wrappers behind a new opt-in `OMC_INTEGRATION_NETWORK=1` env var so the package-index calls can be exercised on demand without flaking CI; see the Library section below for details. A 2026-05-20 audit also identified ~40 documented OMC scripting functions in scope that are not yet wrapped — see the [100% coverage epic](https://github.com/dicode-ayo/modelica-wrapper/issues?q=is%3Aissue+label%3Aepic+label%3Aomc-coverage) for the plan to close that gap. Recent verification jumps came from clearing the Tier-A `it.todo` backlog (niche class predicates, contents readers, element readers; `getParameterValue` String-quoting bug surfaced) followed by a second pass on Tier-B mutations + connector-fixture tests (isClass / isReplaceable / isProtectedClass, getConnectorCount + getNthConnector*, setElementType, setElementModifierValue, removeElementModifiers).
+**Current coverage:** **176 wrappers in package; 158 ✅ verified end-to-end, 15 🟡 cheap unverified, 3 ⛔ broken on pin (90% verified).** 2026-05-20: omc-coverage epic (#31) added import readers (#43), solver getter siblings (#41), 9 class-shape `is*` predicates (#33), browsing extras (#42), editing siblings (#37), and 3 library version-conversion wrappers (#40) — the 9 library/package-manager calls are now exercised opt-in behind `OMC_INTEGRATION_NETWORK=1`. Counts reconciled at merge time. A 2026-05-20 audit also identified ~40 documented OMC scripting functions in scope that are not yet wrapped — see the [100% coverage epic](https://github.com/dicode-ayo/modelica-wrapper/issues?q=is%3Aissue+label%3Aepic+label%3Aomc-coverage) for the plan to close that gap.
 
 > Run `pnpm --filter @modelica-wrapper/omc-client test` to exercise the integration suite. It auto-skips when `omc` isn't on PATH.
 
@@ -28,7 +28,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 
 ---
 
-## Browsing — 28/28 ✅
+## Browsing — 42/42 ✅
 
 ### Original 10 (all ✅ verified)
 
@@ -68,7 +68,37 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `getEnumerationLiterals` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getEnumerationLiterals.html) |
 | `getReplaceableChoices` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getReplaceableChoices.html) — initially flagged ⛔; the docs-correct shape takes **two** TypeNames (`baseClass`, `parentClass`) + 2 optional bools and returns a 2D matrix. See [audit.md §2.10](./audit.md). |
 
-## Reading model contents — 25/27
+### Browsing extras (added 2026-05-20, all ✅) — #42
+
+| Function | Status | Docs |
+|---|---|---|
+| `extendsFrom` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.extendsFrom.html) — verified on a 3-class chain fixture. **Pinned-version note:** on OMC 1.26.7 this predicate is NON-transitive — it matches `baseClassName` against the directly-listed (fully-qualified) `extends` clauses only, so `extendsFrom(C, B)` is true but `extendsFrom(C, A)` is false for a chain `A <- B <- C`. The base class must appear fully-qualified in the `extends` clause. The wrapper docstring documents this; for transitive tests use `getInheritedClasses` / `getAllSubtypeOf`. |
+| `getAllSubtypeOf` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getAllSubtypeOf.html) — inverse-of-`extendsFrom` query (this one IS transitive). **Note:** the result *includes the class itself*, and names come back relative to `parentClass` (fully-qualified only when `parentClass` is omitted / `AllLoadedClasses`). Verified against the 3-class chain fixture. |
+| `classAnnotationExists` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.classAnnotationExists.html) — verified against a class with an `experiment(...)` annotation (true) and a sibling without it (false). |
+| `getNthInheritedClass` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getNthInheritedClass.html) — indexed counterpart to `getInheritedClasses`; verified by asserting index 1 matches `getInheritedClasses(...)[0]`. |
+| `isShortDefinition` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isShortDefinition.html) — verified true on a `type T = Real;` short definition and false on a `model`. |
+
+### Class-shape / component predicates — 9 added 2026-05-20 (#33, all ✅)
+
+These mirror the existing `is*` predicates but span **three** argument/output shapes — the issue assumed a uniform single-`typeName` / `{ b }` shape, but the OMC docs disagree (verified against the pin):
+
+- `isConstant` / `isParameter` / `isProtected` — **two** TypeName args (`componentName`, `className`); output is `result` (not `b`). Wrapper exposes the containing class as `typeName` (primary TypeName per audit.md §2.3) and the component as `componentName` (secondary TypeName kept verbatim). OMC's call order is `(componentName, className)`.
+- `isPrimitive` — single TypeName (`className`); output `result`.
+- `isRedeclare` / `isOperator` / `isOperatorFunction` / `isOperatorRecord` / `isOptimization` — single TypeName; output `b`. Use the shared `BooleanBOutput`; the four `result`-shaped ones use the new `BooleanResultOutput` shared atom.
+
+| Function | Status | Docs |
+|---|---|---|
+| `isConstant` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isConstant.html) — verified via fixture: `constant Real cc` returns true, sibling `parameter pp` returns false |
+| `isParameter` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isParameter.html) — verified via fixture (+ constant counter-example) |
+| `isProtected` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isProtected.html) — component-level protection; distinct from `isProtectedClass`. Verified via fixture with a protected element (+ public counter-example) |
+| `isRedeclare` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isRedeclare.html) — verified via a derived class that redeclares an inherited `replaceable Real` in its body (+ plain-element counter-example) |
+| `isPrimitive` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isPrimitive.html) — verified: `Real` is primitive, a `model` is not |
+| `isOperator` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isOperator.html) — verified via an `operator` block inside an operator record (+ enclosing-record counter-example) |
+| `isOperatorFunction` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isOperatorFunction.html) — verified via an `operator function` declaration (+ counter-example) |
+| `isOperatorRecord` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isOperatorRecord.html) — verified via an `operator record` (+ plain-model counter-example) |
+| `isOptimization` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isOptimization.html) — `optimization` is Optimica grammar; the test enables it via `setCommandLineOptions("+g=Optimica")` before loading the fixture (+ plain-model counter-example) |
+
+## Reading model contents — 27/29
 
 | Function | Status | Docs |
 |---|---|---|
@@ -99,6 +129,8 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `getInstantiatedParametersAndValues` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getInstantiatedParametersAndValues.html) — name/value bindings after instantiation; verified in [`../test/integration.test.ts`](../test/integration.test.ts). |
 | `getAnnotationNamedModifiers` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getAnnotationNamedModifiers.html) — verified on `Icon`. |
 | `getAnnotationModifierValue` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getAnnotationModifierValue.html) — raw modifier text reader; verified end-to-end. |
+| `getImportCount` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getImportCount.html) — verified via a `loadString` fixture with two import-clauses (plain `import Modelica.SIunits;` + renamed `import M = Modelica;`). Issue #43. |
+| `getNthImport` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getNthImport.html) — returns the `[path, id, kind]` 3-tuple; verified against the same fixture. Issue #43. |
 
 ## Lifecycle — 15/18
 
@@ -140,7 +172,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `setExtendsModifierValue` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setExtendsModifierValue.html) | Same. |
 | `removeExtendsModifiers` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.removeExtendsModifiers.html) | Added 2026-05-19. Verified end-to-end via the `extends` mutation suite (clears `k=2.5` and confirms the modifier value goes empty). |
 
-## Editing — 19/19 ✅
+## Editing — 21/21 ✅
 
 | Function | Status | Docs | Notes |
 |---|---|---|---|
@@ -150,9 +182,11 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `updateComponent` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.updateComponent.html) | |
 | `addConnection` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.addConnection.html) | |
 | `deleteConnection` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.deleteConnection.html) | |
-| `updateConnection` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.updateConnection.html) | **Wrapper rescued 2026-05-19**: docs order is `(TypeName className, String from, String to, annotate)` — earlier wrapper had from/to before className AND sent them unquoted; OMC returned the misleading "Class updateConnection not found in scope" diagnostic; see [audit.md §2.10](./audit.md). |
+| `updateConnection` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.updateConnection.html) | **Wrapper rescued 2026-05-19**: docs order is `(TypeName className, String from, String to, annotate)` — earlier wrapper had from/to before className AND sent them unquoted; OMC returned the misleading "Class updateConnection not found in scope" diagnostic; see [audit.md §2.10](./audit.md). `updateConnectionAnnotation` is intentionally NOT wrapped — its `annotate: String` arg is a strict subset of this wrapper's `annotate: ExpressionOrModification` arg, which already accepts raw `Line(...)` text and is what commit `b6a0538` collapsed `connectionWaypoints` onto. |
+| `updateConnectionNames` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.updateConnectionNames.html) | Added 2026-05-20 (issue #37). Rename one or both endpoints of an existing connection without touching the annotation. All four endpoint args are `String`s and must be quoted — same gotcha as the other connection/transition mutators; see [audit.md §2.10](./audit.md). Verified via the editing mutation suite. |
 | `addTransition` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.addTransition.html) | **Wrapper bugfix 2026-05-19**: `from` / `to` are `String`s and must be quoted (same gotcha as updateConnection). Previously silently broken in the 🟡 state. Verified via state-machine mutation suite. |
 | `deleteTransition` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.deleteTransition.html) | Same fix as addTransition; same gotcha. |
+| `updateTransition` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.updateTransition.html) | Added 2026-05-20 (issue #37). Replaces an existing transition's guard, flags, priority, and annotation; caller supplies both the old-identifier tuple (to locate the row) and the new values. Same String-quoting gotcha as `addTransition` / `deleteTransition`. Round-trip-verified in the state-machine mutation suite. |
 | `addInitialState` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.addInitialState.html) | Added 2026-05-19. `state` is a `String` and must be quoted — same gotcha as the transition mutators. Verified via state-machine mutation suite. |
 | `deleteInitialState` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.deleteInitialState.html) | Same gotcha and verification path as addInitialState. |
 | `updateInitialState` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.updateInitialState.html) | Same gotcha and verification path as addInitialState. |
@@ -213,7 +247,7 @@ kept as 🟡 (not promoted to ✅) because it's never run in the default
 verification path; promotion requires either flipping the gate on in CI
 or moving to a mocked-index fixture server.
 
-## Solver / runtime config — 8/8 ✅
+## Solver / runtime config — 13/13 ✅
 
 | Function | Status | Docs |
 |---|---|---|
@@ -225,6 +259,11 @@ or moving to a mocked-index fixture server.
 | `setMatchingAlgorithm` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setMatchingAlgorithm.html) |
 | `setIndexReductionMethod` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setIndexReductionMethod.html) |
 | `setCommandLineOptions` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setCommandLineOptions.html) |
+| `getMatchingAlgorithm` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getMatchingAlgorithm.html) — sibling getter to `setMatchingAlgorithm`; round-trip verified on 1.26.7. |
+| `getAvailableMatchingAlgorithms` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getAvailableMatchingAlgorithms.html) — returns aligned `allChoices` / `allComments` arrays; on 1.26.7 includes `PFPlusExt`. |
+| `getIndexReductionMethod` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getIndexReductionMethod.html) — sibling getter to `setIndexReductionMethod`; round-trip verified on 1.26.7. |
+| `getAvailableIndexReductionMethods` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getAvailableIndexReductionMethods.html) — returns aligned `allChoices` / `allComments` arrays; on 1.26.7 includes `dynamicStateSelection`. |
+| `getAvailableTearingMethods` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getAvailableTearingMethods.html) — no setter sibling in this package yet; tearing is typically selected via `setCommandLineOptions("--tearingMethod=...")`. |
 
 ## Execution — 9/9 ✅
 
@@ -275,17 +314,17 @@ right form; the three comparison wrappers above use it for their optional
 
 | Category | Covered | Total | Notes |
 |---|---|---|---|
-| Browsing | 28 | 28 | All ✅. Custom fixtures cover `isClass`, `isReplaceable`, `isProtectedClass`. |
-| Reading model contents | 25 | 27 | All readers verified except the two inherited-class map annotations (🟡, need an inheritance fixture). |
+| Browsing | 42 | 42 | All ✅. Custom fixtures cover `isClass`, `isReplaceable`, `isProtectedClass`, the 9 class-shape predicates (#33: `isConstant`, `isParameter`, `isProtected`, `isRedeclare`, `isPrimitive`, `isOperator`, `isOperatorFunction`, `isOperatorRecord`, `isOptimization`), and the #42 extras (`extendsFrom`, `getAllSubtypeOf`, `classAnnotationExists`, `getNthInheritedClass`, `isShortDefinition`). |
+| Reading model contents | 27 | 29 | All readers verified except the two inherited-class map annotations (🟡, need an inheritance fixture). 2026-05-20: added `getImportCount` + `getNthImport` (issue #43). |
 | Lifecycle | 15 | 18 | 3 ⛔ remain — `createClass`, `createSubClass` (docs 404 + symbol genuinely absent on 1.26.x), `save` (deprecated). **`moveClass` rescued 2026-05-19**: it's an in-place reorder by `Integer offset`, not a TypeName-destination relocate. |
 | Parameters & modifiers | 9 | 12 | 3 🟡 remain (`getExtendsModifierNames`, `getExtendsModifierValue`, `setExtendsModifierValue` — all need an `extends Foo(k=2)` fixture). **`getParameterValue` wrapper bugfix 2026-05-19**: `parameterName` is a `String`, not a TypeName — the bare-ident form silently returned "" since day one. |
-| Editing | 19 | 19 | All ✅. **`updateConnection` rescued**: arg order + String-quoting fix. **`addTransition`/`deleteTransition` bugfix**: same String-quoting gotcha — they were silently 🟡 broken before. |
+| Editing | 21 | 21 | All ✅. **`updateConnection` rescued**: arg order + String-quoting fix. **`addTransition`/`deleteTransition` bugfix**: same String-quoting gotcha — they were silently 🟡 broken before. **Issue #37 (2026-05-20)** added `updateConnectionNames` + `updateTransition`; `updateConnectionAnnotation` is intentionally skipped because `updateConnection`'s `annotate` arg already supersedes it. |
 | Elements | 10 | 11 | Only `setElementAnnotation` remains 🟡 — OMC 1.26.7 accepts the call but the annotation always gets cleared rather than replaced, regardless of `$Code` shape (no working payload found). |
 | Library | 3 | 12 | The 9 package-manager / version-conversion calls remain 🟡 — all 9 are exercised on demand by [`../test/library-network.integration.test.ts`](../test/library-network.integration.test.ts), gated by `OMC_INTEGRATION_NETWORK=1`. Intentionally off in CI to avoid package-index reachability flakes. |
-| Solver / runtime config | 8 | 8 | All verified. |
+| Solver / runtime config | 13 | 13 | All verified. Now includes 5 getter siblings (`getMatchingAlgorithm`, `getAvailableMatchingAlgorithms`, `getIndexReductionMethod`, `getAvailableIndexReductionMethods`, `getAvailableTearingMethods`) added in #41. |
 | Execution | 9 | 9 | All ✅ via the heavy suite. The FMU pipeline (`buildModelFMU` → `importFMU`) is chained: build the ramp into a `.fmu`, then import it back to a Modelica wrapper. `importFMU` needed a wrapper bugfix on the way — `modelName` is a `TypeName` (bare ident), not a String (see [audit.md §2.10](./audit.md)). |
 | Results | 9 | 9 | All ✅ via [`../test/results-heavy.integration.test.ts`](../test/results-heavy.integration.test.ts) — simulates a tiny ramp model in a `mkdtemp` directory, exercises every results wrapper on the produced `.mat`, cleans up. Gated by `OMC_INTEGRATION_HEAVY=1`. |
-| **Total verified** | **135** | **153** | **88%** ✅. Of the 18 unverified: 3 ⛔ (`createClass`, `createSubClass`, `save` — genuinely missing/deprecated on the pin), 1 🟡 OMC-side bug (`setElementAnnotation`), 2 🟡 inherited-class map annotations, 3 🟡 extends-modifier readers/writer (need fixture), 9 🟡 network-only library/package-manager calls (all 9 are exercised opt-in via `OMC_INTEGRATION_NETWORK=1`). **Audit also identified ~40 documented OMC functions in scope but not yet wrapped — see the 100% coverage epic.** |
+| **Total verified** | **158** | **176** | **90%** ✅. Of the 18 unverified: 3 ⛔ (`createClass`, `createSubClass`, `save` — genuinely missing/deprecated on the pin), 1 🟡 OMC-side bug (`setElementAnnotation`), 2 🟡 inherited-class map annotations, 3 🟡 extends-modifier readers/writer (need fixture), 9 🟡 network-only library/package-manager calls (exercised opt-in via `OMC_INTEGRATION_NETWORK=1`). **Audit also identified ~40 documented OMC functions in scope but not yet wrapped — see the 100% coverage epic.** |
 
 ---
 
