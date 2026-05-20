@@ -52,6 +52,21 @@ export interface ComponentParameterRef {
   enumTypeName?: string;
   tab: string;
   group: string;
+  /**
+   * Qualified TypeName of the ancestor that declares this parameter when
+   * it's reached through the component type's `extends` chain rather than
+   * declared on the component's own type. Absent for parameters declared
+   * directly on the component's type.
+   *
+   * NOTE: this routing applies to *class-level* (top-level) parameter
+   * edits. For sub-component edits the modifier is always written on the
+   * parent class against the dotted `<component>.<param>` path — OMC
+   * resolves the inherited parameter through the component type — so the
+   * submit handler ignores `inheritedFrom` in that case. The field is
+   * carried for parity / future use and to make the inheritance source
+   * inspectable.
+   */
+  inheritedFrom?: string;
 }
 
 export interface ComponentParameterForm {
@@ -89,10 +104,15 @@ export function buildComponentParameterForm(
   // `Modelica.Mechanics.Rotational.Sources.*`) never surface in the
   // sub-component panel.
   for (const klass of walkExtendsChain(type)) {
+    // `type` is the component's own type (last in the post-order walk).
+    // Anything earlier is an ancestor reached via `extends`, so its
+    // parameters are inherited into the component's type. Identity-safe
+    // because the walker yields the same object references.
+    const inheritedFrom = klass === type ? undefined : klass.name;
     for (const el of klass.elements ?? []) {
       if (el.$kind !== "component") continue;
       if (el.prefixes?.variability !== "parameter") continue;
-      const built = buildField(el, overrides[el.name]);
+      const built = buildField(el, overrides[el.name], inheritedFrom);
       properties[el.name] = built.schema;
       refs[el.name] = built.ref;
       if (built.value !== undefined) values[el.name] = built.value;
@@ -135,6 +155,7 @@ interface BuiltField {
 function buildField(
   el: ComponentElement,
   override: Modifier | undefined,
+  inheritedFrom: string | undefined,
 ): BuiltField {
   const description = el.comment ?? undefined;
   const dialog: DialogInfo = readDialogInfo(el.annotation);
@@ -158,6 +179,7 @@ function buildField(
           enumTypeName: qualified,
           tab: dialog.tab,
           group: dialog.group,
+          ...inheritedRefField(inheritedFrom),
         },
       };
     }
@@ -177,6 +199,7 @@ function buildField(
         kind: primitive,
         tab: dialog.tab,
         group: dialog.group,
+        ...inheritedRefField(inheritedFrom),
       },
     };
   }
@@ -196,8 +219,16 @@ function buildField(
       kind: "unsupported",
       tab: dialog.tab,
       group: dialog.group,
+      ...inheritedRefField(inheritedFrom),
     },
   };
+}
+
+/** See `class-parameter-form.ts` — same omit-when-undefined helper. */
+function inheritedRefField(
+  inheritedFrom: string | undefined,
+): { inheritedFrom?: string } {
+  return inheritedFrom === undefined ? {} : { inheritedFrom };
 }
 
 /** Same extension-key set as the class-level builder. See its `dialogSchemaExt`. */

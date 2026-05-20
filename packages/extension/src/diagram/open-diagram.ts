@@ -610,10 +610,19 @@ async function fetchModelInstance(
 }
 
 /**
- * Apply each dirty form field as a `setElementModifierValue(className,
- * paramName, expr)` call against OMC. We compare submitted values to
- * the initial snapshot so unchanged fields aren't rewritten — keeps
- * the source file untouched and avoids spurious REPL noise.
+ * Apply each dirty form field as a modifier write against OMC. We
+ * compare submitted values to the initial snapshot so unchanged fields
+ * aren't rewritten — keeps the source file untouched and avoids
+ * spurious REPL noise.
+ *
+ * Write routing mirrors OMEdit's `mInherited` branch
+ * (`Element/ElementProperties.cpp:2317-2344`):
+ *   - own (host-declared) param  → `setElementModifierValue(className,
+ *     name, expr)` — modifier lands on the host class.
+ *   - inherited param (`ref.inheritedFrom` set) →
+ *     `setExtendsModifierValue(className, inheritedFrom, name, expr)` —
+ *     modifier lands on the `extends` clause it semantically belongs to,
+ *     not as a spurious host-level modifier.
  *
  * Failures are surfaced per-field via the REPL log + a single warning
  * toast once the batch completes; we keep going on individual failures
@@ -635,17 +644,28 @@ async function applyClassParameterEdits(
     const after = submitted[name];
     if (sameValue(before, after)) continue;
     const expr = classParameterValueToExpr(ref, after);
-    let label = `setElementModifierValue ${className} ${name}`;
+    let label =
+      ref.inheritedFrom !== undefined
+        ? `setExtendsModifierValue ${className} ${ref.inheritedFrom} ${name}`
+        : `setElementModifierValue ${className} ${name}`;
     try {
       // Drain stale errors so any errorString we read on failure is
       // strictly attributable to this edit (mirrors addComponent /
       // simulate).
       await client.getErrorString();
-      const { success } = await client.setElementModifierValue({
-        typeName: className,
-        elementName: name,
-        expr,
-      });
+      const { success } =
+        ref.inheritedFrom !== undefined
+          ? await client.setExtendsModifierValue({
+              typeName: className,
+              extendsBase: ref.inheritedFrom,
+              modifier: name,
+              expr,
+            })
+          : await client.setElementModifierValue({
+              typeName: className,
+              elementName: name,
+              expr,
+            });
       if (client.lastCall) label = client.lastCall;
       const replLog = createReplLog(label);
       if (success) {
