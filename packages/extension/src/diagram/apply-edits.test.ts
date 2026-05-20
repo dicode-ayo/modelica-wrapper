@@ -93,3 +93,62 @@ describe("applyEdits: success accounting", () => {
     expect(result.failed[0]!.error).toContain("rejected placement");
   });
 });
+
+describe("applyEdits: snapshot rollback option (issue #76, item 14)", () => {
+  /**
+   * Mock client that also serves the snapshot capture/restore I/O
+   * (`listFile` / `getSourceFile` / `loadString`) so `{ snapshot: true }`
+   * can take and replay a snapshot.
+   */
+  function snapshotClient(results: InvokeResult[]): {
+    client: OmcClient;
+    loadString: ReturnType<typeof vi.fn>;
+  } {
+    let i = 0;
+    const invoke = vi.fn(async () => results[i++] ?? { success: true });
+    const loadString = vi.fn(async () => ({ success: true }));
+    const client = {
+      invoke,
+      listFile: vi.fn(async () => ({ contents: "model M\nend M;\n" })),
+      getSourceFile: vi.fn(async () => ({ fileName: "/ws/M.mo" })),
+      loadString,
+      get lastCall() {
+        return "stub(...)";
+      },
+    } as unknown as OmcClient;
+    return { client, loadString };
+  }
+
+  it("rolls back the batch when an edit fails", async () => {
+    const { client, loadString } = snapshotClient([
+      { success: false, diagnostic: "boom" },
+    ]);
+    const result = await applyEdits(client, "M", [placement], undefined, {
+      snapshot: true,
+    });
+    expect(result.failed).toHaveLength(1);
+    expect(result.rolledBack).toBe(true);
+    // The captured source was replayed via loadString to undo the batch.
+    expect(loadString).toHaveBeenCalledWith(
+      expect.objectContaining({ data: "model M\nend M;\n", merge: false }),
+    );
+  });
+
+  it("does not roll back when every edit succeeds", async () => {
+    const { client, loadString } = snapshotClient([{ success: true }]);
+    const result = await applyEdits(client, "M", [placement], undefined, {
+      snapshot: true,
+    });
+    expect(result.failed).toHaveLength(0);
+    expect(result.rolledBack).toBe(false);
+    expect(loadString).not.toHaveBeenCalled();
+  });
+
+  it("default path (no option) takes no snapshot and never rolls back", async () => {
+    const { client, loadString } = snapshotClient([{ success: false }]);
+    const result = await applyEdits(client, "M", [placement]);
+    expect(result.failed).toHaveLength(1);
+    expect(result.rolledBack).toBe(false);
+    expect(loadString).not.toHaveBeenCalled();
+  });
+});

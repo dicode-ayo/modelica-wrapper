@@ -143,19 +143,37 @@ export async function openDiagram(
       // alongside the addComponent + simulate lines they already see.
       // We use the raw `client.lastCall` as the REPL label, matching
       // the addComponent flow.
-      const result = await applyEdits(client, className, edits, (edit, command, error) => {
-        const log = createReplLog(command);
-        if (error !== undefined) {
-          log.error(error);
-        } else {
-          log.success(editSummary(edit));
-        }
-      });
+      const result = await applyEdits(
+        client,
+        className,
+        edits,
+        (edit, command, error) => {
+          const log = createReplLog(command);
+          if (error !== undefined) {
+            log.error(error);
+          } else {
+            log.success(editSummary(edit));
+          }
+        },
+        // Auto-roll-back the whole batch on a partial failure (issue #76,
+        // item 14): the rollback-on-partial-failure path is the same
+        // snapshot/restore mechanism the diagram-local Undo uses, so the
+        // two flows no longer diverge. A partial failure leaves the class
+        // in its pre-batch state instead of a half-applied mess.
+        { snapshot: true },
+      );
       if (result.failed.length > 0) {
         const first = result.failed[0]!;
+        const rolled = result.rolledBack
+          ? " — rolled back to the pre-edit state"
+          : "";
         void vscode.window.showWarningMessage(
-          `Modelica: ${result.failed.length} of ${edits.length} edits failed (${first.error}).`,
+          `Modelica: ${result.failed.length} of ${edits.length} edits failed (${first.error})${rolled}.`,
         );
+        // The batch was auto-rolled-back, so the pre-batch snapshot we just
+        // pushed for manual Undo would be a no-op (it equals current state).
+        // Drop it to keep the undo stack meaningful.
+        if (result.rolledBack) undoStack.pop();
       }
       try {
         prevLayout = await fetchLayout(client, className);
