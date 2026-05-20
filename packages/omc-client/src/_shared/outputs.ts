@@ -41,6 +41,22 @@ export const BooleanBOutput = z.object({
 export type BooleanBOutput = z.infer<typeof BooleanBOutput>;
 
 /**
+ * `{ result: boolean }` — used by the class/component predicates whose OMC
+ * docs declare `output Boolean result;` rather than `output Boolean b;`
+ * (`isConstant`, `isParameter`, `isProtected`, `isPrimitive`). The field name
+ * `result` is kept verbatim from the OMC docs (per audit.md §2.4); these
+ * predicates do NOT share the `b`-named `BooleanBOutput`.
+ */
+export const BooleanResultOutput = z.object({
+  result: z
+    .boolean()
+    .describe(
+      "True if the predicate matches; field name `result` is OMC verbatim (predicate output).",
+    ),
+});
+export type BooleanResultOutput = z.infer<typeof BooleanResultOutput>;
+
+/**
  * `{ result: string }` — used by string-returning functions whose OMC output
  * is named `result` (e.g. `checkModel`, `getModelInstance`,
  * `getModelInstanceAnnotation`). Other string outputs that OMC names

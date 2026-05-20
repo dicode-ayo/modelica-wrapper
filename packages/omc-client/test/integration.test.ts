@@ -392,6 +392,48 @@ describeIf("OmcClient against real OMC", () => {
     expect(typeof c.success).toBe("boolean");
   });
 
+  it("getAvailableMatchingAlgorithms returns aligned choice/comment arrays", async () => {
+    const { allChoices, allComments } = await client.getAvailableMatchingAlgorithms();
+    expect(Array.isArray(allChoices)).toBe(true);
+    expect(Array.isArray(allComments)).toBe(true);
+    expect(allChoices.length).toBe(allComments.length);
+    expect(allChoices.length).toBeGreaterThan(0);
+    expect(allChoices).toContain("PFPlusExt");
+  });
+
+  it("getAvailableIndexReductionMethods returns aligned choice/comment arrays", async () => {
+    const { allChoices, allComments } = await client.getAvailableIndexReductionMethods();
+    expect(Array.isArray(allChoices)).toBe(true);
+    expect(Array.isArray(allComments)).toBe(true);
+    expect(allChoices.length).toBe(allComments.length);
+    expect(allChoices.length).toBeGreaterThan(0);
+    expect(allChoices).toContain("dynamicStateSelection");
+  });
+
+  it("getAvailableTearingMethods returns aligned choice/comment arrays", async () => {
+    const { allChoices, allComments } = await client.getAvailableTearingMethods();
+    expect(Array.isArray(allChoices)).toBe(true);
+    expect(Array.isArray(allComments)).toBe(true);
+    expect(allChoices.length).toBe(allComments.length);
+    expect(allChoices.length).toBeGreaterThan(0);
+  });
+
+  it("setMatchingAlgorithm round-trips through getMatchingAlgorithm", async () => {
+    const set = await client.setMatchingAlgorithm({ algorithm: "PFPlusExt" });
+    expect(set.success).toBe(true);
+    const { selected } = await client.getMatchingAlgorithm();
+    expect(selected).toBe("PFPlusExt");
+  });
+
+  it("setIndexReductionMethod round-trips through getIndexReductionMethod", async () => {
+    const set = await client.setIndexReductionMethod({
+      method: "dynamicStateSelection",
+    });
+    expect(set.success).toBe(true);
+    const { selected } = await client.getIndexReductionMethod();
+    expect(selected).toBe("dynamicStateSelection");
+  });
+
   it("getSourceFile returns a path for a loaded class (or empty for builtins)", async () => {
     await client.loadModel({ typeName: "Modelica" });
     const { fileName } = await client.getSourceFile({ typeName: "Modelica" });
