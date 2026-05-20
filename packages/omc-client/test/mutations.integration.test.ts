@@ -39,9 +39,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { OmcClient } from "../src/client.js";
 import {
   disposeFixture,
+  loadDerivedExtendsFixture,
   loadExtendsFixture,
   loadFixture,
   loadParameterFixture,
+  type DerivedExtendsFixture,
   type Fixture,
 } from "./fixtures.js";
 
@@ -805,6 +807,132 @@ end ${pkg};
       // this OMC version — separately tracked.)
       const after = await client.listFile({ typeName: fixture.modelClass });
       expect(after.contents).not.toContain("k = 2.5");
+    });
+  });
+
+  // === Extends-clause modifiers on a self-contained base/derived fixture ===
+  //
+  // The fixture defines its own `Base` (with `parameter Real k = 1.0`) and a
+  // `Derived` that does `extends Base(k = 2.5)`, so the modifier lives inside
+  // the same package — no Modelica library load needed, and the read path
+  // surfaces `k` (unlike the Gain-based fixture above).
+
+  describe("extends-modifier readers/writer (self-contained fixture)", () => {
+    let fixture: DerivedExtendsFixture;
+
+    beforeEach(async () => {
+      fixture = await loadDerivedExtendsFixture(client);
+    });
+
+    afterEach(async () => {
+      await disposeFixture(client, fixture);
+    });
+
+    it("getExtendsModifierNames returns {k} for Derived's extends clause", async () => {
+      const { modifiers } = await client.getExtendsModifierNames({
+        typeName: fixture.derivedClass,
+        extendsBase: fixture.baseClass,
+      });
+      expect(modifiers).toContain("k");
+    });
+
+    it("getExtendsModifierValue returns =2.5 for Derived / Base / k", async () => {
+      const { value } = await client.getExtendsModifierValue({
+        typeName: fixture.derivedClass,
+        extendsBase: fixture.baseClass,
+        modifier: "k",
+      });
+      // OMC returns the binding with a leading `=`.
+      expect(value).toContain("2.5");
+    });
+
+    it("isExtendsModifierFinal reports false for a non-final modifier", async () => {
+      const { isFinal } = await client.isExtendsModifierFinal({
+        typeName: fixture.derivedClass,
+        extendsName: fixture.baseClass,
+        modifierName: "k",
+      });
+      expect(isFinal).toBe(false);
+    });
+
+    it("setExtendsModifierValue sets k=3.7 and the listFile round-trip shows it", async () => {
+      const { success } = await client.setExtendsModifierValue({
+        typeName: fixture.derivedClass,
+        extendsBase: fixture.baseClass,
+        modifier: "k",
+        expr: "3.7",
+      });
+      expect(success).toBe(true);
+
+      const { contents } = await client.listFile({
+        typeName: fixture.derivedClass,
+      });
+      expect(contents).toMatch(/k\s*=\s*3\.7/);
+    });
+
+    it("setExtendsModifier replaces the whole extends modification", async () => {
+      // setExtendsModifier takes a full modification, not a single element.
+      const { success } = await client.setExtendsModifier({
+        typeName: fixture.derivedClass,
+        extendsName: fixture.baseClass,
+        modifier: "(k = 9.9)",
+      });
+      expect(success).toBe(true);
+
+      const { contents } = await client.listFile({
+        typeName: fixture.derivedClass,
+      });
+      expect(contents).toMatch(/k\s*=\s*9\.9/);
+    });
+  });
+
+  // === Derived-class (short-class-definition) modifier readers ===
+  //
+  // getDerivedClassModifier{Names,Value} target a SHORT class definition that
+  // derives from a base type with attribute modifiers, e.g.
+  // `type Resistance = Real(quantity="Resistance", unit="Ohm")`.
+
+  describe("derived-class modifier readers", () => {
+    let pkg: string;
+    let cls: string;
+
+    beforeEach(async () => {
+      const { randomBytes } = await import("node:crypto");
+      pkg = `MwDerived_${randomBytes(4).toString("hex")}`;
+      cls = `${pkg}.Resistance`;
+      await client.loadString({
+        data: `package ${pkg}
+  type Resistance = Real(quantity = "Resistance", unit = "Ohm");
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+    });
+
+    afterEach(async () => {
+      await client.deleteClass({ typeName: pkg });
+    });
+
+    it("getDerivedClassModifierNames lists the base-type modifier names", async () => {
+      const { modifierNames } = await client.getDerivedClassModifierNames({
+        typeName: cls,
+      });
+      expect(modifierNames).toContain("quantity");
+      expect(modifierNames).toContain("unit");
+    });
+
+    it("getDerivedClassModifierValue reads a single base-type modifier value", async () => {
+      const unit = await client.getDerivedClassModifierValue({
+        typeName: cls,
+        modifierName: "unit",
+      });
+      expect(unit.modifierValue).toContain("Ohm");
+
+      const quantity = await client.getDerivedClassModifierValue({
+        typeName: cls,
+        modifierName: "quantity",
+      });
+      expect(quantity.modifierValue).toContain("Resistance");
     });
   });
 

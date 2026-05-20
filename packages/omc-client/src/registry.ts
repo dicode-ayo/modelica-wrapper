@@ -165,6 +165,10 @@ export const REGISTRY = {
   getParameterNames: entry("parameters", parameters.getParameterNames, parameters.GetParameterNamesInputSchema, parameters.GetParameterNamesOutputSchema, parameters.GetParameterNamesDescription),
   setParameterValue: entry("parameters", parameters.setParameterValue, parameters.SetParameterValueInputSchema, parameters.SetParameterValueOutputSchema, parameters.SetParameterValueDescription),
   removeExtendsModifiers: entry("parameters", parameters.removeExtendsModifiers, parameters.RemoveExtendsModifiersInputSchema, parameters.RemoveExtendsModifiersOutputSchema, parameters.RemoveExtendsModifiersDescription),
+  getDerivedClassModifierNames: entry("parameters", parameters.getDerivedClassModifierNames, parameters.GetDerivedClassModifierNamesInputSchema, parameters.GetDerivedClassModifierNamesOutputSchema, parameters.GetDerivedClassModifierNamesDescription),
+  getDerivedClassModifierValue: entry("parameters", parameters.getDerivedClassModifierValue, parameters.GetDerivedClassModifierValueInputSchema, parameters.GetDerivedClassModifierValueOutputSchema, parameters.GetDerivedClassModifierValueDescription),
+  isExtendsModifierFinal: entry("parameters", parameters.isExtendsModifierFinal, parameters.IsExtendsModifierFinalInputSchema, parameters.IsExtendsModifierFinalOutputSchema, parameters.IsExtendsModifierFinalDescription),
+  setExtendsModifier: entry("parameters", parameters.setExtendsModifier, parameters.SetExtendsModifierInputSchema, parameters.SetExtendsModifierOutputSchema, parameters.SetExtendsModifierDescription),
 
   // --- Elements (modern Component* generalization) ---
   getElements: entry("elements", elements.getElements, elements.GetElementsInputSchema, elements.GetElementsOutputSchema, elements.GetElementsDescription),
