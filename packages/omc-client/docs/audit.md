@@ -82,8 +82,31 @@ These are the only sources of truth. Do not infer signatures from existing code;
 | Per-function page pattern | `https://build.openmodelica.org/Documentation/OpenModelica.Scripting.<fn>.html` | Replace `<fn>` with the function name, e.g. `getClassInformation` |
 | Modelica Specification §18 | <https://specification.modelica.org/maint/3.6/annotations.html> | Used by Phase A annotation parser; not relevant for OMC API audits |
 | OMPython parser | <https://github.com/OpenModelica/OMPython> (`OMTypedParser.py`) | Cross-reference for parser edge cases when responses look weird |
+| OMEdit (reference UI) call surface | <https://github.com/OpenModelica/OpenModelica/tree/master/OMEdit/OMEditLIB> — `OMC/OMCProxy.h` is the call inventory; `Element/`, `Annotations/`, `Modeling/` are the flow call sites | **Not a signature source** (it's a consumer, not the spec) — but the authoritative source for *which functions actually matter* and *which call shape works in practice*. See §1.1. |
 
 When a per-function URL returns 404, treat the function as **undocumented in the public API** — flag it but do not fail the audit. Some functions (e.g. `getSolverMethods`, `getJacobianMethods` on OMC 1.26) are real but undocumented; check `OMEdit/OMCProxy.h` if you need a reference for those.
+
+### 1.1 Prioritizing missing functions — cross-reference OMEdit, don't rank by guesswork
+
+The scripting reference tells you *what exists* (~460 functions). It does **not** tell you *what matters*. Ranking the "missing functions" list by reading names alone systematically under-prioritizes load-bearing utilities that look like miscellany.
+
+**Worked example (the lesson this section exists for).** `convertUnits` sat in the "Other / Miscellaneous" bucket of the first API-discovery sweep — found, catalogued, deprioritized, because at discovery time we had no consumer for it. It turned out to be load-bearing: OMEdit calls it at four sites in the parameter editor + text-label render path to convert a value when the user picks a `displayUnit` (deg vs rad, etc.), and it's useless without its partner `getDerivedUnits` (which populates the unit dropdown). Neither surfaced as a candidate until we studied how OMEdit actually renders labels. Pure API discovery can't catch this; the use case is invisible without a reference implementation.
+
+**The two research modes are complementary — run both:**
+
+1. **API discovery** — "what does OMC expose?" Gives *completeness* but *flat priorities*. This is the WebFetch-the-docs pass.
+2. **Reference-implementation cross-reference** — "what does OMEdit actually call, and in which flow?" Gives the *priorities*. This is what tells you which of the miscellaneous functions are core to real UI behaviour.
+
+**Method for the cross-reference (≈30 min, scriptable):**
+
+1. Enumerate OMEdit's call inventory: read `OMEdit/OMEditLIB/OMC/OMCProxy.h` — its public methods mirror the OMC scripting calls.
+2. Find the *flow* call sites (not the whole IDE — scope to what we support): grep `pOMCProxy->` / `MainWindow::instance()->getOMCProxy()->` across `Element/` (ElementProperties, Element), `Annotations/` (Text/Line/Shape/DynamicAnnotation), `Modeling/` (Model, ModelWidgetContainer, Commands).
+3. Diff `{OMEdit-used in those flows}` − `{REGISTRY keys}`. That delta, ranked **load-bearing / useful / niche** by how central the owning flow is, is the real prioritized backlog.
+4. Ignore by policy: `oms_*`, FMI-export internals, encrypted packages, `plot*`, debugger/transformation-graph, compiler-flag/settings getters, REPL plumbing.
+
+Watch for the inverse too: the cross-reference is also a **sanity check** that the backlog is the real delta — most "suspected gaps" (`getDerivedClassModifier*`, `getNthComponent*`, `getModelInstanceAnnotation`, …) usually turn out already-wrapped.
+
+The latest run of this cross-reference and the resulting prioritized gap issues live under the [OMEdit-alignment epic](https://github.com/dicode-ayo/modelica-wrapper/issues/21). Re-run it whenever the "Missing functions" list in §5 grows, before deciding what to wrap next.
 
 ---
 
