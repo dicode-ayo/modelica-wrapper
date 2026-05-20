@@ -1,12 +1,12 @@
 /**
- * Live integration test for the host-side displayUnit conversion (issue #28,
- * deferred half).
+ * Live integration test for the host-side unit annotation
+ * (issue #28/#68 — convert; issue #71 — generalize to plain units).
  *
  * Exercises the real host-side pipeline end to end against OMC:
  *   getModelInstance → produceDiagramLayout → applyDisplayUnits(client.convertUnits)
  *
  * This is exactly what `open-diagram.ts` `fetchLayout` runs (that function
- * isn't imported directly because it pulls in `vscode`; the conversion stage
+ * isn't imported directly because it pulls in `vscode`; the annotation stage
  * — `applyDisplayUnits` + `client.convertUnits` — is the part under test and
  * is reproduced here verbatim).
  *
@@ -14,12 +14,14 @@
  * types*, not the host's own class — the producer only adds a `ClassDef` when
  * a `ComponentInstance` references that type. `buildSubstitutions` reads
  * `classes[component.classRef].parameters[name].value` for `%paramName`, so
- * the Angle parameter must live on a sub-component's type (`Comp`) to be
- * exercised by both the substitution path and `applyDisplayUnits`.
+ * the parameters must live on a sub-component's type (`Comp`) to be exercised
+ * by both the substitution path and `applyDisplayUnits`.
  *
- * Acceptance (issue #28): a `parameter Modelica.Units.SI.Angle a(displayUnit=
- * "deg") = 1.5707963267948966` must render its `%a` label as ~90 (deg), not
- * 1.57 (the source-unit rad value).
+ * Acceptance:
+ *   - issue #28: `Angle a(displayUnit="deg") = 1.5707963267948966` renders
+ *     its `%a` label as ~90 (deg), not 1.57 (the source-unit rad value);
+ *   - issue #71: `Inertia J = 1` (unit `kg.m2`, no displayUnit) renders its
+ *     `%J` label with the bare unit appended → `"1 kg.m2"`.
  *
  * Auto-skips when `omc` isn't on PATH.
  */
@@ -66,7 +68,8 @@ describeIf("displayUnit conversion (live OMC) (#28)", () => {
   model Comp
     parameter Modelica.Units.SI.Angle a(displayUnit = "deg") = 1.5707963267948966;
     parameter Modelica.Units.SI.Angle b = 3.141592653589793;
-    annotation(Icon(graphics={Text(extent={{-10, -10}, {10, 10}}, textString = "%a")}));
+    parameter Modelica.Units.SI.Inertia J = 1;
+    annotation(Icon(graphics={Text(extent={{-10, -10}, {10, 10}}, textString = "J=%J")}));
   end Comp;
   model Host
     Comp comp1 annotation(Placement(transformation(extent={{-10, -10}, {10, 10}})));
@@ -110,15 +113,32 @@ end ${pkg};
     expect(after.value).toContain("deg");
   });
 
-  it("leaves a same-unit param (no displayUnit) untouched", async () => {
+  it("appends the bare unit for a no-displayUnit param (#71)", async () => {
     const { instance } = await client.getModelInstance({ typeName: host });
     const layout = diagram.produceDiagramLayout(instance, "diagram");
 
     await applyDisplayUnits(layout, (s1, s2) => client.convertUnits({ s1, s2 }));
 
-    // `b` has no displayUnit modifier — its rad value passes through.
+    // `b` has no displayUnit modifier — its rad value is kept (no conversion)
+    // and the declared unit is appended verbatim → "3.14… rad".
     const b = layout.classes[comp]!.parameters.b!;
     expect(Number.parseFloat(b.value)).toBeCloseTo(3.14159, 4);
     expect(b.value).not.toContain("deg");
+    expect(b.value).toMatch(/\srad$/);
+  });
+
+  it("renders Inertia J=1 with its kg.m2 unit appended (#71)", async () => {
+    const { instance } = await client.getModelInstance({ typeName: host });
+    const layout = diagram.produceDiagramLayout(instance, "diagram");
+
+    // Sanity: the producer surfaced unit kg.m2 with no displayUnit.
+    const before = layout.classes[comp]!.parameters.J!;
+    expect(before.unit).toBe("kg.m2");
+    expect(before.displayUnit ?? "").toBe("");
+
+    await applyDisplayUnits(layout, (s1, s2) => client.convertUnits({ s1, s2 }));
+
+    const after = layout.classes[comp]!.parameters.J!;
+    expect(after.value).toBe("1 kg.m2");
   });
 });
