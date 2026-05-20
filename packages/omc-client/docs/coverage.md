@@ -4,7 +4,7 @@ Tracks which functions in [`src/registry.ts`](../src/registry.ts) are exercised 
 
 **Pinned OMC version:** `1.26.7` (see [`../src/version.ts`](../src/version.ts)). On 2026-05-19 a deep re-probe of the previously-⛔ wrappers revealed that 4 of them (`removeComponentModifiers`, `updateConnection`, `moveClass`, plus the newly-added `getReplaceableChoices`) were wrapper-side bugs — wrong argument shape masked by OMC's misleading "Class X not found in scope" diagnostic. See [audit.md §2.10](./audit.md) for the gotcha. After fixing the call shapes, those wrappers + state-machine mutators are now ✅ on 1.26.7. Only `createClass`, `createSubClass`, and `save` remain genuinely ⛔ (docs 404). Same session: added 4 results wrappers (filter / compare / delta / diff) and a heavy integration test that exercises every results wrapper against a real `.mat` file simulated inside a temp directory.
 **Last updated:** 2026-05-20.
-**Current coverage:** **150 wrappers in package; 135 ✅ verified end-to-end, 12 🟡 cheap unverified, 3 ⛔ broken on pin (90% verified).** A 2026-05-20 audit also identified ~40 documented OMC scripting functions in scope that are not yet wrapped — see the [100% coverage epic](https://github.com/dicode-ayo/modelica-wrapper/issues?q=is%3Aissue+label%3Aepic+label%3Aomc-coverage) for the plan to close that gap. Recent verification jumps came from clearing the Tier-A `it.todo` backlog (niche class predicates, contents readers, element readers; `getParameterValue` String-quoting bug surfaced) followed by a second pass on Tier-B mutations + connector-fixture tests (isClass / isReplaceable / isProtectedClass, getConnectorCount + getNthConnector*, setElementType, setElementModifierValue, removeElementModifiers).
+**Current coverage:** **150 wrappers in package; 137 ✅ verified end-to-end, 10 🟡 cheap unverified, 3 ⛔ broken on pin (91% verified).** A 2026-05-20 audit also identified ~40 documented OMC scripting functions in scope that are not yet wrapped — see the [100% coverage epic](https://github.com/dicode-ayo/modelica-wrapper/issues?q=is%3Aissue+label%3Aepic+label%3Aomc-coverage) for the plan to close that gap. Recent verification jumps came from clearing the Tier-A `it.todo` backlog (niche class predicates, contents readers, element readers; `getParameterValue` String-quoting bug surfaced) followed by a second pass on Tier-B mutations + connector-fixture tests (isClass / isReplaceable / isProtectedClass, getConnectorCount + getNthConnector*, setElementType, setElementModifierValue, removeElementModifiers); the two inherited-class map annotation readers were closed via a `Child extends Parent annotation(IconMap/DiagramMap(...))` fixture (issue #39).
 
 > Run `pnpm --filter @modelica-wrapper/omc-client test` to exercise the integration suite. It auto-skips when `omc` isn't on PATH.
 
@@ -68,7 +68,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `getEnumerationLiterals` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getEnumerationLiterals.html) |
 | `getReplaceableChoices` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getReplaceableChoices.html) — initially flagged ⛔; the docs-correct shape takes **two** TypeNames (`baseClass`, `parentClass`) + 2 optional bools and returns a 2D matrix. See [audit.md §2.10](./audit.md). |
 
-## Reading model contents — 25/27
+## Reading model contents — 27/27 ✅
 
 | Function | Status | Docs |
 |---|---|---|
@@ -91,8 +91,8 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `getNthConnector` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getNthConnector.html) — verified via a fixture block that declares `RealInput u` / `RealOutput y` directly (not via extends) |
 | `getNthConnectorIconAnnotation` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getNthConnectorIconAnnotation.html) — same fixture, returns the connector's icon-extent tree |
 | `getConnectorCount` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getConnectorCount.html) — same fixture; only counts *directly-declared* connectors (not inherited ones, which is why Modelica.Blocks.Math.* return 0) |
-| `getNthInheritedClassIconMapAnnotation` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getNthInheritedClassIconMapAnnotation.html) |
-| `getNthInheritedClassDiagramMapAnnotation` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getNthInheritedClassDiagramMapAnnotation.html) |
+| `getNthInheritedClassIconMapAnnotation` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getNthInheritedClassIconMapAnnotation.html) — verified via a fixture where `Child extends Parent annotation(IconMap(primitivesVisible = true))`. OMC subtlety: IconMap on the parent class returns `{Parent, {}}` (empty); the annotation must live on the *extends clause* in the child to populate the inherited map. |
+| `getNthInheritedClassDiagramMapAnnotation` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getNthInheritedClassDiagramMapAnnotation.html) — same fixture + extends-clause requirement as the IconMap reader. |
 | `getDefaultComponentName` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getDefaultComponentName.html) — shape verified (returns "" on stdlib classes without the annotation) |
 | `getDefaultComponentPrefixes` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getDefaultComponentPrefixes.html) — same |
 | `getComponentComment` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getComponentComment.html) |
@@ -257,7 +257,7 @@ right form; the three comparison wrappers above use it for their optional
 | Category | Covered | Total | Notes |
 |---|---|---|---|
 | Browsing | 28 | 28 | All ✅. Custom fixtures cover `isClass`, `isReplaceable`, `isProtectedClass`. |
-| Reading model contents | 25 | 27 | All readers verified except the two inherited-class map annotations (🟡, need an inheritance fixture). |
+| Reading model contents | 27 | 27 | All ✅. The two inherited-class map annotations (`getNthInheritedClass{Icon,Diagram}MapAnnotation`) require the `IconMap`/`DiagramMap` annotation to live on the `extends` clause in the child, not on the parent class itself (where OMC returns an empty modifier list). |
 | Lifecycle | 15 | 18 | 3 ⛔ remain — `createClass`, `createSubClass` (docs 404 + symbol genuinely absent on 1.26.x), `save` (deprecated). **`moveClass` rescued 2026-05-19**: it's an in-place reorder by `Integer offset`, not a TypeName-destination relocate. |
 | Parameters & modifiers | 9 | 12 | 3 🟡 remain (`getExtendsModifierNames`, `getExtendsModifierValue`, `setExtendsModifierValue` — all need an `extends Foo(k=2)` fixture). **`getParameterValue` wrapper bugfix 2026-05-19**: `parameterName` is a `String`, not a TypeName — the bare-ident form silently returned "" since day one. |
 | Editing | 19 | 19 | All ✅. **`updateConnection` rescued**: arg order + String-quoting fix. **`addTransition`/`deleteTransition` bugfix**: same String-quoting gotcha — they were silently 🟡 broken before. |
@@ -266,7 +266,7 @@ right form; the three comparison wrappers above use it for their optional
 | Solver / runtime config | 8 | 8 | All verified. |
 | Execution | 9 | 9 | All ✅ via the heavy suite. The FMU pipeline (`buildModelFMU` → `importFMU`) is chained: build the ramp into a `.fmu`, then import it back to a Modelica wrapper. `importFMU` needed a wrapper bugfix on the way — `modelName` is a `TypeName` (bare ident), not a String (see [audit.md §2.10](./audit.md)). |
 | Results | 9 | 9 | All ✅ via [`../test/results-heavy.integration.test.ts`](../test/results-heavy.integration.test.ts) — simulates a tiny ramp model in a `mkdtemp` directory, exercises every results wrapper on the produced `.mat`, cleans up. Gated by `OMC_INTEGRATION_HEAVY=1`. |
-| **Total verified** | **135** | **150** | **90%** ✅. Of the 15 unverified: 3 ⛔ (`createClass`, `createSubClass`, `save` — genuinely missing/deprecated on the pin), 1 🟡 OMC-side bug (`setElementAnnotation`), 2 🟡 inherited-class map annotations, 3 🟡 extends-modifier readers/writer (need fixture), 6 🟡 network-only package-manager calls. **Audit also identified ~40 documented OMC functions in scope but not yet wrapped — see the 100% coverage epic.** |
+| **Total verified** | **137** | **150** | **91%** ✅. Of the 13 unverified: 3 ⛔ (`createClass`, `createSubClass`, `save` — genuinely missing/deprecated on the pin), 1 🟡 OMC-side bug (`setElementAnnotation`), 3 🟡 extends-modifier readers/writer (need fixture), 6 🟡 network-only package-manager calls. **Audit also identified ~40 documented OMC functions in scope but not yet wrapped — see the 100% coverage epic.** |
 
 ---
 

@@ -758,13 +758,69 @@ describeIf("OmcClient against real OMC", () => {
   // future contributor decide whether they can promote the todo to a real
   // test (e.g. add a fixture, gate behind OMC_INTEGRATION_HEAVY, etc.).
 
-  // contents — readers we haven't tackled yet
-  it.todo(
-    "getNthInheritedClassIconMapAnnotation: needs a fixture with inheritance + IconMap annotation; deferred",
-  );
-  it.todo(
-    "getNthInheritedClassDiagramMapAnnotation: needs a fixture with inheritance + DiagramMap annotation; deferred",
-  );
+  // contents — inherited-class map annotation readers (issue #39)
+  //
+  // These two wrappers need a fixture where a child class extends a parent
+  // and the `extends` clause itself carries `IconMap` / `DiagramMap`
+  // annotations. The wrappers walk the inheritance chain by 1-based index
+  // and return the n-th parent's map annotation as a raw `Value` tree.
+  //
+  // OMC subtlety: `IconMap`/`DiagramMap` declared on the *parent class's*
+  // annotation block come back as an empty modifier list (`{Parent, {}}`).
+  // They must live on the *extends clause itself* in the child to populate
+  // the inherited map. The returned tuple is positional —
+  // `{parentName, extent_x1, extent_y1, extent_x2, extent_y2, primitivesVisible}`
+  // — so we assert on the parent name and the boolean tail.
+
+  describe("inherited-class map annotations", () => {
+    let pkg: string;
+
+    beforeEach(async () => {
+      const { randomBytes } = await import("node:crypto");
+      pkg = `MwInhMap_${randomBytes(4).toString("hex")}`;
+      await client.loadString({
+        data: `package ${pkg}
+  block Parent
+  end Parent;
+  block Child
+    extends Parent annotation(
+      IconMap(primitivesVisible = true),
+      DiagramMap(primitivesVisible = false));
+  end Child;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+    });
+
+    afterEach(async () => {
+      await client.deleteClass({ typeName: pkg });
+    });
+
+    it("getNthInheritedClassIconMapAnnotation returns the IconMap tree carried on the extends clause", async () => {
+      const { result } = await client.getNthInheritedClassIconMapAnnotation({
+        typeName: `${pkg}.Child`,
+        n: 1,
+      });
+      expect(result.kind).toBe("list");
+      // The Value tree is the positional tuple `{parentName, x1, y1, x2, y2, primitivesVisible=true}`.
+      const json = JSON.stringify(result);
+      expect(json).toContain("Parent");
+      expect(json).toContain("true");
+    });
+
+    it("getNthInheritedClassDiagramMapAnnotation returns the DiagramMap tree carried on the extends clause", async () => {
+      const { result } = await client.getNthInheritedClassDiagramMapAnnotation({
+        typeName: `${pkg}.Child`,
+        n: 1,
+      });
+      expect(result.kind).toBe("list");
+      // The Value tree is the positional tuple `{parentName, x1, y1, x2, y2, primitivesVisible=false}`.
+      const json = JSON.stringify(result);
+      expect(json).toContain("Parent");
+      expect(json).toContain("false");
+    });
+  });
 
   // (getConnectorCount / getNthConnector / getNthConnectorIconAnnotation
   //  now covered in mutations.integration.test.ts "connectors" describe.)
