@@ -42,8 +42,22 @@ export type OmcFunction =
   | "isReplaceable"
   | "isProtectedClass"
   | "isEnumeration"
+  | "isConstant"
+  | "isParameter"
+  | "isProtected"
+  | "isRedeclare"
+  | "isPrimitive"
+  | "isOperator"
+  | "isOperatorFunction"
+  | "isOperatorRecord"
+  | "isOptimization"
   | "getEnumerationLiterals"
   | "getReplaceableChoices"
+  | "extendsFrom"
+  | "getAllSubtypeOf"
+  | "classAnnotationExists"
+  | "getNthInheritedClass"
+  | "isShortDefinition"
 
   // --- Reading model contents ---
   | "getComponents"
@@ -73,6 +87,8 @@ export type OmcFunction =
   | "getInstantiatedParametersAndValues"
   | "getAnnotationNamedModifiers"
   | "getAnnotationModifierValue"
+  | "getImportCount"
+  | "getNthImport"
 
   // --- Source / lifecycle ---
   | "loadFile"
@@ -164,6 +180,11 @@ export type OmcFunction =
   | "setMatchingAlgorithm"
   | "setIndexReductionMethod"
   | "setCommandLineOptions"
+  | "getMatchingAlgorithm"
+  | "getAvailableMatchingAlgorithms"
+  | "getIndexReductionMethod"
+  | "getAvailableIndexReductionMethods"
+  | "getAvailableTearingMethods"
 
   // --- Execution ---
   | "checkModel"

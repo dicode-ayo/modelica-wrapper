@@ -968,6 +968,333 @@ end ${pkg};
     });
   });
 
+  // === Browsing extras needing a custom inheritance / short-class fixture ===
+
+  describe("browsing extras", () => {
+    let pkg: string;
+
+    beforeEach(async () => {
+      const { randomBytes } = await import("node:crypto");
+      pkg = `MwExtras_${randomBytes(4).toString("hex")}`;
+      // A 3-class inheritance chain A <- B <- C plus a short class definition
+      // and a class carrying an annotation. The `extends` clauses are written
+      // fully-qualified: on OMC 1.26.7, `extendsFrom` matches the base class
+      // against the directly-listed (fully-qualified) extends clauses.
+      await client.loadString({
+        data: `package ${pkg}
+  model A
+    Real a;
+  end A;
+
+  model B
+    extends ${pkg}.A;
+    Real b;
+  end B;
+
+  model C
+    extends ${pkg}.B;
+    Real c;
+    annotation(experiment(StopTime = 1));
+  end C;
+
+  type T = Real;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+    });
+
+    afterEach(async () => {
+      await client.deleteClass({ typeName: pkg });
+    });
+
+    it("extendsFrom matches the directly-listed base class (non-transitive on 1.26.7)", async () => {
+      // C extends B directly → true.
+      const directCB = await client.extendsFrom({
+        typeName: `${pkg}.C`,
+        baseClassName: `${pkg}.B`,
+      });
+      expect(directCB.res).toBe(true);
+
+      // B extends A directly → true.
+      const directBA = await client.extendsFrom({
+        typeName: `${pkg}.B`,
+        baseClassName: `${pkg}.A`,
+      });
+      expect(directBA.res).toBe(true);
+
+      // C extends A only transitively. On OMC 1.26.7 `extendsFrom` is
+      // NON-transitive — it matches against the directly-listed extends
+      // clauses only — so this is false. (Documented in the wrapper.)
+      const transitiveCA = await client.extendsFrom({
+        typeName: `${pkg}.C`,
+        baseClassName: `${pkg}.A`,
+      });
+      expect(transitiveCA.res).toBe(false);
+
+      // A does NOT extend from C.
+      const reverse = await client.extendsFrom({
+        typeName: `${pkg}.A`,
+        baseClassName: `${pkg}.C`,
+      });
+      expect(reverse.res).toBe(false);
+    });
+
+    it("getAllSubtypeOf enumerates loaded subtypes of A", async () => {
+      // Searched across all loaded classes, names come back fully-qualified
+      // and the class itself is included in the result.
+      const { classNames } = await client.getAllSubtypeOf({
+        typeName: `${pkg}.A`,
+      });
+      expect(Array.isArray(classNames)).toBe(true);
+      // B and C both extend (transitively) from A; A itself is included.
+      expect(classNames).toEqual(
+        expect.arrayContaining([`${pkg}.A`, `${pkg}.B`, `${pkg}.C`]),
+      );
+    });
+
+    it("classAnnotationExists distinguishes a class with vs. without an annotation", async () => {
+      const present = await client.classAnnotationExists({
+        typeName: `${pkg}.C`,
+        annotationName: "experiment",
+      });
+      expect(present.exists).toBe(true);
+
+      const absent = await client.classAnnotationExists({
+        typeName: `${pkg}.A`,
+        annotationName: "experiment",
+      });
+      expect(absent.exists).toBe(false);
+    });
+
+    it("getNthInheritedClass agrees with the bulk getInheritedClasses", async () => {
+      const { inheritedClasses } = await client.getInheritedClasses({
+        typeName: `${pkg}.C`,
+      });
+      expect(inheritedClasses.length).toBeGreaterThan(0);
+
+      // 1-based indexing — the first inherited class should match index 1.
+      const { baseClass } = await client.getNthInheritedClass({
+        typeName: `${pkg}.C`,
+        n: 1,
+      });
+      expect(baseClass).toBe(inheritedClasses[0]);
+    });
+
+    it("isShortDefinition is true for `type T = Real;` and false for a model", async () => {
+      const shortHit = await client.isShortDefinition({
+        typeName: `${pkg}.T`,
+      });
+      expect(shortHit.isShortCls).toBe(true);
+
+      const modelMiss = await client.isShortDefinition({
+        typeName: `${pkg}.A`,
+      });
+      expect(modelMiss.isShortCls).toBe(false);
+    });
+  });
+
+  // === Class-shape / component predicates added in #33 ===
+  //
+  // Nine `is*` predicates with three distinct argument shapes:
+  //   - isConstant / isParameter / isProtected: TWO TypeNames
+  //     (componentName, className); output `result`.
+  //   - isPrimitive: single TypeName (className); output `result`.
+  //   - isRedeclare / isOperator / isOperatorFunction / isOperatorRecord /
+  //     isOptimization: single TypeName; output `b`.
+  // Each is exercised on a `loadString` fixture that exhibits the trait,
+  // most with a counter-example to guard against constant-true regressions.
+
+  describe("class-shape predicates with fixtures (#33)", () => {
+    let pkg: string;
+
+    beforeEach(async () => {
+      const { randomBytes } = await import("node:crypto");
+      pkg = `MwShape_${randomBytes(4).toString("hex")}`;
+      await client.loadString({
+        data: `package ${pkg}
+  model Subj
+    constant Real cc = 1.0;
+    parameter Real pp = 2.0;
+    Real xx;
+  protected
+    Real prot;
+  end Subj;
+
+  operator record Cplx
+    Real re;
+    Real im;
+    encapsulated operator function 'addReal'
+      import ${pkg}.Cplx;
+      input Cplx a;
+      input Cplx b;
+      output Cplx c;
+    algorithm
+      c := Cplx(a.re + b.re, a.im + b.im);
+    end 'addReal';
+  end Cplx;
+
+  partial model Base
+    replaceable Real rr = 1.0;
+  end Base;
+
+  model Derived
+    extends Base;
+    redeclare Real rr = 2.0;
+    Real plain = 3.0;
+  end Derived;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+    });
+
+    afterEach(async () => {
+      await client.deleteClass({ typeName: pkg });
+    });
+
+    it("isConstant detects a `constant` component (with a counter-example)", async () => {
+      const hit = await client.isConstant({
+        typeName: `${pkg}.Subj`,
+        componentName: "cc",
+      });
+      expect(hit.result).toBe(true);
+      const miss = await client.isConstant({
+        typeName: `${pkg}.Subj`,
+        componentName: "pp",
+      });
+      expect(miss.result).toBe(false);
+    });
+
+    it("isParameter detects a `parameter` component (with a counter-example)", async () => {
+      const hit = await client.isParameter({
+        typeName: `${pkg}.Subj`,
+        componentName: "pp",
+      });
+      expect(hit.result).toBe(true);
+      const miss = await client.isParameter({
+        typeName: `${pkg}.Subj`,
+        componentName: "cc",
+      });
+      expect(miss.result).toBe(false);
+    });
+
+    it("isProtected detects a protected component (with a counter-example)", async () => {
+      const hit = await client.isProtected({
+        typeName: `${pkg}.Subj`,
+        componentName: "prot",
+      });
+      expect(hit.result).toBe(true);
+      const miss = await client.isProtected({
+        typeName: `${pkg}.Subj`,
+        componentName: "xx",
+      });
+      expect(miss.result).toBe(false);
+    });
+
+    it("isPrimitive detects a built-in primitive type (with a counter-example)", async () => {
+      const hit = await client.isPrimitive({ typeName: "Real" });
+      expect(hit.result).toBe(true);
+      const miss = await client.isPrimitive({ typeName: `${pkg}.Subj` });
+      expect(miss.result).toBe(false);
+    });
+
+    it("isRedeclare detects a redeclared element (with a counter-example)", async () => {
+      const hit = await client.isRedeclare({ typeName: `${pkg}.Derived.rr` });
+      expect(hit.b).toBe(true);
+      const miss = await client.isRedeclare({
+        typeName: `${pkg}.Derived.plain`,
+      });
+      expect(miss.b).toBe(false);
+    });
+
+    it("isOperatorRecord detects an `operator record` (with a counter-example)", async () => {
+      const hit = await client.isOperatorRecord({ typeName: `${pkg}.Cplx` });
+      expect(hit.b).toBe(true);
+      const miss = await client.isOperatorRecord({ typeName: `${pkg}.Subj` });
+      expect(miss.b).toBe(false);
+    });
+
+    it("isOperatorFunction detects an `operator function` (with a counter-example)", async () => {
+      const hit = await client.isOperatorFunction({
+        typeName: `${pkg}.Cplx.'addReal'`,
+      });
+      expect(hit.b).toBe(true);
+      const miss = await client.isOperatorFunction({
+        typeName: `${pkg}.Cplx`,
+      });
+      expect(miss.b).toBe(false);
+    });
+
+    it("isOperator detects an `operator` class (with a counter-example)", async () => {
+      // A standalone `operator` block lives inside the operator record.
+      const { randomBytes } = await import("node:crypto");
+      const opPkg = `MwOp_${randomBytes(4).toString("hex")}`;
+      await client.loadString({
+        data: `package ${opPkg}
+  operator record Cplx
+    Real re;
+    Real im;
+    operator 'fromReal'
+      function build
+        input Real r;
+        output Cplx c;
+      algorithm
+        c := Cplx(r, 0.0);
+      end build;
+    end 'fromReal';
+  end Cplx;
+end ${opPkg};
+`,
+        filename: `<fixture:${opPkg}>`,
+      });
+      try {
+        const hit = await client.isOperator({
+          typeName: `${opPkg}.Cplx.'fromReal'`,
+        });
+        expect(hit.b).toBe(true);
+        const miss = await client.isOperator({ typeName: `${opPkg}.Cplx` });
+        expect(miss.b).toBe(false);
+      } finally {
+        await client.deleteClass({ typeName: opPkg });
+      }
+    });
+
+    it("isOptimization detects an `optimization` class (with a counter-example)", async () => {
+      // `optimization` is Optimica grammar; enable it before loading.
+      await client.setCommandLineOptions({ options: "+g=Optimica" });
+      const { randomBytes } = await import("node:crypto");
+      const optPkg = `MwOpt_${randomBytes(4).toString("hex")}`;
+      await client.loadString({
+        data: `package ${optPkg}
+  optimization Opt
+    Real q(start = 0.0);
+  equation
+    der(q) = 1.0;
+  end Opt;
+
+  model Plain
+    Real z;
+  end Plain;
+end ${optPkg};
+`,
+        filename: `<fixture:${optPkg}>`,
+      });
+      try {
+        const hit = await client.isOptimization({
+          typeName: `${optPkg}.Opt`,
+        });
+        expect(hit.b).toBe(true);
+        const miss = await client.isOptimization({
+          typeName: `${optPkg}.Plain`,
+        });
+        expect(miss.b).toBe(false);
+      } finally {
+        await client.deleteClass({ typeName: optPkg });
+      }
+    });
+  });
+
   // === Connector readers needing a class that declares connectors directly ===
 
   describe("connectors", () => {
@@ -1026,6 +1353,53 @@ end ${pkg};
       expect(result.kind).toBe("list");
       // RealInput/Output icons declare extents like {{-100,-100},{100,100}}.
       expect(JSON.stringify(result)).toContain("100");
+    });
+  });
+
+  // === Import-clause readers (getImportCount / getNthImport) ===
+  //
+  // The fixture mirrors issue #43: one plain `import` and one renamed
+  // `import M = Modelica;`. `getImportCount` should see both; `getNthImport`
+  // returns the first as `[path, id, kind]`.
+
+  describe("import readers", () => {
+    let pkg: string;
+
+    beforeEach(async () => {
+      const { randomBytes } = await import("node:crypto");
+      pkg = `MwImp_${randomBytes(4).toString("hex")}`;
+      await client.loadModel({ typeName: "Modelica" });
+      await client.loadString({
+        data: `package ${pkg}
+  import Modelica.SIunits;
+  import M = Modelica;
+  model X
+  end X;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+    });
+
+    afterEach(async () => {
+      await client.deleteClass({ typeName: pkg });
+    });
+
+    it("getImportCount counts both import-clauses", async () => {
+      const { count } = await client.getImportCount({ typeName: pkg });
+      expect(count).toBe(2);
+    });
+
+    it("getNthImport returns the first import as [path, id, kind]", async () => {
+      const first = await client.getNthImport({ typeName: pkg, index: 1 });
+      // Plain `import Modelica.SIunits;` → path is the dotted package, id is
+      // empty (no rename). Field order is OMC-verbatim; values themselves are
+      // OMC-derived strings.
+      expect(typeof first.path).toBe("string");
+      expect(typeof first.id).toBe("string");
+      expect(typeof first.kind).toBe("string");
+      expect(first.path).toContain("Modelica");
+      expect(first.id).toBe("");
     });
   });
 
