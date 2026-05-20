@@ -552,6 +552,10 @@ export class OmcClient implements CallContext {
     return lifecycle.createSubClass(this, input);
   }
 
+  newModel(input: lifecycle.NewModelInput): Promise<lifecycle.NewModelOutput> {
+    return lifecycle.newModel(this, input);
+  }
+
   renameClass(
     input: lifecycle.RenameClassInput,
   ): Promise<lifecycle.RenameClassOutput> {

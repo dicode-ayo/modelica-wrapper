@@ -140,6 +140,7 @@ export const REGISTRY = {
   parseString: entry("lifecycle", lifecycle.parseString, lifecycle.ParseStringInputSchema, lifecycle.ParseStringOutputSchema, lifecycle.ParseStringDescription),
   createClass: entry("lifecycle", lifecycle.createClass, lifecycle.CreateClassInputSchema, lifecycle.CreateClassOutputSchema, lifecycle.CreateClassDescription),
   createSubClass: entry("lifecycle", lifecycle.createSubClass, lifecycle.CreateSubClassInputSchema, lifecycle.CreateSubClassOutputSchema, lifecycle.CreateSubClassDescription),
+  newModel: entry("lifecycle", lifecycle.newModel, lifecycle.NewModelInputSchema, lifecycle.NewModelOutputSchema, lifecycle.NewModelDescription),
   renameClass: entry("lifecycle", lifecycle.renameClass, lifecycle.RenameClassInputSchema, lifecycle.RenameClassOutputSchema, lifecycle.RenameClassDescription),
   deleteClass: entry("lifecycle", lifecycle.deleteClass, lifecycle.DeleteClassInputSchema, lifecycle.DeleteClassOutputSchema, lifecycle.DeleteClassDescription),
   copyClass: entry("lifecycle", lifecycle.copyClass, lifecycle.CopyClassInputSchema, lifecycle.CopyClassOutputSchema, lifecycle.CopyClassDescription),

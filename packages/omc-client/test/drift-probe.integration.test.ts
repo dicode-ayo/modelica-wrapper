@@ -55,6 +55,9 @@
  */
 
 import { execSync } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -109,6 +112,28 @@ const probes: Probe[] = [
     note: "Same status as createClass.",
     cmd: 'createSubClass(MwProbeSub, MwProbeCreate, "model", false, false)' as OmcCommand,
   },
+
+  // ----- Lifecycle: newModel — the documented replacement for create*/createSubClass -----
+  {
+    label: "newModel(className, withinPath) — nested into a loaded package",
+    wrapper: "lifecycle/newModel.ts",
+    note: "Documented on 1.26.7: newModel(TypeName className, TypeName withinPath) -> Boolean success. Creates an empty model inside the given package. Probes the nested form against the Modelica root.",
+    cmd: "newModel(MwProbeNew, Modelica)" as OmcCommand,
+  },
+  {
+    label: "newModel(className, <empty withinPath>) — UNSUPPORTED top-level form",
+    wrapper: "lifecycle/newModel.ts",
+    note: "Counter-example: newModel REQUIRES a real existing package as withinPath. The empty second arg is rejected by OMC's interactive parser ('Unexpected token near: newModel'), so there is no top-level-creation form. For a true top-level class, fall back to loadString. This is why the wrapper makes withinPath required.",
+    cmd: "newModel(MwProbeNewTop, )" as OmcCommand,
+  },
+  // ----- Lifecycle: save — OMEdit-deprecated; symbol PRESENT but unreliable persistence -----
+  {
+    label: "save(loadString class with no backing source file)",
+    wrapper: "lifecycle/save.ts",
+    note: "save is ⛔ on usefulness grounds, NOT symbol-missing. The symbol resolves and returns `true`, but for a loadString-defined class with no associated source file it persists NOTHING (no file written) — hence the project uses Option B (listFile + own writer). The probe harness loads MwProbeSave via loadString just before this entry runs (see the beforeEach-style preload). NON-DESTRUCTIVE: never targets the on-disk MSL tree. This is the counter-example save previously lacked.",
+    cmd: "save(MwProbeSave)" as OmcCommand,
+  },
+
   {
     label: "moveClass(docs-correct Integer-offset shape)",
     wrapper: "lifecycle/moveClass.ts",
@@ -199,9 +224,22 @@ describeIf("OMC drift probe", () => {
     const client = await OmcClient.create({
       omcPath: process.env.OMC_PATH ?? "",
     });
+    // The save() probe makes OMC write a file into its working directory
+    // (OMC names it after the class's source file, defaulting to
+    // `<interactive>` for loadString classes). Run the whole probe inside a
+    // throwaway temp dir so no artifact leaks into the repo / dev cwd.
+    const scratch = await mkdtemp(join(tmpdir(), "mw-drift-probe-"));
     try {
+      await client.call(`cd("${scratch.replace(/\\/g, "/")}")` as OmcCommand);
+
       // Load Modelica so probes that touch it have something to look at.
       await client.call("loadModel(Modelica)");
+
+      // Preload a backing-file-less class for the save() probe so it stays
+      // non-destructive (never targets the on-disk MSL tree).
+      await client.call(
+        'loadString("model MwProbeSave Real x = 1; end MwProbeSave;")',
+      );
 
       const omcVersion = (await client.call("getVersion()")).trim();
 
@@ -258,10 +296,19 @@ describeIf("OMC drift probe", () => {
       }
     } finally {
       // Best-effort cleanup of any classes the probe created above.
-      for (const cls of ["MwProbeCreate", "MwProbeSub", "MwProbeCopy"]) {
+      for (const cls of [
+        "MwProbeCreate",
+        "MwProbeSub",
+        "MwProbeCopy",
+        "MwProbeSave",
+        "Modelica.MwProbeNew",
+        "MwProbeNewTop",
+      ]) {
         await client.call(`deleteClass(${cls})`).catch(() => {});
       }
       await client.close();
+      // Remove the throwaway working dir (and any file save() wrote into it).
+      await rm(scratch, { recursive: true, force: true }).catch(() => {});
     }
     // The probe always passes — its job is to *report*, not enforce.
     expect(true).toBe(true);

@@ -82,6 +82,7 @@ export type OmcFunction =
   | "parseString"
   | "createClass"
   | "createSubClass"
+  | "newModel"
   | "renameClass"
   | "deleteClass"
   | "copyClass"
