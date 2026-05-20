@@ -23,6 +23,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
+import { mlBool, quoteListOrFillEmpty } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import {
   ModelInstanceAnnotationSchema,
@@ -31,7 +32,22 @@ import {
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
 
-export const GetModelInstanceAnnotationInputSchema = TypeNameInput;
+export const GetModelInstanceAnnotationInputSchema = TypeNameInput.extend({
+  filter: z
+    .array(z.string())
+    .optional()
+    .default([])
+    .describe(
+      'Annotation names to keep (e.g. ["Icon","IconMap","Diagram","DiagramMap","experiment"]); prunes everything else from the tree. Empty (the default) returns the full annotation subset. Emitted as `fill("", 0)` when empty — OMC\'s interactive parser rejects a bare `{}` for this `String[:]` argument (see docs/audit.md §2.10).',
+    ),
+  prettyPrint: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      "Pretty-print the JSON OMC returns. Off by default — we JSON.parse the payload, so whitespace is wasted bytes over the wire.",
+    ),
+});
 export type GetModelInstanceAnnotationInput = z.input<
   typeof GetModelInstanceAnnotationInputSchema
 >;
@@ -44,13 +60,20 @@ export interface GetModelInstanceAnnotationOutput {
 }
 
 export const GetModelInstanceAnnotationDescription =
-  "Return the annotation-only subset of the structured model tree (Icon/Diagram on the class and direct `extends`, with deep type expansions pruned). Useful for thumbnails and icon previews where diagram contents are irrelevant.";
+  'Return the annotation-only subset of the structured model tree (Icon/Diagram on the class and direct `extends`, with deep type expansions pruned). Pass `filter` (e.g. ["Icon","IconMap","Diagram","DiagramMap","experiment"]) to keep only those annotations — the icon-only fetch OMEdit uses for library thumbnails and icon previews where diagram contents are irrelevant.';
 
 export async function getModelInstanceAnnotation(
   ctx: CallContext,
   input: GetModelInstanceAnnotationInput,
 ): Promise<GetModelInstanceAnnotationOutput> {
-  const raw = await ctx.call(`getModelInstanceAnnotation(${input.typeName})`);
+  // Defaults applied here (not via schema .parse) because the wrapper
+  // receives the pre-parse `z.input` shape — same pattern as the
+  // results wrappers that take an optional `String[:]` arg.
+  const filter = input.filter ?? [];
+  const prettyPrint = input.prettyPrint ?? false;
+  const raw = await ctx.call(
+    `getModelInstanceAnnotation(${input.typeName}, ${quoteListOrFillEmpty(filter)}, ${mlBool(prettyPrint)})`,
+  );
   const json = expectString(parse(raw));
   const parsed: unknown = JSON.parse(json);
   const validated = parseOutput(
