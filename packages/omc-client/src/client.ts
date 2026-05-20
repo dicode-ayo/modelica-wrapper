@@ -738,6 +738,24 @@ export class OmcClient implements CallContext {
     return contents.convertUnits(this, input);
   }
 
+  getDerivedUnits(
+    input: contents.GetDerivedUnitsInput,
+  ): Promise<contents.GetDerivedUnitsOutput> {
+    return contents.getDerivedUnits(this, input);
+  }
+
+  uriToFilename(
+    input: contents.UriToFilenameInput,
+  ): Promise<contents.UriToFilenameOutput> {
+    return contents.uriToFilename(this, input);
+  }
+
+  qualifyPath(
+    input: contents.QualifyPathInput,
+  ): Promise<contents.QualifyPathOutput> {
+    return contents.qualifyPath(this, input);
+  }
+
   // === Lifecycle =======================================================
 
   loadFile(input: lifecycle.LoadFileInput): Promise<lifecycle.LoadFileOutput> {
@@ -844,6 +862,12 @@ export class OmcClient implements CallContext {
 
   cd(input: lifecycle.CdInput = {}): Promise<lifecycle.CdOutput> {
     return lifecycle.cd(this, input);
+  }
+
+  loadClassContentString(
+    input: lifecycle.LoadClassContentStringInput,
+  ): Promise<lifecycle.LoadClassContentStringOutput> {
+    return lifecycle.loadClassContentString(this, input);
   }
 
   // === Parameters & modifiers ==========================================

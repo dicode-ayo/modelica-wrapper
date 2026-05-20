@@ -169,6 +169,9 @@ export const REGISTRY = {
   getImportCount: entry("contents", contents.getImportCount, contents.GetImportCountInputSchema, contents.GetImportCountOutputSchema, contents.GetImportCountDescription),
   getNthImport: entry("contents", contents.getNthImport, contents.GetNthImportInputSchema, contents.GetNthImportOutputSchema, contents.GetNthImportDescription),
   convertUnits: entry("contents", contents.convertUnits, contents.ConvertUnitsInputSchema, contents.ConvertUnitsOutputSchema, contents.ConvertUnitsDescription),
+  getDerivedUnits: entry("contents", contents.getDerivedUnits, contents.GetDerivedUnitsInputSchema, contents.GetDerivedUnitsOutputSchema, contents.GetDerivedUnitsDescription),
+  uriToFilename: entry("contents", contents.uriToFilename, contents.UriToFilenameInputSchema, contents.UriToFilenameOutputSchema, contents.UriToFilenameDescription),
+  qualifyPath: entry("contents", contents.qualifyPath, contents.QualifyPathInputSchema, contents.QualifyPathOutputSchema, contents.QualifyPathDescription),
 
   // --- Lifecycle ---
   loadFile: entry("lifecycle", lifecycle.loadFile, lifecycle.LoadFileInputSchema, lifecycle.LoadFileOutputSchema, lifecycle.LoadFileDescription),
@@ -190,6 +193,7 @@ export const REGISTRY = {
   diffModelicaFileListings: entry("lifecycle", lifecycle.diffModelicaFileListings, lifecycle.DiffModelicaFileListingsInputSchema, lifecycle.DiffModelicaFileListingsOutputSchema, lifecycle.DiffModelicaFileListingsDescription),
   save: entry("lifecycle", lifecycle.save, lifecycle.SaveInputSchema, lifecycle.SaveOutputSchema, lifecycle.SaveDescription),
   cd: entry("lifecycle", lifecycle.cd, lifecycle.CdInputSchema, lifecycle.CdOutputSchema, lifecycle.CdDescription),
+  loadClassContentString: entry("lifecycle", lifecycle.loadClassContentString, lifecycle.LoadClassContentStringInputSchema, lifecycle.LoadClassContentStringOutputSchema, lifecycle.LoadClassContentStringDescription),
 
   // --- Parameters & modifiers ---
   getParameterValue: entry("parameters", parameters.getParameterValue, parameters.GetParameterValueInputSchema, parameters.GetParameterValueOutputSchema, parameters.GetParameterValueDescription),

@@ -52,3 +52,6 @@ export * from "./getNthInitialEquationItem.js";
 export * from "./getImportCount.js";
 export * from "./getNthImport.js";
 export * from "./convertUnits.js";
+export * from "./getDerivedUnits.js";
+export * from "./uriToFilename.js";
+export * from "./qualifyPath.js";

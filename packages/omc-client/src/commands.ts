@@ -111,6 +111,9 @@ export type OmcFunction =
   | "getImportCount"
   | "getNthImport"
   | "convertUnits"
+  | "getDerivedUnits"
+  | "uriToFilename"
+  | "qualifyPath"
 
   // --- Source / lifecycle ---
   | "loadFile"
@@ -132,6 +135,7 @@ export type OmcFunction =
   | "diffModelicaFileListings"
   | "save"
   | "cd"
+  | "loadClassContentString"
 
   // --- Parameters & modifiers ---
   | "getParameterValue"
