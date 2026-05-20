@@ -141,7 +141,7 @@ function order(e: LayoutEdit): number {
  */
 function assertMutationApplied(
   fn: string,
-  result: { success: boolean; diagnostic?: string },
+  result: { success: boolean; diagnostic?: string | undefined },
 ): void {
   if (result.success) return;
   throw new Error(

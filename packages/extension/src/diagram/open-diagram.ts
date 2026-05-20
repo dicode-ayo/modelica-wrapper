@@ -15,7 +15,6 @@ import { createReplLog } from "../commands/repl.js";
 import { log } from "../logger.js";
 
 import { applyEdits } from "./apply-edits.js";
-import { clearComponentModifiers } from "./clear-modifiers.js";
 import {
   buildClassParameterForm,
   classParameterValueToExpr,
@@ -23,11 +22,11 @@ import {
 } from "./class-parameter-form.js";
 import {
   buildComponentParameterForm,
-  componentParameterElementName,
-  componentParameterValueToExpr,
+  componentParameterEditPlan,
   findSubComponent,
   type ComponentParameterRef,
 } from "./component-parameter-form.js";
+import { clearComponentModifiers } from "./clear-modifiers.js";
 import { diffLayouts, lineAnnotation, type LayoutEdit } from "./diff-layout.js";
 import { applyDisplayUnits } from "./display-unit.js";
 import { enrichUnitOptions } from "./unit-options.js";
@@ -1027,56 +1026,25 @@ async function applyComponentParameterEdits(
   initialValues: Record<string, unknown>,
   submitted: Record<string, unknown>,
 ): Promise<void> {
-  // Fast-path: the user blanked *every* editable scalar parameter — a
-  // de-facto "reset to defaults" for this sub-component. Collapse the N
-  // per-field `setElementModifierValue(..., "")` clears into a single
-  // `removeElementModifiers(..., keepRedeclares=true)` (issue #30). Gated
-  // on the form exposing the component's full modifiable surface (no
-  // `unsupported` record/array refs) so the one-RPC clear is behaviourally
-  // equivalent to the per-field loop — `keepRedeclares=true` strips value
-  // modifiers but preserves any `redeclare` type substitutions the form
-  // never showed.
-  if (isFullScalarReset(refs, initialValues, submitted)) {
-    let label = `removeElementModifiers ${className} ${componentName}`;
-    try {
-      await client.getErrorString();
-      const success = await clearComponentModifiers(
-        client,
-        className,
-        componentName,
-        { keepRedeclares: true },
-      );
-      if (client.lastCall) label = client.lastCall;
-      const replLog = createReplLog(label);
-      if (success) {
-        replLog.success(`reset ${componentName} (cleared all modifiers)`);
-      } else {
-        const { errorString } = await client.getErrorString();
-        const reason = errorString.trim() || "OMC returned success=false.";
-        replLog.error(reason);
-        void vscode.window.showWarningMessage(
-          `Modelica: reset ${componentName} failed — ${reason}`,
-        );
-      }
-    } catch (err) {
-      if (client.lastCall) label = client.lastCall;
-      const msg = (err as Error).message;
-      createReplLog(label).error(msg);
-      void vscode.window.showWarningMessage(
-        `Modelica: reset ${componentName} failed — ${msg}`,
-      );
-    }
-    return;
-  }
+  // NOTE: there is deliberately NO `removeElementModifiers` fast-path here
+  // (issue #76, item 1). The form only surfaces `variability=="parameter"`
+  // elements, but `removeElementModifiers` strips *every* value modifier on
+  // the sub-component — `start=`, `fixed=`, `nominal=`, `displayUnit=`, and
+  // modifiers on non-parameter members — including bindings the user never
+  // saw in the panel. "Blank all params" must touch only the surfaced
+  // parameters, which the per-field loop below does by clearing each one
+  // with `setElementModifierValue(..., "")`. The bulk `removeElementModifiers`
+  // call is reserved for an explicit "reset to defaults" action (whose blast
+  // radius the user has knowingly opted into) — see `clearComponentModifiers`.
 
   const failures: string[] = [];
-  for (const [name, ref] of Object.entries(refs)) {
-    if (ref.kind === "unsupported") continue;
-    const before = initialValues[name];
-    const after = submitted[name];
-    if (sameValue(before, after)) continue;
-    const expr = componentParameterValueToExpr(ref, after);
-    const elementName = componentParameterElementName(componentName, name);
+  const plan = componentParameterEditPlan(
+    componentName,
+    refs,
+    initialValues,
+    submitted,
+  );
+  for (const { elementName, expr } of plan) {
     let label = `setElementModifierValue ${className} ${elementName}`;
     try {
       await client.getErrorString();
@@ -1168,34 +1136,6 @@ export async function resetComponentParameters(
     );
     return false;
   }
-}
-
-/**
- * True when the submit is a "reset all" on a component whose form shows
- * its full modifiable surface: every editable scalar field is now blank
- * (empty expr), at least one of them actually changed, and there are no
- * `unsupported` (record / array) refs the bulk clear would silently also
- * strip. Under those conditions one `removeElementModifiers` is exactly
- * the per-field loop's effect, so the fast-path stays faithful.
- */
-function isFullScalarReset(
-  refs: Record<string, ComponentParameterRef>,
-  initialValues: Record<string, unknown>,
-  submitted: Record<string, unknown>,
-): boolean {
-  const entries = Object.values(refs);
-  if (entries.length === 0) return false;
-  // Any record/array param means the form doesn't expose the whole
-  // modifiable surface — fall back to the explicit per-field loop.
-  if (entries.some((ref) => ref.kind === "unsupported")) return false;
-  let anyChanged = false;
-  for (const ref of entries) {
-    const after = submitted[ref.name];
-    // Blank means the value-to-expr collapses to "" (clear).
-    if (componentParameterValueToExpr(ref, after) !== "") return false;
-    if (!sameValue(initialValues[ref.name], after)) anyChanged = true;
-  }
-  return anyChanged;
 }
 
 function sameValue(a: unknown, b: unknown): boolean {

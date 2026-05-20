@@ -3,8 +3,10 @@ import type { ComponentElement } from "@modelica-wrapper/omc-client";
 
 import {
   buildComponentParameterForm,
+  componentParameterEditPlan,
   componentParameterElementName,
   componentParameterValueToExpr,
+  type ComponentParameterRef,
 } from "./component-parameter-form.js";
 
 /**
@@ -344,5 +346,82 @@ describe("componentParameterValueToExpr", () => {
 describe("componentParameterElementName", () => {
   it("joins component and parameter with a dot — OMC's `elementName` shape", () => {
     expect(componentParameterElementName("PI", "k")).toBe("PI.k");
+  });
+});
+
+describe("componentParameterEditPlan (issue #76, item 1)", () => {
+  const refs: Record<string, ComponentParameterRef> = {
+    k: { name: "k", kind: "number", tab: "General", group: "Parameters" },
+    Ti: { name: "Ti", kind: "number", tab: "General", group: "Parameters" },
+  };
+
+  it("emits only the changed fields", () => {
+    const plan = componentParameterEditPlan(
+      "PI",
+      refs,
+      { k: 1, Ti: 0.5 },
+      { k: 2, Ti: 0.5 },
+    );
+    expect(plan).toEqual([{ elementName: "PI.k", expr: "2" }]);
+  });
+
+  it("clears EVERY surfaced parameter with a per-field empty expr on a blank-all submit", () => {
+    // The critical case: 'blank all params'. Each surfaced parameter gets
+    // its own `setElementModifierValue(..., "")` clear — and crucially this
+    // is N field-clears, NOT a single bulk removeElementModifiers that would
+    // also wipe start=/fixed=/nominal= and non-parameter modifiers.
+    // A blanked numeric field arrives as `undefined` (coerceToKind maps a
+    // non-finite/empty string to undefined); other kinds arrive as "".
+    const plan = componentParameterEditPlan(
+      "PI",
+      refs,
+      { k: 1, Ti: 0.5 },
+      { k: undefined, Ti: "" },
+    );
+    expect(plan).toEqual([
+      { elementName: "PI.k", expr: "" },
+      { elementName: "PI.Ti", expr: "" },
+    ]);
+  });
+
+  it("scopes the plan to surfaced refs only — never names a non-parameter modifier", () => {
+    // `start`/`fixed`/`nominal`/`displayUnit` and non-parameter members are
+    // not in `refs` (the form filters to variability=="parameter"), so the
+    // plan can never touch them no matter what the caller passes in `submitted`.
+    const plan = componentParameterEditPlan(
+      "PI",
+      refs,
+      { k: 1, Ti: 0.5 },
+      { k: "", Ti: "", start: "", fixed: false, "y.nominal": "" },
+    );
+    const names = plan.map((e) => e.elementName);
+    expect(names).toEqual(["PI.k", "PI.Ti"]);
+    expect(names).not.toContain("PI.start");
+    expect(names).not.toContain("PI.fixed");
+    expect(names).not.toContain("PI.y.nominal");
+  });
+
+  it("skips unsupported (record/array) refs entirely", () => {
+    const withUnsupported: Record<string, ComponentParameterRef> = {
+      ...refs,
+      m: { name: "m", kind: "unsupported", tab: "General", group: "" },
+    };
+    const plan = componentParameterEditPlan(
+      "PI",
+      withUnsupported,
+      { k: 1, Ti: 0.5, m: undefined },
+      { k: "", Ti: "", m: "anything" },
+    );
+    expect(plan.map((e) => e.elementName)).toEqual(["PI.k", "PI.Ti"]);
+  });
+
+  it("treats two NaN numeric values as unchanged (blank stays blank)", () => {
+    const plan = componentParameterEditPlan(
+      "PI",
+      { k: refs.k! },
+      { k: NaN },
+      { k: NaN },
+    );
+    expect(plan).toEqual([]);
   });
 });

@@ -398,3 +398,54 @@ export function componentParameterElementName(
 ): string {
   return `${componentName}.${paramName}`;
 }
+
+/** A single per-field `setElementModifierValue` write the submit will issue. */
+export interface ComponentParameterEdit {
+  /** Dotted modifier path on the host class, e.g. `PI.k`. */
+  elementName: string;
+  /** New modifier expression; `""` clears just this one modifier. */
+  expr: string;
+}
+
+/**
+ * Plan the per-field modifier writes for a sub-component parameter-form
+ * submit (issue #76, item 1).
+ *
+ * Walks ONLY the refs the form surfaced (each is a `variability=="parameter"`
+ * element) and emits one `{ elementName, expr }` per *changed* field. An empty
+ * `expr` clears exactly that one modifier via `setElementModifierValue(..., "")`.
+ *
+ * Crucially, this NEVER plans a bulk `removeElementModifiers`: that call would
+ * also strip `start=`/`fixed=`/`nominal=`/`displayUnit=` and modifiers on
+ * non-parameter members the panel never showed. A "blank all params" submit is
+ * therefore just N field-clears scoped to the surfaced parameters — nothing the
+ * user couldn't see is touched.
+ */
+export function componentParameterEditPlan(
+  componentName: string,
+  refs: Record<string, ComponentParameterRef>,
+  initialValues: Record<string, unknown>,
+  submitted: Record<string, unknown>,
+): ComponentParameterEdit[] {
+  const plan: ComponentParameterEdit[] = [];
+  for (const [name, ref] of Object.entries(refs)) {
+    if (ref.kind === "unsupported") continue;
+    if (sameParameterValue(initialValues[name], submitted[name])) continue;
+    plan.push({
+      elementName: componentParameterElementName(componentName, name),
+      expr: componentParameterValueToExpr(ref, submitted[name]),
+    });
+  }
+  return plan;
+}
+
+/** Equality that treats two `NaN`s (blank numeric fields) as unchanged. */
+function sameParameterValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  return (
+    typeof a === "number" &&
+    typeof b === "number" &&
+    Number.isNaN(a) &&
+    Number.isNaN(b)
+  );
+}
