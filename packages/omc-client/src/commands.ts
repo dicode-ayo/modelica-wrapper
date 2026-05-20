@@ -82,6 +82,8 @@ export type OmcFunction =
   | "getInstantiatedParametersAndValues"
   | "getAnnotationNamedModifiers"
   | "getAnnotationModifierValue"
+  | "getImportCount"
+  | "getNthImport"
 
   // --- Source / lifecycle ---
   | "loadFile"
@@ -171,6 +173,11 @@ export type OmcFunction =
   | "setMatchingAlgorithm"
   | "setIndexReductionMethod"
   | "setCommandLineOptions"
+  | "getMatchingAlgorithm"
+  | "getAvailableMatchingAlgorithms"
+  | "getIndexReductionMethod"
+  | "getAvailableIndexReductionMethods"
+  | "getAvailableTearingMethods"
 
   // --- Execution ---
   | "checkModel"

@@ -1136,6 +1136,53 @@ end ${pkg};
     });
   });
 
+  // === Import-clause readers (getImportCount / getNthImport) ===
+  //
+  // The fixture mirrors issue #43: one plain `import` and one renamed
+  // `import M = Modelica;`. `getImportCount` should see both; `getNthImport`
+  // returns the first as `[path, id, kind]`.
+
+  describe("import readers", () => {
+    let pkg: string;
+
+    beforeEach(async () => {
+      const { randomBytes } = await import("node:crypto");
+      pkg = `MwImp_${randomBytes(4).toString("hex")}`;
+      await client.loadModel({ typeName: "Modelica" });
+      await client.loadString({
+        data: `package ${pkg}
+  import Modelica.SIunits;
+  import M = Modelica;
+  model X
+  end X;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+    });
+
+    afterEach(async () => {
+      await client.deleteClass({ typeName: pkg });
+    });
+
+    it("getImportCount counts both import-clauses", async () => {
+      const { count } = await client.getImportCount({ typeName: pkg });
+      expect(count).toBe(2);
+    });
+
+    it("getNthImport returns the first import as [path, id, kind]", async () => {
+      const first = await client.getNthImport({ typeName: pkg, index: 1 });
+      // Plain `import Modelica.SIunits;` → path is the dotted package, id is
+      // empty (no rename). Field order is OMC-verbatim; values themselves are
+      // OMC-derived strings.
+      expect(typeof first.path).toBe("string");
+      expect(typeof first.id).toBe("string");
+      expect(typeof first.kind).toBe("string");
+      expect(first.path).toContain("Modelica");
+      expect(first.id).toBe("");
+    });
+  });
+
   // === Element mutations (round-trip via Element readers) ===
   //
   // These exercise OMC's modern `Component*` generalization. Two subtleties:

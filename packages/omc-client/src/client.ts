@@ -564,6 +564,18 @@ export class OmcClient implements CallContext {
     return contents.getAnnotationModifierValue(this, input);
   }
 
+  getImportCount(
+    input: contents.GetImportCountInput,
+  ): Promise<contents.GetImportCountOutput> {
+    return contents.getImportCount(this, input);
+  }
+
+  getNthImport(
+    input: contents.GetNthImportInput,
+  ): Promise<contents.GetNthImportOutput> {
+    return contents.getNthImport(this, input);
+  }
+
   // === Lifecycle =======================================================
 
   loadFile(input: lifecycle.LoadFileInput): Promise<lifecycle.LoadFileOutput> {
@@ -914,6 +926,36 @@ export class OmcClient implements CallContext {
     input: solver.SetCommandLineOptionsInput,
   ): Promise<solver.SetCommandLineOptionsOutput> {
     return solver.setCommandLineOptions(this, input);
+  }
+
+  getMatchingAlgorithm(
+    input: solver.GetMatchingAlgorithmInput = {},
+  ): Promise<solver.GetMatchingAlgorithmOutput> {
+    return solver.getMatchingAlgorithm(this, input);
+  }
+
+  getAvailableMatchingAlgorithms(
+    input: solver.GetAvailableMatchingAlgorithmsInput = {},
+  ): Promise<solver.GetAvailableMatchingAlgorithmsOutput> {
+    return solver.getAvailableMatchingAlgorithms(this, input);
+  }
+
+  getIndexReductionMethod(
+    input: solver.GetIndexReductionMethodInput = {},
+  ): Promise<solver.GetIndexReductionMethodOutput> {
+    return solver.getIndexReductionMethod(this, input);
+  }
+
+  getAvailableIndexReductionMethods(
+    input: solver.GetAvailableIndexReductionMethodsInput = {},
+  ): Promise<solver.GetAvailableIndexReductionMethodsOutput> {
+    return solver.getAvailableIndexReductionMethods(this, input);
+  }
+
+  getAvailableTearingMethods(
+    input: solver.GetAvailableTearingMethodsInput = {},
+  ): Promise<solver.GetAvailableTearingMethodsOutput> {
+    return solver.getAvailableTearingMethods(this, input);
   }
 
   // === Editing =========================================================

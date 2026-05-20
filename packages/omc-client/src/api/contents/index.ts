@@ -28,3 +28,5 @@ export * from "./getComponentComment.js";
 export * from "./getInstantiatedParametersAndValues.js";
 export * from "./getAnnotationNamedModifiers.js";
 export * from "./getAnnotationModifierValue.js";
+export * from "./getImportCount.js";
+export * from "./getNthImport.js";
