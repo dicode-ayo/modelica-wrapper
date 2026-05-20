@@ -89,3 +89,32 @@ class UriImpl {
 
 export const Uri = UriImpl;
 export type Uri = UriImpl;
+
+/**
+ * Minimal `window` namespace. The message helpers record their args on a
+ * module-level log so unit tests can assert which toast a code path
+ * raised without standing up a real extension host. They return a
+ * resolved Promise (matching VSCode's Thenable surface) since callers
+ * `void`-discard the result.
+ */
+export interface RecordedMessage {
+  level: "info" | "warning" | "error";
+  message: string;
+}
+
+export const recordedMessages: RecordedMessage[] = [];
+
+export const window = {
+  showInformationMessage(message: string): Promise<undefined> {
+    recordedMessages.push({ level: "info", message });
+    return Promise.resolve(undefined);
+  },
+  showWarningMessage(message: string): Promise<undefined> {
+    recordedMessages.push({ level: "warning", message });
+    return Promise.resolve(undefined);
+  },
+  showErrorMessage(message: string): Promise<undefined> {
+    recordedMessages.push({ level: "error", message });
+    return Promise.resolve(undefined);
+  },
+};

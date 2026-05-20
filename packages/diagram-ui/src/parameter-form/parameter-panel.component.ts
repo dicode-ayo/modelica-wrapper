@@ -8,7 +8,8 @@
  * form's internal API.
  *
  * Escape, backdrop click (`light-dismiss`), and the form's own
- * Cancel button all converge on `om-panel-cancel`.
+ * Cancel button all converge on `om-panel-cancel`. The form's optional
+ * "Reset to defaults" button surfaces as `om-panel-reset`.
  */
 
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
@@ -57,6 +58,10 @@ export class OmParameterPanel extends LitElement {
   @property({ attribute: "submit-label" }) submitLabel = "Apply";
   @property({ attribute: "cancel-label" }) cancelLabel = "Cancel";
 
+  /** Forwarded to `<om-parameter-form>` — gate the reset affordance. */
+  @property({ type: Boolean, attribute: "show-reset" }) showReset = false;
+  @property({ attribute: "reset-label" }) resetLabel = "Reset to defaults";
+
   /** Forwarded straight to `<om-parameter-form>` — see its property docs. */
   @property({ attribute: "cref-prefix" })
   crefPrefix: string | undefined = undefined;
@@ -81,12 +86,15 @@ export class OmParameterPanel extends LitElement {
           .schema=${this.schema}
           .values=${this.values}
           .crefPrefix=${this.crefPrefix}
+          ?show-reset=${this.showReset}
           title=${this.title}
           submit-label=${this.submitLabel}
           cancel-label=${this.cancelLabel}
+          reset-label=${this.resetLabel}
           @om-parameter-change=${this.onChange}
           @om-parameter-submit=${this.onSubmit}
           @om-parameter-cancel=${this.fireCancel}
+          @om-parameter-reset=${this.onReset}
         ></om-parameter-form>
       </wa-drawer>
     `;
@@ -108,6 +116,16 @@ export class OmParameterPanel extends LitElement {
     this.dispatchEvent(
       new CustomEvent<ParameterFormSubmitDetail>("om-panel-submit", {
         detail: e.detail,
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private onReset(e: CustomEvent): void {
+    e.stopPropagation();
+    this.dispatchEvent(
+      new CustomEvent("om-panel-reset", {
         bubbles: true,
         composed: true,
       }),
