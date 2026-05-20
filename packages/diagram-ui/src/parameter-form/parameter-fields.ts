@@ -12,6 +12,16 @@
  */
 
 import type { Expression, JsonSchema } from "@modelica-wrapper/omc-client";
+// Sub-path import: the evaluator subtree only — the bare-name import
+// above is type-only (erased at build) so neither path drags the OMC
+// transport (zeromq / cmake-ts) into the webview bundle.
+import {
+  evaluateExpression,
+  prefixStrippingScope,
+  recordScope,
+  type EvalScope,
+  type EvalValue,
+} from "@modelica-wrapper/omc-client/eval";
 
 /** Subset of JSON Schema 2020-12 we walk — alias for omc-client's re-export. */
 type Node = JsonSchema;
@@ -185,4 +195,89 @@ function detectArrayItemKind(node: Node): FieldKind | undefined {
     return "string";
   }
   return detectKind(items as Node);
+}
+
+// ── Dialog.enable evaluation ─────────────────────────────────────────
+//
+// Pure of Lit / DOM so the gating logic — including the value-fallback
+// precedence — is unit-testable without mounting the WA-laden component.
+
+/**
+ * Compose the `EvalScope` a `Dialog.enable` expression is resolved
+ * against, given a snapshot of the form's committed values.
+ *
+ * Per-field value precedence mirrors OMEdit's two-pass binding/value
+ * evaluator (`OMEdit/OMEditLIB/Annotations/DynamicAnnotation.cpp:222-242`):
+ *
+ *   1. the field's committed working value (the live binding), then
+ *   2. the field's class-default value (`field.defaultValue`), then
+ *   3. omit the cref entirely → the evaluator's `{ fallback: true }`
+ *      keeps the dependent field enabled.
+ *
+ * Step 2 is what keeps `enable = k > 0` working after the user clears
+ * `k`: the cleared binding falls back to `k`'s default instead of
+ * leaving the cref undefined.
+ *
+ * Enum values are qualified on the fly using the field's `enumTypeName`
+ * so equality against a fully-qualified enum literal in the expression
+ * works without the form having to qualify on every keystroke.
+ *
+ * `crefPrefix`, when set, is stripped off an initial cref segment so a
+ * sub-component expression (`PI.controllerType == …`) resolves against
+ * the form's bare `controllerType` value.
+ */
+export function buildEnableScope(
+  fields: ReadonlyArray<ParameterField>,
+  committed: Record<string, unknown>,
+  crefPrefix?: string,
+): EvalScope {
+  const values: Record<string, EvalValue> = {};
+  for (const f of fields) {
+    const committedValue = committed[f.name];
+    // Working value first, class default second. Either `undefined` or
+    // `null` is treated as "no usable value" so a cleared field falls
+    // through to its default.
+    const v =
+      committedValue !== undefined && committedValue !== null
+        ? committedValue
+        : f.defaultValue;
+    if (v === undefined || v === null) continue;
+    if (
+      f.kind === "enum" &&
+      typeof v === "string" &&
+      f.enumTypeName !== undefined
+    ) {
+      values[f.name] = { $kind: "enum", name: `${f.enumTypeName}.${v}` };
+    } else {
+      values[f.name] = v as EvalValue;
+    }
+  }
+  const base = recordScope(values);
+  return crefPrefix ? prefixStrippingScope(crefPrefix, base) : base;
+}
+
+/**
+ * Evaluate a field's `Dialog.enable` against `committed` values.
+ *
+ * Returns `true` when the field has no expression (always enabled),
+ * when the expression evaluates to `true`, or when the evaluator can't
+ * reduce it (default-enabled — same behaviour as if the annotation were
+ * absent). Returns `false` only when the expression is a literal
+ * `false` or evaluates to `false`.
+ */
+export function isFieldEnabled(
+  field: ParameterField,
+  fields: ReadonlyArray<ParameterField>,
+  committed: Record<string, unknown>,
+  crefPrefix?: string,
+): boolean {
+  if (field.enable === undefined) return true;
+  if (field.enable === true) return true;
+  if (field.enable === false) return false;
+  const result = evaluateExpression(
+    field.enable,
+    buildEnableScope(fields, committed, crefPrefix),
+    { fallback: true },
+  );
+  return result !== false;
 }

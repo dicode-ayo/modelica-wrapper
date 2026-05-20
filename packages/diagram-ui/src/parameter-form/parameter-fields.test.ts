@@ -4,11 +4,15 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type { Expression } from "@modelica-wrapper/omc-client";
 
 import {
+  buildEnableScope,
   initialValuesFromFields,
   isComplete,
+  isFieldEnabled,
   parameterFieldsFromSchema,
+  type ParameterField,
 } from "./parameter-fields.js";
 
 describe("parameterFieldsFromSchema — top-level vocabulary", () => {
@@ -205,5 +209,152 @@ describe("Dialog metadata pass-through", () => {
     });
     expect(f?.tab).toBeUndefined();
     expect(f?.group).toBeUndefined();
+  });
+});
+
+describe("Dialog.enable evaluation — value fallback + commit cadence (#27)", () => {
+  // `a > 0` as the AST `getModelInstance` emits for a Dialog.enable.
+  const A_GT_ZERO: Expression = {
+    $kind: "binary_op",
+    op: ">",
+    lhs: { $kind: "cref", parts: [{ name: "a" }] },
+    rhs: 0,
+  };
+
+  /** Fields `a` (number, default 1) and `b` gated by `enable = a > 0`. */
+  function gatedFields(): ParameterField[] {
+    return parameterFieldsFromSchema({
+      type: "object",
+      properties: {
+        a: { type: "number", default: 1 },
+        b: { type: "number", "x-modelica-enable": A_GT_ZERO } as never,
+      },
+    });
+  }
+
+  function fieldB(fields: ParameterField[]): ParameterField {
+    const b = fields.find((f) => f.name === "b");
+    if (!b) throw new Error("missing field b");
+    return b;
+  }
+
+  it("treats a field with no enable as always enabled", () => {
+    const fields = parameterFieldsFromSchema({
+      type: "object",
+      properties: { a: { type: "number" } },
+    });
+    expect(isFieldEnabled(fields[0]!, fields, {})).toBe(true);
+  });
+
+  it("honours a literal `false` enable", () => {
+    const fields = gatedFields();
+    const b = { ...fieldB(fields), enable: false };
+    expect(isFieldEnabled(b, fields, { a: 5 })).toBe(false);
+  });
+
+  it("enables the dependent field when the committed value satisfies the condition", () => {
+    const fields = gatedFields();
+    expect(isFieldEnabled(fieldB(fields), fields, { a: 5 })).toBe(true);
+  });
+
+  it("disables the dependent field when the committed value fails the condition", () => {
+    const fields = gatedFields();
+    expect(isFieldEnabled(fieldB(fields), fields, { a: -1 })).toBe(false);
+  });
+
+  it("falls back to the referenced field's class default when its value is cleared", () => {
+    const fields = gatedFields();
+    // `a` cleared (undefined) → falls back to default 1 → `a > 0` holds.
+    expect(isFieldEnabled(fieldB(fields), fields, { a: undefined })).toBe(true);
+    // Same when the working snapshot omits `a` entirely.
+    expect(isFieldEnabled(fieldB(fields), fields, {})).toBe(true);
+    // `null` is treated as cleared too.
+    expect(isFieldEnabled(fieldB(fields), fields, { a: null })).toBe(true);
+  });
+
+  it("stays enabled (fallback:true) when neither value nor default resolves", () => {
+    const fields = parameterFieldsFromSchema({
+      type: "object",
+      properties: {
+        a: { type: "number" }, // no default
+        b: { type: "number", "x-modelica-enable": A_GT_ZERO } as never,
+      },
+    });
+    // Cref unresolved → evaluator's fallback:true keeps `b` enabled.
+    expect(isFieldEnabled(fieldB(fields), fields, {})).toBe(true);
+  });
+
+  it("class default is shadowed by a committed value (binding wins over default)", () => {
+    const fields = gatedFields();
+    // Default would enable (1 > 0), but the committed -1 disables.
+    expect(isFieldEnabled(fieldB(fields), fields, { a: -1 })).toBe(false);
+  });
+
+  it("commit cadence: the gate reads the committed snapshot, so an un-committed value does not change it", () => {
+    // The component keeps a live `working` set updated on every keystroke
+    // but only refreshes the `committed` snapshot on focus-out. This test
+    // models that contract at the scope level: `isFieldEnabled` sees only
+    // what's in the committed snapshot it's given. A failing value typed
+    // but not yet committed (still { a: 5 } in `committed`) keeps `b`
+    // enabled; once committed ({ a: -1 }) it disables.
+    const fields = gatedFields();
+    const committedBeforeBlur = { a: 5 }; // last committed value
+    expect(isFieldEnabled(fieldB(fields), fields, committedBeforeBlur)).toBe(
+      true,
+    );
+    const committedAfterBlur = { a: -1 }; // focus-out refreshes the snapshot
+    expect(isFieldEnabled(fieldB(fields), fields, committedAfterBlur)).toBe(
+      false,
+    );
+  });
+
+  it("qualifies enum working values against the field's enum type for equality", () => {
+    const fields = parameterFieldsFromSchema({
+      type: "object",
+      properties: {
+        controllerType: {
+          type: "string",
+          enum: ["P", "PI"],
+          "x-modelica-enum-type": "Modelica.Blocks.Types.SimpleController",
+        } as never,
+        ki: {
+          type: "number",
+          "x-modelica-enable": {
+            $kind: "binary_op",
+            op: "==",
+            lhs: { $kind: "cref", parts: [{ name: "controllerType" }] },
+            rhs: {
+              $kind: "enum",
+              name: "Modelica.Blocks.Types.SimpleController.PI",
+            },
+          },
+        } as never,
+      },
+    });
+    const ki = fields.find((f) => f.name === "ki")!;
+    expect(isFieldEnabled(ki, fields, { controllerType: "PI" })).toBe(true);
+    expect(isFieldEnabled(ki, fields, { controllerType: "P" })).toBe(false);
+  });
+
+  it("strips a cref prefix so sub-component expressions resolve against bare names", () => {
+    const fields = gatedFields();
+    const prefixedEnable: Expression = {
+      $kind: "binary_op",
+      op: ">",
+      lhs: { $kind: "cref", parts: [{ name: "PI" }, { name: "a" }] },
+      rhs: 0,
+    };
+    const b = { ...fieldB(fields), enable: prefixedEnable };
+    // `PI.a` strips to `a`, resolving against the form's `a` working value.
+    expect(isFieldEnabled(b, fields, { a: 5 }, "PI")).toBe(true);
+    expect(isFieldEnabled(b, fields, { a: -1 }, "PI")).toBe(false);
+  });
+
+  it("buildEnableScope resolves a cref to the value, then the default", () => {
+    const fields = gatedFields();
+    // committed value present → that value
+    expect(buildEnableScope(fields, { a: 9 }).lookup(["a"])).toBe(9);
+    // cleared → class default
+    expect(buildEnableScope(fields, {}).lookup(["a"])).toBe(1);
   });
 });

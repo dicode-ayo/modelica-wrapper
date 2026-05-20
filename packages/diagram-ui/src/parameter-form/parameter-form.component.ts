@@ -44,22 +44,13 @@ import "@awesome.me/webawesome/dist/components/tab-group/tab-group.js";
 import "@awesome.me/webawesome/dist/components/tab-panel/tab-panel.js";
 
 import type { JsonSchema } from "@modelica-wrapper/omc-client";
-// Sub-path import: pulls in the evaluator subtree only. The bare-name
-// import above is type-only (erased at build), so neither path drags
-// the OMC transport (zeromq / cmake-ts) into the webview bundle.
-import {
-  evaluateExpression,
-  prefixStrippingScope,
-  recordScope,
-  type EvalScope,
-  type EvalValue,
-} from "@modelica-wrapper/omc-client/eval";
 
 import { omTokens } from "../base/om-tokens.js";
 
 import {
   initialValuesFromFields,
   isComplete,
+  isFieldEnabled,
   parameterFieldsFromSchema,
   type ParameterField,
   type FieldKind,
@@ -292,6 +283,20 @@ export class OmParameterForm extends LitElement {
   @state()
   private working: Record<string, unknown> = {};
 
+  /**
+   * Snapshot of committed values used to evaluate `Dialog.enable`.
+   * Distinct from `working` so the enabled/disabled gating only
+   * re-evaluates on field commit (focus-out / `change`), not on every
+   * keystroke — matching OMEdit, whose `eventFilter` re-evaluates enable
+   * only on `QEvent::FocusOut`
+   * (`OMEdit/OMEditLIB/Element/ElementProperties.cpp:1178-1188`). Text /
+   * number inputs update `working` live on `input` but only refresh this
+   * snapshot on `change`; checkbox / select commit on `change` directly,
+   * so for them the two move together.
+   */
+  @state()
+  private committed: Record<string, unknown> = {};
+
   /** Cached field list — re-derived only when `schema` or `values` change. */
   @state()
   private fields: ParameterField[] = [];
@@ -300,6 +305,7 @@ export class OmParameterForm extends LitElement {
     if (changed.has("schema") || changed.has("values")) {
       this.fields = this.schema ? parameterFieldsFromSchema(this.schema) : [];
       this.working = initialValuesFromFields(this.fields, this.values);
+      this.committed = { ...this.working };
       this.dirty = new Set();
     }
   }
@@ -420,52 +426,18 @@ export class OmParameterForm extends LitElement {
   }
 
   /**
-   * Evaluate the field's `Dialog.enable` expression against the live
-   * working values. Returns `true` when the field has no expression
-   * (always enabled), when the expression evaluates to `true`, or when
-   * the evaluator can't reduce it (default-enabled — same behaviour
-   * as if the annotation were absent). Returns `false` only when the
-   * expression is a literal `false` or evaluates to `false`.
+   * Evaluate the field's `Dialog.enable` against the *committed*
+   * snapshot (not the live `working` set), so the gating only changes on
+   * field commit (focus-out / `change`), not per keystroke — matching
+   * OMEdit's focus-out re-evaluation
+   * (`OMEdit/OMEditLIB/Element/ElementProperties.cpp:1178-1188`).
+   *
+   * Delegates to the pure helper in `parameter-fields.ts`, which also
+   * applies the working → class-default → undefined value-fallback
+   * precedence (`Annotations/DynamicAnnotation.cpp:222-242`).
    */
   private isFieldEnabled(f: ParameterField): boolean {
-    if (f.enable === undefined) return true;
-    if (f.enable === true) return true;
-    if (f.enable === false) return false;
-    const result = evaluateExpression(f.enable, this.buildEvalScope(), {
-      fallback: true,
-    });
-    return result !== false;
-  }
-
-  /**
-   * Compose the scope the evaluator looks crefs up against. Enum
-   * working values are qualified on the fly using the field's
-   * `enumTypeName` so equality against a fully-qualified enum literal
-   * in the expression works without the form having to qualify on
-   * every keystroke.
-   */
-  private buildEvalScope(): EvalScope {
-    const values: Record<string, EvalValue> = {};
-    for (const f of this.fields) {
-      const v = this.working[f.name];
-      if (v === undefined || v === null) continue;
-      if (
-        f.kind === "enum" &&
-        typeof v === "string" &&
-        f.enumTypeName !== undefined
-      ) {
-        values[f.name] = {
-          $kind: "enum",
-          name: `${f.enumTypeName}.${v}`,
-        };
-      } else {
-        values[f.name] = v as EvalValue;
-      }
-    }
-    const base = recordScope(values);
-    return this.crefPrefix
-      ? prefixStrippingScope(this.crefPrefix, base)
-      : base;
+    return isFieldEnabled(f, this.fields, this.committed, this.crefPrefix);
   }
 
   private renderControl(f: ParameterField, enabled: boolean): TemplateResult {
@@ -483,7 +455,11 @@ export class OmParameterForm extends LitElement {
             .value=${v === undefined || v === null ? "" : String(v)}
             @change=${(e: Event) => {
               const next = (e.target as HTMLElement & { value: string }).value;
-              this.setField(f.name, next === "" ? undefined : next);
+              // wa-select commits on `change`; refresh the enable
+              // snapshot in the same step.
+              this.setField(f.name, next === "" ? undefined : next, {
+                commit: true,
+              });
             }}
           >
             ${this.renderLabelSlot(f)}${this.renderHintSlot(f)}
@@ -507,7 +483,9 @@ export class OmParameterForm extends LitElement {
             @change=${(e: Event) => {
               const checked = (e.target as HTMLElement & { checked: boolean })
                 .checked;
-              this.setField(f.name, checked);
+              // wa-checkbox commits on `change`; refresh the enable
+              // snapshot in the same step.
+              this.setField(f.name, checked, { commit: true });
             }}
           ></wa-checkbox>
         `;
@@ -535,6 +513,7 @@ export class OmParameterForm extends LitElement {
               const n = f.kind === "integer" ? parseInt(text, 10) : Number(text);
               this.setField(f.name, Number.isFinite(n) ? n : undefined);
             }}
+            @change=${() => this.commitEnable()}
           >${this.renderLabelSlot(f)}${this.renderHintSlot(f)}</wa-input>
         `;
       case "array": {
@@ -559,6 +538,7 @@ export class OmParameterForm extends LitElement {
                   f.itemKind ?? "string",
                 ),
               )}
+            @change=${() => this.commitEnable()}
           >${this.renderLabelSlot(f)}${this.renderHintSlot(f)}</wa-input>
         `;
       }
@@ -575,6 +555,7 @@ export class OmParameterForm extends LitElement {
                 f.name,
                 (e.target as HTMLElement & { value: string }).value,
               )}
+            @change=${() => this.commitEnable()}
           >${this.renderLabelSlot(f)}${this.renderHintSlot(f)}</wa-input>
         `;
       case "unsupported": {
@@ -593,13 +574,29 @@ export class OmParameterForm extends LitElement {
     }
   }
 
-  private setField(name: string, value: unknown): void {
+  /**
+   * Update a field's live working value.
+   *
+   * `commit` controls whether the change also refreshes the `committed`
+   * snapshot the `Dialog.enable` evaluator reads. Text / number / array
+   * inputs leave it `false` on each `input` (keystroke) so sibling
+   * gating doesn't strobe mid-typing, then commit on `change`
+   * (focus-out). Checkbox / select have no keystroke phase — their only
+   * event is `change`, which is itself the commit — so they pass
+   * `commit: true`.
+   */
+  private setField(
+    name: string,
+    value: unknown,
+    { commit = false }: { commit?: boolean } = {},
+  ): void {
     // Use a fresh object so Lit's change detection picks it up; the
     // contract on `om-parameter-change` is that consumers can mutate the
     // returned `values` without mutating our internal state, so we hand
     // out a shallow clone.
     this.working = { ...this.working, [name]: value };
     this.dirty = new Set(this.dirty).add(name);
+    if (commit) this.committed = { ...this.working };
     this.dispatchEvent(
       new CustomEvent<ParameterFormChangeDetail>("om-parameter-change", {
         detail: { values: { ...this.working }, dirty: this.dirty },
@@ -607,6 +604,18 @@ export class OmParameterForm extends LitElement {
         composed: true,
       }),
     );
+  }
+
+  /**
+   * Refresh the `committed` snapshot from the live working values,
+   * re-evaluating every field's `Dialog.enable`. Wired to the
+   * focus-out / commit `change` event of text / number / array inputs
+   * (which track their value live on `input`). Mirrors OMEdit's
+   * focus-out re-evaluation
+   * (`OMEdit/OMEditLIB/Element/ElementProperties.cpp:1178-1188`).
+   */
+  private commitEnable(): void {
+    this.committed = { ...this.working };
   }
 
   private onSubmit(e: Event): void {
