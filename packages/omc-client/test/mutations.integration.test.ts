@@ -1020,5 +1020,48 @@ end ${pkg};
       });
       expect(after.value).toBe("");
     });
+
+    // setElementAnnotation needs the OMEdit-canonical `$Code((<expr>))`
+    // shape — the leading-`=` form `$Code(=<expr>)` is silently destructive
+    // on OMC 1.26.7 (returns true but clears the annotation). See issue #38
+    // and the drift-probe counter-example for the regression watch.
+    it("setElementAnnotation replaces the annotation body via $Code((…))", async () => {
+      // Sanity: fixture binds `parameter Real k = 1.0 annotation(Dialog(group="x"));`.
+      const before = (await client.listFile({ typeName: cls })).contents;
+      expect(before).toMatch(/group\s*=\s*"x"/);
+
+      const { success } = await client.setElementAnnotation({
+        typeName: `${cls}.k`,
+        annotationMod: 'Dialog(group="Tuning", tab="Advanced")',
+      });
+      expect(success).toBe(true);
+
+      const after = (await client.listFile({ typeName: cls })).contents;
+      // The new annotation body replaces the old one — old group="x" is
+      // gone, new group="Tuning" and tab="Advanced" are present.
+      expect(after).toMatch(/group\s*=\s*"Tuning"/);
+      expect(after).toMatch(/tab\s*=\s*"Advanced"/);
+      expect(after).not.toMatch(/group\s*=\s*"x"/);
+    });
+
+    it("setElementAnnotation accepts an empty annotationMod to clear", async () => {
+      // Sanity: annotation is initially present.
+      const before = (await client.listFile({ typeName: cls })).contents;
+      expect(before).toMatch(/\bannotation\s*\(/);
+
+      const { success } = await client.setElementAnnotation({
+        typeName: `${cls}.k`,
+        annotationMod: "",
+      });
+      expect(success).toBe(true);
+
+      const after = (await client.listFile({ typeName: cls })).contents;
+      // The parameter line no longer carries an `annotation(...)` block.
+      // (Other declarations in the model may still have annotations, so we
+      // narrow to the `parameter Real k` line.)
+      const kLine = after.match(/parameter\s+Real\s+k[\s\S]*?;/);
+      expect(kLine).not.toBeNull();
+      expect(kLine?.[0]).not.toMatch(/\bannotation\s*\(/);
+    });
   });
 });
