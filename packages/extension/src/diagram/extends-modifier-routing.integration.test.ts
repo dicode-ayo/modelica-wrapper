@@ -127,6 +127,57 @@ end ${pkg};
     expect(contents).not.toMatch(/parameter\s+Real\s+k/);
   });
 
+  it("routes a 3-LEVEL inherited param to the direct base clause (issue #76, item 3)", async () => {
+    // C extends B extends A; `p` is declared on the deepest ancestor A.
+    // The direct extends clause on C is B, so the write must route through
+    // setExtendsModifierValue(C, B, p, …) — NOT (C, A, …) which is a no-op
+    // (C has no `extends A`) and silently loses the edit.
+    const tri = `MwTri_${randomBytes(4).toString("hex")}`;
+    const triC = `${tri}.C`;
+    const load = await client.loadString({
+      data: `package ${tri}
+  model A
+    parameter Real p = 1.0;
+  end A;
+  model B
+    extends A;
+  end B;
+  model C
+    extends B;
+  end C;
+end ${tri};
+`,
+      filename: `<fixture:${tri}>`,
+    });
+    expect(load.success).toBe(true);
+
+    try {
+      const { instance } = await client.getModelInstance({ typeName: triC });
+      const form = buildClassParameterForm(instance)!;
+      const ref = form.refs.p;
+      expect(ref).toBeDefined();
+      // The captured base must be the DIRECT clause (B), not the deep
+      // declaring class (A).
+      expect(ref.inheritedFrom).toMatch(/(^|\.)B$/);
+      expect(ref.inheritedFrom).not.toMatch(/(^|\.)A$/);
+
+      const { success } = await client.setExtendsModifierValue({
+        typeName: triC,
+        extendsBase: ref.inheritedFrom!,
+        modifier: "p",
+        expr: "4.2",
+      });
+      expect(success).toBe(true);
+
+      // The modifier rides the `extends …B(p = 4.2)` clause on C, proving
+      // the write actually landed (it would be lost if routed to A).
+      const { contents } = await client.listFile({ typeName: triC });
+      expect(contents).toMatch(/extends[\s\S]*B\([\s\S]*p\s*=\s*4\.2/);
+    } finally {
+      await client.deleteClass({ typeName: tri });
+    }
+  });
+
   it("contrast: writing the same param via setElementModifierValue does NOT touch the extends clause", async () => {
     // Documents WHY the routing matters. setElementModifierValue targets
     // the host element scope; for an inherited param that's the wrong

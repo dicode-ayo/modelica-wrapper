@@ -302,6 +302,49 @@ describe("buildClassParameterForm", () => {
     expect(form.refs.k.inheritedFrom).toBe("Test.Base");
   });
 
+  it("routes a 3-level inherited param to the host's DIRECT extends base (issue #76, item 3)", () => {
+    // C extends B extends A; `k` is declared on the deepest ancestor A.
+    // setExtendsModifierValue(host, base, …) requires `base` to be a DIRECT
+    // extends clause on the host. The direct clause on C is B — so the ref
+    // must carry inheritedFrom === "Test.B", NOT the deep declaring "Test.A"
+    // (which would emit setExtendsModifierValue(C, A, …) → no-op, edit lost).
+    const mi: ModelInstance = {
+      name: "Test.C",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "extends",
+          baseClass: {
+            name: "Test.B",
+            restriction: "model",
+            elements: [
+              {
+                $kind: "extends",
+                baseClass: {
+                  name: "Test.A",
+                  restriction: "model",
+                  elements: [
+                    {
+                      $kind: "component",
+                      name: "k",
+                      type: "Real",
+                      value: { binding: 7 },
+                      prefixes: { variability: "parameter" },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    } as unknown as ModelInstance;
+    const form = buildClassParameterForm(mi)!;
+    expect(form.refs.k.kind).toBe("number");
+    expect(form.values).toEqual({ k: 7 });
+    expect(form.refs.k.inheritedFrom).toBe("Test.B");
+  });
+
   it("leaves inheritedFrom unset for a host-declared (own) parameter", () => {
     const mi = instance([
       {
