@@ -30,6 +30,7 @@ import type {
 import type {
   ClassDef,
   CoordinateSystem,
+  ConnectionEndpoint,
   ConnectionLayout,
   ComponentInstance,
   ConnectorInstance,
@@ -511,17 +512,18 @@ function instanceFromSubComponent(
   // `%name` label (OMEdit `TextAnnotation.cpp:691-714`).
   const dims = dimsFromElement(el);
   if (dims !== undefined) instance.dims = dims;
-  // Per-instance port hiding: walk the type's connectors and collect
-  // any whose `condition` is literally `false`. OMC reduces the
-  // predicate against the use-site modifiers before serialization
-  // (e.g. `Torque(useSupport=false)` arrives with `support.condition
-  // = false`), so a plain literal check suffices for the common path.
-  // When the predicate stays as an unresolved Expression AST we keep
-  // the port visible — matches the host-level "default to visible"
-  // policy and lets the user toggle it via the form.
+  // Per-instance port hiding: walk the type's connectors and collect any
+  // whose `condition` reduces to false. OMC reduces the predicate against
+  // the use-site modifiers before serialization (e.g.
+  // `Torque(useSupport=false)` arrives with `support.condition = false`),
+  // but emits it in BOTH shapes — a bare `false` AND the wrapped
+  // `{ binding: false }` Value form. Route the check through
+  // `isConditionTrue` (issue #76, item 5) so both are gated, matching the
+  // host-level component gating. An unresolved Expression AST defaults to
+  // "visible" — same "default to visible" policy as the host path.
   const hiddenPorts: string[] = [];
   for (const { element } of walkConnectors(el.type)) {
-    if (element.condition === false) {
+    if (!isConditionTrue(element.condition)) {
       hiddenPorts.push(element.name);
     }
   }
@@ -570,6 +572,38 @@ function waypointsFromLine(line: unknown): { x: number; y: number }[] {
     }
   }
   return out;
+}
+
+/**
+ * True when a connection endpoint resolves to a node/port that survived
+ * gating (issue #76, item 6).
+ *
+ *  - Host-class port (`component === undefined`): always visible — it's a
+ *    connector declared on the opened class itself, which gating leaves in
+ *    `connectors` only if its own condition held; a bare host port reference
+ *    that isn't a known connector is left visible (default-to-visible policy,
+ *    same as host-level gating's unresolved-AST branch).
+ *  - Sub-component / standalone-connector endpoint: the root cref must be a
+ *    surviving `component` or `connector`, AND — for a component — the named
+ *    port must not be in that component's `hiddenPorts`.
+ */
+function endpointVisible(
+  ep: ConnectionEndpoint,
+  components: Record<string, ComponentInstance>,
+  connectors: Record<string, ConnectorInstance>,
+): boolean {
+  if (ep.component === undefined) {
+    // A reference to a host-class port. If it names a known standalone
+    // connector that gating removed, it's gone; otherwise keep it.
+    return true;
+  }
+  const comp = components[ep.component];
+  if (comp) {
+    return !(comp.hiddenPorts?.includes(ep.port) ?? false);
+  }
+  // The root cref is a standalone connector instance (e.g. an exposed port
+  // wired internally). Visible only if it survived gating.
+  return connectors[ep.component] !== undefined;
 }
 
 function emitConnection(c: ConnectionNode): ConnectionLayout | undefined {
@@ -675,7 +709,15 @@ export function produceDiagramLayout(
     for (const klass of walkExtendsChain(mi)) {
       for (const c of klass.connections ?? []) {
         const cl = emitConnection(c);
-        if (cl) connections.push(cl);
+        // Drop edges whose endpoint roots / ports were gated out of the
+        // visible set (issue #76, item 6). A `connect(x.y, …)` to a
+        // conditional component / port that OMC reduced away would
+        // otherwise dangle to a non-existent node — we filter rather than
+        // rely on OMC dropping the equation.
+        if (cl && endpointVisible(cl.lhs, components, connectors) &&
+          endpointVisible(cl.rhs, components, connectors)) {
+          connections.push(cl);
+        }
       }
     }
   }
