@@ -55,6 +55,10 @@ import {
   type ParameterField,
   type FieldKind,
 } from "./parameter-fields.js";
+import {
+  convertShownValue,
+  unitWidgetForField,
+} from "./unit-display.js";
 
 interface GroupBucket {
   /** Group name from Dialog annotation, or `undefined` when the source
@@ -192,6 +196,38 @@ export class OmParameterForm extends LitElement {
         line-height: 1.3;
       }
 
+      /* Input + unit widget on one row. The input grows; the unit suffix
+       * / dropdown sits flush to its right. The wa-input keeps its own
+       * internal label/value grid (the .field wa-input rule above still
+       * matches it as a descendant). */
+      .with-unit {
+        display: flex;
+        align-items: center;
+        gap: var(--om-space-sm);
+      }
+      .with-unit > wa-input,
+      .with-unit > wa-select {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+
+      /* Static unit suffix label (single-option / fallback). */
+      .unit-suffix {
+        flex: 0 0 auto;
+        color: var(--vscode-descriptionForeground, #777);
+        font-family: var(--vscode-editor-font-family, monospace);
+        font-size: var(--om-description-size);
+        white-space: nowrap;
+      }
+
+      /* Unit dropdown (≥2 options). Sized to fit its content rather than
+       * stretching, so it hugs the value control. */
+      wa-select.unit-select {
+        flex: 0 0 auto;
+        display: inline-block;
+        min-width: var(--om-unit-select-width);
+      }
+
       .required {
         color: var(--vscode-errorForeground, #c00);
         margin-left: var(--om-space-2xs);
@@ -301,13 +337,66 @@ export class OmParameterForm extends LitElement {
   @state()
   private fields: ParameterField[] = [];
 
+  /**
+   * Per-field currently-selected display unit. Seeded from each field's
+   * default-selected unit (its `displayUnit` when it differs from `unit`,
+   * else the base `unit`); updated when the user picks from the unit
+   * dropdown. The `working` value is kept expressed in the selected unit
+   * so the number the user sees and the suffix/dropdown agree.
+   *
+   * NOTE (deferred): on submit we currently emit `working` AS-IS — i.e.
+   * the value in the SELECTED unit — without converting back to the base
+   * `unit` or writing a `displayUnit` modifier. See the PR for the
+   * persistence follow-up.
+   */
+  @state()
+  private unitSelection: Record<string, string> = {};
+
   override willUpdate(changed: Map<string | number | symbol, unknown>): void {
     if (changed.has("schema") || changed.has("values")) {
       this.fields = this.schema ? parameterFieldsFromSchema(this.schema) : [];
       this.working = initialValuesFromFields(this.fields, this.values);
+      this.seedUnitSelection();
       this.committed = { ...this.working };
       this.dirty = new Set();
     }
+  }
+
+  /**
+   * Seed the per-field display-unit map and re-express each affected
+   * field's initial value in its default-selected unit.
+   *
+   * Only fields whose unit widget is a DROPDOWN get an entry (a static
+   * suffix has no selectable state). The base value from OMC is in the
+   * declaration `unit`; when the default selection is a different unit
+   * (e.g. `displayUnit = "deg"` for a `rad` angle) we convert the shown
+   * value into it so the number and the dropdown agree on open — matching
+   * OMEdit, which default-selects `displayUnit` and shows the converted
+   * value. Mutates `this.working` in place (it was just rebuilt above).
+   */
+  private seedUnitSelection(): void {
+    const selection: Record<string, string> = {};
+    for (const f of this.fields) {
+      const widget = unitWidgetForField(f);
+      if (widget.kind !== "dropdown") continue;
+      selection[f.name] = widget.selected;
+      // Initial value arrives in the base `unit`; convert to the selected
+      // unit if they differ so the displayed number matches the dropdown.
+      const base = f.unit?.trim();
+      if (base && base !== widget.selected) {
+        const v = this.working[f.name];
+        if (typeof v === "number") {
+          const converted = convertShownValue(
+            v,
+            base,
+            widget.selected,
+            f.unitOptions,
+          );
+          if (converted !== undefined) this.working[f.name] = converted;
+        }
+      }
+    }
+    this.unitSelection = selection;
   }
 
   override render(): TemplateResult {
@@ -393,7 +482,7 @@ export class OmParameterForm extends LitElement {
     if (hasInternalLabel) {
       return html`
         <div class="field" ?data-disabled=${!enabled}>
-          ${this.renderControl(f, enabled)}
+          ${this.renderControlWithUnit(f, enabled)}
         </div>
       `;
     }
@@ -402,12 +491,29 @@ export class OmParameterForm extends LitElement {
         <label class="label" for=${`f-${f.name}`}
           >${f.name}${f.required ? html`<span class="required">*</span>` : nothing}</label
         >
-        <div class="control">${this.renderControl(f, enabled)}</div>
+        <div class="control">${this.renderControlWithUnit(f, enabled)}</div>
         ${f.description
           ? html`<div class="description">${f.description}</div>`
           : nothing}
       </div>
     `;
+  }
+
+  /**
+   * Render a field's value control, wrapping it with its unit widget (a
+   * suffix label or unit dropdown) in a flex row to the control's right
+   * when the field carries one. Unit-less fields render the bare control
+   * so the layout is unchanged for them.
+   */
+  private renderControlWithUnit(
+    f: ParameterField,
+    enabled: boolean,
+  ): TemplateResult {
+    const unit = this.renderUnitWidget(f, enabled);
+    if (unit === nothing) return this.renderControl(f, enabled);
+    return html`<div class="with-unit">
+      ${this.renderControl(f, enabled)}${unit}
+    </div>`;
   }
 
   /** Reusable label + hint slot content for wa-input / wa-select. */
@@ -423,6 +529,83 @@ export class OmParameterForm extends LitElement {
     return f.description
       ? html`<span slot="hint">${f.description}</span>`
       : html`${nothing}`;
+  }
+
+  /**
+   * Render the unit widget for a field, to the right of its value control:
+   *   - `none`     → nothing (unit-less parameter)
+   *   - `suffix`   → a static `kg.m2`-style label (single option / fallback)
+   *   - `dropdown` → a `<wa-select>` of unit choices (≥2 options); on
+   *     change, the shown value is converted in place with the
+   *     pre-shipped factors (synchronous, no OMC round-trip).
+   *
+   * Returns `nothing` for the `none` case so `renderField` can skip the
+   * flex wrapper entirely. The dropdown is gated by the field's enabled
+   * state so a disabled row's unit picker is disabled too.
+   */
+  private renderUnitWidget(
+    f: ParameterField,
+    enabled: boolean,
+  ): TemplateResult | typeof nothing {
+    const widget = unitWidgetForField(f);
+    switch (widget.kind) {
+      case "none":
+        return nothing;
+      case "suffix":
+        return html`<span class="unit-suffix" title=${widget.unit}
+          >${widget.unit}</span
+        >`;
+      case "dropdown": {
+        const selected = this.unitSelection[f.name] ?? widget.selected;
+        return html`
+          <wa-select
+            class="unit-select"
+            size="xs"
+            ?disabled=${!enabled}
+            .value=${selected}
+            @change=${(e: Event) => {
+              const next = (e.target as HTMLElement & { value: string }).value;
+              this.onUnitChange(f, next);
+            }}
+          >
+            ${widget.options.map(
+              (o) =>
+                html`<wa-option value=${o.unit}>${o.unit}</wa-option>`,
+            )}
+          </wa-select>
+        `;
+      }
+    }
+  }
+
+  /**
+   * Handle a unit-dropdown selection. Converts the field's current shown
+   * value from the previously-selected unit into the newly-picked one
+   * (with the pre-shipped affine factors), updates the working value, and
+   * records the new selection. A non-numeric value or an unconvertible
+   * pair leaves the value untouched (matching OMEdit, which disables
+   * conversion for non-literal values) — only the selected unit changes.
+   */
+  private onUnitChange(f: ParameterField, nextUnit: string): void {
+    const prevUnit = this.unitSelection[f.name] ?? f.unit ?? nextUnit;
+    this.unitSelection = { ...this.unitSelection, [f.name]: nextUnit };
+    const v = this.working[f.name];
+    if (typeof v === "number" && prevUnit !== nextUnit) {
+      const converted = convertShownValue(
+        v,
+        prevUnit,
+        nextUnit,
+        f.unitOptions,
+      );
+      if (converted !== undefined) {
+        // commit:true — the value moved, refresh the enable snapshot too.
+        this.setField(f.name, converted, { commit: true });
+        return;
+      }
+    }
+    // No value change, but Lit needs a re-render to reflect the new
+    // selection in the dropdown.
+    this.requestUpdate();
   }
 
   /**

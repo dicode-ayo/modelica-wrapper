@@ -35,6 +35,29 @@ export type FieldKind =
   | "array"
   | "unsupported";
 
+/**
+ * A selectable unit choice for a parameter, with the affine conversion
+ * needed to render a `unit`-valued number in this option's unit.
+ *
+ * The factors are pre-computed HOST-SIDE (via `convertUnits(unit, option)`)
+ * and shipped on the schema so the webview converts the shown value
+ * locally on dropdown change — no per-keystroke / per-change OMC round-trip.
+ * Conversion direction matches OMEdit (`ElementProperties.cpp`):
+ *
+ *   shownValue = (sourceValue - offset) / scaleFactor
+ *
+ * The entry whose `unit === field.unit` is the identity option
+ * (`scaleFactor = 1`, `offset = 0`).
+ */
+export interface UnitOption {
+  /** The unit string this option selects (e.g. "deg", "rad"). */
+  unit: string;
+  /** Affine scale: `shown = (source - offset) / scaleFactor`. */
+  scaleFactor: number;
+  /** Affine offset: `shown = (source - offset) / scaleFactor`. */
+  offset: number;
+}
+
 export interface ParameterField {
   /** Property name as keyed in the parent schema. */
   name: string;
@@ -72,6 +95,25 @@ export interface ParameterField {
    * from a Dialog.enable expression.
    */
   enumTypeName: string | undefined;
+  /**
+   * Declaration unit (from `x-modelica-unit`, e.g. `"kg.m2"`, `"rad"`).
+   * `undefined` for unit-less parameters. When set and `unitOptions`
+   * has a single entry, the form renders it as a static suffix.
+   */
+  unit: string | undefined;
+  /**
+   * The component's `displayUnit` modifier (from `x-modelica-display-unit`).
+   * Default-selected in the unit dropdown when it differs from `unit`,
+   * matching OMEdit.
+   */
+  displayUnit: string | undefined;
+  /**
+   * Pre-computed unit choices + conversion factors (from
+   * `x-modelica-unit-options`). Empty when the host didn't enrich the
+   * schema (e.g. no OMC client at form-build time, or a unit-less param).
+   * 1 entry → static suffix; ≥2 → dropdown.
+   */
+  unitOptions: ReadonlyArray<UnitOption>;
   /** The raw JSON Schema node — kept on the field so the renderer can read extras (min/max/pattern). */
   raw: Node;
 }
@@ -103,6 +145,9 @@ export function parameterFieldsFromSchema(schema: Node): ParameterField[] {
       group: readString(field, "x-modelica-group"),
       enable: readExpression(field, "x-modelica-enable"),
       enumTypeName: readString(field, "x-modelica-enum-type"),
+      unit: readString(field, "x-modelica-unit"),
+      displayUnit: readString(field, "x-modelica-display-unit"),
+      unitOptions: readUnitOptions(field),
       raw: field,
     });
   }
@@ -112,6 +157,32 @@ export function parameterFieldsFromSchema(schema: Node): ParameterField[] {
 function readString(node: Node, key: string): string | undefined {
   const v = (node as Record<string, unknown>)[key];
   return typeof v === "string" ? v : undefined;
+}
+
+/**
+ * Read the pre-computed unit option list off a schema node's
+ * `x-modelica-unit-options`. Each entry must carry a string `unit` and
+ * finite numeric `scaleFactor` / `offset`; malformed entries are dropped
+ * so a bad host enrichment can't crash the form. Returns `[]` when the
+ * key is absent or empty.
+ */
+function readUnitOptions(node: Node): UnitOption[] {
+  const v = (node as Record<string, unknown>)["x-modelica-unit-options"];
+  if (!Array.isArray(v)) return [];
+  const out: UnitOption[] = [];
+  for (const raw of v) {
+    if (!raw || typeof raw !== "object") continue;
+    const o = raw as Record<string, unknown>;
+    if (typeof o.unit !== "string") continue;
+    const scaleFactor =
+      typeof o.scaleFactor === "number" && Number.isFinite(o.scaleFactor)
+        ? o.scaleFactor
+        : 1;
+    const offset =
+      typeof o.offset === "number" && Number.isFinite(o.offset) ? o.offset : 0;
+    out.push({ unit: o.unit, scaleFactor, offset });
+  }
+  return out;
 }
 
 function readExpression(node: Node, key: string): Expression | undefined {

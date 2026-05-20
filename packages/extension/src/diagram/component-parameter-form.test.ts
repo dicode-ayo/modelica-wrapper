@@ -244,6 +244,83 @@ describe("buildComponentParameterForm", () => {
     expect("inheritedFrom" in form.refs.k).toBe(false);
     expect(form.refs.controllerType.inheritedFrom).toBeUndefined();
   });
+
+  it("carries the declaration unit on the field schema (the `Inertia.J → kg.m2` case)", () => {
+    // Models `Inertia` with `parameter Inertia J`, where `Inertia` is a
+    // SI type aliased as `type Inertia = Real(unit="kg.m2")`. OMC serialises
+    // the unit on the type alias's `extends Real(unit=…)`.
+    const inertia: ComponentElement = {
+      $kind: "component",
+      name: "inertia",
+      type: {
+        name: "Modelica.Mechanics.Rotational.Components.Inertia",
+        restriction: "model",
+        elements: [
+          {
+            $kind: "component",
+            name: "J",
+            type: {
+              name: "Modelica.Units.SI.Inertia",
+              restriction: "type",
+              elements: [
+                { $kind: "extends", baseClass: "Real", modifiers: { unit: '"kg.m2"' } },
+              ],
+            },
+            value: { binding: 1 },
+            prefixes: { variability: "parameter" },
+            comment: "Moment of inertia",
+          },
+        ],
+      },
+    } as unknown as ComponentElement;
+
+    const form = buildComponentParameterForm(inertia)!;
+    const jSchema = (form.schema.properties ?? {}).J as Record<string, unknown>;
+    expect(jSchema["x-modelica-unit"]).toBe("kg.m2");
+    // No use-site displayUnit modifier → key absent.
+    expect("x-modelica-display-unit" in jSchema).toBe(false);
+  });
+
+  it("carries the displayUnit modifier when the use site sets one (the `phi.start → deg` case)", () => {
+    // `parameter Angle phi(displayUnit="deg")` where Angle = Real(unit="rad").
+    const angleComp: ComponentElement = {
+      $kind: "component",
+      name: "spring",
+      type: {
+        name: "T",
+        restriction: "model",
+        elements: [
+          {
+            $kind: "component",
+            name: "phi",
+            modifiers: { displayUnit: '"deg"' },
+            type: {
+              name: "Modelica.Units.SI.Angle",
+              restriction: "type",
+              elements: [
+                { $kind: "extends", baseClass: "Real", modifiers: { unit: '"rad"' } },
+              ],
+            },
+            value: { binding: 0 },
+            prefixes: { variability: "parameter" },
+          },
+        ],
+      },
+    } as unknown as ComponentElement;
+
+    const form = buildComponentParameterForm(angleComp)!;
+    const phiSchema = (form.schema.properties ?? {}).phi as Record<string, unknown>;
+    expect(phiSchema["x-modelica-unit"]).toBe("rad");
+    expect(phiSchema["x-modelica-display-unit"]).toBe("deg");
+  });
+
+  it("emits no unit keys for a unit-less Real parameter (the `k` gain case)", () => {
+    // `pi().k` is a bare `Real` with no unit alias — no unit metadata.
+    const form = buildComponentParameterForm(pi())!;
+    const kSchema = (form.schema.properties ?? {}).k as Record<string, unknown>;
+    expect("x-modelica-unit" in kSchema).toBe(false);
+    expect("x-modelica-display-unit" in kSchema).toBe(false);
+  });
 });
 
 describe("componentParameterValueToExpr", () => {
