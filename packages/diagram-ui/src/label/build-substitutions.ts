@@ -81,9 +81,20 @@ export function buildSubstitutions(
  * The displayUnit→unit CONVERSION (e.g. `rad`→`deg`) needs OMC and stays on
  * the host: it pre-rewrites converted class defaults to a non-numeric string
  * like `"90 deg"`, which fails the numeric guard here and is left untouched —
- * so the two paths never double-annotate. A displayUnit parameter overridden
- * by an instance modifier can't be converted webview-side, so it falls back
- * to its honest source `unit` rather than mislabelling the raw value.
+ * so the two paths never double-annotate.
+ *
+ * KNOWN LIMITATION — a `displayUnit` parameter whose value comes from an
+ * INSTANCE MODIFIER shows its SOURCE unit, not the converted display unit.
+ * This webview path is synchronous and has no `OmcClient`, so it cannot call
+ * `convertUnits`; only the host-side `applyDisplayUnits` (open-diagram's
+ * `fetchLayout`) converts, and it rewrites CLASS DEFAULTS only. When an
+ * instance modifier overlays the class default here (the overlay above runs
+ * AFTER the host pass), the converted `"90 deg"` is replaced by the raw
+ * `1.57`, so `appendUnits` suffixes the honest source `unit` and the label
+ * reads `1.57 rad` rather than OMEdit's `90 deg`. Intentional: with no OMC
+ * webview-side, showing the true source unit beats mislabelling a raw value
+ * with a unit it was never converted into. See the host `display-unit.ts`
+ * `applyDisplayUnits` doc for the conversion half.
  */
 function appendUnits(
   parameters: Record<string, string>,

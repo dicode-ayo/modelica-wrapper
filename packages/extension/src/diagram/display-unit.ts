@@ -161,6 +161,25 @@ export type WarnFn = (topic: string, message: string, data?: unknown) => void;
  *
  * Mutates `layout` in place and returns it (the layout is freshly produced
  * per fetch, so in-place mutation has no aliasing hazard).
+ *
+ * KNOWN LIMITATION — `displayUnit` conversion reaches CLASS DEFAULTS only,
+ * not INSTANCE MODIFIERS. This pass walks `layout.classes[*].parameters`
+ * (the class-level `ParameterDef`s) and is the ONLY place a `displayUnit`
+ * conversion happens, because it needs `convertUnits` (OMC). The webview
+ * substitution path (`diagram-ui` `build-substitutions.ts` `appendUnits`)
+ * is synchronous and has no `OmcClient`, so it cannot convert. The
+ * consequence: a `displayUnit` parameter whose VALUE is supplied by an
+ * instance modifier — `Angle phi(displayUnit="deg")` with `c(phi=1.57)` on
+ * the instance — is overlaid on top of this rewritten class default in
+ * `build-substitutions.ts` AFTER this pass has run, so the converted
+ * `"90 deg"` is discarded and the raw `1.57` re-surfaces. The webview then
+ * appends the honest SOURCE unit (`appendUnits`) and the label reads
+ * `1.57 rad`, not OMEdit's `90 deg`. This is intentional: with no OMC on
+ * the webview side, showing the true source unit beats mislabelling the raw
+ * value with a unit it was never converted into. Lifting it would require
+ * an OMC-backed conversion seam in the webview path (or pre-converting
+ * instance-modifier values host-side before they reach the substitution
+ * overlay). See `build-substitutions.ts` `appendUnits` for the webview half.
  */
 export async function applyDisplayUnits(
   layout: DiagramLayout,
