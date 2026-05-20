@@ -362,6 +362,37 @@ function renderLayer(layer: IconLayer, ctx: RenderContext): string {
 }
 
 function renderShape(shape: Shape, ctx: RenderContext): string {
+  // Per-shape GraphicItem (§18.6, issue #76 item 15): a `visible=false`
+  // shape is dropped; a non-default origin/rotation wraps the shape in its
+  // own transform group so it's positioned independently of the placement.
+  if (shape.visible === false) return "";
+  const body = renderShapeBody(shape, ctx);
+  return wrapGraphicItem(shape, body);
+}
+
+/**
+ * Wrap `body` in a `<g transform="…">` carrying the shape's own origin /
+ * rotation when either is non-default. Modelica positions a graphic at
+ * `origin` and rotates it `rotation` degrees CCW about that origin
+ * (§18.6.4). In our root `scale(1,-1)` (y-up) space the rotation sign is
+ * preserved by SVG's own y-down `rotate`, so we negate to keep CCW. No
+ * transform → return the body untouched (the common case).
+ */
+function wrapGraphicItem(shape: Shape, body: string): string {
+  const ox = shape.origin?.[0] ?? 0;
+  const oy = shape.origin?.[1] ?? 0;
+  const rot = shape.rotation ?? 0;
+  if (ox === 0 && oy === 0 && rot === 0) return body;
+  // translate to origin, then rotate (SVG rotate is CW in user space; our
+  // y-flip makes it CCW visually, matching Modelica). Compose
+  // translate then rotate so the shape spins about its own origin.
+  const parts: string[] = [];
+  if (ox !== 0 || oy !== 0) parts.push(`translate(${ox} ${oy})`);
+  if (rot !== 0) parts.push(`rotate(${rot})`);
+  return `<g transform="${parts.join(" ")}">${body}</g>`;
+}
+
+function renderShapeBody(shape: Shape, ctx: RenderContext): string {
   switch (shape.kind) {
     case "line":
       return renderLine(shape, ctx);

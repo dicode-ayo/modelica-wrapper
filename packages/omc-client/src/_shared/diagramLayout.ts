@@ -62,7 +62,26 @@ export type Point = [number, number];
 export type Extent = [[number, number], [number, number]];
 export type Color = [number, number, number];
 
-export interface LineShape {
+/**
+ * Per-shape `GraphicItem` fields every Modelica graphic primitive carries
+ * (spec §18.6): each shape has its OWN `visible` / `origin` / `rotation`,
+ * applied independently of the component `Placement`. Surfaced here (issue
+ * #76, item 15) so rotated / offset sub-shapes (arrowheads, angled text,
+ * gauge needles) render correctly and `visible=false` shapes are dropped.
+ *
+ * All optional: omitted means the Modelica default (`visible=true`,
+ * `origin={0,0}`, `rotation=0`), which renderers treat as "no transform".
+ */
+export interface GraphicItem {
+  /** `false` → the shape is hidden and should not render. Default true. */
+  visible?: boolean | undefined;
+  /** Local origin the shape is drawn around / rotated about. Default {0,0}. */
+  origin?: Point | undefined;
+  /** Rotation in degrees about `origin` (CCW positive). Default 0. */
+  rotation?: number | undefined;
+}
+
+export interface LineShape extends GraphicItem {
   kind: "line";
   points: Point[];
   color?: Color | undefined;
@@ -73,7 +92,7 @@ export interface LineShape {
   smooth?: string | undefined;
 }
 
-export interface PolygonShape {
+export interface PolygonShape extends GraphicItem {
   kind: "polygon";
   points: Point[];
   lineColor?: Color | undefined;
@@ -84,7 +103,7 @@ export interface PolygonShape {
   smooth?: string | undefined;
 }
 
-export interface RectangleShape {
+export interface RectangleShape extends GraphicItem {
   kind: "rectangle";
   extent: Extent;
   lineColor?: Color | undefined;
@@ -96,7 +115,7 @@ export interface RectangleShape {
   radius?: number | undefined;
 }
 
-export interface EllipseShape {
+export interface EllipseShape extends GraphicItem {
   kind: "ellipse";
   extent: Extent;
   lineColor?: Color | undefined;
@@ -109,7 +128,7 @@ export interface EllipseShape {
   closure?: string | undefined;
 }
 
-export interface TextShape {
+export interface TextShape extends GraphicItem {
   kind: "text";
   extent: Extent;
   /**
@@ -124,7 +143,7 @@ export interface TextShape {
   textStyle?: string[] | undefined;
 }
 
-export interface BitmapShape {
+export interface BitmapShape extends GraphicItem {
   kind: "bitmap";
   extent: Extent;
   fileName?: string | undefined;
@@ -339,6 +358,17 @@ export interface DiagramLayout {
 // producer is the only thing constructing these objects, so any unrecognized
 // field in here is a bug, not OMC schema drift.
 
+/**
+ * Per-shape `GraphicItem` fields (§18.6) spread into every shape schema so
+ * the producer can carry each shape's own visible / origin / rotation
+ * (issue #76, item 15).
+ */
+const graphicItemFields = {
+  visible: z.boolean().optional(),
+  origin: PointSchema.optional(),
+  rotation: z.number().optional(),
+};
+
 export const LineShapeSchema = z
   .object({
     kind: z.literal("line"),
@@ -349,6 +379,7 @@ export const LineShapeSchema = z
     arrow: ArrowSchema.optional(),
     arrowSize: z.number().optional(),
     smooth: z.string().optional(),
+    ...graphicItemFields,
   })
   .strict();
 
@@ -362,6 +393,7 @@ export const PolygonShapeSchema = z
     fillPattern: z.string().optional(),
     lineThickness: z.number().optional(),
     smooth: z.string().optional(),
+    ...graphicItemFields,
   })
   .strict();
 
@@ -376,6 +408,7 @@ export const RectangleShapeSchema = z
     lineThickness: z.number().optional(),
     borderPattern: z.string().optional(),
     radius: z.number().optional(),
+    ...graphicItemFields,
   })
   .strict();
 
@@ -391,6 +424,7 @@ export const EllipseShapeSchema = z
     startAngle: z.number().optional(),
     endAngle: z.number().optional(),
     closure: z.string().optional(),
+    ...graphicItemFields,
   })
   .strict();
 
@@ -404,6 +438,7 @@ export const TextShapeSchema = z
     textColor: ColorSchema.optional(),
     horizontalAlignment: z.string().optional(),
     textStyle: z.array(z.string()).optional(),
+    ...graphicItemFields,
   })
   .strict();
 
@@ -413,6 +448,7 @@ export const BitmapShapeSchema = z
     extent: ExtentSchema,
     fileName: z.string().optional(),
     imageSource: z.string().optional(),
+    ...graphicItemFields,
   })
   .strict();
 

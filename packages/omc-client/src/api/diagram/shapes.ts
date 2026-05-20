@@ -188,19 +188,62 @@ function asStringArray(v: Expression | undefined): string[] | undefined {
 }
 
 /**
- * Helper for the `[visible, origin, rotation]` triple at the start of every
- * GraphicItem. We don't currently surface `visible`/`origin`/`rotation` of
- * shapes themselves on the output type — origin and rotation belong on
- * `Placement`, not on individual graphics. The function exists to document
- * the offsets and to verify the prefix is well-formed.
+ * Per-shape `GraphicItem` fields parsed from a decoded prefix.
  */
-function consumeGraphicItem(
-  _els: Expression[],
-): { offset: number } {
+interface GraphicItemFields {
+  visible?: boolean | undefined;
+  origin?: Point | undefined;
+  rotation?: number | undefined;
+  offset: number;
+}
+
+/**
+ * Helper for the `[visible, origin, rotation]` triple at the start of every
+ * GraphicItem (§18.6). Each graphic carries its OWN origin / rotation /
+ * visibility, distinct from the component `Placement` (issue #76, item 15) —
+ * a rotated arrowhead or an offset gauge needle is positioned by these, not
+ * by the enclosing placement.
+ *
+ * Only NON-default values are surfaced (visible omitted when true, origin
+ * omitted when {0,0}, rotation omitted when 0) so the common case stays a
+ * bare shape and renderers can skip the transform entirely.
+ */
+function consumeGraphicItem(els: Expression[]): GraphicItemFields {
   // index 0 = visible (boolean); 1 = origin (Point); 2 = rotation (Real).
-  // Shape-level visibility/origin/rotation could be surfaced later if a
-  // renderer needs them; for now we drop them.
-  return { offset: 3 };
+  const visibleRaw = asBool(els[0]);
+  const origin = asPoint(els[1]);
+  const rotation = asNumber(els[2]);
+  const out: GraphicItemFields = { offset: 3 };
+  // Drop defaults so an un-transformed shape stays clean.
+  if (visibleRaw === false) out.visible = false;
+  if (origin && (origin[0] !== 0 || origin[1] !== 0)) out.origin = origin;
+  if (rotation !== undefined && rotation !== 0) out.rotation = rotation;
+  return out;
+}
+
+/** Single Point from a `[x, y]` tuple (peels DynamicSelect). */
+function asPoint(v: Expression | undefined): Point | undefined {
+  const w = peelDynamicSelect(v);
+  return isPoint(w) ? [w[0], w[1]] : undefined;
+}
+
+/** Boolean from a literal (peels DynamicSelect). */
+function asBool(v: Expression | undefined): boolean | undefined {
+  const w = peelDynamicSelect(v);
+  return typeof w === "boolean" ? w : undefined;
+}
+
+/** Spread of the non-default GraphicItem fields onto a decoded shape. */
+function graphicItemSpread(g: GraphicItemFields): {
+  visible?: boolean;
+  origin?: Point;
+  rotation?: number;
+} {
+  const out: { visible?: boolean; origin?: Point; rotation?: number } = {};
+  if (g.visible !== undefined) out.visible = g.visible;
+  if (g.origin !== undefined) out.origin = g.origin;
+  if (g.rotation !== undefined) out.rotation = g.rotation;
+  return out;
 }
 
 /**
@@ -230,14 +273,15 @@ function consumeFilledShape(els: Expression[], start: number): {
 function decodeLine(els: Expression[]): LineShape {
   // GraphicItem(3) + points + color + pattern + thickness + arrow + arrowSize + smooth.
   // Line is GraphicItem only — NOT FilledShape.
-  const { offset } = consumeGraphicItem(els);
+  const gi = consumeGraphicItem(els);
+  const offset = gi.offset;
   const points = asPoints(els[offset]);
   if (!points) {
     throw new Error(
       `decodeLine: expected points array at index ${offset}, got ${JSON.stringify(els[offset])}`,
     );
   }
-  const out: LineShape = { kind: "line", points };
+  const out: LineShape = { kind: "line", points, ...graphicItemSpread(gi) };
   const color = asColor(els[offset + 1]);
   if (color) out.color = color;
   const pattern = asEnumString(els[offset + 2]);
@@ -255,15 +299,15 @@ function decodeLine(els: Expression[]): LineShape {
 
 function decodePolygon(els: Expression[]): PolygonShape {
   // GraphicItem(3) + FilledShape(5) + points + smooth.
-  const { offset: o1 } = consumeGraphicItem(els);
-  const fs = consumeFilledShape(els, o1);
+  const gi = consumeGraphicItem(els);
+  const fs = consumeFilledShape(els, gi.offset);
   const points = asPoints(els[fs.offset]);
   if (!points) {
     throw new Error(
       `decodePolygon: expected points array at index ${fs.offset}, got ${JSON.stringify(els[fs.offset])}`,
     );
   }
-  const out: PolygonShape = { kind: "polygon", points };
+  const out: PolygonShape = { kind: "polygon", points, ...graphicItemSpread(gi) };
   if (fs.lineColor) out.lineColor = fs.lineColor;
   if (fs.fillColor) out.fillColor = fs.fillColor;
   if (fs.pattern) out.pattern = fs.pattern;
@@ -276,8 +320,8 @@ function decodePolygon(els: Expression[]): PolygonShape {
 
 function decodeRectangle(els: Expression[]): RectangleShape {
   // GraphicItem(3) + FilledShape(5) + borderPattern + extent + radius.
-  const { offset: o1 } = consumeGraphicItem(els);
-  const fs = consumeFilledShape(els, o1);
+  const gi = consumeGraphicItem(els);
+  const fs = consumeFilledShape(els, gi.offset);
   const borderPattern = asEnumString(els[fs.offset]);
   const extent = asExtent(els[fs.offset + 1]);
   if (!extent) {
@@ -286,7 +330,7 @@ function decodeRectangle(els: Expression[]): RectangleShape {
     );
   }
   const radius = asNumber(els[fs.offset + 2]);
-  const out: RectangleShape = { kind: "rectangle", extent };
+  const out: RectangleShape = { kind: "rectangle", extent, ...graphicItemSpread(gi) };
   if (fs.lineColor) out.lineColor = fs.lineColor;
   if (fs.fillColor) out.fillColor = fs.fillColor;
   if (fs.pattern) out.pattern = fs.pattern;
@@ -299,15 +343,15 @@ function decodeRectangle(els: Expression[]): RectangleShape {
 
 function decodeEllipse(els: Expression[]): EllipseShape {
   // GraphicItem(3) + FilledShape(5) + extent + startAngle + endAngle + closure.
-  const { offset: o1 } = consumeGraphicItem(els);
-  const fs = consumeFilledShape(els, o1);
+  const gi = consumeGraphicItem(els);
+  const fs = consumeFilledShape(els, gi.offset);
   const extent = asExtent(els[fs.offset]);
   if (!extent) {
     throw new Error(
       `decodeEllipse: expected extent at index ${fs.offset}, got ${JSON.stringify(els[fs.offset])}`,
     );
   }
-  const out: EllipseShape = { kind: "ellipse", extent };
+  const out: EllipseShape = { kind: "ellipse", extent, ...graphicItemSpread(gi) };
   if (fs.lineColor) out.lineColor = fs.lineColor;
   if (fs.fillColor) out.fillColor = fs.fillColor;
   if (fs.pattern) out.pattern = fs.pattern;
@@ -326,8 +370,8 @@ function decodeText(els: Expression[]): TextShape {
   // GraphicItem(3) + FilledShape(5) + extent + textString + fontSize +
   //   textColor + fontName + textStyle + horizontalAlignment.
   // (OMC 1.26.7's emission order — see file header comment.)
-  const { offset: o1 } = consumeGraphicItem(els);
-  const fs = consumeFilledShape(els, o1);
+  const gi = consumeGraphicItem(els);
+  const fs = consumeFilledShape(els, gi.offset);
   const extent = asExtent(els[fs.offset]);
   if (!extent) {
     throw new Error(
@@ -340,7 +384,7 @@ function decodeText(els: Expression[]): TextShape {
       `decodeText: missing textString at index ${fs.offset + 1}`,
     );
   }
-  const out: TextShape = { kind: "text", extent, textString };
+  const out: TextShape = { kind: "text", extent, textString, ...graphicItemSpread(gi) };
   // FilledShape's lineColor often serves as the default for textColor in
   // Modelica; renderers can fall back to it. We don't surface lineColor
   // on TextShape since it's not used by Text otherwise.
@@ -360,14 +404,15 @@ function decodeText(els: Expression[]): TextShape {
 function decodeBitmap(els: Expression[]): BitmapShape {
   // GraphicItem(3) + extent + fileName + imageSource. Bitmap is NOT a
   // FilledShape — it has no line/fill color machinery.
-  const { offset: o1 } = consumeGraphicItem(els);
+  const gi = consumeGraphicItem(els);
+  const o1 = gi.offset;
   const extent = asExtent(els[o1]);
   if (!extent) {
     throw new Error(
       `decodeBitmap: expected extent at index ${o1}, got ${JSON.stringify(els[o1])}`,
     );
   }
-  const out: BitmapShape = { kind: "bitmap", extent };
+  const out: BitmapShape = { kind: "bitmap", extent, ...graphicItemSpread(gi) };
   const fileName = asString(els[o1 + 1]);
   if (fileName !== undefined && fileName.length > 0) out.fileName = fileName;
   const imageSource = asString(els[o1 + 2]);

@@ -9,6 +9,7 @@ import {
   buildFanFromCenter,
   buildStroke,
   extentToRect,
+  graphicItemNode,
 } from "./shape-utils.js";
 
 const ELLIPSE_SEGMENTS = 64;
@@ -50,11 +51,13 @@ export class OmEllipse extends OmShapePrimitive {
     }
 
     const baseName = `om-ellipse.${this.zOrder}`;
+    const gi = graphicItemNode(parent, s, `${baseName}.gi`);
+    const root = gi.node;
     if (s.fillPattern !== "None" && s.fillColor) {
       this.resources.push(
         buildFanFromCenter(
           scene,
-          parent,
+          root,
           cx,
           cy,
           ring,
@@ -68,7 +71,7 @@ export class OmEllipse extends OmShapePrimitive {
     const strokePoints = [...ring, ring[0]!];
     const stroke = buildStroke(
       scene,
-      parent,
+      root,
       strokePoints,
       s.lineColor ?? DEFAULT_LINE_COLOR,
       s.pattern,
@@ -78,6 +81,7 @@ export class OmEllipse extends OmShapePrimitive {
     if (stroke) {
       this.resources.push(stroke);
     }
+    this.resources.push(gi);
   }
 }
 
