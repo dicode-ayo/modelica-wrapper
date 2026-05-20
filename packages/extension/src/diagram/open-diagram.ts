@@ -84,6 +84,20 @@ export async function openDiagram(
   let componentParamRefs: Record<string, ComponentParameterRef> = {};
   let componentParamInitialValues: Record<string, unknown> = {};
   let componentParamComponentName: string | null = null;
+  // Guards against a double-click on "Reset to defaults" firing two
+  // concurrent reset round-trips (each one re-fetches + re-opens the
+  // modal). A second invocation while one is in flight returns early.
+  let resetInFlight = false;
+
+  // Drops the sub-component submit-translator closure state so a later
+  // stray submit can't diff against refs from a now-closed modal. Matches
+  // the initial declarations above and the submit-side
+  // `if (componentParamComponentName === null)` guard.
+  const clearComponentParamState = (): void => {
+    componentParamRefs = {};
+    componentParamInitialValues = {};
+    componentParamComponentName = null;
+  };
 
   const panel = DiagramPanel.open(context.extensionUri, className, prevLayout, {
     onChange: async (next) => {
@@ -317,74 +331,91 @@ export async function openDiagram(
       log.info("parametersCancel", `kind=${kind}`);
     },
     onResetComponentParameters: async (componentName) => {
-      // Bulk-clear the sub-component's modifiers (one RPC,
-      // keepRedeclares=true) then refresh the model so the modal can
-      // re-render with the type defaults the reset just exposed.
-      const ok = await resetComponentParameters(
-        client,
-        className,
-        componentName,
-      );
-      if (!ok) {
-        // Clear failed — `resetComponentParameters` already logged +
-        // toasted. Leave the modal as-is so the user keeps their context.
+      // A double-click can fire two concurrent resets; the first owns the
+      // re-fetch + re-open dance, the second is a no-op.
+      if (resetInFlight) {
         return;
       }
+      resetInFlight = true;
       try {
-        prevLayout = await fetchLayout(client, className);
-        panel.update(prevLayout);
-      } catch (err) {
-        log.error(
-          "componentResetRefetch",
-          `failed for ${className}`,
-          err,
+        // Bulk-clear the sub-component's modifiers (one RPC,
+        // keepRedeclares=true) then refresh the model so the modal can
+        // re-render with the type defaults the reset just exposed.
+        const ok = await resetComponentParameters(
+          client,
+          className,
+          componentName,
         );
-      }
-      // Re-open the component modal so its fields show the cleared
-      // (defaulted) values. Re-derive the form from a fresh model
-      // instance — same build path as onEditComponent — and refresh the
-      // submit-translator closure state so a subsequent Apply diffs
-      // against the post-reset baseline, not the stale pre-reset one.
-      try {
-        const instance = await fetchModelInstance(client, className);
-        const component = findSubComponent(instance, componentName);
-        if (!component) {
-          // The component vanished (shouldn't happen for a reset) — the
-          // layout refresh above already reflects reality; just close.
-          panel.closeParameters();
+        if (!ok) {
+          // Clear failed — `resetComponentParameters` already logged +
+          // toasted. Leave the modal as-is so the user keeps context.
           return;
         }
-        const form = buildComponentParameterForm(component);
-        if (!form) {
-          // No editable scalar params left after reset — nothing to
-          // re-open; close so the modal doesn't strand empty.
-          panel.closeParameters();
-          return;
+        // Re-open the component modal so its fields show the cleared
+        // (defaulted) values. Re-derive the form from a fresh model
+        // instance — same build path as onEditComponent — and refresh the
+        // submit-translator closure state so a subsequent Apply diffs
+        // against the post-reset baseline, not the stale pre-reset one.
+        // One getModelInstance feeds both the layout refresh and the form
+        // (via layoutFromInstance) instead of two back-to-back fetches.
+        try {
+          const instance = await fetchModelInstance(client, className);
+          try {
+            prevLayout = await layoutFromInstance(client, className, instance);
+            panel.update(prevLayout);
+          } catch (err) {
+            log.error(
+              "componentResetRefetch",
+              `failed for ${className}`,
+              err,
+            );
+          }
+          const component = findSubComponent(instance, componentName);
+          if (!component) {
+            // The component vanished (shouldn't happen for a reset) — the
+            // layout refresh above already reflects reality; close and
+            // drop the stale submit-translator state so a later stray
+            // submit can't act on refs from the now-closed modal.
+            clearComponentParamState();
+            panel.closeParameters();
+            return;
+          }
+          const form = buildComponentParameterForm(component);
+          if (!form) {
+            // No editable scalar params left after reset — nothing to
+            // re-open; close and clear the stale closure state for the
+            // same reason as the vanished-component branch.
+            clearComponentParamState();
+            panel.closeParameters();
+            return;
+          }
+          componentParamRefs = form.refs;
+          componentParamInitialValues = form.values;
+          componentParamComponentName = form.componentName;
+          const typeName =
+            typeof component.type === "object" && component.type !== null
+              ? component.type.name
+              : String(component.type ?? "");
+          panel.openParameters({
+            kind: "componentParams",
+            schema: form.schema,
+            values: form.values,
+            title: `Parameters: ${componentName}${typeName ? ` (${typeName})` : ""}`,
+            submitLabel: "Apply",
+            crefPrefix: componentName,
+          });
+        } catch (err) {
+          log.error(
+            "componentResetReopen",
+            `failed for ${className}.${componentName}`,
+            err,
+          );
+          void vscode.window.showErrorMessage(
+            `Modelica: reset ${componentName} succeeded but re-opening the panel failed: ${(err as Error).message}`,
+          );
         }
-        componentParamRefs = form.refs;
-        componentParamInitialValues = form.values;
-        componentParamComponentName = form.componentName;
-        const typeName =
-          typeof component.type === "object" && component.type !== null
-            ? component.type.name
-            : String(component.type ?? "");
-        panel.openParameters({
-          kind: "componentParams",
-          schema: form.schema,
-          values: form.values,
-          title: `Parameters: ${componentName}${typeName ? ` (${typeName})` : ""}`,
-          submitLabel: "Apply",
-          crefPrefix: componentName,
-        });
-      } catch (err) {
-        log.error(
-          "componentResetReopen",
-          `failed for ${className}.${componentName}`,
-          err,
-        );
-        void vscode.window.showErrorMessage(
-          `Modelica: reset ${componentName} succeeded but re-opening the panel failed: ${(err as Error).message}`,
-        );
+      } finally {
+        resetInFlight = false;
       }
     },
     // ── Library browser ────────────────────────────────────────────────
@@ -648,6 +679,20 @@ async function fetchLayout(
   className: string,
 ): Promise<DiagramLayout> {
   const instance = await fetchModelInstance(client, className);
+  return layoutFromInstance(client, className, instance);
+}
+
+/**
+ * Build the display-ready `DiagramLayout` from an ALREADY-fetched
+ * `ModelInstance`. Split out from `fetchLayout` so callers that need both
+ * the layout and the form (the reset re-open) can share one
+ * `getModelInstance` round-trip instead of paying for two back-to-back.
+ */
+async function layoutFromInstance(
+  client: OmcClient,
+  className: string,
+  instance: ModelInstance,
+): Promise<DiagramLayout> {
   // Best-effort pull of OMC's instantiation-reduced parameter values.
   // Used by the producer to gate conditional components / ports and by
   // the renderer for cross-component label `%`-substitution. If OMC
