@@ -872,6 +872,24 @@ export class OmcClient implements CallContext {
     return library.getAvailablePackageVersions(this, input);
   }
 
+  getAvailablePackageConversionsFrom(
+    input: library.GetAvailablePackageConversionsFromInput,
+  ): Promise<library.GetAvailablePackageConversionsFromOutput> {
+    return library.getAvailablePackageConversionsFrom(this, input);
+  }
+
+  getAvailablePackageConversionsTo(
+    input: library.GetAvailablePackageConversionsToInput,
+  ): Promise<library.GetAvailablePackageConversionsToOutput> {
+    return library.getAvailablePackageConversionsTo(this, input);
+  }
+
+  getConversionsFromVersions(
+    input: library.GetConversionsFromVersionsInput,
+  ): Promise<library.GetConversionsFromVersionsOutput> {
+    return library.getConversionsFromVersions(this, input);
+  }
+
   installPackage(
     input: library.InstallPackageInput,
   ): Promise<library.InstallPackageOutput> {
