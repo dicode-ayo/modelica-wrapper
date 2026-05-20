@@ -1000,6 +1000,207 @@ end ${pkg};
     });
   });
 
+  // === Class-shape / component predicates added in #33 ===
+  //
+  // Nine `is*` predicates with three distinct argument shapes:
+  //   - isConstant / isParameter / isProtected: TWO TypeNames
+  //     (componentName, className); output `result`.
+  //   - isPrimitive: single TypeName (className); output `result`.
+  //   - isRedeclare / isOperator / isOperatorFunction / isOperatorRecord /
+  //     isOptimization: single TypeName; output `b`.
+  // Each is exercised on a `loadString` fixture that exhibits the trait,
+  // most with a counter-example to guard against constant-true regressions.
+
+  describe("class-shape predicates with fixtures (#33)", () => {
+    let pkg: string;
+
+    beforeEach(async () => {
+      const { randomBytes } = await import("node:crypto");
+      pkg = `MwShape_${randomBytes(4).toString("hex")}`;
+      await client.loadString({
+        data: `package ${pkg}
+  model Subj
+    constant Real cc = 1.0;
+    parameter Real pp = 2.0;
+    Real xx;
+  protected
+    Real prot;
+  end Subj;
+
+  operator record Cplx
+    Real re;
+    Real im;
+    encapsulated operator function 'addReal'
+      import ${pkg}.Cplx;
+      input Cplx a;
+      input Cplx b;
+      output Cplx c;
+    algorithm
+      c := Cplx(a.re + b.re, a.im + b.im);
+    end 'addReal';
+  end Cplx;
+
+  partial model Base
+    replaceable Real rr = 1.0;
+  end Base;
+
+  model Derived
+    extends Base;
+    redeclare Real rr = 2.0;
+    Real plain = 3.0;
+  end Derived;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+    });
+
+    afterEach(async () => {
+      await client.deleteClass({ typeName: pkg });
+    });
+
+    it("isConstant detects a `constant` component (with a counter-example)", async () => {
+      const hit = await client.isConstant({
+        typeName: `${pkg}.Subj`,
+        componentName: "cc",
+      });
+      expect(hit.result).toBe(true);
+      const miss = await client.isConstant({
+        typeName: `${pkg}.Subj`,
+        componentName: "pp",
+      });
+      expect(miss.result).toBe(false);
+    });
+
+    it("isParameter detects a `parameter` component (with a counter-example)", async () => {
+      const hit = await client.isParameter({
+        typeName: `${pkg}.Subj`,
+        componentName: "pp",
+      });
+      expect(hit.result).toBe(true);
+      const miss = await client.isParameter({
+        typeName: `${pkg}.Subj`,
+        componentName: "cc",
+      });
+      expect(miss.result).toBe(false);
+    });
+
+    it("isProtected detects a protected component (with a counter-example)", async () => {
+      const hit = await client.isProtected({
+        typeName: `${pkg}.Subj`,
+        componentName: "prot",
+      });
+      expect(hit.result).toBe(true);
+      const miss = await client.isProtected({
+        typeName: `${pkg}.Subj`,
+        componentName: "xx",
+      });
+      expect(miss.result).toBe(false);
+    });
+
+    it("isPrimitive detects a built-in primitive type (with a counter-example)", async () => {
+      const hit = await client.isPrimitive({ typeName: "Real" });
+      expect(hit.result).toBe(true);
+      const miss = await client.isPrimitive({ typeName: `${pkg}.Subj` });
+      expect(miss.result).toBe(false);
+    });
+
+    it("isRedeclare detects a redeclared element (with a counter-example)", async () => {
+      const hit = await client.isRedeclare({ typeName: `${pkg}.Derived.rr` });
+      expect(hit.b).toBe(true);
+      const miss = await client.isRedeclare({
+        typeName: `${pkg}.Derived.plain`,
+      });
+      expect(miss.b).toBe(false);
+    });
+
+    it("isOperatorRecord detects an `operator record` (with a counter-example)", async () => {
+      const hit = await client.isOperatorRecord({ typeName: `${pkg}.Cplx` });
+      expect(hit.b).toBe(true);
+      const miss = await client.isOperatorRecord({ typeName: `${pkg}.Subj` });
+      expect(miss.b).toBe(false);
+    });
+
+    it("isOperatorFunction detects an `operator function` (with a counter-example)", async () => {
+      const hit = await client.isOperatorFunction({
+        typeName: `${pkg}.Cplx.'addReal'`,
+      });
+      expect(hit.b).toBe(true);
+      const miss = await client.isOperatorFunction({
+        typeName: `${pkg}.Cplx`,
+      });
+      expect(miss.b).toBe(false);
+    });
+
+    it("isOperator detects an `operator` class (with a counter-example)", async () => {
+      // A standalone `operator` block lives inside the operator record.
+      const { randomBytes } = await import("node:crypto");
+      const opPkg = `MwOp_${randomBytes(4).toString("hex")}`;
+      await client.loadString({
+        data: `package ${opPkg}
+  operator record Cplx
+    Real re;
+    Real im;
+    operator 'fromReal'
+      function build
+        input Real r;
+        output Cplx c;
+      algorithm
+        c := Cplx(r, 0.0);
+      end build;
+    end 'fromReal';
+  end Cplx;
+end ${opPkg};
+`,
+        filename: `<fixture:${opPkg}>`,
+      });
+      try {
+        const hit = await client.isOperator({
+          typeName: `${opPkg}.Cplx.'fromReal'`,
+        });
+        expect(hit.b).toBe(true);
+        const miss = await client.isOperator({ typeName: `${opPkg}.Cplx` });
+        expect(miss.b).toBe(false);
+      } finally {
+        await client.deleteClass({ typeName: opPkg });
+      }
+    });
+
+    it("isOptimization detects an `optimization` class (with a counter-example)", async () => {
+      // `optimization` is Optimica grammar; enable it before loading.
+      await client.setCommandLineOptions({ options: "+g=Optimica" });
+      const { randomBytes } = await import("node:crypto");
+      const optPkg = `MwOpt_${randomBytes(4).toString("hex")}`;
+      await client.loadString({
+        data: `package ${optPkg}
+  optimization Opt
+    Real q(start = 0.0);
+  equation
+    der(q) = 1.0;
+  end Opt;
+
+  model Plain
+    Real z;
+  end Plain;
+end ${optPkg};
+`,
+        filename: `<fixture:${optPkg}>`,
+      });
+      try {
+        const hit = await client.isOptimization({
+          typeName: `${optPkg}.Opt`,
+        });
+        expect(hit.b).toBe(true);
+        const miss = await client.isOptimization({
+          typeName: `${optPkg}.Plain`,
+        });
+        expect(miss.b).toBe(false);
+      } finally {
+        await client.deleteClass({ typeName: optPkg });
+      }
+    });
+  });
+
   // === Connector readers needing a class that declares connectors directly ===
 
   describe("connectors", () => {
@@ -1058,6 +1259,53 @@ end ${pkg};
       expect(result.kind).toBe("list");
       // RealInput/Output icons declare extents like {{-100,-100},{100,100}}.
       expect(JSON.stringify(result)).toContain("100");
+    });
+  });
+
+  // === Import-clause readers (getImportCount / getNthImport) ===
+  //
+  // The fixture mirrors issue #43: one plain `import` and one renamed
+  // `import M = Modelica;`. `getImportCount` should see both; `getNthImport`
+  // returns the first as `[path, id, kind]`.
+
+  describe("import readers", () => {
+    let pkg: string;
+
+    beforeEach(async () => {
+      const { randomBytes } = await import("node:crypto");
+      pkg = `MwImp_${randomBytes(4).toString("hex")}`;
+      await client.loadModel({ typeName: "Modelica" });
+      await client.loadString({
+        data: `package ${pkg}
+  import Modelica.SIunits;
+  import M = Modelica;
+  model X
+  end X;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+    });
+
+    afterEach(async () => {
+      await client.deleteClass({ typeName: pkg });
+    });
+
+    it("getImportCount counts both import-clauses", async () => {
+      const { count } = await client.getImportCount({ typeName: pkg });
+      expect(count).toBe(2);
+    });
+
+    it("getNthImport returns the first import as [path, id, kind]", async () => {
+      const first = await client.getNthImport({ typeName: pkg, index: 1 });
+      // Plain `import Modelica.SIunits;` → path is the dotted package, id is
+      // empty (no rename). Field order is OMC-verbatim; values themselves are
+      // OMC-derived strings.
+      expect(typeof first.path).toBe("string");
+      expect(typeof first.id).toBe("string");
+      expect(typeof first.kind).toBe("string");
+      expect(first.path).toContain("Modelica");
+      expect(first.id).toBe("");
     });
   });
 
