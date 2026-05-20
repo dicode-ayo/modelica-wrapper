@@ -110,6 +110,7 @@ export type OmcFunction =
   | "getNthInitialEquationItem"
   | "getImportCount"
   | "getNthImport"
+  | "convertUnits"
 
   // --- Source / lifecycle ---
   | "loadFile"

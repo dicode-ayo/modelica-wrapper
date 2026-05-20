@@ -938,3 +938,120 @@ describe("produceDiagramLayout: conditional gating", () => {
   });
 
 });
+
+describe("produceDiagramLayout: array dimensions on sub-components", () => {
+  /**
+   * Build a host with one vector / matrix sub-component. OMC 1.26.7
+   * serializes `dims` as `{ absyn: string[], typed: string[] }` on the
+   * component element — see the live probe in the PR description.
+   */
+  function hostWithDims(dims: unknown): ModelInstance {
+    const VectorType: unknown = {
+      $kind: "model",
+      name: "Pkg.PinArray",
+      restriction: "block",
+      annotation: {
+        Icon: { coordinateSystem: { extent: [[-100, -100], [100, 100]] }, graphics: [] },
+      },
+    };
+    const compEl: Record<string, unknown> = {
+      $kind: "component",
+      name: "pins",
+      type: VectorType,
+      annotation: placementAnno([[-20, -20], [20, 20]]),
+    };
+    if (dims !== undefined) compEl.dims = dims;
+    const hostLiteral: unknown = {
+      $kind: "model",
+      name: "Pkg.Host",
+      restriction: "model",
+      annotation: {
+        Icon: { coordinateSystem: { extent: [[-100, -100], [100, 100]] }, graphics: [] },
+      },
+      elements: [compEl],
+    };
+    return ModelInstanceSchema.parse(hostLiteral);
+  }
+
+  it("surfaces the typed dimension sizes on the instance", () => {
+    const layout = produceDiagramLayout(
+      hostWithDims({ absyn: ["n"], typed: ["3"] }),
+      "icon",
+    );
+    expect(layout.components.pins?.dims).toEqual(["3"]);
+  });
+
+  it("surfaces every dimension of a matrix component in declaration order", () => {
+    const layout = produceDiagramLayout(
+      hostWithDims({ absyn: ["2", "4"], typed: ["2", "4"] }),
+      "icon",
+    );
+    expect(layout.components.pins?.dims).toEqual(["2", "4"]);
+  });
+
+  it("falls back to absyn dims when typed is missing", () => {
+    const layout = produceDiagramLayout(
+      hostWithDims({ absyn: ["k"] }),
+      "icon",
+    );
+    expect(layout.components.pins?.dims).toEqual(["k"]);
+  });
+
+  it("leaves dims undefined for a scalar component (no dims field)", () => {
+    const layout = produceDiagramLayout(hostWithDims(undefined), "icon");
+    expect(layout.components.pins?.dims).toBeUndefined();
+  });
+});
+
+describe("produceDiagramLayout: parameter displayUnit", () => {
+  function outerWithAngle(): ModelInstance {
+    const AngleClass: unknown = {
+      name: "Synth.HasAngle",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "component",
+          name: "a",
+          type: "Real",
+          // OMC emits displayUnit as a direct modifier field, quoted.
+          modifiers: { displayUnit: "\"deg\"", $value: "1.57" },
+          value: { binding: 1.57 },
+          prefixes: { variability: "parameter" },
+        },
+        // Same shape but with no displayUnit modifier.
+        {
+          $kind: "component",
+          name: "b",
+          type: "Real",
+          modifiers: { $value: "2.0" },
+          prefixes: { variability: "parameter" },
+        },
+      ],
+    };
+    const outer: unknown = {
+      name: "Synth.OuterAngle",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "component",
+          name: "c1",
+          type: AngleClass,
+          annotation: placementAnno([[-5, -5], [5, 5]]),
+        },
+      ],
+    };
+    return ModelInstanceSchema.parse(outer);
+  }
+
+  it("surfaces displayUnit on the parameter def, unquoted", () => {
+    const layout = produceDiagramLayout(outerWithAngle(), "icon");
+    const cls = layout.classes["Synth.HasAngle"];
+    expect(cls?.parameters.a?.displayUnit).toBe("deg");
+  });
+
+  it("leaves displayUnit undefined when not declared", () => {
+    const layout = produceDiagramLayout(outerWithAngle(), "icon");
+    const cls = layout.classes["Synth.HasAngle"];
+    expect(cls?.parameters.b?.displayUnit).toBeUndefined();
+  });
+});

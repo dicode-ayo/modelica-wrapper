@@ -732,6 +732,12 @@ export class OmcClient implements CallContext {
     return contents.getNthImport(this, input);
   }
 
+  convertUnits(
+    input: contents.ConvertUnitsInput,
+  ): Promise<contents.ConvertUnitsOutput> {
+    return contents.convertUnits(this, input);
+  }
+
   // === Lifecycle =======================================================
 
   loadFile(input: lifecycle.LoadFileInput): Promise<lifecycle.LoadFileOutput> {

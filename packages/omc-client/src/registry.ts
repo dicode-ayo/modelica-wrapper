@@ -168,6 +168,7 @@ export const REGISTRY = {
   getNthInitialEquationItem: entry("contents", contents.getNthInitialEquationItem, contents.GetNthInitialEquationItemInputSchema, contents.GetNthInitialEquationItemOutputSchema, contents.GetNthInitialEquationItemDescription),
   getImportCount: entry("contents", contents.getImportCount, contents.GetImportCountInputSchema, contents.GetImportCountOutputSchema, contents.GetImportCountDescription),
   getNthImport: entry("contents", contents.getNthImport, contents.GetNthImportInputSchema, contents.GetNthImportOutputSchema, contents.GetNthImportDescription),
+  convertUnits: entry("contents", contents.convertUnits, contents.ConvertUnitsInputSchema, contents.ConvertUnitsOutputSchema, contents.ConvertUnitsDescription),
 
   // --- Lifecycle ---
   loadFile: entry("lifecycle", lifecycle.loadFile, lifecycle.LoadFileInputSchema, lifecycle.LoadFileOutputSchema, lifecycle.LoadFileDescription),

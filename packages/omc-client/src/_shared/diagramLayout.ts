@@ -194,6 +194,15 @@ export interface ParameterDef {
    */
   value: string;
   unit?: string | undefined;
+  /**
+   * Declared `displayUnit` modifier, when set (e.g. `Angle a(displayUnit=
+   * "deg")`). When it differs from `unit`, the rendered value should be
+   * converted from `unit` to `displayUnit` via OMC's `convertUnits` before
+   * substitution (OMEdit `TextAnnotation.cpp:625-635`). Surfaced here so a
+   * future render path can drive the conversion; the value carried in
+   * `value` / the substitution map is still the source-unit number.
+   */
+  displayUnit?: string | undefined;
   comment?: string | undefined;
 }
 
@@ -237,6 +246,18 @@ export interface ComponentInstance {
    * Absent or empty when no port is hidden.
    */
   hiddenPorts?: string[] | undefined;
+  /**
+   * Array dimension sizes of a vector / matrix component, one entry per
+   * dimension, in declaration order. Sourced from OMC's
+   * `ComponentElement.dims.typed` (the evaluated integer sizes; e.g.
+   * `Real[n] pins` with `n = 3` yields `["3"]`, `Real[2, 4] grid` yields
+   * `["2", "4"]`). Renderers append a Modelica-shaped suffix to `%name`
+   * (`pins` → `pins[3]`), matching OMEdit's `TextAnnotation` behaviour.
+   *
+   * Absent for scalar components. Kept as strings (not numbers) because a
+   * dimension can be a non-numeric symbol when OMC can't reduce it.
+   */
+  dims?: string[] | undefined;
 }
 
 export interface ConnectorInstance {
@@ -440,6 +461,7 @@ export const ParameterDefSchema = z
     name: z.string(),
     value: z.string(),
     unit: z.string().optional(),
+    displayUnit: z.string().optional(),
     comment: z.string().optional(),
   })
   .strict();
@@ -464,6 +486,7 @@ export const ComponentInstanceSchema = z
     comment: z.string().optional(),
     source: SourceLocationSchema.optional(),
     hiddenPorts: z.array(z.string()).optional(),
+    dims: z.array(z.string()).optional(),
   })
   .strict();
 

@@ -169,6 +169,19 @@ function parameterUnit(el: ComponentElement): string | undefined {
   return undefined;
 }
 
+/**
+ * Pull the `displayUnit` modifier (e.g. `Angle a(displayUnit="deg")`).
+ * OMC serializes it as a direct modifier field on the component
+ * (`modifiers.displayUnit`), distinct from the declaration `unit` which
+ * usually rides on the type alias's `extends`. Returns the unquoted
+ * string or `undefined` when not declared.
+ */
+function parameterDisplayUnit(el: ComponentElement): string | undefined {
+  const direct = readModifierField(el.modifiers, "displayUnit");
+  if (direct) return stripModelicaString(direct);
+  return undefined;
+}
+
 function readModifierField(
   mod: Modifier | undefined,
   field: string,
@@ -202,6 +215,8 @@ function collectParameters(mi: ModelInstance): Record<string, ParameterDef> {
       };
       const unit = parameterUnit(el);
       if (unit !== undefined) def.unit = unit;
+      const displayUnit = parameterDisplayUnit(el);
+      if (displayUnit !== undefined) def.displayUnit = displayUnit;
       if (el.comment !== undefined) def.comment = el.comment;
       out[el.name] = def;
     }
@@ -412,6 +427,41 @@ function portFromConnector(
   return port;
 }
 
+// ---------- array dimensions ----------
+
+/**
+ * Decode a `ComponentElement.dims` payload into the per-dimension size
+ * strings used for the `%name` array suffix. OMC 1.26.7 serializes dims
+ * as `{ absyn: string[], typed: string[] }`:
+ *
+ *   `Real[3] v`        → { absyn: ["3"],      typed: ["3"] }
+ *   `Real[n] pins`     → { absyn: ["n"],      typed: ["3"] }   (n = 3)
+ *   `Real[2, 4] grid`  → { absyn: ["2", "4"], typed: ["2", "4"] }
+ *
+ * We prefer `typed` (the reduced integer sizes — what the user sees as
+ * the concrete dimension, matching OMEdit's `getTypedDimensionsString`),
+ * falling back to `absyn` when OMC couldn't reduce a dimension. Returns
+ * `undefined` for scalar components (no `dims`) or an unrecognized shape.
+ */
+function dimsFromElement(el: ComponentElement): string[] | undefined {
+  const dims = el.dims;
+  if (typeof dims !== "object" || dims === null) return undefined;
+  const record = dims as { typed?: unknown; absyn?: unknown };
+  const source = Array.isArray(record.typed)
+    ? record.typed
+    : Array.isArray(record.absyn)
+      ? record.absyn
+      : undefined;
+  if (source === undefined) return undefined;
+  const out: string[] = [];
+  for (const d of source) {
+    if (typeof d === "string") out.push(d);
+    else if (typeof d === "number") out.push(String(d));
+    else return undefined;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 // ---------- per-instance components & connectors ----------
 
 function instanceFromSubComponent(
@@ -431,6 +481,11 @@ function instanceFromSubComponent(
   if (el.modifiers !== undefined) instance.modifiers = el.modifiers;
   if (el.comment !== undefined) instance.comment = el.comment;
   if (el.type.source) instance.source = el.type.source;
+  // Array dimensions: a vector / matrix component carries `dims`; surface
+  // the reduced sizes so the renderer can append `[3]` / `[2, 4]` to the
+  // `%name` label (OMEdit `TextAnnotation.cpp:691-714`).
+  const dims = dimsFromElement(el);
+  if (dims !== undefined) instance.dims = dims;
   // Per-instance port hiding: walk the type's connectors and collect
   // any whose `condition` is literally `false`. OMC reduces the
   // predicate against the use-site modifiers before serialization
