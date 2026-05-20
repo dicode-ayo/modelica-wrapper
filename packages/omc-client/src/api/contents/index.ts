@@ -51,3 +51,4 @@ export * from "./getInitialEquationItemsCount.js";
 export * from "./getNthInitialEquationItem.js";
 export * from "./getImportCount.js";
 export * from "./getNthImport.js";
+export * from "./convertUnits.js";

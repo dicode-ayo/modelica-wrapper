@@ -100,7 +100,7 @@ These mirror the existing `is*` predicates but span **three** argument/output sh
 | `isOperatorRecord` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isOperatorRecord.html) — verified via an `operator record` (+ plain-model counter-example) |
 | `isOptimization` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isOptimization.html) — `optimization` is Optimica grammar; the test enables it via `setCommandLineOptions("+g=Optimica")` before loading the fixture (+ plain-model counter-example) |
 
-## Reading model contents — 50/50 ✅
+## Reading model contents — 51/51 ✅
 
 | Function | Status | Docs |
 |---|---|---|
@@ -154,6 +154,7 @@ These mirror the existing `is*` predicates but span **three** argument/output sh
 | `getNthInitialEquationItem` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getNthInitialEquationItem.html) — n-th individual `initial equation` as a string. |
 | `getImportCount` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getImportCount.html) — verified via a `loadString` fixture with two import-clauses (plain `import Modelica.SIunits;` + renamed `import M = Modelica;`). Issue #43. |
 | `getNthImport` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getNthImport.html) — returns the `[path, id, kind]` 3-tuple; verified against the same fixture. Issue #43. |
+| `convertUnits` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.convertUnits.html) — `convertUnits(s1, s2)` → `(unitsCompatible, scaleFactor, offset)`. Verified live on 1.26.7: `("rad","deg")` → `(true, 0.0174…, 0.0)`, `("degC","K")` → `(true, 1.0, -273.15)`, incompatible/empty units → `false`. OMEdit calls it as `convertUnits(unit, displayUnit)` and applies `(value-offset)/scaleFactor` for label render-time display-unit conversion. Issue #28. |
 
 ## Lifecycle — 16/19
 
@@ -343,7 +344,7 @@ right form; the three comparison wrappers above use it for their optional
 | Category | Covered | Total | Notes |
 |---|---|---|---|
 | Browsing | 42 | 42 | All ✅. Custom fixtures cover `isClass`, `isReplaceable`, `isProtectedClass`, the 9 class-shape predicates (#33: `isConstant`, `isParameter`, `isProtected`, `isRedeclare`, `isPrimitive`, `isOperator`, `isOperatorFunction`, `isOperatorRecord`, `isOptimization`), and the #42 extras (`extendsFrom`, `getAllSubtypeOf`, `classAnnotationExists`, `getNthInheritedClass`, `isShortDefinition`). |
-| Reading model contents | 50 | 50 | All ✅. 2026-05-20: `getImportCount` + `getNthImport` (#43); the two inherited-class map annotations verified (#39); +21 indexed/count readers (#34: component / annotation / algorithm / initial-algorithm / equation / initial-equation families), all ✅ via a rich `loadString` fixture (the leading-`=` modification binding `getNthComponentModification` returns is now handled by `parse.ts`). |
+| Reading model contents | 51 | 51 | All ✅. 2026-05-20: `getImportCount` + `getNthImport` (#43); the two inherited-class map annotations verified (#39); +21 indexed/count readers (#34: component / annotation / algorithm / initial-algorithm / equation / initial-equation families), all ✅ via a rich `loadString` fixture (the leading-`=` modification binding `getNthComponentModification` returns is now handled by `parse.ts`). `convertUnits` added + verified live (#28) for label render-time display-unit conversion. |
 | Lifecycle | 16 | 19 | **`newModel` added + verified 2026-05-20 (#35)** as the migration path off the create* wrappers (nested `model` creation; `withinPath` required — no top-level form). 3 ⛔ remain — `createClass`, `createSubClass` (docs 404 + symbol genuinely absent on 1.26.7), `save` (present but deprecated/unreliable persistence, *not* symbol-missing). **`moveClass` rescued 2026-05-19**: it's an in-place reorder by `Integer offset`, not a TypeName-destination relocate. |
 | Parameters & modifiers | 16 | 16 | **All ✅ as of 2026-05-20 (#36).** The 3 extends-modifier 🟡s verified via a self-contained `extends Base(k = 2.5)` fixture; 4 derived-class / extends wrappers added (`getDerivedClassModifierNames`, `getDerivedClassModifierValue`, `isExtendsModifierFinal`, `setExtendsModifier`). `getExtendsModifierValue` needed a bare-scalar fallback (OMC returns numeric bindings unquoted). **`getParameterValue` wrapper bugfix 2026-05-19**: `parameterName` is a `String`, not a TypeName — the bare-ident form silently returned "" since day one. |
 | Editing | 21 | 21 | All ✅. **`updateConnection` rescued**: arg order + String-quoting fix. **`addTransition`/`deleteTransition` bugfix**: same String-quoting gotcha — they were silently 🟡 broken before. **Issue #37 (2026-05-20)** added `updateConnectionNames` + `updateTransition`; `updateConnectionAnnotation` is intentionally skipped because `updateConnection`'s `annotate` arg already supersedes it. |
@@ -352,7 +353,7 @@ right form; the three comparison wrappers above use it for their optional
 | Solver / runtime config | 13 | 13 | All verified. Now includes 5 getter siblings (`getMatchingAlgorithm`, `getAvailableMatchingAlgorithms`, `getIndexReductionMethod`, `getAvailableIndexReductionMethods`, `getAvailableTearingMethods`) added in #41. |
 | Execution | 9 | 9 | All ✅ via the heavy suite. The FMU pipeline (`buildModelFMU` → `importFMU`) is chained: build the ramp into a `.fmu`, then import it back to a Modelica wrapper. `importFMU` needed a wrapper bugfix on the way — `modelName` is a `TypeName` (bare ident), not a String (see [audit.md §2.10](./audit.md)). |
 | Results | 9 | 9 | All ✅ via [`../test/results-heavy.integration.test.ts`](../test/results-heavy.integration.test.ts) — simulates a tiny ramp model in a `mkdtemp` directory, exercises every results wrapper on the produced `.mat`, cleans up. Gated by `OMC_INTEGRATION_HEAVY=1`. |
-| **Total verified** | **190** | **202** | **94%** ✅. Of the 12 unverified: 3 ⛔ (`createClass`, `createSubClass`, `save` — genuinely missing/deprecated on the pin), 9 🟡 network-only library/package-manager calls (exercised opt-in via `OMC_INTEGRATION_NETWORK=1`). **Audit also identified ~40 documented OMC functions in scope but not yet wrapped — see the 100% coverage epic.** |
+| **Total verified** | **191** | **203** | **94%** ✅. Of the 12 unverified: 3 ⛔ (`createClass`, `createSubClass`, `save` — genuinely missing/deprecated on the pin), 9 🟡 network-only library/package-manager calls (exercised opt-in via `OMC_INTEGRATION_NETWORK=1`). **Audit also identified ~40 documented OMC functions in scope but not yet wrapped — see the 100% coverage epic.** |
 
 ---
 

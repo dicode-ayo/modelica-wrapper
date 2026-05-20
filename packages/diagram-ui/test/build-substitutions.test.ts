@@ -115,4 +115,36 @@ describe("buildSubstitutions", () => {
     );
     expect(subs.parameters?.k).toBe("fromHost");
   });
+
+  it("appends a single array dimension to %name", () => {
+    const subs = buildSubstitutions(
+      makeInstance({ name: "pins", dims: ["3"] }),
+      makeClass(),
+    );
+    expect(subs.name).toBe("pins[3]");
+  });
+
+  it("appends multiple array dimensions joined with ', '", () => {
+    const subs = buildSubstitutions(
+      makeInstance({ name: "grid", dims: ["2", "4"] }),
+      makeClass(),
+    );
+    expect(subs.name).toBe("grid[2, 4]");
+  });
+
+  it("leaves %name unchanged for a scalar component (no dims)", () => {
+    const subs = buildSubstitutions(
+      makeInstance({ name: "sd1" }),
+      makeClass(),
+    );
+    expect(subs.name).toBe("sd1");
+  });
+
+  it("leaves %name unchanged for an empty dims array", () => {
+    const subs = buildSubstitutions(
+      makeInstance({ name: "sd1", dims: [] }),
+      makeClass(),
+    );
+    expect(subs.name).toBe("sd1");
+  });
 });

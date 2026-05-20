@@ -24,6 +24,10 @@ import type { TextSubstitutions } from "@modelica-wrapper/diagram-svg";
  *     from the model source; merged on top of the host-resolved layer.
  *
  * `%name` resolves to `instance.name`, `%class` to `instance.classRef`.
+ * For a vector / matrix component, the array dimensions are appended to
+ * `%name` Modelica-style — `pins` with `dims: ["3"]` renders as `pins[3]`,
+ * `grid` with `dims: ["2", "4"]` as `grid[2, 4]` — matching OMEdit's
+ * `TextAnnotation` (`name.append("[" + typedDims.join(", ") + "]")`).
  * Unknown `%<paramName>` tokens fall through to `""` inside the
  * interpolator — see `interpolateTemplate` for the rationale.
  */
@@ -51,10 +55,21 @@ export function buildSubstitutions(
     parameters[name] = value;
   }
   return {
-    name: instance.name,
+    name: nameWithDims(instance.name, instance.dims),
     class: instance.classRef,
     parameters,
   };
+}
+
+/**
+ * Append a Modelica-shaped array-dimension suffix to a component name.
+ * `("pins", ["3"])` → `"pins[3]"`; `("grid", ["2", "4"])` → `"grid[2, 4]"`.
+ * A scalar component (`dims` absent or empty) returns the name unchanged.
+ * Mirrors OMEdit's `getTypedDimensionsString()` which joins with `", "`.
+ */
+function nameWithDims(name: string, dims: string[] | undefined): string {
+  if (dims === undefined || dims.length === 0) return name;
+  return `${name}[${dims.join(", ")}]`;
 }
 
 /**
