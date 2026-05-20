@@ -27,6 +27,7 @@ import {
   type ComponentParameterRef,
 } from "./component-parameter-form.js";
 import { diffLayouts, lineAnnotation, type LayoutEdit } from "./diff-layout.js";
+import { applyDisplayUnits } from "./display-unit.js";
 import { LibraryBrowserSource } from "./library-source.js";
 import { DiagramPanel } from "./panel.js";
 import {
@@ -582,7 +583,23 @@ async function fetchLayout(
   // layout — gating just defaults to "visible", matching pre-feature
   // behaviour.
   const resolvedParameters = await fetchResolvedParameters(client, className);
-  return diagram.produceDiagramLayout(instance, "diagram", resolvedParameters);
+  const layout = diagram.produceDiagramLayout(
+    instance,
+    "diagram",
+    resolvedParameters,
+  );
+  // Issue #28 (deferred half): render each parameter label in its
+  // `displayUnit` instead of the source `unit`. The webview text path is
+  // synchronous and has no OmcClient, so we convert HOST-SIDE here — where
+  // the client lives — and rewrite `ParameterDef.value` to the display-unit
+  // string the substitution map will read. Best-effort: a convertUnits
+  // throw / incompatible verdict leaves the source value untouched and is
+  // logged by applyDisplayUnits.
+  return applyDisplayUnits(
+    layout,
+    (s1, s2) => client.convertUnits({ s1, s2 }),
+    log.warn,
+  );
 }
 
 async function fetchResolvedParameters(
