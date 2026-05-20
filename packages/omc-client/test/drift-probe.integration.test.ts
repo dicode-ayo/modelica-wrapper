@@ -110,6 +110,12 @@ const probes: Probe[] = [
     cmd: 'createSubClass(MwProbeSub, MwProbeCreate, "model", false, false)' as OmcCommand,
   },
   {
+    label: "save(stdlib TypeName)",
+    wrapper: "lifecycle/save.ts",
+    note: "OMEdit-deprecated; production paths use Option B (listFile + own writer). On 1.26.7 the symbol itself IS resolvable — this probe returns ✓ ok with `true` — but `save` is still marked ⛔ in coverage.md because OMC's own docs deprecate it and we don't rely on it for persistence. A future ✗ here would mean the symbol moved or was removed, not that the wrapper regressed.",
+    cmd: "save(Modelica.Blocks.Math.Sin)" as OmcCommand,
+  },
+  {
     label: "moveClass(docs-correct Integer-offset shape)",
     wrapper: "lifecycle/moveClass.ts",
     note: "Regression watch: this is the in-place reorder by Integer offset (NOT cross-package relocate). Earlier wrapper sent a TypeName here and OMC returned a misleading 'not found in scope' diagnostic; see audit.md §2.10.",
