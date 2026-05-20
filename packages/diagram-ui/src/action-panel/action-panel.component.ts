@@ -5,17 +5,18 @@
  * (typically `<om-graphical-layout>`). Top-right by default; flippable
  * with the `anchor` attribute.
  *
- * Buttons today: Check, Simulate, Parameters. Each is a plain button —
+ * Buttons today: Undo, Check, Simulate, Parameters. Each is a plain button —
  * keyboard accessible, focus-visible, themed against `--vscode-button-*`.
  *
  * Events:
+ *   - `om-action-undo`        — bubbles + composed, no detail
  *   - `om-action-check`       — bubbles + composed, no detail
  *   - `om-action-simulate`    — bubbles + composed, no detail
  *   - `om-action-parameters`  — bubbles + composed, no detail
  *
  * Buttons can be hidden individually via boolean attributes
- * (`hide-check`, `hide-simulate`, `hide-parameters`) so embedders that
- * only want a subset don't have to fork.
+ * (`hide-undo`, `hide-check`, `hide-simulate`, `hide-parameters`) so
+ * embedders that only want a subset don't have to fork.
  */
 
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
@@ -37,6 +38,7 @@ export type ActionPanelAnchor =
  * `(e: CustomEvent<ActionCheckDetail>) => …` and stay consistent with
  * the rest of the event-detail naming convention.
  */
+export type ActionUndoDetail = undefined;
 export type ActionCheckDetail = undefined;
 export type ActionSimulateDetail = undefined;
 export type ActionParametersDetail = undefined;
@@ -47,6 +49,7 @@ export type ActionParametersDetail = undefined;
  * or from the named aliases above.
  */
 export interface ActionPanelEvents {
+  "om-action-undo": ActionUndoDetail;
   "om-action-check": ActionCheckDetail;
   "om-action-simulate": ActionSimulateDetail;
   "om-action-parameters": ActionParametersDetail;
@@ -106,6 +109,7 @@ export class OmActionPanel extends LitElement {
   @property({ type: Boolean, reflect: true })
   disabled = false;
 
+  @property({ type: Boolean, attribute: "hide-undo" }) hideUndo = false;
   @property({ type: Boolean, attribute: "hide-check" }) hideCheck = false;
   @property({ type: Boolean, attribute: "hide-simulate" }) hideSimulate = false;
   @property({ type: Boolean, attribute: "hide-parameters" })
@@ -113,6 +117,16 @@ export class OmActionPanel extends LitElement {
 
   override render(): TemplateResult {
     return html`
+      ${this.hideUndo
+        ? nothing
+        : html`<wa-button
+            size="small"
+            variant="neutral"
+            appearance="outlined"
+            ?disabled=${this.disabled}
+            @click=${() => this.fire("om-action-undo")}
+            title="Undo last diagram edit (diagram-local)"
+          >Undo</wa-button>`}
       ${this.hideCheck
         ? nothing
         : html`<wa-button

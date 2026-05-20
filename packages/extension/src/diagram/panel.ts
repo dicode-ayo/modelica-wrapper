@@ -24,6 +24,8 @@ export interface DiagramPanelHandlers {
     waypoints: ReadonlyArray<readonly [number, number]>,
   ) => void;
   onSelectionChange?: (keys: string[]) => void;
+  /** Floating action panel — Undo button (diagram-local snapshot undo). */
+  onActionUndo?: () => void;
   /** Floating action panel — Check button. */
   onActionCheck?: () => void;
   /** Floating action panel — Simulate button. */
@@ -90,6 +92,21 @@ export class DiagramPanel {
   /** Class name of the currently active diagram, or undefined if none. */
   static activeClassName(): string | undefined {
     return DiagramPanel.activePanel?.className;
+  }
+
+  /**
+   * Trigger the diagram-local undo on the active panel (issue #29). Routes
+   * to the same `onActionUndo` handler the toolbar Undo button fires, so the
+   * `modelica.diagram.undo` command and the button share one code path.
+   *
+   * Returns `false` (no-op) when there's no active diagram panel — the
+   * command surfaces a hint to the user in that case.
+   */
+  static undoActive(): boolean {
+    const panel = DiagramPanel.activePanel;
+    if (!panel?.handlers.onActionUndo) return false;
+    panel.handlers.onActionUndo();
+    return true;
   }
 
   private constructor(
@@ -223,6 +240,9 @@ export class DiagramPanel {
         return;
       case "selectionChange":
         this.handlers.onSelectionChange?.(message.keys);
+        return;
+      case "actionUndo":
+        this.handlers.onActionUndo?.();
         return;
       case "actionCheck":
         this.handlers.onActionCheck?.();
