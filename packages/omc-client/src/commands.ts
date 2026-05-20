@@ -73,6 +73,8 @@ export type OmcFunction =
   | "getInstantiatedParametersAndValues"
   | "getAnnotationNamedModifiers"
   | "getAnnotationModifierValue"
+  | "getImportCount"
+  | "getNthImport"
 
   // --- Source / lifecycle ---
   | "loadFile"
