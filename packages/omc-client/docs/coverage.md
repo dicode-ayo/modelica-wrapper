@@ -4,7 +4,7 @@ Tracks which functions in [`src/registry.ts`](../src/registry.ts) are exercised 
 
 **Pinned OMC version:** `1.26.7` (see [`../src/version.ts`](../src/version.ts)). On 2026-05-19 a deep re-probe of the previously-⛔ wrappers revealed that 4 of them (`removeComponentModifiers`, `updateConnection`, `moveClass`, plus the newly-added `getReplaceableChoices`) were wrapper-side bugs — wrong argument shape masked by OMC's misleading "Class X not found in scope" diagnostic. See [audit.md §2.10](./audit.md) for the gotcha. After fixing the call shapes, those wrappers + state-machine mutators are now ✅ on 1.26.7. Only `createClass`, `createSubClass`, and `save` remain genuinely ⛔ (docs 404). Same session: added 4 results wrappers (filter / compare / delta / diff) and a heavy integration test that exercises every results wrapper against a real `.mat` file simulated inside a temp directory.
 **Last updated:** 2026-05-20.
-**Current coverage:** **150 wrappers in package; 135 ✅ verified end-to-end, 12 🟡 cheap unverified, 3 ⛔ broken on pin (90% verified).** A 2026-05-20 audit also identified ~40 documented OMC scripting functions in scope that are not yet wrapped — see the [100% coverage epic](https://github.com/dicode-ayo/modelica-wrapper/issues?q=is%3Aissue+label%3Aepic+label%3Aomc-coverage) for the plan to close that gap. Recent verification jumps came from clearing the Tier-A `it.todo` backlog (niche class predicates, contents readers, element readers; `getParameterValue` String-quoting bug surfaced) followed by a second pass on Tier-B mutations + connector-fixture tests (isClass / isReplaceable / isProtectedClass, getConnectorCount + getNthConnector*, setElementType, setElementModifierValue, removeElementModifiers).
+**Current coverage:** **153 wrappers in package; 135 ✅ verified end-to-end, 15 🟡 cheap unverified, 3 ⛔ broken on pin (88% verified).** 2026-05-20: added 3 library version-conversion wrappers (`getConversionsFromVersions`, `getAvailablePackageConversionsFrom`, `getAvailablePackageConversionsTo`) and gated all 9 library/network wrappers behind a new opt-in `OMC_INTEGRATION_NETWORK=1` env var so the package-index calls can be exercised on demand without flaking CI; see the Library section below for details. A 2026-05-20 audit also identified ~40 documented OMC scripting functions in scope that are not yet wrapped — see the [100% coverage epic](https://github.com/dicode-ayo/modelica-wrapper/issues?q=is%3Aissue+label%3Aepic+label%3Aomc-coverage) for the plan to close that gap. Recent verification jumps came from clearing the Tier-A `it.todo` backlog (niche class predicates, contents readers, element readers; `getParameterValue` String-quoting bug surfaced) followed by a second pass on Tier-B mutations + connector-fixture tests (isClass / isReplaceable / isProtectedClass, getConnectorCount + getNthConnector*, setElementType, setElementModifierValue, removeElementModifiers).
 
 > Run `pnpm --filter @modelica-wrapper/omc-client test` to exercise the integration suite. It auto-skips when `omc` isn't on PATH.
 
@@ -180,19 +180,38 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `setElementType` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setElementType.html) | Verified — change `Real k` → `Integer k` via the FULL dotted element path `Pkg.Sample.k` (NOT the class name + separate element). |
 | `removeElementModifiers` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.removeElementModifiers.html) | Verified — clears `gain.k = 2.5` on a typed sub-component; `componentName` (not `elementName`) is a `String` per docs and must be quoted. |
 
-## Library / package management — 3/9
+## Library / package management — 3/12
 
 | Function | Status | Docs | Notes |
 |---|---|---|---|
-| `getAvailableLibraries` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getAvailableLibraries.html) | Network query; not exercised in CI. |
-| `getAvailableLibraryVersions` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getAvailableLibraryVersions.html) | Same. |
-| `getAvailablePackageVersions` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getAvailablePackageVersions.html) | Same. |
-| `installPackage` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.installPackage.html) | Side-effecting + network; not exercised in CI. |
-| `updatePackageIndex` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.updatePackageIndex.html) | Same. |
-| `upgradeInstalledPackages` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.upgradeInstalledPackages.html) | Same. |
+| `getAvailableLibraries` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getAvailableLibraries.html) | Network query. Covered by [`../test/library-network.integration.test.ts`](../test/library-network.integration.test.ts) (gated by `OMC_INTEGRATION_NETWORK=1`; CI keeps it off). |
+| `getAvailableLibraryVersions` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getAvailableLibraryVersions.html) | Same gate. |
+| `getAvailablePackageVersions` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getAvailablePackageVersions.html) | Same gate. |
+| `getAvailablePackageConversionsFrom` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getAvailablePackageConversionsFrom.html) | Added 2026-05-20. Network query — same `OMC_INTEGRATION_NETWORK=1` gate. |
+| `getAvailablePackageConversionsTo` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getAvailablePackageConversionsTo.html) | Added 2026-05-20. Same gate. Output field is OMC-verbatim `convertsTo` (matches the `…From` variant). |
+| `getConversionsFromVersions` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getConversionsFromVersions.html) | Added 2026-05-20. Two-array partition output `(withoutConversion, withConversion)` — same paren-tuple shape as `diffSimulationResults`. Same gate. |
+| `installPackage` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.installPackage.html) | Side-effecting + network. Same gate. |
+| `updatePackageIndex` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.updatePackageIndex.html) | Same gate. |
+| `upgradeInstalledPackages` | 🟡 | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.upgradeInstalledPackages.html) | Same gate. |
 | `getLoadedLibraries` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getLoadedLibraries.html) | |
 | `getPackages` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getPackages.html) | |
 | `loadFiles` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.loadFiles.html) | Verified — writes two temp `.mo` files, loads both in a single call, asserts each class is in OMC's symbol table. |
+
+**Network-gated wrappers.** The 9 🟡 rows above are exercised opt-in by
+[`../test/library-network.integration.test.ts`](../test/library-network.integration.test.ts).
+Run with:
+
+```sh
+OMC_INTEGRATION_NETWORK=1 pnpm --filter @modelica-wrapper/omc-client \
+  vitest run test/library-network.integration.test.ts
+```
+
+The gate is intentionally off in CI — the OMC package-index endpoint
+(`libraries.openmodelica.org`) isn't always reachable from CI runners,
+and a flake there would mask wrapper-side regressions. The suite is
+kept as 🟡 (not promoted to ✅) because it's never run in the default
+verification path; promotion requires either flipping the gate on in CI
+or moving to a mocked-index fixture server.
 
 ## Solver / runtime config — 8/8 ✅
 
@@ -262,11 +281,11 @@ right form; the three comparison wrappers above use it for their optional
 | Parameters & modifiers | 9 | 12 | 3 🟡 remain (`getExtendsModifierNames`, `getExtendsModifierValue`, `setExtendsModifierValue` — all need an `extends Foo(k=2)` fixture). **`getParameterValue` wrapper bugfix 2026-05-19**: `parameterName` is a `String`, not a TypeName — the bare-ident form silently returned "" since day one. |
 | Editing | 19 | 19 | All ✅. **`updateConnection` rescued**: arg order + String-quoting fix. **`addTransition`/`deleteTransition` bugfix**: same String-quoting gotcha — they were silently 🟡 broken before. |
 | Elements | 10 | 11 | Only `setElementAnnotation` remains 🟡 — OMC 1.26.7 accepts the call but the annotation always gets cleared rather than replaced, regardless of `$Code` shape (no working payload found). |
-| Library | 3 | 9 | The 6 package-manager network calls remain 🟡 (intentionally not in CI). |
+| Library | 3 | 12 | The 9 package-manager / version-conversion calls remain 🟡 — all 9 are exercised on demand by [`../test/library-network.integration.test.ts`](../test/library-network.integration.test.ts), gated by `OMC_INTEGRATION_NETWORK=1`. Intentionally off in CI to avoid package-index reachability flakes. |
 | Solver / runtime config | 8 | 8 | All verified. |
 | Execution | 9 | 9 | All ✅ via the heavy suite. The FMU pipeline (`buildModelFMU` → `importFMU`) is chained: build the ramp into a `.fmu`, then import it back to a Modelica wrapper. `importFMU` needed a wrapper bugfix on the way — `modelName` is a `TypeName` (bare ident), not a String (see [audit.md §2.10](./audit.md)). |
 | Results | 9 | 9 | All ✅ via [`../test/results-heavy.integration.test.ts`](../test/results-heavy.integration.test.ts) — simulates a tiny ramp model in a `mkdtemp` directory, exercises every results wrapper on the produced `.mat`, cleans up. Gated by `OMC_INTEGRATION_HEAVY=1`. |
-| **Total verified** | **135** | **150** | **90%** ✅. Of the 15 unverified: 3 ⛔ (`createClass`, `createSubClass`, `save` — genuinely missing/deprecated on the pin), 1 🟡 OMC-side bug (`setElementAnnotation`), 2 🟡 inherited-class map annotations, 3 🟡 extends-modifier readers/writer (need fixture), 6 🟡 network-only package-manager calls. **Audit also identified ~40 documented OMC functions in scope but not yet wrapped — see the 100% coverage epic.** |
+| **Total verified** | **135** | **153** | **88%** ✅. Of the 18 unverified: 3 ⛔ (`createClass`, `createSubClass`, `save` — genuinely missing/deprecated on the pin), 1 🟡 OMC-side bug (`setElementAnnotation`), 2 🟡 inherited-class map annotations, 3 🟡 extends-modifier readers/writer (need fixture), 9 🟡 network-only library/package-manager calls (all 9 are exercised opt-in via `OMC_INTEGRATION_NETWORK=1`). **Audit also identified ~40 documented OMC functions in scope but not yet wrapped — see the 100% coverage epic.** |
 
 ---
 

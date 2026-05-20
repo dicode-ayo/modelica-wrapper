@@ -290,6 +290,19 @@ Open `packages/omc-client/src/client.ts`. Verify:
 - [ ] If the function is reasonably testable against a loaded `Modelica` package without side effects (browsing, contents, parameter readers, solver getters, isExperiment, getSimulationOptions, checkModel), check whether `packages/omc-client/test/integration.test.ts` exercises it.
 - Heavy or destructive operations (`buildModel`, `simulate`, `buildModelFMU`, `importFMU`, all of `editing/*`, `lifecycle/saveOrCreate*`, results/*) are intentionally NOT in integration tests yet. Note their absence as **expected** in the report.
 
+**Opt-in test gates.** Several wrappers are exercised by integration
+suites that stay off in CI and only run when the matching env var is set:
+
+| Env var | Suite | Why opt-in |
+|---|---|---|
+| `OMC_INTEGRATION_HEAVY=1` | `test/results-heavy.integration.test.ts` | Translates + builds + simulates a tiny ramp model through the C toolchain; ~5–10 s wall-clock, too slow for every push. |
+| `OMC_INTEGRATION_NETWORK=1` | `test/library-network.integration.test.ts` | Talks to OMC's external package index (`libraries.openmodelica.org`). Flakes on runners with intermittent egress would mask wrapper-side regressions. Covers the 9 library/package-manager wrappers. |
+| `OMC_DRIFT_PROBE=1` | `test/drift-probe.integration.test.ts` | Ground-truth ✓/✗ probe for every ⛔ wrapper at the current OMC version; run by `omc-update-audit` on Renovate bump PRs. |
+
+When auditing, skip integration-coverage flags on functions covered only
+by an opt-in suite — mark them **gated** with the env var name rather
+than 🟡 (since they ARE tested, just not in the default verification path).
+
 ---
 
 ## 4. Known intentional divergences (do NOT report as bugs)
