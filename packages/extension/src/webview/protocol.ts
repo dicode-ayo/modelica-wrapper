@@ -60,6 +60,10 @@ export interface LibraryClassInfo {
  *   - `editComponent`       — user double-clicked a sub-component on the
  *                             diagram and wants its parameter modal.
  *   - `parametersSubmit` / `parametersCancel` — parameter modal.
+ *   - `resetComponentParameters` — user hit the modal's "Reset to
+ *                             defaults" button (component params only);
+ *                             the host bulk-clears the sub-component's
+ *                             modifiers and re-opens the refreshed form.
  *   - `addComponent`        — user picked a class in the library
  *                             browser and we want to instantiate it
  *                             into the active diagram at `position`.
@@ -133,6 +137,18 @@ export type WebviewToExtension =
       values: Record<string, unknown>;
     }
   | { type: "parametersCancel"; kind: string }
+  | {
+      /**
+       * "Reset to defaults" pressed in the component parameter modal.
+       * `componentName` is the sub-component instance whose modifiers the
+       * host should bulk-clear via `removeElementModifiers` before
+       * re-opening the modal with the refreshed (defaulted) values. Only
+       * dispatched for the `componentParams` modal — the class-level form
+       * has no reset affordance.
+       */
+      type: "resetComponentParameters";
+      componentName: string;
+    }
   | {
       type: "addComponent";
       className: string;

@@ -398,6 +398,77 @@ export async function openDiagram(
     onParametersCancel: (kind) => {
       log.info("parametersCancel", `kind=${kind}`);
     },
+    onResetComponentParameters: async (componentName) => {
+      // Bulk-clear the sub-component's modifiers (one RPC,
+      // keepRedeclares=true) then refresh the model so the modal can
+      // re-render with the type defaults the reset just exposed.
+      const ok = await resetComponentParameters(
+        client,
+        className,
+        componentName,
+      );
+      if (!ok) {
+        // Clear failed — `resetComponentParameters` already logged +
+        // toasted. Leave the modal as-is so the user keeps their context.
+        return;
+      }
+      try {
+        prevLayout = await fetchLayout(client, className);
+        panel.update(prevLayout);
+      } catch (err) {
+        log.error(
+          "componentResetRefetch",
+          `failed for ${className}`,
+          err,
+        );
+      }
+      // Re-open the component modal so its fields show the cleared
+      // (defaulted) values. Re-derive the form from a fresh model
+      // instance — same build path as onEditComponent — and refresh the
+      // submit-translator closure state so a subsequent Apply diffs
+      // against the post-reset baseline, not the stale pre-reset one.
+      try {
+        const instance = await fetchModelInstance(client, className);
+        const component = findSubComponent(instance, componentName);
+        if (!component) {
+          // The component vanished (shouldn't happen for a reset) — the
+          // layout refresh above already reflects reality; just close.
+          panel.closeParameters();
+          return;
+        }
+        const form = buildComponentParameterForm(component);
+        if (!form) {
+          // No editable scalar params left after reset — nothing to
+          // re-open; close so the modal doesn't strand empty.
+          panel.closeParameters();
+          return;
+        }
+        componentParamRefs = form.refs;
+        componentParamInitialValues = form.values;
+        componentParamComponentName = form.componentName;
+        const typeName =
+          typeof component.type === "object" && component.type !== null
+            ? component.type.name
+            : String(component.type ?? "");
+        panel.openParameters({
+          kind: "componentParams",
+          schema: form.schema,
+          values: form.values,
+          title: `Parameters: ${componentName}${typeName ? ` (${typeName})` : ""}`,
+          submitLabel: "Apply",
+          crefPrefix: componentName,
+        });
+      } catch (err) {
+        log.error(
+          "componentResetReopen",
+          `failed for ${className}.${componentName}`,
+          err,
+        );
+        void vscode.window.showErrorMessage(
+          `Modelica: reset ${componentName} succeeded but re-opening the panel failed: ${(err as Error).message}`,
+        );
+      }
+    },
     // ── Library browser ────────────────────────────────────────────────
     onLibraryListChildren: (parent) => librarySource.listChildren(parent),
     onLibrarySearch: (query) => librarySource.searchAll(query),
@@ -946,6 +1017,65 @@ async function applyComponentParameterEdits(
     void vscode.window.showWarningMessage(
       `Modelica: ${failures.length} parameter edit(s) failed — ${failures[0]}`,
     );
+  }
+}
+
+/**
+ * "Reset to defaults" for a sub-component: bulk-clear every modifier on
+ * `componentName` with one `removeElementModifiers(..., keepRedeclares=
+ * true)` (issue #30). `keepRedeclares=true` strips parameter-value
+ * modifiers while preserving any `redeclare` type substitutions — the
+ * reset-values-but-keep-the-substituted-type semantics OMEdit uses.
+ *
+ * Returns OMC's `success` flag so the caller can decide whether to
+ * refresh the modal. Mirrors `applyComponentParameterEdits`' fast-path
+ * REPL-log + warning-toast policy: drain stale errors first, log the
+ * exact `client.lastCall` on completion, and surface a `false`/throw via
+ * both the REPL transcript and a single warning toast.
+ *
+ * Pure of the panel object (takes only the client) so it's unit-testable
+ * with a mock `OmcClient`; the handler below wires it to the re-fetch +
+ * re-open dance.
+ *
+ * Exported for the unit test — not part of the command's public surface.
+ */
+export async function resetComponentParameters(
+  client: OmcClient,
+  className: string,
+  componentName: string,
+): Promise<boolean> {
+  let label = `removeElementModifiers ${className} ${componentName}`;
+  try {
+    // Drain stale errors so any errorString we read on failure is
+    // strictly attributable to this reset (mirrors the submit path).
+    await client.getErrorString();
+    const success = await clearComponentModifiers(
+      client,
+      className,
+      componentName,
+      { keepRedeclares: true },
+    );
+    if (client.lastCall) label = client.lastCall;
+    const replLog = createReplLog(label);
+    if (success) {
+      replLog.success(`reset ${componentName} (cleared all modifiers)`);
+      return true;
+    }
+    const { errorString } = await client.getErrorString();
+    const reason = errorString.trim() || "OMC returned success=false.";
+    replLog.error(reason);
+    void vscode.window.showWarningMessage(
+      `Modelica: reset ${componentName} failed — ${reason}`,
+    );
+    return false;
+  } catch (err) {
+    if (client.lastCall) label = client.lastCall;
+    const msg = (err as Error).message;
+    createReplLog(label).error(msg);
+    void vscode.window.showWarningMessage(
+      `Modelica: reset ${componentName} failed — ${msg}`,
+    );
+    return false;
   }
 }
 

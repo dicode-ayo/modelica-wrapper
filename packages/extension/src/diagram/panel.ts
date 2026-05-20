@@ -36,6 +36,12 @@ export interface DiagramPanelHandlers {
   onParametersSubmit?: (kind: string, values: Record<string, unknown>) => void;
   /** Parameter modal dismissed without submit. */
   onParametersCancel?: (kind: string) => void;
+  /**
+   * "Reset to defaults" pressed in the component parameter modal. The
+   * host bulk-clears `componentName`'s modifiers, then re-fetches and
+   * re-opens the modal with the refreshed values.
+   */
+  onResetComponentParameters?: (componentName: string) => void;
   /** User double-clicked a sub-component on the diagram. */
   onEditComponent?: (componentName: string) => void;
   /**
@@ -258,6 +264,9 @@ export class DiagramPanel {
         return;
       case "parametersCancel":
         this.handlers.onParametersCancel?.(message.kind);
+        return;
+      case "resetComponentParameters":
+        this.handlers.onResetComponentParameters?.(message.componentName);
         return;
       case "addComponent":
         this.handlers.onAddComponent?.(message.className, message.position);
