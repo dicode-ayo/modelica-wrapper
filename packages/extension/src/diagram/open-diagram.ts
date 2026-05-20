@@ -4,6 +4,7 @@ import {
   asString,
   diagram,
   type DiagramLayout,
+  type JsonSchema,
   type ModelInstance,
   type Value,
 } from "@modelica-wrapper/omc-client";
@@ -29,6 +30,7 @@ import {
 } from "./component-parameter-form.js";
 import { diffLayouts, lineAnnotation, type LayoutEdit } from "./diff-layout.js";
 import { applyDisplayUnits } from "./display-unit.js";
+import { enrichUnitOptions } from "./unit-options.js";
 import { LibraryBrowserSource } from "./library-source.js";
 import { captureSnapshot, restoreSnapshot } from "./omc-snapshot.js";
 import { DiagramPanel } from "./panel.js";
@@ -276,6 +278,11 @@ export async function openDiagram(
         componentParamRefs = form.refs;
         componentParamInitialValues = form.values;
         componentParamComponentName = form.componentName;
+        // Enrich the schema host-side with each unit-bearing field's
+        // derived-unit option list + pre-computed conversion factors, so
+        // the webview can render the unit dropdown and convert the shown
+        // value locally (no per-change OMC round-trip). Best-effort.
+        await enrichFormUnitOptions(client, form.schema);
         const typeName =
           typeof component.type === "object" && component.type !== null
             ? component.type.name
@@ -315,6 +322,7 @@ export async function openDiagram(
         }
         classParamRefs = form.refs;
         classParamInitialValues = form.values;
+        await enrichFormUnitOptions(client, form.schema);
         panel.openParameters({
           kind: "classParams",
           schema: form.schema,
@@ -756,6 +764,36 @@ async function fetchLayout(
     (s1, s2) => client.convertUnits({ s1, s2 }),
     log.warn,
   );
+}
+
+/**
+ * Enrich a parameter-form schema with unit option lists + conversion
+ * factors, backed by the live `OmcClient` (`getDerivedUnits` /
+ * `convertUnits`). Best-effort — `enrichUnitOptions` swallows per-field
+ * resolver failures and falls back to a static suffix, so a flaky OMC
+ * leaves units visible rather than crashing the modal. Mutates `schema`
+ * in place (freshly built per modal-open).
+ */
+async function enrichFormUnitOptions(
+  client: OmcClient,
+  schema: JsonSchema,
+): Promise<void> {
+  try {
+    await enrichUnitOptions(
+      schema,
+      async (unit) => (await client.getDerivedUnits({ baseUnit: unit })).derivedUnits,
+      (s1, s2) => client.convertUnits({ s1, s2 }),
+      log.warn,
+    );
+  } catch (err) {
+    // Whole-pass failure (shouldn't happen — the helper is internally
+    // best-effort) still mustn't block opening the form.
+    log.warn(
+      "enrichFormUnitOptions",
+      "unit-option enrichment failed; form opens without unit dropdowns",
+      err instanceof Error ? err.message : err,
+    );
+  }
 }
 
 async function fetchResolvedParameters(

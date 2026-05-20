@@ -29,6 +29,7 @@ import {
   resolvePrimitive,
   stripPrefix,
   typeQualifiedName,
+  unitSchemaExt,
   unquoteString,
   valueToExpr,
   type DialogInfo,
@@ -205,6 +206,7 @@ function buildField(
     const schema: JsonSchema = {
       type: primitive,
       ...dialogSchemaExt(dialog),
+      ...unitSchemaExt(el),
     };
     if (description) schema.description = description;
     return {

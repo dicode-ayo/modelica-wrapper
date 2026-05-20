@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { Expression } from "@modelica-wrapper/omc-client";
+import type { Expression, JsonSchema } from "@modelica-wrapper/omc-client";
 
 import {
   buildEnableScope,
@@ -84,6 +84,66 @@ describe("parameterFieldsFromSchema — top-level vocabulary", () => {
     expect(byName.get("a")?.required).toBe(true);
     expect(byName.get("b")?.required).toBe(false);
     expect(byName.get("c")?.required).toBe(false);
+  });
+
+  it("threads unit / displayUnit / unitOptions from the x-modelica-* keys", () => {
+    const f = parameterFieldsFromSchema({
+      type: "object",
+      properties: {
+        phi: {
+          type: "number",
+          "x-modelica-unit": "rad",
+          "x-modelica-display-unit": "deg",
+          "x-modelica-unit-options": [
+            { unit: "rad", scaleFactor: 1, offset: 0 },
+            { unit: "deg", scaleFactor: 0.017453292519943295, offset: 0 },
+          ],
+        },
+        J: {
+          type: "number",
+          "x-modelica-unit": "kg.m2",
+          "x-modelica-unit-options": [{ unit: "kg.m2", scaleFactor: 1, offset: 0 }],
+        },
+        plain: { type: "number" },
+      },
+    } as unknown as JsonSchema);
+    const byName = new Map(f.map((x) => [x.name, x]));
+    const phi = byName.get("phi")!;
+    expect(phi.unit).toBe("rad");
+    expect(phi.displayUnit).toBe("deg");
+    expect(phi.unitOptions).toEqual([
+      { unit: "rad", scaleFactor: 1, offset: 0 },
+      { unit: "deg", scaleFactor: 0.017453292519943295, offset: 0 },
+    ]);
+    const j = byName.get("J")!;
+    expect(j.unit).toBe("kg.m2");
+    expect(j.displayUnit).toBeUndefined();
+    expect(j.unitOptions).toEqual([{ unit: "kg.m2", scaleFactor: 1, offset: 0 }]);
+    const plain = byName.get("plain")!;
+    expect(plain.unit).toBeUndefined();
+    expect(plain.unitOptions).toEqual([]);
+  });
+
+  it("drops malformed entries from x-modelica-unit-options", () => {
+    const f = parameterFieldsFromSchema({
+      type: "object",
+      properties: {
+        x: {
+          type: "number",
+          "x-modelica-unit": "m",
+          "x-modelica-unit-options": [
+            { unit: "m", scaleFactor: 1, offset: 0 },
+            { scaleFactor: 2 }, // no unit → dropped
+            { unit: "km", scaleFactor: "bad", offset: 0 }, // bad factor → defaulted to 1
+            "garbage",
+          ],
+        },
+      },
+    } as unknown as JsonSchema);
+    expect(f[0]?.unitOptions).toEqual([
+      { unit: "m", scaleFactor: 1, offset: 0 },
+      { unit: "km", scaleFactor: 1, offset: 0 },
+    ]);
   });
 
   it("threads description + defaultValue through", () => {
