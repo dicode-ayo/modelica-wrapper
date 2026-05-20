@@ -172,6 +172,20 @@ const probes: Probe[] = [
     note: "Counter-example: should ✗ because componentName is String-typed, not a TypeName.",
     cmd: "removeComponentModifiers(Modelica.Blocks.Examples.PID_Controller, PI, false)" as OmcCommand,
   },
+
+  // ----- Elements: setElementAnnotation — currently ✅ after dropping `=` -----
+  {
+    label: "setElementAnnotation(docs-correct $Code((<expr>)) shape)",
+    wrapper: "elements/setElementAnnotation.ts",
+    note: "Regression watch: OMEdit (Element.cpp) wraps as `$Code((<expr>))` — DOUBLE parens, no leading `=`. The leading-`=` shape `$Code(=<expr>)` was silently destructive on OMC 1.26.7 (returns true but clears the annotation). Fixed in #38; see audit.md §2.10.",
+    cmd: 'setElementAnnotation(Modelica.Blocks.Examples.PID_Controller.PI, $Code((Placement(visible=true))))' as OmcCommand,
+  },
+  {
+    label: "setElementAnnotation(OLD leading-= shape — silently CLEARS, returns true)",
+    wrapper: "elements/setElementAnnotation.ts",
+    note: "Counter-example: should still return true on 1.26.7 but with destructive behavior — the annotation gets cleared from the source instead of replaced. The probe classifies this as ✓ ok because OMC reports success, but the wrapper no longer emits this shape. If a future OMC starts replacing (not clearing) on this shape, both shapes are safe and the wrapper convention can be loosened.",
+    cmd: 'setElementAnnotation(Modelica.Blocks.Examples.PID_Controller.PI, $Code(=Placement(visible=true)))' as OmcCommand,
+  },
 ];
 
 /**

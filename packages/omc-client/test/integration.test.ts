@@ -867,11 +867,11 @@ end ${pkg};
   // (getConnectorCount / getNthConnector / getNthConnectorIconAnnotation
   //  now covered in mutations.integration.test.ts "connectors" describe.)
 
-  // (setElementModifierValue / setElementType / removeElementModifiers now
-  //  covered in mutations.integration.test.ts "element mutations" describe.)
-  it.todo(
-    "setElementAnnotation: OMC 1.26.7 accepts `$Code(=Dialog(...))` (returns true) but the annotation is cleared from the source instead of replaced; needs OMC-side investigation to know the correct payload shape (no shape tested actually persists)",
-  );
+  // (setElementModifierValue / setElementType / removeElementModifiers /
+  //  setElementAnnotation now covered in mutations.integration.test.ts
+  //  "element mutations" describe. setElementAnnotation needed a wrapper
+  //  fix in #38: the payload is `$Code((<expr>))` per OMEdit, not the
+  //  leading-`=` `$Code(=<expr>)` which silently cleared the annotation.)
 
   // library — package manager calls hit the network
   it.todo(
