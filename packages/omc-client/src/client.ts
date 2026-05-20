@@ -336,6 +336,60 @@ export class OmcClient implements CallContext {
     return browsing.isEnumeration(this, input);
   }
 
+  isConstant(
+    input: browsing.IsConstantInput,
+  ): Promise<browsing.IsConstantOutput> {
+    return browsing.isConstant(this, input);
+  }
+
+  isParameter(
+    input: browsing.IsParameterInput,
+  ): Promise<browsing.IsParameterOutput> {
+    return browsing.isParameter(this, input);
+  }
+
+  isProtected(
+    input: browsing.IsProtectedInput,
+  ): Promise<browsing.IsProtectedOutput> {
+    return browsing.isProtected(this, input);
+  }
+
+  isRedeclare(
+    input: browsing.IsRedeclareInput,
+  ): Promise<browsing.IsRedeclareOutput> {
+    return browsing.isRedeclare(this, input);
+  }
+
+  isPrimitive(
+    input: browsing.IsPrimitiveInput,
+  ): Promise<browsing.IsPrimitiveOutput> {
+    return browsing.isPrimitive(this, input);
+  }
+
+  isOperator(
+    input: browsing.IsOperatorInput,
+  ): Promise<browsing.IsOperatorOutput> {
+    return browsing.isOperator(this, input);
+  }
+
+  isOperatorFunction(
+    input: browsing.IsOperatorFunctionInput,
+  ): Promise<browsing.IsOperatorFunctionOutput> {
+    return browsing.isOperatorFunction(this, input);
+  }
+
+  isOperatorRecord(
+    input: browsing.IsOperatorRecordInput,
+  ): Promise<browsing.IsOperatorRecordOutput> {
+    return browsing.isOperatorRecord(this, input);
+  }
+
+  isOptimization(
+    input: browsing.IsOptimizationInput,
+  ): Promise<browsing.IsOptimizationOutput> {
+    return browsing.isOptimization(this, input);
+  }
+
   getEnumerationLiterals(
     input: browsing.GetEnumerationLiteralsInput,
   ): Promise<browsing.GetEnumerationLiteralsOutput> {
@@ -346,6 +400,36 @@ export class OmcClient implements CallContext {
     input: browsing.GetReplaceableChoicesInput,
   ): Promise<browsing.GetReplaceableChoicesOutput> {
     return browsing.getReplaceableChoices(this, input);
+  }
+
+  extendsFrom(
+    input: browsing.ExtendsFromInput,
+  ): Promise<browsing.ExtendsFromOutput> {
+    return browsing.extendsFrom(this, input);
+  }
+
+  getAllSubtypeOf(
+    input: browsing.GetAllSubtypeOfInput,
+  ): Promise<browsing.GetAllSubtypeOfOutput> {
+    return browsing.getAllSubtypeOf(this, input);
+  }
+
+  classAnnotationExists(
+    input: browsing.ClassAnnotationExistsInput,
+  ): Promise<browsing.ClassAnnotationExistsOutput> {
+    return browsing.classAnnotationExists(this, input);
+  }
+
+  getNthInheritedClass(
+    input: browsing.GetNthInheritedClassInput,
+  ): Promise<browsing.GetNthInheritedClassOutput> {
+    return browsing.getNthInheritedClass(this, input);
+  }
+
+  isShortDefinition(
+    input: browsing.IsShortDefinitionInput,
+  ): Promise<browsing.IsShortDefinitionOutput> {
+    return browsing.isShortDefinition(this, input);
   }
 
   // === Reading model contents =========================================
@@ -510,6 +594,144 @@ export class OmcClient implements CallContext {
     return contents.getAnnotationModifierValue(this, input);
   }
 
+  getComponentCount(
+    input: contents.GetComponentCountInput,
+  ): Promise<contents.GetComponentCountOutput> {
+    return contents.getComponentCount(this, input);
+  }
+
+  getNthComponent(
+    input: contents.GetNthComponentInput,
+  ): Promise<contents.GetNthComponentOutput> {
+    return contents.getNthComponent(this, input);
+  }
+
+  getNthComponentAnnotation(
+    input: contents.GetNthComponentAnnotationInput,
+  ): Promise<contents.GetNthComponentAnnotationOutput> {
+    return contents.getNthComponentAnnotation(this, input);
+  }
+
+  getNthComponentCondition(
+    input: contents.GetNthComponentConditionInput,
+  ): Promise<contents.GetNthComponentConditionOutput> {
+    return contents.getNthComponentCondition(this, input);
+  }
+
+  getNthComponentModification(
+    input: contents.GetNthComponentModificationInput,
+  ): Promise<contents.GetNthComponentModificationOutput> {
+    return contents.getNthComponentModification(this, input);
+  }
+
+  getAnnotationCount(
+    input: contents.GetAnnotationCountInput,
+  ): Promise<contents.GetAnnotationCountOutput> {
+    return contents.getAnnotationCount(this, input);
+  }
+
+  getNthAnnotationString(
+    input: contents.GetNthAnnotationStringInput,
+  ): Promise<contents.GetNthAnnotationStringOutput> {
+    return contents.getNthAnnotationString(this, input);
+  }
+
+  getAlgorithmCount(
+    input: contents.GetAlgorithmCountInput,
+  ): Promise<contents.GetAlgorithmCountOutput> {
+    return contents.getAlgorithmCount(this, input);
+  }
+
+  getNthAlgorithm(
+    input: contents.GetNthAlgorithmInput,
+  ): Promise<contents.GetNthAlgorithmOutput> {
+    return contents.getNthAlgorithm(this, input);
+  }
+
+  getAlgorithmItemsCount(
+    input: contents.GetAlgorithmItemsCountInput,
+  ): Promise<contents.GetAlgorithmItemsCountOutput> {
+    return contents.getAlgorithmItemsCount(this, input);
+  }
+
+  getNthAlgorithmItem(
+    input: contents.GetNthAlgorithmItemInput,
+  ): Promise<contents.GetNthAlgorithmItemOutput> {
+    return contents.getNthAlgorithmItem(this, input);
+  }
+
+  getInitialAlgorithmCount(
+    input: contents.GetInitialAlgorithmCountInput,
+  ): Promise<contents.GetInitialAlgorithmCountOutput> {
+    return contents.getInitialAlgorithmCount(this, input);
+  }
+
+  getNthInitialAlgorithm(
+    input: contents.GetNthInitialAlgorithmInput,
+  ): Promise<contents.GetNthInitialAlgorithmOutput> {
+    return contents.getNthInitialAlgorithm(this, input);
+  }
+
+  getInitialAlgorithmItemsCount(
+    input: contents.GetInitialAlgorithmItemsCountInput,
+  ): Promise<contents.GetInitialAlgorithmItemsCountOutput> {
+    return contents.getInitialAlgorithmItemsCount(this, input);
+  }
+
+  getNthInitialAlgorithmItem(
+    input: contents.GetNthInitialAlgorithmItemInput,
+  ): Promise<contents.GetNthInitialAlgorithmItemOutput> {
+    return contents.getNthInitialAlgorithmItem(this, input);
+  }
+
+  getNthEquation(
+    input: contents.GetNthEquationInput,
+  ): Promise<contents.GetNthEquationOutput> {
+    return contents.getNthEquation(this, input);
+  }
+
+  getNthEquationItem(
+    input: contents.GetNthEquationItemInput,
+  ): Promise<contents.GetNthEquationItemOutput> {
+    return contents.getNthEquationItem(this, input);
+  }
+
+  getInitialEquationCount(
+    input: contents.GetInitialEquationCountInput,
+  ): Promise<contents.GetInitialEquationCountOutput> {
+    return contents.getInitialEquationCount(this, input);
+  }
+
+  getNthInitialEquation(
+    input: contents.GetNthInitialEquationInput,
+  ): Promise<contents.GetNthInitialEquationOutput> {
+    return contents.getNthInitialEquation(this, input);
+  }
+
+  getInitialEquationItemsCount(
+    input: contents.GetInitialEquationItemsCountInput,
+  ): Promise<contents.GetInitialEquationItemsCountOutput> {
+    return contents.getInitialEquationItemsCount(this, input);
+  }
+
+  getNthInitialEquationItem(
+    input: contents.GetNthInitialEquationItemInput,
+  ): Promise<contents.GetNthInitialEquationItemOutput> {
+    return contents.getNthInitialEquationItem(this, input);
+  }
+
+  getImportCount(
+    input: contents.GetImportCountInput,
+  ): Promise<contents.GetImportCountOutput> {
+    return contents.getImportCount(this, input);
+  }
+
+  getNthImport(
+    input: contents.GetNthImportInput,
+  ): Promise<contents.GetNthImportOutput> {
+    return contents.getNthImport(this, input);
+  }
+
   // === Lifecycle =======================================================
 
   loadFile(input: lifecycle.LoadFileInput): Promise<lifecycle.LoadFileOutput> {
@@ -550,6 +772,10 @@ export class OmcClient implements CallContext {
     input: lifecycle.CreateSubClassInput,
   ): Promise<lifecycle.CreateSubClassOutput> {
     return lifecycle.createSubClass(this, input);
+  }
+
+  newModel(input: lifecycle.NewModelInput): Promise<lifecycle.NewModelOutput> {
+    return lifecycle.newModel(this, input);
   }
 
   renameClass(
@@ -688,6 +914,30 @@ export class OmcClient implements CallContext {
     return parameters.removeExtendsModifiers(this, input);
   }
 
+  getDerivedClassModifierNames(
+    input: parameters.GetDerivedClassModifierNamesInput,
+  ): Promise<parameters.GetDerivedClassModifierNamesOutput> {
+    return parameters.getDerivedClassModifierNames(this, input);
+  }
+
+  getDerivedClassModifierValue(
+    input: parameters.GetDerivedClassModifierValueInput,
+  ): Promise<parameters.GetDerivedClassModifierValueOutput> {
+    return parameters.getDerivedClassModifierValue(this, input);
+  }
+
+  isExtendsModifierFinal(
+    input: parameters.IsExtendsModifierFinalInput,
+  ): Promise<parameters.IsExtendsModifierFinalOutput> {
+    return parameters.isExtendsModifierFinal(this, input);
+  }
+
+  setExtendsModifier(
+    input: parameters.SetExtendsModifierInput,
+  ): Promise<parameters.SetExtendsModifierOutput> {
+    return parameters.setExtendsModifier(this, input);
+  }
+
   // === Elements ========================================================
 
   getElements(
@@ -776,6 +1026,24 @@ export class OmcClient implements CallContext {
     return library.getAvailablePackageVersions(this, input);
   }
 
+  getAvailablePackageConversionsFrom(
+    input: library.GetAvailablePackageConversionsFromInput,
+  ): Promise<library.GetAvailablePackageConversionsFromOutput> {
+    return library.getAvailablePackageConversionsFrom(this, input);
+  }
+
+  getAvailablePackageConversionsTo(
+    input: library.GetAvailablePackageConversionsToInput,
+  ): Promise<library.GetAvailablePackageConversionsToOutput> {
+    return library.getAvailablePackageConversionsTo(this, input);
+  }
+
+  getConversionsFromVersions(
+    input: library.GetConversionsFromVersionsInput,
+  ): Promise<library.GetConversionsFromVersionsOutput> {
+    return library.getConversionsFromVersions(this, input);
+  }
+
   installPackage(
     input: library.InstallPackageInput,
   ): Promise<library.InstallPackageOutput> {
@@ -862,6 +1130,36 @@ export class OmcClient implements CallContext {
     return solver.setCommandLineOptions(this, input);
   }
 
+  getMatchingAlgorithm(
+    input: solver.GetMatchingAlgorithmInput = {},
+  ): Promise<solver.GetMatchingAlgorithmOutput> {
+    return solver.getMatchingAlgorithm(this, input);
+  }
+
+  getAvailableMatchingAlgorithms(
+    input: solver.GetAvailableMatchingAlgorithmsInput = {},
+  ): Promise<solver.GetAvailableMatchingAlgorithmsOutput> {
+    return solver.getAvailableMatchingAlgorithms(this, input);
+  }
+
+  getIndexReductionMethod(
+    input: solver.GetIndexReductionMethodInput = {},
+  ): Promise<solver.GetIndexReductionMethodOutput> {
+    return solver.getIndexReductionMethod(this, input);
+  }
+
+  getAvailableIndexReductionMethods(
+    input: solver.GetAvailableIndexReductionMethodsInput = {},
+  ): Promise<solver.GetAvailableIndexReductionMethodsOutput> {
+    return solver.getAvailableIndexReductionMethods(this, input);
+  }
+
+  getAvailableTearingMethods(
+    input: solver.GetAvailableTearingMethodsInput = {},
+  ): Promise<solver.GetAvailableTearingMethodsOutput> {
+    return solver.getAvailableTearingMethods(this, input);
+  }
+
   // === Editing =========================================================
 
   addComponent(
@@ -906,6 +1204,12 @@ export class OmcClient implements CallContext {
     return editing.updateConnection(this, input);
   }
 
+  updateConnectionNames(
+    input: editing.UpdateConnectionNamesInput,
+  ): Promise<editing.UpdateConnectionNamesOutput> {
+    return editing.updateConnectionNames(this, input);
+  }
+
   addTransition(
     input: editing.AddTransitionInput,
   ): Promise<editing.AddTransitionOutput> {
@@ -916,6 +1220,12 @@ export class OmcClient implements CallContext {
     input: editing.DeleteTransitionInput,
   ): Promise<editing.DeleteTransitionOutput> {
     return editing.deleteTransition(this, input);
+  }
+
+  updateTransition(
+    input: editing.UpdateTransitionInput,
+  ): Promise<editing.UpdateTransitionOutput> {
+    return editing.updateTransition(this, input);
   }
 
   addClassAnnotation(

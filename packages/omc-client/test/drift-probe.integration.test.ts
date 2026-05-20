@@ -55,6 +55,9 @@
  */
 
 import { execSync } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
@@ -109,11 +112,26 @@ const probes: Probe[] = [
     note: "Same status as createClass.",
     cmd: 'createSubClass(MwProbeSub, MwProbeCreate, "model", false, false)' as OmcCommand,
   },
+
+  // ----- Lifecycle: newModel — the documented replacement for create*/createSubClass -----
   {
-    label: "save(stdlib TypeName)",
+    label: "newModel(className, withinPath) — nested into a loaded package",
+    wrapper: "lifecycle/newModel.ts",
+    note: "Documented on 1.26.7: newModel(TypeName className, TypeName withinPath) -> Boolean success. Creates an empty model inside the given package. Probes the nested form against the Modelica root.",
+    cmd: "newModel(MwProbeNew, Modelica)" as OmcCommand,
+  },
+  {
+    label: "newModel(className, <empty withinPath>) — UNSUPPORTED top-level form",
+    wrapper: "lifecycle/newModel.ts",
+    note: "Counter-example: newModel REQUIRES a real existing package as withinPath. The empty second arg is rejected by OMC's interactive parser ('Unexpected token near: newModel'), so there is no top-level-creation form. For a true top-level class, fall back to loadString. This is why the wrapper makes withinPath required.",
+    cmd: "newModel(MwProbeNewTop, )" as OmcCommand,
+  },
+  // ----- Lifecycle: save — OMEdit-deprecated; symbol PRESENT but unreliable persistence -----
+  {
+    label: "save(loadString class with no backing source file)",
     wrapper: "lifecycle/save.ts",
-    note: "OMEdit-deprecated; production paths use Option B (listFile + own writer). On 1.26.7 the symbol itself IS resolvable — this probe returns ✓ ok with `true` — but `save` is still marked ⛔ in coverage.md because OMC's own docs deprecate it and we don't rely on it for persistence. A future ✗ here would mean the symbol moved or was removed, not that the wrapper regressed.",
-    cmd: "save(Modelica.Blocks.Math.Sin)" as OmcCommand,
+    note: "save is ⛔ on usefulness grounds, NOT symbol-missing. The symbol resolves and returns `true`, but for a loadString-defined class with no associated source file it persists NOTHING (no file written) — hence the project uses Option B (listFile + own writer). The probe harness loads MwProbeSave via loadString just before this entry runs (see the beforeEach-style preload). NON-DESTRUCTIVE: never targets the on-disk MSL tree. This is the counter-example save previously lacked.",
+    cmd: "save(MwProbeSave)" as OmcCommand,
   },
   {
     label: "moveClass(docs-correct Integer-offset shape)",
@@ -178,6 +196,20 @@ const probes: Probe[] = [
     note: "Counter-example: should ✗ because componentName is String-typed, not a TypeName.",
     cmd: "removeComponentModifiers(Modelica.Blocks.Examples.PID_Controller, PI, false)" as OmcCommand,
   },
+
+  // ----- Elements: setElementAnnotation — currently ✅ after dropping `=` -----
+  {
+    label: "setElementAnnotation(docs-correct $Code((<expr>)) shape)",
+    wrapper: "elements/setElementAnnotation.ts",
+    note: "Regression watch: OMEdit (Element.cpp) wraps as `$Code((<expr>))` — DOUBLE parens, no leading `=`. The leading-`=` shape `$Code(=<expr>)` was silently destructive on OMC 1.26.7 (returns true but clears the annotation). Fixed in #38; see audit.md §2.10.",
+    cmd: 'setElementAnnotation(Modelica.Blocks.Examples.PID_Controller.PI, $Code((Placement(visible=true))))' as OmcCommand,
+  },
+  {
+    label: "setElementAnnotation(OLD leading-= shape — silently CLEARS, returns true)",
+    wrapper: "elements/setElementAnnotation.ts",
+    note: "Counter-example: should still return true on 1.26.7 but with destructive behavior — the annotation gets cleared from the source instead of replaced. The probe classifies this as ✓ ok because OMC reports success, but the wrapper no longer emits this shape. If a future OMC starts replacing (not clearing) on this shape, both shapes are safe and the wrapper convention can be loosened.",
+    cmd: 'setElementAnnotation(Modelica.Blocks.Examples.PID_Controller.PI, $Code(=Placement(visible=true)))' as OmcCommand,
+  },
 ];
 
 /**
@@ -205,9 +237,22 @@ describeIf("OMC drift probe", () => {
     const client = await OmcClient.create({
       omcPath: process.env.OMC_PATH ?? "",
     });
+    // The save() probe makes OMC write a file into its working directory
+    // (OMC names it after the class's source file, defaulting to
+    // `<interactive>` for loadString classes). Run the whole probe inside a
+    // throwaway temp dir so no artifact leaks into the repo / dev cwd.
+    const scratch = await mkdtemp(join(tmpdir(), "mw-drift-probe-"));
     try {
+      await client.call(`cd("${scratch.replace(/\\/g, "/")}")` as OmcCommand);
+
       // Load Modelica so probes that touch it have something to look at.
       await client.call("loadModel(Modelica)");
+
+      // Preload a backing-file-less class for the save() probe so it stays
+      // non-destructive (never targets the on-disk MSL tree).
+      await client.call(
+        'loadString("model MwProbeSave Real x = 1; end MwProbeSave;")',
+      );
 
       const omcVersion = (await client.call("getVersion()")).trim();
 
@@ -264,10 +309,19 @@ describeIf("OMC drift probe", () => {
       }
     } finally {
       // Best-effort cleanup of any classes the probe created above.
-      for (const cls of ["MwProbeCreate", "MwProbeSub", "MwProbeCopy"]) {
+      for (const cls of [
+        "MwProbeCreate",
+        "MwProbeSub",
+        "MwProbeCopy",
+        "MwProbeSave",
+        "Modelica.MwProbeNew",
+        "MwProbeNewTop",
+      ]) {
         await client.call(`deleteClass(${cls})`).catch(() => {});
       }
       await client.close();
+      // Remove the throwaway working dir (and any file save() wrote into it).
+      await rm(scratch, { recursive: true, force: true }).catch(() => {});
     }
     // The probe always passes — its job is to *report*, not enforce.
     expect(true).toBe(true);

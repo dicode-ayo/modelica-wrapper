@@ -11,7 +11,8 @@
  * the pinned OMC version 1.26.1 — see docs/coverage.md for rationale):
  *
  *   createClass, createSubClass    — undocumented in public scripting API; OMC
- *                                     1.26.1 returns "Class X not found".
+ *                                     1.26.x returns "Class X not found". Use
+ *                                     `newModel` instead (verified below).
  *   copyClass                      — documented but OMC 1.26.1 reports the
  *                                     same "not found" symptom; may have
  *                                     moved to an internal namespace.
@@ -39,9 +40,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { OmcClient } from "../src/client.js";
 import {
   disposeFixture,
+  loadDerivedExtendsFixture,
   loadExtendsFixture,
   loadFixture,
   loadParameterFixture,
+  type DerivedExtendsFixture,
   type Fixture,
 } from "./fixtures.js";
 
@@ -297,6 +300,46 @@ end ${pkg};
         await client.deleteClass({ typeName: pkg });
       }
     });
+
+    it("newModel creates an empty model inside an existing package and it reads back", async () => {
+      // newModel(className, withinPath) is the documented replacement on
+      // OMC 1.26.x for the absent createClass/createSubClass. It always
+      // creates a `model` nested inside an already-loaded package; there is
+      // no top-level form (an empty withinPath is rejected by OMC's parser),
+      // so the package must exist first. See coverage.md Lifecycle.
+      const { randomBytes } = await import("node:crypto");
+      const id = randomBytes(4).toString("hex");
+      const pkg = `MwNew_${id}`;
+      await client.loadString({
+        data: `package ${pkg}\nend ${pkg};\n`,
+        filename: `<fixture:${pkg}>`,
+      });
+      try {
+        const before = await client.existClass({ typeName: `${pkg}.Sub` });
+        expect(before.exists).toBe(false);
+
+        const created = await client.newModel({
+          typeName: "Sub",
+          withinPath: pkg,
+        });
+        expect(created.success).toBe(true);
+
+        // Round-trip: the new class resolves and is a `model`.
+        const after = await client.existClass({ typeName: `${pkg}.Sub` });
+        expect(after.exists).toBe(true);
+
+        const { classNames } = await client.getClassNames({
+          typeName: pkg,
+          qualified: false,
+        });
+        expect(classNames).toContain("Sub");
+
+        const { b: isModel } = await client.isModel({ typeName: `${pkg}.Sub` });
+        expect(isModel).toBe(true);
+      } finally {
+        await client.deleteClass({ typeName: pkg });
+      }
+    });
   });
 
   // === Editing: components and connections ===
@@ -424,6 +467,61 @@ end ${pkg};
 
       await client.deleteConnection({
         from: "uIn",
+        to: "yOut",
+        typeName: fixture.modelClass,
+      });
+    });
+
+    it("updateConnectionNames renames one or both endpoints of an existing connection", async () => {
+      // updateConnectionNames is the rename-edge variant of updateConnection:
+      // it leaves the annotation alone but rewrites either or both of the
+      // (from, to) endpoint identifiers. Same String-quoting gotcha as the
+      // surrounding transition mutators — see audit.md §2.10.
+      await client.addComponent({
+        componentName: "uIn",
+        componentClass: "Modelica.Blocks.Interfaces.RealInput",
+        intoTypeName: fixture.modelClass,
+      });
+      await client.addComponent({
+        componentName: "yOut",
+        componentClass: "Modelica.Blocks.Interfaces.RealOutput",
+        intoTypeName: fixture.modelClass,
+      });
+      await client.addConnection({
+        from: "uIn",
+        to: "yOut",
+        typeName: fixture.modelClass,
+      });
+
+      // Rename `uIn` -> `uInRenamed` first via renameComponentInClass so the
+      // endpoint identifier exists in the symbol table, then rewrite the
+      // connection's `from` endpoint to match.
+      await client.renameComponentInClass({
+        typeName: fixture.modelClass,
+        oldName: "uIn",
+        newName: "uInRenamed",
+      });
+
+      const ren = await client.updateConnectionNames({
+        typeName: fixture.modelClass,
+        from: "uIn",
+        to: "yOut",
+        fromNew: "uInRenamed",
+        toNew: "yOut",
+      });
+      expect(ren.success).toBe(true);
+
+      // Verify via the connection reader that endpoint 1 of the only
+      // connection now points at the renamed component.
+      const { from: gotFrom, to: gotTo } = await client.getNthConnection({
+        typeName: fixture.modelClass,
+        index: 1,
+      });
+      expect(gotFrom).toBe("uInRenamed");
+      expect(gotTo).toBe("yOut");
+
+      await client.deleteConnection({
+        from: "uInRenamed",
         to: "yOut",
         typeName: fixture.modelClass,
       });
@@ -747,6 +845,45 @@ end ${pkg};
       expect(newRow).toBeDefined();
     });
 
+    it("updateTransition replaces the guard, flags, priority, and annotation of an existing transition", async () => {
+      // Round-trip: read the fixture's transition row, ask OMC to update
+      // it with a fresh guard + flag set, then read back and assert the
+      // new values landed. Same String-quoting gotcha as the other
+      // transition mutators — see audit.md §2.10.
+      const before = await client.getTransitions({ typeName: cls });
+      expect(before.transitions.length).toBe(1);
+      const [from, to, oldCondition, oldImm, oldRes, oldSync, oldPrio] =
+        before.transitions[0]!;
+
+      const upd = await client.updateTransition({
+        typeName: cls,
+        from: from!,
+        to: to!,
+        oldCondition: oldCondition!,
+        oldImmediate: oldImm === "true",
+        oldReset: oldRes === "true",
+        oldSynchronize: oldSync === "true",
+        oldPriority: Number(oldPrio),
+        newCondition: "time > 5",
+        newImmediate: false,
+        newReset: false,
+        newSynchronize: false,
+        newPriority: 3,
+        annotation: "Line(points={{-20,0},{20,0}})",
+      });
+      expect(upd.success).toBe(true);
+
+      const after = await client.getTransitions({ typeName: cls });
+      expect(after.transitions.length).toBe(1);
+      const [, , newCond, newImm, newRes, newSync, newPrio] =
+        after.transitions[0]!;
+      expect(newCond).toMatch(/time\s*>\s*5/);
+      expect(newImm).toBe("false");
+      expect(newRes).toBe("false");
+      expect(newSync).toBe("false");
+      expect(Number(newPrio)).toBe(3);
+    });
+
     it("deleteTransition removes the fixture's original transition", async () => {
       // Read what OMC stored for the loadString'd transition, then ask it
       // to delete using its own normalization. (Building synthetic input
@@ -805,6 +942,132 @@ end ${pkg};
       // this OMC version — separately tracked.)
       const after = await client.listFile({ typeName: fixture.modelClass });
       expect(after.contents).not.toContain("k = 2.5");
+    });
+  });
+
+  // === Extends-clause modifiers on a self-contained base/derived fixture ===
+  //
+  // The fixture defines its own `Base` (with `parameter Real k = 1.0`) and a
+  // `Derived` that does `extends Base(k = 2.5)`, so the modifier lives inside
+  // the same package — no Modelica library load needed, and the read path
+  // surfaces `k` (unlike the Gain-based fixture above).
+
+  describe("extends-modifier readers/writer (self-contained fixture)", () => {
+    let fixture: DerivedExtendsFixture;
+
+    beforeEach(async () => {
+      fixture = await loadDerivedExtendsFixture(client);
+    });
+
+    afterEach(async () => {
+      await disposeFixture(client, fixture);
+    });
+
+    it("getExtendsModifierNames returns {k} for Derived's extends clause", async () => {
+      const { modifiers } = await client.getExtendsModifierNames({
+        typeName: fixture.derivedClass,
+        extendsBase: fixture.baseClass,
+      });
+      expect(modifiers).toContain("k");
+    });
+
+    it("getExtendsModifierValue returns =2.5 for Derived / Base / k", async () => {
+      const { value } = await client.getExtendsModifierValue({
+        typeName: fixture.derivedClass,
+        extendsBase: fixture.baseClass,
+        modifier: "k",
+      });
+      // OMC returns the binding with a leading `=`.
+      expect(value).toContain("2.5");
+    });
+
+    it("isExtendsModifierFinal reports false for a non-final modifier", async () => {
+      const { isFinal } = await client.isExtendsModifierFinal({
+        typeName: fixture.derivedClass,
+        extendsName: fixture.baseClass,
+        modifierName: "k",
+      });
+      expect(isFinal).toBe(false);
+    });
+
+    it("setExtendsModifierValue sets k=3.7 and the listFile round-trip shows it", async () => {
+      const { success } = await client.setExtendsModifierValue({
+        typeName: fixture.derivedClass,
+        extendsBase: fixture.baseClass,
+        modifier: "k",
+        expr: "3.7",
+      });
+      expect(success).toBe(true);
+
+      const { contents } = await client.listFile({
+        typeName: fixture.derivedClass,
+      });
+      expect(contents).toMatch(/k\s*=\s*3\.7/);
+    });
+
+    it("setExtendsModifier replaces the whole extends modification", async () => {
+      // setExtendsModifier takes a full modification, not a single element.
+      const { success } = await client.setExtendsModifier({
+        typeName: fixture.derivedClass,
+        extendsName: fixture.baseClass,
+        modifier: "(k = 9.9)",
+      });
+      expect(success).toBe(true);
+
+      const { contents } = await client.listFile({
+        typeName: fixture.derivedClass,
+      });
+      expect(contents).toMatch(/k\s*=\s*9\.9/);
+    });
+  });
+
+  // === Derived-class (short-class-definition) modifier readers ===
+  //
+  // getDerivedClassModifier{Names,Value} target a SHORT class definition that
+  // derives from a base type with attribute modifiers, e.g.
+  // `type Resistance = Real(quantity="Resistance", unit="Ohm")`.
+
+  describe("derived-class modifier readers", () => {
+    let pkg: string;
+    let cls: string;
+
+    beforeEach(async () => {
+      const { randomBytes } = await import("node:crypto");
+      pkg = `MwDerived_${randomBytes(4).toString("hex")}`;
+      cls = `${pkg}.Resistance`;
+      await client.loadString({
+        data: `package ${pkg}
+  type Resistance = Real(quantity = "Resistance", unit = "Ohm");
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+    });
+
+    afterEach(async () => {
+      await client.deleteClass({ typeName: pkg });
+    });
+
+    it("getDerivedClassModifierNames lists the base-type modifier names", async () => {
+      const { modifierNames } = await client.getDerivedClassModifierNames({
+        typeName: cls,
+      });
+      expect(modifierNames).toContain("quantity");
+      expect(modifierNames).toContain("unit");
+    });
+
+    it("getDerivedClassModifierValue reads a single base-type modifier value", async () => {
+      const unit = await client.getDerivedClassModifierValue({
+        typeName: cls,
+        modifierName: "unit",
+      });
+      expect(unit.modifierValue).toContain("Ohm");
+
+      const quantity = await client.getDerivedClassModifierValue({
+        typeName: cls,
+        modifierName: "quantity",
+      });
+      expect(quantity.modifierValue).toContain("Resistance");
     });
   });
 
@@ -874,6 +1137,333 @@ end ${pkg};
     });
   });
 
+  // === Browsing extras needing a custom inheritance / short-class fixture ===
+
+  describe("browsing extras", () => {
+    let pkg: string;
+
+    beforeEach(async () => {
+      const { randomBytes } = await import("node:crypto");
+      pkg = `MwExtras_${randomBytes(4).toString("hex")}`;
+      // A 3-class inheritance chain A <- B <- C plus a short class definition
+      // and a class carrying an annotation. The `extends` clauses are written
+      // fully-qualified: on OMC 1.26.7, `extendsFrom` matches the base class
+      // against the directly-listed (fully-qualified) extends clauses.
+      await client.loadString({
+        data: `package ${pkg}
+  model A
+    Real a;
+  end A;
+
+  model B
+    extends ${pkg}.A;
+    Real b;
+  end B;
+
+  model C
+    extends ${pkg}.B;
+    Real c;
+    annotation(experiment(StopTime = 1));
+  end C;
+
+  type T = Real;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+    });
+
+    afterEach(async () => {
+      await client.deleteClass({ typeName: pkg });
+    });
+
+    it("extendsFrom matches the directly-listed base class (non-transitive on 1.26.7)", async () => {
+      // C extends B directly → true.
+      const directCB = await client.extendsFrom({
+        typeName: `${pkg}.C`,
+        baseClassName: `${pkg}.B`,
+      });
+      expect(directCB.res).toBe(true);
+
+      // B extends A directly → true.
+      const directBA = await client.extendsFrom({
+        typeName: `${pkg}.B`,
+        baseClassName: `${pkg}.A`,
+      });
+      expect(directBA.res).toBe(true);
+
+      // C extends A only transitively. On OMC 1.26.7 `extendsFrom` is
+      // NON-transitive — it matches against the directly-listed extends
+      // clauses only — so this is false. (Documented in the wrapper.)
+      const transitiveCA = await client.extendsFrom({
+        typeName: `${pkg}.C`,
+        baseClassName: `${pkg}.A`,
+      });
+      expect(transitiveCA.res).toBe(false);
+
+      // A does NOT extend from C.
+      const reverse = await client.extendsFrom({
+        typeName: `${pkg}.A`,
+        baseClassName: `${pkg}.C`,
+      });
+      expect(reverse.res).toBe(false);
+    });
+
+    it("getAllSubtypeOf enumerates loaded subtypes of A", async () => {
+      // Searched across all loaded classes, names come back fully-qualified
+      // and the class itself is included in the result.
+      const { classNames } = await client.getAllSubtypeOf({
+        typeName: `${pkg}.A`,
+      });
+      expect(Array.isArray(classNames)).toBe(true);
+      // B and C both extend (transitively) from A; A itself is included.
+      expect(classNames).toEqual(
+        expect.arrayContaining([`${pkg}.A`, `${pkg}.B`, `${pkg}.C`]),
+      );
+    });
+
+    it("classAnnotationExists distinguishes a class with vs. without an annotation", async () => {
+      const present = await client.classAnnotationExists({
+        typeName: `${pkg}.C`,
+        annotationName: "experiment",
+      });
+      expect(present.exists).toBe(true);
+
+      const absent = await client.classAnnotationExists({
+        typeName: `${pkg}.A`,
+        annotationName: "experiment",
+      });
+      expect(absent.exists).toBe(false);
+    });
+
+    it("getNthInheritedClass agrees with the bulk getInheritedClasses", async () => {
+      const { inheritedClasses } = await client.getInheritedClasses({
+        typeName: `${pkg}.C`,
+      });
+      expect(inheritedClasses.length).toBeGreaterThan(0);
+
+      // 1-based indexing — the first inherited class should match index 1.
+      const { baseClass } = await client.getNthInheritedClass({
+        typeName: `${pkg}.C`,
+        n: 1,
+      });
+      expect(baseClass).toBe(inheritedClasses[0]);
+    });
+
+    it("isShortDefinition is true for `type T = Real;` and false for a model", async () => {
+      const shortHit = await client.isShortDefinition({
+        typeName: `${pkg}.T`,
+      });
+      expect(shortHit.isShortCls).toBe(true);
+
+      const modelMiss = await client.isShortDefinition({
+        typeName: `${pkg}.A`,
+      });
+      expect(modelMiss.isShortCls).toBe(false);
+    });
+  });
+
+  // === Class-shape / component predicates added in #33 ===
+  //
+  // Nine `is*` predicates with three distinct argument shapes:
+  //   - isConstant / isParameter / isProtected: TWO TypeNames
+  //     (componentName, className); output `result`.
+  //   - isPrimitive: single TypeName (className); output `result`.
+  //   - isRedeclare / isOperator / isOperatorFunction / isOperatorRecord /
+  //     isOptimization: single TypeName; output `b`.
+  // Each is exercised on a `loadString` fixture that exhibits the trait,
+  // most with a counter-example to guard against constant-true regressions.
+
+  describe("class-shape predicates with fixtures (#33)", () => {
+    let pkg: string;
+
+    beforeEach(async () => {
+      const { randomBytes } = await import("node:crypto");
+      pkg = `MwShape_${randomBytes(4).toString("hex")}`;
+      await client.loadString({
+        data: `package ${pkg}
+  model Subj
+    constant Real cc = 1.0;
+    parameter Real pp = 2.0;
+    Real xx;
+  protected
+    Real prot;
+  end Subj;
+
+  operator record Cplx
+    Real re;
+    Real im;
+    encapsulated operator function 'addReal'
+      import ${pkg}.Cplx;
+      input Cplx a;
+      input Cplx b;
+      output Cplx c;
+    algorithm
+      c := Cplx(a.re + b.re, a.im + b.im);
+    end 'addReal';
+  end Cplx;
+
+  partial model Base
+    replaceable Real rr = 1.0;
+  end Base;
+
+  model Derived
+    extends Base;
+    redeclare Real rr = 2.0;
+    Real plain = 3.0;
+  end Derived;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+    });
+
+    afterEach(async () => {
+      await client.deleteClass({ typeName: pkg });
+    });
+
+    it("isConstant detects a `constant` component (with a counter-example)", async () => {
+      const hit = await client.isConstant({
+        typeName: `${pkg}.Subj`,
+        componentName: "cc",
+      });
+      expect(hit.result).toBe(true);
+      const miss = await client.isConstant({
+        typeName: `${pkg}.Subj`,
+        componentName: "pp",
+      });
+      expect(miss.result).toBe(false);
+    });
+
+    it("isParameter detects a `parameter` component (with a counter-example)", async () => {
+      const hit = await client.isParameter({
+        typeName: `${pkg}.Subj`,
+        componentName: "pp",
+      });
+      expect(hit.result).toBe(true);
+      const miss = await client.isParameter({
+        typeName: `${pkg}.Subj`,
+        componentName: "cc",
+      });
+      expect(miss.result).toBe(false);
+    });
+
+    it("isProtected detects a protected component (with a counter-example)", async () => {
+      const hit = await client.isProtected({
+        typeName: `${pkg}.Subj`,
+        componentName: "prot",
+      });
+      expect(hit.result).toBe(true);
+      const miss = await client.isProtected({
+        typeName: `${pkg}.Subj`,
+        componentName: "xx",
+      });
+      expect(miss.result).toBe(false);
+    });
+
+    it("isPrimitive detects a built-in primitive type (with a counter-example)", async () => {
+      const hit = await client.isPrimitive({ typeName: "Real" });
+      expect(hit.result).toBe(true);
+      const miss = await client.isPrimitive({ typeName: `${pkg}.Subj` });
+      expect(miss.result).toBe(false);
+    });
+
+    it("isRedeclare detects a redeclared element (with a counter-example)", async () => {
+      const hit = await client.isRedeclare({ typeName: `${pkg}.Derived.rr` });
+      expect(hit.b).toBe(true);
+      const miss = await client.isRedeclare({
+        typeName: `${pkg}.Derived.plain`,
+      });
+      expect(miss.b).toBe(false);
+    });
+
+    it("isOperatorRecord detects an `operator record` (with a counter-example)", async () => {
+      const hit = await client.isOperatorRecord({ typeName: `${pkg}.Cplx` });
+      expect(hit.b).toBe(true);
+      const miss = await client.isOperatorRecord({ typeName: `${pkg}.Subj` });
+      expect(miss.b).toBe(false);
+    });
+
+    it("isOperatorFunction detects an `operator function` (with a counter-example)", async () => {
+      const hit = await client.isOperatorFunction({
+        typeName: `${pkg}.Cplx.'addReal'`,
+      });
+      expect(hit.b).toBe(true);
+      const miss = await client.isOperatorFunction({
+        typeName: `${pkg}.Cplx`,
+      });
+      expect(miss.b).toBe(false);
+    });
+
+    it("isOperator detects an `operator` class (with a counter-example)", async () => {
+      // A standalone `operator` block lives inside the operator record.
+      const { randomBytes } = await import("node:crypto");
+      const opPkg = `MwOp_${randomBytes(4).toString("hex")}`;
+      await client.loadString({
+        data: `package ${opPkg}
+  operator record Cplx
+    Real re;
+    Real im;
+    operator 'fromReal'
+      function build
+        input Real r;
+        output Cplx c;
+      algorithm
+        c := Cplx(r, 0.0);
+      end build;
+    end 'fromReal';
+  end Cplx;
+end ${opPkg};
+`,
+        filename: `<fixture:${opPkg}>`,
+      });
+      try {
+        const hit = await client.isOperator({
+          typeName: `${opPkg}.Cplx.'fromReal'`,
+        });
+        expect(hit.b).toBe(true);
+        const miss = await client.isOperator({ typeName: `${opPkg}.Cplx` });
+        expect(miss.b).toBe(false);
+      } finally {
+        await client.deleteClass({ typeName: opPkg });
+      }
+    });
+
+    it("isOptimization detects an `optimization` class (with a counter-example)", async () => {
+      // `optimization` is Optimica grammar; enable it before loading.
+      await client.setCommandLineOptions({ options: "+g=Optimica" });
+      const { randomBytes } = await import("node:crypto");
+      const optPkg = `MwOpt_${randomBytes(4).toString("hex")}`;
+      await client.loadString({
+        data: `package ${optPkg}
+  optimization Opt
+    Real q(start = 0.0);
+  equation
+    der(q) = 1.0;
+  end Opt;
+
+  model Plain
+    Real z;
+  end Plain;
+end ${optPkg};
+`,
+        filename: `<fixture:${optPkg}>`,
+      });
+      try {
+        const hit = await client.isOptimization({
+          typeName: `${optPkg}.Opt`,
+        });
+        expect(hit.b).toBe(true);
+        const miss = await client.isOptimization({
+          typeName: `${optPkg}.Plain`,
+        });
+        expect(miss.b).toBe(false);
+      } finally {
+        await client.deleteClass({ typeName: optPkg });
+      }
+    });
+  });
+
   // === Connector readers needing a class that declares connectors directly ===
 
   describe("connectors", () => {
@@ -932,6 +1522,53 @@ end ${pkg};
       expect(result.kind).toBe("list");
       // RealInput/Output icons declare extents like {{-100,-100},{100,100}}.
       expect(JSON.stringify(result)).toContain("100");
+    });
+  });
+
+  // === Import-clause readers (getImportCount / getNthImport) ===
+  //
+  // The fixture mirrors issue #43: one plain `import` and one renamed
+  // `import M = Modelica;`. `getImportCount` should see both; `getNthImport`
+  // returns the first as `[path, id, kind]`.
+
+  describe("import readers", () => {
+    let pkg: string;
+
+    beforeEach(async () => {
+      const { randomBytes } = await import("node:crypto");
+      pkg = `MwImp_${randomBytes(4).toString("hex")}`;
+      await client.loadModel({ typeName: "Modelica" });
+      await client.loadString({
+        data: `package ${pkg}
+  import Modelica.SIunits;
+  import M = Modelica;
+  model X
+  end X;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+    });
+
+    afterEach(async () => {
+      await client.deleteClass({ typeName: pkg });
+    });
+
+    it("getImportCount counts both import-clauses", async () => {
+      const { count } = await client.getImportCount({ typeName: pkg });
+      expect(count).toBe(2);
+    });
+
+    it("getNthImport returns the first import as [path, id, kind]", async () => {
+      const first = await client.getNthImport({ typeName: pkg, index: 1 });
+      // Plain `import Modelica.SIunits;` → path is the dotted package, id is
+      // empty (no rename). Field order is OMC-verbatim; values themselves are
+      // OMC-derived strings.
+      expect(typeof first.path).toBe("string");
+      expect(typeof first.id).toBe("string");
+      expect(typeof first.kind).toBe("string");
+      expect(first.path).toContain("Modelica");
+      expect(first.id).toBe("");
     });
   });
 
@@ -1019,6 +1656,49 @@ end ${pkg};
         modifier: "gain.k",
       });
       expect(after.value).toBe("");
+    });
+
+    // setElementAnnotation needs the OMEdit-canonical `$Code((<expr>))`
+    // shape — the leading-`=` form `$Code(=<expr>)` is silently destructive
+    // on OMC 1.26.7 (returns true but clears the annotation). See issue #38
+    // and the drift-probe counter-example for the regression watch.
+    it("setElementAnnotation replaces the annotation body via $Code((…))", async () => {
+      // Sanity: fixture binds `parameter Real k = 1.0 annotation(Dialog(group="x"));`.
+      const before = (await client.listFile({ typeName: cls })).contents;
+      expect(before).toMatch(/group\s*=\s*"x"/);
+
+      const { success } = await client.setElementAnnotation({
+        typeName: `${cls}.k`,
+        annotationMod: 'Dialog(group="Tuning", tab="Advanced")',
+      });
+      expect(success).toBe(true);
+
+      const after = (await client.listFile({ typeName: cls })).contents;
+      // The new annotation body replaces the old one — old group="x" is
+      // gone, new group="Tuning" and tab="Advanced" are present.
+      expect(after).toMatch(/group\s*=\s*"Tuning"/);
+      expect(after).toMatch(/tab\s*=\s*"Advanced"/);
+      expect(after).not.toMatch(/group\s*=\s*"x"/);
+    });
+
+    it("setElementAnnotation accepts an empty annotationMod to clear", async () => {
+      // Sanity: annotation is initially present.
+      const before = (await client.listFile({ typeName: cls })).contents;
+      expect(before).toMatch(/\bannotation\s*\(/);
+
+      const { success } = await client.setElementAnnotation({
+        typeName: `${cls}.k`,
+        annotationMod: "",
+      });
+      expect(success).toBe(true);
+
+      const after = (await client.listFile({ typeName: cls })).contents;
+      // The parameter line no longer carries an `annotation(...)` block.
+      // (Other declarations in the model may still have annotations, so we
+      // narrow to the `parameter Real k` line.)
+      const kLine = after.match(/parameter\s+Real\s+k[\s\S]*?;/);
+      expect(kLine).not.toBeNull();
+      expect(kLine?.[0]).not.toMatch(/\bannotation\s*\(/);
     });
   });
 });

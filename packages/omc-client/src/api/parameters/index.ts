@@ -13,3 +13,7 @@ export * from "./setExtendsModifierValue.js";
 export * from "./getParameterNames.js";
 export * from "./setParameterValue.js";
 export * from "./removeExtendsModifiers.js";
+export * from "./getDerivedClassModifierNames.js";
+export * from "./getDerivedClassModifierValue.js";
+export * from "./isExtendsModifierFinal.js";
+export * from "./setExtendsModifier.js";
