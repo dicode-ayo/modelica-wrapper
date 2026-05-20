@@ -147,4 +147,65 @@ describe("buildSubstitutions", () => {
     );
     expect(subs.name).toBe("sd1");
   });
+
+  describe("unit annotation", () => {
+    it("appends the declared unit to a literal class default", () => {
+      const subs = buildSubstitutions(
+        makeInstance(),
+        makeClass({ J: { name: "J", value: "1", unit: "kg.m2" } }),
+      );
+      expect(subs.parameters?.J).toBe("1 kg.m2");
+    });
+
+    it("appends the unit to an INSTANCE-MODIFIER value (the drive-train case)", () => {
+      // `spring(c=1e4, d=100)` supplies c/d as instance modifiers; the unit
+      // lives on the class param. The host-side annotation never reaches
+      // modifiers, so this is the path that was dropping units in labels.
+      const subs = buildSubstitutions(
+        makeInstance({ modifiers: { c: "1e4", d: "100" } }),
+        makeClass({
+          c: { name: "c", value: "", unit: "N.m/rad" },
+          d: { name: "d", value: "", unit: "N.m.s/rad" },
+        }),
+      );
+      expect(subs.parameters?.c).toBe("1e4 N.m/rad"); // literal preserved
+      expect(subs.parameters?.d).toBe("100 N.m.s/rad");
+    });
+
+    it("does not annotate non-literal values (expressions / blanks)", () => {
+      const subs = buildSubstitutions(
+        makeInstance({ modifiers: { c: "k*2" } }),
+        makeClass({ c: { name: "c", value: "k*2", unit: "N.m/rad" } }),
+      );
+      expect(subs.parameters?.c).toBe("k*2");
+    });
+
+    it("skips the dimensionless placeholder unit==\"1\"", () => {
+      const subs = buildSubstitutions(
+        makeInstance(),
+        makeClass({ ratio: { name: "ratio", value: "2", unit: "1" } }),
+      );
+      expect(subs.parameters?.ratio).toBe("2");
+    });
+
+    it("leaves a value alone when no unit is declared", () => {
+      const subs = buildSubstitutions(
+        makeInstance(),
+        makeClass({ n: { name: "n", value: "3" } }),
+      );
+      expect(subs.parameters?.n).toBe("3");
+    });
+
+    it("does not double-annotate a host-converted displayUnit default", () => {
+      // The host pre-rewrites a converted class default to a non-numeric
+      // string like "90 deg"; the numeric guard here leaves it untouched.
+      const subs = buildSubstitutions(
+        makeInstance(),
+        makeClass({
+          phi: { name: "phi", value: "90 deg", unit: "rad", displayUnit: "deg" },
+        }),
+      );
+      expect(subs.parameters?.phi).toBe("90 deg");
+    });
+  });
 });

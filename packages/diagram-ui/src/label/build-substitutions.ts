@@ -54,11 +54,63 @@ export function buildSubstitutions(
   for (const [name, value] of Object.entries(overrides)) {
     parameters[name] = value;
   }
+  appendUnits(parameters, cls);
   return {
     name: nameWithDims(instance.name, instance.dims),
     class: instance.classRef,
     parameters,
   };
+}
+
+/**
+ * Append each parameter's declared `unit` to its FINAL display value,
+ * mirroring OMEdit's `TextAnnotation` (`%param` tokens whose resolved value
+ * is a literal constant get the unit appended — `1e4` → `1e4 N.m/rad`).
+ *
+ * This runs after every overlay (class default → host-resolved → instance
+ * modifier) so the actually-shown value is annotated. That matters because
+ * the common case — `spring(c=1e4, d=100)` — supplies the value as an
+ * INSTANCE MODIFIER, which the host-side `applyDisplayUnits` (open-diagram's
+ * `fetchLayout`) never reaches: it only rewrites class defaults.
+ *
+ * Only literal-numeric values are touched (OMEdit's `isValueLiteralConstant`
+ * guard) — expressions, enums, crefs and blanks pass through. The original
+ * literal text is preserved (`1e4` stays `1e4`, not `10000`); we only suffix
+ * the unit. The dimensionless placeholder `unit=="1"` is skipped.
+ *
+ * The displayUnit→unit CONVERSION (e.g. `rad`→`deg`) needs OMC and stays on
+ * the host: it pre-rewrites converted class defaults to a non-numeric string
+ * like `"90 deg"`, which fails the numeric guard here and is left untouched —
+ * so the two paths never double-annotate. A displayUnit parameter overridden
+ * by an instance modifier can't be converted webview-side, so it falls back
+ * to its honest source `unit` rather than mislabelling the raw value.
+ */
+function appendUnits(
+  parameters: Record<string, string>,
+  cls: ClassDef | undefined,
+): void {
+  if (!cls?.parameters) return;
+  for (const [name, def] of Object.entries(cls.parameters)) {
+    const value = parameters[name];
+    if (value === undefined) continue;
+    const unit = def.unit?.trim();
+    if (!unit || unit === "1") continue;
+    if (parseNumeric(value) === undefined) continue;
+    parameters[name] = `${value.trim()} ${unit}`;
+  }
+}
+
+/**
+ * Parse a display string as a finite number — the gate for "is this a literal
+ * constant we should annotate". The WHOLE trimmed string must be the number
+ * (via `Number(...)`, not `parseFloat`) so `"1.5 + x"` or an already-annotated
+ * `"1 kg.m2"` return `undefined` and pass through untouched.
+ */
+function parseNumeric(s: string): number | undefined {
+  const t = s.trim();
+  if (t.length === 0) return undefined;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 /**
