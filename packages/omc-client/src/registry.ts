@@ -220,6 +220,11 @@ export const REGISTRY = {
   setMatchingAlgorithm: entry("solver", solver.setMatchingAlgorithm, solver.SetMatchingAlgorithmInputSchema, solver.SetMatchingAlgorithmOutputSchema, solver.SetMatchingAlgorithmDescription),
   setIndexReductionMethod: entry("solver", solver.setIndexReductionMethod, solver.SetIndexReductionMethodInputSchema, solver.SetIndexReductionMethodOutputSchema, solver.SetIndexReductionMethodDescription),
   setCommandLineOptions: entry("solver", solver.setCommandLineOptions, solver.SetCommandLineOptionsInputSchema, solver.SetCommandLineOptionsOutputSchema, solver.SetCommandLineOptionsDescription),
+  getMatchingAlgorithm: entry("solver", solver.getMatchingAlgorithm, solver.GetMatchingAlgorithmInputSchema, solver.GetMatchingAlgorithmOutputSchema, solver.GetMatchingAlgorithmDescription),
+  getAvailableMatchingAlgorithms: entry("solver", solver.getAvailableMatchingAlgorithms, solver.GetAvailableMatchingAlgorithmsInputSchema, solver.GetAvailableMatchingAlgorithmsOutputSchema, solver.GetAvailableMatchingAlgorithmsDescription),
+  getIndexReductionMethod: entry("solver", solver.getIndexReductionMethod, solver.GetIndexReductionMethodInputSchema, solver.GetIndexReductionMethodOutputSchema, solver.GetIndexReductionMethodDescription),
+  getAvailableIndexReductionMethods: entry("solver", solver.getAvailableIndexReductionMethods, solver.GetAvailableIndexReductionMethodsInputSchema, solver.GetAvailableIndexReductionMethodsOutputSchema, solver.GetAvailableIndexReductionMethodsDescription),
+  getAvailableTearingMethods: entry("solver", solver.getAvailableTearingMethods, solver.GetAvailableTearingMethodsInputSchema, solver.GetAvailableTearingMethodsOutputSchema, solver.GetAvailableTearingMethodsDescription),
 
   // --- Execution ---
   checkModel: entry("execution", execution.checkModel, execution.CheckModelInputSchema, execution.CheckModelOutputSchema, execution.CheckModelDescription),
