@@ -69,6 +69,33 @@ describe("formatDisplayValue", () => {
     // `Number("1e3 Hz")` is NaN — we require the WHOLE string to parse.
     expect(formatDisplayValue("1e3 Hz", RAD_TO_DEG, "deg")).toBeUndefined();
   });
+
+  it("rounds away float-conversion noise to OMEdit's 6-sig-digit display (issue #76, item 11)", () => {
+    // A scaleFactor that doesn't divide cleanly produces IEEE noise:
+    // 1.5707963267948966 / 0.01745329252 = 89.99999999998... String() would
+    // surface the full noise; we round to 6 sig digits → "90".
+    const noisy: ConvertUnitsOutput = {
+      unitsCompatible: true,
+      scaleFactor: 0.01745329252,
+      offset: 0,
+    };
+    expect(formatDisplayValue("1.5707963267948966", noisy, "deg")).toBe(
+      "90 deg",
+    );
+  });
+
+  it("keeps genuine precision within 6 significant digits", () => {
+    // rad → deg of 1 rad ≈ 57.2958 (6 sig digits), not the full
+    // 57.29577951308232 — matches OMEdit's QString::number(v,'g',6).
+    expect(formatDisplayValue("1", RAD_TO_DEG, "deg")).toBe("57.2958 deg");
+  });
+
+  it("does not introduce trailing zeros for clean values", () => {
+    // 90 deg, not "90.0000".
+    expect(formatDisplayValue("1.5707963267948966", RAD_TO_DEG, "deg")).toBe(
+      "90 deg",
+    );
+  });
 });
 
 function makeLayout(

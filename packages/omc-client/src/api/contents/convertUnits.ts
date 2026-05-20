@@ -46,7 +46,7 @@ import { z } from "zod";
 import type { CallContext } from "../../_shared/callContext.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { quote } from "../../_shared/format.js";
-import { asBool, asFloat, expectList, parse } from "../../parse.js";
+import { asBool, asFloat, asList, parseLeading } from "../../parse.js";
 
 export const ConvertUnitsInputSchema = z.object({
   s1: z
@@ -82,9 +82,14 @@ export async function convertUnits(
     `convertUnits(${quote(input.s1)}, ${quote(input.s2)})`,
   );
   // OMC emits `(unitsCompatible, scaleFactor, offset)`; the paren tuple
-  // parses as a list. Missing/short tuples fall back to the neutral
-  // "incompatible, no-op transform" defaults.
-  const [b, s, o] = expectList(parse(raw));
+  // parses as a list. Use `parseLeading` (tolerant of a trailing
+  // diagnostic line) + `asList` (returns undefined rather than throwing on
+  // a non-list) so an off-spec response — an error string, a bare value, a
+  // short tuple — falls back to the documented neutral "(false, 1, 0)"
+  // transform instead of throwing an unhandled exception at the call site
+  // (issue #76, item 12).
+  const items = asList(parseLeading(raw).value) ?? [];
+  const [b, s, o] = items;
   const unitsCompatible = (b && asBool(b)) ?? false;
   const scaleFactor = (s && asFloat(s)) ?? 1.0;
   const offset = (o && asFloat(o)) ?? 0.0;

@@ -722,6 +722,14 @@ export function produceDiagramLayout(
     }
   }
 
+  // Register the opened host class itself so `classes[mi.name]` carries the
+  // host's own `parameters` (issue #76, item 10): the host-side displayUnit
+  // pass walks `layout.classes`, but the registry was previously seeded only
+  // from sub-component types — so `displayUnit` params declared ON the opened
+  // model rendered in source units. `registerClass` is idempotent and walks
+  // the host's extends chain for inherited parameters, matching the form.
+  registerClass(mi, registry);
+
   const layout: DiagramLayout = {
     kind,
     className: mi.name,

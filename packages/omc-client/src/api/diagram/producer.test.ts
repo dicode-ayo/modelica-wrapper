@@ -1254,6 +1254,35 @@ describe("produceDiagramLayout: parameter displayUnit", () => {
     const cls = layout.classes["Synth.HasAngle"];
     expect(cls?.parameters.b?.displayUnit).toBeUndefined();
   });
+
+  it("registers the opened HOST class in classes with its own params (issue #76, item 10)", () => {
+    // The host model itself declares a displayUnit parameter. Previously the
+    // registry was seeded only from sub-component types, so the host's own
+    // params never reached `classes` and the host-side displayUnit pass
+    // skipped them. Now `classes[host]` must carry the host's parameters.
+    const host: unknown = {
+      name: "Synth.HostWithAngle",
+      restriction: "model",
+      annotation: {
+        Diagram: { coordinateSystem: { extent: [[-100, -100], [100, 100]] }, graphics: [] },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "a",
+          type: "Real",
+          modifiers: { displayUnit: "\"deg\"", $value: "1.57" },
+          value: { binding: 1.57 },
+          prefixes: { variability: "parameter" },
+        },
+      ],
+    };
+    const layout = produceDiagramLayout(ModelInstanceSchema.parse(host), "diagram");
+    const cls = layout.classes["Synth.HostWithAngle"];
+    expect(cls).toBeDefined();
+    expect(cls?.parameters.a?.displayUnit).toBe("deg");
+    expect(cls?.parameters.a?.unit ?? cls?.parameters.a?.value).toBeDefined();
+  });
 });
 
 describe("produceDiagramLayout: parameter unit from type-alias chain (#71)", () => {
