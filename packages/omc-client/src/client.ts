@@ -594,6 +594,132 @@ export class OmcClient implements CallContext {
     return contents.getAnnotationModifierValue(this, input);
   }
 
+  getComponentCount(
+    input: contents.GetComponentCountInput,
+  ): Promise<contents.GetComponentCountOutput> {
+    return contents.getComponentCount(this, input);
+  }
+
+  getNthComponent(
+    input: contents.GetNthComponentInput,
+  ): Promise<contents.GetNthComponentOutput> {
+    return contents.getNthComponent(this, input);
+  }
+
+  getNthComponentAnnotation(
+    input: contents.GetNthComponentAnnotationInput,
+  ): Promise<contents.GetNthComponentAnnotationOutput> {
+    return contents.getNthComponentAnnotation(this, input);
+  }
+
+  getNthComponentCondition(
+    input: contents.GetNthComponentConditionInput,
+  ): Promise<contents.GetNthComponentConditionOutput> {
+    return contents.getNthComponentCondition(this, input);
+  }
+
+  getNthComponentModification(
+    input: contents.GetNthComponentModificationInput,
+  ): Promise<contents.GetNthComponentModificationOutput> {
+    return contents.getNthComponentModification(this, input);
+  }
+
+  getAnnotationCount(
+    input: contents.GetAnnotationCountInput,
+  ): Promise<contents.GetAnnotationCountOutput> {
+    return contents.getAnnotationCount(this, input);
+  }
+
+  getNthAnnotationString(
+    input: contents.GetNthAnnotationStringInput,
+  ): Promise<contents.GetNthAnnotationStringOutput> {
+    return contents.getNthAnnotationString(this, input);
+  }
+
+  getAlgorithmCount(
+    input: contents.GetAlgorithmCountInput,
+  ): Promise<contents.GetAlgorithmCountOutput> {
+    return contents.getAlgorithmCount(this, input);
+  }
+
+  getNthAlgorithm(
+    input: contents.GetNthAlgorithmInput,
+  ): Promise<contents.GetNthAlgorithmOutput> {
+    return contents.getNthAlgorithm(this, input);
+  }
+
+  getAlgorithmItemsCount(
+    input: contents.GetAlgorithmItemsCountInput,
+  ): Promise<contents.GetAlgorithmItemsCountOutput> {
+    return contents.getAlgorithmItemsCount(this, input);
+  }
+
+  getNthAlgorithmItem(
+    input: contents.GetNthAlgorithmItemInput,
+  ): Promise<contents.GetNthAlgorithmItemOutput> {
+    return contents.getNthAlgorithmItem(this, input);
+  }
+
+  getInitialAlgorithmCount(
+    input: contents.GetInitialAlgorithmCountInput,
+  ): Promise<contents.GetInitialAlgorithmCountOutput> {
+    return contents.getInitialAlgorithmCount(this, input);
+  }
+
+  getNthInitialAlgorithm(
+    input: contents.GetNthInitialAlgorithmInput,
+  ): Promise<contents.GetNthInitialAlgorithmOutput> {
+    return contents.getNthInitialAlgorithm(this, input);
+  }
+
+  getInitialAlgorithmItemsCount(
+    input: contents.GetInitialAlgorithmItemsCountInput,
+  ): Promise<contents.GetInitialAlgorithmItemsCountOutput> {
+    return contents.getInitialAlgorithmItemsCount(this, input);
+  }
+
+  getNthInitialAlgorithmItem(
+    input: contents.GetNthInitialAlgorithmItemInput,
+  ): Promise<contents.GetNthInitialAlgorithmItemOutput> {
+    return contents.getNthInitialAlgorithmItem(this, input);
+  }
+
+  getNthEquation(
+    input: contents.GetNthEquationInput,
+  ): Promise<contents.GetNthEquationOutput> {
+    return contents.getNthEquation(this, input);
+  }
+
+  getNthEquationItem(
+    input: contents.GetNthEquationItemInput,
+  ): Promise<contents.GetNthEquationItemOutput> {
+    return contents.getNthEquationItem(this, input);
+  }
+
+  getInitialEquationCount(
+    input: contents.GetInitialEquationCountInput,
+  ): Promise<contents.GetInitialEquationCountOutput> {
+    return contents.getInitialEquationCount(this, input);
+  }
+
+  getNthInitialEquation(
+    input: contents.GetNthInitialEquationInput,
+  ): Promise<contents.GetNthInitialEquationOutput> {
+    return contents.getNthInitialEquation(this, input);
+  }
+
+  getInitialEquationItemsCount(
+    input: contents.GetInitialEquationItemsCountInput,
+  ): Promise<contents.GetInitialEquationItemsCountOutput> {
+    return contents.getInitialEquationItemsCount(this, input);
+  }
+
+  getNthInitialEquationItem(
+    input: contents.GetNthInitialEquationItemInput,
+  ): Promise<contents.GetNthInitialEquationItemOutput> {
+    return contents.getNthInitialEquationItem(this, input);
+  }
+
   getImportCount(
     input: contents.GetImportCountInput,
   ): Promise<contents.GetImportCountOutput> {
