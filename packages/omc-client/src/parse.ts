@@ -25,10 +25,11 @@
  * Coverage: tracks OMPython's `OMTypedParser.py` (the de-facto authoritative
  * parser; OMC's interactive RPC grammar is not formally documented). We are
  * wider than OMTypedParser on `$`-idents, free-floating kwargs in parens,
- * bare-`-` null sentinels, leading-dot qualified idents, and `record … end Name;`
- * blocks — productions OMC actually emits. Known gaps, deferred until a caller
- * demands them:
- *   - `$Code(= expr)` literals (modifier round-trips with code-quoted exprs)
+ * bare-`-` null sentinels, leading-dot qualified idents, `record … end Name;`
+ * blocks, and bare leading-`=` modification bindings (the `= 1.0` inside
+ * `$Code( = 1.0)` emitted by `getNthComponentModification`, parsed as a
+ * `call` named "=" with the bound value as its single arg) — productions OMC
+ * actually emits.
  */
 
 export type Value =
@@ -327,6 +328,21 @@ class Parser {
       if (this.src[this.pos] === ",") {
         items.push(NULL);
         this.pos++;
+        continue;
+      }
+      // Leading-`=` modification binding, e.g. the `= 1.0` inside
+      // `$Code( = 1.0)` returned by `getNthComponentModification`. Modelica's
+      // modification syntax allows a bare binding with no LHS ident; OMC emits
+      // it verbatim. Represent it as a `call` named "=" with the bound value as
+      // its single arg so callers can recognise the binding form.
+      if (this.src[this.pos] === "=") {
+        this.pos++;
+        const bound = this.value();
+        items.push({ kind: "call", name: "=", args: [bound] });
+        this.skipSpace();
+        if (this.pos < this.src.length && this.src[this.pos] === ",") {
+          this.pos++;
+        }
         continue;
       }
       const head = this.value();

@@ -89,6 +89,21 @@ describe("parse: function calls", () => {
     expect(v.name).toBe("Polygon");
     expect(v.args).toHaveLength(4);
   });
+
+  it("parses the `$Code( = 1.0)` modification form from getNthComponentModification", () => {
+    // OMC returns `{$Code( = 1.0)}` for a modified component. The leading-`=`
+    // binding inside the parens has no LHS ident; it parses to a `call` named
+    // "=" carrying the bound value.
+    const v = parse(`{$Code( = 1.0)}`);
+    expect(v.kind).toBe("list");
+    if (v.kind !== "list") throw new Error("unreachable");
+    const code = v.items[0];
+    expect(code).toMatchObject({ kind: "call", name: "$Code" });
+    if (code?.kind !== "call") throw new Error("unreachable");
+    expect(code.args).toEqual([
+      { kind: "call", name: "=", args: [{ kind: "float", value: 1.0 }] },
+    ]);
+  });
 });
 
 describe("parse: documentation strings with newlines", () => {
