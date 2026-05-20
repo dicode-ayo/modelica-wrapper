@@ -715,6 +715,44 @@ describeIf("OmcClient against real OMC", () => {
     expect(instance.annotation).toBeDefined();
   });
 
+  it("getModelInstanceAnnotation with the icon filter returns Icon and prunes the rest (#25)", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const cls = "Modelica.Blocks.Math.Sin";
+    // OMEdit's icon-only filter set (OMCProxy.cpp:3426-3441).
+    const { instance: filtered } = await client.getModelInstanceAnnotation({
+      typeName: cls,
+      filter: ["Icon", "IconMap", "Diagram", "DiagramMap", "experiment"],
+    });
+    expect(filtered.name).toBe(cls);
+    const icon = filtered.annotation?.Icon;
+    expect(Array.isArray(icon?.graphics)).toBe(true);
+    expect((icon?.graphics ?? []).length).toBeGreaterThan(0);
+    // The filter genuinely prunes non-listed annotations (Documentation,
+    // etc.), so the filtered payload is no larger than the unfiltered
+    // annotation subset for the same class.
+    const { instance: unfiltered } = await client.getModelInstanceAnnotation({
+      typeName: cls,
+    });
+    expect(JSON.stringify(filtered).length).toBeLessThanOrEqual(
+      JSON.stringify(unfiltered).length,
+    );
+  });
+
+  it("getModelInstanceAnnotation accepts an explicit empty filter (fill(\"\", 0), not {}) (#25)", async () => {
+    await client.loadModel({ typeName: "Modelica" });
+    const cls = "Modelica.Blocks.Math.Sin";
+    // Regression guard for the audit.md §2.10 trap: a bare `{}` for this
+    // String[:] arg makes OMC's interactive parser report the misleading
+    // "Class getModelInstanceAnnotation not found in scope". The wrapper
+    // emits `fill("", 0)` instead, so an explicit empty filter must work.
+    const { instance } = await client.getModelInstanceAnnotation({
+      typeName: cls,
+      filter: [],
+    });
+    expect(instance.name).toBe(cls);
+    expect(instance.annotation).toBeDefined();
+  });
+
   // === Element readers (modern Component* generalization) ===
 
   it("getElementAnnotation returns the annotation string for an element", async () => {

@@ -612,6 +612,61 @@ async function fetchModelInstance(
 }
 
 /**
+ * Annotation names the icon-only fetch keeps. Mirrors OMEdit's
+ * `getModelInstanceAnnotation` call site
+ * (`OMEdit/OMEditLIB/OMC/OMCProxy.cpp:3426-3441`): everything needed to
+ * paint a class's own icon (and its inherited icon maps) without
+ * dragging in the full elaborated AST.
+ */
+const ICON_ANNOTATION_FILTER = [
+  "Icon",
+  "IconMap",
+  "Diagram",
+  "DiagramMap",
+  "experiment",
+] as const;
+
+/**
+ * Build an icon-only `DiagramLayout` for `className` — the cheap path for
+ * library-tree thumbnails and icon previews, where the diagram's
+ * sub-component placements and connections are irrelevant.
+ *
+ * Uses the filtered `getModelInstanceAnnotation` (Icon/Diagram-only,
+ * deep type expansions pruned) instead of the full `getModelInstance`,
+ * which on a PID-style class runs into tens of thousands of JSON lines.
+ * Falls back to the full `getModelInstance` on failure, exactly like
+ * OMEdit — some classes (parse errors, partial loads) only return a
+ * usable tree from the unfiltered call.
+ *
+ * The producer runs in `"icon"` mode either way: `diagramLayers`,
+ * `connections`, and diagram-mode labels are all dropped, so the
+ * annotation tree's pruned sub-component types cost us nothing here.
+ */
+export async function fetchIconLayout(
+  client: OmcClient,
+  className: string,
+): Promise<DiagramLayout> {
+  let instance: ModelInstance;
+  try {
+    const { instance: annotationInstance } = await client.invoke(
+      "getModelInstanceAnnotation",
+      {
+        typeName: className,
+        filter: [...ICON_ANNOTATION_FILTER],
+      },
+    );
+    instance = annotationInstance;
+  } catch (err) {
+    log.warn(
+      "fetchIconLayout",
+      `filtered getModelInstanceAnnotation failed for ${className}; falling back to full getModelInstance: ${(err as Error).message}`,
+    );
+    instance = await fetchModelInstance(client, className);
+  }
+  return diagram.produceDiagramLayout(instance, "icon");
+}
+
+/**
  * Apply each dirty form field as a modifier write against OMC. We
  * compare submitted values to the initial snapshot so unchanged fields
  * aren't rewritten — keeps the source file untouched and avoids

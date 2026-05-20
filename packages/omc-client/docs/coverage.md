@@ -117,7 +117,7 @@ These mirror the existing `is*` predicates but span **three** argument/output sh
 | `listFile` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.listFile.html) |
 | `instantiateModel` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.instantiateModel.html) |
 | `getModelInstance` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getModelInstance.html) — collapses the multi-call diagram-read path into one structured-AST call. Schema is validated live against Sin + PID_Controller in [`../test/modelInstance.integration.test.ts`](../test/modelInstance.integration.test.ts); captures are regenerable via `pnpm capture-modelinstance-fixtures` (gitignored). |
-| `getModelInstanceAnnotation` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getModelInstanceAnnotation.html) — annotation-only subset, useful for thumbnails |
+| `getModelInstanceAnnotation` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getModelInstanceAnnotation.html) — annotation-only subset, useful for thumbnails. Takes `filter` (`String[:]`) + `prettyPrint`; pass `["Icon","IconMap","Diagram","DiagramMap","experiment"]` for OMEdit's icon-only fetch (#25). Empty filter emits `fill("", 0)` (see gotcha below). |
 | `modifierToJSON` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.modifierToJSON.html) |
 | `getConnectionList` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getConnectionList.html) — verified on `PID_Controller` |
 | `getNthConnector` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getNthConnector.html) — verified via a fixture block that declares `RealInput u` / `RealOutput y` directly (not via extends) |
@@ -334,7 +334,7 @@ bare empty literal `{}` for a `String[:]` argument — it triggers the same
 [audit.md §2.10](./audit.md). The accepted empty-literal is `fill("", 0)`.
 A shared `quoteListOrFillEmpty()` helper in `_shared/format.ts` emits the
 right form; the three comparison wrappers above use it for their optional
-`vars` arg.
+`vars` arg, and `getModelInstanceAnnotation` uses it for its `filter` arg.
 
 ---
 
