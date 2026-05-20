@@ -8,9 +8,8 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { connectionAnnotation } from "../../_shared/fields.js";
-import { SuccessOutput } from "../../_shared/outputs.js";
-import { parseOutput } from "../../_shared/parseOutput.js";
-import { expectBool, parse } from "../../parse.js";
+import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
+import { parseMutationDiagnostic, parseOutput } from "../../_shared/parseOutput.js";
 
 export const AddConnectionInputSchema = z.object({
   from: z.string().describe("Left-hand-side connector reference for the new connection."),
@@ -20,7 +19,7 @@ export const AddConnectionInputSchema = z.object({
 });
 export type AddConnectionInput = z.input<typeof AddConnectionInputSchema>;
 
-export const AddConnectionOutputSchema = SuccessOutput;
+export const AddConnectionOutputSchema = SuccessWithDiagnosticOutput;
 export type AddConnectionOutput = z.infer<typeof AddConnectionOutputSchema>;
 
 export const AddConnectionDescription = "Add a `connect(from, to)` to the given class with an optional Line annotation.";
@@ -36,7 +35,7 @@ export async function addConnection(
   );
   return parseOutput(
     AddConnectionOutputSchema,
-    { success: expectBool(parse(raw)) },
+    parseMutationDiagnostic(raw),
     "addConnection",
   );
 }

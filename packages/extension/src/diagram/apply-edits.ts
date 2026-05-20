@@ -130,6 +130,25 @@ function order(e: LayoutEdit): number {
   }
 }
 
+/**
+ * Throw when an OMC mutation reported `{ success: false }`.
+ *
+ * `client.invoke` resolves (never throws) on an OMC-rejected mutation — it
+ * returns `{ success: false, diagnostic? }`. Left unchecked, `applyEdits`
+ * would count the rejected call as `applied++` and log it as a success
+ * (issue #76, items 7 & 13). Surfacing it as a thrown Error here routes the
+ * failure into the `result.failed` bucket with whatever diagnostic OMC gave.
+ */
+function assertMutationApplied(
+  fn: string,
+  result: { success: boolean; diagnostic?: string },
+): void {
+  if (result.success) return;
+  throw new Error(
+    result.diagnostic ? `${fn}: ${result.diagnostic}` : `${fn} reported failure`,
+  );
+}
+
 async function applyOne(
   client: OmcClient,
   hostClass: string,
@@ -137,33 +156,45 @@ async function applyOne(
 ): Promise<void> {
   switch (edit.kind) {
     case "componentPlacement":
-      await client.invoke("updateComponent", {
-        componentName: edit.componentName,
-        componentClass: edit.componentClass,
-        intoTypeName: hostClass,
-        annotation: placementAnnotation(edit.extent, edit.rotation),
-      });
+      assertMutationApplied(
+        "updateComponent",
+        await client.invoke("updateComponent", {
+          componentName: edit.componentName,
+          componentClass: edit.componentClass,
+          intoTypeName: hostClass,
+          annotation: placementAnnotation(edit.extent, edit.rotation),
+        }),
+      );
       return;
     case "componentDeleted":
-      await client.invoke("deleteComponent", {
-        componentName: edit.componentName,
-        typeName: hostClass,
-      });
+      assertMutationApplied(
+        "deleteComponent",
+        await client.invoke("deleteComponent", {
+          componentName: edit.componentName,
+          typeName: hostClass,
+        }),
+      );
       return;
     case "connectionAdded":
-      await client.invoke("addConnection", {
-        from: edit.from,
-        to: edit.to,
-        typeName: hostClass,
-        annotation: lineAnnotation(edit.waypoints),
-      });
+      assertMutationApplied(
+        "addConnection",
+        await client.invoke("addConnection", {
+          from: edit.from,
+          to: edit.to,
+          typeName: hostClass,
+          annotation: lineAnnotation(edit.waypoints),
+        }),
+      );
       return;
     case "connectionDeleted":
-      await client.invoke("deleteConnection", {
-        from: edit.from,
-        to: edit.to,
-        typeName: hostClass,
-      });
+      assertMutationApplied(
+        "deleteConnection",
+        await client.invoke("deleteConnection", {
+          from: edit.from,
+          to: edit.to,
+          typeName: hostClass,
+        }),
+      );
       return;
     case "connectionWaypoints":
       // `updateConnection` was previously thought to be missing on
@@ -171,25 +202,31 @@ async function applyOne(
       // since been rescued (the OMC docs put `className` first and
       // require `from` / `to` as quoted Strings — see
       // packages/omc-client/docs/audit.md §2.10). Single RPC now.
-      await client.invoke("updateConnection", {
-        typeName: hostClass,
-        from: edit.from,
-        to: edit.to,
-        annotation: lineAnnotation(edit.waypoints),
-      });
+      assertMutationApplied(
+        "updateConnection",
+        await client.invoke("updateConnection", {
+          typeName: hostClass,
+          from: edit.from,
+          to: edit.to,
+          annotation: lineAnnotation(edit.waypoints),
+        }),
+      );
       return;
     case "connectionRenamed":
       // Vector-port re-index (issue #26): rewrite the endpoint
       // identifiers in place via a single `updateConnectionNames` RPC
       // instead of delete+add, keeping the file diff minimal and the
       // existing `Line(points=...)` annotation intact.
-      await client.invoke("updateConnectionNames", {
-        typeName: hostClass,
-        from: edit.oldFrom,
-        to: edit.oldTo,
-        fromNew: edit.newFrom,
-        toNew: edit.newTo,
-      });
+      assertMutationApplied(
+        "updateConnectionNames",
+        await client.invoke("updateConnectionNames", {
+          typeName: hostClass,
+          from: edit.oldFrom,
+          to: edit.oldTo,
+          fromNew: edit.newFrom,
+          toNew: edit.newTo,
+        }),
+      );
       return;
   }
 }

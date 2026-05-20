@@ -1,6 +1,6 @@
 import type { z } from "zod";
 
-import { expectBool, isNull, parse, type Value } from "../parse.js";
+import { asBool, expectBool, isNull, parse, parseLeading, type Value } from "../parse.js";
 import type { CallContext } from "./callContext.js";
 
 /**
@@ -60,4 +60,37 @@ export async function parseMutationSuccess(
     }
   }
   return ok;
+}
+
+/**
+ * Non-throwing sibling of {@link parseMutationSuccess} for mutation wrappers
+ * whose contract is `{ success: boolean; diagnostic?: string }` (the
+ * `addComponent` shape).
+ *
+ * OMC's mutations emit two off-spec failure shapes that strict bool parsing
+ * chokes on:
+ *
+ *   1. `false\nError occurred building AST` — the bool plus a trailing
+ *      diagnostic line.
+ *   2. `Error: <message>` — no bool at all, the whole response is prose.
+ *
+ * Rather than throw (which loses the bool/diagnostic split the caller wants
+ * to surface in a toast / REPL transcript), this captures whatever OMC wrote
+ * as `diagnostic` and reports `success: false` whenever the leading value
+ * isn't a clean `true`. The canonical error story remains `getErrorString()`;
+ * `diagnostic` is the best-effort inline hint.
+ */
+export function parseMutationDiagnostic(raw: string): {
+  success: boolean;
+  diagnostic?: string;
+} {
+  const { value, trailing } = parseLeading(raw);
+  const bool = asBool(value);
+  if (bool === undefined) {
+    // Leading value isn't a bool — OMC returned a raw error (e.g.
+    // `Error: ...`). Surface the whole response so the caller has
+    // something actionable.
+    return { success: false, diagnostic: raw.trim() };
+  }
+  return trailing.length > 0 ? { success: bool, diagnostic: trailing } : { success: bool };
 }

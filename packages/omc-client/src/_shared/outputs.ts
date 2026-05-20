@@ -27,6 +27,28 @@ export const SuccessOutput = z.object({
 export type SuccessOutput = z.infer<typeof SuccessOutput>;
 
 /**
+ * `{ success: boolean; diagnostic?: string }` — used by mutation wrappers
+ * that surface OMC's off-spec failure prose inline (the `addComponent`
+ * shape). On a clean `true` the `diagnostic` field is absent; on failure it
+ * carries whatever OMC appended after (or in place of) the success bool.
+ * Pair with {@link parseMutationDiagnostic}.
+ */
+export const SuccessWithDiagnosticOutput = z.object({
+  success: z
+    .boolean()
+    .describe("True if the OMC operation completed without error."),
+  diagnostic: z
+    .string()
+    .optional()
+    .describe(
+      "OMC text appended after (or in place of) the success bool. Usually a short error message on failure; absent on clean success.",
+    ),
+});
+export type SuccessWithDiagnosticOutput = z.infer<
+  typeof SuccessWithDiagnosticOutput
+>;
+
+/**
  * `{ b: boolean }` — used by every class predicate (`isModel`, `isPackage`,
  * `isClass`, `existClass`, …). The field name `b` matches OMC's literal
  * `output Boolean b;` — keeping it preserves the audit convention.

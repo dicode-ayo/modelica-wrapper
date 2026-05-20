@@ -9,8 +9,8 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { parseOutput } from "../../_shared/parseOutput.js";
-import { asBool, parseLeading } from "../../parse.js";
+import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
+import { parseMutationDiagnostic, parseOutput } from "../../_shared/parseOutput.js";
 
 export const AddComponentInputSchema = z.object({
   /** Local instance name to give the new component. */
@@ -38,15 +38,7 @@ export type AddComponentInput = z.input<typeof AddComponentInputSchema>;
  * value isn't a boolean. The canonical error story is still
  * `getErrorString()`; `diagnostic` is the best-effort hint.
  */
-export const AddComponentOutputSchema = z.object({
-  success: z.boolean().describe("True if OMC reported the add succeeded."),
-  diagnostic: z
-    .string()
-    .optional()
-    .describe(
-      "OMC text appended after (or in place of) the success bool. Usually a short error message on failure; absent on clean success.",
-    ),
-});
+export const AddComponentOutputSchema = SuccessWithDiagnosticOutput;
 export type AddComponentOutput = z.infer<typeof AddComponentOutputSchema>;
 
 export const AddComponentDescription = "Insert a new component into a class with an optional Placement annotation.";
@@ -61,17 +53,9 @@ export async function addComponent(
   const raw = await ctx.call(
     `addComponent(${input.componentName}, ${input.componentClass}, ${input.intoTypeName}, ${ann})`,
   );
-  const { value, trailing } = parseLeading(raw);
-  const bool = asBool(value);
-  const output: { success: boolean; diagnostic?: string } =
-    bool === undefined
-      ? // Leading value isn't a bool — OMC returned a raw error
-        // (e.g. `Error: ...`). Surface the whole response so the
-        // caller has something actionable to show in the toast / REPL.
-        { success: false, diagnostic: raw.trim() }
-      : { success: bool };
-  if (bool !== undefined && trailing.length > 0) {
-    output.diagnostic = trailing;
-  }
-  return parseOutput(AddComponentOutputSchema, output, "addComponent");
+  return parseOutput(
+    AddComponentOutputSchema,
+    parseMutationDiagnostic(raw),
+    "addComponent",
+  );
 }

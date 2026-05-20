@@ -8,9 +8,8 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { SuccessOutput } from "../../_shared/outputs.js";
-import { parseOutput } from "../../_shared/parseOutput.js";
-import { expectBool, parse } from "../../parse.js";
+import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
+import { parseMutationDiagnostic, parseOutput } from "../../_shared/parseOutput.js";
 
 export const UpdateComponentInputSchema = z.object({
   componentName: z.string().describe("Local instance name of the component to update."),
@@ -20,7 +19,7 @@ export const UpdateComponentInputSchema = z.object({
 });
 export type UpdateComponentInput = z.input<typeof UpdateComponentInputSchema>;
 
-export const UpdateComponentOutputSchema = SuccessOutput;
+export const UpdateComponentOutputSchema = SuccessWithDiagnosticOutput;
 export type UpdateComponentOutput = z.infer<typeof UpdateComponentOutputSchema>;
 
 export const UpdateComponentDescription =
@@ -38,7 +37,7 @@ export async function updateComponent(
   );
   return parseOutput(
     UpdateComponentOutputSchema,
-    { success: expectBool(parse(raw)) },
+    parseMutationDiagnostic(raw),
     "updateComponent",
   );
 }

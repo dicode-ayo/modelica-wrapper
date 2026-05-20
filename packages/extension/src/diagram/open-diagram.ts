@@ -185,12 +185,20 @@ export async function openDiagram(
       // Snapshot before the addConnection write so Undo can revert it (#29).
       await pushUndoSnapshot();
       try {
-        await client.invoke("addConnection", {
+        const conn = await client.invoke("addConnection", {
           from,
           to,
           typeName: className,
           annotation: lineAnnotation(waypoints),
         });
+        // `invoke` resolves even when OMC rejected the connect — inspect
+        // `success` so a dangling/invalid endpoint surfaces as an error
+        // toast instead of a silent "connected" log (issue #76).
+        if (!conn.success) {
+          throw new Error(
+            conn.diagnostic ?? "OMC rejected the connection",
+          );
+        }
         refreshLabel();
         createReplLog(label).success(`connected ${from} ↔ ${to}`);
         prevLayout = await fetchLayout(client, className);
