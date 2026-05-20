@@ -107,6 +107,59 @@ end ${packageName};
   return { packageName, modelClass };
 }
 
+/**
+ * A loaded `extends`-clause fixture with a self-contained base/derived pair:
+ *
+ * ```modelica
+ * package P
+ *   model Base
+ *     parameter Real k = 1.0;
+ *   end Base;
+ *   model Derived
+ *     extends Base(k = 2.5);
+ *   end Derived;
+ * end P;
+ * ```
+ *
+ * Unlike `loadExtendsFixture` (which extends `Modelica.Blocks.Math.Gain`),
+ * this fixture defines its own base class so the modifier is declared inside
+ * the same package — no `Modelica` library load required, and the
+ * `getExtendsModifier*` read path surfaces the `k` modifier on the pin.
+ */
+export interface DerivedExtendsFixture extends Fixture {
+  /** The base model, e.g. `MwTest_a1b2c3d4.Base`. */
+  baseClass: string;
+  /** The derived model carrying the `extends Base(k = 2.5)` clause. */
+  derivedClass: string;
+}
+
+export async function loadDerivedExtendsFixture(
+  client: OmcClient,
+): Promise<DerivedExtendsFixture> {
+  const packageName = `MwTest_${randomBytes(4).toString("hex")}`;
+  const baseClass = `${packageName}.Base`;
+  const derivedClass = `${packageName}.Derived`;
+  const data = `package ${packageName}
+  model Base
+    parameter Real k = 1.0;
+  end Base;
+  model Derived
+    extends Base(k = 2.5);
+  end Derived;
+end ${packageName};
+`;
+  const { success } = await client.loadString({
+    data,
+    filename: `<fixture:${packageName}>`,
+  });
+  if (!success) {
+    const { errorString } = await client.getErrorString();
+    throw new Error(`loadDerivedExtendsFixture: ${errorString}`);
+  }
+  // `modelClass` points at the derived class — that's the one tests mutate.
+  return { packageName, modelClass: derivedClass, baseClass, derivedClass };
+}
+
 /** Best-effort cleanup. Errors are swallowed — the OMC subprocess dies anyway. */
 export async function disposeFixture(
   client: OmcClient,

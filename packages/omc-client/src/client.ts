@@ -784,6 +784,30 @@ export class OmcClient implements CallContext {
     return parameters.removeExtendsModifiers(this, input);
   }
 
+  getDerivedClassModifierNames(
+    input: parameters.GetDerivedClassModifierNamesInput,
+  ): Promise<parameters.GetDerivedClassModifierNamesOutput> {
+    return parameters.getDerivedClassModifierNames(this, input);
+  }
+
+  getDerivedClassModifierValue(
+    input: parameters.GetDerivedClassModifierValueInput,
+  ): Promise<parameters.GetDerivedClassModifierValueOutput> {
+    return parameters.getDerivedClassModifierValue(this, input);
+  }
+
+  isExtendsModifierFinal(
+    input: parameters.IsExtendsModifierFinalInput,
+  ): Promise<parameters.IsExtendsModifierFinalOutput> {
+    return parameters.isExtendsModifierFinal(this, input);
+  }
+
+  setExtendsModifier(
+    input: parameters.SetExtendsModifierInput,
+  ): Promise<parameters.SetExtendsModifierOutput> {
+    return parameters.setExtendsModifier(this, input);
+  }
+
   // === Elements ========================================================
 
   getElements(

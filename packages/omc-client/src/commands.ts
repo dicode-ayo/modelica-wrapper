@@ -123,6 +123,10 @@ export type OmcFunction =
   | "getExtendsModifierValue"
   | "setExtendsModifierValue"
   | "removeExtendsModifiers"
+  | "getDerivedClassModifierNames"
+  | "getDerivedClassModifierValue"
+  | "isExtendsModifierFinal"
+  | "setExtendsModifier"
 
   // --- Elements (modern Component* generalization) ---
   | "getElements"
