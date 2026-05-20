@@ -1032,6 +1032,12 @@ export class OmcClient implements CallContext {
     return editing.updateConnection(this, input);
   }
 
+  updateConnectionNames(
+    input: editing.UpdateConnectionNamesInput,
+  ): Promise<editing.UpdateConnectionNamesOutput> {
+    return editing.updateConnectionNames(this, input);
+  }
+
   addTransition(
     input: editing.AddTransitionInput,
   ): Promise<editing.AddTransitionOutput> {
@@ -1042,6 +1048,12 @@ export class OmcClient implements CallContext {
     input: editing.DeleteTransitionInput,
   ): Promise<editing.DeleteTransitionOutput> {
     return editing.deleteTransition(this, input);
+  }
+
+  updateTransition(
+    input: editing.UpdateTransitionInput,
+  ): Promise<editing.UpdateTransitionOutput> {
+    return editing.updateTransition(this, input);
   }
 
   addClassAnnotation(
