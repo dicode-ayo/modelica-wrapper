@@ -429,6 +429,61 @@ end ${pkg};
       });
     });
 
+    it("updateConnectionNames renames one or both endpoints of an existing connection", async () => {
+      // updateConnectionNames is the rename-edge variant of updateConnection:
+      // it leaves the annotation alone but rewrites either or both of the
+      // (from, to) endpoint identifiers. Same String-quoting gotcha as the
+      // surrounding transition mutators — see audit.md §2.10.
+      await client.addComponent({
+        componentName: "uIn",
+        componentClass: "Modelica.Blocks.Interfaces.RealInput",
+        intoTypeName: fixture.modelClass,
+      });
+      await client.addComponent({
+        componentName: "yOut",
+        componentClass: "Modelica.Blocks.Interfaces.RealOutput",
+        intoTypeName: fixture.modelClass,
+      });
+      await client.addConnection({
+        from: "uIn",
+        to: "yOut",
+        typeName: fixture.modelClass,
+      });
+
+      // Rename `uIn` -> `uInRenamed` first via renameComponentInClass so the
+      // endpoint identifier exists in the symbol table, then rewrite the
+      // connection's `from` endpoint to match.
+      await client.renameComponentInClass({
+        typeName: fixture.modelClass,
+        oldName: "uIn",
+        newName: "uInRenamed",
+      });
+
+      const ren = await client.updateConnectionNames({
+        typeName: fixture.modelClass,
+        from: "uIn",
+        to: "yOut",
+        fromNew: "uInRenamed",
+        toNew: "yOut",
+      });
+      expect(ren.success).toBe(true);
+
+      // Verify via the connection reader that endpoint 1 of the only
+      // connection now points at the renamed component.
+      const { from: gotFrom, to: gotTo } = await client.getNthConnection({
+        typeName: fixture.modelClass,
+        index: 1,
+      });
+      expect(gotFrom).toBe("uInRenamed");
+      expect(gotTo).toBe("yOut");
+
+      await client.deleteConnection({
+        from: "uInRenamed",
+        to: "yOut",
+        typeName: fixture.modelClass,
+      });
+    });
+
     it("addConnection / deleteConnection on a model with two connectors", async () => {
       await client.addComponent({
         componentName: "uIn",
@@ -745,6 +800,45 @@ end ${pkg};
         (r) => r[0] === "state2" && r[1] === "state3",
       );
       expect(newRow).toBeDefined();
+    });
+
+    it("updateTransition replaces the guard, flags, priority, and annotation of an existing transition", async () => {
+      // Round-trip: read the fixture's transition row, ask OMC to update
+      // it with a fresh guard + flag set, then read back and assert the
+      // new values landed. Same String-quoting gotcha as the other
+      // transition mutators — see audit.md §2.10.
+      const before = await client.getTransitions({ typeName: cls });
+      expect(before.transitions.length).toBe(1);
+      const [from, to, oldCondition, oldImm, oldRes, oldSync, oldPrio] =
+        before.transitions[0]!;
+
+      const upd = await client.updateTransition({
+        typeName: cls,
+        from: from!,
+        to: to!,
+        oldCondition: oldCondition!,
+        oldImmediate: oldImm === "true",
+        oldReset: oldRes === "true",
+        oldSynchronize: oldSync === "true",
+        oldPriority: Number(oldPrio),
+        newCondition: "time > 5",
+        newImmediate: false,
+        newReset: false,
+        newSynchronize: false,
+        newPriority: 3,
+        annotation: "Line(points={{-20,0},{20,0}})",
+      });
+      expect(upd.success).toBe(true);
+
+      const after = await client.getTransitions({ typeName: cls });
+      expect(after.transitions.length).toBe(1);
+      const [, , newCond, newImm, newRes, newSync, newPrio] =
+        after.transitions[0]!;
+      expect(newCond).toMatch(/time\s*>\s*5/);
+      expect(newImm).toBe("false");
+      expect(newRes).toBe("false");
+      expect(newSync).toBe("false");
+      expect(Number(newPrio)).toBe(3);
     });
 
     it("deleteTransition removes the fixture's original transition", async () => {
