@@ -154,16 +154,41 @@ function parameterDisplayValue(el: ComponentElement): string {
  * type aliases via `extends`) into a single `unit` string. Used for
  * the optional `ParameterDef.unit` field; we don't surface quantity
  * because no current consumer needs it.
+ *
+ * The `unit` modifier can ride either directly on the component (a plain
+ * `Real x(unit="m")`), on the immediate type alias's `extends` (e.g.
+ * `Angle extends Real(unit="rad")`), or further down a CHAIN of aliases
+ * (`Inertia extends MomentOfInertia extends Real(unit="kg.m2")`). OMC
+ * inlines that chain as nested `ModelInstance` objects on each `extends`
+ * element's `baseClass`, so we recurse through them to reach the unit.
  */
 function parameterUnit(el: ComponentElement): string | undefined {
   const direct = readModifierField(el.modifiers, "unit");
   if (direct) return stripModelicaString(direct);
   if (typeof el.type === "object" && el.type !== null) {
-    for (const child of el.type.elements ?? []) {
-      if (child.$kind === "extends") {
-        const u = readModifierField(child.modifiers, "unit");
-        if (u) return stripModelicaString(u);
-      }
+    return unitFromInstance(el.type);
+  }
+  return undefined;
+}
+
+/**
+ * Walk a type instance's `extends` elements looking for a `unit` modifier,
+ * recursing into each base class that is itself an inlined `ModelInstance`.
+ * Depth-bounded as a defensive guard against pathological / cyclic input.
+ */
+function unitFromInstance(
+  instance: ModelInstance,
+  depth = 0,
+): string | undefined {
+  if (depth > 16) return undefined;
+  for (const child of instance.elements ?? []) {
+    if (child.$kind !== "extends") continue;
+    const u = readModifierField(child.modifiers, "unit");
+    if (u) return stripModelicaString(u);
+    const base = child.baseClass;
+    if (typeof base === "object" && base !== null) {
+      const nested = unitFromInstance(base, depth + 1);
+      if (nested) return nested;
     }
   }
   return undefined;

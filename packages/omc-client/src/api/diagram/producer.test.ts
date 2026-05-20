@@ -1055,3 +1055,93 @@ describe("produceDiagramLayout: parameter displayUnit", () => {
     expect(cls?.parameters.b?.displayUnit).toBeUndefined();
   });
 });
+
+describe("produceDiagramLayout: parameter unit from type-alias chain (#71)", () => {
+  // OMC inlines the SI type-alias chain on each `extends` element's
+  // baseClass. `Angle` carries `unit="rad"` on its immediate extends;
+  // `Inertia` only reaches `unit="kg.m2"` through a nested
+  // `extends MomentOfInertia extends Real(unit="kg.m2")`.
+  function outerWithSiParams(): ModelInstance {
+    const angleType: unknown = {
+      name: "Modelica.Units.SI.Angle",
+      restriction: "type",
+      elements: [
+        {
+          $kind: "extends",
+          baseClass: "Real",
+          modifiers: { unit: "\"rad\"", displayUnit: "\"deg\"" },
+        },
+      ],
+    };
+    const inertiaType: unknown = {
+      name: "Modelica.Units.SI.Inertia",
+      restriction: "type",
+      elements: [
+        {
+          $kind: "extends",
+          // baseClass is itself an inlined ModelInstance whose own
+          // extends carries the unit — the nested-chain case.
+          baseClass: {
+            name: "Modelica.Units.SI.MomentOfInertia",
+            restriction: "type",
+            elements: [
+              {
+                $kind: "extends",
+                baseClass: "Real",
+                modifiers: { unit: "\"kg.m2\"" },
+              },
+            ],
+          },
+        },
+      ],
+    };
+    const host: unknown = {
+      name: "Synth.SiHost",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "component",
+          name: "a",
+          type: angleType,
+          modifiers: { displayUnit: "\"deg\"", $value: "1.57" },
+          prefixes: { variability: "parameter" },
+        },
+        {
+          $kind: "component",
+          name: "J",
+          type: inertiaType,
+          modifiers: "1",
+          value: { binding: 1 },
+          prefixes: { variability: "parameter" },
+        },
+      ],
+    };
+    const outer: unknown = {
+      name: "Synth.OuterSi",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "component",
+          name: "h1",
+          type: host,
+          annotation: placementAnno([[-5, -5], [5, 5]]),
+        },
+      ],
+    };
+    return ModelInstanceSchema.parse(outer);
+  }
+
+  it("reads unit from the immediate type-alias extends (Angle → rad)", () => {
+    const layout = produceDiagramLayout(outerWithSiParams(), "icon");
+    const cls = layout.classes["Synth.SiHost"];
+    expect(cls?.parameters.a?.unit).toBe("rad");
+    expect(cls?.parameters.a?.displayUnit).toBe("deg");
+  });
+
+  it("reads unit from a nested type-alias chain (Inertia → kg.m2)", () => {
+    const layout = produceDiagramLayout(outerWithSiParams(), "icon");
+    const cls = layout.classes["Synth.SiHost"];
+    expect(cls?.parameters.J?.unit).toBe("kg.m2");
+    expect(cls?.parameters.J?.displayUnit).toBeUndefined();
+  });
+});
