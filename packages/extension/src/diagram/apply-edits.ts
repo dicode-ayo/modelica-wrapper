@@ -5,6 +5,7 @@ import {
   placementAnnotation,
   type LayoutEdit,
 } from "./diff-layout.js";
+import { captureSnapshot, restoreSnapshot } from "./omc-snapshot.js";
 
 /**
  * Translates `LayoutEdit[]` (from `diffLayouts`) into omc-client calls
@@ -19,6 +20,29 @@ import {
 export interface ApplyEditsResult {
   applied: number;
   failed: Array<{ edit: LayoutEdit; error: string }>;
+  /**
+   * True when an edit failed AND an OMC-level snapshot (taken because
+   * `options.snapshot` was set) was restored to roll the class back to its
+   * pre-edit source. Always `false` on the default path, where no snapshot
+   * is taken. See `omc-snapshot.ts`.
+   */
+  rolledBack: boolean;
+}
+
+/**
+ * Opt-in behaviour for `applyEdits`. Omitting `options` (or leaving
+ * `snapshot` falsy) keeps the default path byte-for-byte identical to the
+ * pre-snapshot behaviour: no `listFile` capture, no rollback.
+ */
+export interface ApplyEditsOptions {
+  /**
+   * When true, snapshot the host class's source via `listFile` before
+   * applying any edit. If any edit then fails, the snapshot is replayed via
+   * `loadString` to undo every partial change, and `rolledBack` is set on
+   * the result. The coarse OMC-level escape hatch for multi-RPC flows whose
+   * partial failures the diff-layout undo can't describe (issue #29).
+   */
+  snapshot?: boolean;
 }
 
 /**
@@ -41,8 +65,16 @@ export async function applyEdits(
   hostClass: string,
   edits: ReadonlyArray<LayoutEdit>,
   onApplied?: ApplyEditsHook,
+  options?: ApplyEditsOptions,
 ): Promise<ApplyEditsResult> {
-  const result: ApplyEditsResult = { applied: 0, failed: [] };
+  const result: ApplyEditsResult = { applied: 0, failed: [], rolledBack: false };
+
+  // Opt-in OMC-level escape hatch: snapshot the host class's source before
+  // we touch anything, so a partial failure can be rolled back wholesale.
+  // `undefined` means the class has no listable source — proceed without it.
+  const snapshot = options?.snapshot
+    ? await captureSnapshot(client, hostClass)
+    : undefined;
 
   // Deletions first so we don't re-add an edge that no longer has a
   // counterpart, then adds, then placement changes.
@@ -59,6 +91,18 @@ export async function applyEdits(
       onApplied?.(edit, client.lastCall ?? "(no command)", msg);
     }
   }
+
+  // If any edit failed and we captured a snapshot, replay it to undo every
+  // partial change. Restore failures are swallowed: a best-effort rollback
+  // shouldn't mask the original edit failures the caller cares about.
+  if (result.failed.length > 0 && snapshot) {
+    try {
+      result.rolledBack = await restoreSnapshot(client, snapshot);
+    } catch {
+      result.rolledBack = false;
+    }
+  }
+
   return result;
 }
 
