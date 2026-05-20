@@ -461,6 +461,8 @@ function editSummary(edit: LayoutEdit): string {
       return `disconnected ${edit.from} ↔ ${edit.to}`;
     case "connectionWaypoints":
       return `re-routed ${edit.from} ↔ ${edit.to} (${edit.waypoints.length} pts)`;
+    case "connectionRenamed":
+      return `re-indexed ${edit.oldFrom} ↔ ${edit.oldTo} → ${edit.newFrom} ↔ ${edit.newTo}`;
   }
 }
 

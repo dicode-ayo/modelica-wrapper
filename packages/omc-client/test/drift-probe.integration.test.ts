@@ -171,6 +171,20 @@ const probes: Probe[] = [
     cmd: 'updateConnection(Modelica.Blocks.Examples.PID_Controller, "spring.flange_b", "inertia2.flange_a", Line())' as OmcCommand,
   },
 
+  // ----- Editing: updateConnectionNames — currently ✅ (issue #26/#37), kept as regression watch -----
+  {
+    label: "updateConnectionNames(docs-correct shape — identity rename, no-op)",
+    wrapper: "editing/updateConnectionNames.ts",
+    note: "Regression watch (issue #26): signature is (TypeName className, String from, String to, String fromNew, String toNew) -> Boolean. All four endpoint args are String-typed and MUST be quoted; passing them bare yields the misleading 'not found in scope' diagnostic (audit.md §2.10). This identity rename (fromNew==from, toNew==to) is non-destructive — it returns true without altering the source. The in-place-rename consumer in extension/diff-layout relies on this returning true.",
+    cmd: 'updateConnectionNames(Modelica.Blocks.Examples.PID_Controller, "spring.flange_b", "inertia2.flange_a", "spring.flange_b", "inertia2.flange_a")' as OmcCommand,
+  },
+  {
+    label: "updateConnectionNames(bare endpoint idents — the OLD broken shape)",
+    wrapper: "editing/updateConnectionNames.ts",
+    note: "Counter-example: should ✗ because from/to/fromNew/toNew are String-typed, not TypeNames. If a future OMC accepts bare idents here, the wrapper's quoting could be relaxed.",
+    cmd: "updateConnectionNames(Modelica.Blocks.Examples.PID_Controller, spring.flange_b, inertia2.flange_a, spring.flange_b, inertia2.flange_a)" as OmcCommand,
+  },
+
   // ----- Editing: setComponentProperties — currently ✅, kept as a regression watch -----
   {
     label: "setComponentProperties(docs-correct 6-arg shape)",

@@ -141,6 +141,128 @@ describe("diffLayouts", () => {
       diffLayouts(a, b).some((e) => e.kind === "connectionWaypoints"),
     ).toBe(false);
   });
+
+  describe("connectionRenamed (vector-port re-index, issue #26)", () => {
+    // A connectorSizing re-index shifts an indexed endpoint
+    // (pins[3].p → pins[2].p) while the other endpoint and the
+    // waypoints carry over. The diff must collapse the would-be
+    // delete+add into a single in-place rename.
+    function vectorLayout(fromCref: string): DiagramLayout {
+      const [comp, port] = fromCref.split(".");
+      return {
+        kind: "diagram",
+        className: "T",
+        source: { file: "T.mo", line: 1, column: 1 } as never,
+        iconLayers: [],
+        diagramLayers: [],
+        labels: [],
+        classes: {},
+        components: {},
+        connectors: {},
+        connections: [
+          {
+            lhs: { component: comp, port: port! },
+            rhs: { component: "ground", port: "p" },
+            waypoints: [
+              [0, 0],
+              [10, 0],
+            ],
+          },
+        ],
+      };
+    }
+
+    it("collapses an indexed-endpoint shift into one connectionRenamed", () => {
+      const a = vectorLayout("pins[3].p");
+      const b = vectorLayout("pins[2].p");
+      const edits = diffLayouts(a, b);
+      expect(edits).toEqual([
+        {
+          kind: "connectionRenamed",
+          oldFrom: "pins[3].p",
+          oldTo: "ground.p",
+          newFrom: "pins[2].p",
+          newTo: "ground.p",
+          waypoints: [
+            [0, 0],
+            [10, 0],
+          ],
+        },
+      ]);
+      // No more-disruptive delete+add pair.
+      expect(edits.some((e) => e.kind === "connectionDeleted")).toBe(false);
+      expect(edits.some((e) => e.kind === "connectionAdded")).toBe(false);
+    });
+
+    it("handles the indexed endpoint sitting on the `to` side", () => {
+      const mk = (idx: number): DiagramLayout => {
+        const l = vectorLayout("ground.p");
+        l.connections = [
+          {
+            lhs: { component: "ground", port: "p" },
+            rhs: { component: `pins[${idx}]`, port: "p" },
+            waypoints: [[0, 0]],
+          },
+        ];
+        return l;
+      };
+      const edits = diffLayouts(mk(3), mk(2));
+      expect(edits).toEqual([
+        {
+          kind: "connectionRenamed",
+          oldFrom: "ground.p",
+          oldTo: "pins[3].p",
+          newFrom: "ground.p",
+          newTo: "pins[2].p",
+          waypoints: [[0, 0]],
+        },
+      ]);
+    });
+
+    it("does NOT rename when the waypoints changed (re-drawn, not re-indexed)", () => {
+      const a = vectorLayout("pins[3].p");
+      const b = vectorLayout("pins[2].p");
+      b.connections[0]!.waypoints = [
+        [5, 5],
+        [15, 5],
+      ];
+      const edits = diffLayouts(a, b);
+      expect(edits.some((e) => e.kind === "connectionRenamed")).toBe(false);
+      expect(edits).toContainEqual({
+        kind: "connectionDeleted",
+        from: "pins[3].p",
+        to: "ground.p",
+      });
+      expect(edits).toContainEqual({
+        kind: "connectionAdded",
+        from: "pins[2].p",
+        to: "ground.p",
+        waypoints: [
+          [5, 5],
+          [15, 5],
+        ],
+      });
+    });
+
+    it("does NOT rename an unrelated endpoint swap (different base)", () => {
+      const a = vectorLayout("pins[3].p");
+      const b = vectorLayout("ports[1].p");
+      const edits = diffLayouts(a, b);
+      expect(edits.some((e) => e.kind === "connectionRenamed")).toBe(false);
+      expect(edits.some((e) => e.kind === "connectionDeleted")).toBe(true);
+      expect(edits.some((e) => e.kind === "connectionAdded")).toBe(true);
+    });
+
+    it("does NOT rename when BOTH endpoints changed", () => {
+      const a = vectorLayout("pins[3].p");
+      const b = vectorLayout("pins[2].p");
+      // Also change the other endpoint, so it's not a single-endpoint
+      // re-index any more.
+      b.connections[0]!.rhs = { component: "ground2", port: "p" };
+      const edits = diffLayouts(a, b);
+      expect(edits.some((e) => e.kind === "connectionRenamed")).toBe(false);
+    });
+  });
 });
 
 describe("placementAnnotation", () => {

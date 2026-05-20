@@ -77,6 +77,12 @@ function order(e: LayoutEdit): number {
       // top-down: structural deletes/adds, then the moved component,
       // then the re-routed wires that follow it.
       return 4;
+    case "connectionRenamed":
+      // An in-place endpoint rewrite (vector-port re-index, issue #26).
+      // Ordered alongside the other connection edits; the single
+      // `updateConnectionNames` RPC neither adds nor removes an edge, so
+      // its position relative to placement is immaterial.
+      return 4;
   }
 }
 
@@ -126,6 +132,19 @@ async function applyOne(
         from: edit.from,
         to: edit.to,
         annotation: lineAnnotation(edit.waypoints),
+      });
+      return;
+    case "connectionRenamed":
+      // Vector-port re-index (issue #26): rewrite the endpoint
+      // identifiers in place via a single `updateConnectionNames` RPC
+      // instead of delete+add, keeping the file diff minimal and the
+      // existing `Line(points=...)` annotation intact.
+      await client.invoke("updateConnectionNames", {
+        typeName: hostClass,
+        from: edit.oldFrom,
+        to: edit.oldTo,
+        fromNew: edit.newFrom,
+        toNew: edit.newTo,
       });
       return;
   }
