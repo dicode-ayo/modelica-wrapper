@@ -336,6 +336,60 @@ export class OmcClient implements CallContext {
     return browsing.isEnumeration(this, input);
   }
 
+  isConstant(
+    input: browsing.IsConstantInput,
+  ): Promise<browsing.IsConstantOutput> {
+    return browsing.isConstant(this, input);
+  }
+
+  isParameter(
+    input: browsing.IsParameterInput,
+  ): Promise<browsing.IsParameterOutput> {
+    return browsing.isParameter(this, input);
+  }
+
+  isProtected(
+    input: browsing.IsProtectedInput,
+  ): Promise<browsing.IsProtectedOutput> {
+    return browsing.isProtected(this, input);
+  }
+
+  isRedeclare(
+    input: browsing.IsRedeclareInput,
+  ): Promise<browsing.IsRedeclareOutput> {
+    return browsing.isRedeclare(this, input);
+  }
+
+  isPrimitive(
+    input: browsing.IsPrimitiveInput,
+  ): Promise<browsing.IsPrimitiveOutput> {
+    return browsing.isPrimitive(this, input);
+  }
+
+  isOperator(
+    input: browsing.IsOperatorInput,
+  ): Promise<browsing.IsOperatorOutput> {
+    return browsing.isOperator(this, input);
+  }
+
+  isOperatorFunction(
+    input: browsing.IsOperatorFunctionInput,
+  ): Promise<browsing.IsOperatorFunctionOutput> {
+    return browsing.isOperatorFunction(this, input);
+  }
+
+  isOperatorRecord(
+    input: browsing.IsOperatorRecordInput,
+  ): Promise<browsing.IsOperatorRecordOutput> {
+    return browsing.isOperatorRecord(this, input);
+  }
+
+  isOptimization(
+    input: browsing.IsOptimizationInput,
+  ): Promise<browsing.IsOptimizationOutput> {
+    return browsing.isOptimization(this, input);
+  }
+
   getEnumerationLiterals(
     input: browsing.GetEnumerationLiteralsInput,
   ): Promise<browsing.GetEnumerationLiteralsOutput> {
