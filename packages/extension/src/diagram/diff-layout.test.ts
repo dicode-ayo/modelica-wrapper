@@ -262,6 +262,88 @@ describe("diffLayouts", () => {
       const edits = diffLayouts(a, b);
       expect(edits.some((e) => e.kind === "connectionRenamed")).toBe(false);
     });
+
+    // ── Cascade / swap safety (issue #76, item 7) ──────────────────────
+    // Build a layout with N connections, each pins[idx].p ↔ ground.p.
+    function multiVectorLayout(indices: number[]): DiagramLayout {
+      return {
+        kind: "diagram",
+        className: "T",
+        source: { file: "T.mo", line: 1, column: 1 } as never,
+        iconLayers: [],
+        diagramLayers: [],
+        labels: [],
+        classes: {},
+        components: {},
+        connectors: {},
+        connections: indices.map((i) => ({
+          lhs: { component: `pins[${i}]`, port: "p" },
+          rhs: { component: "ground", port: "p" },
+          waypoints: [[0, 0] as [number, number]],
+        })),
+      };
+    }
+
+    it("does NOT collapse a cascade shift into a bogus single rename", () => {
+      // pins[1],pins[2] → pins[2],pins[3]. A greedy matcher pairs
+      // pins[1]→pins[3] and drops pins[2]'s move; the safe behaviour is
+      // delete+add for the genuinely removed/added indices and no bogus
+      // rename.
+      const a = multiVectorLayout([1, 2]);
+      const b = multiVectorLayout([2, 3]);
+      const edits = diffLayouts(a, b);
+      expect(edits.some((e) => e.kind === "connectionRenamed")).toBe(false);
+      // pins[1] removed, pins[3] added; pins[2] survives verbatim.
+      expect(edits).toContainEqual({
+        kind: "connectionDeleted",
+        from: "pins[1].p",
+        to: "ground.p",
+      });
+      expect(edits).toContainEqual({
+        kind: "connectionAdded",
+        from: "pins[3].p",
+        to: "ground.p",
+        waypoints: [[0, 0]],
+      });
+      // The bogus pins[1]→pins[3] rename must NOT appear.
+      expect(
+        edits.some(
+          (e) =>
+            e.kind === "connectionRenamed" &&
+            e.oldFrom === "pins[1].p" &&
+            e.newFrom === "pins[3].p",
+        ),
+      ).toBe(false);
+    });
+
+    it("does NOT collapse a swap (pins[1]↔pins[2]) into renames", () => {
+      // pins[1],pins[2] → pins[2],pins[1]: indices are the same set, so
+      // nothing actually changed key-wise — both survive verbatim, no edits.
+      const a = multiVectorLayout([1, 2]);
+      const b = multiVectorLayout([2, 1]);
+      const edits = diffLayouts(a, b);
+      expect(edits.some((e) => e.kind === "connectionRenamed")).toBe(false);
+    });
+
+    it("does NOT collapse when a second connection shares the base (>1 per base)", () => {
+      // Two connections on base pins.p in prev; one re-indexes. With more
+      // than one connection on the base, fall back to delete+add.
+      const a = multiVectorLayout([1, 5]);
+      const b = multiVectorLayout([2, 5]); // pins[1]→pins[2], pins[5] stays
+      const edits = diffLayouts(a, b);
+      expect(edits.some((e) => e.kind === "connectionRenamed")).toBe(false);
+      expect(edits).toContainEqual({
+        kind: "connectionDeleted",
+        from: "pins[1].p",
+        to: "ground.p",
+      });
+      expect(edits).toContainEqual({
+        kind: "connectionAdded",
+        from: "pins[2].p",
+        to: "ground.p",
+        waypoints: [[0, 0]],
+      });
+    });
   });
 });
 

@@ -140,30 +140,67 @@ export function diffLayouts(
   // connection (`after`) where exactly one endpoint differs, the other
   // is byte-identical, the changed endpoints differ ONLY in their vector
   // index (same component / port base, e.g. `pins[3].p` → `pins[2].p`),
-  // and the waypoints carry over unchanged. That last-three guard is what
-  // distinguishes a re-index from an unrelated delete+add — see
-  // `isReindexRename`.
-  for (const before of prevConns) {
-    const beforeKey = `${before.from}|${before.to}`;
-    if (nextByKey.has(beforeKey)) continue; // survived verbatim — not a rename
-    if (consumedPrev.has(beforeKey)) continue;
-    for (const after of nextConns) {
-      const afterKey = `${after.from}|${after.to}`;
-      if (prevByKey.has(afterKey)) continue; // already existed — not the new side
-      if (consumedNext.has(afterKey)) continue;
-      if (!isReindexRename(before, after)) continue;
-      edits.push({
-        kind: "connectionRenamed",
-        oldFrom: before.from,
-        oldTo: before.to,
-        newFrom: after.from,
-        newTo: after.to,
-        waypoints: after.waypoints as ReadonlyArray<readonly [number, number]>,
-      });
-      consumedPrev.add(beforeKey);
-      consumedNext.add(afterKey);
-      break;
+  // and the waypoints carry over unchanged. See `isReindexRename`.
+  //
+  // A naive greedy nested loop mis-pairs a *cascade* shift (issue #76,
+  // item 7): for `pins[1].p,pins[2].p → pins[2].p,pins[3].p` both the
+  // 1→2 and 1→3 candidates look like valid re-indexes, so first-match can
+  // pair `pins[1].p→pins[3].p` and drop the `pins[2].p` move, producing a
+  // bogus rename that collides on replay. The index that "survived" (2)
+  // actually changed its logical identity, which the diff alone can't
+  // disambiguate.
+  //
+  // Safe rule: a re-index is only collapsed in place when the affected
+  // vector base carries EXACTLY ONE connection in prev and EXACTLY ONE in
+  // next (a lone vector-port re-index). When a base has more than one
+  // connection on either side — a cascade or a swap — we leave the whole
+  // group to the delete+add loops below, which are always correct.
+  //
+  // The base is keyed per (side, base, fixed-endpoint) signature so a
+  // re-index on the from-side never mixes with one on the to-side, and two
+  // re-indexes wired to different fixed endpoints stay independent.
+
+  interface ReindexGroup {
+    prev: Conn[];
+    next: Conn[];
+  }
+  const groups = new Map<string, ReindexGroup>();
+  const groupKeyForConn = (c: Conn): string[] => keysForReindexGroups(c);
+  for (const c of prevConns) {
+    for (const sig of groupKeyForConn(c)) {
+      let g = groups.get(sig);
+      if (!g) groups.set(sig, (g = { prev: [], next: [] }));
+      g.prev.push(c);
     }
+  }
+  for (const c of nextConns) {
+    for (const sig of groupKeyForConn(c)) {
+      let g = groups.get(sig);
+      if (!g) groups.set(sig, (g = { prev: [], next: [] }));
+      g.next.push(c);
+    }
+  }
+  for (const g of groups.values()) {
+    // Only a lone 1:1 re-index on the base is safe to rewrite in place.
+    if (g.prev.length !== 1 || g.next.length !== 1) continue;
+    const before = g.prev[0]!;
+    const after = g.next[0]!;
+    const beforeKey = `${before.from}|${before.to}`;
+    const afterKey = `${after.from}|${after.to}`;
+    // Unchanged connection (survived verbatim) — nothing to rename.
+    if (beforeKey === afterKey) continue;
+    if (consumedPrev.has(beforeKey) || consumedNext.has(afterKey)) continue;
+    if (!isReindexRename(before, after)) continue;
+    edits.push({
+      kind: "connectionRenamed",
+      oldFrom: before.from,
+      oldTo: before.to,
+      newFrom: after.from,
+      newTo: after.to,
+      waypoints: after.waypoints as ReadonlyArray<readonly [number, number]>,
+    });
+    consumedPrev.add(beforeKey);
+    consumedNext.add(afterKey);
   }
 
   for (const c of prevConns) {
@@ -247,6 +284,31 @@ function isReindexRename(before: Conn, after: Conn): boolean {
   const oldEp = fromChanged ? before.from : before.to;
   const newEp = fromChanged ? after.from : after.to;
   return isReindexOf(oldEp, newEp);
+}
+
+/**
+ * Re-index group signatures a connection belongs to (issue #76, item 7).
+ *
+ * A connection is a member of a group for each endpoint that carries a
+ * vector subscript: `from`-side membership is keyed by the from-endpoint's
+ * base plus the (fixed) to-endpoint; `to`-side by the to-endpoint's base
+ * plus the (fixed) from-endpoint. Grouping this way lets the caller count
+ * how many connections share a vector base wired to the same fixed end —
+ * the signal that distinguishes a lone re-index (collapse) from a cascade /
+ * swap (delete+add). A connection with no subscripted endpoint joins no
+ * group and is handled by the plain delete/add/waypoint loops.
+ */
+function keysForReindexGroups(c: Conn): string[] {
+  const keys: string[] = [];
+  const fromSplit = splitVectorIndex(c.from);
+  if (fromSplit.index !== undefined) {
+    keys.push(`from|${fromSplit.base}|${c.to}`);
+  }
+  const toSplit = splitVectorIndex(c.to);
+  if (toSplit.index !== undefined) {
+    keys.push(`to|${toSplit.base}|${c.from}`);
+  }
+  return keys;
 }
 
 /**
