@@ -6,7 +6,18 @@
  * @deprecated NOT AVAILABLE on OMC 1.26.x's interactive scripting (symbol
  *             not found; verified absent on both 1.26.1 and 1.26.7).
  *             Wrapper kept for forward/backward compatibility.
- *             **Migration on 1.26.x**: use `loadString` with a package body:
+ *
+ *             **Migration on 1.26.x**: this is exactly what {@link newModel}
+ *             does — create an empty `model` nested inside an existing package
+ *             (verified working on 1.26.7):
+ *
+ *             ```ts
+ *             await client.newModel({ typeName: name, withinPath: parent });
+ *             ```
+ *
+ *             For a non-`model` restriction (block, package, record, …), fall
+ *             back to `loadString` with a `within` clause (newModel has no
+ *             restriction argument):
  *
  *             ```ts
  *             await client.loadString({

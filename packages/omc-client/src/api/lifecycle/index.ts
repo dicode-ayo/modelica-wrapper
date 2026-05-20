@@ -8,6 +8,7 @@ export * from "./parseFile.js";
 export * from "./parseString.js";
 export * from "./createClass.js";
 export * from "./createSubClass.js";
+export * from "./newModel.js";
 export * from "./renameClass.js";
 export * from "./deleteClass.js";
 export * from "./copyClass.js";

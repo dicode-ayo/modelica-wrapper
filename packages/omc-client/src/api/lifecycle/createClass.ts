@@ -9,15 +9,26 @@
  *             Wrapper kept for forward/backward compatibility with OMC
  *             versions that expose it.
  *
- *             **Migration on 1.26.x**: build a Modelica source string in
- *             memory and load it with `loadString`:
+ *             **Migration on 1.26.x**:
  *
- *             ```ts
- *             await client.loadString({
- *               data: `model ${name}\nend ${name};`,
- *               filename: `<runtime:${name}>`,
- *             });
- *             ```
+ *             - To create a `model` *inside an existing package*, use
+ *               {@link newModel} (verified working on 1.26.7):
+ *
+ *               ```ts
+ *               await client.newModel({ typeName: "Sub", withinPath: "MyPkg" });
+ *               ```
+ *
+ *             - For a top-level class, or a non-`model` restriction (block,
+ *               package, record, …), build a Modelica source string in memory
+ *               and load it with `loadString` (newModel has no top-level form
+ *               and no restriction argument):
+ *
+ *               ```ts
+ *               await client.loadString({
+ *                 data: `model ${name}\nend ${name};`,
+ *                 filename: `<runtime:${name}>`,
+ *               });
+ *               ```
  */
 
 import { z } from "zod";

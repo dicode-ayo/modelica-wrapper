@@ -11,7 +11,8 @@
  * the pinned OMC version 1.26.1 — see docs/coverage.md for rationale):
  *
  *   createClass, createSubClass    — undocumented in public scripting API; OMC
- *                                     1.26.1 returns "Class X not found".
+ *                                     1.26.x returns "Class X not found". Use
+ *                                     `newModel` instead (verified below).
  *   copyClass                      — documented but OMC 1.26.1 reports the
  *                                     same "not found" symptom; may have
  *                                     moved to an internal namespace.
@@ -295,6 +296,46 @@ end ${pkg};
           qualified: false,
         });
         expect(after.classNames).toEqual(["B", "C", "A"]);
+      } finally {
+        await client.deleteClass({ typeName: pkg });
+      }
+    });
+
+    it("newModel creates an empty model inside an existing package and it reads back", async () => {
+      // newModel(className, withinPath) is the documented replacement on
+      // OMC 1.26.x for the absent createClass/createSubClass. It always
+      // creates a `model` nested inside an already-loaded package; there is
+      // no top-level form (an empty withinPath is rejected by OMC's parser),
+      // so the package must exist first. See coverage.md Lifecycle.
+      const { randomBytes } = await import("node:crypto");
+      const id = randomBytes(4).toString("hex");
+      const pkg = `MwNew_${id}`;
+      await client.loadString({
+        data: `package ${pkg}\nend ${pkg};\n`,
+        filename: `<fixture:${pkg}>`,
+      });
+      try {
+        const before = await client.existClass({ typeName: `${pkg}.Sub` });
+        expect(before.exists).toBe(false);
+
+        const created = await client.newModel({
+          typeName: "Sub",
+          withinPath: pkg,
+        });
+        expect(created.success).toBe(true);
+
+        // Round-trip: the new class resolves and is a `model`.
+        const after = await client.existClass({ typeName: `${pkg}.Sub` });
+        expect(after.exists).toBe(true);
+
+        const { classNames } = await client.getClassNames({
+          typeName: pkg,
+          qualified: false,
+        });
+        expect(classNames).toContain("Sub");
+
+        const { b: isModel } = await client.isModel({ typeName: `${pkg}.Sub` });
+        expect(isModel).toBe(true);
       } finally {
         await client.deleteClass({ typeName: pkg });
       }
