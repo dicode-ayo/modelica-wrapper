@@ -510,6 +510,18 @@ export class OmcClient implements CallContext {
     return contents.getAnnotationModifierValue(this, input);
   }
 
+  getImportCount(
+    input: contents.GetImportCountInput,
+  ): Promise<contents.GetImportCountOutput> {
+    return contents.getImportCount(this, input);
+  }
+
+  getNthImport(
+    input: contents.GetNthImportInput,
+  ): Promise<contents.GetNthImportOutput> {
+    return contents.getNthImport(this, input);
+  }
+
   // === Lifecycle =======================================================
 
   loadFile(input: lifecycle.LoadFileInput): Promise<lifecycle.LoadFileOutput> {

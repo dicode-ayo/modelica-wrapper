@@ -131,6 +131,8 @@ export const REGISTRY = {
   getInstantiatedParametersAndValues: entry("contents", contents.getInstantiatedParametersAndValues, contents.GetInstantiatedParametersAndValuesInputSchema, contents.GetInstantiatedParametersAndValuesOutputSchema, contents.GetInstantiatedParametersAndValuesDescription),
   getAnnotationNamedModifiers: entry("contents", contents.getAnnotationNamedModifiers, contents.GetAnnotationNamedModifiersInputSchema, contents.GetAnnotationNamedModifiersOutputSchema, contents.GetAnnotationNamedModifiersDescription),
   getAnnotationModifierValue: entry("contents", contents.getAnnotationModifierValue, contents.GetAnnotationModifierValueInputSchema, contents.GetAnnotationModifierValueOutputSchema, contents.GetAnnotationModifierValueDescription),
+  getImportCount: entry("contents", contents.getImportCount, contents.GetImportCountInputSchema, contents.GetImportCountOutputSchema, contents.GetImportCountDescription),
+  getNthImport: entry("contents", contents.getNthImport, contents.GetNthImportInputSchema, contents.GetNthImportOutputSchema, contents.GetNthImportDescription),
 
   // --- Lifecycle ---
   loadFile: entry("lifecycle", lifecycle.loadFile, lifecycle.LoadFileInputSchema, lifecycle.LoadFileOutputSchema, lifecycle.LoadFileDescription),
