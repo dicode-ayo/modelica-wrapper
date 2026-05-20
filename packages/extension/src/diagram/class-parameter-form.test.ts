@@ -296,6 +296,101 @@ describe("buildClassParameterForm", () => {
     });
     expect(form.values).toEqual({ k: 2 });
     expect(form.refs.k.kind).toBe("number");
+    // The param is declared on the ancestor `Test.Base`, so its ref
+    // carries `inheritedFrom` — the submit handler routes it through
+    // `setExtendsModifierValue(host, "Test.Base", "k", expr)`.
+    expect(form.refs.k.inheritedFrom).toBe("Test.Base");
+  });
+
+  it("leaves inheritedFrom unset for a host-declared (own) parameter", () => {
+    const mi = instance([
+      {
+        $kind: "component",
+        name: "k",
+        type: "Real",
+        value: { binding: 1 },
+        prefixes: { variability: "parameter" },
+      },
+    ]);
+    const form = buildClassParameterForm(mi)!;
+    expect(form.refs.k.inheritedFrom).toBeUndefined();
+    // The key must be absent (not just undefined) so own-param refs stay
+    // clean on the wire and in equality checks.
+    expect("inheritedFrom" in form.refs.k).toBe(false);
+  });
+
+  it("marks an inherited param but not an own param when the host adds its own", () => {
+    // Base declares `k` (inherited); Derived adds its own `j`.
+    const mi: ModelInstance = {
+      name: "Test.Derived",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "extends",
+          baseClass: {
+            name: "Test.Base",
+            restriction: "model",
+            elements: [
+              {
+                $kind: "component",
+                name: "k",
+                type: "Real",
+                value: { binding: 2 },
+                prefixes: { variability: "parameter" },
+              },
+            ],
+          },
+        },
+        {
+          $kind: "component",
+          name: "j",
+          type: "Real",
+          value: { binding: 3 },
+          prefixes: { variability: "parameter" },
+        },
+      ],
+    } as unknown as ModelInstance;
+    const form = buildClassParameterForm(mi)!;
+    expect(form.refs.k.inheritedFrom).toBe("Test.Base");
+    expect(form.refs.j.inheritedFrom).toBeUndefined();
+  });
+
+  it("when the host overrides an inherited param, the surviving ref is the host's own (no inheritedFrom)", () => {
+    // Both Base and Derived declare `k`. Last-write-wins means the host's
+    // ref overwrites the inherited one — so the surviving ref must NOT be
+    // tagged inherited (the modifier belongs on the host, not the extends
+    // clause).
+    const mi: ModelInstance = {
+      name: "Test.Derived",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "extends",
+          baseClass: {
+            name: "Test.Base",
+            restriction: "model",
+            elements: [
+              {
+                $kind: "component",
+                name: "k",
+                type: "Real",
+                value: { binding: 1 },
+                prefixes: { variability: "parameter" },
+              },
+            ],
+          },
+        },
+        {
+          $kind: "component",
+          name: "k",
+          type: "Real",
+          value: { binding: 7 },
+          prefixes: { variability: "parameter" },
+        },
+      ],
+    } as unknown as ModelInstance;
+    const form = buildClassParameterForm(mi)!;
+    expect(form.refs.k.inheritedFrom).toBeUndefined();
   });
 
   it("host-class parameter overrides an ancestor's same-named parameter (last-write-wins)", () => {

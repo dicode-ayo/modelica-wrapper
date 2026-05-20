@@ -1,0 +1,149 @@
+/**
+ * Integration test: inherited-parameter writes land on the `extends`
+ * clause, not as a host-level modifier (issue #24).
+ *
+ * Exercises the real producer + OMC routing end to end:
+ *   1. `buildClassParameterForm` walks `Derived`'s extends chain and
+ *      marks the inherited `k` with `inheritedFrom = "<pkg>.Base"`.
+ *   2. We route the write the way `applyClassParameterEdits` does for an
+ *      inherited param — `client.setExtendsModifierValue(host, base, k,
+ *      expr)` (NOT `setElementModifierValue`).
+ *   3. `listFile` shows the new value on the `extends …Base(k = …)`
+ *      clause, and the host class did NOT grow a spurious top-level
+ *      `k = …` modifier.
+ *
+ * The form builder is plain JSON logic, so its `inheritedFrom` capture
+ * is covered by the unit tests; this file is the live half — proving OMC
+ * actually routes the modifier where the producer says it should.
+ *
+ * Auto-skips when OMC isn't on PATH; honours `OMC_INTEGRATION=0/1` the
+ * same way the omc-client integration suite does.
+ */
+
+import { execSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { OmcClient } from "@modelica-wrapper/omc-client";
+
+import { buildClassParameterForm } from "./class-parameter-form.js";
+
+function shouldRun(): boolean {
+  const flag = process.env.OMC_INTEGRATION;
+  if (flag === "0") return false;
+  if (flag === "1") return true;
+  if (process.env.OMC_PATH && process.env.OMC_PATH.length > 0) return true;
+  try {
+    execSync(process.platform === "win32" ? "where omc" : "command -v omc", {
+      stdio: "ignore",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const describeIf = shouldRun() ? describe : describe.skip;
+
+describeIf("inherited-parameter write routing (#24)", () => {
+  let client: OmcClient;
+  let pkg: string;
+  let baseClass: string;
+  let derivedClass: string;
+
+  beforeEach(async () => {
+    client = await OmcClient.create({ omcPath: process.env.OMC_PATH ?? "" });
+    pkg = `MwExtRoute_${randomBytes(4).toString("hex")}`;
+    baseClass = `${pkg}.Base`;
+    derivedClass = `${pkg}.Derived`;
+    // Self-contained base/derived pair: Base owns `parameter Real k`,
+    // Derived reaches it purely through `extends Base(k = 2.5)`.
+    const { success } = await client.loadString({
+      data: `package ${pkg}
+  model Base
+    parameter Real k = 1.0;
+  end Base;
+  model Derived
+    extends Base(k = 2.5);
+  end Derived;
+end ${pkg};
+`,
+      filename: `<fixture:${pkg}>`,
+    });
+    if (!success) {
+      const { errorString } = await client.getErrorString();
+      throw new Error(`fixture load failed: ${errorString}`);
+    }
+  });
+
+  afterEach(async () => {
+    try {
+      await client.deleteClass({ typeName: pkg });
+    } catch {
+      // OMC closing / already gone — nothing to do.
+    }
+    await client.close();
+  });
+
+  it("the form builder marks `k` as inherited from Base", async () => {
+    const { instance } = await client.getModelInstance({
+      typeName: derivedClass,
+    });
+    const form = buildClassParameterForm(instance)!;
+    expect(form.refs.k).toBeDefined();
+    // The qualified ancestor name is what the submit handler passes as
+    // `extendsBase`. OMC may emit it short (`Base`) or fully qualified
+    // (`<pkg>.Base`) depending on the instance tree — assert it resolves
+    // to Base either way.
+    expect(form.refs.k.inheritedFrom).toMatch(/(^|\.)Base$/);
+  });
+
+  it("routes the write through setExtendsModifierValue → modifier lands on the extends clause", async () => {
+    const { instance } = await client.getModelInstance({
+      typeName: derivedClass,
+    });
+    const form = buildClassParameterForm(instance)!;
+    const ref = form.refs.k;
+    expect(ref.inheritedFrom).toBeDefined();
+
+    // Route exactly as applyClassParameterEdits does for an inherited
+    // param: setExtendsModifierValue(host, base, name, expr).
+    const { success } = await client.setExtendsModifierValue({
+      typeName: derivedClass,
+      extendsBase: ref.inheritedFrom!,
+      modifier: "k",
+      expr: "3.7",
+    });
+    expect(success).toBe(true);
+
+    const { contents } = await client.listFile({ typeName: derivedClass });
+    // The new value rides on the `extends …Base(k = 3.7)` clause.
+    expect(contents).toMatch(/extends[\s\S]*Base\([\s\S]*k\s*=\s*3\.7/);
+    // And the host (Derived) did NOT grow a standalone `parameter Real k`
+    // / top-level `k = 3.7` modifier — the modifier belongs on the
+    // extends clause, not on the model body. (Derived has no own `k`
+    // declaration, so a `parameter` line for k would be the bug.)
+    expect(contents).not.toMatch(/parameter\s+Real\s+k/);
+  });
+
+  it("contrast: writing the same param via setElementModifierValue does NOT touch the extends clause", async () => {
+    // Documents WHY the routing matters. setElementModifierValue targets
+    // the host element scope; for an inherited param that's the wrong
+    // place — the extends clause keeps its original `k = 2.5`.
+    const { success } = await client.setElementModifierValue({
+      typeName: derivedClass,
+      elementName: "k",
+      expr: "9.9",
+    });
+    // OMC tolerates the call (it succeeds), but the extends clause is
+    // untouched — proving the host path is the wrong scope for this param.
+    expect(typeof success).toBe("boolean");
+
+    const { contents } = await client.listFile({ typeName: derivedClass });
+    // The extends clause still carries the ORIGINAL 2.5, not 9.9 — the
+    // element-path write didn't land where the inherited param lives.
+    expect(contents).toMatch(/extends[\s\S]*Base\([\s\S]*k\s*=\s*2\.5/);
+    expect(contents).not.toMatch(/Base\([\s\S]*k\s*=\s*9\.9/);
+  });
+});

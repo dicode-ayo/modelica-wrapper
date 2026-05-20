@@ -60,6 +60,16 @@ export interface ClassParameterRef {
   /** Dialog tab / group — defaults to Modelica spec ("General" / "Parameters"). */
   tab: string;
   group: string;
+  /**
+   * Qualified TypeName of the ancestor that *declares* this parameter,
+   * when it's reached through `extends` rather than declared on the host
+   * class itself. Set only for inherited params; absent for the host's
+   * own declarations. The submit handler routes inherited writes through
+   * `setExtendsModifierValue(host, inheritedFrom, name, expr)` so the
+   * modifier lands on the `extends` clause (matching OMEdit's
+   * `mInherited` routing), not as a spurious host-level modifier.
+   */
+  inheritedFrom?: string;
 }
 
 export interface ClassParameterForm {
@@ -87,10 +97,16 @@ export function buildClassParameterForm(
   const requiredSet = new Set<string>();
 
   for (const klass of walkExtendsChain(instance)) {
+    // The host class is `instance` itself (last in the post-order walk).
+    // Anything yielded earlier is an ancestor reached via `extends`, so
+    // its parameters are inherited and must be written back through the
+    // extends clause. `klass === instance` is identity-safe because the
+    // walker yields the same object references it traversed.
+    const inheritedFrom = klass === instance ? undefined : klass.name;
     for (const el of klass.elements ?? []) {
       if (el.$kind !== "component") continue;
       if (el.prefixes?.variability !== "parameter") continue;
-      const built = buildField(el);
+      const built = buildField(el, inheritedFrom);
       properties[el.name] = built.schema;
       refs[el.name] = built.ref;
       if (built.value !== undefined) {
@@ -144,7 +160,18 @@ interface BuiltField {
   ref: ClassParameterRef;
 }
 
-function buildField(el: ComponentElement): BuiltField {
+/**
+ * `inheritedFrom` is the qualified name of the ancestor declaring `el`
+ * when it's reached through `extends` (undefined for the host's own
+ * params). It's threaded onto the ref so the submit handler can route
+ * the write through the extends clause. We pass it explicitly here
+ * (vs. mutating the ref after the fact) so the `optionalField` helper
+ * keeps the key absent when undefined — tests assert exact ref shape.
+ */
+function buildField(
+  el: ComponentElement,
+  inheritedFrom: string | undefined,
+): BuiltField {
   const description = el.comment ?? undefined;
   const dialog: DialogInfo = readDialogInfo(el.annotation);
   const enumLeaves = enumLeavesIfEnum(el.type);
@@ -167,6 +194,7 @@ function buildField(el: ComponentElement): BuiltField {
           enumTypeName: qualified,
           tab: dialog.tab,
           group: dialog.group,
+          ...inheritedRefField(inheritedFrom),
         },
       };
     }
@@ -187,6 +215,7 @@ function buildField(el: ComponentElement): BuiltField {
         kind: primitive,
         tab: dialog.tab,
         group: dialog.group,
+        ...inheritedRefField(inheritedFrom),
       },
     };
   }
@@ -207,8 +236,20 @@ function buildField(el: ComponentElement): BuiltField {
       kind: "unsupported",
       tab: dialog.tab,
       group: dialog.group,
+      ...inheritedRefField(inheritedFrom),
     },
   };
+}
+
+/**
+ * Spread helper so the `inheritedFrom` key is present only for inherited
+ * params — keeps own-param refs free of the key (cleaner equality in
+ * tests and on the wire).
+ */
+function inheritedRefField(
+  inheritedFrom: string | undefined,
+): { inheritedFrom?: string } {
+  return inheritedFrom === undefined ? {} : { inheritedFrom };
 }
 
 /**

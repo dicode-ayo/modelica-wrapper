@@ -228,8 +228,21 @@ describe("buildComponentParameterForm", () => {
       kind: "boolean",
       tab: "General",
       group: "Parameters",
+      // `useSupport` is declared on the ancestor base class, not on
+      // Torque's own type — the ref records where it came from.
+      inheritedFrom:
+        "Modelica.Mechanics.Rotational.Interfaces.PartialElementaryOneFlangeAndSupport2",
     });
     expect(form.values.useSupport).toBe(false);
+  });
+
+  it("leaves inheritedFrom unset for a parameter declared on the component's own type", () => {
+    // `pi()`'s parameters (controllerType, k, Ti) are all declared
+    // directly on the component's type — none are inherited.
+    const form = buildComponentParameterForm(pi())!;
+    expect(form.refs.k.inheritedFrom).toBeUndefined();
+    expect("inheritedFrom" in form.refs.k).toBe(false);
+    expect(form.refs.controllerType.inheritedFrom).toBeUndefined();
   });
 });
 
