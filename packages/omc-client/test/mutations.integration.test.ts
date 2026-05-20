@@ -874,6 +874,132 @@ end ${pkg};
     });
   });
 
+  // === Browsing extras needing a custom inheritance / short-class fixture ===
+
+  describe("browsing extras", () => {
+    let pkg: string;
+
+    beforeEach(async () => {
+      const { randomBytes } = await import("node:crypto");
+      pkg = `MwExtras_${randomBytes(4).toString("hex")}`;
+      // A 3-class inheritance chain A <- B <- C plus a short class definition
+      // and a class carrying an annotation. The `extends` clauses are written
+      // fully-qualified: on OMC 1.26.7, `extendsFrom` matches the base class
+      // against the directly-listed (fully-qualified) extends clauses.
+      await client.loadString({
+        data: `package ${pkg}
+  model A
+    Real a;
+  end A;
+
+  model B
+    extends ${pkg}.A;
+    Real b;
+  end B;
+
+  model C
+    extends ${pkg}.B;
+    Real c;
+    annotation(experiment(StopTime = 1));
+  end C;
+
+  type T = Real;
+end ${pkg};
+`,
+        filename: `<fixture:${pkg}>`,
+      });
+    });
+
+    afterEach(async () => {
+      await client.deleteClass({ typeName: pkg });
+    });
+
+    it("extendsFrom matches the directly-listed base class (non-transitive on 1.26.7)", async () => {
+      // C extends B directly → true.
+      const directCB = await client.extendsFrom({
+        typeName: `${pkg}.C`,
+        baseClassName: `${pkg}.B`,
+      });
+      expect(directCB.res).toBe(true);
+
+      // B extends A directly → true.
+      const directBA = await client.extendsFrom({
+        typeName: `${pkg}.B`,
+        baseClassName: `${pkg}.A`,
+      });
+      expect(directBA.res).toBe(true);
+
+      // C extends A only transitively. On OMC 1.26.7 `extendsFrom` is
+      // NON-transitive — it matches against the directly-listed extends
+      // clauses only — so this is false. (Documented in the wrapper.)
+      const transitiveCA = await client.extendsFrom({
+        typeName: `${pkg}.C`,
+        baseClassName: `${pkg}.A`,
+      });
+      expect(transitiveCA.res).toBe(false);
+
+      // A does NOT extend from C.
+      const reverse = await client.extendsFrom({
+        typeName: `${pkg}.A`,
+        baseClassName: `${pkg}.C`,
+      });
+      expect(reverse.res).toBe(false);
+    });
+
+    it("getAllSubtypeOf enumerates loaded subtypes of A", async () => {
+      // Searched across all loaded classes, names come back fully-qualified
+      // and the class itself is included in the result.
+      const { classNames } = await client.getAllSubtypeOf({
+        typeName: `${pkg}.A`,
+      });
+      expect(Array.isArray(classNames)).toBe(true);
+      // B and C both extend (transitively) from A; A itself is included.
+      expect(classNames).toEqual(
+        expect.arrayContaining([`${pkg}.A`, `${pkg}.B`, `${pkg}.C`]),
+      );
+    });
+
+    it("classAnnotationExists distinguishes a class with vs. without an annotation", async () => {
+      const present = await client.classAnnotationExists({
+        typeName: `${pkg}.C`,
+        annotationName: "experiment",
+      });
+      expect(present.exists).toBe(true);
+
+      const absent = await client.classAnnotationExists({
+        typeName: `${pkg}.A`,
+        annotationName: "experiment",
+      });
+      expect(absent.exists).toBe(false);
+    });
+
+    it("getNthInheritedClass agrees with the bulk getInheritedClasses", async () => {
+      const { inheritedClasses } = await client.getInheritedClasses({
+        typeName: `${pkg}.C`,
+      });
+      expect(inheritedClasses.length).toBeGreaterThan(0);
+
+      // 1-based indexing — the first inherited class should match index 1.
+      const { baseClass } = await client.getNthInheritedClass({
+        typeName: `${pkg}.C`,
+        n: 1,
+      });
+      expect(baseClass).toBe(inheritedClasses[0]);
+    });
+
+    it("isShortDefinition is true for `type T = Real;` and false for a model", async () => {
+      const shortHit = await client.isShortDefinition({
+        typeName: `${pkg}.T`,
+      });
+      expect(shortHit.isShortCls).toBe(true);
+
+      const modelMiss = await client.isShortDefinition({
+        typeName: `${pkg}.A`,
+      });
+      expect(modelMiss.isShortCls).toBe(false);
+    });
+  });
+
   // === Connector readers needing a class that declares connectors directly ===
 
   describe("connectors", () => {

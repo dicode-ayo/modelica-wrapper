@@ -102,6 +102,11 @@ export const REGISTRY = {
   isEnumeration: entry("browsing", browsing.isEnumeration, browsing.IsEnumerationInputSchema, browsing.IsEnumerationOutputSchema, browsing.IsEnumerationDescription),
   getEnumerationLiterals: entry("browsing", browsing.getEnumerationLiterals, browsing.GetEnumerationLiteralsInputSchema, browsing.GetEnumerationLiteralsOutputSchema, browsing.GetEnumerationLiteralsDescription),
   getReplaceableChoices: entry("browsing", browsing.getReplaceableChoices, browsing.GetReplaceableChoicesInputSchema, browsing.GetReplaceableChoicesOutputSchema, browsing.GetReplaceableChoicesDescription),
+  extendsFrom: entry("browsing", browsing.extendsFrom, browsing.ExtendsFromInputSchema, browsing.ExtendsFromOutputSchema, browsing.ExtendsFromDescription),
+  getAllSubtypeOf: entry("browsing", browsing.getAllSubtypeOf, browsing.GetAllSubtypeOfInputSchema, browsing.GetAllSubtypeOfOutputSchema, browsing.GetAllSubtypeOfDescription),
+  classAnnotationExists: entry("browsing", browsing.classAnnotationExists, browsing.ClassAnnotationExistsInputSchema, browsing.ClassAnnotationExistsOutputSchema, browsing.ClassAnnotationExistsDescription),
+  getNthInheritedClass: entry("browsing", browsing.getNthInheritedClass, browsing.GetNthInheritedClassInputSchema, browsing.GetNthInheritedClassOutputSchema, browsing.GetNthInheritedClassDescription),
+  isShortDefinition: entry("browsing", browsing.isShortDefinition, browsing.IsShortDefinitionInputSchema, browsing.IsShortDefinitionOutputSchema, browsing.IsShortDefinitionDescription),
 
   // --- Reading model contents ---
   getComponents: entry("contents", contents.getComponents, contents.GetComponentsInputSchema, contents.GetComponentsOutputSchema, contents.GetComponentsDescription),

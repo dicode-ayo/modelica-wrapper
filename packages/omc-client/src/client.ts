@@ -348,6 +348,36 @@ export class OmcClient implements CallContext {
     return browsing.getReplaceableChoices(this, input);
   }
 
+  extendsFrom(
+    input: browsing.ExtendsFromInput,
+  ): Promise<browsing.ExtendsFromOutput> {
+    return browsing.extendsFrom(this, input);
+  }
+
+  getAllSubtypeOf(
+    input: browsing.GetAllSubtypeOfInput,
+  ): Promise<browsing.GetAllSubtypeOfOutput> {
+    return browsing.getAllSubtypeOf(this, input);
+  }
+
+  classAnnotationExists(
+    input: browsing.ClassAnnotationExistsInput,
+  ): Promise<browsing.ClassAnnotationExistsOutput> {
+    return browsing.classAnnotationExists(this, input);
+  }
+
+  getNthInheritedClass(
+    input: browsing.GetNthInheritedClassInput,
+  ): Promise<browsing.GetNthInheritedClassOutput> {
+    return browsing.getNthInheritedClass(this, input);
+  }
+
+  isShortDefinition(
+    input: browsing.IsShortDefinitionInput,
+  ): Promise<browsing.IsShortDefinitionOutput> {
+    return browsing.isShortDefinition(this, input);
+  }
+
   // === Reading model contents =========================================
 
   getComponents(
