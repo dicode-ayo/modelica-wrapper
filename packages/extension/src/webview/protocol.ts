@@ -108,6 +108,15 @@ export type ExtensionToWebview =
       requestId: string;
       items?: LibraryClassInfo[];
       error?: string;
+    }
+  | {
+      // Response to `libraryIcon`. `svg` is a self-contained `<svg>`
+      // thumbnail for the class's icon (rendered host-side via the cheap
+      // `getModelInstanceAnnotation` path); absent on failure / no icon.
+      type: "libraryIconResult";
+      requestId: string;
+      svg?: string;
+      error?: string;
     };
 
 export type WebviewToExtension =
@@ -159,4 +168,11 @@ export type WebviewToExtension =
       requestId: string;
       parent: string | null;
     }
-  | { type: "librarySearch"; requestId: string; query: string };
+  | { type: "librarySearch"; requestId: string; query: string }
+  | {
+      // Lazy request for a class's icon thumbnail — fired per row as it
+      // becomes visible, so we never pay the icon fetch for the whole tree.
+      type: "libraryIcon";
+      requestId: string;
+      className: string;
+    };

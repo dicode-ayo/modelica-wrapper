@@ -61,6 +61,15 @@ class WebviewLibraryDataSource implements LibraryBrowserDataSource {
       reject: (err: Error) => void;
     }
   >();
+  // Icon requests resolve to an SVG string (or undefined for "no icon"),
+  // so they get their own correlation map keyed on the same id space.
+  private readonly pendingIcons = new Map<
+    string,
+    {
+      resolve: (svg: string | undefined) => void;
+      reject: (err: Error) => void;
+    }
+  >();
 
   constructor(private readonly post: (msg: WebviewToExtension) => void) {}
 
@@ -80,6 +89,14 @@ class WebviewLibraryDataSource implements LibraryBrowserDataSource {
     });
   }
 
+  iconSvg(className: string): Promise<string | undefined> {
+    return new Promise((resolve, reject) => {
+      const requestId = this.mintId();
+      this.pendingIcons.set(requestId, { resolve, reject });
+      this.post({ type: "libraryIcon", requestId, className });
+    });
+  }
+
   handleResponse(message: {
     requestId: string;
     items?: LibraryClassInfo[];
@@ -93,6 +110,21 @@ class WebviewLibraryDataSource implements LibraryBrowserDataSource {
       return;
     }
     entry.resolve(message.items ?? []);
+  }
+
+  handleIconResponse(message: {
+    requestId: string;
+    svg?: string;
+    error?: string;
+  }): void {
+    const entry = this.pendingIcons.get(message.requestId);
+    if (!entry) return;
+    this.pendingIcons.delete(message.requestId);
+    if (message.error !== undefined) {
+      entry.reject(new Error(message.error));
+      return;
+    }
+    entry.resolve(message.svg);
   }
 
   private mintId(): string {
@@ -257,6 +289,9 @@ class OmWebviewRoot extends LitElement {
         // Both share the same {requestId, items?, error?} shape; the
         // data source's correlation map keys on requestId alone.
         this.librarySource?.handleResponse(message);
+        return;
+      case "libraryIconResult":
+        this.librarySource?.handleIconResponse(message);
         return;
       case "error":
         console.error("[diagram-ui] backend error:", message.message);

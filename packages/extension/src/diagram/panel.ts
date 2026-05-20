@@ -55,6 +55,13 @@ export interface DiagramPanelHandlers {
   /** Library-browser request: substring search of loaded class names. */
   onLibrarySearch?: (query: string) => Promise<LibraryClassInfo[]>;
   /**
+   * Lazy library-browser request: render a class's icon thumbnail as a
+   * self-contained SVG string. Resolves to `undefined` when the class has
+   * no usable icon. Fired per row as it becomes visible so the icon fetch
+   * never runs for the whole tree (issue #76, item 8).
+   */
+  onLibraryIcon?: (className: string) => Promise<string | undefined>;
+  /**
    * User picked a class in the library browser. `position` is the
    * current view-centre in diagram coordinates — the host turns it
    * into a Placement annotation for `addComponent`.
@@ -292,6 +299,9 @@ export class DiagramPanel {
             Promise.resolve([]),
         );
         return;
+      case "libraryIcon":
+        void this.handleLibraryIconRequest(message.requestId, message.className);
+        return;
       case "error":
         void vscode.window.showWarningMessage(
           `Modelica diagram: ${message.message}`,
@@ -318,6 +328,25 @@ export class DiagramPanel {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.send({ type: responseType, requestId, error: msg });
+    }
+  }
+
+  /** Lazy icon-thumbnail request → `libraryIconResult` reply. */
+  private async handleLibraryIconRequest(
+    requestId: string,
+    className: string,
+  ): Promise<void> {
+    try {
+      const svg = await (this.handlers.onLibraryIcon?.(className) ??
+        Promise.resolve(undefined));
+      this.send(
+        svg === undefined
+          ? { type: "libraryIconResult", requestId }
+          : { type: "libraryIconResult", requestId, svg },
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.send({ type: "libraryIconResult", requestId, error: msg });
     }
   }
 

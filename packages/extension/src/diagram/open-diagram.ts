@@ -9,6 +9,8 @@ import {
   type Value,
 } from "@modelica-wrapper/omc-client";
 
+import { renderIconLayersToSvg } from "@modelica-wrapper/diagram-svg";
+
 import { isConnectorKey, parseEntityKey } from "./entity-key.js";
 
 import { createReplLog } from "../commands/repl.js";
@@ -518,6 +520,11 @@ export async function openDiagram(
     // ── Library browser ────────────────────────────────────────────────
     onLibraryListChildren: (parent) => librarySource.listChildren(parent),
     onLibrarySearch: (query) => librarySource.searchAll(query),
+    // Lazy per-row icon thumbnail (issue #76, item 8): the cheap
+    // `fetchIconLayout` path rendered to a self-contained SVG. Best-effort
+    // — a fetch / render failure resolves to `undefined` so the browser
+    // keeps its restriction-letter badge.
+    onLibraryIcon: (target) => libraryIconSvg(client, target),
     onAddComponent: async (componentClass, position) => {
       const componentName = uniqueComponentName(prevLayout, componentClass);
       const annotation = placementAt(position);
@@ -909,7 +916,7 @@ export async function fetchIconLayout(
   client: OmcClient,
   className: string,
 ): Promise<DiagramLayout> {
-  let instance: ModelInstance;
+  let instance: ModelInstance | undefined;
   try {
     const { instance: annotationInstance } = await client.invoke(
       "getModelInstanceAnnotation",
@@ -918,15 +925,74 @@ export async function fetchIconLayout(
         filter: [...ICON_ANNOTATION_FILTER],
       },
     );
-    instance = annotationInstance;
+    // Issue #76, item 9: the filtered call can return valid JSON with a
+    // null / empty annotation (e.g. PID_Controller on the OM fork) — no
+    // throw, but no Icon to paint either. Detecting that and falling back
+    // to the full `getModelInstance` (which carries the inherited icon
+    // layers) is what OMEdit does; a thrown error is only one of the two
+    // ways the cheap path can come back unusable.
+    if (hasIconAnnotation(annotationInstance)) {
+      instance = annotationInstance;
+    } else {
+      log.warn(
+        "fetchIconLayout",
+        `getModelInstanceAnnotation returned no Icon for ${className}; falling back to full getModelInstance`,
+      );
+    }
   } catch (err) {
     log.warn(
       "fetchIconLayout",
       `filtered getModelInstanceAnnotation failed for ${className}; falling back to full getModelInstance: ${(err as Error).message}`,
     );
+  }
+  if (instance === undefined) {
     instance = await fetchModelInstance(client, className);
   }
   return diagram.produceDiagramLayout(instance, "icon");
+}
+
+/**
+ * Render a class's icon to a self-contained SVG thumbnail for the library
+ * browser (issue #76, item 8 — the consumer that makes `fetchIconLayout`
+ * live). Best-effort: returns `undefined` on any failure or when the class
+ * has no drawable icon layers, so the browser falls back to its
+ * restriction-letter badge.
+ */
+async function libraryIconSvg(
+  client: OmcClient,
+  className: string,
+): Promise<string | undefined> {
+  try {
+    const layout = await fetchIconLayout(client, className);
+    if (layout.iconLayers.length === 0) return undefined;
+    return renderIconLayersToSvg(layout.iconLayers, {
+      coordinateSystem: layout.coordinateSystem,
+    });
+  } catch (err) {
+    log.warn(
+      "libraryIconSvg",
+      `icon render failed for ${className}: ${(err as Error).message}`,
+    );
+    return undefined;
+  }
+}
+
+/**
+ * True when the annotation-only instance carries a usable Icon somewhere in
+ * its inheritance — either the host's own `annotation.Icon` or an `extends`
+ * ancestor's. Mirrors how the producer collects icon layers up the chain, so
+ * a class whose icon lives purely on a base class still counts as drawable.
+ */
+function hasIconAnnotation(mi: ModelInstance | undefined): boolean {
+  if (mi === undefined || mi === null) return false;
+  const ann = mi.annotation as { Icon?: unknown } | null | undefined;
+  if (ann && ann.Icon != null) return true;
+  for (const e of mi.elements ?? []) {
+    if (e.$kind === "extends" && typeof e.baseClass === "object") {
+      if (hasIconAnnotation(e.baseClass)) return true;
+    }
+  }
+  return false;
 }
 
 /**

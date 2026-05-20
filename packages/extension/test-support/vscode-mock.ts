@@ -95,7 +95,9 @@ export type Uri = UriImpl;
  * module-level log so unit tests can assert which toast a code path
  * raised without standing up a real extension host. They return a
  * resolved Promise (matching VSCode's Thenable surface) since callers
- * `void`-discard the result.
+ * `void`-discard the result. `createOutputChannel` returns a no-op channel
+ * so the logger (used by several diagram helpers) works in unit tests
+ * (issue #76, items 8/9).
  */
 export interface RecordedMessage {
   level: "info" | "warning" | "error";
@@ -105,6 +107,17 @@ export interface RecordedMessage {
 export const recordedMessages: RecordedMessage[] = [];
 
 export const window = {
+  createOutputChannel(_name: string) {
+    return {
+      append: () => {},
+      appendLine: () => {},
+      replace: () => {},
+      clear: () => {},
+      show: () => {},
+      hide: () => {},
+      dispose: () => {},
+    };
+  },
   showInformationMessage(message: string): Promise<undefined> {
     recordedMessages.push({ level: "info", message });
     return Promise.resolve(undefined);
@@ -117,4 +130,5 @@ export const window = {
     recordedMessages.push({ level: "error", message });
     return Promise.resolve(undefined);
   },
+  showInputBox: () => Promise.resolve(undefined),
 };
