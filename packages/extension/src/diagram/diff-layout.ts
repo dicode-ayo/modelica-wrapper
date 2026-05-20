@@ -13,6 +13,11 @@ import type { DiagramLayout, Extent } from "@modelica-wrapper/omc-client";
  *   - waypoint changes on existing connection → `connectionWaypoints`
  *     (needed so a component drag's locally-re-routed connections
  *     don't snap back to their old shape after the OMC round-trip)
+ *   - vector-port re-index rename         → `connectionRenamed`
+ *     (a `connectorSizing` re-index shifts an indexed endpoint, e.g.
+ *     `pins[3].p → pins[2].p`, while the other endpoint and the
+ *     waypoints carry over; routed in-place via `updateConnectionNames`
+ *     instead of the more-disruptive delete+add — see issue #26)
  *
  * Out of scope (deferred):
  *   - component class swaps
@@ -45,6 +50,14 @@ export type LayoutEdit =
       kind: "connectionWaypoints";
       from: string;
       to: string;
+      waypoints: ReadonlyArray<readonly [number, number]>;
+    }
+  | {
+      kind: "connectionRenamed";
+      oldFrom: string;
+      oldTo: string;
+      newFrom: string;
+      newTo: string;
       waypoints: ReadonlyArray<readonly [number, number]>;
     };
 
@@ -93,15 +106,17 @@ export function diffLayouts(
   }
 
   // Connections: keyed by (lhs, rhs) endpoints. If a slot's endpoints
-  // change we treat it as delete-old + add-new (OMC has no rename-edge
-  // API). If endpoints stay but waypoints differ — typical of a
-  // component drag that drags adjacent routes with it — we emit
-  // `connectionWaypoints`, which `apply-edits.ts` translates to a
-  // single `updateConnection` call. Without that edit the move's
-  // locally-re-routed waypoints never make it to OMC; the post-edit
-  // re-fetch then reads the stale `Line(points=...)` and the
-  // connections snap back to their old shape, visually detached from
-  // the now-moved component.
+  // change we generally treat it as delete-old + add-new — but FIRST we
+  // try to recognise a `connectorSizing` vector-port re-index (issue
+  // #26), which OMC can rewrite in place via `updateConnectionNames`
+  // instead of the more-disruptive delete+add. If endpoints stay but
+  // waypoints differ — typical of a component drag that drags adjacent
+  // routes with it — we emit `connectionWaypoints`, which
+  // `apply-edits.ts` translates to a single `updateConnection` call.
+  // Without that edit the move's locally-re-routed waypoints never make
+  // it to OMC; the post-edit re-fetch then reads the stale
+  // `Line(points=...)` and the connections snap back to their old shape,
+  // visually detached from the now-moved component.
   const prevConns = prev.connections.map((c) => ({
     from: endpointToCref(c.lhs),
     to: endpointToCref(c.rhs),
@@ -114,13 +129,54 @@ export function diffLayouts(
   }));
   const prevByKey = new Map(prevConns.map((c) => [`${c.from}|${c.to}`, c]));
   const nextByKey = new Map(nextConns.map((c) => [`${c.from}|${c.to}`, c]));
+
+  // Endpoint keys that have already been claimed by a `connectionRenamed`
+  // collapse, so the delete/add loops below skip them.
+  const consumedPrev = new Set<string>();
+  const consumedNext = new Set<string>();
+
+  // First pass: collapse vector-port re-index rename pairs. A re-index
+  // shows up as one disappeared connection (`before`) and one appeared
+  // connection (`after`) where exactly one endpoint differs, the other
+  // is byte-identical, the changed endpoints differ ONLY in their vector
+  // index (same component / port base, e.g. `pins[3].p` → `pins[2].p`),
+  // and the waypoints carry over unchanged. That last-three guard is what
+  // distinguishes a re-index from an unrelated delete+add — see
+  // `isReindexRename`.
+  for (const before of prevConns) {
+    const beforeKey = `${before.from}|${before.to}`;
+    if (nextByKey.has(beforeKey)) continue; // survived verbatim — not a rename
+    if (consumedPrev.has(beforeKey)) continue;
+    for (const after of nextConns) {
+      const afterKey = `${after.from}|${after.to}`;
+      if (prevByKey.has(afterKey)) continue; // already existed — not the new side
+      if (consumedNext.has(afterKey)) continue;
+      if (!isReindexRename(before, after)) continue;
+      edits.push({
+        kind: "connectionRenamed",
+        oldFrom: before.from,
+        oldTo: before.to,
+        newFrom: after.from,
+        newTo: after.to,
+        waypoints: after.waypoints as ReadonlyArray<readonly [number, number]>,
+      });
+      consumedPrev.add(beforeKey);
+      consumedNext.add(afterKey);
+      break;
+    }
+  }
+
   for (const c of prevConns) {
-    if (!nextByKey.has(`${c.from}|${c.to}`)) {
+    const key = `${c.from}|${c.to}`;
+    if (consumedPrev.has(key)) continue;
+    if (!nextByKey.has(key)) {
       edits.push({ kind: "connectionDeleted", from: c.from, to: c.to });
     }
   }
   for (const c of nextConns) {
-    const before = prevByKey.get(`${c.from}|${c.to}`);
+    const key = `${c.from}|${c.to}`;
+    if (consumedNext.has(key)) continue;
+    const before = prevByKey.get(key);
     if (!before) {
       edits.push({
         kind: "connectionAdded",
@@ -139,6 +195,72 @@ export function diffLayouts(
   }
 
   return edits;
+}
+
+/** A connection endpoint reference reduced to its diffable parts. */
+interface Conn {
+  from: string;
+  to: string;
+  waypoints: ReadonlyArray<readonly [number, number]>;
+}
+
+/**
+ * Split a connector cref into `{ base, index }` where `base` is the cref
+ * with its FIRST vector subscript removed and `index` is the subscript
+ * text. `pins[3].p` → `{ base: "pins.p", index: "3" }`; an unsubscripted
+ * cref → `{ base: cref, index: undefined }`.
+ *
+ * Only the first `[...]` is stripped — a `connectorSizing` re-index moves
+ * exactly one vector dimension (the component instance index), and
+ * collapsing only that one keeps the heuristic from matching unrelated
+ * multi-dimensional crefs.
+ */
+function splitVectorIndex(cref: string): { base: string; index?: string } {
+  const m = /^([^[]*)\[([^\]]*)\](.*)$/.exec(cref);
+  if (!m) return { base: cref };
+  return { base: `${m[1]}${m[3]}`, index: m[2] ?? "" };
+}
+
+/**
+ * True iff (`before` → `after`) is the clear `connectorSizing` vector-port
+ * re-index pattern that `updateConnectionNames` should handle in place,
+ * rather than a coincidental delete+add.
+ *
+ * Conservative by design (issue #26): we only return true when
+ *   1. exactly ONE endpoint changed and the other is byte-identical, AND
+ *   2. the changed endpoints share the same base (component + port) and
+ *      differ only in a vector subscript (e.g. `pins[3].p` vs `pins[2].p`,
+ *      both reducing to base `pins.p`), AND
+ *   3. the waypoints carried over unchanged — i.e. it's the same logical
+ *      edge, just re-indexed, not a re-drawn wire.
+ * Anything that doesn't fit all three falls through to the existing
+ * delete+add behaviour.
+ */
+function isReindexRename(before: Conn, after: Conn): boolean {
+  if (!waypointsEqual(before.waypoints, after.waypoints)) return false;
+
+  const fromChanged = before.from !== after.from;
+  const toChanged = before.to !== after.to;
+  // Exactly one endpoint must differ; the other must persist verbatim.
+  if (fromChanged === toChanged) return false;
+
+  const oldEp = fromChanged ? before.from : before.to;
+  const newEp = fromChanged ? after.from : after.to;
+  return isReindexOf(oldEp, newEp);
+}
+
+/**
+ * True iff `a` and `b` are the same connector cref differing only in a
+ * single vector subscript (and both actually carry one). Guards against
+ * the degenerate "no subscript at all" case where both bases trivially
+ * match.
+ */
+function isReindexOf(a: string, b: string): boolean {
+  const sa = splitVectorIndex(a);
+  const sb = splitVectorIndex(b);
+  if (sa.index === undefined || sb.index === undefined) return false;
+  if (sa.index === sb.index) return false; // identical index ⇒ not a re-index
+  return sa.base === sb.base;
 }
 
 function waypointsEqual(
