@@ -37,7 +37,7 @@
  *      `modifiers` survive the walk (g1's k=3, src's k=k).
  *
  * Parameter-form inheritance has its own coverage in
- * `extension/src/diagram/class-parameter-form.test.ts` — kept there so
+ * `extension/src/diagram/parameter-edits.class.test.ts` — kept there so
  * the test doesn't need an OMC subprocess to assert it.
  *
  * Auto-skips when `omc` isn't on PATH.

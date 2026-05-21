@@ -77,7 +77,7 @@ export async function openDiagram(
 
   // Per-modal state for the top-level class-parameter editor. Captured
   // here (vs. on the panel) because the panel only round-trips the
-  // form's `{schema, values}`; the submit translator needs the refs and
+  // `model`; the submit translator needs the refs and
   // initial values to compute the dirty set.
   let classParamRefs: Record<string, ClassParameterRef> = {};
   let classParamInitialValues: Record<string, unknown> = {};
