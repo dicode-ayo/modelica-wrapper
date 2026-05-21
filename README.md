@@ -1,289 +1,118 @@
-# Modelica VSCode Extension — Starter Notes
+# Modelica VSCode Extension
 
-A graphical model editor and simulation runner for Modelica, delivered as a VSCode extension. Backed by OpenModelica (OMC) for compilation/simulation and OMSimulator for FMU co-simulation.
+A graphical model editor and simulation runner for Modelica, delivered as a VSCode
+extension. Backed by [OpenModelica](https://openmodelica.org/) (OMC) for
+compilation, model introspection, and simulation.
 
------
+You browse a Modelica library in a tree, open a class as a **diagram**, drag in
+components, draw connections, edit parameters in a side panel (with live unit
+conversion), run a semantic check or a simulation — and every gesture is written
+straight back into the `.mo` source through OMC's scripting API.
 
-## Goals
+> **Status:** active development. The diagram editor, parameter panels, unit
+> handling, snapshot undo, library browser, REPL, and check/simulate flows are
+> implemented end-to-end against a pinned OMC. See the per-package coverage and
+> the [roadmap](#roadmap) below.
 
-- **UI editor** — diagram and icon view with drag-and-drop component placement, connection drawing, parameter editing. Feature parity with OMEdit’s modeling surface, in a webview.
-- **Run capabilities** — translate, simulate, export FMU, run composed FMU systems. Stream progress and results back to the editor.
-- **Single-binary backend** — ship one native executable with the extension; no Python, no Java.
-- **Cross-platform** — Windows, macOS, Linux, x64 and arm64.
+---
 
------
+## What it is (and isn't)
 
-## Architecture
+This is **pure TypeScript**, top to bottom — there is **no Rust/Go backend, no
+separate server process, and no JSON-RPC layer**. The "backend" is the VSCode
+extension host (Node) itself; it talks to a single `omc` subprocess over ZeroMQ.
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  VSCode Extension (TypeScript)                          │
-│  ┌──────────────┐    ┌─────────────────────────────┐    │
-│  │ Extension    │◄──►│ Webview (React/Svelte)      │    │
-│  │ host         │    │ — diagram canvas, forms     │    │
-│  └──────┬───────┘    └─────────────────────────────┘    │
-└─────────┼───────────────────────────────────────────────┘
-          │ JSON-RPC 2.0 over stdio
-          ▼
-┌─────────────────────────────────────────────────────────┐
-│  Backend server (Rust) — single binary                  │
-│  ┌────────────────┐  ┌──────────────┐  ┌─────────────┐  │
-│  │ Annotation     │  │ FMU runtime  │  │ liboms FFI  │  │
-│  │ parser         │  │ (dlopen)     │  │ (bindgen)   │  │
-│  └────────────────┘  └──────────────┘  └─────────────┘  │
-│  ┌────────────────────────────────────────────────────┐ │
-│  │ OMC client (ZMQ)                                   │ │
-│  └────────────────┬───────────────────────────────────┘ │
-└─────────┬─────────┼─────────────────────────────────────┘
-          │         │
-          ▼         ▼
-   user .mo files   omc --interactive=zmq  (OS-installed subprocess)
-```
+```mermaid
+flowchart LR
+    subgraph webview["Webview (browser sandbox)"]
+        UI["diagram-ui<br/>Lit + Babylon.js<br/>&lt;om-*&gt; elements"]
+        BR["om-webview-root<br/>(bridge)"]
+        UI <-->|"DOM CustomEvents"| BR
+    end
 
-### Three communication legs
+    subgraph host["Extension host (Node)"]
+        EXT["extension<br/>commands · panel · handlers<br/>undo · units · library"]
+        CLIENT["omc-client<br/>typed wrappers · parser<br/>Zod · DiagramLayout producer"]
+        EXT -->|"in-process calls"| CLIENT
+    end
 
-1. **Webview ↔ Extension host** — `postMessage`. Webview is sandboxed; don’t try to give it direct backend access (CSP fight).
-1. **Extension host ↔ Backend** — JSON-RPC 2.0 over stdio. Same transport VSCode uses for language servers. Libraries: `vscode-jsonrpc` (TS), `lsp-server` or `jsonrpc-stdio-server` (Rust).
-1. **Backend ↔ OMC** — ZeroMQ via `omc --interactive=zmq`. OMC is **not** linkable as a library — it’s a 100MB+ MetaModelica binary with an RPC API only.
+    OMC["omc --interactive=zmq<br/>(OS-installed subprocess)"]
+    MO[".mo source files"]
 
------
-
-## Why Rust for the backend
-
-- **Cleaner FFI** to liboms via `bindgen` — auto-generated bindings.
-- **Tight FMU stepping loops** matter; `cgo`’s call overhead is real.
-- **`serde` + `tree-sitter` + `nom`** for schema-typed protocols and proper Modelica annotation parsing.
-- **Smaller distributable** — no runtime to ship.
-
-Pick Go instead only if the team already writes Go or if many concurrent simulations are a primary use case (goroutines beat tokio for that specific pattern).
-
------
-
-## What’s linkable, what isn’t
-
-|Component      |Strategy                                                                                      |
-|---------------|----------------------------------------------------------------------------------------------|
-|OMC (compiler) |**Subprocess** — `omc --interactive=zmq`. No library form exists.                             |
-|OMSimulator    |**Static link / FFI** — `liboms` with `oms.h`. Clean C API.                                   |
-|FMU runtime    |**`dlopen` at runtime** — every FMU is a shared library per the FMI spec. Use the `fmi` crate.|
-|Modelica parser|**In-process** — `tree-sitter-modelica` for IDE features without OMC round-trips.             |
-|MAT/CSV results|**In-process** — small crates exist; result files are simple.                                 |
-
------
-
-## OMC API surface to wrap
-
-From reading `OpenModelica/OMEdit/OMC/OMCProxy.h`. ~80 calls; the backend wraps these and exposes a typed RPC layer above.
-
-**Browsing** — `getClassNames`, `searchClassNames`, `getClassInformation`, `isPackage`, `getInheritanceCount`, `getInheritedClasses`, `getUses`, `existClass`.
-
-**Reading model contents** — `getComponents`, `getComponentAnnotations`, `getConnectionCount` + `getNthConnection` + `getNthConnectionAnnotation`, `getTransitions`, `getInitialStates`, `getIconAnnotation`, `getDiagramAnnotation`, `getDocumentationAnnotation`, `listFile`, `instantiateModel`.
-
-**Parameters / modifiers** — `getParameterValue`, `getComponentModifierNames/Value/Values`, `setComponentModifierValue`, `removeComponentModifiers`, `getExtendsModifierNames/Value`, `setExtendsModifierValue`.
-
-**Editing** — `addComponent`, `deleteComponent`, `renameComponent`, `updateComponent` (placement annotations), `addConnection`, `deleteConnection`, `updateConnection`, `addTransition` / `deleteTransition`, `addClassAnnotation`, `setComponentProperties`, `setComponentDimensions`, `setComponentComment`.
-
-**Lifecycle** — `loadFile`, `loadString`, `loadModel`, `parseFile`, `createClass`, `createSubClass`, `renameClass`, `deleteClass`, `copyClass`, `moveClass[ToTop|ToBottom]`, `getSourceFile`, `setSourceFile`, `diffModelicaFileListings`.
-
-**Execution** — `checkModel`, `translateModel`, `buildModel`, `simulate`, `buildModelFMU(className, version, type, prefix, platforms)`, `translateModelXML`, `importFMU`, `getSimulationOptions`, `isExperiment`.
-
-**Solver/runtime config** — `getSolverMethods`, `getJacobianMethods`, `getInitializationMethods`, `getLinearSolvers`, `getNonLinearSolvers`, `setMatchingAlgorithm`, `setIndexReductionMethod`, `setCommandLineOptions`.
-
-**Results** — `readSimulationResultSize`, `readSimulationResultVars`, `closeSimulationResultFile`.
-
------
-
-## Persistence model
-
-OMC mutates an **in-memory AST** when you call `addComponent`, `updateComponent`, etc. The .mo file on disk is unchanged until something writes it. Two options for save:
-
-- **Option A — let OMC save**: call OMC’s `save(className)` after edits. Simpler. Loses control over encoding, formatting, line endings, atomic writes.
-- **Option B — backend owns the write** (OMEdit’s pattern): call `listFile(className)` to get pretty-printed source, write it ourselves, then `setSourceFile(className, path)` to tell OMC where it now lives.
-
-**We’ll use Option B.** Reasons: encoding control, atomic writes, Git/file-watcher integration, and it’s the only option if backend and user files end up on different hosts (remote dev, containers).
-
-Track per-class dirty state. OMEdit uses an `mIsSaved` flag flipped to false on every mutation. Mirror that.
-
-OMC has no file watcher. If a .mo changes on disk externally (Git pull, another editor), detect it and call `loadFile` again.
-
------
-
-## JSON-RPC protocol sketch
-
-Three method families, all schema-typed via `serde` and TypeScript types generated from a shared schema.
-
-```typescript
-// === Browsing (cheap, cacheable) ===
-"model.getClasses"          → string[]
-"model.getClassInfo"        → ClassInfo
-"model.getIconAnnotation"   → ParsedIcon          // already parsed server-side
-"model.getDiagramElements"  → Element[]           // components + connections + shapes
-"model.getComponents"       → ComponentInfo[]
-
-// === Editing (mutating) ===
-"model.addComponent"        → Ok | Error
-"model.updateComponent"     → Ok | Error          // placement annotation
-"model.deleteComponent"     → Ok | Error
-"model.addConnection"       → Ok | Error
-"model.deleteConnection"    → Ok | Error
-"model.setModifierValue"    → Ok | Error
-"model.save"                → Ok | Error
-
-// === Execution (some streaming) ===
-"sim.check"                 → Diagnostic[]
-"sim.translate"             → { artifacts: string[] }
-"sim.run"                   → streamed: { progress, stdout, results }
-"sim.exportFMU"             → { fmuPath }
-"oms.simulate"              → streamed (composed FMU systems)
-"results.read"              → { vars: string[], series: number[][] }
+    BR <-->|"postMessage<br/>(typed protocol)"| EXT
+    CLIENT <-->|"ZeroMQ REQ/REP<br/>over TCP loopback"| OMC
+    OMC <-->|"reads / writes"| MO
 ```
 
-Streaming uses JSON-RPC notifications (server → client) during long-running ops.
+The four communication legs, end to end:
 
------
+| Leg | Between | Transport | Defined in |
+| --- | --- | --- | --- |
+| 1 | `diagram-ui` ↔ webview bridge | DOM `CustomEvent`s (`om-*`) | [`diagram-ui`](packages/diagram-ui) |
+| 2 | webview ↔ extension host | `postMessage` (typed tagged union) | [protocol.ts](packages/extension/src/webview/protocol.ts) |
+| 3 | extension host ↔ `omc-client` | in-process TypeScript calls | [`omc-client`](packages/omc-client) |
+| 4 | `omc-client` ↔ `omc` | ZeroMQ REQ/REP, Modelica-syntax wire format | [transport.ts](packages/omc-client/src/transport.ts) |
 
-## Annotation parsing
+There is **no Modelica compiler, DAE solver, or annotation evaluator written
+here** — OMC does all of that. We write the typed client, the parser for OMC's
+responses, the diagram renderer, and the editor UI.
 
-OMEdit’s `StringHandler::getStrings()` is positional, brittle splitting on the strings OMC returns from `getIconAnnotation` etc. **Don’t copy this approach.** Single biggest source of inherited bugs if done naively.
+---
 
-Our approach: a small recursive-descent parser turns OMC's response strings into a tagged-union `Value` tree (`StringV`/`BoolV`/`IntV`/`FloatV`/`IdentV`/`ListV`/`CallV`/`NullV`). Then a typed-traversal layer reads each shape's positional arguments **directly from Modelica spec §18.6** and emits typed `Shape` records. No regex splitting, no string fragility — argument order comes from the spec, not from probing OMC and inferring.
+## Packages
 
-Five shape primitives to support, all inheriting `GraphicItem` (origin, rotation, visible) + `FilledShape` (lineColor, fillColor, linePattern, fillPattern, lineThickness):
+A pnpm workspace ([`pnpm-workspace.yaml`](pnpm-workspace.yaml)) of four packages:
 
-- `Line` — also represents connections and transitions
-- `Rectangle` — borderPattern, radius
-- `Ellipse` — startAngle, endAngle
-- `Polygon` — smooth
-- `Text` — font, alignment, dynamic `String(...)` args
-- `Bitmap` — fileName + base64 imageSource
+| Package | Role |
+| --- | --- |
+| [`@modelica-wrapper/omc-client`](packages/omc-client) | TypeScript client for OMC's interactive ZeroMQ scripting API. Spawns `omc`, parses its Modelica-syntax responses into a typed AST, exposes ~200 Zod-validated typed wrappers across 11 categories, and turns `getModelInstance` into a renderer-agnostic `DiagramLayout`. No VSCode dependency. |
+| [`@modelica-wrapper/diagram-svg`](packages/diagram-svg) | Pure function: typed `IconLayer[]` → self-contained `<svg>` string. Renders all six Modelica shape primitives. Used for library thumbnails and as the source for Babylon icon textures. |
+| [`@modelica-wrapper/diagram-ui`](packages/diagram-ui) | Lit + Babylon.js custom elements (`<om-*>`) — the interactive graphical editor that runs inside the webview. Renders the `DiagramLayout`, handles picking/selection/drag, and the parameter side-panel. Talks to the host only through DOM events. |
+| [`modelica-wrapper`](packages/extension) (the extension) | The VSCode extension host. Owns the `OmcClient` lifecycle, the diagram webview panel, the message protocol, every mutation handler, snapshot undo, display-unit conversion, the library data source, the REPL, and the check/simulate commands. |
 
-Plus `Placement(transformation = ..., iconTransformation = ...)` math from Modelica spec §18 — extent → rotation → origin compose order.
+Dependency direction: `extension` → `diagram-ui` / `diagram-svg` / `omc-client`;
+`diagram-ui` → `diagram-svg` / `omc-client`; `diagram-svg` → `omc-client`.
+`omc-client` depends on nothing in the workspace.
 
------
+---
 
-## What we write vs. what we use
+## Documentation
 
-**Write ourselves (Rust):**
+The root file is the map; the detail lives under [`docs/`](docs):
 
-- Annotation parser (~500 LOC, all 5 shape types)
-- Placement/Transformation math (spec §18)
-- Thin OMC client (~30 method wrappers, ~600 LOC)
-- JSON-RPC server scaffolding (~100 LOC)
-- Dirty tracking, file save logic, file watcher
+- **[Architecture](docs/architecture.md)** — the four-layer design, the
+  webview/host split, data flow, and the persistence/undo model.
+- **[Communication protocol](docs/protocol.md)** — the complete
+  extension ↔ webview message catalog (both directions), the library
+  request/response correlation, and sequence diagrams.
+- **[Parameter panel — deep dive](docs/parameter-panel.md)** — exactly what
+  happens when you open and edit a parameter panel: the information flow, every
+  OMC call made, in order, for component params, class params, simulate, unit
+  conversion, reset-to-defaults, and `Dialog.enable`.
+- **[Diagram rendering](docs/diagram-rendering.md)** — `getModelInstance` →
+  `DiagramLayout` → Babylon scene / SVG, icon layering, and picking.
+- **[OMC client internals](docs/omc-client.md)** — transport, subprocess
+  spawning, the response parser, the expression evaluator, the typed API,
+  Zod validation, and version pinning.
+- **[MultiBody 3D preview — design](docs/multibody-preview-design.md)** —
+  design note for the t=0 spatial preview (pre-implementation).
 
-**Write ourselves (TypeScript):**
-
-- Webview diagram canvas — React + Konva, or Svelte + raw SVG
-- Property panels, library tree, results plotting
-- Extension activation, command registration, RPC client
-
-**Don’t write:**
-
-- A Modelica compiler — use OMC
-- A DAE solver — use FMU + stepping loop
-- An FMU loader — `fmi` crate
-- An MAT result parser — crate exists
-- A JSON-RPC framework — `lsp-server` / `vscode-jsonrpc`
-
------
-
-## Repo layout
-
-```
-modelica-vscode/
-├── extension/                    # TypeScript, packaged as .vsix
-│   ├── src/
-│   │   ├── extension.ts          # activate(), command registration
-│   │   ├── client.ts             # JSON-RPC client, spawns backend
-│   │   ├── webview/              # React app — diagram editor
-│   │   └── schema.ts             # generated from Rust types
-│   └── package.json
-├── backend/                      # Rust workspace
-│   ├── Cargo.toml
-│   ├── crates/
-│   │   ├── server/               # JSON-RPC entry point, main.rs
-│   │   ├── omc-client/           # ZMQ client + OMC API wrappers
-│   │   ├── annotations/          # nom-based annotation parser
-│   │   ├── oms-sys/              # bindgen FFI to liboms
-│   │   ├── fmu-runner/           # FMU stepping loop
-│   │   └── results/              # MAT/CSV reader
-│   └── schema/                   # JSON schemas → TS codegen
-├── shared/
-│   └── proto.json                # canonical RPC schema
-└── docs/
-```
-
------
-
-## Roadmap
-
-**Milestone 1 — read-only browser**
-
-- Spawn `omc --interactive=zmq`, wrap `getClasses` / `getClassInfo` / `getComponents`.
-- Render icon view in webview from parsed annotations.
-- Click a class in the tree → see its icon. No editing.
-
-**Milestone 2 — diagram view + editing**
-
-- Render diagram view (components + connections + shapes).
-- Drag-to-place: `addComponent` with placement annotation.
-- Draw connection: `addConnection`.
-- Parameter editor: `setComponentModifierValue`.
-- Save flow with dirty tracking.
-
-**Milestone 3 — execution**
-
-- `sim.check`, `sim.translate`, `sim.run` with streamed progress.
-- Results panel reading .mat files, plot variables.
-- FMU export via `buildModelFMU`.
-
-**Milestone 4 — OMSimulator integration**
-
-- Link liboms.
-- Second editor mode for SSP/FMU composition.
-- Co-simulation runner.
-
-**Milestone 5 — polish**
-
-- Undo/redo (mirror OMEdit’s `Commands.cpp` list).
-- Library browser with search.
-- File watcher → auto-reload on external changes.
-- Cross-platform packaging.
-
------
-
-## Sharp edges to plan for
-
-- **OMC startup is slow** (1–3 seconds). Spawn lazily on first model open, keep alive across the session.
-- **OMC is single-threaded.** Long calls block all other RPC. Queue requests; show progress to the user; never call OMC from inside an RPC handler that needs to be quick.
-- **Annotation strings come back as nested Modelica syntax**, not JSON. Parse properly.
-- **OMC’s `save` API exists but OMEdit deprecated it.** Don’t use it; reasons listed in the persistence section above.
-- **No file watching in OMC.** Build it ourselves on top of `notify` (Rust) → call `loadFile` on external changes.
-- **FMU platform binaries** — the FMU you export only contains the platform binaries you asked for. Document this; the “one FMU runs everywhere” assumption is wrong.
-- **liboms version mismatches** with OMC version. Lock both.
-
------
-
-## Open questions
-
-- Bundle OMC with the extension, or require user-installed? (Bundling = ~150MB extension. Required-install = friction but standard.)
-- Webview rendering: Konva (canvas, fast) vs SVG (better accessibility, easier debug)?
-- Should the extension support remote dev / WSL / containers from day one? Affects backend packaging.
-- License: OMC is OSMC-PL/GPL-dual. Extension can be MIT but distribution implications need a lawyer’s eye if we bundle.
-
------
+---
 
 ## Development
 
 ### Devcontainer (recommended)
 
-Open the repo in VSCode and accept the "Reopen in Container" prompt. The container ([`.devcontainer/Dockerfile`](.devcontainer/Dockerfile)) is built on top of `openmodelica/openmodelica:vX.Y.Z-minimal` with Node 20 + pnpm preinstalled. `omc` is on PATH at `/usr/bin/omc`, so the integration tests run out of the box.
+Open the repo in VSCode and accept the "Reopen in Container" prompt. The
+container ([`.devcontainer/Dockerfile`](.devcontainer/Dockerfile)) is built on
+`openmodelica/openmodelica:vX.Y.Z-minimal` with Node 20 + pnpm preinstalled.
+`omc` is on PATH at `/usr/bin/omc`, so the integration tests run out of the box.
 
 The OMC version is **pinned in three places** that Renovate keeps in lock-step:
 
 - [`.devcontainer/Dockerfile`](.devcontainer/Dockerfile) — `FROM openmodelica/openmodelica:vX.Y.Z-minimal`
 - [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — same image in the integration matrix
-- [`packages/omc-client/src/version.ts`](packages/omc-client/src/version.ts) — `SUPPORTED_OMC.primary` exposed at runtime via `OmcClient.getVersionStatus()`
+- [`packages/omc-client/src/version.ts`](packages/omc-client/src/version.ts) — `SUPPORTED_OMC.primary` (currently `1.26.7`), exposed at runtime via `OmcClient.getVersionStatus()`
 
 ### Local dev without the container
 
@@ -296,48 +125,89 @@ pnpm -r typecheck
 pnpm -r test          # runs unit + integration when omc is on PATH
 ```
 
+The webview bundle has no watcher by default — after editing `diagram-ui` or the
+webview entry, run `pnpm build` (or `pnpm watch`) in the relevant package and
+reload the VSCode window, or the panel keeps serving the old bundle.
+
 ### CI
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and PR:
 
-1. **Lint + unit** — typecheck and the parser/version/registry unit tests on plain ubuntu-latest.
-2. **Integration (OMC matrix)** — inside the pinned `openmodelica/openmodelica` container, runs the full integration suite + builds the extension bundle.
+1. **Lint + unit** — typecheck, the parser/version/registry unit tests, and the
+   `omc-client` `coverage:recount` drift check, on plain `ubuntu-latest`.
+2. **Integration (OMC matrix)** — inside the pinned `openmodelica/openmodelica`
+   container, runs the full integration suite + builds the extension bundle.
 
-[`.github/workflows/omc-update-audit.yml`](.github/workflows/omc-update-audit.yml) runs on PRs labeled `omc-update` (Renovate adds the label automatically when bumping OMC). It runs the integration suite against the *new* OMC and posts a comment with a checklist pointing back to [`packages/omc-client/docs/audit.md`](packages/omc-client/docs/audit.md).
+[`.github/workflows/omc-update-audit.yml`](.github/workflows/omc-update-audit.yml)
+runs on PRs labeled `omc-update` (Renovate adds the label when bumping OMC). It
+runs the integration suite + the wrapper drift-probe against the *new* OMC and
+posts a checklist pointing back to [`packages/omc-client/docs/audit.md`](packages/omc-client/docs/audit.md).
 
 ### Renovate
 
-[`renovate.json`](renovate.json) is configured to:
+[`renovate.json`](renovate.json):
 
-- **Group OMC bumps** across the Dockerfile, CI workflow, and `version.ts` into a single PR labeled `omc-update`.
-- Track `openmodelica/openmodelica` Docker Hub tags via the `dockerfile` manager.
-- Track OpenModelica GitHub releases via a regex `customManager` keyed off `SUPPORTED_OMC.primary` — so a new OMC patch release bumps the runtime pin and the type-level `OmcClient.supportedOmcVersion` together.
-- Auto-merge dev-dependency patches; never auto-merge OMC bumps (we want the audit checklist walked first).
+- **Groups OMC bumps** across the Dockerfile, CI workflow, and `version.ts` into
+  a single PR labeled `omc-update`.
+- Tracks `openmodelica/openmodelica` Docker Hub tags and OpenModelica GitHub
+  releases (the latter via a regex `customManager` keyed off `SUPPORTED_OMC.primary`).
+- Auto-merges dev-dependency patches; **never** auto-merges OMC bumps — the audit
+  checklist gets walked first.
 
-To enable: install the Renovate GitHub App on the repo. The first run will read this config and start opening PRs.
+---
 
------
+## OMC API coverage
+
+`omc-client` wraps ~200 OMC scripting functions, tracked function-by-function
+against a real OMC:
+
+- **[Coverage tracker](packages/omc-client/docs/coverage.md)** — which wrappers
+  are integration-verified on the pinned OMC, which are cheap-but-unverified,
+  and which are broken on the pin (with reasons). Kept honest by the
+  `coverage:recount` CI check.
+- **[Audit runbook](packages/omc-client/docs/audit.md)** — the read-only
+  procedure for re-auditing the wrappers against upstream OMC docs whenever the
+  pin is bumped. Run it as: *"audit the omc-client package using
+  `packages/omc-client/docs/audit.md`."*
+
+---
+
+## Roadmap
+
+- **Done / working** — read-only browsing; diagram + icon rendering from parsed
+  annotations; drag-to-place (`addComponent`); draw/delete connections; component
+  & class parameter editing with inherited-modifier routing; live display-unit
+  conversion + unit dropdowns; conditional component/port gating; diagram-local
+  snapshot undo; reset-to-defaults; semantic `checkModel` with diagnostics;
+  simulate with results post-processing; library tree + search with lazy icon
+  thumbnails; a Modelica REPL terminal.
+- **In progress / next** — MultiBody 3D preview (see
+  [design note](docs/multibody-preview-design.md)); FMU export via
+  `buildModelFMU`; broader OMC coverage toward the
+  [100% coverage epic](packages/omc-client/docs/coverage.md).
+- **Later** — OMSimulator / SSP composition; full undo/redo history;
+  cross-platform packaging; bundling decisions for OMC.
+
+---
 
 ## References
 
-**Audit runbook (run an agent against the omc-client package periodically):**
-
-- [`packages/omc-client/docs/audit.md`](packages/omc-client/docs/audit.md) — read-only consistency check between our wrappers and the upstream OMC scripting docs. Run it as: "audit the omc-client package using `packages/omc-client/docs/audit.md`."
-
 **Authoritative — read these before reverse-engineering anything:**
 
-- **OpenModelica.Scripting API reference** (auto-generated from OMC source, lists every function's return type as a Modelica signature): <https://build.openmodelica.org/Documentation/OpenModelica.Scripting.html>
-- **Modelica specification ch. 18 — Annotations** (§18.6 lists the exact positional-argument order for every shape primitive — transcribe from here, do not guess): <https://specification.modelica.org/maint/3.6/annotations.html>
+- **OpenModelica.Scripting API reference** — every function's return type as a
+  Modelica signature: <https://build.openmodelica.org/Documentation/OpenModelica.Scripting.html>
+- **Modelica specification ch. 18 — Annotations** (§18.6 lists the exact
+  positional-argument order for every shape primitive): <https://specification.modelica.org/maint/3.6/annotations.html>
 
 **Reference implementations (parser/client cross-checks):**
 
-- **OMPython** (de-facto reference parser, `OMTypedParser.py` uses pyparsing): <https://github.com/OpenModelica/OMPython>
-- **OMJulia.jl** (Julia client, second perspective on parser behavior): <https://github.com/OpenModelica/OMJulia.jl>
-- **OMEdit source** (the reference graphical editor we’re learning UI flows from; do **not** copy `StringHandler::getStrings()`): <https://github.com/OpenModelica/OMEdit>
+- **OMPython** (de-facto reference parser, `OMTypedParser.py`): <https://github.com/OpenModelica/OMPython>
+- **OMJulia.jl** (second perspective on parser behavior): <https://github.com/OpenModelica/OMJulia.jl>
+- **OMEdit** (the reference graphical editor we learn UI flows from; do **not**
+  copy `StringHandler::getStrings()`): <https://github.com/OpenModelica/OMEdit>
 
 **Project / ecosystem:**
 
-- OpenModelica source: <https://github.com/OpenModelica/OpenModelica>
+- OpenModelica: <https://github.com/OpenModelica/OpenModelica>
 - FMI standard: <https://fmi-standard.org/>
 - OMSimulator: <https://github.com/OpenModelica/OMSimulator>
-- tree-sitter-modelica (for in-process `.mo` IDE features later — not used yet): <https://github.com/OpenModelica/tree-sitter-modelica>
