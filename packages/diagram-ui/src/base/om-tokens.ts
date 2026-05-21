@@ -47,6 +47,7 @@ export const omTokens: CSSResult = css`
     --om-button-padding: 4px 12px;
     --om-form-label-width: 9em;
     --om-textarea-min-height: 60px;
+    --om-unit-select-width: 6em;
 
     /* --- modal / overlay --- */
     --om-modal-min-width: 360px;

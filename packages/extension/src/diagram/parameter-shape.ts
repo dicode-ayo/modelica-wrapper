@@ -52,6 +52,108 @@ export function resolvePrimitive(
   return undefined;
 }
 
+/**
+ * Pull the declaration `unit` for a parameter component. The unit usually
+ * rides on the type alias's `extends Real(unit="…")` (e.g.
+ * `type Torque = Real(unit="N.m")`), so we read the component's own
+ * modifiers first (a use-site `unit=` override is legal but rare), then
+ * walk the type's `extends` chain looking for a `unit` modifier.
+ *
+ * Mirrors the producer's `parameterUnit` (`api/diagram/producer.ts`) so
+ * the diagram-label path (#28/#71) and the parameter-editor path (#72)
+ * surface the same declaration unit. Returns the unquoted unit string or
+ * `undefined` when the parameter carries no unit. Depth-limited (8) to
+ * guard against pathological cycles in malformed input.
+ */
+export function parameterUnit(el: ComponentElement): string | undefined {
+  const direct = readModifierField(el.modifiers, "unit");
+  if (direct) return unquoteString(direct);
+  if (typeof el.type !== "object" || el.type === null) return undefined;
+  let cursor: ModelInstance | string | undefined = el.type;
+  for (let i = 0; i < 8; i += 1) {
+    if (cursor === undefined || typeof cursor === "string") return undefined;
+    const mi: ModelInstance = cursor;
+    let ext: ExtendsElement | undefined;
+    for (const child of mi.elements ?? []) {
+      if (child.$kind === "extends") {
+        const u = readModifierField(child.modifiers, "unit");
+        if (u) return unquoteString(u);
+        // Remember the first extends so we can keep walking aliases
+        // (`Torque` extends `Real(unit=…)` directly, but deeper SI
+        // hierarchies route through an intermediate type alias).
+        if (ext === undefined) ext = child;
+      }
+    }
+    if (ext === undefined) return undefined;
+    cursor = ext.baseClass;
+  }
+  return undefined;
+}
+
+/**
+ * Pull the `displayUnit` modifier off a parameter component (e.g.
+ * `Angle phi(displayUnit="deg")`). OMC serializes it as a direct modifier
+ * field on the component, distinct from the declaration `unit` which
+ * usually rides on the type alias's `extends`. Returns the unquoted
+ * string or `undefined` when not declared. Mirrors the producer's
+ * `parameterDisplayUnit`.
+ */
+export function parameterDisplayUnit(el: ComponentElement): string | undefined {
+  const direct = readModifierField(el.modifiers, "displayUnit");
+  return direct ? unquoteString(direct) : undefined;
+}
+
+/**
+ * Read a named field (`unit` / `displayUnit`) off a `Modifier` record,
+ * flattening through a `$value` wrapper. Returns the raw (still-quoted)
+ * string or `undefined`. Kept private; callers run `unquoteString`.
+ */
+function readModifierField(
+  mod: Modifier | undefined,
+  field: string,
+): string | undefined {
+  if (mod === undefined || mod === null || typeof mod !== "object") {
+    return undefined;
+  }
+  const v = (mod as Record<string, Modifier>)[field];
+  const s = flattenModifierString(v);
+  return s.length > 0 ? s : undefined;
+}
+
+function flattenModifierString(mod: Modifier | undefined): string {
+  if (mod === undefined || mod === null) return "";
+  if (typeof mod === "string") return mod;
+  if (typeof mod === "number" || typeof mod === "boolean") return String(mod);
+  if (typeof mod === "object" && "$value" in mod) {
+    return flattenModifierString((mod as { $value?: Modifier }).$value);
+  }
+  return "";
+}
+
+/**
+ * Build the unit-related schema extension keys for a parameter component,
+ * read off its declaration `unit` and `displayUnit`. Both builders spread
+ * this onto the property schema so the field layer (`parameter-fields.ts`)
+ * can surface them and the form can render a suffix / dropdown.
+ *
+ *   - `x-modelica-unit`         — the declaration unit (e.g. `"kg.m2"`)
+ *   - `x-modelica-display-unit` — the component's `displayUnit` modifier
+ *
+ * Keys are omitted when absent so a unit-less parameter carries no unit
+ * metadata at all (the form then renders nothing for it). The derived-unit
+ * OPTION LIST + conversion factors are NOT computed here — they need an
+ * OMC round-trip (`getDerivedUnits` / `convertUnits`) and are attached
+ * host-side in `open-diagram.ts` where the `OmcClient` lives.
+ */
+export function unitSchemaExt(el: ComponentElement): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const unit = parameterUnit(el);
+  if (unit !== undefined) out["x-modelica-unit"] = unit;
+  const displayUnit = parameterDisplayUnit(el);
+  if (displayUnit !== undefined) out["x-modelica-display-unit"] = displayUnit;
+  return out;
+}
+
 export function primitiveOf(name: string | undefined): PrimitiveKind | undefined {
   switch (name) {
     case "Real":
