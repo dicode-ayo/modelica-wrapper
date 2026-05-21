@@ -17,15 +17,13 @@ import { customElement, property } from "lit/decorators.js";
 
 import "@awesome.me/webawesome/dist/components/drawer/drawer.js";
 
-import type { JsonSchema } from "@modelica-wrapper/omc-client";
+import type { ParameterModel } from "@modelica-wrapper/omc-client";
 
 import "./parameter-form.component.js";
 import type {
   ParameterFormChangeDetail,
   ParameterFormSubmitDetail,
 } from "./parameter-form.component.js";
-
-type Schema = JsonSchema;
 
 @customElement("om-parameter-panel")
 export class OmParameterPanel extends LitElement {
@@ -47,12 +45,9 @@ export class OmParameterPanel extends LitElement {
   @property({ type: Boolean, reflect: true })
   open = false;
 
-  /** Schema + values + labels forwarded straight to `<om-parameter-form>`. */
+  /** Parameter model forwarded straight to `<om-parameter-form>`. */
   @property({ attribute: false })
-  schema: Schema | undefined = undefined;
-
-  @property({ attribute: false })
-  values: Record<string, unknown> = {};
+  model: ParameterModel | undefined = undefined;
 
   @property() title = "";
   @property({ attribute: "submit-label" }) submitLabel = "Apply";
@@ -83,8 +78,7 @@ export class OmParameterPanel extends LitElement {
       >
         <om-parameter-form
           class="form-host"
-          .schema=${this.schema}
-          .values=${this.values}
+          .model=${this.model}
           .crefPrefix=${this.crefPrefix}
           ?show-reset=${this.showReset}
           title=${this.title}

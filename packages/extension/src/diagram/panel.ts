@@ -1,5 +1,8 @@
 import * as vscode from "vscode";
-import type { DiagramLayout, JsonSchema } from "@modelica-wrapper/omc-client";
+import type {
+  DiagramLayout,
+  ParameterModel,
+} from "@modelica-wrapper/omc-client";
 
 import type {
   ExtensionToWebview,
@@ -75,10 +78,8 @@ export interface DiagramPanelHandlers {
 export interface OpenParametersOptions {
   /** Opaque tag echoed back on submit/cancel so the host can route. */
   kind: string;
-  /** JSON Schema 2020-12 describing the form (object schema). */
-  schema: JsonSchema;
-  /** Initial field values keyed by property name. */
-  values: Record<string, unknown>;
+  /** The typed parameter model the form renders (fields carry their values). */
+  model: ParameterModel;
   /** Modal title shown at the top of the form. */
   title: string;
   /** Submit-button label; defaults to "Apply" on the form side. */
@@ -187,13 +188,12 @@ export class DiagramPanel {
     this.send({ type: "layout", layout });
   }
 
-  /** Tell the webview to open its parameter modal with this schema. */
+  /** Tell the webview to open its parameter modal with this model. */
   openParameters(opts: OpenParametersOptions): void {
     const msg: ExtensionToWebview = {
       type: "parametersOpen",
       kind: opts.kind,
-      schema: opts.schema,
-      values: opts.values,
+      model: opts.model,
       title: opts.title,
     };
     if (opts.submitLabel !== undefined) {

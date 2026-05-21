@@ -2,12 +2,12 @@
  * Live integration test for the parameter-panel unit feature (issue #72).
  *
  * Exercises the real host-side pipeline end to end against OMC:
- *   getModelInstance → buildComponentParameterForm → enrichUnitOptions
- *     (client.getDerivedUnits + client.convertUnits)
+ *   getModelInstance → SessionUnitCache.buildUnitTable
+ *     (client.getDerivedUnits + client.convertUnits) → buildComponentParameterForm
  *
  * This is exactly what `open-diagram.ts`'s `onEditComponent` runs (that
- * handler isn't imported directly because it pulls in `vscode`; the form
- * build + unit enrichment is the part under test and is reproduced here).
+ * handler isn't imported directly because it pulls in `vscode`; the unit-table
+ * build + form production is the part under test and is reproduced here).
  *
  * Acceptance (issue #72):
  *   - A component with a `kg.m2` parameter (`Inertia.J`) → the field's
@@ -25,13 +25,27 @@ import { randomBytes } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { OmcClient } from "@modelica-wrapper/omc-client";
+import {
+  OmcClient,
+  collectBaseUnits,
+  produceParameterModel,
+  type ComponentElement,
+  type ParameterField,
+  type ParameterModel,
+  type UnitTable,
+} from "@modelica-wrapper/omc-client";
 
 import {
   buildComponentParameterForm,
   findSubComponent,
-} from "./component-parameter-form.js";
-import { enrichUnitOptions } from "./unit-options.js";
+} from "./parameter-edits.js";
+import { SessionUnitCache, collectDisplayUnitsByBase } from "./unit-table.js";
+
+function field(model: ParameterModel, name: string): ParameterField {
+  const f = model.fields.find((x) => x.name === name);
+  if (!f) throw new Error(`no field ${name}`);
+  return f;
+}
 
 function shouldRun(): boolean {
   const flag = process.env.OMC_INTEGRATION;
@@ -50,12 +64,24 @@ function shouldRun(): boolean {
 
 const describeIf = shouldRun() ? describe : describe.skip;
 
-/** Enrich a freshly-built form schema with the live client, as the host does. */
-async function enrich(client: OmcClient, schema: Parameters<typeof enrichUnitOptions>[0]) {
-  return enrichUnitOptions(
-    schema,
-    async (unit) => (await client.getDerivedUnits({ baseUnit: unit })).derivedUnits,
-    (s1, s2) => client.convertUnits({ s1, s2 }),
+/**
+ * Build the injected unit table for a component via the session cache, exactly
+ * as the host does: produce the model to learn its base units, then resolve
+ * them through `SessionUnitCache` (the live `getDerivedUnits` + `convertUnits`).
+ */
+async function unitTableFor(
+  cache: SessionUnitCache,
+  component: ComponentElement,
+): Promise<UnitTable> {
+  const type = component.type;
+  if (!type || typeof type === "string") return new Map();
+  const model = produceParameterModel(type, {
+    component: component.name,
+    componentOverrides: component.modifiers,
+  });
+  return cache.buildUnitTable(
+    collectBaseUnits(model),
+    collectDisplayUnitsByBase(model),
   );
 }
 
@@ -75,6 +101,9 @@ describeIf("parameter-panel units (live OMC) (#72)", () => {
       data: `package ${pkg}
   model Comp
     parameter Modelica.Units.SI.Angle phi(displayUnit = "deg") = 1.5707963267948966;
+    // displayUnit OMC can convert (s->ms) but does NOT list among
+    // getDerivedUnits("s") = {d, h, min}; must still reach the dropdown.
+    parameter Modelica.Units.SI.Time tau(displayUnit = "ms") = 0.5;
   end Comp;
   model Host
     Modelica.Mechanics.Rotational.Components.Inertia inertia1
@@ -104,32 +133,28 @@ end ${pkg};
   it("surfaces J's unit as kg.m2 (the screenshot's static-suffix case)", async () => {
     const { instance } = await client.getModelInstance({ typeName: host });
     const inertia = findSubComponent(instance, "inertia1")!;
-    const form = buildComponentParameterForm(inertia)!;
+    const cache = new SessionUnitCache(client);
+    const table = await unitTableFor(cache, inertia);
+    const form = buildComponentParameterForm(inertia, table)!;
 
-    const J = (form.schema.properties ?? {}).J as Record<string, unknown>;
-    expect(J["x-modelica-unit"]).toBe("kg.m2");
-
-    await enrich(client, form.schema);
-    const opts = J["x-modelica-unit-options"] as Array<{ unit: string }>;
+    const J = field(form.model, "J");
+    expect(J.unit).toBe("kg.m2");
     // kg.m2 has no derived units → a single identity option → static suffix.
-    expect(opts.map((o) => o.unit)).toEqual(["kg.m2"]);
+    expect(J.unitOptions.map((o) => o.unit)).toEqual(["kg.m2"]);
   }, 60_000);
 
   it("builds a rad/deg dropdown with real conversion factors", async () => {
     const { instance } = await client.getModelInstance({ typeName: host });
     const comp = findSubComponent(instance, "comp1")!;
-    const form = buildComponentParameterForm(comp)!;
+    const cache = new SessionUnitCache(client);
+    const table = await unitTableFor(cache, comp);
+    const form = buildComponentParameterForm(comp, table)!;
 
-    const phi = (form.schema.properties ?? {}).phi as Record<string, unknown>;
-    expect(phi["x-modelica-unit"]).toBe("rad");
-    expect(phi["x-modelica-display-unit"]).toBe("deg");
+    const phi = field(form.model, "phi");
+    expect(phi.unit).toBe("rad");
+    expect(phi.displayUnit).toBe("deg");
 
-    await enrich(client, form.schema);
-    const opts = phi["x-modelica-unit-options"] as Array<{
-      unit: string;
-      scaleFactor: number;
-      offset: number;
-    }>;
+    const opts = phi.unitOptions;
     const units = opts.map((o) => o.unit);
     expect(units).toContain("rad");
     expect(units).toContain("deg");
@@ -144,6 +169,30 @@ end ${pkg};
     expect(shownDeg).toBeCloseTo(90, 6);
   }, 60_000);
 
+  it("keeps a displayUnit OMC can convert but doesn't list as derived (s→ms)", async () => {
+    // Regression guard: the pre-refactor enrichUnitOptions pushed the field's
+    // displayUnit into the option list unconditionally; the session-cached
+    // table is keyed by base unit and built from getDerivedUnits, which for "s"
+    // returns {d, h, min} — NOT "ms". Without folding the declared displayUnit
+    // back in, the dropdown would silently drop "ms" and fall back to seconds.
+    const { instance } = await client.getModelInstance({ typeName: host });
+    const comp = findSubComponent(instance, "comp1")!;
+    const cache = new SessionUnitCache(client);
+    const table = await unitTableFor(cache, comp);
+    const form = buildComponentParameterForm(comp, table)!;
+
+    const tau = field(form.model, "tau");
+    expect(tau.unit).toBe("s");
+    expect(tau.displayUnit).toBe("ms");
+
+    const opts = tau.unitOptions;
+    expect(opts.map((o) => o.unit)).toContain("ms");
+    const ms = opts.find((o) => o.unit === "ms")!;
+    // convertUnits("s","ms") = (true, 0.001, 0). Shown = (0.5 - 0) / 0.001 = 500.
+    expect(ms.scaleFactor).toBeCloseTo(0.001, 9);
+    expect((0.5 - ms.offset) / ms.scaleFactor).toBeCloseTo(500, 6);
+  }, 60_000);
+
   it("submit round-trips deg→rad with REAL factors (the corruption blocker)", async () => {
     // End-to-end guard for PR #74's value-corruption bug: opening the rad
     // param (shown as 90 deg) and submitting must yield the BASE rad value,
@@ -155,15 +204,12 @@ end ${pkg};
     const baseRad = 1.5707963267948966;
     const { instance } = await client.getModelInstance({ typeName: host });
     const comp = findSubComponent(instance, "comp1")!;
-    const form = buildComponentParameterForm(comp)!;
-    await enrich(client, form.schema);
+    const cache = new SessionUnitCache(client);
+    const table = await unitTableFor(cache, comp);
+    const form = buildComponentParameterForm(comp, table)!;
 
-    const phi = (form.schema.properties ?? {}).phi as Record<string, unknown>;
-    const opts = phi["x-modelica-unit-options"] as Array<{
-      unit: string;
-      scaleFactor: number;
-      offset: number;
-    }>;
+    const phi = field(form.model, "phi");
+    const opts = phi.unitOptions;
     const deg = opts.find((o) => o.unit === "deg")!;
 
     // (a) open shows 90 deg …

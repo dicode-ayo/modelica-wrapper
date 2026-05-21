@@ -181,7 +181,7 @@ export {
   type LibraryCancelDetail,
 } from "./library-browser/library-browser.component.js";
 export {
-  parameterFieldsFromSchema,
+  parameterFieldsFromModel,
   initialValuesFromFields,
   isComplete,
   type ParameterField,

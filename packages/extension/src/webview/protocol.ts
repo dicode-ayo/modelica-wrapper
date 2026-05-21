@@ -1,4 +1,7 @@
-import type { DiagramLayout, JsonSchema } from "@modelica-wrapper/omc-client";
+import type {
+  DiagramLayout,
+  ParameterModel,
+} from "@modelica-wrapper/omc-client";
 
 /**
  * Wire-format mirror of diagram-ui's `LibraryClassRestriction`.
@@ -40,10 +43,10 @@ export interface LibraryClassInfo {
  *                            re-read from OMC because the user
  *                            accepted a mutation).
  *   - `error`              — surface a backend error to the webview UI.
- *   - `parametersOpen`     — open the parameter modal with the given
- *                            JSON Schema + initial values + title.
- *                            `kind` is an opaque tag the extension
- *                            uses to route the eventual submit
+ *   - `parametersOpen`     — open the parameter modal for the given
+ *                            `ParameterModel` (fields carry their own
+ *                            values) + title. `kind` is an opaque tag the
+ *                            extension uses to route the eventual submit
  *                            ("simulate", "componentParams", …).
  *   - `parametersClose`    — dismiss the parameter modal.
  *   - `libraryChildren`    — response to `libraryListChildren`.
@@ -85,8 +88,13 @@ export type ExtensionToWebview =
   | {
       type: "parametersOpen";
       kind: string;
-      schema: JsonSchema;
-      values: Record<string, unknown>;
+      /**
+       * The typed parameter model the form renders directly. Its fields
+       * carry their own current values, type defaults, units, unit options,
+       * Dialog tab/group/enable, and enum metadata — the webview no longer
+       * parses JSON Schema for forms.
+       */
+      model: ParameterModel;
       title: string;
       submitLabel?: string;
       /**

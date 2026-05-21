@@ -3,9 +3,11 @@ import {
   OmcClient,
   asString,
   diagram,
+  produceParameterModel,
+  produceSimulationModel,
   type DiagramLayout,
-  type JsonSchema,
   type ModelInstance,
+  type UnitTable,
   type Value,
 } from "@modelica-wrapper/omc-client";
 
@@ -19,27 +21,22 @@ import { log } from "../logger.js";
 import { applyEdits } from "./apply-edits.js";
 import {
   buildClassParameterForm,
-  classParameterValueToExpr,
-  type ClassParameterRef,
-} from "./class-parameter-form.js";
-import {
   buildComponentParameterForm,
+  classParameterValueToExpr,
   componentParameterEditPlan,
   findSubComponent,
+  type ClassParameterRef,
   type ComponentParameterRef,
-} from "./component-parameter-form.js";
+} from "./parameter-edits.js";
 import { clearComponentModifiers } from "./clear-modifiers.js";
 import { diffLayouts, lineAnnotation, type LayoutEdit } from "./diff-layout.js";
 import { applyDisplayUnits } from "./display-unit.js";
-import { enrichUnitOptions } from "./unit-options.js";
+import { buildUnitTableForModel, sessionUnitCache } from "./unit-table.js";
 import { LibraryBrowserSource } from "./library-source.js";
 import { captureSnapshot, restoreSnapshot } from "./omc-snapshot.js";
 import { DiagramPanel } from "./panel.js";
 import { SnapshotStack } from "./snapshot-stack.js";
-import {
-  buildSimulateForm,
-  simulateInputFromFormValues,
-} from "./simulate-form.js";
+import { simulateInputFromFormValues } from "./simulate-form.js";
 
 /**
  * `Modelica: Open Diagram` command handler. Resolves the target class
@@ -80,7 +77,7 @@ export async function openDiagram(
 
   // Per-modal state for the top-level class-parameter editor. Captured
   // here (vs. on the panel) because the panel only round-trips the
-  // form's `{schema, values}`; the submit translator needs the refs and
+  // `model`; the submit translator needs the refs and
   // initial values to compute the dirty set.
   let classParamRefs: Record<string, ClassParameterRef> = {};
   let classParamInitialValues: Record<string, unknown> = {};
@@ -284,11 +281,13 @@ export async function openDiagram(
     },
     onActionSimulate: async () => {
       try {
-        const { schema, values } = await buildSimulateForm(client, className);
+        const model = produceSimulationModel({
+          className,
+          options: await fetchSimulationOptions(client, className),
+        });
         panel.openParameters({
           kind: "simulate",
-          schema,
-          values,
+          model,
           title: `Simulate ${className}`,
           submitLabel: "Run",
         });
@@ -309,7 +308,12 @@ export async function openDiagram(
           );
           return;
         }
-        const form = buildComponentParameterForm(component);
+        // Build the unit table host-side from the session cache (one set of
+        // unit calls per base unit per session, shared with the labels), then
+        // produce the form with each unit-bearing field's option list filled —
+        // the webview renders the dropdown and converts locally.
+        const unitTable = await buildComponentUnitTable(client, component);
+        const form = buildComponentParameterForm(component, unitTable);
         if (!form) {
           void vscode.window.showInformationMessage(
             `Modelica: ${componentName} has no editable scalar parameters.`,
@@ -319,19 +323,13 @@ export async function openDiagram(
         componentParamRefs = form.refs;
         componentParamInitialValues = form.values;
         componentParamComponentName = form.componentName;
-        // Enrich the schema host-side with each unit-bearing field's
-        // derived-unit option list + pre-computed conversion factors, so
-        // the webview can render the unit dropdown and convert the shown
-        // value locally (no per-change OMC round-trip). Best-effort.
-        await enrichFormUnitOptions(client, form.schema);
         const typeName =
           typeof component.type === "object" && component.type !== null
             ? component.type.name
             : String(component.type ?? "");
         panel.openParameters({
           kind: "componentParams",
-          schema: form.schema,
-          values: form.values,
+          model: form.model,
           title: `Parameters: ${componentName}${typeName ? ` (${typeName})` : ""}`,
           submitLabel: "Apply",
           // `Dialog.enable` expressions on this component's parameters
@@ -354,7 +352,8 @@ export async function openDiagram(
     onActionParameters: async () => {
       try {
         const instance = await fetchModelInstance(client, className);
-        const form = buildClassParameterForm(instance);
+        const unitTable = await buildClassUnitTable(client, instance);
+        const form = buildClassParameterForm(instance, unitTable);
         if (!form) {
           void vscode.window.showInformationMessage(
             `Modelica: ${className} has no editable scalar parameters.`,
@@ -363,11 +362,9 @@ export async function openDiagram(
         }
         classParamRefs = form.refs;
         classParamInitialValues = form.values;
-        await enrichFormUnitOptions(client, form.schema);
         panel.openParameters({
           kind: "classParams",
-          schema: form.schema,
-          values: form.values,
+          model: form.model,
           title: `Parameters: ${className}`,
           submitLabel: "Apply",
         });
@@ -497,7 +494,8 @@ export async function openDiagram(
             panel.closeParameters();
             return;
           }
-          const form = buildComponentParameterForm(component);
+          const unitTable = await buildComponentUnitTable(client, component);
+          const form = buildComponentParameterForm(component, unitTable);
           if (!form) {
             // No editable scalar params left after reset — nothing to
             // re-open; close and clear the stale closure state for the
@@ -515,8 +513,7 @@ export async function openDiagram(
               : String(component.type ?? "");
           panel.openParameters({
             kind: "componentParams",
-            schema: form.schema,
-            values: form.values,
+            model: form.model,
             title: `Parameters: ${componentName}${typeName ? ` (${typeName})` : ""}`,
             submitLabel: "Apply",
             crefPrefix: componentName,
@@ -833,43 +830,77 @@ async function layoutFromInstance(
   // `displayUnit` instead of the source `unit`. The webview text path is
   // synchronous and has no OmcClient, so we convert HOST-SIDE here — where
   // the client lives — and rewrite `ParameterDef.value` to the display-unit
-  // string the substitution map will read. Best-effort: a convertUnits
-  // throw / incompatible verdict leaves the source value untouched and is
-  // logged by applyDisplayUnits.
+  // string the substitution map will read. The conversion is routed through
+  // the SAME session-cached unit table the parameter form uses, so a `(unit,
+  // displayUnit)` pair is resolved once per session and never duplicated
+  // between the form and the labels. Best-effort: a convertUnits throw /
+  // incompatible verdict leaves the source value untouched and is logged.
+  const cache = sessionUnitCache(client, log.warn);
   return applyDisplayUnits(
     layout,
-    (s1, s2) => client.convertUnits({ s1, s2 }),
+    (s1, s2) => cache.convertUnits(s1, s2),
     log.warn,
   );
 }
 
 /**
- * Enrich a parameter-form schema with unit option lists + conversion
- * factors, backed by the live `OmcClient` (`getDerivedUnits` /
- * `convertUnits`). Best-effort — `enrichUnitOptions` swallows per-field
- * resolver failures and falls back to a static suffix, so a flaky OMC
- * leaves units visible rather than crashing the modal. Mutates `schema`
- * in place (freshly built per modal-open).
+ * Build the injected `UnitTable` for a class's parameters via the session
+ * cache. Produces the model to learn its base units, then resolves each through
+ * the cache (memoised, so a re-open issues zero new OMC calls) — fed back into
+ * `buildClassParameterForm` to fill the per-field option lists.
  */
-async function enrichFormUnitOptions(
+function buildClassUnitTable(
   client: OmcClient,
-  schema: JsonSchema,
-): Promise<void> {
+  instance: ModelInstance,
+): Promise<UnitTable> {
+  return buildUnitTableForModel(client, produceParameterModel(instance), log.warn);
+}
+
+/**
+ * Sub-component variant — produces the model from the component's type + its
+ * parent-class overrides, then resolves its base units through the same cache.
+ * Returns `undefined` for a primitive-typed leaf (no inspectable type).
+ */
+function buildComponentUnitTable(
+  client: OmcClient,
+  component: Parameters<typeof buildComponentParameterForm>[0],
+): Promise<UnitTable | undefined> {
+  const type = component.type;
+  if (!type || typeof type === "string") return Promise.resolve(undefined);
+  const model = produceParameterModel(type, {
+    component: component.name,
+    componentOverrides: component.modifiers,
+  });
+  return buildUnitTableForModel(client, model, log.warn);
+}
+
+/** The `getSimulationOptions` return — derived from the client method so it
+ *  stays in sync without widening the omc-client barrel. */
+type GetSimulationOptionsOutput = Awaited<
+  ReturnType<OmcClient["getSimulationOptions"]>
+>;
+
+/**
+ * Resolve the simulate panel's `experiment`-annotation seed values
+ * (`startTime`, `stopTime`, `tolerance`, `numberOfIntervals`, `interval`) via
+ * `getSimulationOptions`. Some classes (e.g. a freshly-created model with no
+ * experiment annotation) make the wrapper throw; OMC's documented defaults are
+ * the sensible fallback there, matching the old `buildSimulateForm` behaviour.
+ */
+async function fetchSimulationOptions(
+  client: OmcClient,
+  className: string,
+): Promise<GetSimulationOptionsOutput> {
   try {
-    await enrichUnitOptions(
-      schema,
-      async (unit) => (await client.getDerivedUnits({ baseUnit: unit })).derivedUnits,
-      (s1, s2) => client.convertUnits({ s1, s2 }),
-      log.warn,
-    );
-  } catch (err) {
-    // Whole-pass failure (shouldn't happen — the helper is internally
-    // best-effort) still mustn't block opening the form.
-    log.warn(
-      "enrichFormUnitOptions",
-      "unit-option enrichment failed; form opens without unit dropdowns",
-      err instanceof Error ? err.message : err,
-    );
+    return await client.getSimulationOptions({ typeName: className });
+  } catch {
+    return {
+      startTime: 0,
+      stopTime: 1,
+      tolerance: 1e-6,
+      numberOfIntervals: 500,
+      interval: 0,
+    };
   }
 }
 

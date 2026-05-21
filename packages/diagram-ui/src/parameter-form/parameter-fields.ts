@@ -1,17 +1,25 @@
 /**
- * Pure JSON Schema → flat field list normaliser for the parameter form.
+ * Pure `ParameterModel` → flat field list normaliser for the parameter form.
  *
- * Top-level fields only — nested objects are deferred. The vocabulary
- * matches what OMC's simulation-options + Modelica parameter schemas
- * actually produce: scalars (`string` / `number` / `boolean`), enums on
- * strings, and arrays of scalars. Anything outside that vocabulary is
- * still listed (so the UI doesn't silently lose fields) but rendered as
- * a read-only fallback widget by the consumer.
+ * The webview renders omc-client's typed `ParameterModel` directly — no JSON
+ * Schema, no `x-modelica-*` keys (see `docs/parameter-model-design.md`,
+ * Revision 2026-05-21). `parameterFieldsFromModel` maps each
+ * omc-client `ParameterField` onto the form's internal `ParameterField`, which
+ * the renderer and the `Dialog.enable` evaluator consume.
+ *
+ * The vocabulary matches what the producers emit: scalars (`string` / `number`
+ * / `integer` / `boolean`), enums, and a read-only `unsupported` fallback for
+ * record / array / complex parameters we can't edit yet.
  *
  * Pure of Lit / DOM imports so it's testable with plain vitest.
  */
 
-import type { Expression, JsonSchema } from "@modelica-wrapper/omc-client";
+import type {
+  Expression,
+  ParameterField as ModelField,
+  ParameterModel,
+  UnitOption as ModelUnitOption,
+} from "@modelica-wrapper/omc-client";
 // Sub-path import: the evaluator subtree only — the bare-name import
 // above is type-only (erased at build) so neither path drags the OMC
 // transport (zeromq / cmake-ts) into the webview bundle.
@@ -22,9 +30,6 @@ import {
   type EvalScope,
   type EvalValue,
 } from "@modelica-wrapper/omc-client/eval";
-
-/** Subset of JSON Schema 2020-12 we walk — alias for omc-client's re-export. */
-type Node = JsonSchema;
 
 export type FieldKind =
   | "string"
@@ -39,10 +44,11 @@ export type FieldKind =
  * A selectable unit choice for a parameter, with the affine conversion
  * needed to render a `unit`-valued number in this option's unit.
  *
- * The factors are pre-computed HOST-SIDE (via `convertUnits(unit, option)`)
- * and shipped on the schema so the webview converts the shown value
- * locally on dropdown change — no per-keystroke / per-change OMC round-trip.
- * Conversion direction matches OMEdit (`ElementProperties.cpp`):
+ * The factors are pre-computed HOST-SIDE (via the session-cached
+ * `convertUnits(unit, option)`) and carried on the model so the webview
+ * converts the shown value locally on dropdown change — no per-keystroke /
+ * per-change OMC round-trip. Conversion direction matches OMEdit
+ * (`ElementProperties.cpp`):
  *
  *   shownValue = (sourceValue - offset) / scaleFactor
  *
@@ -59,138 +65,126 @@ export interface UnitOption {
 }
 
 export interface ParameterField {
-  /** Property name as keyed in the parent schema. */
+  /** Property name (== model field name; submit values key on this). */
   name: string;
   /** Widget kind we want to render for this field. */
   kind: FieldKind;
-  /** True if the field is required (not in schema.required, no default). */
+  /**
+   * True when the field must carry a value for the submit button to enable.
+   * Editable parameters always carry a binding (modifier or type default), so
+   * they're "required" in the form sense — keeps OK enabled without edits.
+   * `unsupported` (read-only) fields are never required.
+   */
   required: boolean;
-  /** Resolved default value, if any. */
+  /**
+   * The field's current resolved value (instance modifier over type default),
+   * used to seed the form's working state. `null`/`undefined` → the form shows
+   * a placeholder.
+   */
+  value: unknown;
+  /** Type-declaration default, for reset / dirty-detection / enable fallback. */
   defaultValue: unknown;
-  /** Human description from `.describe(...)`. */
+  /** Human description — the declaration comment (else undefined). */
   description: string | undefined;
   /** Enum options when `kind === "enum"`. */
-  enumValues: ReadonlyArray<unknown>;
-  /** Element kind for `kind === "array"`. Falls back to "string" if untyped. */
+  enumValues: ReadonlyArray<string>;
+  /** Element kind for `kind === "array"`. (Producers don't emit arrays yet.) */
   itemKind: FieldKind | undefined;
   /**
-   * Modelica Dialog tab / group, surfaced from the schema's
-   * `x-modelica-tab` / `x-modelica-group` extension keys. `undefined`
-   * when the schema doesn't set them (e.g. the curated simulate form,
-   * which renders flat).
+   * Modelica Dialog tab / group, from the model field's `dialog`. Always set
+   * by the producers (spec §18.7 defaults).
    */
   tab: string | undefined;
   group: string | undefined;
   /**
-   * Raw `Dialog.enable` expression AST (from `x-modelica-enable`).
-   * Evaluated by the form against live working values so the control
-   * goes `disabled` when the condition is false. `undefined` means
-   * "always enabled".
+   * Raw `Dialog.enable` expression AST. Evaluated by the form against live
+   * working values so the control goes `disabled` when the condition is false.
+   * `undefined` means "always enabled".
    */
   enable: Expression | undefined;
   /**
-   * Qualified type name for enum fields (from `x-modelica-enum-type`).
-   * The form needs it to qualify a leaf-name working value (`"PI"`)
-   * before equality-checking it against a fully-qualified enum literal
-   * from a Dialog.enable expression.
+   * Qualified type name for enum fields. The form needs it to qualify a
+   * leaf-name working value (`"PI"`) before equality-checking it against a
+   * fully-qualified enum literal from a Dialog.enable expression.
    */
   enumTypeName: string | undefined;
   /**
-   * Declaration unit (from `x-modelica-unit`, e.g. `"kg.m2"`, `"rad"`).
-   * `undefined` for unit-less parameters. When set and `unitOptions`
-   * has a single entry, the form renders it as a static suffix.
+   * Declaration unit (e.g. `"kg.m2"`, `"rad"`). `undefined` for unit-less
+   * parameters. When set and `unitOptions` has a single entry, the form
+   * renders it as a static suffix.
    */
   unit: string | undefined;
   /**
-   * The component's `displayUnit` modifier (from `x-modelica-display-unit`).
-   * Default-selected in the unit dropdown when it differs from `unit`,
-   * matching OMEdit.
+   * The component's `displayUnit` modifier. Default-selected in the unit
+   * dropdown when it differs from `unit`, matching OMEdit.
    */
   displayUnit: string | undefined;
   /**
-   * Pre-computed unit choices + conversion factors (from
-   * `x-modelica-unit-options`). Empty when the host didn't enrich the
-   * schema (e.g. no OMC client at form-build time, or a unit-less param).
+   * Pre-computed unit choices + conversion factors (from the model field's
+   * `unitOptions`, filled host-side from the session-cached `UnitTable`).
+   * Empty when the host didn't enrich the model (e.g. a unit-less param).
    * 1 entry → static suffix; ≥2 → dropdown.
    */
   unitOptions: ReadonlyArray<UnitOption>;
-  /** The raw JSON Schema node — kept on the field so the renderer can read extras (min/max/pattern). */
-  raw: Node;
 }
 
 /**
- * Walk the top-level `properties` of a JSON Schema object and produce one
- * `ParameterField` entry per property. Property iteration order matches
- * the schema's own — `Object.entries` preserves insertion order for
- * non-numeric keys, and zod's `toJSONSchema` emits them in the order the
- * caller declared with `z.object({...})`.
+ * Map a `ParameterModel` onto the form's internal field list. Field order
+ * follows the model's (ancestors first, host last; or the simulate producer's
+ * declared order). `unsupported` fields are kept so the form can show their
+ * current binding read-only rather than silently dropping them.
  */
-export function parameterFieldsFromSchema(schema: Node): ParameterField[] {
-  if (schema.type !== "object" || !schema.properties) return [];
-  const requiredSet = new Set(schema.required ?? []);
-  const out: ParameterField[] = [];
-  for (const [name, raw] of Object.entries(schema.properties)) {
-    const field = coerceNode(raw);
-    if (!field) continue;
-    const hasDefault = Object.prototype.hasOwnProperty.call(field, "default");
-    out.push({
-      name,
-      kind: detectKind(field),
-      required: requiredSet.has(name) && !hasDefault,
-      defaultValue: hasDefault ? field.default : undefined,
-      description: field.description,
-      enumValues: Array.isArray(field.enum) ? field.enum : [],
-      itemKind: detectArrayItemKind(field),
-      tab: readString(field, "x-modelica-tab"),
-      group: readString(field, "x-modelica-group"),
-      enable: readExpression(field, "x-modelica-enable"),
-      enumTypeName: readString(field, "x-modelica-enum-type"),
-      unit: readString(field, "x-modelica-unit"),
-      displayUnit: readString(field, "x-modelica-display-unit"),
-      unitOptions: readUnitOptions(field),
-      raw: field,
-    });
-  }
-  return out;
+export function parameterFieldsFromModel(
+  model: ParameterModel,
+): ParameterField[] {
+  return model.fields.map(fieldFromModelField);
 }
 
-function readString(node: Node, key: string): string | undefined {
-  const v = (node as Record<string, unknown>)[key];
-  return typeof v === "string" ? v : undefined;
+function fieldFromModelField(f: ModelField): ParameterField {
+  return {
+    name: f.name,
+    kind: f.kind,
+    required: f.kind !== "unsupported",
+    value: normaliseValue(f.value),
+    defaultValue: f.defaultValue,
+    description: f.label !== f.name ? f.label : undefined,
+    enumValues: f.enumChoices ?? [],
+    itemKind: undefined,
+    tab: f.dialog.tab,
+    group: f.dialog.group,
+    enable: f.dialog.enable,
+    enumTypeName: f.enumTypeName,
+    unit: f.unit,
+    displayUnit: f.displayUnit,
+    unitOptions: f.unitOptions.map(unitOptionFromModel),
+  };
 }
 
 /**
- * Read the pre-computed unit option list off a schema node's
- * `x-modelica-unit-options`. Each entry must carry a string `unit` and
- * finite numeric `scaleFactor` / `offset`; malformed entries are dropped
- * so a bad host enrichment can't crash the form. Returns `[]` when the
- * key is absent or empty.
+ * The producer leaves an unresolvable scalar as `null`; the form treats
+ * `null` / `undefined` alike as "no usable value" (renders a placeholder).
+ * Non-scalar `Expression` values (only on `unsupported` fields) are stringified
+ * for the read-only display.
  */
-function readUnitOptions(node: Node): UnitOption[] {
-  const v = (node as Record<string, unknown>)["x-modelica-unit-options"];
-  if (!Array.isArray(v)) return [];
-  const out: UnitOption[] = [];
-  for (const raw of v) {
-    if (!raw || typeof raw !== "object") continue;
-    const o = raw as Record<string, unknown>;
-    if (typeof o.unit !== "string") continue;
-    const scaleFactor =
-      typeof o.scaleFactor === "number" && Number.isFinite(o.scaleFactor)
-        ? o.scaleFactor
-        : 1;
-    const offset =
-      typeof o.offset === "number" && Number.isFinite(o.offset) ? o.offset : 0;
-    out.push({ unit: o.unit, scaleFactor, offset });
+function normaliseValue(v: ModelField["value"]): unknown {
+  if (v === null) return undefined;
+  if (
+    typeof v === "string" ||
+    typeof v === "number" ||
+    typeof v === "boolean"
+  ) {
+    return v;
   }
-  return out;
+  // An Expression AST on an unsupported field — show a stringified form.
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
 }
 
-function readExpression(node: Node, key: string): Expression | undefined {
-  // The schema-side encoding is "plain JSON the evaluator can walk" —
-  // the evaluator handles every shape, including malformed ones, by
-  // returning `undefined`. We don't validate here; trust the builder.
-  const v = (node as Record<string, unknown>)[key];
-  return v === undefined ? undefined : (v as Expression);
+function unitOptionFromModel(o: ModelUnitOption): UnitOption {
+  return { unit: o.unit, scaleFactor: o.scaleFactor, offset: o.offset };
 }
 
 /**
@@ -242,65 +236,26 @@ export function enabledValues(
 }
 
 /**
- * Build the initial `values` record by walking each field and picking
- * either the user-supplied initial value (if `initial[name]` is defined)
- * or the schema's default. Fields without either get `undefined`, so
- * `Object.keys(initialValues)` still includes them — the renderer can
- * decide whether to show a placeholder.
+ * Build the initial `values` record by walking each field and picking its
+ * resolved `value` (instance modifier over type default), falling back to the
+ * type `defaultValue`. Fields with neither get `undefined`, so
+ * `Object.keys(initialValues)` still includes them — the renderer can decide
+ * whether to show a placeholder.
  */
 export function initialValuesFromFields(
   fields: ReadonlyArray<ParameterField>,
-  initial: Record<string, unknown> = {},
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const f of fields) {
-    if (Object.prototype.hasOwnProperty.call(initial, f.name)) {
-      out[f.name] = initial[f.name];
-    } else if (f.defaultValue !== undefined) {
+    if (f.value !== undefined && f.value !== null) {
+      out[f.name] = f.value;
+    } else if (f.defaultValue !== undefined && f.defaultValue !== null) {
       out[f.name] = f.defaultValue;
     } else {
       out[f.name] = undefined;
     }
   }
   return out;
-}
-
-function coerceNode(raw: unknown): Node | undefined {
-  // JSON Schema 2020-12 allows `boolean` shorthand for properties
-  // (`true` = any value, `false` = never valid). We don't try to render
-  // those — they don't appear in OMC schemas.
-  return raw && typeof raw === "object" ? (raw as Node) : undefined;
-}
-
-function detectKind(node: Node): FieldKind {
-  // enum trumps type — `{type: "string", enum: ["a","b"]}` is a picker.
-  if (Array.isArray(node.enum) && node.enum.length > 0) return "enum";
-  switch (node.type) {
-    case "string":
-      return "string";
-    case "integer":
-      return "integer";
-    case "number":
-      return "number";
-    case "boolean":
-      return "boolean";
-    case "array":
-      return "array";
-    default:
-      return "unsupported";
-  }
-}
-
-function detectArrayItemKind(node: Node): FieldKind | undefined {
-  if (node.type !== "array") return undefined;
-  // JSON Schema 2020-12: `items` may be a single schema, a tuple-array,
-  // or a boolean. We only handle the single-schema form (matches what
-  // zod's toJSONSchema emits for `z.array(z.string())`).
-  const items = node.items;
-  if (!items || Array.isArray(items) || typeof items === "boolean") {
-    return "string";
-  }
-  return detectKind(items as Node);
 }
 
 // ── Dialog.enable evaluation ─────────────────────────────────────────

@@ -20,6 +20,7 @@ function field(over: Partial<ParameterField>): ParameterField {
     name: "p",
     kind: "number",
     required: false,
+    value: undefined,
     defaultValue: undefined,
     description: undefined,
     enumValues: [],
@@ -31,7 +32,6 @@ function field(over: Partial<ParameterField>): ParameterField {
     unit: undefined,
     displayUnit: undefined,
     unitOptions: [],
-    raw: {},
     ...over,
   };
 }

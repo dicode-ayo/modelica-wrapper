@@ -1,27 +1,28 @@
 /**
- * Stories for `<om-parameter-form>`. Schemas mirror what zod's
- * `toJSONSchema` produces for OMC's simulation-options / parameter
- * schemas, so the rendering is representative of the real wiring.
+ * Stories for `<om-parameter-form>`. The fixtures are `ParameterModel`s — the
+ * same typed shape the producers emit and the webview renders directly, so the
+ * stories are representative of the real wiring.
  */
 
 import type { Meta, StoryObj } from "@storybook/web-components";
+import type { ParameterModel } from "@modelica-wrapper/omc-client";
 import { html, type TemplateResult } from "lit";
 
 import "../src/parameter-form/parameter-form.component.js";
 
 interface StoryArgs {
-  schema: Record<string, unknown>;
-  values: Record<string, unknown>;
+  model: ParameterModel;
   title: string;
 }
 
+const G = { tab: "General", group: "Parameters" } as const;
+
 const meta: Meta<StoryArgs> = {
   title: "diagram-ui/ParameterForm",
-  render: ({ schema, values, title }: StoryArgs): TemplateResult => html`
+  render: ({ model, title }: StoryArgs): TemplateResult => html`
     <div style="max-width: 540px;">
       <om-parameter-form
-        .schema=${schema}
-        .values=${values}
+        .model=${model}
         title=${title}
         @om-parameter-change=${(e: Event) => {
           const ev = e as CustomEvent<{
@@ -46,72 +47,25 @@ export default meta;
 type Story = StoryObj<StoryArgs>;
 
 /**
- * Subset of OMC's `simulate` input schema — what the Simulate action
- * panel will pop up. Hits string / number / boolean / enum + a few
- * `optional().default(...)` fields so the renderer's full vocabulary
- * is exercised in one story.
+ * The simulate-setup model `produceSimulationModel` emits — string / number /
+ * integer / enum fields grouped by Dialog group, so the renderer's full
+ * vocabulary is exercised in one story.
  */
 export const SimulationOptions: Story = {
   args: {
     title: "Simulate Modelica.Mechanics.Rotational.Examples.First",
-    schema: {
-      type: "object",
-      properties: {
-        startTime: {
-          type: "number",
-          default: 0,
-          description: "Simulation start time in seconds.",
-        },
-        stopTime: {
-          type: "number",
-          default: 1,
-          description: "Simulation stop time in seconds.",
-        },
-        numberOfIntervals: {
-          type: "integer",
-          default: 500,
-          description: "Number of output points written to the result file.",
-        },
-        tolerance: {
-          type: "number",
-          default: 1e-6,
-          description: "Solver relative tolerance.",
-        },
-        method: {
-          type: "string",
-          enum: ["dassl", "ida", "euler", "rungekutta", "cvode"],
-          default: "dassl",
-          description: "Integration method.",
-        },
-        outputFormat: {
-          type: "string",
-          enum: ["mat", "csv", "plt"],
-          default: "mat",
-          description: "On-disk result file format.",
-        },
-        variableFilter: {
-          type: "string",
-          default: ".*",
-          description: "Regex selecting which result variables to store.",
-        },
-        emit_protected: {
-          type: "boolean",
-          default: false,
-          description: "Include protected variables in the result file.",
-        },
-      },
-      required: [
-        "startTime",
-        "stopTime",
-        "numberOfIntervals",
-        "tolerance",
-        "method",
-        "outputFormat",
-        "variableFilter",
-        "emit_protected",
+    model: {
+      className: "Modelica.Mechanics.Rotational.Examples.First",
+      fields: [
+        { name: "startTime", label: "Start time", kind: "number", value: 0, defaultValue: 0, unit: "s", dialog: { tab: "General", group: "General" }, unitOptions: [] },
+        { name: "stopTime", label: "Stop time", kind: "number", value: 1, defaultValue: 1, unit: "s", dialog: { tab: "General", group: "General" }, unitOptions: [] },
+        { name: "numberOfIntervals", label: "Number of intervals", kind: "integer", value: 500, defaultValue: 500, dialog: { tab: "General", group: "Solver" }, unitOptions: [] },
+        { name: "tolerance", label: "Tolerance", kind: "number", value: 1e-6, defaultValue: 1e-6, dialog: { tab: "General", group: "Solver" }, unitOptions: [] },
+        { name: "method", label: "Method", kind: "enum", value: "dassl", defaultValue: "dassl", enumChoices: ["dassl", "ida", "cvode", "gbode", "euler", "rungekutta"], dialog: { tab: "General", group: "Solver" }, unitOptions: [] },
+        { name: "outputFormat", label: "Output format", kind: "enum", value: "mat", defaultValue: "mat", enumChoices: ["mat", "csv", "plt", "empty"], dialog: { tab: "General", group: "Output" }, unitOptions: [] },
+        { name: "variableFilter", label: "Variable filter", kind: "string", value: ".*", defaultValue: ".*", dialog: { tab: "General", group: "Output" }, unitOptions: [] },
       ],
     },
-    values: {},
   },
 };
 
@@ -122,34 +76,16 @@ export const SimulationOptions: Story = {
 export const ComponentParameters: Story = {
   args: {
     title: "Inertia inertia1",
-    schema: {
-      type: "object",
-      properties: {
-        J: {
-          type: "number",
-          default: 1,
-          description: "Moment of inertia (kg·m²).",
-        },
-        phi_start: {
-          type: "number",
-          default: 0,
-          description: "Initial angle (rad).",
-        },
-        w_start: {
-          type: "number",
-          default: 0,
-          description: "Initial angular velocity (rad/s).",
-        },
-        stateSelect: {
-          type: "string",
-          enum: ["default", "always", "prefer", "avoid", "never"],
-          default: "default",
-          description: "State selection priority for phi and w.",
-        },
-      },
-      required: ["J"],
+    model: {
+      className: "Modelica.Mechanics.Rotational.Components.Inertia",
+      component: "inertia1",
+      fields: [
+        { name: "J", label: "Moment of inertia (kg·m²).", kind: "number", value: 0.25, defaultValue: 1, dialog: G, unitOptions: [] },
+        { name: "phi_start", label: "Initial angle (rad).", kind: "number", value: 0, defaultValue: 0, dialog: G, unitOptions: [] },
+        { name: "w_start", label: "Initial angular velocity (rad/s).", kind: "number", value: 0, defaultValue: 0, dialog: G, unitOptions: [] },
+        { name: "stateSelect", label: "State selection priority for phi and w.", kind: "enum", value: "default", defaultValue: "default", enumChoices: ["default", "always", "prefer", "avoid", "never"], dialog: G, unitOptions: [] },
+      ],
     },
-    values: { J: 0.25, phi_start: 0, w_start: 0 },
   },
 };
 
@@ -158,105 +94,86 @@ const RAD_PER_DEG = 0.017453292519943295;
 
 /**
  * Exercises the unit widgets next to the value control, the way a
- * host-enriched schema surfaces them (see `unit-display.ts`):
+ * host-enriched model surfaces them (see `unit-display.ts`):
  *
- *   - `startTime` — bare `x-modelica-unit` with no option list → a static
- *     **suffix** (`s`); mirrors the simulation start-time row.
- *   - `J` — bare multi-char unit (`kg.m2`) → suffix, so a longer unit
- *     string is covered too.
+ *   - `startTime` — `unit` with no option list → a static **suffix** (`s`).
+ *   - `J` — bare multi-char unit (`kg.m2`) → suffix.
  *   - `phi` — base `rad` + `displayUnit` `deg` + two options → a **dropdown**
  *     defaulting to `deg`, converting the `rad` initial on open.
  *   - `T` — base `K` + `displayUnit` `degC` → dropdown exercising the affine
  *     `offset` (273.15) leg of the conversion.
  *   - `length` — base `m` with four short options → dropdown with several
- *     choices, useful for eyeballing the (intentionally tight) selector width.
+ *     choices.
  */
 export const ParametersWithUnits: Story = {
   args: {
     title: "Parameters with units",
-    schema: {
-      type: "object",
-      properties: {
-        startTime: {
-          type: "number",
-          default: 0.5,
-          description: "Time instant at which movement starts.",
-          "x-modelica-unit": "s",
-        },
-        J: {
-          type: "number",
-          default: 1,
-          description: "Moment of inertia.",
-          "x-modelica-unit": "kg.m2",
-        },
-        phi: {
-          type: "number",
-          default: 0,
-          description: "Initial angle — base unit rad, shown in deg.",
-          "x-modelica-unit": "rad",
-          "x-modelica-display-unit": "deg",
-          "x-modelica-unit-options": [
+    model: {
+      className: "Demo.WithUnits",
+      fields: [
+        { name: "startTime", label: "Time instant at which movement starts.", kind: "number", value: 0.5, defaultValue: 0.5, unit: "s", dialog: G, unitOptions: [] },
+        { name: "J", label: "Moment of inertia.", kind: "number", value: 0.25, defaultValue: 1, unit: "kg.m2", dialog: G, unitOptions: [{ unit: "kg.m2", scaleFactor: 1, offset: 0 }] },
+        {
+          name: "phi",
+          label: "Initial angle — base unit rad, shown in deg.",
+          kind: "number",
+          value: 1.5707963267948966,
+          defaultValue: 0,
+          unit: "rad",
+          displayUnit: "deg",
+          dialog: G,
+          unitOptions: [
             { unit: "rad", scaleFactor: 1, offset: 0 },
             { unit: "deg", scaleFactor: RAD_PER_DEG, offset: 0 },
           ],
         },
-        T: {
-          type: "number",
-          default: 293.15,
-          description: "Temperature — base unit K, shown in °C (affine offset).",
-          "x-modelica-unit": "K",
-          "x-modelica-display-unit": "degC",
-          "x-modelica-unit-options": [
+        {
+          name: "T",
+          label: "Temperature — base unit K, shown in °C (affine offset).",
+          kind: "number",
+          value: 293.15,
+          defaultValue: 293.15,
+          unit: "K",
+          displayUnit: "degC",
+          dialog: G,
+          unitOptions: [
             { unit: "K", scaleFactor: 1, offset: 0 },
             { unit: "degC", scaleFactor: 1, offset: 273.15 },
           ],
         },
-        length: {
-          type: "number",
-          default: 1,
-          description: "Length — multiple metric choices in the dropdown.",
-          "x-modelica-unit": "m",
-          "x-modelica-unit-options": [
+        {
+          name: "length",
+          label: "Length — multiple metric choices in the dropdown.",
+          kind: "number",
+          value: 0.25,
+          defaultValue: 1,
+          unit: "m",
+          dialog: G,
+          unitOptions: [
             { unit: "m", scaleFactor: 1, offset: 0 },
             { unit: "mm", scaleFactor: 0.001, offset: 0 },
             { unit: "cm", scaleFactor: 0.01, offset: 0 },
             { unit: "km", scaleFactor: 1000, offset: 0 },
           ],
         },
-      },
-      required: ["startTime"],
-    },
-    values: {
-      startTime: 0.5,
-      J: 0.25,
-      phi: 1.5707963267948966,
-      T: 293.15,
-      length: 0.25,
+      ],
     },
   },
 };
 
 /**
- * Stress test: a `required` field with no default and no initial value
- * — submit should stay disabled until the user fills it in.
+ * Stress test: a `required` field with no value and no default — submit should
+ * stay disabled until the user fills it in.
  */
 export const RequiredFieldGating: Story = {
   args: {
     title: "Set value to enable submit",
-    schema: {
-      type: "object",
-      properties: {
-        name: {
-          type: "string",
-          description: "Required free-text. Submit is disabled until non-empty.",
-        },
-        count: {
-          type: "integer",
-          default: 1,
-        },
-      },
-      required: ["name"],
+    model: {
+      className: "Demo.Required",
+      fields: [
+        { name: "name", label: "Required free-text. Submit is disabled until non-empty.", kind: "string", value: null, dialog: G, unitOptions: [] },
+        { name: "count", label: "count", kind: "integer", value: 1, defaultValue: 1, dialog: G, unitOptions: [] },
+      ],
     },
-    values: {},
   },
 };

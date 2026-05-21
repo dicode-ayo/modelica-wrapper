@@ -22,7 +22,7 @@ import "@modelica-wrapper/diagram-ui/webawesome-setup";
 import "@modelica-wrapper/diagram-ui";
 import type {
   DiagramLayout,
-  JsonSchema,
+  ParameterModel,
 } from "@modelica-wrapper/omc-client";
 import {
   isComponentKey,
@@ -180,8 +180,7 @@ class OmWebviewRoot extends LitElement {
 
   @state() private layout: DiagramLayout | null = null;
   @state() private paramOpen = false;
-  @state() private paramSchema: JsonSchema | undefined = undefined;
-  @state() private paramValues: Record<string, unknown> = {};
+  @state() private paramModel: ParameterModel | undefined = undefined;
   @state() private paramTitle = "";
   @state() private paramSubmitLabel = "Apply";
   @state() private paramCrefPrefix: string | undefined = undefined;
@@ -238,8 +237,7 @@ class OmWebviewRoot extends LitElement {
       <om-parameter-panel
         ?open=${this.paramOpen}
         ?show-reset=${this.paramComponentName !== null}
-        .schema=${this.paramSchema}
-        .values=${this.paramValues}
+        .model=${this.paramModel}
         .title=${this.paramTitle}
         .submitLabel=${this.paramSubmitLabel}
         .crefPrefix=${this.paramCrefPrefix}
@@ -263,8 +261,7 @@ class OmWebviewRoot extends LitElement {
         this.layout = message.layout;
         return;
       case "parametersOpen":
-        this.paramSchema = message.schema;
-        this.paramValues = message.values;
+        this.paramModel = message.model;
         this.paramTitle = message.title;
         this.paramSubmitLabel = message.submitLabel ?? "Apply";
         this.paramCrefPrefix = message.crefPrefix;
