@@ -186,8 +186,10 @@ Two stacked PRs (PR 2 branches off PR 1):
 
 **Decision.** The webview renders the typed `ParameterModel` **directly** for *all*
 panels — component params, class params, **and simulate**. JSON Schema is dropped
-as the form/wire contract (kept only as an optional exported
-`parameterModelToJsonSchema()` helper for non-UI consumers / MCP / tests). This is
+as the form/wire contract entirely — no `ParameterModel → JsonSchema` adapter is
+kept (it would be unused dead surface re-encoding the very `x-modelica-*` shape we
+moved away from; trivially re-addable from history if a JSON-Schema consumer ever
+appears). This is
 folded into the in-flight PRs **#78 (additive)** and **#79 (rewritten)** rather
 than a separate PR, since neither is merged — so we never enshrine the
 `ParameterModel → JsonSchema + x-modelica-*` adapter just to delete it. The §1.4
@@ -292,8 +294,8 @@ fix (commit `c532a8e`) are **retained** — units still render from `unitOptions
 ### Revised PR split (fold into the in-flight PRs)
 
 - **PR #78** (additive): add `produceSimulationModel` + its tests; keep
-  `ParameterModel` as the shared contract; add `parameterModelToJsonSchema()` as an
-  optional exported helper.
+  `ParameterModel` as the shared contract. (No `parameterModelToJsonSchema` helper —
+  there's no consumer; render the model directly.)
 - **PR #79** (rewritten, force-push): webview renders `ParameterModel` directly;
   `parametersOpen` carries `model`; simulate built via `produceSimulationModel`
   (+ `getSimulationOptions` + the documented `SOLVER_METHODS` constant); delete the adapter and
