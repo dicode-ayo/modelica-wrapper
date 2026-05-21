@@ -1,6 +1,5 @@
 /**
- * Tests for the simulate-model producer, the SOLVER_METHODS constant, and the
- * parameterModelToJsonSchema adapter.
+ * Tests for the simulate-model producer and the SOLVER_METHODS constant.
  *
  * All pure — no OMC contact. `produceSimulationModel` is a pure function of
  * `{ className, options }` (a `GetSimulationOptionsOutput`), so we hand it
@@ -12,8 +11,6 @@
  *  - field set / kinds / units / groups / seeded values
  *  - method enum choices === SOLVER_METHODS; outputFormat enum === OUTPUT_FORMATS
  *  - field names match the submit mapping (`simulateInputFromFormValues` keys)
- *  - parameterModelToJsonSchema round-trips the model into JSON Schema +
- *    x-modelica-* keys
  */
 
 import { describe, expect, it } from "vitest";
@@ -25,7 +22,6 @@ import {
   OUTPUT_FORMATS,
   SOLVER_METHODS,
   produceSimulationModel,
-  parameterModelToJsonSchema,
   type ParameterField,
   type ParameterModel,
 } from "./index.js";
@@ -212,63 +208,5 @@ describe("produceSimulationModel", () => {
     const model = produceSimulationModel({ className: "M", options: OPTIONS });
     const names = new Set(model.fields.map((f) => f.name));
     for (const k of expected) expect(names.has(k)).toBe(true);
-  });
-});
-
-describe("parameterModelToJsonSchema", () => {
-  it("maps a simulate model to an object schema with all properties required", () => {
-    const model = produceSimulationModel({ className: "M", options: OPTIONS });
-    const schema = parameterModelToJsonSchema(model);
-    expect(schema.type).toBe("object");
-    expect(Object.keys(schema.properties ?? {})).toEqual(
-      model.fields.map((f) => f.name),
-    );
-    expect(schema.required).toEqual(model.fields.map((f) => f.name));
-  });
-
-  it("maps kinds to JSON types and enums to string+enum", () => {
-    const model = produceSimulationModel({ className: "M", options: OPTIONS });
-    const schema = parameterModelToJsonSchema(model);
-    const props = schema.properties as Record<string, Record<string, unknown>>;
-    expect(props.startTime.type).toBe("number");
-    expect(props.numberOfIntervals.type).toBe("integer");
-    expect(props.variableFilter.type).toBe("string");
-    expect(props.method.type).toBe("string");
-    expect(props.method.enum).toEqual([...SOLVER_METHODS]);
-  });
-
-  it("carries unit + group on x-modelica-* extension keys", () => {
-    const model = produceSimulationModel({ className: "M", options: OPTIONS });
-    const schema = parameterModelToJsonSchema(model);
-    const props = schema.properties as Record<string, Record<string, unknown>>;
-    expect(props.startTime["x-modelica-unit"]).toBe("s");
-    expect(props.startTime["x-modelica-group"]).toBe("General");
-    expect(props.method["x-modelica-group"]).toBe("Solver");
-  });
-
-  it("emits x-modelica-unit-options when a field has them", () => {
-    const model: ParameterModel = {
-      className: "M",
-      fields: [
-        {
-          name: "phi",
-          label: "Angle",
-          kind: "number",
-          value: 1.5,
-          dialog: { tab: "General", group: "Parameters" },
-          unit: "rad",
-          unitOptions: [
-            { unit: "rad", scaleFactor: 1, offset: 0 },
-            { unit: "deg", scaleFactor: Math.PI / 180, offset: 0 },
-          ],
-        },
-      ],
-    };
-    const schema = parameterModelToJsonSchema(model);
-    const props = schema.properties as Record<string, Record<string, unknown>>;
-    expect(props.phi["x-modelica-unit-options"]).toEqual([
-      { unit: "rad", scaleFactor: 1, offset: 0 },
-      { unit: "deg", scaleFactor: Math.PI / 180, offset: 0 },
-    ]);
   });
 });

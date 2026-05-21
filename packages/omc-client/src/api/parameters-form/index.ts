@@ -29,7 +29,6 @@ export {
   type SolverMethod,
   type OutputFormat,
 } from "./solverMethods.js";
-export { parameterModelToJsonSchema } from "./jsonSchema.js";
 export type {
   ParameterModel,
   ParameterField,

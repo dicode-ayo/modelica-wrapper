@@ -163,7 +163,6 @@ export {
   DEFAULT_SOLVER_METHOD,
   OUTPUT_FORMATS,
   DEFAULT_OUTPUT_FORMAT,
-  parameterModelToJsonSchema,
   type ProduceParameterModelOptions,
   type ProduceSimulationModelOptions,
   type SolverMethod,
