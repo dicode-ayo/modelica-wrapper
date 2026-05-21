@@ -153,6 +153,89 @@ export const ComponentParameters: Story = {
   },
 };
 
+/** Exact rad→deg scale factor (`convertUnits("rad", "deg")`). */
+const RAD_PER_DEG = 0.017453292519943295;
+
+/**
+ * Exercises the unit widgets next to the value control, the way a
+ * host-enriched schema surfaces them (see `unit-display.ts`):
+ *
+ *   - `startTime` — bare `x-modelica-unit` with no option list → a static
+ *     **suffix** (`s`); mirrors the simulation start-time row.
+ *   - `J` — bare multi-char unit (`kg.m2`) → suffix, so a longer unit
+ *     string is covered too.
+ *   - `phi` — base `rad` + `displayUnit` `deg` + two options → a **dropdown**
+ *     defaulting to `deg`, converting the `rad` initial on open.
+ *   - `T` — base `K` + `displayUnit` `degC` → dropdown exercising the affine
+ *     `offset` (273.15) leg of the conversion.
+ *   - `length` — base `m` with four short options → dropdown with several
+ *     choices, useful for eyeballing the (intentionally tight) selector width.
+ */
+export const ParametersWithUnits: Story = {
+  args: {
+    title: "Parameters with units",
+    schema: {
+      type: "object",
+      properties: {
+        startTime: {
+          type: "number",
+          default: 0.5,
+          description: "Time instant at which movement starts.",
+          "x-modelica-unit": "s",
+        },
+        J: {
+          type: "number",
+          default: 1,
+          description: "Moment of inertia.",
+          "x-modelica-unit": "kg.m2",
+        },
+        phi: {
+          type: "number",
+          default: 0,
+          description: "Initial angle — base unit rad, shown in deg.",
+          "x-modelica-unit": "rad",
+          "x-modelica-display-unit": "deg",
+          "x-modelica-unit-options": [
+            { unit: "rad", scaleFactor: 1, offset: 0 },
+            { unit: "deg", scaleFactor: RAD_PER_DEG, offset: 0 },
+          ],
+        },
+        T: {
+          type: "number",
+          default: 293.15,
+          description: "Temperature — base unit K, shown in °C (affine offset).",
+          "x-modelica-unit": "K",
+          "x-modelica-display-unit": "degC",
+          "x-modelica-unit-options": [
+            { unit: "K", scaleFactor: 1, offset: 0 },
+            { unit: "degC", scaleFactor: 1, offset: 273.15 },
+          ],
+        },
+        length: {
+          type: "number",
+          default: 1,
+          description: "Length — multiple metric choices in the dropdown.",
+          "x-modelica-unit": "m",
+          "x-modelica-unit-options": [
+            { unit: "m", scaleFactor: 1, offset: 0 },
+            { unit: "mm", scaleFactor: 0.001, offset: 0 },
+            { unit: "cm", scaleFactor: 0.01, offset: 0 },
+            { unit: "km", scaleFactor: 1000, offset: 0 },
+          ],
+        },
+      },
+      required: ["startTime"],
+    },
+    values: {
+      startTime: 0.5,
+      J: 0.25,
+      phi: 1.5707963267948966,
+      T: 293.15,
+      length: 0.25,
+    },
+  },
+};
+
 /**
  * Stress test: a `required` field with no default and no initial value
  * — submit should stay disabled until the user fills it in.

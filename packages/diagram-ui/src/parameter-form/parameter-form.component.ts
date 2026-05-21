@@ -211,10 +211,12 @@ export class OmParameterForm extends LitElement {
       /* Input + unit widget on one row. The input grows; the unit suffix
        * / dropdown sits flush to its right. The wa-input keeps its own
        * internal label/value grid (the .field wa-input rule above still
-       * matches it as a descendant). */
+       * matches it as a descendant). Top-align so the unit lines up with
+       * the value row rather than centering against the wa-input's full
+       * height (which also spans the reflowed description hint below). */
       .with-unit {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: var(--om-space-sm);
       }
       .with-unit > wa-input,
@@ -232,12 +234,16 @@ export class OmParameterForm extends LitElement {
         white-space: nowrap;
       }
 
-      /* Unit dropdown (≥2 options). Sized to fit its content rather than
-       * stretching, so it hugs the value control. */
-      wa-select.unit-select {
-        flex: 0 0 auto;
+      /* Unit dropdown (≥2 options). Pinned to a fixed width so it hugs the
+       * value control instead of stretching. The selector is deliberately
+       * more specific than .with-unit > wa-select (flex: 1 1 auto) and
+       * .field wa-select (display: grid) above so those don't win and
+       * blow the width out; flex: 0 0 + an explicit width make the size
+       * fully deterministic regardless of WA's intrinsic select sizing. */
+      .with-unit > wa-select.unit-select {
+        flex: 0 0 var(--om-unit-select-width);
+        width: var(--om-unit-select-width);
         display: inline-block;
-        min-width: var(--om-unit-select-width);
       }
 
       .required {
@@ -443,20 +449,23 @@ export class OmParameterForm extends LitElement {
                 variant="neutral"
                 appearance="outlined"
                 @click=${this.onReset}
-              >${this.resetLabel}</wa-button>`
+                >${this.resetLabel}</wa-button
+              >`
             : nothing}
           <wa-button
             type="button"
             variant="neutral"
             appearance="outlined"
             @click=${this.onCancel}
-          >${this.cancelLabel}</wa-button>
+            >${this.cancelLabel}</wa-button
+          >
           <wa-button
             type="submit"
             variant="brand"
             appearance="filled"
             ?disabled=${!canSubmit}
-          >${this.submitLabel}</wa-button>
+            >${this.submitLabel}</wa-button
+          >
         </div>
       </form>
     `;
@@ -480,13 +489,14 @@ export class OmParameterForm extends LitElement {
     return html`
       <wa-tab-group placement="top">
         ${buckets.map(
-          (b, i) => html`<wa-tab slot="nav" panel=${`tab-${i}`}
-            >${b.tab}</wa-tab>`,
+          (b, i) =>
+            html`<wa-tab slot="nav" panel=${`tab-${i}`}>${b.tab}</wa-tab>`,
         )}
         ${buckets.map(
-          (b, i) => html`<wa-tab-panel name=${`tab-${i}`}
-            >${this.renderGroups(b.groups)}</wa-tab-panel
-          >`,
+          (b, i) =>
+            html`<wa-tab-panel name=${`tab-${i}`}
+              >${this.renderGroups(b.groups)}</wa-tab-panel
+            >`,
         )}
       </wa-tab-group>
     `;
@@ -528,7 +538,9 @@ export class OmParameterForm extends LitElement {
     return html`
       <div class="field row" ?data-disabled=${!enabled}>
         <label class="label" for=${`f-${f.name}`}
-          >${f.name}${f.required ? html`<span class="required">*</span>` : nothing}</label
+          >${f.name}${f.required
+            ? html`<span class="required">*</span>`
+            : nothing}</label
         >
         <div class="control">${this.renderControlWithUnit(f, enabled)}</div>
         ${f.description
@@ -608,8 +620,7 @@ export class OmParameterForm extends LitElement {
             }}
           >
             ${widget.options.map(
-              (o) =>
-                html`<wa-option value=${o.unit}>${o.unit}</wa-option>`,
+              (o) => html`<wa-option value=${o.unit}>${o.unit}</wa-option>`,
             )}
           </wa-select>
         `;
@@ -630,12 +641,7 @@ export class OmParameterForm extends LitElement {
     this.unitSelection = { ...this.unitSelection, [f.name]: nextUnit };
     const v = this.working[f.name];
     if (typeof v === "number" && prevUnit !== nextUnit) {
-      const converted = convertShownValue(
-        v,
-        prevUnit,
-        nextUnit,
-        f.unitOptions,
-      );
+      const converted = convertShownValue(v, prevUnit, nextUnit, f.unitOptions);
       if (converted !== undefined) {
         // commit:true — the value moved, refresh the enable snapshot too.
         this.setField(f.name, converted, { commit: true });
@@ -689,9 +695,10 @@ export class OmParameterForm extends LitElement {
               ? html`<wa-option value=""></wa-option>`
               : nothing}
             ${f.enumValues.map(
-              (opt) => html`<wa-option value=${String(opt)}
-                >${String(opt)}</wa-option
-              >`,
+              (opt) =>
+                html`<wa-option value=${String(opt)}
+                  >${String(opt)}</wa-option
+                >`,
             )}
           </wa-select>
         `;
@@ -732,11 +739,13 @@ export class OmParameterForm extends LitElement {
                 this.setField(f.name, undefined);
                 return;
               }
-              const n = f.kind === "integer" ? parseInt(text, 10) : Number(text);
+              const n =
+                f.kind === "integer" ? parseInt(text, 10) : Number(text);
               this.setField(f.name, Number.isFinite(n) ? n : undefined);
             }}
             @change=${() => this.commitEnable()}
-          >${this.renderLabelSlot(f)}${this.renderHintSlot(f)}</wa-input>
+            >${this.renderLabelSlot(f)}${this.renderHintSlot(f)}</wa-input
+          >
         `;
       case "array": {
         // Render as a comma-separated text input. OMC parameter arrays are
@@ -761,7 +770,8 @@ export class OmParameterForm extends LitElement {
                 ),
               )}
             @change=${() => this.commitEnable()}
-          >${this.renderLabelSlot(f)}${this.renderHintSlot(f)}</wa-input>
+            >${this.renderLabelSlot(f)}${this.renderHintSlot(f)}</wa-input
+          >
         `;
       }
       case "string":
@@ -778,7 +788,8 @@ export class OmParameterForm extends LitElement {
                 (e.target as HTMLElement & { value: string }).value,
               )}
             @change=${() => this.commitEnable()}
-          >${this.renderLabelSlot(f)}${this.renderHintSlot(f)}</wa-input>
+            >${this.renderLabelSlot(f)}${this.renderHintSlot(f)}</wa-input
+          >
         `;
       case "unsupported": {
         // Record / complex parameters can't be edited yet, but we still
@@ -933,7 +944,10 @@ function stringifyAtom(v: unknown): string {
 
 function parseArrayInput(raw: string, itemKind: FieldKind): unknown[] {
   if (raw.trim().length === 0) return [];
-  const parts = raw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+  const parts = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
   if (itemKind === "number" || itemKind === "integer") {
     return parts.map((s) => {
       const n = itemKind === "integer" ? parseInt(s, 10) : Number(s);
