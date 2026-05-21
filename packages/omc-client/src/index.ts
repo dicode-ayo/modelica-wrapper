@@ -148,6 +148,42 @@ export {
   type ConnectionLayout,
   type LabelLayout,
   type DiagramLayout,
+  // MultiBody visual scene (producer output)
+  XmlExprSchema,
+  XmlShapeSchema,
+  XmlVectorSchema,
+  XmlSurfaceSchema,
+  XmlVisualizerSchema,
+  VisualXmlDocumentSchema,
+  VisualShapeSchema,
+  VisualVectorSchema,
+  VisualSurfaceSchema,
+  VisualizerSchema,
+  VisualSceneSchema,
+  MultibodySceneSchema,
+  ParameterSourceSchema,
+  parseVisualXml,
+  resolveExpressions,
+  produceVisualScene,
+  joinWithModelInstance,
+  type Vec3,
+  type Mat3,
+  type Rgb,
+  type XmlExpr,
+  type XmlVec3,
+  type XmlMat3,
+  type XmlShape,
+  type XmlVector,
+  type XmlSurface,
+  type XmlVisualizer,
+  type VisualXmlDocument,
+  type VisualShape,
+  type VisualVector,
+  type VisualSurface,
+  type Visualizer,
+  type VisualScene,
+  type MultibodyScene,
+  type ParameterSource,
 } from "./_shared/index.js";
 
 // --- Lower-level transport / process / parser (advanced use) ---
@@ -183,6 +219,7 @@ export * as elements from "./api/elements/index.js";
 export * as execution from "./api/execution/index.js";
 export * as library from "./api/library/index.js";
 export * as lifecycle from "./api/lifecycle/index.js";
+export * as multibody from "./api/multibody/index.js";
 export * as parameters from "./api/parameters/index.js";
 export * as results from "./api/results/index.js";
 export * as solver from "./api/solver/index.js";

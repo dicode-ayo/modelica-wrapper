@@ -24,6 +24,7 @@
     "coverage:recount": "node scripts/check-coverage-counts.mjs"
   },
   "dependencies": {
+    "fast-xml-parser": "^4.5.0",
     "zeromq": "^6.1.0",
     "zod": "^4.4.3"
   },
