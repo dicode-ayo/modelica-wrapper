@@ -81,13 +81,16 @@ vi.mock("../logger.js", () => ({
 // Drive the abort branches by controlling form derivation directly.
 const findSubComponent = vi.fn();
 const buildComponentParameterForm = vi.fn();
-vi.mock("./component-parameter-form.js", () => ({
+vi.mock("./parameter-edits.js", () => ({
   findSubComponent: (...args: unknown[]) => findSubComponent(...args),
   buildComponentParameterForm: (...args: unknown[]) =>
     buildComponentParameterForm(...args),
-  // The submit translator imports these; the component-params submit path
-  // isn't reached once the closure state is cleared, but the module must
-  // still export them so the import resolves.
+  // open-diagram also imports these from the parameter-edits module; the
+  // class-params + component-params submit paths aren't reached in these
+  // tests, but the module must still export them so the imports resolve.
+  buildClassParameterForm: () => undefined,
+  classParameterValueToExpr: () => "",
+  componentParameterEditPlan: () => [],
   componentParameterElementName: (component: string, name: string) =>
     `${component}.${name}`,
   componentParameterValueToExpr: () => "",
@@ -182,7 +185,7 @@ const fakeContext = { extensionUri: {} } as unknown as ExtensionContext;
 /** A minimal valid component form so the happy re-open path can run. */
 function validForm(componentName: string) {
   return {
-    schema: { type: "object", properties: {}, required: [] },
+    model: { className: "Sample", fields: [] },
     values: {},
     refs: {},
     componentName,

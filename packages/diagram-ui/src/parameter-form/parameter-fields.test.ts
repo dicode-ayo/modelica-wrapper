@@ -1,10 +1,15 @@
 /**
- * Unit tests for the JSON Schema → field list normaliser. Pure of any
- * DOM bits so vitest can run them without happy-dom.
+ * Unit tests for the `ParameterModel` → field-list normaliser + the form's
+ * value/enable helpers. Pure of any DOM bits so vitest runs them without
+ * happy-dom.
  */
 
 import { describe, expect, it } from "vitest";
-import type { Expression, JsonSchema } from "@modelica-wrapper/omc-client";
+import type {
+  Expression,
+  ParameterField as ModelField,
+  ParameterModel,
+} from "@modelica-wrapper/omc-client";
 
 import {
   buildEnableScope,
@@ -12,26 +17,41 @@ import {
   initialValuesFromFields,
   isComplete,
   isFieldEnabled,
-  parameterFieldsFromSchema,
+  parameterFieldsFromModel,
   type ParameterField,
 } from "./parameter-fields.js";
 
-describe("parameterFieldsFromSchema — top-level vocabulary", () => {
-  it("returns [] for non-object schemas", () => {
-    expect(parameterFieldsFromSchema({ type: "string" })).toEqual([]);
-    expect(parameterFieldsFromSchema({})).toEqual([]);
+/** Build a `ParameterField` (omc-client shape) with sensible defaults. */
+function modelField(over: Partial<ModelField> & { name: string }): ModelField {
+  return {
+    label: over.name,
+    kind: "number",
+    value: null,
+    dialog: { tab: "General", group: "Parameters" },
+    unitOptions: [],
+    ...over,
+  } as ModelField;
+}
+
+/** Wrap fields into a `ParameterModel`. */
+function model(fields: Array<Partial<ModelField> & { name: string }>): ParameterModel {
+  return { className: "T", fields: fields.map(modelField) };
+}
+
+describe("parameterFieldsFromModel — kinds + vocabulary", () => {
+  it("returns [] for an empty model", () => {
+    expect(parameterFieldsFromModel(model([]))).toEqual([]);
   });
 
-  it("detects string / number / integer / boolean kinds", () => {
-    const f = parameterFieldsFromSchema({
-      type: "object",
-      properties: {
-        s: { type: "string" },
-        n: { type: "number" },
-        i: { type: "integer" },
-        b: { type: "boolean" },
-      },
-    });
+  it("maps string / number / integer / boolean kinds", () => {
+    const f = parameterFieldsFromModel(
+      model([
+        { name: "s", kind: "string" },
+        { name: "n", kind: "number" },
+        { name: "i", kind: "integer" },
+        { name: "b", kind: "boolean" },
+      ]),
+    );
     expect(f.map((x) => [x.name, x.kind])).toEqual([
       ["s", "string"],
       ["n", "number"],
@@ -40,74 +60,49 @@ describe("parameterFieldsFromSchema — top-level vocabulary", () => {
     ]);
   });
 
-  it("treats fields with `enum` as `enum` kind regardless of type", () => {
-    const f = parameterFieldsFromSchema({
-      type: "object",
-      properties: {
-        method: {
-          type: "string",
-          enum: ["dassl", "ida", "euler"],
-        },
-      },
-    });
+  it("maps enum fields and threads enumChoices into enumValues", () => {
+    const f = parameterFieldsFromModel(
+      model([{ name: "method", kind: "enum", enumChoices: ["dassl", "ida", "euler"] }]),
+    );
     expect(f).toHaveLength(1);
     expect(f[0]?.kind).toBe("enum");
     expect(f[0]?.enumValues).toEqual(["dassl", "ida", "euler"]);
   });
 
-  it("flags arrays with their item kind", () => {
-    const f = parameterFieldsFromSchema({
-      type: "object",
-      properties: {
-        nums: { type: "array", items: { type: "number" } },
-        names: { type: "array", items: { type: "string" } },
-        any: { type: "array" }, // untyped items → fallback to string
-      },
-    });
-    const byName = new Map(f.map((x) => [x.name, x]));
-    expect(byName.get("nums")?.kind).toBe("array");
-    expect(byName.get("nums")?.itemKind).toBe("number");
-    expect(byName.get("names")?.itemKind).toBe("string");
-    expect(byName.get("any")?.itemKind).toBe("string");
-  });
-
-  it("marks fields in `required` as required IFF they have no default", () => {
-    const f = parameterFieldsFromSchema({
-      type: "object",
-      properties: {
-        a: { type: "string" }, // required, no default
-        b: { type: "string", default: "x" }, // listed required + default → optional from caller's POV
-        c: { type: "string" }, // not required
-      },
-      required: ["a", "b"],
-    });
+  it("marks editable fields required and unsupported fields not required", () => {
+    const f = parameterFieldsFromModel(
+      model([
+        { name: "a", kind: "number" },
+        { name: "rec", kind: "unsupported", value: "Record(...)" },
+      ]),
+    );
     const byName = new Map(f.map((x) => [x.name, x]));
     expect(byName.get("a")?.required).toBe(true);
-    expect(byName.get("b")?.required).toBe(false);
-    expect(byName.get("c")?.required).toBe(false);
+    expect(byName.get("rec")?.required).toBe(false);
   });
 
-  it("threads unit / displayUnit / unitOptions from the x-modelica-* keys", () => {
-    const f = parameterFieldsFromSchema({
-      type: "object",
-      properties: {
-        phi: {
-          type: "number",
-          "x-modelica-unit": "rad",
-          "x-modelica-display-unit": "deg",
-          "x-modelica-unit-options": [
+  it("threads unit / displayUnit / unitOptions from the model field", () => {
+    const f = parameterFieldsFromModel(
+      model([
+        {
+          name: "phi",
+          kind: "number",
+          unit: "rad",
+          displayUnit: "deg",
+          unitOptions: [
             { unit: "rad", scaleFactor: 1, offset: 0 },
             { unit: "deg", scaleFactor: 0.017453292519943295, offset: 0 },
           ],
         },
-        J: {
-          type: "number",
-          "x-modelica-unit": "kg.m2",
-          "x-modelica-unit-options": [{ unit: "kg.m2", scaleFactor: 1, offset: 0 }],
+        {
+          name: "J",
+          kind: "number",
+          unit: "kg.m2",
+          unitOptions: [{ unit: "kg.m2", scaleFactor: 1, offset: 0 }],
         },
-        plain: { type: "number" },
-      },
-    } as unknown as JsonSchema);
+        { name: "plain", kind: "number" },
+      ]),
+    );
     const byName = new Map(f.map((x) => [x.name, x]));
     const phi = byName.get("phi")!;
     expect(phi.unit).toBe("rad");
@@ -125,146 +120,115 @@ describe("parameterFieldsFromSchema — top-level vocabulary", () => {
     expect(plain.unitOptions).toEqual([]);
   });
 
-  it("drops malformed entries from x-modelica-unit-options", () => {
-    const f = parameterFieldsFromSchema({
-      type: "object",
-      properties: {
-        x: {
-          type: "number",
-          "x-modelica-unit": "m",
-          "x-modelica-unit-options": [
-            { unit: "m", scaleFactor: 1, offset: 0 },
-            { scaleFactor: 2 }, // no unit → dropped
-            { unit: "km", scaleFactor: "bad", offset: 0 }, // bad factor → defaulted to 1
-            "garbage",
-          ],
-        },
-      },
-    } as unknown as JsonSchema);
-    expect(f[0]?.unitOptions).toEqual([
-      { unit: "m", scaleFactor: 1, offset: 0 },
-      { unit: "km", scaleFactor: 1, offset: 0 },
-    ]);
+  it("uses the comment as description, omitting it when it equals the name", () => {
+    const f = parameterFieldsFromModel(
+      model([
+        { name: "stopTime", kind: "number", label: "Simulation stop time.", value: 1, defaultValue: 1 },
+        { name: "k", kind: "number", label: "k" },
+      ]),
+    );
+    const byName = new Map(f.map((x) => [x.name, x]));
+    expect(byName.get("stopTime")?.description).toBe("Simulation stop time.");
+    expect(byName.get("stopTime")?.defaultValue).toBe(1);
+    expect(byName.get("k")?.description).toBeUndefined();
   });
 
-  it("threads description + defaultValue through", () => {
-    const f = parameterFieldsFromSchema({
-      type: "object",
-      properties: {
-        stopTime: {
-          type: "number",
-          default: 1,
-          description: "Simulation stop time.",
-        },
-      },
-    });
-    expect(f[0]?.description).toBe("Simulation stop time.");
+  it("threads the resolved value (instance modifier over default)", () => {
+    const f = parameterFieldsFromModel(
+      model([{ name: "k", kind: "number", value: 12, defaultValue: 1 }]),
+    );
+    expect(f[0]?.value).toBe(12);
     expect(f[0]?.defaultValue).toBe(1);
   });
 
-  it("falls back to `unsupported` for nested objects or unfamiliar types", () => {
-    const f = parameterFieldsFromSchema({
-      type: "object",
-      properties: {
-        nested: { type: "object", properties: { x: { type: "string" } } },
-        weird: { type: "null" as unknown as "string" },
-        anyOf: { anyOf: [{ type: "string" }, { type: "number" }] },
-      },
-    });
-    expect(f.find((x) => x.name === "nested")?.kind).toBe("unsupported");
-    expect(f.find((x) => x.name === "weird")?.kind).toBe("unsupported");
-    expect(f.find((x) => x.name === "anyOf")?.kind).toBe("unsupported");
+  it("normalises a null value to undefined", () => {
+    const f = parameterFieldsFromModel(model([{ name: "k", kind: "number", value: null }]));
+    expect(f[0]?.value).toBeUndefined();
   });
 
-  it("preserves property iteration order", () => {
-    const f = parameterFieldsFromSchema({
-      type: "object",
-      properties: {
-        z: { type: "string" },
-        a: { type: "string" },
-        m: { type: "string" },
-      },
-    });
+  it("preserves field order", () => {
+    const f = parameterFieldsFromModel(
+      model([
+        { name: "z", kind: "string" },
+        { name: "a", kind: "string" },
+        { name: "m", kind: "string" },
+      ]),
+    );
     expect(f.map((x) => x.name)).toEqual(["z", "a", "m"]);
   });
 });
 
 describe("initialValuesFromFields", () => {
-  const fields = parameterFieldsFromSchema({
-    type: "object",
-    properties: {
-      a: { type: "string" },
-      b: { type: "number", default: 7 },
-    },
+  it("uses the field's resolved value", () => {
+    const fields = parameterFieldsFromModel(
+      model([
+        { name: "a", kind: "string", value: "hi" },
+        { name: "b", kind: "number", value: 99, defaultValue: 7 },
+      ]),
+    );
+    expect(initialValuesFromFields(fields)).toEqual({ a: "hi", b: 99 });
   });
 
-  it("uses initial values when provided", () => {
-    expect(initialValuesFromFields(fields, { a: "hi", b: 99 })).toEqual({
-      a: "hi",
-      b: 99,
-    });
+  it("falls back to the type default when value is unset", () => {
+    const fields = parameterFieldsFromModel(
+      model([
+        { name: "a", kind: "string", value: "hi" },
+        { name: "b", kind: "number", value: null, defaultValue: 7 },
+      ]),
+    );
+    expect(initialValuesFromFields(fields)).toEqual({ a: "hi", b: 7 });
   });
 
-  it("falls back to schema defaults when initial is missing", () => {
-    expect(initialValuesFromFields(fields, { a: "hi" })).toEqual({
-      a: "hi",
-      b: 7,
-    });
-  });
-
-  it("returns undefined for fields with neither initial nor default", () => {
-    expect(initialValuesFromFields(fields, {})).toEqual({
-      a: undefined,
-      b: 7,
-    });
+  it("returns undefined for fields with neither value nor default", () => {
+    const fields = parameterFieldsFromModel(
+      model([
+        { name: "a", kind: "string", value: null },
+        { name: "b", kind: "number", value: null, defaultValue: 7 },
+      ]),
+    );
+    expect(initialValuesFromFields(fields)).toEqual({ a: undefined, b: 7 });
   });
 });
 
 describe("isComplete", () => {
-  const fields = parameterFieldsFromSchema({
-    type: "object",
-    properties: {
-      a: { type: "string" }, // required
-      b: { type: "string", default: "x" }, // optional via default
-    },
-    required: ["a", "b"],
-  });
+  const fields = parameterFieldsFromModel(
+    model([
+      { name: "a", kind: "string" },
+      { name: "b", kind: "string", value: "x" },
+    ]),
+  );
 
   it("returns true when every required field has a value", () => {
-    expect(isComplete(fields, { a: "hi" })).toBe(true);
+    expect(isComplete(fields, { a: "hi", b: "x" })).toBe(true);
   });
 
   it("returns false when a required field is missing / empty / null", () => {
-    expect(isComplete(fields, {})).toBe(false);
-    expect(isComplete(fields, { a: "" })).toBe(false);
-    expect(isComplete(fields, { a: null })).toBe(false);
-    expect(isComplete(fields, { a: undefined })).toBe(false);
-  });
-
-  it("ignores non-required fields", () => {
-    // `b` is required-in-schema but has a default → not required from caller.
-    expect(isComplete(fields, { a: "ok" })).toBe(true);
+    expect(isComplete(fields, { b: "x" })).toBe(false);
+    expect(isComplete(fields, { a: "", b: "x" })).toBe(false);
+    expect(isComplete(fields, { a: null, b: "x" })).toBe(false);
+    expect(isComplete(fields, { a: undefined, b: "x" })).toBe(false);
   });
 
   it("ignores a DISABLED required field even if it is empty (issue #76, item 17)", () => {
-    // `gain` is required; `Ti` is required but only enabled when gain > 0.
-    // With gain = -1, Ti is disabled, so an empty Ti must NOT block submit.
-    const gated = parameterFieldsFromSchema({
-      type: "object",
-      properties: {
-        gain: { type: "number" },
-        Ti: {
-          type: "number",
-          "x-modelica-enable": {
-            $kind: "binary_op",
-            op: ">",
-            lhs: { $kind: "cref", parts: [{ name: "gain" }] },
-            rhs: 0,
+    const gated = parameterFieldsFromModel(
+      model([
+        { name: "gain", kind: "number" },
+        {
+          name: "Ti",
+          kind: "number",
+          dialog: {
+            tab: "General",
+            group: "Parameters",
+            enable: {
+              $kind: "binary_op",
+              op: ">",
+              lhs: { $kind: "cref", parts: [{ name: "gain" }] },
+              rhs: 0,
+            } as never,
           },
-        } as never,
-      },
-      required: ["gain", "Ti"],
-    });
+        },
+      ]),
+    );
     // Ti enabled (gain > 0) and empty → incomplete.
     expect(isComplete(gated, { gain: 5, Ti: undefined })).toBe(false);
     // Ti disabled (gain <= 0) and empty → still complete (Ti is skipped).
@@ -277,22 +241,26 @@ describe("isComplete", () => {
 describe("enabledValues (issue #76, item 4)", () => {
   // controllerType picker; Ti only enabled when controllerType != "P".
   function pidFields(): ParameterField[] {
-    return parameterFieldsFromSchema({
-      type: "object",
-      properties: {
-        controllerType: { type: "string", enum: ["P", "PI"] },
-        k: { type: "number" },
-        Ti: {
-          type: "number",
-          "x-modelica-enable": {
-            $kind: "binary_op",
-            op: "<>",
-            lhs: { $kind: "cref", parts: [{ name: "controllerType" }] },
-            rhs: "P",
+    return parameterFieldsFromModel(
+      model([
+        { name: "controllerType", kind: "enum", enumChoices: ["P", "PI"] },
+        { name: "k", kind: "number" },
+        {
+          name: "Ti",
+          kind: "number",
+          dialog: {
+            tab: "General",
+            group: "Parameters",
+            enable: {
+              $kind: "binary_op",
+              op: "<>",
+              lhs: { $kind: "cref", parts: [{ name: "controllerType" }] },
+              rhs: "P",
+            } as never,
           },
-        } as never,
-      },
-    });
+        },
+      ]),
+    );
   }
 
   it("keeps all values when every field is enabled", () => {
@@ -303,8 +271,6 @@ describe("enabledValues (issue #76, item 4)", () => {
   });
 
   it("drops a disabled field's stale value from the submitted set", () => {
-    // User set Ti, then flipped controllerType to P (disabling Ti). The
-    // stale Ti must NOT be in the submitted values.
     const fields = pidFields();
     const submitted = enabledValues(fields, {
       controllerType: "P",
@@ -316,37 +282,29 @@ describe("enabledValues (issue #76, item 4)", () => {
   });
 
   it("always keeps fields that have no enable condition", () => {
-    const fields = parameterFieldsFromSchema({
-      type: "object",
-      properties: { a: { type: "number" }, b: { type: "string" } },
-    });
+    const fields = parameterFieldsFromModel(
+      model([
+        { name: "a", kind: "number" },
+        { name: "b", kind: "string" },
+      ]),
+    );
     expect(enabledValues(fields, { a: 1, b: "x" })).toEqual({ a: 1, b: "x" });
   });
 });
 
 describe("Dialog metadata pass-through", () => {
-  it("reads `x-modelica-tab` and `x-modelica-group` onto the field", () => {
-    const [f] = parameterFieldsFromSchema({
-      type: "object",
-      properties: {
-        k: {
-          type: "number",
-          "x-modelica-tab": "Advanced",
-          "x-modelica-group": "Tuning",
-        } as never,
-      },
-    });
+  it("reads tab and group off the model field's dialog", () => {
+    const [f] = parameterFieldsFromModel(
+      model([{ name: "k", kind: "number", dialog: { tab: "Advanced", group: "Tuning" } }]),
+    );
     expect(f?.tab).toBe("Advanced");
     expect(f?.group).toBe("Tuning");
   });
 
-  it("leaves tab/group undefined when the schema doesn't set them (simulate form)", () => {
-    const [f] = parameterFieldsFromSchema({
-      type: "object",
-      properties: { startTime: { type: "number", default: 0 } },
-    });
-    expect(f?.tab).toBeUndefined();
-    expect(f?.group).toBeUndefined();
+  it("carries the producer's default tab/group", () => {
+    const [f] = parameterFieldsFromModel(model([{ name: "startTime", kind: "number", value: 0 }]));
+    expect(f?.tab).toBe("General");
+    expect(f?.group).toBe("Parameters");
   });
 });
 
@@ -361,13 +319,16 @@ describe("Dialog.enable evaluation — value fallback + commit cadence (#27)", (
 
   /** Fields `a` (number, default 1) and `b` gated by `enable = a > 0`. */
   function gatedFields(): ParameterField[] {
-    return parameterFieldsFromSchema({
-      type: "object",
-      properties: {
-        a: { type: "number", default: 1 },
-        b: { type: "number", "x-modelica-enable": A_GT_ZERO } as never,
-      },
-    });
+    return parameterFieldsFromModel(
+      model([
+        { name: "a", kind: "number", value: 1, defaultValue: 1 },
+        {
+          name: "b",
+          kind: "number",
+          dialog: { tab: "General", group: "Parameters", enable: A_GT_ZERO },
+        },
+      ]),
+    );
   }
 
   function fieldB(fields: ParameterField[]): ParameterField {
@@ -377,16 +338,13 @@ describe("Dialog.enable evaluation — value fallback + commit cadence (#27)", (
   }
 
   it("treats a field with no enable as always enabled", () => {
-    const fields = parameterFieldsFromSchema({
-      type: "object",
-      properties: { a: { type: "number" } },
-    });
+    const fields = parameterFieldsFromModel(model([{ name: "a", kind: "number" }]));
     expect(isFieldEnabled(fields[0]!, fields, {})).toBe(true);
   });
 
   it("honours a literal `false` enable", () => {
     const fields = gatedFields();
-    const b = { ...fieldB(fields), enable: false };
+    const b = { ...fieldB(fields), enable: false as unknown as Expression };
     expect(isFieldEnabled(b, fields, { a: 5 })).toBe(false);
   });
 
@@ -402,73 +360,64 @@ describe("Dialog.enable evaluation — value fallback + commit cadence (#27)", (
 
   it("falls back to the referenced field's class default when its value is cleared", () => {
     const fields = gatedFields();
-    // `a` cleared (undefined) → falls back to default 1 → `a > 0` holds.
     expect(isFieldEnabled(fieldB(fields), fields, { a: undefined })).toBe(true);
-    // Same when the working snapshot omits `a` entirely.
     expect(isFieldEnabled(fieldB(fields), fields, {})).toBe(true);
-    // `null` is treated as cleared too.
     expect(isFieldEnabled(fieldB(fields), fields, { a: null })).toBe(true);
   });
 
   it("stays enabled (fallback:true) when neither value nor default resolves", () => {
-    const fields = parameterFieldsFromSchema({
-      type: "object",
-      properties: {
-        a: { type: "number" }, // no default
-        b: { type: "number", "x-modelica-enable": A_GT_ZERO } as never,
-      },
-    });
-    // Cref unresolved → evaluator's fallback:true keeps `b` enabled.
+    const fields = parameterFieldsFromModel(
+      model([
+        { name: "a", kind: "number" },
+        {
+          name: "b",
+          kind: "number",
+          dialog: { tab: "General", group: "Parameters", enable: A_GT_ZERO },
+        },
+      ]),
+    );
     expect(isFieldEnabled(fieldB(fields), fields, {})).toBe(true);
   });
 
   it("class default is shadowed by a committed value (binding wins over default)", () => {
     const fields = gatedFields();
-    // Default would enable (1 > 0), but the committed -1 disables.
     expect(isFieldEnabled(fieldB(fields), fields, { a: -1 })).toBe(false);
   });
 
-  it("commit cadence: the gate reads the committed snapshot, so an un-committed value does not change it", () => {
-    // The component keeps a live `working` set updated on every keystroke
-    // but only refreshes the `committed` snapshot on focus-out. This test
-    // models that contract at the scope level: `isFieldEnabled` sees only
-    // what's in the committed snapshot it's given. A failing value typed
-    // but not yet committed (still { a: 5 } in `committed`) keeps `b`
-    // enabled; once committed ({ a: -1 }) it disables.
+  it("commit cadence: the gate reads the committed snapshot", () => {
     const fields = gatedFields();
-    const committedBeforeBlur = { a: 5 }; // last committed value
-    expect(isFieldEnabled(fieldB(fields), fields, committedBeforeBlur)).toBe(
-      true,
-    );
-    const committedAfterBlur = { a: -1 }; // focus-out refreshes the snapshot
-    expect(isFieldEnabled(fieldB(fields), fields, committedAfterBlur)).toBe(
-      false,
-    );
+    expect(isFieldEnabled(fieldB(fields), fields, { a: 5 })).toBe(true);
+    expect(isFieldEnabled(fieldB(fields), fields, { a: -1 })).toBe(false);
   });
 
   it("qualifies enum working values against the field's enum type for equality", () => {
-    const fields = parameterFieldsFromSchema({
-      type: "object",
-      properties: {
-        controllerType: {
-          type: "string",
-          enum: ["P", "PI"],
-          "x-modelica-enum-type": "Modelica.Blocks.Types.SimpleController",
-        } as never,
-        ki: {
-          type: "number",
-          "x-modelica-enable": {
-            $kind: "binary_op",
-            op: "==",
-            lhs: { $kind: "cref", parts: [{ name: "controllerType" }] },
-            rhs: {
-              $kind: "enum",
-              name: "Modelica.Blocks.Types.SimpleController.PI",
-            },
+    const fields = parameterFieldsFromModel(
+      model([
+        {
+          name: "controllerType",
+          kind: "enum",
+          enumChoices: ["P", "PI"],
+          enumTypeName: "Modelica.Blocks.Types.SimpleController",
+        },
+        {
+          name: "ki",
+          kind: "number",
+          dialog: {
+            tab: "General",
+            group: "Parameters",
+            enable: {
+              $kind: "binary_op",
+              op: "==",
+              lhs: { $kind: "cref", parts: [{ name: "controllerType" }] },
+              rhs: {
+                $kind: "enum",
+                name: "Modelica.Blocks.Types.SimpleController.PI",
+              },
+            } as never,
           },
-        } as never,
-      },
-    });
+        },
+      ]),
+    );
     const ki = fields.find((f) => f.name === "ki")!;
     expect(isFieldEnabled(ki, fields, { controllerType: "PI" })).toBe(true);
     expect(isFieldEnabled(ki, fields, { controllerType: "P" })).toBe(false);
@@ -483,16 +432,13 @@ describe("Dialog.enable evaluation — value fallback + commit cadence (#27)", (
       rhs: 0,
     };
     const b = { ...fieldB(fields), enable: prefixedEnable };
-    // `PI.a` strips to `a`, resolving against the form's `a` working value.
     expect(isFieldEnabled(b, fields, { a: 5 }, "PI")).toBe(true);
     expect(isFieldEnabled(b, fields, { a: -1 }, "PI")).toBe(false);
   });
 
   it("buildEnableScope resolves a cref to the value, then the default", () => {
     const fields = gatedFields();
-    // committed value present → that value
     expect(buildEnableScope(fields, { a: 9 }).lookup(["a"])).toBe(9);
-    // cleared → class default
     expect(buildEnableScope(fields, {}).lookup(["a"])).toBe(1);
   });
 });

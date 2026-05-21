@@ -27,7 +27,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { OmcClient } from "@modelica-wrapper/omc-client";
 
-import { buildClassParameterForm } from "./class-parameter-form.js";
+import { buildClassParameterForm } from "./parameter-edits.js";
 
 function shouldRun(): boolean {
   const flag = process.env.OMC_INTEGRATION;

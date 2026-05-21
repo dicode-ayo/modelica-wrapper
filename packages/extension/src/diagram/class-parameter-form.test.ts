@@ -1,16 +1,25 @@
 import { describe, expect, it } from "vitest";
-import type { ModelInstance } from "@modelica-wrapper/omc-client";
+import type {
+  ModelInstance,
+  ParameterField,
+} from "@modelica-wrapper/omc-client";
 
 import {
   buildClassParameterForm,
   classParameterValueToExpr,
-} from "./class-parameter-form.js";
+} from "./parameter-edits.js";
 
 /**
  * Helper: shape-checked enough to satisfy the typed walker without
  * making the test verbose. Tests target the shape we know OMC emits;
  * `as ModelInstance` is fine because the wrapper schemas already
  * validate the upstream payload.
+ *
+ * These tests focus on what `parameter-edits.ts` owns on top of the pure
+ * `produceParameterModel` (covered exhaustively in omc-client's
+ * `producer.test.ts`): the `{ model, values, refs }` submit state — the
+ * model the webview renders, the initial submit-diff values, and the per-field
+ * `ParameterRef`s the submit handler routes writes with.
  */
 function instance(elements: unknown[]): ModelInstance {
   return {
@@ -18,6 +27,12 @@ function instance(elements: unknown[]): ModelInstance {
     restriction: "model",
     elements,
   } as unknown as ModelInstance;
+}
+
+function field(model: { fields: ParameterField[] }, name: string): ParameterField {
+  const f = model.fields.find((x) => x.name === name);
+  if (!f) throw new Error(`no field ${name}`);
+  return f;
 }
 
 describe("buildClassParameterForm", () => {
@@ -49,18 +64,11 @@ describe("buildClassParameterForm", () => {
       },
     ]);
     const form = buildClassParameterForm(mi)!;
-    expect(form.schema).toEqual({
-      type: "object",
-      properties: {
-        driveAngle: {
-          type: "number",
-          description: "Reference distance to move",
-          "x-modelica-tab": "General",
-          "x-modelica-group": "Parameters",
-        },
-      },
-      required: ["driveAngle"],
-    });
+    const f = field(form.model, "driveAngle");
+    expect(f.kind).toBe("number");
+    expect(f.value).toBe(1.5708);
+    expect(f.label).toBe("Reference distance to move");
+    expect(f.dialog).toEqual({ tab: "General", group: "Parameters" });
     expect(form.values).toEqual({ driveAngle: 1.5708 });
     expect(form.refs.driveAngle).toEqual({
       name: "driveAngle",
@@ -81,13 +89,7 @@ describe("buildClassParameterForm", () => {
       },
     ]);
     const form = buildClassParameterForm(mi)!;
-    expect(form.schema.properties).toEqual({
-      useReset: {
-        type: "boolean",
-        "x-modelica-tab": "General",
-        "x-modelica-group": "Parameters",
-      },
-    });
+    expect(field(form.model, "useReset").kind).toBe("boolean");
     expect(form.values).toEqual({ useReset: false });
     expect(form.refs.useReset.kind).toBe("boolean");
   });
@@ -120,16 +122,10 @@ describe("buildClassParameterForm", () => {
       },
     ]);
     const form = buildClassParameterForm(mi)!;
-    expect(form.schema.properties).toEqual({
-      controllerType: {
-        type: "string",
-        enum: ["P", "PI", "PD", "PID"],
-        description: "Type of controller",
-        "x-modelica-tab": "General",
-        "x-modelica-group": "Parameters",
-        "x-modelica-enum-type": "Modelica.Blocks.Types.SimpleController",
-      },
-    });
+    const f = field(form.model, "controllerType");
+    expect(f.kind).toBe("enum");
+    expect(f.enumChoices).toEqual(["P", "PI", "PD", "PID"]);
+    expect(f.enumTypeName).toBe("Modelica.Blocks.Types.SimpleController");
     expect(form.values).toEqual({ controllerType: "PI" });
     expect(form.refs.controllerType).toEqual({
       name: "controllerType",
@@ -140,7 +136,7 @@ describe("buildClassParameterForm", () => {
     });
   });
 
-  it("emits a read-only entry for record / unsupported parameter types so they're visible on the form", () => {
+  it("emits a read-only field for record / unsupported parameter types so they're visible on the form", () => {
     const mi = instance([
       {
         $kind: "component",
@@ -162,20 +158,12 @@ describe("buildClassParameterForm", () => {
       },
     ]);
     const form = buildClassParameterForm(mi)!;
-    expect(Object.keys(form.schema.properties ?? {})).toEqual(["ok", "weird"]);
-    // The unsupported one has no `type` (so parameter-fields classifies
-    // it as "unsupported"), keeps its Dialog metadata, and the displayed
-    // value is the stringified current binding.
-    const weird = form.schema.properties?.weird as Record<string, unknown>;
-    expect(weird.type).toBeUndefined();
-    expect(weird["x-modelica-tab"]).toBe("General");
+    expect(form.model.fields.map((f) => f.name)).toEqual(["ok", "weird"]);
+    expect(field(form.model, "weird").kind).toBe("unsupported");
     expect(form.refs.weird.kind).toBe("unsupported");
-    // Unsupported entries must NOT be in `required` — the form's
-    // submit button stays enabled even without editing them.
-    expect(form.schema.required).toEqual(["ok"]);
   });
 
-  it("stashes Dialog.enable expression on the schema for the form's evaluator", () => {
+  it("carries the Dialog.enable expression on the model field for the form's evaluator", () => {
     const enableExpr = {
       $kind: "binary_op" as const,
       op: "==",
@@ -200,11 +188,9 @@ describe("buildClassParameterForm", () => {
       },
     ]);
     const form = buildClassParameterForm(mi)!;
-    const yReset = form.schema.properties?.y_reset as Record<string, unknown>;
-    expect(yReset["x-modelica-enable"]).toEqual(enableExpr);
+    expect(field(form.model, "y_reset").dialog.enable).toEqual(enableExpr);
     // The other field has no enable expression so the key must be absent.
-    const useReset = form.schema.properties?.use_reset as Record<string, unknown>;
-    expect(useReset["x-modelica-enable"]).toBeUndefined();
+    expect(field(form.model, "use_reset").dialog.enable).toBeUndefined();
   });
 
   it("reads Dialog tab + group from the annotation when present", () => {
@@ -262,8 +248,6 @@ describe("buildClassParameterForm", () => {
   });
 
   it("surfaces parameters declared on an ancestor via extends", () => {
-    // Base class declares `k`; Derived purely extends Base and adds nothing.
-    // Expected: the form built for Derived still has a `k` property.
     const mi: ModelInstance = {
       name: "Test.Derived",
       restriction: "model",
@@ -287,13 +271,8 @@ describe("buildClassParameterForm", () => {
       ],
     } as unknown as ModelInstance;
     const form = buildClassParameterForm(mi)!;
-    expect(form.schema.properties).toEqual({
-      k: {
-        type: "number",
-        "x-modelica-tab": "General",
-        "x-modelica-group": "Parameters",
-      },
-    });
+    expect(form.model.fields.map((f) => f.name)).toEqual(["k"]);
+    expect(field(form.model, "k").kind).toBe("number");
     expect(form.values).toEqual({ k: 2 });
     expect(form.refs.k.kind).toBe("number");
     // The param is declared on the ancestor `Test.Base`, so its ref
@@ -303,11 +282,6 @@ describe("buildClassParameterForm", () => {
   });
 
   it("routes a 3-level inherited param to the host's DIRECT extends base (issue #76, item 3)", () => {
-    // C extends B extends A; `k` is declared on the deepest ancestor A.
-    // setExtendsModifierValue(host, base, …) requires `base` to be a DIRECT
-    // extends clause on the host. The direct clause on C is B — so the ref
-    // must carry inheritedFrom === "Test.B", NOT the deep declaring "Test.A"
-    // (which would emit setExtendsModifierValue(C, A, …) → no-op, edit lost).
     const mi: ModelInstance = {
       name: "Test.C",
       restriction: "model",
@@ -357,13 +331,10 @@ describe("buildClassParameterForm", () => {
     ]);
     const form = buildClassParameterForm(mi)!;
     expect(form.refs.k.inheritedFrom).toBeUndefined();
-    // The key must be absent (not just undefined) so own-param refs stay
-    // clean on the wire and in equality checks.
     expect("inheritedFrom" in form.refs.k).toBe(false);
   });
 
   it("marks an inherited param but not an own param when the host adds its own", () => {
-    // Base declares `k` (inherited); Derived adds its own `j`.
     const mi: ModelInstance = {
       name: "Test.Derived",
       restriction: "model",
@@ -399,10 +370,6 @@ describe("buildClassParameterForm", () => {
   });
 
   it("when the host overrides an inherited param, the surviving ref is the host's own (no inheritedFrom)", () => {
-    // Both Base and Derived declare `k`. Last-write-wins means the host's
-    // ref overwrites the inherited one — so the surviving ref must NOT be
-    // tagged inherited (the modifier belongs on the host, not the extends
-    // clause).
     const mi: ModelInstance = {
       name: "Test.Derived",
       restriction: "model",
@@ -437,9 +404,6 @@ describe("buildClassParameterForm", () => {
   });
 
   it("host-class parameter overrides an ancestor's same-named parameter (last-write-wins)", () => {
-    // Both Base and Derived declare `k`; Derived's value wins. Use distinct
-    // values + comments so the test fails loud if the inheritance walk
-    // order ever flips.
     const mi: ModelInstance = {
       name: "Test.Derived",
       restriction: "model",
@@ -473,9 +437,7 @@ describe("buildClassParameterForm", () => {
     } as unknown as ModelInstance;
     const form = buildClassParameterForm(mi)!;
     expect(form.values).toEqual({ k: 7 });
-    expect(
-      (form.schema.properties?.k as { description?: string }).description,
-    ).toBe("from Derived");
+    expect(field(form.model, "k").label).toBe("from Derived");
   });
 
   it("prefers the evaluated literal when the binding is a complex expression", () => {

@@ -1,142 +1,22 @@
 /**
- * Helpers that build the parameter-panel inputs for `simulate(typeName, …)`.
+ * Submit-side helpers for the simulate parameter panel.
  *
- * We don't just hand `describeFunctionAsJsonSchema("simulate").input`
- * to the panel because:
- *   - `typeName` is implicit (the active diagram already knows it),
- *   - several fields use the `"<default>"` literal as a sentinel that
- *     means "OMC, you decide" — exposing those raw to the user reads
- *     as a bug,
- *   - cflags / simflags / fileNamePrefix / options are advanced flags
- *     that don't belong in the first-cut UI.
+ * The simulate panel is now built from omc-client's pure
+ * `produceSimulationModel` (seeded by `getSimulationOptions` + the documented
+ * `SOLVER_METHODS` constant) and rendered directly as a `ParameterModel` — the
+ * old curated `SIMULATE_FORM_SCHEMA` + `buildSimulateForm` were removed (see
+ * `docs/parameter-model-design.md`, Revision 2026-05-21). What stays here is the
+ * SUBMIT mapping: translating the panel's flat `values` map into a
+ * `simulate(...)` input. Keeping it in one place means a future field tweak
+ * only touches the submit translator.
  *
- * So we publish a hand-curated schema (the "essential" subset) and
- * seed the values from `getSimulationOptions(typeName)` for the four
- * fields it knows about. The remaining curated fields fall back to the
- * schema's own `default` values.
- *
- * Pure of vscode / dom imports — tested with a stub OmClient.
+ * Pure of vscode / dom imports — tested with a stub value map.
  */
 
-import type { JsonSchema, OmcClient } from "@modelica-wrapper/omc-client";
-
-/** Derived from `OmcClient.getSimulationOptions`'s return — avoids
- *  re-declaring the same five fields and stays in sync if OMC adds more. */
-type GetSimulationOptionsOutput = Awaited<
-  ReturnType<OmcClient["getSimulationOptions"]>
->;
-
 /**
- * Curated JSON Schema for the simulate parameter panel. Field order
- * matches what users typically scan top-to-bottom in OMEdit's
- * Simulation Setup dialog.
- *
- * Build-time constant so it's easy to test that we didn't drop a key
- * by accident.
- */
-export const SIMULATE_FORM_SCHEMA: JsonSchema = {
-  type: "object",
-  properties: {
-    startTime: {
-      type: "number",
-      default: 0,
-      description: "Simulation start time (s).",
-    },
-    stopTime: {
-      type: "number",
-      default: 1,
-      description: "Simulation stop time (s).",
-    },
-    numberOfIntervals: {
-      type: "integer",
-      default: 500,
-      description: "Number of output intervals written to the result file.",
-    },
-    tolerance: {
-      type: "number",
-      default: 1e-6,
-      description: "Solver relative tolerance.",
-    },
-    method: {
-      type: "string",
-      enum: [
-        "dassl",
-        "ida",
-        "cvode",
-        "rungekutta",
-        "euler",
-        "trapezoid",
-        "<default>",
-      ],
-      default: "dassl",
-      description: "Integration method; `<default>` lets OMC choose.",
-    },
-    outputFormat: {
-      type: "string",
-      enum: ["mat", "csv", "plt", "empty"],
-      default: "mat",
-      description: "On-disk result file format.",
-    },
-    variableFilter: {
-      type: "string",
-      default: ".*",
-      description: "Regex selecting which variables are stored.",
-    },
-  },
-  required: [
-    "startTime",
-    "stopTime",
-    "numberOfIntervals",
-    "tolerance",
-    "method",
-    "outputFormat",
-    "variableFilter",
-  ],
-};
-
-/**
- * Compose the panel's initial value record. Calls
- * `getSimulationOptions(typeName)` to pick up the user's
- * `experiment` annotation (or OMC's fallbacks if absent); curated
- * fields not covered by that API stay at their schema default.
- *
- * Returns a `{schema, values}` pair ready to pass straight into
- * `DiagramPanel.openParameters`.
- */
-export async function buildSimulateForm(
-  client: OmcClient,
-  typeName: string,
-): Promise<{ schema: JsonSchema; values: Record<string, unknown> }> {
-  let opts: GetSimulationOptionsOutput | undefined;
-  try {
-    opts = await client.getSimulationOptions({ typeName });
-  } catch {
-    // Some classes (e.g. a freshly-created model with no experiment
-    // annotation) make getSimulationOptions throw; the schema's own
-    // defaults are a sensible fallback.
-    opts = undefined;
-  }
-  const schemaDefaults = defaultsFromSchema(SIMULATE_FORM_SCHEMA);
-  const values: Record<string, unknown> = {
-    ...schemaDefaults,
-    ...(opts
-      ? {
-          startTime: opts.startTime,
-          stopTime: opts.stopTime,
-          tolerance: opts.tolerance,
-          numberOfIntervals: opts.numberOfIntervals,
-        }
-      : {}),
-  };
-  return { schema: SIMULATE_FORM_SCHEMA, values };
-}
-
-/**
- * Translate the panel's submitted values into a `simulate(...)` input.
- * Currently a pass-through over a fixed key set — kept as its own
- * function so a future schema tweak (renaming fields, splitting the
- * method enum into "method" + "<default>" toggle, …) only has to touch
- * one place.
+ * The simulate input shape the host passes to `OmcClient.simulate`. A subset of
+ * the wrapper's full input — the advanced flags (cflags / simflags / options)
+ * aren't surfaced in the panel.
  */
 export type SimulateFormSubmit = {
   typeName: string;
@@ -165,6 +45,10 @@ export type SimulateFormSubmit = {
  * which then crash the shell at compile time
  * (`/bin/sh: 1: cannot open default`). Sanitising once here keeps the
  * whole build chain shell-safe.
+ *
+ * `method` carries the panel's `SOLVER_METHODS` selection through unchanged,
+ * including the `"<default>"` sentinel — which `OmcClient.simulate` omits from
+ * the call so OMC picks its own default solver.
  */
 export function simulateInputFromFormValues(
   typeName: string,
@@ -199,17 +83,6 @@ export function simulateInputFromFormValues(
  */
 export function classNameToFilePrefix(typeName: string): string {
   return typeName.replace(/\./g, "_");
-}
-
-function defaultsFromSchema(schema: JsonSchema): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  if (schema.type !== "object" || !schema.properties) return out;
-  for (const [name, raw] of Object.entries(schema.properties)) {
-    if (raw && typeof raw === "object" && "default" in raw) {
-      out[name] = (raw as { default: unknown }).default;
-    }
-  }
-  return out;
 }
 
 function numberOrUndefined(v: unknown): number | undefined {

@@ -7,34 +7,31 @@
  */
 
 import type { Meta, StoryObj } from "@storybook/web-components";
+import type { ParameterModel } from "@modelica-wrapper/omc-client";
 import { html, type TemplateResult } from "lit";
 
 import "../src/parameter-form/parameter-panel.component.js";
 
 interface StoryArgs {
-  schema: Record<string, unknown>;
-  values: Record<string, unknown>;
+  model: ParameterModel;
   title: string;
 }
 
-const SIM_SCHEMA: Record<string, unknown> = {
-  type: "object",
-  properties: {
-    startTime: { type: "number", default: 0 },
-    stopTime: { type: "number", default: 1, description: "Stop time (s)." },
-    method: {
-      type: "string",
-      enum: ["dassl", "ida", "euler"],
-      default: "dassl",
-    },
-    emit_protected: { type: "boolean", default: false },
-  },
-  required: ["startTime", "stopTime", "method", "emit_protected"],
+const G = { tab: "General", group: "Parameters" } as const;
+
+const SIM_MODEL: ParameterModel = {
+  className: "Demo.Sim",
+  fields: [
+    { name: "startTime", label: "startTime", kind: "number", value: 0, defaultValue: 0, dialog: G, unitOptions: [] },
+    { name: "stopTime", label: "Stop time (s).", kind: "number", value: 1, defaultValue: 1, dialog: G, unitOptions: [] },
+    { name: "method", label: "method", kind: "enum", value: "dassl", defaultValue: "dassl", enumChoices: ["dassl", "ida", "euler"], dialog: G, unitOptions: [] },
+    { name: "emit_protected", label: "emit_protected", kind: "boolean", value: false, defaultValue: false, dialog: G, unitOptions: [] },
+  ],
 };
 
 const meta: Meta<StoryArgs> = {
   title: "diagram-ui/ParameterPanel",
-  render: ({ schema, values, title }: StoryArgs): TemplateResult => {
+  render: ({ model, title }: StoryArgs): TemplateResult => {
     // Local toggle: the story owns `open`; the panel is fully controlled
     // by it (matching how the real webview hosts it).
     const openPanel = (): void => {
@@ -54,8 +51,7 @@ const meta: Meta<StoryArgs> = {
       <button @click=${openPanel}>Open parameter panel</button>
       <om-parameter-panel
         id="story-panel"
-        .schema=${schema}
-        .values=${values}
+        .model=${model}
         title=${title}
         @om-panel-cancel=${closeReason("[cancel]")}
         @om-panel-submit=${(e: Event) => {
@@ -76,8 +72,7 @@ type Story = StoryObj<StoryArgs>;
 
 export const Simulate: Story = {
   args: {
-    schema: SIM_SCHEMA,
-    values: {},
+    model: SIM_MODEL,
     title: "Simulate",
   },
 };

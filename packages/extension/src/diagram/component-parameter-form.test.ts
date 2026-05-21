@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { ComponentElement } from "@modelica-wrapper/omc-client";
+import type {
+  ComponentElement,
+  ParameterField,
+} from "@modelica-wrapper/omc-client";
 
 import {
   buildComponentParameterForm,
@@ -7,7 +10,13 @@ import {
   componentParameterElementName,
   componentParameterValueToExpr,
   type ComponentParameterRef,
-} from "./component-parameter-form.js";
+} from "./parameter-edits.js";
+
+function field(model: { fields: ParameterField[] }, name: string): ParameterField {
+  const f = model.fields.find((x) => x.name === name);
+  if (!f) throw new Error(`no field ${name}`);
+  return f;
+}
 
 /**
  * Builds the kind of `ComponentElement` `getModelInstance` emits for a
@@ -103,7 +112,7 @@ describe("buildComponentParameterForm", () => {
   it("emits fields for each scalar/enum parameter using type-side defaults when no overrides are set", () => {
     const form = buildComponentParameterForm(pi())!;
     expect(form.componentName).toBe("PI");
-    expect(Object.keys(form.schema.properties ?? {})).toEqual([
+    expect(form.model.fields.map((f) => f.name)).toEqual([
       "controllerType",
       "k",
       "Ti",
@@ -177,7 +186,7 @@ describe("buildComponentParameterForm", () => {
     const form = buildComponentParameterForm(
       pi({ limiter: { u: { start: "0" } } }),
     )!;
-    expect(Object.keys(form.schema.properties ?? {})).not.toContain("limiter");
+    expect(form.model.fields.map((f) => f.name)).not.toContain("limiter");
   });
 
   it("surfaces parameters declared on inherited base classes (the `Torque.useSupport` case)", () => {
@@ -224,7 +233,7 @@ describe("buildComponentParameterForm", () => {
     } as unknown as ComponentElement;
 
     const form = buildComponentParameterForm(torque)!;
-    expect(Object.keys(form.schema.properties ?? {})).toContain("useSupport");
+    expect(form.model.fields.map((f) => f.name)).toContain("useSupport");
     expect(form.refs.useSupport).toEqual({
       name: "useSupport",
       kind: "boolean",
@@ -277,10 +286,10 @@ describe("buildComponentParameterForm", () => {
     } as unknown as ComponentElement;
 
     const form = buildComponentParameterForm(inertia)!;
-    const jSchema = (form.schema.properties ?? {}).J as Record<string, unknown>;
-    expect(jSchema["x-modelica-unit"]).toBe("kg.m2");
-    // No use-site displayUnit modifier → key absent.
-    expect("x-modelica-display-unit" in jSchema).toBe(false);
+    const j = field(form.model, "J");
+    expect(j.unit).toBe("kg.m2");
+    // No use-site displayUnit modifier → undefined.
+    expect(j.displayUnit).toBeUndefined();
   });
 
   it("carries the displayUnit modifier when the use site sets one (the `phi.start → deg` case)", () => {
@@ -311,17 +320,17 @@ describe("buildComponentParameterForm", () => {
     } as unknown as ComponentElement;
 
     const form = buildComponentParameterForm(angleComp)!;
-    const phiSchema = (form.schema.properties ?? {}).phi as Record<string, unknown>;
-    expect(phiSchema["x-modelica-unit"]).toBe("rad");
-    expect(phiSchema["x-modelica-display-unit"]).toBe("deg");
+    const phi = field(form.model, "phi");
+    expect(phi.unit).toBe("rad");
+    expect(phi.displayUnit).toBe("deg");
   });
 
-  it("emits no unit keys for a unit-less Real parameter (the `k` gain case)", () => {
+  it("emits no unit metadata for a unit-less Real parameter (the `k` gain case)", () => {
     // `pi().k` is a bare `Real` with no unit alias — no unit metadata.
     const form = buildComponentParameterForm(pi())!;
-    const kSchema = (form.schema.properties ?? {}).k as Record<string, unknown>;
-    expect("x-modelica-unit" in kSchema).toBe(false);
-    expect("x-modelica-display-unit" in kSchema).toBe(false);
+    const k = field(form.model, "k");
+    expect(k.unit).toBeUndefined();
+    expect(k.displayUnit).toBeUndefined();
   });
 });
 

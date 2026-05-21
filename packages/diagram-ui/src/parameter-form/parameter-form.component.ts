@@ -1,16 +1,16 @@
 /**
- * `<om-parameter-form>` — DIY JSON Schema form renderer for the small
- * field vocabulary OMC produces (`string`, `number`, `integer`,
- * `boolean`, `enum`, `array of scalar`).
+ * `<om-parameter-form>` — typed `ParameterModel` form renderer for the small
+ * field vocabulary the producers emit (`string`, `number`, `integer`,
+ * `boolean`, `enum`, plus a read-only `unsupported` fallback).
  *
- * Stays vocabulary-narrow on purpose. Modelica parameter / simulation-
- * option schemas don't use `anyOf`, conditional schemas, refs, or nested
- * objects — supporting them would mean rolling a general-purpose form
- * engine, which the project rejected after the `@jsfe/form` spike.
+ * Renders omc-client's `ParameterModel` directly — no JSON Schema, no
+ * `x-modelica-*` keys (see `docs/parameter-model-design.md`, Revision
+ * 2026-05-21). Stays vocabulary-narrow on purpose: Modelica parameter /
+ * simulate-setup models are flat scalar/enum lists, so the form maps each
+ * field onto a single widget rather than rolling a general-purpose form engine.
  *
  * Inputs:
- *   - `schema`   (property)   — JSON Schema 2020-12 object node
- *   - `values`   (property)   — initial field values (Record<string, unknown>)
+ *   - `model`    (property)   — omc-client `ParameterModel` (fields + values)
  *   - `title`    (attribute)  — optional heading rendered above the form
  *   - `submit-label` (attr)   — text for the submit button (default "Apply")
  *   - `cancel-label` (attr)   — text for the cancel button (default "Cancel")
@@ -53,7 +53,7 @@ import "@awesome.me/webawesome/dist/components/tab/tab.js";
 import "@awesome.me/webawesome/dist/components/tab-group/tab-group.js";
 import "@awesome.me/webawesome/dist/components/tab-panel/tab-panel.js";
 
-import type { JsonSchema } from "@modelica-wrapper/omc-client";
+import type { ParameterModel } from "@modelica-wrapper/omc-client";
 
 import { omTokens } from "../base/om-tokens.js";
 
@@ -62,7 +62,7 @@ import {
   initialValuesFromFields,
   isComplete,
   isFieldEnabled,
-  parameterFieldsFromSchema,
+  parameterFieldsFromModel,
   type ParameterField,
   type FieldKind,
 } from "./parameter-fields.js";
@@ -73,8 +73,8 @@ import {
 } from "./unit-display.js";
 
 interface GroupBucket {
-  /** Group name from Dialog annotation, or `undefined` when the source
-   *  schema didn't set one (e.g. the curated simulate form). */
+  /** Group name from the Dialog annotation. The producers always set a
+   *  group (spec §18.7 default), so this is normally defined. */
   group: string | undefined;
   fields: ParameterField[];
 }
@@ -94,9 +94,8 @@ function bucketByTab(fields: ReadonlyArray<ParameterField>): TabBucket[] {
   const tabOrder: string[] = [];
   const byTab = new Map<string, Map<string | undefined, ParameterField[]>>();
   // Sentinel for "no tab metadata anywhere" — kept distinct from the
-  // user-defined "General" tab so a Dialog-using schema that omits tab
-  // on some fields still groups them under "General" via the builder's
-  // default, and a non-Dialog schema (simulate) gets the single bucket.
+  // user-defined "General" tab so a model that omits tab on some fields
+  // still groups them under "General" via the producer's default.
   const NO_TAB = "";
   for (const f of fields) {
     const tab = f.tab ?? NO_TAB;
@@ -118,8 +117,6 @@ function bucketByTab(fields: ReadonlyArray<ParameterField>): TabBucket[] {
     return { tab, groups };
   });
 }
-
-type Schema = JsonSchema;
 
 export interface ParameterFormChangeDetail {
   values: Record<string, unknown>;
@@ -311,13 +308,9 @@ export class OmParameterForm extends LitElement {
     `,
   ];
 
-  /** JSON Schema object node — assigned via the property API (not an attribute). */
+  /** The parameter model to render — assigned via the property API. */
   @property({ attribute: false })
-  schema: Schema | undefined = undefined;
-
-  /** Initial values for the form, keyed by property name. */
-  @property({ attribute: false })
-  values: Record<string, unknown> = {};
+  model: ParameterModel | undefined = undefined;
 
   @property() title = "";
   @property({ attribute: "submit-label" }) submitLabel = "Apply";
@@ -388,10 +381,19 @@ export class OmParameterForm extends LitElement {
   @state()
   private unitSelection: Record<string, string> = {};
 
+  /**
+   * Snapshot of the base-unit initial values (before display-unit
+   * conversion), keyed by field name. Used by `submitValues` to snap an
+   * unedited display-unit field back to its exact original base value so a
+   * no-op Apply writes nothing. Rebuilt whenever the model changes.
+   */
+  private baseInitialValues: Record<string, unknown> = {};
+
   override willUpdate(changed: Map<string | number | symbol, unknown>): void {
-    if (changed.has("schema") || changed.has("values")) {
-      this.fields = this.schema ? parameterFieldsFromSchema(this.schema) : [];
-      this.working = initialValuesFromFields(this.fields, this.values);
+    if (changed.has("model")) {
+      this.fields = this.model ? parameterFieldsFromModel(this.model) : [];
+      this.working = initialValuesFromFields(this.fields);
+      this.baseInitialValues = { ...this.working };
       this.seedUnitSelection();
       this.committed = { ...this.working };
       this.dirty = new Set();
@@ -476,8 +478,7 @@ export class OmParameterForm extends LitElement {
    *  - Multiple distinct Dialog tabs → render `<wa-tab-group>` with one
    *    panel per tab; inside each panel, group by Dialog group.
    *  - Single tab but multiple groups → flat list with group headers.
-   *  - No tab/group metadata at all (e.g. the curated simulate form) →
-   *    plain flat list, preserves the original layout.
+   *  - A single un-named group → plain flat list (no header noise).
    */
   private renderBody(): TemplateResult {
     const buckets = bucketByTab(this.fields);
@@ -896,7 +897,7 @@ export class OmParameterForm extends LitElement {
         v,
         selected,
         base,
-        this.values[f.name],
+        this.baseInitialValues[f.name],
         f.unitOptions,
       );
     }
