@@ -1,37 +1,51 @@
 /**
- * Host-side `displayUnit` conversion for diagram parameter labels
- * (issue #28, deferred half).
+ * Host-side unit annotation for diagram parameter labels
+ * (issue #28 / #68 — convert; issue #71 — generalize to plain units).
  *
  * The webview text-render path (`diagram-ui` `<om-text>` +
  * `build-substitutions.ts`) is SYNCHRONOUS and has no `OmcClient`: it just
  * interpolates a flat `Record<string, string>` substitution map built from
  * `ClassDef.parameters[name].value`. So a `parameter Angle a(displayUnit=
  * "deg") = 1.5707963267948966` would render `1.57…` verbatim in a `%a`
- * label even though the user asked to see `deg`.
+ * label even though the user asked to see `deg`, and a `parameter Inertia
+ * J = 1` would render a bare `1` with no `kg.m2` suffix.
  *
- * OMEdit converts at render time via `OMCProxy::convertUnits(unit,
- * displayUnit)` (`Annotations/TextAnnotation.cpp:625-635`); we can't call
- * OMC from the webview, so we do the same conversion HOST-SIDE during the
- * layout build (`open-diagram.ts` `fetchLayout`), where the `OmcClient`
- * lives, and rewrite `ParameterDef.value` to the converted display string.
+ * OMEdit annotates each `%param` token at render time
+ * (`Annotations/TextAnnotation.cpp:614-636`): for a literal-constant value
+ * it appends `displayUnit` if set, otherwise the declared `unit`. When the
+ * two differ it first converts via `OMCProxy::convertUnits(unit,
+ * displayUnit)`; when they're equal (or there's no displayUnit) it appends
+ * the raw unit symbol with no conversion. We can't call OMC from the
+ * webview, so we do the same HOST-SIDE during the layout build
+ * (`open-diagram.ts` `fetchLayout`), where the `OmcClient` lives, and
+ * rewrite `ParameterDef.value` to the annotated display string.
+ *
+ * Two branches, mirroring OMEdit:
+ *   - displayUnit set AND differs from unit → call `convertUnits`, recover
+ *     `displayValue = (sourceValue - offset) / scaleFactor`, append
+ *     `displayUnit`. e.g. `rad` → `deg`: `(1.5707963267948966 - 0) /
+ *     0.0174… = 90`, rendered `"90 deg"`.
+ *   - no displayUnit OR displayUnit == unit → append the bare `unit`, no
+ *     OMC contact. e.g. `J=1`, `unit="kg.m2"` → `"1 kg.m2"`.
+ *
+ * Both branches only touch literal-numeric values (`parseNumeric`);
+ * expressions / enums / crefs / blanks pass through untouched, matching
+ * OMEdit's `isValueLiteralConstant` guard. The degenerate `unit=="1"` case
+ * (dimensionless, OMC's placeholder for "no unit") is skipped — OMEdit
+ * skips the `"1"`x`"1"` pair; we skip any `unit=="1"` since there's nothing
+ * meaningful to show.
  *
  * Value-vs-displayValue: we mutate `ParameterDef.value` in place rather
  * than adding a parallel `ParameterDef.displayValue`. `buildSubstitutions`
  * already reads `def.value` for class defaults, so rewriting it makes
- * `%paramName` show the converted number with ZERO diagram-ui changes. The
+ * `%paramName` show the annotated number with ZERO diagram-ui changes. The
  * only consumer of `ParameterDef.value` in the layout is
  * `build-substitutions.ts`; the parameter-editor forms read the raw OMC
  * `ModelInstance` (`el.value`), not the layout, so they are unaffected.
  *
- * Conversion direction (confirmed against the `convertUnits` wrapper doc
+ * Conversion direction confirmed against the `convertUnits` wrapper doc
  * `packages/omc-client/src/api/contents/convertUnits.ts` + OMEdit
- * `Utilities::convertUnit`): call `convertUnits(unit, displayUnit)` and
- * recover the displayed value as
- *
- *   displayValue = (sourceValue - offset) / scaleFactor
- *
- * e.g. `convertUnits("rad", "deg") = (true, 0.0174…, 0.0)`, so
- * `(1.5707963267948966 - 0) / 0.0174… = 90`.
+ * `Utilities::convertUnit`.
  */
 
 import type {
@@ -127,9 +141,18 @@ export type ConvertUnitsResolver = (
 export type WarnFn = (topic: string, message: string, data?: unknown) => void;
 
 /**
- * Walk every `ParameterDef` in the layout and, for each parameter whose
- * `displayUnit` is set and differs from its declaration `unit`, rewrite
- * `ParameterDef.value` to the value expressed in `displayUnit`.
+ * Walk every `ParameterDef` in the layout and annotate its `value` with the
+ * parameter's unit, matching OMEdit `TextAnnotation.cpp:614-636`:
+ *   - `displayUnit` set AND differs from `unit` → convert via the resolver
+ *     and append `displayUnit`;
+ *   - otherwise (no `displayUnit`, or `displayUnit == unit`) → append the
+ *     bare `unit` with no OMC contact (so `value="1"`, `unit="kg.m2"` →
+ *     `"1 kg.m2"`).
+ *
+ * Only literal-numeric values are annotated (`parseNumeric`); expressions,
+ * enums, crefs and blanks pass through untouched. An empty unit, the
+ * degenerate `unit=="1"` dimensionless placeholder, and a value that
+ * already ends with its unit are all skipped.
  *
  * Best-effort: a resolver miss, an incompatible-unit verdict, or a
  * non-numeric source value all leave the original value untouched (logged
@@ -138,6 +161,25 @@ export type WarnFn = (topic: string, message: string, data?: unknown) => void;
  *
  * Mutates `layout` in place and returns it (the layout is freshly produced
  * per fetch, so in-place mutation has no aliasing hazard).
+ *
+ * KNOWN LIMITATION — `displayUnit` conversion reaches CLASS DEFAULTS only,
+ * not INSTANCE MODIFIERS. This pass walks `layout.classes[*].parameters`
+ * (the class-level `ParameterDef`s) and is the ONLY place a `displayUnit`
+ * conversion happens, because it needs `convertUnits` (OMC). The webview
+ * substitution path (`diagram-ui` `build-substitutions.ts` `appendUnits`)
+ * is synchronous and has no `OmcClient`, so it cannot convert. The
+ * consequence: a `displayUnit` parameter whose VALUE is supplied by an
+ * instance modifier — `Angle phi(displayUnit="deg")` with `c(phi=1.57)` on
+ * the instance — is overlaid on top of this rewritten class default in
+ * `build-substitutions.ts` AFTER this pass has run, so the converted
+ * `"90 deg"` is discarded and the raw `1.57` re-surfaces. The webview then
+ * appends the honest SOURCE unit (`appendUnits`) and the label reads
+ * `1.57 rad`, not OMEdit's `90 deg`. This is intentional: with no OMC on
+ * the webview side, showing the true source unit beats mislabelling the raw
+ * value with a unit it was never converted into. Lifting it would require
+ * an OMC-backed conversion seam in the webview path (or pre-converting
+ * instance-modifier values host-side before they reach the substitution
+ * overlay). See `build-substitutions.ts` `appendUnits` for the webview half.
  */
 export async function applyDisplayUnits(
   layout: DiagramLayout,
@@ -148,26 +190,38 @@ export async function applyDisplayUnits(
 
   for (const cls of Object.values(layout.classes)) {
     for (const def of Object.values(cls.parameters)) {
-      await convertOne(def, resolve, cache, warn);
+      await annotateOne(def, resolve, cache, warn);
     }
   }
   return layout;
 }
 
-async function convertOne(
+async function annotateOne(
   def: ParameterDef,
   resolve: ConvertUnitsResolver,
   cache: Map<string, ConvertUnitsOutput | undefined>,
   warn: WarnFn,
 ): Promise<void> {
   const unit = def.unit?.trim();
-  const displayUnit = def.displayUnit?.trim();
-  // Nothing to do unless both units are present AND they actually differ.
-  if (!unit || !displayUnit || unit === displayUnit) return;
-  // Cheap pre-filter: only spend an OMC round-trip when the value is a
-  // finite number — expressions / enums / blanks can't be converted.
+  // No unit, or OMC's dimensionless placeholder "1" → nothing to show.
+  // (OMEdit skips the `unit=="1" && displayUnit=="1"` pair; with no
+  // meaningful symbol to append we skip any `unit=="1"`.)
+  if (!unit || unit === "1") return;
+  // Only literal-numeric values get a unit — expressions / enums / crefs /
+  // blanks pass through (OMEdit's `isValueLiteralConstant` guard). This is
+  // also the cheap pre-filter that avoids an OMC round-trip in the convert
+  // branch.
   if (parseNumeric(def.value) === undefined) return;
 
+  const displayUnit = def.displayUnit?.trim();
+  // No displayUnit, or it equals the declared unit → append the bare unit,
+  // no conversion, no resolver call (OMEdit's `unit == displayUnit` arm).
+  if (!displayUnit || displayUnit === unit) {
+    def.value = appendUnit(def.value, unit);
+    return;
+  }
+
+  // displayUnit differs → convert, then append displayUnit.
   const key = unitPairKey(unit, displayUnit);
   let conversion = cache.get(key);
   if (!cache.has(key)) {
@@ -196,4 +250,16 @@ async function convertOne(
     return;
   }
   def.value = display;
+}
+
+/**
+ * Append a bare unit symbol to a value, defensively skipping the case where
+ * the value already ends with that unit. `applyDisplayUnits` runs once per
+ * fetch on a fresh layout so a double-append shouldn't arise, but the guard
+ * keeps the function safe to call repeatedly.
+ */
+function appendUnit(value: string, unit: string): string {
+  const v = value.trim();
+  if (v.endsWith(` ${unit}`)) return value;
+  return `${v} ${unit}`;
 }
