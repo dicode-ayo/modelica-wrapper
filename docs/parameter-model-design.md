@@ -245,8 +245,9 @@ Consequences for this work:
   `gbode`/`symSolver*`; the constant supersedes it.)
 - Separately, the five phantom solver wrappers should be marked ⛔ in `coverage.md`
   and the swallowed-error anti-pattern fixed (a call that produces a non-empty
-  `getErrorString()` must throw, not return `[]`). Tracked as an omc-client
-  correctness fix folded into PR #78 (see PR split).
+  `getErrorString()` must throw, not return `[]`). Handled in a **separate
+  omc-client hardening PR** off `main`, independent of the parameter-model PRs —
+  so #78/#79 never touch the solver wrappers or `coverage.md`.
 
 ### `produceSimulationModel` (new, pure → `ParameterModel`)
 
