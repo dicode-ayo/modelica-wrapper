@@ -140,12 +140,14 @@ the shared `ParameterModel` / `UnitTable`.
 Two stacked PRs (PR 2 branches off PR 1):
 
 **PR 1 — `omc-client` foundation (no behavior change to the extension).**
+
 - `ParameterModel` types + `produceParameterModel` pure producer + `collectBaseUnits`.
 - `UnitTable` type; optional `getDerivedUnitsBatch` wrapper.
 - Pure unit tests (mirror `producer.test.ts` style; fixture-based).
 - Barrel exports. `pnpm -r typecheck` + `omc-client` tests + `coverage:recount` green.
 
 **PR 2 — extension migration + label unification + session unit cache.**
+
 - Replace `buildComponentParameterForm` / `buildClassParameterForm` +
   `enrichFormUnitOptions` with `produceParameterModel` + a host-side `UnitTable`
   builder backed by a **session cache** on the client/host.
@@ -217,9 +219,34 @@ and deletes the adapter.
   signature (already encoded by our typed `simulate` wrapper): `startTime,
   stopTime, numberOfIntervals, tolerance, method, fileNamePrefix, options,
   outputFormat, variableFilter, cflags, simflags`. So the simulate panel is sourced
-  from: `simulate`'s signature (structure + defaults) + `getSolverMethods()` (live
-  `method` choices) + `getSimulationOptions()` (the `experiment` values). This is
-  exactly the set OMEdit's Simulation Setup dialog assembles.
+  from: `simulate`'s signature (structure + defaults) + `getSimulationOptions()`
+  (the `experiment` values) + the documented **`-s/--solver` value set** for the
+  `method` choices (see the investigation note below — there is no scripting API
+  for this list). This is exactly the set OMEdit's Simulation Setup dialog
+  assembles.
+
+### Investigation — `getSolverMethods` is a phantom function (do **not** use it)
+
+Probed live against OMC 1.26.7: `getSolverMethods()` (and `getNonLinearSolvers`,
+`getLinearSolvers`, `getInitializationMethods`, `getJacobianMethods`) **do not
+exist** — `getClassNames(OpenModelica.Scripting)` doesn't list them, and calling
+one yields `Error: Class getSolverMethods not found in scope`. The wrapper never
+calls `getErrorString()`, so the buffered error is swallowed and an empty list is
+returned as "success" — which is why `coverage.md` mis-marks the five as ✅. This
+is the audit.md §2.10 trap.
+
+Consequences for this work:
+
+- The `method` dropdown is sourced from OMC's documented **`-s/--solver`** values
+  (`dassl` default, `ida`, `cvode`, `gbode`, `euler`, `rungekutta`, `symSolver`,
+  `symSolverSsc`, `qss`, `optimization`) as a maintained constant — this is the
+  **source of truth**, not a fallback for a failing call. (Today's
+  `SIMULATE_FORM_SCHEMA` hardcodes a stale list incl. `trapezoid` and omits
+  `gbode`/`symSolver*`; the constant supersedes it.)
+- Separately, the five phantom solver wrappers should be marked ⛔ in `coverage.md`
+  and the swallowed-error anti-pattern fixed (a call that produces a non-empty
+  `getErrorString()` must throw, not return `[]`). Tracked as an omc-client
+  correctness fix folded into PR #78 (see PR split).
 
 ### `produceSimulationModel` (new, pure → `ParameterModel`)
 
@@ -227,7 +254,6 @@ and deletes the adapter.
 produceSimulationModel(opts: {
   className: string;
   options: GetSimulationOptionsOutput;     // experiment values (startTime, stopTime, …)
-  solverMethods: string[];                 // from getSolverMethods(); see fallback
 }): ParameterModel
 ```
 
@@ -236,9 +262,11 @@ produceSimulationModel(opts: {
   fields carry `unit: "s"`), `numberOfIntervals` (integer), `method` (enum),
   `outputFormat` (enum, small fixed OMC set), `variableFilter` (string). Group them
   with `dialog.group` ("General" / "Solver" / "Output").
-- **`getSolverMethods()` returns `[]` on OMC 1.26.x** — so `method`'s choices must
-  fall back to a curated list (`dassl, ida, cvode, rungekutta, euler, trapezoid`,
-  `<default>`) when the live list is empty. Pure: the host injects `solverMethods`.
+- `method`'s choices come from an exported `SOLVER_METHODS` constant — OMC's
+  documented `-s/--solver` value set (`dassl, ida, cvode, gbode, euler, rungekutta,
+  symSolver, symSolverSsc, qss, optimization`, plus `<default>`). There is no OMC
+  scripting API for this list (see the investigation note); the constant is the
+  source of truth, so the producer stays fully pure.
 - Pure + unit-tested, sibling to `produceParameterModel`.
 - **Submit is unchanged** — keep `simulateInputFromFormValues` (the values map keys
   stay identical); only form *construction* moves from schema to model.
@@ -267,7 +295,7 @@ fix (commit `c532a8e`) are **retained** — units still render from `unitOptions
   optional exported helper.
 - **PR #79** (rewritten, force-push): webview renders `ParameterModel` directly;
   `parametersOpen` carries `model`; simulate built via `produceSimulationModel`
-  (+ `getSolverMethods` fallback + `getSimulationOptions`); delete the adapter and
+  (+ `getSimulationOptions` + the documented `SOLVER_METHODS` constant); delete the adapter and
   `SIMULATE_FORM_SCHEMA`; preserve the session cache + `c532a8e` fix. Rewriting (vs.
   stacking another commit) avoids committing the throwaway adapter to history. The
   prior #79 review is superseded — re-review after the rewrite.
@@ -277,8 +305,7 @@ fix (commit `c532a8e`) are **retained** — units still render from `unitOptions
 - All three panels render from `ParameterModel`; the webview no longer parses JSON
   Schema for forms; `parametersOpen` carries `model`.
 - Simulate panel behaves identically for users: same fields/defaults, and the
-  `method` dropdown shows the live `getSolverMethods()` list **or** the curated
-  fallback when OMC returns none.
+  `method` dropdown shows OMC's documented `-s/--solver` value set (`SOLVER_METHODS`).
 - Component/class param behaviour unchanged (fields, units, dropdowns,
   `Dialog.enable`, reset, inherited-write routing); diagram labels identical.
 - Producers are pure + unit-tested; per-class unit calls still at most once/session.
