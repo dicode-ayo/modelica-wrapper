@@ -143,4 +143,41 @@ end ${pkg};
     const shownDeg = (1.5707963267948966 - deg.offset) / deg.scaleFactor;
     expect(shownDeg).toBeCloseTo(90, 6);
   }, 60_000);
+
+  it("submit round-trips deg→rad with REAL factors (the corruption blocker)", async () => {
+    // End-to-end guard for PR #74's value-corruption bug: opening the rad
+    // param (shown as 90 deg) and submitting must yield the BASE rad value,
+    // not the deg number. Uses the live `convertUnits` factors the host
+    // ships, then replays the form's submit-side back-conversion math (the
+    // inverse leg the component runs in `backConvertToBaseUnit`):
+    //   shown = (source - offset) / scaleFactor   (open / display)
+    //   source = shown * scaleFactor + offset      (submit / back-convert)
+    const baseRad = 1.5707963267948966;
+    const { instance } = await client.getModelInstance({ typeName: host });
+    const comp = findSubComponent(instance, "comp1")!;
+    const form = buildComponentParameterForm(comp)!;
+    await enrich(client, form.schema);
+
+    const phi = (form.schema.properties ?? {}).phi as Record<string, unknown>;
+    const opts = phi["x-modelica-unit-options"] as Array<{
+      unit: string;
+      scaleFactor: number;
+      offset: number;
+    }>;
+    const deg = opts.find((o) => o.unit === "deg")!;
+
+    // (a) open shows 90 deg …
+    const shownDeg = (baseRad - deg.offset) / deg.scaleFactor;
+    expect(shownDeg).toBeCloseTo(90, 6);
+
+    // … (c) edit to 180 deg → submit → base rad must be π.
+    const editedBaseRad = 180 * deg.scaleFactor + deg.offset;
+    expect(editedBaseRad).toBeCloseTo(Math.PI, 6);
+
+    // (a) submit UNCHANGED → back-converted base must match the original
+    // base initial to within round-trip tolerance (the form then SNAPS to
+    // the exact initial, so the host writes nothing).
+    const roundTripped = shownDeg * deg.scaleFactor + deg.offset;
+    expect(roundTripped).toBeCloseTo(baseRad, 9);
+  }, 60_000);
 });

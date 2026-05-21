@@ -123,3 +123,69 @@ export function convertShownValue(
   const next = (source - to.offset) / to.scaleFactor;
   return Number.isFinite(next) ? next : undefined;
 }
+
+/**
+ * Relative tolerance for treating a back-converted base value as
+ * "unchanged" from the original base initial. A display-unit round-trip
+ * (e.g. base `rad` → shown `deg` on open → base `rad` on submit) goes
+ * through two affine divisions, so it is rarely bit-exact; without a
+ * tolerance an UNEDITED field would back-convert to e.g. `1.5707963…2`
+ * instead of the original `1.5707963…0` and the host would diff it as a
+ * change, writing a spurious modifier. `1e-9` is far below any meaningful
+ * parameter precision yet comfortably above IEEE-754 round-trip noise.
+ */
+export const UNIT_ROUNDTRIP_REL_TOLERANCE = 1e-9;
+
+/**
+ * Convert a field's currently-shown value (in `fromUnit`) back to its base
+ * declaration `unit` for submit, snapping to the original base initial when
+ * the round-trip lands within tolerance.
+ *
+ * The host diffs each submitted value against the original base-unit
+ * initial with STRICT equality, so an unedited display-unit field must emit
+ * the original number EXACTLY — otherwise float round-trip noise reads as a
+ * change and writes a spurious modifier. We therefore:
+ *
+ *   1. back-convert `shown` from `fromUnit` to `baseUnit`, then
+ *   2. if that result is within {@link UNIT_ROUNDTRIP_REL_TOLERANCE} of
+ *      `baseInitial`, return `baseInitial` UNCHANGED (the exact original),
+ *      so the host sees no diff;
+ *   3. otherwise return the converted base value (a real edit).
+ *
+ * Returns `shown` unchanged when `fromUnit === baseUnit` (no dropdown
+ * divergence) or when the conversion can't be performed (non-numeric /
+ * missing option / zero scale) — leaving the value as-is, matching the
+ * convert-disabled behaviour elsewhere.
+ */
+export function backConvertToBaseUnit(
+  shown: number,
+  fromUnit: string,
+  baseUnit: string,
+  baseInitial: unknown,
+  options: ReadonlyArray<UnitOption>,
+): number {
+  if (fromUnit === baseUnit) return shown;
+  const converted = convertShownValue(shown, fromUnit, baseUnit, options);
+  if (converted === undefined) return shown;
+  if (
+    typeof baseInitial === "number" &&
+    Number.isFinite(baseInitial) &&
+    approxEqualRelative(converted, baseInitial, UNIT_ROUNDTRIP_REL_TOLERANCE)
+  ) {
+    // Unedited (value-wise) — emit the original base number bit-for-bit so
+    // the host's strict-equality diff writes nothing.
+    return baseInitial;
+  }
+  return converted;
+}
+
+/**
+ * Relative-tolerance float comparison. Uses an absolute fallback scaled by
+ * the larger magnitude so values near zero (where a pure ratio is unstable)
+ * still compare sanely; `a === b` short-circuits the exact case.
+ */
+function approxEqualRelative(a: number, b: number, relTol: number): boolean {
+  if (a === b) return true;
+  const scale = Math.max(Math.abs(a), Math.abs(b), 1);
+  return Math.abs(a - b) <= relTol * scale;
+}

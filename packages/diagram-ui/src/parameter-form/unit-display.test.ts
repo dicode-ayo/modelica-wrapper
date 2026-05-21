@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ParameterField, UnitOption } from "./parameter-fields.js";
 import {
+  backConvertToBaseUnit,
   convertShownValue,
   defaultSelectedUnit,
   unitWidgetForField,
@@ -145,5 +146,110 @@ describe("convertShownValue", () => {
       { unit: "b", scaleFactor: 0, offset: 0 },
     ];
     expect(convertShownValue(1, "a", "b", opts)).toBeUndefined();
+  });
+});
+
+/**
+ * Submit-side back-conversion — the round-trip that the value-corruption
+ * blocker (PR #74) was missing. `backConvertToBaseUnit` is exactly what the
+ * form's `onSubmit` runs per dropdown field: it returns the BASE-unit value
+ * to emit, snapping to the original base initial on an unedited round-trip
+ * so the host's strict-equality diff writes NOTHING.
+ *
+ * Scenarios mirror opening a `rad` param with `displayUnit="deg"` (shown as
+ * 90 deg) and then:
+ *   (a) submit UNCHANGED         → emit the base rad value, no host write
+ *   (b) flip the dropdown only   → still emit the base rad value, no write
+ *   (c) edit the displayed deg   → emit the corresponding base rad value
+ */
+describe("backConvertToBaseUnit (submit round-trip)", () => {
+  // Original base initial from OMC for a 90°-on-open angle.
+  const BASE_RAD = Math.PI / 2;
+  // What the form shows after seeding into deg: (BASE_RAD - 0) / 0.0174… = 90.
+  const SHOWN_DEG = convertShownValue(BASE_RAD, "rad", "deg", RAD_DEG)!;
+
+  it("(a) UNCHANGED deg value back-converts to the EXACT base initial", () => {
+    // The user opened the form (90 deg shown) and clicked Apply without
+    // editing. The emitted value must be bit-for-bit the original rad
+    // initial so the host diffs it as no change.
+    const out = backConvertToBaseUnit(
+      SHOWN_DEG,
+      "deg",
+      "rad",
+      BASE_RAD,
+      RAD_DEG,
+    );
+    expect(out).toBe(BASE_RAD); // strict equality — no spurious write
+  });
+
+  it("(a') guards float noise: a near-but-not-exact round-trip still snaps", () => {
+    // Even if the deg→rad leg lands a few ULPs off, the tolerance snap must
+    // return the original initial verbatim (Object.is-level equality).
+    const noisy = SHOWN_DEG * (1 + 1e-14);
+    const out = backConvertToBaseUnit(noisy, "deg", "rad", BASE_RAD, RAD_DEG);
+    expect(out).toBe(BASE_RAD);
+  });
+
+  it("(b) dropdown flipped to base unit (rad) — value emitted unchanged", () => {
+    // After flipping the dropdown back to rad, the selected unit IS the base
+    // unit; the form passes `fromUnit === baseUnit`, so the shown value (now
+    // in rad) is emitted as-is and equals the base initial.
+    const out = backConvertToBaseUnit(
+      BASE_RAD,
+      "rad",
+      "rad",
+      BASE_RAD,
+      RAD_DEG,
+    );
+    expect(out).toBe(BASE_RAD);
+  });
+
+  it("(b') dropdown flipped deg→grad without editing — still the base initial", () => {
+    // A unit-only change to a *third* unit must also round-trip back to the
+    // exact base initial (no value edit ⇒ no host write).
+    const RAD_DEG_GRAD: UnitOption[] = [
+      ...RAD_DEG,
+      // 1 grad = π/200 rad ⇒ convertUnits("rad","grad") scale = π/200.
+      { unit: "grad", scaleFactor: Math.PI / 200, offset: 0 },
+    ];
+    const shownGrad = convertShownValue(BASE_RAD, "rad", "grad", RAD_DEG_GRAD)!;
+    const out = backConvertToBaseUnit(
+      shownGrad,
+      "grad",
+      "rad",
+      BASE_RAD,
+      RAD_DEG_GRAD,
+    );
+    expect(out).toBe(BASE_RAD);
+  });
+
+  it("(c) EDITED deg value (180) back-converts to the correct base rad (π)", () => {
+    const out = backConvertToBaseUnit(180, "deg", "rad", BASE_RAD, RAD_DEG);
+    // A real edit — NOT snapped to the initial; equals π within float noise.
+    expect(out).not.toBe(BASE_RAD);
+    expect(out).toBeCloseTo(Math.PI, 9);
+  });
+
+  it("handles an affine offset on edit (degC → K)", () => {
+    // Opened at 300 K shown as 26.85 degC; user edits to 100 degC.
+    const out = backConvertToBaseUnit(100, "degC", "K", 300, K_DEGC);
+    expect(out).toBeCloseTo(373.15, 9);
+  });
+
+  it("snaps an unedited offset round-trip (degC → K) to the base initial", () => {
+    const shownDegC = convertShownValue(300, "K", "degC", K_DEGC)!;
+    const out = backConvertToBaseUnit(shownDegC, "degC", "K", 300, K_DEGC);
+    expect(out).toBe(300);
+  });
+
+  it("returns the shown value unchanged when conversion can't be performed", () => {
+    // Unknown selected unit ⇒ convertShownValue is undefined ⇒ pass through.
+    expect(backConvertToBaseUnit(5, "grad", "rad", BASE_RAD, RAD_DEG)).toBe(5);
+  });
+
+  it("emits the converted value when there is no numeric base initial to snap to", () => {
+    // No prior initial (e.g. a newly-set field): just back-convert, never snap.
+    const out = backConvertToBaseUnit(180, "deg", "rad", undefined, RAD_DEG);
+    expect(out).toBeCloseTo(Math.PI, 9);
   });
 });

@@ -56,6 +56,7 @@ import {
   type FieldKind,
 } from "./parameter-fields.js";
 import {
+  backConvertToBaseUnit,
   convertShownValue,
   unitWidgetForField,
 } from "./unit-display.js";
@@ -344,10 +345,12 @@ export class OmParameterForm extends LitElement {
    * dropdown. The `working` value is kept expressed in the selected unit
    * so the number the user sees and the suffix/dropdown agree.
    *
-   * NOTE (deferred): on submit we currently emit `working` AS-IS — i.e.
-   * the value in the SELECTED unit — without converting back to the base
-   * `unit` or writing a `displayUnit` modifier. See the PR for the
-   * persistence follow-up.
+   * On submit, `onSubmit` converts each such field's value BACK to its base
+   * declaration `unit` before emitting (see `onSubmit`), so the host always
+   * receives base-unit values and its strict-equality diff stays correct —
+   * an unedited `deg`-shown / `rad`-base field writes nothing. (Writing a
+   * `displayUnit` modifier so the choice persists across reopen is a
+   * separate follow-up; see the PR.)
    */
   @state()
   private unitSelection: Record<string, string> = {};
@@ -806,11 +809,48 @@ export class OmParameterForm extends LitElement {
     if (!isComplete(this.fields, this.working)) return;
     this.dispatchEvent(
       new CustomEvent<ParameterFormSubmitDetail>("om-parameter-submit", {
-        detail: { values: { ...this.working } },
+        detail: { values: this.submitValues() },
         bubbles: true,
         composed: true,
       }),
     );
+  }
+
+  /**
+   * Build the values object to emit on submit, expressed in each field's
+   * BASE declaration `unit` rather than the selected display unit.
+   *
+   * `working` holds values in the user's SELECTED unit (seeded/converted by
+   * `seedUnitSelection` / `onUnitChange`). The host diffs the submitted
+   * values against the base-unit initials with strict equality and writes
+   * the raw expression, so emitting selected-unit values would silently
+   * corrupt every display-unit param (e.g. a `rad` param shown as `90 deg`
+   * would write `90` meaning 90 rad). For each dropdown field we therefore
+   * back-convert to the base `unit` via `backConvertToBaseUnit`, which also
+   * SNAPS to the original base initial when the round-trip is within
+   * tolerance — so opening a display-unit param and clicking Apply without
+   * editing (or merely switching the dropdown) writes nothing. Non-dropdown
+   * and base-unit-selected fields pass through unchanged.
+   */
+  private submitValues(): Record<string, unknown> {
+    const out: Record<string, unknown> = { ...this.working };
+    for (const f of this.fields) {
+      const selected = this.unitSelection[f.name];
+      const base = f.unit?.trim();
+      // Only dropdown fields have a selection; skip when there's no base
+      // unit, no divergence, or a non-numeric value (nothing to convert).
+      if (!selected || !base || selected === base) continue;
+      const v = this.working[f.name];
+      if (typeof v !== "number") continue;
+      out[f.name] = backConvertToBaseUnit(
+        v,
+        selected,
+        base,
+        this.values[f.name],
+        f.unitOptions,
+      );
+    }
+    return out;
   }
 
   private onCancel(): void {
