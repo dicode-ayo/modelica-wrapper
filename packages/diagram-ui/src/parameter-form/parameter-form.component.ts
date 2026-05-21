@@ -14,6 +14,11 @@
  *   - `title`    (attribute)  — optional heading rendered above the form
  *   - `submit-label` (attr)   — text for the submit button (default "Apply")
  *   - `cancel-label` (attr)   — text for the cancel button (default "Cancel")
+ *   - `show-reset` (attr)     — when set, render a "Reset to defaults"
+ *     button to the left of cancel/submit (default off — only the
+ *     component parameter modal opts in)
+ *   - `reset-label` (attr)    — text for the reset button
+ *     (default "Reset to defaults")
  *
  * Events:
  *   - `om-parameter-change`  — fires on each field edit
@@ -22,6 +27,11 @@
  *     required fields client-side first)
  *     `detail: { values: Record<string, unknown> }`
  *   - `om-parameter-cancel`  — fires on cancel-button click
+ *     `detail: {}`
+ *   - `om-parameter-reset`   — fires on reset-button click (only emitted
+ *     when `show-reset` is set). The host bulk-clears the component's
+ *     modifiers and re-opens the form; the button carries no payload
+ *     because the host already knows which component the modal targets.
  *     `detail: {}`
  *
  * Styling:
@@ -247,6 +257,13 @@ export class OmParameterForm extends LitElement {
         gap: var(--om-space-md);
         margin-top: var(--om-space-lg);
       }
+
+      /* Push the reset button to the far left so it reads as a separate,
+       * destructive-ish affordance away from the primary cancel/submit
+       * pair (mirrors OMEdit's "Restore Defaults" placement). */
+      .actions .reset {
+        margin-right: auto;
+      }
     `,
   ];
 
@@ -261,6 +278,15 @@ export class OmParameterForm extends LitElement {
   @property() title = "";
   @property({ attribute: "submit-label" }) submitLabel = "Apply";
   @property({ attribute: "cancel-label" }) cancelLabel = "Cancel";
+
+  /**
+   * When `true`, render a "Reset to defaults" button. The component
+   * parameter modal sets this so the user can bulk-clear the
+   * sub-component's modifiers; the class-level and simulate forms leave
+   * it off (their reset semantics differ / aren't wired).
+   */
+  @property({ type: Boolean, attribute: "show-reset" }) showReset = false;
+  @property({ attribute: "reset-label" }) resetLabel = "Reset to defaults";
 
   /**
    * Optional cref-prefix to strip when evaluating `Dialog.enable`
@@ -317,6 +343,15 @@ export class OmParameterForm extends LitElement {
       <form @submit=${this.onSubmit}>
         ${this.renderBody()}
         <div class="actions">
+          ${this.showReset
+            ? html`<wa-button
+                class="reset"
+                type="button"
+                variant="neutral"
+                appearance="outlined"
+                @click=${this.onReset}
+              >${this.resetLabel}</wa-button>`
+            : nothing}
           <wa-button
             type="button"
             variant="neutral"
@@ -633,6 +668,21 @@ export class OmParameterForm extends LitElement {
   private onCancel(): void {
     this.dispatchEvent(
       new CustomEvent("om-parameter-cancel", {
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  /**
+   * Emit `om-parameter-reset`. No payload: the host owns the modal's
+   * target component name, so the form only signals intent. The host
+   * bulk-clears and re-opens the form with refreshed values, which is
+   * what makes the field controls reflect the reset.
+   */
+  private onReset(): void {
+    this.dispatchEvent(
+      new CustomEvent("om-parameter-reset", {
         bubbles: true,
         composed: true,
       }),

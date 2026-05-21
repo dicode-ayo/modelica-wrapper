@@ -153,6 +153,13 @@ class OmWebviewRoot extends LitElement {
   @state() private paramTitle = "";
   @state() private paramSubmitLabel = "Apply";
   @state() private paramCrefPrefix: string | undefined = undefined;
+  /**
+   * Sub-component instance the modal targets, set only for the
+   * `componentParams` kind. Drives the "Reset to defaults" affordance:
+   * the button shows iff this is non-null, and its name rides the
+   * `resetComponentParameters` message back to the host.
+   */
+  @state() private paramComponentName: string | null = null;
 
   /** Opaque tag the extension uses to route the modal's submit/cancel
    *  back to the right command flow. */
@@ -198,6 +205,7 @@ class OmWebviewRoot extends LitElement {
       ></om-action-panel>
       <om-parameter-panel
         ?open=${this.paramOpen}
+        ?show-reset=${this.paramComponentName !== null}
         .schema=${this.paramSchema}
         .values=${this.paramValues}
         .title=${this.paramTitle}
@@ -205,6 +213,7 @@ class OmWebviewRoot extends LitElement {
         .crefPrefix=${this.paramCrefPrefix}
         @om-panel-submit=${this.onParamSubmit}
         @om-panel-cancel=${this.onParamCancel}
+        @om-panel-reset=${this.onParamReset}
       ></om-parameter-panel>
     `;
   }
@@ -228,11 +237,20 @@ class OmWebviewRoot extends LitElement {
         this.paramSubmitLabel = message.submitLabel ?? "Apply";
         this.paramCrefPrefix = message.crefPrefix;
         this.paramKind = message.kind;
+        // Only the sub-component modal carries a reset target; for it the
+        // crefPrefix is the component instance name (see open-diagram's
+        // onEditComponent). Class-level / simulate forms leave it null,
+        // which hides the reset button.
+        this.paramComponentName =
+          message.kind === "componentParams"
+            ? message.crefPrefix ?? null
+            : null;
         this.paramOpen = true;
         return;
       case "parametersClose":
         this.paramOpen = false;
         this.paramKind = null;
+        this.paramComponentName = null;
         return;
       case "libraryChildren":
       case "librarySearchResult":
@@ -309,7 +327,20 @@ class OmWebviewRoot extends LitElement {
     // Close locally — the extension does not echo a close for cancels.
     this.paramOpen = false;
     this.paramKind = null;
+    this.paramComponentName = null;
     this.post({ type: "parametersCancel", kind });
+  };
+
+  private onParamReset = (): void => {
+    // Reset is only offered for the component modal, which always carries
+    // a component name. Guard anyway so a stray event can't post garbage.
+    if (this.paramComponentName === null) return;
+    // Keep the modal open: the host bulk-clears, re-fetches, and re-opens
+    // it with the defaulted values via a fresh `parametersOpen`.
+    this.post({
+      type: "resetComponentParameters",
+      componentName: this.paramComponentName,
+    });
   };
 }
 
