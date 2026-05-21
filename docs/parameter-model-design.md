@@ -177,3 +177,109 @@ Two stacked PRs (PR 2 branches off PR 1):
   or whether the diagram producer keeps owning label selection and only shares the
   `UnitTable` + conversion helper. Default: share the table + helper, keep label
   selection in the diagram producer to minimise churn.
+
+---
+
+## Revision (2026-05-21) — direct rendering, simulate unification, sources of truth
+
+**Decision.** The webview renders the typed `ParameterModel` **directly** for *all*
+panels — component params, class params, **and simulate**. JSON Schema is dropped
+as the form/wire contract (kept only as an optional exported
+`parameterModelToJsonSchema()` helper for non-UI consumers / MCP / tests). This is
+folded into the in-flight PRs **#78 (additive)** and **#79 (rewritten)** rather
+than a separate PR, since neither is merged — so we never enshrine the
+`ParameterModel → JsonSchema + x-modelica-*` adapter just to delete it. The §1.4
+"thin JSON-schema adapter" above is therefore superseded for the webview path.
+
+Why: the `x-modelica-*` extension keys were the tell that JSON Schema is the wrong
+abstraction for Modelica parameters (a typed model re-encoded as stringly-typed
+keys and decoded back). Standard JSON-Schema renderers can't read `x-modelica-*`,
+so the "portability" benefit is illusory. Direct rendering is type-safe end to end
+and deletes the adapter.
+
+### Sources of truth (researched against the Modelica spec + OMC)
+
+- **Parameters — fully type-defined.** The `Dialog` annotation is a formal record
+  (Modelica spec **§18.7**): `tab, group, enable, showStartAttribute,
+  colorSelector, loadSelector, saveSelector, directorySelector, groupImage,
+  connectorSizing`. Editable attributes come from the predefined-type attribute
+  sets (**§4.8**): `RealType{quantity, unit, displayUnit, min, max, start, fixed,
+  nominal, unbounded, stateSelect}`, `IntegerType{…, min, max, start, fixed}`,
+  `Boolean/String/Enumeration{quantity, start, fixed}`. We already receive all of
+  these via `getModelInstance`. **`ParameterField`'s names mirror the `Dialog`
+  record** so the widgets we don't render yet (the `*Selector` file/dir pickers,
+  `colorSelector`, `showStartAttribute`, `connectorSizing`) and the numeric
+  attributes (`min/max/nominal/start/fixed`) slot in later without a rename.
+- **Simulation — only partly standardized.** The Modelica-standard part is the
+  `experiment` annotation (**§18.4**): `StartTime, StopTime, Interval, Tolerance` —
+  nothing else. There is **no** Modelica-standard "simulation setup" class. The
+  full option set is **OMC-specific**, defined by OMC's `simulate` scripting
+  signature (already encoded by our typed `simulate` wrapper): `startTime,
+  stopTime, numberOfIntervals, tolerance, method, fileNamePrefix, options,
+  outputFormat, variableFilter, cflags, simflags`. So the simulate panel is sourced
+  from: `simulate`'s signature (structure + defaults) + `getSolverMethods()` (live
+  `method` choices) + `getSimulationOptions()` (the `experiment` values). This is
+  exactly the set OMEdit's Simulation Setup dialog assembles.
+
+### `produceSimulationModel` (new, pure → `ParameterModel`)
+
+```ts
+produceSimulationModel(opts: {
+  className: string;
+  options: GetSimulationOptionsOutput;     // experiment values (startTime, stopTime, …)
+  solverMethods: string[];                 // from getSolverMethods(); see fallback
+}): ParameterModel
+```
+
+- Emits a `ParameterModel` (the same render contract — `className` set, `component`
+  unset). Fields: `startTime`/`stopTime`/`interval`/`tolerance` (number; time
+  fields carry `unit: "s"`), `numberOfIntervals` (integer), `method` (enum),
+  `outputFormat` (enum, small fixed OMC set), `variableFilter` (string). Group them
+  with `dialog.group` ("General" / "Solver" / "Output").
+- **`getSolverMethods()` returns `[]` on OMC 1.26.x** — so `method`'s choices must
+  fall back to a curated list (`dassl, ida, cvode, rungekutta, euler, trapezoid`,
+  `<default>`) when the live list is empty. Pure: the host injects `solverMethods`.
+- Pure + unit-tested, sibling to `produceParameterModel`.
+- **Submit is unchanged** — keep `simulateInputFromFormValues` (the values map keys
+  stay identical); only form *construction* moves from schema to model.
+
+### Protocol change
+
+`parametersOpen` carries `model: ParameterModel` instead of `schema: JsonSchema`
+(`kind` still routes the submit; `parametersSubmit` is unchanged — still a flat
+`values` map). This is an internal contract we own; update `protocol.ts` + both
+sides.
+
+### Webview
+
+Render `ParameterModel.fields` directly (diagram-ui already renders an internal
+`ParameterField[]`; map omc-client's `ParameterField` onto it, or consume it
+directly — diagram-ui depends on omc-client). Retire `parameterFieldsFromSchema`
+for forms; keep `Dialog.enable` re-evaluation, unit dropdowns, and tab/group
+layout. Delete the extension's `ParameterModel → JsonSchema` adapter and
+`SIMULATE_FORM_SCHEMA`. The session `UnitTable`/cache and the displayUnit-dropdown
+fix (commit `c532a8e`) are **retained** — units still render from `unitOptions`.
+
+### Revised PR split (fold into the in-flight PRs)
+
+- **PR #78** (additive): add `produceSimulationModel` + its tests; keep
+  `ParameterModel` as the shared contract; add `parameterModelToJsonSchema()` as an
+  optional exported helper.
+- **PR #79** (rewritten, force-push): webview renders `ParameterModel` directly;
+  `parametersOpen` carries `model`; simulate built via `produceSimulationModel`
+  (+ `getSolverMethods` fallback + `getSimulationOptions`); delete the adapter and
+  `SIMULATE_FORM_SCHEMA`; preserve the session cache + `c532a8e` fix. Rewriting (vs.
+  stacking another commit) avoids committing the throwaway adapter to history. The
+  prior #79 review is superseded — re-review after the rewrite.
+
+### Revised acceptance criteria
+
+- All three panels render from `ParameterModel`; the webview no longer parses JSON
+  Schema for forms; `parametersOpen` carries `model`.
+- Simulate panel behaves identically for users: same fields/defaults, and the
+  `method` dropdown shows the live `getSolverMethods()` list **or** the curated
+  fallback when OMC returns none.
+- Component/class param behaviour unchanged (fields, units, dropdowns,
+  `Dialog.enable`, reset, inherited-write routing); diagram labels identical.
+- Producers are pure + unit-tested; per-class unit calls still at most once/session.
+- `pnpm -r typecheck`, all package suites, and `coverage:recount` pass.
