@@ -3,7 +3,13 @@
 [← back to README](../README.md) · related: [parameter-panel.md](parameter-panel.md) ·
 [architecture.md](architecture.md) · [omc-client.md](omc-client.md)
 
-Status: **design, pre-implementation.** This note specifies a refactor that gives
+Status: **implemented.** Shipped in **#78** (the omc-client producer, `produceSimulationModel`,
+and the `SOLVER_METHODS` constant) and **#79** (webview renders `ParameterModel` directly;
+simulate unified; JSON-Schema form contract removed), both merged to `main` on 2026-05-21.
+The deprecated/phantom-wrapper removal this note calls for is **#80**. Kept as the design
+record; the PR-split sections below are historical (described in future tense as written).
+
+This note specifies a refactor that gives
 the parameter panel the same shape the diagram already has — a pure producer over
 `getModelInstance` — and makes the diagram value-labels and the parameter form
 share one model and one unit-conversion pass.
