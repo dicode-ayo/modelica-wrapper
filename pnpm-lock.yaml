@@ -103,6 +103,9 @@ importers:
 
   packages/extension:
     dependencies:
+      '@modelica-wrapper/diagram-svg':
+        specifier: workspace:*
+        version: link:../diagram-svg
       '@modelica-wrapper/diagram-ui':
         specifier: workspace:*
         version: link:../diagram-ui

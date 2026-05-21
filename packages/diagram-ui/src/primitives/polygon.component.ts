@@ -8,6 +8,7 @@ import {
   STROKE_Z_DELTA,
   buildFilledPolygon,
   buildStroke,
+  graphicItemNode,
   stripClosingDuplicate,
 } from "./shape-utils.js";
 
@@ -37,10 +38,12 @@ export class OmPolygon extends OmShapePrimitive {
     }
 
     const baseName = `om-polygon.${this.zOrder}`;
+    const gi = graphicItemNode(parent, s, `${baseName}.gi`);
+    const root = gi.node;
     if (s.fillPattern !== "None" && s.fillColor) {
       const fill = buildFilledPolygon(
         scene,
-        parent,
+        root,
         points,
         s.fillColor,
         z,
@@ -54,7 +57,7 @@ export class OmPolygon extends OmShapePrimitive {
     const strokePoints = [...points, points[0]!];
     const stroke = buildStroke(
       scene,
-      parent,
+      root,
       strokePoints,
       s.lineColor ?? DEFAULT_LINE_COLOR,
       s.pattern,
@@ -64,6 +67,7 @@ export class OmPolygon extends OmShapePrimitive {
     if (stroke) {
       this.resources.push(stroke);
     }
+    this.resources.push(gi);
   }
 }
 

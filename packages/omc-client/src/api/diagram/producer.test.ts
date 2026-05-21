@@ -574,11 +574,48 @@ describe("produceDiagramLayout: connection filter and cref flatten", () => {
 });
 
 describe("produceDiagramLayout: connection filter on edge cases", () => {
-  /** Build a tiny ModelInstance with hand-crafted connection variants. */
+  /** A two-port component type so `a.p` / `b.p` resolve to a real port. */
+  const TwoPortType: unknown = {
+    name: "Synth.TwoPort",
+    restriction: "model",
+    annotation: {
+      Icon: { coordinateSystem: { extent: [[-100, -100], [100, 100]] }, graphics: [] },
+    },
+    elements: [
+      {
+        $kind: "component",
+        name: "p",
+        type: RealInputClass,
+        annotation: placementAnno([[-110, -10], [-90, 10]]),
+      },
+    ],
+  };
+
+  /**
+   * Build a tiny ModelInstance with components `a`/`b` (each a TwoPort) and
+   * the given hand-crafted connections.
+   */
   function withConnections(connections: ConnectionNode[]): ModelInstance {
     return ModelInstanceSchema.parse({
       name: "Synth.Tiny",
       restriction: "model",
+      annotation: {
+        Diagram: { coordinateSystem: { extent: [[-100, -100], [100, 100]] }, graphics: [] },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "a",
+          type: TwoPortType,
+          annotation: placementAnno([[-60, -10], [-40, 10]]),
+        },
+        {
+          $kind: "component",
+          name: "b",
+          type: TwoPortType,
+          annotation: placementAnno([[40, -10], [60, 10]]),
+        },
+      ],
       connections,
     });
   }
@@ -596,6 +633,110 @@ describe("produceDiagramLayout: connection filter on edge cases", () => {
     );
     expect(layout.connections).toHaveLength(1);
     expect(layout.connections[0]?.waypoints).toEqual([]);
+  });
+});
+
+describe("produceDiagramLayout: connections to gated-out endpoints (issue #76, item 6)", () => {
+  // Host with a conditional sub-component `cond` (gated false) and a kept
+  // component `keep`, plus a sub-component `g` whose `support` port is gated.
+  const KeptType: unknown = {
+    name: "Synth.Kept",
+    restriction: "model",
+    annotation: {
+      Icon: { coordinateSystem: { extent: [[-100, -100], [100, 100]] }, graphics: [] },
+    },
+    elements: [
+      {
+        $kind: "component",
+        name: "p",
+        type: RealInputClass,
+        annotation: placementAnno([[-110, -10], [-90, 10]]),
+      },
+    ],
+  };
+  const GainWithGatedPort: unknown = {
+    name: "Synth.GainGatedPort",
+    restriction: "block",
+    annotation: {
+      Icon: { coordinateSystem: { extent: [[-100, -100], [100, 100]] }, graphics: [] },
+    },
+    elements: [
+      {
+        $kind: "component",
+        name: "u",
+        type: RealInputClass,
+        annotation: placementAnno([[-110, -10], [-90, 10]]),
+      },
+      {
+        $kind: "component",
+        name: "support",
+        type: RealInputClass,
+        annotation: placementAnno([[-10, -110], [10, -90]]),
+        condition: false,
+      },
+    ],
+  };
+
+  function gatedHost(): ModelInstance {
+    return ModelInstanceSchema.parse({
+      name: "Synth.GatedHost",
+      restriction: "model",
+      annotation: {
+        Diagram: { coordinateSystem: { extent: [[-100, -100], [100, 100]] }, graphics: [] },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "keep",
+          type: KeptType,
+          annotation: placementAnno([[-60, -10], [-40, 10]]),
+        },
+        {
+          $kind: "component",
+          name: "cond",
+          type: KeptType,
+          annotation: placementAnno([[40, -10], [60, 10]]),
+          condition: false,
+        },
+        {
+          $kind: "component",
+          name: "g",
+          type: GainWithGatedPort,
+          annotation: placementAnno([[-10, 40], [10, 60]]),
+        },
+      ],
+      connections: [
+        // Survives — both endpoints visible.
+        {
+          lhs: { $kind: "cref", parts: [{ name: "keep" }, { name: "p" }] },
+          rhs: { $kind: "cref", parts: [{ name: "g" }, { name: "u" }] },
+          annotation: { Line: { points: [[0, 0], [10, 10]] } } as unknown as ConnectionNode["annotation"],
+        },
+        // Dropped — `cond` is a gated-out component.
+        {
+          lhs: { $kind: "cref", parts: [{ name: "keep" }, { name: "p" }] },
+          rhs: { $kind: "cref", parts: [{ name: "cond" }, { name: "p" }] },
+          annotation: { Line: { points: [[0, 0], [20, 20]] } } as unknown as ConnectionNode["annotation"],
+        },
+        // Dropped — `g.support` is a gated-out port.
+        {
+          lhs: { $kind: "cref", parts: [{ name: "keep" }, { name: "p" }] },
+          rhs: { $kind: "cref", parts: [{ name: "g" }, { name: "support" }] },
+          annotation: { Line: { points: [[0, 0], [30, 30]] } } as unknown as ConnectionNode["annotation"],
+        },
+      ],
+    });
+  }
+
+  it("keeps only the connection whose endpoints all survived gating", () => {
+    const layout = produceDiagramLayout(gatedHost(), "diagram");
+    // `cond` is gone from components; `g.support` is in g.hiddenPorts.
+    expect(Object.keys(layout.components).sort()).toEqual(["g", "keep"]);
+    expect(layout.components.g!.hiddenPorts).toEqual(["support"]);
+    // Exactly one connection survives: keep.p ↔ g.u.
+    expect(layout.connections).toHaveLength(1);
+    expect(layout.connections[0]!.lhs).toEqual({ component: "keep", port: "p" });
+    expect(layout.connections[0]!.rhs).toEqual({ component: "g", port: "u" });
   });
 });
 
@@ -937,6 +1078,65 @@ describe("produceDiagramLayout: conditional gating", () => {
     expect(inst!.hiddenPorts).toEqual(["support"]);
   });
 
+  it("hides per-instance ports whose `condition` is the wrapped `{ binding: false }` (issue #76, item 5)", () => {
+    // Host-level component gating already handled both the bare `false`
+    // and the wrapped Value form, but the per-port path only checked
+    // `=== false` — so a `Torque(useSupport=false)` whose support.condition
+    // arrived wrapped was wrongly rendered.
+    const gainWithWrappedPort: unknown = {
+      $kind: "model",
+      name: "Pkg.GainWithSupport",
+      restriction: "block",
+      annotation: {
+        Icon: {
+          coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+          graphics: [],
+        },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "u",
+          type: RealInputClass,
+          annotation: placementAnno([[-110, -10], [-90, 10]]),
+        },
+        {
+          $kind: "component",
+          name: "support",
+          type: RealInputClass,
+          annotation: placementAnno([[-10, -110], [10, -90]]),
+          // The wrapped Value shape OMC sometimes emits.
+          condition: { binding: false },
+        },
+      ],
+    };
+    const hostLiteral: unknown = {
+      $kind: "model",
+      name: "Pkg.Host",
+      restriction: "model",
+      annotation: {
+        Diagram: {
+          coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+          graphics: [],
+        },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "g",
+          type: gainWithWrappedPort,
+          annotation: placementAnno([[-20, -20], [20, 20]]),
+        },
+      ],
+      connections: [],
+    };
+    const layout = produceDiagramLayout(
+      ModelInstanceSchema.parse(hostLiteral),
+      "diagram",
+    );
+    expect(layout.components.g!.hiddenPorts).toEqual(["support"]);
+  });
+
 });
 
 describe("produceDiagramLayout: array dimensions on sub-components", () => {
@@ -1053,6 +1253,35 @@ describe("produceDiagramLayout: parameter displayUnit", () => {
     const layout = produceDiagramLayout(outerWithAngle(), "icon");
     const cls = layout.classes["Synth.HasAngle"];
     expect(cls?.parameters.b?.displayUnit).toBeUndefined();
+  });
+
+  it("registers the opened HOST class in classes with its own params (issue #76, item 10)", () => {
+    // The host model itself declares a displayUnit parameter. Previously the
+    // registry was seeded only from sub-component types, so the host's own
+    // params never reached `classes` and the host-side displayUnit pass
+    // skipped them. Now `classes[host]` must carry the host's parameters.
+    const host: unknown = {
+      name: "Synth.HostWithAngle",
+      restriction: "model",
+      annotation: {
+        Diagram: { coordinateSystem: { extent: [[-100, -100], [100, 100]] }, graphics: [] },
+      },
+      elements: [
+        {
+          $kind: "component",
+          name: "a",
+          type: "Real",
+          modifiers: { displayUnit: "\"deg\"", $value: "1.57" },
+          value: { binding: 1.57 },
+          prefixes: { variability: "parameter" },
+        },
+      ],
+    };
+    const layout = produceDiagramLayout(ModelInstanceSchema.parse(host), "diagram");
+    const cls = layout.classes["Synth.HostWithAngle"];
+    expect(cls).toBeDefined();
+    expect(cls?.parameters.a?.displayUnit).toBe("deg");
+    expect(cls?.parameters.a?.unit ?? cls?.parameters.a?.value).toBeDefined();
   });
 });
 

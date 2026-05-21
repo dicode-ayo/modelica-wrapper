@@ -138,20 +138,39 @@ function parseCoverageTotals(md) {
 
 /**
  * Parse the grand-total line from the Summary table:
- * `| **Total verified** | **135** | **150** |`.
+ * `| **Total verified** | **135** | **150** |`. Returns
+ * `{ verified, total }` (covered, total).
  */
 function parseGrandTotal(md) {
   const m = md.match(
     /^\|\s*\*\*Total verified\*\*\s*\|\s*\*\*(\d+)\*\*\s*\|\s*\*\*(\d+)\*\*/m,
   );
   if (!m) return undefined;
-  return Number(m[2]);
+  return { verified: Number(m[1]), total: Number(m[2]) };
+}
+
+/**
+ * Parse the headline-prose count from the "Current coverage" line:
+ * `**Current coverage:** **207 wrappers in package; 195 ✅ verified …**`.
+ *
+ * This prose surface drifted past CI for ≥2 PRs because only the section
+ * headers + summary table were checked (issue #76, item 18). Returns
+ * `{ total, verified }` — the wrapper total and the ✅-verified count.
+ */
+function parseHeadline(md) {
+  const m = md.match(
+    /\*\*(\d+)\s+wrappers in package;\s*(\d+)\s*✅\s*verified/,
+  );
+  if (!m) return undefined;
+  return { total: Number(m[1]), verified: Number(m[2]) };
 }
 
 function main() {
   const md = readFileSync(COVERAGE_MD, "utf8");
   const docTotals = parseCoverageTotals(md);
-  const docGrandTotal = parseGrandTotal(md);
+  const grand = parseGrandTotal(md);
+  const docGrandTotal = grand?.total;
+  const headline = parseHeadline(md);
 
   let drifted = false;
   let fsGrandTotal = 0;
@@ -177,6 +196,16 @@ function main() {
   const grandTotalOk = docGrandTotal === fsGrandTotal;
   if (!grandTotalOk) drifted = true;
 
+  // Headline prose (issue #76, item 18): its wrapper TOTAL must match the
+  // filesystem, and its ✅-verified count must match the Summary table's
+  // verified total — so the two prose surfaces can never silently diverge.
+  const headlineTotalOk = headline?.total === fsGrandTotal;
+  const headlineVerifiedOk =
+    headline !== undefined &&
+    grand !== undefined &&
+    headline.verified === grand.verified;
+  if (!headlineTotalOk || !headlineVerifiedOk) drifted = true;
+
   const fmt = (label, fs, doc, ok) =>
     `  ${ok ? "✓" : "✗"} ${label.padEnd(12)} fs=${String(fs).padStart(3)}  doc=${
       doc === undefined ? "(missing)" : String(doc).padStart(3)
@@ -194,11 +223,21 @@ function main() {
       docGrandTotal === undefined ? "(missing)" : docGrandTotal
     }`,
   );
+  console.log(
+    `  ${headlineTotalOk ? "✓" : "✗"} headline total fs=${fsGrandTotal} doc=${
+      headline === undefined ? "(missing)" : headline.total
+    }`,
+  );
+  console.log(
+    `  ${headlineVerifiedOk ? "✓" : "✗"} headline ✅ verified summary=${
+      grand === undefined ? "(missing)" : grand.verified
+    } doc=${headline === undefined ? "(missing)" : headline.verified}`,
+  );
 
   if (drifted) {
     console.error("");
     console.error(
-      "Drift detected. Update `packages/omc-client/docs/coverage.md` — both the per-category section headers (`## Name — N/M`) and the Summary-by-category table — so the totals match the filesystem counts above.",
+      "Drift detected. Update `packages/omc-client/docs/coverage.md` — the per-category section headers (`## Name — N/M`), the Summary-by-category table, AND the headline `Current coverage` prose line — so all surfaces match the filesystem counts above.",
     );
     process.exit(1);
   }

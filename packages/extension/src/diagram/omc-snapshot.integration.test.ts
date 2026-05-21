@@ -171,6 +171,60 @@ describeIf("omc-snapshot integration", () => {
     expect(await componentNames(client)).toEqual(["doomed", "keep"]);
   });
 
+  it("round-trips a PACKAGE-NESTED class (issue #76, item 2)", async () => {
+    // The bug: listFile(Pkg.Inner) returns only `model Inner … end Inner;`.
+    // Restoring that bare body with merge=false used to re-establish Inner at
+    // the top level (or fail to replace the package member). The within-clause
+    // the snapshot now prepends keeps it inside Pkg on restore.
+    const { randomBytes } = await import("node:crypto");
+    const pkg = `MwNest_${randomBytes(4).toString("hex")}`;
+    const inner = `${pkg}.Inner`;
+    const load = await client.loadString({
+      data: `package ${pkg}
+  model Inner
+    Real keep = 1;
+  end Inner;
+end ${pkg};
+`,
+      filename: `<runtime:${pkg}>`,
+      merge: true,
+    });
+    expect(load.success).toBe(true);
+
+    try {
+      const innerComponents = async (): Promise<string[]> => {
+        const { components } = await client.getComponents({ typeName: inner });
+        return components.map((c) => c.name).sort();
+      };
+      expect(await innerComponents()).toEqual(["keep"]);
+
+      const snap = await captureSnapshot(client, inner);
+      expect(snap).toBeDefined();
+      expect(snap?.contents).toMatch(new RegExp(`^within ${pkg};`));
+
+      // Mutate the nested class, then restore.
+      await client.addComponent({
+        componentName: "added",
+        componentClass: "Real",
+        intoTypeName: inner,
+      });
+      expect(await innerComponents()).toEqual(["added", "keep"]);
+
+      const restored = await restoreSnapshot(client, snap!);
+      expect(restored).toBe(true);
+
+      // The nested class must still resolve under its package AND the
+      // mutation must be gone — proving the restore landed inside Pkg, not
+      // at the top level.
+      expect(await client.existClass({ typeName: inner })).toMatchObject({
+        exists: true,
+      });
+      expect(await innerComponents()).toEqual(["keep"]);
+    } finally {
+      await client.deleteClass({ typeName: pkg });
+    }
+  });
+
   it("applyEdits without options does not snapshot or roll back", async () => {
     // A throwing edit, no snapshot option → failure is recorded but no
     // rollback happens (rolledBack stays false; the default path is

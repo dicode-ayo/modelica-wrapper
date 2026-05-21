@@ -16,7 +16,7 @@ import {
 import type { TextShape } from "@modelica-wrapper/omc-client";
 
 import { OmShapePrimitive } from "./shape-primitive.js";
-import { colorToCss, extentToRect } from "./shape-utils.js";
+import { colorToCss, extentToRect, graphicItemNode } from "./shape-utils.js";
 import { substitutionsContext } from "../label/substitutions-context.js";
 
 /** Canvas pixels per icon unit when sizing the DynamicTexture. */
@@ -160,13 +160,14 @@ export class OmText extends OmShapePrimitive {
     material.useAlphaFromDiffuseTexture = true;
     material.backFaceCulling = false;
 
+    const gi = graphicItemNode(parent, s, `${baseName}.gi`);
     const plane = MeshBuilder.CreatePlane(
       `${baseName}.plane`,
       { width, height, sideOrientation: Mesh.DOUBLESIDE },
       scene,
     );
     plane.material = material;
-    plane.parent = parent;
+    plane.parent = gi.node;
     plane.position.set(x + width / 2, y + height / 2, z);
     plane.isPickable = false;
 
@@ -177,6 +178,7 @@ export class OmText extends OmShapePrimitive {
         texture.dispose();
       },
     });
+    this.resources.push(gi);
   }
 }
 

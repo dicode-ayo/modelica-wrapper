@@ -3,7 +3,11 @@ import type { TransformNode } from "@babylonjs/core";
 import type { LineShape } from "@modelica-wrapper/omc-client";
 
 import { OmShapePrimitive } from "./shape-primitive.js";
-import { DEFAULT_LINE_COLOR, buildStroke } from "./shape-utils.js";
+import {
+  DEFAULT_LINE_COLOR,
+  buildStroke,
+  graphicItemNode,
+} from "./shape-utils.js";
 
 /**
  * `<om-line>` — one Modelica `LineShape`. Pure polyline; no fill side.
@@ -25,9 +29,10 @@ export class OmLine extends OmShapePrimitive {
     if (!s || s.points.length < 2) {
       return;
     }
+    const gi = graphicItemNode(parent, s, `om-line.${this.zOrder}.gi`);
     const stroke = buildStroke(
       parent.getScene(),
-      parent,
+      gi.node,
       s.points,
       s.color ?? DEFAULT_LINE_COLOR,
       s.pattern,
@@ -37,6 +42,7 @@ export class OmLine extends OmShapePrimitive {
     if (stroke) {
       this.resources.push(stroke);
     }
+    this.resources.push(gi);
   }
 }
 

@@ -9,13 +9,14 @@ import {
   type Value,
 } from "@modelica-wrapper/omc-client";
 
+import { renderIconLayersToSvg } from "@modelica-wrapper/diagram-svg";
+
 import { isConnectorKey, parseEntityKey } from "./entity-key.js";
 
 import { createReplLog } from "../commands/repl.js";
 import { log } from "../logger.js";
 
 import { applyEdits } from "./apply-edits.js";
-import { clearComponentModifiers } from "./clear-modifiers.js";
 import {
   buildClassParameterForm,
   classParameterValueToExpr,
@@ -23,11 +24,11 @@ import {
 } from "./class-parameter-form.js";
 import {
   buildComponentParameterForm,
-  componentParameterElementName,
-  componentParameterValueToExpr,
+  componentParameterEditPlan,
   findSubComponent,
   type ComponentParameterRef,
 } from "./component-parameter-form.js";
+import { clearComponentModifiers } from "./clear-modifiers.js";
 import { diffLayouts, lineAnnotation, type LayoutEdit } from "./diff-layout.js";
 import { applyDisplayUnits } from "./display-unit.js";
 import { enrichUnitOptions } from "./unit-options.js";
@@ -142,19 +143,37 @@ export async function openDiagram(
       // alongside the addComponent + simulate lines they already see.
       // We use the raw `client.lastCall` as the REPL label, matching
       // the addComponent flow.
-      const result = await applyEdits(client, className, edits, (edit, command, error) => {
-        const log = createReplLog(command);
-        if (error !== undefined) {
-          log.error(error);
-        } else {
-          log.success(editSummary(edit));
-        }
-      });
+      const result = await applyEdits(
+        client,
+        className,
+        edits,
+        (edit, command, error) => {
+          const log = createReplLog(command);
+          if (error !== undefined) {
+            log.error(error);
+          } else {
+            log.success(editSummary(edit));
+          }
+        },
+        // Auto-roll-back the whole batch on a partial failure (issue #76,
+        // item 14): the rollback-on-partial-failure path is the same
+        // snapshot/restore mechanism the diagram-local Undo uses, so the
+        // two flows no longer diverge. A partial failure leaves the class
+        // in its pre-batch state instead of a half-applied mess.
+        { snapshot: true },
+      );
       if (result.failed.length > 0) {
         const first = result.failed[0]!;
+        const rolled = result.rolledBack
+          ? " — rolled back to the pre-edit state"
+          : "";
         void vscode.window.showWarningMessage(
-          `Modelica: ${result.failed.length} of ${edits.length} edits failed (${first.error}).`,
+          `Modelica: ${result.failed.length} of ${edits.length} edits failed (${first.error})${rolled}.`,
         );
+        // The batch was auto-rolled-back, so the pre-batch snapshot we just
+        // pushed for manual Undo would be a no-op (it equals current state).
+        // Drop it to keep the undo stack meaningful.
+        if (result.rolledBack) undoStack.pop();
       }
       try {
         prevLayout = await fetchLayout(client, className);
@@ -185,12 +204,20 @@ export async function openDiagram(
       // Snapshot before the addConnection write so Undo can revert it (#29).
       await pushUndoSnapshot();
       try {
-        await client.invoke("addConnection", {
+        const conn = await client.invoke("addConnection", {
           from,
           to,
           typeName: className,
           annotation: lineAnnotation(waypoints),
         });
+        // `invoke` resolves even when OMC rejected the connect — inspect
+        // `success` so a dangling/invalid endpoint surfaces as an error
+        // toast instead of a silent "connected" log (issue #76).
+        if (!conn.success) {
+          throw new Error(
+            conn.diagnostic ?? "OMC rejected the connection",
+          );
+        }
         refreshLabel();
         createReplLog(label).success(`connected ${from} ↔ ${to}`);
         prevLayout = await fetchLayout(client, className);
@@ -511,6 +538,11 @@ export async function openDiagram(
     // ── Library browser ────────────────────────────────────────────────
     onLibraryListChildren: (parent) => librarySource.listChildren(parent),
     onLibrarySearch: (query) => librarySource.searchAll(query),
+    // Lazy per-row icon thumbnail (issue #76, item 8): the cheap
+    // `fetchIconLayout` path rendered to a self-contained SVG. Best-effort
+    // — a fetch / render failure resolves to `undefined` so the browser
+    // keeps its restriction-letter badge.
+    onLibraryIcon: (target) => libraryIconSvg(client, target),
     onAddComponent: async (componentClass, position) => {
       const componentName = uniqueComponentName(prevLayout, componentClass);
       const annotation = placementAt(position);
@@ -902,7 +934,7 @@ export async function fetchIconLayout(
   client: OmcClient,
   className: string,
 ): Promise<DiagramLayout> {
-  let instance: ModelInstance;
+  let instance: ModelInstance | undefined;
   try {
     const { instance: annotationInstance } = await client.invoke(
       "getModelInstanceAnnotation",
@@ -911,15 +943,74 @@ export async function fetchIconLayout(
         filter: [...ICON_ANNOTATION_FILTER],
       },
     );
-    instance = annotationInstance;
+    // Issue #76, item 9: the filtered call can return valid JSON with a
+    // null / empty annotation (e.g. PID_Controller on the OM fork) — no
+    // throw, but no Icon to paint either. Detecting that and falling back
+    // to the full `getModelInstance` (which carries the inherited icon
+    // layers) is what OMEdit does; a thrown error is only one of the two
+    // ways the cheap path can come back unusable.
+    if (hasIconAnnotation(annotationInstance)) {
+      instance = annotationInstance;
+    } else {
+      log.warn(
+        "fetchIconLayout",
+        `getModelInstanceAnnotation returned no Icon for ${className}; falling back to full getModelInstance`,
+      );
+    }
   } catch (err) {
     log.warn(
       "fetchIconLayout",
       `filtered getModelInstanceAnnotation failed for ${className}; falling back to full getModelInstance: ${(err as Error).message}`,
     );
+  }
+  if (instance === undefined) {
     instance = await fetchModelInstance(client, className);
   }
   return diagram.produceDiagramLayout(instance, "icon");
+}
+
+/**
+ * Render a class's icon to a self-contained SVG thumbnail for the library
+ * browser (issue #76, item 8 — the consumer that makes `fetchIconLayout`
+ * live). Best-effort: returns `undefined` on any failure or when the class
+ * has no drawable icon layers, so the browser falls back to its
+ * restriction-letter badge.
+ */
+async function libraryIconSvg(
+  client: OmcClient,
+  className: string,
+): Promise<string | undefined> {
+  try {
+    const layout = await fetchIconLayout(client, className);
+    if (layout.iconLayers.length === 0) return undefined;
+    return renderIconLayersToSvg(layout.iconLayers, {
+      coordinateSystem: layout.coordinateSystem,
+    });
+  } catch (err) {
+    log.warn(
+      "libraryIconSvg",
+      `icon render failed for ${className}: ${(err as Error).message}`,
+    );
+    return undefined;
+  }
+}
+
+/**
+ * True when the annotation-only instance carries a usable Icon somewhere in
+ * its inheritance — either the host's own `annotation.Icon` or an `extends`
+ * ancestor's. Mirrors how the producer collects icon layers up the chain, so
+ * a class whose icon lives purely on a base class still counts as drawable.
+ */
+function hasIconAnnotation(mi: ModelInstance | undefined): boolean {
+  if (mi === undefined || mi === null) return false;
+  const ann = mi.annotation as { Icon?: unknown } | null | undefined;
+  if (ann && ann.Icon != null) return true;
+  for (const e of mi.elements ?? []) {
+    if (e.$kind === "extends" && typeof e.baseClass === "object") {
+      if (hasIconAnnotation(e.baseClass)) return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -1019,56 +1110,25 @@ async function applyComponentParameterEdits(
   initialValues: Record<string, unknown>,
   submitted: Record<string, unknown>,
 ): Promise<void> {
-  // Fast-path: the user blanked *every* editable scalar parameter — a
-  // de-facto "reset to defaults" for this sub-component. Collapse the N
-  // per-field `setElementModifierValue(..., "")` clears into a single
-  // `removeElementModifiers(..., keepRedeclares=true)` (issue #30). Gated
-  // on the form exposing the component's full modifiable surface (no
-  // `unsupported` record/array refs) so the one-RPC clear is behaviourally
-  // equivalent to the per-field loop — `keepRedeclares=true` strips value
-  // modifiers but preserves any `redeclare` type substitutions the form
-  // never showed.
-  if (isFullScalarReset(refs, initialValues, submitted)) {
-    let label = `removeElementModifiers ${className} ${componentName}`;
-    try {
-      await client.getErrorString();
-      const success = await clearComponentModifiers(
-        client,
-        className,
-        componentName,
-        { keepRedeclares: true },
-      );
-      if (client.lastCall) label = client.lastCall;
-      const replLog = createReplLog(label);
-      if (success) {
-        replLog.success(`reset ${componentName} (cleared all modifiers)`);
-      } else {
-        const { errorString } = await client.getErrorString();
-        const reason = errorString.trim() || "OMC returned success=false.";
-        replLog.error(reason);
-        void vscode.window.showWarningMessage(
-          `Modelica: reset ${componentName} failed — ${reason}`,
-        );
-      }
-    } catch (err) {
-      if (client.lastCall) label = client.lastCall;
-      const msg = (err as Error).message;
-      createReplLog(label).error(msg);
-      void vscode.window.showWarningMessage(
-        `Modelica: reset ${componentName} failed — ${msg}`,
-      );
-    }
-    return;
-  }
+  // NOTE: there is deliberately NO `removeElementModifiers` fast-path here
+  // (issue #76, item 1). The form only surfaces `variability=="parameter"`
+  // elements, but `removeElementModifiers` strips *every* value modifier on
+  // the sub-component — `start=`, `fixed=`, `nominal=`, `displayUnit=`, and
+  // modifiers on non-parameter members — including bindings the user never
+  // saw in the panel. "Blank all params" must touch only the surfaced
+  // parameters, which the per-field loop below does by clearing each one
+  // with `setElementModifierValue(..., "")`. The bulk `removeElementModifiers`
+  // call is reserved for an explicit "reset to defaults" action (whose blast
+  // radius the user has knowingly opted into) — see `clearComponentModifiers`.
 
   const failures: string[] = [];
-  for (const [name, ref] of Object.entries(refs)) {
-    if (ref.kind === "unsupported") continue;
-    const before = initialValues[name];
-    const after = submitted[name];
-    if (sameValue(before, after)) continue;
-    const expr = componentParameterValueToExpr(ref, after);
-    const elementName = componentParameterElementName(componentName, name);
+  const plan = componentParameterEditPlan(
+    componentName,
+    refs,
+    initialValues,
+    submitted,
+  );
+  for (const { elementName, expr } of plan) {
     let label = `setElementModifierValue ${className} ${elementName}`;
     try {
       await client.getErrorString();
@@ -1160,34 +1220,6 @@ export async function resetComponentParameters(
     );
     return false;
   }
-}
-
-/**
- * True when the submit is a "reset all" on a component whose form shows
- * its full modifiable surface: every editable scalar field is now blank
- * (empty expr), at least one of them actually changed, and there are no
- * `unsupported` (record / array) refs the bulk clear would silently also
- * strip. Under those conditions one `removeElementModifiers` is exactly
- * the per-field loop's effect, so the fast-path stays faithful.
- */
-function isFullScalarReset(
-  refs: Record<string, ComponentParameterRef>,
-  initialValues: Record<string, unknown>,
-  submitted: Record<string, unknown>,
-): boolean {
-  const entries = Object.values(refs);
-  if (entries.length === 0) return false;
-  // Any record/array param means the form doesn't expose the whole
-  // modifiable surface — fall back to the explicit per-field loop.
-  if (entries.some((ref) => ref.kind === "unsupported")) return false;
-  let anyChanged = false;
-  for (const ref of entries) {
-    const after = submitted[ref.name];
-    // Blank means the value-to-expr collapses to "" (clear).
-    if (componentParameterValueToExpr(ref, after) !== "") return false;
-    if (!sameValue(initialValues[ref.name], after)) anyChanged = true;
-  }
-  return anyChanged;
 }
 
 function sameValue(a: unknown, b: unknown): boolean {

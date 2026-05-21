@@ -508,4 +508,78 @@ describe("gradient fill patterns", () => {
     expect(svg).not.toContain("<defs>");
     expect(svg).not.toContain("<linearGradient");
   });
+
+  // ── Per-shape GraphicItem origin/rotation/visible (issue #76, item 15) ──
+  it("drops a shape whose visible is false", () => {
+    const svg = renderIconLayersToSvg([
+      makeLayer("Test.Foo", [
+        {
+          kind: "rectangle",
+          extent: [[-50, -25], [50, 25]],
+          fillColor: RED,
+          visible: false,
+        },
+      ]),
+    ]);
+    expect(svg).not.toContain("<rect");
+  });
+
+  it("wraps a rotated shape in its own transform group", () => {
+    const svg = renderIconLayersToSvg([
+      makeLayer("Test.Foo", [
+        {
+          kind: "rectangle",
+          extent: [[-50, -25], [50, 25]],
+          fillColor: RED,
+          rotation: 45,
+        },
+      ]),
+    ]);
+    expect(svg).toContain('<g transform="rotate(45)">');
+    expect(svg).toContain("<rect");
+  });
+
+  it("wraps an origin-offset shape in a translate transform", () => {
+    const svg = renderIconLayersToSvg([
+      makeLayer("Test.Foo", [
+        {
+          kind: "rectangle",
+          extent: [[-10, -10], [10, 10]],
+          fillColor: RED,
+          origin: [20, 30],
+        },
+      ]),
+    ]);
+    expect(svg).toContain('<g transform="translate(20 30)">');
+  });
+
+  it("composes translate then rotate for a shape with both", () => {
+    const svg = renderIconLayersToSvg([
+      makeLayer("Test.Foo", [
+        {
+          kind: "rectangle",
+          extent: [[-10, -10], [10, 10]],
+          fillColor: RED,
+          origin: [5, 0],
+          rotation: 90,
+        },
+      ]),
+    ]);
+    expect(svg).toContain('<g transform="translate(5 0) rotate(90)">');
+  });
+
+  it("emits no wrapper group for a default (un-transformed) shape", () => {
+    const svg = renderIconLayersToSvg([
+      makeLayer("Test.Foo", [
+        {
+          kind: "rectangle",
+          extent: [[-10, -10], [10, 10]],
+          fillColor: RED,
+        },
+      ]),
+    ]);
+    // The only <g> are the root scale group + the layer group, no per-shape one.
+    expect(svg).not.toContain("rotate(");
+    expect(svg).not.toContain("translate(");
+  });
 });

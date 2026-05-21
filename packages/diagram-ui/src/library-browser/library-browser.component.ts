@@ -24,6 +24,7 @@
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
+import { unsafeSVG } from "lit/directives/unsafe-svg.js";
 
 import "@awesome.me/webawesome/dist/components/dialog/dialog.js";
 import "@awesome.me/webawesome/dist/components/input/input.js";
@@ -102,6 +103,14 @@ export interface LibraryBrowserDataSource {
    * is responsible for any backend-side query optimisation.
    */
   searchAll(query: string): Promise<LibraryClassInfo[]>;
+  /**
+   * Render `className`'s icon to a self-contained SVG thumbnail, or
+   * resolve `undefined` when the class has no usable icon. Optional: a
+   * data source that omits it (or returns undefined) leaves rows showing
+   * their restriction-letter badge. Requested lazily per row so the icon
+   * fetch never runs for the whole tree (issue #76, item 8).
+   */
+  iconSvg?(className: string): Promise<string | undefined>;
 }
 
 const SEARCH_DEBOUNCE_MS = 200;
@@ -223,6 +232,17 @@ export class OmLibraryBrowser extends LitElement {
         font-family: var(--wa-font-family-code, ui-monospace, monospace);
       }
 
+      /* A rendered class-icon thumbnail replaces the letter badge: drop
+       * the badge chrome and let the SVG fill the slot. */
+      .icon-svg {
+        background: none;
+        border-radius: 0;
+      }
+      .icon-svg svg {
+        width: 100%;
+        height: 100%;
+      }
+
       .qualifier {
         font-size: var(--om-qualifier-size);
         color: var(--wa-color-text-quiet, var(--vscode-descriptionForeground));
@@ -307,6 +327,10 @@ export class OmLibraryBrowser extends LitElement {
   private searchSeq = 0;
   /** Per-node error message keyed by qualified name. */
   private nodeErrors = new Map<string, string>();
+  /** Rendered icon SVG keyed by qualified name (lazy, issue #76 item 8). */
+  private iconSvgCache = new Map<string, string>();
+  /** Qualified names whose icon fetch has already been kicked off. */
+  private iconRequested = new Set<string>();
 
   override disconnectedCallback(): void {
     if (this.searchTimer !== null) {
@@ -416,27 +440,69 @@ export class OmLibraryBrowser extends LitElement {
     restriction: LibraryClassRestriction,
   ): TemplateResult {
     const label = qualified.slice(qualified.lastIndexOf(".") + 1) || qualified;
-    return this.renderLabelledRow(label, restriction);
+    return this.renderLabelledRow(qualified, label, restriction);
   }
 
   private renderLabelledRow(
+    qualified: string,
     label: string,
     restriction: LibraryClassRestriction,
     qualifier?: string,
   ): TemplateResult {
-    const style = iconStyleFor(restriction);
     return html`<span class="row">
-      <span
-        class="icon"
-        style=${`color: ${style.fg}; background: ${style.bg};`}
-        title=${restriction}
-        >${style.glyph}</span
-      >
+      ${this.renderIcon(qualified, restriction)}
       <span>${label}</span>
       ${qualifier
         ? html`<span class="qualifier">${qualifier}</span>`
         : nothing}
     </span>`;
+  }
+
+  /**
+   * Icon slot for a row: a rendered SVG thumbnail once the lazy
+   * `iconSvg` fetch resolves, falling back to the restriction-letter
+   * badge until then (or permanently if the data source has no icon
+   * support / the class has no icon). The fetch is kicked off here, on
+   * first render of the row, and cached by qualified name so re-renders
+   * don't re-fetch (issue #76, item 8).
+   */
+  private renderIcon(
+    qualified: string,
+    restriction: LibraryClassRestriction,
+  ): TemplateResult {
+    this.requestIcon(qualified);
+    const svg = this.iconSvgCache.get(qualified);
+    if (svg) {
+      // The SVG comes from our own host-side renderer (not user input).
+      return html`<span class="icon icon-svg" title=${restriction}
+        >${unsafeSVG(svg)}</span
+      >`;
+    }
+    const style = iconStyleFor(restriction);
+    return html`<span
+      class="icon"
+      style=${`color: ${style.fg}; background: ${style.bg};`}
+      title=${restriction}
+      >${style.glyph}</span
+    >`;
+  }
+
+  /** Fire-and-cache a lazy icon fetch for `qualified` (once). */
+  private requestIcon(qualified: string): void {
+    if (!this.dataSource?.iconSvg) return;
+    if (this.iconRequested.has(qualified)) return;
+    this.iconRequested.add(qualified);
+    void this.dataSource
+      .iconSvg(qualified)
+      .then((svg) => {
+        if (svg) {
+          this.iconSvgCache.set(qualified, svg);
+          this.requestUpdate();
+        }
+      })
+      .catch(() => {
+        // Best-effort — keep the badge on failure.
+      });
   }
 
   private renderSearchResults(): TemplateResult {
@@ -469,7 +535,7 @@ export class OmLibraryBrowser extends LitElement {
               data-qualified=${q}
               data-restriction=${info.restriction}
             >
-              ${this.renderLabelledRow(tail, info.restriction, head)}
+              ${this.renderLabelledRow(q, tail, info.restriction, head)}
             </wa-tree-item>`;
           },
         )}

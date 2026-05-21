@@ -106,13 +106,33 @@ function parseNumeric(s: string): number | undefined {
 }
 
 /**
- * Render a converted number back to a compact display string. `String(n)`
- * already gives the shortest round-tripping decimal for typical conversions
- * (`90`, `57.29577951308232`), avoids trailing-zero noise, and matches the
- * literal style of the source-unit values we replace.
+ * Number of significant digits OMEdit's `QString::number(v, 'g', N)` uses
+ * when formatting a converted parameter value. Six matches OMEdit's
+ * `Utilities::convertUnit` display precision and is enough to round
+ * float-conversion artefacts (`89.99999999999999`) back to the intended
+ * value (`90`) without losing real precision on typical angles / gains.
+ */
+const DISPLAY_SIG_DIGITS = 6;
+
+/**
+ * Render a converted number back to a compact display string.
+ *
+ * `String(n)` round-trips the IEEE-754 value exactly, which surfaces
+ * float-conversion noise: `(pi/2) / (pi/180)` lands on `89.99999999999999`,
+ * not `90`. OMEdit avoids this by formatting with `QString::number(v, 'g',
+ * 6)`. We mirror that: round to 6 significant digits via `toPrecision`, then
+ * strip the trailing zeros / redundant exponent that `toPrecision` can leave
+ * (`90.0000` → `90`, `1.50000` → `1.5`) so the label stays compact and
+ * matches the literal style of the source-unit values we replace.
  */
 function formatNumber(n: number): string {
-  return String(n);
+  if (!Number.isFinite(n)) return String(n);
+  if (n === 0) return "0";
+  // `toPrecision` gives 6 significant figures; `Number(...)` then collapses
+  // trailing zeros and any "1.5000" / "9.0000e1" form back to the shortest
+  // decimal that represents the rounded value.
+  const rounded = Number(n.toPrecision(DISPLAY_SIG_DIGITS));
+  return String(rounded);
 }
 
 /**

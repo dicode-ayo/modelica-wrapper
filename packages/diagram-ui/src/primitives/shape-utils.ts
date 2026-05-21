@@ -3,6 +3,7 @@ import {
   Mesh,
   MeshBuilder,
   StandardMaterial,
+  TransformNode as TransformNodeImpl,
   Vector3,
   VertexData,
   type Scene,
@@ -13,6 +14,43 @@ import {
   CreateLines,
 } from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
 import type { Color, Extent } from "@modelica-wrapper/omc-client";
+
+/** Per-shape GraphicItem transform fields (§18.6) every primitive carries. */
+export interface GraphicItemTransform {
+  origin?: [number, number] | undefined;
+  rotation?: number | undefined;
+}
+
+/**
+ * Return the node a shape's meshes should be parented to, honouring the
+ * shape's own `origin` / `rotation` (issue #76, item 15). When both are
+ * default, `parent` is returned unchanged (no extra node). Otherwise a child
+ * `TransformNode` is created at `origin`, rotated `rotation` degrees CCW about
+ * Z (Modelica convention), and returned; the caller pushes its `dispose` onto
+ * `resources` so it tears down with the shape's meshes.
+ *
+ * The returned `dispose` only disposes the wrapper node when one was created
+ * (the parent is never disposed here).
+ */
+export function graphicItemNode(
+  parent: TransformNode,
+  shape: GraphicItemTransform,
+  name: string,
+): { node: TransformNode; dispose: () => void } {
+  const ox = shape.origin?.[0] ?? 0;
+  const oy = shape.origin?.[1] ?? 0;
+  const rot = shape.rotation ?? 0;
+  if (ox === 0 && oy === 0 && rot === 0) {
+    return { node: parent, dispose: () => {} };
+  }
+  const node = new TransformNodeImpl(name, parent.getScene());
+  node.parent = parent;
+  node.position = new Vector3(ox, oy, 0);
+  // Modelica rotation is CCW-positive about +Z; Babylon's rotation.z is the
+  // same axis convention, so degrees → radians directly.
+  node.rotation = new Vector3(0, 0, (rot * Math.PI) / 180);
+  return { node, dispose: () => node.dispose() };
+}
 
 /**
  * Shared helpers for the `<om-{rectangle, polygon, line, ellipse, text,

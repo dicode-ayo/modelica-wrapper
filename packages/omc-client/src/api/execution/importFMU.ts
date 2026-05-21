@@ -17,6 +17,13 @@
  *
  * Import an FMU and generate a Modelica wrapper class.
  *
+ * NOTE on `workdir`: the OMC doc signature writes the default as
+ * `"<default>"`, but that is doc-placeholder notation for "use the current
+ * working directory" — it is NOT an OMC sentinel. Sending the literal string
+ * `"<default>"` makes OMC create / target a directory actually named
+ * `<default>`. The wrapper defaults to the empty string `""`, which is the
+ * form OMC documents as "use cwd" (issue #76, item 16).
+ *
  * NOTE on `modelName` shape: per the docs the last argument is a
  * `TypeName` (bare ident), NOT a String. Passing it as a quoted string
  * triggers the misleading "Class importFMU not found in scope"
@@ -38,9 +45,9 @@ export const ImportFMUInputSchema = z.object({
   workdir: z
     .string()
     .optional()
-    .default("<default>")
+    .default("")
     .describe(
-      'Output directory for the generated files; "<default>" lets OMC use the current working directory.',
+      'Output directory for the generated files; "" (empty) lets OMC use the current working directory. (The OMC doc signature writes the default as "<default>", but that is doc-placeholder notation — sending it literally makes OMC treat "<default>" as a real directory name. The empty string is the form OMC documents as "use cwd".)',
     ),
   loglevel: z
     .number()
@@ -97,7 +104,7 @@ export async function importFMU(
       ? "Default"
       : input.modelName;
   const raw = await ctx.call(
-    `importFMU(${quote(input.filename)}, ${quote(input.workdir ?? "<default>")}, ${input.loglevel ?? 3}, ${mlBool(input.fullPath ?? false)}, ${mlBool(input.debugLogging ?? false)}, ${mlBool(input.generateInputConnectors ?? true)}, ${mlBool(input.generateOutputConnectors ?? true)}, ${modelNameArg})`,
+    `importFMU(${quote(input.filename)}, ${quote(input.workdir ?? "")}, ${input.loglevel ?? 3}, ${mlBool(input.fullPath ?? false)}, ${mlBool(input.debugLogging ?? false)}, ${mlBool(input.generateInputConnectors ?? true)}, ${mlBool(input.generateOutputConnectors ?? true)}, ${modelNameArg})`,
   );
   return parseOutput(
     ImportFMUOutputSchema,

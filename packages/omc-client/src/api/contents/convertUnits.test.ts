@@ -56,4 +56,29 @@ describe("convertUnits parsing", () => {
     await convertUnits(ctx, { s1: "rad", s2: "deg" });
     expect(call).toHaveBeenCalledWith('convertUnits("rad", "deg")');
   });
+
+  // ── Off-spec responses → neutral defaults, never throw (issue #76, item 12)
+  it("falls back to neutral defaults on a non-tuple (error prose) response", async () => {
+    const { ctx } = fakeCtx("Error: convertUnits failed");
+    const out = await convertUnits(ctx, { s1: "rad", s2: "deg" });
+    expect(out).toEqual({ unitsCompatible: false, scaleFactor: 1, offset: 0 });
+  });
+
+  it("tolerates a trailing diagnostic line after the tuple", async () => {
+    const { ctx } = fakeCtx("(true, 2.0, 0.0)\nWarning: deprecated unit");
+    const out = await convertUnits(ctx, { s1: "rad", s2: "deg" });
+    expect(out).toEqual({ unitsCompatible: true, scaleFactor: 2, offset: 0 });
+  });
+
+  it("falls back when OMC returns an empty response", async () => {
+    const { ctx } = fakeCtx("");
+    const out = await convertUnits(ctx, { s1: "rad", s2: "deg" });
+    expect(out).toEqual({ unitsCompatible: false, scaleFactor: 1, offset: 0 });
+  });
+
+  it("fills missing tuple fields with neutral defaults (short tuple)", async () => {
+    const { ctx } = fakeCtx("(true)");
+    const out = await convertUnits(ctx, { s1: "rad", s2: "deg" });
+    expect(out).toEqual({ unitsCompatible: true, scaleFactor: 1, offset: 0 });
+  });
 });

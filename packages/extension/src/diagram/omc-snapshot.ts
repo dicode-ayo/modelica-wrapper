@@ -43,8 +43,38 @@ export interface OmcSnapshot {
   className: string;
   /** Source filename to replay under (from `getSourceFile`). */
   filename: string;
-  /** Pretty-printed Modelica source at capture time. */
+  /**
+   * Pretty-printed Modelica source at capture time.
+   *
+   * For a package-nested class (`Pkg.Foo`) this is prefixed with a
+   * `within Pkg;` clause (issue #76, item 2). `listFile(Pkg.Foo)` returns
+   * only the bare `model Foo … end Foo;` body; without the `within` clause a
+   * `loadString(merge=false)` replay would re-establish `Foo` at the top
+   * level instead of back inside `Pkg`. The `within` tells OMC the enclosing
+   * scope so the restore replaces the original package member.
+   */
   contents: string;
+}
+
+/**
+ * Enclosing scope of a fully-qualified class name, or `""` for a top-level
+ * class. `Pkg.Sub.Foo` → `Pkg.Sub`; `Foo` → `""`.
+ */
+function enclosingScope(className: string): string {
+  const lastDot = className.lastIndexOf(".");
+  return lastDot < 0 ? "" : className.slice(0, lastDot);
+}
+
+/**
+ * Prefix `contents` with a `within <scope>;` clause when the class is
+ * package-nested and the listed source doesn't already carry one. A
+ * top-level class (empty scope) is returned unchanged.
+ */
+function withWithinClause(scope: string, contents: string): string {
+  if (scope.length === 0) return contents;
+  // Defensive: if OMC ever starts including the clause itself, don't double it.
+  if (/^\s*within\b/.test(contents)) return contents;
+  return `within ${scope};\n${contents}`;
 }
 
 /**
@@ -86,16 +116,22 @@ export async function captureSnapshot(
     filename = `<snapshot:${className}>`;
   }
 
-  return { className, filename, contents };
+  return {
+    className,
+    filename,
+    contents: withWithinClause(enclosingScope(className), contents),
+  };
 }
 
 /**
  * Restore a previously captured snapshot by reloading its source text.
  *
- * Uses `merge=false` (the `loadString` default) so the captured text fully
- * replaces the current definition of the class rather than merging into it —
- * that's what makes this an undo rather than an additive load. Returns
- * whether OMC reported success.
+ * Passes `merge: false` *explicitly* (issue #76, item 2) so the captured
+ * text fully replaces the class's definition rather than merging into it —
+ * that's what makes this an undo rather than an additive load. The captured
+ * `contents` already carries a `within` clause for package-nested classes so
+ * the replacement lands back inside its enclosing package. Returns whether
+ * OMC reported success.
  */
 export async function restoreSnapshot(
   client: SnapshotClient,
@@ -104,6 +140,7 @@ export async function restoreSnapshot(
   const { success } = await client.loadString({
     data: snapshot.contents,
     filename: snapshot.filename,
+    merge: false,
   });
   return success;
 }

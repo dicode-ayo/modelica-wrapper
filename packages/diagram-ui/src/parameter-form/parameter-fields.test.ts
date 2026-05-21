@@ -8,6 +8,7 @@ import type { Expression, JsonSchema } from "@modelica-wrapper/omc-client";
 
 import {
   buildEnableScope,
+  enabledValues,
   initialValuesFromFields,
   isComplete,
   isFieldEnabled,
@@ -243,6 +244,83 @@ describe("isComplete", () => {
   it("ignores non-required fields", () => {
     // `b` is required-in-schema but has a default → not required from caller.
     expect(isComplete(fields, { a: "ok" })).toBe(true);
+  });
+
+  it("ignores a DISABLED required field even if it is empty (issue #76, item 17)", () => {
+    // `gain` is required; `Ti` is required but only enabled when gain > 0.
+    // With gain = -1, Ti is disabled, so an empty Ti must NOT block submit.
+    const gated = parameterFieldsFromSchema({
+      type: "object",
+      properties: {
+        gain: { type: "number" },
+        Ti: {
+          type: "number",
+          "x-modelica-enable": {
+            $kind: "binary_op",
+            op: ">",
+            lhs: { $kind: "cref", parts: [{ name: "gain" }] },
+            rhs: 0,
+          },
+        } as never,
+      },
+      required: ["gain", "Ti"],
+    });
+    // Ti enabled (gain > 0) and empty → incomplete.
+    expect(isComplete(gated, { gain: 5, Ti: undefined })).toBe(false);
+    // Ti disabled (gain <= 0) and empty → still complete (Ti is skipped).
+    expect(isComplete(gated, { gain: -1, Ti: undefined })).toBe(true);
+    // Ti enabled and filled → complete.
+    expect(isComplete(gated, { gain: 5, Ti: 0.5 })).toBe(true);
+  });
+});
+
+describe("enabledValues (issue #76, item 4)", () => {
+  // controllerType picker; Ti only enabled when controllerType != "P".
+  function pidFields(): ParameterField[] {
+    return parameterFieldsFromSchema({
+      type: "object",
+      properties: {
+        controllerType: { type: "string", enum: ["P", "PI"] },
+        k: { type: "number" },
+        Ti: {
+          type: "number",
+          "x-modelica-enable": {
+            $kind: "binary_op",
+            op: "<>",
+            lhs: { $kind: "cref", parts: [{ name: "controllerType" }] },
+            rhs: "P",
+          },
+        } as never,
+      },
+    });
+  }
+
+  it("keeps all values when every field is enabled", () => {
+    const fields = pidFields();
+    expect(
+      enabledValues(fields, { controllerType: "PI", k: 2, Ti: 0.5 }),
+    ).toEqual({ controllerType: "PI", k: 2, Ti: 0.5 });
+  });
+
+  it("drops a disabled field's stale value from the submitted set", () => {
+    // User set Ti, then flipped controllerType to P (disabling Ti). The
+    // stale Ti must NOT be in the submitted values.
+    const fields = pidFields();
+    const submitted = enabledValues(fields, {
+      controllerType: "P",
+      k: 2,
+      Ti: 0.5,
+    });
+    expect(submitted).toEqual({ controllerType: "P", k: 2 });
+    expect("Ti" in submitted).toBe(false);
+  });
+
+  it("always keeps fields that have no enable condition", () => {
+    const fields = parameterFieldsFromSchema({
+      type: "object",
+      properties: { a: { type: "number" }, b: { type: "string" } },
+    });
+    expect(enabledValues(fields, { a: 1, b: "x" })).toEqual({ a: 1, b: "x" });
   });
 });
 

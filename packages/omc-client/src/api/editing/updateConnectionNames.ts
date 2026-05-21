@@ -27,9 +27,8 @@ import { z } from "zod";
 import type { CallContext } from "../../_shared/callContext.js";
 import { typeNameOfConnection } from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
-import { SuccessOutput } from "../../_shared/outputs.js";
-import { parseOutput } from "../../_shared/parseOutput.js";
-import { expectBool, parse } from "../../parse.js";
+import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
+import { parseMutationDiagnostic, parseOutput } from "../../_shared/parseOutput.js";
 
 export const UpdateConnectionNamesInputSchema = z.object({
   typeName: typeNameOfConnection,
@@ -50,7 +49,7 @@ export type UpdateConnectionNamesInput = z.input<
   typeof UpdateConnectionNamesInputSchema
 >;
 
-export const UpdateConnectionNamesOutputSchema = SuccessOutput;
+export const UpdateConnectionNamesOutputSchema = SuccessWithDiagnosticOutput;
 export type UpdateConnectionNamesOutput = z.infer<
   typeof UpdateConnectionNamesOutputSchema
 >;
@@ -67,7 +66,7 @@ export async function updateConnectionNames(
   );
   return parseOutput(
     UpdateConnectionNamesOutputSchema,
-    { success: expectBool(parse(raw)) },
+    parseMutationDiagnostic(raw),
     "updateConnectionNames",
   );
 }

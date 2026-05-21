@@ -20,6 +20,10 @@ export function renderShape(
   zOrder: number,
   zBias: number = 0,
 ): TemplateResult {
+  // Per-shape GraphicItem visibility (§18.6, issue #76 item 15): a
+  // `visible=false` graphic is dropped entirely. origin/rotation are applied
+  // inside each primitive via the shared OmShapePrimitive transform.
+  if (shape.visible === false) return html``;
   switch (shape.kind) {
     case "rectangle":
       return html`<om-rectangle

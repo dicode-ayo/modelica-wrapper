@@ -8,9 +8,8 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { typeNameOfConnection } from "../../_shared/fields.js";
-import { SuccessOutput } from "../../_shared/outputs.js";
-import { parseOutput } from "../../_shared/parseOutput.js";
-import { expectBool, parse } from "../../parse.js";
+import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
+import { parseMutationDiagnostic, parseOutput } from "../../_shared/parseOutput.js";
 
 export const DeleteConnectionInputSchema = z.object({
   from: z.string().describe("Left-hand-side connector reference of the connection to remove."),
@@ -19,7 +18,7 @@ export const DeleteConnectionInputSchema = z.object({
 });
 export type DeleteConnectionInput = z.input<typeof DeleteConnectionInputSchema>;
 
-export const DeleteConnectionOutputSchema = SuccessOutput;
+export const DeleteConnectionOutputSchema = SuccessWithDiagnosticOutput;
 export type DeleteConnectionOutput = z.infer<
   typeof DeleteConnectionOutputSchema
 >;
@@ -35,7 +34,7 @@ export async function deleteConnection(
   );
   return parseOutput(
     DeleteConnectionOutputSchema,
-    { success: expectBool(parse(raw)) },
+    parseMutationDiagnostic(raw),
     "deleteConnection",
   );
 }

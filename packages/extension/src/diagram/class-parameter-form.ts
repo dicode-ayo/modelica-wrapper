@@ -97,13 +97,18 @@ export function buildClassParameterForm(
   const refs: Record<string, ClassParameterRef> = {};
   const requiredSet = new Set<string>();
 
-  for (const klass of walkExtendsChain(instance)) {
+  for (const { klass, directBase } of walkExtendsChain(instance)) {
     // The host class is `instance` itself (last in the post-order walk).
     // Anything yielded earlier is an ancestor reached via `extends`, so
-    // its parameters are inherited and must be written back through the
-    // extends clause. `klass === instance` is identity-safe because the
-    // walker yields the same object references it traversed.
-    const inheritedFrom = klass === instance ? undefined : klass.name;
+    // its parameters are inherited and must be written back through a
+    // *direct* extends clause on the host. `directBase` is that direct
+    // base — NOT the deep declaring ancestor (issue #76, item 3):
+    // `setExtendsModifierValue(host, base, …)` requires `base` to be a
+    // direct `extends` clause on `host`, and OMC propagates the modifier
+    // down the base's own chain to wherever the parameter is declared.
+    // For C extends B extends A (param in A) this routes the write to
+    // `extends B(...)` on C, not the no-op `setExtendsModifierValue(C, A, …)`.
+    const inheritedFrom = klass === instance ? undefined : directBase;
     for (const el of klass.elements ?? []) {
       if (el.$kind !== "component") continue;
       if (el.prefixes?.variability !== "parameter") continue;
@@ -139,20 +144,48 @@ export function buildClassParameterForm(
 }
 
 /**
+ * One node of the host's flattened inheritance: the visited class plus the
+ * name of the host's *direct* `extends` clause its subtree descends from.
+ */
+interface WalkNode {
+  klass: ModelInstance;
+  /**
+   * Name of the host's direct `extends` base this `klass` was reached
+   * through, or `undefined` when `klass` is the host itself. For C extends
+   * B extends A, walking A yields `directBase === <B's name>` (the direct
+   * clause on C), NOT A — that's what `setExtendsModifierValue` needs to
+   * route a multi-level inherited write to a real direct clause.
+   */
+  directBase: string | undefined;
+}
+
+/**
  * Post-order walk over `mi` and its `extends` ancestors. Mirrors the
  * producer's `walkExtendsChain` (kept inline here to avoid pulling a
  * cross-package internal into the extension's public-facing surface).
  * Ancestors are yielded first, host last, matching Modelica flattening
  * order — callers can use last-write-wins to implement override
  * semantics.
+ *
+ * Each ancestor carries the `directBase` it descends from (the host's
+ * direct `extends` clause name) so a deep inherited parameter routes its
+ * write to that direct clause rather than the no-op deep declaring class
+ * (issue #76, item 3).
  */
-function* walkExtendsChain(mi: ModelInstance): Iterable<ModelInstance> {
+function* walkExtendsChain(
+  mi: ModelInstance,
+  directBase?: string,
+): Iterable<WalkNode> {
   for (const e of mi.elements ?? []) {
     if (e.$kind === "extends" && typeof e.baseClass === "object") {
-      yield* walkExtendsChain(e.baseClass);
+      // At the host (directBase undefined), the immediate base IS the
+      // direct clause and seeds the marker for the whole subtree beneath
+      // it; deeper levels keep propagating that same seed.
+      const seed = directBase ?? e.baseClass.name;
+      yield* walkExtendsChain(e.baseClass, seed);
     }
   }
-  yield mi;
+  yield { klass: mi, directBase };
 }
 
 interface BuiltField {

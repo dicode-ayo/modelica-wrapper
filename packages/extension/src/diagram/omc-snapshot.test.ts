@@ -70,7 +70,9 @@ describe("captureSnapshot", () => {
     const snap = await captureSnapshot(client, "Loaded.ViaString");
 
     expect(snap?.filename).toBe("<snapshot:Loaded.ViaString>");
-    expect(snap?.contents).toBe("model M\nend M;\n");
+    // Loaded.ViaString is package-nested, so the snapshot prefixes a
+    // `within Loaded;` clause (issue #76, item 2).
+    expect(snap?.contents).toBe("within Loaded;\nmodel M\nend M;\n");
   });
 
   it("returns undefined (non-fatal) when listFile yields empty source", async () => {
@@ -107,6 +109,63 @@ describe("captureSnapshot", () => {
     expect(snap?.filename).toBe("<snapshot:M>");
     expect(snap?.contents).toBe("model M\nend M;\n");
   });
+
+  it("leaves top-level class source untouched (no within clause)", async () => {
+    const { client } = mockClient({
+      listFile: "model Top\n  Real x;\nend Top;\n",
+    });
+    const snap = await captureSnapshot(client, "Top");
+    expect(snap?.contents).toBe("model Top\n  Real x;\nend Top;\n");
+  });
+
+  it("prefixes a `within` clause for a package-nested class (issue #76, item 2)", async () => {
+    // listFile(Pkg.Foo) returns only the bare `model Foo … end Foo;` body.
+    // Without the enclosing-scope clause, restoring it would re-create Foo at
+    // the top level instead of inside Pkg.
+    const { client } = mockClient({
+      listFile: "model Foo\n  Real y = 2;\nend Foo;\n",
+      sourceFile: "/ws/Pkg.mo",
+    });
+    const snap = await captureSnapshot(client, "Pkg.Foo");
+    expect(snap?.contents).toBe(
+      "within Pkg;\nmodel Foo\n  Real y = 2;\nend Foo;\n",
+    );
+  });
+
+  it("uses the full enclosing path for a deeply-nested class", async () => {
+    const { client } = mockClient({
+      listFile: "model Foo\nend Foo;\n",
+    });
+    const snap = await captureSnapshot(client, "A.B.C.Foo");
+    expect(snap?.contents).toBe("within A.B.C;\nmodel Foo\nend Foo;\n");
+  });
+
+  it("does not double a within clause OMC already emitted", async () => {
+    const { client } = mockClient({
+      listFile: "within Pkg;\nmodel Foo\nend Foo;\n",
+    });
+    const snap = await captureSnapshot(client, "Pkg.Foo");
+    expect(snap?.contents).toBe("within Pkg;\nmodel Foo\nend Foo;\n");
+  });
+});
+
+describe("captureSnapshot → restoreSnapshot round-trip for nested classes", () => {
+  it("restores a nested class with its within clause via merge:false", async () => {
+    const { client, loadString } = mockClient({
+      listFile: "model Foo\n  Real y = 2;\nend Foo;\n",
+      sourceFile: "/ws/Pkg.mo",
+    });
+    const snap = await captureSnapshot(client, "Pkg.Foo");
+    expect(snap).toBeDefined();
+
+    const ok = await restoreSnapshot(client, snap!);
+    expect(ok).toBe(true);
+    expect(loadString).toHaveBeenCalledWith({
+      data: "within Pkg;\nmodel Foo\n  Real y = 2;\nend Foo;\n",
+      filename: "/ws/Pkg.mo",
+      merge: false,
+    });
+  });
 });
 
 describe("restoreSnapshot", () => {
@@ -124,6 +183,7 @@ describe("restoreSnapshot", () => {
     expect(loadString).toHaveBeenCalledWith({
       data: "model M\n  Real x = 1;\nend M;\n",
       filename: "/ws/M.mo",
+      merge: false,
     });
   });
 
