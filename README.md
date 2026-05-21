@@ -94,6 +94,9 @@ The root file is the map; the detail lives under [`docs/`](docs):
 - **[OMC client internals](docs/omc-client.md)** — transport, subprocess
   spawning, the response parser, the expression evaluator, the typed API,
   Zod validation, and version pinning.
+- **[Parameter model — design](docs/parameter-model-design.md)** — planned
+  refactor: a pure `produceParameterModel` producer over `getModelInstance`,
+  shared by the parameter form and the diagram value-labels (pre-implementation).
 - **[MultiBody 3D preview — design](docs/multibody-preview-design.md)** —
   design note for the t=0 spatial preview (pre-implementation).
 
