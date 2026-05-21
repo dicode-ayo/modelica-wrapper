@@ -135,22 +135,22 @@ sequenceDiagram
     participant C as omc-client
     participant O as omc
 
-    DS->>H: libraryListChildren { requestId:"lib-7", parent }
+    DS->>H: libraryListChildren { requestId=lib-7, parent }
     H->>C: getClassNames({ typeName: parent, sort:true })
     C->>O: getClassNames(...)
     O-->>C: names
     loop per child
         H->>C: getClassRestriction (cached per session)
     end
-    H-->>DS: libraryChildren { requestId:"lib-7", items }
-    Note over DS: resolve the Promise mapped to "lib-7"
+    H-->>DS: libraryChildren { requestId=lib-7, items }
+    Note over DS: resolve the Promise mapped to lib-7
 
-    DS->>H: libraryIcon { requestId:"lib-9", className }
+    DS->>H: libraryIcon { requestId=lib-9, className }
     H->>C: getModelInstanceAnnotation({ typeName, filter:[Icon,…] })
     C->>O: getModelInstanceAnnotation(...)
     O-->>C: icon annotation only (cheap)
     H->>H: produceDiagramLayout → diagram-svg → SVG string
-    H-->>DS: libraryIconResult { requestId:"lib-9", svg }
+    H-->>DS: libraryIconResult { requestId=lib-9, svg }
 ```
 
 Icons are fetched **lazily, per visible row** via `libraryIcon`, so enumerating a
@@ -165,9 +165,9 @@ sequenceDiagram
     participant H as Extension host
     participant W as Webview
 
-    H->>H: createWebviewPanel("modelicaDiagram"), render CSP HTML
+    H->>H: createWebviewPanel(modelicaDiagram), render CSP HTML
     Note over H: layout ready but parked as pendingInit
-    W->>W: load out/webview.js, define &lt;om-webview-root&gt;
+    W->>W: load out/webview.js, define om-webview-root element
     W->>H: ready
     H->>W: init { layout, className }
     W->>W: render

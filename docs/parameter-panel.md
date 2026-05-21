@@ -64,15 +64,15 @@ sequenceDiagram
     C-->>H: validated instance
     H->>H: findSubComponent(instance, componentName)
     H->>H: buildComponentParameterForm(component)
-    Note over H: walk the component type's extends chain,<br/>collect variability=="parameter" elements,<br/>read Dialog group/tab/enable annotations,<br/>prefer per-instance modifiers over type defaults
+    Note over H: walk the component type's extends chain,<br/>collect variability == parameter elements,<br/>read Dialog group/tab/enable annotations,<br/>prefer per-instance modifiers over type defaults
     H->>C: enrichFormUnitOptions(schema)
     loop each unit-bearing field
         C->>O: getDerivedUnits(baseUnit)
         O-->>C: derived units + scale/offset
     end
     C-->>H: schema with unit dropdown options
-    H->>W: parametersOpen { kind:"componentParams", schema,<br/>values, title, crefPrefix: componentName }
-    W->>W: render &lt;om-parameter-form&gt;
+    H->>W: parametersOpen { kind=componentParams, schema,<br/>values, title, crefPrefix: componentName }
+    W->>W: render the parameter form
 ```
 
 What each step contributes:
@@ -122,7 +122,7 @@ groups. The footer has **Reset to defaults** (left, component panels only),
 The conversion is affine and pre-computed, so changing the unit dropdown
 re-displays the value instantly:
 
-```
+```text
 displayValue = (sourceValue - offset) / scaleFactor
 ```
 
@@ -153,11 +153,11 @@ sequenceDiagram
     participant C as omc-client
     participant O as omc
 
-    Note over W: user edits rows; on focus-out the form<br/>commits values + recomputes enable-gating
-    W->>H: parametersSubmit { kind:"componentParams", values }
+    Note over W: user edits rows, on focus-out the form<br/>commits values + recomputes enable-gating
+    W->>H: parametersSubmit { kind=componentParams, values }
     H->>H: componentParameterEditPlan(refs, initial, submitted)<br/>→ only dirty, enabled fields
     loop each dirty field
-        H->>H: elementName = "&lt;componentName&gt;.&lt;param&gt;"
+        H->>H: elementName = componentName.param
         H->>H: expr = classParameterValueToExpr(ref, value)
         H->>C: getErrorString()  (drain stale diagnostics)
         H->>C: setElementModifierValue({ typeName: hostClass,<br/>elementName, expr })
@@ -243,8 +243,8 @@ sequenceDiagram
     H->>C: getSimulationOptions({ typeName })
     C->>O: getSimulationOptions(Class)
     O-->>C: startTime, stopTime, intervals, tolerance, …
-    H->>W: parametersOpen { kind:"simulate", schema,<br/>values, submitLabel:"Run" }
-    W->>H: parametersSubmit { kind:"simulate", values }
+    H->>W: parametersOpen { kind=simulate, schema,<br/>values, submitLabel=Run }
+    W->>H: parametersSubmit { kind=simulate, values }
     H->>C: simulate(Class, startTime, stopTime, …)
     C->>O: simulate(...)  (heavy — compile + integrate)
     O-->>C: result file + diagnostics
@@ -281,7 +281,7 @@ sequenceDiagram
     H->>H: produceDiagramLayout → post layout
     H->>H: findSubComponent + buildComponentParameterForm (defaults)
     H->>C: enrichFormUnitOptions (getDerivedUnits per field)
-    H->>W: parametersOpen { kind:"componentParams", … } (refreshed)
+    H->>W: parametersOpen { kind=componentParams, … } (refreshed)
 ```
 
 `removeElementModifiers` with **`keepRedeclares: true`**

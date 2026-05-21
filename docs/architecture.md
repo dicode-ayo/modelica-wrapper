@@ -134,7 +134,7 @@ sequenceDiagram
     C->>O: (resolve parameter values)
     O-->>C: name → value map
     C-->>H: resolvedParameters
-    H->>C: produceDiagramLayout(instance, "diagram", resolvedParameters)
+    H->>C: produceDiagramLayout(instance, diagram, resolvedParameters)
     Note over C: pure — no OMC contact
     C-->>H: DiagramLayout
     H->>C: convertUnits(...) per labeled value
@@ -175,7 +175,7 @@ sequenceDiagram
     alt any edit failed
         H->>C: loadString(snapshot, merge=false)
         C->>O: loadString
-        Note over H: full rollback; discard snapshot
+        Note over H: full rollback, discard snapshot
     end
     H->>C: re-fetch layout (read flow above)
     H->>W: postMessage(layout)
