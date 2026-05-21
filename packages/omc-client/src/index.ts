@@ -150,6 +150,30 @@ export {
   type DiagramLayout,
 } from "./_shared/index.js";
 
+// --- ParameterModel (parameter-form producer output) ---
+export {
+  produceParameterModel,
+  collectBaseUnits,
+  DEFAULT_DIALOG_TAB,
+  DEFAULT_DIALOG_GROUP,
+  produceSimulationModel,
+  SIMULATION_GROUP,
+  SIMULATION_TAB,
+  SOLVER_METHODS,
+  DEFAULT_SOLVER_METHOD,
+  OUTPUT_FORMATS,
+  DEFAULT_OUTPUT_FORMAT,
+  type ProduceParameterModelOptions,
+  type ProduceSimulationModelOptions,
+  type SolverMethod,
+  type OutputFormat,
+  type ParameterModel,
+  type ParameterField,
+  type ParameterFieldKind,
+  type UnitOption,
+  type UnitTable,
+} from "./api/parameters-form/index.js";
+
 // --- Lower-level transport / process / parser (advanced use) ---
 export type { OmcCommand, OmcFunction } from "./commands.js";
 export { OmcTransport } from "./transport.js";
@@ -178,6 +202,7 @@ export {
 export * as browsing from "./api/browsing/index.js";
 export * as contents from "./api/contents/index.js";
 export * as diagram from "./api/diagram/index.js";
+export * as parametersForm from "./api/parameters-form/index.js";
 export * as editing from "./api/editing/index.js";
 export * as elements from "./api/elements/index.js";
 export * as execution from "./api/execution/index.js";
