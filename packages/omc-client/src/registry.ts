@@ -179,8 +179,6 @@ export const REGISTRY = {
   loadModel: entry("lifecycle", lifecycle.loadModel, lifecycle.LoadModelInputSchema, lifecycle.LoadModelOutputSchema, lifecycle.LoadModelDescription),
   parseFile: entry("lifecycle", lifecycle.parseFile, lifecycle.ParseFileInputSchema, lifecycle.ParseFileOutputSchema, lifecycle.ParseFileDescription),
   parseString: entry("lifecycle", lifecycle.parseString, lifecycle.ParseStringInputSchema, lifecycle.ParseStringOutputSchema, lifecycle.ParseStringDescription),
-  createClass: entry("lifecycle", lifecycle.createClass, lifecycle.CreateClassInputSchema, lifecycle.CreateClassOutputSchema, lifecycle.CreateClassDescription),
-  createSubClass: entry("lifecycle", lifecycle.createSubClass, lifecycle.CreateSubClassInputSchema, lifecycle.CreateSubClassOutputSchema, lifecycle.CreateSubClassDescription),
   newModel: entry("lifecycle", lifecycle.newModel, lifecycle.NewModelInputSchema, lifecycle.NewModelOutputSchema, lifecycle.NewModelDescription),
   renameClass: entry("lifecycle", lifecycle.renameClass, lifecycle.RenameClassInputSchema, lifecycle.RenameClassOutputSchema, lifecycle.RenameClassDescription),
   deleteClass: entry("lifecycle", lifecycle.deleteClass, lifecycle.DeleteClassInputSchema, lifecycle.DeleteClassOutputSchema, lifecycle.DeleteClassDescription),
@@ -264,11 +262,6 @@ export const REGISTRY = {
   renameComponentInClass: entry("editing", editing.renameComponentInClass, editing.RenameComponentInClassInputSchema, editing.RenameComponentInClassOutputSchema, editing.RenameComponentInClassDescription),
 
   // --- Solver / runtime config ---
-  getSolverMethods: entry("solver", solver.getSolverMethods, solver.GetSolverMethodsInputSchema, solver.GetSolverMethodsOutputSchema, solver.GetSolverMethodsDescription),
-  getJacobianMethods: entry("solver", solver.getJacobianMethods, solver.GetJacobianMethodsInputSchema, solver.GetJacobianMethodsOutputSchema, solver.GetJacobianMethodsDescription),
-  getInitializationMethods: entry("solver", solver.getInitializationMethods, solver.GetInitializationMethodsInputSchema, solver.GetInitializationMethodsOutputSchema, solver.GetInitializationMethodsDescription),
-  getLinearSolvers: entry("solver", solver.getLinearSolvers, solver.GetLinearSolversInputSchema, solver.GetLinearSolversOutputSchema, solver.GetLinearSolversDescription),
-  getNonLinearSolvers: entry("solver", solver.getNonLinearSolvers, solver.GetNonLinearSolversInputSchema, solver.GetNonLinearSolversOutputSchema, solver.GetNonLinearSolversDescription),
   setMatchingAlgorithm: entry("solver", solver.setMatchingAlgorithm, solver.SetMatchingAlgorithmInputSchema, solver.SetMatchingAlgorithmOutputSchema, solver.SetMatchingAlgorithmDescription),
   setIndexReductionMethod: entry("solver", solver.setIndexReductionMethod, solver.SetIndexReductionMethodInputSchema, solver.SetIndexReductionMethodOutputSchema, solver.SetIndexReductionMethodDescription),
   setCommandLineOptions: entry("solver", solver.setCommandLineOptions, solver.SetCommandLineOptionsInputSchema, solver.SetCommandLineOptionsOutputSchema, solver.SetCommandLineOptionsDescription),
@@ -296,7 +289,6 @@ export const REGISTRY = {
   readSimulationResult: entry("results", results.readSimulationResult, results.ReadSimulationResultInputSchema, results.ReadSimulationResultOutputSchema, results.ReadSimulationResultDescription),
   val: entry("results", results.val, results.ValInputSchema, results.ValOutputSchema, results.ValDescription),
   filterSimulationResults: entry("results", results.filterSimulationResults, results.FilterSimulationResultsInputSchema, results.FilterSimulationResultsOutputSchema, results.FilterSimulationResultsDescription),
-  compareSimulationResults: entry("results", results.compareSimulationResults, results.CompareSimulationResultsInputSchema, results.CompareSimulationResultsOutputSchema, results.CompareSimulationResultsDescription),
   deltaSimulationResults: entry("results", results.deltaSimulationResults, results.DeltaSimulationResultsInputSchema, results.DeltaSimulationResultsOutputSchema, results.DeltaSimulationResultsDescription),
   diffSimulationResults: entry("results", results.diffSimulationResults, results.DiffSimulationResultsInputSchema, results.DiffSimulationResultsOutputSchema, results.DiffSimulationResultsDescription),
 } as const;

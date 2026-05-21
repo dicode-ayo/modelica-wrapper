@@ -786,18 +786,6 @@ export class OmcClient implements CallContext {
     return lifecycle.parseString(this, input);
   }
 
-  createClass(
-    input: lifecycle.CreateClassInput,
-  ): Promise<lifecycle.CreateClassOutput> {
-    return lifecycle.createClass(this, input);
-  }
-
-  createSubClass(
-    input: lifecycle.CreateSubClassInput,
-  ): Promise<lifecycle.CreateSubClassOutput> {
-    return lifecycle.createSubClass(this, input);
-  }
-
   newModel(input: lifecycle.NewModelInput): Promise<lifecycle.NewModelOutput> {
     return lifecycle.newModel(this, input);
   }
@@ -1112,36 +1100,6 @@ export class OmcClient implements CallContext {
 
   // === Solver / runtime config =========================================
 
-  getSolverMethods(
-    input: solver.GetSolverMethodsInput = {},
-  ): Promise<solver.GetSolverMethodsOutput> {
-    return solver.getSolverMethods(this, input);
-  }
-
-  getJacobianMethods(
-    input: solver.GetJacobianMethodsInput = {},
-  ): Promise<solver.GetJacobianMethodsOutput> {
-    return solver.getJacobianMethods(this, input);
-  }
-
-  getInitializationMethods(
-    input: solver.GetInitializationMethodsInput = {},
-  ): Promise<solver.GetInitializationMethodsOutput> {
-    return solver.getInitializationMethods(this, input);
-  }
-
-  getLinearSolvers(
-    input: solver.GetLinearSolversInput = {},
-  ): Promise<solver.GetLinearSolversOutput> {
-    return solver.getLinearSolvers(this, input);
-  }
-
-  getNonLinearSolvers(
-    input: solver.GetNonLinearSolversInput = {},
-  ): Promise<solver.GetNonLinearSolversOutput> {
-    return solver.getNonLinearSolvers(this, input);
-  }
-
   setMatchingAlgorithm(
     input: solver.SetMatchingAlgorithmInput,
   ): Promise<solver.SetMatchingAlgorithmOutput> {
@@ -1408,12 +1366,6 @@ export class OmcClient implements CallContext {
     input: results.FilterSimulationResultsInput,
   ): Promise<results.FilterSimulationResultsOutput> {
     return results.filterSimulationResults(this, input);
-  }
-
-  compareSimulationResults(
-    input: results.CompareSimulationResultsInput,
-  ): Promise<results.CompareSimulationResultsOutput> {
-    return results.compareSimulationResults(this, input);
   }
 
   deltaSimulationResults(

@@ -99,21 +99,12 @@ interface Probe {
  * is encouraged when the docs and OMC source disagree.
  */
 const probes: Probe[] = [
-  // ----- Lifecycle (createClass, createSubClass, moveClass*) -----
-  {
-    label: "createClass(bare)",
-    wrapper: "lifecycle/createClass.ts",
-    note: "Undocumented in 1.26 public scripting API. Migration on 1.26.x: loadString.",
-    cmd: 'createClass(MwProbeCreate, "model", false, false)' as OmcCommand,
-  },
-  {
-    label: "createSubClass(bare)",
-    wrapper: "lifecycle/createSubClass.ts",
-    note: "Same status as createClass.",
-    cmd: 'createSubClass(MwProbeSub, MwProbeCreate, "model", false, false)' as OmcCommand,
-  },
+  // ----- Lifecycle (moveClass*) -----
+  // Note: the class-create wrappers were removed (genuinely absent on
+  // OMC 1.26.x — docs 404 + `✗ not found in scope`); newModel replaces them.
+  // See docs/coverage.md "Removed wrappers" section.
 
-  // ----- Lifecycle: newModel — the documented replacement for create*/createSubClass -----
+  // ----- Lifecycle: newModel — the documented replacement for the removed class-create wrappers -----
   {
     label: "newModel(className, withinPath) — nested into a loaded package",
     wrapper: "lifecycle/newModel.ts",

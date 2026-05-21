@@ -307,13 +307,6 @@ describeIf("OmcClient against real OMC", () => {
     }
   });
 
-  // === Solver / runtime config ===
-
-  it("solver method getters tolerate empty responses", async () => {
-    const { solverMethods } = await client.getSolverMethods();
-    expect(Array.isArray(solverMethods)).toBe(true);
-  });
-
   // === Execution ===
 
   it("getSimulationOptions returns the experiment defaults", async () => {
@@ -365,17 +358,6 @@ describeIf("OmcClient against real OMC", () => {
       typeName: "Modelica.Blocks.Math.Sin",
     });
     expect(transitions).toEqual([]);
-  });
-
-  it("solver list-getters all return arrays (possibly empty on OMC 1.26)", async () => {
-    const { jacobianMethods } = await client.getJacobianMethods();
-    const { initializationMethods } = await client.getInitializationMethods();
-    const { linearSolvers } = await client.getLinearSolvers();
-    const { nonLinearSolvers } = await client.getNonLinearSolvers();
-    expect(Array.isArray(jacobianMethods)).toBe(true);
-    expect(Array.isArray(initializationMethods)).toBe(true);
-    expect(Array.isArray(linearSolvers)).toBe(true);
-    expect(Array.isArray(nonLinearSolvers)).toBe(true);
   });
 
   it("solver setters return success", async () => {

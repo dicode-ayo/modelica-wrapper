@@ -121,8 +121,6 @@ export type OmcFunction =
   | "loadModel"
   | "parseFile"
   | "parseString"
-  | "createClass"
-  | "createSubClass"
   | "newModel"
   | "renameClass"
   | "deleteClass"
@@ -206,11 +204,6 @@ export type OmcFunction =
   | "renameComponentInClass"
 
   // --- Solver / runtime config ---
-  | "getSolverMethods"
-  | "getJacobianMethods"
-  | "getInitializationMethods"
-  | "getLinearSolvers"
-  | "getNonLinearSolvers"
   | "setMatchingAlgorithm"
   | "setIndexReductionMethod"
   | "setCommandLineOptions"
@@ -238,7 +231,6 @@ export type OmcFunction =
   | "readSimulationResult"
   | "val"
   | "filterSimulationResults"
-  | "compareSimulationResults"
   | "deltaSimulationResults"
   | "diffSimulationResults";
 

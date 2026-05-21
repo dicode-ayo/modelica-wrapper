@@ -10,9 +10,11 @@
  * Tests excluded from this file (wrappers exist but are NOT verified against
  * the pinned OMC version 1.26.1 — see docs/coverage.md for rationale):
  *
- *   createClass, createSubClass    — undocumented in public scripting API; OMC
- *                                     1.26.x returns "Class X not found". Use
- *                                     `newModel` instead (verified below).
+ *   class-create wrappers          — the undocumented create-class scripting
+ *                                     calls were removed (genuinely absent on
+ *                                     OMC 1.26.x — "Class X not found"). Use
+ *                                     `newModel` instead (verified below); see
+ *                                     coverage.md "Removed wrappers".
  *   copyClass                      — documented but OMC 1.26.1 reports the
  *                                     same "not found" symptom; may have
  *                                     moved to an internal namespace.
@@ -303,8 +305,8 @@ end ${pkg};
 
     it("newModel creates an empty model inside an existing package and it reads back", async () => {
       // newModel(className, withinPath) is the documented replacement on
-      // OMC 1.26.x for the absent createClass/createSubClass. It always
-      // creates a `model` nested inside an already-loaded package; there is
+      // OMC 1.26.x for the absent (now-removed) create-class wrappers. It
+      // always creates a `model` nested inside an already-loaded package; there is
       // no top-level form (an empty withinPath is rejected by OMC's parser),
       // so the package must exist first. See coverage.md Lifecycle.
       const { randomBytes } = await import("node:crypto");

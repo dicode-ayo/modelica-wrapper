@@ -2,11 +2,11 @@
 
 Tracks which functions in [`src/registry.ts`](../src/registry.ts) are exercised by integration tests against a real OMC, plus the reasons each uncovered function isn't yet tested.
 
-**Pinned OMC version:** `1.26.7` (see [`../src/version.ts`](../src/version.ts)). On 2026-05-19 a deep re-probe of the previously-⛔ wrappers revealed that 4 of them (`removeComponentModifiers`, `updateConnection`, `moveClass`, plus the newly-added `getReplaceableChoices`) were wrapper-side bugs — wrong argument shape masked by OMC's misleading "Class X not found in scope" diagnostic. See [audit.md §2.10](./audit.md) for the gotcha. After fixing the call shapes, those wrappers + state-machine mutators are now ✅ on 1.26.7. On 2026-05-20 (#35) `newModel` was found documented + working on 1.26.7 and is now wrapped (✅) as the migration path off `createClass`/`createSubClass`, which remain genuinely ⛔ (docs 404 + `✗ not found in scope`); `save` is also still ⛔ but on *usefulness* grounds (deprecated; persists nothing for backing-file-less classes) — not symbol-missing, and now has a drift-probe counter-example. On 2026-05-20 (#38) the last 🟡 in `elements/` — `setElementAnnotation` — flipped to ✅ after the payload shape was realigned to OMEdit's canonical `$Code((<expr>))` form (the leading-`=` `$Code(=<expr>)` shape that previously shipped is silently destructive on 1.26.7). Earlier same week: added 4 results wrappers (filter / compare / delta / diff) and a heavy integration test exercising every results wrapper against a real `.mat` file.
+**Pinned OMC version:** `1.26.7` (see [`../src/version.ts`](../src/version.ts)). On 2026-05-19 a deep re-probe of the previously-⛔ wrappers revealed that 4 of them (`removeComponentModifiers`, `updateConnection`, `moveClass`, plus the newly-added `getReplaceableChoices`) were wrapper-side bugs — wrong argument shape masked by OMC's misleading "Class X not found in scope" diagnostic. See [audit.md §2.10](./audit.md) for the gotcha. After fixing the call shapes, those wrappers + state-machine mutators are now ✅ on 1.26.7. On 2026-05-20 (#35) `newModel` was found documented + working on 1.26.7 and is now wrapped (✅) as the migration path off the old `createClass`/`createSubClass` wrappers, which were genuinely ⛔ (docs 404 + `✗ not found in scope`) and have since been **removed** (2026-05-21, #80 — see the "Removed wrappers" section); `save` is now the only remaining ⛔ but on *usefulness* grounds (deprecated; persists nothing for backing-file-less classes) — not symbol-missing, and has a drift-probe counter-example. On 2026-05-20 (#38) the last 🟡 in `elements/` — `setElementAnnotation` — flipped to ✅ after the payload shape was realigned to OMEdit's canonical `$Code((<expr>))` form (the leading-`=` `$Code(=<expr>)` shape that previously shipped is silently destructive on 1.26.7). Earlier same week: added results wrappers (filter / delta / diff — `compareSimulationResults` was also added then but later removed as deprecated, see "Removed wrappers") and a heavy integration test exercising every results wrapper against a real `.mat` file.
 
 **Last updated:** 2026-05-20 (#63/#64/#65: wrapped 4 OMEdit utilities — `getDerivedUnits`, `uriToFilename`, `qualifyPath`, `loadClassContentString` — all verified live on 1.26.7).
 
-**Current coverage:** **207 wrappers in package; 195 ✅ verified end-to-end, 9 🟡 cheap unverified, 3 ⛔ broken on pin (94% verified).** 2026-05-20: omc-coverage epic (#31) added import readers (#43), solver getter siblings (#41), 9 class-shape `is*` predicates (#33), browsing extras (#42), editing siblings (#37), 3 library version-conversion wrappers (#40), 21 indexed/count contents readers (#34), `newModel` (#35), verified the two inherited-class map annotation readers (#39), brought Parameters to 16/16 (#36), and rescued `setElementAnnotation` (#38: `$Code((expr))` payload). The OMEdit call-surface cross-reference then added 4 utilities (#63/#64/#65): `getDerivedUnits`, `uriToFilename`, `qualifyPath` (contents) + `loadClassContentString` (lifecycle), all verified live. The 9 library/package-manager calls are exercised opt-in behind `OMC_INTEGRATION_NETWORK=1`. Counts reconciled at merge time. A 2026-05-20 audit also identified ~40 documented OMC scripting functions in scope that are not yet wrapped — see the [100% coverage epic](https://github.com/dicode-ayo/modelica-wrapper/issues?q=is%3Aissue+label%3Aepic+label%3Aomc-coverage) for the plan to close that gap.
+**Current coverage:** **199 wrappers in package; 189 ✅ verified end-to-end, 9 🟡 cheap unverified, 1 ⛔ broken on pin (95% verified).** 2026-05-20: omc-coverage epic (#31) added import readers (#43), solver getter siblings (#41), 9 class-shape `is*` predicates (#33), browsing extras (#42), editing siblings (#37), 3 library version-conversion wrappers (#40), 21 indexed/count contents readers (#34), `newModel` (#35), verified the two inherited-class map annotation readers (#39), brought Parameters to 16/16 (#36), and rescued `setElementAnnotation` (#38: `$Code((expr))` payload). The OMEdit call-surface cross-reference then added 4 utilities (#63/#64/#65): `getDerivedUnits`, `uriToFilename`, `qualifyPath` (contents) + `loadClassContentString` (lifecycle), all verified live. The 9 library/package-manager calls are exercised opt-in behind `OMC_INTEGRATION_NETWORK=1`. Counts reconciled at merge time. A 2026-05-20 audit also identified ~40 documented OMC scripting functions in scope that are not yet wrapped — see the [100% coverage epic](https://github.com/dicode-ayo/modelica-wrapper/issues?q=is%3Aissue+label%3Aepic+label%3Aomc-coverage) for the plan to close that gap.
 
 > Run `pnpm --filter @modelica-wrapper/omc-client test` to exercise the integration suite. It auto-skips when `omc` isn't on PATH.
 
@@ -14,7 +14,7 @@ Tracks which functions in [`src/registry.ts`](../src/registry.ts) are exercised 
 
 > **Prioritizing what to wrap next**: API discovery (the docs sweep) finds every function but ranks them flat — it can't tell load-bearing utilities from miscellany. Cross-reference OMEdit's actual call surface to get the priority. The method is documented in [`audit.md` §1.1](./audit.md); the live gap list lives under the [OMEdit-alignment epic #21](https://github.com/dicode-ayo/modelica-wrapper/issues/21). (This is how `convertUnits`/`getDerivedUnits` were caught after an earlier sweep shelved them as "misc".)
 
-> **Drift probe**: every ⛔ row below has a ground-truth probe in [`../test/drift-probe.integration.test.ts`](../test/drift-probe.integration.test.ts) — `createClass`, `createSubClass`, and `save` are each covered. Run it manually whenever you suspect ⛔ status has changed: `OMC_DRIFT_PROBE=1 pnpm --filter @modelica-wrapper/omc-client vitest run test/drift-probe.integration.test.ts --reporter=verbose`. The `omc-update-audit` CI workflow runs it automatically on Renovate-bumped PRs and pastes the verdicts into the PR comment. ✗→✓ transitions in the probe output are the signal to un-deprecate a wrapper and add a real test.
+> **Drift probe**: every ⛔ row below has a ground-truth probe in [`../test/drift-probe.integration.test.ts`](../test/drift-probe.integration.test.ts) — `save` is covered (the former `createClass`/`createSubClass` probes were dropped along with those removed wrappers; `newModel` is probed as their replacement). Run it manually whenever you suspect ⛔ status has changed: `OMC_DRIFT_PROBE=1 pnpm --filter @modelica-wrapper/omc-client vitest run test/drift-probe.integration.test.ts --reporter=verbose`. The `omc-update-audit` CI workflow runs it automatically on Renovate-bumped PRs and pastes the verdicts into the PR comment. ✗→✓ transitions in the probe output are the signal to un-deprecate a wrapper and add a real test.
 
 > **Recount drift**: the per-category section headers (`## Browsing — 28/28` …) and the Summary-by-category table below should always agree with the filesystem. The `pnpm --filter @modelica-wrapper/omc-client coverage:recount` script (also wired into the `lint-and-unit` CI job) diffs both against `src/api/<category>/*.ts` and exits non-zero on drift — so any wrapper added or removed without a coverage.md refresh shows up immediately. Coverage status counts (✅ / 🟡 / ⛔ / 🐢) are human-curated and not checked by the script.
 
@@ -163,7 +163,7 @@ These mirror the existing `is*` predicates but span **three** argument/output sh
 | `uriToFilename` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.uriToFilename.html) — `uriToFilename(String uri) -> String filename`. Resolves `modelica://`/`file://` resource URIs to absolute paths for icon/bitmap render. Verified live on 1.26.7: `uriToFilename("modelica://Modelica/package.mo")` → real path; unresolvable URI → `""`. String arg quoted (audit §2.10). Issue #64. |
 | `qualifyPath` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.qualifyPath.html) — `qualifyPath(TypeName classPath, TypeName path) -> TypeName qualifiedPath`. Both TypeName args emitted bare (audit §2.6); `classPath` mapped to `typeName`, secondary `path` keeps the OMC name. Verified live on 1.26.7: `qualifyPath(Modelica.Electrical.Analog.Basic, Resistor)` → `Modelica.Electrical.Analog.Basic.Resistor`. Issue #65. |
 
-## Lifecycle — 17/20
+## Lifecycle — 17/18
 
 | Function | Status | Docs | Notes |
 |---|---|---|---|
@@ -172,9 +172,7 @@ These mirror the existing `is*` predicates but span **three** argument/output sh
 | `loadModel` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.loadModel.html) | |
 | `parseFile` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.parseFile.html) | |
 | `parseString` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.parseString.html) | Used by extension's live-check pipeline — parses source text without polluting the symbol table. |
-| `createClass` | ⛔ | 404 | **Confirmed still missing on OMC 1.26.7** (drift probe 2026-05-20: `✗ Class createClass not found in scope <global scope>`; identical to 1.26.1). Wrapper `@deprecated` JSDoc now points to `newModel` (nested `model` creation) with `loadString` as the top-level / non-`model` fallback. |
-| `createSubClass` | ⛔ | 404 | **Confirmed still missing on OMC 1.26.7** (drift probe 2026-05-20: `✗ missing`). This is exactly what `newModel` does — `@deprecated` JSDoc redirects there, with `loadString` as the non-`model` fallback. |
-| `newModel` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.newModel.html) | **Added 2026-05-20 (#35).** `newModel(TypeName className, TypeName withinPath) -> Boolean success` — the documented, working replacement on 1.26.7 for the absent `createClass`/`createSubClass`. Creates an empty `model` **inside an existing package** (`withinPath`). **No top-level form**: the empty-`withinPath` shape `newModel(X, )` is rejected by OMC's interactive parser (`Unexpected token near: newModel`), so `withinPath` is a required input — use `loadString` for a true top-level class or a non-`model` restriction. Round-trip verified in [`../test/mutations.integration.test.ts`](../test/mutations.integration.test.ts) (create into a fresh `loadString` package → `existClass` + `getClassNames` + `isModel`). |
+| `newModel` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.newModel.html) | **Added 2026-05-20 (#35).** `newModel(TypeName className, TypeName withinPath) -> Boolean success` — the documented, working replacement on 1.26.7 for the absent (now-removed) class-create scripting calls. Creates an empty `model` **inside an existing package** (`withinPath`). **No top-level form**: the empty-`withinPath` shape `newModel(X, )` is rejected by OMC's interactive parser (`Unexpected token near: newModel`), so `withinPath` is a required input — use `loadString` for a true top-level class or a non-`model` restriction. Round-trip verified in [`../test/mutations.integration.test.ts`](../test/mutations.integration.test.ts) (create into a fresh `loadString` package → `existClass` + `getClassNames` + `isModel`). |
 | `renameClass` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.renameClass.html) | Output schema fixed to `{ result: string[] }` per OMC docs. |
 | `deleteClass` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.deleteClass.html) | OMC 1.26 returns null on success; wrapper handles via `parseMutationSuccess`. |
 | `copyClass` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.copyClass.html) | **Wrapper bug fixed**: destination is a `String` per docs (now quoted), not a TypeName. Output renamed `success` → `result` to match docs. |
@@ -184,7 +182,7 @@ These mirror the existing `is*` predicates but span **three** argument/output sh
 | `getSourceFile` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getSourceFile.html) | |
 | `setSourceFile` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setSourceFile.html) | |
 | `diffModelicaFileListings` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.diffModelicaFileListings.html) | |
-| `save` | ⛔ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.save.html) | OMEdit-deprecated; we use Option B persistence. Wrapper kept for completeness only. **Note: ⛔ here means "unreliable / deprecated", NOT symbol-missing.** Drift probe 2026-05-20 (now with a counter-example entry): the symbol resolves and returns `true`, but for a `loadString`-defined class with no associated source file it persists **nothing** (no file written) — which is precisely why production paths avoid it. Contrast with `createClass`/`createSubClass`, whose ⛔ is genuine `✗ not found in scope`. |
+| `save` | ⛔ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.save.html) | OMEdit-deprecated; we use Option B persistence. Wrapper kept for completeness only. **Note: ⛔ here means "unreliable / deprecated", NOT symbol-missing.** Drift probe 2026-05-20 (now with a counter-example entry): the symbol resolves and returns `true`, but for a `loadString`-defined class with no associated source file it persists **nothing** (no file written) — which is precisely why production paths avoid it. (Contrast with the former class-create wrappers, whose ⛔ was a genuine `✗ not found in scope` — they have since been removed, see "Removed wrappers".) |
 | `cd` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.cd.html) | Get/set OMC's working directory. Empty input acts as a getter. Used by the REPL's `:cd` meta-command. |
 | `loadClassContentString` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.loadClassContentString.html) | `loadClassContentString(String data, TypeName className, Integer offsetX=0, Integer offsetY=0) -> Boolean success`. Inserts string content into a loaded class (the OMC call behind diagram paste/duplicate); `data` quoted, `className` bare, offsets positional (audit §2.6/§2.10). Verified live on 1.26.7: inserting `"Real y;"` into a `loadString` model adds the element + returns `true`; a `(50,50)` offset rewrites the inserted Placement to `origin = {50, 50}`. Issue #65. |
 
@@ -284,15 +282,10 @@ kept as 🟡 (not promoted to ✅) because it's never run in the default
 verification path; promotion requires either flipping the gate on in CI
 or moving to a mocked-index fixture server.
 
-## Solver / runtime config — 13/13 ✅
+## Solver / runtime config — 8/8 ✅
 
 | Function | Status | Docs |
 |---|---|---|
-| `getSolverMethods` | ✅ | 404 (undocumented; returns empty on 1.26) |
-| `getJacobianMethods` | ✅ | 404 |
-| `getInitializationMethods` | ✅ | 404 |
-| `getLinearSolvers` | ✅ | 404 |
-| `getNonLinearSolvers` | ✅ | 404 |
 | `setMatchingAlgorithm` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setMatchingAlgorithm.html) |
 | `setIndexReductionMethod` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setIndexReductionMethod.html) |
 | `setCommandLineOptions` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.setCommandLineOptions.html) |
@@ -316,7 +309,7 @@ or moving to a mocked-index fixture server.
 | `getSimulationOptions` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getSimulationOptions.html) | |
 | `isExperiment` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isExperiment.html) | |
 
-## Results — 9/9 ✅
+## Results — 8/8 ✅
 
 All wrappers in this category are exercised end-to-end by
 [`../test/results-heavy.integration.test.ts`](../test/results-heavy.integration.test.ts),
@@ -333,7 +326,6 @@ produced `.mat` file before cleaning up).
 | `readSimulationResult` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.readSimulationResult.html) | Verified — endpoints of the ramp match `x(t) = t`. |
 | `val` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.val.html) | Verified at t = 0, 0.5, 1 on the ramp. |
 | `filterSimulationResults` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.filterSimulationResults.html) | Added 2026-05-19. Writes a smaller `.mat` retaining only requested vars; tested for both straight pass-through and resampling-to-N-intervals. |
-| `compareSimulationResults` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.compareSimulationResults.html) | Added 2026-05-19. OMC marks the function itself as deprecated (prefer `diffSimulationResults`); wrapper exposes it for regression-suite consumers. |
 | `deltaSimulationResults` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.deltaSimulationResults.html) | Added 2026-05-19. Aggregates error under 1norm/2norm/maxerr. |
 | `diffSimulationResults` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.diffSimulationResults.html) | Added 2026-05-19. Returns `(success, failVars[])` tuple — wrapper unpacks both fields. |
 
@@ -342,8 +334,35 @@ bare empty literal `{}` for a `String[:]` argument — it triggers the same
 "Class X not found in scope" misleading-diagnostic trap documented in
 [audit.md §2.10](./audit.md). The accepted empty-literal is `fill("", 0)`.
 A shared `quoteListOrFillEmpty()` helper in `_shared/format.ts` emits the
-right form; the three comparison wrappers above use it for their optional
-`vars` arg, and `getModelInstanceAnnotation` uses it for its `filter` arg.
+right form; the comparison wrappers above use it for their optional `vars`
+arg, and `getModelInstanceAnnotation` uses it for its `filter` arg.
+
+---
+
+## Removed wrappers (absent or deprecated on OMC 1.26.7)
+
+These wrappers were deleted 2026-05-21 (#80) because they are either absent
+from the pinned OMC's scripting scope or deprecated by OMC itself. They are
+**not** counted in the totals above. The knowledge is preserved here so the
+distinction stays documented and so nobody re-adds a phantom wrapper. (If a
+future OMC restores any of these symbols, re-wrap with a real integration
+test rather than resurrecting the swallow-the-error shape.)
+
+| Removed function | Category | Reason |
+|---|---|---|
+| `getSolverMethods` | Solver / runtime config | Not in `OpenModelica.Scripting` on the pin (`Class getSolverMethods not found in scope`). The wrapper swallowed the buffered `getErrorString()` error and returned `[]`. Removed. |
+| `getNonLinearSolvers` | Solver / runtime config | Not in `OpenModelica.Scripting` on the pin (`Class X not found in scope`); same swallowed-error-returns-`[]` shape. Removed. |
+| `getLinearSolvers` | Solver / runtime config | Not in `OpenModelica.Scripting` on the pin (`Class X not found in scope`); same swallowed-error-returns-`[]` shape. Removed. |
+| `getInitializationMethods` | Solver / runtime config | Not in `OpenModelica.Scripting` on the pin (`Class X not found in scope`); same swallowed-error-returns-`[]` shape. Removed. |
+| `getJacobianMethods` | Solver / runtime config | Not in `OpenModelica.Scripting` on the pin (`Class X not found in scope`); same swallowed-error-returns-`[]` shape. Removed. |
+| `createClass` | Lifecycle | Docs 404 + symbol absent on 1.26.x (`✗ not found in scope`). Superseded by `newModel` (nested `model` creation; `loadString` for a true top-level class). Removed. |
+| `createSubClass` | Lifecycle | Docs 404 + symbol absent on 1.26.x (`✗ not found in scope`). Superseded by `newModel`. Removed. |
+| `compareSimulationResults` | Results | Deprecated in OMC's own docs; prefer `diffSimulationResults`. Removed. |
+
+The OMC source of truth for the solver list values that callers actually
+need lives in the maintained `SOLVER_METHODS` constant in
+`src/api/parameters-form/solverMethods.ts` (the `-s/--solver` value set OMC's
+`simulate` accepts) — not a scripting call.
 
 ---
 
@@ -353,15 +372,15 @@ right form; the three comparison wrappers above use it for their optional
 |---|---|---|---|
 | Browsing | 42 | 42 | All ✅. Custom fixtures cover `isClass`, `isReplaceable`, `isProtectedClass`, the 9 class-shape predicates (#33: `isConstant`, `isParameter`, `isProtected`, `isRedeclare`, `isPrimitive`, `isOperator`, `isOperatorFunction`, `isOperatorRecord`, `isOptimization`), and the #42 extras (`extendsFrom`, `getAllSubtypeOf`, `classAnnotationExists`, `getNthInheritedClass`, `isShortDefinition`). |
 | Reading model contents | 54 | 54 | All ✅. 2026-05-20: `getImportCount` + `getNthImport` (#43); the two inherited-class map annotations verified (#39); +21 indexed/count readers (#34: component / annotation / algorithm / initial-algorithm / equation / initial-equation families), all ✅ via a rich `loadString` fixture (the leading-`=` modification binding `getNthComponentModification` returns is now handled by `parse.ts`). `convertUnits` added + verified live (#28) for label render-time display-unit conversion. **+3 OMEdit utilities verified live (#63/#64/#65):** `getDerivedUnits` (unit-dropdown partner to `convertUnits`), `uriToFilename` (resolve `modelica://` resource URIs), `qualifyPath` (qualify a short type name in a class scope). |
-| Lifecycle | 17 | 20 | **`newModel` added + verified 2026-05-20 (#35)** as the migration path off the create* wrappers (nested `model` creation; `withinPath` required — no top-level form). 3 ⛔ remain — `createClass`, `createSubClass` (docs 404 + symbol genuinely absent on 1.26.7), `save` (present but deprecated/unreliable persistence, *not* symbol-missing). **`moveClass` rescued 2026-05-19**: it's an in-place reorder by `Integer offset`, not a TypeName-destination relocate. **`loadClassContentString` added + verified live (#65)** — inserts string content into a loaded class (the OMC call behind diagram paste/duplicate), with an optional Placement offset. |
+| Lifecycle | 17 | 18 | **`newModel` added + verified 2026-05-20 (#35)** as the migration path off the (now-removed) class-create wrappers (nested `model` creation; `withinPath` required — no top-level form). 1 ⛔ remains — `save` (present but deprecated/unreliable persistence, *not* symbol-missing). The genuinely-absent `createClass`/`createSubClass` wrappers were **removed** 2026-05-21 (#80; see "Removed wrappers"). **`moveClass` rescued 2026-05-19**: it's an in-place reorder by `Integer offset`, not a TypeName-destination relocate. **`loadClassContentString` added + verified live (#65)** — inserts string content into a loaded class (the OMC call behind diagram paste/duplicate), with an optional Placement offset. |
 | Parameters & modifiers | 16 | 16 | **All ✅ as of 2026-05-20 (#36).** The 3 extends-modifier 🟡s verified via a self-contained `extends Base(k = 2.5)` fixture; 4 derived-class / extends wrappers added (`getDerivedClassModifierNames`, `getDerivedClassModifierValue`, `isExtendsModifierFinal`, `setExtendsModifier`). `getExtendsModifierValue` needed a bare-scalar fallback (OMC returns numeric bindings unquoted). **`getParameterValue` wrapper bugfix 2026-05-19**: `parameterName` is a `String`, not a TypeName — the bare-ident form silently returned "" since day one. |
 | Editing | 21 | 21 | All ✅. **`updateConnection` rescued**: arg order + String-quoting fix. **`addTransition`/`deleteTransition` bugfix**: same String-quoting gotcha — they were silently 🟡 broken before. **Issue #37 (2026-05-20)** added `updateConnectionNames` + `updateTransition`; `updateConnectionAnnotation` is intentionally skipped because `updateConnection`'s `annotate` arg already supersedes it. |
 | Elements | 11 | 11 | All ✅. **`setElementAnnotation` rescued 2026-05-20 (#38)**: payload shape is `$Code((<expr>))` per OMEdit `Element.cpp` — double parens, no leading `=`. The previously-shipped `$Code(=<expr>)` form silently cleared the annotation while returning `true`. |
 | Library | 3 | 12 | The 9 package-manager / version-conversion calls remain 🟡 — all 9 are exercised on demand by [`../test/library-network.integration.test.ts`](../test/library-network.integration.test.ts), gated by `OMC_INTEGRATION_NETWORK=1`. Intentionally off in CI to avoid package-index reachability flakes. |
-| Solver / runtime config | 13 | 13 | All verified. Now includes 5 getter siblings (`getMatchingAlgorithm`, `getAvailableMatchingAlgorithms`, `getIndexReductionMethod`, `getAvailableIndexReductionMethods`, `getAvailableTearingMethods`) added in #41. |
+| Solver / runtime config | 8 | 8 | All verified. Includes the getter siblings (`getMatchingAlgorithm`, `getAvailableMatchingAlgorithms`, `getIndexReductionMethod`, `getAvailableIndexReductionMethods`, `getAvailableTearingMethods`) added in #41. The 5 phantom list-getters (`getSolverMethods` + friends) were **removed** 2026-05-21 (#80; see "Removed wrappers") — absent from `OpenModelica.Scripting` on the pin. |
 | Execution | 9 | 9 | All ✅ via the heavy suite. The FMU pipeline (`buildModelFMU` → `importFMU`) is chained: build the ramp into a `.fmu`, then import it back to a Modelica wrapper. `importFMU` needed a wrapper bugfix on the way — `modelName` is a `TypeName` (bare ident), not a String (see [audit.md §2.10](./audit.md)). |
-| Results | 9 | 9 | All ✅ via [`../test/results-heavy.integration.test.ts`](../test/results-heavy.integration.test.ts) — simulates a tiny ramp model in a `mkdtemp` directory, exercises every results wrapper on the produced `.mat`, cleans up. Gated by `OMC_INTEGRATION_HEAVY=1`. |
-| **Total verified** | **195** | **207** | **94%** ✅. Of the 12 unverified: 3 ⛔ (`createClass`, `createSubClass`, `save` — genuinely missing/deprecated on the pin), 9 🟡 network-only library/package-manager calls (exercised opt-in via `OMC_INTEGRATION_NETWORK=1`). **Audit also identified ~40 documented OMC functions in scope but not yet wrapped — see the 100% coverage epic.** |
+| Results | 8 | 8 | All ✅ via [`../test/results-heavy.integration.test.ts`](../test/results-heavy.integration.test.ts) — simulates a tiny ramp model in a `mkdtemp` directory, exercises every results wrapper on the produced `.mat`, cleans up. Gated by `OMC_INTEGRATION_HEAVY=1`. The deprecated `compareSimulationResults` wrapper was **removed** 2026-05-21 (#80; see "Removed wrappers") — prefer `diffSimulationResults`. |
+| **Total verified** | **189** | **199** | **95%** ✅. Of the 10 unverified: 1 ⛔ (`save` — present but deprecated/unreliable persistence on the pin), 9 🟡 network-only library/package-manager calls (exercised opt-in via `OMC_INTEGRATION_NETWORK=1`). 8 deprecated/phantom wrappers were removed 2026-05-21 (#80; see "Removed wrappers"). **Audit also identified ~40 documented OMC functions in scope but not yet wrapped — see the 100% coverage epic.** |
 
 ---
 
@@ -372,9 +391,9 @@ right form; the three comparison wrappers above use it for their optional
 2. **Heavy execution (🐢 → ✅):** add a separate `mutations-heavy.integration.test.ts` gated by `OMC_INTEGRATION_HEAVY=1`. Compile a tiny model (3-line state-space example) through `translateModel` → `buildModel` → `simulate`, then exercise the five `results/*` functions on the produced `.mat` (including `readSimulationResult` and `val`). Roughly 30–60 s of test runtime.
 
 3. **⛔ wrappers on OMC 1.26.7** (drift-probe ground truth, re-confirmed 2026-05-20 #35):
-   - `createClass`, `createSubClass` — **genuinely absent** (docs 404 + `✗ not found in scope`). `@deprecated` JSDoc now redirects to `newModel` (nested `model` creation) with `loadString` as the top-level / non-`model` fallback. The wrappers stay for forward-compat in case the symbols return in a later OMC.
    - `save` — **present but ⛔ on usefulness** (drift-probe `✓ ok`, *not* `✗`): it returns `true` yet persists nothing for backing-file-less classes. Migration: Option B persistence (`listFile` + own writer). It now has a drift-probe counter-example so the distinction (deprecated vs. symbol-missing) stays documented.
-   - **`newModel`** is the verified replacement for the create* pair (✅, [`../test/mutations.integration.test.ts`](../test/mutations.integration.test.ts)). Caveat: no top-level form — `withinPath` (an existing package) is required.
+   - **`newModel`** is the verified replacement for class creation (✅, [`../test/mutations.integration.test.ts`](../test/mutations.integration.test.ts)). Caveat: no top-level form — `withinPath` (an existing package) is required.
+   - The genuinely-absent `createClass`/`createSubClass` wrappers (docs 404 + `✗ not found in scope`) were **removed** 2026-05-21 (#80) rather than kept as ⛔ — see "Removed wrappers".
 
 4. **Wrappers rescued 2026-05-19** (do not re-flag — see [audit.md §2.10](./audit.md) for the "Class X not found in scope" diagnostic trap):
    - `moveClass` — second arg is `Integer offset` (in-place reorder), not a TypeName destination. **Breaking change** to the input shape (`{ typeName, offset }`).
