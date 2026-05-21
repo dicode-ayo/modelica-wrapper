@@ -15,6 +15,21 @@ export {
   DEFAULT_DIALOG_GROUP,
   type ProduceParameterModelOptions,
 } from "./producer.js";
+export {
+  produceSimulationModel,
+  SIMULATION_GROUP,
+  SIMULATION_TAB,
+  type ProduceSimulationModelOptions,
+} from "./simulationProducer.js";
+export {
+  SOLVER_METHODS,
+  DEFAULT_SOLVER_METHOD,
+  OUTPUT_FORMATS,
+  DEFAULT_OUTPUT_FORMAT,
+  type SolverMethod,
+  type OutputFormat,
+} from "./solverMethods.js";
+export { parameterModelToJsonSchema } from "./jsonSchema.js";
 export type {
   ParameterModel,
   ParameterField,
