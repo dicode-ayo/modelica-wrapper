@@ -69,6 +69,9 @@ importers:
       '@modelica-wrapper/omc-client':
         specifier: workspace:*
         version: link:../omc-client
+      '@modelica-wrapper/ui-common':
+        specifier: workspace:*
+        version: link:../ui-common
       lit:
         specifier: ^3.2.0
         version: 3.3.2
@@ -112,6 +115,9 @@ importers:
       '@modelica-wrapper/omc-client':
         specifier: workspace:*
         version: link:../omc-client
+      '@modelica-wrapper/ui-common':
+        specifier: workspace:*
+        version: link:../ui-common
       lit:
         specifier: ^3.2.0
         version: 3.3.2
@@ -156,6 +162,37 @@ importers:
       vitest:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@22.19.17)(happy-dom@15.11.7)
+
+  packages/result-ui:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      happy-dom:
+        specifier: ^15.11.0
+        version: 15.11.7
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@22.19.17)(happy-dom@15.11.7)
+
+  packages/ui-common:
+    dependencies:
+      '@awesome.me/webawesome':
+        specifier: ^3.7.0
+        version: 3.7.0(@floating-ui/utils@0.2.11)(@types/react@19.2.14)
+      lit:
+        specifier: ^3.2.0
+        version: 3.3.2
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
 
 packages:
 

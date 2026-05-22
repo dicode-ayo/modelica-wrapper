@@ -61,18 +61,22 @@ responses, the diagram renderer, and the editor UI.
 
 ## Packages
 
-A pnpm workspace ([`pnpm-workspace.yaml`](pnpm-workspace.yaml)) of four packages:
+A pnpm workspace ([`pnpm-workspace.yaml`](pnpm-workspace.yaml)) of six packages:
 
 | Package | Role |
 | --- | --- |
 | [`@modelica-wrapper/omc-client`](packages/omc-client) | TypeScript client for OMC's interactive ZeroMQ scripting API. Spawns `omc`, parses its Modelica-syntax responses into a typed AST, exposes ~200 Zod-validated typed wrappers across 11 categories, and turns `getModelInstance` into a renderer-agnostic `DiagramLayout`. No VSCode dependency. |
 | [`@modelica-wrapper/diagram-svg`](packages/diagram-svg) | Pure function: typed `IconLayer[]` → self-contained `<svg>` string. Renders all six Modelica shape primitives. Used for library thumbnails and as the source for Babylon icon textures. |
+| [`@modelica-wrapper/ui-common`](packages/ui-common) | Shared UI foundation for the `<om-*>` webviews: the `--om-*` design tokens and the Web Awesome → VSCode theme bridge. No Babylon, no OMC — so both `diagram-ui` and `result-ui` reuse it without inheriting each other's weight. |
 | [`@modelica-wrapper/diagram-ui`](packages/diagram-ui) | Lit + Babylon.js custom elements (`<om-*>`) — the interactive graphical editor that runs inside the webview. Renders the `DiagramLayout`, handles picking/selection/drag, and the parameter side-panel. Talks to the host only through DOM events. |
+| [`@modelica-wrapper/result-ui`](packages/result-ui) | Standalone Lit + ECharts custom elements (`<om-*>`) for the postprocessing / results view — `.mat` results overlaid on plot cards. Deliberately independent of `diagram-ui` (no Babylon) so it can be distributed on its own. Pre-implementation; see the [design note](docs/postprocessing-design.md). |
 | [`modelica-wrapper`](packages/extension) (the extension) | The VSCode extension host. Owns the `OmcClient` lifecycle, the diagram webview panel, the message protocol, every mutation handler, snapshot undo, display-unit conversion, the library data source, the REPL, and the check/simulate commands. |
 
-Dependency direction: `extension` → `diagram-ui` / `diagram-svg` / `omc-client`;
-`diagram-ui` → `diagram-svg` / `omc-client`; `diagram-svg` → `omc-client`.
-`omc-client` depends on nothing in the workspace.
+Dependency direction (as shipped): `extension` → `diagram-ui` / `diagram-svg` /
+`omc-client` / `ui-common`; `diagram-ui` → `diagram-svg` / `omc-client` / `ui-common`;
+`diagram-svg` → `omc-client`. `ui-common`, `omc-client`, and `result-ui` depend on
+nothing in the workspace. As the postprocessing view lands, `result-ui` will take
+`ui-common`, and `extension` will take `result-ui`.
 
 ---
 
@@ -99,6 +103,9 @@ The root file is the map; the detail lives under [`docs/`](docs):
   shared by the parameter form and the diagram value-labels (pre-implementation).
 - **[MultiBody 3D preview — design](docs/multibody-preview-design.md)** —
   design note for the t=0 spatial preview (pre-implementation).
+- **[Postprocessing view — design](docs/postprocessing-design.md)** — a second
+  webview that collects `.mat` result files (from any model) and overlays their
+  trajectories on plot cards (pre-implementation).
 
 ---
 

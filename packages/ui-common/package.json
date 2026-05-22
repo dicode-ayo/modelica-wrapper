@@ -1,0 +1,27 @@
+{
+  "name": "@modelica-wrapper/ui-common",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Shared UI foundation for the <om-*> webviews: design tokens (--om-*) and the Web Awesome → VSCode theme bridge. No Babylon, no OMC — depended on by both diagram-ui and result-ui.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./webawesome-setup": "./src/webawesome-setup.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@awesome.me/webawesome": "^3.7.0",
+    "lit": "^3.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}

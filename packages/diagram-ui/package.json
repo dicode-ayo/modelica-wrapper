@@ -7,8 +7,7 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./webawesome-setup": "./src/base/webawesome-setup.ts"
+    ".": "./src/index.ts"
   },
   "engines": {
     "node": ">=20"
@@ -31,6 +30,7 @@
     "@lit/context": "^1.1.4",
     "@modelica-wrapper/diagram-svg": "workspace:*",
     "@modelica-wrapper/omc-client": "workspace:*",
+    "@modelica-wrapper/ui-common": "workspace:*",
     "lit": "^3.2.0"
   },
   "devDependencies": {
