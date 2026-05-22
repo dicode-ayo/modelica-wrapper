@@ -176,7 +176,7 @@ tracesNeedingData(                                         // which (result, var
   cached: ReadonlySet<string>,
 ): Map<string /*resultId*/, Set<string /*variable*/>>
 
-// diagram-ui — src/postprocessing/var-tree.ts  (webview-only: the picker)
+// result-ui — src/var-tree.ts  (webview-only: the picker)
 buildVariableTree(vars: readonly string[]): VarNode[]      // dotted names → hierarchy
 ```
 
@@ -264,29 +264,36 @@ correlated by `requestId` exactly like the diagram's library browser
    under the workspace cache dir (`WORKSPACE_CACHE_DIRNAME` from
    [extension.ts](../packages/extension/src/extension.ts)), newest first, multi-select.
 
-## Webview — Lit components (`om-` prefix)
+## Webview — Lit components (`om-` prefix) — `result-ui`
 
-Under `packages/diagram-ui/src/postprocessing/`, the same way multibody went under
-`src/multibody/` — reusing `omTokens`, `wa-bridge.css`, and the webawesome bridge.
-**No new package.** `diagram-ui` stays host-agnostic; the bridge that touches
-`vscode.postMessage` lives in the *extension* package, like `<om-webview-root>`.
+The webview lives in its own package, **`@modelica-wrapper/result-ui`** — Lit +
+ECharts custom elements with the `om-` prefix, kept **independent of `diagram-ui`**
+(no Babylon) so it can be bundled and distributed on its own. The bridge that touches
+`vscode.postMessage` lives in the *extension* package, like `<om-webview-root>`; the
+components themselves stay host-agnostic.
 
 | element | package | role |
 | --- | --- | --- |
 | `<om-result-view-root>` | extension (`src/webview/postprocessing-entry.ts`) | the **only** caller of `vscode.postMessage`; provides Lit contexts; DOM-event ⇄ postMessage bridge |
-| `<om-result-view-app>` | diagram-ui | layout: a **results rail** on the left, a scrollable **cards column** on the right (Dyad's params pane is replaced by the results list) |
-| `<om-results-drawer>` | diagram-ui | one chip per result (label, model, timestamp, `source` badge); the add-result menu (three paths); rename / remove |
-| `<om-cards-list>` | diagram-ui | the card column with "+ Plot" inserters |
-| `<om-result-plot-card>` | diagram-ui | one plot; ECharts overlay of its traces; per-trace remove; embeds the add-trace row |
-| `<om-add-trace-row>` | diagram-ui | result `<select>` + **cascading variable picker** built from `buildVariableTree` over the *selected result's* variables |
+| `<om-result-view-app>` | result-ui | layout: a **results rail** on the left, a scrollable **cards column** on the right (Dyad's params pane is replaced by the results list) |
+| `<om-results-drawer>` | result-ui | one chip per result (label, model, timestamp, `source` badge); the add-result menu (three paths); rename / remove |
+| `<om-cards-list>` | result-ui | the card column with "+ Plot" inserters |
+| `<om-result-plot-card>` | result-ui | one plot; ECharts overlay of its traces; per-trace remove; embeds the add-trace row |
+| `<om-add-trace-row>` | result-ui | result `<select>` + **cascading variable picker** built from `buildVariableTree` over the *selected result's* variables |
 
-State follows the existing diagram-ui **Lit context** pattern (a small reactive store
-provided by the root, consumed by descendants) rather than adding Dyad's `rxjs`
-dependency — flagged as a decision in [risks](#open-questions--risks).
+State follows the **Lit context** pattern (a small reactive store provided by the
+root, consumed by descendants) rather than adding Dyad's `rxjs` dependency — flagged
+as a decision in [risks](#open-questions--risks).
+
+Design tokens / theming: `result-ui` must **not** depend on `diagram-ui` (where
+`omTokens` / `wa-bridge.css` live today) or it would inherit Babylon. Options, to be
+settled when the components land (#84): carry its own minimal `--om-*` + VSCode-var
+token sheet, or extract a tiny shared tokens package both UIs use. See
+[risks](#open-questions--risks).
 
 ## Charting layer — ECharts
 
-- `echarts` added to `diagram-ui` deps and bundled into `postprocessing.js`
+- `echarts` added to `result-ui` deps and bundled into `postprocessing.js`
   (one IIFE, consistent with `webview.js`; CSP stays `script-src` nonce/cspSource —
   no external CDN).
 - A `buildEchartTheme()` reads `--vscode-*` / `--om-*` CSS variables at runtime and
@@ -342,17 +349,21 @@ packages/omc-client/src/
     resultView.test.ts         # schema tests
                                # (DONE in #82)
 
-packages/diagram-ui/src/postprocessing/
-  var-tree.ts                  # buildVariableTree + VarNode (DONE in #82)
-  var-tree.test.ts             # DONE in #82
-  result-view-app.component.ts # NEW
-  results-drawer.component.ts  # NEW
-  cards-list.component.ts      # NEW
-  result-plot-card.component.ts# NEW — ECharts
-  add-trace-row.component.ts   # NEW — cascading picker over buildVariableTree
-  echart-theme.ts              # NEW — CSS-var → ECharts theme
-packages/diagram-ui/stories/
-  Postprocessing.stories.ts    # NEW — hand-built ResultViewDoc + mock TracePayloads
+packages/result-ui/                # NEW standalone package — no Babylon, no diagram-ui dep
+  package.json · tsconfig.json · vitest.config.ts   # (DONE in #82)
+  src/
+    index.ts                   # barrel (DONE in #82)
+    var-tree.ts                # buildVariableTree + VarNode (DONE in #82)
+    var-tree.test.ts           # DONE in #82
+    result-view-app.component.ts # NEW
+    results-drawer.component.ts  # NEW
+    cards-list.component.ts      # NEW
+    result-plot-card.component.ts# NEW — ECharts
+    add-trace-row.component.ts   # NEW — cascading picker over buildVariableTree
+    tokens.ts / wa-bridge.css    # NEW — own theme (or a shared tokens pkg) [#84]
+    echart-theme.ts              # NEW — CSS-var → ECharts theme
+  stories/
+    Postprocessing.stories.ts    # NEW — hand-built ResultViewDoc + mock TracePayloads
 
 packages/extension/src/
   webview/
@@ -395,9 +406,13 @@ reference-counted into the existing watch markers.
 7. **Active-view targeting.** How `modelica.addResultToView` picks "the" view when
    several are open — most-recently-active editor, with the create-new fallback when
    none is. Define in `add-result.ts`.
-8. **State lib.** Reuse diagram-ui's Lit context store vs adopt Dyad's `rxjs`
-   subjects. Recommendation: Lit context — no new dependency, consistent with the
-   diagram.
+8. **State lib.** Lit context store vs Dyad's `rxjs` subjects. Recommendation: Lit
+   context — no new dependency, consistent with the diagram.
+9. **`result-ui` independence — tokens & render types.** To stay free of `diagram-ui`
+   (and its Babylon), `result-ui` can't import `omTokens` / `wa-bridge.css` (extract a
+   shared tokens package, or carry its own), nor the `omc-client` `ResultViewDoc` types
+   (own its render view-model and map at the extension bridge, the way `diagram-ui`
+   already maps `omc-client`'s `ParameterField`). Settle both at #84.
 
 ## PR breakdown
 
@@ -405,9 +420,9 @@ Sized for independent review; each ships on its own.
 
 | # | Title | Scope | Tests |
 | --- | --- | --- | --- |
-| **1** ✅ | `resultView` contract + pure helpers (split by consumer) | omc-client `resultView.ts` (types + schemas); extension `result-doc.ts` (`parse`/`serialize`/`tracesNeedingData`); diagram-ui `var-tree.ts` (`buildVariableTree`). Pure; no UI, no host wiring. | Schema accept/reject; round-trip parse/serialize; `buildVariableTree` over dotted-name fixtures; `tracesNeedingData` planner. **(43 tests, done)** |
+| **1** ✅ | `resultView` contract + pure helpers + `result-ui` package | omc-client `resultView.ts` (types + schemas); extension `result-doc.ts` (`parse`/`serialize`/`tracesNeedingData`); **new `result-ui` package** with `var-tree.ts` (`buildVariableTree`). Pure; no UI, no host wiring. | Schema accept/reject; round-trip parse/serialize; `buildVariableTree`; `tracesNeedingData` planner. **(43 tests, done)** |
 | **2** | extension: provider skeleton | `ResultViewEditorProvider`, `modelica.resultView` registration, CSP HTML, **third esbuild target**, empty `<om-result-view-root>` bridge. Opens a `.omresults`, renders an empty app. | Manual: open a `.omresults`, see the shell. |
-| **3** | diagram-ui: the cards UI | All five `<om-*>` elements + `echart-theme.ts`, driven by a hand-built `ResultViewDoc` + mock `TracePayload`s in Storybook. ECharts wired. | Storybook story; component unit tests for the cascading picker (over `buildVariableTree`). |
+| **3** | result-ui: the cards UI | All five `<om-*>` elements + `echart-theme.ts` + own tokens/theme, driven by a hand-built `ResultViewDoc` + mock `TracePayload`s in Storybook. ECharts wired. Add `lit`/`echarts`/webawesome deps. | Storybook story; component unit tests for the cascading picker (over `buildVariableTree`). |
 | **4** | extension: data path | Lazy `readSimulationResultVars` / `readSimulationResult`, `result-cache.ts` (path+mtime), `requestVariables`, `traceData`, all doc-edit handlers. | Integration against a real `.mat` fixture; plots render end-to-end. |
 | **5** | extension: the three add paths | `add-result.ts` — file pick, `.modelica` quick-pick, `modelica.addResultToView` command + `runSimulate` auto-add hook + active-view registry. | Integration: simulate → result appears; pick → appears; cache pick → appears. |
 | **6** | polish | rename/remove result, missing-file chip, theme-change refresh, resize, empty states. | Manual smoke + a missing-path unit test. |
@@ -448,5 +463,13 @@ Decisions taken at the design-phase Q&A (2026-05-22), kept so the "why" survives
   producer, so only its *types + schemas* (the wire contract both sides import) stay in
   `omc-client`. The host-only I/O (`parse`/`serialize`/planning) moved to
   `extension/src/results/result-doc.ts` and the webview-only picker tree to
-  `diagram-ui/src/postprocessing/var-tree.ts`. omc-client stays about contracts, not
-  file I/O.
+  `result-ui`. omc-client stays about contracts, not file I/O.
+- **Dedicated `result-ui` package** (decided while building #82). The webview lives in
+  its own package `@modelica-wrapper/result-ui` rather than under
+  `diagram-ui/src/postprocessing/`, so it can be bundled and distributed independently.
+  This reverses the design's initial "no new package" lean (borrowed from the
+  multibody note): the deciding factor is that the postprocessing UI shares **nothing**
+  with the Babylon diagram, so folding it into `diagram-ui` would have shipped Babylon
+  to a charts-only view. Keeping it separate also forces the clean dependency boundary
+  (no `diagram-ui`, ideally no `omc-client`) that independence requires — see
+  [risks #9](#open-questions--risks).

@@ -3,9 +3,9 @@
  * flat list of dotted names (from `readSimulationResultVars` at the host edge);
  * this turns them into a hierarchy the picker walks one level at a time.
  *
- * Webview-only and pure: it operates on `string[]`, so it lives in the renderer
- * package next to the picker rather than in the shared contract. No dependency
- * on `omc-client` or VSCode.
+ * Pure: it operates on `string[]`, with no dependency on Lit, ECharts, the
+ * `omc-client` contract, or VSCode — so it (and the rest of this package) can be
+ * built and distributed independently of the diagram editor.
  */
 
 /**
