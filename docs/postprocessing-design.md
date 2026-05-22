@@ -410,11 +410,13 @@ reference-counted into the existing watch markers.
    none is. Define in `add-result.ts`.
 8. **State lib.** Lit context store vs Dyad's `rxjs` subjects. Recommendation: Lit
    context — no new dependency, consistent with the diagram.
-9. **`result-ui` independence — tokens & render types.** Tokens: **resolved** — the
+9. **`result-ui` independence — tokens & render types.** Both **resolved**. Tokens: the
    `--om-*` sheet + WA bridge live in `@modelica-wrapper/ui-common`, depended on by both
-   UIs (no Babylon). Render types still open: `result-ui` should own its render
-   view-model and map at the extension bridge (the way `diagram-ui` maps `omc-client`'s
-   `ParameterField`) rather than depend on `omc-client` — settle at #84.
+   UIs (no Babylon). Render types: `result-ui` owns its view model in `types.ts`
+   (structurally identical to the `omc-client` contract), so the extension bridge passes
+   the parsed doc straight onto the component properties with no explicit map — and
+   `result-ui` depends on neither `omc-client` nor `diagram-ui`, only `lit` + `echarts` +
+   `ui-common`.
 
 ## PR breakdown
 
@@ -424,7 +426,7 @@ Sized for independent review; each ships on its own.
 | --- | --- | --- | --- |
 | **1** ✅ | `resultView` contract + pure helpers + `result-ui` package | omc-client `resultView.ts` (types + schemas); extension `result-doc.ts` (`parse`/`serialize`/`tracesNeedingData`); **new `result-ui` package** with `var-tree.ts` (`buildVariableTree`). Pure; no UI, no host wiring. | Schema accept/reject; round-trip parse/serialize; `buildVariableTree`; `tracesNeedingData` planner. **(43 tests, done)** |
 | **2** ✅ | extension: provider skeleton | `ResultViewEditorProvider` + `modelica.resultView` customEditor for `*.omresults`, CSP HTML, `postprocessing-protocol.ts`, **third esbuild target** (`postprocessing.js`/`.css`, no Babylon), `<om-result-view-root>` bridge rendering a placeholder. `ready`→`doc` round-trip + re-sync on edit. Also: host `tsconfig` now type-checks `src/results/`. | typecheck + 3-bundle build; manual: open a `.omresults`, see the shell. |
-| **3** | result-ui: the cards UI | All five `<om-*>` elements + `echart-theme.ts` + own tokens/theme, driven by a hand-built `ResultViewDoc` + mock `TracePayload`s in Storybook. ECharts wired. Add `lit`/`echarts`/webawesome deps. | Storybook story; component unit tests for the cascading picker (over `buildVariableTree`). |
+| **3** ✅ | result-ui: the cards UI | All five `<om-*>` elements + `echart-theme.ts` + pure `chart-option.ts` + `picker.ts`, driven by a hand-built `ResultViewDoc` + mock `TracePayload`s in Storybook. ECharts wired; `lit`/`echarts` deps added; `omTokens` from `ui-common` (no omc-client/diagram-ui dep). result-ui owns its render types in `types.ts`. | Storybook (3 stories) + unit tests: `picker`, `chart-option`, `var-tree`, mount/`om-request-variables`. **(24 tests)** |
 | **4** | extension: data path | Lazy `readSimulationResultVars` / `readSimulationResult`, `result-cache.ts` (path+mtime), `requestVariables`, `traceData`, all doc-edit handlers. | Integration against a real `.mat` fixture; plots render end-to-end. |
 | **5** | extension: the three add paths | `add-result.ts` — file pick, `.modelica` quick-pick, `modelica.addResultToView` command + `runSimulate` auto-add hook + active-view registry. | Integration: simulate → result appears; pick → appears; cache pick → appears. |
 | **6** | polish | rename/remove result, missing-file chip, theme-change refresh, resize, empty states. | Manual smoke + a missing-path unit test. |
