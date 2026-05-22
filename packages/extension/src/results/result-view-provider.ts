@@ -11,7 +11,6 @@
  * pick / `.modelica` cache / Simulate hook) lands in #86.
  */
 
-import { randomUUID } from "node:crypto";
 import * as path from "node:path";
 
 import * as vscode from "vscode";
@@ -23,7 +22,14 @@ import type {
   WebviewToExtension,
 } from "../webview/postprocessing-protocol.js";
 import { ResultCache, type ResultReader } from "./result-cache.js";
-import { parseResultViewDoc, serializeResultViewDoc } from "./result-doc.js";
+import {
+  addPlotCard,
+  addTrace,
+  deleteCard,
+  parseResultViewDoc,
+  removeTrace,
+  serializeResultViewDoc,
+} from "./result-doc.js";
 
 export const RESULT_VIEW_VIEW_TYPE = "modelica.resultView";
 
@@ -68,16 +74,10 @@ export class ResultViewEditorProvider
     };
     webviewPanel.webview.html = this.renderHtml(webviewPanel.webview);
 
-    // Per-editor cache, lazily backed by the shared OMC client. Reads serialize
-    // through the client's promise-chain mutex (OMC is single-threaded).
-    const cache = new ResultCache({
-      readSimulationResultVars: async (i) =>
-        (await this.ensureClient()).readSimulationResultVars(i),
-      readSimulationResult: async (i) =>
-        (await this.ensureClient()).readSimulationResult(i),
-      closeSimulationResultFile: async () =>
-        (await this.ensureClient()).closeSimulationResultFile(),
-    } satisfies ResultReader);
+    // Per-editor cache, lazily backed by the shared OMC client (resolved per
+    // read). Reads serialize through the client's promise-chain mutex (OMC is
+    // single-threaded).
+    const cache = new ResultCache(this.ensureClient);
 
     const post = (msg: ExtensionToWebview): void => {
       void webviewPanel.webview.postMessage(msg);
@@ -162,57 +162,33 @@ export class ResultViewEditorProvider
           void this.handleRequestVariables(document, cache, msg, post);
           return;
 
-        case "addPlot": {
-          const doc = parseResultViewDoc(document.getText());
-          const cards = [...doc.cards];
-          const at =
-            typeof msg.afterIndex === "number" ? msg.afterIndex : cards.length - 1;
-          cards.splice(at + 1, 0, {
-            kind: "plot",
-            id: randomUUID(),
-            title: `Plot ${cards.length + 1}`,
-          });
-          applyDocEdit({ ...doc, cards });
+        case "addPlot":
+          applyDocEdit(
+            addPlotCard(parseResultViewDoc(document.getText()), msg.afterIndex),
+          );
           return;
-        }
-        case "deletePlot": {
-          const doc = parseResultViewDoc(document.getText());
-          applyDocEdit({
-            ...doc,
-            cards: doc.cards.filter((c) => c.id !== msg.cardId),
-          });
+        case "deletePlot":
+          applyDocEdit(deleteCard(parseResultViewDoc(document.getText()), msg.cardId));
           return;
-        }
-        case "addTrace": {
-          const doc = parseResultViewDoc(document.getText());
-          applyDocEdit({
-            ...doc,
-            cards: doc.cards.map((c) =>
-              c.id === msg.cardId
-                ? {
-                    ...c,
-                    traces: [
-                      ...(c.traces ?? []),
-                      { result: msg.resultId, variable: msg.variable },
-                    ],
-                  }
-                : c,
+        case "addTrace":
+          applyDocEdit(
+            addTrace(
+              parseResultViewDoc(document.getText()),
+              msg.cardId,
+              msg.resultId,
+              msg.variable,
             ),
-          });
+          );
           return;
-        }
-        case "removeTrace": {
-          const doc = parseResultViewDoc(document.getText());
-          applyDocEdit({
-            ...doc,
-            cards: doc.cards.map((c) =>
-              c.id === msg.cardId
-                ? { ...c, traces: (c.traces ?? []).filter((_, i) => i !== msg.traceIndex) }
-                : c,
+        case "removeTrace":
+          applyDocEdit(
+            removeTrace(
+              parseResultViewDoc(document.getText()),
+              msg.cardId,
+              msg.traceIndex,
             ),
-          });
+          );
           return;
-        }
 
         // addResult / removeResult / renameResult land in #86 / #87.
         default:
@@ -230,25 +206,15 @@ export class ResultViewEditorProvider
     const doc = parseResultViewDoc(document.getText());
     const result = doc.results.find((r) => r.id === msg.resultId);
     if (!result) {
-      post({
-        type: "variables",
-        requestId: msg.requestId,
-        resultId: msg.resultId,
-        error: "unknown result",
-      });
+      post({ type: "variables", resultId: msg.resultId, error: "unknown result" });
       return;
     }
     const filePath = resolveResultPath(document.uri, result.path);
     try {
       const vars = await cache.variables(filePath);
-      post({ type: "variables", requestId: msg.requestId, resultId: msg.resultId, vars });
+      post({ type: "variables", resultId: msg.resultId, vars });
     } catch (err) {
-      post({
-        type: "variables",
-        requestId: msg.requestId,
-        resultId: msg.resultId,
-        error: (err as Error).message,
-      });
+      post({ type: "variables", resultId: msg.resultId, error: (err as Error).message });
     }
   }
 

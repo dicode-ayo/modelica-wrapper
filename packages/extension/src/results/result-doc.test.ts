@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 import type { ResultViewDoc } from "@modelica-wrapper/omc-client";
 
 import {
+  addPlotCard,
+  addTrace,
+  deleteCard,
   parseResultViewDoc,
+  removeTrace,
   serializeResultViewDoc,
   traceCacheKey,
   tracesNeedingData,
@@ -154,6 +158,134 @@ describe("serializeResultViewDoc", () => {
     expect(a).toBe(b);
     expect(a.indexOf('"a"')).toBeLessThan(a.indexOf('"motor.L"'));
     expect(a.indexOf('"motor.L"')).toBeLessThan(a.indexOf('"motor.R"'));
+  });
+});
+
+describe("addPlotCard", () => {
+  const base: ResultViewDoc = {
+    version: 1,
+    results: [],
+    cards: [
+      { kind: "plot", id: "a", title: "Plot 1" },
+      { kind: "plot", id: "b", title: "Plot 2" },
+    ],
+  };
+
+  it("inserts after the given index", () => {
+    const out = addPlotCard(base, 0, () => "new");
+    expect(out.cards.map((c) => c.id)).toEqual(["a", "new", "b"]);
+  });
+
+  it("inserts at the top for afterIndex -1", () => {
+    expect(addPlotCard(base, -1, () => "new").cards.map((c) => c.id)).toEqual([
+      "new",
+      "a",
+      "b",
+    ]);
+  });
+
+  it("appends when afterIndex is at or past the end", () => {
+    expect(addPlotCard(base, 99, () => "new").cards.map((c) => c.id)).toEqual([
+      "a",
+      "b",
+      "new",
+    ]);
+  });
+
+  it("titles with the lowest unused `Plot N` so deletes don't collide", () => {
+    const gapped: ResultViewDoc = {
+      version: 1,
+      results: [],
+      cards: [
+        { kind: "plot", id: "a", title: "Plot 1" },
+        { kind: "plot", id: "c", title: "Plot 3" },
+      ],
+    };
+    expect(addPlotCard(gapped, 1, () => "new").cards[2]?.title).toBe("Plot 2");
+    expect(addPlotCard(base, 1, () => "new").cards[2]?.title).toBe("Plot 3");
+    const empty: ResultViewDoc = { version: 1, results: [], cards: [] };
+    expect(addPlotCard(empty, -1, () => "new").cards[0]?.title).toBe("Plot 1");
+  });
+
+  it("does not mutate the input document", () => {
+    addPlotCard(base, 0, () => "new");
+    expect(base.cards.map((c) => c.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("deleteCard", () => {
+  const base: ResultViewDoc = {
+    version: 1,
+    results: [],
+    cards: [
+      { kind: "plot", id: "a" },
+      { kind: "plot", id: "b" },
+    ],
+  };
+
+  it("drops the matching card", () => {
+    expect(deleteCard(base, "a").cards.map((c) => c.id)).toEqual(["b"]);
+  });
+
+  it("is a no-op for an unknown id", () => {
+    expect(deleteCard(base, "ghost").cards.map((c) => c.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("addTrace", () => {
+  const base: ResultViewDoc = {
+    version: 1,
+    results: [],
+    cards: [
+      { kind: "plot", id: "a", traces: [{ result: "r1", variable: "x" }] },
+      { kind: "plot", id: "b" },
+    ],
+  };
+
+  it("appends to the addressed card's traces", () => {
+    expect(addTrace(base, "a", "r1", "y").cards[0]?.traces).toEqual([
+      { result: "r1", variable: "x" },
+      { result: "r1", variable: "y" },
+    ]);
+  });
+
+  it("seeds traces on a card that had none", () => {
+    expect(addTrace(base, "b", "r2", "z").cards[1]?.traces).toEqual([
+      { result: "r2", variable: "z" },
+    ]);
+  });
+
+  it("leaves other cards untouched", () => {
+    expect(addTrace(base, "b", "r2", "z").cards[0]?.traces).toEqual([
+      { result: "r1", variable: "x" },
+    ]);
+  });
+});
+
+describe("removeTrace", () => {
+  const base: ResultViewDoc = {
+    version: 1,
+    results: [],
+    cards: [
+      {
+        kind: "plot",
+        id: "a",
+        traces: [
+          { result: "r1", variable: "x" },
+          { result: "r1", variable: "y" },
+        ],
+      },
+    ],
+  };
+
+  it("removes the trace at the given index", () => {
+    expect(removeTrace(base, "a", 0).cards[0]?.traces).toEqual([
+      { result: "r1", variable: "y" },
+    ]);
+  });
+
+  it("is a no-op for an out-of-range index", () => {
+    expect(removeTrace(base, "a", 9).cards[0]?.traces).toHaveLength(2);
   });
 });
 

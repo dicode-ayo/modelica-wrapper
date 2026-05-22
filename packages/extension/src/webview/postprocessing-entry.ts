@@ -51,7 +51,6 @@ export class OmResultViewRoot extends LitElement {
   `;
 
   private readonly vscode = acquireVsCodeApi();
-  private requestSeq = 0;
 
   @state() private doc: ResultViewDoc | undefined;
   @state() private traceData: Record<string, TracePayload[]> = {};
@@ -84,12 +83,6 @@ export class OmResultViewRoot extends LitElement {
           };
         }
         return;
-      case "traceData":
-        this.traceData = {
-          ...this.traceData,
-          [msg.cardId]: [...(this.traceData[msg.cardId] ?? []), msg.trace],
-        };
-        return;
       case "loading":
         if (msg.area === "plots") this.plotsLoading = msg.busy;
         return;
@@ -103,6 +96,47 @@ export class OmResultViewRoot extends LitElement {
     this.vscode.postMessage(msg);
   }
 
+  // Typed handler fields (same shape as the diagram bridge in `webview-entry.ts`)
+  // so the template stays declarative and no `as CustomEvent<…>` casts are needed
+  // — the `result-ui` events are globally augmented onto `CustomEvent`.
+
+  private readonly onAddPlot = (e: CustomEvent<AddPlotDetail>): void => {
+    this.send({ type: "addPlot", afterIndex: e.detail.afterIndex });
+  };
+
+  private readonly onDeletePlot = (e: CustomEvent<DeletePlotDetail>): void => {
+    this.send({ type: "deletePlot", cardId: e.detail.cardId });
+  };
+
+  private readonly onAddTrace = (e: CustomEvent<AddTraceDetail>): void => {
+    const { cardId, resultId, variable } = e.detail;
+    this.send({ type: "addTrace", cardId, resultId, variable });
+  };
+
+  private readonly onRemoveTrace = (e: CustomEvent<RemoveTraceDetail>): void => {
+    const { cardId, traceIndex } = e.detail;
+    this.send({ type: "removeTrace", cardId, traceIndex });
+  };
+
+  private readonly onRequestVariables = (
+    e: CustomEvent<RequestVariablesDetail>,
+  ): void => {
+    this.send({ type: "requestVariables", resultId: e.detail.resultId });
+  };
+
+  private readonly onAddResult = (e: CustomEvent<AddResultDetail>): void => {
+    this.send({ type: "addResult", via: e.detail.via });
+  };
+
+  private readonly onRemoveResult = (e: CustomEvent<RemoveResultDetail>): void => {
+    this.send({ type: "removeResult", resultId: e.detail.resultId });
+  };
+
+  private readonly onRenameResult = (e: CustomEvent<RenameResultDetail>): void => {
+    const { resultId, label } = e.detail;
+    this.send({ type: "renameResult", resultId, label });
+  };
+
   override render(): TemplateResult {
     if (!this.doc) {
       return html`<p style="padding: 16px">Loading…</p>`;
@@ -113,32 +147,14 @@ export class OmResultViewRoot extends LitElement {
         .traceData=${this.traceData}
         .variablesByResult=${this.variablesByResult}
         ?plotsLoading=${this.plotsLoading}
-        @om-add-plot=${(e: Event) =>
-          this.send({ type: "addPlot", afterIndex: (e as CustomEvent<AddPlotDetail>).detail.afterIndex })}
-        @om-delete-plot=${(e: Event) =>
-          this.send({ type: "deletePlot", cardId: (e as CustomEvent<DeletePlotDetail>).detail.cardId })}
-        @om-add-trace=${(e: Event) => {
-          const d = (e as CustomEvent<AddTraceDetail>).detail;
-          this.send({ type: "addTrace", cardId: d.cardId, resultId: d.resultId, variable: d.variable });
-        }}
-        @om-remove-trace=${(e: Event) => {
-          const d = (e as CustomEvent<RemoveTraceDetail>).detail;
-          this.send({ type: "removeTrace", cardId: d.cardId, traceIndex: d.traceIndex });
-        }}
-        @om-request-variables=${(e: Event) =>
-          this.send({
-            type: "requestVariables",
-            requestId: `v${++this.requestSeq}`,
-            resultId: (e as CustomEvent<RequestVariablesDetail>).detail.resultId,
-          })}
-        @om-add-result=${(e: Event) =>
-          this.send({ type: "addResult", via: (e as CustomEvent<AddResultDetail>).detail.via })}
-        @om-remove-result=${(e: Event) =>
-          this.send({ type: "removeResult", resultId: (e as CustomEvent<RemoveResultDetail>).detail.resultId })}
-        @om-rename-result=${(e: Event) => {
-          const d = (e as CustomEvent<RenameResultDetail>).detail;
-          this.send({ type: "renameResult", resultId: d.resultId, label: d.label });
-        }}
+        @om-add-plot=${this.onAddPlot}
+        @om-delete-plot=${this.onDeletePlot}
+        @om-add-trace=${this.onAddTrace}
+        @om-remove-trace=${this.onRemoveTrace}
+        @om-request-variables=${this.onRequestVariables}
+        @om-add-result=${this.onAddResult}
+        @om-remove-result=${this.onRemoveResult}
+        @om-rename-result=${this.onRenameResult}
       ></om-result-view-app>
     `;
   }

@@ -5,7 +5,8 @@
  * the old file before the next read (`closeSimulationResultFile`).
  *
  * Pure of VSCode: it talks to a minimal {@link ResultReader} (the slice of
- * `OmcClient` it needs) and an injectable `statMtimeMs`, so it unit-tests with
+ * `OmcClient` it needs), resolved lazily per call via the injected
+ * `resolveReader` thunk, plus an injectable `statMtimeMs` — so it unit-tests with
  * fakes. OMC is single-threaded; callers serialize through the shared client.
  */
 
@@ -17,7 +18,9 @@ export interface Trajectory {
   values: number[];
 }
 
-/** The subset of `OmcClient` the cache calls. */
+/** The subset of `OmcClient` the cache calls. The `fileName` / `filename`
+ * casing split below mirrors OMC's own inconsistent input keys exactly — it is
+ * not a typo, don't "fix" it. */
 export interface ResultReader {
   readSimulationResultVars(input: { fileName: string }): Promise<{ vars: string[] }>;
   readSimulationResult(input: {
@@ -48,7 +51,7 @@ export class ResultCache {
   private readonly entries = new Map<string, Entry>();
 
   constructor(
-    private readonly reader: ResultReader,
+    private readonly resolveReader: () => Promise<ResultReader>,
     private readonly statMtimeMs: (path: string) => Promise<number | undefined> = defaultStatMtimeMs,
   ) {}
 
@@ -80,27 +83,29 @@ export class ResultCache {
     const entry = await this.fresh(path);
     if (!entry) return [];
     if (!entry.vars) {
-      entry.vars = (await this.reader.readSimulationResultVars({ fileName: path })).vars;
+      const reader = await this.resolveReader();
+      entry.vars = (await reader.readSimulationResultVars({ fileName: path })).vars;
     }
     return entry.vars;
   }
 
   /**
    * One variable's trajectory (cached), read against `time`. `undefined` when
-   * the file is missing or the read doesn't yield both rows.
+   * the file is missing, or the read doesn't yield both rows with samples.
    */
   async trajectory(path: string, variable: string): Promise<Trajectory | undefined> {
     const entry = await this.fresh(path);
     if (!entry) return undefined;
     const cached = entry.series.get(variable);
     if (cached) return cached;
-    const { result } = await this.reader.readSimulationResult({
+    const reader = await this.resolveReader();
+    const { result } = await reader.readSimulationResult({
       filename: path,
       variables: ["time", variable],
     });
     const t = result[0];
     const values = result[1];
-    if (!t || !values) return undefined;
+    if (!t || !values || t.length === 0) return undefined;
     const traj: Trajectory = { t, values };
     entry.series.set(variable, traj);
     return traj;
@@ -108,7 +113,8 @@ export class ResultCache {
 
   private async closeQuietly(): Promise<void> {
     try {
-      await this.reader.closeSimulationResultFile();
+      const reader = await this.resolveReader();
+      await reader.closeSimulationResultFile();
     } catch {
       // best-effort: closing is only needed on Windows and never fatal here.
     }

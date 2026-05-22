@@ -6,6 +6,11 @@
  * trajectories, so the whole interaction loop is exercisable without OMC or
  * VSCode (add/delete plots, add/remove traces, lazy variable lookup, add/remove
  * results). Story-only infra; not part of the package surface.
+ *
+ * The doc edits here deliberately re-implement the host's transforms (the real
+ * ones live in the extension's `result-doc.ts`, tested there). `result-ui` stays
+ * independent of the extension, so they can't be shared — this is a stand-in,
+ * and re-implementing host behaviour is its whole point.
  */
 
 import { LitElement, html, type TemplateResult } from "lit";
@@ -84,8 +89,8 @@ export class ResultViewMockHost extends LitElement {
     this.traceData = { ...this.traceData, [cardId]: payloads };
   }
 
-  private onAddPlot = (e: Event): void => {
-    const { afterIndex } = (e as CustomEvent<AddPlotDetail>).detail;
+  private onAddPlot = (e: CustomEvent<AddPlotDetail>): void => {
+    const { afterIndex } = e.detail;
     const cards = [...this.doc.cards];
     cards.splice(afterIndex + 1, 0, {
       kind: "plot",
@@ -95,14 +100,14 @@ export class ResultViewMockHost extends LitElement {
     this.doc = { ...this.doc, cards };
   };
 
-  private onDeletePlot = (e: Event): void => {
-    const { cardId } = (e as CustomEvent<DeletePlotDetail>).detail;
+  private onDeletePlot = (e: CustomEvent<DeletePlotDetail>): void => {
+    const { cardId } = e.detail;
     this.doc = { ...this.doc, cards: this.doc.cards.filter((c) => c.id !== cardId) };
     this.rebuildCard(cardId);
   };
 
-  private onAddTrace = (e: Event): void => {
-    const { cardId, resultId, variable } = (e as CustomEvent<AddTraceDetail>).detail;
+  private onAddTrace = (e: CustomEvent<AddTraceDetail>): void => {
+    const { cardId, resultId, variable } = e.detail;
     this.doc = {
       ...this.doc,
       cards: this.doc.cards.map((c) =>
@@ -114,8 +119,8 @@ export class ResultViewMockHost extends LitElement {
     this.rebuildCard(cardId);
   };
 
-  private onRemoveTrace = (e: Event): void => {
-    const { cardId, traceIndex } = (e as CustomEvent<RemoveTraceDetail>).detail;
+  private onRemoveTrace = (e: CustomEvent<RemoveTraceDetail>): void => {
+    const { cardId, traceIndex } = e.detail;
     this.doc = {
       ...this.doc,
       cards: this.doc.cards.map((c) =>
@@ -127,8 +132,8 @@ export class ResultViewMockHost extends LitElement {
     this.rebuildCard(cardId);
   };
 
-  private onRequestVariables = (e: Event): void => {
-    const { resultId } = (e as CustomEvent<RequestVariablesDetail>).detail;
+  private onRequestVariables = (e: CustomEvent<RequestVariablesDetail>): void => {
+    const { resultId } = e.detail;
     // Mimic the host's lazy reply (a tick of latency).
     setTimeout(() => {
       this.variablesByResult = {
@@ -138,8 +143,8 @@ export class ResultViewMockHost extends LitElement {
     }, 150);
   };
 
-  private onAddResult = (e: Event): void => {
-    const { via } = (e as CustomEvent<AddResultDetail>).detail;
+  private onAddResult = (e: CustomEvent<AddResultDetail>): void => {
+    const { via } = e.detail;
     const id = `mock-result-${++this.importSeq}`;
     this.doc = {
       ...this.doc,
@@ -156,8 +161,8 @@ export class ResultViewMockHost extends LitElement {
     };
   };
 
-  private onRemoveResult = (e: Event): void => {
-    const { resultId } = (e as CustomEvent<RemoveResultDetail>).detail;
+  private onRemoveResult = (e: CustomEvent<RemoveResultDetail>): void => {
+    const { resultId } = e.detail;
     this.doc = {
       ...this.doc,
       results: this.doc.results.filter((r) => r.id !== resultId),
@@ -169,8 +174,8 @@ export class ResultViewMockHost extends LitElement {
     for (const c of this.doc.cards) this.rebuildCard(c.id);
   };
 
-  private onRenameResult = (e: Event): void => {
-    const { resultId, label } = (e as CustomEvent<RenameResultDetail>).detail;
+  private onRenameResult = (e: CustomEvent<RenameResultDetail>): void => {
+    const { resultId, label } = e.detail;
     this.doc = {
       ...this.doc,
       results: this.doc.results.map((r) => (r.id === resultId ? { ...r, label } : r)),
