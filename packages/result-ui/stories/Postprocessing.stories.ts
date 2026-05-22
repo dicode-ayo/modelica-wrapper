@@ -1,7 +1,8 @@
 /**
  * Stories for the postprocessing view, driven entirely by mock data (no host,
- * no OMC). Event handlers log to console — the real webview routes them to
- * extension messages.
+ * no OMC). The components' bubbling, composed events are captured by the actions
+ * addon (`parameters.actions.handles`) and shown in the Actions panel — the real
+ * webview routes the same events to extension messages.
  */
 
 import type { Meta, StoryObj } from "@storybook/web-components";
@@ -15,19 +16,22 @@ import {
   sampleVariablesByResult,
 } from "./fixtures/sample.js";
 
-const logHandlers = {
-  "@om-add-plot": (e: Event) => console.log("add-plot", (e as CustomEvent).detail),
-  "@om-delete-plot": (e: Event) => console.log("delete-plot", (e as CustomEvent).detail),
-  "@om-add-trace": (e: Event) => console.log("add-trace", (e as CustomEvent).detail),
-  "@om-remove-trace": (e: Event) => console.log("remove-trace", (e as CustomEvent).detail),
-  "@om-request-variables": (e: Event) =>
-    console.log("request-variables", (e as CustomEvent).detail),
-  "@om-add-result": (e: Event) => console.log("add-result", (e as CustomEvent).detail),
-  "@om-remove-result": (e: Event) => console.log("remove-result", (e as CustomEvent).detail),
-};
-
 const meta: Meta = {
   title: "result-ui/Postprocessing",
+  parameters: {
+    actions: {
+      handles: [
+        "om-add-plot",
+        "om-delete-plot",
+        "om-add-trace",
+        "om-remove-trace",
+        "om-request-variables",
+        "om-add-result",
+        "om-remove-result",
+        "om-rename-result",
+      ],
+    },
+  },
 };
 export default meta;
 
@@ -36,16 +40,7 @@ type Story = StoryObj;
 /** The whole view: results rail + plot cards, one populated, one empty. */
 export const FullView: Story = {
   render: (): TemplateResult => html`
-    <div
-      class="om-story-host"
-      @om-add-plot=${logHandlers["@om-add-plot"]}
-      @om-delete-plot=${logHandlers["@om-delete-plot"]}
-      @om-add-trace=${logHandlers["@om-add-trace"]}
-      @om-remove-trace=${logHandlers["@om-remove-trace"]}
-      @om-request-variables=${logHandlers["@om-request-variables"]}
-      @om-add-result=${logHandlers["@om-add-result"]}
-      @om-remove-result=${logHandlers["@om-remove-result"]}
-    >
+    <div class="om-story-host">
       <om-result-view-app
         .doc=${sampleDoc}
         .traceData=${sampleTraceData}
@@ -71,18 +66,12 @@ export const SinglePlotCard: Story = {
   render: (): TemplateResult => {
     const card: PlotCard = sampleDoc.cards[0] as PlotCard;
     return html`
-      <div
-        style="width: 640px; padding: 16px;"
-        @om-remove-trace=${logHandlers["@om-remove-trace"]}
-        @om-add-trace=${logHandlers["@om-add-trace"]}
-        @om-request-variables=${logHandlers["@om-request-variables"]}
-        @om-delete-plot=${logHandlers["@om-delete-plot"]}
-      >
+      <div class="om-story-host">
         <om-result-plot-card
           .cardIndex=${0}
           .card=${card}
           .results=${sampleDoc.results}
-          .traces=${sampleTraceData[0] ?? []}
+          .traces=${sampleTraceData[card.id] ?? []}
           .variablesByResult=${sampleVariablesByResult}
         ></om-result-plot-card>
       </div>

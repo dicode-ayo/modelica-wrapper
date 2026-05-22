@@ -32,12 +32,12 @@ export interface TracePayload {
 
 export type ExtensionToWebview =
   /** Seed / refresh: the parsed document plus any trace data already cached,
-   *  keyed by card index (empty until the data path lands in #84). */
-  | { type: "doc"; doc: ResultViewDoc; traceData: Record<number, TracePayload[]> }
+   *  keyed by card id (empty until the data path lands in #84). */
+  | { type: "doc"; doc: ResultViewDoc; traceData: Record<string, TracePayload[]> }
   /** Response to `requestVariables` — a result's variable list, lazily read. */
   | { type: "variables"; requestId: string; resultId: string; vars?: string[]; error?: string }
   /** Incremental single-trace append for a card. */
-  | { type: "traceData"; cardIndex: number; trace: TracePayload }
+  | { type: "traceData"; cardId: string; trace: TracePayload }
   /** Spinner gating while the host reads results / variables. */
   | { type: "loading"; area: "results" | "plots"; busy: boolean }
   /** Surface a read / parse error in the webview. */
@@ -48,16 +48,17 @@ export type ExtensionToWebview =
 export type WebviewToExtension =
   /** Webview mounted; host replies with `doc`. */
   | { type: "ready" }
-  /** Insert a new plot card after `afterIndex` (`-1` = at the top). */
+  /** Insert a new plot card after `afterIndex` (`-1` = at the top). Insertion is
+   *  the one positional op; every other card op addresses a card by `cardId`. */
   | { type: "addPlot"; afterIndex: number }
-  | { type: "deletePlot"; cardIndex: number }
-  | { type: "addTrace"; cardIndex: number; resultId: string; variable: string }
-  | { type: "removeTrace"; cardIndex: number; traceIndex: number }
+  | { type: "deletePlot"; cardId: string }
+  | { type: "addTrace"; cardId: string; resultId: string; variable: string }
+  | { type: "removeTrace"; cardId: string; traceIndex: number }
   /** Fetch a result's variable list (correlated by `requestId`). */
   | { type: "requestVariables"; requestId: string; resultId: string }
-  /** Add a result — the host opens the file dialog (`pick`) or the
-   *  `.modelica` cache quick-pick (`cache`). */
-  | { type: "addResult"; via: "pick" | "cache" }
+  /** Add a result — the host opens the file dialog (`import`) or the
+   *  `.modelica` cache quick-pick (`cache`). Matches `ResultSource`. */
+  | { type: "addResult"; via: "import" | "cache" }
   | { type: "removeResult"; resultId: string }
   | { type: "renameResult"; resultId: string; label: string }
   /** Diagnostic from the webview. */

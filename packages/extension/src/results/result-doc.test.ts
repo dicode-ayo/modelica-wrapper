@@ -37,6 +37,7 @@ const FULL_DOC: ResultViewDoc = {
   cards: [
     {
       kind: "plot",
+      id: "c1",
       title: "Speeds",
       xVariable: "time",
       traces: [
@@ -79,14 +80,26 @@ describe("parseResultViewDoc", () => {
       results: [],
       cards: [{ title: "Untyped", traces: [{ result: "r1", variable: "x" }] }],
     });
-    expect(parseResultViewDoc(text).cards).toEqual([
-      { kind: "plot", title: "Untyped", traces: [{ result: "r1", variable: "x" }] },
+    expect(parseResultViewDoc(text, () => "c1").cards).toEqual([
+      { kind: "plot", id: "c1", title: "Untyped", traces: [{ result: "r1", variable: "x" }] },
     ]);
   });
 
   it("accepts a `plots` array as an alias for `cards`", () => {
-    const text = JSON.stringify({ version: 1, results: [], plots: [{ kind: "plot", title: "Aliased" }] });
-    expect(parseResultViewDoc(text).cards).toEqual([{ kind: "plot", title: "Aliased" }]);
+    const text = JSON.stringify({ version: 1, results: [], plots: [{ kind: "plot", id: "c1", title: "Aliased" }] });
+    expect(parseResultViewDoc(text).cards).toEqual([{ kind: "plot", id: "c1", title: "Aliased" }]);
+  });
+
+  it("backfills a missing card id and preserves an existing one", () => {
+    const text = JSON.stringify({
+      version: 1,
+      results: [],
+      cards: [{ kind: "plot", id: "keep" }, { kind: "plot" }],
+    });
+    expect(parseResultViewDoc(text, () => "minted").cards.map((c) => c.id)).toEqual([
+      "keep",
+      "minted",
+    ]);
   });
 
   it("normalises version to 1 even when absent or different", () => {
@@ -154,6 +167,7 @@ describe("tracesNeedingData", () => {
     cards: [
       {
         kind: "plot",
+        id: "c1",
         traces: [
           { result: "r1", variable: "x" },
           { result: "r1", variable: "y" },
@@ -193,8 +207,8 @@ describe("tracesNeedingData", () => {
       version: 1,
       results: [{ id: "r1", label: "r1", path: "a.mat", source: "import" }],
       cards: [
-        { kind: "plot", traces: [{ result: "r1", variable: "x" }] },
-        { kind: "plot", traces: [{ result: "r1", variable: "x" }] },
+        { kind: "plot", id: "c1", traces: [{ result: "r1", variable: "x" }] },
+        { kind: "plot", id: "c2", traces: [{ result: "r1", variable: "x" }] },
       ],
     };
     expect([...(tracesNeedingData(twoCards, new Set()).get("r1") ?? [])]).toEqual(["x"]);

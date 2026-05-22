@@ -20,6 +20,7 @@ import { buildEchartTheme } from "./echart-theme.js";
 import { fireEvent } from "./events.js";
 import type { PlotCard, ResultRef, TracePayload } from "./types.js";
 import "./add-trace-row.component.js";
+import "./icon-button.component.js";
 
 @customElement("om-result-plot-card")
 export class OmResultPlotCard extends LitElement {
@@ -42,21 +43,8 @@ export class OmResultPlotCard extends LitElement {
       }
       header h4 {
         margin: 0;
-        font-size: 0.95em;
+        font-size: var(--om-description-size);
         font-weight: 600;
-      }
-      .icon-btn {
-        border: none;
-        background: transparent;
-        cursor: pointer;
-        color: var(--vscode-descriptionForeground);
-        border-radius: var(--om-radius-sm);
-        padding: 0 var(--om-space-xs);
-        line-height: 1.4;
-      }
-      .icon-btn:hover {
-        color: var(--vscode-errorForeground);
-        background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
       }
       .trace {
         display: flex;
@@ -64,7 +52,7 @@ export class OmResultPlotCard extends LitElement {
         justify-content: space-between;
         gap: var(--om-space-sm);
         font-family: var(--vscode-editor-font-family, monospace);
-        font-size: 0.82em;
+        font-size: var(--om-qualifier-size);
         color: var(--vscode-descriptionForeground);
         padding: 1px var(--om-space-xs);
         border-radius: var(--om-radius-sm);
@@ -73,15 +61,16 @@ export class OmResultPlotCard extends LitElement {
         background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
       }
       .chart {
-        width: 100%;
-        min-height: 280px;
+        min-height: var(--om-chart-min-height);
         margin-top: var(--om-space-sm);
       }
     `,
   ];
 
+  /** Position, used only for the default "Plot N" label; data + events route by
+   * `card.id`, never by this. */
   @property({ type: Number }) cardIndex = 0;
-  @property({ attribute: false }) card: PlotCard = { kind: "plot" };
+  @property({ attribute: false }) card: PlotCard = { kind: "plot", id: "" };
   @property({ attribute: false }) results: ResultRef[] = [];
   @property({ attribute: false }) traces: TracePayload[] = [];
   @property({ attribute: false }) variablesByResult: Record<string, string[]> = {};
@@ -109,7 +98,8 @@ export class OmResultPlotCard extends LitElement {
     this.chart = undefined;
   }
 
-  /** Re-read the theme each time so plots track the editor colour theme. */
+  /** Re-read the theme on each rebuild so a chart picks up the editor colours;
+   * a live theme switch with no trace change won't refresh yet — see #86. */
   private applyOption(): void {
     this.chart?.setOption(
       buildLineChartOption(this.traces, buildEchartTheme()),
@@ -127,35 +117,33 @@ export class OmResultPlotCard extends LitElement {
     return html`
       <header>
         <h4>${title}</h4>
-        <button
-          class="icon-btn"
-          title="Delete plot"
+        <om-icon-button
+          label="Delete plot"
           @click=${() =>
-            fireEvent(this, "om-delete-plot", { cardIndex: this.cardIndex })}
+            fireEvent(this, "om-delete-plot", { cardId: this.card.id })}
         >
           ✕
-        </button>
+        </om-icon-button>
       </header>
       ${traceRows.map(
         (tr, i) => html`
           <div class="trace">
             <span>${this.resultLabel(tr.result)} / ${tr.variable}</span>
-            <button
-              class="icon-btn"
-              title="Remove trace"
+            <om-icon-button
+              label="Remove trace"
               @click=${() =>
                 fireEvent(this, "om-remove-trace", {
-                  cardIndex: this.cardIndex,
+                  cardId: this.card.id,
                   traceIndex: i,
                 })}
             >
               ✕
-            </button>
+            </om-icon-button>
           </div>
         `,
       )}
       <om-add-trace-row
-        .cardIndex=${this.cardIndex}
+        .cardId=${this.card.id}
         .results=${this.results}
         .variablesByResult=${this.variablesByResult}
       ></om-add-trace-row>

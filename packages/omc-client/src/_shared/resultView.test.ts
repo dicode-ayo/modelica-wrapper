@@ -35,6 +35,7 @@ const FULL_DOC: ResultViewDoc = {
   cards: [
     {
       kind: "plot",
+      id: "c1",
       title: "Speeds",
       xVariable: "time",
       traces: [

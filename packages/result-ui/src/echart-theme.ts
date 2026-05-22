@@ -1,8 +1,9 @@
 /**
  * ECharts colours derived from the live VSCode / `--om-*` CSS variables, so plots
- * track the editor theme instead of hardcoding any colour. Read at chart-build
- * time and refreshed on theme change. The `read` function is injectable so the
- * pure option builder can be unit-tested with a fixed theme.
+ * pick up the editor theme instead of hardcoding any colour. Read once per chart
+ * build (currently only when traces change); refreshing on a live theme switch is
+ * the polish pass (#86). The `read` function is injectable so the pure option
+ * builder can be unit-tested with a fixed theme.
  */
 
 export interface EchartTheme {

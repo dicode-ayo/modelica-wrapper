@@ -8,7 +8,7 @@
  * own beyond what's handed in.
  */
 
-import { LitElement, css, html, type TemplateResult } from "lit";
+import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
 import { omTokens } from "@modelica-wrapper/ui-common";
@@ -30,8 +30,8 @@ export class OmResultViewApp extends LitElement {
         color: var(--vscode-foreground);
       }
       .rail {
-        width: 240px;
-        min-width: 160px;
+        width: var(--om-result-rail-size);
+        min-width: var(--om-result-rail-min-size);
         flex-shrink: 0;
         border-right: 1px solid var(--vscode-panel-border);
         overflow: hidden;
@@ -42,8 +42,8 @@ export class OmResultViewApp extends LitElement {
         overflow: hidden;
       }
       .loading {
-        padding: 4px var(--om-space-lg);
-        font-size: 0.8em;
+        padding: var(--om-space-xs) var(--om-space-lg);
+        font-size: var(--om-qualifier-size);
         color: var(--vscode-descriptionForeground);
         border-bottom: 1px solid var(--vscode-panel-border);
       }
@@ -64,7 +64,8 @@ export class OmResultViewApp extends LitElement {
     results: [],
     cards: [],
   };
-  @property({ attribute: false }) traceData: Record<number, TracePayload[]> = {};
+  /** Trace data per card, keyed by `card.id`. */
+  @property({ attribute: false }) traceData: Record<string, TracePayload[]> = {};
   @property({ attribute: false }) variablesByResult: Record<string, string[]> = {};
   /** Optional spinner gating from the host. */
   @property({ type: Boolean }) plotsLoading = false;
@@ -78,7 +79,7 @@ export class OmResultViewApp extends LitElement {
         <div class="cards-wrap">
           ${this.plotsLoading
             ? html`<div class="loading">Fetching data…</div>`
-            : ""}
+            : nothing}
           <om-cards-list
             .cards=${this.doc.cards}
             .results=${this.doc.results}

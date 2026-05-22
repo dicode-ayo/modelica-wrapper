@@ -6,19 +6,20 @@
  */
 
 export interface AddPlotDetail {
-  /** Insert after this card index; `-1` = at the top. */
+  /** Insert after this card position; `-1` = at the top. Insertion is the one
+   * positional op — every other card op addresses a card by `cardId`. */
   afterIndex: number;
 }
 export interface DeletePlotDetail {
-  cardIndex: number;
+  cardId: string;
 }
 export interface AddTraceDetail {
-  cardIndex: number;
+  cardId: string;
   resultId: string;
   variable: string;
 }
 export interface RemoveTraceDetail {
-  cardIndex: number;
+  cardId: string;
   traceIndex: number;
 }
 /** Emitted when the picker needs a result's variable list it doesn't have yet. */
@@ -26,7 +27,9 @@ export interface RequestVariablesDetail {
   resultId: string;
 }
 export interface AddResultDetail {
-  via: "pick" | "cache";
+  /** Matches `ResultSource`: a file `import` (via the file dialog) or the
+   * workspace `.modelica` `cache`. */
+  via: "import" | "cache";
 }
 export interface RemoveResultDetail {
   resultId: string;
@@ -50,6 +53,12 @@ export interface ResultViewEvents {
 
 export type ResultViewEventName = keyof ResultViewEvents;
 
+/** `ResultViewEvents` lifted into the `CustomEvent` map shape — derived so the
+ * global augmentation below can't drift from the source-of-truth interface. */
+type ResultViewEventMap = {
+  [K in ResultViewEventName]: CustomEvent<ResultViewEvents[K]>;
+};
+
 /** Dispatch a bubbling, composed `CustomEvent` from `el`. */
 export function fireEvent<K extends ResultViewEventName>(
   el: HTMLElement,
@@ -66,14 +75,5 @@ export function fireEvent<K extends ResultViewEventName>(
 }
 
 declare global {
-  interface GlobalEventHandlersEventMap {
-    "om-add-plot": CustomEvent<AddPlotDetail>;
-    "om-delete-plot": CustomEvent<DeletePlotDetail>;
-    "om-add-trace": CustomEvent<AddTraceDetail>;
-    "om-remove-trace": CustomEvent<RemoveTraceDetail>;
-    "om-request-variables": CustomEvent<RequestVariablesDetail>;
-    "om-add-result": CustomEvent<AddResultDetail>;
-    "om-remove-result": CustomEvent<RemoveResultDetail>;
-    "om-rename-result": CustomEvent<RenameResultDetail>;
-  }
+  interface GlobalEventHandlersEventMap extends ResultViewEventMap {}
 }

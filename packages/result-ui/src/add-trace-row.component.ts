@@ -22,6 +22,12 @@ import { cascadeLevels, selectedNode, withSelection } from "./picker.js";
 import type { ResultRef } from "./types.js";
 import { buildVariableTree, type VarNode } from "./var-tree.js";
 
+/** Read a `<select>`'s value off a change event, guarding the target type so the
+ * handlers don't each cast `e.target`. */
+function selectValue(e: Event): string {
+  return e.target instanceof HTMLSelectElement ? e.target.value : "";
+}
+
 @customElement("om-add-trace-row")
 export class OmAddTraceRow extends LitElement {
   static override styles = [
@@ -36,7 +42,7 @@ export class OmAddTraceRow extends LitElement {
       }
       select {
         font: inherit;
-        font-size: 0.9em;
+        font-size: var(--om-description-size);
         height: 24px;
         max-width: 14em;
         padding: 0 var(--om-space-xs);
@@ -51,7 +57,7 @@ export class OmAddTraceRow extends LitElement {
       }
       button {
         font: inherit;
-        font-size: 0.9em;
+        font-size: var(--om-description-size);
         height: 24px;
         padding: 0 var(--om-space-md);
         cursor: pointer;
@@ -66,12 +72,12 @@ export class OmAddTraceRow extends LitElement {
       }
       .hint {
         color: var(--vscode-descriptionForeground);
-        font-size: 0.85em;
+        font-size: var(--om-qualifier-size);
       }
     `,
   ];
 
-  @property({ type: Number }) cardIndex = 0;
+  @property() cardId = "";
   @property({ attribute: false }) results: ResultRef[] = [];
   /** Variable names per result id, supplied lazily by the host. */
   @property({ attribute: false }) variablesByResult: Record<string, string[]> = {};
@@ -85,7 +91,7 @@ export class OmAddTraceRow extends LitElement {
   }
 
   private onResultChange(e: Event): void {
-    this.selResultId = (e.target as HTMLSelectElement).value;
+    this.selResultId = selectValue(e);
     this.selections = [];
     if (
       this.selResultId.length > 0 &&
@@ -96,18 +102,14 @@ export class OmAddTraceRow extends LitElement {
   }
 
   private onLevelChange(level: number, e: Event): void {
-    this.selections = withSelection(
-      this.selections,
-      level,
-      (e.target as HTMLSelectElement).value,
-    );
+    this.selections = withSelection(this.selections, level, selectValue(e));
   }
 
   private onAdd(): void {
     const node = selectedNode(this.tree, this.selections);
     if (!this.selResultId || !node?.isLeaf) return;
     fireEvent(this, "om-add-trace", {
-      cardIndex: this.cardIndex,
+      cardId: this.cardId,
       resultId: this.selResultId,
       variable: node.path,
     });

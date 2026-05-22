@@ -15,7 +15,7 @@
  *
  * Naming:
  *   - `space-2xs … xl`   — paddings, gaps, margins
- *   - `radius-sm | md | lg` — small (controls) → large (modals)
+ *   - `radius-sm | md | lg | xl` — small (controls) → large (modals) → pill-ish
  *   - `z-overlay | modal`   — stacking layers
  *   - others (input-padding, modal-*) — semantic where a raw scale
  *     value would obscure intent.
@@ -37,6 +37,7 @@ export const omTokens: CSSResult = css`
     --om-radius-sm: 2px;
     --om-radius-md: 4px;
     --om-radius-lg: 6px;
+    --om-radius-xl: 10px;
 
     /* --- stacking layers --- */
     --om-z-overlay: 50;
@@ -60,6 +61,13 @@ export const omTokens: CSSResult = css`
 
     /* --- side drawer (parameter / simulation panel) --- */
     --om-panel-drawer-size: 540px;
+
+    /* --- result view (postprocessing) ---
+     * Results rail width (and its collapse floor) plus the minimum height a
+     * plot card's chart claims before ECharts sizes it. */
+    --om-result-rail-size: 240px;
+    --om-result-rail-min-size: 160px;
+    --om-chart-min-height: 280px;
 
     /* --- action panel --- */
     --om-action-panel-offset: 8px;

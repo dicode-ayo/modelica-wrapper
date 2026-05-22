@@ -37,6 +37,8 @@ export interface Trace {
 /** A plot card — overlays its traces on one chart. */
 export interface PlotCard {
   kind: "plot";
+  /** Stable id; data + edit events address a card by this, not array position. */
+  id: string;
   title?: string;
   traces?: Trace[];
   xVariable?: string;
