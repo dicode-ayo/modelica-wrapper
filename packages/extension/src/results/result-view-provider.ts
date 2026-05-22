@@ -2,31 +2,51 @@
  * `ResultViewEditorProvider` — the custom editor behind `*.omresults`
  * postprocessing documents, sibling to the diagram's `DiagramPanel`.
  *
- * It renders a CSP-locked webview that loads the standalone `out/postprocessing`
- * bundle (root `<om-result-view-root>`), parses the document with the pure
- * `parseResultViewDoc`, and pushes it down. This is the skeleton slice (#83):
- * the document round-trips (open → `ready` → `doc`, and re-syncs on edit) but no
- * `.mat` data is read yet — that's #84. Edit/add messages from the webview are
- * accepted but not yet handled.
+ * It renders a CSP-locked webview that loads the `out/postprocessing` bundle
+ * (root `<om-result-view-root>`), parses the document with the pure
+ * `parseResultViewDoc`, reads the referenced `.mat` trajectories through the
+ * shared `OmcClient` (cached by path + mtime), and pushes both down. Card edits
+ * from the webview (add/delete plot, add/remove trace) are applied as
+ * `WorkspaceEdit`s so undo/redo and git come for free. Adding results (file
+ * pick / `.modelica` cache / Simulate hook) lands in #86.
  */
+
+import { randomUUID } from "node:crypto";
+import * as path from "node:path";
 
 import * as vscode from "vscode";
 
+import { log } from "../logger.js";
 import type {
   ExtensionToWebview,
+  TracePayload,
   WebviewToExtension,
 } from "../webview/postprocessing-protocol.js";
-import { parseResultViewDoc } from "./result-doc.js";
+import { ResultCache, type ResultReader } from "./result-cache.js";
+import { parseResultViewDoc, serializeResultViewDoc } from "./result-doc.js";
 
 export const RESULT_VIEW_VIEW_TYPE = "modelica.resultView";
+
+/** Resolve a stored result path: relative paths hang off the document's folder. */
+function resolveResultPath(documentUri: vscode.Uri, stored: string): string {
+  return path.isAbsolute(stored)
+    ? stored
+    : path.join(path.dirname(documentUri.fsPath), stored);
+}
 
 export class ResultViewEditorProvider
   implements vscode.CustomTextEditorProvider
 {
-  private constructor(private readonly extensionUri: vscode.Uri) {}
+  private constructor(
+    private readonly extensionUri: vscode.Uri,
+    private readonly ensureClient: () => Promise<ResultReader>,
+  ) {}
 
-  static register(context: vscode.ExtensionContext): vscode.Disposable {
-    const provider = new ResultViewEditorProvider(context.extensionUri);
+  static register(
+    context: vscode.ExtensionContext,
+    ensureClient: () => Promise<ResultReader>,
+  ): vscode.Disposable {
+    const provider = new ResultViewEditorProvider(context.extensionUri, ensureClient);
     return vscode.window.registerCustomEditorProvider(
       RESULT_VIEW_VIEW_TYPE,
       provider,
@@ -48,32 +68,188 @@ export class ResultViewEditorProvider
     };
     webviewPanel.webview.html = this.renderHtml(webviewPanel.webview);
 
+    // Per-editor cache, lazily backed by the shared OMC client. Reads serialize
+    // through the client's promise-chain mutex (OMC is single-threaded).
+    const cache = new ResultCache({
+      readSimulationResultVars: async (i) =>
+        (await this.ensureClient()).readSimulationResultVars(i),
+      readSimulationResult: async (i) =>
+        (await this.ensureClient()).readSimulationResult(i),
+      closeSimulationResultFile: async () =>
+        (await this.ensureClient()).closeSimulationResultFile(),
+    } satisfies ResultReader);
+
     const post = (msg: ExtensionToWebview): void => {
       void webviewPanel.webview.postMessage(msg);
     };
 
-    const sync = (): void => {
-      // Pure parse; never throws. `.mat` trajectories are read in #84, so
-      // `traceData` is empty for now.
+    // Bumped on every refresh so a slow read from a superseded edit is dropped.
+    let generation = 0;
+
+    const buildTraceData = async (
+      doc: ReturnType<typeof parseResultViewDoc>,
+    ): Promise<Record<string, TracePayload[]>> => {
+      const resultById = new Map(doc.results.map((r) => [r.id, r]));
+      const out: Record<string, TracePayload[]> = {};
+      for (const card of doc.cards) {
+        if (card.kind !== "plot") continue;
+        for (const trace of card.traces ?? []) {
+          const result = resultById.get(trace.result);
+          if (!result) continue; // dangling — result removed
+          const filePath = resolveResultPath(document.uri, result.path);
+          try {
+            const traj = await cache.trajectory(filePath, trace.variable);
+            if (!traj) continue;
+            (out[card.id] ??= []).push({
+              t: traj.t,
+              values: traj.values,
+              name: `${result.label} / ${trace.variable}`,
+            });
+          } catch (err) {
+            log.warn(
+              "resultView",
+              `read ${trace.variable} from ${filePath} failed: ${(err as Error).message}`,
+            );
+          }
+        }
+      }
+      return out;
+    };
+
+    const refresh = async (): Promise<void> => {
+      const myGen = ++generation;
       const doc = parseResultViewDoc(document.getText());
+      // Push structure immediately so the rail + cards render without waiting on
+      // OMC; charts fill in once the trajectories are read.
       post({ type: "doc", doc, traceData: {} });
+
+      const hasTraces = doc.cards.some((c) => (c.traces?.length ?? 0) > 0);
+      if (!hasTraces) return;
+
+      post({ type: "loading", area: "plots", busy: true });
+      try {
+        const traceData = await buildTraceData(doc);
+        if (myGen === generation) post({ type: "doc", doc, traceData });
+      } catch (err) {
+        post({ type: "status", message: (err as Error).message, error: true });
+      } finally {
+        if (myGen === generation) post({ type: "loading", area: "plots", busy: false });
+      }
+    };
+
+    const applyDocEdit = (doc: ReturnType<typeof parseResultViewDoc>): void => {
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(
+        document.uri,
+        new vscode.Range(0, 0, document.lineCount, 0),
+        serializeResultViewDoc(doc),
+      );
+      void vscode.workspace.applyEdit(edit);
     };
 
     const changeSub = vscode.workspace.onDidChangeTextDocument((e) => {
-      if (e.document.uri.toString() === document.uri.toString()) sync();
+      if (e.document.uri.toString() === document.uri.toString()) void refresh();
     });
     webviewPanel.onDidDispose(() => changeSub.dispose());
 
     webviewPanel.webview.onDidReceiveMessage((msg: WebviewToExtension) => {
       switch (msg.type) {
         case "ready":
-          sync();
+          void refresh();
           return;
-        // Edit / add / data-fetch messages land in #84 / #85.
+
+        case "requestVariables":
+          void this.handleRequestVariables(document, cache, msg, post);
+          return;
+
+        case "addPlot": {
+          const doc = parseResultViewDoc(document.getText());
+          const cards = [...doc.cards];
+          const at =
+            typeof msg.afterIndex === "number" ? msg.afterIndex : cards.length - 1;
+          cards.splice(at + 1, 0, {
+            kind: "plot",
+            id: randomUUID(),
+            title: `Plot ${cards.length + 1}`,
+          });
+          applyDocEdit({ ...doc, cards });
+          return;
+        }
+        case "deletePlot": {
+          const doc = parseResultViewDoc(document.getText());
+          applyDocEdit({
+            ...doc,
+            cards: doc.cards.filter((c) => c.id !== msg.cardId),
+          });
+          return;
+        }
+        case "addTrace": {
+          const doc = parseResultViewDoc(document.getText());
+          applyDocEdit({
+            ...doc,
+            cards: doc.cards.map((c) =>
+              c.id === msg.cardId
+                ? {
+                    ...c,
+                    traces: [
+                      ...(c.traces ?? []),
+                      { result: msg.resultId, variable: msg.variable },
+                    ],
+                  }
+                : c,
+            ),
+          });
+          return;
+        }
+        case "removeTrace": {
+          const doc = parseResultViewDoc(document.getText());
+          applyDocEdit({
+            ...doc,
+            cards: doc.cards.map((c) =>
+              c.id === msg.cardId
+                ? { ...c, traces: (c.traces ?? []).filter((_, i) => i !== msg.traceIndex) }
+                : c,
+            ),
+          });
+          return;
+        }
+
+        // addResult / removeResult / renameResult land in #86 / #87.
         default:
           return;
       }
     });
+  }
+
+  private async handleRequestVariables(
+    document: vscode.TextDocument,
+    cache: ResultCache,
+    msg: Extract<WebviewToExtension, { type: "requestVariables" }>,
+    post: (msg: ExtensionToWebview) => void,
+  ): Promise<void> {
+    const doc = parseResultViewDoc(document.getText());
+    const result = doc.results.find((r) => r.id === msg.resultId);
+    if (!result) {
+      post({
+        type: "variables",
+        requestId: msg.requestId,
+        resultId: msg.resultId,
+        error: "unknown result",
+      });
+      return;
+    }
+    const filePath = resolveResultPath(document.uri, result.path);
+    try {
+      const vars = await cache.variables(filePath);
+      post({ type: "variables", requestId: msg.requestId, resultId: msg.resultId, vars });
+    } catch (err) {
+      post({
+        type: "variables",
+        requestId: msg.requestId,
+        resultId: msg.resultId,
+        error: (err as Error).message,
+      });
+    }
   }
 
   private renderHtml(webview: vscode.Webview): string {
