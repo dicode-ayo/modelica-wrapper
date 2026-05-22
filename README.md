@@ -99,6 +99,9 @@ The root file is the map; the detail lives under [`docs/`](docs):
   shared by the parameter form and the diagram value-labels (pre-implementation).
 - **[MultiBody 3D preview — design](docs/multibody-preview-design.md)** —
   design note for the t=0 spatial preview (pre-implementation).
+- **[Postprocessing view — design](docs/postprocessing-design.md)** — a second
+  webview that collects `.mat` result files (from any model) and overlays their
+  trajectories on plot cards (pre-implementation).
 
 ---
 

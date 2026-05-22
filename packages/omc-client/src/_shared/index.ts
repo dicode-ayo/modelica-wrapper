@@ -106,3 +106,17 @@ export {
   type LabelLayout,
   type DiagramLayout,
 } from "./diagramLayout.js";
+export {
+  ResultRefSchema,
+  TraceSchema,
+  PlotCardSchema,
+  CardSchema,
+  ResultViewDocSchema,
+  emptyResultViewDoc,
+  type ResultSource,
+  type ResultRef,
+  type Trace,
+  type PlotCard,
+  type Card,
+  type ResultViewDoc,
+} from "./resultView.js";

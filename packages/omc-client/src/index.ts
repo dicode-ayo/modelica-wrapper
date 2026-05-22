@@ -148,6 +148,20 @@ export {
   type ConnectionLayout,
   type LabelLayout,
   type DiagramLayout,
+  // ResultViewDoc (postprocessing *.omresults wire contract — types + schema
+  // only; host I/O lives in extension, the variable tree in diagram-ui)
+  ResultRefSchema,
+  TraceSchema,
+  PlotCardSchema,
+  CardSchema,
+  ResultViewDocSchema,
+  emptyResultViewDoc,
+  type ResultSource,
+  type ResultRef,
+  type Trace,
+  type PlotCard,
+  type Card,
+  type ResultViewDoc,
 } from "./_shared/index.js";
 
 // --- ParameterModel (parameter-form producer output) ---
