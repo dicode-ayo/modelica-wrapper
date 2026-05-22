@@ -19,6 +19,18 @@
     "workspaceContains:**/*.mo"
   ],
   "contributes": {
+    "customEditors": [
+      {
+        "viewType": "modelica.resultView",
+        "displayName": "Modelica Result View",
+        "selector": [
+          {
+            "filenamePattern": "*.omresults"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
     "commands": [
       {
         "command": "modelica.getOmcVersion",

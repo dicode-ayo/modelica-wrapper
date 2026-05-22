@@ -18,6 +18,7 @@ import { OmcClient } from "@modelica-wrapper/omc-client";
 
 import { registerCommands } from "./commands/index.js";
 import { log } from "./logger.js";
+import { ResultViewEditorProvider } from "./results/result-view-provider.js";
 import { evalLine } from "./repl/repl-eval.js";
 import {
   MODELICA_SOURCE_SCHEME,
@@ -59,6 +60,7 @@ export async function activate(
   context.subscriptions.push(
     libraryView,
     diagnostics,
+    ResultViewEditorProvider.register(context),
     vscode.workspace.registerFileSystemProvider(
       MODELICA_SOURCE_SCHEME,
       sourceProvider,
