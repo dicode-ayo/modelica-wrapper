@@ -72,10 +72,11 @@ A pnpm workspace ([`pnpm-workspace.yaml`](pnpm-workspace.yaml)) of six packages:
 | [`@modelica-wrapper/result-ui`](packages/result-ui) | Standalone Lit + ECharts custom elements (`<om-*>`) for the postprocessing / results view — `.mat` results overlaid on plot cards. Deliberately independent of `diagram-ui` (no Babylon) so it can be distributed on its own. Pre-implementation; see the [design note](docs/postprocessing-design.md). |
 | [`modelica-wrapper`](packages/extension) (the extension) | The VSCode extension host. Owns the `OmcClient` lifecycle, the diagram webview panel, the message protocol, every mutation handler, snapshot undo, display-unit conversion, the library data source, the REPL, and the check/simulate commands. |
 
-Dependency direction: `extension` → `diagram-ui` / `diagram-svg` / `omc-client` /
-`result-ui` / `ui-common`; `diagram-ui` → `diagram-svg` / `omc-client` / `ui-common`;
-`result-ui` → `ui-common` (once its components land); `diagram-svg` → `omc-client`.
-`ui-common` and `omc-client` depend on nothing in the workspace.
+Dependency direction (as shipped): `extension` → `diagram-ui` / `diagram-svg` /
+`omc-client` / `ui-common`; `diagram-ui` → `diagram-svg` / `omc-client` / `ui-common`;
+`diagram-svg` → `omc-client`. `ui-common`, `omc-client`, and `result-ui` depend on
+nothing in the workspace. As the postprocessing view lands, `result-ui` will take
+`ui-common`, and `extension` will take `result-ui`.
 
 ---
 

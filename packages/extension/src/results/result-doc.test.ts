@@ -129,6 +129,19 @@ describe("serializeResultViewDoc", () => {
     } as unknown as ResultViewDoc;
     expect(() => serializeResultViewDoc(bad)).toThrow();
   });
+
+  it("sorts parameter keys so the output is insertion-order independent", () => {
+    const mk = (params: Record<string, string>): ResultViewDoc => ({
+      version: 1,
+      results: [{ id: "r", label: "r", path: "r.mat", source: "simulate", parameters: params }],
+      cards: [],
+    });
+    const a = serializeResultViewDoc(mk({ "motor.R": "1", "motor.L": "2", a: "3" }));
+    const b = serializeResultViewDoc(mk({ a: "3", "motor.L": "2", "motor.R": "1" }));
+    expect(a).toBe(b);
+    expect(a.indexOf('"a"')).toBeLessThan(a.indexOf('"motor.L"'));
+    expect(a.indexOf('"motor.L"')).toBeLessThan(a.indexOf('"motor.R"'));
+  });
 });
 
 describe("tracesNeedingData", () => {
@@ -173,5 +186,17 @@ describe("tracesNeedingData", () => {
       traceCacheKey("r2", "z"),
     ]);
     expect(tracesNeedingData(doc, cached).size).toBe(0);
+  });
+
+  it("dedups the same (result, variable) referenced by two different cards", () => {
+    const twoCards: ResultViewDoc = {
+      version: 1,
+      results: [{ id: "r1", label: "r1", path: "a.mat", source: "import" }],
+      cards: [
+        { kind: "plot", traces: [{ result: "r1", variable: "x" }] },
+        { kind: "plot", traces: [{ result: "r1", variable: "x" }] },
+      ],
+    };
+    expect([...(tracesNeedingData(twoCards, new Set()).get("r1") ?? [])]).toEqual(["x"]);
   });
 });

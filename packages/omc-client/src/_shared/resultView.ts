@@ -4,11 +4,11 @@
  * `docs/postprocessing-design.md`.
  *
  * This module is the **wire contract only**: the types + Zod schemas that both
- * the host (`extension`) and the renderer (`diagram-ui`) agree on, exactly like
+ * the host (`extension`) and the renderer (`result-ui`) agree on, exactly like
  * `DiagramLayout`. It carries no behaviour — by design, the document is not an
  * OMC product (nothing here is derived from an OMC call), so the host-side I/O
  * (`parse`/`serialize`, read-planning) lives in the `extension` package and the
- * webview-side variable tree lives in `diagram-ui`. The contract lives here only
+ * webview-side variable tree lives in `result-ui`. The contract lives here only
  * because `omc-client` is the one package both sides already depend on.
  *
  * Unlike the Dyad runtime POC this models, a document is NOT bound to a single

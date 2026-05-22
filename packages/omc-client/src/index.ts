@@ -149,7 +149,7 @@ export {
   type LabelLayout,
   type DiagramLayout,
   // ResultViewDoc (postprocessing *.omresults wire contract — types + schema
-  // only; host I/O lives in extension, the variable tree in diagram-ui)
+  // only; host I/O lives in extension, the variable tree in result-ui)
   ResultRefSchema,
   TraceSchema,
   PlotCardSchema,
