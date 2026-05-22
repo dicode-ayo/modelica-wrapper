@@ -34,7 +34,7 @@ npm add @modelica-wrapper/diagram-ui @modelica-wrapper/omc-client
 
 ```ts
 // 1. Register the WebAwesome theme bridge once at app startup:
-import "@modelica-wrapper/diagram-ui/webawesome-setup";
+import "@modelica-wrapper/ui-common/webawesome-setup";
 
 // 2. Import the elements you use — importing registers the custom elements
 //    (their @customElement decorators run on module load):

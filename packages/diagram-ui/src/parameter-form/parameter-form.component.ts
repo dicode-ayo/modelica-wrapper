@@ -55,7 +55,7 @@ import "@awesome.me/webawesome/dist/components/tab-panel/tab-panel.js";
 
 import type { ParameterModel } from "@modelica-wrapper/omc-client";
 
-import { omTokens } from "../base/om-tokens.js";
+import { omTokens } from "@modelica-wrapper/ui-common";
 
 import {
   enabledValues,

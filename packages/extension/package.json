@@ -223,6 +223,7 @@
     "@modelica-wrapper/diagram-svg": "workspace:*",
     "@modelica-wrapper/diagram-ui": "workspace:*",
     "@modelica-wrapper/omc-client": "workspace:*",
+    "@modelica-wrapper/ui-common": "workspace:*",
     "lit": "^3.2.0",
     "zeromq": "^6.1.0"
   },

@@ -24,7 +24,7 @@ import { customElement, property } from "lit/decorators.js";
 
 import "@awesome.me/webawesome/dist/components/button/button.js";
 
-import { omTokens } from "../base/om-tokens.js";
+import { omTokens } from "@modelica-wrapper/ui-common";
 
 export type ActionPanelAnchor =
   | "top-right"

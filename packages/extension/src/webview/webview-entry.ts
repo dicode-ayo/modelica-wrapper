@@ -17,7 +17,7 @@ import { customElement, state } from "lit/decorators.js";
 // `<wa-*>` elements rendered downstream pick up VSCode's palette
 // automatically. esbuild's `.css` loader collects these into
 // `out/webview.css`, which `diagram/panel.ts` <link>s to.
-import "@modelica-wrapper/diagram-ui/webawesome-setup";
+import "@modelica-wrapper/ui-common/webawesome-setup";
 
 import "@modelica-wrapper/diagram-ui";
 import type {

@@ -33,7 +33,7 @@ import "@awesome.me/webawesome/dist/components/tree-item/tree-item.js";
 import type WaDialog from "@awesome.me/webawesome/dist/components/dialog/dialog.js";
 import type WaTreeItem from "@awesome.me/webawesome/dist/components/tree-item/tree-item.js";
 
-import { omTokens } from "../base/om-tokens.js";
+import { omTokens } from "@modelica-wrapper/ui-common";
 
 /**
  * Modelica class restrictions surfaced in the palette. Mirrors OMC's

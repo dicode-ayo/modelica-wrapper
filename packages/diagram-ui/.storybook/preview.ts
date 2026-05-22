@@ -2,7 +2,7 @@ import type { Preview } from "@storybook/web-components";
 
 // Boot Web Awesome's theme + the vscode-token bridge once per page so
 // every story can use `<wa-*>` components with native-feeling chrome.
-import "../src/base/webawesome-setup.js";
+import "@modelica-wrapper/ui-common/webawesome-setup";
 
 /**
  * Minimal global preview config:
