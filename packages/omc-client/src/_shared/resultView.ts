@@ -62,6 +62,9 @@ export interface Trace {
 /** A plot card — overlays its traces on one chart. */
 export interface PlotCard {
   kind: "plot";
+  /** Stable id; minted on add and backfilled when parsing a legacy doc. Data
+   * and edit operations address a card by this, never by array position. */
+  id: string;
   title?: string | undefined;
   traces?: Trace[] | undefined;
   /** Independent variable; defaults to `time`. Forward-looking. */
@@ -114,6 +117,9 @@ export const TraceSchema = z
 export const PlotCardSchema = z
   .object({
     kind: z.literal("plot"),
+    // Optional on the wire so legacy / hand-authored docs validate; the host's
+    // `parseResultViewDoc` backfills a minted id for any card missing one.
+    id: z.string().optional(),
     title: z.string().optional(),
     traces: z.array(TraceSchema).optional(),
     xVariable: z.string().optional(),

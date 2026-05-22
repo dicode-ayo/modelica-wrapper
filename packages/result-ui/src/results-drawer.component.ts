@@ -13,6 +13,7 @@ import { omTokens } from "@modelica-wrapper/ui-common";
 
 import { fireEvent } from "./events.js";
 import type { ResultRef, ResultSource } from "./types.js";
+import "./icon-button.component.js";
 
 const SOURCE_LABEL: Record<ResultSource, string> = {
   simulate: "sim",
@@ -40,7 +41,7 @@ export class OmResultsDrawer extends LitElement {
       }
       header .title {
         flex: 1;
-        font-size: 0.78em;
+        font-size: var(--om-qualifier-size);
         text-transform: uppercase;
         letter-spacing: 0.07em;
         font-weight: 700;
@@ -48,7 +49,7 @@ export class OmResultsDrawer extends LitElement {
       }
       header button {
         font: inherit;
-        font-size: 0.82em;
+        font-size: var(--om-qualifier-size);
         cursor: pointer;
         padding: 1px var(--om-space-sm);
         color: var(--vscode-foreground);
@@ -75,12 +76,12 @@ export class OmResultsDrawer extends LitElement {
       }
       .chip .label {
         font-weight: 600;
-        font-size: 0.88em;
-        padding-right: 16px;
+        font-size: var(--om-description-size);
+        padding-right: var(--om-space-xl);
       }
       .chip .meta {
-        margin-top: 2px;
-        font-size: 0.8em;
+        margin-top: var(--om-space-2xs);
+        font-size: var(--om-qualifier-size);
         color: var(--vscode-descriptionForeground);
         display: flex;
         align-items: center;
@@ -97,23 +98,13 @@ export class OmResultsDrawer extends LitElement {
       }
       .remove {
         position: absolute;
-        top: 2px;
-        right: 2px;
-        border: none;
-        background: transparent;
-        cursor: pointer;
-        color: var(--vscode-descriptionForeground);
-        border-radius: var(--om-radius-sm);
-        line-height: 1;
-        padding: 0 2px;
-      }
-      .remove:hover {
-        color: var(--vscode-errorForeground);
+        top: var(--om-space-2xs);
+        right: var(--om-space-2xs);
       }
       .empty {
         padding: var(--om-space-lg) var(--om-space-md);
         color: var(--vscode-descriptionForeground);
-        font-size: 0.85em;
+        font-size: var(--om-qualifier-size);
       }
     `,
   ];
@@ -126,7 +117,7 @@ export class OmResultsDrawer extends LitElement {
         <span class="title">Results ${this.results.length}</span>
         <button
           title="Add a .mat result file"
-          @click=${() => fireEvent(this, "om-add-result", { via: "pick" })}
+          @click=${() => fireEvent(this, "om-add-result", { via: "import" })}
         >
           + File…
         </button>
@@ -151,13 +142,13 @@ export class OmResultsDrawer extends LitElement {
       : "";
     return html`
       <div class="chip">
-        <button
+        <om-icon-button
           class="remove"
-          title="Remove from view"
+          label="Remove from view"
           @click=${() => fireEvent(this, "om-remove-result", { resultId: r.id })}
         >
           ✕
-        </button>
+        </om-icon-button>
         <div class="label">${r.label}</div>
         <div class="meta">
           <span class="badge">${SOURCE_LABEL[r.source]}</span>

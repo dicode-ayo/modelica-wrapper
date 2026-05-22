@@ -2,7 +2,7 @@
  * `<om-cards-list>` — the scrollable column of plot cards, with "+ Plot"
  * inserters between and after cards (and an empty state when there are none).
  * Pure layout: it maps each card to an `<om-result-plot-card>` and routes the
- * matching trace data by index.
+ * matching trace data by card id (insertion is the one positional op).
  */
 
 import { LitElement, css, html, type TemplateResult } from "lit";
@@ -34,13 +34,13 @@ export class OmCardsList extends LitElement {
       .insert button,
       .empty button {
         font: inherit;
-        font-size: 0.85em;
+        font-size: var(--om-qualifier-size);
         cursor: pointer;
         padding: 1px var(--om-space-lg);
         color: var(--vscode-descriptionForeground);
         background: var(--vscode-editor-background, transparent);
         border: 1px solid var(--vscode-panel-border);
-        border-radius: 10px;
+        border-radius: var(--om-radius-xl);
       }
       .insert button:hover,
       .empty button:hover {
@@ -53,16 +53,17 @@ export class OmCardsList extends LitElement {
         flex-direction: column;
         align-items: center;
         gap: var(--om-space-md);
-        padding: 48px 0;
+        padding: calc(var(--om-space-xl) * 3) 0;
         color: var(--vscode-descriptionForeground);
-        font-size: 0.9em;
+        font-size: var(--om-description-size);
       }
     `,
   ];
 
   @property({ attribute: false }) cards: Card[] = [];
   @property({ attribute: false }) results: ResultRef[] = [];
-  @property({ attribute: false }) traceData: Record<number, TracePayload[]> = {};
+  /** Trace data per card, keyed by `card.id`. */
+  @property({ attribute: false }) traceData: Record<string, TracePayload[]> = {};
   @property({ attribute: false }) variablesByResult: Record<string, string[]> = {};
 
   private addPlot(afterIndex: number): void {
@@ -85,7 +86,7 @@ export class OmCardsList extends LitElement {
             .cardIndex=${i}
             .card=${card}
             .results=${this.results}
-            .traces=${this.traceData[i] ?? []}
+            .traces=${this.traceData[card.id] ?? []}
             .variablesByResult=${this.variablesByResult}
           ></om-result-plot-card>
           <div class="insert">

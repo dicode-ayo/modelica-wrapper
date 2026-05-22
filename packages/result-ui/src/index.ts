@@ -28,3 +28,4 @@ export { OmResultsDrawer } from "./results-drawer.component.js";
 export { OmCardsList } from "./cards-list.component.js";
 export { OmResultPlotCard } from "./result-plot-card.component.js";
 export { OmAddTraceRow } from "./add-trace-row.component.js";
+export { OmIconButton } from "./icon-button.component.js";

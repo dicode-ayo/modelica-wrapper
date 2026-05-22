@@ -29,13 +29,14 @@ export const sampleDoc: ResultViewDoc = {
   cards: [
     {
       kind: "plot",
+      id: "c1",
       title: "Motor speed vs tank level",
       traces: [
         { result: "r1", variable: "motor.w" },
         { result: "r2", variable: "tank.level" },
       ],
     },
-    { kind: "plot", title: "Empty plot" },
+    { kind: "plot", id: "c2", title: "Empty plot" },
   ],
 };
 
@@ -55,8 +56,8 @@ function series(fn: (t: number) => number, name: string): TracePayload {
   return { t, values, name };
 }
 
-export const sampleTraceData: Record<number, TracePayload[]> = {
-  0: [
+export const sampleTraceData: Record<string, TracePayload[]> = {
+  c1: [
     series((x) => 1 - Math.exp(-5 * x), "DCMotor run-1 / motor.w"),
     series((x) => 0.5 + 0.4 * Math.sin(6 * x), "tank.mat / tank.level"),
   ],
