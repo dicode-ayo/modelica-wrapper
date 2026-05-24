@@ -1,7 +1,6 @@
 {
   "name": "@modelica-wrapper/diagram-svg",
   "version": "0.0.1",
-  "private": true,
   "description": "Renders typed IconLayer[] from @modelica-wrapper/omc-client into self-contained SVG strings.",
   "type": "commonjs",
   "main": "./src/index.ts",
@@ -9,10 +8,26 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "files": ["dist"],
   "engines": {
     "node": ">=20"
   },
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.mjs",
+        "require": "./dist/index.js"
+      }
+    }
+  },
   "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "pnpm build",
     "typecheck": "tsc --noEmit",
     "test": "OMC_INTEGRATION=0 vitest run",
     "test:watch": "vitest",

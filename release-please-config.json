@@ -23,6 +23,31 @@
       "component": "modelica-wrapper",
       "package-name": "modelica-wrapper",
       "changelog-path": "CHANGELOG.md"
+    },
+    "packages/diagram-svg": {
+      "component": "@modelica-wrapper/diagram-svg",
+      "package-name": "@modelica-wrapper/diagram-svg",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/diagram-ui": {
+      "component": "@modelica-wrapper/diagram-ui",
+      "package-name": "@modelica-wrapper/diagram-ui",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/omc-client": {
+      "component": "@modelica-wrapper/omc-client",
+      "package-name": "@modelica-wrapper/omc-client",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/result-ui": {
+      "component": "@modelica-wrapper/result-ui",
+      "package-name": "@modelica-wrapper/result-ui",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/ui-common": {
+      "component": "@modelica-wrapper/ui-common",
+      "package-name": "@modelica-wrapper/ui-common",
+      "changelog-path": "CHANGELOG.md"
     }
   }
 }

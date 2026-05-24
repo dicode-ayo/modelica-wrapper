@@ -1,7 +1,6 @@
 {
   "name": "@modelica-wrapper/diagram-ui",
   "version": "0.0.1",
-  "private": true,
   "description": "Lit + Babylon.js custom elements (<om-*>) for the Modelica graphical layout editor. Loaded inside the VSCode extension's webview.",
   "type": "module",
   "main": "./src/index.ts",
@@ -9,11 +8,27 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "files": ["dist"],
   "engines": {
     "node": ">=20"
   },
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.cjs",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "require": "./dist/index.cjs"
+      }
+    }
+  },
   "scripts": {
     "start": "storybook dev -p 6007 --no-open",
+    "build": "tsup",
+    "prepublishOnly": "pnpm build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

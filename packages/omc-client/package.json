@@ -1,7 +1,6 @@
 {
   "name": "@modelica-wrapper/omc-client",
   "version": "0.0.1",
-  "private": true,
   "description": "TypeScript client for OpenModelica's interactive ZeroMQ scripting API. Typed wrappers, Zod-validated outputs, no VSCode dependencies.",
   "type": "commonjs",
   "main": "./src/index.ts",
@@ -11,10 +10,41 @@
     "./api/*": "./src/api/*",
     "./eval": "./src/eval/index.ts"
   },
+  "files": ["dist"],
   "engines": {
     "node": ">=20"
   },
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.js",
+    "module": "./dist/index.mjs",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.mjs",
+        "require": "./dist/index.js"
+      },
+      "./eval": {
+        "types": "./dist/eval/index.d.ts",
+        "import": "./dist/eval/index.mjs",
+        "require": "./dist/eval/index.js"
+      },
+      "./api/*": {
+        "types": "./dist/api/*/index.d.ts",
+        "import": "./dist/api/*/index.mjs",
+        "require": "./dist/api/*/index.js"
+      },
+      "./api/*/index.js": {
+        "types": "./dist/api/*/index.d.ts",
+        "import": "./dist/api/*/index.mjs",
+        "require": "./dist/api/*/index.js"
+      }
+    }
+  },
   "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "pnpm build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
