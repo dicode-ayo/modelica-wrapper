@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import type { ResultViewDoc } from "@modelica-wrapper/omc-client";
 
 import {
+  addPlotCard,
+  addTrace,
+  deleteCard,
   parseResultViewDoc,
+  removeTrace,
   serializeResultViewDoc,
-  traceCacheKey,
-  tracesNeedingData,
 } from "./result-doc.js";
 
 // A fully-populated document with no `undefined` fields, so a parse∘serialize
@@ -157,60 +159,130 @@ describe("serializeResultViewDoc", () => {
   });
 });
 
-describe("tracesNeedingData", () => {
-  const doc: ResultViewDoc = {
+describe("addPlotCard", () => {
+  const base: ResultViewDoc = {
     version: 1,
-    results: [
-      { id: "r1", label: "r1", path: "a.mat", source: "import" },
-      { id: "r2", label: "r2", path: "b.mat", source: "import" },
+    results: [],
+    cards: [
+      { kind: "plot", id: "a", title: "Plot 1" },
+      { kind: "plot", id: "b", title: "Plot 2" },
     ],
+  };
+
+  it("inserts after the given index", () => {
+    const out = addPlotCard(base, 0, () => "new");
+    expect(out.cards.map((c) => c.id)).toEqual(["a", "new", "b"]);
+  });
+
+  it("inserts at the top for afterIndex -1", () => {
+    expect(addPlotCard(base, -1, () => "new").cards.map((c) => c.id)).toEqual([
+      "new",
+      "a",
+      "b",
+    ]);
+  });
+
+  it("appends when afterIndex is at or past the end", () => {
+    expect(addPlotCard(base, 99, () => "new").cards.map((c) => c.id)).toEqual([
+      "a",
+      "b",
+      "new",
+    ]);
+  });
+
+  it("titles with the lowest unused `Plot N` so deletes don't collide", () => {
+    const gapped: ResultViewDoc = {
+      version: 1,
+      results: [],
+      cards: [
+        { kind: "plot", id: "a", title: "Plot 1" },
+        { kind: "plot", id: "c", title: "Plot 3" },
+      ],
+    };
+    expect(addPlotCard(gapped, 1, () => "new").cards[2]?.title).toBe("Plot 2");
+    expect(addPlotCard(base, 1, () => "new").cards[2]?.title).toBe("Plot 3");
+    const empty: ResultViewDoc = { version: 1, results: [], cards: [] };
+    expect(addPlotCard(empty, -1, () => "new").cards[0]?.title).toBe("Plot 1");
+  });
+
+  it("does not mutate the input document", () => {
+    addPlotCard(base, 0, () => "new");
+    expect(base.cards.map((c) => c.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("deleteCard", () => {
+  const base: ResultViewDoc = {
+    version: 1,
+    results: [],
+    cards: [
+      { kind: "plot", id: "a" },
+      { kind: "plot", id: "b" },
+    ],
+  };
+
+  it("drops the matching card", () => {
+    expect(deleteCard(base, "a").cards.map((c) => c.id)).toEqual(["b"]);
+  });
+
+  it("is a no-op for an unknown id", () => {
+    expect(deleteCard(base, "ghost").cards.map((c) => c.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("addTrace", () => {
+  const base: ResultViewDoc = {
+    version: 1,
+    results: [],
+    cards: [
+      { kind: "plot", id: "a", traces: [{ result: "r1", variable: "x" }] },
+      { kind: "plot", id: "b" },
+    ],
+  };
+
+  it("appends to the addressed card's traces", () => {
+    expect(addTrace(base, "a", "r1", "y").cards[0]?.traces).toEqual([
+      { result: "r1", variable: "x" },
+      { result: "r1", variable: "y" },
+    ]);
+  });
+
+  it("seeds traces on a card that had none", () => {
+    expect(addTrace(base, "b", "r2", "z").cards[1]?.traces).toEqual([
+      { result: "r2", variable: "z" },
+    ]);
+  });
+
+  it("leaves other cards untouched", () => {
+    expect(addTrace(base, "b", "r2", "z").cards[0]?.traces).toEqual([
+      { result: "r1", variable: "x" },
+    ]);
+  });
+});
+
+describe("removeTrace", () => {
+  const base: ResultViewDoc = {
+    version: 1,
+    results: [],
     cards: [
       {
         kind: "plot",
-        id: "c1",
+        id: "a",
         traces: [
           { result: "r1", variable: "x" },
           { result: "r1", variable: "y" },
-          { result: "r2", variable: "z" },
-          { result: "ghost", variable: "q" }, // dangling — result not in doc
         ],
       },
     ],
   };
 
-  it("returns every uncached, existing-result trace grouped by result", () => {
-    const needed = tracesNeedingData(doc, new Set());
-    expect([...(needed.get("r1") ?? [])].sort()).toEqual(["x", "y"]);
-    expect([...(needed.get("r2") ?? [])]).toEqual(["z"]);
-  });
-
-  it("skips dangling traces whose result is gone", () => {
-    expect(tracesNeedingData(doc, new Set()).has("ghost")).toBe(false);
-  });
-
-  it("excludes already-cached pairs", () => {
-    const needed = tracesNeedingData(doc, new Set([traceCacheKey("r1", "x")]));
-    expect([...(needed.get("r1") ?? [])]).toEqual(["y"]);
-  });
-
-  it("returns an empty map when everything is cached", () => {
-    const cached = new Set([
-      traceCacheKey("r1", "x"),
-      traceCacheKey("r1", "y"),
-      traceCacheKey("r2", "z"),
+  it("removes the trace at the given index", () => {
+    expect(removeTrace(base, "a", 0).cards[0]?.traces).toEqual([
+      { result: "r1", variable: "y" },
     ]);
-    expect(tracesNeedingData(doc, cached).size).toBe(0);
   });
 
-  it("dedups the same (result, variable) referenced by two different cards", () => {
-    const twoCards: ResultViewDoc = {
-      version: 1,
-      results: [{ id: "r1", label: "r1", path: "a.mat", source: "import" }],
-      cards: [
-        { kind: "plot", id: "c1", traces: [{ result: "r1", variable: "x" }] },
-        { kind: "plot", id: "c2", traces: [{ result: "r1", variable: "x" }] },
-      ],
-    };
-    expect([...(tracesNeedingData(twoCards, new Set()).get("r1") ?? [])]).toEqual(["x"]);
+  it("is a no-op for an out-of-range index", () => {
+    expect(removeTrace(base, "a", 9).cards[0]?.traces).toHaveLength(2);
   });
 });

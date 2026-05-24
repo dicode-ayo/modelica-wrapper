@@ -4,10 +4,9 @@
  * drops `<om-result-view-root>` into its body.
  *
  * `<om-result-view-root>` is the bridge: the only place that touches the VSCode
- * webview API. It owns the `postMessage` round-trip and (later) provides Lit
- * contexts to the `result-ui` components. This skeleton slice (#83) renders a
- * placeholder summarising the parsed document to prove the round-trip; the real
- * results rail + plot cards (`@modelica-wrapper/result-ui`) mount here in #84.
+ * webview API. It mounts the `result-ui` app, sets its data from host messages,
+ * and translates the components' DOM `CustomEvent`s into `postMessage`s.
+ * `result-ui` itself never sees VSCode — it stays a pure renderer.
  */
 
 import { LitElement, css, html, type TemplateResult } from "lit";
@@ -17,11 +16,25 @@ import { customElement, state } from "lit/decorators.js";
 // what makes esbuild emit `out/postprocessing.css`, which the host <link>s to.
 import "@modelica-wrapper/ui-common/webawesome-setup";
 
-import { omTokens } from "@modelica-wrapper/ui-common";
+// Side-effect import: registers <om-result-view-app> and its children.
+import "@modelica-wrapper/result-ui";
+import type {
+  AddPlotDetail,
+  AddResultDetail,
+  AddTraceDetail,
+  DeletePlotDetail,
+  RemoveResultDetail,
+  RemoveTraceDetail,
+  RenameResultDetail,
+  RequestVariablesDetail,
+} from "@modelica-wrapper/result-ui";
+// Type-only against omc-client: a value import would pull its Node-only runtime
+// (`zeromq`, `node:*`) into this browser bundle.
 import type { ResultViewDoc } from "@modelica-wrapper/omc-client";
 
 import type {
   ExtensionToWebview,
+  TracePayload,
   WebviewToExtension,
 } from "./postprocessing-protocol.js";
 
@@ -32,57 +45,22 @@ declare function acquireVsCodeApi(): VsCodeApi;
 
 @customElement("om-result-view-root")
 export class OmResultViewRoot extends LitElement {
-  static override styles = [
-    omTokens,
-    css`
-      :host {
-        display: block;
-        height: 100%;
-        box-sizing: border-box;
-        padding: var(--om-space-xl);
-        font-family: var(--vscode-font-family);
-        font-size: var(--vscode-font-size, 13px);
-        color: var(--vscode-foreground);
-      }
-      h1 {
-        margin: 0 0 var(--om-space-sm);
-        font-size: var(--om-title-size);
-        font-weight: 600;
-      }
-      p {
-        margin: var(--om-space-xs) 0;
-        color: var(--vscode-descriptionForeground);
-      }
-      .counts {
-        display: flex;
-        gap: var(--om-space-md);
-        margin: var(--om-space-lg) 0;
-      }
-      .count {
-        border: 1px solid var(--vscode-panel-border);
-        border-radius: var(--om-radius-md);
-        padding: var(--om-space-sm) var(--om-space-lg);
-        min-width: 64px;
-      }
-      .count .n {
-        font-size: 1.6em;
-        font-weight: 600;
-      }
-      .count .label {
-        color: var(--vscode-descriptionForeground);
-        font-size: var(--om-description-size);
-      }
-      .note {
-        margin-top: var(--om-space-lg);
-        font-size: var(--om-description-size);
-        color: var(--vscode-descriptionForeground);
-      }
-    `,
-  ];
+  static override styles = css`
+    :host {
+      display: block;
+      height: 100%;
+    }
+  `;
 
   private readonly vscode = acquireVsCodeApi();
 
-  @state() private doc: ResultViewDoc | undefined;
+  // Defaults to the empty document (the same literal `<om-result-view-app>`
+  // defaults to) so the themed app renders its own empty state during the
+  // `ready` → `doc` round-trip — the shell never paints unstyled chrome.
+  @state() private doc: ResultViewDoc = { version: 1, results: [], cards: [] };
+  @state() private traceData: Record<string, TracePayload[]> = {};
+  @state() private variablesByResult: Record<string, string[]> = {};
+  @state() private plotsLoading = false;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -97,28 +75,89 @@ export class OmResultViewRoot extends LitElement {
 
   private readonly onMessage = (e: MessageEvent<ExtensionToWebview>): void => {
     const msg = e.data;
-    if (msg.type === "doc") {
-      this.doc = msg.doc;
+    switch (msg.type) {
+      case "doc":
+        this.doc = msg.doc;
+        this.traceData = msg.traceData ?? {};
+        return;
+      case "variables":
+        if (msg.vars) {
+          this.variablesByResult = {
+            ...this.variablesByResult,
+            [msg.resultId]: msg.vars,
+          };
+        }
+        return;
+      case "loading":
+        if (msg.area === "plots") this.plotsLoading = msg.busy;
+        return;
+      case "status":
+        if (msg.error) console.error(`[result-view] ${msg.message}`);
+        return;
     }
   };
 
+  private send(msg: WebviewToExtension): void {
+    this.vscode.postMessage(msg);
+  }
+
+  // Typed handler fields (same shape as the diagram bridge in `webview-entry.ts`)
+  // so the template stays declarative and no `as CustomEvent<…>` casts are needed
+  // — the `result-ui` events are globally augmented onto `CustomEvent`.
+
+  private readonly onAddPlot = (e: CustomEvent<AddPlotDetail>): void => {
+    this.send({ type: "addPlot", afterIndex: e.detail.afterIndex });
+  };
+
+  private readonly onDeletePlot = (e: CustomEvent<DeletePlotDetail>): void => {
+    this.send({ type: "deletePlot", cardId: e.detail.cardId });
+  };
+
+  private readonly onAddTrace = (e: CustomEvent<AddTraceDetail>): void => {
+    const { cardId, resultId, variable } = e.detail;
+    this.send({ type: "addTrace", cardId, resultId, variable });
+  };
+
+  private readonly onRemoveTrace = (e: CustomEvent<RemoveTraceDetail>): void => {
+    const { cardId, traceIndex } = e.detail;
+    this.send({ type: "removeTrace", cardId, traceIndex });
+  };
+
+  private readonly onRequestVariables = (
+    e: CustomEvent<RequestVariablesDetail>,
+  ): void => {
+    this.send({ type: "requestVariables", resultId: e.detail.resultId });
+  };
+
+  private readonly onAddResult = (e: CustomEvent<AddResultDetail>): void => {
+    this.send({ type: "addResult", via: e.detail.via });
+  };
+
+  private readonly onRemoveResult = (e: CustomEvent<RemoveResultDetail>): void => {
+    this.send({ type: "removeResult", resultId: e.detail.resultId });
+  };
+
+  private readonly onRenameResult = (e: CustomEvent<RenameResultDetail>): void => {
+    const { resultId, label } = e.detail;
+    this.send({ type: "renameResult", resultId, label });
+  };
+
   override render(): TemplateResult {
-    if (!this.doc) {
-      return html`<p>Loading…</p>`;
-    }
-    const results = this.doc.results.length;
-    const cards = this.doc.cards.length;
     return html`
-      <h1>Postprocessing</h1>
-      <p>Collect <code>.mat</code> results and overlay their trajectories.</p>
-      <div class="counts">
-        <div class="count"><div class="n">${results}</div><div class="label">results</div></div>
-        <div class="count"><div class="n">${cards}</div><div class="label">cards</div></div>
-      </div>
-      <div class="note">
-        Results rail and plot cards arrive next. This view is the editor skeleton —
-        it round-trips the <code>.omresults</code> document with the host.
-      </div>
+      <om-result-view-app
+        .doc=${this.doc}
+        .traceData=${this.traceData}
+        .variablesByResult=${this.variablesByResult}
+        ?plotsLoading=${this.plotsLoading}
+        @om-add-plot=${this.onAddPlot}
+        @om-delete-plot=${this.onDeletePlot}
+        @om-add-trace=${this.onAddTrace}
+        @om-remove-trace=${this.onRemoveTrace}
+        @om-request-variables=${this.onRequestVariables}
+        @om-add-result=${this.onAddResult}
+        @om-remove-result=${this.onRemoveResult}
+        @om-rename-result=${this.onRenameResult}
+      ></om-result-view-app>
     `;
   }
 }

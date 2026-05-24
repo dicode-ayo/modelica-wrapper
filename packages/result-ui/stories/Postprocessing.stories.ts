@@ -9,6 +9,7 @@ import type { Meta, StoryObj } from "@storybook/web-components";
 import { html, type TemplateResult } from "lit";
 
 import "../src/index.js";
+import "./mock-host.js";
 import type { PlotCard } from "../src/types.js";
 import {
   sampleDoc,
@@ -57,6 +58,20 @@ export const Empty: Story = {
       <om-result-view-app
         .doc=${{ version: 1, results: [], cards: [] }}
       ></om-result-view-app>
+    </div>
+  `,
+};
+
+/**
+ * Interactive — a stateful mock host closes the loop: add/delete plots, add/remove
+ * traces (charts re-synthesise), pick any result (variables load lazily after a
+ * tick), and add/remove results. The Actions panel still shows every event. This
+ * is the closest thing to the live editor without OMC/VSCode.
+ */
+export const Playground: Story = {
+  render: (): TemplateResult => html`
+    <div class="om-story-host">
+      <om-result-view-mock-host></om-result-view-mock-host>
     </div>
   `,
 };

@@ -9,9 +9,9 @@
  * down; the webview emits intent (add a plot, add a trace, …) back up.
  *
  * Slice status: the provider skeleton (#83) sends `doc` and handles `ready`; the
- * data-path (`variables` / `traceData` / `loading`) and the edit/add messages
- * are wired in #84 / #85. The full shapes are defined here now so both sides
- * compile against one contract.
+ * data path (`variables` / `loading`) and the card-edit messages are wired in
+ * #84 / #85. The add/remove/rename-result messages are defined here but only
+ * handled from #86 / #87 onward.
  */
 
 import type { ResultViewDoc } from "@modelica-wrapper/omc-client";
@@ -31,16 +31,16 @@ export interface TracePayload {
 // ── Extension host → webview ────────────────────────────────────────────────
 
 export type ExtensionToWebview =
-  /** Seed / refresh: the parsed document plus any trace data already cached,
-   *  keyed by card id (empty until the data path lands in #84). */
+  /** Seed / refresh: the parsed document plus any trace data already read, keyed
+   *  by card id. The host always pushes a full snapshot. */
   | { type: "doc"; doc: ResultViewDoc; traceData: Record<string, TracePayload[]> }
-  /** Response to `requestVariables` — a result's variable list, lazily read. */
-  | { type: "variables"; requestId: string; resultId: string; vars?: string[]; error?: string }
-  /** Incremental single-trace append for a card. */
-  | { type: "traceData"; cardId: string; trace: TracePayload }
+  /** Response to `requestVariables` — a result's variable list, lazily read.
+   *  Keyed by `resultId`; the webview merges it into its per-result map. */
+  | { type: "variables"; resultId: string; vars?: string[]; error?: string }
   /** Spinner gating while the host reads results / variables. */
   | { type: "loading"; area: "results" | "plots"; busy: boolean }
-  /** Surface a read / parse error in the webview. */
+  /** A read / parse error, logged to the webview console as a diagnostic — not
+   *  yet surfaced in the UI. */
   | { type: "status"; message: string; error?: boolean };
 
 // ── Webview → extension host ────────────────────────────────────────────────
@@ -54,8 +54,9 @@ export type WebviewToExtension =
   | { type: "deletePlot"; cardId: string }
   | { type: "addTrace"; cardId: string; resultId: string; variable: string }
   | { type: "removeTrace"; cardId: string; traceIndex: number }
-  /** Fetch a result's variable list (correlated by `requestId`). */
-  | { type: "requestVariables"; requestId: string; resultId: string }
+  /** Fetch a result's variable list; the reply (`variables`) is keyed by
+   *  `resultId`, which is enough to route it — replies don't overlap per result. */
+  | { type: "requestVariables"; resultId: string }
   /** Add a result — the host opens the file dialog (`import`) or the
    *  `.modelica` cache quick-pick (`cache`). Matches `ResultSource`. */
   | { type: "addResult"; via: "import" | "cache" }

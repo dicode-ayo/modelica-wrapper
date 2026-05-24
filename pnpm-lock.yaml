@@ -115,6 +115,9 @@ importers:
       '@modelica-wrapper/omc-client':
         specifier: workspace:*
         version: link:../omc-client
+      '@modelica-wrapper/result-ui':
+        specifier: workspace:*
+        version: link:../result-ui
       '@modelica-wrapper/ui-common':
         specifier: workspace:*
         version: link:../ui-common

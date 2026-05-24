@@ -60,7 +60,7 @@ export async function activate(
   context.subscriptions.push(
     libraryView,
     diagnostics,
-    ResultViewEditorProvider.register(context),
+    ResultViewEditorProvider.register(context, ensureClient),
     vscode.workspace.registerFileSystemProvider(
       MODELICA_SOURCE_SCHEME,
       sourceProvider,
