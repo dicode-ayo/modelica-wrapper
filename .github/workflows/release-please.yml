@@ -1,0 +1,36 @@
+name: Release Please
+
+# Maintains a rolling "release PR" off the Conventional Commits that land on
+# main. Merging that PR bumps the version, updates CHANGELOG.md, tags the
+# release, and creates a GitHub Release. Manifest-driven so the monorepo
+# layout is described once in release-please-config.json.
+#
+# Token note: GITHUB_TOKEN is used below. Workflows triggered by the release
+# tag/PR it creates will NOT fire (GitHub suppresses recursive workflow runs
+# for the default token). If you later want CI (ci.yml) or a VSIX publish to
+# run automatically on the release PR or tag, swap secrets.GITHUB_TOKEN for a
+# fine-grained PAT (or a GitHub App token) stored as e.g. RELEASE_PLEASE_TOKEN.
+
+on:
+  push:
+    branches: [main]
+
+# Only one release run per ref; a newer push supersedes an in-flight one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    name: Release PR + tagging
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

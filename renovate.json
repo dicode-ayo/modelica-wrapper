@@ -10,7 +10,18 @@
   "prConcurrentLimit": 5,
   "rangeStrategy": "bump",
 
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  },
+
   "packageRules": [
+    {
+      "description": "Group non-major dev dependency bumps into a single weekly PR to cut review noise; covers the shared TypeScript/Storybook/Vitest toolchain across the workspace.",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "dev dependencies (non-major)"
+    },
     {
       "description": "Group all OMC bumps (Dockerfile FROM, CI matrix, version.ts pin) into one PR + label so the omc-update-audit workflow fires.",
       "matchPackageNames": [
