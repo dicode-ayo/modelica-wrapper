@@ -7,6 +7,7 @@
   "include": [
     "src/extension.ts",
     "src/diagram/**/*.ts",
+    "src/language/**/*.ts",
     "src/results/**/*.ts",
     "src/webview/protocol.ts",
     "src/webview/postprocessing-protocol.ts"
