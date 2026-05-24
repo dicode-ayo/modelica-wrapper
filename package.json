@@ -10,6 +10,8 @@
     "start": "pnpm --filter @modelica-wrapper/diagram-ui start",
     "build": "pnpm --filter modelica-wrapper build",
     "watch": "pnpm --filter modelica-wrapper watch",
+    "storybook": "pnpm --filter @modelica-wrapper/storybook storybook",
+    "build-storybook": "pnpm --filter @modelica-wrapper/storybook build-storybook",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "test:unit": "pnpm -r test:unit"
