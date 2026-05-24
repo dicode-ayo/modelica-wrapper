@@ -14,7 +14,7 @@
  *
  * OMC returns a paren-tuple `({choice1, ...}, {comment1, ...})`. Null or
  * empty responses normalize to `[]` for both fields, mirroring the
- * null-tolerance pattern used by `getSolverMethods` & friends.
+ * null-tolerance pattern used across the solver getters.
  */
 
 import { z } from "zod";

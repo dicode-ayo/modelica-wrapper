@@ -10,7 +10,7 @@
  *   simulate (in beforeAll, also asserted in its own test)
  *   translateModel / buildModel / translateModelXML
  *   readSimulationResultSize / readSimulationResultVars / readSimulationResult / val
- *   filterSimulationResults / compareSimulationResults / deltaSimulationResults / diffSimulationResults
+ *   filterSimulationResults / deltaSimulationResults / diffSimulationResults
  *   closeSimulationResultFile
  *
  * Gating: this suite runs only when `OMC_INTEGRATION_HEAVY=1` (in addition
@@ -338,18 +338,6 @@ end ${pkg};
     // padding in resampled output.)
     expect(size).toBeGreaterThanOrEqual(11);
     expect(size).toBeLessThanOrEqual(12);
-  });
-
-  it("compareSimulationResults reports equal when comparing a file to itself", async () => {
-    const log = join(tempDir, "compare.log");
-    const { result } = await client.compareSimulationResults({
-      filename: resultFile,
-      reffilename: resultFile,
-      logfilename: log,
-    });
-    expect(result.length).toBeGreaterThan(0);
-    // OMC's exact wording varies by version; tolerate either phrasing.
-    expect(result.join(" ").toLowerCase()).toMatch(/equal|match/);
   });
 
   it("deltaSimulationResults reports zero error against itself for every norm", async () => {

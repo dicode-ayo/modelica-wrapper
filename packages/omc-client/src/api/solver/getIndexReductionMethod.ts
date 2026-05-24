@@ -11,7 +11,7 @@
  * ```
  *
  * Null/empty responses normalize to `""` to mirror the null-tolerance
- * pattern used by `getSolverMethods` & friends.
+ * pattern used across the solver getters.
  */
 
 import { z } from "zod";

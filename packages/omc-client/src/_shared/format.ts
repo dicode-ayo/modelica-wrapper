@@ -51,8 +51,7 @@ export function quoteList(items: string[]): string {
  *
  * Use this for any wrapper whose OMC signature declares
  * `input String[:] vars = fill("", 0)` and whose caller may legitimately
- * pass an empty array (compareSimulationResults, deltaSimulationResults,
- * diffSimulationResults).
+ * pass an empty array (deltaSimulationResults, diffSimulationResults).
  */
 export function quoteListOrFillEmpty(items: string[]): string {
   if (items.length === 0) return 'fill("", 0)';

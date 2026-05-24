@@ -28,7 +28,7 @@ export function parseOutput<T>(
  *
  * OMC's behavior for setters/mutations is *inconsistent* across versions:
  * some calls return `true`/`false`, others return an empty response on
- * success (notably `createClass`, `deleteClass`, `setComponentProperties`,
+ * success (notably `deleteClass`, `setComponentProperties`,
  * `removeComponentModifiers` and several others on OMC 1.26+).
  *
  * Strategy:

@@ -84,7 +84,7 @@ These are the only sources of truth. Do not infer signatures from existing code;
 | OMPython parser | <https://github.com/OpenModelica/OMPython> (`OMTypedParser.py`) | Cross-reference for parser edge cases when responses look weird |
 | OMEdit (reference UI) call surface | <https://github.com/OpenModelica/OpenModelica/tree/master/OMEdit/OMEditLIB> — `OMC/OMCProxy.h` is the call inventory; `Element/`, `Annotations/`, `Modeling/` are the flow call sites | **Not a signature source** (it's a consumer, not the spec) — but the authoritative source for *which functions actually matter* and *which call shape works in practice*. See §1.1. |
 
-When a per-function URL returns 404, treat the function as **undocumented in the public API** — flag it but do not fail the audit. Some functions (e.g. `getSolverMethods`, `getJacobianMethods` on OMC 1.26) are real but undocumented; check `OMEdit/OMCProxy.h` if you need a reference for those.
+When a per-function URL returns 404, treat the function as **undocumented in the public API** — flag it but do not fail the audit. A 404 alone does not mean the symbol is absent: probe it live before deciding. (Counter-example: the solver list-getters `getSolverMethods` / `getJacobianMethods` / `getInitializationMethods` / `getLinearSolvers` / `getNonLinearSolvers` were 404 *and* genuinely absent from `OpenModelica.Scripting` on OMC 1.26.7 — `Class X not found in scope` — so their phantom wrappers were removed 2026-05-21; see [coverage.md "Removed wrappers"](./coverage.md).) Check `OMEdit/OMCProxy.h` for a call-shape reference for undocumented-but-present functions.
 
 ### 1.1 Prioritizing missing functions — cross-reference OMEdit, don't rank by guesswork
 
@@ -265,7 +265,7 @@ Each per-function file exports a `<Fn>Description` string constant, sourced from
 
 **Output `success` and predicate fields.** Boolean success outputs get the canonical phrase `"True if the OMC operation completed without error."`; predicate outputs whose field name is OMC-verbatim (`b`, `result`) note that fact in their description.
 
-**Pinned-OMC drift.** When a function's docs page returns 404 (some `solver/*` functions, `parseFile`, `createClass`, `createSubClass`), the description is derived from the function name + signature and notes the 404 status. The description constant still gets exported — the MCP-generation pipeline must not treat undocumented functions as un-describable.
+**Pinned-OMC drift.** When a function's docs page returns 404 (e.g. `parseFile`), the description is derived from the function name + signature and notes the 404 status. The description constant still gets exported — the MCP-generation pipeline must not treat undocumented functions as un-describable. (Note: the previously-404 `solver/*` list-getters and the `createClass`/`createSubClass` wrappers were removed 2026-05-21 — they were 404 *and* symbol-absent on the pin; see [coverage.md "Removed wrappers"](./coverage.md).)
 
 ---
 
@@ -346,7 +346,7 @@ These are deliberate decisions. If the audit finds them, mark them as **expected
 | `setComponentModifierValue` / `setExtendsModifierValue` value arg | OMC takes a `Code` expression | We wrap user `expr` in `$Code(=expr)` | Required by OMC's interactive RPC to bypass string-escaping the expression |
 | `save` exposed | OMC says deprecated | Wrapped for completeness | Production paths use `listFile` + own writer (Option B persistence — see project README) |
 | `buildModelFMU` `includeResources` | "Deprecated and no effect" per OMC docs | Still passed through | Required positionally in the OMC signature |
-| `getSolverMethods` and friends 404 in scripting docs | Undocumented in public scripting API | Wrapped per OMEdit's usage | These are real builtins OMEdit calls; we mirror that — null-tolerance handling means empty responses become `[]` |
+| `getSolverMethods` and friends 404 in scripting docs | Absent from `OpenModelica.Scripting` on the pin (`Class X not found in scope`) | **Wrappers removed 2026-05-21** (#80) | Probed live: these are NOT in scope on OMC 1.26.7; the old wrappers swallowed the buffered `getErrorString()` error and returned `[]`. Removed — the solver values callers need live in the maintained `SOLVER_METHODS` constant. See [coverage.md "Removed wrappers"](./coverage.md). |
 | Output is wrapped in object even for single-field returns | OMC outputs are positional / scalar | Always `{ <field>: ... }` | Uniform consumer ergonomics; makes adding sibling fields source-compatible |
 | `getModelInstance` / `getModelInstanceAnnotation` / `modifierToJSON` output | OMC returns a JSON-encoded string | Wrapper returns the raw string verbatim (e.g. `{ result: string }`) | The wrapper does not parse the JSON — callers `JSON.parse(result)`. Keeps the wrapper dependency-free and lets callers project just what they need |
 | `getElements` output | OMC declares no formal output (external "C") | Wrapper returns the raw `Value` tree as `{ elements: Value }` | Element row layout varies across OMC versions; a typed projection would over-specify. Callers walk the tree |

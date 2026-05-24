@@ -4,14 +4,14 @@
  * panel's `method` dropdown.
  *
  * This is a maintained CONSTANT, not a fallback for a failing scripting call:
- * OMC 1.26.7 exposes no scripting API that returns this list. The functions
- * one would reach for — `getSolverMethods`, `getNonLinearSolvers`,
- * `getLinearSolvers`, `getInitializationMethods`, `getJacobianMethods` — do
- * NOT exist in OMC's scripting scope (probed live against 1.26.7: they are
- * absent from `getClassNames(OpenModelica.Scripting)` and calling one yields
- * `Error: Class getSolverMethods not found in scope`). See
- * `docs/parameter-model-design.md` (Revision 2026-05-21, "Investigation —
- * `getSolverMethods` is a phantom function").
+ * OMC 1.26.7 exposes no scripting API that returns this list. The five
+ * solver-list getters one would reach for (solver/jacobian/initialization
+ * methods, linear/non-linear solvers) do NOT exist in OMC's scripting scope
+ * (probed live against 1.26.7: they are absent from
+ * `getClassNames(OpenModelica.Scripting)` and calling one yields
+ * `Error: Class <name> not found in scope`). Their phantom wrappers were
+ * removed — see `docs/coverage.md` ("Removed wrappers") and
+ * `docs/parameter-model-design.md` (Revision 2026-05-21).
  *
  * The values mirror OMC's documented `-s/--solver` flag. `"<default>"` is the
  * sentinel that lets OMC pick (it maps to {@link DEFAULT_SOLVER_METHOD}); it is

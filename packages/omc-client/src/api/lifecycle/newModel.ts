@@ -11,7 +11,8 @@
  *
  * Creates a new empty model inside the package named by `withinPath`. This is
  * the documented, working replacement on OMC 1.26.x for the absent
- * `createClass` / `createSubClass` symbols.
+ * class-create scripting calls (their phantom wrappers were removed — see
+ * `docs/coverage.md` "Removed wrappers").
  *
  * **`withinPath` is required.** OMC's interactive RPC rejects an empty second
  * argument ("Unexpected token near: newModel"), so there is no top-level
@@ -54,7 +55,7 @@ export const NewModelOutputSchema = SuccessOutput;
 export type NewModelOutput = z.infer<typeof NewModelOutputSchema>;
 
 export const NewModelDescription =
-  "Create a new empty model inside the given package. The replacement on OMC 1.26.x for the absent createClass/createSubClass; the target package must already exist (there is no top-level form — use loadString for that).";
+  "Create a new empty model inside the given package. The replacement on OMC 1.26.x for the absent class-create scripting calls; the target package must already exist (there is no top-level form — use loadString for that).";
 
 export async function newModel(
   ctx: CallContext,

@@ -7,6 +7,5 @@ export * from "./closeSimulationResultFile.js";
 export * from "./readSimulationResult.js";
 export * from "./val.js";
 export * from "./filterSimulationResults.js";
-export * from "./compareSimulationResults.js";
 export * from "./deltaSimulationResults.js";
 export * from "./diffSimulationResults.js";
