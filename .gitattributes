@@ -5,3 +5,6 @@ packages/omc-client/test/fixtures/*.txt text eol=lf
 
 # Same rationale for any future captured raw responses.
 *.fixture.txt text eol=lf
+
+# Vendored tree-sitter grammar — binary WASM, never line-ending-normalised.
+*.wasm binary

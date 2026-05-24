@@ -19,6 +19,19 @@
     "workspaceContains:**/*.mo"
   ],
   "contributes": {
+    "languages": [
+      {
+        "id": "modelica",
+        "aliases": [
+          "Modelica",
+          "modelica"
+        ],
+        "extensions": [
+          ".mo"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
     "customEditors": [
       {
         "viewType": "modelica.resultView",
@@ -252,6 +265,7 @@
     "@dicode/result-ui": "workspace:*",
     "@dicode/ui-common": "workspace:*",
     "lit": "^3.2.0",
+    "web-tree-sitter": "^0.25.10",
     "zeromq": "^6.1.0"
   },
   "devDependencies": {

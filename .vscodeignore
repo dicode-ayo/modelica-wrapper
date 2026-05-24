@@ -3,6 +3,7 @@
 src/**
 node_modules/**
 !node_modules/zeromq/**
+!node_modules/web-tree-sitter/**
 out/**/*.map
 **/*.test.ts
 **/tsconfig.json

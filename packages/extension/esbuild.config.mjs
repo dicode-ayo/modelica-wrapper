@@ -1,6 +1,60 @@
+import { createRequire } from "node:module";
+import { copyFile, mkdir } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import * as esbuild from "esbuild";
 
 const watch = process.argv.includes("--watch");
+
+const here = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+
+/**
+ * The language front-end (`src/language/parse.ts`) runs the tree-sitter
+ * grammar as WASM in-process via `web-tree-sitter`. Two `.wasm` files must
+ * sit next to the bundle at runtime so the extension can load them by
+ * absolute path (esbuild can't inline a WASM the way it can a `.css`):
+ *
+ *   1. `tree-sitter.wasm`           — the web-tree-sitter runtime (Emscripten
+ *      core), shipped by the npm package; located via `require.resolve`.
+ *   2. `tree-sitter-modelica.wasm`  — the vendored OpenModelica grammar
+ *      (see `grammar/README.md` for provenance).
+ *
+ * Both names are re-exported as `RUNTIME_WASM_FILENAME` /
+ * `GRAMMAR_WASM_FILENAME` from `src/language/parse.ts`; keep them in sync.
+ */
+const RUNTIME_WASM_FILENAME = "tree-sitter.wasm";
+const GRAMMAR_WASM_FILENAME = "tree-sitter-modelica.wasm";
+
+const wasmAssets = [
+  {
+    from: require.resolve(`web-tree-sitter/${RUNTIME_WASM_FILENAME}`),
+    to: RUNTIME_WASM_FILENAME,
+  },
+  {
+    from: resolve(here, "grammar", GRAMMAR_WASM_FILENAME),
+    to: GRAMMAR_WASM_FILENAME,
+  },
+];
+
+/**
+ * Copies the language WASM assets into `out/` on every (re)build so they
+ * ship beside `extension.js`. esbuild does not bundle them — they're loaded
+ * at runtime by path — so a plain copy on `onEnd` is the right tool.
+ */
+const copyWasm = {
+  name: "copy-wasm",
+  setup(build) {
+    build.onEnd(async () => {
+      const outDir = resolve(here, "out");
+      await mkdir(outDir, { recursive: true });
+      await Promise.all(
+        wasmAssets.map((a) => copyFile(a.from, join(outDir, a.to))),
+      );
+    });
+  },
+};
 
 /**
  * Emits `[watch] build started` / `[watch] build finished` markers that the
@@ -46,13 +100,16 @@ const extensionConfig = {
   entryPoints: ["src/extension.ts"],
   bundle: true,
   outfile: "out/extension.js",
-  external: ["vscode", "zeromq"],
+  // `web-tree-sitter` ships an Emscripten glue module that loads its WASM by
+  // path at runtime; bundling it through esbuild breaks that, so keep it
+  // external and let Node resolve it from node_modules at load time.
+  external: ["vscode", "zeromq", "web-tree-sitter"],
   platform: "node",
   target: "node20",
   format: "cjs",
   sourcemap: true,
   logLevel: watch ? "warning" : "info",
-  plugins: watch ? [watchMarkers] : [],
+  plugins: watch ? [watchMarkers, copyWasm] : [copyWasm],
 };
 
 /** @type {import('esbuild').BuildOptions} */
