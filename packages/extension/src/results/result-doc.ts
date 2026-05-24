@@ -1,8 +1,9 @@
 /**
- * Host-side I/O for the `*.omresults` postprocessing document: parse, serialize,
- * and read-planning. These are host concerns — the webview never parses the file
- * (it receives an already-parsed `doc` over `postMessage`), so they live here
- * rather than in the shared `omc-client` contract. Pure: no VSCode, no OMC.
+ * Host-side behaviour for the `*.omresults` postprocessing document: parse,
+ * serialize, and the pure card-edit transforms. These are host concerns — the
+ * webview never parses the file (it receives an already-parsed `doc` over
+ * `postMessage`), so they live here rather than in the shared `omc-client`
+ * contract. Pure: no VSCode, no OMC.
  *
  * The document *shape* (types + Zod schemas) is the wire contract in
  * `@modelica-wrapper/omc-client`; this module imports it and adds behaviour.
@@ -182,7 +183,8 @@ export function deleteCard(doc: ResultViewDoc, cardId: string): ResultViewDoc {
   return { ...doc, cards: doc.cards.filter((c) => c.id !== cardId) };
 }
 
-/** Append a `(result, variable)` trace to the card with `cardId`. */
+/** Append a `(result, variable)` trace to the plot card with `cardId`. The
+ * `kind` guard keeps traces off non-plot cards once the `Card` union grows. */
 export function addTrace(
   doc: ResultViewDoc,
   cardId: string,
@@ -192,14 +194,14 @@ export function addTrace(
   return {
     ...doc,
     cards: doc.cards.map((c) =>
-      c.id === cardId
+      c.id === cardId && c.kind === "plot"
         ? { ...c, traces: [...(c.traces ?? []), { result: resultId, variable }] }
         : c,
     ),
   };
 }
 
-/** Remove the trace at `traceIndex` from the card with `cardId`. */
+/** Remove the trace at `traceIndex` from the plot card with `cardId`. */
 export function removeTrace(
   doc: ResultViewDoc,
   cardId: string,
@@ -208,47 +210,9 @@ export function removeTrace(
   return {
     ...doc,
     cards: doc.cards.map((c) =>
-      c.id === cardId
+      c.id === cardId && c.kind === "plot"
         ? { ...c, traces: (c.traces ?? []).filter((_, i) => i !== traceIndex) }
         : c,
     ),
   };
-}
-
-// ---------- data-fetch planning ----------
-
-/** Cache key for one `(result, variable)` trajectory. Use everywhere so the
- * host's cache and {@link tracesNeedingData} agree on the keying. JSON-encodes
- * the pair so the boundary is unambiguous regardless of the values (and the key
- * stays printable — these keys live only in memory, never on disk). */
-export function traceCacheKey(resultId: string, variable: string): string {
-  return JSON.stringify([resultId, variable]);
-}
-
-/**
- * Plan which `(result, variable)` trajectories the host still has to read:
- * every plot-card trace whose result exists in the doc and whose
- * {@link traceCacheKey} isn't already in `cached`. Traces pinned to a removed
- * result are skipped (dangling). Pure — the host does the actual reads.
- */
-export function tracesNeedingData(
-  doc: ResultViewDoc,
-  cached: ReadonlySet<string>,
-): Map<string, Set<string>> {
-  const needed = new Map<string, Set<string>>();
-  const known = new Set(doc.results.map((r) => r.id));
-  for (const card of doc.cards) {
-    if (card.kind !== "plot") continue;
-    for (const tr of card.traces ?? []) {
-      if (!known.has(tr.result)) continue;
-      if (cached.has(traceCacheKey(tr.result, tr.variable))) continue;
-      let set = needed.get(tr.result);
-      if (!set) {
-        set = new Set<string>();
-        needed.set(tr.result, set);
-      }
-      set.add(tr.variable);
-    }
-  }
-  return needed;
 }

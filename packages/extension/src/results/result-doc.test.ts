@@ -9,8 +9,6 @@ import {
   parseResultViewDoc,
   removeTrace,
   serializeResultViewDoc,
-  traceCacheKey,
-  tracesNeedingData,
 } from "./result-doc.js";
 
 // A fully-populated document with no `undefined` fields, so a parse∘serialize
@@ -286,63 +284,5 @@ describe("removeTrace", () => {
 
   it("is a no-op for an out-of-range index", () => {
     expect(removeTrace(base, "a", 9).cards[0]?.traces).toHaveLength(2);
-  });
-});
-
-describe("tracesNeedingData", () => {
-  const doc: ResultViewDoc = {
-    version: 1,
-    results: [
-      { id: "r1", label: "r1", path: "a.mat", source: "import" },
-      { id: "r2", label: "r2", path: "b.mat", source: "import" },
-    ],
-    cards: [
-      {
-        kind: "plot",
-        id: "c1",
-        traces: [
-          { result: "r1", variable: "x" },
-          { result: "r1", variable: "y" },
-          { result: "r2", variable: "z" },
-          { result: "ghost", variable: "q" }, // dangling — result not in doc
-        ],
-      },
-    ],
-  };
-
-  it("returns every uncached, existing-result trace grouped by result", () => {
-    const needed = tracesNeedingData(doc, new Set());
-    expect([...(needed.get("r1") ?? [])].sort()).toEqual(["x", "y"]);
-    expect([...(needed.get("r2") ?? [])]).toEqual(["z"]);
-  });
-
-  it("skips dangling traces whose result is gone", () => {
-    expect(tracesNeedingData(doc, new Set()).has("ghost")).toBe(false);
-  });
-
-  it("excludes already-cached pairs", () => {
-    const needed = tracesNeedingData(doc, new Set([traceCacheKey("r1", "x")]));
-    expect([...(needed.get("r1") ?? [])]).toEqual(["y"]);
-  });
-
-  it("returns an empty map when everything is cached", () => {
-    const cached = new Set([
-      traceCacheKey("r1", "x"),
-      traceCacheKey("r1", "y"),
-      traceCacheKey("r2", "z"),
-    ]);
-    expect(tracesNeedingData(doc, cached).size).toBe(0);
-  });
-
-  it("dedups the same (result, variable) referenced by two different cards", () => {
-    const twoCards: ResultViewDoc = {
-      version: 1,
-      results: [{ id: "r1", label: "r1", path: "a.mat", source: "import" }],
-      cards: [
-        { kind: "plot", id: "c1", traces: [{ result: "r1", variable: "x" }] },
-        { kind: "plot", id: "c2", traces: [{ result: "r1", variable: "x" }] },
-      ],
-    };
-    expect([...(tracesNeedingData(twoCards, new Set()).get("r1") ?? [])]).toEqual(["x"]);
   });
 });

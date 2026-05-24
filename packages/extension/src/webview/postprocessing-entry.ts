@@ -28,6 +28,8 @@ import type {
   RenameResultDetail,
   RequestVariablesDetail,
 } from "@modelica-wrapper/result-ui";
+// Type-only against omc-client: a value import would pull its Node-only runtime
+// (`zeromq`, `node:*`) into this browser bundle.
 import type { ResultViewDoc } from "@modelica-wrapper/omc-client";
 
 import type {
@@ -52,7 +54,10 @@ export class OmResultViewRoot extends LitElement {
 
   private readonly vscode = acquireVsCodeApi();
 
-  @state() private doc: ResultViewDoc | undefined;
+  // Defaults to the empty document (the same literal `<om-result-view-app>`
+  // defaults to) so the themed app renders its own empty state during the
+  // `ready` → `doc` round-trip — the shell never paints unstyled chrome.
+  @state() private doc: ResultViewDoc = { version: 1, results: [], cards: [] };
   @state() private traceData: Record<string, TracePayload[]> = {};
   @state() private variablesByResult: Record<string, string[]> = {};
   @state() private plotsLoading = false;
@@ -138,9 +143,6 @@ export class OmResultViewRoot extends LitElement {
   };
 
   override render(): TemplateResult {
-    if (!this.doc) {
-      return html`<p style="padding: 16px">Loading…</p>`;
-    }
     return html`
       <om-result-view-app
         .doc=${this.doc}
