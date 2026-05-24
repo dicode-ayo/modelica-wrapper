@@ -203,6 +203,46 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@22.19.17)(happy-dom@15.11.7)
 
+  packages/storybook:
+    dependencies:
+      '@modelica-wrapper/diagram-svg':
+        specifier: workspace:*
+        version: link:../diagram-svg
+      '@modelica-wrapper/diagram-ui':
+        specifier: workspace:*
+        version: link:../diagram-ui
+      '@modelica-wrapper/result-ui':
+        specifier: workspace:*
+        version: link:../result-ui
+      '@modelica-wrapper/ui-common':
+        specifier: workspace:*
+        version: link:../ui-common
+    devDependencies:
+      '@storybook/addon-essentials':
+        specifier: ^8.4.0
+        version: 8.6.14(@types/react@19.2.14)(storybook@8.6.18)
+      '@storybook/html':
+        specifier: ^8.4.0
+        version: 8.6.18(storybook@8.6.18)
+      '@storybook/web-components':
+        specifier: ^8.4.0
+        version: 8.6.18(lit@3.3.2)(storybook@8.6.18)
+      '@storybook/web-components-vite':
+        specifier: ^8.4.0
+        version: 8.6.18(lit@3.3.2)(storybook@8.6.18)(vite@5.4.21(@types/node@22.19.17))
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      storybook:
+        specifier: ^8.4.0
+        version: 8.6.18
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vite:
+        specifier: ^5.4.0
+        version: 5.4.21(@types/node@22.19.17)
+
   packages/ui-common:
     dependencies:
       '@awesome.me/webawesome':
