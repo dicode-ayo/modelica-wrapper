@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { copyFile, mkdir } from "node:fs/promises";
+import { copyFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -27,6 +28,16 @@ const require = createRequire(import.meta.url);
 const RUNTIME_WASM_FILENAME = "tree-sitter.wasm";
 const GRAMMAR_WASM_FILENAME = "tree-sitter-modelica.wasm";
 
+/**
+ * Expected SHA-256 of the vendored grammar WASM. This is the supply-chain
+ * invariant recorded in `grammar/README.md` (OpenModelica/tree-sitter-modelica
+ * v0.2.2); keep the two in sync. The runtime `tree-sitter.wasm` comes from the
+ * npm package and is already integrity-pinned by the lockfile, so only the
+ * vendored binary carries a hash here.
+ */
+const GRAMMAR_WASM_SHA256 =
+  "fb9e1f0c33288fc301f50bff88bad28ebf2f79365b23482855a1a9e756c78e56";
+
 const wasmAssets = [
   {
     from: require.resolve(`web-tree-sitter/${RUNTIME_WASM_FILENAME}`),
@@ -35,6 +46,7 @@ const wasmAssets = [
   {
     from: resolve(here, "grammar", GRAMMAR_WASM_FILENAME),
     to: GRAMMAR_WASM_FILENAME,
+    sha256: GRAMMAR_WASM_SHA256,
   },
 ];
 
@@ -42,6 +54,11 @@ const wasmAssets = [
  * Copies the language WASM assets into `out/` on every (re)build so they
  * ship beside `extension.js`. esbuild does not bundle them — they're loaded
  * at runtime by path — so a plain copy on `onEnd` is the right tool.
+ *
+ * Assets with a pinned `sha256` are verified before the copy: the build fails
+ * (`onEnd` errors propagate) if the source bytes don't match, turning the
+ * README's documented hash into an enforced invariant that catches a tampered
+ * or wrong-version vendored binary instead of silently shipping it.
  */
 const copyWasm = {
   name: "copy-wasm",
@@ -50,11 +67,33 @@ const copyWasm = {
       const outDir = resolve(here, "out");
       await mkdir(outDir, { recursive: true });
       await Promise.all(
-        wasmAssets.map((a) => copyFile(a.from, join(outDir, a.to))),
+        wasmAssets.map(async (a) => {
+          if (a.sha256) await verifySha256(a.from, a.sha256);
+          await copyFile(a.from, join(outDir, a.to));
+        }),
       );
     });
   },
 };
+
+/**
+ * Throw if the SHA-256 of `filePath` doesn't equal `expected`. Used by
+ * {@link copyWasm} to gate the vendored grammar copy on its recorded hash.
+ */
+async function verifySha256(filePath, expected) {
+  const actual = createHash("sha256")
+    .update(await readFile(filePath))
+    .digest("hex");
+  if (actual !== expected) {
+    throw new Error(
+      `WASM integrity check failed for ${filePath}\n` +
+        `  expected SHA-256: ${expected}\n` +
+        `  actual SHA-256:   ${actual}\n` +
+        `If you intentionally updated the grammar, bump GRAMMAR_WASM_SHA256 ` +
+        `in esbuild.config.mjs and the SHA in grammar/README.md together.`,
+    );
+  }
+}
 
 /**
  * Emits `[watch] build started` / `[watch] build finished` markers that the

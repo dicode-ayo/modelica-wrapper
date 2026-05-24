@@ -15,6 +15,11 @@ This is a *prebuilt* release asset, not a local build — there is no native
 toolchain rebuild per platform because `web-tree-sitter` runs the grammar as
 WASM in-process in the extension host.
 
+> **Enforced at build time.** `esbuild.config.mjs`'s `copyWasm` plugin hashes
+> this file before copying it into `out/` and **fails the build** if it doesn't
+> match `GRAMMAR_WASM_SHA256` (kept equal to the SHA above). A tampered or
+> wrong-version binary can't ship silently.
+
 ## How to update
 
 ```sh
@@ -24,9 +29,10 @@ gh release download <tag> \
   --dir packages/extension/grammar --clobber
 ```
 
-Then bump the release tag + SHA-256 above and re-run the extension's tests
-(`pnpm --filter modelica-wrapper test`) — the `cursor.ts` fixtures parse real
-Modelica source, so an incompatible grammar fails the suite.
+Then bump the release tag + SHA-256 above **and** `GRAMMAR_WASM_SHA256` in
+`esbuild.config.mjs` (they must stay equal or the build fails), and re-run the
+extension's tests (`pnpm --filter modelica-wrapper test`) — the `cursor.ts`
+fixtures parse real Modelica source, so an incompatible grammar fails the suite.
 
 ## Bundling
 
