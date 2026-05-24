@@ -11,8 +11,6 @@
  * pick / `.modelica` cache / Simulate hook) lands in #86.
  */
 
-import * as path from "node:path";
-
 import * as vscode from "vscode";
 
 import { log } from "../logger.js";
@@ -21,6 +19,7 @@ import type {
   TracePayload,
   WebviewToExtension,
 } from "../webview/postprocessing-protocol.js";
+import { addCachedResult, importResults, resolveResultPath } from "./add-result.js";
 import { ResultCache, type ResultReader } from "./result-cache.js";
 import {
   addPlotCard,
@@ -32,13 +31,6 @@ import {
 } from "./result-doc.js";
 
 export const RESULT_VIEW_VIEW_TYPE = "modelica.resultView";
-
-/** Resolve a stored result path: relative paths hang off the document's folder. */
-function resolveResultPath(documentUri: vscode.Uri, stored: string): string {
-  return path.isAbsolute(stored)
-    ? stored
-    : path.join(path.dirname(documentUri.fsPath), stored);
-}
 
 export class ResultViewEditorProvider
   implements vscode.CustomTextEditorProvider
@@ -190,7 +182,15 @@ export class ResultViewEditorProvider
           );
           return;
 
-        // addResult / removeResult / renameResult land in #86 / #87.
+        case "addResult":
+          if (msg.via === "import") {
+            void importResults(document);
+          } else {
+            void addCachedResult(document);
+          }
+          return;
+
+        // removeResult / renameResult land in #87.
         default:
           return;
       }

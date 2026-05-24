@@ -4,6 +4,7 @@ import type { ResultViewDoc } from "@modelica-wrapper/omc-client";
 
 import {
   addPlotCard,
+  addResult,
   addTrace,
   deleteCard,
   parseResultViewDoc,
@@ -284,5 +285,38 @@ describe("removeTrace", () => {
 
   it("is a no-op for an out-of-range index", () => {
     expect(removeTrace(base, "a", 9).cards[0]?.traces).toHaveLength(2);
+  });
+});
+
+describe("addResult", () => {
+  const base: ResultViewDoc = {
+    version: 1,
+    results: [{ id: "r1", label: "run-1", path: "a.mat", source: "simulate" }],
+    cards: [{ kind: "plot", id: "c1" }],
+  };
+
+  it("appends the result, preserving order", () => {
+    const out = addResult(base, {
+      id: "r2",
+      label: "tank",
+      path: "/abs/tank.mat",
+      source: "import",
+    });
+    expect(out.results.map((r) => r.id)).toEqual(["r1", "r2"]);
+  });
+
+  it("leaves the cards untouched", () => {
+    const out = addResult(base, {
+      id: "r2",
+      label: "tank",
+      path: "tank.mat",
+      source: "cache",
+    });
+    expect(out.cards).toEqual(base.cards);
+  });
+
+  it("does not mutate the input document", () => {
+    addResult(base, { id: "r2", label: "x", path: "x.mat", source: "import" });
+    expect(base.results.map((r) => r.id)).toEqual(["r1"]);
   });
 });

@@ -216,3 +216,12 @@ export function removeTrace(
     ),
   };
 }
+
+/**
+ * Append a result to the view. Callers mint `ref.id` and de-duplicate by
+ * resolved path beforehand — the transform can't resolve a relative path
+ * against the document's folder, so it stays pure and just appends.
+ */
+export function addResult(doc: ResultViewDoc, ref: ResultRef): ResultViewDoc {
+  return { ...doc, results: [...doc.results, ref] };
+}
