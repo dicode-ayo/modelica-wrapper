@@ -25,6 +25,7 @@ import {
   ModelicaSourceProvider,
 } from "./source-provider.js";
 import { LibraryTreeProvider } from "./tree/library-tree.js";
+import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
 import { discoverEntryPoints } from "./workspace-scan.js";
 
 let client: OmcClient | undefined;
@@ -123,8 +124,6 @@ async function ensureClient(): Promise<OmcClient> {
  * with "directory does not exist" on a freshly-opened project. Errors
  * here are non-fatal: we log and let OMC keep its default cwd.
  */
-const WORKSPACE_CACHE_DIRNAME = ".modelica";
-
 async function cdIntoWorkspaceCacheDir(c: OmcClient): Promise<void> {
   const ws = vscode.workspace.workspaceFolders?.[0];
   if (!ws) return;
