@@ -16,6 +16,10 @@ import { renderIconLayersToSvg } from "@modelica-wrapper/diagram-svg";
 import { isConnectorKey, parseEntityKey } from "./entity-key.js";
 
 import { createReplLog } from "../commands/repl.js";
+import {
+  ADD_RESULT_TO_VIEW_COMMAND,
+  type AddResultToViewArgs,
+} from "../commands/results.js";
 import { log } from "../logger.js";
 
 import { applyEdits } from "./apply-edits.js";
@@ -758,6 +762,14 @@ async function runSimulate(
           summaryLines.push(`warnings: ${errorString.split("\n")[0]}`);
         }
         replLog.success(summaryLines.join("\n"));
+
+        // Auto-add the result to a focused postprocessing view, if any. The
+        // command no-ops when no result view is open, so Simulate is unaffected
+        // for users who aren't doing postprocessing.
+        void vscode.commands.executeCommand(ADD_RESULT_TO_VIEW_COMMAND, {
+          model: className,
+          resultFile,
+        } satisfies AddResultToViewArgs);
       } catch (err) {
         refreshLabel();
         const msg = (err as Error).message;

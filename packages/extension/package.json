@@ -93,6 +93,15 @@
       {
         "command": "modelica.repl.exec",
         "title": "Modelica: Execute REPL Command (programmatic)"
+      },
+      {
+        "command": "modelica.createResultView",
+        "title": "Modelica: New Result View",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "modelica.addResultToView",
+        "title": "Modelica: Add Result to View (programmatic)"
       }
     ],
     "viewsContainers": {
