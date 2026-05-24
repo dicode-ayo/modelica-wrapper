@@ -3,7 +3,7 @@
  *
  * The structural rendering (`renderFunctionHelp`, `renderCategoryHelp`,
  * `renderOverview`, schema introspection) is owned by
- * `@modelica-wrapper/omc-client` and tested in its own suite. This file
+ * `@dicode/omc-client` and tested in its own suite. This file
  * only covers what the REPL layer adds: meta-commands, the overview
  * composition, and topic routing.
  */

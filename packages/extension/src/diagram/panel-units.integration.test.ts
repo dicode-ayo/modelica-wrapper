@@ -33,7 +33,7 @@ import {
   type ParameterField,
   type ParameterModel,
   type UnitTable,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 import {
   buildComponentParameterForm,

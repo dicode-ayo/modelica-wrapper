@@ -1,7 +1,7 @@
 import type { StorybookConfig } from "@storybook/web-components-vite";
 
 /**
- * Storybook config for `@modelica-wrapper/diagram-ui`.
+ * Storybook config for `@dicode/diagram-ui`.
  *
  * Web-components framework because our entities are Lit custom elements
  * (`<om-*>`). Each story imports the element class for its side effect

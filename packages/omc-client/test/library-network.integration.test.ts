@@ -21,7 +21,7 @@
  * endpoint isn't always reachable from runners, and a flake there would
  * be unrelated to the wrappers' behaviour. To run locally:
  *
- *   OMC_INTEGRATION_NETWORK=1 pnpm --filter @modelica-wrapper/omc-client \
+ *   OMC_INTEGRATION_NETWORK=1 pnpm --filter @dicode/omc-client \
  *     vitest run test/library-network.integration.test.ts
  *
  * Side effects: `updatePackageIndex` mutates OMC's local package-index

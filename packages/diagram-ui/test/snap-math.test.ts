@@ -4,7 +4,7 @@ import type {
   CoordinateSystem,
   DiagramLayout,
   Placement,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 import { applySnapToExtents } from "../src/interaction/layout-ops.js";
 import {
   DEFAULT_SNAP_GRID,

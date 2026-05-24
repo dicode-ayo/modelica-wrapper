@@ -25,7 +25,7 @@ import { randomBytes } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { OmcClient } from "@modelica-wrapper/omc-client";
+import { OmcClient } from "@dicode/omc-client";
 
 import { buildClassParameterForm } from "./parameter-edits.js";
 

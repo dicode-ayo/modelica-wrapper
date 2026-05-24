@@ -1,4 +1,4 @@
-import type { CoordinateSystem, Placement } from "@modelica-wrapper/omc-client";
+import type { CoordinateSystem, Placement } from "@dicode/omc-client";
 
 /**
  * Pure placement-math used by the shape elements. Converts a Modelica

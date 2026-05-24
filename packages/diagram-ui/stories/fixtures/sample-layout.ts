@@ -9,7 +9,7 @@ import type {
   ClassDef,
   DiagramLayout,
   IconLayer,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 import gainFixture from "./gain.icon.json";
 import inertiaFixture from "./inertia.icon.json";

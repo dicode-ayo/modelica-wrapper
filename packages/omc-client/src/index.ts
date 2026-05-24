@@ -1,17 +1,17 @@
 /**
- * @modelica-wrapper/omc-client — public surface.
+ * @dicode/omc-client — public surface.
  *
  * Two consumption styles:
  *
  *   1. Class API (most callers):
  *
- *        import { OmcClient } from "@modelica-wrapper/omc-client";
+ *        import { OmcClient } from "@dicode/omc-client";
  *        const client = await OmcClient.create();
  *        const { version } = await client.getVersion();
  *
  *   2. Functional API (tree-shakable; compose your own CallContext):
  *
- *        import { getVersion } from "@modelica-wrapper/omc-client/api/browsing";
+ *        import { getVersion } from "@dicode/omc-client/api/browsing";
  *        const result = await getVersion(myCtx, {});
  *
  * Each per-function module also exports `<Fn>InputSchema`, `<Fn>OutputSchema`,

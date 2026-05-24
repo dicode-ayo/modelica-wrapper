@@ -1,6 +1,6 @@
 import { defineConfig } from "tsup";
 
-// Builds the publishable artifact for @modelica-wrapper/result-ui.
+// Builds the publishable artifact for @dicode/result-ui.
 // Dev resolution stays on ./src/*.ts; this config feeds `pnpm build` /
 // `prepublishOnly`, and `publishConfig` repoints the published package at dist.
 export default defineConfig({
@@ -11,6 +11,6 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   outDir: "dist",
-  // lit, echarts and the workspace @modelica-wrapper/ui-common are in
+  // lit, echarts and the workspace @dicode/ui-common are in
   // `dependencies`, so tsup keeps them external rather than bundling.
 });

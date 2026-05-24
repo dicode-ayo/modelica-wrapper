@@ -1,5 +1,5 @@
 {
-  "name": "@modelica-wrapper/result-ui",
+  "name": "@dicode/result-ui",
   "version": "0.0.1",
   "description": "Standalone Lit + ECharts custom elements (<om-*>) for the postprocessing / results view. Independent of the diagram editor (no Babylon).",
   "type": "module",
@@ -37,7 +37,7 @@
     "build-storybook": "storybook build"
   },
   "dependencies": {
-    "@modelica-wrapper/ui-common": "workspace:*",
+    "@dicode/ui-common": "workspace:*",
     "echarts": "^5.5.0",
     "lit": "^3.2.0"
   },

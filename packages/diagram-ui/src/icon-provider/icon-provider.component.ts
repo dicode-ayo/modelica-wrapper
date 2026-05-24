@@ -5,8 +5,8 @@ import type { Texture } from "@babylonjs/core";
 import {
   renderIconLayersToSvg,
   type RenderOptions,
-} from "@modelica-wrapper/diagram-svg";
-import type { CoordinateSystem, IconLayer } from "@modelica-wrapper/omc-client";
+} from "@dicode/diagram-svg";
+import type { CoordinateSystem, IconLayer } from "@dicode/omc-client";
 
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
 import {
@@ -84,7 +84,7 @@ export class OmIconProvider extends LitElement {
 
   /**
    * Override the SVG renderer (default: `renderIconLayersToSvg` from
-   * `@modelica-wrapper/diagram-svg`). Useful for tests and custom
+   * `@dicode/diagram-svg`). Useful for tests and custom
    * styling layers. `undefined` is allowed and falls back to the
    * default — important because the parent host element
    * (`<om-graphical-layout>`) forwards its own optional property

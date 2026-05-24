@@ -31,7 +31,7 @@ import { randomBytes } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { OmcClient, diagram } from "@modelica-wrapper/omc-client";
+import { OmcClient, diagram } from "@dicode/omc-client";
 
 import { applyDisplayUnits } from "./display-unit.js";
 

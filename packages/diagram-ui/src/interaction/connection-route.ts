@@ -1,4 +1,4 @@
-import type { Point } from "@modelica-wrapper/omc-client";
+import type { Point } from "@dicode/omc-client";
 
 /**
  * Reference-tolerant content equality for waypoint arrays. After an OMC

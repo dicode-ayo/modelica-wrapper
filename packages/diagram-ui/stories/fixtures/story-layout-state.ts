@@ -11,7 +11,7 @@ import type {
   ConnectionEndpoint,
   DiagramLayout,
   Point,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 /**
  * Parse a connector key (`k:p` for standalone, `k:R1.p` for nested)

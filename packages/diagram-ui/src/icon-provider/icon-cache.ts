@@ -1,4 +1,4 @@
-import type { CoordinateSystem, IconLayer } from "@modelica-wrapper/omc-client";
+import type { CoordinateSystem, IconLayer } from "@dicode/omc-client";
 import type { Scene, Texture } from "@babylonjs/core";
 
 /**
@@ -7,7 +7,7 @@ import type { Scene, Texture } from "@babylonjs/core";
  * Babylon `Texture` via two injectable steps:
  *
  *   1. `renderSvg(layers, coordinateSystem) -> string` — typically
- *      `renderIconLayersToSvg` from `@modelica-wrapper/diagram-svg`.
+ *      `renderIconLayersToSvg` from `@dicode/diagram-svg`.
  *   2. `rasterize(svg, scene, size) -> Texture` — turns the SVG string
  *      into a Babylon Texture; the production implementation lives in
  *      `svg-rasterizer.ts`, tests inject a stub.

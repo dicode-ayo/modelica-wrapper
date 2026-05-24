@@ -15,7 +15,7 @@ import { execSync } from "node:child_process";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { OmcClient } from "@modelica-wrapper/omc-client";
+import { OmcClient } from "@dicode/omc-client";
 
 import { clearComponentModifiers } from "./clear-modifiers.js";
 

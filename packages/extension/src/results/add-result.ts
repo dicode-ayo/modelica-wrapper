@@ -14,7 +14,7 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import type { ResultRef, ResultSource } from "@modelica-wrapper/omc-client";
+import type { ResultRef, ResultSource } from "@dicode/omc-client";
 
 import { workspaceCacheUri } from "../workspace-cache.js";
 import { addResult, parseResultViewDoc, serializeResultViewDoc } from "./result-doc.js";

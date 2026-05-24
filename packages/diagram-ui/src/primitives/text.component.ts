@@ -12,8 +12,8 @@ import {
   expressionToString,
   interpolateTemplate,
   type TextSubstitutions,
-} from "@modelica-wrapper/diagram-svg";
-import type { TextShape } from "@modelica-wrapper/omc-client";
+} from "@dicode/diagram-svg";
+import type { TextShape } from "@dicode/omc-client";
 
 import { OmShapePrimitive } from "./shape-primitive.js";
 import { colorToCss, extentToRect, graphicItemNode } from "./shape-utils.js";

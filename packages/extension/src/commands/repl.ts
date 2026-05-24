@@ -21,7 +21,7 @@
 
 import * as vscode from "vscode";
 
-import type { OmcClient } from "@modelica-wrapper/omc-client";
+import type { OmcClient } from "@dicode/omc-client";
 
 import { evalLine, type ReplDependencies } from "../repl/repl-eval.js";
 import { ModelicaReplPty } from "../repl/repl-pty.js";

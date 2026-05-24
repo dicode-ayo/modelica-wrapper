@@ -1,5 +1,5 @@
 {
-  "name": "@modelica-wrapper/ui-common",
+  "name": "@dicode/ui-common",
   "version": "0.0.1",
   "description": "Shared UI foundation for the <om-*> webviews: design tokens (--om-*) and the Web Awesome → VSCode theme bridge. No Babylon, no OMC — depended on by both diagram-ui and result-ui.",
   "type": "module",

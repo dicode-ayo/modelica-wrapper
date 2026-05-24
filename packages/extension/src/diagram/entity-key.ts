@@ -1,6 +1,6 @@
 /**
  * Extension-host (CommonJS) parser for the diagram-ui entity-key wire
- * format. Mirrors the SHAPE of `@modelica-wrapper/diagram-ui`'s
+ * format. Mirrors the SHAPE of `@dicode/diagram-ui`'s
  * `node-keys.ts` — same prefixes, same nodeId conventions — but lives
  * here as a small standalone module because the extension host can't
  * import the ESM-only diagram-ui package directly (same constraint

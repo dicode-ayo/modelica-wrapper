@@ -14,10 +14,10 @@ import { customElement, state } from "lit/decorators.js";
 
 // Boot Web Awesome's theme + the VSCode-token bridge (side-effect import). Also
 // what makes esbuild emit `out/postprocessing.css`, which the host <link>s to.
-import "@modelica-wrapper/ui-common/webawesome-setup";
+import "@dicode/ui-common/webawesome-setup";
 
 // Side-effect import: registers <om-result-view-app> and its children.
-import "@modelica-wrapper/result-ui";
+import "@dicode/result-ui";
 import type {
   AddPlotDetail,
   AddResultDetail,
@@ -27,10 +27,10 @@ import type {
   RemoveTraceDetail,
   RenameResultDetail,
   RequestVariablesDetail,
-} from "@modelica-wrapper/result-ui";
+} from "@dicode/result-ui";
 // Type-only against omc-client: a value import would pull its Node-only runtime
 // (`zeromq`, `node:*`) into this browser bundle.
-import type { ResultViewDoc } from "@modelica-wrapper/omc-client";
+import type { ResultViewDoc } from "@dicode/omc-client";
 
 import type {
   ExtensionToWebview,

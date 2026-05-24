@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NullEngine, Scene, Texture } from "@babylonjs/core";
 
 import { IconCache } from "../src/icon-provider/icon-cache.js";
-import type { IconLayer } from "@modelica-wrapper/omc-client";
+import type { IconLayer } from "@dicode/omc-client";
 
 function makeScene(): { scene: Scene; dispose: () => void } {
   const engine = new NullEngine({

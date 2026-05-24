@@ -6,7 +6,7 @@
  * fresh `getModelInstance` capture from the live OMC each test run; the
  * captured fixtures are regenerable on demand via:
  *
- *   pnpm --filter @modelica-wrapper/omc-client capture-modelinstance-fixtures
+ *   pnpm --filter @dicode/omc-client capture-modelinstance-fixtures
  *
  * Auto-skips when `omc` isn't on PATH, mirroring `integration.test.ts`.
  *

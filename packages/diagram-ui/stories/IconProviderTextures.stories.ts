@@ -30,7 +30,7 @@ import { html, type TemplateResult } from "lit";
 import type {
   CoordinateSystem,
   IconLayer,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 import "../src/scene/scene.component.js";
 import "../src/axis/grid-axis.component.js";

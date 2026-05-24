@@ -35,7 +35,7 @@
  *
  * # How to run it manually
  *
- *     OMC_DRIFT_PROBE=1 pnpm --filter @modelica-wrapper/omc-client \
+ *     OMC_DRIFT_PROBE=1 pnpm --filter @dicode/omc-client \
  *       vitest run test/drift-probe.integration.test.ts \
  *       --reporter=verbose
  *

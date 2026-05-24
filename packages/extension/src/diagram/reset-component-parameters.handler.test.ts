@@ -28,7 +28,7 @@ import type {
   DiagramLayout,
   ModelInstance,
   OmcClient,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 import { recordedMessages } from "../../test-support/vscode-mock.js";
 
@@ -39,8 +39,8 @@ const stubLayout = { components: {}, connectors: {}, classes: {} } as unknown as
 
 // Partial-mock the omc-client package: keep everything real except the
 // layout producer, which we don't want to run on a stub ModelInstance.
-vi.mock("@modelica-wrapper/omc-client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@modelica-wrapper/omc-client")>();
+vi.mock("@dicode/omc-client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@dicode/omc-client")>();
   return {
     ...actual,
     diagram: {

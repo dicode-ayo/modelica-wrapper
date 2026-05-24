@@ -2,7 +2,7 @@
  * Render-side view model for the postprocessing UI.
  *
  * These mirror the persisted `*.omresults` wire contract in
- * `@modelica-wrapper/omc-client` (`ResultViewDoc` etc.) but are declared here so
+ * `@dicode/omc-client` (`ResultViewDoc` etc.) but are declared here so
  * `result-ui` stays **independent** — it depends on neither `omc-client` nor
  * `diagram-ui`, only `lit` + `echarts` + `ui-common` tokens, and can be bundled
  * and distributed on its own. The shapes are structurally identical, so the

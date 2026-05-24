@@ -1,6 +1,6 @@
 import { customElement, property } from "lit/decorators.js";
 import { ContextProvider } from "@lit/context";
-import type { TextSubstitutions } from "@modelica-wrapper/diagram-svg";
+import type { TextSubstitutions } from "@dicode/diagram-svg";
 
 import { OmShapeElement } from "../base/shape-element.js";
 import { substitutionsContext } from "../label/substitutions-context.js";

@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import type {
   DiagramLayout,
   ParameterModel,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 import type {
   ExtensionToWebview,

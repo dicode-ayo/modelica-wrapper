@@ -32,9 +32,9 @@ import type {
   ParameterModel,
   UnitOption,
   UnitTable,
-} from "@modelica-wrapper/omc-client";
-import { collectBaseUnits } from "@modelica-wrapper/omc-client";
-import type { ConvertUnitsOutput } from "@modelica-wrapper/omc-client/api/contents/index.js";
+} from "@dicode/omc-client";
+import { collectBaseUnits } from "@dicode/omc-client";
+import type { ConvertUnitsOutput } from "@dicode/omc-client/api/contents/index.js";
 
 /** Logger seam — the extension passes `log.warn`; tests pass a noop. */
 export type WarnFn = (topic: string, message: string, data?: unknown) => void;

@@ -161,7 +161,7 @@ like `DiagramLayout`); the behaviour lives **with whoever consumes it**. All of 
 pure and unit-tested with zero OMC dependency.
 
 ```ts
-// @modelica-wrapper/omc-client — _shared/resultView.ts  (the wire contract)
+// @dicode/omc-client — _shared/resultView.ts  (the wire contract)
 //   types: ResultRef, Trace, PlotCard, Card, ResultViewDoc, ResultSource
 //   schemas: ResultRefSchema, TraceSchema, PlotCardSchema, CardSchema,
 //            ResultViewDocSchema
@@ -266,7 +266,7 @@ correlated by `requestId` exactly like the diagram's library browser
 
 ## Webview — Lit components (`om-` prefix) — `result-ui`
 
-The webview lives in its own package, **`@modelica-wrapper/result-ui`** — Lit +
+The webview lives in its own package, **`@dicode/result-ui`** — Lit +
 ECharts custom elements with the `om-` prefix, kept **independent of `diagram-ui`**
 (no Babylon) so it can be bundled and distributed on its own. The bridge that touches
 `vscode.postMessage` lives in the *extension* package, like `<om-webview-root>`; the
@@ -285,11 +285,11 @@ State follows the **Lit context** pattern (a small reactive store provided by th
 root, consumed by descendants) rather than adding Dyad's `rxjs` dependency — flagged
 as a decision in [risks](#open-questions--risks).
 
-Design tokens / theming: shared via **`@modelica-wrapper/ui-common`** — the `--om-*`
+Design tokens / theming: shared via **`@dicode/ui-common`** — the `--om-*`
 token sheet (`omTokens`) and the Web Awesome → VSCode bridge (`webawesome-setup` +
 `wa-bridge.css`) were extracted there from `diagram-ui` so `result-ui` reuses them
 **without** depending on `diagram-ui` (no Babylon). `result-ui` will import `omTokens`
-from `@modelica-wrapper/ui-common` when its components land (#84).
+from `@dicode/ui-common` when its components land (#84).
 
 ## Charting layer — ECharts
 
@@ -411,7 +411,7 @@ reference-counted into the existing watch markers.
 8. **State lib.** Lit context store vs Dyad's `rxjs` subjects. Recommendation: Lit
    context — no new dependency, consistent with the diagram.
 9. **`result-ui` independence — tokens & render types.** Both **resolved**. Tokens: the
-   `--om-*` sheet + WA bridge live in `@modelica-wrapper/ui-common`, depended on by both
+   `--om-*` sheet + WA bridge live in `@dicode/ui-common`, depended on by both
    UIs (no Babylon). Render types: `result-ui` owns its view model in `types.ts`
    (structurally identical to the `omc-client` contract), so the extension bridge passes
    the parsed doc straight onto the component properties with no explicit map — and
@@ -471,12 +471,12 @@ Decisions taken at the design-phase Q&A (2026-05-22), kept so the "why" survives
 - **Shared `ui-common` package** (decided while building #82). The `--om-*` design
   tokens (`omTokens`) and the Web Awesome → VSCode theme bridge (`webawesome-setup` +
   `wa-bridge.css`) were extracted from `diagram-ui/src/base/` into a new
-  `@modelica-wrapper/ui-common` package, depended on by both UIs. This is what lets
+  `@dicode/ui-common` package, depended on by both UIs. This is what lets
   `result-ui` reuse the house tokens/theme **without** depending on `diagram-ui` (and
   its Babylon). `diagram-ui` was migrated to import them from `ui-common`; its
   `./webawesome-setup` subpath export moved there too.
 - **Dedicated `result-ui` package** (decided while building #82). The webview lives in
-  its own package `@modelica-wrapper/result-ui` rather than under
+  its own package `@dicode/result-ui` rather than under
   `diagram-ui/src/postprocessing/`, so it can be bundled and distributed independently.
   This reverses the design's initial "no new package" lean (borrowed from the
   multibody note): the deciding factor is that the postprocessing UI shares **nothing**

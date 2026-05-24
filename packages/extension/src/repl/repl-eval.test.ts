@@ -9,7 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { OmcClient } from "@modelica-wrapper/omc-client";
+import type { OmcClient } from "@dicode/omc-client";
 
 import { HELP_TEXT, evalLine, type ReplDependencies } from "./repl-eval.js";
 

@@ -23,7 +23,7 @@
 
 import * as vscode from "vscode";
 
-import type { OmcClient, ErrorMessage } from "@modelica-wrapper/omc-client";
+import type { OmcClient, ErrorMessage } from "@dicode/omc-client";
 
 import { mapOmcMessagesToDiagnostics } from "../diagnostics/from-omc.js";
 import { log } from "../logger.js";

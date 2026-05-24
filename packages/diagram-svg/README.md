@@ -1,8 +1,8 @@
-# @modelica-wrapper/diagram-svg
+# @dicode/diagram-svg
 
 Render Modelica icon/diagram graphics to **self-contained SVG strings**. Give it
 the typed `IconLayer[]` shape graphics emitted by
-[`@modelica-wrapper/omc-client`](https://www.npmjs.com/package/@modelica-wrapper/omc-client)'s
+[`@dicode/omc-client`](https://www.npmjs.com/package/@dicode/omc-client)'s
 `DiagramLayout` producer, get back a complete `<svg>` document you can drop into
 any HTML container, write to disk, or rasterize into a texture.
 
@@ -15,14 +15,14 @@ or the browser with no DOM.
 ## Install
 
 ```sh
-npm add @modelica-wrapper/diagram-svg @modelica-wrapper/omc-client
+npm add @dicode/diagram-svg @dicode/omc-client
 ```
 
 ## Quick start
 
 ```ts
-import { OmcClient, diagram } from "@modelica-wrapper/omc-client";
-import { renderIconLayersToSvg } from "@modelica-wrapper/diagram-svg";
+import { OmcClient, diagram } from "@dicode/omc-client";
+import { renderIconLayersToSvg } from "@dicode/diagram-svg";
 
 const client = await OmcClient.create();
 const { instance } = await client.getModelInstance({
@@ -76,7 +76,7 @@ import {
   linePatternToDashArray, // LinePattern → stroke-dasharray
   expressionToString,     // Expression AST → literal string
   interpolateTemplate,    // %name / %class / %<param> substitution
-} from "@modelica-wrapper/diagram-svg";
+} from "@dicode/diagram-svg";
 ```
 
 ## Supported primitives
@@ -101,7 +101,7 @@ The shape types it consumes (`IconLayer`, `Shape`, `ClassDef`,
 `CoordinateSystem`, …) are re-exported so you don't need a separate type import:
 
 ```ts
-import type { IconLayer, Shape, CoordinateSystem } from "@modelica-wrapper/diagram-svg";
+import type { IconLayer, Shape, CoordinateSystem } from "@dicode/diagram-svg";
 ```
 
 ## License

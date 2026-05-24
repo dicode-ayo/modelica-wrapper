@@ -34,7 +34,7 @@ jobs:
         run: pnpm -r typecheck
 
       - name: coverage.md ↔ filesystem recount
-        run: pnpm --filter @modelica-wrapper/omc-client coverage:recount
+        run: pnpm --filter @dicode/omc-client coverage:recount
 
       - name: Unit tests (parser, version, registry)
         env:
@@ -96,7 +96,7 @@ jobs:
           OMC_INTEGRATION: "1"
           OMC_INTEGRATION_HEAVY: "1"
           OMC_DEBUG: "1"
-        run: runuser -u omcrunner -- pnpm --filter @modelica-wrapper/omc-client test
+        run: runuser -u omcrunner -- pnpm --filter @dicode/omc-client test
 
       - name: Build the extension bundle
         run: pnpm --filter modelica-wrapper build

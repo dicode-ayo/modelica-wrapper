@@ -7,7 +7,7 @@ import {
   Texture,
   type TransformNode,
 } from "@babylonjs/core";
-import type { BitmapShape } from "@modelica-wrapper/omc-client";
+import type { BitmapShape } from "@dicode/omc-client";
 
 import { OmShapePrimitive } from "./shape-primitive.js";
 import { extentToRect, graphicItemNode } from "./shape-utils.js";

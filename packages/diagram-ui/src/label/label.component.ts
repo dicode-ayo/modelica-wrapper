@@ -3,8 +3,8 @@ import { customElement, property } from "lit/decorators.js";
 import { consume } from "@lit/context";
 import { TransformNode } from "@babylonjs/core";
 import { TextBlock } from "@babylonjs/gui";
-import { expressionToString } from "@modelica-wrapper/diagram-svg";
-import type { Expression } from "@modelica-wrapper/omc-client";
+import { expressionToString } from "@dicode/diagram-svg";
+import type { Expression } from "@dicode/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
 import { requestSceneRender } from "../scene/render-scheduler.js";

@@ -1,4 +1,4 @@
-import { OmcClient } from "@modelica-wrapper/omc-client";
+import { OmcClient } from "@dicode/omc-client";
 
 import {
   lineAnnotation,

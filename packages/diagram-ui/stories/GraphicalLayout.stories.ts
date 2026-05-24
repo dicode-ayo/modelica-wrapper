@@ -17,7 +17,7 @@
 
 import type { Meta, StoryObj } from "@storybook/web-components";
 import { html, type TemplateResult } from "lit";
-import type { DiagramLayout } from "@modelica-wrapper/omc-client";
+import type { DiagramLayout } from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
 import { sampleLayout } from "./fixtures/sample-layout.js";

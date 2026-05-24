@@ -17,7 +17,7 @@
  * stream connectors are outside the scope of this local check.
  */
 
-import type { DiagramLayout, PortDef } from "@modelica-wrapper/omc-client";
+import type { DiagramLayout, PortDef } from "@dicode/omc-client";
 
 import { isConnectorKey, parseKey } from "./node-keys.js";
 

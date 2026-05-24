@@ -19,8 +19,8 @@
  * code and use the typed surface (`client.loadFile`, `client.cd`, etc).
  */
 
-import type { OmcClient } from "@modelica-wrapper/omc-client";
-import type { OmcCommand } from "@modelica-wrapper/omc-client";
+import type { OmcClient } from "@dicode/omc-client";
+import type { OmcCommand } from "@dicode/omc-client";
 
 import { diagnoseOmcError } from "./repl-diagnose.js";
 import { formatHelp } from "./repl-help.js";

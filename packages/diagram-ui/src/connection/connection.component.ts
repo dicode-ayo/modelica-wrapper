@@ -8,7 +8,7 @@ import {
   type Mesh,
   type TransformNode,
 } from "@babylonjs/core";
-import type { Point } from "@modelica-wrapper/omc-client";
+import type { Point } from "@dicode/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
 import { setMeshHighlight } from "../base/selection-overlay.js";

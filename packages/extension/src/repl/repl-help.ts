@@ -7,7 +7,7 @@
  *   - Topic routing — which kind of help the user is asking for.
  *
  * Everything else (per-function rendering, category lists, the OMC API
- * overview, schema introspection) lives in `@modelica-wrapper/omc-client`
+ * overview, schema introspection) lives in `@dicode/omc-client`
  * so other consumers — CLIs, MCP-tool generation, docs site — can reuse
  * the same renderers without depending on the VSCode extension.
  */
@@ -19,7 +19,7 @@ import {
   renderFunctionHelp,
   renderOverview,
   type OmcFnName,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 /**
  * Meta-commands recognised by the REPL. Kept here (rather than in

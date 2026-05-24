@@ -23,7 +23,7 @@
  * encode integration-test verdicts that only a human knows. Only the
  * **wrapper total** (right-hand number of `N/M`) is verified.
  *
- * Run via: `pnpm --filter @modelica-wrapper/omc-client coverage:recount`
+ * Run via: `pnpm --filter @dicode/omc-client coverage:recount`
  *
  * On drift: refresh `coverage.md` headers + summary table, or add/remove
  * wrappers, until both surfaces agree.

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { OmcClient } from "@modelica-wrapper/omc-client";
+import type { OmcClient } from "@dicode/omc-client";
 
 import { clearComponentModifiers } from "./clear-modifiers.js";
 

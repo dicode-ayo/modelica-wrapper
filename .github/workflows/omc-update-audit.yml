@@ -49,13 +49,13 @@ jobs:
             npm install -g pnpm@10.25.0
             pnpm install --frozen-lockfile
             # Full integration suite (assertions). Failures here are real regressions.
-            OMC_INTEGRATION=1 pnpm --filter @modelica-wrapper/omc-client test 2>&1 \
+            OMC_INTEGRATION=1 pnpm --filter @dicode/omc-client test 2>&1 \
               | tee /workspace/test-output.txt
             # Drift probe (informational). Reports per-call OMC behavior for the ⛔
             # wrappers in coverage.md so the human reviewer sees ground truth on
             # the new OMC version. Always succeeds — output is what matters.
             OMC_INTEGRATION=1 OMC_DRIFT_PROBE=1 \
-              pnpm --filter @modelica-wrapper/omc-client \
+              pnpm --filter @dicode/omc-client \
               vitest run test/drift-probe.integration.test.ts --reporter=verbose 2>&1 \
               | tee /workspace/drift-probe-output.txt
 

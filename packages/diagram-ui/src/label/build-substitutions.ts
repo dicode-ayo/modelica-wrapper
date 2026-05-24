@@ -2,8 +2,8 @@ import type {
   ClassDef,
   ComponentInstance,
   Modifier,
-} from "@modelica-wrapper/omc-client";
-import type { TextSubstitutions } from "@modelica-wrapper/diagram-svg";
+} from "@dicode/omc-client";
+import type { TextSubstitutions } from "@dicode/diagram-svg";
 
 /**
  * Build the `TextSubstitutions` record for one component instance,

@@ -3,7 +3,7 @@ import type {
   Extent,
   Placement,
   Point,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 import { parseKey, type EntityKind } from "./node-keys.js";
 import { orthogonalRoute } from "./connection-route.js";

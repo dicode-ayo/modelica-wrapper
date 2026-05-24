@@ -2,7 +2,7 @@ import { LitElement, css, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { consume } from "@lit/context";
 import { Color3, TransformNode } from "@babylonjs/core";
-import type { CoordinateSystem } from "@modelica-wrapper/omc-client";
+import type { CoordinateSystem } from "@dicode/omc-client";
 
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
 import { requestSceneRender } from "../scene/render-scheduler.js";

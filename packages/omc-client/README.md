@@ -1,4 +1,4 @@
-# @modelica-wrapper/omc-client
+# @dicode/omc-client
 
 A typed, schema-validated TypeScript client for [OpenModelica](https://openmodelica.org/)'s
 interactive **ZeroMQ scripting API**. It spawns and drives an `omc` subprocess,
@@ -24,14 +24,14 @@ No VSCode dependency. Works in any Node ≥20 process.
 ## Install
 
 ```sh
-npm add @modelica-wrapper/omc-client
+npm add @dicode/omc-client
 # or: pnpm add … / yarn add …
 ```
 
 ## Quick start
 
 ```ts
-import { OmcClient } from "@modelica-wrapper/omc-client";
+import { OmcClient } from "@dicode/omc-client";
 
 const client = await OmcClient.create();          // spawns `omc --interactive=zmq`
 try {
@@ -89,7 +89,7 @@ Each wrapper is also a standalone function taking a `CallContext` you supply —
 useful for composing your own runtime or trimming bundle size:
 
 ```ts
-import { getVersion } from "@modelica-wrapper/omc-client/api/browsing";
+import { getVersion } from "@dicode/omc-client/api/browsing";
 
 const result = await getVersion(myCtx, {});  // myCtx implements CallContext
 ```
@@ -125,11 +125,11 @@ Coverage is tracked function-by-function against a real OMC in
 `getModelInstance` returns the whole elaborated class as JSON (inheritance already
 walked). `produceDiagramLayout` turns that AST into a renderer-agnostic
 `DiagramLayout` with **no further OMC calls** — feed it to
-[`@modelica-wrapper/diagram-svg`](https://www.npmjs.com/package/@modelica-wrapper/diagram-svg)
+[`@dicode/diagram-svg`](https://www.npmjs.com/package/@dicode/diagram-svg)
 or any renderer of your own:
 
 ```ts
-import { OmcClient, diagram } from "@modelica-wrapper/omc-client";
+import { OmcClient, diagram } from "@dicode/omc-client";
 
 const client = await OmcClient.create();
 const { instance } = await client.getModelInstance({ typeName: "MyPkg.Circuit" });
@@ -143,7 +143,7 @@ OMC answers in Modelica syntax, not JSON. The recursive-descent parser is export
 for advanced use:
 
 ```ts
-import { parse, asString, asList } from "@modelica-wrapper/omc-client";
+import { parse, asString, asList } from "@dicode/omc-client";
 
 const value = parse('{"a", "b", true, 42}');   // tagged-union Value tree
 ```

@@ -11,7 +11,7 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import { emptyResultViewDoc } from "@modelica-wrapper/omc-client";
+import { emptyResultViewDoc } from "@dicode/omc-client";
 
 import { applyAddResults, buildResultRef } from "../results/add-result.js";
 import { serializeResultViewDoc } from "../results/result-doc.js";

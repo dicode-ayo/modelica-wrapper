@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ResultViewDoc } from "@modelica-wrapper/omc-client";
+import type { ResultViewDoc } from "@dicode/omc-client";
 
 import {
   addPlotCard,

@@ -27,7 +27,7 @@
 
 import * as vscode from "vscode";
 
-import type { ErrorMessage } from "@modelica-wrapper/omc-client";
+import type { ErrorMessage } from "@dicode/omc-client";
 
 /** Resolves a filename (as OMC saw it) to a VSCode Uri, or undefined to fall
  * back to `Uri.file(filename)`. */

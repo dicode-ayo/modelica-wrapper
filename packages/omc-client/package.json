@@ -1,5 +1,5 @@
 {
-  "name": "@modelica-wrapper/omc-client",
+  "name": "@dicode/omc-client",
   "version": "0.0.1",
   "description": "TypeScript client for OpenModelica's interactive ZeroMQ scripting API. Typed wrappers, Zod-validated outputs, no VSCode dependencies.",
   "type": "commonjs",

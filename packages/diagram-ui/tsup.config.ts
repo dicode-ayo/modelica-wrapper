@@ -1,6 +1,6 @@
 import { defineConfig } from "tsup";
 
-// Builds the publishable artifact for @modelica-wrapper/diagram-ui.
+// Builds the publishable artifact for @dicode/diagram-ui.
 // Dev resolution stays on ./src/*.ts; this config feeds `pnpm build` /
 // `prepublishOnly`, and `publishConfig` repoints the published package at dist.
 export default defineConfig({

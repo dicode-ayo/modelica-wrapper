@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as vscode from "vscode";
 
-import type { ErrorMessage } from "@modelica-wrapper/omc-client";
+import type { ErrorMessage } from "@dicode/omc-client";
 
 import { mapOmcMessagesToDiagnostics, rangeFromInfo, severityFromLevel } from "./from-omc.js";
 

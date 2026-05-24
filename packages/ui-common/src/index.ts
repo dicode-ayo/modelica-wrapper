@@ -1,5 +1,5 @@
 /**
- * @modelica-wrapper/ui-common
+ * @dicode/ui-common
  *
  * Shared UI foundation for the `<om-*>` webviews — design tokens and the
  * Web Awesome → VSCode theme bridge — depended on by both `diagram-ui` (the
@@ -13,6 +13,6 @@
  *   bootstrap (side-effect import at app startup).
  */
 
-export const PACKAGE_NAME = "@modelica-wrapper/ui-common";
+export const PACKAGE_NAME = "@dicode/ui-common";
 
 export { omTokens } from "./om-tokens.js";

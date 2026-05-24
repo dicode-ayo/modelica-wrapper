@@ -51,8 +51,8 @@
 import type {
   DiagramLayout,
   ParameterDef,
-} from "@modelica-wrapper/omc-client";
-import type { ConvertUnitsOutput } from "@modelica-wrapper/omc-client/api/contents/index.js";
+} from "@dicode/omc-client";
+import type { ConvertUnitsOutput } from "@dicode/omc-client/api/contents/index.js";
 
 /**
  * Apply an already-fetched `convertUnits` result to a source-unit numeric

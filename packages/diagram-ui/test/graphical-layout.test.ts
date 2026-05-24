@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { NullEngine } from "@babylonjs/core";
-import type { DiagramLayout } from "@modelica-wrapper/omc-client";
+import type { DiagramLayout } from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";

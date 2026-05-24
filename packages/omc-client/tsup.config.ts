@@ -1,6 +1,6 @@
 import { defineConfig } from "tsup";
 
-// Builds the publishable artifact for @modelica-wrapper/omc-client.
+// Builds the publishable artifact for @dicode/omc-client.
 // Dev resolution stays on ./src/*.ts; this config feeds `pnpm build` /
 // `prepublishOnly`, and `publishConfig` repoints the published package at dist.
 //

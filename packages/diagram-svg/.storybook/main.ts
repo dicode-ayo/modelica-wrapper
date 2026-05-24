@@ -1,7 +1,7 @@
 import type { StorybookConfig } from "@storybook/html-vite";
 
 /**
- * Storybook config for `@modelica-wrapper/diagram-svg`.
+ * Storybook config for `@dicode/diagram-svg`.
  *
  * We use the `@storybook/html-vite` framework because the renderer emits
  * raw SVG strings — no React / Vue runtime needed. Stories are plain

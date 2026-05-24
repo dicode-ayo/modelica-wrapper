@@ -1,5 +1,5 @@
 import { createContext } from "@lit/context";
-import type { TextSubstitutions } from "@modelica-wrapper/diagram-svg";
+import type { TextSubstitutions } from "@dicode/diagram-svg";
 
 /**
  * Lit context propagating `%`-substitution values down the

@@ -17,7 +17,7 @@ importers:
 
   packages/diagram-svg:
     dependencies:
-      '@modelica-wrapper/omc-client':
+      '@dicode/omc-client':
         specifier: workspace:*
         version: link:../omc-client
     devDependencies:
@@ -63,18 +63,18 @@ importers:
       '@babylonjs/serializers':
         specifier: ^7.39.0
         version: 7.54.3(@babylonjs/core@7.54.3)(babylonjs-gltf2interface@7.54.3)
+      '@dicode/diagram-svg':
+        specifier: workspace:*
+        version: link:../diagram-svg
+      '@dicode/omc-client':
+        specifier: workspace:*
+        version: link:../omc-client
+      '@dicode/ui-common':
+        specifier: workspace:*
+        version: link:../ui-common
       '@lit/context':
         specifier: ^1.1.4
         version: 1.1.6
-      '@modelica-wrapper/diagram-svg':
-        specifier: workspace:*
-        version: link:../diagram-svg
-      '@modelica-wrapper/omc-client':
-        specifier: workspace:*
-        version: link:../omc-client
-      '@modelica-wrapper/ui-common':
-        specifier: workspace:*
-        version: link:../ui-common
       lit:
         specifier: ^3.2.0
         version: 3.3.2
@@ -109,19 +109,19 @@ importers:
 
   packages/extension:
     dependencies:
-      '@modelica-wrapper/diagram-svg':
+      '@dicode/diagram-svg':
         specifier: workspace:*
         version: link:../diagram-svg
-      '@modelica-wrapper/diagram-ui':
+      '@dicode/diagram-ui':
         specifier: workspace:*
         version: link:../diagram-ui
-      '@modelica-wrapper/omc-client':
+      '@dicode/omc-client':
         specifier: workspace:*
         version: link:../omc-client
-      '@modelica-wrapper/result-ui':
+      '@dicode/result-ui':
         specifier: workspace:*
         version: link:../result-ui
-      '@modelica-wrapper/ui-common':
+      '@dicode/ui-common':
         specifier: workspace:*
         version: link:../ui-common
       lit:
@@ -171,7 +171,7 @@ importers:
 
   packages/result-ui:
     dependencies:
-      '@modelica-wrapper/ui-common':
+      '@dicode/ui-common':
         specifier: workspace:*
         version: link:../ui-common
       echarts:
@@ -211,16 +211,16 @@ importers:
 
   packages/storybook:
     dependencies:
-      '@modelica-wrapper/diagram-svg':
+      '@dicode/diagram-svg':
         specifier: workspace:*
         version: link:../diagram-svg
-      '@modelica-wrapper/diagram-ui':
+      '@dicode/diagram-ui':
         specifier: workspace:*
         version: link:../diagram-ui
-      '@modelica-wrapper/result-ui':
+      '@dicode/result-ui':
         specifier: workspace:*
         version: link:../result-ui
-      '@modelica-wrapper/ui-common':
+      '@dicode/ui-common':
         specifier: workspace:*
         version: link:../ui-common
     devDependencies:

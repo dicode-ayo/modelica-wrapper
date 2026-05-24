@@ -31,7 +31,7 @@ flowchart TB
         CMD["commands/* — openDiagram, checkModel,<br/>repl, tree, library, package"]
         PANEL["diagram/panel.ts — DiagramPanel<br/>webview lifecycle + message dispatch"]
         HANDLERS["diagram/open-diagram.ts — handlers<br/>apply-edits · diff-layout · snapshots ·<br/>unit options · forms · library-source"]
-        OCLIENT["@modelica-wrapper/omc-client<br/>OmcClient + typed wrappers"]
+        OCLIENT["@dicode/omc-client<br/>OmcClient + typed wrappers"]
         CMD --> PANEL --> HANDLERS --> OCLIENT
         DSVG2["diagram-svg (host-side thumbnails)"]
         HANDLERS --- DSVG2

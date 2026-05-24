@@ -14,7 +14,7 @@
  * handled from #86 / #87 onward.
  */
 
-import type { ResultViewDoc } from "@modelica-wrapper/omc-client";
+import type { ResultViewDoc } from "@dicode/omc-client";
 
 /** One plotted line's data: a variable's trajectory from one result. Not part
  * of the persisted document — it's read on demand from the `.mat` and pushed to

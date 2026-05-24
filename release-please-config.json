@@ -25,28 +25,28 @@
       "changelog-path": "CHANGELOG.md"
     },
     "packages/diagram-svg": {
-      "component": "@modelica-wrapper/diagram-svg",
-      "package-name": "@modelica-wrapper/diagram-svg",
+      "component": "@dicode/diagram-svg",
+      "package-name": "@dicode/diagram-svg",
       "changelog-path": "CHANGELOG.md"
     },
     "packages/diagram-ui": {
-      "component": "@modelica-wrapper/diagram-ui",
-      "package-name": "@modelica-wrapper/diagram-ui",
+      "component": "@dicode/diagram-ui",
+      "package-name": "@dicode/diagram-ui",
       "changelog-path": "CHANGELOG.md"
     },
     "packages/omc-client": {
-      "component": "@modelica-wrapper/omc-client",
-      "package-name": "@modelica-wrapper/omc-client",
+      "component": "@dicode/omc-client",
+      "package-name": "@dicode/omc-client",
       "changelog-path": "CHANGELOG.md"
     },
     "packages/result-ui": {
-      "component": "@modelica-wrapper/result-ui",
-      "package-name": "@modelica-wrapper/result-ui",
+      "component": "@dicode/result-ui",
+      "package-name": "@dicode/result-ui",
       "changelog-path": "CHANGELOG.md"
     },
     "packages/ui-common": {
-      "component": "@modelica-wrapper/ui-common",
-      "package-name": "@modelica-wrapper/ui-common",
+      "component": "@dicode/ui-common",
+      "package-name": "@dicode/ui-common",
       "changelog-path": "CHANGELOG.md"
     }
   }

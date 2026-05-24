@@ -7,7 +7,7 @@ name: Release Please
 #
 # When a release is cut, the `publish-npm` job below builds every workspace
 # library with tsup and publishes the ones Release Please just bumped to the
-# npm registry under the @modelica-wrapper scope. The VSCode extension stays
+# npm registry under the @dicode scope. The VSCode extension stays
 # `private: true`, so it is versioned/tagged by Release Please but skipped by
 # the npm publish (its Marketplace publish is a separate, still-to-be-added
 # job — see the follow-up issue).
@@ -20,7 +20,7 @@ name: Release Please
 #   secrets.GITHUB_TOKEN for a fine-grained PAT (or a GitHub App token) stored
 #   as e.g. RELEASE_PLEASE_TOKEN.
 # - NPM_TOKEN must be configured as a repo secret for the publish job: an npm
-#   automation/granular token with publish rights to the @modelica-wrapper
+#   automation/granular token with publish rights to the @dicode
 #   scope. With id-token: write + NPM_CONFIG_PROVENANCE the publish also
 #   attaches npm provenance.
 

@@ -8,7 +8,7 @@
 import { LitElement, css, html, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
-import { omTokens } from "@modelica-wrapper/ui-common";
+import { omTokens } from "@dicode/ui-common";
 
 import { fireEvent } from "./events.js";
 import type { Card, ResultRef, TracePayload } from "./types.js";

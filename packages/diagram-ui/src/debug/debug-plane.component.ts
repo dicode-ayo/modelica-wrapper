@@ -13,7 +13,7 @@ import {
 import type {
   CoordinateSystem,
   IconLayer,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
 import {
