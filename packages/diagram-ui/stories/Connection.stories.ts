@@ -5,7 +5,7 @@
 
 import type { Meta, StoryObj } from "@storybook/web-components";
 import { html, type TemplateResult } from "lit";
-import type { Point } from "@modelica-wrapper/omc-client";
+import type { Point } from "@dicode/omc-client";
 
 import "../src/scene/scene.component.js";
 import "../src/axis/grid-axis.component.js";

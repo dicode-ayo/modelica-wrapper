@@ -1,4 +1,4 @@
-import type { DiagramLayout, Extent } from "@modelica-wrapper/omc-client";
+import type { DiagramLayout, Extent } from "@dicode/omc-client";
 
 /**
  * Diffs two `DiagramLayout` snapshots and emits a flat list of mutation

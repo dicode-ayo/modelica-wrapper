@@ -1,5 +1,5 @@
 {
-  "name": "@modelica-wrapper/storybook",
+  "name": "@dicode/storybook",
   "version": "0.0.1",
   "private": true,
   "description": "Aggregator Storybook: combines the diagram-svg, diagram-ui and result-ui stories into one build, published to a single Chromatic project.",
@@ -14,10 +14,10 @@
     "build-storybook": "storybook build"
   },
   "dependencies": {
-    "@modelica-wrapper/diagram-svg": "workspace:*",
-    "@modelica-wrapper/diagram-ui": "workspace:*",
-    "@modelica-wrapper/result-ui": "workspace:*",
-    "@modelica-wrapper/ui-common": "workspace:*"
+    "@dicode/diagram-svg": "workspace:*",
+    "@dicode/diagram-ui": "workspace:*",
+    "@dicode/result-ui": "workspace:*",
+    "@dicode/ui-common": "workspace:*"
   },
   "devDependencies": {
     "@storybook/addon-essentials": "^8.4.0",

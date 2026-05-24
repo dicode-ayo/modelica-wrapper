@@ -1,6 +1,6 @@
 /**
  * Stories that render real Modelica icons captured against a live OMC
- * via `pnpm --filter @modelica-wrapper/diagram-svg capture-icons`.
+ * via `pnpm --filter @dicode/diagram-svg capture-icons`.
  *
  * Each `*.icon.json` in `./fixtures/` carries
  * `{ className, iconLayers, coordinateSystem }`. The empty stub files
@@ -52,7 +52,7 @@ function placeholderCard(slug: string, className: string): HTMLElement {
     "padding:24px;border:1px dashed #c0c0c0;border-radius:8px;font-family:system-ui,sans-serif;color:#666;max-width:360px;";
   root.innerHTML = `
     <strong style="display:block;margin-bottom:8px;color:#333;">Empty fixture: <code>${slug}</code></strong>
-    Run <code>pnpm --filter @modelica-wrapper/diagram-svg capture-icons</code>
+    Run <code>pnpm --filter @dicode/diagram-svg capture-icons</code>
     (requires OMC on PATH) to populate
     <code>stories/fixtures/${slug}.icon.json</code> for <code>${className}</code>,
     then commit the regenerated JSON.
@@ -96,7 +96,7 @@ const meta: Meta = {
     docs: {
       description: {
         component:
-          "Icons rendered from real `getModelInstance` output, captured against OMC 1.26.7. Regenerate via `pnpm --filter @modelica-wrapper/diagram-svg capture-icons`.",
+          "Icons rendered from real `getModelInstance` output, captured against OMC 1.26.7. Regenerate via `pnpm --filter @dicode/diagram-svg capture-icons`.",
       },
     },
   },

@@ -14,7 +14,7 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import type { OmcClient } from "@modelica-wrapper/omc-client";
+import type { OmcClient } from "@dicode/omc-client";
 
 import {
   isLikelyDiskPath,

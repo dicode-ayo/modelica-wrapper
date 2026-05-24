@@ -1,6 +1,6 @@
 import { customElement, property } from "lit/decorators.js";
 import type { TransformNode } from "@babylonjs/core";
-import type { LineShape } from "@modelica-wrapper/omc-client";
+import type { LineShape } from "@dicode/omc-client";
 
 import { OmShapePrimitive } from "./shape-primitive.js";
 import {

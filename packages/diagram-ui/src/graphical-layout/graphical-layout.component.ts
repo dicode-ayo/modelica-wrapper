@@ -6,7 +6,7 @@ import type {
   ComponentInstance,
   ConnectorInstance,
   DiagramLayout,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 import { renderLayers } from "../primitives/render-shape.js";
 import { buildSubstitutions } from "../label/build-substitutions.js";
@@ -100,7 +100,7 @@ function layoutBoundingBox(layout: DiagramLayout): BBox | null {
   let maxY = -Infinity;
   let seen = false;
   const addPlacement = (
-    placement: import("@modelica-wrapper/omc-client").Placement,
+    placement: import("@dicode/omc-client").Placement,
   ): void => {
     const [[x1, y1], [x2, y2]] = placement.extent;
     const ox = placement.origin?.[0] ?? 0;

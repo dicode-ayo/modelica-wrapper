@@ -25,11 +25,11 @@ import { html, type TemplateResult } from "lit";
 // placement helpers). Importing from the package root would bring in
 // `OmcClient` + `spawnOmc` which depend on `zeromq` / `node:fs` and
 // can't bundle for the browser.
-import { produceDiagramLayout } from "@modelica-wrapper/omc-client/api/diagram/index.js";
+import { produceDiagramLayout } from "@dicode/omc-client/api/diagram/index.js";
 import type {
   DiagramLayout,
   ModelInstance,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
 import type {

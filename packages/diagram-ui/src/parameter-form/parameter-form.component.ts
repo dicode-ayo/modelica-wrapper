@@ -53,9 +53,9 @@ import "@awesome.me/webawesome/dist/components/tab/tab.js";
 import "@awesome.me/webawesome/dist/components/tab-group/tab-group.js";
 import "@awesome.me/webawesome/dist/components/tab-panel/tab-panel.js";
 
-import type { ParameterModel } from "@modelica-wrapper/omc-client";
+import type { ParameterModel } from "@dicode/omc-client";
 
-import { omTokens } from "@modelica-wrapper/ui-common";
+import { omTokens } from "@dicode/ui-common";
 
 import {
   enabledValues,

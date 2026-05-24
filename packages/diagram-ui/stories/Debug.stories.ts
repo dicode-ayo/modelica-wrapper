@@ -24,8 +24,8 @@
 
 import type { Meta, StoryObj } from "@storybook/web-components";
 import { html, type TemplateResult } from "lit";
-import { produceDiagramLayout } from "@modelica-wrapper/omc-client/api/diagram/index.js";
-import type { ModelInstance } from "@modelica-wrapper/omc-client";
+import { produceDiagramLayout } from "@dicode/omc-client/api/diagram/index.js";
+import type { ModelInstance } from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
 

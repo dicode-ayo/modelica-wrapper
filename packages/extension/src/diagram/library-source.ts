@@ -14,7 +14,7 @@
  * of holding onto an old tree.
  */
 
-import type { OmcClient } from "@modelica-wrapper/omc-client";
+import type { OmcClient } from "@dicode/omc-client";
 
 import type {
   LibraryClassInfo,

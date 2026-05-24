@@ -17,13 +17,13 @@ import { customElement, state } from "lit/decorators.js";
 // `<wa-*>` elements rendered downstream pick up VSCode's palette
 // automatically. esbuild's `.css` loader collects these into
 // `out/webview.css`, which `diagram/panel.ts` <link>s to.
-import "@modelica-wrapper/ui-common/webawesome-setup";
+import "@dicode/ui-common/webawesome-setup";
 
-import "@modelica-wrapper/diagram-ui";
+import "@dicode/diagram-ui";
 import type {
   DiagramLayout,
   ParameterModel,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 import {
   isComponentKey,
   parseKey,
@@ -31,7 +31,7 @@ import {
   type LibraryBrowserDataSource,
   type LibraryClassInfo,
   type ParameterFormSubmitDetail,
-} from "@modelica-wrapper/diagram-ui";
+} from "@dicode/diagram-ui";
 
 import type {
   ExtensionToWebview,

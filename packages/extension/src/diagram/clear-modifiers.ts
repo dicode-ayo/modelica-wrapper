@@ -21,7 +21,7 @@
  * Pure of vscode / dom imports — unit-tested with a mock OmcClient.
  */
 
-import type { OmcClient } from "@modelica-wrapper/omc-client";
+import type { OmcClient } from "@dicode/omc-client";
 
 export interface ClearComponentModifiersOptions {
   /**

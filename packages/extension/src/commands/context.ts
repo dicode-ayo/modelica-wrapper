@@ -5,7 +5,7 @@
 
 import * as vscode from "vscode";
 
-import type { OmcClient } from "@modelica-wrapper/omc-client";
+import type { OmcClient } from "@dicode/omc-client";
 
 import type { LibraryTreeProvider, LibraryNode } from "../tree/library-tree.js";
 import type { ModelicaSourceProvider } from "../source-provider.js";

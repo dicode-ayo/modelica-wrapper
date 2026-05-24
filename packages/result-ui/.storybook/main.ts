@@ -1,7 +1,7 @@
 import type { StorybookConfig } from "@storybook/web-components-vite";
 
 /**
- * Storybook config for `@modelica-wrapper/result-ui`.
+ * Storybook config for `@dicode/result-ui`.
  *
  * Web-components framework because the postprocessing UI is Lit custom elements
  * (`<om-*>`). Stories import the element for its side effect

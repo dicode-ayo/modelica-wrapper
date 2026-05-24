@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { NullEngine, Texture, type Scene } from "@babylonjs/core";
-import type { IconLayer, Placement } from "@modelica-wrapper/omc-client";
+import type { IconLayer, Placement } from "@dicode/omc-client";
 
 import "../src/scene/scene.component.js";
 import "../src/icon-provider/icon-provider.component.js";

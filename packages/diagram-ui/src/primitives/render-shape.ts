@@ -1,5 +1,5 @@
 import { html, type TemplateResult } from "lit";
-import type { IconLayer, Shape } from "@modelica-wrapper/omc-client";
+import type { IconLayer, Shape } from "@dicode/omc-client";
 
 import "./rectangle.component.js";
 import "./polygon.component.js";

@@ -2,7 +2,7 @@ import type { Decorator, Preview } from "@storybook/web-components";
 
 // Boot Web Awesome's theme + the vscode-token bridge once per page so the
 // diagram-ui stories can use `<wa-*>` components with native-feeling chrome.
-import "@modelica-wrapper/ui-common/webawesome-setup";
+import "@dicode/ui-common/webawesome-setup";
 
 /**
  * Combined preview for the aggregator Storybook — folds together the three

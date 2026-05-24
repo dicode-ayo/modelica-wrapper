@@ -1,0 +1,96 @@
+name: Release Please
+
+# Maintains a rolling "release PR" off the Conventional Commits that land on
+# main. Merging that PR bumps the version, updates CHANGELOG.md, tags the
+# release, and creates a GitHub Release. Manifest-driven so the monorepo
+# layout is described once in release-please-config.json.
+#
+# When a release is cut, the `publish-npm` job below builds every workspace
+# library with tsup and publishes the ones Release Please just bumped to the
+# npm registry under the @dicode scope. The VSCode extension stays
+# `private: true`, so it is versioned/tagged by Release Please but skipped by
+# the npm publish (its Marketplace publish is a separate, still-to-be-added
+# job — see the follow-up issue).
+#
+# Token notes:
+# - GITHUB_TOKEN is used for the release step. Workflows triggered by the
+#   release tag/PR it creates will NOT fire (GitHub suppresses recursive
+#   workflow runs for the default token). If you later want CI (ci.yml) or a
+#   VSIX publish to run automatically on the release PR or tag, swap
+#   secrets.GITHUB_TOKEN for a fine-grained PAT (or a GitHub App token) stored
+#   as e.g. RELEASE_PLEASE_TOKEN.
+# - NPM_TOKEN must be configured as a repo secret for the publish job: an npm
+#   automation/granular token with publish rights to the @dicode
+#   scope. With id-token: write + NPM_CONFIG_PROVENANCE the publish also
+#   attaches npm provenance.
+
+on:
+  push:
+    branches: [main]
+
+# Only one release run per ref; a newer push supersedes an in-flight one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    name: Release PR + tagging
+    runs-on: ubuntu-latest
+    # Expose the action outputs so the publish job can decide whether to run
+    # and (if ever needed) which package paths were released.
+    outputs:
+      releases_created: ${{ steps.release.outputs.releases_created }}
+      paths_released: ${{ steps.release.outputs.paths_released }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish-npm:
+    name: Publish libraries to npm
+    needs: release-please
+    # Only run when Release Please actually cut at least one release this run.
+    if: ${{ needs.release-please.outputs.releases_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # id-token: write lets npm attach build provenance to the published
+      # tarballs (paired with NPM_CONFIG_PROVENANCE below).
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build all libraries (tsup)
+        run: pnpm -r build
+
+      # `pnpm -r publish` only publishes workspace packages whose current
+      # version isn't already on the registry — which is exactly the set
+      # Release Please just bumped (everything else is a no-op "already
+      # published"). The extension keeps `private: true`, so it is skipped
+      # automatically. If finer-grained control is ever needed, the released
+      # paths are available as needs.release-please.outputs.paths_released.
+      - name: Publish to npm
+        run: pnpm -r publish --access public --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true

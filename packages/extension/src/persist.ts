@@ -14,7 +14,7 @@
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 
-import type { OmcClient } from "@modelica-wrapper/omc-client";
+import type { OmcClient } from "@dicode/omc-client";
 
 /**
  * True if `s` looks like a real filesystem path we can hand to `fs.writeFile`.

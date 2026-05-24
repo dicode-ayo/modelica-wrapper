@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { NullEngine } from "@babylonjs/core";
-import { diagram, ModelInstanceSchema } from "@modelica-wrapper/omc-client";
-import type { DiagramLayout } from "@modelica-wrapper/omc-client";
+import { diagram, ModelInstanceSchema } from "@dicode/omc-client";
+import type { DiagramLayout } from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";

@@ -8,7 +8,7 @@
  *
  * Run with:
  *
- *     pnpm --filter @modelica-wrapper/diagram-svg capture-icons
+ *     pnpm --filter @dicode/diagram-svg capture-icons
  *
  * Requires `omc` on PATH (or `OMC_PATH` env). Skipped by default
  * (`OMC_INTEGRATION=0`); the package script flips the gate to 1.
@@ -32,7 +32,7 @@ import {
   type IconLayer,
   type CoordinateSystem,
   type ClassDef,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 const RUN = process.env.OMC_INTEGRATION === "1";
 

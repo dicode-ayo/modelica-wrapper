@@ -1,11 +1,11 @@
 /**
- * @modelica-wrapper/diagram-svg — public surface.
+ * @dicode/diagram-svg — public surface.
  *
  * Renders the typed `IconLayer[]` shape graphics emitted by the
- * `DiagramLayout` producer in `@modelica-wrapper/omc-client` into
+ * `DiagramLayout` producer in `@dicode/omc-client` into
  * self-contained SVG strings.
  *
- *   import { renderIconLayersToSvg } from "@modelica-wrapper/diagram-svg";
+ *   import { renderIconLayersToSvg } from "@dicode/diagram-svg";
  *
  *   const svg = renderIconLayersToSvg(layout.iconLayers, {
  *     coordinateSystem: layout.coordinateSystem,
@@ -21,7 +21,7 @@
  * `./types.ts` because `omc-client` does not yet re-export them from its
  * package barrel; the local mirror is structurally compatible with the
  * producer's output. Once `omc-client/src/index.ts` re-exports them,
- * swap `./types.js` over to a `export type { ... } from "@modelica-wrapper/omc-client"`.
+ * swap `./types.js` over to a `export type { ... } from "@dicode/omc-client"`.
  */
 
 export {

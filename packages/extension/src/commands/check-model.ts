@@ -20,7 +20,7 @@
 
 import * as vscode from "vscode";
 
-import type { OmcClient } from "@modelica-wrapper/omc-client";
+import type { OmcClient } from "@dicode/omc-client";
 
 import { mapOmcMessagesToDiagnostics } from "../diagnostics/from-omc.js";
 import { DiagramPanel } from "../diagram/panel.js";

@@ -5,7 +5,7 @@ import "../src/scene/scene.component.js";
 import "../src/icon-provider/icon-provider.component.js";
 import type { OmScene } from "../src/scene/scene.component.js";
 import type { OmIconProvider } from "../src/icon-provider/icon-provider.component.js";
-import type { IconLayer } from "@modelica-wrapper/omc-client";
+import type { IconLayer } from "@dicode/omc-client";
 
 function makeNullEngine(): NullEngine {
   return new NullEngine({

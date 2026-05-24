@@ -1,13 +1,13 @@
 /**
- * @modelica-wrapper/diagram-ui
+ * @dicode/diagram-ui
  *
  * Lit + Babylon.js custom elements (`<om-*>`) that render a Modelica
  * graphical layout inside the VSCode webview.
  *
  * Inputs:
- *   - `DiagramLayout` from `@modelica-wrapper/omc-client` (the producer
+ *   - `DiagramLayout` from `@dicode/omc-client` (the producer
  *     output over `getModelInstance` JSON).
- *   - SVG icon strings from `@modelica-wrapper/diagram-svg`, rasterised
+ *   - SVG icon strings from `@dicode/diagram-svg`, rasterised
  *     into Babylon `Texture`s by the icon-provider (added in stage C).
  *
  * Composition:
@@ -19,7 +19,7 @@
  *   itself as the parent context to its own children.
  */
 
-export const PACKAGE_NAME = "@modelica-wrapper/diagram-ui";
+export const PACKAGE_NAME = "@dicode/diagram-ui";
 
 export { OmScene, type EngineFactory } from "./scene/scene.component.js";
 export { sceneContext, type SceneContext } from "./scene/scene-context.js";

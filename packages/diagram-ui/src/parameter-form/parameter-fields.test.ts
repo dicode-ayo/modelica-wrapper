@@ -9,7 +9,7 @@ import type {
   Expression,
   ParameterField as ModelField,
   ParameterModel,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 import {
   buildEnableScope,

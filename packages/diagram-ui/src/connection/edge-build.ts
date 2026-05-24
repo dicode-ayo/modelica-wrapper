@@ -4,7 +4,7 @@ import {
   CreateLines,
 } from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
 import type { LinesMesh, Scene, TransformNode } from "@babylonjs/core";
-import type { Point } from "@modelica-wrapper/omc-client";
+import type { Point } from "@dicode/omc-client";
 
 /**
  * Pure builder for the connection's stroked path. Edges use Babylon's

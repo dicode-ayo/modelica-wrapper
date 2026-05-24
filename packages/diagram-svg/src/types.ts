@@ -1,6 +1,6 @@
 /**
  * Re-exports of the diagram-layout types produced by
- * `@modelica-wrapper/omc-client`'s DiagramLayout producer
+ * `@dicode/omc-client`'s DiagramLayout producer
  * (`packages/omc-client/src/_shared/diagramLayout.ts`).
  *
  * Centralized here so the rest of this package can import shape
@@ -30,4 +30,4 @@ export type {
   IconLayer,
   ClassDef,
   CoordinateSystem,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";

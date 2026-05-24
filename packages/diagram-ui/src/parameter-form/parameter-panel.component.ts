@@ -17,7 +17,7 @@ import { customElement, property } from "lit/decorators.js";
 
 import "@awesome.me/webawesome/dist/components/drawer/drawer.js";
 
-import type { ParameterModel } from "@modelica-wrapper/omc-client";
+import type { ParameterModel } from "@dicode/omc-client";
 
 import "./parameter-form.component.js";
 import type {

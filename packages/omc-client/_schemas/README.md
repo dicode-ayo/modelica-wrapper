@@ -25,7 +25,7 @@ drift detection.
 ## Drift detection
 
 ```sh
-pnpm --filter @modelica-wrapper/omc-client check-modelinstance-schema-drift
+pnpm --filter @dicode/omc-client check-modelinstance-schema-drift
 ```
 
 Fetches both upstream files, applies the same typo patches, and structurally

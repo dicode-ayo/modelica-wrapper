@@ -6,7 +6,7 @@
  * contract. Pure: no VSCode, no OMC.
  *
  * The document *shape* (types + Zod schemas) is the wire contract in
- * `@modelica-wrapper/omc-client`; this module imports it and adds behaviour.
+ * `@dicode/omc-client`; this module imports it and adds behaviour.
  */
 
 import { randomUUID } from "node:crypto";
@@ -19,7 +19,7 @@ import {
   type Card,
   type ResultRef,
   type ResultViewDoc,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 // ---------- parse / serialize ----------
 

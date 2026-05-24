@@ -13,10 +13,10 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import type { OmcClient } from "@modelica-wrapper/omc-client";
-import type { ConvertUnitsOutput } from "@modelica-wrapper/omc-client/api/contents/index.js";
+import type { OmcClient } from "@dicode/omc-client";
+import type { ConvertUnitsOutput } from "@dicode/omc-client/api/contents/index.js";
 
-import type { ParameterModel } from "@modelica-wrapper/omc-client";
+import type { ParameterModel } from "@dicode/omc-client";
 
 import {
   SessionUnitCache,

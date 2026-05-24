@@ -16,7 +16,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { OmcClient } from "@modelica-wrapper/omc-client";
+import type { OmcClient } from "@dicode/omc-client";
 import { recordedMessages } from "../../test-support/vscode-mock.js";
 
 import { resetComponentParameters } from "./open-diagram.js";

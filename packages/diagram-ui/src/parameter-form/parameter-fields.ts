@@ -19,7 +19,7 @@ import type {
   ParameterField as ModelField,
   ParameterModel,
   UnitOption as ModelUnitOption,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 // Sub-path import: the evaluator subtree only — the bare-name import
 // above is type-only (erased at build) so neither path drags the OMC
 // transport (zeromq / cmake-ts) into the webview bundle.
@@ -29,7 +29,7 @@ import {
   recordScope,
   type EvalScope,
   type EvalValue,
-} from "@modelica-wrapper/omc-client/eval";
+} from "@dicode/omc-client/eval";
 
 export type FieldKind =
   | "string"

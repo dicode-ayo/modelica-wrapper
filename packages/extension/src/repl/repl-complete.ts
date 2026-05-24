@@ -14,7 +14,7 @@
  * prefix is treated as one token (a meta-command) instead of two.
  */
 
-import { omcFunctionNames } from "@modelica-wrapper/omc-client";
+import { omcFunctionNames } from "@dicode/omc-client";
 
 import { META_COMMANDS } from "./repl-help.js";
 

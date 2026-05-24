@@ -9,9 +9,9 @@ every gesture is written straight back into the `.mo` source.
 > This is the VSCode extension of the
 > [modelica-wrapper](https://github.com/dicode-ayo/modelica-wrapper) project. The
 > reusable building blocks are published separately:
-> [`@modelica-wrapper/omc-client`](https://www.npmjs.com/package/@modelica-wrapper/omc-client),
-> [`@modelica-wrapper/diagram-ui`](https://www.npmjs.com/package/@modelica-wrapper/diagram-ui),
-> and [`@modelica-wrapper/diagram-svg`](https://www.npmjs.com/package/@modelica-wrapper/diagram-svg).
+> [`@dicode/omc-client`](https://www.npmjs.com/package/@dicode/omc-client),
+> [`@dicode/diagram-ui`](https://www.npmjs.com/package/@dicode/diagram-ui),
+> and [`@dicode/diagram-svg`](https://www.npmjs.com/package/@dicode/diagram-svg).
 
 ## Requirements
 
@@ -73,10 +73,10 @@ The extension activates when a workspace contains any `*.mo` file.
 
 ## How it works
 
-The extension host links [`@modelica-wrapper/omc-client`](https://www.npmjs.com/package/@modelica-wrapper/omc-client)
+The extension host links [`@dicode/omc-client`](https://www.npmjs.com/package/@dicode/omc-client)
 in-process and drives a single long-lived `omc` subprocess over ZeroMQ. The
 interactive diagram runs in a sandboxed webview (built from
-[`@modelica-wrapper/diagram-ui`](https://www.npmjs.com/package/@modelica-wrapper/diagram-ui))
+[`@dicode/diagram-ui`](https://www.npmjs.com/package/@dicode/diagram-ui))
 and talks to the host over a typed `postMessage` protocol. The full design:
 
 - [Architecture](https://github.com/dicode-ayo/modelica-wrapper/blob/main/docs/architecture.md)

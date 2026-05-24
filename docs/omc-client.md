@@ -3,7 +3,7 @@
 [← back to README](../README.md) · related: [architecture.md](architecture.md) ·
 [diagram-rendering.md](diagram-rendering.md)
 
-[`@modelica-wrapper/omc-client`](../packages/omc-client) is the standalone,
+[`@dicode/omc-client`](../packages/omc-client) is the standalone,
 VSCode-free TypeScript client for OpenModelica's interactive ZeroMQ scripting API.
 It is the only layer that talks to `omc`. This doc covers its internals:
 transport, the response parser, the expression evaluator, the typed API surface,

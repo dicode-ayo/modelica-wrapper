@@ -6,7 +6,7 @@
  * our VSCode bridge on top so wa components inherit the right colours and
  * typography automatically:
  *
- *   import "@modelica-wrapper/ui-common/webawesome-setup";
+ *   import "@dicode/ui-common/webawesome-setup";
  *
  * Component-level wa imports (e.g. `<wa-dialog>`) live next to each `<om-*>`
  * component that uses them — this file is only the global theme bootstrap.

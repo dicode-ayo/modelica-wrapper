@@ -241,11 +241,11 @@
     "test:unit": "OMC_INTEGRATION=0 vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@modelica-wrapper/diagram-svg": "workspace:*",
-    "@modelica-wrapper/diagram-ui": "workspace:*",
-    "@modelica-wrapper/omc-client": "workspace:*",
-    "@modelica-wrapper/result-ui": "workspace:*",
-    "@modelica-wrapper/ui-common": "workspace:*",
+    "@dicode/diagram-svg": "workspace:*",
+    "@dicode/diagram-ui": "workspace:*",
+    "@dicode/omc-client": "workspace:*",
+    "@dicode/result-ui": "workspace:*",
+    "@dicode/ui-common": "workspace:*",
     "lit": "^3.2.0",
     "zeromq": "^6.1.0"
   },

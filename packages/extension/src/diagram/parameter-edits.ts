@@ -20,7 +20,7 @@ import {
   type ParameterField,
   type ParameterModel,
   type UnitTable,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 /** Modelica primitive kinds the modal can edit. Mirrors the producer's kinds. */
 export type PrimitiveKind = "number" | "integer" | "boolean" | "string";

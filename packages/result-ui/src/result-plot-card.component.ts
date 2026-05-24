@@ -13,7 +13,7 @@ import { LitElement, css, html, type PropertyValues, type TemplateResult } from 
 import { customElement, property } from "lit/decorators.js";
 import * as echarts from "echarts";
 
-import { omTokens } from "@modelica-wrapper/ui-common";
+import { omTokens } from "@dicode/ui-common";
 
 import { buildLineChartOption } from "./chart-option.js";
 import { buildEchartTheme } from "./echart-theme.js";

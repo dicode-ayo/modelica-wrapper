@@ -5,7 +5,7 @@ JSON snapshots of `iconLayers` captured from real Modelica classes via OMC, cons
 ## Regenerate
 
 ```sh
-pnpm --filter @modelica-wrapper/diagram-svg capture-icons
+pnpm --filter @dicode/diagram-svg capture-icons
 ```
 
 Requires `omc` on PATH (or the `OMC_PATH` env var). The script:

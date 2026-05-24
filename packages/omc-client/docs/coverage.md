@@ -8,15 +8,15 @@ Tracks which functions in [`src/registry.ts`](../src/registry.ts) are exercised 
 
 **Current coverage:** **199 wrappers in package; 189 ✅ verified end-to-end, 9 🟡 cheap unverified, 1 ⛔ broken on pin (95% verified).** 2026-05-20: omc-coverage epic (#31) added import readers (#43), solver getter siblings (#41), 9 class-shape `is*` predicates (#33), browsing extras (#42), editing siblings (#37), 3 library version-conversion wrappers (#40), 21 indexed/count contents readers (#34), `newModel` (#35), verified the two inherited-class map annotation readers (#39), brought Parameters to 16/16 (#36), and rescued `setElementAnnotation` (#38: `$Code((expr))` payload). The OMEdit call-surface cross-reference then added 4 utilities (#63/#64/#65): `getDerivedUnits`, `uriToFilename`, `qualifyPath` (contents) + `loadClassContentString` (lifecycle), all verified live. The 9 library/package-manager calls are exercised opt-in behind `OMC_INTEGRATION_NETWORK=1`. Counts reconciled at merge time. A 2026-05-20 audit also identified ~40 documented OMC scripting functions in scope that are not yet wrapped — see the [100% coverage epic](https://github.com/dicode-ayo/modelica-wrapper/issues?q=is%3Aissue+label%3Aepic+label%3Aomc-coverage) for the plan to close that gap.
 
-> Run `pnpm --filter @modelica-wrapper/omc-client test` to exercise the integration suite. It auto-skips when `omc` isn't on PATH.
+> Run `pnpm --filter @dicode/omc-client test` to exercise the integration suite. It auto-skips when `omc` isn't on PATH.
 
 > When updating the registry or the audit, refresh this file. The agent runbook at [`audit.md`](./audit.md) instructs auditors to consult this doc before flagging missing tests as bugs.
 
 > **Prioritizing what to wrap next**: API discovery (the docs sweep) finds every function but ranks them flat — it can't tell load-bearing utilities from miscellany. Cross-reference OMEdit's actual call surface to get the priority. The method is documented in [`audit.md` §1.1](./audit.md); the live gap list lives under the [OMEdit-alignment epic #21](https://github.com/dicode-ayo/modelica-wrapper/issues/21). (This is how `convertUnits`/`getDerivedUnits` were caught after an earlier sweep shelved them as "misc".)
 
-> **Drift probe**: every ⛔ row below has a ground-truth probe in [`../test/drift-probe.integration.test.ts`](../test/drift-probe.integration.test.ts) — `save` is covered (the former `createClass`/`createSubClass` probes were dropped along with those removed wrappers; `newModel` is probed as their replacement). Run it manually whenever you suspect ⛔ status has changed: `OMC_DRIFT_PROBE=1 pnpm --filter @modelica-wrapper/omc-client vitest run test/drift-probe.integration.test.ts --reporter=verbose`. The `omc-update-audit` CI workflow runs it automatically on Renovate-bumped PRs and pastes the verdicts into the PR comment. ✗→✓ transitions in the probe output are the signal to un-deprecate a wrapper and add a real test.
+> **Drift probe**: every ⛔ row below has a ground-truth probe in [`../test/drift-probe.integration.test.ts`](../test/drift-probe.integration.test.ts) — `save` is covered (the former `createClass`/`createSubClass` probes were dropped along with those removed wrappers; `newModel` is probed as their replacement). Run it manually whenever you suspect ⛔ status has changed: `OMC_DRIFT_PROBE=1 pnpm --filter @dicode/omc-client vitest run test/drift-probe.integration.test.ts --reporter=verbose`. The `omc-update-audit` CI workflow runs it automatically on Renovate-bumped PRs and pastes the verdicts into the PR comment. ✗→✓ transitions in the probe output are the signal to un-deprecate a wrapper and add a real test.
 
-> **Recount drift**: the per-category section headers (`## Browsing — 28/28` …) and the Summary-by-category table below should always agree with the filesystem. The `pnpm --filter @modelica-wrapper/omc-client coverage:recount` script (also wired into the `lint-and-unit` CI job) diffs both against `src/api/<category>/*.ts` and exits non-zero on drift — so any wrapper added or removed without a coverage.md refresh shows up immediately. Coverage status counts (✅ / 🟡 / ⛔ / 🐢) are human-curated and not checked by the script.
+> **Recount drift**: the per-category section headers (`## Browsing — 28/28` …) and the Summary-by-category table below should always agree with the filesystem. The `pnpm --filter @dicode/omc-client coverage:recount` script (also wired into the `lint-and-unit` CI job) diffs both against `src/api/<category>/*.ts` and exits non-zero on drift — so any wrapper added or removed without a coverage.md refresh shows up immediately. Coverage status counts (✅ / 🟡 / ⛔ / 🐢) are human-curated and not checked by the script.
 
 ---
 
@@ -271,7 +271,7 @@ These mirror the existing `is*` predicates but span **three** argument/output sh
 Run with:
 
 ```sh
-OMC_INTEGRATION_NETWORK=1 pnpm --filter @modelica-wrapper/omc-client \
+OMC_INTEGRATION_NETWORK=1 pnpm --filter @dicode/omc-client \
   vitest run test/library-network.integration.test.ts
 ```
 

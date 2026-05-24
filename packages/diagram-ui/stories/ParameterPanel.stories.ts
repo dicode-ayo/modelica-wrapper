@@ -7,7 +7,7 @@
  */
 
 import type { Meta, StoryObj } from "@storybook/web-components";
-import type { ParameterModel } from "@modelica-wrapper/omc-client";
+import type { ParameterModel } from "@dicode/omc-client";
 import { html, type TemplateResult } from "lit";
 
 import "../src/parameter-form/parameter-panel.component.js";

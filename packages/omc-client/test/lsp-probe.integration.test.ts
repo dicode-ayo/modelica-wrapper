@@ -6,7 +6,7 @@
  *
  * A targeted probe (sibling of `drift-probe.integration.test.ts`) that pokes
  * the live OMC instance to answer three questions before we commit to
- * building an LSP backend on top of `@modelica-wrapper/omc-client`:
+ * building an LSP backend on top of `@dicode/omc-client`:
  *
  *   1. **Positioned diagnostics**: does `getMessagesString()` or
  *      `getMessagesStringInternal()` exist on the connected OMC, and if so
@@ -25,7 +25,7 @@
  *
  * # How to run it
  *
- *     OMC_LSP_PROBE=1 pnpm --filter @modelica-wrapper/omc-client \
+ *     OMC_LSP_PROBE=1 pnpm --filter @dicode/omc-client \
  *       vitest run test/lsp-probe.integration.test.ts \
  *       --reporter=verbose
  */

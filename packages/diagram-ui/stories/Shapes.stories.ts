@@ -32,7 +32,7 @@ import type {
   RectangleShape,
   Shape,
   TextShape,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 import "../src/scene/scene.component.js";
 import "../src/axis/grid-axis.component.js";

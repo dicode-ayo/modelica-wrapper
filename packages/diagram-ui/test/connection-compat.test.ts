@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DiagramLayout } from "@modelica-wrapper/omc-client";
+import type { DiagramLayout } from "@dicode/omc-client";
 
 import {
   canConnect,

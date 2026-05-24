@@ -9,9 +9,9 @@ import {
   type ModelInstance,
   type UnitTable,
   type Value,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
-import { renderIconLayersToSvg } from "@modelica-wrapper/diagram-svg";
+import { renderIconLayersToSvg } from "@dicode/diagram-svg";
 
 import { isConnectorKey, parseEntityKey } from "./entity-key.js";
 

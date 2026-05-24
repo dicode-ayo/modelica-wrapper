@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Placement } from "@modelica-wrapper/omc-client";
+import type { Placement } from "@dicode/omc-client";
 
 import { applyPlacement, coordSystemSize } from "./placement-math.js";
 

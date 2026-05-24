@@ -1,6 +1,6 @@
 import { createContext } from "@lit/context";
 import type { Texture } from "@babylonjs/core";
-import type { CoordinateSystem, IconLayer } from "@modelica-wrapper/omc-client";
+import type { CoordinateSystem, IconLayer } from "@dicode/omc-client";
 
 import type { IconRequest } from "./icon-cache.js";
 

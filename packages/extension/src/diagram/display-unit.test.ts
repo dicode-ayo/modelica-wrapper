@@ -8,8 +8,8 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import type { DiagramLayout } from "@modelica-wrapper/omc-client";
-import type { ConvertUnitsOutput } from "@modelica-wrapper/omc-client/api/contents/index.js";
+import type { DiagramLayout } from "@dicode/omc-client";
+import type { ConvertUnitsOutput } from "@dicode/omc-client/api/contents/index.js";
 
 import {
   applyDisplayUnits,

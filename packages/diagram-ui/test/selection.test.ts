@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { NullEngine, Scene, TransformNode } from "@babylonjs/core";
-import type { Placement } from "@modelica-wrapper/omc-client";
+import type { Placement } from "@dicode/omc-client";
 
 import { OmShapeNode } from "../src/base/shape-node.js";
 

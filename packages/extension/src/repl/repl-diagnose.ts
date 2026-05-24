@@ -27,7 +27,7 @@
  * the user really did mistype.
  */
 
-import { REGISTRY, type OmcFnName } from "@modelica-wrapper/omc-client";
+import { REGISTRY, type OmcFnName } from "@dicode/omc-client";
 
 const LOOKUP_FAILURE_RE =
   /Class\s+([A-Za-z_]\w*)\s+not found in scope\s+<[^>]+>\s+\(looking for a function or record\)/;

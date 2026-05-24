@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   ComponentElement,
   ParameterField,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 import {
   buildComponentParameterForm,

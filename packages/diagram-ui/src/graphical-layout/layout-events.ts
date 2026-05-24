@@ -16,7 +16,7 @@
  * (CustomEvent stays inside one browser context).
  */
 
-import type { DiagramLayout } from "@modelica-wrapper/omc-client";
+import type { DiagramLayout } from "@dicode/omc-client";
 
 import type { DragEvents } from "../interaction/drag-controller.js";
 import type { InteractionEvents } from "../interaction/interaction-manager.js";

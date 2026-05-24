@@ -1,9 +1,9 @@
-# @modelica-wrapper/diagram-ui
+# @dicode/diagram-ui
 
 [Lit](https://lit.dev/) + [Babylon.js](https://www.babylonjs.com/) custom elements
 (`<om-*>`) that render an interactive Modelica **graphical layout editor** in the
 browser. Feed it a `DiagramLayout` from
-[`@modelica-wrapper/omc-client`](https://www.npmjs.com/package/@modelica-wrapper/omc-client);
+[`@dicode/omc-client`](https://www.npmjs.com/package/@dicode/omc-client);
 it draws the diagram in a WebGL scene, handles picking/selection/drag, and emits
 DOM `CustomEvent`s for every gesture (move, connect, double-click, parameter
 edit). It also ships the schema-driven parameter side-panel and the library
@@ -27,18 +27,18 @@ Storybook and embeddable anywhere.
 ## Install
 
 ```sh
-npm add @modelica-wrapper/diagram-ui @modelica-wrapper/omc-client
+npm add @dicode/diagram-ui @dicode/omc-client
 ```
 
 ## Quick start
 
 ```ts
 // 1. Register the WebAwesome theme bridge once at app startup:
-import "@modelica-wrapper/ui-common/webawesome-setup";
+import "@dicode/ui-common/webawesome-setup";
 
 // 2. Import the elements you use — importing registers the custom elements
 //    (their @customElement decorators run on module load):
-import { OmGraphicalLayout } from "@modelica-wrapper/diagram-ui";
+import { OmGraphicalLayout } from "@dicode/diagram-ui";
 
 // 3. Use the element and hand it a DiagramLayout:
 const el = document.createElement("om-graphical-layout");

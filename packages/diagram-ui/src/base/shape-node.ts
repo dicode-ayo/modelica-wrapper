@@ -13,7 +13,7 @@ import { requestSceneRender } from "../scene/render-scheduler.js";
 import type {
   CoordinateSystem,
   Placement,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 const HIGHLIGHT_COLOR = new Color3(0.38, 0.6, 0.98);
 

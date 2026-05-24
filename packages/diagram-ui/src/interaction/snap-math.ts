@@ -18,7 +18,7 @@ import type {
   CoordinateSystem,
   Extent,
   Placement,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 /** Per-axis snap step in diagram units; `[0, 0]` disables snapping. */
 export type SnapGrid = readonly [number, number];

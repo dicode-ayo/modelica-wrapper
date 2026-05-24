@@ -1,13 +1,13 @@
 import type {
   DiagramLayout,
   ParameterModel,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 /**
  * Wire-format mirror of diagram-ui's `LibraryClassRestriction`.
  * Kept as a plain string union local to the protocol because the
  * extension host is CommonJS / Node16-resolution and importing
- * ESM-only type-only declarations from `@modelica-wrapper/diagram-ui`
+ * ESM-only type-only declarations from `@dicode/diagram-ui`
  * would need a `resolution-mode` import attribute. The webview side
  * still consumes diagram-ui's `LibraryClassInfo` — the shapes are
  * structurally identical so assignment is implicit.

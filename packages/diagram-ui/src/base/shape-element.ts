@@ -5,7 +5,7 @@ import type {
   CoordinateSystem,
   IconLayer,
   Placement,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 import { parentNodeContext } from "./parent-node-context.js";
 import { OmShapeNode } from "./shape-node.js";

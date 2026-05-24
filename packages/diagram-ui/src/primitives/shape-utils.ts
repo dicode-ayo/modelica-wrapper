@@ -13,7 +13,7 @@ import {
   CreateDashedLines,
   CreateLines,
 } from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
-import type { Color, Extent } from "@modelica-wrapper/omc-client";
+import type { Color, Extent } from "@dicode/omc-client";
 
 /** Per-shape GraphicItem transform fields (§18.6) every primitive carries. */
 export interface GraphicItemTransform {

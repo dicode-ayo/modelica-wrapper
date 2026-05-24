@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DiagramLayout, Point } from "@modelica-wrapper/omc-client";
+import type { DiagramLayout, Point } from "@dicode/omc-client";
 
 import {
   applyDelete,

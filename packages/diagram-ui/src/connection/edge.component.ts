@@ -2,7 +2,7 @@ import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { consume } from "@lit/context";
 import { Color3, type TransformNode } from "@babylonjs/core";
-import type { Point } from "@modelica-wrapper/omc-client";
+import type { Point } from "@dicode/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
 import { requestSceneRender } from "../scene/render-scheduler.js";

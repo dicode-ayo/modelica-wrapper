@@ -11,7 +11,7 @@
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
-import { omTokens } from "@modelica-wrapper/ui-common";
+import { omTokens } from "@dicode/ui-common";
 
 import type { ResultViewDoc, TracePayload } from "./types.js";
 import "./results-drawer.component.js";

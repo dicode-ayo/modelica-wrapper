@@ -2,21 +2,22 @@
   "name": "modelica-wrapper-workspace",
   "version": "0.0.0",
   "private": true,
-  "description": "Monorepo root for the modelica-wrapper VSCode extension and the @modelica-wrapper/omc-client package.",
+  "description": "Monorepo root for the modelica-wrapper VSCode extension and the @dicode/omc-client package.",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "start": "pnpm --filter @modelica-wrapper/diagram-ui start",
+    "start": "pnpm --filter @dicode/diagram-ui start",
     "build": "pnpm --filter modelica-wrapper build",
     "watch": "pnpm --filter modelica-wrapper watch",
-    "storybook": "pnpm --filter @modelica-wrapper/storybook storybook",
-    "build-storybook": "pnpm --filter @modelica-wrapper/storybook build-storybook",
+    "storybook": "pnpm --filter @dicode/storybook storybook",
+    "build-storybook": "pnpm --filter @dicode/storybook build-storybook",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "test:unit": "pnpm -r test:unit"
   },
   "devDependencies": {
+    "tsup": "^8.3.0",
     "typescript": "^5.6.0"
   },
   "packageManager": "pnpm@10.25.0",

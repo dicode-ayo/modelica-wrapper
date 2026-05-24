@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import type { ModelInstance, OmcClient } from "@modelica-wrapper/omc-client";
+import type { ModelInstance, OmcClient } from "@dicode/omc-client";
 
 import { fetchIconLayout } from "./open-diagram.js";
 

@@ -14,7 +14,7 @@
 
 import * as vscode from "vscode";
 
-import { OmcClient } from "@modelica-wrapper/omc-client";
+import { OmcClient } from "@dicode/omc-client";
 
 import { registerCommands } from "./commands/index.js";
 import { log } from "./logger.js";

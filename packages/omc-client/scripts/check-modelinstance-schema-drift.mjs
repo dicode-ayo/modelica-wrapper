@@ -7,7 +7,7 @@
  * the schemas are equivalent and 1 when they have drifted (so it can be wired
  * into a CI cron without further glue).
  *
- * Run via: `pnpm --filter @modelica-wrapper/omc-client check-modelinstance-schema-drift`
+ * Run via: `pnpm --filter @dicode/omc-client check-modelinstance-schema-drift`
  *
  * On drift: re-vendor the upstream files into `_schemas/`, replay the four
  * known typo patches (see `_schemas/README.md`), then cross-check our hand-

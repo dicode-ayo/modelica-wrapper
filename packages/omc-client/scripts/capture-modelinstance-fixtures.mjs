@@ -13,7 +13,7 @@
  *
  * Run from anywhere via the package script:
  *
- *     pnpm --filter @modelica-wrapper/omc-client capture-modelinstance-fixtures
+ *     pnpm --filter @dicode/omc-client capture-modelinstance-fixtures
  *
  * Or directly from the package root:
  *

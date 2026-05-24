@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   ClassDef,
   ComponentInstance,
-} from "@modelica-wrapper/omc-client";
+} from "@dicode/omc-client";
 
 import { buildSubstitutions } from "../src/label/build-substitutions.js";
 

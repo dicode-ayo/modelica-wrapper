@@ -7,7 +7,7 @@
 
 import * as vscode from "vscode";
 
-import type { OmcClient } from "@modelica-wrapper/omc-client";
+import type { OmcClient } from "@dicode/omc-client";
 
 export interface LibraryNode {
   /** Dotted fully-qualified Modelica name, e.g. `Modelica.Blocks.Math.Add`. */

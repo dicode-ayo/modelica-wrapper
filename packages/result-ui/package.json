@@ -1,7 +1,6 @@
 {
-  "name": "@modelica-wrapper/result-ui",
+  "name": "@dicode/result-ui",
   "version": "0.0.1",
-  "private": true,
   "description": "Standalone Lit + ECharts custom elements (<om-*>) for the postprocessing / results view. Independent of the diagram editor (no Babylon).",
   "type": "module",
   "main": "./src/index.ts",
@@ -9,11 +8,27 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "files": ["dist"],
   "engines": {
     "node": ">=20"
   },
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/index.cjs",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "require": "./dist/index.cjs"
+      }
+    }
+  },
   "scripts": {
     "start": "pnpm storybook",
+    "build": "tsup",
+    "prepublishOnly": "pnpm build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -22,7 +37,7 @@
     "build-storybook": "storybook build"
   },
   "dependencies": {
-    "@modelica-wrapper/ui-common": "workspace:*",
+    "@dicode/ui-common": "workspace:*",
     "echarts": "^5.5.0",
     "lit": "^3.2.0"
   },
