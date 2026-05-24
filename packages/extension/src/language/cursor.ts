@@ -2,9 +2,20 @@
  * Pure, syntactic cursor analysis over a tree-sitter Modelica tree.
  *
  * Nothing here imports `vscode` or talks to OMC — every function takes a
- * `Node`/`Tree` and a byte offset and returns plain data, so the whole module
- * is unit-testable against fixture trees (see `cursor.test.ts`). The semantic
- * half (resolving a name to a definition) lives in `resolve.ts` in a later PR.
+ * `Node`/`Tree` and an offset and returns plain data, so the whole module is
+ * unit-testable against fixture trees (see `cursor.test.ts`). The semantic half
+ * (resolving a name to a definition) lives in `resolve.ts` in a later PR.
+ *
+ * ## Offset unit (important)
+ *
+ * Every `offset` here is a **UTF-16 code-unit offset** — the unit
+ * `web-tree-sitter` uses on its JavaScript string-input path
+ * (`Node.startIndex` / `descendantForIndex` are UTF-16 offsets when the parser
+ * is driven with a JS string; see `position.ts` for the verification). This is
+ * the SAME unit VSCode provides, so a provider passes
+ * `document.offsetAt(position)` straight through — no byte conversion. The
+ * returned `startIndex`/`endIndex` are likewise UTF-16 offsets, ready to build a
+ * `vscode.Range` via `document.positionAt(...)`.
  *
  * ## Grammar shapes this relies on (OpenModelica/tree-sitter-modelica v0.2.2)
  *
@@ -61,7 +72,7 @@ export interface CursorTarget {
    */
   readonly pathToCursor: readonly string[];
   readonly context: CursorContextKind;
-  /** Byte range of the single identifier under the cursor. */
+  /** UTF-16 code-unit range of the single identifier under the cursor. */
   readonly startIndex: number;
   readonly endIndex: number;
 }
@@ -72,9 +83,10 @@ const CREF_NODE = "component_reference";
 const IDENT_NODE = "IDENT";
 
 /**
- * The named node at `offset`. Prefers a *named* descendant (skips anonymous
- * tokens like `.`, `(`, `;`) so callers get a meaningful node. When the offset
- * sits exactly on punctuation, the nearest named node is returned instead.
+ * The named node at `offset` (a **UTF-16 code-unit offset** — see the module
+ * note). Prefers a *named* descendant (skips anonymous tokens like `.`, `(`,
+ * `;`) so callers get a meaningful node. When the offset sits exactly on
+ * punctuation, the nearest named node is returned instead.
  */
 export function nodeAt(tree: Tree, offset: number): Node | null {
   const named = tree.rootNode.namedDescendantForIndex(offset, offset);
@@ -82,14 +94,17 @@ export function nodeAt(tree: Tree, offset: number): Node | null {
 }
 
 /**
- * The `IDENT` token at `offset`, if any. When the offset lands on a `.` between
- * two identifiers we bias to the identifier *before* the dot (the segment the
- * user most likely means when the caret is just past it).
+ * The `IDENT` token at `offset` (a **UTF-16 code-unit offset** — see the module
+ * note), if any. When the offset lands on a `.` between two identifiers we bias
+ * to the identifier *before* the dot (the segment the user most likely means
+ * when the caret is just past it). The one-unit-left fallback steps a single
+ * UTF-16 code unit; on a surrogate-pair boundary tree-sitter still resolves to
+ * the enclosing token, so this stays correct for non-ASCII.
  */
 export function identifierAt(tree: Tree, offset: number): Node | null {
   let node = tree.rootNode.descendantForIndex(offset, offset);
   if (node && node.type === IDENT_NODE) return node;
-  // On a dot or at a boundary: try one byte to the left.
+  // On a dot or at a boundary: try one code unit to the left.
   if (offset > 0) {
     node = tree.rootNode.descendantForIndex(offset - 1, offset - 1);
     if (node && node.type === IDENT_NODE) return node;
@@ -98,9 +113,12 @@ export function identifierAt(tree: Tree, offset: number): Node | null {
 }
 
 /**
- * Resolve the cursor at `offset` to the identifier under it, the dotted path it
- * belongs to, and the syntactic context. Returns `null` when the cursor is not
- * on an identifier (whitespace, keyword, punctuation).
+ * Resolve the cursor at `offset` (a **UTF-16 code-unit offset** — see the
+ * module note) to the identifier under it, the dotted path it belongs to, and
+ * the syntactic context. Returns `null` when the cursor is not on an identifier
+ * (whitespace, keyword, punctuation). The returned `startIndex`/`endIndex` are
+ * likewise UTF-16 offsets (tree-sitter's `Node.startIndex`/`endIndex` on the
+ * string-input path), ready for `document.positionAt(...)`.
  */
 export function targetAt(tree: Tree, offset: number): CursorTarget | null {
   const ident = identifierAt(tree, offset);

@@ -4,9 +4,10 @@
  *
  * These do not touch `vscode`; they parse source strings directly with
  * `web-tree-sitter` and assert what `targetAt`/`classify` report at chosen
- * byte offsets. If the grammar WASM is ever missing or incompatible the
- * `beforeAll` rejects and the suite fails loudly (rather than skipping
- * silently) — the parse layer is load-bearing for every language feature.
+ * UTF-16 code-unit offsets (tree-sitter's string-input unit; see `position.ts`).
+ * If the grammar WASM is ever missing or incompatible the `beforeAll` rejects
+ * and the suite fails loudly (rather than skipping silently) — the parse layer
+ * is load-bearing for every language feature.
  */
 
 import { dirname, join } from "node:path";

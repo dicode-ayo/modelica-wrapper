@@ -23,6 +23,7 @@ import * as vscode from "vscode";
 import { Language, Parser, type Edit, type Tree } from "web-tree-sitter";
 
 import { log } from "../logger.js";
+import { advancePointUtf16 } from "./position.js";
 
 /**
  * Filenames of the two WASM assets copied into `out/` by `esbuild.config.mjs`.
@@ -71,7 +72,14 @@ export async function ensureLanguage(wasmDir: string): Promise<Language> {
       `tree-sitter-modelica loaded (ABI ${language.version})`,
     );
     return language;
-  })();
+  })().catch((err: unknown) => {
+    // Don't poison the singleton on a transient init failure (missing/corrupt
+    // WASM, a failed `Parser.init`). Clearing the cached promise lets the next
+    // `ensureLanguage` re-attempt instead of replaying the same rejection
+    // forever — which previously needed a window reload to escape.
+    languagePromise = undefined;
+    throw err;
+  });
   return languagePromise;
 }
 
@@ -91,16 +99,28 @@ interface CacheEntry {
 export class ParseCache implements vscode.Disposable {
   private readonly entries = new Map<string, CacheEntry>();
   private parser: Parser | undefined;
+  private parserPromise: Promise<Parser> | undefined;
 
   constructor(private readonly wasmDir: string) {}
 
-  private async getParser(): Promise<Parser> {
-    if (this.parser) return this.parser;
-    const language = await ensureLanguage(this.wasmDir);
-    const parser = new Parser();
-    parser.setLanguage(language);
-    this.parser = parser;
-    return parser;
+  private getParser(): Promise<Parser> {
+    if (this.parser) return Promise.resolve(this.parser);
+    // Memoise the in-flight init so two concurrent first `parse()` calls share
+    // one `Parser`. Without this both pass the `this.parser` guard, both
+    // `new Parser()`, and the first one is orphaned (never `.delete()`-ed — a
+    // small WASM-memory leak). On failure we clear the promise so a retry can
+    // re-init (mirrors `ensureLanguage`).
+    this.parserPromise ??= (async () => {
+      const language = await ensureLanguage(this.wasmDir);
+      const parser = new Parser();
+      parser.setLanguage(language);
+      this.parser = parser;
+      return parser;
+    })().catch((err: unknown) => {
+      this.parserPromise = undefined;
+      throw err;
+    });
+    return this.parserPromise;
   }
 
   /**
@@ -136,6 +156,11 @@ export class ParseCache implements vscode.Disposable {
     const key = event.document.uri.toString();
     const cached = this.entries.get(key);
     if (!cached) return;
+    // VSCode's `change` offsets/columns and tree-sitter's string-input space are
+    // both UTF-16 code units (see `position.ts`), so they feed straight through
+    // — no transcoding. VSCode delivers a multi-edit batch sorted by range
+    // descending, so applying the edits in the given order keeps each later
+    // (lower-offset) edit's coordinates valid against the running tree.
     for (const change of event.contentChanges) {
       cached.tree.edit(toTreeEdit(change));
     }
@@ -160,6 +185,7 @@ export class ParseCache implements vscode.Disposable {
     this.entries.clear();
     this.parser?.delete();
     this.parser = undefined;
+    this.parserPromise = undefined;
   }
 
   private setEntry(key: string, entry: CacheEntry): void {
@@ -170,9 +196,14 @@ export class ParseCache implements vscode.Disposable {
 }
 
 /**
- * Convert a VSCode content change into a tree-sitter {@link Edit}. VSCode hands
- * us the replaced `range` (old offsets/positions) and the inserted `text`; we
- * compute the new end from the inserted text's shape.
+ * Convert a VSCode content change into a tree-sitter {@link Edit}.
+ *
+ * VSCode's offsets/columns and tree-sitter's string-input space are **both
+ * UTF-16 code units** (see `position.ts`), so `rangeOffset`, `rangeLength`,
+ * `text.length` and `Position.character` feed straight through with no
+ * transcoding. The only care needed is the *new* end position's column, which
+ * must count UTF-16 code units of the inserted text (not code points) so astral
+ * characters land correctly — handled by {@link advancePointUtf16}.
  */
 function toTreeEdit(change: vscode.TextDocumentContentChangeEvent): Edit {
   const startIndex = change.rangeOffset;
@@ -181,7 +212,7 @@ function toTreeEdit(change: vscode.TextDocumentContentChangeEvent): Edit {
 
   const startPosition = pointOf(change.range.start);
   const oldEndPosition = pointOf(change.range.end);
-  const newEndPosition = advancePoint(change.range.start, change.text);
+  const newEndPosition = advancePointUtf16(startPosition, change.text);
 
   return {
     startIndex,
@@ -193,29 +224,7 @@ function toTreeEdit(change: vscode.TextDocumentContentChangeEvent): Edit {
   };
 }
 
-/** VSCode `Position` (0-based) → tree-sitter `Point` (0-based row/column). */
+/** VSCode `Position` (UTF-16 row/column) → tree-sitter `Point` (UTF-16). */
 function pointOf(position: vscode.Position): Edit["startPosition"] {
   return { row: position.line, column: position.character };
-}
-
-/**
- * The point reached by inserting `text` starting at `start`. A newline resets
- * the column and advances the row; otherwise the column grows by the trailing
- * line's length.
- */
-function advancePoint(
-  start: vscode.Position,
-  text: string,
-): Edit["newEndPosition"] {
-  let row = start.line;
-  let column = start.character;
-  for (const ch of text) {
-    if (ch === "\n") {
-      row += 1;
-      column = 0;
-    } else {
-      column += 1;
-    }
-  }
-  return { row, column };
 }
