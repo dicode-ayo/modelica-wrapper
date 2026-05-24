@@ -1,0 +1,29 @@
+# The extension ships the esbuild bundle in out/ — everything that ends up in
+# the .vsix is produced there. Source, tests, and build config are excluded.
+# vsce runs with --no-dependencies (see the `package` script): the workspace
+# libraries and `lit` are bundled by esbuild, so no node_modules are shipped.
+
+# Source & type definitions (bundled into out/extension.js)
+src/**
+**/*.ts
+**/*.map
+**/*.tsbuildinfo
+
+# Build / TS / test config
+tsconfig*.json
+esbuild.config.mjs
+vitest.config.*
+.npmrc
+
+# Tests & fixtures
+test/**
+**/*.test.*
+
+# Editor / tooling
+.vscode/**
+.vscode-test/**
+.gitignore
+
+# Native/external deps are not vendored here — they are made self-contained at
+# build time (copied into out/). node_modules must never enter the package.
+node_modules/**

@@ -9,8 +9,9 @@ name: Release Please
 # library with tsup and publishes the ones Release Please just bumped to the
 # npm registry under the @dicode scope. The VSCode extension stays
 # `private: true`, so it is versioned/tagged by Release Please but skipped by
-# the npm publish (its Marketplace publish is a separate, still-to-be-added
-# job — see the follow-up issue).
+# the npm publish. Its .vsix is published separately and on demand by the
+# manual `publish-extension.yml` workflow — run it against the extension's
+# release tag (e.g. modelica-wrapper-v0.1.0) once this release PR is merged.
 #
 # Token notes:
 # - GITHUB_TOKEN is used for the release step. Workflows triggered by the

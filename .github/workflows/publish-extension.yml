@@ -1,0 +1,79 @@
+name: Publish Extension
+
+# Manual, tag-triggered publish of the VSCode extension (.vsix). Run it from
+# the Actions tab (or `gh workflow run publish-extension.yml -f tag=...`) AFTER
+# Release Please has cut the extension's release — pass the tag it created,
+# e.g. `modelica-wrapper-v0.1.0`. The job:
+#   1. checks out that tag and builds + packages a single .vsix,
+#   2. publishes that exact .vsix to the VS Code Marketplace and Open VSX,
+#   3. attaches it to the tag's GitHub Release.
+#
+# Library publishing to npm is separate and automatic — see release-please.yml.
+#
+# Required repo secrets:
+#   VSCE_PAT — VS Code Marketplace token for publisher `drojdestvensky`
+#   OVSX_PAT — Open VSX access token
+# The built-in GITHUB_TOKEN uploads the .vsix as a release asset.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Extension release tag to publish (e.g. modelica-wrapper-v0.1.0)"
+        required: true
+        type: string
+
+# Uploading the .vsix to the GitHub Release needs write access to contents.
+permissions:
+  contents: write
+
+# Never run two publishes for the same tag concurrently.
+concurrency:
+  group: publish-extension-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish-extension:
+    name: Package + publish .vsix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Builds the esbuild bundle and runs `vsce package --no-dependencies`,
+      # producing packages/extension/modelica-wrapper-<version>.vsix.
+      - name: Build + package the .vsix
+        run: pnpm --filter modelica-wrapper package
+
+      - name: Locate the .vsix
+        id: vsix
+        run: echo "path=$(ls "$PWD"/packages/extension/*.vsix)" >> "$GITHUB_OUTPUT"
+
+      # Publish the already-built artifact (no re-packaging) so the Marketplace,
+      # Open VSX, and the release asset are byte-for-byte identical.
+      - name: Publish to VS Code Marketplace
+        run: pnpm --filter modelica-wrapper exec vsce publish --packagePath "${{ steps.vsix.outputs.path }}"
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Publish to Open VSX
+        run: pnpm --filter modelica-wrapper exec ovsx publish "${{ steps.vsix.outputs.path }}"
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+
+      - name: Attach .vsix to the GitHub Release
+        run: gh release upload "${{ inputs.tag }}" "${{ steps.vsix.outputs.path }}" --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
