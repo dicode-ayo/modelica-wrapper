@@ -56,22 +56,37 @@ async function resolveTypeReference(
   target: ResolveTarget,
   client: ResolveClient,
 ): Promise<ResolvedTarget | undefined> {
-  const name = target.pathToCursor.join(".");
-  if (name.length === 0) return undefined;
-
-  let qualifiedPath: string;
-  try {
-    ({ qualifiedPath } = await client.qualifyPath({
-      typeName: owningClass,
-      path: name,
-    }));
-  } catch {
-    return undefined;
-  }
+  const qualifiedPath = await qualifyTypeReference(
+    owningClass,
+    target.pathToCursor,
+    client,
+  );
+  if (qualifiedPath === undefined) return undefined;
   // A top-level name qualifies to itself rather than to `undefined`, so we still
   // attempt `getClassInformation` and treat a missing source binding as
   // unresolved.
   return locateClass(qualifiedPath, client);
+}
+
+/**
+ * Qualify a dotted name in `owningClass`'s scope into a fully-qualified class
+ * name (honouring `import`/`extends`), or `undefined` for an empty path. Shared
+ * by `resolveTypeReference` and the completion source. OMC returns the name
+ * unchanged when it cannot qualify it; that's still the caller's existence
+ * probe via `getClassInformation`, not a failure here.
+ */
+export async function qualifyTypeReference(
+  owningClass: string,
+  pathToCursor: readonly string[],
+  client: Pick<ResolveClient, "qualifyPath">,
+): Promise<string | undefined> {
+  const name = pathToCursor.join(".");
+  if (name.length === 0) return undefined;
+  const { qualifiedPath } = await client.qualifyPath({
+    typeName: owningClass,
+    path: name,
+  });
+  return qualifiedPath;
 }
 
 async function resolveMemberCref(
@@ -87,14 +102,10 @@ async function resolveMemberCref(
   if (memberName === undefined) return undefined;
   const chain = segments.slice(0, -1);
 
-  // Walking against the previous segment's type makes `a.b.c` visit `b` in
-  // `a`'s type and `c` in `b`'s type — not `c` in `a`'s type.
-  let containerType = owningClass;
-  for (const segment of chain) {
-    const next = await resolveComponentType(containerType, segment, client);
-    if (!next) return undefined;
-    containerType = next;
-  }
+  // Walk against the previous segment's type so `a.b.c` visits `b` in `a`'s
+  // type and `c` in `b`'s type — not `c` in `a`'s type.
+  const containerType = await walkCrefType(owningClass, chain, client);
+  if (!containerType) return undefined;
 
   const memberType = await resolveComponentType(
     containerType,
@@ -106,10 +117,32 @@ async function resolveMemberCref(
   return locateClass(memberType, client);
 }
 
+/**
+ * Walk a dotted component path against `owningClass`'s scope to the
+ * fully-qualified type of its final segment. Each segment resolves in the
+ * *previous* segment's type — the same walk `resolveMemberCref` uses, shared
+ * with the completion source so the rule lives in one place. Returns
+ * `undefined` for an empty path or when any segment can't be walked.
+ */
+export async function walkCrefType(
+  owningClass: string,
+  segments: readonly string[],
+  client: Pick<ResolveClient, "getComponents">,
+): Promise<string | undefined> {
+  if (segments.length === 0) return undefined;
+  let containerType = owningClass;
+  for (const segment of segments) {
+    const next = await resolveComponentType(containerType, segment, client);
+    if (!next) return undefined;
+    containerType = next;
+  }
+  return containerType;
+}
+
 async function resolveComponentType(
   containerType: string,
   componentName: string,
-  client: ResolveClient,
+  client: Pick<ResolveClient, "getComponents">,
 ): Promise<string | undefined> {
   let components;
   try {
