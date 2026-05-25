@@ -23,6 +23,8 @@
  * provider.
  */
 
+import * as path from "node:path";
+
 import * as vscode from "vscode";
 
 import type { OmcClient } from "@dicode/omc-client";
@@ -67,6 +69,15 @@ export async function computeDefinition(
   const resolved = await resolve(owningClass, target, client);
   if (!resolved) return undefined;
 
+  // OMC's `getClassInformation` can return synthetic/non-filesystem locations —
+  // `<interactive>` for an interactively-defined class, or a relative path —
+  // which `vscode.Uri.file` would turn into a phantom file that "opens" on
+  // click. `resolve.ts` only filters the empty case; reject anything that isn't
+  // a real absolute path here so the wrapper never builds a bad `Location`.
+  if (resolved.fileName.length === 0 || !path.isAbsolute(resolved.fileName)) {
+    return undefined;
+  }
+
   // `resolve.ts` already converted OMC's 1-based coordinates to 0-based.
   return {
     fileName: resolved.fileName,
@@ -89,6 +100,7 @@ export class ModelicaDefinitionProvider implements vscode.DefinitionProvider {
   async provideDefinition(
     document: vscode.TextDocument,
     position: vscode.Position,
+    token: vscode.CancellationToken,
   ): Promise<vscode.Location | undefined> {
     try {
       const client = await this.ensureClient();
@@ -99,6 +111,11 @@ export class ModelicaDefinitionProvider implements vscode.DefinitionProvider {
 
       // Load-on-touch so OMC's symbol table knows the file's classes.
       await this.sync.ensureLoaded(owning.fileName);
+
+      // The work above (ensureClient + a parseFile + a loadFile round-trip) is
+      // serialized; on a fast-moving cursor the host may already have abandoned
+      // this request. Bail before the resolve's further OMC calls.
+      if (token.isCancellationRequested) return undefined;
 
       const tree = await this.cache.parse(document);
       const site = await computeDefinition(

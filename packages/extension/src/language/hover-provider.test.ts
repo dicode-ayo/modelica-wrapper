@@ -14,7 +14,12 @@ import { fileURLToPath } from "node:url";
 import { Language, Parser, type Tree } from "web-tree-sitter";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
-import { computeHover, renderHover, type HoverClient } from "./hover-provider.js";
+import {
+  computeHover,
+  escapeMarkdown,
+  renderHover,
+  type HoverClient,
+} from "./hover-provider.js";
 import { GRAMMAR_WASM_FILENAME } from "./parse.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -80,6 +85,38 @@ describe("renderHover", () => {
 
   it("omits the restriction prefix when none is reported", () => {
     expect(renderHover("Pkg.Foo", "", "")).toBe("```modelica\nPkg.Foo\n```");
+  });
+
+  it("escapes markdown specials in the comment so they aren't re-interpreted", () => {
+    // A Modelica description with markdown specials: emphasis underscores, a
+    // stray backtick, and an HTML-ish angle bracket. None should survive as
+    // *live* markdown — every special must be backslash-escaped or encoded.
+    const comment = "uses _x_ as `gain <p>";
+    const md = renderHover("Pkg.Foo", "model", comment);
+    const body = md.split("```\n\n")[1];
+
+    // Each special is neutralised: underscores and backtick are backslash-
+    // escaped, '<' is HTML-encoded — none appears unescaped.
+    expect(body).not.toMatch(/(?<!\\)_/);
+    expect(body).not.toMatch(/(?<!\\)`/);
+    expect(body).not.toContain("<");
+
+    // The literal text is preserved (escaped/encoded), not dropped.
+    expect(body).toBe("uses \\_x\\_ as \\`gain &lt;p\\>");
+  });
+});
+
+describe("escapeMarkdown", () => {
+  it("backslash-escapes CommonMark punctuation and encodes '<'", () => {
+    expect(escapeMarkdown("a_b*c`d")).toBe("a\\_b\\*c\\`d");
+    expect(escapeMarkdown("x < y")).toBe("x &lt; y");
+    expect(escapeMarkdown("[link](url)")).toBe("\\[link\\]\\(url\\)");
+  });
+
+  it("leaves plain prose untouched", () => {
+    expect(escapeMarkdown("Ideal linear electrical resistor")).toBe(
+      "Ideal linear electrical resistor",
+    );
   });
 });
 

@@ -102,10 +102,27 @@ export async function computeHover(
 }
 
 /**
+ * Escape the markdown metacharacters in a free-form string so it renders as
+ * literal text. The Modelica doc `comment` is the quoted description after a
+ * class name — user-controlled prose that can contain markdown specials
+ * (`*`, `_`, backticks, `[..](..)`, `#`, …) or raw HTML. Appended raw it would
+ * be *re-interpreted* (underscores italicise, a stray backtick swallows the
+ * rest of the line, `<...>` is dropped as HTML). Escaping the CommonMark ASCII
+ * punctuation set keeps the comment faithful; `<`/`>` are encoded so HTML-ish
+ * fragments survive verbatim.
+ */
+export function escapeMarkdown(text: string): string {
+  return text
+    .replace(/[\\`*_{}[\]()#+\-.!|~>]/g, "\\$&")
+    .replace(/</g, "&lt;");
+}
+
+/**
  * Assemble the hover markdown from an entity's restriction, qualified name, and
  * documentation comment. Pure string formatting — kept separate so the shape is
  * testable. The signature line is fenced as `modelica` so the editor
- * syntax-highlights it; the comment follows as plain markdown.
+ * syntax-highlights it; the comment follows as plain text (markdown-escaped, so
+ * specials in a Modelica description aren't re-interpreted).
  */
 export function renderHover(
   qualifiedName: string,
@@ -116,7 +133,7 @@ export function renderHover(
   const signature = `${restrictionPrefix}${qualifiedName}`;
   const lines = ["```modelica", signature, "```"];
   if (comment.length > 0) {
-    lines.push("", comment);
+    lines.push("", escapeMarkdown(comment));
   }
   return lines.join("\n");
 }
@@ -136,6 +153,7 @@ export class ModelicaHoverProvider implements vscode.HoverProvider {
   async provideHover(
     document: vscode.TextDocument,
     position: vscode.Position,
+    token: vscode.CancellationToken,
   ): Promise<vscode.Hover | undefined> {
     try {
       const client = await this.ensureClient();
@@ -146,16 +164,31 @@ export class ModelicaHoverProvider implements vscode.HoverProvider {
 
       await this.sync.ensureLoaded(owning.fileName);
 
+      // The work above is serialized OMC round-trips; on a fast-moving cursor
+      // the host may already have abandoned this request. Bail before resolve's
+      // further OMC calls.
+      if (token.isCancellationRequested) return undefined;
+
       const tree = await this.cache.parse(document);
+      const offset = document.offsetAt(position);
+      const target = targetAt(tree, offset);
       const markdown = await computeHover(
         tree,
-        document.offsetAt(position),
+        offset,
         owning.qualifiedName,
         client as HoverClient,
       );
       if (!markdown) return undefined;
 
-      return new vscode.Hover(new vscode.MarkdownString(markdown));
+      // Underline the symbol the tooltip describes (the identifier under the
+      // cursor), so the hover anchors to it rather than the whole token run.
+      const range = target
+        ? new vscode.Range(
+            document.positionAt(target.startIndex),
+            document.positionAt(target.endIndex),
+          )
+        : undefined;
+      return new vscode.Hover(new vscode.MarkdownString(markdown), range);
     } catch (err) {
       log.error("language", "hover provider failed", err);
       return undefined;

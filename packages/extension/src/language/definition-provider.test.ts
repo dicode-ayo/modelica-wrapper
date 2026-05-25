@@ -241,6 +241,51 @@ describe("computeDefinition — unresolved", () => {
     expect(site).toBeUndefined();
   });
 
+  it("returns undefined for a synthetic OMC location (<interactive>)", async () => {
+    const src = "model M\n  Resistor r;\nend M;";
+    const client = makeClient({
+      qualifyPath: vi.fn(() => Promise.resolve({ qualifiedPath: "Resistor" })),
+      getClassInformation: vi.fn(() =>
+        Promise.resolve({
+          // OMC reports interactively-defined classes against this pseudo-path;
+          // `vscode.Uri.file("<interactive>")` would open a phantom file.
+          fileName: "<interactive>",
+          lineNumberStart: 1,
+          columnNumberStart: 1,
+        }),
+      ),
+    });
+    const site = await computeDefinition(
+      parse(src),
+      offsetOf(src, "Resistor") + 1,
+      "Pkg.M",
+      client,
+    );
+    expect(site).toBeUndefined();
+  });
+
+  it("returns undefined for a non-absolute fileName", async () => {
+    const src = "model M\n  Resistor r;\nend M;";
+    const client = makeClient({
+      qualifyPath: vi.fn(() => Promise.resolve({ qualifiedPath: "Resistor" })),
+      getClassInformation: vi.fn(() =>
+        Promise.resolve({
+          // A relative path is not safe to hand to `vscode.Uri.file`.
+          fileName: "lib/Resistor.mo",
+          lineNumberStart: 3,
+          columnNumberStart: 1,
+        }),
+      ),
+    });
+    const site = await computeDefinition(
+      parse(src),
+      offsetOf(src, "Resistor") + 1,
+      "Pkg.M",
+      client,
+    );
+    expect(site).toBeUndefined();
+  });
+
   it("returns undefined when OMC throws (graceful degradation)", async () => {
     const src = "model M\n  Resistor r;\nend M;";
     const client = makeClient({
