@@ -19,7 +19,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { readFile, writeFile, rm, mkdir, stat } from "node:fs/promises";
+import { readFile, writeFile, rm, rename, mkdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -94,15 +94,7 @@ async function main() {
   // Supply-chain gate: verify BEFORE the bytes ever land at the target path.
   const actual = sha256(bytes);
   if (actual !== GRAMMAR_WASM_SHA256) {
-    // Write to a temp sibling first so a bad download never replaces a good
-    // file; then remove it so we don't leave a poisoned artifact behind.
-    const tmpPath = `${targetPath}.download`;
-    try {
-      await writeFile(tmpPath, bytes);
-      await rm(tmpPath, { force: true });
-    } catch {
-      /* best-effort cleanup */
-    }
+    // Verified on the in-memory buffer — a bad download never touches disk.
     throw new Error(
       `Modelica grammar WASM integrity check FAILED — refusing to write it.\n` +
         `  URL:      ${GRAMMAR_WASM_URL}\n` +
@@ -115,7 +107,16 @@ async function main() {
   }
 
   await mkdir(grammarDir, { recursive: true });
-  await writeFile(targetPath, bytes);
+  // Atomic publish: write a temp sibling, then rename into place, so a crash
+  // mid-write can never leave a truncated grammar at the target path.
+  const tmpPath = `${targetPath}.download`;
+  try {
+    await writeFile(tmpPath, bytes);
+    await rename(tmpPath, targetPath);
+  } catch (err) {
+    await rm(tmpPath, { force: true });
+    throw err;
+  }
   console.log(
     `[fetch-grammar-wasm] wrote ${targetPath} ` +
       `(${bytes.length} bytes, sha256 verified).`,
