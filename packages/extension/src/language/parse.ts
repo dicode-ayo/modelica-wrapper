@@ -21,7 +21,7 @@
 
 import * as vscode from "vscode";
 
-import { Language, Parser, type Edit, type Tree } from "web-tree-sitter";
+import { Language, Parser, type Edit, type Point, type Tree } from "web-tree-sitter";
 
 import { log } from "../logger.js";
 import { advancePointUtf16 } from "./position.js";
@@ -226,6 +226,6 @@ function toTreeEdit(change: vscode.TextDocumentContentChangeEvent): Edit {
 }
 
 /** VSCode `Position` (UTF-16 row/column) → tree-sitter `Point` (UTF-16). */
-function pointOf(position: vscode.Position): Edit["startPosition"] {
+function pointOf(position: vscode.Position): Point {
   return { row: position.line, column: position.character };
 }

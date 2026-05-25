@@ -192,52 +192,45 @@ function enclosingDottedNode(ident: Node): Node | null {
   return null;
 }
 
-/** Ordered identifier segments of a dotted `name`/`component_reference`. */
-function segmentsOf(dotted: Node): string[] {
-  const out: string[] = [];
-  collectSegments(dotted, out);
+/**
+ * Ordered `IDENT` segment nodes of a left-recursive dotted
+ * `name`/`component_reference`. tree-sitter nests each level so the left child
+ * is the (smaller) prefix and the right `IDENT` is this level's segment; an
+ * in-order walk therefore yields the segments left-to-right. Callers project
+ * out whatever they need (`.text`, `.startIndex`, `.endIndex`) — see
+ * {@link segmentsOf}, {@link segmentsUpTo}, {@link isMemberSegment}.
+ */
+function segmentNodes(dotted: Node): Node[] {
+  const out: Node[] = [];
+  collectSegmentNodes(dotted, out);
   return out;
 }
 
-function collectSegments(node: Node, out: string[]): void {
-  // Left-recursive: the left child is the (smaller) prefix, the right IDENT is
-  // this level's segment. An in-order walk yields segments left-to-right.
-  for (let i = 0; i < node.childCount; i++) {
-    const child = node.child(i);
-    if (!child) continue;
-    if (child.type === node.type) {
-      collectSegments(child, out);
-    } else if (child.type === IDENT_NODE) {
-      out.push(child.text);
-    }
-  }
-}
-
-/** Segments of `dotted` up to and including the segment `ident`. */
-function segmentsUpTo(dotted: Node, ident: Node): string[] {
-  const all: { text: string; endIndex: number }[] = [];
-  collectSegmentNodes(dotted, all);
-  const result: string[] = [];
-  for (const seg of all) {
-    result.push(seg.text);
-    if (seg.endIndex >= ident.endIndex) break;
-  }
-  return result;
-}
-
-function collectSegmentNodes(
-  node: Node,
-  out: { text: string; endIndex: number }[],
-): void {
+function collectSegmentNodes(node: Node, out: Node[]): void {
   for (let i = 0; i < node.childCount; i++) {
     const child = node.child(i);
     if (!child) continue;
     if (child.type === node.type) {
       collectSegmentNodes(child, out);
     } else if (child.type === IDENT_NODE) {
-      out.push({ text: child.text, endIndex: child.endIndex });
+      out.push(child);
     }
   }
+}
+
+/** Ordered identifier segments of a dotted `name`/`component_reference`. */
+function segmentsOf(dotted: Node): string[] {
+  return segmentNodes(dotted).map((n) => n.text);
+}
+
+/** Segments of `dotted` up to and including the segment `ident`. */
+function segmentsUpTo(dotted: Node, ident: Node): string[] {
+  const result: string[] = [];
+  for (const seg of segmentNodes(dotted)) {
+    result.push(seg.text);
+    if (seg.endIndex >= ident.endIndex) break;
+  }
+  return result;
 }
 
 /**
@@ -245,26 +238,10 @@ function collectSegmentNodes(
  * head segment of `a.b.c` is `a`; `b` and `c` are member accesses.
  */
 function isMemberSegment(ident: Node, dotted: Node): boolean {
-  const segs: { startIndex: number }[] = [];
-  collectSegmentStarts(dotted, segs);
+  const segs = segmentNodes(dotted);
   if (segs.length <= 1) return false;
   const headStart = segs[0]?.startIndex ?? ident.startIndex;
   return ident.startIndex > headStart;
-}
-
-function collectSegmentStarts(
-  node: Node,
-  out: { startIndex: number }[],
-): void {
-  for (let i = 0; i < node.childCount; i++) {
-    const child = node.child(i);
-    if (!child) continue;
-    if (child.type === node.type) {
-      collectSegmentStarts(child, out);
-    } else if (child.type === IDENT_NODE) {
-      out.push({ startIndex: child.startIndex });
-    }
-  }
 }
 
 /**
