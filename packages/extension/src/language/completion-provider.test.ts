@@ -498,3 +498,39 @@ describe("computeCompletions — robustness", () => {
     expect(out.map((c) => c.label)).toEqual(["Modelica.Electrical.Resistor"]);
   });
 });
+
+describe("computeCompletions — malformed / empty buffers", () => {
+  it("returns [] for an empty buffer (no throw)", async () => {
+    const client = makeClient();
+    await expect(computeCompletions(parse(""), 0, "Pkg.M", client)).resolves.toEqual(
+      [],
+    );
+  });
+
+  it("does not throw on a malformed, partially-typed buffer", async () => {
+    // Mid-type with every source throwing: routing must still degrade to [].
+    const src = "model M\n  Resis";
+    const client = makeClient({
+      getClassNames: vi.fn(() => Promise.reject(new Error("x"))),
+      searchClassNames: vi.fn(() => Promise.reject(new Error("x"))),
+      qualifyPath: vi.fn(() => Promise.reject(new Error("x"))),
+      getComponents: vi.fn(() => Promise.reject(new Error("x"))),
+    });
+    await expect(
+      computeCompletions(parse(src), offsetOf(src, "Resis") + 1, "Pkg.M", client),
+    ).resolves.toBeInstanceOf(Array);
+  });
+
+  it("does not throw on a bare-dot trigger in a malformed buffer", async () => {
+    // `r.` with nothing after and an unterminated model — the head-before-dot
+    // recovery path must tolerate throwing OMC sources.
+    const src = "model M\n  R r;\nequation\n  r.";
+    const client = makeClient({
+      getComponents: vi.fn(() => Promise.reject(new Error("x"))),
+      qualifyPath: vi.fn(() => Promise.reject(new Error("x"))),
+    });
+    await expect(
+      computeCompletions(parse(src), src.length, "Pkg.M", client),
+    ).resolves.toBeInstanceOf(Array);
+  });
+});

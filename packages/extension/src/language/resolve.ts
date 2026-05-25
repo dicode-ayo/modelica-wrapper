@@ -11,6 +11,8 @@
  * Returns `undefined` rather than guessing on any failure.
  */
 
+import { log } from "../logger.js";
+
 import type { CursorContextKind, CursorTarget } from "./cursor.js";
 
 /** The slice of {@link CursorTarget} the resolver reads. */
@@ -82,11 +84,19 @@ export async function qualifyTypeReference(
 ): Promise<string | undefined> {
   const name = pathToCursor.join(".");
   if (name.length === 0) return undefined;
-  const { qualifiedPath } = await client.qualifyPath({
-    typeName: owningClass,
-    path: name,
-  });
-  return qualifiedPath;
+  try {
+    const { qualifiedPath } = await client.qualifyPath({
+      typeName: owningClass,
+      path: name,
+    });
+    return qualifiedPath;
+  } catch (err) {
+    // OMC can throw on a malformed/partially-typed name or an unloaded scope.
+    // Treat it as "couldn't qualify" so the resolver (and the completion source
+    // that shares this helper) degrades to no result instead of throwing out.
+    log.debug("language", `qualifyPath failed for ${name}`, err);
+    return undefined;
+  }
 }
 
 async function resolveMemberCref(
@@ -147,7 +157,8 @@ async function resolveComponentType(
   let components;
   try {
     ({ components } = await client.getComponents({ typeName: containerType }));
-  } catch {
+  } catch (err) {
+    log.debug("language", `getComponents failed for ${containerType}`, err);
     return undefined;
   }
   const className = components.find((c) => c.name === componentName)?.className;
@@ -169,7 +180,8 @@ async function locateClass(
   let info;
   try {
     info = await client.getClassInformation({ typeName: qualifiedName });
-  } catch {
+  } catch (err) {
+    log.debug("language", `getClassInformation failed for ${qualifiedName}`, err);
     return undefined;
   }
   // Empty fileName = built-in / unbound class.

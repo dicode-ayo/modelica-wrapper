@@ -23,6 +23,18 @@ function ts(): string {
 }
 
 export const log = {
+  /**
+   * Low-importance trace for expected, high-frequency failures on a hot path —
+   * e.g. an OMC lookup that throws for a name that simply doesn't resolve. Goes
+   * to the channel marked `DEBUG` so there is *a* trace when diagnosing, without
+   * the prominence (or the implication of a real problem) of `warn`/`error`.
+   * Use this, not `warn`, for the resolution/completion layer's swallowed
+   * not-found cases so the hot path isn't spammed at a louder level.
+   */
+  debug(topic: string, message: string, data?: unknown): void {
+    const payload = data === undefined ? "" : ` ${describe(data)}`;
+    ensureChannel().appendLine(`${ts()} [${topic}] DEBUG ${message}${payload}`);
+  },
   info(topic: string, message: string, data?: unknown): void {
     const payload = data === undefined ? "" : ` ${safeStringify(data)}`;
     ensureChannel().appendLine(`${ts()} [${topic}] ${message}${payload}`);
@@ -52,4 +64,13 @@ function safeStringify(v: unknown): string {
   } catch {
     return String(v);
   }
+}
+
+/**
+ * A short one-line description of a value for `debug` — an `Error`'s message
+ * (its props aren't enumerable, so `JSON.stringify` would render `{}`),
+ * otherwise the JSON form.
+ */
+function describe(v: unknown): string {
+  return v instanceof Error ? v.message : safeStringify(v);
 }
