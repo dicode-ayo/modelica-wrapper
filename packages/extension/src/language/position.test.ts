@@ -20,7 +20,11 @@ import { Language, Parser, type Tree } from "web-tree-sitter";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { GRAMMAR_WASM_FILENAME } from "./parse.js";
-import { advancePointUtf16 } from "./position.js";
+import {
+  advancePointUtf16,
+  omcRangeToVscodeRange,
+  omcToVscodePosition,
+} from "./position.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const grammarPath = join(here, "..", "..", "grammar", GRAMMAR_WASM_FILENAME);
@@ -136,5 +140,51 @@ describe("advancePointUtf16", () => {
       row: 3,
       column: 3, // b(1) + 😀(2)
     });
+  });
+});
+
+describe("omcToVscodePosition (OMC 1-based → VSCode 0-based)", () => {
+  it("decrements both line and column by one", () => {
+    // OMC's first character of a file is (line 1, column 1) → VSCode (0, 0).
+    expect(omcToVscodePosition(1, 1)).toEqual({ line: 0, character: 0 });
+    expect(omcToVscodePosition(42, 7)).toEqual({ line: 41, character: 6 });
+  });
+
+  it("converts line and column independently (column edge case)", () => {
+    // A line-1 declaration that starts deep in the line: only the column moves.
+    expect(omcToVscodePosition(1, 18)).toEqual({ line: 0, character: 17 });
+    // A column-1 declaration on a later line: only the line moves.
+    expect(omcToVscodePosition(10, 1)).toEqual({ line: 9, character: 0 });
+  });
+
+  it("clamps a missing/zero OMC coordinate to 0 (never negative)", () => {
+    expect(omcToVscodePosition(0, 0)).toEqual({ line: 0, character: 0 });
+    expect(omcToVscodePosition(0, 5)).toEqual({ line: 0, character: 4 });
+  });
+});
+
+describe("omcRangeToVscodeRange", () => {
+  it("converts start straight through and makes the end exclusive", () => {
+    // `model M` on line 1, columns 1..7 (inclusive) → VSCode (0,0)..(0,7).
+    const range = omcRangeToVscodeRange({
+      lineNumberStart: 1,
+      columnNumberStart: 1,
+      lineNumberEnd: 1,
+      columnNumberEnd: 7,
+    });
+    expect(range.start).toEqual({ line: 0, character: 0 });
+    // End column 7 (inclusive, 1-based) → 0-based 6 → +1 exclusive = 7.
+    expect(range.end).toEqual({ line: 0, character: 7 });
+  });
+
+  it("spans multiple lines, keeping each coordinate independent", () => {
+    const range = omcRangeToVscodeRange({
+      lineNumberStart: 3,
+      columnNumberStart: 5,
+      lineNumberEnd: 9,
+      columnNumberEnd: 1,
+    });
+    expect(range.start).toEqual({ line: 2, character: 4 });
+    expect(range.end).toEqual({ line: 8, character: 1 }); // (1-1)+1 exclusive
   });
 });

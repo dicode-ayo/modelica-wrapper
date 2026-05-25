@@ -20,6 +20,31 @@ import { log } from "../logger.js";
 
 import { MODELICA_LANGUAGE_ID, ParseCache } from "./parse.js";
 
+// Re-export the resolution layer (PR 2) so the providers in #97 and the
+// completion source in #99 consume a single `./language` entry point rather
+// than reaching into individual modules.
+export {
+  resolve,
+  type ResolveClient,
+  type ResolvedTarget,
+} from "./resolve.js";
+export {
+  resolveOwningClass,
+  nodeFileProbe,
+  PACKAGE_FILE,
+  type OwningClass,
+  type OwningClassClient,
+  type FileProbe,
+} from "./owning-class.js";
+export { OmcSync, type SyncClient } from "./sync.js";
+export {
+  omcToVscodePosition,
+  omcRangeToVscodeRange,
+  OMC_POSITION_BASE,
+  type ZeroBasedPosition,
+  type ZeroBasedRange,
+} from "./position.js";
+
 /** Lazy OMC client accessor — same shape the commands use. */
 export type EnsureClient = () => Promise<OmcClient>;
 

@@ -31,6 +31,75 @@
 import type { Point } from "web-tree-sitter";
 
 /**
+ * A 0-based editor position, mirroring `vscode.Position`'s `{line, character}`
+ * shape without importing `vscode` (keeps this module pure and unit-testable
+ * against the in-repo stub). A provider builds a `new vscode.Position(line,
+ * character)` from this directly.
+ */
+export interface ZeroBasedPosition {
+  /** 0-based line. */
+  readonly line: number;
+  /** 0-based column (UTF-16 code units, matching VSCode). */
+  readonly character: number;
+}
+
+/** A 0-based, half-open `[start, end)` range in editor coordinates. */
+export interface ZeroBasedRange {
+  readonly start: ZeroBasedPosition;
+  readonly end: ZeroBasedPosition;
+}
+
+/**
+ * OMC reports source locations as **1-based** for BOTH line and column
+ * (`getClassInformation`'s `lineNumberStart` / `columnNumberStart`, etc.).
+ * VSCode is **0-based** for both. This is the single conversion point for that
+ * off-by-one, used by `resolve.ts` and the providers (#97). Verified shapes:
+ * OMC's first character of a file is line 1, column 1 → VSCode line 0,
+ * character 0.
+ */
+export const OMC_POSITION_BASE = 1;
+
+/**
+ * Convert a single OMC 1-based `(line, column)` to a 0-based
+ * {@link ZeroBasedPosition}.
+ *
+ * Both coordinates are decremented by {@link OMC_POSITION_BASE}. OMC has been
+ * observed to occasionally report `0` for a missing/synthetic location; we
+ * clamp the result to `0` rather than producing a negative position that VSCode
+ * would reject.
+ */
+export function omcToVscodePosition(
+  line: number,
+  column: number,
+): ZeroBasedPosition {
+  return {
+    line: Math.max(0, line - OMC_POSITION_BASE),
+    character: Math.max(0, column - OMC_POSITION_BASE),
+  };
+}
+
+/**
+ * Convert an OMC 1-based start/end span (as returned by `getClassInformation`)
+ * to a 0-based {@link ZeroBasedRange}.
+ *
+ * OMC's end coordinates are **inclusive** of the last character of the span,
+ * whereas a `vscode.Range` end is **exclusive**. To select through the last
+ * character we therefore advance the end column by one. The start converts
+ * straight through {@link omcToVscodePosition}.
+ */
+export function omcRangeToVscodeRange(span: {
+  lineNumberStart: number;
+  columnNumberStart: number;
+  lineNumberEnd: number;
+  columnNumberEnd: number;
+}): ZeroBasedRange {
+  const start = omcToVscodePosition(span.lineNumberStart, span.columnNumberStart);
+  const end = omcToVscodePosition(span.lineNumberEnd, span.columnNumberEnd);
+  // OMC end column is inclusive; VSCode range end is exclusive — step past it.
+  return { start, end: { line: end.line, character: end.character + 1 } };
+}
+
+/**
  * The tree-sitter {@link Point} reached by inserting `text` at {@link start},
  * counting columns in **UTF-16 code units** (tree-sitter's string-path unit).
  * A `\n` advances the row and resets the column; every other UTF-16 code unit
