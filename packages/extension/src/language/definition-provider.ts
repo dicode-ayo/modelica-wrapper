@@ -17,7 +17,6 @@
 
 import * as vscode from "vscode";
 
-import type { OmcClient } from "@dicode/omc-client";
 import type { Tree } from "web-tree-sitter";
 
 import { log } from "../logger.js";
@@ -66,7 +65,9 @@ export async function computeDefinition(
 export class ModelicaDefinitionProvider implements vscode.DefinitionProvider {
   constructor(
     private readonly cache: ParseCache,
-    private readonly ensureClient: () => Promise<OmcClient>,
+    private readonly ensureClient: () => Promise<
+      ResolveClient & OwningClassClient
+    >,
     private readonly sync: OmcSync,
   ) {}
 

@@ -97,12 +97,22 @@ describe("resolve — class/type reference", () => {
     expect(result).toBeUndefined();
   });
 
-  it("returns undefined (does not throw) when qualifyPath rejects", async () => {
+  it("returns undefined (does not throw) when qualifyPath throws", async () => {
+    // OMC can throw on a malformed/partially-typed name or an unloaded scope;
+    // the resolver must swallow it into no-result, not let it escape the layer.
+    const getClassInformation = vi.fn();
     const client = makeClient({
-      qualifyPath: vi.fn(() => Promise.reject(new Error("offline"))),
+      qualifyPath: vi.fn(() => Promise.reject(new Error("qualify failed"))),
+      getClassInformation,
     });
-    const result = await resolve("Pkg.A", target("type-reference", ["R"]), client);
+    const result = await resolve(
+      "Pkg.A",
+      target("type-reference", ["Half"]),
+      client,
+    );
     expect(result).toBeUndefined();
+    // It should bail at qualify, never reaching getClassInformation.
+    expect(getClassInformation).not.toHaveBeenCalled();
   });
 });
 
