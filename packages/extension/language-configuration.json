@@ -22,7 +22,7 @@
     ["\"", "\""]
   ],
   "indentationRules": {
-    "increaseIndentPattern": "^\\s*(?:(?:(?:partial|encapsulated)\\s+)*(?:model|class|connector|block|record|package|function|type|operator)\\b(?![^=;\\n]*[=;])|(?:when|while|for|if|elseif)\\b.*\\b(?:then|loop)\\s*$|(?:else|equation|algorithm|public|protected)\\b\\s*$|initial\\s+(?:equation|algorithm)\\s*$)(?!.*\\bend\\b).*$",
+    "increaseIndentPattern": "^\\s*(?:(?:(?:partial|encapsulated|replaceable|redeclare)\\s+)*(?:model|class|connector|block|record|package|function|type|operator)\\b(?![^=;\\n]*[=;])|(?:when|while|for|if|elseif)\\b.*\\b(?:then|loop)\\s*$|(?:else|equation|algorithm|public|protected)\\b\\s*$|initial\\s+(?:equation|algorithm)\\s*$)(?!.*\\bend\\b).*$",
     "decreaseIndentPattern": "^\\s*(end\\b|else\\b|elseif\\b|elsewhen\\b|\\)|\\}|\\])"
   }
 }
