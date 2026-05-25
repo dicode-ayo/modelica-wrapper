@@ -65,8 +65,9 @@ import {
   type CursorContextKind,
   type CursorTarget,
 } from "./cursor.js";
+import { resolveDocumentOwner } from "./document-scope.js";
 import type { ParseCache } from "./parse.js";
-import { resolveOwningClass, type OwningClassClient } from "./owning-class.js";
+import type { OwningClassClient } from "./owning-class.js";
 import {
   qualifyTypeReference,
   walkCrefType,
@@ -454,16 +455,20 @@ export class ModelicaCompletionProvider
   ): Promise<vscode.CompletionItem[] | undefined> {
     try {
       const client = await this.ensureClient();
-      const owning = await resolveOwningClass(document.uri.fsPath, {
-        client: client as OwningClassClient,
-      });
+      // Derive the owning class and load-on-touch (real files only; a virtual
+      // `modelica-source:` class is already loaded — see `document-scope.ts`).
+      // Skipping the load matters most here: completion fires while typing, so a
+      // failing per-keystroke loadFile of a virtual path would be the noisiest.
+      const owning = await resolveDocumentOwner(
+        document,
+        client as OwningClassClient,
+        this.sync,
+      );
       if (!owning) return undefined;
 
-      // Load-on-touch so OMC's symbol table knows the file's classes.
-      await this.sync.ensureLoaded(owning.fileName);
-
-      // The work above (ensureClient + parseFile + loadFile) is serialized; on a
-      // fast-moving cursor the host may already have abandoned this request.
+      // The work above (ensureClient + parseFile/loadFile for real files) is
+      // serialized; on a fast-moving cursor the host may already have abandoned
+      // this request.
       if (token.isCancellationRequested) return undefined;
 
       const tree = await this.cache.parse(document);
