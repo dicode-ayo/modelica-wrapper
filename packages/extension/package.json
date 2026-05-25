@@ -32,6 +32,13 @@
         "configuration": "./language-configuration.json"
       }
     ],
+    "grammars": [
+      {
+        "language": "modelica",
+        "scopeName": "source.modelica",
+        "path": "./syntaxes/modelica.tmLanguage.json"
+      }
+    ],
     "customEditors": [
       {
         "viewType": "modelica.resultView",

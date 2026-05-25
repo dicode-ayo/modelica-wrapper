@@ -1,0 +1,40 @@
+Modelica TextMate grammar — vendored from https://github.com/SimplyDanny/modelica-language-vscode (MIT). Author: SimplyDanny.
+
+Upstream commit: 54f27789e4bc9b9a24bc06e7a0768c75e15666bc
+Source file:     syntaxes/modelica.tmLanguage (blob sha e158de21099473b7dfb832745e802b15cbaa0536)
+License file:    LICENSE.txt (blob sha caf20cd22ec77593ea278d4332d706906ef6e602)
+
+Modifications:
+  - Converted from the upstream plist/XML `.tmLanguage` form to the equivalent
+    `.tmLanguage.json` form (so it ships as `modelica.tmLanguage.json`). All
+    pattern regexes, capture groups, scope names, `scopeName`
+    (`source.modelica`), `name`, `fileTypes`, and `uuid` are preserved verbatim;
+    XML entities (`&lt;`, `&gt;`) were decoded to their literal characters as
+    required by the JSON form. No grammar rules were added, removed, or altered.
+  - The companion `optimica.tmLanguage` grammar is intentionally NOT vendored;
+    only the Modelica grammar is reused.
+
+The upstream MIT license text is reproduced verbatim below.
+
+================================================================================
+
+The MIT License (MIT)
+
+Copyright (c) 2017 Danny Moesch
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

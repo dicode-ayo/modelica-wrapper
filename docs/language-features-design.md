@@ -42,9 +42,13 @@ Modelica scope engine).
   workspace-wide scan + per-candidate resolution. Own epic. See
   [Future work](#future-work--find-all-references).
 - **Rename / refactor.** Depends on references. Later.
-- **Syntax highlighting.** VSCode highlights via TextMate, not tree-sitter; we
-  rely on an existing Modelica grammar / extension for colour. We contribute a
-  `language-configuration` (comments, brackets) but not a TextMate grammar in v1.
+- ~~**Syntax highlighting.**~~ **Now in scope.** VSCode highlights via TextMate,
+  not tree-sitter. Rather than rely on a separate Modelica extension for colour,
+  we vendor the MIT-licensed `source.modelica` TextMate grammar from
+  [`SimplyDanny/modelica-language-vscode`](https://github.com/SimplyDanny/modelica-language-vscode)
+  into `packages/extension/syntaxes/` and contribute it under
+  `contributes.grammars` (alongside our own `language-configuration.json` for
+  comments/brackets). See History/decisions (2026-05-25).
 - **Diagnostics from parsing.** Live model-checking already exists
   ([`commands/live-check.ts`](../packages/extension/src/commands/live-check.ts));
   we do not surface tree-sitter parse errors as diagnostics.
@@ -269,3 +273,16 @@ Rename/refactor builds on top of it.
   `language/index.ts` `registerLanguageFeatures(context, ensureClient)` wiring
   cache invalidation on document change/close. The grammar WASM is genuinely
   working (tests parse real Modelica), not stubbed.
+- **2026-05-25** — Syntax highlighting brought into scope (was a v1 non-goal).
+  Vendored the MIT-licensed `source.modelica` TextMate grammar from
+  [`SimplyDanny/modelica-language-vscode`](https://github.com/SimplyDanny/modelica-language-vscode)
+  (author SimplyDanny / Danny Moesch) at upstream commit
+  `54f27789e4bc9b9a24bc06e7a0768c75e15666bc`
+  (`syntaxes/modelica.tmLanguage`). Converted the upstream plist form to
+  `modelica.tmLanguage.json` verbatim (patterns, captures, `scopeName`, `uuid`
+  preserved; only XML entities decoded) and registered it under
+  `contributes.grammars` in `packages/extension/package.json`. The Optimica
+  grammar was not taken. The MIT license is preserved in
+  `packages/extension/syntaxes/LICENSE` and attribution added to the root
+  `README.md` (Acknowledgements). License: MIT — reuse permitted with the
+  copyright notice retained.
