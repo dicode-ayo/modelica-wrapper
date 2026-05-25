@@ -88,7 +88,7 @@ export interface OwningClass {
  *   `parseFile` for authoritative leaf-name confirmation; `probe` (optional)
  *   answers package-directory existence (defaults to the real filesystem).
  * @returns the owning class, or `undefined` if no Modelica name can be derived
- *   (e.g. the path is empty / not a `.mo` file and `parseFile` yields nothing).
+ *   (the path is empty or not a `.mo` file, or the walk yields no segments).
  */
 export async function resolveOwningClass(
   filePath: string,
@@ -99,6 +99,10 @@ export async function resolveOwningClass(
 ): Promise<OwningClass | undefined> {
   const probe = options.probe ?? nodeFileProbe;
   if (filePath.length === 0) return undefined;
+  // Self-defensive: only Modelica source files have a derivable owning class.
+  // Without this, a non-`.mo` path like `/work/Foo.txt` would slip through
+  // `stripMoExtension` unchanged and produce a bogus dotted leaf (`Foo.txt`).
+  if (path.extname(filePath).toLowerCase() !== ".mo") return undefined;
 
   const isPackageFile = path.basename(filePath) === PACKAGE_FILE;
   // For `B/package.mo` the owning *directory* (B) is itself a package member, so
@@ -186,9 +190,10 @@ async function confirmLeaf(
     // package walk).
     return lastSegment(classNames[0] ?? candidate);
   }
-  // Ambiguous (0 or >1): prefer the path candidate if it is among the declared
-  // names, else keep the candidate so the result stays deterministic.
-  if (classNames.some((n) => lastSegment(n) === candidate)) return candidate;
+  // Ambiguous (0 or >1 declared classes): parseFile cannot single out the leaf,
+  // so we keep the deterministic path-derived candidate either way. (Whether the
+  // candidate happens to be among the declared names doesn't change the result —
+  // there's no better leaf to return — so we don't branch on it.)
   return candidate;
 }
 

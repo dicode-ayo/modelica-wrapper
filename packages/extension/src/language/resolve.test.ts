@@ -200,6 +200,97 @@ describe("resolve — member cref (one hop)", () => {
     });
   });
 
+  it("walks a 3-segment cref through each segment's type", async () => {
+    // a.b.c : `a` is an A in the owning class; `b` is a B inside A; `c` is a
+    // C inside B. The walk must visit `b` in A and `c` in B — NOT `c` in A.
+    const getComponents = vi.fn(({ typeName }) => {
+      switch (typeName) {
+        case "MyPkg.Top":
+          return Promise.resolve({
+            components: [{ name: "a", className: "Pkg.A" }],
+          });
+        case "Pkg.A":
+          return Promise.resolve({
+            components: [
+              { name: "b", className: "Pkg.B" },
+              // A also has its own `c`; resolving `a.b.c` must NOT pick this up.
+              { name: "c", className: "Pkg.WrongC" },
+            ],
+          });
+        case "Pkg.B":
+          return Promise.resolve({
+            components: [{ name: "c", className: "Pkg.C" }],
+          });
+        default:
+          return Promise.resolve({ components: [] });
+      }
+    });
+    const getClassInformation = vi.fn(() =>
+      Promise.resolve({
+        fileName: "/pkg/C.mo",
+        lineNumberStart: 7,
+        columnNumberStart: 2,
+      }),
+    );
+    const client = makeClient({ getComponents, getClassInformation });
+
+    const result = await resolve(
+      "MyPkg.Top",
+      target("member-access", ["a", "b", "c"]),
+      client,
+    );
+
+    // The container of the final member is B's type, not A's — so the resolved
+    // member type is Pkg.C (via B), never Pkg.WrongC (A's own `c`).
+    expect(getClassInformation).toHaveBeenCalledWith({ typeName: "Pkg.C" });
+    expect(result).toEqual({
+      qualifiedName: "Pkg.B.c",
+      fileName: "/pkg/C.mo",
+      line: 6,
+      column: 1,
+    });
+  });
+
+  it("returns undefined when an intermediate segment can't be walked", async () => {
+    // a.b.c where `b` does not exist inside A's type → unresolved, not a wrong
+    // answer reached by skipping `b`.
+    const getComponents = vi.fn(({ typeName }) =>
+      typeName === "MyPkg.Top"
+        ? Promise.resolve({ components: [{ name: "a", className: "Pkg.A" }] })
+        : Promise.resolve({ components: [] }),
+    );
+    const client = makeClient({ getComponents });
+    const result = await resolve(
+      "MyPkg.Top",
+      target("member-access", ["a", "b", "c"]),
+      client,
+    );
+    expect(result).toBeUndefined();
+  });
+
+  it("returns undefined for an inherited member (v1 limitation, pinned)", async () => {
+    // `getComponents` reports only a class's OWN declared components, not those
+    // pulled in via `extends`. So a member inherited from a base class is not
+    // found and resolves to undefined. This pins the documented v1 gap; when
+    // inheritance walking lands this test should flip to a positive assertion.
+    const getComponents = vi.fn(({ typeName }) =>
+      typeName === "MyPkg.Circuit"
+        ? Promise.resolve({
+            components: [{ name: "resistor", className: "Pkg.Resistor" }],
+          })
+        : // Pkg.Resistor declares nothing of its own; `inheritedPin` would only
+          // be visible after walking its `extends` clause, which v1 does not do.
+          Promise.resolve({ components: [] }),
+    );
+    const client = makeClient({ getComponents });
+    const result = await resolve(
+      "MyPkg.Circuit",
+      target("member-access", ["resistor", "inheritedPin"]),
+      client,
+    );
+    expect(result).toBeUndefined();
+  });
+
   it("returns undefined when the head component is unknown", async () => {
     const client = makeClient({
       getComponents: vi.fn(() => Promise.resolve({ components: [] })),

@@ -10,20 +10,20 @@
  *
  * Two resolution strategies, selected by the cursor context:
  *
- *   - **Class / type reference** (`type-reference`, `extends`, `component-type`,
- *     and a single-segment `modifier-name` treated as a type) — qualify the
- *     name in the owning class's scope with
+ *   - **Class / type reference** (`type-reference`, `extends`, `component-type`)
+ *     — qualify the name in the owning class's scope with
  *     [`qualifyPath`](../../../omc-client/src/api/contents/qualifyPath.ts)
  *     (honours `import` + `extends`), then read the definition location with
  *     [`getClassInformation`](../../../omc-client/src/api/browsing/getClassInformation.ts).
  *
- *   - **Member cref** (`member-access`, e.g. `resistor.R`) — resolve the *head*
- *     component's type with
- *     [`getComponents`](../../../omc-client/src/api/contents/getComponents.ts)
- *     of the owning class, then locate the member inside that type with a second
- *     `getComponents`. **One hop** for v1 (head → member); the walk is factored
- *     so deeper inheritance/chained-access traversal can be added without
- *     reshaping callers.
+ *   - **Member cref** (`member-access`, e.g. `resistor.R` or `a.b.c`) — walk the
+ *     dotted path one segment at a time with
+ *     [`getComponents`](../../../omc-client/src/api/contents/getComponents.ts):
+ *     resolve the first segment's type in the owning class, then resolve each
+ *     subsequent segment against the *previous segment's* type. The final
+ *     segment is the member; its declared type's definition is the navigable
+ *     target. A segment that can't be walked yields *unresolved* rather than a
+ *     wrong answer.
  *
  * Only typed `@dicode/omc-client` wrappers are used — never raw `client.call`.
  * The OMC surface is the structural {@link ResolveClient} so the resolver is
@@ -127,41 +127,56 @@ async function resolveTypeReference(
 }
 
 /**
- * Member cref (`head.member`): resolve the head component's type in the owning
- * class, then find `member` inside that type. v1 walks ONE hop (head → member);
- * the structure (resolve head type, then look up a member in a type) is the
- * primitive a deeper walk would iterate.
+ * Member cref (`a.b.c`): walk the dotted path one segment at a time. The first
+ * segment resolves in the owning class; each subsequent segment resolves in the
+ * *previous* segment's type, so `a.b.c` correctly visits `b` in `a`'s type and
+ * `c` in `b`'s type (not `c` in `a`'s type). Any segment that can't be walked —
+ * an unknown component or a type with no `getComponents` answer — returns
+ * `undefined` rather than a wrong answer.
  *
- * The resolved location is the **member's declared type** definition — OMC does
- * not expose a per-component source line through `getComponents`, so the type
- * definition is the navigable target we can produce without an AST walk. The
- * returned `qualifiedName` is the member path `Head.member` so callers can show
- * what was resolved. Documented limitation; refining to the member's exact
- * declaration line is a follow-up.
+ * Inherited members are a known v1 gap: `getComponents` reports only a class's
+ * *own* declared components, not those pulled in by `extends`, so a member
+ * inherited from a base class resolves to `undefined`. Inheritance walking is
+ * listed as a v1 limitation in `docs/language-features-design.md`.
+ *
+ * The resolved location is the **final member's declared type** definition — OMC
+ * does not expose a per-component source line through `getComponents`, so the
+ * type definition is the navigable target we can produce without an AST walk.
+ * The returned `qualifiedName` is `<containerType>.<member>` so callers can show
+ * what was resolved. Refining to the member's exact declaration line is a
+ * follow-up.
  */
 async function resolveMemberCref(
   owningClass: string,
   target: CursorTarget,
   client: ResolveClient,
 ): Promise<ResolvedTarget | undefined> {
-  // pathToCursor is e.g. ["resistor", "R"]; head is everything but the last
-  // segment's container — for one hop we take the first segment as the head and
-  // the segment under the cursor as the member.
+  // pathToCursor is e.g. ["a", "b", "c"]: the leading segments are components
+  // walked through their types; the last segment is the member under the cursor.
   const segments = target.pathToCursor;
   if (segments.length < 2) return undefined;
-  const headName = segments[0]!;
+
+  // Walk every segment except the last, each against the previous type, so the
+  // container type for the member is the type of the second-to-last segment.
+  let containerType = owningClass;
+  for (let i = 0; i < segments.length - 1; i++) {
+    const next = await resolveComponentType(containerType, segments[i]!, client);
+    if (!next) return undefined;
+    containerType = next;
+  }
+
   const memberName = segments[segments.length - 1]!;
-
-  const headType = await resolveComponentType(owningClass, headName, client);
-  if (!headType) return undefined;
-
-  const memberType = await resolveComponentType(headType, memberName, client);
+  const memberType = await resolveComponentType(
+    containerType,
+    memberName,
+    client,
+  );
   if (!memberType) return undefined;
 
   const location = await locateClass(memberType, client);
   if (!location) return undefined;
   return {
-    qualifiedName: `${headType}.${memberName}`,
+    qualifiedName: `${containerType}.${memberName}`,
     fileName: location.fileName,
     line: location.line,
     column: location.column,

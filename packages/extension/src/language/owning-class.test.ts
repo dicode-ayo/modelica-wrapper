@@ -124,4 +124,20 @@ describe("resolveOwningClass — degenerate input", () => {
   it("returns undefined for an empty path", async () => {
     expect(await resolveOwningClass("", { probe: probeFor([]) })).toBeUndefined();
   });
+
+  it("returns undefined for a non-`.mo` path (no bogus dotted leaf)", async () => {
+    // Without the extension guard, `Foo.txt` would survive stripMoExtension and
+    // produce a leaf of `Foo.txt`, contaminating the qualified name with a stray
+    // `.txt` segment. The guard rejects it outright.
+    expect(
+      await resolveOwningClass("/work/Foo.txt", { probe: probeFor([]) }),
+    ).toBeUndefined();
+  });
+
+  it("accepts a `.mo` path regardless of case in the extension", async () => {
+    const result = await resolveOwningClass("/work/Foo.MO", {
+      probe: probeFor([]),
+    });
+    expect(result?.qualifiedName).toBe("Foo");
+  });
 });
