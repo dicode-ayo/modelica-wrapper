@@ -59,6 +59,31 @@ function names(symbols: SymbolNode[]): string[] {
   return symbols.map((s) => s.name);
 }
 
+/** True if position `a` is at or before position `b`. */
+function lte(
+  a: { line: number; character: number },
+  b: { line: number; character: number },
+): boolean {
+  return a.line < b.line || (a.line === b.line && a.character <= b.character);
+}
+
+/**
+ * Assert the VSCode contract `selectionRange ⊆ range` for `symbol` and every
+ * descendant (nested classes and multi-name components included).
+ */
+function assertSelectionWithinRange(symbol: SymbolNode): void {
+  const { range, selectionRange, name } = symbol;
+  expect(
+    lte(range.start, selectionRange.start),
+    `${name}: selectionRange.start before range.start`,
+  ).toBe(true);
+  expect(
+    lte(selectionRange.end, range.end),
+    `${name}: selectionRange.end after range.end`,
+  ).toBe(true);
+  for (const child of symbol.children) assertSelectionWithinRange(child);
+}
+
 describe("computeDocumentSymbols — class kinds + nesting", () => {
   // A package containing a model with parameters + components + a nested class.
   const src = `package Lib "library doc"
@@ -166,6 +191,67 @@ describe("computeDocumentSymbols — ranges", () => {
       end: { line: 1, character: 8 },
     });
   });
+
+  it("keeps selectionRange ⊆ range for every emitted symbol", () => {
+    // A package with a nested class, multi-name components, and visibility
+    // sections, to exercise the invariant across node types.
+    const src = `package Lib "doc"
+  model M "m"
+    parameter Real R = 1;
+    Real a, b, c;
+    record Inner
+      Real y;
+    end Inner;
+  protected
+    Real hidden;
+  end M;
+  function f
+    input Real u;
+    output Real v;
+  end f;
+end Lib;`;
+    const symbols = computeDocumentSymbols(parse(src));
+    expect(symbols.length).toBeGreaterThan(0);
+    for (const symbol of symbols) assertSelectionWithinRange(symbol);
+  });
+});
+
+describe("computeDocumentSymbols — visibility sections", () => {
+  it("collects members from default, public, and protected sections in order", () => {
+    // The grammar puts visibility-section members in sibling
+    // `public_element_list` / `protected_element_list` nodes, not nested inside
+    // the default `element_list`. All three must surface in the outline.
+    const src = `model M
+  Real pubDefault;
+  public
+    Real pubSection;
+  protected
+    Real protSection;
+end M;`;
+    const symbols = computeDocumentSymbols(parse(src));
+    const model = find(symbols, "M")!;
+    expect(names(model.children)).toEqual([
+      "pubDefault",
+      "pubSection",
+      "protSection",
+    ]);
+    // The visibility keywords are not themselves symbols.
+    expect(find(symbols, "public")).toBeUndefined();
+    expect(find(symbols, "protected")).toBeUndefined();
+  });
+
+  it("surfaces nested classes declared under a protected section", () => {
+    const src = `package P
+protected
+  model Helper
+    Real h;
+  end Helper;
+end P;`;
+    const symbols = computeDocumentSymbols(parse(src));
+    const helper = find(symbols, "Helper");
+    expect(helper?.kind).toBe(SymbolKind.Class);
+    expect(names(helper!.children)).toEqual(["h"]);
+  });
 });
 
 describe("computeDocumentSymbols — extends + prefixes", () => {
@@ -184,11 +270,32 @@ end Derived;`;
     expect(classKind("partial block")).toBe(SymbolKind.Class);
     expect(classKind("operator record")).toBe(SymbolKind.Struct);
     expect(classKind("expandable connector")).toBe(SymbolKind.Interface);
+    expect(classKind("pure function")).toBe(SymbolKind.Function);
+    expect(classKind("impure function")).toBe(SymbolKind.Function);
     expect(classKind("package")).toBe(SymbolKind.Package);
     expect(classKind("function")).toBe(SymbolKind.Function);
     expect(classKind("type")).toBe(SymbolKind.Enum);
     expect(classKind("model")).toBe(SymbolKind.Class);
     expect(classKind("")).toBe(SymbolKind.Class);
+  });
+
+  it("classifies operator forms: bare/function as Function, record as Struct", () => {
+    // `operator` is not stripped as a modifier, so a bare operator class reaches
+    // the Function mapping; compound forms resolve to their trailing restriction.
+    expect(classKind("operator")).toBe(SymbolKind.Function);
+    expect(classKind("operator function")).toBe(SymbolKind.Function);
+    expect(classKind("operator record")).toBe(SymbolKind.Struct);
+  });
+});
+
+describe("computeDocumentSymbols — doc strings", () => {
+  it("reads the first literal of a concatenated description string", () => {
+    // The whole `description_string` text for `"a" + "b"` both starts and ends
+    // with a quote; unquoting the node would yield `a" + "b`. Reading the first
+    // `value` literal gives `a`.
+    const src = `model M "a" + "b"\nend M;`;
+    const symbols = computeDocumentSymbols(parse(src));
+    expect(find(symbols, "M")?.detail).toBe("a");
   });
 });
 

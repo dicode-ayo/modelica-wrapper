@@ -28,9 +28,13 @@
  *   for `type X = …` aliases). The specifier carries the `identifier` field
  *   (the class name `IDENT`), an optional `descriptionString` (the doc comment),
  *   and — for the long form — a nested `element_list`.
- * - An `element_list` holds `element` children that wrap either a nested
+ * - An element-list section holds `element` children that wrap either a nested
  *   `class_definition` (via a `named_element`) or a `component_clause` (a
- *   variable/parameter declaration), plus `extends_clause`s we skip.
+ *   variable/parameter declaration), plus `extends_clause`s we skip. A
+ *   `long_class_specifier` carries up to three such sibling sections in source
+ *   order: the default `element_list`, plus `public_element_list` /
+ *   `protected_element_list` for members under a `public` / `protected` keyword.
+ *   All three must be walked or visibility-section members are dropped.
  * - A `component_clause` has anonymous prefix tokens (`parameter` / `constant`
  *   / `input` / `output` / `flow` / …) before its `typeSpecifier`, then a
  *   `componentDeclarations` (`component_list`) of one or more
@@ -55,7 +59,6 @@ import type { ZeroBasedPosition, ZeroBasedRange } from "./position.js";
 /** Grammar node types this walk inspects. Kept as named constants (no magic strings). */
 const NODE = {
   classDefinition: "class_definition",
-  elementList: "element_list",
   componentClause: "component_clause",
   componentList: "component_list",
   componentDeclaration: "component_declaration",
@@ -63,34 +66,52 @@ const NODE = {
   typeSpecifier: "type_specifier",
 } as const;
 
+/**
+ * The element-list section node types under a `long_class_specifier`. The
+ * default (no-keyword) section is `element_list`; members declared under a
+ * `public` / `protected` keyword live in sibling `public_element_list` /
+ * `protected_element_list` nodes. All three carry `element` children of the
+ * same shape, so the member walk treats them uniformly.
+ */
+const ELEMENT_LIST_TYPES: ReadonlySet<string> = new Set([
+  "element_list",
+  "public_element_list",
+  "protected_element_list",
+]);
+
 /** Class-definition field names (OpenModelica/tree-sitter-modelica v0.2.2). */
 const FIELD = {
   classPrefixes: "classPrefixes",
   classSpecifier: "classSpecifier",
   identifier: "identifier",
   descriptionString: "descriptionString",
+  value: "value",
   componentDeclarations: "componentDeclarations",
   declaration: "declaration",
 } as const;
 
 /**
  * Class-prefix *modifier* keywords that precede the actual restriction in a
- * `class_prefixes` run (e.g. `partial block`, `operator record`,
- * `expandable connector`, `redeclare final model`). We strip these to find the
- * restriction keyword that decides the {@link SymbolKind}.
+ * `class_prefixes` run (e.g. `partial block`, `expandable connector`,
+ * `pure function`). We strip these to find the restriction keyword that decides
+ * the {@link SymbolKind}, scanning right-to-left so a trailing restriction wins.
+ *
+ * Only keywords the grammar actually keeps *inside* `class_prefixes` belong
+ * here. `redeclare` / `replaceable` / `inner` / `outer` / `encapsulated` /
+ * `final` are parsed *outside* `class_prefixes` (verified against the vendored
+ * grammar), so they never reach this set and are deliberately omitted.
+ *
+ * `operator` is intentionally NOT a modifier: a bare `operator` class (whose
+ * `class_prefixes` text is just `operator`) must reach the Function mapping in
+ * {@link classKind}. Compound forms still resolve correctly because the
+ * right-to-left scan picks the trailing restriction first: `operator function`
+ * → `function`, `operator record` → `record`.
  */
 const CLASS_PREFIX_MODIFIERS: ReadonlySet<string> = new Set([
   "partial",
-  "operator",
   "expandable",
   "pure",
   "impure",
-  "final",
-  "redeclare",
-  "replaceable",
-  "inner",
-  "outer",
-  "encapsulated",
 ]);
 
 /** Component-prefix keywords that mark a declaration as a parameter/constant. */
@@ -189,9 +210,16 @@ function classSymbol(classDef: Node): SymbolNode | null {
   const kind = classKind(prefixes?.text ?? "");
   const detail = descriptionOf(specifier);
 
+  // Members live across up to three sibling element-list sections (default,
+  // public, protected). Walk each in source order so the outline preserves the
+  // declaration order even across visibility keywords.
   const children: SymbolNode[] = [];
-  const elementList = findChild(specifier, NODE.elementList);
-  if (elementList) collectMembers(elementList, children);
+  for (let i = 0; i < specifier.namedChildCount; i++) {
+    const section = specifier.namedChild(i);
+    if (section && ELEMENT_LIST_TYPES.has(section.type)) {
+      collectMembers(section, children);
+    }
+  }
 
   return {
     name: identifier.text,
@@ -204,9 +232,12 @@ function classSymbol(classDef: Node): SymbolNode | null {
 }
 
 /**
- * Collect the member symbols of a class from its `element_list`: nested classes
- * (recursively) and component declarations. `extends_clause`s and other
- * elements are skipped — they aren't outline symbols.
+ * Collect the member symbols from one element-list section (`element_list`,
+ * `public_element_list`, or `protected_element_list`): nested classes
+ * (recursively) and component declarations. The `public` / `protected` keyword
+ * tokens are anonymous (unnamed) children, so iterating named children skips
+ * them. `extends_clause`s and other elements are skipped — they aren't outline
+ * symbols.
  */
 function collectMembers(elementList: Node, out: SymbolNode[]): void {
   for (let i = 0; i < elementList.namedChildCount; i++) {
@@ -264,8 +295,10 @@ export function classKind(classPrefixesText: string): SymbolKind {
     case "function":
       return SymbolKind.Function;
     case "operator":
-      // A bare `operator` class (no `record`/`function` suffix) is closest to a
-      // function group.
+      // A bare `operator` class (no `record`/`function` suffix) reaches here
+      // because `operator` is not stripped as a modifier; it's closest to a
+      // function group. (`operator function` / `operator record` resolve to
+      // their trailing restriction instead.)
       return SymbolKind.Function;
     case "record":
       return SymbolKind.Struct;
@@ -309,14 +342,19 @@ function componentKind(clause: Node): SymbolKind {
 }
 
 /**
- * The class's doc comment (the `descriptionString`'s string literal, quotes
- * stripped), or `undefined` when absent/empty. Surfaced as the symbol's
- * `detail` so the outline shows it beside the name.
+ * The class's doc comment, or `undefined` when absent/empty. Surfaced as the
+ * symbol's `detail` so the outline shows it beside the name.
+ *
+ * A `description_string` may be a concatenation (`"a" + "b"`); its `value`
+ * fields are the individual `STRING` literals. We read the first `value`'s text
+ * and strip its quotes, rather than unquoting the whole node — the latter only
+ * removes the outermost quotes and mangles concatenations into `a" + "b`.
  */
 function descriptionOf(specifier: Node): string | undefined {
   const description = specifier.childForFieldName(FIELD.descriptionString);
   if (!description) return undefined;
-  const text = unquote(description.text.trim());
+  const value = description.childForFieldName(FIELD.value) ?? description;
+  const text = unquote(value.text.trim());
   return text.length > 0 ? text : undefined;
 }
 
@@ -329,9 +367,16 @@ function unquote(text: string): string {
 }
 
 /**
- * The first descendant of `node` (at any depth) with type `type`, searched
- * depth-first. Used to reach the meaningful node inside a thin wrapper
- * (`named_element` → `class_definition` / `component_clause`).
+ * The topmost descendant of `node` (at any depth) with type `type`, in
+ * preorder (depth-first, returning the first/shallowest match). Used to reach
+ * the meaningful node inside a thin wrapper (`named_element` →
+ * `class_definition` / `component_clause`).
+ *
+ * Intentionally a full descendant search, not a direct-child lookup: callers
+ * pass thin one-level wrappers (a `named_element`) or a `class_specifier`
+ * subtree, where the target is the topmost match — so preorder never reaches
+ * into a *nested* class before finding the wrapped node. Do not point it at a
+ * larger subtree where a nested class could shadow the intended match.
  */
 function findChild(node: Node, type: string): Node | null {
   for (let i = 0; i < node.childCount; i++) {
