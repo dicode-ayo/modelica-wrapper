@@ -30,8 +30,9 @@ import type { Tree } from "web-tree-sitter";
 import { log } from "../logger.js";
 
 import { targetAt } from "./cursor.js";
+import { resolveDocumentOwner } from "./document-scope.js";
 import type { ParseCache } from "./parse.js";
-import { resolveOwningClass, type OwningClassClient } from "./owning-class.js";
+import type { OwningClassClient } from "./owning-class.js";
 import { resolve, type ResolveClient } from "./resolve.js";
 import { OmcSync } from "./sync.js";
 
@@ -157,12 +158,14 @@ export class ModelicaHoverProvider implements vscode.HoverProvider {
   ): Promise<vscode.Hover | undefined> {
     try {
       const client = await this.ensureClient();
-      const owning = await resolveOwningClass(document.uri.fsPath, {
-        client: client as OwningClassClient,
-      });
+      // Derive the owning class and load-on-touch (real files only; a virtual
+      // `modelica-source:` class is already loaded — see `document-scope.ts`).
+      const owning = await resolveDocumentOwner(
+        document,
+        client as OwningClassClient,
+        this.sync,
+      );
       if (!owning) return undefined;
-
-      await this.sync.ensureLoaded(owning.fileName);
 
       // The work above is serialized OMC round-trips; on a fast-moving cursor
       // the host may already have abandoned this request. Bail before resolve's

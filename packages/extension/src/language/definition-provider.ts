@@ -33,9 +33,10 @@ import type { Tree } from "web-tree-sitter";
 import { log } from "../logger.js";
 
 import { targetAt } from "./cursor.js";
+import { resolveDocumentOwner } from "./document-scope.js";
 import type { ParseCache } from "./parse.js";
 import type { ZeroBasedPosition } from "./position.js";
-import { resolveOwningClass, type OwningClassClient } from "./owning-class.js";
+import type { OwningClassClient } from "./owning-class.js";
 import { resolve, type ResolveClient } from "./resolve.js";
 import { OmcSync } from "./sync.js";
 
@@ -104,17 +105,18 @@ export class ModelicaDefinitionProvider implements vscode.DefinitionProvider {
   ): Promise<vscode.Location | undefined> {
     try {
       const client = await this.ensureClient();
-      const owning = await resolveOwningClass(document.uri.fsPath, {
-        client: client as OwningClassClient,
-      });
+      // Derive the owning class and load-on-touch (real files only; a virtual
+      // `modelica-source:` class is already loaded — see `document-scope.ts`).
+      const owning = await resolveDocumentOwner(
+        document,
+        client as OwningClassClient,
+        this.sync,
+      );
       if (!owning) return undefined;
 
-      // Load-on-touch so OMC's symbol table knows the file's classes.
-      await this.sync.ensureLoaded(owning.fileName);
-
-      // The work above (ensureClient + a parseFile + a loadFile round-trip) is
-      // serialized; on a fast-moving cursor the host may already have abandoned
-      // this request. Bail before the resolve's further OMC calls.
+      // The work above (ensureClient + a parseFile/loadFile round-trip for real
+      // files) is serialized; on a fast-moving cursor the host may already have
+      // abandoned this request. Bail before the resolve's further OMC calls.
       if (token.isCancellationRequested) return undefined;
 
       const tree = await this.cache.parse(document);
