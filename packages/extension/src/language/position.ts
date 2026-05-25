@@ -86,6 +86,10 @@ export function omcToVscodePosition(
  * whereas a `vscode.Range` end is **exclusive**. To select through the last
  * character we therefore advance the end column by one. The start converts
  * straight through {@link omcToVscodePosition}.
+ *
+ * NOTE: the `+1` rests on OMC's end columns being **inclusive**. That assumption
+ * should be confirmed against live OMC output before #97 consumes this helper —
+ * if OMC turns out to report exclusive end columns the `+1` must be dropped.
  */
 export function omcRangeToVscodeRange(span: {
   lineNumberStart: number;

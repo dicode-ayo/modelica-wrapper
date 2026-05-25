@@ -73,6 +73,12 @@ export class OmcSync {
    * Mark a file as saved: drop its loaded flag so the next {@link ensureLoaded}
    * re-`loadFile`s the current on-disk text. Wire this to
    * `workspace.onDidSaveTextDocument` in #97.
+   *
+   * Known v1 window: this only clears the `loaded` flag, not an *in-flight*
+   * first-touch `load`. If a save fires while a `loadFile` is still pending, that
+   * promise (which read possibly pre-save text) will complete and re-add the path
+   * to `loaded`, so the save isn't reflected until the *next* save/invalidate.
+   * Acceptable under the coarse v1 policy; a generation counter would close it.
    */
   markSaved(filePath: string): void {
     this.loaded.delete(filePath);
