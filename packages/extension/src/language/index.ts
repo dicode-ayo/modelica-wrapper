@@ -86,8 +86,32 @@ function isModelicaDocument(document: vscode.TextDocument): boolean {
 }
 
 /**
- * Register the language features. Returns a single {@link vscode.Disposable}
- * that tears down the parse cache and listeners.
+ * The save-event glue, extracted so it is unit-testable without an extension
+ * host (see `index.test.ts`). On a Modelica document save it (1) invalidates
+ * the file's loaded state via `sync` so the next touch re-`loadFile`s and
+ * (2) drops the OMC-lookup cache — the saved text is about to be reloaded,
+ * so cached qualify/components/class-name answers may no longer hold. A
+ * non-Modelica save is a no-op. The cache is looked up lazily (it is created
+ * on first provider use) so this is robust to the save firing before any
+ * provider request.
+ *
+ * @returns `true` if the save was handled (a Modelica doc), `false` if ignored.
+ */
+export function handleDocumentSave(
+  document: vscode.TextDocument,
+  sync: Pick<OmcSync, "invalidate">,
+  getLookupCache: () => Pick<OmcLookupCache, "invalidate"> | undefined,
+): boolean {
+  if (!isModelicaDocument(document)) return false;
+  sync.invalidate(document.uri.fsPath);
+  getLookupCache()?.invalidate();
+  return true;
+}
+
+/**
+ * Register the Modelica language features. Returns a single {@link vscode.Disposable}
+ * that tears down the parse cache and all listeners — push it onto
+ * `context.subscriptions`.
  *
  * @param context - the extension context; used to locate the bundled grammar
  *   WASM in `<extension>/out`.
@@ -182,9 +206,7 @@ export function registerLanguageFeatures(
   // drop the OMC-lookup cache: the saved file is about to be re-`loadFile`d, so
   // any cached qualify/components/class-name answers may no longer hold.
   const onSave = vscode.workspace.onDidSaveTextDocument((document) => {
-    if (!isModelicaDocument(document)) return;
-    sync.invalidate(document.uri.fsPath);
-    lookupCache?.invalidate();
+    handleDocumentSave(document, sync, () => lookupCache);
   });
 
   const onClose = vscode.workspace.onDidCloseTextDocument((document) => {
