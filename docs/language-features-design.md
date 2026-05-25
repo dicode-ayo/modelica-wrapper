@@ -242,18 +242,21 @@ Rename/refactor builds on top of it.
 - Should highlighting be in scope (bundle a TextMate grammar) or left to an
   existing Modelica extension? v1: out.
 - Member/inherited-cref resolution depth for v1 (one hop vs full walk).
-- **Grammar WASM sourcing & freshness.** PR 1 *vendors* the prebuilt
+- **Grammar WASM sourcing & freshness.** The prebuilt
   `tree-sitter-modelica.wasm` from the `OpenModelica/tree-sitter-modelica`
-  **v0.2.2** GitHub release into `packages/extension/grammar/` (provenance +
-  SHA-256 in `grammar/README.md`). esbuild can't inline a `.wasm` for
+  **v0.2.2** GitHub release is **fetched on install** (extension `postinstall`
+  → `scripts/fetch-grammar-wasm.mjs`) into `packages/extension/grammar/`, not
+  committed — see the 2026-05-25 history entry. The version + SHA-256 + URL pin
+  lives in one module (`grammar/grammar-source.mjs`), imported by both the
+  fetch script and `esbuild.config.mjs`. esbuild can't inline a `.wasm` for
   path-loading the way it does `.css`, so a small `onEnd` copy step in
   `esbuild.config.mjs` places it — and the `web-tree-sitter` runtime
   `tree-sitter.wasm` — into `out/`; `parse.ts` loads both by absolute path
   from `<extension>/out`. `web-tree-sitter` is `external` in the extension
-  bundle (Emscripten glue) and whitelisted in `.vscodeignore`. Open: there is
-  no published npm package that ships this grammar WASM, so updates are a
-  manual `gh release download` (documented in `grammar/README.md`); a CI step
-  or a renovate-style check to track upstream releases is a follow-up.
+  bundle (Emscripten glue). Open: there is still no published npm package that
+  ships this grammar WASM, so version bumps are manual (bump the pin in
+  `grammar-source.mjs`, documented in `grammar/README.md`); a CI step or a
+  renovate-style check to track upstream releases is a follow-up.
 
 ## History / decisions
 
@@ -286,3 +289,20 @@ Rename/refactor builds on top of it.
   `packages/extension/syntaxes/LICENSE` and attribution added to the root
   `README.md` (Acknowledgements). License: MIT — reuse permitted with the
   copyright notice retained.
+- **2026-05-25** — Grammar WASM switched from **committed-vendored** to
+  **fetch-on-install**. The 182 KB `tree-sitter-modelica.wasm` is no longer in
+  git (`git rm`, gitignored via `packages/extension/grammar/*.wasm`); instead the
+  extension's `postinstall` runs `scripts/fetch-grammar-wasm.mjs`, which
+  downloads the pinned v0.2.2 release asset, verifies its SHA-256, and writes it
+  into `grammar/`. The pin (version + SHA-256 + URL) now lives in a single
+  module, `grammar/grammar-source.mjs`, imported by both the fetch script and
+  `esbuild.config.mjs` (whose `copyWasm` SHA gate is retained and whose
+  missing-file error now points at `pnpm install`). The fetch is idempotent
+  (skips the download when the on-disk hash already matches) and cross-platform
+  (Node built-ins only — global `fetch` + `node:crypto`/`node:fs`, no
+  bash/curl/gh). **Offline caveat:** first install needs network; air-gapped
+  installs must pre-place the pinned `tree-sitter-modelica.wasm` in `grammar/`
+  before `pnpm install` (the hash check then accepts it and skips the download).
+  Rationale: keep a binary blob out of git history while preserving the
+  supply-chain hash invariant. Verified: pnpm runs the **extension package's**
+  `postinstall` on a root `pnpm install` (no root-level hook needed).

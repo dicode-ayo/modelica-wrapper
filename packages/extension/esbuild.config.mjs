@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-import { copyFile, mkdir, readFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import * as esbuild from "esbuild";
+
+import { GRAMMAR_WASM_SHA256 } from "./grammar/grammar-source.mjs";
 
 const watch = process.argv.includes("--watch");
 
@@ -19,24 +21,21 @@ const require = createRequire(import.meta.url);
  *
  *   1. `tree-sitter.wasm`           — the web-tree-sitter runtime (Emscripten
  *      core), shipped by the npm package; located via `require.resolve`.
- *   2. `tree-sitter-modelica.wasm`  — the vendored OpenModelica grammar
- *      (see `grammar/README.md` for provenance).
+ *   2. `tree-sitter-modelica.wasm`  — the OpenModelica grammar, fetched on
+ *      install by `scripts/fetch-grammar-wasm.mjs` into `grammar/` (see
+ *      `grammar/README.md` for provenance); not committed.
  *
  * Both names are re-exported as `RUNTIME_WASM_FILENAME` /
  * `GRAMMAR_WASM_FILENAME` from `src/language/parse.ts`; keep them in sync.
+ *
+ * The grammar's expected SHA-256 (`GRAMMAR_WASM_SHA256`) is imported from
+ * `grammar/grammar-source.mjs` — the single source of truth shared with the
+ * fetch script — so the supply-chain pin lives in exactly one place. The
+ * runtime `tree-sitter.wasm` comes from the npm package and is already
+ * integrity-pinned by the lockfile, so only the grammar carries a hash here.
  */
 const RUNTIME_WASM_FILENAME = "tree-sitter.wasm";
 const GRAMMAR_WASM_FILENAME = "tree-sitter-modelica.wasm";
-
-/**
- * Expected SHA-256 of the vendored grammar WASM. This is the supply-chain
- * invariant recorded in `grammar/README.md` (OpenModelica/tree-sitter-modelica
- * v0.2.2); keep the two in sync. The runtime `tree-sitter.wasm` comes from the
- * npm package and is already integrity-pinned by the lockfile, so only the
- * vendored binary carries a hash here.
- */
-const GRAMMAR_WASM_SHA256 =
-  "fb9e1f0c33288fc301f50bff88bad28ebf2f79365b23482855a1a9e756c78e56";
 
 const wasmAssets = [
   {
@@ -57,8 +56,13 @@ const wasmAssets = [
  *
  * Assets with a pinned `sha256` are verified before the copy: the build fails
  * (`onEnd` errors propagate) if the source bytes don't match, turning the
- * README's documented hash into an enforced invariant that catches a tampered
- * or wrong-version vendored binary instead of silently shipping it.
+ * pinned hash into an enforced invariant that catches a tampered or
+ * wrong-version binary instead of silently shipping it.
+ *
+ * The grammar WASM is an install artifact (fetched, not committed), so the
+ * source file can legitimately be absent on a fresh checkout that skipped
+ * install — that case gets a dedicated "run pnpm install" error rather than a
+ * raw ENOENT.
  */
 const copyWasm = {
   name: "copy-wasm",
@@ -68,7 +72,10 @@ const copyWasm = {
       await mkdir(outDir, { recursive: true });
       await Promise.all(
         wasmAssets.map(async (a) => {
-          if (a.sha256) await verifySha256(a.from, a.sha256);
+          if (a.sha256) {
+            await ensureGrammarPresent(a.from);
+            await verifySha256(a.from, a.sha256);
+          }
           await copyFile(a.from, join(outDir, a.to));
         }),
       );
@@ -77,8 +84,27 @@ const copyWasm = {
 };
 
 /**
+ * Fail with an actionable message if the (now install-fetched) grammar WASM
+ * isn't on disk — the build can't conjure it, and a fresh checkout that never
+ * ran install won't have it. Points the user at the fetch step.
+ */
+async function ensureGrammarPresent(filePath) {
+  try {
+    await access(filePath);
+  } catch {
+    throw new Error(
+      `Grammar WASM not found at ${filePath}\n` +
+        `It is fetched on install, not committed. Run \`pnpm install\` to ` +
+        `download it (or \`node scripts/fetch-grammar-wasm.mjs\` directly), ` +
+        `then rebuild. Offline installs must pre-place the file — see ` +
+        `grammar/README.md.`,
+    );
+  }
+}
+
+/**
  * Throw if the SHA-256 of `filePath` doesn't equal `expected`. Used by
- * {@link copyWasm} to gate the vendored grammar copy on its recorded hash.
+ * {@link copyWasm} to gate the grammar copy on its recorded hash.
  */
 async function verifySha256(filePath, expected) {
   const actual = createHash("sha256")
@@ -89,8 +115,8 @@ async function verifySha256(filePath, expected) {
       `WASM integrity check failed for ${filePath}\n` +
         `  expected SHA-256: ${expected}\n` +
         `  actual SHA-256:   ${actual}\n` +
-        `If you intentionally updated the grammar, bump GRAMMAR_WASM_SHA256 ` +
-        `in esbuild.config.mjs and the SHA in grammar/README.md together.`,
+        `If you intentionally updated the grammar, bump the pin in ` +
+        `grammar/grammar-source.mjs and the SHA in grammar/README.md together.`,
     );
   }
 }

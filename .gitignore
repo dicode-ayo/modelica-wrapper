@@ -17,3 +17,8 @@ Thumbs.db
 packages/omc-client/test/fixtures/*.modelInstance.json
 packages/omc-client/test/fixtures/*.modelInstanceAnnotation.json
 storybook-static/
+
+# Grammar WASM is fetched on install (postinstall -> scripts/fetch-grammar-wasm.mjs),
+# hash-verified against the pin in grammar/grammar-source.mjs — not committed.
+# grammar/README.md and grammar/grammar-source.mjs stay tracked.
+packages/extension/grammar/*.wasm

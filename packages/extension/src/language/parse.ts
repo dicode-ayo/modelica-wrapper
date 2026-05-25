@@ -7,7 +7,8 @@
  *      grammar as WASM in-process, so there's no native rebuild per platform.
  *      Init needs two `.wasm` files shipped beside the bundle (see
  *      `esbuild.config.mjs`): the runtime core (`tree-sitter.wasm`) and the
- *      vendored grammar (`tree-sitter-modelica.wasm`).
+ *      grammar (`tree-sitter-modelica.wasm`, fetched on install — see
+ *      `grammar/README.md`).
  *
  *   2. **Cache one `Tree` per `uri + version`** and re-parse incrementally
  *      when a document changes. tree-sitter's `Tree.edit` + re-parse with the

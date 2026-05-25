@@ -253,6 +253,7 @@
     }
   },
   "scripts": {
+    "postinstall": "node scripts/fetch-grammar-wasm.mjs",
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.webview.json",
