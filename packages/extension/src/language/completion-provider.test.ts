@@ -21,6 +21,7 @@ import {
   CompletionItemKind,
   computeCompletions,
   MAX_COMPLETIONS,
+  MIN_FUZZY_PREFIX,
   type CompletionClient,
 } from "./completion-provider.js";
 import { GRAMMAR_WASM_FILENAME } from "./parse.js";
@@ -130,6 +131,82 @@ describe("computeCompletions — type / extends / component-type position", () =
     });
     expect(client.searchClassNames).toHaveBeenCalledWith({ searchText: "Base" });
     expect(client.getComponents).not.toHaveBeenCalled();
+  });
+
+  it("does NOT fire the global searchClassNames below MIN_FUZZY_PREFIX", async () => {
+    // A 1-char prefix (< MIN_FUZZY_PREFIX) must not trigger the global fuzzy
+    // search; the cheap scoped getClassNames still runs.
+    expect(MIN_FUZZY_PREFIX).toBeGreaterThan(1);
+    const src = "model Circuit\n  R r;\nend Circuit;";
+    const client = makeClient({
+      getClassNames: vi.fn(() => Promise.resolve({ classNames: ["Ground"] })),
+    });
+
+    // Cursor on the single-char type `R`.
+    const out = await computeCompletions(
+      parse(src),
+      offsetOf(src, "R r;"),
+      "MyPkg.Circuit",
+      client,
+    );
+
+    expect(client.getClassNames).toHaveBeenCalledWith({
+      typeName: "MyPkg.Circuit",
+    });
+    expect(client.searchClassNames).not.toHaveBeenCalled();
+    expect(out.map((c) => c.label)).toEqual(["Ground"]);
+  });
+
+  it("fires searchClassNames once the prefix reaches MIN_FUZZY_PREFIX", async () => {
+    // A 2-char prefix `Re` (== MIN_FUZZY_PREFIX) crosses the threshold.
+    const src = "model Circuit\n  Re r;\nend Circuit;";
+    const client = makeClient({
+      getClassNames: vi.fn(() => Promise.resolve({ classNames: [] })),
+      searchClassNames: vi.fn(() =>
+        Promise.resolve({ classNames: ["Modelica.Electrical.Resistor"] }),
+      ),
+    });
+
+    const out = await computeCompletions(
+      parse(src),
+      offsetOf(src, "Re r;"),
+      "MyPkg.Circuit",
+      client,
+    );
+
+    expect(client.searchClassNames).toHaveBeenCalledWith({ searchText: "Re" });
+    expect(out.map((c) => c.label)).toContain("Modelica.Electrical.Resistor");
+  });
+
+  it("sets filterText/insertText to the simple name for dotted class candidates", async () => {
+    // Fully-qualified searchClassNames labels carry dots that break VSCode's
+    // word-based prefix filtering; the candidate must filter & insert by its
+    // last segment. Bare getClassNames children keep the default (unset).
+    const src = "model Circuit\n  Re r;\nend Circuit;";
+    const client = makeClient({
+      getClassNames: vi.fn(() => Promise.resolve({ classNames: ["Resistor"] })),
+      searchClassNames: vi.fn(() =>
+        Promise.resolve({ classNames: ["Modelica.Electrical.Resistor"] }),
+      ),
+    });
+
+    const out = await computeCompletions(
+      parse(src),
+      offsetOf(src, "Re r;"),
+      "MyPkg.Circuit",
+      client,
+    );
+
+    const dotted = out.find((c) => c.label === "Modelica.Electrical.Resistor");
+    expect(dotted).toBeDefined();
+    expect(dotted?.filterText).toBe("Resistor");
+    expect(dotted?.insertText).toBe("Resistor");
+
+    // The bare local child keeps default filtering (no override needed).
+    const bare = out.find((c) => c.label === "Resistor");
+    expect(bare).toBeDefined();
+    expect(bare?.filterText).toBeUndefined();
+    expect(bare?.insertText).toBeUndefined();
   });
 });
 

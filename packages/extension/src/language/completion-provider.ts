@@ -86,6 +86,20 @@ export const COMPLETION_TRIGGER_CHARACTER = ".";
 export const MAX_COMPLETIONS = 200;
 
 /**
+ * Minimum typed-prefix length before the global fuzzy `searchClassNames` fires.
+ *
+ * `searchClassNames` is a global fuzzy match over *every* loaded class (a full
+ * MSL is thousands), and {@link MAX_COMPLETIONS}/`cap` only trims the result
+ * AFTER the round trip — so the cap bounds the payload but not OMC's work. A
+ * 1-character prefix matches almost everything, making that work near-worst-case
+ * on every keystroke. Requiring at least this many characters keeps the cost
+ * bounded where the cap can't reach. The cheap, scoped `getClassNames` (the
+ * owning class's own children) still runs for short prefixes, so local names are
+ * never withheld.
+ */
+export const MIN_FUZZY_PREFIX = 2;
+
+/**
  * What a candidate *is*, decoupled from `vscode.CompletionItemKind` so the pure
  * core has no `vscode` dependency. {@link toVscodeCompletionKind} maps these to
  * the editor enum in the thin provider.
@@ -93,8 +107,6 @@ export const MAX_COMPLETIONS = 200;
 export enum CompletionItemKind {
   /** A class/type name (model, block, record, …). */
   Class = "class",
-  /** A package (namespace) name. */
-  Module = "module",
   /** A component / member instance of a class. */
   Field = "field",
   /** A parameter / modifiable name. */
@@ -103,12 +115,24 @@ export enum CompletionItemKind {
 
 /** A single completion candidate, as plain data (no `vscode` types). */
 export interface CompletionCandidate {
-  /** The text inserted / shown. */
+  /** The text shown in the list (may be a fully-qualified dotted name). */
   readonly label: string;
   /** What the candidate is, driving the icon shown. */
   readonly kind: CompletionItemKind;
   /** Optional secondary text (e.g. the member's type). */
   readonly detail?: string;
+  /**
+   * Optional text VSCode filters the candidate by against the typed prefix.
+   * Set when {@link label} is a dotted name (the embedded dots break VSCode's
+   * default word-based filtering); left unset to keep the default (filter by
+   * the label) for bare simple-name candidates.
+   */
+  readonly filterText?: string;
+  /**
+   * Optional text inserted when the candidate is accepted, when it differs from
+   * {@link label} (e.g. inserting a dotted class's simple name, not its FQN).
+   */
+  readonly insertText?: string;
 }
 
 /**
@@ -218,16 +242,30 @@ async function classNameCandidates(
   }
 
   // Fuzzy global match on the typed prefix (the last segment under the cursor).
-  // searchClassNames returns fully-qualified names; only worth issuing when the
-  // user has typed something to search for.
+  // searchClassNames returns fully-qualified names. It is a global fuzzy search
+  // over every loaded class, so only issue it once the prefix is long enough
+  // (`MIN_FUZZY_PREFIX`) to bound the cost a short prefix can't (see the const's
+  // note); below the threshold the scoped `getClassNames` above still applies.
   const prefix = target.identifier;
-  if (prefix.length > 0) {
+  if (prefix.length >= MIN_FUZZY_PREFIX) {
     try {
       const { classNames } = await client.searchClassNames({
         searchText: prefix,
       });
       for (const name of classNames) {
-        out.push({ label: name, kind: CompletionItemKind.Class });
+        // The label is a fully-qualified dotted name (`Modelica.Electrical.R`);
+        // VSCode filters by the typed word, which stops at the dot, so a bare
+        // prefix like `Re` would never match the long label. Filter (and insert)
+        // by the last segment so dotted candidates survive word-based filtering
+        // and insert the simple name. `getClassNames` candidates above are bare
+        // simple names already, so their default range/filter is correct.
+        const lastSegment = name.slice(name.lastIndexOf(".") + 1);
+        out.push({
+          label: name,
+          kind: CompletionItemKind.Class,
+          filterText: lastSegment,
+          insertText: lastSegment,
+        });
       }
     } catch (err) {
       log.warn("language", "completion searchClassNames failed", err);
@@ -299,7 +337,7 @@ async function memberComponents(
 }
 
 /**
- * Nested class names of `qualifiedName` when it is a package, as Module/Class
+ * Nested class names of `qualifiedName` when it is a package, as Class
  * candidates. Returns empty when `qualifiedName` is not a package (so the caller
  * doesn't mistake a non-package's empty list for "package with no children").
  */
@@ -386,8 +424,6 @@ export function toVscodeCompletionKind(
   switch (kind) {
     case CompletionItemKind.Class:
       return vscode.CompletionItemKind.Class;
-    case CompletionItemKind.Module:
-      return vscode.CompletionItemKind.Module;
     case CompletionItemKind.Field:
       return vscode.CompletionItemKind.Field;
     case CompletionItemKind.Property:
@@ -446,6 +482,11 @@ export class ModelicaCompletionProvider
           toVscodeCompletionKind(c.kind),
         );
         if (c.detail !== undefined) item.detail = c.detail;
+        // Dotted class names need an explicit filter/insert so VSCode's
+        // word-based filtering matches the bare typed prefix and accepting the
+        // item inserts the simple name rather than the FQN.
+        if (c.filterText !== undefined) item.filterText = c.filterText;
+        if (c.insertText !== undefined) item.insertText = c.insertText;
         return item;
       });
     } catch (err) {
