@@ -183,6 +183,68 @@ describe("OmcLookupCache — explicit invalidate", () => {
   });
 });
 
+describe("OmcLookupCache — in-flight invalidate (generation guard)", () => {
+  it("does not store a value computed before an invalidate() that cleared the map", async () => {
+    // A deferred getComponents so we can fire invalidate() while the lookup is
+    // mid-flight (the in-place-edit/save race: an in-place save does NOT change
+    // the loaded-library signature, so the signature guard alone wouldn't catch
+    // a stale value written back after the clear).
+    let release!: (value: {
+      components: { className: string; name: string }[];
+    }) => void;
+    const inFlight = new Promise<{
+      components: { className: string; name: string }[];
+    }>((resolve) => {
+      release = resolve;
+    });
+    let calls = 0;
+    const client = makeClient({
+      getComponents: vi.fn(() => {
+        calls++;
+        // First call hangs until released; later calls resolve immediately.
+        return calls === 1
+          ? inFlight
+          : Promise.resolve({
+              components: [{ className: "Fresh", name: "x" }],
+            });
+      }),
+    });
+    const clock = fakeClock();
+    const cache = new OmcLookupCache(client, clock.now);
+
+    // Prime the signature within the TTL via an unrelated lookup so the in-flight
+    // lookup below parks directly on getComponents (its signature read is a
+    // synchronous cache hit, not an await), making the race deterministic.
+    await cache.isPackage({ typeName: "Seed" });
+
+    // Start the in-flight lookup; it captures the generation and parks on the
+    // hung getComponents.
+    const pending = cache.getComponents({ typeName: "Pkg.Resistor" });
+    // Let the lookup advance through the (cached) signature read up to `compute`.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // A save lands while the lookup is in flight → invalidate() clears + bumps
+    // the generation.
+    cache.invalidate();
+
+    // Now let the original (now-stale) lookup finish.
+    release({ components: [{ className: "Stale", name: "x" }] });
+    const stale = await pending;
+    // The in-flight caller still gets its computed value (it was correct when
+    // computed) ...
+    expect(stale.components[0]?.className).toBe("Stale");
+    // ... but it must NOT have been written back into the cleared cache.
+    expect(cache.size).toBe(0);
+
+    // The next lookup is therefore a miss → re-fetches the fresh value, never
+    // serving the stale one that raced the invalidate.
+    const fresh = await cache.getComponents({ typeName: "Pkg.Resistor" });
+    expect(fresh.components[0]?.className).toBe("Fresh");
+    expect(calls).toBe(2);
+  });
+});
+
 describe("OmcLookupCache — bound", () => {
   it("evicts the oldest entry past MAX_CACHE_ENTRIES (FIFO)", async () => {
     const client = makeClient();

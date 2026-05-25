@@ -22,6 +22,20 @@ function ts(): string {
   return new Date().toISOString().slice(11, 23);
 }
 
+/**
+ * Whether {@link log.debug} actually writes. Debug is OFF by default so the
+ * hot path (a fast-typing completion fans out to many swallowed not-found OMC
+ * lookups, each a `log.debug`) doesn't spam the OutputChannel — gating prominence
+ * alone (the `DEBUG` prefix) didn't reduce the write *volume*. Enable it by
+ * setting `MODELICA_DEBUG` to a non-empty, non-`0`/`false` value before launching
+ * the extension host. Read per-call (not cached) so it can be toggled at runtime
+ * and so tests can flip it without re-importing the module.
+ */
+function debugEnabled(): boolean {
+  const flag = process.env.MODELICA_DEBUG;
+  return flag !== undefined && flag !== "" && flag !== "0" && flag !== "false";
+}
+
 export const log = {
   /**
    * Low-importance trace for expected, high-frequency failures on a hot path —
@@ -29,9 +43,12 @@ export const log = {
    * to the channel marked `DEBUG` so there is *a* trace when diagnosing, without
    * the prominence (or the implication of a real problem) of `warn`/`error`.
    * Use this, not `warn`, for the resolution/completion layer's swallowed
-   * not-found cases so the hot path isn't spammed at a louder level.
+   * not-found cases. **Gated** behind {@link debugEnabled} (the `MODELICA_DEBUG`
+   * env var) — silent by default so the hot path isn't spammed by volume, yet
+   * enableable for diagnosis.
    */
   debug(topic: string, message: string, data?: unknown): void {
+    if (!debugEnabled()) return;
     const payload = data === undefined ? "" : ` ${describe(data)}`;
     ensureChannel().appendLine(`${ts()} [${topic}] DEBUG ${message}${payload}`);
   },
