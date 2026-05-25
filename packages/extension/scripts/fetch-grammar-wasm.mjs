@@ -18,7 +18,6 @@
  * as the file was pre-placed.
  */
 
-import { createHash } from "node:crypto";
 import { readFile, writeFile, rm, rename, mkdir, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,16 +27,12 @@ import {
   GRAMMAR_WASM_SHA256,
   GRAMMAR_WASM_URL,
   GRAMMAR_WASM_VERSION,
+  checkGrammarSha256,
 } from "../grammar/grammar-source.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const grammarDir = resolve(here, "..", "grammar");
 const targetPath = join(grammarDir, GRAMMAR_WASM_FILENAME);
-
-/** SHA-256 of a buffer as a lowercase hex string. */
-function sha256(buf) {
-  return createHash("sha256").update(buf).digest("hex");
-}
 
 /** Does a regular file exist at `p`? */
 async function fileExists(p) {
@@ -52,8 +47,8 @@ async function main() {
   // Idempotency gate: a matching file already on disk means there's nothing to
   // do — skip the network entirely (also the path offline installs rely on).
   if (await fileExists(targetPath)) {
-    const have = sha256(await readFile(targetPath));
-    if (have === GRAMMAR_WASM_SHA256) {
+    const { ok, actual: have } = checkGrammarSha256(await readFile(targetPath));
+    if (ok) {
       console.log(
         `[fetch-grammar-wasm] ${GRAMMAR_WASM_FILENAME} is up to date ` +
           `(${GRAMMAR_WASM_VERSION}, sha256 ${GRAMMAR_WASM_SHA256.slice(0, 12)}…).`,
@@ -92,8 +87,8 @@ async function main() {
   }
 
   // Supply-chain gate: verify BEFORE the bytes ever land at the target path.
-  const actual = sha256(bytes);
-  if (actual !== GRAMMAR_WASM_SHA256) {
+  const { ok, actual } = checkGrammarSha256(bytes);
+  if (!ok) {
     // Verified on the in-memory buffer — a bad download never touches disk.
     throw new Error(
       `Modelica grammar WASM integrity check FAILED — refusing to write it.\n` +

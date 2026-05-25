@@ -14,6 +14,8 @@
  * https://github.com/OpenModelica/tree-sitter-modelica/releases
  */
 
+import { createHash } from "node:crypto";
+
 /** Upstream release tag the pinned WASM comes from. */
 export const GRAMMAR_WASM_VERSION = "v0.2.2";
 
@@ -30,3 +32,20 @@ export const GRAMMAR_WASM_SHA256 =
 
 /** Direct download URL for the pinned release asset (GitHub redirects; `fetch` follows). */
 export const GRAMMAR_WASM_URL = `https://github.com/OpenModelica/tree-sitter-modelica/releases/download/${GRAMMAR_WASM_VERSION}/${GRAMMAR_WASM_FILENAME}`;
+
+/** SHA-256 of a buffer as a lowercase hex string. */
+function sha256(buf) {
+  return createHash("sha256").update(buf).digest("hex");
+}
+
+/**
+ * Verify `buf` against the pinned {@link GRAMMAR_WASM_SHA256}. Returns the
+ * computed hash alongside the verdict so callers can report the mismatch.
+ * Both supply-chain gates — the install-time fetch (`fetch-grammar-wasm.mjs`)
+ * and the build-time copy (`esbuild.config.mjs`) — share this one check, so the
+ * two can never drift apart.
+ */
+export function checkGrammarSha256(buf) {
+  const actual = sha256(buf);
+  return { ok: actual === GRAMMAR_WASM_SHA256, actual };
+}

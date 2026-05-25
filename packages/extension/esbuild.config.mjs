@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { access, copyFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -6,7 +5,10 @@ import { fileURLToPath } from "node:url";
 
 import * as esbuild from "esbuild";
 
-import { GRAMMAR_WASM_SHA256 } from "./grammar/grammar-source.mjs";
+import {
+  GRAMMAR_WASM_SHA256,
+  checkGrammarSha256,
+} from "./grammar/grammar-source.mjs";
 
 const watch = process.argv.includes("--watch");
 
@@ -28,11 +30,12 @@ const require = createRequire(import.meta.url);
  * Both names are re-exported as `RUNTIME_WASM_FILENAME` /
  * `GRAMMAR_WASM_FILENAME` from `src/language/parse.ts`; keep them in sync.
  *
- * The grammar's expected SHA-256 (`GRAMMAR_WASM_SHA256`) is imported from
- * `grammar/grammar-source.mjs` — the single source of truth shared with the
- * fetch script — so the supply-chain pin lives in exactly one place. The
- * runtime `tree-sitter.wasm` comes from the npm package and is already
- * integrity-pinned by the lockfile, so only the grammar carries a hash here.
+ * The grammar's integrity check (`checkGrammarSha256`) and expected hash
+ * (`GRAMMAR_WASM_SHA256`) are imported from `grammar/grammar-source.mjs` — the
+ * single source of truth shared with the fetch script — so the supply-chain pin
+ * (and the routine that verifies it) live in exactly one place. The runtime
+ * `tree-sitter.wasm` comes from the npm package and is already integrity-pinned
+ * by the lockfile, so only the grammar is verified here.
  */
 const RUNTIME_WASM_FILENAME = "tree-sitter.wasm";
 const GRAMMAR_WASM_FILENAME = "tree-sitter-modelica.wasm";
@@ -45,7 +48,7 @@ const wasmAssets = [
   {
     from: resolve(here, "grammar", GRAMMAR_WASM_FILENAME),
     to: GRAMMAR_WASM_FILENAME,
-    sha256: GRAMMAR_WASM_SHA256,
+    verify: true,
   },
 ];
 
@@ -72,9 +75,9 @@ const copyWasm = {
       await mkdir(outDir, { recursive: true });
       await Promise.all(
         wasmAssets.map(async (a) => {
-          if (a.sha256) {
+          if (a.verify) {
             await ensureGrammarPresent(a.from);
-            await verifySha256(a.from, a.sha256);
+            await verifyGrammarWasm(a.from);
           }
           await copyFile(a.from, join(outDir, a.to));
         }),
@@ -103,17 +106,16 @@ async function ensureGrammarPresent(filePath) {
 }
 
 /**
- * Throw if the SHA-256 of `filePath` doesn't equal `expected`. Used by
- * {@link copyWasm} to gate the grammar copy on its recorded hash.
+ * Throw if the grammar WASM at `filePath` doesn't match the pinned hash. Used by
+ * {@link copyWasm} to gate the grammar copy. Shares {@link checkGrammarSha256}
+ * with the install-time fetch so the two integrity gates can't drift.
  */
-async function verifySha256(filePath, expected) {
-  const actual = createHash("sha256")
-    .update(await readFile(filePath))
-    .digest("hex");
-  if (actual !== expected) {
+async function verifyGrammarWasm(filePath) {
+  const { ok, actual } = checkGrammarSha256(await readFile(filePath));
+  if (!ok) {
     throw new Error(
       `WASM integrity check failed for ${filePath}\n` +
-        `  expected SHA-256: ${expected}\n` +
+        `  expected SHA-256: ${GRAMMAR_WASM_SHA256}\n` +
         `  actual SHA-256:   ${actual}\n` +
         `If you intentionally updated the grammar, bump the pin in ` +
         `grammar/grammar-source.mjs and the SHA in grammar/README.md together.`,
