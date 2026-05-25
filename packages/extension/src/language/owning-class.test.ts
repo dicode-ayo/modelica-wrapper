@@ -141,3 +141,44 @@ describe("resolveOwningClass — degenerate input", () => {
     expect(result?.qualifiedName).toBe("Foo");
   });
 });
+
+describe("resolveOwningClass — virtual source path (pathIsQualifiedName)", () => {
+  it("takes the dotted basename verbatim as the FQN", async () => {
+    // `modelica-source:/Modelica.Electrical.Resistor.mo` → fsPath is the dotted
+    // FQN; the basename IS the qualified name.
+    const result = await resolveOwningClass(
+      "/Modelica.Electrical.Resistor.mo",
+      { pathIsQualifiedName: true },
+    );
+    expect(result).toEqual({
+      qualifiedName: "Modelica.Electrical.Resistor",
+      fileName: "/Modelica.Electrical.Resistor.mo",
+    });
+  });
+
+  it("does not walk packages or call parseFile for a virtual path", async () => {
+    // A probe/client that would throw if touched — proves the short-circuit
+    // skips both the package walk and the parseFile confirm.
+    const probe: FileProbe = () => {
+      throw new Error("probe must not run for a virtual path");
+    };
+    const client: OwningClassClient = {
+      parseFile: vi.fn(() => {
+        throw new Error("parseFile must not run for a virtual path");
+      }),
+    };
+    const result = await resolveOwningClass("/A.B.C.mo", {
+      probe,
+      client,
+      pathIsQualifiedName: true,
+    });
+    expect(result?.qualifiedName).toBe("A.B.C");
+    expect(client.parseFile).not.toHaveBeenCalled();
+  });
+
+  it("returns undefined when the virtual basename is empty", async () => {
+    expect(
+      await resolveOwningClass("/.mo", { pathIsQualifiedName: true }),
+    ).toBeUndefined();
+  });
+});

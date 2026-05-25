@@ -87,6 +87,8 @@ export interface OwningClass {
  * @param options - injected dependencies. `client` (optional) supplies
  *   `parseFile` for authoritative leaf-name confirmation; `probe` (optional)
  *   answers package-directory existence (defaults to the real filesystem).
+ *   `pathIsQualifiedName` (optional) short-circuits both for a virtual source
+ *   path whose basename is already the dotted FQN — see below.
  * @returns the owning class, or `undefined` if no Modelica name can be derived
  *   (the path is empty or not a `.mo` file, or the walk yields no segments).
  */
@@ -95,6 +97,15 @@ export async function resolveOwningClass(
   options: {
     client?: OwningClassClient;
     probe?: FileProbe;
+    /**
+     * The path's basename is already the fully-qualified dotted name, e.g. the
+     * virtual `modelica-source:/A.B.C.mo` view of an OMC class. When set, skip
+     * the package-prefix walk and the `parseFile` confirm and use the basename
+     * (sans `.mo`) verbatim — there is no real file on disk to probe or parse,
+     * and `parseFile` on such a path could otherwise truncate the FQN to its
+     * last segment.
+     */
+    pathIsQualifiedName?: boolean;
   } = {},
 ): Promise<OwningClass | undefined> {
   const probe = options.probe ?? nodeFileProbe;
@@ -103,6 +114,14 @@ export async function resolveOwningClass(
   // Without this, a non-`.mo` path like `/work/Foo.txt` would slip through
   // `stripMoExtension` unchanged and produce a bogus dotted leaf (`Foo.txt`).
   if (path.extname(filePath).toLowerCase() !== ".mo") return undefined;
+
+  // Virtual source path (`modelica-source:/A.B.C.mo`): the basename IS the FQN.
+  // Take it verbatim — no package walk, no parseFile (the path is not a real
+  // file, so probing/parsing it is wasted and parseFile could truncate the FQN).
+  if (options.pathIsQualifiedName) {
+    const qualifiedName = stripMoExtension(path.basename(filePath));
+    return qualifiedName.length > 0 ? { qualifiedName, fileName: filePath } : undefined;
+  }
 
   const isPackageFile = path.basename(filePath) === PACKAGE_FILE;
   // For `B/package.mo` the owning *directory* (B) is itself a package member, so
