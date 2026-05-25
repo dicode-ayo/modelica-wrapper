@@ -12,6 +12,7 @@ src/**
 # Build / TS / test config
 tsconfig*.json
 esbuild.config.mjs
+scripts/**
 vitest.config.*
 .npmrc
 

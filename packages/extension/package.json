@@ -265,7 +265,7 @@
     "postinstall": "node scripts/fetch-grammar-wasm.mjs",
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
-    "package": "pnpm run build && vsce package --no-dependencies",
+    "package": "pnpm run build && node scripts/bundle-native.mjs && vsce package --no-dependencies",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.webview.json",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
