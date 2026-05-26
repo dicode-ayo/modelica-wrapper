@@ -118,13 +118,15 @@ async function provisionExtensionsDir(extensionsDir: string): Promise<void> {
   const link = join(extensionsDir, EXTENSION_ID);
   await symlink(target, link, "dir");
 
-  // The baseline (`main`) needs only `extension.js`. Feature PRs that
-  // contribute the tree-sitter grammar add `out/tree-sitter*.wasm` via the
-  // extension's own build; specs that depend on those artifacts are added by
-  // those PRs and assert their presence themselves.
+  // The foundation contributes the tree-sitter grammar via its esbuild copyWasm
+  // plugin (see `esbuild.config.mjs`), so the parse layer requires both WASM
+  // files next to `extension.js` at runtime. Preflight them here for a clear
+  // "rebuild" error if someone forgets `pnpm --filter modelica-wrapper build`.
   const required = [
     join(target, "package.json"),
     join(target, "out", "extension.js"),
+    join(target, "out", "tree-sitter.wasm"),
+    join(target, "out", "tree-sitter-modelica.wasm"),
   ];
   for (const file of required) {
     if (!existsSync(file)) {
