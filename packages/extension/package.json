@@ -238,7 +238,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.webview.json",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "test:unit": "OMC_INTEGRATION=0 vitest run --passWithNoTests"
+    "test:unit": "OMC_INTEGRATION=0 vitest run --passWithNoTests",
+    "test:e2e": "cd e2e && npm test"
   },
   "dependencies": {
     "@dicode/diagram-svg": "workspace:*",

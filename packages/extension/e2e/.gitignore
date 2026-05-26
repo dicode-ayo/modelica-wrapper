@@ -1,0 +1,14 @@
+# Locally installed Playwright tooling (devDep installed via `npm install` —
+# we deliberately keep the e2e harness out of the pnpm workspace so it can be
+# bootstrapped on demand without touching the main extension's deps).
+node_modules/
+
+# Playwright artefacts.
+test-results/
+playwright-report/
+playwright/.cache/
+
+# package-lock is fine to commit; keeping it in tree pins the Playwright
+# version exactly. Explicitly listed here so anyone reading this knows it's
+# intentional.
+!package-lock.json

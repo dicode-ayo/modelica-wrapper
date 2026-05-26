@@ -1,0 +1,16 @@
+{
+  "name": "modelica-wrapper-e2e",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Playwright + code-server end-to-end smoke test for the modelica-wrapper VSCode extension.",
+  "scripts": {
+    "test": "playwright test --config=playwright.config.ts",
+    "test:headed": "playwright test --config=playwright.config.ts --headed",
+    "test:omc": "E2E_OMC=1 playwright test --config=playwright.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  }
+}
