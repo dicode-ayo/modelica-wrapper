@@ -27,11 +27,13 @@ interface WorkerFixtures {
   codeServer: CodeServerHandle;
 }
 
-export const test = base.extend<Record<string, never>, WorkerFixtures>({
+// `{}` is the Playwright-idiomatic spelling for "no test-scoped fixtures";
+// using `Record<string, never>` collapses the worker fixtures via its index
+// signature, so the worker `codeServer` ends up typed `never` to callers.
+export const test = base.extend<{}, WorkerFixtures>({
   codeServer: [
     async ({}, use, workerInfo) => {
       const handle = await startCodeServer();
-      // eslint-disable-next-line no-console
       console.log(
         `[e2e] worker ${workerInfo.workerIndex} code-server up on ${handle.url} ` +
           `(pid=${handle.pid}, log=${handle.logFile})`,
@@ -40,7 +42,6 @@ export const test = base.extend<Record<string, never>, WorkerFixtures>({
         await use(handle);
       } finally {
         await handle.stop();
-        // eslint-disable-next-line no-console
         console.log(
           `[e2e] worker ${workerInfo.workerIndex} code-server (pid=${handle.pid}) stopped`,
         );

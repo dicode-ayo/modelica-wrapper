@@ -20,17 +20,32 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
-import { mkdtemp, rm, symlink, writeFile, mkdir } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
+import manifest from "../package.json";
+
 /** Where the built extension lives (the directory containing its package.json). */
 const EXTENSION_DIR = resolve(__dirname, "..");
 
-/** The identifier code-server expects: `<publisher>.<name>`. */
-const EXTENSION_ID = "drojdestvensky.modelica-wrapper";
+/**
+ * The identifier code-server expects when scanning `--extensions-dir`:
+ * `<publisher>.<name>`. Derived from the extension's own manifest so a rename
+ * or republisher change in `packages/extension/package.json` is picked up
+ * automatically — there's nothing to keep in sync by hand.
+ */
+const EXTENSION_ID = `${manifest.publisher}.${manifest.name}`;
 
 /** The Modelica fixture workspace that ships with the harness. */
 const FIXTURE_WORKSPACE = resolve(__dirname, "workspace");
@@ -97,7 +112,7 @@ async function waitForHealth(port: number, signal?: AbortSignal): Promise<void> 
 
 async function provisionExtensionsDir(extensionsDir: string): Promise<void> {
   // Symlink the built extension folder so code-server scans it on startup. The
-  // build artefacts on the source side must exist or the activation will be
+  // build artifacts on the source side must exist or the activation will be
   // baffling at the browser end — preflight them with a clear error here.
   const target = EXTENSION_DIR;
   const link = join(extensionsDir, EXTENSION_ID);
@@ -105,7 +120,7 @@ async function provisionExtensionsDir(extensionsDir: string): Promise<void> {
 
   // The baseline (`main`) needs only `extension.js`. Feature PRs that
   // contribute the tree-sitter grammar add `out/tree-sitter*.wasm` via the
-  // extension's own build; specs that depend on those artefacts are added by
+  // extension's own build; specs that depend on those artifacts are added by
   // those PRs and assert their presence themselves.
   const required = [
     join(target, "package.json"),
@@ -122,12 +137,10 @@ async function provisionExtensionsDir(extensionsDir: string): Promise<void> {
 
 async function provisionWorkspace(workspaceDir: string): Promise<void> {
   // Copy the fixture into the throwaway workspace so the test run never writes
-  // back to the checked-in tree.
-  await mkdir(workspaceDir, { recursive: true });
-  const fs = await import("node:fs/promises");
+  // back to the checked-in tree. `startCodeServer` already created the dir.
   const src = join(FIXTURE_WORKSPACE, "Demo.mo");
   const dst = join(workspaceDir, "Demo.mo");
-  const content = await fs.readFile(src, "utf8");
+  const content = await readFile(src, "utf8");
   await writeFile(dst, content, "utf8");
 }
 
@@ -152,7 +165,7 @@ export async function startCodeServer(): Promise<CodeServerHandle> {
   await provisionExtensionsDir(extensionsDir);
   await provisionWorkspace(workspaceDir);
 
-  const logStream = await (await import("node:fs/promises")).open(logFile, "w");
+  const logStream = await open(logFile, "w");
 
   // Pre-seed a User/settings.json that turns off the Welcome walkthrough and
   // related first-run noise. The Workspace Trust modal is suppressed via the
@@ -210,7 +223,6 @@ export async function startCodeServer(): Promise<CodeServerHandle> {
     // Best-effort: surface the exit reason. The teardown path also clears this
     // listener so a clean stop doesn't trip the warning.
     if (code !== 0 && code !== null) {
-      // eslint-disable-next-line no-console
       console.error(`[e2e] code-server exited unexpectedly (code=${code} signal=${signal})`);
     }
   });

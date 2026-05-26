@@ -24,27 +24,41 @@ export async function waitForWorkbench(page: Page): Promise<void> {
 }
 
 /**
- * Open a file in the workspace by name, via Quick Open (`Ctrl+P` → type → Enter).
+ * Open the quick-input widget with the given shortcut, type `query`, wait for
+ * the result list to populate, and press Enter. The wait/Enter sequence is
+ * robust under first-boot latency — Quick Open's input takes a tick to focus
+ * after the keybinding, and the result list takes a tick to populate after
+ * typing; without the explicit waits the Enter keystroke can hit a stale
+ * selection.
  *
- * Quick Open's input takes a tick to focus after the keybinding, and the result
- * list takes a tick to populate after typing — wait on both before pressing
- * Enter, otherwise the keystroke can hit a stale selection.
- *
- * Resolves once the editor's `.view-lines` becomes visible (a reliable signal
- * that the chosen file is now the active editor).
+ * Shared by {@link openFileViaQuickOpen} (Ctrl+P) and
+ * {@link runCommandPaletteCommand} (Ctrl+Shift+P).
  */
-export async function openFileViaQuickOpen(
+async function selectQuickInputItem(
   page: Page,
-  filename: string,
+  openShortcut: "Control+P" | "Control+Shift+P",
+  query: string,
 ): Promise<void> {
-  await page.keyboard.press("Control+P");
+  await page.keyboard.press(openShortcut);
   await page.locator(".quick-input-widget").waitFor({ state: "visible" });
-  await page.keyboard.type(filename);
+  await page.keyboard.type(query);
   await page
     .locator(".quick-input-widget .monaco-list-row")
     .first()
     .waitFor({ state: "visible", timeout: 10_000 });
   await page.keyboard.press("Enter");
+}
+
+/**
+ * Open a file in the workspace by name, via Quick Open (`Ctrl+P`). Resolves
+ * once the editor's `.view-lines` becomes visible — a reliable signal that the
+ * chosen file is now the active editor.
+ */
+export async function openFileViaQuickOpen(
+  page: Page,
+  filename: string,
+): Promise<void> {
+  await selectQuickInputItem(page, "Control+P", filename);
   await page.locator(".monaco-editor .view-lines").first().waitFor({
     state: "visible",
     timeout: 30_000,
@@ -53,21 +67,13 @@ export async function openFileViaQuickOpen(
 
 /**
  * Run a command from the Command Palette by its visible title (e.g.
- * `Outline: Focus on Outline View`). The wait/Enter sequence mirrors
- * {@link openFileViaQuickOpen} so it stays robust under first-boot latency.
+ * `Outline: Focus on Outline View`).
  */
 export async function runCommandPaletteCommand(
   page: Page,
   commandTitle: string,
 ): Promise<void> {
-  await page.keyboard.press("Control+Shift+P");
-  await page.locator(".quick-input-widget").waitFor({ state: "visible" });
-  await page.keyboard.type(commandTitle);
-  await page
-    .locator(".quick-input-widget .monaco-list-row")
-    .first()
-    .waitFor({ state: "visible", timeout: 10_000 });
-  await page.keyboard.press("Enter");
+  await selectQuickInputItem(page, "Control+Shift+P", commandTitle);
 }
 
 /**
