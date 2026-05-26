@@ -3,7 +3,7 @@
 # bootstrapped on demand without touching the main extension's deps).
 node_modules/
 
-# Playwright artefacts.
+# Playwright artifacts.
 test-results/
 playwright-report/
 playwright/.cache/

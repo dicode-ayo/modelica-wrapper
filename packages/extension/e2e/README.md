@@ -2,7 +2,7 @@
 
 A Playwright + code-server harness that drives the **built** modelica-wrapper
 VSCode extension in a real browser. This file lives on `main` so every feature
-PR can rebase onto it and add its own `*.spec.ts` for the behaviour it
+PR can rebase onto it and add its own `*.spec.ts` for the behavior it
 introduces, without re-rolling the harness.
 
 ## How to run
@@ -12,7 +12,7 @@ First-time setup from the repo root:
 ```bash
 pnpm install                                   # workspace deps
 pnpm --filter modelica-wrapper build           # produces out/extension.js
-cd packages/extension/e2e && npm install       # @playwright/test + Chromium
+cd packages/extension/e2e && npm ci            # @playwright/test + Chromium
 # one-time per machine: code-server on PATH (see Prerequisites)
 ```
 
@@ -24,7 +24,7 @@ pnpm --filter modelica-wrapper test:e2e
 cd packages/extension/e2e && npm test
 ```
 
-`npm install` inside `e2e/` alone is **not** sufficient — the harness checks
+`npm ci` inside `e2e/` alone is **not** sufficient — the harness checks
 for `out/extension.js` before booting (so the extension must be built first)
 and shells out to `code-server` (so it must be on `$PATH`).
 

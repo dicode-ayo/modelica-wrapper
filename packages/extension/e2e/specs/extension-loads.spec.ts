@@ -11,7 +11,7 @@
  *        both the views contribution and the extension is reachable on demand.
  *
  * Feature PRs (`feat/lang-*`) layer their own `*.spec.ts` files alongside this
- * one and assert their own behaviour (highlighting, outline, hover, completion,
+ * one and assert their own behavior (highlighting, outline, hover, completion,
  * …) on top of the same harness.
  */
 
