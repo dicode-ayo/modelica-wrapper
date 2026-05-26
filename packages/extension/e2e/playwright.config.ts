@@ -1,13 +1,16 @@
 /**
- * Playwright config for the code-server end-to-end smoke test.
+ * Playwright config for the code-server end-to-end harness.
  *
- * - Headless Chromium via the cached `~/.cache/ms-playwright` browser. We
- *   deliberately don't pin to system `google-chrome` to keep the run
- *   reproducible across machines.
- * - One global setup hook boots code-server; its returned teardown function
- *   stops the spawned PID surgically.
- * - One worker, no retries: the suite is tiny and the cost is the boot, not
- *   the assertions.
+ * Each Playwright worker gets its own code-server child via the worker-scoped
+ * `codeServer` fixture in `test-base.ts` — random port, isolated `--user-data-dir`
+ * and `--extensions-dir`. That makes `workers > 1` + `fullyParallel: true` safe:
+ * specs in different workers never share workbench state.
+ *
+ * Workers cap: `process.env.CI ? 2 : "50%"`. CI runners have 2–4 cores and other
+ * jobs are running concurrently, so 2 is the conservative pick. Locally we use
+ * half the CPUs (Playwright's recommended idiom), which scales with the dev's
+ * machine without flooding it. Each code-server is ~200 MB resident, so 4
+ * parallel workers fit comfortably in a 4 GB budget.
  */
 
 import { defineConfig, devices } from "@playwright/test";
@@ -15,19 +18,18 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./specs",
   // First boot of code-server compiles webview assets; the workbench is the
-  // bottleneck, not the assertions. A generous expect timeout absorbs that.
+  // bottleneck, not the assertions. Generous timeouts absorb that.
   timeout: 120_000,
   expect: { timeout: 30_000 },
-  fullyParallel: false,
-  workers: 1,
+  fullyParallel: true,
+  workers: process.env["CI"] ? 2 : "50%",
   retries: 0,
   reporter: [["list"]],
-  globalSetup: require.resolve("./global-setup.ts"),
   use: {
     headless: true,
-    // baseURL is filled per-test from process.env.E2E_CODE_SERVER_URL — we
-    // can't set it here because the URL depends on the random port the
-    // harness picks at setup time.
+    // `baseURL` is intentionally not set here — each spec reads its
+    // worker-local code-server URL from the `codeServer` fixture, because the
+    // URL depends on the random port each worker's harness picks.
     viewport: { width: 1280, height: 800 },
     ignoreHTTPSErrors: true,
     // Capture more on failure for post-mortem.

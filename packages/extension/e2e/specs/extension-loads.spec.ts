@@ -15,22 +15,18 @@
  * …) on top of the same harness.
  */
 
-import { test } from "@playwright/test";
-
-import {
-  expect,
-  waitForWorkbench,
-  workbenchUrl,
-} from "../helpers.js";
+import { expect, test } from "../test-base.js";
+import { waitForWorkbench } from "../helpers.js";
 
 test.describe("Extension loads (baseline, no language features)", () => {
   test("workbench mounts, Modelica activity-bar item appears, Libraries welcome shows", async ({
     page,
+    codeServer,
   }) => {
     test.setTimeout(120_000);
 
     // ----- A. Workbench mounts -----
-    await page.goto(workbenchUrl());
+    await page.goto(codeServer.url);
     await waitForWorkbench(page);
 
     // ----- B. Modelica activity-bar item is registered -----

@@ -7,28 +7,50 @@ introduces, without re-rolling the harness.
 
 ## How to run
 
-```bash
-# from the repo root
-cd packages/extension/e2e
-npm install        # one-off, installs @playwright/test as a devDep
-npm test           # the headless run
+First-time setup from the repo root:
 
-# convenience from the extension package:
-pnpm --filter modelica-wrapper test:e2e
+```bash
+pnpm install                                   # workspace deps
+pnpm --filter modelica-wrapper build           # produces out/extension.js
+cd packages/extension/e2e && npm install       # @playwright/test + Chromium
+# one-time per machine: code-server on PATH (see Prerequisites)
 ```
 
-That single command:
+Then, any time:
+
+```bash
+pnpm --filter modelica-wrapper test:e2e
+# or, equivalently:
+cd packages/extension/e2e && npm test
+```
+
+`npm install` inside `e2e/` alone is **not** sufficient — the harness checks
+for `out/extension.js` before booting (so the extension must be built first)
+and shells out to `code-server` (so it must be on `$PATH`).
+
+Per Playwright worker, the harness:
 
 1. picks a random free port on `127.0.0.1` (never collides with another
-   code-server),
-2. boots a fresh `code-server --auth none … --disable-workspace-trust` pointing
-   at a throwaway workspace seeded with `workspace/Demo.mo`,
+   code-server or with the IDE itself),
+2. boots a fresh `code-server --auth none … --disable-workspace-trust` against
+   a throwaway workspace seeded with `workspace/Demo.mo`,
 3. symlinks the extension folder into the temp `--extensions-dir` as
    `drojdestvensky.modelica-wrapper` so code-server picks it up at startup,
-4. drives Chromium (from the already-cached Playwright browser cache) against
+4. drives Chromium (from the cached Playwright browser cache) against
    `http://127.0.0.1:<port>/?folder=<workspace>`,
 5. tears the code-server child down by **its exact PID** at the end. No broad
    `pkill code-server` — this IDE may itself be a code-server window.
+
+## Parallelism
+
+`playwright.config.ts` sets `fullyParallel: true` and
+`workers: process.env.CI ? 2 : "50%"`. Each worker gets its OWN code-server via
+the `codeServer` worker-scoped fixture in `test-base.ts` — different port,
+isolated `--user-data-dir`, isolated `--extensions-dir`. Specs in different
+workers never share workbench state, so adding tests doesn't accumulate
+serialized boot cost: N workers run N specs in roughly the time of one. Specs
+opt into the fixture by importing `test` from `../test-base.js` instead of
+`@playwright/test`.
 
 ## What's in scope here vs. in feature PRs
 
@@ -66,13 +88,13 @@ Shared helpers (`helpers.ts`) provide `waitForWorkbench`, `workbenchUrl`,
 ```text
 packages/extension/e2e/
 ├── code-server-harness.ts   # spawn/teardown (kills only its own PID)
-├── global-setup.ts          # Playwright globalSetup hook
 ├── helpers.ts               # shared selectors / workbench helpers
 ├── package.json             # @playwright/test devDep + `npm test` script
-├── playwright.config.ts     # Chromium project, generous timeouts
+├── playwright.config.ts     # workers + Chromium project + generous timeouts
 ├── README.md                # this file
 ├── specs/
 │   └── extension-loads.spec.ts   # baseline (this PR)
+├── test-base.ts             # worker-scoped `codeServer` fixture
 ├── tsconfig.json
 └── workspace/
     └── Demo.mo              # fixture for feature-PR specs to use

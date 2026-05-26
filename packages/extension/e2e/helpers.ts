@@ -12,15 +12,6 @@ import { expect, type Page } from "@playwright/test";
 /** Generous first-boot timeout: code-server compiles workbench assets on demand. */
 export const WORKBENCH_TIMEOUT_MS = 60_000;
 
-/** Resolve the code-server URL the global-setup hook published. */
-export function workbenchUrl(): string {
-  const url = process.env["E2E_CODE_SERVER_URL"];
-  if (!url) {
-    throw new Error("E2E_CODE_SERVER_URL is not set — global setup didn't run");
-  }
-  return url;
-}
-
 /**
  * Wait for the Monaco workbench shell to attach. Use this once per test before
  * any other workbench interaction.
