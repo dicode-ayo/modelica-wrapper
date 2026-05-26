@@ -141,7 +141,7 @@ jobs:
 
       - name: Install Playwright Chromium + system deps
         working-directory: packages/extension/e2e
-        run: npx --no-install playwright install --with-deps chromium
+        run: npm run install-browsers
 
       - name: Run e2e
         run: pnpm --filter modelica-wrapper test:e2e
