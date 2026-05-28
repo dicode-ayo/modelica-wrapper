@@ -24,6 +24,7 @@ import { sourceUriFor } from "../source-provider.js";
 
 import { targetAt } from "./cursor.js";
 import { resolveDocumentOwner } from "./document-scope.js";
+import type { OwningClassClient } from "./owning-class.js";
 import type { ParseCache } from "./parse.js";
 import { resolve, type ResolveClient } from "./resolve.js";
 import type { OmcSync } from "./sync.js";
