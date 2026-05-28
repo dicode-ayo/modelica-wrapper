@@ -23,9 +23,7 @@ import { openFileViaQuickOpen, waitForWorkbench } from "../helpers.js";
 
 const omcEnabled = process.env["E2E_OMC"] === "1";
 
-test.describe(
-  omcEnabled ? "Definition + hover (OMC-backed)" : "Definition + hover (skipped — set E2E_OMC=1)",
-  () => {
+test.describe("Definition + hover (OMC-backed)", () => {
     test.skip(!omcEnabled, "OMC-dependent — set E2E_OMC=1 to enable");
 
     test("hover on `R` in the equation surfaces its doc string", async ({
@@ -83,5 +81,4 @@ test.describe(
         .first();
       await expect(otherMoTab).toBeVisible({ timeout: 60_000 });
     });
-  },
-);
+});

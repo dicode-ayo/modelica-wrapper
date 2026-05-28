@@ -34,7 +34,7 @@ import { resolveDocumentOwner } from "./document-scope.js";
 import type { ParseCache } from "./parse.js";
 import type { OwningClassClient } from "./owning-class.js";
 import { resolve, type ResolveClient } from "./resolve.js";
-import { OmcSync } from "./sync.js";
+import type { OmcSync } from "./sync.js";
 
 /**
  * OMC surface the hover renderer needs: the resolution calls (via
@@ -113,9 +113,14 @@ export async function computeHover(
  * fragments survive verbatim.
  */
 export function escapeMarkdown(text: string): string {
+  // Encode the three HTML-ish characters that the markdown renderer would
+  // otherwise interpret (`&` first so the subsequent escapes don't get
+  // double-encoded), then backslash-escape CommonMark ASCII punctuation.
   return text
-    .replace(/[\\`*_{}[\]()#+\-.!|~>]/g, "\\$&")
-    .replace(/</g, "&lt;");
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/[\\`*_{}[\]()#+\-.!|~]/g, "\\$&");
 }
 
 /**

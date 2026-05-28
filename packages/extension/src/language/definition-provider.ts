@@ -38,7 +38,7 @@ import type { ParseCache } from "./parse.js";
 import type { ZeroBasedPosition } from "./position.js";
 import type { OwningClassClient } from "./owning-class.js";
 import { resolve, type ResolveClient } from "./resolve.js";
-import { OmcSync } from "./sync.js";
+import type { OmcSync } from "./sync.js";
 
 /** A resolved definition site, as plain data (no `vscode` types). */
 export interface DefinitionSite {

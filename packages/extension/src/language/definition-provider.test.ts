@@ -48,7 +48,7 @@ function offsetOf(src: string, needle: string, occurrence = 0): number {
   return idx;
 }
 
-/** A ResolveClient with overridable behaviour (mirrors resolve.test.ts). */
+/** A ResolveClient with overridable behavior (mirrors resolve.test.ts). */
 function makeClient(overrides: Partial<ResolveClient> = {}): ResolveClient {
   return {
     qualifyPath: vi.fn(({ path }) => Promise.resolve({ qualifiedPath: path })),

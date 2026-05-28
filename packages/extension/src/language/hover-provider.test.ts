@@ -51,7 +51,7 @@ function offsetOf(src: string, needle: string, occurrence = 0): number {
   return idx;
 }
 
-/** A HoverClient with overridable behaviour (resolution + metadata wrappers). */
+/** A HoverClient with overridable behavior (resolution + metadata wrappers). */
 function makeClient(overrides: Partial<HoverClient> = {}): HoverClient {
   return {
     qualifyPath: vi.fn(({ path }) => Promise.resolve({ qualifiedPath: path })),
@@ -95,22 +95,27 @@ describe("renderHover", () => {
     const md = renderHover("Pkg.Foo", "model", comment);
     const body = md.split("```\n\n")[1];
 
-    // Each special is neutralised: underscores and backtick are backslash-
-    // escaped, '<' is HTML-encoded — none appears unescaped.
+    // Each special is neutralized: underscores and backtick are backslash-
+    // escaped, `<` and `>` are HTML-encoded — none appears unescaped.
     expect(body).not.toMatch(/(?<!\\)_/);
     expect(body).not.toMatch(/(?<!\\)`/);
     expect(body).not.toContain("<");
+    expect(body).not.toContain(">");
 
     // The literal text is preserved (escaped/encoded), not dropped.
-    expect(body).toBe("uses \\_x\\_ as \\`gain &lt;p\\>");
+    expect(body).toBe("uses \\_x\\_ as \\`gain &lt;p&gt;");
   });
 });
 
 describe("escapeMarkdown", () => {
-  it("backslash-escapes CommonMark punctuation and encodes '<'", () => {
+  it("backslash-escapes CommonMark punctuation and encodes HTML-ish characters", () => {
     expect(escapeMarkdown("a_b*c`d")).toBe("a\\_b\\*c\\`d");
-    expect(escapeMarkdown("x < y")).toBe("x &lt; y");
+    expect(escapeMarkdown("x < y > z")).toBe("x &lt; y &gt; z");
     expect(escapeMarkdown("[link](url)")).toBe("\\[link\\]\\(url\\)");
+    // & must be encoded before the bare-escape pass so already-encoded
+    // entities in upstream doc strings (e.g. `&lt;`) don't double-encode.
+    expect(escapeMarkdown("a & b")).toBe("a &amp; b");
+    expect(escapeMarkdown("&lt;tag>")).toBe("&amp;lt;tag&gt;");
   });
 
   it("leaves plain prose untouched", () => {
