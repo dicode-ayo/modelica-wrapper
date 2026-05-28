@@ -260,8 +260,9 @@ function nameRole(dotted: Node): CursorContextKind | null {
       return "component-type";
     case "element_modification":
       return "modifier-name";
-    case "import_clause":
-      return "type-reference";
+    // `import_clause` and any unrecognized slot fall through to `null`, which
+    // `classify` resolves to `"type-reference"` — the safe fallback for a
+    // dotted `name` whose role we don't have a more specific kind for.
     default:
       return null;
   }

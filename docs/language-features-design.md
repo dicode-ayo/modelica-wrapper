@@ -23,7 +23,7 @@ this repo: [omc-client](../packages/omc-client/) wraps almost the entire OMC
 scripting API, including the two calls that matter most:
 
 - [`qualifyPath`](../packages/omc-client/src/api/contents/qualifyPath.ts) —
-  resolves a name *in the context of a class* (honouring `import` and `extends`)
+  resolves a name *in the context of a class* (honoring `import` and `extends`)
   to its fully-qualified form. This is Modelica name resolution, done by the
   compiler.
 - [`getClassInformation`](../packages/omc-client/src/api/browsing/getClassInformation.ts)
@@ -43,7 +43,7 @@ Modelica scope engine).
   [Future work](#future-work--find-all-references).
 - **Rename / refactor.** Depends on references. Later.
 - ~~**Syntax highlighting.**~~ **Now in scope.** VSCode highlights via TextMate,
-  not tree-sitter. Rather than rely on a separate Modelica extension for colour,
+  not tree-sitter. Rather than rely on a separate Modelica extension for color,
   we vendor the MIT-licensed `source.modelica` TextMate grammar from
   [`SimplyDanny/modelica-language-vscode`](https://github.com/SimplyDanny/modelica-language-vscode)
   into `packages/extension/syntaxes/` and contribute it under

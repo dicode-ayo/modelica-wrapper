@@ -70,7 +70,7 @@ describe("nodeAt / identifierAt", () => {
     const src = "model M\n  Resistor r;\nend M;";
     const tree = parse(src);
     // The blank line indentation before `Resistor`.
-    expect(identifierAt(tree, offsetOf(src, "  Resistor") )).toBeNull();
+    expect(identifierAt(tree, offsetOf(src, "  Resistor"))).toBeNull();
   });
 });
 
@@ -149,7 +149,7 @@ describe("classify via targetAt", () => {
 
   it("returns null on keyword / non-identifier positions", () => {
     const src = "model M\n  Resistor r;\nend M;";
-    // The `model` keyword tokenises as a keyword, not an IDENT, at any offset
+    // The `model` keyword tokenizes as a keyword, not an IDENT, at any offset
     // inside it.
     expect(targetAt(parse(src), offsetOf(src, "model"))).toBeNull();
     expect(targetAt(parse(src), offsetOf(src, "model") + 2)).toBeNull();

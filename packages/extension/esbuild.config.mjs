@@ -176,7 +176,7 @@ const extensionConfig = {
   format: "cjs",
   sourcemap: true,
   logLevel: watch ? "warning" : "info",
-  plugins: watch ? [watchMarkers, copyWasm] : [copyWasm],
+  plugins: [copyWasm, ...(watch ? [watchMarkers] : [])],
 };
 
 /** @type {import('esbuild').BuildOptions} */

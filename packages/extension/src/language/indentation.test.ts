@@ -30,9 +30,35 @@ interface LanguageConfiguration {
   };
 }
 
-const config = JSON.parse(
-  readFileSync(configPath, "utf8"),
-) as LanguageConfiguration;
+/**
+ * Narrow `unknown` to {@link LanguageConfiguration} so the regression net
+ * catches structural drift too — not just regex contents. Without this,
+ * removing `indentationRules` from `language-configuration.json` produces an
+ * opaque "cannot read property … of undefined" rather than a clear shape error.
+ */
+function isLanguageConfiguration(
+  value: unknown,
+): value is LanguageConfiguration {
+  if (typeof value !== "object" || value === null) return false;
+  const rules = (value as { indentationRules?: unknown }).indentationRules;
+  if (typeof rules !== "object" || rules === null) return false;
+  const { increaseIndentPattern, decreaseIndentPattern } = rules as {
+    increaseIndentPattern?: unknown;
+    decreaseIndentPattern?: unknown;
+  };
+  return (
+    typeof increaseIndentPattern === "string" &&
+    typeof decreaseIndentPattern === "string"
+  );
+}
+
+const parsed: unknown = JSON.parse(readFileSync(configPath, "utf8"));
+if (!isLanguageConfiguration(parsed)) {
+  throw new Error(
+    `language-configuration.json no longer has the expected indentationRules shape`,
+  );
+}
+const config = parsed;
 
 const increaseIndent = new RegExp(
   config.indentationRules.increaseIndentPattern,

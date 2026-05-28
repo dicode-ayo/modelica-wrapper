@@ -19,6 +19,8 @@
  * file only owns the parser lifecycle and the cache.
  */
 
+import * as path from "node:path";
+
 import * as vscode from "vscode";
 
 import { Language, Parser, type Edit, type Point, type Tree } from "web-tree-sitter";
@@ -58,7 +60,6 @@ let languagePromise: Promise<Language> | undefined;
 export async function ensureLanguage(wasmDir: string): Promise<Language> {
   if (languagePromise) return languagePromise;
   languagePromise = (async () => {
-    const path = await import("node:path");
     const runtimeWasm = path.join(wasmDir, RUNTIME_WASM_FILENAME);
     const grammarWasm = path.join(wasmDir, GRAMMAR_WASM_FILENAME);
     await Parser.init({
@@ -160,7 +161,10 @@ export class ParseCache implements vscode.Disposable {
     // VSCode's `change` offsets/columns and tree-sitter's string-input space are
     // both UTF-16 code units (see `position.ts`), so they feed straight through
     // — no transcoding. VSCode delivers a multi-edit batch sorted by range
-    // descending, so applying the edits in the given order keeps each later
+    // descending — load-bearing assumption documented in the VSCode API:
+    //   https://code.visualstudio.com/api/references/vscode-api#TextDocumentContentChangeEvent
+    // ("Order matters: the changes are sorted to be applied in document
+    // order".) Applying them in the given order keeps each later
     // (lower-offset) edit's coordinates valid against the running tree.
     for (const change of event.contentChanges) {
       cached.tree.edit(toTreeEdit(change));
