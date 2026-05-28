@@ -18,7 +18,7 @@ import { Language, Parser, type Tree } from "web-tree-sitter";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
-  CompletionItemKind,
+  CompletionCandidateKind,
   computeCompletions,
   MAX_COMPLETIONS,
   MIN_FUZZY_PREFIX,
@@ -110,7 +110,7 @@ describe("computeCompletions — type / extends / component-type position", () =
     const labels = out.map((c) => c.label);
     expect(labels).toContain("Ground");
     expect(labels).toContain("Modelica.Electrical.Resistor");
-    expect(out.every((c) => c.kind === CompletionItemKind.Class)).toBe(true);
+    expect(out.every((c) => c.kind === CompletionCandidateKind.Class)).toBe(true);
   });
 
   it("routes an extends position to the class-name sources", async () => {
@@ -249,7 +249,7 @@ describe("computeCompletions — member access after `.`", () => {
     expect(labels).toEqual(["v", "i"]);
     expect(out[0]).toEqual({
       label: "v",
-      kind: CompletionItemKind.Field,
+      kind: CompletionCandidateKind.Field,
       detail: "Modelica.SIunits.Voltage",
     });
   });
@@ -380,7 +380,7 @@ describe("computeCompletions — modifier name", () => {
     expect(client.getComponents).not.toHaveBeenCalled();
 
     expect(out.map((c) => c.label)).toEqual(["R", "T_ref", "alpha"]);
-    expect(out.every((c) => c.kind === CompletionItemKind.Property)).toBe(true);
+    expect(out.every((c) => c.kind === CompletionCandidateKind.Property)).toBe(true);
   });
 
   it("reads the modified type from an extends clause", async () => {

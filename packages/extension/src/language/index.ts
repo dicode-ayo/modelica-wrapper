@@ -70,7 +70,7 @@ export {
   ModelicaCompletionProvider,
   computeCompletions,
   toVscodeCompletionKind,
-  CompletionItemKind,
+  CompletionCandidateKind,
   COMPLETION_TRIGGER_CHARACTER,
   MAX_COMPLETIONS,
   type CompletionCandidate,

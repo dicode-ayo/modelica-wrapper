@@ -81,6 +81,7 @@ export interface CursorTarget {
 const NAME_NODE = "name";
 const CREF_NODE = "component_reference";
 const IDENT_NODE = "IDENT";
+const TYPE_SPECIFIER_NODE = "type_specifier";
 
 /**
  * The named node at `offset` (a **UTF-16 code-unit offset** — see the module
@@ -217,7 +218,7 @@ export function modifiedTypeName(tree: Tree, offset: number): string | null {
 function firstNameChild(node: Node): Node | null {
   for (let i = 0; i < node.childCount; i++) {
     const child = node.child(i);
-    if (child && (child.type === "type_specifier" || child.type === NAME_NODE)) {
+    if (child && (child.type === TYPE_SPECIFIER_NODE || child.type === NAME_NODE)) {
       return child;
     }
   }
@@ -336,7 +337,7 @@ function isMemberSegment(ident: Node, dotted: Node): boolean {
 function nameRole(dotted: Node): CursorContextKind | null {
   // The `name` may be wrapped in a `type_specifier`; climb past it.
   let n: Node | null = dotted.parent;
-  if (n?.type === "type_specifier") n = n.parent;
+  if (n?.type === TYPE_SPECIFIER_NODE) n = n.parent;
   switch (n?.type) {
     case "extends_clause":
       return "extends";
@@ -356,10 +357,10 @@ function nameRole(dotted: Node): CursorContextKind | null {
 function bareRole(ident: Node): CursorContextKind {
   const parent = ident.parent;
   switch (parent?.type) {
-    case "type_specifier":
+    case TYPE_SPECIFIER_NODE:
       // A single-segment type name (e.g. `Resistor`) — refine via grandparent.
       return nameRole(parent) ?? "type-reference";
-    case "component_reference":
+    case CREF_NODE:
       return "component-reference";
     case "element_modification":
       return "modifier-name";

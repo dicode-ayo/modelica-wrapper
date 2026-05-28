@@ -40,17 +40,20 @@ test.describe(
       await waitForWorkbench(page);
       await openFileViaQuickOpen(page, "Demo.mo");
 
-      // Click into the editor — the second `R` in `v = R * i;` — then move to
-      // end-of-token and type `.` to trigger member-access completion.
+      // Click on the second `R` in `v = R * i;`, then trim back the tail of
+      // the line (` * i;`) so we type the `.` immediately after the `R` token
+      // — exercises the bare-dot member-access trigger on a known identifier
+      // without leaving the file syntactically broken.
       const rInEquation = page
         .locator(".monaco-editor .view-lines span[class*='mtk']")
         .filter({ hasText: /^R$/ })
         .nth(1);
       await rInEquation.click();
       await page.keyboard.press("End");
-      // Backspace twice to drop ` *` so we don't leave the file syntactically
-      // broken when we type the dot. Then type the trigger.
-      await page.keyboard.press("ArrowRight"); // past R
+      // ` * i;` is five characters: drop them so the caret sits just past `R`.
+      for (let i = 0; i < 5; i++) {
+        await page.keyboard.press("Backspace");
+      }
       await page.keyboard.type(".");
 
       // The completion widget renders as `.monaco-list` under

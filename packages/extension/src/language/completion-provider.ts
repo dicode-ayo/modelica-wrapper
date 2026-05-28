@@ -31,7 +31,7 @@
  * `completion-provider.test.ts`). The `vscode.CompletionItemProvider` wrapper
  * ({@link ModelicaCompletionProvider}) is a thin shell that parses, derives the
  * owning class, ensures the file is loaded, calls `computeCompletions`, maps the
- * local {@link CompletionItemKind} to `vscode.CompletionItemKind`, and never
+ * local {@link CompletionCandidateKind} to `vscode.CompletionItemKind`, and never
  * throws out (honours the `CancellationToken`).
  *
  * Only typed `@dicode/omc-client` wrappers are used — never raw `client.call`.
@@ -67,7 +67,6 @@ import {
 } from "./cursor.js";
 import { resolveDocumentOwner } from "./document-scope.js";
 import type { ParseCache } from "./parse.js";
-import type { OwningClassClient } from "./owning-class.js";
 import {
   qualifyTypeReference,
   walkCrefType,
@@ -84,7 +83,7 @@ export const COMPLETION_TRIGGER_CHARACTER = ".";
  * is truncated to this many items. (VSCode itself filters by the typed prefix,
  * so this is a cost cap, not the user-visible filter.)
  */
-export const MAX_COMPLETIONS = 200;
+export const MAX_COMPLETIONS = 50;
 
 /**
  * Minimum typed-prefix length before the global fuzzy `searchClassNames` fires.
@@ -105,7 +104,7 @@ export const MIN_FUZZY_PREFIX = 2;
  * core has no `vscode` dependency. {@link toVscodeCompletionKind} maps these to
  * the editor enum in the thin provider.
  */
-export enum CompletionItemKind {
+export enum CompletionCandidateKind {
   /** A class/type name (model, block, record, …). */
   Class = "class",
   /** A component / member instance of a class. */
@@ -119,7 +118,7 @@ export interface CompletionCandidate {
   /** The text shown in the list (may be a fully-qualified dotted name). */
   readonly label: string;
   /** What the candidate is, driving the icon shown. */
-  readonly kind: CompletionItemKind;
+  readonly kind: CompletionCandidateKind;
   /** Optional secondary text (e.g. the member's type). */
   readonly detail?: string;
   /**
@@ -181,23 +180,18 @@ export async function computeCompletions(
 ): Promise<CompletionCandidate[]> {
   const target = targetAt(tree, offset);
 
-  // Bare-dot trigger (`r.|`, `a.b.|`): nothing is typed after the `.` yet, so
-  // there is no identifier to land on and `targetAt` is null. Recover the head
-  // path from the token left of the dot and complete its members with an empty
-  // prefix.
-  if (!target) {
-    const head = headBeforeDot(tree, offset);
-    if (head) return cap(await memberCandidates(owningClass, head, client));
-    return [];
-  }
+  // Member-access head: either the segment-before-the-cursor in an explicit
+  // `member-access` target, or — when `targetAt` is null — the token left of a
+  // bare `.` trigger (`r.|`, `a.b.|`) recovered by `headBeforeDot`.
+  const head =
+    target?.context === "member-access"
+      ? target.pathToCursor.slice(0, -1)
+      : !target
+        ? headBeforeDot(tree, offset)
+        : null;
+  if (head) return cap(await memberCandidates(owningClass, head, client));
 
-  if (target.context === "member-access") {
-    // pathToCursor is e.g. ["r", "v"]: the head whose members we offer is every
-    // segment BEFORE the one under the cursor; the last segment is the prefix
-    // the user is typing (VSCode filters by it, so we don't pre-filter).
-    const head = target.pathToCursor.slice(0, -1);
-    return cap(await memberCandidates(owningClass, head, client));
-  }
+  if (!target) return [];
 
   if (TYPE_CONTEXTS.has(target.context)) {
     return cap(await classNameCandidates(owningClass, target, client));
@@ -236,7 +230,7 @@ async function classNameCandidates(
       typeName: owningClass,
     });
     for (const name of classNames) {
-      out.push({ label: name, kind: CompletionItemKind.Class });
+      out.push({ label: name, kind: CompletionCandidateKind.Class });
     }
   } catch (err) {
     log.warn("language", "completion getClassNames failed", err);
@@ -263,7 +257,7 @@ async function classNameCandidates(
         const lastSegment = name.slice(name.lastIndexOf(".") + 1);
         out.push({
           label: name,
-          kind: CompletionItemKind.Class,
+          kind: CompletionCandidateKind.Class,
           filterText: lastSegment,
           insertText: lastSegment,
         });
@@ -313,21 +307,38 @@ async function memberCandidates(
 }
 
 /** Components declared on `typeName`, as Field candidates with their type. */
+/**
+ * Run an OMC call that may throw, log + swallow on failure, and return a
+ * fallback. Used by the candidate-source helpers below so each throwing call
+ * site reads as one line and the "swallow + log + fallback" pattern lives in
+ * one place.
+ */
+async function tryCall<T>(
+  label: string,
+  call: () => Promise<T>,
+  fallback: T,
+): Promise<T> {
+  try {
+    return await call();
+  } catch (err) {
+    log.warn("language", `completion ${label} failed`, err);
+    return fallback;
+  }
+}
+
 async function memberComponents(
   typeName: string,
   client: CompletionClient,
 ): Promise<CompletionCandidate[]> {
-  let components;
-  try {
-    ({ components } = await client.getComponents({ typeName }));
-  } catch (err) {
-    log.warn("language", "completion getComponents failed", err);
-    return [];
-  }
+  const { components } = await tryCall(
+    "getComponents",
+    () => client.getComponents({ typeName }),
+    { components: [] },
+  );
   return components.map((c) => {
     const candidate: CompletionCandidate = {
       label: c.name,
-      kind: CompletionItemKind.Field,
+      kind: CompletionCandidateKind.Field,
     };
     // Only attach `detail` when there's a type to show; `exactOptionalPropertyTypes`
     // forbids assigning `undefined` to the optional field.
@@ -346,27 +357,22 @@ async function packageClassCandidates(
   qualifiedName: string,
   client: CompletionClient,
 ): Promise<CompletionCandidate[]> {
-  let isPkg = false;
-  try {
-    ({ b: isPkg } = await client.isPackage({ typeName: qualifiedName }));
-  } catch (err) {
-    log.warn("language", "completion isPackage failed", err);
-    return [];
-  }
+  const { b: isPkg } = await tryCall(
+    "isPackage",
+    () => client.isPackage({ typeName: qualifiedName }),
+    { b: false },
+  );
   if (!isPkg) return [];
 
-  try {
-    const { classNames } = await client.getClassNames({
-      typeName: qualifiedName,
-    });
-    return classNames.map((name) => ({
-      label: name,
-      kind: CompletionItemKind.Class,
-    }));
-  } catch (err) {
-    log.warn("language", "completion package getClassNames failed", err);
-    return [];
-  }
+  const { classNames } = await tryCall(
+    "package getClassNames",
+    () => client.getClassNames({ typeName: qualifiedName }),
+    { classNames: [] },
+  );
+  return classNames.map((name) => ({
+    label: name,
+    kind: CompletionCandidateKind.Class,
+  }));
 }
 
 /**
@@ -387,18 +393,14 @@ async function modifierCandidates(
   const qualified =
     (await qualifyTypeReference(owningClass, [typeName], client)) ?? typeName;
 
-  let parameters;
-  try {
-    ({ parameters } = await client.getParameterNames({
-      typeName: qualified,
-    }));
-  } catch (err) {
-    log.warn("language", "completion getParameterNames failed", err);
-    return [];
-  }
+  const { parameters } = await tryCall(
+    "getParameterNames",
+    () => client.getParameterNames({ typeName: qualified }),
+    { parameters: [] },
+  );
   return parameters.map((name) => ({
     label: name,
-    kind: CompletionItemKind.Property,
+    kind: CompletionCandidateKind.Property,
   }));
 }
 
@@ -420,14 +422,14 @@ function cap(candidates: CompletionCandidate[]): CompletionCandidate[] {
 
 /** Map the local kind enum to VSCode's. Lives in the thin (impure) layer. */
 export function toVscodeCompletionKind(
-  kind: CompletionItemKind,
+  kind: CompletionCandidateKind,
 ): vscode.CompletionItemKind {
   switch (kind) {
-    case CompletionItemKind.Class:
+    case CompletionCandidateKind.Class:
       return vscode.CompletionItemKind.Class;
-    case CompletionItemKind.Field:
+    case CompletionCandidateKind.Field:
       return vscode.CompletionItemKind.Field;
-    case CompletionItemKind.Property:
+    case CompletionCandidateKind.Property:
       return vscode.CompletionItemKind.Property;
   }
 }
@@ -459,11 +461,7 @@ export class ModelicaCompletionProvider
       // `modelica-source:` class is already loaded — see `document-scope.ts`).
       // Skipping the load matters most here: completion fires while typing, so a
       // failing per-keystroke loadFile of a virtual path would be the noisiest.
-      const owning = await resolveDocumentOwner(
-        document,
-        client as OwningClassClient,
-        this.sync,
-      );
+      const owning = await resolveDocumentOwner(document, client, this.sync);
       if (!owning) return undefined;
 
       // The work above (ensureClient + parseFile/loadFile for real files) is
@@ -476,7 +474,7 @@ export class ModelicaCompletionProvider
         tree,
         document.offsetAt(position),
         owning.qualifiedName,
-        client as CompletionClient,
+        client,
       );
       if (token.isCancellationRequested) return undefined;
       if (candidates.length === 0) return undefined;
