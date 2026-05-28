@@ -306,7 +306,6 @@ async function memberCandidates(
   return [];
 }
 
-/** Components declared on `typeName`, as Field candidates with their type. */
 /**
  * Run an OMC call that may throw, log + swallow on failure, and return a
  * fallback. Used by the candidate-source helpers below so each throwing call
@@ -326,6 +325,7 @@ async function tryCall<T>(
   }
 }
 
+/** Components declared on `typeName`, as Field candidates with their type. */
 async function memberComponents(
   typeName: string,
   client: CompletionClient,
