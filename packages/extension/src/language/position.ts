@@ -100,7 +100,12 @@ export function omcRangeToVscodeRange(span: {
   const start = omcToVscodePosition(span.lineNumberStart, span.columnNumberStart);
   const end = omcToVscodePosition(span.lineNumberEnd, span.columnNumberEnd);
   // OMC end column is inclusive; VSCode range end is exclusive — step past it.
-  return { start, end: { line: end.line, character: end.character + 1 } };
+  // Edge case: when OMC reports the synthetic/missing-end-column case
+  // (`columnNumberEnd === 0`, which `omcToVscodePosition` clamps to 0), don't
+  // step past it — the clamped 0 already represents "no usable end column", so
+  // collapse to a zero-character range there.
+  const endCharacter = span.columnNumberEnd > 0 ? end.character + 1 : 0;
+  return { start, end: { line: end.line, character: endCharacter } };
 }
 
 /**

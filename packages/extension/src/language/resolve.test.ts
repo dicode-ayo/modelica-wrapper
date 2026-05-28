@@ -14,10 +14,9 @@ function target(
   context: CursorContextKind,
   pathToCursor: string[],
 ): CursorTarget {
-  const path = pathToCursor;
   return {
     identifier: pathToCursor[pathToCursor.length - 1] ?? "",
-    path,
+    path: pathToCursor,
     pathToCursor,
     context,
     startIndex: 0,

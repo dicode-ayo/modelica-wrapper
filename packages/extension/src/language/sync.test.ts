@@ -99,3 +99,45 @@ describe("OmcSync — failure handling", () => {
     expect(sync.isLoaded("/a/Foo.mo")).toBe(true);
   });
 });
+
+describe("OmcSync — generation guard against save-during-load races", () => {
+  it("discards a load whose generation snapshot was invalidated by markSaved", async () => {
+    // A `loadFile` that resolves only when we tell it to, so we can interleave a
+    // `markSaved` in the middle of the in-flight load.
+    let resolveLoad: (value: { success: boolean }) => void = () => {};
+    const loadFile = vi.fn(
+      () =>
+        new Promise<{ success: boolean }>((res) => {
+          resolveLoad = res;
+        }),
+    );
+    const sync = new OmcSync({ loadFile });
+
+    const inFlight = sync.ensureLoaded("/a/Foo.mo");
+    // Save fires while the first-touch load is still pending → generation bumps.
+    sync.markSaved("/a/Foo.mo");
+    // The load now completes with success=true against pre-save text.
+    resolveLoad({ success: true });
+    expect(await inFlight).toBe(false);
+    // Critical: the file must NOT be considered loaded, so the next touch
+    // re-issues a fresh `loadFile`.
+    expect(sync.isLoaded("/a/Foo.mo")).toBe(false);
+  });
+
+  it("invalidate() also bumps the generation (same shape as markSaved)", async () => {
+    let resolveLoad: (value: { success: boolean }) => void = () => {};
+    const loadFile = vi.fn(
+      () =>
+        new Promise<{ success: boolean }>((res) => {
+          resolveLoad = res;
+        }),
+    );
+    const sync = new OmcSync({ loadFile });
+
+    const inFlight = sync.ensureLoaded("/a/Foo.mo");
+    sync.invalidate("/a/Foo.mo");
+    resolveLoad({ success: true });
+    expect(await inFlight).toBe(false);
+    expect(sync.isLoaded("/a/Foo.mo")).toBe(false);
+  });
+});

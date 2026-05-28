@@ -156,16 +156,20 @@ async function resolveMemberCref(
   const segments = target.pathToCursor;
   if (segments.length < 2) return undefined;
 
-  // Walk every segment except the last, each against the previous type, so the
+  // `segments.length >= 2` guarantees both `chain` is non-empty and `memberName`
+  // exists, so the destructure tail is safe without non-null assertions.
+  const memberName = segments[segments.length - 1] as string;
+  const chain = segments.slice(0, -1);
+
+  // Walk every chain segment against the previous segment's type, so the
   // container type for the member is the type of the second-to-last segment.
   let containerType = owningClass;
-  for (let i = 0; i < segments.length - 1; i++) {
-    const next = await resolveComponentType(containerType, segments[i]!, client);
+  for (const segment of chain) {
+    const next = await resolveComponentType(containerType, segment, client);
     if (!next) return undefined;
     containerType = next;
   }
 
-  const memberName = segments[segments.length - 1]!;
   const memberType = await resolveComponentType(
     containerType,
     memberName,

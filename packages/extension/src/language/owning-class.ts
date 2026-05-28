@@ -204,10 +204,12 @@ async function confirmLeaf(
     return candidate;
   }
   if (classNames.length === 1) {
+    const [only] = classNames;
     // parseFile may return a qualified name for a within-clause file; take the
     // last dotted segment as the leaf (the prefix is already supplied by the
-    // package walk).
-    return lastSegment(classNames[0] ?? candidate);
+    // package walk). The `?? candidate` defends a future `noUncheckedIndexedAccess`
+    // flip; under the `length === 1` guard `only` is always present at runtime.
+    return lastSegment(only ?? candidate);
   }
   // Ambiguous (0 or >1 declared classes): parseFile cannot single out the leaf,
   // so we keep the deterministic path-derived candidate either way. (Whether the

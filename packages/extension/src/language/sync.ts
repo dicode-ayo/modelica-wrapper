@@ -42,6 +42,15 @@ export class OmcSync {
   private readonly loaded = new Set<string>();
   /** In-flight `loadFile` promises, keyed by file path, to de-dupe touches. */
   private readonly inFlight = new Map<string, Promise<boolean>>();
+  /**
+   * Per-path generation counter, bumped by {@link markSaved} / {@link invalidate}.
+   * Each {@link load} snapshots the current generation when it starts; if the
+   * snapshot no longer matches when the load resolves, the file's text was
+   * invalidated mid-flight and the result is discarded (not added to `loaded`).
+   * Closes the save-during-load race that would otherwise keep the buffer
+   * stuck on pre-save text until the next save.
+   */
+  private readonly generation = new Map<string, number>();
 
   constructor(private readonly client: SyncClient) {}
 
@@ -72,24 +81,25 @@ export class OmcSync {
   /**
    * Mark a file as saved: drop its loaded flag so the next {@link ensureLoaded}
    * re-`loadFile`s the current on-disk text. Wire this to
-   * `workspace.onDidSaveTextDocument` in #97.
+   * `workspace.onDidSaveTextDocument`.
    *
-   * Known v1 window: this only clears the `loaded` flag, not an *in-flight*
-   * first-touch `load`. If a save fires while a `loadFile` is still pending, that
-   * promise (which read possibly pre-save text) will complete and re-add the path
-   * to `loaded`, so the save isn't reflected until the *next* save/invalidate.
-   * Acceptable under the coarse v1 policy; a generation counter would close it.
+   * Bumps the per-path generation counter, so an in-flight {@link load} whose
+   * snapshot now differs will discard its result instead of re-adding the path
+   * to `loaded` against pre-save text.
    */
   markSaved(filePath: string): void {
     this.loaded.delete(filePath);
+    this.bumpGeneration(filePath);
   }
 
   /**
-   * Forget a file entirely (e.g. on close). Equivalent to {@link markSaved} for
-   * the load flag, named separately so call sites read intentionally.
+   * Forget a file entirely (e.g. on close). Same semantics as {@link markSaved}
+   * for the load flag + generation, named separately so call sites read
+   * intentionally.
    */
   invalidate(filePath: string): void {
     this.loaded.delete(filePath);
+    this.bumpGeneration(filePath);
   }
 
   /** True if `filePath` is currently considered loaded (test/inspection aid). */
@@ -97,9 +107,19 @@ export class OmcSync {
     return this.loaded.has(filePath);
   }
 
+  private bumpGeneration(filePath: string): void {
+    this.generation.set(filePath, (this.generation.get(filePath) ?? 0) + 1);
+  }
+
   private async load(filePath: string): Promise<boolean> {
+    const snapshot = this.generation.get(filePath) ?? 0;
     try {
       const { success } = await this.client.loadFile({ fileName: filePath });
+      // A save/invalidate fired mid-flight — the load read pre-save text, so
+      // discard the result. The next `ensureLoaded` will re-issue a fresh load.
+      if (snapshot !== (this.generation.get(filePath) ?? 0)) {
+        return false;
+      }
       if (success) {
         this.loaded.add(filePath);
         return true;
