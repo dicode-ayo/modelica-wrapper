@@ -198,7 +198,7 @@ context-classification logic, not the textual REPL completer.
   needs debounce + caching of class-name lists keyed by the loaded-library set.
 - **Modelica scoping** — `encapsulated`, `redeclare`, `inner/outer` edge cases.
   We lean on `qualifyPath` so we inherit OMC's correctness (and its gaps).
-- **Coordinate off-by-one** — centralised mapping + tests.
+- **Coordinate off-by-one** — centralized mapping + tests.
 
 ## PR breakdown
 
@@ -223,7 +223,7 @@ context-classification logic, not the textual REPL completer.
 - [ ] Autocomplete offers class names (type/`extends` position), members (after
       `.`), and modifier names, in the right context.
 - [ ] Outline / breadcrumbs / folding work from the tree alone.
-- [ ] OMC 1-based ↔ VSCode 0-based mapping is centralised + tested; existing
+- [ ] OMC 1-based ↔ VSCode 0-based mapping is centralized + tested; existing
       `OmcClient` reused (no new process); `pnpm -r typecheck` + suites pass.
 
 ## Future work — find-all-references

@@ -160,7 +160,7 @@ describe("classify via targetAt", () => {
 });
 
 describe("classify (direct)", () => {
-  it("treats a name without a recognised slot as a type-reference", () => {
+  it("treats a name without a recognized slot as a type-reference", () => {
     // import clause uses a `name`; head segment lands as type-reference.
     const src = "model M\n  import A.B;\nend M;";
     const tree = parse(src);

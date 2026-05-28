@@ -50,7 +50,7 @@ export const MODELICA_DOCUMENT_SELECTOR: vscode.DocumentSelector = [
 let languagePromise: Promise<Language> | undefined;
 
 /**
- * Initialise the WASM runtime + load the Modelica grammar exactly once.
+ * Initialize the WASM runtime + load the Modelica grammar exactly once.
  *
  * `wasmDir` is the directory the two `.wasm` files were copied into — at
  * runtime that's `<extension>/out`, derivable from
@@ -107,7 +107,7 @@ export class ParseCache implements vscode.Disposable {
 
   private getParser(): Promise<Parser> {
     if (this.parser) return Promise.resolve(this.parser);
-    // Memoise the in-flight init so two concurrent first `parse()` calls share
+    // Memoize the in-flight init so two concurrent first `parse()` calls share
     // one `Parser`. Without this both pass the `this.parser` guard, both
     // `new Parser()`, and the first one is orphaned (never `.delete()`-ed — a
     // small WASM-memory leak). On failure we clear the promise so a retry can
@@ -160,12 +160,11 @@ export class ParseCache implements vscode.Disposable {
     if (!cached) return;
     // VSCode's `change` offsets/columns and tree-sitter's string-input space are
     // both UTF-16 code units (see `position.ts`), so they feed straight through
-    // — no transcoding. VSCode delivers a multi-edit batch sorted by range
-    // descending — load-bearing assumption documented in the VSCode API:
+    // — no transcoding. VSCode pre-sorts a multi-edit batch into reverse
+    // document order so that applying the changes in the order delivered keeps
+    // each later (lower-offset) edit's coordinates valid against the running
+    // tree — load-bearing assumption documented in the VSCode API:
     //   https://code.visualstudio.com/api/references/vscode-api#TextDocumentContentChangeEvent
-    // ("Order matters: the changes are sorted to be applied in document
-    // order".) Applying them in the given order keeps each later
-    // (lower-offset) edit's coordinates valid against the running tree.
     for (const change of event.contentChanges) {
       cached.tree.edit(toTreeEdit(change));
     }

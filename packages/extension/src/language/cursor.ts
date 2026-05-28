@@ -156,7 +156,7 @@ export function classify(ident: Node, dotted: Node | null): CursorContextKind {
     // Walk up out of the (possibly nested) `name` to find its role.
     const role = nameRole(dotted);
     if (role) return role;
-    // A `name` not in a recognised slot is still a type-ish reference.
+    // A `name` not in a recognized slot is still a type-ish reference.
     return "type-reference";
   }
 
