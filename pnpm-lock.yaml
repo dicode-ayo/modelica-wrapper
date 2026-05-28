@@ -127,6 +127,9 @@ importers:
       lit:
         specifier: ^3.2.0
         version: 3.3.2
+      web-tree-sitter:
+        specifier: ^0.25.10
+        version: 0.25.10
       zeromq:
         specifier: ^6.1.0
         version: 6.5.0
@@ -1807,6 +1810,14 @@ packages:
       jsdom:
         optional: true
 
+  web-tree-sitter@0.25.10:
+    resolution: {integrity: sha512-Y09sF44/13XvgVKgO2cNDw5rGk6s26MgoZPXLESvMXeefBf7i6/73eFurre0IsTW6E14Y0ArIzhUMmjoc7xyzA==}
+    peerDependencies:
+      '@types/emscripten': ^1.40.0
+    peerDependenciesMeta:
+      '@types/emscripten':
+        optional: true
+
   webidl-conversions@7.0.0:
     resolution: {integrity: sha512-VwddBukDzu71offAQR975unBIGqfKZpM+8ZX6ySk8nYhVoo5CYaZyzt3YBvYtRtO+aoGlqxPg/B87NGVZ/fu6g==}
     engines: {node: '>=12'}
@@ -3203,6 +3214,8 @@ snapshots:
       - sugarss
       - supports-color
       - terser
+
+  web-tree-sitter@0.25.10: {}
 
   webidl-conversions@7.0.0: {}
 

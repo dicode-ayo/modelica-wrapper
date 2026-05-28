@@ -19,6 +19,26 @@
     "workspaceContains:**/*.mo"
   ],
   "contributes": {
+    "languages": [
+      {
+        "id": "modelica",
+        "aliases": [
+          "Modelica",
+          "modelica"
+        ],
+        "extensions": [
+          ".mo"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "modelica",
+        "scopeName": "source.modelica",
+        "path": "./syntaxes/modelica.tmLanguage.json"
+      }
+    ],
     "customEditors": [
       {
         "viewType": "modelica.resultView",
@@ -233,6 +253,7 @@
     }
   },
   "scripts": {
+    "postinstall": "node scripts/fetch-grammar-wasm.mjs",
     "build": "node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.webview.json",
@@ -252,6 +273,7 @@
     "@dicode/result-ui": "workspace:*",
     "@dicode/ui-common": "workspace:*",
     "lit": "^3.2.0",
+    "web-tree-sitter": "^0.25.10",
     "zeromq": "^6.1.0"
   },
   "devDependencies": {

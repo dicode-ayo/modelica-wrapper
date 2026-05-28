@@ -221,3 +221,13 @@ against a real OMC:
 - OpenModelica: <https://github.com/OpenModelica/OpenModelica>
 - FMI standard: <https://fmi-standard.org/>
 - OMSimulator: <https://github.com/OpenModelica/OMSimulator>
+
+---
+
+## Acknowledgements
+
+Modelica syntax highlighting is provided by the TextMate grammar from
+[**SimplyDanny/modelica-language-vscode**](https://github.com/SimplyDanny/modelica-language-vscode)
+by **SimplyDanny** (Danny Moesch), reused under the MIT License. Thank you. The
+vendored grammar and its license live in
+[`packages/extension/syntaxes/`](packages/extension/syntaxes/).
