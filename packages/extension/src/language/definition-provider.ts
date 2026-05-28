@@ -36,7 +36,6 @@ import { targetAt } from "./cursor.js";
 import { resolveDocumentOwner } from "./document-scope.js";
 import type { ParseCache } from "./parse.js";
 import type { ZeroBasedPosition } from "./position.js";
-import type { OwningClassClient } from "./owning-class.js";
 import { resolve, type ResolveClient } from "./resolve.js";
 import type { OmcSync } from "./sync.js";
 
@@ -107,11 +106,7 @@ export class ModelicaDefinitionProvider implements vscode.DefinitionProvider {
       const client = await this.ensureClient();
       // Derive the owning class and load-on-touch (real files only; a virtual
       // `modelica-source:` class is already loaded — see `document-scope.ts`).
-      const owning = await resolveDocumentOwner(
-        document,
-        client as OwningClassClient,
-        this.sync,
-      );
+      const owning = await resolveDocumentOwner(document, client, this.sync);
       if (!owning) return undefined;
 
       // The work above (ensureClient + a parseFile/loadFile round-trip for real
@@ -124,7 +119,7 @@ export class ModelicaDefinitionProvider implements vscode.DefinitionProvider {
         tree,
         document.offsetAt(position),
         owning.qualifiedName,
-        client as ResolveClient,
+        client,
       );
       if (!site) return undefined;
 

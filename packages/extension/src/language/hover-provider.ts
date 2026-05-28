@@ -32,7 +32,6 @@ import { log } from "../logger.js";
 import { targetAt } from "./cursor.js";
 import { resolveDocumentOwner } from "./document-scope.js";
 import type { ParseCache } from "./parse.js";
-import type { OwningClassClient } from "./owning-class.js";
 import { resolve, type ResolveClient } from "./resolve.js";
 import type { OmcSync } from "./sync.js";
 
@@ -165,11 +164,7 @@ export class ModelicaHoverProvider implements vscode.HoverProvider {
       const client = await this.ensureClient();
       // Derive the owning class and load-on-touch (real files only; a virtual
       // `modelica-source:` class is already loaded — see `document-scope.ts`).
-      const owning = await resolveDocumentOwner(
-        document,
-        client as OwningClassClient,
-        this.sync,
-      );
+      const owning = await resolveDocumentOwner(document, client, this.sync);
       if (!owning) return undefined;
 
       // The work above is serialized OMC round-trips; on a fast-moving cursor
@@ -184,7 +179,7 @@ export class ModelicaHoverProvider implements vscode.HoverProvider {
         tree,
         offset,
         owning.qualifiedName,
-        client as HoverClient,
+        client,
       );
       if (!markdown) return undefined;
 
