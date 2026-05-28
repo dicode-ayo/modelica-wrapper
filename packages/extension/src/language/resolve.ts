@@ -156,9 +156,12 @@ async function resolveMemberCref(
   const segments = target.pathToCursor;
   if (segments.length < 2) return undefined;
 
-  // `segments.length >= 2` guarantees both `chain` is non-empty and `memberName`
-  // exists, so the destructure tail is safe without non-null assertions.
-  const memberName = segments[segments.length - 1] as string;
+  // `segments.length >= 2` guarantees `memberName` exists at runtime, but the
+  // type system can't see through `arr.length` checks to `arr[arr.length - 1]`;
+  // use `at(-1)` and narrow via an explicit undefined check so the type carries
+  // the guarantee without an assertion.
+  const memberName = segments.at(-1);
+  if (memberName === undefined) return undefined;
   const chain = segments.slice(0, -1);
 
   // Walk every chain segment against the previous segment's type, so the
