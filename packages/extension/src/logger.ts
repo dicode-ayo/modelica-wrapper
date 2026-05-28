@@ -31,9 +31,21 @@ function ts(): string {
  * the extension host. Read per-call (not cached) so it can be toggled at runtime
  * and so tests can flip it without re-importing the module.
  */
+/**
+ * Coerce an env-var string to a boolean using the conventional set of "off"
+ * tokens (empty, `0`, `false` — case-insensitive). Anything else (including
+ * `1`, `true`, `yes`, …) reads as on. Pulled out as a helper so a second
+ * env-var toggle in the future can reuse the same parser instead of growing a
+ * second nearly-identical comparator.
+ */
+function parseBooleanEnv(value: string | undefined): boolean {
+  if (value === undefined) return false;
+  const lowered = value.toLowerCase();
+  return lowered !== "" && lowered !== "0" && lowered !== "false";
+}
+
 function debugEnabled(): boolean {
-  const flag = process.env.MODELICA_DEBUG;
-  return flag !== undefined && flag !== "" && flag !== "0" && flag !== "false";
+  return parseBooleanEnv(process.env.MODELICA_DEBUG);
 }
 
 export const log = {

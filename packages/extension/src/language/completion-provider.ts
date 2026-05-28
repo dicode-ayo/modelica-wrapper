@@ -45,6 +45,7 @@ import {
 } from "./cursor.js";
 import { resolveDocumentOwner } from "./document-scope.js";
 import type { ParseCache } from "./parse.js";
+import type { OwningClassClient } from "./owning-class.js";
 import {
   qualifyTypeReference,
   walkCrefType,
