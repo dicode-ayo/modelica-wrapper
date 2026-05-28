@@ -6,6 +6,8 @@
   "scripts": {
     "test": "playwright test --config=playwright.config.ts",
     "test:headed": "playwright test --config=playwright.config.ts --headed",
+    "test:ui": "playwright test --config=playwright.config.ts --ui",
+    "test:debug": "playwright test --config=playwright.config.ts --debug",
     "test:omc": "E2E_OMC=1 playwright test --config=playwright.config.ts",
     "install-browsers": "playwright install --with-deps chromium"
   },

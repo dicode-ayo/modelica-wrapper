@@ -28,6 +28,37 @@ cd packages/extension/e2e && npm test
 for `out/extension.js` before booting (so the extension must be built first)
 and shells out to `code-server` (so it must be on `$PATH`).
 
+### Interactive modes
+
+When you need to actually see or step through what the spec is doing, run from
+`packages/extension/e2e/` and pick a mode:
+
+| Mode | Command | Best for |
+| --- | --- | --- |
+| Headed | `npm run test:headed` | Watch the actual Chromium window drive the workbench at full speed |
+| UI mode | `npm run test:ui` | Playwright's rich UI: timeline, per-step DOM snapshots, time-travel, "pick locator" inspector. The one to reach for first. |
+| Inspector | `npm run test:debug` | Headed Chromium + Playwright Inspector for line-by-line stepping. `await page.pause()` inside a spec drops you in at that line. |
+| Trace replay | `npx playwright show-trace test-results/*/trace.zip` | Post-mortem of a previous failed run (traces are auto-retained on failure per `playwright.config.ts`) |
+
+Headed/UI/Debug modes need a display (`DISPLAY` or `WAYLAND_DISPLAY` set);
+they will not visibly render over a pure SSH/Codespaces session without X
+forwarding. UI mode forces `workers: 1` automatically; for headed and debug
+pass `--workers=1` if you want a single deterministic flow:
+
+```bash
+npx playwright test --headed --workers=1 --slow-mo=300
+npx playwright test specs/outline.spec.ts --debug
+```
+
+`PWDEBUG=1` (set by `--debug`) disables Playwright's per-step timeouts, so
+manual pauses don't time out underneath you.
+
+To drive the OMC-gated specs interactively, prefix with `E2E_OMC=1`:
+
+```bash
+E2E_OMC=1 npm run test:ui
+```
+
 Per Playwright worker, the harness:
 
 1. picks a random free port on `127.0.0.1` (never collides with another
