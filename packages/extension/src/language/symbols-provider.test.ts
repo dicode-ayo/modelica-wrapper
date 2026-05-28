@@ -308,11 +308,10 @@ describe("computeDocumentSymbols — robustness", () => {
     // Unterminated declaration — tree-sitter returns a tree with error nodes;
     // the whole class collapses into an ERROR node (no recoverable
     // class_definition), so the walk yields nothing rather than throwing.
+    // If `computeDocumentSymbols` did throw, vitest reports that as the test
+    // failure anyway — the assertion below is on the value, not the throw.
     const src = "model Broken\n  parameter Real R = ";
-    let symbols: SymbolNode[] = [];
-    expect(() => {
-      symbols = computeDocumentSymbols(parse(src));
-    }).not.toThrow();
+    const symbols = computeDocumentSymbols(parse(src));
     expect(symbols).toEqual([]);
   });
 

@@ -293,12 +293,11 @@ export function classKind(classPrefixesText: string): SymbolKind {
     case "package":
       return SymbolKind.Package;
     case "function":
-      return SymbolKind.Function;
+    // A bare `operator` class (no `record`/`function` suffix) reaches here
+    // because `operator` is not stripped as a modifier; it's closest to a
+    // function group. (`operator function` / `operator record` resolve to
+    // their trailing restriction instead.)
     case "operator":
-      // A bare `operator` class (no `record`/`function` suffix) reaches here
-      // because `operator` is not stripped as a modifier; it's closest to a
-      // function group. (`operator function` / `operator record` resolve to
-      // their trailing restriction instead.)
       return SymbolKind.Function;
     case "record":
       return SymbolKind.Struct;
@@ -306,9 +305,7 @@ export function classKind(classPrefixesText: string): SymbolKind {
       return SymbolKind.Interface;
     case "type":
       return SymbolKind.Enum;
-    case "model":
-    case "block":
-    case "class":
+    // `model` / `block` / `class` and any unrecognized restriction fall here.
     default:
       return SymbolKind.Class;
   }
@@ -367,23 +364,23 @@ function unquote(text: string): string {
 }
 
 /**
- * The topmost descendant of `node` (at any depth) with type `type`, in
- * preorder (depth-first, returning the first/shallowest match). Used to reach
- * the meaningful node inside a thin wrapper (`named_element` →
- * `class_definition` / `component_clause`).
+ * The topmost descendant of `node` (up to `maxDepth` levels deep) with type
+ * `type`, in preorder. Used to reach the meaningful node inside a thin wrapper
+ * (`named_element` → `class_definition` / `component_clause`).
  *
- * Intentionally a full descendant search, not a direct-child lookup: callers
- * pass thin one-level wrappers (a `named_element`) or a `class_specifier`
- * subtree, where the target is the topmost match — so preorder never reaches
- * into a *nested* class before finding the wrapped node. Do not point it at a
- * larger subtree where a nested class could shadow the intended match.
+ * Depth-bounded on purpose: callers pass one- or two-level wrappers, and we
+ * never want the search to cross into a nested class's own subtree. The
+ * default ceiling of 2 is sufficient for `named_element` → `class_definition`
+ * and `named_element` → `component_clause`; bump it explicitly at the call
+ * site if a deeper structural lookup is needed (and document the new shape).
  */
-function findChild(node: Node, type: string): Node | null {
+function findChild(node: Node, type: string, maxDepth = 2): Node | null {
+  if (maxDepth < 0) return null;
   for (let i = 0; i < node.childCount; i++) {
     const child = node.child(i);
     if (!child) continue;
     if (child.type === type) return child;
-    const deeper = findChild(child, type);
+    const deeper = findChild(child, type, maxDepth - 1);
     if (deeper) return deeper;
   }
   return null;
