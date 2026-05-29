@@ -53,13 +53,7 @@ function offsetOf(src: string, needle: string, occurrence = 0): number {
 function makeClient(overrides: Partial<ResolveClient> = {}): ResolveClient {
   return {
     qualifyPath: vi.fn(({ path }) => Promise.resolve({ qualifiedPath: path })),
-    getClassInformation: vi.fn(() =>
-      Promise.resolve({
-        fileName: "/lib/Unknown.mo",
-        lineNumberStart: 1,
-        columnNumberStart: 1,
-      }),
-    ),
+    getClassInformation: vi.fn(() => Promise.resolve({ fileName: "/lib/Unknown.mo" })),
     getComponents: vi.fn(() => Promise.resolve({ components: [] })),
     ...overrides,
   };
@@ -183,13 +177,7 @@ describe("computeDefinition — unresolved", () => {
     const src = "model M\n  Real x;\nend M;";
     const client = makeClient({
       qualifyPath: vi.fn(() => Promise.resolve({ qualifiedPath: "Real" })),
-      getClassInformation: vi.fn(() =>
-        Promise.resolve({
-          fileName: "",
-          lineNumberStart: 1,
-          columnNumberStart: 1,
-        }),
-      ),
+      getClassInformation: vi.fn(() => Promise.resolve({ fileName: "" })),
     });
     const site = await computeDefinition(
       parse(src),
@@ -201,18 +189,14 @@ describe("computeDefinition — unresolved", () => {
   });
 
   it("navigates an interactively-defined class via the virtual scheme", async () => {
-    // OMC reports interactively-defined classes against the `<interactive>`
-    // pseudo-path; `modelica-source:` handles those natively via `list(<FQN>)`
-    // so resolution flows through the same as any FQN.
+    // The existence probe accepts any non-empty `fileName` OMC returns —
+    // including the `<interactive>` pseudo-path for interactively-defined
+    // classes, which `modelica-source:` then opens via `list(<FQN>)`.
     const src = "model M\n  Resistor r;\nend M;";
     const client = makeClient({
       qualifyPath: vi.fn(() => Promise.resolve({ qualifiedPath: "Resistor" })),
       getClassInformation: vi.fn(() =>
-        Promise.resolve({
-          fileName: "<interactive>",
-          lineNumberStart: 1,
-          columnNumberStart: 1,
-        }),
+        Promise.resolve({ fileName: "<interactive>" }),
       ),
     });
     const site = await computeDefinition(

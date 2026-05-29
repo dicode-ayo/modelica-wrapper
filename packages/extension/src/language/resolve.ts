@@ -2,12 +2,11 @@
  * Semantic resolution: `(owningClass, cursor target) → ResolvedTarget`.
  *
  *   - Class/type reference (`type-reference`, `extends`, `component-type`):
- *     `qualifyPath` against `owningClass`, then `getClassInformation` for the
- *     definition location.
+ *     `qualifyPath` against `owningClass`, then `getClassInformation` as the
+ *     existence probe.
  *   - Member cref (`member-access`, `a.b.c`): walk segments via `getComponents`
- *     — each segment resolves in the *previous* segment's type. Resolved
- *     location is the final member's declared type definition (OMC does not
- *     expose per-component source lines).
+ *     — each segment resolves in the *previous* segment's type. The resolved
+ *     target is the final member's declared type.
  *
  * Returns `undefined` rather than guessing on any failure.
  */
@@ -23,11 +22,7 @@ export interface ResolveClient {
     typeName: string;
     path: string;
   }): Promise<{ qualifiedPath: string }>;
-  getClassInformation(input: { typeName: string }): Promise<{
-    fileName: string;
-    lineNumberStart: number;
-    columnNumberStart: number;
-  }>;
+  getClassInformation(input: { typeName: string }): Promise<{ fileName: string }>;
   getComponents(input: { typeName: string }): Promise<{
     components: { className: string; name: string }[];
   }>;
@@ -73,8 +68,9 @@ async function resolveTypeReference(
   } catch {
     return undefined;
   }
-  // OMC echoes the name when it cannot qualify it; top-level names qualify to
-  // themselves, so let `getClassInformation` arbitrate via missing fileName.
+  // A top-level name qualifies to itself rather than to `undefined`, so we still
+  // attempt `getClassInformation` and treat a missing source binding as
+  // unresolved.
   return locateClass(qualifiedPath, client);
 }
 

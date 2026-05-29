@@ -83,10 +83,7 @@ export async function computeDefinition(
   const target = targetAt(tree, offset);
   if (!target) return undefined;
 
-  const resolved = await resolve(owningClass, target, client);
-  if (!resolved) return undefined;
-
-  return { qualifiedName: resolved.qualifiedName };
+  return resolve(owningClass, target, client);
 }
 
 /**

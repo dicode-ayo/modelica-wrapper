@@ -18,13 +18,7 @@ function target(
 function makeClient(overrides: Partial<ResolveClient> = {}): ResolveClient {
   return {
     qualifyPath: vi.fn(({ path }) => Promise.resolve({ qualifiedPath: path })),
-    getClassInformation: vi.fn(() =>
-      Promise.resolve({
-        fileName: "/lib/Unknown.mo",
-        lineNumberStart: 1,
-        columnNumberStart: 1,
-      }),
-    ),
+    getClassInformation: vi.fn(() => Promise.resolve({ fileName: "/lib/Unknown.mo" })),
     getComponents: vi.fn(() => Promise.resolve({ components: [] })),
     ...overrides,
   };
@@ -89,13 +83,7 @@ describe("resolve — class/type reference", () => {
   it("returns undefined when the class has no source file (built-in)", async () => {
     const client = makeClient({
       qualifyPath: vi.fn(() => Promise.resolve({ qualifiedPath: "Real" })),
-      getClassInformation: vi.fn(() =>
-        Promise.resolve({
-          fileName: "",
-          lineNumberStart: 0,
-          columnNumberStart: 0,
-        }),
-      ),
+      getClassInformation: vi.fn(() => Promise.resolve({ fileName: "" })),
     });
     const result = await resolve("Pkg.A", target("component-type", ["Real"]), client);
     expect(result).toBeUndefined();
