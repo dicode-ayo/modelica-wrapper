@@ -58,8 +58,6 @@ function makeClient(overrides: Partial<HoverClient> = {}): HoverClient {
     getClassInformation: vi.fn(() =>
       Promise.resolve({
         fileName: "/lib/X.mo",
-        lineNumberStart: 1,
-        columnNumberStart: 1,
         restriction: "model",
         comment: "",
       }),
@@ -131,8 +129,6 @@ describe("computeHover", () => {
     const getClassInformation = vi.fn(() =>
       Promise.resolve({
         fileName: "/msl/Resistor.mo",
-        lineNumberStart: 12,
-        columnNumberStart: 1,
         restriction: "model",
         comment: "info-only comment",
       }),
@@ -173,8 +169,6 @@ describe("computeHover", () => {
       getClassInformation: vi.fn(() =>
         Promise.resolve({
           fileName: "/x.mo",
-          lineNumberStart: 1,
-          columnNumberStart: 1,
           restriction: "model",
           comment: "bundled comment",
         }),

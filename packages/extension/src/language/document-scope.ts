@@ -11,10 +11,10 @@
  *     IS the fully-qualified name and the class is *already* loaded in OMC (its
  *     source came from there), so we take the FQN verbatim and skip the
  *     `loadFile` — which on a non-existent virtual path would only log a failure
- *     and waste a round-trip on every request (definition / hover / completion).
+ *     and waste a round-trip on every request.
  *
- * Shared by the definition, hover and completion providers so this scheme rule
- * lives in exactly one place rather than being repeated in each.
+ * Shared by the language providers so this scheme rule lives in exactly one
+ * place rather than being repeated in each.
  */
 
 import * as vscode from "vscode";
@@ -27,7 +27,11 @@ import {
   type FileProbe,
   type OwningClassClient,
 } from "./owning-class.js";
-import type { OmcSync } from "./sync.js";
+
+/** Load tracker surface; the real `OmcSync` satisfies it. */
+export interface DocumentSync {
+  ensureLoaded(filePath: string): Promise<boolean>;
+}
 
 /**
  * Resolve the document's owning class and make sure OMC has it available.
@@ -44,7 +48,7 @@ import type { OmcSync } from "./sync.js";
 export async function resolveDocumentOwner(
   document: vscode.TextDocument,
   client: OwningClassClient,
-  sync: Pick<OmcSync, "ensureLoaded">,
+  sync: DocumentSync,
   options: { probe?: FileProbe } = {},
 ): Promise<{ readonly qualifiedName: string } | undefined> {
   // Virtual `modelica-source:` URIs have the FQN as their basename and are

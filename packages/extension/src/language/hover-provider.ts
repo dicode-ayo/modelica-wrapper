@@ -1,25 +1,12 @@
 /**
- * Hover provider — the explanatory half of the hybrid loop (#97).
+ * Hover for Modelica buffers. Same resolution path as go-to-definition (parse →
+ * classify cursor → resolve the name to its fully-qualified entity), rendered as
+ * the entity's restriction (model / block / package / …) and documentation
+ * comment in a `vscode.MarkdownString`.
  *
- * Same resolution path as go-to-definition (parse → classify cursor → resolve
- * the name to its fully-qualified entity), but instead of a `Location` it
- * renders the entity's **restriction** (model / block / package / function / …)
- * and its **documentation comment** as a `vscode.MarkdownString`.
- *
- * ## Pure / impure split (testability)
- *
- * Mirrors `definition-provider.ts`: the resolution + markdown assembly lives in
- * {@link computeHover}, which takes a tree-sitter `Tree` + offset + owning class
- * + a structural OMC surface and returns a **markdown string** (or `undefined`)
- * with NO `vscode` import, so it is unit-testable against a mocked client. The
- * `vscode.HoverProvider` wrapper ({@link ModelicaHoverProvider}) is a thin shell
- * that parses, derives the owning class, ensures the file is loaded, calls
- * `computeHover`, and wraps the result in a `vscode.Hover`.
- *
- * Restriction + comment come from the typed `getClassInformation` /
- * `getClassComment` wrappers — never raw `client.call`. A resolution failure or
- * OMC error yields `undefined` (no hover), never a thrown error out of the
- * provider.
+ * {@link computeHover} holds the resolution + markdown assembly as a string with
+ * no `vscode` import (unit-tested against a mocked client);
+ * {@link ModelicaHoverProvider} is the host wrapper.
  */
 
 import * as vscode from "vscode";
@@ -43,8 +30,6 @@ import type { OmcSync } from "./sync.js";
 export interface HoverClient extends ResolveClient {
   getClassInformation(input: { typeName: string }): Promise<{
     fileName: string;
-    lineNumberStart: number;
-    columnNumberStart: number;
     restriction: string;
     comment: string;
   }>;
@@ -81,9 +66,8 @@ export async function computeHover(
   const { qualifiedName } = resolved;
   try {
     const info = await client.getClassInformation({ typeName: qualifiedName });
-    // `getClassInformation` also carries a comment, but the design pins the
-    // dedicated `getClassComment` wrapper as the doc-comment source; prefer it
-    // and fall back to the bundled comment if the dedicated call yields nothing.
+    // `getClassComment` is the full description string; `getClassInformation`'s
+    // comment is the fallback when it returns nothing.
     const { comment: classComment } = await client.getClassComment({
       typeName: qualifiedName,
     });
@@ -163,9 +147,8 @@ export class ModelicaHoverProvider implements vscode.HoverProvider {
       const owning = await resolveDocumentOwner(document, client, this.sync);
       if (!owning) return undefined;
 
-      // The work above is serialized OMC round-trips; on a fast-moving cursor
-      // the host may already have abandoned this request. Bail before resolve's
-      // further OMC calls.
+      // Bail between the load and resolve round-trips so a cursor that has
+      // already moved on doesn't issue further OMC calls.
       if (token.isCancellationRequested) return undefined;
 
       const tree = await this.cache.parse(document);
