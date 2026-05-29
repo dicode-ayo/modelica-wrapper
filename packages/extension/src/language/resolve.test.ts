@@ -176,8 +176,11 @@ describe("resolve — member cref", () => {
     expect(getClassInformation).toHaveBeenCalledWith({
       typeName: "Modelica.SIunits.Resistance",
     });
+    // The navigation target IS the member's declared type, not the cref path
+    // (so the def provider's `modelica-source:/<FQN>.mo` navigation opens the
+    // class definition, not a non-existent component "class").
     expect(result).toEqual({
-      qualifiedName: "Modelica.Electrical.Basic.Resistor.R",
+      qualifiedName: "Modelica.SIunits.Resistance",
       fileName: "/msl/SIunits.mo",
       line: 199,
       column: 4,
@@ -225,7 +228,7 @@ describe("resolve — member cref", () => {
 
     expect(getClassInformation).toHaveBeenCalledWith({ typeName: "Pkg.C" });
     expect(result).toEqual({
-      qualifiedName: "Pkg.B.c",
+      qualifiedName: "Pkg.C",
       fileName: "/pkg/C.mo",
       line: 6,
       column: 1,

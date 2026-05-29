@@ -2,17 +2,38 @@
  * Go-to-definition provider — the navigable half of the hybrid loop (#97).
  *
  * The flow is: parse the buffer (`ParseCache`) → classify the cursor
- * (`cursor.ts`) → resolve the name to its definition + location (`resolve.ts`,
- * scoped to the document's owning class) → produce a `vscode.Location`.
+ * (`cursor.ts`) → resolve the name to its owning class FQN (`resolve.ts`,
+ * scoped to the document's owning class) → produce a `vscode.Location` that
+ * points at the matching `modelica-source:/<FQN>.mo` virtual document.
+ *
+ * ## Why `modelica-source:` instead of the on-disk `Uri.file(...)`
+ *
+ * Resolving a name to "where is its class declared" has two faces in this
+ * extension: the on-disk file OMC's `getClassInformation` reports
+ * (`/usr/lib/omlibrary/.../Resistor.mo`), and the OMC-backed virtual document
+ * the `ModelicaSourceProvider` serves at `modelica-source:/Modelica…Resistor.mo`.
+ * The rest of the extension is built around the virtual scheme — the
+ * `Open Diagram from Source`, `Check Model`, and `View Source` commands all
+ * gate on `resourceScheme == modelica-source`. Sending go-to-definition to a
+ * `Uri.file(...)` target silently disables those buttons for the navigation
+ * landing page, splits the "how do you view a Modelica class" UX in two,
+ * and lets users save edits straight onto MSL files on disk.
+ *
+ * Navigating to the virtual document also simplifies the position story:
+ * the virtual content is `list(<FQN>)`, which is **just** that one class.
+ * Top-of-document IS the class header. We always land at `Position(0, 0)` and
+ * the cursor is at the right place — no on-disk-file line numbers to thread
+ * through, no `getClassInformation` synthetic-location (`<interactive>` /
+ * relative-path) filter to maintain.
  *
  * ## Pure / impure split (testability)
  *
  * The repo unit-tests pure logic against mocked OMC clients (see
  * `resolve.test.ts`), aliasing `vscode` only for the few value types tests
  * touch. To keep the navigation logic testable without an extension host, the
- * resolution + coordinate math lives in {@link computeDefinition}, which takes a
- * tree-sitter `Tree` + offset + owning class + a structural OMC surface and
- * returns **plain data** (`{ fileName, position }`) with NO `vscode` import. The
+ * resolution lives in {@link computeDefinition}, which takes a tree-sitter
+ * `Tree` + offset + owning class + a structural OMC surface and returns
+ * **plain data** (`{ qualifiedName }`) with NO `vscode` import. The
  * `vscode.DefinitionProvider` wrapper ({@link ModelicaDefinitionProvider}) is a
  * thin shell that parses, derives the owning class, ensures the file is loaded,
  * calls `computeDefinition`, and builds the `vscode.Location`.
@@ -23,28 +44,24 @@
  * provider.
  */
 
-import * as path from "node:path";
-
 import * as vscode from "vscode";
 
 import type { OmcClient } from "@dicode/omc-client";
 import type { Tree } from "web-tree-sitter";
 
 import { log } from "../logger.js";
+import { sourceUriFor } from "../source-provider.js";
 
 import { targetAt } from "./cursor.js";
 import { resolveDocumentOwner } from "./document-scope.js";
 import type { ParseCache } from "./parse.js";
-import type { ZeroBasedPosition } from "./position.js";
 import { resolve, type ResolveClient } from "./resolve.js";
 import type { OmcSync } from "./sync.js";
 
 /** A resolved definition site, as plain data (no `vscode` types). */
 export interface DefinitionSite {
-  /** Absolute source file the definition lives in. */
-  readonly fileName: string;
-  /** 0-based VSCode position of the definition. */
-  readonly position: ZeroBasedPosition;
+  /** Fully-qualified Modelica class name the target belongs to. */
+  readonly qualifiedName: string;
 }
 
 /**
@@ -67,28 +84,16 @@ export async function computeDefinition(
   if (!target) return undefined;
 
   const resolved = await resolve(owningClass, target, client);
-  if (!resolved) return undefined;
+  if (!resolved || resolved.qualifiedName.length === 0) return undefined;
 
-  // OMC's `getClassInformation` can return synthetic/non-filesystem locations —
-  // `<interactive>` for an interactively-defined class, or a relative path —
-  // which `vscode.Uri.file` would turn into a phantom file that "opens" on
-  // click. `resolve.ts` only filters the empty case; reject anything that isn't
-  // a real absolute path here so the wrapper never builds a bad `Location`.
-  if (resolved.fileName.length === 0 || !path.isAbsolute(resolved.fileName)) {
-    return undefined;
-  }
-
-  // `resolve.ts` already converted OMC's 1-based coordinates to 0-based.
-  return {
-    fileName: resolved.fileName,
-    position: { line: resolved.line, character: resolved.column },
-  };
+  return { qualifiedName: resolved.qualifiedName };
 }
 
 /**
  * The `vscode.DefinitionProvider` registered for Modelica buffers. Thin wrapper
  * over {@link computeDefinition}: parse, derive the owning class, ensure OMC has
- * the file loaded, resolve, then build a `vscode.Location`.
+ * the file loaded, resolve, then build a `vscode.Location` pointing at the
+ * `modelica-source:` virtual document for the resolved class.
  */
 export class ModelicaDefinitionProvider implements vscode.DefinitionProvider {
   constructor(
@@ -123,9 +128,13 @@ export class ModelicaDefinitionProvider implements vscode.DefinitionProvider {
       );
       if (!site) return undefined;
 
+      // Land at the top of the virtual document — `list(<FQN>)` is the single
+      // class, so `(0, 0)` IS the class declaration. No on-disk file positions
+      // need conversion, and the editor-title commands gated on
+      // `resourceScheme == modelica-source` light up on the navigation target.
       return new vscode.Location(
-        vscode.Uri.file(site.fileName),
-        new vscode.Position(site.position.line, site.position.character),
+        sourceUriFor(site.qualifiedName),
+        new vscode.Position(0, 0),
       );
     } catch (err) {
       // A provider must never throw out — degrade to "no definition".

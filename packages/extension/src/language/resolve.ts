@@ -114,14 +114,14 @@ async function resolveMemberCref(
   );
   if (!memberType) return undefined;
 
+  // The navigation target IS the member's declared type — that's the class
+  // whose source we want to open. `location.qualifiedName` is already
+  // `memberType`, so returning it verbatim gives the right shape for the
+  // definition provider's `modelica-source:` navigation and for hover's
+  // `getClassComment(memberType)` lookup.
   const location = await locateClass(memberType, client);
   if (!location) return undefined;
-  return {
-    qualifiedName: `${containerType}.${memberName}`,
-    fileName: location.fileName,
-    line: location.line,
-    column: location.column,
-  };
+  return location;
 }
 
 async function resolveComponentType(

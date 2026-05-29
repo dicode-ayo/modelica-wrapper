@@ -4,8 +4,9 @@
  * No `vscode`, no live OMC: real fixture trees from the vendored grammar WASM
  * (mirrors `cursor.test.ts`) drive the cursor classifier, and the OMC surface is
  * a plain mock (mirrors `resolve.test.ts`). The `vscode.DefinitionProvider`
- * wrapper is a thin shell over this, so testing the core covers the navigation
- * logic + coordinate conversion.
+ * wrapper is a thin shell over this — `computeDefinition` resolves the
+ * target's qualified name, and the wrapper turns it into a `modelica-source:`
+ * URI (covered end-to-end by `definition-hover.spec.ts`).
  */
 
 import { dirname, join } from "node:path";
@@ -65,7 +66,7 @@ function makeClient(overrides: Partial<ResolveClient> = {}): ResolveClient {
 }
 
 describe("computeDefinition — class/type reference", () => {
-  it("resolves a component type to its definition site (1→0 based)", async () => {
+  it("resolves a component type to its fully-qualified class name", async () => {
     const src = "model Circuit\n  Resistor r;\nend Circuit;";
     const client = makeClient({
       qualifyPath: vi.fn(() =>
@@ -91,11 +92,7 @@ describe("computeDefinition — class/type reference", () => {
       typeName: "MyPkg.Circuit",
       path: "Resistor",
     });
-    expect(site).toEqual({
-      fileName: "/msl/Resistor.mo",
-      // OMC (12, 3) → VSCode (11, 2).
-      position: { line: 11, character: 2 },
-    });
+    expect(site).toEqual({ qualifiedName: "Modelica.Electrical.Resistor" });
   });
 
   it("resolves an extends target", async () => {
@@ -118,10 +115,7 @@ describe("computeDefinition — class/type reference", () => {
       client,
     );
 
-    expect(site).toEqual({
-      fileName: "/pkg/Base.mo",
-      position: { line: 4, character: 0 },
-    });
+    expect(site).toEqual({ qualifiedName: "Pkg.Base" });
   });
 
   it("resolves a dotted type using the path up to the cursor", async () => {
@@ -154,7 +148,7 @@ describe("computeDefinition — class/type reference", () => {
 });
 
 describe("computeDefinition — member cref", () => {
-  it("resolves a member access to its declared type definition", async () => {
+  it("resolves a member access to its declared type's qualified name", async () => {
     const src = "model M\nequation\n  y = r.v;\nend M;";
     const getComponents = vi.fn(({ typeName }) => {
       if (typeName === "MyPkg.M") {
@@ -187,10 +181,7 @@ describe("computeDefinition — member cref", () => {
       client,
     );
 
-    expect(site).toEqual({
-      fileName: "/msl/SIunits.mo",
-      position: { line: 199, character: 4 },
-    });
+    expect(site).toEqual({ qualifiedName: "Modelica.SIunits.Voltage" });
   });
 });
 
@@ -241,14 +232,17 @@ describe("computeDefinition — unresolved", () => {
     expect(site).toBeUndefined();
   });
 
-  it("returns undefined for a synthetic OMC location (<interactive>)", async () => {
+  it("navigates an interactively-defined class via the virtual scheme", async () => {
+    // OMC reports interactively-defined classes against the `<interactive>`
+    // pseudo-path. The old `Uri.file` impl had to filter this out; the new
+    // `modelica-source:` scheme handles it natively — `list(Resistor)` returns
+    // the interactively-defined source. We assert the qualified name flows
+    // through; the wrapper builds `modelica-source:/Resistor.mo` from it.
     const src = "model M\n  Resistor r;\nend M;";
     const client = makeClient({
       qualifyPath: vi.fn(() => Promise.resolve({ qualifiedPath: "Resistor" })),
       getClassInformation: vi.fn(() =>
         Promise.resolve({
-          // OMC reports interactively-defined classes against this pseudo-path;
-          // `vscode.Uri.file("<interactive>")` would open a phantom file.
           fileName: "<interactive>",
           lineNumberStart: 1,
           columnNumberStart: 1,
@@ -261,29 +255,7 @@ describe("computeDefinition — unresolved", () => {
       "Pkg.M",
       client,
     );
-    expect(site).toBeUndefined();
-  });
-
-  it("returns undefined for a non-absolute fileName", async () => {
-    const src = "model M\n  Resistor r;\nend M;";
-    const client = makeClient({
-      qualifyPath: vi.fn(() => Promise.resolve({ qualifiedPath: "Resistor" })),
-      getClassInformation: vi.fn(() =>
-        Promise.resolve({
-          // A relative path is not safe to hand to `vscode.Uri.file`.
-          fileName: "lib/Resistor.mo",
-          lineNumberStart: 3,
-          columnNumberStart: 1,
-        }),
-      ),
-    });
-    const site = await computeDefinition(
-      parse(src),
-      offsetOf(src, "Resistor") + 1,
-      "Pkg.M",
-      client,
-    );
-    expect(site).toBeUndefined();
+    expect(site).toEqual({ qualifiedName: "Resistor" });
   });
 
   it("returns undefined when OMC throws (graceful degradation)", async () => {
