@@ -2,21 +2,16 @@
  * Semantic resolution: `(owningClass, cursor target) → ResolvedTarget`.
  *
  *   - Class/type reference (`type-reference`, `extends`, `component-type`):
- *     `qualifyPath` against `owningClass`, then `getClassInformation` for the
- *     definition location.
+ *     `qualifyPath` against `owningClass`, then `getClassInformation` as the
+ *     existence probe.
  *   - Member cref (`member-access`, `a.b.c`): walk segments via `getComponents`
- *     — each segment resolves in the *previous* segment's type. Resolved
- *     location is the final member's declared type definition (OMC does not
- *     expose per-component source lines).
+ *     — each segment resolves in the *previous* segment's type. The resolved
+ *     target is the final member's declared type.
  *
  * Returns `undefined` rather than guessing on any failure.
- *
- * OMC coordinates are 1-based; returned `line`/`column` are 0-based via
- * `position.ts`.
  */
 
 import type { CursorContextKind, CursorTarget } from "./cursor.js";
-import { omcToVscodePosition } from "./position.js";
 
 /** The slice of {@link CursorTarget} the resolver reads. */
 export type ResolveTarget = Pick<CursorTarget, "context" | "pathToCursor">;
@@ -27,22 +22,15 @@ export interface ResolveClient {
     typeName: string;
     path: string;
   }): Promise<{ qualifiedPath: string }>;
-  getClassInformation(input: { typeName: string }): Promise<{
-    fileName: string;
-    lineNumberStart: number;
-    columnNumberStart: number;
-  }>;
+  getClassInformation(input: { typeName: string }): Promise<{ fileName: string }>;
   getComponents(input: { typeName: string }): Promise<{
     components: { className: string; name: string }[];
   }>;
 }
 
-/** A resolved definition target with its 0-based source location. */
+/** A resolved definition target. */
 export interface ResolvedTarget {
   readonly qualifiedName: string;
-  readonly fileName: string;
-  readonly line: number;
-  readonly column: number;
 }
 
 const TYPE_CONTEXTS: ReadonlySet<CursorContextKind> = new Set<CursorContextKind>(
@@ -80,8 +68,9 @@ async function resolveTypeReference(
   } catch {
     return undefined;
   }
-  // OMC echoes the name when it cannot qualify it; top-level names qualify to
-  // themselves, so let `getClassInformation` arbitrate via missing fileName.
+  // A top-level name qualifies to itself rather than to `undefined`, so we still
+  // attempt `getClassInformation` and treat a missing source binding as
+  // unresolved.
   return locateClass(qualifiedPath, client);
 }
 
@@ -114,14 +103,7 @@ async function resolveMemberCref(
   );
   if (!memberType) return undefined;
 
-  const location = await locateClass(memberType, client);
-  if (!location) return undefined;
-  return {
-    qualifiedName: `${containerType}.${memberName}`,
-    fileName: location.fileName,
-    line: location.line,
-    column: location.column,
-  };
+  return locateClass(memberType, client);
 }
 
 async function resolveComponentType(
@@ -137,9 +119,15 @@ async function resolveComponentType(
   }
   const className = components.find((c) => c.name === componentName)?.className;
   // Empty className means untyped declaration; treat as unresolved.
-  return className && className.length > 0 ? className : undefined;
+  return className !== undefined && className.length > 0 ? className : undefined;
 }
 
+/**
+ * Verify that `qualifiedName` names a real class — an unknown or built-in name
+ * (no source binding) yields `undefined`, otherwise the FQN comes back wrapped
+ * in a {@link ResolvedTarget}. `getClassInformation` is the existence probe;
+ * its location coordinates are not read.
+ */
 async function locateClass(
   qualifiedName: string,
   client: ResolveClient,
@@ -153,14 +141,5 @@ async function locateClass(
   }
   // Empty fileName = built-in / unbound class.
   if (info.fileName.length === 0) return undefined;
-  const { line, character } = omcToVscodePosition(
-    info.lineNumberStart,
-    info.columnNumberStart,
-  );
-  return {
-    qualifiedName,
-    fileName: info.fileName,
-    line,
-    column: character,
-  };
+  return { qualifiedName };
 }
