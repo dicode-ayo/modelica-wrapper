@@ -18,6 +18,7 @@ import {
   MODELICA_LANGUAGE_ID,
   ParseCache,
 } from "./parse.js";
+import { ModelicaDocumentSymbolProvider } from "./symbols-provider.js";
 import { OmcSync, type SyncClient } from "./sync.js";
 
 // Single `./language` entry point: re-export the resolution layer alongside
@@ -45,6 +46,14 @@ export {
   type HoverClient,
   type HoverResult,
 } from "./hover-provider.js";
+export {
+  ModelicaDocumentSymbolProvider,
+  computeDocumentSymbols,
+  classKind,
+  toVscodeSymbolKind,
+  SymbolKind,
+  type SymbolNode,
+} from "./symbols-provider.js";
 
 /** Lazy OMC client accessor — same shape the commands use. */
 export type EnsureClient = () => Promise<OmcClient>;
@@ -83,6 +92,9 @@ export function registerLanguageFeatures(
     sync,
   );
   const hoverProvider = new ModelicaHoverProvider(cache, ensureClient, sync);
+  // Document symbols / outline is OMC-free — it walks the parsed tree alone,
+  // so it shares only the parse cache.
+  const symbolProvider = new ModelicaDocumentSymbolProvider(cache);
 
   // Bind both providers to Modelica buffers. The repo's shared selector matches
   // by language id only (no scheme) so it covers real files AND the in-memory
@@ -95,6 +107,11 @@ export function registerLanguageFeatures(
     MODELICA_DOCUMENT_SELECTOR,
     hoverProvider,
   );
+  const symbolRegistration =
+    vscode.languages.registerDocumentSymbolProvider(
+      MODELICA_DOCUMENT_SELECTOR,
+      symbolProvider,
+    );
 
   const onChange = vscode.workspace.onDidChangeTextDocument((event) => {
     if (!isModelicaDocument(event.document)) return;
@@ -119,6 +136,7 @@ export function registerLanguageFeatures(
   return new vscode.Disposable(() => {
     definitionRegistration.dispose();
     hoverRegistration.dispose();
+    symbolRegistration.dispose();
     onChange.dispose();
     onSave.dispose();
     onClose.dispose();
