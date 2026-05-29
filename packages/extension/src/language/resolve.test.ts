@@ -1,30 +1,15 @@
-/**
- * Unit tests for the OMC resolution layer. The OMC surface is a plain mock — no
- * live OMC. Coordinate conversion (OMC 1-based → VSCode 0-based) is asserted
- * here too, since it is the resolver's externally-visible contract.
- */
-
 import { describe, expect, it, vi } from "vitest";
 
-import type { CursorContextKind, CursorTarget } from "./cursor.js";
-import { resolve, type ResolveClient } from "./resolve.js";
+import type { CursorContextKind } from "./cursor.js";
+import { resolve, type ResolveClient, type ResolveTarget } from "./resolve.js";
 
-/** Build a minimal CursorTarget; the resolver only reads context + pathToCursor. */
 function target(
   context: CursorContextKind,
   pathToCursor: string[],
-): CursorTarget {
-  return {
-    identifier: pathToCursor[pathToCursor.length - 1] ?? "",
-    path: pathToCursor,
-    pathToCursor,
-    context,
-    startIndex: 0,
-    endIndex: 0,
-  };
+): ResolveTarget {
+  return { context, pathToCursor };
 }
 
-/** A ResolveClient with overridable behaviour and call recording. */
 function makeClient(overrides: Partial<ResolveClient> = {}): ResolveClient {
   return {
     qualifyPath: vi.fn(({ path }) => Promise.resolve({ qualifiedPath: path })),
@@ -69,10 +54,10 @@ describe("resolve — class/type reference", () => {
     expect(getClassInformation).toHaveBeenCalledWith({
       typeName: "Modelica.Electrical.Analog.Basic.Resistor",
     });
+    // OMC (12, 3) 1-based → VSCode (11, 2) 0-based.
     expect(result).toEqual({
       qualifiedName: "Modelica.Electrical.Analog.Basic.Resistor",
       fileName: "/msl/Resistor.mo",
-      // OMC (12, 3) 1-based → VSCode (11, 2) 0-based.
       line: 11,
       column: 2,
     });
@@ -146,9 +131,9 @@ describe("resolve — class/type reference", () => {
   });
 });
 
-describe("resolve — member cref (one hop)", () => {
+describe("resolve — member cref", () => {
   it("resolves head component → type → member type definition", async () => {
-    // resistor.R : resistor is a Resistor in the owning class; R is a
+    // resistor.R: `resistor` is a Resistor in the owning class; `R` is a
     // Modelica.SIunits.Resistance inside Resistor.
     const getComponents = vi.fn(({ typeName }) => {
       if (typeName === "MyPkg.Circuit") {
@@ -200,8 +185,7 @@ describe("resolve — member cref (one hop)", () => {
   });
 
   it("walks a 3-segment cref through each segment's type", async () => {
-    // a.b.c : `a` is an A in the owning class; `b` is a B inside A; `c` is a
-    // C inside B. The walk must visit `b` in A and `c` in B — NOT `c` in A.
+    // `a.b.c`: must visit `b` in A's type and `c` in B's type — not `c` in A.
     const getComponents = vi.fn(({ typeName }) => {
       switch (typeName) {
         case "MyPkg.Top":
@@ -212,7 +196,7 @@ describe("resolve — member cref (one hop)", () => {
           return Promise.resolve({
             components: [
               { name: "b", className: "Pkg.B" },
-              // A also has its own `c`; resolving `a.b.c` must NOT pick this up.
+              // A's own `c` must NOT be picked up; final lookup must go via B.
               { name: "c", className: "Pkg.WrongC" },
             ],
           });
@@ -239,8 +223,6 @@ describe("resolve — member cref (one hop)", () => {
       client,
     );
 
-    // The container of the final member is B's type, not A's — so the resolved
-    // member type is Pkg.C (via B), never Pkg.WrongC (A's own `c`).
     expect(getClassInformation).toHaveBeenCalledWith({ typeName: "Pkg.C" });
     expect(result).toEqual({
       qualifiedName: "Pkg.B.c",
@@ -251,8 +233,7 @@ describe("resolve — member cref (one hop)", () => {
   });
 
   it("returns undefined when an intermediate segment can't be walked", async () => {
-    // a.b.c where `b` does not exist inside A's type → unresolved, not a wrong
-    // answer reached by skipping `b`.
+    // `b` missing inside A's type: unresolved, not "skip to `c` in A".
     const getComponents = vi.fn(({ typeName }) =>
       typeName === "MyPkg.Top"
         ? Promise.resolve({ components: [{ name: "a", className: "Pkg.A" }] })
@@ -267,19 +248,14 @@ describe("resolve — member cref (one hop)", () => {
     expect(result).toBeUndefined();
   });
 
-  it("returns undefined for an inherited member (v1 limitation, pinned)", async () => {
-    // `getComponents` reports only a class's OWN declared components, not those
-    // pulled in via `extends`. So a member inherited from a base class is not
-    // found and resolves to undefined. This pins the documented v1 gap; when
-    // inheritance walking lands this test should flip to a positive assertion.
+  it("returns undefined for an inherited member (extends not walked)", async () => {
+    // `getComponents` reports only own declared components, not `extends`-pulled ones.
     const getComponents = vi.fn(({ typeName }) =>
       typeName === "MyPkg.Circuit"
         ? Promise.resolve({
             components: [{ name: "resistor", className: "Pkg.Resistor" }],
           })
-        : // Pkg.Resistor declares nothing of its own; `inheritedPin` would only
-          // be visible after walking its `extends` clause, which v1 does not do.
-          Promise.resolve({ components: [] }),
+        : Promise.resolve({ components: [] }),
     );
     const client = makeClient({ getComponents });
     const result = await resolve(

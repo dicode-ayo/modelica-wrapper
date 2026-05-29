@@ -1,15 +1,8 @@
 /**
- * Language-feature entry point.
+ * Language-feature wiring. Stands up the tree-sitter parse layer and keeps its
+ * cache coherent with the editor (parse on demand, invalidate on change/close).
  *
- * For PR 1 (foundation) this only stands up the tree-sitter parse layer and
- * keeps its cache coherent with the editor: parse on demand, drop the cached
- * tree when a Modelica document changes or closes. Later PRs add the actual
- * providers (definition / hover / completion / symbols) on top of the same
- * `ParseCache` + `ensureClient` factory, which is why both are threaded
- * through here already.
- *
- * Wired from `extension.ts` alongside the other `context.subscriptions.push`
- * registrations.
+ * Wired from `extension.ts` via `context.subscriptions.push`.
  */
 
 import * as vscode from "vscode";
@@ -20,52 +13,31 @@ import { log } from "../logger.js";
 
 import { MODELICA_LANGUAGE_ID, ParseCache } from "./parse.js";
 
-// Re-export the resolution layer (PR 2) so the providers in #97 and the
-// completion source in #99 consume a single `./language` entry point rather
-// than reaching into individual modules. Client-shape interfaces and the
-// filesystem probe stay module-internal — they're test seams, not API; tests
-// and downstream providers import them directly from their source modules.
-export { resolve, type ResolvedTarget } from "./resolve.js";
-export { resolveOwningClass, type OwningClass } from "./owning-class.js";
-export { OmcSync } from "./sync.js";
-export {
-  omcToVscodePosition,
-  omcRangeToVscodeRange,
-  type ZeroBasedPosition,
-  type ZeroBasedRange,
-} from "./position.js";
-
 /** Lazy OMC client accessor — same shape the commands use. */
 export type EnsureClient = () => Promise<OmcClient>;
 
-/** True for documents the language features operate on. */
 function isModelicaDocument(document: vscode.TextDocument): boolean {
   return document.languageId === MODELICA_LANGUAGE_ID;
 }
 
 /**
- * Register the Modelica language features. Returns a single {@link vscode.Disposable}
- * that tears down the parse cache and all listeners — push it onto
- * `context.subscriptions`.
+ * Register the language features. Returns a single {@link vscode.Disposable}
+ * that tears down the parse cache and listeners.
  *
- * @param context - the extension context; used to locate the bundled grammar
- *   WASM in `<extension>/out`.
- * @param _ensureClient - lazy OMC client; unused in PR 1, kept so later
- *   providers wire through the same factory.
+ * @param context - extension context; used to locate the bundled grammar WASM.
+ * @param _ensureClient - lazy OMC client (threaded through for providers).
  */
 export function registerLanguageFeatures(
   context: vscode.ExtensionContext,
   _ensureClient: EnsureClient,
 ): vscode.Disposable {
-  // The esbuild copy step places both `.wasm` files next to `extension.js`
-  // in `out/`; resolve that directory from the extension install location.
+  // esbuild copies both `.wasm` files next to `extension.js` in `out/`.
   const wasmDir = vscode.Uri.joinPath(context.extensionUri, "out").fsPath;
   const cache = new ParseCache(wasmDir);
 
   const onChange = vscode.workspace.onDidChangeTextDocument((event) => {
     if (!isModelicaDocument(event.document)) return;
     if (event.contentChanges.length === 0) return;
-    // Feed the deltas to the cached tree so the next parse is incremental.
     cache.applyChange(event);
   });
 

@@ -1,162 +1,98 @@
 /**
  * Map a Modelica source document to the fully-qualified name of the class it
- * defines — the "owning class" that `resolve.ts` qualifies names *against*.
+ * defines — the scope `qualifyPath` resolves names against.
  *
- * ## Why this is needed
+ * Modelica spec §13.4 ("Mapping package/class structure to a hierarchical file
+ * system") allows two layouts:
  *
- * `qualifyPath(classScope, shortName)` resolves a short name in the scope of a
- * class. To call it we must first know which class the editor buffer *is*. A
- * `.mo` file's class name is not the file path: it's the path's position inside
- * the Modelica package structure. This module reconstructs that.
+ *   1. Single-file — `A/B/Foo.mo` declares `model Foo` (possibly with a
+ *      `within A.B;` clause). Owning class: `A.B.Foo`.
+ *   2. Package-structured — `A/B/package.mo` declares `package B`, members
+ *      live in `A/B/Resistor.mo`, `A/B/Sub/package.mo`, etc. Owning class of
+ *      `A/B/Resistor.mo` is `A.B.Resistor`; of `A/B/package.mo` it is `A.B`.
  *
- * ## The two file layouts (Modelica spec §13.4 "Mapping package/class
- * structure to a hierarchical file system")
+ * Entry points:
  *
- *   1. **Single-file** — `Foo.mo` declares `model Foo … end Foo;` (possibly with
- *      a `within A.B;` clause). The owning class is `A.B.Foo`.
- *   2. **Package-structured** — a directory `B/` with `B/package.mo` declares
- *      `package B …`, and members live in `B/Resistor.mo`, `B/Sub/package.mo`,
- *      etc. The owning class of `A/B/Resistor.mo` is `A.B.Resistor`; of
- *      `A/B/package.mo` it is `A.B`.
+ *   - {@link resolveOwningClass} — on-disk `.mo` paths. Walks ancestor
+ *     directories collecting every one that contains a `package.mo` (those are
+ *     Modelica packages); the leaf is confirmed via `parseFile` when a client
+ *     is supplied so a `within`-clause file resolves correctly even if the
+ *     filename disagrees with the declared class.
+ *   - {@link owningClassFromQualifiedName} — `modelica-source:` virtual URIs
+ *     whose basename is already the dotted FQN. Synchronous, no I/O.
  *
- * The package prefix is derived by walking *up* the directory tree collecting
- * every ancestor directory that contains a `package.mo` (those are Modelica
- * packages); the walk stops at the first ancestor that is **not** a package.
- *
- * ## Confirmation via `parseFile`
- *
- * The path walk gives a *candidate* leaf name (from the filename, or the
- * directory name for `package.mo`). We confirm the leaf against
- * [`parseFile`](../../../omc-client/src/api/lifecycle/parseFile.ts), which
- * returns the class names a file actually declares *without loading it*. If the
- * file declares exactly one class we use that name (it is authoritative — it
- * survives a filename that doesn't match the class, and resolves the
- * `within`-prefixed package case). When `parseFile` is unavailable or
- * ambiguous, we fall back to the filename-derived candidate.
- *
- * ## Purity / testability
- *
- * Filesystem access and OMC are **injected** (`FileProbe` / `OwningClassClient`)
- * so the whole module is unit-testable with a plain in-memory map and a stub
- * client — no real disk, no live OMC (mirrors `workspace-scan.ts` and
- * `omc-snapshot.ts`). The default probe uses `node:fs/promises`.
+ * Filesystem and OMC are injected ({@link FileProbe} / {@link OwningClassClient})
+ * so the module is unit-testable without real disk or a live OMC.
  */
 
-import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 
-/** The single OMC call this module makes — the typed `parseFile` wrapper. */
+import { pathExists } from "../fs-util.js";
+
 export interface OwningClassClient {
   parseFile(input: { fileName: string }): Promise<{ classNames: string[] }>;
 }
 
-/**
- * Filesystem capability this module needs: does a path exist? Injectable so
- * tests pass an in-memory set instead of touching disk. Defaults to
- * {@link nodeFileProbe}.
- */
+/** Does a path exist? Injectable so tests pass an in-memory set. */
 export type FileProbe = (absolutePath: string) => Promise<boolean>;
 
-/** The conventional name of a Modelica structured-package directory marker. */
 export const PACKAGE_FILE = "package.mo";
 
-/** Default {@link FileProbe} backed by `node:fs/promises`. */
-export const nodeFileProbe: FileProbe = async (p) => {
-  try {
-    await fsp.access(p);
-    return true;
-  } catch {
-    return false;
-  }
-};
+export const nodeFileProbe: FileProbe = pathExists;
 
-/**
- * The resolved owning class of a document.
- */
+/** Owning class of an on-disk `.mo` document. */
 export interface OwningClass {
-  /** Fully-qualified Modelica class name, e.g. `Modelica.Electrical.Resistor`. */
   readonly qualifiedName: string;
-  /** Absolute path of the source file the class is defined in. */
   readonly fileName: string;
 }
 
+/** Owning class of a `modelica-source:` virtual URI; no on-disk backing file. */
+export interface VirtualOwningClass {
+  readonly qualifiedName: string;
+}
+
 /**
- * Resolve the owning class for a Modelica file path.
+ * Owning class for an on-disk `.mo` path. Returns `undefined` for empty input,
+ * a non-`.mo` extension, or a walk that yields no segments.
  *
- * @param filePath - absolute path to a `.mo` file (the document's `fsPath`).
- * @param options - injected dependencies. `client` (optional) supplies
- *   `parseFile` for authoritative leaf-name confirmation; `probe` (optional)
- *   answers package-directory existence (defaults to the real filesystem).
- *   `pathIsQualifiedName` (optional) short-circuits both for a virtual source
- *   path whose basename is already the dotted FQN — see below.
- * @returns the owning class, or `undefined` if no Modelica name can be derived
- *   (the path is empty or not a `.mo` file, or the walk yields no segments).
+ * For virtual `modelica-source:` URIs use {@link owningClassFromQualifiedName}.
  */
 export async function resolveOwningClass(
   filePath: string,
   options: {
     client?: OwningClassClient;
     probe?: FileProbe;
-    /**
-     * The path's basename is already the fully-qualified dotted name, e.g. the
-     * virtual `modelica-source:/A.B.C.mo` view of an OMC class. When set, skip
-     * the package-prefix walk and the `parseFile` confirm and use the basename
-     * (sans `.mo`) verbatim — there is no real file on disk to probe or parse,
-     * and `parseFile` on such a path could otherwise truncate the FQN to its
-     * last segment.
-     */
-    pathIsQualifiedName?: boolean;
   } = {},
 ): Promise<OwningClass | undefined> {
   const probe = options.probe ?? nodeFileProbe;
   if (filePath.length === 0) return undefined;
-  // Self-defensive: only Modelica source files have a derivable owning class.
-  // Without this, a non-`.mo` path like `/work/Foo.txt` would slip through
-  // `stripMoExtension` unchanged and produce a bogus dotted leaf (`Foo.txt`).
+  // Reject `.txt` etc. — `stripMoExtension` would otherwise leak `.txt` into the leaf.
   if (path.extname(filePath).toLowerCase() !== ".mo") return undefined;
 
-  // Virtual source path (`modelica-source:/A.B.C.mo`): the basename IS the FQN.
-  // Take it verbatim — no package walk, no parseFile (the path is not a real
-  // file, so probing/parsing it is wasted and parseFile could truncate the FQN).
-  if (options.pathIsQualifiedName) {
-    const qualifiedName = stripMoExtension(path.basename(filePath));
-    return qualifiedName.length > 0 ? { qualifiedName, fileName: filePath } : undefined;
-  }
-
-  const isPackageFile = path.basename(filePath) === PACKAGE_FILE;
-  // For `B/package.mo` the owning *directory* (B) is itself a package member, so
-  // the package prefix walk starts from B's parent and B's basename is the leaf.
-  // For a plain `B/Resistor.mo` the prefix walk starts from B and the filename
-  // (sans extension) is the candidate leaf.
+  // Case-insensitive to match `.mo` above (vendor libs ship `Package.mo` on
+  // case-insensitive filesystems).
+  const isPackageFile = path.basename(filePath).toLowerCase() === PACKAGE_FILE;
+  // `B/package.mo`: walk starts from B's parent, B's basename is the leaf.
+  // `B/Resistor.mo`: walk starts from B, filename (sans `.mo`) is the leaf.
   const startDir = isPackageFile
     ? path.dirname(path.dirname(filePath))
     : path.dirname(filePath);
   const leafDir = path.dirname(filePath);
 
-  const prefix = await packagePrefix(startDir, probe);
-
-  // The candidate leaf segment from the path.
   const candidateLeaf = isPackageFile
     ? path.basename(leafDir)
     : stripMoExtension(path.basename(filePath));
 
-  // Confirm the leaf via parseFile when a client is available. parseFile
-  // returns the (top-level) class names the file declares; a single name is
-  // authoritative for the leaf segment regardless of filename mismatch.
-  const confirmedLeaf = await confirmLeaf(
-    filePath,
-    candidateLeaf,
-    options.client,
-  );
+  // `confirmLeaf` doesn't depend on `prefix`; run them in parallel.
+  const [prefix, confirmedLeaf] = await Promise.all([
+    packagePrefix(startDir, probe),
+    confirmLeaf(filePath, candidateLeaf, options.client),
+  ]);
 
-  const segments = [...prefix];
-  if (confirmedLeaf.length > 0 && !isPackageFile) {
-    // For package.mo the directory name is ALREADY the leaf (and is part of the
-    // prefix walk's sibling chain); only standalone files add a leaf segment.
-    segments.push(confirmedLeaf);
-  } else if (isPackageFile) {
-    segments.push(confirmedLeaf.length > 0 ? confirmedLeaf : candidateLeaf);
-  }
+  // Plain file: only the confirmed leaf. package.mo: confirmed-or-dirname,
+  // since the dirname is the class's name and parseFile can return empty.
+  const leaf = confirmedLeaf.length > 0 ? confirmedLeaf : (isPackageFile ? candidateLeaf : "");
+  const segments = leaf.length > 0 ? [...prefix, leaf] : [...prefix];
 
   const qualifiedName = segments.filter((s) => s.length > 0).join(".");
   if (qualifiedName.length === 0) return undefined;
@@ -164,10 +100,11 @@ export async function resolveOwningClass(
 }
 
 /**
- * Walk up from `dir`, collecting the basenames of every ancestor directory
- * that is a Modelica package (contains a `package.mo`). The walk stops at the
- * first ancestor that is NOT a package — that boundary is the workspace/library
- * root. Returned outermost-first so the segments join into a dotted prefix.
+ * Walk up from `dir` collecting basenames of every ancestor that contains
+ * `package.mo`. Stops at the first non-package ancestor. Returned outermost-first.
+ *
+ * Probes the filesystem root too; `path.basename('/')` is `""` which the
+ * caller's filter drops.
  */
 async function packagePrefix(
   dir: string,
@@ -175,21 +112,21 @@ async function packagePrefix(
 ): Promise<string[]> {
   const segmentsInnermostFirst: string[] = [];
   let current = dir;
-  // Guard against an infinite loop at the filesystem root (dirname is stable).
-  while (current && path.dirname(current) !== current) {
+  while (current) {
     const isPackage = await probe(path.join(current, PACKAGE_FILE));
     if (!isPackage) break;
     segmentsInnermostFirst.push(path.basename(current));
-    current = path.dirname(current);
+    const parent = path.dirname(current);
+    if (parent === current) break; // filesystem root: dirname is stable.
+    current = parent;
   }
   return segmentsInnermostFirst.reverse();
 }
 
 /**
- * Confirm the leaf class name via `parseFile`. When the file declares exactly
- * one top-level class, that name wins (authoritative — survives a filename that
- * differs from the class name). For zero or multiple declared names, or when no
- * client is supplied / the call fails, fall back to the path-derived candidate.
+ * `parseFile` reports a file's declared class names without loading it. A
+ * single declared name is authoritative (handles filename mismatch and the
+ * `within`-clause case); zero/many/no-client/throw falls back to `candidate`.
  */
 async function confirmLeaf(
   filePath: string,
@@ -205,26 +142,34 @@ async function confirmLeaf(
   }
   if (classNames.length === 1) {
     const [only] = classNames;
-    // parseFile may return a qualified name for a within-clause file; take the
-    // last dotted segment as the leaf (the prefix is already supplied by the
-    // package walk). The `?? candidate` defends a future `noUncheckedIndexedAccess`
-    // flip; under the `length === 1` guard `only` is always present at runtime.
-    return lastSegment(only ?? candidate);
+    // `parseFile` may return a qualified name (within-clause); the prefix is
+    // already supplied by the package walk so take the last segment only.
+    // `noUncheckedIndexedAccess` types `only` as `string | undefined`.
+    return only !== undefined ? lastSegment(only) : candidate;
   }
-  // Ambiguous (0 or >1 declared classes): parseFile cannot single out the leaf,
-  // so we keep the deterministic path-derived candidate either way. (Whether the
-  // candidate happens to be among the declared names doesn't change the result —
-  // there's no better leaf to return — so we don't branch on it.)
   return candidate;
 }
 
-/** Last dotted segment of a possibly-qualified name (`A.B.C` → `C`). */
+/** Last dotted segment (`A.B.C` → `C`). */
 function lastSegment(name: string): string {
   const dot = name.lastIndexOf(".");
   return dot < 0 ? name : name.slice(dot + 1);
 }
 
-/** Strip a trailing `.mo` (case-insensitive) from a filename. */
 function stripMoExtension(filename: string): string {
   return filename.replace(/\.mo$/i, "");
+}
+
+/**
+ * Owning class for a path whose basename is already the dotted FQN — the shape
+ * `modelica-source:` URIs produce. The basename sans `.mo` is taken verbatim;
+ * no package walk, no `parseFile`.
+ */
+export function owningClassFromQualifiedName(
+  filePath: string,
+): VirtualOwningClass | undefined {
+  if (filePath.length === 0) return undefined;
+  if (path.extname(filePath).toLowerCase() !== ".mo") return undefined;
+  const qualifiedName = stripMoExtension(path.basename(filePath));
+  return qualifiedName.length > 0 ? { qualifiedName } : undefined;
 }

@@ -1,26 +1,18 @@
-/**
- * Unit tests for the document-URI → owning-class mapping.
- *
- * The filesystem is an in-memory set of `package.mo` paths (the {@link FileProbe}
- * injection point) and `parseFile` is a plain stub — no real disk, no live OMC.
- */
-
 import { describe, expect, it, vi } from "vitest";
 
 import {
   PACKAGE_FILE,
+  owningClassFromQualifiedName,
   resolveOwningClass,
   type FileProbe,
   type OwningClassClient,
 } from "./owning-class.js";
 
-/** A probe that reports a fixed set of existing absolute paths. */
 function probeFor(existing: string[]): FileProbe {
   const set = new Set(existing);
   return (p) => Promise.resolve(set.has(p));
 }
 
-/** A stub `parseFile` client returning the given class names per file. */
 function clientFor(byFile: Record<string, string[]>): OwningClassClient {
   return {
     parseFile: vi.fn(({ fileName }) =>
@@ -31,7 +23,6 @@ function clientFor(byFile: Record<string, string[]>): OwningClassClient {
 
 describe("resolveOwningClass — single-file layout", () => {
   it("derives the class name from the filename when no package above", async () => {
-    // /work/Foo.mo, no package.mo anywhere → owning class is `Foo`.
     const result = await resolveOwningClass("/work/Foo.mo", {
       probe: probeFor([]),
     });
@@ -39,7 +30,6 @@ describe("resolveOwningClass — single-file layout", () => {
   });
 
   it("prefixes with ancestor packages from the package.mo walk", async () => {
-    // /lib/A/B/Foo.mo with A and B both packages → `A.B.Foo`.
     const result = await resolveOwningClass("/lib/A/B/Foo.mo", {
       probe: probeFor([`/lib/A/${PACKAGE_FILE}`, `/lib/A/B/${PACKAGE_FILE}`]),
     });
@@ -47,7 +37,6 @@ describe("resolveOwningClass — single-file layout", () => {
   });
 
   it("stops the prefix walk at the first non-package ancestor", async () => {
-    // Only B is a package; A is not → prefix is just `B`, giving `B.Foo`.
     const result = await resolveOwningClass("/lib/A/B/Foo.mo", {
       probe: probeFor([`/lib/A/B/${PACKAGE_FILE}`]),
     });
@@ -57,7 +46,6 @@ describe("resolveOwningClass — single-file layout", () => {
 
 describe("resolveOwningClass — package.mo layout", () => {
   it("uses the directory name as the leaf for package.mo", async () => {
-    // /lib/A/B/package.mo → owning class is the package `A.B`.
     const result = await resolveOwningClass("/lib/A/B/package.mo", {
       probe: probeFor([`/lib/A/${PACKAGE_FILE}`, `/lib/A/B/${PACKAGE_FILE}`]),
     });
@@ -65,7 +53,6 @@ describe("resolveOwningClass — package.mo layout", () => {
   });
 
   it("handles a top-level package directory", async () => {
-    // /work/MyLib/package.mo, MyLib is the only package → `MyLib`.
     const result = await resolveOwningClass("/work/MyLib/package.mo", {
       probe: probeFor([`/work/MyLib/${PACKAGE_FILE}`]),
     });
@@ -75,7 +62,6 @@ describe("resolveOwningClass — package.mo layout", () => {
 
 describe("resolveOwningClass — parseFile confirmation", () => {
   it("prefers the single class name parseFile reports over the filename", async () => {
-    // File is `Renamed.mo` but declares `class Actual` → leaf is `Actual`.
     const client = clientFor({ "/lib/A/Renamed.mo": ["Actual"] });
     const result = await resolveOwningClass("/lib/A/Renamed.mo", {
       probe: probeFor([`/lib/A/${PACKAGE_FILE}`]),
@@ -87,9 +73,8 @@ describe("resolveOwningClass — parseFile confirmation", () => {
     });
   });
 
-  it("takes the last segment when parseFile returns a qualified name", async () => {
-    // A within-clause file reports the fully-qualified `A.Foo`; the package
-    // walk already supplies `A`, so we keep only the leaf `Foo` → `A.Foo`.
+  it("takes the last segment when parseFile returns a qualified within-name", async () => {
+    // Prefix `A` comes from the package walk; keep only the `Foo` leaf.
     const client = clientFor({ "/lib/A/Foo.mo": ["A.Foo"] });
     const result = await resolveOwningClass("/lib/A/Foo.mo", {
       probe: probeFor([`/lib/A/${PACKAGE_FILE}`]),
@@ -99,7 +84,6 @@ describe("resolveOwningClass — parseFile confirmation", () => {
   });
 
   it("falls back to the filename candidate when parseFile is ambiguous", async () => {
-    // Two declared classes → ambiguous; keep the filename-derived `Foo`.
     const client = clientFor({ "/work/Foo.mo": ["Foo", "Bar"] });
     const result = await resolveOwningClass("/work/Foo.mo", {
       probe: probeFor([]),
@@ -125,10 +109,8 @@ describe("resolveOwningClass — degenerate input", () => {
     expect(await resolveOwningClass("", { probe: probeFor([]) })).toBeUndefined();
   });
 
-  it("returns undefined for a non-`.mo` path (no bogus dotted leaf)", async () => {
-    // Without the extension guard, `Foo.txt` would survive stripMoExtension and
-    // produce a leaf of `Foo.txt`, contaminating the qualified name with a stray
-    // `.txt` segment. The guard rejects it outright.
+  it("returns undefined for a non-`.mo` path", async () => {
+    // Without the extension guard, `Foo.txt` would leak `.txt` into the leaf.
     expect(
       await resolveOwningClass("/work/Foo.txt", { probe: probeFor([]) }),
     ).toBeUndefined();
@@ -142,43 +124,28 @@ describe("resolveOwningClass — degenerate input", () => {
   });
 });
 
-describe("resolveOwningClass — virtual source path (pathIsQualifiedName)", () => {
-  it("takes the dotted basename verbatim as the FQN", async () => {
-    // `modelica-source:/Modelica.Electrical.Resistor.mo` → fsPath is the dotted
-    // FQN; the basename IS the qualified name.
-    const result = await resolveOwningClass(
-      "/Modelica.Electrical.Resistor.mo",
-      { pathIsQualifiedName: true },
-    );
-    expect(result).toEqual({
-      qualifiedName: "Modelica.Electrical.Resistor",
-      fileName: "/Modelica.Electrical.Resistor.mo",
-    });
-  });
-
-  it("does not walk packages or call parseFile for a virtual path", async () => {
-    // A probe/client that would throw if touched — proves the short-circuit
-    // skips both the package walk and the parseFile confirm.
-    const probe: FileProbe = () => {
-      throw new Error("probe must not run for a virtual path");
-    };
-    const client: OwningClassClient = {
-      parseFile: vi.fn(() => {
-        throw new Error("parseFile must not run for a virtual path");
-      }),
-    };
-    const result = await resolveOwningClass("/A.B.C.mo", {
-      probe,
-      client,
-      pathIsQualifiedName: true,
-    });
-    expect(result?.qualifiedName).toBe("A.B.C");
-    expect(client.parseFile).not.toHaveBeenCalled();
-  });
-
-  it("returns undefined when the virtual basename is empty", async () => {
+describe("owningClassFromQualifiedName — virtual source path", () => {
+  it("takes the dotted basename verbatim as the FQN (no fileName)", () => {
     expect(
-      await resolveOwningClass("/.mo", { pathIsQualifiedName: true }),
-    ).toBeUndefined();
+      owningClassFromQualifiedName("/Modelica.Electrical.Resistor.mo"),
+    ).toEqual({ qualifiedName: "Modelica.Electrical.Resistor" });
+  });
+
+  it("is synchronous and takes no probe / parseFile", () => {
+    expect(owningClassFromQualifiedName("/A.B.C.mo")).toEqual({
+      qualifiedName: "A.B.C",
+    });
+  });
+
+  it("returns undefined when the virtual basename is empty", () => {
+    expect(owningClassFromQualifiedName("/.mo")).toBeUndefined();
+  });
+
+  it("returns undefined for a non-`.mo` path", () => {
+    expect(owningClassFromQualifiedName("/A.B.C.txt")).toBeUndefined();
+  });
+
+  it("returns undefined for an empty path", () => {
+    expect(owningClassFromQualifiedName("")).toBeUndefined();
   });
 });

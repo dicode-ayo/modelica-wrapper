@@ -1,13 +1,7 @@
-/**
- * Unit tests for the buffer ↔ OMC load policy. The OMC `loadFile` wrapper is a
- * plain mock — no live OMC.
- */
-
 import { describe, expect, it, vi } from "vitest";
 
-import { OmcSync, type SyncClient } from "./sync.js";
+import { defaultNormalizeKey, OmcSync, type SyncClient } from "./sync.js";
 
-/** A `loadFile` mock that resolves `success` and records its calls. */
 function clientOk(success = true): SyncClient & { calls: string[] } {
   const calls: string[] = [];
   return {
@@ -43,25 +37,12 @@ describe("OmcSync — load on first touch", () => {
 
     expect(a).toBe(true);
     expect(b).toBe(true);
-    // Both awaited the same in-flight load → loadFile called exactly once.
     expect(client.loadFile).toHaveBeenCalledTimes(1);
   });
 });
 
-describe("OmcSync — re-load on save", () => {
-  it("re-loads after markSaved", async () => {
-    const client = clientOk();
-    const sync = new OmcSync(client);
-
-    await sync.ensureLoaded("/a/Foo.mo");
-    sync.markSaved("/a/Foo.mo");
-    expect(sync.isLoaded("/a/Foo.mo")).toBe(false);
-    await sync.ensureLoaded("/a/Foo.mo");
-
-    expect(client.calls).toEqual(["/a/Foo.mo", "/a/Foo.mo"]);
-  });
-
-  it("invalidate clears the loaded flag", async () => {
+describe("OmcSync — invalidate (re-load on save / forget on close)", () => {
+  it("clears the loaded flag and re-loads on the next touch", async () => {
     const client = clientOk();
     const sync = new OmcSync(client);
 
@@ -69,6 +50,8 @@ describe("OmcSync — re-load on save", () => {
     sync.invalidate("/a/Foo.mo");
     expect(sync.isLoaded("/a/Foo.mo")).toBe(false);
     await sync.ensureLoaded("/a/Foo.mo");
+
+    expect(client.calls).toEqual(["/a/Foo.mo", "/a/Foo.mo"]);
     expect(client.loadFile).toHaveBeenCalledTimes(2);
   });
 });
@@ -80,7 +63,6 @@ describe("OmcSync — failure handling", () => {
 
     expect(await sync.ensureLoaded("/a/Foo.mo")).toBe(false);
     expect(sync.isLoaded("/a/Foo.mo")).toBe(false);
-    // Next touch retries.
     await sync.ensureLoaded("/a/Foo.mo");
     expect(client.loadFile).toHaveBeenCalledTimes(2);
   });
@@ -101,30 +83,7 @@ describe("OmcSync — failure handling", () => {
 });
 
 describe("OmcSync — generation guard against save-during-load races", () => {
-  it("discards a load whose generation snapshot was invalidated by markSaved", async () => {
-    // A `loadFile` that resolves only when we tell it to, so we can interleave a
-    // `markSaved` in the middle of the in-flight load.
-    let resolveLoad: (value: { success: boolean }) => void = () => {};
-    const loadFile = vi.fn(
-      () =>
-        new Promise<{ success: boolean }>((res) => {
-          resolveLoad = res;
-        }),
-    );
-    const sync = new OmcSync({ loadFile });
-
-    const inFlight = sync.ensureLoaded("/a/Foo.mo");
-    // Save fires while the first-touch load is still pending → generation bumps.
-    sync.markSaved("/a/Foo.mo");
-    // The load now completes with success=true against pre-save text.
-    resolveLoad({ success: true });
-    expect(await inFlight).toBe(false);
-    // Critical: the file must NOT be considered loaded, so the next touch
-    // re-issues a fresh `loadFile`.
-    expect(sync.isLoaded("/a/Foo.mo")).toBe(false);
-  });
-
-  it("invalidate() also bumps the generation (same shape as markSaved)", async () => {
+  it("discards an in-flight load whose generation snapshot was invalidated", async () => {
     let resolveLoad: (value: { success: boolean }) => void = () => {};
     const loadFile = vi.fn(
       () =>
@@ -139,5 +98,59 @@ describe("OmcSync — generation guard against save-during-load races", () => {
     resolveLoad({ success: true });
     expect(await inFlight).toBe(false);
     expect(sync.isLoaded("/a/Foo.mo")).toBe(false);
+  });
+
+  it("a touch arriving after invalidate starts a fresh load instead of awaiting the stale in-flight", async () => {
+    const pending: Array<(v: { success: boolean }) => void> = [];
+    const loadFile = vi.fn(
+      () =>
+        new Promise<{ success: boolean }>((res) => {
+          pending.push(res);
+        }),
+    );
+    const sync = new OmcSync({ loadFile });
+
+    const firstTouch = sync.ensureLoaded("/a/Foo.mo");
+    sync.invalidate("/a/Foo.mo");
+    const secondTouch = sync.ensureLoaded("/a/Foo.mo");
+
+    expect(loadFile).toHaveBeenCalledTimes(2);
+    // Resolve in reverse so the second isn't shadowed by the first.
+    pending[1]?.({ success: true });
+    pending[0]?.({ success: true });
+    expect(await firstTouch).toBe(false); // pre-invalidate snapshot, discarded
+    expect(await secondTouch).toBe(true);
+    expect(sync.isLoaded("/a/Foo.mo")).toBe(true);
+  });
+});
+
+describe("OmcSync — normalizeKey", () => {
+  it("treats two path casings as the same file when a normalizer is supplied", async () => {
+    const client = clientOk();
+    const sync = new OmcSync(client, { normalizeKey: (p) => p.toLowerCase() });
+
+    await sync.ensureLoaded("C:\\Work\\Foo.mo");
+    expect(sync.isLoaded("c:\\work\\foo.mo")).toBe(true);
+    sync.invalidate("c:\\work\\foo.mo");
+    expect(sync.isLoaded("C:\\Work\\Foo.mo")).toBe(false);
+    await sync.ensureLoaded("C:\\Work\\Foo.mo");
+    expect(client.loadFile).toHaveBeenCalledTimes(2);
+  });
+
+  it("an explicit identity normalizer keeps casings distinct", async () => {
+    const client = clientOk();
+    const sync = new OmcSync(client, { normalizeKey: (p) => p });
+
+    await sync.ensureLoaded("C:\\Work\\Foo.mo");
+    expect(sync.isLoaded("c:\\work\\foo.mo")).toBe(false);
+  });
+});
+
+describe("defaultNormalizeKey", () => {
+  it("matches the host filesystem's case-sensitivity", () => {
+    const caseInsensitive = process.platform === "win32" || process.platform === "darwin";
+    expect(defaultNormalizeKey("C:\\Work\\Foo.mo")).toBe(
+      caseInsensitive ? "c:\\work\\foo.mo" : "C:\\Work\\Foo.mo",
+    );
   });
 });
