@@ -16,6 +16,8 @@ import * as path from "node:path";
 
 import type { OmcClient } from "@dicode/omc-client";
 
+import { pathExists } from "./fs-util.js";
+
 /**
  * True if `s` looks like a real filesystem path we can hand to `fs.writeFile`.
  *
@@ -123,11 +125,3 @@ async function onDiskParentDir(
   return undefined;
 }
 
-async function pathExists(p: string): Promise<boolean> {
-  try {
-    await fsp.access(p);
-    return true;
-  } catch {
-    return false;
-  }
-}

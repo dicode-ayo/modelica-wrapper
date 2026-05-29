@@ -16,6 +16,8 @@
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 
+import { pathExists } from "./fs-util.js";
+
 export async function discoverEntryPoints(roots: string[]): Promise<string[]> {
   const out: string[] = [];
   for (const root of roots) {
@@ -44,11 +46,3 @@ export async function discoverEntryPoints(roots: string[]): Promise<string[]> {
   return out;
 }
 
-async function pathExists(p: string): Promise<boolean> {
-  try {
-    await fsp.access(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
