@@ -46,8 +46,6 @@ export {
   type HoverClient,
   type HoverResult,
 } from "./hover-provider.js";
-// The PR-4 document-symbols / outline provider + its pure tree walk. No OMC —
-// it walks the parsed tree alone, so the outline works without a loaded model.
 export {
   ModelicaDocumentSymbolProvider,
   computeDocumentSymbols,

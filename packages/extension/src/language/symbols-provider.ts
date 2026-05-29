@@ -1,21 +1,15 @@
 /**
- * Document-symbols / outline provider — the one language feature that needs
- * **no OMC** (issue #98). It walks the tree-sitter tree alone, so the Outline,
- * breadcrumbs, and folding work even before (or entirely without) a loaded
+ * Document-symbols / outline provider. Walks the tree-sitter tree with no OMC
+ * dependency, so the Outline, breadcrumbs, and folding work without a loaded
  * model.
  *
- * ## Pure / impure split (testability)
- *
- * Mirrors `definition-provider.ts` / `hover-provider.ts`: the whole tree walk
- * lives in {@link computeDocumentSymbols}, a pure function with NO `vscode`
- * import. It takes a tree-sitter `Tree` and returns a hierarchy of
+ * {@link computeDocumentSymbols} holds the whole walk as a pure function with no
+ * `vscode` import: it takes a `Tree` and returns a hierarchy of
  * {@link SymbolNode}s carrying plain offset/row-col data (a local
- * {@link SymbolKind} enum, plus {@link ZeroBasedRange}s). That core is
- * unit-tested against real grammar-WASM fixture trees (see
- * `symbols-provider.test.ts`). The `vscode.DocumentSymbolProvider` wrapper
- * ({@link ModelicaDocumentSymbolProvider}) is a thin shell that parses the
- * buffer, calls the core, and maps the plain nodes onto `vscode.DocumentSymbol`
- * via {@link toVscodeSymbolKind}.
+ * {@link SymbolKind} enum, plus {@link ZeroBasedRange}s), unit-tested against
+ * grammar-WASM fixture trees. {@link ModelicaDocumentSymbolProvider} is the host
+ * wrapper, mapping the plain nodes onto `vscode.DocumentSymbol` via
+ * {@link toVscodeSymbolKind}.
  *
  * ## Grammar shapes this relies on (OpenModelica/tree-sitter-modelica v0.2.2)
  *
@@ -96,16 +90,15 @@ const FIELD = {
  * `pure function`). We strip these to find the restriction keyword that decides
  * the {@link SymbolKind}, scanning right-to-left so a trailing restriction wins.
  *
- * Only keywords the grammar actually keeps *inside* `class_prefixes` belong
- * here. `redeclare` / `replaceable` / `inner` / `outer` / `encapsulated` /
- * `final` are parsed *outside* `class_prefixes` (verified against the vendored
- * grammar), so they never reach this set and are deliberately omitted.
+ * Only keywords the grammar keeps *inside* `class_prefixes` belong here.
+ * `redeclare` / `replaceable` / `inner` / `outer` / `encapsulated` / `final`
+ * are parsed *outside* `class_prefixes`, so they never reach this set.
  *
- * `operator` is intentionally NOT a modifier: a bare `operator` class (whose
+ * `operator` is not a modifier here: a bare `operator` class (whose
  * `class_prefixes` text is just `operator`) must reach the Function mapping in
- * {@link classKind}. Compound forms still resolve correctly because the
- * right-to-left scan picks the trailing restriction first: `operator function`
- * → `function`, `operator record` → `record`.
+ * {@link classKind}. Compound forms still resolve because the right-to-left scan
+ * picks the trailing restriction first: `operator function` → `function`,
+ * `operator record` → `record`.
  */
 const CLASS_PREFIX_MODIFIERS: ReadonlySet<string> = new Set([
   "partial",

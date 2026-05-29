@@ -54,6 +54,20 @@ function find(symbols: SymbolNode[], name: string): SymbolNode | undefined {
   return undefined;
 }
 
+/** {@link find}, or fail the test loudly — keeps call sites free of `!`. */
+function expectSymbol(symbols: SymbolNode[], name: string): SymbolNode {
+  const symbol = find(symbols, name);
+  if (symbol === undefined) throw new Error(`no symbol named ${name}`);
+  return symbol;
+}
+
+/** First top-level symbol, or fail the test loudly. */
+function firstSymbol(symbols: SymbolNode[]): SymbolNode {
+  const [first] = symbols;
+  if (first === undefined) throw new Error("expected a top-level symbol");
+  return first;
+}
+
 /** Names of a symbol list, in order (for nesting/order assertions). */
 function names(symbols: SymbolNode[]): string[] {
   return symbols.map((s) => s.name);
@@ -109,14 +123,14 @@ end Lib;`;
   it("surfaces the top-level package with its doc comment as detail", () => {
     const symbols = computeDocumentSymbols(parse(src));
     expect(names(symbols)).toEqual(["Lib"]);
-    const lib = symbols[0]!;
+    const lib = firstSymbol(symbols);
     expect(lib.kind).toBe(SymbolKind.Package);
     expect(lib.detail).toBe("library doc");
   });
 
   it("nests a package's classes as its children, in source order", () => {
     const symbols = computeDocumentSymbols(parse(src));
-    const lib = symbols[0]!;
+    const lib = firstSymbol(symbols);
     expect(names(lib.children)).toEqual(["M", "f", "C", "Volt"]);
   });
 
@@ -137,14 +151,14 @@ end Lib;`;
 
   it("nests members (components + nested class) inside their class", () => {
     const symbols = computeDocumentSymbols(parse(src));
-    const model = find(symbols, "M")!;
+    const model = expectSymbol(symbols, "M");
     // R, N, x, a, b (one symbol per declared name) + the nested record Inner.
     expect(names(model.children)).toEqual(["R", "N", "x", "a", "b", "Inner"]);
   });
 
   it("nests a component inside the deepest enclosing class only", () => {
     const symbols = computeDocumentSymbols(parse(src));
-    const inner = find(symbols, "Inner")!;
+    const inner = expectSymbol(symbols, "Inner");
     expect(names(inner.children)).toEqual(["y"]);
   });
 });
@@ -165,7 +179,7 @@ end M;`;
 
   it("emits one symbol per name in a multi-name declaration", () => {
     const symbols = computeDocumentSymbols(parse("model M\n  Real a, b, c;\nend M;"));
-    const model = find(symbols, "M")!;
+    const model = expectSymbol(symbols, "M");
     expect(names(model.children)).toEqual(["a", "b", "c"]);
   });
 });
@@ -174,7 +188,7 @@ describe("computeDocumentSymbols — ranges", () => {
   it("uses the identifier for selectionRange and the whole decl for range", () => {
     const src = "model Circuit\n  Real x;\nend Circuit;";
     const symbols = computeDocumentSymbols(parse(src));
-    const circuit = symbols[0]!;
+    const circuit = firstSymbol(symbols);
     // `Circuit` identifier sits on line 0, columns 6..13.
     expect(circuit.selectionRange).toEqual({
       start: { line: 0, character: 6 },
@@ -184,7 +198,7 @@ describe("computeDocumentSymbols — ranges", () => {
     expect(circuit.range.start).toEqual({ line: 0, character: 0 });
     expect(circuit.range.end.line).toBe(2);
 
-    const x = find(symbols, "x")!;
+    const x = expectSymbol(symbols, "x");
     // `x` identifier on line 1 at column 7 (after `  Real `).
     expect(x.selectionRange).toEqual({
       start: { line: 1, character: 7 },
@@ -229,7 +243,7 @@ describe("computeDocumentSymbols — visibility sections", () => {
     Real protSection;
 end M;`;
     const symbols = computeDocumentSymbols(parse(src));
-    const model = find(symbols, "M")!;
+    const model = expectSymbol(symbols, "M");
     expect(names(model.children)).toEqual([
       "pubDefault",
       "pubSection",
@@ -248,9 +262,9 @@ protected
   end Helper;
 end P;`;
     const symbols = computeDocumentSymbols(parse(src));
-    const helper = find(symbols, "Helper");
-    expect(helper?.kind).toBe(SymbolKind.Class);
-    expect(names(helper!.children)).toEqual(["h"]);
+    const helper = expectSymbol(symbols, "Helper");
+    expect(helper.kind).toBe(SymbolKind.Class);
+    expect(names(helper.children)).toEqual(["h"]);
   });
 });
 
@@ -261,7 +275,7 @@ describe("computeDocumentSymbols — extends + prefixes", () => {
   Real x;
 end Derived;`;
     const symbols = computeDocumentSymbols(parse(src));
-    const derived = find(symbols, "Derived")!;
+    const derived = expectSymbol(symbols, "Derived");
     // Only the declared component, not the extended Base.
     expect(names(derived.children)).toEqual(["x"]);
   });
@@ -305,11 +319,8 @@ describe("computeDocumentSymbols — robustness", () => {
   });
 
   it("does not throw on a malformed buffer", () => {
-    // Unterminated declaration — tree-sitter returns a tree with error nodes;
-    // the whole class collapses into an ERROR node (no recoverable
-    // class_definition), so the walk yields nothing rather than throwing.
-    // If `computeDocumentSymbols` did throw, vitest reports that as the test
-    // failure anyway — the assertion below is on the value, not the throw.
+    // Unterminated declaration — the whole class collapses into an ERROR node
+    // with no recoverable class_definition, so the walk yields nothing.
     const src = "model Broken\n  parameter Real R = ";
     const symbols = computeDocumentSymbols(parse(src));
     expect(symbols).toEqual([]);
