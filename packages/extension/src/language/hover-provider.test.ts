@@ -144,7 +144,7 @@ describe("computeHover", () => {
       getClassComment,
     });
 
-    const md = await computeHover(
+    const result = await computeHover(
       parse(src),
       offsetOf(src, "Resistor") + 1,
       "MyPkg.Circuit",
@@ -157,9 +157,13 @@ describe("computeHover", () => {
     expect(getClassComment).toHaveBeenCalledWith({
       typeName: "Modelica.Electrical.Resistor",
     });
-    expect(md).toBe(
+    expect(result?.markdown).toBe(
       "```modelica\nmodel Modelica.Electrical.Resistor\n```\n\nIdeal linear electrical resistor",
     );
+    // The span is the identifier under the cursor, so the wrapper underlines it
+    // without re-walking the tree.
+    expect(result?.startIndex).toBe(offsetOf(src, "Resistor"));
+    expect(result?.endIndex).toBe(offsetOf(src, "Resistor") + "Resistor".length);
   });
 
   it("falls back to getClassInformation's comment when getClassComment is empty", async () => {
@@ -176,25 +180,27 @@ describe("computeHover", () => {
       getClassComment: vi.fn(() => Promise.resolve({ comment: "" })),
     });
 
-    const md = await computeHover(
+    const result = await computeHover(
       parse(src),
       offsetOf(src, "Resistor") + 1,
       "MyPkg.Circuit",
       client,
     );
-    expect(md).toBe("```modelica\nmodel Pkg.Resistor\n```\n\nbundled comment");
+    expect(result?.markdown).toBe(
+      "```modelica\nmodel Pkg.Resistor\n```\n\nbundled comment",
+    );
   });
 
   it("returns undefined when the cursor resolves to nothing", async () => {
     const src = "model M\nequation\n  y = x;\nend M;";
     const client = makeClient();
-    const md = await computeHover(
+    const result = await computeHover(
       parse(src),
       offsetOf(src, "x;"),
       "Pkg.M",
       client,
     );
-    expect(md).toBeUndefined();
+    expect(result).toBeUndefined();
     expect(client.getClassComment).not.toHaveBeenCalled();
   });
 
@@ -204,12 +210,12 @@ describe("computeHover", () => {
       qualifyPath: vi.fn(() => Promise.resolve({ qualifiedPath: "Pkg.Resistor" })),
       getClassComment: vi.fn(() => Promise.reject(new Error("offline"))),
     });
-    const md = await computeHover(
+    const result = await computeHover(
       parse(src),
       offsetOf(src, "Resistor") + 1,
       "MyPkg.Circuit",
       client,
     );
-    expect(md).toBeUndefined();
+    expect(result).toBeUndefined();
   });
 });

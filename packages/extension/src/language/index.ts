@@ -43,6 +43,7 @@ export {
   computeHover,
   renderHover,
   type HoverClient,
+  type HoverResult,
 } from "./hover-provider.js";
 
 /** Lazy OMC client accessor — same shape the commands use. */

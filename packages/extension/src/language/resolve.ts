@@ -119,7 +119,7 @@ async function resolveComponentType(
   }
   const className = components.find((c) => c.name === componentName)?.className;
   // Empty className means untyped declaration; treat as unresolved.
-  return className && className.length > 0 ? className : undefined;
+  return className !== undefined && className.length > 0 ? className : undefined;
 }
 
 /**

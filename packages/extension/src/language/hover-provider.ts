@@ -36,15 +36,25 @@ export interface HoverClient extends ResolveClient {
   getClassComment(input: { typeName: string }): Promise<{ comment: string }>;
 }
 
+/** A rendered hover: the markdown plus the source span it describes. */
+export interface HoverResult {
+  readonly markdown: string;
+  /** UTF-16 offsets of the identifier under the cursor, for the underline. */
+  readonly startIndex: number;
+  readonly endIndex: number;
+}
+
 /**
- * Render the hover markdown for the cursor at `offset` in `tree`, scoped to
- * `owningClass`, or `undefined` when nothing resolves. No `vscode` import —
- * unit-tested directly against a mocked {@link HoverClient}.
+ * Render the hover for the cursor at `offset` in `tree`, scoped to `owningClass`,
+ * or `undefined` when nothing resolves. No `vscode` import — unit-tested directly
+ * against a mocked {@link HoverClient}.
  *
  * The tooltip is the resolved entity's restriction keyword + its fully-qualified
  * name (as a fenced `modelica` declaration line) followed by the documentation
  * comment, if any. The description-string comment is read via the dedicated
- * `getClassComment` wrapper; `getClassInformation` supplies the restriction.
+ * `getClassComment` wrapper; `getClassInformation` supplies the restriction. The
+ * returned span is the cursor target, so the wrapper underlines it without
+ * re-walking the tree.
  *
  * @param tree - parsed buffer (from `ParseCache.parse`).
  * @param offset - UTF-16 code-unit offset (i.e. `document.offsetAt(position)`).
@@ -56,7 +66,7 @@ export async function computeHover(
   offset: number,
   owningClass: string,
   client: HoverClient,
-): Promise<string | undefined> {
+): Promise<HoverResult | undefined> {
   const target = targetAt(tree, offset);
   if (!target) return undefined;
 
@@ -72,7 +82,8 @@ export async function computeHover(
       typeName: qualifiedName,
     });
     const comment = classComment.length > 0 ? classComment : info.comment;
-    return renderHover(qualifiedName, info.restriction, comment);
+    const markdown = renderHover(qualifiedName, info.restriction, comment);
+    return { markdown, startIndex: target.startIndex, endIndex: target.endIndex };
   } catch (err) {
     // Resolution succeeded but the metadata round-trip failed — no hover rather
     // than a partial/incorrect one.
@@ -152,25 +163,21 @@ export class ModelicaHoverProvider implements vscode.HoverProvider {
       if (token.isCancellationRequested) return undefined;
 
       const tree = await this.cache.parse(document);
-      const offset = document.offsetAt(position);
-      const target = targetAt(tree, offset);
-      const markdown = await computeHover(
+      const result = await computeHover(
         tree,
-        offset,
+        document.offsetAt(position),
         owning.qualifiedName,
         client,
       );
-      if (!markdown) return undefined;
+      if (!result) return undefined;
 
-      // Underline the symbol the tooltip describes (the identifier under the
-      // cursor), so the hover anchors to it rather than the whole token run.
-      const range = target
-        ? new vscode.Range(
-            document.positionAt(target.startIndex),
-            document.positionAt(target.endIndex),
-          )
-        : undefined;
-      return new vscode.Hover(new vscode.MarkdownString(markdown), range);
+      // Underline the identifier under the cursor so the hover anchors to it
+      // rather than the whole token run.
+      const range = new vscode.Range(
+        document.positionAt(result.startIndex),
+        document.positionAt(result.endIndex),
+      );
+      return new vscode.Hover(new vscode.MarkdownString(result.markdown), range);
     } catch (err) {
       log.error("language", "hover provider failed", err);
       return undefined;
