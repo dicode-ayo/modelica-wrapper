@@ -1,3 +1,8 @@
+/**
+ * Unit tests for the OMC resolution layer. The OMC surface is a plain mock — no
+ * live OMC.
+ */
+
 import { describe, expect, it, vi } from "vitest";
 
 import type { CursorContextKind } from "./cursor.js";
@@ -26,20 +31,13 @@ function makeClient(overrides: Partial<ResolveClient> = {}): ResolveClient {
 }
 
 describe("resolve — class/type reference", () => {
-  it("qualifies the name in the owning scope and reads its location (1→0 based)", async () => {
+  it("qualifies the name in the owning scope and reports the FQN", async () => {
     const qualifyPath = vi.fn(() =>
       Promise.resolve({
         qualifiedPath: "Modelica.Electrical.Analog.Basic.Resistor",
       }),
     );
-    const getClassInformation = vi.fn(() =>
-      Promise.resolve({
-        fileName: "/msl/Resistor.mo",
-        lineNumberStart: 12,
-        columnNumberStart: 3,
-      }),
-    );
-    const client = makeClient({ qualifyPath, getClassInformation });
+    const client = makeClient({ qualifyPath });
 
     const result = await resolve(
       "MyPkg.Circuit",
@@ -51,15 +49,11 @@ describe("resolve — class/type reference", () => {
       typeName: "MyPkg.Circuit",
       path: "Resistor",
     });
-    expect(getClassInformation).toHaveBeenCalledWith({
+    expect(client.getClassInformation).toHaveBeenCalledWith({
       typeName: "Modelica.Electrical.Analog.Basic.Resistor",
     });
-    // OMC (12, 3) 1-based → VSCode (11, 2) 0-based.
     expect(result).toEqual({
       qualifiedName: "Modelica.Electrical.Analog.Basic.Resistor",
-      fileName: "/msl/Resistor.mo",
-      line: 11,
-      column: 2,
     });
   });
 
@@ -67,16 +61,7 @@ describe("resolve — class/type reference", () => {
     const qualifyPath = vi.fn(({ path }) =>
       Promise.resolve({ qualifiedPath: path }),
     );
-    const client = makeClient({
-      qualifyPath,
-      getClassInformation: vi.fn(() =>
-        Promise.resolve({
-          fileName: "/x.mo",
-          lineNumberStart: 1,
-          columnNumberStart: 1,
-        }),
-      ),
-    });
+    const client = makeClient({ qualifyPath });
 
     await resolve(
       "Pkg.A",
@@ -91,20 +76,14 @@ describe("resolve — class/type reference", () => {
 
   it("resolves `extends` targets", async () => {
     const client = makeClient({
-      qualifyPath: vi.fn(() =>
-        Promise.resolve({ qualifiedPath: "Pkg.Base" }),
-      ),
-      getClassInformation: vi.fn(() =>
-        Promise.resolve({
-          fileName: "/pkg/Base.mo",
-          lineNumberStart: 5,
-          columnNumberStart: 1,
-        }),
-      ),
+      qualifyPath: vi.fn(() => Promise.resolve({ qualifiedPath: "Pkg.Base" })),
     });
-    const result = await resolve("Pkg.Derived", target("extends", ["Base"]), client);
-    expect(result?.qualifiedName).toBe("Pkg.Base");
-    expect(result?.line).toBe(4);
+    const result = await resolve(
+      "Pkg.Derived",
+      target("extends", ["Base"]),
+      client,
+    );
+    expect(result).toEqual({ qualifiedName: "Pkg.Base" });
   });
 
   it("returns undefined when the class has no source file (built-in)", async () => {
@@ -154,14 +133,7 @@ describe("resolve — member cref", () => {
       }
       return Promise.resolve({ components: [] });
     });
-    const getClassInformation = vi.fn(() =>
-      Promise.resolve({
-        fileName: "/msl/SIunits.mo",
-        lineNumberStart: 200,
-        columnNumberStart: 5,
-      }),
-    );
-    const client = makeClient({ getComponents, getClassInformation });
+    const client = makeClient({ getComponents });
 
     const result = await resolve(
       "MyPkg.Circuit",
@@ -173,18 +145,10 @@ describe("resolve — member cref", () => {
     expect(getComponents).toHaveBeenNthCalledWith(2, {
       typeName: "Modelica.Electrical.Basic.Resistor",
     });
-    expect(getClassInformation).toHaveBeenCalledWith({
+    expect(client.getClassInformation).toHaveBeenCalledWith({
       typeName: "Modelica.SIunits.Resistance",
     });
-    // The navigation target IS the member's declared type, not the cref path
-    // (so the def provider's `modelica-source:/<FQN>.mo` navigation opens the
-    // class definition, not a non-existent component "class").
-    expect(result).toEqual({
-      qualifiedName: "Modelica.SIunits.Resistance",
-      fileName: "/msl/SIunits.mo",
-      line: 199,
-      column: 4,
-    });
+    expect(result).toEqual({ qualifiedName: "Modelica.SIunits.Resistance" });
   });
 
   it("walks a 3-segment cref through each segment's type", async () => {
@@ -211,14 +175,7 @@ describe("resolve — member cref", () => {
           return Promise.resolve({ components: [] });
       }
     });
-    const getClassInformation = vi.fn(() =>
-      Promise.resolve({
-        fileName: "/pkg/C.mo",
-        lineNumberStart: 7,
-        columnNumberStart: 2,
-      }),
-    );
-    const client = makeClient({ getComponents, getClassInformation });
+    const client = makeClient({ getComponents });
 
     const result = await resolve(
       "MyPkg.Top",
@@ -226,13 +183,10 @@ describe("resolve — member cref", () => {
       client,
     );
 
-    expect(getClassInformation).toHaveBeenCalledWith({ typeName: "Pkg.C" });
-    expect(result).toEqual({
-      qualifiedName: "Pkg.C",
-      fileName: "/pkg/C.mo",
-      line: 6,
-      column: 1,
-    });
+    // The container of the final member is B's type, not A's — so the resolved
+    // member type is Pkg.C (via B), never Pkg.WrongC (A's own `c`).
+    expect(client.getClassInformation).toHaveBeenCalledWith({ typeName: "Pkg.C" });
+    expect(result).toEqual({ qualifiedName: "Pkg.C" });
   });
 
   it("returns undefined when an intermediate segment can't be walked", async () => {

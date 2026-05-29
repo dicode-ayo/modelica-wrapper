@@ -84,7 +84,7 @@ export async function computeDefinition(
   if (!target) return undefined;
 
   const resolved = await resolve(owningClass, target, client);
-  if (!resolved || resolved.qualifiedName.length === 0) return undefined;
+  if (!resolved) return undefined;
 
   return { qualifiedName: resolved.qualifiedName };
 }

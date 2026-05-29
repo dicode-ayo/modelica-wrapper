@@ -10,13 +10,9 @@
  *     expose per-component source lines).
  *
  * Returns `undefined` rather than guessing on any failure.
- *
- * OMC coordinates are 1-based; returned `line`/`column` are 0-based via
- * `position.ts`.
  */
 
 import type { CursorContextKind, CursorTarget } from "./cursor.js";
-import { omcToVscodePosition } from "./position.js";
 
 /** The slice of {@link CursorTarget} the resolver reads. */
 export type ResolveTarget = Pick<CursorTarget, "context" | "pathToCursor">;
@@ -37,12 +33,9 @@ export interface ResolveClient {
   }>;
 }
 
-/** A resolved definition target with its 0-based source location. */
+/** A resolved definition target. */
 export interface ResolvedTarget {
   readonly qualifiedName: string;
-  readonly fileName: string;
-  readonly line: number;
-  readonly column: number;
 }
 
 const TYPE_CONTEXTS: ReadonlySet<CursorContextKind> = new Set<CursorContextKind>(
@@ -114,14 +107,7 @@ async function resolveMemberCref(
   );
   if (!memberType) return undefined;
 
-  // The navigation target IS the member's declared type — that's the class
-  // whose source we want to open. `location.qualifiedName` is already
-  // `memberType`, so returning it verbatim gives the right shape for the
-  // definition provider's `modelica-source:` navigation and for hover's
-  // `getClassComment(memberType)` lookup.
-  const location = await locateClass(memberType, client);
-  if (!location) return undefined;
-  return location;
+  return locateClass(memberType, client);
 }
 
 async function resolveComponentType(
@@ -140,6 +126,12 @@ async function resolveComponentType(
   return className && className.length > 0 ? className : undefined;
 }
 
+/**
+ * Verify that `qualifiedName` names a real class — an unknown or built-in name
+ * (no source binding) yields `undefined`, otherwise the FQN comes back wrapped
+ * in a {@link ResolvedTarget}. `getClassInformation` is the existence probe;
+ * its location coordinates are not read.
+ */
 async function locateClass(
   qualifiedName: string,
   client: ResolveClient,
@@ -153,14 +145,5 @@ async function locateClass(
   }
   // Empty fileName = built-in / unbound class.
   if (info.fileName.length === 0) return undefined;
-  const { line, character } = omcToVscodePosition(
-    info.lineNumberStart,
-    info.columnNumberStart,
-  );
-  return {
-    qualifiedName,
-    fileName: info.fileName,
-    line,
-    column: character,
-  };
+  return { qualifiedName };
 }

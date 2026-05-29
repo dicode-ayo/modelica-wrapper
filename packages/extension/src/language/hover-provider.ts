@@ -79,26 +79,22 @@ export async function computeHover(
   if (!resolved) return undefined;
 
   const { qualifiedName } = resolved;
-  let restriction = "";
-  let comment = "";
   try {
     const info = await client.getClassInformation({ typeName: qualifiedName });
-    restriction = info.restriction;
     // `getClassInformation` also carries a comment, but the design pins the
     // dedicated `getClassComment` wrapper as the doc-comment source; prefer it
     // and fall back to the bundled comment if the dedicated call yields nothing.
     const { comment: classComment } = await client.getClassComment({
       typeName: qualifiedName,
     });
-    comment = classComment.length > 0 ? classComment : info.comment;
+    const comment = classComment.length > 0 ? classComment : info.comment;
+    return renderHover(qualifiedName, info.restriction, comment);
   } catch (err) {
     // Resolution succeeded but the metadata round-trip failed — no hover rather
     // than a partial/incorrect one.
     log.error("language", "hover metadata lookup failed", err);
     return undefined;
   }
-
-  return renderHover(qualifiedName, restriction, comment);
 }
 
 /**

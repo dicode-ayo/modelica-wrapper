@@ -72,13 +72,6 @@ describe("computeDefinition — class/type reference", () => {
       qualifyPath: vi.fn(() =>
         Promise.resolve({ qualifiedPath: "Modelica.Electrical.Resistor" }),
       ),
-      getClassInformation: vi.fn(() =>
-        Promise.resolve({
-          fileName: "/msl/Resistor.mo",
-          lineNumberStart: 12,
-          columnNumberStart: 3,
-        }),
-      ),
     });
 
     const site = await computeDefinition(
@@ -99,13 +92,6 @@ describe("computeDefinition — class/type reference", () => {
     const src = "model Derived\n  extends Base;\nend Derived;";
     const client = makeClient({
       qualifyPath: vi.fn(() => Promise.resolve({ qualifiedPath: "Pkg.Base" })),
-      getClassInformation: vi.fn(() =>
-        Promise.resolve({
-          fileName: "/pkg/Base.mo",
-          lineNumberStart: 5,
-          columnNumberStart: 1,
-        }),
-      ),
     });
 
     const site = await computeDefinition(
@@ -123,16 +109,7 @@ describe("computeDefinition — class/type reference", () => {
     const qualifyPath = vi.fn(({ path }) =>
       Promise.resolve({ qualifiedPath: path }),
     );
-    const client = makeClient({
-      qualifyPath,
-      getClassInformation: vi.fn(() =>
-        Promise.resolve({
-          fileName: "/x.mo",
-          lineNumberStart: 1,
-          columnNumberStart: 1,
-        }),
-      ),
-    });
+    const client = makeClient({ qualifyPath });
 
     await computeDefinition(
       parse(src),
@@ -163,16 +140,7 @@ describe("computeDefinition — member cref", () => {
       }
       return Promise.resolve({ components: [] });
     });
-    const client = makeClient({
-      getComponents,
-      getClassInformation: vi.fn(() =>
-        Promise.resolve({
-          fileName: "/msl/SIunits.mo",
-          lineNumberStart: 200,
-          columnNumberStart: 5,
-        }),
-      ),
-    });
+    const client = makeClient({ getComponents });
 
     const site = await computeDefinition(
       parse(src),
@@ -218,8 +186,8 @@ describe("computeDefinition — unresolved", () => {
       getClassInformation: vi.fn(() =>
         Promise.resolve({
           fileName: "",
-          lineNumberStart: 0,
-          columnNumberStart: 0,
+          lineNumberStart: 1,
+          columnNumberStart: 1,
         }),
       ),
     });
@@ -234,10 +202,8 @@ describe("computeDefinition — unresolved", () => {
 
   it("navigates an interactively-defined class via the virtual scheme", async () => {
     // OMC reports interactively-defined classes against the `<interactive>`
-    // pseudo-path. The old `Uri.file` impl had to filter this out; the new
-    // `modelica-source:` scheme handles it natively — `list(Resistor)` returns
-    // the interactively-defined source. We assert the qualified name flows
-    // through; the wrapper builds `modelica-source:/Resistor.mo` from it.
+    // pseudo-path; `modelica-source:` handles those natively via `list(<FQN>)`
+    // so resolution flows through the same as any FQN.
     const src = "model M\n  Resistor r;\nend M;";
     const client = makeClient({
       qualifyPath: vi.fn(() => Promise.resolve({ qualifiedPath: "Resistor" })),
