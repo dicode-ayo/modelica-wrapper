@@ -22,9 +22,9 @@ import * as vscode from "vscode";
 import { MODELICA_SOURCE_SCHEME } from "../source-provider.js";
 
 import {
+  owningClassFromQualifiedName,
   resolveOwningClass,
   type FileProbe,
-  type OwningClass,
   type OwningClassClient,
 } from "./owning-class.js";
 import type { OmcSync } from "./sync.js";
@@ -39,28 +39,25 @@ import type { OmcSync } from "./sync.js";
  *   files only.
  * @param options - `probe` overrides the package-directory filesystem check
  *   (the `resolveOwningClass` test seam); defaults to the real filesystem.
- * @returns the owning class, or `undefined` when none can be derived.
+ * @returns the owning class FQN, or `undefined` when none can be derived.
  */
 export async function resolveDocumentOwner(
   document: vscode.TextDocument,
   client: OwningClassClient,
   sync: Pick<OmcSync, "ensureLoaded">,
   options: { probe?: FileProbe } = {},
-): Promise<OwningClass | undefined> {
-  const isVirtual = document.uri.scheme === MODELICA_SOURCE_SCHEME;
+): Promise<{ readonly qualifiedName: string } | undefined> {
+  // Virtual `modelica-source:` URIs have the FQN as their basename and are
+  // already loaded in OMC (their source came from there); no walk, no load.
+  if (document.uri.scheme === MODELICA_SOURCE_SCHEME) {
+    return owningClassFromQualifiedName(document.uri.fsPath);
+  }
   const owning = await resolveOwningClass(document.uri.fsPath, {
     client,
-    pathIsQualifiedName: isVirtual,
-    // Only forward a probe when one was supplied — `exactOptionalPropertyTypes`
-    // forbids passing `probe: undefined` to the optional property.
+    // `exactOptionalPropertyTypes` forbids passing `probe: undefined`.
     ...(options.probe ? { probe: options.probe } : {}),
   });
   if (!owning) return undefined;
-
-  // A virtual source class is already loaded in OMC (and has no real path to
-  // load); only real files need the load-on-touch.
-  if (!isVirtual) {
-    await sync.ensureLoaded(owning.fileName);
-  }
+  await sync.ensureLoaded(owning.fileName);
   return owning;
 }

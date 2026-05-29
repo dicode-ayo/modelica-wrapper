@@ -104,7 +104,7 @@ export function registerLanguageFeatures(
   // Re-load on save so resolution reflects the now-current on-disk text.
   const onSave = vscode.workspace.onDidSaveTextDocument((document) => {
     if (!isModelicaDocument(document)) return;
-    sync.markSaved(document.uri.fsPath);
+    sync.invalidate(document.uri.fsPath);
   });
 
   const onClose = vscode.workspace.onDidCloseTextDocument((document) => {
