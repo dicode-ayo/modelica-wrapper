@@ -497,4 +497,19 @@ describe("computeCompletions — robustness", () => {
     // The failing source is swallowed; the other still contributes.
     expect(out.map((c) => c.label)).toEqual(["Modelica.Electrical.Resistor"]);
   });
+
+  it("returns [] (does not throw) when qualifyPath rejects on a member head", async () => {
+    const src = "model M\nequation\n  y = Modelica.Electrical.;\nend M;";
+    const dotAfter =
+      offsetOf(src, "Modelica.Electrical.") + "Modelica.Electrical.".length;
+    const client = makeClient({
+      // Component walk fails, so the head falls through to qualifyPath — which
+      // rejects. The provider must degrade to no candidates, not throw out.
+      getComponents: vi.fn(() => Promise.resolve({ components: [] })),
+      qualifyPath: vi.fn(() => Promise.reject(new Error("offline"))),
+    });
+
+    const out = await computeCompletions(parse(src), dotAfter, "MyPkg.M", client);
+    expect(out).toEqual([]);
+  });
 });

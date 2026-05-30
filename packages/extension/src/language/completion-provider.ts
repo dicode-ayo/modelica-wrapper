@@ -1,17 +1,14 @@
 /**
- * Context-aware autocomplete (#99) — the suggestive half of the hybrid loop.
- *
- * Same front-end as go-to-definition / hover: parse the buffer (`ParseCache`),
- * classify the cursor (`cursor.ts`), scope to the document's owning class
- * (`owning-class.ts`). Instead of resolving ONE name, the cursor's *context*
+ * Context-aware autocomplete for Modelica buffers. Parse the buffer, classify
+ * the cursor, scope to the document's owning class; the cursor's *context* then
  * selects which OMC query produces the candidate list:
  *
  *   context → candidate source
  *   ─────────────────────────────────────────────────────────────────────────
  *   type-reference / extends / component-type
- *                          → class names: `getClassNames` of the relevant scope
- *                            (children of the owning class) PLUS a fuzzy global
- *                            `searchClassNames` on the typed prefix.
+ *                          → class names: `getClassNames` of the owning class's
+ *                            children PLUS a fuzzy global `searchClassNames` on
+ *                            the typed prefix.
  *   member-access (after `.`)
  *                          → resolve the head's type via the resolution layer's
  *                            component-type walk (`walkCrefType`), then
@@ -21,34 +18,16 @@
  *   modifier-name          → `getParameterNames` of the class being modified.
  *   otherwise              → nothing (don't spam plain value references).
  *
- * ## Pure / impure split (testability)
+ * The routing + OMC queries live in {@link computeCompletions}, a pure function
+ * with no `vscode` import (unit-tested against a mocked client);
+ * {@link ModelicaCompletionProvider} is the host wrapper. Only typed
+ * `@dicode/omc-client` wrappers are used — never raw `client.call`.
  *
- * Mirrors `definition-provider.ts` / `hover-provider.ts`: the routing + OMC
- * queries live in {@link computeCompletions}, which takes a tree-sitter `Tree` +
- * offset + owning class + a structural OMC surface and returns **plain data**
- * ({@link CompletionCandidate}[]) with NO `vscode` import, so each context's
- * routing is unit-testable against a mocked client (see
- * `completion-provider.test.ts`). The `vscode.CompletionItemProvider` wrapper
- * ({@link ModelicaCompletionProvider}) is a thin shell that parses, derives the
- * owning class, ensures the file is loaded, calls `computeCompletions`, maps the
- * local {@link CompletionCandidateKind} to `vscode.CompletionItemKind`, and never
- * throws out (honours the `CancellationToken`).
- *
- * Only typed `@dicode/omc-client` wrappers are used — never raw `client.call`.
- * The member-access head type comes from the resolution layer's shared
- * `walkCrefType`, not a re-implemented walk.
- *
- * ## v1 scoping simplifications (documented inline at the call sites)
- *
- *   - **Class-name scope.** "Relevant scope" for type/extends position is the
- *     owning class's *own* children plus a fuzzy global `searchClassNames`. A
- *     full import/extends-aware visible-name set is a refinement; the seam is
- *     {@link classNameCandidates}.
- *   - **Inherited members.** `getComponents`/`getParameterNames` report only a
- *     class's *own* declared members — inherited ones are the same v1 gap as the
- *     rest of the language layer (see `resolve.ts`).
- *   - **Staleness.** Completion reflects the last *saved* buffer (the coarse v1
- *     sync policy in `sync.ts`), so a just-typed unsaved member may be missing.
+ * Scope: candidates cover the owning class's own children plus a global fuzzy
+ * net (not the full import/extends-aware visible set); `getComponents` /
+ * `getParameterNames` report a class's *own* declared members, not inherited
+ * ones; and completion reflects the last *saved* buffer, so a just-typed unsaved
+ * member may be missing.
  */
 
 import * as vscode from "vscode";
@@ -211,11 +190,8 @@ export async function computeCompletions(
 /**
  * Class/type position: the owning class's *own* nested classes
  * (`getClassNames`) merged with a fuzzy global match (`searchClassNames`) on the
- * prefix the user is typing. v1 scope simplification: this is NOT the full
- * import/extends-aware visible set — it is the local children plus a global
- * fuzzy net, which covers the common cases (a sibling type, or a fully-qualified
- * library type). Refining to the exact visible-name set is a follow-up; this
- * function is the seam.
+ * prefix the user is typing — local children plus a global fuzzy net, not the
+ * full import/extends-aware visible set.
  */
 async function classNameCandidates(
   owningClass: string,
@@ -457,16 +433,13 @@ export class ModelicaCompletionProvider
   ): Promise<vscode.CompletionItem[] | undefined> {
     try {
       const client = await this.ensureClient();
-      // Derive the owning class and load-on-touch (real files only; a virtual
-      // `modelica-source:` class is already loaded — see `document-scope.ts`).
-      // Skipping the load matters most here: completion fires while typing, so a
-      // failing per-keystroke loadFile of a virtual path would be the noisiest.
+      // Real files load on touch; a virtual `modelica-source:` class is already
+      // loaded (see `document-scope.ts`).
       const owning = await resolveDocumentOwner(document, client, this.sync);
       if (!owning) return undefined;
 
-      // The work above (ensureClient + parseFile/loadFile for real files) is
-      // serialized; on a fast-moving cursor the host may already have abandoned
-      // this request.
+      // Bail between the load and resolve round-trips so a cursor that has
+      // already moved on doesn't issue further OMC calls.
       if (token.isCancellationRequested) return undefined;
 
       const tree = await this.cache.parse(document);

@@ -16,16 +16,24 @@ import type { CursorContextKind, CursorTarget } from "./cursor.js";
 /** The slice of {@link CursorTarget} the resolver reads. */
 export type ResolveTarget = Pick<CursorTarget, "context" | "pathToCursor">;
 
-/** Structural OMC surface; `OmcClient` satisfies this so tests can pass a mock. */
-export interface ResolveClient {
+/** Qualifies a name into a fully-qualified class path within a scope. */
+export interface QualifyClient {
   qualifyPath(input: {
     typeName: string;
     path: string;
   }): Promise<{ qualifiedPath: string }>;
-  getClassInformation(input: { typeName: string }): Promise<{ fileName: string }>;
+}
+
+/** Lists a class's declared components, for the cref type-walk. */
+export interface ComponentWalkClient {
   getComponents(input: { typeName: string }): Promise<{
     components: { className: string; name: string }[];
   }>;
+}
+
+/** Structural OMC surface; `OmcClient` satisfies this so tests can pass a mock. */
+export interface ResolveClient extends QualifyClient, ComponentWalkClient {
+  getClassInformation(input: { typeName: string }): Promise<{ fileName: string }>;
 }
 
 /** A resolved definition target. */
@@ -70,23 +78,27 @@ async function resolveTypeReference(
 
 /**
  * Qualify a dotted name in `owningClass`'s scope into a fully-qualified class
- * name (honouring `import`/`extends`), or `undefined` for an empty path. Shared
- * by `resolveTypeReference` and the completion source. OMC returns the name
- * unchanged when it cannot qualify it; that's still the caller's existence
- * probe via `getClassInformation`, not a failure here.
+ * name (honouring `import`/`extends`), or `undefined` for an empty path or a
+ * rejected lookup. OMC returns the name unchanged when it cannot qualify it;
+ * that's still the caller's existence probe via `getClassInformation`, not a
+ * failure here.
  */
 export async function qualifyTypeReference(
   owningClass: string,
   pathToCursor: readonly string[],
-  client: Pick<ResolveClient, "qualifyPath">,
+  client: QualifyClient,
 ): Promise<string | undefined> {
   const name = pathToCursor.join(".");
   if (name.length === 0) return undefined;
-  const { qualifiedPath } = await client.qualifyPath({
-    typeName: owningClass,
-    path: name,
-  });
-  return qualifiedPath;
+  try {
+    const { qualifiedPath } = await client.qualifyPath({
+      typeName: owningClass,
+      path: name,
+    });
+    return qualifiedPath;
+  } catch {
+    return undefined;
+  }
 }
 
 async function resolveMemberCref(
@@ -120,14 +132,13 @@ async function resolveMemberCref(
 /**
  * Walk a dotted component path against `owningClass`'s scope to the
  * fully-qualified type of its final segment. Each segment resolves in the
- * *previous* segment's type — the same walk `resolveMemberCref` uses, shared
- * with the completion source so the rule lives in one place. Returns
- * `undefined` for an empty path or when any segment can't be walked.
+ * *previous* segment's type. Returns `undefined` for an empty path or when any
+ * segment can't be walked.
  */
 export async function walkCrefType(
   owningClass: string,
   segments: readonly string[],
-  client: Pick<ResolveClient, "getComponents">,
+  client: ComponentWalkClient,
 ): Promise<string | undefined> {
   if (segments.length === 0) return undefined;
   let containerType = owningClass;
@@ -142,7 +153,7 @@ export async function walkCrefType(
 async function resolveComponentType(
   containerType: string,
   componentName: string,
-  client: Pick<ResolveClient, "getComponents">,
+  client: ComponentWalkClient,
 ): Promise<string | undefined> {
   let components;
   try {

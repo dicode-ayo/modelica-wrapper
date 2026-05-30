@@ -96,6 +96,14 @@ describe("resolve — class/type reference", () => {
     const result = await resolve("Pkg.A", target("type-reference", ["Nope"]), client);
     expect(result).toBeUndefined();
   });
+
+  it("returns undefined (does not throw) when qualifyPath rejects", async () => {
+    const client = makeClient({
+      qualifyPath: vi.fn(() => Promise.reject(new Error("offline"))),
+    });
+    const result = await resolve("Pkg.A", target("type-reference", ["R"]), client);
+    expect(result).toBeUndefined();
+  });
 });
 
 describe("resolve — member cref", () => {

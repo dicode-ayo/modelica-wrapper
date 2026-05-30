@@ -63,9 +63,6 @@ export {
   SymbolKind,
   type SymbolNode,
 } from "./symbols-provider.js";
-// The PR-5 context-aware completion provider + its pure routing core. The pure
-// `computeCompletions` routes the cursor context to the right OMC source(s); the
-// thin provider maps the local kind enum to VSCode's.
 export {
   ModelicaCompletionProvider,
   computeCompletions,
