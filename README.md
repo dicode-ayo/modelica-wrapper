@@ -111,6 +111,10 @@ The root file is the map; the detail lives under [`docs/`](docs):
 - **[OMEdit autocomplete — reference](docs/omedit-completion-reference.md)** —
   how the upstream OMEdit completer routes and sources candidates (library-tree,
   not live OMC), and where our provider diverges.
+- **[Diagram & library tree — OMC/OMEdit reference](docs/diagram-omc-reference.md)** —
+  the normative coordinate/annotation/connection semantics + the OMC calls
+  OMEdit uses, mapped against our implementation, with a diagram-editor gaps
+  table.
 
 ---
 
