@@ -227,8 +227,6 @@ describe("computeCompletions — type / extends / component-type position", () =
 });
 
 describe("computeCompletions — static channels", () => {
-  // A bare word starting an element parses as a component-type slot; this is
-  // where OMEdit offers keywords/types/snippets and we route the same.
   const elementSrc = "model M\n  par\nend M;";
   const elementOffset = offsetOf(elementSrc, "par") + 1;
 
@@ -269,12 +267,27 @@ describe("computeCompletions — static channels", () => {
     expect(modelSnippet?.insertText).toContain("${1:");
     expect(modelSnippet?.insertText).toContain("end");
 
-    // The bare `model` keyword shares the label but inserts no template.
     const modelKeyword = out.find(
       (c) => c.kind === CompletionCandidateKind.Keyword && c.label === "model",
     );
     expect(modelKeyword?.isSnippet).toBeUndefined();
     expect(modelKeyword?.insertText).toBeUndefined();
+  });
+
+  it("de-dupes a built-in type against a same-named OMC class (single `Real`)", async () => {
+    const src = "model M\n  Real\nend M;";
+    const client = makeClient({
+      searchClassNames: vi.fn(() => Promise.resolve({ classNames: ["Real"] })),
+    });
+
+    const out = await computeCompletions(
+      parse(src),
+      offsetOf(src, "Real") + 1,
+      "MyPkg.M",
+      client,
+    );
+
+    expect(out.filter((c) => c.label === "Real")).toHaveLength(1);
   });
 
   it("merges built-in types but NOT keywords/snippets after `extends`", async () => {
@@ -321,7 +334,6 @@ describe("computeCompletions — static channels", () => {
       makeClient({ getComponents }),
     );
 
-    // Members only — no Real/Integer, no keyword, no snippet.
     expect(out.map((c) => c.label)).toEqual(["v"]);
     expect(
       out.some(

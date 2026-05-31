@@ -1,8 +1,7 @@
 /**
- * Unit tests for the static completion channels. These pin the data contract
- * each channel exposes — kinds, snippet wrapping, and the disjointness between
- * keyword and built-in-type names — independent of the routing in
- * `completion-provider.test.ts`.
+ * Unit tests for the static completion channels: the data contract each channel
+ * exposes — kinds, snippet wrapping, and the disjointness between keyword and
+ * built-in-type names.
  */
 
 import { describe, expect, it } from "vitest";

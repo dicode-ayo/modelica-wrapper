@@ -163,13 +163,12 @@ const TYPE_CONTEXTS: ReadonlySet<CursorContextKind> =
 
 /**
  * Context kinds that begin an element/statement, where keyword and snippet
- * channels apply. A bare word starting a declaration parses as a
- * `type-reference`/`component-type` (the type slot of a half-typed clause); a
- * word after `extends` is a base-class reference, not a statement start, so it
- * stays out — built-in types still reach it via {@link TYPE_CONTEXTS}.
+ * channels apply: every type context except `extends`, whose word is a
+ * base-class reference rather than a statement start. Derived from
+ * {@link TYPE_CONTEXTS} so a context added there is not silently skipped here.
  */
 const ELEMENT_CONTEXTS: ReadonlySet<CursorContextKind> =
-  new Set<CursorContextKind>(["type-reference", "component-type"]);
+  new Set<CursorContextKind>([...TYPE_CONTEXTS].filter((c) => c !== "extends"));
 
 /**
  * Compute the completion candidates for the cursor at `offset` in `tree`, scoped
@@ -205,17 +204,22 @@ export async function computeCompletions(
   if (!target) return [];
 
   if (TYPE_CONTEXTS.has(target.context)) {
-    // Cap bounds the OMC-sourced names (the unbounded, costly part); the static
-    // channels are a fixed small set merged after, so the cap never starves
-    // them.
-    const candidates = cap(
+    // `cap` bounds only the unbounded OMC names; the fixed static set is merged
+    // after. A built-in type whose label already came from the OMC names (a
+    // class of the same simple name, or `searchClassNames` matching the
+    // predefined type) is dropped so the label appears once. The keyword and
+    // snippet channels intentionally share labels (e.g. `model`) and are kept.
+    const omcNames = cap(
       await classNameCandidates(owningClass, target, client),
     );
-    candidates.push(...builtInTypeCandidates());
+    const omcLabels = new Set(omcNames.map((c) => c.label));
+    const statics = builtInTypeCandidates().filter(
+      (c) => !omcLabels.has(c.label),
+    );
     if (ELEMENT_CONTEXTS.has(target.context)) {
-      candidates.push(...keywordCandidates(), ...snippetCandidates());
+      statics.push(...keywordCandidates(), ...snippetCandidates());
     }
-    return candidates;
+    return [...omcNames, ...statics];
   }
 
   if (target.context === "modifier-name") {
@@ -427,8 +431,8 @@ async function modifierCandidates(
 
 /**
  * De-dupe by label (first occurrence wins, so local children rank ahead of
- * fuzzy global hits of the same name) and cap the list. Applied to the
- * OMC-sourced candidates; the fixed static channels are merged after.
+ * fuzzy global hits of the same name) and bound the list to
+ * {@link MAX_COMPLETIONS}.
  */
 function cap(candidates: CompletionCandidate[]): CompletionCandidate[] {
   const seen = new Set<string>();

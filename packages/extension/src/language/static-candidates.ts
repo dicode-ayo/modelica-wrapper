@@ -9,8 +9,7 @@
  *     position alongside the OMC class names.
  *
  * The snippet `insertText` uses VSCode's `SnippetString` placeholder syntax
- * (`${1:name}`, `$0`); the thin provider wraps it in a `SnippetString`. Keeping
- * the syntax here (not a `vscode` type) leaves this module unit-testable.
+ * (`${1:name}`, `$0`); the thin provider wraps it in a `SnippetString`.
  */
 
 import {
@@ -88,8 +87,7 @@ interface SnippetSpec {
 
 /**
  * Class / control-flow templates offered in element/statement position. The
- * bodies use `SnippetString` placeholder syntax; `${1:name}` mirrors at the
- * matching `end`, `$0` is the final caret.
+ * bodies use `SnippetString` placeholder syntax.
  */
 export const CODE_SNIPPETS: readonly SnippetSpec[] = [
   { label: "model", body: "model ${1:Name}\n  $0\nend ${1:Name};" },
