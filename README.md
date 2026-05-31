@@ -106,6 +106,18 @@ The root file is the map; the detail lives under [`docs/`](docs):
 - **[Postprocessing view — design](docs/postprocessing-design.md)** — a second
   webview that collects `.mat` result files (from any model) and overlays their
   trajectories on plot cards (pre-implementation).
+- **[Language features — design](docs/language-features-design.md)** —
+  go-to-definition, hover, autocomplete, and outline for `.mo` source.
+- **[OMEdit autocomplete — reference](docs/omedit-completion-reference.md)** —
+  how the upstream OMEdit completer routes and sources candidates (library-tree,
+  not live OMC), and where our provider diverges.
+- **[Diagram & library tree — OMC/OMEdit reference](docs/diagram-omc-reference.md)** —
+  the normative coordinate/annotation/connection semantics + the OMC calls
+  OMEdit uses, mapped against our implementation, with a diagram-editor gaps
+  table.
+- **[Autocomplete — hybrid implementation plan](docs/autocomplete-hybrid-plan.md)** —
+  phased plan to combine OMEdit's inheritance-aware model + static channels with
+  our tree-sitter routing and the #112 cache.
 
 ---
 
