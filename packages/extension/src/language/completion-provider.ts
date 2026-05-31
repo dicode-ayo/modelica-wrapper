@@ -319,10 +319,10 @@ function enclosingScopes(owningClass: string): string[] {
 /**
  * Class/type position: nested classes of the owning class and of every enclosing
  * package (the parent scope chain) merged with a fuzzy global match
- * (`searchClassNames`) on the prefix the user is typing. Nearer scopes are listed
- * first so a name shadowed by an inner scope wins the de-dupe. Reports whether
- * the fuzzy net fired so the caller can mark a prefix-dependent result
- * incomplete.
+ * (`searchClassNames`) on the prefix the user is typing. Nearer scopes are pushed
+ * first so a name shadowed by an inner scope wins the first-occurrence-wins
+ * de-dupe applied at the downstream merge. Reports whether the fuzzy net fired so
+ * the caller can mark a prefix-dependent result incomplete.
  *
  * Imported names are absent: `qualifyPath` resolves a typed name but cannot
  * enumerate what an `import` clause brings into scope, so an unqualified import
@@ -336,16 +336,16 @@ async function classNameCandidates(
   const out: CompletionCandidate[] = [];
 
   // The owning class and each enclosing package, nearest first. A bare type
-  // reference resolves against this chain (a la OMEdit's candidate-context
-  // walk), so each level's children are visible local names.
+  // reference resolves against this chain, so each level's children are visible
+  // local names.
   for (const scope of enclosingScopes(owningClass)) {
-    try {
-      const { classNames } = await client.getClassNames({ typeName: scope });
-      for (const name of classNames) {
-        out.push({ label: name, kind: CompletionCandidateKind.Class });
-      }
-    } catch (err) {
-      log.debug("language", "completion getClassNames failed", err);
+    const { classNames } = await tryCall(
+      "getClassNames",
+      () => client.getClassNames({ typeName: scope }),
+      { classNames: [] },
+    );
+    for (const name of classNames) {
+      out.push({ label: name, kind: CompletionCandidateKind.Class });
     }
   }
 
