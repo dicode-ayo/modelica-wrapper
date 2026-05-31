@@ -192,9 +192,8 @@ export interface WalkedComponent {
  * so the result is de-duped by component name keeping the first occurrence in a
  * breadth-first walk from `typeName` outward through its bases.
  *
- * Tolerant by construction: a failed `getComponents`/`getInheritedClasses` for
- * any class contributes nothing rather than aborting the walk, and a cyclic or
- * diamond inheritance graph is visited once per class.
+ * A failed `getComponents`/`getInheritedClasses` for any class contributes
+ * nothing rather than aborting the walk.
  */
 export async function inheritedComponents(
   typeName: string,
@@ -211,10 +210,14 @@ export async function inheritedComponents(
     if (current === undefined || visited.has(current)) continue;
     visited.add(current);
 
-    for (const c of await ownComponents(current, client)) {
+    const [components, bases] = await Promise.all([
+      ownComponents(current, client),
+      directBases(current, client),
+    ]);
+    for (const c of components) {
       if (!byName.has(c.name)) byName.set(c.name, c);
     }
-    for (const base of await directBases(current, client)) {
+    for (const base of bases) {
       if (!visited.has(base)) queue.push(base);
     }
   }
