@@ -22,6 +22,7 @@ import {
   computeCompletions,
   MAX_COMPLETIONS,
   MIN_FUZZY_PREFIX,
+  type CompletionCandidate,
   type CompletionClient,
 } from "./completion-provider.js";
 import { GRAMMAR_WASM_FILENAME } from "./parse.js";
@@ -67,7 +68,7 @@ async function candidatesOf(
   offset: number,
   owningClass: string,
   client: CompletionClient,
-) {
+): Promise<CompletionCandidate[]> {
   return (await computeCompletions(tree, offset, owningClass, client))
     .candidates;
 }

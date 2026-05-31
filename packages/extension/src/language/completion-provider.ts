@@ -141,8 +141,8 @@ export interface CompletionCandidate {
 /**
  * Outcome of {@link computeCompletions}: the candidate list plus whether it is
  * incomplete. `isIncomplete` is true only when a contribution depends on the
- * typed prefix and a longer prefix would yield a different set — currently the
- * fuzzy global `searchClassNames` net. The provider maps this onto
+ * typed prefix and a longer prefix would yield a different set — the fuzzy
+ * global `searchClassNames` net. The provider maps this onto
  * `vscode.CompletionList.isIncomplete`: false lets VSCode filter the returned
  * set locally as the user types (no re-query); true makes it re-invoke the
  * provider as the prefix grows.
@@ -265,9 +265,7 @@ function stable(candidates: CompletionCandidate[]): CompletionResult {
  * OMC names is dropped so the label appears once; keyword and snippet channels
  * may share a label (e.g. `model`) and are both kept.
  *
- * The local children, built-in types, keywords, and snippets are stable; the
- * result is incomplete only when the prefix-dependent fuzzy global net fired,
- * so VSCode re-invokes as the prefix grows rather than filtering a partial set.
+ * Incomplete only when the fuzzy global net fired (see {@link CompletionResult}).
  */
 async function typePositionCandidates(
   owningClass: string,
