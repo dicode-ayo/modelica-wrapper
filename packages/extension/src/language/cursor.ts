@@ -81,6 +81,7 @@ export interface CursorTarget {
 const NAME_NODE = "name";
 const CREF_NODE = "component_reference";
 const IDENT_NODE = "IDENT";
+const TYPE_SPECIFIER_NODE = "type_specifier";
 
 /**
  * The named node at `offset` (a **UTF-16 code-unit offset** — see the module
@@ -138,6 +139,90 @@ export function targetAt(tree: Tree, offset: number): CursorTarget | null {
     startIndex: ident.startIndex,
     endIndex: ident.endIndex,
   };
+}
+
+/**
+ * The dotted path immediately *before* a `.` at `offset` — the "head" whose
+ * members an after-dot completion should offer.
+ *
+ * `targetAt` only classifies a `member-access` once at least one character has
+ * been typed after the dot (there is an `IDENT` to land on). The other case —
+ * the user has just typed the trigger `.` with nothing after it (`r.|`, `a.b.|`)
+ * — parses as an `ERROR` node with no identifier under the cursor, so
+ * `targetAt` returns `null`. This helper recovers the head for exactly that
+ * case: it looks at the identifier directly to the LEFT of `offset` and, if the
+ * character at `offset - 1` is a `.`, returns the dotted segments of the
+ * enclosing `name`/`component_reference` (e.g. `["a", "b"]` for `a.b.|`).
+ *
+ * Returns `null` when `offset` is not immediately after a dot or there is no
+ * dotted head to the left. The prefix being completed is empty in this case.
+ *
+ * `offset` is a UTF-16 code-unit offset (see the module note).
+ */
+export function headBeforeDot(tree: Tree, offset: number): string[] | null {
+  if (offset <= 0) return null;
+  // The trigger fires with the caret just past the `.`; the char at offset-1
+  // must be that dot for this to be an after-dot completion.
+  const dot = tree.rootNode.descendantForIndex(offset - 1, offset - 1);
+  if (!dot || dot.type !== ".") return null;
+  // The identifier left of the dot is the last segment of the head path.
+  const ident = identifierAt(tree, dot.startIndex);
+  if (!ident) return null;
+  const dotted = enclosingDottedNode(ident);
+  // A bare `r.` has no enclosing dotted node yet (the cref is just `r`); the
+  // single identifier is itself the whole head.
+  return dotted ? segmentsOf(dotted) : [ident.text];
+}
+
+/**
+ * The dotted *type name* of the declaration whose modifier list the cursor at
+ * `offset` is inside — the class whose parameters a `modifier-name` completion
+ * should offer. For `Resistor r(R = |)` this is `"Resistor"`; for
+ * `extends Base(p = |)` it is `"Base"`; for a dotted type
+ * `Modelica.Electrical.Resistor r(R = |)` it is the full dotted text.
+ *
+ * Returns `null` when the cursor is not inside a modifier list with a resolvable
+ * declaring type. This reads the declaration directly from the tree (the
+ * enclosing `component_clause`'s `typeSpecifier`, or the `extends_clause`'s type)
+ * rather than re-deriving the modified component, because the modifier name's
+ * own dotted path does NOT contain the component/type it modifies.
+ *
+ * `offset` is a UTF-16 code-unit offset (see the module note).
+ */
+export function modifiedTypeName(tree: Tree, offset: number): string | null {
+  const ident = identifierAt(tree, offset);
+  if (!ident) return null;
+  // Confirm we're on a modifier name, not some other identifier.
+  if (classify(ident, enclosingDottedNode(ident)) !== "modifier-name") {
+    return null;
+  }
+  // Walk up to the declaration carrying the type being modified.
+  let n: Node | null = ident.parent;
+  while (n) {
+    if (n.type === "component_clause") {
+      const ts = n.childForFieldName("typeSpecifier");
+      return ts && ts.text.length > 0 ? ts.text : null;
+    }
+    if (n.type === "extends_clause") {
+      // The extends target is the `typeSpecifier`/`name` child before the `(`.
+      const ts =
+        n.childForFieldName("typeSpecifier") ?? firstNameChild(n);
+      return ts && ts.text.length > 0 ? ts.text : null;
+    }
+    n = n.parent;
+  }
+  return null;
+}
+
+/** First `type_specifier`/`name` child of a node, or null. */
+function firstNameChild(node: Node): Node | null {
+  for (let i = 0; i < node.childCount; i++) {
+    const child = node.child(i);
+    if (child && (child.type === TYPE_SPECIFIER_NODE || child.type === NAME_NODE)) {
+      return child;
+    }
+  }
+  return null;
 }
 
 /**
@@ -252,7 +337,7 @@ function isMemberSegment(ident: Node, dotted: Node): boolean {
 function nameRole(dotted: Node): CursorContextKind | null {
   // The `name` may be wrapped in a `type_specifier`; climb past it.
   let n: Node | null = dotted.parent;
-  if (n?.type === "type_specifier") n = n.parent;
+  if (n?.type === TYPE_SPECIFIER_NODE) n = n.parent;
   switch (n?.type) {
     case "extends_clause":
       return "extends";
@@ -272,10 +357,10 @@ function nameRole(dotted: Node): CursorContextKind | null {
 function bareRole(ident: Node): CursorContextKind {
   const parent = ident.parent;
   switch (parent?.type) {
-    case "type_specifier":
+    case TYPE_SPECIFIER_NODE:
       // A single-segment type name (e.g. `Resistor`) — refine via grandparent.
       return nameRole(parent) ?? "type-reference";
-    case "component_reference":
+    case CREF_NODE:
       return "component-reference";
     case "element_modification":
       return "modifier-name";

@@ -11,6 +11,10 @@ import type { OmcClient } from "@dicode/omc-client";
 
 import { log } from "../logger.js";
 
+import {
+  COMPLETION_TRIGGER_CHARACTER,
+  ModelicaCompletionProvider,
+} from "./completion-provider.js";
 import { ModelicaDefinitionProvider } from "./definition-provider.js";
 import { ModelicaHoverProvider } from "./hover-provider.js";
 import {
@@ -25,7 +29,12 @@ import { OmcSync, type SyncClient } from "./sync.js";
 // the def/hover providers so consumers don't reach into individual modules.
 // Client-shape interfaces and the filesystem probe stay module-internal —
 // they're test seams, not API.
-export { resolve, type ResolvedTarget } from "./resolve.js";
+export {
+  resolve,
+  qualifyTypeReference,
+  walkCrefType,
+  type ResolvedTarget,
+} from "./resolve.js";
 export { resolveOwningClass, type OwningClass } from "./owning-class.js";
 export { OmcSync } from "./sync.js";
 export {
@@ -54,6 +63,16 @@ export {
   SymbolKind,
   type SymbolNode,
 } from "./symbols-provider.js";
+export {
+  ModelicaCompletionProvider,
+  computeCompletions,
+  toVscodeCompletionKind,
+  CompletionCandidateKind,
+  COMPLETION_TRIGGER_CHARACTER,
+  MAX_COMPLETIONS,
+  type CompletionCandidate,
+  type CompletionClient,
+} from "./completion-provider.js";
 
 /** Lazy OMC client accessor — same shape the commands use. */
 export type EnsureClient = () => Promise<OmcClient>;
@@ -95,6 +114,11 @@ export function registerLanguageFeatures(
   // Document symbols / outline is OMC-free — it walks the parsed tree alone,
   // so it shares only the parse cache.
   const symbolProvider = new ModelicaDocumentSymbolProvider(cache);
+  const completionProvider = new ModelicaCompletionProvider(
+    cache,
+    ensureClient,
+    sync,
+  );
 
   // Bind both providers to Modelica buffers. The repo's shared selector matches
   // by language id only (no scheme) so it covers real files AND the in-memory
@@ -111,6 +135,14 @@ export function registerLanguageFeatures(
     vscode.languages.registerDocumentSymbolProvider(
       MODELICA_DOCUMENT_SELECTOR,
       symbolProvider,
+    );
+  // `.` triggers member-access completion; for the other contexts VSCode invokes
+  // the provider on the normal identifier-typing path.
+  const completionRegistration =
+    vscode.languages.registerCompletionItemProvider(
+      MODELICA_DOCUMENT_SELECTOR,
+      completionProvider,
+      COMPLETION_TRIGGER_CHARACTER,
     );
 
   const onChange = vscode.workspace.onDidChangeTextDocument((event) => {
@@ -137,6 +169,7 @@ export function registerLanguageFeatures(
     definitionRegistration.dispose();
     hoverRegistration.dispose();
     symbolRegistration.dispose();
+    completionRegistration.dispose();
     onChange.dispose();
     onSave.dispose();
     onClose.dispose();
