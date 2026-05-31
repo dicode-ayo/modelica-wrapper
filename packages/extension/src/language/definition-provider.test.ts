@@ -221,4 +221,53 @@ describe("computeDefinition — unresolved", () => {
     );
     expect(site).toBeUndefined();
   });
+
+  it("returns undefined (does not throw) when qualifyPath throws", async () => {
+    // The resolution layer must swallow a qualifyPath throw into no-result, so
+    // the pure core degrades gracefully rather than throwing out.
+    const src = "model M\n  Resistor r;\nend M;";
+    const client = makeClient({
+      qualifyPath: vi.fn(() => Promise.reject(new Error("omc qualify failed"))),
+    });
+    const site = await computeDefinition(
+      parse(src),
+      offsetOf(src, "Resistor") + 1,
+      "Pkg.M",
+      client,
+    );
+    expect(site).toBeUndefined();
+  });
+});
+
+describe("computeDefinition — malformed / empty buffers", () => {
+  it("returns undefined for an empty buffer (no throw)", async () => {
+    const client = makeClient();
+    await expect(
+      computeDefinition(parse(""), 0, "Pkg.M", client),
+    ).resolves.toBeUndefined();
+  });
+
+  it("does not throw on a malformed, partially-typed buffer", async () => {
+    // Unterminated declaration with the cursor mid-type — tree-sitter returns a
+    // tree with error nodes; resolution must degrade, never throw.
+    const src = "model M\n  Resis";
+    const client = makeClient({
+      qualifyPath: vi.fn(() => Promise.reject(new Error("unloadable"))),
+    });
+    const site = await computeDefinition(
+      parse(src),
+      offsetOf(src, "Resis") + 1,
+      "Pkg.M",
+      client,
+    );
+    expect(site).toBeUndefined();
+  });
+
+  it("does not throw when the cursor is past the end of a malformed buffer", async () => {
+    const src = "model M\n  Real x(";
+    const client = makeClient();
+    await expect(
+      computeDefinition(parse(src), src.length, "Pkg.M", client),
+    ).resolves.toBeUndefined();
+  });
 });

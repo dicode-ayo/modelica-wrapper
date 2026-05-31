@@ -11,13 +11,13 @@
 
 import * as vscode from "vscode";
 
-import type { OmcClient } from "@dicode/omc-client";
 import type { Tree } from "web-tree-sitter";
 
 import { log } from "../logger.js";
 
 import { targetAt } from "./cursor.js";
 import { resolveDocumentOwner } from "./document-scope.js";
+import type { OwningClassClient } from "./owning-class.js";
 import type { ParseCache } from "./parse.js";
 import { resolve, type ResolveClient } from "./resolve.js";
 import type { OmcSync } from "./sync.js";
@@ -142,7 +142,9 @@ export function renderHover(
 export class ModelicaHoverProvider implements vscode.HoverProvider {
   constructor(
     private readonly cache: ParseCache,
-    private readonly ensureClient: () => Promise<OmcClient>,
+    private readonly ensureClient: () => Promise<
+      HoverClient & OwningClassClient
+    >,
     private readonly sync: OmcSync,
   ) {}
 

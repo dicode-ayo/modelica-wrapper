@@ -218,4 +218,49 @@ describe("computeHover", () => {
     );
     expect(result).toBeUndefined();
   });
+
+  it("returns undefined (does not throw) when qualifyPath throws", async () => {
+    const src = "model Circuit\n  Resistor r;\nend Circuit;";
+    const client = makeClient({
+      qualifyPath: vi.fn(() => Promise.reject(new Error("omc qualify failed"))),
+    });
+    const md = await computeHover(
+      parse(src),
+      offsetOf(src, "Resistor") + 1,
+      "MyPkg.Circuit",
+      client,
+    );
+    expect(md).toBeUndefined();
+  });
+});
+
+describe("computeHover — malformed / empty buffers", () => {
+  it("returns undefined for an empty buffer (no throw)", async () => {
+    const client = makeClient();
+    await expect(
+      computeHover(parse(""), 0, "Pkg.M", client),
+    ).resolves.toBeUndefined();
+  });
+
+  it("does not throw on a malformed, partially-typed buffer", async () => {
+    const src = "model M\n  Resis";
+    const client = makeClient({
+      qualifyPath: vi.fn(() => Promise.reject(new Error("unloadable"))),
+    });
+    const md = await computeHover(
+      parse(src),
+      offsetOf(src, "Resis") + 1,
+      "Pkg.M",
+      client,
+    );
+    expect(md).toBeUndefined();
+  });
+
+  it("does not throw when the cursor is past the end of a malformed buffer", async () => {
+    const src = "model M\n  Real x(";
+    const client = makeClient();
+    await expect(
+      computeHover(parse(src), src.length, "Pkg.M", client),
+    ).resolves.toBeUndefined();
+  });
 });

@@ -18,6 +18,10 @@ import {
 import { ModelicaDefinitionProvider } from "./definition-provider.js";
 import { ModelicaHoverProvider } from "./hover-provider.js";
 import {
+  OmcLookupCache,
+  type CachedOmcClient,
+} from "./omc-cache.js";
+import {
   MODELICA_DOCUMENT_SELECTOR,
   MODELICA_LANGUAGE_ID,
   ParseCache,
@@ -82,8 +86,32 @@ function isModelicaDocument(document: vscode.TextDocument): boolean {
 }
 
 /**
- * Register the language features. Returns a single {@link vscode.Disposable}
- * that tears down the parse cache and listeners.
+ * The save-event glue, extracted so it is unit-testable without an extension
+ * host (see `index.test.ts`). On a Modelica document save it (1) invalidates
+ * the file's loaded state via `sync` so the next touch re-`loadFile`s and
+ * (2) drops the OMC-lookup cache — the saved text is about to be reloaded,
+ * so cached qualify/components/class-name answers may no longer hold. A
+ * non-Modelica save is a no-op. The cache is looked up lazily (it is created
+ * on first provider use) so this is robust to the save firing before any
+ * provider request.
+ *
+ * @returns `true` if the save was handled (a Modelica doc), `false` if ignored.
+ */
+export function handleDocumentSave(
+  document: vscode.TextDocument,
+  sync: Pick<OmcSync, "invalidate">,
+  getLookupCache: () => Pick<OmcLookupCache, "invalidate"> | undefined,
+): boolean {
+  if (!isModelicaDocument(document)) return false;
+  sync.invalidate(document.uri.fsPath);
+  getLookupCache()?.invalidate();
+  return true;
+}
+
+/**
+ * Register the Modelica language features. Returns a single {@link vscode.Disposable}
+ * that tears down the parse cache and all listeners — push it onto
+ * `context.subscriptions`.
  *
  * @param context - the extension context; used to locate the bundled grammar
  *   WASM in `<extension>/out`.
@@ -105,18 +133,41 @@ export function registerLanguageFeatures(
   };
   const sync = new OmcSync(syncClient);
 
+  // One shared read-only-lookup cache for resolution + completion, keyed by the
+  // loaded-library signature (see `omc-cache.ts`). It is created on first use
+  // (the OMC client is lazy) and re-pointed if the underlying client is replaced
+  // (REPL `:reset`). The definition/hover/completion providers consume it via
+  // `cachedEnsureClient` so a single instance is shared (and save-invalidated).
+  let lookupCache: OmcLookupCache | undefined;
+  const cachedEnsureClient = async (): Promise<OmcLookupCache> => {
+    // `OmcClient` structurally satisfies `CachedOmcClient` (the intersection of
+    // `CompletionClient & HoverClient & LoadedLibrariesClient & ParseFileClient`),
+    // so the lazy factory's return type assigns through without a cast.
+    const client: CachedOmcClient = await ensureClient();
+    if (!lookupCache) {
+      lookupCache = new OmcLookupCache(client);
+    } else {
+      lookupCache.rewrap(client);
+    }
+    return lookupCache;
+  };
+
   const definitionProvider = new ModelicaDefinitionProvider(
     cache,
-    ensureClient,
+    cachedEnsureClient,
     sync,
   );
-  const hoverProvider = new ModelicaHoverProvider(cache, ensureClient, sync);
+  const hoverProvider = new ModelicaHoverProvider(
+    cache,
+    cachedEnsureClient,
+    sync,
+  );
   // Document symbols / outline is OMC-free — it walks the parsed tree alone,
   // so it shares only the parse cache.
   const symbolProvider = new ModelicaDocumentSymbolProvider(cache);
   const completionProvider = new ModelicaCompletionProvider(
     cache,
-    ensureClient,
+    cachedEnsureClient,
     sync,
   );
 
@@ -151,10 +202,11 @@ export function registerLanguageFeatures(
     cache.applyChange(event);
   });
 
-  // Re-load on save so resolution reflects the now-current on-disk text.
+  // Re-load on save so resolution reflects the now-current on-disk text, and
+  // drop the OMC-lookup cache: the saved file is about to be re-`loadFile`d, so
+  // any cached qualify/components/class-name answers may no longer hold.
   const onSave = vscode.workspace.onDidSaveTextDocument((document) => {
-    if (!isModelicaDocument(document)) return;
-    sync.invalidate(document.uri.fsPath);
+    handleDocumentSave(document, sync, () => lookupCache);
   });
 
   const onClose = vscode.workspace.onDidCloseTextDocument((document) => {

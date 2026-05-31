@@ -63,6 +63,15 @@ class UriImpl {
     return new UriImpl("file", "", fsPath, "", "");
   }
 
+  static joinPath(base: UriImpl, ...segments: string[]): UriImpl {
+    const joined = [base.path, ...segments].join("/").replace(/\/+/g, "/");
+    return new UriImpl(base.scheme, base.authority, joined, "", "");
+  }
+
+  get fsPath(): string {
+    return this.path;
+  }
+
   static parse(value: string): UriImpl {
     // Minimal scheme://path parser sufficient for our tests; full
     // RFC-3986 handling isn't needed because callers pass simple
@@ -105,6 +114,75 @@ export interface RecordedMessage {
 }
 
 export const recordedMessages: RecordedMessage[] = [];
+
+/**
+ * Minimal `Disposable` — records and runs a teardown callback. Returned by the
+ * `register*`/`onDid*` stubs so registration code can collect and dispose them.
+ */
+export class Disposable {
+  static from(...disposables: { dispose(): void }[]): Disposable {
+    return new Disposable(() => {
+      for (const d of disposables) d.dispose();
+    });
+  }
+  constructor(private readonly callOnDispose: () => void = () => {}) {}
+  dispose(): void {
+    this.callOnDispose();
+  }
+}
+
+/**
+ * Captured `workspace.onDid*` handlers so tests can drive editor events (save /
+ * change / close) without a real extension host. Each `onDid*` records its
+ * listener here and returns a {@link Disposable} that removes it.
+ */
+export const workspaceListeners: {
+  save: Array<(document: unknown) => void>;
+  change: Array<(event: unknown) => void>;
+  close: Array<(document: unknown) => void>;
+} = { save: [], change: [], close: [] };
+
+function register<T>(list: T[], listener: T): Disposable {
+  list.push(listener);
+  return new Disposable(() => {
+    const i = list.indexOf(listener);
+    if (i !== -1) list.splice(i, 1);
+  });
+}
+
+export const workspace = {
+  onDidSaveTextDocument(listener: (document: unknown) => void): Disposable {
+    return register(workspaceListeners.save, listener);
+  },
+  onDidChangeTextDocument(listener: (event: unknown) => void): Disposable {
+    return register(workspaceListeners.change, listener);
+  },
+  onDidCloseTextDocument(listener: (document: unknown) => void): Disposable {
+    return register(workspaceListeners.close, listener);
+  },
+  getConfiguration(_section?: string) {
+    return {
+      get: <T>(_key: string, defaultValue?: T): T | undefined => defaultValue,
+    };
+  },
+};
+
+/** Fire all captured `onDidSaveTextDocument` listeners with `document`. */
+export function emitSave(document: unknown): void {
+  for (const listener of workspaceListeners.save) listener(document);
+}
+
+/**
+ * Minimal `languages` namespace. The provider registrations are no-ops that
+ * return a {@link Disposable} — the unit tests exercise the event glue, not
+ * VSCode's provider routing.
+ */
+export const languages = {
+  registerDefinitionProvider: (): Disposable => new Disposable(),
+  registerHoverProvider: (): Disposable => new Disposable(),
+  registerDocumentSymbolProvider: (): Disposable => new Disposable(),
+  registerCompletionItemProvider: (): Disposable => new Disposable(),
+};
 
 export const window = {
   createOutputChannel(_name: string) {

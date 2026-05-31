@@ -32,7 +32,6 @@
 
 import * as vscode from "vscode";
 
-import type { OmcClient } from "@dicode/omc-client";
 import type { Tree } from "web-tree-sitter";
 
 import { log } from "../logger.js";
@@ -46,6 +45,7 @@ import {
 } from "./cursor.js";
 import { resolveDocumentOwner } from "./document-scope.js";
 import type { ParseCache } from "./parse.js";
+import type { OwningClassClient } from "./owning-class.js";
 import {
   qualifyTypeReference,
   walkCrefType,
@@ -209,7 +209,7 @@ async function classNameCandidates(
       out.push({ label: name, kind: CompletionCandidateKind.Class });
     }
   } catch (err) {
-    log.warn("language", "completion getClassNames failed", err);
+    log.debug("language", "completion getClassNames failed", err);
   }
 
   // Fuzzy global match on the typed prefix (the last segment under the cursor).
@@ -239,7 +239,7 @@ async function classNameCandidates(
         });
       }
     } catch (err) {
-      log.warn("language", "completion searchClassNames failed", err);
+      log.debug("language", "completion searchClassNames failed", err);
     }
   }
 
@@ -296,7 +296,9 @@ async function tryCall<T>(
   try {
     return await call();
   } catch (err) {
-    log.warn("language", `completion ${label} failed`, err);
+    // `log.debug` (not `warn`) — completion fires on every keystroke, so a
+    // persistent OMC failure must not flood the OutputChannel.
+    log.debug("language", `completion ${label} failed`, err);
     return fallback;
   }
 }
@@ -422,7 +424,9 @@ export class ModelicaCompletionProvider
 {
   constructor(
     private readonly cache: ParseCache,
-    private readonly ensureClient: () => Promise<OmcClient>,
+    private readonly ensureClient: () => Promise<
+      CompletionClient & OwningClassClient
+    >,
     private readonly sync: OmcSync,
   ) {}
 
