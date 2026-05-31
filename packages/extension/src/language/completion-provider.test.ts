@@ -164,6 +164,68 @@ describe("computeCompletions — type / extends / component-type position", () =
     expect(client.getComponents).not.toHaveBeenCalled();
   });
 
+  it("includes classes visible from an enclosing package", async () => {
+    // A sibling class declared in the enclosing package `MyPkg` (not a child of
+    // the owning class `MyPkg.Circuit`) is visible in a bare type reference.
+    const src = "model Circuit\n  Sibling s;\nend Circuit;";
+    const getClassNames = vi.fn(({ typeName }) => {
+      if (typeName === "MyPkg.Circuit") {
+        return Promise.resolve({ classNames: ["Inner"] });
+      }
+      if (typeName === "MyPkg") {
+        return Promise.resolve({ classNames: ["Circuit", "Sibling"] });
+      }
+      return Promise.resolve({ classNames: [] });
+    });
+    const client = makeClient({ getClassNames });
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "Sibling") + 1,
+      "MyPkg.Circuit",
+      client,
+    );
+
+    // Both the owning class and its enclosing package are queried.
+    expect(getClassNames).toHaveBeenCalledWith({ typeName: "MyPkg.Circuit" });
+    expect(getClassNames).toHaveBeenCalledWith({ typeName: "MyPkg" });
+
+    const labels = out.map((c) => c.label);
+    expect(labels).toContain("Inner");
+    expect(labels).toContain("Sibling");
+    for (const name of ["Inner", "Sibling"]) {
+      expect(out.find((c) => c.label === name)?.kind).toBe(
+        CompletionCandidateKind.Class,
+      );
+    }
+  });
+
+  it("de-dupes a name present in both the owning class and an enclosing scope", async () => {
+    // `Helper` is a child of both the owning class and its parent package; the
+    // nearer (owning-class) entry wins and the name appears exactly once.
+    const src = "model Circuit\n  Helper h;\nend Circuit;";
+    const getClassNames = vi.fn(({ typeName }) => {
+      if (typeName === "MyPkg.Circuit") {
+        return Promise.resolve({ classNames: ["Helper"] });
+      }
+      if (typeName === "MyPkg") {
+        return Promise.resolve({ classNames: ["Helper", "Other"] });
+      }
+      return Promise.resolve({ classNames: [] });
+    });
+    const client = makeClient({ getClassNames });
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "Helper") + 1,
+      "MyPkg.Circuit",
+      client,
+    );
+
+    expect(out.filter((c) => c.label === "Helper")).toHaveLength(1);
+    expect(out.map((c) => c.label)).toContain("Other");
+  });
+
   it("does NOT fire the global searchClassNames below MIN_FUZZY_PREFIX", async () => {
     // A 1-char prefix (< MIN_FUZZY_PREFIX) must not trigger the global fuzzy
     // search; the cheap scoped getClassNames still runs.

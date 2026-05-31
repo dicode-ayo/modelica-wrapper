@@ -7,8 +7,9 @@
  *   ─────────────────────────────────────────────────────────────────────────
  *   type-reference / extends / component-type
  *                          → class names: `getClassNames` of the owning class's
- *                            children PLUS a fuzzy global `searchClassNames` on
- *                            the typed prefix, MERGED with the built-in types.
+ *                            children AND of each enclosing package (the parent
+ *                            scope chain) PLUS a fuzzy global `searchClassNames`
+ *                            on the typed prefix, MERGED with the built-in types.
  *                            An element/statement start (type-reference /
  *                            component-type, not `extends`) also gets the
  *                            keyword and snippet channels (see
@@ -28,11 +29,13 @@
  * {@link ModelicaCompletionProvider} is the host wrapper. Only typed
  * `@dicode/omc-client` wrappers are used — never raw `client.call`.
  *
- * Scope: candidates cover the owning class's own children plus a global fuzzy
- * net (not the full import/extends-aware visible set); member access is
- * inheritance-inclusive, but `getParameterNames` still reports a class's *own*
- * declared parameters; and completion reflects the last *saved* buffer, so a
- * just-typed unsaved member may be missing.
+ * Scope: candidates cover the owning class's own children and those of each
+ * enclosing package, plus a global fuzzy net. Imported names are NOT enumerated:
+ * `qualifyPath` resolves a *typed* name but offers no way to list what an
+ * `import` clause brings into scope. Member access is inheritance-inclusive, but
+ * `getParameterNames` still reports a class's *own* declared parameters; and
+ * completion reflects the last *saved* buffer, so a just-typed unsaved member
+ * may be missing.
  */
 
 import * as vscode from "vscode";
@@ -295,11 +298,35 @@ interface ClassNameResult {
 }
 
 /**
- * Class/type position: the owning class's *own* nested classes
- * (`getClassNames`) merged with a fuzzy global match (`searchClassNames`) on the
- * prefix the user is typing — local children plus a global fuzzy net, not the
- * full import/extends-aware visible set. Reports whether the fuzzy net fired so
- * the caller can mark a prefix-dependent result incomplete.
+ * The owning class followed by each enclosing scope, nearest first, by stripping
+ * one trailing dotted segment at a time (`A.B.C` -> `A.B.C`, `A.B`, `A`). The
+ * top-level scope (the empty name) is omitted: `getClassNames` with no
+ * `typeName` lists every top-level package, which the fuzzy global search
+ * already covers.
+ */
+function enclosingScopes(owningClass: string): string[] {
+  const scopes: string[] = [];
+  let scope = owningClass;
+  while (scope.length > 0) {
+    scopes.push(scope);
+    const lastDot = scope.lastIndexOf(".");
+    if (lastDot === -1) break;
+    scope = scope.slice(0, lastDot);
+  }
+  return scopes;
+}
+
+/**
+ * Class/type position: nested classes of the owning class and of every enclosing
+ * package (the parent scope chain) merged with a fuzzy global match
+ * (`searchClassNames`) on the prefix the user is typing. Nearer scopes are listed
+ * first so a name shadowed by an inner scope wins the de-dupe. Reports whether
+ * the fuzzy net fired so the caller can mark a prefix-dependent result
+ * incomplete.
+ *
+ * Imported names are absent: `qualifyPath` resolves a typed name but cannot
+ * enumerate what an `import` clause brings into scope, so an unqualified import
+ * alias won't appear here.
  */
 async function classNameCandidates(
   owningClass: string,
@@ -308,16 +335,18 @@ async function classNameCandidates(
 ): Promise<ClassNameResult> {
   const out: CompletionCandidate[] = [];
 
-  // Children of the enclosing scope (the owning class). Bare local names.
-  try {
-    const { classNames } = await client.getClassNames({
-      typeName: owningClass,
-    });
-    for (const name of classNames) {
-      out.push({ label: name, kind: CompletionCandidateKind.Class });
+  // The owning class and each enclosing package, nearest first. A bare type
+  // reference resolves against this chain (a la OMEdit's candidate-context
+  // walk), so each level's children are visible local names.
+  for (const scope of enclosingScopes(owningClass)) {
+    try {
+      const { classNames } = await client.getClassNames({ typeName: scope });
+      for (const name of classNames) {
+        out.push({ label: name, kind: CompletionCandidateKind.Class });
+      }
+    } catch (err) {
+      log.debug("language", "completion getClassNames failed", err);
     }
-  } catch (err) {
-    log.debug("language", "completion getClassNames failed", err);
   }
 
   // Fuzzy global match on the typed prefix (the last segment under the cursor).
