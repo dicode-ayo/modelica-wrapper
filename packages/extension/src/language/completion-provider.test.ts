@@ -50,14 +50,17 @@ function offsetOf(src: string, needle: string, occurrence = 0): number {
   let idx = -1;
   for (let k = 0; k <= occurrence; k++) {
     idx = src.indexOf(needle, from + 1);
-    if (idx === -1) throw new Error(`needle not found: ${needle}#${occurrence}`);
+    if (idx === -1)
+      throw new Error(`needle not found: ${needle}#${occurrence}`);
     from = idx;
   }
   return idx;
 }
 
 /** A CompletionClient with overridable behaviour and call recording. */
-function makeClient(overrides: Partial<CompletionClient> = {}): CompletionClient {
+function makeClient(
+  overrides: Partial<CompletionClient> = {},
+): CompletionClient {
   return {
     qualifyPath: vi.fn(({ path }) => Promise.resolve({ qualifiedPath: path })),
     getClassInformation: vi.fn(() =>
@@ -110,7 +113,9 @@ describe("computeCompletions — type / extends / component-type position", () =
     const labels = out.map((c) => c.label);
     expect(labels).toContain("Ground");
     expect(labels).toContain("Modelica.Electrical.Resistor");
-    expect(out.every((c) => c.kind === CompletionCandidateKind.Class)).toBe(true);
+    expect(out.every((c) => c.kind === CompletionCandidateKind.Class)).toBe(
+      true,
+    );
   });
 
   it("routes an extends position to the class-name sources", async () => {
@@ -129,7 +134,9 @@ describe("computeCompletions — type / extends / component-type position", () =
     expect(client.getClassNames).toHaveBeenCalledWith({
       typeName: "Pkg.Derived",
     });
-    expect(client.searchClassNames).toHaveBeenCalledWith({ searchText: "Base" });
+    expect(client.searchClassNames).toHaveBeenCalledWith({
+      searchText: "Base",
+    });
     expect(client.getComponents).not.toHaveBeenCalled();
   });
 
@@ -373,14 +380,18 @@ describe("computeCompletions — modifier name", () => {
       path: "Resistor",
     });
     // ...then its parameters are listed against the qualified type.
-    expect(getParameterNames).toHaveBeenCalledWith({ typeName: "Pkg.Resistor" });
+    expect(getParameterNames).toHaveBeenCalledWith({
+      typeName: "Pkg.Resistor",
+    });
     // Class-name / member sources are NOT touched for a modifier name.
     expect(client.getClassNames).not.toHaveBeenCalled();
     expect(client.searchClassNames).not.toHaveBeenCalled();
     expect(client.getComponents).not.toHaveBeenCalled();
 
     expect(out.map((c) => c.label)).toEqual(["R", "T_ref", "alpha"]);
-    expect(out.every((c) => c.kind === CompletionCandidateKind.Property)).toBe(true);
+    expect(out.every((c) => c.kind === CompletionCandidateKind.Property)).toBe(
+      true,
+    );
   });
 
   it("reads the modified type from an extends clause", async () => {
@@ -462,7 +473,10 @@ describe("computeCompletions — robustness", () => {
   });
 
   it("caps the result list at MAX_COMPLETIONS", async () => {
-    const many = Array.from({ length: MAX_COMPLETIONS + 50 }, (_, i) => `C${i}`);
+    const many = Array.from(
+      { length: MAX_COMPLETIONS + 50 },
+      (_, i) => `C${i}`,
+    );
     const src = "model Circuit\n  Resistor r;\nend Circuit;";
     const client = makeClient({
       getClassNames: vi.fn(() => Promise.resolve({ classNames: many })),
@@ -509,7 +523,12 @@ describe("computeCompletions — robustness", () => {
       qualifyPath: vi.fn(() => Promise.reject(new Error("offline"))),
     });
 
-    const out = await computeCompletions(parse(src), dotAfter, "MyPkg.M", client);
+    const out = await computeCompletions(
+      parse(src),
+      dotAfter,
+      "MyPkg.M",
+      client,
+    );
     expect(out).toEqual([]);
   });
 });
@@ -517,9 +536,9 @@ describe("computeCompletions — robustness", () => {
 describe("computeCompletions — malformed / empty buffers", () => {
   it("returns [] for an empty buffer (no throw)", async () => {
     const client = makeClient();
-    await expect(computeCompletions(parse(""), 0, "Pkg.M", client)).resolves.toEqual(
-      [],
-    );
+    await expect(
+      computeCompletions(parse(""), 0, "Pkg.M", client),
+    ).resolves.toEqual([]);
   });
 
   it("does not throw on a malformed, partially-typed buffer", async () => {
@@ -532,7 +551,12 @@ describe("computeCompletions — malformed / empty buffers", () => {
       getComponents: vi.fn(() => Promise.reject(new Error("x"))),
     });
     await expect(
-      computeCompletions(parse(src), offsetOf(src, "Resis") + 1, "Pkg.M", client),
+      computeCompletions(
+        parse(src),
+        offsetOf(src, "Resis") + 1,
+        "Pkg.M",
+        client,
+      ),
     ).resolves.toBeInstanceOf(Array);
   });
 

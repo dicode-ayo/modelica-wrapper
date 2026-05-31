@@ -1,0 +1,17 @@
+# Prose docs are human-curated; reflowing them is noise.
+**/*.md
+# Agent/skill tooling, not project source.
+.claude/
+
+# Keep in lock-step with the ignores block in eslint.config.mjs.
+**/dist/
+**/out/
+**/storybook-static/
+**/node_modules/
+*.wasm
+pnpm-lock.yaml
+packages/extension/grammar/
+packages/omc-client/test/fixtures/
+packages/extension/e2e/node_modules/
+packages/extension/e2e/test-results/
+packages/extension/e2e/workspace/

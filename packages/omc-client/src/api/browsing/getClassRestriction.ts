@@ -26,14 +26,18 @@ export type GetClassRestrictionInput = z.input<
 >;
 
 export const GetClassRestrictionOutputSchema = z.object({
-  restriction: z.string().describe("Class restriction keyword (model, block, package, function, class, connector, type, record, operator, …)."),
+  restriction: z
+    .string()
+    .describe(
+      "Class restriction keyword (model, block, package, function, class, connector, type, record, operator, …).",
+    ),
 });
 export type GetClassRestrictionOutput = z.infer<
   typeof GetClassRestrictionOutputSchema
 >;
 
 export const GetClassRestrictionDescription =
-  "Return the class restriction keyword: \"model\", \"block\", \"package\", \"function\", \"class\", \"connector\", \"type\", \"record\", \"operator\", etc.";
+  'Return the class restriction keyword: "model", "block", "package", "function", "class", "connector", "type", "record", "operator", etc.';
 
 export async function getClassRestriction(
   ctx: CallContext,

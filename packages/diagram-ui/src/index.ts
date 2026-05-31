@@ -128,10 +128,7 @@ export {
 export { OmShapeElement } from "./base/shape-element.js";
 export { OmShapeNode } from "./base/shape-node.js";
 export { OmIconOverlay } from "./base/icon-overlay.component.js";
-export {
-  ResizeHandles,
-  setMeshHighlight,
-} from "./base/selection-overlay.js";
+export { ResizeHandles, setMeshHighlight } from "./base/selection-overlay.js";
 export {
   applyPlacement,
   coordSystemSize,

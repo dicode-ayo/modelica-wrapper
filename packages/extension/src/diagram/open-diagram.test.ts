@@ -26,7 +26,12 @@ const WITH_ICON: ModelInstance = {
   restriction: "model",
   annotation: {
     Icon: {
-      coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+      coordinateSystem: {
+        extent: [
+          [-100, -100],
+          [100, 100],
+        ],
+      },
       graphics: [],
     },
   },
@@ -48,8 +53,7 @@ function makeClient(handlers: {
     calls.push(fn);
     if (fn === "getModelInstanceAnnotation") {
       return (
-        handlers.annotation?.() ??
-        Promise.resolve({ instance: WITH_ICON })
+        handlers.annotation?.() ?? Promise.resolve({ instance: WITH_ICON })
       );
     }
     if (fn === "getModelInstance") {
@@ -101,9 +105,7 @@ describe("fetchIconLayout: annotation fallback (issue #76, item 9)", () => {
       name: "Pkg.Derived",
       restriction: "model",
       annotation: null,
-      elements: [
-        { $kind: "extends", baseClass: WITH_ICON },
-      ],
+      elements: [{ $kind: "extends", baseClass: WITH_ICON }],
     } as unknown as ModelInstance;
     const { client, calls } = makeClient({
       annotation: async () => ({ instance: inherited }),

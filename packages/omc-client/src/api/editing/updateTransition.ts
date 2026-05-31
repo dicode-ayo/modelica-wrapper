@@ -47,10 +47,14 @@ export const UpdateTransitionInputSchema = z.object({
   typeName: z.string().describe("Class containing the state machine."),
   from: z
     .string()
-    .describe("Source state of the transition to update (unchanged by this call)."),
+    .describe(
+      "Source state of the transition to update (unchanged by this call).",
+    ),
   to: z
     .string()
-    .describe("Target state of the transition to update (unchanged by this call)."),
+    .describe(
+      "Target state of the transition to update (unchanged by this call).",
+    ),
   oldCondition: z
     .string()
     .describe("Existing Modelica boolean guard, used to identify the row."),
@@ -70,19 +74,10 @@ export const UpdateTransitionInputSchema = z.object({
   newCondition: z
     .string()
     .describe("New Modelica boolean guard expression to install."),
-  newImmediate: z
-    .boolean()
-    .describe("New `immediate` flag value."),
-  newReset: z
-    .boolean()
-    .describe("New `reset` flag value."),
-  newSynchronize: z
-    .boolean()
-    .describe("New `synchronize` flag value."),
-  newPriority: z
-    .number()
-    .int()
-    .describe("New priority value."),
+  newImmediate: z.boolean().describe("New `immediate` flag value."),
+  newReset: z.boolean().describe("New `reset` flag value."),
+  newSynchronize: z.boolean().describe("New `synchronize` flag value."),
+  newPriority: z.number().int().describe("New priority value."),
   annotation: connectionAnnotation,
 });
 export type UpdateTransitionInput = z.input<typeof UpdateTransitionInputSchema>;

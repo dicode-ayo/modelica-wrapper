@@ -25,9 +25,13 @@ describe("evaluateExpression — primitives", () => {
 
   it("returns the configured fallback on unknown shapes", () => {
     expect(
-      evaluateExpression({ $kind: "totally-fake" } as unknown as Expression, emptyScope, {
-        fallback: true,
-      }),
+      evaluateExpression(
+        { $kind: "totally-fake" } as unknown as Expression,
+        emptyScope,
+        {
+          fallback: true,
+        },
+      ),
     ).toBe(true);
   });
 });
@@ -152,9 +156,7 @@ describe("cref", () => {
       $kind: "cref",
       parts: [{ name: "missing" }],
     };
-    expect(
-      evaluateExpression(e, values({}), { fallback: true }),
-    ).toBe(true);
+    expect(evaluateExpression(e, values({}), { fallback: true })).toBe(true);
   });
 
   it("returns undefined for subscripted crefs (out of scope for first cut)", () => {
@@ -186,7 +188,9 @@ describe("call — identity passthrough for semantics wrappers", () => {
     const scope: EvalScope = {
       lookup: () => undefined,
       callFunction: (name, args) =>
-        name === "double" && typeof args[0] === "number" ? args[0] * 2 : undefined,
+        name === "double" && typeof args[0] === "number"
+          ? args[0] * 2
+          : undefined,
     };
     expect(
       evaluateExpression(
@@ -242,8 +246,6 @@ describe("realistic Dialog.enable expressions", () => {
       lhs: { $kind: "cref", parts: [{ name: "missing" }] },
       rhs: 1,
     };
-    expect(
-      evaluateExpression(e, emptyScope, { fallback: true }),
-    ).toBe(true);
+    expect(evaluateExpression(e, emptyScope, { fallback: true })).toBe(true);
   });
 });

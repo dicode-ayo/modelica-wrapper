@@ -59,10 +59,7 @@ export type CdOutput = z.infer<typeof CdOutputSchema>;
 export const CdDescription =
   "Get or change OMC's working directory. With an empty string (default) returns the current cwd; with a path, changes cwd and returns the new (possibly normalized) path.";
 
-export async function cd(
-  ctx: CallContext,
-  input: CdInput,
-): Promise<CdOutput> {
+export async function cd(ctx: CallContext, input: CdInput): Promise<CdOutput> {
   const newWorkingDirectory = input.newWorkingDirectory ?? "";
   const raw = await ctx.call(`cd(${quote(newWorkingDirectory)})`);
   return parseOutput(

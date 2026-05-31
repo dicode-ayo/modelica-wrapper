@@ -14,11 +14,7 @@
  *     nearest grid step, matching OMEdit's "Snap to Grid" behaviour.
  */
 
-import type {
-  CoordinateSystem,
-  Extent,
-  Placement,
-} from "@dicode/omc-client";
+import type { CoordinateSystem, Extent, Placement } from "@dicode/omc-client";
 
 /** Per-axis snap step in diagram units; `[0, 0]` disables snapping. */
 export type SnapGrid = readonly [number, number];
@@ -111,10 +107,7 @@ export function snapExtent(extent: Extent, grid: SnapGrid): Extent {
  * downstream change-detection (Lit's `.layout`, diffLayouts) stays
  * cheap on idempotent calls.
  */
-export function snapPlacement(
-  placement: Placement,
-  grid: SnapGrid,
-): Placement {
+export function snapPlacement(placement: Placement, grid: SnapGrid): Placement {
   const extent = snapExtent(placement.extent, grid);
   const origin = placement.origin
     ? ([

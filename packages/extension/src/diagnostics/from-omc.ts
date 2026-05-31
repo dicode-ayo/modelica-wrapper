@@ -24,7 +24,10 @@ export function mapOmcMessagesToDiagnostics(
   sourceUriResolver?: SourceUriResolver,
 ): Map<vscode.Uri, vscode.Diagnostic[]> {
   // Key by URI string; Uri instances aren't reference-equal across constructions.
-  const byKey = new Map<string, { uri: vscode.Uri; diags: vscode.Diagnostic[] }>();
+  const byKey = new Map<
+    string,
+    { uri: vscode.Uri; diags: vscode.Diagnostic[] }
+  >();
   for (const msg of messages) {
     const filename = msg.info.filename;
     if (filename === "<interactive>" || filename === "") continue;

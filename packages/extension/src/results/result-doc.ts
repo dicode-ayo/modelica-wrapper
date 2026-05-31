@@ -69,7 +69,10 @@ export function parseResultViewDoc(
         : c;
     const parsed = CardSchema.safeParse(withKind);
     if (parsed.success) {
-      cards.push({ ...parsed.data, id: parsed.data.id ?? mintCardId() } as Card);
+      cards.push({
+        ...parsed.data,
+        id: parsed.data.id ?? mintCardId(),
+      } as Card);
     }
   }
 
@@ -195,7 +198,10 @@ export function addTrace(
     ...doc,
     cards: doc.cards.map((c) =>
       c.id === cardId && c.kind === "plot"
-        ? { ...c, traces: [...(c.traces ?? []), { result: resultId, variable }] }
+        ? {
+            ...c,
+            traces: [...(c.traces ?? []), { result: resultId, variable }],
+          }
         : c,
     ),
   };

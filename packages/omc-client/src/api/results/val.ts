@@ -25,9 +25,23 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectFloat, parse } from "../../parse.js";
 
 export const ValInputSchema = z.object({
-  var: z.string().describe("Variable identifier (dotted path) emitted bare; field name `var` is OMC verbatim."),
-  timePoint: z.number().optional().default(0.0).describe("Time at which to evaluate the variable (seconds)."),
-  fileName: z.string().optional().default("<default>").describe("Result file to read from; the default `<default>` reads from `currentSimulationResult`."),
+  var: z
+    .string()
+    .describe(
+      "Variable identifier (dotted path) emitted bare; field name `var` is OMC verbatim.",
+    ),
+  timePoint: z
+    .number()
+    .optional()
+    .default(0.0)
+    .describe("Time at which to evaluate the variable (seconds)."),
+  fileName: z
+    .string()
+    .optional()
+    .default("<default>")
+    .describe(
+      "Result file to read from; the default `<default>` reads from `currentSimulationResult`.",
+    ),
 });
 export type ValInput = z.input<typeof ValInputSchema>;
 
@@ -49,9 +63,7 @@ export async function val(
   // (currentSimulationResult) kicks in; passing the literal "<default>" string
   // would not trigger the runtime sentinel path.
   const fileArg = fileName === "<default>" ? "" : `, ${quote(fileName)}`;
-  const raw = await ctx.call(
-    `val(${input.var}, ${timePoint}${fileArg})`,
-  );
+  const raw = await ctx.call(`val(${input.var}, ${timePoint}${fileArg})`);
   return parseOutput(
     ValOutputSchema,
     { valAtTime: expectFloat(parse(raw)) },

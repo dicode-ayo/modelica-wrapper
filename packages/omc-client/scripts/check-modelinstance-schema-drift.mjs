@@ -62,16 +62,19 @@ async function main() {
 
   // Sanity-check that the local schema is parseable (catches unfixed typos).
   try {
-    await $RefParser.bundle(resolve(SCHEMAS_DIR, "getModelInstance.schema.json"), {
-      resolve: {
-        file: {
-          canRead: true,
-          read(f) {
-            return readFileSync(f.url, "utf8");
+    await $RefParser.bundle(
+      resolve(SCHEMAS_DIR, "getModelInstance.schema.json"),
+      {
+        resolve: {
+          file: {
+            canRead: true,
+            read(f) {
+              return readFileSync(f.url, "utf8");
+            },
           },
         },
       },
-    });
+    );
     console.log("✓ vendored schema bundles cleanly");
   } catch (err) {
     drifted = true;
@@ -130,7 +133,9 @@ function stableStringify(value) {
   const keys = Object.keys(value).sort();
   return (
     "{" +
-    keys.map((k) => JSON.stringify(k) + ":" + stableStringify(value[k])).join(",") +
+    keys
+      .map((k) => JSON.stringify(k) + ":" + stableStringify(value[k]))
+      .join(",") +
     "}"
   );
 }
@@ -147,7 +152,9 @@ function firstFewDiffs(local, upstream, label, depth = 0, lines = []) {
   }
   if (local === null || typeof local !== "object") {
     if (local !== upstream) {
-      lines.push(`value changed: ${JSON.stringify(local)} → ${JSON.stringify(upstream)}`);
+      lines.push(
+        `value changed: ${JSON.stringify(local)} → ${JSON.stringify(upstream)}`,
+      );
     }
     return lines;
   }

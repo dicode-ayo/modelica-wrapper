@@ -250,7 +250,10 @@ function graphicItemSpread(g: GraphicItemFields): {
  * Helper for the `[lineColor, fillColor, pattern, fillPattern, lineThickness]`
  * five-tuple of FilledShape. Returns the slice and the offset just past it.
  */
-function consumeFilledShape(els: Expression[], start: number): {
+function consumeFilledShape(
+  els: Expression[],
+  start: number,
+): {
   lineColor?: Color | undefined;
   fillColor?: Color | undefined;
   pattern?: string | undefined;
@@ -307,7 +310,11 @@ function decodePolygon(els: Expression[]): PolygonShape {
       `decodePolygon: expected points array at index ${fs.offset}, got ${JSON.stringify(els[fs.offset])}`,
     );
   }
-  const out: PolygonShape = { kind: "polygon", points, ...graphicItemSpread(gi) };
+  const out: PolygonShape = {
+    kind: "polygon",
+    points,
+    ...graphicItemSpread(gi),
+  };
   if (fs.lineColor) out.lineColor = fs.lineColor;
   if (fs.fillColor) out.fillColor = fs.fillColor;
   if (fs.pattern) out.pattern = fs.pattern;
@@ -330,7 +337,11 @@ function decodeRectangle(els: Expression[]): RectangleShape {
     );
   }
   const radius = asNumber(els[fs.offset + 2]);
-  const out: RectangleShape = { kind: "rectangle", extent, ...graphicItemSpread(gi) };
+  const out: RectangleShape = {
+    kind: "rectangle",
+    extent,
+    ...graphicItemSpread(gi),
+  };
   if (fs.lineColor) out.lineColor = fs.lineColor;
   if (fs.fillColor) out.fillColor = fs.fillColor;
   if (fs.pattern) out.pattern = fs.pattern;
@@ -351,7 +362,11 @@ function decodeEllipse(els: Expression[]): EllipseShape {
       `decodeEllipse: expected extent at index ${fs.offset}, got ${JSON.stringify(els[fs.offset])}`,
     );
   }
-  const out: EllipseShape = { kind: "ellipse", extent, ...graphicItemSpread(gi) };
+  const out: EllipseShape = {
+    kind: "ellipse",
+    extent,
+    ...graphicItemSpread(gi),
+  };
   if (fs.lineColor) out.lineColor = fs.lineColor;
   if (fs.fillColor) out.fillColor = fs.fillColor;
   if (fs.pattern) out.pattern = fs.pattern;
@@ -380,11 +395,14 @@ function decodeText(els: Expression[]): TextShape {
   }
   const textString = els[fs.offset + 1];
   if (textString === undefined) {
-    throw new Error(
-      `decodeText: missing textString at index ${fs.offset + 1}`,
-    );
+    throw new Error(`decodeText: missing textString at index ${fs.offset + 1}`);
   }
-  const out: TextShape = { kind: "text", extent, textString, ...graphicItemSpread(gi) };
+  const out: TextShape = {
+    kind: "text",
+    extent,
+    textString,
+    ...graphicItemSpread(gi),
+  };
   // FilledShape's lineColor often serves as the default for textColor in
   // Modelica; renderers can fall back to it. We don't surface lineColor
   // on TextShape since it's not used by Text otherwise.
@@ -416,7 +434,8 @@ function decodeBitmap(els: Expression[]): BitmapShape {
   const fileName = asString(els[o1 + 1]);
   if (fileName !== undefined && fileName.length > 0) out.fileName = fileName;
   const imageSource = asString(els[o1 + 2]);
-  if (imageSource !== undefined && imageSource.length > 0) out.imageSource = imageSource;
+  if (imageSource !== undefined && imageSource.length > 0)
+    out.imageSource = imageSource;
   return out;
 }
 

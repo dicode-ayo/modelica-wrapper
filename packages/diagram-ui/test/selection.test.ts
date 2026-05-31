@@ -34,7 +34,12 @@ describe("OmShapeNode selection", () => {
     const { scene, parent } = makeScene();
     const node = new OmShapeNode(scene, parent);
     node.setPlacement(
-      { extent: [[-10, -10], [10, 10]] } as Placement,
+      {
+        extent: [
+          [-10, -10],
+          [10, 10],
+        ],
+      } as Placement,
       undefined,
     );
     node.setSelected(true);
@@ -49,7 +54,12 @@ describe("OmShapeNode selection", () => {
     const { scene, parent } = makeScene();
     const node = new OmShapeNode(scene, parent);
     node.setPlacement(
-      { extent: [[0, 0], [10, 10]] } as Placement,
+      {
+        extent: [
+          [0, 0],
+          [10, 10],
+        ],
+      } as Placement,
       undefined,
     );
     node.setSelected(true);
@@ -63,17 +73,19 @@ describe("OmShapeNode selection", () => {
     const { scene, parent } = makeScene();
     const node = new OmShapeNode(scene, parent);
     node.setPlacement(
-      { extent: [[-5, -5], [5, 5]] } as Placement,
+      {
+        extent: [
+          [-5, -5],
+          [5, 5],
+        ],
+      } as Placement,
       undefined,
     );
-    const { setMeshHighlight } = await import(
-      "../src/base/selection-overlay.js"
-    );
+    const { setMeshHighlight } =
+      await import("../src/base/selection-overlay.js");
     // Should not throw and should not attach a HighlightLayer to the
     // scene (NullEngine has no stencil buffer).
-    expect(() =>
-      setMeshHighlight(scene, node.mesh, null),
-    ).not.toThrow();
+    expect(() => setMeshHighlight(scene, node.mesh, null)).not.toThrow();
     const meta = scene.metadata as { omHighlightState?: unknown } | null;
     expect(meta?.omHighlightState).toBeUndefined();
   });
@@ -82,7 +94,12 @@ describe("OmShapeNode selection", () => {
     const { scene, parent } = makeScene();
     const node = new OmShapeNode(scene, parent);
     node.setPlacement(
-      { extent: [[-5, -5], [5, 5]] } as Placement,
+      {
+        extent: [
+          [-5, -5],
+          [5, 5],
+        ],
+      } as Placement,
       undefined,
     );
     node.setSelected(true);

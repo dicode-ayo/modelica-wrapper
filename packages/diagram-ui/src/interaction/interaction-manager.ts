@@ -93,7 +93,7 @@ export class InteractionManager {
   };
 
   private readonly onPointerDown = (e: PointerEvent): void => {
-    if (e.button !== 0 || e.shiftKey && this.isPanModifier(e)) {
+    if (e.button !== 0 || (e.shiftKey && this.isPanModifier(e))) {
       return; // pan modifier — PanZoom owns it
     }
     if (e.button !== 0) {
@@ -170,4 +170,3 @@ export function defaultPicker(
     return info?.pickedMesh ?? null;
   };
 }
-

@@ -46,10 +46,9 @@ const meta: Meta<StoryArgs> = {
     <div class="om-story">
       <h3>Debug — PID_Controller with Babylon Inspector</h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
-        Toggle <code>debug</code> to open Babylon's Inspector on the
-        right side of the canvas. Magenta = no texture bound (load
-        failed or pending). Watch the browser console for
-        <code>[diagram-ui]</code> log lines.
+        Toggle <code>debug</code> to open Babylon's Inspector on the right side
+        of the canvas. Magenta = no texture bound (load failed or pending).
+        Watch the browser console for <code>[diagram-ui]</code> log lines.
       </p>
       <div class="om-story-canvas-host" style="height: 600px;">
         <om-graphical-layout

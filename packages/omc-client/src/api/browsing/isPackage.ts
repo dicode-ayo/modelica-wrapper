@@ -25,7 +25,8 @@ export type IsPackageInput = z.input<typeof IsPackageInputSchema>;
 export const IsPackageOutputSchema = BooleanBOutput;
 export type IsPackageOutput = z.infer<typeof IsPackageOutputSchema>;
 
-export const IsPackageDescription = "Check whether the given class is a package.";
+export const IsPackageDescription =
+  "Check whether the given class is a package.";
 
 export async function isPackage(
   ctx: CallContext,

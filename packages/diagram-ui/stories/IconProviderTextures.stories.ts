@@ -27,10 +27,7 @@
 
 import type { Meta, StoryObj } from "@storybook/web-components";
 import { html, type TemplateResult } from "lit";
-import type {
-  CoordinateSystem,
-  IconLayer,
-} from "@dicode/omc-client";
+import type { CoordinateSystem, IconLayer } from "@dicode/omc-client";
 
 import "../src/scene/scene.component.js";
 import "../src/axis/grid-axis.component.js";
@@ -75,10 +72,10 @@ export const MipmapLadder: Story = {
     <div class="om-story">
       <h3>Mipmap ladder — same Gain icon at 5 sizes</h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
-        Left → right: plane sizes 100, 50, 20, 8, 3 diagram units.
-        Same fixture, same icon-provider texture object (one cache
-        hit). If mipmaps are working the small planes stay legible;
-        if not you'll see jagged shimmering on the right side.
+        Left → right: plane sizes 100, 50, 20, 8, 3 diagram units. Same fixture,
+        same icon-provider texture object (one cache hit). If mipmaps are
+        working the small planes stay legible; if not you'll see jagged
+        shimmering on the right side.
       </p>
       <div class="om-story-canvas-host">
         <om-scene zoom="80" ?debug=${debug}>
@@ -135,11 +132,10 @@ export const IconCatalog: Story = {
     <div class="om-story">
       <h3>Icon catalog — three fixtures, one provider</h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
-        Gain / Inertia / SpringDamper rendered through the same
-        production icon-provider. Each row is one cache entry. Open
-        the Babylon Inspector (debug=true) and click any plane's
-        material → emissiveTexture for a live preview of the
-        generated PNG and its mipmap chain.
+        Gain / Inertia / SpringDamper rendered through the same production
+        icon-provider. Each row is one cache entry. Open the Babylon Inspector
+        (debug=true) and click any plane's material → emissiveTexture for a live
+        preview of the generated PNG and its mipmap chain.
       </p>
       <div class="om-story-canvas-host">
         <om-scene zoom="80" ?debug=${debug}>

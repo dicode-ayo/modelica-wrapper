@@ -32,7 +32,9 @@ export const GetDerivedClassModifierValueInputSchema = z.object({
   // rename, which only applies to the primary class arg (audit.md §2.3).
   modifierName: z
     .string()
-    .describe("Name of the modifier on the base type to read; emitted bare to OMC."),
+    .describe(
+      "Name of the modifier on the base type to read; emitted bare to OMC.",
+    ),
 });
 export type GetDerivedClassModifierValueInput = z.input<
   typeof GetDerivedClassModifierValueInputSchema

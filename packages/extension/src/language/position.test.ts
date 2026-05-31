@@ -52,7 +52,9 @@ describe("web-tree-sitter string path uses UTF-16 code units (not bytes)", () =>
     const tree = parse(src);
     const node = findIdent(tree, "Resistor")!;
     const utf16Offset = src.indexOf("Resistor");
-    const byteOffset = new TextEncoder().encode(src.slice(0, utf16Offset)).length;
+    const byteOffset = new TextEncoder().encode(
+      src.slice(0, utf16Offset),
+    ).length;
     expect(byteOffset).toBeGreaterThan(utf16Offset);
     expect(node.startIndex).toBe(utf16Offset);
     expect(node.startIndex).not.toBe(byteOffset);
@@ -81,9 +83,15 @@ describe("web-tree-sitter string path uses UTF-16 code units (not bytes)", () =>
       startIndex: at,
       oldEndIndex: at + 1,
       newEndIndex: at + 2,
-      startPosition: { row: 2, column: at - before.lastIndexOf("\n", at - 1) - 1 },
+      startPosition: {
+        row: 2,
+        column: at - before.lastIndexOf("\n", at - 1) - 1,
+      },
       oldEndPosition: { row: 2, column: at - before.lastIndexOf("\n", at - 1) },
-      newEndPosition: { row: 2, column: at - before.lastIndexOf("\n", at - 1) + 1 },
+      newEndPosition: {
+        row: 2,
+        column: at - before.lastIndexOf("\n", at - 1) + 1,
+      },
     });
     const incremental = parse(after, oldTree);
 

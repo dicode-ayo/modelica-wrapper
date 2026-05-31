@@ -26,18 +26,20 @@ export const GetNthAlgorithmInputSchema = TypeNameInput.extend({
     .number()
     .int()
     .positive()
-    .describe("1-based algorithm-section index, between 1 and `getAlgorithmCount`."),
+    .describe(
+      "1-based algorithm-section index, between 1 and `getAlgorithmCount`.",
+    ),
 });
 export type GetNthAlgorithmInput = z.input<typeof GetNthAlgorithmInputSchema>;
 
 export const GetNthAlgorithmOutputSchema = z.object({
   result: z
     .string()
-    .describe("The n-th `algorithm` section as a Modelica source string. Field name `result` is OMC verbatim."),
+    .describe(
+      "The n-th `algorithm` section as a Modelica source string. Field name `result` is OMC verbatim.",
+    ),
 });
-export type GetNthAlgorithmOutput = z.infer<
-  typeof GetNthAlgorithmOutputSchema
->;
+export type GetNthAlgorithmOutput = z.infer<typeof GetNthAlgorithmOutputSchema>;
 
 export const GetNthAlgorithmDescription =
   "Return the n-th `algorithm` section in a class as a Modelica source string. Pairs with `getAlgorithmCount`.";

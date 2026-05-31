@@ -32,8 +32,8 @@ const meta: Meta<StoryArgs> = {
     <div class="om-story">
       <h3>&lt;om-edge&gt;${clocked ? " — clocked (dashed)" : ""}</h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
-        Orthogonal multi-segment route via Babylon's <code>LinesMesh</code>
-        / <code>DashedLinesMesh</code> (1-pixel gl.LINES). Wheel zooms,
+        Orthogonal multi-segment route via Babylon's <code>LinesMesh</code> /
+        <code>DashedLinesMesh</code> (1-pixel gl.LINES). Wheel zooms,
         middle-drag pans.
       </p>
       <div class="om-story-canvas-host">

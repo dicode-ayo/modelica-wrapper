@@ -20,7 +20,10 @@ export interface EchartTheme {
 /** Read a CSS custom property off `document.body`, falling back outside a DOM
  * (or when the var is unset) — mirrors `diagram-ui`'s `var(--vscode-…, #fb)`. */
 export function readCssVar(name: string, fallback: string): string {
-  if (typeof document === "undefined" || typeof getComputedStyle !== "function") {
+  if (
+    typeof document === "undefined" ||
+    typeof getComputedStyle !== "function"
+  ) {
     return fallback;
   }
   const value = getComputedStyle(document.body).getPropertyValue(name).trim();

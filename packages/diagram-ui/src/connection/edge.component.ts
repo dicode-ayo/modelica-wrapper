@@ -68,9 +68,7 @@ export class OmEdge extends LitElement {
     // doesn't churn the GPU buffers. Selection is a colour swap on the
     // existing mesh, never a rebuild.
     const visualChanged =
-      changed.has("stroke") ||
-      changed.has("clocked") ||
-      changed.has("nodeId");
+      changed.has("stroke") || changed.has("clocked") || changed.has("nodeId");
     const pathChanged =
       changed.has("path") && !pointsEqual(this.path, this.builtPath);
     if (!this.meshes || visualChanged) {

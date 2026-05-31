@@ -127,9 +127,7 @@ export function targetAt(tree: Tree, offset: number): CursorTarget | null {
 
   const dotted = enclosingDottedNode(ident);
   const path = dotted ? segmentsOf(dotted) : [ident.text];
-  const pathToCursor = dotted
-    ? segmentsUpTo(dotted, ident)
-    : [ident.text];
+  const pathToCursor = dotted ? segmentsUpTo(dotted, ident) : [ident.text];
 
   return {
     identifier: ident.text,
@@ -205,8 +203,7 @@ export function modifiedTypeName(tree: Tree, offset: number): string | null {
     }
     if (n.type === "extends_clause") {
       // The extends target is the `typeSpecifier`/`name` child before the `(`.
-      const ts =
-        n.childForFieldName("typeSpecifier") ?? firstNameChild(n);
+      const ts = n.childForFieldName("typeSpecifier") ?? firstNameChild(n);
       return ts && ts.text.length > 0 ? ts.text : null;
     }
     n = n.parent;
@@ -218,7 +215,10 @@ export function modifiedTypeName(tree: Tree, offset: number): string | null {
 function firstNameChild(node: Node): Node | null {
   for (let i = 0; i < node.childCount; i++) {
     const child = node.child(i);
-    if (child && (child.type === TYPE_SPECIFIER_NODE || child.type === NAME_NODE)) {
+    if (
+      child &&
+      (child.type === TYPE_SPECIFIER_NODE || child.type === NAME_NODE)
+    ) {
       return child;
     }
   }

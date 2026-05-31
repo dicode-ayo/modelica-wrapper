@@ -84,7 +84,11 @@ export function ownSubComponents(mi: ModelInstance): ComponentElement[] {
 export function ownConnectors(mi: ModelInstance): ComponentElement[] {
   const out: ComponentElement[] = [];
   for (const e of ownComponents(mi)) {
-    if (typeof e.type === "object" && e.type !== null && e.type.restriction === "connector") {
+    if (
+      typeof e.type === "object" &&
+      e.type !== null &&
+      e.type.restriction === "connector"
+    ) {
       out.push(e);
     }
   }
@@ -138,4 +142,3 @@ export function* walkConnectors(
     }
   }
 }
-

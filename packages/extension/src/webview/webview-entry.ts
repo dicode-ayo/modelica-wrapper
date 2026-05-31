@@ -20,10 +20,7 @@ import { customElement, state } from "lit/decorators.js";
 import "@dicode/ui-common/webawesome-setup";
 
 import "@dicode/diagram-ui";
-import type {
-  DiagramLayout,
-  ParameterModel,
-} from "@dicode/omc-client";
+import type { DiagramLayout, ParameterModel } from "@dicode/omc-client";
 import {
   isComponentKey,
   parseKey,
@@ -33,10 +30,7 @@ import {
   type ParameterFormSubmitDetail,
 } from "@dicode/diagram-ui";
 
-import type {
-  ExtensionToWebview,
-  WebviewToExtension,
-} from "./protocol.js";
+import type { ExtensionToWebview, WebviewToExtension } from "./protocol.js";
 
 /**
  * Bridges the diagram-ui's `LibraryBrowserDataSource` interface (which
@@ -272,7 +266,7 @@ class OmWebviewRoot extends LitElement {
         // which hides the reset button.
         this.paramComponentName =
           message.kind === "componentParams"
-            ? message.crefPrefix ?? null
+            ? (message.crefPrefix ?? null)
             : null;
         this.paramOpen = true;
         return;

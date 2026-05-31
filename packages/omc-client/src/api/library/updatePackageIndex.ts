@@ -23,7 +23,11 @@ export type UpdatePackageIndexInput = z.input<
 >;
 
 export const UpdatePackageIndexOutputSchema = z.object({
-  result: z.boolean().describe("True if the index refresh succeeded; field name `result` is OMC verbatim."),
+  result: z
+    .boolean()
+    .describe(
+      "True if the index refresh succeeded; field name `result` is OMC verbatim.",
+    ),
 });
 export type UpdatePackageIndexOutput = z.infer<
   typeof UpdatePackageIndexOutputSchema

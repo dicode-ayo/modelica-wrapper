@@ -28,7 +28,11 @@ export const ModifierToJSONInputSchema = z.object({
 export type ModifierToJSONInput = z.input<typeof ModifierToJSONInputSchema>;
 
 export const ModifierToJSONOutputSchema = z.object({
-  json: z.string().describe("JSON encoding of the modifier expression; field name `json` is OMC verbatim."),
+  json: z
+    .string()
+    .describe(
+      "JSON encoding of the modifier expression; field name `json` is OMC verbatim.",
+    ),
 });
 export type ModifierToJSONOutput = z.infer<typeof ModifierToJSONOutputSchema>;
 

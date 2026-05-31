@@ -41,17 +41,63 @@ import { parse } from "../../parse.js";
 
 export const SimulateInputSchema = z.object({
   typeName: z.string().describe("Class to simulate."),
-  startTime: z.number().optional().describe("Simulation start time; omit to fall back to OMC's `<default>` (i.e. the experiment annotation)."),
-  stopTime: z.number().optional().default(1.0).describe("Simulation stop time."),
-  numberOfIntervals: z.number().int().optional().default(500).describe("Number of output intervals."),
+  startTime: z
+    .number()
+    .optional()
+    .describe(
+      "Simulation start time; omit to fall back to OMC's `<default>` (i.e. the experiment annotation).",
+    ),
+  stopTime: z
+    .number()
+    .optional()
+    .default(1.0)
+    .describe("Simulation stop time."),
+  numberOfIntervals: z
+    .number()
+    .int()
+    .optional()
+    .default(500)
+    .describe("Number of output intervals."),
   tolerance: z.number().optional().default(1e-6).describe("Solver tolerance."),
-  method: z.string().optional().default("<default>").describe('Solver method name; "<default>" lets OMC pick.'),
-  fileNamePrefix: z.string().optional().default("<default>").describe('Prefix for generated artifact filenames; "<default>" lets OMC pick.'),
-  options: z.string().optional().default("<default>").describe('Extra OMC simulate-time options; "<default>" leaves them unset.'),
-  outputFormat: z.string().optional().default("mat").describe('Result file format ("mat", "csv", "plt", …).'),
-  variableFilter: z.string().optional().default(".*").describe("Regex selecting which variables get stored in the result file."),
-  cflags: z.string().optional().default("<default>").describe('Extra C compiler flags; "<default>" leaves them unset.'),
-  simflags: z.string().optional().default("<default>").describe('Extra runtime simulator flags; "<default>" leaves them unset.'),
+  method: z
+    .string()
+    .optional()
+    .default("<default>")
+    .describe('Solver method name; "<default>" lets OMC pick.'),
+  fileNamePrefix: z
+    .string()
+    .optional()
+    .default("<default>")
+    .describe(
+      'Prefix for generated artifact filenames; "<default>" lets OMC pick.',
+    ),
+  options: z
+    .string()
+    .optional()
+    .default("<default>")
+    .describe(
+      'Extra OMC simulate-time options; "<default>" leaves them unset.',
+    ),
+  outputFormat: z
+    .string()
+    .optional()
+    .default("mat")
+    .describe('Result file format ("mat", "csv", "plt", …).'),
+  variableFilter: z
+    .string()
+    .optional()
+    .default(".*")
+    .describe("Regex selecting which variables get stored in the result file."),
+  cflags: z
+    .string()
+    .optional()
+    .default("<default>")
+    .describe('Extra C compiler flags; "<default>" leaves them unset.'),
+  simflags: z
+    .string()
+    .optional()
+    .default("<default>")
+    .describe('Extra runtime simulator flags; "<default>" leaves them unset.'),
 });
 export type SimulateInput = z.input<typeof SimulateInputSchema>;
 
@@ -62,7 +108,9 @@ export type SimulateInput = z.input<typeof SimulateInputSchema>;
  */
 export const SimulateOutputSchema = z.object({
   /** The raw OMC SimulationResult record value. */
-  simulationResult: ValueSchema.describe("Raw OMC `SimulationResult` record as a parsed Value tree (field set varies by OMC version)."),
+  simulationResult: ValueSchema.describe(
+    "Raw OMC `SimulationResult` record as a parsed Value tree (field set varies by OMC version).",
+  ),
 });
 export type SimulateOutput = z.infer<typeof SimulateOutputSchema>;
 

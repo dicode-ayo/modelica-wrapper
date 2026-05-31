@@ -27,14 +27,18 @@ export const GetNthEquationInputSchema = TypeNameInput.extend({
     .number()
     .int()
     .positive()
-    .describe("1-based equation-section index (OMC has no `getEquationCount`; empty result marks the end)."),
+    .describe(
+      "1-based equation-section index (OMC has no `getEquationCount`; empty result marks the end).",
+    ),
 });
 export type GetNthEquationInput = z.input<typeof GetNthEquationInputSchema>;
 
 export const GetNthEquationOutputSchema = z.object({
   result: z
     .string()
-    .describe("The n-th `equation` section as a Modelica source string. Field name `result` is OMC verbatim."),
+    .describe(
+      "The n-th `equation` section as a Modelica source string. Field name `result` is OMC verbatim.",
+    ),
 });
 export type GetNthEquationOutput = z.infer<typeof GetNthEquationOutputSchema>;
 

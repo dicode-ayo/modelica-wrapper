@@ -22,13 +22,21 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
 export const RenameClassInputSchema = z.object({
-  typeName: z.string().describe("Path of the class to rename (overrides the generic shared description: this is the OMC `oldName` argument)."),
+  typeName: z
+    .string()
+    .describe(
+      "Path of the class to rename (overrides the generic shared description: this is the OMC `oldName` argument).",
+    ),
   newName: z.string().describe("New non-qualified name to give the class."),
 });
 export type RenameClassInput = z.input<typeof RenameClassInputSchema>;
 
 export const RenameClassOutputSchema = z.object({
-  result: z.array(z.string()).describe("Class names that were modified by the rename (a single rename can touch multiple references)."),
+  result: z
+    .array(z.string())
+    .describe(
+      "Class names that were modified by the rename (a single rename can touch multiple references).",
+    ),
 });
 export type RenameClassOutput = z.infer<typeof RenameClassOutputSchema>;
 

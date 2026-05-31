@@ -178,7 +178,9 @@ end M;`;
   });
 
   it("emits one symbol per name in a multi-name declaration", () => {
-    const symbols = computeDocumentSymbols(parse("model M\n  Real a, b, c;\nend M;"));
+    const symbols = computeDocumentSymbols(
+      parse("model M\n  Real a, b, c;\nend M;"),
+    );
     const model = expectSymbol(symbols, "M");
     expect(names(model.children)).toEqual(["a", "b", "c"]);
   });

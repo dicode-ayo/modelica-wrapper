@@ -35,10 +35,18 @@ export interface AddResultToViewArgs {
   parameters?: Record<string, string>;
 }
 
-export function registerResultCommands(_ctx: CommandContext): vscode.Disposable[] {
+export function registerResultCommands(
+  _ctx: CommandContext,
+): vscode.Disposable[] {
   return [
-    vscode.commands.registerCommand("modelica.createResultView", createResultView),
-    vscode.commands.registerCommand(ADD_RESULT_TO_VIEW_COMMAND, addResultToView),
+    vscode.commands.registerCommand(
+      "modelica.createResultView",
+      createResultView,
+    ),
+    vscode.commands.registerCommand(
+      ADD_RESULT_TO_VIEW_COMMAND,
+      addResultToView,
+    ),
   ];
 }
 
@@ -58,22 +66,37 @@ async function createResultView(): Promise<void> {
     serializeResultViewDoc(emptyResultViewDoc()),
   );
   await vscode.workspace.fs.writeFile(target, bytes);
-  await vscode.commands.executeCommand("vscode.openWith", target, RESULT_VIEW_VIEW_TYPE);
+  await vscode.commands.executeCommand(
+    "vscode.openWith",
+    target,
+    RESULT_VIEW_VIEW_TYPE,
+  );
 }
 
 async function addResultToView(args: AddResultToViewArgs): Promise<void> {
   const document = ResultViewEditorProvider.getActiveDocument();
   // No focused result view — Simulate stays out of the way (by design).
-  if (!document || typeof args?.resultFile !== "string" || args.resultFile === "") {
+  if (
+    !document ||
+    typeof args?.resultFile !== "string" ||
+    args.resultFile === ""
+  ) {
     return;
   }
-  const ref = buildResultRef(document.uri, resolveSimResult(args.resultFile), "simulate", {
-    model: args.model,
-    ...(args.parameters ? { parameters: args.parameters } : {}),
-  });
+  const ref = buildResultRef(
+    document.uri,
+    resolveSimResult(args.resultFile),
+    "simulate",
+    {
+      model: args.model,
+      ...(args.parameters ? { parameters: args.parameters } : {}),
+    },
+  );
   const added = await applyAddResults(document, [ref]);
   if (added > 0) {
-    void vscode.window.showInformationMessage(`Added ${ref.label} to the result view.`);
+    void vscode.window.showInformationMessage(
+      `Added ${ref.label} to the result view.`,
+    );
   }
 }
 

@@ -84,7 +84,9 @@ function storyFor(slug: string, size = 160): StoryObj {
     render: () => {
       const f = FIXTURES[slug];
       if (!f) return placeholderCard(slug, "(unknown)");
-      return isPopulated(f) ? renderCard(f, size) : placeholderCard(slug, f.className);
+      return isPopulated(f)
+        ? renderCard(f, size)
+        : placeholderCard(slug, f.className);
     },
   };
 }

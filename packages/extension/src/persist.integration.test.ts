@@ -22,10 +22,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { OmcClient } from "@dicode/omc-client";
 
-import {
-  linkPersistedClass,
-  persistClassUnderWorkspace,
-} from "./persist.js";
+import { linkPersistedClass, persistClassUnderWorkspace } from "./persist.js";
 
 function shouldRun(): boolean {
   const flag = process.env.OMC_INTEGRATION;
@@ -123,10 +120,7 @@ describeIf("persist + OMC roundtrip", () => {
     // declare a 3-level class in one shot.
     await loadStepwise(client, [
       ["RoundtripPkg", "package RoundtripPkg\nend RoundtripPkg;\n"],
-      [
-        "RoundtripPkg.Sub",
-        "within RoundtripPkg;\npackage Sub\nend Sub;\n",
-      ],
+      ["RoundtripPkg.Sub", "within RoundtripPkg;\npackage Sub\nend Sub;\n"],
       [
         "RoundtripPkg.Sub.Model",
         "within RoundtripPkg.Sub;\nblock Model\nend Model;\n",
@@ -154,12 +148,15 @@ describeIf("persist + OMC roundtrip", () => {
       (await client.getClassInformation({ typeName: "RoundtripPkg" })).fileName,
     ).toBe(topPkg);
     expect(
-      (await client.getClassInformation({ typeName: "RoundtripPkg.Sub" })).fileName,
+      (await client.getClassInformation({ typeName: "RoundtripPkg.Sub" }))
+        .fileName,
     ).toBe(subPkg);
     expect(
-      (await client.getClassInformation({
-        typeName: "RoundtripPkg.Sub.Model",
-      })).fileName,
+      (
+        await client.getClassInformation({
+          typeName: "RoundtripPkg.Sub.Model",
+        })
+      ).fileName,
     ).toBe(result.leafPath);
   });
 

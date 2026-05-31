@@ -48,10 +48,7 @@
  * `Utilities::convertUnit`.
  */
 
-import type {
-  DiagramLayout,
-  ParameterDef,
-} from "@dicode/omc-client";
+import type { DiagramLayout, ParameterDef } from "@dicode/omc-client";
 import type { ConvertUnitsOutput } from "@dicode/omc-client/api/contents/index.js";
 
 /**

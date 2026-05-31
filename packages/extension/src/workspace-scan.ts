@@ -45,4 +45,3 @@ export async function discoverEntryPoints(roots: string[]): Promise<string[]> {
   }
   return out;
 }
-

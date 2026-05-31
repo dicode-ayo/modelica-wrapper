@@ -118,7 +118,9 @@ export class OmResultViewRoot extends LitElement {
     this.send({ type: "addTrace", cardId, resultId, variable });
   };
 
-  private readonly onRemoveTrace = (e: CustomEvent<RemoveTraceDetail>): void => {
+  private readonly onRemoveTrace = (
+    e: CustomEvent<RemoveTraceDetail>,
+  ): void => {
     const { cardId, traceIndex } = e.detail;
     this.send({ type: "removeTrace", cardId, traceIndex });
   };
@@ -133,11 +135,15 @@ export class OmResultViewRoot extends LitElement {
     this.send({ type: "addResult", via: e.detail.via });
   };
 
-  private readonly onRemoveResult = (e: CustomEvent<RemoveResultDetail>): void => {
+  private readonly onRemoveResult = (
+    e: CustomEvent<RemoveResultDetail>,
+  ): void => {
     this.send({ type: "removeResult", resultId: e.detail.resultId });
   };
 
-  private readonly onRenameResult = (e: CustomEvent<RenameResultDetail>): void => {
+  private readonly onRenameResult = (
+    e: CustomEvent<RenameResultDetail>,
+  ): void => {
     const { resultId, label } = e.detail;
     this.send({ type: "renameResult", resultId, label });
   };

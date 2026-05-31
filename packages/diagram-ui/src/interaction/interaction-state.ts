@@ -69,9 +69,7 @@ export class InteractionStateStore {
     return this.snapshot;
   }
 
-  next(
-    patch: Partial<Omit<InteractionSnapshot, "version">>,
-  ): void {
+  next(patch: Partial<Omit<InteractionSnapshot, "version">>): void {
     this.snapshot = {
       state: patch.state ?? this.snapshot.state,
       hoverKey:
@@ -93,6 +91,5 @@ export class InteractionStateStore {
   }
 }
 
-export const interactionStateContext = createContext<
-  InteractionStateStore | null
->(Symbol("om-interaction-state"));
+export const interactionStateContext =
+  createContext<InteractionStateStore | null>(Symbol("om-interaction-state"));

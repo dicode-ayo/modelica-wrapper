@@ -26,7 +26,10 @@ export type GetAnnotationCountInput = z.input<
 >;
 
 export const GetAnnotationCountOutputSchema = z.object({
-  count: z.number().int().describe("Number of class-level annotation sections in the class."),
+  count: z
+    .number()
+    .int()
+    .describe("Number of class-level annotation sections in the class."),
 });
 export type GetAnnotationCountOutput = z.infer<
   typeof GetAnnotationCountOutputSchema

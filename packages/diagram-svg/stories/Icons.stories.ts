@@ -197,7 +197,8 @@ export const BitmapOnly: Story = {
 export const MultiLayerComposite: Story = {
   args: {
     title: "Composite: frame ancestor + leaf overlay",
-    description: "Layer order: ancestor first (background frame), host last (foreground polygon + label). Mimics Synth.Host fixture.",
+    description:
+      "Layer order: ancestor first (background frame), host last (foreground polygon + label). Mimics Synth.Host fixture.",
     layers: [
       {
         from: "Synth.Frame",
@@ -248,7 +249,8 @@ export const MultiLayerComposite: Story = {
 export const WithinViewbox: Story = {
   args: {
     title: "Custom viewBox [-200..200]",
-    description: "Same shape rendered at twice the default coordinate range — the icon shrinks accordingly.",
+    description:
+      "Same shape rendered at twice the default coordinate range — the icon shrinks accordingly.",
     layers: [
       {
         from: "Demo.Big",
@@ -279,7 +281,8 @@ export const WithinViewbox: Story = {
 export const BackgroundAndSize: Story = {
   args: {
     title: "background + size options",
-    description: "Explicit pixel size and a non-white background to demonstrate RenderOptions.",
+    description:
+      "Explicit pixel size and a non-white background to demonstrate RenderOptions.",
     layers: [
       {
         from: "Demo.Bg",

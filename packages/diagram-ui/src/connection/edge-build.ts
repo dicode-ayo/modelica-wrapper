@@ -131,11 +131,7 @@ export function updateEdgePoints(
       scene,
     );
   } else {
-    CreateLines(
-      line.name,
-      { points, updatable: true, instance: line },
-      scene,
-    );
+    CreateLines(line.name, { points, updatable: true, instance: line }, scene);
   }
 }
 
@@ -197,4 +193,3 @@ function buildHitTube(
   merged.isPickable = true;
   return merged;
 }
-

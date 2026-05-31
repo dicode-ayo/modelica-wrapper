@@ -45,7 +45,9 @@ export type UriToFilenameInput = z.input<typeof UriToFilenameInputSchema>;
 export const UriToFilenameOutputSchema = z.object({
   filename: z
     .string()
-    .describe("Absolute filesystem path the URI resolves to; empty on failure."),
+    .describe(
+      "Absolute filesystem path the URI resolves to; empty on failure.",
+    ),
 });
 export type UriToFilenameOutput = z.infer<typeof UriToFilenameOutputSchema>;
 

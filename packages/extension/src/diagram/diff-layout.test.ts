@@ -20,12 +20,22 @@ function baseLayout(): DiagramLayout {
       R1: {
         name: "R1",
         classRef: "Modelica.Electrical.Resistor",
-        placement: { extent: [[-10, -5], [10, 5]] },
+        placement: {
+          extent: [
+            [-10, -5],
+            [10, 5],
+          ],
+        },
       },
       C1: {
         name: "C1",
         classRef: "Modelica.Electrical.Capacitor",
-        placement: { extent: [[20, 0], [40, 20]] },
+        placement: {
+          extent: [
+            [20, 0],
+            [40, 20],
+          ],
+        },
       },
     },
     connectors: {},
@@ -52,14 +62,22 @@ describe("diffLayouts", () => {
   it("emits componentPlacement when an extent moves", () => {
     const a = baseLayout();
     const b = baseLayout();
-    b.components.R1!.placement = { extent: [[5, -5], [25, 5]] };
+    b.components.R1!.placement = {
+      extent: [
+        [5, -5],
+        [25, 5],
+      ],
+    };
     const edits = diffLayouts(a, b);
     expect(edits).toEqual([
       {
         kind: "componentPlacement",
         componentName: "R1",
         componentClass: "Modelica.Electrical.Resistor",
-        extent: [[5, -5], [25, 5]],
+        extent: [
+          [5, -5],
+          [25, 5],
+        ],
         rotation: 0,
       },
     ]);
@@ -105,7 +123,12 @@ describe("diffLayouts", () => {
     // Move R1: applyDeltaMove would translate the first waypoint
     // (anchored to R1) by the drag delta; the second is anchored to
     // unmoved C1.
-    b.components.R1!.placement = { extent: [[-5, -5], [15, 5]] };
+    b.components.R1!.placement = {
+      extent: [
+        [-5, -5],
+        [15, 5],
+      ],
+    };
     b.connections = [
       {
         lhs: { component: "R1", port: "p" },
@@ -349,15 +372,27 @@ describe("diffLayouts", () => {
 
 describe("placementAnnotation", () => {
   it("emits a Placement with extent in {{x1,y1},{x2,y2}} form", () => {
-    expect(placementAnnotation([[-10, -5], [10, 5]], 0)).toBe(
-      "Placement(transformation(extent={{-10,-5},{10,5}}))",
-    );
+    expect(
+      placementAnnotation(
+        [
+          [-10, -5],
+          [10, 5],
+        ],
+        0,
+      ),
+    ).toBe("Placement(transformation(extent={{-10,-5},{10,5}}))");
   });
 
   it("includes rotation when non-zero", () => {
-    expect(placementAnnotation([[0, 0], [10, 10]], 90)).toBe(
-      "Placement(transformation(extent={{0,0},{10,10}}, rotation=90))",
-    );
+    expect(
+      placementAnnotation(
+        [
+          [0, 0],
+          [10, 10],
+        ],
+        90,
+      ),
+    ).toBe("Placement(transformation(extent={{0,0},{10,10}}, rotation=90))");
   });
 });
 

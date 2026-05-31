@@ -106,7 +106,9 @@ describe("resolveOwningClass — parseFile confirmation", () => {
 
 describe("resolveOwningClass — degenerate input", () => {
   it("returns undefined for an empty path", async () => {
-    expect(await resolveOwningClass("", { probe: probeFor([]) })).toBeUndefined();
+    expect(
+      await resolveOwningClass("", { probe: probeFor([]) }),
+    ).toBeUndefined();
   });
 
   it("returns undefined for a non-`.mo` path", async () => {

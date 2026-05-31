@@ -26,7 +26,10 @@ export type GetInitialAlgorithmCountInput = z.input<
 >;
 
 export const GetInitialAlgorithmCountOutputSchema = z.object({
-  count: z.number().int().describe("Number of `initial algorithm` sections in the class."),
+  count: z
+    .number()
+    .int()
+    .describe("Number of `initial algorithm` sections in the class."),
 });
 export type GetInitialAlgorithmCountOutput = z.infer<
   typeof GetInitialAlgorithmCountOutputSchema

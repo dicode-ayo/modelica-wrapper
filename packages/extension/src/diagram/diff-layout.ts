@@ -61,9 +61,10 @@ export type LayoutEdit =
       waypoints: ReadonlyArray<readonly [number, number]>;
     };
 
-function endpointToCref(
-  c: { component: string | undefined; port: string },
-): string {
+function endpointToCref(c: {
+  component: string | undefined;
+  port: string;
+}): string {
   return c.component ? `${c.component}.${c.port}` : c.port;
 }
 

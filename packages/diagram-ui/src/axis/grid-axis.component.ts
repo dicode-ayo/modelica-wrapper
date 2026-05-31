@@ -142,8 +142,10 @@ export class OmGridAxis extends LitElement {
       minorStepY: minorY,
       majorStep: majorX,
       majorStepY: majorY,
-      minorColor: parseColor(this.minorColor) ?? DEFAULT_GRID_OPTIONS.minorColor,
-      majorColor: parseColor(this.majorColor) ?? DEFAULT_GRID_OPTIONS.majorColor,
+      minorColor:
+        parseColor(this.minorColor) ?? DEFAULT_GRID_OPTIONS.minorColor,
+      majorColor:
+        parseColor(this.majorColor) ?? DEFAULT_GRID_OPTIONS.majorColor,
       axisColor: parseColor(this.axisColor) ?? DEFAULT_GRID_OPTIONS.axisColor,
     };
 
@@ -205,9 +207,7 @@ function readGrid(cs: CoordinateSystem | undefined): { x: number; y: number } {
 
 function readExtent(
   cs: CoordinateSystem | undefined,
-):
-  | { x1: number; y1: number; x2: number; y2: number }
-  | undefined {
+): { x1: number; y1: number; x2: number; y2: number } | undefined {
   const ext = cs?.extent;
   if (!Array.isArray(ext) || ext.length < 2) {
     return undefined;
@@ -261,9 +261,7 @@ function optionsKey(opts: GridOptions): string {
 }
 
 function colorKey(c: Color3 | undefined): string | null {
-  return c
-    ? `${c.r.toFixed(4)},${c.g.toFixed(4)},${c.b.toFixed(4)}`
-    : null;
+  return c ? `${c.r.toFixed(4)},${c.g.toFixed(4)},${c.b.toFixed(4)}` : null;
 }
 
 function parseColor(input: string | undefined): Color3 | undefined {

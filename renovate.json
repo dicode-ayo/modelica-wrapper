@@ -1,10 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended",
-    ":semanticCommits",
-    ":dependencyDashboard"
-  ],
+  "extends": ["config:recommended", ":semanticCommits", ":dependencyDashboard"],
   "schedule": ["before 6am on monday"],
   "labels": ["dependencies"],
   "prConcurrentLimit": 5,
@@ -49,9 +45,7 @@
       "description": "Keep SUPPORTED_OMC.primary in version.ts in lock-step with OpenModelica GitHub releases. Renovate matches the regex, looks up the latest non-prerelease v* tag from the OpenModelica repo, and bumps the version in the same PR as the Docker image.",
       "customType": "regex",
       "fileMatch": ["^packages/omc-client/src/version\\.ts$"],
-      "matchStrings": [
-        "primary:\\s*\"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""
-      ],
+      "matchStrings": ["primary:\\s*\"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""],
       "depNameTemplate": "OpenModelica/OpenModelica",
       "datasourceTemplate": "github-releases",
       "extractVersionTemplate": "^v(?<version>.+)$"
@@ -59,16 +53,11 @@
   ],
 
   "dockerfile": {
-    "managerFilePatterns": [
-      "/^\\.devcontainer/Dockerfile$/",
-      "/Dockerfile$/"
-    ]
+    "managerFilePatterns": ["/^\\.devcontainer/Dockerfile$/", "/Dockerfile$/"]
   },
 
   "github-actions": {
-    "managerFilePatterns": [
-      "/^\\.github/workflows/.+\\.ya?ml$/"
-    ]
+    "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"]
   },
 
   "vulnerabilityAlerts": {

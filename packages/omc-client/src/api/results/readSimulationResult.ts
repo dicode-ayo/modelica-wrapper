@@ -23,16 +23,31 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { asFloat, expectList, parse } from "../../parse.js";
 
 export const ReadSimulationResultInputSchema = z.object({
-  filename: z.string().describe("Path to the simulation result file (.mat / .csv / etc.)."),
-  variables: z.array(z.string()).describe("Variable identifiers to read (dotted paths)."),
-  size: z.number().int().optional().default(0).describe("Number of rows expected; 0 reads any size, non-zero must match the file."),
+  filename: z
+    .string()
+    .describe("Path to the simulation result file (.mat / .csv / etc.)."),
+  variables: z
+    .array(z.string())
+    .describe("Variable identifiers to read (dotted paths)."),
+  size: z
+    .number()
+    .int()
+    .optional()
+    .default(0)
+    .describe(
+      "Number of rows expected; 0 reads any size, non-zero must match the file.",
+    ),
 });
 export type ReadSimulationResultInput = z.input<
   typeof ReadSimulationResultInputSchema
 >;
 
 export const ReadSimulationResultOutputSchema = z.object({
-  result: z.array(z.array(z.number())).describe("Variable values as a 2D `Real[:, :]` matrix (one row per variable in the same order as `variables`)."),
+  result: z
+    .array(z.array(z.number()))
+    .describe(
+      "Variable values as a 2D `Real[:, :]` matrix (one row per variable in the same order as `variables`).",
+    ),
 });
 export type ReadSimulationResultOutput = z.infer<
   typeof ReadSimulationResultOutputSchema

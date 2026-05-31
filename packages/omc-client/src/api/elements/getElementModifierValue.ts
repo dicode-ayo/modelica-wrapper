@@ -32,7 +32,8 @@ export type GetElementModifierValueOutput = z.infer<
   typeof GetElementModifierValueOutputSchema
 >;
 
-export const GetElementModifierValueDescription = "Return the bound expression of a single modifier on an element of a class.";
+export const GetElementModifierValueDescription =
+  "Return the bound expression of a single modifier on an element of a class.";
 
 export async function getElementModifierValue(
   ctx: CallContext,

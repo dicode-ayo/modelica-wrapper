@@ -122,16 +122,12 @@ function inferDirectionFromTypeName(
  *      it. We could tighten this if it produces too many failed-drop
  *      surprises in practice.
  */
-export function canConnect(
-  from: PortInfo,
-  to: PortInfo,
-): CompatibilityResult {
+export function canConnect(from: PortInfo, to: PortInfo): CompatibilityResult {
   // Causality first: two known directional connectors with the SAME
   // direction can never pair. This rules out `RealInput ↔ RealInput`
   // (same type, same direction) before the type-equality test can
   // wave it through.
-  const dirsKnown =
-    from.direction !== "unknown" && to.direction !== "unknown";
+  const dirsKnown = from.direction !== "unknown" && to.direction !== "unknown";
   const bothInput = from.direction === "input" && to.direction === "input";
   const bothOutput = from.direction === "output" && to.direction === "output";
   if (dirsKnown && (bothInput || bothOutput)) {

@@ -25,9 +25,15 @@ export type GetDocumentationAnnotationInput = z.input<
 >;
 
 export const GetDocumentationAnnotationOutputSchema = z.object({
-  info: z.string().describe("`info` HTML body of the Documentation annotation."),
-  revision: z.string().describe("`revisions` HTML body of the Documentation annotation."),
-  infoHeader: z.string().describe("`infoHeader` HTML body of the Documentation annotation."),
+  info: z
+    .string()
+    .describe("`info` HTML body of the Documentation annotation."),
+  revision: z
+    .string()
+    .describe("`revisions` HTML body of the Documentation annotation."),
+  infoHeader: z
+    .string()
+    .describe("`infoHeader` HTML body of the Documentation annotation."),
 });
 export type GetDocumentationAnnotationOutput = z.infer<
   typeof GetDocumentationAnnotationOutputSchema
@@ -40,9 +46,7 @@ export async function getDocumentationAnnotation(
   ctx: CallContext,
   input: GetDocumentationAnnotationInput,
 ): Promise<GetDocumentationAnnotationOutput> {
-  const raw = await ctx.call(
-    `getDocumentationAnnotation(${input.typeName})`,
-  );
+  const raw = await ctx.call(`getDocumentationAnnotation(${input.typeName})`);
   const fields = expectStringList(parse(raw));
   return parseOutput(
     GetDocumentationAnnotationOutputSchema,

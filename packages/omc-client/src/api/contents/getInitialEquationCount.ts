@@ -26,7 +26,10 @@ export type GetInitialEquationCountInput = z.input<
 >;
 
 export const GetInitialEquationCountOutputSchema = z.object({
-  count: z.number().int().describe("Number of `initial equation` sections in the class."),
+  count: z
+    .number()
+    .int()
+    .describe("Number of `initial equation` sections in the class."),
 });
 export type GetInitialEquationCountOutput = z.infer<
   typeof GetInitialEquationCountOutputSchema

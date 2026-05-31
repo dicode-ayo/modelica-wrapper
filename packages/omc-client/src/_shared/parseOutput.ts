@@ -1,6 +1,13 @@
 import type { z } from "zod";
 
-import { asBool, expectBool, isNull, parse, parseLeading, type Value } from "../parse.js";
+import {
+  asBool,
+  expectBool,
+  isNull,
+  parse,
+  parseLeading,
+  type Value,
+} from "../parse.js";
 import type { CallContext } from "./callContext.js";
 
 /**
@@ -92,5 +99,7 @@ export function parseMutationDiagnostic(raw: string): {
     // something actionable.
     return { success: false, diagnostic: raw.trim() };
   }
-  return trailing.length > 0 ? { success: bool, diagnostic: trailing } : { success: bool };
+  return trailing.length > 0
+    ? { success: bool, diagnostic: trailing }
+    : { success: bool };
 }

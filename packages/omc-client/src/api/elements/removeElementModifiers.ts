@@ -20,11 +20,20 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { mlBool, quote } from "../../_shared/format.js";
 import { TypeNameAndComponentNameInput } from "../../_shared/inputs.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
-import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
+import {
+  parseMutationSuccess,
+  parseOutput,
+} from "../../_shared/parseOutput.js";
 
 export const RemoveElementModifiersInputSchema =
   TypeNameAndComponentNameInput.extend({
-    keepRedeclares: z.boolean().optional().default(false).describe("Preserve `redeclare` modifiers when true; clear all modifiers when false."),
+    keepRedeclares: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        "Preserve `redeclare` modifiers when true; clear all modifiers when false.",
+      ),
   });
 export type RemoveElementModifiersInput = z.input<
   typeof RemoveElementModifiersInputSchema

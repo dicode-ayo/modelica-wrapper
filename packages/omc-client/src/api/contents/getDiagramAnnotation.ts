@@ -18,13 +18,16 @@ export type GetDiagramAnnotationInput = z.input<
 >;
 
 export const GetDiagramAnnotationOutputSchema = z.object({
-  annotation: ValueSchema.describe("Parsed Diagram annotation Value tree (CoordinateSystem + graphics list)."),
+  annotation: ValueSchema.describe(
+    "Parsed Diagram annotation Value tree (CoordinateSystem + graphics list).",
+  ),
 });
 export type GetDiagramAnnotationOutput = z.infer<
   typeof GetDiagramAnnotationOutputSchema
 >;
 
-export const GetDiagramAnnotationDescription = "Return the Diagram annotation for a given class as a parsed Value tree.";
+export const GetDiagramAnnotationDescription =
+  "Return the Diagram annotation for a given class as a parsed Value tree.";
 
 export async function getDiagramAnnotation(
   ctx: CallContext,

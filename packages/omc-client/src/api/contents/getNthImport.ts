@@ -34,9 +34,7 @@ export const GetNthImportInputSchema = z.object({
     .number()
     .int()
     .positive()
-    .describe(
-      "1-based import-clause index, between 1 and `getImportCount`.",
-    ),
+    .describe("1-based import-clause index, between 1 and `getImportCount`."),
 });
 export type GetNthImportInput = z.input<typeof GetNthImportInputSchema>;
 
@@ -66,9 +64,7 @@ export async function getNthImport(
   ctx: CallContext,
   input: GetNthImportInput,
 ): Promise<GetNthImportOutput> {
-  const raw = await ctx.call(
-    `getNthImport(${input.typeName}, ${input.index})`,
-  );
+  const raw = await ctx.call(`getNthImport(${input.typeName}, ${input.index})`);
   const fields = expectStringList(parse(raw));
   if (fields.length < 3) {
     throw new Error(

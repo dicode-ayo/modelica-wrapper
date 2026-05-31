@@ -22,9 +22,7 @@ export interface LibraryNode {
 
 type EnsureClient = () => Promise<OmcClient>;
 
-export class LibraryTreeProvider
-  implements vscode.TreeDataProvider<LibraryNode>
-{
+export class LibraryTreeProvider implements vscode.TreeDataProvider<LibraryNode> {
   private readonly _onDidChange = new vscode.EventEmitter<
     LibraryNode | undefined | void
   >();
@@ -109,7 +107,9 @@ export class LibraryTreeProvider
       ),
     );
     return names.map((name, i) => {
-      const qualifiedName = parentQualified ? `${parentQualified}.${name}` : name;
+      const qualifiedName = parentQualified
+        ? `${parentQualified}.${name}`
+        : name;
       const restriction = restrictions[i] ?? "class";
       const version = versions?.get(name);
       const node: LibraryNode = {

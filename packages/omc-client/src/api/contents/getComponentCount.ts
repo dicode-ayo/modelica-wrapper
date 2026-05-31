@@ -27,7 +27,10 @@ export type GetComponentCountInput = z.input<
 >;
 
 export const GetComponentCountOutputSchema = z.object({
-  count: z.number().int().describe("Number of components declared in the class."),
+  count: z
+    .number()
+    .int()
+    .describe("Number of components declared in the class."),
 });
 export type GetComponentCountOutput = z.infer<
   typeof GetComponentCountOutputSchema

@@ -102,7 +102,9 @@ describe("describeFunctionAsJsonSchema", () => {
     const j = describeFunctionAsJsonSchema("loadString");
     expect(j.name).toBe("loadString");
     expect(j.category).toBe("lifecycle");
-    expect(j.input.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
+    expect(j.input.$schema).toBe(
+      "https://json-schema.org/draft/2020-12/schema",
+    );
     expect(j.input.type).toBe("object");
     // Input-mode: only `data` is truly required from the caller.
     expect(j.input.required).toEqual(["data"]);

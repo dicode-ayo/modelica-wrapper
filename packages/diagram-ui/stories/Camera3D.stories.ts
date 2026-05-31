@@ -26,10 +26,9 @@ const meta: Meta<StoryArgs> = {
     <div class="om-story">
       <h3>Camera mode: ${mode}</h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
-        Toggle <code>camera-mode</code> to switch between 2D
-        orthographic editing and free 3D orbit. The MultiBody root
-        TransformNode is the seam for future visualisers (boxes,
-        cylinders, mesh files).
+        Toggle <code>camera-mode</code> to switch between 2D orthographic
+        editing and free 3D orbit. The MultiBody root TransformNode is the seam
+        for future visualisers (boxes, cylinders, mesh files).
       </p>
       <div class="om-story-canvas-host">
         <om-scene .zoom=${zoom} camera-mode=${mode}>

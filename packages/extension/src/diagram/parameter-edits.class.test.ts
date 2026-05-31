@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type {
-  ModelInstance,
-  ParameterField,
-} from "@dicode/omc-client";
+import type { ModelInstance, ParameterField } from "@dicode/omc-client";
 
 import {
   buildClassParameterForm,
@@ -29,7 +26,10 @@ function instance(elements: unknown[]): ModelInstance {
   } as unknown as ModelInstance;
 }
 
-function field(model: { fields: ParameterField[] }, name: string): ParameterField {
+function field(
+  model: { fields: ParameterField[] },
+  name: string,
+): ParameterField {
   const f = model.fields.find((x) => x.name === name);
   if (!f) throw new Error(`no field ${name}`);
   return f;
@@ -464,9 +464,9 @@ describe("buildClassParameterForm", () => {
 
 describe("classParameterValueToExpr", () => {
   it("emits unquoted literals for numeric and boolean values", () => {
-    expect(
-      classParameterValueToExpr({ name: "k", kind: "number" }, 12.5),
-    ).toBe("12.5");
+    expect(classParameterValueToExpr({ name: "k", kind: "number" }, 12.5)).toBe(
+      "12.5",
+    );
     expect(
       classParameterValueToExpr({ name: "use", kind: "boolean" }, true),
     ).toBe("true");
@@ -501,8 +501,8 @@ describe("classParameterValueToExpr", () => {
     expect(
       classParameterValueToExpr({ name: "k", kind: "number" }, undefined),
     ).toBe("");
-    expect(
-      classParameterValueToExpr({ name: "k", kind: "number" }, ""),
-    ).toBe("");
+    expect(classParameterValueToExpr({ name: "k", kind: "number" }, "")).toBe(
+      "",
+    );
   });
 });

@@ -53,7 +53,7 @@ function stubCtx(response?: string): { ctx: CallContext; log: StubLog } {
 }
 
 describe("getModelInstanceAnnotation: outgoing command shape", () => {
-  it("emits fill(\"\", 0) for the empty (default) filter", async () => {
+  it('emits fill("", 0) for the empty (default) filter', async () => {
     const { ctx, log } = stubCtx();
     await getModelInstanceAnnotation(ctx, {
       typeName: "Modelica.Blocks.Math.Sin",
@@ -63,7 +63,7 @@ describe("getModelInstanceAnnotation: outgoing command shape", () => {
     ]);
   });
 
-  it("emits fill(\"\", 0) when filter is explicitly empty", async () => {
+  it('emits fill("", 0) when filter is explicitly empty', async () => {
     const { ctx, log } = stubCtx();
     await getModelInstanceAnnotation(ctx, {
       typeName: "Modelica.Blocks.Math.Sin",
@@ -80,7 +80,7 @@ describe("getModelInstanceAnnotation: outgoing command shape", () => {
       filter: ["Icon", "IconMap", "Diagram", "DiagramMap", "experiment"],
     });
     expect(log.sent).toEqual([
-      'getModelInstanceAnnotation(Modelica.Blocks.Math.Sin, ' +
+      "getModelInstanceAnnotation(Modelica.Blocks.Math.Sin, " +
         '{"Icon", "IconMap", "Diagram", "DiagramMap", "experiment"}, false)',
     ]);
   });

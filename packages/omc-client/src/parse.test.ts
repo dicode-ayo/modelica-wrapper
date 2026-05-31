@@ -54,8 +54,20 @@ describe("parse: lists and tuples", () => {
     expect(parse(`{{1,2},{3,4}}`)).toEqual({
       kind: "list",
       items: [
-        { kind: "list", items: [{ kind: "int", value: 1 }, { kind: "int", value: 2 }] },
-        { kind: "list", items: [{ kind: "int", value: 3 }, { kind: "int", value: 4 }] },
+        {
+          kind: "list",
+          items: [
+            { kind: "int", value: 1 },
+            { kind: "int", value: 2 },
+          ],
+        },
+        {
+          kind: "list",
+          items: [
+            { kind: "int", value: 3 },
+            { kind: "int", value: 4 },
+          ],
+        },
       ],
     });
   });
@@ -77,7 +89,14 @@ describe("parse: null sentinels", () => {
     expect(v.kind).toBe("list");
     if (v.kind !== "list") throw new Error("unreachable");
     expect(v.items).toHaveLength(6);
-    expect(v.items.map(isNull)).toEqual([false, true, false, true, true, false]);
+    expect(v.items.map(isNull)).toEqual([
+      false,
+      true,
+      false,
+      true,
+      true,
+      false,
+    ]);
   });
 });
 
@@ -342,7 +361,9 @@ end OpenModelica.Scripting.ErrorMessage;}`;
       name: "message",
       value: { kind: "string", value: "Missing token: SEMICOLON" },
     });
-    const kindKw = rec.args.find((a) => a.kind === "kwarg" && a.name === "kind");
+    const kindKw = rec.args.find(
+      (a) => a.kind === "kwarg" && a.name === "kind",
+    );
     if (!kindKw || kindKw.kind !== "kwarg") throw new Error("missing kind");
     expect(kindKw.value).toEqual({
       kind: "ident",

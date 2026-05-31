@@ -10,10 +10,7 @@ import {
   type Texture,
   type TransformNode,
 } from "@babylonjs/core";
-import type {
-  CoordinateSystem,
-  IconLayer,
-} from "@dicode/omc-client";
+import type { CoordinateSystem, IconLayer } from "@dicode/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
 import {
@@ -158,7 +155,9 @@ export class OmDebugPlane extends LitElement {
       return;
     }
     // Resolve which source to use this update.
-    let source: ((scene: Scene) => Texture | null | Promise<Texture | null>) | undefined;
+    let source:
+      | ((scene: Scene) => Texture | null | Promise<Texture | null>)
+      | undefined;
     if (this.layers && this.layers.length > 0 && this.iconProvider) {
       const layers = this.layers;
       const coordinateSystem = this.coordinateSystem;
@@ -193,7 +192,6 @@ export class OmDebugPlane extends LitElement {
         material.emissiveColor.copyFrom(this.fallbackColor);
       }
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error("[om-debug-plane] texture factory failed:", err);
       if (this.pendingToken === token) {
         material.emissiveTexture = null;

@@ -40,7 +40,10 @@ export class OmMultibodyRoot extends LitElement {
 
   override updated(): void {
     if (!this.ownNode && this.sceneCtx) {
-      this.ownNode = new TransformNode("om-multibody-root", this.sceneCtx.scene);
+      this.ownNode = new TransformNode(
+        "om-multibody-root",
+        this.sceneCtx.scene,
+      );
       this.ownNode.parent = this.sceneCtx.worldRoot;
       this.childContextProvider.setValue(this.ownNode);
     }

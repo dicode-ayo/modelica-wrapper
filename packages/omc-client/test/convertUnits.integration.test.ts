@@ -99,7 +99,10 @@ describeIf("convertUnits (live OMC)", () => {
   });
 
   it("an empty unit string is treated as incompatible", async () => {
-    const { unitsCompatible } = await client.convertUnits({ s1: "", s2: "rad" });
+    const { unitsCompatible } = await client.convertUnits({
+      s1: "",
+      s2: "rad",
+    });
     expect(unitsCompatible).toBe(false);
   });
 });

@@ -285,9 +285,7 @@ function enumLeavesIfEnum(
   return leaves.length > 0 ? leaves : undefined;
 }
 
-function typeQualifiedName(
-  type: ComponentElement["type"],
-): string | undefined {
+function typeQualifiedName(type: ComponentElement["type"]): string | undefined {
   if (!type || typeof type === "string") return undefined;
   return type.name;
 }
@@ -540,7 +538,11 @@ function readModifierRecord(mod: unknown): Record<string, Modifier> {
  */
 function readLeafModifier(m: Modifier | undefined): unknown {
   if (m === undefined || m === null) return undefined;
-  if (typeof m === "string" || typeof m === "number" || typeof m === "boolean") {
+  if (
+    typeof m === "string" ||
+    typeof m === "number" ||
+    typeof m === "boolean"
+  ) {
     return m;
   }
   if (typeof m === "object" && !Array.isArray(m)) {

@@ -1,8 +1,4 @@
-import type {
-  ClassDef,
-  ComponentInstance,
-  Modifier,
-} from "@dicode/omc-client";
+import type { ClassDef, ComponentInstance, Modifier } from "@dicode/omc-client";
 import type { TextSubstitutions } from "@dicode/diagram-svg";
 
 /**

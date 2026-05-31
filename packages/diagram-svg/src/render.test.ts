@@ -13,15 +13,8 @@
 
 import { describe, expect, it } from "vitest";
 
-import {
-  renderClassIconToSvg,
-  renderIconLayersToSvg,
-} from "./render.js";
-import type {
-  ClassDef,
-  IconLayer,
-  RectangleShape,
-} from "./index.js";
+import { renderClassIconToSvg, renderIconLayersToSvg } from "./render.js";
+import type { ClassDef, IconLayer, RectangleShape } from "./index.js";
 
 const RED: [number, number, number] = [255, 0, 0];
 
@@ -225,10 +218,7 @@ describe("renderIconLayersToSvg", () => {
           textString: {
             $kind: "call",
             name: "DynamicSelect",
-            arguments: [
-              "fallback",
-              { $kind: "cref", parts: [{ name: "x" }] },
-            ],
+            arguments: ["fallback", { $kind: "cref", parts: [{ name: "x" }] }],
           },
         },
       ]),
@@ -245,7 +235,8 @@ describe("renderIconLayersToSvg", () => {
             [-25, -25],
             [25, 25],
           ],
-          imageSource: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9ZmTHc8AAAAASUVORK5CYII=",
+          imageSource:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9ZmTHc8AAAAASUVORK5CYII=",
         },
       ]),
     ]);
@@ -323,12 +314,22 @@ describe("renderIconLayersToSvg", () => {
       {
         from: "Ancestor",
         shapes: [],
-        coordinateSystem: { extent: [[-50, -50], [50, 50]] },
+        coordinateSystem: {
+          extent: [
+            [-50, -50],
+            [50, 50],
+          ],
+        },
       },
       {
         from: "Host",
         shapes: [],
-        coordinateSystem: { extent: [[-200, -200], [200, 200]] },
+        coordinateSystem: {
+          extent: [
+            [-200, -200],
+            [200, 200],
+          ],
+        },
       },
     ]);
     expect(svg).toContain('viewBox="-200 -200 400 400"');
@@ -350,7 +351,7 @@ describe("renderIconLayersToSvg", () => {
     const svg = renderIconLayersToSvg([], { background: "white" });
     // Background lives BEFORE the y-flip group so it cleanly covers the
     // viewBox area without inheriting the flip.
-    const bgIdx = svg.indexOf('<rect');
+    const bgIdx = svg.indexOf("<rect");
     const flipIdx = svg.indexOf('<g transform="scale(1,-1)">');
     expect(bgIdx).toBeGreaterThan(-1);
     expect(bgIdx).toBeLessThan(flipIdx);
@@ -377,7 +378,12 @@ describe("renderClassIconToSvg", () => {
           ],
         },
       ],
-      coordinateSystem: { extent: [[-150, -150], [150, 150]] },
+      coordinateSystem: {
+        extent: [
+          [-150, -150],
+          [150, 150],
+        ],
+      },
     };
     const svg = renderClassIconToSvg(cls);
     expect(svg).toContain('viewBox="-150 -150 300 300"');
@@ -389,10 +395,20 @@ describe("renderClassIconToSvg", () => {
     const cls: ClassDef = {
       name: "Synth.Host",
       iconLayers: [],
-      coordinateSystem: { extent: [[-150, -150], [150, 150]] },
+      coordinateSystem: {
+        extent: [
+          [-150, -150],
+          [150, 150],
+        ],
+      },
     };
     const svg = renderClassIconToSvg(cls, {
-      coordinateSystem: { extent: [[-10, -10], [10, 10]] },
+      coordinateSystem: {
+        extent: [
+          [-10, -10],
+          [10, 10],
+        ],
+      },
     });
     expect(svg).toContain('viewBox="-10 -10 20 20"');
   });
@@ -420,7 +436,9 @@ describe("gradient fill patterns", () => {
   it("HorizontalCylinder emits a <linearGradient> with vertical axis and references it via url(#…)", () => {
     const svg = withGradientRect("HorizontalCylinder");
     // Linear gradient with vertical axis: x1=y1=x2=0, y2=1.
-    expect(svg).toMatch(/<linearGradient id="dsvg-hcyl-[^"]+" x1="0" y1="0" x2="0" y2="1">/);
+    expect(svg).toMatch(
+      /<linearGradient id="dsvg-hcyl-[^"]+" x1="0" y1="0" x2="0" y2="1">/,
+    );
     // Three stops: edge (lineColor), middle (fillColor), edge.
     expect(svg).toContain('<stop offset="0%" stop-color="rgb(64,64,64)"/>');
     expect(svg).toContain('<stop offset="50%" stop-color="rgb(192,192,192)"/>');
@@ -436,13 +454,17 @@ describe("gradient fill patterns", () => {
 
   it("VerticalCylinder emits a <linearGradient> with horizontal axis", () => {
     const svg = withGradientRect("VerticalCylinder");
-    expect(svg).toMatch(/<linearGradient id="dsvg-vcyl-[^"]+" x1="0" y1="0" x2="1" y2="0">/);
+    expect(svg).toMatch(
+      /<linearGradient id="dsvg-vcyl-[^"]+" x1="0" y1="0" x2="1" y2="0">/,
+    );
     expect(svg).toMatch(/<rect [^>]*fill="url\(#dsvg-vcyl-[^"]+\)"/);
   });
 
   it("Sphere emits a <radialGradient> from middle (fillColor) to edge (lineColor)", () => {
     const svg = withGradientRect("Sphere");
-    expect(svg).toMatch(/<radialGradient id="dsvg-sphere-[^"]+" cx="0.5" cy="0.5" r="0.5">/);
+    expect(svg).toMatch(
+      /<radialGradient id="dsvg-sphere-[^"]+" cx="0.5" cy="0.5" r="0.5">/,
+    );
     // For sphere: 0% = middle, 100% = edge (the brighter colour radiates out).
     expect(svg).toMatch(
       /<radialGradient[^>]*>\s*<stop offset="0%" stop-color="rgb\(192,192,192\)"\/>\s*<stop offset="100%" stop-color="rgb\(64,64,64\)"\/>/,
@@ -454,14 +476,20 @@ describe("gradient fill patterns", () => {
       makeLayer("Test.Multi", [
         {
           kind: "rectangle",
-          extent: [[-50, -25], [50, 25]],
+          extent: [
+            [-50, -25],
+            [50, 25],
+          ],
           fillColor: [192, 192, 192],
           lineColor: [64, 64, 64],
           fillPattern: "HorizontalCylinder",
         },
         {
           kind: "rectangle",
-          extent: [[60, -25], [160, 25]],
+          extent: [
+            [60, -25],
+            [160, 25],
+          ],
           fillColor: [192, 192, 192],
           lineColor: [64, 64, 64],
           fillPattern: "HorizontalCylinder",
@@ -499,7 +527,10 @@ describe("gradient fill patterns", () => {
       makeLayer("Test.Plain", [
         {
           kind: "rectangle",
-          extent: [[-50, -25], [50, 25]],
+          extent: [
+            [-50, -25],
+            [50, 25],
+          ],
           fillColor: [10, 20, 30],
           fillPattern: "Solid",
         },
@@ -515,7 +546,10 @@ describe("gradient fill patterns", () => {
       makeLayer("Test.Foo", [
         {
           kind: "rectangle",
-          extent: [[-50, -25], [50, 25]],
+          extent: [
+            [-50, -25],
+            [50, 25],
+          ],
           fillColor: RED,
           visible: false,
         },
@@ -529,7 +563,10 @@ describe("gradient fill patterns", () => {
       makeLayer("Test.Foo", [
         {
           kind: "rectangle",
-          extent: [[-50, -25], [50, 25]],
+          extent: [
+            [-50, -25],
+            [50, 25],
+          ],
           fillColor: RED,
           rotation: 45,
         },
@@ -544,7 +581,10 @@ describe("gradient fill patterns", () => {
       makeLayer("Test.Foo", [
         {
           kind: "rectangle",
-          extent: [[-10, -10], [10, 10]],
+          extent: [
+            [-10, -10],
+            [10, 10],
+          ],
           fillColor: RED,
           origin: [20, 30],
         },
@@ -558,7 +598,10 @@ describe("gradient fill patterns", () => {
       makeLayer("Test.Foo", [
         {
           kind: "rectangle",
-          extent: [[-10, -10], [10, 10]],
+          extent: [
+            [-10, -10],
+            [10, 10],
+          ],
           fillColor: RED,
           origin: [5, 0],
           rotation: 90,
@@ -573,7 +616,10 @@ describe("gradient fill patterns", () => {
       makeLayer("Test.Foo", [
         {
           kind: "rectangle",
-          extent: [[-10, -10], [10, 10]],
+          extent: [
+            [-10, -10],
+            [10, 10],
+          ],
           fillColor: RED,
         },
       ]),

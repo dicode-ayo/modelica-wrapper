@@ -24,13 +24,16 @@ export type GetParameterNamesInput = z.input<
 >;
 
 export const GetParameterNamesOutputSchema = z.object({
-  parameters: z.array(z.string()).describe("Parameter names declared in the class."),
+  parameters: z
+    .array(z.string())
+    .describe("Parameter names declared in the class."),
 });
 export type GetParameterNamesOutput = z.infer<
   typeof GetParameterNamesOutputSchema
 >;
 
-export const GetParameterNamesDescription = "List the parameter names declared in a class.";
+export const GetParameterNamesDescription =
+  "List the parameter names declared in a class.";
 
 export async function getParameterNames(
   ctx: CallContext,

@@ -27,7 +27,10 @@ export interface CompletionPlan {
   commonPrefix: string;
 }
 
-export function computeCompletion(buffer: string, cursor: number): CompletionPlan {
+export function computeCompletion(
+  buffer: string,
+  cursor: number,
+): CompletionPlan {
   const before = buffer.slice(0, cursor);
   // Greedy match: longest trailing identifier-like run.
   const match = /[A-Za-z0-9_:]*$/.exec(before);

@@ -33,7 +33,11 @@ export interface TracePayload {
 export type ExtensionToWebview =
   /** Seed / refresh: the parsed document plus any trace data already read, keyed
    *  by card id. The host always pushes a full snapshot. */
-  | { type: "doc"; doc: ResultViewDoc; traceData: Record<string, TracePayload[]> }
+  | {
+      type: "doc";
+      doc: ResultViewDoc;
+      traceData: Record<string, TracePayload[]>;
+    }
   /** Response to `requestVariables` — a result's variable list, lazily read.
    *  Keyed by `resultId`; the webview merges it into its per-result map. */
   | { type: "variables"; resultId: string; vars?: string[]; error?: string }

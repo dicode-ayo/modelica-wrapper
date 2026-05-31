@@ -8,9 +8,7 @@
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}/packages/extension"
       ],
-      "outFiles": [
-        "${workspaceFolder}/packages/extension/out/**/*.js"
-      ],
+      "outFiles": ["${workspaceFolder}/packages/extension/out/**/*.js"],
       "preLaunchTask": "extension: build",
       "sourceMaps": true
     }

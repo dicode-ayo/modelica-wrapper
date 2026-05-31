@@ -25,7 +25,11 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const SetCommandLineOptionsInputSchema = z.object({
-  options: z.string().describe('Space-separated compiler options as one string (e.g. "-d=initialization,nls --solverMethod=dassl").'),
+  options: z
+    .string()
+    .describe(
+      'Space-separated compiler options as one string (e.g. "-d=initialization,nls --solverMethod=dassl").',
+    ),
 });
 export type SetCommandLineOptionsInput = z.input<
   typeof SetCommandLineOptionsInputSchema
@@ -36,7 +40,8 @@ export type SetCommandLineOptionsOutput = z.infer<
   typeof SetCommandLineOptionsOutputSchema
 >;
 
-export const SetCommandLineOptionsDescription = "Set OMC compiler command-line options as a single space-separated string.";
+export const SetCommandLineOptionsDescription =
+  "Set OMC compiler command-line options as a single space-separated string.";
 
 export async function setCommandLineOptions(
   ctx: CallContext,

@@ -285,11 +285,11 @@ export function classKind(classPrefixesText: string): SymbolKind {
   switch (restriction) {
     case "package":
       return SymbolKind.Package;
-    case "function":
     // A bare `operator` class (no `record`/`function` suffix) reaches here
     // because `operator` is not stripped as a modifier; it's closest to a
     // function group. (`operator function` / `operator record` resolve to
     // their trailing restriction instead.)
+    case "function":
     case "operator":
       return SymbolKind.Function;
     case "record":

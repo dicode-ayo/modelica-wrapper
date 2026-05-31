@@ -60,7 +60,7 @@ describe("DragController — connection drag", () => {
     const sourcePort = makePortMesh(scene, "p");
     const canvas = makeCanvas();
     const events: { type: keyof DragEvents; detail: unknown }[] = [];
-    let picked: TransformNode | null = sourcePort;
+    const picked: TransformNode | null = sourcePort;
     const controller = new DragController(
       canvas,
       () => picked,

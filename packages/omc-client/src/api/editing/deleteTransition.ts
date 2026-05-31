@@ -21,11 +21,20 @@ export const DeleteTransitionInputSchema = z.object({
   typeName: z.string().describe("Class containing the state machine."),
   from: z.string().describe("Source state of the transition to remove."),
   to: z.string().describe("Target state of the transition to remove."),
-  condition: z.string().describe("Raw Modelica boolean expression originally used as the guard."),
-  immediate: z.boolean().describe("`immediate` flag matching the original transition."),
+  condition: z
+    .string()
+    .describe("Raw Modelica boolean expression originally used as the guard."),
+  immediate: z
+    .boolean()
+    .describe("`immediate` flag matching the original transition."),
   reset: z.boolean().describe("`reset` flag matching the original transition."),
-  synchronize: z.boolean().describe("`synchronize` flag matching the original transition."),
-  priority: z.number().int().describe("Priority value matching the original transition."),
+  synchronize: z
+    .boolean()
+    .describe("`synchronize` flag matching the original transition."),
+  priority: z
+    .number()
+    .int()
+    .describe("Priority value matching the original transition."),
 });
 export type DeleteTransitionInput = z.input<typeof DeleteTransitionInputSchema>;
 

@@ -54,7 +54,8 @@ export async function updateInitialState(
   input: UpdateInitialStateInput,
 ): Promise<UpdateInitialStateOutput> {
   const annotation = input.annotation ?? "";
-  const ann = annotation === "" ? "annotate=Placement()" : `annotate=${annotation}`;
+  const ann =
+    annotation === "" ? "annotate=Placement()" : `annotate=${annotation}`;
   const raw = await ctx.call(
     `updateInitialState(${input.typeName}, ${quote(input.state)}, ${ann})`,
   );

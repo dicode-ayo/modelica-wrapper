@@ -143,9 +143,7 @@ describe("persistClassUnderWorkspace", () => {
       "MyLib.Sub.Model",
       "block Model\nend Model;\n",
     );
-    expect(result.leafPath).toBe(
-      path.join(tmp, "MyLib", "Sub", "Model.mo"),
-    );
+    expect(result.leafPath).toBe(path.join(tmp, "MyLib", "Sub", "Model.mo"));
     expect(result.newParents).toEqual([
       { typeName: "MyLib", pkgFile: path.join(tmp, "MyLib", "package.mo") },
       {
@@ -162,10 +160,7 @@ describe("persistClassUnderWorkspace", () => {
     ).toBe("package MyLib\nend MyLib;\n");
     // Mid-level package — `within MyLib;`.
     expect(
-      await fsp.readFile(
-        path.join(tmp, "MyLib", "Sub", "package.mo"),
-        "utf8",
-      ),
+      await fsp.readFile(path.join(tmp, "MyLib", "Sub", "package.mo"), "utf8"),
     ).toBe("within MyLib;\npackage Sub\nend Sub;\n");
   });
 
@@ -183,9 +178,9 @@ describe("persistClassUnderWorkspace", () => {
       "model Model\nend Model;\n",
     );
     // Still still our hand-edited content — persist must not clobber.
-    expect(
-      await fsp.readFile(path.join(myLibDir, "package.mo"), "utf8"),
-    ).toBe(original);
+    expect(await fsp.readFile(path.join(myLibDir, "package.mo"), "utf8")).toBe(
+      original,
+    );
   });
 
   it("uses an existing on-disk parent's directory when OMC reports one", async () => {

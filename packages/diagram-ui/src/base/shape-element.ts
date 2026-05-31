@@ -38,7 +38,12 @@ export abstract class OmShapeElement extends LitElement {
 
   /** Modelica placement of this entity in its parent's coord system. */
   @property({ attribute: false })
-  placement: Placement = { extent: [[-10, -10], [10, 10]] };
+  placement: Placement = {
+    extent: [
+      [-10, -10],
+      [10, 10],
+    ],
+  };
 
   /** Icon shape layers (ancestor-first / host-last). */
   @property({ attribute: false })
@@ -67,7 +72,8 @@ export abstract class OmShapeElement extends LitElement {
   readonly = false;
 
   @consume({ context: parentNodeContext, subscribe: true })
-  protected parentTransform: import("@babylonjs/core").TransformNode | null = null;
+  protected parentTransform: import("@babylonjs/core").TransformNode | null =
+    null;
 
   protected readonly childContextProvider = new ContextProvider(this, {
     context: parentNodeContext,

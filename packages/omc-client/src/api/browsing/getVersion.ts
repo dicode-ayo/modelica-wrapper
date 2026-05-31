@@ -25,7 +25,11 @@ export const GetVersionInputSchema = OptionalTypeNameInput;
 export type GetVersionInput = z.input<typeof GetVersionInputSchema>;
 
 export const GetVersionOutputSchema = z.object({
-  version: z.string().describe('Version string, e.g. "OpenModelica 1.26.7" for the compiler or "4.1.0" for a library.'),
+  version: z
+    .string()
+    .describe(
+      'Version string, e.g. "OpenModelica 1.26.7" for the compiler or "4.1.0" for a library.',
+    ),
 });
 export type GetVersionOutput = z.infer<typeof GetVersionOutputSchema>;
 

@@ -67,7 +67,11 @@ export async function applyEdits(
   onApplied?: ApplyEditsHook,
   options?: ApplyEditsOptions,
 ): Promise<ApplyEditsResult> {
-  const result: ApplyEditsResult = { applied: 0, failed: [], rolledBack: false };
+  const result: ApplyEditsResult = {
+    applied: 0,
+    failed: [],
+    rolledBack: false,
+  };
 
   // Opt-in OMC-level escape hatch: snapshot the host class's source before
   // we touch anything, so a partial failure can be rolled back wholesale.
@@ -145,7 +149,9 @@ function assertMutationApplied(
 ): void {
   if (result.success) return;
   throw new Error(
-    result.diagnostic ? `${fn}: ${result.diagnostic}` : `${fn} reported failure`,
+    result.diagnostic
+      ? `${fn}: ${result.diagnostic}`
+      : `${fn} reported failure`,
   );
 }
 

@@ -44,7 +44,8 @@ function offsetOf(src: string, needle: string, occurrence = 0): number {
   let idx = -1;
   for (let k = 0; k <= occurrence; k++) {
     idx = src.indexOf(needle, from + 1);
-    if (idx === -1) throw new Error(`needle not found: ${needle}#${occurrence}`);
+    if (idx === -1)
+      throw new Error(`needle not found: ${needle}#${occurrence}`);
     from = idx;
   }
   return idx;

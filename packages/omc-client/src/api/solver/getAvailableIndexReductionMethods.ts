@@ -31,9 +31,7 @@ export type GetAvailableIndexReductionMethodsInput = z.input<
 export const GetAvailableIndexReductionMethodsOutputSchema = z.object({
   allChoices: z
     .array(z.string())
-    .describe(
-      "Names of all index-reduction methods this OMC build offers.",
-    ),
+    .describe("Names of all index-reduction methods this OMC build offers."),
   allComments: z
     .array(z.string())
     .describe(

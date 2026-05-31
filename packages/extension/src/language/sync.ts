@@ -40,7 +40,10 @@ export class OmcSync {
   private readonly generation = new Map<string, number>();
   private readonly normalizeKey: (filePath: string) => string;
 
-  constructor(private readonly client: SyncClient, options: OmcSyncOptions = {}) {
+  constructor(
+    private readonly client: SyncClient,
+    options: OmcSyncOptions = {},
+  ) {
     this.normalizeKey = options.normalizeKey ?? defaultNormalizeKey;
   }
 

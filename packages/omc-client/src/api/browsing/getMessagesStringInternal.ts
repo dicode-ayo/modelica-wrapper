@@ -89,8 +89,14 @@ export type GetMessagesStringInternalInput = z.input<
  */
 export const ErrorMessageSchema = z.object({
   info: z.object({
-    filename: z.string().describe("Source filename associated with the diagnostic. `<interactive>` for in-memory sources."),
-    readonly: z.boolean().describe("True when OMC considers the source file read-only."),
+    filename: z
+      .string()
+      .describe(
+        "Source filename associated with the diagnostic. `<interactive>` for in-memory sources.",
+      ),
+    readonly: z
+      .boolean()
+      .describe("True when OMC considers the source file read-only."),
     lineStart: z.number().int().describe("First affected line (1-based)."),
     columnStart: z.number().int().describe("First affected column (1-based)."),
     lineEnd: z.number().int().describe("Last affected line (1-based)."),

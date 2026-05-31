@@ -3,7 +3,11 @@ import * as vscode from "vscode";
 
 import type { ErrorMessage } from "@dicode/omc-client";
 
-import { mapOmcMessagesToDiagnostics, rangeFromInfo, severityFromLevel } from "./from-omc.js";
+import {
+  mapOmcMessagesToDiagnostics,
+  rangeFromInfo,
+  severityFromLevel,
+} from "./from-omc.js";
 
 function makeMessage(overrides: Partial<ErrorMessage>): ErrorMessage {
   return {
@@ -26,7 +30,9 @@ function makeMessage(overrides: Partial<ErrorMessage>): ErrorMessage {
 describe("severityFromLevel", () => {
   it("maps all known levels", () => {
     expect(severityFromLevel("error")).toBe(vscode.DiagnosticSeverity.Error);
-    expect(severityFromLevel("warning")).toBe(vscode.DiagnosticSeverity.Warning);
+    expect(severityFromLevel("warning")).toBe(
+      vscode.DiagnosticSeverity.Warning,
+    );
     expect(severityFromLevel("notification")).toBe(
       vscode.DiagnosticSeverity.Information,
     );
@@ -80,7 +86,16 @@ describe("rangeFromInfo (1-based → 0-based offsetting)", () => {
 describe("mapOmcMessagesToDiagnostics", () => {
   it("skips diagnostics with filename `<interactive>`", () => {
     const out = mapOmcMessagesToDiagnostics([
-      makeMessage({ info: { filename: "<interactive>", readonly: false, lineStart: 1, columnStart: 1, lineEnd: 1, columnEnd: 1 } }),
+      makeMessage({
+        info: {
+          filename: "<interactive>",
+          readonly: false,
+          lineStart: 1,
+          columnStart: 1,
+          lineEnd: 1,
+          columnEnd: 1,
+        },
+      }),
     ]);
     expect(out.size).toBe(0);
   });
@@ -88,7 +103,14 @@ describe("mapOmcMessagesToDiagnostics", () => {
   it("attaches Diagnostic.source and Diagnostic.code", () => {
     const out = mapOmcMessagesToDiagnostics([
       makeMessage({
-        info: { filename: "/tmp/x.mo", readonly: false, lineStart: 1, columnStart: 1, lineEnd: 1, columnEnd: 5 },
+        info: {
+          filename: "/tmp/x.mo",
+          readonly: false,
+          lineStart: 1,
+          columnStart: 1,
+          lineEnd: 1,
+          columnEnd: 5,
+        },
         kind: "translation",
         level: "warning",
       }),
@@ -102,9 +124,36 @@ describe("mapOmcMessagesToDiagnostics", () => {
 
   it("groups multiple diagnostics by Uri (same file → same key)", () => {
     const out = mapOmcMessagesToDiagnostics([
-      makeMessage({ info: { filename: "/tmp/a.mo", readonly: false, lineStart: 1, columnStart: 1, lineEnd: 1, columnEnd: 1 } }),
-      makeMessage({ info: { filename: "/tmp/a.mo", readonly: false, lineStart: 5, columnStart: 1, lineEnd: 5, columnEnd: 1 } }),
-      makeMessage({ info: { filename: "/tmp/b.mo", readonly: false, lineStart: 1, columnStart: 1, lineEnd: 1, columnEnd: 1 } }),
+      makeMessage({
+        info: {
+          filename: "/tmp/a.mo",
+          readonly: false,
+          lineStart: 1,
+          columnStart: 1,
+          lineEnd: 1,
+          columnEnd: 1,
+        },
+      }),
+      makeMessage({
+        info: {
+          filename: "/tmp/a.mo",
+          readonly: false,
+          lineStart: 5,
+          columnStart: 1,
+          lineEnd: 5,
+          columnEnd: 1,
+        },
+      }),
+      makeMessage({
+        info: {
+          filename: "/tmp/b.mo",
+          readonly: false,
+          lineStart: 1,
+          columnStart: 1,
+          lineEnd: 1,
+          columnEnd: 1,
+        },
+      }),
     ]);
     const buckets = [...out.entries()].map(([uri, diags]) => ({
       uri: uri.toString(),

@@ -79,7 +79,9 @@ if (typeof document !== "undefined" && !document.getElementById(styleId)) {
 const themeByGroup: Decorator = (story, context) => {
   if (typeof document !== "undefined") {
     const isResultUi = context.title.startsWith("result-ui/");
-    document.body.style.background = isResultUi ? "var(--vscode-editor-background)" : "";
+    document.body.style.background = isResultUi
+      ? "var(--vscode-editor-background)"
+      : "";
     document.body.style.color = isResultUi ? "var(--vscode-foreground)" : "";
     document.body.style.padding = isResultUi ? "0" : "";
   }

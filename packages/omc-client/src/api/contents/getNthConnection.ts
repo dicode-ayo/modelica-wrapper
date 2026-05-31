@@ -23,11 +23,13 @@ import { expectStringList, parse } from "../../parse.js";
 
 export const GetNthConnectionInputSchema = z.object({
   typeName: typeNameOfConnection,
-  index: z.number().int().positive().describe("1-based connection index, between 1 and `getConnectionCount`."),
+  index: z
+    .number()
+    .int()
+    .positive()
+    .describe("1-based connection index, between 1 and `getConnectionCount`."),
 });
-export type GetNthConnectionInput = z.input<
-  typeof GetNthConnectionInputSchema
->;
+export type GetNthConnectionInput = z.input<typeof GetNthConnectionInputSchema>;
 
 export const GetNthConnectionOutputSchema = z.object({
   from: z.string().describe("Left-hand-side connector reference."),
@@ -38,7 +40,8 @@ export type GetNthConnectionOutput = z.infer<
   typeof GetNthConnectionOutputSchema
 >;
 
-export const GetNthConnectionDescription = "Return the n-th connection in a class as `(from, to, comment)`.";
+export const GetNthConnectionDescription =
+  "Return the n-th connection in a class as `(from, to, comment)`.";
 
 export async function getNthConnection(
   ctx: CallContext,
@@ -49,9 +52,7 @@ export async function getNthConnection(
   );
   const fields = expectStringList(parse(raw));
   if (fields.length < 2) {
-    throw new Error(
-      `getNthConnection: got ${fields.length} fields, want >=2`,
-    );
+    throw new Error(`getNthConnection: got ${fields.length} fields, want >=2`);
   }
   return parseOutput(
     GetNthConnectionOutputSchema,

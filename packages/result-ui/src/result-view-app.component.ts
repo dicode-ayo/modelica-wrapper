@@ -65,8 +65,10 @@ export class OmResultViewApp extends LitElement {
     cards: [],
   };
   /** Trace data per card, keyed by `card.id`. */
-  @property({ attribute: false }) traceData: Record<string, TracePayload[]> = {};
-  @property({ attribute: false }) variablesByResult: Record<string, string[]> = {};
+  @property({ attribute: false }) traceData: Record<string, TracePayload[]> =
+    {};
+  @property({ attribute: false }) variablesByResult: Record<string, string[]> =
+    {};
   /** Optional spinner gating from the host. */
   @property({ type: Boolean }) plotsLoading = false;
 

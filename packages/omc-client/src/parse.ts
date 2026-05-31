@@ -58,7 +58,9 @@ export function parse(src: string): Value {
   const v = p.value();
   p.skipSpace();
   if (p.pos !== p.src.length) {
-    throw new Error(`unexpected trailing input at ${p.pos}: ${JSON.stringify(p.peek(20))}`);
+    throw new Error(
+      `unexpected trailing input at ${p.pos}: ${JSON.stringify(p.peek(20))}`,
+    );
   }
   return v;
 }
@@ -190,7 +192,9 @@ class Parser {
       // Each entry: `<ident> = <value>` optionally followed by `,`.
       const fieldName = this.readDottedName();
       if (fieldName === "") {
-        throw new Error(`expected field name at ${this.pos} inside record block`);
+        throw new Error(
+          `expected field name at ${this.pos} inside record block`,
+        );
       }
       this.skipSpace();
       if (this.src[this.pos] !== "=") {
@@ -529,12 +533,19 @@ export function expectList(v: Value): Value[] {
 export function expectStringList(v: Value): string[] {
   if (v.kind === "null") return [];
   const list = asStringList(v);
-  if (list === undefined) throw new Error(`expected list of strings, got ${v.kind}`);
+  if (list === undefined)
+    throw new Error(`expected list of strings, got ${v.kind}`);
   return list;
 }
 
 /** Convert a parsed Value into JSON-serializable plain data. */
-export type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | Json[]
+  | { [k: string]: Json };
 
 export function toJson(v: Value): Json {
   switch (v.kind) {

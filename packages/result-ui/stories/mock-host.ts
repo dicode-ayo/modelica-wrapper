@@ -57,8 +57,11 @@ function clone<T>(value: T): T {
 @customElement("om-result-view-mock-host")
 export class ResultViewMockHost extends LitElement {
   @state() private doc: ResultViewDoc = clone(sampleDoc);
-  @state() private traceData: Record<string, TracePayload[]> = clone(sampleTraceData);
-  @state() private variablesByResult: Record<string, string[]> = { ...sampleVariablesByResult };
+  @state() private traceData: Record<string, TracePayload[]> =
+    clone(sampleTraceData);
+  @state() private variablesByResult: Record<string, string[]> = {
+    ...sampleVariablesByResult,
+  };
 
   private cardSeq = 0;
   private importSeq = 0;
@@ -84,7 +87,10 @@ export class ResultViewMockHost extends LitElement {
     const payloads = (card.traces ?? [])
       .filter((tr) => known.has(tr.result))
       .map((tr, i) =>
-        synth(`${this.labelFor(tr.result)} / ${tr.variable}`, i + tr.variable.length),
+        synth(
+          `${this.labelFor(tr.result)} / ${tr.variable}`,
+          i + tr.variable.length,
+        ),
       );
     this.traceData = { ...this.traceData, [cardId]: payloads };
   }
@@ -102,7 +108,10 @@ export class ResultViewMockHost extends LitElement {
 
   private onDeletePlot = (e: CustomEvent<DeletePlotDetail>): void => {
     const { cardId } = e.detail;
-    this.doc = { ...this.doc, cards: this.doc.cards.filter((c) => c.id !== cardId) };
+    this.doc = {
+      ...this.doc,
+      cards: this.doc.cards.filter((c) => c.id !== cardId),
+    };
     this.rebuildCard(cardId);
   };
 
@@ -112,7 +121,10 @@ export class ResultViewMockHost extends LitElement {
       ...this.doc,
       cards: this.doc.cards.map((c) =>
         c.id === cardId
-          ? { ...c, traces: [...(c.traces ?? []), { result: resultId, variable }] }
+          ? {
+              ...c,
+              traces: [...(c.traces ?? []), { result: resultId, variable }],
+            }
           : c,
       ),
     };
@@ -125,14 +137,19 @@ export class ResultViewMockHost extends LitElement {
       ...this.doc,
       cards: this.doc.cards.map((c) =>
         c.id === cardId
-          ? { ...c, traces: (c.traces ?? []).filter((_, i) => i !== traceIndex) }
+          ? {
+              ...c,
+              traces: (c.traces ?? []).filter((_, i) => i !== traceIndex),
+            }
           : c,
       ),
     };
     this.rebuildCard(cardId);
   };
 
-  private onRequestVariables = (e: CustomEvent<RequestVariablesDetail>): void => {
+  private onRequestVariables = (
+    e: CustomEvent<RequestVariablesDetail>,
+  ): void => {
     const { resultId } = e.detail;
     // Mimic the host's lazy reply (a tick of latency).
     setTimeout(() => {
@@ -178,7 +195,9 @@ export class ResultViewMockHost extends LitElement {
     const { resultId, label } = e.detail;
     this.doc = {
       ...this.doc,
-      results: this.doc.results.map((r) => (r.id === resultId ? { ...r, label } : r)),
+      results: this.doc.results.map((r) =>
+        r.id === resultId ? { ...r, label } : r,
+      ),
     };
   };
 

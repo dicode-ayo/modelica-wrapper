@@ -785,7 +785,9 @@ end ${pkg};
       });
       expect(success).toBe(true);
 
-      const { initialStates } = await client.getInitialStates({ typeName: cls });
+      const { initialStates } = await client.getInitialStates({
+        typeName: cls,
+      });
       const names = initialStates.map((row) => row[0]);
       expect(names).toContain("state1");
       expect(names).toContain("state2");
@@ -802,7 +804,9 @@ end ${pkg};
       // OMC normalizes the kwarg `visible=false` into a positional
       // `Placement(false)` record, so we can't match by name. Just
       // assert the marker is still there and the annotation isn't empty.
-      const { initialStates } = await client.getInitialStates({ typeName: cls });
+      const { initialStates } = await client.getInitialStates({
+        typeName: cls,
+      });
       const row = initialStates.find((r) => r[0] === "state1");
       expect(row).toBeDefined();
       expect(row?.[1] ?? "").toMatch(/Placement/);
@@ -818,7 +822,9 @@ end ${pkg};
       });
       expect(success).toBe(true);
 
-      const { initialStates } = await client.getInitialStates({ typeName: cls });
+      const { initialStates } = await client.getInitialStates({
+        typeName: cls,
+      });
       const names = initialStates.map((row) => row[0]);
       expect(names).not.toContain("state2");
       // state1 (the original initial state) is preserved.

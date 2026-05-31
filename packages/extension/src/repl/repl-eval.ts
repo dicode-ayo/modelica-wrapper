@@ -98,9 +98,7 @@ export async function evalLine(
         ? `${hint}\n\nOMC said:\n  ${errorString}`
         : `error: ${errorString}`;
       const combined =
-        trimmedReply.length > 0
-          ? `${trimmedReply}\n${errorBody}`
-          : errorBody;
+        trimmedReply.length > 0 ? `${trimmedReply}\n${errorBody}` : errorBody;
       return { output: combined, isError };
     }
     return { output: trimmedReply, isError: false };

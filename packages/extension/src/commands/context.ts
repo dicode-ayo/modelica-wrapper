@@ -44,7 +44,9 @@ export function validateIdentifier(value: string): string | undefined {
 }
 
 /** Pull the qualified parent name from a tree node, if it's an expandable container. */
-export function parentFromNode(node: LibraryNode | undefined): string | undefined {
+export function parentFromNode(
+  node: LibraryNode | undefined,
+): string | undefined {
   if (!node) return undefined;
   if (node.restriction === "package" || node.restriction === "library") {
     return node.qualifiedName;

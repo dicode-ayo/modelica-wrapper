@@ -62,10 +62,14 @@ export async function spawnOmc(
   }
 
   const debug = process.env.OMC_DEBUG === "1";
-  const child: ChildProcess = spawn(bin, ["--interactive=zmq", `-z=${suffix}`], {
-    env,
-    stdio: ["ignore", debug ? "pipe" : "ignore", debug ? "pipe" : "inherit"],
-  });
+  const child: ChildProcess = spawn(
+    bin,
+    ["--interactive=zmq", `-z=${suffix}`],
+    {
+      env,
+      stdio: ["ignore", debug ? "pipe" : "ignore", debug ? "pipe" : "inherit"],
+    },
+  );
 
   if (debug) {
     // Vitest captures stderr verbatim into CI logs; route both streams there

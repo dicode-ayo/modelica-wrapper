@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type {
-  ClassDef,
-  ComponentInstance,
-} from "@dicode/omc-client";
+import type { ClassDef, ComponentInstance } from "@dicode/omc-client";
 
 import { buildSubstitutions } from "../src/label/build-substitutions.js";
 
@@ -12,14 +9,17 @@ function makeInstance(
   return {
     name: "sd1",
     classRef: "Modelica.Mechanics.Rotational.Components.SpringDamper",
-    placement: { extent: [[-10, -10], [10, 10]] },
+    placement: {
+      extent: [
+        [-10, -10],
+        [10, 10],
+      ],
+    },
     ...partial,
   };
 }
 
-function makeClass(
-  parameters: ClassDef["parameters"] = {},
-): ClassDef {
+function makeClass(parameters: ClassDef["parameters"] = {}): ClassDef {
   return {
     name: "Modelica.Mechanics.Rotational.Components.SpringDamper",
     restriction: "model",
@@ -133,10 +133,7 @@ describe("buildSubstitutions", () => {
   });
 
   it("leaves %name unchanged for a scalar component (no dims)", () => {
-    const subs = buildSubstitutions(
-      makeInstance({ name: "sd1" }),
-      makeClass(),
-    );
+    const subs = buildSubstitutions(makeInstance({ name: "sd1" }), makeClass());
     expect(subs.name).toBe("sd1");
   });
 
@@ -180,7 +177,7 @@ describe("buildSubstitutions", () => {
       expect(subs.parameters?.c).toBe("k*2");
     });
 
-    it("skips the dimensionless placeholder unit==\"1\"", () => {
+    it('skips the dimensionless placeholder unit=="1"', () => {
       const subs = buildSubstitutions(
         makeInstance(),
         makeClass({ ratio: { name: "ratio", value: "2", unit: "1" } }),
@@ -202,7 +199,12 @@ describe("buildSubstitutions", () => {
       const subs = buildSubstitutions(
         makeInstance(),
         makeClass({
-          phi: { name: "phi", value: "90 deg", unit: "rad", displayUnit: "deg" },
+          phi: {
+            name: "phi",
+            value: "90 deg",
+            unit: "rad",
+            displayUnit: "deg",
+          },
         }),
       );
       expect(subs.parameters?.phi).toBe("90 deg");

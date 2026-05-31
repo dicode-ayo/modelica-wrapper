@@ -26,10 +26,7 @@ import { html, type TemplateResult } from "lit";
 // `OmcClient` + `spawnOmc` which depend on `zeromq` / `node:fs` and
 // can't bundle for the browser.
 import { produceDiagramLayout } from "@dicode/omc-client/api/diagram/index.js";
-import type {
-  DiagramLayout,
-  ModelInstance,
-} from "@dicode/omc-client";
+import type { DiagramLayout, ModelInstance } from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
 import type {
@@ -100,9 +97,7 @@ const fakeLibrarySource: LibraryBrowserDataSource = {
   async searchAll(query) {
     await new Promise((r) => setTimeout(r, 80));
     const q = query.toLowerCase();
-    return ALL_FLAT.filter((info) =>
-      info.qualified.toLowerCase().includes(q),
-    );
+    return ALL_FLAT.filter((info) => info.qualified.toLowerCase().includes(q));
   },
 };
 
@@ -144,18 +139,18 @@ const meta: Meta<StoryArgs> = {
       </h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
         Full diagram of the PID controller example: LimPID + driveAngle
-        (KinematicPTP) + inertia1/2 + spring + torque + sensors + load
-        torque, wired together as in the Modelica standard library.
+        (KinematicPTP) + inertia1/2 + spring + torque + sensors + load torque,
+        wired together as in the Modelica standard library.
         ${cameraMode === "2d"
-          ? html`In 2D mode: drag components, rubber-band select, Delete
-              to remove, R/F to rotate/flip. Touchpad two-finger scroll
-              pans, pinch zooms. Double-click on empty canvas to open
-              the library browser (this story uses a fake catalog).`
-          : html`In 3D mode: Babylon's ArcRotateCamera takes over —
-              left-drag orbits, wheel dollies in/out. The SVG overlays
-              hide automatically; the in-canvas textured planes are the
-              visible icons. Use this view to see the diagram as a
-              plane in 3D space (useful preview for MultiBody overlays).`}
+          ? html`In 2D mode: drag components, rubber-band select, Delete to
+            remove, R/F to rotate/flip. Touchpad two-finger scroll pans, pinch
+            zooms. Double-click on empty canvas to open the library browser
+            (this story uses a fake catalog).`
+          : html`In 3D mode: Babylon's ArcRotateCamera takes over — left-drag
+            orbits, wheel dollies in/out. The SVG overlays hide automatically;
+            the in-canvas textured planes are the visible icons. Use this view
+            to see the diagram as a plane in 3D space (useful preview for
+            MultiBody overlays).`}
       </p>
       <div class="om-story-canvas-host" style="height: 600px;">
         <om-graphical-layout
@@ -181,7 +176,6 @@ const meta: Meta<StoryArgs> = {
             el.layout = currentLayout;
           }}
           @om-add-component-request=${(e: CustomEvent) => {
-            // eslint-disable-next-line no-console
             console.log("add component request", e.detail);
           }}
         ></om-graphical-layout>
@@ -211,11 +205,21 @@ export default meta;
 type Story = StoryObj<StoryArgs>;
 
 export const Editable: Story = {
-  args: { readonly: false, cameraMode: "2d", lineThicknessScale: 4, perfHud: true },
+  args: {
+    readonly: false,
+    cameraMode: "2d",
+    lineThicknessScale: 4,
+    perfHud: true,
+  },
 };
 
 export const Readonly: Story = {
-  args: { readonly: true, cameraMode: "2d", lineThicknessScale: 4, perfHud: true },
+  args: {
+    readonly: true,
+    cameraMode: "2d",
+    lineThicknessScale: 4,
+    perfHud: true,
+  },
 };
 
 export const Orbit3D: Story = {

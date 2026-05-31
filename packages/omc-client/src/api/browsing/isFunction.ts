@@ -25,7 +25,8 @@ export type IsFunctionInput = z.input<typeof IsFunctionInputSchema>;
 export const IsFunctionOutputSchema = BooleanBOutput;
 export type IsFunctionOutput = z.infer<typeof IsFunctionOutputSchema>;
 
-export const IsFunctionDescription = "Check whether the given class has the `function` restriction.";
+export const IsFunctionDescription =
+  "Check whether the given class has the `function` restriction.";
 
 export async function isFunction(
   ctx: CallContext,

@@ -83,7 +83,11 @@ export async function computeHover(
     });
     const comment = classComment.length > 0 ? classComment : info.comment;
     const markdown = renderHover(qualifiedName, info.restriction, comment);
-    return { markdown, startIndex: target.startIndex, endIndex: target.endIndex };
+    return {
+      markdown,
+      startIndex: target.startIndex,
+      endIndex: target.endIndex,
+    };
   } catch (err) {
     // Resolution succeeded but the metadata round-trip failed — no hover rather
     // than a partial/incorrect one.
@@ -179,7 +183,10 @@ export class ModelicaHoverProvider implements vscode.HoverProvider {
         document.positionAt(result.startIndex),
         document.positionAt(result.endIndex),
       );
-      return new vscode.Hover(new vscode.MarkdownString(result.markdown), range);
+      return new vscode.Hover(
+        new vscode.MarkdownString(result.markdown),
+        range,
+      );
     } catch (err) {
       log.error("language", "hover provider failed", err);
       return undefined;

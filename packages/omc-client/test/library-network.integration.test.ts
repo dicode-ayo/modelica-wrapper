@@ -55,88 +55,90 @@ function shouldRun(): boolean {
 
 const describeIf = shouldRun() ? describe : describe.skip;
 
-describeIf("OmcClient library/network calls against the real package index", () => {
-  let client: OmcClient;
+describeIf(
+  "OmcClient library/network calls against the real package index",
+  () => {
+    let client: OmcClient;
 
-  beforeEach(async () => {
-    client = await OmcClient.create({ omcPath: process.env.OMC_PATH ?? "" });
-    // Network calls can be sluggish on the OMC side.
-    client.setCallTimeout(120_000);
-  });
-
-  afterEach(async () => {
-    await client.close();
-  });
-
-  it("updatePackageIndex refreshes the local index", async () => {
-    const { result } = await client.updatePackageIndex();
-    expect(result).toBe(true);
-  });
-
-  it("getAvailableLibraries returns Modelica among the known libraries", async () => {
-    const { libraries } = await client.getAvailableLibraries();
-    expect(libraries.length).toBeGreaterThan(0);
-    expect(libraries).toContain("Modelica");
-  });
-
-  it("getAvailableLibraryVersions returns versions for Modelica", async () => {
-    const { librariesAndVersions } =
-      await client.getAvailableLibraryVersions({ typeName: "Modelica" });
-    expect(librariesAndVersions.length).toBeGreaterThan(0);
-    // Each entry should mention Modelica somewhere — exact format is
-    // "<name> <version>".
-    expect(
-      librariesAndVersions.every((s) => /modelica/i.test(s)),
-    ).toBe(true);
-  });
-
-  it("getAvailablePackageVersions accepts an open constraint", async () => {
-    // Empty version-constraint string returns every cached version.
-    const { withoutConversion } = await client.getAvailablePackageVersions({
-      typeName: "Modelica",
-      version: "",
+    beforeEach(async () => {
+      client = await OmcClient.create({ omcPath: process.env.OMC_PATH ?? "" });
+      // Network calls can be sluggish on the OMC side.
+      client.setCallTimeout(120_000);
     });
-    expect(Array.isArray(withoutConversion)).toBe(true);
-  });
 
-  it("getConversionsFromVersions returns the two-array partition shape", async () => {
-    const { withoutConversion, withConversion } =
-      await client.getConversionsFromVersions({ typeName: "Modelica" });
-    expect(Array.isArray(withoutConversion)).toBe(true);
-    expect(Array.isArray(withConversion)).toBe(true);
-  });
-
-  it("getAvailablePackageConversionsFrom returns an array", async () => {
-    const { convertsTo } = await client.getAvailablePackageConversionsFrom({
-      typeName: "Modelica",
-      version: "3.2.3",
+    afterEach(async () => {
+      await client.close();
     });
-    expect(Array.isArray(convertsTo)).toBe(true);
-  });
 
-  it("getAvailablePackageConversionsTo returns an array", async () => {
-    const { convertsTo } = await client.getAvailablePackageConversionsTo({
-      typeName: "Modelica",
-      version: "4.0.0",
+    it("updatePackageIndex refreshes the local index", async () => {
+      const { result } = await client.updatePackageIndex();
+      expect(result).toBe(true);
     });
-    expect(Array.isArray(convertsTo)).toBe(true);
-  });
 
-  it("installPackage(Modelica, '', false) reports success", async () => {
-    // Without a version OMC picks its default; this is the same call shape
-    // the project's CI .mos script uses to seed Modelica into a -minimal image.
-    const { result } = await client.installPackage({
-      typeName: "Modelica",
-      version: "",
-      exactMatch: false,
+    it("getAvailableLibraries returns Modelica among the known libraries", async () => {
+      const { libraries } = await client.getAvailableLibraries();
+      expect(libraries.length).toBeGreaterThan(0);
+      expect(libraries).toContain("Modelica");
     });
-    expect(result).toBe(true);
-  });
 
-  it("upgradeInstalledPackages reports success", async () => {
-    const { result } = await client.upgradeInstalledPackages({
-      installNewestVersions: false,
+    it("getAvailableLibraryVersions returns versions for Modelica", async () => {
+      const { librariesAndVersions } = await client.getAvailableLibraryVersions(
+        { typeName: "Modelica" },
+      );
+      expect(librariesAndVersions.length).toBeGreaterThan(0);
+      // Each entry should mention Modelica somewhere — exact format is
+      // "<name> <version>".
+      expect(librariesAndVersions.every((s) => /modelica/i.test(s))).toBe(true);
     });
-    expect(result).toBe(true);
-  });
-});
+
+    it("getAvailablePackageVersions accepts an open constraint", async () => {
+      // Empty version-constraint string returns every cached version.
+      const { withoutConversion } = await client.getAvailablePackageVersions({
+        typeName: "Modelica",
+        version: "",
+      });
+      expect(Array.isArray(withoutConversion)).toBe(true);
+    });
+
+    it("getConversionsFromVersions returns the two-array partition shape", async () => {
+      const { withoutConversion, withConversion } =
+        await client.getConversionsFromVersions({ typeName: "Modelica" });
+      expect(Array.isArray(withoutConversion)).toBe(true);
+      expect(Array.isArray(withConversion)).toBe(true);
+    });
+
+    it("getAvailablePackageConversionsFrom returns an array", async () => {
+      const { convertsTo } = await client.getAvailablePackageConversionsFrom({
+        typeName: "Modelica",
+        version: "3.2.3",
+      });
+      expect(Array.isArray(convertsTo)).toBe(true);
+    });
+
+    it("getAvailablePackageConversionsTo returns an array", async () => {
+      const { convertsTo } = await client.getAvailablePackageConversionsTo({
+        typeName: "Modelica",
+        version: "4.0.0",
+      });
+      expect(Array.isArray(convertsTo)).toBe(true);
+    });
+
+    it("installPackage(Modelica, '', false) reports success", async () => {
+      // Without a version OMC picks its default; this is the same call shape
+      // the project's CI .mos script uses to seed Modelica into a -minimal image.
+      const { result } = await client.installPackage({
+        typeName: "Modelica",
+        version: "",
+        exactMatch: false,
+      });
+      expect(result).toBe(true);
+    });
+
+    it("upgradeInstalledPackages reports success", async () => {
+      const { result } = await client.upgradeInstalledPackages({
+        installNewestVersions: false,
+      });
+      expect(result).toBe(true);
+    });
+  },
+);

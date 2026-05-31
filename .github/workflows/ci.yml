@@ -12,7 +12,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Fast feedback: lint, typecheck, parser tests. No OMC needed.
+  # ESLint + Prettier gate. No OMC, no build — pure static checks.
+  lint:
+    name: Lint + format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: ESLint
+        run: pnpm lint
+
+      - name: Prettier
+        run: pnpm format:check
+
+  # Fast feedback: typecheck, parser tests. No OMC needed.
   lint-and-unit:
     name: Lint + unit
     runs-on: ubuntu-latest

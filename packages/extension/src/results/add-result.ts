@@ -17,12 +17,19 @@ import * as vscode from "vscode";
 import type { ResultRef, ResultSource } from "@dicode/omc-client";
 
 import { workspaceCacheUri } from "../workspace-cache.js";
-import { addResult, parseResultViewDoc, serializeResultViewDoc } from "./result-doc.js";
+import {
+  addResult,
+  parseResultViewDoc,
+  serializeResultViewDoc,
+} from "./result-doc.js";
 
 const MAT_EXTENSION = ".mat";
 
 /** Resolve a stored result path: relative paths hang off the document's folder. */
-export function resolveResultPath(documentUri: vscode.Uri, stored: string): string {
+export function resolveResultPath(
+  documentUri: vscode.Uri,
+  stored: string,
+): string {
   return path.isAbsolute(stored)
     ? stored
     : path.join(path.dirname(documentUri.fsPath), stored);
@@ -30,9 +37,14 @@ export function resolveResultPath(documentUri: vscode.Uri, stored: string): stri
 
 /** Store a `.mat` path relative to the document when it sits under the doc's
  * folder, else absolute. The inverse of {@link resolveResultPath}. */
-export function storeResultPath(documentUri: vscode.Uri, absMatPath: string): string {
+export function storeResultPath(
+  documentUri: vscode.Uri,
+  absMatPath: string,
+): string {
   const rel = path.relative(path.dirname(documentUri.fsPath), absMatPath);
-  return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel) ? rel : absMatPath;
+  return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel)
+    ? rel
+    : absMatPath;
 }
 
 /** Default label for a `.mat`: its file stem (`DCMotor_res.mat` → `DCMotor_res`). */
@@ -54,7 +66,9 @@ export function buildResultRef(
     source,
     createdAt: new Date().toISOString(),
     ...(extras.model !== undefined ? { model: extras.model } : {}),
-    ...(extras.parameters !== undefined ? { parameters: extras.parameters } : {}),
+    ...(extras.parameters !== undefined
+      ? { parameters: extras.parameters }
+      : {}),
   };
 }
 
@@ -68,7 +82,9 @@ export async function applyAddResults(
   refs: readonly ResultRef[],
 ): Promise<number> {
   let doc = parseResultViewDoc(document.getText());
-  const seen = new Set(doc.results.map((r) => resolveResultPath(document.uri, r.path)));
+  const seen = new Set(
+    doc.results.map((r) => resolveResultPath(document.uri, r.path)),
+  );
   let added = 0;
   for (const ref of refs) {
     const abs = resolveResultPath(document.uri, ref.path);
@@ -106,7 +122,9 @@ function notifyDuplicates(requested: number, added: number): void {
 }
 
 /** File-dialog path (`via: "import"`): pick one or more `.mat` files to add. */
-export async function importResults(document: vscode.TextDocument): Promise<void> {
+export async function importResults(
+  document: vscode.TextDocument,
+): Promise<void> {
   const picks = await vscode.window.showOpenDialog({
     canSelectMany: true,
     openLabel: "Add to results view",
@@ -115,7 +133,9 @@ export async function importResults(document: vscode.TextDocument): Promise<void
   if (!picks || picks.length === 0) {
     return;
   }
-  const refs = picks.map((uri) => buildResultRef(document.uri, uri.fsPath, "import"));
+  const refs = picks.map((uri) =>
+    buildResultRef(document.uri, uri.fsPath, "import"),
+  );
   notifyDuplicates(refs.length, await applyAddResults(document, refs));
 }
 
@@ -125,7 +145,9 @@ interface CachedPick extends vscode.QuickPickItem {
 }
 
 /** Cache path (`via: "cache"`): quick-pick over `.mat` files in `.modelica`. */
-export async function addCachedResult(document: vscode.TextDocument): Promise<void> {
+export async function addCachedResult(
+  document: vscode.TextDocument,
+): Promise<void> {
   const cacheDir = workspaceCacheUri();
   if (!cacheDir) {
     void vscode.window.showWarningMessage(
@@ -142,7 +164,8 @@ export async function addCachedResult(document: vscode.TextDocument): Promise<vo
   }
   const mats = entries.filter(
     ([name, type]) =>
-      type === vscode.FileType.File && name.toLowerCase().endsWith(MAT_EXTENSION),
+      type === vscode.FileType.File &&
+      name.toLowerCase().endsWith(MAT_EXTENSION),
   );
   if (mats.length === 0) {
     void vscode.window.showInformationMessage("No cached results yet.");
@@ -169,6 +192,8 @@ export async function addCachedResult(document: vscode.TextDocument): Promise<vo
   if (!picked || picked.length === 0) {
     return;
   }
-  const refs = picked.map((p) => buildResultRef(document.uri, p.fsPath, "cache"));
+  const refs = picked.map((p) =>
+    buildResultRef(document.uri, p.fsPath, "cache"),
+  );
   notifyDuplicates(refs.length, await applyAddResults(document, refs));
 }

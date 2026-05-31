@@ -73,9 +73,7 @@ end ${packageName};
   });
   if (!success) {
     const { errorString } = await client.getErrorString();
-    throw new Error(
-      `loadParameterFixture: ${errorString}`,
-    );
+    throw new Error(`loadParameterFixture: ${errorString}`);
   }
   return { packageName, modelClass };
 }
@@ -85,9 +83,7 @@ end ${packageName};
  * can exercise extends-clause modifier reads/writes. Caller must have
  * already loaded the `Modelica` library.
  */
-export async function loadExtendsFixture(
-  client: OmcClient,
-): Promise<Fixture> {
+export async function loadExtendsFixture(client: OmcClient): Promise<Fixture> {
   const packageName = `MwTest_${randomBytes(4).toString("hex")}`;
   const modelClass = `${packageName}.Sample`;
   const data = `package ${packageName}

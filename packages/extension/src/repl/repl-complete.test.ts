@@ -50,7 +50,10 @@ describe("computeCompletion — OMC function names", () => {
   });
 
   it("returns no candidates for an unmatchable prefix", () => {
-    const plan = computeCompletion("zzz_no_such_thing", "zzz_no_such_thing".length);
+    const plan = computeCompletion(
+      "zzz_no_such_thing",
+      "zzz_no_such_thing".length,
+    );
     expect(plan.candidates).toEqual([]);
     expect(plan.commonPrefix).toBe("");
   });
@@ -113,9 +116,7 @@ describe("computeGhost", () => {
   });
 
   it("returns empty when nothing matches the prefix", () => {
-    expect(
-      computeGhost("zzz_no_match", "zzz_no_match".length),
-    ).toBe("");
+    expect(computeGhost("zzz_no_match", "zzz_no_match".length)).toBe("");
   });
 
   it("works for meta-command prefixes", () => {

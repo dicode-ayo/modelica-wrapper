@@ -23,12 +23,18 @@ import { parse } from "../../parse.js";
 
 export const GetElementsInputSchema = z.object({
   typeName: z.string().describe("Class whose elements should be enumerated."),
-  useQuotes: z.boolean().optional().default(false).describe("Quote string-typed fields in the result when true."),
+  useQuotes: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("Quote string-typed fields in the result when true."),
 });
 export type GetElementsInput = z.input<typeof GetElementsInputSchema>;
 
 export const GetElementsOutputSchema = z.object({
-  elements: ValueSchema.describe("Element rows as a Modelica expression tree (raw `Value`); shape varies across OMC versions."),
+  elements: ValueSchema.describe(
+    "Element rows as a Modelica expression tree (raw `Value`); shape varies across OMC versions.",
+  ),
 });
 export type GetElementsOutput = z.infer<typeof GetElementsOutputSchema>;
 

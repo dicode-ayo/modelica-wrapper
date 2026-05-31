@@ -24,12 +24,22 @@ import { expectString, parse } from "../../parse.js";
 import type { OmcCommand } from "../../commands.js";
 
 export const GetErrorStringInputSchema = z.object({
-  warningsAsErrors: z.boolean().optional().default(false).describe("Treat OMC warnings as errors when assembling the diagnostic text."),
+  warningsAsErrors: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      "Treat OMC warnings as errors when assembling the diagnostic text.",
+    ),
 });
 export type GetErrorStringInput = z.input<typeof GetErrorStringInputSchema>;
 
 export const GetErrorStringOutputSchema = z.object({
-  errorString: z.string().describe("User-readable text of any errors stored by the most recent OMC call; empty when none."),
+  errorString: z
+    .string()
+    .describe(
+      "User-readable text of any errors stored by the most recent OMC call; empty when none.",
+    ),
 });
 export type GetErrorStringOutput = z.infer<typeof GetErrorStringOutputSchema>;
 

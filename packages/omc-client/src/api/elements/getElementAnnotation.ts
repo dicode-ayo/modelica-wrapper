@@ -25,7 +25,11 @@ export type GetElementAnnotationInput = z.input<
 >;
 
 export const GetElementAnnotationOutputSchema = z.object({
-  annotationString: z.string().describe("Element annotation as a Modelica source fragment; empty if none."),
+  annotationString: z
+    .string()
+    .describe(
+      "Element annotation as a Modelica source fragment; empty if none.",
+    ),
 });
 export type GetElementAnnotationOutput = z.infer<
   typeof GetElementAnnotationOutputSchema

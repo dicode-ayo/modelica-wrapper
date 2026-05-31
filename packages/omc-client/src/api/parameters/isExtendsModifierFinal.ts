@@ -29,7 +29,9 @@ export const IsExtendsModifierFinalInputSchema = z.object({
   // keeps the OMC docs name verbatim (audit.md §2.3).
   modifierName: z
     .string()
-    .describe("Name of the modifier on the `extends` clause to inspect; emitted bare to OMC."),
+    .describe(
+      "Name of the modifier on the `extends` clause to inspect; emitted bare to OMC.",
+    ),
 });
 export type IsExtendsModifierFinalInput = z.input<
   typeof IsExtendsModifierFinalInputSchema

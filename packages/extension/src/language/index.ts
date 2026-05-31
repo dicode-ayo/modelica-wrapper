@@ -17,10 +17,7 @@ import {
 } from "./completion-provider.js";
 import { ModelicaDefinitionProvider } from "./definition-provider.js";
 import { ModelicaHoverProvider } from "./hover-provider.js";
-import {
-  OmcLookupCache,
-  type CachedOmcClient,
-} from "./omc-cache.js";
+import { OmcLookupCache, type CachedOmcClient } from "./omc-cache.js";
 import {
   MODELICA_DOCUMENT_SELECTOR,
   MODELICA_LANGUAGE_ID,
@@ -182,11 +179,10 @@ export function registerLanguageFeatures(
     MODELICA_DOCUMENT_SELECTOR,
     hoverProvider,
   );
-  const symbolRegistration =
-    vscode.languages.registerDocumentSymbolProvider(
-      MODELICA_DOCUMENT_SELECTOR,
-      symbolProvider,
-    );
+  const symbolRegistration = vscode.languages.registerDocumentSymbolProvider(
+    MODELICA_DOCUMENT_SELECTOR,
+    symbolProvider,
+  );
   // `.` triggers member-access completion; for the other contexts VSCode invokes
   // the provider on the normal identifier-typing path.
   const completionRegistration =

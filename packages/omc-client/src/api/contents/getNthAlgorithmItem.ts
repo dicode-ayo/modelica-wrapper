@@ -27,7 +27,9 @@ export const GetNthAlgorithmItemInputSchema = TypeNameInput.extend({
     .number()
     .int()
     .positive()
-    .describe("1-based algorithm-statement index, between 1 and `getAlgorithmItemsCount`."),
+    .describe(
+      "1-based algorithm-statement index, between 1 and `getAlgorithmItemsCount`.",
+    ),
 });
 export type GetNthAlgorithmItemInput = z.input<
   typeof GetNthAlgorithmItemInputSchema
@@ -36,7 +38,9 @@ export type GetNthAlgorithmItemInput = z.input<
 export const GetNthAlgorithmItemOutputSchema = z.object({
   result: z
     .string()
-    .describe("The n-th `algorithm` statement as a Modelica source string. Field name `result` is OMC verbatim."),
+    .describe(
+      "The n-th `algorithm` statement as a Modelica source string. Field name `result` is OMC verbatim.",
+    ),
 });
 export type GetNthAlgorithmItemOutput = z.infer<
   typeof GetNthAlgorithmItemOutputSchema

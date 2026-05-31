@@ -26,7 +26,9 @@ import { openFileViaQuickOpen, waitForWorkbench } from "../helpers.js";
 const omcEnabled = process.env["E2E_OMC"] === "1";
 
 test.describe(
-  omcEnabled ? "Completion (OMC-backed)" : "Completion (skipped — set E2E_OMC=1)",
+  omcEnabled
+    ? "Completion (OMC-backed)"
+    : "Completion (skipped — set E2E_OMC=1)",
   () => {
     test.skip(!omcEnabled, "OMC-dependent — set E2E_OMC=1 to enable");
 

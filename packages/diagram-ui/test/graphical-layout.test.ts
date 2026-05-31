@@ -26,7 +26,12 @@ function tinyLayout(): DiagramLayout {
       b1: {
         name: "b1",
         classRef: "Test.Block",
-        placement: { extent: [[-10, -5], [10, 5]] },
+        placement: {
+          extent: [
+            [-10, -5],
+            [10, 5],
+          ],
+        },
       },
     },
     connectors: {},
@@ -42,9 +47,7 @@ afterEach(() => {
 });
 
 async function mount(layout: DiagramLayout): Promise<OmGraphicalLayout> {
-  const el = document.createElement(
-    "om-graphical-layout",
-  ) as OmGraphicalLayout;
+  const el = document.createElement("om-graphical-layout") as OmGraphicalLayout;
   // Inject test factories BEFORE connection so the inner scene's
   // firstUpdated sees them.
   el.engineFactory = () =>

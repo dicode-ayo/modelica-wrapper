@@ -10,7 +10,11 @@ const theme: EchartTheme = {
   palette: ["#aaa", "#bbb"],
 };
 
-type Series = Array<{ name: string; type: string; data: Array<[number, number | null]> }>;
+type Series = Array<{
+  name: string;
+  type: string;
+  data: Array<[number, number | null]>;
+}>;
 
 describe("buildLineChartOption", () => {
   it("maps each trace to a line series of [x, y] pairs", () => {
@@ -36,7 +40,10 @@ describe("buildLineChartOption", () => {
   });
 
   it("pads a missing y value with null so x/y stay aligned", () => {
-    const opt = buildLineChartOption([{ t: [0, 1], values: [5], name: "x" }], theme);
+    const opt = buildLineChartOption(
+      [{ t: [0, 1], values: [5], name: "x" }],
+      theme,
+    );
     expect((opt.series as Series)[0]!.data).toEqual([
       [0, 5],
       [1, null],

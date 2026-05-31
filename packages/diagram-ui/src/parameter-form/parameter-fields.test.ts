@@ -34,7 +34,9 @@ function modelField(over: Partial<ModelField> & { name: string }): ModelField {
 }
 
 /** Wrap fields into a `ParameterModel`. */
-function model(fields: Array<Partial<ModelField> & { name: string }>): ParameterModel {
+function model(
+  fields: Array<Partial<ModelField> & { name: string }>,
+): ParameterModel {
   return { className: "T", fields: fields.map(modelField) };
 }
 
@@ -62,7 +64,13 @@ describe("parameterFieldsFromModel — kinds + vocabulary", () => {
 
   it("maps enum fields and threads enumChoices into enumValues", () => {
     const f = parameterFieldsFromModel(
-      model([{ name: "method", kind: "enum", enumChoices: ["dassl", "ida", "euler"] }]),
+      model([
+        {
+          name: "method",
+          kind: "enum",
+          enumChoices: ["dassl", "ida", "euler"],
+        },
+      ]),
     );
     expect(f).toHaveLength(1);
     expect(f[0]?.kind).toBe("enum");
@@ -114,7 +122,9 @@ describe("parameterFieldsFromModel — kinds + vocabulary", () => {
     const j = byName.get("J")!;
     expect(j.unit).toBe("kg.m2");
     expect(j.displayUnit).toBeUndefined();
-    expect(j.unitOptions).toEqual([{ unit: "kg.m2", scaleFactor: 1, offset: 0 }]);
+    expect(j.unitOptions).toEqual([
+      { unit: "kg.m2", scaleFactor: 1, offset: 0 },
+    ]);
     const plain = byName.get("plain")!;
     expect(plain.unit).toBeUndefined();
     expect(plain.unitOptions).toEqual([]);
@@ -123,7 +133,13 @@ describe("parameterFieldsFromModel — kinds + vocabulary", () => {
   it("uses the comment as description, omitting it when it equals the name", () => {
     const f = parameterFieldsFromModel(
       model([
-        { name: "stopTime", kind: "number", label: "Simulation stop time.", value: 1, defaultValue: 1 },
+        {
+          name: "stopTime",
+          kind: "number",
+          label: "Simulation stop time.",
+          value: 1,
+          defaultValue: 1,
+        },
         { name: "k", kind: "number", label: "k" },
       ]),
     );
@@ -142,7 +158,9 @@ describe("parameterFieldsFromModel — kinds + vocabulary", () => {
   });
 
   it("normalises a null value to undefined", () => {
-    const f = parameterFieldsFromModel(model([{ name: "k", kind: "number", value: null }]));
+    const f = parameterFieldsFromModel(
+      model([{ name: "k", kind: "number", value: null }]),
+    );
     expect(f[0]?.value).toBeUndefined();
   });
 
@@ -295,14 +313,22 @@ describe("enabledValues (issue #76, item 4)", () => {
 describe("Dialog metadata pass-through", () => {
   it("reads tab and group off the model field's dialog", () => {
     const [f] = parameterFieldsFromModel(
-      model([{ name: "k", kind: "number", dialog: { tab: "Advanced", group: "Tuning" } }]),
+      model([
+        {
+          name: "k",
+          kind: "number",
+          dialog: { tab: "Advanced", group: "Tuning" },
+        },
+      ]),
     );
     expect(f?.tab).toBe("Advanced");
     expect(f?.group).toBe("Tuning");
   });
 
   it("carries the producer's default tab/group", () => {
-    const [f] = parameterFieldsFromModel(model([{ name: "startTime", kind: "number", value: 0 }]));
+    const [f] = parameterFieldsFromModel(
+      model([{ name: "startTime", kind: "number", value: 0 }]),
+    );
     expect(f?.tab).toBe("General");
     expect(f?.group).toBe("Parameters");
   });
@@ -338,7 +364,9 @@ describe("Dialog.enable evaluation — value fallback + commit cadence (#27)", (
   }
 
   it("treats a field with no enable as always enabled", () => {
-    const fields = parameterFieldsFromModel(model([{ name: "a", kind: "number" }]));
+    const fields = parameterFieldsFromModel(
+      model([{ name: "a", kind: "number" }]),
+    );
     expect(isFieldEnabled(fields[0]!, fields, {})).toBe(true);
   });
 

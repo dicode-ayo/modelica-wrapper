@@ -35,7 +35,9 @@ export type GetNthAnnotationStringInput = z.input<
 export const GetNthAnnotationStringOutputSchema = z.object({
   result: z
     .string()
-    .describe("The n-th class-level annotation section as a Modelica source string. Field name `result` is OMC verbatim."),
+    .describe(
+      "The n-th class-level annotation section as a Modelica source string. Field name `result` is OMC verbatim.",
+    ),
 });
 export type GetNthAnnotationStringOutput = z.infer<
   typeof GetNthAnnotationStringOutputSchema

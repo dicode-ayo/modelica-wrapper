@@ -19,7 +19,11 @@ import type {
   TracePayload,
   WebviewToExtension,
 } from "../webview/postprocessing-protocol.js";
-import { addCachedResult, importResults, resolveResultPath } from "./add-result.js";
+import {
+  addCachedResult,
+  importResults,
+  resolveResultPath,
+} from "./add-result.js";
 import { ResultCache, type ResultReader } from "./result-cache.js";
 import {
   addPlotCard,
@@ -56,7 +60,10 @@ export class ResultViewEditorProvider
     context: vscode.ExtensionContext,
     ensureClient: () => Promise<ResultReader>,
   ): vscode.Disposable {
-    const provider = new ResultViewEditorProvider(context.extensionUri, ensureClient);
+    const provider = new ResultViewEditorProvider(
+      context.extensionUri,
+      ensureClient,
+    );
     return vscode.window.registerCustomEditorProvider(
       RESULT_VIEW_VIEW_TYPE,
       provider,
@@ -137,7 +144,8 @@ export class ResultViewEditorProvider
       } catch (err) {
         post({ type: "status", message: (err as Error).message, error: true });
       } finally {
-        if (myGen === generation) post({ type: "loading", area: "plots", busy: false });
+        if (myGen === generation)
+          post({ type: "loading", area: "plots", busy: false });
       }
     };
 
@@ -193,7 +201,9 @@ export class ResultViewEditorProvider
           );
           return;
         case "deletePlot":
-          applyDocEdit(deleteCard(parseResultViewDoc(document.getText()), msg.cardId));
+          applyDocEdit(
+            deleteCard(parseResultViewDoc(document.getText()), msg.cardId),
+          );
           return;
         case "addTrace":
           applyDocEdit(
@@ -239,7 +249,11 @@ export class ResultViewEditorProvider
     const doc = parseResultViewDoc(document.getText());
     const result = doc.results.find((r) => r.id === msg.resultId);
     if (!result) {
-      post({ type: "variables", resultId: msg.resultId, error: "unknown result" });
+      post({
+        type: "variables",
+        resultId: msg.resultId,
+        error: "unknown result",
+      });
       return;
     }
     const filePath = resolveResultPath(document.uri, result.path);
@@ -247,7 +261,11 @@ export class ResultViewEditorProvider
       const vars = await cache.variables(filePath);
       post({ type: "variables", resultId: msg.resultId, vars });
     } catch (err) {
-      post({ type: "variables", resultId: msg.resultId, error: (err as Error).message });
+      post({
+        type: "variables",
+        resultId: msg.resultId,
+        error: (err as Error).message,
+      });
     }
   }
 

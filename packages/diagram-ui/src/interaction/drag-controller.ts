@@ -1,10 +1,6 @@
 import type { Node } from "@babylonjs/core";
 
-import {
-  entityKeyForNode,
-  formatKey,
-  type EntityKind,
-} from "./node-keys.js";
+import { entityKeyForNode, formatKey, type EntityKind } from "./node-keys.js";
 
 /**
  * Drag controller: turns canvas pointer gestures into drag-events for
@@ -105,11 +101,7 @@ interface ConnectionState {
   fromKey: string;
 }
 
-type DragState =
-  | MoveState
-  | ResizeState
-  | RubberBandState
-  | ConnectionState;
+type DragState = MoveState | ResizeState | RubberBandState | ConnectionState;
 
 /**
  * Entity kinds that begin a move-drag on pointerdown. Connectors are

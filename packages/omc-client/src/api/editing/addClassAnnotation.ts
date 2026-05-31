@@ -15,7 +15,11 @@ import { expectBool, parse } from "../../parse.js";
 
 export const AddClassAnnotationInputSchema = z.object({
   typeName: z.string().describe("Class to annotate."),
-  annotation: z.string().describe('Raw Modelica annotation expression (no `annotate=` prefix), e.g. `experiment(StopTime=4)`.'),
+  annotation: z
+    .string()
+    .describe(
+      "Raw Modelica annotation expression (no `annotate=` prefix), e.g. `experiment(StopTime=4)`.",
+    ),
 });
 export type AddClassAnnotationInput = z.input<
   typeof AddClassAnnotationInputSchema
@@ -26,7 +30,8 @@ export type AddClassAnnotationOutput = z.infer<
   typeof AddClassAnnotationOutputSchema
 >;
 
-export const AddClassAnnotationDescription = "Attach an annotation to a class (Diagram, Icon, experiment, Documentation, …).";
+export const AddClassAnnotationDescription =
+  "Attach an annotation to a class (Diagram, Icon, experiment, Documentation, …).";
 
 export async function addClassAnnotation(
   ctx: CallContext,

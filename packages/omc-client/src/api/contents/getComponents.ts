@@ -32,13 +32,19 @@ import {
 
 export const GetComponentsInputSchema = z.object({
   typeName: z.string().describe("Class to inspect."),
-  useQuotes: z.boolean().optional().default(false).describe("Quote string fields in the OMC raw response when true."),
+  useQuotes: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("Quote string fields in the OMC raw response when true."),
 });
 export type GetComponentsInput = z.input<typeof GetComponentsInputSchema>;
 
 export const ComponentInfoSchema = z.object({
   /** Type of the component (e.g. "Modelica.Blocks.Math.Gain"). */
-  className: z.string().describe('Type of the component (e.g. "Modelica.Blocks.Math.Gain").'),
+  className: z
+    .string()
+    .describe('Type of the component (e.g. "Modelica.Blocks.Math.Gain").'),
   /** Local instance name. */
   name: z.string().describe("Local instance name."),
   /** Description string. */
@@ -50,18 +56,26 @@ export const ComponentInfoSchema = z.object({
   isStream: z.boolean().describe("True if declared `stream`."),
   isReplaceable: z.boolean().describe("True if declared `replaceable`."),
   /** "constant" | "parameter" | "discrete" | "" (continuous). */
-  variability: z.string().describe('"constant" | "parameter" | "discrete" | "" (continuous).'),
+  variability: z
+    .string()
+    .describe('"constant" | "parameter" | "discrete" | "" (continuous).'),
   /** "inner" | "outer" | "inner outer" | "". */
   innerOuter: z.string().describe('"inner" | "outer" | "inner outer" | "".'),
   /** "input" | "output" | "". */
   causality: z.string().describe('"input" | "output" | "".'),
   /** Array dimensions as raw expression strings. */
-  dimensions: z.array(z.string()).describe("Array dimensions as raw expression strings (not numerically evaluated)."),
+  dimensions: z
+    .array(z.string())
+    .describe(
+      "Array dimensions as raw expression strings (not numerically evaluated).",
+    ),
 });
 export type ComponentInfo = z.infer<typeof ComponentInfoSchema>;
 
 export const GetComponentsOutputSchema = z.object({
-  components: z.array(ComponentInfoSchema).describe("One entry per declared component in the class."),
+  components: z
+    .array(ComponentInfoSchema)
+    .describe("One entry per declared component in the class."),
 });
 export type GetComponentsOutput = z.infer<typeof GetComponentsOutputSchema>;
 

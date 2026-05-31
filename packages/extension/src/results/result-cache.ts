@@ -22,7 +22,9 @@ export interface Trajectory {
  * casing split below mirrors OMC's own inconsistent input keys exactly — it is
  * not a typo, don't "fix" it. */
 export interface ResultReader {
-  readSimulationResultVars(input: { fileName: string }): Promise<{ vars: string[] }>;
+  readSimulationResultVars(input: {
+    fileName: string;
+  }): Promise<{ vars: string[] }>;
   readSimulationResult(input: {
     filename: string;
     variables: string[];
@@ -52,7 +54,9 @@ export class ResultCache {
 
   constructor(
     private readonly resolveReader: () => Promise<ResultReader>,
-    private readonly statMtimeMs: (path: string) => Promise<number | undefined> = defaultStatMtimeMs,
+    private readonly statMtimeMs: (
+      path: string,
+    ) => Promise<number | undefined> = defaultStatMtimeMs,
   ) {}
 
   /**
@@ -84,7 +88,9 @@ export class ResultCache {
     if (!entry) return [];
     if (!entry.vars) {
       const reader = await this.resolveReader();
-      entry.vars = (await reader.readSimulationResultVars({ fileName: path })).vars;
+      entry.vars = (
+        await reader.readSimulationResultVars({ fileName: path })
+      ).vars;
     }
     return entry.vars;
   }
@@ -93,7 +99,10 @@ export class ResultCache {
    * One variable's trajectory (cached), read against `time`. `undefined` when
    * the file is missing, or the read doesn't yield both rows with samples.
    */
-  async trajectory(path: string, variable: string): Promise<Trajectory | undefined> {
+  async trajectory(
+    path: string,
+    variable: string,
+  ): Promise<Trajectory | undefined> {
     const entry = await this.fresh(path);
     if (!entry) return undefined;
     const cached = entry.series.get(variable);

@@ -25,14 +25,23 @@ export type GetConnectionListInput = z.input<
 >;
 
 export const GetConnectionListOutputSchema = z.object({
-  result: z.array(
-    z.object({
-      from: z.string().describe("Left-hand connector reference of the connect() pair."),
-      to: z.string().describe("Right-hand connector reference of the connect() pair."),
-      comment: z.string().describe("Description string on the connection, if any."),
-    }),
-  )
-    .describe("All connections in the class, each as a (from, to, comment) row."),
+  result: z
+    .array(
+      z.object({
+        from: z
+          .string()
+          .describe("Left-hand connector reference of the connect() pair."),
+        to: z
+          .string()
+          .describe("Right-hand connector reference of the connect() pair."),
+        comment: z
+          .string()
+          .describe("Description string on the connection, if any."),
+      }),
+    )
+    .describe(
+      "All connections in the class, each as a (from, to, comment) row.",
+    ),
 });
 export type GetConnectionListOutput = z.infer<
   typeof GetConnectionListOutputSchema

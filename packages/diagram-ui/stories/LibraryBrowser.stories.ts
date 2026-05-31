@@ -120,9 +120,7 @@ const fakeSource: LibraryBrowserDataSource = {
   async searchAll(query: string): Promise<LibraryClassInfo[]> {
     await new Promise((r) => setTimeout(r, 120));
     const q = query.toLowerCase();
-    return ALL_FLAT.filter((info) =>
-      info.qualified.toLowerCase().includes(q),
-    );
+    return ALL_FLAT.filter((info) => info.qualified.toLowerCase().includes(q));
   },
 };
 
@@ -167,11 +165,9 @@ const meta: Meta<StoryArgs> = {
     <div
       style="position: relative; height: 480px; background: repeating-linear-gradient(45deg, #f5f5f5, #f5f5f5 8px, #ececec 8px, #ececec 16px); border-radius: 4px;"
       @om-library-select=${(e: CustomEvent) => {
-        // eslint-disable-next-line no-console
         console.log("library-select", e.detail);
       }}
       @om-library-cancel=${() => {
-        // eslint-disable-next-line no-console
         console.log("library-cancel");
       }}
     >

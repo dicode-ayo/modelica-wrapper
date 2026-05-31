@@ -23,7 +23,13 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import { Language, Parser, type Edit, type Point, type Tree } from "web-tree-sitter";
+import {
+  Language,
+  Parser,
+  type Edit,
+  type Point,
+  type Tree,
+} from "web-tree-sitter";
 
 import { log } from "../logger.js";
 import { advancePointUtf16 } from "./position.js";

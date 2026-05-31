@@ -23,7 +23,13 @@ function makeScene(): { scene: Scene; dispose: () => void } {
     lockstepMaxSteps: 1,
   });
   const scene = new Scene(engine);
-  return { scene, dispose: () => { scene.dispose(); engine.dispose(); } };
+  return {
+    scene,
+    dispose: () => {
+      scene.dispose();
+      engine.dispose();
+    },
+  };
 }
 
 describe("formatKey / parseKey", () => {

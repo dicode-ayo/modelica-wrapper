@@ -56,11 +56,11 @@ describe("simulateInputFromFormValues", () => {
   });
 
   it("always derives a shell-safe fileNamePrefix from the class name", () => {
-    expect(classNameToFilePrefix("Modelica.Blocks.Examples.PID_Controller")).toBe(
-      "Modelica_Blocks_Examples_PID_Controller",
-    );
     expect(
-      simulateInputFromFormValues("A.B.C", {}).fileNamePrefix,
-    ).toBe("A_B_C");
+      classNameToFilePrefix("Modelica.Blocks.Examples.PID_Controller"),
+    ).toBe("Modelica_Blocks_Examples_PID_Controller");
+    expect(simulateInputFromFormValues("A.B.C", {}).fileNamePrefix).toBe(
+      "A_B_C",
+    );
   });
 });

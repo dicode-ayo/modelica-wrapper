@@ -7,10 +7,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import {
-  extendsBase,
-  typeNameOfExtends,
-} from "../../_shared/fields.js";
+import { extendsBase, typeNameOfExtends } from "../../_shared/fields.js";
 import { StringValueOutput } from "../../_shared/outputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { asString, parse } from "../../parse.js";
@@ -18,7 +15,11 @@ import { asString, parse } from "../../parse.js";
 export const GetExtendsModifierValueInputSchema = z.object({
   typeName: typeNameOfExtends,
   extendsBase,
-  modifier: z.string().describe("Dotted path identifying the modifier within the extends clause."),
+  modifier: z
+    .string()
+    .describe(
+      "Dotted path identifying the modifier within the extends clause.",
+    ),
 });
 export type GetExtendsModifierValueInput = z.input<
   typeof GetExtendsModifierValueInputSchema
@@ -29,7 +30,8 @@ export type GetExtendsModifierValueOutput = z.infer<
   typeof GetExtendsModifierValueOutputSchema
 >;
 
-export const GetExtendsModifierValueDescription = "Return the modifier value for a modifier on an `extends` clause.";
+export const GetExtendsModifierValueDescription =
+  "Return the modifier value for a modifier on an `extends` clause.";
 
 export async function getExtendsModifierValue(
   ctx: CallContext,

@@ -27,12 +27,18 @@ describe("buildVariableTree", () => {
   });
 
   it("collapses duplicates and sorts every level", () => {
-    expect(buildVariableTree(["b", "a", "a"]).map((n) => n.name)).toEqual(["a", "b"]);
+    expect(buildVariableTree(["b", "a", "a"]).map((n) => n.name)).toEqual([
+      "a",
+      "b",
+    ]);
   });
 
   it("keeps array subscripts attached to their segment", () => {
     const tree = buildVariableTree(["body[1].r", "body[1].v"]);
     expect(tree.map((n) => n.name)).toEqual(["body[1]"]);
-    expect(tree[0]!.children.map((c) => c.path)).toEqual(["body[1].r", "body[1].v"]);
+    expect(tree[0]!.children.map((c) => c.path)).toEqual([
+      "body[1].r",
+      "body[1].v",
+    ]);
   });
 });

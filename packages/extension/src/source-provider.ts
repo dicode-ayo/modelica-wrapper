@@ -79,7 +79,9 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
       ctime: 0,
       mtime,
       size: Buffer.byteLength(contents, "utf8"),
-      ...(info.fileReadOnly ? { permissions: vscode.FilePermission.Readonly } : {}),
+      ...(info.fileReadOnly
+        ? { permissions: vscode.FilePermission.Readonly }
+        : {}),
     };
   }
 
@@ -130,7 +132,8 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
       // sees a banner; the live-check pipeline will also pin the precise
       // squiggle. Keep the message short — the full text lives in the
       // Modelica output channel after `getMessagesStringInternal` runs.
-      const first = errorString.split("\n")[0]?.slice(0, 200) ?? errorString.slice(0, 200);
+      const first =
+        errorString.split("\n")[0]?.slice(0, 200) ?? errorString.slice(0, 200);
       throw vscode.FileSystemError.Unavailable(
         `OMC rejected the source${first ? `: ${first}` : ""}`,
       );
@@ -162,9 +165,7 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
     }
 
     this.bump(uri);
-    this._onDidChangeFile.fire([
-      { type: vscode.FileChangeType.Changed, uri },
-    ]);
+    this._onDidChangeFile.fire([{ type: vscode.FileChangeType.Changed, uri }]);
   }
 
   delete(uri: vscode.Uri): void {
@@ -216,4 +217,3 @@ export function qualifiedNameFromUri(uri: vscode.Uri): string | undefined {
   const p = uri.path.replace(/^\//, "");
   return p.endsWith(".mo") ? p.slice(0, -3) : p;
 }
-

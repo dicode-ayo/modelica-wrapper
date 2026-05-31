@@ -42,9 +42,12 @@ export function defaultCoordSystemSize(): { width: number; height: number } {
   };
 }
 
-export function coordSystemSize(
-  cs: CoordinateSystem | undefined,
-): { width: number; height: number; cx: number; cy: number } {
+export function coordSystemSize(cs: CoordinateSystem | undefined): {
+  width: number;
+  height: number;
+  cx: number;
+  cy: number;
+} {
   const e = cs?.extent;
   if (!e || e.length < 2) {
     return { ...defaultCoordSystemSize(), cx: 0, cy: 0 };

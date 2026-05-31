@@ -31,12 +31,35 @@ import { expectBool, parse } from "../../parse.js";
 
 export const LoadFilesInputSchema = z.object({
   fileNames: z.array(z.string()).describe("Paths of Modelica files to load."),
-  encoding: z.string().optional().default("UTF-8").describe("Source encoding for the files."),
-  numThreads: z.number().int().optional().default(0).describe("Number of parallel threads; 0 substitutes the literal `OpenModelica.Scripting.numProcessors()` so OMC evaluates the default at call time."),
-  uses: z.boolean().optional().default(true).describe("Honor `uses` annotations to load dependencies when true."),
-  notify: z.boolean().optional().default(true).describe("Emit OMC notifications during loading when true."),
+  encoding: z
+    .string()
+    .optional()
+    .default("UTF-8")
+    .describe("Source encoding for the files."),
+  numThreads: z
+    .number()
+    .int()
+    .optional()
+    .default(0)
+    .describe(
+      "Number of parallel threads; 0 substitutes the literal `OpenModelica.Scripting.numProcessors()` so OMC evaluates the default at call time.",
+    ),
+  uses: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe("Honor `uses` annotations to load dependencies when true."),
+  notify: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe("Emit OMC notifications during loading when true."),
   requireExactVersion,
-  allowWithin: z.boolean().optional().default(true).describe("Permit `within` clauses in the loaded files when true."),
+  allowWithin: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe("Permit `within` clauses in the loaded files when true."),
 });
 export type LoadFilesInput = z.input<typeof LoadFilesInputSchema>;
 

@@ -55,9 +55,7 @@ export async function getConversionsFromVersions(
   ctx: CallContext,
   input: GetConversionsFromVersionsInput,
 ): Promise<GetConversionsFromVersionsOutput> {
-  const raw = await ctx.call(
-    `getConversionsFromVersions(${input.typeName})`,
-  );
+  const raw = await ctx.call(`getConversionsFromVersions(${input.typeName})`);
   // OMC returns a paren-tuple `(withoutConversion, withConversion)`.
   const tuple = expectList(parse(raw));
   if (tuple.length !== 2) {

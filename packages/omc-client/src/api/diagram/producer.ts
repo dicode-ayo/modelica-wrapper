@@ -126,7 +126,11 @@ function bindingToDisplayString(binding: unknown): string {
     binding !== null &&
     "$kind" in (binding as Record<string, unknown>)
   ) {
-    const tagged = binding as { $kind: string; name?: unknown; index?: unknown };
+    const tagged = binding as {
+      $kind: string;
+      name?: unknown;
+      index?: unknown;
+    };
     if (tagged.$kind === "enum" && typeof tagged.name === "string") {
       const dot = tagged.name.lastIndexOf(".");
       return dot >= 0 ? tagged.name.slice(dot + 1) : tagged.name;
@@ -359,7 +363,10 @@ function collectLabels(mi: ModelInstance): LabelLayout[] {
  * registers any nested classes encountered through ports' connector
  * types so they're in the catalog too.
  */
-function buildClassDef(typeMi: ModelInstance, registry: Map<string, ClassDef>): ClassDef {
+function buildClassDef(
+  typeMi: ModelInstance,
+  registry: Map<string, ClassDef>,
+): ClassDef {
   const iconLayers = collectLayers(typeMi, "icon");
   const cs = coordinateSystemForKind(typeMi, "icon");
   const connectors: Record<string, PortDef> = {};
@@ -386,7 +393,10 @@ function buildClassDef(typeMi: ModelInstance, registry: Map<string, ClassDef>): 
  * subsequent calls are no-ops. We don't content-hash today; treating
  * redeclare collisions correctly is a v2 concern.
  */
-function registerClass(typeMi: ModelInstance, registry: Map<string, ClassDef>): string {
+function registerClass(
+  typeMi: ModelInstance,
+  registry: Map<string, ClassDef>,
+): string {
   const key = typeMi.name;
   if (registry.has(key)) return key;
   // Insert a placeholder first so cycles through ports → connector class →
@@ -670,7 +680,11 @@ export function produceDiagramLayout(
   const components: Record<string, ComponentInstance> = {};
   for (const el of ownSubComponents(mi)) {
     if (!isConditionTrue(el.condition)) continue;
-    const inst = instanceFromSubComponent(el, kind === "icon" ? "icon" : "diagram", registry);
+    const inst = instanceFromSubComponent(
+      el,
+      kind === "icon" ? "icon" : "diagram",
+      registry,
+    );
     if (inst) components[inst.name] = inst;
   }
   // Same for any sub-components declared on ancestors. They DO show up
@@ -682,7 +696,11 @@ export function produceDiagramLayout(
     for (const el of ownSubComponents(klass)) {
       if (components[el.name]) continue;
       if (!isConditionTrue(el.condition)) continue;
-      const inst = instanceFromSubComponent(el, kind === "icon" ? "icon" : "diagram", registry);
+      const inst = instanceFromSubComponent(
+        el,
+        kind === "icon" ? "icon" : "diagram",
+        registry,
+      );
       if (inst) components[inst.name] = inst;
     }
   }
@@ -714,8 +732,11 @@ export function produceDiagramLayout(
         // conditional component / port that OMC reduced away would
         // otherwise dangle to a non-existent node — we filter rather than
         // rely on OMC dropping the equation.
-        if (cl && endpointVisible(cl.lhs, components, connectors) &&
-          endpointVisible(cl.rhs, components, connectors)) {
+        if (
+          cl &&
+          endpointVisible(cl.lhs, components, connectors) &&
+          endpointVisible(cl.rhs, components, connectors)
+        ) {
           connections.push(cl);
         }
       }

@@ -22,7 +22,11 @@ export type GetAvailableLibrariesInput = z.input<
 >;
 
 export const GetAvailableLibrariesOutputSchema = z.object({
-  libraries: z.array(z.string()).describe("Names of libraries OMC knows about (installable + already-loaded)."),
+  libraries: z
+    .array(z.string())
+    .describe(
+      "Names of libraries OMC knows about (installable + already-loaded).",
+    ),
 });
 export type GetAvailableLibrariesOutput = z.infer<
   typeof GetAvailableLibrariesOutputSchema

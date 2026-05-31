@@ -82,7 +82,10 @@ export function registerLiveCheck(ctx: CommandContext): vscode.Disposable {
   });
 
   const cfgSub = vscode.workspace.onDidChangeConfiguration((e) => {
-    if (!e.affectsConfiguration("modelica.checkOnEdit") && !e.affectsConfiguration("modelica.checkDebounceMs")) {
+    if (
+      !e.affectsConfiguration("modelica.checkOnEdit") &&
+      !e.affectsConfiguration("modelica.checkDebounceMs")
+    ) {
       return;
     }
     ({ enabled, debounceMs } = readConfig());
@@ -145,7 +148,8 @@ async function runCheck(
       log.error("liveCheck", "parseString failed", err);
     }
     if (state.token !== capturedToken) return;
-    const { messages: parseMessages } = await client.getMessagesStringInternal();
+    const { messages: parseMessages } =
+      await client.getMessagesStringInternal();
     messages.push(...parseMessages);
     const hasParseError = parseMessages.some(
       (m) => m.level === "error" || m.level === "internal",
@@ -207,4 +211,3 @@ async function runCheck(
     ctx.diagnostics.set(uri, diagsForUri);
   });
 }
-

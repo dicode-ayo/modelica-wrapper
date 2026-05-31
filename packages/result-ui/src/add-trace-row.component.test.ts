@@ -29,21 +29,31 @@ describe("om-add-trace-row", () => {
   });
 
   it("renders a result select once results are provided", async () => {
-    const el = await mount([{ id: "r1", label: "R1", path: "a.mat", source: "import" }], {
-      r1: ["time", "motor.w"],
-    });
-    const sel = el.shadowRoot!.querySelector<HTMLSelectElement>("select[aria-label='Result']");
+    const el = await mount(
+      [{ id: "r1", label: "R1", path: "a.mat", source: "import" }],
+      {
+        r1: ["time", "motor.w"],
+      },
+    );
+    const sel = el.shadowRoot!.querySelector<HTMLSelectElement>(
+      "select[aria-label='Result']",
+    );
     expect(sel).not.toBeNull();
     expect([...sel!.options].map((o) => o.value)).toEqual(["", "r1"]);
   });
 
   it("requests variables when a result with none known is selected", async () => {
-    const el = await mount([{ id: "r2", label: "R2", path: "b.mat", source: "import" }], {});
+    const el = await mount(
+      [{ id: "r2", label: "R2", path: "b.mat", source: "import" }],
+      {},
+    );
     let asked: RequestVariablesDetail | undefined;
     el.addEventListener("om-request-variables", (e) => {
       asked = (e as CustomEvent<RequestVariablesDetail>).detail;
     });
-    const sel = el.shadowRoot!.querySelector<HTMLSelectElement>("select[aria-label='Result']")!;
+    const sel = el.shadowRoot!.querySelector<HTMLSelectElement>(
+      "select[aria-label='Result']",
+    )!;
     sel.value = "r2";
     sel.dispatchEvent(new Event("change"));
     await el.updateComplete;

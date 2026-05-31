@@ -198,7 +198,9 @@ export class OmcClient implements CallContext {
 
   // === Browsing ========================================================
 
-  getVersion(input: browsing.GetVersionInput = {}): Promise<browsing.GetVersionOutput> {
+  getVersion(
+    input: browsing.GetVersionInput = {},
+  ): Promise<browsing.GetVersionOutput> {
     return browsing.getVersion(this, input);
   }
 
@@ -240,7 +242,9 @@ export class OmcClient implements CallContext {
     return browsing.getUses(this, input);
   }
 
-  existClass(input: browsing.ExistClassInput): Promise<browsing.ExistClassOutput> {
+  existClass(
+    input: browsing.ExistClassInput,
+  ): Promise<browsing.ExistClassOutput> {
     return browsing.existClass(this, input);
   }
 
@@ -312,9 +316,7 @@ export class OmcClient implements CallContext {
     return browsing.isConnector(this, input);
   }
 
-  isPartial(
-    input: browsing.IsPartialInput,
-  ): Promise<browsing.IsPartialOutput> {
+  isPartial(input: browsing.IsPartialInput): Promise<browsing.IsPartialOutput> {
     return browsing.isPartial(this, input);
   }
 
@@ -1092,9 +1094,7 @@ export class OmcClient implements CallContext {
     return library.getPackages(this, input);
   }
 
-  loadFiles(
-    input: library.LoadFilesInput,
-  ): Promise<library.LoadFilesOutput> {
+  loadFiles(input: library.LoadFilesInput): Promise<library.LoadFilesOutput> {
     return library.loadFiles(this, input);
   }
 
@@ -1296,9 +1296,7 @@ export class OmcClient implements CallContext {
     return execution.buildModel(this, input);
   }
 
-  simulate(
-    input: execution.SimulateInput,
-  ): Promise<execution.SimulateOutput> {
+  simulate(input: execution.SimulateInput): Promise<execution.SimulateOutput> {
     return execution.simulate(this, input);
   }
 

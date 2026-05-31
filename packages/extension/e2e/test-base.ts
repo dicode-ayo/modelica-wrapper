@@ -30,6 +30,7 @@ interface WorkerFixtures {
 // `{}` is the Playwright-idiomatic spelling for "no test-scoped fixtures";
 // using `Record<string, never>` collapses the worker fixtures via its index
 // signature, so the worker `codeServer` ends up typed `never` to callers.
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export const test = base.extend<{}, WorkerFixtures>({
   codeServer: [
     async ({}, use, workerInfo) => {

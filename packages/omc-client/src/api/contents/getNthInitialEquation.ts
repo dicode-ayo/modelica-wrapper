@@ -27,7 +27,9 @@ export const GetNthInitialEquationInputSchema = TypeNameInput.extend({
     .number()
     .int()
     .positive()
-    .describe("1-based initial-equation-section index, between 1 and `getInitialEquationCount`."),
+    .describe(
+      "1-based initial-equation-section index, between 1 and `getInitialEquationCount`.",
+    ),
 });
 export type GetNthInitialEquationInput = z.input<
   typeof GetNthInitialEquationInputSchema
@@ -36,7 +38,9 @@ export type GetNthInitialEquationInput = z.input<
 export const GetNthInitialEquationOutputSchema = z.object({
   result: z
     .string()
-    .describe("The n-th `initial equation` section as a Modelica source string. Field name `result` is OMC verbatim."),
+    .describe(
+      "The n-th `initial equation` section as a Modelica source string. Field name `result` is OMC verbatim.",
+    ),
 });
 export type GetNthInitialEquationOutput = z.infer<
   typeof GetNthInitialEquationOutputSchema

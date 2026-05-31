@@ -115,7 +115,8 @@ export function convertShownValue(
   const from = options.find((o) => o.unit === fromUnit);
   const to = options.find((o) => o.unit === toUnit);
   if (!from || !to) return undefined;
-  if (!Number.isFinite(to.scaleFactor) || to.scaleFactor === 0) return undefined;
+  if (!Number.isFinite(to.scaleFactor) || to.scaleFactor === 0)
+    return undefined;
   if (!Number.isFinite(from.scaleFactor)) return undefined;
   // Recover the base-unit value from the currently-shown one, then
   // re-express it in the target unit.

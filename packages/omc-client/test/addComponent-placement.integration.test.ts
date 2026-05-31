@@ -69,8 +69,7 @@ describeIf("addComponent: Placement annotation forms (real OMC)", () => {
     // Same encoding as `diff-layout.ts:placementAnnotation()` so the
     // add/drag round-trip stays consistent. If you change either
     // helper, update this string too.
-    const annotation =
-      "Placement(transformation(extent={{0, 10}, {20, 30}}))";
+    const annotation = "Placement(transformation(extent={{0, 10}, {20, 30}}))";
 
     await client.getErrorString();
     const { success, diagnostic } = await client.addComponent({

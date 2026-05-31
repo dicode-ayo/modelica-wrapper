@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type {
-  ComponentElement,
-  ParameterField,
-} from "@dicode/omc-client";
+import type { ComponentElement, ParameterField } from "@dicode/omc-client";
 
 import {
   buildComponentParameterForm,
@@ -12,7 +9,10 @@ import {
   type ComponentParameterRef,
 } from "./parameter-edits.js";
 
-function field(model: { fields: ParameterField[] }, name: string): ParameterField {
+function field(
+  model: { fields: ParameterField[] },
+  name: string,
+): ParameterField {
   const f = model.fields.find((x) => x.name === name);
   if (!f) throw new Error(`no field ${name}`);
   return f;
@@ -146,7 +146,9 @@ describe("buildComponentParameterForm", () => {
             type: "Real",
             value: { binding: 0 },
             prefixes: { variability: "parameter" },
-            annotation: { Dialog: { tab: "Advanced", group: "Initialization" } },
+            annotation: {
+              Dialog: { tab: "Advanced", group: "Initialization" },
+            },
           },
         ],
       },
@@ -274,7 +276,11 @@ describe("buildComponentParameterForm", () => {
               name: "Modelica.Units.SI.Inertia",
               restriction: "type",
               elements: [
-                { $kind: "extends", baseClass: "Real", modifiers: { unit: '"kg.m2"' } },
+                {
+                  $kind: "extends",
+                  baseClass: "Real",
+                  modifiers: { unit: '"kg.m2"' },
+                },
               ],
             },
             value: { binding: 1 },
@@ -309,7 +315,11 @@ describe("buildComponentParameterForm", () => {
               name: "Modelica.Units.SI.Angle",
               restriction: "type",
               elements: [
-                { $kind: "extends", baseClass: "Real", modifiers: { unit: '"rad"' } },
+                {
+                  $kind: "extends",
+                  baseClass: "Real",
+                  modifiers: { unit: '"rad"' },
+                },
               ],
             },
             value: { binding: 0 },

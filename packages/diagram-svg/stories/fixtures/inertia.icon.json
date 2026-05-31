@@ -7,25 +7,11 @@
         {
           "kind": "rectangle",
           "extent": [
-            [
-              -100,
-              -10
-            ],
-            [
-              -50,
-              10
-            ]
+            [-100, -10],
+            [-50, 10]
           ],
-          "lineColor": [
-            64,
-            64,
-            64
-          ],
-          "fillColor": [
-            192,
-            192,
-            192
-          ],
+          "lineColor": [64, 64, 64],
+          "fillColor": [192, 192, 192],
           "pattern": "Solid",
           "fillPattern": "HorizontalCylinder",
           "lineThickness": 0.25,
@@ -35,25 +21,11 @@
         {
           "kind": "rectangle",
           "extent": [
-            [
-              50,
-              -10
-            ],
-            [
-              100,
-              10
-            ]
+            [50, -10],
+            [100, 10]
           ],
-          "lineColor": [
-            64,
-            64,
-            64
-          ],
-          "fillColor": [
-            192,
-            192,
-            192
-          ],
+          "lineColor": [64, 64, 64],
+          "fillColor": [192, 192, 192],
           "pattern": "Solid",
           "fillPattern": "HorizontalCylinder",
           "lineThickness": 0.25,
@@ -63,259 +35,128 @@
         {
           "kind": "line",
           "points": [
-            [
-              -80,
-              -25
-            ],
-            [
-              -60,
-              -25
-            ]
+            [-80, -25],
+            [-60, -25]
           ],
-          "color": [
-            0,
-            0,
-            0
-          ],
+          "color": [0, 0, 0],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "None"
         },
         {
           "kind": "line",
           "points": [
-            [
-              60,
-              -25
-            ],
-            [
-              80,
-              -25
-            ]
+            [60, -25],
+            [80, -25]
           ],
-          "color": [
-            0,
-            0,
-            0
-          ],
+          "color": [0, 0, 0],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "None"
         },
         {
           "kind": "line",
           "points": [
-            [
-              -70,
-              -25
-            ],
-            [
-              -70,
-              -70
-            ]
+            [-70, -25],
+            [-70, -70]
           ],
-          "color": [
-            0,
-            0,
-            0
-          ],
+          "color": [0, 0, 0],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "None"
         },
         {
           "kind": "line",
           "points": [
-            [
-              70,
-              -25
-            ],
-            [
-              70,
-              -70
-            ]
+            [70, -25],
+            [70, -70]
           ],
-          "color": [
-            0,
-            0,
-            0
-          ],
+          "color": [0, 0, 0],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "None"
         },
         {
           "kind": "line",
           "points": [
-            [
-              -80,
-              25
-            ],
-            [
-              -60,
-              25
-            ]
+            [-80, 25],
+            [-60, 25]
           ],
-          "color": [
-            0,
-            0,
-            0
-          ],
+          "color": [0, 0, 0],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "None"
         },
         {
           "kind": "line",
           "points": [
-            [
-              60,
-              25
-            ],
-            [
-              80,
-              25
-            ]
+            [60, 25],
+            [80, 25]
           ],
-          "color": [
-            0,
-            0,
-            0
-          ],
+          "color": [0, 0, 0],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "None"
         },
         {
           "kind": "line",
           "points": [
-            [
-              -70,
-              45
-            ],
-            [
-              -70,
-              25
-            ]
+            [-70, 45],
+            [-70, 25]
           ],
-          "color": [
-            0,
-            0,
-            0
-          ],
+          "color": [0, 0, 0],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "None"
         },
         {
           "kind": "line",
           "points": [
-            [
-              70,
-              45
-            ],
-            [
-              70,
-              25
-            ]
+            [70, 45],
+            [70, 25]
           ],
-          "color": [
-            0,
-            0,
-            0
-          ],
+          "color": [0, 0, 0],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "None"
         },
         {
           "kind": "line",
           "points": [
-            [
-              -70,
-              -70
-            ],
-            [
-              70,
-              -70
-            ]
+            [-70, -70],
+            [70, -70]
           ],
-          "color": [
-            0,
-            0,
-            0
-          ],
+          "color": [0, 0, 0],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "None"
         },
         {
           "kind": "rectangle",
           "extent": [
-            [
-              -50,
-              -50
-            ],
-            [
-              50,
-              50
-            ]
+            [-50, -50],
+            [50, 50]
           ],
-          "lineColor": [
-            64,
-            64,
-            64
-          ],
-          "fillColor": [
-            255,
-            255,
-            255
-          ],
+          "lineColor": [64, 64, 64],
+          "fillColor": [255, 255, 255],
           "pattern": "Solid",
           "fillPattern": "HorizontalCylinder",
           "lineThickness": 0.25,
@@ -325,69 +166,35 @@
         {
           "kind": "text",
           "extent": [
-            [
-              -150,
-              60
-            ],
-            [
-              150,
-              100
-            ]
+            [-150, 60],
+            [150, 100]
           ],
           "textString": "%name",
           "fontSize": 0,
-          "textColor": [
-            0,
-            0,
-            255
-          ],
+          "textColor": [0, 0, 255],
           "textStyle": [],
           "horizontalAlignment": "Center"
         },
         {
           "kind": "text",
           "extent": [
-            [
-              -150,
-              -120
-            ],
-            [
-              150,
-              -80
-            ]
+            [-150, -120],
+            [150, -80]
           ],
           "textString": "J=%J",
           "fontSize": 0,
-          "textColor": [
-            -1,
-            -1,
-            -1
-          ],
+          "textColor": [-1, -1, -1],
           "textStyle": [],
           "horizontalAlignment": "Center"
         },
         {
           "kind": "rectangle",
           "extent": [
-            [
-              -50,
-              -50
-            ],
-            [
-              50,
-              50
-            ]
+            [-50, -50],
+            [50, 50]
           ],
-          "lineColor": [
-            64,
-            64,
-            64
-          ],
-          "fillColor": [
-            255,
-            255,
-            255
-          ],
+          "lineColor": [64, 64, 64],
+          "fillColor": [255, 255, 255],
           "pattern": "Solid",
           "fillPattern": "None",
           "lineThickness": 0.25,
@@ -397,14 +204,8 @@
       ],
       "coordinateSystem": {
         "extent": [
-          [
-            -100,
-            -100
-          ],
-          [
-            100,
-            100
-          ]
+          [-100, -100],
+          [100, 100]
         ],
         "preserveAspectRatio": true
       }
@@ -412,14 +213,8 @@
   ],
   "coordinateSystem": {
     "extent": [
-      [
-        -100,
-        -100
-      ],
-      [
-        100,
-        100
-      ]
+      [-100, -100],
+      [100, 100]
     ],
     "preserveAspectRatio": true
   }
