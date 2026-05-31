@@ -22,6 +22,7 @@ function makeClient(overrides: Partial<ResolveClient> = {}): ResolveClient {
       Promise.resolve({ fileName: "/lib/Unknown.mo" }),
     ),
     getComponents: vi.fn(() => Promise.resolve({ components: [] })),
+    getInheritedClasses: vi.fn(() => Promise.resolve({ inheritedClasses: [] })),
     ...overrides,
   };
 }
@@ -230,22 +231,176 @@ describe("resolve — member cref", () => {
     expect(result).toBeUndefined();
   });
 
-  it("returns undefined for an inherited member (extends not walked)", async () => {
-    // `getComponents` reports only own declared components, not `extends`-pulled ones.
+  it("resolves a member inherited through an extends base", async () => {
+    // Resistor declares only `R` itself; `p` (a Pin) comes from its base
+    // OnePort. `getComponents` reports own members only, so resolving `r.p`
+    // must union the base's components via `getInheritedClasses`.
+    const getComponents = vi.fn(({ typeName }) => {
+      switch (typeName) {
+        case "MyPkg.Circuit":
+          return Promise.resolve({
+            components: [{ name: "r", className: "Pkg.Resistor" }],
+          });
+        case "Pkg.Resistor":
+          return Promise.resolve({
+            components: [
+              { name: "R", className: "Modelica.SIunits.Resistance" },
+            ],
+          });
+        case "Pkg.OnePort":
+          return Promise.resolve({
+            components: [{ name: "p", className: "Pkg.Pin" }],
+          });
+        default:
+          return Promise.resolve({ components: [] });
+      }
+    });
+    const getInheritedClasses = vi.fn(({ typeName }) =>
+      typeName === "Pkg.Resistor"
+        ? Promise.resolve({ inheritedClasses: ["Pkg.OnePort"] })
+        : Promise.resolve({ inheritedClasses: [] }),
+    );
+    const client = makeClient({ getComponents, getInheritedClasses });
+
+    const result = await resolve(
+      "MyPkg.Circuit",
+      target("member-access", ["r", "p"]),
+      client,
+    );
+
+    expect(result).toEqual({ qualifiedName: "Pkg.Pin" });
+  });
+
+  it("resolves a member inherited two levels up (transitive extends)", async () => {
+    const getComponents = vi.fn(({ typeName }) => {
+      switch (typeName) {
+        case "MyPkg.Circuit":
+          return Promise.resolve({
+            components: [{ name: "r", className: "Pkg.Resistor" }],
+          });
+        case "Pkg.Base":
+          return Promise.resolve({
+            components: [{ name: "deep", className: "Pkg.Deep" }],
+          });
+        default:
+          // Resistor and Mid declare nothing of their own.
+          return Promise.resolve({ components: [] });
+      }
+    });
+    const getInheritedClasses = vi.fn(({ typeName }) => {
+      switch (typeName) {
+        case "Pkg.Resistor":
+          return Promise.resolve({ inheritedClasses: ["Pkg.Mid"] });
+        case "Pkg.Mid":
+          return Promise.resolve({ inheritedClasses: ["Pkg.Base"] });
+        default:
+          return Promise.resolve({ inheritedClasses: [] });
+      }
+    });
+    const client = makeClient({ getComponents, getInheritedClasses });
+
+    const result = await resolve(
+      "MyPkg.Circuit",
+      target("member-access", ["r", "deep"]),
+      client,
+    );
+
+    expect(result).toEqual({ qualifiedName: "Pkg.Deep" });
+  });
+
+  it("lets an own member shadow a same-named inherited one", async () => {
+    // Both Resistor and its base declare `x`; the type-walk must resolve `r.x`
+    // to Resistor's own `x`, not the base's.
+    const getComponents = vi.fn(({ typeName }) => {
+      switch (typeName) {
+        case "MyPkg.Circuit":
+          return Promise.resolve({
+            components: [{ name: "r", className: "Pkg.Resistor" }],
+          });
+        case "Pkg.Resistor":
+          return Promise.resolve({
+            components: [{ name: "x", className: "Pkg.OwnX" }],
+          });
+        case "Pkg.Base":
+          return Promise.resolve({
+            components: [{ name: "x", className: "Pkg.BaseX" }],
+          });
+        default:
+          return Promise.resolve({ components: [] });
+      }
+    });
+    const getInheritedClasses = vi.fn(({ typeName }) =>
+      typeName === "Pkg.Resistor"
+        ? Promise.resolve({ inheritedClasses: ["Pkg.Base"] })
+        : Promise.resolve({ inheritedClasses: [] }),
+    );
+    const client = makeClient({ getComponents, getInheritedClasses });
+
+    const result = await resolve(
+      "MyPkg.Circuit",
+      target("member-access", ["r", "x"]),
+      client,
+    );
+
+    expect(result).toEqual({ qualifiedName: "Pkg.OwnX" });
+  });
+
+  it("does not throw when getInheritedClasses fails, falling back to own members", async () => {
     const getComponents = vi.fn(({ typeName }) =>
       typeName === "MyPkg.Circuit"
         ? Promise.resolve({
-            components: [{ name: "resistor", className: "Pkg.Resistor" }],
+            components: [{ name: "r", className: "Pkg.Resistor" }],
           })
-        : Promise.resolve({ components: [] }),
+        : Promise.resolve({ components: [{ name: "R", className: "Real" }] }),
     );
-    const client = makeClient({ getComponents });
+    const getInheritedClasses = vi.fn(() =>
+      Promise.reject(new Error("no such class")),
+    );
+    const client = makeClient({ getComponents, getInheritedClasses });
+
     const result = await resolve(
       "MyPkg.Circuit",
-      target("member-access", ["resistor", "inheritedPin"]),
+      target("member-access", ["r", "inheritedPin"]),
       client,
     );
+    // The inherited member can't be reached, but the own member walk still works.
     expect(result).toBeUndefined();
+  });
+
+  it("visits a cyclic inheritance graph once per class", async () => {
+    // A extends B, B extends A: the walk must terminate and still find members.
+    const getComponents = vi.fn(({ typeName }) => {
+      switch (typeName) {
+        case "MyPkg.Circuit":
+          return Promise.resolve({
+            components: [{ name: "a", className: "Pkg.A" }],
+          });
+        case "Pkg.B":
+          return Promise.resolve({
+            components: [{ name: "fromB", className: "Pkg.FromB" }],
+          });
+        default:
+          return Promise.resolve({ components: [] });
+      }
+    });
+    const getInheritedClasses = vi.fn(({ typeName }) => {
+      switch (typeName) {
+        case "Pkg.A":
+          return Promise.resolve({ inheritedClasses: ["Pkg.B"] });
+        case "Pkg.B":
+          return Promise.resolve({ inheritedClasses: ["Pkg.A"] });
+        default:
+          return Promise.resolve({ inheritedClasses: [] });
+      }
+    });
+    const client = makeClient({ getComponents, getInheritedClasses });
+
+    const result = await resolve(
+      "MyPkg.Circuit",
+      target("member-access", ["a", "fromB"]),
+      client,
+    );
+    expect(result).toEqual({ qualifiedName: "Pkg.FromB" });
   });
 
   it("returns undefined when the head component is unknown", async () => {

@@ -50,6 +50,7 @@ function fakeOmcClient(): CachedOmcClient {
       }),
     getClassComment: () => Promise.resolve({ comment: "" }),
     getComponents: () => Promise.resolve({ components: [] }),
+    getInheritedClasses: () => Promise.resolve({ inheritedClasses: [] }),
     getClassNames: () => Promise.resolve({ classNames: [] }),
     searchClassNames: () => Promise.resolve({ classNames: [] }),
     getParameterNames: () => Promise.resolve({ parameters: [] }),

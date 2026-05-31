@@ -71,6 +71,7 @@ function makeClient(
       }),
     ),
     getComponents: vi.fn(() => Promise.resolve({ components: [] })),
+    getInheritedClasses: vi.fn(() => Promise.resolve({ inheritedClasses: [] })),
     getClassNames: vi.fn(() => Promise.resolve({ classNames: [] })),
     searchClassNames: vi.fn(() => Promise.resolve({ classNames: [] })),
     getParameterNames: vi.fn(() => Promise.resolve({ parameters: [] })),
@@ -259,6 +260,58 @@ describe("computeCompletions — member access after `.`", () => {
       kind: CompletionCandidateKind.Field,
       detail: "Modelica.SIunits.Voltage",
     });
+  });
+
+  it("includes members inherited through extends, with own members shadowing", async () => {
+    // Resistor declares `R` and extends OnePort, which contributes `v` and a
+    // same-named `R` that the own declaration must shadow.
+    const src = "model M\nequation\n  y = r.v;\nend M;";
+    const getComponents = vi.fn(({ typeName }) => {
+      switch (typeName) {
+        case "MyPkg.M":
+          return Promise.resolve({
+            components: [{ name: "r", className: "Pkg.Resistor" }],
+          });
+        case "Pkg.Resistor":
+          return Promise.resolve({
+            components: [{ name: "R", className: "Pkg.OwnR" }],
+          });
+        case "Pkg.OnePort":
+          return Promise.resolve({
+            components: [
+              { name: "v", className: "SI.Voltage" },
+              { name: "R", className: "Pkg.BaseR" },
+            ],
+          });
+        default:
+          return Promise.resolve({ components: [] });
+      }
+    });
+    const getInheritedClasses = vi.fn(({ typeName }) =>
+      typeName === "Pkg.Resistor"
+        ? Promise.resolve({ inheritedClasses: ["Pkg.OnePort"] })
+        : Promise.resolve({ inheritedClasses: [] }),
+    );
+    const client = makeClient({ getComponents, getInheritedClasses });
+
+    const out = await computeCompletions(
+      parse(src),
+      offsetOf(src, "v;"),
+      "MyPkg.M",
+      client,
+    );
+
+    const byLabel = new Map(out.map((c) => [c.label, c]));
+    // The inherited member `v` must appear.
+    expect(byLabel.get("v")).toEqual({
+      label: "v",
+      kind: CompletionCandidateKind.Field,
+      detail: "SI.Voltage",
+    });
+    // `R` resolves to the own declaration, not the base's same-named one.
+    expect(byLabel.get("R")?.detail).toBe("Pkg.OwnR");
+    // De-duped: `R` appears exactly once.
+    expect(out.filter((c) => c.label === "R")).toHaveLength(1);
   });
 
   it("offers package children when the head is a package, via isPackage + getClassNames", async () => {

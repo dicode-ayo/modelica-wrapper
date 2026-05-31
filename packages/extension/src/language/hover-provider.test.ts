@@ -65,6 +65,7 @@ function makeClient(overrides: Partial<HoverClient> = {}): HoverClient {
     ),
     getClassComment: vi.fn(() => Promise.resolve({ comment: "" })),
     getComponents: vi.fn(() => Promise.resolve({ components: [] })),
+    getInheritedClasses: vi.fn(() => Promise.resolve({ inheritedClasses: [] })),
     ...overrides,
   };
 }

@@ -7,9 +7,10 @@
  * Go-to-definition, hover, and (especially) completion issue the *same*
  * read-only OMC queries over and over: qualifying a name in a scope
  * (`qualifyPath`), reading a class's location/restriction
- * (`getClassInformation`), listing a type's components (`getComponents`), and
- * the candidate-source lists (`getClassNames` / `searchClassNames` /
- * `getParameterNames` / `isPackage`). A completion keystroke alone fans out to
+ * (`getClassInformation`), listing a type's components and `extends` bases
+ * (`getComponents` / `getInheritedClasses`), and the candidate-source lists
+ * (`getClassNames` / `searchClassNames` / `getParameterNames` / `isPackage`). A
+ * completion keystroke alone fans out to
  * several of these, and the answers are *stable* for a given input as long as
  * the set of loaded models doesn't change. Re-issuing them on every request is
  * the dominant per-request cost the design doc calls out
@@ -18,7 +19,7 @@
  *
  * ## What's cached
  *
- * Exactly the eight read-only lookups on the completion + hover surfaces
+ * The read-only lookups on the completion + hover surfaces
  * ({@link CompletionClient}, a superset of {@link ResolveClient}, plus the two
  * {@link HoverClient} reads `getClassInformation` / `getClassComment`). Mutating
  * / lifecycle calls (`loadFile`, `parseFile`,
@@ -219,6 +220,14 @@ export class OmcLookupCache
   }> {
     return this.memoize("getComponents", input, () =>
       this.inner.getComponents(input),
+    );
+  }
+
+  getInheritedClasses(input: {
+    typeName: string;
+  }): Promise<{ inheritedClasses: string[] }> {
+    return this.memoize("getInheritedClasses", input, () =>
+      this.inner.getInheritedClasses(input),
     );
   }
 

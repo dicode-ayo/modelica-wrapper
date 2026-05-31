@@ -11,10 +11,11 @@
  *                            the typed prefix.
  *   member-access (after `.`)
  *                          → resolve the head's type via the resolution layer's
- *                            component-type walk (`walkCrefType`), then
- *                            `getComponents` of that type for members. If the
- *                            head is a package, `getClassNames` of it for nested
- *                            classes.
+ *                            component-type walk (`walkCrefType`), then the
+ *                            inheritance-inclusive component list of that type
+ *                            (own + `extends`-pulled members) for members. If
+ *                            the head is a package, `getClassNames` of it for
+ *                            nested classes.
  *   modifier-name          → `getParameterNames` of the class being modified.
  *   otherwise              → nothing (don't spam plain value references).
  *
@@ -24,10 +25,10 @@
  * `@dicode/omc-client` wrappers are used — never raw `client.call`.
  *
  * Scope: candidates cover the owning class's own children plus a global fuzzy
- * net (not the full import/extends-aware visible set); `getComponents` /
- * `getParameterNames` report a class's *own* declared members, not inherited
- * ones; and completion reflects the last *saved* buffer, so a just-typed unsaved
- * member may be missing.
+ * net (not the full import/extends-aware visible set); member access is
+ * inheritance-inclusive, but `getParameterNames` still reports a class's *own*
+ * declared parameters; and completion reflects the last *saved* buffer, so a
+ * just-typed unsaved member may be missing.
  */
 
 import * as vscode from "vscode";
@@ -47,6 +48,7 @@ import { resolveDocumentOwner } from "./document-scope.js";
 import type { ParseCache } from "./parse.js";
 import type { OwningClassClient } from "./owning-class.js";
 import {
+  inheritedComponents,
   qualifyTypeReference,
   walkCrefType,
   type ResolveClient,
@@ -302,16 +304,17 @@ async function tryCall<T>(
   }
 }
 
-/** Components declared on `typeName`, as Field candidates with their type. */
+/**
+ * Members of `typeName`, as Field candidates with their type — the
+ * inheritance-inclusive list (own components plus those pulled in through
+ * `extends`, transitively), so MSL types whose members are mostly inherited
+ * surface them all.
+ */
 async function memberComponents(
   typeName: string,
   client: CompletionClient,
 ): Promise<CompletionCandidate[]> {
-  const { components } = await tryCall(
-    "getComponents",
-    () => client.getComponents({ typeName }),
-    { components: [] },
-  );
+  const components = await inheritedComponents(typeName, client);
   return components.map((c) => {
     const candidate: CompletionCandidate = {
       label: c.name,

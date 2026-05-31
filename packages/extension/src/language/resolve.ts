@@ -4,9 +4,10 @@
  *   - Class/type reference (`type-reference`, `extends`, `component-type`):
  *     `qualifyPath` against `owningClass`, then `getClassInformation` as the
  *     existence probe.
- *   - Member cref (`member-access`, `a.b.c`): walk segments via `getComponents`
- *     — each segment resolves in the *previous* segment's type. The resolved
- *     target is the final member's declared type.
+ *   - Member cref (`member-access`, `a.b.c`): walk segments via the
+ *     inheritance-inclusive component list — each segment resolves in the
+ *     *previous* segment's type, including members pulled in through `extends`.
+ *     The resolved target is the final member's declared type.
  *
  * Returns `undefined` rather than guessing on any failure.
  */
@@ -26,11 +27,19 @@ export interface QualifyClient {
   }): Promise<{ qualifiedPath: string }>;
 }
 
-/** Lists a class's declared components, for the cref type-walk. */
+/**
+ * Lists a class's components and its `extends` bases, for the
+ * inheritance-inclusive cref type-walk. `getComponents` reports a class's *own*
+ * declared components; `getInheritedClasses` reports its direct base classes, so
+ * the union across the transitive base set is the full member list.
+ */
 export interface ComponentWalkClient {
   getComponents(input: { typeName: string }): Promise<{
     components: { className: string; name: string }[];
   }>;
+  getInheritedClasses(input: {
+    typeName: string;
+  }): Promise<{ inheritedClasses: string[] }>;
 }
 
 /** Structural OMC surface; `OmcClient` satisfies this so tests can pass a mock. */
@@ -162,18 +171,81 @@ async function resolveComponentType(
   componentName: string,
   client: ComponentWalkClient,
 ): Promise<string | undefined> {
-  let components;
-  try {
-    ({ components } = await client.getComponents({ typeName: containerType }));
-  } catch (err) {
-    log.debug("language", `getComponents failed for ${containerType}`, err);
-    return undefined;
-  }
+  const components = await inheritedComponents(containerType, client);
   const className = components.find((c) => c.name === componentName)?.className;
   // Empty className means untyped declaration; treat as unresolved.
   return className !== undefined && className.length > 0
     ? className
     : undefined;
+}
+
+/** A component as reported by `getComponents`, narrowed to what callers read. */
+export interface WalkedComponent {
+  readonly name: string;
+  readonly className: string;
+}
+
+/**
+ * The inheritance-inclusive component list of `typeName`: its own declared
+ * components unioned with those of every transitive `extends` base. Own/nearer
+ * declarations win over inherited ones with the same name (Modelica shadowing),
+ * so the result is de-duped by component name keeping the first occurrence in a
+ * breadth-first walk from `typeName` outward through its bases.
+ *
+ * Tolerant by construction: a failed `getComponents`/`getInheritedClasses` for
+ * any class contributes nothing rather than aborting the walk, and a cyclic or
+ * diamond inheritance graph is visited once per class.
+ */
+export async function inheritedComponents(
+  typeName: string,
+  client: ComponentWalkClient,
+): Promise<WalkedComponent[]> {
+  const byName = new Map<string, WalkedComponent>();
+  const visited = new Set<string>();
+  // Breadth-first from `typeName` outward so a nearer declaration is seen before
+  // a more-distant inherited one and therefore wins the de-dupe.
+  const queue: string[] = [typeName];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current === undefined || visited.has(current)) continue;
+    visited.add(current);
+
+    for (const c of await ownComponents(current, client)) {
+      if (!byName.has(c.name)) byName.set(c.name, c);
+    }
+    for (const base of await directBases(current, client)) {
+      if (!visited.has(base)) queue.push(base);
+    }
+  }
+
+  return [...byName.values()];
+}
+
+async function ownComponents(
+  typeName: string,
+  client: ComponentWalkClient,
+): Promise<WalkedComponent[]> {
+  try {
+    const { components } = await client.getComponents({ typeName });
+    return components;
+  } catch (err) {
+    log.debug("language", `getComponents failed for ${typeName}`, err);
+    return [];
+  }
+}
+
+async function directBases(
+  typeName: string,
+  client: ComponentWalkClient,
+): Promise<string[]> {
+  try {
+    const { inheritedClasses } = await client.getInheritedClasses({ typeName });
+    return inheritedClasses;
+  } catch (err) {
+    log.debug("language", `getInheritedClasses failed for ${typeName}`, err);
+    return [];
+  }
 }
 
 /**
