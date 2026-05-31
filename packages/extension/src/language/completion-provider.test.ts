@@ -114,9 +114,16 @@ describe("computeCompletions — type / extends / component-type position", () =
     const labels = out.map((c) => c.label);
     expect(labels).toContain("Ground");
     expect(labels).toContain("Modelica.Electrical.Resistor");
-    expect(out.every((c) => c.kind === CompletionCandidateKind.Class)).toBe(
-      true,
-    );
+    // The OMC-sourced names carry the Class kind.
+    for (const name of [
+      "Ground",
+      "Capacitor",
+      "Modelica.Electrical.Resistor",
+    ]) {
+      expect(out.find((c) => c.label === name)?.kind).toBe(
+        CompletionCandidateKind.Class,
+      );
+    }
   });
 
   it("routes an extends position to the class-name sources", async () => {
@@ -162,7 +169,8 @@ describe("computeCompletions — type / extends / component-type position", () =
       typeName: "MyPkg.Circuit",
     });
     expect(client.searchClassNames).not.toHaveBeenCalled();
-    expect(out.map((c) => c.label)).toEqual(["Ground"]);
+    // The scoped OMC child is offered; the fuzzy global net is withheld.
+    expect(out.map((c) => c.label)).toContain("Ground");
   });
 
   it("fires searchClassNames once the prefix reaches MIN_FUZZY_PREFIX", async () => {
@@ -215,6 +223,150 @@ describe("computeCompletions — type / extends / component-type position", () =
     expect(bare).toBeDefined();
     expect(bare?.filterText).toBeUndefined();
     expect(bare?.insertText).toBeUndefined();
+  });
+});
+
+describe("computeCompletions — static channels", () => {
+  // A bare word starting an element parses as a component-type slot; this is
+  // where OMEdit offers keywords/types/snippets and we route the same.
+  const elementSrc = "model M\n  par\nend M;";
+  const elementOffset = offsetOf(elementSrc, "par") + 1;
+
+  it("offers keywords, built-in types, and snippets in element position", async () => {
+    const out = await computeCompletions(
+      parse(elementSrc),
+      elementOffset,
+      "MyPkg.M",
+      makeClient(),
+    );
+
+    const byKind = (kind: CompletionCandidateKind) =>
+      out.filter((c) => c.kind === kind).map((c) => c.label);
+
+    expect(byKind(CompletionCandidateKind.Keyword)).toEqual(
+      expect.arrayContaining(["parameter", "constant", "extends", "model"]),
+    );
+    expect(byKind(CompletionCandidateKind.Class)).toEqual(
+      expect.arrayContaining(["Real", "Integer", "Boolean", "String"]),
+    );
+    expect(byKind(CompletionCandidateKind.Snippet)).toEqual(
+      expect.arrayContaining(["model", "function", "for", "if"]),
+    );
+  });
+
+  it("wraps snippet candidates with placeholder insertText, not the keyword", async () => {
+    const out = await computeCompletions(
+      parse(elementSrc),
+      elementOffset,
+      "MyPkg.M",
+      makeClient(),
+    );
+
+    const modelSnippet = out.find(
+      (c) => c.kind === CompletionCandidateKind.Snippet && c.label === "model",
+    );
+    expect(modelSnippet?.isSnippet).toBe(true);
+    expect(modelSnippet?.insertText).toContain("${1:");
+    expect(modelSnippet?.insertText).toContain("end");
+
+    // The bare `model` keyword shares the label but inserts no template.
+    const modelKeyword = out.find(
+      (c) => c.kind === CompletionCandidateKind.Keyword && c.label === "model",
+    );
+    expect(modelKeyword?.isSnippet).toBeUndefined();
+    expect(modelKeyword?.insertText).toBeUndefined();
+  });
+
+  it("merges built-in types but NOT keywords/snippets after `extends`", async () => {
+    const src = "model Derived\n  extends Ba\nend Derived;";
+    const out = await computeCompletions(
+      parse(src),
+      offsetOf(src, "Ba\n") + 1,
+      "Pkg.Derived",
+      makeClient(),
+    );
+
+    const labels = out.map((c) => c.label);
+    // Built-in types reach extends position (a base may be a predefined type).
+    expect(labels).toEqual(expect.arrayContaining(["Real", "Integer"]));
+    // Statement-only channels stay out of a base-class reference.
+    expect(out.some((c) => c.kind === CompletionCandidateKind.Keyword)).toBe(
+      false,
+    );
+    expect(out.some((c) => c.kind === CompletionCandidateKind.Snippet)).toBe(
+      false,
+    );
+  });
+
+  it("suppresses every static channel after a `.` (member access)", async () => {
+    const src = "model M\nequation\n  y = r.v;\nend M;";
+    const getComponents = vi.fn(({ typeName }) => {
+      if (typeName === "MyPkg.M") {
+        return Promise.resolve({
+          components: [{ name: "r", className: "Pkg.Resistor" }],
+        });
+      }
+      if (typeName === "Pkg.Resistor") {
+        return Promise.resolve({
+          components: [{ name: "v", className: "SI.Voltage" }],
+        });
+      }
+      return Promise.resolve({ components: [] });
+    });
+
+    const out = await computeCompletions(
+      parse(src),
+      offsetOf(src, "v;"),
+      "MyPkg.M",
+      makeClient({ getComponents }),
+    );
+
+    // Members only — no Real/Integer, no keyword, no snippet.
+    expect(out.map((c) => c.label)).toEqual(["v"]);
+    expect(
+      out.some(
+        (c) =>
+          c.kind === CompletionCandidateKind.Keyword ||
+          c.kind === CompletionCandidateKind.Snippet ||
+          c.label === "Real",
+      ),
+    ).toBe(false);
+  });
+
+  it("suppresses every static channel in value/expression position", async () => {
+    const src = "model M\nequation\n  y = x;\nend M;";
+    const out = await computeCompletions(
+      parse(src),
+      offsetOf(src, "x;"),
+      "MyPkg.M",
+      makeClient(),
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("suppresses every static channel in modifier-name position", async () => {
+    const src = "model M\n  Resistor r(R = 1);\nend M;";
+    const out = await computeCompletions(
+      parse(src),
+      offsetOf(src, "R = 1"),
+      "MyPkg.M",
+      makeClient({
+        qualifyPath: vi.fn(() =>
+          Promise.resolve({ qualifiedPath: "Pkg.Resistor" }),
+        ),
+        getParameterNames: vi.fn(() => Promise.resolve({ parameters: ["R"] })),
+      }),
+    );
+
+    expect(out.map((c) => c.label)).toEqual(["R"]);
+    expect(
+      out.some(
+        (c) =>
+          c.kind === CompletionCandidateKind.Keyword ||
+          c.kind === CompletionCandidateKind.Snippet ||
+          c.kind === CompletionCandidateKind.Class,
+      ),
+    ).toBe(false);
   });
 });
 
@@ -525,7 +677,7 @@ describe("computeCompletions — robustness", () => {
     expect(out.filter((c) => c.label === "Resistor")).toHaveLength(1);
   });
 
-  it("caps the result list at MAX_COMPLETIONS", async () => {
+  it("caps the OMC class-name portion at MAX_COMPLETIONS (static channels exempt)", async () => {
     const many = Array.from(
       { length: MAX_COMPLETIONS + 50 },
       (_, i) => `C${i}`,
@@ -542,7 +694,13 @@ describe("computeCompletions — robustness", () => {
       client,
     );
 
-    expect(out).toHaveLength(MAX_COMPLETIONS);
+    // The unbounded OMC names are capped; the fixed static channels are not, so
+    // the keyword/snippet set still surfaces alongside the trimmed names.
+    const omcNames = out.filter((c) => c.label.startsWith("C"));
+    expect(omcNames).toHaveLength(MAX_COMPLETIONS);
+    expect(out.some((c) => c.kind === CompletionCandidateKind.Keyword)).toBe(
+      true,
+    );
   });
 
   it("degrades gracefully when a class-name source throws", async () => {
@@ -562,7 +720,7 @@ describe("computeCompletions — robustness", () => {
     );
 
     // The failing source is swallowed; the other still contributes.
-    expect(out.map((c) => c.label)).toEqual(["Modelica.Electrical.Resistor"]);
+    expect(out.map((c) => c.label)).toContain("Modelica.Electrical.Resistor");
   });
 
   it("returns [] (does not throw) when qualifyPath rejects on a member head", async () => {

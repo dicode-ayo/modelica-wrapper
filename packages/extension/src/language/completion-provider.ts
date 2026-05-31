@@ -8,7 +8,11 @@
  *   type-reference / extends / component-type
  *                          → class names: `getClassNames` of the owning class's
  *                            children PLUS a fuzzy global `searchClassNames` on
- *                            the typed prefix.
+ *                            the typed prefix, MERGED with the built-in types.
+ *                            An element/statement start (type-reference /
+ *                            component-type, not `extends`) also gets the
+ *                            keyword and snippet channels (see
+ *                            `static-candidates.ts`).
  *   member-access (after `.`)
  *                          → resolve the head's type via the resolution layer's
  *                            component-type walk (`walkCrefType`), then the
@@ -53,6 +57,11 @@ import {
   walkCrefType,
   type ResolveClient,
 } from "./resolve.js";
+import {
+  builtInTypeCandidates,
+  keywordCandidates,
+  snippetCandidates,
+} from "./static-candidates.js";
 import { OmcSync } from "./sync.js";
 
 /** The trigger character that fires member-access completion. */
@@ -92,6 +101,10 @@ export enum CompletionCandidateKind {
   Field = "field",
   /** A parameter / modifiable name. */
   Property = "property",
+  /** A Modelica reserved word. */
+  Keyword = "keyword",
+  /** A code-template snippet whose `insertText` carries placeholder syntax. */
+  Snippet = "snippet",
 }
 
 /** A single completion candidate, as plain data (no `vscode` types). */
@@ -112,8 +125,16 @@ export interface CompletionCandidate {
   /**
    * Optional text inserted when the candidate is accepted, when it differs from
    * {@link label} (e.g. inserting a dotted class's simple name, not its FQN).
+   * When {@link isSnippet} is set, this carries `SnippetString` placeholder
+   * syntax.
    */
   readonly insertText?: string;
+  /**
+   * When set, {@link insertText} is a `SnippetString` template (placeholders
+   * like `${1:name}`, `$0`) the provider must wrap so VSCode expands it rather
+   * than inserting the syntax verbatim.
+   */
+  readonly isSnippet?: boolean;
 }
 
 /**
@@ -136,9 +157,19 @@ export interface CompletionClient extends ResolveClient {
   isPackage(input: { typeName: string }): Promise<{ b: boolean }>;
 }
 
-/** Context kinds that complete to class/type names. */
+/** Context kinds that complete to class/type names (and built-in types). */
 const TYPE_CONTEXTS: ReadonlySet<CursorContextKind> =
   new Set<CursorContextKind>(["type-reference", "extends", "component-type"]);
+
+/**
+ * Context kinds that begin an element/statement, where keyword and snippet
+ * channels apply. A bare word starting a declaration parses as a
+ * `type-reference`/`component-type` (the type slot of a half-typed clause); a
+ * word after `extends` is a base-class reference, not a statement start, so it
+ * stays out — built-in types still reach it via {@link TYPE_CONTEXTS}.
+ */
+const ELEMENT_CONTEXTS: ReadonlySet<CursorContextKind> =
+  new Set<CursorContextKind>(["type-reference", "component-type"]);
 
 /**
  * Compute the completion candidates for the cursor at `offset` in `tree`, scoped
@@ -174,7 +205,17 @@ export async function computeCompletions(
   if (!target) return [];
 
   if (TYPE_CONTEXTS.has(target.context)) {
-    return cap(await classNameCandidates(owningClass, target, client));
+    // Cap bounds the OMC-sourced names (the unbounded, costly part); the static
+    // channels are a fixed small set merged after, so the cap never starves
+    // them.
+    const candidates = cap(
+      await classNameCandidates(owningClass, target, client),
+    );
+    candidates.push(...builtInTypeCandidates());
+    if (ELEMENT_CONTEXTS.has(target.context)) {
+      candidates.push(...keywordCandidates(), ...snippetCandidates());
+    }
+    return candidates;
   }
 
   if (target.context === "modifier-name") {
@@ -385,8 +426,9 @@ async function modifierCandidates(
 }
 
 /**
- * De-dupe by label (first kind wins) and cap the list. The first occurrence
- * wins so local children rank ahead of fuzzy global hits with the same name.
+ * De-dupe by label (first occurrence wins, so local children rank ahead of
+ * fuzzy global hits of the same name) and cap the list. Applied to the
+ * OMC-sourced candidates; the fixed static channels are merged after.
  */
 function cap(candidates: CompletionCandidate[]): CompletionCandidate[] {
   const seen = new Set<string>();
@@ -411,6 +453,10 @@ export function toVscodeCompletionKind(
       return vscode.CompletionItemKind.Field;
     case CompletionCandidateKind.Property:
       return vscode.CompletionItemKind.Property;
+    case CompletionCandidateKind.Keyword:
+      return vscode.CompletionItemKind.Keyword;
+    case CompletionCandidateKind.Snippet:
+      return vscode.CompletionItemKind.Snippet;
   }
 }
 
@@ -468,7 +514,13 @@ export class ModelicaCompletionProvider
         // word-based filtering matches the bare typed prefix and accepting the
         // item inserts the simple name rather than the FQN.
         if (c.filterText !== undefined) item.filterText = c.filterText;
-        if (c.insertText !== undefined) item.insertText = c.insertText;
+        if (c.insertText !== undefined) {
+          // A snippet's insertText carries placeholder syntax; wrap it so
+          // VSCode expands the template instead of inserting it verbatim.
+          item.insertText = c.isSnippet
+            ? new vscode.SnippetString(c.insertText)
+            : c.insertText;
+        }
         return item;
       });
     } catch (err) {
