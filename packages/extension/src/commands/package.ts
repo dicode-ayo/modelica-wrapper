@@ -12,7 +12,9 @@ import type { LibraryNode } from "../tree/library-tree.js";
 import type { CommandContext } from "./context.js";
 import { createReplLog } from "./repl.js";
 
-export function registerPackageCommands(ctx: CommandContext): vscode.Disposable[] {
+export function registerPackageCommands(
+  ctx: CommandContext,
+): vscode.Disposable[] {
   return [
     vscode.commands.registerCommand(
       "modelica.savePackage",
@@ -40,7 +42,9 @@ export function registerPackageCommands(ctx: CommandContext): vscode.Disposable[
         const log = createReplLog(`savePackage ${node.qualifiedName}`);
         try {
           const c = await ctx.ensureClient();
-          const { contents } = await c.listFile({ typeName: node.qualifiedName });
+          const { contents } = await c.listFile({
+            typeName: node.qualifiedName,
+          });
           await writeFile(target.fsPath, contents, "utf8");
           await c.setSourceFile({
             typeName: node.qualifiedName,

@@ -49,11 +49,7 @@ describeIf("getMessagesStringInternal against real OMC", () => {
 
   afterEach(async () => {
     // Best-effort cleanup; ignore failures.
-    for (const cls of [
-      "MwMsgSyntax",
-      "MwMsgSemantic",
-      "MwMsgClean",
-    ]) {
+    for (const cls of ["MwMsgSyntax", "MwMsgSemantic", "MwMsgClean"]) {
       await client
         .invoke("deleteClass", { typeName: cls })
         .catch(() => undefined);

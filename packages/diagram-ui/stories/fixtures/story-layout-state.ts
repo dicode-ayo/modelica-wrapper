@@ -50,9 +50,7 @@ export function appendConnection(
   if (!lhs || !rhs) {
     return layout;
   }
-  const waypoints: Point[] = detail.waypoints.map(
-    ([x, y]) => [x, y] as Point,
-  );
+  const waypoints: Point[] = detail.waypoints.map(([x, y]) => [x, y] as Point);
   return {
     ...layout,
     connections: [...layout.connections, { lhs, rhs, waypoints }],

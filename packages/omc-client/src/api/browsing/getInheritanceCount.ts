@@ -24,13 +24,17 @@ export type GetInheritanceCountInput = z.input<
 >;
 
 export const GetInheritanceCountOutputSchema = z.object({
-  count: z.number().int().describe("Number of `extends` clauses declared in the class."),
+  count: z
+    .number()
+    .int()
+    .describe("Number of `extends` clauses declared in the class."),
 });
 export type GetInheritanceCountOutput = z.infer<
   typeof GetInheritanceCountOutputSchema
 >;
 
-export const GetInheritanceCountDescription = "Return the number of `extends` clauses declared in the given class.";
+export const GetInheritanceCountDescription =
+  "Return the number of `extends` clauses declared in the given class.";
 
 export async function getInheritanceCount(
   ctx: CallContext,

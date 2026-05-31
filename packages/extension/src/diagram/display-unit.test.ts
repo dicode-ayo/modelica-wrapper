@@ -55,7 +55,11 @@ describe("formatDisplayValue", () => {
 
   it("returns undefined for a zero scaleFactor (division guard)", () => {
     expect(
-      formatDisplayValue("1.57", { unitsCompatible: true, scaleFactor: 0, offset: 0 }, "deg"),
+      formatDisplayValue(
+        "1.57",
+        { unitsCompatible: true, scaleFactor: 0, offset: 0 },
+        "deg",
+      ),
     ).toBeUndefined();
   });
 
@@ -104,7 +108,13 @@ function makeLayout(
   return {
     kind: "diagram",
     className: "Test.Host",
-    source: { filename: "<x>", lineStart: 1, columnStart: 1, lineEnd: 1, columnEnd: 1 },
+    source: {
+      filename: "<x>",
+      lineStart: 1,
+      columnStart: 1,
+      lineEnd: 1,
+      columnEnd: 1,
+    },
     iconLayers: [],
     diagramLayers: [],
     labels: [],
@@ -126,7 +136,12 @@ function makeLayout(
 describe("applyDisplayUnits", () => {
   it("rewrites ParameterDef.value to the displayUnit value", async () => {
     const layout = makeLayout({
-      a: { name: "a", value: "1.5707963267948966", unit: "rad", displayUnit: "deg" },
+      a: {
+        name: "a",
+        value: "1.5707963267948966",
+        unit: "rad",
+        displayUnit: "deg",
+      },
     });
     const resolve: ConvertUnitsResolver = async () => RAD_TO_DEG;
     await applyDisplayUnits(layout, resolve);
@@ -215,8 +230,18 @@ describe("applyDisplayUnits", () => {
 
   it("caches the convertUnits result per (unit, displayUnit) pair", async () => {
     const layout = makeLayout({
-      a: { name: "a", value: "1.5707963267948966", unit: "rad", displayUnit: "deg" },
-      b: { name: "b", value: "3.141592653589793", unit: "rad", displayUnit: "deg" },
+      a: {
+        name: "a",
+        value: "1.5707963267948966",
+        unit: "rad",
+        displayUnit: "deg",
+      },
+      b: {
+        name: "b",
+        value: "3.141592653589793",
+        unit: "rad",
+        displayUnit: "deg",
+      },
     });
     const resolve = vi.fn<ConvertUnitsResolver>(async () => RAD_TO_DEG);
     await applyDisplayUnits(layout, resolve);

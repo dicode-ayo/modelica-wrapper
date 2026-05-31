@@ -84,8 +84,14 @@ export function placementFor(
 ): Placement | undefined {
   const placementAnno = element.annotation?.Placement;
   if (!placementAnno) return undefined;
-  const primary = kind === "icon" ? placementAnno.iconTransformation : placementAnno.transformation;
-  const secondary = kind === "icon" ? placementAnno.transformation : placementAnno.iconTransformation;
+  const primary =
+    kind === "icon"
+      ? placementAnno.iconTransformation
+      : placementAnno.transformation;
+  const secondary =
+    kind === "icon"
+      ? placementAnno.transformation
+      : placementAnno.iconTransformation;
   if (primary) {
     const out = placementFromTransformation(primary);
     if (out) return out;
@@ -127,4 +133,8 @@ export function flattenCref(ref: ComponentRef): ConnectionEndpoint | undefined {
   return { component: first, port: last };
 }
 
-export const _internal = { decodePoint, decodeExtent, placementFromTransformation };
+export const _internal = {
+  decodePoint,
+  decodeExtent,
+  placementFromTransformation,
+};

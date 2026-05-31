@@ -17,19 +17,38 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { quote } from "../../_shared/format.js";
-import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
+import {
+  parseMutationSuccess,
+  parseOutput,
+} from "../../_shared/parseOutput.js";
 
 export const SetDocumentationAnnotationInputSchema = z.object({
   typeName: z.string().describe("Class to annotate."),
-  info: z.string().optional().default("").describe("HTML body for the Documentation `info` section; empty clears it."),
-  revisions: z.string().optional().default("").describe("HTML body for the Documentation `revisions` section; empty clears it."),
+  info: z
+    .string()
+    .optional()
+    .default("")
+    .describe(
+      "HTML body for the Documentation `info` section; empty clears it.",
+    ),
+  revisions: z
+    .string()
+    .optional()
+    .default("")
+    .describe(
+      "HTML body for the Documentation `revisions` section; empty clears it.",
+    ),
 });
 export type SetDocumentationAnnotationInput = z.input<
   typeof SetDocumentationAnnotationInputSchema
 >;
 
 export const SetDocumentationAnnotationOutputSchema = z.object({
-  bool: z.boolean().describe("True if the OMC operation completed without error; field name `bool` is OMC verbatim."),
+  bool: z
+    .boolean()
+    .describe(
+      "True if the OMC operation completed without error; field name `bool` is OMC verbatim.",
+    ),
 });
 export type SetDocumentationAnnotationOutput = z.infer<
   typeof SetDocumentationAnnotationOutputSchema

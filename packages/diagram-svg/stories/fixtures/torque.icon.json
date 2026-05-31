@@ -7,144 +7,73 @@
         {
           "kind": "line",
           "points": [
-            [
-              -50,
-              -120
-            ],
-            [
-              -30,
-              -100
-            ]
+            [-50, -120],
+            [-30, -100]
           ],
-          "color": [
-            0,
-            0,
-            0
-          ],
+          "color": [0, 0, 0],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "None"
         },
         {
           "kind": "line",
           "points": [
-            [
-              -30,
-              -120
-            ],
-            [
-              -10,
-              -100
-            ]
+            [-30, -120],
+            [-10, -100]
           ],
-          "color": [
-            0,
-            0,
-            0
-          ],
+          "color": [0, 0, 0],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "None"
         },
         {
           "kind": "line",
           "points": [
-            [
-              -10,
-              -120
-            ],
-            [
-              10,
-              -100
-            ]
+            [-10, -120],
+            [10, -100]
           ],
-          "color": [
-            0,
-            0,
-            0
-          ],
+          "color": [0, 0, 0],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "None"
         },
         {
           "kind": "line",
           "points": [
-            [
-              10,
-              -120
-            ],
-            [
-              30,
-              -100
-            ]
+            [10, -120],
+            [30, -100]
           ],
-          "color": [
-            0,
-            0,
-            0
-          ],
+          "color": [0, 0, 0],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "None"
         },
         {
           "kind": "line",
           "points": [
-            [
-              -30,
-              -100
-            ],
-            [
-              30,
-              -100
-            ]
+            [-30, -100],
+            [30, -100]
           ],
-          "color": [
-            0,
-            0,
-            0
-          ],
+          "color": [0, 0, 0],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "None"
         }
       ],
       "coordinateSystem": {
         "extent": [
-          [
-            -100,
-            -100
-          ],
-          [
-            100,
-            100
-          ]
+          [-100, -100],
+          [100, 100]
         ],
         "preserveAspectRatio": true
       }
@@ -155,77 +84,37 @@
         {
           "kind": "text",
           "extent": [
-            [
-              -150,
-              110
-            ],
-            [
-              150,
-              70
-            ]
+            [-150, 110],
+            [150, 70]
           ],
           "textString": "%name",
           "fontSize": 0,
-          "textColor": [
-            0,
-            0,
-            255
-          ],
+          "textColor": [0, 0, 255],
           "textStyle": [],
           "horizontalAlignment": "Center"
         },
         {
           "kind": "text",
           "extent": [
-            [
-              -62,
-              -29
-            ],
-            [
-              -141,
-              -70
-            ]
+            [-62, -29],
+            [-141, -70]
           ],
           "textString": "tau",
           "fontSize": 0,
-          "textColor": [
-            -1,
-            -1,
-            -1
-          ],
+          "textColor": [-1, -1, -1],
           "textStyle": [],
           "horizontalAlignment": "Center"
         },
         {
           "kind": "polygon",
           "points": [
-            [
-              86,
-              0
-            ],
-            [
-              66,
-              58
-            ],
-            [
-              37,
-              27
-            ],
-            [
-              86,
-              0
-            ]
+            [86, 0],
+            [66, 58],
+            [37, 27],
+            [86, 0]
           ],
-          "lineColor": [
-            0,
-            0,
-            0
-          ],
-          "fillColor": [
-            0,
-            0,
-            0
-          ],
+          "lineColor": [0, 0, 0],
+          "fillColor": [0, 0, 0],
           "pattern": "Solid",
           "fillPattern": "Solid",
           "lineThickness": 0.25,
@@ -234,59 +123,26 @@
         {
           "kind": "line",
           "points": [
-            [
-              0,
-              -10
-            ],
-            [
-              0,
-              -101
-            ]
+            [0, -10],
+            [0, -101]
           ],
-          "color": [
-            0,
-            0,
-            0
-          ],
+          "color": [0, 0, 0],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "None"
         },
         {
           "kind": "polygon",
           "points": [
-            [
-              -53,
-              -54
-            ],
-            [
-              -36,
-              -30
-            ],
-            [
-              -50,
-              -24
-            ],
-            [
-              -53,
-              -54
-            ]
+            [-53, -54],
+            [-36, -30],
+            [-50, -24],
+            [-53, -54]
           ],
-          "lineColor": [
-            0,
-            0,
-            0
-          ],
-          "fillColor": [
-            0,
-            0,
-            0
-          ],
+          "lineColor": [0, 0, 0],
+          "fillColor": [0, 0, 0],
           "pattern": "Solid",
           "fillPattern": "Solid",
           "lineThickness": 0.25,
@@ -295,106 +151,44 @@
         {
           "kind": "line",
           "points": [
-            [
-              -84,
-              0
-            ],
-            [
-              -78,
-              18
-            ],
-            [
-              -56,
-              46
-            ],
-            [
-              -20,
-              60
-            ],
-            [
-              20,
-              60
-            ],
-            [
-              60,
-              40
-            ],
-            [
-              82,
-              8
-            ]
+            [-84, 0],
+            [-78, 18],
+            [-56, 46],
+            [-20, 60],
+            [20, 60],
+            [60, 40],
+            [82, 8]
           ],
-          "color": [
-            0,
-            0,
-            0
-          ],
+          "color": [0, 0, 0],
           "pattern": "Solid",
           "thickness": 0.5,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "Bezier"
         },
         {
           "kind": "line",
           "points": [
-            [
-              -50,
-              -40
-            ],
-            [
-              -38,
-              -24
-            ],
-            [
-              -18,
-              -12
-            ],
-            [
-              0,
-              -10
-            ],
-            [
-              18,
-              -12
-            ],
-            [
-              38,
-              -24
-            ],
-            [
-              50,
-              -40
-            ]
+            [-50, -40],
+            [-38, -24],
+            [-18, -12],
+            [0, -10],
+            [18, -12],
+            [38, -24],
+            [50, -40]
           ],
-          "color": [
-            0,
-            0,
-            0
-          ],
+          "color": [0, 0, 0],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "Bezier"
         }
       ],
       "coordinateSystem": {
         "extent": [
-          [
-            -100,
-            -100
-          ],
-          [
-            100,
-            100
-          ]
+          [-100, -100],
+          [100, 100]
         ],
         "preserveAspectRatio": true
       }
@@ -402,14 +196,8 @@
   ],
   "coordinateSystem": {
     "extent": [
-      [
-        -100,
-        -100
-      ],
-      [
-        100,
-        100
-      ]
+      [-100, -100],
+      [100, 100]
     ],
     "preserveAspectRatio": true
   }

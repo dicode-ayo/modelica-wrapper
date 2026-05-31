@@ -28,7 +28,10 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { typeNameOfConnection } from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
 import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
-import { parseMutationDiagnostic, parseOutput } from "../../_shared/parseOutput.js";
+import {
+  parseMutationDiagnostic,
+  parseOutput,
+} from "../../_shared/parseOutput.js";
 
 export const UpdateConnectionNamesInputSchema = z.object({
   typeName: typeNameOfConnection,

@@ -68,20 +68,15 @@ export async function rasterizeSvgToTexture(
         tex.wrapU = Texture.CLAMP_ADDRESSMODE;
         tex.wrapV = Texture.CLAMP_ADDRESSMODE;
         if (DEBUG_RASTERIZER) {
-          // eslint-disable-next-line no-console
-          console.debug(
-            "[diagram-ui] SVG texture ready",
-            {
-              size: { w: tex.getSize().width, h: tex.getSize().height },
-              hasAlpha: tex.hasAlpha,
-              svgPreview: svg.slice(0, 200),
-            },
-          );
+          console.debug("[diagram-ui] SVG texture ready", {
+            size: { w: tex.getSize().width, h: tex.getSize().height },
+            hasAlpha: tex.hasAlpha,
+            svgPreview: svg.slice(0, 200),
+          });
         }
         resolve(tex);
       },
       (message, exception) => {
-        // eslint-disable-next-line no-console
         console.error(
           "[diagram-ui] SVG → Texture load failed:",
           message,

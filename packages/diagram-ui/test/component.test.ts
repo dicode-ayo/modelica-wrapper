@@ -54,7 +54,12 @@ describe("<om-component>", () => {
     const { scene } = await mountChain();
     const comp = document.createElement("om-component") as OmComponent;
     comp.nodeId = "R1";
-    comp.placement = { extent: [[-10, -10], [10, 10]] } as Placement;
+    comp.placement = {
+      extent: [
+        [-10, -10],
+        [10, 10],
+      ],
+    } as Placement;
     comp.layers = [{ from: "TestClass", shapes: [] }] as IconLayer[];
     scene.appendChild(comp);
     await comp.updateComplete;
@@ -69,13 +74,17 @@ describe("<om-component>", () => {
   it("applies placement to the shape node's TransformNode", async () => {
     const { scene } = await mountChain();
     const comp = document.createElement("om-component") as OmComponent;
-    comp.placement = { extent: [[20, 30], [40, 50]] } as Placement;
+    comp.placement = {
+      extent: [
+        [20, 30],
+        [40, 50],
+      ],
+    } as Placement;
     scene.appendChild(comp);
     await comp.updateComplete;
     // First child TransformNode after diagramRoot.
-    const child = scene.sceneContextValue!.diagramRoot.getChildTransformNodes(
-      true,
-    )[0]!;
+    const child =
+      scene.sceneContextValue!.diagramRoot.getChildTransformNodes(true)[0]!;
     expect(child.position.x).toBe(30);
     expect(child.position.y).toBe(40);
   });

@@ -25,7 +25,8 @@ export type IsReplaceableInput = z.input<typeof IsReplaceableInputSchema>;
 export const IsReplaceableOutputSchema = BooleanBOutput;
 export type IsReplaceableOutput = z.infer<typeof IsReplaceableOutputSchema>;
 
-export const IsReplaceableDescription = "Check whether the given element is declared `replaceable`.";
+export const IsReplaceableDescription =
+  "Check whether the given element is declared `replaceable`.";
 
 export async function isReplaceable(
   ctx: CallContext,

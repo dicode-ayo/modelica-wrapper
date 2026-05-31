@@ -35,7 +35,10 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
-import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
+import {
+  parseMutationSuccess,
+  parseOutput,
+} from "../../_shared/parseOutput.js";
 
 export const NewModelInputSchema = z.object({
   typeName: z

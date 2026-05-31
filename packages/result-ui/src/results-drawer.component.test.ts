@@ -38,14 +38,12 @@ describe("om-results-drawer", () => {
     el.addEventListener("om-add-result", (e) => {
       added.push((e as CustomEvent<AddResultDetail>).detail);
     });
-    el.shadowRoot!
-      .querySelector<HTMLButtonElement>("button[title='Add a .mat result file']")!
-      .click();
-    el.shadowRoot!
-      .querySelector<HTMLButtonElement>(
-        "button[title='Add from the workspace .modelica cache']",
-      )!
-      .click();
+    el.shadowRoot!.querySelector<HTMLButtonElement>(
+      "button[title='Add a .mat result file']",
+    )!.click();
+    el.shadowRoot!.querySelector<HTMLButtonElement>(
+      "button[title='Add from the workspace .modelica cache']",
+    )!.click();
     expect(added).toEqual([{ via: "import" }, { via: "cache" }]);
   });
 

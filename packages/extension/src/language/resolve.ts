@@ -35,7 +35,9 @@ export interface ComponentWalkClient {
 
 /** Structural OMC surface; `OmcClient` satisfies this so tests can pass a mock. */
 export interface ResolveClient extends QualifyClient, ComponentWalkClient {
-  getClassInformation(input: { typeName: string }): Promise<{ fileName: string }>;
+  getClassInformation(input: {
+    typeName: string;
+  }): Promise<{ fileName: string }>;
 }
 
 /** A resolved definition target. */
@@ -43,9 +45,8 @@ export interface ResolvedTarget {
   readonly qualifiedName: string;
 }
 
-const TYPE_CONTEXTS: ReadonlySet<CursorContextKind> = new Set<CursorContextKind>(
-  ["type-reference", "extends", "component-type"],
-);
+const TYPE_CONTEXTS: ReadonlySet<CursorContextKind> =
+  new Set<CursorContextKind>(["type-reference", "extends", "component-type"]);
 
 export async function resolve(
   owningClass: string,
@@ -170,7 +171,9 @@ async function resolveComponentType(
   }
   const className = components.find((c) => c.name === componentName)?.className;
   // Empty className means untyped declaration; treat as unresolved.
-  return className !== undefined && className.length > 0 ? className : undefined;
+  return className !== undefined && className.length > 0
+    ? className
+    : undefined;
 }
 
 /**
@@ -188,7 +191,11 @@ async function locateClass(
   try {
     info = await client.getClassInformation({ typeName: qualifiedName });
   } catch (err) {
-    log.debug("language", `getClassInformation failed for ${qualifiedName}`, err);
+    log.debug(
+      "language",
+      `getClassInformation failed for ${qualifiedName}`,
+      err,
+    );
     return undefined;
   }
   // Empty fileName = built-in / unbound class.

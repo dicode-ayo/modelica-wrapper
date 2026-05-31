@@ -45,7 +45,8 @@ function offsetOf(src: string, needle: string, occurrence = 0): number {
   let idx = -1;
   for (let k = 0; k <= occurrence; k++) {
     idx = src.indexOf(needle, from + 1);
-    if (idx === -1) throw new Error(`needle not found: ${needle}#${occurrence}`);
+    if (idx === -1)
+      throw new Error(`needle not found: ${needle}#${occurrence}`);
     from = idx;
   }
   return idx;
@@ -76,7 +77,9 @@ describe("renderHover", () => {
   });
 
   it("appends the documentation comment below the signature", () => {
-    expect(renderHover("Pkg.Foo", "block", "Ideal linear electrical resistor")).toBe(
+    expect(
+      renderHover("Pkg.Foo", "block", "Ideal linear electrical resistor"),
+    ).toBe(
       "```modelica\nblock Pkg.Foo\n```\n\nIdeal linear electrical resistor",
     );
   });
@@ -163,13 +166,17 @@ describe("computeHover", () => {
     // The span is the identifier under the cursor, so the wrapper underlines it
     // without re-walking the tree.
     expect(result?.startIndex).toBe(offsetOf(src, "Resistor"));
-    expect(result?.endIndex).toBe(offsetOf(src, "Resistor") + "Resistor".length);
+    expect(result?.endIndex).toBe(
+      offsetOf(src, "Resistor") + "Resistor".length,
+    );
   });
 
   it("falls back to getClassInformation's comment when getClassComment is empty", async () => {
     const src = "model Circuit\n  Resistor r;\nend Circuit;";
     const client = makeClient({
-      qualifyPath: vi.fn(() => Promise.resolve({ qualifiedPath: "Pkg.Resistor" })),
+      qualifyPath: vi.fn(() =>
+        Promise.resolve({ qualifiedPath: "Pkg.Resistor" }),
+      ),
       getClassInformation: vi.fn(() =>
         Promise.resolve({
           fileName: "/x.mo",
@@ -207,7 +214,9 @@ describe("computeHover", () => {
   it("returns undefined when the metadata round-trip fails", async () => {
     const src = "model Circuit\n  Resistor r;\nend Circuit;";
     const client = makeClient({
-      qualifyPath: vi.fn(() => Promise.resolve({ qualifiedPath: "Pkg.Resistor" })),
+      qualifyPath: vi.fn(() =>
+        Promise.resolve({ qualifiedPath: "Pkg.Resistor" }),
+      ),
       getClassComment: vi.fn(() => Promise.reject(new Error("offline"))),
     });
     const result = await computeHover(

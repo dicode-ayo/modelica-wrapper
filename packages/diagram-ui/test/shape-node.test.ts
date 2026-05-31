@@ -40,7 +40,12 @@ describe("OmShapeNode", () => {
   it("setPlacement aligns the TransformNode to the placement center", () => {
     const { scene, parent } = makeScene();
     const node = new OmShapeNode(scene, parent);
-    const placement: Placement = { extent: [[10, 20], [30, 40]] };
+    const placement: Placement = {
+      extent: [
+        [10, 20],
+        [30, 40],
+      ],
+    };
     node.setPlacement(placement, undefined);
     expect(node.transform.position.x).toBe(20);
     expect(node.transform.position.y).toBe(30);
@@ -49,9 +54,17 @@ describe("OmShapeNode", () => {
   it("setPlacement scales by (placement / coord-system) to keep local space icon-native", () => {
     const { scene, parent } = makeScene();
     const node = new OmShapeNode(scene, parent);
-    const placement: Placement = { extent: [[-10, -10], [10, 10]] };
+    const placement: Placement = {
+      extent: [
+        [-10, -10],
+        [10, 10],
+      ],
+    };
     node.setPlacement(placement, {
-      extent: [[-100, -100], [100, 100]],
+      extent: [
+        [-100, -100],
+        [100, 100],
+      ],
     });
     expect(node.transform.scaling.x).toBeCloseTo(20 / 200);
     expect(node.transform.scaling.y).toBeCloseTo(20 / 200);

@@ -13,10 +13,17 @@ const tree = buildVariableTree(["time", "motor.w", "motor.i", "load.tau"]);
 
 describe("optionsAt", () => {
   it("returns roots at level 0", () => {
-    expect(optionsAt(tree, [], 0).map((n) => n.name)).toEqual(["load", "motor", "time"]);
+    expect(optionsAt(tree, [], 0).map((n) => n.name)).toEqual([
+      "load",
+      "motor",
+      "time",
+    ]);
   });
   it("returns a node's children at the next level", () => {
-    expect(optionsAt(tree, ["motor"], 1).map((n) => n.name)).toEqual(["i", "w"]);
+    expect(optionsAt(tree, ["motor"], 1).map((n) => n.name)).toEqual([
+      "i",
+      "w",
+    ]);
   });
   it("returns [] when the path doesn't resolve", () => {
     expect(optionsAt(tree, ["nope"], 1)).toEqual([]);
@@ -37,7 +44,9 @@ describe("cascadeLevels", () => {
     expect(levels[1]!.opts.map((n) => n.name)).toEqual(["i", "w"]);
   });
   it("stops at a leaf (no further level)", () => {
-    expect(cascadeLevels(tree, ["motor", "w"]).map((l) => l.level)).toEqual([0, 1]);
+    expect(cascadeLevels(tree, ["motor", "w"]).map((l) => l.level)).toEqual([
+      0, 1,
+    ]);
     expect(cascadeLevels(tree, ["time"]).map((l) => l.level)).toEqual([0]);
   });
 });

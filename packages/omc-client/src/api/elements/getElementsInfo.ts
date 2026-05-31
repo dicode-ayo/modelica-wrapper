@@ -24,11 +24,11 @@ export const GetElementsInfoInputSchema = TypeNameInput;
 export type GetElementsInfoInput = z.input<typeof GetElementsInfoInputSchema>;
 
 export const GetElementsInfoOutputSchema = z.object({
-  result: ValueSchema.describe("All elements as a Modelica expression tree (raw `Value`)."),
+  result: ValueSchema.describe(
+    "All elements as a Modelica expression tree (raw `Value`).",
+  ),
 });
-export type GetElementsInfoOutput = z.infer<
-  typeof GetElementsInfoOutputSchema
->;
+export type GetElementsInfoOutput = z.infer<typeof GetElementsInfoOutputSchema>;
 
 export const GetElementsInfoDescription =
   "Return a Modelica expression tree describing all elements of a class (extends, components, short class definitions).";

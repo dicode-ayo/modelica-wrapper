@@ -119,13 +119,14 @@ describeIf("OMC LSP-feasibility probe", () => {
     });
     try {
       await client.call("loadModel(Modelica)" as OmcCommand);
-      const omcVersion = (await client.call("getVersion()" as OmcCommand)).trim();
+      const omcVersion = (
+        await client.call("getVersion()" as OmcCommand)
+      ).trim();
 
-      // eslint-disable-next-line no-console
       console.log("\n=== OMC LSP-feasibility probe ===");
-      // eslint-disable-next-line no-console
+
       console.log(`OMC: ${omcVersion}`);
-      // eslint-disable-next-line no-console
+
       console.log(
         "Legend: ✓ ok · ⌀ empty · ✗ symbol-missing · ⚠ other-error\n",
       );
@@ -141,7 +142,7 @@ describeIf("OMC LSP-feasibility probe", () => {
       // IMPORTANT: do NOT call getErrorString before the candidate
       // endpoint — getErrorString drains the diagnostic buffer.
       // -------------------------------------------------------------------
-      // eslint-disable-next-line no-console
+
       console.log("--- Probe 1: positioned-diagnostic endpoints ---");
 
       for (const cmd of [
@@ -163,13 +164,15 @@ describeIf("OMC LSP-feasibility probe", () => {
         // After the candidate call, see what's left in getErrorString.
         const { errorString: err } = await client.getErrorString();
         const verdict = classify(raw, err);
-        // eslint-disable-next-line no-console
+
         console.log(`${verdictGlyph[verdict]} [${verdict}] ${cmd}`);
-        // eslint-disable-next-line no-console
-        console.log(`  raw: ${raw.length === 0 ? "(empty)" : truncate(raw, 640)}`);
-        // eslint-disable-next-line no-console
+
+        console.log(
+          `  raw: ${raw.length === 0 ? "(empty)" : truncate(raw, 640)}`,
+        );
+
         console.log(`  err: ${err.length === 0 ? "(none)" : truncate(err)}`);
-        // eslint-disable-next-line no-console
+
         console.log("");
       }
 
@@ -179,7 +182,7 @@ describeIf("OMC LSP-feasibility probe", () => {
       // Capture one error string per scenario so we can pin our LSP regex
       // against actual OMC output instead of guessing.
       // -------------------------------------------------------------------
-      // eslint-disable-next-line no-console
+
       console.log("--- Probe 2: getErrorString format on broken Modelica ---");
 
       for (const sample of brokenSamples) {
@@ -208,17 +211,18 @@ describeIf("OMC LSP-feasibility probe", () => {
           checkErr = (await client.getErrorString()).errorString;
         }
 
-        // eslint-disable-next-line no-console
-        console.log(`• ${sample.label}  (filename=${filename}, class=${className})`);
-        // eslint-disable-next-line no-console
+        console.log(
+          `• ${sample.label}  (filename=${filename}, class=${className})`,
+        );
+
         console.log(
           `  loadString err: ${loadErr.length === 0 ? "(none)" : truncate(loadErr, 640)}`,
         );
-        // eslint-disable-next-line no-console
+
         console.log(
           `  checkModel err: ${checkErr.length === 0 ? (loadErr.length === 0 ? "(none)" : "(skipped — load failed)") : truncate(checkErr, 640)}`,
         );
-        // eslint-disable-next-line no-console
+
         console.log("");
       }
 
@@ -238,12 +242,14 @@ describeIf("OMC LSP-feasibility probe", () => {
       //       `:` as a delimiter, URL-encodes the colon) → we need a
       //       prefix-detect / reverse-map strategy in the resolver.
       // -------------------------------------------------------------------
-      // eslint-disable-next-line no-console
+
       console.log("--- Probe 2b: modelica-source: URI filename roundtrip ---");
       {
         const uriFilename = "modelica-source:/MwUriProbe.mo";
-        const src = brokenSamples[0].src
-          .replace(/MwProbeSyntax/g, "MwUriProbe");
+        const src = brokenSamples[0].src.replace(
+          /MwProbeSyntax/g,
+          "MwUriProbe",
+        );
         const escaped = src
           .replace(/\\/g, "\\\\")
           .replace(/"/g, '\\"')
@@ -269,19 +275,19 @@ describeIf("OMC LSP-feasibility probe", () => {
         const { errorString: loadErr } = await client.getErrorString();
 
         const verbatim = echoedFilename === uriFilename;
-        // eslint-disable-next-line no-console
+
         console.log(`• input  filename: ${uriFilename}`);
-        // eslint-disable-next-line no-console
+
         console.log(`• echoed filename: ${echoedFilename}`);
-        // eslint-disable-next-line no-console
+
         console.log(
           `• verbatim roundtrip: ${verbatim ? "YES — scenario (A)" : "NO  — scenario (B), extension needs prefix-detect resolver"}`,
         );
-        // eslint-disable-next-line no-console
+
         console.log(
           `  loadString err: ${loadErr.length === 0 ? "(none)" : truncate(loadErr, 320)}`,
         );
-        // eslint-disable-next-line no-console
+
         console.log("");
       }
 
@@ -291,7 +297,7 @@ describeIf("OMC LSP-feasibility probe", () => {
       // Confirm what source provenance OMC gives us for a known class and
       // for a getModelInstance response. These power go-to-definition.
       // -------------------------------------------------------------------
-      // eslint-disable-next-line no-console
+
       console.log("--- Probe 3: position-aware semantic queries ---");
 
       const semProbes: { label: string; cmd: OmcCommand }[] = [
@@ -312,7 +318,7 @@ describeIf("OMC LSP-feasibility probe", () => {
           cmd: "getElementSourceFile(Modelica.Blocks.Math.Gain.k)" as OmcCommand,
         },
         {
-          label: "parseString(\"model M end M;\", \"mw-parsestring.mo\")",
+          label: 'parseString("model M end M;", "mw-parsestring.mo")',
           cmd: 'parseString("model M end M;", "mw-parsestring.mo")' as OmcCommand,
         },
       ];
@@ -322,13 +328,13 @@ describeIf("OMC LSP-feasibility probe", () => {
         const raw = (await client.call(p.cmd)).trim();
         const { errorString: err } = await client.getErrorString();
         const verdict = classify(raw, err);
-        // eslint-disable-next-line no-console
+
         console.log(`${verdictGlyph[verdict]} [${verdict}] ${p.label}`);
-        // eslint-disable-next-line no-console
+
         console.log(`  raw: ${raw.length === 0 ? "(empty)" : truncate(raw)}`);
-        // eslint-disable-next-line no-console
+
         console.log(`  err: ${err.length === 0 ? "(none)" : truncate(err)}`);
-        // eslint-disable-next-line no-console
+
         console.log("");
       }
 
@@ -341,7 +347,7 @@ describeIf("OMC LSP-feasibility probe", () => {
         )
       ).trim();
       const { errorString: miErr } = await client.getErrorString();
-      // eslint-disable-next-line no-console
+
       console.log(
         `${verdictGlyph[classify(miRaw, miErr)]} getModelInstance(Modelica.Blocks.Math.Gain) — size=${miRaw.length} bytes`,
       );
@@ -363,9 +369,11 @@ describeIf("OMC LSP-feasibility probe", () => {
         const hit = re.test(miRaw);
         if (!hit) continue;
         const sample = miRaw.match(
-          new RegExp(`\\"${key}\\"\\s*:\\s*(?:\\{[^}]{0,200}\\}|"[^"]{0,200}"|\\d+)`),
+          new RegExp(
+            `\\"${key}\\"\\s*:\\s*(?:\\{[^}]{0,200}\\}|"[^"]{0,200}"|\\d+)`,
+          ),
         );
-        // eslint-disable-next-line no-console
+
         console.log(
           `  has "${key}": yes  sample: ${sample ? truncate(sample[0], 200) : "(?)"}`,
         );
@@ -374,9 +382,8 @@ describeIf("OMC LSP-feasibility probe", () => {
         new RegExp(`\\"${k}\\"\\s*:`).test(miRaw),
       );
       if (!hasAnyProvenance) {
-        // eslint-disable-next-line no-console
         console.log("  no provenance keys found — top-level slice follows:");
-        // eslint-disable-next-line no-console
+
         console.log(`  ${truncate(miRaw, 400)}`);
       }
     } finally {

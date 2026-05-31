@@ -1,8 +1,5 @@
 import * as vscode from "vscode";
-import type {
-  DiagramLayout,
-  ParameterModel,
-} from "@dicode/omc-client";
+import type { DiagramLayout, ParameterModel } from "@dicode/omc-client";
 
 import type {
   ExtensionToWebview,
@@ -173,12 +170,7 @@ export class DiagramPanel {
       existing.panel.reveal();
       return existing;
     }
-    const panel = new DiagramPanel(
-      className,
-      layout,
-      extensionUri,
-      handlers,
-    );
+    const panel = new DiagramPanel(className, layout, extensionUri, handlers);
     DiagramPanel.panels.set(className, panel);
     return panel;
   }
@@ -300,7 +292,10 @@ export class DiagramPanel {
         );
         return;
       case "libraryIcon":
-        void this.handleLibraryIconRequest(message.requestId, message.className);
+        void this.handleLibraryIconRequest(
+          message.requestId,
+          message.className,
+        );
         return;
       case "error":
         void vscode.window.showWarningMessage(

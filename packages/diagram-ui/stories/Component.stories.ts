@@ -51,7 +51,12 @@ interface StoryArgs {
 
 const meta: Meta<StoryArgs> = {
   title: "diagram-ui/Component",
-  render: ({ fixture, extentHalf, rotation, zoom }: StoryArgs): TemplateResult => {
+  render: ({
+    fixture,
+    extentHalf,
+    rotation,
+    zoom,
+  }: StoryArgs): TemplateResult => {
     const f = FIXTURES[fixture]!;
     const placement: Placement = {
       extent: [
@@ -64,8 +69,8 @@ const meta: Meta<StoryArgs> = {
       <div class="om-story">
         <h3>&lt;om-component&gt; — ${fixture}</h3>
         <p style="font-size:11px;color:#666;margin:4px 0;">
-          End-to-end: getModelInstance fixture → renderIconLayersToSvg
-          → canvas rasteriser → Babylon Texture → plane mesh.
+          End-to-end: getModelInstance fixture → renderIconLayersToSvg → canvas
+          rasteriser → Babylon Texture → plane mesh.
         </p>
         <div class="om-story-canvas-host">
           <om-scene .zoom=${zoom}>

@@ -26,7 +26,8 @@ export const ExistClassOutputSchema = z.object({
 });
 export type ExistClassOutput = z.infer<typeof ExistClassOutputSchema>;
 
-export const ExistClassDescription = "Report whether the given class is defined in the OMC symbol table.";
+export const ExistClassDescription =
+  "Report whether the given class is defined in the OMC symbol table.";
 
 export async function existClass(
   ctx: CallContext,

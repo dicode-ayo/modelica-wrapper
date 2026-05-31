@@ -40,9 +40,7 @@ export const GetNthComponentOutputSchema = z.object({
     "Type, name, and description of the n-th component as a Modelica expression tree (raw `Value`).",
   ),
 });
-export type GetNthComponentOutput = z.infer<
-  typeof GetNthComponentOutputSchema
->;
+export type GetNthComponentOutput = z.infer<typeof GetNthComponentOutputSchema>;
 
 export const GetNthComponentDescription =
   "Return the type, name, and description string of the n-th component in a class as a Modelica expression tree. Pairs with `getComponentCount`; prefer `getModelInstance` for a richer read.";
@@ -51,9 +49,7 @@ export async function getNthComponent(
   ctx: CallContext,
   input: GetNthComponentInput,
 ): Promise<GetNthComponentOutput> {
-  const raw = await ctx.call(
-    `getNthComponent(${input.typeName}, ${input.n})`,
-  );
+  const raw = await ctx.call(`getNthComponent(${input.typeName}, ${input.n})`);
   return parseOutput(
     GetNthComponentOutputSchema,
     { result: parse(raw) },

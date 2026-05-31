@@ -25,7 +25,11 @@ export type GetDefaultComponentPrefixesInput = z.input<
 >;
 
 export const GetDefaultComponentPrefixesOutputSchema = z.object({
-  prefixes: z.string().describe("Value of the class's `defaultComponentPrefixes` annotation; empty if not set."),
+  prefixes: z
+    .string()
+    .describe(
+      "Value of the class's `defaultComponentPrefixes` annotation; empty if not set.",
+    ),
 });
 export type GetDefaultComponentPrefixesOutput = z.infer<
   typeof GetDefaultComponentPrefixesOutputSchema
@@ -38,9 +42,7 @@ export async function getDefaultComponentPrefixes(
   ctx: CallContext,
   input: GetDefaultComponentPrefixesInput,
 ): Promise<GetDefaultComponentPrefixesOutput> {
-  const raw = await ctx.call(
-    `getDefaultComponentPrefixes(${input.typeName})`,
-  );
+  const raw = await ctx.call(`getDefaultComponentPrefixes(${input.typeName})`);
   return parseOutput(
     GetDefaultComponentPrefixesOutputSchema,
     { prefixes: asString(parse(raw)) ?? "" },

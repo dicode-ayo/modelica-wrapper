@@ -47,7 +47,9 @@ export const GetAllSubtypeOfInputSchema = z.object({
     .boolean()
     .optional()
     .default(false)
-    .describe("OMC parameter `qualified` (marked 'Not implemented' in the OMC docs)."),
+    .describe(
+      "OMC parameter `qualified` (marked 'Not implemented' in the OMC docs).",
+    ),
   includePartial: z
     .boolean()
     .optional()

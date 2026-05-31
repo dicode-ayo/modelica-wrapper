@@ -148,7 +148,8 @@ describe("OmcSync — normalizeKey", () => {
 
 describe("defaultNormalizeKey", () => {
   it("matches the host filesystem's case-sensitivity", () => {
-    const caseInsensitive = process.platform === "win32" || process.platform === "darwin";
+    const caseInsensitive =
+      process.platform === "win32" || process.platform === "darwin";
     expect(defaultNormalizeKey("C:\\Work\\Foo.mo")).toBe(
       caseInsensitive ? "c:\\work\\foo.mo" : "C:\\Work\\Foo.mo",
     );

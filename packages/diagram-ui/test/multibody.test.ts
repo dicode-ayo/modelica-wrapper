@@ -63,9 +63,7 @@ describe("<om-multibody-root>", () => {
 
   it("parents its TransformNode under the scene's worldRoot", async () => {
     const scene = await mountScene();
-    const mb = document.createElement(
-      "om-multibody-root",
-    ) as OmMultibodyRoot;
+    const mb = document.createElement("om-multibody-root") as OmMultibodyRoot;
     scene.appendChild(mb);
     await mb.updateComplete;
     expect(mb.rootNode).not.toBeNull();
@@ -74,9 +72,7 @@ describe("<om-multibody-root>", () => {
 
   it("disposes its TransformNode on disconnect", async () => {
     const scene = await mountScene();
-    const mb = document.createElement(
-      "om-multibody-root",
-    ) as OmMultibodyRoot;
+    const mb = document.createElement("om-multibody-root") as OmMultibodyRoot;
     scene.appendChild(mb);
     await mb.updateComplete;
     const node = mb.rootNode!;

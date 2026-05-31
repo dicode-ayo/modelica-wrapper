@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type * as vscode from "vscode";
 
-import { buildResultRef, resolveResultPath, storeResultPath } from "./add-result.js";
+import {
+  buildResultRef,
+  resolveResultPath,
+  storeResultPath,
+} from "./add-result.js";
 
 // The path helpers only read `.fsPath`, so a minimal fake stands in for a `Uri`.
 function docUri(fsPath: string): vscode.Uri {
@@ -16,9 +20,9 @@ describe("resolveResultPath", () => {
   });
 
   it("returns an absolute path unchanged", () => {
-    expect(resolveResultPath(docUri("/ws/views/run.omresults"), "/abs/b.mat")).toBe(
-      "/abs/b.mat",
-    );
+    expect(
+      resolveResultPath(docUri("/ws/views/run.omresults"), "/abs/b.mat"),
+    ).toBe("/abs/b.mat");
   });
 });
 

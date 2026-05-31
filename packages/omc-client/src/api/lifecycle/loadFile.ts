@@ -29,11 +29,27 @@ import { expectBool, parse } from "../../parse.js";
 
 export const LoadFileInputSchema = z.object({
   fileName: z.string().describe("Path to the `.mo` Modelica file to load."),
-  encoding: z.string().optional().default("UTF-8").describe("Text encoding of the file (default UTF-8)."),
-  uses: z.boolean().optional().default(true).describe("Honor `uses` annotations and load referenced libraries."),
-  notify: z.boolean().optional().default(true).describe("Emit OMC notification messages while loading."),
+  encoding: z
+    .string()
+    .optional()
+    .default("UTF-8")
+    .describe("Text encoding of the file (default UTF-8)."),
+  uses: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe("Honor `uses` annotations and load referenced libraries."),
+  notify: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe("Emit OMC notification messages while loading."),
   requireExactVersion,
-  allowWithin: z.boolean().optional().default(true).describe("Allow `within` clauses beyond the default in the loaded file."),
+  allowWithin: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe("Allow `within` clauses beyond the default in the loaded file."),
 });
 export type LoadFileInput = z.input<typeof LoadFileInputSchema>;
 

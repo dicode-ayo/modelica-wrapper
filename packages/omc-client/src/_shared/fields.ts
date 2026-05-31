@@ -52,9 +52,7 @@ export const requireExactVersion = z
   .boolean()
   .optional()
   .default(false)
-  .describe(
-    "Require exact version matches when resolving library references.",
-  );
+  .describe("Require exact version matches when resolving library references.");
 
 /**
  * `typeName` specialized for connection-targeted calls (`getNthConnection`,
@@ -93,9 +91,7 @@ export const connectionAnnotation = z
  */
 export const extendsBase = z
   .string()
-  .describe(
-    "TypeName of the base class on the `extends` clause to inspect.",
-  );
+  .describe("TypeName of the base class on the `extends` clause to inspect.");
 
 /**
  * `expr` — raw Modelica expression for a modifier value, wrapped in

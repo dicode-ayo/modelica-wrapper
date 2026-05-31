@@ -72,7 +72,10 @@ export class OmResultsDrawer extends LitElement {
         position: relative;
         padding: var(--om-space-sm);
         border-radius: var(--om-radius-md);
-        background: var(--vscode-editor-inactiveSelectionBackground, rgba(128, 128, 128, 0.12));
+        background: var(
+          --vscode-editor-inactiveSelectionBackground,
+          rgba(128, 128, 128, 0.12)
+        );
       }
       .chip .label {
         font-weight: 600;
@@ -130,22 +133,24 @@ export class OmResultsDrawer extends LitElement {
       </header>
       <div class="list">
         ${this.results.length === 0
-          ? html`<div class="empty">No results. Add a <code>.mat</code> file, or run Simulate from a diagram.</div>`
+          ? html`<div class="empty">
+              No results. Add a <code>.mat</code> file, or run Simulate from a
+              diagram.
+            </div>`
           : this.results.map((r) => this.chip(r))}
       </div>
     `;
   }
 
   private chip(r: ResultRef): TemplateResult {
-    const when = r.createdAt
-      ? new Date(r.createdAt).toLocaleTimeString()
-      : "";
+    const when = r.createdAt ? new Date(r.createdAt).toLocaleTimeString() : "";
     return html`
       <div class="chip">
         <om-icon-button
           class="remove"
           label="Remove from view"
-          @click=${() => fireEvent(this, "om-remove-result", { resultId: r.id })}
+          @click=${() =>
+            fireEvent(this, "om-remove-result", { resultId: r.id })}
         >
           ✕
         </om-icon-button>

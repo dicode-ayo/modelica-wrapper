@@ -32,7 +32,9 @@ import { expectBool, parse } from "../../parse.js";
 
 export const FilterSimulationResultsInputSchema = z.object({
   inFile: z.string().describe("Source simulation result file."),
-  outFile: z.string().describe("Destination path for the filtered result file."),
+  outFile: z
+    .string()
+    .describe("Destination path for the filtered result file."),
   vars: z
     .array(z.string())
     .describe(
@@ -50,7 +52,9 @@ export const FilterSimulationResultsInputSchema = z.object({
     .boolean()
     .optional()
     .default(false)
-    .describe("Replace per-variable description strings with empty strings to shrink the output."),
+    .describe(
+      "Replace per-variable description strings with empty strings to shrink the output.",
+    ),
   hintReadAllVars: z
     .boolean()
     .optional()

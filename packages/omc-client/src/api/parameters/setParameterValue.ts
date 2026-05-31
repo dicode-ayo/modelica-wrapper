@@ -24,8 +24,16 @@ import { expectBool, parse } from "../../parse.js";
 
 export const SetParameterValueInputSchema = z.object({
   typeName: z.string().describe("Class containing the parameter."),
-  variableName: z.string().describe("Dotted variable path within the class (OMC `variableName`, kept verbatim per the secondary-TypeName convention)."),
-  value: z.string().describe("Modelica expression to bind to the parameter; empty clears the binding."),
+  variableName: z
+    .string()
+    .describe(
+      "Dotted variable path within the class (OMC `variableName`, kept verbatim per the secondary-TypeName convention).",
+    ),
+  value: z
+    .string()
+    .describe(
+      "Modelica expression to bind to the parameter; empty clears the binding.",
+    ),
 });
 export type SetParameterValueInput = z.input<
   typeof SetParameterValueInputSchema

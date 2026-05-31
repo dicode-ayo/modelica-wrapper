@@ -18,7 +18,9 @@ export const RenameComponentInputSchema = z.object({
 export type RenameComponentInput = z.input<typeof RenameComponentInputSchema>;
 
 export const RenameComponentOutputSchema = z.object({
-  rewrittenDeclarations: z.array(z.string()).describe("Classes whose source was rewritten by the rename."),
+  rewrittenDeclarations: z
+    .array(z.string())
+    .describe("Classes whose source was rewritten by the rename."),
 });
 export type RenameComponentOutput = z.infer<typeof RenameComponentOutputSchema>;
 

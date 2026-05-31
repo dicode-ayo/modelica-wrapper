@@ -89,10 +89,7 @@ describe("unitWidgetForField", () => {
 describe("defaultSelectedUnit", () => {
   it("picks displayUnit only when it differs and is an option", () => {
     expect(
-      defaultSelectedUnit(
-        field({ unit: "rad", displayUnit: "deg" }),
-        RAD_DEG,
-      ),
+      defaultSelectedUnit(field({ unit: "rad", displayUnit: "deg" }), RAD_DEG),
     ).toBe("deg");
   });
 

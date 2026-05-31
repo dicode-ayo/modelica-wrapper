@@ -29,7 +29,7 @@ export const ExtendsFromInputSchema = z.object({
   typeName: z
     .string()
     .describe(
-      'Fully qualified TypeName of the child class to test (OMC parameter `className`); emitted bare to OMC.',
+      "Fully qualified TypeName of the child class to test (OMC parameter `className`); emitted bare to OMC.",
     ),
   baseClassName: z
     .string()

@@ -24,13 +24,16 @@ export type GetInheritedClassesInput = z.input<
 >;
 
 export const GetInheritedClassesOutputSchema = z.object({
-  inheritedClasses: z.array(z.string()).describe("Fully qualified TypeNames of classes inherited via `extends`."),
+  inheritedClasses: z
+    .array(z.string())
+    .describe("Fully qualified TypeNames of classes inherited via `extends`."),
 });
 export type GetInheritedClassesOutput = z.infer<
   typeof GetInheritedClassesOutputSchema
 >;
 
-export const GetInheritedClassesDescription = "Return the list of classes inherited via `extends` clauses in the given class.";
+export const GetInheritedClassesDescription =
+  "Return the list of classes inherited via `extends` clauses in the given class.";
 
 export async function getInheritedClasses(
   ctx: CallContext,

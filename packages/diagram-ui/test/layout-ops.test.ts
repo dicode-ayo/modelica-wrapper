@@ -22,19 +22,34 @@ function baseLayout(): DiagramLayout {
       R1: {
         name: "R1",
         classRef: "Modelica.Electrical.Resistor",
-        placement: { extent: [[-10, -5], [10, 5]] },
+        placement: {
+          extent: [
+            [-10, -5],
+            [10, 5],
+          ],
+        },
       },
       C1: {
         name: "C1",
         classRef: "Modelica.Electrical.Capacitor",
-        placement: { extent: [[20, 20], [40, 30]] },
+        placement: {
+          extent: [
+            [20, 20],
+            [40, 30],
+          ],
+        },
       },
     },
     connectors: {
       p: {
         name: "p",
         classRef: "Pin",
-        placement: { extent: [[-50, -2], [-46, 2]] },
+        placement: {
+          extent: [
+            [-50, -2],
+            [-46, 2],
+          ],
+        },
       },
     },
     connections: [

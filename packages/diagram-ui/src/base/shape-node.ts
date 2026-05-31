@@ -10,10 +10,7 @@ import {
 import { applyPlacement, type AppliedTransform } from "./placement-math.js";
 import { ResizeHandles, SelectionOutline } from "./selection-overlay.js";
 import { requestSceneRender } from "../scene/render-scheduler.js";
-import type {
-  CoordinateSystem,
-  Placement,
-} from "@dicode/omc-client";
+import type { CoordinateSystem, Placement } from "@dicode/omc-client";
 
 const HIGHLIGHT_COLOR = new Color3(0.38, 0.6, 0.98);
 

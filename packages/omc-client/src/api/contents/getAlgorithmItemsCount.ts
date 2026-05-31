@@ -26,7 +26,12 @@ export type GetAlgorithmItemsCountInput = z.input<
 >;
 
 export const GetAlgorithmItemsCountOutputSchema = z.object({
-  count: z.number().int().describe("Number of individual statements across the class's `algorithm` sections."),
+  count: z
+    .number()
+    .int()
+    .describe(
+      "Number of individual statements across the class's `algorithm` sections.",
+    ),
 });
 export type GetAlgorithmItemsCountOutput = z.infer<
   typeof GetAlgorithmItemsCountOutputSchema

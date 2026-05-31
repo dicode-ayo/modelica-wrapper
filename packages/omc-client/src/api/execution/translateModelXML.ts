@@ -17,7 +17,9 @@ export type TranslateModelXMLInput = z.input<
 >;
 
 export const TranslateModelXMLOutputSchema = z.object({
-  generatedFileName: z.string().describe("Path to the generated XML model description on disk."),
+  generatedFileName: z
+    .string()
+    .describe("Path to the generated XML model description on disk."),
 });
 export type TranslateModelXMLOutput = z.infer<
   typeof TranslateModelXMLOutputSchema

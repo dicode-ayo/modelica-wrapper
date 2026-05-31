@@ -32,9 +32,12 @@ const meta: Meta<StoryArgs> = {
           .zoom=${zoom}
           .panX=${panX}
           .panY=${panY}
-          @om-view-change=${(e: CustomEvent<{ zoom: number; panX: number; panY: number }>) => {
-            const status = (e.currentTarget as HTMLElement)
-              .parentElement?.parentElement?.querySelector(".om-scene-status");
+          @om-view-change=${(
+            e: CustomEvent<{ zoom: number; panX: number; panY: number }>,
+          ) => {
+            const status = (
+              e.currentTarget as HTMLElement
+            ).parentElement?.parentElement?.querySelector(".om-scene-status");
             if (status) {
               const d = e.detail;
               status.textContent = `zoom=${d.zoom.toFixed(2)}  panX=${d.panX.toFixed(2)}  panY=${d.panY.toFixed(2)}`;
@@ -42,7 +45,12 @@ const meta: Meta<StoryArgs> = {
           }}
         ></om-scene>
       </div>
-      <pre class="om-scene-status" style="font-size:11px;color:#444;margin:8px 0;">zoom=${zoom.toFixed(2)}  panX=${panX.toFixed(2)}  panY=${panY.toFixed(2)}</pre>
+      <pre
+        class="om-scene-status"
+        style="font-size:11px;color:#444;margin:8px 0;"
+      >
+zoom=${zoom.toFixed(2)}  panX=${panX.toFixed(2)}  panY=${panY.toFixed(2)}</pre
+      >
     </div>
   `,
   argTypes: {

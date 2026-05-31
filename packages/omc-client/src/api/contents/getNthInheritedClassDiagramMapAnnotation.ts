@@ -27,7 +27,9 @@ export type GetNthInheritedClassDiagramMapAnnotationInput = z.input<
 >;
 
 export const GetNthInheritedClassDiagramMapAnnotationOutputSchema = z.object({
-  result: ValueSchema.describe("Inherited class diagram-map annotation as a Modelica expression tree (raw `Value`)."),
+  result: ValueSchema.describe(
+    "Inherited class diagram-map annotation as a Modelica expression tree (raw `Value`).",
+  ),
 });
 export type GetNthInheritedClassDiagramMapAnnotationOutput = z.infer<
   typeof GetNthInheritedClassDiagramMapAnnotationOutputSchema

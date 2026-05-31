@@ -67,7 +67,10 @@ export function omcRangeToVscodeRange(span: {
   lineNumberEnd: number;
   columnNumberEnd: number;
 }): ZeroBasedRange {
-  const start = omcToVscodePosition(span.lineNumberStart, span.columnNumberStart);
+  const start = omcToVscodePosition(
+    span.lineNumberStart,
+    span.columnNumberStart,
+  );
   const end = omcToVscodePosition(span.lineNumberEnd, span.columnNumberEnd);
   const endCharacter = span.columnNumberEnd > 0 ? end.character + 1 : 0;
   // Collapse rather than emit an inverted range.

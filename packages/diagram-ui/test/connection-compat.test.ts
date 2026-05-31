@@ -23,7 +23,12 @@ function layoutWithBlocks(): DiagramLayout {
           u: {
             name: "u",
             typeName: "Modelica.Blocks.Interfaces.RealInput",
-            placement: { extent: [[-110, -10], [-90, 10]] },
+            placement: {
+              extent: [
+                [-110, -10],
+                [-90, 10],
+              ],
+            },
             iconLayers: [],
             from: "Modelica.Blocks.Math.Gain",
             direction: "input",
@@ -31,7 +36,12 @@ function layoutWithBlocks(): DiagramLayout {
           y: {
             name: "y",
             typeName: "Modelica.Blocks.Interfaces.RealOutput",
-            placement: { extent: [[90, -10], [110, 10]] },
+            placement: {
+              extent: [
+                [90, -10],
+                [110, 10],
+              ],
+            },
             iconLayers: [],
             from: "Modelica.Blocks.Math.Gain",
             direction: "output",
@@ -47,7 +57,12 @@ function layoutWithBlocks(): DiagramLayout {
           p: {
             name: "p",
             typeName: "Modelica.Electrical.Analog.Interfaces.PositivePin",
-            placement: { extent: [[-110, -10], [-90, 10]] },
+            placement: {
+              extent: [
+                [-110, -10],
+                [-90, 10],
+              ],
+            },
             iconLayers: [],
             from: "Modelica.Electrical.Analog.Basic.Resistor",
             direction: "",
@@ -55,7 +70,12 @@ function layoutWithBlocks(): DiagramLayout {
           n: {
             name: "n",
             typeName: "Modelica.Electrical.Analog.Interfaces.NegativePin",
-            placement: { extent: [[90, -10], [110, 10]] },
+            placement: {
+              extent: [
+                [90, -10],
+                [110, 10],
+              ],
+            },
             iconLayers: [],
             from: "Modelica.Electrical.Analog.Basic.Resistor",
             direction: "",
@@ -65,9 +85,36 @@ function layoutWithBlocks(): DiagramLayout {
       },
     },
     components: {
-      g1: { name: "g1", classRef: "Modelica.Blocks.Math.Gain", placement: { extent: [[0, 0], [20, 20]] } },
-      g2: { name: "g2", classRef: "Modelica.Blocks.Math.Gain", placement: { extent: [[40, 0], [60, 20]] } },
-      r1: { name: "r1", classRef: "Modelica.Electrical.Analog.Basic.Resistor", placement: { extent: [[80, 0], [100, 20]] } },
+      g1: {
+        name: "g1",
+        classRef: "Modelica.Blocks.Math.Gain",
+        placement: {
+          extent: [
+            [0, 0],
+            [20, 20],
+          ],
+        },
+      },
+      g2: {
+        name: "g2",
+        classRef: "Modelica.Blocks.Math.Gain",
+        placement: {
+          extent: [
+            [40, 0],
+            [60, 20],
+          ],
+        },
+      },
+      r1: {
+        name: "r1",
+        classRef: "Modelica.Electrical.Analog.Basic.Resistor",
+        placement: {
+          extent: [
+            [80, 0],
+            [100, 20],
+          ],
+        },
+      },
     },
     connectors: {},
     connections: [],

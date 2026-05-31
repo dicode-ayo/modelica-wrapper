@@ -30,11 +30,33 @@ import { expectBool, parse } from "../../parse.js";
 
 export const LoadStringInputSchema = z.object({
   data: z.string().describe("Modelica source code to parse and load."),
-  filename: z.string().optional().default("<interactive>").describe("Pseudo-filename used in OMC diagnostics for the loaded code."),
-  encoding: z.string().optional().default("UTF-8").describe("Encoding label (deprecated by OMC; strings are UTF-8)."),
-  merge: z.boolean().optional().default(false).describe("When true, merge the parsed AST into the existing one; otherwise replace."),
-  uses: z.boolean().optional().default(true).describe("Honor `uses` annotations and load referenced libraries."),
-  notify: z.boolean().optional().default(true).describe("Emit OMC notification messages while loading."),
+  filename: z
+    .string()
+    .optional()
+    .default("<interactive>")
+    .describe("Pseudo-filename used in OMC diagnostics for the loaded code."),
+  encoding: z
+    .string()
+    .optional()
+    .default("UTF-8")
+    .describe("Encoding label (deprecated by OMC; strings are UTF-8)."),
+  merge: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      "When true, merge the parsed AST into the existing one; otherwise replace.",
+    ),
+  uses: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe("Honor `uses` annotations and load referenced libraries."),
+  notify: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe("Emit OMC notification messages while loading."),
   requireExactVersion,
 });
 export type LoadStringInput = z.input<typeof LoadStringInputSchema>;

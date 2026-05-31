@@ -27,7 +27,12 @@ export type GetInitialEquationItemsCountInput = z.input<
 >;
 
 export const GetInitialEquationItemsCountOutputSchema = z.object({
-  count: z.number().int().describe("Number of individual equations across the class's `initial equation` sections."),
+  count: z
+    .number()
+    .int()
+    .describe(
+      "Number of individual equations across the class's `initial equation` sections.",
+    ),
 });
 export type GetInitialEquationItemsCountOutput = z.infer<
   typeof GetInitialEquationItemsCountOutputSchema

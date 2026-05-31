@@ -58,8 +58,14 @@ const HOST_TARGETS: Array<{ className: string; slug: string }> = [
  */
 const PID_CATALOG_TARGETS: Array<{ className: string; slug: string }> = [
   { className: "Modelica.Blocks.Continuous.LimPID", slug: "limpid" },
-  { className: "Modelica.Mechanics.Rotational.Components.Inertia", slug: "inertia" },
-  { className: "Modelica.Mechanics.Rotational.Components.SpringDamper", slug: "springdamper" },
+  {
+    className: "Modelica.Mechanics.Rotational.Components.Inertia",
+    slug: "inertia",
+  },
+  {
+    className: "Modelica.Mechanics.Rotational.Components.SpringDamper",
+    slug: "springdamper",
+  },
   { className: "Modelica.Mechanics.Rotational.Sources.Torque", slug: "torque" },
 ];
 
@@ -90,7 +96,9 @@ describe.skipIf(!RUN)("capture icon fixtures (live OMC)", () => {
     client = await OmcClient.create();
     const loaded = await client.loadModel({ typeName: "Modelica" });
     if (!loaded.success) {
-      throw new Error("loadModel(Modelica) returned success=false — is MSL installed?");
+      throw new Error(
+        "loadModel(Modelica) returned success=false — is MSL installed?",
+      );
     }
   });
 
@@ -100,7 +108,9 @@ describe.skipIf(!RUN)("capture icon fixtures (live OMC)", () => {
 
   for (const { className, slug } of HOST_TARGETS) {
     it(`captures ${className}`, async () => {
-      const { instance } = await client.getModelInstance({ typeName: className });
+      const { instance } = await client.getModelInstance({
+        typeName: className,
+      });
       const layout = diagram.produceDiagramLayout(instance, "icon");
 
       // Sanity-check that the host actually carries icon graphics. If a
@@ -139,7 +149,9 @@ describe.skipIf(!RUN)("capture icon fixtures (live OMC)", () => {
           (sum, l) => sum + l.shapes.length,
           0,
         );
-        expect(totalShapes, `${className} has no icon shapes`).toBeGreaterThan(0);
+        expect(totalShapes, `${className} has no icon shapes`).toBeGreaterThan(
+          0,
+        );
         await writeFixture(slug, fixture);
       });
     }

@@ -28,10 +28,30 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const LoadModelInputSchema = z.object({
-  typeName: z.string().describe("Library to load (e.g. \"Modelica\"); resolved against the MODELICAPATH."),
-  priorityVersion: z.array(z.string()).optional().default(["default"]).describe('Version priority list. "default" means: no version > highest main release > highest pre-release > lexical sort.'),
-  notify: z.boolean().optional().default(false).describe("Emit OMC notification messages while loading."),
-  languageStandard: z.string().optional().default("").describe('Modelica language standard to enforce when loading (e.g. "3.2"); empty means use OMC default.'),
+  typeName: z
+    .string()
+    .describe(
+      'Library to load (e.g. "Modelica"); resolved against the MODELICAPATH.',
+    ),
+  priorityVersion: z
+    .array(z.string())
+    .optional()
+    .default(["default"])
+    .describe(
+      'Version priority list. "default" means: no version > highest main release > highest pre-release > lexical sort.',
+    ),
+  notify: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("Emit OMC notification messages while loading."),
+  languageStandard: z
+    .string()
+    .optional()
+    .default("")
+    .describe(
+      'Modelica language standard to enforce when loading (e.g. "3.2"); empty means use OMC default.',
+    ),
   requireExactVersion,
 });
 export type LoadModelInput = z.input<typeof LoadModelInputSchema>;

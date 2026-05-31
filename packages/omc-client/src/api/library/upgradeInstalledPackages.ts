@@ -19,14 +19,24 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectBool, parse } from "../../parse.js";
 
 export const UpgradeInstalledPackagesInputSchema = z.object({
-  installNewestVersions: z.boolean().optional().default(true).describe("Install the newest available version of each package when true."),
+  installNewestVersions: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe(
+      "Install the newest available version of each package when true.",
+    ),
 });
 export type UpgradeInstalledPackagesInput = z.input<
   typeof UpgradeInstalledPackagesInputSchema
 >;
 
 export const UpgradeInstalledPackagesOutputSchema = z.object({
-  result: z.boolean().describe("True if the upgrade completed; field name `result` is OMC verbatim."),
+  result: z
+    .boolean()
+    .describe(
+      "True if the upgrade completed; field name `result` is OMC verbatim.",
+    ),
 });
 export type UpgradeInstalledPackagesOutput = z.infer<
   typeof UpgradeInstalledPackagesOutputSchema

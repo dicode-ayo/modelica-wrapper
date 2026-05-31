@@ -27,7 +27,9 @@ export type GetNthInheritedClassIconMapAnnotationInput = z.input<
 >;
 
 export const GetNthInheritedClassIconMapAnnotationOutputSchema = z.object({
-  result: ValueSchema.describe("Inherited class icon-map annotation as a Modelica expression tree (raw `Value`)."),
+  result: ValueSchema.describe(
+    "Inherited class icon-map annotation as a Modelica expression tree (raw `Value`).",
+  ),
 });
 export type GetNthInheritedClassIconMapAnnotationOutput = z.infer<
   typeof GetNthInheritedClassIconMapAnnotationOutputSchema

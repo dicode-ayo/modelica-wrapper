@@ -60,33 +60,56 @@ describe("ResultViewDocSchema", () => {
   });
 
   it("rejects a non-1 version", () => {
-    expect(ResultViewDocSchema.safeParse({ ...FULL_DOC, version: 2 }).success).toBe(false);
+    expect(
+      ResultViewDocSchema.safeParse({ ...FULL_DOC, version: 2 }).success,
+    ).toBe(false);
   });
 
   it("rejects unknown top-level keys (strict)", () => {
     expect(
-      ResultViewDocSchema.safeParse({ ...emptyResultViewDoc(), bogus: true }).success,
+      ResultViewDocSchema.safeParse({ ...emptyResultViewDoc(), bogus: true })
+        .success,
     ).toBe(false);
   });
 });
 
 describe("ResultRefSchema", () => {
   it("requires id/label/path/source", () => {
-    expect(ResultRefSchema.safeParse({ id: "x", label: "x", path: "x.mat" }).success).toBe(false);
+    expect(
+      ResultRefSchema.safeParse({ id: "x", label: "x", path: "x.mat" }).success,
+    ).toBe(false);
   });
 
   it("accepts null commit/dirty but rejects an unknown source", () => {
     expect(
-      ResultRefSchema.safeParse({ id: "x", label: "x", path: "x.mat", source: "import", commit: null, dirty: null }).success,
+      ResultRefSchema.safeParse({
+        id: "x",
+        label: "x",
+        path: "x.mat",
+        source: "import",
+        commit: null,
+        dirty: null,
+      }).success,
     ).toBe(true);
     expect(
-      ResultRefSchema.safeParse({ id: "x", label: "x", path: "x.mat", source: "nope" }).success,
+      ResultRefSchema.safeParse({
+        id: "x",
+        label: "x",
+        path: "x.mat",
+        source: "nope",
+      }).success,
     ).toBe(false);
   });
 
   it("rejects unknown extra keys (strict)", () => {
     expect(
-      ResultRefSchema.safeParse({ id: "x", label: "x", path: "x.mat", source: "import", extra: 1 }).success,
+      ResultRefSchema.safeParse({
+        id: "x",
+        label: "x",
+        path: "x.mat",
+        source: "import",
+        extra: 1,
+      }).success,
     ).toBe(false);
   });
 });
@@ -94,10 +117,14 @@ describe("ResultRefSchema", () => {
 describe("CardSchema", () => {
   it("requires kind: 'plot'", () => {
     expect(CardSchema.safeParse({ title: "no kind" }).success).toBe(false);
-    expect(CardSchema.safeParse({ kind: "plot", title: "ok" }).success).toBe(true);
+    expect(CardSchema.safeParse({ kind: "plot", title: "ok" }).success).toBe(
+      true,
+    );
   });
 
   it("rejects an unknown card kind", () => {
-    expect(CardSchema.safeParse({ kind: "markdown", template: "x" }).success).toBe(false);
+    expect(
+      CardSchema.safeParse({ kind: "markdown", template: "x" }).success,
+    ).toBe(false);
   });
 });

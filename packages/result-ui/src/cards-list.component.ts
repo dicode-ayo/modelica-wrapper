@@ -63,8 +63,10 @@ export class OmCardsList extends LitElement {
   @property({ attribute: false }) cards: Card[] = [];
   @property({ attribute: false }) results: ResultRef[] = [];
   /** Trace data per card, keyed by `card.id`. */
-  @property({ attribute: false }) traceData: Record<string, TracePayload[]> = {};
-  @property({ attribute: false }) variablesByResult: Record<string, string[]> = {};
+  @property({ attribute: false }) traceData: Record<string, TracePayload[]> =
+    {};
+  @property({ attribute: false }) variablesByResult: Record<string, string[]> =
+    {};
 
   private addPlot(afterIndex: number): void {
     fireEvent(this, "om-add-plot", { afterIndex });

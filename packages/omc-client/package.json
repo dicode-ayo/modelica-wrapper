@@ -10,7 +10,9 @@
     "./api/*": "./src/api/*",
     "./eval": "./src/eval/index.ts"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "engines": {
     "node": ">=20"
   },

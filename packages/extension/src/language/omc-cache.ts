@@ -368,7 +368,11 @@ export class OmcLookupCache
     } catch (err) {
       // Keep serving with the last known signature; log so a persistent failure
       // is traceable rather than silently degrading cache correctness.
-      log.warn("language", "getLoadedLibraries failed; cache signature stale", err);
+      log.warn(
+        "language",
+        "getLoadedLibraries failed; cache signature stale",
+        err,
+      );
       this.signatureFetchedAt = this.now();
       return this.signature;
     }

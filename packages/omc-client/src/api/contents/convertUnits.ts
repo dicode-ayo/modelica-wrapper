@@ -51,23 +51,33 @@ import { asBool, asFloat, asList, parseLeading } from "../../parse.js";
 export const ConvertUnitsInputSchema = z.object({
   s1: z
     .string()
-    .describe("First unit string; OMEdit passes the declaration unit here (e.g. \"rad\")."),
+    .describe(
+      'First unit string; OMEdit passes the declaration unit here (e.g. "rad").',
+    ),
   s2: z
     .string()
-    .describe("Second unit string; OMEdit passes the displayUnit here (e.g. \"deg\")."),
+    .describe(
+      'Second unit string; OMEdit passes the displayUnit here (e.g. "deg").',
+    ),
 });
 export type ConvertUnitsInput = z.input<typeof ConvertUnitsInputSchema>;
 
 export const ConvertUnitsOutputSchema = z.object({
   unitsCompatible: z
     .boolean()
-    .describe("True if the two units are dimensionally compatible and convertible."),
+    .describe(
+      "True if the two units are dimensionally compatible and convertible.",
+    ),
   scaleFactor: z
     .number()
-    .describe("Scale factor; displayed value is `(sourceValue - offset) / scaleFactor`. 1.0 when incompatible."),
+    .describe(
+      "Scale factor; displayed value is `(sourceValue - offset) / scaleFactor`. 1.0 when incompatible.",
+    ),
   offset: z
     .number()
-    .describe("Offset; displayed value is `(sourceValue - offset) / scaleFactor`. 0.0 when incompatible."),
+    .describe(
+      "Offset; displayed value is `(sourceValue - offset) / scaleFactor`. 0.0 when incompatible.",
+    ),
 });
 export type ConvertUnitsOutput = z.infer<typeof ConvertUnitsOutputSchema>;
 

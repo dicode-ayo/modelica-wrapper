@@ -38,10 +38,7 @@ export function buildLineChartOption(
       axisLabel: { color: theme.text },
       splitLine: { lineStyle: { color: theme.splitLine } },
     },
-    dataZoom: [
-      { type: "inside" },
-      { type: "slider", bottom: 16, height: 18 },
-    ],
+    dataZoom: [{ type: "inside" }, { type: "slider", bottom: 16, height: 18 }],
     series: traces.map((tr) => ({
       name: tr.name,
       type: "line" as const,

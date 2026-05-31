@@ -112,7 +112,8 @@ const probes: Probe[] = [
     cmd: "newModel(MwProbeNew, Modelica)" as OmcCommand,
   },
   {
-    label: "newModel(className, <empty withinPath>) — UNSUPPORTED top-level form",
+    label:
+      "newModel(className, <empty withinPath>) — UNSUPPORTED top-level form",
     wrapper: "lifecycle/newModel.ts",
     note: "Counter-example: newModel REQUIRES a real existing package as withinPath. The empty second arg is rejected by OMC's interactive parser ('Unexpected token near: newModel'), so there is no top-level-creation form. For a true top-level class, fall back to loadString. This is why the wrapper makes withinPath required.",
     cmd: "newModel(MwProbeNewTop, )" as OmcCommand,
@@ -207,13 +208,14 @@ const probes: Probe[] = [
     label: "setElementAnnotation(docs-correct $Code((<expr>)) shape)",
     wrapper: "elements/setElementAnnotation.ts",
     note: "Regression watch: OMEdit (Element.cpp) wraps as `$Code((<expr>))` — DOUBLE parens, no leading `=`. The leading-`=` shape `$Code(=<expr>)` was silently destructive on OMC 1.26.7 (returns true but clears the annotation). Fixed in #38; see audit.md §2.10.",
-    cmd: 'setElementAnnotation(Modelica.Blocks.Examples.PID_Controller.PI, $Code((Placement(visible=true))))' as OmcCommand,
+    cmd: "setElementAnnotation(Modelica.Blocks.Examples.PID_Controller.PI, $Code((Placement(visible=true))))" as OmcCommand,
   },
   {
-    label: "setElementAnnotation(OLD leading-= shape — silently CLEARS, returns true)",
+    label:
+      "setElementAnnotation(OLD leading-= shape — silently CLEARS, returns true)",
     wrapper: "elements/setElementAnnotation.ts",
     note: "Counter-example: should still return true on 1.26.7 but with destructive behavior — the annotation gets cleared from the source instead of replaced. The probe classifies this as ✓ ok because OMC reports success, but the wrapper no longer emits this shape. If a future OMC starts replacing (not clearing) on this shape, both shapes are safe and the wrapper convention can be loosened.",
-    cmd: 'setElementAnnotation(Modelica.Blocks.Examples.PID_Controller.PI, $Code(=Placement(visible=true)))' as OmcCommand,
+    cmd: "setElementAnnotation(Modelica.Blocks.Examples.PID_Controller.PI, $Code(=Placement(visible=true)))" as OmcCommand,
   },
 ];
 
@@ -261,11 +263,10 @@ describeIf("OMC drift probe", () => {
 
       const omcVersion = (await client.call("getVersion()")).trim();
 
-      // eslint-disable-next-line no-console
       console.log("\n=== OMC drift probe ===");
-      // eslint-disable-next-line no-console
+
       console.log(`OMC: ${omcVersion}`);
-      // eslint-disable-next-line no-console
+
       console.log(
         `Probes: ${probes.length}   (legend: ✓ ok · ⌀ empty · ✗ symbol-missing · ⚠ other-error)\n`,
       );
@@ -285,32 +286,32 @@ describeIf("OMC drift probe", () => {
         summary.push({ verdict, label: p.label });
 
         const glyph = verdictGlyph[verdict];
-        // eslint-disable-next-line no-console
+
         console.log(`${glyph} [${verdict}] ${p.label}`);
-        // eslint-disable-next-line no-console
+
         console.log(`  wrapper: ${p.wrapper}`);
         if (p.note) {
-          // eslint-disable-next-line no-console
           console.log(`  note: ${p.note}`);
         }
-        // eslint-disable-next-line no-console
+
         console.log(`  cmd: ${p.cmd}`);
         const truncate = (s: string): string =>
           s.length > 240 ? `${s.slice(0, 240)}…` : s;
-        // eslint-disable-next-line no-console
+
         console.log(`  raw: ${raw.length === 0 ? "(empty)" : truncate(raw)}`);
-        // eslint-disable-next-line no-console
+
         console.log(`  err: ${err.length === 0 ? "(none)" : truncate(err)}`);
-        // eslint-disable-next-line no-console
+
         console.log("");
       }
 
       // Final summary so the PR-comment generator can grab a clean tally.
-      // eslint-disable-next-line no-console
+
       console.log("=== summary ===");
       for (const s of summary) {
-        // eslint-disable-next-line no-console
-        console.log(`${verdictGlyph[s.verdict]} ${s.verdict.padEnd(8)} ${s.label}`);
+        console.log(
+          `${verdictGlyph[s.verdict]} ${s.verdict.padEnd(8)} ${s.label}`,
+        );
       }
     } finally {
       // Best-effort cleanup of any classes the probe created above.

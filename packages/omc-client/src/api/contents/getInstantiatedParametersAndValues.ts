@@ -30,7 +30,7 @@ export const GetInstantiatedParametersAndValuesOutputSchema = z.object({
   result: z
     .array(z.string())
     .describe(
-      'Flattened parameter list, one entry per parameter as `name=value` (e.g. `k=1.5`).',
+      "Flattened parameter list, one entry per parameter as `name=value` (e.g. `k=1.5`).",
     ),
 });
 export type GetInstantiatedParametersAndValuesOutput = z.infer<

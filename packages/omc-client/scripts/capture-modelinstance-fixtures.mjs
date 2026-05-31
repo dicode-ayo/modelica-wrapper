@@ -135,7 +135,7 @@ async function call(sock, cmd) {
  */
 function unwrapModelicaString(raw) {
   const text = raw.trim();
-  if (!text.startsWith("\"")) {
+  if (!text.startsWith('"')) {
     throw new Error(
       `expected a Modelica string literal, got: ${text.slice(0, 80)}…`,
     );
@@ -143,11 +143,11 @@ function unwrapModelicaString(raw) {
   let out = "";
   for (let i = 1; i < text.length; i++) {
     const c = text[i];
-    if (c === "\"") return out;
+    if (c === '"') return out;
     if (c === "\\" && i + 1 < text.length) {
       const n = text[i + 1];
       switch (n) {
-        case "\"":
+        case '"':
         case "\\":
         case "'":
           out += n;

@@ -155,8 +155,7 @@ async function runCheckModel(
       // OMC's own pretty output; we append our 1-line summary for
       // at-a-glance status. Errors paint red in the REPL.
       const replLog = createReplLog(`checkModel ${className}`);
-      const replOutput =
-        (result.length > 0 ? result + "\n" : "") + summary;
+      const replOutput = (result.length > 0 ? result + "\n" : "") + summary;
       if (errors > 0) replLog.error(replOutput);
       else replLog.success(replOutput);
 

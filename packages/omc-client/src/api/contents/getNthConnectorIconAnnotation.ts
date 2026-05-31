@@ -26,7 +26,9 @@ export type GetNthConnectorIconAnnotationInput = z.input<
 >;
 
 export const GetNthConnectorIconAnnotationOutputSchema = z.object({
-  result: ValueSchema.describe("Connector icon annotation as a Modelica expression tree (raw `Value`)."),
+  result: ValueSchema.describe(
+    "Connector icon annotation as a Modelica expression tree (raw `Value`).",
+  ),
 });
 export type GetNthConnectorIconAnnotationOutput = z.infer<
   typeof GetNthConnectorIconAnnotationOutputSchema

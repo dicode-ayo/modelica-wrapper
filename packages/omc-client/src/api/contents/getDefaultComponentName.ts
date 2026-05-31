@@ -24,7 +24,11 @@ export type GetDefaultComponentNameInput = z.input<
 >;
 
 export const GetDefaultComponentNameOutputSchema = z.object({
-  name: z.string().describe("Value of the class's `defaultComponentName` annotation; empty if not set."),
+  name: z
+    .string()
+    .describe(
+      "Value of the class's `defaultComponentName` annotation; empty if not set.",
+    ),
 });
 export type GetDefaultComponentNameOutput = z.infer<
   typeof GetDefaultComponentNameOutputSchema

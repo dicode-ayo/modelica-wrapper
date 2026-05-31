@@ -169,7 +169,10 @@ end ${pkg};
   it("getAlgorithmCount + getNthAlgorithm read the algorithm section(s)", async () => {
     const { count } = await client.getAlgorithmCount({ typeName: cls });
     expect(count).toBe(1);
-    const { result } = await client.getNthAlgorithm({ typeName: cls, index: 1 });
+    const { result } = await client.getNthAlgorithm({
+      typeName: cls,
+      index: 1,
+    });
     expect(result).toContain("b");
   });
 

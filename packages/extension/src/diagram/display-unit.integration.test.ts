@@ -105,7 +105,9 @@ end ${pkg};
     expect(Number.parseFloat(before.value)).toBeCloseTo(1.5708, 3);
 
     // The exact host-side stage from open-diagram.ts fetchLayout.
-    await applyDisplayUnits(layout, (s1, s2) => client.convertUnits({ s1, s2 }));
+    await applyDisplayUnits(layout, (s1, s2) =>
+      client.convertUnits({ s1, s2 }),
+    );
 
     const after = layout.classes[comp]!.parameters.a!;
     // The rewritten display value parses to ~90 (string is "90 deg").
@@ -117,7 +119,9 @@ end ${pkg};
     const { instance } = await client.getModelInstance({ typeName: host });
     const layout = diagram.produceDiagramLayout(instance, "diagram");
 
-    await applyDisplayUnits(layout, (s1, s2) => client.convertUnits({ s1, s2 }));
+    await applyDisplayUnits(layout, (s1, s2) =>
+      client.convertUnits({ s1, s2 }),
+    );
 
     // `b` has no displayUnit modifier — its rad value is kept (no conversion)
     // and the declared unit is appended verbatim → "3.14… rad".
@@ -136,7 +140,9 @@ end ${pkg};
     expect(before.unit).toBe("kg.m2");
     expect(before.displayUnit ?? "").toBe("");
 
-    await applyDisplayUnits(layout, (s1, s2) => client.convertUnits({ s1, s2 }));
+    await applyDisplayUnits(layout, (s1, s2) =>
+      client.convertUnits({ s1, s2 }),
+    );
 
     const after = layout.classes[comp]!.parameters.J!;
     expect(after.value).toBe("1 kg.m2");

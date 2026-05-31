@@ -29,7 +29,9 @@ function fakeClock(): { now: () => number; advance: (ms: number) => void } {
 function makeClient(overrides: Partial<CachedOmcClient> = {}): CachedOmcClient {
   return {
     getLoadedLibraries: vi.fn(() =>
-      Promise.resolve({ libraries: [["Modelica", "4.0.0"]] as [string, string][] }),
+      Promise.resolve({
+        libraries: [["Modelica", "4.0.0"]] as [string, string][],
+      }),
     ),
     parseFile: vi.fn(() => Promise.resolve({ classNames: ["Foo"] })),
     qualifyPath: vi.fn(({ path }) => Promise.resolve({ qualifiedPath: path })),

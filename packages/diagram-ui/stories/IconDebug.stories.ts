@@ -42,12 +42,7 @@
 
 import type { Meta, StoryObj } from "@storybook/web-components";
 import { html, type TemplateResult } from "lit";
-import {
-  Color3,
-  DynamicTexture,
-  Texture,
-  type Scene,
-} from "@babylonjs/core";
+import { Color3, DynamicTexture, Texture, type Scene } from "@babylonjs/core";
 
 import "../src/scene/scene.component.js";
 import "../src/axis/grid-axis.component.js";
@@ -94,7 +89,9 @@ function dynamicTextureFactory(scene: Scene): Texture {
   return dt;
 }
 
-function pngDataUrlFactory(noMipmap: boolean): (scene: Scene) => Promise<Texture> {
+function pngDataUrlFactory(
+  noMipmap: boolean,
+): (scene: Scene) => Promise<Texture> {
   return (scene) => {
     const size = 256;
     const canvas = document.createElement("canvas");
@@ -121,7 +118,9 @@ const DEBUG_SVG =
   `<text x="50" y="58" font-family="sans-serif" font-size="20" text-anchor="middle" fill="#bf360c">SVG</text>` +
   `</svg>`;
 
-function svgDataUrlFactory(noMipmap: boolean): (scene: Scene) => Promise<Texture> {
+function svgDataUrlFactory(
+  noMipmap: boolean,
+): (scene: Scene) => Promise<Texture> {
   return (scene) => {
     const base64 = btoa(DEBUG_SVG);
     const dataUrl = `data:image/svg+xml;base64,${base64}`;
@@ -148,12 +147,10 @@ function loadTexture(
       scene,
       noMipmap,
       true /* invertY */,
-      noMipmap
-        ? Texture.BILINEAR_SAMPLINGMODE
-        : Texture.TRILINEAR_SAMPLINGMODE,
+      noMipmap ? Texture.BILINEAR_SAMPLINGMODE : Texture.TRILINEAR_SAMPLINGMODE,
       () => {
         tex.hasAlpha = true;
-        // eslint-disable-next-line no-console
+
         console.debug("[icon-debug] texture loaded", {
           size: tex.getSize(),
           hasAlpha: tex.hasAlpha,
@@ -162,7 +159,6 @@ function loadTexture(
         resolve(tex);
       },
       (message, exception) => {
-        // eslint-disable-next-line no-console
         console.error("[icon-debug] texture failed", message, exception);
         reject(new Error(message ?? "load error"));
       },

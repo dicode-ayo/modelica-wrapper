@@ -26,12 +26,24 @@ import {
 
 /** Live OMC factors (from the wrapper docs) keyed `s1 s2`. */
 const CONVERT: Record<string, ConvertUnitsOutput> = {
-  "rad deg": { unitsCompatible: true, scaleFactor: 0.017453292519943295, offset: 0 },
+  "rad deg": {
+    unitsCompatible: true,
+    scaleFactor: 0.017453292519943295,
+    offset: 0,
+  },
   // gradians — a valid displayUnit for rad that OMC does NOT list among the
   // derived units, so it only reaches the dropdown via the extras path.
-  "rad grad": { unitsCompatible: true, scaleFactor: 0.015707963267948967, offset: 0 },
+  "rad grad": {
+    unitsCompatible: true,
+    scaleFactor: 0.015707963267948967,
+    offset: 0,
+  },
   "K degC": { unitsCompatible: true, scaleFactor: 1, offset: 273.15 },
-  "K degF": { unitsCompatible: true, scaleFactor: 0.5555555555555556, offset: 255.3722222222222 },
+  "K degF": {
+    unitsCompatible: true,
+    scaleFactor: 0.5555555555555556,
+    offset: 255.3722222222222,
+  },
   "m kg": { unitsCompatible: false, scaleFactor: 1, offset: 0 },
 };
 
@@ -53,18 +65,16 @@ function makeClient(): {
     derivedCalls.push(baseUnit);
     return { derivedUnits: DERIVED[baseUnit] ?? [] };
   });
-  const convertUnits = vi.fn(
-    async ({ s1, s2 }: { s1: string; s2: string }) => {
-      convertCalls.push(`${s1} ${s2}`);
-      return (
-        CONVERT[`${s1} ${s2}`] ?? {
-          unitsCompatible: false,
-          scaleFactor: 1,
-          offset: 0,
-        }
-      );
-    },
-  );
+  const convertUnits = vi.fn(async ({ s1, s2 }: { s1: string; s2: string }) => {
+    convertCalls.push(`${s1} ${s2}`);
+    return (
+      CONVERT[`${s1} ${s2}`] ?? {
+        unitsCompatible: false,
+        scaleFactor: 1,
+        offset: 0,
+      }
+    );
+  });
   const client = { getDerivedUnits, convertUnits } as unknown as OmcClient;
   return { client, derivedCalls, convertCalls };
 }
@@ -74,7 +84,9 @@ describe("SessionUnitCache.buildUnitTable", () => {
     const { client } = makeClient();
     const cache = new SessionUnitCache(client);
     const table = await cache.buildUnitTable(["kg.m2"]);
-    expect(table.get("kg.m2")).toEqual([{ unit: "kg.m2", scaleFactor: 1, offset: 0 }]);
+    expect(table.get("kg.m2")).toEqual([
+      { unit: "kg.m2", scaleFactor: 1, offset: 0 },
+    ]);
   });
 
   it("builds [unit, ...derived] with conversion factors (rad → deg), identity first", async () => {
@@ -95,7 +107,11 @@ describe("SessionUnitCache.buildUnitTable", () => {
     expect(table.get("K")).toEqual([
       { unit: "K", scaleFactor: 1, offset: 0 },
       { unit: "degC", scaleFactor: 1, offset: 273.15 },
-      { unit: "degF", scaleFactor: 0.5555555555555556, offset: 255.3722222222222 },
+      {
+        unit: "degF",
+        scaleFactor: 0.5555555555555556,
+        offset: 255.3722222222222,
+      },
     ]);
   });
 
@@ -172,7 +188,9 @@ describe("SessionUnitCache.buildUnitTable", () => {
     const client = { getDerivedUnits, convertUnits } as unknown as OmcClient;
     const cache = new SessionUnitCache(client);
     const table = await cache.buildUnitTable(["rad"]);
-    expect(table.get("rad")).toEqual([{ unit: "rad", scaleFactor: 1, offset: 0 }]);
+    expect(table.get("rad")).toEqual([
+      { unit: "rad", scaleFactor: 1, offset: 0 },
+    ]);
   });
 });
 

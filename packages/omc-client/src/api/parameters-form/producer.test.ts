@@ -61,7 +61,12 @@ function fieldByName(
 describe("produceParameterModel — class params", () => {
   it("emits no fields when there are no parameter components", () => {
     const mi = instance([
-      { $kind: "component", name: "x", type: "Real", prefixes: { variability: "" } },
+      {
+        $kind: "component",
+        name: "x",
+        type: "Real",
+        prefixes: { variability: "" },
+      },
     ]);
     const model = produceParameterModel(mi);
     expect(model.fields).toEqual([]);
@@ -287,24 +292,27 @@ describe("produceParameterModel — class params", () => {
 
 describe("produceParameterModel — extends chain + inheritedFrom", () => {
   it("surfaces a parameter declared on an ancestor via extends, tagged with the direct base", () => {
-    const mi = instance([
-      {
-        $kind: "extends",
-        baseClass: {
-          name: "Test.Base",
-          restriction: "model",
-          elements: [
-            {
-              $kind: "component",
-              name: "k",
-              type: "Real",
-              value: { binding: 2 },
-              prefixes: { variability: "parameter" },
-            },
-          ],
+    const mi = instance(
+      [
+        {
+          $kind: "extends",
+          baseClass: {
+            name: "Test.Base",
+            restriction: "model",
+            elements: [
+              {
+                $kind: "component",
+                name: "k",
+                type: "Real",
+                value: { binding: 2 },
+                prefixes: { variability: "parameter" },
+              },
+            ],
+          },
         },
-      },
-    ], "Test.Derived");
+      ],
+      "Test.Derived",
+    );
     const f = fieldByName(produceParameterModel(mi), "k");
     expect(f.kind).toBe("number");
     expect(f.value).toBe(2);
@@ -312,33 +320,36 @@ describe("produceParameterModel — extends chain + inheritedFrom", () => {
   });
 
   it("routes a 3-level inherited param to the host's DIRECT extends base (issue #76 item 3)", () => {
-    const mi = instance([
-      {
-        $kind: "extends",
-        baseClass: {
-          name: "Test.B",
-          restriction: "model",
-          elements: [
-            {
-              $kind: "extends",
-              baseClass: {
-                name: "Test.A",
-                restriction: "model",
-                elements: [
-                  {
-                    $kind: "component",
-                    name: "k",
-                    type: "Real",
-                    value: { binding: 7 },
-                    prefixes: { variability: "parameter" },
-                  },
-                ],
+    const mi = instance(
+      [
+        {
+          $kind: "extends",
+          baseClass: {
+            name: "Test.B",
+            restriction: "model",
+            elements: [
+              {
+                $kind: "extends",
+                baseClass: {
+                  name: "Test.A",
+                  restriction: "model",
+                  elements: [
+                    {
+                      $kind: "component",
+                      name: "k",
+                      type: "Real",
+                      value: { binding: 7 },
+                      prefixes: { variability: "parameter" },
+                    },
+                  ],
+                },
               },
-            },
-          ],
+            ],
+          },
         },
-      },
-    ], "Test.C");
+      ],
+      "Test.C",
+    );
     const f = fieldByName(produceParameterModel(mi), "k");
     expect(f.value).toBe(7);
     // The DIRECT clause on C is B — not the deep declaring A.
@@ -361,33 +372,36 @@ describe("produceParameterModel — extends chain + inheritedFrom", () => {
   });
 
   it("when the host overrides an inherited param, the surviving field is the host's own", () => {
-    const mi = instance([
-      {
-        $kind: "extends",
-        baseClass: {
-          name: "Test.Base",
-          restriction: "model",
-          elements: [
-            {
-              $kind: "component",
-              name: "k",
-              type: "Real",
-              value: { binding: 1 },
-              prefixes: { variability: "parameter" },
-              comment: "from Base",
-            },
-          ],
+    const mi = instance(
+      [
+        {
+          $kind: "extends",
+          baseClass: {
+            name: "Test.Base",
+            restriction: "model",
+            elements: [
+              {
+                $kind: "component",
+                name: "k",
+                type: "Real",
+                value: { binding: 1 },
+                prefixes: { variability: "parameter" },
+                comment: "from Base",
+              },
+            ],
+          },
         },
-      },
-      {
-        $kind: "component",
-        name: "k",
-        type: "Real",
-        value: { binding: 7 },
-        prefixes: { variability: "parameter" },
-        comment: "from Derived",
-      },
-    ], "Test.Derived");
+        {
+          $kind: "component",
+          name: "k",
+          type: "Real",
+          value: { binding: 7 },
+          prefixes: { variability: "parameter" },
+          comment: "from Derived",
+        },
+      ],
+      "Test.Derived",
+    );
     const model = produceParameterModel(mi);
     // Exactly one `k` field (override in place, not duplicated).
     expect(model.fields.filter((f) => f.name === "k")).toHaveLength(1);
@@ -400,45 +414,48 @@ describe("produceParameterModel — extends chain + inheritedFrom", () => {
   it("preserves first-seen order across the chain when overriding", () => {
     // Base declares k then j; Derived overrides k and adds m. The override
     // keeps k in its original (first) position, m appended last.
-    const mi = instance([
-      {
-        $kind: "extends",
-        baseClass: {
-          name: "Test.Base",
-          restriction: "model",
-          elements: [
-            {
-              $kind: "component",
-              name: "k",
-              type: "Real",
-              value: { binding: 1 },
-              prefixes: { variability: "parameter" },
-            },
-            {
-              $kind: "component",
-              name: "j",
-              type: "Real",
-              value: { binding: 2 },
-              prefixes: { variability: "parameter" },
-            },
-          ],
+    const mi = instance(
+      [
+        {
+          $kind: "extends",
+          baseClass: {
+            name: "Test.Base",
+            restriction: "model",
+            elements: [
+              {
+                $kind: "component",
+                name: "k",
+                type: "Real",
+                value: { binding: 1 },
+                prefixes: { variability: "parameter" },
+              },
+              {
+                $kind: "component",
+                name: "j",
+                type: "Real",
+                value: { binding: 2 },
+                prefixes: { variability: "parameter" },
+              },
+            ],
+          },
         },
-      },
-      {
-        $kind: "component",
-        name: "k",
-        type: "Real",
-        value: { binding: 9 },
-        prefixes: { variability: "parameter" },
-      },
-      {
-        $kind: "component",
-        name: "m",
-        type: "Real",
-        value: { binding: 3 },
-        prefixes: { variability: "parameter" },
-      },
-    ], "Test.Derived");
+        {
+          $kind: "component",
+          name: "k",
+          type: "Real",
+          value: { binding: 9 },
+          prefixes: { variability: "parameter" },
+        },
+        {
+          $kind: "component",
+          name: "m",
+          type: "Real",
+          value: { binding: 3 },
+          prefixes: { variability: "parameter" },
+        },
+      ],
+      "Test.Derived",
+    );
     const model = produceParameterModel(mi);
     expect(model.fields.map((f) => f.name)).toEqual(["k", "j", "m"]);
     expect(fieldByName(model, "k").value).toBe(9);
@@ -555,7 +572,11 @@ describe("produceParameterModel — units", () => {
             name: "Modelica.Units.SI.MomentOfInertia",
             restriction: "type",
             elements: [
-              { $kind: "extends", baseClass: "Real", modifiers: { unit: "kg.m2" } },
+              {
+                $kind: "extends",
+                baseClass: "Real",
+                modifiers: { unit: "kg.m2" },
+              },
             ],
           },
         },
@@ -618,7 +639,9 @@ describe("produceParameterModel — units", () => {
         prefixes: { variability: "parameter" },
       },
     ]);
-    expect(fieldByName(produceParameterModel(mi), "phi").unitOptions).toEqual([]);
+    expect(fieldByName(produceParameterModel(mi), "phi").unitOptions).toEqual(
+      [],
+    );
   });
 });
 

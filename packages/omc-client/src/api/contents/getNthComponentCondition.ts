@@ -37,7 +37,9 @@ export type GetNthComponentConditionInput = z.input<
 export const GetNthComponentConditionOutputSchema = z.object({
   result: z
     .string()
-    .describe("Conditional-declaration expression of the n-th component; empty if unconditional. Field name `result` is OMC verbatim."),
+    .describe(
+      "Conditional-declaration expression of the n-th component; empty if unconditional. Field name `result` is OMC verbatim.",
+    ),
 });
 export type GetNthComponentConditionOutput = z.infer<
   typeof GetNthComponentConditionOutputSchema

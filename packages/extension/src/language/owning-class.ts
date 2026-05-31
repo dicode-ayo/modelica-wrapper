@@ -91,7 +91,12 @@ export async function resolveOwningClass(
 
   // Plain file: only the confirmed leaf. package.mo: confirmed-or-dirname,
   // since the dirname is the class's name and parseFile can return empty.
-  const leaf = confirmedLeaf.length > 0 ? confirmedLeaf : (isPackageFile ? candidateLeaf : "");
+  const leaf =
+    confirmedLeaf.length > 0
+      ? confirmedLeaf
+      : isPackageFile
+        ? candidateLeaf
+        : "";
   const segments = leaf.length > 0 ? [...prefix, leaf] : [...prefix];
 
   const qualifiedName = segments.filter((s) => s.length > 0).join(".");
@@ -106,10 +111,7 @@ export async function resolveOwningClass(
  * Probes the filesystem root too; `path.basename('/')` is `""` which the
  * caller's filter drops.
  */
-async function packagePrefix(
-  dir: string,
-  probe: FileProbe,
-): Promise<string[]> {
+async function packagePrefix(dir: string, probe: FileProbe): Promise<string[]> {
   const segmentsInnermostFirst: string[] = [];
   let current = dir;
   while (current) {

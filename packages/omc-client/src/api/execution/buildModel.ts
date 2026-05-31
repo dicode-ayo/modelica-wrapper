@@ -17,7 +17,11 @@ export type BuildModelInput = z.input<typeof BuildModelInputSchema>;
 
 export const BuildModelOutputSchema = z.object({
   /** Two-element string array: [executableName, initFileName]. */
-  artifacts: z.array(z.string()).describe("Two-element string array: `[executableName, initFileName]` reported by OMC."),
+  artifacts: z
+    .array(z.string())
+    .describe(
+      "Two-element string array: `[executableName, initFileName]` reported by OMC.",
+    ),
 });
 export type BuildModelOutput = z.infer<typeof BuildModelOutputSchema>;
 

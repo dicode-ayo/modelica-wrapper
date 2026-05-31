@@ -80,7 +80,10 @@ describe("SOLVER_METHODS", () => {
 
 describe("produceSimulationModel", () => {
   it("sets className and leaves component unset", () => {
-    const model = produceSimulationModel({ className: "My.Model", options: OPTIONS });
+    const model = produceSimulationModel({
+      className: "My.Model",
+      options: OPTIONS,
+    });
     expect(model.className).toBe("My.Model");
     expect(model.component).toBeUndefined();
   });
@@ -111,7 +114,9 @@ describe("produceSimulationModel", () => {
   it("seeds non-experiment fields from schema defaults", () => {
     const model = produceSimulationModel({ className: "M", options: OPTIONS });
     expect(fieldByName(model, "method").value).toBe(DEFAULT_SOLVER_METHOD);
-    expect(fieldByName(model, "outputFormat").value).toBe(DEFAULT_OUTPUT_FORMAT);
+    expect(fieldByName(model, "outputFormat").value).toBe(
+      DEFAULT_OUTPUT_FORMAT,
+    );
     expect(fieldByName(model, "variableFilter").value).toBe(".*");
   });
 
@@ -157,7 +162,9 @@ describe("produceSimulationModel", () => {
 
   it("sources method choices from SOLVER_METHODS", () => {
     const model = produceSimulationModel({ className: "M", options: OPTIONS });
-    expect(fieldByName(model, "method").enumChoices).toEqual([...SOLVER_METHODS]);
+    expect(fieldByName(model, "method").enumChoices).toEqual([
+      ...SOLVER_METHODS,
+    ]);
   });
 
   it("sources outputFormat choices from OUTPUT_FORMATS", () => {
@@ -169,7 +176,8 @@ describe("produceSimulationModel", () => {
 
   it("buckets fields into General / Solver / Output groups", () => {
     const model = produceSimulationModel({ className: "M", options: OPTIONS });
-    const group = (name: string): string => fieldByName(model, name).dialog.group;
+    const group = (name: string): string =>
+      fieldByName(model, name).dialog.group;
     expect(group("startTime")).toBe("General");
     expect(group("stopTime")).toBe("General");
     expect(group("interval")).toBe("General");
@@ -191,7 +199,9 @@ describe("produceSimulationModel", () => {
     expect(fieldByName(model, "stopTime").defaultValue).toBe(1);
     expect(fieldByName(model, "tolerance").defaultValue).toBe(1e-6);
     expect(fieldByName(model, "numberOfIntervals").defaultValue).toBe(500);
-    expect(fieldByName(model, "method").defaultValue).toBe(DEFAULT_SOLVER_METHOD);
+    expect(fieldByName(model, "method").defaultValue).toBe(
+      DEFAULT_SOLVER_METHOD,
+    );
   });
 
   it("uses field names that match the submit mapping keys", () => {

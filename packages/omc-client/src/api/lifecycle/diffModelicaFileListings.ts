@@ -14,7 +14,13 @@ import { expectString, parse } from "../../parse.js";
 export const DiffModelicaFileListingsInputSchema = z.object({
   before: z.string().describe("Modelica source listing before the change."),
   after: z.string().describe("Modelica source listing after the change."),
-  kind: z.enum(["plain", "color"]).optional().default("plain").describe('Output format: "plain" yields the final text (deletions removed); "color" yields terminal color codes.'),
+  kind: z
+    .enum(["plain", "color"])
+    .optional()
+    .default("plain")
+    .describe(
+      'Output format: "plain" yields the final text (deletions removed); "color" yields terminal color codes.',
+    ),
 });
 export type DiffModelicaFileListingsInput = z.input<
   typeof DiffModelicaFileListingsInputSchema

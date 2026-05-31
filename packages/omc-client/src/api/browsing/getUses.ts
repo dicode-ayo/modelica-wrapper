@@ -25,7 +25,11 @@ export const GetUsesInputSchema = TypeNameInput;
 export type GetUsesInput = z.input<typeof GetUsesInputSchema>;
 
 export const GetUsesOutputSchema = z.object({
-  uses: z.array(z.tuple([z.string(), z.string()])).describe("List of (libraryName, version) pairs declared in the package's `uses` annotation."),
+  uses: z
+    .array(z.tuple([z.string(), z.string()]))
+    .describe(
+      "List of (libraryName, version) pairs declared in the package's `uses` annotation.",
+    ),
 });
 export type GetUsesOutput = z.infer<typeof GetUsesOutputSchema>;
 

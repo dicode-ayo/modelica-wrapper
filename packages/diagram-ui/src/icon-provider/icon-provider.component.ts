@@ -2,10 +2,7 @@ import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { ContextProvider, consume } from "@lit/context";
 import type { Texture } from "@babylonjs/core";
-import {
-  renderIconLayersToSvg,
-  type RenderOptions,
-} from "@dicode/diagram-svg";
+import { renderIconLayersToSvg, type RenderOptions } from "@dicode/diagram-svg";
 import type { CoordinateSystem, IconLayer } from "@dicode/omc-client";
 
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
@@ -53,7 +50,6 @@ function buildRenderSvg(
     return renderIconLayersToSvg(layers, opts);
   };
 }
-
 
 /**
  * `<om-icon-provider>` — host element that provides an

@@ -56,7 +56,10 @@ function normaliseRestriction(raw: string): LibraryClassRestriction {
 }
 
 export class LibraryBrowserSource {
-  private readonly restrictionCache = new Map<string, LibraryClassRestriction>();
+  private readonly restrictionCache = new Map<
+    string,
+    LibraryClassRestriction
+  >();
 
   constructor(private readonly client: OmcClient) {}
 

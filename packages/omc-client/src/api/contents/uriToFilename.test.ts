@@ -24,7 +24,9 @@ function fakeCtx(response: string): {
 
 describe("uriToFilename parsing", () => {
   it("decodes a resolved absolute path", async () => {
-    const { ctx } = fakeCtx('"/home/u/.openmodelica/libraries/Modelica/package.mo"');
+    const { ctx } = fakeCtx(
+      '"/home/u/.openmodelica/libraries/Modelica/package.mo"',
+    );
     const out = await uriToFilename(ctx, {
       uri: "modelica://Modelica/package.mo",
     });

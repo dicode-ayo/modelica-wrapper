@@ -22,13 +22,23 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectStringList, parse } from "../../parse.js";
 
 export const SearchClassNamesInputSchema = z.object({
-  searchText: z.string().describe("Substring to look for in loaded class names."),
-  findInText: z.boolean().optional().default(false).describe("Also match classes whose source code text (not just the name) contains `searchText`."),
+  searchText: z
+    .string()
+    .describe("Substring to look for in loaded class names."),
+  findInText: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe(
+      "Also match classes whose source code text (not just the name) contains `searchText`.",
+    ),
 });
 export type SearchClassNamesInput = z.input<typeof SearchClassNamesInputSchema>;
 
 export const SearchClassNamesOutputSchema = z.object({
-  classNames: z.array(z.string()).describe("Fully qualified class names matching the search."),
+  classNames: z
+    .array(z.string())
+    .describe("Fully qualified class names matching the search."),
 });
 export type SearchClassNamesOutput = z.infer<
   typeof SearchClassNamesOutputSchema

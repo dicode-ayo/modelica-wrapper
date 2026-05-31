@@ -72,8 +72,7 @@ export class OmActionPanel extends LitElement {
           --vscode-editorWidget-background,
           rgba(255, 255, 255, 0.92)
         );
-        border: 1px solid
-          var(--vscode-editorWidget-border, rgba(0, 0, 0, 0.15));
+        border: 1px solid var(--vscode-editorWidget-border, rgba(0, 0, 0, 0.15));
         border-radius: var(--om-radius-md);
         /* No backdrop-filter: see parameter-panel for the same reasoning —
          * blurring over a 60fps canvas pegs the GPU compositor. */
@@ -126,7 +125,8 @@ export class OmActionPanel extends LitElement {
             ?disabled=${this.disabled}
             @click=${() => this.fire("om-action-undo")}
             title="Undo last diagram edit (diagram-local)"
-          >Undo</wa-button>`}
+            >Undo</wa-button
+          >`}
       ${this.hideCheck
         ? nothing
         : html`<wa-button
@@ -136,7 +136,8 @@ export class OmActionPanel extends LitElement {
             ?disabled=${this.disabled}
             @click=${() => this.fire("om-action-check")}
             title="Check model (semantic check)"
-          >Check</wa-button>`}
+            >Check</wa-button
+          >`}
       ${this.hideSimulate
         ? nothing
         : html`<wa-button
@@ -146,7 +147,8 @@ export class OmActionPanel extends LitElement {
             ?disabled=${this.disabled}
             @click=${() => this.fire("om-action-simulate")}
             title="Simulate model"
-          >Simulate</wa-button>`}
+            >Simulate</wa-button
+          >`}
       ${this.hideParameters
         ? nothing
         : html`<wa-button
@@ -156,7 +158,8 @@ export class OmActionPanel extends LitElement {
             ?disabled=${this.disabled}
             @click=${() => this.fire("om-action-parameters")}
             title="Edit parameters"
-          >Parameters</wa-button>`}
+            >Parameters</wa-button
+          >`}
     `;
   }
 

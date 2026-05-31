@@ -74,8 +74,12 @@ export const log = {
   },
   error(topic: string, message: string, err: unknown): void {
     const detail =
-      err instanceof Error ? `${err.message}\n${err.stack ?? ""}` : safeStringify(err);
-    ensureChannel().appendLine(`${ts()} [${topic}] ERROR ${message}\n${detail}`);
+      err instanceof Error
+        ? `${err.message}\n${err.stack ?? ""}`
+        : safeStringify(err);
+    ensureChannel().appendLine(
+      `${ts()} [${topic}] ERROR ${message}\n${detail}`,
+    );
   },
   /** Reveal the output panel so the user can see logs without hunting for it. */
   show(): void {

@@ -9,7 +9,10 @@ import { z } from "zod";
 import type { CallContext } from "../../_shared/callContext.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
-import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
+import {
+  parseMutationSuccess,
+  parseOutput,
+} from "../../_shared/parseOutput.js";
 
 export const DeleteClassInputSchema = TypeNameInput;
 export type DeleteClassInput = z.input<typeof DeleteClassInputSchema>;

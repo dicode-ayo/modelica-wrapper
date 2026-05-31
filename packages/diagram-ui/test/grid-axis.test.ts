@@ -75,7 +75,9 @@ describe("<om-grid-axis>", () => {
     const meshes = grid.gridMeshes;
     expect(meshes).not.toBeNull();
     expect(meshes!.minor.parent).toBeDefined();
-    expect(meshes!.minor.parent?.parent).toBe(scene.sceneContextValue!.worldRoot);
+    expect(meshes!.minor.parent?.parent).toBe(
+      scene.sceneContextValue!.worldRoot,
+    );
   });
 
   it("does not rebuild the grid when an equivalent coordinateSystem is reassigned", async () => {

@@ -61,7 +61,9 @@ describe("parseResultViewDoc", () => {
   });
 
   it("round-trips a full document", () => {
-    expect(parseResultViewDoc(serializeResultViewDoc(FULL_DOC))).toEqual(FULL_DOC);
+    expect(parseResultViewDoc(serializeResultViewDoc(FULL_DOC))).toEqual(
+      FULL_DOC,
+    );
   });
 
   it("drops malformed result entries but keeps valid ones", () => {
@@ -84,13 +86,24 @@ describe("parseResultViewDoc", () => {
       cards: [{ title: "Untyped", traces: [{ result: "r1", variable: "x" }] }],
     });
     expect(parseResultViewDoc(text, () => "c1").cards).toEqual([
-      { kind: "plot", id: "c1", title: "Untyped", traces: [{ result: "r1", variable: "x" }] },
+      {
+        kind: "plot",
+        id: "c1",
+        title: "Untyped",
+        traces: [{ result: "r1", variable: "x" }],
+      },
     ]);
   });
 
   it("accepts a `plots` array as an alias for `cards`", () => {
-    const text = JSON.stringify({ version: 1, results: [], plots: [{ kind: "plot", id: "c1", title: "Aliased" }] });
-    expect(parseResultViewDoc(text).cards).toEqual([{ kind: "plot", id: "c1", title: "Aliased" }]);
+    const text = JSON.stringify({
+      version: 1,
+      results: [],
+      plots: [{ kind: "plot", id: "c1", title: "Aliased" }],
+    });
+    expect(parseResultViewDoc(text).cards).toEqual([
+      { kind: "plot", id: "c1", title: "Aliased" },
+    ]);
   });
 
   it("backfills a missing card id and preserves an existing one", () => {
@@ -99,19 +112,28 @@ describe("parseResultViewDoc", () => {
       results: [],
       cards: [{ kind: "plot", id: "keep" }, { kind: "plot" }],
     });
-    expect(parseResultViewDoc(text, () => "minted").cards.map((c) => c.id)).toEqual([
-      "keep",
-      "minted",
-    ]);
+    expect(
+      parseResultViewDoc(text, () => "minted").cards.map((c) => c.id),
+    ).toEqual(["keep", "minted"]);
   });
 
   it("normalises version to 1 even when absent or different", () => {
-    expect(parseResultViewDoc(JSON.stringify({ results: [], cards: [] })).version).toBe(1);
-    expect(parseResultViewDoc(JSON.stringify({ version: 99, results: [], cards: [] })).version).toBe(1);
+    expect(
+      parseResultViewDoc(JSON.stringify({ results: [], cards: [] })).version,
+    ).toBe(1);
+    expect(
+      parseResultViewDoc(
+        JSON.stringify({ version: 99, results: [], cards: [] }),
+      ).version,
+    ).toBe(1);
   });
 
   it("drops a card with an unknown extra field (strict)", () => {
-    const text = JSON.stringify({ version: 1, results: [], cards: [{ kind: "plot", bogus: true }] });
+    const text = JSON.stringify({
+      version: 1,
+      results: [],
+      cards: [{ kind: "plot", bogus: true }],
+    });
     expect(parseResultViewDoc(text).cards).toEqual([]);
   });
 });
@@ -128,7 +150,16 @@ describe("serializeResultViewDoc", () => {
   it("drops undefined fields but keeps null commit/dirty", () => {
     const doc: ResultViewDoc = {
       version: 1,
-      results: [{ id: "r", label: "r", path: "r.mat", source: "import", commit: null, dirty: null }],
+      results: [
+        {
+          id: "r",
+          label: "r",
+          path: "r.mat",
+          source: "import",
+          commit: null,
+          dirty: null,
+        },
+      ],
       cards: [],
     };
     const out = serializeResultViewDoc(doc);
@@ -149,11 +180,23 @@ describe("serializeResultViewDoc", () => {
   it("sorts parameter keys so the output is insertion-order independent", () => {
     const mk = (params: Record<string, string>): ResultViewDoc => ({
       version: 1,
-      results: [{ id: "r", label: "r", path: "r.mat", source: "simulate", parameters: params }],
+      results: [
+        {
+          id: "r",
+          label: "r",
+          path: "r.mat",
+          source: "simulate",
+          parameters: params,
+        },
+      ],
       cards: [],
     });
-    const a = serializeResultViewDoc(mk({ "motor.R": "1", "motor.L": "2", a: "3" }));
-    const b = serializeResultViewDoc(mk({ a: "3", "motor.L": "2", "motor.R": "1" }));
+    const a = serializeResultViewDoc(
+      mk({ "motor.R": "1", "motor.L": "2", a: "3" }),
+    );
+    const b = serializeResultViewDoc(
+      mk({ a: "3", "motor.L": "2", "motor.R": "1" }),
+    );
     expect(a).toBe(b);
     expect(a.indexOf('"a"')).toBeLessThan(a.indexOf('"motor.L"'));
     expect(a.indexOf('"motor.L"')).toBeLessThan(a.indexOf('"motor.R"'));
@@ -227,7 +270,10 @@ describe("deleteCard", () => {
   });
 
   it("is a no-op for an unknown id", () => {
-    expect(deleteCard(base, "ghost").cards.map((c) => c.id)).toEqual(["a", "b"]);
+    expect(deleteCard(base, "ghost").cards.map((c) => c.id)).toEqual([
+      "a",
+      "b",
+    ]);
   });
 });
 

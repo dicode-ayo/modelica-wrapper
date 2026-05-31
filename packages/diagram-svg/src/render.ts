@@ -317,9 +317,7 @@ function computeViewBox(extent: Extent): string {
   return `${minX} ${-maxY} ${width} ${height}`;
 }
 
-function renderSizeAttributes(
-  size: RenderOptions["size"],
-): string {
+function renderSizeAttributes(size: RenderOptions["size"]): string {
   if (size === undefined) return "";
   if (typeof size === "number") return ` width="${size}" height="${size}"`;
   return ` width="${size.width}" height="${size.height}"`;
@@ -422,10 +420,7 @@ function renderShapeBody(shape: Shape, ctx: RenderContext): string {
  * `0.25` icon units is too thin on most displays — see
  * `RenderOptions.lineThicknessScale` for why. Defaults to `2× spec`.
  */
-function scaledThickness(
-  raw: number | undefined,
-  ctx: RenderContext,
-): number {
+function scaledThickness(raw: number | undefined, ctx: RenderContext): number {
   const base = raw ?? SPEC_DEFAULT_THICKNESS;
   return base * ctx.lineThicknessScale;
 }
@@ -482,7 +477,8 @@ function renderRectangle(s: RectangleShape, ctx: RenderContext): string {
   const thickness = scaledThickness(s.lineThickness, ctx);
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
-  const radiusAttr = s.radius && s.radius > 0 ? ` rx="${s.radius}" ry="${s.radius}"` : "";
+  const radiusAttr =
+    s.radius && s.radius > 0 ? ` rx="${s.radius}" ry="${s.radius}"` : "";
   return `<rect x="${x}" y="${y}" width="${width}" height="${height}"${radiusAttr} fill="${fill}" stroke="${stroke}" stroke-width="${thickness}"${dashAttr}/>`;
 }
 
@@ -535,9 +531,9 @@ function renderText(s: TextShape): string {
   // requires measuring glyph metrics, which we can't do at SVG-string time
   // (no DOM). Fall back to 12 user units for v1 — TODO: revisit when we
   // have a layout pass with measurement hooks.
-  const fontSize =
-    s.fontSize && s.fontSize > 0 ? s.fontSize : 12;
-  const fontFamily = s.fontName && s.fontName.length > 0 ? s.fontName : "sans-serif";
+  const fontSize = s.fontSize && s.fontSize > 0 ? s.fontSize : 12;
+  const fontFamily =
+    s.fontName && s.fontName.length > 0 ? s.fontName : "sans-serif";
   const fill = colorToCss(s.textColor, "rgb(0,0,0)");
 
   const body = expressionToString(s.textString);
@@ -593,7 +589,9 @@ function resolveBitmapHref(s: BitmapShape): string | undefined {
 
 // ---------- shared helpers ----------
 
-function pointsToAttr(points: ReadonlyArray<readonly [number, number]>): string {
+function pointsToAttr(
+  points: ReadonlyArray<readonly [number, number]>,
+): string {
   return points.map(([x, y]) => `${x},${y}`).join(" ");
 }
 

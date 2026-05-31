@@ -48,7 +48,9 @@ export type DeltaSimulationResultsInput = z.input<
 export const DeltaSimulationResultsOutputSchema = z.object({
   result: z
     .number()
-    .describe("Aggregated error scalar under the chosen norm; 0.0 means the files are bit-equivalent."),
+    .describe(
+      "Aggregated error scalar under the chosen norm; 0.0 means the files are bit-equivalent.",
+    ),
 });
 export type DeltaSimulationResultsOutput = z.infer<
   typeof DeltaSimulationResultsOutputSchema

@@ -16,9 +16,9 @@ describe("interpolateTemplate", () => {
   });
 
   it("substitutes %<paramName> from the parameters map", () => {
-    expect(
-      interpolateTemplate("d=%d", { parameters: { d: "0.5" } }),
-    ).toBe("d=0.5");
+    expect(interpolateTemplate("d=%d", { parameters: { d: "0.5" } })).toBe(
+      "d=0.5",
+    );
   });
 
   it("handles the SpringDamper template with mixed tokens", () => {
@@ -54,8 +54,8 @@ describe("interpolateTemplate", () => {
   });
 
   it("substitutes multiple occurrences of the same token", () => {
-    expect(
-      interpolateTemplate("%name / %name", { name: "twin" }),
-    ).toBe("twin / twin");
+    expect(interpolateTemplate("%name / %name", { name: "twin" })).toBe(
+      "twin / twin",
+    );
   });
 });

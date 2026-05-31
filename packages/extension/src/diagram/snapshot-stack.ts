@@ -31,9 +31,7 @@ export class SnapshotStack {
     private readonly capacity: number = DEFAULT_SNAPSHOT_STACK_CAPACITY,
   ) {
     if (capacity < 1) {
-      throw new Error(
-        `SnapshotStack capacity must be >= 1 (got ${capacity})`,
-      );
+      throw new Error(`SnapshotStack capacity must be >= 1 (got ${capacity})`);
     }
   }
 

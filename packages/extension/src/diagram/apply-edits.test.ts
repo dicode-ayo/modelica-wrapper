@@ -21,9 +21,10 @@ type InvokeResult = { success: boolean; diagnostic?: string };
  * Mock client whose `invoke` returns the queued result per call (FIFO).
  * `lastCall` is a static label so the hook has something to read.
  */
-function mockClient(
-  results: InvokeResult[],
-): { client: OmcClient; invoke: ReturnType<typeof vi.fn> } {
+function mockClient(results: InvokeResult[]): {
+  client: OmcClient;
+  invoke: ReturnType<typeof vi.fn>;
+} {
   let i = 0;
   const invoke = vi.fn(async () => results[i++] ?? { success: true });
   const client = {

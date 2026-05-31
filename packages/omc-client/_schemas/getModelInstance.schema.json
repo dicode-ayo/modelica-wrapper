@@ -555,7 +555,13 @@
           "description": "Whether the source file is readable or not"
         }
       },
-      "required": ["filename", "lineStart", "columnStart", "lineEnd", "columnEnd"]
+      "required": [
+        "filename",
+        "lineStart",
+        "columnStart",
+        "lineEnd",
+        "columnEnd"
+      ]
     }
   }
 }

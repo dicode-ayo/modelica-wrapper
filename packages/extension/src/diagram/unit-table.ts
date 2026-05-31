@@ -115,7 +115,9 @@ export class SessionUnitCache {
    * options are dropped; the list always keeps at least the identity option so
    * the form renders a suffix. Mirrors OMEdit `ElementProperties.cpp:242-266`.
    */
-  private async optionsFor(baseUnit: string): Promise<ReadonlyArray<UnitOption>> {
+  private async optionsFor(
+    baseUnit: string,
+  ): Promise<ReadonlyArray<UnitOption>> {
     const cached = this.optionList.get(baseUnit);
     if (cached !== undefined) return cached;
 
@@ -138,9 +140,14 @@ export class SessionUnitCache {
       }
       const conv = await this.convertUnits(baseUnit, optUnit);
       if (!conv || !conv.unitsCompatible) continue;
-      if (!Number.isFinite(conv.scaleFactor) || conv.scaleFactor === 0) continue;
+      if (!Number.isFinite(conv.scaleFactor) || conv.scaleFactor === 0)
+        continue;
       if (!Number.isFinite(conv.offset)) continue;
-      out.push({ unit: optUnit, scaleFactor: conv.scaleFactor, offset: conv.offset });
+      out.push({
+        unit: optUnit,
+        scaleFactor: conv.scaleFactor,
+        offset: conv.offset,
+      });
     }
     const result: ReadonlyArray<UnitOption> =
       out.length > 0 ? out : [{ unit: baseUnit, scaleFactor: 1, offset: 0 }];
@@ -176,9 +183,14 @@ export class SessionUnitCache {
       have.add(u);
       const conv = await this.convertUnits(baseUnit, u);
       if (!conv || !conv.unitsCompatible) continue;
-      if (!Number.isFinite(conv.scaleFactor) || conv.scaleFactor === 0) continue;
+      if (!Number.isFinite(conv.scaleFactor) || conv.scaleFactor === 0)
+        continue;
       if (!Number.isFinite(conv.offset)) continue;
-      additions.push({ unit: u, scaleFactor: conv.scaleFactor, offset: conv.offset });
+      additions.push({
+        unit: u,
+        scaleFactor: conv.scaleFactor,
+        offset: conv.offset,
+      });
     }
     return additions.length > 0 ? [...base, ...additions] : base;
   }

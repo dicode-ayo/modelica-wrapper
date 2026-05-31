@@ -83,7 +83,8 @@ function refForField(field: ParameterField): ParameterRef {
   if (field.kind === "enum" && field.enumTypeName !== undefined) {
     ref.enumTypeName = field.enumTypeName;
   }
-  if (field.inheritedFrom !== undefined) ref.inheritedFrom = field.inheritedFrom;
+  if (field.inheritedFrom !== undefined)
+    ref.inheritedFrom = field.inheritedFrom;
   return ref;
 }
 

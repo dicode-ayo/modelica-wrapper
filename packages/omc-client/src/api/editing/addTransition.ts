@@ -24,11 +24,22 @@ export const AddTransitionInputSchema = z.object({
   from: z.string().describe("Source state of the new transition."),
   to: z.string().describe("Target state of the new transition."),
   /** Modelica boolean expression (raw). */
-  condition: z.string().describe("Raw Modelica boolean expression that fires the transition."),
-  immediate: z.boolean().describe("Modelica `immediate` flag on the transition."),
+  condition: z
+    .string()
+    .describe("Raw Modelica boolean expression that fires the transition."),
+  immediate: z
+    .boolean()
+    .describe("Modelica `immediate` flag on the transition."),
   reset: z.boolean().describe("Modelica `reset` flag on the transition."),
-  synchronize: z.boolean().describe("Modelica `synchronize` flag on the transition."),
-  priority: z.number().int().describe("Transition priority (lower numbers fire first when conditions overlap)."),
+  synchronize: z
+    .boolean()
+    .describe("Modelica `synchronize` flag on the transition."),
+  priority: z
+    .number()
+    .int()
+    .describe(
+      "Transition priority (lower numbers fire first when conditions overlap).",
+    ),
   annotation: connectionAnnotation,
 });
 export type AddTransitionInput = z.input<typeof AddTransitionInputSchema>;

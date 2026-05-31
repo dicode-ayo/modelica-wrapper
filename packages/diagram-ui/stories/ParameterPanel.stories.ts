@@ -22,10 +22,43 @@ const G = { tab: "General", group: "Parameters" } as const;
 const SIM_MODEL: ParameterModel = {
   className: "Demo.Sim",
   fields: [
-    { name: "startTime", label: "startTime", kind: "number", value: 0, defaultValue: 0, dialog: G, unitOptions: [] },
-    { name: "stopTime", label: "Stop time (s).", kind: "number", value: 1, defaultValue: 1, dialog: G, unitOptions: [] },
-    { name: "method", label: "method", kind: "enum", value: "dassl", defaultValue: "dassl", enumChoices: ["dassl", "ida", "euler"], dialog: G, unitOptions: [] },
-    { name: "emit_protected", label: "emit_protected", kind: "boolean", value: false, defaultValue: false, dialog: G, unitOptions: [] },
+    {
+      name: "startTime",
+      label: "startTime",
+      kind: "number",
+      value: 0,
+      defaultValue: 0,
+      dialog: G,
+      unitOptions: [],
+    },
+    {
+      name: "stopTime",
+      label: "Stop time (s).",
+      kind: "number",
+      value: 1,
+      defaultValue: 1,
+      dialog: G,
+      unitOptions: [],
+    },
+    {
+      name: "method",
+      label: "method",
+      kind: "enum",
+      value: "dassl",
+      defaultValue: "dassl",
+      enumChoices: ["dassl", "ida", "euler"],
+      dialog: G,
+      unitOptions: [],
+    },
+    {
+      name: "emit_protected",
+      label: "emit_protected",
+      kind: "boolean",
+      value: false,
+      defaultValue: false,
+      dialog: G,
+      unitOptions: [],
+    },
   ],
 };
 
@@ -36,14 +69,14 @@ const meta: Meta<StoryArgs> = {
     // by it (matching how the real webview hosts it).
     const openPanel = (): void => {
       const el = document.querySelector("#story-panel") as
-        | HTMLElement & { open: boolean }
+        | (HTMLElement & { open: boolean })
         | null;
       if (el) el.open = true;
     };
     const closeReason = (msg: string) => () => {
       console.log(msg);
       const el = document.querySelector("#story-panel") as
-        | HTMLElement & { open: boolean }
+        | (HTMLElement & { open: boolean })
         | null;
       if (el) el.open = false;
     };

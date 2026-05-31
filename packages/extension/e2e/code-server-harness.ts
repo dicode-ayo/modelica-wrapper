@@ -89,12 +89,16 @@ async function pickPort(): Promise<number> {
   });
 }
 
-async function waitForHealth(port: number, signal?: AbortSignal): Promise<void> {
+async function waitForHealth(
+  port: number,
+  signal?: AbortSignal,
+): Promise<void> {
   const url = `http://127.0.0.1:${port}/healthz`;
   const deadline = Date.now() + HEALTH_TIMEOUT_MS;
   let lastErr: unknown = undefined;
   while (Date.now() < deadline) {
-    if (signal?.aborted) throw new Error("aborted while waiting for code-server");
+    if (signal?.aborted)
+      throw new Error("aborted while waiting for code-server");
     try {
       const res = await fetch(url);
       if (res.status === 200) return;
@@ -225,7 +229,9 @@ export async function startCodeServer(): Promise<CodeServerHandle> {
     // Best-effort: surface the exit reason. The teardown path also clears this
     // listener so a clean stop doesn't trip the warning.
     if (code !== 0 && code !== null) {
-      console.error(`[e2e] code-server exited unexpectedly (code=${code} signal=${signal})`);
+      console.error(
+        `[e2e] code-server exited unexpectedly (code=${code} signal=${signal})`,
+      );
     }
   });
 

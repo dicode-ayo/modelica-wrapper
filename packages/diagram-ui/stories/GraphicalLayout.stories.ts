@@ -39,16 +39,13 @@ const meta: Meta<StoryArgs> = {
     <div class="om-story">
       <h3>&lt;om-graphical-layout&gt;</h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
-        Synthetic DiagramLayout (3 mechanical-rotational blocks +
-        2 connections). Click to select, drag to move, shift+click for
-        multi-select, R/F for rotate/flip, Delete to remove. Hover a
-        component, then drag from its port indicator to another port
-        to create a new connection (orthogonal route).
+        Synthetic DiagramLayout (3 mechanical-rotational blocks + 2
+        connections). Click to select, drag to move, shift+click for
+        multi-select, R/F for rotate/flip, Delete to remove. Hover a component,
+        then drag from its port indicator to another port to create a new
+        connection (orthogonal route).
       </p>
-      <div
-        class="om-story-canvas-host"
-        style="height: 540px;"
-      >
+      <div class="om-story-canvas-host" style="height: 540px;">
         <om-graphical-layout
           .layout=${currentLayout}
           ?readonly=${readonly}
@@ -56,8 +53,9 @@ const meta: Meta<StoryArgs> = {
             currentLayout = e.detail;
           }}
           @om-selection-change=${(e: CustomEvent) => {
-            const status = (e.currentTarget as HTMLElement)
-              .parentElement?.parentElement?.querySelector(".om-status");
+            const status = (
+              e.currentTarget as HTMLElement
+            ).parentElement?.parentElement?.querySelector(".om-status");
             if (status) {
               const keys = (e.detail as { keys: string[] }).keys;
               status.textContent = `selection: ${keys.length ? keys.join(", ") : "(none)"}`;
@@ -77,7 +75,9 @@ const meta: Meta<StoryArgs> = {
           }}
         ></om-graphical-layout>
       </div>
-      <pre class="om-status" style="font-size:11px;color:#444;margin:8px 0;">selection: (none)</pre>
+      <pre class="om-status" style="font-size:11px;color:#444;margin:8px 0;">
+selection: (none)</pre
+      >
     </div>
   `,
   argTypes: {

@@ -43,7 +43,8 @@ export function clientToDiagram(
   const aspect = canvas.width / canvas.height;
   const halfH = view.zoom;
   const halfW = halfH * aspect;
-  const x = view.panX + ((clientX - canvas.width / 2) * 2 * halfW) / canvas.width;
+  const x =
+    view.panX + ((clientX - canvas.width / 2) * 2 * halfW) / canvas.width;
   const y =
     view.panY + ((canvas.height / 2 - clientY) * 2 * halfH) / canvas.height;
   return { x, y };
@@ -62,7 +63,8 @@ export function diagramToClient(
   const aspect = canvas.width / canvas.height;
   const halfH = view.zoom;
   const halfW = halfH * aspect;
-  const x = canvas.width / 2 + ((diagramX - view.panX) * canvas.width) / (2 * halfW);
+  const x =
+    canvas.width / 2 + ((diagramX - view.panX) * canvas.width) / (2 * halfW);
   const y =
     canvas.height / 2 - ((diagramY - view.panY) * canvas.height) / (2 * halfH);
   return { x, y };

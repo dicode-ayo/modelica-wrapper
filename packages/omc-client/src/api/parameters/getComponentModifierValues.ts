@@ -22,7 +22,8 @@ export type GetComponentModifierValuesOutput = z.infer<
   typeof GetComponentModifierValuesOutputSchema
 >;
 
-export const GetComponentModifierValuesDescription = "Return the modifier including sub-modifiers for a component.";
+export const GetComponentModifierValuesDescription =
+  "Return the modifier including sub-modifiers for a component.";
 
 export async function getComponentModifierValues(
   ctx: CallContext,

@@ -159,7 +159,8 @@ const ComponentRefBranch = z.lazy(() =>
     })
     .passthrough(),
 );
-export const ComponentRefSchema = ComponentRefBranch as unknown as z.ZodType<ComponentRef>;
+export const ComponentRefSchema =
+  ComponentRefBranch as unknown as z.ZodType<ComponentRef>;
 
 const EnumLiteralBranch = z
   .object({
@@ -168,7 +169,8 @@ const EnumLiteralBranch = z
     index: z.number().int(),
   })
   .passthrough();
-export const EnumLiteralSchema = EnumLiteralBranch as unknown as z.ZodType<EnumLiteral>;
+export const EnumLiteralSchema =
+  EnumLiteralBranch as unknown as z.ZodType<EnumLiteral>;
 
 /**
  * Tagged record for §18.6 graphic primitives (Polygon, Line, Rectangle,
@@ -185,7 +187,8 @@ const RecordValueBranch = z.lazy(() =>
     })
     .passthrough(),
 );
-export const RecordValueSchema = RecordValueBranch as unknown as z.ZodType<RecordValue>;
+export const RecordValueSchema =
+  RecordValueBranch as unknown as z.ZodType<RecordValue>;
 
 const BinaryOpExprBranch = z.lazy(() =>
   z
@@ -252,7 +255,8 @@ const ExpressionLazy = z.lazy(() =>
     z.record(z.string(), ExpressionSchema),
   ]),
 );
-export const ExpressionSchema = ExpressionLazy as unknown as z.ZodType<Expression>;
+export const ExpressionSchema =
+  ExpressionLazy as unknown as z.ZodType<Expression>;
 
 export const CoordinateSystemSchema = z
   .object({
@@ -438,7 +442,8 @@ const ModelInstanceLazy = z.lazy(() =>
     })
     .passthrough(),
 );
-export const ModelInstanceSchema = ModelInstanceLazy as unknown as z.ZodType<ModelInstance>;
+export const ModelInstanceSchema =
+  ModelInstanceLazy as unknown as z.ZodType<ModelInstance>;
 
 /**
  * Component element. `type` is a discriminated three-way shape (see
@@ -461,7 +466,8 @@ const ComponentElementBranch = z.lazy(() =>
     })
     .passthrough(),
 );
-export const ComponentElementSchema = ComponentElementBranch as unknown as z.ZodType<ComponentElement>;
+export const ComponentElementSchema =
+  ComponentElementBranch as unknown as z.ZodType<ComponentElement>;
 
 const ExtendsElementBranch = z.lazy(() =>
   z
@@ -473,13 +479,11 @@ const ExtendsElementBranch = z.lazy(() =>
     })
     .passthrough(),
 );
-export const ExtendsElementSchema = ExtendsElementBranch as unknown as z.ZodType<ExtendsElement>;
+export const ExtendsElementSchema =
+  ExtendsElementBranch as unknown as z.ZodType<ExtendsElement>;
 
 const ElementLazy = z.lazy(() =>
-  z.discriminatedUnion("$kind", [
-    ComponentElementBranch,
-    ExtendsElementBranch,
-  ]),
+  z.discriminatedUnion("$kind", [ComponentElementBranch, ExtendsElementBranch]),
 );
 export const ElementSchema = ElementLazy as unknown as z.ZodType<ElementNode>;
 
@@ -492,7 +496,8 @@ const ConnectionLazy = z.lazy(() =>
     })
     .passthrough(),
 );
-export const ConnectionSchema = ConnectionLazy as unknown as z.ZodType<ConnectionNode>;
+export const ConnectionSchema =
+  ConnectionLazy as unknown as z.ZodType<ConnectionNode>;
 
 /**
  * `getModelInstanceAnnotation` returns the same root shape as

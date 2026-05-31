@@ -407,8 +407,7 @@ export class OmLibraryBrowser extends LitElement {
         @wa-selection-change=${this.onSelectionChange}
         @wa-lazy-load=${this.onLazyLoad}
       >
-        ${this.chevronSlot("expand-icon")}
-        ${this.chevronSlot("collapse-icon")}
+        ${this.chevronSlot("expand-icon")} ${this.chevronSlot("collapse-icon")}
         ${repeat(
           roots,
           (n) => n.qualified,
@@ -452,9 +451,7 @@ export class OmLibraryBrowser extends LitElement {
     return html`<span class="row">
       ${this.renderIcon(qualified, restriction)}
       <span>${label}</span>
-      ${qualifier
-        ? html`<span class="qualifier">${qualifier}</span>`
-        : nothing}
+      ${qualifier ? html`<span class="qualifier">${qualifier}</span>` : nothing}
     </span>`;
   }
 
@@ -521,8 +518,7 @@ export class OmLibraryBrowser extends LitElement {
         selection="single"
         @wa-selection-change=${this.onSelectionChange}
       >
-        ${this.chevronSlot("expand-icon")}
-        ${this.chevronSlot("collapse-icon")}
+        ${this.chevronSlot("expand-icon")} ${this.chevronSlot("collapse-icon")}
         ${repeat(
           results,
           (info) => info.qualified,
@@ -573,7 +569,9 @@ export class OmLibraryBrowser extends LitElement {
         }
         child.dataset["qualified"] = fullyQualified;
         child.dataset["restriction"] = info.restriction;
-        child.appendChild(this.buildRowElement(fullyQualified, info.restriction));
+        child.appendChild(
+          this.buildRowElement(fullyQualified, info.restriction),
+        );
         frag.appendChild(child);
       }
       item.appendChild(frag);
@@ -599,8 +597,7 @@ export class OmLibraryBrowser extends LitElement {
     qualified: string,
     restriction: LibraryClassRestriction,
   ): HTMLElement {
-    const label =
-      qualified.slice(qualified.lastIndexOf(".") + 1) || qualified;
+    const label = qualified.slice(qualified.lastIndexOf(".") + 1) || qualified;
     const style = iconStyleFor(restriction);
     const row = document.createElement("span");
     row.className = "row";
@@ -717,14 +714,11 @@ export class OmLibraryBrowser extends LitElement {
       this.dialogEl.open = false;
     }
     this.dispatchEvent(
-      new CustomEvent<LibraryEvents["om-library-select"]>(
-        "om-library-select",
-        {
-          detail: { className },
-          bubbles: true,
-          composed: true,
-        },
-      ),
+      new CustomEvent<LibraryEvents["om-library-select"]>("om-library-select", {
+        detail: { className },
+        bubbles: true,
+        composed: true,
+      }),
     );
   }
 }

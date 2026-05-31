@@ -25,7 +25,8 @@ export type IsBlockInput = z.input<typeof IsBlockInputSchema>;
 export const IsBlockOutputSchema = BooleanBOutput;
 export type IsBlockOutput = z.infer<typeof IsBlockOutputSchema>;
 
-export const IsBlockDescription = "Check whether the given class has the `block` restriction.";
+export const IsBlockDescription =
+  "Check whether the given class has the `block` restriction.";
 
 export async function isBlock(
   ctx: CallContext,

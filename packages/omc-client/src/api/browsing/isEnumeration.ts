@@ -25,7 +25,8 @@ export type IsEnumerationInput = z.input<typeof IsEnumerationInputSchema>;
 export const IsEnumerationOutputSchema = BooleanBOutput;
 export type IsEnumerationOutput = z.infer<typeof IsEnumerationOutputSchema>;
 
-export const IsEnumerationDescription = "Check whether the given class is an enumeration type.";
+export const IsEnumerationDescription =
+  "Check whether the given class is an enumeration type.";
 
 export async function isEnumeration(
   ctx: CallContext,

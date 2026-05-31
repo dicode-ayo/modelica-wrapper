@@ -32,8 +32,8 @@ const meta: Meta<StoryArgs> = {
     <div class="om-story">
       <h3>&lt;om-connection&gt;</h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
-        Composes one <code>&lt;om-edge&gt;</code> + optional junction markers
-        at internal corners. Toggle showJunctions to compare.
+        Composes one <code>&lt;om-edge&gt;</code> + optional junction markers at
+        internal corners. Toggle showJunctions to compare.
       </p>
       <div class="om-story-canvas-host">
         <om-scene .zoom=${zoom}>

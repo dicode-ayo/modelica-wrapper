@@ -7,7 +7,9 @@ import * as vscode from "vscode";
 import type { CommandContext } from "./context.js";
 import { createReplLog } from "./repl.js";
 
-export function registerLibraryCommands(ctx: CommandContext): vscode.Disposable[] {
+export function registerLibraryCommands(
+  ctx: CommandContext,
+): vscode.Disposable[] {
   return [
     vscode.commands.registerCommand("modelica.loadLibrary", async () => {
       const name = await vscode.window.showInputBox({

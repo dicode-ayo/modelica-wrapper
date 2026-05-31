@@ -34,7 +34,13 @@ function makeScene(): { scene: Scene; dispose: () => void } {
     lockstepMaxSteps: 1,
   });
   const scene = new Scene(engine);
-  return { scene, dispose: () => { scene.dispose(); engine.dispose(); } };
+  return {
+    scene,
+    dispose: () => {
+      scene.dispose();
+      engine.dispose();
+    },
+  };
 }
 
 interface CapturedEvent<K extends keyof InteractionEvents> {
@@ -73,9 +79,7 @@ describe("InteractionManager", () => {
     canvas.dispatchEvent(
       new PointerEvent("pointermove", { clientX: 10, clientY: 10 }),
     );
-    expect(events).toEqual([
-      { type: "hover", detail: { key: "c:foo" } },
-    ]);
+    expect(events).toEqual([{ type: "hover", detail: { key: "c:foo" } }]);
     mgr.destroy();
     dispose();
     canvas.remove();

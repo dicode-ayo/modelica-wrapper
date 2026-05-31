@@ -53,7 +53,8 @@ export async function addInitialState(
   input: AddInitialStateInput,
 ): Promise<AddInitialStateOutput> {
   const annotation = input.annotation ?? "";
-  const ann = annotation === "" ? "annotate=Placement()" : `annotate=${annotation}`;
+  const ann =
+    annotation === "" ? "annotate=Placement()" : `annotate=${annotation}`;
   const raw = await ctx.call(
     `addInitialState(${input.typeName}, ${quote(input.state)}, ${ann})`,
   );

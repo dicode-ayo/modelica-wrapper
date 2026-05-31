@@ -54,7 +54,9 @@ export function selectedNode(
 ): VarNode | undefined {
   if (selections.length === 0) return undefined;
   const last = selections.length - 1;
-  return optionsAt(tree, selections, last).find((n) => n.name === selections[last]);
+  return optionsAt(tree, selections, last).find(
+    (n) => n.name === selections[last],
+  );
 }
 
 /** Apply a `<select>` change at `level`: truncate to that level and append the

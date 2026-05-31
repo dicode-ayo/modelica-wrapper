@@ -28,7 +28,9 @@ import { expectBool, parse } from "../../parse.js";
 
 export const DeleteInitialStateInputSchema = z.object({
   typeName: z.string().describe("Class containing the state machine."),
-  state: z.string().describe("Name of the state to clear the initial marker from."),
+  state: z
+    .string()
+    .describe("Name of the state to clear the initial marker from."),
 });
 export type DeleteInitialStateInput = z.input<
   typeof DeleteInitialStateInputSchema

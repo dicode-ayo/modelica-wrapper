@@ -41,10 +41,7 @@ const schedulers = new WeakMap<Scene, Scheduler>();
  * Replacing an existing registration cancels any pending frame from
  * the prior entry — guards against rapid re-mounts (hot reload).
  */
-export function registerRenderScheduler(
-  scene: Scene,
-  render: Renderer,
-): void {
+export function registerRenderScheduler(scene: Scene, render: Renderer): void {
   const existing = schedulers.get(scene);
   if (existing && existing.pendingId) {
     cancelAnimationFrame(existing.pendingId);

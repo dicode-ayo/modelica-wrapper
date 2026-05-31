@@ -164,7 +164,9 @@ export class OmScene extends LitElement {
   debug = false;
 
   private readonly canvasRef = createRef<HTMLCanvasElement>();
-  private readonly resizeObserver = new ResizeObserver(() => this.handleResize());
+  private readonly resizeObserver = new ResizeObserver(() =>
+    this.handleResize(),
+  );
 
   private engine: AbstractEngine | null = null;
   private babylonScene: Scene | null = null;
@@ -483,13 +485,12 @@ export class OmScene extends LitElement {
           overlay: true,
           handleResize: true,
         });
-        // eslint-disable-next-line no-console
+
         console.info(
           "[diagram-ui] Babylon Inspector loaded. Open the right-side panel " +
             "to inspect meshes, materials, and textures.",
         );
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error("[diagram-ui] Failed to load Babylon Inspector:", err);
       }
     } else if (scene.debugLayer.isVisible()) {

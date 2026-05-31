@@ -15,7 +15,11 @@ import { expectBool, parse } from "../../parse.js";
 
 export const SetComponentCommentInputSchema =
   TypeNameAndComponentNameInput.extend({
-    comment: z.string().describe("New description-string for the component (without surrounding quotes)."),
+    comment: z
+      .string()
+      .describe(
+        "New description-string for the component (without surrounding quotes).",
+      ),
   });
 export type SetComponentCommentInput = z.input<
   typeof SetComponentCommentInputSchema
@@ -26,7 +30,8 @@ export type SetComponentCommentOutput = z.infer<
   typeof SetComponentCommentOutputSchema
 >;
 
-export const SetComponentCommentDescription = "Set the description-string comment on a component.";
+export const SetComponentCommentDescription =
+  "Set the description-string comment on a component.";
 
 export async function setComponentComment(
   ctx: CallContext,

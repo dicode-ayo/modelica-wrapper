@@ -14,7 +14,12 @@ describe("coordSystemSize", () => {
   });
 
   it("respects an explicit coordinate system extent", () => {
-    const cs = { extent: [[0, 0], [40, 30]] };
+    const cs = {
+      extent: [
+        [0, 0],
+        [40, 30],
+      ],
+    };
     expect(coordSystemSize(cs)).toEqual({
       width: 40,
       height: 30,
@@ -26,7 +31,12 @@ describe("coordSystemSize", () => {
 
 describe("applyPlacement", () => {
   it("centres the TransformNode on the placement extent", () => {
-    const p: Placement = { extent: [[-10, -5], [10, 5]] };
+    const p: Placement = {
+      extent: [
+        [-10, -5],
+        [10, 5],
+      ],
+    };
     const t = applyPlacement(p, undefined);
     expect(t.position.x).toBe(0);
     expect(t.position.y).toBe(0);
@@ -35,7 +45,10 @@ describe("applyPlacement", () => {
 
   it("offsets by placement.origin when present", () => {
     const p: Placement = {
-      extent: [[-10, -5], [10, 5]],
+      extent: [
+        [-10, -5],
+        [10, 5],
+      ],
       origin: [30, 20],
     };
     const t = applyPlacement(p, undefined);
@@ -44,22 +57,48 @@ describe("applyPlacement", () => {
   });
 
   it("converts placement rotation from degrees CCW to radians around Z", () => {
-    const p: Placement = { extent: [[0, 0], [10, 10]], rotation: 90 };
+    const p: Placement = {
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      rotation: 90,
+    };
     const t = applyPlacement(p, undefined);
     expect(t.rotationZ).toBeCloseTo(Math.PI / 2);
   });
 
   it("derives scaling from placementSize / coordSystemSize", () => {
-    const p: Placement = { extent: [[-20, -10], [20, 10]] };
-    const t = applyPlacement(p, { extent: [[-100, -100], [100, 100]] });
+    const p: Placement = {
+      extent: [
+        [-20, -10],
+        [20, 10],
+      ],
+    };
+    const t = applyPlacement(p, {
+      extent: [
+        [-100, -100],
+        [100, 100],
+      ],
+    });
     // 40 wide / 200 = 0.2; 20 tall / 200 = 0.1
     expect(t.scale.x).toBeCloseTo(0.2);
     expect(t.scale.y).toBeCloseTo(0.1);
   });
 
   it("places the mesh at the icon coord-system centre (local space)", () => {
-    const p: Placement = { extent: [[-10, -10], [10, 10]] };
-    const t = applyPlacement(p, { extent: [[0, 0], [200, 200]] });
+    const p: Placement = {
+      extent: [
+        [-10, -10],
+        [10, 10],
+      ],
+    };
+    const t = applyPlacement(p, {
+      extent: [
+        [0, 0],
+        [200, 200],
+      ],
+    });
     expect(t.meshLocal.x).toBe(100);
     expect(t.meshLocal.y).toBe(100);
   });

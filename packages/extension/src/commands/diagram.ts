@@ -10,15 +10,14 @@ import * as vscode from "vscode";
 
 import { openDiagram } from "../diagram/open-diagram.js";
 import { DiagramPanel } from "../diagram/panel.js";
-import {
-  qualifiedNameFromUri,
-  sourceUriFor,
-} from "../source-provider.js";
+import { qualifiedNameFromUri, sourceUriFor } from "../source-provider.js";
 import type { LibraryNode } from "../tree/library-tree.js";
 
 import type { CommandContext } from "./context.js";
 
-export function registerDiagramCommands(ctx: CommandContext): vscode.Disposable[] {
+export function registerDiagramCommands(
+  ctx: CommandContext,
+): vscode.Disposable[] {
   return [
     vscode.commands.registerCommand("modelica.openDiagram", async (arg) => {
       try {
@@ -52,20 +51,25 @@ export function registerDiagramCommands(ctx: CommandContext): vscode.Disposable[
           );
           return;
         }
-        const doc = await vscode.workspace.openTextDocument(sourceUriFor(typeName));
+        const doc = await vscode.workspace.openTextDocument(
+          sourceUriFor(typeName),
+        );
         await vscode.window.showTextDocument(doc, { preview: false });
       },
     ),
-    vscode.commands.registerCommand("modelica.openDiagramFromSource", async () => {
-      const uri = vscode.window.activeTextEditor?.document.uri;
-      const typeName = uri ? qualifiedNameFromUri(uri) : undefined;
-      if (!typeName) {
-        await vscode.window.showWarningMessage(
-          "Modelica: not a Modelica source document.",
-        );
-        return;
-      }
-      await vscode.commands.executeCommand("modelica.openDiagram", typeName);
-    }),
+    vscode.commands.registerCommand(
+      "modelica.openDiagramFromSource",
+      async () => {
+        const uri = vscode.window.activeTextEditor?.document.uri;
+        const typeName = uri ? qualifiedNameFromUri(uri) : undefined;
+        if (!typeName) {
+          await vscode.window.showWarningMessage(
+            "Modelica: not a Modelica source document.",
+          );
+          return;
+        }
+        await vscode.commands.executeCommand("modelica.openDiagram", typeName);
+      },
+    ),
   ];
 }

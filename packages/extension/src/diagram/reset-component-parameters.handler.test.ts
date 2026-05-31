@@ -34,8 +34,11 @@ import { recordedMessages } from "../../test-support/vscode-mock.js";
 
 // ── Mocks ─────────────────────────────────────────────────────────────
 
-const stubLayout = { components: {}, connectors: {}, classes: {} } as unknown as
-  DiagramLayout;
+const stubLayout = {
+  components: {},
+  connectors: {},
+  classes: {},
+} as unknown as DiagramLayout;
 
 // Partial-mock the omc-client package: keep everything real except the
 // layout producer, which we don't want to run on a stub ModelInstance.
@@ -159,9 +162,7 @@ function makeClient(opts: ClientOptions = {}): {
     return { instance: {} as ModelInstance };
   });
   const removeElementModifiers = vi.fn().mockResolvedValue({ success: true });
-  const setElementModifierValue = vi
-    .fn()
-    .mockResolvedValue({ success: true });
+  const setElementModifierValue = vi.fn().mockResolvedValue({ success: true });
   const invoke = vi.fn((method: string) => {
     if (method === "getModelInstance") return getModelInstance();
     if (method === "getInstantiatedParametersAndValues") {
@@ -177,7 +178,12 @@ function makeClient(opts: ClientOptions = {}): {
     setElementModifierValue,
     lastCall: "removeElementModifiers(Sample, gain, keepRedeclares=true)",
   } as unknown as OmcClient;
-  return { client, getModelInstance, removeElementModifiers, setElementModifierValue };
+  return {
+    client,
+    getModelInstance,
+    removeElementModifiers,
+    setElementModifierValue,
+  };
 }
 
 const fakeContext = { extensionUri: {} } as unknown as ExtensionContext;
@@ -231,9 +237,12 @@ describe("onResetComponentParameters handler", () => {
 
     // Closure state cleared: a subsequent componentParams submit hits the
     // `componentParamComponentName === null` guard and writes nothing.
-    await capturedHandlers.onParametersSubmit!("componentParams" as never, {
-      k: 1,
-    } as never);
+    await capturedHandlers.onParametersSubmit!(
+      "componentParams" as never,
+      {
+        k: 1,
+      } as never,
+    );
     expect(setElementModifierValue).not.toHaveBeenCalled();
     expect(fakePanel.closeParameters).toHaveBeenCalledTimes(2);
   });
@@ -250,9 +259,12 @@ describe("onResetComponentParameters handler", () => {
     expect(fakePanel.closeParameters).toHaveBeenCalledTimes(1);
     expect(fakePanel.openParameters).not.toHaveBeenCalled();
 
-    await capturedHandlers.onParametersSubmit!("componentParams" as never, {
-      k: 1,
-    } as never);
+    await capturedHandlers.onParametersSubmit!(
+      "componentParams" as never,
+      {
+        k: 1,
+      } as never,
+    );
     expect(setElementModifierValue).not.toHaveBeenCalled();
   });
 
@@ -309,7 +321,9 @@ describe("onResetComponentParameters handler", () => {
 
     // Fire two without awaiting the first — the second must early-return.
     const first = capturedHandlers.onResetComponentParameters!("gain" as never);
-    const second = capturedHandlers.onResetComponentParameters!("gain" as never);
+    const second = capturedHandlers.onResetComponentParameters!(
+      "gain" as never,
+    );
     await Promise.all([first, second]);
 
     // Only the first reset's clear RPC ran.

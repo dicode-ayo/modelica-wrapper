@@ -132,7 +132,10 @@ export function buildGrid(
     }
     const isMajor = Math.abs(v) % majorX < 1e-9;
     const target = isMajor ? major : minor;
-    target.push([new Vector3(v, -extent, GRID_Z), new Vector3(v, extent, GRID_Z)]);
+    target.push([
+      new Vector3(v, -extent, GRID_Z),
+      new Vector3(v, extent, GRID_Z),
+    ]);
   }
   // Horizontal lines (constant y): stepped by Y grid spacing.
   for (let v = -extent; v <= extent; v += minorY) {
@@ -141,7 +144,10 @@ export function buildGrid(
     }
     const isMajor = Math.abs(v) % majorY < 1e-9;
     const target = isMajor ? major : minor;
-    target.push([new Vector3(-extent, v, GRID_Z), new Vector3(extent, v, GRID_Z)]);
+    target.push([
+      new Vector3(-extent, v, GRID_Z),
+      new Vector3(extent, v, GRID_Z),
+    ]);
   }
 
   const axes: Vector3[][] = [
@@ -251,5 +257,9 @@ function buildExtentRect(
   border.color = borderColor;
   border.parent = parent;
   border.isPickable = false;
-  return { extentRect: mesh, extentRectMaterial: material, extentBorder: border };
+  return {
+    extentRect: mesh,
+    extentRectMaterial: material,
+    extentBorder: border,
+  };
 }

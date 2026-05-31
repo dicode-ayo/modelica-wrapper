@@ -27,7 +27,9 @@ export type GetEnumerationLiteralsInput = z.input<
 export const GetEnumerationLiteralsOutputSchema = z.object({
   literals: z
     .array(z.string())
-    .describe("Literal names declared on the enumeration type, in source order."),
+    .describe(
+      "Literal names declared on the enumeration type, in source order.",
+    ),
 });
 export type GetEnumerationLiteralsOutput = z.infer<
   typeof GetEnumerationLiteralsOutputSchema

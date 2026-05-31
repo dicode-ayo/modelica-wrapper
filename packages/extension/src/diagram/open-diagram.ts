@@ -215,9 +215,7 @@ export async function openDiagram(
         // `success` so a dangling/invalid endpoint surfaces as an error
         // toast instead of a silent "connected" log (issue #76).
         if (!conn.success) {
-          throw new Error(
-            conn.diagnostic ?? "OMC rejected the connection",
-          );
+          throw new Error(conn.diagnostic ?? "OMC rejected the connection");
         }
         refreshLabel();
         createReplLog(label).success(`connected ${from} ↔ ${to}`);
@@ -264,7 +262,9 @@ export async function openDiagram(
           );
           return;
         }
-        replLog.success(`restored ${className} (${undoStack.size} undo step(s) left)`);
+        replLog.success(
+          `restored ${className} (${undoStack.size} undo step(s) left)`,
+        );
         prevLayout = await fetchLayout(client, className);
         panel.update(prevLayout);
       } catch (err) {
@@ -430,11 +430,7 @@ export async function openDiagram(
           prevLayout = await fetchLayout(client, className);
           panel.update(prevLayout);
         } catch (err) {
-          log.error(
-            "componentParamsRefetch",
-            `failed for ${className}`,
-            err,
-          );
+          log.error("componentParamsRefetch", `failed for ${className}`, err);
         }
         panel.closeParameters();
         return;
@@ -482,11 +478,7 @@ export async function openDiagram(
             prevLayout = await layoutFromInstance(client, className, instance);
             panel.update(prevLayout);
           } catch (err) {
-            log.error(
-              "componentResetRefetch",
-              `failed for ${className}`,
-              err,
-            );
+            log.error("componentResetRefetch", `failed for ${className}`, err);
           }
           const component = findSubComponent(instance, componentName);
           if (!component) {
@@ -662,7 +654,10 @@ function placementAt(position: { x: number; y: number }): string {
  * placeholder if neither is set. Both inputs may carry trailing
  * whitespace from OMC; trim before testing.
  */
-function pickReason(errorString: string, diagnostic: string | undefined): string {
+function pickReason(
+  errorString: string,
+  diagnostic: string | undefined,
+): string {
   const e = (errorString ?? "").trim();
   if (e.length > 0) return e;
   const d = (diagnostic ?? "").trim();
@@ -865,7 +860,11 @@ function buildClassUnitTable(
   client: OmcClient,
   instance: ModelInstance,
 ): Promise<UnitTable> {
-  return buildUnitTableForModel(client, produceParameterModel(instance), log.warn);
+  return buildUnitTableForModel(
+    client,
+    produceParameterModel(instance),
+    log.warn,
+  );
 }
 
 /**
@@ -921,9 +920,12 @@ async function fetchResolvedParameters(
   className: string,
 ): Promise<Record<string, string> | undefined> {
   try {
-    const { result } = await client.invoke("getInstantiatedParametersAndValues", {
-      typeName: className,
-    });
+    const { result } = await client.invoke(
+      "getInstantiatedParametersAndValues",
+      {
+        typeName: className,
+      },
+    );
     return diagram.parseInstantiatedParameters(result);
   } catch {
     // Swallow — this is a pure UI enrichment. The producer falls back
@@ -1116,9 +1118,7 @@ async function applyClassParameterEdits(
       if (client.lastCall) label = client.lastCall;
       const replLog = createReplLog(label);
       if (success) {
-        replLog.success(
-          expr === "" ? `cleared ${name}` : `${name} := ${expr}`,
-        );
+        replLog.success(expr === "" ? `cleared ${name}` : `${name} := ${expr}`);
       } else {
         const { errorString } = await client.getErrorString();
         const reason = errorString.trim() || "OMC returned success=false.";

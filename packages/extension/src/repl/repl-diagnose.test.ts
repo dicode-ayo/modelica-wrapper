@@ -11,7 +11,8 @@ const OMC_LOOKUP_FAIL = (fn: string): string =>
 
 describe("diagnoseOmcError — quoted TypeName mistake", () => {
   it("recognises the pattern and proposes the unquoted call", () => {
-    const line = 'getElementAnnotation("Modelica.Blocks.Examples.PID_Controller")';
+    const line =
+      'getElementAnnotation("Modelica.Blocks.Examples.PID_Controller")';
     const out = diagnoseOmcError(line, OMC_LOOKUP_FAIL("getElementAnnotation"));
     expect(out).toBeDefined();
     expect(out!).toContain("`getElementAnnotation` exists");
@@ -38,10 +39,7 @@ describe("diagnoseOmcError — quoted TypeName mistake", () => {
   it("works for any registered OMC function", () => {
     // Spot-check three more from different categories.
     for (const fn of ["listFile", "getClassInformation", "getElements"]) {
-      const out = diagnoseOmcError(
-        `${fn}("Some.Class")`,
-        OMC_LOOKUP_FAIL(fn),
-      );
+      const out = diagnoseOmcError(`${fn}("Some.Class")`, OMC_LOOKUP_FAIL(fn));
       expect(out, `expected a hint for ${fn}`).toBeDefined();
       expect(out!).toContain(`\`${fn}\` exists`);
     }

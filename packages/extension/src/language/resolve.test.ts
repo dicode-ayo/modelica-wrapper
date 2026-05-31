@@ -18,7 +18,9 @@ function target(
 function makeClient(overrides: Partial<ResolveClient> = {}): ResolveClient {
   return {
     qualifyPath: vi.fn(({ path }) => Promise.resolve({ qualifiedPath: path })),
-    getClassInformation: vi.fn(() => Promise.resolve({ fileName: "/lib/Unknown.mo" })),
+    getClassInformation: vi.fn(() =>
+      Promise.resolve({ fileName: "/lib/Unknown.mo" }),
+    ),
     getComponents: vi.fn(() => Promise.resolve({ components: [] })),
     ...overrides,
   };
@@ -85,15 +87,25 @@ describe("resolve — class/type reference", () => {
       qualifyPath: vi.fn(() => Promise.resolve({ qualifiedPath: "Real" })),
       getClassInformation: vi.fn(() => Promise.resolve({ fileName: "" })),
     });
-    const result = await resolve("Pkg.A", target("component-type", ["Real"]), client);
+    const result = await resolve(
+      "Pkg.A",
+      target("component-type", ["Real"]),
+      client,
+    );
     expect(result).toBeUndefined();
   });
 
   it("returns undefined when getClassInformation throws", async () => {
     const client = makeClient({
-      getClassInformation: vi.fn(() => Promise.reject(new Error("no such class"))),
+      getClassInformation: vi.fn(() =>
+        Promise.reject(new Error("no such class")),
+      ),
     });
-    const result = await resolve("Pkg.A", target("type-reference", ["Nope"]), client);
+    const result = await resolve(
+      "Pkg.A",
+      target("type-reference", ["Nope"]),
+      client,
+    );
     expect(result).toBeUndefined();
   });
 
@@ -124,7 +136,10 @@ describe("resolve — member cref", () => {
       if (typeName === "MyPkg.Circuit") {
         return Promise.resolve({
           components: [
-            { name: "resistor", className: "Modelica.Electrical.Basic.Resistor" },
+            {
+              name: "resistor",
+              className: "Modelica.Electrical.Basic.Resistor",
+            },
             { name: "ground", className: "Modelica.Electrical.Basic.Ground" },
           ],
         });
@@ -147,7 +162,9 @@ describe("resolve — member cref", () => {
       client,
     );
 
-    expect(getComponents).toHaveBeenNthCalledWith(1, { typeName: "MyPkg.Circuit" });
+    expect(getComponents).toHaveBeenNthCalledWith(1, {
+      typeName: "MyPkg.Circuit",
+    });
     expect(getComponents).toHaveBeenNthCalledWith(2, {
       typeName: "Modelica.Electrical.Basic.Resistor",
     });
@@ -191,7 +208,9 @@ describe("resolve — member cref", () => {
 
     // The container of the final member is B's type, not A's — so the resolved
     // member type is Pkg.C (via B), never Pkg.WrongC (A's own `c`).
-    expect(client.getClassInformation).toHaveBeenCalledWith({ typeName: "Pkg.C" });
+    expect(client.getClassInformation).toHaveBeenCalledWith({
+      typeName: "Pkg.C",
+    });
     expect(result).toEqual({ qualifiedName: "Pkg.C" });
   });
 

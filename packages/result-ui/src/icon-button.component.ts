@@ -35,7 +35,10 @@ export class OmIconButton extends LitElement {
       }
       button:hover {
         color: var(--vscode-errorForeground);
-        background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+        background: var(
+          --vscode-toolbar-hoverBackground,
+          rgba(128, 128, 128, 0.2)
+        );
       }
     `,
   ];

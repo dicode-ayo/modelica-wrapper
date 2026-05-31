@@ -25,7 +25,8 @@ export type IsConnectorInput = z.input<typeof IsConnectorInputSchema>;
 export const IsConnectorOutputSchema = BooleanBOutput;
 export type IsConnectorOutput = z.infer<typeof IsConnectorOutputSchema>;
 
-export const IsConnectorDescription = "Check whether the given class has the `connector` restriction.";
+export const IsConnectorDescription =
+  "Check whether the given class has the `connector` restriction.";
 
 export async function isConnector(
   ctx: CallContext,

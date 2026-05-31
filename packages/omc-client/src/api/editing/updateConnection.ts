@@ -31,12 +31,23 @@ import {
 } from "../../_shared/fields.js";
 import { quote } from "../../_shared/format.js";
 import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
-import { parseMutationDiagnostic, parseOutput } from "../../_shared/parseOutput.js";
+import {
+  parseMutationDiagnostic,
+  parseOutput,
+} from "../../_shared/parseOutput.js";
 
 export const UpdateConnectionInputSchema = z.object({
   typeName: typeNameOfConnection,
-  from: z.string().describe("Left-hand-side connector reference for the connection to update."),
-  to: z.string().describe("Right-hand-side connector reference for the connection to update."),
+  from: z
+    .string()
+    .describe(
+      "Left-hand-side connector reference for the connection to update.",
+    ),
+  to: z
+    .string()
+    .describe(
+      "Right-hand-side connector reference for the connection to update.",
+    ),
   annotation: connectionAnnotation,
 });
 export type UpdateConnectionInput = z.input<typeof UpdateConnectionInputSchema>;

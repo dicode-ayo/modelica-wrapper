@@ -27,7 +27,12 @@ export type GetInitialAlgorithmItemsCountInput = z.input<
 >;
 
 export const GetInitialAlgorithmItemsCountOutputSchema = z.object({
-  count: z.number().int().describe("Number of individual statements across the class's `initial algorithm` sections."),
+  count: z
+    .number()
+    .int()
+    .describe(
+      "Number of individual statements across the class's `initial algorithm` sections.",
+    ),
 });
 export type GetInitialAlgorithmItemsCountOutput = z.infer<
   typeof GetInitialAlgorithmItemsCountOutputSchema
@@ -40,7 +45,9 @@ export async function getInitialAlgorithmItemsCount(
   ctx: CallContext,
   input: GetInitialAlgorithmItemsCountInput,
 ): Promise<GetInitialAlgorithmItemsCountOutput> {
-  const raw = await ctx.call(`getInitialAlgorithmItemsCount(${input.typeName})`);
+  const raw = await ctx.call(
+    `getInitialAlgorithmItemsCount(${input.typeName})`,
+  );
   return parseOutput(
     GetInitialAlgorithmItemsCountOutputSchema,
     { count: expectInt(parse(raw)) },

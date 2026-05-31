@@ -86,20 +86,30 @@ describe("snapPoint: snaps to grid intersections", () => {
 
 describe("snapExtent: snaps both corners independently", () => {
   it("rounds each corner to the nearest grid point", () => {
-    expect(snapExtent([
-      [3, 7],
-      [23, 27],
-    ], [2, 2])).toEqual([
+    expect(
+      snapExtent(
+        [
+          [3, 7],
+          [23, 27],
+        ],
+        [2, 2],
+      ),
+    ).toEqual([
       [4, 8],
       [24, 28],
     ]);
   });
 
   it("respects per-axis grid steps (gx ≠ gy)", () => {
-    expect(snapExtent([
-      [1, 1],
-      [9, 9],
-    ], [5, 2])).toEqual([
+    expect(
+      snapExtent(
+        [
+          [1, 1],
+          [9, 9],
+        ],
+        [5, 2],
+      ),
+    ).toEqual([
       [0, 2],
       [10, 10],
     ]);
@@ -108,12 +118,24 @@ describe("snapExtent: snaps both corners independently", () => {
 
 describe("snapPlacement: returns the same reference when no-op", () => {
   it("preserves identity when extent + origin are already on-grid", () => {
-    const p: Placement = { extent: [[0, 0], [20, 20]], origin: [10, 10] };
+    const p: Placement = {
+      extent: [
+        [0, 0],
+        [20, 20],
+      ],
+      origin: [10, 10],
+    };
     expect(snapPlacement(p, [2, 2])).toBe(p);
   });
 
   it("snaps both extent and origin together", () => {
-    const p: Placement = { extent: [[3, 7], [23, 27]], origin: [11, 11] };
+    const p: Placement = {
+      extent: [
+        [3, 7],
+        [23, 27],
+      ],
+      origin: [11, 11],
+    };
     const out = snapPlacement(p, [2, 2]);
     expect(out).not.toBe(p);
     expect(out.extent).toEqual([
@@ -157,7 +179,12 @@ describe("applySnapToExtents: drag-commit grid alignment", () => {
     // (run on commit) must override that and produce a grid-aligned
     // value.
     const layout = fakeLayout({
-      gain1: { extent: [[3, 7], [23, 27]] },
+      gain1: {
+        extent: [
+          [3, 7],
+          [23, 27],
+        ],
+      },
     });
     const out = applySnapToExtents(
       layout,
@@ -174,7 +201,12 @@ describe("applySnapToExtents: drag-commit grid alignment", () => {
     // No-op snap should not break Lit's change detection by allocating
     // a fresh layout object for free.
     const layout = fakeLayout({
-      onGrid: { extent: [[0, 0], [20, 20]] },
+      onGrid: {
+        extent: [
+          [0, 0],
+          [20, 20],
+        ],
+      },
     });
     const out = applySnapToExtents(
       layout,
@@ -186,7 +218,12 @@ describe("applySnapToExtents: drag-commit grid alignment", () => {
 
   it("does nothing when grid is [0, 0] (snap disabled)", () => {
     const layout = fakeLayout({
-      off: { extent: [[3, 7], [23, 27]] },
+      off: {
+        extent: [
+          [3, 7],
+          [23, 27],
+        ],
+      },
     });
     const out = applySnapToExtents(
       layout,
@@ -198,7 +235,12 @@ describe("applySnapToExtents: drag-commit grid alignment", () => {
 
   it("ignores unknown keys without throwing", () => {
     const layout = fakeLayout({
-      a: { extent: [[3, 7], [23, 27]] },
+      a: {
+        extent: [
+          [3, 7],
+          [23, 27],
+        ],
+      },
     });
     // `phantom` doesn't exist in components — the snap should still
     // apply to `a` and not crash on the missing entry.
@@ -216,7 +258,14 @@ describe("applySnapToExtents: drag-commit grid alignment", () => {
   it("snaps standalone connectors too", () => {
     const layout = fakeLayout(
       {},
-      { port1: { extent: [[1, 1], [11, 11]] } },
+      {
+        port1: {
+          extent: [
+            [1, 1],
+            [11, 11],
+          ],
+        },
+      },
     );
     const out = applySnapToExtents(
       layout,

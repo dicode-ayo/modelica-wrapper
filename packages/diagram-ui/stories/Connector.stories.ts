@@ -62,17 +62,24 @@ interface StandaloneArgs {
 
 const standaloneMeta: Meta<StandaloneArgs> = {
   title: "diagram-ui/Connector",
-  render: ({ showPortIndicator, rotation, zoom }: StandaloneArgs): TemplateResult => {
+  render: ({
+    showPortIndicator,
+    rotation,
+    zoom,
+  }: StandaloneArgs): TemplateResult => {
     const placement: Placement = {
-      extent: [[-8, -8], [8, 8]],
+      extent: [
+        [-8, -8],
+        [8, 8],
+      ],
       rotation,
     };
     return html`
       <div class="om-story">
         <h3>&lt;om-connector&gt; — standalone</h3>
         <p style="font-size:11px;color:#666;margin:4px 0;">
-          Connector on the host class. Toggle the port indicator to see
-          the hover affordance (E1 will drive this from real pointer events).
+          Connector on the host class. Toggle the port indicator to see the
+          hover affordance (E1 will drive this from real pointer events).
         </p>
         <div class="om-story-canvas-host">
           <om-scene .zoom=${zoom}>
@@ -137,7 +144,10 @@ export const NestedOnComponent: StoryObj<NestedArgs> = {
   render: ({ connectorPlacementX, zoom }): TemplateResult => {
     const f = gainFixture as IconFixture;
     const componentPlacement: Placement = {
-      extent: [[-30, -30], [30, 30]],
+      extent: [
+        [-30, -30],
+        [30, 30],
+      ],
     };
     const connectorPlacement: Placement = {
       extent: [
@@ -149,9 +159,9 @@ export const NestedOnComponent: StoryObj<NestedArgs> = {
       <div class="om-story">
         <h3>&lt;om-connector&gt; — nested on Gain block</h3>
         <p style="font-size:11px;color:#666;margin:4px 0;">
-          The connector sits in the Gain block's icon coord system
-          ([-100, 100]²). Slide the X placement to see it tracks the
-          block's local frame.
+          The connector sits in the Gain block's icon coord system ([-100,
+          100]²). Slide the X placement to see it tracks the block's local
+          frame.
         </p>
         <div class="om-story-canvas-host">
           <om-scene .zoom=${zoom}>

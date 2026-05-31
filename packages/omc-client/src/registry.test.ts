@@ -1,16 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  REGISTRY,
-  functionsByCategory,
-  omcFunctionNames,
-} from "./registry.js";
+import { REGISTRY, functionsByCategory, omcFunctionNames } from "./registry.js";
 
 describe("registry", () => {
   it("includes all 10 categories", () => {
-    const cats = new Set(
-      omcFunctionNames.map((n) => REGISTRY[n].category),
-    );
+    const cats = new Set(omcFunctionNames.map((n) => REGISTRY[n].category));
     expect(cats).toEqual(
       new Set([
         "browsing",
@@ -96,8 +90,8 @@ describe("registry", () => {
     expect(() =>
       REGISTRY.isPackage.inputSchema.parse({ typeName: null }),
     ).toThrow();
-    expect(() =>
-      REGISTRY.searchClassNames.inputSchema.parse({}), // missing required searchText
+    expect(
+      () => REGISTRY.searchClassNames.inputSchema.parse({}), // missing required searchText
     ).toThrow();
   });
 

@@ -14,18 +14,21 @@ import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
 
 export const InstantiateModelInputSchema = TypeNameInput;
-export type InstantiateModelInput = z.input<
-  typeof InstantiateModelInputSchema
->;
+export type InstantiateModelInput = z.input<typeof InstantiateModelInputSchema>;
 
 export const InstantiateModelOutputSchema = z.object({
-  flatSource: z.string().describe("Flattened Modelica source after frontend elaboration; what the backend solver consumes."),
+  flatSource: z
+    .string()
+    .describe(
+      "Flattened Modelica source after frontend elaboration; what the backend solver consumes.",
+    ),
 });
 export type InstantiateModelOutput = z.infer<
   typeof InstantiateModelOutputSchema
 >;
 
-export const InstantiateModelDescription = "Instantiate a model and return the flattened Modelica source.";
+export const InstantiateModelDescription =
+  "Instantiate a model and return the flattened Modelica source.";
 
 export async function instantiateModel(
   ctx: CallContext,

@@ -75,7 +75,7 @@ describeIf("OmcClient against real OMC", () => {
   it("invoke() throws ZodError on malformed input", async () => {
     // typeName must be a string. A number should bounce off the input schema
     // BEFORE we ever talk to OMC.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     await expect(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       client.invoke("getClassInformation", { typeName: 42 as any }),
@@ -375,7 +375,8 @@ describeIf("OmcClient against real OMC", () => {
   });
 
   it("getAvailableMatchingAlgorithms returns aligned choice/comment arrays", async () => {
-    const { allChoices, allComments } = await client.getAvailableMatchingAlgorithms();
+    const { allChoices, allComments } =
+      await client.getAvailableMatchingAlgorithms();
     expect(Array.isArray(allChoices)).toBe(true);
     expect(Array.isArray(allComments)).toBe(true);
     expect(allChoices.length).toBe(allComments.length);
@@ -384,7 +385,8 @@ describeIf("OmcClient against real OMC", () => {
   });
 
   it("getAvailableIndexReductionMethods returns aligned choice/comment arrays", async () => {
-    const { allChoices, allComments } = await client.getAvailableIndexReductionMethods();
+    const { allChoices, allComments } =
+      await client.getAvailableIndexReductionMethods();
     expect(Array.isArray(allChoices)).toBe(true);
     expect(Array.isArray(allComments)).toBe(true);
     expect(allChoices.length).toBe(allComments.length);
@@ -393,7 +395,8 @@ describeIf("OmcClient against real OMC", () => {
   });
 
   it("getAvailableTearingMethods returns aligned choice/comment arrays", async () => {
-    const { allChoices, allComments } = await client.getAvailableTearingMethods();
+    const { allChoices, allComments } =
+      await client.getAvailableTearingMethods();
     expect(Array.isArray(allChoices)).toBe(true);
     expect(Array.isArray(allComments)).toBe(true);
     expect(allChoices.length).toBe(allComments.length);
@@ -459,7 +462,9 @@ describeIf("OmcClient against real OMC", () => {
   it("class predicates classify Modelica entries correctly", async () => {
     await client.loadModel({ typeName: "Modelica" });
 
-    const { b: isPkg } = await client.isPackage({ typeName: "Modelica.Blocks" });
+    const { b: isPkg } = await client.isPackage({
+      typeName: "Modelica.Blocks",
+    });
     expect(isPkg).toBe(true);
 
     const { b: isFn } = await client.isFunction({
@@ -720,7 +725,7 @@ describeIf("OmcClient against real OMC", () => {
     );
   });
 
-  it("getModelInstanceAnnotation accepts an explicit empty filter (fill(\"\", 0), not {}) (#25)", async () => {
+  it('getModelInstanceAnnotation accepts an explicit empty filter (fill("", 0), not {}) (#25)', async () => {
     await client.loadModel({ typeName: "Modelica" });
     const cls = "Modelica.Blocks.Math.Sin";
     // Regression guard for the audit.md §2.10 trap: a bare `{}` for this
@@ -903,9 +908,7 @@ end ${pkg};
   it.todo(
     "getAvailablePackageVersions: network side-effect; intentionally skipped in CI",
   );
-  it.todo(
-    "installPackage: network side-effect; intentionally skipped in CI",
-  );
+  it.todo("installPackage: network side-effect; intentionally skipped in CI");
   it.todo(
     "updatePackageIndex: network side-effect; intentionally skipped in CI",
   );
@@ -925,5 +928,4 @@ end ${pkg};
   // results — exercised by `results-heavy.integration.test.ts` (gated by
   // OMC_INTEGRATION_HEAVY=1); that suite simulates a tiny ramp model in a
   // temp directory and covers every results-category wrapper.
-
 });

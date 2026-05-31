@@ -54,14 +54,14 @@ export const ImportFMUInputSchema = z.object({
     .int()
     .optional()
     .default(3)
-    .describe(
-      "OMC's FMU import log level (0=nothing … 3=warning … 6=debug).",
-    ),
+    .describe("OMC's FMU import log level (0=nothing … 3=warning … 6=debug)."),
   fullPath: z
     .boolean()
     .optional()
     .default(false)
-    .describe("Return the absolute path to the generated Modelica file when true."),
+    .describe(
+      "Return the absolute path to the generated Modelica file when true.",
+    ),
   debugLogging: z
     .boolean()
     .optional()
@@ -88,7 +88,9 @@ export const ImportFMUInputSchema = z.object({
 export type ImportFMUInput = z.input<typeof ImportFMUInputSchema>;
 
 export const ImportFMUOutputSchema = z.object({
-  generatedFileName: z.string().describe("Path to the generated Modelica wrapper file on disk."),
+  generatedFileName: z
+    .string()
+    .describe("Path to the generated Modelica wrapper file on disk."),
 });
 export type ImportFMUOutput = z.infer<typeof ImportFMUOutputSchema>;
 

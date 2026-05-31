@@ -32,23 +32,38 @@ import { z } from "zod";
 import type { CallContext } from "../../_shared/callContext.js";
 import { mlBool, quote, quoteListOrFillEmpty } from "../../_shared/format.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
-import { expectBool, expectList, expectStringList, parse } from "../../parse.js";
+import {
+  expectBool,
+  expectList,
+  expectStringList,
+  parse,
+} from "../../parse.js";
 
 export const DiffSimulationResultsInputSchema = z.object({
   actualFile: z.string().describe("Actual simulation result file."),
-  expectedFile: z.string().describe("Expected (reference) simulation result file."),
+  expectedFile: z
+    .string()
+    .describe("Expected (reference) simulation result file."),
   diffPrefix: z
     .string()
     .describe(
       "Prefix for the per-variable CSV files written for mismatches: `<diffPrefix>.<varName>.csv`.",
     ),
-  relTol: z.number().optional().default(1e-3).describe("Per-point relative y-tolerance."),
+  relTol: z
+    .number()
+    .optional()
+    .default(1e-3)
+    .describe("Per-point relative y-tolerance."),
   relTolDiffMinMax: z
     .number()
     .optional()
     .default(1e-4)
     .describe("Relative y-tolerance scaled by the signal's (max − min)."),
-  rangeDelta: z.number().optional().default(0.002).describe("x (time) tolerance."),
+  rangeDelta: z
+    .number()
+    .optional()
+    .default(0.002)
+    .describe("x (time) tolerance."),
   vars: z
     .array(z.string())
     .optional()
@@ -74,7 +89,9 @@ export const DiffSimulationResultsOutputSchema = z.object({
     .describe("True if no variable's diff exceeded the tolerances."),
   failVars: z
     .array(z.string())
-    .describe("Variable names whose diff exceeded the tolerances; empty when `success` is true."),
+    .describe(
+      "Variable names whose diff exceeded the tolerances; empty when `success` is true.",
+    ),
 });
 export type DiffSimulationResultsOutput = z.infer<
   typeof DiffSimulationResultsOutputSchema

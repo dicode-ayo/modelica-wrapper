@@ -49,9 +49,7 @@ export async function moveClass(
   ctx: CallContext,
   input: MoveClassInput,
 ): Promise<MoveClassOutput> {
-  const raw = await ctx.call(
-    `moveClass(${input.typeName}, ${input.offset})`,
-  );
+  const raw = await ctx.call(`moveClass(${input.typeName}, ${input.offset})`);
   return parseOutput(
     MoveClassOutputSchema,
     { success: expectBool(parse(raw)) },

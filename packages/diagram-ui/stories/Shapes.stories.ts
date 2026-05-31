@@ -137,8 +137,8 @@ export const Direct: Story = {
     <div class="om-story">
       <h3>Shapes — direct primitives under &lt;om-scene&gt;</h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
-        One element per shape kind, no &lt;om-graphical-layout&gt; in the
-        path. Validates that the primitive's mesh build works in isolation.
+        One element per shape kind, no &lt;om-graphical-layout&gt; in the path.
+        Validates that the primitive's mesh build works in isolation.
       </p>
       <div class="om-story-canvas-host">
         <om-scene .zoom=${zoom}>
@@ -162,7 +162,12 @@ export const HostViaLayout: Story = {
       kind: "diagram",
       className: "Demo.Host",
       source: { file: "demo.mo", line: 1, column: 1 } as never,
-      coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+      coordinateSystem: {
+        extent: [
+          [-100, -100],
+          [100, 100],
+        ],
+      },
       iconLayers: [],
       diagramLayers: [{ from: "Demo.Host", shapes: SHAPES }],
       labels: [],
@@ -173,7 +178,9 @@ export const HostViaLayout: Story = {
     };
     return html`
       <div class="om-story">
-        <h3>Shapes — host class's diagramLayers via &lt;om-graphical-layout&gt;</h3>
+        <h3>
+          Shapes — host class's diagramLayers via &lt;om-graphical-layout&gt;
+        </h3>
         <p style="font-size:11px;color:#666;margin:4px 0;">
           Minimal layout with no components / connectors — only host shapes.
           Same code path the extension uses for PID_Controller's red

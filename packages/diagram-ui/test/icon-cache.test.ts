@@ -95,13 +95,15 @@ describe("IconCache", () => {
       if (calls === 1) {
         return Promise.reject(new Error("boom"));
       }
-      return Promise.resolve(new Texture(`data:text/plain,${svg}`, s, true, false));
+      return Promise.resolve(
+        new Texture(`data:text/plain,${svg}`, s, true, false),
+      );
     };
 
     const cache = new IconCache(renderSvg, rasterize);
-    await expect(cache.resolve(scene, { layers: makeLayers("Z") })).rejects.toThrow(
-      "boom",
-    );
+    await expect(
+      cache.resolve(scene, { layers: makeLayers("Z") }),
+    ).rejects.toThrow("boom");
     // Failure was evicted; second call retries and succeeds.
     const tex = await cache.resolve(scene, { layers: makeLayers("Z") });
     expect(tex).toBeDefined();

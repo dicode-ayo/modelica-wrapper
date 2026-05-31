@@ -24,21 +24,22 @@ export type GetAvailableLibraryVersionsInput = z.input<
 >;
 
 export const GetAvailableLibraryVersionsOutputSchema = z.object({
-  librariesAndVersions: z.array(z.string()).describe("Available versions of the library, as `name version` strings."),
+  librariesAndVersions: z
+    .array(z.string())
+    .describe("Available versions of the library, as `name version` strings."),
 });
 export type GetAvailableLibraryVersionsOutput = z.infer<
   typeof GetAvailableLibraryVersionsOutputSchema
 >;
 
-export const GetAvailableLibraryVersionsDescription = "List the available versions of a named library from OMC's package index.";
+export const GetAvailableLibraryVersionsDescription =
+  "List the available versions of a named library from OMC's package index.";
 
 export async function getAvailableLibraryVersions(
   ctx: CallContext,
   input: GetAvailableLibraryVersionsInput,
 ): Promise<GetAvailableLibraryVersionsOutput> {
-  const raw = await ctx.call(
-    `getAvailableLibraryVersions(${input.typeName})`,
-  );
+  const raw = await ctx.call(`getAvailableLibraryVersions(${input.typeName})`);
   return parseOutput(
     GetAvailableLibraryVersionsOutputSchema,
     { librariesAndVersions: expectStringList(parse(raw)) },

@@ -28,9 +28,7 @@ import { colorToCss } from "./color.js";
  * without forcing the caller to special-case `stroke="none"` ergonomically;
  * callers that prefer hiding the stroke can check for `"None"` themselves.
  */
-export function linePatternToDashArray(
-  pattern?: string,
-): string | undefined {
+export function linePatternToDashArray(pattern?: string): string | undefined {
   switch (pattern) {
     case undefined:
     case "Solid":
@@ -105,7 +103,9 @@ export function resolveFill(opts: {
 
 type GradientKind = "hcyl" | "vcyl" | "sphere";
 
-function gradientKindFor(pattern: string | undefined): GradientKind | undefined {
+function gradientKindFor(
+  pattern: string | undefined,
+): GradientKind | undefined {
   switch (pattern) {
     case "HorizontalCylinder":
       return "hcyl";
@@ -124,7 +124,11 @@ function gradientKindFor(pattern: string | undefined): GradientKind | undefined 
  * The leading `dsvg-` prefix scopes our ids to this renderer in case the
  * SVG ends up inlined alongside other gradient-using markup.
  */
-function makeGradientId(kind: GradientKind, edge: string, middle: string): string {
+function makeGradientId(
+  kind: GradientKind,
+  edge: string,
+  middle: string,
+): string {
   const slug = (s: string) => s.replace(/[^0-9A-Za-z]/g, "");
   return `dsvg-${kind}-${slug(edge)}-${slug(middle)}`;
 }
@@ -179,10 +183,7 @@ function darkenedFallback(fillColor: Color | undefined): string {
  * been migrated to `resolveFill`. New code should use `resolveFill` so
  * gradient defs get collected and emitted in `<defs>`.
  */
-export function fillPatternToFill(
-  fillCss: string,
-  pattern?: string,
-): string {
+export function fillPatternToFill(fillCss: string, pattern?: string): string {
   if (pattern === "None") return "none";
   return fillCss;
 }

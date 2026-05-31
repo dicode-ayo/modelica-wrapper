@@ -5,11 +5,7 @@
  * capture (`*.icon.json`), the layout is hand-authored.
  */
 
-import type {
-  ClassDef,
-  DiagramLayout,
-  IconLayer,
-} from "@dicode/omc-client";
+import type { ClassDef, DiagramLayout, IconLayer } from "@dicode/omc-client";
 
 import gainFixture from "./gain.icon.json";
 import inertiaFixture from "./inertia.icon.json";
@@ -69,14 +65,24 @@ export function sampleLayout(): DiagramLayout {
     u: {
       name: "u",
       typeName: "Modelica.Electrical.Analog.Interfaces.Pin",
-      placement: { extent: [[-110, -10], [-90, 10]] },
+      placement: {
+        extent: [
+          [-110, -10],
+          [-90, 10],
+        ],
+      },
       iconLayers: PIN_LAYERS,
       from: "Modelica.Blocks.Math.Gain",
     },
     y: {
       name: "y",
       typeName: "Modelica.Electrical.Analog.Interfaces.Pin",
-      placement: { extent: [[90, -10], [110, 10]] },
+      placement: {
+        extent: [
+          [90, -10],
+          [110, 10],
+        ],
+      },
       iconLayers: PIN_LAYERS,
       from: "Modelica.Blocks.Math.Gain",
     },
@@ -102,18 +108,32 @@ export function sampleLayout(): DiagramLayout {
       gain1: {
         name: "gain1",
         classRef: "Modelica.Blocks.Math.Gain",
-        placement: { extent: [[-40, 0], [-20, 20]] },
+        placement: {
+          extent: [
+            [-40, 0],
+            [-20, 20],
+          ],
+        },
       },
       inertia1: {
         name: "inertia1",
         classRef: "Modelica.Mechanics.Rotational.Components.Inertia",
-        placement: { extent: [[0, 0], [20, 20]] },
+        placement: {
+          extent: [
+            [0, 0],
+            [20, 20],
+          ],
+        },
       },
       springdamper1: {
         name: "springdamper1",
-        classRef:
-          "Modelica.Mechanics.Rotational.Components.SpringDamper",
-        placement: { extent: [[30, 0], [50, 20]] },
+        classRef: "Modelica.Mechanics.Rotational.Components.SpringDamper",
+        placement: {
+          extent: [
+            [30, 0],
+            [50, 20],
+          ],
+        },
       },
     },
     connectors: {},

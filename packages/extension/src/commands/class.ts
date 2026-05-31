@@ -38,7 +38,9 @@ const CLASS_KINDS = [
 ] as const;
 type ClassKind = (typeof CLASS_KINDS)[number];
 
-export function registerClassCommands(ctx: CommandContext): vscode.Disposable[] {
+export function registerClassCommands(
+  ctx: CommandContext,
+): vscode.Disposable[] {
   return [
     vscode.commands.registerCommand(
       "modelica.createClass",
@@ -50,7 +52,9 @@ export function registerClassCommands(ctx: CommandContext): vscode.Disposable[] 
         })) as ClassKind | undefined;
         if (!kind) return;
         const name = await vscode.window.showInputBox({
-          prompt: parent ? `New ${kind} inside ${parent}` : `New top-level ${kind}`,
+          prompt: parent
+            ? `New ${kind} inside ${parent}`
+            : `New top-level ${kind}`,
           placeHolder: defaultPlaceholder(kind),
           validateInput: validateIdentifier,
         });

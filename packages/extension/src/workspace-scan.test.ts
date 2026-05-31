@@ -31,8 +31,14 @@ describe("discoverEntryPoints", () => {
     // When the workspace IS a package, loading <root>/package.mo pulls the
     // whole subtree. We must NOT also enumerate sibling files, or OMC
     // would see them twice (once standalone, once via the package).
-    await fsp.writeFile(path.join(tmp, "package.mo"), "package Root\nend Root;\n");
-    await fsp.writeFile(path.join(tmp, "Other.mo"), "model Other\nend Other;\n");
+    await fsp.writeFile(
+      path.join(tmp, "package.mo"),
+      "package Root\nend Root;\n",
+    );
+    await fsp.writeFile(
+      path.join(tmp, "Other.mo"),
+      "model Other\nend Other;\n",
+    );
     await fsp.mkdir(path.join(tmp, "Sub"));
     await fsp.writeFile(
       path.join(tmp, "Sub", "package.mo"),
@@ -122,10 +128,7 @@ describe("discoverEntryPoints", () => {
     const tmp2 = await fsp.mkdtemp(path.join(os.tmpdir(), "ws-scan-2-"));
     try {
       await fsp.writeFile(path.join(tmp, "A.mo"), "model A\nend A;\n");
-      await fsp.writeFile(
-        path.join(tmp2, "package.mo"),
-        "package B\nend B;\n",
-      );
+      await fsp.writeFile(path.join(tmp2, "package.mo"), "package B\nend B;\n");
       const found = await discoverEntryPoints([tmp, tmp2]);
       expect(found).toEqual([
         path.join(tmp, "A.mo"),

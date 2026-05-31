@@ -32,7 +32,13 @@ import { expectBool, parse } from "../../parse.js";
 
 export const RemoveComponentModifiersInputSchema =
   TypeNameAndComponentNameInput.extend({
-    keepRedeclares: z.boolean().optional().default(false).describe("Preserve `redeclare` modifiers (type substitutions) when true."),
+    keepRedeclares: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        "Preserve `redeclare` modifiers (type substitutions) when true.",
+      ),
   });
 export type RemoveComponentModifiersInput = z.input<
   typeof RemoveComponentModifiersInputSchema

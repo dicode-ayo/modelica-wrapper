@@ -24,61 +24,61 @@ import { openFileViaQuickOpen, waitForWorkbench } from "../helpers.js";
 const omcEnabled = process.env["E2E_OMC"] === "1";
 
 test.describe("Definition + hover (OMC-backed)", () => {
-    test.skip(!omcEnabled, "OMC-dependent — set E2E_OMC=1 to enable");
+  test.skip(!omcEnabled, "OMC-dependent — set E2E_OMC=1 to enable");
 
-    test("hover on `R` in the equation surfaces its doc string", async ({
-      page,
-      codeServer,
-    }) => {
-      test.setTimeout(120_000);
+  test("hover on `R` in the equation surfaces its doc string", async ({
+    page,
+    codeServer,
+  }) => {
+    test.setTimeout(120_000);
 
-      await page.goto(codeServer.url);
-      await waitForWorkbench(page);
-      await openFileViaQuickOpen(page, "Demo.mo");
+    await page.goto(codeServer.url);
+    await waitForWorkbench(page);
+    await openFileViaQuickOpen(page, "Demo.mo");
 
-      // The second occurrence of `R` is the component-reference in the
-      // equation `v = R * i;` — the path the hover provider's main flow takes
-      // (cref → qualify → getClassInformation / getClassComment).
-      const rInEquation = page
-        .locator(".monaco-editor .view-lines span[class*='mtk']")
-        .filter({ hasText: /^R$/ })
-        .nth(1);
-      await rInEquation.hover();
+    // The second occurrence of `R` is the component-reference in the
+    // equation `v = R * i;` — the path the hover provider's main flow takes
+    // (cref → qualify → getClassInformation / getClassComment).
+    const rInEquation = page
+      .locator(".monaco-editor .view-lines span[class*='mtk']")
+      .filter({ hasText: /^R$/ })
+      .nth(1);
+    await rInEquation.hover();
 
-      const hover = page.locator(".monaco-hover").first();
-      // The doc string from `parameter Real R = 1.0 "Resistance"` should appear
-      // in the rendered markdown. Generous timeout — first hover after open
-      // pays the OMC `loadFile` + `qualifyPath` round-trip cost.
-      await expect(hover).toContainText(/Resistance/i, { timeout: 60_000 });
-    });
+    const hover = page.locator(".monaco-hover").first();
+    // The doc string from `parameter Real R = 1.0 "Resistance"` should appear
+    // in the rendered markdown. Generous timeout — first hover after open
+    // pays the OMC `loadFile` + `qualifyPath` round-trip cost.
+    await expect(hover).toContainText(/Resistance/i, { timeout: 60_000 });
+  });
 
-    test("go-to-definition on the `Real` type navigates", async ({
-      page,
-      codeServer,
-    }) => {
-      test.setTimeout(120_000);
+  test("go-to-definition on the `Real` type navigates", async ({
+    page,
+    codeServer,
+  }) => {
+    test.setTimeout(120_000);
 
-      await page.goto(codeServer.url);
-      await waitForWorkbench(page);
-      await openFileViaQuickOpen(page, "Demo.mo");
+    await page.goto(codeServer.url);
+    await waitForWorkbench(page);
+    await openFileViaQuickOpen(page, "Demo.mo");
 
-      // Press F12 on the `Real` keyword. We don't pin the exact target
-      // location (varies across MSL versions) — just assert that VSCode
-      // navigates somewhere, signalled by a NEW editor tab appearing.
-      const realType = page
-        .locator(".monaco-editor .view-lines span[class*='mtk']")
-        .filter({ hasText: /^Real$/ })
-        .first();
-      await realType.click();
-      await page.keyboard.press("F12");
+    // Press F12 on the `Real` keyword. We don't pin the exact target
+    // location (varies across MSL versions) — just assert that VSCode
+    // navigates somewhere, signalled by a NEW editor tab appearing.
+    const realType = page
+      .locator(".monaco-editor .view-lines span[class*='mtk']")
+      .filter({ hasText: /^Real$/ })
+      .first();
+    await realType.click();
+    await page.keyboard.press("F12");
 
-      // A second editor tab opens for the definition target, or focus moves to
-      // another `.mo` source. Either way, an editor tab labelled with a `.mo`
-      // file other than `Demo.mo` becomes visible.
-      const otherMoTab = page
-        .locator('.tab[aria-label*=".mo" i]')
-        .filter({ hasNotText: "Demo.mo" })
-        .first();
-      await expect(otherMoTab).toBeVisible({ timeout: 60_000 });
-    });
+    // A second editor tab opens for the definition target, or focus moves to
+    // another `.mo` source. Either way, an editor tab labelled with a `.mo`
+    // file other than `Demo.mo` becomes visible.
+    const otherMoTab = page
+      .locator('.tab[aria-label*=".mo" i]')
+      .filter({ hasNotText: "Demo.mo" })
+      .first();
+    await expect(otherMoTab).toBeVisible({ timeout: 60_000 });
+  });
 });

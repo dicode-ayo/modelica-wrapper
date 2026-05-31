@@ -1,7 +1,4 @@
-import type {
-  DiagramLayout,
-  ParameterModel,
-} from "@dicode/omc-client";
+import type { DiagramLayout, ParameterModel } from "@dicode/omc-client";
 
 /**
  * Wire-format mirror of diagram-ui's `LibraryClassRestriction`.

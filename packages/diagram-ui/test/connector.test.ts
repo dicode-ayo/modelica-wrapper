@@ -28,7 +28,10 @@ afterEach(() => {
   }
 });
 
-async function mountScene(): Promise<{ scene: OmScene; provider: OmIconProvider }> {
+async function mountScene(): Promise<{
+  scene: OmScene;
+  provider: OmIconProvider;
+}> {
   const provider = document.createElement("om-icon-provider") as OmIconProvider;
   provider.renderSvg = (l) => `svg:${l[0]!.from}`;
   provider.rasterize = (svg: string, s: Scene): Promise<Texture> =>
@@ -52,7 +55,12 @@ describe("<om-connector>", () => {
     const { scene } = await mountScene();
     const conn = document.createElement("om-connector") as OmConnector;
     conn.nodeId = "p";
-    conn.placement = { extent: [[-5, -5], [5, 5]] } as Placement;
+    conn.placement = {
+      extent: [
+        [-5, -5],
+        [5, 5],
+      ],
+    } as Placement;
     conn.layers = [{ from: "C", shapes: [] }] as IconLayer[];
     scene.appendChild(conn);
     await conn.updateComplete;
@@ -62,7 +70,12 @@ describe("<om-connector>", () => {
   it("attaches the port indicator under the connector's TransformNode", async () => {
     const { scene } = await mountScene();
     const conn = document.createElement("om-connector") as OmConnector;
-    conn.placement = { extent: [[-5, -5], [5, 5]] } as Placement;
+    conn.placement = {
+      extent: [
+        [-5, -5],
+        [5, 5],
+      ],
+    } as Placement;
     scene.appendChild(conn);
     await conn.updateComplete;
     conn.setPortIndicatorVisible(true);
@@ -73,13 +86,23 @@ describe("<om-connector>", () => {
     const { scene } = await mountScene();
     const comp = document.createElement("om-component") as OmComponent;
     comp.nodeId = "block";
-    comp.placement = { extent: [[-20, -20], [20, 20]] } as Placement;
+    comp.placement = {
+      extent: [
+        [-20, -20],
+        [20, 20],
+      ],
+    } as Placement;
     scene.appendChild(comp);
     await comp.updateComplete;
 
     const conn = document.createElement("om-connector") as OmConnector;
     conn.nodeId = "p";
-    conn.placement = { extent: [[60, -10], [80, 10]] } as Placement;
+    conn.placement = {
+      extent: [
+        [60, -10],
+        [80, 10],
+      ],
+    } as Placement;
     comp.appendChild(conn);
     await conn.updateComplete;
 

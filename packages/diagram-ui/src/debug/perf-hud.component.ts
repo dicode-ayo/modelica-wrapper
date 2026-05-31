@@ -151,14 +151,12 @@ export class OmPerfHud extends LitElement {
     super.connectedCallback();
     this.tick = this.tick.bind(this);
     this.gpu = readGpuRenderer();
-    // eslint-disable-next-line no-console
+
     console.info(`[om-perf-hud] webgl renderer = ${this.gpu}`);
     this.rafId = requestAnimationFrame(this.tick);
   }
 
-  private resubscribeInteraction(
-    store: InteractionStateStore | null,
-  ): void {
+  private resubscribeInteraction(store: InteractionStateStore | null): void {
     this.interactionUnsub?.();
     this.interactionUnsub = null;
     if (!store) {
@@ -249,15 +247,11 @@ export class OmPerfHud extends LitElement {
     const stateLine = formatStateLine(this.interaction.state);
     const hoverLine = formatHoverLine(this.interaction.hoverKey);
     const selectionLine = formatSelectionLine(this.interaction.selectedKeys);
-    return html`<span class=${fpsClass}
-        >${fps.toFixed(0).padStart(3)} fps</span
-      >  ${frameMs.toFixed(1).padStart(4)} ms
-meshes ${String(meshes).padStart(4)}   drawcalls ${String(drawCalls).padStart(4)}
-xy     ${pointerStr}
-state  ${stateLine}
-hover  ${hoverLine}
-sel    ${selectionLine}
-<span class=${gpuClass}>gpu ${this.gpu}</span>`;
+    return html`<span class=${fpsClass}>${fps.toFixed(0).padStart(3)} fps</span>
+      ${frameMs.toFixed(1).padStart(4)} ms meshes ${String(meshes).padStart(4)}
+      drawcalls ${String(drawCalls).padStart(4)} xy ${pointerStr} state
+      ${stateLine} hover ${hoverLine} sel ${selectionLine}
+      <span class=${gpuClass}>gpu ${this.gpu}</span>`;
   }
 
   private tick(): void {
@@ -276,7 +270,7 @@ sel    ${selectionLine}
         const drawCalls =
           typeof dcField === "number"
             ? dcField
-            : (dcField as { current?: number } | undefined)?.current ?? 0;
+            : ((dcField as { current?: number } | undefined)?.current ?? 0);
         this.stats = {
           fps,
           frameMs: fps > 0 ? 1000 / fps : 0,

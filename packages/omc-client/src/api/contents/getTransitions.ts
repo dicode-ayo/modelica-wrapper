@@ -17,13 +17,16 @@ export const GetTransitionsInputSchema = TypeNameInput;
 export type GetTransitionsInput = z.input<typeof GetTransitionsInputSchema>;
 
 export const GetTransitionsOutputSchema = z.object({
-  transitions: z.array(z.array(z.string())).describe("One row per transition; each row is `[from, to, condition, immediate, reset, synchronize, priority]` as raw strings."),
+  transitions: z
+    .array(z.array(z.string()))
+    .describe(
+      "One row per transition; each row is `[from, to, condition, immediate, reset, synchronize, priority]` as raw strings.",
+    ),
 });
-export type GetTransitionsOutput = z.infer<
-  typeof GetTransitionsOutputSchema
->;
+export type GetTransitionsOutput = z.infer<typeof GetTransitionsOutputSchema>;
 
-export const GetTransitionsDescription = "Return the list of state-machine transitions for the given class.";
+export const GetTransitionsDescription =
+  "Return the list of state-machine transitions for the given class.";
 
 export async function getTransitions(
   ctx: CallContext,

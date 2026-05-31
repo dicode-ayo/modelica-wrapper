@@ -9,9 +9,10 @@ import { clearComponentModifiers } from "./clear-modifiers.js";
  * without dragging the real transport (zeromq / cmake-ts) into the unit
  * suite.
  */
-function mockClient(
-  result: { success: boolean } = { success: true },
-): { client: OmcClient; remove: ReturnType<typeof vi.fn> } {
+function mockClient(result: { success: boolean } = { success: true }): {
+  client: OmcClient;
+  remove: ReturnType<typeof vi.fn>;
+} {
   const remove = vi.fn().mockResolvedValue(result);
   const client = { removeElementModifiers: remove } as unknown as OmcClient;
   return { client, remove };

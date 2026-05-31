@@ -212,4 +212,3 @@ async function autoLoadWorkspaceModels(
     log.warn("autoLoad", `OMC client unavailable: ${(err as Error).message}`);
   }
 }
-

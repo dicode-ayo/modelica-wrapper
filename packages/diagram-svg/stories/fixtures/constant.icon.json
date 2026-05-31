@@ -7,25 +7,11 @@
         {
           "kind": "rectangle",
           "extent": [
-            [
-              -100,
-              -100
-            ],
-            [
-              100,
-              100
-            ]
+            [-100, -100],
+            [100, 100]
           ],
-          "lineColor": [
-            0,
-            0,
-            127
-          ],
-          "fillColor": [
-            255,
-            255,
-            255
-          ],
+          "lineColor": [0, 0, 127],
+          "fillColor": [255, 255, 255],
           "pattern": "Solid",
           "fillPattern": "Solid",
           "lineThickness": 0.25,
@@ -35,36 +21,20 @@
         {
           "kind": "text",
           "extent": [
-            [
-              -150,
-              150
-            ],
-            [
-              150,
-              110
-            ]
+            [-150, 150],
+            [150, 110]
           ],
           "textString": "%name",
           "fontSize": 0,
-          "textColor": [
-            0,
-            0,
-            255
-          ],
+          "textColor": [0, 0, 255],
           "textStyle": [],
           "horizontalAlignment": "Center"
         }
       ],
       "coordinateSystem": {
         "extent": [
-          [
-            -100,
-            -100
-          ],
-          [
-            100,
-            100
-          ]
+          [-100, -100],
+          [100, 100]
         ],
         "preserveAspectRatio": true
       }
@@ -75,59 +45,26 @@
         {
           "kind": "line",
           "points": [
-            [
-              -80,
-              68
-            ],
-            [
-              -80,
-              -80
-            ]
+            [-80, 68],
+            [-80, -80]
           ],
-          "color": [
-            192,
-            192,
-            192
-          ],
+          "color": [192, 192, 192],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "None"
         },
         {
           "kind": "polygon",
           "points": [
-            [
-              -80,
-              90
-            ],
-            [
-              -88,
-              68
-            ],
-            [
-              -72,
-              68
-            ],
-            [
-              -80,
-              90
-            ]
+            [-80, 90],
+            [-88, 68],
+            [-72, 68],
+            [-80, 90]
           ],
-          "lineColor": [
-            192,
-            192,
-            192
-          ],
-          "fillColor": [
-            192,
-            192,
-            192
-          ],
+          "lineColor": [192, 192, 192],
+          "fillColor": [192, 192, 192],
           "pattern": "Solid",
           "fillPattern": "Solid",
           "lineThickness": 0.25,
@@ -136,59 +73,26 @@
         {
           "kind": "line",
           "points": [
-            [
-              -90,
-              -70
-            ],
-            [
-              82,
-              -70
-            ]
+            [-90, -70],
+            [82, -70]
           ],
-          "color": [
-            192,
-            192,
-            192
-          ],
+          "color": [192, 192, 192],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "None"
         },
         {
           "kind": "polygon",
           "points": [
-            [
-              90,
-              -70
-            ],
-            [
-              68,
-              -62
-            ],
-            [
-              68,
-              -78
-            ],
-            [
-              90,
-              -70
-            ]
+            [90, -70],
+            [68, -62],
+            [68, -78],
+            [90, -70]
           ],
-          "lineColor": [
-            192,
-            192,
-            192
-          ],
-          "fillColor": [
-            192,
-            192,
-            192
-          ],
+          "lineColor": [192, 192, 192],
+          "fillColor": [192, 192, 192],
           "pattern": "Solid",
           "fillPattern": "Solid",
           "lineThickness": 0.25,
@@ -197,62 +101,33 @@
         {
           "kind": "line",
           "points": [
-            [
-              -80,
-              0
-            ],
-            [
-              80,
-              0
-            ]
+            [-80, 0],
+            [80, 0]
           ],
-          "color": [
-            0,
-            0,
-            0
-          ],
+          "color": [0, 0, 0],
           "pattern": "Solid",
           "thickness": 0.25,
-          "arrow": [
-            "None",
-            "None"
-          ],
+          "arrow": ["None", "None"],
           "arrowSize": 3,
           "smooth": "None"
         },
         {
           "kind": "text",
           "extent": [
-            [
-              -150,
-              -150
-            ],
-            [
-              150,
-              -110
-            ]
+            [-150, -150],
+            [150, -110]
           ],
           "textString": "k=%k",
           "fontSize": 0,
-          "textColor": [
-            -1,
-            -1,
-            -1
-          ],
+          "textColor": [-1, -1, -1],
           "textStyle": [],
           "horizontalAlignment": "Center"
         }
       ],
       "coordinateSystem": {
         "extent": [
-          [
-            -100,
-            -100
-          ],
-          [
-            100,
-            100
-          ]
+          [-100, -100],
+          [100, 100]
         ],
         "preserveAspectRatio": true
       }
@@ -260,14 +135,8 @@
   ],
   "coordinateSystem": {
     "extent": [
-      [
-        -100,
-        -100
-      ],
-      [
-        100,
-        100
-      ]
+      [-100, -100],
+      [100, 100]
     ],
     "preserveAspectRatio": true
   }

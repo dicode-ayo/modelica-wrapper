@@ -44,9 +44,7 @@ export async function getDerivedClassModifierNames(
   ctx: CallContext,
   input: GetDerivedClassModifierNamesInput,
 ): Promise<GetDerivedClassModifierNamesOutput> {
-  const raw = await ctx.call(
-    `getDerivedClassModifierNames(${input.typeName})`,
-  );
+  const raw = await ctx.call(`getDerivedClassModifierNames(${input.typeName})`);
   return parseOutput(
     GetDerivedClassModifierNamesOutputSchema,
     { modifierNames: expectStringList(parse(raw)) },

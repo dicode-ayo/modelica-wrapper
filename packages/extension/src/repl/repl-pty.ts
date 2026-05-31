@@ -28,7 +28,11 @@ import {
   computeGhost,
   formatColumns,
 } from "./repl-complete.js";
-import { evalLine, type ReplDependencies, type ReplResult } from "./repl-eval.js";
+import {
+  evalLine,
+  type ReplDependencies,
+  type ReplResult,
+} from "./repl-eval.js";
 import { ReplHistory } from "./repl-history.js";
 
 const PROMPT_TEXT = "omc> ";
@@ -46,8 +50,7 @@ const DEFAULT_ROWS = 24;
 // scrollback (VSCode honours both).
 const CLEAR_SCREEN = "\x1b[2J\x1b[3J\x1b[H";
 
-const BANNER =
-  "Modelica REPL — type :help for commands, :exit to close.";
+const BANNER = "Modelica REPL — type :help for commands, :exit to close.";
 
 export class ModelicaReplPty implements vscode.Pseudoterminal {
   private readonly writeEmitter = new vscode.EventEmitter<string>();

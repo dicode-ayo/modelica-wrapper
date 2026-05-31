@@ -22,11 +22,17 @@ interface StoryArgs {
 
 const meta: Meta<StoryArgs> = {
   title: "diagram-ui/GridAxis",
-  render: ({ extent, minorStep, majorStep, zoom }: StoryArgs): TemplateResult => html`
+  render: ({
+    extent,
+    minorStep,
+    majorStep,
+    zoom,
+  }: StoryArgs): TemplateResult => html`
     <div class="om-story">
       <h3>&lt;om-grid-axis&gt;</h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
-        Minor / major grid + bold X and Y axes. Wheel to zoom, middle-drag to pan.
+        Minor / major grid + bold X and Y axes. Wheel to zoom, middle-drag to
+        pan.
       </p>
       <div class="om-story-canvas-host">
         <om-scene .zoom=${zoom}>

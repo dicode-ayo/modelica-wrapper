@@ -96,8 +96,7 @@ export class OmText extends OmShapePrimitive {
     // texture-on-plane pipeline clips at the canvas edge and stretches
     // the clipped slice onto the plane — produces a "huge font"
     // artefact when the extent is shorter than 12 user units.
-    const fontSize =
-      s.fontSize && s.fontSize > 0 ? s.fontSize : height;
+    const fontSize = s.fontSize && s.fontSize > 0 ? s.fontSize : height;
     const fontFamily =
       s.fontName && s.fontName.length > 0 ? s.fontName : "sans-serif";
 

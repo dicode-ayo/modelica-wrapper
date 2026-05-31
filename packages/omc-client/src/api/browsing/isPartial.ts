@@ -25,7 +25,8 @@ export type IsPartialInput = z.input<typeof IsPartialInputSchema>;
 export const IsPartialOutputSchema = BooleanBOutput;
 export type IsPartialOutput = z.infer<typeof IsPartialOutputSchema>;
 
-export const IsPartialDescription = "Check whether the given class is declared `partial`.";
+export const IsPartialDescription =
+  "Check whether the given class is declared `partial`.";
 
 export async function isPartial(
   ctx: CallContext,

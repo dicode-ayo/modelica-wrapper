@@ -54,10 +54,7 @@
   --wa-color-text-link: var(--vscode-textLink-foreground, #0969da);
 
   /* --- Modal backdrop ----------------------------------------- */
-  --wa-color-overlay-modal: var(
-    --vscode-widget-shadow,
-    rgba(0, 0, 0, 0.55)
-  );
+  --wa-color-overlay-modal: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.55));
 
   /* --- Focus ring --------------------------------------------- */
   --wa-color-focus: var(--vscode-focusBorder, #007fd4);
@@ -68,18 +65,12 @@
   --wa-color-brand-border-loud: var(--vscode-button-border, transparent);
 
   /* --- Inputs -------------------------------------------------- */
-  --wa-form-control-background-color: var(
-    --vscode-input-background,
-    #fff
-  );
+  --wa-form-control-background-color: var(--vscode-input-background, #fff);
   --wa-form-control-border-color: var(
     --vscode-input-border,
     rgba(0, 0, 0, 0.2)
   );
-  --wa-form-control-value-color: var(
-    --vscode-input-foreground,
-    inherit
-  );
+  --wa-form-control-value-color: var(--vscode-input-foreground, inherit);
   --wa-form-control-placeholder-color: var(
     --vscode-input-placeholderForeground,
     #888

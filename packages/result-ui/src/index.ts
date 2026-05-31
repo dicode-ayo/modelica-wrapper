@@ -19,7 +19,11 @@ export * from "./events.js";
 
 // Pure helpers (also unit-tested in isolation).
 export { buildVariableTree, type VarNode } from "./var-tree.js";
-export { buildEchartTheme, readCssVar, type EchartTheme } from "./echart-theme.js";
+export {
+  buildEchartTheme,
+  readCssVar,
+  type EchartTheme,
+} from "./echart-theme.js";
 export { buildLineChartOption } from "./chart-option.js";
 
 // Components.

@@ -135,9 +135,8 @@ export interface CompletionClient extends ResolveClient {
 }
 
 /** Context kinds that complete to class/type names. */
-const TYPE_CONTEXTS: ReadonlySet<CursorContextKind> = new Set<CursorContextKind>(
-  ["type-reference", "extends", "component-type"],
-);
+const TYPE_CONTEXTS: ReadonlySet<CursorContextKind> =
+  new Set<CursorContextKind>(["type-reference", "extends", "component-type"]);
 
 /**
  * Compute the completion candidates for the cursor at `offset` in `tree`, scoped

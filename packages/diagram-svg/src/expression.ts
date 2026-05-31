@@ -23,7 +23,8 @@ import type { CallExpr, ComponentRef, Expression } from "./types.js";
 export function expressionToString(expr: Expression | undefined): string {
   if (expr === null || expr === undefined) return "";
   if (typeof expr === "string") return expr;
-  if (typeof expr === "number" || typeof expr === "boolean") return String(expr);
+  if (typeof expr === "number" || typeof expr === "boolean")
+    return String(expr);
 
   if (Array.isArray(expr)) return "";
 

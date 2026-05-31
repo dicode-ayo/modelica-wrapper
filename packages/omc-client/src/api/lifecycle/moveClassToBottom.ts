@@ -13,7 +13,10 @@ import { z } from "zod";
 import type { CallContext } from "../../_shared/callContext.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
-import { parseMutationSuccess, parseOutput } from "../../_shared/parseOutput.js";
+import {
+  parseMutationSuccess,
+  parseOutput,
+} from "../../_shared/parseOutput.js";
 
 export const MoveClassToBottomInputSchema = TypeNameInput;
 export type MoveClassToBottomInput = z.input<
@@ -25,7 +28,8 @@ export type MoveClassToBottomOutput = z.infer<
   typeof MoveClassToBottomOutputSchema
 >;
 
-export const MoveClassToBottomDescription = "Move a class to the bottom of its enclosing class.";
+export const MoveClassToBottomDescription =
+  "Move a class to the bottom of its enclosing class.";
 
 export async function moveClassToBottom(
   ctx: CallContext,

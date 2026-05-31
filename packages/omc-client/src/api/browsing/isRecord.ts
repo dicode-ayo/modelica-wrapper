@@ -25,7 +25,8 @@ export type IsRecordInput = z.input<typeof IsRecordInputSchema>;
 export const IsRecordOutputSchema = BooleanBOutput;
 export type IsRecordOutput = z.infer<typeof IsRecordOutputSchema>;
 
-export const IsRecordDescription = "Check whether the given class has the `record` restriction.";
+export const IsRecordDescription =
+  "Check whether the given class has the `record` restriction.";
 
 export async function isRecord(
   ctx: CallContext,

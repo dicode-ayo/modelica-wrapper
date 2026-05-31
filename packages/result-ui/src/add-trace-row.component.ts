@@ -48,7 +48,8 @@ export class OmAddTraceRow extends LitElement {
         padding: 0 var(--om-space-xs);
         color: var(--vscode-input-foreground, inherit);
         background: var(--vscode-input-background, #fff);
-        border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, #ccc));
+        border: 1px solid
+          var(--vscode-input-border, var(--vscode-panel-border, #ccc));
         border-radius: var(--om-radius-sm);
       }
       .sep {
@@ -80,7 +81,8 @@ export class OmAddTraceRow extends LitElement {
   @property() cardId = "";
   @property({ attribute: false }) results: ResultRef[] = [];
   /** Variable names per result id, supplied lazily by the host. */
-  @property({ attribute: false }) variablesByResult: Record<string, string[]> = {};
+  @property({ attribute: false }) variablesByResult: Record<string, string[]> =
+    {};
 
   @state() private selResultId = "";
   /** Chosen segment name at each cascade level. */
@@ -118,12 +120,17 @@ export class OmAddTraceRow extends LitElement {
 
   override render(): TemplateResult {
     if (this.results.length === 0) {
-      return html`<span class="hint">Add a result to plot its variables.</span>`;
+      return html`<span class="hint"
+        >Add a result to plot its variables.</span
+      >`;
     }
 
     return html`
       <span class="ctrl">
-        <select aria-label="Result" @change=${(e: Event) => this.onResultChange(e)}>
+        <select
+          aria-label="Result"
+          @change=${(e: Event) => this.onResultChange(e)}
+        >
           <option value="" ?selected=${this.selResultId === ""}>Result…</option>
           ${this.results.map(
             (r) =>

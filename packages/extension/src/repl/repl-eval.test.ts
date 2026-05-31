@@ -74,7 +74,10 @@ function makeClient(opts: { loadFileSuccess?: boolean } = {}): FakeClient {
   return state;
 }
 
-function makeDeps(client: OmcClient, opts: { resetReturn?: OmcClient } = {}): {
+function makeDeps(
+  client: OmcClient,
+  opts: { resetReturn?: OmcClient } = {},
+): {
   deps: ReplDependencies;
   resetCount: number;
 } {
@@ -108,7 +111,9 @@ describe("evalLine — plain OMC commands", () => {
   it("treats a non-empty error buffer after a call as an error result", async () => {
     const fake = makeClient();
     fake.callReplies.set("bogus", "");
-    fake.errorQueue.push("[<interactive>:1:1] Error: Lookup of class bogus failed.");
+    fake.errorQueue.push(
+      "[<interactive>:1:1] Error: Lookup of class bogus failed.",
+    );
     const { deps } = makeDeps(fake.client);
     const result = await evalLine("bogus", deps);
     expect(result.isError).toBe(true);

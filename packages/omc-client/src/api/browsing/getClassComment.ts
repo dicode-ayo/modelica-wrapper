@@ -22,11 +22,13 @@ export const GetClassCommentInputSchema = TypeNameInput;
 export type GetClassCommentInput = z.input<typeof GetClassCommentInputSchema>;
 
 export const GetClassCommentOutputSchema = z.object({
-  comment: z.string().describe("Class description-string comment (the quoted text after the class name); empty if none."),
+  comment: z
+    .string()
+    .describe(
+      "Class description-string comment (the quoted text after the class name); empty if none.",
+    ),
 });
-export type GetClassCommentOutput = z.infer<
-  typeof GetClassCommentOutputSchema
->;
+export type GetClassCommentOutput = z.infer<typeof GetClassCommentOutputSchema>;
 
 export const GetClassCommentDescription =
   "Return the description-string comment of the class (the quoted text after the class name).";

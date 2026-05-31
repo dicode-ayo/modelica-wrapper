@@ -87,7 +87,9 @@ export type BooleanResultOutput = z.infer<typeof BooleanResultOutput>;
 export const StringResultOutput = z.object({
   result: z
     .string()
-    .describe("Raw string returned by OMC; field name `result` is OMC verbatim."),
+    .describe(
+      "Raw string returned by OMC; field name `result` is OMC verbatim.",
+    ),
 });
 export type StringResultOutput = z.infer<typeof StringResultOutput>;
 

@@ -43,7 +43,8 @@ function offsetOf(src: string, needle: string, occurrence = 0): number {
   let idx = -1;
   for (let k = 0; k <= occurrence; k++) {
     idx = src.indexOf(needle, from + 1);
-    if (idx === -1) throw new Error(`needle not found: ${needle}#${occurrence}`);
+    if (idx === -1)
+      throw new Error(`needle not found: ${needle}#${occurrence}`);
     from = idx;
   }
   return idx;
@@ -53,7 +54,9 @@ function offsetOf(src: string, needle: string, occurrence = 0): number {
 function makeClient(overrides: Partial<ResolveClient> = {}): ResolveClient {
   return {
     qualifyPath: vi.fn(({ path }) => Promise.resolve({ qualifiedPath: path })),
-    getClassInformation: vi.fn(() => Promise.resolve({ fileName: "/lib/Unknown.mo" })),
+    getClassInformation: vi.fn(() =>
+      Promise.resolve({ fileName: "/lib/Unknown.mo" }),
+    ),
     getComponents: vi.fn(() => Promise.resolve({ components: [] })),
     ...overrides,
   };

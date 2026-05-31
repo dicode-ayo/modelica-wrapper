@@ -9,7 +9,13 @@
  * the data or theme changes; a `ResizeObserver` keeps it sized.
  */
 
-import { LitElement, css, html, type PropertyValues, type TemplateResult } from "lit";
+import {
+  LitElement,
+  css,
+  html,
+  type PropertyValues,
+  type TemplateResult,
+} from "lit";
 import { customElement, property } from "lit/decorators.js";
 import * as echarts from "echarts";
 
@@ -58,7 +64,10 @@ export class OmResultPlotCard extends LitElement {
         border-radius: var(--om-radius-sm);
       }
       .trace:hover {
-        background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
+        background: var(
+          --vscode-list-hoverBackground,
+          rgba(128, 128, 128, 0.1)
+        );
       }
       .chart {
         min-height: var(--om-chart-min-height);
@@ -73,7 +82,8 @@ export class OmResultPlotCard extends LitElement {
   @property({ attribute: false }) card: PlotCard = { kind: "plot", id: "" };
   @property({ attribute: false }) results: ResultRef[] = [];
   @property({ attribute: false }) traces: TracePayload[] = [];
-  @property({ attribute: false }) variablesByResult: Record<string, string[]> = {};
+  @property({ attribute: false }) variablesByResult: Record<string, string[]> =
+    {};
 
   private chart: echarts.ECharts | undefined;
   private resizeObserver: ResizeObserver | undefined;
