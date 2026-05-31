@@ -115,6 +115,9 @@ The root file is the map; the detail lives under [`docs/`](docs):
   the normative coordinate/annotation/connection semantics + the OMC calls
   OMEdit uses, mapped against our implementation, with a diagram-editor gaps
   table.
+- **[Autocomplete — hybrid implementation plan](docs/autocomplete-hybrid-plan.md)** —
+  phased plan to combine OMEdit's inheritance-aware model + static channels with
+  our tree-sitter routing and the #112 cache.
 
 ---
 
