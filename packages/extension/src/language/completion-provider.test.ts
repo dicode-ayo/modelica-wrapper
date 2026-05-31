@@ -758,9 +758,8 @@ describe("computeCompletions — robustness", () => {
 
 describe("computeCompletions — textual routing fallback (broken buffers)", () => {
   it("routes `r.` to member completion when the buffer is unparseable", async () => {
-    // An unterminated declaration with a trailing member access: the parse is
-    // broken enough that neither the AST classifier nor the dot-node recovery
-    // yields a head, so the textual fallback must route `r` to its members.
+    // Neither the AST classifier nor the dot-node recovery yields a head here,
+    // so the textual fallback must route `r` to its members.
     const src = "model M\n  Resistor r\n  r.";
     const getComponents = vi.fn(({ typeName }) => {
       if (typeName === "MyPkg.M") {
@@ -789,8 +788,6 @@ describe("computeCompletions — textual routing fallback (broken buffers)", () 
   });
 
   it("routes a bare prefix to class-name completion when the buffer is unparseable", async () => {
-    // A dangling type prefix with no following declarator: the AST offers no
-    // context, so the textual fallback routes `Res` to the class-name sources.
     const src = "model M\n  Resistor r\n  Res";
     const client = makeClient({
       getClassNames: vi.fn(() =>

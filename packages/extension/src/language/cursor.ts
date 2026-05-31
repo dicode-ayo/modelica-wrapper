@@ -155,7 +155,7 @@ export function targetAt(tree: Tree, offset: number): CursorTarget | null {
  * Returns `null` when `offset` is not immediately after a dot or there is no
  * dotted head to the left. The prefix being completed is empty in this case.
  *
- * `offset` is a UTF-16 code-unit offset (see the module note).
+ * @see Offset unit — module note.
  */
 export function headBeforeDot(tree: Tree, offset: number): string[] | null {
   if (offset <= 0) return null;
@@ -175,11 +175,9 @@ export function headBeforeDot(tree: Tree, offset: number): string[] | null {
 /**
  * Does the cursor at `offset` sit inside a parse-error region — i.e. is the
  * node under it, or one of its ancestors, an `ERROR` node or `isMissing`? A
- * clean parse never trips this; a mid-edit, unparseable buffer does. The
- * textual routing fallback gates on this so a deliberately silent context in a
- * WELL-FORMED buffer (a value reference, a keyword) is not turned noisy.
+ * clean parse never trips this; a mid-edit, unparseable buffer does.
  *
- * `offset` is a UTF-16 code-unit offset (see the module note).
+ * @see Offset unit — module note.
  */
 export function cursorInErrorRegion(tree: Tree, offset: number): boolean {
   if (hasErrorAncestor(tree.rootNode.descendantForIndex(offset, offset))) {
@@ -218,7 +216,7 @@ function hasErrorAncestor(node: Node | null): boolean {
  *   `Res`   → { head: [],         prefix: "Res" }
  */
 export interface TextualWord {
-  readonly head: string[];
+  readonly head: readonly string[];
   readonly prefix: string;
 }
 
@@ -230,7 +228,7 @@ export interface TextualWord {
  * head segment is empty (e.g. a leading `.` or a `..`), since neither routes to
  * a meaningful completion.
  *
- * `offset` is a UTF-16 code-unit offset (see the module note).
+ * @see Offset unit — module note.
  */
 export function textualWordBefore(
   source: string,
@@ -280,7 +278,7 @@ function isWordChar(code: number): boolean {
  * rather than re-deriving the modified component, because the modifier name's
  * own dotted path does NOT contain the component/type it modifies.
  *
- * `offset` is a UTF-16 code-unit offset (see the module note).
+ * @see Offset unit — module note.
  */
 export function modifiedTypeName(tree: Tree, offset: number): string | null {
   const ident = identifierAt(tree, offset);

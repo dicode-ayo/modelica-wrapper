@@ -217,13 +217,10 @@ export async function computeCompletions(
     return cap(await modifierCandidates(owningClass, typeName, client));
   }
 
-  // The AST routed to nothing: `target` is null, or it classified to a
-  // non-completable context (`component-reference`, `unknown`). In a WELL-FORMED
-  // buffer that silence is deliberate (a value reference, a keyword). In a
-  // broken buffer it is just parse failure, so fall back to the textual word
-  // before the caret: a dotted word routes its head to member access; a bare
-  // word routes its prefix to type/class-name completion. No statement-position
-  // signal survives a broken parse, so the keyword/snippet channels stay out.
+  // A broken parse loses the statement-position signal, so the keyword/snippet
+  // channels stay out; only inside an error region do we fall back to the
+  // textual word before the caret (dotted head → member access, bare prefix →
+  // type/class-name completion).
   if (!cursorInErrorRegion(tree, offset)) return [];
 
   const word = textualWordBefore(tree.rootNode.text, offset);
@@ -239,8 +236,8 @@ export async function computeCompletions(
  * the static built-in types, and — when `withStatementChannels` — the keyword
  * and snippet channels. `cap` bounds only the unbounded OMC names; the fixed
  * static set is merged after. A built-in type whose label already came from the
- * OMC names is dropped so the label appears once; the keyword and snippet
- * channels intentionally share labels (e.g. `model`) and are kept.
+ * OMC names is dropped so the label appears once; keyword and snippet channels
+ * may share a label (e.g. `model`) and are both kept.
  */
 async function typePositionCandidates(
   owningClass: string,
