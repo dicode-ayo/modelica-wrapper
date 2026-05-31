@@ -84,11 +84,13 @@ export class OmPerfHud extends LitElement {
       background: rgba(0, 0, 0, 0.65);
       padding: 4px 8px;
       border-radius: 4px;
-      white-space: pre;
       user-select: none;
     }
     :host(:not([show])) {
       display: none;
+    }
+    .row {
+      white-space: pre;
     }
     .warn {
       color: #ffd27a;
@@ -247,11 +249,26 @@ export class OmPerfHud extends LitElement {
     const stateLine = formatStateLine(this.interaction.state);
     const hoverLine = formatHoverLine(this.interaction.hoverKey);
     const selectionLine = formatSelectionLine(this.interaction.selectedKeys);
-    return html`<span class=${fpsClass}>${fps.toFixed(0).padStart(3)} fps</span>
-      ${frameMs.toFixed(1).padStart(4)} ms meshes ${String(meshes).padStart(4)}
-      drawcalls ${String(drawCalls).padStart(4)} xy ${pointerStr} state
-      ${stateLine} hover ${hoverLine} sel ${selectionLine}
-      <span class=${gpuClass}>gpu ${this.gpu}</span>`;
+    const fpsTxt = `${fps.toFixed(0).padStart(3)} fps`;
+    const msTxt = `${frameMs.toFixed(1).padStart(4)} ms`;
+    const countsTxt = `meshes ${String(meshes).padStart(4)}   drawcalls ${String(
+      drawCalls,
+    ).padStart(4)}`;
+    // Padding lives in these strings, not in the template text — `.row` is
+    // `white-space: pre`, so every space here is rendered verbatim while the
+    // markup stays free of layout-significant whitespace.
+    const lines: ReadonlyArray<{ cls: string; text: string }> = [
+      { cls: fpsClass, text: `${fpsTxt}  ${msTxt}` },
+      { cls: "", text: countsTxt },
+      { cls: "", text: `${"xy".padEnd(7)}${pointerStr}` },
+      { cls: "", text: `${"state".padEnd(7)}${stateLine}` },
+      { cls: "", text: `${"hover".padEnd(7)}${hoverLine}` },
+      { cls: "", text: `${"sel".padEnd(7)}${selectionLine}` },
+      { cls: gpuClass, text: `gpu ${this.gpu}` },
+    ];
+    return html`${lines.map(
+      (line) => html`<div class="row ${line.cls}">${line.text}</div>`,
+    )}`;
   }
 
   private tick(): void {
