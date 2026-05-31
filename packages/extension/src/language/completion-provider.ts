@@ -42,11 +42,12 @@ import type { Tree } from "web-tree-sitter";
 import { log } from "../logger.js";
 
 import {
+  cursorInErrorRegion,
   headBeforeDot,
   modifiedTypeName,
   targetAt,
+  textualWordBefore,
   type CursorContextKind,
-  type CursorTarget,
 } from "./cursor.js";
 import { resolveDocumentOwner } from "./document-scope.js";
 import type { ParseCache } from "./parse.js";
@@ -201,36 +202,61 @@ export async function computeCompletions(
         : null;
   if (head) return cap(await memberCandidates(owningClass, head, client));
 
-  if (!target) return [];
-
-  if (TYPE_CONTEXTS.has(target.context)) {
-    // `cap` bounds only the unbounded OMC names; the fixed static set is merged
-    // after. A built-in type whose label already came from the OMC names (a
-    // class of the same simple name, or `searchClassNames` matching the
-    // predefined type) is dropped so the label appears once. The keyword and
-    // snippet channels intentionally share labels (e.g. `model`) and are kept.
-    const omcNames = cap(
-      await classNameCandidates(owningClass, target, client),
+  if (target && TYPE_CONTEXTS.has(target.context)) {
+    return typePositionCandidates(
+      owningClass,
+      target.identifier,
+      ELEMENT_CONTEXTS.has(target.context),
+      client,
     );
-    const omcLabels = new Set(omcNames.map((c) => c.label));
-    const statics = builtInTypeCandidates().filter(
-      (c) => !omcLabels.has(c.label),
-    );
-    if (ELEMENT_CONTEXTS.has(target.context)) {
-      statics.push(...keywordCandidates(), ...snippetCandidates());
-    }
-    return [...omcNames, ...statics];
   }
 
-  if (target.context === "modifier-name") {
+  if (target?.context === "modifier-name") {
     const typeName = modifiedTypeName(tree, offset);
     if (!typeName) return [];
     return cap(await modifierCandidates(owningClass, typeName, client));
   }
 
-  // `component-reference`, `unknown`: a plain value reference or non-completable
-  // position. Offering loaded class names here would be noise, so stay silent.
-  return [];
+  // The AST routed to nothing: `target` is null, or it classified to a
+  // non-completable context (`component-reference`, `unknown`). In a WELL-FORMED
+  // buffer that silence is deliberate (a value reference, a keyword). In a
+  // broken buffer it is just parse failure, so fall back to the textual word
+  // before the caret: a dotted word routes its head to member access; a bare
+  // word routes its prefix to type/class-name completion. No statement-position
+  // signal survives a broken parse, so the keyword/snippet channels stay out.
+  if (!cursorInErrorRegion(tree, offset)) return [];
+
+  const word = textualWordBefore(tree.rootNode.text, offset);
+  if (!word) return [];
+  if (word.head.length > 0) {
+    return cap(await memberCandidates(owningClass, word.head, client));
+  }
+  return typePositionCandidates(owningClass, word.prefix, false, client);
+}
+
+/**
+ * Type/class-name position result: the OMC class names for `prefix` merged with
+ * the static built-in types, and — when `withStatementChannels` — the keyword
+ * and snippet channels. `cap` bounds only the unbounded OMC names; the fixed
+ * static set is merged after. A built-in type whose label already came from the
+ * OMC names is dropped so the label appears once; the keyword and snippet
+ * channels intentionally share labels (e.g. `model`) and are kept.
+ */
+async function typePositionCandidates(
+  owningClass: string,
+  prefix: string,
+  withStatementChannels: boolean,
+  client: CompletionClient,
+): Promise<CompletionCandidate[]> {
+  const omcNames = cap(await classNameCandidates(owningClass, prefix, client));
+  const omcLabels = new Set(omcNames.map((c) => c.label));
+  const statics = builtInTypeCandidates().filter(
+    (c) => !omcLabels.has(c.label),
+  );
+  if (withStatementChannels) {
+    statics.push(...keywordCandidates(), ...snippetCandidates());
+  }
+  return [...omcNames, ...statics];
 }
 
 /**
@@ -241,7 +267,7 @@ export async function computeCompletions(
  */
 async function classNameCandidates(
   owningClass: string,
-  target: CursorTarget,
+  prefix: string,
   client: CompletionClient,
 ): Promise<CompletionCandidate[]> {
   const out: CompletionCandidate[] = [];
@@ -263,7 +289,6 @@ async function classNameCandidates(
   // over every loaded class, so only issue it once the prefix is long enough
   // (`MIN_FUZZY_PREFIX`) to bound the cost a short prefix can't (see the const's
   // note); below the threshold the scoped `getClassNames` above still applies.
-  const prefix = target.identifier;
   if (prefix.length >= MIN_FUZZY_PREFIX) {
     try {
       const { classNames } = await client.searchClassNames({

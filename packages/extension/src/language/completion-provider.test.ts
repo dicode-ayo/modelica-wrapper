@@ -756,6 +756,147 @@ describe("computeCompletions — robustness", () => {
   });
 });
 
+describe("computeCompletions — textual routing fallback (broken buffers)", () => {
+  it("routes `r.` to member completion when the buffer is unparseable", async () => {
+    // An unterminated declaration with a trailing member access: the parse is
+    // broken enough that neither the AST classifier nor the dot-node recovery
+    // yields a head, so the textual fallback must route `r` to its members.
+    const src = "model M\n  Resistor r\n  r.";
+    const getComponents = vi.fn(({ typeName }) => {
+      if (typeName === "MyPkg.M") {
+        return Promise.resolve({
+          components: [{ name: "r", className: "Pkg.Resistor" }],
+        });
+      }
+      if (typeName === "Pkg.Resistor") {
+        return Promise.resolve({
+          components: [{ name: "v", className: "SI.Voltage" }],
+        });
+      }
+      return Promise.resolve({ components: [] });
+    });
+    const client = makeClient({ getComponents });
+
+    const out = await computeCompletions(
+      parse(src),
+      src.length,
+      "MyPkg.M",
+      client,
+    );
+
+    expect(getComponents).toHaveBeenCalledWith({ typeName: "Pkg.Resistor" });
+    expect(out.map((c) => c.label)).toEqual(["v"]);
+  });
+
+  it("routes a bare prefix to class-name completion when the buffer is unparseable", async () => {
+    // A dangling type prefix with no following declarator: the AST offers no
+    // context, so the textual fallback routes `Res` to the class-name sources.
+    const src = "model M\n  Resistor r\n  Res";
+    const client = makeClient({
+      getClassNames: vi.fn(() =>
+        Promise.resolve({ classNames: ["Resistor", "Ground"] }),
+      ),
+      searchClassNames: vi.fn(() =>
+        Promise.resolve({ classNames: ["Modelica.Electrical.Resistor"] }),
+      ),
+    });
+
+    const out = await computeCompletions(
+      parse(src),
+      src.length,
+      "MyPkg.M",
+      client,
+    );
+
+    expect(client.getClassNames).toHaveBeenCalledWith({
+      typeName: "MyPkg.M",
+    });
+    expect(client.searchClassNames).toHaveBeenCalledWith({ searchText: "Res" });
+    const labels = out.map((c) => c.label);
+    expect(labels).toContain("Resistor");
+    expect(labels).toContain("Modelica.Electrical.Resistor");
+    // A broken parse carries no statement-position signal, so the keyword and
+    // snippet channels stay out of the textual fallback.
+    expect(out.some((c) => c.kind === CompletionCandidateKind.Keyword)).toBe(
+      false,
+    );
+    expect(out.some((c) => c.kind === CompletionCandidateKind.Snippet)).toBe(
+      false,
+    );
+    // Built-in types still merge in (a broken type prefix may still be one).
+    expect(labels).toContain("Real");
+  });
+
+  it("routes a dotted head textually for `a.b.` in a broken buffer", async () => {
+    const src = "model M\n  A a\n  a.b.";
+    const getComponents = vi.fn(({ typeName }) => {
+      switch (typeName) {
+        case "MyPkg.M":
+          return Promise.resolve({
+            components: [{ name: "a", className: "Pkg.A" }],
+          });
+        case "Pkg.A":
+          return Promise.resolve({
+            components: [{ name: "b", className: "Pkg.B" }],
+          });
+        case "Pkg.B":
+          return Promise.resolve({
+            components: [{ name: "c", className: "SI.Voltage" }],
+          });
+        default:
+          return Promise.resolve({ components: [] });
+      }
+    });
+    const client = makeClient({ getComponents });
+
+    const out = await computeCompletions(
+      parse(src),
+      src.length,
+      "MyPkg.M",
+      client,
+    );
+
+    expect(getComponents).toHaveBeenCalledWith({ typeName: "Pkg.B" });
+    expect(out.map((c) => c.label)).toEqual(["c"]);
+  });
+
+  it("stays silent when the broken buffer has no word before the caret", async () => {
+    const src = "model M\n  Resistor r\n  ";
+    const client = makeClient({
+      getClassNames: vi.fn(() => Promise.resolve({ classNames: ["Ground"] })),
+    });
+
+    const out = await computeCompletions(
+      parse(src),
+      src.length,
+      "MyPkg.M",
+      client,
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("does not regress the AST path: a well-formed type position never falls through to text", async () => {
+    // With a clean parse the AST classifier owns routing; the textual fallback
+    // must not run. searchClassNames carrying the exact typed prefix proves the
+    // AST `target.identifier` drove it, not a textual re-derivation.
+    const src = "model Circuit\n  Resistor r;\nend Circuit;";
+    const client = makeClient({
+      searchClassNames: vi.fn(() => Promise.resolve({ classNames: [] })),
+    });
+
+    await computeCompletions(
+      parse(src),
+      offsetOf(src, "Resistor") + 1,
+      "MyPkg.Circuit",
+      client,
+    );
+
+    expect(client.searchClassNames).toHaveBeenCalledWith({
+      searchText: "Resistor",
+    });
+  });
+});
+
 describe("computeCompletions — malformed / empty buffers", () => {
   it("returns [] for an empty buffer (no throw)", async () => {
     const client = makeClient();
