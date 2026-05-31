@@ -49,13 +49,11 @@ const describeIf = shouldRun() ? describe : describe.skip;
 describeIf("inherited-parameter write routing (#24)", () => {
   let client: OmcClient;
   let pkg: string;
-  let baseClass: string;
   let derivedClass: string;
 
   beforeEach(async () => {
     client = await OmcClient.create({ omcPath: process.env.OMC_PATH ?? "" });
     pkg = `MwExtRoute_${randomBytes(4).toString("hex")}`;
-    baseClass = `${pkg}.Base`;
     derivedClass = `${pkg}.Derived`;
     // Self-contained base/derived pair: Base owns `parameter Real k`,
     // Derived reaches it purely through `extends Base(k = 2.5)`.

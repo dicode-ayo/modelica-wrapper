@@ -20,20 +20,29 @@ function layoutWithHostShapes(): DiagramLayout {
         shapes: [
           {
             kind: "rectangle",
-            extent: [[-50, -50], [50, 50]],
+            extent: [
+              [-50, -50],
+              [50, 50],
+            ],
             lineColor: [255, 0, 0],
             fillPattern: "None",
             pattern: "Solid",
           },
           {
             kind: "text",
-            extent: [[-20, 60], [20, 70]],
-            textString: "PID Controller" as any,
+            extent: [
+              [-20, 60],
+              [20, 70],
+            ],
+            textString: "PID Controller" as never,
             textColor: [255, 0, 0],
           },
           {
             kind: "line",
-            points: [[-30, 0], [30, 0]],
+            points: [
+              [-30, 0],
+              [30, 0],
+            ],
             color: [255, 0, 0],
           },
         ],
@@ -108,7 +117,10 @@ describe("<om-graphical-layout> host shapes", () => {
   it("renders host shapes from the real PID_Controller fixture", async () => {
     const raw = JSON.parse(
       readFileSync(
-        resolve(__dirname, "../stories/fixtures/pidController.modelInstance.json"),
+        resolve(
+          __dirname,
+          "../stories/fixtures/pidController.modelInstance.json",
+        ),
         "utf8",
       ),
     );

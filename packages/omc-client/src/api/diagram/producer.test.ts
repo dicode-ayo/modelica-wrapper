@@ -51,24 +51,23 @@ const SOLID_LINE = { $kind: "enum", name: "LinePattern.Solid", index: 1 };
 const SOLID_FILL = { $kind: "enum", name: "FillPattern.Solid", index: 1 };
 const NO_BORDER = { $kind: "enum", name: "BorderPattern.None", index: 1 };
 const NO_SMOOTH = { $kind: "enum", name: "Smooth.None", index: 1 };
-const NO_ARROW = { $kind: "enum", name: "Arrow.None", index: 1 };
 
 function rectShape(extent: [[number, number], [number, number]]): unknown {
   return {
     $kind: "record",
     name: "Rectangle",
     elements: [
-      true,           // visible
-      [0, 0],         // origin
-      0,              // rotation
-      [0, 0, 0],      // lineColor
-      [255, 255, 255],// fillColor
-      SOLID_LINE,     // pattern
-      SOLID_FILL,     // fillPattern
-      1,              // lineThickness
-      NO_BORDER,      // borderPattern
-      extent,         // extent
-      0,              // radius
+      true, // visible
+      [0, 0], // origin
+      0, // rotation
+      [0, 0, 0], // lineColor
+      [255, 255, 255], // fillColor
+      SOLID_LINE, // pattern
+      SOLID_FILL, // fillPattern
+      1, // lineThickness
+      NO_BORDER, // borderPattern
+      extent, // extent
+      0, // radius
     ],
   };
 }
@@ -78,34 +77,21 @@ function polygonShape(points: [number, number][]): unknown {
     $kind: "record",
     name: "Polygon",
     elements: [
-      true, [0, 0], 0,
-      [0, 0, 0], [128, 128, 128], SOLID_LINE, SOLID_FILL, 1,
+      true,
+      [0, 0],
+      0,
+      [0, 0, 0],
+      [128, 128, 128],
+      SOLID_LINE,
+      SOLID_FILL,
+      1,
       points,
       NO_SMOOTH,
     ],
   };
 }
 
-function lineShape(points: [number, number][]): unknown {
-  return {
-    $kind: "record",
-    name: "Line",
-    elements: [
-      true, [0, 0], 0,
-      points,
-      [0, 0, 0],      // color
-      SOLID_LINE,     // pattern
-      0.5,            // thickness
-      [NO_ARROW, NO_ARROW],
-      3,              // arrowSize
-      NO_SMOOTH,
-    ],
-  };
-}
-
-function placementAnno(
-  extent: [[number, number], [number, number]],
-): unknown {
+function placementAnno(extent: [[number, number], [number, number]]): unknown {
   return { Placement: { transformation: { extent } } };
 }
 
@@ -116,8 +102,19 @@ const RealInputClass: unknown = {
   restriction: "connector",
   annotation: {
     Icon: {
-      coordinateSystem: { extent: [[-100, -100], [100, 100]] },
-      graphics: [polygonShape([[-100, 100], [100, 0], [-100, -100]])],
+      coordinateSystem: {
+        extent: [
+          [-100, -100],
+          [100, 100],
+        ],
+      },
+      graphics: [
+        polygonShape([
+          [-100, 100],
+          [100, 0],
+          [-100, -100],
+        ]),
+      ],
     },
   },
 };
@@ -127,8 +124,19 @@ const RealOutputClass: unknown = {
   restriction: "connector",
   annotation: {
     Icon: {
-      coordinateSystem: { extent: [[-100, -100], [100, 100]] },
-      graphics: [polygonShape([[-100, 100], [100, 0], [-100, -100]])],
+      coordinateSystem: {
+        extent: [
+          [-100, -100],
+          [100, 100],
+        ],
+      },
+      graphics: [
+        polygonShape([
+          [-100, 100],
+          [100, 0],
+          [-100, -100],
+        ]),
+      ],
     },
   },
 };
@@ -139,8 +147,18 @@ const BaseFrameClass: unknown = {
   restriction: "block",
   annotation: {
     Icon: {
-      coordinateSystem: { extent: [[-100, -100], [100, 100]] },
-      graphics: [rectShape([[-100, -100], [100, 100]])],
+      coordinateSystem: {
+        extent: [
+          [-100, -100],
+          [100, 100],
+        ],
+      },
+      graphics: [
+        rectShape([
+          [-100, -100],
+          [100, 100],
+        ]),
+      ],
     },
   },
 };
@@ -154,13 +172,19 @@ const GainBaseClass: unknown = {
       $kind: "component",
       name: "u",
       type: RealInputClass,
-      annotation: placementAnno([[-110, -10], [-90, 10]]),
+      annotation: placementAnno([
+        [-110, -10],
+        [-90, 10],
+      ]),
     },
     {
       $kind: "component",
       name: "y",
       type: RealOutputClass,
-      annotation: placementAnno([[90, -10], [110, 10]]),
+      annotation: placementAnno([
+        [90, -10],
+        [110, 10],
+      ]),
     },
   ],
 };
@@ -175,13 +199,27 @@ const GainClass: unknown = {
       $kind: "component",
       name: "kFF",
       type: RealInputClass,
-      annotation: placementAnno([[-110, 40], [-90, 60]]),
+      annotation: placementAnno([
+        [-110, 40],
+        [-90, 60],
+      ]),
     },
   ],
   annotation: {
     Icon: {
-      coordinateSystem: { extent: [[-100, -100], [100, 100]] },
-      graphics: [polygonShape([[-100, -50], [100, 0], [-100, 50]])],
+      coordinateSystem: {
+        extent: [
+          [-100, -100],
+          [100, 100],
+        ],
+      },
+      graphics: [
+        polygonShape([
+          [-100, -50],
+          [100, 0],
+          [-100, 50],
+        ]),
+      ],
     },
   },
 };
@@ -195,11 +233,21 @@ const ProcessorClass: unknown = {
       $kind: "component",
       name: "in_",
       type: RealInputClass,
-      annotation: placementAnno([[-110, -10], [-90, 10]]),
+      annotation: placementAnno([
+        [-110, -10],
+        [-90, 10],
+      ]),
     },
   ],
   annotation: {
-    Icon: { graphics: [rectShape([[-50, -50], [50, 50]])] },
+    Icon: {
+      graphics: [
+        rectShape([
+          [-50, -50],
+          [50, 50],
+        ]),
+      ],
+    },
   },
 };
 
@@ -216,11 +264,27 @@ function makeHostModelInstance(): ModelInstance {
     restriction: "model",
     annotation: {
       Icon: {
-        coordinateSystem: { extent: [[-100, -100], [100, 100]] },
-        graphics: [polygonShape([[-50, -50], [50, -50], [0, 50]])],
+        coordinateSystem: {
+          extent: [
+            [-100, -100],
+            [100, 100],
+          ],
+        },
+        graphics: [
+          polygonShape([
+            [-50, -50],
+            [50, -50],
+            [0, 50],
+          ]),
+        ],
       },
       Diagram: {
-        coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+        coordinateSystem: {
+          extent: [
+            [-100, -100],
+            [100, 100],
+          ],
+        },
         graphics: [],
       },
     },
@@ -232,13 +296,19 @@ function makeHostModelInstance(): ModelInstance {
         $kind: "component",
         name: "u",
         type: RealInputClass,
-        annotation: placementAnno([[-110, -10], [-90, 10]]),
+        annotation: placementAnno([
+          [-110, -10],
+          [-90, 10],
+        ]),
       },
       {
         $kind: "component",
         name: "y",
         type: RealOutputClass,
-        annotation: placementAnno([[90, -10], [110, 10]]),
+        annotation: placementAnno([
+          [90, -10],
+          [110, 10],
+        ]),
       },
       // sub-components — two of the same type (dedup), one of another type
       {
@@ -246,20 +316,29 @@ function makeHostModelInstance(): ModelInstance {
         name: "gain1",
         type: GainClass,
         modifiers: { k: "1" },
-        annotation: placementAnno([[-50, -50], [-30, -30]]),
+        annotation: placementAnno([
+          [-50, -50],
+          [-30, -30],
+        ]),
       },
       {
         $kind: "component",
         name: "gain2",
         type: GainClass,
         modifiers: { k: "2" },
-        annotation: placementAnno([[10, -50], [30, -30]]),
+        annotation: placementAnno([
+          [10, -50],
+          [30, -30],
+        ]),
       },
       {
         $kind: "component",
         name: "proc",
         type: ProcessorClass,
-        annotation: placementAnno([[50, -50], [70, -30]]),
+        annotation: placementAnno([
+          [50, -50],
+          [70, -30],
+        ]),
       },
       // Modelica `type` alias — must be filtered from components
       { $kind: "component", name: "tau", type: TypeAlias },
@@ -269,7 +348,14 @@ function makeHostModelInstance(): ModelInstance {
       {
         lhs: { $kind: "cref", parts: [{ name: "u" }] },
         rhs: { $kind: "cref", parts: [{ name: "gain1" }, { name: "u" }] },
-        annotation: { Line: { points: [[-90, 0], [-50, -40]] } },
+        annotation: {
+          Line: {
+            points: [
+              [-90, 0],
+              [-50, -40],
+            ],
+          },
+        },
       },
       // unrouted: NO annotation — must be skipped
       {
@@ -280,7 +366,14 @@ function makeHostModelInstance(): ModelInstance {
       {
         lhs: { $kind: "cref", parts: [{ name: "gain2" }, { name: "y" }] },
         rhs: { $kind: "cref", parts: [{ name: "proc" }, { name: "in_" }] },
-        annotation: { Line: { points: [[30, -40], [50, -40]] } },
+        annotation: {
+          Line: {
+            points: [
+              [30, -40],
+              [50, -40],
+            ],
+          },
+        },
       },
     ],
   };
@@ -361,7 +454,9 @@ function assertValidShape(s: Shape, ctx: string): void {
 
 function assertValidIconLayer(layer: IconLayer, ctx: string): void {
   expect(typeof layer.from, `${ctx}: iconLayer.from required`).toBe("string");
-  expect(layer.from.length, `${ctx}: iconLayer.from non-empty`).toBeGreaterThan(0);
+  expect(layer.from.length, `${ctx}: iconLayer.from non-empty`).toBeGreaterThan(
+    0,
+  );
   expect(Array.isArray(layer.shapes), `${ctx}: iconLayer.shapes required`).toBe(
     true,
   );
@@ -579,14 +674,25 @@ describe("produceDiagramLayout: connection filter on edge cases", () => {
     name: "Synth.TwoPort",
     restriction: "model",
     annotation: {
-      Icon: { coordinateSystem: { extent: [[-100, -100], [100, 100]] }, graphics: [] },
+      Icon: {
+        coordinateSystem: {
+          extent: [
+            [-100, -100],
+            [100, 100],
+          ],
+        },
+        graphics: [],
+      },
     },
     elements: [
       {
         $kind: "component",
         name: "p",
         type: RealInputClass,
-        annotation: placementAnno([[-110, -10], [-90, 10]]),
+        annotation: placementAnno([
+          [-110, -10],
+          [-90, 10],
+        ]),
       },
     ],
   };
@@ -600,20 +706,34 @@ describe("produceDiagramLayout: connection filter on edge cases", () => {
       name: "Synth.Tiny",
       restriction: "model",
       annotation: {
-        Diagram: { coordinateSystem: { extent: [[-100, -100], [100, 100]] }, graphics: [] },
+        Diagram: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [],
+        },
       },
       elements: [
         {
           $kind: "component",
           name: "a",
           type: TwoPortType,
-          annotation: placementAnno([[-60, -10], [-40, 10]]),
+          annotation: placementAnno([
+            [-60, -10],
+            [-40, 10],
+          ]),
         },
         {
           $kind: "component",
           name: "b",
           type: TwoPortType,
-          annotation: placementAnno([[40, -10], [60, 10]]),
+          annotation: placementAnno([
+            [40, -10],
+            [60, 10],
+          ]),
         },
       ],
       connections,
@@ -643,14 +763,25 @@ describe("produceDiagramLayout: connections to gated-out endpoints (issue #76, i
     name: "Synth.Kept",
     restriction: "model",
     annotation: {
-      Icon: { coordinateSystem: { extent: [[-100, -100], [100, 100]] }, graphics: [] },
+      Icon: {
+        coordinateSystem: {
+          extent: [
+            [-100, -100],
+            [100, 100],
+          ],
+        },
+        graphics: [],
+      },
     },
     elements: [
       {
         $kind: "component",
         name: "p",
         type: RealInputClass,
-        annotation: placementAnno([[-110, -10], [-90, 10]]),
+        annotation: placementAnno([
+          [-110, -10],
+          [-90, 10],
+        ]),
       },
     ],
   };
@@ -658,20 +789,34 @@ describe("produceDiagramLayout: connections to gated-out endpoints (issue #76, i
     name: "Synth.GainGatedPort",
     restriction: "block",
     annotation: {
-      Icon: { coordinateSystem: { extent: [[-100, -100], [100, 100]] }, graphics: [] },
+      Icon: {
+        coordinateSystem: {
+          extent: [
+            [-100, -100],
+            [100, 100],
+          ],
+        },
+        graphics: [],
+      },
     },
     elements: [
       {
         $kind: "component",
         name: "u",
         type: RealInputClass,
-        annotation: placementAnno([[-110, -10], [-90, 10]]),
+        annotation: placementAnno([
+          [-110, -10],
+          [-90, 10],
+        ]),
       },
       {
         $kind: "component",
         name: "support",
         type: RealInputClass,
-        annotation: placementAnno([[-10, -110], [10, -90]]),
+        annotation: placementAnno([
+          [-10, -110],
+          [10, -90],
+        ]),
         condition: false,
       },
     ],
@@ -682,27 +827,44 @@ describe("produceDiagramLayout: connections to gated-out endpoints (issue #76, i
       name: "Synth.GatedHost",
       restriction: "model",
       annotation: {
-        Diagram: { coordinateSystem: { extent: [[-100, -100], [100, 100]] }, graphics: [] },
+        Diagram: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [],
+        },
       },
       elements: [
         {
           $kind: "component",
           name: "keep",
           type: KeptType,
-          annotation: placementAnno([[-60, -10], [-40, 10]]),
+          annotation: placementAnno([
+            [-60, -10],
+            [-40, 10],
+          ]),
         },
         {
           $kind: "component",
           name: "cond",
           type: KeptType,
-          annotation: placementAnno([[40, -10], [60, 10]]),
+          annotation: placementAnno([
+            [40, -10],
+            [60, 10],
+          ]),
           condition: false,
         },
         {
           $kind: "component",
           name: "g",
           type: GainWithGatedPort,
-          annotation: placementAnno([[-10, 40], [10, 60]]),
+          annotation: placementAnno([
+            [-10, 40],
+            [10, 60],
+          ]),
         },
       ],
       connections: [
@@ -710,19 +872,40 @@ describe("produceDiagramLayout: connections to gated-out endpoints (issue #76, i
         {
           lhs: { $kind: "cref", parts: [{ name: "keep" }, { name: "p" }] },
           rhs: { $kind: "cref", parts: [{ name: "g" }, { name: "u" }] },
-          annotation: { Line: { points: [[0, 0], [10, 10]] } } as unknown as ConnectionNode["annotation"],
+          annotation: {
+            Line: {
+              points: [
+                [0, 0],
+                [10, 10],
+              ],
+            },
+          } as unknown as ConnectionNode["annotation"],
         },
         // Dropped — `cond` is a gated-out component.
         {
           lhs: { $kind: "cref", parts: [{ name: "keep" }, { name: "p" }] },
           rhs: { $kind: "cref", parts: [{ name: "cond" }, { name: "p" }] },
-          annotation: { Line: { points: [[0, 0], [20, 20]] } } as unknown as ConnectionNode["annotation"],
+          annotation: {
+            Line: {
+              points: [
+                [0, 0],
+                [20, 20],
+              ],
+            },
+          } as unknown as ConnectionNode["annotation"],
         },
         // Dropped — `g.support` is a gated-out port.
         {
           lhs: { $kind: "cref", parts: [{ name: "keep" }, { name: "p" }] },
           rhs: { $kind: "cref", parts: [{ name: "g" }, { name: "support" }] },
-          annotation: { Line: { points: [[0, 0], [30, 30]] } } as unknown as ConnectionNode["annotation"],
+          annotation: {
+            Line: {
+              points: [
+                [0, 0],
+                [30, 30],
+              ],
+            },
+          } as unknown as ConnectionNode["annotation"],
         },
       ],
     });
@@ -735,7 +918,10 @@ describe("produceDiagramLayout: connections to gated-out endpoints (issue #76, i
     expect(layout.components.g!.hiddenPorts).toEqual(["support"]);
     // Exactly one connection survives: keep.p ↔ g.u.
     expect(layout.connections).toHaveLength(1);
-    expect(layout.connections[0]!.lhs).toEqual({ component: "keep", port: "p" });
+    expect(layout.connections[0]!.lhs).toEqual({
+      component: "keep",
+      port: "p",
+    });
     expect(layout.connections[0]!.rhs).toEqual({ component: "g", port: "u" });
   });
 });
@@ -754,7 +940,7 @@ describe("produceDiagramLayout: class parameter defaults", () => {
         $kind: "component",
         name: "c",
         type: "Real",
-        modifiers: { unit: "\"N.m/rad\"", $value: "100" },
+        modifiers: { unit: '"N.m/rad"', $value: "100" },
         value: { binding: 100 },
         prefixes: { variability: "parameter" },
         comment: "Spring constant",
@@ -786,7 +972,10 @@ describe("produceDiagramLayout: class parameter defaults", () => {
           $kind: "component",
           name: "sd1",
           type: SpringDamperLike,
-          annotation: placementAnno([[-10, -10], [10, 10]]),
+          annotation: placementAnno([
+            [-10, -10],
+            [10, 10],
+          ]),
         },
       ],
     };
@@ -845,7 +1034,10 @@ describe("produceDiagramLayout: class parameter defaults", () => {
           $kind: "component",
           name: "c1",
           type: child,
-          annotation: placementAnno([[-5, -5], [5, 5]]),
+          annotation: placementAnno([
+            [-5, -5],
+            [5, 5],
+          ]),
         },
       ],
     };
@@ -889,11 +1081,21 @@ describe("produceDiagramLayout: conditional gating", () => {
       restriction: "model",
       annotation: {
         Icon: {
-          coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
           graphics: [],
         },
         Diagram: {
-          coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
           graphics: [],
         },
       },
@@ -902,14 +1104,20 @@ describe("produceDiagramLayout: conditional gating", () => {
           $kind: "component",
           name: "pIn",
           type: RealInputClass,
-          annotation: placementAnno([[-110, -10], [-90, 10]]),
+          annotation: placementAnno([
+            [-110, -10],
+            [-90, 10],
+          ]),
           condition: opts.pIn,
         },
         {
           $kind: "component",
           name: "pOut",
           type: RealOutputClass,
-          annotation: placementAnno([[90, -10], [110, 10]]),
+          annotation: placementAnno([
+            [90, -10],
+            [110, 10],
+          ]),
           condition: opts.pOut,
         },
         {
@@ -917,7 +1125,10 @@ describe("produceDiagramLayout: conditional gating", () => {
           name: "x",
           type: GainClass,
           modifiers: { k: "1" },
-          annotation: placementAnno([[-50, -50], [-30, -30]]),
+          annotation: placementAnno([
+            [-50, -50],
+            [-30, -30],
+          ]),
           condition: opts.x,
         },
         {
@@ -925,7 +1136,10 @@ describe("produceDiagramLayout: conditional gating", () => {
           name: "y",
           type: GainClass,
           modifiers: { k: "2" },
-          annotation: placementAnno([[10, -50], [30, -30]]),
+          annotation: placementAnno([
+            [10, -50],
+            [30, -30],
+          ]),
           condition: opts.y,
         },
       ],
@@ -1019,7 +1233,12 @@ describe("produceDiagramLayout: conditional gating", () => {
       restriction: "block",
       annotation: {
         Icon: {
-          coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
           graphics: [],
         },
       },
@@ -1028,13 +1247,19 @@ describe("produceDiagramLayout: conditional gating", () => {
           $kind: "component",
           name: "u",
           type: RealInputClass,
-          annotation: placementAnno([[-110, -10], [-90, 10]]),
+          annotation: placementAnno([
+            [-110, -10],
+            [-90, 10],
+          ]),
         },
         {
           $kind: "component",
           name: "support",
           type: RealInputClass,
-          annotation: placementAnno([[-10, -110], [10, -90]]),
+          annotation: placementAnno([
+            [-10, -110],
+            [10, -90],
+          ]),
           // OMC's pre-reduction: the predicate has been resolved to
           // a literal `false` at this use-site.
           condition: false,
@@ -1047,7 +1272,12 @@ describe("produceDiagramLayout: conditional gating", () => {
       restriction: "model",
       annotation: {
         Diagram: {
-          coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
           graphics: [],
         },
       },
@@ -1056,7 +1286,10 @@ describe("produceDiagramLayout: conditional gating", () => {
           $kind: "component",
           name: "g",
           type: gainWithConditionalPort,
-          annotation: placementAnno([[-20, -20], [20, 20]]),
+          annotation: placementAnno([
+            [-20, -20],
+            [20, 20],
+          ]),
         },
       ],
       connections: [],
@@ -1089,7 +1322,12 @@ describe("produceDiagramLayout: conditional gating", () => {
       restriction: "block",
       annotation: {
         Icon: {
-          coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
           graphics: [],
         },
       },
@@ -1098,13 +1336,19 @@ describe("produceDiagramLayout: conditional gating", () => {
           $kind: "component",
           name: "u",
           type: RealInputClass,
-          annotation: placementAnno([[-110, -10], [-90, 10]]),
+          annotation: placementAnno([
+            [-110, -10],
+            [-90, 10],
+          ]),
         },
         {
           $kind: "component",
           name: "support",
           type: RealInputClass,
-          annotation: placementAnno([[-10, -110], [10, -90]]),
+          annotation: placementAnno([
+            [-10, -110],
+            [10, -90],
+          ]),
           // The wrapped Value shape OMC sometimes emits.
           condition: { binding: false },
         },
@@ -1116,7 +1360,12 @@ describe("produceDiagramLayout: conditional gating", () => {
       restriction: "model",
       annotation: {
         Diagram: {
-          coordinateSystem: { extent: [[-100, -100], [100, 100]] },
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
           graphics: [],
         },
       },
@@ -1125,7 +1374,10 @@ describe("produceDiagramLayout: conditional gating", () => {
           $kind: "component",
           name: "g",
           type: gainWithWrappedPort,
-          annotation: placementAnno([[-20, -20], [20, 20]]),
+          annotation: placementAnno([
+            [-20, -20],
+            [20, 20],
+          ]),
         },
       ],
       connections: [],
@@ -1136,7 +1388,6 @@ describe("produceDiagramLayout: conditional gating", () => {
     );
     expect(layout.components.g!.hiddenPorts).toEqual(["support"]);
   });
-
 });
 
 describe("produceDiagramLayout: array dimensions on sub-components", () => {
@@ -1151,14 +1402,25 @@ describe("produceDiagramLayout: array dimensions on sub-components", () => {
       name: "Pkg.PinArray",
       restriction: "block",
       annotation: {
-        Icon: { coordinateSystem: { extent: [[-100, -100], [100, 100]] }, graphics: [] },
+        Icon: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [],
+        },
       },
     };
     const compEl: Record<string, unknown> = {
       $kind: "component",
       name: "pins",
       type: VectorType,
-      annotation: placementAnno([[-20, -20], [20, 20]]),
+      annotation: placementAnno([
+        [-20, -20],
+        [20, 20],
+      ]),
     };
     if (dims !== undefined) compEl.dims = dims;
     const hostLiteral: unknown = {
@@ -1166,7 +1428,15 @@ describe("produceDiagramLayout: array dimensions on sub-components", () => {
       name: "Pkg.Host",
       restriction: "model",
       annotation: {
-        Icon: { coordinateSystem: { extent: [[-100, -100], [100, 100]] }, graphics: [] },
+        Icon: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [],
+        },
       },
       elements: [compEl],
     };
@@ -1190,10 +1460,7 @@ describe("produceDiagramLayout: array dimensions on sub-components", () => {
   });
 
   it("falls back to absyn dims when typed is missing", () => {
-    const layout = produceDiagramLayout(
-      hostWithDims({ absyn: ["k"] }),
-      "icon",
-    );
+    const layout = produceDiagramLayout(hostWithDims({ absyn: ["k"] }), "icon");
     expect(layout.components.pins?.dims).toEqual(["k"]);
   });
 
@@ -1214,7 +1481,7 @@ describe("produceDiagramLayout: parameter displayUnit", () => {
           name: "a",
           type: "Real",
           // OMC emits displayUnit as a direct modifier field, quoted.
-          modifiers: { displayUnit: "\"deg\"", $value: "1.57" },
+          modifiers: { displayUnit: '"deg"', $value: "1.57" },
           value: { binding: 1.57 },
           prefixes: { variability: "parameter" },
         },
@@ -1236,7 +1503,10 @@ describe("produceDiagramLayout: parameter displayUnit", () => {
           $kind: "component",
           name: "c1",
           type: AngleClass,
-          annotation: placementAnno([[-5, -5], [5, 5]]),
+          annotation: placementAnno([
+            [-5, -5],
+            [5, 5],
+          ]),
         },
       ],
     };
@@ -1264,20 +1534,31 @@ describe("produceDiagramLayout: parameter displayUnit", () => {
       name: "Synth.HostWithAngle",
       restriction: "model",
       annotation: {
-        Diagram: { coordinateSystem: { extent: [[-100, -100], [100, 100]] }, graphics: [] },
+        Diagram: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [],
+        },
       },
       elements: [
         {
           $kind: "component",
           name: "a",
           type: "Real",
-          modifiers: { displayUnit: "\"deg\"", $value: "1.57" },
+          modifiers: { displayUnit: '"deg"', $value: "1.57" },
           value: { binding: 1.57 },
           prefixes: { variability: "parameter" },
         },
       ],
     };
-    const layout = produceDiagramLayout(ModelInstanceSchema.parse(host), "diagram");
+    const layout = produceDiagramLayout(
+      ModelInstanceSchema.parse(host),
+      "diagram",
+    );
     const cls = layout.classes["Synth.HostWithAngle"];
     expect(cls).toBeDefined();
     expect(cls?.parameters.a?.displayUnit).toBe("deg");
@@ -1298,7 +1579,7 @@ describe("produceDiagramLayout: parameter unit from type-alias chain (#71)", () 
         {
           $kind: "extends",
           baseClass: "Real",
-          modifiers: { unit: "\"rad\"", displayUnit: "\"deg\"" },
+          modifiers: { unit: '"rad"', displayUnit: '"deg"' },
         },
       ],
     };
@@ -1317,7 +1598,7 @@ describe("produceDiagramLayout: parameter unit from type-alias chain (#71)", () 
               {
                 $kind: "extends",
                 baseClass: "Real",
-                modifiers: { unit: "\"kg.m2\"" },
+                modifiers: { unit: '"kg.m2"' },
               },
             ],
           },
@@ -1332,7 +1613,7 @@ describe("produceDiagramLayout: parameter unit from type-alias chain (#71)", () 
           $kind: "component",
           name: "a",
           type: angleType,
-          modifiers: { displayUnit: "\"deg\"", $value: "1.57" },
+          modifiers: { displayUnit: '"deg"', $value: "1.57" },
           prefixes: { variability: "parameter" },
         },
         {
@@ -1353,7 +1634,10 @@ describe("produceDiagramLayout: parameter unit from type-alias chain (#71)", () 
           $kind: "component",
           name: "h1",
           type: host,
-          annotation: placementAnno([[-5, -5], [5, 5]]),
+          annotation: placementAnno([
+            [-5, -5],
+            [5, 5],
+          ]),
         },
       ],
     };
