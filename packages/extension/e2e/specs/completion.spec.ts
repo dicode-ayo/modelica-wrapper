@@ -1,23 +1,15 @@
 /**
  * Completion e2e — exercises the autocomplete provider end-to-end.
  *
- * What this depends on (introduced by `feat/lang-99-autocomplete`):
- *   - `ModelicaCompletionProvider` registered for the `modelica` language,
- *     with `.` as a trigger character.
- *   - The pure routing core (`computeCompletions`) sourcing candidates from
- *     `getClassNames` / `searchClassNames` / `getComponents` / `getParameterNames`
- *     depending on the cursor context.
- *
- * Member-access and modifier-name candidates flow through OMC (the
- * `qualifyPath` + `walkCrefType` path that resolves a cref's type to its
- * members). So this spec **requires `omc` on `$PATH` and a populated
- * MODELICAPATH** to be meaningful — it's **skipped by default** and runs only
- * with `E2E_OMC=1`:
+ * Candidates flow through OMC (the `qualifyPath` + `walkCrefType` path that
+ * resolves a cref's type to its members, and the `getClassNames` /
+ * `searchClassNames` class-name sources), so the provider needs `omc` to launch.
+ * The suite is **skipped unless `E2E_OMC=1`**:
  *
  *   E2E_OMC=1 pnpm --filter modelica-wrapper test:e2e
  *
- * The class-name source (type / `extends` positions) is OMC-backed too via
- * `searchClassNames`, so even the simpler test below is gated.
+ * The inheritance fixture (`InheritDemo.mo`) is self-contained — a local
+ * `extends` — so it does not depend on a populated MODELICAPATH.
  */
 
 import { expect, test } from "../test-base.js";
@@ -66,6 +58,35 @@ test.describe(
         .locator(".suggest-widget.visible .monaco-list-row")
         .first();
       await expect(suggestRow).toBeVisible({ timeout: 60_000 });
+    });
+
+    test("member completion includes inherited members", async ({
+      page,
+      codeServer,
+    }) => {
+      test.setTimeout(120_000);
+
+      await page.goto(codeServer.url);
+      await waitForWorkbench(page);
+      await openFileViaQuickOpen(page, "InheritDemo.mo");
+
+      // `d` is a `Derived`, which `extends Base`. Type `d.` in the equation
+      // section and require the inherited `inheritedField` in the list — a bare
+      // getComponents(Derived) returns only `ownField`, so its presence proves
+      // the extends-chain walk.
+      const equationKeyword = page
+        .locator(".monaco-editor .view-lines span[class*='mtk']")
+        .filter({ hasText: /^equation$/ })
+        .first();
+      await equationKeyword.click();
+      await page.keyboard.press("End");
+      await page.keyboard.press("Enter");
+      await page.keyboard.type("  d.");
+
+      const inheritedRow = page
+        .locator(".suggest-widget.visible .monaco-list-row")
+        .filter({ hasText: "inheritedField" });
+      await expect(inheritedRow).toBeVisible({ timeout: 60_000 });
     });
   },
 );
