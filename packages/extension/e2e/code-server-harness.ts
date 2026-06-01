@@ -24,6 +24,7 @@ import {
   mkdir,
   mkdtemp,
   open,
+  readdir,
   readFile,
   rm,
   symlink,
@@ -142,12 +143,17 @@ async function provisionExtensionsDir(extensionsDir: string): Promise<void> {
 }
 
 async function provisionWorkspace(workspaceDir: string): Promise<void> {
-  // Copy the fixture into the throwaway workspace so the test run never writes
-  // back to the checked-in tree. `startCodeServer` already created the dir.
-  const src = join(FIXTURE_WORKSPACE, "Demo.mo");
-  const dst = join(workspaceDir, "Demo.mo");
-  const content = await readFile(src, "utf8");
-  await writeFile(dst, content, "utf8");
+  // Copy every fixture into the throwaway workspace so the test run never
+  // writes back to the checked-in tree. `startCodeServer` already created the
+  // dir. New specs add their own fixture file under `workspace/` and it is
+  // picked up here without touching this function.
+  const names = await readdir(FIXTURE_WORKSPACE);
+  await Promise.all(
+    names.map(async (name) => {
+      const content = await readFile(join(FIXTURE_WORKSPACE, name), "utf8");
+      await writeFile(join(workspaceDir, name), content, "utf8");
+    }),
+  );
 }
 
 /**
