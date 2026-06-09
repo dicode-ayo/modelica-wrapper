@@ -214,17 +214,24 @@ export async function computeCompletions(
 ): Promise<CompletionResult> {
   const target = targetAt(tree, offset);
 
-  // Member-access head: either the segment-before-the-cursor in an explicit
-  // `member-access` target, or — when `targetAt` is null — the token left of a
-  // bare `.` trigger (`r.|`, `a.b.|`) recovered by `headBeforeDot`.
-  const head =
-    target?.context === "member-access"
-      ? target.pathToCursor.slice(0, -1)
-      : !target
-        ? headBeforeDot(tree, offset)
-        : null;
-  if (head)
-    return stable(cap(await memberCandidates(owningClass, head, client)));
+  // Caret on a member segment (`r.v|`): the head is everything before it.
+  if (target?.context === "member-access") {
+    const head = target.pathToCursor.slice(0, -1);
+    if (head.length > 0)
+      return stable(cap(await memberCandidates(owningClass, head, client)));
+  }
+
+  // A trailing dot (`r.|`, `Modelica.Blocks.Continuous.|`) is navigation into
+  // the path's last segment — a component's members or a package's classes.
+  // The parser reads the segment before the dot as a type reference in a type
+  // slot, so `targetAt` returns either nothing or a type-context target here;
+  // `headBeforeDot` recovers the dotted head and drilling works in type
+  // positions (dotted library paths) as much as in expressions.
+  if (!target || TYPE_CONTEXTS.has(target.context)) {
+    const head = headBeforeDot(tree, offset);
+    if (head && head.length > 0)
+      return stable(cap(await memberCandidates(owningClass, head, client)));
+  }
 
   if (target && TYPE_CONTEXTS.has(target.context)) {
     return typePositionCandidates(
@@ -361,18 +368,18 @@ async function classNameCandidates(
         searchText: prefix,
       });
       for (const name of classNames) {
-        // The label is a fully-qualified dotted name (`Modelica.Electrical.R`);
-        // VSCode filters by the typed word, which stops at the dot, so a bare
-        // prefix like `Re` would never match the long label. Filter (and insert)
-        // by the last segment so dotted candidates survive word-based filtering
-        // and insert the simple name. `getClassNames` candidates above are bare
-        // simple names already, so their default range/filter is correct.
+        // The label is the fully-qualified name. VSCode filters by the typed
+        // word, which stops at the dot, so a bare prefix like `Re` would never
+        // match the long label — filter by the last segment. But a global match
+        // is not in scope, so insert the FQN: inserting the bare name would
+        // leave an unresolvable reference. (`getClassNames` candidates above are
+        // in-scope simple names, so their default range/filter is correct.)
         const lastSegment = name.slice(name.lastIndexOf(".") + 1);
         out.push({
           label: name,
           kind: CompletionCandidateKind.Class,
           filterText: lastSegment,
-          insertText: lastSegment,
+          insertText: name,
         });
       }
     } catch (err) {
