@@ -168,3 +168,58 @@ export function annotationFields(path: readonly string[]): readonly string[] {
   const record = path.at(-1) ?? TOP_LEVEL;
   return ANNOTATION_SCHEMA[record] ?? [];
 }
+
+/**
+ * Field name → the fully-qualified enum members admissible as its value. Keyed
+ * by simple field name (the same enum is valid wherever the field appears across
+ * graphic records), so the map is flat. Each entry is a full `Enum.Member`
+ * string, ready to insert as a valid value. The members are spec-fixed graphical
+ * enums — purely static, no OMC.
+ */
+const FILL_PATTERN = [
+  "None",
+  "Solid",
+  "Horizontal",
+  "Vertical",
+  "Cross",
+  "Forward",
+  "Backward",
+  "CrossDiag",
+  "HorizontalCylinder",
+  "VerticalCylinder",
+  "Sphere",
+];
+const LINE_PATTERN = ["None", "Solid", "Dash", "Dot", "DashDot", "DashDotDot"];
+const SMOOTH = ["None", "Bezier"];
+const ARROW = ["None", "Open", "Filled", "Half"];
+const TEXT_ALIGNMENT = ["Left", "Center", "Right"];
+const BORDER_PATTERN = ["None", "Raised", "Sunken", "Engraved"];
+
+function qualified(enumName: string, members: readonly string[]): string[] {
+  return members.map((member) => `${enumName}.${member}`);
+}
+
+const ANNOTATION_VALUE_SCHEMA: Readonly<Record<string, readonly string[]>> = {
+  fillPattern: qualified("FillPattern", FILL_PATTERN),
+  pattern: qualified("LinePattern", LINE_PATTERN),
+  linePattern: qualified("LinePattern", LINE_PATTERN),
+  smooth: qualified("Smooth", SMOOTH),
+  arrow: qualified("Arrow", ARROW),
+  startArrow: qualified("Arrow", ARROW),
+  endArrow: qualified("Arrow", ARROW),
+  horizontalAlignment: qualified("TextAlignment", TEXT_ALIGNMENT),
+  borderPattern: qualified("BorderPattern", BORDER_PATTERN),
+  visible: ["true", "false"],
+  preserveAspectRatio: ["true", "false"],
+};
+
+/**
+ * The fixed value candidates admissible for the annotation `field` — its
+ * spec-defined graphical enum members as full `Enum.Member` strings, or
+ * `["true", "false"]` for a boolean field. `[]` when the field has no static
+ * value vocabulary (e.g. a numeric or free-form field), so completion offers
+ * nothing rather than guessing.
+ */
+export function annotationFieldValues(field: string): readonly string[] {
+  return ANNOTATION_VALUE_SCHEMA[field] ?? [];
+}

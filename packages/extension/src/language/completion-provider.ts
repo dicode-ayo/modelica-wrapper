@@ -53,9 +53,13 @@ import type { Tree } from "web-tree-sitter";
 
 import { log } from "../logger.js";
 
-import { annotationFields } from "./annotation-schema.js";
+import {
+  annotationFields,
+  annotationFieldValues,
+} from "./annotation-schema.js";
 import {
   annotationPath,
+  annotationValueField,
   cursorInErrorRegion,
   headBeforeDot,
   modifiedTypeWithPath,
@@ -225,6 +229,15 @@ export async function computeCompletions(
   owningClass: string,
   client: CompletionClient,
 ): Promise<CompletionResult> {
+  // Inside an annotation field's VALUE (`fillPattern = │`): the field's
+  // spec-defined enum members, static. Checked before the field-name branch,
+  // which also fires inside an annotation `(...)` but at the name slot — a value
+  // position is a strict subset that must win first.
+  const valueField = annotationValueField(tree, offset);
+  if (valueField !== null) {
+    return stable(annotationValueCandidates(valueField));
+  }
+
   // Inside an `annotation(...)`: the vocabulary is spec-defined and static, so
   // the nested record-name path selects the valid child fields with no OMC call.
   // Detected structurally (annotation-rooted), it must win before the modifier
@@ -308,6 +321,29 @@ function annotationCandidates(path: readonly string[]): CompletionCandidate[] {
     label: name,
     kind: CompletionCandidateKind.Field,
   }));
+}
+
+/**
+ * Annotation value-position result: the field's static enum members
+ * (`FillPattern.Solid`, …) or boolean literals as candidates, empty for a field
+ * with no value vocabulary. A dotted enum label carries a `filterText` of its
+ * member segment — VSCode's default word-based filter stops at the dot, so a
+ * bare `So` would never match `FillPattern.Solid` otherwise. The full dotted
+ * label is the inserted text (a bare member would be an unresolvable reference).
+ * The set is fixed, so the caller wraps it with {@link stable}.
+ */
+function annotationValueCandidates(field: string): CompletionCandidate[] {
+  return annotationFieldValues(field).map((value) => {
+    const dot = value.lastIndexOf(".");
+    if (dot === -1) {
+      return { label: value, kind: CompletionCandidateKind.Keyword };
+    }
+    return {
+      label: value,
+      kind: CompletionCandidateKind.Property,
+      filterText: value.slice(dot + 1),
+    };
+  });
 }
 
 /**

@@ -1529,3 +1529,100 @@ describe("computeCompletions — annotation position", () => {
     );
   });
 });
+
+describe("computeCompletions — annotation value position", () => {
+  it("lists FillPattern members for fillPattern = │", async () => {
+    const src = "model M\n  annotation(Rectangle(fillPattern = ));\nend M;";
+    const client = makeClient();
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "= ") + 2,
+      "MyPkg.M",
+      client,
+    );
+
+    const labels = out.map((c) => c.label);
+    expect(labels).toContain("FillPattern.Solid");
+    expect(labels).toContain("FillPattern.None");
+    expect(labels).toContain("FillPattern.HorizontalCylinder");
+    expect(labels).toContain("FillPattern.Sphere");
+    // The dotted label carries a member filterText so VSCode can match it.
+    const solid = out.find((c) => c.label === "FillPattern.Solid");
+    expect(solid?.filterText).toBe("Solid");
+    // Purely static — no OMC call for a value position.
+    expect(client.getParameterNames).not.toHaveBeenCalled();
+    expect(client.getClassNames).not.toHaveBeenCalled();
+  });
+
+  it("lists LinePattern members for pattern = Enum.│", async () => {
+    const src = "model M\n  annotation(Line(pattern = LinePattern.));\nend M;";
+    const client = makeClient();
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "LinePattern.") + "LinePattern.".length,
+      "MyPkg.M",
+      client,
+    );
+
+    expect(out.map((c) => c.label)).toEqual([
+      "LinePattern.None",
+      "LinePattern.Solid",
+      "LinePattern.Dash",
+      "LinePattern.Dot",
+      "LinePattern.DashDot",
+      "LinePattern.DashDotDot",
+    ]);
+  });
+
+  it("lists true/false for a boolean field (visible = │)", async () => {
+    const src = "model M\n  annotation(Rectangle(visible = ));\nend M;";
+    const client = makeClient();
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "= ") + 2,
+      "MyPkg.M",
+      client,
+    );
+
+    expect(out.map((c) => c.label)).toEqual(["true", "false"]);
+    // Bare literals: no dotted filterText.
+    expect(out.every((c) => c.filterText === undefined)).toBe(true);
+  });
+
+  it("offers nothing for a field with no static value vocabulary", async () => {
+    const src = "model M\n  annotation(Rectangle(lineThickness = ));\nend M;";
+    const client = makeClient();
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "= ") + 2,
+      "MyPkg.M",
+      client,
+    );
+
+    expect(out).toEqual([]);
+  });
+
+  it("does not fire on the field-NAME slot (field-name completion intact)", async () => {
+    const src =
+      "model M\n  annotation(Rectangle(fillPattern = FillPattern.Solid));\nend M;";
+    const client = makeClient();
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "fillPattern") + 1,
+      "MyPkg.M",
+      client,
+    );
+
+    const labels = out.map((c) => c.label);
+    expect(labels).toContain("fillPattern");
+    expect(labels).not.toContain("FillPattern.Solid");
+    expect(out.every((c) => c.kind === CompletionCandidateKind.Field)).toBe(
+      true,
+    );
+  });
+});
