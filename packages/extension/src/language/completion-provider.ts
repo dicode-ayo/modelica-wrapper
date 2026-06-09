@@ -51,10 +51,11 @@ import { log } from "../logger.js";
 import {
   cursorInErrorRegion,
   headBeforeDot,
-  modifiedTypeName,
+  modifiedTypeWithPath,
   targetAt,
   textualWordBefore,
   type CursorContextKind,
+  type ModifiedType,
 } from "./cursor.js";
 import { resolveDocumentOwner } from "./document-scope.js";
 import type { ParseCache } from "./parse.js";
@@ -233,10 +234,10 @@ export async function computeCompletions(
   // for a type reference. A caret on a modifier VALUE is a `component-reference`
   // target, not a `modifier-name`/empty one, so it is excluded here.
   if (target === null || target.context === "modifier-name") {
-    const typeName = modifiedTypeName(tree, offset);
-    if (typeName !== null) {
+    const modified = modifiedTypeWithPath(tree, offset);
+    if (modified !== null) {
       return stable(
-        cap(await modifierCandidates(owningClass, typeName, client)),
+        cap(await modifierCandidates(owningClass, modified, client)),
       );
     }
   }
@@ -514,28 +515,36 @@ async function packageClassCandidates(
 
 /**
  * Class-modification position: the parameters of the class being modified,
- * INCLUDING inherited ones. The class is the declaration's *type* —
- * `cursor.ts`'s `modifiedTypeName` reads it straight from the enclosing
- * `component_clause`/`extends_clause`, since the modifier name's own dotted path
- * does NOT contain the type it modifies. The (possibly short, possibly dotted)
- * type name is qualified in the owning class's scope, then its parameters are
- * listed.
+ * INCLUDING inherited ones. The declaration's *type* (`modified.type`) is
+ * qualified in the owning class's scope, then `modified.path` is walked through
+ * the inheritance-inclusive component lists — each segment resolves to a
+ * sub-component's type in the previous type — so a nested modifier
+ * (`Motor m(resistor(|))`) lists the inner `resistor`'s parameters, not the
+ * outer `Motor`'s. An empty path lists the qualified type's parameters directly.
+ * A segment that doesn't resolve yields no candidates.
  *
  * `getParameterNames` reports only a class's OWN parameters, so the list is the
- * inheritance-inclusive union over the type's `extends` bases (mirrors the
- * member-access component walk).
+ * inheritance-inclusive union over the innermost type's `extends` bases (mirrors
+ * the member-access component walk).
  */
 async function modifierCandidates(
   owningClass: string,
-  typeName: string,
+  modified: ModifiedType,
   client: CompletionClient,
 ): Promise<CompletionCandidate[]> {
   // Qualify the declared type in scope so the parameter lookups get the
   // fully-qualified class (a short `Resistor` won't resolve on its own).
   const qualified =
-    (await qualifyTypeReference(owningClass, [typeName], client)) ?? typeName;
+    (await qualifyTypeReference(owningClass, [modified.type], client)) ??
+    modified.type;
 
-  const parameters = await inheritedParameterNames(qualified, client);
+  const innermost =
+    modified.path.length === 0
+      ? qualified
+      : await walkCrefType(qualified, modified.path, client);
+  if (innermost === undefined) return [];
+
+  const parameters = await inheritedParameterNames(innermost, client);
   return parameters.map((name) => ({
     label: name,
     kind: CompletionCandidateKind.Property,
