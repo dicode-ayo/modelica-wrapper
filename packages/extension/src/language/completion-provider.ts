@@ -21,6 +21,11 @@
  *                            (own + `extends`-pulled members) for members. If
  *                            the head is a package, `getClassNames` of it for
  *                            nested classes.
+ *   inside `annotation(...)`
+ *                          → the spec-defined annotation field names for the
+ *                            nested record path (`annotation-schema.ts`), STATIC
+ *                            (no OMC). An unknown record offers nothing. Wins
+ *                            over the modifier/type branches on the same parens.
  *   inside `(...)` modifier parens
  *                          → the modified type's parameters, INCLUDING inherited
  *                            ones (own + `extends`-pulled, transitively). Fires
@@ -48,7 +53,9 @@ import type { Tree } from "web-tree-sitter";
 
 import { log } from "../logger.js";
 
+import { annotationFields } from "./annotation-schema.js";
 import {
+  annotationPath,
   cursorInErrorRegion,
   headBeforeDot,
   modifiedTypeWithPath,
@@ -218,6 +225,15 @@ export async function computeCompletions(
   owningClass: string,
   client: CompletionClient,
 ): Promise<CompletionResult> {
+  // Inside an `annotation(...)`: the vocabulary is spec-defined and static, so
+  // the nested record-name path selects the valid child fields with no OMC call.
+  // Detected structurally (annotation-rooted), it must win before the modifier
+  // and type branches, which would otherwise misfire on the same `(...)` nesting.
+  const annotation = annotationPath(tree, offset);
+  if (annotation !== null) {
+    return stable(annotationCandidates(annotation));
+  }
+
   const target = targetAt(tree, offset);
 
   // Caret on a member segment (`r.v|`): the head is everything before it.
@@ -280,6 +296,18 @@ export async function computeCompletions(
 /** Wrap a stable (locally-filterable) candidate list as a complete result. */
 function stable(candidates: CompletionCandidate[]): CompletionResult {
   return { candidates, isIncomplete: false };
+}
+
+/**
+ * Annotation-position result: the static schema's field names for the record at
+ * `path` (empty for an unknown record), as Field candidates. The set is fixed
+ * (no prefix-dependent OMC net), so the caller wraps it with {@link stable}.
+ */
+function annotationCandidates(path: readonly string[]): CompletionCandidate[] {
+  return annotationFields(path).map((name) => ({
+    label: name,
+    kind: CompletionCandidateKind.Field,
+  }));
 }
 
 /**
