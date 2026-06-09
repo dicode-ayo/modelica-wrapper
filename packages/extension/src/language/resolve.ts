@@ -27,19 +27,23 @@ export interface QualifyClient {
   }): Promise<{ qualifiedPath: string }>;
 }
 
+/** Lists a class's direct `extends` base classes — the inheritance step both walks share. */
+export interface InheritedClassesClient {
+  getInheritedClasses(input: {
+    typeName: string;
+  }): Promise<{ inheritedClasses: string[] }>;
+}
+
 /**
  * Lists a class's components and its `extends` bases, for the
  * inheritance-inclusive cref type-walk. `getComponents` reports a class's *own*
  * declared components; `getInheritedClasses` reports its direct base classes, so
  * the union across the transitive base set is the full member list.
  */
-export interface ComponentWalkClient {
+export interface ComponentWalkClient extends InheritedClassesClient {
   getComponents(input: { typeName: string }): Promise<{
     components: { className: string; name: string }[];
   }>;
-  getInheritedClasses(input: {
-    typeName: string;
-  }): Promise<{ inheritedClasses: string[] }>;
 }
 
 /** Structural OMC surface; `OmcClient` satisfies this so tests can pass a mock. */
@@ -225,6 +229,76 @@ export async function inheritedComponents(
   return [...byName.values()];
 }
 
+/**
+ * Lists a class's own parameters and its `extends` bases, for the
+ * inheritance-inclusive parameter walk. `getParameterNames` reports a class's
+ * *own* declared parameters — it DROPS those a base class contributes — so the
+ * union across the transitive base set is the full parameter list.
+ */
+export interface ParameterWalkClient extends InheritedClassesClient {
+  getParameterNames(input: { typeName: string }): Promise<{
+    parameters: string[];
+  }>;
+}
+
+/**
+ * The inheritance-inclusive parameter names of `typeName`: its own declared
+ * parameters unioned with those of every transitive `extends` base, in
+ * breadth-first order from `typeName` outward and de-duped by name (a nearer
+ * declaration is seen first and kept). The walk is cycle-guarded; a failed
+ * `getParameterNames`/`getInheritedClasses` for any class contributes nothing
+ * rather than aborting.
+ *
+ * `getParameterNames` alone reports only a class's OWN parameters (a type whose
+ * conditional ports/params descend from a base — e.g. `useHeatPort` via
+ * `ConditionalHeatPort` — would lose them), so the base-class union is what
+ * surfaces inherited parameters.
+ */
+export async function inheritedParameterNames(
+  typeName: string,
+  client: ParameterWalkClient,
+): Promise<string[]> {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const visited = new Set<string>();
+  const queue: string[] = [typeName];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current === undefined || visited.has(current)) continue;
+    visited.add(current);
+
+    const [params, bases] = await Promise.all([
+      ownParameters(current, client),
+      directBases(current, client),
+    ]);
+    for (const name of params) {
+      if (!seen.has(name)) {
+        seen.add(name);
+        out.push(name);
+      }
+    }
+    for (const base of bases) {
+      if (!visited.has(base)) queue.push(base);
+    }
+  }
+
+  return out;
+}
+
+async function ownParameters(
+  typeName: string,
+  client: ParameterWalkClient,
+): Promise<string[]> {
+  try {
+    const { parameters } = await client.getParameterNames({ typeName });
+    return parameters;
+  } catch (err) {
+    log.debug("language", `getParameterNames failed for ${typeName}`, err);
+    return [];
+  }
+}
+
 async function ownComponents(
   typeName: string,
   client: ComponentWalkClient,
@@ -240,7 +314,7 @@ async function ownComponents(
 
 async function directBases(
   typeName: string,
-  client: ComponentWalkClient,
+  client: InheritedClassesClient,
 ): Promise<string[]> {
   try {
     const { inheritedClasses } = await client.getInheritedClasses({ typeName });

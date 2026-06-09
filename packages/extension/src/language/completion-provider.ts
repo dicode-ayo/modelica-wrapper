@@ -21,7 +21,11 @@
  *                            (own + `extends`-pulled members) for members. If
  *                            the head is a package, `getClassNames` of it for
  *                            nested classes.
- *   modifier-name          → `getParameterNames` of the class being modified.
+ *   inside `(...)` modifier parens
+ *                          → the modified type's parameters, INCLUDING inherited
+ *                            ones (own + `extends`-pulled, transitively). Fires
+ *                            on a partial name, empty parens, and a still
+ *                            name-less declaration (`Resistor(|)`).
  *   otherwise              → nothing (don't spam plain value references).
  *
  * The routing + OMC queries live in {@link computeCompletions}, a pure function
@@ -32,10 +36,10 @@
  * Scope: candidates cover the owning class's own children and those of each
  * enclosing package, plus a global fuzzy net. Imported names are NOT enumerated:
  * `qualifyPath` resolves a *typed* name but offers no way to list what an
- * `import` clause brings into scope. Member access is inheritance-inclusive, but
- * `getParameterNames` still reports a class's *own* declared parameters; and
- * completion reflects the last *saved* buffer, so a just-typed unsaved member
- * may be missing.
+ * `import` clause brings into scope. Member access and modifier-parameter lists
+ * are both inheritance-inclusive (the union over `extends` bases). Completion
+ * reflects the last *saved* buffer, so a just-typed unsaved member may be
+ * missing.
  */
 
 import * as vscode from "vscode";
@@ -57,6 +61,7 @@ import type { ParseCache } from "./parse.js";
 import type { OwningClassClient } from "./owning-class.js";
 import {
   inheritedComponents,
+  inheritedParameterNames,
   qualifyTypeReference,
   walkCrefType,
   type ResolveClient,
@@ -221,6 +226,21 @@ export async function computeCompletions(
       return stable(cap(await memberCandidates(owningClass, head, client)));
   }
 
+  // Inside a declaration's `(...)` class-modification — partial name (`r(R|)`),
+  // empty parens (`r(|)`), or a still-name-less declaration (`Resistor(|)`).
+  // Detected structurally, so it fires before the type-name and error-region
+  // fallbacks below would mistake a name-less `Resistor(|)` (an `ERROR` parse)
+  // for a type reference. A caret on a modifier VALUE is a `component-reference`
+  // target, not a `modifier-name`/empty one, so it is excluded here.
+  if (target === null || target.context === "modifier-name") {
+    const typeName = modifiedTypeName(tree, offset);
+    if (typeName !== null) {
+      return stable(
+        cap(await modifierCandidates(owningClass, typeName, client)),
+      );
+    }
+  }
+
   // A trailing dot (`r.|`, `Modelica.Blocks.Continuous.|`) is navigation into
   // the path's last segment — a component's members or a package's classes.
   // The parser reads the segment before the dot as a type reference in a type
@@ -240,12 +260,6 @@ export async function computeCompletions(
       ELEMENT_CONTEXTS.has(target.context),
       client,
     );
-  }
-
-  if (target?.context === "modifier-name") {
-    const typeName = modifiedTypeName(tree, offset);
-    if (!typeName) return stable([]);
-    return stable(cap(await modifierCandidates(owningClass, typeName, client)));
   }
 
   // A broken parse loses the statement-position signal, so the keyword/snippet
@@ -499,28 +513,29 @@ async function packageClassCandidates(
 }
 
 /**
- * Modifier name: the parameter names of the class being modified. The class is
- * the declaration's *type* — `cursor.ts`'s `modifiedTypeName` reads it straight
- * from the enclosing `component_clause`/`extends_clause`, since the modifier
- * name's own dotted path does NOT contain the type it modifies. The (possibly
- * short, possibly dotted) type name is qualified in the owning class's scope,
- * then its parameters are listed.
+ * Class-modification position: the parameters of the class being modified,
+ * INCLUDING inherited ones. The class is the declaration's *type* —
+ * `cursor.ts`'s `modifiedTypeName` reads it straight from the enclosing
+ * `component_clause`/`extends_clause`, since the modifier name's own dotted path
+ * does NOT contain the type it modifies. The (possibly short, possibly dotted)
+ * type name is qualified in the owning class's scope, then its parameters are
+ * listed.
+ *
+ * `getParameterNames` reports only a class's OWN parameters, so the list is the
+ * inheritance-inclusive union over the type's `extends` bases (mirrors the
+ * member-access component walk).
  */
 async function modifierCandidates(
   owningClass: string,
   typeName: string,
   client: CompletionClient,
 ): Promise<CompletionCandidate[]> {
-  // Qualify the declared type in scope so `getParameterNames` gets the
+  // Qualify the declared type in scope so the parameter lookups get the
   // fully-qualified class (a short `Resistor` won't resolve on its own).
   const qualified =
     (await qualifyTypeReference(owningClass, [typeName], client)) ?? typeName;
 
-  const { parameters } = await tryCall(
-    "getParameterNames",
-    () => client.getParameterNames({ typeName: qualified }),
-    { parameters: [] },
-  );
+  const parameters = await inheritedParameterNames(qualified, client);
   return parameters.map((name) => ({
     label: name,
     kind: CompletionCandidateKind.Property,

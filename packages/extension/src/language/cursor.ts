@@ -269,40 +269,119 @@ function isWordChar(code: number): boolean {
 }
 
 /**
- * The dotted *type name* of the declaration whose modifier list the cursor at
- * `offset` is inside — the class whose parameters a `modifier-name` completion
- * should offer. For `Resistor r(R = |)` this is `"Resistor"`; for
- * `extends Base(p = |)` it is `"Base"`; for a dotted type
- * `Modelica.Electrical.Resistor r(R = |)` it is the full dotted text.
+ * The dotted *type name* of the declaration whose `(...)` class-modification the
+ * cursor at `offset` is inside — the class whose parameters a modifier
+ * completion should offer. For `Resistor r(R = |)` this is `"Resistor"`; for an
+ * empty `Resistor r(|)` it is still `"Resistor"`; for `extends Base(p = |)` it
+ * is `"Base"`; for a dotted type `Modelica.Electrical.Resistor r(R = |)` it is
+ * the full dotted text. Also covers the mid-edit case where no component name
+ * has been typed yet (`Resistor(|)`, `Modelica…Resistor(|)`), which the parser
+ * recovers as an `ERROR` region rather than a `component_clause`.
  *
- * Returns `null` when the cursor is not inside a modifier list with a resolvable
- * declaring type. This reads the declaration directly from the tree (the
- * enclosing `component_clause`'s `typeSpecifier`, or the `extends_clause`'s type)
- * rather than re-deriving the modified component, because the modifier name's
- * own dotted path does NOT contain the component/type it modifies.
+ * Detection is STRUCTURAL — the caret is inside a `class_modification`'s parens
+ * (or an `ERROR` recovery of `type_specifier (…)`), not keyed to an
+ * `element_modification` name. So an empty modifier list resolves a type even
+ * with no modifier name under the caret. Returns `null` when the caret is not
+ * inside such a modifier list, or the declaring type is empty/unresolvable.
+ *
+ * The type is read from the enclosing declaration (`component_clause`'s
+ * `typeSpecifier`, or `extends_clause`'s type) rather than from the modifier
+ * name, because the modifier name's own dotted path does NOT contain the type
+ * it modifies.
  *
  * @see Offset unit — module note.
  */
 export function modifiedTypeName(tree: Tree, offset: number): string | null {
-  const ident = identifierAt(tree, offset);
-  if (!ident) return null;
-  // Confirm we're on a modifier name, not some other identifier.
-  if (classify(ident, enclosingDottedNode(ident)) !== "modifier-name") {
-    return null;
+  // Deepest node spanning the caret, including anonymous tokens (`(`, `)`),
+  // since an empty modifier list has no identifier to land on.
+  let node: Node | null = tree.rootNode.descendantForIndex(offset, offset);
+  while (node) {
+    if (node.type === "class_modification") {
+      return insideParens(node, offset)
+        ? declaringTypeOfModification(node)
+        : null;
+    }
+    // A declaration with no component name (`Resistor(|)`) doesn't parse as a
+    // `component_clause`; the parser recovers it as an `ERROR` holding the
+    // `type_specifier` followed by the `(…)` the caret is inside.
+    if (node.type === "ERROR") {
+      const recovered = declaringTypeFromErrorParens(node, offset);
+      if (recovered !== null) return recovered;
+    }
+    node = node.parent;
   }
-  // Walk up to the declaration carrying the type being modified.
-  let n: Node | null = ident.parent;
+  return null;
+}
+
+/** Is `offset` strictly after a node's opening `(` and at/before its `)`? */
+function insideParens(node: Node, offset: number): boolean {
+  const open = firstChildOfType(node, "(");
+  if (!open) return false;
+  const close = firstChildOfType(node, ")");
+  const upper = close ? close.endIndex : node.endIndex;
+  return offset >= open.endIndex && offset <= upper;
+}
+
+/** First direct child of `node` with the given type, or null. */
+function firstChildOfType(node: Node, type: string): Node | null {
+  for (let i = 0; i < node.childCount; i++) {
+    const child = node.child(i);
+    if (child && child.type === type) return child;
+  }
+  return null;
+}
+
+/**
+ * Walk up from a `class_modification` to the declaration carrying the type
+ * being modified — a `component_clause`'s `typeSpecifier` or an
+ * `extends_clause`'s type. Returns null when neither encloses it or the type
+ * text is empty.
+ */
+function declaringTypeOfModification(modification: Node): string | null {
+  let n: Node | null = modification.parent;
   while (n) {
     if (n.type === "component_clause") {
       const ts = n.childForFieldName("typeSpecifier");
       return ts && ts.text.length > 0 ? ts.text : null;
     }
     if (n.type === "extends_clause") {
-      // The extends target is the `typeSpecifier`/`name` child before the `(`.
       const ts = n.childForFieldName("typeSpecifier") ?? firstNameChild(n);
       return ts && ts.text.length > 0 ? ts.text : null;
     }
     n = n.parent;
+  }
+  return null;
+}
+
+/**
+ * Type of a name-less declaration the parser recovered as an `ERROR`: a
+ * `type_specifier` directly followed by a `(` whose closing `)` (or the ERROR's
+ * end, for an unterminated list) straddles the caret. Returns null when the
+ * ERROR has no such `type_specifier (…)` shape around the caret.
+ */
+function declaringTypeFromErrorParens(
+  error: Node,
+  offset: number,
+): string | null {
+  for (let i = 0; i < error.childCount; i++) {
+    const child = error.child(i);
+    if (!child || child.type !== TYPE_SPECIFIER_NODE) continue;
+    const open = error.child(i + 1);
+    if (!open || open.type !== "(") continue;
+    const close = closingParenAfter(error, i + 1);
+    const upper = close ? close.endIndex : error.endIndex;
+    if (offset >= open.endIndex && offset <= upper) {
+      return child.text.length > 0 ? child.text : null;
+    }
+  }
+  return null;
+}
+
+/** The first `)` token after child index `from` within `node`, or null. */
+function closingParenAfter(node: Node, from: number): Node | null {
+  for (let i = from + 1; i < node.childCount; i++) {
+    const child = node.child(i);
+    if (child && child.type === ")") return child;
   }
   return null;
 }

@@ -704,6 +704,140 @@ describe("computeCompletions — modifier name", () => {
     expect(getParameterNames).toHaveBeenCalledWith({ typeName: "Pkg.Base" });
     expect(out.map((c) => c.label)).toEqual(["p", "q"]);
   });
+
+  it("lists parameters in EMPTY parens, including an inherited one", async () => {
+    // `Resistor r(|)` — no modifier name typed yet. The type's own params plus
+    // those pulled in through `extends` are offered.
+    const src = "model M\n  Resistor r();\nend M;";
+    const qualifyPath = vi.fn(() =>
+      Promise.resolve({ qualifiedPath: "Pkg.Resistor" }),
+    );
+    const getParameterNames = vi.fn(({ typeName }) => {
+      if (typeName === "Pkg.Resistor") {
+        return Promise.resolve({ parameters: ["R", "T_ref"] });
+      }
+      if (typeName === "Pkg.ConditionalHeatPort") {
+        return Promise.resolve({ parameters: ["useHeatPort"] });
+      }
+      return Promise.resolve({ parameters: [] });
+    });
+    const getInheritedClasses = vi.fn(({ typeName }) =>
+      Promise.resolve({
+        inheritedClasses:
+          typeName === "Pkg.Resistor" ? ["Pkg.ConditionalHeatPort"] : [],
+      }),
+    );
+    const client = makeClient({
+      qualifyPath,
+      getParameterNames,
+      getInheritedClasses,
+    });
+
+    const out = await candidatesOf(
+      parse(src),
+      // Caret between `(` and `)`.
+      offsetOf(src, ")"),
+      "MyPkg.M",
+      client,
+    );
+
+    expect(qualifyPath).toHaveBeenCalledWith({
+      typeName: "MyPkg.M",
+      path: "Resistor",
+    });
+    const labels = out.map((c) => c.label);
+    expect(labels).toContain("R");
+    // The inherited parameter is present — `getParameterNames` alone would drop it.
+    expect(labels).toContain("useHeatPort");
+    expect(out.every((c) => c.kind === CompletionCandidateKind.Property)).toBe(
+      true,
+    );
+    // No class-name / static channel leaks into modifier parens.
+    expect(client.getClassNames).not.toHaveBeenCalled();
+    expect(client.searchClassNames).not.toHaveBeenCalled();
+  });
+
+  it("lists parameters before a component name is typed (`Type(|)`)", async () => {
+    // Mid-edit `Modelica.Electrical.Analog.Basic.Resistor(|)` parses as an ERROR
+    // region (no component name), yet the modified type still resolves.
+    const src =
+      "model M\n  Modelica.Electrical.Analog.Basic.Resistor();\nend M;";
+    const qualifyPath = vi.fn(() =>
+      Promise.resolve({
+        qualifiedPath: "Modelica.Electrical.Analog.Basic.Resistor",
+      }),
+    );
+    const getParameterNames = vi.fn(() =>
+      Promise.resolve({ parameters: ["R", "T_ref", "alpha"] }),
+    );
+    const client = makeClient({ qualifyPath, getParameterNames });
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, ")"),
+      "MyPkg.M",
+      client,
+    );
+
+    expect(qualifyPath).toHaveBeenCalledWith({
+      typeName: "MyPkg.M",
+      path: "Modelica.Electrical.Analog.Basic.Resistor",
+    });
+    expect(getParameterNames).toHaveBeenCalledWith({
+      typeName: "Modelica.Electrical.Analog.Basic.Resistor",
+    });
+    expect(out.map((c) => c.label)).toEqual(["R", "T_ref", "alpha"]);
+    expect(client.getClassNames).not.toHaveBeenCalled();
+  });
+
+  it("still completes a partially-typed parameter name (`r(R|)`)", async () => {
+    const src = "model M\n  Resistor r(R);\nend M;";
+    const qualifyPath = vi.fn(() =>
+      Promise.resolve({ qualifiedPath: "Pkg.Resistor" }),
+    );
+    const getParameterNames = vi.fn(() =>
+      Promise.resolve({ parameters: ["R", "T_ref"] }),
+    );
+    const client = makeClient({ qualifyPath, getParameterNames });
+
+    const out = await candidatesOf(
+      parse(src),
+      // Caret just after the typed `R`.
+      offsetOf(src, "R)") + 1,
+      "MyPkg.M",
+      client,
+    );
+
+    expect(getParameterNames).toHaveBeenCalledWith({
+      typeName: "Pkg.Resistor",
+    });
+    expect(out.map((c) => c.label)).toEqual(["R", "T_ref"]);
+    expect(client.getClassNames).not.toHaveBeenCalled();
+  });
+
+  it("does not offer parameters on a modifier VALUE reference", async () => {
+    // `r(R = x|)` — the caret is on the value `x`, a component reference, not a
+    // modifier name. Parameter names must not be offered there.
+    const src = "model M\n  Resistor r(R = x);\nend M;";
+    const client = makeClient({
+      qualifyPath: vi.fn(() =>
+        Promise.resolve({ qualifiedPath: "Pkg.Resistor" }),
+      ),
+      getParameterNames: vi.fn(() =>
+        Promise.resolve({ parameters: ["R", "T_ref"] }),
+      ),
+    });
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "x)") + 1,
+      "MyPkg.M",
+      client,
+    );
+
+    expect(out).toEqual([]);
+    expect(client.getParameterNames).not.toHaveBeenCalled();
+  });
 });
 
 describe("computeCompletions — unknown / non-completable context", () => {
