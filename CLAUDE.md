@@ -19,11 +19,16 @@ pnpm -r typecheck                            # whole workspace
 pnpm --filter modelica-wrapper typecheck     # extension only
 pnpm --filter modelica-wrapper test:unit     # vitest unit suite (no live OMC)
 pnpm -r test                                 # adds integration when omc is on PATH
+pnpm lint                                    # eslint . (CI-gated)
+pnpm format:check                            # prettier --check . (CI-gated)
+pnpm format                                  # prettier --write . to fix
 ```
 
-Don't propose `eslint`/`prettier` runs — neither is configured (only `tsc` +
-`vitest`). cSpell flags `Modelica`, `MODELICA`, `dicode`, `openmodelica`,
-`modelica` as "Unknown word" — these are project terms; ignore those warnings.
+eslint + prettier are configured (`eslint.config.mjs`, `.prettierrc.json`) and
+CI-gated: contributions must pass `pnpm lint` and `pnpm format:check` alongside
+`tsc` + `vitest`. Run `pnpm format` to apply formatting. cSpell flags
+`Modelica`, `MODELICA`, `dicode`, `openmodelica`, `modelica` as "Unknown word" —
+these are project terms; ignore those warnings.
 
 ## Code style
 
@@ -131,8 +136,8 @@ release stack.
 
 Skip with a short reason; don't argue. Common skips: cross-package extractions
 when only one file is in scope, refactors that need a not-yet-landed consumer,
-tooling additions when no config exists (no ESLint config in repo → no
-`no-restricted-imports` rule additions).
+new tooling/config that no existing config calls for (a feature PR shouldn't
+introduce, say, a `no-restricted-imports` rule on its own).
 
 ## Don't
 
