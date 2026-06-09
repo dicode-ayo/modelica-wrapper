@@ -72,6 +72,7 @@ export {
   COMPLETION_TRIGGER_CHARACTER,
   MAX_COMPLETIONS,
   type CompletionCandidate,
+  type CompletionResult,
   type CompletionClient,
 } from "./completion-provider.js";
 

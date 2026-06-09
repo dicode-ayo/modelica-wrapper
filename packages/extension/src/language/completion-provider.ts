@@ -139,6 +139,20 @@ export interface CompletionCandidate {
 }
 
 /**
+ * Outcome of {@link computeCompletions}: the candidate list plus whether it is
+ * incomplete. `isIncomplete` is true only when a contribution depends on the
+ * typed prefix and a longer prefix would yield a different set — the fuzzy
+ * global `searchClassNames` net. The provider maps this onto
+ * `vscode.CompletionList.isIncomplete`: false lets VSCode filter the returned
+ * set locally as the user types (no re-query); true makes it re-invoke the
+ * provider as the prefix grows.
+ */
+export interface CompletionResult {
+  readonly candidates: CompletionCandidate[];
+  readonly isIncomplete: boolean;
+}
+
+/**
  * OMC surface the completion sources need: the resolution calls (via
  * {@link ResolveClient}, reused for the member-access head walk) plus the four
  * typed candidate-source wrappers. `OmcClient` satisfies this, so real call
@@ -172,11 +186,17 @@ const ELEMENT_CONTEXTS: ReadonlySet<CursorContextKind> =
   new Set<CursorContextKind>([...TYPE_CONTEXTS].filter((c) => c !== "extends"));
 
 /**
- * Compute the completion candidates for the cursor at `offset` in `tree`, scoped
- * to `owningClass`. Routes by the cursor context to the right OMC source(s) and
+ * Compute the completion result for the cursor at `offset` in `tree`, scoped to
+ * `owningClass`. Routes by the cursor context to the right OMC source(s) and
  * returns a de-duped, capped list of plain-data candidates (empty when the
- * context offers nothing). No `vscode` import — unit-tested directly against a
- * mocked {@link CompletionClient}.
+ * context offers nothing) plus an {@link CompletionResult.isIncomplete} flag.
+ * No `vscode` import — unit-tested directly against a mocked
+ * {@link CompletionClient}.
+ *
+ * Every context but the fuzzy global type/class-name net is STABLE: its result
+ * is a complete set VSCode can filter locally as the prefix grows. Only the
+ * `searchClassNames` contribution is prefix-dependent, so a type/class-name
+ * position that fires it is marked incomplete to make VSCode re-invoke.
  *
  * @param tree - parsed buffer (from `ParseCache.parse`).
  * @param offset - UTF-16 code-unit offset (i.e. `document.offsetAt(position)`).
@@ -188,7 +208,7 @@ export async function computeCompletions(
   offset: number,
   owningClass: string,
   client: CompletionClient,
-): Promise<CompletionCandidate[]> {
+): Promise<CompletionResult> {
   const target = targetAt(tree, offset);
 
   // Member-access head: either the segment-before-the-cursor in an explicit
@@ -200,7 +220,8 @@ export async function computeCompletions(
       : !target
         ? headBeforeDot(tree, offset)
         : null;
-  if (head) return cap(await memberCandidates(owningClass, head, client));
+  if (head)
+    return stable(cap(await memberCandidates(owningClass, head, client)));
 
   if (target && TYPE_CONTEXTS.has(target.context)) {
     return typePositionCandidates(
@@ -213,22 +234,27 @@ export async function computeCompletions(
 
   if (target?.context === "modifier-name") {
     const typeName = modifiedTypeName(tree, offset);
-    if (!typeName) return [];
-    return cap(await modifierCandidates(owningClass, typeName, client));
+    if (!typeName) return stable([]);
+    return stable(cap(await modifierCandidates(owningClass, typeName, client)));
   }
 
   // A broken parse loses the statement-position signal, so the keyword/snippet
   // channels stay out; only inside an error region do we fall back to the
   // textual word before the caret (dotted head → member access, bare prefix →
   // type/class-name completion).
-  if (!cursorInErrorRegion(tree, offset)) return [];
+  if (!cursorInErrorRegion(tree, offset)) return stable([]);
 
   const word = textualWordBefore(tree.rootNode.text, offset);
-  if (!word) return [];
+  if (!word) return stable([]);
   if (word.head.length > 0) {
-    return cap(await memberCandidates(owningClass, word.head, client));
+    return stable(cap(await memberCandidates(owningClass, word.head, client)));
   }
   return typePositionCandidates(owningClass, word.prefix, false, client);
+}
+
+/** Wrap a stable (locally-filterable) candidate list as a complete result. */
+function stable(candidates: CompletionCandidate[]): CompletionResult {
+  return { candidates, isIncomplete: false };
 }
 
 /**
@@ -238,14 +264,17 @@ export async function computeCompletions(
  * static set is merged after. A built-in type whose label already came from the
  * OMC names is dropped so the label appears once; keyword and snippet channels
  * may share a label (e.g. `model`) and are both kept.
+ *
+ * Incomplete only when the fuzzy global net fired (see {@link CompletionResult}).
  */
 async function typePositionCandidates(
   owningClass: string,
   prefix: string,
   withStatementChannels: boolean,
   client: CompletionClient,
-): Promise<CompletionCandidate[]> {
-  const omcNames = cap(await classNameCandidates(owningClass, prefix, client));
+): Promise<CompletionResult> {
+  const names = await classNameCandidates(owningClass, prefix, client);
+  const omcNames = cap(names.candidates);
   const omcLabels = new Set(omcNames.map((c) => c.label));
   const statics = builtInTypeCandidates().filter(
     (c) => !omcLabels.has(c.label),
@@ -253,20 +282,30 @@ async function typePositionCandidates(
   if (withStatementChannels) {
     statics.push(...keywordCandidates(), ...snippetCandidates());
   }
-  return [...omcNames, ...statics];
+  return {
+    candidates: [...omcNames, ...statics],
+    isIncomplete: names.firedFuzzyNet,
+  };
+}
+
+/** Class-name candidates plus whether the fuzzy global net was queried. */
+interface ClassNameResult {
+  readonly candidates: CompletionCandidate[];
+  readonly firedFuzzyNet: boolean;
 }
 
 /**
  * Class/type position: the owning class's *own* nested classes
  * (`getClassNames`) merged with a fuzzy global match (`searchClassNames`) on the
  * prefix the user is typing — local children plus a global fuzzy net, not the
- * full import/extends-aware visible set.
+ * full import/extends-aware visible set. Reports whether the fuzzy net fired so
+ * the caller can mark a prefix-dependent result incomplete.
  */
 async function classNameCandidates(
   owningClass: string,
   prefix: string,
   client: CompletionClient,
-): Promise<CompletionCandidate[]> {
+): Promise<ClassNameResult> {
   const out: CompletionCandidate[] = [];
 
   // Children of the enclosing scope (the owning class). Bare local names.
@@ -286,7 +325,8 @@ async function classNameCandidates(
   // over every loaded class, so only issue it once the prefix is long enough
   // (`MIN_FUZZY_PREFIX`) to bound the cost a short prefix can't (see the const's
   // note); below the threshold the scoped `getClassNames` above still applies.
-  if (prefix.length >= MIN_FUZZY_PREFIX) {
+  const firedFuzzyNet = prefix.length >= MIN_FUZZY_PREFIX;
+  if (firedFuzzyNet) {
     try {
       const { classNames } = await client.searchClassNames({
         searchText: prefix,
@@ -311,7 +351,7 @@ async function classNameCandidates(
     }
   }
 
-  return out;
+  return { candidates: out, firedFuzzyNet };
 }
 
 /**
@@ -508,7 +548,7 @@ export class ModelicaCompletionProvider
     document: vscode.TextDocument,
     position: vscode.Position,
     token: vscode.CancellationToken,
-  ): Promise<vscode.CompletionItem[] | undefined> {
+  ): Promise<vscode.CompletionList | undefined> {
     try {
       const client = await this.ensureClient();
       // Real files load on touch; a virtual `modelica-source:` class is already
@@ -521,7 +561,7 @@ export class ModelicaCompletionProvider
       if (token.isCancellationRequested) return undefined;
 
       const tree = await this.cache.parse(document);
-      const candidates = await computeCompletions(
+      const { candidates, isIncomplete } = await computeCompletions(
         tree,
         document.offsetAt(position),
         owning.qualifiedName,
@@ -530,7 +570,7 @@ export class ModelicaCompletionProvider
       if (token.isCancellationRequested) return undefined;
       if (candidates.length === 0) return undefined;
 
-      return candidates.map((c) => {
+      const items = candidates.map((c) => {
         const item = new vscode.CompletionItem(
           c.label,
           toVscodeCompletionKind(c.kind),
@@ -549,6 +589,10 @@ export class ModelicaCompletionProvider
         }
         return item;
       });
+
+      // `isIncomplete` true makes VSCode re-invoke as the prefix grows (the
+      // fuzzy global net depends on it); false lets it filter this set locally.
+      return new vscode.CompletionList(items, isIncomplete);
     } catch (err) {
       // A provider must never throw out — degrade to "no completions".
       log.error("language", "completion provider failed", err);

@@ -22,6 +22,7 @@ import {
   computeCompletions,
   MAX_COMPLETIONS,
   MIN_FUZZY_PREFIX,
+  type CompletionCandidate,
   type CompletionClient,
 } from "./completion-provider.js";
 import { GRAMMAR_WASM_FILENAME } from "./parse.js";
@@ -55,6 +56,21 @@ function offsetOf(src: string, needle: string, occurrence = 0): number {
     from = idx;
   }
   return idx;
+}
+
+/**
+ * Run the pure core and return only the candidate list. Tests that pin the
+ * routing/candidates use this; the `isIncomplete` flag is asserted separately
+ * (see the dedicated describe block).
+ */
+async function candidatesOf(
+  tree: Tree,
+  offset: number,
+  owningClass: string,
+  client: CompletionClient,
+): Promise<CompletionCandidate[]> {
+  return (await computeCompletions(tree, offset, owningClass, client))
+    .candidates;
 }
 
 /** A CompletionClient with overridable behaviour and call recording. */
@@ -92,7 +108,7 @@ describe("computeCompletions — type / extends / component-type position", () =
       ),
     });
 
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "Resistor") + 1,
       "MyPkg.Circuit",
@@ -158,7 +174,7 @@ describe("computeCompletions — type / extends / component-type position", () =
     });
 
     // Cursor on the single-char type `R`.
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "R r;"),
       "MyPkg.Circuit",
@@ -183,7 +199,7 @@ describe("computeCompletions — type / extends / component-type position", () =
       ),
     });
 
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "Re r;"),
       "MyPkg.Circuit",
@@ -206,7 +222,7 @@ describe("computeCompletions — type / extends / component-type position", () =
       ),
     });
 
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "Re r;"),
       "MyPkg.Circuit",
@@ -231,7 +247,7 @@ describe("computeCompletions — static channels", () => {
   const elementOffset = offsetOf(elementSrc, "par") + 1;
 
   it("offers keywords, built-in types, and snippets in element position", async () => {
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(elementSrc),
       elementOffset,
       "MyPkg.M",
@@ -253,7 +269,7 @@ describe("computeCompletions — static channels", () => {
   });
 
   it("wraps snippet candidates with placeholder insertText, not the keyword", async () => {
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(elementSrc),
       elementOffset,
       "MyPkg.M",
@@ -280,7 +296,7 @@ describe("computeCompletions — static channels", () => {
       searchClassNames: vi.fn(() => Promise.resolve({ classNames: ["Real"] })),
     });
 
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "Real") + 1,
       "MyPkg.M",
@@ -292,7 +308,7 @@ describe("computeCompletions — static channels", () => {
 
   it("merges built-in types but NOT keywords/snippets after `extends`", async () => {
     const src = "model Derived\n  extends Ba\nend Derived;";
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "Ba\n") + 1,
       "Pkg.Derived",
@@ -327,7 +343,7 @@ describe("computeCompletions — static channels", () => {
       return Promise.resolve({ components: [] });
     });
 
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "v;"),
       "MyPkg.M",
@@ -347,7 +363,7 @@ describe("computeCompletions — static channels", () => {
 
   it("suppresses every static channel in value/expression position", async () => {
     const src = "model M\nequation\n  y = x;\nend M;";
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "x;"),
       "MyPkg.M",
@@ -358,7 +374,7 @@ describe("computeCompletions — static channels", () => {
 
   it("suppresses every static channel in modifier-name position", async () => {
     const src = "model M\n  Resistor r(R = 1);\nend M;";
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "R = 1"),
       "MyPkg.M",
@@ -404,7 +420,7 @@ describe("computeCompletions — member access after `.`", () => {
     const client = makeClient({ getComponents });
 
     // Cursor on `v` in `r.v` → head is `r`, members of Pkg.Resistor offered.
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "v;"),
       "MyPkg.M",
@@ -458,7 +474,7 @@ describe("computeCompletions — member access after `.`", () => {
     );
     const client = makeClient({ getComponents, getInheritedClasses });
 
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "v;"),
       "MyPkg.M",
@@ -502,12 +518,7 @@ describe("computeCompletions — member access after `.`", () => {
       }),
     });
 
-    const out = await computeCompletions(
-      parse(src),
-      dotAfter,
-      "MyPkg.M",
-      client,
-    );
+    const out = await candidatesOf(parse(src), dotAfter, "MyPkg.M", client);
 
     // Qualified to the package, probed, then its children listed.
     expect(client.qualifyPath).toHaveBeenCalledWith({
@@ -527,7 +538,7 @@ describe("computeCompletions — member access after `.`", () => {
       isPackage: vi.fn(() => Promise.resolve({ b: false })),
     });
 
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "v;"),
       "MyPkg.M",
@@ -558,12 +569,7 @@ describe("computeCompletions — bare-dot trigger (empty prefix)", () => {
     });
     const client = makeClient({ getComponents });
 
-    const out = await computeCompletions(
-      parse(src),
-      dotAfter,
-      "MyPkg.M",
-      client,
-    );
+    const out = await candidatesOf(parse(src), dotAfter, "MyPkg.M", client);
 
     expect(getComponents).toHaveBeenCalledWith({ typeName: "Pkg.Resistor" });
     expect(out.map((c) => c.label)).toEqual(["v"]);
@@ -584,7 +590,7 @@ describe("computeCompletions — modifier name", () => {
     );
     const client = makeClient({ qualifyPath, getParameterNames });
 
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "R = 1"),
       "MyPkg.M",
@@ -621,7 +627,7 @@ describe("computeCompletions — modifier name", () => {
     );
     const client = makeClient({ qualifyPath, getParameterNames });
 
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "p = 1"),
       "MyPkg.M",
@@ -642,7 +648,7 @@ describe("computeCompletions — unknown / non-completable context", () => {
     const src = "model M\nequation\n  y = x;\nend M;";
     const client = makeClient();
 
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "x;"),
       "MyPkg.M",
@@ -659,7 +665,7 @@ describe("computeCompletions — unknown / non-completable context", () => {
   it("offers nothing when the cursor is on a keyword", async () => {
     const src = "model M\n  Resistor r;\nend M;";
     const client = makeClient();
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "model"),
       "MyPkg.M",
@@ -679,7 +685,7 @@ describe("computeCompletions — robustness", () => {
       ),
     });
 
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "Resistor") + 1,
       "MyPkg.Circuit",
@@ -699,7 +705,7 @@ describe("computeCompletions — robustness", () => {
       getClassNames: vi.fn(() => Promise.resolve({ classNames: many })),
     });
 
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "Resistor") + 1,
       "MyPkg.Circuit",
@@ -724,7 +730,7 @@ describe("computeCompletions — robustness", () => {
       ),
     });
 
-    const out = await computeCompletions(
+    const out = await candidatesOf(
       parse(src),
       offsetOf(src, "Resistor") + 1,
       "MyPkg.Circuit",
@@ -746,12 +752,7 @@ describe("computeCompletions — robustness", () => {
       qualifyPath: vi.fn(() => Promise.reject(new Error("offline"))),
     });
 
-    const out = await computeCompletions(
-      parse(src),
-      dotAfter,
-      "MyPkg.M",
-      client,
-    );
+    const out = await candidatesOf(parse(src), dotAfter, "MyPkg.M", client);
     expect(out).toEqual([]);
   });
 });
@@ -776,12 +777,7 @@ describe("computeCompletions — textual routing fallback (broken buffers)", () 
     });
     const client = makeClient({ getComponents });
 
-    const out = await computeCompletions(
-      parse(src),
-      src.length,
-      "MyPkg.M",
-      client,
-    );
+    const out = await candidatesOf(parse(src), src.length, "MyPkg.M", client);
 
     expect(getComponents).toHaveBeenCalledWith({ typeName: "Pkg.Resistor" });
     expect(out.map((c) => c.label)).toEqual(["v"]);
@@ -798,12 +794,7 @@ describe("computeCompletions — textual routing fallback (broken buffers)", () 
       ),
     });
 
-    const out = await computeCompletions(
-      parse(src),
-      src.length,
-      "MyPkg.M",
-      client,
-    );
+    const out = await candidatesOf(parse(src), src.length, "MyPkg.M", client);
 
     expect(client.getClassNames).toHaveBeenCalledWith({
       typeName: "MyPkg.M",
@@ -846,12 +837,7 @@ describe("computeCompletions — textual routing fallback (broken buffers)", () 
     });
     const client = makeClient({ getComponents });
 
-    const out = await computeCompletions(
-      parse(src),
-      src.length,
-      "MyPkg.M",
-      client,
-    );
+    const out = await candidatesOf(parse(src), src.length, "MyPkg.M", client);
 
     expect(getComponents).toHaveBeenCalledWith({ typeName: "Pkg.B" });
     expect(out.map((c) => c.label)).toEqual(["c"]);
@@ -863,12 +849,7 @@ describe("computeCompletions — textual routing fallback (broken buffers)", () 
       getClassNames: vi.fn(() => Promise.resolve({ classNames: ["Ground"] })),
     });
 
-    const out = await computeCompletions(
-      parse(src),
-      src.length,
-      "MyPkg.M",
-      client,
-    );
+    const out = await candidatesOf(parse(src), src.length, "MyPkg.M", client);
     expect(out).toEqual([]);
   });
 
@@ -897,9 +878,9 @@ describe("computeCompletions — textual routing fallback (broken buffers)", () 
 describe("computeCompletions — malformed / empty buffers", () => {
   it("returns [] for an empty buffer (no throw)", async () => {
     const client = makeClient();
-    await expect(
-      computeCompletions(parse(""), 0, "Pkg.M", client),
-    ).resolves.toEqual([]);
+    await expect(candidatesOf(parse(""), 0, "Pkg.M", client)).resolves.toEqual(
+      [],
+    );
   });
 
   it("does not throw on a malformed, partially-typed buffer", async () => {
@@ -912,12 +893,7 @@ describe("computeCompletions — malformed / empty buffers", () => {
       getComponents: vi.fn(() => Promise.reject(new Error("x"))),
     });
     await expect(
-      computeCompletions(
-        parse(src),
-        offsetOf(src, "Resis") + 1,
-        "Pkg.M",
-        client,
-      ),
+      candidatesOf(parse(src), offsetOf(src, "Resis") + 1, "Pkg.M", client),
     ).resolves.toBeInstanceOf(Array);
   });
 
@@ -930,7 +906,126 @@ describe("computeCompletions — malformed / empty buffers", () => {
       qualifyPath: vi.fn(() => Promise.reject(new Error("x"))),
     });
     await expect(
-      computeCompletions(parse(src), src.length, "Pkg.M", client),
+      candidatesOf(parse(src), src.length, "Pkg.M", client),
     ).resolves.toBeInstanceOf(Array);
+  });
+});
+
+describe("computeCompletions — isIncomplete per context", () => {
+  it("marks a fuzzy-global type position incomplete so VSCode re-queries", async () => {
+    // A prefix at MIN_FUZZY_PREFIX fires searchClassNames; that global net
+    // widens as the prefix grows, so the result must be incomplete.
+    const src = "model Circuit\n  Re r;\nend Circuit;";
+    const client = makeClient({
+      searchClassNames: vi.fn(() =>
+        Promise.resolve({ classNames: ["Modelica.Electrical.Resistor"] }),
+      ),
+    });
+
+    const result = await computeCompletions(
+      parse(src),
+      offsetOf(src, "Re r;"),
+      "MyPkg.Circuit",
+      client,
+    );
+
+    expect(client.searchClassNames).toHaveBeenCalledWith({ searchText: "Re" });
+    expect(result.isIncomplete).toBe(true);
+  });
+
+  it("marks a sub-threshold type position complete (no fuzzy net fired)", async () => {
+    // A 1-char prefix stays below MIN_FUZZY_PREFIX, so only the stable scoped
+    // children are offered — VSCode can filter them locally.
+    const src = "model Circuit\n  R r;\nend Circuit;";
+    const client = makeClient({
+      getClassNames: vi.fn(() => Promise.resolve({ classNames: ["Ground"] })),
+    });
+
+    const result = await computeCompletions(
+      parse(src),
+      offsetOf(src, "R r;"),
+      "MyPkg.Circuit",
+      client,
+    );
+
+    expect(client.searchClassNames).not.toHaveBeenCalled();
+    expect(result.isIncomplete).toBe(false);
+  });
+
+  it("marks member access complete (resolved members are a stable set)", async () => {
+    const src = "model M\nequation\n  y = r.v;\nend M;";
+    const getComponents = vi.fn(({ typeName }) => {
+      if (typeName === "MyPkg.M") {
+        return Promise.resolve({
+          components: [{ name: "r", className: "Pkg.Resistor" }],
+        });
+      }
+      if (typeName === "Pkg.Resistor") {
+        return Promise.resolve({
+          components: [{ name: "v", className: "SI.Voltage" }],
+        });
+      }
+      return Promise.resolve({ components: [] });
+    });
+
+    const result = await computeCompletions(
+      parse(src),
+      offsetOf(src, "v;"),
+      "MyPkg.M",
+      makeClient({ getComponents }),
+    );
+
+    expect(result.isIncomplete).toBe(false);
+  });
+
+  it("marks modifier-name completion complete (own parameters are stable)", async () => {
+    const src = "model M\n  Resistor r(R = 1);\nend M;";
+    const result = await computeCompletions(
+      parse(src),
+      offsetOf(src, "R = 1"),
+      "MyPkg.M",
+      makeClient({
+        qualifyPath: vi.fn(() =>
+          Promise.resolve({ qualifiedPath: "Pkg.Resistor" }),
+        ),
+        getParameterNames: vi.fn(() => Promise.resolve({ parameters: ["R"] })),
+      }),
+    );
+
+    expect(result.isIncomplete).toBe(false);
+  });
+
+  it("marks a non-completable context complete (empty, stable)", async () => {
+    const src = "model M\nequation\n  y = x;\nend M;";
+    const result = await computeCompletions(
+      parse(src),
+      offsetOf(src, "x;"),
+      "MyPkg.M",
+      makeClient(),
+    );
+
+    expect(result.candidates).toEqual([]);
+    expect(result.isIncomplete).toBe(false);
+  });
+
+  it("marks the textual fuzzy fallback incomplete in a broken buffer", async () => {
+    // The broken-buffer bare-prefix fallback also fires the fuzzy net, so it
+    // must re-query as the prefix grows just like the AST type position.
+    const src = "model M\n  Resistor r\n  Res";
+    const client = makeClient({
+      searchClassNames: vi.fn(() =>
+        Promise.resolve({ classNames: ["Modelica.Electrical.Resistor"] }),
+      ),
+    });
+
+    const result = await computeCompletions(
+      parse(src),
+      src.length,
+      "MyPkg.M",
+      client,
+    );
+
+    expect(client.searchClassNames).toHaveBeenCalledWith({ searchText: "Res" });
+    expect(result.isIncomplete).toBe(true);
   });
 });
