@@ -838,6 +838,28 @@ describe("computeCompletions — modifier name", () => {
     expect(out).toEqual([]);
     expect(client.getParameterNames).not.toHaveBeenCalled();
   });
+
+  it("offers nothing for an unterminated modifier with no closing paren", async () => {
+    // `Resistor r(|` at end of buffer — the modification never closes, so the
+    // structural detection finds no parens to be inside. Pins this boundary so a
+    // future descendantForIndex change can't silently start (mis)resolving here.
+    const src = "model M\n  Resistor r(\nend M;";
+    const client = makeClient({
+      getParameterNames: vi.fn(() =>
+        Promise.resolve({ parameters: ["R", "T_ref"] }),
+      ),
+    });
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "r(") + 2,
+      "MyPkg.M",
+      client,
+    );
+
+    expect(out).toEqual([]);
+    expect(client.getParameterNames).not.toHaveBeenCalled();
+  });
 });
 
 describe("computeCompletions — unknown / non-completable context", () => {

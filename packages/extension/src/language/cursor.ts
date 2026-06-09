@@ -281,8 +281,11 @@ function isWordChar(code: number): boolean {
  * Detection is STRUCTURAL — the caret is inside a `class_modification`'s parens
  * (or an `ERROR` recovery of `type_specifier (…)`), not keyed to an
  * `element_modification` name. So an empty modifier list resolves a type even
- * with no modifier name under the caret. Returns `null` when the caret is not
- * inside such a modifier list, or the declaring type is empty/unresolvable.
+ * with no modifier name under the caret. This does NOT distinguish a name slot
+ * from a value slot — `Resistor r(R = x|)` still returns `"Resistor"`; a caller
+ * that must exclude the modifier-value position gates on the cursor context
+ * itself. Returns `null` when the caret is not inside such a modifier list, or
+ * the declaring type is empty/unresolvable.
  *
  * The type is read from the enclosing declaration (`component_clause`'s
  * `typeSpecifier`, or `extends_clause`'s type) rather than from the modifier
@@ -336,6 +339,11 @@ function firstChildOfType(node: Node, type: string): Node | null {
  * being modified — a `component_clause`'s `typeSpecifier` or an
  * `extends_clause`'s type. Returns null when neither encloses it or the type
  * text is empty.
+ *
+ * This resolves to the nearest enclosing *declaration's* type. A nested
+ * modification (`r(sub(|))`) returns the outer declaration's type, not the
+ * inner component `sub`'s type, since that requires resolving `sub` against the
+ * outer type.
  */
 function declaringTypeOfModification(modification: Node): string | null {
   let n: Node | null = modification.parent;
@@ -377,7 +385,12 @@ function declaringTypeFromErrorParens(
   return null;
 }
 
-/** The first `)` token after child index `from` within `node`, or null. */
+/**
+ * The first `)` token after child index `from` within `node`, or null. Assumes
+ * the `ERROR` holds a single flat `type_specifier (…)` shape: pairing is
+ * positional, not paren-balanced, so a nested `(...)` flattened into the same
+ * ERROR would mis-pair.
+ */
 function closingParenAfter(node: Node, from: number): Node | null {
   for (let i = from + 1; i < node.childCount; i++) {
     const child = node.child(i);

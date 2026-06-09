@@ -27,7 +27,10 @@ export interface QualifyClient {
   }): Promise<{ qualifiedPath: string }>;
 }
 
-/** Lists a class's direct `extends` base classes — the inheritance step both walks share. */
+/**
+ * Lists a class's direct `extends` base classes — the inheritance step both
+ * walks share.
+ */
 export interface InheritedClassesClient {
   getInheritedClasses(input: {
     typeName: string;
