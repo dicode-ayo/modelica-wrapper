@@ -19,12 +19,12 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   CompletionCandidateKind,
-  computeCompletions,
   MAX_COMPLETIONS,
   MIN_FUZZY_PREFIX,
   type CompletionCandidate,
-  type CompletionClient,
-} from "./completion-provider.js";
+} from "./completion/candidate.js";
+import type { CompletionClient } from "./completion/client.js";
+import { computeCompletions } from "./completion/compute.js";
 import { GRAMMAR_WASM_FILENAME } from "./parse.js";
 
 const here = dirname(fileURLToPath(import.meta.url));

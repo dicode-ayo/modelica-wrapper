@@ -6,7 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { CompletionCandidateKind } from "./completion-provider.js";
+import { CompletionCandidateKind } from "./completion/candidate.js";
 import {
   builtInTypeCandidates,
   BUILT_IN_TYPES,
