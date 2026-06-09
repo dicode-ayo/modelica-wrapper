@@ -193,6 +193,7 @@ const LINE_PATTERN = ["None", "Solid", "Dash", "Dot", "DashDot", "DashDotDot"];
 const SMOOTH = ["None", "Bezier"];
 const ARROW = ["None", "Open", "Filled", "Half"];
 const TEXT_ALIGNMENT = ["Left", "Center", "Right"];
+const TEXT_STYLE = ["Bold", "Italic", "UnderLine"];
 const BORDER_PATTERN = ["None", "Raised", "Sunken", "Engraved"];
 
 function qualified(enumName: string, members: readonly string[]): string[] {
@@ -208,17 +209,17 @@ const ANNOTATION_VALUE_SCHEMA: Readonly<Record<string, readonly string[]>> = {
   startArrow: qualified("Arrow", ARROW),
   endArrow: qualified("Arrow", ARROW),
   horizontalAlignment: qualified("TextAlignment", TEXT_ALIGNMENT),
+  textStyle: qualified("TextStyle", TEXT_STYLE),
   borderPattern: qualified("BorderPattern", BORDER_PATTERN),
   visible: ["true", "false"],
   preserveAspectRatio: ["true", "false"],
 };
 
 /**
- * The fixed value candidates admissible for the annotation `field` — its
- * spec-defined graphical enum members as full `Enum.Member` strings, or
- * `["true", "false"]` for a boolean field. `[]` when the field has no static
- * value vocabulary (e.g. a numeric or free-form field), so completion offers
- * nothing rather than guessing.
+ * The fixed value candidates for the annotation `field` — its spec-defined
+ * graphical enum members as full `Enum.Member` strings, or `["true", "false"]`
+ * for a boolean field. `[]` for any field absent from the value schema, so
+ * completion offers nothing rather than guessing.
  */
 export function annotationFieldValues(field: string): readonly string[] {
   return ANNOTATION_VALUE_SCHEMA[field] ?? [];

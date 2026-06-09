@@ -520,12 +520,17 @@ function strayValueField(tree: Tree, offset: number): string | null {
   return null;
 }
 
+/** A `,` between arguments — sometimes recovered as an `ERROR` holding `,`. */
+function isArgumentSeparator(token: Node): boolean {
+  return token.type === "," || (token.type === "ERROR" && token.text === ",");
+}
+
 function strayValueFieldIn(classMod: Node, offset: number): string | null {
   let field: string | null = null;
   let stray = false;
   for (const token of flattenedModificationTokens(classMod)) {
     if (token.startIndex >= offset) break;
-    if (token.type === "," || (token.type === "ERROR" && token.text === ",")) {
+    if (isArgumentSeparator(token)) {
       field = null;
       stray = false;
     } else if (token.type === "element_modification") {
@@ -534,7 +539,11 @@ function strayValueFieldIn(classMod: Node, offset: number): string | null {
       stray = false;
     } else if (
       field !== null &&
-      (token.type === "=" || token.type === "." || token.type === "ERROR")
+      // The value the parser couldn't attach strands a `=` or a trailing `.`,
+      // sometimes wrapped in a single-token `ERROR`.
+      (token.type === "=" ||
+        token.type === "." ||
+        (token.type === "ERROR" && /^[=.]$/.test(token.text)))
     ) {
       stray = true;
     }

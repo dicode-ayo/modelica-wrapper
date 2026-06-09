@@ -247,8 +247,8 @@ test.describe(
       await page.keyboard.type(
         "  Real z annotation(Rectangle(fillPattern = ))",
       );
-      await page.keyboard.press("ArrowLeft"); // past the annotation `)`
-      await page.keyboard.press("ArrowLeft"); // into `fillPattern = |`
+      await page.keyboard.press("ArrowLeft");
+      await page.keyboard.press("ArrowLeft");
       await page.keyboard.press("Control+Space");
 
       await expect(suggestRow(page, "FillPattern.Solid")).toBeVisible({
