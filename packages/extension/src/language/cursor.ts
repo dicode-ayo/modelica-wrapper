@@ -363,7 +363,10 @@ function nestedModifierPath(modification: Node): string[] {
   while (n) {
     if (n.type === "component_clause" || n.type === "extends_clause") break;
     if (n.type === "element_modification") {
-      const name = n.childForFieldName("name") ?? firstNameChild(n);
+      // Only the `name` field is a modifier-component name; a `firstNameChild`
+      // fallback could grab a `type_specifier` and unshift a non-component
+      // segment that would mis-resolve in the walk.
+      const name = n.childForFieldName("name");
       if (name && name.text.length > 0) path.unshift(name.text);
     }
     n = n.parent;
