@@ -2,17 +2,20 @@
  * The host wrapper for Modelica autocomplete: the `vscode.CompletionItemProvider`
  * registered for Modelica buffers, plus the mapping from the core's plain-data
  * candidate kind to `vscode.CompletionItemKind`. The routing + OMC queries live
- * in {@link computeCompletions} (`./completion/compute.ts`), a pure function with
- * no `vscode` import.
+ * in {@link computeCompletions} (`@dicode/modelica-completion`), a pure function
+ * with no `vscode` import.
  */
 
 import * as vscode from "vscode";
 
+import {
+  CompletionCandidateKind,
+  computeCompletions,
+  type CompletionClient,
+} from "@dicode/modelica-completion";
+
 import { log } from "../logger.js";
 
-import { CompletionCandidateKind } from "./completion/candidate.js";
-import type { CompletionClient } from "./completion/client.js";
-import { computeCompletions } from "./completion/compute.js";
 import { resolveDocumentOwner } from "./document-scope.js";
 import type { OwningClassClient } from "./owning-class.js";
 import type { ParseCache } from "./parse.js";
@@ -79,6 +82,7 @@ export class ModelicaCompletionProvider
         document.offsetAt(position),
         owning.qualifiedName,
         client,
+        { logger: log },
       );
       if (token.isCancellationRequested) return undefined;
       if (candidates.length === 0) return undefined;

@@ -1,9 +1,12 @@
-import type { ModifiedType } from "../../cursor.js";
 import {
   inheritedParameterNames,
+  noopLogger,
   qualifyTypeReference,
   walkCrefType,
-} from "../../resolve.js";
+  type Logger,
+  type ModifiedType,
+} from "@dicode/modelica-lang-core";
+
 import {
   CompletionCandidateKind,
   type CompletionCandidate,
@@ -28,20 +31,25 @@ export async function modifierCandidates(
   owningClass: string,
   modified: ModifiedType,
   client: CompletionClient,
+  logger: Logger = noopLogger,
 ): Promise<CompletionCandidate[]> {
   // Qualify the declared type in scope so the parameter lookups get the
   // fully-qualified class (a short `Resistor` won't resolve on its own).
   const qualified =
-    (await qualifyTypeReference(owningClass, [modified.type], client)) ??
-    modified.type;
+    (await qualifyTypeReference(
+      owningClass,
+      [modified.type],
+      client,
+      logger,
+    )) ?? modified.type;
 
   const innermost =
     modified.path.length === 0
       ? qualified
-      : await walkCrefType(qualified, modified.path, client);
+      : await walkCrefType(qualified, modified.path, client, logger);
   if (innermost === undefined) return [];
 
-  const parameters = await inheritedParameterNames(innermost, client);
+  const parameters = await inheritedParameterNames(innermost, client, logger);
   return parameters.map((name) => ({
     label: name,
     kind: CompletionCandidateKind.Property,

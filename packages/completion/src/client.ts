@@ -1,4 +1,4 @@
-import type { ResolveClient } from "../resolve.js";
+import type { ResolveClient } from "@dicode/modelica-lang-core";
 
 /**
  * OMC surface the completion sources need: the resolution calls (via

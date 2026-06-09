@@ -1,8 +1,11 @@
 import {
   inheritedComponents,
+  noopLogger,
   qualifyTypeReference,
   walkCrefType,
-} from "../../resolve.js";
+  type Logger,
+} from "@dicode/modelica-lang-core";
+
 import {
   CompletionCandidateKind,
   type CompletionCandidate,
@@ -25,21 +28,27 @@ export async function memberCandidates(
   owningClass: string,
   head: readonly string[],
   client: CompletionClient,
+  logger: Logger = noopLogger,
 ): Promise<CompletionCandidate[]> {
   if (head.length === 0) return [];
 
   // 1) Component path: walk the head segments to a component type, then list its
   //    members. Reuses `walkCrefType` — the SAME walk `resolve.ts` uses.
-  const componentType = await walkCrefType(owningClass, head, client);
+  const componentType = await walkCrefType(owningClass, head, client, logger);
   if (componentType) {
-    return memberComponents(componentType, client);
+    return memberComponents(componentType, client, logger);
   }
 
   // 2) Package / class path: qualify the dotted head in scope and, if it names a
   //    package, offer its nested classes.
-  const qualified = await qualifyTypeReference(owningClass, head, client);
+  const qualified = await qualifyTypeReference(
+    owningClass,
+    head,
+    client,
+    logger,
+  );
   if (qualified) {
-    const candidates = await packageClassCandidates(qualified, client);
+    const candidates = await packageClassCandidates(qualified, client, logger);
     if (candidates.length > 0) return candidates;
   }
 
@@ -55,8 +64,9 @@ export async function memberCandidates(
 async function memberComponents(
   typeName: string,
   client: CompletionClient,
+  logger: Logger,
 ): Promise<CompletionCandidate[]> {
-  const components = await inheritedComponents(typeName, client);
+  const components = await inheritedComponents(typeName, client, logger);
   return components.map((c) => {
     const candidate: CompletionCandidate = {
       label: c.name,
@@ -78,11 +88,13 @@ async function memberComponents(
 async function packageClassCandidates(
   qualifiedName: string,
   client: CompletionClient,
+  logger: Logger,
 ): Promise<CompletionCandidate[]> {
   const { b: isPkg } = await tryCall(
     "isPackage",
     () => client.isPackage({ typeName: qualifiedName }),
     { b: false },
+    logger,
   );
   if (!isPkg) return [];
 
@@ -90,6 +102,7 @@ async function packageClassCandidates(
     "package getClassNames",
     () => client.getClassNames({ typeName: qualifiedName }),
     { classNames: [] },
+    logger,
   );
   return classNames.map((name) => ({
     label: name,

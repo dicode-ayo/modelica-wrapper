@@ -54,10 +54,12 @@ import {
   cursorInErrorRegion,
   headBeforeDot,
   modifiedTypeWithPath,
+  noopLogger,
   targetAt,
   textualWordBefore,
   type CursorContextKind,
-} from "../cursor.js";
+  type Logger,
+} from "@dicode/modelica-lang-core";
 
 import {
   type CompletionCandidate,
@@ -103,12 +105,14 @@ const ELEMENT_CONTEXTS: ReadonlySet<CursorContextKind> =
  * @param offset - UTF-16 code-unit offset (i.e. `document.offsetAt(position)`).
  * @param owningClass - fully-qualified name of the class the document defines.
  * @param client - structural OMC surface; a real `OmcClient` satisfies it.
+ * @param options.logger - sink for hot-path traces; silent when omitted.
  */
 export async function computeCompletions(
   tree: Tree,
   offset: number,
   owningClass: string,
   client: CompletionClient,
+  { logger = noopLogger }: { logger?: Logger } = {},
 ): Promise<CompletionResult> {
   // Inside an annotation field's VALUE (`fillPattern = │`): the field's
   // spec-defined enum members, static. Checked before the field-name branch,
@@ -134,7 +138,9 @@ export async function computeCompletions(
   if (target?.context === "member-access") {
     const head = target.pathToCursor.slice(0, -1);
     if (head.length > 0)
-      return stable(cap(await memberCandidates(owningClass, head, client)));
+      return stable(
+        cap(await memberCandidates(owningClass, head, client, logger)),
+      );
   }
 
   // Inside a declaration's `(...)` class-modification — partial name (`r(R|)`),
@@ -147,7 +153,7 @@ export async function computeCompletions(
     const modified = modifiedTypeWithPath(tree, offset);
     if (modified !== null) {
       return stable(
-        cap(await modifierCandidates(owningClass, modified, client)),
+        cap(await modifierCandidates(owningClass, modified, client, logger)),
       );
     }
   }
@@ -161,7 +167,9 @@ export async function computeCompletions(
   if (!target || TYPE_CONTEXTS.has(target.context)) {
     const head = headBeforeDot(tree, offset);
     if (head && head.length > 0)
-      return stable(cap(await memberCandidates(owningClass, head, client)));
+      return stable(
+        cap(await memberCandidates(owningClass, head, client, logger)),
+      );
   }
 
   if (target && TYPE_CONTEXTS.has(target.context)) {
@@ -170,6 +178,7 @@ export async function computeCompletions(
       target.identifier,
       ELEMENT_CONTEXTS.has(target.context),
       client,
+      logger,
     );
   }
 
@@ -182,9 +191,17 @@ export async function computeCompletions(
   const word = textualWordBefore(tree.rootNode.text, offset);
   if (!word) return stable([]);
   if (word.head.length > 0) {
-    return stable(cap(await memberCandidates(owningClass, word.head, client)));
+    return stable(
+      cap(await memberCandidates(owningClass, word.head, client, logger)),
+    );
   }
-  return typePositionCandidates(owningClass, word.prefix, false, client);
+  return typePositionCandidates(
+    owningClass,
+    word.prefix,
+    false,
+    client,
+    logger,
+  );
 }
 
 /** Wrap a stable (locally-filterable) candidate list as a complete result. */

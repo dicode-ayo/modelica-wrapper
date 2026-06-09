@@ -1,9 +1,10 @@
-import { log } from "../../../logger.js";
+import { noopLogger, type Logger } from "@dicode/modelica-lang-core";
+
 import {
   builtInTypeCandidates,
   keywordCandidates,
   snippetCandidates,
-} from "../../static-candidates.js";
+} from "../static-candidates.js";
 import {
   CompletionCandidateKind,
   MIN_FUZZY_PREFIX,
@@ -34,8 +35,9 @@ export async function typePositionCandidates(
   prefix: string,
   withStatementChannels: boolean,
   client: CompletionClient,
+  logger: Logger = noopLogger,
 ): Promise<CompletionResult> {
-  const names = await classNameCandidates(owningClass, prefix, client);
+  const names = await classNameCandidates(owningClass, prefix, client, logger);
   const omcNames = cap(names.candidates);
   const omcLabels = new Set(omcNames.map((c) => c.label));
   const statics = builtInTypeCandidates().filter(
@@ -85,6 +87,7 @@ async function classNameCandidates(
   owningClass: string,
   prefix: string,
   client: CompletionClient,
+  logger: Logger,
 ): Promise<ClassNameResult> {
   const out: CompletionCandidate[] = [];
 
@@ -96,6 +99,7 @@ async function classNameCandidates(
       "getClassNames",
       () => client.getClassNames({ typeName: scope }),
       { classNames: [] },
+      logger,
     );
     for (const name of classNames) {
       out.push({ label: name, kind: CompletionCandidateKind.Class });
@@ -129,7 +133,7 @@ async function classNameCandidates(
         });
       }
     } catch (err) {
-      log.debug("language", "completion searchClassNames failed", err);
+      logger.debug("language", "completion searchClassNames failed", err);
     }
   }
 

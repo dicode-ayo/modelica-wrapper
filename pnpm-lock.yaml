@@ -33,6 +33,25 @@ importers:
         specifier: ^8.60.0
         version: 8.60.0(eslint@9.39.4)(typescript@5.9.3)
 
+  packages/completion:
+    dependencies:
+      '@dicode/modelica-lang-core':
+        specifier: workspace:*
+        version: link:../lang-core
+      web-tree-sitter:
+        specifier: ^0.25.10
+        version: 0.25.10
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@22.19.17)(happy-dom@15.11.7)
+
   packages/diagram-svg:
     dependencies:
       '@dicode/omc-client':
@@ -133,6 +152,12 @@ importers:
       '@dicode/diagram-ui':
         specifier: workspace:*
         version: link:../diagram-ui
+      '@dicode/modelica-completion':
+        specifier: workspace:*
+        version: link:../completion
+      '@dicode/modelica-lang-core':
+        specifier: workspace:*
+        version: link:../lang-core
       '@dicode/omc-client':
         specifier: workspace:*
         version: link:../omc-client
@@ -161,6 +186,22 @@ importers:
       esbuild:
         specifier: ^0.24.0
         version: 0.24.2
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@22.19.17)(happy-dom@15.11.7)
+
+  packages/lang-core:
+    dependencies:
+      web-tree-sitter:
+        specifier: ^0.25.10
+        version: 0.25.10
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
       typescript:
         specifier: ^5.6.0
         version: 5.9.3

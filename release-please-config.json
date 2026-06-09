@@ -39,6 +39,16 @@
       "package-name": "@dicode/omc-client",
       "changelog-path": "CHANGELOG.md"
     },
+    "packages/lang-core": {
+      "component": "@dicode/modelica-lang-core",
+      "package-name": "@dicode/modelica-lang-core",
+      "changelog-path": "CHANGELOG.md"
+    },
+    "packages/completion": {
+      "component": "@dicode/modelica-completion",
+      "package-name": "@dicode/modelica-completion",
+      "changelog-path": "CHANGELOG.md"
+    },
     "packages/result-ui": {
       "component": "@dicode/result-ui",
       "package-name": "@dicode/result-ui",

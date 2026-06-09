@@ -1,7 +1,7 @@
 import {
   annotationFields,
   annotationFieldValues,
-} from "../../annotation-schema.js";
+} from "../annotation-schema.js";
 import {
   CompletionCandidateKind,
   type CompletionCandidate,

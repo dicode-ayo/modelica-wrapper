@@ -1,0 +1,28 @@
+{
+  "name": "@dicode/modelica-completion",
+  "version": "0.0.1",
+  "description": "Context-aware Modelica autocomplete core. Host-agnostic; OMC injected as a structural interface.",
+  "type": "commonjs",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@dicode/modelica-lang-core": "workspace:*",
+    "web-tree-sitter": "^0.25.10"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "OMC_INTEGRATION=0 vitest run"
+  }
+}

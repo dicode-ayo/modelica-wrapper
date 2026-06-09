@@ -5,8 +5,8 @@
  * routes a nested record-name path (from {@link annotationPath}) through this map
  * and offers the resolved record's fields.
  *
- * No `vscode` import — plain data, unit-tested directly. The provider maps the
- * resolved field names onto candidates (see `completion-provider.ts`).
+ * No `vscode` import — plain data, unit-tested directly. The annotation source
+ * maps the resolved field names onto candidates (see `sources/annotation.ts`).
  *
  * The top-level annotation vocabulary is keyed by {@link TOP_LEVEL}; an
  * `annotation(│)` caret (empty path) resolves to it. Coverage is the common

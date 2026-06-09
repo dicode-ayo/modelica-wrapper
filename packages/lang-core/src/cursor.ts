@@ -34,7 +34,7 @@ import type { Node, Tree } from "web-tree-sitter";
 
 /**
  * What the thing under the cursor *is*, syntactically. Drives which OMC query
- * `resolve.ts` runs and which completion source `completion-provider.ts` uses.
+ * `resolve.ts` runs and which completion source the autocomplete router uses.
  */
 export type CursorContextKind =
   /** A type/class name in a declaration position (component type). */

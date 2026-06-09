@@ -1,4 +1,4 @@
-import { log } from "../../logger.js";
+import type { Logger } from "@dicode/modelica-lang-core";
 
 import { MAX_COMPLETIONS, type CompletionCandidate } from "./candidate.js";
 
@@ -12,13 +12,14 @@ export async function tryCall<T>(
   label: string,
   call: () => Promise<T>,
   fallback: T,
+  logger: Logger,
 ): Promise<T> {
   try {
     return await call();
   } catch (err) {
-    // `log.debug` (not `warn`) — completion fires on every keystroke, so a
-    // persistent OMC failure must not flood the OutputChannel.
-    log.debug("language", `completion ${label} failed`, err);
+    // `debug` (not `warn`) — completion fires on every keystroke, so a
+    // persistent OMC failure must not flood the host's log sink.
+    logger.debug("language", `completion ${label} failed`, err);
     return fallback;
   }
 }
