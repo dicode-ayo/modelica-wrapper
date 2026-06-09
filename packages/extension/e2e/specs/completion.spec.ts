@@ -144,5 +144,31 @@ test.describe(
         page.locator(".monaco-editor.focused .view-lines"),
       ).toContainText("PackageNav.Sub.Thing", { timeout: 10_000 });
     });
+
+    test("empty modifier parens list parameters, including inherited", async ({
+      page,
+      codeServer,
+    }) => {
+      test.setTimeout(120_000);
+
+      await page.goto(codeServer.url);
+      await waitForWorkbench(page);
+      await openFileViaQuickOpen(page, "ParamDemo.mo");
+
+      // Declare a `Derived` with EMPTY modifier parens and require the popup to
+      // list `baseParam` — inherited from `Base` via `extends`. A bare
+      // getParameterNames(Derived) returns only `ownParam`, so the inherited
+      // entry proves both empty-parens detection and the extends-chain union.
+      await goToLineStart(page, 10); // the `equation` line
+      await page.keyboard.press("End");
+      await page.keyboard.press("Enter");
+      await page.keyboard.type("  Derived dd()");
+      await page.keyboard.press("ArrowLeft"); // caret between the parens
+      await page.keyboard.press("Control+Space");
+
+      await expect(suggestRow(page, "baseParam")).toBeVisible({
+        timeout: 60_000,
+      });
+    });
   },
 );
