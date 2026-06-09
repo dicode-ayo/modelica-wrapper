@@ -18,6 +18,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { GRAMMAR_WASM_FILENAME } from "./parse.js";
 import {
+  annotationPath,
   classify,
   cursorInErrorRegion,
   identifierAt,
@@ -301,5 +302,37 @@ describe("modifiedTypeWithPath", () => {
     expect(
       modifiedTypeWithPath(parse(src), offsetOf(src, "Resistor") + 1),
     ).toBe(null);
+  });
+});
+
+describe("annotationPath", () => {
+  it("reports an empty path directly inside annotation(...)", () => {
+    const src = "model M\n  annotation();\nend M;";
+    const got = annotationPath(parse(src), offsetOf(src, "()") + 1);
+    expect(got).toEqual([]);
+  });
+
+  it("captures a one-level annotation record", () => {
+    const src = "model M\n  annotation(Placement());\nend M;";
+    const got = annotationPath(parse(src), offsetOf(src, "())") + 1);
+    expect(got).toEqual(["Placement"]);
+  });
+
+  it("captures a two-level annotation record path", () => {
+    const src = "model M\n  annotation(Placement(transformation()));\nend M;";
+    const got = annotationPath(parse(src), offsetOf(src, "()))") + 1);
+    expect(got).toEqual(["Placement", "transformation"]);
+  });
+
+  it("classifies a component modifier as not an annotation", () => {
+    const src = "model M\n  R r(R());\nend M;";
+    expect(annotationPath(parse(src), offsetOf(src, "())") + 1)).toBe(null);
+  });
+
+  it("returns null when the caret is outside any annotation", () => {
+    const src = "model M\n  Resistor r;\nend M;";
+    expect(annotationPath(parse(src), offsetOf(src, "Resistor") + 1)).toBe(
+      null,
+    );
   });
 });

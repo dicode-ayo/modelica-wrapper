@@ -362,16 +362,76 @@ function nestedModifierPath(modification: Node): string[] {
   let n: Node | null = modification.parent;
   while (n) {
     if (n.type === "component_clause" || n.type === "extends_clause") break;
-    if (n.type === "element_modification") {
-      // Only the `name` field is a modifier-component name; a `firstNameChild`
-      // fallback could grab a `type_specifier` and unshift a non-component
-      // segment that would mis-resolve in the walk.
-      const name = n.childForFieldName("name");
-      if (name && name.text.length > 0) path.unshift(name.text);
-    }
+    collectModifierName(n, path);
     n = n.parent;
   }
   return path;
+}
+
+/**
+ * If `node` is an `element_modification`, prepend its modifier-component name to
+ * `path`. Only the `name` field is a modifier-component name; a `firstNameChild`
+ * fallback could grab a `type_specifier` and unshift a non-component segment
+ * that would mis-resolve in the walk.
+ */
+function collectModifierName(node: Node, path: string[]): void {
+  if (node.type !== "element_modification") return;
+  const name = node.childForFieldName("name");
+  if (name && name.text.length > 0) path.unshift(name.text);
+}
+
+/**
+ * The annotation record-name chain from the enclosing `annotation_clause` down
+ * to the caret at `offset`, or `null` when the caret is NOT inside an
+ * annotation. `[]` directly inside `annotation(│)`; one segment per enclosing
+ * record (`annotation(Placement(transformation(│)))` → `["Placement",
+ * "transformation"]`).
+ *
+ * An annotation parses as an `annotation_clause` whose `class_modification`
+ * nests records exactly like a component modifier — `element_modification`
+ * (record name) → `modification` → `class_modification`. The distinguishing
+ * feature is the ROOT: the outermost `class_modification` enclosing the caret is
+ * a direct child of an `annotation_clause`, not of a `component_clause`/
+ * `extends_clause`. A component modifier (`r(R(│))`) therefore returns `null`
+ * here, and an annotation returns `null` from {@link modifiedTypeWithPath}
+ * (whose walk stops at the declaration that an annotation lacks).
+ *
+ * @see Offset unit — module note.
+ */
+export function annotationPath(
+  tree: Tree,
+  offset: number,
+): readonly string[] | null {
+  let node: Node | null = tree.rootNode.descendantForIndex(offset, offset);
+  while (node) {
+    if (node.type === "class_modification") {
+      if (!insideParens(node, offset)) return null;
+      return annotationRootedPath(node);
+    }
+    node = node.parent;
+  }
+  return null;
+}
+
+/**
+ * The record-name chain for the caret's `class_modification`, or `null` when the
+ * walk up does not terminate at an `annotation_clause`. Mirrors
+ * {@link nestedModifierPath} but is annotation-rooted: it collects one name per
+ * enclosing `element_modification` and returns a path only once it confirms the
+ * outermost enclosing `class_modification` belongs to an annotation.
+ */
+function annotationRootedPath(modification: Node): readonly string[] | null {
+  const path: string[] = [];
+  let n: Node | null = modification.parent;
+  while (n) {
+    if (n.type === "annotation_clause") return path;
+    if (n.type === "component_clause" || n.type === "extends_clause") {
+      return null;
+    }
+    collectModifierName(n, path);
+    n = n.parent;
+  }
+  return null;
 }
 
 /** Is `offset` strictly after a node's opening `(` and at/before its `)`? */
