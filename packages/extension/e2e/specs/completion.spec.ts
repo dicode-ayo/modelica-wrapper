@@ -170,5 +170,33 @@ test.describe(
         timeout: 60_000,
       });
     });
+
+    test("nested modifier parens list the sub-component's parameters", async ({
+      page,
+      codeServer,
+    }) => {
+      test.setTimeout(120_000);
+
+      await page.goto(codeServer.url);
+      await waitForWorkbench(page);
+      await openFileViaQuickOpen(page, "NestedDemo.mo");
+
+      // `Mid mm(sub(|))` in the declaration section (a nested modifier only
+      // parses as a `component_clause` there, not in an equation). The caret is
+      // inside the INNER modifier for `sub` (a `Leaf`, which `extends Pin`); the
+      // popup must list `sub`'s params, including the inherited `pinParam` —
+      // proving the nested walk resolves `sub`'s type, not the outer `Mid`.
+      await goToLineStart(page, 12); // the `Mid m;` declaration line
+      await page.keyboard.press("End");
+      await page.keyboard.press("Enter");
+      await page.keyboard.type("  Mid mm(sub())");
+      await page.keyboard.press("ArrowLeft"); // past the outer `)`
+      await page.keyboard.press("ArrowLeft"); // into the inner `sub(|)`
+      await page.keyboard.press("Control+Space");
+
+      await expect(suggestRow(page, "pinParam")).toBeVisible({
+        timeout: 60_000,
+      });
+    });
   },
 );
