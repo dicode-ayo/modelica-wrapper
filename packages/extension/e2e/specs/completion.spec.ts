@@ -68,5 +68,29 @@ test.describe(
         timeout: 60_000,
       });
     });
+
+    test("element position offers the parameter keyword", async ({
+      page,
+      codeServer,
+    }) => {
+      test.setTimeout(120_000);
+
+      await page.goto(codeServer.url);
+      await waitForWorkbench(page);
+      await openFileViaQuickOpen(page, "Demo.mo");
+
+      // Open a fresh declaration line after `  Real v;` (line 4) and type a
+      // prefix, then force the popup. The `parameter` keyword is a static
+      // (no-OMC) candidate, so it must appear in element position.
+      await goToLineStart(page, 4);
+      await page.keyboard.press("End");
+      await page.keyboard.press("Enter");
+      await page.keyboard.type("par");
+      await page.keyboard.press("Control+Space");
+
+      await expect(suggestRow(page, "parameter")).toBeVisible({
+        timeout: 60_000,
+      });
+    });
   },
 );
