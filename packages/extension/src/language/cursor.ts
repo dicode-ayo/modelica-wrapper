@@ -155,7 +155,7 @@ export function targetAt(tree: Tree, offset: number): CursorTarget | null {
  * Returns `null` when `offset` is not immediately after a dot or there is no
  * dotted head to the left. The prefix being completed is empty in this case.
  *
- * `offset` is a UTF-16 code-unit offset (see the module note).
+ * @see Offset unit — module note.
  */
 export function headBeforeDot(tree: Tree, offset: number): string[] | null {
   if (offset <= 0) return null;
@@ -173,6 +173,99 @@ export function headBeforeDot(tree: Tree, offset: number): string[] | null {
 }
 
 /**
+ * Does the cursor at `offset` sit inside a parse-error region — i.e. is the
+ * node under it, or one of its ancestors, an `ERROR` node or `isMissing`? A
+ * clean parse never trips this; a mid-edit, unparseable buffer does.
+ *
+ * @see Offset unit — module note.
+ */
+export function cursorInErrorRegion(tree: Tree, offset: number): boolean {
+  if (hasErrorAncestor(tree.rootNode.descendantForIndex(offset, offset))) {
+    return true;
+  }
+  // At the very end of the buffer (or on a boundary) `descendantForIndex`
+  // resolves to the outermost node spanning the point, hiding a deeper error
+  // leaf; probe one code unit left, mirroring `identifierAt`.
+  if (offset > 0) {
+    return hasErrorAncestor(
+      tree.rootNode.descendantForIndex(offset - 1, offset - 1),
+    );
+  }
+  return false;
+}
+
+function hasErrorAncestor(node: Node | null): boolean {
+  let n = node;
+  while (n) {
+    if (n.type === "ERROR" || n.isMissing) return true;
+    n = n.parent;
+  }
+  return false;
+}
+
+/**
+ * A purely textual word-before-caret, split on the last dot — the routing
+ * fallback for buffers too broken for {@link targetAt}/{@link headBeforeDot} to
+ * yield an AST context. `head` is the dotted segments left of the last dot
+ * (empty when the word has no dot), and `prefix` is the partial segment right of
+ * it (the characters the user is typing).
+ *
+ *   `r.`    → { head: ["r"],      prefix: "" }
+ *   `r.va`  → { head: ["r"],      prefix: "va" }
+ *   `a.b.c` → { head: ["a", "b"], prefix: "c" }
+ *   `Res`   → { head: [],         prefix: "Res" }
+ */
+export interface TextualWord {
+  readonly head: readonly string[];
+  readonly prefix: string;
+}
+
+/**
+ * Extract the {@link TextualWord} ending at `offset` from `source` (the raw
+ * buffer text). The word is the maximal run of Modelica identifier characters
+ * and dots immediately left of `offset`. Returns `null` when no such run exists
+ * (the caret sits after whitespace, an operator, or the buffer start) or when a
+ * head segment is empty (e.g. a leading `.` or a `..`), since neither routes to
+ * a meaningful completion.
+ *
+ * @see Offset unit — module note.
+ */
+export function textualWordBefore(
+  source: string,
+  offset: number,
+): TextualWord | null {
+  let start = offset;
+  while (start > 0 && isWordChar(source.charCodeAt(start - 1))) start--;
+  const word = source.slice(start, offset);
+  if (word.length === 0) return null;
+
+  const lastDot = word.lastIndexOf(".");
+  if (lastDot === -1) return { head: [], prefix: word };
+
+  const prefix = word.slice(lastDot + 1);
+  const head = word.slice(0, lastDot).split(".");
+  // A `..`, leading `.`, or trailing `.` in the head yields an empty segment
+  // that resolves to nothing; bail rather than walk a bogus path.
+  if (head.some((seg) => seg.length === 0)) return null;
+  return { head, prefix };
+}
+
+/**
+ * Modelica identifier characters plus `.` (the dotted-path separator). ASCII
+ * letters, digits, and `_`; the leading-digit constraint is irrelevant here
+ * since this only segments an existing run, never validates an identifier.
+ */
+function isWordChar(code: number): boolean {
+  return (
+    code === 0x2e || // .
+    code === 0x5f || // _
+    (code >= 0x30 && code <= 0x39) || // 0-9
+    (code >= 0x41 && code <= 0x5a) || // A-Z
+    (code >= 0x61 && code <= 0x7a) // a-z
+  );
+}
+
+/**
  * The dotted *type name* of the declaration whose modifier list the cursor at
  * `offset` is inside — the class whose parameters a `modifier-name` completion
  * should offer. For `Resistor r(R = |)` this is `"Resistor"`; for
@@ -185,7 +278,7 @@ export function headBeforeDot(tree: Tree, offset: number): string[] | null {
  * rather than re-deriving the modified component, because the modifier name's
  * own dotted path does NOT contain the component/type it modifies.
  *
- * `offset` is a UTF-16 code-unit offset (see the module note).
+ * @see Offset unit — module note.
  */
 export function modifiedTypeName(tree: Tree, offset: number): string | null {
   const ident = identifierAt(tree, offset);

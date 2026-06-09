@@ -17,7 +17,14 @@ import { Language, Parser, type Tree } from "web-tree-sitter";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { GRAMMAR_WASM_FILENAME } from "./parse.js";
-import { classify, identifierAt, nodeAt, targetAt } from "./cursor.js";
+import {
+  classify,
+  cursorInErrorRegion,
+  identifierAt,
+  nodeAt,
+  targetAt,
+  textualWordBefore,
+} from "./cursor.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const grammarPath = join(here, "..", "..", "grammar", GRAMMAR_WASM_FILENAME);
@@ -181,5 +188,77 @@ describe("classify (direct)", () => {
     // The dotted `name` enclosing a single-segment type.
     const dotted = ident.parent;
     expect(classify(ident, dotted)).toBe("component-type");
+  });
+});
+
+describe("textualWordBefore", () => {
+  it("returns the bare prefix when the word has no dot", () => {
+    const src = "  Res";
+    expect(textualWordBefore(src, src.length)).toEqual({
+      head: [],
+      prefix: "Res",
+    });
+  });
+
+  it("splits a single-dot word into head and (possibly empty) prefix", () => {
+    expect(textualWordBefore("r.", 2)).toEqual({ head: ["r"], prefix: "" });
+    expect(textualWordBefore("r.va", 4)).toEqual({
+      head: ["r"],
+      prefix: "va",
+    });
+  });
+
+  it("splits a multi-dot word at the LAST dot", () => {
+    expect(textualWordBefore("a.b.c", 5)).toEqual({
+      head: ["a", "b"],
+      prefix: "c",
+    });
+  });
+
+  it("stops at non-word characters left of the caret", () => {
+    const src = "x = foo.bar";
+    expect(textualWordBefore(src, src.length)).toEqual({
+      head: ["foo"],
+      prefix: "bar",
+    });
+  });
+
+  it("returns null when there is no word before the caret", () => {
+    expect(textualWordBefore("   ", 3)).toBeNull();
+    expect(textualWordBefore("", 0)).toBeNull();
+    expect(textualWordBefore("a + b", 4)).toBeNull();
+  });
+
+  it("returns null for an empty head segment (leading or doubled dot)", () => {
+    expect(textualWordBefore(".x", 2)).toBeNull();
+    expect(textualWordBefore("a..b", 4)).toBeNull();
+  });
+});
+
+describe("cursorInErrorRegion", () => {
+  it("is false for a clean, well-formed buffer", () => {
+    const src = "model M\n  Resistor r;\nend M;";
+    const tree = parse(src);
+    expect(cursorInErrorRegion(tree, offsetOf(src, "Resistor") + 1)).toBe(
+      false,
+    );
+  });
+
+  it("is false at the end of a clean buffer", () => {
+    const src = "model M\nequation\n  y = x;\nend M;";
+    const tree = parse(src);
+    expect(cursorInErrorRegion(tree, offsetOf(src, "x;"))).toBe(false);
+  });
+
+  it("is true at the end of an unterminated declaration", () => {
+    const src = "model M\n  Resistor r\n  Res";
+    const tree = parse(src);
+    expect(cursorInErrorRegion(tree, src.length)).toBe(true);
+  });
+
+  it("is true after a dangling member access in a broken buffer", () => {
+    const src = "model M\n  R r\n  r.";
+    const tree = parse(src);
+    expect(cursorInErrorRegion(tree, src.length)).toBe(true);
   });
 });
