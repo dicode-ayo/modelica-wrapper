@@ -159,8 +159,9 @@ const ANNOTATION_SCHEMA: Readonly<Record<string, readonly string[]>> = {
 };
 
 /**
- * Field names valid for the annotation record at `path`, or `[]` for an unknown
- * record. `path` is the {@link annotationPath} chain: `[]` resolves the
+ * Field names valid for the annotation record at `path`. `[]` when the record
+ * is unknown or admits no fields. `path` is the {@link annotationPath} chain:
+ * `[]` resolves the
  * top-level annotation; the last segment names the record whose fields to offer.
  */
 export function annotationFields(path: readonly string[]): readonly string[] {
