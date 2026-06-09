@@ -58,6 +58,7 @@ function makeClient(overrides: Partial<ResolveClient> = {}): ResolveClient {
       Promise.resolve({ fileName: "/lib/Unknown.mo" }),
     ),
     getComponents: vi.fn(() => Promise.resolve({ components: [] })),
+    getInheritedClasses: vi.fn(() => Promise.resolve({ inheritedClasses: [] })),
     ...overrides,
   };
 }

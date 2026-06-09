@@ -46,6 +46,7 @@ function makeClient(overrides: Partial<CachedOmcClient> = {}): CachedOmcClient {
     ),
     getClassComment: vi.fn(() => Promise.resolve({ comment: "" })),
     getComponents: vi.fn(() => Promise.resolve({ components: [] })),
+    getInheritedClasses: vi.fn(() => Promise.resolve({ inheritedClasses: [] })),
     getClassNames: vi.fn(() => Promise.resolve({ classNames: [] })),
     searchClassNames: vi.fn(() => Promise.resolve({ classNames: [] })),
     getParameterNames: vi.fn(() => Promise.resolve({ parameters: [] })),

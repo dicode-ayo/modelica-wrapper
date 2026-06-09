@@ -1,29 +1,41 @@
 /**
  * Completion e2e — exercises the autocomplete provider end-to-end.
  *
- * What this depends on (introduced by `feat/lang-99-autocomplete`):
- *   - `ModelicaCompletionProvider` registered for the `modelica` language,
- *     with `.` as a trigger character.
- *   - The pure routing core (`computeCompletions`) sourcing candidates from
- *     `getClassNames` / `searchClassNames` / `getComponents` / `getParameterNames`
- *     depending on the cursor context.
- *
- * Member-access and modifier-name candidates flow through OMC (the
- * `qualifyPath` + `walkCrefType` path that resolves a cref's type to its
- * members). So this spec **requires `omc` on `$PATH` and a populated
- * MODELICAPATH** to be meaningful — it's **skipped by default** and runs only
- * with `E2E_OMC=1`:
+ * Candidates flow through OMC (the `qualifyPath` + `walkCrefType` path that
+ * resolves a cref's type to its members, and the `getClassNames` /
+ * `searchClassNames` class-name sources), so the provider needs `omc` to launch.
+ * The suite is **skipped unless `E2E_OMC=1`**:
  *
  *   E2E_OMC=1 pnpm --filter modelica-wrapper test:e2e
  *
- * The class-name source (type / `extends` positions) is OMC-backed too via
- * `searchClassNames`, so even the simpler test below is gated.
+ * The inheritance fixture (`InheritDemo.mo`) is self-contained — a local
+ * `extends` — so it does not depend on a populated MODELICAPATH.
+ *
+ * Cursor placement is keyboard-driven (`Control+Home` then `ArrowDown`) rather
+ * than by clicking a token span: code-server merges adjacent same-scope
+ * characters into one rendered span, so a per-identifier locator is unreliable.
  */
+
+import { type Page } from "@playwright/test";
 
 import { expect, test } from "../test-base.js";
 import { openFileViaQuickOpen, waitForWorkbench } from "../helpers.js";
 
 const omcEnabled = process.env["E2E_OMC"] === "1";
+
+/** Focus the editor and place the caret at the start of `line` (1-based). */
+async function goToLineStart(page: Page, line: number): Promise<void> {
+  await page.locator(".monaco-editor").first().click();
+  await page.keyboard.press("Control+Home");
+  for (let i = 1; i < line; i++) {
+    await page.keyboard.press("ArrowDown");
+  }
+}
+
+const suggestRow = (page: Page, label: string) =>
+  page
+    .locator(".suggest-widget.visible .monaco-list-row")
+    .filter({ hasText: label });
 
 test.describe(
   omcEnabled
@@ -32,7 +44,7 @@ test.describe(
   () => {
     test.skip(!omcEnabled, "OMC-dependent — set E2E_OMC=1 to enable");
 
-    test("typing a dot inside a cref triggers the completion list", async ({
+    test("member completion includes inherited members", async ({
       page,
       codeServer,
     }) => {
@@ -40,32 +52,21 @@ test.describe(
 
       await page.goto(codeServer.url);
       await waitForWorkbench(page);
-      await openFileViaQuickOpen(page, "Demo.mo");
+      await openFileViaQuickOpen(page, "InheritDemo.mo");
 
-      // Click on the second `R` in `v = R * i;`, then trim back the tail of
-      // the line (` * i;`) so we type the `.` immediately after the `R` token
-      // — exercises the bare-dot member-access trigger on a known identifier
-      // without leaving the file syntactically broken.
-      const rInEquation = page
-        .locator(".monaco-editor .view-lines span[class*='mtk']")
-        .filter({ hasText: /^R$/ })
-        .nth(1);
-      await rInEquation.click();
+      // `d` is a `Derived`, which `extends Base`. Type `d.` in the equation
+      // section (line 10) and require the inherited `inheritedField` — a bare
+      // getComponents(Derived) returns only `ownField`, so its presence proves
+      // the extends-chain walk.
+      await goToLineStart(page, 10);
       await page.keyboard.press("End");
-      // ` * i;` is five characters: drop them so the caret sits just past `R`.
-      for (let i = 0; i < 5; i++) {
-        await page.keyboard.press("Backspace");
-      }
-      await page.keyboard.type(".");
+      await page.keyboard.press("Enter");
+      await page.keyboard.type("  d.");
+      await page.keyboard.press("Control+Space");
 
-      // The completion widget renders as `.monaco-list` under
-      // `.suggest-widget`. We don't pin specific member names (those depend on
-      // OMC's view of `Real`'s components in the current MSL) — just assert
-      // the widget appears with at least one row.
-      const suggestRow = page
-        .locator(".suggest-widget.visible .monaco-list-row")
-        .first();
-      await expect(suggestRow).toBeVisible({ timeout: 60_000 });
+      await expect(suggestRow(page, "inheritedField")).toBeVisible({
+        timeout: 60_000,
+      });
     });
   },
 );
