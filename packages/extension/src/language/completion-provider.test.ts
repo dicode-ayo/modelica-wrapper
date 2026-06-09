@@ -860,6 +860,143 @@ describe("computeCompletions — modifier name", () => {
     expect(out).toEqual([]);
     expect(client.getParameterNames).not.toHaveBeenCalled();
   });
+
+  it("lists the sub-component's params in a nested modifier (`m(resistor(|))`)", async () => {
+    // `Motor m(resistor(|))` — the caret is inside the nested `resistor`
+    // modifier, so its type's parameters (incl. inherited) are offered, NOT the
+    // outer `Motor`'s.
+    const src = "model M\n  Motor m(resistor());\nend M;";
+    const qualifyPath = vi.fn(() =>
+      Promise.resolve({ qualifiedPath: "Pkg.Motor" }),
+    );
+    const getComponents = vi.fn(({ typeName }) =>
+      Promise.resolve({
+        components:
+          typeName === "Pkg.Motor"
+            ? [{ className: "Pkg.Resistor", name: "resistor" }]
+            : [],
+      }),
+    );
+    const getInheritedClasses = vi.fn(({ typeName }) =>
+      Promise.resolve({
+        inheritedClasses:
+          typeName === "Pkg.Resistor" ? ["Pkg.ConditionalHeatPort"] : [],
+      }),
+    );
+    const getParameterNames = vi.fn(({ typeName }) => {
+      if (typeName === "Pkg.Resistor") {
+        return Promise.resolve({ parameters: ["R", "T_ref"] });
+      }
+      if (typeName === "Pkg.ConditionalHeatPort") {
+        return Promise.resolve({ parameters: ["useHeatPort"] });
+      }
+      // The outer Motor's params must never be listed here.
+      if (typeName === "Pkg.Motor") {
+        return Promise.resolve({ parameters: ["J", "phi"] });
+      }
+      return Promise.resolve({ parameters: [] });
+    });
+    const client = makeClient({
+      qualifyPath,
+      getComponents,
+      getInheritedClasses,
+      getParameterNames,
+    });
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "())") + 1,
+      "MyPkg.M",
+      client,
+    );
+
+    // `resistor` resolves to its type in the qualified `Motor`...
+    expect(getComponents).toHaveBeenCalledWith({ typeName: "Pkg.Motor" });
+    // ...and that type's parameters (incl. the inherited one) are listed.
+    const labels = out.map((c) => c.label);
+    expect(labels).toContain("R");
+    expect(labels).toContain("useHeatPort");
+    expect(labels).not.toContain("J");
+    expect(getParameterNames).not.toHaveBeenCalledWith({
+      typeName: "Pkg.Motor",
+    });
+    expect(out.every((c) => c.kind === CompletionCandidateKind.Property)).toBe(
+      true,
+    );
+  });
+
+  it("walks two nesting levels (`m(a(b(|)))`)", async () => {
+    const src = "model M\n  Outer m(a(b()));\nend M;";
+    const qualifyPath = vi.fn(() =>
+      Promise.resolve({ qualifiedPath: "Pkg.Outer" }),
+    );
+    const getComponents = vi.fn(({ typeName }) => {
+      if (typeName === "Pkg.Outer") {
+        return Promise.resolve({
+          components: [{ className: "Pkg.A", name: "a" }],
+        });
+      }
+      if (typeName === "Pkg.A") {
+        return Promise.resolve({
+          components: [{ className: "Pkg.B", name: "b" }],
+        });
+      }
+      return Promise.resolve({ components: [] });
+    });
+    const getParameterNames = vi.fn(({ typeName }) =>
+      Promise.resolve({
+        parameters: typeName === "Pkg.B" ? ["bParam"] : ["wrong"],
+      }),
+    );
+    const client = makeClient({
+      qualifyPath,
+      getComponents,
+      getParameterNames,
+    });
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "()))") + 1,
+      "MyPkg.M",
+      client,
+    );
+
+    expect(getComponents).toHaveBeenCalledWith({ typeName: "Pkg.Outer" });
+    expect(getComponents).toHaveBeenCalledWith({ typeName: "Pkg.A" });
+    expect(getParameterNames).toHaveBeenCalledWith({ typeName: "Pkg.B" });
+    expect(out.map((c) => c.label)).toEqual(["bParam"]);
+  });
+
+  it("offers nothing when a nested modifier name doesn't resolve", async () => {
+    // `Motor m(nope(|))` — `nope` is not a component of `Motor`, so the walk
+    // dead-ends and no parameters are offered (degrade, don't throw).
+    const src = "model M\n  Motor m(nope());\nend M;";
+    const qualifyPath = vi.fn(() =>
+      Promise.resolve({ qualifiedPath: "Pkg.Motor" }),
+    );
+    const getComponents = vi.fn(() => Promise.resolve({ components: [] }));
+    const getParameterNames = vi.fn(() =>
+      Promise.resolve({ parameters: ["J", "phi"] }),
+    );
+    const client = makeClient({
+      qualifyPath,
+      getComponents,
+      getParameterNames,
+    });
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "())") + 1,
+      "MyPkg.M",
+      client,
+    );
+
+    expect(out).toEqual([]);
+    // The outer type's params are not a fallback for an unresolved sub-component.
+    expect(getParameterNames).not.toHaveBeenCalledWith({
+      typeName: "Pkg.Motor",
+    });
+  });
 });
 
 describe("computeCompletions — unknown / non-completable context", () => {

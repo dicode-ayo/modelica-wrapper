@@ -269,8 +269,60 @@ function isWordChar(code: number): boolean {
 }
 
 /**
+ * The declaration type whose `(...)` class-modification the cursor at `offset`
+ * is inside, plus the chain of nested modifier-component names from that
+ * declaration down to the caret's modification.
+ *
+ * `type` is the *outer* declaration's type — `component_clause`'s
+ * `typeSpecifier` or `extends_clause`'s type. `path` is empty when the caret is
+ * directly in the declaration's own modifier list, and one segment per enclosing
+ * `element_modification` for a nested one:
+ *
+ *   `Resistor r(R = |)`    → { type: "Resistor", path: [] }
+ *   `Motor m(resistor(|))` → { type: "Motor",    path: ["resistor"] }
+ *   `Motor m(a(b(|)))`     → { type: "Motor",    path: ["a", "b"] }
+ *
+ * The type is read from the declaration rather than from any modifier name
+ * because a modifier name's own dotted path does NOT contain the type it
+ * modifies; a caller resolves each `path` segment against the previous type.
+ *
+ * See {@link modifiedTypeName} for the full contract on structural detection,
+ * empty parens, the name-less `ERROR` recovery (which yields an empty `path`),
+ * and the value-position non-distinction.
+ */
+export interface ModifiedType {
+  readonly type: string;
+  readonly path: readonly string[];
+}
+
+export function modifiedTypeWithPath(
+  tree: Tree,
+  offset: number,
+): ModifiedType | null {
+  // Deepest node spanning the caret, including anonymous tokens (`(`, `)`),
+  // since an empty modifier list has no identifier to land on.
+  let node: Node | null = tree.rootNode.descendantForIndex(offset, offset);
+  while (node) {
+    if (node.type === "class_modification") {
+      if (!insideParens(node, offset)) return null;
+      const type = declaringTypeOfModification(node);
+      return type === null ? null : { type, path: nestedModifierPath(node) };
+    }
+    // A declaration with no component name (`Resistor(|)`) doesn't parse as a
+    // `component_clause`; the parser recovers it as an `ERROR` holding the
+    // `type_specifier` followed by the `(…)` the caret is inside.
+    if (node.type === "ERROR") {
+      const recovered = declaringTypeFromErrorParens(node, offset);
+      if (recovered !== null) return { type: recovered, path: [] };
+    }
+    node = node.parent;
+  }
+  return null;
+}
+
+/**
  * The dotted *type name* of the declaration whose `(...)` class-modification the
- * cursor at `offset` is inside — the class whose parameters a modifier
+ * cursor at `offset` is inside — the class whose parameters a TOP-LEVEL modifier
  * completion should offer. For `Resistor r(R = |)` this is `"Resistor"`; for an
  * empty `Resistor r(|)` it is still `"Resistor"`; for `extends Base(p = |)` it
  * is `"Base"`; for a dotted type `Modelica.Electrical.Resistor r(R = |)` it is
@@ -287,33 +339,36 @@ function isWordChar(code: number): boolean {
  * itself. Returns `null` when the caret is not inside such a modifier list, or
  * the declaring type is empty/unresolvable.
  *
- * The type is read from the enclosing declaration (`component_clause`'s
- * `typeSpecifier`, or `extends_clause`'s type) rather than from the modifier
- * name, because the modifier name's own dotted path does NOT contain the type
- * it modifies.
+ * This reports only the outer declaration's type; for a nested modifier
+ * (`Motor m(resistor(|))`) it returns `"Motor"`. {@link modifiedTypeWithPath}
+ * additionally reports the `["resistor"]` chain a nested completion walks.
  *
  * @see Offset unit — module note.
  */
 export function modifiedTypeName(tree: Tree, offset: number): string | null {
-  // Deepest node spanning the caret, including anonymous tokens (`(`, `)`),
-  // since an empty modifier list has no identifier to land on.
-  let node: Node | null = tree.rootNode.descendantForIndex(offset, offset);
-  while (node) {
-    if (node.type === "class_modification") {
-      return insideParens(node, offset)
-        ? declaringTypeOfModification(node)
-        : null;
+  return modifiedTypeWithPath(tree, offset)?.type ?? null;
+}
+
+/**
+ * The modifier-component names from the outer declaration down to (but not
+ * including) the caret's `class_modification`. Empty when `modification` is the
+ * declaration's own modifier list. Each enclosing `element_modification` wraps
+ * its inner `class_modification` in a `modification`, so the walk collects one
+ * name per level until it reaches the declaration
+ * (`component_clause`/`extends_clause`).
+ */
+function nestedModifierPath(modification: Node): string[] {
+  const path: string[] = [];
+  let n: Node | null = modification.parent;
+  while (n) {
+    if (n.type === "component_clause" || n.type === "extends_clause") break;
+    if (n.type === "element_modification") {
+      const name = n.childForFieldName("name") ?? firstNameChild(n);
+      if (name && name.text.length > 0) path.unshift(name.text);
     }
-    // A declaration with no component name (`Resistor(|)`) doesn't parse as a
-    // `component_clause`; the parser recovers it as an `ERROR` holding the
-    // `type_specifier` followed by the `(…)` the caret is inside.
-    if (node.type === "ERROR") {
-      const recovered = declaringTypeFromErrorParens(node, offset);
-      if (recovered !== null) return recovered;
-    }
-    node = node.parent;
+    n = n.parent;
   }
-  return null;
+  return path;
 }
 
 /** Is `offset` strictly after a node's opening `(` and at/before its `)`? */

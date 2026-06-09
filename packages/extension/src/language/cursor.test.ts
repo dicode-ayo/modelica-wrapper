@@ -21,6 +21,7 @@ import {
   classify,
   cursorInErrorRegion,
   identifierAt,
+  modifiedTypeWithPath,
   nodeAt,
   targetAt,
   textualWordBefore,
@@ -260,5 +261,45 @@ describe("cursorInErrorRegion", () => {
     const src = "model M\n  R r\n  r.";
     const tree = parse(src);
     expect(cursorInErrorRegion(tree, src.length)).toBe(true);
+  });
+});
+
+describe("modifiedTypeWithPath", () => {
+  it("reports an empty path for a top-level modifier", () => {
+    const src = "model M\n  Resistor r(R = 1);\nend M;";
+    const got = modifiedTypeWithPath(parse(src), offsetOf(src, "R = 1"));
+    expect(got).toEqual({ type: "Resistor", path: [] });
+  });
+
+  it("reports an empty path in empty parens", () => {
+    const src = "model M\n  Resistor r();\nend M;";
+    const got = modifiedTypeWithPath(parse(src), offsetOf(src, ")"));
+    expect(got).toEqual({ type: "Resistor", path: [] });
+  });
+
+  it("captures a one-level nested modifier component name", () => {
+    const src = "model M\n  Motor m(resistor());\nend M;";
+    const got = modifiedTypeWithPath(parse(src), offsetOf(src, "())") + 1);
+    expect(got).toEqual({ type: "Motor", path: ["resistor"] });
+  });
+
+  it("captures each level of a two-level nested modifier", () => {
+    const src = "model M\n  Outer m(a(b()));\nend M;";
+    const got = modifiedTypeWithPath(parse(src), offsetOf(src, "()))") + 1);
+    expect(got).toEqual({ type: "Outer", path: ["a", "b"] });
+  });
+
+  it("reports the outer declaration's type for a nested modifier", () => {
+    const src = "model M\n  Motor m(resistor());\nend M;";
+    // Caret in the OUTER parens (after the inner modifier closes) is top-level.
+    const got = modifiedTypeWithPath(parse(src), offsetOf(src, "));") + 1);
+    expect(got).toEqual({ type: "Motor", path: [] });
+  });
+
+  it("returns null when the caret is outside any modifier list", () => {
+    const src = "model M\n  Resistor r;\nend M;";
+    expect(
+      modifiedTypeWithPath(parse(src), offsetOf(src, "Resistor") + 1),
+    ).toBe(null);
   });
 });
