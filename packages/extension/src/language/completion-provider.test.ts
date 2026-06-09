@@ -1447,3 +1447,85 @@ describe("computeCompletions — type-position package navigation", () => {
     expect(match?.filterText).toBe("Resistor");
   });
 });
+
+describe("computeCompletions — annotation position", () => {
+  it("lists the top-level annotation names directly inside annotation(...)", async () => {
+    const src = "model M\n  annotation();\nend M;";
+    const client = makeClient();
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "()") + 1,
+      "MyPkg.M",
+      client,
+    );
+
+    const labels = out.map((c) => c.label);
+    expect(labels).toContain("Placement");
+    expect(labels).toContain("Icon");
+    expect(labels).toContain("Diagram");
+    expect(labels).toContain("Documentation");
+    expect(out.every((c) => c.kind === CompletionCandidateKind.Field)).toBe(
+      true,
+    );
+    // Purely static — no OMC call for an annotation position.
+    expect(client.getParameterNames).not.toHaveBeenCalled();
+    expect(client.getClassNames).not.toHaveBeenCalled();
+    expect(client.qualifyPath).not.toHaveBeenCalled();
+  });
+
+  it("lists a nested record's fields by path", async () => {
+    const src = "model M\n  annotation(Placement(transformation()));\nend M;";
+    const client = makeClient();
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "()))") + 1,
+      "MyPkg.M",
+      client,
+    );
+
+    expect(out.map((c) => c.label)).toEqual(["origin", "extent", "rotation"]);
+    expect(client.getParameterNames).not.toHaveBeenCalled();
+  });
+
+  it("offers nothing for an unknown annotation record", async () => {
+    const src = "model M\n  annotation(VendorThing());\nend M;";
+    const client = makeClient();
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "())") + 1,
+      "MyPkg.M",
+      client,
+    );
+
+    expect(out).toEqual([]);
+  });
+
+  it("still routes a component modifier to params (not the annotation schema)", async () => {
+    const src = "model M\n  Resistor r(R = 1);\nend M;";
+    const qualifyPath = vi.fn(() =>
+      Promise.resolve({ qualifiedPath: "Pkg.Resistor" }),
+    );
+    const getParameterNames = vi.fn(() =>
+      Promise.resolve({ parameters: ["R", "T_ref"] }),
+    );
+    const client = makeClient({ qualifyPath, getParameterNames });
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "R = 1"),
+      "MyPkg.M",
+      client,
+    );
+
+    expect(getParameterNames).toHaveBeenCalledWith({
+      typeName: "Pkg.Resistor",
+    });
+    expect(out.map((c) => c.label)).toEqual(["R", "T_ref"]);
+    expect(out.every((c) => c.kind === CompletionCandidateKind.Property)).toBe(
+      true,
+    );
+  });
+});

@@ -198,5 +198,33 @@ test.describe(
         timeout: 60_000,
       });
     });
+
+    test("annotation parens complete the nested record's fields", async ({
+      page,
+      codeServer,
+    }) => {
+      test.setTimeout(120_000);
+
+      await page.goto(codeServer.url);
+      await waitForWorkbench(page);
+      await openFileViaQuickOpen(page, "AnnotDemo.mo");
+
+      // Inside `annotation(Placement(|))` the popup must list `Placement`'s
+      // fields (e.g. `transformation`) from the static annotation schema — no
+      // OMC content involved, just the nested-record-path detection.
+      await goToLineStart(page, 2); // the `Real x;` declaration line
+      await page.keyboard.press("End");
+      await page.keyboard.press("Enter");
+      await page.keyboard.type("  Real y annotation(Placement())");
+      await page.keyboard.press("ArrowLeft"); // past the annotation `)`
+      await page.keyboard.press("ArrowLeft"); // into `Placement(|)`
+      await page.keyboard.press("Control+Space");
+
+      // `iconTransformation` is a unique-substring field (plain `transformation`
+      // would also match the `iconTransformation` row).
+      await expect(suggestRow(page, "iconTransformation")).toBeVisible({
+        timeout: 60_000,
+      });
+    });
   },
 );
