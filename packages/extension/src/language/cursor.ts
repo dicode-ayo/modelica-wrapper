@@ -168,8 +168,11 @@ export function headBeforeDot(tree: Tree, offset: number): string[] | null {
   if (!ident) return null;
   const dotted = enclosingDottedNode(ident);
   // A bare `r.` has no enclosing dotted node yet (the cref is just `r`); the
-  // single identifier is itself the whole head.
-  return dotted ? segmentsOf(dotted) : [ident.text];
+  // single identifier is itself the whole head. Take segments up to the
+  // identifier left of the dot: when the cref is immediately followed by a
+  // keyword (`Modelica.Blocks.Continuous.\nend M;`) the parser absorbs that
+  // token as a trailing segment, which `segmentsUpTo` excludes.
+  return dotted ? segmentsUpTo(dotted, ident) : [ident.text];
 }
 
 /**

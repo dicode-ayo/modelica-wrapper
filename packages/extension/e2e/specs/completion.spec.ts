@@ -92,5 +92,57 @@ test.describe(
         timeout: 60_000,
       });
     });
+
+    test("drills a dotted package path in a type position", async ({
+      page,
+      codeServer,
+    }) => {
+      test.setTimeout(120_000);
+
+      await page.goto(codeServer.url);
+      await waitForWorkbench(page);
+      await openFileViaQuickOpen(page, "PackageNav.mo");
+
+      // Type `PackageNav.Sub.` in element position (line 7 is `equation`),
+      // directly above `end PackageNav;`. The nested package `Sub` must expand
+      // to its class `Thing` — navigating a package by dotted path.
+      await goToLineStart(page, 7);
+      await page.keyboard.press("End");
+      await page.keyboard.press("Enter");
+      await page.keyboard.type("  PackageNav.Sub.");
+      await page.keyboard.press("Control+Space");
+
+      await expect(suggestRow(page, "Thing")).toBeVisible({ timeout: 60_000 });
+    });
+
+    test("accepting a global fuzzy match inserts the fully-qualified name", async ({
+      page,
+      codeServer,
+    }) => {
+      test.setTimeout(120_000);
+
+      await page.goto(codeServer.url);
+      await waitForWorkbench(page);
+      await openFileViaQuickOpen(page, "PackageNav.mo");
+
+      // Type a bare prefix that fuzzy-matches the out-of-scope `Sub.Thing`, then
+      // accept. The inserted text must be the FQN, not the bare `Thing` (which
+      // would not resolve from here).
+      await goToLineStart(page, 7);
+      await page.keyboard.press("End");
+      await page.keyboard.press("Enter");
+      await page.keyboard.type("  Thin");
+      await page.keyboard.press("Control+Space");
+      await expect(suggestRow(page, "PackageNav.Sub.Thing")).toBeVisible({
+        timeout: 60_000,
+      });
+      await page.keyboard.press("Tab");
+
+      // Scope to the file editor's lines — the Chat panel's input is also a
+      // `.monaco-editor`. The accepted text is the FQN, not the bare `Thing`.
+      await expect(
+        page.locator(".monaco-editor.focused .view-lines"),
+      ).toContainText("PackageNav.Sub.Thing", { timeout: 10_000 });
+    });
   },
 );

@@ -272,10 +272,11 @@ describe("computeCompletions — type / extends / component-type position", () =
     expect(out.map((c) => c.label)).toContain("Modelica.Electrical.Resistor");
   });
 
-  it("sets filterText/insertText to the simple name for dotted class candidates", async () => {
+  it("filters a dotted global match by its simple name but inserts the FQN", async () => {
     // Fully-qualified searchClassNames labels carry dots that break VSCode's
-    // word-based prefix filtering; the candidate must filter & insert by its
-    // last segment. Bare getClassNames children keep the default (unset).
+    // word-based prefix filtering, so filter by the last segment — but the
+    // class is not in scope, so insert the FQN (a bare name would not resolve).
+    // Bare getClassNames children keep the default (unset).
     const src = "model Circuit\n  Re r;\nend Circuit;";
     const client = makeClient({
       getClassNames: vi.fn(() => Promise.resolve({ classNames: ["Resistor"] })),
@@ -294,7 +295,7 @@ describe("computeCompletions — type / extends / component-type position", () =
     const dotted = out.find((c) => c.label === "Modelica.Electrical.Resistor");
     expect(dotted).toBeDefined();
     expect(dotted?.filterText).toBe("Resistor");
-    expect(dotted?.insertText).toBe("Resistor");
+    expect(dotted?.insertText).toBe("Modelica.Electrical.Resistor");
 
     // The bare local child keeps default filtering (no override needed).
     const bare = out.find((c) => c.label === "Resistor");
@@ -1089,5 +1090,67 @@ describe("computeCompletions — isIncomplete per context", () => {
 
     expect(client.searchClassNames).toHaveBeenCalledWith({ searchText: "Res" });
     expect(result.isIncomplete).toBe(true);
+  });
+});
+
+describe("computeCompletions — type-position package navigation", () => {
+  it("drills a dotted package prefix in a type slot into its classes", async () => {
+    // `Modelica.Electrical.` in element position (NOT an equation), directly
+    // before `end M;`: the parser reads the segment before the dot as a type
+    // reference AND absorbs the following `end` as a trailing segment. The drill
+    // must still target `Modelica.Electrical` (the head up to the cursor's dot),
+    // not the member-access context and not the absorbed `end`.
+    const src = "model M\n  Modelica.Electrical.\nend M;";
+    const dotAfter =
+      offsetOf(src, "Modelica.Electrical.") + "Modelica.Electrical.".length;
+    const getClassNames = vi.fn(({ typeName }) =>
+      Promise.resolve({
+        classNames:
+          typeName === "Modelica.Electrical" ? ["Resistor", "Capacitor"] : [],
+      }),
+    );
+    const client = makeClient({
+      qualifyPath: vi.fn(({ path }) =>
+        Promise.resolve({ qualifiedPath: path }),
+      ),
+      isPackage: vi.fn(() => Promise.resolve({ b: true })),
+      getClassNames,
+    });
+
+    const out = await candidatesOf(parse(src), dotAfter, "MyPkg.M", client);
+
+    expect(getClassNames).toHaveBeenCalledWith({
+      typeName: "Modelica.Electrical",
+    });
+    expect(out.map((c) => c.label)).toEqual(["Resistor", "Capacitor"]);
+    // Drilled classes insert their bare name — the package prefix is already typed.
+    expect(out.every((c) => c.insertText === undefined)).toBe(true);
+  });
+
+  it("inserts the fully-qualified name for a global fuzzy match", async () => {
+    // A bare prefix in type position fuzzy-matches a loaded class that is NOT
+    // in scope, so accepting must insert the FQN (a bare name would not resolve).
+    const src = "model M\n  Resis\nend M;";
+    const client = makeClient({
+      searchClassNames: vi.fn(() =>
+        Promise.resolve({
+          classNames: ["Modelica.Electrical.Analog.Basic.Resistor"],
+        }),
+      ),
+    });
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "Resis") + "Resis".length,
+      "MyPkg.M",
+      client,
+    );
+
+    const match = out.find(
+      (c) => c.label === "Modelica.Electrical.Analog.Basic.Resistor",
+    );
+    expect(match).toBeDefined();
+    expect(match?.insertText).toBe("Modelica.Electrical.Analog.Basic.Resistor");
+    expect(match?.filterText).toBe("Resistor");
   });
 });
