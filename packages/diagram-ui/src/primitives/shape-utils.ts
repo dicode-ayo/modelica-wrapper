@@ -1,7 +1,6 @@
 import {
   Color3,
   Mesh,
-  MeshBuilder,
   StandardMaterial,
   TransformNode as TransformNodeImpl,
   Vector3,
@@ -14,6 +13,9 @@ import {
   CreateLines,
 } from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
 import type { Color, Extent } from "@dicode/omc-client";
+import type { FillSpec } from "@dicode/diagram-svg";
+
+import { resolveFillTexture } from "./fill-texture.js";
 
 /** Per-shape GraphicItem transform fields (§18.6) every primitive carries. */
 export interface GraphicItemTransform {
@@ -219,16 +221,60 @@ export function makeUnlitMaterial(
   return mat;
 }
 
+/**
+ * Material for a gradient / hatch fill spec. Bakes (and caches) the spec to a
+ * `DynamicTexture` and maps it as the emissive texture; falls back to a flat
+ * `makeUnlitMaterial` in the spec's representative color when the bake is
+ * unavailable (e.g. `NullEngine` with no canvas 2D context) or the spec is
+ * solid.
+ */
+export function makeFillMaterial(
+  scene: Scene,
+  spec: FillSpec,
+  aspect: number,
+  name: string,
+): StandardMaterial {
+  const flat = makeUnlitMaterial(scene, fillSpecBaseColor(spec), name);
+  const texture = resolveFillTexture(scene, spec, aspect);
+  if (texture) {
+    flat.emissiveColor = new Color3(1, 1, 1);
+    flat.emissiveTexture = texture;
+    flat.diffuseTexture = texture;
+  }
+  return flat;
+}
+
+/** The flat colour a fill spec degrades to without its texture. */
+function fillSpecBaseColor(spec: FillSpec): Color {
+  switch (spec.kind) {
+    case "solid":
+      return spec.color;
+    case "hatch":
+      return spec.background;
+    case "linear-gradient":
+    case "radial-gradient": {
+      const mid = spec.stops.find((s) => s.offset > 0 && s.offset < 1);
+      return mid?.color ?? spec.stops[0]?.color ?? DEFAULT_LINE_COLOR;
+    }
+    case "none":
+      return DEFAULT_LINE_COLOR;
+  }
+}
+
 export function makeMeshFromTriangles(
   scene: Scene,
   name: string,
   positions: number[],
   indices: number[],
+  uvs?: number[],
 ): Mesh {
   const mesh = new Mesh(name, scene);
   const vertexData = new VertexData();
   vertexData.positions = positions;
   vertexData.indices = indices;
+  if (uvs) {
+    vertexData.uvs = uvs;
+  }
   const normals: number[] = [];
   VertexData.ComputeNormals(positions, indices, normals);
   vertexData.normals = normals;
@@ -236,30 +282,58 @@ export function makeMeshFromTriangles(
   return mesh;
 }
 
+/**
+ * Map an icon-space point to a UV for the fill texture. Gradients (CLAMP) map
+ * the bbox to `0..1`; hatches (WRAP) map in tile-spacing units so the small
+ * tile repeats at a fixed icon-unit density independent of the shape size.
+ */
+function fillUv(
+  px: number,
+  py: number,
+  box: RectBox,
+  spec: FillSpec,
+): [number, number] {
+  if (spec.kind === "hatch") {
+    return [(px - box.x) / spec.spacing, (py - box.y) / spec.spacing];
+  }
+  const u = box.width > 0 ? (px - box.x) / box.width : 0;
+  const v = box.height > 0 ? (py - box.y) / box.height : 0;
+  return [u, v];
+}
+
 export function buildFilledQuad(
   scene: Scene,
   parent: TransformNode,
-  cx: number,
-  cy: number,
-  width: number,
-  height: number,
-  color: Color,
+  box: RectBox,
+  spec: FillSpec,
   z: number,
   baseName: string,
 ): OwnedResource {
-  const plane = MeshBuilder.CreatePlane(
-    baseName,
-    { width, height, sideOrientation: Mesh.DOUBLESIDE },
-    scene,
-  );
-  const material = makeUnlitMaterial(scene, color, `${baseName}.mat`);
-  plane.material = material;
-  plane.parent = parent;
-  plane.position.set(cx, cy, z);
-  plane.isPickable = false;
+  const { x, y, width, height } = box;
+  const corners: Array<[number, number]> = [
+    [x, y],
+    [x + width, y],
+    [x + width, y + height],
+    [x, y + height],
+  ];
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  for (const [px, py] of corners) {
+    positions.push(px, py, 0);
+    const [u, v] = fillUv(px, py, box, spec);
+    uvs.push(u, v);
+  }
+  const indices = [0, 1, 2, 0, 2, 3];
+  const mesh = makeMeshFromTriangles(scene, baseName, positions, indices, uvs);
+  const aspect = height > 0 ? width / height : 1;
+  const material = makeFillMaterial(scene, spec, aspect, `${baseName}.mat`);
+  mesh.material = material;
+  mesh.parent = parent;
+  mesh.position.set(0, 0, z);
+  mesh.isPickable = false;
   return {
     dispose(): void {
-      plane.dispose();
+      mesh.dispose();
       material.dispose();
     },
   };
@@ -271,27 +345,38 @@ export function buildFanFromCenter(
   cx: number,
   cy: number,
   ring: ReadonlyArray<readonly [number, number]>,
-  color: Color,
+  box: RectBox,
+  spec: FillSpec,
   z: number,
   baseName: string,
 ): OwnedResource {
-  const positions: number[] = [cx, cy, 0];
+  // Vertex 0 is the centre at the mesh's local origin; ring vertices are
+  // relative to (cx, cy) so the bounding box stays centred on the ellipse,
+  // with the mesh position carrying (cx, cy). UVs derive from absolute
+  // icon-space coords so the fill texture maps over the shape's bbox.
+  const localPositions: number[] = [0, 0, 0];
+  const uvs: number[] = [];
+  const [cu, cv] = fillUv(cx, cy, box, spec);
+  uvs.push(cu, cv);
   for (const [x, y] of ring) {
-    positions.push(x - cx, y - cy, 0);
+    localPositions.push(x - cx, y - cy, 0);
+    const [u, v] = fillUv(x, y, box, spec);
+    uvs.push(u, v);
   }
   const indices: number[] = [];
   for (let i = 1; i <= ring.length; i++) {
     const next = i === ring.length ? 1 : i + 1;
     indices.push(0, i, next);
   }
-  // The fan's vertex 0 sits at the local origin; positions[1..] are
-  // already relative to (cx, cy), and the mesh's position handles the
-  // rest. This keeps the bounding box centred on the ellipse origin.
-  const localPositions = positions.slice();
-  localPositions[0] = 0;
-  localPositions[1] = 0;
-  const mesh = makeMeshFromTriangles(scene, baseName, localPositions, indices);
-  const material = makeUnlitMaterial(scene, color, `${baseName}.mat`);
+  const mesh = makeMeshFromTriangles(
+    scene,
+    baseName,
+    localPositions,
+    indices,
+    uvs,
+  );
+  const aspect = box.height > 0 ? box.width / box.height : 1;
+  const material = makeFillMaterial(scene, spec, aspect, `${baseName}.mat`);
   mesh.material = material;
   mesh.parent = parent;
   mesh.position.set(cx, cy, z);
@@ -308,7 +393,7 @@ export function buildFilledPolygon(
   scene: Scene,
   parent: TransformNode,
   points: ReadonlyArray<readonly [number, number]>,
-  color: Color,
+  spec: FillSpec,
   z: number,
   baseName: string,
 ): OwnedResource | null {
@@ -316,12 +401,23 @@ export function buildFilledPolygon(
   if (triangles.length === 0) {
     return null;
   }
+  const box = pointsBox(points);
   const positions: number[] = [];
+  const uvs: number[] = [];
   for (const [x, y] of points) {
     positions.push(x, y, 0);
+    const [u, v] = fillUv(x, y, box, spec);
+    uvs.push(u, v);
   }
-  const mesh = makeMeshFromTriangles(scene, baseName, positions, triangles);
-  const material = makeUnlitMaterial(scene, color, `${baseName}.mat`);
+  const mesh = makeMeshFromTriangles(
+    scene,
+    baseName,
+    positions,
+    triangles,
+    uvs,
+  );
+  const aspect = box.height > 0 ? box.width / box.height : 1;
+  const material = makeFillMaterial(scene, spec, aspect, `${baseName}.mat`);
   mesh.material = material;
   mesh.parent = parent;
   mesh.position.set(0, 0, z);
@@ -332,6 +428,24 @@ export function buildFilledPolygon(
       material.dispose();
     },
   };
+}
+
+/** Axis-aligned bounding box of a point list, for UV derivation. */
+function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of points) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  if (!Number.isFinite(minX)) {
+    return { x: 0, y: 0, width: 0, height: 0 };
+  }
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
 // ---------- stroke (polyline) ----------

@@ -1,6 +1,7 @@
 import { customElement, property } from "lit/decorators.js";
 import type { TransformNode } from "@babylonjs/core";
 import type { RectangleShape } from "@dicode/omc-client";
+import { fillSpec } from "@dicode/diagram-svg";
 
 import { OmShapePrimitive } from "./shape-primitive.js";
 import {
@@ -49,32 +50,34 @@ export class OmRectangle extends OmShapePrimitive {
     const root = gi.node;
     const radius = clampCornerRadius(s.radius, width, height);
     const corners = roundedRectRing(x, y, width, height, radius);
-    if (s.fillPattern !== "None" && s.fillColor) {
-      // A degenerate ring triangulates to null; the shape then renders as
-      // outline only rather than a missing region.
-      const fill =
+    const fill = fillSpec({
+      fillColor: s.fillColor,
+      lineColor: s.lineColor,
+      pattern: s.fillPattern,
+    });
+    if (fill.kind !== "none") {
+      // A degenerate rounded ring triangulates to null; the shape then renders
+      // as outline only rather than a missing region.
+      const filled =
         radius > 0
           ? buildFilledPolygon(
               scene,
               root,
               stripClosingDuplicate(corners),
-              s.fillColor,
+              fill,
               z,
               `${baseName}.fill`,
             )
           : buildFilledQuad(
               scene,
               root,
-              x + width / 2,
-              y + height / 2,
-              width,
-              height,
-              s.fillColor,
+              { x, y, width, height },
+              fill,
               z,
               `${baseName}.fill`,
             );
-      if (fill) {
-        this.resources.push(fill);
+      if (filled) {
+        this.resources.push(filled);
       }
     }
 
