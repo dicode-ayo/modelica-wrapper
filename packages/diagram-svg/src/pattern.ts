@@ -210,13 +210,3 @@ function hatchStrokes(
       return [stroke(0, s, s, 0), stroke(0, 0, s, s)];
   }
 }
-
-/**
- * @deprecated Kept for the small number of internal callers that haven't
- * been migrated to `resolveFill`. New code should use `resolveFill` so
- * gradient / pattern defs get collected and emitted in `<defs>`.
- */
-export function fillPatternToFill(fillCss: string, pattern?: string): string {
-  if (pattern === "None") return "none";
-  return fillCss;
-}

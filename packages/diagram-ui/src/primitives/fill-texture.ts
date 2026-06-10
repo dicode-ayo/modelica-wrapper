@@ -35,9 +35,10 @@ interface SceneMeta {
  * Resolve (and cache) the baked fill texture for `spec`. Returns `null` for
  * `solid` / `none` specs, and when the canvas 2D context is unavailable.
  *
- * `aspect` (mesh width / height) is part of the cache key so a hatch tile
- * baked for one shape isn't reused at a different aspect; gradients are
- * aspect-independent but keying on it keeps one code path.
+ * `aspect` (mesh width / height) keys the hatch path so a tile baked for one
+ * shape isn't reused at a different aspect. Gradients bake to a fixed square
+ * and are aspect-independent, so they omit it and share one texture across
+ * differently-proportioned shapes.
  */
 export function resolveFillTexture(
   scene: Scene,
@@ -81,19 +82,19 @@ function ensureCache(scene: Scene): Map<string, DynamicTexture> {
   return cache;
 }
 
-function fillCacheKey(
+export function fillCacheKey(
   spec: Exclude<FillSpec, { kind: "solid" } | { kind: "none" }>,
   aspect: number,
 ): string {
-  const a = aspect.toFixed(3);
   if (spec.kind === "hatch") {
+    const a = aspect.toFixed(3);
     return `hatch|${spec.direction}|${rgb(spec.line)}|${rgb(spec.background)}|${spec.spacing}|${spec.lineWidth}|${a}`;
   }
   const stops = spec.stops.map((s) => `${s.offset}:${rgb(s.color)}`).join(",");
   if (spec.kind === "radial-gradient") {
-    return `radial|${spec.cx},${spec.cy},${spec.r}|${stops}|${a}`;
+    return `radial|${spec.cx},${spec.cy},${spec.r}|${stops}`;
   }
-  return `linear|${spec.x1},${spec.y1},${spec.x2},${spec.y2}|${stops}|${a}`;
+  return `linear|${spec.x1},${spec.y1},${spec.x2},${spec.y2}|${stops}`;
 }
 
 function bakeGradient(scene: Scene, spec: FillSpec): DynamicTexture | null {

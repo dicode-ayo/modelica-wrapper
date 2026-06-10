@@ -72,7 +72,6 @@ exported too:
 ```ts
 import {
   colorToCss,             // Color → "rgb(…)" / "rgba(…)"
-  fillPatternToFill,      // FillPattern → fill value (incl. gradient refs)
   linePatternToDashArray, // LinePattern → stroke-dasharray
   expressionToString,     // Expression AST → literal string
   interpolateTemplate,    // %name / %class / %<param> substitution

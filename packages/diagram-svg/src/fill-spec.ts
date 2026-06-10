@@ -195,7 +195,6 @@ function gradientSpec(
       ],
     };
   }
-  // hcyl shades top→bottom (vertical axis); vcyl shades left→right.
   const [x1, y1, x2, y2] = kind === "hcyl" ? [0, 0, 0, 1] : [0, 0, 1, 0];
   return {
     kind: "linear-gradient",

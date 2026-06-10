@@ -53,7 +53,7 @@ export type {
 // expression mappers when building custom renderers (e.g. a Canvas
 // fallback or a React wrapper).
 export { colorToCss } from "./color.js";
-export { fillPatternToFill, linePatternToDashArray } from "./pattern.js";
+export { linePatternToDashArray } from "./pattern.js";
 export {
   fillSpec,
   DEFAULT_EDGE_COLOR,

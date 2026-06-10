@@ -25,7 +25,10 @@ import {
   buildFilledQuad,
   type RectBox,
 } from "../src/primitives/shape-utils.js";
-import { resolveFillTexture } from "../src/primitives/fill-texture.js";
+import {
+  fillCacheKey,
+  resolveFillTexture,
+} from "../src/primitives/fill-texture.js";
 
 const teardowns: Array<() => void> = [];
 
@@ -85,6 +88,22 @@ describe("resolveFillTexture", () => {
     const { scene } = makeScene();
     expect(resolveFillTexture(scene, solid, 2)).toBeNull();
     expect(resolveFillTexture(scene, { kind: "none" }, 2)).toBeNull();
+  });
+});
+
+describe("fillCacheKey", () => {
+  it("collapses a gradient to one key across aspects", () => {
+    if (cylinder.kind === "solid" || cylinder.kind === "none") {
+      throw new Error("expected a gradient spec");
+    }
+    expect(fillCacheKey(cylinder, 2)).toBe(fillCacheKey(cylinder, 0.5));
+  });
+
+  it("keys a hatch per aspect so its tile is not reused", () => {
+    if (hatch.kind === "solid" || hatch.kind === "none") {
+      throw new Error("expected a hatch spec");
+    }
+    expect(fillCacheKey(hatch, 2)).not.toBe(fillCacheKey(hatch, 0.5));
   });
 });
 
