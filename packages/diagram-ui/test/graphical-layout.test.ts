@@ -8,7 +8,7 @@ import type { OmScene } from "../src/scene/scene.component.js";
 
 /** The canvas lives in `<om-scene>`'s shadow root, one level down. */
 function sceneCanvas(el: OmGraphicalLayout): HTMLCanvasElement {
-  const scene = el.shadowRoot!.querySelector("om-scene") as OmScene | null;
+  const scene = el.shadowRoot?.querySelector("om-scene") as OmScene | null;
   const canvas = scene?.canvasElement;
   if (!canvas) {
     throw new Error("scene canvas not mounted");
@@ -107,8 +107,12 @@ describe("<om-graphical-layout>", () => {
     const el = await mount(tinyLayout());
     // Dump for diagnostic; the assertion message embeds the HTML so a
     // future regression points straight at the offending render output.
-    const inner = el.shadowRoot!.innerHTML;
-    const comps = el.shadowRoot!.querySelectorAll("om-component");
+    const root = el.shadowRoot;
+    if (root === null) {
+      throw new Error("shadow root not attached");
+    }
+    const inner = root.innerHTML;
+    const comps = root.querySelectorAll("om-component");
     expect(
       comps.length,
       `expected 1 om-component in shadow HTML: ${inner}`,
@@ -159,8 +163,10 @@ describe("<om-graphical-layout>", () => {
     ]);
     // Both pasted instances are shifted clear of their source centres
     // (b1 centre 0,0; b2 centre 40,0) by the same paste step.
-    const b1Paste = requests[0]!;
-    const b2Paste = requests[1]!;
+    const [b1Paste, b2Paste] = requests;
+    if (b1Paste === undefined || b2Paste === undefined) {
+      throw new Error("expected two paste requests");
+    }
     expect(b1Paste.position.x).toBeGreaterThan(0);
     expect(b1Paste.position.y).toBeLessThan(0);
     expect(b2Paste.position.x - b1Paste.position.x).toBe(40);

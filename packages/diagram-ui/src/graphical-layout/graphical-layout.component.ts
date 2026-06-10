@@ -929,13 +929,11 @@ export class OmGraphicalLayout extends LitElement {
 
   /**
    * Re-instantiate each clipboard component one paste-step down-right of
-   * its source, snapped to the active grid. Emits one
-   * `om-add-component-request` per component — the same OMC write path
-   * the library-browser add flow uses. Connections among the copied
-   * components are intentionally not recreated here: the new instance
-   * names are assigned by OMC after each add lands, so the UI element
-   * can't address them; a host that round-trips the layout can rebuild
-   * connections once the names come back.
+   * its source, snapped to the active grid, via one
+   * `om-add-component-request` per component. Connections among the
+   * copied components aren't recreated here: a pasted instance's name
+   * exists only after OMC assigns it, so there is nothing to address at
+   * paste time.
    */
   private pasteClipboard(): void {
     if (this.readonly || !this.layout || this.clipboardKeys.length === 0) {
@@ -943,7 +941,7 @@ export class OmGraphicalLayout extends LitElement {
     }
     this.pasteCount += 1;
     const grid = this.currentSnapGrid();
-    const step = Math.max(grid[0] || 0, grid[1] || 0, PASTE_OFFSET_UNITS);
+    const step = Math.max(grid[0], grid[1], PASTE_OFFSET_UNITS);
     const shift = step * this.pasteCount;
     const plan = computePastePlan(
       this.layout,

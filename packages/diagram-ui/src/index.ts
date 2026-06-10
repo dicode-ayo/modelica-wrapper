@@ -136,7 +136,6 @@ export {
   ResizeHandles,
   RubberBandOverlay,
   setMeshHighlight,
-  type OverlayRect,
 } from "./base/selection-overlay.js";
 export {
   applyPlacement,

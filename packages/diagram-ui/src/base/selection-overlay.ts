@@ -13,6 +13,7 @@ import {
 } from "@babylonjs/core";
 
 import { requestSceneRender } from "../scene/render-scheduler.js";
+import { normaliseRect, type DiagramRect } from "../interaction/layout-ops.js";
 
 /**
  * Per-scene HighlightLayer with refcounted lifecycle.
@@ -305,14 +306,6 @@ function findOrthoCamera(scene: Scene): ArcRotateCamera | null {
   return null;
 }
 
-/** Diagram-space rectangle, corners in any order. */
-export interface OverlayRect {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-}
-
 /**
  * Live rubber-band selection rectangle. Drawn directly in diagram
  * coordinates (the scene's world units), so the host feeds it the same
@@ -330,7 +323,7 @@ export class RubberBandOverlay {
   private fill: Mesh | null = null;
   private border: AbstractMesh | null = null;
   private readonly fillMaterial: StandardMaterial;
-  private rect: OverlayRect | null = null;
+  private rect: DiagramRect | null = null;
 
   constructor(
     private readonly scene: Scene,
@@ -345,7 +338,7 @@ export class RubberBandOverlay {
   }
 
   /** Update the band to `rect`, or hide it when `rect` is `null`. */
-  setRect(rect: OverlayRect | null): void {
+  setRect(rect: DiagramRect | null): void {
     this.rect = rect;
     this.rebuild();
     requestSceneRender(this.scene);
@@ -368,14 +361,11 @@ export class RubberBandOverlay {
     if (!rect) {
       return;
     }
-    const x0 = Math.min(rect.x1, rect.x2);
-    const x1 = Math.max(rect.x1, rect.x2);
-    const y0 = Math.min(rect.y1, rect.y2);
-    const y1 = Math.max(rect.y1, rect.y2);
+    const { x1: x0, x2: x1, y1: y0, y2: y1 } = normaliseRect(rect);
     const w = x1 - x0;
     const h = y1 - y0;
     if (w <= 0 || h <= 0) {
-      // Zero-area band (drag hasn't moved yet) — nothing to draw.
+      // A zero-area band has no geometry to build.
       return;
     }
     const fill = MeshBuilder.CreatePlane(
