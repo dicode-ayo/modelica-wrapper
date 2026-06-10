@@ -91,7 +91,9 @@ describe("rotate handle → rotate event", () => {
 
     const rotates = events.filter((e) => e.type === "rotate");
     expect(rotates).toHaveLength(1);
-    expect(rotates[0]!.detail).toEqual({ key: "c:R1", cw: true });
+    const [rotate] = rotates;
+    if (rotate === undefined) throw new Error("expected a rotate event");
+    expect(rotate.detail).toEqual({ key: "c:R1", cw: true });
     cleanup();
     dispose();
   });
@@ -116,7 +118,9 @@ describe("rotate handle → rotate event", () => {
     );
 
     expect(events).toHaveLength(1);
-    expect(events[0]!.type).toBe("rotate");
+    const [event] = events;
+    if (event === undefined) throw new Error("expected a rotate event");
+    expect(event.type).toBe("rotate");
     cleanup();
     dispose();
   });

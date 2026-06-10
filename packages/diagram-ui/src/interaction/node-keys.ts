@@ -176,10 +176,6 @@ export function isHandleKey(key: EntityKey): key is HandleKey {
   return key.kind === "handle";
 }
 
-export function isRotateHandleKey(key: EntityKey): key is RotateHandleKey {
-  return key.kind === "rotate-handle";
-}
-
 /** True when the connector belongs to a sub-component (vs. the host class). */
 export function isNestedConnector(key: ConnectorKey): boolean {
   return key.componentName !== null;

@@ -1047,7 +1047,10 @@ export class OmGraphicalLayout extends LitElement {
         const keys = this.selectedKeys.has(d.key)
           ? this.selectedKeys
           : new Set([d.key]);
-        this.commitLayout(applyRotate(this.layout, keys, d.cw));
+        const updated = applyRotate(this.layout, keys, d.cw);
+        if (updated !== this.layout) {
+          this.commitLayout(updated);
+        }
         return;
       }
     }

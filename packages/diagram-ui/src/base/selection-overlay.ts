@@ -13,6 +13,10 @@ import {
 } from "@babylonjs/core";
 
 import { requestSceneRender } from "../scene/render-scheduler.js";
+import type { EntityKind } from "../interaction/node-keys.js";
+
+/** Accent blue shared by the selection outline stroke and rotate handle. */
+const SELECTION_BLUE = new Color3(0.38, 0.6, 0.98);
 
 /**
  * Per-scene HighlightLayer with refcounted lifecycle.
@@ -128,7 +132,7 @@ export class SelectionOutline {
     iconHeight: number,
     iconCx: number,
     iconCy: number,
-    private color: Color3 = new Color3(0.38, 0.6, 0.98),
+    private color: Color3 = SELECTION_BLUE,
     private widthPx: number = 4,
   ) {
     this.line = this.build(iconWidth, iconHeight, iconCx, iconCy);
@@ -330,7 +334,7 @@ export class RotateHandle {
   ) {
     this.material = new StandardMaterial("om-rotate-handle-mat", scene);
     this.material.disableLighting = true;
-    this.material.emissiveColor = new Color3(0.38, 0.6, 0.98);
+    this.material.emissiveColor = SELECTION_BLUE;
 
     this.handle = MeshBuilder.CreateDisc(
       "om-rotate-handle",
@@ -344,7 +348,12 @@ export class RotateHandle {
     this.handle.position.set(iconCx, iconCy + iconHeight / 2, -0.02);
     this.handle.isVisible = false;
     this.handle.isPickable = true;
-    this.handle.metadata = { kind: "rotate-handle", nodeId: "rotate" };
+    // nodeId is inert here — `entityKeyForNode` resolves the owning shape
+    // by walking the parent chain, so any value works.
+    this.handle.metadata = {
+      kind: "rotate-handle" satisfies EntityKind,
+      nodeId: "rotate",
+    };
     this.topEdgeY = iconCy + iconHeight / 2;
     this.anchorX = iconCx;
   }
