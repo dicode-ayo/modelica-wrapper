@@ -548,6 +548,37 @@ export function selectByDiagramRect(
   return keys;
 }
 
+/**
+ * Selection set produced by a primary-button click on `key`.
+ *
+ * A plain (non-additive) click on a key that is already part of a
+ * multi-selection keeps the whole set: that click is the start of a
+ * potential group drag, and `DragController` reads the selection on the
+ * same `pointerdown` after the `select` event lands — collapsing to the
+ * clicked key here would strand the drag with a single entity. Any other
+ * plain click selects just that key; the additive modifier toggles the
+ * key's membership.
+ */
+export function selectionAfterClick(
+  current: ReadonlySet<string>,
+  key: string,
+  additive: boolean,
+): Set<string> {
+  if (additive) {
+    const next = new Set(current);
+    if (next.has(key)) {
+      next.delete(key);
+    } else {
+      next.add(key);
+    }
+    return next;
+  }
+  if (current.has(key) && current.size > 1) {
+    return new Set(current);
+  }
+  return new Set([key]);
+}
+
 /** A pasted component: its resolved class plus its offset drop point. */
 export interface PasteComponentRequest {
   /** Source component instance name — lets callers correlate connections. */

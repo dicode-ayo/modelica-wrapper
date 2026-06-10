@@ -5,6 +5,8 @@ import type { DiagramLayout } from "@dicode/omc-client";
 import "../src/graphical-layout/graphical-layout.component.js";
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
 import type { OmScene } from "../src/scene/scene.component.js";
+import type { OmConnection } from "../src/connection/connection.component.js";
+import type { OmEdge } from "../src/connection/edge.component.js";
 
 /** The canvas lives in `<om-scene>`'s shadow root, one level down. */
 function sceneCanvas(el: OmGraphicalLayout): HTMLCanvasElement {
@@ -68,6 +70,24 @@ function twoBlockLayout(): DiagramLayout {
         },
       },
     },
+  };
+}
+
+/** Two blocks joined by one connection, for connection-selection tests. */
+function connectedLayout(): DiagramLayout {
+  const l = twoBlockLayout();
+  return {
+    ...l,
+    connections: [
+      {
+        lhs: { component: "b1", port: "p" },
+        rhs: { component: "b2", port: "p" },
+        waypoints: [
+          [0, 0],
+          [40, 0],
+        ],
+      },
+    ],
   };
 }
 
@@ -170,6 +190,27 @@ describe("<om-graphical-layout>", () => {
     expect(b1Paste.position.x).toBeGreaterThan(0);
     expect(b1Paste.position.y).toBeLessThan(0);
     expect(b2Paste.position.x - b1Paste.position.x).toBe(40);
+  });
+
+  it("tags a connection's edge with its canonical selection key so clicks select it", async () => {
+    const el = await mount(connectedLayout());
+    const conn = el.shadowRoot?.querySelector(
+      "om-connection",
+    ) as OmConnection | null;
+    const edge = conn?.shadowRoot?.querySelector("om-edge") as OmEdge | null;
+    if (!edge) {
+      throw new Error("expected an om-edge under the connection");
+    }
+    // The edge mesh advertises this nodeId; a pick must resolve to the
+    // bare `edge:0` key that the highlight and whole-connection delete
+    // address — a `0/edge` suffix would select nothing.
+    expect(edge.nodeId).toBe("0");
+
+    // Round-trip: selecting that key highlights the edge.
+    el.setSelection(["edge:0"]);
+    await el.updateComplete;
+    await conn!.updateComplete;
+    expect(edge.selected).toBe(true);
   });
 
   it("paste with an empty clipboard emits nothing", async () => {

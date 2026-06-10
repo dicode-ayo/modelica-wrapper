@@ -8,6 +8,7 @@ import {
   applyRotate,
   computePastePlan,
   selectByDiagramRect,
+  selectionAfterClick,
 } from "../src/interaction/layout-ops.js";
 
 function baseLayout(): DiagramLayout {
@@ -387,5 +388,35 @@ describe("computePastePlan", () => {
     const plan = computePastePlan(baseLayout(), ["c:R1", "k:p"], 5, 5);
     expect(plan.components.map((c) => c.sourceName)).toEqual(["R1"]);
     expect(plan.connections).toEqual([]);
+  });
+});
+
+describe("selectionAfterClick", () => {
+  it("collapses a plain click to the clicked key", () => {
+    const next = selectionAfterClick(new Set(["c:a", "c:b"]), "c:c", false);
+    expect([...next]).toEqual(["c:c"]);
+  });
+
+  it("keeps the group when a plain click lands on a multi-selected member", () => {
+    // Regression: the click starts a group drag and DragController reads the
+    // selection on the same pointerdown — collapsing here strands the drag
+    // with one key, so only one component would move.
+    const next = selectionAfterClick(new Set(["c:a", "c:b"]), "c:a", false);
+    expect([...next].sort()).toEqual(["c:a", "c:b"]);
+  });
+
+  it("collapses a plain click on the sole selected member to itself", () => {
+    const next = selectionAfterClick(new Set(["c:a"]), "c:a", false);
+    expect([...next]).toEqual(["c:a"]);
+  });
+
+  it("additive click adds an unselected key", () => {
+    const next = selectionAfterClick(new Set(["c:a"]), "c:b", true);
+    expect([...next].sort()).toEqual(["c:a", "c:b"]);
+  });
+
+  it("additive click toggles a selected key off", () => {
+    const next = selectionAfterClick(new Set(["c:a", "c:b"]), "c:b", true);
+    expect([...next]).toEqual(["c:a"]);
   });
 });

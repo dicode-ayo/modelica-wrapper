@@ -41,6 +41,7 @@ import {
   applySnapToExtents,
   computePastePlan,
   selectByDiagramRect,
+  selectionAfterClick,
 } from "../interaction/layout-ops.js";
 import { RubberBandOverlay } from "../base/selection-overlay.js";
 import {
@@ -959,12 +960,7 @@ export class OmGraphicalLayout extends LitElement {
   }
 
   private applySelection(key: string, additive: boolean): void {
-    const next = additive ? new Set(this.selectedKeys) : new Set<string>();
-    if (additive && next.has(key)) {
-      next.delete(key);
-    } else {
-      next.add(key);
-    }
+    const next = selectionAfterClick(this.selectedKeys, key, additive);
     this.selectedKeys = next;
     this.emit("om-selection-change", { keys: Array.from(next) });
     this.interactionStore.next({ selectedKeys: Array.from(next) });

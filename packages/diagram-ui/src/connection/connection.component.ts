@@ -167,8 +167,12 @@ export class OmConnection extends LitElement {
     if (this.path.length < 2) {
       return html``;
     }
+    // The edge mesh carries the bare connection id so a pick resolves to
+    // the canonical whole-connection key `edge:<id>` — the same key the
+    // highlight below, `routeKey`, and `applyDelete` address. A suffixed
+    // id (e.g. `<id>/edge`) would select nothing and never delete.
     return html`<om-edge
-      nodeId=${`${this.nodeId}/edge`}
+      nodeId=${this.nodeId}
       .path=${this.path}
       .stroke=${this.stroke}
       ?clocked=${this.clocked}
