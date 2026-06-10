@@ -19,16 +19,26 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   CompletionCandidateKind,
-  computeCompletions,
   MAX_COMPLETIONS,
   MIN_FUZZY_PREFIX,
   type CompletionCandidate,
-  type CompletionClient,
-} from "./completion-provider.js";
-import { GRAMMAR_WASM_FILENAME } from "./parse.js";
+} from "./candidate.js";
+import type { CompletionClient } from "./client.js";
+import { computeCompletions } from "./compute.js";
+
+// The grammar WASM is an install artifact of the extension package; reach into
+// its grammar dir rather than re-fetch it here.
+const GRAMMAR_WASM_FILENAME = "tree-sitter-modelica.wasm";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const grammarPath = join(here, "..", "..", "grammar", GRAMMAR_WASM_FILENAME);
+const grammarPath = join(
+  here,
+  "..",
+  "..",
+  "extension",
+  "grammar",
+  GRAMMAR_WASM_FILENAME,
+);
 
 let parser: Parser;
 

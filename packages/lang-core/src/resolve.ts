@@ -12,9 +12,8 @@
  * Returns `undefined` rather than guessing on any failure.
  */
 
-import { log } from "../logger.js";
-
 import type { CursorContextKind, CursorTarget } from "./cursor.js";
+import { noopLogger, type Logger } from "./logger.js";
 
 /** The slice of {@link CursorTarget} the resolver reads. */
 export type ResolveTarget = Pick<CursorTarget, "context" | "pathToCursor">;
@@ -68,12 +67,13 @@ export async function resolve(
   owningClass: string,
   target: ResolveTarget,
   client: ResolveClient,
+  logger: Logger = noopLogger,
 ): Promise<ResolvedTarget | undefined> {
   if (target.context === "member-access") {
-    return resolveMemberCref(owningClass, target, client);
+    return resolveMemberCref(owningClass, target, client, logger);
   }
   if (TYPE_CONTEXTS.has(target.context)) {
-    return resolveTypeReference(owningClass, target, client);
+    return resolveTypeReference(owningClass, target, client, logger);
   }
   return undefined;
 }
@@ -82,17 +82,19 @@ async function resolveTypeReference(
   owningClass: string,
   target: ResolveTarget,
   client: ResolveClient,
+  logger: Logger,
 ): Promise<ResolvedTarget | undefined> {
   const qualifiedPath = await qualifyTypeReference(
     owningClass,
     target.pathToCursor,
     client,
+    logger,
   );
   if (qualifiedPath === undefined) return undefined;
   // A top-level name qualifies to itself rather than to `undefined`, so we still
   // attempt `getClassInformation` and treat a missing source binding as
   // unresolved.
-  return locateClass(qualifiedPath, client);
+  return locateClass(qualifiedPath, client, logger);
 }
 
 /**
@@ -106,6 +108,7 @@ export async function qualifyTypeReference(
   owningClass: string,
   pathToCursor: readonly string[],
   client: QualifyClient,
+  logger: Logger = noopLogger,
 ): Promise<string | undefined> {
   const name = pathToCursor.join(".");
   if (name.length === 0) return undefined;
@@ -119,7 +122,7 @@ export async function qualifyTypeReference(
     // OMC can throw on a malformed/partially-typed name or an unloaded scope.
     // Treat it as "couldn't qualify" so the resolver (and the completion source
     // that shares this helper) degrades to no result instead of throwing out.
-    log.debug("language", `qualifyPath failed for ${name}`, err);
+    logger.debug("language", `qualifyPath failed for ${name}`, err);
     return undefined;
   }
 }
@@ -128,6 +131,7 @@ async function resolveMemberCref(
   owningClass: string,
   target: ResolveTarget,
   client: ResolveClient,
+  logger: Logger,
 ): Promise<ResolvedTarget | undefined> {
   const segments = target.pathToCursor;
   if (segments.length < 2) return undefined;
@@ -139,17 +143,18 @@ async function resolveMemberCref(
 
   // Walk against the previous segment's type so `a.b.c` visits `b` in `a`'s
   // type and `c` in `b`'s type — not `c` in `a`'s type.
-  const containerType = await walkCrefType(owningClass, chain, client);
+  const containerType = await walkCrefType(owningClass, chain, client, logger);
   if (!containerType) return undefined;
 
   const memberType = await resolveComponentType(
     containerType,
     memberName,
     client,
+    logger,
   );
   if (!memberType) return undefined;
 
-  return locateClass(memberType, client);
+  return locateClass(memberType, client, logger);
 }
 
 /**
@@ -162,11 +167,17 @@ export async function walkCrefType(
   owningClass: string,
   segments: readonly string[],
   client: ComponentWalkClient,
+  logger: Logger = noopLogger,
 ): Promise<string | undefined> {
   if (segments.length === 0) return undefined;
   let containerType = owningClass;
   for (const segment of segments) {
-    const next = await resolveComponentType(containerType, segment, client);
+    const next = await resolveComponentType(
+      containerType,
+      segment,
+      client,
+      logger,
+    );
     if (!next) return undefined;
     containerType = next;
   }
@@ -177,8 +188,9 @@ async function resolveComponentType(
   containerType: string,
   componentName: string,
   client: ComponentWalkClient,
+  logger: Logger,
 ): Promise<string | undefined> {
-  const components = await inheritedComponents(containerType, client);
+  const components = await inheritedComponents(containerType, client, logger);
   const className = components.find((c) => c.name === componentName)?.className;
   // Empty className means untyped declaration; treat as unresolved.
   return className !== undefined && className.length > 0
@@ -205,6 +217,7 @@ export interface WalkedComponent {
 export async function inheritedComponents(
   typeName: string,
   client: ComponentWalkClient,
+  logger: Logger = noopLogger,
 ): Promise<WalkedComponent[]> {
   const byName = new Map<string, WalkedComponent>();
   const visited = new Set<string>();
@@ -218,8 +231,8 @@ export async function inheritedComponents(
     visited.add(current);
 
     const [components, bases] = await Promise.all([
-      ownComponents(current, client),
-      directBases(current, client),
+      ownComponents(current, client, logger),
+      directBases(current, client, logger),
     ]);
     for (const c of components) {
       if (!byName.has(c.name)) byName.set(c.name, c);
@@ -260,6 +273,7 @@ export interface ParameterWalkClient extends InheritedClassesClient {
 export async function inheritedParameterNames(
   typeName: string,
   client: ParameterWalkClient,
+  logger: Logger = noopLogger,
 ): Promise<string[]> {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -272,8 +286,8 @@ export async function inheritedParameterNames(
     visited.add(current);
 
     const [params, bases] = await Promise.all([
-      ownParameters(current, client),
-      directBases(current, client),
+      ownParameters(current, client, logger),
+      directBases(current, client, logger),
     ]);
     for (const name of params) {
       if (!seen.has(name)) {
@@ -292,12 +306,13 @@ export async function inheritedParameterNames(
 async function ownParameters(
   typeName: string,
   client: ParameterWalkClient,
+  logger: Logger,
 ): Promise<string[]> {
   try {
     const { parameters } = await client.getParameterNames({ typeName });
     return parameters;
   } catch (err) {
-    log.debug("language", `getParameterNames failed for ${typeName}`, err);
+    logger.debug("language", `getParameterNames failed for ${typeName}`, err);
     return [];
   }
 }
@@ -305,12 +320,13 @@ async function ownParameters(
 async function ownComponents(
   typeName: string,
   client: ComponentWalkClient,
+  logger: Logger,
 ): Promise<WalkedComponent[]> {
   try {
     const { components } = await client.getComponents({ typeName });
     return components;
   } catch (err) {
-    log.debug("language", `getComponents failed for ${typeName}`, err);
+    logger.debug("language", `getComponents failed for ${typeName}`, err);
     return [];
   }
 }
@@ -318,12 +334,13 @@ async function ownComponents(
 async function directBases(
   typeName: string,
   client: InheritedClassesClient,
+  logger: Logger,
 ): Promise<string[]> {
   try {
     const { inheritedClasses } = await client.getInheritedClasses({ typeName });
     return inheritedClasses;
   } catch (err) {
-    log.debug("language", `getInheritedClasses failed for ${typeName}`, err);
+    logger.debug("language", `getInheritedClasses failed for ${typeName}`, err);
     return [];
   }
 }
@@ -337,13 +354,14 @@ async function directBases(
 async function locateClass(
   qualifiedName: string,
   client: ResolveClient,
+  logger: Logger,
 ): Promise<ResolvedTarget | undefined> {
   if (qualifiedName.length === 0) return undefined;
   let info;
   try {
     info = await client.getClassInformation({ typeName: qualifiedName });
   } catch (err) {
-    log.debug(
+    logger.debug(
       "language",
       `getClassInformation failed for ${qualifiedName}`,
       err,

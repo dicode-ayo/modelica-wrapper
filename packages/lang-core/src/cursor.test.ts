@@ -16,7 +16,6 @@ import { fileURLToPath } from "node:url";
 import { Language, Parser, type Tree } from "web-tree-sitter";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { GRAMMAR_WASM_FILENAME } from "./parse.js";
 import {
   annotationPath,
   annotationValueField,
@@ -29,8 +28,19 @@ import {
   textualWordBefore,
 } from "./cursor.js";
 
+// The grammar WASM is an install artifact of the extension package; reach into
+// its grammar dir rather than re-fetch it here.
+const GRAMMAR_WASM_FILENAME = "tree-sitter-modelica.wasm";
+
 const here = dirname(fileURLToPath(import.meta.url));
-const grammarPath = join(here, "..", "..", "grammar", GRAMMAR_WASM_FILENAME);
+const grammarPath = join(
+  here,
+  "..",
+  "..",
+  "extension",
+  "grammar",
+  GRAMMAR_WASM_FILENAME,
+);
 
 let parser: Parser;
 
