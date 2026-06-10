@@ -10,6 +10,7 @@
 import type {
   ConnectionEndpoint,
   DiagramLayout,
+  Extent,
   Point,
 } from "@dicode/omc-client";
 
@@ -55,4 +56,42 @@ export function appendConnection(
     ...layout,
     connections: [...layout.connections, { lhs, rhs, waypoints }],
   };
+}
+
+/**
+ * Append a component instance at `position` (its placement centre),
+ * standing in for the extension's `addComponent` RPC + OMC re-fetch. The
+ * new instance reuses the existing icon size so paste output is visible.
+ * Returns the original layout when the class isn't in the catalog.
+ */
+export function appendComponent(
+  layout: DiagramLayout,
+  detail: { className: string; position: { x: number; y: number } },
+): DiagramLayout {
+  if (!layout.classes[detail.className]) {
+    return layout;
+  }
+  const half = 10;
+  const { x, y } = detail.position;
+  const extent: Extent = [
+    [x - half, y - half],
+    [x + half, y + half],
+  ];
+  const name = uniqueName(layout, detail.className);
+  return {
+    ...layout,
+    components: {
+      ...layout.components,
+      [name]: { name, classRef: detail.className, placement: { extent } },
+    },
+  };
+}
+
+function uniqueName(layout: DiagramLayout, className: string): string {
+  const stem = (className.split(".").at(-1) ?? "comp").toLowerCase();
+  let i = 1;
+  while (layout.components[`${stem}${i}`]) {
+    i += 1;
+  }
+  return `${stem}${i}`;
 }

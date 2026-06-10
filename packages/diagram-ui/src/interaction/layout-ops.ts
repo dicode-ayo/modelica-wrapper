@@ -547,3 +547,79 @@ export function selectByDiagramRect(
   }
   return keys;
 }
+
+/** A pasted component: its resolved class plus its offset drop point. */
+export interface PasteComponentRequest {
+  /** Source component instance name — lets callers correlate connections. */
+  sourceName: string;
+  /** Qualified class to instantiate (the source component's `classRef`). */
+  className: string;
+  /** Placement centre shifted by the paste offset, in diagram units. */
+  position: Point;
+}
+
+/** A connection to recreate between two pasted components' ports. */
+export interface PasteConnectionRequest {
+  /** lhs endpoint as `<sourceComponentName>.<port>`. */
+  fromSource: { component: string; port: string };
+  /** rhs endpoint as `<sourceComponentName>.<port>`. */
+  toSource: { component: string; port: string };
+}
+
+/** Everything a paste needs to recreate the copied selection. */
+export interface PastePlan {
+  components: PasteComponentRequest[];
+  connections: PasteConnectionRequest[];
+}
+
+/**
+ * Build the paste plan for the currently-selected entities, offset by
+ * (dx, dy) diagram units.
+ *
+ * Components are the unit of paste — each selected component yields one
+ * add-request keyed by its `classRef`, placed at its (offset) centre.
+ * A connection is included only when BOTH its endpoints are components
+ * in the selection; partially-selected connections are dropped because
+ * the missing endpoint won't exist after the paste. Standalone
+ * connectors and host-level ports aren't copied: they belong to the
+ * host class, not to a pasteable component instance.
+ */
+export function computePastePlan(
+  layout: DiagramLayout,
+  keys: Iterable<string>,
+  dx: number,
+  dy: number,
+): PastePlan {
+  const set = partitionKeys(keys);
+  const components: PasteComponentRequest[] = [];
+  for (const id of set.components) {
+    const c = layout.components[id];
+    if (!c) {
+      continue;
+    }
+    const [cx, cy] = placementCentre(c.placement);
+    components.push({
+      sourceName: id,
+      className: c.classRef,
+      position: [cx + dx, cy + dy],
+    });
+  }
+  const connections: PasteConnectionRequest[] = [];
+  for (const conn of layout.connections) {
+    const lhs = conn.lhs.component;
+    const rhs = conn.rhs.component;
+    if (
+      lhs === undefined ||
+      rhs === undefined ||
+      !set.components.has(lhs) ||
+      !set.components.has(rhs)
+    ) {
+      continue;
+    }
+    connections.push({
+      fromSource: { component: lhs, port: conn.lhs.port },
+      toSource: { component: rhs, port: conn.rhs.port },
+    });
+  }
+  return { components, connections };
+}

@@ -6,10 +6,11 @@
  * Try it:
  *  - wheel / middle-drag / shift-drag → pan / zoom
  *  - click a component               → select (HighlightLayer outline)
- *  - shift-click another component   → add to selection
+ *  - ctrl/cmd-click another component → add to / toggle selection
+ *  - click empty space + drag        → rubber-band multi-select (band drawn)
  *  - drag a selected component       → move (draftLayout)
+ *  - ctrl/cmd+C then ctrl/cmd+V      → copy / paste selection (offset)
  *  - hover a connector + drag        → in-progress connection edge
- *  - click empty space + drag        → rubber-band selection
  *  - R / Shift+R                     → rotate selection
  *  - F / Shift+F                     → flip horizontal / vertical
  *  - Delete                          → remove selected entities
@@ -21,7 +22,10 @@ import type { DiagramLayout } from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
 import { sampleLayout } from "./fixtures/sample-layout.js";
-import { appendConnection } from "./fixtures/story-layout-state.js";
+import {
+  appendComponent,
+  appendConnection,
+} from "./fixtures/story-layout-state.js";
 
 interface StoryArgs {
   readonly: boolean;
@@ -40,10 +44,11 @@ const meta: Meta<StoryArgs> = {
       <h3>&lt;om-graphical-layout&gt;</h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
         Synthetic DiagramLayout (3 mechanical-rotational blocks + 2
-        connections). Click to select, drag to move, shift+click for
-        multi-select, R/F for rotate/flip, Delete to remove. Hover a component,
-        then drag from its port indicator to another port to create a new
-        connection (orthogonal route).
+        connections). Click to select, drag to move, ctrl/cmd+click or
+        rubber-band drag for multi-select, ctrl/cmd+C / +V to copy/paste, R/F
+        for rotate/flip, Delete to remove. Hover a component, then drag from its
+        port indicator to another port to create a new connection (orthogonal
+        route).
       </p>
       <div class="om-story-canvas-host" style="height: 540px;">
         <om-graphical-layout
@@ -68,6 +73,17 @@ const meta: Meta<StoryArgs> = {
               waypoints: ReadonlyArray<readonly [number, number]>;
             };
             currentLayout = appendConnection(currentLayout, detail);
+            const el = e.currentTarget as HTMLElement & {
+              layout: DiagramLayout;
+            };
+            el.layout = currentLayout;
+          }}
+          @om-add-component-request=${(e: CustomEvent) => {
+            const detail = e.detail as {
+              className: string;
+              position: { x: number; y: number };
+            };
+            currentLayout = appendComponent(currentLayout, detail);
             const el = e.currentTarget as HTMLElement & {
               layout: DiagramLayout;
             };

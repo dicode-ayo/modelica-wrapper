@@ -4,6 +4,17 @@ import type { DiagramLayout } from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
+import type { OmScene } from "../src/scene/scene.component.js";
+
+/** The canvas lives in `<om-scene>`'s shadow root, one level down. */
+function sceneCanvas(el: OmGraphicalLayout): HTMLCanvasElement {
+  const scene = el.shadowRoot!.querySelector("om-scene") as OmScene | null;
+  const canvas = scene?.canvasElement;
+  if (!canvas) {
+    throw new Error("scene canvas not mounted");
+  }
+  return canvas;
+}
 
 function tinyLayout(): DiagramLayout {
   return {
@@ -36,6 +47,27 @@ function tinyLayout(): DiagramLayout {
     },
     connectors: {},
     connections: [],
+  };
+}
+
+/** Two `Test.Block` instances side by side, for multi-select tests. */
+function twoBlockLayout(): DiagramLayout {
+  const l = tinyLayout();
+  return {
+    ...l,
+    components: {
+      ...l.components,
+      b2: {
+        name: "b2",
+        classRef: "Test.Block",
+        placement: {
+          extent: [
+            [30, -5],
+            [50, 5],
+          ],
+        },
+      },
+    },
   };
 }
 
@@ -95,5 +127,55 @@ describe("<om-graphical-layout>", () => {
     const el = await mount(tinyLayout());
     el.setSelection(["bogus", "c:b1"]);
     expect(el.selection).toEqual(["c:b1"]);
+  });
+
+  it("copy then paste emits one offset add-component request per selected component", async () => {
+    const el = await mount(twoBlockLayout());
+    const requests: Array<{
+      className: string;
+      position: { x: number; y: number };
+    }> = [];
+    el.addEventListener("om-add-component-request", (e) => {
+      const d = (e as CustomEvent).detail as {
+        className: string;
+        position: { x: number; y: number };
+      };
+      requests.push(d);
+    });
+    el.setSelection(["c:b1", "c:b2"]);
+    const canvas = sceneCanvas(el);
+
+    canvas.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "c", ctrlKey: true, bubbles: true }),
+    );
+    canvas.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "v", ctrlKey: true, bubbles: true }),
+    );
+
+    expect(requests).toHaveLength(2);
+    expect(requests.map((r) => r.className).sort()).toEqual([
+      "Test.Block",
+      "Test.Block",
+    ]);
+    // Both pasted instances are shifted clear of their source centres
+    // (b1 centre 0,0; b2 centre 40,0) by the same paste step.
+    const b1Paste = requests[0]!;
+    const b2Paste = requests[1]!;
+    expect(b1Paste.position.x).toBeGreaterThan(0);
+    expect(b1Paste.position.y).toBeLessThan(0);
+    expect(b2Paste.position.x - b1Paste.position.x).toBe(40);
+  });
+
+  it("paste with an empty clipboard emits nothing", async () => {
+    const el = await mount(twoBlockLayout());
+    let count = 0;
+    el.addEventListener("om-add-component-request", () => {
+      count += 1;
+    });
+    const canvas = sceneCanvas(el);
+    canvas.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "v", ctrlKey: true, bubbles: true }),
+    );
+    expect(count).toBe(0);
   });
 });

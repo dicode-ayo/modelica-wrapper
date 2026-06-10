@@ -304,3 +304,110 @@ function findOrthoCamera(scene: Scene): ArcRotateCamera | null {
   }
   return null;
 }
+
+/** Diagram-space rectangle, corners in any order. */
+export interface OverlayRect {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+/**
+ * Live rubber-band selection rectangle. Drawn directly in diagram
+ * coordinates (the scene's world units), so the host feeds it the same
+ * `rect` the `DragController` emits without any client-pixel
+ * conversion. A translucent fill plane plus a `GreasedLine` border —
+ * the fill makes the swept area legible over a dense field of icons,
+ * the border keeps the edge crisp at any zoom.
+ *
+ * Sits very close to the camera (`-Z`) so it paints on top of every
+ * entity and the resize handles. `setRect(null)` hides it between
+ * drags without disposing — a rubber-band drag re-shows it on the next
+ * pointermove.
+ */
+export class RubberBandOverlay {
+  private fill: Mesh | null = null;
+  private border: AbstractMesh | null = null;
+  private readonly fillMaterial: StandardMaterial;
+  private rect: OverlayRect | null = null;
+
+  constructor(
+    private readonly scene: Scene,
+    private readonly parent: TransformNode | null = null,
+    private readonly color: Color3 = new Color3(0.38, 0.6, 0.98),
+    private readonly z: number = -0.03,
+  ) {
+    this.fillMaterial = new StandardMaterial("om-rubberband-fill", scene);
+    this.fillMaterial.disableLighting = true;
+    this.fillMaterial.emissiveColor = this.color;
+    this.fillMaterial.alpha = 0.12;
+  }
+
+  /** Update the band to `rect`, or hide it when `rect` is `null`. */
+  setRect(rect: OverlayRect | null): void {
+    this.rect = rect;
+    this.rebuild();
+    requestSceneRender(this.scene);
+  }
+
+  dispose(): void {
+    this.fill?.dispose();
+    this.border?.dispose();
+    this.fill = null;
+    this.border = null;
+    this.fillMaterial.dispose();
+  }
+
+  private rebuild(): void {
+    this.fill?.dispose();
+    this.border?.dispose();
+    this.fill = null;
+    this.border = null;
+    const rect = this.rect;
+    if (!rect) {
+      return;
+    }
+    const x0 = Math.min(rect.x1, rect.x2);
+    const x1 = Math.max(rect.x1, rect.x2);
+    const y0 = Math.min(rect.y1, rect.y2);
+    const y1 = Math.max(rect.y1, rect.y2);
+    const w = x1 - x0;
+    const h = y1 - y0;
+    if (w <= 0 || h <= 0) {
+      // Zero-area band (drag hasn't moved yet) — nothing to draw.
+      return;
+    }
+    const fill = MeshBuilder.CreatePlane(
+      "om-rubberband",
+      { width: w, height: h },
+      this.scene,
+    );
+    fill.material = this.fillMaterial;
+    fill.isPickable = false;
+    fill.position.set(x0 + w / 2, y0 + h / 2, this.z);
+    if (this.parent) {
+      fill.parent = this.parent;
+    }
+    this.fill = fill;
+
+    const points = [
+      new Vector3(x0, y0, this.z),
+      new Vector3(x1, y0, this.z),
+      new Vector3(x1, y1, this.z),
+      new Vector3(x0, y1, this.z),
+      new Vector3(x0, y0, this.z),
+    ];
+    const border = CreateGreasedLine(
+      "om-rubberband-border",
+      { points },
+      { width: 2, sizeAttenuation: true, color: this.color },
+      this.scene,
+    );
+    border.isPickable = false;
+    if (this.parent) {
+      border.parent = this.parent;
+    }
+    this.border = border;
+  }
+}

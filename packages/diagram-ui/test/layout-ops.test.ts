@@ -6,6 +6,7 @@ import {
   applyDeltaMove,
   applyFlip,
   applyRotate,
+  computePastePlan,
   selectByDiagramRect,
 } from "../src/interaction/layout-ops.js";
 
@@ -330,5 +331,61 @@ describe("selectByDiagramRect", () => {
       y2: -100,
     });
     expect(keys.size).toBeGreaterThan(0);
+  });
+});
+
+describe("computePastePlan", () => {
+  /** baseLayout() with an extra component-to-component connection. */
+  function layoutWithCompConnection(): DiagramLayout {
+    const base = baseLayout();
+    return {
+      ...base,
+      connections: [
+        ...base.connections,
+        {
+          lhs: { component: "R1", port: "n" },
+          rhs: { component: "C1", port: "p" },
+          waypoints: [],
+        },
+      ],
+    };
+  }
+
+  it("emits one offset request per selected component, centred + shifted", () => {
+    // R1 centre = (0,0), C1 centre = (30,25). Offset (+10,-10).
+    const plan = computePastePlan(baseLayout(), ["c:R1", "c:C1"], 10, -10);
+    expect(plan.components).toEqual([
+      {
+        sourceName: "R1",
+        className: "Modelica.Electrical.Resistor",
+        position: [10, -10],
+      },
+      {
+        sourceName: "C1",
+        className: "Modelica.Electrical.Capacitor",
+        position: [40, 15],
+      },
+    ]);
+  });
+
+  it("recreates a connection only when both endpoints are in the selection", () => {
+    const l = layoutWithCompConnection();
+    const both = computePastePlan(l, ["c:R1", "c:C1"], 0, 0);
+    expect(both.connections).toEqual([
+      {
+        fromSource: { component: "R1", port: "n" },
+        toSource: { component: "C1", port: "p" },
+      },
+    ]);
+    // Selecting only R1 drops the connection (C1 won't exist after paste).
+    expect(computePastePlan(l, ["c:R1"], 0, 0).connections).toEqual([]);
+  });
+
+  it("never copies standalone connectors or host-level port connections", () => {
+    // baseLayout's only connection is host-port `p` → R1.p; a standalone
+    // connector key resolves to no pasteable component.
+    const plan = computePastePlan(baseLayout(), ["c:R1", "k:p"], 5, 5);
+    expect(plan.components.map((c) => c.sourceName)).toEqual(["R1"]);
+    expect(plan.connections).toEqual([]);
   });
 });

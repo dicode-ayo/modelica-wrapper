@@ -3,6 +3,7 @@ import { NullEngine, Scene, TransformNode } from "@babylonjs/core";
 import type { Placement } from "@dicode/omc-client";
 
 import { OmShapeNode } from "../src/base/shape-node.js";
+import { RubberBandOverlay } from "../src/base/selection-overlay.js";
 
 const teardowns: Array<() => void> = [];
 
@@ -106,5 +107,39 @@ describe("OmShapeNode selection", () => {
     const tl = scene.getMeshByName("om-handle:tl")!;
     node.dispose();
     expect(tl.isDisposed()).toBe(true);
+  });
+});
+
+describe("RubberBandOverlay", () => {
+  it("draws a fill plane + border once the band has area", () => {
+    const { scene, parent } = makeScene();
+    const band = new RubberBandOverlay(scene, parent);
+    band.setRect({ x1: 0, y1: 0, x2: 40, y2: 20 });
+    expect(scene.getMeshByName("om-rubberband")).toBeTruthy();
+    expect(scene.getMeshByName("om-rubberband-border")).toBeTruthy();
+  });
+
+  it("draws nothing for a zero-area band", () => {
+    const { scene, parent } = makeScene();
+    const band = new RubberBandOverlay(scene, parent);
+    band.setRect({ x1: 10, y1: 10, x2: 10, y2: 10 });
+    expect(scene.getMeshByName("om-rubberband")).toBeNull();
+  });
+
+  it("clears the band on setRect(null)", () => {
+    const { scene, parent } = makeScene();
+    const band = new RubberBandOverlay(scene, parent);
+    band.setRect({ x1: 0, y1: 0, x2: 40, y2: 20 });
+    band.setRect(null);
+    expect(scene.getMeshByName("om-rubberband")).toBeNull();
+    expect(scene.getMeshByName("om-rubberband-border")).toBeNull();
+  });
+
+  it("disposes its meshes", () => {
+    const { scene, parent } = makeScene();
+    const band = new RubberBandOverlay(scene, parent);
+    band.setRect({ x1: 0, y1: 0, x2: 40, y2: 20 });
+    band.dispose();
+    expect(scene.getMeshByName("om-rubberband")).toBeNull();
   });
 });

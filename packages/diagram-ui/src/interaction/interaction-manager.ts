@@ -14,12 +14,20 @@ export type PickerFn = (clientX: number, clientY: number) => Node | null;
 export interface InteractionEvents {
   /** Fires whenever the entity under the pointer changes (incl. to `null`). */
   hover: { key: string | null };
-  /** Primary-button down on an entity. `addToSelection` mirrors shift. */
+  /**
+   * Primary-button down on an entity. `addToSelection` mirrors the
+   * additive modifier (Ctrl, or Cmd on macOS) — shift is reserved for
+   * the PanZoom drag, so it can't double as the multi-select modifier.
+   */
   select: { key: string; addToSelection: boolean };
   /** Two primary-button presses within the double-click window on the same key. */
   doubleClick: { key: string };
   /** Right-button up on an entity. */
   contextMenu: { key: string | null; clientX: number; clientY: number };
+  /** Copy gesture (Ctrl/Cmd+C) over the canvas. */
+  copy: Record<string, never>;
+  /** Paste gesture (Ctrl/Cmd+V) over the canvas. */
+  paste: Record<string, never>;
 }
 
 export type EmitFn = <K extends keyof InteractionEvents>(
@@ -41,9 +49,10 @@ const DEFAULT_DOUBLE_CLICK_MS = 350;
  * the `doubleClickMs` window.
  *
  * Modifiers:
- *   - shift + primary  → `select` with `addToSelection: true`
- *   - secondary button → `contextMenu`
- *   - middle button    → swallowed (PanZoom owns it)
+ *   - ctrl/cmd + primary → `select` with `addToSelection: true`
+ *   - secondary button   → `contextMenu`
+ *   - middle button      → swallowed (PanZoom owns it)
+ *   - ctrl/cmd + C / V   → `copy` / `paste`
  */
 export class InteractionManager {
   private readonly canvas: HTMLCanvasElement;
@@ -68,6 +77,7 @@ export class InteractionManager {
     canvas.addEventListener("pointerdown", this.onPointerDown);
     canvas.addEventListener("pointerup", this.onPointerUp);
     canvas.addEventListener("pointerleave", this.onPointerLeave);
+    canvas.addEventListener("keydown", this.onKeyDown);
   }
 
   destroy(): void {
@@ -75,6 +85,7 @@ export class InteractionManager {
     this.canvas.removeEventListener("pointerdown", this.onPointerDown);
     this.canvas.removeEventListener("pointerup", this.onPointerUp);
     this.canvas.removeEventListener("pointerleave", this.onPointerLeave);
+    this.canvas.removeEventListener("keydown", this.onKeyDown);
   }
 
   private readonly onPointerMove = (e: PointerEvent): void => {
@@ -93,11 +104,8 @@ export class InteractionManager {
   };
 
   private readonly onPointerDown = (e: PointerEvent): void => {
-    if (e.button !== 0 || (e.shiftKey && this.isPanModifier(e))) {
-      return; // pan modifier — PanZoom owns it
-    }
-    if (e.button !== 0) {
-      return;
+    if (e.button !== 0 || this.isPanModifier(e)) {
+      return; // not primary, or shift+primary pan modifier — PanZoom owns it
     }
     const key = this.pickKey(e.clientX, e.clientY);
     if (key === null) {
@@ -110,9 +118,23 @@ export class InteractionManager {
     this.lastSelectKey = key;
     this.lastSelectAt = now;
 
-    this.emit("select", { key, addToSelection: e.shiftKey });
+    this.emit("select", { key, addToSelection: isAdditiveModifier(e) });
     if (isDouble) {
       this.emit("doubleClick", { key });
+    }
+  };
+
+  private readonly onKeyDown = (e: KeyboardEvent): void => {
+    if (!isAdditiveModifier(e)) {
+      return;
+    }
+    const key = e.key.toLowerCase();
+    if (key === "c") {
+      this.emit("copy", {});
+      e.preventDefault();
+    } else if (key === "v") {
+      this.emit("paste", {});
+      e.preventDefault();
     }
   };
 
@@ -151,6 +173,18 @@ export class InteractionManager {
     }
     return entity ? formatKey(entity.kind, entity.nodeId) : null;
   }
+}
+
+/**
+ * Additive-selection / clipboard modifier: Ctrl on Windows/Linux, Cmd
+ * (`metaKey`) on macOS. Shift is excluded — it drives PanZoom's pan
+ * drag, so reusing it for multi-select would conflict.
+ */
+function isAdditiveModifier(e: {
+  ctrlKey: boolean;
+  metaKey: boolean;
+}): boolean {
+  return e.ctrlKey || e.metaKey;
 }
 
 /**

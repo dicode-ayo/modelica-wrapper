@@ -189,4 +189,55 @@ describe("InteractionManager", () => {
     dispose();
     canvas.remove();
   });
+
+  it("ctrl+primary down emits select with addToSelection", () => {
+    const canvas = makeCanvas();
+    const { scene, dispose } = makeScene();
+    const tn = new TransformNode("om-component:R1", scene);
+    const { emit, events } = captureEmits();
+    const mgr = new InteractionManager(canvas, () => tn, emit);
+
+    canvas.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        button: 0,
+        ctrlKey: true,
+        clientX: 5,
+        clientY: 5,
+      }),
+    );
+    expect(events).toEqual([
+      { type: "select", detail: { key: "c:R1", addToSelection: true } },
+    ]);
+    mgr.destroy();
+    dispose();
+    canvas.remove();
+  });
+
+  it("emits copy on ctrl+C and paste on ctrl/cmd+V", () => {
+    const canvas = makeCanvas();
+    const { emit, events } = captureEmits();
+    const mgr = new InteractionManager(canvas, () => null, emit);
+
+    canvas.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "c", ctrlKey: true }),
+    );
+    canvas.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "V", metaKey: true }),
+    );
+    expect(events.map((e) => e.type)).toEqual(["copy", "paste"]);
+    mgr.destroy();
+    canvas.remove();
+  });
+
+  it("ignores C / V without the additive modifier", () => {
+    const canvas = makeCanvas();
+    const { emit, events } = captureEmits();
+    const mgr = new InteractionManager(canvas, () => null, emit);
+
+    canvas.dispatchEvent(new KeyboardEvent("keydown", { key: "c" }));
+    canvas.dispatchEvent(new KeyboardEvent("keydown", { key: "v" }));
+    expect(events).toHaveLength(0);
+    mgr.destroy();
+    canvas.remove();
+  });
 });

@@ -109,7 +109,11 @@ export {
   applyFlip,
   normaliseRect,
   selectByDiagramRect,
+  computePastePlan,
   type DiagramRect,
+  type PastePlan,
+  type PasteComponentRequest,
+  type PasteConnectionRequest,
 } from "./interaction/layout-ops.js";
 export {
   DragController,
@@ -128,7 +132,12 @@ export {
 export { OmShapeElement } from "./base/shape-element.js";
 export { OmShapeNode } from "./base/shape-node.js";
 export { OmIconOverlay } from "./base/icon-overlay.component.js";
-export { ResizeHandles, setMeshHighlight } from "./base/selection-overlay.js";
+export {
+  ResizeHandles,
+  RubberBandOverlay,
+  setMeshHighlight,
+  type OverlayRect,
+} from "./base/selection-overlay.js";
 export {
   applyPlacement,
   coordSystemSize,

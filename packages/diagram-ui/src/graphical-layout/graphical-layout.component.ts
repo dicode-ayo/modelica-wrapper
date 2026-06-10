@@ -39,8 +39,10 @@ import {
   applyFlip,
   applyRotate,
   applySnapToExtents,
+  computePastePlan,
   selectByDiagramRect,
 } from "../interaction/layout-ops.js";
+import { RubberBandOverlay } from "../base/selection-overlay.js";
 import {
   formatComponentKey,
   formatConnectorKey,
@@ -85,6 +87,14 @@ import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
  * the white plane occluded them on every frame.
  */
 const HOST_SHAPE_Z_BIAS = 0.025;
+
+/**
+ * Diagram-unit offset applied to a pasted component relative to its
+ * source, so the copy lands visibly clear of the original instead of
+ * directly on top of it. Used only when the snap grid is disabled;
+ * otherwise the larger grid step drives the offset.
+ */
+const PASTE_OFFSET_UNITS = 10;
 
 interface BBox {
   minX: number;
@@ -275,6 +285,19 @@ export class OmGraphicalLayout extends LitElement {
 
   private interactionManager: InteractionManager | null = null;
   private dragController: DragController | null = null;
+  private rubberBand: RubberBandOverlay | null = null;
+  /**
+   * Snapshot of the selected component keys taken on copy. Paste reads
+   * it (not the live selection) so the user can change the selection
+   * between copy and paste without affecting what gets pasted.
+   */
+  private clipboardKeys: readonly string[] = [];
+  /**
+   * Per-paste accumulator so repeated Ctrl+V without an intervening
+   * copy cascades the new components diagonally instead of stacking
+   * them all on the first offset.
+   */
+  private pasteCount = 0;
   private dblClickPicker: PickerFn | null = null;
   private dblClickCanvas: HTMLCanvasElement | null = null;
   /**
@@ -734,6 +757,7 @@ export class OmGraphicalLayout extends LitElement {
       return;
     }
     const picker = defaultPicker(ctx.scene, canvas);
+    this.rubberBand = new RubberBandOverlay(ctx.scene, ctx.diagramRoot);
     this.interactionManager = new InteractionManager(
       canvas,
       picker,
@@ -757,8 +781,10 @@ export class OmGraphicalLayout extends LitElement {
   private detachManagers(): void {
     this.interactionManager?.destroy();
     this.dragController?.destroy();
+    this.rubberBand?.dispose();
     this.interactionManager = null;
     this.dragController = null;
+    this.rubberBand = null;
     if (this.dblClickCanvas) {
       this.dblClickCanvas.removeEventListener(
         "dblclick",
@@ -884,6 +910,53 @@ export class OmGraphicalLayout extends LitElement {
         this.emit("om-context-menu", d);
         return;
       }
+      case "copy": {
+        this.copySelection();
+        return;
+      }
+      case "paste": {
+        this.pasteClipboard();
+        return;
+      }
+    }
+  }
+
+  /** Snapshot the current selection as the clipboard source. */
+  private copySelection(): void {
+    this.clipboardKeys = Array.from(this.selectedKeys);
+    this.pasteCount = 0;
+  }
+
+  /**
+   * Re-instantiate each clipboard component one paste-step down-right of
+   * its source, snapped to the active grid. Emits one
+   * `om-add-component-request` per component — the same OMC write path
+   * the library-browser add flow uses. Connections among the copied
+   * components are intentionally not recreated here: the new instance
+   * names are assigned by OMC after each add lands, so the UI element
+   * can't address them; a host that round-trips the layout can rebuild
+   * connections once the names come back.
+   */
+  private pasteClipboard(): void {
+    if (this.readonly || !this.layout || this.clipboardKeys.length === 0) {
+      return;
+    }
+    this.pasteCount += 1;
+    const grid = this.currentSnapGrid();
+    const step = Math.max(grid[0] || 0, grid[1] || 0, PASTE_OFFSET_UNITS);
+    const shift = step * this.pasteCount;
+    const plan = computePastePlan(
+      this.layout,
+      this.clipboardKeys,
+      shift,
+      -shift,
+    );
+    for (const c of plan.components) {
+      const position = snapPoint(c.position[0], c.position[1], grid);
+      this.emit("om-add-component-request", {
+        className: c.className,
+        position,
+      });
     }
   }
 
@@ -955,13 +1028,15 @@ export class OmGraphicalLayout extends LitElement {
       case "rubberBand": {
         const d = detail as DragEvents["rubberBand"];
         if (d.draft) {
-          // Live selection preview.
+          // Live selection preview + the visible band rectangle.
+          this.rubberBand?.setRect(d.rect);
           this.selectedKeys = selectByDiagramRect(this.layout, d.rect);
           this.interactionStore.next({
             selectedKeys: Array.from(this.selectedKeys),
           });
           this.setInteractionState({ kind: "selecting" });
         } else {
+          this.rubberBand?.setRect(null);
           const keys = selectByDiagramRect(this.layout, d.rect);
           this.selectedKeys = keys;
           this.emit("om-selection-change", { keys: Array.from(keys) });
