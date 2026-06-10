@@ -75,6 +75,59 @@ describe("renderIconLayersToSvg", () => {
     expect(svg).toContain('y="-50"');
   });
 
+  it("renders a rounded rectangle's radius as rx/ry", () => {
+    const svg = renderIconLayersToSvg([
+      makeLayer("Test.Rounded", [
+        {
+          kind: "rectangle",
+          extent: [
+            [-50, -25],
+            [50, 25],
+          ],
+          radius: 10,
+        } satisfies RectangleShape,
+      ]),
+    ]);
+    expect(svg).toContain('rx="10"');
+    expect(svg).toContain('ry="10"');
+  });
+
+  it("clamps the corner radius to half the shorter side", () => {
+    // extent is 100×50; half the shorter side is 25, so a radius of 40
+    // must clamp to 25 to keep opposite corners from overlapping.
+    const svg = renderIconLayersToSvg([
+      makeLayer("Test.OverRounded", [
+        {
+          kind: "rectangle",
+          extent: [
+            [-50, -25],
+            [50, 25],
+          ],
+          radius: 40,
+        } satisfies RectangleShape,
+      ]),
+    ]);
+    expect(svg).toContain('rx="25"');
+    expect(svg).toContain('ry="25"');
+  });
+
+  it("omits rx/ry for a zero or missing radius", () => {
+    const svg = renderIconLayersToSvg([
+      makeLayer("Test.Sharp", [
+        {
+          kind: "rectangle",
+          extent: [
+            [-50, -25],
+            [50, 25],
+          ],
+          radius: 0,
+        } satisfies RectangleShape,
+      ]),
+    ]);
+    expect(svg).not.toContain("rx=");
+    expect(svg).not.toContain("ry=");
+  });
+
   it("renders an ellipse with cx/cy/rx/ry derived from extent", () => {
     const svg = renderIconLayersToSvg([
       makeLayer("Test.Ell", [

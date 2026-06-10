@@ -96,6 +96,73 @@ export function extentToRect(extent: Extent): RectBox {
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
+/**
+ * Modelica `Rectangle.radius` is the corner radius in diagram units,
+ * clamped to half the shorter side so opposite corners never overlap
+ * (matches OMEdit). A non-positive or missing radius yields `0`.
+ */
+export function clampCornerRadius(
+  radius: number | undefined,
+  width: number,
+  height: number,
+): number {
+  if (radius === undefined || !(radius > 0)) return 0;
+  return Math.min(radius, width / 2, height / 2);
+}
+
+/** Quarter-circle segment count per rounded corner. Eight segments keep
+ *  the arc visually smooth at icon zoom without flooding the triangulator. */
+const CORNER_SEGMENTS = 8;
+
+/**
+ * Closed CCW vertex ring for a rectangle whose corners are rounded by
+ * `radius` (already clamped via {@link clampCornerRadius}). The box spans
+ * `[x, x+width] × [y, y+height]`; each corner is a quarter-circle of
+ * `CORNER_SEGMENTS` segments. A zero radius returns the four sharp corners.
+ * The first vertex is repeated as the last so stroke builders draw a closed
+ * outline.
+ */
+export function roundedRectRing(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+): Array<[number, number]> {
+  if (!(radius > 0)) {
+    return [
+      [x, y],
+      [x + width, y],
+      [x + width, y + height],
+      [x, y + height],
+      [x, y],
+    ];
+  }
+  const r = radius;
+  const cx0 = x + r;
+  const cx1 = x + width - r;
+  const cy0 = y + r;
+  const cy1 = y + height - r;
+  // Corner centres + arc start angle (CCW), in draw order: bottom-right,
+  // top-right, top-left, bottom-left.
+  const corners: ReadonlyArray<readonly [number, number, number]> = [
+    [cx1, cy0, -Math.PI / 2],
+    [cx1, cy1, 0],
+    [cx0, cy1, Math.PI / 2],
+    [cx0, cy0, Math.PI],
+  ];
+  const ring: Array<[number, number]> = [];
+  for (const [cx, cy, start] of corners) {
+    for (let i = 0; i <= CORNER_SEGMENTS; i++) {
+      const a = start + (Math.PI / 2) * (i / CORNER_SEGMENTS);
+      ring.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+    }
+  }
+  const first = ring[0];
+  if (first) ring.push([first[0], first[1]]);
+  return ring;
+}
+
 /** Drop a trailing duplicate of the first point — Modelica polygons
  *  often close themselves explicitly, but our triangulator and stroke
  *  builders want the open vertex list. */

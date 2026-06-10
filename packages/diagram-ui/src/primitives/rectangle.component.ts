@@ -6,17 +6,22 @@ import { OmShapePrimitive } from "./shape-primitive.js";
 import {
   DEFAULT_LINE_COLOR,
   STROKE_Z_DELTA,
+  buildFilledPolygon,
   buildFilledQuad,
   buildStroke,
+  clampCornerRadius,
   extentToRect,
   graphicItemNode,
+  roundedRectRing,
+  stripClosingDuplicate,
 } from "./shape-utils.js";
 
 /**
  * `<om-rectangle>` — one Modelica `RectangleShape`. Renders a filled
- * quad (when `fillPattern` is not `"None"`) plus a stroked outline.
- * `radius` (rounded corners) is not implemented yet — flagged in the
- * renderer-parity TODOs; the dominant case is sharp corners.
+ * region (when `fillPattern` is not `"None"`) plus a stroked outline.
+ * A positive `radius` rounds the corners (clamped to half the shorter
+ * side); the fill becomes a triangulated rounded-corner polygon and the
+ * outline follows the same ring.
  */
 @customElement("om-rectangle")
 export class OmRectangle extends OmShapePrimitive {
@@ -43,29 +48,35 @@ export class OmRectangle extends OmShapePrimitive {
     // a transform node when the shape carries a non-default origin/rotation.
     const gi = graphicItemNode(parent, s, `${baseName}.gi`);
     const root = gi.node;
+    const radius = clampCornerRadius(s.radius, width, height);
+    const corners = roundedRectRing(x, y, width, height, radius);
     if (s.fillPattern !== "None" && s.fillColor) {
-      this.resources.push(
-        buildFilledQuad(
-          scene,
-          root,
-          x + width / 2,
-          y + height / 2,
-          width,
-          height,
-          s.fillColor,
-          z,
-          `${baseName}.fill`,
-        ),
-      );
+      const fill =
+        radius > 0
+          ? buildFilledPolygon(
+              scene,
+              root,
+              stripClosingDuplicate(corners),
+              s.fillColor,
+              z,
+              `${baseName}.fill`,
+            )
+          : buildFilledQuad(
+              scene,
+              root,
+              x + width / 2,
+              y + height / 2,
+              width,
+              height,
+              s.fillColor,
+              z,
+              `${baseName}.fill`,
+            );
+      if (fill) {
+        this.resources.push(fill);
+      }
     }
 
-    const corners: ReadonlyArray<readonly [number, number]> = [
-      [x, y],
-      [x + width, y],
-      [x + width, y + height],
-      [x, y + height],
-      [x, y],
-    ];
     const stroke = buildStroke(
       scene,
       root,
