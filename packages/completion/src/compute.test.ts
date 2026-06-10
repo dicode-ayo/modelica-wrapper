@@ -19,16 +19,26 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   CompletionCandidateKind,
-  computeCompletions,
   MAX_COMPLETIONS,
   MIN_FUZZY_PREFIX,
   type CompletionCandidate,
-  type CompletionClient,
-} from "./completion-provider.js";
-import { GRAMMAR_WASM_FILENAME } from "./parse.js";
+} from "./candidate.js";
+import type { CompletionClient } from "./client.js";
+import { computeCompletions } from "./compute.js";
+
+// The grammar WASM is an install artifact of the extension package; reach into
+// its grammar dir rather than re-fetch it here.
+const GRAMMAR_WASM_FILENAME = "tree-sitter-modelica.wasm";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const grammarPath = join(here, "..", "..", "grammar", GRAMMAR_WASM_FILENAME);
+const grammarPath = join(
+  here,
+  "..",
+  "..",
+  "extension",
+  "grammar",
+  GRAMMAR_WASM_FILENAME,
+);
 
 let parser: Parser;
 
@@ -1525,6 +1535,103 @@ describe("computeCompletions — annotation position", () => {
     });
     expect(out.map((c) => c.label)).toEqual(["R", "T_ref"]);
     expect(out.every((c) => c.kind === CompletionCandidateKind.Property)).toBe(
+      true,
+    );
+  });
+});
+
+describe("computeCompletions — annotation value position", () => {
+  it("lists FillPattern members for fillPattern = │", async () => {
+    const src = "model M\n  annotation(Rectangle(fillPattern = ));\nend M;";
+    const client = makeClient();
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "= ") + 2,
+      "MyPkg.M",
+      client,
+    );
+
+    const labels = out.map((c) => c.label);
+    expect(labels).toContain("FillPattern.Solid");
+    expect(labels).toContain("FillPattern.None");
+    expect(labels).toContain("FillPattern.HorizontalCylinder");
+    expect(labels).toContain("FillPattern.Sphere");
+    // The dotted label carries a member filterText so VSCode can match it.
+    const solid = out.find((c) => c.label === "FillPattern.Solid");
+    expect(solid?.filterText).toBe("Solid");
+    // Purely static — no OMC call for a value position.
+    expect(client.getParameterNames).not.toHaveBeenCalled();
+    expect(client.getClassNames).not.toHaveBeenCalled();
+  });
+
+  it("lists LinePattern members for pattern = Enum.│", async () => {
+    const src = "model M\n  annotation(Line(pattern = LinePattern.));\nend M;";
+    const client = makeClient();
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "LinePattern.") + "LinePattern.".length,
+      "MyPkg.M",
+      client,
+    );
+
+    expect(out.map((c) => c.label)).toEqual([
+      "LinePattern.None",
+      "LinePattern.Solid",
+      "LinePattern.Dash",
+      "LinePattern.Dot",
+      "LinePattern.DashDot",
+      "LinePattern.DashDotDot",
+    ]);
+  });
+
+  it("lists true/false for a boolean field (visible = │)", async () => {
+    const src = "model M\n  annotation(Rectangle(visible = ));\nend M;";
+    const client = makeClient();
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "= ") + 2,
+      "MyPkg.M",
+      client,
+    );
+
+    expect(out.map((c) => c.label)).toEqual(["true", "false"]);
+    // Bare literals: no dotted filterText.
+    expect(out.every((c) => c.filterText === undefined)).toBe(true);
+  });
+
+  it("offers nothing for a field with no static value vocabulary", async () => {
+    const src = "model M\n  annotation(Rectangle(lineThickness = ));\nend M;";
+    const client = makeClient();
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "= ") + 2,
+      "MyPkg.M",
+      client,
+    );
+
+    expect(out).toEqual([]);
+  });
+
+  it("does not fire on the field-NAME slot (field-name completion intact)", async () => {
+    const src =
+      "model M\n  annotation(Rectangle(fillPattern = FillPattern.Solid));\nend M;";
+    const client = makeClient();
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "fillPattern") + 1,
+      "MyPkg.M",
+      client,
+    );
+
+    const labels = out.map((c) => c.label);
+    expect(labels).toContain("fillPattern");
+    expect(labels).not.toContain("FillPattern.Solid");
+    expect(out.every((c) => c.kind === CompletionCandidateKind.Field)).toBe(
       true,
     );
   });

@@ -19,14 +19,18 @@ import * as vscode from "vscode";
 
 import type { Tree } from "web-tree-sitter";
 
+import {
+  resolve,
+  targetAt,
+  type ResolveClient,
+} from "@dicode/modelica-lang-core";
+
 import { log } from "../logger.js";
 import { sourceUriFor } from "../source-provider.js";
 
-import { targetAt } from "./cursor.js";
 import { resolveDocumentOwner } from "./document-scope.js";
 import type { OwningClassClient } from "./owning-class.js";
 import type { ParseCache } from "./parse.js";
-import { resolve, type ResolveClient } from "./resolve.js";
 import type { OmcSync } from "./sync.js";
 
 /** A resolved definition site, as plain data (no `vscode` types). */
@@ -54,7 +58,7 @@ export async function computeDefinition(
   const target = targetAt(tree, offset);
   if (!target) return undefined;
 
-  return resolve(owningClass, target, client);
+  return resolve(owningClass, target, client, log);
 }
 
 /**

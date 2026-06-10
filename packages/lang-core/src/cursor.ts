@@ -34,7 +34,7 @@ import type { Node, Tree } from "web-tree-sitter";
 
 /**
  * What the thing under the cursor *is*, syntactically. Drives which OMC query
- * `resolve.ts` runs and which completion source `completion-provider.ts` uses.
+ * `resolve.ts` runs and which completion source the autocomplete router uses.
  */
 export type CursorContextKind =
   /** A type/class name in a declaration position (component type). */
@@ -432,6 +432,151 @@ function annotationRootedPath(modification: Node): readonly string[] | null {
     n = n.parent;
   }
   return null;
+}
+
+/**
+ * The annotation field whose VALUE the caret at `offset` is assigning, or `null`
+ * when the caret is not in an annotation value position. The caret must be inside
+ * an annotation (gated on {@link annotationPath}) and to the right of a field's
+ * `=`, e.g. `fillPattern` for any of:
+ *
+ *   `fillPattern = │`             (empty value)
+ *   `fillPattern = FillPattern.│` (after the enum dot)
+ *   `fillPattern = FillPattern.Solid│`
+ *   `smooth = {Smooth.│}`         (braced array element)
+ *
+ * Distinguished from the field-NAME position ({@link annotationPath}, the
+ * field-name completion source): a caret ON the `name` IDENT of an
+ * `element_modification` — or in empty record parens with no `=` before it —
+ * returns `null` here so field-name completion is untouched. A completed
+ * `field = value,` followed by the caret (a fresh field-name slot) also returns
+ * `null`.
+ *
+ * Two parse shapes carry the value. A value the parser could attach sits in the
+ * field's `element_modification` as a `= expr` `modification` (the caret is
+ * within it). A value it could NOT attach — empty (`= │`) or trailing-dot
+ * (`= Enum.│`) — leaves the field's `element_modification` holding only its name
+ * and strands the `=`/`.` as `ERROR` siblings in the enclosing
+ * `class_modification`; the field name is then the nearest one before the caret
+ * with a stray token and no intervening `,`.
+ *
+ * @see Offset unit — module note.
+ */
+export function annotationValueField(
+  tree: Tree,
+  offset: number,
+): string | null {
+  if (annotationPath(tree, offset) === null) return null;
+
+  const attached = attachedValueField(tree, offset);
+  if (attached !== null) return attached;
+  return strayValueField(tree, offset);
+}
+
+/**
+ * The field whose attached `= expr` `modification` the caret sits within. A
+ * caret on the field's own `name` returns `null` — that is the field-NAME slot,
+ * not a value.
+ */
+function attachedValueField(tree: Tree, offset: number): string | null {
+  let node: Node | null = tree.rootNode.descendantForIndex(offset, offset);
+  while (node) {
+    if (node.type === "element_modification") {
+      const name = node.childForFieldName("name");
+      if (name && offset >= name.startIndex && offset <= name.endIndex) {
+        return null;
+      }
+      const mod = node.childForFieldName("modification");
+      if (
+        name &&
+        mod &&
+        isAssignmentModification(mod) &&
+        offset >= mod.startIndex &&
+        offset <= mod.endIndex
+      ) {
+        return name.text;
+      }
+    }
+    node = node.parent;
+  }
+  return null;
+}
+
+/**
+ * The field whose value the parser could not attach (empty or trailing-dot),
+ * recovered from the enclosing `class_modification`'s flattened children: the
+ * nearest field `element_modification` before the caret that is followed by a
+ * stray `=`/`.`/`ERROR` token, with no `,` closing the argument in between.
+ */
+function strayValueField(tree: Tree, offset: number): string | null {
+  let node: Node | null = tree.rootNode.descendantForIndex(offset, offset);
+  while (node) {
+    if (node.type === "class_modification") {
+      const field = strayValueFieldIn(node, offset);
+      if (field !== null) return field;
+    }
+    node = node.parent;
+  }
+  return null;
+}
+
+/** A `,` between arguments — sometimes recovered as an `ERROR` holding `,`. */
+function isArgumentSeparator(token: Node): boolean {
+  return token.type === "," || (token.type === "ERROR" && token.text === ",");
+}
+
+function strayValueFieldIn(classMod: Node, offset: number): string | null {
+  let field: string | null = null;
+  let stray = false;
+  for (const token of flattenedModificationTokens(classMod)) {
+    if (token.startIndex >= offset) break;
+    if (isArgumentSeparator(token)) {
+      field = null;
+      stray = false;
+    } else if (token.type === "element_modification") {
+      const name = token.childForFieldName("name");
+      field = name && name.text.length > 0 ? name.text : null;
+      stray = false;
+    } else if (
+      field !== null &&
+      // The value the parser couldn't attach strands a `=` or a trailing `.`,
+      // sometimes wrapped in a single-token `ERROR`.
+      (token.type === "=" ||
+        token.type === "." ||
+        (token.type === "ERROR" && /^[=.]$/.test(token.text)))
+    ) {
+      stray = true;
+    }
+  }
+  return stray ? field : null;
+}
+
+/**
+ * The children of a `class_modification` in document order, flattening its
+ * `argument_list` one level so the field `element_modification`s and the stray
+ * `=`/`.`/`ERROR` tokens an unattachable value leaves behind interleave as the
+ * caret sees them. The surrounding `(`/`)` are dropped.
+ */
+function flattenedModificationTokens(classMod: Node): Node[] {
+  const tokens: Node[] = [];
+  for (let i = 0; i < classMod.childCount; i++) {
+    const child = classMod.child(i);
+    if (!child || child.type === "(" || child.type === ")") continue;
+    if (child.type === "argument_list") {
+      for (let j = 0; j < child.childCount; j++) {
+        const grandchild = child.child(j);
+        if (grandchild) tokens.push(grandchild);
+      }
+    } else {
+      tokens.push(child);
+    }
+  }
+  return tokens;
+}
+
+/** Is `modification` an assignment (`= expr`) rather than a nested `(…)` record? */
+function isAssignmentModification(modification: Node): boolean {
+  return firstChildOfType(modification, "=") !== null;
 }
 
 /** Is `offset` strictly after a node's opening `(` and at/before its `)`? */

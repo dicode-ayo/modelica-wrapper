@@ -35,7 +35,7 @@ export {
   qualifyTypeReference,
   walkCrefType,
   type ResolvedTarget,
-} from "./resolve.js";
+} from "@dicode/modelica-lang-core";
 export { resolveOwningClass, type OwningClass } from "./owning-class.js";
 export { OmcSync } from "./sync.js";
 export {
@@ -66,15 +66,17 @@ export {
 } from "./symbols-provider.js";
 export {
   ModelicaCompletionProvider,
-  computeCompletions,
   toVscodeCompletionKind,
-  CompletionCandidateKind,
   COMPLETION_TRIGGER_CHARACTER,
+} from "./completion-provider.js";
+export {
+  computeCompletions,
+  CompletionCandidateKind,
   MAX_COMPLETIONS,
   type CompletionCandidate,
   type CompletionResult,
   type CompletionClient,
-} from "./completion-provider.js";
+} from "@dicode/modelica-completion";
 
 /** Lazy OMC client accessor — same shape the commands use. */
 export type EnsureClient = () => Promise<OmcClient>;

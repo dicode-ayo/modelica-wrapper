@@ -15,7 +15,7 @@
 import {
   CompletionCandidateKind,
   type CompletionCandidate,
-} from "./completion-provider.js";
+} from "./candidate.js";
 
 /**
  * Modelica reserved words offered in element/statement position. Excludes the

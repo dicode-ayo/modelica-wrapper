@@ -16,9 +16,9 @@ import { fileURLToPath } from "node:url";
 import { Language, Parser, type Tree } from "web-tree-sitter";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { GRAMMAR_WASM_FILENAME } from "./parse.js";
 import {
   annotationPath,
+  annotationValueField,
   classify,
   cursorInErrorRegion,
   identifierAt,
@@ -28,8 +28,19 @@ import {
   textualWordBefore,
 } from "./cursor.js";
 
+// The grammar WASM is an install artifact of the extension package; reach into
+// its grammar dir rather than re-fetch it here.
+const GRAMMAR_WASM_FILENAME = "tree-sitter-modelica.wasm";
+
 const here = dirname(fileURLToPath(import.meta.url));
-const grammarPath = join(here, "..", "..", "grammar", GRAMMAR_WASM_FILENAME);
+const grammarPath = join(
+  here,
+  "..",
+  "..",
+  "extension",
+  "grammar",
+  GRAMMAR_WASM_FILENAME,
+);
 
 let parser: Parser;
 
@@ -334,5 +345,71 @@ describe("annotationPath", () => {
     expect(annotationPath(parse(src), offsetOf(src, "Resistor") + 1)).toBe(
       null,
     );
+  });
+});
+
+describe("annotationValueField", () => {
+  it("names the field for an empty value (field = │)", () => {
+    const src = "model M\n  annotation(Rectangle(fillPattern = ));\nend M;";
+    const offset = offsetOf(src, "= ") + 2;
+    expect(annotationValueField(parse(src), offset)).toBe("fillPattern");
+  });
+
+  it("names the field after the enum dot (field = Enum.│)", () => {
+    const src =
+      "model M\n  annotation(Rectangle(fillPattern = FillPattern.));\nend M;";
+    const offset = offsetOf(src, "FillPattern.") + "FillPattern.".length;
+    expect(annotationValueField(parse(src), offset)).toBe("fillPattern");
+  });
+
+  it("names the field within a complete value (field = Enum.Member)", () => {
+    const src =
+      "model M\n  annotation(Rectangle(fillPattern = FillPattern.Solid));\nend M;";
+    const offset = offsetOf(src, "FillPattern.Solid") + 2;
+    expect(annotationValueField(parse(src), offset)).toBe("fillPattern");
+  });
+
+  it("names the field for a braced array element (field = {Enum.│})", () => {
+    const src = "model M\n  annotation(Line(smooth = {Smooth.}));\nend M;";
+    const offset = offsetOf(src, "Smooth.") + "Smooth.".length;
+    expect(annotationValueField(parse(src), offset)).toBe("smooth");
+  });
+
+  it("names a boolean field for an empty value (visible = │)", () => {
+    const src = "model M\n  annotation(Rectangle(visible = ));\nend M;";
+    const offset = offsetOf(src, "= ") + 2;
+    expect(annotationValueField(parse(src), offset)).toBe("visible");
+  });
+
+  it("names the second field when a prior one is complete", () => {
+    const src =
+      "model M\n  annotation(Rectangle(visible = true, fillPattern = ));\nend M;";
+    const offset = offsetOf(src, "fillPattern = ") + "fillPattern = ".length;
+    expect(annotationValueField(parse(src), offset)).toBe("fillPattern");
+  });
+
+  it("returns null on the field-NAME slot (no value-completion takeover)", () => {
+    const src =
+      "model M\n  annotation(Rectangle(fillPattern = FillPattern.Solid));\nend M;";
+    const offset = offsetOf(src, "fillPattern") + 1;
+    expect(annotationValueField(parse(src), offset)).toBe(null);
+  });
+
+  it("returns null in a fresh field-name slot after a comma", () => {
+    const src = "model M\n  annotation(Rectangle(visible = true, ));\nend M;";
+    const offset = offsetOf(src, "true, ") + "true, ".length;
+    expect(annotationValueField(parse(src), offset)).toBe(null);
+  });
+
+  it("returns null in an empty record's field-name slot", () => {
+    const src = "model M\n  annotation(Rectangle());\nend M;";
+    const offset = offsetOf(src, "Rectangle(") + "Rectangle(".length;
+    expect(annotationValueField(parse(src), offset)).toBe(null);
+  });
+
+  it("returns null for a component modifier value (not an annotation)", () => {
+    const src = "model M\n  Resistor r(R = );\nend M;";
+    const offset = offsetOf(src, "= ") + 2;
+    expect(annotationValueField(parse(src), offset)).toBe(null);
   });
 });

@@ -15,9 +15,10 @@ import { fileURLToPath } from "node:url";
 import { Language, Parser, type Tree } from "web-tree-sitter";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
+import type { ResolveClient } from "@dicode/modelica-lang-core";
+
 import { computeDefinition } from "./definition-provider.js";
 import { GRAMMAR_WASM_FILENAME } from "./parse.js";
-import type { ResolveClient } from "./resolve.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const grammarPath = join(here, "..", "..", "grammar", GRAMMAR_WASM_FILENAME);

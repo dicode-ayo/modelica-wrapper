@@ -61,7 +61,8 @@
 
 import { log } from "../logger.js";
 
-import type { CompletionClient } from "./completion-provider.js";
+import type { CompletionClient } from "@dicode/modelica-completion";
+
 import type { HoverClient } from "./hover-provider.js";
 
 /**

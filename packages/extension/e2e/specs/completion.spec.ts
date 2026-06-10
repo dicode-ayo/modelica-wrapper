@@ -226,5 +226,34 @@ test.describe(
         timeout: 60_000,
       });
     });
+
+    test("annotation value position completes enum members", async ({
+      page,
+      codeServer,
+    }) => {
+      test.setTimeout(120_000);
+
+      await page.goto(codeServer.url);
+      await waitForWorkbench(page);
+      await openFileViaQuickOpen(page, "AnnotDemo.mo");
+
+      // In `annotation(Rectangle(fillPattern = |))` the popup must list the
+      // FillPattern enum members — the static value schema, no OMC.
+      await goToLineStart(page, 2); // the `Real x;` declaration line
+      await page.keyboard.press("End");
+      await page.keyboard.press("Enter");
+      // Type the closing parens explicitly (auto-close is off in the harness),
+      // then step the caret back into the empty value of `fillPattern = `.
+      await page.keyboard.type(
+        "  Real z annotation(Rectangle(fillPattern = ))",
+      );
+      await page.keyboard.press("ArrowLeft");
+      await page.keyboard.press("ArrowLeft");
+      await page.keyboard.press("Control+Space");
+
+      await expect(suggestRow(page, "FillPattern.Solid")).toBeVisible({
+        timeout: 60_000,
+      });
+    });
   },
 );
