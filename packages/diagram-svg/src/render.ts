@@ -477,8 +477,8 @@ function renderRectangle(s: RectangleShape, ctx: RenderContext): string {
   const thickness = scaledThickness(s.lineThickness, ctx);
   const dashArray = linePatternToDashArray(s.pattern);
   const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
-  const radiusAttr =
-    s.radius && s.radius > 0 ? ` rx="${s.radius}" ry="${s.radius}"` : "";
+  const r = clampCornerRadius(s.radius, width, height);
+  const radiusAttr = r > 0 ? ` rx="${r}" ry="${r}"` : "";
   return `<rect x="${x}" y="${y}" width="${width}" height="${height}"${radiusAttr} fill="${fill}" stroke="${stroke}" stroke-width="${thickness}"${dashAttr}/>`;
 }
 
@@ -619,6 +619,21 @@ function extentToRect(extent: Extent): RectBox {
     width: maxX - minX,
     height: maxY - minY,
   };
+}
+
+/**
+ * Modelica `Rectangle.radius` is the corner radius in diagram units,
+ * clamped to half the shorter side so opposite corners never overlap
+ * (matches OMEdit). A non-positive or missing radius yields `0` (sharp
+ * corners).
+ */
+function clampCornerRadius(
+  radius: number | undefined,
+  width: number,
+  height: number,
+): number {
+  if (radius === undefined || !(radius > 0)) return 0;
+  return Math.min(radius, width / 2, height / 2);
 }
 
 function escapeAttr(value: string): string {
