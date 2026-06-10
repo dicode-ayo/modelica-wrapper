@@ -8,6 +8,8 @@ import {
   applyResize,
   applyRotate,
   applyRotation,
+  applyWaypointDelete,
+  applyWaypointInsert,
   retainExistingSelection,
   selectByDiagramRect,
   shapeCentre,
@@ -262,6 +264,104 @@ describe("applyDelete", () => {
   it("returns the same reference when nothing to delete", () => {
     const layout = baseLayout();
     expect(applyDelete(layout, [])).toBe(layout);
+  });
+});
+
+describe("applyWaypointInsert", () => {
+  it("inserts a waypoint on the segment nearest the click", () => {
+    // Z-route. A click at (8, 4) projects onto the middle vertical
+    // segment (x=5) at (5, 4), landing between waypoints[1] and [2].
+    const base = withRoute([
+      [0, 0],
+      [5, 0],
+      [5, 10],
+      [10, 10],
+    ]);
+    const l = applyWaypointInsert(base, 0, { x: 8, y: 4 });
+    expect(l.connections[0]!.waypoints).toEqual([
+      [0, 0],
+      [5, 0],
+      [5, 4],
+      [5, 10],
+      [10, 10],
+    ]);
+  });
+
+  it("projects onto the first segment when the click is nearest to it", () => {
+    // Click near the horizontal segment 0-1 (y=0): projects to (3, 0)
+    // and lands between waypoints[0] and [1].
+    const base = withRoute([
+      [0, 0],
+      [10, 0],
+      [10, 10],
+    ]);
+    const l = applyWaypointInsert(base, 0, { x: 3, y: 1 });
+    expect(l.connections[0]!.waypoints).toEqual([
+      [0, 0],
+      [3, 0],
+      [10, 0],
+      [10, 10],
+    ]);
+  });
+
+  it("clamps the projection to the segment endpoints", () => {
+    // A click beyond the far end of a 2-point straight connection
+    // projects onto the endpoint, not past it.
+    const base = withRoute([
+      [0, 0],
+      [10, 0],
+    ]);
+    const l = applyWaypointInsert(base, 0, { x: 50, y: 0 });
+    expect(l.connections[0]!.waypoints).toEqual([
+      [0, 0],
+      [10, 0],
+      [10, 0],
+    ]);
+  });
+
+  it("returns the same reference for an unknown connection index", () => {
+    const layout = baseLayout();
+    expect(applyWaypointInsert(layout, 9, { x: 0, y: 0 })).toBe(layout);
+  });
+});
+
+describe("applyWaypointDelete", () => {
+  it("removes an internal waypoint", () => {
+    const base = withRoute([
+      [0, 0],
+      [5, 0],
+      [5, 10],
+      [10, 10],
+    ]);
+    const l = applyWaypointDelete(base, 0, 1);
+    expect(l.connections[0]!.waypoints).toEqual([
+      [0, 0],
+      [5, 10],
+      [10, 10],
+    ]);
+  });
+
+  it("never removes the first endpoint", () => {
+    const layout = withRoute([
+      [0, 0],
+      [5, 0],
+      [10, 10],
+    ]);
+    expect(applyWaypointDelete(layout, 0, 0)).toBe(layout);
+  });
+
+  it("never removes the last endpoint", () => {
+    const layout = withRoute([
+      [0, 0],
+      [5, 0],
+      [10, 10],
+    ]);
+    expect(applyWaypointDelete(layout, 0, 2)).toBe(layout);
+  });
+
+  it("returns the same reference for an unknown connection index", () => {
+    const layout = baseLayout();
+    expect(applyWaypointDelete(layout, 9, 1)).toBe(layout);
   });
 });
 

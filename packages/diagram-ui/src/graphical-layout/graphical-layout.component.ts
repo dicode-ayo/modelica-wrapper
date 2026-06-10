@@ -1,3 +1,4 @@
+import type { Node } from "@babylonjs/core";
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { ContextProvider } from "@lit/context";
@@ -41,15 +42,20 @@ import {
   applyRotate,
   applyRotation,
   applySnapToExtents,
+  applyWaypointDelete,
+  applyWaypointInsert,
   retainExistingSelection,
   selectByDiagramRect,
   shapeCentre,
 } from "../interaction/layout-ops.js";
 import {
+  entityKeyForNode,
   formatComponentKey,
   formatConnectorKey,
   isComponentKey,
   isConnectorKey,
+  isEdgeKey,
+  isJunctionKey,
   parseKey,
 } from "../interaction/node-keys.js";
 import type { LibraryEvents } from "../library-browser/library-browser.component.js";
@@ -790,13 +796,23 @@ export class OmGraphicalLayout extends LitElement {
   }
 
   private onCanvasDblClick = (e: MouseEvent): void => {
-    if (this.readonly || !this.libraryDataSource || !this.dblClickPicker) {
+    if (this.readonly || !this.dblClickPicker) {
+      return;
+    }
+    const node = this.dblClickPicker(e.clientX, e.clientY);
+    // Double-clicking a connection edits its route: a hit on the edge
+    // line inserts a waypoint at the click; a hit on a junction disc
+    // deletes that waypoint.
+    if (node && this.handleWaypointDblClick(node, e)) {
+      return;
+    }
+    if (!this.libraryDataSource) {
       return;
     }
     // Only open on empty-canvas double-clicks — double-clicking a
     // component is the "open parameters" gesture handled separately
     // through InteractionManager's doubleClick event.
-    if (this.dblClickPicker(e.clientX, e.clientY) !== null) {
+    if (node !== null) {
       return;
     }
     // Capture the diagram-space click position now: by the time the
@@ -806,6 +822,48 @@ export class OmGraphicalLayout extends LitElement {
       this.sceneEl?.clientToDiagram(e.clientX, e.clientY) ?? null;
     this.libraryBrowserOpen = true;
   };
+
+  /**
+   * Resolve a double-click on a connection's edge / junction into a
+   * waypoint insert / delete and commit it. Returns `true` when the
+   * gesture was consumed (so the library-browser path is skipped),
+   * `false` when the picked node isn't a connection.
+   */
+  private handleWaypointDblClick(node: Node, e: MouseEvent): boolean {
+    if (!this.layout) {
+      return false;
+    }
+    const entity = entityKeyForNode(node);
+    if (!entity) {
+      return false;
+    }
+    if (isEdgeKey(entity)) {
+      // Edge mesh nodeId is `<connIdx>/edge`; the connection index is
+      // the leading segment.
+      const connIdx = Number(entity.nodeId.split("/")[0]);
+      const point = this.sceneEl?.clientToDiagram(e.clientX, e.clientY);
+      if (Number.isNaN(connIdx) || !point) {
+        return false;
+      }
+      this.commitLayout(applyWaypointInsert(this.layout, connIdx, point));
+      return true;
+    }
+    if (isJunctionKey(entity)) {
+      // Junction nodeId is the compound `<connIdx>/<waypointIdx>`.
+      const slash = entity.nodeId.indexOf("/");
+      if (slash < 0) {
+        return false;
+      }
+      const connIdx = Number(entity.nodeId.slice(0, slash));
+      const waypointIdx = Number(entity.nodeId.slice(slash + 1));
+      if (Number.isNaN(connIdx) || Number.isNaN(waypointIdx)) {
+        return false;
+      }
+      this.commitLayout(applyWaypointDelete(this.layout, connIdx, waypointIdx));
+      return true;
+    }
+    return false;
+  }
 
   private onLibrarySelect = (
     e: CustomEvent<LibraryEvents["om-library-select"]>,

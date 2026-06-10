@@ -682,6 +682,121 @@ export function applyDelete(
 }
 
 /**
+ * Inserts a new waypoint into a connection's route at the point on the
+ * polyline closest to `point`. The waypoint lands between the two
+ * existing waypoints whose segment owns the projection, so the route's
+ * order stays consistent and the new corner sits on the line the user
+ * grabbed.
+ *
+ * Endpoints are never displaced — the insert index is clamped to
+ * `[1, length-1]`, i.e. strictly internal. A connection with fewer
+ * than two waypoints has no segment to split and is returned unchanged.
+ */
+export function applyWaypointInsert(
+  layout: DiagramLayout,
+  connIdx: number,
+  point: { x: number; y: number },
+): DiagramLayout {
+  const conn = layout.connections[connIdx];
+  if (!conn || conn.waypoints.length < 2) {
+    return layout;
+  }
+  const insertAt = closestSegmentInsertIndex(conn.waypoints, point);
+  const before = conn.waypoints[insertAt - 1];
+  const after = conn.waypoints[insertAt];
+  if (before === undefined || after === undefined) {
+    return layout;
+  }
+  const proj = projectOntoSegment(before, after, point);
+  const waypoints = [
+    ...conn.waypoints.slice(0, insertAt),
+    proj,
+    ...conn.waypoints.slice(insertAt),
+  ];
+  return replaceConnection(layout, connIdx, { ...conn, waypoints });
+}
+
+/**
+ * Removes a single internal waypoint from a connection. Endpoint
+ * waypoints (index 0 and the last) anchor to their connectors and are
+ * never removed; an out-of-range or endpoint index returns the layout
+ * unchanged.
+ */
+export function applyWaypointDelete(
+  layout: DiagramLayout,
+  connIdx: number,
+  waypointIdx: number,
+): DiagramLayout {
+  const conn = layout.connections[connIdx];
+  if (!conn) {
+    return layout;
+  }
+  const lastIdx = conn.waypoints.length - 1;
+  if (waypointIdx <= 0 || waypointIdx >= lastIdx) {
+    return layout;
+  }
+  const waypoints = conn.waypoints.filter((_, i) => i !== waypointIdx);
+  return replaceConnection(layout, connIdx, { ...conn, waypoints });
+}
+
+function replaceConnection(
+  layout: DiagramLayout,
+  connIdx: number,
+  conn: DiagramLayout["connections"][number],
+): DiagramLayout {
+  const connections = layout.connections.map((c, i) =>
+    i === connIdx ? conn : c,
+  );
+  return { ...layout, connections };
+}
+
+/**
+ * Index `i` such that the new waypoint belongs between `waypoints[i-1]`
+ * and `waypoints[i]` — the segment whose projection of `point` is
+ * nearest. Always in `[1, length-1]`, so endpoints aren't displaced.
+ */
+function closestSegmentInsertIndex(
+  waypoints: ReadonlyArray<Point>,
+  point: { x: number; y: number },
+): number {
+  let best = 1;
+  let bestDist = Infinity;
+  for (let i = 1; i < waypoints.length; i++) {
+    const a = waypoints[i - 1];
+    const b = waypoints[i];
+    if (a === undefined || b === undefined) {
+      continue;
+    }
+    const proj = projectOntoSegment(a, b, point);
+    const dx = proj[0] - point.x;
+    const dy = proj[1] - point.y;
+    const dist = dx * dx + dy * dy;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = i;
+    }
+  }
+  return best;
+}
+
+/** Closest point to `p` on the segment `a`–`b`, clamped to the segment. */
+function projectOntoSegment(
+  a: Point,
+  b: Point,
+  p: { x: number; y: number },
+): Point {
+  const abx = b[0] - a[0];
+  const aby = b[1] - a[1];
+  const lenSq = abx * abx + aby * aby;
+  if (lenSq === 0) {
+    return [a[0], a[1]];
+  }
+  const t = ((p.x - a[0]) * abx + (p.y - a[1]) * aby) / lenSq;
+  const clamped = Math.max(0, Math.min(1, t));
+  return [a[0] + clamped * abx, a[1] + clamped * aby];
+}
+
+/**
  * Rotates each selected component / connector around its placement
  * centre by ±90°. Modelica rotation is in degrees CCW positive, so
  * `cw` subtracts 90.
