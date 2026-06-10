@@ -5,8 +5,6 @@ import type { DiagramLayout } from "@dicode/omc-client";
 import "../src/graphical-layout/graphical-layout.component.js";
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
 import type { OmScene } from "../src/scene/scene.component.js";
-import type { OmConnection } from "../src/connection/connection.component.js";
-import type { OmEdge } from "../src/connection/edge.component.js";
 
 /** The canvas lives in `<om-scene>`'s shadow root, one level down. */
 function sceneCanvas(el: OmGraphicalLayout): HTMLCanvasElement {
@@ -194,10 +192,11 @@ describe("<om-graphical-layout>", () => {
 
   it("tags a connection's edge with its canonical selection key so clicks select it", async () => {
     const el = await mount(connectedLayout());
-    const conn = el.shadowRoot?.querySelector(
-      "om-connection",
-    ) as OmConnection | null;
-    const edge = conn?.shadowRoot?.querySelector("om-edge") as OmEdge | null;
+    const conn = el.shadowRoot?.querySelector("om-connection");
+    if (!conn) {
+      throw new Error("expected an om-connection");
+    }
+    const edge = conn.shadowRoot?.querySelector("om-edge");
     if (!edge) {
       throw new Error("expected an om-edge under the connection");
     }
@@ -209,7 +208,7 @@ describe("<om-graphical-layout>", () => {
     // Round-trip: selecting that key highlights the edge.
     el.setSelection(["edge:0"]);
     await el.updateComplete;
-    await conn!.updateComplete;
+    await conn.updateComplete;
     expect(edge.selected).toBe(true);
   });
 

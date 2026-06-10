@@ -961,6 +961,14 @@ export class OmGraphicalLayout extends LitElement {
 
   private applySelection(key: string, additive: boolean): void {
     const next = selectionAfterClick(this.selectedKeys, key, additive);
+    // A plain click on an already-selected member returns the same set;
+    // re-emitting would churn listeners and the store for no change.
+    if (
+      next.size === this.selectedKeys.size &&
+      [...next].every((k) => this.selectedKeys.has(k))
+    ) {
+      return;
+    }
     this.selectedKeys = next;
     this.emit("om-selection-change", { keys: Array.from(next) });
     this.interactionStore.next({ selectedKeys: Array.from(next) });
