@@ -554,7 +554,7 @@ describe("gradient fill patterns", () => {
     expect(matches).toHaveLength(1);
   });
 
-  it("falls back to a darkened fillColor when lineColor is absent", () => {
+  it("uses a black edge when lineColor is absent — no darken math", () => {
     // Inline the shape so no default lineColor sneaks in via the helper's
     // default parameter (JS resolves `undefined` to the default).
     const svg = renderIconLayersToSvg([
@@ -570,9 +570,33 @@ describe("gradient fill patterns", () => {
         },
       ]),
     ]);
-    // 50% of each fillColor channel: [100, 50, 25].
-    expect(svg).toContain('<stop offset="0%" stop-color="rgb(100,50,25)"/>');
+    expect(svg).toContain('<stop offset="0%" stop-color="rgb(0,0,0)"/>');
     expect(svg).toContain('<stop offset="50%" stop-color="rgb(200,100,50)"/>');
+  });
+
+  it("Forward hatch emits a <pattern> tile of lineColor lines over fillColor", () => {
+    const svg = renderIconLayersToSvg([
+      makeLayer("Test.Hatch", [
+        {
+          kind: "rectangle",
+          extent: [
+            [-50, -25],
+            [50, 25],
+          ],
+          fillColor: [220, 220, 220],
+          lineColor: [0, 0, 255],
+          fillPattern: "Forward",
+        },
+      ]),
+    ]);
+    expect(svg).toMatch(
+      /<pattern id="dsvg-hatch-forward-[^"]+" patternUnits="userSpaceOnUse"/,
+    );
+    expect(svg).toContain(
+      '<rect width="6" height="6" fill="rgb(220,220,220)"/>',
+    );
+    expect(svg).toContain('stroke="rgb(0,0,255)"');
+    expect(svg).toMatch(/<rect [^>]*fill="url\(#dsvg-hatch-forward-[^"]+\)"/);
   });
 
   it("omits gradient defs entirely when no shape uses a gradient fill", () => {

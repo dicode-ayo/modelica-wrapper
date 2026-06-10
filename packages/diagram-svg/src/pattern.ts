@@ -3,21 +3,22 @@
  *
  * `LinePattern` straightforwardly maps to `stroke-dasharray`.
  *
- * `FillPattern` divides into two regimes:
- *  - Solid / None / unknown → plain `fill` value (an `rgb(...)` color or `none`).
- *  - HorizontalCylinder / VerticalCylinder / Sphere → SVG gradient. We emit
- *    one `<linearGradient>` / `<radialGradient>` def per unique
- *    (kind, edge color, middle color) tuple, keyed by a deterministic id so
- *    Chromatic snapshots stay stable across runs and so identical fills on
- *    multiple shapes share one def.
+ * `FillPattern` is resolved by the renderer-neutral `fillSpec` helper
+ * (`fill-spec.ts`); this module maps that spec to the SVG attribute regime:
+ *  - Solid / None / unknown → plain `fill` value (an `rgb(...)` color or
+ *    `none`).
+ *  - HorizontalCylinder / VerticalCylinder / Sphere → an SVG gradient def.
+ *  - Horizontal / Vertical / Cross / Forward / Backward / CrossDiag → an SVG
+ *    `<pattern>` tile.
  *
- * The remaining FillPattern values (Horizontal / Vertical / Cross / Forward /
- * Backward / CrossDiag) are hatch patterns that need SVG `<pattern>` tiles —
- * skipped for v1; callers get the solid fill until they're implemented.
+ * One `<linearGradient>` / `<radialGradient>` / `<pattern>` def is emitted per
+ * unique fill, keyed by a deterministic id so Chromatic snapshots stay stable
+ * and identical fills on multiple shapes share one def.
  */
 
 import type { Color } from "./types.js";
 import { colorToCss } from "./color.js";
+import { fillSpec, type FillSpec } from "./fill-spec.js";
 
 /**
  * Map a Modelica `LinePattern` enum literal to an SVG `stroke-dasharray`
@@ -52,138 +53,160 @@ export function linePatternToDashArray(pattern?: string): string | undefined {
 /**
  * Result of resolving a Modelica fill pattern. `value` is the string that
  * should go into the SVG `fill="..."` attribute; if `def` is present, the
- * caller must include the gradient XML in the SVG's `<defs>` block exactly
- * once per `def.id` (multiple shapes sharing the same fill share a def).
+ * caller must include the def XML in the SVG's `<defs>` block exactly once
+ * per `def.id` (multiple shapes sharing the same fill share a def).
  */
 export interface ResolvedFill {
   value: string;
   def?: { id: string; xml: string };
 }
 
+type LinearGradientSpec = Extract<FillSpec, { kind: "linear-gradient" }>;
+type RadialGradientSpec = Extract<FillSpec, { kind: "radial-gradient" }>;
+type HatchSpec = Extract<FillSpec, { kind: "hatch" }>;
+
 /**
  * Resolve a Modelica `FillPattern` (with the resolved fillColor / lineColor)
- * into a fill attribute value + an optional gradient def. Used for
+ * into a fill attribute value + an optional def. Used for
  * rectangle / polygon / ellipse — anything that takes a `FilledShape` block
  * in Modelica's §18.6 spec.
- *
- * Gradient stops:
- *  - HorizontalCylinder: linear gradient on the y-axis (top→middle→bottom),
- *    stops [lineColor, fillColor, lineColor]. Cylinder lies horizontally,
- *    so shading varies vertically — matches OMEdit's rendering of the
- *    typical Inertia / SpringDamper rectangles.
- *  - VerticalCylinder: linear gradient on the x-axis.
- *  - Sphere: radial gradient, fillColor at center, lineColor at edge.
- *
- * When `lineColor` is unset we fall back to a darkened fillColor so the
- * gradient still has visible contrast. When both are unset we still produce
- * a "none" fill — there's nothing to draw.
  */
 export function resolveFill(opts: {
   fillColor: Color | undefined;
   lineColor: Color | undefined;
   pattern: string | undefined;
 }): ResolvedFill {
-  const { fillColor, lineColor, pattern } = opts;
-
-  if (pattern === "None") return { value: "none" };
-
-  const fillCss = colorToCss(fillColor, "none");
-  const kind = gradientKindFor(pattern);
-  if (!kind) return { value: fillCss };
-
-  // If there's no fillColor at all, the gradient has nothing meaningful to
-  // shade — fall through to whatever the solid path would emit ("none").
-  if (fillCss === "none") return { value: "none" };
-
-  const edge = colorToCss(lineColor, darkenedFallback(fillColor));
-  const id = makeGradientId(kind, edge, fillCss);
-  const xml = buildGradientXml(id, kind, edge, fillCss);
-  return { value: `url(#${id})`, def: { id, xml } };
+  const spec = fillSpec(opts);
+  switch (spec.kind) {
+    case "none":
+      return { value: "none" };
+    case "solid":
+      return { value: colorToCss(spec.color, "none") };
+    case "linear-gradient":
+    case "radial-gradient":
+    case "hatch": {
+      const id = makeFillId(spec);
+      const xml = buildFillXml(id, spec);
+      return { value: `url(#${id})`, def: { id, xml } };
+    }
+  }
 }
 
-type GradientKind = "hcyl" | "vcyl" | "sphere";
-
-function gradientKindFor(
-  pattern: string | undefined,
-): GradientKind | undefined {
-  switch (pattern) {
-    case "HorizontalCylinder":
-      return "hcyl";
-    case "VerticalCylinder":
-      return "vcyl";
-    case "Sphere":
-      return "sphere";
-    default:
-      return undefined;
+function makeFillId(
+  spec: LinearGradientSpec | RadialGradientSpec | HatchSpec,
+): string {
+  const slug = (s: string) => s.replace(/[^0-9A-Za-z]/g, "");
+  if (spec.kind === "hatch") {
+    const line = slug(colorToCss(spec.line));
+    const bg = slug(colorToCss(spec.background));
+    return `dsvg-hatch-${spec.direction}-${line}-${bg}`;
   }
+  const kind = gradientIdKind(spec);
+  const edge = slug(stopColorAt(spec, "edge"));
+  const middle = slug(stopColorAt(spec, "middle"));
+  return `dsvg-${kind}-${edge}-${middle}`;
+}
+
+function gradientIdKind(
+  spec: LinearGradientSpec | RadialGradientSpec,
+): "hcyl" | "vcyl" | "sphere" {
+  if (spec.kind === "radial-gradient") return "sphere";
+  return spec.y2 === 1 ? "hcyl" : "vcyl";
 }
 
 /**
- * Build a stable, descriptive gradient id. Deterministic so identical
- * (kind, edge, middle) tuples collapse to one def across the whole SVG.
- * The leading `dsvg-` prefix scopes our ids to this renderer in case the
- * SVG ends up inlined alongside other gradient-using markup.
+ * The cylinder gradient's edge color sits at offset 0/1, its middle color at
+ * offset 0.5; the sphere's middle (fillColor) sits at offset 0 (center), its
+ * edge (lineColor) at offset 1 (rim).
  */
-function makeGradientId(
-  kind: GradientKind,
-  edge: string,
-  middle: string,
+function stopColorAt(
+  spec: LinearGradientSpec | RadialGradientSpec,
+  which: "edge" | "middle",
 ): string {
-  const slug = (s: string) => s.replace(/[^0-9A-Za-z]/g, "");
-  return `dsvg-${kind}-${slug(edge)}-${slug(middle)}`;
+  if (spec.kind === "radial-gradient") {
+    const center = spec.stops[0];
+    const rim = spec.stops[1];
+    if (center === undefined || rim === undefined) return "none";
+    return colorToCss(which === "middle" ? center.color : rim.color);
+  }
+  const edge = spec.stops[0];
+  const middle = spec.stops[1];
+  if (edge === undefined || middle === undefined) return "none";
+  return colorToCss(which === "edge" ? edge.color : middle.color);
 }
 
-function buildGradientXml(
+function buildFillXml(
   id: string,
-  kind: GradientKind,
-  edge: string,
-  middle: string,
+  spec: LinearGradientSpec | RadialGradientSpec | HatchSpec,
 ): string {
-  if (kind === "sphere") {
-    return [
-      `<radialGradient id="${id}" cx="0.5" cy="0.5" r="0.5">`,
-      `<stop offset="0%" stop-color="${middle}"/>`,
-      `<stop offset="100%" stop-color="${edge}"/>`,
-      `</radialGradient>`,
-    ].join("");
+  switch (spec.kind) {
+    case "radial-gradient":
+      return [
+        `<radialGradient id="${id}" cx="${spec.cx}" cy="${spec.cy}" r="${spec.r}">`,
+        ...spec.stops.map(
+          (s) =>
+            `<stop offset="${pct(s.offset)}" stop-color="${colorToCss(s.color)}"/>`,
+        ),
+        `</radialGradient>`,
+      ].join("");
+    case "linear-gradient":
+      return [
+        `<linearGradient id="${id}" x1="${spec.x1}" y1="${spec.y1}" x2="${spec.x2}" y2="${spec.y2}">`,
+        ...spec.stops.map(
+          (s) =>
+            `<stop offset="${pct(s.offset)}" stop-color="${colorToCss(s.color)}"/>`,
+        ),
+        `</linearGradient>`,
+      ].join("");
+    case "hatch":
+      return buildHatchXml(id, spec);
   }
-  // hcyl = vertical gradient (top→bottom); vcyl = horizontal (left→right).
-  // Default gradientUnits is `objectBoundingBox` so coords are 0..1 in the
-  // shape's bbox and one def can serve many shapes.
-  const [x1, y1, x2, y2] = kind === "hcyl" ? [0, 0, 0, 1] : [0, 0, 1, 0];
+}
+
+function pct(offset: number): string {
+  return `${offset * 100}%`;
+}
+
+/**
+ * A `userSpaceOnUse` `<pattern>` tile holding the hatch's line(s) over a
+ * `background` rect. Tile is `spacing × spacing`; lines run edge-to-edge so
+ * adjacent tiles connect seamlessly.
+ */
+function buildHatchXml(id: string, spec: HatchSpec): string {
+  const s = spec.spacing;
+  const line = colorToCss(spec.line);
+  const bg = colorToCss(spec.background);
+  const strokes = hatchStrokes(spec.direction, s, line, spec.lineWidth);
   return [
-    `<linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">`,
-    `<stop offset="0%" stop-color="${edge}"/>`,
-    `<stop offset="50%" stop-color="${middle}"/>`,
-    `<stop offset="100%" stop-color="${edge}"/>`,
-    `</linearGradient>`,
+    `<pattern id="${id}" patternUnits="userSpaceOnUse" width="${s}" height="${s}">`,
+    `<rect width="${s}" height="${s}" fill="${bg}"/>`,
+    ...strokes,
+    `</pattern>`,
   ].join("");
 }
 
-/**
- * Derive an edge color when `lineColor` is unset. We darken the fillColor
- * toward black by 50% so the gradient still has contrast at the edges.
- * Picked to give a reasonable cylinder look on a typical light-gray fill
- * without veering toward pure black on already-dark fills.
- */
-function darkenedFallback(fillColor: Color | undefined): string {
-  if (!fillColor) return "rgb(0,0,0)";
-  const [r, g, b] = fillColor;
-  const k = 0.5;
-  const darker: Color = [
-    Math.max(0, Math.round(r * k)),
-    Math.max(0, Math.round(g * k)),
-    Math.max(0, Math.round(b * k)),
-  ];
-  return colorToCss(darker, "rgb(0,0,0)");
-}
-
-/**
- * @deprecated Kept for the small number of internal callers that haven't
- * been migrated to `resolveFill`. New code should use `resolveFill` so
- * gradient defs get collected and emitted in `<defs>`.
- */
-export function fillPatternToFill(fillCss: string, pattern?: string): string {
-  if (pattern === "None") return "none";
-  return fillCss;
+function hatchStrokes(
+  direction: HatchSpec["direction"],
+  s: number,
+  line: string,
+  w: number,
+): string[] {
+  const stroke = (x1: number, y1: number, x2: number, y2: number) =>
+    `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${line}" stroke-width="${w}"/>`;
+  const half = s / 2;
+  switch (direction) {
+    case "horizontal":
+      return [stroke(0, half, s, half)];
+    case "vertical":
+      return [stroke(half, 0, half, s)];
+    case "cross":
+      return [stroke(0, half, s, half), stroke(half, 0, half, s)];
+    case "forward":
+      // Bottom-left → top-right slash; tiles seamlessly across the spacing.
+      return [stroke(0, s, s, 0)];
+    case "backward":
+      return [stroke(0, 0, s, s)];
+    case "cross-diag":
+      return [stroke(0, s, s, 0), stroke(0, 0, s, s)];
+  }
 }

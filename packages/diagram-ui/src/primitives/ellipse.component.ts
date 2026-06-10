@@ -1,6 +1,7 @@
 import { customElement, property } from "lit/decorators.js";
 import type { TransformNode } from "@babylonjs/core";
 import type { EllipseShape } from "@dicode/omc-client";
+import { fillSpec } from "@dicode/diagram-svg";
 
 import { OmShapePrimitive } from "./shape-primitive.js";
 import {
@@ -53,7 +54,12 @@ export class OmEllipse extends OmShapePrimitive {
     const baseName = `om-ellipse.${this.zOrder}`;
     const gi = graphicItemNode(parent, s, `${baseName}.gi`);
     const root = gi.node;
-    if (s.fillPattern !== "None" && s.fillColor) {
+    const fill = fillSpec({
+      fillColor: s.fillColor,
+      lineColor: s.lineColor,
+      pattern: s.fillPattern,
+    });
+    if (fill.kind !== "none") {
       this.resources.push(
         buildFanFromCenter(
           scene,
@@ -61,14 +67,17 @@ export class OmEllipse extends OmShapePrimitive {
           cx,
           cy,
           ring,
-          s.fillColor,
+          { x, y, width, height },
+          fill,
           z,
           `${baseName}.fill`,
         ),
       );
     }
 
-    const strokePoints = [...ring, ring[0]!];
+    const firstRingPoint = ring[0];
+    const strokePoints =
+      firstRingPoint === undefined ? ring : [...ring, firstRingPoint];
     const stroke = buildStroke(
       scene,
       root,

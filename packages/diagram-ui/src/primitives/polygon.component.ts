@@ -1,6 +1,7 @@
 import { customElement, property } from "lit/decorators.js";
 import type { TransformNode } from "@babylonjs/core";
 import type { PolygonShape } from "@dicode/omc-client";
+import { fillSpec } from "@dicode/diagram-svg";
 
 import { OmShapePrimitive } from "./shape-primitive.js";
 import {
@@ -40,17 +41,22 @@ export class OmPolygon extends OmShapePrimitive {
     const baseName = `om-polygon.${this.zOrder}`;
     const gi = graphicItemNode(parent, s, `${baseName}.gi`);
     const root = gi.node;
-    if (s.fillPattern !== "None" && s.fillColor) {
-      const fill = buildFilledPolygon(
+    const fill = fillSpec({
+      fillColor: s.fillColor,
+      lineColor: s.lineColor,
+      pattern: s.fillPattern,
+    });
+    if (fill.kind !== "none") {
+      const filled = buildFilledPolygon(
         scene,
         root,
         points,
-        s.fillColor,
+        fill,
         z,
         `${baseName}.fill`,
       );
-      if (fill) {
-        this.resources.push(fill);
+      if (filled) {
+        this.resources.push(filled);
       }
     }
 
