@@ -838,8 +838,7 @@ export class OmGraphicalLayout extends LitElement {
       return false;
     }
     if (isEdgeKey(entity)) {
-      // Edge mesh nodeId is `<connIdx>/edge`; the connection index is
-      // the leading segment.
+      // Edge mesh nodeId is `<connIdx>/edge`.
       const connIdx = Number(entity.nodeId.split("/")[0]);
       const point = this.sceneEl?.clientToDiagram(e.clientX, e.clientY);
       if (Number.isNaN(connIdx) || !point) {

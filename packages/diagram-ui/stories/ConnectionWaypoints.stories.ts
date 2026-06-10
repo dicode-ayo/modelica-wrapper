@@ -5,12 +5,6 @@
  * Try it:
  *  - double-click a connection's line  → insert a waypoint at the click
  *  - double-click a junction dot        → delete that waypoint
- *
- * The host commits each edit by emitting `om-graphical-layout-change`
- * with the full layout; this story feeds it straight back into the
- * element so the new route is visible immediately. In the extension
- * the same event round-trips through OMC's `Line(points=...)` write
- * path (`apply-edits.ts` / `diff-layout.ts`).
  */
 
 import type { Meta, StoryObj } from "@storybook/web-components";
@@ -46,11 +40,11 @@ function waypointLayout(): DiagramLayout {
   };
 }
 
-let currentLayout: DiagramLayout = waypointLayout();
-
-const meta: Meta<StoryArgs> = {
-  title: "diagram-ui/ConnectionWaypoints",
-  render: ({ readonly }: StoryArgs): TemplateResult => html`
+function renderWithLayout(
+  state: { layout: DiagramLayout },
+  { readonly }: StoryArgs,
+): TemplateResult {
+  return html`
     <div class="om-story">
       <h3>Connection waypoint insert / delete</h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
@@ -60,19 +54,23 @@ const meta: Meta<StoryArgs> = {
       </p>
       <div class="om-story-canvas-host" style="height: 540px;">
         <om-graphical-layout
-          .layout=${currentLayout}
+          .layout=${state.layout}
           ?readonly=${readonly}
           @om-graphical-layout-change=${(e: CustomEvent<DiagramLayout>) => {
-            currentLayout = e.detail;
+            state.layout = e.detail;
             const el = e.currentTarget as HTMLElement & {
               layout: DiagramLayout;
             };
-            el.layout = currentLayout;
+            el.layout = state.layout;
           }}
         ></om-graphical-layout>
       </div>
     </div>
-  `,
+  `;
+}
+
+const meta: Meta<StoryArgs> = {
+  title: "diagram-ui/ConnectionWaypoints",
   argTypes: {
     readonly: { control: { type: "boolean" } },
   },
@@ -82,10 +80,17 @@ export default meta;
 
 type Story = StoryObj<StoryArgs>;
 
+const editableState = { layout: waypointLayout() };
+const readonlyState = { layout: waypointLayout() };
+
 export const Editable: Story = {
   args: { readonly: false },
+  render: (args: StoryArgs): TemplateResult =>
+    renderWithLayout(editableState, args),
 };
 
 export const Readonly: Story = {
   args: { readonly: true },
+  render: (args: StoryArgs): TemplateResult =>
+    renderWithLayout(readonlyState, args),
 };
