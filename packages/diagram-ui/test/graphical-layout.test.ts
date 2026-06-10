@@ -96,4 +96,45 @@ describe("<om-graphical-layout>", () => {
     el.setSelection(["bogus", "c:b1"]);
     expect(el.selection).toEqual(["c:b1"]);
   });
+
+  it("rotateSelection rotates the selection by 90° and emits a change", async () => {
+    const el = await mount(tinyLayout());
+    el.setSelection(["c:b1"]);
+    let changed: DiagramLayout | null = null;
+    el.addEventListener("om-graphical-layout-change", (e) => {
+      changed = (e as CustomEvent<DiagramLayout>).detail;
+    });
+
+    el.rotateSelection(true);
+
+    expect(changed).not.toBeNull();
+    expect(changed!.components["b1"]!.placement.rotation).toBe(270);
+  });
+
+  it("flipSelection mirrors the selection's extent horizontally", async () => {
+    const el = await mount(tinyLayout());
+    el.setSelection(["c:b1"]);
+    let changed: DiagramLayout | null = null;
+    el.addEventListener("om-graphical-layout-change", (e) => {
+      changed = (e as CustomEvent<DiagramLayout>).detail;
+    });
+
+    el.flipSelection(true);
+
+    expect(changed).not.toBeNull();
+    expect(changed!.components["b1"]!.placement.extent).toEqual([
+      [10, -5],
+      [-10, 5],
+    ]);
+  });
+
+  it("rotateSelection is a no-op with no selection", async () => {
+    const el = await mount(tinyLayout());
+    let fired = false;
+    el.addEventListener("om-graphical-layout-change", () => {
+      fired = true;
+    });
+    el.rotateSelection(true);
+    expect(fired).toBe(false);
+  });
 });
