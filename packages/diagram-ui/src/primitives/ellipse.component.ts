@@ -75,7 +75,9 @@ export class OmEllipse extends OmShapePrimitive {
       );
     }
 
-    const strokePoints = [...ring, ring[0]!];
+    const firstRingPoint = ring[0];
+    const strokePoints =
+      firstRingPoint === undefined ? ring : [...ring, firstRingPoint];
     const stroke = buildStroke(
       scene,
       root,
