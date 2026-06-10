@@ -19,23 +19,26 @@ interface StoryArgs {
   zoom: number;
 }
 
-function rect(
-  cx: number,
-  radius: number,
-  zOrder: number,
-): RectangleShape & { _z: number } {
+interface PlacedRect {
+  shape: RectangleShape;
+  z: number;
+}
+
+function rect(cx: number, radius: number, z: number): PlacedRect {
   return {
-    kind: "rectangle",
-    extent: [
-      [cx - 40, -40],
-      [cx + 40, 40],
-    ],
-    lineColor: [33, 33, 33],
-    fillColor: [120, 170, 230],
-    fillPattern: "Solid",
-    pattern: "Solid",
-    radius,
-    _z: zOrder,
+    shape: {
+      kind: "rectangle",
+      extent: [
+        [cx - 40, -40],
+        [cx + 40, 40],
+      ],
+      lineColor: [33, 33, 33],
+      fillColor: [120, 170, 230],
+      fillPattern: "Solid",
+      pattern: "Solid",
+      radius,
+    },
+    z,
   };
 }
 
@@ -46,7 +49,7 @@ const meta: Meta<StoryArgs> = {
     return html`
       <div class="om-story">
         <h3>&lt;om-rectangle&gt; rounded corners</h3>
-        <p style="font-size:11px;color:#666;margin:4px 0;">
+        <p class="om-story-caption">
           Left: sharp (radius 0). Middle: the slider radius (clamped to half the
           shorter side). Right: an over-large radius that clamps to a fully
           rounded box.
@@ -55,10 +58,10 @@ const meta: Meta<StoryArgs> = {
           <om-scene .zoom=${zoom}>
             <om-grid-axis .extent=${300}></om-grid-axis>
             ${shapes.map(
-              ({ _z, ...shape }) =>
+              ({ shape, z }) =>
                 html`<om-rectangle
                   .shape=${shape}
-                  .zOrder=${_z}
+                  .zOrder=${z}
                 ></om-rectangle>`,
             )}
           </om-scene>

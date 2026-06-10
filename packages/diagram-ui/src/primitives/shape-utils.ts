@@ -110,8 +110,8 @@ export function clampCornerRadius(
   return Math.min(radius, width / 2, height / 2);
 }
 
-/** Quarter-circle segment count per rounded corner. Eight segments keep
- *  the arc visually smooth at icon zoom without flooding the triangulator. */
+/** Quarter-circle segment count per rounded corner, capped so the ring
+ *  stays within the triangulator's budget: 4*(8+1)+1 = 37 verts/shape. */
 const CORNER_SEGMENTS = 8;
 
 /**
@@ -171,9 +171,9 @@ export function stripClosingDuplicate(
 ): Array<[number, number]> {
   const out: Array<[number, number]> = points.map(([x, y]) => [x, y]);
   if (out.length > 1) {
-    const first = out[0]!;
-    const last = out[out.length - 1]!;
-    if (first[0] === last[0] && first[1] === last[1]) {
+    const first = out[0];
+    const last = out[out.length - 1];
+    if (first && last && first[0] === last[0] && first[1] === last[1]) {
       out.pop();
     }
   }

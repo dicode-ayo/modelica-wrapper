@@ -19,9 +19,8 @@ import {
 /**
  * `<om-rectangle>` — one Modelica `RectangleShape`. Renders a filled
  * region (when `fillPattern` is not `"None"`) plus a stroked outline.
- * A positive `radius` rounds the corners (clamped to half the shorter
- * side); the fill becomes a triangulated rounded-corner polygon and the
- * outline follows the same ring.
+ * A positive `radius` rounds the corners, clamped to half the shorter
+ * side.
  */
 @customElement("om-rectangle")
 export class OmRectangle extends OmShapePrimitive {
@@ -51,6 +50,8 @@ export class OmRectangle extends OmShapePrimitive {
     const radius = clampCornerRadius(s.radius, width, height);
     const corners = roundedRectRing(x, y, width, height, radius);
     if (s.fillPattern !== "None" && s.fillColor) {
+      // A degenerate ring triangulates to null; the shape then renders as
+      // outline only rather than a missing region.
       const fill =
         radius > 0
           ? buildFilledPolygon(
