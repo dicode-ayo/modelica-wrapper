@@ -8,6 +8,7 @@
  *   hovering   — pointer over an entity, no drag yet
  *   moving     — move drag in progress (one or more entities)
  *   resizing   — resize drag on a single entity's corner
+ *   rotating   — rotate drag from a shape's rotate handle
  *   selecting  — rubber-band selection drag (empty-space drag)
  *   connecting — connection drag from a connector port
  *
@@ -28,6 +29,7 @@ export type InteractionState =
       key: string;
       corner: "tl" | "tr" | "bl" | "br";
     }
+  | { kind: "rotating"; key: string }
   | { kind: "selecting" }
   | {
       kind: "connecting";

@@ -14,6 +14,10 @@ import { entityKeyForNode, formatKey, type EntityKind } from "./node-keys.js";
  *                     `resize` events with `corner, x, y` in diagram
  *                     coords.
  *
+ *  - `rotate`       : primary-button down on a rotate handle. Emits
+ *                     `rotate` events with the pointer `x, y` and the
+ *                     `free` (Shift) modifier; the host derives the angle.
+ *
  *  - `rubber-band`  : primary-button down on empty space (no entity
  *                     and not a pan modifier). Emits `rubberBand`
  *                     events with the dragged-out rectangle.
@@ -54,14 +58,18 @@ export interface DragEvents {
     draft: boolean;
   };
   /**
-   * Discrete 90° rotate request from the rotate handle. `key` is the
-   * owning shape. `cw` is true for clockwise; the handle only ever
-   * fires clockwise, but the field keeps the host's rotate path the
-   * same shape as the keyboard one.
+   * Rotate drag from a shape's rotate handle. `key` is the owning shape;
+   * `x, y` is the live pointer in diagram coords (the host derives the
+   * angle from the shape's centre). `free` mirrors the Shift modifier —
+   * true disables angle snapping. Draft on every move, committed on
+   * pointerup like the other drags.
    */
   rotate: {
     key: string;
-    cw: boolean;
+    x: number;
+    y: number;
+    free: boolean;
+    draft: boolean;
   };
   /**
    * In-progress connection drag: user pulls from a connector's port
@@ -100,6 +108,11 @@ interface ResizeState {
   corner: "tl" | "tr" | "bl" | "br";
 }
 
+interface RotateState {
+  kind: "rotate";
+  key: string;
+}
+
 interface RubberBandState {
   kind: "rubber-band";
   startX: number;
@@ -111,7 +124,12 @@ interface ConnectionState {
   fromKey: string;
 }
 
-type DragState = MoveState | ResizeState | RubberBandState | ConnectionState;
+type DragState =
+  | MoveState
+  | ResizeState
+  | RotateState
+  | RubberBandState
+  | ConnectionState;
 
 /**
  * Entity kinds that begin a move-drag on pointerdown. Connectors are
@@ -209,11 +227,20 @@ export class DragController {
     }
 
     if (entity?.kind === "rotate-handle") {
-      // Discrete 90° step, not a drag — no pointer capture, no state.
       const ownerKey = ownerOfHandle(node, entity.nodeId);
-      if (ownerKey) {
-        this.emit("rotate", { key: ownerKey, cw: true });
+      if (!ownerKey) {
+        return;
       }
+      this.state = { kind: "rotate", key: ownerKey };
+      this.pointerId = e.pointerId;
+      capture(this.canvas, e.pointerId);
+      this.emit("rotate", {
+        key: ownerKey,
+        x: pt.x,
+        y: pt.y,
+        free: e.shiftKey,
+        draft: true,
+      });
       return;
     }
 
@@ -302,6 +329,15 @@ export class DragController {
           draft: true,
         });
         return;
+      case "rotate":
+        this.emit("rotate", {
+          key: this.state.key,
+          x: pt.x,
+          y: pt.y,
+          free: e.shiftKey,
+          draft: true,
+        });
+        return;
       case "rubber-band":
         this.emit("rubberBand", {
           rect: {
@@ -370,6 +406,15 @@ export class DragController {
           corner: state.corner,
           x: pt.x,
           y: pt.y,
+          draft: false,
+        });
+        return;
+      case "rotate":
+        this.emit("rotate", {
+          key: state.key,
+          x: pt.x,
+          y: pt.y,
+          free: e.shiftKey,
           draft: false,
         });
         return;

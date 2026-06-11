@@ -193,11 +193,11 @@ export class OmShapeNode {
   }
 
   /**
-   * Resize the corner handles to a constant screen-pixel size. Call
-   * when the camera's zoom or canvas aspect changes. No-op when
-   * handles are not currently visible.
+   * Resize the selection handles (corner resize + rotate) to a constant
+   * screen-pixel size. Call when the camera's zoom or canvas aspect
+   * changes. No-op when handles are not currently visible.
    */
-  rescaleResizeHandles(): void {
+  rescaleSelectionHandles(): void {
     this.resizeHandles?.rescale();
     this.rotateHandle?.rescale();
   }

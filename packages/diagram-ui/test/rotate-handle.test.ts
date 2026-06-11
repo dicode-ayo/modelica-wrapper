@@ -75,30 +75,8 @@ function setupController(
   };
 }
 
-describe("rotate handle → rotate event", () => {
-  it("emits a single clockwise rotate for the owning shape on pointerdown", () => {
-    const { scene, dispose } = makeScene();
-    const ownerTn = new TransformNode("om-component:R1", scene);
-    const rotateMesh = new TransformNode("om-rotate-handle", scene);
-    rotateMesh.parent = ownerTn;
-    rotateMesh.metadata = { kind: "rotate-handle", nodeId: "rotate" };
-
-    const { canvas, events, cleanup } = setupController(() => rotateMesh);
-
-    canvas.dispatchEvent(
-      new PointerEvent("pointerdown", { button: 0, clientX: 40, clientY: 10 }),
-    );
-
-    const rotates = events.filter((e) => e.type === "rotate");
-    expect(rotates).toHaveLength(1);
-    const [rotate] = rotates;
-    if (rotate === undefined) throw new Error("expected a rotate event");
-    expect(rotate.detail).toEqual({ key: "c:R1", cw: true });
-    cleanup();
-    dispose();
-  });
-
-  it("does not start a drag — no further events fire on move/up", () => {
+describe("rotate handle → rotate drag", () => {
+  it("emits draft rotate events on down + move, then a commit on up", () => {
     const { scene, dispose } = makeScene();
     const ownerTn = new TransformNode("om-component:R1", scene);
     const rotateMesh = new TransformNode("om-rotate-handle", scene);
@@ -117,10 +95,42 @@ describe("rotate handle → rotate event", () => {
       new PointerEvent("pointerup", { button: 0, clientX: 60, clientY: 30 }),
     );
 
-    expect(events).toHaveLength(1);
-    const [event] = events;
-    if (event === undefined) throw new Error("expected a rotate event");
-    expect(event.type).toBe("rotate");
+    const rotates = events.filter((e) => e.type === "rotate");
+    expect(rotates.map((e) => e.detail)).toEqual([
+      { key: "c:R1", x: 40, y: 10, free: false, draft: true },
+      { key: "c:R1", x: 60, y: 30, free: false, draft: true },
+      { key: "c:R1", x: 60, y: 30, free: false, draft: false },
+    ]);
+    cleanup();
+    dispose();
+  });
+
+  it("flags `free` when Shift is held during the drag (host skips snapping)", () => {
+    const { scene, dispose } = makeScene();
+    const ownerTn = new TransformNode("om-component:R1", scene);
+    const rotateMesh = new TransformNode("om-rotate-handle", scene);
+    rotateMesh.parent = ownerTn;
+    rotateMesh.metadata = { kind: "rotate-handle", nodeId: "rotate" };
+
+    const { canvas, events, cleanup } = setupController(() => rotateMesh);
+
+    // Shift+primary is the pan modifier on pointerdown, so the drag
+    // starts unshifted; the modifier is read live on each move.
+    canvas.dispatchEvent(
+      new PointerEvent("pointerdown", { button: 0, clientX: 40, clientY: 10 }),
+    );
+    canvas.dispatchEvent(
+      new PointerEvent("pointermove", {
+        shiftKey: true,
+        clientX: 60,
+        clientY: 30,
+      }),
+    );
+
+    const moves = events.filter((e) => e.type === "rotate");
+    const last = moves.at(-1);
+    if (last === undefined) throw new Error("expected a rotate event");
+    expect(last.detail).toMatchObject({ free: true, draft: true });
     cleanup();
     dispose();
   });

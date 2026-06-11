@@ -18,7 +18,6 @@
 
 import type { DiagramLayout } from "@dicode/omc-client";
 
-import type { DragEvents } from "../interaction/drag-controller.js";
 import type { InteractionEvents } from "../interaction/interaction-manager.js";
 import type { DiagramPoint } from "../scene/view-math.js";
 
@@ -52,9 +51,6 @@ export type LayoutChangeDetail = DiagramLayout;
 /** Right-button up; `key` is `null` on empty canvas. */
 export type ContextMenuDetail = InteractionEvents["contextMenu"];
 
-/** Live resize from a handle drag, snapped to the active grid. */
-export type ResizeDetail = DragEvents["resize"];
-
 /**
  * Event-name → detail-type map. Source of truth shared by:
  *   - `emit<K extends LayoutEventName>(name, detail)` inside the component,
@@ -67,7 +63,6 @@ export interface LayoutEvents {
   "om-context-menu": ContextMenuDetail;
   "om-connection-create": ConnectionCreateDetail;
   "om-add-component-request": AddComponentRequestDetail;
-  "om-resize": ResizeDetail;
 }
 
 export type LayoutEventName = keyof LayoutEvents;
