@@ -11,6 +11,9 @@ Thumbs.db
 *.swp
 .idea/
 
+# Local direnv env — holds a machine-specific CLAUDE_CONFIG_DIR path, not committed.
+.envrc
+
 # Regenerated on demand by `pnpm --filter @dicode/omc-client capture-modelinstance-fixtures`.
 # These captures are large (~40k lines for PID_Controller alone) and easy to
 # reproduce from any OMC install — keep them out of git.
