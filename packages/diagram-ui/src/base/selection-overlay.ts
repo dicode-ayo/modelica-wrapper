@@ -206,9 +206,8 @@ export class SelectionOutline {
 
 /**
  * Four corner resize handles for a single shape node. Sized in screen
- * pixels (kept constant by `rescale()`, which the host calls whenever
- * the view's zoom/aspect changes — see `OmShapeElement`'s view-state
- * subscription).
+ * pixels (kept constant by `rescale()`, which the host calls on every
+ * view change — zoom or pan).
  */
 export class ResizeHandles {
   private readonly handles: Mesh[] = [];
@@ -217,7 +216,7 @@ export class ResizeHandles {
 
   constructor(
     private readonly scene: Scene,
-    parent: TransformNode,
+    private readonly parent: TransformNode,
     iconWidth: number,
     iconHeight: number,
     iconCx: number,
@@ -295,21 +294,30 @@ export class ResizeHandles {
     const orthoLeft = camera.orthoLeft ?? -1;
     const worldPerPixel = (orthoRight - orthoLeft) / canvasW;
     const size = this.handlePixelSize * worldPerPixel;
+    const parentScale = parentWorldScale(this.parent);
     for (const h of this.handles) {
-      h.scaling.set(size, size, 1);
+      h.scaling.set(size / parentScale.x, size / parentScale.y, 1);
     }
   }
 }
 
 /**
- * Single rotate affordance for a shape node. A pickable plane floating
- * a fixed screen-pixel gap above the shape's top edge. Picking it starts
- * a 90° rotate gesture (see `DragController`'s rotate branch); the mesh
- * carries `metadata.kind = "rotate-handle"` so the picker walks up to the
+ * Gap between a shape's top edge and the rotate disc's centre, as a
+ * fraction of the icon height. Icon-relative (not screen-pixel) so the
+ * disc tracks the component as it scales with zoom — matching how the
+ * corner resize handles stay glued to the icon's corners.
+ */
+const ROTATE_HANDLE_GAP_FRACTION = 0.2;
+
+/**
+ * Single rotate affordance for a shape node. A pickable disc floating
+ * just above the shape's top edge. Picking it starts a rotate-drag
+ * gesture (see `DragController`'s rotate branch); the mesh carries
+ * `metadata.kind = "rotate-handle"` so the picker walks up to the
  * owning shape.
  *
- * Like `ResizeHandles`, it's sized in screen pixels and kept constant by
- * `rescale()` on zoom / canvas-aspect change.
+ * The disc is sized in screen pixels (kept constant by `rescale()`), but
+ * its gap above the edge is icon-relative so it scales with the component.
  */
 export class RotateHandle {
   private readonly handle: Mesh;
@@ -317,24 +325,28 @@ export class RotateHandle {
   private currentVisible = false;
   private readonly topEdgeY: number;
   private readonly anchorX: number;
+  private readonly gapLocal: number;
 
   // Signature mirrors ResizeHandles / SelectionOutline so OmShapeNode
   // constructs all three identically; the single top-centre handle
   // doesn't need the width.
   constructor(
     private readonly scene: Scene,
-    parent: TransformNode,
+    private readonly parent: TransformNode,
     _iconWidth: number,
     iconHeight: number,
     iconCx: number,
     iconCy: number,
     private readonly handlePixelSize: number = 10,
-    private readonly gapPixels: number = 18,
     private readonly camera: ArcRotateCamera | null = null,
   ) {
     this.material = new StandardMaterial("om-rotate-handle-mat", scene);
     this.material.disableLighting = true;
     this.material.emissiveColor = SELECTION_BLUE;
+
+    this.topEdgeY = iconCy + iconHeight / 2;
+    this.anchorX = iconCx;
+    this.gapLocal = iconHeight * ROTATE_HANDLE_GAP_FRACTION;
 
     this.handle = MeshBuilder.CreateDisc(
       "om-rotate-handle",
@@ -343,9 +355,11 @@ export class RotateHandle {
     );
     this.handle.material = this.material;
     this.handle.parent = parent;
-    // Anchored above the top edge; the y gap is applied in `rescale()`
-    // so it stays a constant pixel distance regardless of zoom.
-    this.handle.position.set(iconCx, iconCy + iconHeight / 2, -0.02);
+    this.handle.position.set(
+      this.anchorX,
+      this.topEdgeY + this.gapLocal,
+      -0.02,
+    );
     this.handle.isVisible = false;
     this.handle.isPickable = true;
     // nodeId is inert here — `entityKeyForNode` resolves the owning shape
@@ -354,8 +368,6 @@ export class RotateHandle {
       kind: "rotate-handle" satisfies EntityKind,
       nodeId: "rotate",
     };
-    this.topEdgeY = iconCy + iconHeight / 2;
-    this.anchorX = iconCx;
   }
 
   setVisible(visible: boolean): void {
@@ -377,9 +389,10 @@ export class RotateHandle {
   }
 
   /**
-   * Size the disc to a constant screen-pixel diameter and float it a
-   * constant pixel gap above the top edge, given the camera's current
-   * orthographic extents. No-op while invisible.
+   * Size the disc to a constant screen-pixel diameter given the camera's
+   * current orthographic extents. The gap above the edge is icon-relative
+   * and fixed at construction, so only the diameter tracks zoom. No-op
+   * while invisible.
    */
   rescale(): void {
     if (!this.currentVisible) {
@@ -395,13 +408,22 @@ export class RotateHandle {
     const orthoLeft = camera.orthoLeft ?? -1;
     const worldPerPixel = (orthoRight - orthoLeft) / canvasW;
     const size = this.handlePixelSize * worldPerPixel;
-    this.handle.scaling.set(size, size, 1);
-    this.handle.position.set(
-      this.anchorX,
-      this.topEdgeY + this.gapPixels * worldPerPixel,
-      -0.02,
-    );
+    const parentScale = parentWorldScale(this.parent);
+    this.handle.scaling.set(size / parentScale.x, size / parentScale.y, 1);
   }
+}
+
+/**
+ * Absolute world-space scale of a node. Selection handles are parented to
+ * the shape's transform, which carries the icon→placement scale (commonly
+ * ≪ 1), so a handle's local scaling must be divided by this to resolve to
+ * a constant screen-pixel size. A flip puts a negative sign on an axis;
+ * pixel size is sign-independent, so only the magnitude matters.
+ */
+function parentWorldScale(node: TransformNode): { x: number; y: number } {
+  const scale = new Vector3();
+  node.computeWorldMatrix(true).decompose(scale, undefined, undefined);
+  return { x: Math.abs(scale.x) || 1, y: Math.abs(scale.y) || 1 };
 }
 
 function findOrthoCamera(scene: Scene): ArcRotateCamera | null {

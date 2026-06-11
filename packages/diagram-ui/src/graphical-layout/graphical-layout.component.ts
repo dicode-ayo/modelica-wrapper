@@ -37,9 +37,13 @@ import {
   applyDeltaMove,
   applyDelete,
   applyFlip,
+  applyResize,
   applyRotate,
+  applyRotation,
   applySnapToExtents,
+  retainExistingSelection,
   selectByDiagramRect,
+  shapeCentre,
 } from "../interaction/layout-ops.js";
 import {
   formatComponentKey,
@@ -49,7 +53,6 @@ import {
   parseKey,
 } from "../interaction/node-keys.js";
 import type { LibraryEvents } from "../library-browser/library-browser.component.js";
-import type { ViewState } from "../scene/view-math.js";
 import { orthogonalRoute } from "../interaction/connection-route.js";
 import {
   canConnect,
@@ -246,6 +249,15 @@ export class OmGraphicalLayout extends LitElement {
   @property({ attribute: false })
   gridSnap: SnapGrid | null = null;
 
+  /**
+   * Snap increment (degrees) for drag-to-rotate. The dragged rotate
+   * handle snaps the shape's angle to the nearest multiple of this;
+   * `0` disables snapping (free rotation). Holding Shift during the
+   * drag also forces free rotation regardless of this value.
+   */
+  @property({ type: Number, attribute: "rotate-snap-degrees" })
+  rotateSnapDegrees = 5;
+
   /** Resolved snap grid for the current frame's `onDrag`/add events.
    *  Computed from `gridSnap` + `layout.coordinateSystem` each time we
    *  need it — cheap, and dodges stale-cache risk on layout swap. */
@@ -319,7 +331,6 @@ export class OmGraphicalLayout extends LitElement {
         .engineFactory=${this.engineFactory ?? undefined}
         ?debug=${this.debug}
         camera-mode=${this.cameraMode}
-        @om-view-change=${this.onViewChange}
         tabindex="0"
         @keydown=${this.onKeyDown}
       >
@@ -394,8 +405,17 @@ export class OmGraphicalLayout extends LitElement {
     if (changed.has("layout")) {
       this.draftLayout = null;
       if (!this.isInternalLayoutChange()) {
-        this.selectedKeys = new Set();
-        this.interactionStore.next({ selectedKeys: [] });
+        // Keep the selection across an external layout swap when the
+        // selected shapes survive it — this is what an edit echoed back
+        // from the host looks like (rotate / resize / move re-fetch),
+        // and deselecting there would yank the handles out from under
+        // the gesture. A genuinely different model shares no keys, so
+        // selection still empties.
+        const retained = this.layout
+          ? retainExistingSelection(this.layout, this.selectedKeys)
+          : new Set<string>();
+        this.selectedKeys = retained;
+        this.interactionStore.next({ selectedKeys: Array.from(retained) });
       }
       this.internalLayoutChange = false;
     }
@@ -819,10 +839,6 @@ export class OmGraphicalLayout extends LitElement {
     this.pendingAddPosition = null;
   };
 
-  private onViewChange = (_e: CustomEvent<ViewState>): void => {
-    // Future hooks (fit-to-view, etc.); currently a no-op.
-  };
-
   private onInteraction<K extends keyof InteractionEvents>(
     type: K,
     detail: InteractionEvents[K],
@@ -1021,35 +1037,52 @@ export class OmGraphicalLayout extends LitElement {
         return;
       }
       case "resize": {
-        // Snap the moving corner to the grid before the event leaves
-        // this component — embedders that compute an absolute extent
-        // downstream don't need to know about the grid themselves.
+        // Snap the moving corner to the grid, then drag that corner of
+        // the shape's extent. Live-preview on draft, persist on commit —
+        // the same draftLayout → commitLayout pipeline `move` uses.
         const d = detail as DragEvents["resize"];
         const grid = this.currentSnapGrid();
         const { x, y } = snapPoint(d.x, d.y, grid);
-        this.emit("om-resize", { ...d, x, y });
+        const resized = applyResize(this.layout, d.key, d.corner, x, y);
         if (d.draft) {
+          this.draftLayout = resized;
           this.setInteractionState({
             kind: "resizing",
             key: d.key,
             corner: d.corner,
           });
         } else {
+          this.commitLayout(resized);
           this.endInteraction();
         }
         return;
       }
       case "rotate": {
+        // Drag-to-rotate: derive the angle from the owner shape's centre
+        // to the pointer (the handle sits due north at 0°). Snap to
+        // `rotateSnapDegrees` unless the drag is free (Shift). Rotate
+        // whatever's selected, falling back to the handle's own owner.
         const d = detail as DragEvents["rotate"];
-        // The handle rotates whatever's selected, falling back to its
-        // own owner so a single-click rotate works without a prior
-        // selection step.
-        const keys = this.selectedKeys.has(d.key)
-          ? this.selectedKeys
-          : new Set([d.key]);
-        const updated = applyRotate(this.layout, keys, d.cw);
-        if (updated !== this.layout) {
-          this.commitLayout(updated);
+        const pivot = shapeCentre(this.layout, d.key);
+        if (!pivot) {
+          return;
+        }
+        // Reuse the live selection when the handle's owner is in it
+        // (the usual case — the handle only shows on a selected shape);
+        // the array fallback mirrors `move`/`resize` and avoids minting
+        // a Set on every pointermove.
+        const keys = this.selectedKeys.has(d.key) ? this.selectedKeys : [d.key];
+        const raw =
+          (Math.atan2(d.y - pivot[1], d.x - pivot[0]) * 180) / Math.PI - 90;
+        const snap = d.free ? 0 : this.rotateSnapDegrees;
+        const deg = snap > 0 ? Math.round(raw / snap) * snap : raw;
+        const rotated = applyRotation(this.layout, keys, deg);
+        if (d.draft) {
+          this.draftLayout = rotated;
+          this.setInteractionState({ kind: "rotating", key: d.key });
+        } else {
+          this.commitLayout(rotated);
+          this.endInteraction();
         }
         return;
       }

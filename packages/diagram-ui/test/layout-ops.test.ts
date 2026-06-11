@@ -5,8 +5,12 @@ import {
   applyDelete,
   applyDeltaMove,
   applyFlip,
+  applyResize,
   applyRotate,
+  applyRotation,
+  retainExistingSelection,
   selectByDiagramRect,
+  shapeCentre,
 } from "../src/interaction/layout-ops.js";
 
 function baseLayout(): DiagramLayout {
@@ -330,5 +334,89 @@ describe("selectByDiagramRect", () => {
       y2: -100,
     });
     expect(keys.size).toBeGreaterThan(0);
+  });
+});
+
+describe("applyResize", () => {
+  it("moves the dragged corner and holds the opposite one fixed", () => {
+    // R1 extent [[-10,-5],[10,5]]. Drag the top-right corner to (20, 12).
+    const out = applyResize(baseLayout(), "c:R1", "tr", 20, 12);
+    expect(out.components.R1?.placement.extent).toEqual([
+      [-10, -5],
+      [20, 12],
+    ]);
+  });
+
+  it("flips the extent when the dragged corner crosses the anchor", () => {
+    // R1 extent [[-10,-5],[10,5]]. Drag BL (x1,y1) to (50,50) — past the
+    // fixed TR corner (10,5) — inverts both axes → a horizontal + vertical
+    // mirror, expressed as the negative-direction extent.
+    const out = applyResize(baseLayout(), "c:R1", "bl", 50, 50);
+    expect(out.components.R1?.placement.extent).toEqual([
+      [50, 50],
+      [10, 5],
+    ]);
+  });
+
+  it("returns the same reference for an unknown key", () => {
+    const layout = baseLayout();
+    expect(applyResize(layout, "c:nope", "tl", 0, 0)).toBe(layout);
+  });
+
+  it("re-anchors a connection endpoint on the resized component", () => {
+    // R1 centre (0,0), size 20×10. Drag TR to (20,12) → centre (5,3.5),
+    // size 30×17. The rhs endpoint [10,10] scales about the old centre
+    // by (1.5, 1.7) onto the new centre → [20, 20.5]. The lhs endpoint
+    // (standalone connector p, untouched) stays at [0,0].
+    const out = applyResize(baseLayout(), "c:R1", "tr", 20, 12);
+    const wp = out.connections[0]?.waypoints;
+    if (!wp) throw new Error("expected waypoints");
+    expect(wp[0]).toEqual([0, 0]);
+    expect(wp.at(-1)).toEqual([20, 20.5]);
+  });
+});
+
+describe("applyRotation", () => {
+  it("sets the absolute rotation, normalised to [0, 360)", () => {
+    const out = applyRotation(baseLayout(), ["c:R1"], -90);
+    expect(out.components.R1?.placement.rotation).toBe(270);
+  });
+
+  it("returns the same reference when the angle is unchanged", () => {
+    const once = applyRotation(baseLayout(), ["c:R1"], 45);
+    expect(applyRotation(once, ["c:R1"], 45)).toBe(once);
+  });
+
+  it("re-anchors a connection endpoint on the rotated component", () => {
+    // R1 centre (0,0). Rotating 90° CCW carries the rhs endpoint
+    // [10,10] to [-10,10] about the centre; the lhs endpoint (connector
+    // p, unrotated) stays at [0,0].
+    const out = applyRotation(baseLayout(), ["c:R1"], 90);
+    const wp = out.connections[0]?.waypoints;
+    if (!wp) throw new Error("expected waypoints");
+    expect(wp[0]).toEqual([0, 0]);
+    expect(wp.at(-1)).toEqual([-10, 10]);
+  });
+});
+
+describe("shapeCentre", () => {
+  it("returns the placement centre of a component", () => {
+    expect(shapeCentre(baseLayout(), "c:R1")).toEqual([0, 0]);
+  });
+
+  it("returns null for a key that isn't in the layout", () => {
+    expect(shapeCentre(baseLayout(), "c:nope")).toBeNull();
+  });
+});
+
+describe("retainExistingSelection", () => {
+  it("keeps keys still backed by a shape and drops the rest", () => {
+    const out = retainExistingSelection(baseLayout(), [
+      "c:R1",
+      "c:gone",
+      "k:p",
+      "edge:0",
+    ]);
+    expect([...out].sort()).toEqual(["c:R1", "k:p"]);
   });
 });

@@ -126,6 +126,24 @@ describe("InteractionManager", () => {
     canvas.remove();
   });
 
+  it("does NOT emit select when a resize/rotate handle is picked", () => {
+    const canvas = makeCanvas();
+    const { scene, dispose } = makeScene();
+    const { emit, events } = captureEmits();
+    for (const kind of ["handle", "rotate-handle"] as const) {
+      const handle = new TransformNode(`om-${kind}`, scene);
+      handle.metadata = { kind, nodeId: "tl" };
+      const mgr = new InteractionManager(canvas, () => handle, emit);
+      canvas.dispatchEvent(
+        new PointerEvent("pointerdown", { button: 0, clientX: 5, clientY: 5 }),
+      );
+      mgr.destroy();
+    }
+    expect(events).toHaveLength(0);
+    dispose();
+    canvas.remove();
+  });
+
   it("shift+primary down DOES NOT emit select (pan modifier)", () => {
     const canvas = makeCanvas();
     const { scene, dispose } = makeScene();

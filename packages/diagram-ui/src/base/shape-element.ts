@@ -1,6 +1,6 @@
 import { LitElement, css, html, type TemplateResult } from "lit";
 import { property } from "lit/decorators.js";
-import { ContextProvider, consume } from "@lit/context";
+import { ContextConsumer, ContextProvider, consume } from "@lit/context";
 import type {
   CoordinateSystem,
   IconLayer,
@@ -10,6 +10,10 @@ import type {
 import { parentNodeContext } from "./parent-node-context.js";
 import { OmShapeNode } from "./shape-node.js";
 import { renderLayers } from "../primitives/render-shape.js";
+import {
+  viewStateContext,
+  type ViewStateStore,
+} from "../scene/view-state-store.js";
 
 /**
  * Base class for `<om-component>`, `<om-connector>`, and other shape-
@@ -82,6 +86,32 @@ export abstract class OmShapeElement extends LitElement {
 
   protected shapeNode: OmShapeNode | null = null;
 
+  /** Unsubscribe from the view-state store; rebound when the context
+   *  resolves to a new store (mount, scene teardown, hot reload). */
+  private viewUnsub: (() => void) | null = null;
+
+  constructor() {
+    super();
+    // Selection handles are screen-pixel sized, so a zoom/pan (which
+    // changes the world-per-pixel ratio) has to re-rescale them. Rather
+    // than have the host walk the tree, each shape subscribes to the
+    // scene's view-state store and rescales its own handles — a no-op
+    // unless it's currently selected. Behaviour-subject semantics: the
+    // callback fires immediately with the current snapshot on connect.
+    new ContextConsumer(this, {
+      context: viewStateContext,
+      subscribe: true,
+      callback: (store) => this.resubscribeViewState(store),
+    });
+  }
+
+  private resubscribeViewState(store: ViewStateStore | null): void {
+    this.viewUnsub?.();
+    this.viewUnsub = store
+      ? store.subscribe(() => this.shapeNode?.rescaleSelectionHandles())
+      : null;
+  }
+
   protected abstract babylonNodeName(): string;
 
   /** Hook for subclasses to add extra Babylon geometry to the shape. */
@@ -117,6 +147,8 @@ export abstract class OmShapeElement extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.viewUnsub?.();
+    this.viewUnsub = null;
     this.shapeNode?.dispose();
     this.shapeNode = null;
     this.childContextProvider.setValue(null);

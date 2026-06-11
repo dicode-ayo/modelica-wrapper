@@ -334,6 +334,8 @@ function formatStateLine(state: InteractionState): string {
         : `moving ${state.keys.length} items`;
     case "resizing":
       return `resizing ${state.key} (${state.corner})`;
+    case "rotating":
+      return `rotating ${state.key}`;
     case "selecting":
       return "selecting (rubber-band)";
     case "connecting":

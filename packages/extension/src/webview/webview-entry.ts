@@ -10,7 +10,7 @@
  */
 
 import { LitElement, css, html, type TemplateResult } from "lit";
-import { customElement, query, state } from "lit/decorators.js";
+import { customElement, state } from "lit/decorators.js";
 
 // Boot Web Awesome's theme + the vscode-token bridge. Side-effect
 // import: pulls in the default theme CSS and the bridge sheet so all
@@ -201,8 +201,9 @@ class OmWebviewRoot extends LitElement {
    *  the cached VSCode API handle. */
   private librarySource: WebviewLibraryDataSource | null = null;
 
-  @query("om-graphical-layout")
-  private diagram: OmGraphicalLayout | null = null;
+  private get diagram(): OmGraphicalLayout | null {
+    return this.renderRoot.querySelector("om-graphical-layout");
+  }
 
   override connectedCallback(): void {
     super.connectedCallback();

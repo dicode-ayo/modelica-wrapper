@@ -60,7 +60,6 @@ export type {
   ContextMenuDetail,
   ConnectionCreateDetail,
   AddComponentRequestDetail,
-  ResizeDetail,
 } from "./graphical-layout/layout-events.js";
 export { OmComponent } from "./component/component.component.js";
 export { OmConnector } from "./connector/connector.component.js";

@@ -396,6 +396,264 @@ export function applyConnectorExtent(
   };
 }
 
+/**
+ * Drags one icon corner of a shape's placement extent to the diagram
+ * point (x, y), holding the opposite corner fixed. `applyPlacement` maps
+ * icon-left→x1, icon-right→x2, bottom→y1, top→y2 regardless of flip, so
+ * each `corner` sets a fixed pair of extent coordinates. Dragging a
+ * corner past its anchor inverts an axis — which is exactly a Modelica
+ * mirror, so resizing through the opposite edge flips the shape.
+ * Rotation is not accounted for — a rotated shape resizes in its
+ * unrotated frame.
+ *
+ * Connections terminating on the resized shape are re-anchored: a port
+ * is rigid relative to the icon, so its endpoint scales about the
+ * shape's centre by the same signed per-axis factor the extent span
+ * changed — negative when an axis flips, which mirrors the endpoint.
+ */
+export function applyResize(
+  layout: DiagramLayout,
+  key: string,
+  corner: "tl" | "tr" | "bl" | "br",
+  x: number,
+  y: number,
+): DiagramLayout {
+  const parsed = parseKey(key);
+  if (!parsed) {
+    return layout;
+  }
+  const resizedExtent = (p: Placement): Extent => {
+    const ox = p.origin?.[0] ?? 0;
+    const oy = p.origin?.[1] ?? 0;
+    let [[x1, y1], [x2, y2]] = p.extent;
+    const ex = x - ox;
+    const ey = y - oy;
+    if (corner === "tl" || corner === "bl") x1 = ex;
+    else x2 = ex;
+    if (corner === "bl" || corner === "br") y1 = ey;
+    else y2 = ey;
+    return [
+      [x1, y1],
+      [x2, y2],
+    ];
+  };
+  const lookup =
+    parsed.kind === "component"
+      ? layout.components[parsed.nodeId]
+      : parsed.kind === "connector"
+        ? layout.connectors[parsed.nodeId]
+        : undefined;
+  if (!lookup) {
+    return layout;
+  }
+  const oldCentre = placementCentre(lookup.placement);
+  const newExtent = resizedExtent(lookup.placement);
+  const newCentre = placementCentre({ ...lookup.placement, extent: newExtent });
+  const xf = scaleAbout(
+    oldCentre,
+    newCentre,
+    extentSpan(lookup.placement.extent),
+    extentSpan(newExtent),
+  );
+  const xfMap = new Map<string, PointXf>([[parsed.nodeId, xf]]);
+  if (parsed.kind === "component") {
+    const placed = applyComponentExtent(layout, parsed.nodeId, newExtent);
+    return reanchorConnections(placed, xfMap, new Map());
+  }
+  const placed = applyConnectorExtent(layout, parsed.nodeId, newExtent);
+  return reanchorConnections(placed, new Map(), xfMap);
+}
+
+/**
+ * Sets each selected shape's placement rotation to an absolute degree
+ * value (normalised to [0, 360)). Returns the same reference when no
+ * shape's rotation actually changes, so a drag that lands on the
+ * current angle commits nothing.
+ *
+ * Connections terminating on a rotated shape are re-anchored: a port is
+ * rigid relative to the icon, so its endpoint rotates about the shape's
+ * centre by the same delta (new minus old angle).
+ */
+export function applyRotation(
+  layout: DiagramLayout,
+  keys: Iterable<string>,
+  degrees: number,
+): DiagramLayout {
+  const norm = ((degrees % 360) + 360) % 360;
+  const set = partitionKeys(keys);
+  let mutated = false;
+  const componentXf = new Map<string, PointXf>();
+  const connectorXf = new Map<string, PointXf>();
+  const components = { ...layout.components };
+  for (const id of set.components) {
+    const c = components[id];
+    const old = c?.placement.rotation ?? 0;
+    if (!c || old === norm) continue;
+    componentXf.set(id, rotateAbout(placementCentre(c.placement), norm - old));
+    components[id] = { ...c, placement: { ...c.placement, rotation: norm } };
+    mutated = true;
+  }
+  const connectors = { ...layout.connectors };
+  for (const id of set.connectors) {
+    const c = connectors[id];
+    const old = c?.placement.rotation ?? 0;
+    if (!c || old === norm) continue;
+    connectorXf.set(id, rotateAbout(placementCentre(c.placement), norm - old));
+    connectors[id] = { ...c, placement: { ...c.placement, rotation: norm } };
+    mutated = true;
+  }
+  if (!mutated) {
+    return layout;
+  }
+  return reanchorConnections(
+    { ...layout, components, connectors },
+    componentXf,
+    connectorXf,
+  );
+}
+
+/** Maps a diagram point rigidly attached to a transformed shape from
+ *  its old to its new position. */
+type PointXf = (p: Point) => Point;
+
+/** Signed extent span (x2 − x1, y2 − y1). Sign carries flip state, so a
+ *  span ratio across a resize is negative when that axis mirrors. A `0`
+ *  span falls back to `1` to keep the ratio finite — re-anchoring a
+ *  connection off a degenerate (zero-width/height) shape is then
+ *  best-effort, which is acceptable since such a shape isn't reachable
+ *  by normal dragging. */
+function extentSpan(extent: Extent): { w: number; h: number } {
+  return {
+    w: extent[1][0] - extent[0][0] || 1,
+    h: extent[1][1] - extent[0][1] || 1,
+  };
+}
+
+function rotateAbout(centre: Point, deg: number): PointXf {
+  const rad = (deg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const [cx, cy] = centre;
+  return ([x, y]) => {
+    const dx = x - cx;
+    const dy = y - cy;
+    return [cx + dx * cos - dy * sin, cy + dx * sin + dy * cos];
+  };
+}
+
+function scaleAbout(
+  oldCentre: Point,
+  newCentre: Point,
+  oldSize: { w: number; h: number },
+  newSize: { w: number; h: number },
+): PointXf {
+  const sx = newSize.w / oldSize.w;
+  const sy = newSize.h / oldSize.h;
+  const [ocx, ocy] = oldCentre;
+  const [ncx, ncy] = newCentre;
+  return ([x, y]) => [ncx + (x - ocx) * sx, ncy + (y - ocy) * sy];
+}
+
+/**
+ * Re-anchors the endpoints of every connection terminating on a
+ * transformed shape, then re-routes that connection orthogonally
+ * between its (possibly new) endpoints. `componentXf` / `connectorXf`
+ * map an affected shape id to the transform its rigid points undergo.
+ *
+ * Re-routing discards any user-placed internal junctions on an affected
+ * connection — the same trade-off `applyDeltaMove` makes when only one
+ * endpoint moves; the alternative (rigidly carrying junctions) would
+ * tilt segments off-axis once an endpoint rotates or scales.
+ */
+function reanchorConnections(
+  layout: DiagramLayout,
+  componentXf: Map<string, PointXf>,
+  connectorXf: Map<string, PointXf>,
+): DiagramLayout {
+  if (componentXf.size === 0 && connectorXf.size === 0) {
+    return layout;
+  }
+  let mutated = false;
+  const connections = layout.connections.map((conn) => {
+    if (conn.waypoints.length < 2) {
+      return conn;
+    }
+    const lhsXf =
+      conn.lhs.component !== undefined
+        ? componentXf.get(conn.lhs.component)
+        : connectorXf.get(conn.lhs.port);
+    const rhsXf =
+      conn.rhs.component !== undefined
+        ? componentXf.get(conn.rhs.component)
+        : connectorXf.get(conn.rhs.port);
+    if (!lhsXf && !rhsXf) {
+      return conn;
+    }
+    const first = conn.waypoints[0];
+    const last = conn.waypoints.at(-1);
+    if (first === undefined || last === undefined) {
+      return conn;
+    }
+    const from = lhsXf ? lhsXf(first) : first;
+    const to = rhsXf ? rhsXf(last) : last;
+    mutated = true;
+    return {
+      ...conn,
+      waypoints: orthogonalRoute(
+        { x: from[0], y: from[1] },
+        { x: to[0], y: to[1] },
+      ),
+    };
+  });
+  return mutated ? { ...layout, connections } : layout;
+}
+
+/**
+ * Placement centre of the component / connector addressed by `key`, in
+ * the parent's diagram coords. `null` when the key isn't a shape that
+ * exists in the layout. Used as the pivot for drag-to-rotate.
+ */
+export function shapeCentre(layout: DiagramLayout, key: string): Point | null {
+  const parsed = parseKey(key);
+  if (!parsed) return null;
+  if (parsed.kind === "component") {
+    const c = layout.components[parsed.nodeId];
+    return c ? placementCentre(c.placement) : null;
+  }
+  if (parsed.kind === "connector") {
+    const c = layout.connectors[parsed.nodeId];
+    return c ? placementCentre(c.placement) : null;
+  }
+  return null;
+}
+
+/**
+ * Filters `keys` down to those still backed by a component / connector
+ * in `layout`. Selection survives an in-place edit (move / rotate /
+ * resize echoed back from the host) but drops anything the layout no
+ * longer contains; non-shape keys (edges / junctions, whose indices can
+ * shift on relayout) are not retained.
+ */
+export function retainExistingSelection(
+  layout: DiagramLayout,
+  keys: Iterable<string>,
+): Set<string> {
+  const out = new Set<string>();
+  for (const k of keys) {
+    const parsed = parseKey(k);
+    if (!parsed) continue;
+    if (parsed.kind === "component" && layout.components[parsed.nodeId]) {
+      out.add(k);
+    } else if (
+      parsed.kind === "connector" &&
+      layout.connectors[parsed.nodeId]
+    ) {
+      out.add(k);
+    }
+  }
+  return out;
+}
+
 /** Deletes the entities under `keys` from the layout. */
 export function applyDelete(
   layout: DiagramLayout,
