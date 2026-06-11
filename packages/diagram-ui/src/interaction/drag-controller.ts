@@ -54,6 +54,16 @@ export interface DragEvents {
     draft: boolean;
   };
   /**
+   * Discrete 90° rotate request from the rotate handle. `key` is the
+   * owning shape. `cw` is true for clockwise; the handle only ever
+   * fires clockwise, but the field keeps the host's rotate path the
+   * same shape as the keyboard one.
+   */
+  rotate: {
+    key: string;
+    cw: boolean;
+  };
+  /**
    * In-progress connection drag: user pulls from a connector's port
    * indicator. `from` is the source connector key (e.g. `k:p`), `to`
    * is the live cursor position in diagram coords. `commit=false`
@@ -195,6 +205,15 @@ export class DragController {
         toKey: null,
         commit: false,
       });
+      return;
+    }
+
+    if (entity?.kind === "rotate-handle") {
+      // Discrete 90° step, not a drag — no pointer capture, no state.
+      const ownerKey = ownerOfHandle(node, entity.nodeId);
+      if (ownerKey) {
+        this.emit("rotate", { key: ownerKey, cw: true });
+      }
       return;
     }
 

@@ -5,18 +5,23 @@
  * (typically `<om-graphical-layout>`). Top-right by default; flippable
  * with the `anchor` attribute.
  *
- * Buttons today: Undo, Check, Simulate, Parameters. Each is a plain button —
- * keyboard accessible, focus-visible, themed against `--vscode-button-*`.
+ * Buttons today: Undo, Check, Simulate, Parameters, Rotate, Flip. Each is a
+ * plain button — keyboard accessible, focus-visible, themed against
+ * `--vscode-button-*`. Rotate / Flip operate on the diagram selection and
+ * disable themselves via the `no-selection` attribute when nothing is picked.
  *
- * Events:
- *   - `om-action-undo`        — bubbles + composed, no detail
- *   - `om-action-check`       — bubbles + composed, no detail
- *   - `om-action-simulate`    — bubbles + composed, no detail
- *   - `om-action-parameters`  — bubbles + composed, no detail
+ * Events (all bubble + composed, no detail):
+ *   - `om-action-undo`
+ *   - `om-action-check`
+ *   - `om-action-simulate`
+ *   - `om-action-parameters`
+ *   - `om-action-rotate`
+ *   - `om-action-flip`
  *
  * Buttons can be hidden individually via boolean attributes
- * (`hide-undo`, `hide-check`, `hide-simulate`, `hide-parameters`) so
- * embedders that only want a subset don't have to fork.
+ * (`hide-undo`, `hide-check`, `hide-simulate`, `hide-parameters`,
+ * `hide-rotate`, `hide-flip`) so embedders that only want a subset don't
+ * have to fork.
  */
 
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
@@ -42,6 +47,8 @@ export type ActionUndoDetail = undefined;
 export type ActionCheckDetail = undefined;
 export type ActionSimulateDetail = undefined;
 export type ActionParametersDetail = undefined;
+export type ActionRotateDetail = undefined;
+export type ActionFlipDetail = undefined;
 
 /**
  * Event-name → detail-type map for `<om-action-panel>`. Listener types
@@ -53,6 +60,8 @@ export interface ActionPanelEvents {
   "om-action-check": ActionCheckDetail;
   "om-action-simulate": ActionSimulateDetail;
   "om-action-parameters": ActionParametersDetail;
+  "om-action-rotate": ActionRotateDetail;
+  "om-action-flip": ActionFlipDetail;
 }
 
 export type ActionPanelEventName = keyof ActionPanelEvents;
@@ -113,6 +122,17 @@ export class OmActionPanel extends LitElement {
   @property({ type: Boolean, attribute: "hide-simulate" }) hideSimulate = false;
   @property({ type: Boolean, attribute: "hide-parameters" })
   hideParameters = false;
+  @property({ type: Boolean, attribute: "hide-rotate" }) hideRotate = false;
+  @property({ type: Boolean, attribute: "hide-flip" }) hideFlip = false;
+
+  /**
+   * Rotate / flip act on the current diagram selection. When nothing is
+   * selected they have no effect, so the embedder reflects that by
+   * setting `no-selection`, which disables just those two buttons while
+   * leaving the model-level actions (undo / check / …) live.
+   */
+  @property({ type: Boolean, attribute: "no-selection", reflect: true })
+  noSelection = false;
 
   override render(): TemplateResult {
     return html`
@@ -159,6 +179,28 @@ export class OmActionPanel extends LitElement {
             @click=${() => this.fire("om-action-parameters")}
             title="Edit parameters"
             >Parameters</wa-button
+          >`}
+      ${this.hideRotate
+        ? nothing
+        : html`<wa-button
+            size="small"
+            variant="neutral"
+            appearance="outlined"
+            ?disabled=${this.disabled || this.noSelection}
+            @click=${() => this.fire("om-action-rotate")}
+            title="Rotate selection 90° (R)"
+            >Rotate</wa-button
+          >`}
+      ${this.hideFlip
+        ? nothing
+        : html`<wa-button
+            size="small"
+            variant="neutral"
+            appearance="outlined"
+            ?disabled=${this.disabled || this.noSelection}
+            @click=${() => this.fire("om-action-flip")}
+            title="Flip selection horizontally (F)"
+            >Flip</wa-button
           >`}
     `;
   }

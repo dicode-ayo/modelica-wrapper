@@ -1039,6 +1039,20 @@ export class OmGraphicalLayout extends LitElement {
         }
         return;
       }
+      case "rotate": {
+        const d = detail as DragEvents["rotate"];
+        // The handle rotates whatever's selected, falling back to its
+        // own owner so a single-click rotate works without a prior
+        // selection step.
+        const keys = this.selectedKeys.has(d.key)
+          ? this.selectedKeys
+          : new Set([d.key]);
+        const updated = applyRotate(this.layout, keys, d.cw);
+        if (updated !== this.layout) {
+          this.commitLayout(updated);
+        }
+        return;
+      }
     }
   }
 
@@ -1121,6 +1135,31 @@ export class OmGraphicalLayout extends LitElement {
    *  and external observers that want a snapshot without subscribing. */
   get interactionState(): InteractionState {
     return this.interactionStore.value.state;
+  }
+
+  /**
+   * Rotate the current selection by ±90° around each entity's centre.
+   * Mirrors the `r` / `Shift+r` keybinding so external affordances (the
+   * action panel's rotate button) drive the same mutation. No-op when
+   * read-only or nothing is selected.
+   */
+  rotateSelection(cw = true): void {
+    if (this.readonly || !this.layout || this.selectedKeys.size === 0) {
+      return;
+    }
+    this.commitLayout(applyRotate(this.layout, this.selectedKeys, cw));
+  }
+
+  /**
+   * Mirror the current selection horizontally or vertically. Mirrors the
+   * `f` / `Shift+f` keybinding. No-op when read-only or nothing is
+   * selected.
+   */
+  flipSelection(horizontal = true): void {
+    if (this.readonly || !this.layout || this.selectedKeys.size === 0) {
+      return;
+    }
+    this.commitLayout(applyFlip(this.layout, this.selectedKeys, horizontal));
   }
 }
 

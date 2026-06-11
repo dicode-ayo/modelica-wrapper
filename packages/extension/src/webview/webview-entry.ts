@@ -10,7 +10,7 @@
  */
 
 import { LitElement, css, html, type TemplateResult } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { customElement, query, state } from "lit/decorators.js";
 
 // Boot Web Awesome's theme + the vscode-token bridge. Side-effect
 // import: pulls in the default theme CSS and the bridge sheet so all
@@ -27,6 +27,7 @@ import {
   type LayoutEvents,
   type LibraryBrowserDataSource,
   type LibraryClassInfo,
+  type OmGraphicalLayout,
   type ParameterFormSubmitDetail,
 } from "@dicode/diagram-ui";
 
@@ -173,6 +174,10 @@ class OmWebviewRoot extends LitElement {
   `;
 
   @state() private layout: DiagramLayout | null = null;
+  /** Mirrors whether the diagram has a non-empty selection, so the
+   *  action panel can disable the selection-scoped rotate / flip
+   *  buttons when nothing is picked. */
+  @state() private hasSelection = false;
   @state() private paramOpen = false;
   @state() private paramModel: ParameterModel | undefined = undefined;
   @state() private paramTitle = "";
@@ -195,6 +200,9 @@ class OmWebviewRoot extends LitElement {
    *  first connect because it captures `this.post` which is bound to
    *  the cached VSCode API handle. */
   private librarySource: WebviewLibraryDataSource | null = null;
+
+  @query("om-graphical-layout")
+  private diagram: OmGraphicalLayout | null = null;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -223,10 +231,13 @@ class OmWebviewRoot extends LitElement {
       ></om-graphical-layout>
       <om-action-panel
         anchor="top-right"
+        ?no-selection=${!this.hasSelection}
         @om-action-undo=${() => this.post({ type: "actionUndo" })}
         @om-action-check=${() => this.post({ type: "actionCheck" })}
         @om-action-simulate=${() => this.post({ type: "actionSimulate" })}
         @om-action-parameters=${() => this.post({ type: "actionParameters" })}
+        @om-action-rotate=${() => this.diagram?.rotateSelection()}
+        @om-action-flip=${() => this.diagram?.flipSelection()}
       ></om-action-panel>
       <om-parameter-panel
         ?open=${this.paramOpen}
@@ -310,6 +321,7 @@ class OmWebviewRoot extends LitElement {
   private onSelectionChange = (
     e: CustomEvent<LayoutEvents["om-selection-change"]>,
   ): void => {
+    this.hasSelection = e.detail.keys.length > 0;
     this.post({ type: "selectionChange", keys: e.detail.keys });
   };
 

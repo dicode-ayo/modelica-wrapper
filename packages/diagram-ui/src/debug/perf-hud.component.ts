@@ -318,6 +318,7 @@ const ENTITY_LABEL: Record<EntityKind, string> = {
   label: "label",
   port: "port",
   handle: "handle",
+  "rotate-handle": "rotate-handle",
 };
 
 /** "moving 2 items" / "connecting c:R1.p → c:R2.in" / "idle" etc. */

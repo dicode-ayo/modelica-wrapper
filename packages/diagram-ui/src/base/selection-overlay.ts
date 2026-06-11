@@ -13,6 +13,10 @@ import {
 } from "@babylonjs/core";
 
 import { requestSceneRender } from "../scene/render-scheduler.js";
+import type { EntityKind } from "../interaction/node-keys.js";
+
+/** Accent blue shared by the selection outline stroke and rotate handle. */
+const SELECTION_BLUE = new Color3(0.38, 0.6, 0.98);
 
 /**
  * Per-scene HighlightLayer with refcounted lifecycle.
@@ -128,7 +132,7 @@ export class SelectionOutline {
     iconHeight: number,
     iconCx: number,
     iconCy: number,
-    private color: Color3 = new Color3(0.38, 0.6, 0.98),
+    private color: Color3 = SELECTION_BLUE,
     private widthPx: number = 4,
   ) {
     this.line = this.build(iconWidth, iconHeight, iconCx, iconCy);
@@ -294,6 +298,109 @@ export class ResizeHandles {
     for (const h of this.handles) {
       h.scaling.set(size, size, 1);
     }
+  }
+}
+
+/**
+ * Single rotate affordance for a shape node. A pickable plane floating
+ * a fixed screen-pixel gap above the shape's top edge. Picking it starts
+ * a 90° rotate gesture (see `DragController`'s rotate branch); the mesh
+ * carries `metadata.kind = "rotate-handle"` so the picker walks up to the
+ * owning shape.
+ *
+ * Like `ResizeHandles`, it's sized in screen pixels and kept constant by
+ * `rescale()` on zoom / canvas-aspect change.
+ */
+export class RotateHandle {
+  private readonly handle: Mesh;
+  private readonly material: StandardMaterial;
+  private currentVisible = false;
+  private readonly topEdgeY: number;
+  private readonly anchorX: number;
+
+  // Signature mirrors ResizeHandles / SelectionOutline so OmShapeNode
+  // constructs all three identically; the single top-centre handle
+  // doesn't need the width.
+  constructor(
+    private readonly scene: Scene,
+    parent: TransformNode,
+    _iconWidth: number,
+    iconHeight: number,
+    iconCx: number,
+    iconCy: number,
+    private readonly handlePixelSize: number = 10,
+    private readonly gapPixels: number = 18,
+    private readonly camera: ArcRotateCamera | null = null,
+  ) {
+    this.material = new StandardMaterial("om-rotate-handle-mat", scene);
+    this.material.disableLighting = true;
+    this.material.emissiveColor = SELECTION_BLUE;
+
+    this.handle = MeshBuilder.CreateDisc(
+      "om-rotate-handle",
+      { radius: 0.5, tessellation: 24 },
+      scene,
+    );
+    this.handle.material = this.material;
+    this.handle.parent = parent;
+    // Anchored above the top edge; the y gap is applied in `rescale()`
+    // so it stays a constant pixel distance regardless of zoom.
+    this.handle.position.set(iconCx, iconCy + iconHeight / 2, -0.02);
+    this.handle.isVisible = false;
+    this.handle.isPickable = true;
+    // nodeId is inert here — `entityKeyForNode` resolves the owning shape
+    // by walking the parent chain, so any value works.
+    this.handle.metadata = {
+      kind: "rotate-handle" satisfies EntityKind,
+      nodeId: "rotate",
+    };
+    this.topEdgeY = iconCy + iconHeight / 2;
+    this.anchorX = iconCx;
+  }
+
+  setVisible(visible: boolean): void {
+    this.currentVisible = visible;
+    this.handle.isVisible = visible;
+    if (visible) {
+      this.rescale();
+    }
+    requestSceneRender(this.scene);
+  }
+
+  isVisible(): boolean {
+    return this.currentVisible;
+  }
+
+  dispose(): void {
+    this.handle.dispose();
+    this.material.dispose();
+  }
+
+  /**
+   * Size the disc to a constant screen-pixel diameter and float it a
+   * constant pixel gap above the top edge, given the camera's current
+   * orthographic extents. No-op while invisible.
+   */
+  rescale(): void {
+    if (!this.currentVisible) {
+      return;
+    }
+    const camera = this.camera ?? findOrthoCamera(this.scene);
+    if (!camera) {
+      return;
+    }
+    const engine = this.scene.getEngine();
+    const canvasW = engine.getRenderWidth() || 1;
+    const orthoRight = camera.orthoRight ?? 1;
+    const orthoLeft = camera.orthoLeft ?? -1;
+    const worldPerPixel = (orthoRight - orthoLeft) / canvasW;
+    const size = this.handlePixelSize * worldPerPixel;
+    this.handle.scaling.set(size, size, 1);
+    this.handle.position.set(
+      this.anchorX,
+      this.topEdgeY + this.gapPixels * worldPerPixel,
+      -0.02,
+    );
   }
 }
 

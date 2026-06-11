@@ -8,7 +8,11 @@ import {
 } from "@babylonjs/core";
 
 import { applyPlacement, type AppliedTransform } from "./placement-math.js";
-import { ResizeHandles, SelectionOutline } from "./selection-overlay.js";
+import {
+  ResizeHandles,
+  RotateHandle,
+  SelectionOutline,
+} from "./selection-overlay.js";
 import { requestSceneRender } from "../scene/render-scheduler.js";
 import type { CoordinateSystem, Placement } from "@dicode/omc-client";
 
@@ -42,6 +46,7 @@ export class OmShapeNode {
   private currentIconCy = 0;
   private selected = false;
   private resizeHandles: ResizeHandles | null = null;
+  private rotateHandle: RotateHandle | null = null;
   private outline: SelectionOutline | null = null;
   private readonly scene: Scene;
 
@@ -105,6 +110,12 @@ export class OmShapeNode {
         this.resizeHandles = this.createHandles();
         this.resizeHandles.setVisible(wasVisible);
       }
+      if (this.rotateHandle) {
+        const wasVisible = this.rotateHandle.isVisible();
+        this.rotateHandle.dispose();
+        this.rotateHandle = this.createRotateHandle();
+        this.rotateHandle.setVisible(wasVisible);
+      }
     }
     this.currentIconCx = t.meshLocal.x;
     this.currentIconCy = t.meshLocal.y;
@@ -123,6 +134,17 @@ export class OmShapeNode {
 
   private createHandles(): ResizeHandles {
     return new ResizeHandles(
+      this.scene,
+      this.transform,
+      this.currentIconWidth,
+      this.currentIconHeight,
+      this.currentIconCx,
+      this.currentIconCy,
+    );
+  }
+
+  private createRotateHandle(): RotateHandle {
+    return new RotateHandle(
       this.scene,
       this.transform,
       this.currentIconWidth,
@@ -155,9 +177,14 @@ export class OmShapeNode {
         this.resizeHandles = this.createHandles();
       }
       this.resizeHandles.setVisible(true);
+      if (!this.rotateHandle) {
+        this.rotateHandle = this.createRotateHandle();
+      }
+      this.rotateHandle.setVisible(true);
     } else {
       this.outline?.setVisible(false);
       this.resizeHandles?.setVisible(false);
+      this.rotateHandle?.setVisible(false);
     }
   }
 
@@ -172,6 +199,7 @@ export class OmShapeNode {
    */
   rescaleResizeHandles(): void {
     this.resizeHandles?.rescale();
+    this.rotateHandle?.rescale();
   }
 
   dispose(): void {
@@ -179,6 +207,8 @@ export class OmShapeNode {
     this.outline = null;
     this.resizeHandles?.dispose();
     this.resizeHandles = null;
+    this.rotateHandle?.dispose();
+    this.rotateHandle = null;
     this.mesh.dispose();
     this.hitMaterial.dispose();
     this.transform.dispose();
