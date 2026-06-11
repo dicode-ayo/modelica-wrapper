@@ -61,13 +61,22 @@ export function screenDashCount(
   return Math.max(1, Math.round(lengthPx / periodPx));
 }
 
+/** Bare Modelica spec default `lineThickness` in icon units. */
+const SPEC_BARE_THICKNESS = 0.25;
+
+/**
+ * Legibility multiplier applied to the bare spec default, matching
+ * `@dicode/diagram-svg` so SVG and Babylon strokes carry the same weight.
+ */
+const THICKNESS_LEGIBILITY_LIFT = 5;
+
 /**
  * Spec-default Modelica stroke width in icon units when an annotation
  * omits `lineThickness`. Mirrors `@dicode/diagram-svg`'s
- * `SPEC_DEFAULT_THICKNESS` (the bare `0.25` spec default lifted to stay
- * legible) so SVG and Babylon strokes carry the same weight.
+ * `SPEC_DEFAULT_THICKNESS`.
  */
-export const SPEC_DEFAULT_THICKNESS = 0.25 * 5;
+export const SPEC_DEFAULT_THICKNESS =
+  SPEC_BARE_THICKNESS * THICKNESS_LEGIBILITY_LIFT;
 
 /**
  * Default `lineThicknessScale` multiplier, matching

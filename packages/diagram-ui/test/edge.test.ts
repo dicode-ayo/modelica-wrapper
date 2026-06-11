@@ -240,10 +240,10 @@ describe("<om-edge>", () => {
     expect(edge.edgeMesh!.line).toBe(originalLine);
     expect(originalLine.isDisposed()).toBe(false);
     // GreasedLine exposes its backbone as `points` ([[x, y, z, …]]); the
-    // second point's x should reflect the new endpoint (60).
-    const points = originalLine.points[0];
-    expect(points).toBeDefined();
-    expect(points?.[3]).toBeCloseTo(60);
+    // second vertex's x (flat index 3) should reflect the new endpoint (60).
+    const backbone = originalLine.points[0];
+    expect(backbone).toBeDefined();
+    expect(backbone?.[3]).toBeCloseTo(60);
   });
 
   it("rebuilds the mesh when the point count changes", async () => {

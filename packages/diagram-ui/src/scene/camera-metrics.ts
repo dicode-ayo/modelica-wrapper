@@ -1,19 +1,22 @@
-import type { ArcRotateCamera, Scene } from "@babylonjs/core";
+import type { ArcRotateCamera, Camera, Scene } from "@babylonjs/core";
 
 import { worldPerPixel } from "./line-metrics.js";
 
 /**
+ * An ortho camera is identified structurally by the presence of
+ * `orthoLeft`, so callers don't import the concrete camera type just to
+ * narrow. The internal cast is the irreducible Babylon-shape probe.
+ */
+function isOrthoCamera(cam: Camera | null | undefined): cam is ArcRotateCamera {
+  return cam != null && (cam as ArcRotateCamera).orthoLeft !== undefined;
+}
+
+/**
  * The scene's orthographic camera, or `null` when the active camera
  * isn't an ortho camera (e.g. headless tests that never set one up).
- * Identified structurally by the presence of `orthoLeft` so callers
- * don't import the concrete camera type just to narrow.
  */
 export function findOrthoCamera(scene: Scene): ArcRotateCamera | null {
-  const cam = scene.activeCamera;
-  if (cam && (cam as ArcRotateCamera).orthoLeft !== undefined) {
-    return cam as ArcRotateCamera;
-  }
-  return null;
+  return isOrthoCamera(scene.activeCamera) ? scene.activeCamera : null;
 }
 
 /**
