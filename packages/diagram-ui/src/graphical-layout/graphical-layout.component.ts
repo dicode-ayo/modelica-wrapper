@@ -1067,9 +1067,11 @@ export class OmGraphicalLayout extends LitElement {
         if (!pivot) {
           return;
         }
-        const keys = this.selectedKeys.has(d.key)
-          ? this.selectedKeys
-          : new Set([d.key]);
+        // Reuse the live selection when the handle's owner is in it
+        // (the usual case — the handle only shows on a selected shape);
+        // the array fallback mirrors `move`/`resize` and avoids minting
+        // a Set on every pointermove.
+        const keys = this.selectedKeys.has(d.key) ? this.selectedKeys : [d.key];
         const raw =
           (Math.atan2(d.y - pivot[1], d.x - pivot[0]) * 180) / Math.PI - 90;
         const snap = d.free ? 0 : this.rotateSnapDegrees;

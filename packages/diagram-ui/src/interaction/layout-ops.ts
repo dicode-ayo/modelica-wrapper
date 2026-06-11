@@ -517,8 +517,11 @@ export function applyRotation(
 type PointXf = (p: Point) => Point;
 
 /** Signed extent span (x2 − x1, y2 − y1). Sign carries flip state, so a
- *  span ratio across a resize is negative when that axis mirrors. `0`
- *  spans fall back to `1` to keep the ratio finite. */
+ *  span ratio across a resize is negative when that axis mirrors. A `0`
+ *  span falls back to `1` to keep the ratio finite — re-anchoring a
+ *  connection off a degenerate (zero-width/height) shape is then
+ *  best-effort, which is acceptable since such a shape isn't reachable
+ *  by normal dragging. */
 function extentSpan(extent: Extent): { w: number; h: number } {
   return {
     w: extent[1][0] - extent[0][0] || 1,
@@ -586,8 +589,11 @@ function reanchorConnections(
     if (!lhsXf && !rhsXf) {
       return conn;
     }
-    const first = conn.waypoints[0]!;
-    const last = conn.waypoints[conn.waypoints.length - 1]!;
+    const first = conn.waypoints[0];
+    const last = conn.waypoints.at(-1);
+    if (first === undefined || last === undefined) {
+      return conn;
+    }
     const from = lhsXf ? lhsXf(first) : first;
     const to = rhsXf ? rhsXf(last) : last;
     mutated = true;

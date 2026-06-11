@@ -311,7 +311,7 @@ const ROTATE_HANDLE_GAP_FRACTION = 0.2;
 
 /**
  * Single rotate affordance for a shape node. A pickable disc floating
- * just above the shape's top edge. Picking it starts a 90° rotate
+ * just above the shape's top edge. Picking it starts a rotate-drag
  * gesture (see `DragController`'s rotate branch); the mesh carries
  * `metadata.kind = "rotate-handle"` so the picker walks up to the
  * owning shape.
