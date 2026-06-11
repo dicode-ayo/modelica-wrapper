@@ -13,6 +13,7 @@ import {
 } from "@babylonjs/core";
 
 import { requestSceneRender } from "../scene/render-scheduler.js";
+import { sceneWorldPerPixel } from "../scene/camera-metrics.js";
 import type { EntityKind } from "../interaction/node-keys.js";
 
 /** Accent blue shared by the selection outline stroke and rotate handle. */
@@ -284,20 +285,25 @@ export class ResizeHandles {
     if (!this.currentVisible) {
       return;
     }
-    const camera = this.camera ?? findOrthoCamera(this.scene);
-    if (!camera) {
+    const wpp = this.resolveWorldPerPixel();
+    if (wpp === null) {
       return;
     }
-    const engine = this.scene.getEngine();
-    const canvasW = engine.getRenderWidth() || 1;
-    const orthoRight = camera.orthoRight ?? 1;
-    const orthoLeft = camera.orthoLeft ?? -1;
-    const worldPerPixel = (orthoRight - orthoLeft) / canvasW;
-    const size = this.handlePixelSize * worldPerPixel;
+    const size = this.handlePixelSize * wpp;
     const parentScale = parentWorldScale(this.parent);
     for (const h of this.handles) {
       h.scaling.set(size / parentScale.x, size / parentScale.y, 1);
     }
+  }
+
+  private resolveWorldPerPixel(): number | null {
+    if (this.camera) {
+      const canvasW = this.scene.getEngine().getRenderWidth() || 1;
+      const orthoRight = this.camera.orthoRight ?? 1;
+      const orthoLeft = this.camera.orthoLeft ?? -1;
+      return (orthoRight - orthoLeft) / canvasW;
+    }
+    return sceneWorldPerPixel(this.scene);
   }
 }
 
@@ -398,18 +404,23 @@ export class RotateHandle {
     if (!this.currentVisible) {
       return;
     }
-    const camera = this.camera ?? findOrthoCamera(this.scene);
-    if (!camera) {
+    const wpp = this.resolveWorldPerPixel();
+    if (wpp === null) {
       return;
     }
-    const engine = this.scene.getEngine();
-    const canvasW = engine.getRenderWidth() || 1;
-    const orthoRight = camera.orthoRight ?? 1;
-    const orthoLeft = camera.orthoLeft ?? -1;
-    const worldPerPixel = (orthoRight - orthoLeft) / canvasW;
-    const size = this.handlePixelSize * worldPerPixel;
+    const size = this.handlePixelSize * wpp;
     const parentScale = parentWorldScale(this.parent);
     this.handle.scaling.set(size / parentScale.x, size / parentScale.y, 1);
+  }
+
+  private resolveWorldPerPixel(): number | null {
+    if (this.camera) {
+      const canvasW = this.scene.getEngine().getRenderWidth() || 1;
+      const orthoRight = this.camera.orthoRight ?? 1;
+      const orthoLeft = this.camera.orthoLeft ?? -1;
+      return (orthoRight - orthoLeft) / canvasW;
+    }
+    return sceneWorldPerPixel(this.scene);
   }
 }
 
@@ -424,12 +435,4 @@ function parentWorldScale(node: TransformNode): { x: number; y: number } {
   const scale = new Vector3();
   node.computeWorldMatrix(true).decompose(scale, undefined, undefined);
   return { x: Math.abs(scale.x) || 1, y: Math.abs(scale.y) || 1 };
-}
-
-function findOrthoCamera(scene: Scene): ArcRotateCamera | null {
-  const cam = scene.activeCamera;
-  if (cam && (cam as ArcRotateCamera).orthoLeft !== undefined) {
-    return cam as ArcRotateCamera;
-  }
-  return null;
 }

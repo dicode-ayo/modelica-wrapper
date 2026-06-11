@@ -1,6 +1,6 @@
 import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { consume } from "@lit/context";
+import { ContextConsumer, consume } from "@lit/context";
 import { Color3, type TransformNode } from "@babylonjs/core";
 import type { Point } from "@dicode/omc-client";
 
@@ -8,9 +8,15 @@ import { parentNodeContext } from "../base/parent-node-context.js";
 import { requestSceneRender } from "../scene/render-scheduler.js";
 import { pointsEqual } from "../interaction/connection-route.js";
 import {
+  viewStateContext,
+  type ViewStateStore,
+} from "../scene/view-state-store.js";
+import {
   DEFAULT_EDGE_COLOR,
   buildEdge,
   rebuildHitTube,
+  setEdgeColor,
+  updateEdgeDashes,
   updateEdgePoints,
   type EdgeMeshes,
 } from "./edge-build.js";
@@ -19,8 +25,8 @@ import {
 const SELECTED_EDGE_COLOR = new Color3(0.24, 0.51, 0.96); // blue-500
 
 /**
- * `<om-edge>` — renders a single connection route as a 1-pixel GL
- * `LinesMesh` (or `DashedLinesMesh` when `clocked`), plus an invisible
+ * `<om-edge>` — renders a single connection route as a constant-width
+ * `GreasedLine` ribbon (dashed when `clocked`), plus an invisible
  * tube-shaped hit-area mesh so `scene.pick` can actually hit it.
  *
  * Properties:
@@ -49,6 +55,39 @@ export class OmEdge extends LitElement {
 
   private meshes: EdgeMeshes | null = null;
   private baseColor: Color3 = DEFAULT_EDGE_COLOR;
+
+  /** Unsubscribe from the view-state store; rebound when the context
+   *  resolves to a new store. */
+  private viewUnsub: (() => void) | null = null;
+
+  constructor() {
+    super();
+    // A clocked edge's dash rhythm is constant in screen space, so a
+    // zoom (which changes world-per-pixel) has to recompute its dash
+    // count. No-op for undashed edges.
+    new ContextConsumer(this, {
+      context: viewStateContext,
+      subscribe: true,
+      callback: (store) => this.resubscribeViewState(store),
+    });
+  }
+
+  private resubscribeViewState(store: ViewStateStore | null): void {
+    this.viewUnsub?.();
+    this.viewUnsub = store ? store.subscribe(() => this.rescaleDashes()) : null;
+  }
+
+  private rescaleDashes(): void {
+    if (!this.meshes || !this.clocked || !this.parentTransform) {
+      return;
+    }
+    updateEdgeDashes(
+      this.parentTransform.getScene(),
+      this.meshes.line,
+      this.path,
+    );
+    requestSceneRender(this.parentTransform.getScene());
+  }
   /**
    * Last waypoint list actually applied to the LinesMesh. Compared by
    * content (not reference) so that an OMC-roundtripped layout that
@@ -82,15 +121,10 @@ export class OmEdge extends LitElement {
   }
 
   /**
-   * Update the vertex buffer of the existing LinesMesh without
-   * disposing it. Returns `false` when the new path has a different
-   * number of points than the existing mesh was built with — Babylon's
-   * `instance` parameter on `CreateLines` rejects topology changes, so
-   * the caller must fall back to a full rebuild in that case.
-   *
-   * The hit tube (invisible merged mesh) can't be updated this way and
-   * is rebuilt anyway. Because it's invisible the rebuild costs nothing
-   * visually, only a small GPU upload.
+   * Rewrite the existing ribbon's vertices via GreasedLine's
+   * `setPoints` without disposing it. Gated on an unchanged point count
+   * so the separately-rebuilt hit tube stays in step; returns `false`
+   * to request a full rebuild when the count changed.
    */
   private tryUpdateInPlace(): boolean {
     if (!this.meshes || !this.builtPath || !this.parentTransform) {
@@ -117,6 +151,8 @@ export class OmEdge extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.viewUnsub?.();
+    this.viewUnsub = null;
     this.disposeMeshes();
   }
 
@@ -153,9 +189,10 @@ export class OmEdge extends LitElement {
     if (!this.meshes) {
       return;
     }
-    this.meshes.line.color = this.selected
-      ? SELECTED_EDGE_COLOR
-      : this.baseColor;
+    setEdgeColor(
+      this.meshes.line,
+      this.selected ? SELECTED_EDGE_COLOR : this.baseColor,
+    );
     requestSceneRender(this.meshes.line.getScene());
   }
 

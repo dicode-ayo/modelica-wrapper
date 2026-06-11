@@ -14,11 +14,16 @@ import "./bitmap.component.js";
  * shapes, and by `OmGraphicalLayout` to render the host class's own
  * diagram-level shapes. Both call paths share the switch — they only
  * differ in the `zBias` they pass.
+ *
+ * `lineThicknessScale` is the host's stroke-width multiplier, applied
+ * to the stroked primitives' `lineThickness` (§18.6); the text/bitmap
+ * primitives carry no stroke and ignore it.
  */
 export function renderShape(
   shape: Shape,
   zOrder: number,
   zBias: number = 0,
+  lineThicknessScale: number | undefined = undefined,
 ): TemplateResult {
   // Per-shape GraphicItem visibility (§18.6, issue #76 item 15): a
   // `visible=false` graphic is dropped entirely. origin/rotation are applied
@@ -30,24 +35,28 @@ export function renderShape(
         .shape=${shape}
         .zOrder=${zOrder}
         .zBias=${zBias}
+        .lineThicknessScale=${lineThicknessScale}
       ></om-rectangle>`;
     case "polygon":
       return html`<om-polygon
         .shape=${shape}
         .zOrder=${zOrder}
         .zBias=${zBias}
+        .lineThicknessScale=${lineThicknessScale}
       ></om-polygon>`;
     case "line":
       return html`<om-line
         .shape=${shape}
         .zOrder=${zOrder}
         .zBias=${zBias}
+        .lineThicknessScale=${lineThicknessScale}
       ></om-line>`;
     case "ellipse":
       return html`<om-ellipse
         .shape=${shape}
         .zOrder=${zOrder}
         .zBias=${zBias}
+        .lineThicknessScale=${lineThicknessScale}
       ></om-ellipse>`;
     case "text":
       return html`<om-text
@@ -78,12 +87,13 @@ export function renderShape(
 export function renderLayers(
   layers: ReadonlyArray<IconLayer>,
   zBias: number = 0,
+  lineThicknessScale: number | undefined = undefined,
 ): TemplateResult[] {
   const out: TemplateResult[] = [];
   let zOrder = 0;
   for (const layer of layers) {
     for (const shape of layer.shapes) {
-      out.push(renderShape(shape, zOrder, zBias));
+      out.push(renderShape(shape, zOrder, zBias, lineThicknessScale));
       zOrder++;
     }
   }

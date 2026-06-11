@@ -1,5 +1,6 @@
 import {
   Color3,
+  CreateGreasedLine,
   Mesh,
   StandardMaterial,
   TransformNode as TransformNodeImpl,
@@ -8,14 +9,17 @@ import {
   type Scene,
   type TransformNode,
 } from "@babylonjs/core";
-import {
-  CreateDashedLines,
-  CreateLines,
-} from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
 import type { Color, Extent } from "@dicode/omc-client";
 import type { FillSpec } from "@dicode/diagram-svg";
 
 import { resolveFillTexture } from "./fill-texture.js";
+import { sceneWorldPerPixel } from "../scene/camera-metrics.js";
+import {
+  dashStyleForPattern,
+  polylineLength,
+  screenDashCount,
+  strokeWorldWidth,
+} from "../scene/line-metrics.js";
 
 /** Per-shape GraphicItem transform fields (§18.6) every primitive carries. */
 export interface GraphicItemTransform {
@@ -63,6 +67,12 @@ export function graphicItemNode(
 
 export interface OwnedResource {
   dispose(): void;
+  /**
+   * Re-derive zoom-dependent material state (currently the dash count,
+   * which is held constant in screen space). Present only on resources
+   * that have such state; the base class calls it on view changes.
+   */
+  rescaleForView?(): void;
 }
 
 /**
@@ -450,62 +460,71 @@ function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
 
 // ---------- stroke (polyline) ----------
 
-const DEFAULT_DASH_SIZE = 4;
-const DEFAULT_DASH_GAP = 3;
+export interface StrokeOptions {
+  /** Modelica `lineThickness` / `thickness` in icon units. */
+  thickness?: number | undefined;
+  /** Host's `lineThicknessScale` multiplier. */
+  thicknessScale?: number | undefined;
+  /** Modelica line `pattern` (`Dash`, `Dot`, …); solid when unset. */
+  pattern?: string | undefined;
+}
 
+/**
+ * Stroke a polyline as a `GreasedLine` ribbon. Width is world-space
+ * (`sizeAttenuation: false`) so the outline scales with its icon like
+ * OMEdit, derived from `lineThickness × lineThicknessScale`. Dashed
+ * patterns hold a constant on-screen rhythm: `dashCount` is recomputed
+ * from `worldPerPixel` here and again whenever {@link
+ * OwnedResource.rescaleForView} is called on zoom.
+ */
 export function buildStroke(
   scene: Scene,
   parent: TransformNode,
   points: ReadonlyArray<readonly [number, number]>,
   color: Color,
-  pattern: string | undefined,
   z: number,
   baseName: string,
+  options: StrokeOptions = {},
 ): OwnedResource | null {
-  if (points.length < 2 || pattern === "None") {
+  if (points.length < 2 || options.pattern === "None") {
     return null;
   }
   const vec = points.map(([x, y]) => new Vector3(x, y, z));
-  const colour = colorToColor3(color);
+  const width = strokeWorldWidth(options.thickness, options.thicknessScale);
+  const dash = dashStyleForPattern(options.pattern);
 
-  // GL_LINES is pixel-thin in WebGL, which matches OMEdit's icon look
-  // for typical lineThickness ≤ 0.5. Anything thicker isn't visually
-  // distinct at default zoom — flagged as a follow-up if we need true
-  // thickness later.
-  const dash = patternIsDashed(pattern);
-  const mesh = dash
-    ? CreateDashedLines(
-        baseName,
-        {
-          points: vec,
-          dashSize: DEFAULT_DASH_SIZE,
-          gapSize: DEFAULT_DASH_GAP,
-          dashNb: Math.max(8, points.length * 8),
-          updatable: false,
-        },
-        scene,
-      )
-    : CreateLines(baseName, { points: vec, updatable: false }, scene);
-  mesh.color = colour;
+  const mesh = CreateGreasedLine(
+    baseName,
+    { points: vec },
+    {
+      width,
+      sizeAttenuation: false,
+      color: colorToColor3(color),
+      ...(dash ? { useDash: true, dashRatio: dash.ratio } : {}),
+    },
+    scene,
+  );
   mesh.parent = parent;
   mesh.isPickable = false;
-  return {
-    dispose(): void {
-      mesh.dispose();
-    },
-  };
-}
 
-function patternIsDashed(pattern: string | undefined): boolean {
-  switch (pattern) {
-    case "Dash":
-    case "Dot":
-    case "DashDot":
-    case "DashDotDot":
-      return true;
-    default:
-      return false;
+  if (!dash) {
+    return { dispose: () => mesh.dispose() };
   }
+
+  const worldLength = polylineLength(points);
+  const applyDashCount = (): void => {
+    const material = mesh.greasedLineMaterial;
+    if (!material) {
+      return;
+    }
+    const wpp = sceneWorldPerPixel(scene) ?? 1;
+    material.dashCount = screenDashCount(worldLength, wpp, dash.periodPx);
+  };
+  applyDashCount();
+  return {
+    dispose: () => mesh.dispose(),
+    rescaleForView: applyDashCount,
+  };
 }
 
 // ---------- triangulation (ear clipping) ----------

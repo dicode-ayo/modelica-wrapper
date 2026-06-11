@@ -58,16 +58,13 @@ export abstract class OmShapeElement extends LitElement {
   coordinateSystem: CoordinateSystem | undefined = undefined;
 
   /**
-   * Stroke-width multiplier kept on the public API for forward-compat
-   * with the previous SVG renderer. The primitives renderer currently
-   * ignores it — line widths are taken directly from the Modelica
-   * annotations. Kept as a property so existing host code that sets
-   * it doesn't fail.
+   * Multiplier applied to every shape's `lineThickness` to size stroke
+   * widths, matching `@dicode/diagram-svg`'s `lineThicknessScale`.
+   * Threaded down to the stroked primitives via `renderLayers`.
    */
   @property({ type: Number, attribute: "line-thickness-scale" })
   lineThicknessScale: number | undefined = undefined;
 
-  /** Selection state — purely a flag for now (E2 wires visuals). */
   @property({ type: Boolean, reflect: true })
   selected = false;
 
@@ -130,7 +127,8 @@ export abstract class OmShapeElement extends LitElement {
   }
 
   override render(): TemplateResult {
-    return html`${renderLayers(this.layers)}<slot></slot>`;
+    return html`${renderLayers(this.layers, 0, this.lineThicknessScale)}<slot
+      ></slot>`;
   }
 
   override updated(_changed: Map<string, unknown>): void {

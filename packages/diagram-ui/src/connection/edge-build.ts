@@ -1,25 +1,33 @@
-import { Color3, Mesh, MeshBuilder, Vector3 } from "@babylonjs/core";
 import {
-  CreateDashedLines,
-  CreateLines,
-} from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
-import type { LinesMesh, Scene, TransformNode } from "@babylonjs/core";
+  Color3,
+  CreateGreasedLine,
+  Mesh,
+  MeshBuilder,
+  Vector3,
+} from "@babylonjs/core";
+import type {
+  GreasedLineBaseMesh,
+  Scene,
+  TransformNode,
+} from "@babylonjs/core";
 import type { Point } from "@dicode/omc-client";
 
+import { sceneWorldPerPixel } from "../scene/camera-metrics.js";
+import { polylineLength, screenDashCount } from "../scene/line-metrics.js";
+
 /**
- * Pure builder for the connection's stroked path. Edges use Babylon's
- * built-in GL `LinesMesh` (1-pixel `gl.LINES` primitive) for the
- * visible stroke — matches OMEdit's crisp single-pixel look and keeps
- * draw-call cost tiny.
+ * Pure builder for the connection's stroked path. Edges are
+ * `GreasedLine` ribbons with a constant screen-space width
+ * (`sizeAttenuation: true`), antialiased and crisp at any zoom.
  *
- * Picking gl.LINES is unreliable (the line has zero geometric width),
- * so the builder also returns an invisible "hit area" mesh — a fat
- * tube along each segment — that `scene.pick` can hit. Both meshes
- * share the entity metadata so the picker resolves the same edge
- * either way.
+ * Picking the thin ribbon is unreliable, so the builder also returns an
+ * invisible "hit area" mesh — a fat tube along each segment — that
+ * `scene.pick` can hit. Both meshes share the entity metadata so the
+ * picker resolves the same edge either way.
  *
- * `clocked` swaps the visible builder to `CreateDashedLines` for the
- * Modelica synchronous-clock convention.
+ * `clocked` turns on the GreasedLine material's dash mode for the
+ * Modelica synchronous-clock convention; the dash count is held
+ * constant in screen space (see {@link updateEdgeDashes}).
  */
 export interface EdgeOptions {
   points: Point[];
@@ -43,14 +51,17 @@ export const DEFAULT_EDGE_COLOR = new Color3(0.1, 0.1, 0.18);
 export const EDGE_Z_OFFSET = -0.005;
 const DEFAULT_HIT_RADIUS = 1.5;
 
-/** Dash sizing tuned for diagram-coord paths (~10s of units long). */
-const DEFAULT_DASH_SIZE = 4;
-const DEFAULT_DASH_GAP = 3;
-const DEFAULT_DASH_COUNT = 24;
+/** On-screen edge ribbon width, in device pixels. */
+const EDGE_WIDTH_PX = 1.5;
+
+/** On-screen length of one dash+gap cycle for clocked edges, in pixels. */
+const DASH_PERIOD_PX = 10;
+/** Fraction of each dash cycle left empty (GreasedLine `dashRatio`). */
+const DASH_RATIO = 0.4;
 
 export interface EdgeMeshes {
   /** Visible stroked polyline. Picking it directly is unreliable. */
-  line: LinesMesh;
+  line: GreasedLineBaseMesh;
   /** Invisible per-segment tube that the picker actually hits. */
   hitArea: Mesh;
 }
@@ -66,27 +77,22 @@ export function buildEdge(
   }
   const z = options.zOffset ?? EDGE_Z_OFFSET;
   const points = options.points.map(([x, y]) => new Vector3(x, y, z));
-  // `updatable: true` lets `updateEdgePoints` rewrite the vertex
-  // buffer in place via the `instance` parameter on subsequent
-  // `CreateLines` calls. The cost (a slightly larger GPU buffer
-  // allocation) is negligible compared to disposing + recreating the
-  // mesh on every pointermove of a component drag.
-  const line = options.clocked
-    ? CreateDashedLines(
-        name,
-        {
-          points,
-          dashNb: DEFAULT_DASH_COUNT,
-          dashSize: DEFAULT_DASH_SIZE,
-          gapSize: DEFAULT_DASH_GAP,
-          updatable: true,
-        },
-        scene,
-      )
-    : CreateLines(name, { points, updatable: true }, scene);
-  line.color = options.color ?? DEFAULT_EDGE_COLOR;
+  const line = CreateGreasedLine(
+    name,
+    { points, updatable: true },
+    {
+      width: EDGE_WIDTH_PX,
+      sizeAttenuation: true,
+      color: options.color ?? DEFAULT_EDGE_COLOR,
+      ...(options.clocked ? { useDash: true, dashRatio: DASH_RATIO } : {}),
+    },
+    scene,
+  );
   if (parent) {
     line.parent = parent;
+  }
+  if (options.clocked) {
+    updateEdgeDashes(scene, line, options.points);
   }
 
   const hitArea = buildHitTube(
@@ -101,38 +107,52 @@ export function buildEdge(
   return { line, hitArea };
 }
 
+/** Recolour an edge's ribbon in place via its GreasedLine material. */
+export function setEdgeColor(line: GreasedLineBaseMesh, color: Color3): void {
+  line.greasedLineMaterial?.setColor(color);
+}
+
 /**
- * In-place vertex update for the visible LinesMesh. Callers MUST
- * already have verified that the new point count matches the mesh's
- * original — Babylon's `instance` parameter accepts position updates
- * but not topology changes (see the docstrings on `CreateLines` /
- * `CreateDashedLines`). The hit tube is a merged mesh and can't be
- * updated this way; the caller rebuilds it separately if needed.
+ * In-place vertex update for the visible ribbon via GreasedLine's
+ * `setPoints`. Unlike the old `gl.LINES` path this accepts any point
+ * count, but callers still gate on an unchanged count so the merged hit
+ * tube and the ribbon stay in sync. Re-derives the screen-space dash
+ * count for clocked edges.
  */
 export function updateEdgePoints(
   scene: Scene,
-  line: LinesMesh,
+  line: GreasedLineBaseMesh,
   newPoints: Point[],
   clocked: boolean,
   zOffset: number = EDGE_Z_OFFSET,
 ): void {
   const points = newPoints.map(([x, y]) => new Vector3(x, y, zOffset));
+  line.setPoints(points);
   if (clocked) {
-    CreateDashedLines(
-      line.name,
-      {
-        points,
-        dashNb: DEFAULT_DASH_COUNT,
-        dashSize: DEFAULT_DASH_SIZE,
-        gapSize: DEFAULT_DASH_GAP,
-        updatable: true,
-        instance: line,
-      },
-      scene,
-    );
-  } else {
-    CreateLines(line.name, { points, updatable: true, instance: line }, scene);
+    updateEdgeDashes(scene, line, newPoints);
   }
+}
+
+/**
+ * Set a clocked edge's `dashCount` so one dash+gap cycle spans a
+ * constant {@link DASH_PERIOD_PX} device pixels regardless of zoom.
+ * Safe to call on any edge; a no-op when the material isn't dashed.
+ */
+export function updateEdgeDashes(
+  scene: Scene,
+  line: GreasedLineBaseMesh,
+  points: ReadonlyArray<readonly [number, number]>,
+): void {
+  const material = line.greasedLineMaterial;
+  if (!material || !material.useDash) {
+    return;
+  }
+  const wpp = sceneWorldPerPixel(scene) ?? 1;
+  material.dashCount = screenDashCount(
+    polylineLength(points),
+    wpp,
+    DASH_PERIOD_PX,
+  );
 }
 
 /**
@@ -171,10 +191,15 @@ function buildHitTube(
 ): Mesh {
   const segments: Mesh[] = [];
   for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    if (a === undefined || b === undefined) {
+      continue;
+    }
     const seg = MeshBuilder.CreateTube(
       `${name}.${i}`,
       {
-        path: [points[i]!, points[i + 1]!],
+        path: [a, b],
         radius,
         tessellation: 6,
         cap: 0,
@@ -184,10 +209,11 @@ function buildHitTube(
     );
     segments.push(seg);
   }
+  const first = segments[0];
   const merged =
-    segments.length === 1
-      ? segments[0]!
-      : (Mesh.MergeMeshes(segments, true, true) ?? segments[0]!);
+    segments.length === 1 || first === undefined
+      ? (first ?? new Mesh(name, scene))
+      : (Mesh.MergeMeshes(segments, true, true) ?? first);
   merged.name = name;
   merged.isVisible = false;
   merged.isPickable = true;

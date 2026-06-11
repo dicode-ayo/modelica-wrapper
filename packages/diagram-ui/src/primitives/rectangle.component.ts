@@ -86,9 +86,13 @@ export class OmRectangle extends OmShapePrimitive {
       root,
       corners,
       s.lineColor ?? DEFAULT_LINE_COLOR,
-      s.pattern,
       z + STROKE_Z_DELTA,
       `${baseName}.stroke`,
+      {
+        thickness: s.lineThickness,
+        thicknessScale: this.lineThicknessScale,
+        pattern: s.pattern,
+      },
     );
     if (stroke) {
       this.resources.push(stroke);

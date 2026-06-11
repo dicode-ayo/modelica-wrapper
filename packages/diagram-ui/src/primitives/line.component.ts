@@ -11,9 +11,6 @@ import {
 
 /**
  * `<om-line>` — one Modelica `LineShape`. Pure polyline; no fill side.
- * `lineThickness` is reserved on the Modelica side but ignored here —
- * GL_LINES caps at 1px in WebGL, which matches OMEdit's typical
- * appearance for the default thickness range.
  */
 @customElement("om-line")
 export class OmLine extends OmShapePrimitive {
@@ -35,9 +32,13 @@ export class OmLine extends OmShapePrimitive {
       gi.node,
       s.points,
       s.color ?? DEFAULT_LINE_COLOR,
-      s.pattern,
       z,
       `om-line.${this.zOrder}`,
+      {
+        thickness: s.thickness,
+        thicknessScale: this.lineThicknessScale,
+        pattern: s.pattern,
+      },
     );
     if (stroke) {
       this.resources.push(stroke);

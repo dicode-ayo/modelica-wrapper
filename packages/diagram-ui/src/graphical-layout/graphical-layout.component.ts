@@ -575,7 +575,7 @@ export class OmGraphicalLayout extends LitElement {
   private renderHostShapes(layout: DiagramLayout): TemplateResult[] {
     const layers =
       layout.kind === "icon" ? layout.iconLayers : layout.diagramLayers;
-    return renderLayers(layers, HOST_SHAPE_Z_BIAS);
+    return renderLayers(layers, HOST_SHAPE_Z_BIAS, this.lineThicknessScale);
   }
 
   private renderInProgressEdge(): TemplateResult | typeof nothing {
