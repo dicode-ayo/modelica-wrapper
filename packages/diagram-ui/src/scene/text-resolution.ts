@@ -21,10 +21,9 @@ export interface TextureEdgeBounds {
 }
 
 /**
- * World units per on-screen device pixel for an orthographic camera —
- * the same `(orthoRight − orthoLeft) / renderWidth` ratio the selection
- * overlay uses to keep its handles screen-constant. Returns `Infinity`
- * for a degenerate render width so callers fall back to a clamp.
+ * World units per on-screen device pixel for an orthographic camera:
+ * `(orthoRight − orthoLeft) / renderWidth`. Returns `Infinity` for a
+ * degenerate render width so callers fall back to a clamp.
  */
 export function worldPerPixel(
   orthoLeft: number,

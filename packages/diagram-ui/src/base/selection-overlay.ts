@@ -13,6 +13,8 @@ import {
 } from "@babylonjs/core";
 
 import { requestSceneRender } from "../scene/render-scheduler.js";
+import { findOrthoCamera, worldScaleXY } from "../scene/ortho-camera.js";
+import { worldPerPixel } from "../scene/text-resolution.js";
 import type { EntityKind } from "../interaction/node-keys.js";
 
 /** Accent blue shared by the selection outline stroke and rotate handle. */
@@ -290,11 +292,13 @@ export class ResizeHandles {
     }
     const engine = this.scene.getEngine();
     const canvasW = engine.getRenderWidth() || 1;
-    const orthoRight = camera.orthoRight ?? 1;
-    const orthoLeft = camera.orthoLeft ?? -1;
-    const worldPerPixel = (orthoRight - orthoLeft) / canvasW;
-    const size = this.handlePixelSize * worldPerPixel;
-    const parentScale = parentWorldScale(this.parent);
+    const wpp = worldPerPixel(
+      camera.orthoLeft ?? -1,
+      camera.orthoRight ?? 1,
+      canvasW,
+    );
+    const size = this.handlePixelSize * wpp;
+    const parentScale = worldScaleXY(this.parent);
     for (const h of this.handles) {
       h.scaling.set(size / parentScale.x, size / parentScale.y, 1);
     }
@@ -404,32 +408,13 @@ export class RotateHandle {
     }
     const engine = this.scene.getEngine();
     const canvasW = engine.getRenderWidth() || 1;
-    const orthoRight = camera.orthoRight ?? 1;
-    const orthoLeft = camera.orthoLeft ?? -1;
-    const worldPerPixel = (orthoRight - orthoLeft) / canvasW;
-    const size = this.handlePixelSize * worldPerPixel;
-    const parentScale = parentWorldScale(this.parent);
+    const wpp = worldPerPixel(
+      camera.orthoLeft ?? -1,
+      camera.orthoRight ?? 1,
+      canvasW,
+    );
+    const size = this.handlePixelSize * wpp;
+    const parentScale = worldScaleXY(this.parent);
     this.handle.scaling.set(size / parentScale.x, size / parentScale.y, 1);
   }
-}
-
-/**
- * Absolute world-space scale of a node. Selection handles are parented to
- * the shape's transform, which carries the icon→placement scale (commonly
- * ≪ 1), so a handle's local scaling must be divided by this to resolve to
- * a constant screen-pixel size. A flip puts a negative sign on an axis;
- * pixel size is sign-independent, so only the magnitude matters.
- */
-function parentWorldScale(node: TransformNode): { x: number; y: number } {
-  const scale = new Vector3();
-  node.computeWorldMatrix(true).decompose(scale, undefined, undefined);
-  return { x: Math.abs(scale.x) || 1, y: Math.abs(scale.y) || 1 };
-}
-
-function findOrthoCamera(scene: Scene): ArcRotateCamera | null {
-  const cam = scene.activeCamera;
-  if (cam && (cam as ArcRotateCamera).orthoLeft !== undefined) {
-    return cam as ArcRotateCamera;
-  }
-  return null;
 }

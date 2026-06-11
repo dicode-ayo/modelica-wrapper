@@ -54,7 +54,9 @@ describe("targetTextureEdge", () => {
     for (let i = 1; i < edges.length; i++) {
       const prev = edges[i - 1];
       const curr = edges[i];
-      if (prev === undefined || curr === undefined) continue;
+      if (prev === undefined || curr === undefined) {
+        continue;
+      }
       expect(curr).toBeGreaterThanOrEqual(prev);
     }
     // 200 / 0.05 = 4000, past the cap.

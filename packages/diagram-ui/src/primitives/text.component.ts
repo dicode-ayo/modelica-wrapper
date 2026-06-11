@@ -6,8 +6,6 @@ import {
   Mesh,
   MeshBuilder,
   StandardMaterial,
-  Vector3,
-  type ArcRotateCamera,
   type Scene,
   type TransformNode,
 } from "@babylonjs/core";
@@ -26,6 +24,7 @@ import {
   type ViewStateStore,
 } from "../scene/view-state-store.js";
 import { targetTextureEdge, worldPerPixel } from "../scene/text-resolution.js";
+import { findOrthoCamera, worldScaleXY } from "../scene/ortho-camera.js";
 
 /**
  * Floor on the texture edge in texels. Keeps tiny extents legible when
@@ -50,8 +49,8 @@ const MAX_TEXT_TEXTURE_EDGE = 2048;
  */
 const FONT_FIT_FACTOR = 0.7;
 
-/** Inputs captured once per structural build and replayed on every
- *  `retexture()` so the canvas redraw doesn't re-resolve the shape. */
+/** Resolved label inputs the canvas bake needs, independent of the
+ *  Babylon shape. */
 interface TextDrawSpec {
   body: string;
   width: number;
@@ -254,7 +253,8 @@ export class OmText extends OmShapePrimitive {
       camera.orthoRight ?? 1,
       renderWidth,
     );
-    const scale = planeWorldScale(plane);
+    const worldScale = worldScaleXY(plane);
+    const scale = Math.max(worldScale.x, worldScale.y);
     const longEdge = Math.max(spec.width, spec.height);
     return targetTextureEdge(longEdge, scale, wpp, bounds);
   }
@@ -314,22 +314,6 @@ export class OmText extends OmShapePrimitive {
     this.texture = texture;
     this.bakedEdge = edge;
   }
-}
-
-/** Long-edge world scale of the plane, so a component scaled up by its
- *  placement bakes proportionally more texels. */
-function planeWorldScale(plane: Mesh): number {
-  const scale = new Vector3();
-  plane.computeWorldMatrix(true).decompose(scale, undefined, undefined);
-  return Math.max(Math.abs(scale.x) || 1, Math.abs(scale.y) || 1);
-}
-
-function findOrthoCamera(scene: Scene): ArcRotateCamera | null {
-  const cam = scene.activeCamera;
-  if (cam && (cam as ArcRotateCamera).orthoLeft !== undefined) {
-    return cam as ArcRotateCamera;
-  }
-  return null;
 }
 
 declare global {
