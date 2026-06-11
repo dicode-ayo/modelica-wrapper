@@ -133,12 +133,16 @@ export class OmText extends OmShapePrimitive {
     return `${this.resolvedBody()}|${JSON.stringify(this.shape)}`;
   }
 
-  protected override buildMeshes(parent: TransformNode, z: number): void {
+  private resetTextureState(): void {
     this.plane = null;
     this.material = null;
     this.texture = null;
     this.drawSpec = null;
     this.bakedEdge = 0;
+  }
+
+  protected override buildMeshes(parent: TransformNode, z: number): void {
+    this.resetTextureState();
 
     const s = this.shape;
     if (!s) {
@@ -204,11 +208,7 @@ export class OmText extends OmShapePrimitive {
         plane.dispose();
         material.dispose();
         this.texture?.dispose();
-        this.plane = null;
-        this.material = null;
-        this.texture = null;
-        this.drawSpec = null;
-        this.bakedEdge = 0;
+        this.resetTextureState();
       },
     });
     this.resources.push(gi);

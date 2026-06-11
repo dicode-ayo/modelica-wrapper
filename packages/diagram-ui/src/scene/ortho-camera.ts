@@ -13,7 +13,10 @@ import {
 export function isOrthoCamera(
   cam: Camera | null | undefined,
 ): cam is ArcRotateCamera {
-  return cam != null && (cam as ArcRotateCamera).orthoLeft !== undefined;
+  if (cam === null || cam === undefined) {
+    return false;
+  }
+  return (cam as ArcRotateCamera).orthoLeft !== undefined;
 }
 
 /** The active camera when it is orthographic, else `null`. */
