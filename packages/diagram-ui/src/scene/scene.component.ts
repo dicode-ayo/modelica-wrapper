@@ -64,10 +64,7 @@ const defaultEngineFactory: EngineFactory = (canvas) =>
   // WebGL context, smoothing diagonal connection edges and polygon
   // outlines. MSAA resolves in the driver — unlike an FXAA post-process
   // it adds no per-frame render pass, so it composes with the on-demand
-  // render loop instead of forcing continuous rendering. The 2nd
-  // positional arg and `options.antialias` feed the same context
-  // attribute; it is set in `options` so the intent isn't a bare
-  // positional `true`.
+  // render loop instead of forcing continuous rendering.
   new Engine(
     canvas,
     true,

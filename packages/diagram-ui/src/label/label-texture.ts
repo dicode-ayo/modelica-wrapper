@@ -26,21 +26,17 @@ interface SceneMeta {
 
 /**
  * Resolves `AdvancedDynamicTexture.renderScale` so the fullscreen GUI
- * texture lands exactly on the device pixel grid — once.
+ * texture lands on the device pixel grid exactly once.
  *
- * The texture rasterises at `engine.getRenderWidth() × renderScale`
- * pixels. `getRenderWidth()` already reports the physical backbuffer:
- * with `adaptToDeviceRatio: true` the engine's hardware-scaling level is
- * `1 / devicePixelRatio`, so the backbuffer is `CSS × devicePixelRatio`.
- * Target texture size is `CSS × devicePixelRatio`, hence
- *   renderScale = devicePixelRatio × hardwareScalingLevel
- * which collapses to `1` when `adaptToDeviceRatio` already applied DPR
- * and to `devicePixelRatio` when it did not. Multiplying the raw DPR in
- * unconditionally would compound it and supersample to DPR² area.
+ * The texture rasterizes at `getRenderWidth() × renderScale`, and
+ * `getRenderWidth()` already reports the physical backbuffer (the
+ * engine is created with `adaptToDeviceRatio: true`, so its
+ * hardware-scaling level is `1 / devicePixelRatio`). Multiplying raw
+ * DPR in unconditionally would compound it and supersample to DPR²
+ * area, hence `devicePixelRatio × hardwareScalingLevel`.
  *
  * Falls back to `1` for non-finite or non-positive readings (jsdom,
- * NullEngine, exotic embeddings) — a non-positive scale collapses the
- * texture.
+ * NullEngine) — a non-positive scale collapses the texture.
  */
 export function resolveRenderScale(
   devicePixelRatio: number | undefined,
