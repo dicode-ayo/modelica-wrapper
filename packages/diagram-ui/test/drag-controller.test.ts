@@ -200,6 +200,39 @@ describe("DragController", () => {
     cleanup();
   });
 
+  it("emits edgeDrag with the grab point and cumulative delta on an edge", () => {
+    const { scene, dispose } = makeScene();
+    const edge = new TransformNode("om-edge:0", scene);
+    edge.metadata = { kind: "edge", nodeId: "0" };
+    const { canvas, events, cleanup } = setupController({
+      picker: () => edge,
+    });
+
+    canvas.dispatchEvent(
+      new PointerEvent("pointerdown", { button: 0, clientX: 100, clientY: 50 }),
+    );
+    canvas.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 130, clientY: 60 }),
+    );
+    canvas.dispatchEvent(
+      new PointerEvent("pointerup", { button: 0, clientX: 130, clientY: 60 }),
+    );
+
+    const edgeDrags = events.filter((e) => e.type === "edgeDrag");
+    expect(edgeDrags.length).toBe(2);
+    expect(edgeDrags[0]!.detail).toMatchObject({
+      connIdx: 0,
+      grab: { x: 100, y: 50 },
+      dx: 30,
+      dy: 10,
+      draft: true,
+    });
+    expect(edgeDrags[1]!.detail).toMatchObject({ draft: false });
+
+    cleanup();
+    dispose();
+  });
+
   it("ignores shift+primary (pan modifier)", () => {
     const { canvas, events, cleanup } = setupController({
       picker: () => null,

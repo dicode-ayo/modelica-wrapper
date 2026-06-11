@@ -6,7 +6,7 @@ import type {
 } from "@dicode/omc-client";
 
 import { parseKey, type EntityKind } from "./node-keys.js";
-import { orthogonalRoute } from "./connection-route.js";
+import { orthogonalRoute, pointsEqual } from "./connection-route.js";
 import { snapPlacement, type SnapGrid } from "./snap-math.js";
 
 /**
@@ -737,6 +737,247 @@ export function applyWaypointDelete(
   }
   const waypoints = conn.waypoints.filter((_, i) => i !== waypointIdx);
   return replaceConnection(layout, connIdx, { ...conn, waypoints });
+}
+
+/**
+ * Drags the connection segment nearest `grab` to follow the pointer,
+ * keeping the route orthogonal (Manhattan): a horizontal segment moves
+ * only vertically, a vertical one only horizontally — the parallel-axis
+ * delta is ignored. When the grabbed segment touches an anchored
+ * endpoint (`waypoints[0]` or the last waypoint), a perpendicular jog
+ * waypoint is inserted so the endpoint stays pinned to its connector.
+ * Coincident / collinear waypoints the drag produces are collapsed, so
+ * repeated drags don't accumulate cruft.
+ *
+ * Returns the same layout reference when there's nothing to move (zero
+ * delta, an unknown connection, fewer than two waypoints, or a result
+ * identical to the input) so `commitLayout` can skip the change event.
+ */
+export function applyEdgeSegmentDrag(
+  layout: DiagramLayout,
+  connIdx: number,
+  grab: { x: number; y: number },
+  dx: number,
+  dy: number,
+): DiagramLayout {
+  if (dx === 0 && dy === 0) {
+    return layout;
+  }
+  const conn = layout.connections[connIdx];
+  if (!conn || conn.waypoints.length < 2) {
+    return layout;
+  }
+  const wps = conn.waypoints;
+  const seg = closestSegmentIndex(wps, grab);
+  const a = wps[seg];
+  const b = wps[seg + 1];
+  if (a === undefined || b === undefined) {
+    return layout;
+  }
+  const lastIdx = wps.length - 1;
+  const horizontal = segmentAxis(a, b) === "h";
+
+  let p: Point;
+  let q: Point;
+  if (horizontal) {
+    const y = a[1] + dy;
+    p = [a[0], y];
+    q = [b[0], y];
+  } else {
+    const x = a[0] + dx;
+    p = [x, a[1]];
+    q = [x, b[1]];
+  }
+
+  // The grabbed endpoints become `p`/`q`. Each seam to a neighbour is
+  // reconnected through an orthogonal jog (a coincident / collinear one
+  // is collapsed by `simplifyOrthogonalPath`, so an already-aligned
+  // neighbour costs nothing). At a terminal segment the neighbour is the
+  // anchor itself, which the perpendicular move already meets squarely.
+  let left: Point[];
+  if (seg === 0) {
+    left = [[a[0], a[1]]];
+  } else {
+    const prevNb = wps[seg - 1];
+    if (prevNb === undefined) {
+      return layout;
+    }
+    left = [
+      ...wps.slice(0, seg),
+      jogFromStart(prevNb, p, segmentAxis(prevNb, a)),
+    ];
+  }
+  let right: Point[];
+  if (seg + 1 === lastIdx) {
+    right = [[b[0], b[1]]];
+  } else {
+    const nextNb = wps[seg + 2];
+    if (nextNb === undefined) {
+      return layout;
+    }
+    right = [
+      jogToEnd(q, nextNb, segmentAxis(b, nextNb)),
+      ...wps.slice(seg + 2),
+    ];
+  }
+
+  return commitReshape(layout, connIdx, conn, [...left, p, q, ...right]);
+}
+
+/**
+ * Drags a single internal waypoint, keeping the route orthogonal: each
+ * adjacent segment is reconnected to its fixed neighbour through a
+ * perpendicular jog (inserted only when the neighbour doesn't already
+ * line up — `simplifyOrthogonalPath` drops the redundant ones). Endpoint
+ * waypoints anchor to their connectors and aren't draggable.
+ *
+ * Returns the same layout reference when there's nothing to move (zero
+ * delta, an unknown connection, an endpoint / out-of-range index, or a
+ * result identical to the input).
+ */
+export function applyWaypointDrag(
+  layout: DiagramLayout,
+  connIdx: number,
+  waypointIdx: number,
+  dx: number,
+  dy: number,
+): DiagramLayout {
+  if (dx === 0 && dy === 0) {
+    return layout;
+  }
+  const conn = layout.connections[connIdx];
+  if (!conn) {
+    return layout;
+  }
+  const wps = conn.waypoints;
+  const lastIdx = wps.length - 1;
+  if (waypointIdx <= 0 || waypointIdx >= lastIdx) {
+    return layout;
+  }
+  const prev = wps[waypointIdx - 1];
+  const curr = wps[waypointIdx];
+  const next = wps[waypointIdx + 1];
+  if (prev === undefined || curr === undefined || next === undefined) {
+    return layout;
+  }
+  const moved: Point = [curr[0] + dx, curr[1] + dy];
+  const inJog = jogFromStart(prev, moved, segmentAxis(prev, curr));
+  const outJog = jogToEnd(moved, next, segmentAxis(curr, next));
+  return commitReshape(layout, connIdx, conn, [
+    ...wps.slice(0, waypointIdx - 1),
+    prev,
+    inJog,
+    moved,
+    outJog,
+    next,
+    ...wps.slice(waypointIdx + 2),
+  ]);
+}
+
+/**
+ * Simplify `candidate` into a clean orthogonal route and store it on
+ * `connIdx`. Returns the original `layout` reference when the result is
+ * identical to the connection's current waypoints, so `commitLayout`
+ * can skip the change event.
+ */
+function commitReshape(
+  layout: DiagramLayout,
+  connIdx: number,
+  conn: DiagramLayout["connections"][number],
+  candidate: Point[],
+): DiagramLayout {
+  const waypoints = simplifyOrthogonalPath(candidate);
+  if (pointsEqual(waypoints, conn.waypoints)) {
+    return layout;
+  }
+  return replaceConnection(layout, connIdx, { ...conn, waypoints });
+}
+
+type Axis = "h" | "v";
+
+/** Dominant orientation of segment `a`–`b`: horizontal when its x-run is
+ *  at least its y-run, vertical otherwise. */
+function segmentAxis(a: Point, b: Point): Axis {
+  return Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1]) ? "h" : "v";
+}
+
+/** Corner that lets the segment leaving `from` run along `axis` before
+ *  turning perpendicular to reach `to`. */
+function jogFromStart(from: Point, to: Point, axis: Axis): Point {
+  return axis === "h" ? [to[0], from[1]] : [from[0], to[1]];
+}
+
+/** Corner that lets the segment arriving at `to` run along `axis`, having
+ *  turned from `from`. */
+function jogToEnd(from: Point, to: Point, axis: Axis): Point {
+  return axis === "h" ? [from[0], to[1]] : [to[0], from[1]];
+}
+
+/** Index of the segment (`waypoints[i]`–`waypoints[i+1]`) whose nearest
+ *  point to `point` is closest. Always in `[0, length-2]`. */
+function closestSegmentIndex(
+  waypoints: ReadonlyArray<Point>,
+  point: { x: number; y: number },
+): number {
+  let best = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const a = waypoints[i];
+    const b = waypoints[i + 1];
+    if (a === undefined || b === undefined) {
+      continue;
+    }
+    const proj = projectOntoSegment(a, b, point);
+    const dx = proj[0] - point.x;
+    const dy = proj[1] - point.y;
+    const dist = dx * dx + dy * dy;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = i;
+    }
+  }
+  return best;
+}
+
+/**
+ * Collapse a waypoint list: drop coincident points, then drop any
+ * middle point collinear (sharing an x or a y) with its neighbours. The
+ * first and last waypoints — the connector anchors — are always kept.
+ */
+function simplifyOrthogonalPath(points: Point[]): Point[] {
+  const dedup: Point[] = [];
+  for (const p of points) {
+    const prev = dedup.at(-1);
+    if (prev && prev[0] === p[0] && prev[1] === p[1]) {
+      continue;
+    }
+    dedup.push(p);
+  }
+  if (dedup.length <= 2) {
+    return dedup;
+  }
+  const first = dedup[0];
+  const last = dedup.at(-1);
+  if (first === undefined || last === undefined) {
+    return dedup;
+  }
+  const out: Point[] = [first];
+  for (let i = 1; i < dedup.length - 1; i++) {
+    const b = dedup[i];
+    const c = dedup[i + 1];
+    const a = out.at(-1);
+    if (a === undefined || b === undefined || c === undefined) {
+      continue;
+    }
+    const collinearX = a[0] === b[0] && b[0] === c[0];
+    const collinearY = a[1] === b[1] && b[1] === c[1];
+    if (collinearX || collinearY) {
+      continue;
+    }
+    out.push(b);
+  }
+  out.push(last);
+  return out;
 }
 
 function replaceConnection(

@@ -22,6 +22,11 @@ import { entityKeyForNode, formatKey, type EntityKind } from "./node-keys.js";
  *                     and not a pan modifier). Emits `rubberBand`
  *                     events with the dragged-out rectangle.
  *
+ *  - `edge`         : primary-button down on a connection's edge line.
+ *                     Emits `edgeDrag` events with the grab point and
+ *                     cumulative delta; the host moves the grabbed
+ *                     segment orthogonally.
+ *
  * The controller is renderer-agnostic: callers inject:
  *   - `picker(clientX, clientY) -> Node` — typically wraps scene.pick
  *   - `clientToDiagram(clientX, clientY) -> {x, y}` — typically the
@@ -85,6 +90,21 @@ export interface DragEvents {
     toKey: string | null;
     commit: boolean;
   };
+  /**
+   * Drag of a connection's edge line. `connIdx` identifies the
+   * connection; `grab` is the diagram-coord point the gesture started
+   * on (used by the host to pick which segment moves); `dx, dy` is the
+   * cumulative delta from that point. The host moves the grabbed
+   * segment orthogonally, inserting jog waypoints as needed. Draft on
+   * every move, committed on pointerup.
+   */
+  edgeDrag: {
+    connIdx: number;
+    grab: { x: number; y: number };
+    dx: number;
+    dy: number;
+    draft: boolean;
+  };
 }
 
 export type DragEmit = <K extends keyof DragEvents>(
@@ -124,12 +144,20 @@ interface ConnectionState {
   fromKey: string;
 }
 
+interface EdgeDragState {
+  kind: "edge";
+  connIdx: number;
+  startX: number;
+  startY: number;
+}
+
 type DragState =
   | MoveState
   | ResizeState
   | RotateState
   | RubberBandState
-  | ConnectionState;
+  | ConnectionState
+  | EdgeDragState;
 
 /**
  * Entity kinds that begin a move-drag on pointerdown. Connectors are
@@ -282,10 +310,16 @@ export class DragController {
 
     if (entity?.kind === "edge") {
       // Clicking on an edge selects it (the InteractionManager fires
-      // the select event in parallel) but doesn't start a drag — edge
-      // waypoint reshape isn't implemented yet. Without this early
-      // return the click would fall through to rubber-band, which
-      // looks like the click "did nothing visible."
+      // the select event in parallel) and starts an edge-segment drag:
+      // the host moves the grabbed segment orthogonally, inserting
+      // waypoints to keep the route Manhattan.
+      const connIdx = Number(entity.nodeId);
+      if (Number.isNaN(connIdx)) {
+        return;
+      }
+      this.state = { kind: "edge", connIdx, startX: pt.x, startY: pt.y };
+      this.pointerId = e.pointerId;
+      capture(this.canvas, e.pointerId);
       return;
     }
 
@@ -311,54 +345,73 @@ export class DragController {
     if (!pt) {
       return;
     }
-    switch (this.state.kind) {
+    this.emitDragEvent(this.state, pt, e, true);
+  };
+
+  /**
+   * Emit the drag event for `state` at pointer position `pt`. `draft`
+   * distinguishes the live move (`true`) from the committing pointerup
+   * (`false`); the connection drag spells the same distinction as its
+   * `commit` flag.
+   */
+  private emitDragEvent(
+    state: DragState,
+    pt: { x: number; y: number },
+    e: PointerEvent,
+    draft: boolean,
+  ): void {
+    switch (state.kind) {
       case "move":
         this.emit("drag", {
-          keys: this.state.keys,
-          dx: pt.x - this.state.startX,
-          dy: pt.y - this.state.startY,
-          draft: true,
+          keys: state.keys,
+          dx: pt.x - state.startX,
+          dy: pt.y - state.startY,
+          draft,
         });
         return;
       case "resize":
         this.emit("resize", {
-          key: this.state.key,
-          corner: this.state.corner,
+          key: state.key,
+          corner: state.corner,
           x: pt.x,
           y: pt.y,
-          draft: true,
+          draft,
         });
         return;
       case "rotate":
         this.emit("rotate", {
-          key: this.state.key,
+          key: state.key,
           x: pt.x,
           y: pt.y,
           free: e.shiftKey,
-          draft: true,
+          draft,
         });
         return;
       case "rubber-band":
         this.emit("rubberBand", {
-          rect: {
-            x1: this.state.startX,
-            y1: this.state.startY,
-            x2: pt.x,
-            y2: pt.y,
-          },
-          draft: true,
+          rect: { x1: state.startX, y1: state.startY, x2: pt.x, y2: pt.y },
+          draft,
         });
         return;
       case "connection":
         this.emit("connection", {
-          from: this.state.fromKey,
+          from: state.fromKey,
           to: { x: pt.x, y: pt.y },
-          toKey: this.snapKey(e.clientX, e.clientY, this.state.fromKey),
-          commit: false,
+          toKey: this.snapKey(e.clientX, e.clientY, state.fromKey),
+          commit: !draft,
+        });
+        return;
+      case "edge":
+        this.emit("edgeDrag", {
+          connIdx: state.connIdx,
+          grab: { x: state.startX, y: state.startY },
+          dx: pt.x - state.startX,
+          dy: pt.y - state.startY,
+          draft,
         });
         return;
     }
-  };
+  }
 
   private snapKey(
     clientX: number,
@@ -391,53 +444,7 @@ export class DragController {
     this.state = null;
     this.pointerId = -1;
     release(this.canvas, e.pointerId);
-    switch (state.kind) {
-      case "move":
-        this.emit("drag", {
-          keys: state.keys,
-          dx: pt.x - state.startX,
-          dy: pt.y - state.startY,
-          draft: false,
-        });
-        return;
-      case "resize":
-        this.emit("resize", {
-          key: state.key,
-          corner: state.corner,
-          x: pt.x,
-          y: pt.y,
-          draft: false,
-        });
-        return;
-      case "rotate":
-        this.emit("rotate", {
-          key: state.key,
-          x: pt.x,
-          y: pt.y,
-          free: e.shiftKey,
-          draft: false,
-        });
-        return;
-      case "rubber-band":
-        this.emit("rubberBand", {
-          rect: {
-            x1: state.startX,
-            y1: state.startY,
-            x2: pt.x,
-            y2: pt.y,
-          },
-          draft: false,
-        });
-        return;
-      case "connection":
-        this.emit("connection", {
-          from: state.fromKey,
-          to: { x: pt.x, y: pt.y },
-          toKey: this.snapKey(e.clientX, e.clientY, state.fromKey),
-          commit: true,
-        });
-        return;
-    }
+    this.emitDragEvent(state, pt, e, false);
   };
 }
 

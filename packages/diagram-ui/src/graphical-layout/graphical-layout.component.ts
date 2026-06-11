@@ -37,12 +37,14 @@ import {
 import {
   applyDeltaMove,
   applyDelete,
+  applyEdgeSegmentDrag,
   applyFlip,
   applyResize,
   applyRotate,
   applyRotation,
   applySnapToExtents,
   applyWaypointDelete,
+  applyWaypointDrag,
   applyWaypointInsert,
   retainExistingSelection,
   selectByDiagramRect,
@@ -838,8 +840,8 @@ export class OmGraphicalLayout extends LitElement {
       return false;
     }
     if (isEdgeKey(entity)) {
-      // Edge mesh nodeId is `<connIdx>/edge`.
-      const connIdx = Number(entity.nodeId.split("/")[0]);
+      // Edge nodeId is the connection index.
+      const connIdx = Number(entity.nodeId);
       const point = this.sceneEl?.clientToDiagram(e.clientX, e.clientY);
       if (Number.isNaN(connIdx) || !point) {
         return false;
@@ -862,6 +864,30 @@ export class OmGraphicalLayout extends LitElement {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Reshape a connection's route around a dragged waypoint, keeping it
+   * orthogonal. `nodeId` is the junction's compound id
+   * (`<connIdx>/<waypointIdx>`); a malformed id leaves the layout
+   * untouched.
+   */
+  private applyJunctionReshape(
+    layout: DiagramLayout,
+    nodeId: string,
+    dx: number,
+    dy: number,
+  ): DiagramLayout {
+    const slash = nodeId.indexOf("/");
+    if (slash < 0) {
+      return layout;
+    }
+    const connIdx = Number(nodeId.slice(0, slash));
+    const waypointIdx = Number(nodeId.slice(slash + 1));
+    if (Number.isNaN(connIdx) || Number.isNaN(waypointIdx)) {
+      return layout;
+    }
+    return applyWaypointDrag(layout, connIdx, waypointIdx, dx, dy);
   }
 
   private onLibrarySelect = (
@@ -1009,6 +1035,27 @@ export class OmGraphicalLayout extends LitElement {
         // gives the gesture an OMEdit-style "magnetic" feel.
         const grid = this.currentSnapGrid();
         const { dx, dy } = snapDelta(d.dx, d.dy, grid);
+        // A lone waypoint reshapes its route orthogonally (inserting
+        // jogs) rather than translating; anything else (components,
+        // multi-selection) is a plain move.
+        const only = d.keys.length === 1 ? d.keys[0] : undefined;
+        const single = only ? parseKey(only) : null;
+        if (single && isJunctionKey(single)) {
+          const moved = this.applyJunctionReshape(
+            this.layout,
+            single.nodeId,
+            dx,
+            dy,
+          );
+          if (d.draft) {
+            this.draftLayout = moved;
+            this.setInteractionState({ kind: "moving", keys: d.keys });
+          } else {
+            this.commitLayout(moved);
+            this.endInteraction();
+          }
+          return;
+        }
         const moved = applyDeltaMove(this.layout, d.keys, dx, dy);
         if (d.draft) {
           this.draftLayout = moved;
@@ -1021,6 +1068,29 @@ export class OmGraphicalLayout extends LitElement {
           // grid intersections (matches OMEdit's "Snap to Grid" on
           // mouse-up).
           this.commitLayout(applySnapToExtents(moved, d.keys, grid));
+          this.endInteraction();
+        }
+        return;
+      }
+      case "edgeDrag": {
+        const d = detail as DragEvents["edgeDrag"];
+        const grid = this.currentSnapGrid();
+        const { dx, dy } = snapDelta(d.dx, d.dy, grid);
+        const moved = applyEdgeSegmentDrag(
+          this.layout,
+          d.connIdx,
+          d.grab,
+          dx,
+          dy,
+        );
+        if (d.draft) {
+          this.draftLayout = moved;
+          this.setInteractionState({
+            kind: "moving",
+            keys: [`edge:${d.connIdx}`],
+          });
+        } else {
+          this.commitLayout(moved);
           this.endInteraction();
         }
         return;
