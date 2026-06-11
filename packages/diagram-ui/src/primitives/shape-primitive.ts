@@ -69,16 +69,13 @@ export abstract class OmShapePrimitive extends LitElement {
   protected resources: OwnedResource[] = [];
   private lastBuiltKey: string | null = null;
 
-  /** Unsubscribe from the view-state store; rebound when the context
-   *  resolves to a new store (mount, scene teardown, hot reload). */
   private viewUnsub: (() => void) | null = null;
 
   constructor() {
     super();
     // Dashed strokes hold a constant on-screen rhythm, so a zoom (which
-    // changes world-per-pixel) has to recompute their dash count. Each
-    // primitive subscribes to the scene's view-state store and rescales
-    // its own resources — a no-op for solid strokes.
+    // changes world-per-pixel) has to recompute their dash count. A no-op
+    // for solid strokes.
     new ContextConsumer(this, {
       context: viewStateContext,
       subscribe: true,

@@ -210,6 +210,8 @@ function buildHitTube(
     segments.push(seg);
   }
   const first = segments[0];
+  // An empty placeholder when every segment was skipped, so callers always
+  // get a disposable mesh and never have to null-check the hit area.
   const merged =
     segments.length === 1 || first === undefined
       ? (first ?? new Mesh(name, scene))

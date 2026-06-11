@@ -56,8 +56,6 @@ export class OmEdge extends LitElement {
   private meshes: EdgeMeshes | null = null;
   private baseColor: Color3 = DEFAULT_EDGE_COLOR;
 
-  /** Unsubscribe from the view-state store; rebound when the context
-   *  resolves to a new store. */
   private viewUnsub: (() => void) | null = null;
 
   constructor() {

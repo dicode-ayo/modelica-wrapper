@@ -105,7 +105,9 @@ export function dashStyleForPattern(
  * (icon units) and the host's `lineThicknessScale`. An omitted
  * thickness falls back to {@link SPEC_DEFAULT_THICKNESS}; an omitted or
  * non-positive scale falls back to {@link DEFAULT_LINE_THICKNESS_SCALE}.
- * Mirrors `scaledThickness` in `@dicode/diagram-svg`.
+ * Tracks `scaledThickness` in `@dicode/diagram-svg`, with the added guard
+ * that a non-positive scale resolves to the default rather than collapsing
+ * the stroke to zero width.
  */
 export function strokeWorldWidth(
   thickness: number | undefined,

@@ -17,18 +17,29 @@ export function findOrthoCamera(scene: Scene): ArcRotateCamera | null {
 }
 
 /**
- * Diagram units per device pixel for the scene's current orthographic
- * view. Returns `null` when there's no ortho camera to measure against,
- * letting callers keep their last-known sizing rather than snap to a
- * fallback.
+ * Diagram units per device pixel for a given orthographic camera, or the
+ * scene's active ortho camera when `camera` is null. Returns `null` when
+ * there's no ortho camera to measure against, letting callers keep their
+ * last-known sizing rather than snap to a fallback.
  */
-export function sceneWorldPerPixel(scene: Scene): number | null {
-  const camera = findOrthoCamera(scene);
-  if (!camera) {
+export function cameraWorldPerPixel(
+  scene: Scene,
+  camera: ArcRotateCamera | null,
+): number | null {
+  const cam = camera ?? findOrthoCamera(scene);
+  if (!cam) {
     return null;
   }
   const canvasW = scene.getEngine().getRenderWidth() || 1;
-  const orthoRight = camera.orthoRight ?? 1;
-  const orthoLeft = camera.orthoLeft ?? -1;
+  const orthoRight = cam.orthoRight ?? 1;
+  const orthoLeft = cam.orthoLeft ?? -1;
   return worldPerPixel(orthoLeft, orthoRight, canvasW);
+}
+
+/**
+ * Diagram units per device pixel for the scene's current orthographic
+ * view.
+ */
+export function sceneWorldPerPixel(scene: Scene): number | null {
+  return cameraWorldPerPixel(scene, null);
 }

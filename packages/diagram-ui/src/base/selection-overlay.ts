@@ -13,7 +13,7 @@ import {
 } from "@babylonjs/core";
 
 import { requestSceneRender } from "../scene/render-scheduler.js";
-import { sceneWorldPerPixel } from "../scene/camera-metrics.js";
+import { cameraWorldPerPixel } from "../scene/camera-metrics.js";
 import type { EntityKind } from "../interaction/node-keys.js";
 
 /** Accent blue shared by the selection outline stroke and rotate handle. */
@@ -285,7 +285,7 @@ export class ResizeHandles {
     if (!this.currentVisible) {
       return;
     }
-    const wpp = this.resolveWorldPerPixel();
+    const wpp = cameraWorldPerPixel(this.scene, this.camera);
     if (wpp === null) {
       return;
     }
@@ -294,16 +294,6 @@ export class ResizeHandles {
     for (const h of this.handles) {
       h.scaling.set(size / parentScale.x, size / parentScale.y, 1);
     }
-  }
-
-  private resolveWorldPerPixel(): number | null {
-    if (this.camera) {
-      const canvasW = this.scene.getEngine().getRenderWidth() || 1;
-      const orthoRight = this.camera.orthoRight ?? 1;
-      const orthoLeft = this.camera.orthoLeft ?? -1;
-      return (orthoRight - orthoLeft) / canvasW;
-    }
-    return sceneWorldPerPixel(this.scene);
   }
 }
 
@@ -404,23 +394,13 @@ export class RotateHandle {
     if (!this.currentVisible) {
       return;
     }
-    const wpp = this.resolveWorldPerPixel();
+    const wpp = cameraWorldPerPixel(this.scene, this.camera);
     if (wpp === null) {
       return;
     }
     const size = this.handlePixelSize * wpp;
     const parentScale = parentWorldScale(this.parent);
     this.handle.scaling.set(size / parentScale.x, size / parentScale.y, 1);
-  }
-
-  private resolveWorldPerPixel(): number | null {
-    if (this.camera) {
-      const canvasW = this.scene.getEngine().getRenderWidth() || 1;
-      const orthoRight = this.camera.orthoRight ?? 1;
-      const orthoLeft = this.camera.orthoLeft ?? -1;
-      return (orthoRight - orthoLeft) / canvasW;
-    }
-    return sceneWorldPerPixel(this.scene);
   }
 }
 

@@ -94,7 +94,10 @@ describe("buildEdge", () => {
         [100, 0],
       ],
     });
-    expect(result!.line.greasedLineMaterial?.useDash).toBeFalsy();
+    if (result === null) {
+      throw new Error("buildEdge returned null for a valid two-point edge");
+    }
+    expect(result.line.greasedLineMaterial?.useDash).toBeFalsy();
   });
 
   it("holds a clocked edge's dash count constant in screen space", () => {
@@ -110,9 +113,15 @@ describe("buildEdge", () => {
       points,
       clocked: true,
     });
-    const material = result!.line.greasedLineMaterial;
-    expect(material?.useDash).toBe(true);
-    const atOneToOne = material!.dashCount;
+    if (result === null) {
+      throw new Error("buildEdge returned null for a valid two-point edge");
+    }
+    const material = result.line.greasedLineMaterial;
+    if (!material) {
+      throw new Error("clocked edge has no GreasedLine material");
+    }
+    expect(material.useDash).toBe(true);
+    const atOneToOne = material.dashCount;
     expect(atOneToOne).toBeGreaterThan(0);
 
     // Zoom in 2× (halve the extent) → the line is twice as long on
@@ -120,8 +129,8 @@ describe("buildEdge", () => {
     // pixel length.
     cam.orthoLeft = -50;
     cam.orthoRight = 50;
-    updateEdgeDashes(s.scene, result!.line, points);
-    expect(material!.dashCount).toBeCloseTo(atOneToOne * 2, 0);
+    updateEdgeDashes(s.scene, result.line, points);
+    expect(material.dashCount).toBeCloseTo(atOneToOne * 2, 0);
   });
 });
 
