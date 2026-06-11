@@ -59,6 +59,15 @@ const defaultEngineFactory: EngineFactory = (canvas) =>
   // displays render at 1× and the browser upscales to the device
   // grid — 1-px GL lines (connection strokes) and small meshes
   // (connector dots) look blurry.
+  //
+  // `antialias: true` requests an MSAA default framebuffer from the
+  // WebGL context, smoothing diagonal connection edges and polygon
+  // outlines. MSAA resolves in the driver — unlike an FXAA post-process
+  // it adds no per-frame render pass, so it composes with the on-demand
+  // render loop instead of forcing continuous rendering. The 2nd
+  // positional arg and `options.antialias` feed the same context
+  // attribute; it is set in `options` so the intent isn't a bare
+  // positional `true`.
   new Engine(
     canvas,
     true,
@@ -67,6 +76,7 @@ const defaultEngineFactory: EngineFactory = (canvas) =>
       stencil: true,
       disableWebGL2Support: false,
       alpha: false,
+      antialias: true,
     },
     true,
   );

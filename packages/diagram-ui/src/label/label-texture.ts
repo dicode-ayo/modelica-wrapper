@@ -24,10 +24,45 @@ interface SceneMeta {
   [SCENE_META_KEY]?: AdvancedDynamicTexture | undefined;
 }
 
+/**
+ * Resolves `AdvancedDynamicTexture.renderScale` so the fullscreen GUI
+ * texture lands exactly on the device pixel grid — once.
+ *
+ * The texture rasterises at `engine.getRenderWidth() × renderScale`
+ * pixels. `getRenderWidth()` already reports the physical backbuffer:
+ * with `adaptToDeviceRatio: true` the engine's hardware-scaling level is
+ * `1 / devicePixelRatio`, so the backbuffer is `CSS × devicePixelRatio`.
+ * Target texture size is `CSS × devicePixelRatio`, hence
+ *   renderScale = devicePixelRatio × hardwareScalingLevel
+ * which collapses to `1` when `adaptToDeviceRatio` already applied DPR
+ * and to `devicePixelRatio` when it did not. Multiplying the raw DPR in
+ * unconditionally would compound it and supersample to DPR² area.
+ *
+ * Falls back to `1` for non-finite or non-positive readings (jsdom,
+ * NullEngine, exotic embeddings) — a non-positive scale collapses the
+ * texture.
+ */
+export function resolveRenderScale(
+  devicePixelRatio: number | undefined,
+  hardwareScalingLevel: number,
+): number {
+  if (
+    devicePixelRatio === undefined ||
+    !Number.isFinite(devicePixelRatio) ||
+    devicePixelRatio <= 0 ||
+    !Number.isFinite(hardwareScalingLevel) ||
+    hardwareScalingLevel <= 0
+  ) {
+    return 1;
+  }
+  return devicePixelRatio * hardwareScalingLevel;
+}
+
 export function ensureLabelTexture(
   scene: Scene,
 ): AdvancedDynamicTexture | null {
-  if (scene.getEngine().constructor.name === "NullEngine") {
+  const engine = scene.getEngine();
+  if (engine.constructor.name === "NullEngine") {
     return null;
   }
   const metadata = (scene.metadata as SceneMeta | null | undefined) ?? {};
@@ -39,6 +74,12 @@ export function ensureLabelTexture(
     "om-label-ui",
     true,
     scene,
+  );
+  tex.renderScale = resolveRenderScale(
+    typeof globalThis.devicePixelRatio === "number"
+      ? globalThis.devicePixelRatio
+      : undefined,
+    engine.getHardwareScalingLevel(),
   );
   metadata[SCENE_META_KEY] = tex;
   scene.metadata = metadata;
