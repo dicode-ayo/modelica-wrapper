@@ -23,7 +23,11 @@ import {
   viewStateContext,
   type ViewStateStore,
 } from "../scene/view-state-store.js";
-import { targetTextureEdge, worldPerPixel } from "../scene/text-resolution.js";
+import {
+  targetTextureEdge,
+  worldPerPixel,
+  type TextureEdgeBounds,
+} from "../scene/text-resolution.js";
 import { findOrthoCamera, worldScaleXY } from "../scene/ortho-camera.js";
 
 /**
@@ -48,6 +52,11 @@ const MAX_TEXT_TEXTURE_EDGE = 2048;
  * otherwise overshoot the texture by a few pixels and look chopped.
  */
 const FONT_FIT_FACTOR = 0.7;
+
+const TEXTURE_EDGE_BOUNDS: TextureEdgeBounds = {
+  minEdge: MIN_TEXT_TEXTURE_EDGE,
+  maxEdge: MAX_TEXT_TEXTURE_EDGE,
+};
 
 /** Resolved label inputs the canvas bake needs, independent of the
  *  Babylon shape. */
@@ -238,14 +247,10 @@ export class OmText extends OmShapePrimitive {
   /** Texel edge for the label at the camera's current zoom, clamped to
    *  `[MIN, MAX]`. Falls back to the floor when no ortho camera is up. */
   private targetEdge(scene: Scene, spec: TextDrawSpec): number {
-    const bounds = {
-      minEdge: MIN_TEXT_TEXTURE_EDGE,
-      maxEdge: MAX_TEXT_TEXTURE_EDGE,
-    };
     const camera = findOrthoCamera(scene);
     const plane = this.plane;
     if (!camera || !plane) {
-      return bounds.minEdge;
+      return TEXTURE_EDGE_BOUNDS.minEdge;
     }
     const renderWidth = scene.getEngine().getRenderWidth() || 1;
     const wpp = worldPerPixel(
@@ -256,7 +261,7 @@ export class OmText extends OmShapePrimitive {
     const worldScale = worldScaleXY(plane);
     const scale = Math.max(worldScale.x, worldScale.y);
     const longEdge = Math.max(spec.width, spec.height);
-    return targetTextureEdge(longEdge, scale, wpp, bounds);
+    return targetTextureEdge(longEdge, scale, wpp, TEXTURE_EDGE_BOUNDS);
   }
 
   /** (Re)create the `DynamicTexture` so its long side is `edge` texels,
