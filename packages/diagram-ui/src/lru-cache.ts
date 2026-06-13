@@ -3,6 +3,14 @@
  * head is always the least-recently-used entry: on every read the entry is
  * moved to the tail, and on every write that exceeds capacity the head is
  * evicted via the `onEvict` callback before the new entry is appended.
+ *
+ * Contract notes:
+ * - `V = undefined` is not supported: `get()` cannot distinguish a stored
+ *   `undefined` from a cache miss.
+ * - Overwriting an existing key via `set()` does NOT call `onEvict` on the
+ *   old value; callers that need disposal on update must handle it themselves.
+ * - `delete()` and `clear()` do not call `onEvict`; use them only when
+ *   disposal is handled externally (e.g. in the scene-dispose handler).
  */
 export class LruCache<K, V> {
   private readonly map = new Map<K, V>();
@@ -48,15 +56,12 @@ export class LruCache<K, V> {
   }
 
   private evictOne(): void {
-    const first = this.map.keys().next();
+    const first = this.map.entries().next();
     if (first.done) {
       return;
     }
-    const key = first.value;
-    const value = this.map.get(key);
+    const [key, value] = first.value;
     this.map.delete(key);
-    if (value !== undefined) {
-      this.onEvict?.(key, value);
-    }
+    this.onEvict?.(key, value);
   }
 }
