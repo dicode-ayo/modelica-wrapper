@@ -31,9 +31,8 @@ export class LruCache<K, V> {
   }
 
   set(key: K, value: V): void {
-    if (this.map.has(key)) {
-      this.map.delete(key);
-    } else if (this.map.size >= this.capacity) {
+    const existed = this.map.delete(key);
+    if (!existed && this.map.size >= this.capacity) {
       this.evictOne();
     }
     this.map.set(key, value);

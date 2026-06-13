@@ -40,7 +40,10 @@ describe("IconCache", () => {
     const { scene, dispose } = makeScene();
     teardowns.push(dispose);
 
-    const renderSvg = vi.fn((layers: IconLayer[]) => `svg:${layers[0]!.from}`);
+    const renderSvg = vi.fn((layers: IconLayer[]) => {
+      const first = layers.at(0);
+      return first !== undefined ? `svg:${first.from}` : "";
+    });
     const rasterize = vi.fn(
       (svg: string, s: Scene, size: number): Promise<Texture> =>
         Promise.resolve(
@@ -130,7 +133,10 @@ describe("IconCache", () => {
     teardowns.push(dispose);
 
     const disposed: string[] = [];
-    const renderSvg = vi.fn((layers: IconLayer[]) => `svg:${layers[0]!.from}`);
+    const renderSvg = vi.fn((layers: IconLayer[]) => {
+      const first = layers.at(0);
+      return first !== undefined ? `svg:${first.from}` : "";
+    });
     const rasterize = vi.fn((svg: string, s: Scene): Promise<Texture> => {
       const tex = new Texture(`data:text/plain,${svg}`, s, true, false);
       const origDispose = tex.dispose.bind(tex);

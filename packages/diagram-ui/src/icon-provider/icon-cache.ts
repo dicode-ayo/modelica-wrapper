@@ -61,6 +61,10 @@ export class IconCache {
     capacity = ICON_CACHE_CAPACITY,
   ) {
     this.cache = new LruCache(capacity, (_key, promise) => {
+      // Async: the promise may still be pending when eviction fires. The
+      // `.catch` suppresses rasterisation failures that already have a handler
+      // in `resolve()` — this path only needs to ensure a resolved texture is
+      // disposed and does not propagate errors further.
       promise.then((tex) => tex.dispose()).catch(() => {});
     });
   }
