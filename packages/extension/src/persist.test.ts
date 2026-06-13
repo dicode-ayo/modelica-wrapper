@@ -16,7 +16,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { OmcClient } from "@dicode/omc-client";
 
-import { pathExists } from "./fs-util.js";
 import {
   isLikelyDiskPath,
   linkPersistedClass,
@@ -60,12 +59,11 @@ function makeClientStub(): Stub {
   const setCalls: Stub["setCalls"] = [];
   const client = {
     async getClassInformation({ typeName }: { typeName: string }) {
-      if (!classes.has(typeName)) {
-        // Mirror OMC's behavior on an unknown class: the raw call surfaces
-        // an error. The helpers swallow it, so throwing here is realistic.
+      const fileName = classes.get(typeName);
+      if (fileName === undefined) {
         throw new Error(`unknown class ${typeName}`);
       }
-      return baseClassInfo(classes.get(typeName)!);
+      return baseClassInfo(fileName);
     },
     async setSourceFile({
       typeName,
@@ -256,7 +254,7 @@ describe("persistClassUnderWorkspace", () => {
     ).toBe("Model\n");
   });
 
-  it("does not write package.order when getClassNames returns empty", async () => {
+  it("still writes package.order with just the leaf segment when getClassNames returns empty", async () => {
     const { client, seedChildren } = makeClientStub();
     seedChildren("MyLib", []);
     await persistClassUnderWorkspace(
@@ -265,9 +263,9 @@ describe("persistClassUnderWorkspace", () => {
       "MyLib.Model",
       "model Model\nend Model;\n",
     );
-    expect(await pathExists(path.join(tmp, "MyLib", "package.order"))).toBe(
-      false,
-    );
+    expect(
+      await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
+    ).toBe("Model\n");
   });
 
   it("does not overwrite an existing package.order", async () => {
@@ -288,18 +286,49 @@ describe("persistClassUnderWorkspace", () => {
     ).toBe(original);
   });
 
-  it("skips package.order gracefully when getClassNames throws", async () => {
+  it("still writes package.order with just the leaf segment when getClassNames throws", async () => {
     const { client } = makeClientStub();
-    // No seedChildren call → getClassNames will throw for MyLib.
+    // No seedChildren call → getClassNames will throw for MyLib, but
+    // the leaf segment is always included unconditionally.
     await persistClassUnderWorkspace(
       client,
       tmp,
       "MyLib.Model",
       "model Model\nend Model;\n",
     );
-    expect(await pathExists(path.join(tmp, "MyLib", "package.order"))).toBe(
-      false,
+    expect(
+      await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
+    ).toBe("Model\n");
+  });
+
+  it("includes the leaf segment in package.order even when OMC child list omits it", async () => {
+    const { client, seedChildren } = makeClientStub();
+    // OMC doesn't list Model yet (e.g. createClass hasn't called setSourceFile).
+    seedChildren("MyLib", []);
+    await persistClassUnderWorkspace(
+      client,
+      tmp,
+      "MyLib.Model",
+      "model Model\nend Model;\n",
     );
+    expect(
+      await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
+    ).toBe("Model\n");
+  });
+
+  it("filters invalid identifiers from getClassNames before writing package.order", async () => {
+    const { client, seedChildren } = makeClientStub();
+    // A class name with an embedded newline would corrupt the file format.
+    seedChildren("MyLib", ["Valid", "bad\nname", "", "Also_Valid"]);
+    await persistClassUnderWorkspace(
+      client,
+      tmp,
+      "MyLib.Model",
+      "model Model\nend Model;\n",
+    );
+    expect(
+      await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
+    ).toBe("Valid\nAlso_Valid\nModel\n");
   });
 });
 

@@ -93,7 +93,12 @@ export async function persistClassUnderWorkspace(
     }
     const orderFile = path.join(baseDir, "package.order");
     if (!(await pathExists(orderFile))) {
-      const children = await safeGetClassNames(client, parentName);
+      const nextSegment = parts[i + 1];
+      const base = await safeGetClassNames(client, parentName);
+      const children =
+        nextSegment !== undefined && !base.includes(nextSegment)
+          ? [...base, nextSegment]
+          : base;
       if (children.length > 0) {
         await fsp.writeFile(orderFile, children.join("\n") + "\n", "utf8");
       }
@@ -137,13 +142,15 @@ async function onDiskParentDir(
   return undefined;
 }
 
+const MODELICA_IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
 async function safeGetClassNames(
   client: OmcClient,
   typeName: string,
 ): Promise<string[]> {
   try {
     const { classNames } = await client.getClassNames({ typeName });
-    return classNames;
+    return classNames.filter((n) => MODELICA_IDENT.test(n));
   } catch {
     return [];
   }
