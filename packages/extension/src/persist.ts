@@ -57,6 +57,11 @@ export interface PersistResult {
  * directory. Parents that exist in OMC memory only get fresh
  * `<dir>/package.mo` files under `workspaceRoot`. Existing `package.mo`
  * files on disk are never overwritten.
+ *
+ * A `package.order` file is written alongside each new `package.mo` using the
+ * direct children returned by OMC. This lets a fresh OMC `loadFile` reproduce
+ * the same member ordering without relying on filesystem scan order.
+ * Existing `package.order` files are never overwritten.
  */
 export async function persistClassUnderWorkspace(
   client: OmcClient,
@@ -85,6 +90,13 @@ export async function persistClassUnderWorkspace(
         `${header}package ${parts[i]}\nend ${parts[i]};\n`,
         "utf8",
       );
+    }
+    const orderFile = path.join(baseDir, "package.order");
+    if (!(await pathExists(orderFile))) {
+      const children = await safeGetClassNames(client, parentName);
+      if (children.length > 0) {
+        await fsp.writeFile(orderFile, children.join("\n") + "\n", "utf8");
+      }
     }
     newParents.push({ typeName: parentName, pkgFile });
   }
@@ -123,4 +135,16 @@ async function onDiskParentDir(
     /* parent not in OMC — caller will create it */
   }
   return undefined;
+}
+
+async function safeGetClassNames(
+  client: OmcClient,
+  typeName: string,
+): Promise<string[]> {
+  try {
+    const { classNames } = await client.getClassNames({ typeName });
+    return classNames;
+  } catch {
+    return [];
+  }
 }

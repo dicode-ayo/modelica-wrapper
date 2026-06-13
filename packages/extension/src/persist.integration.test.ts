@@ -143,6 +143,13 @@ describeIf("persist + OMC roundtrip", () => {
     await fsp.access(subPkg);
     await fsp.access(result.leafPath);
 
+    // package.order files must accompany each new package directory so a
+    // fresh OMC load reproduces the same member ordering.
+    const topOrder = path.join(ws, "RoundtripPkg", "package.order");
+    const subOrder = path.join(ws, "RoundtripPkg", "Sub", "package.order");
+    expect(await fsp.readFile(topOrder, "utf8")).toContain("Sub");
+    expect(await fsp.readFile(subOrder, "utf8")).toContain("Model");
+
     // OMC's symbol table updated for every level we touched.
     expect(
       (await client.getClassInformation({ typeName: "RoundtripPkg" })).fileName,

@@ -1,11 +1,11 @@
 /**
  * Unit tests for the on-disk class-persistence helpers.
  *
- * Uses a real temp directory + an in-memory `OmcClient` stub. The stub only
- * implements the two methods the persist helpers actually call —
- * `getClassInformation` and `setSourceFile` — which is enough to exercise
- * every branch (existing on-disk parent, in-memory parent, missing parent,
- * existing package.mo not overwritten, etc.).
+ * Uses a real temp directory + an in-memory `OmcClient` stub. The stub
+ * implements the three methods the persist helpers call —
+ * `getClassInformation`, `setSourceFile`, and `getClassNames` — which is
+ * enough to exercise every branch (existing on-disk parent, in-memory parent,
+ * missing parent, existing package.mo/package.order not overwritten, etc.).
  */
 
 import * as fsp from "node:fs/promises";
@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { OmcClient } from "@dicode/omc-client";
 
+import { pathExists } from "./fs-util.js";
 import {
   isLikelyDiskPath,
   linkPersistedClass,
@@ -42,18 +43,20 @@ describe("isLikelyDiskPath", () => {
 });
 
 /**
- * Stub `OmcClient` that only implements the two methods the persist helpers
- * touch. `classes` seeds `getClassInformation` results; `setSourceFile` calls
- * are captured in `setCalls` for assertions.
+ * Stub `OmcClient` that only implements the methods the persist helpers
+ * touch. `classes` seeds `getClassInformation` results; `children` seeds
+ * `getClassNames` results; `setSourceFile` calls are captured in `setCalls`.
  */
 interface Stub {
   client: OmcClient;
   setCalls: Array<{ typeName: string; fileName: string }>;
   seedClass(typeName: string, fileName: string): void;
+  seedChildren(typeName: string, names: string[]): void;
 }
 
 function makeClientStub(): Stub {
   const classes = new Map<string, string>();
+  const children = new Map<string, string[]>();
   const setCalls: Stub["setCalls"] = [];
   const client = {
     async getClassInformation({ typeName }: { typeName: string }) {
@@ -75,11 +78,17 @@ function makeClientStub(): Stub {
       classes.set(typeName, fileName);
       return { success: true };
     },
+    async getClassNames({ typeName }: { typeName: string }) {
+      const names = children.get(typeName);
+      if (names === undefined) throw new Error(`unknown class ${typeName}`);
+      return { classNames: names };
+    },
   } as unknown as OmcClient;
   return {
     client,
     setCalls,
     seedClass: (typeName, fileName) => classes.set(typeName, fileName),
+    seedChildren: (typeName, names) => children.set(typeName, names),
   };
 }
 
@@ -224,6 +233,73 @@ describe("persistClassUnderWorkspace", () => {
     expect(result.newParents).toEqual([
       { typeName: "MyLib", pkgFile: path.join(tmp, "MyLib", "package.mo") },
     ]);
+  });
+
+  it("writes package.order listing OMC children alongside each new package.mo", async () => {
+    const { client, seedChildren } = makeClientStub();
+    seedChildren("MyLib", ["Sub"]);
+    seedChildren("MyLib.Sub", ["Model"]);
+    await persistClassUnderWorkspace(
+      client,
+      tmp,
+      "MyLib.Sub.Model",
+      "block Model\nend Model;\n",
+    );
+    expect(
+      await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
+    ).toBe("Sub\n");
+    expect(
+      await fsp.readFile(
+        path.join(tmp, "MyLib", "Sub", "package.order"),
+        "utf8",
+      ),
+    ).toBe("Model\n");
+  });
+
+  it("does not write package.order when getClassNames returns empty", async () => {
+    const { client, seedChildren } = makeClientStub();
+    seedChildren("MyLib", []);
+    await persistClassUnderWorkspace(
+      client,
+      tmp,
+      "MyLib.Model",
+      "model Model\nend Model;\n",
+    );
+    expect(await pathExists(path.join(tmp, "MyLib", "package.order"))).toBe(
+      false,
+    );
+  });
+
+  it("does not overwrite an existing package.order", async () => {
+    const { client, seedChildren } = makeClientStub();
+    seedChildren("MyLib", ["Model", "Other"]);
+    const myLibDir = path.join(tmp, "MyLib");
+    await fsp.mkdir(myLibDir, { recursive: true });
+    const original = "Other\nModel\n";
+    await fsp.writeFile(path.join(myLibDir, "package.order"), original, "utf8");
+    await persistClassUnderWorkspace(
+      client,
+      tmp,
+      "MyLib.Model",
+      "model Model\nend Model;\n",
+    );
+    expect(
+      await fsp.readFile(path.join(myLibDir, "package.order"), "utf8"),
+    ).toBe(original);
+  });
+
+  it("skips package.order gracefully when getClassNames throws", async () => {
+    const { client } = makeClientStub();
+    // No seedChildren call → getClassNames will throw for MyLib.
+    await persistClassUnderWorkspace(
+      client,
+      tmp,
+      "MyLib.Model",
+      "model Model\nend Model;\n",
+    );
+    expect(await pathExists(path.join(tmp, "MyLib", "package.order"))).toBe(
+      false,
+    );
   });
 });
 
