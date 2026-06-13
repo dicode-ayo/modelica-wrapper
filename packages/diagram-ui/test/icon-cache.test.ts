@@ -124,4 +124,36 @@ describe("IconCache", () => {
     await cache.resolve(scene, { layers: makeLayers("S"), size: 256 });
     expect(rasterize).toHaveBeenCalledTimes(2);
   });
+
+  it("evicts and disposes the LRU texture when capacity is exceeded", async () => {
+    const { scene, dispose } = makeScene();
+    teardowns.push(dispose);
+
+    const disposed: string[] = [];
+    const renderSvg = vi.fn((layers: IconLayer[]) => `svg:${layers[0]!.from}`);
+    const rasterize = vi.fn((svg: string, s: Scene): Promise<Texture> => {
+      const tex = new Texture(`data:text/plain,${svg}`, s, true, false);
+      const origDispose = tex.dispose.bind(tex);
+      tex.dispose = () => {
+        disposed.push(svg);
+        origDispose();
+      };
+      return Promise.resolve(tex);
+    });
+
+    // Capacity 2 — adding a third entry evicts the LRU.
+    const cache = new IconCache(renderSvg, rasterize, 2);
+    await cache.resolve(scene, { layers: makeLayers("A") });
+    await cache.resolve(scene, { layers: makeLayers("B") });
+    expect(cache.size).toBe(2);
+
+    // "A" is LRU; adding "C" must evict and dispose it.
+    await cache.resolve(scene, { layers: makeLayers("C") });
+    expect(cache.size).toBe(2);
+    expect(disposed).toEqual(["svg:test:A"]);
+
+    // "A" is gone; re-resolving it should rasterise again.
+    await cache.resolve(scene, { layers: makeLayers("A") });
+    expect(rasterize).toHaveBeenCalledTimes(4);
+  });
 });

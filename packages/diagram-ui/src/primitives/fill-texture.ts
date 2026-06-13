@@ -5,6 +5,7 @@ import {
   type BaseTexture,
 } from "@babylonjs/core";
 import type { FillSpec, HatchSpec } from "@dicode/diagram-svg";
+import { LruCache } from "../lru-cache.js";
 
 /**
  * Bakes a renderer-neutral `FillSpec` (gradient or hatch) to a Babylon
@@ -25,10 +26,20 @@ const GRADIENT_TEXTURE_EDGE = 128;
  *  several texels wide and antialiases cleanly. */
 const HATCH_PIXELS_PER_UNIT = 8;
 
+/**
+ * Maximum number of baked `DynamicTexture`s kept alive per scene. Each entry
+ * costs GPU memory proportional to its canvas size, so this cap prevents
+ * diagrams with many distinct hatch aspects (one cache key per aspect) from
+ * accumulating textures without bound. Evicted textures are disposed
+ * immediately; any material still referencing one degrades to untextured
+ * (the material's flat fallback colour) until the shape component re-bakes.
+ */
+export const FILL_TEXTURE_CACHE_CAPACITY = 256;
+
 const SCENE_META_KEY = "omFillTextureCache";
 
 interface SceneMeta {
-  [SCENE_META_KEY]?: Map<string, DynamicTexture> | undefined;
+  [SCENE_META_KEY]?: LruCache<string, DynamicTexture> | undefined;
 }
 
 /**
@@ -63,13 +74,16 @@ export function resolveFillTexture(
   return texture;
 }
 
-function ensureCache(scene: Scene): Map<string, DynamicTexture> {
+function ensureCache(scene: Scene): LruCache<string, DynamicTexture> {
   const metadata = (scene.metadata as SceneMeta | null | undefined) ?? {};
   const existing = metadata[SCENE_META_KEY];
   if (existing) {
     return existing;
   }
-  const cache = new Map<string, DynamicTexture>();
+  const cache = new LruCache<string, DynamicTexture>(
+    FILL_TEXTURE_CACHE_CAPACITY,
+    (_key, tex) => tex.dispose(),
+  );
   metadata[SCENE_META_KEY] = cache;
   scene.metadata = metadata;
   scene.onDisposeObservable.add(() => {

@@ -1,5 +1,6 @@
 import type { CoordinateSystem, IconLayer } from "@dicode/omc-client";
 import type { Scene, Texture } from "@babylonjs/core";
+import { LruCache } from "../lru-cache.js";
 
 /**
  * Renderer-agnostic icon cache used by `<om-icon-provider>`. The cache
@@ -41,13 +42,28 @@ export type RasterizeFn = (
 
 const DEFAULT_TEXTURE_SIZE = 512;
 
+/**
+ * Maximum number of icon textures kept alive per `IconCache` instance. Each
+ * entry is one rasterised GPU texture. A real diagram rarely exceeds a few
+ * dozen distinct component classes, so 512 is a conservative ceiling.
+ * Evicted textures are disposed after their Promise resolves; any mesh
+ * material still referencing one degrades to untextured until its
+ * `<om-icon-provider>` re-resolves on the next render.
+ */
+export const ICON_CACHE_CAPACITY = 512;
+
 export class IconCache {
-  private readonly cache = new Map<string, Promise<Texture>>();
+  private readonly cache: LruCache<string, Promise<Texture>>;
 
   constructor(
     private readonly renderSvg: SvgRenderFn,
     private readonly rasterize: RasterizeFn,
-  ) {}
+    capacity = ICON_CACHE_CAPACITY,
+  ) {
+    this.cache = new LruCache(capacity, (_key, promise) => {
+      promise.then((tex) => tex.dispose()).catch(() => {});
+    });
+  }
 
   resolve(scene: Scene, req: IconRequest): Promise<Texture> {
     const size = req.size ?? DEFAULT_TEXTURE_SIZE;
