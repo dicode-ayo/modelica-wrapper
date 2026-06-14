@@ -17,19 +17,16 @@
   },
   "publishConfig": {
     "access": "public",
-    "main": "./dist/index.cjs",
-    "module": "./dist/index.js",
+    "main": "./dist/index.js",
     "types": "./dist/index.d.ts",
     "exports": {
       ".": {
         "types": "./dist/index.d.ts",
-        "import": "./dist/index.js",
-        "require": "./dist/index.cjs"
+        "import": "./dist/index.js"
       },
       "./webawesome-setup": {
         "types": "./dist/webawesome-setup.d.ts",
-        "import": "./dist/webawesome-setup.js",
-        "require": "./dist/webawesome-setup.cjs"
+        "import": "./dist/webawesome-setup.js"
       }
     }
   },

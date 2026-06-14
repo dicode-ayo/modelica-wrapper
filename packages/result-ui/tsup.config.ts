@@ -6,7 +6,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   // Single public entry — mirrors the `.` export.
   entry: ["src/index.ts"],
-  format: ["esm", "cjs"],
+  format: ["esm"],
   dts: true,
   sourcemap: true,
   clean: true,

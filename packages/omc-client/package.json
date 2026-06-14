@@ -2,7 +2,7 @@
   "name": "@dicode/omc-client",
   "version": "0.0.1",
   "description": "TypeScript client for OpenModelica's interactive ZeroMQ scripting API. Typed wrappers, Zod-validated outputs, no VSCode dependencies.",
-  "type": "commonjs",
+  "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -19,28 +19,23 @@
   "publishConfig": {
     "access": "public",
     "main": "./dist/index.js",
-    "module": "./dist/index.mjs",
     "types": "./dist/index.d.ts",
     "exports": {
       ".": {
         "types": "./dist/index.d.ts",
-        "import": "./dist/index.mjs",
-        "require": "./dist/index.js"
+        "import": "./dist/index.js"
       },
       "./eval": {
         "types": "./dist/eval/index.d.ts",
-        "import": "./dist/eval/index.mjs",
-        "require": "./dist/eval/index.js"
+        "import": "./dist/eval/index.js"
       },
       "./api/*": {
         "types": "./dist/api/*/index.d.ts",
-        "import": "./dist/api/*/index.mjs",
-        "require": "./dist/api/*/index.js"
+        "import": "./dist/api/*/index.js"
       },
       "./api/*/index.js": {
         "types": "./dist/api/*/index.d.ts",
-        "import": "./dist/api/*/index.mjs",
-        "require": "./dist/api/*/index.js"
+        "import": "./dist/api/*/index.js"
       }
     }
   },
