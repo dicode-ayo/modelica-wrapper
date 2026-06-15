@@ -24,16 +24,23 @@ const result: ResultRef = {
   source: "simulate",
 };
 
+function shadow(el: OmResultsDrawer): ShadowRoot {
+  const root = el.shadowRoot;
+  if (root === null) throw new Error("shadow root not attached");
+  return root;
+}
+
 describe("om-results-drawer", () => {
   it("shows the empty state and no chips when there are no results", async () => {
     const el = await mount([]);
-    expect(el.shadowRoot!.querySelector(".empty")).not.toBeNull();
-    expect(el.shadowRoot!.querySelector(".chip")).toBeNull();
+    const root = shadow(el);
+    expect(root.querySelector(".empty")).not.toBeNull();
+    expect(root.querySelector(".chip")).toBeNull();
   });
 
   it("renders one chip per result", async () => {
     const el = await mount([result, { ...result, id: "r2", label: "Run 2" }]);
-    expect(el.shadowRoot!.querySelectorAll(".chip")).toHaveLength(2);
+    expect(shadow(el).querySelectorAll(".chip")).toHaveLength(2);
   });
 
   it("emits om-add-result with the matching via for each add button", async () => {
@@ -42,12 +49,17 @@ describe("om-results-drawer", () => {
     el.addEventListener("om-add-result", (e) => {
       added.push((e as CustomEvent<AddResultDetail>).detail);
     });
-    el.shadowRoot!.querySelector<HTMLButtonElement>(
+    const root = shadow(el);
+    const fileBtn = root.querySelector<HTMLButtonElement>(
       "button[title='Add a .mat result file']",
-    )!.click();
-    el.shadowRoot!.querySelector<HTMLButtonElement>(
+    );
+    if (fileBtn === null) throw new Error("expected file button");
+    const cacheBtn = root.querySelector<HTMLButtonElement>(
       "button[title='Add from the workspace .modelica cache']",
-    )!.click();
+    );
+    if (cacheBtn === null) throw new Error("expected cache button");
+    fileBtn.click();
+    cacheBtn.click();
     expect(added).toEqual([{ via: "import" }, { via: "cache" }]);
   });
 
@@ -57,7 +69,9 @@ describe("om-results-drawer", () => {
     el.addEventListener("om-remove-result", (e) => {
       removed = (e as CustomEvent<RemoveResultDetail>).detail;
     });
-    el.shadowRoot!.querySelector<HTMLElement>(".remove")!.click();
+    const removeBtn = shadow(el).querySelector<HTMLElement>(".remove");
+    if (removeBtn === null) throw new Error("expected remove button");
+    removeBtn.click();
     expect(removed).toEqual({ resultId: "r1" });
   });
 
@@ -77,7 +91,7 @@ describe("om-results-drawer", () => {
     const el = await mount([result]);
     const root = el.shadowRoot;
     if (root === null) throw new Error("shadow root not attached");
-    const renameBtn = root.querySelector<HTMLButtonElement>(".rename-btn");
+    const renameBtn = root.querySelector<HTMLElement>(".rename-icon");
     if (renameBtn === null) throw new Error("expected rename button");
     renameBtn.click();
     await el.updateComplete;
@@ -88,7 +102,7 @@ describe("om-results-drawer", () => {
     const el = await mount([result]);
     const root = el.shadowRoot;
     if (root === null) throw new Error("shadow root not attached");
-    const renameBtn = root.querySelector<HTMLButtonElement>(".rename-btn");
+    const renameBtn = root.querySelector<HTMLElement>(".rename-icon");
     if (renameBtn === null) throw new Error("expected rename button");
     renameBtn.click();
     await el.updateComplete;
@@ -111,7 +125,7 @@ describe("om-results-drawer", () => {
     const el = await mount([result]);
     const root = el.shadowRoot;
     if (root === null) throw new Error("shadow root not attached");
-    const renameBtn = root.querySelector<HTMLButtonElement>(".rename-btn");
+    const renameBtn = root.querySelector<HTMLElement>(".rename-icon");
     if (renameBtn === null) throw new Error("expected rename button");
     renameBtn.click();
     await el.updateComplete;

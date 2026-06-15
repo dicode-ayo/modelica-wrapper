@@ -80,7 +80,7 @@ export class OmResultsDrawer extends LitElement {
         display: flex;
         align-items: center;
         gap: var(--om-space-xs);
-        padding-right: var(--om-space-xl);
+        padding-inline-end: var(--om-space-xl);
       }
       .chip .meta {
         margin-top: var(--om-space-2xs);
@@ -103,25 +103,11 @@ export class OmResultsDrawer extends LitElement {
         background: var(--vscode-statusBarItem-errorBackground, #c72e0f);
         color: var(--vscode-statusBarItem-errorForeground, #fff);
       }
-      .rename-btn {
-        font: inherit;
-        font-size: var(--om-qualifier-size);
-        cursor: pointer;
-        padding: 0 2px;
-        color: var(--vscode-descriptionForeground);
-        background: transparent;
-        border: none;
-        border-radius: var(--om-radius-sm);
+      .rename-icon {
         visibility: hidden;
       }
-      .chip:hover .rename-btn {
+      .chip:hover .rename-icon {
         visibility: visible;
-      }
-      .rename-btn:hover {
-        background: var(
-          --vscode-toolbar-hoverBackground,
-          rgba(128, 128, 128, 0.2)
-        );
       }
       .rename-input {
         font: inherit;
@@ -220,15 +206,15 @@ export class OmResultsDrawer extends LitElement {
               />`
             : html`
                 <span class="label">${r.label}</span>
-                <button
-                  class="rename-btn"
-                  title="Rename"
+                <om-icon-button
+                  class="rename-icon"
+                  label="Rename"
                   @click=${() => {
                     this.editingId = r.id;
                   }}
                 >
                   ✎
-                </button>
+                </om-icon-button>
               `}
         </div>
         <div class="meta">
@@ -244,6 +230,9 @@ export class OmResultsDrawer extends LitElement {
   }
 
   private saveRenameFromInput(r: ResultRef, input: HTMLInputElement): void {
+    // Guard against the blur that fires when the input is removed from the DOM
+    // after an Enter keydown: Enter clears editingId first, so blur re-enters
+    // here with editingId already null and returns without a second emit.
     if (this.editingId === null) return;
     const label = input.value.trim() || r.label;
     this.editingId = null;
