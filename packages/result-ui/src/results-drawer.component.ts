@@ -1,13 +1,5 @@
-/**
- * `<om-results-drawer>` — the results rail: one chip per `.mat` result (label,
- * model, source badge, timestamp) with a remove button, plus the "add result"
- * controls. The host owns the actual add flows (file dialog / `.modelica`
- * cache); this just emits `om-add-result { via }`. Rename lands in the polish
- * pass (#86); the chip remove emits `om-remove-result`.
- */
-
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
 
 import { omTokens } from "@dicode/ui-common";
 
@@ -77,9 +69,17 @@ export class OmResultsDrawer extends LitElement {
           rgba(128, 128, 128, 0.12)
         );
       }
+      .chip.missing {
+        opacity: 0.65;
+      }
       .chip .label {
         font-weight: 600;
         font-size: var(--om-description-size);
+      }
+      .label-row {
+        display: flex;
+        align-items: center;
+        gap: var(--om-space-xs);
         padding-right: var(--om-space-xl);
       }
       .chip .meta {
@@ -99,6 +99,41 @@ export class OmResultsDrawer extends LitElement {
         background: var(--vscode-badge-background, #4d4d4d);
         color: var(--vscode-badge-foreground, #fff);
       }
+      .missing-badge {
+        background: var(--vscode-statusBarItem-errorBackground, #c72e0f);
+        color: var(--vscode-statusBarItem-errorForeground, #fff);
+      }
+      .rename-btn {
+        font: inherit;
+        font-size: var(--om-qualifier-size);
+        cursor: pointer;
+        padding: 0 2px;
+        color: var(--vscode-descriptionForeground);
+        background: transparent;
+        border: none;
+        border-radius: var(--om-radius-sm);
+        visibility: hidden;
+      }
+      .chip:hover .rename-btn {
+        visibility: visible;
+      }
+      .rename-btn:hover {
+        background: var(
+          --vscode-toolbar-hoverBackground,
+          rgba(128, 128, 128, 0.2)
+        );
+      }
+      .rename-input {
+        font: inherit;
+        font-weight: 600;
+        font-size: var(--om-description-size);
+        background: var(--vscode-input-background, transparent);
+        border: 1px solid var(--vscode-focusBorder, var(--vscode-panel-border));
+        border-radius: var(--om-radius-sm);
+        color: var(--vscode-input-foreground, var(--vscode-foreground));
+        padding: 1px 3px;
+        width: calc(100% - var(--om-space-xl));
+      }
       .remove {
         position: absolute;
         top: var(--om-space-2xs);
@@ -113,6 +148,17 @@ export class OmResultsDrawer extends LitElement {
   ];
 
   @property({ attribute: false }) results: ResultRef[] = [];
+  @property({ attribute: false }) missingResultIds: string[] = [];
+
+  @state() private editingId: string | null = null;
+
+  override updated(): void {
+    if (this.editingId !== null) {
+      const input =
+        this.renderRoot.querySelector<HTMLInputElement>(".rename-input");
+      input?.focus();
+    }
+  }
 
   override render(): TemplateResult {
     return html`
@@ -144,8 +190,11 @@ export class OmResultsDrawer extends LitElement {
 
   private chip(r: ResultRef): TemplateResult {
     const when = r.createdAt ? new Date(r.createdAt).toLocaleTimeString() : "";
+    const isMissing = this.missingResultIds.includes(r.id);
+    const isEditing = this.editingId === r.id;
+
     return html`
-      <div class="chip">
+      <div class=${`chip${isMissing ? " missing" : ""}`}>
         <om-icon-button
           class="remove"
           label="Remove from view"
@@ -154,14 +203,51 @@ export class OmResultsDrawer extends LitElement {
         >
           ✕
         </om-icon-button>
-        <div class="label">${r.label}</div>
+        <div class="label-row">
+          ${isEditing
+            ? html`<input
+                class="rename-input"
+                .value=${r.label}
+                @keydown=${(e: KeyboardEvent) => {
+                  if (e.key === "Enter") {
+                    this.saveRenameFromInput(r, e.target as HTMLInputElement);
+                  } else if (e.key === "Escape") {
+                    this.editingId = null;
+                  }
+                }}
+                @blur=${(e: Event) =>
+                  this.saveRenameFromInput(r, e.target as HTMLInputElement)}
+              />`
+            : html`
+                <span class="label">${r.label}</span>
+                <button
+                  class="rename-btn"
+                  title="Rename"
+                  @click=${() => {
+                    this.editingId = r.id;
+                  }}
+                >
+                  ✎
+                </button>
+              `}
+        </div>
         <div class="meta">
           <span class="badge">${SOURCE_LABEL[r.source]}</span>
+          ${isMissing
+            ? html`<span class="badge missing-badge">missing</span>`
+            : nothing}
           ${r.model ? html`<span>${r.model}</span>` : nothing}
           ${when ? html`<span>· ${when}</span>` : nothing}
         </div>
       </div>
     `;
+  }
+
+  private saveRenameFromInput(r: ResultRef, input: HTMLInputElement): void {
+    if (this.editingId === null) return;
+    const label = input.value.trim() || r.label;
+    this.editingId = null;
+    fireEvent(this, "om-rename-result", { resultId: r.id, label });
   }
 }
 

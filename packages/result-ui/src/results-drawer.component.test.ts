@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import "./results-drawer.component.js";
 import type { OmResultsDrawer } from "./results-drawer.component.js";
-import type { AddResultDetail, RemoveResultDetail } from "./events.js";
+import type {
+  AddResultDetail,
+  RemoveResultDetail,
+  RenameResultDetail,
+} from "./events.js";
 import type { ResultRef } from "./types.js";
 
 async function mount(results: ResultRef[]): Promise<OmResultsDrawer> {
@@ -55,5 +59,73 @@ describe("om-results-drawer", () => {
     });
     el.shadowRoot!.querySelector<HTMLElement>(".remove")!.click();
     expect(removed).toEqual({ resultId: "r1" });
+  });
+
+  it("marks a chip with class missing when its id is in missingResultIds", async () => {
+    const el = await mount([result]);
+    el.missingResultIds = ["r1"];
+    await el.updateComplete;
+    const root = el.shadowRoot;
+    if (root === null) throw new Error("shadow root not attached");
+    const chip = root.querySelector(".chip");
+    if (chip === null) throw new Error("expected a chip");
+    expect(chip.classList.contains("missing")).toBe(true);
+    expect(root.querySelector(".missing-badge")).not.toBeNull();
+  });
+
+  it("shows a rename input when the rename button is clicked", async () => {
+    const el = await mount([result]);
+    const root = el.shadowRoot;
+    if (root === null) throw new Error("shadow root not attached");
+    const renameBtn = root.querySelector<HTMLButtonElement>(".rename-btn");
+    if (renameBtn === null) throw new Error("expected rename button");
+    renameBtn.click();
+    await el.updateComplete;
+    expect(root.querySelector(".rename-input")).not.toBeNull();
+  });
+
+  it("emits om-rename-result on Enter with the new label", async () => {
+    const el = await mount([result]);
+    const root = el.shadowRoot;
+    if (root === null) throw new Error("shadow root not attached");
+    const renameBtn = root.querySelector<HTMLButtonElement>(".rename-btn");
+    if (renameBtn === null) throw new Error("expected rename button");
+    renameBtn.click();
+    await el.updateComplete;
+    const input = root.querySelector<HTMLInputElement>(".rename-input");
+    if (input === null) throw new Error("expected rename input");
+    const renames: RenameResultDetail[] = [];
+    el.addEventListener("om-rename-result", (e) => {
+      renames.push((e as CustomEvent<RenameResultDetail>).detail);
+    });
+    input.value = "New Label";
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+    );
+    await el.updateComplete;
+    expect(renames).toEqual([{ resultId: "r1", label: "New Label" }]);
+    expect(root.querySelector(".rename-input")).toBeNull();
+  });
+
+  it("cancels rename on Escape without emitting", async () => {
+    const el = await mount([result]);
+    const root = el.shadowRoot;
+    if (root === null) throw new Error("shadow root not attached");
+    const renameBtn = root.querySelector<HTMLButtonElement>(".rename-btn");
+    if (renameBtn === null) throw new Error("expected rename button");
+    renameBtn.click();
+    await el.updateComplete;
+    const input = root.querySelector<HTMLInputElement>(".rename-input");
+    if (input === null) throw new Error("expected rename input");
+    let fired = false;
+    el.addEventListener("om-rename-result", () => {
+      fired = true;
+    });
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+    await el.updateComplete;
+    expect(fired).toBe(false);
+    expect(root.querySelector(".rename-input")).toBeNull();
   });
 });

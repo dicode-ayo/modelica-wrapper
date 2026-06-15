@@ -61,6 +61,8 @@ export class OmResultViewRoot extends LitElement {
   @state() private traceData: Record<string, TracePayload[]> = {};
   @state() private variablesByResult: Record<string, string[]> = {};
   @state() private plotsLoading = false;
+  @state() private missingResultIds: string[] = [];
+  @state() private statusMessage: string | null = null;
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -92,7 +94,13 @@ export class OmResultViewRoot extends LitElement {
         if (msg.area === "plots") this.plotsLoading = msg.busy;
         return;
       case "status":
-        if (msg.error) console.error(`[result-view] ${msg.message}`);
+        if (msg.error) {
+          console.error(`[result-view] ${msg.message}`);
+          this.statusMessage = msg.message;
+        }
+        return;
+      case "missingResults":
+        this.missingResultIds = msg.ids;
         return;
     }
   };
@@ -155,6 +163,8 @@ export class OmResultViewRoot extends LitElement {
         .traceData=${this.traceData}
         .variablesByResult=${this.variablesByResult}
         ?plotsLoading=${this.plotsLoading}
+        .missingResultIds=${this.missingResultIds}
+        .statusMessage=${this.statusMessage}
         @om-add-plot=${this.onAddPlot}
         @om-delete-plot=${this.onDeletePlot}
         @om-add-trace=${this.onAddTrace}

@@ -45,7 +45,9 @@ export type ExtensionToWebview =
   | { type: "loading"; area: "results" | "plots"; busy: boolean }
   /** A read / parse error, logged to the webview console as a diagnostic — not
    *  yet surfaced in the UI. */
-  | { type: "status"; message: string; error?: boolean };
+  | { type: "status"; message: string; error?: boolean }
+  /** Ids of results whose backing `.mat` file could not be found. */
+  | { type: "missingResults"; ids: string[] };
 
 // ── Webview → extension host ────────────────────────────────────────────────
 
