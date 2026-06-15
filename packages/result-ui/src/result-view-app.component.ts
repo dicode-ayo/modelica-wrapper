@@ -1,9 +1,17 @@
-import { LitElement, css, html, nothing, type TemplateResult } from "lit";
+import {
+  LitElement,
+  css,
+  html,
+  nothing,
+  type PropertyValues,
+  type TemplateResult,
+} from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 
 import { omTokens } from "@dicode/ui-common";
 
 import type { ResultViewDoc, TracePayload } from "./types.js";
+import "./icon-button.component.js";
 import "./results-drawer.component.js";
 import "./cards-list.component.js";
 
@@ -30,19 +38,6 @@ export class OmResultViewApp extends LitElement {
         gap: var(--om-space-sm);
         border-bottom: 1px solid
           var(--vscode-inputValidation-errorBorder, #be1100);
-      }
-      .status-banner .dismiss {
-        font: inherit;
-        font-size: var(--om-qualifier-size);
-        cursor: pointer;
-        padding: 0 var(--om-space-xs);
-        background: transparent;
-        border: none;
-        color: inherit;
-        opacity: 0.7;
-      }
-      .status-banner .dismiss:hover {
-        opacity: 1;
       }
       .content {
         display: flex;
@@ -96,6 +91,10 @@ export class OmResultViewApp extends LitElement {
 
   @state() private dismissedMessage: string | null = null;
 
+  override willUpdate(changed: PropertyValues): void {
+    if (changed.has("statusMessage")) this.dismissedMessage = null;
+  }
+
   override render(): TemplateResult {
     const showBanner =
       this.statusMessage !== null &&
@@ -105,14 +104,14 @@ export class OmResultViewApp extends LitElement {
         ? html`
             <div class="status-banner">
               <span>${this.statusMessage}</span>
-              <button
-                class="dismiss"
+              <om-icon-button
+                label="Dismiss"
                 @click=${() => {
                   this.dismissedMessage = this.statusMessage;
                 }}
               >
                 ✕
-              </button>
+              </om-icon-button>
             </div>
           `
         : nothing}

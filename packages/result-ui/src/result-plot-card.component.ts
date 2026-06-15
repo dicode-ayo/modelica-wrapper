@@ -99,7 +99,6 @@ export class OmResultPlotCard extends LitElement {
     const el = this.renderRoot.querySelector<HTMLElement>(".chart");
     if (!el) return;
     this.chart = echarts.init(el);
-    this.applyOption();
     this.resizeObserver = new ResizeObserver(() => this.chart?.resize());
     this.resizeObserver.observe(el);
   }
