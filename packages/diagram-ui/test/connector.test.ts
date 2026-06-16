@@ -33,7 +33,11 @@ async function mountScene(): Promise<{
   provider: OmIconProvider;
 }> {
   const provider = document.createElement("om-icon-provider") as OmIconProvider;
-  provider.renderSvg = (l) => `svg:${l.at(0)?.from ?? ""}`;
+  provider.renderSvg = (l) => {
+    const first = l.at(0);
+    if (first === undefined) throw new Error("expected at least one layer");
+    return `svg:${first.from}`;
+  };
   provider.rasterize = (svg: string, s: Scene): Promise<Texture> =>
     Promise.resolve(new Texture(`data:text/plain,${svg}`, s, true, false));
   const scene = document.createElement("om-scene") as OmScene;

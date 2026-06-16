@@ -35,7 +35,11 @@ describe("<om-icon-provider>", () => {
     const provider = document.createElement(
       "om-icon-provider",
     ) as OmIconProvider;
-    provider.renderSvg = (layers) => `svg:${layers.at(0)?.from ?? ""}`;
+    provider.renderSvg = (layers) => {
+      const first = layers.at(0);
+      if (first === undefined) throw new Error("expected at least one layer");
+      return `svg:${first.from}`;
+    };
     provider.rasterize = (svg: string, scene: Scene): Promise<Texture> =>
       Promise.resolve(
         new Texture(`data:text/plain,${svg}`, scene, true, false),

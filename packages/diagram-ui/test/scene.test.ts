@@ -139,9 +139,9 @@ describe("<om-scene>", () => {
         height: 400,
         toJSON: () => ({}),
       }) as DOMRect;
-    let received: { zoom: number; panX: number; panY: number } | null = null;
+    const received: { zoom: number; panX: number; panY: number }[] = [];
     el.addEventListener("om-view-change", (e) => {
-      received = (e as CustomEvent).detail;
+      received.push((e as CustomEvent).detail);
     });
     // Wheel with ctrlKey to trigger the zoom path (plain wheel is
     // pan after the touchpad-friendly rebinding). happy-dom drops
@@ -154,13 +154,8 @@ describe("<om-scene>", () => {
     });
     Object.defineProperty(e, "ctrlKey", { value: true });
     canvas.dispatchEvent(e);
-    // TypeScript CFA narrows closure-captured `let` to its init type, not the declared union.
-    const receivedSnap = received as {
-      zoom: number;
-      panX: number;
-      panY: number;
-    } | null;
-    if (receivedSnap === null) throw new Error("received is null");
-    expect(receivedSnap.zoom).toBeLessThan(100);
+    const last = received.at(-1);
+    if (last === undefined) throw new Error("received is null");
+    expect(last.zoom).toBeLessThan(100);
   });
 });
