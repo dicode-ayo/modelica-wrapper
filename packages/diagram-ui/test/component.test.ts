@@ -32,7 +32,7 @@ async function mountChain(): Promise<{
   scene: OmScene;
 }> {
   const provider = document.createElement("om-icon-provider") as OmIconProvider;
-  provider.renderSvg = (layers) => `svg:${layers[0]!.from}`;
+  provider.renderSvg = (layers) => `svg:${layers.at(0)?.from ?? ""}`;
   provider.rasterize = (svg: string, scene: Scene): Promise<Texture> =>
     Promise.resolve(new Texture(`data:text/plain,${svg}`, scene, true, false));
   const scene = document.createElement("om-scene") as OmScene;
@@ -66,7 +66,9 @@ describe("<om-component>", () => {
     // Wait a tick for the iconProvider promise to resolve and apply.
     await new Promise((r) => setTimeout(r, 0));
     expect(comp).toBeDefined();
-    const transform = scene.sceneContextValue!.diagramRoot;
+    const ctx = scene.sceneContextValue;
+    if (!ctx) throw new Error("no scene context");
+    const transform = ctx.diagramRoot;
     // The component's TransformNode is a child of diagramRoot.
     expect(transform.getChildTransformNodes(true).length).toBeGreaterThan(0);
   });
@@ -83,8 +85,10 @@ describe("<om-component>", () => {
     scene.appendChild(comp);
     await comp.updateComplete;
     // First child TransformNode after diagramRoot.
-    const child =
-      scene.sceneContextValue!.diagramRoot.getChildTransformNodes(true)[0]!;
+    const ctx2 = scene.sceneContextValue;
+    if (!ctx2) throw new Error("no scene context");
+    const child = ctx2.diagramRoot.getChildTransformNodes(true).at(0);
+    if (!child) throw new Error("expected child TransformNode");
     expect(child.position.x).toBe(30);
     expect(child.position.y).toBe(40);
   });

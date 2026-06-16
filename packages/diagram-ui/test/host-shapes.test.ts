@@ -82,10 +82,12 @@ async function mount(layout: DiagramLayout): Promise<OmGraphicalLayout> {
 describe("<om-graphical-layout> host shapes", () => {
   it("emits primitive children for the host's diagram shapes", async () => {
     const el = await mount(layoutWithHostShapes());
-    const inner = el.shadowRoot!.innerHTML;
-    const rects = el.shadowRoot!.querySelectorAll("om-rectangle");
-    const texts = el.shadowRoot!.querySelectorAll("om-text");
-    const lines = el.shadowRoot!.querySelectorAll("om-line");
+    const shadowRoot = el.shadowRoot;
+    if (!shadowRoot) throw new Error("no shadowRoot");
+    const inner = shadowRoot.innerHTML;
+    const rects = shadowRoot.querySelectorAll("om-rectangle");
+    const texts = shadowRoot.querySelectorAll("om-text");
+    const lines = shadowRoot.querySelectorAll("om-line");
     expect(
       { rects: rects.length, texts: texts.length, lines: lines.length },
       `shadow HTML:\n${inner}`,
@@ -98,7 +100,9 @@ describe("<om-graphical-layout> host shapes", () => {
     // after om-scene's mount() has provided the parentNode context.
     await new Promise((r) => setTimeout(r, 0));
     await el.updateComplete;
-    const sceneEl = el.shadowRoot!.querySelector("om-scene") as
+    const shadowRoot2 = el.shadowRoot;
+    if (!shadowRoot2) throw new Error("no shadowRoot");
+    const sceneEl = shadowRoot2.querySelector("om-scene") as
       | (HTMLElement & {
           sceneContextValue?: { scene: { meshes: { name: string }[] } };
         })
@@ -135,9 +139,11 @@ describe("<om-graphical-layout> host shapes", () => {
     const el = await mount(layout);
     await new Promise((r) => setTimeout(r, 0));
     await el.updateComplete;
-    const rects = el.shadowRoot!.querySelectorAll("om-rectangle");
-    const texts = el.shadowRoot!.querySelectorAll("om-text");
-    const lines = el.shadowRoot!.querySelectorAll("om-line");
+    const shadowRoot3 = el.shadowRoot;
+    if (!shadowRoot3) throw new Error("no shadowRoot");
+    const rects = shadowRoot3.querySelectorAll("om-rectangle");
+    const texts = shadowRoot3.querySelectorAll("om-text");
+    const lines = shadowRoot3.querySelectorAll("om-line");
     // The DOM-level count of primitives directly under <om-scene> must
     // match the host's diagramLayers (sub-component icons add more
     // primitives via their own <om-component>s, which we filter out by

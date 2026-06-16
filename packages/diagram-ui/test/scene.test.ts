@@ -98,7 +98,10 @@ describe("<om-scene>", () => {
     el.panX = 5;
     el.panY = -3;
     await el.updateComplete;
-    const canvas = el.shadowRoot!.querySelector("canvas")!;
+    const shadowRoot = el.shadowRoot;
+    if (!shadowRoot) throw new Error("no shadowRoot");
+    const canvas = shadowRoot.querySelector("canvas");
+    if (!canvas) throw new Error("no canvas");
     canvas.getBoundingClientRect = () =>
       ({
         x: 0,
@@ -113,13 +116,17 @@ describe("<om-scene>", () => {
       }) as DOMRect;
     const pt = el.clientToDiagram(400, 200);
     expect(pt).not.toBeNull();
-    expect(pt!.x).toBeCloseTo(5);
-    expect(pt!.y).toBeCloseTo(-3);
+    if (pt === null) throw new Error("pt is null");
+    expect(pt.x).toBeCloseTo(5);
+    expect(pt.y).toBeCloseTo(-3);
   });
 
   it("emits om-view-change events when PanZoom updates the view", async () => {
     const el = await mountScene();
-    const canvas = el.shadowRoot!.querySelector("canvas")!;
+    const shadowRoot2 = el.shadowRoot;
+    if (!shadowRoot2) throw new Error("no shadowRoot");
+    const canvas = shadowRoot2.querySelector("canvas");
+    if (!canvas) throw new Error("no canvas");
     canvas.getBoundingClientRect = () =>
       ({
         x: 0,
@@ -148,6 +155,14 @@ describe("<om-scene>", () => {
     Object.defineProperty(e, "ctrlKey", { value: true });
     canvas.dispatchEvent(e);
     expect(received).not.toBeNull();
-    expect(received!.zoom).toBeLessThan(100);
+    // TypeScript CFA narrows closure-captured `let` to its init value (`null`);
+    // the cast reinstates the declared union so the guard below can narrow it.
+    const receivedSnap = received as {
+      zoom: number;
+      panX: number;
+      panY: number;
+    } | null;
+    if (receivedSnap === null) throw new Error("received is null");
+    expect(receivedSnap.zoom).toBeLessThan(100);
   });
 });
