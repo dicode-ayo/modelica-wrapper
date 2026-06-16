@@ -78,12 +78,12 @@ describe("PanZoom", () => {
       }),
     );
     expect(captured).toHaveLength(1);
-    const first0 = captured.at(0);
-    if (!first0) throw new Error("expected captured event");
-    expect(first0.zoom).toBe(100);
+    const first = captured.at(0);
+    if (!first) throw new Error("expected captured event");
+    expect(first.zoom).toBe(100);
     // Scroll-right (deltaX > 0) reveals content to the right →
     // camera target X increases.
-    expect(first0.panX).toBeGreaterThan(0);
+    expect(first.panX).toBeGreaterThan(0);
   });
 
   it("plain wheel deltaY pans vertically", () => {
@@ -96,12 +96,12 @@ describe("PanZoom", () => {
       }),
     );
     expect(captured).toHaveLength(1);
-    const first1 = captured.at(0);
-    if (!first1) throw new Error("expected captured event");
-    expect(first1.zoom).toBe(100);
+    const first = captured.at(0);
+    if (!first) throw new Error("expected captured event");
+    expect(first.zoom).toBe(100);
     // Scroll-down reveals content below → camera target Y decreases
     // (our +Y is up).
-    expect(first1.panY).toBeLessThan(0);
+    expect(first.panY).toBeLessThan(0);
   });
 
   it("ctrl + wheel up zooms in (shrinks visible region)", () => {
@@ -114,9 +114,9 @@ describe("PanZoom", () => {
       }),
     );
     expect(captured).toHaveLength(1);
-    const first2 = captured.at(0);
-    if (!first2) throw new Error("expected captured event");
-    expect(first2.zoom).toBeLessThan(100);
+    const first = captured.at(0);
+    if (!first) throw new Error("expected captured event");
+    expect(first.zoom).toBeLessThan(100);
   });
 
   it("ctrl + wheel down zooms out (grows visible region)", () => {
@@ -129,9 +129,9 @@ describe("PanZoom", () => {
       }),
     );
     expect(captured).toHaveLength(1);
-    const first3 = captured.at(0);
-    if (!first3) throw new Error("expected captured event");
-    expect(first3.zoom).toBeGreaterThan(100);
+    const first = captured.at(0);
+    if (!first) throw new Error("expected captured event");
+    expect(first.zoom).toBeGreaterThan(100);
   });
 
   it("meta + wheel zooms (macOS pinch convention)", () => {
@@ -144,9 +144,9 @@ describe("PanZoom", () => {
       }),
     );
     expect(captured).toHaveLength(1);
-    const first4 = captured.at(0);
-    if (!first4) throw new Error("expected captured event");
-    expect(first4.zoom).toBeLessThan(100);
+    const first = captured.at(0);
+    if (!first) throw new Error("expected captured event");
+    expect(first.zoom).toBeLessThan(100);
   });
 
   it("small touchpad pinch deltas zoom by less than a full mouse notch", () => {

@@ -75,9 +75,9 @@ describe("<om-multibody-root>", () => {
     expect(mb.rootNode).not.toBeNull();
     const rootNode = mb.rootNode;
     if (!rootNode) throw new Error("expected rootNode");
-    const ctx2 = scene.sceneContextValue;
-    if (!ctx2) throw new Error("no scene context");
-    expect(rootNode.parent).toBe(ctx2.worldRoot);
+    const ctx = scene.sceneContextValue;
+    if (!ctx) throw new Error("no scene context");
+    expect(rootNode.parent).toBe(ctx.worldRoot);
   });
 
   it("disposes its TransformNode on disconnect", async () => {

@@ -85,9 +85,9 @@ describe("<om-component>", () => {
     scene.appendChild(comp);
     await comp.updateComplete;
     // First child TransformNode after diagramRoot.
-    const ctx2 = scene.sceneContextValue;
-    if (!ctx2) throw new Error("no scene context");
-    const child = ctx2.diagramRoot.getChildTransformNodes(true).at(0);
+    const ctx = scene.sceneContextValue;
+    if (!ctx) throw new Error("no scene context");
+    const child = ctx.diagramRoot.getChildTransformNodes(true).at(0);
     if (!child) throw new Error("expected child TransformNode");
     expect(child.position.x).toBe(30);
     expect(child.position.y).toBe(40);

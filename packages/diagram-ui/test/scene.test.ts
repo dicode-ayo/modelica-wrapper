@@ -123,9 +123,9 @@ describe("<om-scene>", () => {
 
   it("emits om-view-change events when PanZoom updates the view", async () => {
     const el = await mountScene();
-    const shadowRoot2 = el.shadowRoot;
-    if (!shadowRoot2) throw new Error("no shadowRoot");
-    const canvas = shadowRoot2.querySelector("canvas");
+    const shadowRoot = el.shadowRoot;
+    if (!shadowRoot) throw new Error("no shadowRoot");
+    const canvas = shadowRoot.querySelector("canvas");
     if (!canvas) throw new Error("no canvas");
     canvas.getBoundingClientRect = () =>
       ({
@@ -154,9 +154,7 @@ describe("<om-scene>", () => {
     });
     Object.defineProperty(e, "ctrlKey", { value: true });
     canvas.dispatchEvent(e);
-    expect(received).not.toBeNull();
-    // TypeScript CFA narrows closure-captured `let` to its init value (`null`);
-    // the cast reinstates the declared union so the guard below can narrow it.
+    // TypeScript CFA narrows closure-captured `let` to its init type, not the declared union.
     const receivedSnap = received as {
       zoom: number;
       panX: number;
