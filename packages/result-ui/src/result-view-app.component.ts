@@ -1,19 +1,17 @@
-/**
- * `<om-result-view-app>` — top-level layout for the postprocessing view: a
- * results rail on the left, the scrollable plot-cards column on the right.
- *
- * Purely declarative: the host (via the extension bridge) sets `doc`,
- * `traceData`, and `variablesByResult`; child components emit bubbling, composed
- * events that pass straight through this element to the bridge. No state of its
- * own beyond what's handed in.
- */
-
-import { LitElement, css, html, nothing, type TemplateResult } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import {
+  LitElement,
+  css,
+  html,
+  nothing,
+  type PropertyValues,
+  type TemplateResult,
+} from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 
 import { omTokens } from "@dicode/ui-common";
 
 import type { ResultViewDoc, TracePayload } from "./types.js";
+import "./icon-button.component.js";
 import "./results-drawer.component.js";
 import "./cards-list.component.js";
 
@@ -24,10 +22,27 @@ export class OmResultViewApp extends LitElement {
     css`
       :host {
         display: flex;
+        flex-direction: column;
         height: 100%;
         font-family: var(--vscode-font-family);
         font-size: var(--vscode-font-size, 13px);
         color: var(--vscode-foreground);
+      }
+      .status-banner {
+        padding: var(--om-space-xs) var(--om-space-md);
+        background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+        color: var(--om-error-foreground, var(--vscode-foreground));
+        font-size: var(--om-qualifier-size);
+        display: flex;
+        align-items: center;
+        gap: var(--om-space-sm);
+        border-bottom: 1px solid
+          var(--vscode-inputValidation-errorBorder, #be1100);
+      }
+      .content {
+        display: flex;
+        flex: 1;
+        min-height: 0;
       }
       .rail {
         width: var(--om-result-rail-size);
@@ -71,23 +86,54 @@ export class OmResultViewApp extends LitElement {
     {};
   /** Optional spinner gating from the host. */
   @property({ type: Boolean }) plotsLoading = false;
+  @property({ attribute: false }) missingResultIds: string[] = [];
+  @property({ attribute: false }) statusMessage: string | null = null;
+
+  @state() private dismissedMessage: string | null = null;
+
+  override willUpdate(changed: PropertyValues): void {
+    if (changed.has("statusMessage")) this.dismissedMessage = null;
+  }
 
   override render(): TemplateResult {
+    const showBanner =
+      this.statusMessage !== null &&
+      this.statusMessage !== this.dismissedMessage;
     return html`
-      <div class="rail">
-        <om-results-drawer .results=${this.doc.results}></om-results-drawer>
-      </div>
-      <div class="cards">
-        <div class="cards-wrap">
-          ${this.plotsLoading
-            ? html`<div class="loading">Fetching data…</div>`
-            : nothing}
-          <om-cards-list
-            .cards=${this.doc.cards}
+      ${showBanner
+        ? html`
+            <div class="status-banner">
+              <span>${this.statusMessage}</span>
+              <om-icon-button
+                label="Dismiss"
+                @click=${() => {
+                  this.dismissedMessage = this.statusMessage;
+                }}
+              >
+                ✕
+              </om-icon-button>
+            </div>
+          `
+        : nothing}
+      <div class="content">
+        <div class="rail">
+          <om-results-drawer
             .results=${this.doc.results}
-            .traceData=${this.traceData}
-            .variablesByResult=${this.variablesByResult}
-          ></om-cards-list>
+            .missingResultIds=${this.missingResultIds}
+          ></om-results-drawer>
+        </div>
+        <div class="cards">
+          <div class="cards-wrap">
+            ${this.plotsLoading
+              ? html`<div class="loading">Fetching data…</div>`
+              : nothing}
+            <om-cards-list
+              .cards=${this.doc.cards}
+              .results=${this.doc.results}
+              .traceData=${this.traceData}
+              .variablesByResult=${this.variablesByResult}
+            ></om-cards-list>
+          </div>
         </div>
       </div>
     `;

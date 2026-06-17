@@ -7,11 +7,6 @@
  * The webview is a dumb renderer: it never reads the `.omresults` file or calls
  * OMC. The host parses the document, reads `.mat` data, and pushes everything
  * down; the webview emits intent (add a plot, add a trace, …) back up.
- *
- * Slice status: the provider skeleton (#83) sends `doc` and handles `ready`; the
- * data path (`variables` / `loading`) and the card-edit messages are wired in
- * #84 / #85. The add/remove/rename-result messages are defined here but only
- * handled from #86 / #87 onward.
  */
 
 import type { ResultViewDoc } from "@dicode/omc-client";
@@ -43,9 +38,10 @@ export type ExtensionToWebview =
   | { type: "variables"; resultId: string; vars?: string[]; error?: string }
   /** Spinner gating while the host reads results / variables. */
   | { type: "loading"; area: "results" | "plots"; busy: boolean }
-  /** A read / parse error, logged to the webview console as a diagnostic — not
-   *  yet surfaced in the UI. */
-  | { type: "status"; message: string; error?: boolean };
+  /** A read / parse error; when `error` is set it is also surfaced in the status banner. */
+  | { type: "status"; message: string; error?: boolean }
+  /** Ids of results whose backing `.mat` file could not be found. */
+  | { type: "missingResults"; ids: string[] };
 
 // ── Webview → extension host ────────────────────────────────────────────────
 

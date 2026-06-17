@@ -76,6 +76,32 @@ export const Playground: Story = {
   `,
 };
 
+export const WithMissingResult: Story = {
+  render: (): TemplateResult => html`
+    <div class="om-story-host">
+      <om-result-view-app
+        .doc=${sampleDoc}
+        .missingResultIds=${["r1"]}
+        .traceData=${sampleTraceData}
+        .variablesByResult=${sampleVariablesByResult}
+      ></om-result-view-app>
+    </div>
+  `,
+};
+
+export const WithErrorBanner: Story = {
+  render: (): TemplateResult => html`
+    <div class="om-story-host">
+      <om-result-view-app
+        .doc=${sampleDoc}
+        .statusMessage=${"Could not read DCMotor_res.mat — file not found"}
+        .traceData=${sampleTraceData}
+        .variablesByResult=${sampleVariablesByResult}
+      ></om-result-view-app>
+    </div>
+  `,
+};
+
 /** A single plot card with two overlaid traces. */
 export const SinglePlotCard: Story = {
   render: (): TemplateResult => {

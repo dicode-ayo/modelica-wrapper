@@ -87,12 +87,18 @@ export class OmResultPlotCard extends LitElement {
 
   private chart: echarts.ECharts | undefined;
   private resizeObserver: ResizeObserver | undefined;
+  private themeObserver: MutationObserver | undefined;
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this.themeObserver = new MutationObserver(() => this.applyOption());
+    this.themeObserver.observe(document.body, { attributeFilter: ["class"] });
+  }
 
   override firstUpdated(): void {
     const el = this.renderRoot.querySelector<HTMLElement>(".chart");
     if (!el) return;
     this.chart = echarts.init(el);
-    this.applyOption();
     this.resizeObserver = new ResizeObserver(() => this.chart?.resize());
     this.resizeObserver.observe(el);
   }
@@ -103,13 +109,13 @@ export class OmResultPlotCard extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.themeObserver?.disconnect();
+    this.themeObserver = undefined;
     this.resizeObserver?.disconnect();
     this.chart?.dispose();
     this.chart = undefined;
   }
 
-  /** Re-read the theme on each rebuild so a chart picks up the editor colours;
-   * a live theme switch with no trace change won't refresh yet — see #86. */
   private applyOption(): void {
     this.chart?.setOption(
       buildLineChartOption(this.traces, buildEchartTheme()),
