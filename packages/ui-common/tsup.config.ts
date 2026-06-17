@@ -6,7 +6,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   // Both public entries — mirrors the `.` and `./webawesome-setup` exports.
   entry: ["src/index.ts", "src/webawesome-setup.ts"],
-  format: ["esm", "cjs"],
+  format: ["esm"],
   dts: true,
   sourcemap: true,
   clean: true,

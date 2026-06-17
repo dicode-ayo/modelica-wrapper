@@ -2,7 +2,7 @@
   "name": "@dicode/diagram-svg",
   "version": "0.0.1",
   "description": "Renders typed IconLayer[] from @dicode/omc-client into self-contained SVG strings.",
-  "type": "commonjs",
+  "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -17,13 +17,11 @@
   "publishConfig": {
     "access": "public",
     "main": "./dist/index.js",
-    "module": "./dist/index.mjs",
     "types": "./dist/index.d.ts",
     "exports": {
       ".": {
         "types": "./dist/index.d.ts",
-        "import": "./dist/index.mjs",
-        "require": "./dist/index.js"
+        "import": "./dist/index.js"
       }
     }
   },

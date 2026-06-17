@@ -22,7 +22,7 @@ export default defineConfig({
     // Tests and the vite asset shim are not part of the published surface.
     "!src/api/**/*.test.ts",
   ],
-  format: ["esm", "cjs"],
+  format: ["esm"],
   dts: true,
   sourcemap: true,
   clean: true,
