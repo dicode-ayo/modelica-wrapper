@@ -62,8 +62,12 @@ describe("buildEdge", () => {
     expect(result).not.toBeNull();
     expect(result!.line.parent).toBe(s.parent);
     expect(result!.hitArea.parent).toBe(s.parent);
+    // Pickable but transparent: Babylon's default pick predicate skips
+    // `isVisible = false` meshes, so the hit tube has to stay "visible"
+    // at zero opacity to remain grabbable.
     expect(result!.hitArea.isPickable).toBe(true);
-    expect(result!.hitArea.isVisible).toBe(false);
+    expect(result!.hitArea.isVisible).toBe(true);
+    expect(result!.hitArea.visibility).toBe(0);
   });
 });
 
@@ -96,6 +100,38 @@ describe("<om-edge>", () => {
     scene.appendChild(edge);
     await edge.updateComplete;
     expect(edge.edgeMesh).not.toBeNull();
+  });
+
+  it("reveals the hit tube while hovered and hides it otherwise", async () => {
+    const scene = document.createElement("om-scene") as OmScene;
+    scene.engineFactory = () =>
+      new NullEngine({
+        renderWidth: 200,
+        renderHeight: 200,
+        textureSize: 128,
+        deterministicLockstep: false,
+        lockstepMaxSteps: 1,
+      });
+    document.body.appendChild(scene);
+    teardowns.push(() => scene.remove());
+    await scene.updateComplete;
+
+    const edge = document.createElement("om-edge") as OmEdge;
+    edge.path = [
+      [0, 0],
+      [50, 0],
+    ];
+    scene.appendChild(edge);
+    await edge.updateComplete;
+    expect(edge.edgeMesh!.hitArea.visibility).toBe(0);
+
+    edge.hovered = true;
+    await edge.updateComplete;
+    expect(edge.edgeMesh!.hitArea.visibility).toBeGreaterThan(0);
+
+    edge.hovered = false;
+    await edge.updateComplete;
+    expect(edge.edgeMesh!.hitArea.visibility).toBe(0);
   });
 
   it("does not rebuild the mesh when a fresh path with identical content is assigned", async () => {

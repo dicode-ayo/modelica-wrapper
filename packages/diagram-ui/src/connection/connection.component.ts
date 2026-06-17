@@ -1,5 +1,5 @@
 import { LitElement, css, html } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
 import { ContextConsumer, consume } from "@lit/context";
 import {
   Color3,
@@ -16,9 +16,11 @@ import { requestSceneRender } from "../scene/render-scheduler.js";
 import { pointsEqual } from "../interaction/connection-route.js";
 import {
   interactionStateContext,
+  type InteractionState,
   type InteractionStateStore,
 } from "../interaction/interaction-state.js";
 import { isJunctionKey, parseKey } from "../interaction/node-keys.js";
+import { WAYPOINT_RADIUS } from "./edge-build.js";
 import "./edge.component.js";
 
 const JUNCTION_BASE_COLOR = new Color3(0.1, 0.1, 0.18);
@@ -31,7 +33,7 @@ const SELECTED_COLOR = new Color3(0.24, 0.51, 0.96); // blue-500, matches edges
  * route.
  */
 const JUNCTION_IDLE_OPACITY = 0;
-/** Opacity of the junction disc the cursor is currently over. */
+/** Opacity of every junction disc while the connection is hovered. */
 const JUNCTION_HOVER_OPACITY = 1;
 
 /**
@@ -74,7 +76,7 @@ export class OmConnection extends LitElement {
   @property({ type: Boolean, attribute: "show-junctions" })
   showJunctions = true;
   @property({ type: Number, attribute: "junction-radius" })
-  junctionRadius = 1.5;
+  junctionRadius = WAYPOINT_RADIUS;
   @property({ attribute: false })
   selectedKeys: Set<string> = new Set();
 
@@ -100,13 +102,12 @@ export class OmConnection extends LitElement {
   private junctionMaterial: StandardMaterial | null = null;
   private highlightedJunctions = new Set<Mesh>();
   /**
-   * Compound nodeId (`${connectionId}/${waypointIdx}`) of the junction
-   * disc currently under the cursor, or `null` when none. The hovered
-   * disc renders at full opacity; the rest stay at
-   * `JUNCTION_IDLE_OPACITY` so the route reads as a clean polyline
-   * with subtle waypoint hints.
+   * Whether the pointer is over any part of this connection (its edge
+   * or one of its waypoint discs). While hovered the whole route
+   * highlights as a unit: the edge reveals its band and every junction
+   * disc lights up, so the user sees all the waypoints they can grab.
    */
-  private hoveredJunctionId: string | null = null;
+  @state() private hovered = false;
   /**
    * Last waypoint list the junctions were built against. Compared by
    * content so a fresh-but-equal `path` (typical after an OMC layout
@@ -128,10 +129,10 @@ export class OmConnection extends LitElement {
 
   /**
    * Attach to the host's interaction-state store and react to every
-   * hover-key change by recomputing whether one of our junctions is
-   * the current target. The store is a behaviour-subject so the
-   * `subscribe()` callback fires once immediately with the current
-   * snapshot — no race on mount.
+   * hover-key change by recomputing whether the pointer is over this
+   * connection. The store is a behaviour-subject so the `subscribe()`
+   * callback fires once immediately with the current snapshot — no
+   * race on mount.
    */
   private resubscribeInteractionState(
     store: InteractionStateStore | null,
@@ -140,27 +141,35 @@ export class OmConnection extends LitElement {
     this.interactionUnsubscribe = null;
     if (!store) return;
     this.interactionUnsubscribe = store.subscribe((snap) => {
-      const hoveredId = this.resolveOwnHoveredJunction(snap.hoverKey);
-      this.applyHoveredJunction(hoveredId);
+      // Gate on the active drag target as well as the hover key: a
+      // dragged route's geometry leaves the cursor each frame, so the
+      // hover key alone would drop the highlight mid-drag.
+      this.hovered =
+        this.ownsKey(snap.hoverKey) || this.isDragTarget(snap.state);
     });
   }
 
   /**
-   * Returns the compound junction nodeId (`${this.nodeId}/${idx}`) that
-   * the host's hover key points at, IF the junction belongs to this
-   * connection. Otherwise `null` — including when the hover key is
-   * absent, malformed, or belongs to a different connection.
+   * Whether `key` targets this connection — either its edge
+   * (`edge:${this.nodeId}`) or one of its junction discs
+   * (`junc:${this.nodeId}/${idx}`). Matches the junction by prefix so a
+   * connId containing slashes still resolves correctly.
    */
-  private resolveOwnHoveredJunction(hoverKey: string | null): string | null {
-    if (!hoverKey) return null;
-    const parsed = parseKey(hoverKey);
-    if (!parsed || !isJunctionKey(parsed)) return null;
-    // Junction nodeId is `${connId}/${waypointIdx}`. Match by prefix
-    // rather than splitting+comparing, so a connId that itself
-    // contains slashes (we don't generate those today but the parser
-    // doesn't forbid them) still matches correctly.
-    const prefix = `${this.nodeId}/`;
-    return parsed.nodeId.startsWith(prefix) ? parsed.nodeId : null;
+  private ownsKey(key: string | null): boolean {
+    if (!key) return false;
+    const parsed = parseKey(key);
+    if (!parsed) return false;
+    if (parsed.kind === "edge") return parsed.nodeId === this.nodeId;
+    if (isJunctionKey(parsed)) {
+      return parsed.nodeId.startsWith(`${this.nodeId}/`);
+    }
+    return false;
+  }
+
+  /** Whether the in-flight move drag targets this connection's edge or
+   *  one of its junctions. */
+  private isDragTarget(state: InteractionState): boolean {
+    return state.kind === "moving" && state.keys.some((k) => this.ownsKey(k));
   }
 
   override render() {
@@ -168,11 +177,12 @@ export class OmConnection extends LitElement {
       return html``;
     }
     return html`<om-edge
-      nodeId=${`${this.nodeId}/edge`}
+      nodeId=${this.nodeId}
       .path=${this.path}
       .stroke=${this.stroke}
       ?clocked=${this.clocked}
       ?selected=${this.selectedKeys.has(`edge:${this.nodeId}`)}
+      ?hovered=${this.hovered}
     ></om-edge>`;
   }
 
@@ -199,6 +209,7 @@ export class OmConnection extends LitElement {
       }
     }
     this.applyJunctionSelection();
+    this.applyJunctionHover();
   }
 
   override disconnectedCallback(): void {
@@ -266,14 +277,11 @@ export class OmConnection extends LitElement {
       disc.position.set(x, y, -0.01);
       disc.metadata = { kind: "junction", nodeId: compoundId };
       disc.isPickable = true;
-      // Always visible at a subtle opacity; the hovered disc (matched
-      // by `hoveredJunctionId`) renders at full opacity. Babylon's
-      // picker ignores `mesh.visibility`, so translucent discs are
-      // still grabbable for the connection-reshape gesture.
-      disc.visibility =
-        compoundId === this.hoveredJunctionId
-          ? JUNCTION_HOVER_OPACITY
-          : JUNCTION_IDLE_OPACITY;
+      // Built transparent; `applyJunctionHover` reveals every disc while
+      // the connection is hovered. Babylon's picker ignores
+      // `mesh.visibility`, so the discs stay grabbable for the
+      // connection-reshape gesture even at rest.
+      disc.visibility = JUNCTION_IDLE_OPACITY;
       this.junctionMeshes.push(disc);
       waypointIdx++;
     }
@@ -281,34 +289,30 @@ export class OmConnection extends LitElement {
   }
 
   /**
-   * Apply a junction-hover transition: the disc whose metadata nodeId
-   * matches `id` renders at `JUNCTION_HOVER_OPACITY`, every other
-   * disc reverts to `JUNCTION_IDLE_OPACITY`. Pass `null` to clear.
-   * Idempotent — bailing on no-op spares us a pointless rAF.
-   *
-   * Called from the `interactionStateContext` subscription (see
-   * `resubscribeInteractionState`); not part of the public API.
+   * Reveal every junction disc while the connection is hovered, hide
+   * them all otherwise. Idempotent — skips the rAF when nothing changed.
    */
-  private applyHoveredJunction(id: string | null): void {
-    if (this.hoveredJunctionId === id) {
-      return;
-    }
-    this.hoveredJunctionId = id;
+  private applyJunctionHover(): void {
+    const opacity = this.hovered
+      ? JUNCTION_HOVER_OPACITY
+      : JUNCTION_IDLE_OPACITY;
+    let changed = false;
     for (const disc of this.junctionMeshes) {
-      const meta = disc.metadata as { nodeId?: string } | null;
-      disc.visibility =
-        meta?.nodeId === id ? JUNCTION_HOVER_OPACITY : JUNCTION_IDLE_OPACITY;
+      if (disc.visibility !== opacity) {
+        disc.visibility = opacity;
+        changed = true;
+      }
     }
     const scene = this.parentTransform?.getScene();
-    if (scene) {
+    if (changed && scene) {
       requestSceneRender(scene);
     }
   }
 
-  /** Read-only access to the currently hovered junction id. Exposed
-   *  for tests + future overlays that want a snapshot. */
-  get hoveredJunction(): string | null {
-    return this.hoveredJunctionId;
+  /** Read-only access to the connection's hover state. Exposed for
+   *  tests + future overlays that want a snapshot. */
+  get isHovered(): boolean {
+    return this.hovered;
   }
 
   private applyJunctionSelection(): void {

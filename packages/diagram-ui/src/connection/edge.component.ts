@@ -9,6 +9,7 @@ import { requestSceneRender } from "../scene/render-scheduler.js";
 import { pointsEqual } from "../interaction/connection-route.js";
 import {
   DEFAULT_EDGE_COLOR,
+  HIT_HOVER_OPACITY,
   buildEdge,
   rebuildHitTube,
   updateEdgePoints,
@@ -29,6 +30,8 @@ const SELECTED_EDGE_COLOR = new Color3(0.24, 0.51, 0.96); // blue-500
  *   - `clocked`  — dashed pattern for synchronous-clock connections
  *   - `selected` — when true, the visible line switches to the
  *                  selected highlight colour
+ *   - `hovered`  — when true, the pick tube is revealed as a
+ *                  translucent band hugging the line
  */
 @customElement("om-edge")
 export class OmEdge extends LitElement {
@@ -43,6 +46,7 @@ export class OmEdge extends LitElement {
   @property() stroke: string | undefined = undefined;
   @property({ type: Boolean }) clocked = false;
   @property({ type: Boolean }) selected = false;
+  @property({ type: Boolean }) hovered = false;
 
   @consume({ context: parentNodeContext, subscribe: true })
   private parentTransform: TransformNode | null = null;
@@ -79,6 +83,7 @@ export class OmEdge extends LitElement {
       }
     }
     this.applySelection();
+    this.applyHover();
   }
 
   /**
@@ -157,6 +162,14 @@ export class OmEdge extends LitElement {
       ? SELECTED_EDGE_COLOR
       : this.baseColor;
     requestSceneRender(this.meshes.line.getScene());
+  }
+
+  private applyHover(): void {
+    if (!this.meshes) {
+      return;
+    }
+    this.meshes.hitArea.visibility = this.hovered ? HIT_HOVER_OPACITY : 0;
+    requestSceneRender(this.meshes.hitArea.getScene());
   }
 
   private disposeMeshes(): void {

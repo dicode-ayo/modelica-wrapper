@@ -108,12 +108,12 @@ describe("<om-connection>", () => {
     expect(conn.junctions.length).toBe(2);
   });
 
-  it("keeps junctions invisible at rest and reveals the hovered disc when the interaction store publishes its key", async () => {
+  it("keeps junctions invisible at rest and reveals every disc when the connection is hovered", async () => {
     // Self-managing path: `<om-connection>` subscribes to
     // `interactionStateContext` and reacts to `hoverKey` directly,
-    // matching by compound junction nodeId (`${connId}/${idx}`). The
-    // host (in production: `<om-graphical-layout>`) only owns the
-    // store; the connection owns the mapping from key → disc.
+    // lighting the whole route when the pointer is over its edge or any
+    // of its junctions. The host (in production: `<om-graphical-layout>`)
+    // only owns the store; the connection owns the key → hover mapping.
     const { scene, store } = await mountSceneWithStore();
     const conn = document.createElement("om-connection") as OmConnection;
     conn.nodeId = "c1";
@@ -126,29 +126,86 @@ describe("<om-connection>", () => {
     conn.showJunctions = true;
     scene.appendChild(conn);
     await conn.updateComplete;
-    expect(conn.hoveredJunction).toBeNull();
+    expect(conn.isHovered).toBe(false);
     expect(conn.junctions.length).toBe(2);
     for (const disc of conn.junctions) {
       expect(disc.visibility).toBe(0);
     }
 
+    // Hovering a single junction reveals ALL of the connection's discs.
     store.next({ hoverKey: "junc:c1/1" });
-    expect(conn.hoveredJunction).toBe("c1/1");
-    expect(conn.junctions[0]!.visibility).toBe(1);
-    expect(conn.junctions[1]!.visibility).toBe(0);
+    await conn.updateComplete;
+    expect(conn.isHovered).toBe(true);
+    for (const disc of conn.junctions) {
+      expect(disc.visibility).toBe(1);
+    }
 
-    // Hover key for a different connection must NOT trigger this one.
+    // A key for a different connection must NOT trigger this one.
     store.next({ hoverKey: "junc:c2/1" });
-    expect(conn.hoveredJunction).toBeNull();
+    await conn.updateComplete;
+    expect(conn.isHovered).toBe(false);
     for (const disc of conn.junctions) {
       expect(disc.visibility).toBe(0);
     }
 
-    store.next({ hoverKey: "junc:c1/2" });
-    expect(conn.hoveredJunction).toBe("c1/2");
-    expect(conn.junctions[1]!.visibility).toBe(1);
+    // Hovering the edge itself lights the whole route too.
+    store.next({ hoverKey: "edge:c1" });
+    await conn.updateComplete;
+    expect(conn.isHovered).toBe(true);
+    for (const disc of conn.junctions) {
+      expect(disc.visibility).toBe(1);
+    }
 
     store.next({ hoverKey: null });
+    await conn.updateComplete;
+    expect(conn.isHovered).toBe(false);
+    for (const disc of conn.junctions) {
+      expect(disc.visibility).toBe(0);
+    }
+  });
+
+  it("stays highlighted while it is the active drag target even as the hover key clears", async () => {
+    // During an edge / waypoint drag the geometry slides out from under
+    // the cursor each frame, so the hover key flips to null. Gating on
+    // the move state's keys keeps the route lit instead of flickering.
+    const { scene, store } = await mountSceneWithStore();
+    const conn = document.createElement("om-connection") as OmConnection;
+    conn.nodeId = "c1";
+    conn.path = [
+      [-10, 0],
+      [0, 0],
+      [0, 10],
+      [10, 10],
+    ];
+    conn.showJunctions = true;
+    scene.appendChild(conn);
+    await conn.updateComplete;
+
+    // Edge drag in flight: hover key is null but the move targets us.
+    store.next({
+      hoverKey: null,
+      state: { kind: "moving", keys: ["edge:c1"] },
+    });
+    await conn.updateComplete;
+    expect(conn.isHovered).toBe(true);
+    for (const disc of conn.junctions) {
+      expect(disc.visibility).toBe(1);
+    }
+
+    // Dragging one of our junctions keeps it lit too.
+    store.next({ state: { kind: "moving", keys: ["junc:c1/1"] } });
+    await conn.updateComplete;
+    expect(conn.isHovered).toBe(true);
+
+    // A move targeting a different connection must NOT light us.
+    store.next({ state: { kind: "moving", keys: ["edge:c2"] } });
+    await conn.updateComplete;
+    expect(conn.isHovered).toBe(false);
+
+    // Drag ends with the pointer off the route → unhighlight.
+    store.next({ state: { kind: "idle" }, hoverKey: null });
+    await conn.updateComplete;
+    expect(conn.isHovered).toBe(false);
     for (const disc of conn.junctions) {
       expect(disc.visibility).toBe(0);
     }

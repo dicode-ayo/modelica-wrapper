@@ -1,4 +1,10 @@
-import { Color3, Mesh, MeshBuilder, Vector3 } from "@babylonjs/core";
+import {
+  Color3,
+  Mesh,
+  MeshBuilder,
+  StandardMaterial,
+  Vector3,
+} from "@babylonjs/core";
 import {
   CreateDashedLines,
   CreateLines,
@@ -33,15 +39,27 @@ export interface EdgeOptions {
    */
   zOffset?: number;
   /**
-   * Radius of the invisible picking tube around each segment, in
-   * diagram units. Default 1.5 — easy to click at typical zoom.
+   * Radius of the picking tube around each segment, in diagram units.
+   * Doubles as the width of the hover band, so it tracks the waypoint
+   * disc radius (`WAYPOINT_RADIUS`) and the two read as one shape.
    */
   hitRadius?: number;
 }
 
 export const DEFAULT_EDGE_COLOR = new Color3(0.1, 0.1, 0.18);
 export const EDGE_Z_OFFSET = -0.005;
-const DEFAULT_HIT_RADIUS = 1.5;
+
+/**
+ * Radius of a connection waypoint, in diagram units. Shared by the
+ * junction discs and the edge pick tube so the hover band lines up
+ * with the discs sitting on it.
+ */
+export const WAYPOINT_RADIUS = 1.5;
+const DEFAULT_HIT_RADIUS = WAYPOINT_RADIUS;
+
+/** Opacity the pick tube renders at while its edge is hovered. */
+export const HIT_HOVER_OPACITY = 0.3;
+const HIT_HOVER_COLOR = new Color3(0.24, 0.51, 0.96); // blue-500
 
 /** Dash sizing tuned for diagram-coord paths (~10s of units long). */
 const DEFAULT_DASH_SIZE = 4;
@@ -160,8 +178,11 @@ export function rebuildHitTube(
 /**
  * Build a single mesh whose volume covers every segment of the
  * polyline. `MeshBuilder.CreateTube` doesn't accept disjoint segments,
- * so we merge per-segment tubes into one mesh. The result is invisible
- * (`isVisible = false`) but pickable.
+ * so we merge per-segment tubes into one mesh. The tube renders at
+ * `visibility = 0` (transparent) so it stays pickable — Babylon's
+ * default `scene.pick` predicate skips `isVisible = false` meshes but
+ * ignores `visibility`. Revealing it (raising `visibility`) doubles as
+ * the edge's hover affordance.
  */
 function buildHitTube(
   scene: Scene,
@@ -189,7 +210,11 @@ function buildHitTube(
       ? segments[0]!
       : (Mesh.MergeMeshes(segments, true, true) ?? segments[0]!);
   merged.name = name;
-  merged.isVisible = false;
+  const material = new StandardMaterial(`${name}.mat`, scene);
+  material.disableLighting = true;
+  material.emissiveColor = HIT_HOVER_COLOR;
+  merged.material = material;
+  merged.visibility = 0;
   merged.isPickable = true;
   return merged;
 }
