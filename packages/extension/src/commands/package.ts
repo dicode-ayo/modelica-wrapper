@@ -2,20 +2,81 @@
  * `modelica.savePackage` — Option-B persistence: read the class source via
  * `listFile`, write it to disk ourselves, then tell OMC where it now lives
  * with `setSourceFile`. Works on any package or library node.
+ *
+ * `modelica.initializeWorkspaceAsPackage` — Create a root `package.mo` in the
+ * open workspace folder, making the folder itself a named package. Follows the
+ * OMEdit convention so children written later nest correctly under the package.
  */
 
-import * as vscode from "vscode";
+import * as path from "node:path";
 import { writeFile } from "node:fs/promises";
+
+import * as vscode from "vscode";
 
 import type { LibraryNode } from "../tree/library-tree.js";
 
-import type { CommandContext } from "./context.js";
+import {
+  sanitizeIdentifier,
+  validateIdentifier,
+  type CommandContext,
+} from "./context.js";
 import { createReplLog } from "./repl.js";
 
 export function registerPackageCommands(
   ctx: CommandContext,
 ): vscode.Disposable[] {
   return [
+    vscode.commands.registerCommand(
+      "modelica.initializeWorkspaceAsPackage",
+      async () => {
+        const ws = vscode.workspace.workspaceFolders?.[0];
+        if (!ws) {
+          await vscode.window.showWarningMessage(
+            "Modelica: Open a folder first to initialize it as a package.",
+          );
+          return;
+        }
+        const folderDefault = sanitizeIdentifier(path.basename(ws.uri.fsPath));
+        const pkgName = await vscode.window.showInputBox({
+          prompt: "Package name for the workspace root",
+          value: folderDefault,
+          validateInput: validateIdentifier,
+        });
+        if (!pkgName) return;
+        const pkgFile = vscode.Uri.joinPath(ws.uri, "package.mo").fsPath;
+        const log = createReplLog(`initializeWorkspaceAsPackage ${pkgName}`);
+        try {
+          const pkgBody = `package ${pkgName}\nend ${pkgName};\n`;
+          await writeFile(pkgFile, pkgBody, "utf8");
+          const c = await ctx.ensureClient();
+          const { success } = await c.loadString({
+            data: pkgBody,
+            filename: pkgFile,
+            merge: true,
+          });
+          if (!success) {
+            const { errorString } = await c.getErrorString();
+            log.error(errorString || "loadString returned success=false");
+            await vscode.window.showErrorMessage(
+              `Modelica: failed to initialize workspace package${errorString ? `: ${errorString}` : ""}`,
+            );
+            return;
+          }
+          await c.setSourceFile({ typeName: pkgName, fileName: pkgFile });
+          ctx.libraryTree.refresh();
+          ctx.sourceProvider.notifySourceChanged();
+          log.success(`initialized ${ws.uri.fsPath} as package ${pkgName}`);
+          await vscode.window.showInformationMessage(
+            `Modelica: workspace initialized as package "${pkgName}"`,
+          );
+        } catch (err) {
+          log.error((err as Error).message);
+          await vscode.window.showErrorMessage(
+            `Modelica: initializeWorkspaceAsPackage failed: ${(err as Error).message}`,
+          );
+        }
+      },
+    ),
     vscode.commands.registerCommand(
       "modelica.savePackage",
       async (node?: LibraryNode) => {

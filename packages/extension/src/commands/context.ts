@@ -43,6 +43,25 @@ export function validateIdentifier(value: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Turn an arbitrary string (e.g. a folder name) into a valid Modelica
+ * identifier. Replaces runs of non-identifier characters with `_`; prepends
+ * `_` when the result would start with a digit; falls back to `_` for an
+ * empty input.
+ */
+export function sanitizeIdentifier(value: string): string {
+  let s = value.replace(/[^A-Za-z0-9_]+/g, "_");
+  // Strip injected leading underscores only when the original didn't start
+  // with one — this removes padding introduced by a leading invalid character
+  // without clobbering an intentional leading underscore.
+  if (!value.startsWith("_")) {
+    s = s.replace(/^_+/, "");
+  }
+  if (!s) return "_";
+  if (/^[0-9]/.test(s)) return `_${s}`;
+  return s;
+}
+
 /** Pull the qualified parent name from a tree node, if it's an expandable container. */
 export function parentFromNode(
   node: LibraryNode | undefined,

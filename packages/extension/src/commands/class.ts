@@ -12,6 +12,9 @@
  *   - context menu on a library or package node (any depth → nested class)
  */
 
+import * as fsp from "node:fs/promises";
+import * as path from "node:path";
+
 import * as vscode from "vscode";
 
 import type { LibraryNode } from "../tree/library-tree.js";
@@ -22,6 +25,7 @@ import {
 
 import {
   parentFromNode,
+  sanitizeIdentifier,
   validateIdentifier,
   type CommandContext,
 } from "./context.js";
@@ -45,7 +49,7 @@ export function registerClassCommands(
     vscode.commands.registerCommand(
       "modelica.createClass",
       async (node?: LibraryNode) => {
-        const parent = parentFromNode(node);
+        let parent = parentFromNode(node);
         const kind = (await vscode.window.showQuickPick([...CLASS_KINDS], {
           placeHolder: "Class kind",
           title: parent ? `New class inside ${parent}` : "New top-level class",
@@ -59,6 +63,65 @@ export function registerClassCommands(
           validateInput: validateIdentifier,
         });
         if (!name) return;
+
+        const ws = vscode.workspace.workspaceFolders?.[0];
+
+        // First-time-only prompt: offer to make the workspace root a package
+        // when there is no Modelica content yet and this would be top-level.
+        if (!parent && ws && !(await hasModelicaContent(ws.uri.fsPath))) {
+          const folderDefault = sanitizeIdentifier(
+            path.basename(ws.uri.fsPath),
+          );
+          const answer = await vscode.window.showInformationMessage(
+            `The workspace folder has no Modelica content yet. ` +
+              `Initialize "${folderDefault}" as a root package and nest "${name}" inside it?`,
+            { modal: true },
+            "Yes",
+            "No",
+          );
+          if (answer === "Yes") {
+            const pkgName = await vscode.window.showInputBox({
+              prompt: "Root package name",
+              value: folderDefault,
+              validateInput: validateIdentifier,
+            });
+            if (!pkgName) return;
+            // Write and load the root package.
+            const pkgBody = `package ${pkgName}\nend ${pkgName};\n`;
+            const pkgLog = createReplLog(`createClass package ${pkgName}`);
+            try {
+              const c = await ctx.ensureClient();
+              const { success } = await c.loadString({
+                data: pkgBody,
+                filename: `<runtime:${pkgName}>`,
+                merge: true,
+              });
+              if (!success) {
+                const { errorString } = await c.getErrorString();
+                pkgLog.error(
+                  errorString || "loadString returned success=false",
+                );
+                await vscode.window.showErrorMessage(
+                  `Modelica: failed to initialize workspace package${errorString ? `: ${errorString}` : ""}`,
+                );
+                return;
+              }
+              const pkgFile = path.join(ws.uri.fsPath, "package.mo");
+              await fsp.writeFile(pkgFile, pkgBody, "utf8");
+              await c.setSourceFile({ typeName: pkgName, fileName: pkgFile });
+              pkgLog.success(`initialized workspace as package ${pkgName}`);
+              parent = pkgName;
+            } catch (err) {
+              pkgLog.error((err as Error).message);
+              await vscode.window.showErrorMessage(
+                `Modelica: failed to initialize workspace package: ${(err as Error).message}`,
+              );
+              return;
+            }
+          }
+          // "No" or dismiss: proceed as top-level (parent stays undefined).
+        }
+
         const qualified = parent ? `${parent}.${name}` : name;
         const body = `${kind} ${name}\nend ${name};\n`;
         const data = parent ? `within ${parent};\n${body}` : body;
@@ -78,7 +141,6 @@ export function registerClassCommands(
             );
             return;
           }
-          const ws = vscode.workspace.workspaceFolders?.[0];
           let diskPath: string | undefined;
           if (ws) {
             // Persist to disk and rewrite OMC's fileName so subsequent
@@ -88,6 +150,7 @@ export function registerClassCommands(
               ws.uri.fsPath,
               qualified,
               data,
+              kind,
             );
             await linkPersistedClass(c, qualified, result);
             diskPath = result.leafPath;
@@ -116,4 +179,30 @@ export function registerClassCommands(
 
 function defaultPlaceholder(kind: ClassKind): string {
   return `My${kind[0]!.toUpperCase()}${kind.slice(1)}`;
+}
+
+/**
+ * Returns true if `wsPath` already contains any `.mo` file or a subdirectory
+ * `package.mo`. Used to decide whether the first-create prompt should fire.
+ */
+async function hasModelicaContent(wsPath: string): Promise<boolean> {
+  let entries;
+  try {
+    entries = await fsp.readdir(wsPath, { withFileTypes: true });
+  } catch {
+    return false;
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith(".")) continue;
+    if (entry.isFile() && entry.name.endsWith(".mo")) return true;
+    if (entry.isDirectory()) {
+      try {
+        await fsp.access(path.join(wsPath, entry.name, "package.mo"));
+        return true;
+      } catch {
+        // no package.mo in this subdirectory
+      }
+    }
+  }
+  return false;
 }
