@@ -64,16 +64,15 @@ export interface PersistResult {
  * Existing `package.order` files are never overwritten.
  *
  * When `leafKind` is `"package"` the leaf is written as
- * `<baseDir>/<leafName>/package.mo` (a structured package directory) rather
- * than `<baseDir>/<leafName>.mo`. This ensures that `onDiskParentDir` for the
- * new package returns its directory so subsequent children nest correctly.
+ * `<baseDir>/<leafName>/package.mo` so `onDiskParentDir` resolves to its
+ * directory and subsequent children nest under it.
  */
 export async function persistClassUnderWorkspace(
   client: OmcClient,
   workspaceRoot: string,
   qualifiedName: string,
   classText: string,
-  leafKind?: string,
+  leafKind?: "package",
 ): Promise<PersistResult> {
   const parts = qualifiedName.split(".");
   const newParents: PersistResult["newParents"] = [];

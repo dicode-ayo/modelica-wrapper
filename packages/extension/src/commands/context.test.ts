@@ -20,9 +20,15 @@ describe("sanitizeIdentifier", () => {
     expect(sanitizeIdentifier("123abc")).toBe("_123abc");
   });
 
-  it("handles collapses repeated invalid chars into one underscore", () => {
+  it("collapses repeated invalid chars into one underscore", () => {
     expect(sanitizeIdentifier("a--b")).toBe("a_b");
     expect(sanitizeIdentifier("a  b")).toBe("a_b");
+  });
+
+  it("strips an underscore injected from a leading invalid char but not an original leading underscore", () => {
+    expect(sanitizeIdentifier("-private")).toBe("private");
+    expect(sanitizeIdentifier(".Foo")).toBe("Foo");
+    expect(sanitizeIdentifier("_private")).toBe("_private");
   });
 
   it("falls back to underscore for empty or all-invalid input", () => {

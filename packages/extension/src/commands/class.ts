@@ -30,6 +30,7 @@ import {
   validateIdentifier,
   type CommandContext,
 } from "./context.js";
+import { loadRootPackage } from "./package.js";
 import { createReplLog } from "./repl.js";
 
 const CLASS_KINDS = [
@@ -87,28 +88,17 @@ export function registerClassCommands(
               validateInput: validateIdentifier,
             });
             if (!pkgName) return;
-            const pkgBody = `package ${pkgName}\nend ${pkgName};\n`;
             const pkgLog = createReplLog(`createClass package ${pkgName}`);
             try {
               const c = await ctx.ensureClient();
-              const { success } = await c.loadString({
-                data: pkgBody,
-                filename: `<runtime:${pkgName}>`,
-                merge: true,
-              });
-              if (!success) {
-                const { errorString } = await c.getErrorString();
-                pkgLog.error(
-                  errorString || "loadString returned success=false",
-                );
+              const init = await loadRootPackage(c, ws.uri, pkgName);
+              if (!init.success) {
+                pkgLog.error(init.errorString);
                 await vscode.window.showErrorMessage(
-                  `Modelica: failed to initialize workspace package${errorString ? `: ${errorString}` : ""}`,
+                  `Modelica: failed to initialize workspace package: ${init.errorString}`,
                 );
                 return;
               }
-              const pkgFile = path.join(ws.uri.fsPath, "package.mo");
-              await fsp.writeFile(pkgFile, pkgBody, "utf8");
-              await c.setSourceFile({ typeName: pkgName, fileName: pkgFile });
               pkgLog.success(`initialized workspace as package ${pkgName}`);
               parent = pkgName;
             } catch (err) {
@@ -150,7 +140,7 @@ export function registerClassCommands(
               ws.uri.fsPath,
               qualified,
               data,
-              kind,
+              kind === "package" ? "package" : undefined,
             );
             await linkPersistedClass(c, qualified, result);
             diskPath = result.leafPath;

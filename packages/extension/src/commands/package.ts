@@ -22,6 +22,50 @@ import {
 } from "./context.js";
 import { createReplLog } from "./repl.js";
 
+interface PkgInitClient {
+  loadString(i: {
+    data: string;
+    filename: string;
+    merge: boolean;
+  }): Promise<{ success: boolean }>;
+  getErrorString(): Promise<{ errorString: string }>;
+  setSourceFile(i: { typeName: string; fileName: string }): Promise<unknown>;
+}
+
+type PkgInitResult =
+  | { success: true; pkgFile: string }
+  | { success: false; errorString: string };
+
+/**
+ * loadString + writeFile + setSourceFile for a workspace-root `package.mo`.
+ * Callers own logging and the VS Code error toast; this function owns OMC and
+ * disk state. The result discriminates OMC rejection from thrown errors so
+ * callers can surface an accurate message either way.
+ */
+export async function loadRootPackage(
+  client: PkgInitClient,
+  wsUri: vscode.Uri,
+  pkgName: string,
+): Promise<PkgInitResult> {
+  const pkgFile = vscode.Uri.joinPath(wsUri, "package.mo").fsPath;
+  const pkgBody = `package ${pkgName}\nend ${pkgName};\n`;
+  const { success } = await client.loadString({
+    data: pkgBody,
+    filename: pkgFile,
+    merge: true,
+  });
+  if (!success) {
+    const { errorString } = await client.getErrorString();
+    return {
+      success: false,
+      errorString: errorString || "loadString returned success=false",
+    };
+  }
+  await writeFile(pkgFile, pkgBody, "utf8");
+  await client.setSourceFile({ typeName: pkgName, fileName: pkgFile });
+  return { success: true, pkgFile };
+}
+
 export function registerPackageCommands(
   ctx: CommandContext,
 ): vscode.Disposable[] {
@@ -43,26 +87,17 @@ export function registerPackageCommands(
           validateInput: validateIdentifier,
         });
         if (!pkgName) return;
-        const pkgFile = vscode.Uri.joinPath(ws.uri, "package.mo").fsPath;
         const log = createReplLog(`initializeWorkspaceAsPackage ${pkgName}`);
         try {
-          const pkgBody = `package ${pkgName}\nend ${pkgName};\n`;
           const c = await ctx.ensureClient();
-          const { success } = await c.loadString({
-            data: pkgBody,
-            filename: pkgFile,
-            merge: true,
-          });
-          if (!success) {
-            const { errorString } = await c.getErrorString();
-            log.error(errorString || "loadString returned success=false");
+          const result = await loadRootPackage(c, ws.uri, pkgName);
+          if (!result.success) {
+            log.error(result.errorString);
             await vscode.window.showErrorMessage(
-              `Modelica: failed to initialize workspace package${errorString ? `: ${errorString}` : ""}`,
+              `Modelica: failed to initialize workspace package: ${result.errorString}`,
             );
             return;
           }
-          await writeFile(pkgFile, pkgBody, "utf8");
-          await c.setSourceFile({ typeName: pkgName, fileName: pkgFile });
           ctx.libraryTree.refresh();
           ctx.sourceProvider.notifySourceChanged();
           log.success(`initialized ${ws.uri.fsPath} as package ${pkgName}`);
