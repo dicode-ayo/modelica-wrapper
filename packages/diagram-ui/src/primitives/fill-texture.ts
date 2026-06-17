@@ -5,6 +5,7 @@ import {
   type BaseTexture,
 } from "@babylonjs/core";
 import type { FillSpec, HatchSpec } from "@dicode/diagram-svg";
+import { LruCache } from "../lru-cache.js";
 
 /**
  * Bakes a renderer-neutral `FillSpec` (gradient or hatch) to a Babylon
@@ -25,10 +26,19 @@ const GRADIENT_TEXTURE_EDGE = 128;
  *  several texels wide and antialiases cleanly. */
 const HATCH_PIXELS_PER_UNIT = 8;
 
+/**
+ * Maximum number of baked `DynamicTexture`s kept in the scene-level LRU. Each
+ * entry costs GPU memory proportional to its canvas size, so this cap bounds
+ * diagrams with many distinct hatch aspects (one cache key per aspect). Evicted
+ * textures are deferred until scene teardown — not disposed immediately —
+ * because mesh materials may still reference them between renders.
+ */
+export const FILL_TEXTURE_CACHE_CAPACITY = 256;
+
 const SCENE_META_KEY = "omFillTextureCache";
 
 interface SceneMeta {
-  [SCENE_META_KEY]?: Map<string, DynamicTexture> | undefined;
+  [SCENE_META_KEY]?: LruCache<string, DynamicTexture> | undefined;
 }
 
 /**
@@ -63,17 +73,26 @@ export function resolveFillTexture(
   return texture;
 }
 
-function ensureCache(scene: Scene): Map<string, DynamicTexture> {
+function ensureCache(scene: Scene): LruCache<string, DynamicTexture> {
   const metadata = (scene.metadata as SceneMeta | null | undefined) ?? {};
   const existing = metadata[SCENE_META_KEY];
   if (existing) {
     return existing;
   }
-  const cache = new Map<string, DynamicTexture>();
+  // Textures evicted from the LRU are still referenced by mesh materials, so
+  // we defer disposal to scene teardown rather than disposing immediately.
+  const evictedPending: DynamicTexture[] = [];
+  const cache = new LruCache<string, DynamicTexture>(
+    FILL_TEXTURE_CACHE_CAPACITY,
+    (_key, tex) => evictedPending.push(tex),
+  );
   metadata[SCENE_META_KEY] = cache;
   scene.metadata = metadata;
   scene.onDisposeObservable.add(() => {
     for (const tex of cache.values()) {
+      tex.dispose();
+    }
+    for (const tex of evictedPending) {
       tex.dispose();
     }
     cache.clear();
