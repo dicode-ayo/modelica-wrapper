@@ -111,7 +111,8 @@ export async function persistClassUnderWorkspace(
     }
     newParents.push({ typeName: parentName, pkgFile });
   }
-  const leafName = parts[parts.length - 1]!;
+  const leafName = parts.at(-1);
+  if (leafName === undefined) return { leafPath: "", newParents };
   let leafPath: string;
   if (leafKind === "package") {
     const leafDir = path.join(baseDir, leafName);
@@ -126,8 +127,8 @@ export async function persistClassUnderWorkspace(
     }
   } else {
     leafPath = path.join(baseDir, `${leafName}.mo`);
+    await fsp.mkdir(baseDir, { recursive: true });
   }
-  await fsp.mkdir(path.dirname(leafPath), { recursive: true });
   await fsp.writeFile(leafPath, classText, "utf8");
   return { leafPath, newParents };
 }

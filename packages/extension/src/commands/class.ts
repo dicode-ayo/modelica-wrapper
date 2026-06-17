@@ -18,6 +18,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 
 import type { LibraryNode } from "../tree/library-tree.js";
+import { pathExists } from "../fs-util.js";
 import {
   linkPersistedClass,
   persistClassUnderWorkspace,
@@ -86,7 +87,6 @@ export function registerClassCommands(
               validateInput: validateIdentifier,
             });
             if (!pkgName) return;
-            // Write and load the root package.
             const pkgBody = `package ${pkgName}\nend ${pkgName};\n`;
             const pkgLog = createReplLog(`createClass package ${pkgName}`);
             try {
@@ -178,7 +178,9 @@ export function registerClassCommands(
 }
 
 function defaultPlaceholder(kind: ClassKind): string {
-  return `My${kind[0]!.toUpperCase()}${kind.slice(1)}`;
+  const first = kind.at(0);
+  if (first === undefined) return "My";
+  return `My${first.toUpperCase()}${kind.slice(1)}`;
 }
 
 /**
@@ -196,11 +198,8 @@ async function hasModelicaContent(wsPath: string): Promise<boolean> {
     if (entry.name.startsWith(".")) continue;
     if (entry.isFile() && entry.name.endsWith(".mo")) return true;
     if (entry.isDirectory()) {
-      try {
-        await fsp.access(path.join(wsPath, entry.name, "package.mo"));
+      if (await pathExists(path.join(wsPath, entry.name, "package.mo"))) {
         return true;
-      } catch {
-        // no package.mo in this subdirectory
       }
     }
   }

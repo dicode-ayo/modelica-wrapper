@@ -47,7 +47,6 @@ export function registerPackageCommands(
         const log = createReplLog(`initializeWorkspaceAsPackage ${pkgName}`);
         try {
           const pkgBody = `package ${pkgName}\nend ${pkgName};\n`;
-          await writeFile(pkgFile, pkgBody, "utf8");
           const c = await ctx.ensureClient();
           const { success } = await c.loadString({
             data: pkgBody,
@@ -62,6 +61,7 @@ export function registerPackageCommands(
             );
             return;
           }
+          await writeFile(pkgFile, pkgBody, "utf8");
           await c.setSourceFile({ typeName: pkgName, fileName: pkgFile });
           ctx.libraryTree.refresh();
           ctx.sourceProvider.notifySourceChanged();

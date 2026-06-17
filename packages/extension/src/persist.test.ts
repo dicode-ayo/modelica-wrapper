@@ -387,14 +387,9 @@ describe("persistClassUnderWorkspace", () => {
   });
 
   it("package leaf: onDiskParentDir resolves to package directory for children", async () => {
-    // Simulate: MyPkg was created as a leaf-package → OMC's fileName is
-    // <tmp>/MyPkg/package.mo. A child createClass for MyPkg.Child should
-    // land at <tmp>/MyPkg/Child.mo, not <tmp>/MyPkg/package.mo-folder/Child.mo.
     const { client, seedClass, seedChildren } = makeClientStub();
-    // After the leaf-package fix, setSourceFile would give OMC this path.
     seedClass("MyPkg", path.join(tmp, "MyPkg", "package.mo"));
     seedChildren("MyPkg", []);
-    // Create <tmp>/MyPkg/package.mo on disk so the parent check works.
     await fsp.mkdir(path.join(tmp, "MyPkg"), { recursive: true });
     await fsp.writeFile(
       path.join(tmp, "MyPkg", "package.mo"),
