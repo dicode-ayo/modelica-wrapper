@@ -98,7 +98,10 @@ describe("<om-scene>", () => {
     el.panX = 5;
     el.panY = -3;
     await el.updateComplete;
-    const canvas = el.shadowRoot!.querySelector("canvas")!;
+    const shadowRoot = el.shadowRoot;
+    if (!shadowRoot) throw new Error("no shadowRoot");
+    const canvas = shadowRoot.querySelector("canvas");
+    if (!canvas) throw new Error("no canvas");
     canvas.getBoundingClientRect = () =>
       ({
         x: 0,
@@ -113,13 +116,17 @@ describe("<om-scene>", () => {
       }) as DOMRect;
     const pt = el.clientToDiagram(400, 200);
     expect(pt).not.toBeNull();
-    expect(pt!.x).toBeCloseTo(5);
-    expect(pt!.y).toBeCloseTo(-3);
+    if (pt === null) throw new Error("pt is null");
+    expect(pt.x).toBeCloseTo(5);
+    expect(pt.y).toBeCloseTo(-3);
   });
 
   it("emits om-view-change events when PanZoom updates the view", async () => {
     const el = await mountScene();
-    const canvas = el.shadowRoot!.querySelector("canvas")!;
+    const shadowRoot = el.shadowRoot;
+    if (!shadowRoot) throw new Error("no shadowRoot");
+    const canvas = shadowRoot.querySelector("canvas");
+    if (!canvas) throw new Error("no canvas");
     canvas.getBoundingClientRect = () =>
       ({
         x: 0,
@@ -132,9 +139,9 @@ describe("<om-scene>", () => {
         height: 400,
         toJSON: () => ({}),
       }) as DOMRect;
-    let received: { zoom: number; panX: number; panY: number } | null = null;
+    const received: { zoom: number; panX: number; panY: number }[] = [];
     el.addEventListener("om-view-change", (e) => {
-      received = (e as CustomEvent).detail;
+      received.push((e as CustomEvent).detail);
     });
     // Wheel with ctrlKey to trigger the zoom path (plain wheel is
     // pan after the touchpad-friendly rebinding). happy-dom drops
@@ -147,7 +154,8 @@ describe("<om-scene>", () => {
     });
     Object.defineProperty(e, "ctrlKey", { value: true });
     canvas.dispatchEvent(e);
-    expect(received).not.toBeNull();
-    expect(received!.zoom).toBeLessThan(100);
+    const last = received.at(-1);
+    if (last === undefined) throw new Error("received is null");
+    expect(last.zoom).toBeLessThan(100);
   });
 });

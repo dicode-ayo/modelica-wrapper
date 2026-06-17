@@ -74,10 +74,11 @@ describe("<om-grid-axis>", () => {
 
     const meshes = grid.gridMeshes;
     expect(meshes).not.toBeNull();
-    expect(meshes!.minor.parent).toBeDefined();
-    expect(meshes!.minor.parent?.parent).toBe(
-      scene.sceneContextValue!.worldRoot,
-    );
+    if (!meshes) throw new Error("expected gridMeshes");
+    expect(meshes.minor.parent).toBeDefined();
+    const ctx = scene.sceneContextValue;
+    if (!ctx) throw new Error("no scene context");
+    expect(meshes.minor.parent?.parent).toBe(ctx.worldRoot);
   });
 
   it("does not rebuild the grid when an equivalent coordinateSystem is reassigned", async () => {
@@ -113,7 +114,8 @@ describe("<om-grid-axis>", () => {
     };
     await grid.updateComplete;
     expect(grid.gridMeshes).toBe(original);
-    expect(original!.minor.isDisposed()).toBe(false);
+    if (!original) throw new Error("expected gridMeshes");
+    expect(original.minor.isDisposed()).toBe(false);
   });
 
   it("rebuilds the grid when the coordinateSystem actually changes", async () => {
@@ -144,7 +146,8 @@ describe("<om-grid-axis>", () => {
     };
     await grid.updateComplete;
     expect(grid.gridMeshes).not.toBe(original);
-    expect(original!.minor.isDisposed()).toBe(true);
+    if (!original) throw new Error("expected gridMeshes");
+    expect(original.minor.isDisposed()).toBe(true);
   });
 
   it("disposes meshes on disconnect", async () => {
@@ -158,7 +161,9 @@ describe("<om-grid-axis>", () => {
     sceneEl.appendChild(grid);
     await grid.updateComplete;
 
-    const minorMesh = grid.gridMeshes!.minor;
+    const gridMeshes = grid.gridMeshes;
+    if (!gridMeshes) throw new Error("expected gridMeshes");
+    const minorMesh = gridMeshes.minor;
     grid.remove();
     expect(minorMesh.isDisposed()).toBe(true);
   });

@@ -135,7 +135,11 @@ describe("resolvePortInfo", () => {
   it("infers direction from typeName when explicit prefix is missing", () => {
     const layout = layoutWithBlocks();
     // Strip the explicit direction to force the suffix-inference path.
-    delete layout.classes["Modelica.Blocks.Math.Gain"]!.connectors.u!.direction;
+    const gainClass = layout.classes["Modelica.Blocks.Math.Gain"];
+    if (gainClass === undefined) throw new Error("expected Gain class");
+    const uConnector = gainClass.connectors.u;
+    if (uConnector === undefined) throw new Error("expected u connector");
+    delete uConnector.direction;
     const info = resolvePortInfo(layout, "k:g1.u");
     expect(info?.direction).toBe("input");
   });
@@ -148,20 +152,26 @@ describe("resolvePortInfo", () => {
 
 describe("canConnect", () => {
   it("rejects two inputs", () => {
-    const a = resolvePortInfo(layoutWithBlocks(), "k:g1.u")!;
-    const b = resolvePortInfo(layoutWithBlocks(), "k:g2.u")!;
+    const a = resolvePortInfo(layoutWithBlocks(), "k:g1.u");
+    if (!a) throw new Error("expected portInfo for g1.u");
+    const b = resolvePortInfo(layoutWithBlocks(), "k:g2.u");
+    if (!b) throw new Error("expected portInfo for g2.u");
     expect(canConnect(a, b)).toEqual({ ok: false, reason: "both input" });
   });
 
   it("rejects two outputs", () => {
-    const a = resolvePortInfo(layoutWithBlocks(), "k:g1.y")!;
-    const b = resolvePortInfo(layoutWithBlocks(), "k:g2.y")!;
+    const a = resolvePortInfo(layoutWithBlocks(), "k:g1.y");
+    if (!a) throw new Error("expected portInfo for g1.y");
+    const b = resolvePortInfo(layoutWithBlocks(), "k:g2.y");
+    if (!b) throw new Error("expected portInfo for g2.y");
     expect(canConnect(a, b)).toEqual({ ok: false, reason: "both output" });
   });
 
   it("accepts input ↔ output of the same family", () => {
-    const a = resolvePortInfo(layoutWithBlocks(), "k:g1.y")!;
-    const b = resolvePortInfo(layoutWithBlocks(), "k:g2.u")!;
+    const a = resolvePortInfo(layoutWithBlocks(), "k:g1.y");
+    if (!a) throw new Error("expected portInfo for g1.y");
+    const b = resolvePortInfo(layoutWithBlocks(), "k:g2.u");
+    if (!b) throw new Error("expected portInfo for g2.u");
     expect(canConnect(a, b)).toEqual({ ok: true });
   });
 
@@ -169,8 +179,10 @@ describe("canConnect", () => {
     // We model two resistors and connect r1.p ↔ r1.n by faking a
     // second resistor port pair. Same type, acausal — must accept.
     const layout = layoutWithBlocks();
-    const a = resolvePortInfo(layout, "k:r1.p")!;
-    const b = resolvePortInfo(layout, "k:r1.n")!;
+    const a = resolvePortInfo(layout, "k:r1.p");
+    if (!a) throw new Error("expected portInfo for r1.p");
+    const b = resolvePortInfo(layout, "k:r1.n");
+    if (!b) throw new Error("expected portInfo for r1.n");
     // Different types here — defer to OMC, no client rejection.
     expect(canConnect(a, b)).toEqual({ ok: true });
   });
@@ -179,8 +191,10 @@ describe("canConnect", () => {
     // RealOutput (signal, blocks package) → PositivePin (electrical
     // package). OMC would reject; we surface it locally so the user
     // sees the red highlight during the drag.
-    const a = resolvePortInfo(layoutWithBlocks(), "k:g1.y")!;
-    const b = resolvePortInfo(layoutWithBlocks(), "k:r1.p")!;
+    const a = resolvePortInfo(layoutWithBlocks(), "k:g1.y");
+    if (!a) throw new Error("expected portInfo for g1.y");
+    const b = resolvePortInfo(layoutWithBlocks(), "k:r1.p");
+    if (!b) throw new Error("expected portInfo for r1.p");
     const result = canConnect(a, b);
     expect(result.ok).toBe(false);
     expect(result.reason).toContain("incompatible types");

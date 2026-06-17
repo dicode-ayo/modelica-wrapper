@@ -75,8 +75,10 @@ describe("<om-graphical-layout>", () => {
     const el = await mount(tinyLayout());
     // Dump for diagnostic; the assertion message embeds the HTML so a
     // future regression points straight at the offending render output.
-    const inner = el.shadowRoot!.innerHTML;
-    const comps = el.shadowRoot!.querySelectorAll("om-component");
+    const shadowRoot = el.shadowRoot;
+    if (!shadowRoot) throw new Error("no shadowRoot");
+    const inner = shadowRoot.innerHTML;
+    const comps = shadowRoot.querySelectorAll("om-component");
     expect(
       comps.length,
       `expected 1 om-component in shadow HTML: ${inner}`,

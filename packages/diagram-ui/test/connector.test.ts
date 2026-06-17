@@ -33,7 +33,11 @@ async function mountScene(): Promise<{
   provider: OmIconProvider;
 }> {
   const provider = document.createElement("om-icon-provider") as OmIconProvider;
-  provider.renderSvg = (l) => `svg:${l[0]!.from}`;
+  provider.renderSvg = (l) => {
+    const first = l.at(0);
+    if (first === undefined) throw new Error("expected at least one layer");
+    return `svg:${first.from}`;
+  };
   provider.rasterize = (svg: string, s: Scene): Promise<Texture> =>
     Promise.resolve(new Texture(`data:text/plain,${svg}`, s, true, false));
   const scene = document.createElement("om-scene") as OmScene;
@@ -106,7 +110,9 @@ describe("<om-connector>", () => {
     comp.appendChild(conn);
     await conn.updateComplete;
 
-    const sceneObj = scene.sceneContextValue!.scene;
+    const ctx = scene.sceneContextValue;
+    if (!ctx) throw new Error("no scene context");
+    const sceneObj = ctx.scene;
     const compTransform = sceneObj.transformNodes.find(
       (n) => n.name === "om-component:block",
     );
@@ -115,8 +121,9 @@ describe("<om-connector>", () => {
     );
     expect(compTransform).toBeDefined();
     expect(connTransform).toBeDefined();
-    expect(connTransform!.parent).toBe(compTransform);
-    expect(connTransform!.position.x).toBe(70);
-    expect(connTransform!.position.y).toBe(0);
+    if (connTransform === undefined) throw new Error("connTransform not found");
+    expect(connTransform.parent).toBe(compTransform);
+    expect(connTransform.position.x).toBe(70);
+    expect(connTransform.position.y).toBe(0);
   });
 });

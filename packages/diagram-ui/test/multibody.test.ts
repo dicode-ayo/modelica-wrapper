@@ -32,7 +32,9 @@ async function mountScene(): Promise<OmScene> {
 describe("camera mode toggle", () => {
   it("defaults to orthographic 2d mode", async () => {
     const scene = await mountScene();
-    const camera = scene.sceneContextValue!.camera;
+    const ctx = scene.sceneContextValue;
+    if (!ctx) throw new Error("no scene context");
+    const camera = ctx.camera;
     expect(camera.mode).toBe(1); // ORTHOGRAPHIC
     expect(scene.cameraMode).toBe("2d");
   });
@@ -41,7 +43,9 @@ describe("camera mode toggle", () => {
     const scene = await mountScene();
     scene.cameraMode = "3d";
     await scene.updateComplete;
-    const camera = scene.sceneContextValue!.camera;
+    const ctx = scene.sceneContextValue;
+    if (!ctx) throw new Error("no scene context");
+    const camera = ctx.camera;
     expect(camera.mode).toBe(0); // PERSPECTIVE
   });
 
@@ -51,7 +55,9 @@ describe("camera mode toggle", () => {
     await scene.updateComplete;
     scene.cameraMode = "2d";
     await scene.updateComplete;
-    const camera = scene.sceneContextValue!.camera;
+    const ctx = scene.sceneContextValue;
+    if (!ctx) throw new Error("no scene context");
+    const camera = ctx.camera;
     expect(camera.mode).toBe(1);
   });
 });
@@ -67,7 +73,11 @@ describe("<om-multibody-root>", () => {
     scene.appendChild(mb);
     await mb.updateComplete;
     expect(mb.rootNode).not.toBeNull();
-    expect(mb.rootNode!.parent).toBe(scene.sceneContextValue!.worldRoot);
+    const rootNode = mb.rootNode;
+    if (!rootNode) throw new Error("expected rootNode");
+    const ctx = scene.sceneContextValue;
+    if (!ctx) throw new Error("no scene context");
+    expect(rootNode.parent).toBe(ctx.worldRoot);
   });
 
   it("disposes its TransformNode on disconnect", async () => {
@@ -75,7 +85,8 @@ describe("<om-multibody-root>", () => {
     const mb = document.createElement("om-multibody-root") as OmMultibodyRoot;
     scene.appendChild(mb);
     await mb.updateComplete;
-    const node = mb.rootNode!;
+    const node = mb.rootNode;
+    if (!node) throw new Error("expected rootNode");
     mb.remove();
     expect(node.isDisposed()).toBe(true);
   });

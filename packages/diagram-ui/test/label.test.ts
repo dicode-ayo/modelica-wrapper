@@ -58,7 +58,9 @@ describe("<om-label>", () => {
     scene.appendChild(label);
     await label.updateComplete;
     label.remove();
-    const sceneObj = scene.sceneContextValue!.scene;
+    const ctx = scene.sceneContextValue;
+    if (!ctx) throw new Error("no scene context");
+    const sceneObj = ctx.scene;
     const labelNode = sceneObj.transformNodes.find((n) =>
       n.name.startsWith("om-label"),
     );

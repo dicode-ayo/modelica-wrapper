@@ -35,7 +35,11 @@ describe("<om-icon-provider>", () => {
     const provider = document.createElement(
       "om-icon-provider",
     ) as OmIconProvider;
-    provider.renderSvg = (layers) => `svg:${layers[0]!.from}`;
+    provider.renderSvg = (layers) => {
+      const first = layers.at(0);
+      if (first === undefined) throw new Error("expected at least one layer");
+      return `svg:${first.from}`;
+    };
     provider.rasterize = (svg: string, scene: Scene): Promise<Texture> =>
       Promise.resolve(
         new Texture(`data:text/plain,${svg}`, scene, true, false),
@@ -48,16 +52,19 @@ describe("<om-icon-provider>", () => {
     await provider.updateComplete;
     await scene.updateComplete;
 
-    const cache = provider.iconCache!;
+    const cache = provider.iconCache;
+    if (!cache) throw new Error("expected iconCache");
     const layersA: IconLayer[] = [{ from: "A", shapes: [] }];
     const layersB: IconLayer[] = [{ from: "B", shapes: [] }];
-    const a1 = await cache.resolve(scene.sceneContextValue!.scene, {
+    const ctx = scene.sceneContextValue;
+    if (!ctx) throw new Error("no scene context");
+    const a1 = await cache.resolve(ctx.scene, {
       layers: layersA,
     });
-    const a2 = await cache.resolve(scene.sceneContextValue!.scene, {
+    const a2 = await cache.resolve(ctx.scene, {
       layers: layersA,
     });
-    const b = await cache.resolve(scene.sceneContextValue!.scene, {
+    const b = await cache.resolve(ctx.scene, {
       layers: layersB,
     });
     expect(a1).toBe(a2);
