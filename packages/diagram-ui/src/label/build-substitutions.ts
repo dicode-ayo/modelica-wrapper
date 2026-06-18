@@ -43,10 +43,8 @@ export function buildSubstitutions(
     for (const [key, value] of Object.entries(hostResolvedParameters)) {
       if (!key.startsWith(prefix)) continue;
       const stripped = key.slice(prefix.length);
-      // A dot remaining in the stripped key means this entry addresses a
-      // deeper nested sub-parameter (e.g. `comp.sub.param` → stripped
-      // `sub.param`). That is not a direct parameter of this instance, so
-      // skip it rather than creating a spurious `sub.param` entry.
+      // A dot remaining after stripping the prefix means the key addresses a
+      // nested sub-parameter, not a direct parameter of this instance.
       if (stripped.includes(".")) continue;
       parameters[stripped] = value;
     }
