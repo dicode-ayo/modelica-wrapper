@@ -8,6 +8,20 @@ import {
   type GestureStart,
 } from "./gesture-mode.js";
 
+type Corner = "tl" | "tr" | "bl" | "br";
+
+function asCorner(id: string): Corner | null {
+  switch (id) {
+    case "tl":
+    case "tr":
+    case "bl":
+    case "br":
+      return id;
+    default:
+      return null;
+  }
+}
+
 interface MoveState {
   kind: "move";
   startX: number;
@@ -18,7 +32,7 @@ interface MoveState {
 interface ResizeState {
   kind: "resize";
   key: string;
-  corner: "tl" | "tr" | "bl" | "br";
+  corner: Corner;
 }
 
 interface RotateState {
@@ -71,7 +85,10 @@ export class DragMode implements GestureMode {
     }
 
     if (entity.kind === "handle") {
-      const corner = entity.nodeId as "tl" | "tr" | "bl" | "br";
+      const corner = asCorner(entity.nodeId);
+      if (!corner) {
+        return false;
+      }
       const ownerKey = ownerOfHandle(node);
       if (!ownerKey) {
         return false;

@@ -126,4 +126,34 @@ describe("ModeRouter", () => {
     expect(store.value.mode).toBe("idle");
     expect(router.isGestureActive()).toBe(false);
   });
+
+  it("ignores moves from a different pointerId mid-gesture", () => {
+    const { scene, dispose } = makeScene();
+    const { canvas, calls, setPicked } = setup();
+    setPicked(new TransformNode("om-component:R1", scene));
+    canvas.dispatchEvent(down({ pointerId: 1 }));
+    canvas.dispatchEvent(
+      new PointerEvent("pointermove", { pointerId: 2, clientX: 9, clientY: 9 }),
+    );
+    expect(calls.filter((c) => c === "drag")).toHaveLength(0);
+    dispose();
+  });
+
+  it("clears the gesture on pointercancel", () => {
+    const { scene, dispose } = makeScene();
+    const { canvas, router, store, setPicked } = setup();
+    setPicked(new TransformNode("om-component:R1", scene));
+    canvas.dispatchEvent(down());
+    expect(router.isGestureActive()).toBe(true);
+    canvas.dispatchEvent(
+      new PointerEvent("pointercancel", {
+        pointerId: 0,
+        clientX: 5,
+        clientY: 5,
+      }),
+    );
+    expect(router.isGestureActive()).toBe(false);
+    expect(store.value.mode).toBe("idle");
+    dispose();
+  });
 });

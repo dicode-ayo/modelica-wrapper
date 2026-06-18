@@ -129,11 +129,11 @@ export class InteractionManager {
   private pickKey(clientX: number, clientY: number): string | null {
     const node = this.picker(clientX, clientY);
     let entity = entityKeyForNode(node);
-    // Selection handles (resize corners + rotate disc) belong to the
-    // DragController. They are not selectable entities, so picking one
-    // must not emit a `select` — otherwise the handle's own key replaces
-    // the component in the selection and the shape deselects out from
-    // under the gesture, taking its handles with it.
+    // Selection handles (resize corners + rotate disc) belong to
+    // `DragMode`. They are not selectable entities, so picking one must
+    // not emit a `select` — otherwise the handle's own key replaces the
+    // component in the selection and the shape deselects out from under
+    // the gesture, taking its handles with it.
     if (entity?.kind === "handle" || entity?.kind === "rotate-handle") {
       return null;
     }
@@ -144,9 +144,9 @@ export class InteractionManager {
     // connector ↔ port every few pixels, and `refreshPortIndicators`
     // would oscillate the indicator on/off. Resolving up to the
     // owning connector keeps the hover state stable while the user's
-    // pointer stays over the entity. DragController keeps its own
-    // walk and still sees `kind: "port"` for the click-to-start-
-    // connection-drag gesture.
+    // pointer stays over the entity. `ConnectMode` keeps its own walk
+    // and still sees `kind: "port"` for the click-to-start-connection
+    // gesture.
     if (entity?.kind === "port" && node) {
       entity = entityKeyForNode(node.parent ?? null);
     }

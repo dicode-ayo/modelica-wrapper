@@ -1,8 +1,8 @@
 /**
  * Interaction state machine for `<om-graphical-layout>`. Models the
  * single "what is the user currently doing" question across the
- * cursor / drag pipeline. Five terminal states mirror the
- * `DragController` kinds plus a passive `hovering`:
+ * cursor / drag pipeline — the fine-grained gesture states plus a
+ * passive `hovering`:
  *
  *   idle       — no entity under the pointer, nothing in flight
  *   hovering   — pointer over an entity, no drag yet
