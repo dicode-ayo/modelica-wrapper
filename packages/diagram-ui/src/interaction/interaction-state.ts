@@ -38,18 +38,19 @@ export type InteractionState =
     };
 
 /**
- * Top-level interaction mode — the tool that governs what a pointer
- * gesture means. `select` is the default (hit-test-driven select / drag /
- * rubber-band / edge); `connect` owns the connection-create gesture.
- * Drawing tools extend this set.
+ * Interaction state — what the user is currently doing. `idle` is the
+ * resting state; a `pointerdown` transitions into the matching gesture
+ * (`select` rubber-band, `drag` move/resize/rotate/edge, `connect`
+ * routing) and `pointerup` returns to `idle`. Drawing tools extend this
+ * set with sticky resting states.
  */
-export type ModeId = "select" | "connect";
+export type ModeId = "idle" | "select" | "drag" | "connect";
 
 export interface InteractionSnapshot {
   state: InteractionState;
-  /** Active interaction mode. Distinct from `state`: `mode` is the
-   *  modal tool (persists across gestures), `state` is the in-flight
-   *  gesture within it. */
+  /** Coarse interaction mode set by the router on each gesture: the
+   *  press-drag family (`select`/`drag`/`connect`) or `idle` at rest.
+   *  `state` carries the finer gesture detail (which keys, which corner). */
   mode: ModeId;
   /** Current hovered entity key, or null. Tracked separately from
    *  `state` because hovering is preempted by any drag — yet the
@@ -65,7 +66,7 @@ type Listener = (s: InteractionSnapshot) => void;
 
 const INITIAL: InteractionSnapshot = {
   state: { kind: "idle" },
-  mode: "select",
+  mode: "idle",
   hoverKey: null,
   selectedKeys: [],
   version: 0,

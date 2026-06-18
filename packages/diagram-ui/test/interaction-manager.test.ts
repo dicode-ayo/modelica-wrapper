@@ -6,7 +6,17 @@ import {
   InteractionManager,
   type InteractionEvents,
 } from "../src/interaction/interaction-manager.js";
-import { wireInteraction } from "./harness/pointer-wiring.js";
+
+/** Drive the listener-free InteractionManager from dispatched events. */
+function wireInteraction(
+  canvas: HTMLCanvasElement,
+  m: InteractionManager,
+): void {
+  canvas.addEventListener("pointermove", (e) => m.handlePointerMove(e));
+  canvas.addEventListener("pointerdown", (e) => m.handlePointerDown(e));
+  canvas.addEventListener("pointerup", (e) => m.handlePointerUp(e));
+  canvas.addEventListener("pointerleave", () => m.handlePointerLeave());
+}
 
 function makeCanvas(width = 800, height = 400): HTMLCanvasElement {
   const c = document.createElement("canvas");

@@ -3,140 +3,80 @@ import {
   type EmitFn,
   type PickerFn,
 } from "./interaction-manager.js";
+import { entityKeyForNode, type EntityKey } from "./node-keys.js";
 import {
-  DragController,
+  capturePointer,
+  releasePointer,
+  MOVE_KINDS,
   type ClientToDiagram,
   type DragEmit,
+  type GestureMode,
+  type Picker,
   type SelectionProvider,
-} from "./drag-controller.js";
-import type { InteractionStateStore, ModeId } from "./interaction-state.js";
+} from "./gesture-mode.js";
+import { SelectMode } from "./select-mode.js";
+import { DragMode } from "./drag-mode.js";
+import { ConnectMode } from "./connect-mode.js";
+import type { InteractionStateStore } from "./interaction-state.js";
 
-/**
- * A top-level interaction mode — the tool that governs what a pointer
- * gesture means. The {@link ModeRouter} owns the canvas listeners and
- * forwards each event to the active mode; switching modes is a field
- * swap, never an `addEventListener`/`removeEventListener`. `select` is
- * the default; other tools (connect, draw-*) register alongside it.
- */
-export interface InteractionMode {
-  readonly id: ModeId;
-  onPointerDown(e: PointerEvent): void;
-  onPointerMove(e: PointerEvent): void;
-  onPointerUp(e: PointerEvent): void;
-  onPointerLeave(): void;
-  /** Cursor / affordance setup when this mode becomes active. */
-  onEnter?(): void;
-  /** Cancel any in-flight gesture and clean up when it deactivates. */
-  onExit?(): void;
-  /**
-   * Whether a pointer gesture owned by this mode is in flight. The host
-   * uses it to suppress hover side-effects mid-gesture — it flips on
-   * `pointerdown`, earlier than the interaction-store state transition.
-   */
-  isGestureActive(): boolean;
-}
-
-export interface SelectModeDeps {
+export interface ModeRouterDeps {
   canvas: HTMLCanvasElement;
   picker: PickerFn;
   clientToDiagram: ClientToDiagram;
   getSelectionKeys: SelectionProvider;
   onInteraction: EmitFn;
   onDrag: DragEmit;
+  store: InteractionStateStore;
 }
 
 /**
- * The default mode: hit-test-driven hover / select / move / resize /
- * rotate / rubber-band / edge / connection, delegating to the
- * `InteractionManager` and `DragController` (both listener-free — the
- * router drives them). `InteractionManager` is forwarded first so its
- * hover emit precedes the drag-state transition, the ordering the host's
- * hover-suppression relies on.
+ * The interaction state manager. Owns the one set of canvas pointer
+ * listeners for the diagram's lifetime. Hover, click-select and the
+ * context menu run always (via the `InteractionManager`). A `pointerdown`
+ * hit-tests and transitions `idle → {select | drag | connect}` — the
+ * matching gesture mode owns the press-drag until `pointerup` returns it
+ * to `idle`. Switching is a field swap, never `add/removeEventListener`.
  */
-export class SelectMode implements InteractionMode {
-  readonly id = "select";
+export class ModeRouter {
+  private readonly canvas: HTMLCanvasElement;
+  private readonly picker: Picker;
+  private readonly clientToDiagram: ClientToDiagram;
+  private readonly getSelectionKeys: SelectionProvider;
+  private readonly store: InteractionStateStore;
   private readonly interactionManager: InteractionManager;
-  private readonly dragController: DragController;
+  private readonly selectMode: GestureMode;
+  private readonly dragMode: GestureMode;
+  private readonly connectMode: GestureMode;
+  private active: GestureMode | null = null;
+  private pointerId = -1;
 
-  constructor(deps: SelectModeDeps) {
+  constructor(deps: ModeRouterDeps) {
+    this.canvas = deps.canvas;
+    this.picker = deps.picker;
+    this.clientToDiagram = deps.clientToDiagram;
+    this.getSelectionKeys = deps.getSelectionKeys;
+    this.store = deps.store;
     this.interactionManager = new InteractionManager(
       deps.picker,
       deps.onInteraction,
     );
-    this.dragController = new DragController(
-      deps.canvas,
-      deps.picker,
-      deps.clientToDiagram,
-      deps.getSelectionKeys,
-      deps.onDrag,
-    );
+    this.selectMode = new SelectMode(deps.onDrag);
+    this.dragMode = new DragMode(deps.onDrag);
+    this.connectMode = new ConnectMode(deps.picker, deps.onDrag);
+    this.canvas.addEventListener("pointerdown", this.onPointerDown);
+    this.canvas.addEventListener("pointermove", this.onPointerMove);
+    this.canvas.addEventListener("pointerup", this.onPointerUp);
+    this.canvas.addEventListener("pointercancel", this.onPointerUp);
+    this.canvas.addEventListener("pointerleave", this.onPointerLeave);
   }
 
-  onPointerDown(e: PointerEvent): void {
-    this.interactionManager.handlePointerDown(e);
-    this.dragController.handlePointerDown(e);
-  }
-
-  onPointerMove(e: PointerEvent): void {
-    this.interactionManager.handlePointerMove(e);
-    this.dragController.handlePointerMove(e);
-  }
-
-  onPointerUp(e: PointerEvent): void {
-    this.interactionManager.handlePointerUp(e);
-    this.dragController.handlePointerUp(e);
-  }
-
-  onPointerLeave(): void {
-    this.interactionManager.handlePointerLeave();
-  }
-
+  /**
+   * True while a press-drag gesture is in flight. Flips on `pointerdown`,
+   * earlier than the interaction-store gesture state — the host gates its
+   * hover-suppression on this, not on `state.kind`.
+   */
   isGestureActive(): boolean {
-    return this.dragController.isActive;
-  }
-}
-
-/**
- * Owns the single set of canvas pointer listeners for the lifetime of
- * the diagram and forwards each event to the active mode. Mode switches
- * swap the active strategy and run its `onEnter`/`onExit` — they never
- * touch the listeners, so there is no per-mode attach/detach churn.
- */
-export class ModeRouter {
-  private active: InteractionMode | null = null;
-
-  constructor(
-    private readonly canvas: HTMLCanvasElement,
-    private readonly modes: ReadonlyMap<ModeId, InteractionMode>,
-    private readonly store: InteractionStateStore,
-  ) {
-    canvas.addEventListener("pointerdown", this.onPointerDown);
-    canvas.addEventListener("pointermove", this.onPointerMove);
-    canvas.addEventListener("pointerup", this.onPointerUp);
-    canvas.addEventListener("pointercancel", this.onPointerUp);
-    canvas.addEventListener("pointerleave", this.onPointerLeave);
-  }
-
-  setMode(id: ModeId): void {
-    if (this.active?.id === id) {
-      return;
-    }
-    const next = this.modes.get(id);
-    if (!next) {
-      throw new Error(`No interaction mode registered for "${id}".`);
-    }
-    this.active?.onExit?.();
-    this.active = next;
-    next.onEnter?.();
-    this.store.next({ mode: id });
-  }
-
-  get activeId(): ModeId | null {
-    return this.active?.id ?? null;
-  }
-
-  isGestureActive(): boolean {
-    return this.active?.isGestureActive() ?? false;
+    return this.active !== null;
   }
 
   destroy(): void {
@@ -145,23 +85,80 @@ export class ModeRouter {
     this.canvas.removeEventListener("pointerup", this.onPointerUp);
     this.canvas.removeEventListener("pointercancel", this.onPointerUp);
     this.canvas.removeEventListener("pointerleave", this.onPointerLeave);
-    this.active?.onExit?.();
     this.active = null;
   }
 
+  private modeFor(entity: EntityKey | null): GestureMode {
+    if (entity?.kind === "port" || entity?.kind === "connector") {
+      return this.connectMode;
+    }
+    if (
+      entity &&
+      (entity.kind === "rotate-handle" ||
+        entity.kind === "handle" ||
+        entity.kind === "edge" ||
+        MOVE_KINDS.has(entity.kind))
+    ) {
+      return this.dragMode;
+    }
+    return this.selectMode;
+  }
+
   private readonly onPointerDown = (e: PointerEvent): void => {
-    this.active?.onPointerDown(e);
+    // Hover / click-select / context-menu run regardless of mode.
+    this.interactionManager.handlePointerDown(e);
+    if (e.button !== 0 || e.shiftKey) {
+      return; // shift+primary is the pan modifier (see PanZoom)
+    }
+    const node = this.picker(e.clientX, e.clientY);
+    const entity = node ? entityKeyForNode(node) : null;
+    const point = this.clientToDiagram(e.clientX, e.clientY);
+    if (!point) {
+      return;
+    }
+    const mode = this.modeFor(entity);
+    const started = mode.begin({
+      node,
+      entity,
+      point,
+      shiftKey: e.shiftKey,
+      getSelectionKeys: this.getSelectionKeys,
+    });
+    if (started) {
+      this.active = mode;
+      this.pointerId = e.pointerId;
+      capturePointer(this.canvas, e.pointerId);
+      this.store.next({ mode: mode.id });
+    }
   };
 
   private readonly onPointerMove = (e: PointerEvent): void => {
-    this.active?.onPointerMove(e);
+    this.interactionManager.handlePointerMove(e);
+    if (!this.active || e.pointerId !== this.pointerId) {
+      return;
+    }
+    const point = this.clientToDiagram(e.clientX, e.clientY);
+    if (!point) {
+      return;
+    }
+    this.active.update(point, e);
   };
 
   private readonly onPointerUp = (e: PointerEvent): void => {
-    this.active?.onPointerUp(e);
+    this.interactionManager.handlePointerUp(e);
+    if (!this.active || e.pointerId !== this.pointerId) {
+      return;
+    }
+    const point = this.clientToDiagram(e.clientX, e.clientY) ?? { x: 0, y: 0 };
+    const mode = this.active;
+    this.active = null;
+    this.pointerId = -1;
+    releasePointer(this.canvas, e.pointerId);
+    mode.commit(point, e);
+    this.store.next({ mode: "idle" });
   };
 
   private readonly onPointerLeave = (): void => {
-    this.active?.onPointerLeave();
+    this.interactionManager.handlePointerLeave();
   };
 }

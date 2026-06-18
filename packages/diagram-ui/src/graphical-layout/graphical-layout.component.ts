@@ -30,8 +30,8 @@ import {
   type PickerFn,
   type PickerFactory,
 } from "../interaction/interaction-manager.js";
-import type { DragEvents } from "../interaction/drag-controller.js";
-import { ModeRouter, SelectMode } from "../interaction/mode.js";
+import type { DragEvents } from "../interaction/gesture-mode.js";
+import { ModeRouter } from "../interaction/mode.js";
 import {
   applyDeltaMove,
   applyDelete,
@@ -765,20 +765,15 @@ export class OmGraphicalLayout extends LitElement {
       return;
     }
     const picker = (this.pickerFactory ?? defaultPicker)(ctx.scene, canvas);
-    const selectMode = new SelectMode({
+    this.modeRouter = new ModeRouter({
       canvas,
       picker,
       clientToDiagram: (cx, cy) => sceneEl.clientToDiagram(cx, cy),
       getSelectionKeys: () => Array.from(this.selectedKeys),
       onInteraction: (type, detail) => this.onInteraction(type, detail),
       onDrag: (type, detail) => this.onDrag(type, detail),
+      store: this.interactionStore,
     });
-    this.modeRouter = new ModeRouter(
-      canvas,
-      new Map([["select", selectMode]]),
-      this.interactionStore,
-    );
-    this.modeRouter.setMode("select");
     // Native dblclick on empty canvas → open the library browser.
     // InteractionManager's `doubleClick` only fires on hits; this path
     // catches the empty-space case without changing its contract.
