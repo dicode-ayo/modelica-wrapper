@@ -51,6 +51,9 @@ export class SelectMode implements InteractionMode {
   constructor(private readonly deps: SelectModeDeps) {}
 
   activate(): void {
+    if (this.interactionManager || this.dragController) {
+      return;
+    }
     const d = this.deps;
     this.interactionManager = new InteractionManager(
       d.canvas,
@@ -97,7 +100,7 @@ export class ModeRouter {
     }
     const next = this.modes.get(id);
     if (!next) {
-      return;
+      throw new Error(`No interaction mode registered for "${id}".`);
     }
     this.active?.deactivate();
     this.active = next;

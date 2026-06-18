@@ -85,6 +85,12 @@ describe("ModeRouter", () => {
     expect(router.isGestureActive()).toBe(true);
   });
 
+  it("throws when asked for an unregistered mode", () => {
+    const store = new InteractionStateStore();
+    const router = new ModeRouter(new Map(), store);
+    expect(() => router.setMode("select")).toThrow(/No interaction mode/);
+  });
+
   it("deactivates the active mode on destroy", () => {
     const store = new InteractionStateStore();
     const select = fakeMode("select");
