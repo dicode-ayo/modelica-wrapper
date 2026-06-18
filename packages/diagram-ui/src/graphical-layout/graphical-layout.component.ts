@@ -1,4 +1,4 @@
-import type { Node, Scene } from "@babylonjs/core";
+import type { Node } from "@babylonjs/core";
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { ContextProvider } from "@lit/context";
@@ -29,6 +29,7 @@ import {
   defaultPicker,
   type InteractionEvents,
   type PickerFn,
+  type PickerFactory,
 } from "../interaction/interaction-manager.js";
 import {
   DragController,
@@ -210,9 +211,7 @@ export class OmGraphicalLayout extends LitElement {
    *  tests inject a deterministic picker so pointer gestures resolve to
    *  known entities without a live render. */
   @property({ attribute: false })
-  pickerFactory:
-    | ((scene: Scene, canvas: HTMLCanvasElement) => PickerFn)
-    | undefined = undefined;
+  pickerFactory: PickerFactory | undefined = undefined;
 
   /** Forwarded to `<om-scene>`: opens Babylon's Inspector when `true`. */
   @property({ type: Boolean, reflect: true })

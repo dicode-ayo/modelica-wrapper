@@ -133,7 +133,7 @@ describe("DragController — connection drag", () => {
     dispose();
   });
 
-  it("toKey stays null when dropped on the source itself or empty space", () => {
+  it("toKey stays null when the cursor leaves onto empty space", () => {
     const { scene, dispose } = makeScene();
     const sourcePort = makePortMesh(scene, "self");
     const canvas = makeCanvas();
@@ -253,6 +253,46 @@ describe("DragController — connection drag", () => {
 
     expect(overTarget.toKey).toBe("k:in");
     expect(overEmpty.toKey).toBeNull();
+
+    controller.destroy();
+    canvas.remove();
+    dispose();
+  });
+
+  it("toKey stays null when released back on the source connector", () => {
+    const { scene, dispose } = makeScene();
+    const sourcePort = makePortMesh(scene, "self");
+    const sourceConn = makeConnectorMesh(scene, "self");
+    const canvas = makeCanvas();
+    const events: DragEvents["connection"][] = [];
+    let picked: TransformNode | null = sourcePort;
+    const controller = new DragController(
+      canvas,
+      () => picked,
+      (cx, cy) => ({ x: cx, y: cy }),
+      () => [],
+      (type, detail) => {
+        if (type === "connection") {
+          events.push(detail as DragEvents["connection"]);
+        }
+      },
+    );
+
+    canvas.dispatchEvent(
+      new PointerEvent("pointerdown", { button: 0, clientX: 0, clientY: 0 }),
+    );
+    // Land the release back on the source's own connector — must not
+    // snap to self.
+    picked = sourceConn;
+    canvas.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 5, clientY: 0 }),
+    );
+    canvas.dispatchEvent(
+      new PointerEvent("pointerup", { button: 0, clientX: 5, clientY: 0 }),
+    );
+
+    const last = events[events.length - 1]!;
+    expect(last.toKey).toBeNull();
 
     controller.destroy();
     canvas.remove();
