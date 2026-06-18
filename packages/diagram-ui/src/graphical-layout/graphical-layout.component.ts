@@ -1,4 +1,4 @@
-import type { Node } from "@babylonjs/core";
+import type { Node, Scene } from "@babylonjs/core";
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { ContextProvider } from "@lit/context";
@@ -205,6 +205,14 @@ export class OmGraphicalLayout extends LitElement {
    *  by tests to inject a `NullEngine`. */
   @property({ attribute: false })
   engineFactory: EngineFactory | undefined = undefined;
+
+  /** Optional picker factory. Defaults to `defaultPicker` (scene raycast);
+   *  tests inject a deterministic picker so pointer gestures resolve to
+   *  known entities without a live render. */
+  @property({ attribute: false })
+  pickerFactory:
+    | ((scene: Scene, canvas: HTMLCanvasElement) => PickerFn)
+    | undefined = undefined;
 
   /** Forwarded to `<om-scene>`: opens Babylon's Inspector when `true`. */
   @property({ type: Boolean, reflect: true })
@@ -761,7 +769,7 @@ export class OmGraphicalLayout extends LitElement {
     if (!ctx || !canvas) {
       return;
     }
-    const picker = defaultPicker(ctx.scene, canvas);
+    const picker = (this.pickerFactory ?? defaultPicker)(ctx.scene, canvas);
     this.interactionManager = new InteractionManager(
       canvas,
       picker,

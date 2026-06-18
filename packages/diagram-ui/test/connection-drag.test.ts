@@ -174,4 +174,88 @@ describe("DragController — connection drag", () => {
     canvas.remove();
     dispose();
   });
+
+  it("tracks the live cursor position on each move while connecting", () => {
+    const { scene, dispose } = makeScene();
+    const sourcePort = makePortMesh(scene, "p");
+    const canvas = makeCanvas();
+    const events: DragEvents["connection"][] = [];
+    const picked: TransformNode | null = sourcePort;
+    const controller = new DragController(
+      canvas,
+      () => picked,
+      (cx, cy) => ({ x: cx, y: cy }),
+      () => [],
+      (type, detail) => {
+        if (type === "connection") {
+          events.push(detail as DragEvents["connection"]);
+        }
+      },
+    );
+
+    canvas.dispatchEvent(
+      new PointerEvent("pointerdown", { button: 0, clientX: 0, clientY: 0 }),
+    );
+    canvas.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 30, clientY: 10 }),
+    );
+    canvas.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 60, clientY: 40 }),
+    );
+    canvas.dispatchEvent(
+      new PointerEvent("pointerup", { button: 0, clientX: 60, clientY: 40 }),
+    );
+
+    const tos = events.map((e) => e.to);
+    expect(tos).toContainEqual({ x: 30, y: 10 });
+    expect(tos).toContainEqual({ x: 60, y: 40 });
+
+    controller.destroy();
+    canvas.remove();
+    dispose();
+  });
+
+  it("snaps toKey to a target then clears it when the cursor leaves", () => {
+    const { scene, dispose } = makeScene();
+    const sourcePort = makePortMesh(scene, "out");
+    const targetConn = makeConnectorMesh(scene, "in");
+    const canvas = makeCanvas();
+    const events: DragEvents["connection"][] = [];
+    let picked: TransformNode | null = sourcePort;
+    const controller = new DragController(
+      canvas,
+      () => picked,
+      (cx, cy) => ({ x: cx, y: cy }),
+      () => [],
+      (type, detail) => {
+        if (type === "connection") {
+          events.push(detail as DragEvents["connection"]);
+        }
+      },
+    );
+
+    canvas.dispatchEvent(
+      new PointerEvent("pointerdown", { button: 0, clientX: 0, clientY: 0 }),
+    );
+    picked = targetConn;
+    canvas.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 80, clientY: 0 }),
+    );
+    const overTarget = events[events.length - 1]!;
+    picked = null;
+    canvas.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 200, clientY: 0 }),
+    );
+    const overEmpty = events[events.length - 1]!;
+    canvas.dispatchEvent(
+      new PointerEvent("pointerup", { button: 0, clientX: 200, clientY: 0 }),
+    );
+
+    expect(overTarget.toKey).toBe("k:in");
+    expect(overEmpty.toKey).toBeNull();
+
+    controller.destroy();
+    canvas.remove();
+    dispose();
+  });
 });
