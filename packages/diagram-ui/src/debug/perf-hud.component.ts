@@ -119,6 +119,7 @@ export class OmPerfHud extends LitElement {
   @state()
   private interaction: InteractionSnapshot = {
     state: { kind: "idle" },
+    mode: "select",
     hoverKey: null,
     selectedKeys: [],
     version: 0,

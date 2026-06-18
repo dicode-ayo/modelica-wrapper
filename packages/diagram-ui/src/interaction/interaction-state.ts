@@ -37,8 +37,20 @@ export type InteractionState =
       toKey: string | null;
     };
 
+/**
+ * Top-level interaction mode — the tool that governs what a pointer
+ * gesture means. `select` is the default (hit-test-driven select / drag /
+ * rubber-band / edge); `connect` owns the connection-create gesture.
+ * Drawing tools extend this set.
+ */
+export type ModeId = "select" | "connect";
+
 export interface InteractionSnapshot {
   state: InteractionState;
+  /** Active interaction mode. Distinct from `state`: `mode` is the
+   *  modal tool (persists across gestures), `state` is the in-flight
+   *  gesture within it. */
+  mode: ModeId;
   /** Current hovered entity key, or null. Tracked separately from
    *  `state` because hovering is preempted by any drag — yet the
    *  HUD wants to keep showing the hovered entity name through it. */
@@ -53,6 +65,7 @@ type Listener = (s: InteractionSnapshot) => void;
 
 const INITIAL: InteractionSnapshot = {
   state: { kind: "idle" },
+  mode: "select",
   hoverKey: null,
   selectedKeys: [],
   version: 0,
@@ -74,6 +87,7 @@ export class InteractionStateStore {
   next(patch: Partial<Omit<InteractionSnapshot, "version">>): void {
     this.snapshot = {
       state: patch.state ?? this.snapshot.state,
+      mode: patch.mode ?? this.snapshot.mode,
       hoverKey:
         patch.hoverKey !== undefined ? patch.hoverKey : this.snapshot.hoverKey,
       selectedKeys: patch.selectedKeys ?? this.snapshot.selectedKeys,

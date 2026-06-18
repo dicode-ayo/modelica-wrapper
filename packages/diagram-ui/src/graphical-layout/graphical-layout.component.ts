@@ -25,16 +25,13 @@ import type { OmConnector } from "../connector/connector.component.js";
 import type { OmComponent } from "../component/component.component.js";
 import type { LibraryBrowserDataSource } from "../library-browser/library-browser.component.js";
 import {
-  InteractionManager,
   defaultPicker,
   type InteractionEvents,
   type PickerFn,
   type PickerFactory,
 } from "../interaction/interaction-manager.js";
-import {
-  DragController,
-  type DragEvents,
-} from "../interaction/drag-controller.js";
+import type { DragEvents } from "../interaction/drag-controller.js";
+import { ModeRouter, SelectMode } from "../interaction/mode.js";
 import {
   applyDeltaMove,
   applyDelete,
@@ -300,8 +297,7 @@ export class OmGraphicalLayout extends LitElement {
 
   @query("om-scene") private sceneEl?: OmScene;
 
-  private interactionManager: InteractionManager | null = null;
-  private dragController: DragController | null = null;
+  private modeRouter: ModeRouter | null = null;
   private dblClickPicker: PickerFn | null = null;
   private dblClickCanvas: HTMLCanvasElement | null = null;
   /**
@@ -435,7 +431,7 @@ export class OmGraphicalLayout extends LitElement {
       this.internalLayoutChange = false;
     }
     if (
-      !this.interactionManager &&
+      !this.modeRouter &&
       this.sceneEl?.canvasElement &&
       this.sceneEl?.sceneContextValue
     ) {
@@ -759,28 +755,29 @@ export class OmGraphicalLayout extends LitElement {
   }
 
   private attachManagers(): void {
-    if (this.interactionManager) {
+    if (this.modeRouter) {
       return;
     }
     const sceneEl = this.sceneEl;
     const ctx = sceneEl?.sceneContextValue;
     const canvas = sceneEl?.canvasElement;
-    if (!ctx || !canvas) {
+    if (!sceneEl || !ctx || !canvas) {
       return;
     }
     const picker = (this.pickerFactory ?? defaultPicker)(ctx.scene, canvas);
-    this.interactionManager = new InteractionManager(
+    const selectMode = new SelectMode({
       canvas,
       picker,
-      (type, detail) => this.onInteraction(type, detail),
+      clientToDiagram: (cx, cy) => sceneEl.clientToDiagram(cx, cy),
+      getSelectionKeys: () => Array.from(this.selectedKeys),
+      onInteraction: (type, detail) => this.onInteraction(type, detail),
+      onDrag: (type, detail) => this.onDrag(type, detail),
+    });
+    this.modeRouter = new ModeRouter(
+      new Map([["select", selectMode]]),
+      this.interactionStore,
     );
-    this.dragController = new DragController(
-      canvas,
-      picker,
-      (cx, cy) => sceneEl!.clientToDiagram(cx, cy),
-      () => Array.from(this.selectedKeys),
-      (type, detail) => this.onDrag(type, detail),
-    );
+    this.modeRouter.setMode("select");
     // Native dblclick on empty canvas → open the library browser.
     // InteractionManager's `doubleClick` only fires on hits; this path
     // catches the empty-space case without changing its contract.
@@ -790,10 +787,8 @@ export class OmGraphicalLayout extends LitElement {
   }
 
   private detachManagers(): void {
-    this.interactionManager?.destroy();
-    this.dragController?.destroy();
-    this.interactionManager = null;
-    this.dragController = null;
+    this.modeRouter?.destroy();
+    this.modeRouter = null;
     if (this.dblClickCanvas) {
       this.dblClickCanvas.removeEventListener(
         "dblclick",
@@ -946,18 +941,18 @@ export class OmGraphicalLayout extends LitElement {
         // pointermove during a drag would flash dots and outlines on
         // the connectors the cursor sweeps over — visible flicker.
         //
-        // We read `dragController.isActive`, NOT
+        // We read the mode's `isGestureActive()`, NOT
         // `interactionStore.state.kind`, because the InteractionManager's
         // pointermove listener is registered before DragController's
         // and so its hover emit races ahead of the state-machine
-        // transition on the FIRST move of a drag. `isActive` flips on
-        // pointerdown, which is the earlier and correct signal.
+        // transition on the FIRST move of a drag. The gesture flag flips
+        // on pointerdown, which is the earlier and correct signal.
         //
         // For active connection drags we keep refreshes flowing
         // (refreshPortIndicators reads `inProgressConnection`, which
         // is the snap-target signal).
         const stateKind = this.interactionStore.value.state.kind;
-        const dragActive = this.dragController?.isActive ?? false;
+        const dragActive = this.modeRouter?.isGestureActive() ?? false;
         const suppress = dragActive && stateKind !== "connecting";
         if (!suppress) {
           this.refreshPortIndicators();
