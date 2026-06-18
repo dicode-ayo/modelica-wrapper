@@ -11,6 +11,13 @@ import { entityKeyForNode, formatKey } from "./node-keys.js";
  */
 export type PickerFn = (clientX: number, clientY: number) => Node | null;
 
+/** Builds a {@link PickerFn} for a scene/canvas pair. `defaultPicker` is
+ *  the production implementation; tests inject a deterministic one. */
+export type PickerFactory = (
+  scene: Scene,
+  canvas: HTMLCanvasElement,
+) => PickerFn;
+
 export interface InteractionEvents {
   /** Fires whenever the entity under the pointer changes (incl. to `null`). */
   hover: { key: string | null };

@@ -248,4 +248,75 @@ describe("DragController", () => {
     expect(events).toHaveLength(0);
     cleanup();
   });
+
+  it.each(["tr", "br", "bl"] as const)(
+    "emits resize on the %s handle with the matching corner",
+    (corner) => {
+      const { scene, dispose } = makeScene();
+      const ownerTn = new TransformNode("om-component:R1", scene);
+      const handleMesh = new TransformNode(`om-handle:${corner}`, scene);
+      handleMesh.parent = ownerTn;
+      handleMesh.metadata = { kind: "handle", nodeId: corner };
+
+      const { canvas, events, cleanup } = setupController({
+        picker: () => handleMesh,
+      });
+
+      canvas.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          button: 0,
+          clientX: 100,
+          clientY: 50,
+        }),
+      );
+      canvas.dispatchEvent(
+        new PointerEvent("pointermove", { clientX: 120, clientY: 70 }),
+      );
+      canvas.dispatchEvent(
+        new PointerEvent("pointerup", { button: 0, clientX: 120, clientY: 70 }),
+      );
+
+      const resizes = events.filter((e) => e.type === "resize");
+      expect(resizes).toHaveLength(3);
+      expect(resizes[0]!.detail).toMatchObject({
+        key: "c:R1",
+        corner,
+        draft: true,
+      });
+      expect(resizes[2]!.detail).toMatchObject({ draft: false });
+      cleanup();
+      dispose();
+    },
+  );
+
+  it("emits rotate events when starting on a rotate handle", () => {
+    const { scene, dispose } = makeScene();
+    const ownerTn = new TransformNode("om-component:R1", scene);
+    const rotateMesh = new TransformNode("om-rotate-handle", scene);
+    rotateMesh.parent = ownerTn;
+    rotateMesh.metadata = { kind: "rotate-handle", nodeId: "rotate" };
+
+    const { canvas, events, cleanup } = setupController({
+      picker: () => rotateMesh,
+    });
+
+    canvas.dispatchEvent(
+      new PointerEvent("pointerdown", { button: 0, clientX: 100, clientY: 20 }),
+    );
+    canvas.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 110, clientY: 10 }),
+    );
+    canvas.dispatchEvent(
+      new PointerEvent("pointerup", { button: 0, clientX: 110, clientY: 10 }),
+    );
+
+    const rotates = events.filter((e) => e.type === "rotate");
+    expect(rotates.length).toBeGreaterThanOrEqual(2);
+    expect(rotates[0]!.detail).toMatchObject({ key: "c:R1", draft: true });
+    expect(
+      rotates.some((r) => (r.detail as DragEvents["rotate"]).draft === false),
+    ).toBe(true);
+    cleanup();
+    dispose();
+  });
 });
