@@ -69,13 +69,6 @@ import {
  * unexpected shape) defaults to "visible". That preserves the
  * pre-feature behaviour and matches the form-side Dialog.enable
  * fallback policy.
- *
- * (Previous revisions ran an `evaluateExpression` against a scope built
- * from `getInstantiatedParametersAndValues`. Probed against OMC 1.26.7:
- * the AST branch was never reachable from real input — OMC always
- * reduces. The evaluator stays in the package for the form's
- * Dialog.enable use, which evaluates against the user's in-progress
- * working values that OMC doesn't see.)
  */
 function isConditionTrue(condition: unknown): boolean {
   if (condition === undefined || condition === null) return true;
@@ -87,10 +80,6 @@ function isConditionTrue(condition: unknown): boolean {
   ) {
     return (condition as { binding: boolean }).binding;
   }
-  console.debug(
-    "[omc-client] isConditionTrue: unexpected condition shape, defaulting to visible:",
-    condition,
-  );
   return true;
 }
 

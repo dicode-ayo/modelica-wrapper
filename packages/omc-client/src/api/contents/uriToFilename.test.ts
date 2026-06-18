@@ -41,6 +41,12 @@ describe("uriToFilename parsing", () => {
     expect(out).toEqual({ filename: "" });
   });
 
+  it("falls back to empty string when OMC returns its null sentinel", async () => {
+    const { ctx } = fakeCtx("-");
+    const out = await uriToFilename(ctx, { uri: "modelica://Nope/x.png" });
+    expect(out).toEqual({ filename: "" });
+  });
+
   it("quotes the URI argument in the command (audit §2.10)", async () => {
     const { ctx, call } = fakeCtx('""');
     await uriToFilename(ctx, { uri: "modelica://Modelica/package.mo" });
