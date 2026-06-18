@@ -62,12 +62,17 @@ export interface PersistResult {
  * direct children returned by OMC. This lets a fresh OMC `loadFile` reproduce
  * the same member ordering without relying on filesystem scan order.
  * Existing `package.order` files are never overwritten.
+ *
+ * When `leafKind` is `"package"` the leaf is written as
+ * `<baseDir>/<leafName>/package.mo` so `onDiskParentDir` resolves to its
+ * directory and subsequent children nest under it.
  */
 export async function persistClassUnderWorkspace(
   client: OmcClient,
   workspaceRoot: string,
   qualifiedName: string,
   classText: string,
+  leafKind?: "package",
 ): Promise<PersistResult> {
   const parts = qualifiedName.split(".");
   const newParents: PersistResult["newParents"] = [];
@@ -105,8 +110,24 @@ export async function persistClassUnderWorkspace(
     }
     newParents.push({ typeName: parentName, pkgFile });
   }
-  const leafPath = path.join(baseDir, `${parts[parts.length - 1]}.mo`);
-  await fsp.mkdir(path.dirname(leafPath), { recursive: true });
+  const leafName = parts.at(-1);
+  if (leafName === undefined) return { leafPath: "", newParents };
+  let leafPath: string;
+  if (leafKind === "package") {
+    const leafDir = path.join(baseDir, leafName);
+    await fsp.mkdir(leafDir, { recursive: true });
+    leafPath = path.join(leafDir, "package.mo");
+    const orderFile = path.join(leafDir, "package.order");
+    if (!(await pathExists(orderFile))) {
+      const children = await safeGetClassNames(client, qualifiedName);
+      if (children.length > 0) {
+        await fsp.writeFile(orderFile, children.join("\n") + "\n", "utf8");
+      }
+    }
+  } else {
+    leafPath = path.join(baseDir, `${leafName}.mo`);
+    await fsp.mkdir(baseDir, { recursive: true });
+  }
   await fsp.writeFile(leafPath, classText, "utf8");
   return { leafPath, newParents };
 }

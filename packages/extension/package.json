@@ -86,6 +86,10 @@
         "icon": "$(save-as)"
       },
       {
+        "command": "modelica.initializeWorkspaceAsPackage",
+        "title": "Modelica: Initialize Workspace as Package..."
+      },
+      {
         "command": "modelica.viewSource",
         "title": "Modelica: View Source",
         "icon": "$(file-code)"

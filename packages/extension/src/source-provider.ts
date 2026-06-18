@@ -154,11 +154,13 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
           `Modelica: ${typeName} updated in OMC memory only — open a folder to enable on-disk save.`,
         );
       } else {
+        const { restriction } = await client.getClassInformation({ typeName });
         const result = await persistClassUnderWorkspace(
           client,
           ws.uri.fsPath,
           typeName,
           text,
+          restriction === "package" ? "package" : undefined,
         );
         await linkPersistedClass(client, typeName, result);
       }

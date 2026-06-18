@@ -330,6 +330,82 @@ describe("persistClassUnderWorkspace", () => {
       await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
     ).toBe("Valid\nAlso_Valid\nModel\n");
   });
+
+  it("package leaf: writes <Name>/package.mo, not <Name>.mo", async () => {
+    const { client } = makeClientStub();
+    const result = await persistClassUnderWorkspace(
+      client,
+      tmp,
+      "MyPkg",
+      "package MyPkg\nend MyPkg;\n",
+      "package",
+    );
+    expect(result.leafPath).toBe(path.join(tmp, "MyPkg", "package.mo"));
+    expect(result.newParents).toEqual([]);
+    expect(await fsp.readFile(result.leafPath, "utf8")).toBe(
+      "package MyPkg\nend MyPkg;\n",
+    );
+    // The flat .mo file must NOT be written.
+    await expect(fsp.access(path.join(tmp, "MyPkg.mo"))).rejects.toThrow();
+  });
+
+  it("package leaf nested: writes <parent>/<Name>/package.mo", async () => {
+    const { client } = makeClientStub();
+    const result = await persistClassUnderWorkspace(
+      client,
+      tmp,
+      "MyLib.SubPkg",
+      "within MyLib;\npackage SubPkg\nend SubPkg;\n",
+      "package",
+    );
+    expect(result.leafPath).toBe(
+      path.join(tmp, "MyLib", "SubPkg", "package.mo"),
+    );
+    expect(await fsp.readFile(result.leafPath, "utf8")).toBe(
+      "within MyLib;\npackage SubPkg\nend SubPkg;\n",
+    );
+    // Flat SubPkg.mo must NOT be written.
+    await expect(
+      fsp.access(path.join(tmp, "MyLib", "SubPkg.mo")),
+    ).rejects.toThrow();
+  });
+
+  it("package leaf: setSourceFile gets package.mo path, enabling child nesting", async () => {
+    const { client, setCalls } = makeClientStub();
+    const result = await persistClassUnderWorkspace(
+      client,
+      tmp,
+      "MyPkg",
+      "package MyPkg\nend MyPkg;\n",
+      "package",
+    );
+    await linkPersistedClass(client, "MyPkg", result);
+    // OMC is told about the package.mo file, not the directory.
+    expect(setCalls).toEqual([
+      { typeName: "MyPkg", fileName: path.join(tmp, "MyPkg", "package.mo") },
+    ]);
+  });
+
+  it("package leaf: onDiskParentDir resolves to package directory for children", async () => {
+    const { client, seedClass, seedChildren } = makeClientStub();
+    seedClass("MyPkg", path.join(tmp, "MyPkg", "package.mo"));
+    seedChildren("MyPkg", []);
+    await fsp.mkdir(path.join(tmp, "MyPkg"), { recursive: true });
+    await fsp.writeFile(
+      path.join(tmp, "MyPkg", "package.mo"),
+      "package MyPkg\nend MyPkg;\n",
+      "utf8",
+    );
+
+    const result = await persistClassUnderWorkspace(
+      client,
+      tmp,
+      "MyPkg.Child",
+      "within MyPkg;\nmodel Child\nend Child;\n",
+    );
+    expect(result.leafPath).toBe(path.join(tmp, "MyPkg", "Child.mo"));
+    expect(result.newParents).toEqual([]);
+  });
 });
 
 describe("linkPersistedClass", () => {
