@@ -5,6 +5,7 @@ import {
   DragController,
   type DragEvents,
 } from "../src/interaction/drag-controller.js";
+import { wireDrag } from "./harness/pointer-wiring.js";
 
 function makeCanvas(width = 800, height = 400): HTMLCanvasElement {
   const c = document.createElement("canvas");
@@ -65,11 +66,11 @@ function setupController(
       events.push({ type, detail } as CapturedEvent<keyof DragEvents>);
     },
   );
+  wireDrag(canvas, controller);
   return {
     canvas,
     events,
     cleanup: () => {
-      controller.destroy();
       canvas.remove();
     },
   };

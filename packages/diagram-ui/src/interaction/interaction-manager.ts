@@ -41,7 +41,7 @@ export interface InteractionManagerOptions {
 const DEFAULT_DOUBLE_CLICK_MS = 350;
 
 /**
- * Wraps the canvas pointer events and translates them into typed
+ * Translates pointer events (fed by the interaction router) into typed
  * interaction events keyed by entity. Three observable events are
  * produced — `hover`, `select`, `contextMenu`, plus `doubleClick` when
  * the same key receives two `select`-eligible primary clicks within
@@ -53,7 +53,6 @@ const DEFAULT_DOUBLE_CLICK_MS = 350;
  *   - middle button    → swallowed (PanZoom owns it)
  */
 export class InteractionManager {
-  private readonly canvas: HTMLCanvasElement;
   private readonly picker: PickerFn;
   private readonly emit: EmitFn;
   private readonly doubleClickMs: number;
@@ -62,44 +61,31 @@ export class InteractionManager {
   private lastSelectAt = 0;
 
   constructor(
-    canvas: HTMLCanvasElement,
     picker: PickerFn,
     emit: EmitFn,
     options: InteractionManagerOptions = {},
   ) {
-    this.canvas = canvas;
     this.picker = picker;
     this.emit = emit;
     this.doubleClickMs = options.doubleClickMs ?? DEFAULT_DOUBLE_CLICK_MS;
-    canvas.addEventListener("pointermove", this.onPointerMove);
-    canvas.addEventListener("pointerdown", this.onPointerDown);
-    canvas.addEventListener("pointerup", this.onPointerUp);
-    canvas.addEventListener("pointerleave", this.onPointerLeave);
   }
 
-  destroy(): void {
-    this.canvas.removeEventListener("pointermove", this.onPointerMove);
-    this.canvas.removeEventListener("pointerdown", this.onPointerDown);
-    this.canvas.removeEventListener("pointerup", this.onPointerUp);
-    this.canvas.removeEventListener("pointerleave", this.onPointerLeave);
-  }
-
-  private readonly onPointerMove = (e: PointerEvent): void => {
+  handlePointerMove(e: PointerEvent): void {
     const key = this.pickKey(e.clientX, e.clientY);
     if (key !== this.hoverKey) {
       this.hoverKey = key;
       this.emit("hover", { key });
     }
-  };
+  }
 
-  private readonly onPointerLeave = (): void => {
+  handlePointerLeave(): void {
     if (this.hoverKey !== null) {
       this.hoverKey = null;
       this.emit("hover", { key: null });
     }
-  };
+  }
 
-  private readonly onPointerDown = (e: PointerEvent): void => {
+  handlePointerDown(e: PointerEvent): void {
     if (e.button !== 0 || (e.shiftKey && this.isPanModifier(e))) {
       return; // pan modifier — PanZoom owns it
     }
@@ -121,9 +107,9 @@ export class InteractionManager {
     if (isDouble) {
       this.emit("doubleClick", { key });
     }
-  };
+  }
 
-  private readonly onPointerUp = (e: PointerEvent): void => {
+  handlePointerUp(e: PointerEvent): void {
     if (e.button !== 2) {
       return;
     }
@@ -133,7 +119,7 @@ export class InteractionManager {
       clientX: e.clientX,
       clientY: e.clientY,
     });
-  };
+  }
 
   private isPanModifier(e: PointerEvent): boolean {
     // Shift+primary is reserved for pan (see PanZoom). Don't shadow it.

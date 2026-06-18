@@ -774,6 +774,7 @@ export class OmGraphicalLayout extends LitElement {
       onDrag: (type, detail) => this.onDrag(type, detail),
     });
     this.modeRouter = new ModeRouter(
+      canvas,
       new Map([["select", selectMode]]),
       this.interactionStore,
     );

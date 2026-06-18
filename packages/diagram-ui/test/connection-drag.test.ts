@@ -5,6 +5,7 @@ import {
   DragController,
   type DragEvents,
 } from "../src/interaction/drag-controller.js";
+import { wireDrag } from "./harness/pointer-wiring.js";
 
 function makeCanvas(width = 800, height = 400): HTMLCanvasElement {
   const c = document.createElement("canvas");
@@ -71,6 +72,8 @@ describe("DragController — connection drag", () => {
       },
     );
 
+    wireDrag(canvas, controller);
+
     canvas.dispatchEvent(
       new PointerEvent("pointerdown", { button: 0, clientX: 0, clientY: 0 }),
     );
@@ -88,7 +91,6 @@ describe("DragController — connection drag", () => {
     expect(last.commit).toBe(true);
     expect(last.to).toEqual({ x: 50, y: 30 });
 
-    controller.destroy();
     canvas.remove();
     dispose();
   });
@@ -112,6 +114,8 @@ describe("DragController — connection drag", () => {
       },
     );
 
+    wireDrag(canvas, controller);
+
     canvas.dispatchEvent(
       new PointerEvent("pointerdown", { button: 0, clientX: 0, clientY: 0 }),
     );
@@ -128,7 +132,6 @@ describe("DragController — connection drag", () => {
     expect(last.commit).toBe(true);
     expect(last.toKey).toBe("k:in");
 
-    controller.destroy();
     canvas.remove();
     dispose();
   });
@@ -151,6 +154,8 @@ describe("DragController — connection drag", () => {
       },
     );
 
+    wireDrag(canvas, controller);
+
     canvas.dispatchEvent(
       new PointerEvent("pointerdown", { button: 0, clientX: 0, clientY: 0 }),
     );
@@ -170,7 +175,6 @@ describe("DragController — connection drag", () => {
     const last = events[events.length - 1]!;
     expect(last.toKey).toBeNull();
 
-    controller.destroy();
     canvas.remove();
     dispose();
   });
@@ -193,6 +197,8 @@ describe("DragController — connection drag", () => {
       },
     );
 
+    wireDrag(canvas, controller);
+
     canvas.dispatchEvent(
       new PointerEvent("pointerdown", { button: 0, clientX: 0, clientY: 0 }),
     );
@@ -210,7 +216,6 @@ describe("DragController — connection drag", () => {
     expect(tos).toContainEqual({ x: 30, y: 10 });
     expect(tos).toContainEqual({ x: 60, y: 40 });
 
-    controller.destroy();
     canvas.remove();
     dispose();
   });
@@ -234,6 +239,8 @@ describe("DragController — connection drag", () => {
       },
     );
 
+    wireDrag(canvas, controller);
+
     canvas.dispatchEvent(
       new PointerEvent("pointerdown", { button: 0, clientX: 0, clientY: 0 }),
     );
@@ -254,7 +261,6 @@ describe("DragController — connection drag", () => {
     expect(overTarget.toKey).toBe("k:in");
     expect(overEmpty.toKey).toBeNull();
 
-    controller.destroy();
     canvas.remove();
     dispose();
   });
@@ -278,6 +284,8 @@ describe("DragController — connection drag", () => {
       },
     );
 
+    wireDrag(canvas, controller);
+
     canvas.dispatchEvent(
       new PointerEvent("pointerdown", { button: 0, clientX: 0, clientY: 0 }),
     );
@@ -294,7 +302,6 @@ describe("DragController — connection drag", () => {
     const last = events[events.length - 1]!;
     expect(last.toKey).toBeNull();
 
-    controller.destroy();
     canvas.remove();
     dispose();
   });

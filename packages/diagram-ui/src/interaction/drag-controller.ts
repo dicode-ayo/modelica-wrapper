@@ -184,19 +184,7 @@ export class DragController {
     private readonly clientToDiagram: ClientToDiagram,
     private readonly getSelectionKeys: SelectionProvider,
     private readonly emit: DragEmit,
-  ) {
-    canvas.addEventListener("pointerdown", this.onPointerDown);
-    canvas.addEventListener("pointermove", this.onPointerMove);
-    canvas.addEventListener("pointerup", this.onPointerUp);
-    canvas.addEventListener("pointercancel", this.onPointerUp);
-  }
-
-  destroy(): void {
-    this.canvas.removeEventListener("pointerdown", this.onPointerDown);
-    this.canvas.removeEventListener("pointermove", this.onPointerMove);
-    this.canvas.removeEventListener("pointerup", this.onPointerUp);
-    this.canvas.removeEventListener("pointercancel", this.onPointerUp);
-  }
+  ) {}
 
   /**
    * True from the moment a drag-committed `pointerdown` lands (move /
@@ -204,17 +192,17 @@ export class DragController {
    *
    * Important: this flips earlier than the host's interaction-state
    * machine, which only transitions to `"moving"` / etc. after the
-   * first `drag` event is emitted. The `InteractionManager`'s
-   * `pointermove` listener is registered before ours, so its hover
-   * emit races ahead of our state transition on the first move of a
-   * drag — host code that wants to suppress hover side-effects during
-   * a drag must gate on this flag, not on the interaction-store state.
+   * first `drag` event is emitted. The router forwards the
+   * `InteractionManager`'s `pointermove` before ours, so its hover emit
+   * races ahead of our state transition on the first move of a drag —
+   * host code that wants to suppress hover side-effects during a drag
+   * must gate on this flag, not on the interaction-store state.
    */
   get isActive(): boolean {
     return this.state !== null;
   }
 
-  private readonly onPointerDown = (e: PointerEvent): void => {
+  handlePointerDown(e: PointerEvent): void {
     if (e.button !== 0 || e.shiftKey) {
       // primary + no shift: shift+primary is the pan modifier (see PanZoom).
       // We still allow shift+primary on empty space to extend rubber-band
@@ -335,9 +323,9 @@ export class DragController {
       rect: { x1: pt.x, y1: pt.y, x2: pt.x, y2: pt.y },
       draft: true,
     });
-  };
+  }
 
-  private readonly onPointerMove = (e: PointerEvent): void => {
+  handlePointerMove(e: PointerEvent): void {
     if (!this.state || e.pointerId !== this.pointerId) {
       return;
     }
@@ -346,7 +334,7 @@ export class DragController {
       return;
     }
     this.emitDragEvent(this.state, pt, e, true);
-  };
+  }
 
   /**
    * Emit the drag event for `state` at pointer position `pt`. `draft`
@@ -432,7 +420,7 @@ export class DragController {
     return key === excludeKey ? null : key;
   }
 
-  private readonly onPointerUp = (e: PointerEvent): void => {
+  handlePointerUp(e: PointerEvent): void {
     if (!this.state || e.pointerId !== this.pointerId) {
       return;
     }
@@ -445,7 +433,7 @@ export class DragController {
     this.pointerId = -1;
     release(this.canvas, e.pointerId);
     this.emitDragEvent(state, pt, e, false);
-  };
+  }
 }
 
 function capture(canvas: HTMLCanvasElement, pointerId: number): void {
