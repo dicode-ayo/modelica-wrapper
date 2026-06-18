@@ -48,4 +48,14 @@ describe("uriToFilename parsing", () => {
       'uriToFilename("modelica://Modelica/package.mo")',
     );
   });
+
+  it("throws when OMC returns a non-string (drift detection)", async () => {
+    // OMC always returns a string, but if the response shape drifts
+    // (e.g. a boolean `false` on error) the parse should throw rather
+    // than silently returning an empty filename.
+    const { ctx } = fakeCtx("false");
+    await expect(
+      uriToFilename(ctx, { uri: "modelica://Nope/x.png" }),
+    ).rejects.toThrow();
+  });
 });

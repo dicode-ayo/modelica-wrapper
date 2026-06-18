@@ -87,6 +87,10 @@ function isConditionTrue(condition: unknown): boolean {
   ) {
     return (condition as { binding: boolean }).binding;
   }
+  console.debug(
+    "[omc-client] isConditionTrue: unexpected condition shape, defaulting to visible:",
+    condition,
+  );
   return true;
 }
 

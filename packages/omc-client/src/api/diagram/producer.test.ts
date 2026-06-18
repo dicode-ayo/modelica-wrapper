@@ -24,7 +24,7 @@
  * test rather than the producer.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   ModelInstanceSchema,
@@ -1219,6 +1219,27 @@ describe("produceDiagramLayout: conditional gating", () => {
       "diagram",
     );
     expect(Object.keys(layout.components).sort()).toEqual(["x", "y"]);
+  });
+
+  it("emits a debug log when condition is an unexpected shape", () => {
+    const spy = vi.spyOn(console, "debug").mockImplementation(() => undefined);
+    try {
+      produceDiagramLayout(
+        makeGuardedHost({
+          pIn: true,
+          pOut: true,
+          x: { unexpected: "shape" } as unknown as { binding: boolean },
+          y: true,
+        }),
+        "diagram",
+      );
+      expect(spy).toHaveBeenCalledWith(
+        expect.stringContaining("isConditionTrue"),
+        expect.anything(),
+      );
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("hides per-instance ports whose type carries a literal `condition: false`", () => {
