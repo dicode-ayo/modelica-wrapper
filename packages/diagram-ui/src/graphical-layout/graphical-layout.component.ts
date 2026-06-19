@@ -32,6 +32,7 @@ import {
 } from "../interaction/interaction-manager.js";
 import type { DragEvents } from "../interaction/gesture-mode.js";
 import { ModeRouter } from "../interaction/mode.js";
+import { GestureOverlay } from "../base/gesture-overlay.js";
 import {
   applyDeltaMove,
   applyDelete,
@@ -298,6 +299,7 @@ export class OmGraphicalLayout extends LitElement {
   @query("om-scene") private sceneEl?: OmScene;
 
   private modeRouter: ModeRouter | null = null;
+  private gestureOverlay: GestureOverlay | null = null;
   private dblClickPicker: PickerFn | null = null;
   private dblClickCanvas: HTMLCanvasElement | null = null;
   /**
@@ -383,7 +385,6 @@ export class OmGraphicalLayout extends LitElement {
               .fontSize=${label.fontSize ?? 12}
             ></om-label>`,
         )}
-        ${this.renderInProgressEdge()}
         <om-perf-hud ?show=${this.perfHud}></om-perf-hud>
       </om-scene>
       ${this.libraryBrowserOpen
@@ -589,30 +590,6 @@ export class OmGraphicalLayout extends LitElement {
     return renderLayers(layers, HOST_SHAPE_Z_BIAS);
   }
 
-  private renderInProgressEdge(): TemplateResult | typeof nothing {
-    const ip = this.inProgressConnection;
-    if (!ip) {
-      return nothing;
-    }
-    // Preview matches the route we commit on release. The cursor end
-    // is the live diagram-space cursor (`ip.to`) — we don't snap to
-    // the target connector centre even when `toKey` is set, so the
-    // user keeps seeing their pointer until they release.
-    //
-    // Stroke colour reflects the compatibility check: blue while
-    // hovering empty space or a compatible target, red when the
-    // snap target is rejected by `canConnect`. The drop is refused
-    // on release in either red case.
-    const incompat = ip.compat ? !ip.compat.ok : false;
-    const stroke = incompat ? "#ef4444" : "#3b82f6";
-    const path = orthogonalRoute(ip.fromPoint, ip.to);
-    return html`<om-edge
-      .nodeId=${"in-progress"}
-      .path=${path}
-      .stroke=${stroke}
-    ></om-edge>`;
-  }
-
   /**
    * Look up the diagram-space position of the connector identified by
    * `key` (`k:<id>` for standalone, `k:<compId>.<portId>` for nested).
@@ -765,6 +742,7 @@ export class OmGraphicalLayout extends LitElement {
       return;
     }
     const picker = (this.pickerFactory ?? defaultPicker)(ctx.scene, canvas);
+    this.gestureOverlay = new GestureOverlay(ctx.scene, ctx.diagramRoot);
     this.modeRouter = new ModeRouter({
       canvas,
       picker,
@@ -773,6 +751,9 @@ export class OmGraphicalLayout extends LitElement {
       onInteraction: (type, detail) => this.onInteraction(type, detail),
       onDrag: (type, detail) => this.onDrag(type, detail),
       store: this.interactionStore,
+      overlay: this.gestureOverlay,
+      connectorPosition: (key) => this.connectorDiagramPosition(key),
+      evaluateCompat: (from, toKey) => this.evaluateCompat(from, toKey),
     });
     // Native dblclick on empty canvas → open the library browser.
     // InteractionManager's `doubleClick` only fires on hits; this path
@@ -785,6 +766,8 @@ export class OmGraphicalLayout extends LitElement {
   private detachManagers(): void {
     this.modeRouter?.destroy();
     this.modeRouter = null;
+    this.gestureOverlay?.dispose();
+    this.gestureOverlay = null;
     if (this.dblClickCanvas) {
       this.dblClickCanvas.removeEventListener(
         "dblclick",

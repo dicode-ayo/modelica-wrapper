@@ -1,4 +1,4 @@
-import type { Node } from "@babylonjs/core";
+import type { Color3, Node } from "@babylonjs/core";
 
 import {
   entityKeyForNode,
@@ -12,6 +12,33 @@ export type ClientToDiagram = (
   clientX: number,
   clientY: number,
 ) => { x: number; y: number } | null;
+
+/** Diagram-space position of a connector, for placing the routing wire. */
+export type ConnectorPosition = (
+  key: string,
+) => { x: number; y: number } | null;
+
+/** Local type/causality check between two connector keys; `null` when
+ *  there's no snap target yet. */
+export type CompatCheck = (
+  from: string,
+  toKey: string | null,
+) => { ok: boolean; reason?: string } | null;
+
+/**
+ * The transient-feedback surface a gesture mode draws on while in flight.
+ * `GestureOverlay` satisfies it; tests pass a recording stub.
+ */
+export interface OverlayHandle {
+  showWire(
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    color: Color3,
+  ): void;
+  hideWire(): void;
+  showRect(rect: { x1: number; y1: number; x2: number; y2: number }): void;
+  hideRect(): void;
+}
 
 export interface DragEvents {
   drag: {

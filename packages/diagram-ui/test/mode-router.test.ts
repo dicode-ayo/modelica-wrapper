@@ -3,6 +3,7 @@ import { NullEngine, Node, Scene, TransformNode } from "@babylonjs/core";
 
 import { ModeRouter } from "../src/interaction/mode.js";
 import { InteractionStateStore } from "../src/interaction/interaction-state.js";
+import { fakeOverlay } from "./harness/fake-overlay.js";
 
 function makeScene(): { scene: Scene; dispose: () => void } {
   const engine = new NullEngine({
@@ -51,6 +52,9 @@ function setup(): Harness {
     onInteraction: () => calls.push("interaction"),
     onDrag: () => calls.push("drag"),
     store,
+    overlay: fakeOverlay(),
+    connectorPosition: () => null,
+    evaluateCompat: () => null,
   });
   return { canvas, router, store, calls, setPicked: (n) => (picked = n) };
 }

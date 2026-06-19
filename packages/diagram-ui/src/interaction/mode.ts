@@ -9,8 +9,11 @@ import {
   releasePointer,
   MOVE_KINDS,
   type ClientToDiagram,
+  type CompatCheck,
+  type ConnectorPosition,
   type DragEmit,
   type GestureMode,
+  type OverlayHandle,
   type Picker,
   type SelectionProvider,
 } from "./gesture-mode.js";
@@ -27,6 +30,12 @@ export interface ModeRouterDeps {
   onInteraction: EmitFn;
   onDrag: DragEmit;
   store: InteractionStateStore;
+  /** Transient-feedback surface the gesture modes draw on. */
+  overlay: OverlayHandle;
+  /** Diagram-space position of a connector (for the routing wire). */
+  connectorPosition: ConnectorPosition;
+  /** Local compatibility check between two connector keys. */
+  evaluateCompat: CompatCheck;
 }
 
 /**
@@ -60,9 +69,15 @@ export class ModeRouter {
       deps.picker,
       deps.onInteraction,
     );
-    this.selectMode = new SelectMode(deps.onDrag);
+    this.selectMode = new SelectMode(deps.onDrag, deps.overlay);
     this.dragMode = new DragMode(deps.onDrag);
-    this.connectMode = new ConnectMode(deps.picker, deps.onDrag);
+    this.connectMode = new ConnectMode(
+      deps.picker,
+      deps.onDrag,
+      deps.overlay,
+      deps.connectorPosition,
+      deps.evaluateCompat,
+    );
     this.canvas.addEventListener("pointerdown", this.onPointerDown);
     this.canvas.addEventListener("pointermove", this.onPointerMove);
     this.canvas.addEventListener("pointerup", this.onPointerUp);
