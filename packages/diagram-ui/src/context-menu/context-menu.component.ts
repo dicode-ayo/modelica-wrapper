@@ -23,9 +23,9 @@ import { omTokens } from "@dicode/ui-common";
 export interface ContextMenuItem {
   id: string;
   label: string;
-  disabled?: boolean;
+  disabled?: boolean | undefined;
   /** Items sharing a `group` render together; a separator falls between groups. */
-  group?: string;
+  group?: string | undefined;
 }
 
 export type ContextMenuSelectDetail = { id: string };

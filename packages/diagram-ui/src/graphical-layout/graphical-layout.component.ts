@@ -19,6 +19,7 @@ import "../connection/connection.component.js";
 import "../label/label.component.js";
 import "../debug/perf-hud.component.js";
 import "../library-browser/library-browser.component.js";
+import "../context-menu/context-menu.component.js";
 import type { OmScene, EngineFactory } from "../scene/scene.component.js";
 import type { OmConnector } from "../connector/connector.component.js";
 import type { OmComponent } from "../component/component.component.js";
@@ -52,6 +53,11 @@ import {
   type CommandTarget,
   type DiagramCommandId,
 } from "../commands/index.js";
+import type {
+  ContextMenuItem,
+  ContextMenuSelectDetail,
+  OmContextMenu,
+} from "../context-menu/context-menu.component.js";
 import {
   deriveContextKeys,
   type ContextKeys,
@@ -302,6 +308,7 @@ export class OmGraphicalLayout extends LitElement {
   @state() private libraryBrowserOpen = false;
 
   @query("om-scene") private sceneEl?: OmScene;
+  @query("om-context-menu") private contextMenuEl?: OmContextMenu;
 
   private modeRouter: ModeRouter | null = null;
   private dblClickPicker: PickerFn | null = null;
@@ -408,6 +415,9 @@ export class OmGraphicalLayout extends LitElement {
             @om-library-cancel=${this.onLibraryCancel}
           ></om-library-browser>`
         : nothing}
+      <om-context-menu
+        @om-context-menu-select=${this.onContextMenuSelect}
+      ></om-context-menu>
     `;
   }
 
@@ -972,6 +982,7 @@ export class OmGraphicalLayout extends LitElement {
       case "contextMenu": {
         const d = detail as InteractionEvents["contextMenu"];
         this.emit("om-context-menu", d);
+        this.openContextMenu(d.clientX, d.clientY);
         return;
       }
     }
@@ -1248,6 +1259,42 @@ export class OmGraphicalLayout extends LitElement {
   private runCommand(id: DiagramCommandId): boolean {
     return this.commands.run(id, this.commandContext(), this.commandTarget());
   }
+
+  /** Open the context menu at the cursor with the commands valid right now. */
+  private openContextMenu(x: number, y: number): void {
+    const menu = this.contextMenuEl;
+    if (!menu) {
+      return;
+    }
+    const ctx = this.commandContext();
+    const items: ContextMenuItem[] = this.commands
+      .commandsFor("contextMenu", ctx)
+      .map((placed) => ({
+        id: placed.command.id,
+        label: placed.command.title,
+        group: placed.placement.group,
+      }));
+    if (items.length === 0) {
+      return;
+    }
+    menu.items = items;
+    menu.open(x, y);
+  }
+
+  private readonly onContextMenuSelect = (
+    e: CustomEvent<ContextMenuSelectDetail>,
+  ): void => {
+    // The id came from `commandsFor`, so it's a registered command; resolve it
+    // back through `all()` to recover the typed id without a cast.
+    const command = this.commands.all().find((c) => c.id === e.detail.id);
+    if (command) {
+      this.commands.run(
+        command.id,
+        this.commandContext(),
+        this.commandTarget(),
+      );
+    }
+  };
 
   private emit<K extends LayoutEventName>(
     name: K,
