@@ -48,10 +48,17 @@ interface Rect {
 /**
  * Dispose a transient overlay mesh and its material; tolerant of null.
  * The `(false, true)` releases the per-build material so a gesture that
- * rebuilds every pointermove doesn't accrue orphaned materials.
+ * rebuilds every pointermove doesn't accrue orphaned materials. Requests
+ * a render — rendering is on-demand, so without this the disposed mesh
+ * would linger on screen until an unrelated frame.
  */
 export function disposeOverlayMesh(mesh: AbstractMesh | null): void {
-  mesh?.dispose(false, true);
+  if (!mesh) {
+    return;
+  }
+  const scene = mesh.getScene();
+  mesh.dispose(false, true);
+  requestSceneRender(scene);
 }
 
 /**

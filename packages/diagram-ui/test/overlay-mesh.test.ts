@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { NullEngine, Scene, TransformNode } from "@babylonjs/core";
+
+vi.mock("../src/scene/render-scheduler.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../src/scene/render-scheduler.js")
+  >()),
+  requestSceneRender: vi.fn(),
+}));
 
 import {
   buildWireMesh,
@@ -7,6 +14,7 @@ import {
   disposeOverlayMesh,
   CONNECT_OK_COLOR,
 } from "../src/base/overlay-mesh.js";
+import { requestSceneRender } from "../src/scene/render-scheduler.js";
 
 function makeScene(): {
   scene: Scene;
@@ -65,6 +73,27 @@ describe("overlay-mesh", () => {
     expect(scene.getMeshByName("om-gesture-wire")).toBeNull();
 
     expect(() => disposeOverlayMesh(null)).not.toThrow();
+    dispose();
+  });
+
+  it("requests a render on build and on dispose (on-demand rendering)", () => {
+    const { scene, parent, dispose } = makeScene();
+
+    vi.mocked(requestSceneRender).mockClear();
+    const wire = buildWireMesh(
+      scene,
+      parent,
+      { x: 0, y: 0 },
+      { x: 10, y: 5 },
+      CONNECT_OK_COLOR,
+    );
+    expect(requestSceneRender).toHaveBeenCalledWith(scene);
+
+    vi.mocked(requestSceneRender).mockClear();
+    disposeOverlayMesh(wire);
+    // Without this the disposed mesh lingers on screen until an unrelated
+    // frame.
+    expect(requestSceneRender).toHaveBeenCalledWith(scene);
     dispose();
   });
 
