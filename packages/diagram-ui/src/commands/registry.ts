@@ -1,9 +1,9 @@
 import type { ContextKeys } from "../interaction/context-keys.js";
 import type {
   Command,
-  CommandPlacement,
   CommandSurface,
   CommandTarget,
+  PlacedCommand,
 } from "./command.js";
 
 /**
@@ -61,13 +61,14 @@ export class CommandRegistry<Id extends string = string> {
   /**
    * Commands placed on `surface` whose placement is visible for `ctx` (the
    * placement's `when`, else the command's `when`, else always), ordered by
-   * group then `order`. The context menu / toolbar / action menu render these.
+   * group then `order`. Each result carries its resolved `placement` so the
+   * view can draw separators between groups without re-matching the surface.
    */
   commandsFor(
     surface: CommandSurface,
     ctx: ContextKeys,
-  ): readonly Command<Id>[] {
-    const matched: { command: Command<Id>; placement: CommandPlacement }[] = [];
+  ): readonly PlacedCommand<Id>[] {
+    const matched: PlacedCommand<Id>[] = [];
     for (const command of this.byId.values()) {
       for (const placement of command.placements ?? []) {
         if (placement.surface !== surface) {
@@ -81,13 +82,16 @@ export class CommandRegistry<Id extends string = string> {
       }
     }
     matched.sort((a, b) => {
+      // `group` is a structural token, not display text — pin the locale so
+      // the order doesn't depend on the host's.
       const group = (a.placement.group ?? "").localeCompare(
         b.placement.group ?? "",
+        "en",
       );
       return group !== 0
         ? group
         : (a.placement.order ?? 0) - (b.placement.order ?? 0);
     });
-    return matched.map((m) => m.command);
+    return matched;
   }
 }

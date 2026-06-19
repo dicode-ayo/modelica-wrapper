@@ -121,15 +121,15 @@ describe("DIAGRAM_COMMANDS", () => {
 
   it("places the edit ops in the context menu only when a selection exists", () => {
     const registry = new CommandRegistry(DIAGRAM_COMMANDS);
-    expect(registry.commandsFor("contextMenu", ctx()).map((c) => c.id)).toEqual(
-      [
-        "diagram.delete",
-        "diagram.rotateCw",
-        "diagram.rotateCcw",
-        "diagram.flipHorizontal",
-        "diagram.flipVertical",
-      ],
-    );
+    expect(
+      registry.commandsFor("contextMenu", ctx()).map((m) => m.command.id),
+    ).toEqual([
+      "diagram.delete",
+      "diagram.rotateCw",
+      "diagram.rotateCcw",
+      "diagram.flipHorizontal",
+      "diagram.flipVertical",
+    ]);
     expect(
       registry.commandsFor(
         "contextMenu",

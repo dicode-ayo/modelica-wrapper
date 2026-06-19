@@ -16,7 +16,7 @@ export interface CommandTarget {
   setSelection(keys: Iterable<string>): void;
 }
 
-/** A UI surface a command can be placed on. The views over each are F3/C2. */
+/** A UI surface a command can be placed on. */
 export type CommandSurface = "contextMenu" | "toolbar" | "actionMenu";
 
 /**
@@ -29,6 +29,12 @@ export interface CommandPlacement {
   group?: string;
   order?: number;
   when?: (ctx: ContextKeys) => boolean;
+}
+
+/** A command resolved to one of its placements on a surface. */
+export interface PlacedCommand<Id extends string = string> {
+  command: Command<Id>;
+  placement: CommandPlacement;
 }
 
 /**

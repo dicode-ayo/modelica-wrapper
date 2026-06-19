@@ -77,14 +77,21 @@ describe("CommandRegistry", () => {
     ]);
 
     it("returns a surface's commands ordered by group then order", () => {
-      expect(reg.commandsFor("contextMenu", ctx()).map((c) => c.id)).toEqual([
-        "a",
-        "b",
-      ]);
+      expect(
+        reg.commandsFor("contextMenu", ctx()).map((m) => m.command.id),
+      ).toEqual(["a", "b"]);
+    });
+
+    it("carries the resolved placement so the view can group", () => {
+      const [first] = reg.commandsFor("contextMenu", ctx());
+      expect(first?.placement.surface).toBe("contextMenu");
+      expect(first?.placement.order).toBe(0);
     });
 
     it("filters by surface", () => {
-      expect(reg.commandsFor("toolbar", ctx()).map((c) => c.id)).toEqual(["t"]);
+      expect(
+        reg.commandsFor("toolbar", ctx()).map((m) => m.command.id),
+      ).toEqual(["t"]);
       expect(reg.commandsFor("actionMenu", ctx())).toEqual([]);
     });
 
@@ -102,13 +109,13 @@ describe("CommandRegistry", () => {
           ],
         }),
       ]);
-      expect(r.commandsFor("contextMenu", ctx()).map((c) => c.id)).toEqual([
-        "explicit",
-      ]);
+      expect(
+        r.commandsFor("contextMenu", ctx()).map((m) => m.command.id),
+      ).toEqual(["explicit"]);
       expect(
         r
           .commandsFor("contextMenu", ctx({ selectionCount: 1 }))
-          .map((c) => c.id),
+          .map((m) => m.command.id),
       ).toEqual(["explicit", "sel"]);
     });
   });

@@ -3,6 +3,7 @@ export type {
   CommandPlacement,
   CommandSurface,
   CommandTarget,
+  PlacedCommand,
 } from "./command.js";
 export { CommandRegistry } from "./registry.js";
 export { chordFromEvent, type KeyChord } from "./keymap.js";
