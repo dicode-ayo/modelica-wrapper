@@ -80,8 +80,9 @@ export async function applyEdits(
     ? await captureSnapshot(client, hostClass)
     : undefined;
 
-  // Deletions first so we don't re-add an edge that no longer has a
-  // counterpart, then adds, then placement changes.
+  // Apply order is decided by `order()`: index-shifting graphics edits
+  // (modify → delete → add) must keep that relative order — see the
+  // per-case notes there.
   const ordered = [...edits].sort((a, b) => order(a) - order(b));
 
   for (const edit of ordered) {
@@ -131,6 +132,16 @@ function order(e: LayoutEdit): number {
       // `updateConnectionNames` RPC neither adds nor removes an edge, so
       // its position relative to placement is immaterial.
       return 4;
+    // Graphics edits address shapes by positional index, so modifies must
+    // run before deletes (which shift indices) and deletes before adds. The
+    // diff already emits deletes descending and adds ascending; the stable
+    // sort preserves that within each tier.
+    case "graphicsModified":
+      return 5;
+    case "graphicsDeleted":
+      return 6;
+    case "graphicsAdded":
+      return 7;
   }
 }
 
@@ -231,6 +242,36 @@ async function applyOne(
           to: edit.oldTo,
           fromNew: edit.newFrom,
           toNew: edit.newTo,
+        }),
+      );
+      return;
+    case "graphicsAdded":
+      assertMutationApplied(
+        "writeClassGraphics",
+        await client.invoke("writeClassGraphics", {
+          typeName: hostClass,
+          layer: edit.layer,
+          op: { kind: "add", shape: edit.shape },
+        }),
+      );
+      return;
+    case "graphicsModified":
+      assertMutationApplied(
+        "writeClassGraphics",
+        await client.invoke("writeClassGraphics", {
+          typeName: hostClass,
+          layer: edit.layer,
+          op: { kind: "modify", index: edit.index, shape: edit.shape },
+        }),
+      );
+      return;
+    case "graphicsDeleted":
+      assertMutationApplied(
+        "writeClassGraphics",
+        await client.invoke("writeClassGraphics", {
+          typeName: hostClass,
+          layer: edit.layer,
+          op: { kind: "delete", index: edit.index },
         }),
       );
       return;

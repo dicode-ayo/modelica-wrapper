@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import type { OmcClient } from "@dicode/omc-client";
+import type { OmcClient, RectangleShape } from "@dicode/omc-client";
 
 import { applyEdits } from "./apply-edits.js";
 import type { LayoutEdit } from "./diff-layout.js";
@@ -151,5 +151,87 @@ describe("applyEdits: snapshot rollback option (issue #76, item 14)", () => {
     expect(result.failed).toHaveLength(1);
     expect(result.rolledBack).toBe(false);
     expect(loadString).not.toHaveBeenCalled();
+  });
+});
+
+describe("applyEdits: graphics", () => {
+  const shape: RectangleShape = {
+    kind: "rectangle",
+    extent: [
+      [0, 0],
+      [10, 10],
+    ],
+  };
+
+  it("dispatches graphicsAdded as a writeClassGraphics add op", async () => {
+    const { client, invoke } = mockClient([{ success: true }]);
+    const edit: LayoutEdit = { kind: "graphicsAdded", layer: "icon", shape };
+    const result = await applyEdits(client, "MyPkg.M", [edit]);
+    expect(result.applied).toBe(1);
+    expect(invoke).toHaveBeenCalledWith("writeClassGraphics", {
+      typeName: "MyPkg.M",
+      layer: "icon",
+      op: { kind: "add", shape },
+    });
+  });
+
+  it("dispatches graphicsModified with its index", async () => {
+    const { client, invoke } = mockClient([{ success: true }]);
+    const edit: LayoutEdit = {
+      kind: "graphicsModified",
+      layer: "diagram",
+      index: 2,
+      shape,
+    };
+    await applyEdits(client, "MyPkg.M", [edit]);
+    expect(invoke).toHaveBeenCalledWith("writeClassGraphics", {
+      typeName: "MyPkg.M",
+      layer: "diagram",
+      op: { kind: "modify", index: 2, shape },
+    });
+  });
+
+  it("dispatches graphicsDeleted with its index", async () => {
+    const { client, invoke } = mockClient([{ success: true }]);
+    const edit: LayoutEdit = {
+      kind: "graphicsDeleted",
+      layer: "icon",
+      index: 1,
+    };
+    await applyEdits(client, "MyPkg.M", [edit]);
+    expect(invoke).toHaveBeenCalledWith("writeClassGraphics", {
+      typeName: "MyPkg.M",
+      layer: "icon",
+      op: { kind: "delete", index: 1 },
+    });
+  });
+
+  it("routes a rejected graphics write into failed", async () => {
+    const { client } = mockClient([
+      { success: false, diagnostic: "bad shape" },
+    ]);
+    const edit: LayoutEdit = { kind: "graphicsAdded", layer: "icon", shape };
+    const result = await applyEdits(client, "MyPkg.M", [edit]);
+    expect(result.applied).toBe(0);
+    expect(result.failed[0]!.error).toContain("bad shape");
+  });
+
+  it("orders modify → delete → add so indices stay valid", async () => {
+    const { client, invoke } = mockClient([{ success: true }]);
+    const add: LayoutEdit = { kind: "graphicsAdded", layer: "icon", shape };
+    const del: LayoutEdit = {
+      kind: "graphicsDeleted",
+      layer: "icon",
+      index: 2,
+    };
+    const mod: LayoutEdit = {
+      kind: "graphicsModified",
+      layer: "icon",
+      index: 0,
+      shape,
+    };
+    await applyEdits(client, "MyPkg.M", [add, del, mod]);
+    const ops = invoke.mock.calls.map((c) => c[1].op.kind);
+    expect(ops).toEqual(["modify", "delete", "add"]);
   });
 });

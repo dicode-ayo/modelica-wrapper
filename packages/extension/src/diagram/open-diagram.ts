@@ -687,6 +687,12 @@ function editSummary(edit: LayoutEdit): string {
       return `re-routed ${edit.from} ↔ ${edit.to} (${edit.waypoints.length} pts)`;
     case "connectionRenamed":
       return `re-indexed ${edit.oldFrom} ↔ ${edit.oldTo} → ${edit.newFrom} ↔ ${edit.newTo}`;
+    case "graphicsAdded":
+      return `drew ${edit.shape.kind} on ${edit.layer}`;
+    case "graphicsModified":
+      return `edited ${edit.shape.kind} #${edit.index} on ${edit.layer}`;
+    case "graphicsDeleted":
+      return `removed ${edit.layer} shape #${edit.index}`;
   }
 }
 

@@ -1,4 +1,12 @@
-import type { DiagramLayout, Extent } from "@dicode/omc-client";
+import type {
+  DiagramLayout,
+  Extent,
+  IconLayer,
+  Shape,
+} from "@dicode/omc-client";
+
+/** The two annotation layers a class carries graphics in. */
+export type GraphicsLayer = "icon" | "diagram";
 
 /**
  * Diffs two `DiagramLayout` snapshots and emits a flat list of mutation
@@ -18,6 +26,8 @@ import type { DiagramLayout, Extent } from "@dicode/omc-client";
  *     `pins[3].p → pins[2].p`, while the other endpoint and the
  *     waypoints carry over; routed in-place via `updateConnectionNames`
  *     instead of the more-disruptive delete+add — see issue #26)
+ *   - own-class icon/diagram shape add/modify/delete → `writeClassGraphics`
+ *     (positional identity; see `diffGraphics` for the insert/delete caveat)
  *
  * Out of scope (deferred):
  *   - component class swaps
@@ -59,7 +69,15 @@ export type LayoutEdit =
       newFrom: string;
       newTo: string;
       waypoints: ReadonlyArray<readonly [number, number]>;
-    };
+    }
+  | { kind: "graphicsAdded"; layer: GraphicsLayer; shape: Shape }
+  | {
+      kind: "graphicsModified";
+      layer: GraphicsLayer;
+      index: number;
+      shape: Shape;
+    }
+  | { kind: "graphicsDeleted"; layer: GraphicsLayer; index: number };
 
 function endpointToCref(c: {
   component: string | undefined;
@@ -232,7 +250,82 @@ export function diffLayouts(
     }
   }
 
+  diffGraphics(prev, next, edits);
+
   return edits;
+}
+
+/** Shapes in `layers` that the named class itself contributed, or `[]`. */
+function ownShapes(
+  layers: ReadonlyArray<IconLayer>,
+  className: string,
+): Shape[] {
+  return layers.find((l) => l.from === className)?.shapes ?? [];
+}
+
+/**
+ * Order-independent, undefined-tolerant JSON of a value: object keys are
+ * sorted and `undefined`-valued keys dropped (matching JSON semantics). Two
+ * shapes whose optional fields are present-as-undefined vs absent, or whose
+ * keys differ only in order, compare equal — so a re-fetch never reports a
+ * spurious modify for a shape the user didn't touch.
+ */
+function stableJson(v: unknown): string {
+  // JSON.stringify collapses NaN/Infinity to "null"; keep them distinct so a
+  // non-finite-valued field never compares equal to an actual null.
+  if (typeof v === "number" && !Number.isFinite(v)) return `n:${String(v)}`;
+  if (v === null || typeof v !== "object") return JSON.stringify(v) ?? "null";
+  if (Array.isArray(v)) return `[${v.map(stableJson).join(",")}]`;
+  const entries = Object.entries(v as Record<string, unknown>)
+    .filter(([, val]) => val !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([k, val]) => `${JSON.stringify(k)}:${stableJson(val)}`);
+  return `{${entries.join(",")}}`;
+}
+
+function shapeEqual(a: Shape, b: Shape): boolean {
+  return stableJson(a) === stableJson(b);
+}
+
+/**
+ * Diff the host's OWN icon/diagram shapes (never inherited ancestor layers —
+ * the write targets only `className`'s annotation). Shape identity is
+ * positional `(layer, index)`: a same-index value change is a modify, trailing
+ * extras are appends, trailing removals are deletes. Deletes are emitted in
+ * descending index so `apply-edits` can run them without re-indexing.
+ */
+function diffGraphics(
+  prev: DiagramLayout,
+  next: DiagramLayout,
+  edits: LayoutEdit[],
+): void {
+  const layers: ReadonlyArray<[GraphicsLayer, "iconLayers" | "diagramLayers"]> =
+    [
+      ["icon", "iconLayers"],
+      ["diagram", "diagramLayers"],
+    ];
+  for (const [layer, field] of layers) {
+    const before = ownShapes(prev[field], prev.className);
+    const after = ownShapes(next[field], next.className);
+
+    const common = Math.min(before.length, after.length);
+    for (let i = 0; i < common; i += 1) {
+      const a = before[i];
+      const b = after[i];
+      if (a && b && !shapeEqual(a, b)) {
+        edits.push({ kind: "graphicsModified", layer, index: i, shape: b });
+      }
+    }
+    // Appends preserve order, so adds go in ascending index.
+    for (let i = before.length; i < after.length; i += 1) {
+      const shape = after[i];
+      if (shape) edits.push({ kind: "graphicsAdded", layer, shape });
+    }
+    // Deletes go in descending index so earlier removals don't shift later ones.
+    for (let i = before.length - 1; i >= after.length; i -= 1) {
+      edits.push({ kind: "graphicsDeleted", layer, index: i });
+    }
+  }
 }
 
 /** A connection endpoint reference reduced to its diffable parts. */
