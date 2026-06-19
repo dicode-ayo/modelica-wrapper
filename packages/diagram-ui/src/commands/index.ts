@@ -1,4 +1,13 @@
-export type { Command, CommandTarget } from "./command.js";
+export type {
+  Command,
+  CommandPlacement,
+  CommandSurface,
+  CommandTarget,
+} from "./command.js";
 export { CommandRegistry } from "./registry.js";
-export { chordFromEvent, DEFAULT_KEYMAP, type KeyChord } from "./keymap.js";
-export { DIAGRAM_COMMANDS } from "./diagram-commands.js";
+export { chordFromEvent, type KeyChord } from "./keymap.js";
+export {
+  DIAGRAM_COMMANDS,
+  DEFAULT_KEYMAP,
+  type DiagramCommandId,
+} from "./diagram-commands.js";

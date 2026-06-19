@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { DiagramLayout } from "@dicode/omc-client";
 
 import type { Command, CommandTarget } from "../src/commands/command.js";
-import { DIAGRAM_COMMANDS } from "../src/commands/diagram-commands.js";
+import {
+  DEFAULT_KEYMAP,
+  DIAGRAM_COMMANDS,
+} from "../src/commands/diagram-commands.js";
+import { CommandRegistry } from "../src/commands/registry.js";
 import type { ContextKeys } from "../src/interaction/context-keys.js";
 
 function layout(): DiagramLayout {
@@ -106,5 +110,31 @@ describe("DIAGRAM_COMMANDS", () => {
       );
       expect(when(ctx({ readonly: true }))).toBe(false);
     }
+  });
+
+  it("every default key binding resolves to a registered command", () => {
+    const registry = new CommandRegistry(DIAGRAM_COMMANDS);
+    for (const id of DEFAULT_KEYMAP.values()) {
+      expect(registry.get(id)).toBeDefined();
+    }
+  });
+
+  it("places the edit ops in the context menu only when a selection exists", () => {
+    const registry = new CommandRegistry(DIAGRAM_COMMANDS);
+    expect(registry.commandsFor("contextMenu", ctx()).map((c) => c.id)).toEqual(
+      [
+        "diagram.delete",
+        "diagram.rotateCw",
+        "diagram.rotateCcw",
+        "diagram.flipHorizontal",
+        "diagram.flipVertical",
+      ],
+    );
+    expect(
+      registry.commandsFor(
+        "contextMenu",
+        ctx({ selectionCount: 0, selectionKind: "none" }),
+      ),
+    ).toEqual([]);
   });
 });

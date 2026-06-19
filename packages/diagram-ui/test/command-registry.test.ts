@@ -67,4 +67,49 @@ describe("CommandRegistry", () => {
     expect(reg.isEnabled("a", ctx({ readonly: true }))).toBe(false);
     expect(reg.isEnabled("missing", ctx())).toBe(false);
   });
+
+  describe("commandsFor", () => {
+    const reg = new CommandRegistry([
+      cmd({ id: "b", placements: [{ surface: "contextMenu", order: 1 }] }),
+      cmd({ id: "a", placements: [{ surface: "contextMenu", order: 0 }] }),
+      cmd({ id: "t", placements: [{ surface: "toolbar" }] }),
+      cmd({ id: "none" }),
+    ]);
+
+    it("returns a surface's commands ordered by group then order", () => {
+      expect(reg.commandsFor("contextMenu", ctx()).map((c) => c.id)).toEqual([
+        "a",
+        "b",
+      ]);
+    });
+
+    it("filters by surface", () => {
+      expect(reg.commandsFor("toolbar", ctx()).map((c) => c.id)).toEqual(["t"]);
+      expect(reg.commandsFor("actionMenu", ctx())).toEqual([]);
+    });
+
+    it("hides a placement whose when fails, falling back to command.when", () => {
+      const r = new CommandRegistry([
+        cmd({
+          id: "sel",
+          when: (c) => c.selectionCount > 0,
+          placements: [{ surface: "contextMenu", order: 1 }],
+        }),
+        cmd({
+          id: "explicit",
+          placements: [
+            { surface: "contextMenu", order: 0, when: (c) => !c.readonly },
+          ],
+        }),
+      ]);
+      expect(r.commandsFor("contextMenu", ctx()).map((c) => c.id)).toEqual([
+        "explicit",
+      ]);
+      expect(
+        r
+          .commandsFor("contextMenu", ctx({ selectionCount: 1 }))
+          .map((c) => c.id),
+      ).toEqual(["explicit", "sel"]);
+    });
+  });
 });

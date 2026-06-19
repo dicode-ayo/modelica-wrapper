@@ -14,16 +14,3 @@ export function chordFromEvent(e: KeyboardEvent): KeyChord {
   parts.push(e.key.length === 1 ? e.key.toLowerCase() : e.key);
   return parts.join("+");
 }
-
-/**
- * Default chord → command-id bindings. Fixed here; user reassignment is F2b
- * (#184). Mirrors the shortcuts the diagram has always shipped.
- */
-export const DEFAULT_KEYMAP: ReadonlyMap<KeyChord, string> = new Map([
-  ["Delete", "diagram.delete"],
-  ["Backspace", "diagram.delete"],
-  ["r", "diagram.rotateCw"],
-  ["shift+r", "diagram.rotateCcw"],
-  ["f", "diagram.flipHorizontal"],
-  ["shift+f", "diagram.flipVertical"],
-]);

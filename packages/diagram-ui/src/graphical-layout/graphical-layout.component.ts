@@ -50,6 +50,7 @@ import {
   DEFAULT_KEYMAP,
   DIAGRAM_COMMANDS,
   type CommandTarget,
+  type DiagramCommandId,
 } from "../commands/index.js";
 import {
   deriveContextKeys,
@@ -1244,7 +1245,7 @@ export class OmGraphicalLayout extends LitElement {
   }
 
   /** Run a command by id; returns whether it was enabled and fired. */
-  private runCommand(id: string): boolean {
+  private runCommand(id: DiagramCommandId): boolean {
     return this.commands.run(id, this.commandContext(), this.commandTarget());
   }
 

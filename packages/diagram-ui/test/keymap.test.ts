@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { chordFromEvent, DEFAULT_KEYMAP } from "../src/commands/keymap.js";
+import { chordFromEvent } from "../src/commands/keymap.js";
+import { DEFAULT_KEYMAP } from "../src/commands/diagram-commands.js";
 
 const ev = (init: KeyboardEventInit): KeyboardEvent =>
   new KeyboardEvent("keydown", init);

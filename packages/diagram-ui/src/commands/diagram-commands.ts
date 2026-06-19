@@ -6,7 +6,17 @@ import {
   applyFlip,
   applyRotate,
 } from "../interaction/layout-ops.js";
-import type { Command, CommandTarget } from "./command.js";
+import type { Command, CommandPlacement, CommandTarget } from "./command.js";
+import type { KeyChord } from "./keymap.js";
+
+/** The ids of the built-in diagram commands; the keymap and every dispatch
+ *  site are checked against this union. */
+export type DiagramCommandId =
+  | "diagram.delete"
+  | "diagram.rotateCw"
+  | "diagram.rotateCcw"
+  | "diagram.flipHorizontal"
+  | "diagram.flipVertical";
 
 const requireSelection = (ctx: ContextKeys): boolean =>
   !ctx.readonly && ctx.selectionCount > 0;
@@ -31,12 +41,20 @@ function mutate(
   }
 }
 
-export const DIAGRAM_COMMANDS: readonly Command[] = [
+/** Edit ops show in the right-click menu when something is selected. */
+const editMenu = (order: number): CommandPlacement => ({
+  surface: "contextMenu",
+  group: "edit",
+  order,
+});
+
+export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
   {
     id: "diagram.delete",
     title: "Delete",
     category: "Edit",
     when: requireSelection,
+    placements: [editMenu(0)],
     run: (target) => mutate(target, applyDelete, (t) => t.setSelection([])),
   },
   {
@@ -44,6 +62,7 @@ export const DIAGRAM_COMMANDS: readonly Command[] = [
     title: "Rotate clockwise",
     category: "Edit",
     when: requireSelection,
+    placements: [editMenu(1)],
     run: (target) => mutate(target, (l, k) => applyRotate(l, k, true)),
   },
   {
@@ -51,6 +70,7 @@ export const DIAGRAM_COMMANDS: readonly Command[] = [
     title: "Rotate counterclockwise",
     category: "Edit",
     when: requireSelection,
+    placements: [editMenu(2)],
     run: (target) => mutate(target, (l, k) => applyRotate(l, k, false)),
   },
   {
@@ -58,6 +78,7 @@ export const DIAGRAM_COMMANDS: readonly Command[] = [
     title: "Flip horizontal",
     category: "Edit",
     when: requireSelection,
+    placements: [editMenu(3)],
     run: (target) => mutate(target, (l, k) => applyFlip(l, k, true)),
   },
   {
@@ -65,6 +86,21 @@ export const DIAGRAM_COMMANDS: readonly Command[] = [
     title: "Flip vertical",
     category: "Edit",
     when: requireSelection,
+    placements: [editMenu(4)],
     run: (target) => mutate(target, (l, k) => applyFlip(l, k, false)),
   },
 ];
+
+/**
+ * Default chord → command-id bindings for the diagram. Values are checked
+ * against {@link DiagramCommandId}, so a binding can't point at a command that
+ * doesn't exist. Fixed here; user reassignment is F2b (#184).
+ */
+export const DEFAULT_KEYMAP: ReadonlyMap<KeyChord, DiagramCommandId> = new Map([
+  ["Delete", "diagram.delete"],
+  ["Backspace", "diagram.delete"],
+  ["r", "diagram.rotateCw"],
+  ["shift+r", "diagram.rotateCcw"],
+  ["f", "diagram.flipHorizontal"],
+  ["shift+f", "diagram.flipVertical"],
+]);
