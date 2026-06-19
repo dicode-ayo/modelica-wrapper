@@ -1,8 +1,8 @@
 /**
  * Interaction state machine for `<om-graphical-layout>`. Models the
  * single "what is the user currently doing" question across the
- * cursor / drag pipeline. Five terminal states mirror the
- * `DragController` kinds plus a passive `hovering`:
+ * cursor / drag pipeline — the fine-grained gesture states plus a
+ * passive `hovering`:
  *
  *   idle       — no entity under the pointer, nothing in flight
  *   hovering   — pointer over an entity, no drag yet
@@ -37,8 +37,21 @@ export type InteractionState =
       toKey: string | null;
     };
 
+/**
+ * Interaction state — what the user is currently doing. `idle` is the
+ * resting state; a `pointerdown` transitions into the matching gesture
+ * (`select` rubber-band, `drag` move/resize/rotate/edge, `connect`
+ * routing) and `pointerup` returns to `idle`. Drawing tools extend this
+ * set with sticky resting states.
+ */
+export type ModeId = "idle" | "select" | "drag" | "connect";
+
 export interface InteractionSnapshot {
   state: InteractionState;
+  /** Coarse interaction mode set by the router on each gesture: the
+   *  press-drag family (`select`/`drag`/`connect`) or `idle` at rest.
+   *  `state` carries the finer gesture detail (which keys, which corner). */
+  mode: ModeId;
   /** Current hovered entity key, or null. Tracked separately from
    *  `state` because hovering is preempted by any drag — yet the
    *  HUD wants to keep showing the hovered entity name through it. */
@@ -53,6 +66,7 @@ type Listener = (s: InteractionSnapshot) => void;
 
 const INITIAL: InteractionSnapshot = {
   state: { kind: "idle" },
+  mode: "idle",
   hoverKey: null,
   selectedKeys: [],
   version: 0,
@@ -74,6 +88,7 @@ export class InteractionStateStore {
   next(patch: Partial<Omit<InteractionSnapshot, "version">>): void {
     this.snapshot = {
       state: patch.state ?? this.snapshot.state,
+      mode: patch.mode ?? this.snapshot.mode,
       hoverKey:
         patch.hoverKey !== undefined ? patch.hoverKey : this.snapshot.hoverKey,
       selectedKeys: patch.selectedKeys ?? this.snapshot.selectedKeys,

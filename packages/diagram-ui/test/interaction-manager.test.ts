@@ -7,6 +7,17 @@ import {
   type InteractionEvents,
 } from "../src/interaction/interaction-manager.js";
 
+/** Drive the listener-free InteractionManager from dispatched events. */
+function wireInteraction(
+  canvas: HTMLCanvasElement,
+  m: InteractionManager,
+): void {
+  canvas.addEventListener("pointermove", (e) => m.handlePointerMove(e));
+  canvas.addEventListener("pointerdown", (e) => m.handlePointerDown(e));
+  canvas.addEventListener("pointerup", (e) => m.handlePointerUp(e));
+  canvas.addEventListener("pointerleave", () => m.handlePointerLeave());
+}
+
 function makeCanvas(width = 800, height = 400): HTMLCanvasElement {
   const c = document.createElement("canvas");
   document.body.appendChild(c);
@@ -74,13 +85,13 @@ describe("InteractionManager", () => {
     const tn = new TransformNode("om-component:foo", scene);
     const { emit, events } = captureEmits();
     const picker = (_x: number, _y: number): Node | null => tn;
-    const mgr = new InteractionManager(canvas, picker, emit);
+    const mgr = new InteractionManager(picker, emit);
+    wireInteraction(canvas, mgr);
 
     canvas.dispatchEvent(
       new PointerEvent("pointermove", { clientX: 10, clientY: 10 }),
     );
     expect(events).toEqual([{ type: "hover", detail: { key: "c:foo" } }]);
-    mgr.destroy();
     dispose();
     canvas.remove();
   });
@@ -90,7 +101,8 @@ describe("InteractionManager", () => {
     const { scene, dispose } = makeScene();
     const tn = new TransformNode("om-component:foo", scene);
     const { emit, events } = captureEmits();
-    const mgr = new InteractionManager(canvas, () => tn, emit);
+    const mgr = new InteractionManager(() => tn, emit);
+    wireInteraction(canvas, mgr);
 
     canvas.dispatchEvent(
       new PointerEvent("pointermove", { clientX: 10, clientY: 10 }),
@@ -99,7 +111,6 @@ describe("InteractionManager", () => {
       new PointerEvent("pointermove", { clientX: 12, clientY: 12 }),
     );
     expect(events).toHaveLength(1);
-    mgr.destroy();
     dispose();
     canvas.remove();
   });
@@ -109,7 +120,8 @@ describe("InteractionManager", () => {
     const { scene, dispose } = makeScene();
     const tn = new TransformNode("om-connector:p", scene);
     const { emit, events } = captureEmits();
-    const mgr = new InteractionManager(canvas, () => tn, emit);
+    const mgr = new InteractionManager(() => tn, emit);
+    wireInteraction(canvas, mgr);
 
     canvas.dispatchEvent(
       new PointerEvent("pointerdown", {
@@ -121,7 +133,6 @@ describe("InteractionManager", () => {
     expect(events).toEqual([
       { type: "select", detail: { key: "k:p", addToSelection: false } },
     ]);
-    mgr.destroy();
     dispose();
     canvas.remove();
   });
@@ -133,11 +144,11 @@ describe("InteractionManager", () => {
     for (const kind of ["handle", "rotate-handle"] as const) {
       const handle = new TransformNode(`om-${kind}`, scene);
       handle.metadata = { kind, nodeId: "tl" };
-      const mgr = new InteractionManager(canvas, () => handle, emit);
+      const mgr = new InteractionManager(() => handle, emit);
+      wireInteraction(canvas, mgr);
       canvas.dispatchEvent(
         new PointerEvent("pointerdown", { button: 0, clientX: 5, clientY: 5 }),
       );
-      mgr.destroy();
     }
     expect(events).toHaveLength(0);
     dispose();
@@ -149,7 +160,8 @@ describe("InteractionManager", () => {
     const { scene, dispose } = makeScene();
     const tn = new TransformNode("om-component:R1", scene);
     const { emit, events } = captureEmits();
-    const mgr = new InteractionManager(canvas, () => tn, emit);
+    const mgr = new InteractionManager(() => tn, emit);
+    wireInteraction(canvas, mgr);
 
     canvas.dispatchEvent(
       new PointerEvent("pointerdown", {
@@ -160,7 +172,6 @@ describe("InteractionManager", () => {
       }),
     );
     expect(events).toHaveLength(0);
-    mgr.destroy();
     dispose();
     canvas.remove();
   });
@@ -170,9 +181,10 @@ describe("InteractionManager", () => {
     const { scene, dispose } = makeScene();
     const tn = new TransformNode("om-component:R1", scene);
     const { emit, events } = captureEmits();
-    const mgr = new InteractionManager(canvas, () => tn, emit, {
+    const mgr = new InteractionManager(() => tn, emit, {
       doubleClickMs: 1000,
     });
+    wireInteraction(canvas, mgr);
 
     canvas.dispatchEvent(
       new PointerEvent("pointerdown", { button: 0, clientX: 0, clientY: 0 }),
@@ -182,7 +194,6 @@ describe("InteractionManager", () => {
     );
     const types = events.map((e) => e.type);
     expect(types).toEqual(["select", "select", "doubleClick"]);
-    mgr.destroy();
     dispose();
     canvas.remove();
   });
@@ -192,7 +203,8 @@ describe("InteractionManager", () => {
     const { scene, dispose } = makeScene();
     const tn = new TransformNode("om-component:R1", scene);
     const { emit, events } = captureEmits();
-    const mgr = new InteractionManager(canvas, () => tn, emit);
+    const mgr = new InteractionManager(() => tn, emit);
+    wireInteraction(canvas, mgr);
 
     canvas.dispatchEvent(
       new PointerEvent("pointerup", { button: 2, clientX: 50, clientY: 60 }),
@@ -203,7 +215,6 @@ describe("InteractionManager", () => {
         detail: { key: "c:R1", clientX: 50, clientY: 60 },
       },
     ]);
-    mgr.destroy();
     dispose();
     canvas.remove();
   });

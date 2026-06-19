@@ -111,13 +111,12 @@ export {
   type DiagramRect,
 } from "./interaction/layout-ops.js";
 export {
-  DragController,
   type Picker as DragPicker,
   type ClientToDiagram,
   type DragEvents,
   type DragEmit,
   type SelectionProvider,
-} from "./interaction/drag-controller.js";
+} from "./interaction/gesture-mode.js";
 export {
   buildEdge,
   DEFAULT_EDGE_COLOR,
