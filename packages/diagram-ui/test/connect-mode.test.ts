@@ -247,6 +247,30 @@ describe("ConnectMode", () => {
     dispose();
   });
 
+  it("carries fromPoint and compat on the connection event for the host", () => {
+    const { scene, dispose } = makeScene();
+    const source = portMesh(scene, "out");
+    const target = connectorMesh(scene, "in");
+    let picked: Node = source;
+    const events: DragEvents["connection"][] = [];
+    const mode = makeMode({
+      picker: () => picked,
+      events,
+      connectorPosition: () => ({ x: 7, y: 9 }),
+      evaluateCompat: (_from, toKey) =>
+        toKey ? { ok: false, reason: "incompatible" } : null,
+    });
+
+    mode.begin(start(source, { x: 0, y: 0 }));
+    picked = target;
+    mode.update({ x: 80, y: 0 }, at(80, 0));
+
+    const last = lastOf(events);
+    expect(last.fromPoint).toEqual({ x: 7, y: 9 });
+    expect(last.compat).toEqual({ ok: false, reason: "incompatible" });
+    dispose();
+  });
+
   it("clears the wire on cancel without committing", () => {
     const { scene, dispose } = makeScene();
     const source = portMesh(scene, "p");

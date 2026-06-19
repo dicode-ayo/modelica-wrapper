@@ -35,13 +35,13 @@ import { findOrthoCamera, worldScaleXY } from "../scene/ortho-camera.js";
  * zoomed out — at `worldPerPixel` the computed edge would round down to
  * a handful of texels and the glyphs would be unreadable.
  */
-const MIN_TEXT_TEXTURE_EDGE = 32;
+const MIN_TEXT_TEXTURE_EDGE = 8;
 /**
  * Ceiling on the texture edge in texels. Caps GPU allocation on deep
  * zoom and stays well under the engine's maximum texture size; a label
  * gains nothing visible past this density.
  */
-const MAX_TEXT_TEXTURE_EDGE = 2048;
+const MAX_TEXT_TEXTURE_EDGE = 4096;
 /**
  * Em-size vs glyph-height fudge: a CSS `font-size: Npx` font has total
  * cap+descender height ≈ 0.95N, with cap-height ≈ 0.72N. With

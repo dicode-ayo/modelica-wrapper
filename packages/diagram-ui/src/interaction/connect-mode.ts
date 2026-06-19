@@ -93,6 +93,8 @@ export class ConnectMode implements GestureMode {
       from: ownerKey,
       to: { x: start.point.x, y: start.point.y },
       toKey: null,
+      fromPoint: this.fromPoint,
+      compat: null,
       commit: false,
     });
     return true;
@@ -112,22 +114,29 @@ export class ConnectMode implements GestureMode {
       from: this.fromKey,
       to: point,
       toKey,
+      fromPoint: this.fromPoint,
+      compat,
       commit: false,
     });
   }
 
   commit(point: DiagramPoint, e: PointerEvent): void {
-    if (this.fromKey === null) {
+    if (this.fromKey === null || this.fromPoint === null) {
       return;
     }
     const from = this.fromKey;
+    const fromPoint = this.fromPoint;
+    const toKey = this.snapKey(e, from);
+    const compat = this.evaluateCompat(from, toKey);
     this.fromKey = null;
     this.fromPoint = null;
     this.clearWire();
     this.emit("connection", {
       from,
       to: point,
-      toKey: this.snapKey(e, from),
+      toKey,
+      fromPoint,
+      compat,
       commit: true,
     });
   }
