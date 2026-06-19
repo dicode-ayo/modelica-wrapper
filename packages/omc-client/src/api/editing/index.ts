@@ -13,6 +13,7 @@ export * from "./addTransition.js";
 export * from "./deleteTransition.js";
 export * from "./updateTransition.js";
 export * from "./addClassAnnotation.js";
+export * from "./writeClassGraphics.js";
 export * from "./setComponentProperties.js";
 export * from "./setComponentDimensions.js";
 export * from "./setComponentComment.js";

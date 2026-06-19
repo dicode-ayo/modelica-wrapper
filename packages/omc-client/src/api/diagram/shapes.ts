@@ -29,10 +29,12 @@
  */
 
 import type {
+  CallExpr,
   EnumLiteral,
   Expression,
   RecordValue,
 } from "../../_shared/modelInstance.js";
+import type { Value } from "../../parse.js";
 import type {
   BitmapShape,
   Color,
@@ -465,6 +467,70 @@ export function decodeShape(record: RecordValue): Shape {
         `decodeShape: unknown shape kind '${record.name}' (expected Line/Polygon/Rectangle/Ellipse/Text/Bitmap)`,
       );
   }
+}
+
+/**
+ * Bridge a `getIconAnnotation`/`getDiagramAnnotation` graphic record (a
+ * `parse.ts` {@link Value} tree) into the `modelInstance` {@link Expression}
+ * the decoder consumes. Both wire formats carry graphics positionally in the
+ * same field order; only the node encoding differs (e.g. an enum is an
+ * `ident` here, an `{$kind:"enum"}` there).
+ *
+ * `null`/`kwarg` slots throw: OMC fills every positional field of a graphic
+ * record with its default, so a sparse or named slot reaching here signals
+ * input this was never pointed at — fail loud rather than write garbage.
+ */
+function annotationValueToExpression(v: Value): Expression {
+  switch (v.kind) {
+    case "int":
+    case "float":
+      return v.value;
+    case "bool":
+      return v.value;
+    case "string":
+      return v.value;
+    case "ident": {
+      const enumLit: EnumLiteral = { $kind: "enum", name: v.name, index: 0 };
+      return enumLit;
+    }
+    case "list":
+      return v.items.map(annotationValueToExpression);
+    case "call": {
+      const call: CallExpr = {
+        $kind: "call",
+        name: v.name,
+        arguments: v.args.map(annotationValueToExpression),
+      };
+      return call;
+    }
+    case "kwarg":
+      throw new Error(
+        `annotationValueToExpression: unexpected named arg '${v.name}' in a graphic record`,
+      );
+    case "null":
+      throw new Error(
+        "annotationValueToExpression: unexpected null slot in a graphic record",
+      );
+  }
+}
+
+/**
+ * Decode one graphic record from an `Icon`/`Diagram` annotation Value tree
+ * into a typed {@link Shape}, reusing {@link decodeShape}. The write path
+ * round-trips existing graphics through this so they re-serialize via the
+ * same named-arg path new shapes take.
+ */
+export function decodeAnnotationShape(record: Value): Shape {
+  if (record.kind !== "call") {
+    throw new Error(
+      `decodeAnnotationShape: expected a graphic record, got '${record.kind}'`,
+    );
+  }
+  return decodeShape({
+    $kind: "record",
+    name: record.name,
+    elements: record.args.map(annotationValueToExpression),
+  });
 }
 
 export const _internal = {

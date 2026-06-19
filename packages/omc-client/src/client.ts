@@ -1222,6 +1222,12 @@ export class OmcClient implements CallContext {
     return editing.addClassAnnotation(this, input);
   }
 
+  writeClassGraphics(
+    input: editing.WriteClassGraphicsInput,
+  ): Promise<editing.WriteClassGraphicsOutput> {
+    return editing.writeClassGraphics(this, input);
+  }
+
   setComponentProperties(
     input: editing.SetComponentPropertiesInput,
   ): Promise<editing.SetComponentPropertiesOutput> {
