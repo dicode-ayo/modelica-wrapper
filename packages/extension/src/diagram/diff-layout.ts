@@ -1,4 +1,9 @@
-import type { DiagramLayout, Extent, Shape } from "@dicode/omc-client";
+import type {
+  DiagramLayout,
+  Extent,
+  IconLayer,
+  Shape,
+} from "@dicode/omc-client";
 
 /** The two annotation layers a class carries graphics in. */
 export type GraphicsLayer = "icon" | "diagram";
@@ -21,6 +26,9 @@ export type GraphicsLayer = "icon" | "diagram";
  *     `pins[3].p → pins[2].p`, while the other endpoint and the
  *     waypoints carry over; routed in-place via `updateConnectionNames`
  *     instead of the more-disruptive delete+add — see issue #26)
+ *   - own-class icon/diagram shape add/modify/delete → `writeClassGraphics`
+ *     (positional `(layer, index)` identity; mid-array insert/delete is
+ *     intentionally non-minimal — see `diffGraphics`)
  *
  * Out of scope (deferred):
  *   - component class swaps
@@ -250,14 +258,31 @@ export function diffLayouts(
 
 /** Shapes in `layers` that the named class itself contributed, or `[]`. */
 function ownShapes(
-  layers: ReadonlyArray<{ from: string; shapes: Shape[] }>,
+  layers: ReadonlyArray<IconLayer>,
   className: string,
 ): Shape[] {
   return layers.find((l) => l.from === className)?.shapes ?? [];
 }
 
+/**
+ * Order-independent, undefined-tolerant JSON of a value: object keys are
+ * sorted and `undefined`-valued keys dropped (matching JSON semantics). Two
+ * shapes whose optional fields are present-as-undefined vs absent, or whose
+ * keys differ only in order, compare equal — so a re-fetch never reports a
+ * spurious modify for a shape the user didn't touch.
+ */
+function stableJson(v: unknown): string {
+  if (v === null || typeof v !== "object") return JSON.stringify(v) ?? "null";
+  if (Array.isArray(v)) return `[${v.map(stableJson).join(",")}]`;
+  const entries = Object.entries(v as Record<string, unknown>)
+    .filter(([, val]) => val !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([k, val]) => `${JSON.stringify(k)}:${stableJson(val)}`);
+  return `{${entries.join(",")}}`;
+}
+
 function shapeEqual(a: Shape, b: Shape): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return stableJson(a) === stableJson(b);
 }
 
 /**
@@ -272,13 +297,14 @@ function diffGraphics(
   next: DiagramLayout,
   edits: LayoutEdit[],
 ): void {
-  const layers: ReadonlyArray<[GraphicsLayer, keyof DiagramLayout]> = [
-    ["icon", "iconLayers"],
-    ["diagram", "diagramLayers"],
-  ];
+  const layers: ReadonlyArray<[GraphicsLayer, "iconLayers" | "diagramLayers"]> =
+    [
+      ["icon", "iconLayers"],
+      ["diagram", "diagramLayers"],
+    ];
   for (const [layer, field] of layers) {
-    const before = ownShapes(prev[field] as IconLayerLike[], prev.className);
-    const after = ownShapes(next[field] as IconLayerLike[], next.className);
+    const before = ownShapes(prev[field], prev.className);
+    const after = ownShapes(next[field], next.className);
 
     const common = Math.min(before.length, after.length);
     for (let i = 0; i < common; i += 1) {
@@ -298,11 +324,6 @@ function diffGraphics(
       edits.push({ kind: "graphicsDeleted", layer, index: i });
     }
   }
-}
-
-interface IconLayerLike {
-  from: string;
-  shapes: Shape[];
 }
 
 /** A connection endpoint reference reduced to its diffable parts. */

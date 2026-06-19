@@ -449,6 +449,28 @@ describe("diffLayouts — graphics", () => {
     ]);
   });
 
+  it("treats a key-reordered, value-equal shape as unchanged", () => {
+    const a: RectangleShape = {
+      kind: "rectangle",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      lineColor: [1, 2, 3],
+    };
+    // Same values, different key order, plus a present-but-undefined optional.
+    const b: RectangleShape = {
+      lineColor: [1, 2, 3],
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      kind: "rectangle",
+      radius: undefined,
+    };
+    expect(diffLayouts(withIcon([a]), withIcon([b]))).toEqual([]);
+  });
+
   it("emits graphicsDeleted (descending) for trailing removals", () => {
     const edits = diffLayouts(
       withIcon([rect(0), rect(20), rect(40)]),
