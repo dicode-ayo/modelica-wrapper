@@ -1241,6 +1241,13 @@ export const REGISTRY = {
     editing.AddClassAnnotationOutputSchema,
     editing.AddClassAnnotationDescription,
   ),
+  writeClassGraphics: entry(
+    "editing",
+    editing.writeClassGraphics,
+    editing.WriteClassGraphicsInputSchema,
+    editing.WriteClassGraphicsOutputSchema,
+    editing.WriteClassGraphicsDescription,
+  ),
   setComponentProperties: entry(
     "editing",
     editing.setComponentProperties,
