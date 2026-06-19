@@ -27,8 +27,7 @@ export type GraphicsLayer = "icon" | "diagram";
  *     waypoints carry over; routed in-place via `updateConnectionNames`
  *     instead of the more-disruptive delete+add — see issue #26)
  *   - own-class icon/diagram shape add/modify/delete → `writeClassGraphics`
- *     (positional `(layer, index)` identity; mid-array insert/delete is
- *     intentionally non-minimal — see `diffGraphics`)
+ *     (positional identity; see `diffGraphics` for the insert/delete caveat)
  *
  * Out of scope (deferred):
  *   - component class swaps
@@ -272,6 +271,9 @@ function ownShapes(
  * spurious modify for a shape the user didn't touch.
  */
 function stableJson(v: unknown): string {
+  // JSON.stringify collapses NaN/Infinity to "null"; keep them distinct so a
+  // non-finite-valued field never compares equal to an actual null.
+  if (typeof v === "number" && !Number.isFinite(v)) return `n:${String(v)}`;
   if (v === null || typeof v !== "object") return JSON.stringify(v) ?? "null";
   if (Array.isArray(v)) return `[${v.map(stableJson).join(",")}]`;
   const entries = Object.entries(v as Record<string, unknown>)

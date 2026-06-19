@@ -80,9 +80,9 @@ export async function applyEdits(
     ? await captureSnapshot(client, hostClass)
     : undefined;
 
-  // Apply order is decided by `order()`: structural connection/component
-  // deletes and adds first, then placement and re-routing, then the
-  // positional graphics tiers (modify → delete → add).
+  // Apply order is decided by `order()`: index-shifting graphics edits
+  // (modify → delete → add) must keep that relative order — see the
+  // per-case notes there.
   const ordered = [...edits].sort((a, b) => order(a) - order(b));
 
   for (const edit of ordered) {
