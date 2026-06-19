@@ -94,11 +94,8 @@ function filledShapeArgs(s: FilledShapeFields): string[] {
 }
 
 /**
- * Render a Text shape's `textString` Expression back to Modelica. The common
- * case is a plain string; `DynamicSelect`/cref/enum forms round-trip for
- * modified shapes that carried one in. Unknown nodes fall back to an empty
- * string literal rather than throwing — a write should never crash on an
- * unrecognized text expression.
+ * Render a Text shape's `textString` Expression to a Modelica literal.
+ * Unknown nodes fall back to `""` rather than throwing.
  */
 function expressionToModelica(expr: Expression): string {
   if (typeof expr === "string") return str(expr);

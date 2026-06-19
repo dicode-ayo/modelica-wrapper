@@ -490,6 +490,8 @@ function annotationValueToExpression(v: Value): Expression {
     case "string":
       return v.value;
     case "ident": {
+      // `index` is unread on the re-serialize path (the decoders take `name`);
+      // OMC's positional records don't carry it, so 0 is a placeholder.
       const enumLit: EnumLiteral = { $kind: "enum", name: v.name, index: 0 };
       return enumLit;
     }
