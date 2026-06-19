@@ -118,6 +118,9 @@ export interface GestureMode {
   begin(start: GestureStart): boolean;
   update(point: DiagramPoint, e: PointerEvent): void;
   commit(point: DiagramPoint, e: PointerEvent): void;
+  /** Abandon an in-flight gesture without committing — drops any transient
+   *  mesh the mode owns. Called when the router is destroyed mid-gesture. */
+  cancel?(): void;
 }
 
 /**

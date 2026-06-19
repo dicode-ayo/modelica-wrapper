@@ -107,6 +107,7 @@ export class ModeRouter {
     this.canvas.removeEventListener("pointerup", this.onPointerUp);
     this.canvas.removeEventListener("pointercancel", this.onPointerUp);
     this.canvas.removeEventListener("pointerleave", this.onPointerLeave);
+    this.active?.cancel?.();
     this.active = null;
   }
 

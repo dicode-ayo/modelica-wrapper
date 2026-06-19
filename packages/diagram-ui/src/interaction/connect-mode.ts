@@ -65,6 +65,12 @@ export class ConnectMode implements GestureMode {
     this.wire = null;
   }
 
+  cancel(): void {
+    this.fromKey = null;
+    this.fromPoint = null;
+    this.clearWire();
+  }
+
   begin(start: GestureStart): boolean {
     const entity = start.entity;
     if (entity?.kind !== "port" && entity?.kind !== "connector") {

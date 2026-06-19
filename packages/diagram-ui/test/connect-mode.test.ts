@@ -69,6 +69,14 @@ function start(node: Node, point: { x: number; y: number }): GestureStart {
 const at = (x: number, y: number) =>
   new PointerEvent("pointermove", { clientX: x, clientY: y });
 
+function lastOf<T>(arr: readonly T[]): T {
+  const v = arr.at(-1);
+  if (v === undefined) {
+    throw new Error("expected a non-empty array");
+  }
+  return v;
+}
+
 function makeMode(opts: {
   picker: () => Node | null;
   events: DragEvents["connection"][];
@@ -105,7 +113,7 @@ describe("ConnectMode", () => {
     mode.commit({ x: 50, y: 30 }, at(50, 30));
 
     expect(events).toHaveLength(3);
-    const last = events.at(-1)!;
+    const last = lastOf(events);
     expect(last.from).toBe("k:p");
     expect(last.commit).toBe(true);
     expect(last.to).toEqual({ x: 50, y: 30 });
@@ -124,7 +132,7 @@ describe("ConnectMode", () => {
     picked = target;
     mode.commit({ x: 80, y: 0 }, at(80, 0));
 
-    const last = events.at(-1)!;
+    const last = lastOf(events);
     expect(last.commit).toBe(true);
     expect(last.toKey).toBe("k:in");
     dispose();
@@ -141,10 +149,10 @@ describe("ConnectMode", () => {
     mode.begin(start(source, { x: 0, y: 0 }));
     picked = target;
     mode.update({ x: 80, y: 0 }, at(80, 0));
-    const overTarget = events.at(-1)!;
+    const overTarget = lastOf(events);
     picked = null;
     mode.update({ x: 200, y: 0 }, at(200, 0));
-    const overEmpty = events.at(-1)!;
+    const overEmpty = lastOf(events);
 
     expect(overTarget.toKey).toBe("k:in");
     expect(overEmpty.toKey).toBeNull();
@@ -163,7 +171,7 @@ describe("ConnectMode", () => {
     picked = sourceConn;
     mode.commit({ x: 5, y: 0 }, at(5, 0));
 
-    expect(events.at(-1)!.toKey).toBeNull();
+    expect(lastOf(events).toKey).toBeNull();
     dispose();
   });
 
@@ -203,7 +211,7 @@ describe("ConnectMode", () => {
 
     mode.begin(start(source, { x: 0, y: 0 }));
     expect(buildWireMesh).toHaveBeenCalledTimes(1);
-    const call = vi.mocked(buildWireMesh).mock.calls[0]!;
+    const call = lastOf(vi.mocked(buildWireMesh).mock.calls);
     // (scene, parent, from, to, color)
     expect(call[2]).toEqual({ x: 7, y: 9 });
     expect(call[4]).toBe(CONNECT_OK_COLOR);
@@ -234,8 +242,30 @@ describe("ConnectMode", () => {
     picked = target;
     mode.update({ x: 80, y: 0 }, at(80, 0));
 
-    const lastCall = vi.mocked(buildWireMesh).mock.calls.at(-1)!;
+    const lastCall = lastOf(vi.mocked(buildWireMesh).mock.calls);
     expect(lastCall[4]).toBe(CONNECT_BAD_COLOR);
+    dispose();
+  });
+
+  it("clears the wire on cancel without committing", () => {
+    const { scene, dispose } = makeScene();
+    const source = portMesh(scene, "p");
+    const events: DragEvents["connection"][] = [];
+    const mode = makeMode({
+      picker: () => source,
+      events,
+      connectorPosition: () => ({ x: 7, y: 9 }),
+    });
+
+    mode.begin(start(source, { x: 0, y: 0 }));
+    const disposesBefore = vi.mocked(disposeOverlayMesh).mock.calls.length;
+    mode.cancel();
+
+    expect(vi.mocked(disposeOverlayMesh).mock.calls.length).toBe(
+      disposesBefore + 1,
+    );
+    // Cancel never fires a commit.
+    expect(events.some((e) => e.commit)).toBe(false);
     dispose();
   });
 });

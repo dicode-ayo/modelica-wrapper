@@ -43,6 +43,11 @@ export class SelectMode implements GestureMode {
     this.rect = null;
   }
 
+  cancel(): void {
+    this.start = null;
+    this.clearRect();
+  }
+
   begin(start: GestureStart): boolean {
     if (start.entity) {
       return false;

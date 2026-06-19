@@ -40,6 +40,14 @@ function emptyStart(point: { x: number; y: number }): GestureStart {
   };
 }
 
+function nth<T>(arr: readonly T[], i: number): T {
+  const v = arr.at(i);
+  if (v === undefined) {
+    throw new Error(`expected element ${i}`);
+  }
+  return v;
+}
+
 describe("SelectMode", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -52,14 +60,14 @@ describe("SelectMode", () => {
     mode.update({ x: 40, y: 30 });
 
     expect(rects).toHaveLength(2);
-    expect(rects[0]!).toMatchObject({
+    expect(nth(rects, 0)).toMatchObject({
       rect: { x1: 5, y1: 5, x2: 5, y2: 5 },
       draft: true,
     });
 
     // The rect is drawn on begin + update.
     expect(buildRectMesh).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(buildRectMesh).mock.calls.at(-1)![2]).toEqual({
+    expect(nth(vi.mocked(buildRectMesh).mock.calls, -1)[2]).toEqual({
       x1: 5,
       y1: 5,
       x2: 40,
@@ -69,7 +77,7 @@ describe("SelectMode", () => {
     const disposesBefore = vi.mocked(disposeOverlayMesh).mock.calls.length;
     mode.commit({ x: 40, y: 30 });
 
-    expect(rects[2]!).toMatchObject({
+    expect(nth(rects, 2)).toMatchObject({
       rect: { x1: 5, y1: 5, x2: 40, y2: 30 },
       draft: false,
     });

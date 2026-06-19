@@ -721,10 +721,9 @@ export class OmGraphicalLayout extends LitElement {
         conn.setHovered(want, variant);
       }
     }
-    // Junction discs are self-managed: `<om-connection>` subscribes
-    // to `interactionStateContext` and reacts to `hoverKey` changes
-    // directly, so we don't walk them here. See
-    // `connection.component.ts > resubscribeInteractionState`.
+    // Junction discs self-manage: `<om-connection>` subscribes to
+    // `interactionStateContext` and reacts to `hoverKey` changes directly,
+    // so we don't walk them here.
   }
 
   private attachManagers(): void {
