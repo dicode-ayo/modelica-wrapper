@@ -1,26 +1,47 @@
+import type { AbstractMesh, Scene, TransformNode } from "@babylonjs/core";
+
 import type {
   DiagramPoint,
   DragEmit,
   GestureMode,
   GestureStart,
-  OverlayHandle,
 } from "./gesture-mode.js";
+import { buildRectMesh, disposeOverlayMesh } from "../base/overlay-mesh.js";
+
+interface Rect {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
 
 /**
  * Area selection: a drag on empty canvas rubber-bands out a rectangle.
- * Draws the rectangle on the overlay; the host consumes the emitted
- * `rubberBand` events to update the selection. Click-select and hover
- * are not part of this mode — they run always in the `InteractionManager`,
- * underneath every gesture.
+ * Owns and draws the rectangle; the host consumes the emitted `rubberBand`
+ * events to update the selection. Click-select and hover are not part of
+ * this mode — they run always in the `InteractionManager`, underneath
+ * every gesture.
  */
 export class SelectMode implements GestureMode {
   readonly id = "select";
   private start: DiagramPoint | null = null;
+  private rect: AbstractMesh | null = null;
 
   constructor(
     private readonly emit: DragEmit,
-    private readonly overlay: OverlayHandle,
+    private readonly scene: Scene,
+    private readonly parent: TransformNode,
   ) {}
+
+  private drawRect(rect: Rect): void {
+    disposeOverlayMesh(this.rect);
+    this.rect = buildRectMesh(this.scene, this.parent, rect);
+  }
+
+  private clearRect(): void {
+    disposeOverlayMesh(this.rect);
+    this.rect = null;
+  }
 
   begin(start: GestureStart): boolean {
     if (start.entity) {
@@ -33,7 +54,7 @@ export class SelectMode implements GestureMode {
       x2: start.point.x,
       y2: start.point.y,
     };
-    this.overlay.showRect(rect);
+    this.drawRect(rect);
     this.emit("rubberBand", { rect, draft: true });
     return true;
   }
@@ -46,7 +67,7 @@ export class SelectMode implements GestureMode {
         x2: point.x,
         y2: point.y,
       };
-      this.overlay.showRect(rect);
+      this.drawRect(rect);
       this.emit("rubberBand", { rect, draft: true });
     }
   }
@@ -57,7 +78,7 @@ export class SelectMode implements GestureMode {
     }
     const s = this.start;
     this.start = null;
-    this.overlay.hideRect();
+    this.clearRect();
     this.emit("rubberBand", {
       rect: { x1: s.x, y1: s.y, x2: point.x, y2: point.y },
       draft: false,

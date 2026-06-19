@@ -1,4 +1,4 @@
-import type { Color3, Node } from "@babylonjs/core";
+import type { Node } from "@babylonjs/core";
 
 import {
   entityKeyForNode,
@@ -24,21 +24,6 @@ export type CompatCheck = (
   from: string,
   toKey: string | null,
 ) => { ok: boolean; reason?: string } | null;
-
-/**
- * The transient-feedback surface a gesture mode draws on while in flight.
- * `GestureOverlay` satisfies it; tests pass a recording stub.
- */
-export interface OverlayHandle {
-  showWire(
-    from: { x: number; y: number },
-    to: { x: number; y: number },
-    color: Color3,
-  ): void;
-  hideWire(): void;
-  showRect(rect: { x1: number; y1: number; x2: number; y2: number }): void;
-  hideRect(): void;
-}
 
 export interface DragEvents {
   drag: {

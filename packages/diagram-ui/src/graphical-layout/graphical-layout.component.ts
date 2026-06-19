@@ -31,7 +31,6 @@ import {
 } from "../interaction/interaction-manager.js";
 import type { DragEvents } from "../interaction/gesture-mode.js";
 import { ModeRouter } from "../interaction/mode.js";
-import { GestureOverlay } from "../base/gesture-overlay.js";
 import {
   applyDeltaMove,
   applyDelete,
@@ -297,7 +296,6 @@ export class OmGraphicalLayout extends LitElement {
   @query("om-scene") private sceneEl?: OmScene;
 
   private modeRouter: ModeRouter | null = null;
-  private gestureOverlay: GestureOverlay | null = null;
   private dblClickPicker: PickerFn | null = null;
   private dblClickCanvas: HTMLCanvasElement | null = null;
   /**
@@ -740,7 +738,6 @@ export class OmGraphicalLayout extends LitElement {
       return;
     }
     const picker = (this.pickerFactory ?? defaultPicker)(ctx.scene, canvas);
-    this.gestureOverlay = new GestureOverlay(ctx.scene, ctx.diagramRoot);
     this.modeRouter = new ModeRouter({
       canvas,
       picker,
@@ -749,7 +746,8 @@ export class OmGraphicalLayout extends LitElement {
       onInteraction: (type, detail) => this.onInteraction(type, detail),
       onDrag: (type, detail) => this.onDrag(type, detail),
       store: this.interactionStore,
-      overlay: this.gestureOverlay,
+      scene: ctx.scene,
+      overlayParent: ctx.diagramRoot,
       connectorPosition: (key) => this.connectorDiagramPosition(key),
       evaluateCompat: (from, toKey) => this.evaluateCompat(from, toKey),
     });
@@ -764,8 +762,6 @@ export class OmGraphicalLayout extends LitElement {
   private detachManagers(): void {
     this.modeRouter?.destroy();
     this.modeRouter = null;
-    this.gestureOverlay?.dispose();
-    this.gestureOverlay = null;
     if (this.dblClickCanvas) {
       this.dblClickCanvas.removeEventListener(
         "dblclick",

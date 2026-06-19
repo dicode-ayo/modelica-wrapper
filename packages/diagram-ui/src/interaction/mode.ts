@@ -1,3 +1,5 @@
+import type { Scene, TransformNode } from "@babylonjs/core";
+
 import {
   InteractionManager,
   type EmitFn,
@@ -13,7 +15,6 @@ import {
   type ConnectorPosition,
   type DragEmit,
   type GestureMode,
-  type OverlayHandle,
   type Picker,
   type SelectionProvider,
 } from "./gesture-mode.js";
@@ -30,8 +31,9 @@ export interface ModeRouterDeps {
   onInteraction: EmitFn;
   onDrag: DragEmit;
   store: InteractionStateStore;
-  /** Transient-feedback surface the gesture modes draw on. */
-  overlay: OverlayHandle;
+  /** Scene + parent the gesture modes draw their transient meshes into. */
+  scene: Scene;
+  overlayParent: TransformNode;
   /** Diagram-space position of a connector (for the routing wire). */
   connectorPosition: ConnectorPosition;
   /** Local compatibility check between two connector keys. */
@@ -69,12 +71,17 @@ export class ModeRouter {
       deps.picker,
       deps.onInteraction,
     );
-    this.selectMode = new SelectMode(deps.onDrag, deps.overlay);
+    this.selectMode = new SelectMode(
+      deps.onDrag,
+      deps.scene,
+      deps.overlayParent,
+    );
     this.dragMode = new DragMode(deps.onDrag);
     this.connectMode = new ConnectMode(
       deps.picker,
       deps.onDrag,
-      deps.overlay,
+      deps.scene,
+      deps.overlayParent,
       deps.connectorPosition,
       deps.evaluateCompat,
     );

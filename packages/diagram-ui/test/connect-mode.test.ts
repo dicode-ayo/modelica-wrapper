@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NullEngine, Node, Scene, TransformNode } from "@babylonjs/core";
+
+vi.mock("../src/base/overlay-mesh.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/base/overlay-mesh.js")>()),
+  buildWireMesh: vi.fn(() => null),
+  buildRectMesh: vi.fn(() => null),
+  disposeOverlayMesh: vi.fn(),
+}));
 
 import { ConnectMode } from "../src/interaction/connect-mode.js";
 import type {
@@ -10,10 +17,14 @@ import type {
 } from "../src/interaction/gesture-mode.js";
 import { entityKeyForNode } from "../src/interaction/node-keys.js";
 import {
+  buildWireMesh,
+  disposeOverlayMesh,
   CONNECT_BAD_COLOR,
   CONNECT_OK_COLOR,
-} from "../src/base/gesture-overlay.js";
-import { fakeOverlay, type RecordingOverlay } from "./harness/fake-overlay.js";
+} from "../src/base/overlay-mesh.js";
+
+const NO_SCENE = {} as Scene;
+const NO_PARENT = {} as TransformNode;
 
 function makeScene(): { scene: Scene; dispose: () => void } {
   const engine = new NullEngine({
@@ -63,28 +74,31 @@ function makeMode(opts: {
   events: DragEvents["connection"][];
   connectorPosition?: ConnectorPosition;
   evaluateCompat?: CompatCheck;
-}): { mode: ConnectMode; overlay: RecordingOverlay } {
-  const overlay = fakeOverlay();
-  const mode = new ConnectMode(
+}): ConnectMode {
+  return new ConnectMode(
     opts.picker,
     (type, detail) => {
       if (type === "connection") {
         opts.events.push(detail as DragEvents["connection"]);
       }
     },
-    overlay,
+    NO_SCENE,
+    NO_PARENT,
     opts.connectorPosition ?? (() => null),
     opts.evaluateCompat ?? (() => null),
   );
-  return { mode, overlay };
 }
 
 describe("ConnectMode", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("emits connection events from a port through to commit", () => {
     const { scene, dispose } = makeScene();
     const source = portMesh(scene, "p");
     const events: DragEvents["connection"][] = [];
-    const { mode } = makeMode({ picker: () => source, events });
+    const mode = makeMode({ picker: () => source, events });
 
     mode.begin(start(source, { x: 0, y: 0 }));
     mode.update({ x: 50, y: 30 }, at(50, 30));
@@ -104,7 +118,7 @@ describe("ConnectMode", () => {
     const target = connectorMesh(scene, "in");
     const events: DragEvents["connection"][] = [];
     let picked: Node = source;
-    const { mode } = makeMode({ picker: () => picked, events });
+    const mode = makeMode({ picker: () => picked, events });
 
     mode.begin(start(source, { x: 0, y: 0 }));
     picked = target;
@@ -122,7 +136,7 @@ describe("ConnectMode", () => {
     const target = connectorMesh(scene, "in");
     const events: DragEvents["connection"][] = [];
     let picked: Node | null = source;
-    const { mode } = makeMode({ picker: () => picked, events });
+    const mode = makeMode({ picker: () => picked, events });
 
     mode.begin(start(source, { x: 0, y: 0 }));
     picked = target;
@@ -143,7 +157,7 @@ describe("ConnectMode", () => {
     const sourceConn = connectorMesh(scene, "self");
     const events: DragEvents["connection"][] = [];
     let picked: Node = source;
-    const { mode } = makeMode({ picker: () => picked, events });
+    const mode = makeMode({ picker: () => picked, events });
 
     mode.begin(start(source, { x: 0, y: 0 }));
     picked = sourceConn;
@@ -157,7 +171,7 @@ describe("ConnectMode", () => {
     const { scene, dispose } = makeScene();
     const source = portMesh(scene, "p");
     const events: DragEvents["connection"][] = [];
-    const { mode } = makeMode({ picker: () => source, events });
+    const mode = makeMode({ picker: () => source, events });
 
     mode.begin(start(source, { x: 0, y: 0 }));
     mode.update({ x: 30, y: 10 }, at(30, 10));
@@ -173,7 +187,7 @@ describe("ConnectMode", () => {
   it("does not start when the press is not on a port or connector", () => {
     const { scene, dispose } = makeScene();
     const comp = new TransformNode("om-component:R1", scene);
-    const { mode } = makeMode({ picker: () => comp, events: [] });
+    const mode = makeMode({ picker: () => comp, events: [] });
     expect(mode.begin(start(comp, { x: 0, y: 0 }))).toBe(false);
     dispose();
   });
@@ -181,19 +195,26 @@ describe("ConnectMode", () => {
   it("draws the wire from the connector position and clears it on commit", () => {
     const { scene, dispose } = makeScene();
     const source = portMesh(scene, "p");
-    const { mode, overlay } = makeMode({
+    const mode = makeMode({
       picker: () => source,
       events: [],
       connectorPosition: () => ({ x: 7, y: 9 }),
     });
 
     mode.begin(start(source, { x: 0, y: 0 }));
-    expect(overlay.wires).toHaveLength(1);
-    expect(overlay.wires[0]!.from).toEqual({ x: 7, y: 9 });
-    expect(overlay.wires[0]!.color).toBe(CONNECT_OK_COLOR);
+    expect(buildWireMesh).toHaveBeenCalledTimes(1);
+    const call = vi.mocked(buildWireMesh).mock.calls[0]!;
+    // (scene, parent, from, to, color)
+    expect(call[2]).toEqual({ x: 7, y: 9 });
+    expect(call[4]).toBe(CONNECT_OK_COLOR);
 
+    const disposesBefore = vi.mocked(disposeOverlayMesh).mock.calls.length;
     mode.commit({ x: 50, y: 30 }, at(50, 30));
-    expect(overlay.wireHidden).toBe(1);
+    // Commit clears the wire and does not draw a new one.
+    expect(buildWireMesh).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(disposeOverlayMesh).mock.calls.length).toBe(
+      disposesBefore + 1,
+    );
     dispose();
   });
 
@@ -202,7 +223,7 @@ describe("ConnectMode", () => {
     const source = portMesh(scene, "out");
     const target = connectorMesh(scene, "in");
     let picked: Node = source;
-    const { mode, overlay } = makeMode({
+    const mode = makeMode({
       picker: () => picked,
       events: [],
       evaluateCompat: (_from, toKey) =>
@@ -213,7 +234,8 @@ describe("ConnectMode", () => {
     picked = target;
     mode.update({ x: 80, y: 0 }, at(80, 0));
 
-    expect(overlay.wires.at(-1)!.color).toBe(CONNECT_BAD_COLOR);
+    const lastCall = vi.mocked(buildWireMesh).mock.calls.at(-1)!;
+    expect(lastCall[4]).toBe(CONNECT_BAD_COLOR);
     dispose();
   });
 });
