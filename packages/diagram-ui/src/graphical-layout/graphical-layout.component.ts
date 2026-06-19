@@ -1230,11 +1230,17 @@ export class OmGraphicalLayout extends LitElement {
   }
 
   private commandContext(): ContextKeys {
-    return deriveContextKeys(this.interactionStore.value, {
-      readonly: this.readonly,
-      viewLayer: this.layout?.kind ?? "diagram",
-      hasClipboard: false,
-    });
+    // Selection comes from `this.selectedKeys` — the same set `commandTarget`
+    // mutates — so a command's `when` and `run` can never gate on and act over
+    // different selections. Mode/gesture come from the interaction store.
+    return deriveContextKeys(
+      { ...this.interactionStore.value, selectedKeys: [...this.selectedKeys] },
+      {
+        readonly: this.readonly,
+        viewLayer: this.layout?.kind ?? "diagram",
+        hasClipboard: false,
+      },
+    );
   }
 
   /** Run a command by id; returns whether it was enabled and fired. */

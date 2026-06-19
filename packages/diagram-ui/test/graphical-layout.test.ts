@@ -143,4 +143,45 @@ describe("<om-graphical-layout>", () => {
     el.rotateSelection(true);
     expect(fired).toBe(false);
   });
+
+  function sceneOf(el: OmGraphicalLayout): Element {
+    const scene = el.shadowRoot?.querySelector("om-scene");
+    if (!scene) throw new Error("expected an <om-scene>");
+    return scene;
+  }
+
+  const keydown = (key: string): KeyboardEvent =>
+    new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+
+  it("dispatches a bound key through the registry and prevents default", async () => {
+    const el = await mount(tinyLayout());
+    el.setSelection(["c:b1"]);
+    const changes: DiagramLayout[] = [];
+    el.addEventListener("om-graphical-layout-change", (e) => {
+      changes.push((e as CustomEvent<DiagramLayout>).detail);
+    });
+
+    const ev = keydown("Delete");
+    sceneOf(el).dispatchEvent(ev);
+
+    expect(changes).toHaveLength(1);
+    expect(changes.at(-1)?.components["b1"]).toBeUndefined();
+    expect(ev.defaultPrevented).toBe(true);
+  });
+
+  it("lets an unbound key fall through without preventing default", async () => {
+    const el = await mount(tinyLayout());
+    el.setSelection(["c:b1"]);
+    const ev = keydown("z");
+    sceneOf(el).dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(false);
+  });
+
+  it("does not prevent default when a bound key's command is disabled", async () => {
+    const el = await mount(tinyLayout());
+    // No selection → `diagram.delete`'s `when` fails → key falls through.
+    const ev = keydown("Delete");
+    sceneOf(el).dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(false);
+  });
 });
