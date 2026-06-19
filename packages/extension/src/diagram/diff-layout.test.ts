@@ -482,19 +482,44 @@ describe("diffLayouts — graphics", () => {
     ]);
   });
 
-  it("represents a non-contiguous multi-delete as shift-modifies + trailing deletes", () => {
-    // Delete indices 1 and 3 of [A,B,C,D], keeping A and C. With positional
-    // identity the diff can't express "delete 1 and 3"; it shifts C up into
-    // slot 1 (modify) then trims the tail (deletes, descending). Applying
-    // modify→delete in that order yields the correct final array [A, C].
+  it("emits minimal deletes for a non-contiguous multi-delete (pure deletion)", () => {
+    // Delete indices 1 and 3 of [A,B,C,D], keeping A and C. LCS detects that
+    // rect(0) and rect(40) survive and emits only two targeted deletes (in
+    // descending order) rather than a shift-modify + trailing deletes.
     const edits = diffLayouts(
       withIcon([rect(0), rect(20), rect(40), rect(60)]),
       withIcon([rect(0), rect(40)]),
     );
     expect(edits).toEqual([
-      { kind: "graphicsModified", layer: "icon", index: 1, shape: rect(40) },
       { kind: "graphicsDeleted", layer: "icon", index: 3 },
+      { kind: "graphicsDeleted", layer: "icon", index: 1 },
+    ]);
+  });
+
+  it("falls back to positional modifies when a deletion coincides with a shape change", () => {
+    // rect(20) is removed AND rect(0) is edited to rect(5): mixed delete+modify.
+    // isPureDeletion is false (rect(5) not in before), so the positional fallback
+    // runs: scan the first after.length=2 positions for mods (modify(0,rect(5))
+    // and modify(1,rect(40))), then delete the one trailing slot (delete(2)).
+    const edits = diffLayouts(
+      withIcon([rect(0), rect(20), rect(40)]),
+      withIcon([rect(5), rect(40)]),
+    );
+    expect(edits).toEqual([
+      { kind: "graphicsModified", layer: "icon", index: 0, shape: rect(5) },
+      { kind: "graphicsModified", layer: "icon", index: 1, shape: rect(40) },
       { kind: "graphicsDeleted", layer: "icon", index: 2 },
+    ]);
+  });
+
+  it("emits a single delete for a non-contiguous single-shape removal", () => {
+    // Remove the middle shape from three: LCS matches the outer two.
+    const edits = diffLayouts(
+      withIcon([rect(0), rect(20), rect(40)]),
+      withIcon([rect(0), rect(40)]),
+    );
+    expect(edits).toEqual([
+      { kind: "graphicsDeleted", layer: "icon", index: 1 },
     ]);
   });
 

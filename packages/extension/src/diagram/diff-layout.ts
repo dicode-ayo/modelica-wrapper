@@ -86,15 +86,6 @@ function endpointToCref(c: {
   return c.component ? `${c.component}.${c.port}` : c.port;
 }
 
-function extentEqual(a: Extent, b: Extent): boolean {
-  return (
-    a[0][0] === b[0][0] &&
-    a[0][1] === b[0][1] &&
-    a[1][0] === b[1][0] &&
-    a[1][1] === b[1][1]
-  );
-}
-
 export function diffLayouts(
   prev: DiagramLayout,
   next: DiagramLayout,
@@ -111,7 +102,7 @@ export function diffLayouts(
       continue;
     }
     const placementChanged =
-      !extentEqual(before.placement.extent, after.placement.extent) ||
+      !deepEqual(before.placement.extent, after.placement.extent) ||
       (before.placement.rotation ?? 0) !== (after.placement.rotation ?? 0);
     if (placementChanged) {
       edits.push({
@@ -240,7 +231,7 @@ export function diffLayouts(
         to: c.to,
         waypoints: c.waypoints as ReadonlyArray<readonly [number, number]>,
       });
-    } else if (!waypointsEqual(before.waypoints, c.waypoints)) {
+    } else if (!deepEqual(before.waypoints, c.waypoints)) {
       edits.push({
         kind: "connectionWaypoints",
         from: c.from,
@@ -266,9 +257,9 @@ function ownShapes(
 /**
  * Order-independent, undefined-tolerant JSON of a value: object keys are
  * sorted and `undefined`-valued keys dropped (matching JSON semantics). Two
- * shapes whose optional fields are present-as-undefined vs absent, or whose
- * keys differ only in order, compare equal — so a re-fetch never reports a
- * spurious modify for a shape the user didn't touch.
+ * values whose optional fields are present-as-undefined vs absent, or whose
+ * object keys differ only in order, compare equal — so a re-fetch never
+ * reports a spurious modify for a shape the user didn't touch.
  */
 function stableJson(v: unknown): string {
   // JSON.stringify collapses NaN/Infinity to "null"; keep them distinct so a
@@ -283,16 +274,98 @@ function stableJson(v: unknown): string {
   return `{${entries.join(",")}}`;
 }
 
-function shapeEqual(a: Shape, b: Shape): boolean {
+/** Single deep-equal used for all leaf comparisons in the diff. */
+function deepEqual(a: unknown, b: unknown): boolean {
   return stableJson(a) === stableJson(b);
 }
 
 /**
+ * LCS index pairs for two arrays under a caller-supplied equality predicate.
+ * Returns `[(aIdx, bIdx), ...]` in ascending order — the longest subsequence
+ * of `a` and `b` whose paired elements are equal.
+ */
+function lcsIndices<T>(
+  a: T[],
+  b: T[],
+  eq: (x: T, y: T) => boolean,
+): Array<[number, number]> {
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () =>
+    new Array<number>(n + 1).fill(0),
+  );
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const ai = a[i - 1];
+      const bj = b[j - 1];
+      if (ai !== undefined && bj !== undefined && eq(ai, bj)) {
+        dp[i]![j] = dp[i - 1]![j - 1]! + 1;
+      } else {
+        dp[i]![j] = Math.max(dp[i - 1]![j]!, dp[i]![j - 1]!);
+      }
+    }
+  }
+  const pairs: Array<[number, number]> = [];
+  let i = m;
+  let j = n;
+  while (i > 0 && j > 0) {
+    const ai = a[i - 1];
+    const bj = b[j - 1];
+    if (ai !== undefined && bj !== undefined && eq(ai, bj)) {
+      pairs.push([i - 1, j - 1]);
+      i -= 1;
+      j -= 1;
+    } else if ((dp[i - 1]![j] ?? 0) >= (dp[i]![j - 1] ?? 0)) {
+      i -= 1;
+    } else {
+      j -= 1;
+    }
+  }
+  return pairs.reverse();
+}
+
+/**
+ * Returns true when every shape in `after` appears in `before` by value
+ * (via `deepEqual`), consuming one copy per match. A pure deletion means
+ * the user removed shapes without modifying any survivors — the LCS-based
+ * path can then emit minimal `graphicsDeleted` ops without risk of
+ * accidentally dropping an in-place modify.
+ */
+function isPureDeletion(before: Shape[], after: Shape[]): boolean {
+  const counts = new Map<string, number>();
+  for (const s of before) {
+    const k = stableJson(s);
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+  }
+  for (const s of after) {
+    const k = stableJson(s);
+    const n = counts.get(k) ?? 0;
+    if (n === 0) return false;
+    counts.set(k, n - 1);
+  }
+  return true;
+}
+
+/**
  * Diff the host's OWN icon/diagram shapes (never inherited ancestor layers —
- * the write targets only `className`'s annotation). Shape identity is
- * positional `(layer, index)`: a same-index value change is a modify, trailing
- * extras are appends, trailing removals are deletes. Deletes are emitted in
- * descending index so `apply-edits` can run them without re-indexing.
+ * the write targets only `className`'s annotation).
+ *
+ * Two strategies are applied depending on the change shape:
+ *
+ * - **Same length or growth**: positional scan — a same-index value change is
+ *   a modify, trailing extras are appends. This is optimal for the common
+ *   "move/resize a shape" gesture (in-place edit = 1 op vs 2 for delete+add).
+ *
+ * - **Pure deletion** (shrunk, all surviving shapes exist in `before` by
+ *   value): LCS-based minimal deletes. A non-contiguous multi-delete such as
+ *   removing indices 1 and 3 from [A,B,C,D] produces two `graphicsDeleted`
+ *   ops rather than a modify + two deletes. Deletes are emitted in descending
+ *   index so `apply-edits` can run them without re-indexing.
+ *
+ * - **Mixed delete+modify** (shrunk, some `after` shapes are new values):
+ *   positional fallback — shared prefix is scanned for modifies, then
+ *   trailing slots are deleted. Always correct; produces fewer ops than
+ *   delete+add for in-place edits.
  */
 function diffGraphics(
   prev: DiagramLayout,
@@ -308,22 +381,52 @@ function diffGraphics(
     const before = ownShapes(prev[field], prev.className);
     const after = ownShapes(next[field], next.className);
 
-    const common = Math.min(before.length, after.length);
-    for (let i = 0; i < common; i += 1) {
-      const a = before[i];
-      const b = after[i];
-      if (a && b && !shapeEqual(a, b)) {
-        edits.push({ kind: "graphicsModified", layer, index: i, shape: b });
+    if (before.length <= after.length) {
+      // Same length or growth: positional modifies + appends.
+      const common = before.length;
+      for (let i = 0; i < common; i += 1) {
+        const a = before[i];
+        const b = after[i];
+        if (a !== undefined && b !== undefined && !deepEqual(a, b)) {
+          edits.push({ kind: "graphicsModified", layer, index: i, shape: b });
+        }
       }
+      for (let i = before.length; i < after.length; i += 1) {
+        const shape = after[i];
+        if (shape !== undefined) {
+          edits.push({ kind: "graphicsAdded", layer, shape });
+        }
+      }
+      continue;
     }
-    // Appends preserve order, so adds go in ascending index.
-    for (let i = before.length; i < after.length; i += 1) {
-      const shape = after[i];
-      if (shape) edits.push({ kind: "graphicsAdded", layer, shape });
-    }
-    // Deletes go in descending index so earlier removals don't shift later ones.
-    for (let i = before.length - 1; i >= after.length; i -= 1) {
-      edits.push({ kind: "graphicsDeleted", layer, index: i });
+
+    // Shrunk. Use LCS for pure deletions; fall back to positional otherwise.
+    if (isPureDeletion(before, after)) {
+      const pairs = lcsIndices(
+        before,
+        after,
+        deepEqual as (x: Shape, y: Shape) => boolean,
+      );
+      const matchedBefore = new Set(pairs.map(([bi]) => bi));
+      // Emit deletes in descending order so earlier removals don't shift later indices.
+      for (let i = before.length - 1; i >= 0; i -= 1) {
+        if (!matchedBefore.has(i)) {
+          edits.push({ kind: "graphicsDeleted", layer, index: i });
+        }
+      }
+    } else {
+      // Mixed delete+modify: positional fallback.
+      const common = after.length;
+      for (let i = 0; i < common; i += 1) {
+        const a = before[i];
+        const b = after[i];
+        if (a !== undefined && b !== undefined && !deepEqual(a, b)) {
+          edits.push({ kind: "graphicsModified", layer, index: i, shape: b });
+        }
+      }
+      for (let i = before.length - 1; i >= after.length; i -= 1) {
+        edits.push({ kind: "graphicsDeleted", layer, index: i });
+      }
     }
   }
 }
@@ -368,7 +471,7 @@ function splitVectorIndex(cref: string): { base: string; index?: string } {
  * delete+add behaviour.
  */
 function isReindexRename(before: Conn, after: Conn): boolean {
-  if (!waypointsEqual(before.waypoints, after.waypoints)) return false;
+  if (!deepEqual(before.waypoints, after.waypoints)) return false;
 
   const fromChanged = before.from !== after.from;
   const toChanged = before.to !== after.to;
@@ -417,17 +520,6 @@ function isReindexOf(a: string, b: string): boolean {
   if (sa.index === undefined || sb.index === undefined) return false;
   if (sa.index === sb.index) return false; // identical index ⇒ not a re-index
   return sa.base === sb.base;
-}
-
-function waypointsEqual(
-  a: ReadonlyArray<readonly [number, number]>,
-  b: ReadonlyArray<readonly [number, number]>,
-): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    if (a[i]![0] !== b[i]![0] || a[i]![1] !== b[i]![1]) return false;
-  }
-  return true;
 }
 
 /** Builds a Modelica `Placement(...)` annotation string for `updateComponent`. */
