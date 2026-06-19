@@ -48,7 +48,9 @@ export class GestureOverlay {
   ) {}
 
   showWire(from: DiagramPoint, to: DiagramPoint, color: Color3): void {
-    this.wire?.dispose();
+    // Rebuilt on every pointermove; `dispose(false, true)` releases the
+    // per-build material so a drag doesn't accrue orphaned materials.
+    this.wire?.dispose(false, true);
     this.wire = null;
     const meshes = buildEdge(this.scene, this.parent, "om-gesture-wire", {
       points: orthogonalRoute(from, to),
@@ -59,7 +61,7 @@ export class GestureOverlay {
     }
     // The overlay is feedback-only: the pick tube would shadow the real
     // entities under the cursor mid-gesture, so drop it.
-    meshes.hitArea.dispose();
+    meshes.hitArea.dispose(false, true);
     meshes.line.isPickable = false;
     this.wire = meshes.line;
     requestSceneRender(this.scene);
@@ -69,13 +71,13 @@ export class GestureOverlay {
     if (!this.wire) {
       return;
     }
-    this.wire.dispose();
+    this.wire.dispose(false, true);
     this.wire = null;
     requestSceneRender(this.scene);
   }
 
   showRect(rect: Rect): void {
-    this.rect?.dispose();
+    this.rect?.dispose(false, true);
     // Slight -Z bias keeps the outline above the component icons (camera
     // sits on +Z).
     const z = -0.01;
@@ -102,14 +104,14 @@ export class GestureOverlay {
     if (!this.rect) {
       return;
     }
-    this.rect.dispose();
+    this.rect.dispose(false, true);
     this.rect = null;
     requestSceneRender(this.scene);
   }
 
   dispose(): void {
-    this.wire?.dispose();
-    this.rect?.dispose();
+    this.wire?.dispose(false, true);
+    this.rect?.dispose(false, true);
     this.wire = null;
     this.rect = null;
   }

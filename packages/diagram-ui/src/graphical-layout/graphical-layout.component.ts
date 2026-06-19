@@ -17,7 +17,6 @@ import "../component/component.component.js";
 import "../connector/connector.component.js";
 import "../connection/connection.component.js";
 import "../label/label.component.js";
-import "../connection/edge.component.js";
 import "../debug/perf-hud.component.js";
 import "../library-browser/library-browser.component.js";
 import type { OmScene, EngineFactory } from "../scene/scene.component.js";
@@ -287,7 +286,6 @@ export class OmGraphicalLayout extends LitElement {
   @state() private inProgressConnection: {
     from: string;
     fromPoint: { x: number; y: number };
-    to: { x: number; y: number };
     toKey: string | null;
     /** `null` when no snap target. Otherwise the local compat check
      *  result — used to red-light the rubber-band and the target
@@ -725,7 +723,7 @@ export class OmGraphicalLayout extends LitElement {
         conn.setHovered(want, variant);
       }
     }
-    // Junction discs are now self-managed: `<om-connection>` subscribes
+    // Junction discs are self-managed: `<om-connection>` subscribes
     // to `interactionStateContext` and reacts to `hoverKey` changes
     // directly, so we don't walk them here. See
     // `connection.component.ts > resubscribeInteractionState`.
@@ -1110,7 +1108,6 @@ export class OmGraphicalLayout extends LitElement {
           this.inProgressConnection = {
             from: d.from,
             fromPoint,
-            to: d.to,
             toKey: d.toKey,
             compat: this.evaluateCompat(d.from, d.toKey),
           };

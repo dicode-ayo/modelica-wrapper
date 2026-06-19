@@ -53,6 +53,23 @@ describe("GestureOverlay", () => {
     dispose();
   });
 
+  it("does not accrue materials across repeated showWire", () => {
+    const { scene, dispose } = makeScene();
+    const overlay = new GestureOverlay(scene, new TransformNode("root", scene));
+
+    for (let i = 1; i <= 3; i++) {
+      overlay.showWire({ x: 0, y: 0 }, { x: i * 4, y: i }, CONNECT_OK_COLOR);
+    }
+    const afterThree = scene.materials.length;
+    for (let i = 4; i <= 8; i++) {
+      overlay.showWire({ x: 0, y: 0 }, { x: i * 4, y: i }, CONNECT_OK_COLOR);
+    }
+    // More moves must not grow the material count — each build disposes
+    // the previous one's material.
+    expect(scene.materials.length).toBe(afterThree);
+    dispose();
+  });
+
   it("builds a rect on showRect and disposes it on hideRect", () => {
     const { scene, dispose } = makeScene();
     const overlay = new GestureOverlay(scene, new TransformNode("root", scene));
