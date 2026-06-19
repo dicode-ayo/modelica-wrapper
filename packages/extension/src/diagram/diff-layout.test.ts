@@ -482,6 +482,34 @@ describe("diffLayouts — graphics", () => {
     ]);
   });
 
+  it("represents a non-contiguous multi-delete as shift-modifies + trailing deletes", () => {
+    // Delete indices 1 and 3 of [A,B,C,D], keeping A and C. With positional
+    // identity the diff can't express "delete 1 and 3"; it shifts C up into
+    // slot 1 (modify) then trims the tail (deletes, descending). Applying
+    // modify→delete in that order yields the correct final array [A, C].
+    const edits = diffLayouts(
+      withIcon([rect(0), rect(20), rect(40), rect(60)]),
+      withIcon([rect(0), rect(40)]),
+    );
+    expect(edits).toEqual([
+      { kind: "graphicsModified", layer: "icon", index: 1, shape: rect(40) },
+      { kind: "graphicsDeleted", layer: "icon", index: 3 },
+      { kind: "graphicsDeleted", layer: "icon", index: 2 },
+    ]);
+  });
+
+  it("emits an independent modify per shape on a multi-select move", () => {
+    // Two shapes moved at once: same length, two same-index value changes.
+    const edits = diffLayouts(
+      withIcon([rect(0), rect(20), rect(40)]),
+      withIcon([rect(5), rect(20), rect(45)]),
+    );
+    expect(edits).toEqual([
+      { kind: "graphicsModified", layer: "icon", index: 0, shape: rect(5) },
+      { kind: "graphicsModified", layer: "icon", index: 2, shape: rect(45) },
+    ]);
+  });
+
   it("appends multiple shapes in ascending index order", () => {
     const edits = diffLayouts(withIcon([]), withIcon([rect(0), rect(20)]));
     expect(edits).toEqual([
