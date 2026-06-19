@@ -14,7 +14,12 @@ import type { Value } from "../../parse.js";
 
 const GRAPHICS_INDEX = 8;
 
-/** The `coordinateSystem` fields, each `null` when at its OMC default. */
+/**
+ * The `coordinateSystem` fields read positionally from the flattened Value
+ * tree, each `null` when at its OMC default. Distinct from `CoordinateSystem`
+ * (validated ModelInstance JSON): tuple-typed and null-defaulted for the write
+ * path's re-emit.
+ */
 export interface CoordinateSystemFields {
   extent: [number, number, number, number] | null;
   preserveAspectRatio: boolean | null;
@@ -23,7 +28,13 @@ export interface CoordinateSystemFields {
 }
 
 function asNumber(v: Value | undefined): number | null {
-  return v && (v.kind === "int" || v.kind === "float") ? v.value : null;
+  return v !== undefined && (v.kind === "int" || v.kind === "float")
+    ? v.value
+    : null;
+}
+
+function asBool(v: Value | undefined): boolean | null {
+  return v?.kind === "bool" ? v.value : null;
 }
 
 function listItems(annotation: Value): Value[] {
@@ -50,9 +61,6 @@ export function annotationCoordinateSystem(
       ? [x1, y1, x2, y2]
       : null;
 
-  const pre = items.at(4);
-  const preserveAspectRatio = pre?.kind === "bool" ? pre.value : null;
-
   const gridX = asNumber(items[6]);
   const gridY = asNumber(items[7]);
   const grid: [number, number] | null =
@@ -60,7 +68,7 @@ export function annotationCoordinateSystem(
 
   return {
     extent,
-    preserveAspectRatio,
+    preserveAspectRatio: asBool(items[4]),
     initialScale: asNumber(items[5]),
     grid,
   };
