@@ -188,6 +188,48 @@ end ${pkg};
     expect(serialized).toContain('"hi"');
   });
 
+  it("preserves a non-default coordinateSystem (grid/initialScale/preserveAspectRatio)", async () => {
+    await client.loadString({
+      data: `package ${pkg}
+  model Sample
+    annotation(Icon(
+      coordinateSystem(extent={{-50,-50},{50,50}}, preserveAspectRatio=false, initialScale=0.5, grid={5,7}),
+      graphics={
+        Rectangle(extent={{-1,-1},{1,1}}, lineColor={0,0,255})
+      }));
+  end Sample;
+end ${pkg};
+`,
+      filename: `<fixture:${pkg}>`,
+    });
+
+    const res = await client.writeClassGraphics({
+      typeName: cls,
+      layer: "icon",
+      op: {
+        kind: "add",
+        shape: {
+          kind: "rectangle",
+          extent: [
+            [2, 2],
+            [3, 3],
+          ],
+        },
+      },
+    });
+    expect(res.success).toBe(true);
+
+    const after = await client.getIconAnnotation({ typeName: cls });
+    const items =
+      after.annotation.kind === "list" ? after.annotation.items : [];
+    // [0..3]=extent, [4]=preserveAspectRatio, [5]=initialScale, [6..7]=grid.
+    expect(extentNumbers(after.annotation)).toEqual([-50, -50, 50, 50]);
+    expect(items.at(4)).toEqual({ kind: "bool", value: false });
+    expect(items.at(5)).toEqual({ kind: "float", value: 0.5 });
+    expect(items.at(6)).toEqual({ kind: "float", value: 5 });
+    expect(items.at(7)).toEqual({ kind: "float", value: 7 });
+  });
+
   it("deletes a shape by index", async () => {
     await client.loadString({
       data: `package ${pkg}

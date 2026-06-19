@@ -62,29 +62,41 @@ export const WriteClassGraphicsDescription =
   "Add, modify, or delete one graphic primitive in a class's Icon or Diagram annotation, preserving the other shapes and the coordinate system.";
 
 const GRAPHICS_INDEX = 8;
-const EXTENT_LENGTH = 4;
+
+function asNumber(v: Value | undefined): number | null {
+  return v && (v.kind === "int" || v.kind === "float") ? v.value : null;
+}
 
 /**
- * Re-emit `coordinateSystem(extent={{x1,y1},{x2,y2}})` from the leading four
- * Value-tree slots, or `null` when the extent is unset (any slot non-numeric).
+ * Reconstruct the `coordinateSystem(...)` clause from the leading Value-tree
+ * slots OMC flattens it into: `[x1, y1, x2, y2, preserveAspectRatio,
+ * initialScale, gridX, gridY]` (each `null` when at its default). Every
+ * non-default field is carried through — `addClassAnnotation` replaces the
+ * whole Icon, so a field left out here is lost on any graphics edit. Returns
+ * `null` when every slot is at its default (no clause needed).
  */
 function coordinateSystemClause(items: Value[]): string | null {
-  const nums: number[] = [];
-  for (const v of items.slice(0, EXTENT_LENGTH)) {
-    if (v.kind === "int" || v.kind === "float") nums.push(v.value);
-    else return null;
+  const parts: string[] = [];
+  const x1 = asNumber(items[0]);
+  const y1 = asNumber(items[1]);
+  const x2 = asNumber(items[2]);
+  const y2 = asNumber(items[3]);
+  if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
+    parts.push(`extent={{${x1}, ${y1}}, {${x2}, ${y2}}}`);
   }
-  if (nums.length < EXTENT_LENGTH) return null;
-  const [x1, y1, x2, y2] = nums;
-  if (
-    x1 === undefined ||
-    y1 === undefined ||
-    x2 === undefined ||
-    y2 === undefined
-  ) {
-    return null;
+  const preserveAspectRatio = items[4];
+  if (preserveAspectRatio?.kind === "bool") {
+    parts.push(
+      `preserveAspectRatio=${preserveAspectRatio.value ? "true" : "false"}`,
+    );
   }
-  return `coordinateSystem(extent={{${x1}, ${y1}}, {${x2}, ${y2}}})`;
+  const initialScale = asNumber(items[5]);
+  if (initialScale !== null) parts.push(`initialScale=${initialScale}`);
+  const gridX = asNumber(items[6]);
+  const gridY = asNumber(items[7]);
+  if (gridX !== null && gridY !== null) parts.push(`grid={${gridX}, ${gridY}}`);
+
+  return parts.length > 0 ? `coordinateSystem(${parts.join(", ")})` : null;
 }
 
 export async function writeClassGraphics(
