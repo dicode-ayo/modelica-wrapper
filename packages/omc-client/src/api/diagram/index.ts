@@ -8,6 +8,11 @@
  */
 export { produceDiagramLayout } from "./producer.js";
 export { parseInstantiatedParameters } from "./resolved-parameters.js";
+export {
+  annotationGraphics,
+  annotationCoordinateSystem,
+  type CoordinateSystemFields,
+} from "./annotation-layout.js";
 export type {
   ClassDef,
   ComponentInstance,

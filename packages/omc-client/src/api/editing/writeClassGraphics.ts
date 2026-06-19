@@ -23,7 +23,11 @@ import { z } from "zod";
 import type { CallContext } from "../../_shared/callContext.js";
 import { ShapeSchema } from "../../_shared/diagramLayout.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
-import type { Value } from "../../parse.js";
+import {
+  annotationCoordinateSystem,
+  annotationGraphics,
+  type CoordinateSystemFields,
+} from "../diagram/annotation-layout.js";
 import { getDiagramAnnotation } from "../contents/getDiagramAnnotation.js";
 import { getIconAnnotation } from "../contents/getIconAnnotation.js";
 import { shapeToRecord } from "../diagram/shape-serialize.js";
@@ -61,40 +65,25 @@ export type WriteClassGraphicsOutput = z.infer<
 export const WriteClassGraphicsDescription =
   "Add, modify, or delete one graphic primitive in a class's Icon or Diagram annotation, preserving the other shapes and the coordinate system.";
 
-const GRAPHICS_INDEX = 8;
-
-function asNumber(v: Value | undefined): number | null {
-  return v && (v.kind === "int" || v.kind === "float") ? v.value : null;
-}
-
 /**
- * Reconstruct the `coordinateSystem(...)` clause from the leading Value-tree
- * slots OMC flattens it into: `[x1, y1, x2, y2, preserveAspectRatio,
- * initialScale, gridX, gridY]` (each `null` when at its default). Every
- * non-default field is carried through — `addClassAnnotation` replaces the
- * whole Icon, so a field left out here is lost on any graphics edit. Returns
- * `null` when every slot is at its default (no clause needed).
+ * Reconstruct the `coordinateSystem(...)` clause, carrying through every
+ * non-default field — `addClassAnnotation` replaces the whole Icon, so a field
+ * left out here is lost on any graphics edit. Returns `null` when every field
+ * is at its default (no clause needed).
  */
-function coordinateSystemClause(items: Value[]): string | null {
+function coordinateSystemClause(cs: CoordinateSystemFields): string | null {
   const parts: string[] = [];
-  const x1 = asNumber(items[0]);
-  const y1 = asNumber(items[1]);
-  const x2 = asNumber(items[2]);
-  const y2 = asNumber(items[3]);
-  if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
+  if (cs.extent) {
+    const [x1, y1, x2, y2] = cs.extent;
     parts.push(`extent={{${x1}, ${y1}}, {${x2}, ${y2}}}`);
   }
-  const preserveAspectRatio = items[4];
-  if (preserveAspectRatio?.kind === "bool") {
+  if (cs.preserveAspectRatio !== null) {
     parts.push(
-      `preserveAspectRatio=${preserveAspectRatio.value ? "true" : "false"}`,
+      `preserveAspectRatio=${cs.preserveAspectRatio ? "true" : "false"}`,
     );
   }
-  const initialScale = asNumber(items[5]);
-  if (initialScale !== null) parts.push(`initialScale=${initialScale}`);
-  const gridX = asNumber(items[6]);
-  const gridY = asNumber(items[7]);
-  if (gridX !== null && gridY !== null) parts.push(`grid={${gridX}, ${gridY}}`);
+  if (cs.initialScale !== null) parts.push(`initialScale=${cs.initialScale}`);
+  if (cs.grid) parts.push(`grid={${cs.grid[0]}, ${cs.grid[1]}}`);
 
   return parts.length > 0 ? `coordinateSystem(${parts.join(", ")})` : null;
 }
@@ -109,12 +98,7 @@ export async function writeClassGraphics(
       ? await getIconAnnotation(ctx, { typeName })
       : await getDiagramAnnotation(ctx, { typeName });
 
-  const items = annotation.kind === "list" ? annotation.items : [];
-  const graphicsValue = items.at(GRAPHICS_INDEX);
-  const existing =
-    graphicsValue && graphicsValue.kind === "list" ? graphicsValue.items : [];
-
-  const shapes = existing.map(decodeAnnotationShape);
+  const shapes = annotationGraphics(annotation).map(decodeAnnotationShape);
   if (op.kind === "add") {
     shapes.push(op.shape);
   } else {
@@ -128,7 +112,9 @@ export async function writeClassGraphics(
   }
 
   const head = layer === "icon" ? "Icon" : "Diagram";
-  const coordSys = coordinateSystemClause(items);
+  const coordSys = coordinateSystemClause(
+    annotationCoordinateSystem(annotation),
+  );
   const parts = coordSys ? [coordSys] : [];
   // An empty `graphics={}` array trips the same empty-array typing rule OMC
   // rejects, so omit the clause entirely when the last shape was deleted.

@@ -212,6 +212,12 @@ export {
   type Json,
 } from "./parse.js";
 
+export {
+  annotationGraphics,
+  annotationCoordinateSystem,
+  type CoordinateSystemFields,
+} from "./api/diagram/annotation-layout.js";
+
 // --- Functional API (re-export by category) ---
 export * as browsing from "./api/browsing/index.js";
 export * as contents from "./api/contents/index.js";

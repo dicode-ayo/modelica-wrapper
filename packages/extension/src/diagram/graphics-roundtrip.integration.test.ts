@@ -22,6 +22,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   OmcClient,
+  annotationCoordinateSystem,
+  annotationGraphics,
   type EllipseShape,
   type RectangleShape,
   type Value,
@@ -44,26 +46,11 @@ function shouldRun(): boolean {
 
 const describeIf = shouldRun() ? describe : describe.skip;
 
-const GRAPHICS_INDEX = 8;
-
-/** The graphic records of an Icon/Diagram annotation Value tree. */
-function graphics(annotation: Value): Value[] {
-  const items = annotation.kind === "list" ? annotation.items : [];
-  const list = items.at(GRAPHICS_INDEX);
-  return list && list.kind === "list" ? list.items : [];
-}
-
 /** Names of the graphic records, e.g. `["Rectangle", "Text"]`. */
 function graphicsNames(annotation: Value): string[] {
-  return graphics(annotation).map((g) => (g.kind === "call" ? g.name : g.kind));
-}
-
-/** The leading coordinateSystem extent, or nulls when unset. */
-function extentNumbers(annotation: Value): (number | null)[] {
-  const items = annotation.kind === "list" ? annotation.items : [];
-  return items
-    .slice(0, 4)
-    .map((v) => (v.kind === "int" || v.kind === "float" ? v.value : null));
+  return annotationGraphics(annotation).map((g) =>
+    g.kind === "call" ? g.name : g.kind,
+  );
 }
 
 describeIf("writeClassGraphics round-trip against real OMC", () => {
@@ -121,11 +108,13 @@ end ${pkg};
     const after = await client.getIconAnnotation({ typeName: cls });
     expect(graphicsNames(after.annotation)).toEqual(["Rectangle", "Rectangle"]);
     // coordinateSystem extent must survive the whole-Icon replace.
-    expect(extentNumbers(after.annotation)).toEqual([-100, -100, 100, 100]);
+    expect(annotationCoordinateSystem(after.annotation).extent).toEqual([
+      -100, -100, 100, 100,
+    ]);
 
     // The added shape's distinctive fields round-trip through OMC's
     // named-arg → positional-record normalization.
-    const serialized = JSON.stringify(graphics(after.annotation));
+    const serialized = JSON.stringify(annotationGraphics(after.annotation));
     expect(serialized).toContain('"value":42');
     expect(serialized).toContain('"value":7');
     expect(serialized).toContain('"value":8');
@@ -182,9 +171,11 @@ end ${pkg};
       "Line",
       "Ellipse",
     ]);
-    expect(extentNumbers(after.annotation)).toEqual([-100, -100, 100, 100]);
+    expect(annotationCoordinateSystem(after.annotation).extent).toEqual([
+      -100, -100, 100, 100,
+    ]);
     // The pre-existing Text body survived the re-serialize.
-    const serialized = JSON.stringify(graphics(after.annotation));
+    const serialized = JSON.stringify(annotationGraphics(after.annotation));
     expect(serialized).toContain('"hi"');
   });
 
@@ -220,14 +211,12 @@ end ${pkg};
     expect(res.success).toBe(true);
 
     const after = await client.getIconAnnotation({ typeName: cls });
-    const items =
-      after.annotation.kind === "list" ? after.annotation.items : [];
-    // [0..3]=extent, [4]=preserveAspectRatio, [5]=initialScale, [6..7]=grid.
-    expect(extentNumbers(after.annotation)).toEqual([-50, -50, 50, 50]);
-    expect(items.at(4)).toEqual({ kind: "bool", value: false });
-    expect(items.at(5)).toEqual({ kind: "float", value: 0.5 });
-    expect(items.at(6)).toEqual({ kind: "float", value: 5 });
-    expect(items.at(7)).toEqual({ kind: "float", value: 7 });
+    expect(annotationCoordinateSystem(after.annotation)).toEqual({
+      extent: [-50, -50, 50, 50],
+      preserveAspectRatio: false,
+      initialScale: 0.5,
+      grid: [5, 7],
+    });
   });
 
   it("deletes a shape by index", async () => {
@@ -255,6 +244,8 @@ end ${pkg};
 
     const after = await client.getIconAnnotation({ typeName: cls });
     expect(graphicsNames(after.annotation)).toEqual(["Ellipse"]);
-    expect(extentNumbers(after.annotation)).toEqual([-100, -100, 100, 100]);
+    expect(annotationCoordinateSystem(after.annotation).extent).toEqual([
+      -100, -100, 100, 100,
+    ]);
   });
 });
