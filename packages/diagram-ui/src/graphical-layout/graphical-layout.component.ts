@@ -33,11 +33,8 @@ import type { DragEvents } from "../interaction/gesture-mode.js";
 import { ModeRouter } from "../interaction/mode.js";
 import {
   applyDeltaMove,
-  applyDelete,
   applyEdgeSegmentDrag,
-  applyFlip,
   applyResize,
-  applyRotate,
   applyRotation,
   applySnapToExtents,
   applyWaypointDelete,
@@ -47,6 +44,17 @@ import {
   selectByDiagramRect,
   shapeCentre,
 } from "../interaction/layout-ops.js";
+import {
+  chordFromEvent,
+  CommandRegistry,
+  DEFAULT_KEYMAP,
+  DIAGRAM_COMMANDS,
+  type CommandTarget,
+} from "../commands/index.js";
+import {
+  deriveContextKeys,
+  type ContextKeys,
+} from "../interaction/context-keys.js";
 import {
   entityKeyForNode,
   formatComponentKey,
@@ -319,6 +327,15 @@ export class OmGraphicalLayout extends LitElement {
    * element's lifetime, so we don't need to call `setValue` again.
    */
   private readonly interactionStore = new InteractionStateStore();
+
+  /**
+   * The diagram command set + its key bindings. One registry backs both the
+   * keymap dispatch (`onKeyDown`) and the public action methods the
+   * action-panel buttons drive, so a shortcut and its button can't diverge.
+   */
+  private readonly commands = new CommandRegistry(DIAGRAM_COMMANDS);
+  private readonly keymap = DEFAULT_KEYMAP;
+
   constructor() {
     super();
     new ContextProvider(this, {
@@ -1196,35 +1213,34 @@ export class OmGraphicalLayout extends LitElement {
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
-    if (this.readonly || !this.layout || this.selectedKeys.size === 0) {
-      return;
-    }
-    if (e.key === "Delete" || e.key === "Backspace") {
-      const updated = applyDelete(this.layout, this.selectedKeys);
-      if (updated !== this.layout) {
-        this.commitLayout(updated);
-        this.selectedKeys = new Set();
-        this.interactionStore.next({ selectedKeys: [] });
-        e.preventDefault();
-      }
-      return;
-    }
-    if (e.key === "r" || e.key === "R") {
-      const updated = applyRotate(this.layout, this.selectedKeys, !e.shiftKey);
-      if (updated !== this.layout) {
-        this.commitLayout(updated);
-        e.preventDefault();
-      }
-      return;
-    }
-    if (e.key === "f" || e.key === "F") {
-      const updated = applyFlip(this.layout, this.selectedKeys, !e.shiftKey);
-      if (updated !== this.layout) {
-        this.commitLayout(updated);
-        e.preventDefault();
-      }
+    const id = this.keymap.get(chordFromEvent(e));
+    if (id && this.runCommand(id)) {
+      e.preventDefault();
     }
   };
+
+  /** The diagram surface a command mutates — an adapter over this element. */
+  private commandTarget(): CommandTarget {
+    return {
+      layout: this.layout,
+      selectedKeys: this.selectedKeys,
+      commitLayout: (next) => this.commitLayout(next),
+      setSelection: (keys) => this.setSelection(keys),
+    };
+  }
+
+  private commandContext(): ContextKeys {
+    return deriveContextKeys(this.interactionStore.value, {
+      readonly: this.readonly,
+      viewLayer: this.layout?.kind ?? "diagram",
+      hasClipboard: false,
+    });
+  }
+
+  /** Run a command by id; returns whether it was enabled and fired. */
+  private runCommand(id: string): boolean {
+    return this.commands.run(id, this.commandContext(), this.commandTarget());
+  }
 
   private emit<K extends LayoutEventName>(
     name: K,
@@ -1267,10 +1283,7 @@ export class OmGraphicalLayout extends LitElement {
    * read-only or nothing is selected.
    */
   rotateSelection(cw = true): void {
-    if (this.readonly || !this.layout || this.selectedKeys.size === 0) {
-      return;
-    }
-    this.commitLayout(applyRotate(this.layout, this.selectedKeys, cw));
+    this.runCommand(cw ? "diagram.rotateCw" : "diagram.rotateCcw");
   }
 
   /**
@@ -1279,10 +1292,9 @@ export class OmGraphicalLayout extends LitElement {
    * selected.
    */
   flipSelection(horizontal = true): void {
-    if (this.readonly || !this.layout || this.selectedKeys.size === 0) {
-      return;
-    }
-    this.commitLayout(applyFlip(this.layout, this.selectedKeys, horizontal));
+    this.runCommand(
+      horizontal ? "diagram.flipHorizontal" : "diagram.flipVertical",
+    );
   }
 }
 
