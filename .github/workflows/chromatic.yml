@@ -16,9 +16,11 @@ on:
     branches: [main]
 
 # One in-flight Chromatic build per ref is enough — newer pushes supersede.
+# Only cancel PR builds: a cancelled build never becomes a baseline, so main
+# builds must run to completion to record the baseline for later diffs.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   publish:
@@ -58,6 +60,11 @@ jobs:
           # UI for review. Build-breaking errors (missing token, build failure)
           # still fail.
           exitZeroOnChanges: true
+          # Squash merges write a fresh main commit with no ancestry to the PR
+          # where snapshots were accepted, so accepted baselines don't carry
+          # over. Code on main is already reviewed and merged — let the
+          # post-merge main build bless the current render as the new baseline.
+          autoAcceptChanges: main
           # NOTE: `onlyChanged: true` (TurboSnap) requires `preview-stats.json`
           # from the Storybook build, which the Vite builder doesn't emit by
           # default. Left off until we wire `--stats-json` into build-storybook
