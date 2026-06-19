@@ -1,19 +1,37 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { LinesMesh, Scene, TransformNode } from "@babylonjs/core";
+
+vi.mock("../src/base/overlay-mesh.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/base/overlay-mesh.js")>()),
+  buildWireMesh: vi.fn(() => null),
+  buildRectMesh: vi.fn(() => ({}) as unknown as LinesMesh),
+  updateRectMesh: vi.fn(),
+  disposeOverlayMesh: vi.fn(),
+}));
 
 import { SelectMode } from "../src/interaction/select-mode.js";
 import type {
   DragEvents,
   GestureStart,
 } from "../src/interaction/gesture-mode.js";
+import {
+  buildRectMesh,
+  updateRectMesh,
+  disposeOverlayMesh,
+} from "../src/base/overlay-mesh.js";
 
-function setup(): {
-  mode: SelectMode;
-  rects: DragEvents["rubberBand"][];
-} {
+const NO_SCENE = {} as Scene;
+const NO_PARENT = {} as TransformNode;
+
+function setup(): { mode: SelectMode; rects: DragEvents["rubberBand"][] } {
   const rects: DragEvents["rubberBand"][] = [];
-  const mode = new SelectMode((type, detail) => {
-    if (type === "rubberBand") rects.push(detail as DragEvents["rubberBand"]);
-  });
+  const mode = new SelectMode(
+    (type, detail) => {
+      if (type === "rubberBand") rects.push(detail as DragEvents["rubberBand"]);
+    },
+    NO_SCENE,
+    NO_PARENT,
+  );
   return { mode, rects };
 }
 
@@ -27,23 +45,56 @@ function emptyStart(point: { x: number; y: number }): GestureStart {
   };
 }
 
+function nth<T>(arr: readonly T[], i: number): T {
+  const v = arr.at(i);
+  if (v === undefined) {
+    throw new Error(`expected element ${i}`);
+  }
+  return v;
+}
+
 describe("SelectMode", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("rubber-bands a rectangle from begin through commit", () => {
     const { mode, rects } = setup();
 
     expect(mode.begin(emptyStart({ x: 5, y: 5 }))).toBe(true);
-    mode.update({ x: 40, y: 30 });
-    mode.commit({ x: 40, y: 30 });
+    // Built once on begin.
+    expect(buildRectMesh).toHaveBeenCalledTimes(1);
+    expect(updateRectMesh).not.toHaveBeenCalled();
 
-    expect(rects).toHaveLength(3);
-    expect(rects[0]!).toMatchObject({
+    mode.update({ x: 40, y: 30 });
+    // Updated in place on move — no rebuild, so no flicker.
+    expect(buildRectMesh).toHaveBeenCalledTimes(1);
+    expect(updateRectMesh).toHaveBeenCalledTimes(1);
+    expect(nth(vi.mocked(updateRectMesh).mock.calls, -1)[1]).toEqual({
+      x1: 5,
+      y1: 5,
+      x2: 40,
+      y2: 30,
+    });
+
+    // The rubberBand events still drive the host's selection.
+    expect(rects).toHaveLength(2);
+    expect(nth(rects, 0)).toMatchObject({
       rect: { x1: 5, y1: 5, x2: 5, y2: 5 },
       draft: true,
     });
-    expect(rects[2]!).toMatchObject({
+
+    const disposesBefore = vi.mocked(disposeOverlayMesh).mock.calls.length;
+    mode.commit({ x: 40, y: 30 });
+
+    expect(nth(rects, 2)).toMatchObject({
       rect: { x1: 5, y1: 5, x2: 40, y2: 30 },
       draft: false,
     });
+    // Commit clears the rect.
+    expect(vi.mocked(disposeOverlayMesh).mock.calls.length).toBe(
+      disposesBefore + 1,
+    );
   });
 
   it("does not start when the press lands on an entity", () => {
@@ -57,5 +108,6 @@ describe("SelectMode", () => {
     });
     expect(started).toBe(false);
     expect(rects).toHaveLength(0);
+    expect(buildRectMesh).not.toHaveBeenCalled();
   });
 });

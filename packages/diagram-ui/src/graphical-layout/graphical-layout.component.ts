@@ -17,7 +17,6 @@ import "../component/component.component.js";
 import "../connector/connector.component.js";
 import "../connection/connection.component.js";
 import "../label/label.component.js";
-import "../connection/edge.component.js";
 import "../debug/perf-hud.component.js";
 import "../library-browser/library-browser.component.js";
 import type { OmScene, EngineFactory } from "../scene/scene.component.js";
@@ -283,14 +282,12 @@ export class OmGraphicalLayout extends LitElement {
   @state() private selectedKeys: Set<string> = new Set();
   @state() private draftLayout: DiagramLayout | null = null;
   @state() private hoverKey: string | null = null;
+  /** Current connection-drag state, mirrored from the mode's `connection`
+   *  events — drives the source/target port indicators and the red flag
+   *  on an incompatible target. `null` outside a connection drag. */
   @state() private inProgressConnection: {
     from: string;
-    fromPoint: { x: number; y: number };
-    to: { x: number; y: number };
     toKey: string | null;
-    /** `null` when no snap target. Otherwise the local compat check
-     *  result — used to red-light the rubber-band and the target
-     *  outline, and to refuse the drop on release. */
     compat: { ok: boolean; reason?: string } | null;
   } | null = null;
   @state() private libraryBrowserOpen = false;
@@ -383,7 +380,6 @@ export class OmGraphicalLayout extends LitElement {
               .fontSize=${label.fontSize ?? 12}
             ></om-label>`,
         )}
-        ${this.renderInProgressEdge()}
         <om-perf-hud ?show=${this.perfHud}></om-perf-hud>
       </om-scene>
       ${this.libraryBrowserOpen
@@ -589,30 +585,6 @@ export class OmGraphicalLayout extends LitElement {
     return renderLayers(layers, HOST_SHAPE_Z_BIAS);
   }
 
-  private renderInProgressEdge(): TemplateResult | typeof nothing {
-    const ip = this.inProgressConnection;
-    if (!ip) {
-      return nothing;
-    }
-    // Preview matches the route we commit on release. The cursor end
-    // is the live diagram-space cursor (`ip.to`) — we don't snap to
-    // the target connector centre even when `toKey` is set, so the
-    // user keeps seeing their pointer until they release.
-    //
-    // Stroke colour reflects the compatibility check: blue while
-    // hovering empty space or a compatible target, red when the
-    // snap target is rejected by `canConnect`. The drop is refused
-    // on release in either red case.
-    const incompat = ip.compat ? !ip.compat.ok : false;
-    const stroke = incompat ? "#ef4444" : "#3b82f6";
-    const path = orthogonalRoute(ip.fromPoint, ip.to);
-    return html`<om-edge
-      .nodeId=${"in-progress"}
-      .path=${path}
-      .stroke=${stroke}
-    ></om-edge>`;
-  }
-
   /**
    * Look up the diagram-space position of the connector identified by
    * `key` (`k:<id>` for standalone, `k:<compId>.<portId>` for nested).
@@ -748,10 +720,9 @@ export class OmGraphicalLayout extends LitElement {
         conn.setHovered(want, variant);
       }
     }
-    // Junction discs are now self-managed: `<om-connection>` subscribes
-    // to `interactionStateContext` and reacts to `hoverKey` changes
-    // directly, so we don't walk them here. See
-    // `connection.component.ts > resubscribeInteractionState`.
+    // Junction discs self-manage: `<om-connection>` subscribes to
+    // `interactionStateContext` and reacts to `hoverKey` changes directly,
+    // so we don't walk them here.
   }
 
   private attachManagers(): void {
@@ -773,6 +744,10 @@ export class OmGraphicalLayout extends LitElement {
       onInteraction: (type, detail) => this.onInteraction(type, detail),
       onDrag: (type, detail) => this.onDrag(type, detail),
       store: this.interactionStore,
+      scene: ctx.scene,
+      overlayParent: ctx.diagramRoot,
+      connectorPosition: (key) => this.connectorDiagramPosition(key),
+      evaluateCompat: (from, toKey) => this.evaluateCompat(from, toKey),
     });
     // Native dblclick on empty canvas → open the library browser.
     // InteractionManager's `doubleClick` only fires on hits; this path
@@ -1114,22 +1089,14 @@ export class OmGraphicalLayout extends LitElement {
       case "connection": {
         const d = detail as DragEvents["connection"];
         if (!d.commit) {
-          // Resolve the source position once per drag — the connector
-          // doesn't move mid-gesture, and we don't want to re-walk the
-          // shadow DOM on every pointermove. Subsequent events reuse
-          // the cached fromPoint; if the very first lookup fails (no
-          // shape node yet), fall back to the cursor so the user
-          // still sees feedback.
-          const fromPoint =
-            this.inProgressConnection?.fromPoint ??
-            this.connectorDiagramPosition(d.from) ??
-            d.to;
+          // `fromPoint` / `compat` are resolved by ConnectMode (which
+          // already needs them to draw the wire) and ride on the event,
+          // so the host doesn't re-walk the shadow DOM or re-run the
+          // compat check on every pointermove.
           this.inProgressConnection = {
             from: d.from,
-            fromPoint,
-            to: d.to,
             toKey: d.toKey,
-            compat: this.evaluateCompat(d.from, d.toKey),
+            compat: d.compat,
           };
           this.refreshPortIndicators();
           this.setInteractionState({
@@ -1138,19 +1105,17 @@ export class OmGraphicalLayout extends LitElement {
             toKey: d.toKey,
           });
         } else {
-          const fromPoint = this.inProgressConnection?.fromPoint ?? null;
-          const compat = this.inProgressConnection?.compat ?? null;
           this.inProgressConnection = null;
           this.refreshPortIndicators();
           // Only emit when we have a snap target AND the local check
           // didn't reject it. Incompatible drops silently fail —
-          // matches what the user just saw (red rubber-band) and
-          // avoids a round-trip to OMC for a connection we already
-          // know it would reject.
-          if (d.toKey && (compat === null || compat.ok)) {
+          // matches what the user just saw (red wire) and avoids a
+          // round-trip to OMC for a connection we know it would reject.
+          if (d.toKey && (d.compat === null || d.compat.ok)) {
             const toPoint = this.connectorDiagramPosition(d.toKey);
-            const waypoints =
-              fromPoint && toPoint ? orthogonalRoute(fromPoint, toPoint) : [];
+            const waypoints = toPoint
+              ? orthogonalRoute(d.fromPoint, toPoint)
+              : [];
             this.emit("om-connection-create", {
               fromKey: d.from,
               toKey: d.toKey,

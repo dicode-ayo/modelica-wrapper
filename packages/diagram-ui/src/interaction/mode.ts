@@ -1,3 +1,5 @@
+import type { Scene, TransformNode } from "@babylonjs/core";
+
 import {
   InteractionManager,
   type EmitFn,
@@ -9,6 +11,8 @@ import {
   releasePointer,
   MOVE_KINDS,
   type ClientToDiagram,
+  type CompatCheck,
+  type ConnectorPosition,
   type DragEmit,
   type GestureMode,
   type Picker,
@@ -27,6 +31,13 @@ export interface ModeRouterDeps {
   onInteraction: EmitFn;
   onDrag: DragEmit;
   store: InteractionStateStore;
+  /** Scene + parent the gesture modes draw their transient meshes into. */
+  scene: Scene;
+  overlayParent: TransformNode;
+  /** Diagram-space position of a connector (for the routing wire). */
+  connectorPosition: ConnectorPosition;
+  /** Local compatibility check between two connector keys. */
+  evaluateCompat: CompatCheck;
 }
 
 /**
@@ -60,9 +71,20 @@ export class ModeRouter {
       deps.picker,
       deps.onInteraction,
     );
-    this.selectMode = new SelectMode(deps.onDrag);
+    this.selectMode = new SelectMode(
+      deps.onDrag,
+      deps.scene,
+      deps.overlayParent,
+    );
     this.dragMode = new DragMode(deps.onDrag);
-    this.connectMode = new ConnectMode(deps.picker, deps.onDrag);
+    this.connectMode = new ConnectMode(
+      deps.picker,
+      deps.onDrag,
+      deps.scene,
+      deps.overlayParent,
+      deps.connectorPosition,
+      deps.evaluateCompat,
+    );
     this.canvas.addEventListener("pointerdown", this.onPointerDown);
     this.canvas.addEventListener("pointermove", this.onPointerMove);
     this.canvas.addEventListener("pointerup", this.onPointerUp);
@@ -85,6 +107,7 @@ export class ModeRouter {
     this.canvas.removeEventListener("pointerup", this.onPointerUp);
     this.canvas.removeEventListener("pointercancel", this.onPointerUp);
     this.canvas.removeEventListener("pointerleave", this.onPointerLeave);
+    this.active?.cancel?.();
     this.active = null;
   }
 

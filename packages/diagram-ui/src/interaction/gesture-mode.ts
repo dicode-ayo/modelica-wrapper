@@ -13,6 +13,18 @@ export type ClientToDiagram = (
   clientY: number,
 ) => { x: number; y: number } | null;
 
+/** Diagram-space position of a connector, for placing the routing wire. */
+export type ConnectorPosition = (
+  key: string,
+) => { x: number; y: number } | null;
+
+/** Local type/causality check between two connector keys; `null` when
+ *  there's no snap target yet. */
+export type CompatCheck = (
+  from: string,
+  toKey: string | null,
+) => { ok: boolean; reason?: string } | null;
+
 export interface DragEvents {
   drag: {
     keys: string[];
@@ -48,15 +60,20 @@ export interface DragEvents {
   /**
    * In-progress connection drag: user pulls from a connector's port
    * indicator. `from` is the source connector key (e.g. `k:p`), `to`
-   * is the live cursor position in diagram coords. `commit=false`
-   * while dragging; `commit=true` on pointerup. When committed and
-   * `toKey` is present the host element should treat that as a
-   * connection-create request.
+   * is the live cursor position in diagram coords. `fromPoint` is the
+   * source connector's diagram position and `compat` the local
+   * type/causality check vs the snap target — both resolved by the mode
+   * (which already needs them to draw the wire) so the host doesn't
+   * recompute them. `commit=false` while dragging; `commit=true` on
+   * pointerup. When committed and `toKey` is present with a passing
+   * `compat`, the host treats it as a connection-create request.
    */
   connection: {
     from: string;
     to: { x: number; y: number };
     toKey: string | null;
+    fromPoint: { x: number; y: number };
+    compat: { ok: boolean; reason?: string } | null;
     commit: boolean;
   };
   /**
@@ -106,6 +123,9 @@ export interface GestureMode {
   begin(start: GestureStart): boolean;
   update(point: DiagramPoint, e: PointerEvent): void;
   commit(point: DiagramPoint, e: PointerEvent): void;
+  /** Abandon an in-flight gesture without committing — drops any transient
+   *  mesh the mode owns. Called when the router is destroyed mid-gesture. */
+  cancel?(): void;
 }
 
 /**
