@@ -1,8 +1,9 @@
 import {
   Color3,
-  CreateGreasedLine,
+  CreateLines,
   Vector3,
   type AbstractMesh,
+  type LinesMesh,
   type Scene,
   type TransformNode,
 } from "@babylonjs/core";
@@ -30,8 +31,6 @@ export const OVERLAY_BLUE = new Color3(0.38, 0.6, 0.98);
 /** Z-bias lifting overlay strokes just above the component icons (camera
  *  sits on +Z, so negative is closer). */
 const OVERLAY_Z = -0.01;
-/** On-screen stroke width for overlay outlines, in device pixels. */
-const OVERLAY_STROKE_PX = 2;
 
 interface DiagramPoint {
   x: number;
@@ -86,28 +85,47 @@ export function buildWireMesh(
   return meshes.line;
 }
 
-/** Build a rectangle outline (rubber-band) from a diagram-space rect. */
-export function buildRectMesh(
-  scene: Scene,
-  parent: TransformNode,
-  rect: Rect,
-  color: Color3 = OVERLAY_BLUE,
-): AbstractMesh {
-  const points = [
+function rectPoints(rect: Rect): Vector3[] {
+  return [
     new Vector3(rect.x1, rect.y1, OVERLAY_Z),
     new Vector3(rect.x2, rect.y1, OVERLAY_Z),
     new Vector3(rect.x2, rect.y2, OVERLAY_Z),
     new Vector3(rect.x1, rect.y2, OVERLAY_Z),
     new Vector3(rect.x1, rect.y1, OVERLAY_Z),
   ];
-  const line = CreateGreasedLine(
+}
+
+/**
+ * Build a rubber-band rectangle outline. Its 5-point topology never
+ * changes, so the gesture builds it once and updates it in place with
+ * {@link updateRectMesh} — recreating the mesh every pointermove flickers.
+ */
+export function buildRectMesh(
+  scene: Scene,
+  parent: TransformNode,
+  rect: Rect,
+  color: Color3 = OVERLAY_BLUE,
+): LinesMesh {
+  const line = CreateLines(
     "om-rubber-band",
-    { points },
-    { width: OVERLAY_STROKE_PX, sizeAttenuation: true, color },
+    { points: rectPoints(rect), updatable: true },
     scene,
   );
+  line.color = color;
   line.parent = parent;
   line.isPickable = false;
   requestSceneRender(scene);
   return line;
+}
+
+/** Rewrite the rubber-band's corners in place via the `instance` param —
+ *  no dispose/rebuild, so the outline tracks the cursor without flicker. */
+export function updateRectMesh(mesh: LinesMesh, rect: Rect): void {
+  const scene = mesh.getScene();
+  CreateLines(
+    mesh.name,
+    { points: rectPoints(rect), updatable: true, instance: mesh },
+    scene,
+  );
+  requestSceneRender(scene);
 }

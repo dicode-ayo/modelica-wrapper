@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Scene, TransformNode } from "@babylonjs/core";
+import type { LinesMesh, Scene, TransformNode } from "@babylonjs/core";
 
 vi.mock("../src/base/overlay-mesh.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/base/overlay-mesh.js")>()),
   buildWireMesh: vi.fn(() => null),
-  buildRectMesh: vi.fn(() => null),
+  buildRectMesh: vi.fn(() => ({}) as unknown as LinesMesh),
+  updateRectMesh: vi.fn(),
   disposeOverlayMesh: vi.fn(),
 }));
 
@@ -13,7 +14,11 @@ import type {
   DragEvents,
   GestureStart,
 } from "../src/interaction/gesture-mode.js";
-import { buildRectMesh, disposeOverlayMesh } from "../src/base/overlay-mesh.js";
+import {
+  buildRectMesh,
+  updateRectMesh,
+  disposeOverlayMesh,
+} from "../src/base/overlay-mesh.js";
 
 const NO_SCENE = {} as Scene;
 const NO_PARENT = {} as TransformNode;
@@ -57,21 +62,26 @@ describe("SelectMode", () => {
     const { mode, rects } = setup();
 
     expect(mode.begin(emptyStart({ x: 5, y: 5 }))).toBe(true);
+    // Built once on begin.
+    expect(buildRectMesh).toHaveBeenCalledTimes(1);
+    expect(updateRectMesh).not.toHaveBeenCalled();
+
     mode.update({ x: 40, y: 30 });
-
-    expect(rects).toHaveLength(2);
-    expect(nth(rects, 0)).toMatchObject({
-      rect: { x1: 5, y1: 5, x2: 5, y2: 5 },
-      draft: true,
-    });
-
-    // The rect is drawn on begin + update.
-    expect(buildRectMesh).toHaveBeenCalledTimes(2);
-    expect(nth(vi.mocked(buildRectMesh).mock.calls, -1)[2]).toEqual({
+    // Updated in place on move — no rebuild, so no flicker.
+    expect(buildRectMesh).toHaveBeenCalledTimes(1);
+    expect(updateRectMesh).toHaveBeenCalledTimes(1);
+    expect(nth(vi.mocked(updateRectMesh).mock.calls, -1)[1]).toEqual({
       x1: 5,
       y1: 5,
       x2: 40,
       y2: 30,
+    });
+
+    // The rubberBand events still drive the host's selection.
+    expect(rects).toHaveLength(2);
+    expect(nth(rects, 0)).toMatchObject({
+      rect: { x1: 5, y1: 5, x2: 5, y2: 5 },
+      draft: true,
     });
 
     const disposesBefore = vi.mocked(disposeOverlayMesh).mock.calls.length;
@@ -81,8 +91,7 @@ describe("SelectMode", () => {
       rect: { x1: 5, y1: 5, x2: 40, y2: 30 },
       draft: false,
     });
-    // Commit clears the rect and does not draw a new one.
-    expect(buildRectMesh).toHaveBeenCalledTimes(2);
+    // Commit clears the rect.
     expect(vi.mocked(disposeOverlayMesh).mock.calls.length).toBe(
       disposesBefore + 1,
     );

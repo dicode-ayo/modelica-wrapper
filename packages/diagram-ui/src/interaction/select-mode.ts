@@ -1,4 +1,4 @@
-import type { AbstractMesh, Scene, TransformNode } from "@babylonjs/core";
+import type { LinesMesh, Scene, TransformNode } from "@babylonjs/core";
 
 import type {
   DiagramPoint,
@@ -6,7 +6,11 @@ import type {
   GestureMode,
   GestureStart,
 } from "./gesture-mode.js";
-import { buildRectMesh, disposeOverlayMesh } from "../base/overlay-mesh.js";
+import {
+  buildRectMesh,
+  updateRectMesh,
+  disposeOverlayMesh,
+} from "../base/overlay-mesh.js";
 
 interface Rect {
   x1: number;
@@ -25,7 +29,7 @@ interface Rect {
 export class SelectMode implements GestureMode {
   readonly id = "select";
   private start: DiagramPoint | null = null;
-  private rect: AbstractMesh | null = null;
+  private rect: LinesMesh | null = null;
 
   constructor(
     private readonly emit: DragEmit,
@@ -33,9 +37,14 @@ export class SelectMode implements GestureMode {
     private readonly parent: TransformNode,
   ) {}
 
+  /** Build the outline once, then rewrite its corners in place — a fixed
+   *  5-point topology, so it never needs a flickery dispose/rebuild. */
   private drawRect(rect: Rect): void {
-    disposeOverlayMesh(this.rect);
-    this.rect = buildRectMesh(this.scene, this.parent, rect);
+    if (this.rect) {
+      updateRectMesh(this.rect, rect);
+    } else {
+      this.rect = buildRectMesh(this.scene, this.parent, rect);
+    }
   }
 
   private clearRect(): void {

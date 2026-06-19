@@ -11,6 +11,7 @@ vi.mock("../src/scene/render-scheduler.js", async (importOriginal) => ({
 import {
   buildWireMesh,
   buildRectMesh,
+  updateRectMesh,
   disposeOverlayMesh,
   CONNECT_OK_COLOR,
 } from "../src/base/overlay-mesh.js";
@@ -106,6 +107,20 @@ describe("overlay-mesh", () => {
     expect(scene.getMeshByName("om-rubber-band")).not.toBeNull();
     disposeOverlayMesh(rect);
     expect(scene.getMeshByName("om-rubber-band")).toBeNull();
+    dispose();
+  });
+
+  it("updateRectMesh rewrites the outline in place (no new mesh)", () => {
+    const { scene, parent, dispose } = makeScene();
+
+    const rect = buildRectMesh(scene, parent, { x1: 0, y1: 0, x2: 10, y2: 10 });
+    vi.mocked(requestSceneRender).mockClear();
+    updateRectMesh(rect, { x1: 0, y1: 0, x2: 20, y2: 30 });
+
+    expect(
+      scene.meshes.filter((m) => m.name === "om-rubber-band"),
+    ).toHaveLength(1);
+    expect(requestSceneRender).toHaveBeenCalledWith(scene);
     dispose();
   });
 
