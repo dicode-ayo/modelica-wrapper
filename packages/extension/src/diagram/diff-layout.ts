@@ -193,8 +193,9 @@ export function diffLayouts(
   for (const g of groups.values()) {
     // Only a lone 1:1 re-index on the base is safe to rewrite in place.
     if (g.prev.length !== 1 || g.next.length !== 1) continue;
-    const before = g.prev[0]!;
-    const after = g.next[0]!;
+    const [before] = g.prev;
+    const [after] = g.next;
+    if (before === undefined || after === undefined) continue;
     const beforeKey = `${before.from}|${before.to}`;
     const afterKey = `${after.from}|${after.to}`;
     // Unchanged connection (survived verbatim) — nothing to rename.
@@ -407,7 +408,6 @@ function diffGraphics(
     if (isPureDeletion(beforeKeys, afterKeys)) {
       const pairs = lcsIndices(beforeKeys, afterKeys, (a, b) => a === b);
       const matchedBefore = new Set(pairs.map(([bi]) => bi));
-      // Emit deletes in descending order so earlier removals don't shift later indices.
       for (let i = before.length - 1; i >= 0; i -= 1) {
         if (!matchedBefore.has(i)) {
           edits.push({ kind: "graphicsDeleted", layer, index: i });
