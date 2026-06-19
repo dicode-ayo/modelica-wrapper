@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DiagramLayout } from "@dicode/omc-client";
+import type { DiagramLayout, RectangleShape } from "@dicode/omc-client";
 
 import {
   diffLayouts,
@@ -409,5 +409,82 @@ describe("lineAnnotation", () => {
         [10, 20],
       ]),
     ).toBe("Line(points={{0,0},{10,0},{10,20}})");
+  });
+});
+
+describe("diffLayouts — graphics", () => {
+  function rect(x: number): RectangleShape {
+    return {
+      kind: "rectangle",
+      extent: [
+        [x, x],
+        [x + 10, x + 10],
+      ],
+    };
+  }
+
+  /** `baseLayout()` with one host-owned icon layer holding `shapes`. */
+  function withIcon(shapes: RectangleShape[], from = "T"): DiagramLayout {
+    return { ...baseLayout(), iconLayers: [{ from, shapes }] };
+  }
+
+  it("emits no graphics edits when the shapes are unchanged", () => {
+    expect(diffLayouts(withIcon([rect(0)]), withIcon([rect(0)]))).toEqual([]);
+  });
+
+  it("emits graphicsAdded for an appended shape", () => {
+    const edits = diffLayouts(
+      withIcon([rect(0)]),
+      withIcon([rect(0), rect(20)]),
+    );
+    expect(edits).toEqual([
+      { kind: "graphicsAdded", layer: "icon", shape: rect(20) },
+    ]);
+  });
+
+  it("emits graphicsModified for a same-index change", () => {
+    const edits = diffLayouts(withIcon([rect(0)]), withIcon([rect(5)]));
+    expect(edits).toEqual([
+      { kind: "graphicsModified", layer: "icon", index: 0, shape: rect(5) },
+    ]);
+  });
+
+  it("emits graphicsDeleted (descending) for trailing removals", () => {
+    const edits = diffLayouts(
+      withIcon([rect(0), rect(20), rect(40)]),
+      withIcon([rect(0)]),
+    );
+    expect(edits).toEqual([
+      { kind: "graphicsDeleted", layer: "icon", index: 2 },
+      { kind: "graphicsDeleted", layer: "icon", index: 1 },
+    ]);
+  });
+
+  it("appends multiple shapes in ascending index order", () => {
+    const edits = diffLayouts(withIcon([]), withIcon([rect(0), rect(20)]));
+    expect(edits).toEqual([
+      { kind: "graphicsAdded", layer: "icon", shape: rect(0) },
+      { kind: "graphicsAdded", layer: "icon", shape: rect(20) },
+    ]);
+  });
+
+  it("ignores inherited layers (only the host's own layer is editable)", () => {
+    const prev = withIcon([rect(0)], "Ancestor");
+    const next = withIcon([rect(0), rect(20)], "Ancestor");
+    expect(diffLayouts(prev, next)).toEqual([]);
+  });
+
+  it("diffs the diagram layer independently of the icon layer", () => {
+    const prev: DiagramLayout = {
+      ...baseLayout(),
+      diagramLayers: [{ from: "T", shapes: [rect(0)] }],
+    };
+    const next: DiagramLayout = {
+      ...baseLayout(),
+      diagramLayers: [{ from: "T", shapes: [rect(0), rect(20)] }],
+    };
+    expect(diffLayouts(prev, next)).toEqual([
+      { kind: "graphicsAdded", layer: "diagram", shape: rect(20) },
+    ]);
   });
 });

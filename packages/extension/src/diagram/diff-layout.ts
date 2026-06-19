@@ -1,4 +1,7 @@
-import type { DiagramLayout, Extent } from "@dicode/omc-client";
+import type { DiagramLayout, Extent, Shape } from "@dicode/omc-client";
+
+/** The two annotation layers a class carries graphics in. */
+export type GraphicsLayer = "icon" | "diagram";
 
 /**
  * Diffs two `DiagramLayout` snapshots and emits a flat list of mutation
@@ -59,7 +62,15 @@ export type LayoutEdit =
       newFrom: string;
       newTo: string;
       waypoints: ReadonlyArray<readonly [number, number]>;
-    };
+    }
+  | { kind: "graphicsAdded"; layer: GraphicsLayer; shape: Shape }
+  | {
+      kind: "graphicsModified";
+      layer: GraphicsLayer;
+      index: number;
+      shape: Shape;
+    }
+  | { kind: "graphicsDeleted"; layer: GraphicsLayer; index: number };
 
 function endpointToCref(c: {
   component: string | undefined;
@@ -232,7 +243,66 @@ export function diffLayouts(
     }
   }
 
+  diffGraphics(prev, next, edits);
+
   return edits;
+}
+
+/** Shapes in `layers` that the named class itself contributed, or `[]`. */
+function ownShapes(
+  layers: ReadonlyArray<{ from: string; shapes: Shape[] }>,
+  className: string,
+): Shape[] {
+  return layers.find((l) => l.from === className)?.shapes ?? [];
+}
+
+function shapeEqual(a: Shape, b: Shape): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/**
+ * Diff the host's OWN icon/diagram shapes (never inherited ancestor layers —
+ * the write targets only `className`'s annotation). Shape identity is
+ * positional `(layer, index)`: a same-index value change is a modify, trailing
+ * extras are appends, trailing removals are deletes. Deletes are emitted in
+ * descending index so `apply-edits` can run them without re-indexing.
+ */
+function diffGraphics(
+  prev: DiagramLayout,
+  next: DiagramLayout,
+  edits: LayoutEdit[],
+): void {
+  const layers: ReadonlyArray<[GraphicsLayer, keyof DiagramLayout]> = [
+    ["icon", "iconLayers"],
+    ["diagram", "diagramLayers"],
+  ];
+  for (const [layer, field] of layers) {
+    const before = ownShapes(prev[field] as IconLayerLike[], prev.className);
+    const after = ownShapes(next[field] as IconLayerLike[], next.className);
+
+    const common = Math.min(before.length, after.length);
+    for (let i = 0; i < common; i += 1) {
+      const a = before[i];
+      const b = after[i];
+      if (a && b && !shapeEqual(a, b)) {
+        edits.push({ kind: "graphicsModified", layer, index: i, shape: b });
+      }
+    }
+    // Appends preserve order, so adds go in ascending index.
+    for (let i = before.length; i < after.length; i += 1) {
+      const shape = after[i];
+      if (shape) edits.push({ kind: "graphicsAdded", layer, shape });
+    }
+    // Deletes go in descending index so earlier removals don't shift later ones.
+    for (let i = before.length - 1; i >= after.length; i -= 1) {
+      edits.push({ kind: "graphicsDeleted", layer, index: i });
+    }
+  }
+}
+
+interface IconLayerLike {
+  from: string;
+  shapes: Shape[];
 }
 
 /** A connection endpoint reference reduced to its diffable parts. */
