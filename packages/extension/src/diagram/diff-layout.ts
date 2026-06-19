@@ -295,13 +295,16 @@ function lcsIndices<T>(
     new Array<number>(n + 1).fill(0),
   );
   for (let i = 1; i <= m; i++) {
+    const row = dp[i];
+    const prevRow = dp[i - 1];
+    if (row === undefined || prevRow === undefined) break;
     for (let j = 1; j <= n; j++) {
       const ai = a[i - 1];
       const bj = b[j - 1];
       if (ai !== undefined && bj !== undefined && eq(ai, bj)) {
-        dp[i]![j] = dp[i - 1]![j - 1]! + 1;
+        row[j] = (prevRow[j - 1] ?? 0) + 1;
       } else {
-        dp[i]![j] = Math.max(dp[i - 1]![j]!, dp[i]![j - 1]!);
+        row[j] = Math.max(prevRow[j] ?? 0, row[j - 1] ?? 0);
       }
     }
   }
@@ -315,7 +318,7 @@ function lcsIndices<T>(
       pairs.push([i - 1, j - 1]);
       i -= 1;
       j -= 1;
-    } else if ((dp[i - 1]![j] ?? 0) >= (dp[i]![j - 1] ?? 0)) {
+    } else if ((dp[i - 1]?.[j] ?? 0) >= (dp[i]?.[j - 1] ?? 0)) {
       i -= 1;
     } else {
       j -= 1;
@@ -325,20 +328,17 @@ function lcsIndices<T>(
 }
 
 /**
- * Returns true when every shape in `after` appears in `before` by value
- * (via `deepEqual`), consuming one copy per match. A pure deletion means
- * the user removed shapes without modifying any survivors — the LCS-based
- * path can then emit minimal `graphicsDeleted` ops without risk of
- * accidentally dropping an in-place modify.
+ * Returns true when every key in `afterKeys` appears in `beforeKeys` by
+ * value, consuming one copy per match. Both arrays hold pre-computed
+ * `stableJson` strings so this check shares the serialization work with
+ * the subsequent `lcsIndices` call.
  */
-function isPureDeletion(before: Shape[], after: Shape[]): boolean {
+function isPureDeletion(beforeKeys: string[], afterKeys: string[]): boolean {
   const counts = new Map<string, number>();
-  for (const s of before) {
-    const k = stableJson(s);
+  for (const k of beforeKeys) {
     counts.set(k, (counts.get(k) ?? 0) + 1);
   }
-  for (const s of after) {
-    const k = stableJson(s);
+  for (const k of afterKeys) {
     const n = counts.get(k) ?? 0;
     if (n === 0) return false;
     counts.set(k, n - 1);
@@ -401,12 +401,11 @@ function diffGraphics(
     }
 
     // Shrunk. Use LCS for pure deletions; fall back to positional otherwise.
-    if (isPureDeletion(before, after)) {
-      const pairs = lcsIndices(
-        before,
-        after,
-        deepEqual as (x: Shape, y: Shape) => boolean,
-      );
+    // Pre-compute keys once so both isPureDeletion and lcsIndices share them.
+    const beforeKeys = before.map(stableJson);
+    const afterKeys = after.map(stableJson);
+    if (isPureDeletion(beforeKeys, afterKeys)) {
+      const pairs = lcsIndices(beforeKeys, afterKeys, (a, b) => a === b);
       const matchedBefore = new Set(pairs.map(([bi]) => bi));
       // Emit deletes in descending order so earlier removals don't shift later indices.
       for (let i = before.length - 1; i >= 0; i -= 1) {
