@@ -44,7 +44,9 @@ test("right-click on a selection opens the command menu", async ({ page }) => {
   await firstComponent(page);
 
   const box = await page.locator("om-graphical-layout").boundingBox();
-  if (!box) throw new Error("no canvas box");
+  if (!box) {
+    throw new Error("no canvas box");
+  }
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, {
     button: "right",
   });
@@ -60,7 +62,9 @@ test("picking a command runs it and closes the menu", async ({ page }) => {
   const before = await firstComponent(page);
 
   const box = await page.locator("om-graphical-layout").boundingBox();
-  if (!box) throw new Error("no canvas box");
+  if (!box) {
+    throw new Error("no canvas box");
+  }
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, {
     button: "right",
   });

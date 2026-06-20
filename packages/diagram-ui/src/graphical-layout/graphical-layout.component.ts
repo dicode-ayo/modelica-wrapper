@@ -54,10 +54,10 @@ import {
   type DiagramCommandId,
 } from "../commands/index.js";
 import type {
-  ContextMenuItem,
   ContextMenuSelectDetail,
   OmContextMenu,
 } from "../context-menu/context-menu.component.js";
+import { commandsToMenuItems } from "../context-menu/command-menu-items.js";
 import {
   deriveContextKeys,
   type ContextKeys,
@@ -1267,13 +1267,9 @@ export class OmGraphicalLayout extends LitElement {
       return;
     }
     const ctx = this.commandContext();
-    const items: ContextMenuItem[] = this.commands
-      .commandsFor("contextMenu", ctx)
-      .map((placed) => ({
-        id: placed.command.id,
-        label: placed.command.title,
-        group: placed.placement.group,
-      }));
+    const items = commandsToMenuItems(
+      this.commands.commandsFor("contextMenu", ctx),
+    );
     if (items.length === 0) {
       return;
     }

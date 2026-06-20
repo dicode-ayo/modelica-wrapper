@@ -45,7 +45,7 @@ export class OmContextMenu extends LitElement {
         position: fixed;
         z-index: var(--om-z-overlay);
         min-width: 12ch;
-        padding: var(--om-space-xs, 4px) 0;
+        padding: var(--om-space-xs) 0;
         background: var(
           --vscode-menu-background,
           var(--vscode-editorWidget-background, #fff)
@@ -53,7 +53,7 @@ export class OmContextMenu extends LitElement {
         border: 1px solid
           var(--vscode-menu-border, var(--vscode-editorWidget-border, #ccc));
         border-radius: var(--om-radius-md);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+        box-shadow: var(--om-shadow-overlay);
         font-family: var(--vscode-font-family, system-ui, sans-serif);
         font-size: var(--vscode-font-size, 13px);
         color: var(--vscode-menu-foreground, var(--vscode-foreground, #1f1f1f));
@@ -63,7 +63,7 @@ export class OmContextMenu extends LitElement {
         display: block;
         inline-size: 100%;
         text-align: start;
-        padding: var(--om-space-xs, 4px) var(--om-space-md, 12px);
+        padding: var(--om-space-xs) var(--om-space-lg);
         background: none;
         border: none;
         color: inherit;
@@ -82,7 +82,7 @@ export class OmContextMenu extends LitElement {
       }
 
       hr {
-        margin: var(--om-space-xs, 4px) 0;
+        margin: var(--om-space-xs) 0;
         border: none;
         border-top: 1px solid
           var(--vscode-menu-separatorBackground, rgba(0, 0, 0, 0.15));
@@ -151,7 +151,8 @@ export class OmContextMenu extends LitElement {
   };
 
   private readonly onMenuClick = (e: MouseEvent): void => {
-    const button = (e.target as HTMLElement | null)?.closest("button");
+    const target = e.target;
+    const button = target instanceof Element ? target.closest("button") : null;
     if (!button || button.disabled) {
       return;
     }
@@ -190,9 +191,9 @@ export class OmContextMenu extends LitElement {
     items[next]?.focus();
   }
 
-  override render(): TemplateResult {
+  override render(): TemplateResult | typeof nothing {
     if (!this.opened || this.items.length === 0) {
-      return html`${nothing}`;
+      return nothing;
     }
     // Build rows as flat siblings — a separator and a button must each be their
     // own template (a template that *starts* with `${expr}<button attr=${…}>`
