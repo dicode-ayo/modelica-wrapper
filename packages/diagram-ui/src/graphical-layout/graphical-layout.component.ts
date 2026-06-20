@@ -58,6 +58,7 @@ import type {
   OmContextMenu,
 } from "../context-menu/context-menu.component.js";
 import { commandsToMenuItems } from "../context-menu/command-menu-items.js";
+import { nextContextSelection } from "../context-menu/context-selection.js";
 import {
   deriveContextKeys,
   type ContextKeys,
@@ -310,6 +311,10 @@ export class OmGraphicalLayout extends LitElement {
   @query("om-scene") private sceneEl?: OmScene;
   @query("om-context-menu") private contextMenuEl?: OmContextMenu;
 
+  /** Diagram-space point the open context menu is anchored to (so it tracks
+   *  that spot through pan/zoom). Null when the menu is closed. */
+  private contextMenuAnchor: { x: number; y: number } | null = null;
+
   private modeRouter: ModeRouter | null = null;
   private dblClickPicker: PickerFn | null = null;
   private dblClickCanvas: HTMLCanvasElement | null = null;
@@ -361,6 +366,7 @@ export class OmGraphicalLayout extends LitElement {
     const connectorEntries = Object.entries(active.connectors);
     return html`
       <om-scene
+        @om-view-change=${this.onViewChange}
         .engineFactory=${this.engineFactory ?? undefined}
         ?debug=${this.debug}
         camera-mode=${this.cameraMode}
@@ -417,6 +423,7 @@ export class OmGraphicalLayout extends LitElement {
         : nothing}
       <om-context-menu
         @om-context-menu-select=${this.onContextMenuSelect}
+        @om-context-menu-close=${this.onContextMenuClose}
       ></om-context-menu>
     `;
   }
@@ -982,6 +989,7 @@ export class OmGraphicalLayout extends LitElement {
       case "contextMenu": {
         const d = detail as InteractionEvents["contextMenu"];
         this.emit("om-context-menu", d);
+        this.selectForContext(d.key);
         this.openContextMenu(d.clientX, d.clientY);
         return;
       }
@@ -1260,6 +1268,19 @@ export class OmGraphicalLayout extends LitElement {
     return this.commands.run(id, this.commandContext(), this.commandTarget());
   }
 
+  /**
+   * Adjust the selection a right-click acts on, so the menu always targets
+   * what was actually clicked: right-clicking an unselected entity selects it,
+   * right-clicking an already-selected one keeps the (possibly multi-)
+   * selection, and right-clicking empty space clears it.
+   */
+  private selectForContext(key: string | null): void {
+    const next = nextContextSelection(this.selectedKeys, key);
+    if (next !== null) {
+      this.setSelection(next);
+    }
+  }
+
   /** Open the context menu at the cursor with the commands valid right now. */
   private openContextMenu(x: number, y: number): void {
     const menu = this.contextMenuEl;
@@ -1273,9 +1294,29 @@ export class OmGraphicalLayout extends LitElement {
     if (items.length === 0) {
       return;
     }
+    // Anchor to the diagram point under the cursor so the menu tracks that spot
+    // through pan/zoom (reprojected on `om-view-change`).
+    this.contextMenuAnchor = this.sceneEl?.clientToDiagram(x, y) ?? null;
     menu.items = items;
     menu.open(x, y);
   }
+
+  private readonly onViewChange = (): void => {
+    if (!this.contextMenuAnchor || !this.contextMenuEl) {
+      return;
+    }
+    const pt = this.sceneEl?.diagramToClient(
+      this.contextMenuAnchor.x,
+      this.contextMenuAnchor.y,
+    );
+    if (pt) {
+      this.contextMenuEl.moveTo(pt.x, pt.y);
+    }
+  };
+
+  private readonly onContextMenuClose = (): void => {
+    this.contextMenuAnchor = null;
+  };
 
   private readonly onContextMenuSelect = (
     e: CustomEvent<ContextMenuSelectDetail>,

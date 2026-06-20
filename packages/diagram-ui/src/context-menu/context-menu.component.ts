@@ -106,6 +106,15 @@ export class OmContextMenu extends LitElement {
     void this.updateComplete.then(() => this.focusFirst());
   }
 
+  /** Reposition an already-open menu (e.g. to track a point through pan/zoom). */
+  moveTo(x: number, y: number): void {
+    if (!this.opened) {
+      return;
+    }
+    this.x = x;
+    this.y = y;
+  }
+
   close(): void {
     if (!this.opened) {
       return;
