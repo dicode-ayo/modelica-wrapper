@@ -185,8 +185,9 @@ jobs:
   # drives Storybook stories. The only gate on interactions happy-dom can't run
   # (Lit @event on custom elements; the Babylon pointer / pan-zoom paths).
   diagram-ui-e2e:
-    name: E2E (Storybook + diagram-ui)
+    name: E2E (Playwright + diagram-ui)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
