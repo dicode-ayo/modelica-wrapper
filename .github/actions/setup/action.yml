@@ -1,0 +1,17 @@
+name: Setup pnpm + Node
+description: Install pnpm, set up Node 20, and install workspace dependencies.
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 10.25.0
+
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: pnpm
+
+    - run: pnpm install --frozen-lockfile
+      shell: bash
