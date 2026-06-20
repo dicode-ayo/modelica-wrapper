@@ -28,6 +28,8 @@ export default defineConfig({
     // Capture a trace on the CI retry so the uploaded artifact is openable.
     trace: "on-first-retry",
     ...devices["Desktop Chrome"],
+    // `SLOW_MO=400 pnpm test:e2e:headed` to follow a headed run step by step.
+    launchOptions: { slowMo: Number(process.env["SLOW_MO"]) || 0 },
   },
   webServer: {
     command: "pnpm start",
