@@ -180,3 +180,40 @@ jobs:
             /tmp/mw-e2e-*/code-server.log
           if-no-files-found: ignore
           retention-days: 7
+
+  # Real-browser coverage for the diagram-ui webview components — Playwright
+  # drives Storybook stories. The only gate on interactions happy-dom can't run
+  # (Lit @event on custom elements; the Babylon pointer / pan-zoom paths).
+  diagram-ui-e2e:
+    name: E2E (Storybook + diagram-ui)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.25.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium + system deps
+        run: pnpm --filter @dicode/diagram-ui exec playwright install --with-deps chromium
+
+      - name: Run diagram-ui e2e
+        run: pnpm --filter @dicode/diagram-ui test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagram-ui-e2e-artifacts
+          path: |
+            packages/diagram-ui/test-results/
+            packages/diagram-ui/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
