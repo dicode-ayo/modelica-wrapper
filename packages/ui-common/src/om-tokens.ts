@@ -43,6 +43,9 @@ export const omTokens: CSSResult = css`
     --om-z-overlay: 50;
     --om-z-modal: 200;
 
+    /* --- elevation --- */
+    --om-shadow-overlay: 0 2px 8px rgba(0, 0, 0, 0.25);
+
     /* --- form widgets --- */
     --om-input-padding: 4px 6px;
     --om-button-padding: 4px 12px;

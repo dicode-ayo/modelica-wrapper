@@ -184,4 +184,12 @@ describe("<om-graphical-layout>", () => {
     sceneOf(el).dispatchEvent(ev);
     expect(ev.defaultPrevented).toBe(false);
   });
+
+  it("mounts an <om-context-menu> for right-click commands", async () => {
+    // The right-click → menu → run-command flow is verified end-to-end in a
+    // real browser (Storybook); happy-dom can't bind a Lit `@`-listener on a
+    // custom element or drive the canvas pointer interaction.
+    const el = await mount(tinyLayout());
+    expect(el.shadowRoot?.querySelector("om-context-menu")).not.toBeNull();
+  });
 });

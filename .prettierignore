@@ -15,3 +15,5 @@ packages/omc-client/test/fixtures/
 packages/extension/e2e/node_modules/
 packages/extension/e2e/test-results/
 packages/extension/e2e/workspace/
+packages/diagram-ui/test-results/
+packages/diagram-ui/playwright-report/
