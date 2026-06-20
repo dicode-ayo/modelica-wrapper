@@ -33,6 +33,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run",
+    "test:e2e": "playwright test",
     "storybook": "storybook dev -p 6007 --no-open",
     "build-storybook": "storybook build"
   },
@@ -49,6 +50,7 @@
     "lit": "^3.2.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.60.0",
     "@storybook/addon-essentials": "^8.4.0",
     "@storybook/web-components": "^8.4.0",
     "@storybook/web-components-vite": "^8.4.0",
