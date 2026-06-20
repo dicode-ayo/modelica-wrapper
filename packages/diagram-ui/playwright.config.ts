@@ -25,6 +25,8 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORT}`,
     headless: true,
+    // Capture a trace on the CI retry so the uploaded artifact is openable.
+    trace: "on-first-retry",
     ...devices["Desktop Chrome"],
   },
   webServer: {
