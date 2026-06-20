@@ -11,49 +11,65 @@ import { test, expect, type Page } from "@playwright/test";
 const STORY =
   "/iframe.html?id=diagram-ui-graphicallayout--editable&viewMode=story";
 
-/** Name of the first component in the story's layout. */
-async function firstComponentName(page: Page): Promise<string> {
-  return page.evaluate(() => {
-    const el = document.querySelector("om-graphical-layout") as HTMLElement & {
-      layout: { components: Record<string, unknown> };
-    };
-    return Object.keys(el.layout.components)[0];
-  });
+// The host/scene shapes the in-page helpers reach for. Defined once here rather
+// than re-cast inline in every `page.evaluate` — the types are erased across
+// the serialization boundary, so a single shared shape is all that's needed.
+interface LayoutEl extends HTMLElement {
+  layout: {
+    components: Record<
+      string,
+      { placement: { extent: number[][]; rotation?: number } }
+    >;
+  };
+  selection: string[];
+  setSelection: (keys: string[]) => void;
+}
+interface SceneEl extends HTMLElement {
+  diagramToClient: (x: number, y: number) => { x: number; y: number } | null;
 }
 
-/** Viewport coordinates of a component's centre (via the scene projection). */
-async function componentCentre(
+/** First component name + the viewport centre of its placement. */
+async function firstComponent(
   page: Page,
-  name: string,
-): Promise<{ x: number; y: number }> {
-  const pt = await page.evaluate((n: string) => {
-    const el = document.querySelector("om-graphical-layout") as HTMLElement & {
-      layout: {
-        components: Record<string, { placement: { extent: number[][] } }>;
-      };
+): Promise<{ name: string; centre: { x: number; y: number } }> {
+  const result = await page.evaluate(() => {
+    const el = document.querySelector("om-graphical-layout") as LayoutEl;
+    const name = Object.keys(el.layout.components)[0];
+    const [[x1, y1], [x2, y2]] = el.layout.components[name].placement.extent;
+    const scene = el.shadowRoot?.querySelector("om-scene") as SceneEl;
+    return {
+      name,
+      centre: scene.diagramToClient((x1 + x2) / 2, (y1 + y2) / 2),
     };
-    const [[x1, y1], [x2, y2]] = el.layout.components[n].placement.extent;
-    const scene = el.shadowRoot?.querySelector("om-scene") as HTMLElement & {
-      diagramToClient: (
-        x: number,
-        y: number,
-      ) => { x: number; y: number } | null;
-    };
-    return scene.diagramToClient((x1 + x2) / 2, (y1 + y2) / 2);
-  }, name);
-  if (!pt) {
+  });
+  if (!result.centre) {
     throw new Error("scene not ready");
   }
-  return pt;
+  return { name: result.name, centre: result.centre };
 }
 
-async function selection(page: Page): Promise<string[]> {
-  return page.evaluate(() => {
-    const el = document.querySelector("om-graphical-layout") as HTMLElement & {
-      selection: string[];
-    };
-    return el.selection;
-  });
+const selection = (page: Page): Promise<string[]> =>
+  page.evaluate(
+    () => (document.querySelector("om-graphical-layout") as LayoutEl).selection,
+  );
+
+const rotationOf = (page: Page, name: string): Promise<number> =>
+  page.evaluate(
+    (n: string) =>
+      (document.querySelector("om-graphical-layout") as LayoutEl).layout
+        .components[n].placement.rotation ?? 0,
+    name,
+  );
+
+async function boxOf(
+  page: Page,
+  selector: string,
+): Promise<{ x: number; y: number; width: number; height: number }> {
+  const box = await page.locator(selector).boundingBox();
+  if (!box) {
+    throw new Error(`no box for ${selector}`);
+  }
+  return box;
 }
 
 test.beforeEach(async ({ page }) => {
@@ -69,9 +85,8 @@ test.beforeEach(async ({ page }) => {
 test("right-click selects the clicked component and opens its menu", async ({
   page,
 }) => {
-  const name = await firstComponentName(page);
-  const c = await componentCentre(page, name);
-  await page.mouse.click(c.x, c.y, { button: "right" });
+  const { name, centre } = await firstComponent(page);
+  await page.mouse.click(centre.x, centre.y, { button: "right" });
 
   expect(await selection(page)).toContain(`c:${name}`);
   await expect(page.locator("om-context-menu button")).toHaveCount(5);
@@ -80,19 +95,14 @@ test("right-click selects the clicked component and opens its menu", async ({
 test("right-click on empty space clears the selection and shows no menu", async ({
   page,
 }) => {
-  const name = await firstComponentName(page);
+  const { name } = await firstComponent(page);
   await page.evaluate((n: string) => {
-    (
-      document.querySelector("om-graphical-layout") as HTMLElement & {
-        setSelection: (k: string[]) => void;
-      }
-    ).setSelection([`c:${n}`]);
+    (document.querySelector("om-graphical-layout") as LayoutEl).setSelection([
+      `c:${n}`,
+    ]);
   }, name);
 
-  const box = await page.locator("om-graphical-layout").boundingBox();
-  if (!box) {
-    throw new Error("no canvas box");
-  }
+  const box = await boxOf(page, "om-graphical-layout");
   await page.mouse.click(box.x + 6, box.y + 6, { button: "right" });
 
   expect(await selection(page)).toEqual([]);
@@ -100,57 +110,30 @@ test("right-click on empty space clears the selection and shows no menu", async 
 });
 
 test("picking a command runs it and closes the menu", async ({ page }) => {
-  const name = await firstComponentName(page);
-  const c = await componentCentre(page, name);
-  const before = await page.evaluate((n: string) => {
-    const el = document.querySelector("om-graphical-layout") as HTMLElement & {
-      layout: {
-        components: Record<string, { placement: { rotation?: number } }>;
-      };
-    };
-    return el.layout.components[n].placement.rotation ?? 0;
-  }, name);
+  const { name, centre } = await firstComponent(page);
+  const before = await rotationOf(page, name);
 
-  await page.mouse.click(c.x, c.y, { button: "right" });
+  await page.mouse.click(centre.x, centre.y, { button: "right" });
   await page
     .locator('om-context-menu button[data-id="diagram.rotateCw"]')
     .click();
 
   await expect(page.locator("om-context-menu button")).toHaveCount(0);
-  const after = await page.evaluate((n: string) => {
-    const el = document.querySelector("om-graphical-layout") as HTMLElement & {
-      layout: {
-        components: Record<string, { placement: { rotation?: number } }>;
-      };
-    };
-    return el.layout.components[n].placement.rotation ?? 0;
-  }, name);
-  expect(after).not.toBe(before);
+  expect(await rotationOf(page, name)).not.toBe(before);
 });
 
 test("the menu tracks its diagram point through zoom", async ({ page }) => {
-  const name = await firstComponentName(page);
-  const c = await componentCentre(page, name);
-  await page.mouse.click(c.x, c.y, { button: "right" });
+  const { centre } = await firstComponent(page);
+  await page.mouse.click(centre.x, centre.y, { button: "right" });
 
-  const menu = page.locator("om-context-menu [role='menu']");
-  const before = await menu.boundingBox();
-  if (!before) {
-    throw new Error("menu not open");
-  }
+  const before = await boxOf(page, "om-context-menu [role='menu']");
 
   // Zoom toward a corner so the anchored component's screen position shifts.
-  const box = await page.locator("om-graphical-layout").boundingBox();
-  if (!box) {
-    throw new Error("no canvas box");
-  }
+  const box = await boxOf(page, "om-graphical-layout");
   await page.mouse.move(box.x + 10, box.y + 10);
   await page.mouse.wheel(0, -400);
   await page.waitForTimeout(150);
 
-  const after = await menu.boundingBox();
-  if (!after) {
-    throw new Error("menu closed unexpectedly");
-  }
+  const after = await boxOf(page, "om-context-menu [role='menu']");
   expect({ x: after.x, y: after.y }).not.toEqual({ x: before.x, y: before.y });
 });

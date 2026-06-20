@@ -8,7 +8,7 @@ import type { ContextMenuItem } from "./context-menu.component.js";
  *
  * No `disabled` is set: `commandsFor` already filters by each command's `when`,
  * so everything here is runnable. The menu's disabled support is for a surface
- * that prefers to grey out unavailable commands rather than hide them.
+ * that prefers to gray out unavailable commands rather than hide them.
  */
 export function commandsToMenuItems(
   placed: readonly PlacedCommand[],

@@ -98,21 +98,23 @@ export class OmContextMenu extends LitElement {
   @state() private x = 0;
   @state() private y = 0;
 
-  /** Show the menu with its top-left at the given client coordinates. */
-  open(x: number, y: number): void {
+  private setPosition(x: number, y: number): void {
     this.x = x;
     this.y = y;
+  }
+
+  /** Show the menu with its top-left at the given client coordinates. */
+  open(x: number, y: number): void {
+    this.setPosition(x, y);
     this.opened = true;
     void this.updateComplete.then(() => this.focusFirst());
   }
 
   /** Reposition an already-open menu (e.g. to track a point through pan/zoom). */
   moveTo(x: number, y: number): void {
-    if (!this.opened) {
-      return;
+    if (this.opened) {
+      this.setPosition(x, y);
     }
-    this.x = x;
-    this.y = y;
   }
 
   close(): void {
