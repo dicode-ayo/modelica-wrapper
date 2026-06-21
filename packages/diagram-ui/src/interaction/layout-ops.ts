@@ -774,6 +774,11 @@ export function applyEdgeSegmentDrag(
   if (a === undefined || b === undefined) {
     return layout;
   }
+  // A coincident/zero-length segment has no defined axis — skip rather than
+  // silently constraining the drag to one dimension.
+  if (a[0] === b[0] && a[1] === b[1]) {
+    return layout;
+  }
   const lastIdx = wps.length - 1;
   const horizontal = segmentAxis(a, b) === "h";
 
