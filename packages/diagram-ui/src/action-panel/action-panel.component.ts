@@ -146,6 +146,10 @@ export class OmActionPanel extends LitElement {
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        /* Square icon buttons — width follows the small-size height. */
+        aspect-ratio: 1;
+        min-inline-size: 0;
+        padding-inline: 0;
       }
 
       .toolbar-icon {
@@ -165,6 +169,8 @@ export class OmActionPanel extends LitElement {
       .split-chevron::part(base) {
         border-start-start-radius: 0;
         border-end-start-radius: 0;
+        /* The chevron stays a narrow caret, not a square. */
+        aspect-ratio: auto;
         padding-inline: var(--om-space-2xs);
       }
       .split-chevron .toolbar-icon {
