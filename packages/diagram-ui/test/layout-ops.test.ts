@@ -450,6 +450,17 @@ describe("applyEdgeSegmentDrag", () => {
     const layout = baseLayout();
     expect(applyEdgeSegmentDrag(layout, 9, { x: 0, y: 0 }, 3, 3)).toBe(layout);
   });
+
+  it("returns the same reference when the grabbed segment is zero-length", () => {
+    // Segment 0 ([5,5]→[5,5]) is coincident; grabbing at its position
+    // selects it first (strict-< in closestSegmentIndex keeps the earliest tie).
+    const layout = withRoute([
+      [5, 5],
+      [5, 5],
+      [10, 5],
+    ]);
+    expect(applyEdgeSegmentDrag(layout, 0, { x: 5, y: 5 }, 3, 7)).toBe(layout);
+  });
 });
 
 describe("applyWaypointDrag", () => {
