@@ -159,7 +159,9 @@ export {
   type ActionCheckDetail,
   type ActionSimulateDetail,
   type ActionParametersDetail,
+  type ActionToolDetail,
 } from "./action-panel/action-panel.component.js";
+export { DRAW_KINDS, type DrawKind, type ToolId } from "./interaction/tools.js";
 export {
   OmParameterForm,
   type ParameterFormChangeDetail,

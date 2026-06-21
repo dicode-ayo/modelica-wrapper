@@ -1289,11 +1289,13 @@ export class OmGraphicalLayout extends LitElement {
   }
 
   /** Arm a drawing tool, or `select` to disarm. A readonly diagram can't
-   *  draw, so it stays on `select`. */
+   *  draw, so it stays on `select`. Emits `om-tool-change` so an external
+   *  toolbar can mirror the armed tool. */
   setActiveTool(tool: ToolId): void {
     const next: ToolId = this.readonly ? "select" : tool;
     if (next !== this.activeTool) {
       this.activeTool = next;
+      this.emit("om-tool-change", { tool: next });
     }
   }
 
