@@ -1150,12 +1150,23 @@ export class OmGraphicalLayout extends LitElement {
           );
           this.setInteractionState({ kind: "drawing" });
         } else {
-          const grid = this.currentSnapGrid();
+          const snapped = snapExtent(d.extent, this.currentSnapGrid());
+          // Grid-snapping can collapse a thin drag onto one grid line; don't
+          // persist a zero-size shape (mirrors the click-no-drag bail above,
+          // which leaves the tool armed to retry).
+          if (
+            snapped[0][0] === snapped[1][0] ||
+            snapped[0][1] === snapped[1][1]
+          ) {
+            this.draftLayout = null;
+            this.endInteraction();
+            return;
+          }
           this.commitLayout(
             applyAddGraphic(
               this.layout,
               layer,
-              buildExtentShape(d.kind, snapExtent(d.extent, grid)),
+              buildExtentShape(d.kind, snapped),
             ),
           );
           this.endInteraction();
