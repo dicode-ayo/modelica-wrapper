@@ -1159,6 +1159,8 @@ export class OmGraphicalLayout extends LitElement {
             ),
           );
           this.endInteraction();
+          // One shape per arming — disarm back to select after a draw.
+          this.setActiveTool("select");
         }
         return;
       }

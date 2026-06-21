@@ -6,18 +6,19 @@
  * with the `anchor` attribute.
  *
  * Buttons are icon-only (`title` carries the description + hotkey). Undo,
- * Check, Simulate, Parameters, Rotate, Flip, plus a draw-shape dropdown that
- * arms a drawing tool. Rotate / Flip act on the selection and disable via
- * `no-selection`; the draw dropdown reflects the host's `tool`.
+ * Check, Simulate, Parameters are plain buttons; Rotate, Flip and Draw are
+ * split buttons — the main half does the primary action (rotate cw / flip
+ * horizontal / arm the current shape) and the chevron opens a menu to pick the
+ * variant (cw·ccw / horizontal·vertical / rectangle·ellipse).
  *
  * Events (bubble + composed):
- *   - `om-action-undo` / `-check` / `-simulate` / `-parameters` / `-rotate` /
- *     `-flip` — no detail.
- *   - `om-action-tool` — `{ tool }`, the tool the user wants armed (or
- *     `select` to disarm). The host owns the state and feeds it back via `tool`.
+ *   - `om-action-undo` / `-check` / `-simulate` / `-parameters` — no detail.
+ *   - `om-action-rotate` — `{ direction: "cw" | "ccw" }`.
+ *   - `om-action-flip` — `{ axis: "horizontal" | "vertical" }`.
+ *   - `om-action-tool` — `{ tool }`, the tool to arm (or `select` to disarm).
+ *     The host owns tool state and feeds it back via `tool`.
  *
- * Buttons hide individually via boolean attributes (`hide-undo`, …, `hide-flip`,
- * `hide-draw`).
+ * Buttons hide individually via boolean attributes (`hide-undo`, …, `hide-draw`).
  */
 
 import {
@@ -28,7 +29,7 @@ import {
   type PropertyValues,
   type TemplateResult,
 } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
 
 import "@awesome.me/webawesome/dist/components/button/button.js";
 import "@awesome.me/webawesome/dist/components/dropdown/dropdown.js";
@@ -37,17 +38,18 @@ import "@awesome.me/webawesome/dist/components/dropdown-item/dropdown-item.js";
 import { omTokens } from "@dicode/ui-common";
 
 import {
-  DRAW_KINDS,
   drawKindOf,
   type DrawKind,
   type ToolId,
 } from "../interaction/tools.js";
 import {
-  caretIcon,
   checkIcon,
+  chevronDownIcon,
   drawKindIcon,
   flipIcon,
+  flipVerticalIcon,
   parametersIcon,
+  rotateCcwIcon,
   rotateIcon,
   simulateIcon,
   undoIcon,
@@ -59,20 +61,23 @@ export type ActionPanelAnchor =
   | "bottom-right"
   | "bottom-left";
 
+export type RotateDirection = "cw" | "ccw";
+export type FlipAxis = "horizontal" | "vertical";
+
 export type ActionUndoDetail = undefined;
 export type ActionCheckDetail = undefined;
 export type ActionSimulateDetail = undefined;
 export type ActionParametersDetail = undefined;
-export type ActionRotateDetail = undefined;
-export type ActionFlipDetail = undefined;
+export interface ActionRotateDetail {
+  direction: RotateDirection;
+}
+export interface ActionFlipDetail {
+  axis: FlipAxis;
+}
 export interface ActionToolDetail {
   tool: ToolId;
 }
 
-/**
- * Event-name → detail-type map for `<om-action-panel>`. Listener types
- * can come from here (`CustomEvent<ActionPanelEvents["om-action-tool"]>`).
- */
 export interface ActionPanelEvents {
   "om-action-undo": ActionUndoDetail;
   "om-action-check": ActionCheckDetail;
@@ -84,6 +89,12 @@ export interface ActionPanelEvents {
 }
 
 export type ActionPanelEventName = keyof ActionPanelEvents;
+
+interface MenuItem {
+  value: string;
+  icon: TemplateResult;
+  label: string;
+}
 
 const DRAW_LABELS: Record<DrawKind, string> = {
   rectangle: "Rectangle",
@@ -131,19 +142,32 @@ export class OmActionPanel extends LitElement {
         left: var(--om-action-panel-offset);
       }
 
+      wa-button::part(base) {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
       .toolbar-icon {
         inline-size: var(--om-icon-size-md);
         block-size: var(--om-icon-size-md);
         display: block;
       }
 
-      /* The draw trigger packs the shape glyph and the caret together. */
-      .draw-trigger {
+      /* Split button: main action + chevron, flush against each other. */
+      .split {
         display: inline-flex;
-        align-items: center;
-        gap: var(--om-space-2xs);
       }
-      .draw-trigger .caret {
+      .split-main::part(base) {
+        border-start-end-radius: 0;
+        border-end-end-radius: 0;
+      }
+      .split-chevron::part(base) {
+        border-start-start-radius: 0;
+        border-end-start-radius: 0;
+        padding-inline: var(--om-space-2xs);
+      }
+      .split-chevron .toolbar-icon {
         inline-size: var(--om-icon-size-sm);
         block-size: var(--om-icon-size-sm);
       }
@@ -163,8 +187,7 @@ export class OmActionPanel extends LitElement {
   @property({ type: Boolean, reflect: true })
   disabled = false;
 
-  /** The armed drawing tool, owned by the host. The draw dropdown reflects it
-   *  (which shape it shows, whether it reads as active). */
+  /** The armed drawing tool, owned by the host. The draw split reflects it. */
   @property()
   tool: ToolId = "select";
 
@@ -179,16 +202,15 @@ export class OmActionPanel extends LitElement {
 
   /**
    * Rotate / flip act on the current diagram selection. When nothing is
-   * selected they have no effect, so the embedder reflects that by
-   * setting `no-selection`, which disables just those two buttons while
-   * leaving the model-level actions (undo / check / …) live.
+   * selected they have no effect, so the embedder sets `no-selection` to
+   * disable just those, leaving the model-level actions live.
    */
   @property({ type: Boolean, attribute: "no-selection", reflect: true })
   noSelection = false;
 
-  /** The shape the dropdown last armed — kept so the trigger keeps showing it
-   *  after the tool is disarmed back to `select`. */
-  private lastDrawKind: DrawKind = "rectangle";
+  /** Last shape the draw split armed — kept so its main half keeps showing it
+   *  after a draw auto-disarms back to `select`. */
+  @state() private lastDrawKind: DrawKind = "rectangle";
 
   override willUpdate(changed: PropertyValues<this>): void {
     if (changed.has("tool")) {
@@ -200,7 +222,6 @@ export class OmActionPanel extends LitElement {
   }
 
   override render(): TemplateResult {
-    const armed = drawKindOf(this.tool);
     return html`
       ${this.iconButton(
         this.hideUndo,
@@ -234,25 +255,9 @@ export class OmActionPanel extends LitElement {
         "Edit parameters",
         () => this.fire("om-action-parameters"),
       )}
-      ${this.iconButton(
-        this.hideRotate,
-        "neutral",
-        "outlined",
-        rotateIcon,
-        "Rotate selection 90° (R)",
-        () => this.fire("om-action-rotate"),
-        this.noSelection,
-      )}
-      ${this.iconButton(
-        this.hideFlip,
-        "neutral",
-        "outlined",
-        flipIcon,
-        "Flip selection horizontally (F)",
-        () => this.fire("om-action-flip"),
-        this.noSelection,
-      )}
-      ${this.hideDraw ? nothing : this.drawDropdown(armed)}
+      ${this.hideRotate ? nothing : this.rotateSplit()}
+      ${this.hideFlip ? nothing : this.flipSplit()}
+      ${this.hideDraw ? nothing : this.drawSplit()}
     `;
   }
 
@@ -279,43 +284,139 @@ export class OmActionPanel extends LitElement {
         >`;
   }
 
-  private drawDropdown(armed: DrawKind | null): TemplateResult {
-    // `lastDrawKind` is updated in `willUpdate`, keeping render pure.
-    const shown = armed ?? this.lastDrawKind;
-    return html`<wa-dropdown @wa-select=${this.onToolSelect}>
+  /** A main action button + a chevron that opens a variant menu. */
+  private splitButton(opts: {
+    mainIcon: TemplateResult;
+    mainTitle: string;
+    chevronTitle: string;
+    active: boolean;
+    disabled: boolean;
+    onMain: () => void;
+    items: readonly MenuItem[];
+    onSelect: (value: string) => void;
+  }): TemplateResult {
+    const variant = opts.active ? "brand" : "neutral";
+    const appearance = opts.active ? "filled" : "outlined";
+    const off = this.disabled || opts.disabled;
+    return html`<span class="split">
       <wa-button
-        slot="trigger"
+        class="split-main"
         size="small"
-        variant=${armed ? "brand" : "neutral"}
-        appearance=${armed ? "filled" : "outlined"}
-        ?disabled=${this.disabled}
-        title=${`Draw a ${DRAW_LABELS[shown].toLowerCase()} — pick a shape, then drag on the canvas`}
-        aria-label="Draw shape"
+        variant=${variant}
+        appearance=${appearance}
+        ?disabled=${off}
+        title=${opts.mainTitle}
+        aria-label=${opts.mainTitle}
+        @click=${opts.onMain}
+        >${opts.mainIcon}</wa-button
       >
-        <span class="draw-trigger"
-          >${drawKindIcon(shown)}<span class="caret">${caretIcon}</span></span
+      <wa-dropdown
+        @wa-select=${(e: CustomEvent<{ item: Element }>) => {
+          const value = e.detail.item.getAttribute("value");
+          if (value !== null) opts.onSelect(value);
+        }}
+      >
+        <wa-button
+          slot="trigger"
+          class="split-chevron"
+          size="small"
+          variant=${variant}
+          appearance=${appearance}
+          ?disabled=${off}
+          title=${opts.chevronTitle}
+          aria-label=${opts.chevronTitle}
+          >${chevronDownIcon}</wa-button
         >
-      </wa-button>
-      ${DRAW_KINDS.map(
-        (kind) =>
-          html`<wa-dropdown-item value=${kind}
-            >${drawKindIcon(kind)}${DRAW_LABELS[kind]}</wa-dropdown-item
-          >`,
-      )}
-    </wa-dropdown>`;
+        ${opts.items.map(
+          (it) =>
+            html`<wa-dropdown-item value=${it.value}
+              >${it.icon}${it.label}</wa-dropdown-item
+            >`,
+        )}
+      </wa-dropdown>
+    </span>`;
   }
 
-  private onToolSelect(e: CustomEvent<{ item: Element }>): void {
-    const value = e.detail.item.getAttribute("value");
-    const kind = DRAW_KINDS.find((k) => k === value);
-    if (!kind) {
-      return;
-    }
-    // Picking the armed shape again disarms it back to the select tool.
-    const next: ToolId = kind === drawKindOf(this.tool) ? "select" : kind;
+  private rotateSplit(): TemplateResult {
+    return this.splitButton({
+      mainIcon: rotateIcon,
+      mainTitle: "Rotate selection clockwise (R)",
+      chevronTitle: "Rotate direction",
+      active: false,
+      disabled: this.noSelection,
+      onMain: () => this.fireRotate("cw"),
+      items: [
+        { value: "cw", icon: rotateIcon, label: "Clockwise (R)" },
+        { value: "ccw", icon: rotateCcwIcon, label: "Counter-clockwise (⇧R)" },
+      ],
+      onSelect: (v) => this.fireRotate(v === "ccw" ? "ccw" : "cw"),
+    });
+  }
+
+  private flipSplit(): TemplateResult {
+    return this.splitButton({
+      mainIcon: flipIcon,
+      mainTitle: "Flip selection horizontally (F)",
+      chevronTitle: "Flip axis",
+      active: false,
+      disabled: this.noSelection,
+      onMain: () => this.fireFlip("horizontal"),
+      items: [
+        { value: "horizontal", icon: flipIcon, label: "Horizontal (F)" },
+        { value: "vertical", icon: flipVerticalIcon, label: "Vertical (⇧F)" },
+      ],
+      onSelect: (v) =>
+        this.fireFlip(v === "vertical" ? "vertical" : "horizontal"),
+    });
+  }
+
+  private drawSplit(): TemplateResult {
+    const armed = drawKindOf(this.tool);
+    const shown = armed ?? this.lastDrawKind;
+    return this.splitButton({
+      mainIcon: drawKindIcon(shown),
+      mainTitle: `Draw a ${DRAW_LABELS[shown].toLowerCase()} (drag on the canvas)`,
+      chevronTitle: "Draw shape",
+      active: armed !== null,
+      disabled: false,
+      // Toggle: arm the shown shape, or disarm if it's already armed.
+      onMain: () => this.fireTool(armed === shown ? "select" : shown),
+      items: [
+        {
+          value: "rectangle",
+          icon: drawKindIcon("rectangle"),
+          label: "Rectangle",
+        },
+        { value: "ellipse", icon: drawKindIcon("ellipse"), label: "Ellipse" },
+      ],
+      onSelect: (v) => this.fireTool(v === "ellipse" ? "ellipse" : "rectangle"),
+    });
+  }
+
+  private fireRotate(direction: RotateDirection): void {
+    this.dispatchEvent(
+      new CustomEvent<ActionRotateDetail>("om-action-rotate", {
+        detail: { direction },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private fireFlip(axis: FlipAxis): void {
+    this.dispatchEvent(
+      new CustomEvent<ActionFlipDetail>("om-action-flip", {
+        detail: { axis },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private fireTool(tool: ToolId): void {
     this.dispatchEvent(
       new CustomEvent<ActionToolDetail>("om-action-tool", {
-        detail: { tool: next },
+        detail: { tool },
         bubbles: true,
         composed: true,
       }),

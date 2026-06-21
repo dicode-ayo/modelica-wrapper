@@ -24,6 +24,8 @@ import type { DiagramLayout, ParameterModel } from "@dicode/omc-client";
 import {
   isComponentKey,
   parseKey,
+  type ActionFlipDetail,
+  type ActionRotateDetail,
   type ActionToolDetail,
   type LayoutEvents,
   type LibraryBrowserDataSource,
@@ -243,8 +245,10 @@ class OmWebviewRoot extends LitElement {
         @om-action-check=${() => this.post({ type: "actionCheck" })}
         @om-action-simulate=${() => this.post({ type: "actionSimulate" })}
         @om-action-parameters=${() => this.post({ type: "actionParameters" })}
-        @om-action-rotate=${() => this.diagram?.rotateSelection()}
-        @om-action-flip=${() => this.diagram?.flipSelection()}
+        @om-action-rotate=${(e: CustomEvent<ActionRotateDetail>) =>
+          this.diagram?.rotateSelection(e.detail.direction === "cw")}
+        @om-action-flip=${(e: CustomEvent<ActionFlipDetail>) =>
+          this.diagram?.flipSelection(e.detail.axis === "horizontal")}
         @om-action-tool=${(e: CustomEvent<ActionToolDetail>) =>
           this.diagram?.setActiveTool(e.detail.tool)}
       ></om-action-panel>

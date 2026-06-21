@@ -159,7 +159,11 @@ export {
   type ActionCheckDetail,
   type ActionSimulateDetail,
   type ActionParametersDetail,
+  type ActionRotateDetail,
+  type ActionFlipDetail,
   type ActionToolDetail,
+  type RotateDirection,
+  type FlipAxis,
 } from "./action-panel/action-panel.component.js";
 export { DRAW_KINDS, type DrawKind, type ToolId } from "./interaction/tools.js";
 export {

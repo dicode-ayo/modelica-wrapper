@@ -23,6 +23,7 @@ interface LayoutEl extends HTMLElement {
     iconLayers: { from: string; shapes: { kind: string }[] }[];
     diagramLayers: { from: string; shapes: { kind: string }[] }[];
   };
+  readonly tool: string;
   setActiveTool: (tool: string) => void;
 }
 
@@ -72,12 +73,11 @@ test("arming the rectangle tool and dragging draws it into the host layer", asyn
   expect(after.at(-1)).toBe("rectangle");
 });
 
-test("the toolbar draw dropdown arms a shape", async ({ page }) => {
+test("the draw chevron menu arms a shape", async ({ page }) => {
   await page.goto(PANEL_STORY, { waitUntil: "networkidle" });
 
-  await page
-    .locator('om-action-panel wa-dropdown wa-button[slot="trigger"]')
-    .click();
+  // The draw split's chevron (title "Draw shape") opens the shape menu.
+  await page.locator('om-action-panel wa-button[title="Draw shape"]').click();
   await page
     .locator('om-action-panel wa-dropdown-item[value="ellipse"]')
     .click();
@@ -112,12 +112,9 @@ test("drawing via the toolbar lands a shape in the host layer", async ({
   );
 
   const before = await hostShapeKinds(page);
-  await page
-    .locator('om-action-panel wa-dropdown wa-button[slot="trigger"]')
-    .click();
-  await page
-    .locator('om-action-panel wa-dropdown-item[value="rectangle"]')
-    .click();
+  // The draw split's main button (title "Draw a …") arms the shown shape in
+  // one click — rectangle by default.
+  await page.locator('om-action-panel wa-button[title^="Draw a"]').click();
 
   const box = await page.locator("om-graphical-layout").boundingBox();
   if (!box) {
@@ -131,4 +128,10 @@ test("drawing via the toolbar lands a shape in the host layer", async ({
   const after = await hostShapeKinds(page);
   expect(after.length).toBe(before.length + 1);
   expect(after.at(-1)).toBe("rectangle");
+
+  // One shape per arming — the tool disarms back to select after a draw.
+  const tool = await page.evaluate(
+    () => (document.querySelector("om-graphical-layout") as LayoutEl).tool,
+  );
+  expect(tool).toBe("select");
 });

@@ -14,7 +14,11 @@ import "../src/action-panel/action-panel.component.js";
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
 import type { OmActionPanel } from "../src/action-panel/action-panel.component.js";
 import type { LayoutEvents } from "../src/graphical-layout/layout-events.js";
-import type { ActionToolDetail } from "../src/action-panel/action-panel.component.js";
+import type {
+  ActionFlipDetail,
+  ActionRotateDetail,
+  ActionToolDetail,
+} from "../src/action-panel/action-panel.component.js";
 import { sampleLayout } from "./fixtures/sample-layout.js";
 import { appendConnection } from "./fixtures/story-layout-state.js";
 
@@ -76,8 +80,10 @@ const meta: Meta<StoryArgs> = {
           @om-action-check=${() => console.log("check")}
           @om-action-simulate=${() => console.log("simulate")}
           @om-action-parameters=${() => console.log("parameters")}
-          @om-action-rotate=${() => diagram()?.rotateSelection()}
-          @om-action-flip=${() => diagram()?.flipSelection()}
+          @om-action-rotate=${(e: CustomEvent<ActionRotateDetail>) =>
+            diagram()?.rotateSelection(e.detail.direction === "cw")}
+          @om-action-flip=${(e: CustomEvent<ActionFlipDetail>) =>
+            diagram()?.flipSelection(e.detail.axis === "horizontal")}
           @om-action-tool=${(e: CustomEvent<ActionToolDetail>) =>
             diagram()?.setActiveTool(e.detail.tool)}
         ></om-action-panel>
