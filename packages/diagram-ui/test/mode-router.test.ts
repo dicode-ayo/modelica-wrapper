@@ -47,6 +47,7 @@ function setup(): Harness {
     overlayParent: new TransformNode("overlay-root", scene),
     connectorPosition: () => null,
     evaluateCompat: () => null,
+    getDrawKind: () => null,
   });
   return {
     canvas,

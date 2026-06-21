@@ -11,6 +11,7 @@
  *   rotating   — rotate drag from a shape's rotate handle
  *   selecting  — rubber-band selection drag (empty-space drag)
  *   connecting — connection drag from a connector port
+ *   drawing    — extent-drag drawing a new primitive
  *
  * The state is *derived* from the same events the host element
  * already handles — we don't introduce a parallel source of truth.
@@ -31,6 +32,7 @@ export type InteractionState =
     }
   | { kind: "rotating"; key: string }
   | { kind: "selecting" }
+  | { kind: "drawing" }
   | {
       kind: "connecting";
       fromKey: string;
@@ -44,7 +46,7 @@ export type InteractionState =
  * routing) and `pointerup` returns to `idle`. Drawing tools extend this
  * set with sticky resting states.
  */
-export type ModeId = "idle" | "select" | "drag" | "connect";
+export type ModeId = "idle" | "select" | "drag" | "connect" | "draw";
 
 export interface InteractionSnapshot {
   state: InteractionState;

@@ -1,13 +1,17 @@
 import type {
+  Color,
   DiagramLayout,
   Extent,
+  IconLayer,
   Placement,
   Point,
+  Shape,
 } from "@dicode/omc-client";
 
 import { parseKey, type EntityKind } from "./node-keys.js";
 import { orthogonalRoute, pointsEqual } from "./connection-route.js";
 import { snapPlacement, type SnapGrid } from "./snap-math.js";
+import type { DrawKind } from "./tools.js";
 
 /**
  * Pure layout mutations. Each function takes a `DiagramLayout` and
@@ -1160,4 +1164,37 @@ export function selectByDiagramRect(
     }
   }
   return keys;
+}
+
+const DRAWN_LINE_COLOR: Color = [0, 0, 0];
+
+/** Build a default extent primitive for a freshly-drawn shape. */
+export function buildExtentShape(kind: DrawKind, extent: Extent): Shape {
+  return kind === "rectangle"
+    ? { kind: "rectangle", extent, lineColor: DRAWN_LINE_COLOR }
+    : { kind: "ellipse", extent, lineColor: DRAWN_LINE_COLOR };
+}
+
+/**
+ * Append a graphic to the host class's OWN layer (`from === className`),
+ * creating that layer when the class has no graphics yet. Inherited ancestor
+ * layers are never touched — only the host's own graphics are editable, which
+ * is also what the persist path (`writeClassGraphics`) writes.
+ */
+export function applyAddGraphic(
+  layout: DiagramLayout,
+  layer: "icon" | "diagram",
+  shape: Shape,
+): DiagramLayout {
+  const field = layer === "icon" ? "iconLayers" : "diagramLayers";
+  const layers = layout[field];
+  const idx = layers.findIndex((l) => l.from === layout.className);
+  if (idx < 0) {
+    const own: IconLayer = { from: layout.className, shapes: [shape] };
+    return { ...layout, [field]: [...layers, own] };
+  }
+  const next = layers.map((l, i) =>
+    i === idx ? { ...l, shapes: [...l.shapes, shape] } : l,
+  );
+  return { ...layout, [field]: next };
 }
