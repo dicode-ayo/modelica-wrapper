@@ -11,6 +11,10 @@ const LAYOUT_STORY =
   "/iframe.html?id=diagram-ui-graphicallayout--editable&viewMode=story";
 const PANEL_STORY =
   "/iframe.html?id=diagram-ui-actionpanel--default&viewMode=story";
+const WORKBENCH_STORY =
+  "/iframe.html?id=diagram-ui-diagramworkbench--default&viewMode=story";
+
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 interface LayoutEl extends HTMLElement {
   layout: {
@@ -79,4 +83,52 @@ test("the toolbar draw dropdown arms a shape", async ({ page }) => {
     .click();
 
   await expect(page.locator(".om-tool-status")).toHaveText("tool: ellipse");
+});
+
+test("toolbar buttons render real SVG glyphs", async ({ page }) => {
+  await page.goto(PANEL_STORY, { waitUntil: "networkidle" });
+
+  // A `<path>` built with Lit's `html` tag lands in the HTML namespace and
+  // renders nothing; the glyphs must be true SVG-namespaced elements.
+  const ns = await page.evaluate(() => {
+    const panel = document.querySelector("om-action-panel");
+    const shape = panel?.shadowRoot
+      ?.querySelector("svg.toolbar-icon")
+      ?.querySelector("path, rect, ellipse, circle");
+    return shape?.namespaceURI ?? null;
+  });
+  expect(ns).toBe(SVG_NS);
+});
+
+test("drawing via the toolbar lands a shape in the host layer", async ({
+  page,
+}) => {
+  await page.goto(WORKBENCH_STORY, { waitUntil: "networkidle" });
+  await page.waitForFunction(() =>
+    Boolean(
+      (document.querySelector("om-graphical-layout") as LayoutEl | null)
+        ?.layout,
+    ),
+  );
+
+  const before = await hostShapeKinds(page);
+  await page
+    .locator('om-action-panel wa-dropdown wa-button[slot="trigger"]')
+    .click();
+  await page
+    .locator('om-action-panel wa-dropdown-item[value="rectangle"]')
+    .click();
+
+  const box = await page.locator("om-graphical-layout").boundingBox();
+  if (!box) {
+    throw new Error("no canvas box");
+  }
+  await page.mouse.move(box.x + 70, box.y + 60);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 170, box.y + 140, { steps: 8 });
+  await page.mouse.up();
+
+  const after = await hostShapeKinds(page);
+  expect(after.length).toBe(before.length + 1);
+  expect(after.at(-1)).toBe("rectangle");
 });
