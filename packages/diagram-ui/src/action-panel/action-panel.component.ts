@@ -43,9 +43,11 @@ import {
   type DrawKind,
   type ToolId,
 } from "../interaction/tools.js";
+import "./split-button.component.js";
+import type { SplitButtonSelectDetail } from "./split-button.component.js";
+import { toolbarButtonStyles } from "./toolbar-styles.js";
 import {
   checkIcon,
-  chevronDownIcon,
   drawKindIcon,
   flipIcon,
   flipVerticalIcon,
@@ -91,12 +93,6 @@ export interface ActionPanelEvents {
 
 export type ActionPanelEventName = keyof ActionPanelEvents;
 
-interface MenuItem {
-  value: string;
-  icon: TemplateResult;
-  label: string;
-}
-
 const DRAW_LABELS: Record<DrawKind, string> = {
   rectangle: "Rectangle",
   ellipse: "Ellipse",
@@ -113,6 +109,7 @@ function asDrawKind(value: string): DrawKind | undefined {
 export class OmActionPanel extends LitElement {
   static override styles = [
     omTokens,
+    toolbarButtonStyles,
     css`
       :host {
         position: absolute;
@@ -148,47 +145,6 @@ export class OmActionPanel extends LitElement {
       :host([anchor="bottom-left"]) {
         bottom: var(--om-action-panel-offset);
         left: var(--om-action-panel-offset);
-      }
-
-      wa-button::part(base) {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        /* Square icon buttons — width follows the small-size height. */
-        aspect-ratio: 1;
-        min-inline-size: 0;
-        padding-inline: 0;
-      }
-
-      .toolbar-icon {
-        inline-size: var(--om-icon-size-md);
-        block-size: var(--om-icon-size-md);
-        display: block;
-      }
-
-      /* Split button: main action + chevron, flush against each other. */
-      .split {
-        display: inline-flex;
-      }
-      .split-main::part(base) {
-        border-start-end-radius: 0;
-        border-end-end-radius: 0;
-      }
-      .split-chevron::part(base) {
-        border-start-start-radius: 0;
-        border-end-start-radius: 0;
-        /* The chevron stays a narrow caret, not a square. */
-        aspect-ratio: auto;
-        padding-inline: var(--om-space-2xs);
-      }
-      .split-chevron .toolbar-icon {
-        inline-size: var(--om-icon-size-sm);
-        block-size: var(--om-icon-size-sm);
-      }
-
-      wa-dropdown-item .toolbar-icon {
-        margin-inline-end: var(--om-space-xs);
-        vertical-align: text-bottom;
       }
     `,
   ];
@@ -298,122 +254,69 @@ export class OmActionPanel extends LitElement {
         >`;
   }
 
-  /** A main action button + a chevron that opens a variant menu. */
-  private splitButton(opts: {
-    mainIcon: TemplateResult;
-    mainTitle: string;
-    chevronTitle: string;
-    /** Drawn filled when the tool is armed; only the draw split toggles. */
-    active?: boolean;
-    disabled?: boolean;
-    onMain: () => void;
-    items: readonly MenuItem[];
-    onSelect: (value: string) => void;
-  }): TemplateResult {
-    const variant = opts.active ? "brand" : "neutral";
-    const appearance = opts.active ? "filled" : "outlined";
-    const off = this.disabled || opts.disabled === true;
-    return html`<span class="split">
-      <wa-button
-        class="split-main"
-        size="small"
-        variant=${variant}
-        appearance=${appearance}
-        ?disabled=${off}
-        title=${opts.mainTitle}
-        aria-label=${opts.mainTitle}
-        @click=${opts.onMain}
-        >${opts.mainIcon}</wa-button
-      >
-      <wa-dropdown
-        @wa-select=${(e: CustomEvent<{ item: Element }>) => {
-          const value = e.detail.item.getAttribute("value");
-          if (value !== null) opts.onSelect(value);
-        }}
-      >
-        <wa-button
-          slot="trigger"
-          class="split-chevron"
-          size="small"
-          variant=${variant}
-          appearance=${appearance}
-          ?disabled=${off}
-          title=${opts.chevronTitle}
-          aria-label=${opts.chevronTitle}
-          >${chevronDownIcon}</wa-button
-        >
-        ${opts.items.map(
-          (it) =>
-            html`<wa-dropdown-item value=${it.value}
-              >${it.icon}${it.label}</wa-dropdown-item
-            >`,
-        )}
-      </wa-dropdown>
-    </span>`;
-  }
-
   private rotateSplit(): TemplateResult {
-    return this.splitButton({
-      mainIcon: rotateIcon,
-      mainTitle: "Rotate selection clockwise (R)",
-      chevronTitle: "Rotate direction",
-      disabled: this.noSelection,
-      onMain: () => this.emit("om-action-rotate", { direction: "cw" }),
-      items: [
+    return html`<om-split-button
+      .mainIcon=${rotateIcon}
+      main-title="Rotate selection clockwise (R)"
+      chevron-title="Rotate direction"
+      ?disabled=${this.disabled || this.noSelection}
+      .items=${[
         { value: "cw", icon: rotateIcon, label: "Clockwise (R)" },
         { value: "ccw", icon: rotateCcwIcon, label: "Counter-clockwise (⇧R)" },
-      ],
-      onSelect: (v) => {
-        const direction = ROTATE_DIRECTIONS.find((d) => d === v);
+      ]}
+      @om-split-main=${() => this.emit("om-action-rotate", { direction: "cw" })}
+      @om-split-select=${(e: CustomEvent<SplitButtonSelectDetail>) => {
+        const direction = ROTATE_DIRECTIONS.find((d) => d === e.detail.value);
         if (direction) this.emit("om-action-rotate", { direction });
-      },
-    });
+      }}
+    ></om-split-button>`;
   }
 
   private flipSplit(): TemplateResult {
-    return this.splitButton({
-      mainIcon: flipIcon,
-      mainTitle: "Flip selection horizontally (F)",
-      chevronTitle: "Flip axis",
-      disabled: this.noSelection,
-      onMain: () => this.emit("om-action-flip", { axis: "horizontal" }),
-      items: [
+    return html`<om-split-button
+      .mainIcon=${flipIcon}
+      main-title="Flip selection horizontally (F)"
+      chevron-title="Flip axis"
+      ?disabled=${this.disabled || this.noSelection}
+      .items=${[
         { value: "horizontal", icon: flipIcon, label: "Horizontal (F)" },
         { value: "vertical", icon: flipVerticalIcon, label: "Vertical (⇧F)" },
-      ],
-      onSelect: (v) => {
-        const axis = FLIP_AXES.find((a) => a === v);
+      ]}
+      @om-split-main=${() =>
+        this.emit("om-action-flip", { axis: "horizontal" })}
+      @om-split-select=${(e: CustomEvent<SplitButtonSelectDetail>) => {
+        const axis = FLIP_AXES.find((a) => a === e.detail.value);
         if (axis) this.emit("om-action-flip", { axis });
-      },
-    });
+      }}
+    ></om-split-button>`;
   }
 
   private drawSplit(): TemplateResult {
     const armed = drawKindOf(this.tool);
     const shown = armed ?? this.lastDrawKind;
-    return this.splitButton({
-      mainIcon: drawKindIcon(shown),
-      mainTitle: `Draw a ${DRAW_LABELS[shown].toLowerCase()} (drag on the canvas)`,
-      chevronTitle: "Draw shape",
-      active: armed !== null,
-      // Toggle: arm the shown shape, or disarm if it's already armed.
-      onMain: () =>
-        this.emit("om-action-tool", {
-          tool: armed === shown ? "select" : shown,
-        }),
-      items: [
+    return html`<om-split-button
+      .mainIcon=${drawKindIcon(shown)}
+      main-title=${`Draw a ${DRAW_LABELS[shown].toLowerCase()} (drag on the canvas)`}
+      chevron-title="Draw shape"
+      ?active=${armed !== null}
+      ?disabled=${this.disabled}
+      .items=${[
         {
           value: "rectangle",
           icon: drawKindIcon("rectangle"),
           label: "Rectangle",
         },
         { value: "ellipse", icon: drawKindIcon("ellipse"), label: "Ellipse" },
-      ],
-      onSelect: (v) => {
-        const kind = asDrawKind(v);
+      ]}
+      @om-split-main=${() =>
+        this.emit("om-action-tool", {
+          tool: armed === shown ? "select" : shown,
+        })}
+      @om-split-select=${(e: CustomEvent<SplitButtonSelectDetail>) => {
+        const kind = asDrawKind(e.detail.value);
         if (kind) this.emit("om-action-tool", { tool: kind });
-      },
-    });
+      }}
+    ></om-split-button>`;
   }
 
   private emit<K extends ActionPanelEventName>(

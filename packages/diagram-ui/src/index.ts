@@ -165,6 +165,12 @@ export {
   type RotateDirection,
   type FlipAxis,
 } from "./action-panel/action-panel.component.js";
+export {
+  OmSplitButton,
+  type SplitButtonItem,
+  type SplitButtonSelectDetail,
+  type SplitButtonEvents,
+} from "./action-panel/split-button.component.js";
 export { DRAW_KINDS, type DrawKind, type ToolId } from "./interaction/tools.js";
 export {
   OmParameterForm,
