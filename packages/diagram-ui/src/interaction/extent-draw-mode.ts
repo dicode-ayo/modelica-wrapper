@@ -16,9 +16,15 @@ function extentOf(a: DiagramPoint, b: DiagramPoint): Extent {
   ];
 }
 
+/** Minimum drag span, in diagram units, that counts as a draw vs a click. */
+const MIN_DRAW_SPAN = 1;
+
 /** A click (or a hair of movement) shouldn't create a zero-size shape. */
 function degenerate(e: Extent): boolean {
-  return Math.abs(e[1][0] - e[0][0]) < 1 || Math.abs(e[1][1] - e[0][1]) < 1;
+  return (
+    Math.abs(e[1][0] - e[0][0]) < MIN_DRAW_SPAN ||
+    Math.abs(e[1][1] - e[0][1]) < MIN_DRAW_SPAN
+  );
 }
 
 /**

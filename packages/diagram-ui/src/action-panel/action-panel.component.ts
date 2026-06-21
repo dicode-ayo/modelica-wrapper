@@ -20,7 +20,14 @@
  * `hide-draw`).
  */
 
-import { LitElement, css, html, nothing, type TemplateResult } from "lit";
+import {
+  LitElement,
+  css,
+  html,
+  nothing,
+  type PropertyValues,
+  type TemplateResult,
+} from "lit";
 import { customElement, property } from "lit/decorators.js";
 
 import "@awesome.me/webawesome/dist/components/button/button.js";
@@ -125,8 +132,8 @@ export class OmActionPanel extends LitElement {
       }
 
       .toolbar-icon {
-        width: var(--om-icon-size-md);
-        height: var(--om-icon-size-md);
+        inline-size: var(--om-icon-size-md);
+        block-size: var(--om-icon-size-md);
         display: block;
       }
 
@@ -137,8 +144,8 @@ export class OmActionPanel extends LitElement {
         gap: var(--om-space-2xs);
       }
       .draw-trigger .caret {
-        width: var(--om-icon-size-sm);
-        height: var(--om-icon-size-sm);
+        inline-size: var(--om-icon-size-sm);
+        block-size: var(--om-icon-size-sm);
       }
 
       wa-dropdown-item .toolbar-icon {
@@ -182,6 +189,15 @@ export class OmActionPanel extends LitElement {
   /** The shape the dropdown last armed — kept so the trigger keeps showing it
    *  after the tool is disarmed back to `select`. */
   private lastDrawKind: DrawKind = "rectangle";
+
+  override willUpdate(changed: PropertyValues<this>): void {
+    if (changed.has("tool")) {
+      const armed = drawKindOf(this.tool);
+      if (armed) {
+        this.lastDrawKind = armed;
+      }
+    }
+  }
 
   override render(): TemplateResult {
     const armed = drawKindOf(this.tool);
@@ -264,9 +280,7 @@ export class OmActionPanel extends LitElement {
   }
 
   private drawDropdown(armed: DrawKind | null): TemplateResult {
-    if (armed) {
-      this.lastDrawKind = armed;
-    }
+    // `lastDrawKind` is updated in `willUpdate`, keeping render pure.
     const shown = armed ?? this.lastDrawKind;
     return html`<wa-dropdown @wa-select=${this.onToolSelect}>
       <wa-button
