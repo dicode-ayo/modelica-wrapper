@@ -22,9 +22,11 @@ interface LayoutEl extends HTMLElement {
     className: string;
     iconLayers: { from: string; shapes: { kind: string }[] }[];
     diagramLayers: { from: string; shapes: { kind: string }[] }[];
+    components: Record<string, { placement: { rotation?: number } }>;
   };
   readonly tool: string;
   setActiveTool: (tool: string) => void;
+  setSelection: (keys: string[]) => void;
 }
 
 /** Shapes in the host's own layer (`from === className`) of the edited layer. */
@@ -134,4 +136,42 @@ test("drawing via the toolbar lands a shape in the host layer", async ({
     () => (document.querySelector("om-graphical-layout") as LayoutEl).tool,
   );
   expect(tool).toBe("select");
+});
+
+test("the rotate chevron menu rotates the selection counter-clockwise", async ({
+  page,
+}) => {
+  await page.goto(WORKBENCH_STORY, { waitUntil: "networkidle" });
+  await page.waitForFunction(() =>
+    Boolean(
+      (document.querySelector("om-graphical-layout") as LayoutEl | null)
+        ?.layout,
+    ),
+  );
+
+  // Select a component (and enable the split, which gates on a selection).
+  const name = await page.evaluate(() => {
+    const el = document.querySelector("om-graphical-layout") as LayoutEl;
+    const n = Object.keys(el.layout.components)[0];
+    el.setSelection([`c:${n}`]);
+    const panel = document.querySelector("om-action-panel");
+    if (panel)
+      (panel as HTMLElement & { noSelection: boolean }).noSelection = false;
+    return n;
+  });
+  const rotation = (): Promise<number> =>
+    page.evaluate(
+      (n: string) =>
+        (document.querySelector("om-graphical-layout") as LayoutEl).layout
+          .components[n].placement.rotation ?? 0,
+      name,
+    );
+
+  const before = await rotation();
+  await page
+    .locator('om-action-panel wa-button[title="Rotate direction"]')
+    .click();
+  await page.locator('om-action-panel wa-dropdown-item[value="ccw"]').click();
+
+  expect(await rotation()).not.toBe(before);
 });

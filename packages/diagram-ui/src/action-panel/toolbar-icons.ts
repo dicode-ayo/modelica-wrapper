@@ -54,15 +54,17 @@ export const rotateCcwIcon = glyph(
 );
 
 export const flipIcon = glyph(
-  svg`<path d="M12 3v18" /><path d="M16 7v0" />
-    <path d="M3 16 9 16 3 21Z" fill="currentColor" stroke="none" />
-    <path d="M21 16 15 16 21 21Z" fill="currentColor" stroke="none" />`,
+  svg`<path d="M8 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3" />
+    <path d="M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3" />
+    <path d="M12 2v2" /><path d="M12 8v2" /><path d="M12 14v2" />
+    <path d="M12 20v2" />`,
 );
 
 export const flipVerticalIcon = glyph(
-  svg`<path d="M3 12h18" />
-    <path d="M8 3 8 9 3 3Z" fill="currentColor" stroke="none" />
-    <path d="M8 21 8 15 3 21Z" fill="currentColor" stroke="none" />`,
+  svg`<path d="M21 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v3" />
+    <path d="M21 16v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3" />
+    <path d="M2 12h2" /><path d="M8 12h2" /><path d="M14 12h2" />
+    <path d="M20 12h2" />`,
 );
 
 export const rectangleIcon = glyph(

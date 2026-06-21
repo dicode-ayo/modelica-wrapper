@@ -38,6 +38,7 @@ import "@awesome.me/webawesome/dist/components/dropdown-item/dropdown-item.js";
 import { omTokens } from "@dicode/ui-common";
 
 import {
+  DRAW_KINDS,
   drawKindOf,
   type DrawKind,
   type ToolId,
@@ -100,6 +101,13 @@ const DRAW_LABELS: Record<DrawKind, string> = {
   rectangle: "Rectangle",
   ellipse: "Ellipse",
 };
+
+const ROTATE_DIRECTIONS: readonly RotateDirection[] = ["cw", "ccw"];
+const FLIP_AXES: readonly FlipAxis[] = ["horizontal", "vertical"];
+
+function asDrawKind(value: string): DrawKind | undefined {
+  return DRAW_KINDS.find((k) => k === value);
+}
 
 @customElement("om-action-panel")
 export class OmActionPanel extends LitElement {
@@ -235,7 +243,7 @@ export class OmActionPanel extends LitElement {
         "outlined",
         undoIcon,
         "Undo last diagram edit (diagram-local)",
-        () => this.fire("om-action-undo"),
+        () => this.emit("om-action-undo", undefined),
       )}
       ${this.iconButton(
         this.hideCheck,
@@ -243,7 +251,7 @@ export class OmActionPanel extends LitElement {
         "filled",
         checkIcon,
         "Check model (semantic check)",
-        () => this.fire("om-action-check"),
+        () => this.emit("om-action-check", undefined),
       )}
       ${this.iconButton(
         this.hideSimulate,
@@ -251,7 +259,7 @@ export class OmActionPanel extends LitElement {
         "filled",
         simulateIcon,
         "Simulate model",
-        () => this.fire("om-action-simulate"),
+        () => this.emit("om-action-simulate", undefined),
       )}
       ${this.iconButton(
         this.hideParameters,
@@ -259,7 +267,7 @@ export class OmActionPanel extends LitElement {
         "filled",
         parametersIcon,
         "Edit parameters",
-        () => this.fire("om-action-parameters"),
+        () => this.emit("om-action-parameters", undefined),
       )}
       ${this.hideRotate ? nothing : this.rotateSplit()}
       ${this.hideFlip ? nothing : this.flipSplit()}
@@ -295,15 +303,16 @@ export class OmActionPanel extends LitElement {
     mainIcon: TemplateResult;
     mainTitle: string;
     chevronTitle: string;
-    active: boolean;
-    disabled: boolean;
+    /** Drawn filled when the tool is armed; only the draw split toggles. */
+    active?: boolean;
+    disabled?: boolean;
     onMain: () => void;
     items: readonly MenuItem[];
     onSelect: (value: string) => void;
   }): TemplateResult {
     const variant = opts.active ? "brand" : "neutral";
     const appearance = opts.active ? "filled" : "outlined";
-    const off = this.disabled || opts.disabled;
+    const off = this.disabled || opts.disabled === true;
     return html`<span class="split">
       <wa-button
         class="split-main"
@@ -348,14 +357,16 @@ export class OmActionPanel extends LitElement {
       mainIcon: rotateIcon,
       mainTitle: "Rotate selection clockwise (R)",
       chevronTitle: "Rotate direction",
-      active: false,
       disabled: this.noSelection,
-      onMain: () => this.fireRotate("cw"),
+      onMain: () => this.emit("om-action-rotate", { direction: "cw" }),
       items: [
         { value: "cw", icon: rotateIcon, label: "Clockwise (R)" },
         { value: "ccw", icon: rotateCcwIcon, label: "Counter-clockwise (⇧R)" },
       ],
-      onSelect: (v) => this.fireRotate(v === "ccw" ? "ccw" : "cw"),
+      onSelect: (v) => {
+        const direction = ROTATE_DIRECTIONS.find((d) => d === v);
+        if (direction) this.emit("om-action-rotate", { direction });
+      },
     });
   }
 
@@ -364,15 +375,16 @@ export class OmActionPanel extends LitElement {
       mainIcon: flipIcon,
       mainTitle: "Flip selection horizontally (F)",
       chevronTitle: "Flip axis",
-      active: false,
       disabled: this.noSelection,
-      onMain: () => this.fireFlip("horizontal"),
+      onMain: () => this.emit("om-action-flip", { axis: "horizontal" }),
       items: [
         { value: "horizontal", icon: flipIcon, label: "Horizontal (F)" },
         { value: "vertical", icon: flipVerticalIcon, label: "Vertical (⇧F)" },
       ],
-      onSelect: (v) =>
-        this.fireFlip(v === "vertical" ? "vertical" : "horizontal"),
+      onSelect: (v) => {
+        const axis = FLIP_AXES.find((a) => a === v);
+        if (axis) this.emit("om-action-flip", { axis });
+      },
     });
   }
 
@@ -384,9 +396,11 @@ export class OmActionPanel extends LitElement {
       mainTitle: `Draw a ${DRAW_LABELS[shown].toLowerCase()} (drag on the canvas)`,
       chevronTitle: "Draw shape",
       active: armed !== null,
-      disabled: false,
       // Toggle: arm the shown shape, or disarm if it's already armed.
-      onMain: () => this.fireTool(armed === shown ? "select" : shown),
+      onMain: () =>
+        this.emit("om-action-tool", {
+          tool: armed === shown ? "select" : shown,
+        }),
       items: [
         {
           value: "rectangle",
@@ -395,46 +409,19 @@ export class OmActionPanel extends LitElement {
         },
         { value: "ellipse", icon: drawKindIcon("ellipse"), label: "Ellipse" },
       ],
-      onSelect: (v) => this.fireTool(v === "ellipse" ? "ellipse" : "rectangle"),
+      onSelect: (v) => {
+        const kind = asDrawKind(v);
+        if (kind) this.emit("om-action-tool", { tool: kind });
+      },
     });
   }
 
-  private fireRotate(direction: RotateDirection): void {
+  private emit<K extends ActionPanelEventName>(
+    type: K,
+    detail: ActionPanelEvents[K],
+  ): void {
     this.dispatchEvent(
-      new CustomEvent<ActionRotateDetail>("om-action-rotate", {
-        detail: { direction },
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
-
-  private fireFlip(axis: FlipAxis): void {
-    this.dispatchEvent(
-      new CustomEvent<ActionFlipDetail>("om-action-flip", {
-        detail: { axis },
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
-
-  private fireTool(tool: ToolId): void {
-    this.dispatchEvent(
-      new CustomEvent<ActionToolDetail>("om-action-tool", {
-        detail: { tool },
-        bubbles: true,
-        composed: true,
-      }),
-    );
-  }
-
-  private fire(type: ActionPanelEventName): void {
-    this.dispatchEvent(
-      new CustomEvent<ActionPanelEvents[typeof type]>(type, {
-        bubbles: true,
-        composed: true,
-      }),
+      new CustomEvent(type, { detail, bubbles: true, composed: true }),
     );
   }
 }
