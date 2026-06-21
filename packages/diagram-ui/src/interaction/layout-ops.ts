@@ -774,8 +774,7 @@ export function applyEdgeSegmentDrag(
   if (a === undefined || b === undefined) {
     return layout;
   }
-  // A coincident/zero-length segment has no defined axis — skip rather than
-  // silently constraining the drag to one dimension.
+  // Coincident endpoints have no defined axis; no drag is possible.
   if (a[0] === b[0] && a[1] === b[1]) {
     return layout;
   }
