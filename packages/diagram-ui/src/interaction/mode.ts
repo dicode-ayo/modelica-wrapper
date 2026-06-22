@@ -173,10 +173,11 @@ export class ModeRouter {
     this.canvas.removeEventListener("pointerup", this.onPointerUp);
     this.canvas.removeEventListener("pointercancel", this.onPointerCancel);
     this.canvas.removeEventListener("pointerleave", this.onPointerLeave);
+    // Gesture modes own transient overlay meshes that `cancel()` disposes.
+    // Tool modes own none — their preview is the host's draft layout — so
+    // they need no teardown; their state is discarded with this router.
     this.active?.cancel?.();
     this.active = null;
-    this.extentTool.cancel();
-    this.polyTool.cancel();
   }
 
   /** The tool mode for the armed tool, or `null` for `select`. */
@@ -314,9 +315,10 @@ export class ModeRouter {
   };
 
   private readonly onPointerCancel = (e: PointerEvent): void => {
-    // A cancelled pointer abandons an in-flight tool draw rather than
-    // committing one at wherever the cancel reports. Gestures keep the
-    // commit-on-up path (delegated below).
+    // A cancelled pointer abandons an in-flight press-drag tool draw rather
+    // than committing one at wherever the cancel reports. A multi-click poly
+    // draw isn't pointer-captured, so it survives the cancel (delegates to
+    // onPointerUp, which no-ops for it). Gestures keep the commit-on-up path.
     const tool = this.activeToolMode();
     if (
       tool &&
