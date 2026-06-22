@@ -32,10 +32,10 @@ import {
 import { customElement, property, state } from "lit/decorators.js";
 
 import "@awesome.me/webawesome/dist/components/button/button.js";
-import "@awesome.me/webawesome/dist/components/dropdown/dropdown.js";
-import "@awesome.me/webawesome/dist/components/dropdown-item/dropdown-item.js";
 
 import { omTokens } from "@dicode/ui-common";
+
+import { emitEvent } from "../dom-event.js";
 
 import {
   DRAW_KINDS,
@@ -323,9 +323,7 @@ export class OmActionPanel extends LitElement {
     type: K,
     detail: ActionPanelEvents[K],
   ): void {
-    this.dispatchEvent(
-      new CustomEvent(type, { detail, bubbles: true, composed: true }),
-    );
+    emitEvent(this, type, detail);
   }
 }
 

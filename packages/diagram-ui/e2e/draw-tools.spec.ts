@@ -13,6 +13,8 @@ const PANEL_STORY =
   "/iframe.html?id=diagram-ui-actionpanel--default&viewMode=story";
 const WORKBENCH_STORY =
   "/iframe.html?id=diagram-ui-diagramworkbench--default&viewMode=story";
+const SPLIT_STORY =
+  "/iframe.html?id=diagram-ui-splitbutton--default&viewMode=story";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -174,4 +176,19 @@ test("the rotate chevron menu rotates the selection counter-clockwise", async ({
   await page.locator('om-action-panel wa-dropdown-item[value="ccw"]').click();
 
   expect(await rotation()).not.toBe(before);
+});
+
+test("om-split-button emits main and select", async ({ page }) => {
+  await page.goto(SPLIT_STORY, { waitUntil: "networkidle" });
+
+  await page
+    .locator('om-split-button wa-button[title="Rotate clockwise"]')
+    .click();
+  await expect(page.locator(".om-split-status")).toHaveText("main");
+
+  await page
+    .locator('om-split-button wa-button[title="Rotate direction"]')
+    .click();
+  await page.locator('om-split-button wa-dropdown-item[value="ccw"]').click();
+  await expect(page.locator(".om-split-status")).toHaveText("select: ccw");
 });

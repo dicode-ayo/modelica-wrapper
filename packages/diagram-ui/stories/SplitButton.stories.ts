@@ -24,9 +24,18 @@ const meta: Meta<StoryArgs> = {
   render: ({ active, disabled }: StoryArgs): TemplateResult => html`
     <div
       style="padding: 16px;"
-      @om-split-main=${() => console.log("main pressed")}
-      @om-split-select=${(e: CustomEvent<SplitButtonSelectDetail>) =>
-        console.log("selected", e.detail.value)}
+      @om-split-main=${(e: Event) => {
+        const status = (e.currentTarget as HTMLElement).querySelector(
+          ".om-split-status",
+        );
+        if (status) status.textContent = "main";
+      }}
+      @om-split-select=${(e: CustomEvent<SplitButtonSelectDetail>) => {
+        const status = (e.currentTarget as HTMLElement).querySelector(
+          ".om-split-status",
+        );
+        if (status) status.textContent = `select: ${e.detail.value}`;
+      }}
     >
       <om-split-button
         .mainIcon=${rotateIcon}
@@ -39,6 +48,9 @@ const meta: Meta<StoryArgs> = {
           { value: "ccw", icon: rotateCcwIcon, label: "Counter-clockwise" },
         ]}
       ></om-split-button>
+      <pre class="om-split-status" style="font-size:11px;color:#444;">
+(none)</pre
+      >
     </div>
   `,
   argTypes: {

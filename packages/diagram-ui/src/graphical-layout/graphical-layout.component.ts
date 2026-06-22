@@ -95,6 +95,7 @@ import {
   type SnapGrid,
 } from "../interaction/snap-math.js";
 import { drawKindOf, type ToolId } from "../interaction/tools.js";
+import { emitEvent } from "../dom-event.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
 
 /**
@@ -1410,13 +1411,7 @@ export class OmGraphicalLayout extends LitElement {
     name: K,
     detail: LayoutEvents[K],
   ): void {
-    this.dispatchEvent(
-      new CustomEvent<LayoutEvents[K]>(name, {
-        detail,
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    emitEvent(this, name, detail);
   }
 
   /** Returns the current selection as an array of canonical keys. */

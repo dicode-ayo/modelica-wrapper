@@ -23,6 +23,7 @@ import "@awesome.me/webawesome/dist/components/dropdown-item/dropdown-item.js";
 
 import { omTokens } from "@dicode/ui-common";
 
+import { emitEvent } from "../dom-event.js";
 import { toolbarButtonStyles } from "./toolbar-styles.js";
 import { chevronDownIcon } from "./toolbar-icons.js";
 
@@ -51,6 +52,7 @@ export class OmSplitButton extends LitElement {
         display: inline-flex;
       }
       .split-main::part(base) {
+        /* Flush against the chevron — the two halves read as one control. */
         border-start-end-radius: 0;
         border-end-end-radius: 0;
       }
@@ -72,7 +74,7 @@ export class OmSplitButton extends LitElement {
     `,
   ];
 
-  @property({ attribute: false }) mainIcon?: TemplateResult;
+  @property({ attribute: false }) mainIcon: TemplateResult = html``;
   @property({ attribute: "main-title" }) mainTitle = "";
   @property({ attribute: "chevron-title" }) chevronTitle = "";
   @property({ type: Boolean }) active = false;
@@ -127,9 +129,7 @@ export class OmSplitButton extends LitElement {
     type: K,
     detail: SplitButtonEvents[K],
   ): void {
-    this.dispatchEvent(
-      new CustomEvent(type, { detail, bubbles: true, composed: true }),
-    );
+    emitEvent(this, type, detail);
   }
 }
 
