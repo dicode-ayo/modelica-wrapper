@@ -23,7 +23,19 @@ import { DragMode } from "./drag-mode.js";
 import { ConnectMode } from "./connect-mode.js";
 import { ExtentDrawMode } from "./extent-draw-mode.js";
 import type { InteractionStateStore } from "./interaction-state.js";
-import type { ExtentKind } from "./tools.js";
+import type { ExtentKind, PolyKind } from "./tools.js";
+
+/**
+ * Multi-click poly draw (Line / Polygon). The router feeds it primary
+ * clicks (`press`) and cursor moves (`hover`) while a poly tool is armed;
+ * the host owns the gesture state and decides start / append / finish.
+ * Unlike the press-drag `GestureMode`s this spans many clicks, so it lives
+ * outside the active-gesture machinery.
+ */
+export interface PolyDrawController {
+  press(point: { x: number; y: number }): void;
+  hover(point: { x: number; y: number }): void;
+}
 
 export interface ModeRouterDeps {
   canvas: HTMLCanvasElement;
@@ -43,6 +55,10 @@ export interface ModeRouterDeps {
   /** The extent shape the armed draw tool draws, or `null` for any non-extent
    *  tool. A non-null value routes a press to the extent draw mode. */
   getExtentKind: () => ExtentKind | null;
+  /** The poly shape the armed draw tool draws, or `null` otherwise. A non-null
+   *  value routes clicks + cursor moves to the multi-click `polyDraw`. */
+  getPolyKind: () => PolyKind | null;
+  polyDraw: PolyDrawController;
 }
 
 /**
@@ -65,6 +81,8 @@ export class ModeRouter {
   private readonly connectMode: GestureMode;
   private readonly drawMode: GestureMode;
   private readonly getExtentKind: () => ExtentKind | null;
+  private readonly getPolyKind: () => PolyKind | null;
+  private readonly polyDraw: PolyDrawController;
   private active: GestureMode | null = null;
   private pointerId = -1;
 
@@ -93,6 +111,8 @@ export class ModeRouter {
       deps.evaluateCompat,
     );
     this.getExtentKind = deps.getExtentKind;
+    this.getPolyKind = deps.getPolyKind;
+    this.polyDraw = deps.polyDraw;
     this.drawMode = new ExtentDrawMode(deps.onDrag, deps.getExtentKind);
     this.canvas.addEventListener("pointerdown", this.onPointerDown);
     this.canvas.addEventListener("pointermove", this.onPointerMove);
@@ -141,6 +161,19 @@ export class ModeRouter {
   }
 
   private readonly onPointerDown = (e: PointerEvent): void => {
+    // A poly tool owns clicks: each primary press places a vertex. It
+    // bypasses select / drag and the InteractionManager so clicking over a
+    // component draws rather than selecting it. No pointer capture — the
+    // gesture is click-based, not a press-drag.
+    if (this.getPolyKind() !== null) {
+      if (e.button === 0 && !e.shiftKey) {
+        const point = this.clientToDiagram(e.clientX, e.clientY);
+        if (point) {
+          this.polyDraw.press(point);
+        }
+      }
+      return;
+    }
     // Hover / click-select / context-menu run regardless of mode.
     this.interactionManager.handlePointerDown(e);
     if (e.button !== 0 || e.shiftKey) {
@@ -169,6 +202,15 @@ export class ModeRouter {
   };
 
   private readonly onPointerMove = (e: PointerEvent): void => {
+    // While a poly tool is armed the cursor drives the rubber-band segment;
+    // suppress hover so components don't light up mid-draw.
+    if (this.getPolyKind() !== null) {
+      const point = this.clientToDiagram(e.clientX, e.clientY);
+      if (point) {
+        this.polyDraw.hover(point);
+      }
+      return;
+    }
     this.interactionManager.handlePointerMove(e);
     if (!this.active || e.pointerId !== this.pointerId) {
       return;
@@ -181,6 +223,12 @@ export class ModeRouter {
   };
 
   private readonly onPointerUp = (e: PointerEvent): void => {
+    // A poly draw owns nothing on release — it commits on click / dblclick
+    // / keyboard, never on pointerup. Skip the context-menu path too so a
+    // right-release doesn't pop a menu over an in-progress draw.
+    if (this.getPolyKind() !== null) {
+      return;
+    }
     this.interactionManager.handlePointerUp(e);
     if (!this.active || e.pointerId !== this.pointerId) {
       return;
