@@ -339,6 +339,8 @@ function formatStateLine(state: InteractionState): string {
       return `rotating ${state.key}`;
     case "selecting":
       return "selecting (rubber-band)";
+    case "drawing":
+      return "drawing";
     case "connecting":
       return `connecting ${state.fromKey} → ${state.toKey ?? "—"}`;
   }

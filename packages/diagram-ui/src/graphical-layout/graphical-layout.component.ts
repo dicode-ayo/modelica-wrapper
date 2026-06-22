@@ -33,6 +33,7 @@ import {
 import type { DragEvents } from "../interaction/gesture-mode.js";
 import { ModeRouter } from "../interaction/mode.js";
 import {
+  applyAddGraphic,
   applyDeltaMove,
   applyEdgeSegmentDrag,
   applyResize,
@@ -41,6 +42,7 @@ import {
   applyWaypointDelete,
   applyWaypointDrag,
   applyWaypointInsert,
+  buildExtentShape,
   retainExistingSelection,
   selectByDiagramRect,
   shapeCentre,
@@ -88,9 +90,12 @@ import {
 import {
   resolveSnapGrid,
   snapDelta,
+  snapExtent,
   snapPoint,
   type SnapGrid,
 } from "../interaction/snap-math.js";
+import { drawKindOf, type ToolId } from "../interaction/tools.js";
+import { emitEvent } from "../dom-event.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
 
 /**
@@ -307,6 +312,10 @@ export class OmGraphicalLayout extends LitElement {
     compat: { ok: boolean; reason?: string } | null;
   } | null = null;
   @state() private libraryBrowserOpen = false;
+  /** The armed drawing tool. `select` (default) rubber-bands + picks; a draw
+   *  tool routes an empty-canvas press to `ExtentDrawMode`. Sticky — stays
+   *  armed across draws until reset (toolbar, Escape, or readonly). */
+  @state() private activeTool: ToolId = "select";
 
   @query("om-scene") private sceneEl?: OmScene;
   @query("om-context-menu") private contextMenuEl?: OmContextMenu;
@@ -783,6 +792,7 @@ export class OmGraphicalLayout extends LitElement {
       overlayParent: ctx.diagramRoot,
       connectorPosition: (key) => this.connectorDiagramPosition(key),
       evaluateCompat: (from, toKey) => this.evaluateCompat(from, toKey),
+      getDrawKind: () => drawKindOf(this.activeTool),
     });
     // Native dblclick on empty canvas → open the library browser.
     // InteractionManager's `doubleClick` only fires on hits; this path
@@ -1123,6 +1133,49 @@ export class OmGraphicalLayout extends LitElement {
         }
         return;
       }
+      case "drawShape": {
+        const d = detail as DragEvents["drawShape"];
+        if (d.extent === null) {
+          // Degenerate release (a click, no drag) — drop the preview.
+          this.draftLayout = null;
+          this.endInteraction();
+          return;
+        }
+        // Draw into whichever layer this view edits (icon vs diagram).
+        const layer = this.layout.kind;
+        if (d.draft) {
+          this.draftLayout = applyAddGraphic(
+            this.layout,
+            layer,
+            buildExtentShape(d.kind, d.extent),
+          );
+          this.setInteractionState({ kind: "drawing" });
+        } else {
+          const snapped = snapExtent(d.extent, this.currentSnapGrid());
+          // Grid-snapping can collapse a thin drag onto one grid line; don't
+          // persist a zero-size shape (mirrors the click-no-drag bail above,
+          // which leaves the tool armed to retry).
+          if (
+            snapped[0][0] === snapped[1][0] ||
+            snapped[0][1] === snapped[1][1]
+          ) {
+            this.draftLayout = null;
+            this.endInteraction();
+            return;
+          }
+          this.commitLayout(
+            applyAddGraphic(
+              this.layout,
+              layer,
+              buildExtentShape(d.kind, snapped),
+            ),
+          );
+          this.endInteraction();
+          // One shape per arming — disarm back to select after a draw.
+          this.setActiveTool("select");
+        }
+        return;
+      }
       case "connection": {
         const d = detail as DragEvents["connection"];
         if (!d.commit) {
@@ -1233,11 +1286,32 @@ export class OmGraphicalLayout extends LitElement {
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === "Escape" && this.activeTool !== "select") {
+      this.setActiveTool("select");
+      e.preventDefault();
+      return;
+    }
     const id = this.keymap.get(chordFromEvent(e));
     if (id && this.runCommand(id)) {
       e.preventDefault();
     }
   };
+
+  /** The currently armed drawing tool. */
+  get tool(): ToolId {
+    return this.activeTool;
+  }
+
+  /** Arm a drawing tool, or `select` to disarm. A readonly diagram can't
+   *  draw, so it stays on `select`. Emits `om-tool-change` so an external
+   *  toolbar can mirror the armed tool. */
+  setActiveTool(tool: ToolId): void {
+    const next: ToolId = this.readonly ? "select" : tool;
+    if (next !== this.activeTool) {
+      this.activeTool = next;
+      this.emit("om-tool-change", { tool: next });
+    }
+  }
 
   /** The diagram surface a command mutates — an adapter over this element. */
   private commandTarget(): CommandTarget {
@@ -1337,13 +1411,7 @@ export class OmGraphicalLayout extends LitElement {
     name: K,
     detail: LayoutEvents[K],
   ): void {
-    this.dispatchEvent(
-      new CustomEvent<LayoutEvents[K]>(name, {
-        detail,
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    emitEvent(this, name, detail);
   }
 
   /** Returns the current selection as an array of canonical keys. */

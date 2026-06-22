@@ -24,11 +24,15 @@ import type { DiagramLayout, ParameterModel } from "@dicode/omc-client";
 import {
   isComponentKey,
   parseKey,
+  type ActionFlipDetail,
+  type ActionRotateDetail,
+  type ActionToolDetail,
   type LayoutEvents,
   type LibraryBrowserDataSource,
   type LibraryClassInfo,
   type OmGraphicalLayout,
   type ParameterFormSubmitDetail,
+  type ToolId,
 } from "@dicode/diagram-ui";
 
 import type { ExtensionToWebview, WebviewToExtension } from "./protocol.js";
@@ -178,6 +182,7 @@ class OmWebviewRoot extends LitElement {
    *  action panel can disable the selection-scoped rotate / flip
    *  buttons when nothing is picked. */
   @state() private hasSelection = false;
+  @state() private activeTool: ToolId = "select";
   @state() private paramOpen = false;
   @state() private paramModel: ParameterModel | undefined = undefined;
   @state() private paramTitle = "";
@@ -229,16 +234,23 @@ class OmWebviewRoot extends LitElement {
         @om-selection-change=${this.onSelectionChange}
         @om-add-component-request=${this.onAddComponentRequest}
         @om-double-click=${this.onDoubleClick}
+        @om-tool-change=${(e: CustomEvent<LayoutEvents["om-tool-change"]>) =>
+          (this.activeTool = e.detail.tool)}
       ></om-graphical-layout>
       <om-action-panel
         anchor="top-right"
         ?no-selection=${!this.hasSelection}
+        .tool=${this.activeTool}
         @om-action-undo=${() => this.post({ type: "actionUndo" })}
         @om-action-check=${() => this.post({ type: "actionCheck" })}
         @om-action-simulate=${() => this.post({ type: "actionSimulate" })}
         @om-action-parameters=${() => this.post({ type: "actionParameters" })}
-        @om-action-rotate=${() => this.diagram?.rotateSelection()}
-        @om-action-flip=${() => this.diagram?.flipSelection()}
+        @om-action-rotate=${(e: CustomEvent<ActionRotateDetail>) =>
+          this.diagram?.rotateSelection(e.detail.direction === "cw")}
+        @om-action-flip=${(e: CustomEvent<ActionFlipDetail>) =>
+          this.diagram?.flipSelection(e.detail.axis === "horizontal")}
+        @om-action-tool=${(e: CustomEvent<ActionToolDetail>) =>
+          this.diagram?.setActiveTool(e.detail.tool)}
       ></om-action-panel>
       <om-parameter-panel
         ?open=${this.paramOpen}

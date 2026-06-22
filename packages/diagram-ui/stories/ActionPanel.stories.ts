@@ -10,7 +10,11 @@ import type { Meta, StoryObj } from "@storybook/web-components";
 import { html, type TemplateResult } from "lit";
 
 import "../src/action-panel/action-panel.component.js";
-import type { ActionPanelAnchor } from "../src/action-panel/action-panel.component.js";
+import type {
+  ActionPanelAnchor,
+  ActionToolDetail,
+  OmActionPanel,
+} from "../src/action-panel/action-panel.component.js";
 
 interface StoryArgs {
   anchor: ActionPanelAnchor;
@@ -48,6 +52,16 @@ const meta: Meta<StoryArgs> = {
       @om-action-parameters=${() => console.log("parameters")}
       @om-action-rotate=${() => console.log("rotate")}
       @om-action-flip=${() => console.log("flip")}
+      @om-action-tool=${(e: CustomEvent<ActionToolDetail>) => {
+        const panel = (e.currentTarget as HTMLElement).querySelector(
+          "om-action-panel",
+        ) as OmActionPanel | null;
+        if (panel) panel.tool = e.detail.tool;
+        const status = (e.currentTarget as HTMLElement).querySelector(
+          ".om-tool-status",
+        );
+        if (status) status.textContent = `tool: ${e.detail.tool}`;
+      }}
     >
       <om-action-panel
         anchor=${anchor}
@@ -59,6 +73,12 @@ const meta: Meta<StoryArgs> = {
         ?hide-rotate=${hideRotate}
         ?hide-flip=${hideFlip}
       ></om-action-panel>
+      <pre
+        class="om-tool-status"
+        style="position:absolute;left:8px;bottom:8px;margin:0;font-size:11px;color:#444;"
+      >
+tool: select</pre
+      >
     </div>
   `,
 };

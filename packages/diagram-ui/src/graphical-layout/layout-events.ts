@@ -20,6 +20,7 @@ import type { DiagramLayout } from "@dicode/omc-client";
 
 import type { InteractionEvents } from "../interaction/interaction-manager.js";
 import type { DiagramPoint } from "../scene/view-math.js";
+import type { ToolId } from "../interaction/tools.js";
 
 /** Endpoints + routing waypoints of a connection-create commit. */
 export interface ConnectionCreateDetail {
@@ -51,6 +52,11 @@ export type LayoutChangeDetail = DiagramLayout;
 /** Right-button up; `key` is `null` on empty canvas. */
 export type ContextMenuDetail = InteractionEvents["contextMenu"];
 
+/** The armed drawing tool changed (toolbar pick, Escape, readonly). */
+export interface ToolChangeDetail {
+  tool: ToolId;
+}
+
 /**
  * Event-name → detail-type map. Source of truth shared by:
  *   - `emit<K extends LayoutEventName>(name, detail)` inside the component,
@@ -63,6 +69,7 @@ export interface LayoutEvents {
   "om-context-menu": ContextMenuDetail;
   "om-connection-create": ConnectionCreateDetail;
   "om-add-component-request": AddComponentRequestDetail;
+  "om-tool-change": ToolChangeDetail;
 }
 
 export type LayoutEventName = keyof LayoutEvents;

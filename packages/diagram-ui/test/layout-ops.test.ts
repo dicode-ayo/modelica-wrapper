@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DiagramLayout, Point } from "@dicode/omc-client";
 
 import {
+  applyAddGraphic,
   applyDelete,
   applyDeltaMove,
   applyEdgeSegmentDrag,
@@ -12,6 +13,7 @@ import {
   applyRotation,
   applyWaypointDelete,
   applyWaypointInsert,
+  buildExtentShape,
   retainExistingSelection,
   selectByDiagramRect,
   shapeCentre,
@@ -680,5 +682,76 @@ describe("retainExistingSelection", () => {
       "edge:0",
     ]);
     expect([...out].sort()).toEqual(["c:R1", "k:p"]);
+  });
+});
+
+describe("buildExtentShape", () => {
+  it("builds a rectangle / ellipse with a visible outline", () => {
+    expect(
+      buildExtentShape("rectangle", [
+        [0, 0],
+        [10, 10],
+      ]),
+    ).toEqual({
+      kind: "rectangle",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      lineColor: [0, 0, 0],
+    });
+    expect(
+      buildExtentShape("ellipse", [
+        [0, 0],
+        [10, 10],
+      ]).kind,
+    ).toBe("ellipse");
+  });
+});
+
+describe("applyAddGraphic", () => {
+  it("creates the host's own layer when the class has no graphics yet", () => {
+    const layout = baseLayout();
+    const shape = buildExtentShape("rectangle", [
+      [0, 0],
+      [10, 10],
+    ]);
+    const next = applyAddGraphic(layout, "diagram", shape);
+    expect(next.diagramLayers).toEqual([{ from: "Demo", shapes: [shape] }]);
+    // Pure — the input layout is untouched.
+    expect(layout.diagramLayers).toEqual([]);
+  });
+
+  it("appends to the host layer, leaving inherited layers alone", () => {
+    const layout = baseLayout();
+    const inherited = buildExtentShape("ellipse", [
+      [1, 1],
+      [2, 2],
+    ]);
+    layout.diagramLayers = [
+      { from: "Base", shapes: [inherited] },
+      { from: "Demo", shapes: [] },
+    ];
+    const shape = buildExtentShape("rectangle", [
+      [0, 0],
+      [10, 10],
+    ]);
+    const next = applyAddGraphic(layout, "diagram", shape);
+    expect(next.diagramLayers.at(0)).toEqual({
+      from: "Base",
+      shapes: [inherited],
+    });
+    expect(next.diagramLayers.at(1)?.shapes).toEqual([shape]);
+  });
+
+  it("targets the icon layer when asked", () => {
+    const layout = baseLayout();
+    const shape = buildExtentShape("rectangle", [
+      [0, 0],
+      [10, 10],
+    ]);
+    const next = applyAddGraphic(layout, "icon", shape);
+    expect(next.iconLayers).toEqual([{ from: "Demo", shapes: [shape] }]);
+    expect(next.diagramLayers).toEqual([]);
   });
 });
