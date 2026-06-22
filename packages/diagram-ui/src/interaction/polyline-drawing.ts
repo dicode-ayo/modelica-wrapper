@@ -31,7 +31,7 @@ export class PolylineDrawing {
   private vertices: Point[] = [];
   private cursor: Point | null = null;
 
-  /** True while a gesture is in flight (at least one vertex placed). */
+  /** True while a gesture is in flight (a kind has been armed via `start`). */
   get active(): boolean {
     return this.kind !== null;
   }

@@ -119,13 +119,12 @@ import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
 const HOST_SHAPE_Z_BIAS = 0.025;
 
 /**
- * Diagram-unit radius for a poly draw's click-to-close hit test. With grid
- * snapping (the default), a click back on the start cell lands exactly on
- * the first vertex; the tolerance lets an unsnapped click finish without
- * pixel-perfect aim, while staying tighter than the {2,2} Modelica grid so
- * an adjacent cell doesn't false-close.
+ * Fallback diagram-unit radius for a poly draw's click-to-close hit test
+ * when grid snapping is off, so an unsnapped click can still finish without
+ * pixel-perfect aim. With a grid the tolerance is derived from it (half a
+ * cell) instead — see `closesPolyDraw`.
  */
-const POLY_CLOSE_TOLERANCE = 1;
+const POLY_CLOSE_FALLBACK = 1;
 
 interface BBox {
   minX: number;
@@ -1405,9 +1404,13 @@ export class OmGraphicalLayout extends LitElement {
     if (!first || !this.polyDraw.canFinish()) {
       return false;
     }
+    // Half a grid cell: a click that snaps back to the start cell matches it
+    // exactly while an adjacent cell stays outside. No grid → fixed fallback.
+    const [gx, gy] = this.currentSnapGrid();
+    const cell = Math.max(gx, gy);
+    const tol = cell > 0 ? cell / 2 : POLY_CLOSE_FALLBACK;
     return (
-      Math.abs(at[0] - first[0]) <= POLY_CLOSE_TOLERANCE &&
-      Math.abs(at[1] - first[1]) <= POLY_CLOSE_TOLERANCE
+      Math.abs(at[0] - first[0]) <= tol && Math.abs(at[1] - first[1]) <= tol
     );
   }
 
@@ -1430,6 +1433,9 @@ export class OmGraphicalLayout extends LitElement {
     const result = this.polyDraw.finish();
     this.draftLayout = null;
     if (result && this.layout) {
+      // `result.points` is the placed vertices only; the draft carried an
+      // extra trailing cursor point, so the committed shape is rebuilt from
+      // the finished list rather than reused from the draft.
       this.commitLayout(
         applyAddGraphic(
           this.layout,

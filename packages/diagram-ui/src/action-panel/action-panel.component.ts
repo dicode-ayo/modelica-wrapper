@@ -38,8 +38,6 @@ import { omTokens } from "@dicode/ui-common";
 import { emitEvent } from "../dom-event.js";
 
 import {
-  EXTENT_KINDS,
-  POLY_KINDS,
   extentKindOf,
   polyKindOf,
   type ExtentKind,
@@ -109,14 +107,6 @@ const POLY_LABELS: Record<PolyKind, string> = {
 
 const ROTATE_DIRECTIONS: readonly RotateDirection[] = ["cw", "ccw"];
 const FLIP_AXES: readonly FlipAxis[] = ["horizontal", "vertical"];
-
-function asDrawKind(value: string): ExtentKind | undefined {
-  return EXTENT_KINDS.find((k) => k === value);
-}
-
-function asPolyKind(value: string): PolyKind | undefined {
-  return POLY_KINDS.find((k) => k === value);
-}
 
 @customElement("om-action-panel")
 export class OmActionPanel extends LitElement {
@@ -333,7 +323,7 @@ export class OmActionPanel extends LitElement {
           tool: armed === shown ? "select" : shown,
         })}
       @om-split-select=${(e: CustomEvent<SplitButtonSelectDetail>) => {
-        const kind = asDrawKind(e.detail.value);
+        const kind = extentKindOf(e.detail.value);
         if (kind) this.emit("om-action-tool", { tool: kind });
       }}
     ></om-split-button>`;
@@ -359,7 +349,7 @@ export class OmActionPanel extends LitElement {
           tool: armed === shown ? "select" : shown,
         })}
       @om-split-select=${(e: CustomEvent<SplitButtonSelectDetail>) => {
-        const kind = asPolyKind(e.detail.value);
+        const kind = polyKindOf(e.detail.value);
         if (kind) this.emit("om-action-tool", { tool: kind });
       }}
     ></om-split-button>`;

@@ -9,20 +9,19 @@
  */
 export type ExtentKind = "rectangle" | "ellipse";
 export type PolyKind = "line" | "polygon";
-export type DrawKind = ExtentKind | PolyKind;
-export type ToolId = "select" | DrawKind;
+export type ToolId = "select" | ExtentKind | PolyKind;
 
 export const EXTENT_KINDS: readonly ExtentKind[] = ["rectangle", "ellipse"];
 export const POLY_KINDS: readonly PolyKind[] = ["line", "polygon"];
 
 /** The extent shape a tool draws by press-drag, or `null` otherwise. Keyed on
  *  `EXTENT_KINDS` so a poly (or future) tool can't leak through as an
- *  `ExtentKind`. */
-export function extentKindOf(tool: ToolId): ExtentKind | null {
+ *  `ExtentKind`. Takes a bare `string` so it also narrows a raw event value. */
+export function extentKindOf(tool: string): ExtentKind | null {
   return EXTENT_KINDS.find((k) => k === tool) ?? null;
 }
 
 /** The poly shape a tool draws by multi-click, or `null` otherwise. */
-export function polyKindOf(tool: ToolId): PolyKind | null {
+export function polyKindOf(tool: string): PolyKind | null {
   return POLY_KINDS.find((k) => k === tool) ?? null;
 }

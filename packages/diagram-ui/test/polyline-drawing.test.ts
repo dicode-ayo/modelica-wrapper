@@ -113,6 +113,16 @@ describe("PolylineDrawing", () => {
     expect(d.active).toBe(false);
   });
 
+  it("ignores cursor moves once a gesture has finished and reset", () => {
+    const d = new PolylineDrawing();
+    d.start("line", [0, 0]);
+    d.addVertex([10, 0]);
+    d.finish();
+    d.moveCursor([5, 5]);
+    expect(d.active).toBe(false);
+    expect(d.draftPoints()).toBe(null);
+  });
+
   it("the committed points are a copy — later edits don't mutate the result", () => {
     const d = new PolylineDrawing();
     d.start("line", [0, 0]);
