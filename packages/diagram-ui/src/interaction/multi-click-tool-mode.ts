@@ -7,9 +7,8 @@ import type { ToolEmit, ToolMode } from "./tool-mode.js";
 import type { PolyKind } from "./tools.js";
 
 /**
- * Fallback diagram-unit radius for the click-to-close hit test when grid
- * snapping is off, so an unsnapped click can still finish without
- * pixel-perfect aim. With a grid the tolerance is half a cell instead.
+ * Diagram-unit close-tolerance radius used only when grid snapping is off;
+ * with a grid the tolerance is half a cell instead (see `closesAt`).
  */
 const POLY_CLOSE_FALLBACK = 1;
 

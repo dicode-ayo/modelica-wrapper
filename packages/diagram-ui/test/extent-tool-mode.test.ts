@@ -78,12 +78,21 @@ describe("ExtentToolMode", () => {
     );
   });
 
-  it("cancel drops an in-flight drag with no commit", () => {
+  it("cancel drops an in-flight drag (extent:null), never committing a shape", () => {
     const { mode, shapes } = setup("ellipse");
     mode.press({ x: 0, y: 0 });
     mode.cancel();
     expect(mode.active).toBe(false);
+    // The drop signal clears the host preview without creating a shape.
+    expect(shapes).toEqual([{ kind: "ellipse", extent: null, draft: false }]);
+    // Moves after a cancel are no-ops.
     mode.move({ x: 30, y: 30 });
+    expect(shapes).toHaveLength(1);
+  });
+
+  it("cancel with nothing in flight emits nothing", () => {
+    const { mode, shapes } = setup("rectangle");
+    mode.cancel();
     expect(shapes).toHaveLength(0);
   });
 });

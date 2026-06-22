@@ -12,7 +12,7 @@ function extentOf(a: DiagramPoint, b: DiagramPoint): Extent {
   ];
 }
 
-/** Minimum drag span, in diagram units, that counts as a draw vs a click. */
+/** Drag span, in diagram units, below which a drag is treated as a click. */
 const MIN_DRAW_SPAN = 1;
 
 /** A click (or a hair of movement) shouldn't create a zero-size shape. */
@@ -90,7 +90,12 @@ export class ExtentToolMode implements ToolMode {
   }
 
   cancel(): void {
+    const kind = this.kind;
     this.start = null;
     this.kind = null;
+    if (kind) {
+      // Drop any in-flight preview without committing a shape.
+      this.emit("drawShape", { kind, extent: null, draft: false });
+    }
   }
 }

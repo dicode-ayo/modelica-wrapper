@@ -119,7 +119,7 @@ export class ModeRouter {
     this.canvas.addEventListener("pointerdown", this.onPointerDown);
     this.canvas.addEventListener("pointermove", this.onPointerMove);
     this.canvas.addEventListener("pointerup", this.onPointerUp);
-    this.canvas.addEventListener("pointercancel", this.onPointerUp);
+    this.canvas.addEventListener("pointercancel", this.onPointerCancel);
     this.canvas.addEventListener("pointerleave", this.onPointerLeave);
   }
 
@@ -171,7 +171,7 @@ export class ModeRouter {
     this.canvas.removeEventListener("pointerdown", this.onPointerDown);
     this.canvas.removeEventListener("pointermove", this.onPointerMove);
     this.canvas.removeEventListener("pointerup", this.onPointerUp);
-    this.canvas.removeEventListener("pointercancel", this.onPointerUp);
+    this.canvas.removeEventListener("pointercancel", this.onPointerCancel);
     this.canvas.removeEventListener("pointerleave", this.onPointerLeave);
     this.active?.cancel?.();
     this.active = null;
@@ -311,6 +311,25 @@ export class ModeRouter {
     releasePointer(this.canvas, e.pointerId);
     mode.commit(point, e);
     this.store.next({ mode: "idle" });
+  };
+
+  private readonly onPointerCancel = (e: PointerEvent): void => {
+    // A cancelled pointer abandons an in-flight tool draw rather than
+    // committing one at wherever the cancel reports. Gestures keep the
+    // commit-on-up path (delegated below).
+    const tool = this.activeToolMode();
+    if (
+      tool &&
+      tool.pressDrag &&
+      tool.active &&
+      e.pointerId === this.pointerId
+    ) {
+      this.pointerId = -1;
+      releasePointer(this.canvas, e.pointerId);
+      this.cancelActiveTool();
+      return;
+    }
+    this.onPointerUp(e);
   };
 
   private readonly onPointerLeave = (): void => {

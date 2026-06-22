@@ -4,17 +4,14 @@ import type { DiagramPoint } from "./gesture-mode.js";
 import type { ExtentKind, PolyKind } from "./tools.js";
 
 /**
- * Events a {@link ToolMode} emits as the user draws. Kept separate from the
- * press-drag `DragEvents` channel: a tool is an armed, sticky drawing mode,
- * not a transient gesture on an existing entity. The host turns these into
- * `draftLayout` previews and committed graphics.
+ * Events a {@link ToolMode} emits as the user draws. The host turns these
+ * into `draftLayout` previews and committed graphics.
  *
  *   - `drawShape` — extent primitive (rectangle / ellipse). `draft: true` on
  *     every move; `draft: false` on release to commit; `extent: null` on a
  *     degenerate (click, no drag) release so nothing is created.
- *   - `drawPoly` — poly primitive (line / polygon) across its multi-click
- *     life: `draft` on every vertex / cursor move, `commit` when finished,
- *     `cancel` when abandoned.
+ *   - `drawPoly` — poly primitive (line / polygon): `draft` on every vertex /
+ *     cursor move, `commit` when finished, `cancel` when abandoned.
  */
 export interface ToolEvents {
   drawShape: { kind: ExtentKind; extent: Extent | null; draft: boolean };
@@ -30,10 +27,8 @@ export type ToolEmit = <K extends keyof ToolEvents>(
 ) => void;
 
 /**
- * An armed drawing tool's input controller. Unlike a press-drag
- * `GestureMode` — which the router owns only between one `pointerdown` and
- * the matching `pointerup` — a `ToolMode` is *sticky*: it stays armed across
- * draws and, for multi-click tools, owns the keyboard. The router routes
+ * An armed drawing tool's input controller: sticky (stays armed across draws)
+ * and, for multi-click tools, the owner of the keyboard. The router routes
  * pointer / key / double-click to the active tool while a draw tool is armed.
  *
  * Two families implement it: {@link ExtentToolMode} (press-drag, one shape

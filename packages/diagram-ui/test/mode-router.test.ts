@@ -208,6 +208,34 @@ describe("ModeRouter", () => {
     dispose();
   });
 
+  it("abandons an in-flight extent draw on pointercancel instead of committing", () => {
+    const { canvas, store, router, tool, dispose } = setup("rectangle");
+    canvas.dispatchEvent(down());
+    canvas.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 30, clientY: 30 }),
+    );
+    // A draft is in flight (no committed shape yet).
+    expect(tool.at(-1)?.detail).toMatchObject({ draft: true });
+    canvas.dispatchEvent(
+      new PointerEvent("pointercancel", {
+        pointerId: 0,
+        clientX: 30,
+        clientY: 30,
+      }),
+    );
+    // The cancel drops the preview (`extent: null`) — never a real commit
+    // (a committed shape would carry a non-null extent with `draft: false`).
+    const committed = tool.some((c) => {
+      const d = c.detail as { draft?: boolean; extent?: unknown };
+      return d.draft === false && d.extent !== null;
+    });
+    expect(committed).toBe(false);
+    expect(tool.at(-1)?.detail).toMatchObject({ extent: null, draft: false });
+    expect(router.isGestureActive()).toBe(false);
+    expect(store.value.mode).toBe("idle");
+    dispose();
+  });
+
   it("clears the gesture on pointercancel", () => {
     const { canvas, router, store, scene, setPicked, dispose } = setup();
     setPicked(new TransformNode("om-component:R1", scene));
