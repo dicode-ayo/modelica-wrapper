@@ -11,7 +11,7 @@ import type {
 import { parseKey, type EntityKind } from "./node-keys.js";
 import { orthogonalRoute, pointsEqual } from "./connection-route.js";
 import { snapPlacement, type SnapGrid } from "./snap-math.js";
-import type { DrawKind } from "./tools.js";
+import type { ExtentKind, PolyKind } from "./tools.js";
 
 /**
  * Pure layout mutations. Each function takes a `DiagramLayout` and
@@ -1169,10 +1169,21 @@ export function selectByDiagramRect(
 const DRAWN_LINE_COLOR: Color = [0, 0, 0];
 
 /** Build a default extent primitive for a freshly-drawn shape. */
-export function buildExtentShape(kind: DrawKind, extent: Extent): Shape {
+export function buildExtentShape(kind: ExtentKind, extent: Extent): Shape {
   return kind === "rectangle"
     ? { kind: "rectangle", extent, lineColor: DRAWN_LINE_COLOR }
     : { kind: "ellipse", extent, lineColor: DRAWN_LINE_COLOR };
+}
+
+/**
+ * Build a default poly primitive for a freshly-drawn shape. A `line` stays
+ * open; a `polygon` is closed by the renderer, so `points` carries only the
+ * distinct vertices — no duplicated closing point.
+ */
+export function buildPolyShape(kind: PolyKind, points: Point[]): Shape {
+  return kind === "line"
+    ? { kind: "line", points, color: DRAWN_LINE_COLOR }
+    : { kind: "polygon", points, lineColor: DRAWN_LINE_COLOR };
 }
 
 /**

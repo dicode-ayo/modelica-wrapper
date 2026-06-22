@@ -1,6 +1,6 @@
 import { html, svg, type SVGTemplateResult, type TemplateResult } from "lit";
 
-import type { DrawKind } from "../interaction/tools.js";
+import type { ExtentKind } from "../interaction/tools.js";
 
 /**
  * Toolbar glyphs, inlined as SVG. The webview CSP (`default-src none`) blocks
@@ -77,7 +77,7 @@ export const ellipseIcon = glyph(
 
 export const chevronDownIcon = glyph(svg`<path d="m6 9 6 6 6-6" />`);
 
-/** The glyph for a drawing tool's shape. */
-export function drawKindIcon(kind: DrawKind): TemplateResult {
+/** The glyph for an extent drawing tool's shape. */
+export function drawKindIcon(kind: ExtentKind): TemplateResult {
   return kind === "rectangle" ? rectangleIcon : ellipseIcon;
 }

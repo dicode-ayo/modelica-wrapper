@@ -7,7 +7,7 @@ import {
   type EntityKey,
   type EntityKind,
 } from "./node-keys.js";
-import type { DrawKind } from "./tools.js";
+import type { ExtentKind } from "./tools.js";
 
 export type Picker = (clientX: number, clientY: number) => Node | null;
 export type ClientToDiagram = (
@@ -102,7 +102,7 @@ export interface DragEvents {
    * creating a zero-size shape.
    */
   drawShape: {
-    kind: DrawKind;
+    kind: ExtentKind;
     extent: Extent | null;
     draft: boolean;
   };

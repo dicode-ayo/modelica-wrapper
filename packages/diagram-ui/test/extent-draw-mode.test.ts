@@ -5,7 +5,7 @@ import type {
   DragEvents,
   GestureStart,
 } from "../src/interaction/gesture-mode.js";
-import type { DrawKind } from "../src/interaction/tools.js";
+import type { ExtentKind } from "../src/interaction/tools.js";
 
 function emptyStart(point: { x: number; y: number }): GestureStart {
   return {
@@ -17,7 +17,7 @@ function emptyStart(point: { x: number; y: number }): GestureStart {
   };
 }
 
-function setup(kind: DrawKind | null): {
+function setup(kind: ExtentKind | null): {
   mode: ExtentDrawMode;
   shapes: DragEvents["drawShape"][];
 } {

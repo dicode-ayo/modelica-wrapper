@@ -6,7 +6,7 @@ import type {
   GestureMode,
   GestureStart,
 } from "./gesture-mode.js";
-import type { DrawKind } from "./tools.js";
+import type { ExtentKind } from "./tools.js";
 
 /** Normalized drag box, corners ordered `[[minX, minY], [maxX, maxY]]`. */
 function extentOf(a: DiagramPoint, b: DiagramPoint): Extent {
@@ -39,11 +39,11 @@ function degenerate(e: Extent): boolean {
 export class ExtentDrawMode implements GestureMode {
   readonly id = "draw";
   private start: DiagramPoint | null = null;
-  private kind: DrawKind | null = null;
+  private kind: ExtentKind | null = null;
 
   constructor(
     private readonly emit: DragEmit,
-    private readonly getKind: () => DrawKind | null,
+    private readonly getKind: () => ExtentKind | null,
   ) {}
 
   cancel(): void {

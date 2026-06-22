@@ -23,7 +23,7 @@ import { DragMode } from "./drag-mode.js";
 import { ConnectMode } from "./connect-mode.js";
 import { ExtentDrawMode } from "./extent-draw-mode.js";
 import type { InteractionStateStore } from "./interaction-state.js";
-import type { DrawKind } from "./tools.js";
+import type { ExtentKind } from "./tools.js";
 
 export interface ModeRouterDeps {
   canvas: HTMLCanvasElement;
@@ -40,9 +40,9 @@ export interface ModeRouterDeps {
   connectorPosition: ConnectorPosition;
   /** Local compatibility check between two connector keys. */
   evaluateCompat: CompatCheck;
-  /** The shape the armed draw tool draws, or `null` for the `select` tool.
-   *  A non-null value routes an empty-canvas press to the draw mode. */
-  getDrawKind: () => DrawKind | null;
+  /** The extent shape the armed draw tool draws, or `null` for any non-extent
+   *  tool. A non-null value routes a press to the extent draw mode. */
+  getExtentKind: () => ExtentKind | null;
 }
 
 /**
@@ -64,7 +64,7 @@ export class ModeRouter {
   private readonly dragMode: GestureMode;
   private readonly connectMode: GestureMode;
   private readonly drawMode: GestureMode;
-  private readonly getDrawKind: () => DrawKind | null;
+  private readonly getExtentKind: () => ExtentKind | null;
   private active: GestureMode | null = null;
   private pointerId = -1;
 
@@ -92,8 +92,8 @@ export class ModeRouter {
       deps.connectorPosition,
       deps.evaluateCompat,
     );
-    this.getDrawKind = deps.getDrawKind;
-    this.drawMode = new ExtentDrawMode(deps.onDrag, deps.getDrawKind);
+    this.getExtentKind = deps.getExtentKind;
+    this.drawMode = new ExtentDrawMode(deps.onDrag, deps.getExtentKind);
     this.canvas.addEventListener("pointerdown", this.onPointerDown);
     this.canvas.addEventListener("pointermove", this.onPointerMove);
     this.canvas.addEventListener("pointerup", this.onPointerUp);
@@ -121,8 +121,8 @@ export class ModeRouter {
   }
 
   private modeFor(entity: EntityKey | null): GestureMode {
-    // An armed draw tool owns every press — you draw over components too.
-    if (this.getDrawKind() !== null) {
+    // An armed extent draw tool owns every press — you draw over components too.
+    if (this.getExtentKind() !== null) {
       return this.drawMode;
     }
     if (entity?.kind === "port" || entity?.kind === "connector") {

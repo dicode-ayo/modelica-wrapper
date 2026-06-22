@@ -94,7 +94,7 @@ import {
   snapPoint,
   type SnapGrid,
 } from "../interaction/snap-math.js";
-import { drawKindOf, type ToolId } from "../interaction/tools.js";
+import { extentKindOf, type ToolId } from "../interaction/tools.js";
 import { emitEvent } from "../dom-event.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
 
@@ -792,7 +792,7 @@ export class OmGraphicalLayout extends LitElement {
       overlayParent: ctx.diagramRoot,
       connectorPosition: (key) => this.connectorDiagramPosition(key),
       evaluateCompat: (from, toKey) => this.evaluateCompat(from, toKey),
-      getDrawKind: () => drawKindOf(this.activeTool),
+      getExtentKind: () => extentKindOf(this.activeTool),
     });
     // Native dblclick on empty canvas → open the library browser.
     // InteractionManager's `doubleClick` only fires on hits; this path

@@ -3,6 +3,7 @@ import type { DiagramLayout, Point } from "@dicode/omc-client";
 
 import {
   applyAddGraphic,
+  buildPolyShape,
   applyDelete,
   applyDeltaMove,
   applyEdgeSegmentDrag,
@@ -706,6 +707,44 @@ describe("buildExtentShape", () => {
         [10, 10],
       ]).kind,
     ).toBe("ellipse");
+  });
+});
+
+describe("buildPolyShape", () => {
+  it("builds an open line carrying its vertices and outline color", () => {
+    expect(
+      buildPolyShape("line", [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+      ]),
+    ).toEqual({
+      kind: "line",
+      points: [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+      ],
+      color: [0, 0, 0],
+    });
+  });
+
+  it("builds a polygon with the distinct vertices and a line color", () => {
+    const poly = buildPolyShape("polygon", [
+      [0, 0],
+      [10, 0],
+      [5, 10],
+    ]);
+    expect(poly.kind).toBe("polygon");
+    expect(poly).toEqual({
+      kind: "polygon",
+      points: [
+        [0, 0],
+        [10, 0],
+        [5, 10],
+      ],
+      lineColor: [0, 0, 0],
+    });
   });
 });
 

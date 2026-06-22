@@ -38,9 +38,9 @@ import { omTokens } from "@dicode/ui-common";
 import { emitEvent } from "../dom-event.js";
 
 import {
-  DRAW_KINDS,
-  drawKindOf,
-  type DrawKind,
+  EXTENT_KINDS,
+  extentKindOf,
+  type ExtentKind,
   type ToolId,
 } from "../interaction/tools.js";
 import "./split-button.component.js";
@@ -93,7 +93,7 @@ export interface ActionPanelEvents {
 
 export type ActionPanelEventName = keyof ActionPanelEvents;
 
-const DRAW_LABELS: Record<DrawKind, string> = {
+const DRAW_LABELS: Record<ExtentKind, string> = {
   rectangle: "Rectangle",
   ellipse: "Ellipse",
 };
@@ -101,8 +101,8 @@ const DRAW_LABELS: Record<DrawKind, string> = {
 const ROTATE_DIRECTIONS: readonly RotateDirection[] = ["cw", "ccw"];
 const FLIP_AXES: readonly FlipAxis[] = ["horizontal", "vertical"];
 
-function asDrawKind(value: string): DrawKind | undefined {
-  return DRAW_KINDS.find((k) => k === value);
+function asDrawKind(value: string): ExtentKind | undefined {
+  return EXTENT_KINDS.find((k) => k === value);
 }
 
 @customElement("om-action-panel")
@@ -180,11 +180,11 @@ export class OmActionPanel extends LitElement {
 
   /** Last shape the draw split armed — kept so its main half keeps showing it
    *  after a draw auto-disarms back to `select`. */
-  @state() private lastDrawKind: DrawKind = "rectangle";
+  @state() private lastDrawKind: ExtentKind = "rectangle";
 
   override willUpdate(changed: PropertyValues<this>): void {
     if (changed.has("tool")) {
-      const armed = drawKindOf(this.tool);
+      const armed = extentKindOf(this.tool);
       if (armed) {
         this.lastDrawKind = armed;
       }
@@ -292,7 +292,7 @@ export class OmActionPanel extends LitElement {
   }
 
   private drawSplit(): TemplateResult {
-    const armed = drawKindOf(this.tool);
+    const armed = extentKindOf(this.tool);
     const shown = armed ?? this.lastDrawKind;
     return html`<om-split-button
       .mainIcon=${drawKindIcon(shown)}
