@@ -252,6 +252,17 @@
           "default": 750,
           "minimum": 250,
           "description": "Debounce window (ms) between the last edit and the auto-check pipeline. Minimum 250 ms."
+        },
+        "modelica.diagram.keymapOverrides": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default": {},
+          "description": "Custom chord → command-id bindings for the Modelica diagram editor. Each key is a chord (e.g. \"ctrl+d\", \"shift+Delete\"); each value is a diagram command id (e.g. \"diagram.delete\") or null to unbind the default. Valid command ids: diagram.delete, diagram.rotateCw, diagram.rotateCcw, diagram.flipHorizontal, diagram.flipVertical."
         }
       }
     }

@@ -178,6 +178,8 @@ class OmWebviewRoot extends LitElement {
   `;
 
   @state() private layout: DiagramLayout | null = null;
+  @state() private keymapOverrides: ReadonlyMap<string, string | null> =
+    new Map();
   /** Mirrors whether the diagram has a non-empty selection, so the
    *  action panel can disable the selection-scoped rotate / flip
    *  buttons when nothing is picked. */
@@ -227,6 +229,7 @@ class OmWebviewRoot extends LitElement {
     return html`
       <om-graphical-layout
         .layout=${this.layout}
+        .keymapOverrides=${this.keymapOverrides}
         ?perf-hud=${true}
         .libraryDataSource=${this.librarySource}
         @om-graphical-layout-change=${this.onLayoutChange}
@@ -307,6 +310,9 @@ class OmWebviewRoot extends LitElement {
         return;
       case "libraryIconResult":
         this.librarySource?.handleIconResponse(message);
+        return;
+      case "keymapConfig":
+        this.keymapOverrides = new Map(message.overrides);
         return;
       case "error":
         console.error("[diagram-ui] backend error:", message.message);

@@ -17,6 +17,7 @@ import * as vscode from "vscode";
 import { OmcClient } from "@dicode/omc-client";
 
 import { registerCommands } from "./commands/index.js";
+import { DiagramPanel } from "./diagram/panel.js";
 import { registerLanguageFeatures } from "./language/index.js";
 import { log } from "./logger.js";
 import { ResultViewEditorProvider } from "./results/result-view-provider.js";
@@ -76,6 +77,15 @@ export async function activate(
       libraryTree,
       sourceProvider,
       diagnostics,
+    }),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("modelica.diagram.keymapOverrides")) {
+        const cfg = vscode.workspace.getConfiguration("modelica");
+        const raw =
+          cfg.get<Record<string, string | null>>("diagram.keymapOverrides") ??
+          {};
+        DiagramPanel.updateAllKeymaps(new Map(Object.entries(raw)));
+      }
     }),
   );
 

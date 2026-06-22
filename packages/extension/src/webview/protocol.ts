@@ -122,6 +122,15 @@ export type ExtensionToWebview =
       requestId: string;
       svg?: string;
       error?: string;
+    }
+  | {
+      /**
+       * Push user keymap overrides into the webview. Chords map to command
+       * ids (or null to unbind). Sent on diagram open and whenever the
+       * `modelica.diagram.keymapOverrides` workspace setting changes.
+       */
+      type: "keymapConfig";
+      overrides: ReadonlyArray<readonly [string, string | null]>;
     };
 
 export type WebviewToExtension =

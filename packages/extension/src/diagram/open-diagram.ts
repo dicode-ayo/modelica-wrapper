@@ -531,10 +531,6 @@ export async function openDiagram(
     // ── Library browser ────────────────────────────────────────────────
     onLibraryListChildren: (parent) => librarySource.listChildren(parent),
     onLibrarySearch: (query) => librarySource.searchAll(query),
-    // Lazy per-row icon thumbnail (issue #76, item 8): the cheap
-    // `fetchIconLayout` path rendered to a self-contained SVG. Best-effort
-    // — a fetch / render failure resolves to `undefined` so the browser
-    // keeps its restriction-letter badge.
     onLibraryIcon: (target) => libraryIconSvg(client, target),
     onAddComponent: async (componentClass, position) => {
       const componentName = uniqueComponentName(prevLayout, componentClass);
@@ -587,6 +583,14 @@ export async function openDiagram(
       }
     },
   });
+  panel.updateKeymap(readKeymapOverrides());
+}
+
+function readKeymapOverrides(): ReadonlyMap<string, string | null> {
+  const cfg = vscode.workspace.getConfiguration("modelica");
+  const raw =
+    cfg.get<Record<string, string | null>>("diagram.keymapOverrides") ?? {};
+  return new Map(Object.entries(raw));
 }
 
 /**

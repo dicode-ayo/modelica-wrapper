@@ -180,6 +180,18 @@ export class DiagramPanel {
     this.send({ type: "layout", layout });
   }
 
+  /** Push updated keymap overrides into the webview. */
+  updateKeymap(overrides: ReadonlyMap<string, string | null>): void {
+    this.send({ type: "keymapConfig", overrides: [...overrides] });
+  }
+
+  /** Push updated keymap overrides to every open diagram panel. */
+  static updateAllKeymaps(overrides: ReadonlyMap<string, string | null>): void {
+    for (const panel of DiagramPanel.panels.values()) {
+      panel.updateKeymap(overrides);
+    }
+  }
+
   /** Tell the webview to open its parameter modal with this model. */
   openParameters(opts: OpenParametersOptions): void {
     const msg: ExtensionToWebview = {
