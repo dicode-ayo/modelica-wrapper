@@ -98,7 +98,7 @@ export class DiagramPanel {
   private readonly panel: vscode.WebviewPanel;
   private readonly disposables: vscode.Disposable[] = [];
   private ready = false;
-  private pendingInit: ExtensionToWebview | null = null;
+  private readonly pendingMessages: ExtensionToWebview[] = [];
 
   /** Class name of the currently active diagram, or undefined if none. */
   static activeClassName(): string | undefined {
@@ -151,11 +151,7 @@ export class DiagramPanel {
     );
     this.disposables.push(this.panel.onDidDispose(() => this.dispose()));
     DiagramPanel.activePanel = this;
-    this.pendingInit = {
-      type: "init",
-      layout: this.layout,
-      className: this.className,
-    };
+    this.send({ type: "init", layout: this.layout, className: this.className });
   }
 
   static open(
@@ -180,12 +176,10 @@ export class DiagramPanel {
     this.send({ type: "layout", layout });
   }
 
-  /** Push updated keymap overrides into the webview. */
   updateKeymap(overrides: ReadonlyMap<string, string | null>): void {
     this.send({ type: "keymapConfig", overrides: [...overrides] });
   }
 
-  /** Push updated keymap overrides to every open diagram panel. */
   static updateAllKeymaps(overrides: ReadonlyMap<string, string | null>): void {
     for (const panel of DiagramPanel.panels.values()) {
       panel.updateKeymap(overrides);
@@ -230,7 +224,7 @@ export class DiagramPanel {
 
   private send(message: ExtensionToWebview): void {
     if (!this.ready) {
-      this.pendingInit = message;
+      this.pendingMessages.push(message);
       return;
     }
     void this.panel.webview.postMessage(message);
@@ -240,10 +234,10 @@ export class DiagramPanel {
     switch (message.type) {
       case "ready":
         this.ready = true;
-        if (this.pendingInit) {
-          void this.panel.webview.postMessage(this.pendingInit);
-          this.pendingInit = null;
+        for (const msg of this.pendingMessages) {
+          void this.panel.webview.postMessage(msg);
         }
+        this.pendingMessages.length = 0;
         return;
       case "change":
         this.handlers.onChange?.(message.layout);

@@ -23,7 +23,6 @@ export function chordFromEvent(e: KeyboardEvent): KeyChord {
  */
 export type KeymapOverrides = ReadonlyMap<KeyChord, string | null>;
 
-/** Merge user overrides onto a base keymap. */
 export function resolveKeymap(
   base: ReadonlyMap<KeyChord, DiagramCommandId>,
   overrides: KeymapOverrides,
@@ -43,9 +42,7 @@ export function resolveKeymap(
 /** A chord that maps to two different commands across base + override. */
 export interface KeymapConflict {
   chord: KeyChord;
-  /** The command the override wants to assign. */
   newId: string;
-  /** The command currently bound to this chord before the override. */
   existingId: DiagramCommandId;
 }
 

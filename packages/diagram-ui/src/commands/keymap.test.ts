@@ -14,7 +14,7 @@ describe("resolveKeymap", () => {
       new Map([["ctrl+d", "diagram.delete"]]),
     );
     expect(result.get("ctrl+d")).toBe("diagram.delete");
-    expect(result.get("Delete")).toBe("diagram.delete");
+    expect(result.get("r")).toBe("diagram.rotateCw");
   });
 
   it("replaces an existing chord's command", () => {

@@ -353,12 +353,6 @@ export class OmGraphicalLayout extends LitElement {
    */
   private readonly interactionStore = new InteractionStateStore();
 
-  /**
-   * User override map layered on top of {@link DEFAULT_KEYMAP}. A null
-   * value unbinds the default chord; any other value adds or replaces it.
-   * Set by the host (extension) via the `modelica.diagram.keymapOverrides`
-   * workspace setting.
-   */
   @property({ attribute: false })
   keymapOverrides: KeymapOverrides = new Map();
 
