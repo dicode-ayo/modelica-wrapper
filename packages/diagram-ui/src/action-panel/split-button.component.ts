@@ -68,6 +68,9 @@ export class OmSplitButton extends LitElement {
         block-size: var(--om-icon-size-sm);
       }
       wa-dropdown-item .toolbar-icon {
+        /* Sit beside the label, not on its own line (overrides the block
+         * display the square toolbar buttons use). */
+        display: inline-block;
         margin-inline-end: var(--om-space-xs);
         vertical-align: text-bottom;
       }
