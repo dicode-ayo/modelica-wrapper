@@ -105,6 +105,7 @@ interface FakePanel {
   update: ReturnType<typeof vi.fn>;
   openParameters: ReturnType<typeof vi.fn>;
   closeParameters: ReturnType<typeof vi.fn>;
+  updateKeymap: ReturnType<typeof vi.fn>;
 }
 let fakePanel: FakePanel;
 let capturedHandlers: Record<string, (...args: never[]) => unknown>;
@@ -206,6 +207,7 @@ beforeEach(() => {
     update: vi.fn(),
     openParameters: vi.fn(),
     closeParameters: vi.fn(),
+    updateKeymap: vi.fn(),
   };
   capturedHandlers = {};
   findSubComponent.mockReset();
