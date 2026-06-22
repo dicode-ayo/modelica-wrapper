@@ -21,21 +21,12 @@ import {
 import { SelectMode } from "./select-mode.js";
 import { DragMode } from "./drag-mode.js";
 import { ConnectMode } from "./connect-mode.js";
-import { ExtentDrawMode } from "./extent-draw-mode.js";
+import { ExtentToolMode } from "./extent-tool-mode.js";
+import { MultiClickToolMode } from "./multi-click-tool-mode.js";
+import type { ToolEmit, ToolMode } from "./tool-mode.js";
 import type { InteractionStateStore } from "./interaction-state.js";
-import type { ExtentKind, PolyKind } from "./tools.js";
-
-/**
- * Multi-click poly draw (Line / Polygon). The router feeds it primary
- * clicks (`press`) and cursor moves (`hover`) while a poly tool is armed;
- * the host owns the gesture state and decides start / append / finish.
- * Unlike the press-drag `GestureMode`s this spans many clicks, so it lives
- * outside the active-gesture machinery.
- */
-export interface PolyDrawController {
-  press(point: { x: number; y: number }): void;
-  hover(point: { x: number; y: number }): void;
-}
+import type { SnapGrid } from "./snap-math.js";
+import { extentKindOf, polyKindOf, type ToolId } from "./tools.js";
 
 export interface ModeRouterDeps {
   canvas: HTMLCanvasElement;
@@ -52,22 +43,29 @@ export interface ModeRouterDeps {
   connectorPosition: ConnectorPosition;
   /** Local compatibility check between two connector keys. */
   evaluateCompat: CompatCheck;
-  /** The extent shape the armed draw tool draws, or `null` for any non-extent
-   *  tool. A non-null value routes a press to the extent draw mode. */
-  getExtentKind: () => ExtentKind | null;
-  /** The poly shape the armed draw tool draws, or `null` otherwise. A non-null
-   *  value routes clicks + cursor moves to the multi-click `polyDraw`. */
-  getPolyKind: () => PolyKind | null;
-  polyDraw: PolyDrawController;
+  /** The armed tool. `select` routes presses to the gesture modes; a draw
+   *  tool routes all input to the matching {@link ToolMode}. */
+  getActiveTool: () => ToolId;
+  /** Active snap grid, for the multi-click tool's vertex snapping. */
+  getSnapGrid: () => SnapGrid;
+  /** Sink for a tool mode's draw events. */
+  onTool: ToolEmit;
 }
 
 /**
  * The interaction state manager. Owns the one set of canvas pointer
  * listeners for the diagram's lifetime. Hover, click-select and the
- * context menu run always (via the `InteractionManager`). A `pointerdown`
- * hit-tests and transitions `idle → {select | drag | connect}` — the
- * matching gesture mode owns the press-drag until `pointerup` returns it
- * to `idle`. Switching is a field swap, never `add/removeEventListener`.
+ * context menu run always (via the `InteractionManager`).
+ *
+ * Two routing families:
+ *   - With `select` armed, a `pointerdown` hit-tests and transitions
+ *     `idle → {select | drag | connect}` — the matching `GestureMode` owns
+ *     the press-drag until `pointerup` returns it to `idle`.
+ *   - With a draw tool armed, all input (pointer, key via `handleKey`,
+ *     double-click via `handleDoubleClick`) routes to the matching
+ *     {@link ToolMode}, under store mode `draw`.
+ *
+ * Switching is a field swap, never `add/removeEventListener`.
  */
 export class ModeRouter {
   private readonly canvas: HTMLCanvasElement;
@@ -79,10 +77,9 @@ export class ModeRouter {
   private readonly selectMode: GestureMode;
   private readonly dragMode: GestureMode;
   private readonly connectMode: GestureMode;
-  private readonly drawMode: GestureMode;
-  private readonly getExtentKind: () => ExtentKind | null;
-  private readonly getPolyKind: () => PolyKind | null;
-  private readonly polyDraw: PolyDrawController;
+  private readonly extentTool: ToolMode;
+  private readonly polyTool: ToolMode;
+  private readonly getActiveTool: () => ToolId;
   private active: GestureMode | null = null;
   private pointerId = -1;
 
@@ -110,10 +107,15 @@ export class ModeRouter {
       deps.connectorPosition,
       deps.evaluateCompat,
     );
-    this.getExtentKind = deps.getExtentKind;
-    this.getPolyKind = deps.getPolyKind;
-    this.polyDraw = deps.polyDraw;
-    this.drawMode = new ExtentDrawMode(deps.onDrag, deps.getExtentKind);
+    this.getActiveTool = deps.getActiveTool;
+    this.extentTool = new ExtentToolMode(deps.onTool, () =>
+      extentKindOf(deps.getActiveTool()),
+    );
+    this.polyTool = new MultiClickToolMode(
+      deps.onTool,
+      () => polyKindOf(deps.getActiveTool()),
+      deps.getSnapGrid,
+    );
     this.canvas.addEventListener("pointerdown", this.onPointerDown);
     this.canvas.addEventListener("pointermove", this.onPointerMove);
     this.canvas.addEventListener("pointerup", this.onPointerUp);
@@ -122,12 +124,47 @@ export class ModeRouter {
   }
 
   /**
-   * True while a press-drag gesture is in flight. Flips on `pointerdown`,
+   * True while a gesture or tool draw is in flight. Flips on `pointerdown`,
    * earlier than the interaction-store gesture state — the host gates its
    * hover-suppression on this, not on `state.kind`.
    */
   isGestureActive(): boolean {
-    return this.active !== null;
+    return this.active !== null || (this.activeToolMode()?.active ?? false);
+  }
+
+  /** Forward a key to the armed tool; returns true when it consumed it. */
+  handleKey(e: KeyboardEvent): boolean {
+    const tool = this.activeToolMode();
+    if (!tool) {
+      return false;
+    }
+    const consumed = tool.key(e);
+    if (consumed) {
+      this.syncToolMode(tool);
+    }
+    return consumed;
+  }
+
+  /** Forward a double-click to the armed tool; returns true when a tool is
+   *  armed (so the host skips its own empty-canvas double-click handling). */
+  handleDoubleClick(): boolean {
+    const tool = this.activeToolMode();
+    if (!tool) {
+      return false;
+    }
+    tool.finish();
+    this.syncToolMode(tool);
+    return true;
+  }
+
+  /** Abandon any in-flight draw on the armed tool (e.g. the tool is about to
+   *  be switched). A no-op when nothing is in flight. */
+  cancelActiveTool(): void {
+    const tool = this.activeToolMode();
+    if (tool) {
+      tool.cancel();
+      this.syncToolMode(tool);
+    }
   }
 
   destroy(): void {
@@ -138,13 +175,27 @@ export class ModeRouter {
     this.canvas.removeEventListener("pointerleave", this.onPointerLeave);
     this.active?.cancel?.();
     this.active = null;
+    this.extentTool.cancel();
+    this.polyTool.cancel();
+  }
+
+  /** The tool mode for the armed tool, or `null` for `select`. */
+  private activeToolMode(): ToolMode | null {
+    const tool = this.getActiveTool();
+    if (extentKindOf(tool)) {
+      return this.extentTool;
+    }
+    if (polyKindOf(tool)) {
+      return this.polyTool;
+    }
+    return null;
+  }
+
+  private syncToolMode(tool: ToolMode): void {
+    this.store.next({ mode: tool.active ? "draw" : "idle" });
   }
 
   private modeFor(entity: EntityKey | null): GestureMode {
-    // An armed extent draw tool owns every press — you draw over components too.
-    if (this.getExtentKind() !== null) {
-      return this.drawMode;
-    }
     if (entity?.kind === "port" || entity?.kind === "connector") {
       return this.connectMode;
     }
@@ -161,15 +212,21 @@ export class ModeRouter {
   }
 
   private readonly onPointerDown = (e: PointerEvent): void => {
-    // A poly tool owns clicks: each primary press places a vertex. It
-    // bypasses select / drag and the InteractionManager so clicking over a
-    // component draws rather than selecting it. No pointer capture — the
-    // gesture is click-based, not a press-drag.
-    if (this.getPolyKind() !== null) {
+    // An armed draw tool owns every press — you draw over components too, so
+    // select / drag and the InteractionManager are bypassed.
+    const tool = this.activeToolMode();
+    if (tool) {
       if (e.button === 0 && !e.shiftKey) {
         const point = this.clientToDiagram(e.clientX, e.clientY);
         if (point) {
-          this.polyDraw.press(point);
+          const wasActive = tool.active;
+          tool.press(point);
+          // A press-drag tool captures the pointer for the drag it just began.
+          if (tool.pressDrag && tool.active && !wasActive) {
+            this.pointerId = e.pointerId;
+            capturePointer(this.canvas, e.pointerId);
+          }
+          this.syncToolMode(tool);
         }
       }
       return;
@@ -202,12 +259,17 @@ export class ModeRouter {
   };
 
   private readonly onPointerMove = (e: PointerEvent): void => {
-    // While a poly tool is armed the cursor drives the rubber-band segment;
-    // suppress hover so components don't light up mid-draw.
-    if (this.getPolyKind() !== null) {
+    const tool = this.activeToolMode();
+    if (tool) {
+      // A click tool rubber-bands on every move; a press-drag tool only while
+      // its press is in flight. Suppress hover either way so components don't
+      // light up mid-draw.
       const point = this.clientToDiagram(e.clientX, e.clientY);
-      if (point) {
-        this.polyDraw.hover(point);
+      if (
+        point &&
+        (!tool.pressDrag || (tool.active && e.pointerId === this.pointerId))
+      ) {
+        tool.move(point);
       }
       return;
     }
@@ -223,10 +285,19 @@ export class ModeRouter {
   };
 
   private readonly onPointerUp = (e: PointerEvent): void => {
-    // A poly draw owns nothing on release — it commits on click / dblclick
-    // / keyboard, never on pointerup. Skip the context-menu path too so a
-    // right-release doesn't pop a menu over an in-progress draw.
-    if (this.getPolyKind() !== null) {
+    const tool = this.activeToolMode();
+    if (tool) {
+      // Only a press-drag tool commits on release; a click tool ignores it.
+      if (tool.pressDrag && tool.active && e.pointerId === this.pointerId) {
+        const point = this.clientToDiagram(e.clientX, e.clientY) ?? {
+          x: 0,
+          y: 0,
+        };
+        this.pointerId = -1;
+        releasePointer(this.canvas, e.pointerId);
+        tool.release(point);
+        this.syncToolMode(tool);
+      }
       return;
     }
     this.interactionManager.handlePointerUp(e);

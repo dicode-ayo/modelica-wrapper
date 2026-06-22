@@ -3,7 +3,8 @@ import { NullEngine, Node, Scene, TransformNode } from "@babylonjs/core";
 
 import { ModeRouter } from "../src/interaction/mode.js";
 import { InteractionStateStore } from "../src/interaction/interaction-state.js";
-import type { PolyKind } from "../src/interaction/tools.js";
+import type { ToolEvents } from "../src/interaction/tool-mode.js";
+import type { ToolId } from "../src/interaction/tools.js";
 
 function portMesh(scene: Scene, connectorId: string): TransformNode {
   const conn = new TransformNode(`om-connector:${connectorId}`, scene);
@@ -13,18 +14,23 @@ function portMesh(scene: Scene, connectorId: string): TransformNode {
   return port;
 }
 
+interface ToolCall {
+  type: keyof ToolEvents;
+  detail: ToolEvents[keyof ToolEvents];
+}
+
 interface Harness {
   canvas: HTMLCanvasElement;
   router: ModeRouter;
   store: InteractionStateStore;
   calls: string[];
-  poly: string[];
+  tool: ToolCall[];
   scene: Scene;
   setPicked: (n: Node | null) => void;
   dispose: () => void;
 }
 
-function setup(polyKind: PolyKind | null = null): Harness {
+function setup(activeTool: ToolId = "select"): Harness {
   const engine = new NullEngine({
     renderWidth: 100,
     renderHeight: 100,
@@ -35,7 +41,7 @@ function setup(polyKind: PolyKind | null = null): Harness {
   const scene = new Scene(engine);
   let picked: Node | null = null;
   const calls: string[] = [];
-  const poly: string[] = [];
+  const tool: ToolCall[] = [];
   const store = new InteractionStateStore();
   const canvas = document.createElement("canvas");
   const router = new ModeRouter({
@@ -50,19 +56,16 @@ function setup(polyKind: PolyKind | null = null): Harness {
     overlayParent: new TransformNode("overlay-root", scene),
     connectorPosition: () => null,
     evaluateCompat: () => null,
-    getExtentKind: () => null,
-    getPolyKind: () => polyKind,
-    polyDraw: {
-      press: (p) => poly.push(`press:${p.x},${p.y}`),
-      hover: (p) => poly.push(`hover:${p.x},${p.y}`),
-    },
+    getActiveTool: () => activeTool,
+    getSnapGrid: () => [0, 0],
+    onTool: (type, detail) => tool.push({ type, detail }),
   });
   return {
     canvas,
     router,
     store,
     calls,
-    poly,
+    tool,
     scene,
     setPicked: (n) => (picked = n),
     dispose: () => {
@@ -157,29 +160,50 @@ describe("ModeRouter", () => {
     dispose();
   });
 
-  it("routes primary presses to the poly draw, not select, when a poly tool is armed", () => {
-    const { canvas, store, router, poly, dispose } = setup("line");
+  it("routes a primary press to the poly tool, placing a vertex under store mode draw", () => {
+    const { canvas, store, router, tool, dispose } = setup("line");
     canvas.dispatchEvent(down());
-    // No press-drag gesture; the click went to the poly controller instead.
-    expect(router.isGestureActive()).toBe(false);
-    expect(store.value.mode).toBe("idle");
-    expect(poly).toEqual(["press:5,5"]);
+    // A multi-click draw is now in flight (no press-drag gesture / capture).
+    expect(router.isGestureActive()).toBe(true);
+    expect(store.value.mode).toBe("draw");
+    expect(tool).toEqual([
+      {
+        type: "drawPoly",
+        detail: { phase: "draft", kind: "line", points: [[5, 5]] },
+      },
+    ]);
     dispose();
   });
 
   it("ignores shift+primary while a poly tool is armed (pan modifier)", () => {
-    const { canvas, poly, dispose } = setup("polygon");
+    const { canvas, tool, dispose } = setup("polygon");
     canvas.dispatchEvent(down({ shiftKey: true }));
-    expect(poly).toHaveLength(0);
+    expect(tool).toHaveLength(0);
     dispose();
   });
 
-  it("feeds cursor moves to the poly draw without touching hover", () => {
-    const { canvas, calls, poly, dispose } = setup("line");
+  it("rubber-bands cursor moves once a vertex is placed, without touching hover", () => {
+    const { canvas, calls, tool, dispose } = setup("line");
+    // A move before the first vertex is a no-op; after a press it drafts.
     canvas.dispatchEvent(
       new PointerEvent("pointermove", { clientX: 8, clientY: 9 }),
     );
-    expect(poly).toEqual(["hover:8,9"]);
+    expect(tool).toHaveLength(0);
+    canvas.dispatchEvent(down());
+    canvas.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 8, clientY: 9 }),
+    );
+    expect(tool.at(-1)).toEqual({
+      type: "drawPoly",
+      detail: {
+        phase: "draft",
+        kind: "line",
+        points: [
+          [5, 5],
+          [8, 9],
+        ],
+      },
+    });
     expect(calls).toHaveLength(0);
     dispose();
   });

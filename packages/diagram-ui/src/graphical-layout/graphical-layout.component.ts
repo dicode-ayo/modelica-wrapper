@@ -7,7 +7,6 @@ import type {
   ComponentInstance,
   ConnectorInstance,
   DiagramLayout,
-  Point,
 } from "@dicode/omc-client";
 
 import { renderLayers } from "../primitives/render-shape.js";
@@ -96,8 +95,8 @@ import {
   snapPoint,
   type SnapGrid,
 } from "../interaction/snap-math.js";
-import { extentKindOf, polyKindOf, type ToolId } from "../interaction/tools.js";
-import { PolylineDrawing } from "../interaction/polyline-drawing.js";
+import type { ToolId } from "../interaction/tools.js";
+import type { ToolEvents } from "../interaction/tool-mode.js";
 import { emitEvent } from "../dom-event.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
 
@@ -117,14 +116,6 @@ import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
  * the white plane occluded them on every frame.
  */
 const HOST_SHAPE_Z_BIAS = 0.025;
-
-/**
- * Fallback diagram-unit radius for a poly draw's click-to-close hit test
- * when grid snapping is off, so an unsnapped click can still finish without
- * pixel-perfect aim. With a grid the tolerance is derived from it (half a
- * cell) instead — see `closesPolyDraw`.
- */
-const POLY_CLOSE_FALLBACK = 1;
 
 interface BBox {
   minX: number;
@@ -323,16 +314,11 @@ export class OmGraphicalLayout extends LitElement {
     compat: { ok: boolean; reason?: string } | null;
   } | null = null;
   @state() private libraryBrowserOpen = false;
-  /** The armed drawing tool. `select` (default) rubber-bands + picks; an
-   *  extent tool routes a press to `ExtentDrawMode`, a poly tool routes
-   *  clicks to the multi-click `PolylineDrawing`. Sticky — stays armed
-   *  across draws until reset (toolbar, Escape, or readonly). */
+  /** The armed drawing tool. `select` (default) rubber-bands + picks; a draw
+   *  tool routes input to its `ToolMode` (extent press-drag or multi-click
+   *  poly). Sticky — stays armed across draws until reset (toolbar, Escape,
+   *  or readonly). */
   @state() private activeTool: ToolId = "select";
-
-  /** In-progress multi-click Line / Polygon draw. Idle outside a poly
-   *  gesture; the router feeds it clicks + cursor moves while a poly tool
-   *  is armed. */
-  private readonly polyDraw = new PolylineDrawing();
 
   @query("om-scene") private sceneEl?: OmScene;
   @query("om-context-menu") private contextMenuEl?: OmContextMenu;
@@ -809,12 +795,9 @@ export class OmGraphicalLayout extends LitElement {
       overlayParent: ctx.diagramRoot,
       connectorPosition: (key) => this.connectorDiagramPosition(key),
       evaluateCompat: (from, toKey) => this.evaluateCompat(from, toKey),
-      getExtentKind: () => extentKindOf(this.activeTool),
-      getPolyKind: () => polyKindOf(this.activeTool),
-      polyDraw: {
-        press: (point) => this.polyPress(point),
-        hover: (point) => this.polyHover(point),
-      },
+      getActiveTool: () => this.activeTool,
+      getSnapGrid: () => this.currentSnapGrid(),
+      onTool: (type, detail) => this.onTool(type, detail),
     });
     // Native dblclick on empty canvas → open the library browser.
     // InteractionManager's `doubleClick` only fires on hits; this path
@@ -841,10 +824,9 @@ export class OmGraphicalLayout extends LitElement {
     if (this.readonly || !this.dblClickPicker) {
       return;
     }
-    // A live poly draw finishes on double-click — the two presses placed
-    // (and deduped) the last vertex, this ends the gesture.
-    if (this.polyDraw.active) {
-      this.finishPolyDraw();
+    // An armed draw tool consumes the double-click (a multi-click draw
+    // finishes on it); the library-browser / waypoint paths are skipped.
+    if (this.modeRouter?.handleDoubleClick()) {
       return;
     }
     const node = this.dblClickPicker(e.clientX, e.clientY);
@@ -1161,49 +1143,6 @@ export class OmGraphicalLayout extends LitElement {
         }
         return;
       }
-      case "drawShape": {
-        const d = detail as DragEvents["drawShape"];
-        if (d.extent === null) {
-          // Degenerate release (a click, no drag) — drop the preview.
-          this.draftLayout = null;
-          this.endInteraction();
-          return;
-        }
-        // Draw into whichever layer this view edits (icon vs diagram).
-        const layer = this.layout.kind;
-        if (d.draft) {
-          this.draftLayout = applyAddGraphic(
-            this.layout,
-            layer,
-            buildExtentShape(d.kind, d.extent),
-          );
-          this.setInteractionState({ kind: "drawing" });
-        } else {
-          const snapped = snapExtent(d.extent, this.currentSnapGrid());
-          // Grid-snapping can collapse a thin drag onto one grid line; don't
-          // persist a zero-size shape (mirrors the click-no-drag bail above,
-          // which leaves the tool armed to retry).
-          if (
-            snapped[0][0] === snapped[1][0] ||
-            snapped[0][1] === snapped[1][1]
-          ) {
-            this.draftLayout = null;
-            this.endInteraction();
-            return;
-          }
-          this.commitLayout(
-            applyAddGraphic(
-              this.layout,
-              layer,
-              buildExtentShape(d.kind, snapped),
-            ),
-          );
-          this.endInteraction();
-          // One shape per arming — disarm back to select after a draw.
-          this.setActiveTool("select");
-        }
-        return;
-      }
       case "connection": {
         const d = detail as DragEvents["connection"];
         if (!d.commit) {
@@ -1314,24 +1253,12 @@ export class OmGraphicalLayout extends LitElement {
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
-    // A live poly draw owns Enter / Backspace / Escape: finish, drop the
-    // last vertex, or cancel the whole gesture (leaving the tool armed).
-    if (this.polyDraw.active) {
-      if (e.key === "Enter") {
-        this.finishPolyDraw();
-        e.preventDefault();
-        return;
-      }
-      if (e.key === "Backspace") {
-        this.undoPolyVertex();
-        e.preventDefault();
-        return;
-      }
-      if (e.key === "Escape") {
-        this.cancelPolyDraw();
-        e.preventDefault();
-        return;
-      }
+    // An armed tool owns its keys first (Enter / Backspace / Escape for a
+    // multi-click draw); only if it doesn't consume the key do the disarm
+    // shortcut and the keymap run.
+    if (this.modeRouter?.handleKey(e)) {
+      e.preventDefault();
+      return;
     }
     if (e.key === "Escape" && this.activeTool !== "select") {
       this.setActiveTool("select");
@@ -1344,6 +1271,81 @@ export class OmGraphicalLayout extends LitElement {
     }
   };
 
+  /**
+   * Draw events from the armed `ToolMode`. Extent shapes preview live and
+   * commit on release; poly shapes preview through their multi-click life and
+   * commit / cancel at the end. The committed graphic lands in whichever layer
+   * this view edits (icon vs diagram) via the shared graphics-write pipeline.
+   */
+  private onTool<K extends keyof ToolEvents>(
+    type: K,
+    detail: ToolEvents[K],
+  ): void {
+    if (this.readonly || !this.layout) {
+      return;
+    }
+    const layer = this.layout.kind;
+    if (type === "drawShape") {
+      const d = detail as ToolEvents["drawShape"];
+      if (d.extent === null) {
+        // Degenerate release (a click, no drag) — drop the preview.
+        this.draftLayout = null;
+        this.endInteraction();
+        return;
+      }
+      if (d.draft) {
+        this.draftLayout = applyAddGraphic(
+          this.layout,
+          layer,
+          buildExtentShape(d.kind, d.extent),
+        );
+        this.setInteractionState({ kind: "drawing" });
+        return;
+      }
+      const snapped = snapExtent(d.extent, this.currentSnapGrid());
+      // Grid-snapping can collapse a thin drag onto one grid line; don't
+      // persist a zero-size shape (mirrors the click-no-drag bail above,
+      // which leaves the tool armed to retry).
+      if (snapped[0][0] === snapped[1][0] || snapped[0][1] === snapped[1][1]) {
+        this.draftLayout = null;
+        this.endInteraction();
+        return;
+      }
+      this.commitLayout(
+        applyAddGraphic(this.layout, layer, buildExtentShape(d.kind, snapped)),
+      );
+      this.endInteraction();
+      this.setActiveTool("select"); // one shape per arming
+      return;
+    }
+    const d = detail as ToolEvents["drawPoly"];
+    if (d.phase === "cancel") {
+      this.draftLayout = null;
+      this.endInteraction();
+      return;
+    }
+    if (d.phase === "draft") {
+      // A polygon needs ≥3 points to render; while only the first segment is
+      // drawn (≤2 points) preview it as a line so the initial drag is visible —
+      // a 2-point polygon would collapse to a back-and-forth invisible sliver.
+      const previewKind =
+        d.kind === "polygon" && d.points.length < 3 ? "line" : d.kind;
+      this.draftLayout = applyAddGraphic(
+        this.layout,
+        layer,
+        buildPolyShape(previewKind, d.points),
+      );
+      this.setInteractionState({ kind: "drawing" });
+      return;
+    }
+    this.draftLayout = null;
+    this.commitLayout(
+      applyAddGraphic(this.layout, layer, buildPolyShape(d.kind, d.points)),
+    );
+    this.endInteraction();
+    this.setActiveTool("select"); // one shape per arming
+  }
+
   /** The currently armed drawing tool. */
   get tool(): ToolId {
     return this.activeTool;
@@ -1355,120 +1357,11 @@ export class OmGraphicalLayout extends LitElement {
   setActiveTool(tool: ToolId): void {
     const next: ToolId = this.readonly ? "select" : tool;
     if (next !== this.activeTool) {
-      // Switching away from a poly tool mid-draw abandons the gesture.
-      if (this.polyDraw.active) {
-        this.cancelPolyDraw();
-      }
+      // Switching tools mid-draw abandons whatever the old tool had in flight.
+      this.modeRouter?.cancelActiveTool();
       this.activeTool = next;
       this.emit("om-tool-change", { tool: next });
     }
-  }
-
-  /**
-   * Place or finish a poly vertex on a primary click. The first click of a
-   * gesture starts it; a later click near the start vertex closes a
-   * finishable shape, otherwise it appends a vertex. Every point is grid-
-   * snapped, matching the extent draw and the move/resize gestures.
-   */
-  private polyPress(point: { x: number; y: number }): void {
-    const kind = polyKindOf(this.activeTool);
-    if (this.readonly || !kind || !this.layout) {
-      return;
-    }
-    const snapped = snapPoint(point.x, point.y, this.currentSnapGrid());
-    const at: Point = [snapped.x, snapped.y];
-    if (!this.polyDraw.active) {
-      this.polyDraw.start(kind, at);
-    } else if (this.closesPolyDraw(at)) {
-      this.finishPolyDraw();
-      return;
-    } else {
-      this.polyDraw.addVertex(at);
-    }
-    this.renderPolyDraft();
-  }
-
-  /** Track the rubber-band endpoint as the cursor moves between clicks. */
-  private polyHover(point: { x: number; y: number }): void {
-    if (!this.polyDraw.active) {
-      return;
-    }
-    const snapped = snapPoint(point.x, point.y, this.currentSnapGrid());
-    this.polyDraw.moveCursor([snapped.x, snapped.y]);
-    this.renderPolyDraft();
-  }
-
-  /** A finishable gesture closes when a click lands on the start vertex. */
-  private closesPolyDraw(at: Point): boolean {
-    const first = this.polyDraw.firstVertex();
-    if (!first || !this.polyDraw.canFinish()) {
-      return false;
-    }
-    // Half a grid cell: a click that snaps back to the start cell matches it
-    // exactly while an adjacent cell stays outside. No grid → fixed fallback.
-    const [gx, gy] = this.currentSnapGrid();
-    const cell = Math.max(gx, gy);
-    const tol = cell > 0 ? cell / 2 : POLY_CLOSE_FALLBACK;
-    return (
-      Math.abs(at[0] - first[0]) <= tol && Math.abs(at[1] - first[1]) <= tol
-    );
-  }
-
-  private renderPolyDraft(): void {
-    const points = this.polyDraw.draftPoints();
-    const kind = this.polyDraw.drawKind;
-    if (!points || !kind || !this.layout) {
-      this.draftLayout = null;
-      return;
-    }
-    // A polygon needs ≥3 points to render; while only the first segment is
-    // drawn (≤2 points) preview it as a line so the initial drag is visible —
-    // a 2-point polygon would collapse to a back-and-forth invisible sliver.
-    const previewKind = kind === "polygon" && points.length < 3 ? "line" : kind;
-    this.draftLayout = applyAddGraphic(
-      this.layout,
-      this.layout.kind,
-      buildPolyShape(previewKind, points),
-    );
-    this.setInteractionState({ kind: "drawing" });
-  }
-
-  private finishPolyDraw(): void {
-    const result = this.polyDraw.finish();
-    this.draftLayout = null;
-    if (result && this.layout) {
-      // `result.points` is the placed vertices only; the draft carried an
-      // extra trailing cursor point, so the committed shape is rebuilt from
-      // the finished list rather than reused from the draft.
-      this.commitLayout(
-        applyAddGraphic(
-          this.layout,
-          this.layout.kind,
-          buildPolyShape(result.kind, result.points),
-        ),
-      );
-    }
-    this.endInteraction();
-    // One shape per arming — disarm back to select after a finished draw.
-    this.setActiveTool("select");
-  }
-
-  private undoPolyVertex(): void {
-    this.polyDraw.undoVertex();
-    if (this.polyDraw.active) {
-      this.renderPolyDraft();
-    } else {
-      // Last vertex removed — the gesture ended, but the tool stays armed
-      // so the next click starts a fresh draw.
-      this.draftLayout = null;
-      this.endInteraction();
-    }
-  }
-
-  private cancelPolyDraw(): void {
-    this.polyDraw.cancel();
-    this.draftLayout = null;
-    this.endInteraction();
   }
 
   /** The diagram surface a command mutates — an adapter over this element. */

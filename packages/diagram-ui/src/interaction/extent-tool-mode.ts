@@ -1,11 +1,7 @@
 import type { Extent } from "@dicode/omc-client";
 
-import type {
-  DiagramPoint,
-  DragEmit,
-  GestureMode,
-  GestureStart,
-} from "./gesture-mode.js";
+import type { DiagramPoint } from "./gesture-mode.js";
+import type { ToolEmit, ToolMode } from "./tool-mode.js";
 import type { ExtentKind } from "./tools.js";
 
 /** Normalized drag box, corners ordered `[[minX, minY], [maxX, maxY]]`. */
@@ -28,40 +24,37 @@ function degenerate(e: Extent): boolean {
 }
 
 /**
- * Draws a new extent primitive (rectangle / ellipse) by press-drag-release.
+ * Draws an extent primitive (rectangle / ellipse) by press-drag-release.
  * Emits the live drag box as `drawShape` events; the host builds the actual
- * `Shape`, previews it via `draftLayout`, and commits + persists it on release.
- * The preview *is* the real primitive — this mode owns no overlay mesh.
- *
- * The router only routes a press here while a draw tool is armed, so `begin`
- * claims the gesture whatever is underneath (you draw over components too).
+ * `Shape`, previews it via `draftLayout`, and commits + persists it on
+ * release. The preview *is* the real primitive — this mode owns no overlay
+ * mesh. A degenerate (click, no drag) release sends `extent: null` so nothing
+ * is created.
  */
-export class ExtentDrawMode implements GestureMode {
-  readonly id = "draw";
+export class ExtentToolMode implements ToolMode {
+  readonly pressDrag = true;
   private start: DiagramPoint | null = null;
   private kind: ExtentKind | null = null;
 
   constructor(
-    private readonly emit: DragEmit,
+    private readonly emit: ToolEmit,
     private readonly getKind: () => ExtentKind | null,
   ) {}
 
-  cancel(): void {
-    this.start = null;
-    this.kind = null;
+  get active(): boolean {
+    return this.start !== null;
   }
 
-  begin(start: GestureStart): boolean {
+  press(point: DiagramPoint): void {
     const kind = this.getKind();
     if (!kind) {
-      return false;
+      return;
     }
     this.kind = kind;
-    this.start = { x: start.point.x, y: start.point.y };
-    return true;
+    this.start = { x: point.x, y: point.y };
   }
 
-  update(point: DiagramPoint): void {
+  move(point: DiagramPoint): void {
     if (!this.start || !this.kind) {
       return;
     }
@@ -72,7 +65,7 @@ export class ExtentDrawMode implements GestureMode {
     });
   }
 
-  commit(point: DiagramPoint): void {
+  release(point: DiagramPoint): void {
     if (!this.start || !this.kind) {
       return;
     }
@@ -85,5 +78,19 @@ export class ExtentDrawMode implements GestureMode {
       extent: degenerate(extent) ? null : extent,
       draft: false,
     });
+  }
+
+  finish(): void {
+    // Press-drag draws have no double-click finish.
+  }
+
+  key(_e: KeyboardEvent): boolean {
+    // Press-drag draws don't own the keyboard.
+    return false;
+  }
+
+  cancel(): void {
+    this.start = null;
+    this.kind = null;
   }
 }
