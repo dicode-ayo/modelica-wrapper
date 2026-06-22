@@ -142,13 +142,12 @@ test("drawing via the toolbar lands a shape in the host layer", async ({
   expect(tool).toBe("select");
 });
 
-test("the poly chevron menu arms a polygon tool", async ({ page }) => {
+test("the draw chevron menu arms a polygon tool", async ({ page }) => {
   await page.goto(PANEL_STORY, { waitUntil: "networkidle" });
 
-  // The poly split's chevron (title "Draw poly shape") opens the poly menu.
-  await page
-    .locator('om-action-panel wa-button[title="Draw poly shape"]')
-    .click();
+  // Line / Polygon share the one draw chevron (title "Draw shape") with the
+  // extent shapes.
+  await page.locator('om-action-panel wa-button[title="Draw shape"]').click();
   await page
     .locator('om-action-panel wa-dropdown-item[value="polygon"]')
     .click();
@@ -168,8 +167,10 @@ test("clicking vertices and double-clicking draws a line into the host layer", a
   );
 
   const before = await hostShapeKinds(page);
-  // The poly split's main button (title "Draw a line …") arms Line by default.
-  await page.locator('om-action-panel wa-button[title^="Draw a line"]').click();
+  // Arm Line from the shared draw chevron (the main button shows the extent
+  // default until a poly kind is picked).
+  await page.locator('om-action-panel wa-button[title="Draw shape"]').click();
+  await page.locator('om-action-panel wa-dropdown-item[value="line"]').click();
 
   const box = await page.locator("om-graphical-layout").boundingBox();
   if (!box) {
@@ -201,10 +202,8 @@ test("a polygon finishes on Enter and disarms", async ({ page }) => {
   );
 
   const before = await hostShapeKinds(page);
-  // Arm Polygon via the poly chevron menu.
-  await page
-    .locator('om-action-panel wa-button[title="Draw poly shape"]')
-    .click();
+  // Arm Polygon from the shared draw chevron menu.
+  await page.locator('om-action-panel wa-button[title="Draw shape"]').click();
   await page
     .locator('om-action-panel wa-dropdown-item[value="polygon"]')
     .click();

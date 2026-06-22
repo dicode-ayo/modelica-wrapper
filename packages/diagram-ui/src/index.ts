@@ -174,6 +174,7 @@ export {
 export {
   EXTENT_KINDS,
   POLY_KINDS,
+  type DrawKind,
   type ExtentKind,
   type PolyKind,
   type ToolId,
