@@ -194,3 +194,9 @@ export {
   type ParameterField,
   type FieldKind,
 } from "./parameter-form/parameter-fields.js";
+export {
+  resolveKeymap,
+  detectConflicts,
+  type KeymapOverrides,
+  type KeymapConflict,
+} from "./commands/keymap.js";

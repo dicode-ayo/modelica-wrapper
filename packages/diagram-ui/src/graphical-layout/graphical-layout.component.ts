@@ -49,11 +49,14 @@ import {
 } from "../interaction/layout-ops.js";
 import {
   chordFromEvent,
+  resolveKeymap,
   CommandRegistry,
   DEFAULT_KEYMAP,
   DIAGRAM_COMMANDS,
   type CommandTarget,
   type DiagramCommandId,
+  type KeyChord,
+  type KeymapOverrides,
 } from "../commands/index.js";
 import type {
   ContextMenuSelectDetail,
@@ -351,12 +354,24 @@ export class OmGraphicalLayout extends LitElement {
   private readonly interactionStore = new InteractionStateStore();
 
   /**
+   * User override map layered on top of {@link DEFAULT_KEYMAP}. A null
+   * value unbinds the default chord; any other value adds or replaces it.
+   * Set by the host (extension) via the `modelica.diagram.keymapOverrides`
+   * workspace setting.
+   */
+  @property({ attribute: false })
+  keymapOverrides: KeymapOverrides = new Map();
+
+  private get activeKeymap(): ReadonlyMap<KeyChord, DiagramCommandId> {
+    return resolveKeymap(DEFAULT_KEYMAP, this.keymapOverrides);
+  }
+
+  /**
    * The diagram command set + its key bindings. One registry backs both the
    * keymap dispatch (`onKeyDown`) and the public action methods the
    * action-panel buttons drive, so a shortcut and its button can't diverge.
    */
   private readonly commands = new CommandRegistry(DIAGRAM_COMMANDS);
-  private readonly keymap = DEFAULT_KEYMAP;
 
   constructor() {
     super();
@@ -1291,7 +1306,7 @@ export class OmGraphicalLayout extends LitElement {
       e.preventDefault();
       return;
     }
-    const id = this.keymap.get(chordFromEvent(e));
+    const id = this.activeKeymap.get(chordFromEvent(e));
     if (id && this.runCommand(id)) {
       e.preventDefault();
     }

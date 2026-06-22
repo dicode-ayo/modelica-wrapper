@@ -6,7 +6,14 @@ export type {
   PlacedCommand,
 } from "./command.js";
 export { CommandRegistry } from "./registry.js";
-export { chordFromEvent, type KeyChord } from "./keymap.js";
+export {
+  chordFromEvent,
+  resolveKeymap,
+  detectConflicts,
+  type KeyChord,
+  type KeymapOverrides,
+  type KeymapConflict,
+} from "./keymap.js";
 export {
   DIAGRAM_COMMANDS,
   DEFAULT_KEYMAP,
