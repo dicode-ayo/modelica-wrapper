@@ -1,6 +1,6 @@
 import { html, svg, type SVGTemplateResult, type TemplateResult } from "lit";
 
-import type { ExtentKind } from "../interaction/tools.js";
+import type { ExtentKind, PolyKind } from "../interaction/tools.js";
 
 /**
  * Toolbar glyphs, inlined as SVG. The webview CSP (`default-src none`) blocks
@@ -77,7 +77,21 @@ export const ellipseIcon = glyph(
 
 export const chevronDownIcon = glyph(svg`<path d="m6 9 6 6 6-6" />`);
 
+export const lineIcon = glyph(
+  svg`<path d="m3 17 6-7 4 4 8-9" />
+    <circle cx="3" cy="17" r="1.4" /><circle cx="21" cy="5" r="1.4" />`,
+);
+
+export const polygonIcon = glyph(
+  svg`<path d="M12 3 21 9.5 17.5 20h-11L3 9.5z" />`,
+);
+
 /** The glyph for an extent drawing tool's shape. */
 export function drawKindIcon(kind: ExtentKind): TemplateResult {
   return kind === "rectangle" ? rectangleIcon : ellipseIcon;
+}
+
+/** The glyph for a poly drawing tool's shape. */
+export function polyKindIcon(kind: PolyKind): TemplateResult {
+  return kind === "line" ? lineIcon : polygonIcon;
 }

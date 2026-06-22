@@ -39,8 +39,11 @@ import { emitEvent } from "../dom-event.js";
 
 import {
   EXTENT_KINDS,
+  POLY_KINDS,
   extentKindOf,
+  polyKindOf,
   type ExtentKind,
+  type PolyKind,
   type ToolId,
 } from "../interaction/tools.js";
 import "./split-button.component.js";
@@ -52,6 +55,7 @@ import {
   flipIcon,
   flipVerticalIcon,
   parametersIcon,
+  polyKindIcon,
   rotateCcwIcon,
   rotateIcon,
   simulateIcon,
@@ -98,11 +102,20 @@ const DRAW_LABELS: Record<ExtentKind, string> = {
   ellipse: "Ellipse",
 };
 
+const POLY_LABELS: Record<PolyKind, string> = {
+  line: "Line",
+  polygon: "Polygon",
+};
+
 const ROTATE_DIRECTIONS: readonly RotateDirection[] = ["cw", "ccw"];
 const FLIP_AXES: readonly FlipAxis[] = ["horizontal", "vertical"];
 
 function asDrawKind(value: string): ExtentKind | undefined {
   return EXTENT_KINDS.find((k) => k === value);
+}
+
+function asPolyKind(value: string): PolyKind | undefined {
+  return POLY_KINDS.find((k) => k === value);
 }
 
 @customElement("om-action-panel")
@@ -169,6 +182,7 @@ export class OmActionPanel extends LitElement {
   @property({ type: Boolean, attribute: "hide-rotate" }) hideRotate = false;
   @property({ type: Boolean, attribute: "hide-flip" }) hideFlip = false;
   @property({ type: Boolean, attribute: "hide-draw" }) hideDraw = false;
+  @property({ type: Boolean, attribute: "hide-poly" }) hidePoly = false;
 
   /**
    * Rotate / flip act on the current diagram selection. When nothing is
@@ -181,12 +195,17 @@ export class OmActionPanel extends LitElement {
   /** Last shape the draw split armed — kept so its main half keeps showing it
    *  after a draw auto-disarms back to `select`. */
   @state() private lastDrawKind: ExtentKind = "rectangle";
+  @state() private lastPolyKind: PolyKind = "line";
 
   override willUpdate(changed: PropertyValues<this>): void {
     if (changed.has("tool")) {
-      const armed = extentKindOf(this.tool);
-      if (armed) {
-        this.lastDrawKind = armed;
+      const extent = extentKindOf(this.tool);
+      if (extent) {
+        this.lastDrawKind = extent;
+      }
+      const poly = polyKindOf(this.tool);
+      if (poly) {
+        this.lastPolyKind = poly;
       }
     }
   }
@@ -228,6 +247,7 @@ export class OmActionPanel extends LitElement {
       ${this.hideRotate ? nothing : this.rotateSplit()}
       ${this.hideFlip ? nothing : this.flipSplit()}
       ${this.hideDraw ? nothing : this.drawSplit()}
+      ${this.hidePoly ? nothing : this.polySplit()}
     `;
   }
 
@@ -314,6 +334,32 @@ export class OmActionPanel extends LitElement {
         })}
       @om-split-select=${(e: CustomEvent<SplitButtonSelectDetail>) => {
         const kind = asDrawKind(e.detail.value);
+        if (kind) this.emit("om-action-tool", { tool: kind });
+      }}
+    ></om-split-button>`;
+  }
+
+  private polySplit(): TemplateResult {
+    const armed = polyKindOf(this.tool);
+    const shown = armed ?? this.lastPolyKind;
+    return html`<om-split-button
+      .mainIcon=${polyKindIcon(shown)}
+      main-title=${`Draw a ${POLY_LABELS[
+        shown
+      ].toLowerCase()} (click to place points, double-click to finish)`}
+      chevron-title="Draw poly shape"
+      ?active=${armed !== null}
+      ?disabled=${this.disabled}
+      .items=${[
+        { value: "line", icon: polyKindIcon("line"), label: "Line" },
+        { value: "polygon", icon: polyKindIcon("polygon"), label: "Polygon" },
+      ]}
+      @om-split-main=${() =>
+        this.emit("om-action-tool", {
+          tool: armed === shown ? "select" : shown,
+        })}
+      @om-split-select=${(e: CustomEvent<SplitButtonSelectDetail>) => {
+        const kind = asPolyKind(e.detail.value);
         if (kind) this.emit("om-action-tool", { tool: kind });
       }}
     ></om-split-button>`;

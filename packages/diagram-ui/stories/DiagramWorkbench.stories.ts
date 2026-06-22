@@ -40,8 +40,10 @@ const meta: Meta<StoryArgs> = {
       <h3>Diagram workbench</h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
         Toolbar + canvas, wired as in the extension. Pick Rectangle / Ellipse
-        from the draw dropdown (top-right) and drag on the canvas to draw;
-        Escape disarms. Click to select, drag to move, R/F to rotate/flip.
+        from the draw dropdown (top-right) and drag to draw; pick Line / Polygon
+        from the poly dropdown and click to place vertices, double-click or
+        Enter to finish, Backspace to undo a vertex, Escape to cancel. Click to
+        select, drag to move, R/F to rotate/flip.
       </p>
       <div
         class="om-story-canvas-host"
