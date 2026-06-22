@@ -1,21 +1,21 @@
 import { describe, expect, it } from "vitest";
 
 import { ExtentToolMode } from "../src/interaction/extent-tool-mode.js";
-import type { ToolEvents } from "../src/interaction/tool-mode.js";
+import type { ToolDraw } from "../src/interaction/tool-mode.js";
+import type { SnapGrid } from "../src/interaction/snap-math.js";
 import type { ExtentKind } from "../src/interaction/tools.js";
 
-function setup(kind: ExtentKind | null): {
-  mode: ExtentToolMode;
-  shapes: ToolEvents["drawShape"][];
-} {
-  const shapes: ToolEvents["drawShape"][] = [];
+function setup(
+  kind: ExtentKind | null,
+  grid: SnapGrid = [0, 0],
+): { mode: ExtentToolMode; draws: ToolDraw[] } {
+  const draws: ToolDraw[] = [];
   const mode = new ExtentToolMode(
-    (type, detail) => {
-      if (type === "drawShape") shapes.push(detail as ToolEvents["drawShape"]);
-    },
+    (draw) => draws.push(draw),
     () => kind,
+    () => grid,
   );
-  return { mode, shapes };
+  return { mode, draws };
 }
 
 describe("ExtentToolMode", () => {
@@ -26,15 +26,15 @@ describe("ExtentToolMode", () => {
   });
 
   it("does nothing when the select tool is armed (no kind)", () => {
-    const { mode, shapes } = setup(null);
+    const { mode, draws } = setup(null);
     mode.press({ x: 0, y: 0 });
     expect(mode.active).toBe(false);
     mode.move({ x: 5, y: 5 });
-    expect(shapes).toHaveLength(0);
+    expect(draws).toHaveLength(0);
   });
 
-  it("emits a normalized draft on move and a committed extent on release", () => {
-    const { mode, shapes } = setup("rectangle");
+  it("drafts a normalized shape on move and commits the snapped shape on release", () => {
+    const { mode, draws } = setup("rectangle");
     mode.press({ x: 10, y: 60 });
     expect(mode.active).toBe(true);
     // Drag up-and-right — corners come back ordered min→max.
@@ -42,32 +42,48 @@ describe("ExtentToolMode", () => {
     mode.release({ x: 40, y: 20 });
     expect(mode.active).toBe(false);
 
-    expect(shapes).toEqual([
-      {
-        kind: "rectangle",
-        extent: [
-          [10, 20],
-          [40, 60],
-        ],
-        draft: true,
-      },
-      {
-        kind: "rectangle",
-        extent: [
-          [10, 20],
-          [40, 60],
-        ],
-        draft: false,
-      },
+    const shape = {
+      kind: "rectangle",
+      extent: [
+        [10, 20],
+        [40, 60],
+      ],
+      lineColor: [0, 0, 0],
+    };
+    expect(draws).toEqual([
+      { phase: "draft", shape },
+      { phase: "commit", shape },
     ]);
   });
 
-  it("sends extent:null on a degenerate release so no zero-size shape lands", () => {
-    const { mode, shapes } = setup("ellipse");
+  it("snaps the committed extent to the grid", () => {
+    const { mode, draws } = setup("rectangle", [10, 10]);
+    mode.press({ x: 2, y: 3 });
+    mode.release({ x: 41, y: 48 });
+    const commit = draws.at(-1);
+    expect(commit).toMatchObject({ phase: "commit" });
+    if (commit?.phase === "commit") {
+      expect(commit.shape).toMatchObject({
+        extent: [
+          [0, 0],
+          [40, 50],
+        ],
+      });
+    }
+  });
+
+  it("cancels (no shape) on a degenerate release", () => {
+    const { mode, draws } = setup("ellipse");
     mode.press({ x: 5, y: 5 });
     mode.release({ x: 5, y: 5 }); // a click, never dragged
+    expect(draws).toEqual([{ phase: "cancel" }]);
+  });
 
-    expect(shapes).toEqual([{ kind: "ellipse", extent: null, draft: false }]);
+  it("cancels when grid-snapping collapses a thin drag to zero size", () => {
+    const { mode, draws } = setup("rectangle", [10, 10]);
+    mode.press({ x: 11, y: 0 });
+    mode.release({ x: 14, y: 40 }); // x-span 3 → both snap to 10 → zero width
+    expect(draws.at(-1)).toEqual({ phase: "cancel" });
   });
 
   it("ignores double-click and keys (press-drag has no such finish)", () => {
@@ -78,21 +94,20 @@ describe("ExtentToolMode", () => {
     );
   });
 
-  it("cancel drops an in-flight drag (extent:null), never committing a shape", () => {
-    const { mode, shapes } = setup("ellipse");
+  it("cancel drops an in-flight drag, never committing a shape", () => {
+    const { mode, draws } = setup("ellipse");
     mode.press({ x: 0, y: 0 });
     mode.cancel();
     expect(mode.active).toBe(false);
-    // The drop signal clears the host preview without creating a shape.
-    expect(shapes).toEqual([{ kind: "ellipse", extent: null, draft: false }]);
+    expect(draws).toEqual([{ phase: "cancel" }]);
     // Moves after a cancel are no-ops.
     mode.move({ x: 30, y: 30 });
-    expect(shapes).toHaveLength(1);
+    expect(draws).toHaveLength(1);
   });
 
   it("cancel with nothing in flight emits nothing", () => {
-    const { mode, shapes } = setup("rectangle");
+    const { mode, draws } = setup("rectangle");
     mode.cancel();
-    expect(shapes).toHaveLength(0);
+    expect(draws).toHaveLength(0);
   });
 });

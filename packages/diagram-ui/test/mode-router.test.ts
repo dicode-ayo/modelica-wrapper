@@ -3,7 +3,7 @@ import { NullEngine, Node, Scene, TransformNode } from "@babylonjs/core";
 
 import { ModeRouter } from "../src/interaction/mode.js";
 import { InteractionStateStore } from "../src/interaction/interaction-state.js";
-import type { ToolEvents } from "../src/interaction/tool-mode.js";
+import type { ToolDraw } from "../src/interaction/tool-mode.js";
 import type { ToolId } from "../src/interaction/tools.js";
 
 function portMesh(scene: Scene, connectorId: string): TransformNode {
@@ -14,17 +14,12 @@ function portMesh(scene: Scene, connectorId: string): TransformNode {
   return port;
 }
 
-interface ToolCall {
-  type: keyof ToolEvents;
-  detail: ToolEvents[keyof ToolEvents];
-}
-
 interface Harness {
   canvas: HTMLCanvasElement;
   router: ModeRouter;
   store: InteractionStateStore;
   calls: string[];
-  tool: ToolCall[];
+  tool: ToolDraw[];
   scene: Scene;
   setPicked: (n: Node | null) => void;
   dispose: () => void;
@@ -41,7 +36,7 @@ function setup(activeTool: ToolId = "select"): Harness {
   const scene = new Scene(engine);
   let picked: Node | null = null;
   const calls: string[] = [];
-  const tool: ToolCall[] = [];
+  const tool: ToolDraw[] = [];
   const store = new InteractionStateStore();
   const canvas = document.createElement("canvas");
   const router = new ModeRouter({
@@ -58,7 +53,7 @@ function setup(activeTool: ToolId = "select"): Harness {
     evaluateCompat: () => null,
     getActiveTool: () => activeTool,
     getSnapGrid: () => [0, 0],
-    onTool: (type, detail) => tool.push({ type, detail }),
+    onTool: (draw) => tool.push(draw),
   });
   return {
     canvas,
@@ -168,8 +163,8 @@ describe("ModeRouter", () => {
     expect(store.value.mode).toBe("draw");
     expect(tool).toEqual([
       {
-        type: "drawPoly",
-        detail: { phase: "draft", kind: "line", points: [[5, 5]] },
+        phase: "draft",
+        shape: { kind: "line", points: [[5, 5]], color: [0, 0, 0] },
       },
     ]);
     dispose();
@@ -194,14 +189,14 @@ describe("ModeRouter", () => {
       new PointerEvent("pointermove", { clientX: 8, clientY: 9 }),
     );
     expect(tool.at(-1)).toEqual({
-      type: "drawPoly",
-      detail: {
-        phase: "draft",
+      phase: "draft",
+      shape: {
         kind: "line",
         points: [
           [5, 5],
           [8, 9],
         ],
+        color: [0, 0, 0],
       },
     });
     expect(calls).toHaveLength(0);
@@ -215,7 +210,7 @@ describe("ModeRouter", () => {
       new PointerEvent("pointermove", { clientX: 30, clientY: 30 }),
     );
     // A draft is in flight (no committed shape yet).
-    expect(tool.at(-1)?.detail).toMatchObject({ draft: true });
+    expect(tool.at(-1)?.phase).toBe("draft");
     canvas.dispatchEvent(
       new PointerEvent("pointercancel", {
         pointerId: 0,
@@ -223,14 +218,9 @@ describe("ModeRouter", () => {
         clientY: 30,
       }),
     );
-    // The cancel drops the preview (`extent: null`) — never a real commit
-    // (a committed shape would carry a non-null extent with `draft: false`).
-    const committed = tool.some((c) => {
-      const d = c.detail as { draft?: boolean; extent?: unknown };
-      return d.draft === false && d.extent !== null;
-    });
-    expect(committed).toBe(false);
-    expect(tool.at(-1)?.detail).toMatchObject({ extent: null, draft: false });
+    // The cancel drops the preview — never a real commit.
+    expect(tool.some((d) => d.phase === "commit")).toBe(false);
+    expect(tool.at(-1)).toEqual({ phase: "cancel" });
     expect(router.isGestureActive()).toBe(false);
     expect(store.value.mode).toBe("idle");
     dispose();

@@ -1,30 +1,20 @@
-import type { Extent, Point } from "@dicode/omc-client";
+import type { Shape } from "@dicode/omc-client";
 
 import type { DiagramPoint } from "./gesture-mode.js";
-import type { ExtentKind, PolyKind } from "./tools.js";
 
 /**
- * Events a {@link ToolMode} emits as the user draws. The host turns these
- * into `draftLayout` previews and committed graphics.
- *
- *   - `drawShape` — extent primitive (rectangle / ellipse). `draft: true` on
- *     every move; `draft: false` on release to commit; `extent: null` on a
- *     degenerate (click, no drag) release so nothing is created.
- *   - `drawPoly` — poly primitive (line / polygon): `draft` on every vertex /
- *     cursor move, `commit` when finished, `cancel` when abandoned.
+ * A draw step a {@link ToolMode} emits. The mode owns all shape
+ * interpretation — snapping, degeneracy guards, the polygon-preview-as-line
+ * choice — and emits a ready-to-apply `Shape`. The host only places it: a
+ * `draft` previews via `draftLayout`, a `commit` persists it, a `cancel`
+ * drops the preview without creating anything.
  */
-export interface ToolEvents {
-  drawShape: { kind: ExtentKind; extent: Extent | null; draft: boolean };
-  drawPoly:
-    | { phase: "draft"; kind: PolyKind; points: Point[] }
-    | { phase: "commit"; kind: PolyKind; points: Point[] }
-    | { phase: "cancel" };
-}
+export type ToolDraw =
+  | { phase: "draft"; shape: Shape }
+  | { phase: "commit"; shape: Shape }
+  | { phase: "cancel" };
 
-export type ToolEmit = <K extends keyof ToolEvents>(
-  type: K,
-  detail: ToolEvents[K],
-) => void;
+export type ToolEmit = (draw: ToolDraw) => void;
 
 /**
  * An armed drawing tool's input controller: sticky (stays armed across draws)

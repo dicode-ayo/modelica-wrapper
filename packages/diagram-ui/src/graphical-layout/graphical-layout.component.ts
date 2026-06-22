@@ -42,8 +42,6 @@ import {
   applyWaypointDelete,
   applyWaypointDrag,
   applyWaypointInsert,
-  buildExtentShape,
-  buildPolyShape,
   retainExistingSelection,
   selectByDiagramRect,
   shapeCentre,
@@ -91,12 +89,11 @@ import {
 import {
   resolveSnapGrid,
   snapDelta,
-  snapExtent,
   snapPoint,
   type SnapGrid,
 } from "../interaction/snap-math.js";
 import type { ToolId } from "../interaction/tools.js";
-import type { ToolEvents } from "../interaction/tool-mode.js";
+import type { ToolDraw } from "../interaction/tool-mode.js";
 import { emitEvent } from "../dom-event.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
 
@@ -797,7 +794,7 @@ export class OmGraphicalLayout extends LitElement {
       evaluateCompat: (from, toKey) => this.evaluateCompat(from, toKey),
       getActiveTool: () => this.activeTool,
       getSnapGrid: () => this.currentSnapGrid(),
-      onTool: (type, detail) => this.onTool(type, detail),
+      onTool: (draw) => this.onTool(draw),
     });
     // Native dblclick on empty canvas → open the library browser.
     // InteractionManager's `doubleClick` only fires on hits; this path
@@ -1272,76 +1269,28 @@ export class OmGraphicalLayout extends LitElement {
   };
 
   /**
-   * Draw events from the armed `ToolMode`. Extent shapes preview live and
-   * commit on release; poly shapes preview through their multi-click life and
-   * commit / cancel at the end. The committed graphic lands in whichever layer
-   * this view edits (icon vs diagram) via the shared graphics-write pipeline.
+   * Applies a draw step from the armed `ToolMode`. The mode owns the shape
+   * (snapping, guards, preview kind); the host only places it into whichever
+   * layer this view edits (icon vs diagram): a draft previews, a commit
+   * persists + disarms, a cancel drops the preview and stays armed.
    */
-  private onTool<K extends keyof ToolEvents>(
-    type: K,
-    detail: ToolEvents[K],
-  ): void {
+  private onTool(draw: ToolDraw): void {
     if (this.readonly || !this.layout) {
       return;
     }
-    const layer = this.layout.kind;
-    if (type === "drawShape") {
-      const d = detail as ToolEvents["drawShape"];
-      if (d.extent === null) {
-        // Degenerate release (a click, no drag) — drop the preview.
-        this.draftLayout = null;
-        this.endInteraction();
-        return;
-      }
-      if (d.draft) {
-        this.draftLayout = applyAddGraphic(
-          this.layout,
-          layer,
-          buildExtentShape(d.kind, d.extent),
-        );
-        this.setInteractionState({ kind: "drawing" });
-        return;
-      }
-      const snapped = snapExtent(d.extent, this.currentSnapGrid());
-      // Grid-snapping can collapse a thin drag onto one grid line; don't
-      // persist a zero-size shape (mirrors the click-no-drag bail above,
-      // which leaves the tool armed to retry).
-      if (snapped[0][0] === snapped[1][0] || snapped[0][1] === snapped[1][1]) {
-        this.draftLayout = null;
-        this.endInteraction();
-        return;
-      }
-      this.commitLayout(
-        applyAddGraphic(this.layout, layer, buildExtentShape(d.kind, snapped)),
-      );
-      this.endInteraction();
-      this.setActiveTool("select"); // one shape per arming
-      return;
-    }
-    const d = detail as ToolEvents["drawPoly"];
-    if (d.phase === "cancel") {
+    if (draw.phase === "cancel") {
       this.draftLayout = null;
       this.endInteraction();
       return;
     }
-    if (d.phase === "draft") {
-      // A polygon needs ≥3 points to render; while only the first segment is
-      // drawn (≤2 points) preview it as a line so the initial drag is visible —
-      // a 2-point polygon would collapse to a back-and-forth invisible sliver.
-      const previewKind =
-        d.kind === "polygon" && d.points.length < 3 ? "line" : d.kind;
-      this.draftLayout = applyAddGraphic(
-        this.layout,
-        layer,
-        buildPolyShape(previewKind, d.points),
-      );
+    const next = applyAddGraphic(this.layout, this.layout.kind, draw.shape);
+    if (draw.phase === "draft") {
+      this.draftLayout = next;
       this.setInteractionState({ kind: "drawing" });
       return;
     }
     this.draftLayout = null;
-    this.commitLayout(
-      applyAddGraphic(this.layout, layer, buildPolyShape(d.kind, d.points)),
-    );
+    this.commitLayout(next);
     this.endInteraction();
     this.setActiveTool("select"); // one shape per arming
   }

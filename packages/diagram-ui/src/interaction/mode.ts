@@ -108,8 +108,10 @@ export class ModeRouter {
       deps.evaluateCompat,
     );
     this.getActiveTool = deps.getActiveTool;
-    this.extentTool = new ExtentToolMode(deps.onTool, () =>
-      extentKindOf(deps.getActiveTool()),
+    this.extentTool = new ExtentToolMode(
+      deps.onTool,
+      () => extentKindOf(deps.getActiveTool()),
+      deps.getSnapGrid,
     );
     this.polyTool = new MultiClickToolMode(
       deps.onTool,

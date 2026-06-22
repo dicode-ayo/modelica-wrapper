@@ -1,6 +1,7 @@
 import type { Point } from "@dicode/omc-client";
 
 import type { DiagramPoint } from "./gesture-mode.js";
+import { buildPolyShape } from "./layout-ops.js";
 import { PolylineDrawing } from "./polyline-drawing.js";
 import { snapPoint, type SnapGrid } from "./snap-math.js";
 import type { ToolEmit, ToolMode } from "./tool-mode.js";
@@ -67,13 +68,12 @@ export class MultiClickToolMode implements ToolMode {
   finish(): void {
     const result = this.draw.finish();
     if (result) {
-      this.emit("drawPoly", {
+      this.emit({
         phase: "commit",
-        kind: result.kind,
-        points: result.points,
+        shape: buildPolyShape(result.kind, result.points),
       });
     } else {
-      this.emit("drawPoly", { phase: "cancel" });
+      this.emit({ phase: "cancel" });
     }
   }
 
@@ -91,13 +91,13 @@ export class MultiClickToolMode implements ToolMode {
         this.emitDraft();
       } else {
         // Last vertex removed — the gesture ended but the tool stays armed.
-        this.emit("drawPoly", { phase: "cancel" });
+        this.emit({ phase: "cancel" });
       }
       return true;
     }
     if (e.key === "Escape") {
       this.draw.cancel();
-      this.emit("drawPoly", { phase: "cancel" });
+      this.emit({ phase: "cancel" });
       return true;
     }
     return false;
@@ -106,16 +106,21 @@ export class MultiClickToolMode implements ToolMode {
   cancel(): void {
     if (this.draw.active) {
       this.draw.cancel();
-      this.emit("drawPoly", { phase: "cancel" });
+      this.emit({ phase: "cancel" });
     }
   }
 
   private emitDraft(): void {
     const points = this.draw.draftPoints();
     const kind = this.draw.drawKind;
-    if (points && kind) {
-      this.emit("drawPoly", { phase: "draft", kind, points });
+    if (!points || !kind) {
+      return;
     }
+    // A polygon needs ≥3 points to render; while only the first segment is
+    // drawn (≤2 points) preview it as a line so the initial drag is visible —
+    // a 2-point polygon would collapse to a back-and-forth invisible sliver.
+    const previewKind = kind === "polygon" && points.length < 3 ? "line" : kind;
+    this.emit({ phase: "draft", shape: buildPolyShape(previewKind, points) });
   }
 
   private snap(point: DiagramPoint): Point {

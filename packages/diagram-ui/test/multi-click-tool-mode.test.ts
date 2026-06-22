@@ -1,19 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import { MultiClickToolMode } from "../src/interaction/multi-click-tool-mode.js";
-import type { ToolEvents } from "../src/interaction/tool-mode.js";
+import type { ToolDraw } from "../src/interaction/tool-mode.js";
 import type { SnapGrid } from "../src/interaction/snap-math.js";
 import type { PolyKind } from "../src/interaction/tools.js";
 
 function setup(
   kind: PolyKind | null,
   grid: SnapGrid = [0, 0],
-): { mode: MultiClickToolMode; events: ToolEvents["drawPoly"][] } {
-  const events: ToolEvents["drawPoly"][] = [];
+): { mode: MultiClickToolMode; events: ToolDraw[] } {
+  const events: ToolDraw[] = [];
   const mode = new MultiClickToolMode(
-    (type, detail) => {
-      if (type === "drawPoly") events.push(detail as ToolEvents["drawPoly"]);
-    },
+    (draw) => events.push(draw),
     () => kind,
     () => grid,
   );
@@ -34,11 +32,25 @@ describe("MultiClickToolMode", () => {
     mode.move({ x: 10, y: 10 });
     expect(events.at(-1)).toEqual({
       phase: "draft",
-      kind: "line",
-      points: [
-        [0, 0],
-        [10, 10],
-      ],
+      shape: {
+        kind: "line",
+        points: [
+          [0, 0],
+          [10, 10],
+        ],
+        color: [0, 0, 0],
+      },
+    });
+  });
+
+  it("previews a one-segment polygon as a line so the first drag is visible", () => {
+    const { mode, events } = setup("polygon");
+    mode.press({ x: 0, y: 0 });
+    mode.move({ x: 10, y: 10 });
+    // Only two draft points → render as a line, not an invisible 2-pt polygon.
+    expect(events.at(-1)).toMatchObject({
+      phase: "draft",
+      shape: { kind: "line" },
     });
   });
 
@@ -49,11 +61,14 @@ describe("MultiClickToolMode", () => {
     mode.finish();
     expect(events.at(-1)).toEqual({
       phase: "commit",
-      kind: "line",
-      points: [
-        [0, 0],
-        [10, 0],
-      ],
+      shape: {
+        kind: "line",
+        points: [
+          [0, 0],
+          [10, 0],
+        ],
+        color: [0, 0, 0],
+      },
     });
     expect(mode.active).toBe(false);
   });
@@ -69,25 +84,29 @@ describe("MultiClickToolMode", () => {
     expect(mode.key(new KeyboardEvent("keydown", { key: "Backspace" }))).toBe(
       true,
     );
-    expect(events.at(-1)).toEqual({
+    expect(events.at(-1)).toMatchObject({
       phase: "draft",
-      kind: "polygon",
-      points: [
-        [0, 0],
-        [10, 0],
-        [20, 20],
-      ],
+      shape: {
+        points: [
+          [0, 0],
+          [10, 0],
+          [20, 20],
+        ],
+      },
     });
     mode.press({ x: 10, y: 10 });
     expect(mode.key(new KeyboardEvent("keydown", { key: "Enter" }))).toBe(true);
     expect(events.at(-1)).toEqual({
       phase: "commit",
-      kind: "polygon",
-      points: [
-        [0, 0],
-        [10, 0],
-        [10, 10],
-      ],
+      shape: {
+        kind: "polygon",
+        points: [
+          [0, 0],
+          [10, 0],
+          [10, 10],
+        ],
+        lineColor: [0, 0, 0],
+      },
     });
   });
 
@@ -119,12 +138,15 @@ describe("MultiClickToolMode", () => {
     mode.press({ x: 0, y: 0 }); // back on the start → finish
     expect(events.at(-1)).toEqual({
       phase: "commit",
-      kind: "polygon",
-      points: [
-        [0, 0],
-        [10, 0],
-        [10, 10],
-      ],
+      shape: {
+        kind: "polygon",
+        points: [
+          [0, 0],
+          [10, 0],
+          [10, 10],
+        ],
+        lineColor: [0, 0, 0],
+      },
     });
     expect(mode.active).toBe(false);
   });

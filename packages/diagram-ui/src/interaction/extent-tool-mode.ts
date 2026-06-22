@@ -1,6 +1,8 @@
 import type { Extent } from "@dicode/omc-client";
 
 import type { DiagramPoint } from "./gesture-mode.js";
+import { buildExtentShape } from "./layout-ops.js";
+import { snapExtent, type SnapGrid } from "./snap-math.js";
 import type { ToolEmit, ToolMode } from "./tool-mode.js";
 import type { ExtentKind } from "./tools.js";
 
@@ -15,7 +17,7 @@ function extentOf(a: DiagramPoint, b: DiagramPoint): Extent {
 /** Drag span, in diagram units, below which a drag is treated as a click. */
 const MIN_DRAW_SPAN = 1;
 
-/** A click (or a hair of movement) shouldn't create a zero-size shape. */
+/** True when either side of the extent is too thin to be a real shape. */
 function degenerate(e: Extent): boolean {
   return (
     Math.abs(e[1][0] - e[0][0]) < MIN_DRAW_SPAN ||
@@ -25,11 +27,10 @@ function degenerate(e: Extent): boolean {
 
 /**
  * Draws an extent primitive (rectangle / ellipse) by press-drag-release.
- * Emits the live drag box as `drawShape` events; the host builds the actual
- * `Shape`, previews it via `draftLayout`, and commits + persists it on
- * release. The preview *is* the real primitive — this mode owns no overlay
- * mesh. A degenerate (click, no drag) release sends `extent: null` so nothing
- * is created.
+ * The live drag box previews unsnapped on every move; the release snaps it to
+ * the grid and commits, unless the drag is degenerate or grid-snapping
+ * collapsed it onto a single line (either drops the preview and stays armed).
+ * The preview *is* the real primitive — this mode owns no overlay mesh.
  */
 export class ExtentToolMode implements ToolMode {
   readonly pressDrag = true;
@@ -39,6 +40,7 @@ export class ExtentToolMode implements ToolMode {
   constructor(
     private readonly emit: ToolEmit,
     private readonly getKind: () => ExtentKind | null,
+    private readonly getSnapGrid: () => SnapGrid,
   ) {}
 
   get active(): boolean {
@@ -58,10 +60,9 @@ export class ExtentToolMode implements ToolMode {
     if (!this.start || !this.kind) {
       return;
     }
-    this.emit("drawShape", {
-      kind: this.kind,
-      extent: extentOf(this.start, point),
-      draft: true,
+    this.emit({
+      phase: "draft",
+      shape: buildExtentShape(this.kind, extentOf(this.start, point)),
     });
   }
 
@@ -69,15 +70,22 @@ export class ExtentToolMode implements ToolMode {
     if (!this.start || !this.kind) {
       return;
     }
-    const extent = extentOf(this.start, point);
+    const raw = extentOf(this.start, point);
     const kind = this.kind;
     this.start = null;
     this.kind = null;
-    this.emit("drawShape", {
-      kind,
-      extent: degenerate(extent) ? null : extent,
-      draft: false,
-    });
+    if (degenerate(raw)) {
+      this.emit({ phase: "cancel" });
+      return;
+    }
+    const snapped = snapExtent(raw, this.getSnapGrid());
+    // Grid-snapping can collapse a thin drag onto one grid line; don't
+    // persist a zero-size shape.
+    if (snapped[0][0] === snapped[1][0] || snapped[0][1] === snapped[1][1]) {
+      this.emit({ phase: "cancel" });
+      return;
+    }
+    this.emit({ phase: "commit", shape: buildExtentShape(kind, snapped) });
   }
 
   finish(): void {
@@ -90,12 +98,11 @@ export class ExtentToolMode implements ToolMode {
   }
 
   cancel(): void {
-    const kind = this.kind;
+    const cancelling = this.start !== null;
     this.start = null;
     this.kind = null;
-    if (kind) {
-      // Drop any in-flight preview without committing a shape.
-      this.emit("drawShape", { kind, extent: null, draft: false });
+    if (cancelling) {
+      this.emit({ phase: "cancel" });
     }
   }
 }
