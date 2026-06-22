@@ -1421,10 +1421,14 @@ export class OmGraphicalLayout extends LitElement {
       this.draftLayout = null;
       return;
     }
+    // A polygon needs ≥3 points to render; while only the first segment is
+    // drawn (≤2 points) preview it as a line so the initial drag is visible —
+    // a 2-point polygon would collapse to a back-and-forth invisible sliver.
+    const previewKind = kind === "polygon" && points.length < 3 ? "line" : kind;
     this.draftLayout = applyAddGraphic(
       this.layout,
       this.layout.kind,
-      buildPolyShape(kind, points),
+      buildPolyShape(previewKind, points),
     );
     this.setInteractionState({ kind: "drawing" });
   }
