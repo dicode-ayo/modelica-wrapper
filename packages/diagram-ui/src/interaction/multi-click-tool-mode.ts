@@ -19,7 +19,7 @@ const POLY_CLOSE_FALLBACK = 1;
  * finish on double-click, Enter, or a click back on the start vertex.
  * Backspace drops the last vertex; Escape cancels. Owns the pure
  * {@link PolylineDrawing} machine, snaps every point to the active grid, and
- * emits `drawPoly` events the host turns into a `draftLayout` preview and the
+ * emits `ToolDraw` steps the host turns into a `draftLayout` preview and the
  * committed graphic.
  */
 export class MultiClickToolMode implements ToolMode {
