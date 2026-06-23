@@ -6,11 +6,13 @@ import {
   formatComponentKey,
   formatConnectorKey,
   formatKey,
+  formatShapeKey,
   isComponentKey,
   isConnectorKey,
   isEdgeKey,
   isHandleKey,
   isNestedConnector,
+  isShapeKey,
   parseKey,
 } from "../src/interaction/node-keys.js";
 
@@ -71,6 +73,27 @@ describe("formatKey / parseKey", () => {
     expect(parseKey("nope:foo")).toBeNull();
     expect(parseKey("noColon")).toBeNull();
   });
+
+  it("decomposes a shape key into its primitive kind and own-layer index", () => {
+    const parsed = parseKey(formatShapeKey("rectangle", 3));
+    expect(parsed).toEqual({
+      kind: "shape",
+      nodeId: "rectangle:3",
+      shapeKind: "rectangle",
+      index: 3,
+    });
+  });
+
+  it("keeps the index a number across the kinds the panel/handles branch on", () => {
+    for (const kind of ["ellipse", "line", "polygon", "text", "bitmap"]) {
+      const parsed = parseKey(formatShapeKey(kind, 0));
+      expect(parsed).toMatchObject({
+        kind: "shape",
+        shapeKind: kind,
+        index: 0,
+      });
+    }
+  });
 });
 
 describe("format helpers", () => {
@@ -90,6 +113,10 @@ describe("format helpers", () => {
       componentName: "R1",
       portName: "p",
     });
+  });
+
+  it("formatShapeKey writes a `shape:<kind>:<index>` wire key", () => {
+    expect(formatShapeKey("ellipse", 2)).toBe("shape:ellipse:2");
   });
 });
 
@@ -114,6 +141,16 @@ describe("type guards", () => {
 
     const handle = parseKey("h:tl");
     expect(handle && isHandleKey(handle)).toBe(true);
+
+    const shape = parseKey("shape:polygon:1");
+    if (shape && isShapeKey(shape)) {
+      // TS narrowing — these fields exist only on ShapeKey:
+      expect(shape.shapeKind).toBe("polygon");
+      expect(shape.index).toBe(1);
+    } else {
+      throw new Error("expected a ShapeKey");
+    }
+    expect(comp && isShapeKey(comp)).toBe(false);
   });
 
   it("isNestedConnector is false for standalone connectors", () => {
@@ -128,6 +165,20 @@ describe("entityKeyForNode", () => {
     const { scene, dispose } = makeScene();
     const t = new TransformNode("om-component:R1", scene);
     expect(entityKeyForNode(t)).toEqual({ kind: "component", nodeId: "R1" });
+    dispose();
+  });
+
+  it("recognises a host shape by its 'om-shape:<kind>:<index>' wrapper name", () => {
+    const { scene, dispose } = makeScene();
+    const wrapper = new TransformNode("om-shape:rectangle:0", scene);
+    const hitPlane = new Mesh("hit", scene);
+    hitPlane.parent = wrapper;
+    expect(entityKeyForNode(hitPlane)).toEqual({
+      kind: "shape",
+      nodeId: "rectangle:0",
+      shapeKind: "rectangle",
+      index: 0,
+    });
     dispose();
   });
 

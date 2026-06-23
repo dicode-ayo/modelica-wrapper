@@ -314,6 +314,7 @@ declare global {
 const ENTITY_LABEL: Record<EntityKind, string> = {
   component: "component",
   connector: "connector",
+  shape: "shape",
   edge: "edge",
   junction: "junction",
   label: "label",
