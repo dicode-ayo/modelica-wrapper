@@ -17,6 +17,7 @@ import type { Node } from "@babylonjs/core";
 export type EntityKind =
   | "component"
   | "connector"
+  | "shape"
   | "edge"
   | "junction"
   | "label"
@@ -27,6 +28,7 @@ export type EntityKind =
 const KIND_PREFIX: Record<EntityKind, string> = {
   component: "c",
   connector: "k",
+  shape: "shape",
   edge: "edge",
   junction: "junc",
   label: "lbl",
@@ -42,6 +44,7 @@ const PREFIX_KIND: Record<string, EntityKind> = Object.fromEntries(
 const KIND_BABYLON_NAME: Record<EntityKind, string> = {
   component: "om-component",
   connector: "om-connector",
+  shape: "om-shape",
   edge: "om-edge",
   junction: "om-junction",
   label: "om-label",
@@ -78,9 +81,20 @@ export interface ConnectorKey {
   portName: string;
 }
 
+export interface ShapeKey {
+  kind: "shape";
+  /** Raw id — `${shapeKind}:${index}` (e.g. `rectangle:3`). */
+  nodeId: string;
+  /** Primitive kind: `rectangle` / `ellipse` / `line` / `polygon` / `text` / `bitmap`. */
+  shapeKind: string;
+  /** Position in the host's own-layer (`from === className`) shape array. */
+  index: number;
+}
+
 export type EntityKey =
   | ComponentKey
   | ConnectorKey
+  | ShapeKey
   | EdgeKey
   | JunctionKey
   | LabelKey
@@ -96,6 +110,11 @@ export function formatKey(kind: EntityKind, nodeId: string): string {
 
 export function formatComponentKey(componentName: string): string {
   return formatKey("component", componentName);
+}
+
+/** Build a shape wire key from its primitive kind and own-layer index. */
+export function formatShapeKey(shapeKind: string, index: number): string {
+  return formatKey("shape", `${shapeKind}:${index}`);
 }
 
 /**
@@ -143,6 +162,20 @@ function makeKey(kind: EntityKind, nodeId: string): EntityKey {
       portName: nodeId.slice(dot + 1),
     };
   }
+  if (kind === "shape") {
+    const colon = nodeId.lastIndexOf(":");
+    const rawIndex = colon < 0 ? "" : nodeId.slice(colon + 1);
+    const index = Number(rawIndex);
+    return {
+      kind,
+      nodeId,
+      shapeKind: colon < 0 ? nodeId : nodeId.slice(0, colon),
+      // Fail closed: an absent/non-integer index must not confidently
+      // address a real shape (`Number("")` is 0) — NaN no-ops at the
+      // array lookup.
+      index: rawIndex !== "" && Number.isInteger(index) ? index : NaN,
+    };
+  }
   return { kind, nodeId } as EntityKey;
 }
 
@@ -154,6 +187,10 @@ export function isComponentKey(key: EntityKey): key is ComponentKey {
 
 export function isConnectorKey(key: EntityKey): key is ConnectorKey {
   return key.kind === "connector";
+}
+
+export function isShapeKey(key: EntityKey): key is ShapeKey {
+  return key.kind === "shape";
 }
 
 export function isEdgeKey(key: EntityKey): key is EdgeKey {
@@ -215,7 +252,7 @@ export function entityKeyForNode(start: Node | null): EntityKey | null {
         return makeKey(kind, meta.nodeId ?? "");
       }
     }
-    const m = cur.name?.match(/^om-(component|connector|label):(.*)$/);
+    const m = cur.name?.match(/^om-(component|connector|label|shape):(.*)$/);
     if (m) {
       const kind = m[1] as EntityKind;
       const id = m[2] ?? "";
