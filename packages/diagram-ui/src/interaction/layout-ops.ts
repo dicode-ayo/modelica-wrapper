@@ -114,6 +114,35 @@ function shiftPlacement(p: Placement, dx: number, dy: number): Placement {
   return { ...p, extent: shiftExtent(p.extent, dx, dy) };
 }
 
+/**
+ * Drags one extent corner to (x, y) in the parent's diagram coords,
+ * holding the opposite corner fixed. `corner` sets a fixed pair of extent
+ * coordinates regardless of flip, so dragging past the anchor inverts an
+ * axis — a Modelica mirror. Shared by component/connector placements and
+ * host shapes, both of which carry an `extent` + optional `origin`.
+ */
+function dragCorner(
+  extent: Extent,
+  origin: Point | undefined,
+  corner: "tl" | "tr" | "bl" | "br",
+  x: number,
+  y: number,
+): Extent {
+  const ox = origin?.[0] ?? 0;
+  const oy = origin?.[1] ?? 0;
+  let [[x1, y1], [x2, y2]] = extent;
+  const ex = x - ox;
+  const ey = y - oy;
+  if (corner === "tl" || corner === "bl") x1 = ex;
+  else x2 = ex;
+  if (corner === "bl" || corner === "br") y1 = ey;
+  else y2 = ey;
+  return [
+    [x1, y1],
+    [x2, y2],
+  ];
+}
+
 // ── Host-shape ops ───────────────────────────────────────────────────
 //
 // Drawn primitives live positionally in the host class's OWN layer
@@ -122,10 +151,15 @@ function shiftPlacement(p: Placement, dx: number, dy: number): Placement {
 // components/connectors, no connection terminates on a host shape, so
 // these ops never re-anchor.
 
+/** Line / Polygon carry `points`; the other primitives carry an `extent`. */
+function isPolyShape(
+  s: Shape,
+): s is Extract<Shape, { kind: "line" | "polygon" }> {
+  return s.kind === "line" || s.kind === "polygon";
+}
+
 /** The host's own editable layer, or `null` when it has no own graphics. */
-function ownLayer(
-  layout: DiagramLayout,
-): {
+function ownLayer(layout: DiagramLayout): {
   field: "iconLayers" | "diagramLayers";
   index: number;
   shapes: Shape[];
@@ -186,7 +220,7 @@ function updateOwnShapes(
 /** Translates a shape by (dx, dy): extent shapes move their extent, poly
  *  shapes move every vertex. `origin` is left untouched. */
 function moveShape(s: Shape, dx: number, dy: number): Shape {
-  if ("points" in s) {
+  if (isPolyShape(s)) {
     return {
       ...s,
       points: s.points.map(([x, y]) => [x + dx, y + dy] as Point),
@@ -195,34 +229,19 @@ function moveShape(s: Shape, dx: number, dy: number): Shape {
   return { ...s, extent: shiftExtent(s.extent, dx, dy) };
 }
 
-/** Drags one extent corner of an extent shape, holding the opposite
- *  corner fixed — mirrors `applyResize`'s corner→coordinate mapping.
- *  Poly shapes have no extent and return `null` (resize is extent-only). */
+/** Drags one extent corner of an extent shape, holding the opposite corner
+ *  fixed. Poly shapes have no extent and return `null` (resize is
+ *  extent-only; vertex editing is its own gesture). */
 function resizeShapeExtent(
   s: Shape,
   corner: "tl" | "tr" | "bl" | "br",
   x: number,
   y: number,
 ): Shape | null {
-  if ("points" in s) {
+  if (isPolyShape(s)) {
     return null;
   }
-  const ox = s.origin?.[0] ?? 0;
-  const oy = s.origin?.[1] ?? 0;
-  let [[x1, y1], [x2, y2]] = s.extent;
-  const ex = x - ox;
-  const ey = y - oy;
-  if (corner === "tl" || corner === "bl") x1 = ex;
-  else x2 = ex;
-  if (corner === "bl" || corner === "br") y1 = ey;
-  else y2 = ey;
-  return {
-    ...s,
-    extent: [
-      [x1, y1],
-      [x2, y2],
-    ],
-  };
+  return { ...s, extent: dragCorner(s.extent, s.origin, corner, x, y) };
 }
 
 /** Sets a shape's absolute rotation; `null` when already at `norm`. */
@@ -230,9 +249,10 @@ function rotateShape(s: Shape, norm: number): Shape | null {
   return (s.rotation ?? 0) === norm ? null : { ...s, rotation: norm };
 }
 
-/** Pivot for drag-to-rotate: extent centre, or the vertices' bbox centre. */
+/** Pivot for drag-to-rotate: extent centre, or the vertices' bounding-box
+ *  centre. */
 function shapeCentreOf(s: Shape): Point {
-  if ("points" in s) {
+  if (isPolyShape(s)) {
     if (s.points.length === 0) {
       return [0, 0];
     }
@@ -251,7 +271,7 @@ function shapeCentreOf(s: Shape): Point {
 
 /** Snaps a shape's geometry to the grid; same reference when unchanged. */
 function snapShape(s: Shape, grid: SnapGrid): Shape {
-  if ("points" in s) {
+  if (isPolyShape(s)) {
     let changed = false;
     const points = s.points.map(([x, y]) => {
       const { x: sx, y: sy } = snapPoint(x, y, grid);
@@ -598,21 +618,6 @@ export function applyResize(
       resizeShapeExtent(s, corner, x, y),
     );
   }
-  const resizedExtent = (p: Placement): Extent => {
-    const ox = p.origin?.[0] ?? 0;
-    const oy = p.origin?.[1] ?? 0;
-    let [[x1, y1], [x2, y2]] = p.extent;
-    const ex = x - ox;
-    const ey = y - oy;
-    if (corner === "tl" || corner === "bl") x1 = ex;
-    else x2 = ex;
-    if (corner === "bl" || corner === "br") y1 = ey;
-    else y2 = ey;
-    return [
-      [x1, y1],
-      [x2, y2],
-    ];
-  };
   const lookup =
     parsed.kind === "component"
       ? layout.components[parsed.nodeId]
@@ -623,7 +628,13 @@ export function applyResize(
     return layout;
   }
   const oldCentre = placementCentre(lookup.placement);
-  const newExtent = resizedExtent(lookup.placement);
+  const newExtent = dragCorner(
+    lookup.placement.extent,
+    lookup.placement.origin,
+    corner,
+    x,
+    y,
+  );
   const newCentre = placementCentre({ ...lookup.placement, extent: newExtent });
   const xf = scaleAbout(
     oldCentre,
