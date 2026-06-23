@@ -10,7 +10,12 @@ import type {
 
 import { parseKey, type EntityKind } from "./node-keys.js";
 import { orthogonalRoute, pointsEqual } from "./connection-route.js";
-import { snapPlacement, type SnapGrid } from "./snap-math.js";
+import {
+  snapExtent,
+  snapPlacement,
+  snapPoint,
+  type SnapGrid,
+} from "./snap-math.js";
 import type { ExtentKind, PolyKind } from "./tools.js";
 
 /**
@@ -36,6 +41,8 @@ interface KeySet {
   connections: Set<number>;
   /** Per-waypoint refs from junction keys (`junc:<conn>/<wp>`). */
   junctions: JunctionRef[];
+  /** Own-layer shape indices from `shape:<kind>:<index>` keys. */
+  shapes: Set<number>;
 }
 
 function partitionKeys(keys: Iterable<string>): KeySet {
@@ -44,10 +51,17 @@ function partitionKeys(keys: Iterable<string>): KeySet {
     connectors: new Set(),
     connections: new Set(),
     junctions: [],
+    shapes: new Set(),
   };
   for (const k of keys) {
     const parsed = parseKey(k);
     if (!parsed) {
+      continue;
+    }
+    if (parsed.kind === "shape") {
+      if (Number.isInteger(parsed.index)) {
+        out.shapes.add(parsed.index);
+      }
       continue;
     }
     routeKey(out, parsed.kind, parsed.nodeId);
@@ -98,6 +112,158 @@ function shiftExtent(extent: Extent, dx: number, dy: number): Extent {
 
 function shiftPlacement(p: Placement, dx: number, dy: number): Placement {
   return { ...p, extent: shiftExtent(p.extent, dx, dy) };
+}
+
+// ── Host-shape ops ───────────────────────────────────────────────────
+//
+// Drawn primitives live positionally in the host class's OWN layer
+// (`from === className`) of the current view (`icon` vs `diagram`).
+// A `shape:<kind>:<index>` key addresses one by its index there. Unlike
+// components/connectors, no connection terminates on a host shape, so
+// these ops never re-anchor.
+
+/** The host's own editable layer, or `null` when it has no own graphics. */
+function ownLayer(
+  layout: DiagramLayout,
+): {
+  field: "iconLayers" | "diagramLayers";
+  index: number;
+  shapes: Shape[];
+} | null {
+  const field = layout.kind === "icon" ? "iconLayers" : "diagramLayers";
+  const layers = layout[field];
+  const index = layers.findIndex((l) => l.from === layout.className);
+  const own = index < 0 ? undefined : layers[index];
+  return own ? { field, index, shapes: own.shapes } : null;
+}
+
+function replaceOwnShapes(
+  layout: DiagramLayout,
+  field: "iconLayers" | "diagramLayers",
+  layerIndex: number,
+  shapes: Shape[],
+): DiagramLayout {
+  const layers = layout[field].map((l, i) =>
+    i === layerIndex ? { ...l, shapes } : l,
+  );
+  return { ...layout, [field]: layers };
+}
+
+/**
+ * Replaces each own-layer shape in `indices` via `fn`. A `fn` returning
+ * `null` (or the same reference) leaves that shape untouched; the whole
+ * call returns the same `layout` reference when nothing changed.
+ */
+function updateOwnShapes(
+  layout: DiagramLayout,
+  indices: ReadonlySet<number>,
+  fn: (shape: Shape) => Shape | null,
+): DiagramLayout {
+  if (indices.size === 0) {
+    return layout;
+  }
+  const own = ownLayer(layout);
+  if (!own) {
+    return layout;
+  }
+  let mutated = false;
+  const shapes = own.shapes.map((s, i) => {
+    if (!indices.has(i)) {
+      return s;
+    }
+    const next = fn(s);
+    if (next && next !== s) {
+      mutated = true;
+      return next;
+    }
+    return s;
+  });
+  return mutated
+    ? replaceOwnShapes(layout, own.field, own.index, shapes)
+    : layout;
+}
+
+/** Translates a shape by (dx, dy): extent shapes move their extent, poly
+ *  shapes move every vertex. `origin` is left untouched. */
+function moveShape(s: Shape, dx: number, dy: number): Shape {
+  if ("points" in s) {
+    return {
+      ...s,
+      points: s.points.map(([x, y]) => [x + dx, y + dy] as Point),
+    };
+  }
+  return { ...s, extent: shiftExtent(s.extent, dx, dy) };
+}
+
+/** Drags one extent corner of an extent shape, holding the opposite
+ *  corner fixed — mirrors `applyResize`'s corner→coordinate mapping.
+ *  Poly shapes have no extent and return `null` (resize is extent-only). */
+function resizeShapeExtent(
+  s: Shape,
+  corner: "tl" | "tr" | "bl" | "br",
+  x: number,
+  y: number,
+): Shape | null {
+  if ("points" in s) {
+    return null;
+  }
+  const ox = s.origin?.[0] ?? 0;
+  const oy = s.origin?.[1] ?? 0;
+  let [[x1, y1], [x2, y2]] = s.extent;
+  const ex = x - ox;
+  const ey = y - oy;
+  if (corner === "tl" || corner === "bl") x1 = ex;
+  else x2 = ex;
+  if (corner === "bl" || corner === "br") y1 = ey;
+  else y2 = ey;
+  return {
+    ...s,
+    extent: [
+      [x1, y1],
+      [x2, y2],
+    ],
+  };
+}
+
+/** Sets a shape's absolute rotation; `null` when already at `norm`. */
+function rotateShape(s: Shape, norm: number): Shape | null {
+  return (s.rotation ?? 0) === norm ? null : { ...s, rotation: norm };
+}
+
+/** Pivot for drag-to-rotate: extent centre, or the vertices' bbox centre. */
+function shapeCentreOf(s: Shape): Point {
+  if ("points" in s) {
+    if (s.points.length === 0) {
+      return [0, 0];
+    }
+    const xs = s.points.map((p) => p[0]);
+    const ys = s.points.map((p) => p[1]);
+    return [
+      (Math.min(...xs) + Math.max(...xs)) / 2,
+      (Math.min(...ys) + Math.max(...ys)) / 2,
+    ];
+  }
+  return [
+    (s.extent[0][0] + s.extent[1][0]) / 2,
+    (s.extent[0][1] + s.extent[1][1]) / 2,
+  ];
+}
+
+/** Snaps a shape's geometry to the grid; same reference when unchanged. */
+function snapShape(s: Shape, grid: SnapGrid): Shape {
+  if ("points" in s) {
+    let changed = false;
+    const points = s.points.map(([x, y]) => {
+      const { x: sx, y: sy } = snapPoint(x, y, grid);
+      if (sx !== x || sy !== y) {
+        changed = true;
+      }
+      return [sx, sy] as Point;
+    });
+    return changed ? { ...s, points } : s;
+  }
+  const snapped = snapExtent(s.extent, grid);
+  return snapped === s.extent ? s : { ...s, extent: snapped };
 }
 
 /** Translates every entity in `keys` by (dx, dy) diagram units. */
@@ -226,10 +392,10 @@ export function applyDeltaMove(
     }
   }
 
-  if (!mutated) {
-    return layout;
-  }
-  return { ...layout, components, connectors, connections };
+  const base = mutated
+    ? { ...layout, components, connectors, connections }
+    : layout;
+  return updateOwnShapes(base, set.shapes, (s) => moveShape(s, dx, dy));
 }
 
 const ORTHO_EPS = 1e-6;
@@ -356,10 +522,11 @@ export function applySnapToExtents(
       mutated = true;
     }
   }
-  if (!mutated) {
-    return layout;
-  }
-  return { ...layout, components, connectors };
+  const base = mutated ? { ...layout, components, connectors } : layout;
+  return updateOwnShapes(base, set.shapes, (s) => {
+    const snapped = snapShape(s, grid);
+    return snapped === s ? null : snapped;
+  });
 }
 
 /** Sets the absolute placement extent of a single component. */
@@ -425,6 +592,11 @@ export function applyResize(
   const parsed = parseKey(key);
   if (!parsed) {
     return layout;
+  }
+  if (parsed.kind === "shape") {
+    return updateOwnShapes(layout, new Set([parsed.index]), (s) =>
+      resizeShapeExtent(s, corner, x, y),
+    );
   }
   const resizedExtent = (p: Placement): Extent => {
     const ox = p.origin?.[0] ?? 0;
@@ -506,14 +678,14 @@ export function applyRotation(
     connectors[id] = { ...c, placement: { ...c.placement, rotation: norm } };
     mutated = true;
   }
-  if (!mutated) {
-    return layout;
-  }
-  return reanchorConnections(
-    { ...layout, components, connectors },
-    componentXf,
-    connectorXf,
-  );
+  const base = mutated
+    ? reanchorConnections(
+        { ...layout, components, connectors },
+        componentXf,
+        connectorXf,
+      )
+    : layout;
+  return updateOwnShapes(base, set.shapes, (s) => rotateShape(s, norm));
 }
 
 /** Maps a diagram point rigidly attached to a transformed shape from
@@ -628,15 +800,21 @@ export function shapeCentre(layout: DiagramLayout, key: string): Point | null {
     const c = layout.connectors[parsed.nodeId];
     return c ? placementCentre(c.placement) : null;
   }
+  if (parsed.kind === "shape") {
+    const own = ownLayer(layout);
+    const s = own?.shapes[parsed.index];
+    return s ? shapeCentreOf(s) : null;
+  }
   return null;
 }
 
 /**
- * Filters `keys` down to those still backed by a component / connector
- * in `layout`. Selection survives an in-place edit (move / rotate /
+ * Filters `keys` down to those still backed by an entity in `layout`:
+ * a component / connector by id, or a host shape by its own-layer
+ * `(kind, index)`. Selection survives an in-place edit (move / rotate /
  * resize echoed back from the host) but drops anything the layout no
- * longer contains; non-shape keys (edges / junctions, whose indices can
- * shift on relayout) are not retained.
+ * longer contains. Edge / junction keys, whose indices can shift on
+ * relayout, are not retained.
  */
 export function retainExistingSelection(
   layout: DiagramLayout,
@@ -653,6 +831,13 @@ export function retainExistingSelection(
       layout.connectors[parsed.nodeId]
     ) {
       out.add(k);
+    } else if (parsed.kind === "shape") {
+      // Positional re-key: keep the selection only if the same own-layer
+      // index still holds a shape of the same kind after a refetch.
+      const own = ownLayer(layout);
+      if (own?.shapes[parsed.index]?.kind === parsed.shapeKind) {
+        out.add(k);
+      }
     }
   }
   return out;
@@ -667,7 +852,8 @@ export function applyDelete(
   if (
     set.components.size === 0 &&
     set.connectors.size === 0 &&
-    set.connections.size === 0
+    set.connections.size === 0 &&
+    set.shapes.size === 0
   ) {
     return layout;
   }
@@ -682,7 +868,18 @@ export function applyDelete(
   const connections = layout.connections.filter(
     (_, idx) => !set.connections.has(idx),
   );
-  return { ...layout, components, connectors, connections };
+  const base = { ...layout, components, connectors, connections };
+  if (set.shapes.size === 0) {
+    return base;
+  }
+  const own = ownLayer(base);
+  if (!own) {
+    return base;
+  }
+  const shapes = own.shapes.filter((_, i) => !set.shapes.has(i));
+  return shapes.length === own.shapes.length
+    ? base
+    : replaceOwnShapes(base, own.field, own.index, shapes);
 }
 
 /**
