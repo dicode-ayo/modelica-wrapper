@@ -77,17 +77,6 @@ export class OmHostShape extends OmShapeElement {
       rotation: this.shape.rotation,
     };
   }
-
-  override updated(changed: Map<string, unknown>): void {
-    super.updated(changed);
-    // The Babylon node is created once and reused; a delete/reorder shifts
-    // which (kind, index) this element renders, so keep the transform name
-    // — the identity the picker reads — in sync with the current shape.
-    const node = this.shapeNode;
-    if (node) {
-      node.transform.name = this.babylonNodeName();
-    }
-  }
 }
 
 declare global {

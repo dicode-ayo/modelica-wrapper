@@ -7,6 +7,7 @@ import type {
   ComponentInstance,
   ConnectorInstance,
   DiagramLayout,
+  IconLayer,
 } from "@dicode/omc-client";
 
 import { renderLayers } from "../primitives/render-shape.js";
@@ -608,10 +609,13 @@ export class OmGraphicalLayout extends LitElement {
    * practice — the producer fills the one that matches the requested
    * view.
    */
+  /** The layer set the current view shows: `iconLayers` or `diagramLayers`. */
+  private activeLayers(layout: DiagramLayout): IconLayer[] {
+    return layout.kind === "icon" ? layout.iconLayers : layout.diagramLayers;
+  }
+
   private renderHostShapes(layout: DiagramLayout): TemplateResult[] {
-    const layers =
-      layout.kind === "icon" ? layout.iconLayers : layout.diagramLayers;
-    return renderLayers(layers, HOST_SHAPE_Z_BIAS);
+    return renderLayers(this.activeLayers(layout), HOST_SHAPE_Z_BIAS);
   }
 
   /**
@@ -625,9 +629,9 @@ export class OmGraphicalLayout extends LitElement {
     if (this.readonly) {
       return [];
     }
-    const layers =
-      layout.kind === "icon" ? layout.iconLayers : layout.diagramLayers;
-    const own = layers.find((l) => l.from === layout.className);
+    const own = this.activeLayers(layout).find(
+      (l) => l.from === layout.className,
+    );
     if (!own) {
       return [];
     }
