@@ -94,6 +94,16 @@ describe("formatKey / parseKey", () => {
       });
     }
   });
+
+  it("fails closed on a malformed shape index instead of addressing shape 0", () => {
+    // `Number("")` is 0 — a trailing-colon key must not resolve to a real shape.
+    for (const bad of ["shape:rectangle:", "shape:rectangle:abc"]) {
+      const parsed = parseKey(bad);
+      expect(parsed).toMatchObject({ kind: "shape" });
+      if (!parsed || parsed.kind !== "shape") throw new Error("unreachable");
+      expect(parsed.index).toBeNaN();
+    }
+  });
 });
 
 describe("format helpers", () => {

@@ -164,11 +164,16 @@ function makeKey(kind: EntityKind, nodeId: string): EntityKey {
   }
   if (kind === "shape") {
     const colon = nodeId.lastIndexOf(":");
+    const rawIndex = colon < 0 ? "" : nodeId.slice(colon + 1);
+    const index = Number(rawIndex);
     return {
       kind,
       nodeId,
       shapeKind: colon < 0 ? nodeId : nodeId.slice(0, colon),
-      index: colon < 0 ? NaN : Number(nodeId.slice(colon + 1)),
+      // Fail closed: an absent/non-integer index must not confidently
+      // address a real shape (`Number("")` is 0) — NaN no-ops at the
+      // array lookup.
+      index: rawIndex !== "" && Number.isInteger(index) ? index : NaN,
     };
   }
   return { kind, nodeId } as EntityKey;
