@@ -171,7 +171,14 @@ export {
   type SplitButtonSelectDetail,
   type SplitButtonEvents,
 } from "./action-panel/split-button.component.js";
-export { DRAW_KINDS, type DrawKind, type ToolId } from "./interaction/tools.js";
+export {
+  EXTENT_KINDS,
+  POLY_KINDS,
+  type DrawKind,
+  type ExtentKind,
+  type PolyKind,
+  type ToolId,
+} from "./interaction/tools.js";
 export {
   OmParameterForm,
   type ParameterFormChangeDetail,

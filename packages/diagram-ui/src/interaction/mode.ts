@@ -21,9 +21,12 @@ import {
 import { SelectMode } from "./select-mode.js";
 import { DragMode } from "./drag-mode.js";
 import { ConnectMode } from "./connect-mode.js";
-import { ExtentDrawMode } from "./extent-draw-mode.js";
+import { ExtentToolMode } from "./extent-tool-mode.js";
+import { MultiClickToolMode } from "./multi-click-tool-mode.js";
+import type { ToolEmit, ToolMode } from "./tool-mode.js";
 import type { InteractionStateStore } from "./interaction-state.js";
-import type { DrawKind } from "./tools.js";
+import type { SnapGrid } from "./snap-math.js";
+import { extentKindOf, polyKindOf, type ToolId } from "./tools.js";
 
 export interface ModeRouterDeps {
   canvas: HTMLCanvasElement;
@@ -40,18 +43,29 @@ export interface ModeRouterDeps {
   connectorPosition: ConnectorPosition;
   /** Local compatibility check between two connector keys. */
   evaluateCompat: CompatCheck;
-  /** The shape the armed draw tool draws, or `null` for the `select` tool.
-   *  A non-null value routes an empty-canvas press to the draw mode. */
-  getDrawKind: () => DrawKind | null;
+  /** The armed tool. `select` routes presses to the gesture modes; a draw
+   *  tool routes all input to the matching {@link ToolMode}. */
+  getActiveTool: () => ToolId;
+  /** Active snap grid, for the multi-click tool's vertex snapping. */
+  getSnapGrid: () => SnapGrid;
+  /** Sink for a tool mode's draw events. */
+  onTool: ToolEmit;
 }
 
 /**
  * The interaction state manager. Owns the one set of canvas pointer
  * listeners for the diagram's lifetime. Hover, click-select and the
- * context menu run always (via the `InteractionManager`). A `pointerdown`
- * hit-tests and transitions `idle → {select | drag | connect}` — the
- * matching gesture mode owns the press-drag until `pointerup` returns it
- * to `idle`. Switching is a field swap, never `add/removeEventListener`.
+ * context menu run always (via the `InteractionManager`).
+ *
+ * Two routing families:
+ *   - With `select` armed, a `pointerdown` hit-tests and transitions
+ *     `idle → {select | drag | connect}` — the matching `GestureMode` owns
+ *     the press-drag until `pointerup` returns it to `idle`.
+ *   - With a draw tool armed, all input (pointer, key via `handleKey`,
+ *     double-click via `handleDoubleClick`) routes to the matching
+ *     {@link ToolMode}, under store mode `draw`.
+ *
+ * Switching is a field swap, never `add/removeEventListener`.
  */
 export class ModeRouter {
   private readonly canvas: HTMLCanvasElement;
@@ -63,8 +77,9 @@ export class ModeRouter {
   private readonly selectMode: GestureMode;
   private readonly dragMode: GestureMode;
   private readonly connectMode: GestureMode;
-  private readonly drawMode: GestureMode;
-  private readonly getDrawKind: () => DrawKind | null;
+  private readonly extentTool: ToolMode;
+  private readonly polyTool: ToolMode;
+  private readonly getActiveTool: () => ToolId;
   private active: GestureMode | null = null;
   private pointerId = -1;
 
@@ -92,39 +107,98 @@ export class ModeRouter {
       deps.connectorPosition,
       deps.evaluateCompat,
     );
-    this.getDrawKind = deps.getDrawKind;
-    this.drawMode = new ExtentDrawMode(deps.onDrag, deps.getDrawKind);
+    this.getActiveTool = deps.getActiveTool;
+    this.extentTool = new ExtentToolMode(
+      deps.onTool,
+      () => extentKindOf(deps.getActiveTool()),
+      deps.getSnapGrid,
+    );
+    this.polyTool = new MultiClickToolMode(
+      deps.onTool,
+      () => polyKindOf(deps.getActiveTool()),
+      deps.getSnapGrid,
+    );
     this.canvas.addEventListener("pointerdown", this.onPointerDown);
     this.canvas.addEventListener("pointermove", this.onPointerMove);
     this.canvas.addEventListener("pointerup", this.onPointerUp);
-    this.canvas.addEventListener("pointercancel", this.onPointerUp);
+    this.canvas.addEventListener("pointercancel", this.onPointerCancel);
     this.canvas.addEventListener("pointerleave", this.onPointerLeave);
   }
 
   /**
-   * True while a press-drag gesture is in flight. Flips on `pointerdown`,
+   * True while a gesture or tool draw is in flight. Flips on `pointerdown`,
    * earlier than the interaction-store gesture state — the host gates its
    * hover-suppression on this, not on `state.kind`.
    */
   isGestureActive(): boolean {
-    return this.active !== null;
+    return this.active !== null || (this.activeToolMode()?.active ?? false);
+  }
+
+  /** Forward a key to the armed tool; returns true when it consumed it. */
+  handleKey(e: KeyboardEvent): boolean {
+    const tool = this.activeToolMode();
+    if (!tool) {
+      return false;
+    }
+    const consumed = tool.key(e);
+    if (consumed) {
+      this.syncToolMode(tool);
+    }
+    return consumed;
+  }
+
+  /** Forward a double-click to the armed tool; returns true when a tool is
+   *  armed (so the host skips its own empty-canvas double-click handling). */
+  handleDoubleClick(): boolean {
+    const tool = this.activeToolMode();
+    if (!tool) {
+      return false;
+    }
+    tool.finish();
+    this.syncToolMode(tool);
+    return true;
+  }
+
+  /** Abandon any in-flight draw on the armed tool (e.g. the tool is about to
+   *  be switched). A no-op when nothing is in flight. */
+  cancelActiveTool(): void {
+    const tool = this.activeToolMode();
+    if (tool) {
+      tool.cancel();
+      this.syncToolMode(tool);
+    }
   }
 
   destroy(): void {
     this.canvas.removeEventListener("pointerdown", this.onPointerDown);
     this.canvas.removeEventListener("pointermove", this.onPointerMove);
     this.canvas.removeEventListener("pointerup", this.onPointerUp);
-    this.canvas.removeEventListener("pointercancel", this.onPointerUp);
+    this.canvas.removeEventListener("pointercancel", this.onPointerCancel);
     this.canvas.removeEventListener("pointerleave", this.onPointerLeave);
+    // Gesture modes own transient overlay meshes that `cancel()` disposes.
+    // Tool modes own none — their preview is the host's draft layout — so
+    // they need no teardown; their state is discarded with this router.
     this.active?.cancel?.();
     this.active = null;
   }
 
-  private modeFor(entity: EntityKey | null): GestureMode {
-    // An armed draw tool owns every press — you draw over components too.
-    if (this.getDrawKind() !== null) {
-      return this.drawMode;
+  /** The tool mode for the armed tool, or `null` for `select`. */
+  private activeToolMode(): ToolMode | null {
+    const tool = this.getActiveTool();
+    if (extentKindOf(tool)) {
+      return this.extentTool;
     }
+    if (polyKindOf(tool)) {
+      return this.polyTool;
+    }
+    return null;
+  }
+
+  private syncToolMode(tool: ToolMode): void {
+    this.store.next({ mode: tool.active ? "draw" : "idle" });
+  }
+
+  private modeFor(entity: EntityKey | null): GestureMode {
     if (entity?.kind === "port" || entity?.kind === "connector") {
       return this.connectMode;
     }
@@ -141,6 +215,25 @@ export class ModeRouter {
   }
 
   private readonly onPointerDown = (e: PointerEvent): void => {
+    // An armed draw tool owns every press — you draw over components too, so
+    // select / drag and the InteractionManager are bypassed.
+    const tool = this.activeToolMode();
+    if (tool) {
+      if (e.button === 0 && !e.shiftKey) {
+        const point = this.clientToDiagram(e.clientX, e.clientY);
+        if (point) {
+          const wasActive = tool.active;
+          tool.press(point);
+          // A press-drag tool captures the pointer for the drag it just began.
+          if (tool.pressDrag && tool.active && !wasActive) {
+            this.pointerId = e.pointerId;
+            capturePointer(this.canvas, e.pointerId);
+          }
+          this.syncToolMode(tool);
+        }
+      }
+      return;
+    }
     // Hover / click-select / context-menu run regardless of mode.
     this.interactionManager.handlePointerDown(e);
     if (e.button !== 0 || e.shiftKey) {
@@ -169,6 +262,20 @@ export class ModeRouter {
   };
 
   private readonly onPointerMove = (e: PointerEvent): void => {
+    const tool = this.activeToolMode();
+    if (tool) {
+      // A click tool rubber-bands on every move; a press-drag tool only while
+      // its press is in flight. Suppress hover either way so components don't
+      // light up mid-draw.
+      const point = this.clientToDiagram(e.clientX, e.clientY);
+      if (
+        point &&
+        (!tool.pressDrag || (tool.active && e.pointerId === this.pointerId))
+      ) {
+        tool.move(point);
+      }
+      return;
+    }
     this.interactionManager.handlePointerMove(e);
     if (!this.active || e.pointerId !== this.pointerId) {
       return;
@@ -181,6 +288,21 @@ export class ModeRouter {
   };
 
   private readonly onPointerUp = (e: PointerEvent): void => {
+    const tool = this.activeToolMode();
+    if (tool) {
+      // Only a press-drag tool commits on release; a click tool ignores it.
+      if (tool.pressDrag && tool.active && e.pointerId === this.pointerId) {
+        const point = this.clientToDiagram(e.clientX, e.clientY) ?? {
+          x: 0,
+          y: 0,
+        };
+        this.pointerId = -1;
+        releasePointer(this.canvas, e.pointerId);
+        tool.release(point);
+        this.syncToolMode(tool);
+      }
+      return;
+    }
     this.interactionManager.handlePointerUp(e);
     if (!this.active || e.pointerId !== this.pointerId) {
       return;
@@ -192,6 +314,26 @@ export class ModeRouter {
     releasePointer(this.canvas, e.pointerId);
     mode.commit(point, e);
     this.store.next({ mode: "idle" });
+  };
+
+  private readonly onPointerCancel = (e: PointerEvent): void => {
+    // A cancelled pointer abandons an in-flight press-drag tool draw rather
+    // than committing one at wherever the cancel reports. A multi-click poly
+    // draw isn't pointer-captured, so it survives the cancel (delegates to
+    // onPointerUp, which no-ops for it). Gestures keep the commit-on-up path.
+    const tool = this.activeToolMode();
+    if (
+      tool &&
+      tool.pressDrag &&
+      tool.active &&
+      e.pointerId === this.pointerId
+    ) {
+      this.pointerId = -1;
+      releasePointer(this.canvas, e.pointerId);
+      this.cancelActiveTool();
+      return;
+    }
+    this.onPointerUp(e);
   };
 
   private readonly onPointerLeave = (): void => {

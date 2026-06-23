@@ -42,7 +42,6 @@ import {
   applyWaypointDelete,
   applyWaypointDrag,
   applyWaypointInsert,
-  buildExtentShape,
   retainExistingSelection,
   selectByDiagramRect,
   shapeCentre,
@@ -90,11 +89,11 @@ import {
 import {
   resolveSnapGrid,
   snapDelta,
-  snapExtent,
   snapPoint,
   type SnapGrid,
 } from "../interaction/snap-math.js";
-import { drawKindOf, type ToolId } from "../interaction/tools.js";
+import type { ToolId } from "../interaction/tools.js";
+import type { ToolDraw } from "../interaction/tool-mode.js";
 import { emitEvent } from "../dom-event.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
 
@@ -313,8 +312,9 @@ export class OmGraphicalLayout extends LitElement {
   } | null = null;
   @state() private libraryBrowserOpen = false;
   /** The armed drawing tool. `select` (default) rubber-bands + picks; a draw
-   *  tool routes an empty-canvas press to `ExtentDrawMode`. Sticky — stays
-   *  armed across draws until reset (toolbar, Escape, or readonly). */
+   *  tool routes input to its `ToolMode` (extent press-drag or multi-click
+   *  poly). Sticky — stays armed across draws until reset (toolbar, Escape,
+   *  or readonly). */
   @state() private activeTool: ToolId = "select";
 
   @query("om-scene") private sceneEl?: OmScene;
@@ -792,7 +792,9 @@ export class OmGraphicalLayout extends LitElement {
       overlayParent: ctx.diagramRoot,
       connectorPosition: (key) => this.connectorDiagramPosition(key),
       evaluateCompat: (from, toKey) => this.evaluateCompat(from, toKey),
-      getDrawKind: () => drawKindOf(this.activeTool),
+      getActiveTool: () => this.activeTool,
+      getSnapGrid: () => this.currentSnapGrid(),
+      onTool: (draw) => this.onTool(draw),
     });
     // Native dblclick on empty canvas → open the library browser.
     // InteractionManager's `doubleClick` only fires on hits; this path
@@ -817,6 +819,11 @@ export class OmGraphicalLayout extends LitElement {
 
   private onCanvasDblClick = (e: MouseEvent): void => {
     if (this.readonly || !this.dblClickPicker) {
+      return;
+    }
+    // An armed draw tool consumes the double-click (a multi-click draw
+    // finishes on it); the library-browser / waypoint paths are skipped.
+    if (this.modeRouter?.handleDoubleClick()) {
       return;
     }
     const node = this.dblClickPicker(e.clientX, e.clientY);
@@ -1133,49 +1140,6 @@ export class OmGraphicalLayout extends LitElement {
         }
         return;
       }
-      case "drawShape": {
-        const d = detail as DragEvents["drawShape"];
-        if (d.extent === null) {
-          // Degenerate release (a click, no drag) — drop the preview.
-          this.draftLayout = null;
-          this.endInteraction();
-          return;
-        }
-        // Draw into whichever layer this view edits (icon vs diagram).
-        const layer = this.layout.kind;
-        if (d.draft) {
-          this.draftLayout = applyAddGraphic(
-            this.layout,
-            layer,
-            buildExtentShape(d.kind, d.extent),
-          );
-          this.setInteractionState({ kind: "drawing" });
-        } else {
-          const snapped = snapExtent(d.extent, this.currentSnapGrid());
-          // Grid-snapping can collapse a thin drag onto one grid line; don't
-          // persist a zero-size shape (mirrors the click-no-drag bail above,
-          // which leaves the tool armed to retry).
-          if (
-            snapped[0][0] === snapped[1][0] ||
-            snapped[0][1] === snapped[1][1]
-          ) {
-            this.draftLayout = null;
-            this.endInteraction();
-            return;
-          }
-          this.commitLayout(
-            applyAddGraphic(
-              this.layout,
-              layer,
-              buildExtentShape(d.kind, snapped),
-            ),
-          );
-          this.endInteraction();
-          // One shape per arming — disarm back to select after a draw.
-          this.setActiveTool("select");
-        }
-        return;
-      }
       case "connection": {
         const d = detail as DragEvents["connection"];
         if (!d.commit) {
@@ -1286,6 +1250,13 @@ export class OmGraphicalLayout extends LitElement {
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
+    // An armed tool owns its keys first (Enter / Backspace / Escape for a
+    // multi-click draw); only if it doesn't consume the key do the disarm
+    // shortcut and the keymap run.
+    if (this.modeRouter?.handleKey(e)) {
+      e.preventDefault();
+      return;
+    }
     if (e.key === "Escape" && this.activeTool !== "select") {
       this.setActiveTool("select");
       e.preventDefault();
@@ -1296,6 +1267,33 @@ export class OmGraphicalLayout extends LitElement {
       e.preventDefault();
     }
   };
+
+  /**
+   * Applies a draw step from the armed `ToolMode`. The mode owns the shape
+   * (snapping, guards, preview kind); the host only places it into whichever
+   * layer this view edits (icon vs diagram): a draft previews, a commit
+   * persists + disarms, a cancel drops the preview and stays armed.
+   */
+  private onTool(draw: ToolDraw): void {
+    if (this.readonly || !this.layout) {
+      return;
+    }
+    if (draw.phase === "cancel") {
+      this.draftLayout = null;
+      this.endInteraction();
+      return;
+    }
+    const next = applyAddGraphic(this.layout, this.layout.kind, draw.shape);
+    if (draw.phase === "draft") {
+      this.draftLayout = next;
+      this.setInteractionState({ kind: "drawing" });
+      return;
+    }
+    this.draftLayout = null;
+    this.commitLayout(next);
+    this.endInteraction();
+    this.setActiveTool("select"); // one shape per arming
+  }
 
   /** The currently armed drawing tool. */
   get tool(): ToolId {
@@ -1308,6 +1306,8 @@ export class OmGraphicalLayout extends LitElement {
   setActiveTool(tool: ToolId): void {
     const next: ToolId = this.readonly ? "select" : tool;
     if (next !== this.activeTool) {
+      // Switching tools mid-draw abandons whatever the old tool had in flight.
+      this.modeRouter?.cancelActiveTool();
       this.activeTool = next;
       this.emit("om-tool-change", { tool: next });
     }

@@ -1,5 +1,4 @@
 import type { Node } from "@babylonjs/core";
-import type { Extent } from "@dicode/omc-client";
 
 import {
   entityKeyForNode,
@@ -7,7 +6,6 @@ import {
   type EntityKey,
   type EntityKind,
 } from "./node-keys.js";
-import type { DrawKind } from "./tools.js";
 
 export type Picker = (clientX: number, clientY: number) => Node | null;
 export type ClientToDiagram = (
@@ -93,19 +91,6 @@ export interface DragEvents {
     dy: number;
     draft: boolean;
   };
-  /**
-   * Extent-drag of a new primitive (`ExtentDrawMode`). `extent` is the live
-   * drag box in diagram coords (the host builds the actual shape + applies grid
-   * snap); `draft: true` on every move (host previews it via `draftLayout`),
-   * `draft: false` on pointerup to commit. A degenerate (click, no drag)
-   * release sends `extent: null` so the host clears the preview without
-   * creating a zero-size shape.
-   */
-  drawShape: {
-    kind: DrawKind;
-    extent: Extent | null;
-    draft: boolean;
-  };
 }
 
 export type DragEmit = <K extends keyof DragEvents>(
@@ -134,7 +119,7 @@ export interface GestureStart {
  * click-select are not modes — they run always, underneath.
  */
 export interface GestureMode {
-  readonly id: "select" | "drag" | "connect" | "draw";
+  readonly id: "select" | "drag" | "connect";
   begin(start: GestureStart): boolean;
   update(point: DiagramPoint, e: PointerEvent): void;
   commit(point: DiagramPoint, e: PointerEvent): void;
