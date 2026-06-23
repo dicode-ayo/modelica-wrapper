@@ -135,6 +135,7 @@ export interface GestureMode {
  */
 export const MOVE_KINDS: ReadonlySet<EntityKind> = new Set([
   "component",
+  "shape",
   "label",
   "junction",
 ]);
@@ -164,12 +165,12 @@ export function releasePointer(
 /**
  * Resize / rotate handles live inside the owning shape's TransformNode
  * chain. The owner is the first ancestor whose `name` matches the
- * `om-component:` / `om-connector:` pattern.
+ * `om-component:` / `om-connector:` / `om-shape:` pattern.
  */
 export function ownerOfHandle(start: Node | null): string | null {
   let cur: Node | null = start;
   while (cur) {
-    const m = cur.name?.match(/^om-(component|connector):(.*)$/);
+    const m = cur.name?.match(/^om-(component|connector|shape):(.*)$/);
     if (m) {
       return formatKey(m[1] as EntityKind, m[2] ?? "");
     }

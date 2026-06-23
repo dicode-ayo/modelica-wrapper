@@ -120,6 +120,15 @@ export abstract class OmShapeElement extends LitElement {
   }
 
   /**
+   * The placement positioning the entity's hit plane / overlay. Defaults
+   * to the `placement` property; subclasses that derive it from other
+   * data (e.g. a host shape's own geometry) override this.
+   */
+  protected resolvePlacement(): Placement {
+    return this.placement;
+  }
+
+  /**
    * Z-axis offset (in parent local units) used to layer entities. The
    * default `0` puts components on the diagram plane; subclasses
    * override to lift themselves slightly toward the camera (which sits
@@ -137,7 +146,7 @@ export abstract class OmShapeElement extends LitElement {
     this.ensureShapeNode();
     if (this.shapeNode) {
       this.shapeNode.setPlacement(
-        this.placement,
+        this.resolvePlacement(),
         this.coordinateSystem,
         this.zOffset(),
       );

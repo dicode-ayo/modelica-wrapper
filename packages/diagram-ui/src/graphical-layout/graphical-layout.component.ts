@@ -68,6 +68,7 @@ import {
   entityKeyForNode,
   formatComponentKey,
   formatConnectorKey,
+  formatShapeKey,
   isComponentKey,
   isConnectorKey,
   isEdgeKey,
@@ -95,24 +96,8 @@ import {
 import type { ToolId } from "../interaction/tools.js";
 import type { ToolDraw } from "../interaction/tool-mode.js";
 import { emitEvent } from "../dom-event.js";
+import { HOST_SHAPE_Z_BIAS } from "../host-shape/host-shape.component.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
-
-/**
- * World-z offset applied to the host class's own shapes so they sit
- * behind every component / connector but IN FRONT of the grid's
- * extent-rectangle (the white drawing-area plane). Stacking, camera
- * at -Z so larger z = farther:
- *
- *   extent-rect  z = +0.10  (white background, drawn by `<om-grid-axis>`)
- *   grid lines   z = +0.05
- *   host shapes  z = +0.025 ← us
- *   components   z =  0.0   (default `OmShapeNode` placement)
- *
- * A value at +0.5 (the original guess) put host shapes well behind
- * the extent-rect — visible in scene.meshes but never painted because
- * the white plane occluded them on every frame.
- */
-const HOST_SHAPE_Z_BIAS = 0.025;
 
 interface BBox {
   minX: number;
@@ -386,7 +371,7 @@ export class OmGraphicalLayout extends LitElement {
           .extent=${500}
           .coordinateSystem=${active.coordinateSystem ?? undefined}
         ></om-grid-axis>
-        ${this.renderHostShapes(active)}
+        ${this.renderHostShapes(active)} ${this.renderHostShapeEntities(active)}
         ${repeat(
           componentEntries,
           ([id]) => id,
@@ -627,6 +612,33 @@ export class OmGraphicalLayout extends LitElement {
     const layers =
       layout.kind === "icon" ? layout.iconLayers : layout.diagramLayers;
     return renderLayers(layers, HOST_SHAPE_Z_BIAS);
+  }
+
+  /**
+   * Selection entities for the host's OWN drawn shapes (`from ===
+   * className`) — one `<om-host-shape>` per shape, contributing a pickable
+   * hit plane + handles over the visual already drawn by
+   * `renderHostShapes`. Inherited ancestor shapes stay non-interactive.
+   * `index` is the shape's position in the own layer — the `shape:` key.
+   */
+  private renderHostShapeEntities(layout: DiagramLayout): TemplateResult[] {
+    if (this.readonly) {
+      return [];
+    }
+    const layers =
+      layout.kind === "icon" ? layout.iconLayers : layout.diagramLayers;
+    const own = layers.find((l) => l.from === layout.className);
+    if (!own) {
+      return [];
+    }
+    return own.shapes.map(
+      (shape, index) =>
+        html`<om-host-shape
+          .shape=${shape}
+          .index=${index}
+          ?selected=${this.selectedKeys.has(formatShapeKey(shape.kind, index))}
+        ></om-host-shape>`,
+    );
   }
 
   /**
