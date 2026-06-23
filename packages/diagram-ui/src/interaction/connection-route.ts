@@ -117,12 +117,17 @@ export function endpointCentreFromLayout(
   const compRot = ((comp.placement.rotation ?? 0) * Math.PI) / 180;
 
   const ics = classDef.coordinateSystem;
-  const rawIconW = ics?.extent
-    ? Math.abs((ics.extent[1]?.[0] ?? 100) - (ics.extent[0]?.[0] ?? -100))
-    : 200;
-  const rawIconH = ics?.extent
-    ? Math.abs((ics.extent[1]?.[1] ?? 100) - (ics.extent[0]?.[1] ?? -100))
-    : 200;
+  const iconExtent = ics?.extent;
+  const iconP0 = iconExtent?.[0];
+  const iconP1 = iconExtent?.[1];
+  const rawIconW =
+    iconP0 !== undefined && iconP1 !== undefined
+      ? Math.abs((iconP1[0] ?? 100) - (iconP0[0] ?? -100))
+      : 200;
+  const rawIconH =
+    iconP0 !== undefined && iconP1 !== undefined
+      ? Math.abs((iconP1[1] ?? 100) - (iconP0[1] ?? -100))
+      : 200;
   const iconW = rawIconW || 200;
   const iconH = rawIconH || 200;
 

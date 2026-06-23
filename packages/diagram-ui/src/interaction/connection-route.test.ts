@@ -133,8 +133,9 @@ describe("endpointCentreFromLayout", () => {
       port: "p",
     });
     expect(result).not.toBeNull();
-    expect(result!.x).toBeCloseTo(0);
-    expect(result!.y).toBeCloseTo(0);
+    if (result === null) return;
+    expect(result.x).toBeCloseTo(0);
+    expect(result.y).toBeCloseTo(0);
   });
 
   it("projects a component port offset from the component centre", () => {
@@ -168,8 +169,9 @@ describe("endpointCentreFromLayout", () => {
       port: "p",
     });
     expect(result).not.toBeNull();
-    expect(result!.x).toBeCloseTo(45);
-    expect(result!.y).toBeCloseTo(45);
+    if (result === null) return;
+    expect(result.x).toBeCloseTo(45);
+    expect(result.y).toBeCloseTo(45);
   });
 
   it("applies component rotation when projecting port to diagram space", () => {
@@ -212,8 +214,9 @@ describe("endpointCentreFromLayout", () => {
       port: "p",
     });
     expect(result).not.toBeNull();
-    expect(result!.x).toBeCloseTo(0);
-    expect(result!.y).toBeCloseTo(10);
+    if (result === null) return;
+    expect(result.x).toBeCloseTo(0);
+    expect(result.y).toBeCloseTo(10);
   });
 
   it("returns null when the component is missing", () => {

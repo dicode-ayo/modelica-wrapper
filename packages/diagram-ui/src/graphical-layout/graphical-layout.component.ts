@@ -1064,11 +1064,7 @@ export class OmGraphicalLayout extends LitElement {
     this.interactionStore.next({ selectedKeys: Array.from(next) });
   }
 
-  /**
-   * Single entry point for state transitions driven by `DragController`.
-   * Centralised so a future test can assert the machine's behaviour
-   * against a sequence of events without re-wiring the whole host.
-   */
+  /** Single entry point for state transitions driven by `DragController`. */
   private setInteractionState(state: InteractionState): void {
     this.interactionStore.next({ state });
   }
