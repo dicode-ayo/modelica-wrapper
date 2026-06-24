@@ -216,8 +216,6 @@ describe("applyDeltaMove", () => {
   });
 
   it("junction drag on a Z-route inserts a jog", () => {
-    // 4-point Z route. waypoint[1] is the first elbow. Dragging it by
-    // (3, 2) inserts in-jog and out-jog so the route stays Manhattan.
     const base = withRoute([
       [0, 0],
       [5, 0],
@@ -236,8 +234,6 @@ describe("applyDeltaMove", () => {
   });
 
   it("junction drag on a Z-route via the second elbow inserts a jog", () => {
-    // Drag waypoint[2] of the Z: in-jog runs along V (segment 1-2),
-    // out-jog runs along H (segment 2-3). Both jogs keep the route Manhattan.
     const base = withRoute([
       [0, 0],
       [5, 0],
@@ -256,7 +252,6 @@ describe("applyDeltaMove", () => {
   });
 
   it("junction drag on a degenerate L-route inserts a jog", () => {
-    // 3-point L. Jog-insertion expands the route so the elbow moves freely.
     const base = withRoute([
       [0, 0],
       [5, 0],
@@ -273,8 +268,6 @@ describe("applyDeltaMove", () => {
   });
 
   it("junction drag in the middle of a longer route inserts a jog", () => {
-    // 5-point route. Dragging waypoint[2] inserts in-jog (V) and out-jog
-    // (H) while the outer segments and anchor waypoints stay fixed.
     const base = withRoute([
       [0, 0],
       [10, 0],
@@ -295,8 +288,7 @@ describe("applyDeltaMove", () => {
   });
 
   it("single junction in a multi-select still gets jog insertion", () => {
-    // C1 has no connection to this route; only junc:0/1 touches it.
-    // wpIdxs.size === 1 so jog-insertion runs despite the multi-select.
+    // C1 is not connected to this route; only the one junction key touches it.
     const base = withRoute([
       [0, 0],
       [5, 0],
@@ -315,8 +307,6 @@ describe("applyDeltaMove", () => {
   });
 
   it("multiple junctions on the same connection fall back to per-waypoint shift", () => {
-    // Two junctions from the same connection: jog-insertion would fight
-    // itself, so the plain-shift fallback runs instead.
     const base = withRoute([
       [0, 0],
       [10, 0],

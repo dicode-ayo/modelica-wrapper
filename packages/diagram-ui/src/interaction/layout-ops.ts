@@ -427,30 +427,6 @@ export function applyDeltaMove(
   return updateOwnShapes(base, set.shapes, (s) => moveShape(s, dx, dy));
 }
 
-const ORTHO_EPS = 1e-6;
-
-/**
- * Apply a (dx, dy) drag to the specified internal waypoints of a
- * connection while keeping every segment axis-aligned.
- *
- * Each moved junction sits at the corner of two segments. Whichever
- * axis a segment fixed before the drag must keep that same axis
- * fixed after — that means the non-moved endpoint of the segment
- * has to track the moved waypoint along the matching axis.
- *
- * Endpoints (waypoint 0 and waypoint N-1) are anchored to their
- * connectors. If an endpoint-adjacent segment was H, dragging the
- * junction along y would tilt that segment; we clamp `dy` instead.
- * Same for V segments and `dx`. This makes some directions feel
- * "locked" when the route is short, but it preserves orthogonality
- * without inserting new corners behind the user's back.
- *
- * Multi-junction drags fall back to a plain per-waypoint shift —
- * applying the orthogonal logic per junction would fight against
- * adjacent moved junctions on the same connection. Multi-select on
- * one connection's junctions is rare enough that we accept the
- * lower-fidelity behaviour.
- */
 function applyJunctionDeltaOrthogonal(
   waypoints: ReadonlyArray<Point>,
   movingIdxs: ReadonlySet<number>,
@@ -458,46 +434,10 @@ function applyJunctionDeltaOrthogonal(
   dy: number,
 ): Point[] {
   const out: [number, number][] = waypoints.map(([x, y]) => [x, y]);
-  const lastIdx = waypoints.length - 1;
-  if (movingIdxs.size !== 1) {
-    for (const i of movingIdxs) {
-      const wp = out[i];
-      if (!wp) continue;
-      out[i] = [wp[0] + dx, wp[1] + dy];
-    }
-    return out.map(([x, y]) => [x, y] as Point);
-  }
-  const i = movingIdxs.values().next().value as number;
-  if (i <= 0 || i >= lastIdx) {
-    // Endpoint waypoint or stray index — fall back to shift.
+  for (const i of movingIdxs) {
     const wp = out[i];
-    if (wp) out[i] = [wp[0] + dx, wp[1] + dy];
-    return out.map(([x, y]) => [x, y] as Point);
-  }
-  const prev = waypoints[i - 1]!;
-  const cur = waypoints[i]!;
-  const next = waypoints[i + 1]!;
-  const segPrevH = Math.abs(prev[1] - cur[1]) < ORTHO_EPS;
-  const segPrevV = Math.abs(prev[0] - cur[0]) < ORTHO_EPS;
-  const segNextH = Math.abs(next[1] - cur[1]) < ORTHO_EPS;
-  const segNextV = Math.abs(next[0] - cur[0]) < ORTHO_EPS;
-  const prevIsEndpoint = i - 1 === 0;
-  const nextIsEndpoint = i + 1 === lastIdx;
-  // Endpoint-adjacent segments clamp the axis they fix.
-  let effDx = dx;
-  let effDy = dy;
-  if (prevIsEndpoint && segPrevH) effDy = 0;
-  if (prevIsEndpoint && segPrevV) effDx = 0;
-  if (nextIsEndpoint && segNextH) effDy = 0;
-  if (nextIsEndpoint && segNextV) effDx = 0;
-  out[i] = [cur[0] + effDx, cur[1] + effDy];
-  if (!prevIsEndpoint) {
-    if (segPrevH) out[i - 1] = [prev[0], prev[1] + effDy];
-    else if (segPrevV) out[i - 1] = [prev[0] + effDx, prev[1]];
-  }
-  if (!nextIsEndpoint) {
-    if (segNextH) out[i + 1] = [next[0], next[1] + effDy];
-    else if (segNextV) out[i + 1] = [next[0] + effDx, next[1]];
+    if (!wp) continue;
+    out[i] = [wp[0] + dx, wp[1] + dy];
   }
   return out.map(([x, y]) => [x, y] as Point);
 }
