@@ -215,11 +215,9 @@ describe("applyDeltaMove", () => {
     expect(l.connections[0]!.waypoints).toBe(base.connections[0]!.waypoints);
   });
 
-  it("junction drag on a Z-route slides the adjacent V segment", () => {
-    // 4-point Z route. waypoint[1] is the first elbow; the segment
-    // before it is horizontal (endpoint-adjacent), the segment after
-    // it is vertical (internal). Dragging it by (3, 2) → dy clamps to
-    // 0 (would tilt segment 0-1), dx=3 slides both elbow waypoints.
+  it("junction drag on a Z-route inserts a jog", () => {
+    // 4-point Z route. waypoint[1] is the first elbow. Dragging it by
+    // (3, 2) inserts in-jog and out-jog so the route stays Manhattan.
     const base = withRoute([
       [0, 0],
       [5, 0],
@@ -230,16 +228,16 @@ describe("applyDeltaMove", () => {
     expect(l.connections[0]!.waypoints).toEqual([
       [0, 0],
       [8, 0],
-      [8, 10],
+      [8, 2],
+      [5, 2],
+      [5, 10],
       [10, 10],
     ]);
   });
 
-  it("junction drag on a Z-route slides the adjacent V segment via the second elbow", () => {
-    // Drag waypoint[2] of the Z: segment 1-2 is V (internal, x=5),
-    // segment 2-3 is H (endpoint-adjacent, y=10). dy is clamped to
-    // 0 by the H-to-endpoint segment; dx propagates back to
-    // waypoint[1] so both elbows slide together along x.
+  it("junction drag on a Z-route via the second elbow inserts a jog", () => {
+    // Drag waypoint[2] of the Z: in-jog runs along V (segment 1-2),
+    // out-jog runs along H (segment 2-3). Both jogs keep the route Manhattan.
     const base = withRoute([
       [0, 0],
       [5, 0],
@@ -249,16 +247,16 @@ describe("applyDeltaMove", () => {
     const l = applyDeltaMove(base, ["junc:0/2"], 4, 3);
     expect(l.connections[0]!.waypoints).toEqual([
       [0, 0],
-      [9, 0],
+      [5, 0],
+      [5, 13],
+      [9, 13],
       [9, 10],
       [10, 10],
     ]);
   });
 
-  it("junction drag on a degenerate L-route is fully clamped", () => {
-    // 3-point L. Both adjacent segments are endpoint-adjacent, so
-    // both axes are clamped — the elbow can't move without breaking
-    // orthogonality. The user needs to add waypoints first.
+  it("junction drag on a degenerate L-route inserts a jog", () => {
+    // 3-point L. Jog-insertion expands the route so the elbow moves freely.
     const base = withRoute([
       [0, 0],
       [5, 0],
@@ -267,15 +265,16 @@ describe("applyDeltaMove", () => {
     const l = applyDeltaMove(base, ["junc:0/1"], 4, 3);
     expect(l.connections[0]!.waypoints).toEqual([
       [0, 0],
-      [5, 0],
+      [9, 0],
+      [9, 3],
+      [5, 3],
       [5, 10],
     ]);
   });
 
-  it("junction drag in the middle of a longer route propagates both ways", () => {
-    // 5-point route with all-internal junctions[1,2,3]. Dragging
-    // waypoint[2] (between two V/H elbows) propagates dx to waypoint[1]
-    // (V segment 1-2) and dy to waypoint[3] (H segment 2-3).
+  it("junction drag in the middle of a longer route inserts a jog", () => {
+    // 5-point route. Dragging waypoint[2] inserts in-jog (V) and out-jog
+    // (H) while the outer segments and anchor waypoints stay fixed.
     const base = withRoute([
       [0, 0],
       [10, 0],
@@ -286,9 +285,51 @@ describe("applyDeltaMove", () => {
     const l = applyDeltaMove(base, ["junc:0/2"], 3, 4);
     expect(l.connections[0]!.waypoints).toEqual([
       [0, 0],
-      [13, 0],
+      [10, 0],
+      [10, 14],
       [13, 14],
-      [20, 14],
+      [13, 10],
+      [20, 10],
+      [20, 20],
+    ]);
+  });
+
+  it("single junction in a multi-select still gets jog insertion", () => {
+    // C1 has no connection to this route; only junc:0/1 touches it.
+    // wpIdxs.size === 1 so jog-insertion runs despite the multi-select.
+    const base = withRoute([
+      [0, 0],
+      [5, 0],
+      [5, 10],
+      [10, 10],
+    ]);
+    const l = applyDeltaMove(base, ["c:C1", "junc:0/1"], 3, 2);
+    expect(l.connections[0]!.waypoints).toEqual([
+      [0, 0],
+      [8, 0],
+      [8, 2],
+      [5, 2],
+      [5, 10],
+      [10, 10],
+    ]);
+  });
+
+  it("multiple junctions on the same connection fall back to per-waypoint shift", () => {
+    // Two junctions from the same connection: jog-insertion would fight
+    // itself, so the plain-shift fallback runs instead.
+    const base = withRoute([
+      [0, 0],
+      [10, 0],
+      [10, 10],
+      [20, 10],
+      [20, 20],
+    ]);
+    const l = applyDeltaMove(base, ["junc:0/1", "junc:0/3"], 3, 4);
+    expect(l.connections[0]!.waypoints).toEqual([
+      [0, 0],
+      [13, 4],
+      [10, 10],
+      [23, 14],
       [20, 20],
     ]);
   });

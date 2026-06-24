@@ -392,12 +392,21 @@ export function applyDeltaMove(
         connsMutated = true;
         return { ...conn, waypoints: orthogonalRoute(from, to) };
       }
-      // Junction-only drag: move the grabbed waypoint(s) and slide
-      // adjacent internal waypoints so each segment stays axis-
-      // aligned. Endpoint-adjacent segments constrain the drag along
-      // the axis they fix (e.g. dragging the first elbow of a Z whose
-      // first segment is horizontal won't move along y — the source
-      // connector is anchored).
+      if (wpIdxs && wpIdxs.size === 1) {
+        const idx = wpIdxs.values().next().value as number;
+        const candidate = waypointsWithJog(conn.waypoints, idx, dx, dy);
+        if (candidate !== null) {
+          const waypoints = simplifyOrthogonalPath(candidate);
+          if (!pointsEqual(waypoints, conn.waypoints)) {
+            connsMutated = true;
+            return { ...conn, waypoints };
+          }
+          return conn;
+        }
+      }
+      // Multiple junctions on the same connection fall back to a
+      // per-waypoint shift; jog-insertion would fight adjacent moved
+      // junctions.
       const waypoints = applyJunctionDeltaOrthogonal(
         conn.waypoints,
         wpIdxs ?? new Set(),
@@ -1036,6 +1045,33 @@ export function applyEdgeSegmentDrag(
   return commitReshape(layout, connIdx, conn, [...left, p, q, ...right]);
 }
 
+function waypointsWithJog(
+  waypoints: ReadonlyArray<Point>,
+  idx: number,
+  dx: number,
+  dy: number,
+): Point[] | null {
+  const lastIdx = waypoints.length - 1;
+  if (idx <= 0 || idx >= lastIdx) return null;
+  const prev = waypoints[idx - 1];
+  const curr = waypoints[idx];
+  const next = waypoints[idx + 1];
+  if (prev === undefined || curr === undefined || next === undefined)
+    return null;
+  const moved: Point = [curr[0] + dx, curr[1] + dy];
+  const inJog = jogFromStart(prev, moved, segmentAxis(prev, curr));
+  const outJog = jogToEnd(moved, next, segmentAxis(curr, next));
+  return [
+    ...waypoints.slice(0, idx - 1),
+    prev,
+    inJog,
+    moved,
+    outJog,
+    next,
+    ...waypoints.slice(idx + 2),
+  ];
+}
+
 /**
  * Drags a single internal waypoint, keeping the route orthogonal: each
  * adjacent segment is reconnected to its fixed neighbour through a
@@ -1061,29 +1097,11 @@ export function applyWaypointDrag(
   if (!conn) {
     return layout;
   }
-  const wps = conn.waypoints;
-  const lastIdx = wps.length - 1;
-  if (waypointIdx <= 0 || waypointIdx >= lastIdx) {
+  const candidate = waypointsWithJog(conn.waypoints, waypointIdx, dx, dy);
+  if (candidate === null) {
     return layout;
   }
-  const prev = wps[waypointIdx - 1];
-  const curr = wps[waypointIdx];
-  const next = wps[waypointIdx + 1];
-  if (prev === undefined || curr === undefined || next === undefined) {
-    return layout;
-  }
-  const moved: Point = [curr[0] + dx, curr[1] + dy];
-  const inJog = jogFromStart(prev, moved, segmentAxis(prev, curr));
-  const outJog = jogToEnd(moved, next, segmentAxis(curr, next));
-  return commitReshape(layout, connIdx, conn, [
-    ...wps.slice(0, waypointIdx - 1),
-    prev,
-    inJog,
-    moved,
-    outJog,
-    next,
-    ...wps.slice(waypointIdx + 2),
-  ]);
+  return commitReshape(layout, connIdx, conn, candidate);
 }
 
 /**
