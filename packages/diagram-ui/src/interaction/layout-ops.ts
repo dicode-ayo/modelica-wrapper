@@ -393,7 +393,8 @@ export function applyDeltaMove(
         return { ...conn, waypoints: orthogonalRoute(from, to) };
       }
       if (wpIdxs && wpIdxs.size === 1) {
-        const idx = wpIdxs.values().next().value as number;
+        const [idx] = wpIdxs;
+        if (idx === undefined) return conn;
         const candidate = waypointsWithJog(conn.waypoints, idx, dx, dy);
         if (candidate !== null) {
           const waypoints = simplifyOrthogonalPath(candidate);
@@ -404,15 +405,8 @@ export function applyDeltaMove(
           return conn;
         }
       }
-      // Multiple junctions on the same connection fall back to a
-      // per-waypoint shift; jog-insertion would fight adjacent moved
-      // junctions.
-      const waypoints = applyJunctionDeltaOrthogonal(
-        conn.waypoints,
-        wpIdxs ?? new Set(),
-        dx,
-        dy,
-      );
+      if (wpIdxs === undefined) return conn;
+      const waypoints = shiftWaypoints(conn.waypoints, wpIdxs, dx, dy);
       connsMutated = true;
       return { ...conn, waypoints };
     });
@@ -427,19 +421,22 @@ export function applyDeltaMove(
   return updateOwnShapes(base, set.shapes, (s) => moveShape(s, dx, dy));
 }
 
-function applyJunctionDeltaOrthogonal(
+/** Per-waypoint shift for multi-junction drags on one connection.
+ *  Jog-insertion would fight adjacent moved junctions, so these drags
+ *  use a plain translate instead. */
+function shiftWaypoints(
   waypoints: ReadonlyArray<Point>,
   movingIdxs: ReadonlySet<number>,
   dx: number,
   dy: number,
 ): Point[] {
-  const out: [number, number][] = waypoints.map(([x, y]) => [x, y]);
+  const out: Point[] = waypoints.map(([x, y]) => [x, y]);
   for (const i of movingIdxs) {
     const wp = out[i];
-    if (!wp) continue;
+    if (wp === undefined) continue;
     out[i] = [wp[0] + dx, wp[1] + dy];
   }
-  return out.map(([x, y]) => [x, y] as Point);
+  return out;
 }
 
 /**
