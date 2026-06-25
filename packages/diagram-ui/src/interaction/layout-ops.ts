@@ -1303,10 +1303,14 @@ export function applyRotate(
   cw: boolean,
 ): DiagramLayout {
   const delta = cw ? -90 : 90;
-  return forEachShape(layout, keys, (p) => ({
+  const base = forEachShape(layout, keys, (p) => ({
     ...p,
     rotation: ((p.rotation ?? 0) + delta + 360) % 360,
   }));
+  const set = partitionKeys(keys);
+  return updateOwnShapes(base, set.shapes, (s) =>
+    rotateShape(s, ((((s.rotation ?? 0) + delta) % 360) + 360) % 360),
+  );
 }
 
 /**
@@ -1318,19 +1322,47 @@ export function applyFlip(
   keys: Iterable<string>,
   horizontal: boolean,
 ): DiagramLayout {
-  return forEachShape(layout, keys, (p) => {
-    const [[x1, y1], [x2, y2]] = p.extent;
-    const ext: Extent = horizontal
-      ? [
-          [x2, y1],
-          [x1, y2],
-        ]
-      : [
-          [x1, y2],
-          [x2, y1],
-        ];
-    return { ...p, extent: ext };
-  });
+  const base = forEachShape(layout, keys, (p) => ({
+    ...p,
+    extent: flipExtent(p.extent, horizontal),
+  }));
+  const set = partitionKeys(keys);
+  return updateOwnShapes(base, set.shapes, (s) => flipShape(s, horizontal));
+}
+
+/** Mirrors an extent about its own centre by swapping one axis' corners. */
+function flipExtent(extent: Extent, horizontal: boolean): Extent {
+  const [[x1, y1], [x2, y2]] = extent;
+  return horizontal
+    ? [
+        [x2, y1],
+        [x1, y2],
+      ]
+    : [
+        [x1, y2],
+        [x2, y1],
+      ];
+}
+
+/** Mirrors a shape in place: extent shapes swap an extent axis, poly shapes
+ *  reflect every vertex about their bounding-box centre. */
+function flipShape(s: Shape, horizontal: boolean): Shape {
+  if (!isPolyShape(s)) {
+    return { ...s, extent: flipExtent(s.extent, horizontal) };
+  }
+  if (s.points.length === 0) {
+    return s;
+  }
+  const xs = s.points.map((p) => p[0]);
+  const ys = s.points.map((p) => p[1]);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  return {
+    ...s,
+    points: s.points.map(([x, y]) =>
+      horizontal ? [2 * cx - x, y] : [x, 2 * cy - y],
+    ),
+  };
 }
 
 function forEachShape(

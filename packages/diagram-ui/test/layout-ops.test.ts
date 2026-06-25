@@ -936,6 +936,37 @@ describe("host shape ops", () => {
     expect(shapeCentre(withShapes([LINE_1]), "shape:line:0")).toEqual([5, 0]);
   });
 
+  it("context-menu rotate turns a shape ±90° about its centre", () => {
+    const cw = applyRotate(withShapes([RECT_0]), ["shape:rectangle:0"], true);
+    expect(ownShapes(cw)[0]).toMatchObject({
+      origin: [5, 5],
+      extent: [
+        [-5, -5],
+        [5, 5],
+      ],
+      rotation: 270,
+    });
+  });
+
+  it("context-menu flip mirrors an extent shape and a poly in place", () => {
+    const rect = applyFlip(withShapes([RECT_0]), ["shape:rectangle:0"], true);
+    expect(ownShapes(rect)[0]).toMatchObject({
+      extent: [
+        [10, 0],
+        [0, 10],
+      ],
+    });
+
+    // LINE_1 points [[0,0],[10,0]] → bbox centre x=5; horizontal mirror swaps.
+    const line = applyFlip(withShapes([LINE_1]), ["shape:line:0"], true);
+    expect(ownShapes(line)[0]).toMatchObject({
+      points: [
+        [10, 0],
+        [0, 0],
+      ],
+    });
+  });
+
   it("ignores out-of-range and malformed shape keys without throwing", () => {
     const layout = withShapes([RECT_0]);
     expect(applyDeltaMove(layout, ["shape:rectangle:9"], 5, 5)).toBe(layout);
