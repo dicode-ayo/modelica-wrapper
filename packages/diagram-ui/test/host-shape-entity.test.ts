@@ -183,6 +183,26 @@ describe("<om-host-shape> selection entities", () => {
     expect(visibleResizeHandles(el)).toBe(0);
   });
 
+  it("picks a poly along a follow-the-line hit tube, not the bbox plane", async () => {
+    const el = await mount(layout());
+    const lineWrapper = transformNodes(el).find(
+      (n) => n.name === "om-shape:line:1",
+    );
+    const meshes = lineWrapper?.getChildMeshes() ?? [];
+    // The bbox hit plane is no longer the pick target for a polyline…
+    expect(
+      meshes.find((m) => m.name === "plane.om-shape:line:1")?.isPickable,
+    ).toBe(false);
+    // …a hit tube tracing the segments is, and it resolves to the shape key.
+    const tube = meshes.find((m) => m.name.startsWith("hit.om-shape:line:1"));
+    expect(tube?.isPickable).toBe(true);
+    expect(entityKeyForNode(tube ?? null)).toMatchObject({
+      kind: "shape",
+      shapeKind: "line",
+      index: 1,
+    });
+  });
+
   it("shows a vertex handle per point on a selected poly, none on an extent shape", async () => {
     const el = await mount(layout());
 

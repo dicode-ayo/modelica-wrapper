@@ -4,10 +4,12 @@ import {
   MeshBuilder,
   StandardMaterial,
   TransformNode,
+  Vector3,
   type Scene,
 } from "@babylonjs/core";
 
 import { applyPlacement, type AppliedTransform } from "./placement-math.js";
+import { buildHitTube } from "./hit-tube.js";
 import {
   ResizeHandles,
   RotateHandle,
@@ -23,6 +25,10 @@ import type {
 } from "@dicode/omc-client";
 
 const HIGHLIGHT_COLOR = new Color3(0.38, 0.6, 0.98);
+
+/** Pick tolerance (diagram units) of a poly shape's follow-the-line hit
+ *  tube — matches the connection edge's `WAYPOINT_RADIUS`. */
+const POLY_HIT_RADIUS = 1.5;
 
 /**
  * Which bounding-box selection handles an entity offers. Poly shapes
@@ -69,6 +75,7 @@ export class OmShapeNode {
   private outline: SelectionOutline | null = null;
   private vertices: Point[] | null = null;
   private vertexHandles: VertexHandles | null = null;
+  private hitTube: Mesh | null = null;
   private readonly scene: Scene;
 
   constructor(scene: Scene, parent: TransformNode, name = "om-shape") {
@@ -209,20 +216,37 @@ export class OmShapeNode {
   }
 
   /**
-   * Sets (or clears with `null`) the per-vertex drag handles' positions, for
-   * a poly shape. Rebuilt live so a vertex drag / insert / delete reflects
-   * immediately while selected.
+   * Sets (or clears with `null`) a poly shape's points. They drive both the
+   * per-vertex drag handles and a follow-the-line hit tube that replaces the
+   * bounding-box hit plane — so a polyline is picked along its segments, not
+   * across the whole bbox. Rebuilt live so a vertex edit reflects at once.
    */
-  setVertices(points: Point[] | null): void {
+  setPolyPoints(points: Point[] | null): void {
     // The layout is immutable, so an unchanged shape hands back the same
-    // `points` reference — only rebuild the handles on a real edit.
+    // `points` reference — only rebuild on a real edit.
     if (points === this.vertices) {
       return;
     }
     this.vertices = points;
-    if (this.vertexHandles) {
-      this.vertexHandles.dispose();
-      this.vertexHandles = null;
+    this.vertexHandles?.dispose();
+    this.vertexHandles = null;
+    this.hitTube?.dispose();
+    this.hitTube = null;
+
+    if (points && points.length >= 2) {
+      // The bbox hit plane gives way to a tube tracing the segments; the
+      // identity poly frame means a point is already a local coordinate.
+      this.mesh.isPickable = false;
+      this.hitTube = buildHitTube(
+        this.scene,
+        `hit.${this.transform.name}`,
+        points.map(([x, y]) => new Vector3(x, y, -0.01)),
+        POLY_HIT_RADIUS,
+        HIGHLIGHT_COLOR,
+      );
+      this.hitTube.parent = this.transform;
+    } else {
+      this.mesh.isPickable = true;
     }
     this.syncSelectionOverlay();
   }
@@ -340,6 +364,8 @@ export class OmShapeNode {
     this.rotateHandle = null;
     this.vertexHandles?.dispose();
     this.vertexHandles = null;
+    this.hitTube?.dispose();
+    this.hitTube = null;
     this.mesh.dispose();
     this.hitMaterial.dispose();
     this.transform.dispose();

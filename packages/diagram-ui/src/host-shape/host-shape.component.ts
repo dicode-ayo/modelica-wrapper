@@ -89,11 +89,11 @@ export class OmHostShape extends OmShapeElement {
         s.rotation ?? 0,
         this.zOffset(),
       );
-      node.setVertices(s.points);
+      node.setPolyPoints(s.points);
       return;
     }
     super.applyGeometry(node);
-    node.setVertices(null);
+    node.setPolyPoints(null);
   }
 
   protected override selectionAffordances(): SelectionAffordances {
