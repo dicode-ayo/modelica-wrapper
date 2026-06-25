@@ -5,6 +5,8 @@ import {
   applyDelete,
   applyFlip,
   applyRotate,
+  applyShapeSmoothToggle,
+  applyShapeVertexDelete,
 } from "../interaction/layout-ops.js";
 import type { Command, CommandPlacement, CommandTarget } from "./command.js";
 import type { KeyChord } from "./keymap.js";
@@ -16,7 +18,9 @@ export type DiagramCommandId =
   | "diagram.rotateCw"
   | "diagram.rotateCcw"
   | "diagram.flipHorizontal"
-  | "diagram.flipVertical";
+  | "diagram.flipVertical"
+  | "diagram.deleteVertex"
+  | "diagram.toggleSmooth";
 
 const requireSelection = (ctx: ContextKeys): boolean =>
   !ctx.readonly && ctx.selectionCount > 0;
@@ -88,6 +92,40 @@ export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
     when: requireSelection,
     placements: [editMenu(4)],
     run: (target) => mutate(target, (l, k) => applyFlip(l, k, false)),
+  },
+  {
+    id: "diagram.deleteVertex",
+    title: "Delete vertex",
+    category: "Edit",
+    when: (ctx) => !ctx.readonly && ctx.vertexTarget,
+    placements: [editMenu(5)],
+    run: (target) => {
+      const { layout, contextVertex: v } = target;
+      if (!layout || !v) {
+        return;
+      }
+      const next = applyShapeVertexDelete(layout, v.key, v.index);
+      if (next !== layout) {
+        target.commitLayout(next);
+      }
+    },
+  },
+  {
+    id: "diagram.toggleSmooth",
+    title: "Smooth (Bezier)",
+    category: "Edit",
+    when: (ctx) => !ctx.readonly && ctx.polySelection,
+    placements: [editMenu(6)],
+    run: (target) => {
+      const key = [...target.selectedKeys][0];
+      if (!target.layout || key === undefined) {
+        return;
+      }
+      const next = applyShapeSmoothToggle(target.layout, key);
+      if (next !== target.layout) {
+        target.commitLayout(next);
+      }
+    },
   },
 ];
 

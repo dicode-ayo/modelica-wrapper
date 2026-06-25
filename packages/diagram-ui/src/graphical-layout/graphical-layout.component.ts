@@ -31,7 +31,7 @@ import {
   type PickerFn,
   type PickerFactory,
 } from "../interaction/interaction-manager.js";
-import type { DragEvents } from "../interaction/gesture-mode.js";
+import { ownerOfHandle, type DragEvents } from "../interaction/gesture-mode.js";
 import { ModeRouter } from "../interaction/mode.js";
 import {
   applyAddGraphic,
@@ -312,6 +312,10 @@ export class OmGraphicalLayout extends LitElement {
   /** Diagram-space point the open context menu is anchored to (so it tracks
    *  that spot through pan/zoom). Null when the menu is closed. */
   private contextMenuAnchor: { x: number; y: number } | null = null;
+
+  /** The poly vertex a right-click landed on — target for `Delete vertex`.
+   *  Set when the context menu opens on a vertex dot, cleared on close. */
+  private contextVertex: { key: string; index: number } | null = null;
 
   private modeRouter: ModeRouter | null = null;
   private dblClickPicker: PickerFn | null = null;
@@ -1043,7 +1047,12 @@ export class OmGraphicalLayout extends LitElement {
       case "contextMenu": {
         const d = detail as InteractionEvents["contextMenu"];
         this.emit("om-context-menu", d);
-        this.selectForContext(d.key);
+        // A right-click on a vertex dot targets that vertex (keeping the
+        // shape selected); anything else adjusts selection as usual.
+        this.contextVertex = this.resolveContextVertex(d.clientX, d.clientY);
+        if (!this.contextVertex) {
+          this.selectForContext(d.key);
+        }
         this.openContextMenu(d.clientX, d.clientY);
         return;
       }
@@ -1376,9 +1385,39 @@ export class OmGraphicalLayout extends LitElement {
     return {
       layout: this.layout,
       selectedKeys: this.selectedKeys,
+      contextVertex: this.contextVertex,
       commitLayout: (next) => this.commitLayout(next),
       setSelection: (keys) => this.setSelection(keys),
     };
+  }
+
+  /** Resolve a right-click position to the poly vertex under it, if any. */
+  private resolveContextVertex(
+    clientX: number,
+    clientY: number,
+  ): { key: string; index: number } | null {
+    const node = this.dblClickPicker?.(clientX, clientY) ?? null;
+    const entity = node ? entityKeyForNode(node) : null;
+    if (!entity || entity.kind !== "vertex-handle" || !node) {
+      return null;
+    }
+    const key = ownerOfHandle(node);
+    const index = Number(entity.nodeId);
+    return key && Number.isInteger(index) ? { key, index } : null;
+  }
+
+  /** True when exactly one line / polygon host shape is selected. */
+  private singlePolyShapeSelected(): boolean {
+    if (this.selectedKeys.size !== 1) {
+      return false;
+    }
+    const [key] = this.selectedKeys;
+    const parsed = key ? parseKey(key) : null;
+    return (
+      !!parsed &&
+      isShapeKey(parsed) &&
+      (parsed.shapeKind === "line" || parsed.shapeKind === "polygon")
+    );
   }
 
   private commandContext(): ContextKeys {
@@ -1391,6 +1430,8 @@ export class OmGraphicalLayout extends LitElement {
         readonly: this.readonly,
         viewLayer: this.layout?.kind ?? "diagram",
         hasClipboard: false,
+        vertexTarget: this.contextVertex !== null,
+        polySelection: this.singlePolyShapeSelected(),
       },
     );
   }
@@ -1448,6 +1489,7 @@ export class OmGraphicalLayout extends LitElement {
 
   private readonly onContextMenuClose = (): void => {
     this.contextMenuAnchor = null;
+    this.contextVertex = null;
   };
 
   private readonly onContextMenuSelect = (
