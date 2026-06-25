@@ -742,6 +742,131 @@ export function applyRotation(
   return updateOwnShapes(base, set.shapes, (s) => rotateShape(s, norm));
 }
 
+// ── Poly vertex ops ──────────────────────────────────────────────────
+//
+// Line / Polygon are edited per-vertex (no bounding-box resize). A vertex
+// is addressed by the shape key plus its index into `points`. Minimum
+// vertex counts mirror the draw tool: a line keeps ≥2, a polygon ≥3.
+
+const POLY_MIN_VERTICES: Record<"line" | "polygon", number> = {
+  line: 2,
+  polygon: 3,
+};
+
+/** Resolves `key` to a single own-layer poly shape and replaces it via `fn`
+ *  (which returns `null` to leave it unchanged). No-ops for any non-poly or
+ *  unresolvable key. */
+function updatePolyShape(
+  layout: DiagramLayout,
+  key: string,
+  fn: (poly: Extract<Shape, { kind: "line" | "polygon" }>) => Shape | null,
+): DiagramLayout {
+  const parsed = parseKey(key);
+  if (!parsed || parsed.kind !== "shape" || !Number.isInteger(parsed.index)) {
+    return layout;
+  }
+  return updateOwnShapes(layout, new Set([parsed.index]), (s) =>
+    isPolyShape(s) ? fn(s) : null,
+  );
+}
+
+/** Moves one vertex of a poly shape to (x, y) in diagram coords. */
+export function applyShapeVertexDrag(
+  layout: DiagramLayout,
+  key: string,
+  vertexIndex: number,
+  x: number,
+  y: number,
+): DiagramLayout {
+  return updatePolyShape(layout, key, (s) => {
+    const cur = s.points[vertexIndex];
+    if (cur === undefined) {
+      return null;
+    }
+    const nx = x - (s.origin?.[0] ?? 0);
+    const ny = y - (s.origin?.[1] ?? 0);
+    if (cur[0] === nx && cur[1] === ny) {
+      return null;
+    }
+    return {
+      ...s,
+      points: s.points.map((p, i) => (i === vertexIndex ? [nx, ny] : p)),
+    };
+  });
+}
+
+/** Inserts a vertex on the segment of a poly nearest `point`, splitting it.
+ *  A polygon also considers its closing edge (last → first). */
+export function applyShapeVertexInsert(
+  layout: DiagramLayout,
+  key: string,
+  point: { x: number; y: number },
+): DiagramLayout {
+  return updatePolyShape(layout, key, (s) => {
+    const pts = s.points;
+    if (pts.length < 2) {
+      return null;
+    }
+    const local = {
+      x: point.x - (s.origin?.[0] ?? 0),
+      y: point.y - (s.origin?.[1] ?? 0),
+    };
+    const segments = s.kind === "polygon" ? pts.length : pts.length - 1;
+    let bestAt = 1;
+    let bestProj: Point = pts[1] ?? pts[0] ?? [local.x, local.y];
+    let bestDist = Infinity;
+    for (let i = 0; i < segments; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      if (a === undefined || b === undefined) {
+        continue;
+      }
+      const proj = projectOntoSegment(a, b, local);
+      const dx = proj[0] - local.x;
+      const dy = proj[1] - local.y;
+      const dist = dx * dx + dy * dy;
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestAt = i + 1;
+        bestProj = proj;
+      }
+    }
+    return {
+      ...s,
+      points: [...pts.slice(0, bestAt), bestProj, ...pts.slice(bestAt)],
+    };
+  });
+}
+
+/** Removes one vertex of a poly shape, refusing to drop below the kind's
+ *  minimum (2 for a line, 3 for a polygon). */
+export function applyShapeVertexDelete(
+  layout: DiagramLayout,
+  key: string,
+  vertexIndex: number,
+): DiagramLayout {
+  return updatePolyShape(layout, key, (s) => {
+    if (
+      s.points[vertexIndex] === undefined ||
+      s.points.length <= POLY_MIN_VERTICES[s.kind]
+    ) {
+      return null;
+    }
+    return { ...s, points: s.points.filter((_, i) => i !== vertexIndex) };
+  });
+}
+
+/** Toggles a poly shape's `smooth` between Bezier and straight segments. */
+export function applyShapeSmoothToggle(
+  layout: DiagramLayout,
+  key: string,
+): DiagramLayout {
+  return updatePolyShape(layout, key, (s) => ({
+    ...s,
+    smooth: s.smooth === "Bezier" ? "None" : "Bezier",
+  }));
+}
+
 /** Maps a diagram point rigidly attached to a transformed shape from
  *  its old to its new position. */
 type PointXf = (p: Point) => Point;

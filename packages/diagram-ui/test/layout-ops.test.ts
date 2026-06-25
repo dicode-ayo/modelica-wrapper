@@ -12,6 +12,10 @@ import {
   applyResize,
   applyRotate,
   applyRotation,
+  applyShapeSmoothToggle,
+  applyShapeVertexDelete,
+  applyShapeVertexDrag,
+  applyShapeVertexInsert,
   applySnapToExtents,
   applyWaypointDelete,
   applyWaypointInsert,
@@ -972,6 +976,122 @@ describe("host shape ops", () => {
     expect(applyDeltaMove(layout, ["shape:rectangle:9"], 5, 5)).toBe(layout);
     expect(applyDelete(layout, ["shape:rectangle:"])).toBe(layout);
     expect(applyDeltaMove(layout, ["shape:rectangle:"], 5, 5)).toBe(layout);
+  });
+});
+
+describe("poly vertex ops", () => {
+  const POLY_3: Shape = {
+    kind: "polygon",
+    points: [
+      [0, 0],
+      [10, 0],
+      [10, 10],
+    ],
+    lineColor: [0, 0, 0],
+  };
+
+  it("drags a vertex to a diagram point (origin-aware)", () => {
+    const out = applyShapeVertexDrag(
+      withShapes([LINE_1]),
+      "shape:line:0",
+      1,
+      7,
+      4,
+    );
+    expect(ownShapes(out)[0]).toMatchObject({
+      points: [
+        [0, 0],
+        [7, 4],
+      ],
+    });
+  });
+
+  it("is a no-op dragging to the same spot or an out-of-range vertex", () => {
+    const layout = withShapes([LINE_1]);
+    expect(applyShapeVertexDrag(layout, "shape:line:0", 1, 10, 0)).toBe(layout);
+    expect(applyShapeVertexDrag(layout, "shape:line:0", 9, 1, 1)).toBe(layout);
+  });
+
+  it("inserts a vertex on the nearest segment, splitting it", () => {
+    // LINE_1 [[0,0],[10,0]]; a point near (5,1) projects onto the only segment.
+    const out = applyShapeVertexInsert(withShapes([LINE_1]), "shape:line:0", {
+      x: 5,
+      y: 1,
+    });
+    expect(ownShapes(out)[0]).toMatchObject({
+      points: [
+        [0, 0],
+        [5, 0],
+        [10, 0],
+      ],
+    });
+  });
+
+  it("considers a polygon's closing edge when inserting", () => {
+    // Near the closing edge (10,10)→(0,0); midpoint ~ (5,5).
+    const out = applyShapeVertexInsert(
+      withShapes([POLY_3]),
+      "shape:polygon:0",
+      {
+        x: 5,
+        y: 5,
+      },
+    );
+    expect(ownShapes(out)[0]).toMatchObject({
+      points: [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+        [5, 5],
+      ],
+    });
+  });
+
+  it("deletes a vertex but refuses to drop below the kind's minimum", () => {
+    const poly4: Shape = {
+      kind: "polygon",
+      points: [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+        [0, 10],
+      ],
+    };
+    const out = applyShapeVertexDelete(
+      withShapes([poly4]),
+      "shape:polygon:0",
+      1,
+    );
+    expect(ownShapes(out)[0]).toMatchObject({
+      points: [
+        [0, 0],
+        [10, 10],
+        [0, 10],
+      ],
+    });
+    // A 3-vertex polygon is at its floor — deleting is refused.
+    const atFloor = withShapes([POLY_3]);
+    expect(applyShapeVertexDelete(atFloor, "shape:polygon:0", 0)).toBe(atFloor);
+    // A line floors at 2.
+    const line = withShapes([LINE_1]);
+    expect(applyShapeVertexDelete(line, "shape:line:0", 0)).toBe(line);
+  });
+
+  it("toggles smooth between Bezier and straight", () => {
+    const on = applyShapeSmoothToggle(withShapes([LINE_1]), "shape:line:0");
+    expect(ownShapes(on)[0]).toMatchObject({ smooth: "Bezier" });
+    const off = applyShapeSmoothToggle(on, "shape:line:0");
+    expect(ownShapes(off)[0]).toMatchObject({ smooth: "None" });
+  });
+
+  it("no-ops on a non-poly or unresolvable key", () => {
+    const layout = withShapes([RECT_0]);
+    expect(applyShapeVertexDrag(layout, "shape:rectangle:0", 0, 1, 1)).toBe(
+      layout,
+    );
+    expect(applyShapeVertexInsert(layout, "shape:line:9", { x: 0, y: 0 })).toBe(
+      layout,
+    );
   });
 });
 
