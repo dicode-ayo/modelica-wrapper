@@ -1,6 +1,6 @@
 import type { Point } from "@dicode/omc-client";
 
-import type { PolyKind } from "./tools.js";
+import { POLY_MIN_VERTICES, type PolyKind } from "./tools.js";
 
 /**
  * The in-progress state of a multi-click poly draw (Line / Polygon). One
@@ -13,9 +13,6 @@ import type { PolyKind } from "./tools.js";
  * tracks the rubber endpoint, `finish` ends the gesture into a shape (or
  * `null` when there are too few vertices), and `cancel` abandons it.
  */
-
-/** Minimum distinct vertices a kind needs to commit into a real shape. */
-const MIN_VERTICES: Record<PolyKind, number> = { line: 2, polygon: 3 };
 
 export interface PolyResult {
   kind: PolyKind;
@@ -94,7 +91,7 @@ export class PolylineDrawing {
   /** Whether the gesture has enough vertices to commit into a shape. */
   canFinish(): boolean {
     return (
-      this.kind !== null && this.vertices.length >= MIN_VERTICES[this.kind]
+      this.kind !== null && this.vertices.length >= POLY_MIN_VERTICES[this.kind]
     );
   }
 

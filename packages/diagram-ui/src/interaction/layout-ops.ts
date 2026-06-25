@@ -16,7 +16,7 @@ import {
   snapPoint,
   type SnapGrid,
 } from "./snap-math.js";
-import type { ExtentKind, PolyKind } from "./tools.js";
+import { POLY_MIN_VERTICES, type ExtentKind, type PolyKind } from "./tools.js";
 
 /**
  * Pure layout mutations. Each function takes a `DiagramLayout` and
@@ -745,13 +745,9 @@ export function applyRotation(
 // ── Poly vertex ops ──────────────────────────────────────────────────
 //
 // Line / Polygon are edited per-vertex (no bounding-box resize). A vertex
-// is addressed by the shape key plus its index into `points`. Minimum
-// vertex counts mirror the draw tool: a line keeps ≥2, a polygon ≥3.
-
-const POLY_MIN_VERTICES: Record<"line" | "polygon", number> = {
-  line: 2,
-  polygon: 3,
-};
+// is addressed by the shape key plus its index into `points`. Deletes
+// respect `POLY_MIN_VERTICES` so a line stays a segment and a polygon a
+// triangle — the same floor the draw tool uses.
 
 /** Resolves `key` to a single own-layer poly shape and replaces it via `fn`
  *  (which returns `null` to leave it unchanged). No-ops for any non-poly or
@@ -813,7 +809,7 @@ export function applyShapeVertexInsert(
     };
     const segments = s.kind === "polygon" ? pts.length : pts.length - 1;
     let bestAt = 1;
-    let bestProj: Point = pts[1] ?? pts[0] ?? [local.x, local.y];
+    let bestProj: Point | null = null;
     let bestDist = Infinity;
     for (let i = 0; i < segments; i++) {
       const a = pts[i];
@@ -830,6 +826,9 @@ export function applyShapeVertexInsert(
         bestAt = i + 1;
         bestProj = proj;
       }
+    }
+    if (bestProj === null) {
+      return null;
     }
     return {
       ...s,
