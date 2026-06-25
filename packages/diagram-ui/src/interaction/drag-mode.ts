@@ -40,6 +40,12 @@ interface RotateState {
   key: string;
 }
 
+interface VertexState {
+  kind: "vertex";
+  key: string;
+  vertexIndex: number;
+}
+
 interface EdgeState {
   kind: "edge";
   connIdx: number;
@@ -47,7 +53,12 @@ interface EdgeState {
   startY: number;
 }
 
-type DragState = MoveState | ResizeState | RotateState | EdgeState;
+type DragState =
+  | MoveState
+  | ResizeState
+  | RotateState
+  | VertexState
+  | EdgeState;
 
 /**
  * Manipulating existing entities: move (one or the whole selection),
@@ -97,6 +108,23 @@ export class DragMode implements GestureMode {
       this.emit("resize", {
         key: ownerKey,
         corner,
+        x: pt.x,
+        y: pt.y,
+        draft: true,
+      });
+      return true;
+    }
+
+    if (entity.kind === "vertex-handle") {
+      const vertexIndex = Number(entity.nodeId);
+      const ownerKey = ownerOfHandle(node);
+      if (!ownerKey || !Number.isInteger(vertexIndex)) {
+        return false;
+      }
+      this.state = { kind: "vertex", key: ownerKey, vertexIndex };
+      this.emit("vertexDrag", {
+        key: ownerKey,
+        vertexIndex,
         x: pt.x,
         y: pt.y,
         draft: true,
@@ -170,6 +198,15 @@ export class DragMode implements GestureMode {
           x: pt.x,
           y: pt.y,
           free: e.shiftKey,
+          draft,
+        });
+        return;
+      case "vertex":
+        this.emit("vertexDrag", {
+          key: state.key,
+          vertexIndex: state.vertexIndex,
+          x: pt.x,
+          y: pt.y,
           draft,
         });
         return;

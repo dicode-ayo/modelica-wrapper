@@ -2,7 +2,7 @@ import { customElement, property } from "lit/decorators.js";
 import type { Extent, Placement, Shape } from "@dicode/omc-client";
 
 import { OmShapeElement } from "../base/shape-element.js";
-import type { SelectionAffordances } from "../base/shape-node.js";
+import type { OmShapeNode, SelectionAffordances } from "../base/shape-node.js";
 
 /**
  * World-z offset applied to the host class's own shapes so they sit behind
@@ -77,6 +77,23 @@ export class OmHostShape extends OmShapeElement {
       origin: this.shape.origin,
       rotation: this.shape.rotation,
     };
+  }
+
+  protected override applyGeometry(node: OmShapeNode): void {
+    const s = this.shape;
+    if (s && (s.kind === "line" || s.kind === "polygon")) {
+      // Identity diagram frame so per-vertex handles sit on `points`.
+      node.setDiagramBounds(
+        shapeExtent(s),
+        s.origin,
+        s.rotation ?? 0,
+        this.zOffset(),
+      );
+      node.setVertices(s.points);
+      return;
+    }
+    super.applyGeometry(node);
+    node.setVertices(null);
   }
 
   protected override selectionAffordances(): SelectionAffordances {

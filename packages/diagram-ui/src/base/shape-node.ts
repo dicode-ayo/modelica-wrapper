@@ -12,9 +12,15 @@ import {
   ResizeHandles,
   RotateHandle,
   SelectionOutline,
+  VertexHandles,
 } from "./selection-overlay.js";
 import { requestSceneRender } from "../scene/render-scheduler.js";
-import type { CoordinateSystem, Placement } from "@dicode/omc-client";
+import type {
+  CoordinateSystem,
+  Extent,
+  Placement,
+  Point,
+} from "@dicode/omc-client";
 
 const HIGHLIGHT_COLOR = new Color3(0.38, 0.6, 0.98);
 
@@ -61,6 +67,8 @@ export class OmShapeNode {
   private resizeHandles: ResizeHandles | null = null;
   private rotateHandle: RotateHandle | null = null;
   private outline: SelectionOutline | null = null;
+  private vertices: Point[] | null = null;
+  private vertexHandles: VertexHandles | null = null;
   private readonly scene: Scene;
 
   constructor(scene: Scene, parent: TransformNode, name = "om-shape") {
@@ -106,17 +114,73 @@ export class OmShapeNode {
     zOffset: number = 0,
   ): AppliedTransform {
     const t = applyPlacement(placement, iconCoordSystem, zOffset);
-    this.transform.position.set(t.position.x, t.position.y, t.position.z);
-    this.transform.scaling.set(t.scale.x, t.scale.y, t.scale.z);
     this.transform.rotation.set(0, 0, t.rotationZ);
+    this.applyGeometry(
+      t.position.x,
+      t.position.y,
+      t.position.z,
+      t.scale.x,
+      t.scale.y,
+      t.iconSize.width,
+      t.iconSize.height,
+      t.meshLocal.x,
+      t.meshLocal.y,
+    );
+    return t;
+  }
+
+  /**
+   * Positions the entity directly in the parent's coordinate space with no
+   * icon scaling — for host shapes, whose geometry is already in diagram
+   * coords. The transform sits at `origin` (unscaled, rotated about it), so
+   * a child handle's local position is a diagram coordinate; the hit plane
+   * + outline span `extent`. Used for poly shapes so per-vertex handles can
+   * sit on the shape's `points` directly.
+   */
+  setDiagramBounds(
+    extent: Extent,
+    origin: Point | undefined,
+    rotation: number,
+    zOffset: number = 0,
+  ): void {
+    const w = Math.abs(extent[1][0] - extent[0][0]) || 1;
+    const h = Math.abs(extent[1][1] - extent[0][1]) || 1;
+    const cx = (extent[0][0] + extent[1][0]) / 2;
+    const cy = (extent[0][1] + extent[1][1]) / 2;
+    this.transform.rotation.set(0, 0, (rotation * Math.PI) / 180);
+    this.applyGeometry(
+      origin?.[0] ?? 0,
+      origin?.[1] ?? 0,
+      zOffset,
+      1,
+      1,
+      w,
+      h,
+      cx,
+      cy,
+    );
+  }
+
+  private applyGeometry(
+    posX: number,
+    posY: number,
+    posZ: number,
+    scaleX: number,
+    scaleY: number,
+    hitW: number,
+    hitH: number,
+    hitCx: number,
+    hitCy: number,
+  ): void {
+    this.transform.position.set(posX, posY, posZ);
+    this.transform.scaling.set(scaleX, scaleY, 1);
 
     const sizeChanged =
-      this.currentIconWidth !== t.iconSize.width ||
-      this.currentIconHeight !== t.iconSize.height;
+      this.currentIconWidth !== hitW || this.currentIconHeight !== hitH;
     if (sizeChanged) {
-      this.currentIconWidth = t.iconSize.width;
-      this.currentIconHeight = t.iconSize.height;
-      this.mesh.scaling.set(t.iconSize.width, t.iconSize.height, 1);
+      this.currentIconWidth = hitW;
+      this.currentIconHeight = hitH;
+      this.mesh.scaling.set(hitW, hitH, 1);
       if (this.resizeHandles) {
         const wasVisible = this.resizeHandles.isVisible();
         this.resizeHandles.dispose();
@@ -130,9 +194,9 @@ export class OmShapeNode {
         this.rotateHandle.setVisible(wasVisible);
       }
     }
-    this.currentIconCx = t.meshLocal.x;
-    this.currentIconCy = t.meshLocal.y;
-    this.mesh.position.set(t.meshLocal.x, t.meshLocal.y, 0);
+    this.currentIconCx = hitCx;
+    this.currentIconCy = hitCy;
+    this.mesh.position.set(hitCx, hitCy, 0);
     if (this.outline && sizeChanged) {
       this.outline.resize(
         this.currentIconWidth,
@@ -142,7 +206,25 @@ export class OmShapeNode {
       );
     }
     requestSceneRender(this.scene);
-    return t;
+  }
+
+  /**
+   * Sets (or clears with `null`) the per-vertex drag handles' positions, for
+   * a poly shape. Rebuilt live so a vertex drag / insert / delete reflects
+   * immediately while selected.
+   */
+  setVertices(points: Point[] | null): void {
+    // The layout is immutable, so an unchanged shape hands back the same
+    // `points` reference — only rebuild the handles on a real edit.
+    if (points === this.vertices) {
+      return;
+    }
+    this.vertices = points;
+    if (this.vertexHandles) {
+      this.vertexHandles.dispose();
+      this.vertexHandles = null;
+    }
+    this.syncSelectionOverlay();
   }
 
   private createHandles(): ResizeHandles {
@@ -219,6 +301,16 @@ export class OmShapeNode {
       this.rotateHandle = this.createRotateHandle();
     }
     this.rotateHandle?.setVisible(showRotate);
+
+    const showVertices = this.selected && this.vertices !== null;
+    if (showVertices && !this.vertexHandles) {
+      this.vertexHandles = new VertexHandles(
+        this.scene,
+        this.transform,
+        this.vertices ?? [],
+      );
+    }
+    this.vertexHandles?.setVisible(showVertices);
   }
 
   isSelected(): boolean {
@@ -233,6 +325,7 @@ export class OmShapeNode {
   rescaleSelectionHandles(): void {
     this.resizeHandles?.rescale();
     this.rotateHandle?.rescale();
+    this.vertexHandles?.rescale();
   }
 
   dispose(): void {
@@ -242,6 +335,8 @@ export class OmShapeNode {
     this.resizeHandles = null;
     this.rotateHandle?.dispose();
     this.rotateHandle = null;
+    this.vertexHandles?.dispose();
+    this.vertexHandles = null;
     this.mesh.dispose();
     this.hitMaterial.dispose();
     this.transform.dispose();

@@ -12,6 +12,8 @@ import {
   type TransformNode,
 } from "@babylonjs/core";
 
+import type { Point } from "@dicode/omc-client";
+
 import { requestSceneRender } from "../scene/render-scheduler.js";
 import { findOrthoCamera, worldScaleXY } from "../scene/ortho-camera.js";
 import { worldPerPixel } from "../scene/text-resolution.js";
@@ -416,5 +418,97 @@ export class RotateHandle {
     const size = this.handlePixelSize * wpp;
     const parentScale = worldScaleXY(this.parent);
     this.handle.scaling.set(size / parentScale.x, size / parentScale.y, 1);
+  }
+}
+
+/**
+ * Per-vertex drag handles for a poly (line / polygon) shape. One small
+ * pickable square sits on each vertex; picking one starts a vertex-drag
+ * gesture. Each carries `metadata.kind = "vertex-handle"` with its vertex
+ * index as `nodeId`, and the picker walks up to the owning `om-shape`
+ * node for the shape key. Positions are the shape's own `points` — valid
+ * because a poly host shape uses an identity diagram frame (the parent
+ * transform sits at the shape origin, unscaled), so a point coordinate is
+ * already the handle's local position.
+ */
+export class VertexHandles {
+  private readonly handles: Mesh[] = [];
+  private readonly material: StandardMaterial;
+  private currentVisible = false;
+
+  constructor(
+    private readonly scene: Scene,
+    private readonly parent: TransformNode,
+    points: ReadonlyArray<Point>,
+    private readonly handlePixelSize: number = 9,
+    private readonly camera: ArcRotateCamera | null = null,
+  ) {
+    this.material = new StandardMaterial("om-vertex-handle-mat", scene);
+    this.material.disableLighting = true;
+    this.material.emissiveColor = SELECTION_BLUE;
+
+    points.forEach(([x, y], i) => {
+      const handle = MeshBuilder.CreatePlane(
+        "om-vertex-handle",
+        { width: 1, height: 1 },
+        scene,
+      );
+      handle.material = this.material;
+      handle.parent = parent;
+      // Negative z = toward the camera (at -Z), so dots paint over the shape.
+      handle.position.set(x, y, -0.02);
+      handle.isVisible = false;
+      handle.isPickable = true;
+      handle.metadata = {
+        kind: "vertex-handle" satisfies EntityKind,
+        nodeId: String(i),
+      };
+      this.handles.push(handle);
+    });
+  }
+
+  setVisible(visible: boolean): void {
+    this.currentVisible = visible;
+    for (const h of this.handles) {
+      h.isVisible = visible;
+    }
+    if (visible) {
+      this.rescale();
+    }
+    requestSceneRender(this.scene);
+  }
+
+  isVisible(): boolean {
+    return this.currentVisible;
+  }
+
+  dispose(): void {
+    for (const h of this.handles) {
+      h.dispose();
+    }
+    this.handles.length = 0;
+    this.material.dispose();
+  }
+
+  rescale(): void {
+    if (!this.currentVisible) {
+      return;
+    }
+    const camera = this.camera ?? findOrthoCamera(this.scene);
+    if (!camera) {
+      return;
+    }
+    const engine = this.scene.getEngine();
+    const canvasW = engine.getRenderWidth() || 1;
+    const wpp = worldPerPixel(
+      camera.orthoLeft ?? -1,
+      camera.orthoRight ?? 1,
+      canvasW,
+    );
+    const size = this.handlePixelSize * wpp;
+    const parentScale = worldScaleXY(this.parent);
+    for (const h of this.handles) {
+      h.scaling.set(size / parentScale.x, size / parentScale.y, 1);
+    }
   }
 }

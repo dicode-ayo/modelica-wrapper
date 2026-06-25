@@ -124,6 +124,13 @@ function visibleResizeHandles(el: OmGraphicalLayout): number {
   ).length;
 }
 
+/** Visible per-vertex handle meshes currently in the scene. */
+function visibleVertexHandles(el: OmGraphicalLayout): number {
+  return (sceneOf(el)?.meshes ?? []).filter(
+    (m) => m.isVisible && m.name === "om-vertex-handle",
+  ).length;
+}
+
 describe("<om-host-shape> selection entities", () => {
   it("emits one entity per OWN shape, never for inherited layers", async () => {
     const el = await mount(layout());
@@ -174,5 +181,19 @@ describe("<om-host-shape> selection entities", () => {
     el.setSelection(["shape:line:1"]);
     await el.updateComplete;
     expect(visibleResizeHandles(el)).toBe(0);
+  });
+
+  it("shows a vertex handle per point on a selected poly, none on an extent shape", async () => {
+    const el = await mount(layout());
+
+    // The line has two points → two vertex handles; no resize handles.
+    el.setSelection(["shape:line:1"]);
+    await el.updateComplete;
+    expect(visibleVertexHandles(el)).toBe(2);
+
+    // The rectangle is extent-edited → no vertex handles.
+    el.setSelection(["shape:rectangle:0"]);
+    await el.updateComplete;
+    expect(visibleVertexHandles(el)).toBe(0);
   });
 });

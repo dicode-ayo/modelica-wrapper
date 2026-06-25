@@ -39,6 +39,7 @@ import {
   applyEdgeSegmentDrag,
   applyResize,
   applyRotation,
+  applyShapeVertexDrag,
   applySnapToExtents,
   applyWaypointDelete,
   applyWaypointDrag,
@@ -1242,6 +1243,27 @@ export class OmGraphicalLayout extends LitElement {
           this.setInteractionState({ kind: "rotating", key: d.key });
         } else {
           this.commitLayout(rotated);
+          this.endInteraction();
+        }
+        return;
+      }
+      case "vertexDrag": {
+        // Drag one vertex of a poly shape to the snapped pointer. Live
+        // preview on draft, persist on commit — same pipeline as resize.
+        const d = detail as DragEvents["vertexDrag"];
+        const { x, y } = snapPoint(d.x, d.y, this.currentSnapGrid());
+        const edited = applyShapeVertexDrag(
+          this.layout,
+          d.key,
+          d.vertexIndex,
+          x,
+          y,
+        );
+        if (d.draft) {
+          this.draftLayout = edited;
+          this.setInteractionState({ kind: "moving", keys: [d.key] });
+        } else {
+          this.commitLayout(edited);
           this.endInteraction();
         }
         return;
