@@ -1,6 +1,6 @@
 import { customElement, property } from "lit/decorators.js";
 import type { TransformNode } from "@babylonjs/core";
-import type { PolygonShape } from "@dicode/omc-client";
+import type { Extent, PolygonShape, Point } from "@dicode/omc-client";
 import { fillSpec } from "@dicode/diagram-svg";
 
 import { OmShapePrimitive } from "./shape-primitive.js";
@@ -12,6 +12,16 @@ import {
   graphicItemNode,
   stripClosingDuplicate,
 } from "./shape-utils.js";
+
+/** Axis-aligned bounding extent of a point list. */
+function pointsExtent(points: Point[]): Extent {
+  const xs = points.map((p) => p[0]);
+  const ys = points.map((p) => p[1]);
+  return [
+    [Math.min(...xs), Math.min(...ys)],
+    [Math.max(...xs), Math.max(...ys)],
+  ];
+}
 
 /**
  * `<om-polygon>` — one Modelica `PolygonShape`. Triangulates a fill
@@ -25,6 +35,28 @@ export class OmPolygon extends OmShapePrimitive {
 
   protected override fingerprint(): string {
     return JSON.stringify(this.shape);
+  }
+
+  protected override entityKind(): string {
+    return "polygon";
+  }
+
+  protected override entityBounds(): {
+    extent: Extent;
+    origin?: Point | undefined;
+    rotation?: number | undefined;
+    points?: Point[] | undefined;
+  } | null {
+    const s = this.shape;
+    if (!s || s.points.length < 3) {
+      return null;
+    }
+    return {
+      extent: pointsExtent(s.points),
+      origin: s.origin,
+      rotation: s.rotation,
+      points: s.points,
+    };
   }
 
   protected override buildMeshes(parent: TransformNode, z: number): void {
