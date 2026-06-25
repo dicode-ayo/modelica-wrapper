@@ -457,9 +457,12 @@ export class VertexHandles {
     this.material.emissiveColor = SELECTION_BLUE;
 
     points.forEach(([x, y], i) => {
-      const handle = MeshBuilder.CreatePlane(
+      // A disc (radius 0.5 → unit diameter, scaled to pixels by `rescale`)
+      // so vertices read as the same dots a connection draws at its
+      // waypoints, not bounding-box-style squares.
+      const handle = MeshBuilder.CreateDisc(
         "om-vertex-handle",
-        { width: 1, height: 1 },
+        { radius: 0.5, tessellation: 16 },
         scene,
       );
       handle.material = this.material;
