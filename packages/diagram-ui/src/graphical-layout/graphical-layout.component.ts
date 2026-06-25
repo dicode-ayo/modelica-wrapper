@@ -10,7 +10,7 @@ import type {
   IconLayer,
 } from "@dicode/omc-client";
 
-import { renderLayers } from "../primitives/render-shape.js";
+import { renderShape } from "../primitives/render-shape.js";
 import { buildSubstitutions } from "../label/build-substitutions.js";
 import "../scene/scene.component.js";
 import "../axis/grid-axis.component.js";
@@ -102,6 +102,11 @@ import type { ToolDraw } from "../interaction/tool-mode.js";
 import { emitEvent } from "../dom-event.js";
 import { HOST_SHAPE_Z_BIAS } from "../host-shape/host-shape.component.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
+
+/** Shape kinds edited per-vertex via their own editable primitive entity. */
+function isEditablePolyKind(kind: string): boolean {
+  return kind === "line" || kind === "polygon";
+}
 
 interface BBox {
   minX: number;
@@ -621,16 +626,33 @@ export class OmGraphicalLayout extends LitElement {
     return layout.kind === "icon" ? layout.iconLayers : layout.diagramLayers;
   }
 
+  /**
+   * Paints the host's shapes (ancestor-first / host-last). Own-layer
+   * line / polygon shapes are skipped — they're drawn by their editable
+   * `<om-line>` / `<om-polygon>` entity in `renderHostShapeEntities`,
+   * which owns both their visual and their interaction.
+   */
   private renderHostShapes(layout: DiagramLayout): TemplateResult[] {
-    return renderLayers(this.activeLayers(layout), HOST_SHAPE_Z_BIAS);
+    const out: TemplateResult[] = [];
+    let zOrder = 0;
+    for (const layer of this.activeLayers(layout)) {
+      const own = layer.from === layout.className;
+      for (const shape of layer.shapes) {
+        if (!(own && isEditablePolyKind(shape.kind))) {
+          out.push(renderShape(shape, zOrder, HOST_SHAPE_Z_BIAS));
+        }
+        zOrder++;
+      }
+    }
+    return out;
   }
 
   /**
-   * Selection entities for the host's OWN drawn shapes (`from ===
-   * className`) — one `<om-host-shape>` per shape, contributing a pickable
-   * hit plane + handles over the visual already drawn by
-   * `renderHostShapes`. Inherited ancestor shapes stay non-interactive.
-   * `index` is the shape's position in the own layer — the `shape:` key.
+   * The host's OWN drawn shapes (`from === className`) as interactive
+   * entities: a line / polygon is its own editable `<om-line>` /
+   * `<om-polygon>` (visual + hit tube + vertex handles); every other kind
+   * gets an `<om-host-shape>` hit plane over the paint. Inherited ancestor
+   * shapes stay non-interactive. `index` is the `shape:` key index.
    */
   private renderHostShapeEntities(layout: DiagramLayout): TemplateResult[] {
     if (this.readonly) {
@@ -642,14 +664,34 @@ export class OmGraphicalLayout extends LitElement {
     if (!own) {
       return [];
     }
-    return own.shapes.map(
-      (shape, index) =>
-        html`<om-host-shape
+    return own.shapes.map((shape, index) => {
+      const selected = this.selectedKeys.has(formatShapeKey(shape.kind, index));
+      if (shape.kind === "line") {
+        return html`<om-line
+          editable
           .shape=${shape}
-          .index=${index}
-          ?selected=${this.selectedKeys.has(formatShapeKey(shape.kind, index))}
-        ></om-host-shape>`,
-    );
+          .entityIndex=${index}
+          .zOrder=${index}
+          .zBias=${HOST_SHAPE_Z_BIAS}
+          ?selected=${selected}
+        ></om-line>`;
+      }
+      if (shape.kind === "polygon") {
+        return html`<om-polygon
+          editable
+          .shape=${shape}
+          .entityIndex=${index}
+          .zOrder=${index}
+          .zBias=${HOST_SHAPE_Z_BIAS}
+          ?selected=${selected}
+        ></om-polygon>`;
+      }
+      return html`<om-host-shape
+        .shape=${shape}
+        .index=${index}
+        ?selected=${selected}
+      ></om-host-shape>`;
+    });
   }
 
   /**

@@ -123,6 +123,9 @@ export abstract class OmShapePrimitive extends LitElement {
       if (b) {
         node.setDiagramBounds(b.extent, b.origin, b.rotation ?? 0, this.zBias);
         node.setPolyPoints(b.points ?? null);
+        // A poly is edited per-vertex — no bounding-box resize/rotate.
+        const poly = b.points !== undefined;
+        node.setSelectionAffordances({ resize: !poly, rotate: !poly });
       }
       // Draw the visual under the entity's (unscaled) transform.
       this.buildMeshes(node.transform, zForOrder(this.zOrder));

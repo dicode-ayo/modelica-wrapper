@@ -132,11 +132,13 @@ function visibleVertexHandles(el: OmGraphicalLayout): number {
 }
 
 describe("<om-host-shape> selection entities", () => {
-  it("emits one entity per OWN shape, never for inherited layers", async () => {
+  it("emits an entity per OWN shape (host-shape for extents, editable primitive for polys)", async () => {
     const el = await mount(layout());
-    const entities = el.shadowRoot?.querySelectorAll("om-host-shape") ?? [];
-    // 2 own shapes (rectangle + line); the inherited `Base` rectangle gets none.
-    expect(entities.length).toBe(2);
+    const root = el.shadowRoot;
+    // The rectangle is an <om-host-shape>; the line is its own editable
+    // <om-line>. The inherited `Base` rectangle gets neither.
+    expect(root?.querySelectorAll("om-host-shape").length).toBe(1);
+    expect(root?.querySelectorAll("om-line[editable]").length).toBe(1);
   });
 
   it("names each wrapper om-shape:<kind>:<index> so picks resolve to a shape key", async () => {
