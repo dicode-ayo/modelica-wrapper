@@ -8,7 +8,7 @@ import type {
 } from "@dicode/omc-client";
 
 import { parentNodeContext } from "./parent-node-context.js";
-import { OmShapeNode } from "./shape-node.js";
+import { OmShapeNode, type SelectionAffordances } from "./shape-node.js";
 import { renderLayers } from "../primitives/render-shape.js";
 import {
   viewStateContext,
@@ -120,6 +120,24 @@ export abstract class OmShapeElement extends LitElement {
   }
 
   /**
+   * The placement positioning the entity's hit plane / overlay. Defaults
+   * to the `placement` property; subclasses that derive it from other
+   * data (e.g. a host shape's own geometry) override this.
+   */
+  protected resolvePlacement(): Placement {
+    return this.placement;
+  }
+
+  /**
+   * Which bounding-box handles this entity offers when selected. Defaults
+   * to both; subclasses override (e.g. a poly host shape opts out of
+   * resize/rotate, editing per-vertex instead).
+   */
+  protected selectionAffordances(): SelectionAffordances {
+    return { resize: true, rotate: true };
+  }
+
+  /**
    * Z-axis offset (in parent local units) used to layer entities. The
    * default `0` puts components on the diagram plane; subclasses
    * override to lift themselves slightly toward the camera (which sits
@@ -137,10 +155,11 @@ export abstract class OmShapeElement extends LitElement {
     this.ensureShapeNode();
     if (this.shapeNode) {
       this.shapeNode.setPlacement(
-        this.placement,
+        this.resolvePlacement(),
         this.coordinateSystem,
         this.zOffset(),
       );
+      this.shapeNode.setSelectionAffordances(this.selectionAffordances());
       this.shapeNode.setSelected(this.selected);
     }
   }
