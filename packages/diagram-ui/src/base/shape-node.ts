@@ -30,6 +30,10 @@ const HIGHLIGHT_COLOR = new Color3(0.38, 0.6, 0.98);
  *  tube — matches the connection edge's `WAYPOINT_RADIUS`. */
 const POLY_HIT_RADIUS = 1.5;
 
+/** Opacity the hit tube reveals at while the poly is hovered — matches the
+ *  connection edge's hover band. */
+const HIT_HOVER_OPACITY = 0.3;
+
 /**
  * Which bounding-box selection handles an entity offers. Poly shapes
  * (line / polygon) opt out of both — their geometry is edited per-vertex,
@@ -76,6 +80,7 @@ export class OmShapeNode {
   private vertices: Point[] | null = null;
   private vertexHandles: VertexHandles | null = null;
   private hitTube: Mesh | null = null;
+  private hovered = false;
   private readonly scene: Scene;
 
   constructor(scene: Scene, parent: TransformNode, name = "om-shape") {
@@ -282,6 +287,22 @@ export class OmShapeNode {
   }
 
   /**
+   * Hover state for a poly entity: reveals the follow-the-line hit tube as a
+   * faint band and shows the vertex handles — the same affordance a
+   * connection edge gives on hover.
+   */
+  setHovered(hovered: boolean): void {
+    if (this.hovered === hovered) {
+      return;
+    }
+    this.hovered = hovered;
+    if (this.hitTube) {
+      this.hitTube.visibility = hovered ? HIT_HOVER_OPACITY : 0;
+    }
+    this.syncSelectionOverlay();
+  }
+
+  /**
    * Configures which bounding-box handles this entity offers. Applied
    * live, so toggling affordances on an already-selected entity hides the
    * now-disallowed handles. A poly shape passes `{resize:false,
@@ -329,7 +350,8 @@ export class OmShapeNode {
     }
     this.rotateHandle?.setVisible(showRotate);
 
-    const showVertices = this.selected && this.vertices !== null;
+    const showVertices =
+      (this.selected || this.hovered) && this.vertices !== null;
     if (showVertices && !this.vertexHandles) {
       this.vertexHandles = new VertexHandles(
         this.scene,

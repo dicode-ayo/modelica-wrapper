@@ -70,4 +70,29 @@ describe("OmShapeNode selection affordances", () => {
     expect(visibleHandles(scene)).toEqual({ resize: 0, rotate: 0 });
     dispose();
   });
+
+  it("reveals the hit tube and vertex dots on hover, like a connection edge", () => {
+    const { node, scene, dispose } = makeNode();
+    node.setPolyPoints([
+      [-5, 0],
+      [5, 0],
+    ]);
+    const dots = () =>
+      scene.meshes.filter((m) => m.isVisible && m.name === "om-vertex-handle")
+        .length;
+    const tube = scene.meshes.find((m) => m.name.startsWith("hit.om-shape"));
+
+    // At rest: tube invisible (still pickable), no dots.
+    expect(tube?.visibility).toBe(0);
+    expect(dots()).toBe(0);
+
+    node.setHovered(true);
+    expect(tube?.visibility).toBeGreaterThan(0);
+    expect(dots()).toBe(2);
+
+    node.setHovered(false);
+    expect(tube?.visibility).toBe(0);
+    expect(dots()).toBe(0);
+    dispose();
+  });
 });

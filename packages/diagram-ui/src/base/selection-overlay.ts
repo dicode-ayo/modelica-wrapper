@@ -21,6 +21,8 @@ import type { EntityKind } from "../interaction/node-keys.js";
 
 /** Accent blue shared by the selection outline stroke and rotate handle. */
 const SELECTION_BLUE = new Color3(0.38, 0.6, 0.98);
+/** Near-black of a poly vertex dot — matches the connection junction disc. */
+const VERTEX_DOT_COLOR = new Color3(0.1, 0.1, 0.18);
 
 /**
  * Per-scene HighlightLayer with refcounted lifecycle.
@@ -454,7 +456,7 @@ export class VertexHandles {
   ) {
     this.material = new StandardMaterial("om-vertex-handle-mat", scene);
     this.material.disableLighting = true;
-    this.material.emissiveColor = SELECTION_BLUE;
+    this.material.emissiveColor = VERTEX_DOT_COLOR;
 
     points.forEach(([x, y], i) => {
       // A disc (radius 0.5 → unit diameter, scaled to pixels by `rescale`)
