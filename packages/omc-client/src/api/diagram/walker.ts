@@ -148,10 +148,11 @@ export function* walkLayerEntries(
   for (const e of mi.elements ?? []) {
     if (e.$kind !== "extends" || typeof e.baseClass !== "object") continue;
     const rawMap = e.annotation?.[mapKey];
-    const primitivesVisible =
-      (rawMap as Record<string, unknown> | null | undefined)?.[
-        "primitivesVisible"
-      ] !== false;
+    const primitivesVisible = !(
+      typeof rawMap === "object" &&
+      rawMap !== null &&
+      (rawMap as { primitivesVisible?: unknown }).primitivesVisible === false
+    );
     for (const entry of walkLayerEntries(e.baseClass, kind)) {
       yield {
         klass: entry.klass,

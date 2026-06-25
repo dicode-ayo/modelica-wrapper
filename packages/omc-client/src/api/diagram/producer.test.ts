@@ -1643,6 +1643,89 @@ describe("produceDiagramLayout: primitivesVisible=false on extends annotation", 
     expect(host?.shapes).toHaveLength(1);
   });
 
+  it("propagates suppression to deeper ancestors (A→B→C, B hides A)", () => {
+    // C extends B extends A. B's extends-A annotation has primitivesVisible=false.
+    // Both A and B's layers should have empty shapes when C is produced.
+    const classA: unknown = {
+      name: "Synth.A",
+      restriction: "block",
+      annotation: {
+        Icon: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [
+            rectShape([
+              [-100, -100],
+              [100, 100],
+            ]),
+          ],
+        },
+      },
+    };
+    const classB: unknown = {
+      name: "Synth.B",
+      restriction: "block",
+      annotation: {
+        Icon: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [
+            rectShape([
+              [-80, -80],
+              [80, 80],
+            ]),
+          ],
+        },
+      },
+      elements: [
+        {
+          $kind: "extends",
+          baseClass: classA,
+          annotation: { IconMap: { primitivesVisible: false } },
+        },
+      ],
+    };
+    const literal: unknown = {
+      name: "Synth.C",
+      restriction: "model",
+      annotation: {
+        Icon: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [
+            rectShape([
+              [-50, -50],
+              [50, 50],
+            ]),
+          ],
+        },
+      },
+      elements: [{ $kind: "extends", baseClass: classB }],
+    };
+    const layout = produceDiagramLayout(
+      ModelInstanceSchema.parse(literal),
+      "icon",
+    );
+    const layerA = layout.iconLayers.find((l) => l.from === "Synth.A");
+    const layerB = layout.iconLayers.find((l) => l.from === "Synth.B");
+    const layerC = layout.iconLayers.find((l) => l.from === "Synth.C");
+    expect(layerA?.shapes).toHaveLength(0);
+    expect(layerB?.shapes).toHaveLength(1);
+    expect(layerC?.shapes).toHaveLength(1);
+  });
+
   it("shows base-class shapes when primitivesVisible is absent (default true)", () => {
     const baseClass: unknown = {
       name: "Synth.VisibleBase",

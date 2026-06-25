@@ -299,6 +299,9 @@ function collectLayers(
       try {
         shapes.push(decodeShape(g));
       } catch (err) {
+        // Re-throw with context so the bad shape's path is identifiable
+        // in fixture testing. Decoder errors already include the offending
+        // field's index.
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(
           `collectLayers(${kind}): failed decoding shape on class '${klass.name}': ${msg}`,
