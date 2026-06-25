@@ -1012,6 +1012,30 @@ describe("poly vertex ops", () => {
     expect(applyShapeVertexDrag(layout, "shape:line:0", 9, 1, 1)).toBe(layout);
   });
 
+  it("un-rotates the pointer when dragging a vertex on a rotated poly", () => {
+    const rotated: Shape = {
+      kind: "line",
+      points: [
+        [0, 0],
+        [10, 0],
+      ],
+      rotation: 90,
+    };
+    // Vertex 1 renders at world (0,10) under the 90° rotation; dragging it to
+    // (0,20) must map back to local (20,0), not the un-rotated (0,20).
+    const out = applyShapeVertexDrag(
+      withShapes([rotated]),
+      "shape:line:0",
+      1,
+      0,
+      20,
+    );
+    const moved = (ownShapes(out)[0] as { points: Point[] }).points[1];
+    if (!moved) throw new Error("expected a moved vertex");
+    expect(moved[0]).toBeCloseTo(20);
+    expect(moved[1]).toBeCloseTo(0);
+  });
+
   it("inserts a vertex on the nearest segment, splitting it", () => {
     // LINE_1 [[0,0],[10,0]]; a point near (5,1) projects onto the only segment.
     const out = applyShapeVertexInsert(withShapes([LINE_1]), "shape:line:0", {

@@ -749,6 +749,30 @@ export function applyRotation(
 // respect `POLY_MIN_VERTICES` so a line stays a segment and a polygon a
 // triangle — the same floor the draw tool uses.
 
+/**
+ * Maps a diagram point into a poly shape's local frame — the frame its
+ * `points` live in. Translate by `-origin`, then un-rotate by `-rotation`,
+ * inverting the transform the renderer / hit frame applies (`origin` +
+ * `R(rotation)·point`). Without the un-rotation, editing a rotated poly's
+ * vertices would land them off-cursor.
+ */
+function toShapeLocal(
+  s: Extract<Shape, { kind: "line" | "polygon" }>,
+  x: number,
+  y: number,
+): Point {
+  const dx = x - (s.origin?.[0] ?? 0);
+  const dy = y - (s.origin?.[1] ?? 0);
+  const rot = s.rotation ?? 0;
+  if (rot === 0) {
+    return [dx, dy];
+  }
+  const rad = (rot * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return [dx * cos + dy * sin, -dx * sin + dy * cos];
+}
+
 /** Resolves `key` to a single own-layer poly shape and replaces it via `fn`
  *  (which returns `null` to leave it unchanged). No-ops for any non-poly or
  *  unresolvable key. */
@@ -779,8 +803,7 @@ export function applyShapeVertexDrag(
     if (cur === undefined) {
       return null;
     }
-    const nx = x - (s.origin?.[0] ?? 0);
-    const ny = y - (s.origin?.[1] ?? 0);
+    const [nx, ny] = toShapeLocal(s, x, y);
     if (cur[0] === nx && cur[1] === ny) {
       return null;
     }
@@ -803,10 +826,8 @@ export function applyShapeVertexInsert(
     if (pts.length < 2) {
       return null;
     }
-    const local = {
-      x: point.x - (s.origin?.[0] ?? 0),
-      y: point.y - (s.origin?.[1] ?? 0),
-    };
+    const [lx, ly] = toShapeLocal(s, point.x, point.y);
+    const local = { x: lx, y: ly };
     const segments = s.kind === "polygon" ? pts.length : pts.length - 1;
     let bestAt = 1;
     let bestProj: Point | null = null;
