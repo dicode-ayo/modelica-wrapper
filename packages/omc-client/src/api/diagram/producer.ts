@@ -50,6 +50,7 @@ import {
   ownSubComponents,
   walkConnectors,
   walkExtendsChain,
+  walkLayerEntries,
 } from "./walker.js";
 
 // ---------- condition gating ----------
@@ -289,8 +290,8 @@ function collectLayers(
   kind: "icon" | "diagram",
 ): IconLayer[] {
   const out: IconLayer[] = [];
-  for (const klass of walkExtendsChain(mi)) {
-    const graphics = graphicsForKind(klass, kind);
+  for (const { klass, primitivesVisible } of walkLayerEntries(mi, kind)) {
+    const graphics = primitivesVisible ? graphicsForKind(klass, kind) : [];
     const cs = coordinateSystemForKind(klass, kind);
     if (graphics.length === 0 && !cs) continue;
     const shapes: Shape[] = [];
@@ -298,9 +299,6 @@ function collectLayers(
       try {
         shapes.push(decodeShape(g));
       } catch (err) {
-        // Re-throw with context so the bad shape's path is identifiable
-        // in fixture testing. Decoder errors already include the offending
-        // field's index.
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(
           `collectLayers(${kind}): failed decoding shape on class '${klass.name}': ${msg}`,
