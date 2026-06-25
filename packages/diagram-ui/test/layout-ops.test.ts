@@ -811,14 +811,91 @@ describe("host shape ops", () => {
     expect(applyResize(layout, "shape:line:0", "tr", 99, 99)).toBe(layout);
   });
 
-  it("rotates a shape and is idempotent at the same angle", () => {
-    const once = applyRotation(
-      withShapes([RECT_0]),
-      ["shape:rectangle:0"],
-      -90,
+  it("resizes by the visual corner even when the extent is stored top-first", () => {
+    // Authored top-left → bottom-right: extent[0] holds the TOP (max y),
+    // extent[1] the BOTTOM — the order OMEdit annotations commonly use.
+    const topFirst: Shape = {
+      kind: "rectangle",
+      extent: [
+        [-10, 10],
+        [10, -10],
+      ],
+    };
+    // Drag the visual top-right corner to (20, 20): the right edge → x=20 and
+    // the top edge → y=20, holding left/bottom. A fixed-index map would move
+    // the bottom edge instead and collapse the shape.
+    const out = applyResize(
+      withShapes([topFirst]),
+      "shape:rectangle:0",
+      "tr",
+      20,
+      20,
     );
-    expect(ownShapes(once)[0]).toMatchObject({ rotation: 270 });
-    expect(applyRotation(once, ["shape:rectangle:0"], 270)).toBe(once);
+    expect(ownShapes(out)[0]).toMatchObject({
+      extent: [
+        [-10, 20],
+        [20, -10],
+      ],
+    });
+  });
+
+  it("rotates about the visual centre by rebasing origin (in place, not the diagram origin)", () => {
+    // RECT_0 extent [[0,0],[10,10]] with no origin → visual centre (5,5).
+    const out = applyRotation(withShapes([RECT_0]), ["shape:rectangle:0"], 90);
+    expect(ownShapes(out)[0]).toMatchObject({
+      origin: [5, 5],
+      extent: [
+        [-5, -5],
+        [5, 5],
+      ],
+      rotation: 90,
+    });
+  });
+
+  it("is idempotent at the same angle once the origin is already centred", () => {
+    const once = applyRotation(withShapes([RECT_0]), ["shape:rectangle:0"], 90);
+    expect(applyRotation(once, ["shape:rectangle:0"], 90)).toBe(once);
+  });
+
+  it("moves a rotated shape via origin so it translates along diagram axes", () => {
+    const rotated: Shape = {
+      kind: "rectangle",
+      extent: [
+        [-5, -5],
+        [5, 5],
+      ],
+      origin: [5, 5],
+      rotation: 90,
+    };
+    const out = applyDeltaMove(
+      withShapes([rotated]),
+      ["shape:rectangle:0"],
+      10,
+      -3,
+    );
+    // Origin shifts by the raw delta; extent (inside the rotation) is left be.
+    expect(ownShapes(out)[0]).toMatchObject({
+      origin: [15, 2],
+      extent: [
+        [-5, -5],
+        [5, 5],
+      ],
+      rotation: 90,
+    });
+  });
+
+  it("shapeCentre is the visual centre, including origin", () => {
+    const centred: Shape = {
+      kind: "rectangle",
+      extent: [
+        [-5, -5],
+        [5, 5],
+      ],
+      origin: [5, 5],
+    };
+    expect(shapeCentre(withShapes([centred]), "shape:rectangle:0")).toEqual([
+      5, 5,
+    ]);
   });
 
   it("deletes a shape by position and re-indexes its siblings", () => {
