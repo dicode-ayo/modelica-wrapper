@@ -2,6 +2,7 @@ import { customElement, property } from "lit/decorators.js";
 import type { Extent, Placement, Shape } from "@dicode/omc-client";
 
 import { OmShapeElement } from "../base/shape-element.js";
+import type { SelectionAffordances } from "../base/shape-node.js";
 
 /**
  * World-z offset applied to the host class's own shapes so they sit behind
@@ -76,6 +77,13 @@ export class OmHostShape extends OmShapeElement {
       origin: this.shape.origin,
       rotation: this.shape.rotation,
     };
+  }
+
+  protected override selectionAffordances(): SelectionAffordances {
+    // Line / polygon are edited per-vertex (#190), not by a bounding box —
+    // they show only the selection outline, no resize / rotate handles.
+    const poly = this.shape?.kind === "line" || this.shape?.kind === "polygon";
+    return { resize: !poly, rotate: !poly };
   }
 }
 

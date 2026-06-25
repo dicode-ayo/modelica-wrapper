@@ -19,6 +19,16 @@ import type { CoordinateSystem, Placement } from "@dicode/omc-client";
 const HIGHLIGHT_COLOR = new Color3(0.38, 0.6, 0.98);
 
 /**
+ * Which bounding-box selection handles an entity offers. Poly shapes
+ * (line / polygon) opt out of both — their geometry is edited per-vertex,
+ * not by a bounding box, so they show only the selection outline.
+ */
+export interface SelectionAffordances {
+  resize: boolean;
+  rotate: boolean;
+}
+
+/**
  * Babylon-side wrapper for one entity element. Owns:
  *
  *  - `transform` — the entity TransformNode (anchored at the placement
@@ -28,7 +38,8 @@ const HIGHLIGHT_COLOR = new Color3(0.38, 0.6, 0.98);
  *    the picking + highlight target, so picks land on the full
  *    component box and the selection outline traces the extent
  *    regardless of which individual shape was clicked.
- *  - The selection outline + resize handles.
+ *  - The selection outline + resize / rotate handles (the latter gated
+ *    by `setSelectionAffordances`, so poly shapes show outline only).
  *
  * Icon graphics themselves are NOT owned here — the parent
  * `OmShapeElement` renders one `<om-rectangle>` / `<om-text>` / …
@@ -45,6 +56,8 @@ export class OmShapeNode {
   private currentIconCx = 0;
   private currentIconCy = 0;
   private selected = false;
+  private affordResize = true;
+  private affordRotate = true;
   private resizeHandles: ResizeHandles | null = null;
   private rotateHandle: RotateHandle | null = null;
   private outline: SelectionOutline | null = null;
@@ -159,33 +172,53 @@ export class OmShapeNode {
       return;
     }
     this.selected = selected;
+    this.syncSelectionOverlay();
+  }
 
-    if (selected) {
-      if (!this.outline) {
-        this.outline = new SelectionOutline(
-          this.scene,
-          this.transform,
-          this.currentIconWidth,
-          this.currentIconHeight,
-          this.currentIconCx,
-          this.currentIconCy,
-          HIGHLIGHT_COLOR,
-        );
-      }
-      this.outline.setVisible(true);
-      if (!this.resizeHandles) {
-        this.resizeHandles = this.createHandles();
-      }
-      this.resizeHandles.setVisible(true);
-      if (!this.rotateHandle) {
-        this.rotateHandle = this.createRotateHandle();
-      }
-      this.rotateHandle.setVisible(true);
-    } else {
-      this.outline?.setVisible(false);
-      this.resizeHandles?.setVisible(false);
-      this.rotateHandle?.setVisible(false);
+  /**
+   * Configures which bounding-box handles this entity offers. Applied
+   * live, so toggling affordances on an already-selected entity hides the
+   * now-disallowed handles. A poly shape passes `{resize:false,
+   * rotate:false}` to show only the outline.
+   */
+  setSelectionAffordances(opts: SelectionAffordances): void {
+    if (
+      this.affordResize === opts.resize &&
+      this.affordRotate === opts.rotate
+    ) {
+      return;
     }
+    this.affordResize = opts.resize;
+    this.affordRotate = opts.rotate;
+    this.syncSelectionOverlay();
+  }
+
+  private syncSelectionOverlay(): void {
+    const showResize = this.selected && this.affordResize;
+    const showRotate = this.selected && this.affordRotate;
+
+    if (this.selected && !this.outline) {
+      this.outline = new SelectionOutline(
+        this.scene,
+        this.transform,
+        this.currentIconWidth,
+        this.currentIconHeight,
+        this.currentIconCx,
+        this.currentIconCy,
+        HIGHLIGHT_COLOR,
+      );
+    }
+    this.outline?.setVisible(this.selected);
+
+    if (showResize && !this.resizeHandles) {
+      this.resizeHandles = this.createHandles();
+    }
+    this.resizeHandles?.setVisible(showResize);
+
+    if (showRotate && !this.rotateHandle) {
+      this.rotateHandle = this.createRotateHandle();
+    }
+    this.rotateHandle?.setVisible(showRotate);
   }
 
   isSelected(): boolean {

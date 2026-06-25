@@ -97,13 +97,31 @@ async function mount(l: DiagramLayout): Promise<OmGraphicalLayout> {
   return el;
 }
 
+interface SceneHandle extends HTMLElement {
+  sceneContextValue?: {
+    scene: {
+      transformNodes: TransformNode[];
+      meshes: { name: string; isVisible: boolean }[];
+    };
+  };
+}
+
+function sceneOf(el: OmGraphicalLayout) {
+  const sceneEl = el.shadowRoot?.querySelector(
+    "om-scene",
+  ) as SceneHandle | null;
+  return sceneEl?.sceneContextValue?.scene;
+}
+
 function transformNodes(el: OmGraphicalLayout): TransformNode[] {
-  const sceneEl = el.shadowRoot?.querySelector("om-scene") as
-    | (HTMLElement & {
-        sceneContextValue?: { scene: { transformNodes: TransformNode[] } };
-      })
-    | null;
-  return sceneEl?.sceneContextValue?.scene.transformNodes ?? [];
+  return sceneOf(el)?.transformNodes ?? [];
+}
+
+/** Visible resize-corner handle meshes currently in the scene. */
+function visibleResizeHandles(el: OmGraphicalLayout): number {
+  return (sceneOf(el)?.meshes ?? []).filter(
+    (m) => m.isVisible && m.name.startsWith("om-handle:"),
+  ).length;
 }
 
 describe("<om-host-shape> selection entities", () => {
@@ -144,5 +162,17 @@ describe("<om-host-shape> selection entities", () => {
     expect(componentZ).toBeCloseTo(0);
     // Camera at -Z: larger z = farther, so the component wins a coincident pick.
     expect(shapeZ ?? 0).toBeGreaterThan(componentZ ?? 0);
+  });
+
+  it("shows resize handles for a selected extent shape but not a poly", async () => {
+    const el = await mount(layout());
+
+    el.setSelection(["shape:rectangle:0"]);
+    await el.updateComplete;
+    expect(visibleResizeHandles(el)).toBe(4);
+
+    el.setSelection(["shape:line:1"]);
+    await el.updateComplete;
+    expect(visibleResizeHandles(el)).toBe(0);
   });
 });
