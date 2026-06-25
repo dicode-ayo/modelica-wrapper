@@ -209,6 +209,34 @@ export class SelectionOutline {
 }
 
 /**
+ * Scales `meshes` to a constant screen-pixel size given the camera's current
+ * orthographic extents, dividing out the parent's world scale so the size is
+ * the same whatever frame the handles hang in. Shared by every handle class.
+ */
+function rescaleToPixels(
+  scene: Scene,
+  parent: TransformNode,
+  meshes: ReadonlyArray<Mesh>,
+  pixelSize: number,
+  camera: ArcRotateCamera | null,
+): void {
+  const cam = camera ?? findOrthoCamera(scene);
+  if (!cam) {
+    return;
+  }
+  const wpp = worldPerPixel(
+    cam.orthoLeft ?? -1,
+    cam.orthoRight ?? 1,
+    scene.getEngine().getRenderWidth() || 1,
+  );
+  const size = pixelSize * wpp;
+  const s = worldScaleXY(parent);
+  for (const m of meshes) {
+    m.scaling.set(size / s.x, size / s.y, 1);
+  }
+}
+
+/**
  * Four corner resize handles for a single shape node. Sized in screen
  * pixels (kept constant by `rescale()`, which the host calls on every
  * view change — zoom or pan).
@@ -285,24 +313,14 @@ export class ResizeHandles {
    * `worldPerPixel` — zoom or canvas resize. No-op while invisible.
    */
   rescale(): void {
-    if (!this.currentVisible) {
-      return;
-    }
-    const camera = this.camera ?? findOrthoCamera(this.scene);
-    if (!camera) {
-      return;
-    }
-    const engine = this.scene.getEngine();
-    const canvasW = engine.getRenderWidth() || 1;
-    const wpp = worldPerPixel(
-      camera.orthoLeft ?? -1,
-      camera.orthoRight ?? 1,
-      canvasW,
-    );
-    const size = this.handlePixelSize * wpp;
-    const parentScale = worldScaleXY(this.parent);
-    for (const h of this.handles) {
-      h.scaling.set(size / parentScale.x, size / parentScale.y, 1);
+    if (this.currentVisible) {
+      rescaleToPixels(
+        this.scene,
+        this.parent,
+        this.handles,
+        this.handlePixelSize,
+        this.camera,
+      );
     }
   }
 }
@@ -401,23 +419,15 @@ export class RotateHandle {
    * while invisible.
    */
   rescale(): void {
-    if (!this.currentVisible) {
-      return;
+    if (this.currentVisible) {
+      rescaleToPixels(
+        this.scene,
+        this.parent,
+        [this.handle],
+        this.handlePixelSize,
+        this.camera,
+      );
     }
-    const camera = this.camera ?? findOrthoCamera(this.scene);
-    if (!camera) {
-      return;
-    }
-    const engine = this.scene.getEngine();
-    const canvasW = engine.getRenderWidth() || 1;
-    const wpp = worldPerPixel(
-      camera.orthoLeft ?? -1,
-      camera.orthoRight ?? 1,
-      canvasW,
-    );
-    const size = this.handlePixelSize * wpp;
-    const parentScale = worldScaleXY(this.parent);
-    this.handle.scaling.set(size / parentScale.x, size / parentScale.y, 1);
   }
 }
 
@@ -425,8 +435,7 @@ export class RotateHandle {
  * Per-vertex drag handles for a poly (line / polygon) shape. One small
  * pickable square sits on each vertex; picking one starts a vertex-drag
  * gesture. Each carries `metadata.kind = "vertex-handle"` with its vertex
- * index as `nodeId`, and the picker walks up to the owning `om-shape`
- * node for the shape key. Positions are the shape's own `points` — valid
+ * index as `nodeId`. Positions are the shape's own `points` — valid only
  * because a poly host shape uses an identity diagram frame (the parent
  * transform sits at the shape origin, unscaled), so a point coordinate is
  * already the handle's local position.
@@ -491,24 +500,14 @@ export class VertexHandles {
   }
 
   rescale(): void {
-    if (!this.currentVisible) {
-      return;
-    }
-    const camera = this.camera ?? findOrthoCamera(this.scene);
-    if (!camera) {
-      return;
-    }
-    const engine = this.scene.getEngine();
-    const canvasW = engine.getRenderWidth() || 1;
-    const wpp = worldPerPixel(
-      camera.orthoLeft ?? -1,
-      camera.orthoRight ?? 1,
-      canvasW,
-    );
-    const size = this.handlePixelSize * wpp;
-    const parentScale = worldScaleXY(this.parent);
-    for (const h of this.handles) {
-      h.scaling.set(size / parentScale.x, size / parentScale.y, 1);
+    if (this.currentVisible) {
+      rescaleToPixels(
+        this.scene,
+        this.parent,
+        this.handles,
+        this.handlePixelSize,
+        this.camera,
+      );
     }
   }
 }

@@ -115,7 +115,7 @@ export class OmShapeNode {
   ): AppliedTransform {
     const t = applyPlacement(placement, iconCoordSystem, zOffset);
     this.transform.rotation.set(0, 0, t.rotationZ);
-    this.applyGeometry(
+    this.placeTransform(
       t.position.x,
       t.position.y,
       t.position.z,
@@ -148,7 +148,7 @@ export class OmShapeNode {
     const cx = (extent[0][0] + extent[1][0]) / 2;
     const cy = (extent[0][1] + extent[1][1]) / 2;
     this.transform.rotation.set(0, 0, (rotation * Math.PI) / 180);
-    this.applyGeometry(
+    this.placeTransform(
       origin?.[0] ?? 0,
       origin?.[1] ?? 0,
       zOffset,
@@ -161,7 +161,7 @@ export class OmShapeNode {
     );
   }
 
-  private applyGeometry(
+  private placeTransform(
     posX: number,
     posY: number,
     posZ: number,
