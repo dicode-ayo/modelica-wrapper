@@ -40,6 +40,7 @@ import {
   applyResize,
   applyRotation,
   applyShapeVertexDrag,
+  applyShapeVertexInsert,
   applySnapToExtents,
   applyWaypointDelete,
   applyWaypointDrag,
@@ -75,6 +76,7 @@ import {
   isConnectorKey,
   isEdgeKey,
   isJunctionKey,
+  isShapeKey,
   parseKey,
 } from "../interaction/node-keys.js";
 import type { LibraryEvents } from "../library-browser/library-browser.component.js";
@@ -844,10 +846,10 @@ export class OmGraphicalLayout extends LitElement {
       return;
     }
     const node = this.dblClickPicker(e.clientX, e.clientY);
-    // Double-clicking a connection edits its route: a hit on the edge
-    // line inserts a waypoint at the click; a hit on a junction disc
-    // deletes that waypoint.
-    if (node && this.handleWaypointDblClick(node, e)) {
+    // Double-clicking a polyline edits its vertices: a connection edge
+    // inserts a waypoint (a junction disc deletes one); a poly shape's
+    // line inserts a vertex at the click.
+    if (node && this.handlePolylineDblClick(node, e)) {
       return;
     }
     if (!this.libraryDataSource) {
@@ -868,18 +870,36 @@ export class OmGraphicalLayout extends LitElement {
   };
 
   /**
-   * Resolve a double-click on a connection's edge / junction into a
-   * waypoint insert / delete and commit it. Returns `true` when the
-   * gesture was consumed (so the library-browser path is skipped),
-   * `false` when the picked node isn't a connection.
+   * Resolve a double-click on a polyline into a vertex edit and commit it:
+   * a connection edge inserts a waypoint, a junction disc deletes one, and
+   * a poly host shape's line inserts a vertex at the click. Returns `true`
+   * when consumed (so the library-browser path is skipped), `false` when
+   * the picked node isn't an editable polyline.
    */
-  private handleWaypointDblClick(node: Node, e: MouseEvent): boolean {
+  private handlePolylineDblClick(node: Node, e: MouseEvent): boolean {
     if (!this.layout) {
       return false;
     }
     const entity = entityKeyForNode(node);
     if (!entity) {
       return false;
+    }
+    if (
+      isShapeKey(entity) &&
+      (entity.shapeKind === "line" || entity.shapeKind === "polygon")
+    ) {
+      const point = this.sceneEl?.clientToDiagram(e.clientX, e.clientY);
+      if (!point) {
+        return false;
+      }
+      this.commitLayout(
+        applyShapeVertexInsert(
+          this.layout,
+          formatShapeKey(entity.shapeKind, entity.index),
+          point,
+        ),
+      );
+      return true;
     }
     if (isEdgeKey(entity)) {
       // Edge nodeId is the connection index.
