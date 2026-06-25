@@ -23,6 +23,10 @@ import type { EntityKind } from "../interaction/node-keys.js";
 const SELECTION_BLUE = new Color3(0.38, 0.6, 0.98);
 /** Near-black of a poly vertex dot — matches the connection junction disc. */
 const VERTEX_DOT_COLOR = new Color3(0.1, 0.1, 0.18);
+/** Vertex-dot radius in diagram units — matches the connection waypoint disc
+ *  (and the hit tube) so the dot is a real grab target that grows with zoom,
+ *  not a hard-to-hit screen-pixel speck the line-body drag wins over. */
+const VERTEX_DOT_RADIUS = 1.5;
 
 /**
  * Per-scene HighlightLayer with refcounted lifecycle.
@@ -449,22 +453,19 @@ export class VertexHandles {
 
   constructor(
     private readonly scene: Scene,
-    private readonly parent: TransformNode,
+    parent: TransformNode,
     points: ReadonlyArray<Point>,
-    private readonly handlePixelSize: number = 9,
-    private readonly camera: ArcRotateCamera | null = null,
   ) {
     this.material = new StandardMaterial("om-vertex-handle-mat", scene);
     this.material.disableLighting = true;
     this.material.emissiveColor = VERTEX_DOT_COLOR;
 
     points.forEach(([x, y], i) => {
-      // A disc (radius 0.5 → unit diameter, scaled to pixels by `rescale`)
-      // so vertices read as the same dots a connection draws at its
-      // waypoints, not bounding-box-style squares.
+      // Diagram-unit disc matching the connection junction — a grab target
+      // that scales with zoom (the entity's poly frame is unscaled).
       const handle = MeshBuilder.CreateDisc(
         "om-vertex-handle",
-        { radius: 0.5, tessellation: 16 },
+        { radius: VERTEX_DOT_RADIUS, tessellation: 16 },
         scene,
       );
       handle.material = this.material;
@@ -504,15 +505,6 @@ export class VertexHandles {
     this.material.dispose();
   }
 
-  rescale(): void {
-    if (this.currentVisible) {
-      rescaleToPixels(
-        this.scene,
-        this.parent,
-        this.handles,
-        this.handlePixelSize,
-        this.camera,
-      );
-    }
-  }
+  /** No-op: the dots are diagram-sized, so they track zoom on their own. */
+  rescale(): void {}
 }
