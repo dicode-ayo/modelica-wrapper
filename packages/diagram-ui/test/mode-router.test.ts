@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NullEngine, Node, Scene, TransformNode } from "@babylonjs/core";
+import { NullEngine, Mesh, Node, Scene, TransformNode } from "@babylonjs/core";
 
 import { ModeRouter } from "../src/interaction/mode.js";
 import { InteractionStateStore } from "../src/interaction/interaction-state.js";
@@ -96,6 +96,22 @@ describe("ModeRouter", () => {
     setPicked(new TransformNode("om-component:R1", scene));
     canvas.dispatchEvent(down());
     expect(store.value.mode).toBe("drag");
+    dispose();
+  });
+
+  it("routes a vertex-handle press to a drag, never a select", () => {
+    // A vertex dot is a drag handle, not a selectable entity: pressing it
+    // must start a vertex drag, not replace the shape's selection (which
+    // would hide the dots out from under the gesture).
+    const { canvas, store, calls, scene, setPicked, dispose } = setup();
+    const wrapper = new TransformNode("om-shape:line:0", scene);
+    const dot = new Mesh("om-vertex-handle", scene);
+    dot.parent = wrapper;
+    dot.metadata = { kind: "vertex-handle", nodeId: "1" };
+    setPicked(dot);
+    canvas.dispatchEvent(down());
+    expect(store.value.mode).toBe("drag");
+    expect(calls).toContain("drag");
     dispose();
   });
 

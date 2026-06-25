@@ -129,12 +129,16 @@ export class InteractionManager {
   private pickKey(clientX: number, clientY: number): string | null {
     const node = this.picker(clientX, clientY);
     let entity = entityKeyForNode(node);
-    // Selection handles (resize corners + rotate disc) belong to
-    // `DragMode`. They are not selectable entities, so picking one must
+    // Selection handles (resize corners, rotate disc, vertex dots) belong
+    // to `DragMode`. They are not selectable entities, so picking one must
     // not emit a `select` — otherwise the handle's own key replaces the
     // component in the selection and the shape deselects out from under
     // the gesture, taking its handles with it.
-    if (entity?.kind === "handle" || entity?.kind === "rotate-handle") {
+    if (
+      entity?.kind === "handle" ||
+      entity?.kind === "rotate-handle" ||
+      entity?.kind === "vertex-handle"
+    ) {
       return null;
     }
     // A `port` indicator is a child of its connector's TransformNode.

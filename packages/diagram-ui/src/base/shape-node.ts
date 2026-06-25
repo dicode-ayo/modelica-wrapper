@@ -278,8 +278,11 @@ export class OmShapeNode {
   private syncSelectionOverlay(): void {
     const showResize = this.selected && this.affordResize;
     const showRotate = this.selected && this.affordRotate;
+    // Poly shapes mark selection with their vertex dots; the bounding-box
+    // outline would just be noise around the polyline.
+    const showOutline = this.selected && this.vertices === null;
 
-    if (this.selected && !this.outline) {
+    if (showOutline && !this.outline) {
       this.outline = new SelectionOutline(
         this.scene,
         this.transform,
@@ -290,7 +293,7 @@ export class OmShapeNode {
         HIGHLIGHT_COLOR,
       );
     }
-    this.outline?.setVisible(this.selected);
+    this.outline?.setVisible(showOutline);
 
     if (showResize && !this.resizeHandles) {
       this.resizeHandles = this.createHandles();
