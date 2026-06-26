@@ -37,7 +37,7 @@ export interface ParameterRef {
   /** Property name (== model field name). */
   name: string;
   /** Modelica type kind; `"unsupported"` is shown read-only. */
-  kind: PrimitiveKind | "enum" | "unsupported";
+  kind: PrimitiveKind | "enum" | "color" | "unsupported";
   /** Qualified enum type name, for `kind === "enum"` (emits `<typeName>.<leaf>`). */
   enumTypeName?: string;
   /** Dialog tab / group — spec defaults ("General" / "Parameters"). */
@@ -183,7 +183,7 @@ export function findSubComponent(
  *  - `undefined` / `""` → empty string (caller treats as "clear")
  */
 export function valueToExpr(
-  kind: PrimitiveKind | "enum" | "unsupported",
+  kind: PrimitiveKind | "enum" | "color" | "unsupported",
   value: unknown,
   enumTypeName?: string,
 ): string {
@@ -200,6 +200,8 @@ export function valueToExpr(
     case "enum":
       if (!enumTypeName) return String(value);
       return `${enumTypeName}.${String(value)}`;
+    case "color":
+      return String(value);
   }
 }
 

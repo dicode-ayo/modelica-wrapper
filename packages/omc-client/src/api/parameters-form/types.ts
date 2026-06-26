@@ -33,6 +33,7 @@ export type ParameterFieldKind =
   | "integer"
   | "boolean"
   | "enum"
+  | "color"
   | "unsupported";
 
 /**
