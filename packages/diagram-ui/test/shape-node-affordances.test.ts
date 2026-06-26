@@ -71,6 +71,45 @@ describe("OmShapeNode selection affordances", () => {
     dispose();
   });
 
+  it("keeps the handles on the extent box when rotation shifts its centre", () => {
+    const { node, scene, dispose } = makeNode();
+    const handleCentroid = (): { x: number; y: number } => {
+      const hs = scene.meshes.filter((m) => m.name.startsWith("om-handle:"));
+      const n = hs.length || 1;
+      return {
+        x: hs.reduce((s, m) => s + m.position.x, 0) / n,
+        y: hs.reduce((s, m) => s + m.position.y, 0) / n,
+      };
+    };
+
+    // Off-centre extent → handles centred on (150, 240).
+    node.setDiagramBounds(
+      [
+        [50, 200],
+        [250, 280],
+      ],
+      undefined,
+      0,
+    );
+    node.setSelected(true);
+    expect(handleCentroid().x).toBeCloseTo(150);
+    expect(handleCentroid().y).toBeCloseTo(240);
+
+    // Rotation rebases the origin: same-size extent re-centres on (0, 0).
+    // The handles must follow, not stay at the old centre.
+    node.setDiagramBounds(
+      [
+        [-100, -40],
+        [100, 40],
+      ],
+      [150, 240],
+      90,
+    );
+    expect(handleCentroid().x).toBeCloseTo(0);
+    expect(handleCentroid().y).toBeCloseTo(0);
+    dispose();
+  });
+
   it("reveals the hit tube and vertex dots on hover, like a connection edge", () => {
     const { node, scene, dispose } = makeNode();
     node.setPolyPoints([
