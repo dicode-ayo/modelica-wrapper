@@ -441,12 +441,11 @@ export class RotateHandle {
  * Per-vertex drag handles for a poly (line / polygon) shape. One small
  * pickable disc sits on each vertex; picking one starts a vertex-drag
  * gesture. Each carries `metadata.kind = "vertex-handle"` and a
- * self-describing `nodeId` of `${ownerId}/${vertexIndex}` (e.g.
- * `line:1/2`), so a picked dot resolves to a full `vtx:` key without
- * re-deriving its owner. Positions are the shape's own `points` — valid
- * only because a poly host shape uses an identity diagram frame (the parent
- * transform sits at the shape origin, unscaled), so a point coordinate is
- * already the handle's local position.
+ * self-describing `nodeId` of `${ownerId}/${vertexIndex}` (e.g. `line:1/2`).
+ * Positions are the shape's own `points` — valid only because a poly host
+ * shape uses an identity diagram frame (the parent transform sits at the
+ * shape origin, unscaled), so a point coordinate is already the handle's
+ * local position.
  */
 export class VertexHandles {
   private readonly handles: Mesh[] = [];

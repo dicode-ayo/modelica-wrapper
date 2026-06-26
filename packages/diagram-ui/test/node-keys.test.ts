@@ -235,6 +235,14 @@ describe("entityKeyForNode", () => {
     });
   });
 
+  it("fails closed on a malformed vertex key rather than addressing slot 0", () => {
+    // Missing slash, non-integer vertex, and missing shape index each NaN out
+    // so the array lookup no-ops instead of confidently hitting index 0.
+    expect(parseKey("vtx:line:1")).toMatchObject({ vertexIndex: NaN });
+    expect(parseKey("vtx:line:1/x")).toMatchObject({ vertexIndex: NaN });
+    expect(parseKey("vtx:line:/2")).toMatchObject({ shapeIndex: NaN });
+  });
+
   it("walks parents up the chain", () => {
     const { scene, dispose } = makeScene();
     const parent = new TransformNode("om-component:R2", scene);

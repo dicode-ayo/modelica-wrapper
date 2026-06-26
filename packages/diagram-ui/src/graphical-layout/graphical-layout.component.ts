@@ -72,13 +72,13 @@ import {
   formatComponentKey,
   formatConnectorKey,
   formatShapeKey,
-  formatVertexKey,
   isComponentKey,
   isConnectorKey,
   isEdgeKey,
   isJunctionKey,
   isShapeKey,
   parseKey,
+  vertexKeyForEntity,
   vertexShapeKey,
 } from "../interaction/node-keys.js";
 import type { LibraryEvents } from "../library-browser/library-browser.component.js";
@@ -1447,19 +1447,7 @@ export class OmGraphicalLayout extends LitElement {
   ): string | null {
     const node = this.dblClickPicker?.(clientX, clientY) ?? null;
     const entity = node ? entityKeyForNode(node) : null;
-    if (
-      !entity ||
-      entity.kind !== "vertex-handle" ||
-      !Number.isInteger(entity.shapeIndex) ||
-      !Number.isInteger(entity.vertexIndex)
-    ) {
-      return null;
-    }
-    return formatVertexKey(
-      entity.shapeKind,
-      entity.shapeIndex,
-      entity.vertexIndex,
-    );
+    return entity ? vertexKeyForEntity(entity) : null;
   }
 
   /** True when exactly one line / polygon host shape is selected. */

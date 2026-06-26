@@ -1,4 +1,4 @@
-import { formatKey, formatVertexKey } from "./node-keys.js";
+import { formatKey, vertexKeyForEntity } from "./node-keys.js";
 import {
   MOVE_KINDS,
   ownerOfHandle,
@@ -116,17 +116,10 @@ export class DragMode implements GestureMode {
     }
 
     if (entity.kind === "vertex-handle") {
-      if (
-        !Number.isInteger(entity.shapeIndex) ||
-        !Number.isInteger(entity.vertexIndex)
-      ) {
+      const key = vertexKeyForEntity(entity);
+      if (!key) {
         return false;
       }
-      const key = formatVertexKey(
-        entity.shapeKind,
-        entity.shapeIndex,
-        entity.vertexIndex,
-      );
       this.state = { kind: "vertex", key };
       this.emit("vertexDrag", { key, x: pt.x, y: pt.y, draft: true });
       return true;

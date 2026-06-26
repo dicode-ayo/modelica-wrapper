@@ -152,6 +152,23 @@ export function vertexShapeKey(vertex: VertexHandleKey): string {
   return formatShapeKey(vertex.shapeKind, vertex.shapeIndex);
 }
 
+/** A picked entity → its vertex wire key, or `null` unless it's a
+ *  well-formed vertex handle (integer shape + vertex indices). */
+export function vertexKeyForEntity(entity: EntityKey): string | null {
+  if (
+    entity.kind !== "vertex-handle" ||
+    !Number.isInteger(entity.shapeIndex) ||
+    !Number.isInteger(entity.vertexIndex)
+  ) {
+    return null;
+  }
+  return formatVertexKey(
+    entity.shapeKind,
+    entity.shapeIndex,
+    entity.vertexIndex,
+  );
+}
+
 /**
  * Build a connector wire key from its decomposed parts. Pass `null` for
  * `componentName` to address a standalone connector on the host class;
