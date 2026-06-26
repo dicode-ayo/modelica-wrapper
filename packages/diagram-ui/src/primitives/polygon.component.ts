@@ -9,7 +9,6 @@ import {
   STROKE_Z_DELTA,
   buildFilledPolygon,
   buildStroke,
-  graphicItemNode,
   pointsExtent,
   stripClosingDuplicate,
 } from "./shape-utils.js";
@@ -62,12 +61,7 @@ export class OmPolygon extends OmShapePrimitive {
     }
 
     const baseName = `om-polygon.${this.zOrder}`;
-    let root = parent;
-    if (!inEntityFrame) {
-      const gi = graphicItemNode(parent, s, `${baseName}.gi`);
-      root = gi.node;
-      this.resources.push(gi);
-    }
+    const root = this.graphicRoot(parent, s, `${baseName}.gi`, inEntityFrame);
     const fill = fillSpec({
       fillColor: s.fillColor,
       lineColor: s.lineColor,

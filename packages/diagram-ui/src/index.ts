@@ -49,7 +49,10 @@ export {
   type GridOptions,
   type GridMeshes,
 } from "./axis/grid-build.js";
-export { OmGraphicalLayout } from "./graphical-layout/graphical-layout.component.js";
+export {
+  OmGraphicalLayout,
+  HOST_SHAPE_Z_BIAS,
+} from "./graphical-layout/graphical-layout.component.js";
 export type {
   LayoutEvents,
   LayoutEventName,
@@ -63,10 +66,6 @@ export type {
 } from "./graphical-layout/layout-events.js";
 export { OmComponent } from "./component/component.component.js";
 export { OmConnector } from "./connector/connector.component.js";
-export {
-  OmHostShape,
-  HOST_SHAPE_Z_BIAS,
-} from "./host-shape/host-shape.component.js";
 export { OmEdge } from "./connection/edge.component.js";
 export { OmConnection } from "./connection/connection.component.js";
 export { OmLabel } from "./label/label.component.js";

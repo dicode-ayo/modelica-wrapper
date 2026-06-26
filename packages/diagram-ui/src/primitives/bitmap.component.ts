@@ -9,8 +9,12 @@ import {
 } from "@babylonjs/core";
 import type { BitmapShape } from "@dicode/omc-client";
 
-import { OmShapePrimitive } from "./shape-primitive.js";
-import { extentToRect, graphicItemNode } from "./shape-utils.js";
+import {
+  OmShapePrimitive,
+  extentEntityBounds,
+  type EntityBounds,
+} from "./shape-primitive.js";
+import { extentToRect } from "./shape-utils.js";
 
 /**
  * `<om-bitmap>` — one Modelica `BitmapShape`. Loads either a base64
@@ -26,7 +30,19 @@ export class OmBitmap extends OmShapePrimitive {
     return JSON.stringify(this.shape);
   }
 
-  protected override buildMeshes(parent: TransformNode, z: number): void {
+  protected override entityKind(): string {
+    return "bitmap";
+  }
+
+  protected override entityBounds(): EntityBounds | null {
+    return this.shape ? extentEntityBounds(this.shape) : null;
+  }
+
+  protected override buildMeshes(
+    parent: TransformNode,
+    z: number,
+    inEntityFrame = false,
+  ): void {
     const s = this.shape;
     if (!s) {
       return;
@@ -54,14 +70,14 @@ export class OmBitmap extends OmShapePrimitive {
     material.useAlphaFromDiffuseTexture = true;
     material.backFaceCulling = false;
 
-    const gi = graphicItemNode(parent, s, `${baseName}.gi`);
+    const root = this.graphicRoot(parent, s, `${baseName}.gi`, inEntityFrame);
     const plane = MeshBuilder.CreatePlane(
       `${baseName}.plane`,
       { width, height, sideOrientation: Mesh.DOUBLESIDE },
       scene,
     );
     plane.material = material;
-    plane.parent = gi.node;
+    plane.parent = root;
     plane.position.set(x + width / 2, y + height / 2, z);
     plane.isPickable = false;
 
@@ -72,7 +88,6 @@ export class OmBitmap extends OmShapePrimitive {
         texture.dispose();
       },
     });
-    this.resources.push(gi);
   }
 }
 
