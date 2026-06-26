@@ -200,8 +200,14 @@ export function valueToExpr(
     case "enum":
       if (!enumTypeName) return String(value);
       return `${enumTypeName}.${String(value)}`;
-    case "color":
-      return String(value);
+    case "color": {
+      const hex = String(value);
+      const r = parseInt(hex.slice(1, 3), 16);
+      const g = parseInt(hex.slice(3, 5), 16);
+      const b = parseInt(hex.slice(5, 7), 16);
+      if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return "";
+      return `{${r},${g},${b}}`;
+    }
   }
 }
 

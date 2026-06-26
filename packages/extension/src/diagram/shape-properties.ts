@@ -1,6 +1,6 @@
 /**
  * Shape annotation form builder and value applier for the shape properties
- * panel (issue #211 / C6).
+ * panel.
  *
  * `buildShapePropertiesForm` maps a typed `Shape` to a `ParameterModel` the
  * standard parameter-form webview can render. `applyShapeProperties` inverts

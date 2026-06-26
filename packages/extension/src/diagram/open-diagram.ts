@@ -104,6 +104,10 @@ export async function openDiagram(
   // is being edited so onParametersSubmit can route the write.
   let shapePropertiesLayerKind: GraphicsLayer | null = null;
   let shapePropertiesIndex: number | null = null;
+  const clearShapePropertiesState = (): void => {
+    shapePropertiesLayerKind = null;
+    shapePropertiesIndex = null;
+  };
 
   // Guards against a double-click on "Reset to defaults" firing two
   // concurrent reset round-trips (each one re-fetches + re-opens the
@@ -179,12 +183,12 @@ export async function openDiagram(
         { snapshot: true },
       );
       if (result.failed.length > 0) {
-        const first = result.failed[0]!;
+        const first = result.failed.at(0);
         const rolled = result.rolledBack
           ? " — rolled back to the pre-edit state"
           : "";
         void vscode.window.showWarningMessage(
-          `Modelica: ${result.failed.length} of ${edits.length} edits failed (${first.error})${rolled}.`,
+          `Modelica: ${result.failed.length} of ${edits.length} edits failed (${first?.error})${rolled}.`,
         );
         // The batch was auto-rolled-back, so the pre-batch snapshot we just
         // pushed for manual Undo would be a no-op (it equals current state).
@@ -496,9 +500,9 @@ export async function openDiagram(
           { snapshot: true },
         );
         if (result.failed.length > 0) {
-          const first = result.failed[0]!;
+          const first = result.failed.at(0);
           void vscode.window.showWarningMessage(
-            `Modelica: shape edit failed — ${first.error}`,
+            `Modelica: shape edit failed — ${first?.error}`,
           );
           if (result.rolledBack) undoStack.pop();
         }
@@ -519,6 +523,7 @@ export async function openDiagram(
     },
     onParametersCancel: (kind) => {
       log.info("parametersCancel", `kind=${kind}`);
+      if (kind === "shapeProperties") clearShapePropertiesState();
     },
     onResetComponentParameters: async (componentName) => {
       // A double-click can fire two concurrent resets; the first owns the
