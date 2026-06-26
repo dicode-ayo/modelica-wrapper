@@ -159,8 +159,9 @@ export abstract class OmShapePrimitive extends LitElement {
         const poly = b.points !== undefined;
         node.setSelectionAffordances({ resize: !poly, rotate: !poly });
       }
-      // Draw the visual under the entity's (unscaled) transform.
-      this.buildMeshes(node.transform, zForOrder(this.zOrder));
+      // The entity transform already carries the shape's origin + rotation
+      // (via setDiagramBounds), so the primitive must NOT re-apply them.
+      this.buildMeshes(node.transform, zForOrder(this.zOrder), true);
     }
     node.setSelected(this.selected);
     this.requestRender();
@@ -248,8 +249,16 @@ export abstract class OmShapePrimitive extends LitElement {
    *  rebuilds when this string doesn't change. */
   protected abstract fingerprint(): string;
 
-  /** Build the Babylon meshes for the current shape data and push the
-   *  disposables onto `this.resources`. Called with the entity's
-   *  TransformNode and the z position derived from `zOrder`. */
-  protected abstract buildMeshes(parent: TransformNode, z: number): void;
+  /**
+   * Build the Babylon meshes for the current shape data and push the
+   * disposables onto `this.resources`. `inEntityFrame` is `true` on the
+   * editable path, where `parent` already carries the shape's
+   * origin/rotation — the primitive must then draw raw geometry without its
+   * own `graphicItemNode`, or the placement applies twice.
+   */
+  protected abstract buildMeshes(
+    parent: TransformNode,
+    z: number,
+    inEntityFrame?: boolean,
+  ): void;
 }

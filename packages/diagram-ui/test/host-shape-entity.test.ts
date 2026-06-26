@@ -218,4 +218,33 @@ describe("<om-host-shape> selection entities", () => {
     await el.updateComplete;
     expect(visibleVertexHandles(el)).toBe(0);
   });
+
+  it("does not double-apply rotation: the editable visual draws in the entity frame", async () => {
+    const rotated: DiagramLayout = {
+      ...layout(),
+      diagramLayers: [
+        {
+          from: "T",
+          shapes: [
+            {
+              kind: "line",
+              rotation: 90,
+              points: [
+                [10, 0],
+                [20, 0],
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const el = await mount(rotated);
+    const nodes = transformNodes(el);
+    // The entity transform carries the 90° rotation once…
+    const wrapper = nodes.find((n) => n.name === "om-shape:line:0");
+    expect(wrapper?.rotation.z).toBeCloseTo(Math.PI / 2);
+    // …so the primitive must NOT also wrap the stroke in its own
+    // origin/rotation `graphicItemNode` — that would rotate it twice.
+    expect(nodes.some((n) => n.name.endsWith(".gi"))).toBe(false);
+  });
 });

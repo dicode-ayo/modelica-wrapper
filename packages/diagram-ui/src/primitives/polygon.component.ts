@@ -45,20 +45,29 @@ export class OmPolygon extends OmShapePrimitive {
     };
   }
 
-  protected override buildMeshes(parent: TransformNode, z: number): void {
+  protected override buildMeshes(
+    parent: TransformNode,
+    z: number,
+    inEntityFrame = false,
+  ): void {
     const s = this.shape;
     if (!s) {
       return;
     }
     const scene = parent.getScene();
     const points = stripClosingDuplicate(s.points);
-    if (points.length < 3) {
+    const first = points[0];
+    if (points.length < 3 || first === undefined) {
       return;
     }
 
     const baseName = `om-polygon.${this.zOrder}`;
-    const gi = graphicItemNode(parent, s, `${baseName}.gi`);
-    const root = gi.node;
+    let root = parent;
+    if (!inEntityFrame) {
+      const gi = graphicItemNode(parent, s, `${baseName}.gi`);
+      root = gi.node;
+      this.resources.push(gi);
+    }
     const fill = fillSpec({
       fillColor: s.fillColor,
       lineColor: s.lineColor,
@@ -78,7 +87,7 @@ export class OmPolygon extends OmShapePrimitive {
       }
     }
 
-    const strokePoints = [...points, points[0]!];
+    const strokePoints = [...points, first];
     const stroke = buildStroke(
       scene,
       root,
@@ -91,7 +100,6 @@ export class OmPolygon extends OmShapePrimitive {
     if (stroke) {
       this.resources.push(stroke);
     }
-    this.resources.push(gi);
   }
 }
 

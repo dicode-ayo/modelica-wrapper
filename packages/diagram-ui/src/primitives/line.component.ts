@@ -42,15 +42,24 @@ export class OmLine extends OmShapePrimitive {
     };
   }
 
-  protected override buildMeshes(parent: TransformNode, z: number): void {
+  protected override buildMeshes(
+    parent: TransformNode,
+    z: number,
+    inEntityFrame = false,
+  ): void {
     const s = this.shape;
     if (!s || s.points.length < 2) {
       return;
     }
-    const gi = graphicItemNode(parent, s, `om-line.${this.zOrder}.gi`);
+    let root = parent;
+    if (!inEntityFrame) {
+      const gi = graphicItemNode(parent, s, `om-line.${this.zOrder}.gi`);
+      root = gi.node;
+      this.resources.push(gi);
+    }
     const stroke = buildStroke(
       parent.getScene(),
-      gi.node,
+      root,
       s.points,
       s.color ?? DEFAULT_LINE_COLOR,
       s.pattern,
@@ -60,7 +69,6 @@ export class OmLine extends OmShapePrimitive {
     if (stroke) {
       this.resources.push(stroke);
     }
-    this.resources.push(gi);
   }
 }
 

@@ -218,4 +218,30 @@ describe("InteractionManager", () => {
     dispose();
     canvas.remove();
   });
+
+  it("hovering a vertex dot reports the owner shape, but pressing it still selects nothing", () => {
+    const canvas = makeCanvas();
+    const { scene, dispose } = makeScene();
+    const shape = new TransformNode("om-shape:line:1", scene);
+    const dot = new TransformNode("om-vertex-handle", scene);
+    dot.metadata = { kind: "vertex-handle", nodeId: "0" };
+    dot.parent = shape;
+    const { emit, events } = captureEmits();
+    const mgr = new InteractionManager(() => dot, emit);
+    wireInteraction(canvas, mgr);
+
+    // Hover resolves to the owner so the dots don't flicker out under the cursor.
+    canvas.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 10, clientY: 10 }),
+    );
+    // Press is still a no-op for selection — the dot belongs to DragMode.
+    canvas.dispatchEvent(
+      new PointerEvent("pointerdown", { button: 0, clientX: 10, clientY: 10 }),
+    );
+    expect(events).toEqual([
+      { type: "hover", detail: { key: "shape:line:1" } },
+    ]);
+    dispose();
+    canvas.remove();
+  });
 });
