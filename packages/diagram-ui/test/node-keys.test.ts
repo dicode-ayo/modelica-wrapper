@@ -7,6 +7,7 @@ import {
   formatConnectorKey,
   formatKey,
   formatShapeKey,
+  formatVertexKey,
   isComponentKey,
   isConnectorKey,
   isEdgeKey,
@@ -14,8 +15,8 @@ import {
   isNestedConnector,
   isShapeKey,
   parseKey,
+  vertexShapeKey,
 } from "../src/interaction/node-keys.js";
-import { ownerOfHandle } from "../src/interaction/gesture-mode.js";
 
 function makeScene(): { scene: Scene; dispose: () => void } {
   const engine = new NullEngine({
@@ -201,20 +202,37 @@ describe("entityKeyForNode", () => {
     dispose();
   });
 
-  it("resolves a vertex handle to its index via metadata, owner via the chain", () => {
+  it("resolves a vertex dot to a self-describing vertex key", () => {
     const { scene, dispose } = makeScene();
     const wrapper = new TransformNode("om-shape:line:2", scene);
     const dot = new Mesh("om-vertex-handle", scene);
     dot.parent = wrapper;
-    dot.metadata = { kind: "vertex-handle", nodeId: "1" };
-    // The picked entity is the vertex handle (index 1)…
-    expect(entityKeyForNode(dot)).toEqual({
+    dot.metadata = { kind: "vertex-handle", nodeId: "line:2/1" };
+    // The dot carries its whole identity — shape kind, shape index, vertex.
+    const key = entityKeyForNode(dot);
+    expect(key).toEqual({
       kind: "vertex-handle",
-      nodeId: "1",
+      nodeId: "line:2/1",
+      shapeKind: "line",
+      shapeIndex: 2,
+      vertexIndex: 1,
     });
-    // …while ownerOfHandle walks up to the shape it belongs to.
-    expect(ownerOfHandle(dot)).toBe("shape:line:2");
+    // …so the owning shape is derivable from the key, no chain walk.
+    expect(key?.kind === "vertex-handle" && vertexShapeKey(key)).toBe(
+      "shape:line:2",
+    );
     dispose();
+  });
+
+  it("round-trips a vertex key through format + parse", () => {
+    expect(formatVertexKey("polygon", 3, 4)).toBe("vtx:polygon:3/4");
+    expect(parseKey("vtx:polygon:3/4")).toEqual({
+      kind: "vertex-handle",
+      nodeId: "polygon:3/4",
+      shapeKind: "polygon",
+      shapeIndex: 3,
+      vertexIndex: 4,
+    });
   });
 
   it("walks parents up the chain", () => {

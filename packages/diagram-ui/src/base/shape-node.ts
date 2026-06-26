@@ -357,9 +357,18 @@ export class OmShapeNode {
         this.scene,
         this.transform,
         this.vertices ?? [],
+        this.ownerId(),
       );
     }
     this.vertexHandles?.setVisible(showVertices);
+  }
+
+  /** The owning shape's id (`<shapeKind>:<index>`) for vertex keys, taken
+   *  from the entity transform name (`om-shape:<shapeKind>:<index>`). */
+  private ownerId(): string {
+    const name = this.transform.name;
+    const colon = name.indexOf(":");
+    return colon < 0 ? name : name.slice(colon + 1);
   }
 
   isSelected(): boolean {

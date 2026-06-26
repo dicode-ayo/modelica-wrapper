@@ -107,7 +107,7 @@ describe("ModeRouter", () => {
     const wrapper = new TransformNode("om-shape:line:0", scene);
     const dot = new Mesh("om-vertex-handle", scene);
     dot.parent = wrapper;
-    dot.metadata = { kind: "vertex-handle", nodeId: "1" };
+    dot.metadata = { kind: "vertex-handle", nodeId: "line:0/1" };
     setPicked(dot);
     canvas.dispatchEvent(down());
     expect(store.value.mode).toBe("drag");

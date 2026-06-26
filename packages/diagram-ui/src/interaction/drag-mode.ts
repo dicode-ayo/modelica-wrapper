@@ -1,4 +1,4 @@
-import { formatKey } from "./node-keys.js";
+import { formatKey, formatVertexKey } from "./node-keys.js";
 import {
   MOVE_KINDS,
   ownerOfHandle,
@@ -42,8 +42,8 @@ interface RotateState {
 
 interface VertexState {
   kind: "vertex";
+  /** The vertex wire key (`vtx:<shapeKind>:<shapeIndex>/<vertexIndex>`). */
   key: string;
-  vertexIndex: number;
 }
 
 interface EdgeState {
@@ -116,19 +116,19 @@ export class DragMode implements GestureMode {
     }
 
     if (entity.kind === "vertex-handle") {
-      const vertexIndex = Number(entity.nodeId);
-      const ownerKey = ownerOfHandle(node);
-      if (!ownerKey || !Number.isInteger(vertexIndex)) {
+      if (
+        !Number.isInteger(entity.shapeIndex) ||
+        !Number.isInteger(entity.vertexIndex)
+      ) {
         return false;
       }
-      this.state = { kind: "vertex", key: ownerKey, vertexIndex };
-      this.emit("vertexDrag", {
-        key: ownerKey,
-        vertexIndex,
-        x: pt.x,
-        y: pt.y,
-        draft: true,
-      });
+      const key = formatVertexKey(
+        entity.shapeKind,
+        entity.shapeIndex,
+        entity.vertexIndex,
+      );
+      this.state = { kind: "vertex", key };
+      this.emit("vertexDrag", { key, x: pt.x, y: pt.y, draft: true });
       return true;
     }
 
@@ -204,7 +204,6 @@ export class DragMode implements GestureMode {
       case "vertex":
         this.emit("vertexDrag", {
           key: state.key,
-          vertexIndex: state.vertexIndex,
           x: pt.x,
           y: pt.y,
           draft,
