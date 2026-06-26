@@ -112,7 +112,7 @@ export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
   },
   {
     id: "diagram.toggleSmooth",
-    title: "Smooth (Bezier)",
+    title: "Toggle smoothing",
     category: "Edit",
     when: (ctx) => !ctx.readonly && ctx.polySelection,
     placements: [editMenu(6)],

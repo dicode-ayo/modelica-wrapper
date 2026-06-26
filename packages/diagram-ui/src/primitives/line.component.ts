@@ -1,23 +1,14 @@
 import { customElement, property } from "lit/decorators.js";
 import type { TransformNode } from "@babylonjs/core";
-import type { Extent, LineShape, Point } from "@dicode/omc-client";
+import type { LineShape } from "@dicode/omc-client";
 
-import { OmShapePrimitive } from "./shape-primitive.js";
+import { OmShapePrimitive, type EntityBounds } from "./shape-primitive.js";
 import {
   DEFAULT_LINE_COLOR,
   buildStroke,
   graphicItemNode,
+  pointsExtent,
 } from "./shape-utils.js";
-
-/** Axis-aligned bounding extent of a point list. */
-function pointsExtent(points: Point[]): Extent {
-  const xs = points.map((p) => p[0]);
-  const ys = points.map((p) => p[1]);
-  return [
-    [Math.min(...xs), Math.min(...ys)],
-    [Math.max(...xs), Math.max(...ys)],
-  ];
-}
 
 /**
  * `<om-line>` — one Modelica `LineShape`. Pure polyline; no fill side.
@@ -38,12 +29,7 @@ export class OmLine extends OmShapePrimitive {
     return "line";
   }
 
-  protected override entityBounds(): {
-    extent: Extent;
-    origin?: Point | undefined;
-    rotation?: number | undefined;
-    points?: Point[] | undefined;
-  } | null {
+  protected override entityBounds(): EntityBounds | null {
     const s = this.shape;
     if (!s || s.points.length < 2) {
       return null;

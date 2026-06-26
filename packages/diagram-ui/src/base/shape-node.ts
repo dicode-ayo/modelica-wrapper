@@ -227,8 +227,8 @@ export class OmShapeNode {
    * across the whole bbox. Rebuilt live so a vertex edit reflects at once.
    */
   setPolyPoints(points: Point[] | null): void {
-    // The layout is immutable, so an unchanged shape hands back the same
-    // `points` reference — only rebuild on a real edit.
+    // Layout points are referentially stable across rebuilds; an identity
+    // match means no edit, so skip rebuilding the handles + tube.
     if (points === this.vertices) {
       return;
     }

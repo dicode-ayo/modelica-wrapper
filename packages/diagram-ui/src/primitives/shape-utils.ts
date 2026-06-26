@@ -12,7 +12,7 @@ import {
   CreateDashedLines,
   CreateLines,
 } from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
-import type { Color, Extent } from "@dicode/omc-client";
+import type { Color, Extent, Point } from "@dicode/omc-client";
 import type { FillSpec } from "@dicode/diagram-svg";
 
 import { resolveFillTexture } from "./fill-texture.js";
@@ -87,6 +87,16 @@ export interface RectBox {
   y: number;
   width: number;
   height: number;
+}
+
+/** Axis-aligned bounding extent of a point list (a poly's entity frame). */
+export function pointsExtent(points: Point[]): Extent {
+  const xs = points.map((p) => p[0]);
+  const ys = points.map((p) => p[1]);
+  return [
+    [Math.min(...xs), Math.min(...ys)],
+    [Math.max(...xs), Math.max(...ys)],
+  ];
 }
 
 export function extentToRect(extent: Extent): RectBox {

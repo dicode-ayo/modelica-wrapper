@@ -32,6 +32,18 @@ import { zForOrder, type OwnedResource } from "./shape-utils.js";
  *     returns the disposables. Called only when the fingerprint
  *     changes (or on first update).
  */
+/**
+ * The frame an editable primitive places its entity in: the bounding
+ * `extent` (+ optional `origin` / `rotation`), and for a poly its `points`
+ * (which drive the hit tube + vertex handles).
+ */
+export interface EntityBounds {
+  extent: Extent;
+  origin?: Point | undefined;
+  rotation?: number | undefined;
+  points?: Point[] | undefined;
+}
+
 export abstract class OmShapePrimitive extends LitElement {
   static override styles = css`
     :host {
@@ -81,13 +93,20 @@ export abstract class OmShapePrimitive extends LitElement {
   private lastBuiltKey: string | null = null;
   private shapeNode: OmShapeNode | null = null;
   private hovered = false;
-  // Created lazily, only for `editable` primitives, so the many non-editable
-  // icon primitives don't each subscribe to every pointer-hover change.
-  private hoverConsumer: ContextConsumer<
-    typeof interactionStateContext,
-    this
-  > | null = null;
   private interactionUnsub: (() => void) | null = null;
+
+  constructor() {
+    super();
+    // Registered for every primitive (the controller handles connect /
+    // reconnect), but only an `editable` one subscribes to the store — icon
+    // paint never reacts to hover. The context value is the store reference,
+    // so this fires once per (re)connect, not per pointer move.
+    new ContextConsumer(this, {
+      context: interactionStateContext,
+      subscribe: true,
+      callback: (store) => this.onInteractionStore(store),
+    });
+  }
 
   override render() {
     return html``;
@@ -118,7 +137,6 @@ export abstract class OmShapePrimitive extends LitElement {
    * selectable, hit-testable, vertex-editable entity on the host canvas.
    */
   private updateEditable(parent: TransformNode): void {
-    this.ensureHoverSubscription();
     if (!this.shapeNode) {
       this.shapeNode = new OmShapeNode(
         parent.getScene(),
@@ -158,24 +176,17 @@ export abstract class OmShapePrimitive extends LitElement {
   }
 
   /**
-   * Subscribe to the host's interaction store so a pointer hover over this
-   * shape reveals its hit tube + vertex handles, like a connection edge.
-   * Self-managed (not a host-driven prop) so a hover doesn't re-render the
-   * whole layout. Created once, only on the editable path.
+   * Attach to the host's interaction store so a pointer hover over this shape
+   * reveals its hit tube + vertex handles, like a connection edge. Only
+   * editable primitives subscribe; the hover is self-managed (not a
+   * host-driven prop) so it doesn't re-render the whole layout.
    */
-  private ensureHoverSubscription(): void {
-    if (this.hoverConsumer) {
-      return;
-    }
-    this.hoverConsumer = new ContextConsumer(this, {
-      context: interactionStateContext,
-      subscribe: true,
-      callback: (store: InteractionStateStore | null) => {
-        this.interactionUnsub?.();
-        this.interactionUnsub =
-          store?.subscribe((snap) => this.onHover(snap.hoverKey)) ?? null;
-      },
-    });
+  private onInteractionStore(store: InteractionStateStore | null): void {
+    this.interactionUnsub?.();
+    this.interactionUnsub =
+      this.editable && store
+        ? store.subscribe((snap) => this.onHover(snap.hoverKey))
+        : null;
   }
 
   private onHover(hoverKey: string | null): void {
@@ -208,12 +219,7 @@ export abstract class OmShapePrimitive extends LitElement {
    * and, for a poly, its `points` (drives the hit tube + vertex handles).
    * `null` leaves the entity unsized. Overridden by editable primitives.
    */
-  protected entityBounds(): {
-    extent: Extent;
-    origin?: Point | undefined;
-    rotation?: number | undefined;
-    points?: Point[] | undefined;
-  } | null {
+  protected entityBounds(): EntityBounds | null {
     return null;
   }
 
