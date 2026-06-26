@@ -4,19 +4,35 @@ import {
   MeshBuilder,
   StandardMaterial,
   TransformNode,
+  Vector3,
   type Scene,
 } from "@babylonjs/core";
 
 import { applyPlacement, type AppliedTransform } from "./placement-math.js";
+import { buildHitTube } from "./hit-tube.js";
 import {
   ResizeHandles,
   RotateHandle,
   SelectionOutline,
+  VertexHandles,
 } from "./selection-overlay.js";
 import { requestSceneRender } from "../scene/render-scheduler.js";
-import type { CoordinateSystem, Placement } from "@dicode/omc-client";
+import type {
+  CoordinateSystem,
+  Extent,
+  Placement,
+  Point,
+} from "@dicode/omc-client";
 
 const HIGHLIGHT_COLOR = new Color3(0.38, 0.6, 0.98);
+
+/** Pick tolerance (diagram units) of a poly shape's follow-the-line hit
+ *  tube — matches the connection edge's `WAYPOINT_RADIUS`. */
+const POLY_HIT_RADIUS = 1.5;
+
+/** Opacity the hit tube reveals at while the poly is hovered — matches the
+ *  connection edge's hover band. */
+const HIT_HOVER_OPACITY = 0.3;
 
 /**
  * Which bounding-box selection handles an entity offers. Poly shapes
@@ -61,6 +77,10 @@ export class OmShapeNode {
   private resizeHandles: ResizeHandles | null = null;
   private rotateHandle: RotateHandle | null = null;
   private outline: SelectionOutline | null = null;
+  private vertices: Point[] | null = null;
+  private vertexHandles: VertexHandles | null = null;
+  private hitTube: Mesh | null = null;
+  private hovered = false;
   private readonly scene: Scene;
 
   constructor(scene: Scene, parent: TransformNode, name = "om-shape") {
@@ -106,17 +126,73 @@ export class OmShapeNode {
     zOffset: number = 0,
   ): AppliedTransform {
     const t = applyPlacement(placement, iconCoordSystem, zOffset);
-    this.transform.position.set(t.position.x, t.position.y, t.position.z);
-    this.transform.scaling.set(t.scale.x, t.scale.y, t.scale.z);
     this.transform.rotation.set(0, 0, t.rotationZ);
+    this.placeTransform(
+      t.position.x,
+      t.position.y,
+      t.position.z,
+      t.scale.x,
+      t.scale.y,
+      t.iconSize.width,
+      t.iconSize.height,
+      t.meshLocal.x,
+      t.meshLocal.y,
+    );
+    return t;
+  }
+
+  /**
+   * Positions the entity directly in the parent's coordinate space with no
+   * icon scaling — for host shapes, whose geometry is already in diagram
+   * coords. The transform sits at `origin` (unscaled, rotated about it), so
+   * a child handle's local position is a diagram coordinate; the hit plane
+   * + outline span `extent`. Used for poly shapes so per-vertex handles can
+   * sit on the shape's `points` directly.
+   */
+  setDiagramBounds(
+    extent: Extent,
+    origin: Point | undefined,
+    rotation: number,
+    zOffset: number = 0,
+  ): void {
+    const w = Math.abs(extent[1][0] - extent[0][0]) || 1;
+    const h = Math.abs(extent[1][1] - extent[0][1]) || 1;
+    const cx = (extent[0][0] + extent[1][0]) / 2;
+    const cy = (extent[0][1] + extent[1][1]) / 2;
+    this.transform.rotation.set(0, 0, (rotation * Math.PI) / 180);
+    this.placeTransform(
+      origin?.[0] ?? 0,
+      origin?.[1] ?? 0,
+      zOffset,
+      1,
+      1,
+      w,
+      h,
+      cx,
+      cy,
+    );
+  }
+
+  private placeTransform(
+    posX: number,
+    posY: number,
+    posZ: number,
+    scaleX: number,
+    scaleY: number,
+    hitW: number,
+    hitH: number,
+    hitCx: number,
+    hitCy: number,
+  ): void {
+    this.transform.position.set(posX, posY, posZ);
+    this.transform.scaling.set(scaleX, scaleY, 1);
 
     const sizeChanged =
-      this.currentIconWidth !== t.iconSize.width ||
-      this.currentIconHeight !== t.iconSize.height;
+      this.currentIconWidth !== hitW || this.currentIconHeight !== hitH;
     if (sizeChanged) {
-      this.currentIconWidth = t.iconSize.width;
-      this.currentIconHeight = t.iconSize.height;
-      this.mesh.scaling.set(t.iconSize.width, t.iconSize.height, 1);
+      this.currentIconWidth = hitW;
+      this.currentIconHeight = hitH;
+      this.mesh.scaling.set(hitW, hitH, 1);
       if (this.resizeHandles) {
         const wasVisible = this.resizeHandles.isVisible();
         this.resizeHandles.dispose();
@@ -130,9 +206,9 @@ export class OmShapeNode {
         this.rotateHandle.setVisible(wasVisible);
       }
     }
-    this.currentIconCx = t.meshLocal.x;
-    this.currentIconCy = t.meshLocal.y;
-    this.mesh.position.set(t.meshLocal.x, t.meshLocal.y, 0);
+    this.currentIconCx = hitCx;
+    this.currentIconCy = hitCy;
+    this.mesh.position.set(hitCx, hitCy, 0);
     if (this.outline && sizeChanged) {
       this.outline.resize(
         this.currentIconWidth,
@@ -142,7 +218,42 @@ export class OmShapeNode {
       );
     }
     requestSceneRender(this.scene);
-    return t;
+  }
+
+  /**
+   * Sets (or clears with `null`) a poly shape's points. They drive both the
+   * per-vertex drag handles and a follow-the-line hit tube that replaces the
+   * bounding-box hit plane — so a polyline is picked along its segments, not
+   * across the whole bbox. Rebuilt live so a vertex edit reflects at once.
+   */
+  setPolyPoints(points: Point[] | null): void {
+    // Layout points are referentially stable across rebuilds; an identity
+    // match means no edit, so skip rebuilding the handles + tube.
+    if (points === this.vertices) {
+      return;
+    }
+    this.vertices = points;
+    this.vertexHandles?.dispose();
+    this.vertexHandles = null;
+    this.hitTube?.dispose();
+    this.hitTube = null;
+
+    if (points && points.length >= 2) {
+      // The bbox hit plane gives way to a tube tracing the segments; the
+      // identity poly frame means a point is already a local coordinate.
+      this.mesh.isPickable = false;
+      this.hitTube = buildHitTube(
+        this.scene,
+        `hit.${this.transform.name}`,
+        points.map(([x, y]) => new Vector3(x, y, -0.01)),
+        POLY_HIT_RADIUS,
+        HIGHLIGHT_COLOR,
+      );
+      this.hitTube.parent = this.transform;
+    } else {
+      this.mesh.isPickable = true;
+    }
+    this.syncSelectionOverlay();
   }
 
   private createHandles(): ResizeHandles {
@@ -176,6 +287,22 @@ export class OmShapeNode {
   }
 
   /**
+   * Hover state for a poly entity: reveals the follow-the-line hit tube as a
+   * faint band and shows the vertex handles — the same affordance a
+   * connection edge gives on hover.
+   */
+  setHovered(hovered: boolean): void {
+    if (this.hovered === hovered) {
+      return;
+    }
+    this.hovered = hovered;
+    if (this.hitTube) {
+      this.hitTube.visibility = hovered ? HIT_HOVER_OPACITY : 0;
+    }
+    this.syncSelectionOverlay();
+  }
+
+  /**
    * Configures which bounding-box handles this entity offers. Applied
    * live, so toggling affordances on an already-selected entity hides the
    * now-disallowed handles. A poly shape passes `{resize:false,
@@ -196,8 +323,11 @@ export class OmShapeNode {
   private syncSelectionOverlay(): void {
     const showResize = this.selected && this.affordResize;
     const showRotate = this.selected && this.affordRotate;
+    // Poly shapes mark selection with their vertex dots; the bounding-box
+    // outline would just be noise around the polyline.
+    const showOutline = this.selected && this.vertices === null;
 
-    if (this.selected && !this.outline) {
+    if (showOutline && !this.outline) {
       this.outline = new SelectionOutline(
         this.scene,
         this.transform,
@@ -208,7 +338,7 @@ export class OmShapeNode {
         HIGHLIGHT_COLOR,
       );
     }
-    this.outline?.setVisible(this.selected);
+    this.outline?.setVisible(showOutline);
 
     if (showResize && !this.resizeHandles) {
       this.resizeHandles = this.createHandles();
@@ -219,6 +349,17 @@ export class OmShapeNode {
       this.rotateHandle = this.createRotateHandle();
     }
     this.rotateHandle?.setVisible(showRotate);
+
+    const showVertices =
+      (this.selected || this.hovered) && this.vertices !== null;
+    if (showVertices && !this.vertexHandles) {
+      this.vertexHandles = new VertexHandles(
+        this.scene,
+        this.transform,
+        this.vertices ?? [],
+      );
+    }
+    this.vertexHandles?.setVisible(showVertices);
   }
 
   isSelected(): boolean {
@@ -233,6 +374,7 @@ export class OmShapeNode {
   rescaleSelectionHandles(): void {
     this.resizeHandles?.rescale();
     this.rotateHandle?.rescale();
+    this.vertexHandles?.rescale();
   }
 
   dispose(): void {
@@ -242,6 +384,10 @@ export class OmShapeNode {
     this.resizeHandles = null;
     this.rotateHandle?.dispose();
     this.rotateHandle = null;
+    this.vertexHandles?.dispose();
+    this.vertexHandles = null;
+    this.hitTube?.dispose();
+    this.hitTube = null;
     this.mesh.dispose();
     this.hitMaterial.dispose();
     this.transform.dispose();

@@ -124,12 +124,21 @@ function visibleResizeHandles(el: OmGraphicalLayout): number {
   ).length;
 }
 
+/** Visible per-vertex handle meshes currently in the scene. */
+function visibleVertexHandles(el: OmGraphicalLayout): number {
+  return (sceneOf(el)?.meshes ?? []).filter(
+    (m) => m.isVisible && m.name === "om-vertex-handle",
+  ).length;
+}
+
 describe("<om-host-shape> selection entities", () => {
-  it("emits one entity per OWN shape, never for inherited layers", async () => {
+  it("emits an entity per OWN shape (host-shape for extents, editable primitive for polys)", async () => {
     const el = await mount(layout());
-    const entities = el.shadowRoot?.querySelectorAll("om-host-shape") ?? [];
-    // 2 own shapes (rectangle + line); the inherited `Base` rectangle gets none.
-    expect(entities.length).toBe(2);
+    const root = el.shadowRoot;
+    // The rectangle is an <om-host-shape>; the line is its own editable
+    // <om-line>. The inherited `Base` rectangle gets neither.
+    expect(root?.querySelectorAll("om-host-shape").length).toBe(1);
+    expect(root?.querySelectorAll("om-line[editable]").length).toBe(1);
   });
 
   it("names each wrapper om-shape:<kind>:<index> so picks resolve to a shape key", async () => {
@@ -174,5 +183,68 @@ describe("<om-host-shape> selection entities", () => {
     el.setSelection(["shape:line:1"]);
     await el.updateComplete;
     expect(visibleResizeHandles(el)).toBe(0);
+  });
+
+  it("picks a poly along a follow-the-line hit tube, not the bbox plane", async () => {
+    const el = await mount(layout());
+    const lineWrapper = transformNodes(el).find(
+      (n) => n.name === "om-shape:line:1",
+    );
+    const meshes = lineWrapper?.getChildMeshes() ?? [];
+    // The bbox hit plane is no longer the pick target for a polyline…
+    expect(
+      meshes.find((m) => m.name === "plane.om-shape:line:1")?.isPickable,
+    ).toBe(false);
+    // …a hit tube tracing the segments is, and it resolves to the shape key.
+    const tube = meshes.find((m) => m.name.startsWith("hit.om-shape:line:1"));
+    expect(tube?.isPickable).toBe(true);
+    expect(entityKeyForNode(tube ?? null)).toMatchObject({
+      kind: "shape",
+      shapeKind: "line",
+      index: 1,
+    });
+  });
+
+  it("shows a vertex handle per point on a selected poly, none on an extent shape", async () => {
+    const el = await mount(layout());
+
+    // The line has two points → two vertex handles; no resize handles.
+    el.setSelection(["shape:line:1"]);
+    await el.updateComplete;
+    expect(visibleVertexHandles(el)).toBe(2);
+
+    // The rectangle is extent-edited → no vertex handles.
+    el.setSelection(["shape:rectangle:0"]);
+    await el.updateComplete;
+    expect(visibleVertexHandles(el)).toBe(0);
+  });
+
+  it("does not double-apply rotation: the editable visual draws in the entity frame", async () => {
+    const rotated: DiagramLayout = {
+      ...layout(),
+      diagramLayers: [
+        {
+          from: "T",
+          shapes: [
+            {
+              kind: "line",
+              rotation: 90,
+              points: [
+                [10, 0],
+                [20, 0],
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const el = await mount(rotated);
+    const nodes = transformNodes(el);
+    // The entity transform carries the 90° rotation once…
+    const wrapper = nodes.find((n) => n.name === "om-shape:line:0");
+    expect(wrapper?.rotation.z).toBeCloseTo(Math.PI / 2);
+    // …so the primitive must NOT also wrap the stroke in its own
+    // origin/rotation `graphicItemNode` — that would rotate it twice.
+    expect(nodes.some((n) => n.name.endsWith(".gi"))).toBe(false);
   });
 });

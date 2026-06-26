@@ -206,6 +206,7 @@ export class ModeRouter {
       entity &&
       (entity.kind === "rotate-handle" ||
         entity.kind === "handle" ||
+        entity.kind === "vertex-handle" ||
         entity.kind === "edge" ||
         MOVE_KINDS.has(entity.kind))
     ) {

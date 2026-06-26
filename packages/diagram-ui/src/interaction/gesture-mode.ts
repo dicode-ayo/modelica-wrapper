@@ -39,6 +39,19 @@ export interface DragEvents {
     y: number;
     draft: boolean;
   };
+  /**
+   * Drag of a poly shape's vertex handle. `key` is the owning shape;
+   * `vertexIndex` is the grabbed vertex's position in `points`; `x, y` is
+   * the live pointer in diagram coords. Draft on every move, committed on
+   * pointerup.
+   */
+  vertexDrag: {
+    key: string;
+    vertexIndex: number;
+    x: number;
+    y: number;
+    draft: boolean;
+  };
   rubberBand: {
     rect: { x1: number; y1: number; x2: number; y2: number };
     draft: boolean;

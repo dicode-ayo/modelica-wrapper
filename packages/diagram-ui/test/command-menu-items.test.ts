@@ -13,6 +13,8 @@ function ctx(patch: Partial<ContextKeys> = {}): ContextKeys {
     readonly: false,
     viewLayer: "diagram",
     hasClipboard: false,
+    vertexTarget: false,
+    polySelection: false,
     ...patch,
   };
 }

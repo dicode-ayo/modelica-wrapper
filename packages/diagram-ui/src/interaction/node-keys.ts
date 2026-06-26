@@ -23,7 +23,8 @@ export type EntityKind =
   | "label"
   | "port"
   | "handle"
-  | "rotate-handle";
+  | "rotate-handle"
+  | "vertex-handle";
 
 const KIND_PREFIX: Record<EntityKind, string> = {
   component: "c",
@@ -35,6 +36,7 @@ const KIND_PREFIX: Record<EntityKind, string> = {
   port: "port",
   handle: "h",
   "rotate-handle": "rot",
+  "vertex-handle": "vtx",
 };
 
 const PREFIX_KIND: Record<string, EntityKind> = Object.fromEntries(
@@ -51,6 +53,7 @@ const KIND_BABYLON_NAME: Record<EntityKind, string> = {
   port: "om-port",
   handle: "om-handle",
   "rotate-handle": "om-rotate-handle",
+  "vertex-handle": "om-vertex-handle",
 };
 
 /** All non-connector kinds share this flat shape. */
@@ -67,6 +70,7 @@ export type LabelKey = SimpleKey<"label">;
 export type PortKey = SimpleKey<"port">;
 export type HandleKey = SimpleKey<"handle">;
 export type RotateHandleKey = SimpleKey<"rotate-handle">;
+export type VertexHandleKey = SimpleKey<"vertex-handle">;
 
 export interface ConnectorKey {
   kind: "connector";
@@ -100,7 +104,8 @@ export type EntityKey =
   | LabelKey
   | PortKey
   | HandleKey
-  | RotateHandleKey;
+  | RotateHandleKey
+  | VertexHandleKey;
 
 // ── Format ───────────────────────────────────────────────────────────
 

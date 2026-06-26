@@ -2,11 +2,12 @@ import { customElement, property } from "lit/decorators.js";
 import type { TransformNode } from "@babylonjs/core";
 import type { LineShape } from "@dicode/omc-client";
 
-import { OmShapePrimitive } from "./shape-primitive.js";
+import { OmShapePrimitive, type EntityBounds } from "./shape-primitive.js";
 import {
   DEFAULT_LINE_COLOR,
   buildStroke,
   graphicItemNode,
+  pointsExtent,
 } from "./shape-utils.js";
 
 /**
@@ -24,15 +25,41 @@ export class OmLine extends OmShapePrimitive {
     return JSON.stringify(this.shape);
   }
 
-  protected override buildMeshes(parent: TransformNode, z: number): void {
+  protected override entityKind(): string {
+    return "line";
+  }
+
+  protected override entityBounds(): EntityBounds | null {
+    const s = this.shape;
+    if (!s || s.points.length < 2) {
+      return null;
+    }
+    return {
+      extent: pointsExtent(s.points),
+      origin: s.origin,
+      rotation: s.rotation,
+      points: s.points,
+    };
+  }
+
+  protected override buildMeshes(
+    parent: TransformNode,
+    z: number,
+    inEntityFrame = false,
+  ): void {
     const s = this.shape;
     if (!s || s.points.length < 2) {
       return;
     }
-    const gi = graphicItemNode(parent, s, `om-line.${this.zOrder}.gi`);
+    let root = parent;
+    if (!inEntityFrame) {
+      const gi = graphicItemNode(parent, s, `om-line.${this.zOrder}.gi`);
+      root = gi.node;
+      this.resources.push(gi);
+    }
     const stroke = buildStroke(
       parent.getScene(),
-      gi.node,
+      root,
       s.points,
       s.color ?? DEFAULT_LINE_COLOR,
       s.pattern,
@@ -42,7 +69,6 @@ export class OmLine extends OmShapePrimitive {
     if (stroke) {
       this.resources.push(stroke);
     }
-    this.resources.push(gi);
   }
 }
 

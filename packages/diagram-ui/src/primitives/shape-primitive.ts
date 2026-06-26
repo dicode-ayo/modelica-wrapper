@@ -1,9 +1,16 @@
 import { LitElement, css, html } from "lit";
 import { property } from "lit/decorators.js";
-import { consume } from "@lit/context";
+import { ContextConsumer, consume } from "@lit/context";
 import type { Scene, TransformNode } from "@babylonjs/core";
 
+import type { Extent, Point } from "@dicode/omc-client";
+
 import { parentNodeContext } from "../base/parent-node-context.js";
+import { OmShapeNode } from "../base/shape-node.js";
+import {
+  interactionStateContext,
+  type InteractionStateStore,
+} from "../interaction/interaction-state.js";
 import { requestSceneRender } from "../scene/render-scheduler.js";
 import { zForOrder, type OwnedResource } from "./shape-utils.js";
 
@@ -25,6 +32,18 @@ import { zForOrder, type OwnedResource } from "./shape-utils.js";
  *     returns the disposables. Called only when the fingerprint
  *     changes (or on first update).
  */
+/**
+ * The frame an editable primitive places its entity in: the bounding
+ * `extent` (+ optional `origin` / `rotation`), and for a poly its `points`
+ * (which drive the hit tube + vertex handles).
+ */
+export interface EntityBounds {
+  extent: Extent;
+  origin?: Point | undefined;
+  rotation?: number | undefined;
+  points?: Point[] | undefined;
+}
+
 export abstract class OmShapePrimitive extends LitElement {
   static override styles = css`
     :host {
@@ -51,11 +70,43 @@ export abstract class OmShapePrimitive extends LitElement {
   @property({ type: Number, attribute: "z-bias" })
   zBias = 0;
 
+  /**
+   * When `true`, the primitive is a first-class editable entity: it owns an
+   * `OmShapeNode` (a named transform + pickable hit geometry + selection
+   * overlay / vertex handles), and draws its visual under that node. When
+   * `false` (the default — every icon primitive), it's pure paint drawn
+   * under the parent transform with no interaction.
+   */
+  @property({ type: Boolean }) editable = false;
+
+  /** Selection flag, honoured only when `editable`. */
+  @property({ type: Boolean }) selected = false;
+
+  /** Position in the host's own-layer shape array — the `shape:` key index,
+   *  used to name the entity when `editable`. */
+  @property({ type: Number }) entityIndex = 0;
+
   @consume({ context: parentNodeContext, subscribe: true })
   protected parentTransform: TransformNode | null = null;
 
   protected resources: OwnedResource[] = [];
   private lastBuiltKey: string | null = null;
+  private shapeNode: OmShapeNode | null = null;
+  private hovered = false;
+  private interactionUnsub: (() => void) | null = null;
+
+  constructor() {
+    super();
+    // Registered for every primitive (the controller handles connect /
+    // reconnect), but only an `editable` one subscribes to the store — icon
+    // paint never reacts to hover. The context value is the store reference,
+    // so this fires once per (re)connect, not per pointer move.
+    new ContextConsumer(this, {
+      context: interactionStateContext,
+      subscribe: true,
+      callback: (store) => this.onInteractionStore(store),
+    });
+  }
 
   override render() {
     return html``;
@@ -64,6 +115,10 @@ export abstract class OmShapePrimitive extends LitElement {
   override updated(): void {
     const parent = this.parentTransform;
     if (!parent) {
+      return;
+    }
+    if (this.editable) {
+      this.updateEditable(parent);
       return;
     }
     const key = `${this.zOrder}|${this.zBias}|${this.fingerprint()}`;
@@ -76,10 +131,97 @@ export abstract class OmShapePrimitive extends LitElement {
     this.requestRender();
   }
 
+  /**
+   * Editable path: maintain an `OmShapeNode` under `parent` and draw the
+   * visual under it, so the same shape that renders in an icon becomes a
+   * selectable, hit-testable, vertex-editable entity on the host canvas.
+   */
+  private updateEditable(parent: TransformNode): void {
+    if (!this.shapeNode) {
+      this.shapeNode = new OmShapeNode(
+        parent.getScene(),
+        parent,
+        this.entityName(),
+      );
+    }
+    const node = this.shapeNode;
+    node.transform.name = this.entityName();
+    node.setHovered(this.hovered);
+    const key = `${this.zBias}|${this.fingerprint()}`;
+    if (key !== this.lastBuiltKey) {
+      this.lastBuiltKey = key;
+      this.tearDownMeshes();
+      const b = this.entityBounds();
+      if (b) {
+        node.setDiagramBounds(b.extent, b.origin, b.rotation ?? 0, this.zBias);
+        node.setPolyPoints(b.points ?? null);
+        // A poly is edited per-vertex — no bounding-box resize/rotate.
+        const poly = b.points !== undefined;
+        node.setSelectionAffordances({ resize: !poly, rotate: !poly });
+      }
+      // The entity transform already carries the shape's origin + rotation
+      // (via setDiagramBounds), so the primitive must NOT re-apply them.
+      this.buildMeshes(node.transform, zForOrder(this.zOrder), true);
+    }
+    node.setSelected(this.selected);
+    this.requestRender();
+  }
+
+  private entityName(): string {
+    return `om-shape:${this.entityKind()}:${this.entityIndex}`;
+  }
+
+  /** This entity's `shape:` selection key — what the hover key matches. */
+  private entityKey(): string {
+    return `shape:${this.entityKind()}:${this.entityIndex}`;
+  }
+
+  /**
+   * Attach to the host's interaction store so a pointer hover over this shape
+   * reveals its hit tube + vertex handles, like a connection edge. Only
+   * editable primitives subscribe; the hover is self-managed (not a
+   * host-driven prop) so it doesn't re-render the whole layout.
+   */
+  private onInteractionStore(store: InteractionStateStore | null): void {
+    this.interactionUnsub?.();
+    this.interactionUnsub =
+      this.editable && store
+        ? store.subscribe((snap) => this.onHover(snap.hoverKey))
+        : null;
+  }
+
+  private onHover(hoverKey: string | null): void {
+    const hovered = hoverKey === this.entityKey();
+    if (hovered === this.hovered) {
+      return;
+    }
+    this.hovered = hovered;
+    this.shapeNode?.setHovered(hovered);
+  }
+
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.interactionUnsub?.();
+    this.interactionUnsub = null;
     this.tearDownMeshes();
+    this.shapeNode?.dispose();
+    this.shapeNode = null;
     this.lastBuiltKey = null;
+  }
+
+  /** The `shape:` key kind for the entity name. Overridden by primitives
+   *  that support `editable` (line / polygon / …). */
+  protected entityKind(): string {
+    return "";
+  }
+
+  /**
+   * The entity's frame: bounding `extent` (+ optional `origin` / `rotation`)
+   * and, for a poly, its `points` (drives the hit tube + vertex handles).
+   * `null` leaves the entity unsized. Overridden by editable primitives.
+   */
+  protected entityBounds(): EntityBounds | null {
+    return null;
   }
 
   protected scene(): Scene | null {
@@ -107,8 +249,16 @@ export abstract class OmShapePrimitive extends LitElement {
    *  rebuilds when this string doesn't change. */
   protected abstract fingerprint(): string;
 
-  /** Build the Babylon meshes for the current shape data and push the
-   *  disposables onto `this.resources`. Called with the entity's
-   *  TransformNode and the z position derived from `zOrder`. */
-  protected abstract buildMeshes(parent: TransformNode, z: number): void;
+  /**
+   * Build the Babylon meshes for the current shape data and push the
+   * disposables onto `this.resources`. `inEntityFrame` is `true` on the
+   * editable path, where `parent` already carries the shape's
+   * origin/rotation — the primitive must then draw raw geometry without its
+   * own `graphicItemNode`, or the placement applies twice.
+   */
+  protected abstract buildMeshes(
+    parent: TransformNode,
+    z: number,
+    inEntityFrame?: boolean,
+  ): void;
 }

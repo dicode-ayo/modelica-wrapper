@@ -10,7 +10,7 @@ import type {
   IconLayer,
 } from "@dicode/omc-client";
 
-import { renderLayers } from "../primitives/render-shape.js";
+import { renderShape } from "../primitives/render-shape.js";
 import { buildSubstitutions } from "../label/build-substitutions.js";
 import "../scene/scene.component.js";
 import "../axis/grid-axis.component.js";
@@ -31,7 +31,7 @@ import {
   type PickerFn,
   type PickerFactory,
 } from "../interaction/interaction-manager.js";
-import type { DragEvents } from "../interaction/gesture-mode.js";
+import { ownerOfHandle, type DragEvents } from "../interaction/gesture-mode.js";
 import { ModeRouter } from "../interaction/mode.js";
 import {
   applyAddGraphic,
@@ -39,6 +39,8 @@ import {
   applyEdgeSegmentDrag,
   applyResize,
   applyRotation,
+  applyShapeVertexDrag,
+  applyShapeVertexInsert,
   applySnapToExtents,
   applyWaypointDelete,
   applyWaypointDrag,
@@ -74,6 +76,7 @@ import {
   isConnectorKey,
   isEdgeKey,
   isJunctionKey,
+  isShapeKey,
   parseKey,
 } from "../interaction/node-keys.js";
 import type { LibraryEvents } from "../library-browser/library-browser.component.js";
@@ -99,6 +102,11 @@ import type { ToolDraw } from "../interaction/tool-mode.js";
 import { emitEvent } from "../dom-event.js";
 import { HOST_SHAPE_Z_BIAS } from "../host-shape/host-shape.component.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
+
+/** Shape kinds edited per-vertex via their own editable primitive entity. */
+function isEditablePolyKind(kind: string): boolean {
+  return kind === "line" || kind === "polygon";
+}
 
 interface BBox {
   minX: number;
@@ -309,6 +317,10 @@ export class OmGraphicalLayout extends LitElement {
   /** Diagram-space point the open context menu is anchored to (so it tracks
    *  that spot through pan/zoom). Null when the menu is closed. */
   private contextMenuAnchor: { x: number; y: number } | null = null;
+
+  /** The poly vertex a right-click landed on — target for `Delete vertex`.
+   *  Set when the context menu opens on a vertex dot, cleared on close. */
+  private contextVertex: { key: string; index: number } | null = null;
 
   private modeRouter: ModeRouter | null = null;
   private dblClickPicker: PickerFn | null = null;
@@ -614,16 +626,33 @@ export class OmGraphicalLayout extends LitElement {
     return layout.kind === "icon" ? layout.iconLayers : layout.diagramLayers;
   }
 
+  /**
+   * Paints the host's shapes (ancestor-first / host-last). Own-layer
+   * line / polygon shapes are skipped — they're drawn by their editable
+   * `<om-line>` / `<om-polygon>` entity in `renderHostShapeEntities`,
+   * which owns both their visual and their interaction.
+   */
   private renderHostShapes(layout: DiagramLayout): TemplateResult[] {
-    return renderLayers(this.activeLayers(layout), HOST_SHAPE_Z_BIAS);
+    const out: TemplateResult[] = [];
+    let zOrder = 0;
+    for (const layer of this.activeLayers(layout)) {
+      const own = layer.from === layout.className;
+      for (const shape of layer.shapes) {
+        if (!(own && isEditablePolyKind(shape.kind))) {
+          out.push(renderShape(shape, zOrder, HOST_SHAPE_Z_BIAS));
+        }
+        zOrder++;
+      }
+    }
+    return out;
   }
 
   /**
-   * Selection entities for the host's OWN drawn shapes (`from ===
-   * className`) — one `<om-host-shape>` per shape, contributing a pickable
-   * hit plane + handles over the visual already drawn by
-   * `renderHostShapes`. Inherited ancestor shapes stay non-interactive.
-   * `index` is the shape's position in the own layer — the `shape:` key.
+   * The host's OWN drawn shapes (`from === className`) as interactive
+   * entities: a line / polygon is its own editable `<om-line>` /
+   * `<om-polygon>` (visual + hit tube + vertex handles); every other kind
+   * gets an `<om-host-shape>` hit plane over the paint. Inherited ancestor
+   * shapes stay non-interactive. `index` is the `shape:` key index.
    */
   private renderHostShapeEntities(layout: DiagramLayout): TemplateResult[] {
     if (this.readonly) {
@@ -635,14 +664,34 @@ export class OmGraphicalLayout extends LitElement {
     if (!own) {
       return [];
     }
-    return own.shapes.map(
-      (shape, index) =>
-        html`<om-host-shape
+    return own.shapes.map((shape, index) => {
+      const selected = this.selectedKeys.has(formatShapeKey(shape.kind, index));
+      if (shape.kind === "line") {
+        return html`<om-line
+          editable
           .shape=${shape}
-          .index=${index}
-          ?selected=${this.selectedKeys.has(formatShapeKey(shape.kind, index))}
-        ></om-host-shape>`,
-    );
+          .entityIndex=${index}
+          .zOrder=${index}
+          .zBias=${HOST_SHAPE_Z_BIAS}
+          ?selected=${selected}
+        ></om-line>`;
+      }
+      if (shape.kind === "polygon") {
+        return html`<om-polygon
+          editable
+          .shape=${shape}
+          .entityIndex=${index}
+          .zOrder=${index}
+          .zBias=${HOST_SHAPE_Z_BIAS}
+          ?selected=${selected}
+        ></om-polygon>`;
+      }
+      return html`<om-host-shape
+        .shape=${shape}
+        .index=${index}
+        ?selected=${selected}
+      ></om-host-shape>`;
+    });
   }
 
   /**
@@ -843,10 +892,10 @@ export class OmGraphicalLayout extends LitElement {
       return;
     }
     const node = this.dblClickPicker(e.clientX, e.clientY);
-    // Double-clicking a connection edits its route: a hit on the edge
-    // line inserts a waypoint at the click; a hit on a junction disc
-    // deletes that waypoint.
-    if (node && this.handleWaypointDblClick(node, e)) {
+    // Double-clicking a polyline edits its vertices: a connection edge
+    // inserts a waypoint (a junction disc deletes one); a poly shape's
+    // line inserts a vertex at the click.
+    if (node && this.handlePolylineDblClick(node, e)) {
       return;
     }
     if (!this.libraryDataSource) {
@@ -867,18 +916,36 @@ export class OmGraphicalLayout extends LitElement {
   };
 
   /**
-   * Resolve a double-click on a connection's edge / junction into a
-   * waypoint insert / delete and commit it. Returns `true` when the
-   * gesture was consumed (so the library-browser path is skipped),
-   * `false` when the picked node isn't a connection.
+   * Resolve a double-click on a polyline into a vertex edit and commit it:
+   * a connection edge inserts a waypoint, a junction disc deletes one, and
+   * a poly host shape's line inserts a vertex at the click. Returns `true`
+   * when consumed (so the library-browser path is skipped), `false` when
+   * the picked node isn't an editable polyline.
    */
-  private handleWaypointDblClick(node: Node, e: MouseEvent): boolean {
+  private handlePolylineDblClick(node: Node, e: MouseEvent): boolean {
     if (!this.layout) {
       return false;
     }
     const entity = entityKeyForNode(node);
     if (!entity) {
       return false;
+    }
+    if (
+      isShapeKey(entity) &&
+      (entity.shapeKind === "line" || entity.shapeKind === "polygon")
+    ) {
+      const point = this.sceneEl?.clientToDiagram(e.clientX, e.clientY);
+      if (!point) {
+        return false;
+      }
+      this.commitLayout(
+        applyShapeVertexInsert(
+          this.layout,
+          formatShapeKey(entity.shapeKind, entity.index),
+          point,
+        ),
+      );
+      return true;
     }
     if (isEdgeKey(entity)) {
       // Edge nodeId is the connection index.
@@ -1022,7 +1089,12 @@ export class OmGraphicalLayout extends LitElement {
       case "contextMenu": {
         const d = detail as InteractionEvents["contextMenu"];
         this.emit("om-context-menu", d);
-        this.selectForContext(d.key);
+        // A right-click on a vertex dot targets that vertex (keeping the
+        // shape selected); anything else adjusts selection as usual.
+        this.contextVertex = this.resolveContextVertex(d.clientX, d.clientY);
+        if (!this.contextVertex) {
+          this.selectForContext(d.key);
+        }
         this.openContextMenu(d.clientX, d.clientY);
         return;
       }
@@ -1246,6 +1318,27 @@ export class OmGraphicalLayout extends LitElement {
         }
         return;
       }
+      case "vertexDrag": {
+        // Drag one vertex of a poly shape to the snapped pointer. Live
+        // preview on draft, persist on commit — same pipeline as resize.
+        const d = detail as DragEvents["vertexDrag"];
+        const { x, y } = snapPoint(d.x, d.y, this.currentSnapGrid());
+        const edited = applyShapeVertexDrag(
+          this.layout,
+          d.key,
+          d.vertexIndex,
+          x,
+          y,
+        );
+        if (d.draft) {
+          this.draftLayout = edited;
+          this.setInteractionState({ kind: "moving", keys: [d.key] });
+        } else {
+          this.commitLayout(edited);
+          this.endInteraction();
+        }
+        return;
+      }
     }
   }
 
@@ -1334,9 +1427,39 @@ export class OmGraphicalLayout extends LitElement {
     return {
       layout: this.layout,
       selectedKeys: this.selectedKeys,
+      contextVertex: this.contextVertex,
       commitLayout: (next) => this.commitLayout(next),
       setSelection: (keys) => this.setSelection(keys),
     };
+  }
+
+  /** Resolve a right-click position to the poly vertex under it, if any. */
+  private resolveContextVertex(
+    clientX: number,
+    clientY: number,
+  ): { key: string; index: number } | null {
+    const node = this.dblClickPicker?.(clientX, clientY) ?? null;
+    const entity = node ? entityKeyForNode(node) : null;
+    if (!entity || entity.kind !== "vertex-handle" || !node) {
+      return null;
+    }
+    const key = ownerOfHandle(node);
+    const index = Number(entity.nodeId);
+    return key && Number.isInteger(index) ? { key, index } : null;
+  }
+
+  /** True when exactly one line / polygon host shape is selected. */
+  private singlePolyShapeSelected(): boolean {
+    if (this.selectedKeys.size !== 1) {
+      return false;
+    }
+    const [key] = this.selectedKeys;
+    const parsed = key ? parseKey(key) : null;
+    return (
+      !!parsed &&
+      isShapeKey(parsed) &&
+      (parsed.shapeKind === "line" || parsed.shapeKind === "polygon")
+    );
   }
 
   private commandContext(): ContextKeys {
@@ -1349,6 +1472,8 @@ export class OmGraphicalLayout extends LitElement {
         readonly: this.readonly,
         viewLayer: this.layout?.kind ?? "diagram",
         hasClipboard: false,
+        vertexTarget: this.contextVertex !== null,
+        polySelection: this.singlePolyShapeSelected(),
       },
     );
   }
@@ -1406,6 +1531,7 @@ export class OmGraphicalLayout extends LitElement {
 
   private readonly onContextMenuClose = (): void => {
     this.contextMenuAnchor = null;
+    this.contextVertex = null;
   };
 
   private readonly onContextMenuSelect = (

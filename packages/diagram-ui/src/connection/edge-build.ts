@@ -1,16 +1,12 @@
-import {
-  Color3,
-  Mesh,
-  MeshBuilder,
-  StandardMaterial,
-  Vector3,
-} from "@babylonjs/core";
+import { Color3, Mesh, Vector3 } from "@babylonjs/core";
 import {
   CreateDashedLines,
   CreateLines,
 } from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
 import type { LinesMesh, Scene, TransformNode } from "@babylonjs/core";
 import type { Point } from "@dicode/omc-client";
+
+import { buildHitTube as buildSharedHitTube } from "../base/hit-tube.js";
 
 /**
  * Pure builder for the connection's stroked path. Edges use Babylon's
@@ -175,46 +171,11 @@ export function rebuildHitTube(
   return hitArea;
 }
 
-/**
- * Build a single mesh whose volume covers every segment of the
- * polyline. `MeshBuilder.CreateTube` doesn't accept disjoint segments,
- * so we merge per-segment tubes into one mesh. The tube renders at
- * `visibility = 0` (transparent) so it stays pickable — Babylon's
- * default `scene.pick` predicate skips `isVisible = false` meshes but
- * ignores `visibility`. Revealing it (raising `visibility`) doubles as
- * the edge's hover affordance.
- */
 function buildHitTube(
   scene: Scene,
   name: string,
   points: Vector3[],
   radius: number,
 ): Mesh {
-  const segments: Mesh[] = [];
-  for (let i = 0; i < points.length - 1; i++) {
-    const seg = MeshBuilder.CreateTube(
-      `${name}.${i}`,
-      {
-        path: [points[i]!, points[i + 1]!],
-        radius,
-        tessellation: 6,
-        cap: 0,
-        updatable: false,
-      },
-      scene,
-    );
-    segments.push(seg);
-  }
-  const merged =
-    segments.length === 1
-      ? segments[0]!
-      : (Mesh.MergeMeshes(segments, true, true) ?? segments[0]!);
-  merged.name = name;
-  const material = new StandardMaterial(`${name}.mat`, scene);
-  material.disableLighting = true;
-  material.emissiveColor = HIT_HOVER_COLOR;
-  merged.material = material;
-  merged.visibility = 0;
-  merged.isPickable = true;
-  return merged;
+  return buildSharedHitTube(scene, name, points, radius, HIT_HOVER_COLOR);
 }

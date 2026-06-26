@@ -15,6 +15,7 @@ import {
   isShapeKey,
   parseKey,
 } from "../src/interaction/node-keys.js";
+import { ownerOfHandle } from "../src/interaction/gesture-mode.js";
 
 function makeScene(): { scene: Scene; dispose: () => void } {
   const engine = new NullEngine({
@@ -197,6 +198,22 @@ describe("entityKeyForNode", () => {
     const m = new Mesh("anything", scene);
     m.metadata = { kind: "edge", nodeId: "e1" };
     expect(entityKeyForNode(m)).toEqual({ kind: "edge", nodeId: "e1" });
+    dispose();
+  });
+
+  it("resolves a vertex handle to its index via metadata, owner via the chain", () => {
+    const { scene, dispose } = makeScene();
+    const wrapper = new TransformNode("om-shape:line:2", scene);
+    const dot = new Mesh("om-vertex-handle", scene);
+    dot.parent = wrapper;
+    dot.metadata = { kind: "vertex-handle", nodeId: "1" };
+    // The picked entity is the vertex handle (index 1)…
+    expect(entityKeyForNode(dot)).toEqual({
+      kind: "vertex-handle",
+      nodeId: "1",
+    });
+    // …while ownerOfHandle walks up to the shape it belongs to.
+    expect(ownerOfHandle(dot)).toBe("shape:line:2");
     dispose();
   });
 

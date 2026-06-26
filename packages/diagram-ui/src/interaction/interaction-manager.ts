@@ -71,11 +71,28 @@ export class InteractionManager {
   }
 
   handlePointerMove(e: PointerEvent): void {
-    const key = this.pickKey(e.clientX, e.clientY);
+    const key = this.hoverKeyAt(e.clientX, e.clientY);
     if (key !== this.hoverKey) {
       this.hoverKey = key;
       this.emit("hover", { key });
     }
+  }
+
+  /**
+   * Hover resolution: like {@link pickKey}, but a vertex dot resolves to its
+   * owner shape instead of `null`. The dots are revealed *by* that hover, so
+   * collapsing to `null` the moment the pointer reaches one would make them
+   * flicker out from under the cursor. (Select / context-menu still use
+   * `pickKey`, where a handle must stay non-selectable.)
+   */
+  private hoverKeyAt(clientX: number, clientY: number): string | null {
+    const node = this.picker(clientX, clientY);
+    const entity = entityKeyForNode(node);
+    if (entity?.kind === "vertex-handle" && node) {
+      const owner = entityKeyForNode(node.parent ?? null);
+      return owner ? formatKey(owner.kind, owner.nodeId) : null;
+    }
+    return this.pickKey(clientX, clientY);
   }
 
   handlePointerLeave(): void {
@@ -129,12 +146,16 @@ export class InteractionManager {
   private pickKey(clientX: number, clientY: number): string | null {
     const node = this.picker(clientX, clientY);
     let entity = entityKeyForNode(node);
-    // Selection handles (resize corners + rotate disc) belong to
-    // `DragMode`. They are not selectable entities, so picking one must
+    // Selection handles (resize corners, rotate disc, vertex dots) belong
+    // to `DragMode`. They are not selectable entities, so picking one must
     // not emit a `select` — otherwise the handle's own key replaces the
     // component in the selection and the shape deselects out from under
     // the gesture, taking its handles with it.
-    if (entity?.kind === "handle" || entity?.kind === "rotate-handle") {
+    if (
+      entity?.kind === "handle" ||
+      entity?.kind === "rotate-handle" ||
+      entity?.kind === "vertex-handle"
+    ) {
       return null;
     }
     // A `port` indicator is a child of its connector's TransformNode.

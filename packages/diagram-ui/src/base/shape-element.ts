@@ -151,14 +151,24 @@ export abstract class OmShapeElement extends LitElement {
     return html`${renderLayers(this.layers)}<slot></slot>`;
   }
 
+  /**
+   * Applies this entity's geometry to its `OmShapeNode`. Default maps the
+   * placement through the icon coordinate system (components / connectors);
+   * subclasses whose geometry is already in diagram space (host shapes)
+   * override to position the node directly.
+   */
+  protected applyGeometry(node: OmShapeNode): void {
+    node.setPlacement(
+      this.resolvePlacement(),
+      this.coordinateSystem,
+      this.zOffset(),
+    );
+  }
+
   override updated(_changed: Map<string, unknown>): void {
     this.ensureShapeNode();
     if (this.shapeNode) {
-      this.shapeNode.setPlacement(
-        this.resolvePlacement(),
-        this.coordinateSystem,
-        this.zOffset(),
-      );
+      this.applyGeometry(this.shapeNode);
       this.shapeNode.setSelectionAffordances(this.selectionAffordances());
       this.shapeNode.setSelected(this.selected);
     }
