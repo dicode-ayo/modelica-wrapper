@@ -31,7 +31,7 @@ import {
   type PickerFn,
   type PickerFactory,
 } from "../interaction/interaction-manager.js";
-import { ownerOfHandle, type DragEvents } from "../interaction/gesture-mode.js";
+import type { DragEvents } from "../interaction/gesture-mode.js";
 import { ModeRouter } from "../interaction/mode.js";
 import {
   applyAddGraphic,
@@ -78,6 +78,8 @@ import {
   isJunctionKey,
   isShapeKey,
   parseKey,
+  vertexKeyForEntity,
+  vertexShapeKey,
 } from "../interaction/node-keys.js";
 import type { LibraryEvents } from "../library-browser/library-browser.component.js";
 import { orthogonalRoute } from "../interaction/connection-route.js";
@@ -318,9 +320,9 @@ export class OmGraphicalLayout extends LitElement {
    *  that spot through pan/zoom). Null when the menu is closed. */
   private contextMenuAnchor: { x: number; y: number } | null = null;
 
-  /** The poly vertex a right-click landed on — target for `Delete vertex`.
+  /** The vertex wire key a right-click landed on — target for `Delete vertex`.
    *  Set when the context menu opens on a vertex dot, cleared on close. */
-  private contextVertex: { key: string; index: number } | null = null;
+  private contextVertex: string | null = null;
 
   private modeRouter: ModeRouter | null = null;
   private dblClickPicker: PickerFn | null = null;
@@ -1322,17 +1324,22 @@ export class OmGraphicalLayout extends LitElement {
         // Drag one vertex of a poly shape to the snapped pointer. Live
         // preview on draft, persist on commit — same pipeline as resize.
         const d = detail as DragEvents["vertexDrag"];
+        const vertex = parseKey(d.key);
+        if (!vertex || vertex.kind !== "vertex-handle") {
+          return;
+        }
+        const shapeKey = vertexShapeKey(vertex);
         const { x, y } = snapPoint(d.x, d.y, this.currentSnapGrid());
         const edited = applyShapeVertexDrag(
           this.layout,
-          d.key,
-          d.vertexIndex,
+          shapeKey,
+          vertex.vertexIndex,
           x,
           y,
         );
         if (d.draft) {
           this.draftLayout = edited;
-          this.setInteractionState({ kind: "moving", keys: [d.key] });
+          this.setInteractionState({ kind: "moving", keys: [shapeKey] });
         } else {
           this.commitLayout(edited);
           this.endInteraction();
@@ -1433,19 +1440,14 @@ export class OmGraphicalLayout extends LitElement {
     };
   }
 
-  /** Resolve a right-click position to the poly vertex under it, if any. */
+  /** Resolve a right-click position to the vertex wire key under it, if any. */
   private resolveContextVertex(
     clientX: number,
     clientY: number,
-  ): { key: string; index: number } | null {
+  ): string | null {
     const node = this.dblClickPicker?.(clientX, clientY) ?? null;
     const entity = node ? entityKeyForNode(node) : null;
-    if (!entity || entity.kind !== "vertex-handle" || !node) {
-      return null;
-    }
-    const key = ownerOfHandle(node);
-    const index = Number(entity.nodeId);
-    return key && Number.isInteger(index) ? { key, index } : null;
+    return entity ? vertexKeyForEntity(entity) : null;
   }
 
   /** True when exactly one line / polygon host shape is selected. */

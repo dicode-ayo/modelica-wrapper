@@ -439,12 +439,13 @@ export class RotateHandle {
 
 /**
  * Per-vertex drag handles for a poly (line / polygon) shape. One small
- * pickable square sits on each vertex; picking one starts a vertex-drag
- * gesture. Each carries `metadata.kind = "vertex-handle"` with its vertex
- * index as `nodeId`. Positions are the shape's own `points` — valid only
- * because a poly host shape uses an identity diagram frame (the parent
- * transform sits at the shape origin, unscaled), so a point coordinate is
- * already the handle's local position.
+ * pickable disc sits on each vertex; picking one starts a vertex-drag
+ * gesture. Each carries `metadata.kind = "vertex-handle"` and a
+ * self-describing `nodeId` of `${ownerId}/${vertexIndex}` (e.g. `line:1/2`).
+ * Positions are the shape's own `points` — valid only because a poly host
+ * shape uses an identity diagram frame (the parent transform sits at the
+ * shape origin, unscaled), so a point coordinate is already the handle's
+ * local position.
  */
 export class VertexHandles {
   private readonly handles: Mesh[] = [];
@@ -455,6 +456,7 @@ export class VertexHandles {
     private readonly scene: Scene,
     parent: TransformNode,
     points: ReadonlyArray<Point>,
+    ownerId: string,
   ) {
     this.material = new StandardMaterial("om-vertex-handle-mat", scene);
     this.material.disableLighting = true;
@@ -476,7 +478,7 @@ export class VertexHandles {
       handle.isPickable = true;
       handle.metadata = {
         kind: "vertex-handle" satisfies EntityKind,
-        nodeId: String(i),
+        nodeId: `${ownerId}/${i}`,
       };
       this.handles.push(handle);
     });

@@ -8,6 +8,7 @@ import {
   applyShapeSmoothToggle,
   applyShapeVertexDelete,
 } from "../interaction/layout-ops.js";
+import { parseKey, vertexShapeKey } from "../interaction/node-keys.js";
 import type { Command, CommandPlacement, CommandTarget } from "./command.js";
 import type { KeyChord } from "./keymap.js";
 
@@ -100,11 +101,16 @@ export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
     when: (ctx) => !ctx.readonly && ctx.vertexTarget,
     placements: [editMenu(5)],
     run: (target) => {
-      const { layout, contextVertex: v } = target;
-      if (!layout || !v) {
+      const { layout, contextVertex } = target;
+      const vertex = contextVertex ? parseKey(contextVertex) : null;
+      if (!layout || !vertex || vertex.kind !== "vertex-handle") {
         return;
       }
-      const next = applyShapeVertexDelete(layout, v.key, v.index);
+      const next = applyShapeVertexDelete(
+        layout,
+        vertexShapeKey(vertex),
+        vertex.vertexIndex,
+      );
       if (next !== layout) {
         target.commitLayout(next);
       }

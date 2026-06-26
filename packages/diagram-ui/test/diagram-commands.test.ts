@@ -136,6 +136,39 @@ describe("DIAGRAM_COMMANDS", () => {
     expect(smooth(ctx({ polySelection: true, readonly: true }))).toBe(false);
   });
 
+  it("deleteVertex parses its vertex key and drops that point", () => {
+    const polyLayout: DiagramLayout = {
+      ...layout(),
+      diagramLayers: [
+        {
+          from: "Demo",
+          shapes: [
+            {
+              kind: "line",
+              points: [
+                [0, 0],
+                [10, 0],
+                [20, 0],
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const t = spyTarget(polyLayout, []);
+    command("diagram.deleteVertex").run({
+      ...t,
+      contextVertex: "vtx:line:0/1",
+    });
+    expect(t.committed).toHaveLength(1);
+    expect(t.committed[0]?.diagramLayers[0]?.shapes[0]).toMatchObject({
+      points: [
+        [0, 0],
+        [20, 0],
+      ],
+    });
+  });
+
   it("every default key binding resolves to a registered command", () => {
     const registry = new CommandRegistry(DIAGRAM_COMMANDS);
     for (const id of DEFAULT_KEYMAP.values()) {

@@ -70,7 +70,6 @@ export type LabelKey = SimpleKey<"label">;
 export type PortKey = SimpleKey<"port">;
 export type HandleKey = SimpleKey<"handle">;
 export type RotateHandleKey = SimpleKey<"rotate-handle">;
-export type VertexHandleKey = SimpleKey<"vertex-handle">;
 
 export interface ConnectorKey {
   kind: "connector";
@@ -93,6 +92,20 @@ export interface ShapeKey {
   shapeKind: string;
   /** Position in the host's own-layer (`from === className`) shape array. */
   index: number;
+}
+
+/**
+ * A single vertex of a poly shape — self-describing, so a dragged or
+ * right-clicked dot carries its full identity without re-deriving the owner.
+ * Raw id: `${shapeKind}:${shapeIndex}/${vertexIndex}` (e.g. `line:1/2`),
+ * mirroring the junction key's `<owner>/<index>` shape.
+ */
+export interface VertexHandleKey {
+  kind: "vertex-handle";
+  nodeId: string;
+  shapeKind: string;
+  shapeIndex: number;
+  vertexIndex: number;
 }
 
 export type EntityKey =
@@ -120,6 +133,40 @@ export function formatComponentKey(componentName: string): string {
 /** Build a shape wire key from its primitive kind and own-layer index. */
 export function formatShapeKey(shapeKind: string, index: number): string {
   return formatKey("shape", `${shapeKind}:${index}`);
+}
+
+/** Build a vertex wire key from its owning shape and the vertex's position. */
+export function formatVertexKey(
+  shapeKind: string,
+  shapeIndex: number,
+  vertexIndex: number,
+): string {
+  return formatKey(
+    "vertex-handle",
+    `${shapeKind}:${shapeIndex}/${vertexIndex}`,
+  );
+}
+
+/** The shape wire key owning a vertex — `shape:<shapeKind>:<shapeIndex>`. */
+export function vertexShapeKey(vertex: VertexHandleKey): string {
+  return formatShapeKey(vertex.shapeKind, vertex.shapeIndex);
+}
+
+/** A picked entity → its vertex wire key, or `null` unless it's a
+ *  well-formed vertex handle (integer shape + vertex indices). */
+export function vertexKeyForEntity(entity: EntityKey): string | null {
+  if (
+    entity.kind !== "vertex-handle" ||
+    !Number.isInteger(entity.shapeIndex) ||
+    !Number.isInteger(entity.vertexIndex)
+  ) {
+    return null;
+  }
+  return formatVertexKey(
+    entity.shapeKind,
+    entity.shapeIndex,
+    entity.vertexIndex,
+  );
 }
 
 /**
@@ -168,20 +215,41 @@ function makeKey(kind: EntityKind, nodeId: string): EntityKey {
     };
   }
   if (kind === "shape") {
-    const colon = nodeId.lastIndexOf(":");
-    const rawIndex = colon < 0 ? "" : nodeId.slice(colon + 1);
-    const index = Number(rawIndex);
+    const { shapeKind, index } = parseShapeId(nodeId);
+    return { kind, nodeId, shapeKind, index };
+  }
+  if (kind === "vertex-handle") {
+    const slash = nodeId.lastIndexOf("/");
+    const shapeId = slash < 0 ? nodeId : nodeId.slice(0, slash);
+    const { shapeKind, index: shapeIndex } = parseShapeId(shapeId);
     return {
       kind,
       nodeId,
-      shapeKind: colon < 0 ? nodeId : nodeId.slice(0, colon),
-      // Fail closed: an absent/non-integer index must not confidently
-      // address a real shape (`Number("")` is 0) — NaN no-ops at the
-      // array lookup.
-      index: rawIndex !== "" && Number.isInteger(index) ? index : NaN,
+      shapeKind,
+      shapeIndex,
+      vertexIndex: slash < 0 ? NaN : failClosedIndex(nodeId.slice(slash + 1)),
     };
   }
   return { kind, nodeId } as EntityKey;
+}
+
+/** Decompose a shape id `${shapeKind}:${index}` (e.g. `line:1`). */
+function parseShapeId(id: string): { shapeKind: string; index: number } {
+  const colon = id.lastIndexOf(":");
+  return {
+    shapeKind: colon < 0 ? id : id.slice(0, colon),
+    index: failClosedIndex(colon < 0 ? "" : id.slice(colon + 1)),
+  };
+}
+
+/**
+ * Parse an index, failing closed to `NaN`. An absent / non-integer index
+ * must not confidently address a real slot (`Number("")` is `0`); `NaN`
+ * no-ops at the array lookup instead.
+ */
+function failClosedIndex(raw: string): number {
+  const n = Number(raw);
+  return raw !== "" && Number.isInteger(n) ? n : NaN;
 }
 
 // ── Type guards ──────────────────────────────────────────────────────

@@ -40,14 +40,13 @@ export interface DragEvents {
     draft: boolean;
   };
   /**
-   * Drag of a poly shape's vertex handle. `key` is the owning shape;
-   * `vertexIndex` is the grabbed vertex's position in `points`; `x, y` is
-   * the live pointer in diagram coords. Draft on every move, committed on
+   * Drag of a poly shape's vertex handle. `key` is the self-describing vertex
+   * wire key (`vtx:<shapeKind>:<shapeIndex>/<vertexIndex>`); `x, y` is the
+   * live pointer in diagram coords. Draft on every move, committed on
    * pointerup.
    */
   vertexDrag: {
     key: string;
-    vertexIndex: number;
     x: number;
     y: number;
     draft: boolean;
