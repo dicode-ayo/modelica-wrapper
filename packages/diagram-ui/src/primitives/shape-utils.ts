@@ -8,10 +8,12 @@ import {
   type Scene,
   type TransformNode,
 } from "@babylonjs/core";
+import { CreateGreasedLine } from "@babylonjs/core/Meshes/Builders/greasedLineBuilder.js";
 import {
-  CreateDashedLines,
-  CreateLines,
-} from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
+  GreasedLineMeshColorMode,
+  GreasedLineMeshMaterialType,
+} from "@babylonjs/core/Materials/GreasedLine/greasedLineMaterialInterfaces.js";
+import "@babylonjs/core/Materials/GreasedLine/greasedLineSimpleMaterial.js";
 import type { Color, Extent, Point } from "@dicode/omc-client";
 import type { FillSpec } from "@dicode/diagram-svg";
 
@@ -460,8 +462,11 @@ function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
 
 // ---------- stroke (polyline) ----------
 
-const DEFAULT_DASH_SIZE = 4;
-const DEFAULT_DASH_GAP = 3;
+/** Modelica default stroke thickness (mm / diagram units). */
+const DEFAULT_STROKE_THICKNESS = 0.25;
+/** Floor on rendered stroke width (diagram units) so a hairline still reads
+ *  at default zoom — GL_LINES used to give every stroke a flat 1px. */
+const MIN_STROKE_WIDTH = 0.5;
 
 export function buildStroke(
   scene: Scene,
@@ -471,37 +476,40 @@ export function buildStroke(
   pattern: string | undefined,
   z: number,
   baseName: string,
+  thickness?: number,
 ): OwnedResource | null {
   if (points.length < 2 || pattern === "None") {
     return null;
   }
-  const vec = points.map(([x, y]) => new Vector3(x, y, z));
-  const colour = colorToColor3(color);
+  const flat: number[] = [];
+  for (const [x, y] of points) {
+    flat.push(x, y, z);
+  }
 
-  // GL_LINES is pixel-thin in WebGL, which matches OMEdit's icon look
-  // for typical lineThickness ≤ 0.5. Anything thicker isn't visually
-  // distinct at default zoom — flagged as a follow-up if we need true
-  // thickness later.
+  // A GreasedLine ribbon honors `thickness` (GL_LINES is hard-capped at 1px).
+  // `sizeAttenuation: false` makes `width` scene units, so it scales with zoom
+  // like the shape it borders — matching Modelica's thickness-in-mm.
   const dash = patternIsDashed(pattern);
-  const mesh = dash
-    ? CreateDashedLines(
-        baseName,
-        {
-          points: vec,
-          dashSize: DEFAULT_DASH_SIZE,
-          gapSize: DEFAULT_DASH_GAP,
-          dashNb: Math.max(8, points.length * 8),
-          updatable: false,
-        },
-        scene,
-      )
-    : CreateLines(baseName, { points: vec, updatable: false }, scene);
-  mesh.color = colour;
+  const mesh = CreateGreasedLine(
+    baseName,
+    { points: flat },
+    {
+      width: Math.max(thickness ?? DEFAULT_STROKE_THICKNESS, MIN_STROKE_WIDTH),
+      sizeAttenuation: false,
+      color: colorToColor3(color),
+      colorMode: GreasedLineMeshColorMode.COLOR_MODE_SET,
+      materialType: GreasedLineMeshMaterialType.MATERIAL_TYPE_SIMPLE,
+      useDash: dash,
+      dashCount: dash ? Math.max(8, points.length * 4) : 0,
+      dashRatio: 0.4,
+    },
+    scene,
+  );
   mesh.parent = parent;
   mesh.isPickable = false;
   return {
     dispose(): void {
-      mesh.dispose();
+      mesh.dispose(false, true);
     },
   };
 }
