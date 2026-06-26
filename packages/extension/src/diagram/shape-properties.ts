@@ -35,7 +35,11 @@ export function colorToHex([r, g, b]: Color): string {
   return (
     "#" +
     [r, g, b]
-      .map((n) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, "0"))
+      .map((n) =>
+        Math.round(Math.max(0, Math.min(255, n)))
+          .toString(16)
+          .padStart(2, "0"),
+      )
       .join("")
   );
 }

@@ -37,7 +37,7 @@ export interface ParameterRef {
   /** Property name (== model field name). */
   name: string;
   /** Modelica type kind; `"unsupported"` is shown read-only. */
-  kind: PrimitiveKind | "enum" | "color" | "unsupported";
+  kind: PrimitiveKind | "enum" | "unsupported";
   /** Qualified enum type name, for `kind === "enum"` (emits `<typeName>.<leaf>`). */
   enumTypeName?: string;
   /** Dialog tab / group — spec defaults ("General" / "Parameters"). */
@@ -76,7 +76,7 @@ export interface ComponentParameterFormState extends ParameterFormState {
 function refForField(field: ParameterField): ParameterRef {
   const ref: ParameterRef = {
     name: field.name,
-    kind: field.kind,
+    kind: field.kind === "color" ? "unsupported" : field.kind,
     tab: field.dialog.tab,
     group: field.dialog.group,
   };
@@ -183,7 +183,7 @@ export function findSubComponent(
  *  - `undefined` / `""` → empty string (caller treats as "clear")
  */
 export function valueToExpr(
-  kind: PrimitiveKind | "enum" | "color" | "unsupported",
+  kind: PrimitiveKind | "enum" | "unsupported",
   value: unknown,
   enumTypeName?: string,
 ): string {
@@ -200,14 +200,6 @@ export function valueToExpr(
     case "enum":
       if (!enumTypeName) return String(value);
       return `${enumTypeName}.${String(value)}`;
-    case "color": {
-      const hex = String(value);
-      const r = parseInt(hex.slice(1, 3), 16);
-      const g = parseInt(hex.slice(3, 5), 16);
-      const b = parseInt(hex.slice(5, 7), 16);
-      if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return "";
-      return `{${r},${g},${b}}`;
-    }
   }
 }
 
