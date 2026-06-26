@@ -4,7 +4,7 @@ import type { DiagramLayout } from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
-import { HOST_SHAPE_Z_BIAS } from "../src/host-shape/host-shape.component.js";
+import { HOST_SHAPE_Z_BIAS } from "../src/graphical-layout/graphical-layout.component.js";
 import { entityKeyForNode } from "../src/interaction/node-keys.js";
 
 /**
@@ -131,17 +131,17 @@ function visibleVertexHandles(el: OmGraphicalLayout): number {
   ).length;
 }
 
-describe("<om-host-shape> selection entities", () => {
-  it("emits an entity per OWN shape (host-shape for extents, editable primitive for polys)", async () => {
+describe("host shape selection entities", () => {
+  it("emits an editable primitive per OWN shape, none for inherited layers", async () => {
     const el = await mount(layout());
     const root = el.shadowRoot;
-    // The rectangle is an <om-host-shape>; the line is its own editable
-    // <om-line>. The inherited `Base` rectangle gets neither.
-    expect(root?.querySelectorAll("om-host-shape").length).toBe(1);
+    // Each own shape is its own editable primitive (rectangle + line); the
+    // inherited `Base` rectangle gets none.
+    expect(root?.querySelectorAll("om-rectangle[editable]").length).toBe(1);
     expect(root?.querySelectorAll("om-line[editable]").length).toBe(1);
   });
 
-  it("names each wrapper om-shape:<kind>:<index> so picks resolve to a shape key", async () => {
+  it("names each entity om-shape:<kind>:<index> so picks resolve to a shape key", async () => {
     const el = await mount(layout());
     const nodes = transformNodes(el);
     const rectWrapper = nodes.find((n) => n.name === "om-shape:rectangle:0");
@@ -246,5 +246,37 @@ describe("<om-host-shape> selection entities", () => {
     // …so the primitive must NOT also wrap the stroke in its own
     // origin/rotation `graphicItemNode` — that would rotate it twice.
     expect(nodes.some((n) => n.name.endsWith(".gi"))).toBe(false);
+  });
+
+  it("seats an extent shape at its origin and pivots its rotation there", async () => {
+    const rotated: DiagramLayout = {
+      ...layout(),
+      diagramLayers: [
+        {
+          from: "T",
+          shapes: [
+            {
+              kind: "rectangle",
+              origin: [20, 10],
+              rotation: 90,
+              extent: [
+                [-5, -5],
+                [5, 5],
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const el = await mount(rotated);
+    const wrapper = transformNodes(el).find(
+      (n) => n.name === "om-shape:rectangle:0",
+    );
+    // Modelica rotates about `origin`: the entity transform sits at the
+    // origin and carries the rotation, not the extent centre.
+    expect(wrapper?.position.x).toBeCloseTo(20);
+    expect(wrapper?.position.y).toBeCloseTo(10);
+    expect(wrapper?.position.z).toBeCloseTo(HOST_SHAPE_Z_BIAS);
+    expect(wrapper?.rotation.z).toBeCloseTo(Math.PI / 2);
   });
 });

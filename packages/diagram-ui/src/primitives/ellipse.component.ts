@@ -3,14 +3,17 @@ import type { TransformNode } from "@babylonjs/core";
 import type { EllipseShape } from "@dicode/omc-client";
 import { fillSpec } from "@dicode/diagram-svg";
 
-import { OmShapePrimitive } from "./shape-primitive.js";
+import {
+  OmShapePrimitive,
+  extentEntityBounds,
+  type EntityBounds,
+} from "./shape-primitive.js";
 import {
   DEFAULT_LINE_COLOR,
   STROKE_Z_DELTA,
   buildFanFromCenter,
   buildStroke,
   extentToRect,
-  graphicItemNode,
 } from "./shape-utils.js";
 
 const ELLIPSE_SEGMENTS = 64;
@@ -30,7 +33,19 @@ export class OmEllipse extends OmShapePrimitive {
     return JSON.stringify(this.shape);
   }
 
-  protected override buildMeshes(parent: TransformNode, z: number): void {
+  protected override entityKind(): string {
+    return "ellipse";
+  }
+
+  protected override entityBounds(): EntityBounds | null {
+    return this.shape ? extentEntityBounds(this.shape) : null;
+  }
+
+  protected override buildMeshes(
+    parent: TransformNode,
+    z: number,
+    inEntityFrame = false,
+  ): void {
     const s = this.shape;
     if (!s) {
       return;
@@ -52,8 +67,7 @@ export class OmEllipse extends OmShapePrimitive {
     }
 
     const baseName = `om-ellipse.${this.zOrder}`;
-    const gi = graphicItemNode(parent, s, `${baseName}.gi`);
-    const root = gi.node;
+    const root = this.graphicRoot(parent, s, `${baseName}.gi`, inEntityFrame);
     const fill = fillSpec({
       fillColor: s.fillColor,
       lineColor: s.lineColor,
@@ -90,7 +104,6 @@ export class OmEllipse extends OmShapePrimitive {
     if (stroke) {
       this.resources.push(stroke);
     }
-    this.resources.push(gi);
   }
 }
 

@@ -12,26 +12,13 @@ import {
   type InteractionStateStore,
 } from "../interaction/interaction-state.js";
 import { requestSceneRender } from "../scene/render-scheduler.js";
-import { zForOrder, type OwnedResource } from "./shape-utils.js";
+import {
+  graphicItemNode,
+  zForOrder,
+  type GraphicItemTransform,
+  type OwnedResource,
+} from "./shape-utils.js";
 
-/**
- * Base class for the six Modelica icon primitives (`<om-rectangle>`,
- * `<om-polygon>`, `<om-line>`, `<om-ellipse>`, `<om-text>`,
- * `<om-bitmap>`). Each one is a Lit element nested inside an
- * `<om-component>` / `<om-connector>` and consumes the entity's
- * `TransformNode` via Lit context — same plumbing as connectors.
- *
- * Subclasses declare their own shape-data property (each shape kind has
- * its own fields) and implement two hooks:
- *
- *   - `fingerprint()` — a structural cache key. The base class skips
- *     the dispose+rebuild when the shape content is unchanged, so an
- *     OMC roundtrip that produces a new reference with identical
- *     content doesn't re-create textures and flicker.
- *   - `buildMeshes(parent, z)` — creates the Babylon meshes and
- *     returns the disposables. Called only when the fingerprint
- *     changes (or on first update).
- */
 /**
  * The frame an editable primitive places its entity in: the bounding
  * `extent` (+ optional `origin` / `rotation`), and for a poly its `points`
@@ -44,6 +31,35 @@ export interface EntityBounds {
   points?: Point[] | undefined;
 }
 
+/** Entity frame for an extent-based shape (rectangle / ellipse / text /
+ *  bitmap): its own `extent`, positioned + rotated about `origin`. */
+export function extentEntityBounds(shape: {
+  extent: Extent;
+  origin?: Point | undefined;
+  rotation?: number | undefined;
+}): EntityBounds {
+  return {
+    extent: shape.extent,
+    origin: shape.origin,
+    rotation: shape.rotation,
+  };
+}
+
+/**
+ * Base class for the six Modelica shape primitives (`<om-rectangle>`,
+ * `<om-polygon>`, `<om-line>`, `<om-ellipse>`, `<om-text>`, `<om-bitmap>`).
+ * Each is a Lit element that consumes a parent `TransformNode` via Lit
+ * context. Subclasses declare their own shape-data property and implement:
+ *
+ *   - `fingerprint()` — a structural cache key; the base skips the
+ *     dispose+rebuild when the shape content is unchanged.
+ *   - `buildMeshes(parent, z, inEntityFrame)` — creates the Babylon meshes.
+ *   - `entityKind()` / `entityBounds()` — only needed to support `editable`
+ *     (the shape's `shape:` kind and its entity frame).
+ *
+ * With `editable` off it's pure icon paint nested in an `<om-component>`;
+ * with `editable` on it's a standalone selectable host-diagram entity.
+ */
 export abstract class OmShapePrimitive extends LitElement {
   static override styles = css`
     :host {
@@ -159,8 +175,8 @@ export abstract class OmShapePrimitive extends LitElement {
         const poly = b.points !== undefined;
         node.setSelectionAffordances({ resize: !poly, rotate: !poly });
       }
-      // The entity transform already carries the shape's origin + rotation
-      // (via setDiagramBounds), so the primitive must NOT re-apply them.
+      // The entity transform carries the shape's origin + rotation
+      // (setDiagramBounds), so the visual draws raw geometry in this frame.
       this.buildMeshes(node.transform, zForOrder(this.zOrder), true);
     }
     node.setSelected(this.selected);
@@ -233,6 +249,26 @@ export abstract class OmShapePrimitive extends LitElement {
     if (scene) {
       requestSceneRender(scene);
     }
+  }
+
+  /**
+   * The transform a primitive draws its geometry under. Off the editable
+   * path it's a `graphicItemNode` carrying the shape's origin/rotation; in
+   * the entity frame the parent already carries those, so it's the parent
+   * itself (applying them again would place the shape twice).
+   */
+  protected graphicRoot(
+    parent: TransformNode,
+    shape: GraphicItemTransform,
+    name: string,
+    inEntityFrame: boolean,
+  ): TransformNode {
+    if (inEntityFrame) {
+      return parent;
+    }
+    const gi = graphicItemNode(parent, shape, name);
+    this.resources.push(gi);
+    return gi.node;
   }
 
   protected tearDownMeshes(): void {

@@ -6,7 +6,6 @@ import { OmShapePrimitive, type EntityBounds } from "./shape-primitive.js";
 import {
   DEFAULT_LINE_COLOR,
   buildStroke,
-  graphicItemNode,
   pointsExtent,
 } from "./shape-utils.js";
 
@@ -51,12 +50,12 @@ export class OmLine extends OmShapePrimitive {
     if (!s || s.points.length < 2) {
       return;
     }
-    let root = parent;
-    if (!inEntityFrame) {
-      const gi = graphicItemNode(parent, s, `om-line.${this.zOrder}.gi`);
-      root = gi.node;
-      this.resources.push(gi);
-    }
+    const root = this.graphicRoot(
+      parent,
+      s,
+      `om-line.${this.zOrder}.gi`,
+      inEntityFrame,
+    );
     const stroke = buildStroke(
       parent.getScene(),
       root,

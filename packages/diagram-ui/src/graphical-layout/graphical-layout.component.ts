@@ -102,13 +102,22 @@ import {
 import type { ToolId } from "../interaction/tools.js";
 import type { ToolDraw } from "../interaction/tool-mode.js";
 import { emitEvent } from "../dom-event.js";
-import { HOST_SHAPE_Z_BIAS } from "../host-shape/host-shape.component.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
 
-/** Shape kinds edited per-vertex via their own editable primitive entity. */
-function isEditablePolyKind(kind: string): boolean {
-  return kind === "line" || kind === "polygon";
-}
+/**
+ * World-z offset applied to the host class's own shapes so they sit behind
+ * every component / connector but in front of the grid's extent rectangle.
+ * Camera at -Z, so larger z = farther:
+ *
+ *   extent rect  z = +0.10  (white background, drawn by `<om-grid-axis>`)
+ *   grid lines   z = +0.05
+ *   host shapes  z = +0.025 ← here
+ *   components   z =  0.0
+ *
+ * Shared by a shape's visual and its hit geometry so picks land in the same
+ * depth band and a component always wins a pick over a shape beneath it.
+ */
+export const HOST_SHAPE_Z_BIAS = 0.025;
 
 interface BBox {
   minX: number;
@@ -629,10 +638,9 @@ export class OmGraphicalLayout extends LitElement {
   }
 
   /**
-   * Paints the host's shapes (ancestor-first / host-last). Own-layer
-   * line / polygon shapes are skipped — they're drawn by their editable
-   * `<om-line>` / `<om-polygon>` entity in `renderHostShapeEntities`,
-   * which owns both their visual and their interaction.
+   * Paints the host's INHERITED (ancestor) shapes only, non-interactive.
+   * Own-layer shapes are drawn by their editable entity in
+   * `renderHostShapeEntities`, which owns both their visual and interaction.
    */
   private renderHostShapes(layout: DiagramLayout): TemplateResult[] {
     const out: TemplateResult[] = [];
@@ -640,9 +648,11 @@ export class OmGraphicalLayout extends LitElement {
     for (const layer of this.activeLayers(layout)) {
       const own = layer.from === layout.className;
       for (const shape of layer.shapes) {
-        if (!(own && isEditablePolyKind(shape.kind))) {
+        if (!own) {
           out.push(renderShape(shape, zOrder, HOST_SHAPE_Z_BIAS));
         }
+        // Count own shapes too so inherited shapes keep their cross-layer
+        // paint index; own shapes paint via renderHostShapeEntities.
         zOrder++;
       }
     }
@@ -650,11 +660,10 @@ export class OmGraphicalLayout extends LitElement {
   }
 
   /**
-   * The host's OWN drawn shapes (`from === className`) as interactive
-   * entities: a line / polygon is its own editable `<om-line>` /
-   * `<om-polygon>` (visual + hit tube + vertex handles); every other kind
-   * gets an `<om-host-shape>` hit plane over the paint. Inherited ancestor
-   * shapes stay non-interactive. `index` is the `shape:` key index.
+   * The host's OWN drawn shapes (`from === className`) as editable entities —
+   * each its own `<om-*>` primitive owning its visual, hit geometry, and
+   * selection overlay. Inherited ancestor shapes stay non-interactive.
+   * `index` is the `shape:` key index.
    */
   private renderHostShapeEntities(layout: DiagramLayout): TemplateResult[] {
     if (this.readonly) {
@@ -666,34 +675,12 @@ export class OmGraphicalLayout extends LitElement {
     if (!own) {
       return [];
     }
-    return own.shapes.map((shape, index) => {
-      const selected = this.selectedKeys.has(formatShapeKey(shape.kind, index));
-      if (shape.kind === "line") {
-        return html`<om-line
-          editable
-          .shape=${shape}
-          .entityIndex=${index}
-          .zOrder=${index}
-          .zBias=${HOST_SHAPE_Z_BIAS}
-          ?selected=${selected}
-        ></om-line>`;
-      }
-      if (shape.kind === "polygon") {
-        return html`<om-polygon
-          editable
-          .shape=${shape}
-          .entityIndex=${index}
-          .zOrder=${index}
-          .zBias=${HOST_SHAPE_Z_BIAS}
-          ?selected=${selected}
-        ></om-polygon>`;
-      }
-      return html`<om-host-shape
-        .shape=${shape}
-        .index=${index}
-        ?selected=${selected}
-      ></om-host-shape>`;
-    });
+    return own.shapes.map((shape, index) =>
+      renderShape(shape, index, HOST_SHAPE_Z_BIAS, {
+        index,
+        selected: this.selectedKeys.has(formatShapeKey(shape.kind, index)),
+      }),
+    );
   }
 
   /**

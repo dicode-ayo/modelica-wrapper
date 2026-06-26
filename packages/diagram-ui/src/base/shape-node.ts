@@ -189,10 +189,21 @@ export class OmShapeNode {
 
     const sizeChanged =
       this.currentIconWidth !== hitW || this.currentIconHeight !== hitH;
+    const centreChanged =
+      this.currentIconCx !== hitCx || this.currentIconCy !== hitCy;
     if (sizeChanged) {
       this.currentIconWidth = hitW;
       this.currentIconHeight = hitH;
       this.mesh.scaling.set(hitW, hitH, 1);
+    }
+    this.currentIconCx = hitCx;
+    this.currentIconCy = hitCy;
+    this.mesh.position.set(hitCx, hitCy, 0);
+
+    // Handles + outline trace the extent box, so they must follow its size
+    // AND its centre. Rotation rebases the origin, which shifts the centre
+    // with the size unchanged — the size-only guard missed that case.
+    if (sizeChanged || centreChanged) {
       if (this.resizeHandles) {
         const wasVisible = this.resizeHandles.isVisible();
         this.resizeHandles.dispose();
@@ -205,12 +216,7 @@ export class OmShapeNode {
         this.rotateHandle = this.createRotateHandle();
         this.rotateHandle.setVisible(wasVisible);
       }
-    }
-    this.currentIconCx = hitCx;
-    this.currentIconCy = hitCy;
-    this.mesh.position.set(hitCx, hitCy, 0);
-    if (this.outline && sizeChanged) {
-      this.outline.resize(
+      this.outline?.resize(
         this.currentIconWidth,
         this.currentIconHeight,
         this.currentIconCx,

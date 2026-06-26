@@ -16,8 +16,12 @@ import {
 } from "@dicode/diagram-svg";
 import type { TextShape } from "@dicode/omc-client";
 
-import { OmShapePrimitive } from "./shape-primitive.js";
-import { colorToCss, extentToRect, graphicItemNode } from "./shape-utils.js";
+import {
+  OmShapePrimitive,
+  extentEntityBounds,
+  type EntityBounds,
+} from "./shape-primitive.js";
+import { colorToCss, extentToRect } from "./shape-utils.js";
 import { substitutionsContext } from "../label/substitutions-context.js";
 import {
   viewStateContext,
@@ -150,7 +154,19 @@ export class OmText extends OmShapePrimitive {
     this.bakedEdge = 0;
   }
 
-  protected override buildMeshes(parent: TransformNode, z: number): void {
+  protected override entityKind(): string {
+    return "text";
+  }
+
+  protected override entityBounds(): EntityBounds | null {
+    return this.shape ? extentEntityBounds(this.shape) : null;
+  }
+
+  protected override buildMeshes(
+    parent: TransformNode,
+    z: number,
+    inEntityFrame = false,
+  ): void {
     this.resetTextureState();
 
     const s = this.shape;
@@ -198,14 +214,14 @@ export class OmText extends OmShapePrimitive {
     material.backFaceCulling = false;
     this.material = material;
 
-    const gi = graphicItemNode(parent, s, `${baseName}.gi`);
+    const root = this.graphicRoot(parent, s, `${baseName}.gi`, inEntityFrame);
     const plane = MeshBuilder.CreatePlane(
       `${baseName}.plane`,
       { width, height, sideOrientation: Mesh.DOUBLESIDE },
       scene,
     );
     plane.material = material;
-    plane.parent = gi.node;
+    plane.parent = root;
     plane.position.set(x + width / 2, y + height / 2, z);
     plane.isPickable = false;
     this.plane = plane;
@@ -220,7 +236,6 @@ export class OmText extends OmShapePrimitive {
         this.resetTextureState();
       },
     });
-    this.resources.push(gi);
   }
 
   /**

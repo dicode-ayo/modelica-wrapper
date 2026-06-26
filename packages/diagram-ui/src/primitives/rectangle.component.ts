@@ -3,7 +3,11 @@ import type { TransformNode } from "@babylonjs/core";
 import type { RectangleShape } from "@dicode/omc-client";
 import { fillSpec } from "@dicode/diagram-svg";
 
-import { OmShapePrimitive } from "./shape-primitive.js";
+import {
+  OmShapePrimitive,
+  extentEntityBounds,
+  type EntityBounds,
+} from "./shape-primitive.js";
 import {
   DEFAULT_LINE_COLOR,
   STROKE_Z_DELTA,
@@ -12,7 +16,6 @@ import {
   buildStroke,
   clampCornerRadius,
   extentToRect,
-  graphicItemNode,
   roundedRectRing,
   stripClosingDuplicate,
 } from "./shape-utils.js";
@@ -32,7 +35,19 @@ export class OmRectangle extends OmShapePrimitive {
     return JSON.stringify(this.shape);
   }
 
-  protected override buildMeshes(parent: TransformNode, z: number): void {
+  protected override entityKind(): string {
+    return "rectangle";
+  }
+
+  protected override entityBounds(): EntityBounds | null {
+    return this.shape ? extentEntityBounds(this.shape) : null;
+  }
+
+  protected override buildMeshes(
+    parent: TransformNode,
+    z: number,
+    inEntityFrame = false,
+  ): void {
     const s = this.shape;
     if (!s) {
       return;
@@ -44,10 +59,7 @@ export class OmRectangle extends OmShapePrimitive {
     }
 
     const baseName = `om-rectangle.${this.zOrder}`;
-    // Per-shape origin/rotation (issue #76 item 15): parent the meshes under
-    // a transform node when the shape carries a non-default origin/rotation.
-    const gi = graphicItemNode(parent, s, `${baseName}.gi`);
-    const root = gi.node;
+    const root = this.graphicRoot(parent, s, `${baseName}.gi`, inEntityFrame);
     const radius = clampCornerRadius(s.radius, width, height);
     const corners = roundedRectRing(x, y, width, height, radius);
     const fill = fillSpec({
@@ -93,8 +105,6 @@ export class OmRectangle extends OmShapePrimitive {
     if (stroke) {
       this.resources.push(stroke);
     }
-    // Dispose the wrapper node last (after its child meshes).
-    this.resources.push(gi);
   }
 }
 
