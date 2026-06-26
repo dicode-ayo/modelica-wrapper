@@ -136,9 +136,6 @@ export abstract class OmShapeElement extends LitElement {
   override updated(_changed: Map<string, unknown>): void {
     this.ensureShapeNode();
     if (this.shapeNode) {
-      // Map the placement through the icon coordinate system; resize + rotate
-      // handles are on by default (OmShapeNode), which is what these entities
-      // want.
       this.shapeNode.setPlacement(
         this.placement,
         this.coordinateSystem,

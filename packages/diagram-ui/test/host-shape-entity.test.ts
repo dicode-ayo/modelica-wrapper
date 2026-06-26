@@ -247,4 +247,36 @@ describe("host shape selection entities", () => {
     // origin/rotation `graphicItemNode` — that would rotate it twice.
     expect(nodes.some((n) => n.name.endsWith(".gi"))).toBe(false);
   });
+
+  it("seats an extent shape at its origin and pivots its rotation there", async () => {
+    const rotated: DiagramLayout = {
+      ...layout(),
+      diagramLayers: [
+        {
+          from: "T",
+          shapes: [
+            {
+              kind: "rectangle",
+              origin: [20, 10],
+              rotation: 90,
+              extent: [
+                [-5, -5],
+                [5, 5],
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const el = await mount(rotated);
+    const wrapper = transformNodes(el).find(
+      (n) => n.name === "om-shape:rectangle:0",
+    );
+    // Modelica rotates about `origin`: the entity transform sits at the
+    // origin and carries the rotation, not the extent centre.
+    expect(wrapper?.position.x).toBeCloseTo(20);
+    expect(wrapper?.position.y).toBeCloseTo(10);
+    expect(wrapper?.position.z).toBeCloseTo(HOST_SHAPE_Z_BIAS);
+    expect(wrapper?.rotation.z).toBeCloseTo(Math.PI / 2);
+  });
 });

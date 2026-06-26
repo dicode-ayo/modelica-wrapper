@@ -175,8 +175,8 @@ export abstract class OmShapePrimitive extends LitElement {
         const poly = b.points !== undefined;
         node.setSelectionAffordances({ resize: !poly, rotate: !poly });
       }
-      // The entity transform already carries the shape's origin + rotation
-      // (via setDiagramBounds), so the primitive must NOT re-apply them.
+      // The entity transform carries the shape's origin + rotation
+      // (setDiagramBounds), so the visual draws raw geometry in this frame.
       this.buildMeshes(node.transform, zForOrder(this.zOrder), true);
     }
     node.setSelected(this.selected);

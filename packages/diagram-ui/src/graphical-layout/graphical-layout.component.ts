@@ -651,6 +651,8 @@ export class OmGraphicalLayout extends LitElement {
         if (!own) {
           out.push(renderShape(shape, zOrder, HOST_SHAPE_Z_BIAS));
         }
+        // Count own shapes too so inherited shapes keep their cross-layer
+        // paint index; own shapes paint via renderHostShapeEntities.
         zOrder++;
       }
     }
