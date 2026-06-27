@@ -41,6 +41,7 @@ import { renderLayers } from "../src/primitives/render-shape.js";
 
 const RED: [number, number, number] = [255, 0, 0];
 const BLUE: [number, number, number] = [60, 120, 220];
+const BLACK: [number, number, number] = [0, 0, 0];
 
 // Six representative shapes, sized to the [-100, 100] coord system so
 // the camera's default zoom fits them all on one canvas.
@@ -112,6 +113,52 @@ const SHAPES: Shape[] = [
 // Make `BitmapShape` referenced so unused-import warnings don't fire
 // when the fixture is left commented above.
 void (null as unknown as BitmapShape | undefined);
+
+// Four lines demonstrating each Arrow value at both ends, spread across the
+// canvas so the Chromatic baseline captures all three filled variants and the
+// open/half chevrons at a glance.
+const ARROW_SHAPES: LineShape[] = [
+  {
+    kind: "line",
+    points: [
+      [-80, 60],
+      [80, 60],
+    ],
+    color: BLACK,
+    arrow: ["Filled", "Filled"],
+    arrowSize: 6,
+  },
+  {
+    kind: "line",
+    points: [
+      [-80, 20],
+      [80, 20],
+    ],
+    color: BLACK,
+    arrow: ["Open", "Open"],
+    arrowSize: 6,
+  },
+  {
+    kind: "line",
+    points: [
+      [-80, -20],
+      [80, -20],
+    ],
+    color: BLACK,
+    arrow: ["Half", "Half"],
+    arrowSize: 6,
+  },
+  {
+    kind: "line",
+    points: [
+      [-80, -60],
+      [80, -60],
+    ],
+    color: RED,
+    arrow: ["None", "Filled"],
+    arrowSize: 6,
+  },
+];
 
 interface StoryArgs {
   zoom: number;
@@ -195,4 +242,29 @@ export const HostViaLayout: Story = {
       </div>
     `;
   },
+};
+
+/**
+ * Four horizontal lines covering every Modelica `Arrow` value: Filled / Open
+ * / Half / None→Filled. This is the Chromatic baseline for arrowhead
+ * rendering on `<om-line>`. If the story is blank, arrowheads are not
+ * building or the colour is wrong. Each arrowhead uses `arrowSize=6` so it
+ * reads at normal story zoom.
+ */
+export const ArrowLines: Story = {
+  render: ({ zoom }): TemplateResult => html`
+    <div class="om-story">
+      <h3>Shapes — arrowheads on &lt;om-line&gt;</h3>
+      <p style="font-size:11px;color:#666;margin:4px 0;">
+        Top to bottom: Filled↔Filled, Open↔Open, Half↔Half, None→Filled. All
+        arrowSize=6 diagram units.
+      </p>
+      <div class="om-story-canvas-host">
+        <om-scene .zoom=${zoom}>
+          <om-grid-axis .extent=${500}></om-grid-axis>
+          ${renderLayers([{ from: "demo-arrows", shapes: ARROW_SHAPES }], 0)}
+        </om-scene>
+      </div>
+    </div>
+  `,
 };
