@@ -73,18 +73,19 @@ export function buildArrowhead(
     const positions = [
       v.tip[0],
       v.tip[1],
-      z,
+      0,
       v.left[0],
       v.left[1],
-      z,
+      0,
       v.right[0],
       v.right[1],
-      z,
+      0,
     ];
     const mesh = makeMeshFromTriangles(scene, baseName, positions, [0, 1, 2]);
     const mat = makeUnlitMaterial(scene, color, `${baseName}.mat`);
     mesh.material = mat;
     mesh.parent = parent;
+    mesh.position.set(0, 0, z);
     mesh.isPickable = false;
     return {
       dispose() {
@@ -94,32 +95,19 @@ export function buildArrowhead(
     };
   }
 
-  if (kind === "Open") {
-    const pts = [
-      new Vector3(v.left[0], v.left[1], z),
-      new Vector3(v.tip[0], v.tip[1], z),
-      new Vector3(v.right[0], v.right[1], z),
-    ];
-    const mesh = CreateLines(
-      baseName,
-      { points: pts, updatable: false },
-      scene,
-    );
-    mesh.color = colorToColor3(color);
-    mesh.parent = parent;
-    mesh.isPickable = false;
-    return {
-      dispose() {
-        mesh.dispose();
-      },
-    };
-  }
-
-  if (kind === "Half") {
-    const pts = [
-      new Vector3(v.tip[0], v.tip[1], z),
-      new Vector3(v.left[0], v.left[1], z),
-    ];
+  if (kind === "Open" || kind === "Half") {
+    // Open: left → tip → right (V-chevron); Half: tip → right (§18.6.4 "right side")
+    const pts =
+      kind === "Open"
+        ? [
+            new Vector3(v.left[0], v.left[1], z),
+            new Vector3(v.tip[0], v.tip[1], z),
+            new Vector3(v.right[0], v.right[1], z),
+          ]
+        : [
+            new Vector3(v.tip[0], v.tip[1], z),
+            new Vector3(v.right[0], v.right[1], z),
+          ];
     const mesh = CreateLines(
       baseName,
       { points: pts, updatable: false },

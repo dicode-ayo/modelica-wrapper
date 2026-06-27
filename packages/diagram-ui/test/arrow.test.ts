@@ -1,12 +1,3 @@
-/**
- * Tests for the Modelica arrowhead geometry and mesh-building utilities.
- *
- * Pure-math coverage (`arrowheadVertices`) runs without a Babylon engine.
- * Mesh-building coverage (`buildArrowhead`) uses NullEngine so mesh creation
- * can be asserted without a real WebGL context — visual correctness is
- * covered by the `Shapes — ArrowLines` Storybook / Chromatic story.
- */
-
 import { afterEach, describe, expect, it } from "vitest";
 import { NullEngine, Scene, TransformNode } from "@babylonjs/core";
 
@@ -264,7 +255,6 @@ describe("buildArrowhead", () => {
 
   it("normalises a non-unit direction without error", () => {
     const { scene, parent } = makeScene();
-    // Pass a vector of length 5 — should still produce a valid mesh
     const result = buildArrowhead(
       scene,
       parent,
