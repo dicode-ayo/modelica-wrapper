@@ -96,7 +96,7 @@ export function buildArrowhead(
   }
 
   if (kind === "Open" || kind === "Half") {
-    // Open: left → tip → right (V-chevron); Half: tip → right (§18.6.4 "right side")
+    // Open: left → tip → right (V-chevron); Half: tip → left (CCW wing — verify vs OMEdit)
     const pts =
       kind === "Open"
         ? [
@@ -106,7 +106,7 @@ export function buildArrowhead(
           ]
         : [
             new Vector3(v.tip[0], v.tip[1], z),
-            new Vector3(v.right[0], v.right[1], z),
+            new Vector3(v.left[0], v.left[1], z),
           ];
     const mesh = CreateLines(
       baseName,

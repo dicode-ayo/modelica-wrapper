@@ -76,42 +76,31 @@ export class OmLine extends OmShapePrimitive {
     const [startKind, endKind] = s.arrow ?? ["None", "None"];
     const arrowSize = s.arrowSize ?? DEFAULT_ARROW_SIZE;
 
-    const p0 = s.points[0];
-    const p1 = s.points[1];
-    if (p0 && p1 && startKind !== "None") {
+    const addArrow = (
+      tip: readonly [number, number] | undefined,
+      back: readonly [number, number] | undefined,
+      kind: string,
+      suffix: string,
+    ): void => {
+      if (!tip || !back || kind === "None") return;
       const a = buildArrowhead(
         scene,
         root,
-        p0,
-        p0[0] - p1[0],
-        p0[1] - p1[1],
+        tip,
+        tip[0] - back[0],
+        tip[1] - back[1],
         arrowSize,
-        startKind,
+        kind,
         color,
         z,
-        `om-line.${this.zOrder}.arrow-start`,
+        `om-line.${this.zOrder}.${suffix}`,
       );
       if (a) this.resources.push(a);
-    }
+    };
 
+    addArrow(s.points[0], s.points[1], startKind, "arrow-start");
     const lastIdx = s.points.length - 1;
-    const pLast = s.points[lastIdx];
-    const pPrev = s.points[lastIdx - 1];
-    if (pLast && pPrev && endKind !== "None") {
-      const a = buildArrowhead(
-        scene,
-        root,
-        pLast,
-        pLast[0] - pPrev[0],
-        pLast[1] - pPrev[1],
-        arrowSize,
-        endKind,
-        color,
-        z,
-        `om-line.${this.zOrder}.arrow-end`,
-      );
-      if (a) this.resources.push(a);
-    }
+    addArrow(s.points[lastIdx], s.points[lastIdx - 1], endKind, "arrow-end");
   }
 }
 

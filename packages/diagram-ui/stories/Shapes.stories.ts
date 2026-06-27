@@ -38,10 +38,10 @@ import "../src/scene/scene.component.js";
 import "../src/axis/grid-axis.component.js";
 import "../src/graphical-layout/graphical-layout.component.js";
 import { renderLayers } from "../src/primitives/render-shape.js";
+import { DEFAULT_LINE_COLOR } from "../src/primitives/shape-utils.js";
 
 const RED: [number, number, number] = [255, 0, 0];
 const BLUE: [number, number, number] = [60, 120, 220];
-const BLACK: [number, number, number] = [0, 0, 0];
 
 // Six representative shapes, sized to the [-100, 100] coord system so
 // the camera's default zoom fits them all on one canvas.
@@ -124,7 +124,7 @@ const ARROW_SHAPES: LineShape[] = [
       [-80, 60],
       [80, 60],
     ],
-    color: BLACK,
+    color: DEFAULT_LINE_COLOR,
     arrow: ["Filled", "Filled"],
     arrowSize: 6,
   },
@@ -134,7 +134,7 @@ const ARROW_SHAPES: LineShape[] = [
       [-80, 20],
       [80, 20],
     ],
-    color: BLACK,
+    color: DEFAULT_LINE_COLOR,
     arrow: ["Open", "Open"],
     arrowSize: 6,
   },
@@ -144,7 +144,7 @@ const ARROW_SHAPES: LineShape[] = [
       [-80, -20],
       [80, -20],
     ],
-    color: BLACK,
+    color: DEFAULT_LINE_COLOR,
     arrow: ["Half", "Half"],
     arrowSize: 6,
   },
