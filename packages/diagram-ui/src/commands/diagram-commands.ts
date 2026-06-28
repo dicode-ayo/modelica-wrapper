@@ -21,7 +21,8 @@ export type DiagramCommandId =
   | "diagram.flipHorizontal"
   | "diagram.flipVertical"
   | "diagram.deleteVertex"
-  | "diagram.toggleSmooth";
+  | "diagram.toggleSmooth"
+  | "diagram.changeClass";
 
 const requireSelection = (ctx: ContextKeys): boolean =>
   !ctx.readonly && ctx.selectionCount > 0;
@@ -131,6 +132,25 @@ export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
       if (next !== target.layout) {
         target.commitLayout(next);
       }
+    },
+  },
+  {
+    id: "diagram.changeClass",
+    title: "Change class…",
+    category: "Edit",
+    when: (ctx) =>
+      !ctx.readonly &&
+      ctx.selectionCount === 1 &&
+      ctx.selectionKind === "component",
+    placements: [editMenu(7)],
+    run: (target) => {
+      const key = [...target.selectedKeys][0];
+      if (!target.layout || key === undefined) return;
+      const parsed = parseKey(key);
+      if (!parsed || parsed.kind !== "component") return;
+      const comp = target.layout.components[parsed.nodeId];
+      if (comp === undefined) return;
+      target.requestClassChange?.(parsed.nodeId, comp.classRef);
     },
   },
 ];

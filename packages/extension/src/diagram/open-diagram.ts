@@ -529,6 +529,48 @@ export async function openDiagram(
       }
     },
     // ── Library browser ────────────────────────────────────────────────
+    onChangeClassRequest: async (componentName, currentClass) => {
+      const newClass = await vscode.window.showInputBox({
+        prompt: `New type for ${componentName}`,
+        value: currentClass,
+        validateInput: (v) =>
+          v.trim().length > 0 ? undefined : "Type name cannot be empty",
+      });
+      if (!newClass || newClass.trim() === currentClass.trim()) return;
+      let label = `setElementType ${className} ${componentName}`;
+      const refreshLabel = (): void => {
+        if (client.lastCall) label = client.lastCall;
+      };
+      await pushUndoSnapshot();
+      try {
+        await client.getErrorString();
+        const { success } = await client.setElementType({
+          typeName: `${className}.${componentName}`,
+          newTypeName: newClass.trim(),
+        });
+        refreshLabel();
+        const replLog = createReplLog(label);
+        if (!success) {
+          const { errorString } = await client.getErrorString();
+          const reason = errorString.trim() || "OMC returned success=false.";
+          replLog.error(reason);
+          void vscode.window.showErrorMessage(
+            `Modelica: setElementType ${componentName} failed: ${reason}`,
+          );
+          return;
+        }
+        replLog.success(`${componentName} : ${newClass.trim()}`);
+        prevLayout = await fetchLayout(client, className);
+        panel.update(prevLayout);
+      } catch (err) {
+        refreshLabel();
+        const msg = (err as Error).message;
+        createReplLog(label).error(msg);
+        void vscode.window.showErrorMessage(
+          `Modelica: setElementType ${componentName} failed: ${msg}`,
+        );
+      }
+    },
     onLibraryListChildren: (parent) => librarySource.listChildren(parent),
     onLibrarySearch: (query) => librarySource.searchAll(query),
     // Lazy per-row icon thumbnail (issue #76, item 8): the cheap

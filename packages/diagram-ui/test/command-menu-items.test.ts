@@ -32,6 +32,7 @@ describe("commandsToMenuItems", () => {
       "diagram.rotateCcw",
       "diagram.flipHorizontal",
       "diagram.flipVertical",
+      "diagram.changeClass",
     ]);
     expect(items[0]).toMatchObject({ label: "Delete", group: "edit" });
     // commandsFor pre-filters by `when`, so nothing is disabled.

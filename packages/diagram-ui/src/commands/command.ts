@@ -18,6 +18,12 @@ export interface CommandTarget {
   commitLayout(next: DiagramLayout): void;
   /** Replace the current selection. */
   setSelection(keys: Iterable<string>): void;
+  /**
+   * Request a class swap for `componentName` (currently typed as
+   * `currentClass`). The host shows an input prompt, then applies the
+   * rename via `setElementType` and refreshes the diagram.
+   */
+  requestClassChange?(componentName: string, currentClass: string): void;
 }
 
 /** A UI surface a command can be placed on. */

@@ -30,7 +30,6 @@ export type GraphicsLayer = "icon" | "diagram";
  *     (positional identity; see `diffGraphics` for the insert/delete caveat)
  *
  * Out of scope (deferred):
- *   - component class swaps
  *   - connector mutations (rare in practice)
  */
 export type LayoutEdit =

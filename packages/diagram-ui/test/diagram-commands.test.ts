@@ -186,6 +186,7 @@ describe("DIAGRAM_COMMANDS", () => {
       "diagram.rotateCcw",
       "diagram.flipHorizontal",
       "diagram.flipVertical",
+      "diagram.changeClass",
     ]);
     expect(
       registry.commandsFor(
