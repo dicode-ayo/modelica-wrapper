@@ -537,6 +537,7 @@ export async function openDiagram(
           v.trim().length > 0 ? undefined : "Type name cannot be empty",
       });
       if (!newClass || newClass.trim() === currentClass.trim()) return;
+      const trimmedNew = newClass.trim();
       let label = `setElementType ${className} ${componentName}`;
       const refreshLabel = (): void => {
         if (client.lastCall) label = client.lastCall;
@@ -546,7 +547,7 @@ export async function openDiagram(
         await client.getErrorString();
         const { success } = await client.setElementType({
           typeName: `${className}.${componentName}`,
-          newTypeName: newClass.trim(),
+          newTypeName: trimmedNew,
         });
         refreshLabel();
         const replLog = createReplLog(label);
@@ -557,17 +558,26 @@ export async function openDiagram(
           void vscode.window.showErrorMessage(
             `Modelica: setElementType ${componentName} failed: ${reason}`,
           );
+          undoStack.pop();
           return;
         }
-        replLog.success(`${componentName} : ${newClass.trim()}`);
-        prevLayout = await fetchLayout(client, className);
-        panel.update(prevLayout);
+        replLog.success(`${componentName} : ${trimmedNew}`);
       } catch (err) {
         refreshLabel();
         const msg = (err as Error).message;
         createReplLog(label).error(msg);
         void vscode.window.showErrorMessage(
           `Modelica: setElementType ${componentName} failed: ${msg}`,
+        );
+        undoStack.pop();
+        return;
+      }
+      try {
+        prevLayout = await fetchLayout(client, className);
+        panel.update(prevLayout);
+      } catch (err) {
+        void vscode.window.showErrorMessage(
+          `Modelica: re-fetch after setElementType failed: ${(err as Error).message}`,
         );
       }
     },

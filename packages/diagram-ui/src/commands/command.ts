@@ -18,11 +18,7 @@ export interface CommandTarget {
   commitLayout(next: DiagramLayout): void;
   /** Replace the current selection. */
   setSelection(keys: Iterable<string>): void;
-  /**
-   * Request a class swap for `componentName` (currently typed as
-   * `currentClass`). The host shows an input prompt, then applies the
-   * rename via `setElementType` and refreshes the diagram.
-   */
+  /** Delegates a class-swap to the host — commands stay synchronous. */
   requestClassChange?(componentName: string, currentClass: string): void;
 }
 
