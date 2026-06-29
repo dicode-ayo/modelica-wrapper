@@ -457,12 +457,10 @@ function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
 
 // ---------- stroke (polyline) ----------
 
-/** Modelica default stroke thickness (mm). */
+/** Modelica default stroke thickness (mm / diagram units). */
 const DEFAULT_STROKE_THICKNESS = 0.25;
-/** Maps Modelica thickness (mm) to a GreasedLine screen-relative width. */
-const STROKE_WIDTH_SCALE = 6;
-/** Floor so a hairline still reads — GL_LINES used to give a flat 1px. */
-const MIN_STROKE_WIDTH = 1;
+/** Floor (diagram units) so a hairline still reads at default zoom. */
+const MIN_STROKE_WIDTH = 0.5;
 
 export function buildStroke(
   scene: Scene,
@@ -483,13 +481,15 @@ export function buildStroke(
   }
 
   // A GreasedLine ribbon honors `thickness` (GL_LINES is hard-capped at 1px).
-  // Match the selection outline's config exactly — default material type
-  // (StandardMaterial + GreasedLine plugin) and `sizeAttenuation: true`:
-  // mixing the simple material with the plugin material, or world-unit with
-  // screen-relative widths, makes GreasedLines vanish scene-wide.
+  // `sizeAttenuation: false` → `width` is in scene units, so it scales with
+  // zoom like the shape it borders (Modelica thickness-in-mm) AND stays even
+  // across orientations (screen-relative width is stretched by the viewport
+  // aspect, so horizontal vs vertical segments would differ). Every
+  // GreasedLine in the scene must share this mode + material type, or some
+  // drop out scene-wide.
   const dash = patternIsDashed(pattern);
   const width = Math.max(
-    (thickness ?? DEFAULT_STROKE_THICKNESS) * STROKE_WIDTH_SCALE,
+    thickness ?? DEFAULT_STROKE_THICKNESS,
     MIN_STROKE_WIDTH,
   );
   const mesh = CreateGreasedLine(
@@ -497,7 +497,7 @@ export function buildStroke(
     { points: flat },
     {
       width,
-      sizeAttenuation: true,
+      sizeAttenuation: false,
       color: colorToColor3(color),
       useDash: dash,
       dashCount: dash ? Math.max(8, points.length * 4) : 0,

@@ -126,11 +126,10 @@ export function setMeshHighlight(
 }
 
 /**
- * Crisp rectangular outline around a shape's icon extent. Built from
- * a single closed `GreasedLine`, so we get a multi-pixel-wide stroke
- * without the gaussian-blur shimmer the old `HighlightLayer` produced
- * over a field of opaque primitive meshes. Cheap to create and dispose;
- * rebuilt on size change the same way `ResizeHandles` is.
+ * Crisp rectangular outline around a shape's icon extent. A single closed
+ * `GreasedLine` gives a clean stroke without the gaussian-blur shimmer the
+ * old `HighlightLayer` produced over a field of opaque primitive meshes.
+ * Cheap to create and dispose; rebuilt on size change like `ResizeHandles`.
  */
 export class SelectionOutline {
   private line: AbstractMesh;
@@ -143,7 +142,7 @@ export class SelectionOutline {
     iconCx: number,
     iconCy: number,
     private color: Color3 = SELECTION_BLUE,
-    private widthPx: number = 4,
+    private width: number = 1,
   ) {
     this.line = this.build(iconWidth, iconHeight, iconCx, iconCy);
   }
@@ -173,8 +172,11 @@ export class SelectionOutline {
       "om-selection-outline",
       { points },
       {
-        width: this.widthPx,
-        sizeAttenuation: true,
+        // Scene-unit width, matching the shape strokes — every GreasedLine in
+        // the scene must share one mode (mixing makes some vanish), and
+        // scene units keep the outline even across orientations.
+        width: this.width,
+        sizeAttenuation: false,
         color: this.color,
       },
       this.scene,
