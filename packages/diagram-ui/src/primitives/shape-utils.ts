@@ -459,9 +459,9 @@ function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
 
 /** Modelica default stroke thickness (mm). */
 const DEFAULT_STROKE_THICKNESS = 0.25;
-/** Default thickness→width multiplier when the host provides no
- *  `lineThicknessScale` (default 0.25 → ~2px). The host control overrides it. */
-const STROKE_WIDTH_SCALE = 8;
+/** On-screen px for a default-thickness line when the host provides no
+ *  `lineThicknessScale`. The host control overrides it. */
+const STROKE_WIDTH_SCALE = 2;
 /** Screen-px anti-vanish floor — kept low so the host's lineThicknessScale
  *  control stays live for default-thickness lines (else they all clamp here). */
 const MIN_STROKE_WIDTH = 1;
@@ -505,10 +505,13 @@ export function buildStroke(
     flat.push(x, y, z);
   }
   const dash = patternIsDashed(pattern);
-  const width = Math.max(
-    (thickness ?? DEFAULT_STROKE_THICKNESS) * (scale ?? STROKE_WIDTH_SCALE),
-    MIN_STROKE_WIDTH,
-  );
+  // Normalize to the default thickness so the scale ≈ on-screen px for a
+  // default line (and an explicit `lineThickness` multiplies up from there) —
+  // otherwise the ×0.25 default crushes the scale's range to ~1px.
+  const widthScale = scale ?? STROKE_WIDTH_SCALE;
+  const thicknessRatio =
+    (thickness ?? DEFAULT_STROKE_THICKNESS) / DEFAULT_STROKE_THICKNESS;
+  const width = Math.max(thicknessRatio * widthScale, MIN_STROKE_WIDTH);
   const mesh = CreateGreasedLine(
     baseName,
     { points: flat },
