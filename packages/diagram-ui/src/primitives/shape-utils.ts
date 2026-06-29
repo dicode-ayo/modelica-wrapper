@@ -9,7 +9,10 @@ import {
   type Scene,
   type TransformNode,
 } from "@babylonjs/core";
-import { CreateDashedLines } from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
+import {
+  CreateDashedLines,
+  CreateLines,
+} from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
 import type { Color, Extent, Point } from "@dicode/omc-client";
 import type { FillSpec } from "@dicode/diagram-svg";
 
@@ -477,26 +480,34 @@ export function buildStroke(
   z: number,
   baseName: string,
   thickness?: number,
+  worldWidth = false,
 ): OwnedResource | null {
   if (points.length < 2 || pattern === "None") {
     return null;
   }
   const colour = colorToColor3(color);
 
-  // Dashed strokes stay 1px GL_LINES for now — width via dashed tubes is a
-  // follow-up. Solid strokes get real width from a world-space tube.
-  if (patternIsDashed(pattern)) {
-    const mesh = CreateDashedLines(
-      baseName,
-      {
-        points: points.map(([x, y]) => new Vector3(x, y, z)),
-        dashSize: DEFAULT_DASH_SIZE,
-        gapSize: DEFAULT_DASH_GAP,
-        dashNb: Math.max(8, points.length * 8),
-        updatable: false,
-      },
-      scene,
-    );
+  // 1px GL_LINES for icon strokes (drawn under a scaled component — a
+  // world-space width would shrink with the icon to sub-pixel) and for any
+  // dashed stroke (dashed-tube width is a follow-up). They're screen-constant,
+  // so they stay crisp at any icon scale. Only an UNSCALED host-diagram solid
+  // stroke (`worldWidth`) takes the tube path below.
+  const dash = patternIsDashed(pattern);
+  if (!worldWidth || dash) {
+    const verts = points.map(([x, y]) => new Vector3(x, y, z));
+    const mesh = dash
+      ? CreateDashedLines(
+          baseName,
+          {
+            points: verts,
+            dashSize: DEFAULT_DASH_SIZE,
+            gapSize: DEFAULT_DASH_GAP,
+            dashNb: Math.max(8, points.length * 8),
+            updatable: false,
+          },
+          scene,
+        )
+      : CreateLines(baseName, { points: verts, updatable: false }, scene);
     mesh.color = colour;
     mesh.parent = parent;
     mesh.isPickable = false;
