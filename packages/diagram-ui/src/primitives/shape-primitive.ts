@@ -137,7 +137,10 @@ export abstract class OmShapePrimitive extends LitElement {
       this.updateEditable(parent);
       return;
     }
-    const key = `${this.zOrder}|${this.zBias}|${this.fingerprint()}`;
+    // The parent's world scale feeds the stroke's scale-compensated width
+    // (`buildStroke`), so a placement/resize change must rebuild even though
+    // the shape data is unchanged.
+    const key = `${this.zOrder}|${this.zBias}|${parent.absoluteScaling.x}|${this.fingerprint()}`;
     if (key === this.lastBuiltKey) {
       return;
     }

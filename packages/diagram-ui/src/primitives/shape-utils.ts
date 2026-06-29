@@ -1,6 +1,7 @@
 import {
   Color3,
   Mesh,
+  MeshBuilder,
   StandardMaterial,
   TransformNode as TransformNodeImpl,
   Vector3,
@@ -8,10 +9,7 @@ import {
   type Scene,
   type TransformNode,
 } from "@babylonjs/core";
-import {
-  CreateDashedLines,
-  CreateLines,
-} from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
+import { CreateDashedLines } from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
 import type { Color, Extent, Point } from "@dicode/omc-client";
 import type { FillSpec } from "@dicode/diagram-svg";
 
@@ -460,8 +458,28 @@ function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
 
 // ---------- stroke (polyline) ----------
 
+/** Modelica default stroke thickness (mm / diagram units). */
+const DEFAULT_STROKE_THICKNESS = 0.25;
+/** Floor (diagram units) so a hairline still reads at default zoom. */
+const MIN_STROKE_WIDTH = 0.5;
+/** Per-segment sides of the visible stroke tube. */
+const STROKE_TESSELLATION = 8;
+/** Dash / gap length (diagram units) for dashed strokes. */
 const DEFAULT_DASH_SIZE = 4;
 const DEFAULT_DASH_GAP = 3;
+
+/**
+ * A node's accumulated world scale as a single factor — the geometric mean of
+ * its absolute x/y scale, so a non-square parent gives one in-between value
+ * (a tube radius is uniform, so it can't honor x and y separately) and the
+ * sign of a mirrored placement can't yield a negative radius. Forces a
+ * world-matrix recompute so the value reflects the parent's current placement.
+ */
+export function worldScaleOf(node: TransformNode): number {
+  node.computeWorldMatrix(true);
+  const s = node.absoluteScaling;
+  return Math.sqrt(Math.abs(s.x * s.y)) || 1;
+}
 
 export function buildStroke(
   scene: Scene,
@@ -471,37 +489,86 @@ export function buildStroke(
   pattern: string | undefined,
   z: number,
   baseName: string,
+  thickness?: number,
 ): OwnedResource | null {
   if (points.length < 2 || pattern === "None") {
     return null;
   }
-  const vec = points.map(([x, y]) => new Vector3(x, y, z));
   const colour = colorToColor3(color);
 
-  // GL_LINES is pixel-thin in WebGL, which matches OMEdit's icon look
-  // for typical lineThickness ≤ 0.5. Anything thicker isn't visually
-  // distinct at default zoom — flagged as a follow-up if we need true
-  // thickness later.
-  const dash = patternIsDashed(pattern);
-  const mesh = dash
-    ? CreateDashedLines(
-        baseName,
+  // Dashed strokes are screen-constant 1px GL_LINES; solid strokes (below)
+  // are world-space tubes that honor thickness.
+  if (patternIsDashed(pattern)) {
+    const mesh = CreateDashedLines(
+      baseName,
+      {
+        points: points.map(([x, y]) => new Vector3(x, y, z)),
+        dashSize: DEFAULT_DASH_SIZE,
+        gapSize: DEFAULT_DASH_GAP,
+        dashNb: Math.max(8, points.length * 8),
+        updatable: false,
+      },
+      scene,
+    );
+    mesh.color = colour;
+    mesh.parent = parent;
+    mesh.isPickable = false;
+    return { dispose: () => mesh.dispose() };
+  }
+
+  // Solid stroke: a world-space tube whose radius is divided by the parent's
+  // world scale, so a stroke under a scaled-down component resolves to the
+  // same on-screen width as an unscaled host stroke. Floored so it never goes
+  // sub-pixel. Real geometry, so the width is even at every orientation.
+  const worldScale = worldScaleOf(parent);
+  const naturalWidth = thickness ?? DEFAULT_STROKE_THICKNESS;
+  const worldWidth = Math.max(naturalWidth * worldScale, MIN_STROKE_WIDTH);
+  const radius = worldWidth / worldScale / 2;
+  const segments: Mesh[] = [];
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    if (
+      a === undefined ||
+      b === undefined ||
+      (a[0] === b[0] && a[1] === b[1])
+    ) {
+      continue;
+    }
+    segments.push(
+      MeshBuilder.CreateTube(
+        `${baseName}.${i}`,
         {
-          points: vec,
-          dashSize: DEFAULT_DASH_SIZE,
-          gapSize: DEFAULT_DASH_GAP,
-          dashNb: Math.max(8, points.length * 8),
+          path: [new Vector3(a[0], a[1], z), new Vector3(b[0], b[1], z)],
+          radius,
+          tessellation: STROKE_TESSELLATION,
+          cap: Mesh.CAP_ALL,
           updatable: false,
         },
         scene,
-      )
-    : CreateLines(baseName, { points: vec, updatable: false }, scene);
-  mesh.color = colour;
-  mesh.parent = parent;
-  mesh.isPickable = false;
+      ),
+    );
+  }
+  const first = segments[0];
+  if (first === undefined) {
+    return null;
+  }
+  const merged =
+    segments.length === 1
+      ? first
+      : (Mesh.MergeMeshes(segments, true, true) ?? first);
+  merged.name = baseName;
+  const material = new StandardMaterial(`${baseName}.mat`, scene);
+  material.disableLighting = true;
+  material.emissiveColor = colour;
+  material.backFaceCulling = false;
+  merged.material = material;
+  merged.parent = parent;
+  merged.isPickable = false;
   return {
     dispose(): void {
-      mesh.dispose();
+      merged.dispose();
+      material.dispose();
     },
   };
 }
