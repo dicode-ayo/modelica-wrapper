@@ -516,58 +516,51 @@ export function buildStroke(
     return { dispose: () => mesh.dispose() };
   }
 
-  // Solid stroke: a world-space tube whose radius is divided by the parent's
-  // world scale, so a stroke under a scaled-down component resolves to the
-  // same on-screen width as an unscaled host stroke. Floored so it never goes
-  // sub-pixel. Real geometry, so the width is even at every orientation.
+  // Solid stroke: one world-space tube along the whole polyline. The radius is
+  // divided by the parent's world scale, so a stroke under a scaled-down
+  // component resolves to the same on-screen width as an unscaled host stroke
+  // (floored so it never goes sub-pixel); real geometry, so the width is even
+  // at every orientation. A single tube bends through corners and caps only
+  // its two ends — per-segment tubes leave a flat disc cap at every vertex,
+  // which overlaps into lumps at the joins.
   const worldScale = worldScaleOf(parent);
   const naturalWidth = thickness ?? DEFAULT_STROKE_THICKNESS;
   const worldWidth = Math.max(naturalWidth * worldScale, MIN_STROKE_WIDTH);
   const radius = worldWidth / worldScale / 2;
-  const segments: Mesh[] = [];
-  for (let i = 0; i + 1 < points.length; i++) {
-    const a = points[i];
-    const b = points[i + 1];
-    if (
-      a === undefined ||
-      b === undefined ||
-      (a[0] === b[0] && a[1] === b[1])
-    ) {
-      continue;
+
+  // CreateTube can't handle zero-length segments (NaN normals), so drop
+  // consecutive duplicate points.
+  const path: Vector3[] = [];
+  for (const [x, y] of points) {
+    const last = path[path.length - 1];
+    if (last === undefined || last.x !== x || last.y !== y) {
+      path.push(new Vector3(x, y, z));
     }
-    segments.push(
-      MeshBuilder.CreateTube(
-        `${baseName}.${i}`,
-        {
-          path: [new Vector3(a[0], a[1], z), new Vector3(b[0], b[1], z)],
-          radius,
-          tessellation: STROKE_TESSELLATION,
-          cap: Mesh.CAP_ALL,
-          updatable: false,
-        },
-        scene,
-      ),
-    );
   }
-  const first = segments[0];
-  if (first === undefined) {
+  if (path.length < 2) {
     return null;
   }
-  const merged =
-    segments.length === 1
-      ? first
-      : (Mesh.MergeMeshes(segments, true, true) ?? first);
-  merged.name = baseName;
+  const mesh = MeshBuilder.CreateTube(
+    baseName,
+    {
+      path,
+      radius,
+      tessellation: STROKE_TESSELLATION,
+      cap: Mesh.CAP_ALL,
+      updatable: false,
+    },
+    scene,
+  );
   const material = new StandardMaterial(`${baseName}.mat`, scene);
   material.disableLighting = true;
   material.emissiveColor = colour;
   material.backFaceCulling = false;
-  merged.material = material;
-  merged.parent = parent;
-  merged.isPickable = false;
+  mesh.material = material;
+  mesh.parent = parent;
+  mesh.isPickable = false;
   return {
     dispose(): void {
-      merged.dispose();
+      mesh.dispose();
       material.dispose();
     },
   };

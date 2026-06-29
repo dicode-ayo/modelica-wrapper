@@ -13,6 +13,10 @@ import {
 } from "../interaction/interaction-state.js";
 import { requestSceneRender } from "../scene/render-scheduler.js";
 import {
+  viewStateContext,
+  type ViewStateStore,
+} from "../scene/view-state-store.js";
+import {
   graphicItemNode,
   zForOrder,
   type GraphicItemTransform,
@@ -110,17 +114,24 @@ export abstract class OmShapePrimitive extends LitElement {
   private shapeNode: OmShapeNode | null = null;
   private hovered = false;
   private interactionUnsub: (() => void) | null = null;
+  private viewRescaleUnsub: (() => void) | null = null;
 
   constructor() {
     super();
-    // Registered for every primitive (the controller handles connect /
-    // reconnect), but only an `editable` one subscribes to the store — icon
-    // paint never reacts to hover. The context value is the store reference,
-    // so this fires once per (re)connect, not per pointer move.
+    // Both consumers are registered for every primitive (the controller
+    // handles connect / reconnect), but only an `editable` one subscribes to
+    // the stores — icon paint never reacts to hover, and its selection handles
+    // (pixel-sized) only need rescaling when it owns an entity. The context
+    // value is the store reference, so each fires once per (re)connect.
     new ContextConsumer(this, {
       context: interactionStateContext,
       subscribe: true,
       callback: (store) => this.onInteractionStore(store),
+    });
+    new ContextConsumer(this, {
+      context: viewStateContext,
+      subscribe: true,
+      callback: (store) => this.onViewStore(store),
     });
   }
 
@@ -218,10 +229,25 @@ export abstract class OmShapePrimitive extends LitElement {
     this.shapeNode?.setHovered(hovered);
   }
 
+  /**
+   * Attach to the view-state store so an editable entity's pixel-sized
+   * selection handles re-rescale on zoom / pan / resize — without this they
+   * stay at their selection-time world size and drift (or vanish) on zoom.
+   */
+  private onViewStore(store: ViewStateStore | null): void {
+    this.viewRescaleUnsub?.();
+    this.viewRescaleUnsub =
+      this.editable && store
+        ? store.subscribe(() => this.shapeNode?.rescaleSelectionHandles())
+        : null;
+  }
+
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.interactionUnsub?.();
     this.interactionUnsub = null;
+    this.viewRescaleUnsub?.();
+    this.viewRescaleUnsub = null;
     this.tearDownMeshes();
     this.shapeNode?.dispose();
     this.shapeNode = null;
