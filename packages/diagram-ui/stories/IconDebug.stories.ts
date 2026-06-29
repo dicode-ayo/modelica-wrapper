@@ -1,48 +1,47 @@
 /**
  * Diagnostic ladder for the icon texture pipeline. Each story
- * renders ONE textured plane and isolates a single stage of the
- * chain, so a regression is bisected at a glance:
+ * renders ONE textured `<om-debug-plane>` sprite and isolates a single
+ * stage of the chain, so a regression is bisected at a glance:
  *
  *   1. `Baseline_NoTexture`
- *      Plane + StandardMaterial with `emissiveColor = red`, no
- *      texture. If this *doesn't* show red → scene/camera/mesh
- *      pipeline is broken (everything below depends on this).
+ *      Sprite with no texture — `Texture.WHITE` tinted with
+ *      `fallbackColor` (red). If this *doesn't* show red → scene /
+ *      sprite pipeline is broken (everything below depends on this).
  *
- *   2. `DynamicTexture_Procedural`
- *      Plane with a Babylon `DynamicTexture` painted directly via
- *      its 2D canvas context (red square + blue circle). If this
- *      shows but #1 didn't → texture binding works in isolation.
- *      If #2 fails → DynamicTexture → mesh material pipeline is
- *      broken.
+ *   2. `CanvasTexture_Procedural`
+ *      Sprite from a `Texture.from(canvas)` painted directly via the
+ *      canvas 2D context (blue square + white/red circles). If this
+ *      shows but #1 didn't → texture binding works in isolation. If #2
+ *      fails → the canvas → texture upload path is broken.
  *
  *   3. `PngDataUrl_NoMipmap`
- *      Plane with a Babylon `Texture` loaded from a
- *      `canvas.toDataURL("image/png")` data URL, no mipmaps. Tests
- *      the browser's PNG decoder + Babylon's image loader.
+ *      Sprite from a `Texture` decoded from a
+ *      `canvas.toDataURL("image/png")` data URL, no mipmaps. Tests the
+ *      browser's PNG decoder + Pixi's image upload.
  *
  *   4. `PngDataUrl_WithMipmap`
- *      Same PNG but with `noMipmap = false`. Tests Babylon's mipmap
- *      generation. If #3 works but #4 doesn't → mipmap chain is the
- *      culprit (e.g., NPOT texture issue, sampling mode mismatch).
+ *      Same PNG with mipmaps generated. Tests Pixi's mipmap chain. If #3
+ *      works but #4 doesn't → mipmap generation is the culprit.
  *
  *   5. `SvgDataUrl_NoMipmap`
- *      Plane with a Babylon `Texture` loaded from a base64 SVG data
- *      URL — the current production rasteriser path. Tests the SVG
- *      decoder specifically. If #3 works but #5 doesn't → SVG decode
- *      is the bug.
+ *      Sprite from a `Texture` decoded from a base64 SVG data URL — the
+ *      decode path the production rasteriser uses. Tests the SVG decoder
+ *      specifically. If #3 works but #5 doesn't → SVG decode is the bug.
  *
  *   6. `SvgDataUrl_WithMipmap`
- *      Same as #5 with mipmap generation enabled. Some browsers
- *      refuse to mipmap an SVG-decoded image.
+ *      Same as #5 with mipmaps. Some browsers refuse to mipmap an
+ *      SVG-decoded image.
  *
- * Open the browser console with each story — when `debug=true` the
- * rasteriser logs `[diagram-ui] SVG texture ready { ... }` on
- * success and `[diagram-ui] SVG → Texture load failed` on failure.
+ *   7. `SvgViaRasterizer_NoMipmap`
+ *      Same SVG routed through the production `rasterizeSvgToTexture`.
+ *      When `debug=true` the rasteriser logs `[diagram-ui] SVG texture
+ *      ready { ... }` on success and `[diagram-ui] SVG → Texture decode
+ *      failed` on failure.
  */
 
 import type { Meta, StoryObj } from "@storybook/web-components";
 import { html, type TemplateResult } from "lit";
-import { Color3, DynamicTexture, Texture, type Scene } from "@babylonjs/core";
+import { ImageSource, Texture, TextureStyle } from "pixi.js";
 
 import "../src/scene/scene.component.js";
 import "../src/axis/grid-axis.component.js";
@@ -53,26 +52,28 @@ interface StoryArgs {
   debug: boolean;
 }
 
+/** Red `0xRRGGBB` tint shown while a sprite has no texture. */
+const FALLBACK_RED = 0xd93333;
+
 // ── factories ──────────────────────────────────────────────────────
 
 function noTextureFactory(): null {
   return null;
 }
 
-function dynamicTextureFactory(scene: Scene): Texture {
-  // 256×256 canvas painted programmatically. Bypasses every loader:
-  // no <img>, no PNG/SVG decode, no network. If the plane stays
-  // magenta or red here, the DynamicTexture → GPU upload path is
-  // broken.
+function canvasTextureFactory(): Texture {
+  // 256×256 canvas painted programmatically, then uploaded straight to a
+  // Pixi texture. Bypasses every decoder: no <img>, no PNG/SVG decode,
+  // no network. If the sprite stays red here, the canvas → GPU upload
+  // path is broken.
   const size = 256;
-  const dt = new DynamicTexture(
-    "debug-dynamic",
-    { width: size, height: size },
-    scene,
-    false /* generateMipMaps */,
-    Texture.BILINEAR_SAMPLINGMODE,
-  );
-  const ctx = dt.getContext() as unknown as CanvasRenderingContext2D;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("2d canvas context unavailable");
+  }
   ctx.clearRect(0, 0, size, size);
   ctx.fillStyle = "#1e88e5"; // blue background
   ctx.fillRect(20, 20, size - 40, size - 40);
@@ -84,20 +85,19 @@ function dynamicTextureFactory(scene: Scene): Texture {
   ctx.beginPath();
   ctx.arc(size / 2, size / 2, 25, 0, Math.PI * 2);
   ctx.fill();
-  dt.update(false);
-  dt.hasAlpha = true;
-  return dt;
+  return Texture.from(canvas);
 }
 
-function pngDataUrlFactory(
-  noMipmap: boolean,
-): (scene: Scene) => Promise<Texture> {
-  return (scene) => {
+function pngDataUrlFactory(noMipmap: boolean): () => Promise<Texture> {
+  return () => {
     const size = 256;
     const canvas = document.createElement("canvas");
     canvas.width = size;
     canvas.height = size;
-    const ctx = canvas.getContext("2d")!;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("2d canvas context unavailable");
+    }
     ctx.clearRect(0, 0, size, size);
     ctx.fillStyle = "#43a047"; // green
     ctx.fillRect(0, 0, size, size);
@@ -107,7 +107,7 @@ function pngDataUrlFactory(
     ctx.textBaseline = "middle";
     ctx.fillText("PNG", size / 2, size / 2);
     const dataUrl = canvas.toDataURL("image/png");
-    return loadTexture(dataUrl, scene, noMipmap);
+    return loadTexture(dataUrl, noMipmap);
   };
 }
 
@@ -118,52 +118,42 @@ const DEBUG_SVG =
   `<text x="50" y="58" font-family="sans-serif" font-size="20" text-anchor="middle" fill="#bf360c">SVG</text>` +
   `</svg>`;
 
-function svgDataUrlFactory(
-  noMipmap: boolean,
-): (scene: Scene) => Promise<Texture> {
-  return (scene) => {
+function svgDataUrlFactory(noMipmap: boolean): () => Promise<Texture> {
+  return () => {
     const base64 = btoa(DEBUG_SVG);
     const dataUrl = `data:image/svg+xml;base64,${base64}`;
-    return loadTexture(dataUrl, scene, noMipmap);
+    return loadTexture(dataUrl, noMipmap);
   };
 }
 
-function svgRasterizerFactory(scene: Scene): Promise<Texture> {
-  // Same path the icon-provider uses in production, on a synthetic
-  // SVG. If this fails but #5 (svgDataUrl) succeeds, the difference
-  // is the rasteriser wrapper (logging, error handling) rather than
-  // the underlying loader.
-  return rasterizeSvgToTexture(DEBUG_SVG, scene, 256);
+function svgRasterizerFactory(): Promise<Texture> {
+  // Same path the icon-provider uses in production, on a synthetic SVG.
+  // If this fails but #5 (svgDataUrl) succeeds, the difference is the
+  // rasteriser wrapper (logging, error handling) rather than the
+  // underlying decode.
+  return rasterizeSvgToTexture(DEBUG_SVG, 256);
 }
 
-function loadTexture(
-  url: string,
-  scene: Scene,
-  noMipmap: boolean,
-): Promise<Texture> {
-  return new Promise<Texture>((resolve, reject) => {
-    const tex: Texture = new Texture(
-      url,
-      scene,
-      noMipmap,
-      true /* invertY */,
-      noMipmap ? Texture.BILINEAR_SAMPLINGMODE : Texture.TRILINEAR_SAMPLINGMODE,
-      () => {
-        tex.hasAlpha = true;
-
-        console.debug("[icon-debug] texture loaded", {
-          size: tex.getSize(),
-          hasAlpha: tex.hasAlpha,
-          urlPreview: url.slice(0, 60),
-        });
-        resolve(tex);
-      },
-      (message, exception) => {
-        console.error("[icon-debug] texture failed", message, exception);
-        reject(new Error(message ?? "load error"));
-      },
-    );
+async function loadTexture(url: string, noMipmap: boolean): Promise<Texture> {
+  const img = new Image();
+  img.src = url;
+  await img.decode();
+  const source = new ImageSource({
+    resource: img,
+    alphaMode: "premultiply-alpha-on-upload",
+    autoGenerateMipmaps: !noMipmap,
   });
+  source.style = new TextureStyle({
+    scaleMode: "linear",
+    mipmapFilter: noMipmap ? "nearest" : "linear",
+  });
+  const tex = new Texture({ source });
+  console.debug("[icon-debug] texture loaded", {
+    size: { w: tex.width, h: tex.height },
+    mipmaps: !noMipmap,
+    urlPreview: url.slice(0, 60),
+  });
+  return tex;
 }
 
 // ── stories ────────────────────────────────────────────────────────
@@ -171,9 +161,7 @@ function loadTexture(
 function shell(
   title: string,
   description: string,
-  factory:
-    | ((scene: Scene) => Texture | null | Promise<Texture | null>)
-    | undefined,
+  factory: (() => Texture | null | Promise<Texture | null>) | undefined,
   debug: boolean,
 ): TemplateResult {
   return html`
@@ -188,7 +176,7 @@ function shell(
             .y=${0}
             .size=${50}
             .textureFactory=${factory}
-            .fallbackColor=${new Color3(0.85, 0.2, 0.2)}
+            .fallbackColor=${FALLBACK_RED}
           ></om-debug-plane>
         </om-scene>
       </div>
@@ -211,20 +199,20 @@ export const Baseline_NoTexture: Story = {
   args: { debug: false },
   render: ({ debug }) =>
     shell(
-      "1. Baseline — no texture, emissive red",
-      "Should be a solid red square. If it isn't, the failure is in scene/camera/mesh/material — nothing downstream of this can work.",
+      "1. Baseline — no texture, red tint",
+      "Should be a solid red square (Texture.WHITE tinted with fallbackColor). If it isn't, the failure is in scene/sprite — nothing downstream of this can work.",
       noTextureFactory,
       debug,
     ),
 };
 
-export const DynamicTexture_Procedural: Story = {
+export const CanvasTexture_Procedural: Story = {
   args: { debug: false },
   render: ({ debug }) =>
     shell(
-      "2. DynamicTexture painted programmatically",
-      "Blue square with a white circle and a red centre, all drawn into a Babylon DynamicTexture's canvas. No <img>, no decode. If this fails the texture-binding pipeline itself is broken.",
-      dynamicTextureFactory,
+      "2. Canvas texture painted programmatically",
+      "Blue square with a white circle and a red centre, drawn into a 2D canvas and uploaded via Texture.from(canvas). No <img>, no decode. If this fails the texture-binding pipeline itself is broken.",
+      canvasTextureFactory,
       debug,
     ),
 };
@@ -234,7 +222,7 @@ export const PngDataUrl_NoMipmap: Story = {
   render: ({ debug }) =>
     shell(
       "3. PNG data URL, no mipmaps",
-      "Green square reading 'PNG'. PNG was produced via canvas.toDataURL → loaded into Babylon Texture (BILINEAR, no mipmaps). Tests the PNG decoder.",
+      "Green square reading 'PNG'. PNG was produced via canvas.toDataURL → decoded into a Pixi Texture (linear, no mipmaps). Tests the PNG decoder.",
       pngDataUrlFactory(true),
       debug,
     ),
@@ -245,7 +233,7 @@ export const PngDataUrl_WithMipmap: Story = {
   render: ({ debug }) =>
     shell(
       "4. PNG data URL with mipmaps",
-      "Same PNG as #3 but with mipmap generation + TRILINEAR sampling. If #3 works but #4 doesn't, the mipmap path is the culprit.",
+      "Same PNG as #3 but with mipmap generation. If #3 works but #4 doesn't, the mipmap path is the culprit.",
       pngDataUrlFactory(false),
       debug,
     ),
@@ -256,7 +244,7 @@ export const SvgDataUrl_NoMipmap: Story = {
   render: ({ debug }) =>
     shell(
       "5. SVG data URL, no mipmaps",
-      "Orange square reading 'SVG'. SVG is base64-encoded into a data URL and loaded straight into a Babylon Texture (BILINEAR). Tests the SVG decoder specifically.",
+      "Orange square reading 'SVG'. SVG is base64-encoded into a data URL and decoded into a Pixi Texture (linear, no mipmaps). Tests the SVG decoder specifically.",
       svgDataUrlFactory(true),
       debug,
     ),

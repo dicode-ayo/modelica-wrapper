@@ -1,23 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { NullEngine, Scene, TransformNode } from "@babylonjs/core";
+import { Container } from "pixi.js";
 
 import { OmShapeNode } from "../src/base/shape-node.js";
+import type { SceneContext } from "../src/scene/scene-context.js";
+
+function headlessCtx(): SceneContext {
+  const stage = new Container({ label: "om-stage" });
+  const worldRoot = new Container({ label: "om-world" });
+  const diagramRoot = new Container({ label: "om-diagram" });
+  worldRoot.addChild(diagramRoot);
+  stage.addChild(worldRoot);
+  return {
+    renderer: null,
+    stage,
+    worldRoot,
+    diagramRoot,
+    pick: () => null,
+    worldPerPixel: () => 1,
+    requestRender: () => {},
+  };
+}
 
 function makeNode(): {
   node: OmShapeNode;
-  scene: Scene;
+  ctx: SceneContext;
   dispose: () => void;
 } {
-  const engine = new NullEngine({
-    renderWidth: 100,
-    renderHeight: 100,
-    textureSize: 64,
-    deterministicLockstep: false,
-    lockstepMaxSteps: 1,
-  });
-  const scene = new Scene(engine);
-  const parent = new TransformNode("parent", scene);
-  const node = new OmShapeNode(scene, parent, "om-shape:line:0");
+  const ctx = headlessCtx();
+  const parent = new Container({ label: "parent" });
+  ctx.diagramRoot.addChild(parent);
+  const node = new OmShapeNode(ctx, parent, "om-shape:line:0");
   node.setPlacement(
     {
       extent: [
@@ -29,56 +41,68 @@ function makeNode(): {
   );
   return {
     node,
-    scene,
-    dispose: () => {
-      scene.dispose();
-      engine.dispose();
-    },
+    ctx,
+    dispose: () => ctx.stage.destroy({ children: true }),
   };
 }
 
-/** Visible resize-corner / rotate handle meshes currently in the scene. */
-function visibleHandles(scene: Scene): { resize: number; rotate: number } {
-  const vis = scene.meshes.filter((m) => m.isVisible);
+/** Flatten a container subtree into a list. */
+function descendants(root: Container): Container[] {
+  const out: Container[] = [];
+  const walk = (c: Container): void => {
+    for (const child of c.children) {
+      out.push(child);
+      walk(child);
+    }
+  };
+  walk(root);
+  return out;
+}
+
+/** Visible resize-corner / rotate handle containers under a node. */
+function visibleHandles(node: OmShapeNode): { resize: number; rotate: number } {
+  const vis = descendants(node.transform).filter((c) => c.visible);
   return {
-    resize: vis.filter((m) => m.name.startsWith("om-handle:")).length,
-    rotate: vis.filter((m) => m.name === "om-rotate-handle").length,
+    resize: vis.filter((c) => c.label.startsWith("om-handle:")).length,
+    rotate: vis.filter((c) => c.label.startsWith("om-rotate-handle")).length,
   };
 }
 
 describe("OmShapeNode selection affordances", () => {
   it("shows resize + rotate handles by default when selected", () => {
-    const { node, scene, dispose } = makeNode();
+    const { node, dispose } = makeNode();
     node.setSelected(true);
-    expect(visibleHandles(scene)).toEqual({ resize: 4, rotate: 1 });
+    expect(visibleHandles(node)).toEqual({ resize: 4, rotate: 1 });
     dispose();
   });
 
   it("suppresses resize + rotate handles when both affordances are off", () => {
-    const { node, scene, dispose } = makeNode();
+    const { node, dispose } = makeNode();
     node.setSelectionAffordances({ resize: false, rotate: false });
     node.setSelected(true);
-    expect(visibleHandles(scene)).toEqual({ resize: 0, rotate: 0 });
+    expect(visibleHandles(node)).toEqual({ resize: 0, rotate: 0 });
     dispose();
   });
 
   it("hides already-shown handles when affordances are revoked live", () => {
-    const { node, scene, dispose } = makeNode();
+    const { node, dispose } = makeNode();
     node.setSelected(true);
-    expect(visibleHandles(scene).resize).toBe(4);
+    expect(visibleHandles(node).resize).toBe(4);
     node.setSelectionAffordances({ resize: false, rotate: false });
-    expect(visibleHandles(scene)).toEqual({ resize: 0, rotate: 0 });
+    expect(visibleHandles(node)).toEqual({ resize: 0, rotate: 0 });
     dispose();
   });
 
   it("keeps the handles on the extent box when rotation shifts its centre", () => {
-    const { node, scene, dispose } = makeNode();
+    const { node, dispose } = makeNode();
     const handleCentroid = (): { x: number; y: number } => {
-      const hs = scene.meshes.filter((m) => m.name.startsWith("om-handle:"));
+      const hs = descendants(node.transform).filter((c) =>
+        c.label.startsWith("om-handle:"),
+      );
       const n = hs.length || 1;
       return {
-        x: hs.reduce((s, m) => s + m.position.x, 0) / n,
-        y: hs.reduce((s, m) => s + m.position.y, 0) / n,
+        x: hs.reduce((s, c) => s + c.position.x, 0) / n,
+        y: hs.reduce((s, c) => s + c.position.y, 0) / n,
       };
     };
 
@@ -96,7 +120,7 @@ describe("OmShapeNode selection affordances", () => {
     expect(handleCentroid().y).toBeCloseTo(240);
 
     // Rotation rebases the origin: same-size extent re-centres on (0, 0).
-    // The handles must follow, not stay at the old centre.
+    // The handles (local to the entity transform) must follow.
     node.setDiagramBounds(
       [
         [-100, -40],
@@ -111,26 +135,29 @@ describe("OmShapeNode selection affordances", () => {
   });
 
   it("reveals the hit tube and vertex dots on hover, like a connection edge", () => {
-    const { node, scene, dispose } = makeNode();
+    const { node, dispose } = makeNode();
     node.setPolyPoints([
       [-5, 0],
       [5, 0],
     ]);
     const dots = () =>
-      scene.meshes.filter((m) => m.isVisible && m.name === "om-vertex-handle")
-        .length;
-    const tube = scene.meshes.find((m) => m.name.startsWith("hit.om-shape"));
+      descendants(node.transform).filter(
+        (c) => c.visible && c.label.startsWith("om-vertex-handle"),
+      ).length;
+    const tube = descendants(node.transform).find((c) =>
+      c.label.startsWith("hit.om-shape"),
+    );
 
-    // At rest: tube invisible (still pickable), no dots.
-    expect(tube?.visibility).toBe(0);
+    // At rest: tube invisible (alpha 0, still pickable), no dots.
+    expect(tube?.alpha).toBe(0);
     expect(dots()).toBe(0);
 
     node.setHovered(true);
-    expect(tube?.visibility).toBeGreaterThan(0);
+    expect(tube?.alpha).toBeGreaterThan(0);
     expect(dots()).toBe(2);
 
     node.setHovered(false);
-    expect(tube?.visibility).toBe(0);
+    expect(tube?.alpha).toBe(0);
     expect(dots()).toBe(0);
     dispose();
   });

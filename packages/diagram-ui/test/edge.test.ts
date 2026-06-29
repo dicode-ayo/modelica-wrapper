@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { NullEngine, Scene, TransformNode } from "@babylonjs/core";
+import { Container } from "pixi.js";
 
 import "../src/scene/scene.component.js";
 import "../src/connection/edge.component.js";
@@ -8,51 +8,31 @@ import type { OmEdge } from "../src/connection/edge.component.js";
 import { buildEdge } from "../src/connection/edge-build.js";
 
 const teardowns: Array<() => void> = [];
-
-function makeScene(): {
-  scene: Scene;
-  parent: TransformNode;
-  dispose: () => void;
-} {
-  const engine = new NullEngine({
-    renderWidth: 200,
-    renderHeight: 200,
-    textureSize: 128,
-    deterministicLockstep: false,
-    lockstepMaxSteps: 1,
-  });
-  const scene = new Scene(engine);
-  const parent = new TransformNode("p", scene);
-  return {
-    scene,
-    parent,
-    dispose: () => {
-      scene.dispose();
-      engine.dispose();
-    },
-  };
-}
-
 afterEach(() => {
   for (const t of teardowns.splice(0)) {
     t();
   }
 });
 
+async function mountScene(): Promise<OmScene> {
+  const scene = document.createElement("om-scene") as OmScene;
+  // Renderer-less: the Pixi scene graph is built on the CPU, no GPU context.
+  scene.rendererFactory = () => null;
+  document.body.appendChild(scene);
+  teardowns.push(() => scene.remove());
+  await scene.updateComplete;
+  return scene;
+}
+
 describe("buildEdge", () => {
   it("returns null when given fewer than 2 points", () => {
-    const s = makeScene();
-    teardowns.push(s.dispose);
-    expect(buildEdge(s.scene, s.parent, "edge", { points: [] })).toBeNull();
-    expect(
-      buildEdge(s.scene, s.parent, "edge", { points: [[0, 0]] }),
-    ).toBeNull();
+    expect(buildEdge(new Container(), "edge", { points: [] })).toBeNull();
+    expect(buildEdge(new Container(), "edge", { points: [[0, 0]] })).toBeNull();
   });
 
-  it("builds a GreasedLine mesh parented to the provided node", () => {
-    const s = makeScene();
-    teardowns.push(s.dispose);
-    const result = buildEdge(s.scene, s.parent, "edge", {
+  it("builds line + hit-band Graphics parented to the provided container", () => {
+    const parent = new Container();
+    const result = buildEdge(parent, "edge", {
       points: [
         [0, 0],
         [10, 0],
@@ -60,14 +40,17 @@ describe("buildEdge", () => {
       ],
     });
     expect(result).not.toBeNull();
-    expect(result!.line.parent).toBe(s.parent);
-    expect(result!.hitArea.parent).toBe(s.parent);
-    // Pickable but transparent: Babylon's default pick predicate skips
-    // `isVisible = false` meshes, so the hit tube has to stay "visible"
-    // at zero opacity to remain grabbable.
-    expect(result!.hitArea.isPickable).toBe(true);
-    expect(result!.hitArea.isVisible).toBe(true);
-    expect(result!.hitArea.visibility).toBe(0);
+    if (result === null) throw new Error("expected an edge");
+    expect(result.line.parent).toBe(parent);
+    expect(result.hitArea.parent).toBe(parent);
+    // Pickable but transparent: the hit band stays grabbable at zero
+    // opacity (eventMode `static` + an explicit hitArea), where Babylon
+    // relied on `isVisible = true` + `visibility = 0`. `visible` stays
+    // true so the picker doesn't skip it.
+    expect(result.hitArea.eventMode).toBe("static");
+    expect(result.hitArea.hitArea).not.toBeNull();
+    expect(result.hitArea.visible).toBe(true);
+    expect(result.hitArea.alpha).toBe(0);
   });
 });
 
@@ -77,19 +60,7 @@ describe("<om-edge>", () => {
   });
 
   it("creates a mesh when path has >= 2 points", async () => {
-    const scene = document.createElement("om-scene") as OmScene;
-    scene.engineFactory = () =>
-      new NullEngine({
-        renderWidth: 200,
-        renderHeight: 200,
-        textureSize: 128,
-        deterministicLockstep: false,
-        lockstepMaxSteps: 1,
-      });
-    document.body.appendChild(scene);
-    teardowns.push(() => scene.remove());
-    await scene.updateComplete;
-
+    const scene = await mountScene();
     const edge = document.createElement("om-edge") as OmEdge;
     edge.nodeId = "e1";
     edge.path = [
@@ -103,19 +74,7 @@ describe("<om-edge>", () => {
   });
 
   it("reveals the hit tube while hovered and hides it otherwise", async () => {
-    const scene = document.createElement("om-scene") as OmScene;
-    scene.engineFactory = () =>
-      new NullEngine({
-        renderWidth: 200,
-        renderHeight: 200,
-        textureSize: 128,
-        deterministicLockstep: false,
-        lockstepMaxSteps: 1,
-      });
-    document.body.appendChild(scene);
-    teardowns.push(() => scene.remove());
-    await scene.updateComplete;
-
+    const scene = await mountScene();
     const edge = document.createElement("om-edge") as OmEdge;
     edge.path = [
       [0, 0],
@@ -123,36 +82,24 @@ describe("<om-edge>", () => {
     ];
     scene.appendChild(edge);
     await edge.updateComplete;
-    expect(edge.edgeMesh!.hitArea.visibility).toBe(0);
+    expect(edge.edgeMesh?.hitArea.alpha).toBe(0);
 
     edge.hovered = true;
     await edge.updateComplete;
-    expect(edge.edgeMesh!.hitArea.visibility).toBeGreaterThan(0);
+    expect(edge.edgeMesh?.hitArea.alpha).toBeGreaterThan(0);
 
     edge.hovered = false;
     await edge.updateComplete;
-    expect(edge.edgeMesh!.hitArea.visibility).toBe(0);
+    expect(edge.edgeMesh?.hitArea.alpha).toBe(0);
   });
 
   it("does not rebuild the mesh when a fresh path with identical content is assigned", async () => {
     // Simulates an OMC layout roundtrip: the host pushes a new
-    // DiagramLayout object whose connection waypoints have identical
-    // numbers but a fresh array identity. Lit fires updated() with
-    // `path` in `changed`, but the geometry is unchanged — we must
-    // keep the same LinesMesh, not dispose + recreate it.
-    const scene = document.createElement("om-scene") as OmScene;
-    scene.engineFactory = () =>
-      new NullEngine({
-        renderWidth: 200,
-        renderHeight: 200,
-        textureSize: 128,
-        deterministicLockstep: false,
-        lockstepMaxSteps: 1,
-      });
-    document.body.appendChild(scene);
-    teardowns.push(() => scene.remove());
-    await scene.updateComplete;
-
+    // DiagramLayout whose connection waypoints have identical numbers but
+    // a fresh array identity. Lit fires updated() with `path` in
+    // `changed`, but the geometry is unchanged — the same EdgeMeshes must
+    // survive, not be disposed + recreated.
+    const scene = await mountScene();
     const edge = document.createElement("om-edge") as OmEdge;
     edge.path = [
       [0, 0],
@@ -171,27 +118,15 @@ describe("<om-edge>", () => {
     ];
     await edge.updateComplete;
     expect(edge.edgeMesh).toBe(original);
-    expect(original!.line.isDisposed()).toBe(false);
+    expect(original?.line.destroyed).toBe(false);
   });
 
-  it("updates the line mesh in place when only point positions change", async () => {
-    // Per-pointermove path shifts during a component drag must NOT
-    // dispose + recreate the LinesMesh — that's the GPU-buffer churn
-    // we want to avoid. The line should stay alive and its vertex
-    // buffer should reflect the new positions.
-    const scene = document.createElement("om-scene") as OmScene;
-    scene.engineFactory = () =>
-      new NullEngine({
-        renderWidth: 200,
-        renderHeight: 200,
-        textureSize: 128,
-        deterministicLockstep: false,
-        lockstepMaxSteps: 1,
-      });
-    document.body.appendChild(scene);
-    teardowns.push(() => scene.remove());
-    await scene.updateComplete;
-
+  it("redraws the line in place when only point positions change", async () => {
+    // Per-pointermove path shifts during a component drag must NOT dispose
+    // + recreate the line Graphics — that's the scene-graph churn we want
+    // to avoid. The same Graphics is reused (identity preserved) and its
+    // drawn geometry reflects the new endpoint.
+    const scene = await mountScene();
     const edge = document.createElement("om-edge") as OmEdge;
     edge.path = [
       [0, 0],
@@ -199,39 +134,31 @@ describe("<om-edge>", () => {
     ];
     scene.appendChild(edge);
     await edge.updateComplete;
-    const originalLine = edge.edgeMesh!.line;
+    const originalLine = edge.edgeMesh?.line;
+    expect(originalLine).toBeDefined();
 
     edge.path = [
       [0, 0],
       [60, 0],
     ];
     await edge.updateComplete;
-    expect(edge.edgeMesh!.line).toBe(originalLine);
-    expect(originalLine.isDisposed()).toBe(false);
-    const positions = originalLine.getVerticesData("position");
-    expect(positions).not.toBeNull();
-    // CreateLines lays out vertices as [x, y, z, x, y, z, …]. The
-    // second vertex's x should reflect the new endpoint (60).
-    expect(positions![3]).toBeCloseTo(60);
+    expect(edge.edgeMesh?.line).toBe(originalLine);
+    expect(originalLine?.destroyed).toBe(false);
+    // The redraw happened on the same Graphics: its drawn extent now
+    // reaches the new endpoint (x = 60) rather than the old one (50).
+    // (`getLocalBounds` includes the half stroke width, hence ~60.5.)
+    const maxX = originalLine?.getLocalBounds().maxX ?? 0;
+    expect(maxX).toBeGreaterThan(59);
+    expect(maxX).toBeLessThan(62);
   });
 
-  it("rebuilds the mesh when the point count changes", async () => {
-    // Babylon's `instance` parameter rejects topology changes, so a
-    // path that adds or drops waypoints must fall back to a full
-    // dispose + recreate.
-    const scene = document.createElement("om-scene") as OmScene;
-    scene.engineFactory = () =>
-      new NullEngine({
-        renderWidth: 200,
-        renderHeight: 200,
-        textureSize: 128,
-        deterministicLockstep: false,
-        lockstepMaxSteps: 1,
-      });
-    document.body.appendChild(scene);
-    teardowns.push(() => scene.remove());
-    await scene.updateComplete;
-
+  it("redraws the line in place when a waypoint is added", async () => {
+    // A `Graphics` redraw is `clear()` + re-path, so a topology change
+    // (added / dropped waypoint) reuses the same object — unlike Babylon's
+    // `instance` path, which rejected vertex-count changes and forced a
+    // dispose + recreate. The invariant that matters now: the same line
+    // survives and its drawn geometry reflects the new waypoint.
+    const scene = await mountScene();
     const edge = document.createElement("om-edge") as OmEdge;
     edge.path = [
       [0, 0],
@@ -239,7 +166,8 @@ describe("<om-edge>", () => {
     ];
     scene.appendChild(edge);
     await edge.updateComplete;
-    const originalLine = edge.edgeMesh!.line;
+    const originalLine = edge.edgeMesh?.line;
+    expect(originalLine).toBeDefined();
 
     edge.path = [
       [0, 0],
@@ -247,24 +175,14 @@ describe("<om-edge>", () => {
       [50, 30],
     ];
     await edge.updateComplete;
-    expect(edge.edgeMesh!.line).not.toBe(originalLine);
-    expect(originalLine.isDisposed()).toBe(true);
+    expect(edge.edgeMesh?.line).toBe(originalLine);
+    expect(originalLine?.destroyed).toBe(false);
+    // The added corner at (50, 30) is now part of the drawn polyline.
+    expect(originalLine?.getLocalBounds().maxY ?? 0).toBeGreaterThan(25);
   });
 
   it("disposes the mesh on disconnect", async () => {
-    const scene = document.createElement("om-scene") as OmScene;
-    scene.engineFactory = () =>
-      new NullEngine({
-        renderWidth: 200,
-        renderHeight: 200,
-        textureSize: 128,
-        deterministicLockstep: false,
-        lockstepMaxSteps: 1,
-      });
-    document.body.appendChild(scene);
-    teardowns.push(() => scene.remove());
-    await scene.updateComplete;
-
+    const scene = await mountScene();
     const edge = document.createElement("om-edge") as OmEdge;
     edge.path = [
       [0, 0],
@@ -274,7 +192,7 @@ describe("<om-edge>", () => {
     await edge.updateComplete;
     const meshes = edge.edgeMesh;
     edge.remove();
-    expect(meshes?.line.isDisposed()).toBe(true);
-    expect(meshes?.hitArea.isDisposed()).toBe(true);
+    expect(meshes?.line.destroyed).toBe(true);
+    expect(meshes?.hitArea.destroyed).toBe(true);
   });
 });

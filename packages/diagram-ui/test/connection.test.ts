@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { LitElement, html } from "lit";
 import { customElement } from "lit/decorators.js";
 import { ContextProvider } from "@lit/context";
-import { NullEngine } from "@babylonjs/core";
 
 import "../src/scene/scene.component.js";
 import "../src/connection/connection.component.js";
@@ -44,14 +43,8 @@ afterEach(() => {
 
 async function mountScene(): Promise<OmScene> {
   const scene = document.createElement("om-scene") as OmScene;
-  scene.engineFactory = () =>
-    new NullEngine({
-      renderWidth: 200,
-      renderHeight: 200,
-      textureSize: 128,
-      deterministicLockstep: false,
-      lockstepMaxSteps: 1,
-    });
+  // Renderer-less: build the Pixi scene graph on the CPU, no GPU context.
+  scene.rendererFactory = () => null;
   document.body.appendChild(scene);
   teardowns.push(() => scene.remove());
   await scene.updateComplete;
@@ -73,14 +66,7 @@ async function mountSceneWithStore(): Promise<{
   document.body.appendChild(host);
   teardowns.push(() => host.remove());
   const scene = document.createElement("om-scene") as OmScene;
-  scene.engineFactory = () =>
-    new NullEngine({
-      renderWidth: 200,
-      renderHeight: 200,
-      textureSize: 128,
-      deterministicLockstep: false,
-      lockstepMaxSteps: 1,
-    });
+  scene.rendererFactory = () => null;
   host.appendChild(scene);
   await scene.updateComplete;
   return { scene, store: host.store };
@@ -129,7 +115,7 @@ describe("<om-connection>", () => {
     expect(conn.isHovered).toBe(false);
     expect(conn.junctions.length).toBe(2);
     for (const disc of conn.junctions) {
-      expect(disc.visibility).toBe(0);
+      expect(disc.alpha).toBe(0);
     }
 
     // Hovering a single junction reveals ALL of the connection's discs.
@@ -137,7 +123,7 @@ describe("<om-connection>", () => {
     await conn.updateComplete;
     expect(conn.isHovered).toBe(true);
     for (const disc of conn.junctions) {
-      expect(disc.visibility).toBe(1);
+      expect(disc.alpha).toBe(1);
     }
 
     // A key for a different connection must NOT trigger this one.
@@ -145,7 +131,7 @@ describe("<om-connection>", () => {
     await conn.updateComplete;
     expect(conn.isHovered).toBe(false);
     for (const disc of conn.junctions) {
-      expect(disc.visibility).toBe(0);
+      expect(disc.alpha).toBe(0);
     }
 
     // Hovering the edge itself lights the whole route too.
@@ -153,14 +139,14 @@ describe("<om-connection>", () => {
     await conn.updateComplete;
     expect(conn.isHovered).toBe(true);
     for (const disc of conn.junctions) {
-      expect(disc.visibility).toBe(1);
+      expect(disc.alpha).toBe(1);
     }
 
     store.next({ hoverKey: null });
     await conn.updateComplete;
     expect(conn.isHovered).toBe(false);
     for (const disc of conn.junctions) {
-      expect(disc.visibility).toBe(0);
+      expect(disc.alpha).toBe(0);
     }
   });
 
@@ -189,7 +175,7 @@ describe("<om-connection>", () => {
     await conn.updateComplete;
     expect(conn.isHovered).toBe(true);
     for (const disc of conn.junctions) {
-      expect(disc.visibility).toBe(1);
+      expect(disc.alpha).toBe(1);
     }
 
     // Dragging one of our junctions keeps it lit too.
@@ -207,7 +193,7 @@ describe("<om-connection>", () => {
     await conn.updateComplete;
     expect(conn.isHovered).toBe(false);
     for (const disc of conn.junctions) {
-      expect(disc.visibility).toBe(0);
+      expect(disc.alpha).toBe(0);
     }
   });
 
@@ -253,7 +239,7 @@ describe("<om-connection>", () => {
     await conn.updateComplete;
     expect(conn.junctions).toEqual(original);
     for (const m of original) {
-      expect(m.isDisposed()).toBe(false);
+      expect(m.destroyed).toBe(false);
     }
   });
 
@@ -276,6 +262,10 @@ describe("<om-connection>", () => {
     await conn.updateComplete;
     const original = conn.junctions.slice();
     expect(original.length).toBe(2);
+    const [disc0, disc1] = original;
+    if (disc0 === undefined || disc1 === undefined) {
+      throw new Error("expected two junction discs");
+    }
 
     conn.path = [
       [-10, 0],
@@ -285,11 +275,11 @@ describe("<om-connection>", () => {
     ];
     await conn.updateComplete;
     expect(conn.junctions).toEqual(original);
-    expect(original[0]!.isDisposed()).toBe(false);
-    expect(original[0]!.position.x).toBeCloseTo(5);
-    expect(original[0]!.position.y).toBeCloseTo(5);
-    expect(original[1]!.position.x).toBeCloseTo(5);
-    expect(original[1]!.position.y).toBeCloseTo(15);
+    expect(disc0.destroyed).toBe(false);
+    expect(disc0.position.x).toBeCloseTo(5);
+    expect(disc0.position.y).toBeCloseTo(5);
+    expect(disc1.position.x).toBeCloseTo(5);
+    expect(disc1.position.y).toBeCloseTo(15);
   });
 
   it("rebuilds junctions when the internal-waypoint count changes", async () => {
@@ -319,7 +309,7 @@ describe("<om-connection>", () => {
     await conn.updateComplete;
     expect(conn.junctions.length).toBe(3);
     for (const m of original) {
-      expect(m.isDisposed()).toBe(true);
+      expect(m.destroyed).toBe(true);
     }
   });
 
@@ -336,7 +326,7 @@ describe("<om-connection>", () => {
     const meshes = conn.junctions.slice();
     conn.remove();
     for (const m of meshes) {
-      expect(m.isDisposed()).toBe(true);
+      expect(m.destroyed).toBe(true);
     }
   });
 });

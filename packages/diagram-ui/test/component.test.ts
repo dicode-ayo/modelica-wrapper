@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { NullEngine, Texture, type Scene } from "@babylonjs/core";
+import { Texture } from "pixi.js";
 import type { IconLayer, Placement } from "@dicode/omc-client";
 
 import "../src/scene/scene.component.js";
@@ -8,16 +8,6 @@ import "../src/component/component.component.js";
 import type { OmScene } from "../src/scene/scene.component.js";
 import type { OmIconProvider } from "../src/icon-provider/icon-provider.component.js";
 import type { OmComponent } from "../src/component/component.component.js";
-
-function makeNullEngine(): NullEngine {
-  return new NullEngine({
-    renderWidth: 320,
-    renderHeight: 240,
-    textureSize: 256,
-    deterministicLockstep: false,
-    lockstepMaxSteps: 1,
-  });
-}
 
 const teardowns: Array<() => void> = [];
 
@@ -37,10 +27,10 @@ async function mountChain(): Promise<{
     if (first === undefined) throw new Error("expected at least one layer");
     return `svg:${first.from}`;
   };
-  provider.rasterize = (svg: string, scene: Scene): Promise<Texture> =>
-    Promise.resolve(new Texture(`data:text/plain,${svg}`, scene, true, false));
+  provider.rasterize = (_svg: string): Promise<Texture> =>
+    Promise.resolve(Texture.EMPTY);
   const scene = document.createElement("om-scene") as OmScene;
-  scene.engineFactory = () => makeNullEngine();
+  scene.rendererFactory = () => null;
   provider.appendChild(scene);
   document.body.appendChild(provider);
   teardowns.push(() => provider.remove());
@@ -72,12 +62,11 @@ describe("<om-component>", () => {
     expect(comp).toBeDefined();
     const ctx = scene.sceneContextValue;
     if (!ctx) throw new Error("no scene context");
-    const transform = ctx.diagramRoot;
-    // The component's TransformNode is a child of diagramRoot.
-    expect(transform.getChildTransformNodes(true).length).toBeGreaterThan(0);
+    // The component's entity Container is a child of diagramRoot.
+    expect(ctx.diagramRoot.children.length).toBeGreaterThan(0);
   });
 
-  it("applies placement to the shape node's TransformNode", async () => {
+  it("applies placement to the shape node's container", async () => {
     const { scene } = await mountChain();
     const comp = document.createElement("om-component") as OmComponent;
     comp.placement = {
@@ -88,11 +77,11 @@ describe("<om-component>", () => {
     } as Placement;
     scene.appendChild(comp);
     await comp.updateComplete;
-    // First child TransformNode after diagramRoot.
+    // First child Container under diagramRoot.
     const ctx = scene.sceneContextValue;
     if (!ctx) throw new Error("no scene context");
-    const child = ctx.diagramRoot.getChildTransformNodes(true).at(0);
-    if (!child) throw new Error("expected child TransformNode");
+    const child = ctx.diagramRoot.children.at(0);
+    if (!child) throw new Error("expected child container");
     expect(child.position.x).toBe(30);
     expect(child.position.y).toBe(40);
   });

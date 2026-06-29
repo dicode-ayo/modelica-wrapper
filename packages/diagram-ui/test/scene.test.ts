@@ -1,31 +1,26 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { NullEngine } from "@babylonjs/core";
 
 import "../src/scene/scene.component.js";
 import type { OmScene } from "../src/scene/scene.component.js";
 
 /**
- * Tests run under happy-dom and Babylon's `NullEngine`, so no WebGL is
- * required. We exercise mount → context exposure → unmount, plus
- * property → camera-state propagation. The visual surface is covered
- * by the Storybook story.
+ * Tests run under happy-dom with a renderer-less Pixi scene graph, so no
+ * WebGL is required. We exercise mount → context exposure → unmount, plus
+ * property → view-transform propagation. The visual surface is covered by
+ * the Storybook story.
  */
 
-function makeNullEngine(): NullEngine {
-  return new NullEngine({
-    renderWidth: 640,
-    renderHeight: 480,
-    textureSize: 256,
-    deterministicLockstep: false,
-    lockstepMaxSteps: 1,
-  });
-}
+// happy-dom has no layout, so getBoundingClientRect is 0 and the scene
+// falls back to FALLBACK_CANVAS_* (800x600).
+const W = 800;
+const H = 600;
 
 let mounted: OmScene[] = [];
 
 async function mountScene(): Promise<OmScene> {
   const el = document.createElement("om-scene") as OmScene;
-  el.engineFactory = () => makeNullEngine();
+  // Renderer-less: build the Pixi scene graph on the CPU, no GPU context.
+  el.rendererFactory = () => null;
   document.body.appendChild(el);
   // Wait for firstUpdated → mount() to run.
   await el.updateComplete;
@@ -45,51 +40,50 @@ describe("<om-scene>", () => {
     expect(customElements.get("om-scene")).toBeDefined();
   });
 
-  it("exposes scene + camera + transform nodes through the Lit context after mount", async () => {
+  it("exposes the renderer-less context with its container roots after mount", async () => {
     const el = await mountScene();
     const ctx = el.sceneContextValue;
     expect(ctx).not.toBeNull();
-    expect(ctx?.scene).toBeDefined();
-    expect(ctx?.camera).toBeDefined();
-    expect(ctx?.worldRoot).toBeDefined();
-    expect(ctx?.diagramRoot).toBeDefined();
+    expect(ctx?.renderer).toBeNull();
+    expect(ctx?.stage.label).toBe("om-stage");
+    expect(ctx?.worldRoot.label).toBe("om-world");
+    expect(ctx?.diagramRoot.label).toBe("om-diagram");
     expect(ctx?.diagramRoot.parent).toBe(ctx?.worldRoot);
   });
 
-  it("configures an orthographic camera looking at the XY plane", async () => {
+  it("flips Y on worldRoot so diagram +y renders screen-up", async () => {
     const el = await mountScene();
-    const camera = el.sceneContextValue?.camera;
-    expect(camera).toBeDefined();
-    // ORTHOGRAPHIC_CAMERA mode is the integer constant 1 in Babylon.
-    expect(camera?.mode).toBe(1);
-    // α = -π/2, β = π/2 puts the camera on -Z looking toward +Z. That
-    // orientation gives Babylon's left-handed view matrix a right-vector
-    // of +X, so world +X renders at screen-right (mirror-free) and drag
-    // direction matches mouse direction.
-    expect(camera?.alpha).toBeCloseTo(-Math.PI / 2);
-    expect(camera?.beta).toBeCloseTo(Math.PI / 2);
+    const world = el.sceneContextValue?.worldRoot;
+    expect(world).toBeDefined();
+    // Modelica +y-up under a native +y-down canvas means exactly one
+    // negative-Y scale on the world transform; X stays positive so +x is
+    // screen-right (mirror-free, matching mouse drag direction).
+    if (!world) throw new Error("no worldRoot");
+    expect(world.scale.x).toBeGreaterThan(0);
+    expect(world.scale.y).toBeLessThan(0);
   });
 
-  it("recomputes ortho extents when zoom / pan change", async () => {
+  it("recomputes the world transform when zoom / pan change", async () => {
     const el = await mountScene();
     el.zoom = 50;
     el.panX = 25;
     el.panY = -10;
     await el.updateComplete;
-    const camera = el.sceneContextValue?.camera;
-    expect(camera?.orthoTop).toBeCloseTo(50);
-    expect(camera?.orthoBottom).toBeCloseTo(-50);
-    expect(camera?.target.x).toBeCloseTo(25);
-    expect(camera?.target.y).toBeCloseTo(-10);
+    const world = el.sceneContextValue?.worldRoot;
+    if (!world) throw new Error("no worldRoot");
+    const ppu = H / (2 * 50); // = 6
+    expect(world.scale.x).toBeCloseTo(ppu, 5);
+    expect(world.scale.y).toBeCloseTo(-ppu, 5);
+    expect(world.position.x).toBeCloseTo(W / 2 - 25 * ppu, 5);
+    expect(world.position.y).toBeCloseTo(H / 2 + -10 * ppu, 5);
   });
 
-  it("disposes the Babylon scene + engine on disconnect", async () => {
+  it("disposes the Pixi stage on disconnect", async () => {
     const el = await mountScene();
-    const scene = el.sceneContextValue?.scene;
+    const stage = el.sceneContextValue?.stage;
     el.remove();
     expect(el.sceneContextValue).toBeNull();
-    // Babylon marks disposed scenes with `isDisposed = true`.
-    expect(scene?.isDisposed).toBe(true);
+    expect(stage?.destroyed).toBe(true);
   });
 
   it("clientToDiagram maps the canvas centre to (panX, panY)", async () => {

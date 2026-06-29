@@ -1,72 +1,58 @@
 import { describe, expect, it } from "vitest";
-import {
-  NullEngine,
-  Scene,
-  StandardMaterial,
-  TransformNode,
-} from "@babylonjs/core";
+import { Container, Graphics } from "pixi.js";
 import type { Color } from "@dicode/omc-client";
 
 import { buildStroke, worldScaleOf } from "../src/primitives/shape-utils.js";
 
-function makeScene(): {
-  scene: Scene;
-  parent: TransformNode;
-  dispose: () => void;
-} {
-  const engine = new NullEngine({
-    renderWidth: 100,
-    renderHeight: 100,
-    textureSize: 64,
-    deterministicLockstep: false,
-    lockstepMaxSteps: 1,
-  });
-  const scene = new Scene(engine);
-  const parent = new TransformNode("parent", scene);
-  return {
-    scene,
-    parent,
-    dispose: () => {
-      scene.dispose();
-      engine.dispose();
-    },
-  };
+function makeScene(): { parent: Container } {
+  return { parent: new Container({ label: "parent" }) };
 }
 
 const RED: Color = [255, 0, 0];
 
+/** Read the style of a Graphics' first fill/stroke instruction. */
+interface DrawStyle {
+  color: number;
+  pixelLine?: boolean;
+  cap?: string;
+  width?: number;
+}
+function styleOf(g: Graphics, action: "fill" | "stroke"): DrawStyle | null {
+  const ins = (
+    g.context.instructions as ReadonlyArray<{
+      action: string;
+      data: { style: DrawStyle };
+    }>
+  ).find((i) => i.action === action);
+  return ins?.data.style ?? null;
+}
+
 describe("worldScaleOf", () => {
   it("is the geometric mean of |x|/|y| scale, sign-safe and floored", () => {
-    const { scene, dispose } = makeScene();
-    const n = new TransformNode("n", scene);
+    const n = new Container({ label: "n" });
 
-    n.scaling.set(1, 1, 1);
+    n.scale.set(1, 1);
     expect(worldScaleOf(n)).toBeCloseTo(1);
 
-    n.scaling.set(0.1, 0.1, 1);
+    n.scale.set(0.1, 0.1);
     expect(worldScaleOf(n)).toBeCloseTo(0.1);
 
     // Non-square + mirrored: |(-0.2) * 0.05| = 0.01 → 0.1, never negative.
-    n.scaling.set(-0.2, 0.05, 1);
+    n.scale.set(-0.2, 0.05);
     expect(worldScaleOf(n)).toBeCloseTo(0.1);
 
     // Degenerate zero scale falls back to 1 (no divide-by-zero radius).
-    n.scaling.set(0, 0, 1);
+    n.scale.set(0, 0);
     expect(worldScaleOf(n)).toBe(1);
-
-    dispose();
   });
 });
 
 describe("buildStroke", () => {
   it("returns null for a non-drawable stroke", () => {
-    const { scene, parent, dispose } = makeScene();
-    expect(
-      buildStroke(scene, parent, [[0, 0]], RED, undefined, 0, "s"),
-    ).toBeNull();
+    const { parent } = makeScene();
+    expect(buildStroke(parent, [[0, 0]], RED, undefined, 0, "s")).toBeNull();
     expect(
       buildStroke(
-        scene,
         parent,
         [
           [0, 0],
@@ -81,7 +67,6 @@ describe("buildStroke", () => {
     // All-equal points → no segment → null.
     expect(
       buildStroke(
-        scene,
         parent,
         [
           [5, 5],
@@ -93,13 +78,11 @@ describe("buildStroke", () => {
         "s",
       ),
     ).toBeNull();
-    dispose();
   });
 
-  it("builds a solid stroke as an unlit, non-pickable tube in the stroke colour", () => {
-    const { scene, parent, dispose } = makeScene();
+  it("builds a solid stroke as a non-pickable world-frame band in the stroke colour", () => {
+    const { parent } = makeScene();
     const res = buildStroke(
-      scene,
       parent,
       [
         [0, 0],
@@ -111,20 +94,21 @@ describe("buildStroke", () => {
       "stroke",
     );
     expect(res).not.toBeNull();
-    const mesh = scene.meshes.find((m) => m.name === "stroke");
-    expect(mesh?.isPickable).toBe(false);
-    const mat = mesh?.material;
-    expect(mat).toBeInstanceOf(StandardMaterial);
-    expect((mat as StandardMaterial).disableLighting).toBe(true);
-    expect((mat as StandardMaterial).emissiveColor.r).toBeCloseTo(1);
-    expect((mat as StandardMaterial).emissiveColor.g).toBeCloseTo(0);
-    dispose();
+    const g = parent.getChildByLabel("stroke", true);
+    if (!(g instanceof Graphics))
+      throw new Error("expected the stroke graphic");
+    expect(g.eventMode).toBe("none");
+    const style = styleOf(g, "stroke");
+    // Stroke colour is the packed RED (0xff0000) — full red, no green.
+    expect(style?.color).toBe(0xff0000);
+    // Solid strokes ride the world transform (round cap, not a 1-px GL line).
+    expect(style?.cap).toBe("round");
+    expect(style?.pixelLine).toBe(false);
   });
 
-  it("builds a dashed stroke as a GL line (no material), not a tube", () => {
-    const { scene, parent, dispose } = makeScene();
+  it("builds a dashed stroke as a screen-constant 1-px line, not a world-frame band", () => {
+    const { parent } = makeScene();
     const res = buildStroke(
-      scene,
       parent,
       [
         [0, 0],
@@ -136,10 +120,12 @@ describe("buildStroke", () => {
       "dashed",
     );
     expect(res).not.toBeNull();
-    const mesh = scene.meshes.find((m) => m.name === "dashed");
-    expect(mesh?.isPickable).toBe(false);
-    // The dashed branch is a GL LinesMesh, not the solid path's tube Mesh.
-    expect(mesh?.getClassName()).toBe("LinesMesh");
-    dispose();
+    const g = parent.getChildByLabel("dashed", true);
+    if (!(g instanceof Graphics))
+      throw new Error("expected the dashed graphic");
+    expect(g.eventMode).toBe("none");
+    // The dashed branch is a `pixelLine` (1-device-px regardless of zoom),
+    // the analogue of Babylon's GL `LinesMesh` — not the solid path's band.
+    expect(styleOf(g, "stroke")?.pixelLine).toBe(true);
   });
 });
