@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  NullEngine,
-  Scene,
-  StandardMaterial,
-  TransformNode,
-} from "@babylonjs/core";
+import { NullEngine, Scene, TransformNode } from "@babylonjs/core";
 import type { Color } from "@dicode/omc-client";
 
 import { buildStroke, worldScaleOf } from "../src/primitives/shape-utils.js";
@@ -78,57 +73,10 @@ describe("buildStroke", () => {
         "s",
       ),
     ).toBeNull();
-    // All-equal points collapse to a single tube path point → null.
-    expect(
-      buildStroke(
-        scene,
-        parent,
-        [
-          [5, 5],
-          [5, 5],
-        ],
-        RED,
-        undefined,
-        0,
-        "s",
-        undefined,
-        true,
-      ),
-    ).toBeNull();
     dispose();
   });
 
-  it("builds a host (worldWidth) solid stroke as an unlit, flattened tube", () => {
-    const { scene, parent, dispose } = makeScene();
-    const res = buildStroke(
-      scene,
-      parent,
-      [
-        [0, 0],
-        [10, 0],
-      ],
-      RED,
-      undefined,
-      0,
-      "stroke",
-      undefined,
-      true,
-    );
-    expect(res).not.toBeNull();
-    const mesh = scene.meshes.find((m) => m.name === "stroke");
-    expect(mesh?.isPickable).toBe(false);
-    const mat = mesh?.material;
-    expect(mat).toBeInstanceOf(StandardMaterial);
-    expect((mat as StandardMaterial).disableLighting).toBe(true);
-    expect((mat as StandardMaterial).emissiveColor.r).toBeCloseTo(1);
-    expect((mat as StandardMaterial).emissiveColor.g).toBeCloseTo(0);
-    // Flattened into the drawing plane so the tube doesn't poke toward the
-    // camera (occluding the selection outline / standing up in a 3D view).
-    expect(mesh?.scaling.z).toBeLessThan(0.1);
-    dispose();
-  });
-
-  it("builds an icon (default) solid stroke as a crisp 1px GL line, not a tube", () => {
+  it("builds a solid stroke as a non-pickable GreasedLine", () => {
     const { scene, parent, dispose } = makeScene();
     const res = buildStroke(
       scene,
@@ -145,12 +93,11 @@ describe("buildStroke", () => {
     expect(res).not.toBeNull();
     const mesh = scene.meshes.find((m) => m.name === "stroke");
     expect(mesh?.isPickable).toBe(false);
-    // GL LinesMesh (thin, screen-constant) — not the host tube Mesh.
-    expect(mesh?.getClassName()).toBe("LinesMesh");
+    expect(mesh?.getClassName()).toContain("GreasedLine");
     dispose();
   });
 
-  it("builds a dashed stroke as a GL line (no material), not a tube", () => {
+  it("builds a dashed stroke as a GreasedLine too (unified renderer)", () => {
     const { scene, parent, dispose } = makeScene();
     const res = buildStroke(
       scene,
@@ -167,8 +114,7 @@ describe("buildStroke", () => {
     expect(res).not.toBeNull();
     const mesh = scene.meshes.find((m) => m.name === "dashed");
     expect(mesh?.isPickable).toBe(false);
-    // The dashed branch is a GL LinesMesh, not the solid path's tube Mesh.
-    expect(mesh?.getClassName()).toBe("LinesMesh");
+    expect(mesh?.getClassName()).toContain("GreasedLine");
     dispose();
   });
 });

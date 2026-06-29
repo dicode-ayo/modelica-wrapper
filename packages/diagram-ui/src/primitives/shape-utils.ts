@@ -1,7 +1,7 @@
 import {
   Color3,
+  CreateGreasedLine,
   Mesh,
-  MeshBuilder,
   StandardMaterial,
   TransformNode as TransformNodeImpl,
   Vector3,
@@ -9,10 +9,6 @@ import {
   type Scene,
   type TransformNode,
 } from "@babylonjs/core";
-import {
-  CreateDashedLines,
-  CreateLines,
-} from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
 import type { Color, Extent, Point } from "@dicode/omc-client";
 import type { FillSpec } from "@dicode/diagram-svg";
 
@@ -461,23 +457,12 @@ function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
 
 // ---------- stroke (polyline) ----------
 
-/** Modelica default stroke thickness (mm / diagram units). */
+/** Modelica default stroke thickness (mm). */
 const DEFAULT_STROKE_THICKNESS = 0.25;
-/** Floor (diagram units) so a hairline still reads at default zoom. */
-const MIN_STROKE_WIDTH = 0.5;
-/** Sides of the stroke tube's cross-section. */
-const STROKE_TESSELLATION = 8;
-/**
- * Z-flatten for the stroke tube. A `CreateTube` is a 3D cylinder, so its
- * radius pokes out of the drawing plane toward the camera — enough to occlude
- * the (thin) selection outline and to look like a raised bar in a 3D view.
- * Collapsing Z keeps the XY width but flattens it into the plane, so it reads
- * as a flat line.
- */
-const STROKE_Z_FLATTEN = 0.02;
-/** Dash / gap length (diagram units) for dashed strokes. */
-const DEFAULT_DASH_SIZE = 4;
-const DEFAULT_DASH_GAP = 3;
+/** Maps Modelica thickness (mm) to a GreasedLine screen-relative width. */
+const STROKE_WIDTH_SCALE = 4;
+/** Screen-px floor so a hairline still reads. */
+const MIN_STROKE_WIDTH = 1;
 
 /**
  * A node's accumulated world scale as a single factor — the geometric mean of
@@ -501,87 +486,45 @@ export function buildStroke(
   z: number,
   baseName: string,
   thickness?: number,
-  worldWidth = false,
+  _worldWidth = false,
 ): OwnedResource | null {
   if (points.length < 2 || pattern === "None") {
     return null;
   }
-  const colour = colorToColor3(color);
 
-  // Crisp 1px GL_LINES for icon / connector strokes (and any dashed stroke):
-  // they're small and detailed, where a tube's minimum width + rounded
-  // corners look wrong, and screen-constant 1px stays sharp at any icon scale.
-  // Only an unscaled host-diagram solid stroke (`worldWidth`) takes the tube
-  // path below, where real thickness is wanted.
-  const dash = patternIsDashed(pattern);
-  if (!worldWidth || dash) {
-    const verts = points.map(([x, y]) => new Vector3(x, y, z));
-    const mesh = dash
-      ? CreateDashedLines(
-          baseName,
-          {
-            points: verts,
-            dashSize: DEFAULT_DASH_SIZE,
-            gapSize: DEFAULT_DASH_GAP,
-            dashNb: Math.max(8, points.length * 8),
-            updatable: false,
-          },
-          scene,
-        )
-      : CreateLines(baseName, { points: verts, updatable: false }, scene);
-    mesh.color = colour;
-    mesh.parent = parent;
-    mesh.isPickable = false;
-    return { dispose: () => mesh.dispose() };
-  }
-
-  // Solid stroke: one world-space tube along the whole polyline. The radius is
-  // divided by the parent's world scale, so a stroke under a scaled-down
-  // component resolves to the same on-screen width as an unscaled host stroke
-  // (floored so it never goes sub-pixel); real geometry, so the width is even
-  // at every orientation. A single tube bends through corners and caps only
-  // its two ends — per-segment tubes leave a flat disc cap at every vertex,
-  // which overlaps into lumps at the joins.
-  const worldScale = worldScaleOf(parent);
-  const naturalWidth = thickness ?? DEFAULT_STROKE_THICKNESS;
-  const strokeWidth = Math.max(naturalWidth * worldScale, MIN_STROKE_WIDTH);
-  const radius = strokeWidth / worldScale / 2;
-
-  // CreateTube can't handle zero-length segments (NaN normals), so drop
-  // consecutive duplicate points.
-  const path: Vector3[] = [];
+  // One GreasedLine config for EVERY stroke and the selection outline:
+  // default material (StandardMaterial + GreasedLine plugin) + screen-relative
+  // width (`sizeAttenuation`). Mixing GreasedLine material flavors in one
+  // scene makes some drop out, so they must stay identical. Screen-relative
+  // width honors `thickness`, stays a constant on-screen size at any zoom /
+  // icon scale, and doesn't poke out of the drawing plane.
+  const flat: number[] = [];
   for (const [x, y] of points) {
-    const last = path[path.length - 1];
-    if (last === undefined || last.x !== x || last.y !== y) {
-      path.push(new Vector3(x, y, z));
-    }
+    flat.push(x, y, z);
   }
-  if (path.length < 2) {
-    return null;
-  }
-  const mesh = MeshBuilder.CreateTube(
+  const dash = patternIsDashed(pattern);
+  const width = Math.max(
+    (thickness ?? DEFAULT_STROKE_THICKNESS) * STROKE_WIDTH_SCALE,
+    MIN_STROKE_WIDTH,
+  );
+  const mesh = CreateGreasedLine(
     baseName,
+    { points: flat },
     {
-      path,
-      radius,
-      tessellation: STROKE_TESSELLATION,
-      cap: Mesh.CAP_ALL,
-      updatable: false,
+      width,
+      sizeAttenuation: true,
+      color: colorToColor3(color),
+      useDash: dash,
+      dashCount: dash ? Math.max(8, points.length * 4) : 0,
+      dashRatio: dash ? 0.5 : 0,
     },
     scene,
   );
-  mesh.scaling.z = STROKE_Z_FLATTEN;
-  const material = new StandardMaterial(`${baseName}.mat`, scene);
-  material.disableLighting = true;
-  material.emissiveColor = colour;
-  material.backFaceCulling = false;
-  mesh.material = material;
   mesh.parent = parent;
   mesh.isPickable = false;
   return {
     dispose(): void {
-      mesh.dispose();
-      material.dispose();
+      mesh.dispose(false, true);
     },
   };
 }
