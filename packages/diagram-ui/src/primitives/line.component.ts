@@ -63,7 +63,7 @@ export class OmLine extends OmShapePrimitive {
       z,
       `om-line.${this.zOrder}`,
       s.thickness,
-      inEntityFrame,
+      this.lineThicknessScale,
     );
     if (stroke) {
       this.resources.push(stroke);

@@ -6,6 +6,7 @@ import type { Scene, TransformNode } from "@babylonjs/core";
 import type { Extent, Point } from "@dicode/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
+import { lineThicknessScaleContext } from "./stroke-scale-context.js";
 import { OmShapeNode } from "../base/shape-node.js";
 import {
   interactionStateContext,
@@ -108,6 +109,11 @@ export abstract class OmShapePrimitive extends LitElement {
 
   @consume({ context: parentNodeContext, subscribe: true })
   protected parentTransform: TransformNode | null = null;
+
+  /** Host-provided `lineThickness` → screen-width multiplier (a debug knob);
+   *  `undefined` uses the renderer default. */
+  @consume({ context: lineThicknessScaleContext, subscribe: true })
+  protected lineThicknessScale: number | undefined = undefined;
 
   protected resources: OwnedResource[] = [];
   private lastBuiltKey: string | null = null;

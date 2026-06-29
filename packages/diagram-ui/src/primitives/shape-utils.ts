@@ -459,11 +459,12 @@ function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
 
 /** Modelica default stroke thickness (mm). */
 const DEFAULT_STROKE_THICKNESS = 0.25;
-/** Maps Modelica thickness (mm) to a GreasedLine screen-relative width — so a
- *  thicker `lineThickness` reads visibly thicker (default 0.25 → ~2px). */
+/** Default thickness→width multiplier when the host provides no
+ *  `lineThicknessScale` (default 0.25 → ~2px). The host control overrides it. */
 const STROKE_WIDTH_SCALE = 8;
-/** Screen-px floor so a hairline still reads with a little body. */
-const MIN_STROKE_WIDTH = 2;
+/** Screen-px anti-vanish floor — kept low so the host's lineThicknessScale
+ *  control stays live for default-thickness lines (else they all clamp here). */
+const MIN_STROKE_WIDTH = 1;
 
 /**
  * A node's accumulated world scale as a single factor — the geometric mean of
@@ -487,7 +488,7 @@ export function buildStroke(
   z: number,
   baseName: string,
   thickness?: number,
-  _worldWidth = false,
+  scale?: number,
 ): OwnedResource | null {
   if (points.length < 2 || pattern === "None") {
     return null;
@@ -505,7 +506,7 @@ export function buildStroke(
   }
   const dash = patternIsDashed(pattern);
   const width = Math.max(
-    (thickness ?? DEFAULT_STROKE_THICKNESS) * STROKE_WIDTH_SCALE,
+    (thickness ?? DEFAULT_STROKE_THICKNESS) * (scale ?? STROKE_WIDTH_SCALE),
     MIN_STROKE_WIDTH,
   );
   const mesh = CreateGreasedLine(

@@ -11,6 +11,7 @@ import type {
 } from "@dicode/omc-client";
 
 import { renderShape } from "../primitives/render-shape.js";
+import { lineThicknessScaleContext } from "../primitives/stroke-scale-context.js";
 import { buildSubstitutions } from "../label/build-substitutions.js";
 import "../scene/scene.component.js";
 import "../axis/grid-axis.component.js";
@@ -367,12 +368,23 @@ export class OmGraphicalLayout extends LitElement {
   private readonly commands = new CommandRegistry(DIAGRAM_COMMANDS);
   private readonly keymap = DEFAULT_KEYMAP;
 
+  private readonly strokeScaleProvider = new ContextProvider(this, {
+    context: lineThicknessScaleContext,
+    initialValue: undefined,
+  });
+
   constructor() {
     super();
     new ContextProvider(this, {
       context: interactionStateContext,
       initialValue: this.interactionStore,
     });
+  }
+
+  override willUpdate(changed: Map<string, unknown>): void {
+    if (changed.has("lineThicknessScale")) {
+      this.strokeScaleProvider.setValue(this.lineThicknessScale);
+    }
   }
 
   override render(): TemplateResult {

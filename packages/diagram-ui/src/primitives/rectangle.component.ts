@@ -102,7 +102,7 @@ export class OmRectangle extends OmShapePrimitive {
       z + STROKE_Z_DELTA,
       `${baseName}.stroke`,
       s.lineThickness,
-      inEntityFrame,
+      this.lineThicknessScale,
     );
     if (stroke) {
       this.resources.push(stroke);
