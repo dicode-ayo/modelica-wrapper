@@ -93,6 +93,115 @@ describe("diffLayouts", () => {
     });
   });
 
+  describe("standalone connector diffing", () => {
+    function withConnector(
+      name: string,
+      extent: [[number, number], [number, number]],
+      rotation?: number,
+    ): DiagramLayout {
+      const layout = baseLayout();
+      layout.connectors = {
+        [name]: {
+          name,
+          classRef: "Modelica.Electrical.Interfaces.Pin",
+          placement: {
+            extent,
+            ...(rotation !== undefined ? { rotation } : {}),
+          },
+        },
+      };
+      return layout;
+    }
+
+    it("emits no edits when the connector is unchanged", () => {
+      const a = withConnector("p", [
+        [-5, -5],
+        [5, 5],
+      ]);
+      const b = withConnector("p", [
+        [-5, -5],
+        [5, 5],
+      ]);
+      expect(diffLayouts(a, b).filter((e) => e.componentName === "p")).toEqual(
+        [],
+      );
+    });
+
+    it("emits componentDeleted when a connector disappears", () => {
+      const a = withConnector("p", [
+        [-5, -5],
+        [5, 5],
+      ]);
+      const b = baseLayout();
+      expect(diffLayouts(a, b)).toContainEqual({
+        kind: "componentDeleted",
+        componentName: "p",
+      });
+    });
+
+    it("emits componentPlacement when a connector's extent changes", () => {
+      const a = withConnector("p", [
+        [-5, -5],
+        [5, 5],
+      ]);
+      const b = withConnector("p", [
+        [10, -5],
+        [20, 5],
+      ]);
+      const edits = diffLayouts(a, b);
+      expect(edits).toContainEqual({
+        kind: "componentPlacement",
+        componentName: "p",
+        componentClass: "Modelica.Electrical.Interfaces.Pin",
+        extent: [
+          [10, -5],
+          [20, 5],
+        ],
+        rotation: 0,
+      });
+    });
+
+    it("emits componentPlacement when a connector's rotation changes", () => {
+      const a = withConnector(
+        "p",
+        [
+          [-5, -5],
+          [5, 5],
+        ],
+        0,
+      );
+      const b = withConnector(
+        "p",
+        [
+          [-5, -5],
+          [5, 5],
+        ],
+        90,
+      );
+      const edits = diffLayouts(a, b);
+      expect(edits).toContainEqual({
+        kind: "componentPlacement",
+        componentName: "p",
+        componentClass: "Modelica.Electrical.Interfaces.Pin",
+        extent: [
+          [-5, -5],
+          [5, 5],
+        ],
+        rotation: 90,
+      });
+    });
+
+    it("does not emit a delete for a connector that was never in prev", () => {
+      const a = baseLayout();
+      const b = withConnector("p", [
+        [-5, -5],
+        [5, 5],
+      ]);
+      const edits = diffLayouts(a, b);
+      expect(edits.some((e) => e.kind === "componentDeleted")).toBe(false);
+    });
+  });
+
   it("emits connectionAdded / connectionDeleted on endpoint mismatch", () => {
     const a = baseLayout();
     const b = baseLayout();
