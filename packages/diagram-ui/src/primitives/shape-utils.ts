@@ -459,10 +459,11 @@ function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
 
 /** Modelica default stroke thickness (mm). */
 const DEFAULT_STROKE_THICKNESS = 0.25;
-/** Maps Modelica thickness (mm) to a GreasedLine screen-relative width. */
-const STROKE_WIDTH_SCALE = 4;
-/** Screen-px floor so a hairline still reads. */
-const MIN_STROKE_WIDTH = 1;
+/** Maps Modelica thickness (mm) to a GreasedLine screen-relative width — so a
+ *  thicker `lineThickness` reads visibly thicker (default 0.25 → ~2px). */
+const STROKE_WIDTH_SCALE = 8;
+/** Screen-px floor so a hairline still reads with a little body. */
+const MIN_STROKE_WIDTH = 2;
 
 /**
  * A node's accumulated world scale as a single factor — the geometric mean of
