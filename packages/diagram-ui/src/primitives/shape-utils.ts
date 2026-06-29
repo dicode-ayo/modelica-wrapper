@@ -468,6 +468,19 @@ const STROKE_TESSELLATION = 8;
 const DEFAULT_DASH_SIZE = 4;
 const DEFAULT_DASH_GAP = 3;
 
+/**
+ * A node's accumulated world scale as a single factor — the geometric mean of
+ * its absolute x/y scale, so a non-square parent gives one in-between value
+ * (a tube radius is uniform, so it can't honor x and y separately) and the
+ * sign of a mirrored placement can't yield a negative radius. Forces a
+ * world-matrix recompute so the value reflects the parent's current placement.
+ */
+export function worldScaleOf(node: TransformNode): number {
+  node.computeWorldMatrix(true);
+  const s = node.absoluteScaling;
+  return Math.sqrt(Math.abs(s.x * s.y)) || 1;
+}
+
 export function buildStroke(
   scene: Scene,
   parent: TransformNode,
@@ -483,8 +496,8 @@ export function buildStroke(
   }
   const colour = colorToColor3(color);
 
-  // Dashed strokes stay 1px GL_LINES for now (dashed-tube width is a
-  // follow-up); they're screen-constant, so crisp at any scale.
+  // Dashed strokes are screen-constant 1px GL_LINES; solid strokes (below)
+  // are world-space tubes that honor thickness.
   if (patternIsDashed(pattern)) {
     const mesh = CreateDashedLines(
       baseName,
@@ -503,14 +516,11 @@ export function buildStroke(
     return { dispose: () => mesh.dispose() };
   }
 
-  // Solid strokes are a world-space tube: real geometry, so the width is even
-  // at every orientation (aspect-preserving camera) and scales with zoom.
-  // The radius is divided by the parent's accumulated world scale, so an icon
-  // stroke (drawn under a scaled-down component) gets the SAME on-screen width
-  // as an unscaled host stroke — one mechanism, consistent everywhere. Width =
-  // `max(thickness * scale, floor)`: honors thickness, never sub-pixel.
-  parent.computeWorldMatrix(true);
-  const worldScale = parent.absoluteScaling.x || 1;
+  // Solid stroke: a world-space tube whose radius is divided by the parent's
+  // world scale, so a stroke under a scaled-down component resolves to the
+  // same on-screen width as an unscaled host stroke. Floored so it never goes
+  // sub-pixel. Real geometry, so the width is even at every orientation.
+  const worldScale = worldScaleOf(parent);
   const naturalWidth = thickness ?? DEFAULT_STROKE_THICKNESS;
   const worldWidth = Math.max(naturalWidth * worldScale, MIN_STROKE_WIDTH);
   const radius = worldWidth / worldScale / 2;

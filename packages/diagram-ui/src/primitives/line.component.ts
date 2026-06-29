@@ -11,7 +11,7 @@ import {
 
 /**
  * `<om-line>` — one Modelica `LineShape`. Pure polyline; no fill side.
- * `thickness` is honored via the shared GreasedLine stroke (`buildStroke`).
+ * `thickness` is honored via the shared world-space tube stroke (`buildStroke`).
  */
 @customElement("om-line")
 export class OmLine extends OmShapePrimitive {
