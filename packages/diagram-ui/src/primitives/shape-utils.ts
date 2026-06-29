@@ -462,8 +462,16 @@ function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
 const DEFAULT_STROKE_THICKNESS = 0.25;
 /** Floor (diagram units) so a hairline still reads at default zoom. */
 const MIN_STROKE_WIDTH = 0.5;
-/** Per-segment sides of the visible stroke tube. */
+/** Sides of the stroke tube's cross-section. */
 const STROKE_TESSELLATION = 8;
+/**
+ * Z-flatten for the stroke tube. A `CreateTube` is a 3D cylinder, so its
+ * radius pokes out of the drawing plane toward the camera — enough to occlude
+ * the (thin) selection outline and to look like a raised bar in a 3D view.
+ * Collapsing Z keeps the XY width but flattens it into the plane, so it reads
+ * as a flat line.
+ */
+const STROKE_Z_FLATTEN = 0.02;
 /** Dash / gap length (diagram units) for dashed strokes. */
 const DEFAULT_DASH_SIZE = 4;
 const DEFAULT_DASH_GAP = 3;
@@ -551,6 +559,7 @@ export function buildStroke(
     },
     scene,
   );
+  mesh.scaling.z = STROKE_Z_FLATTEN;
   const material = new StandardMaterial(`${baseName}.mat`, scene);
   material.disableLighting = true;
   material.emissiveColor = colour;

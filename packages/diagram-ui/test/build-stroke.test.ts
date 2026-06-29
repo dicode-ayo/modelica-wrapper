@@ -118,6 +118,9 @@ describe("buildStroke", () => {
     expect((mat as StandardMaterial).disableLighting).toBe(true);
     expect((mat as StandardMaterial).emissiveColor.r).toBeCloseTo(1);
     expect((mat as StandardMaterial).emissiveColor.g).toBeCloseTo(0);
+    // Flattened into the drawing plane so the tube doesn't poke toward the
+    // camera (occluding the selection outline / standing up in a 3D view).
+    expect(mesh?.scaling.z).toBeLessThan(0.1);
     dispose();
   });
 
