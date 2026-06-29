@@ -122,9 +122,7 @@ describe("diffLayouts", () => {
         [-5, -5],
         [5, 5],
       ]);
-      expect(diffLayouts(a, b).filter((e) => e.componentName === "p")).toEqual(
-        [],
-      );
+      expect(diffLayouts(a, b)).toEqual([]);
     });
 
     it("emits componentDeleted when a connector disappears", () => {
@@ -199,6 +197,7 @@ describe("diffLayouts", () => {
       ]);
       const edits = diffLayouts(a, b);
       expect(edits.some((e) => e.kind === "componentDeleted")).toBe(false);
+      expect(edits.some((e) => e.kind === "componentPlacement")).toBe(false);
     });
   });
 
