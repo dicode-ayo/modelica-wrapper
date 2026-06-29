@@ -78,7 +78,7 @@ describe("buildStroke", () => {
         "s",
       ),
     ).toBeNull();
-    // All-equal points → no segment → null.
+    // All-equal points collapse to a single tube path point → null.
     expect(
       buildStroke(
         scene,
@@ -91,12 +91,44 @@ describe("buildStroke", () => {
         undefined,
         0,
         "s",
+        undefined,
+        true,
       ),
     ).toBeNull();
     dispose();
   });
 
-  it("builds a solid stroke as an unlit, non-pickable tube in the stroke colour", () => {
+  it("builds a host (worldWidth) solid stroke as an unlit, flattened tube", () => {
+    const { scene, parent, dispose } = makeScene();
+    const res = buildStroke(
+      scene,
+      parent,
+      [
+        [0, 0],
+        [10, 0],
+      ],
+      RED,
+      undefined,
+      0,
+      "stroke",
+      undefined,
+      true,
+    );
+    expect(res).not.toBeNull();
+    const mesh = scene.meshes.find((m) => m.name === "stroke");
+    expect(mesh?.isPickable).toBe(false);
+    const mat = mesh?.material;
+    expect(mat).toBeInstanceOf(StandardMaterial);
+    expect((mat as StandardMaterial).disableLighting).toBe(true);
+    expect((mat as StandardMaterial).emissiveColor.r).toBeCloseTo(1);
+    expect((mat as StandardMaterial).emissiveColor.g).toBeCloseTo(0);
+    // Flattened into the drawing plane so the tube doesn't poke toward the
+    // camera (occluding the selection outline / standing up in a 3D view).
+    expect(mesh?.scaling.z).toBeLessThan(0.1);
+    dispose();
+  });
+
+  it("builds an icon (default) solid stroke as a crisp 1px GL line, not a tube", () => {
     const { scene, parent, dispose } = makeScene();
     const res = buildStroke(
       scene,
@@ -113,14 +145,8 @@ describe("buildStroke", () => {
     expect(res).not.toBeNull();
     const mesh = scene.meshes.find((m) => m.name === "stroke");
     expect(mesh?.isPickable).toBe(false);
-    const mat = mesh?.material;
-    expect(mat).toBeInstanceOf(StandardMaterial);
-    expect((mat as StandardMaterial).disableLighting).toBe(true);
-    expect((mat as StandardMaterial).emissiveColor.r).toBeCloseTo(1);
-    expect((mat as StandardMaterial).emissiveColor.g).toBeCloseTo(0);
-    // Flattened into the drawing plane so the tube doesn't poke toward the
-    // camera (occluding the selection outline / standing up in a 3D view).
-    expect(mesh?.scaling.z).toBeLessThan(0.1);
+    // GL LinesMesh (thin, screen-constant) — not the host tube Mesh.
+    expect(mesh?.getClassName()).toBe("LinesMesh");
     dispose();
   });
 

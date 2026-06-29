@@ -9,7 +9,10 @@ import {
   type Scene,
   type TransformNode,
 } from "@babylonjs/core";
-import { CreateDashedLines } from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
+import {
+  CreateDashedLines,
+  CreateLines,
+} from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
 import type { Color, Extent, Point } from "@dicode/omc-client";
 import type { FillSpec } from "@dicode/diagram-svg";
 
@@ -498,26 +501,34 @@ export function buildStroke(
   z: number,
   baseName: string,
   thickness?: number,
+  worldWidth = false,
 ): OwnedResource | null {
   if (points.length < 2 || pattern === "None") {
     return null;
   }
   const colour = colorToColor3(color);
 
-  // Dashed strokes are screen-constant 1px GL_LINES; solid strokes (below)
-  // are world-space tubes that honor thickness.
-  if (patternIsDashed(pattern)) {
-    const mesh = CreateDashedLines(
-      baseName,
-      {
-        points: points.map(([x, y]) => new Vector3(x, y, z)),
-        dashSize: DEFAULT_DASH_SIZE,
-        gapSize: DEFAULT_DASH_GAP,
-        dashNb: Math.max(8, points.length * 8),
-        updatable: false,
-      },
-      scene,
-    );
+  // Crisp 1px GL_LINES for icon / connector strokes (and any dashed stroke):
+  // they're small and detailed, where a tube's minimum width + rounded
+  // corners look wrong, and screen-constant 1px stays sharp at any icon scale.
+  // Only an unscaled host-diagram solid stroke (`worldWidth`) takes the tube
+  // path below, where real thickness is wanted.
+  const dash = patternIsDashed(pattern);
+  if (!worldWidth || dash) {
+    const verts = points.map(([x, y]) => new Vector3(x, y, z));
+    const mesh = dash
+      ? CreateDashedLines(
+          baseName,
+          {
+            points: verts,
+            dashSize: DEFAULT_DASH_SIZE,
+            gapSize: DEFAULT_DASH_GAP,
+            dashNb: Math.max(8, points.length * 8),
+            updatable: false,
+          },
+          scene,
+        )
+      : CreateLines(baseName, { points: verts, updatable: false }, scene);
     mesh.color = colour;
     mesh.parent = parent;
     mesh.isPickable = false;
@@ -533,8 +544,8 @@ export function buildStroke(
   // which overlaps into lumps at the joins.
   const worldScale = worldScaleOf(parent);
   const naturalWidth = thickness ?? DEFAULT_STROKE_THICKNESS;
-  const worldWidth = Math.max(naturalWidth * worldScale, MIN_STROKE_WIDTH);
-  const radius = worldWidth / worldScale / 2;
+  const strokeWidth = Math.max(naturalWidth * worldScale, MIN_STROKE_WIDTH);
+  const radius = strokeWidth / worldScale / 2;
 
   // CreateTube can't handle zero-length segments (NaN normals), so drop
   // consecutive duplicate points.
