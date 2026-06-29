@@ -157,7 +157,7 @@ export abstract class OmShapePrimitive extends LitElement {
     // The parent's world scale feeds the stroke's scale-compensated width
     // (`buildStroke`), so a placement/resize change must rebuild even though
     // the shape data is unchanged.
-    const key = `${this.zOrder}|${this.zBias}|${parent.absoluteScaling.x}|${this.fingerprint()}`;
+    const key = `${this.zOrder}|${this.zBias}|${this.lineThicknessScale}|${parent.absoluteScaling.x}|${this.fingerprint()}`;
     if (key === this.lastBuiltKey) {
       return;
     }
@@ -183,7 +183,7 @@ export abstract class OmShapePrimitive extends LitElement {
     const node = this.shapeNode;
     node.transform.name = this.entityName();
     node.setHovered(this.hovered);
-    const key = `${this.zBias}|${this.fingerprint()}`;
+    const key = `${this.zBias}|${this.lineThicknessScale}|${this.fingerprint()}`;
     if (key !== this.lastBuiltKey) {
       this.lastBuiltKey = key;
       this.tearDownMeshes();
