@@ -1,4 +1,4 @@
-import type { Node } from "@babylonjs/core";
+import type { Container } from "pixi.js";
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { ContextProvider } from "@lit/context";
@@ -21,7 +21,7 @@ import "../label/label.component.js";
 import "../debug/perf-hud.component.js";
 import "../library-browser/library-browser.component.js";
 import "../context-menu/context-menu.component.js";
-import type { OmScene, EngineFactory } from "../scene/scene.component.js";
+import type { OmScene, RendererFactory } from "../scene/scene.component.js";
 import type { OmConnector } from "../connector/connector.component.js";
 import type { OmComponent } from "../component/component.component.js";
 import type { LibraryBrowserDataSource } from "../library-browser/library-browser.component.js";
@@ -223,10 +223,10 @@ export class OmGraphicalLayout extends LitElement {
   @property({ type: Boolean, reflect: true })
   readonly = false;
 
-  /** Optional engine factory forwarded to the inner `<om-scene>`. Used
-   *  by tests to inject a `NullEngine`. */
+  /** Optional renderer factory forwarded to the inner `<om-scene>`. Used
+   *  by tests to mount renderer-less (factory returns `null`). */
   @property({ attribute: false })
-  engineFactory: EngineFactory | undefined = undefined;
+  rendererFactory: RendererFactory | undefined = undefined;
 
   /** Optional picker factory. Defaults to `defaultPicker` (scene raycast);
    *  tests inject a deterministic picker so pointer gestures resolve to
@@ -385,7 +385,7 @@ export class OmGraphicalLayout extends LitElement {
     return html`
       <om-scene
         @om-view-change=${this.onViewChange}
-        .engineFactory=${this.engineFactory ?? undefined}
+        .rendererFactory=${this.rendererFactory ?? undefined}
         ?debug=${this.debug}
         camera-mode=${this.cameraMode}
         tabindex="0"
@@ -833,7 +833,7 @@ export class OmGraphicalLayout extends LitElement {
     if (!sceneEl || !ctx || !canvas) {
       return;
     }
-    const picker = (this.pickerFactory ?? defaultPicker)(ctx.scene, canvas);
+    const picker = (this.pickerFactory ?? defaultPicker)(ctx, canvas);
     this.modeRouter = new ModeRouter({
       canvas,
       picker,
@@ -842,7 +842,6 @@ export class OmGraphicalLayout extends LitElement {
       onInteraction: (type, detail) => this.onInteraction(type, detail),
       onDrag: (type, detail) => this.onDrag(type, detail),
       store: this.interactionStore,
-      scene: ctx.scene,
       overlayParent: ctx.diagramRoot,
       connectorPosition: (key) => this.connectorDiagramPosition(key),
       evaluateCompat: (from, toKey) => this.evaluateCompat(from, toKey),
@@ -911,7 +910,7 @@ export class OmGraphicalLayout extends LitElement {
    * when consumed (so the library-browser path is skipped), `false` when
    * the picked node isn't an editable polyline.
    */
-  private handlePolylineDblClick(node: Node, e: MouseEvent): boolean {
+  private handlePolylineDblClick(node: Container, e: MouseEvent): boolean {
     if (!this.layout) {
       return false;
     }

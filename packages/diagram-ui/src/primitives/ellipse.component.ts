@@ -1,5 +1,5 @@
 import { customElement, property } from "lit/decorators.js";
-import type { TransformNode } from "@babylonjs/core";
+import type { Container } from "pixi.js";
 import type { EllipseShape } from "@dicode/omc-client";
 import { fillSpec } from "@dicode/diagram-svg";
 
@@ -11,7 +11,7 @@ import {
 import {
   DEFAULT_LINE_COLOR,
   STROKE_Z_DELTA,
-  buildFanFromCenter,
+  buildFilledEllipse,
   buildStroke,
   extentToRect,
 } from "./shape-utils.js";
@@ -42,7 +42,7 @@ export class OmEllipse extends OmShapePrimitive {
   }
 
   protected override buildMeshes(
-    parent: TransformNode,
+    parent: Container,
     z: number,
     inEntityFrame = false,
   ): void {
@@ -50,7 +50,6 @@ export class OmEllipse extends OmShapePrimitive {
     if (!s) {
       return;
     }
-    const scene = parent.getScene();
     const { x, y, width, height } = extentToRect(s.extent);
     if (width <= 0 || height <= 0) {
       return;
@@ -66,8 +65,15 @@ export class OmEllipse extends OmShapePrimitive {
       ring.push([cx + Math.cos(t) * rx, cy + Math.sin(t) * ry]);
     }
 
+    const renderer = this.renderer();
     const baseName = `om-ellipse.${this.zOrder}`;
-    const root = this.graphicRoot(parent, s, `${baseName}.gi`, inEntityFrame);
+    const root = this.graphicRoot(
+      parent,
+      s,
+      `${baseName}.gi`,
+      inEntityFrame,
+      z,
+    );
     const fill = fillSpec({
       fillColor: s.fillColor,
       lineColor: s.lineColor,
@@ -75,12 +81,13 @@ export class OmEllipse extends OmShapePrimitive {
     });
     if (fill.kind !== "none") {
       this.resources.push(
-        buildFanFromCenter(
-          scene,
+        buildFilledEllipse(
+          renderer,
           root,
           cx,
           cy,
-          ring,
+          rx,
+          ry,
           { x, y, width, height },
           fill,
           z,
@@ -93,7 +100,6 @@ export class OmEllipse extends OmShapePrimitive {
     const strokePoints =
       firstRingPoint === undefined ? ring : [...ring, firstRingPoint];
     const stroke = buildStroke(
-      scene,
       root,
       strokePoints,
       s.lineColor ?? DEFAULT_LINE_COLOR,

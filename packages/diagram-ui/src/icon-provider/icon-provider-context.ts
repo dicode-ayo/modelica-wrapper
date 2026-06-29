@@ -1,5 +1,5 @@
 import { createContext } from "@lit/context";
-import type { Texture } from "@babylonjs/core";
+import type { Texture } from "pixi.js";
 import type { CoordinateSystem, IconLayer } from "@dicode/omc-client";
 
 import type { IconRequest } from "./icon-cache.js";

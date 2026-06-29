@@ -1,38 +1,25 @@
-import {
-  Vector3,
-  type ArcRotateCamera,
-  type Camera,
-  type Scene,
-  type TransformNode,
-} from "@babylonjs/core";
+import type { Container } from "pixi.js";
+
+/** Label of the worldRoot container, which carries the pan/zoom view transform. */
+const WORLD_ROOT_LABEL = "om-world";
 
 /**
- * Narrows to an orthographic `ArcRotateCamera` by the presence of
- * `orthoLeft`, which only the ortho projection populates.
+ * Absolute diagram-space scale of a container: the product of local
+ * scales from `node` up to (but excluding) the worldRoot, so the
+ * pan/zoom view transform is left out. Containers parented under a
+ * scaled-down component carry the icon→placement scale (commonly ≪ 1);
+ * divide a screen-constant size by this to resolve it through that
+ * scale. A flip negates an axis; magnitude is what matters, so the sign
+ * is dropped.
  */
-export function isOrthoCamera(
-  cam: Camera | null | undefined,
-): cam is ArcRotateCamera {
-  if (cam === null || cam === undefined) {
-    return false;
+export function worldScaleXY(node: Container): { x: number; y: number } {
+  let sx = 1;
+  let sy = 1;
+  let cur: Container | null = node;
+  while (cur && cur.label !== WORLD_ROOT_LABEL) {
+    sx *= Math.abs(cur.scale.x);
+    sy *= Math.abs(cur.scale.y);
+    cur = cur.parent;
   }
-  return (cam as ArcRotateCamera).orthoLeft !== undefined;
-}
-
-/** The active camera when it is orthographic, else `null`. */
-export function findOrthoCamera(scene: Scene): ArcRotateCamera | null {
-  const cam = scene.activeCamera;
-  return isOrthoCamera(cam) ? cam : null;
-}
-
-/**
- * Absolute world-space scale of a node. Meshes parented to a shape's
- * transform carry the icon→placement scale (commonly ≪ 1); divide a
- * screen-constant size by this to resolve it through that scale. A flip
- * negates an axis; magnitude is what matters, so the sign is dropped.
- */
-export function worldScaleXY(node: TransformNode): { x: number; y: number } {
-  const scale = new Vector3();
-  node.computeWorldMatrix(true).decompose(scale, undefined, undefined);
-  return { x: Math.abs(scale.x) || 1, y: Math.abs(scale.y) || 1 };
+  return { x: sx || 1, y: sy || 1 };
 }

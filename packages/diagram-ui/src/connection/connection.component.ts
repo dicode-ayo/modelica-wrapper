@@ -1,40 +1,41 @@
 import { LitElement, css, html } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { ContextConsumer, consume } from "@lit/context";
-import {
-  Color3,
-  MeshBuilder,
-  StandardMaterial,
-  type Mesh,
-  type TransformNode,
-} from "@babylonjs/core";
+import { Circle, Container, Graphics } from "pixi.js";
 import type { Point } from "@dicode/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
-import { setMeshHighlight } from "../base/selection-overlay.js";
-import { requestSceneRender } from "../scene/render-scheduler.js";
+import { setHighlight } from "../base/selection-overlay.js";
+import { sceneContext, type SceneContext } from "../scene/scene-context.js";
 import { pointsEqual } from "../interaction/connection-route.js";
 import {
   interactionStateContext,
   type InteractionState,
   type InteractionStateStore,
 } from "../interaction/interaction-state.js";
-import { isJunctionKey, parseKey } from "../interaction/node-keys.js";
+import {
+  isJunctionKey,
+  parseKey,
+  readEntityMeta,
+  tagEntity,
+} from "../interaction/node-keys.js";
 import { WAYPOINT_RADIUS } from "./edge-build.js";
 import "./edge.component.js";
 
-const JUNCTION_BASE_COLOR = new Color3(0.1, 0.1, 0.18);
-const SELECTED_COLOR = new Color3(0.24, 0.51, 0.96); // blue-500, matches edges
+/** Near-black slate, matching the default edge colour. */
+const JUNCTION_BASE_COLOR = 0x1a1a2e;
+const SELECTED_COLOR = 0x3d82f5; // blue-500, matches edges
 /**
- * Resting opacity of junction discs — fully transparent so the route
- * reads as a clean polyline at rest. Babylon's picker ignores
- * `mesh.visibility`, so the discs stay pickable even at 0 — the user
- * can still grab a waypoint by clicking the corner of the orthogonal
- * route.
+ * Resting alpha of junction discs — fully transparent so the route reads
+ * as a clean polyline at rest. The explicit `hitArea` keeps each disc
+ * grabbable even at `alpha = 0`, so the user can still pick a waypoint at
+ * a route corner.
  */
 const JUNCTION_IDLE_OPACITY = 0;
-/** Opacity of every junction disc while the connection is hovered. */
+/** Alpha of every junction disc while the connection is hovered. */
 const JUNCTION_HOVER_OPACITY = 1;
+/** Paint band placing the discs above the edge line, below connectors. */
+const JUNCTION_Z_INDEX = 0.01;
 
 /**
  * `<om-connection>` — composes one `<om-edge>` with optional junction
@@ -51,13 +52,12 @@ const JUNCTION_HOVER_OPACITY = 1;
  *   - `selectedKeys`     — set of entity keys (`edge:<nodeId>` and
  *                          `junc:<nodeId>/<waypointIdx>`) that are
  *                          currently selected; drives the highlight
- *                          colour on the edge + HighlightLayer entry
- *                          on each junction.
+ *                          colour on the edge + outline on each junction.
  *
  * Endpoint dots (first / last) are deliberately NOT drawn — the
  * connectors at each end already provide the visual terminator.
  *
- * Junction metadata uses a compound nodeId of
+ * Junction identity uses a compound nodeId of
  * `<connectionNodeId>/<waypointIndex>` so the interaction layer can
  * distinguish different junctions on the same connection.
  */
@@ -81,7 +81,10 @@ export class OmConnection extends LitElement {
   selectedKeys: Set<string> = new Set();
 
   @consume({ context: parentNodeContext, subscribe: true })
-  private parentTransform: TransformNode | null = null;
+  private parentTransform: Container | null = null;
+
+  @consume({ context: sceneContext, subscribe: true })
+  private sceneCtx: SceneContext | null = null;
 
   /**
    * Hover tracking is self-managed: the host (`<om-graphical-layout>`)
@@ -90,17 +93,11 @@ export class OmConnection extends LitElement {
    * matching here (instead of having the host walk every
    * `<om-connection>` and call setters) keeps the junction-id format
    * encapsulated inside the component that owns the discs.
-   *
-   * The consumer is registered in the constructor for its side effect
-   * (the Lit ReactiveController binds itself to `this`); we only care
-   * about the callback, which re-wires the store subscription each
-   * time Lit hands us a new store reference (mount, hot reload).
    */
   private interactionUnsubscribe: (() => void) | null = null;
 
-  private junctionMeshes: Mesh[] = [];
-  private junctionMaterial: StandardMaterial | null = null;
-  private highlightedJunctions = new Set<Mesh>();
+  private junctionDiscs: Graphics[] = [];
+  private highlightedJunctions = new Set<Graphics>();
   /**
    * Whether the pointer is over any part of this connection (its edge
    * or one of its waypoint discs). While hovered the whole route
@@ -114,7 +111,7 @@ export class OmConnection extends LitElement {
    * roundtrip) doesn't dispose + recreate the junction discs. Also
    * acts as the "first build" sentinel so we don't keep re-running
    * `rebuildJunctions()` every `updated()` when there are no internal
-   * waypoints (empty `junctionMeshes`).
+   * waypoints (empty `junctionDiscs`).
    */
   private builtPath: Point[] | null = null;
 
@@ -197,13 +194,11 @@ export class OmConnection extends LitElement {
     if (this.builtPath === null || visualChanged) {
       this.rebuildJunctions();
     } else if (pathChanged) {
-      // Try in-place position update first. Disposing + recreating the
-      // discs on every pointermove of a component drag (which shifts
-      // the connection waypoints) is the visible "junction dot flicker".
-      // Mutating the position of the existing disc keeps the GPU
-      // resources stable. Falls back to a full rebuild if the internal-
-      // waypoint count changed (the topology actually differs, not
-      // just the coordinates).
+      // Try an in-place position update first. Disposing + recreating the
+      // discs on every pointermove of a component drag (which shifts the
+      // connection waypoints) is the visible "junction dot flicker".
+      // Falls back to a full rebuild if the internal-waypoint count
+      // changed (the topology actually differs, not just the coords).
       if (!this.updateJunctionPositions()) {
         this.rebuildJunctions();
       }
@@ -223,89 +218,79 @@ export class OmConnection extends LitElement {
    * Reposition the existing junction discs against the current `path`,
    * without disposing and recreating them. Returns `false` if the
    * structure doesn't match (different internal-waypoint count, or the
-   * meshes haven't been built yet) — the caller falls back to a full
+   * discs haven't been built yet) — the caller falls back to a full
    * rebuild in that case.
    */
   private updateJunctionPositions(): boolean {
-    if (!this.parentTransform) {
-      return false;
-    }
     const internal = this.path.slice(1, -1);
-    if (internal.length !== this.junctionMeshes.length) {
+    if (internal.length !== this.junctionDiscs.length) {
       return false;
     }
     for (let i = 0; i < internal.length; i++) {
-      const [x, y] = internal[i]!;
-      this.junctionMeshes[i]!.position.set(x, y, -0.01);
+      const point = internal[i];
+      const disc = this.junctionDiscs[i];
+      if (point === undefined || disc === undefined) {
+        return false;
+      }
+      disc.position.set(point[0], point[1]);
     }
     this.builtPath = this.path;
-    requestSceneRender(this.parentTransform.getScene());
+    this.sceneCtx?.requestRender();
     return true;
   }
 
   private rebuildJunctions(): void {
     this.disposeJunctions();
     this.builtPath = this.path;
-    if (!this.showJunctions || !this.parentTransform) {
+    const parent = this.parentTransform;
+    if (!this.showJunctions || !parent) {
       return;
     }
-    const scene = this.parentTransform.getScene();
     const internal = this.path.slice(1, -1);
     if (internal.length === 0) {
-      requestSceneRender(scene);
+      this.sceneCtx?.requestRender();
       return;
     }
-    const stroke = this.stroke;
-    this.junctionMaterial = new StandardMaterial("om-junction-mat", scene);
-    this.junctionMaterial.disableLighting = true;
-    this.junctionMaterial.emissiveColor =
-      parseColor(stroke) ?? JUNCTION_BASE_COLOR;
+    const color = parseColor(this.stroke) ?? JUNCTION_BASE_COLOR;
+    parent.sortableChildren = true;
 
     // Internal waypoints map to `path` indices 1 .. path.length - 2.
     let waypointIdx = 1;
     for (const [x, y] of internal) {
       const compoundId = `${this.nodeId}/${waypointIdx}`;
-      const disc = MeshBuilder.CreateDisc(
-        `om-junction:${compoundId}`,
-        { radius: this.junctionRadius, tessellation: 16 },
-        scene,
-      );
-      disc.material = this.junctionMaterial;
-      disc.parent = this.parentTransform;
-      // Negative z = closer to camera (sits at -Z) so the junction
-      // dot paints on top of the edge line.
-      disc.position.set(x, y, -0.01);
-      disc.metadata = { kind: "junction", nodeId: compoundId };
-      disc.isPickable = true;
+      const disc = new Graphics();
+      disc.circle(0, 0, this.junctionRadius).fill(color);
+      disc.position.set(x, y);
+      disc.zIndex = JUNCTION_Z_INDEX;
+      disc.eventMode = "static";
+      disc.hitArea = new Circle(0, 0, this.junctionRadius);
       // Built transparent; `applyJunctionHover` reveals every disc while
-      // the connection is hovered. Babylon's picker ignores
-      // `mesh.visibility`, so the discs stay grabbable for the
-      // connection-reshape gesture even at rest.
-      disc.visibility = JUNCTION_IDLE_OPACITY;
-      this.junctionMeshes.push(disc);
+      // the connection is hovered. The explicit `hitArea` keeps it
+      // grabbable for the reshape gesture even at rest.
+      disc.alpha = JUNCTION_IDLE_OPACITY;
+      tagEntity(disc, "junction", compoundId);
+      parent.addChild(disc);
+      this.junctionDiscs.push(disc);
       waypointIdx++;
     }
-    requestSceneRender(scene);
+    this.sceneCtx?.requestRender();
   }
 
   /**
    * Reveal every junction disc while the connection is hovered, hide
-   * them all otherwise. Idempotent — skips the rAF when nothing changed.
+   * them all otherwise. Idempotent — skips the render when nothing changed.
    */
   private applyJunctionHover(): void {
-    const opacity = this.hovered
-      ? JUNCTION_HOVER_OPACITY
-      : JUNCTION_IDLE_OPACITY;
+    const alpha = this.hovered ? JUNCTION_HOVER_OPACITY : JUNCTION_IDLE_OPACITY;
     let changed = false;
-    for (const disc of this.junctionMeshes) {
-      if (disc.visibility !== opacity) {
-        disc.visibility = opacity;
+    for (const disc of this.junctionDiscs) {
+      if (disc.alpha !== alpha) {
+        disc.alpha = alpha;
         changed = true;
       }
     }
-    const scene = this.parentTransform?.getScene();
-    if (changed && scene) {
-      requestSceneRender(scene);
+    if (changed) {
+      this.sceneCtx?.requestRender();
     }
   }
 
@@ -316,69 +301,57 @@ export class OmConnection extends LitElement {
   }
 
   private applyJunctionSelection(): void {
-    const parent = this.parentTransform;
-    if (!parent) {
+    const ctx = this.sceneCtx;
+    if (!ctx) {
       return;
     }
-    const scene = parent.getScene();
     // Remove highlights that no longer apply.
-    for (const mesh of [...this.highlightedJunctions]) {
-      const id = (mesh.metadata as { nodeId?: string } | null)?.nodeId;
+    for (const disc of [...this.highlightedJunctions]) {
+      const id = readEntityMeta(disc)?.nodeId;
       if (id && !this.selectedKeys.has(`junc:${id}`)) {
-        setMeshHighlight(scene, mesh, null);
-        this.highlightedJunctions.delete(mesh);
+        setHighlight(ctx, disc, null);
+        this.highlightedJunctions.delete(disc);
       }
     }
     // Add highlights for newly-selected junctions.
-    for (const mesh of this.junctionMeshes) {
-      const id = (mesh.metadata as { nodeId?: string } | null)?.nodeId;
+    for (const disc of this.junctionDiscs) {
+      const id = readEntityMeta(disc)?.nodeId;
       if (id && this.selectedKeys.has(`junc:${id}`)) {
-        if (!this.highlightedJunctions.has(mesh)) {
-          setMeshHighlight(scene, mesh, SELECTED_COLOR);
-          this.highlightedJunctions.add(mesh);
+        if (!this.highlightedJunctions.has(disc)) {
+          setHighlight(ctx, disc, SELECTED_COLOR);
+          this.highlightedJunctions.add(disc);
         }
       }
     }
   }
 
   private disposeJunctions(): void {
-    const parent = this.parentTransform;
-    const scene = parent ? parent.getScene() : null;
-    for (const m of this.junctionMeshes) {
-      if (scene && this.highlightedJunctions.has(m)) {
-        setMeshHighlight(scene, m, null);
+    const ctx = this.sceneCtx;
+    for (const disc of this.junctionDiscs) {
+      if (ctx && this.highlightedJunctions.has(disc)) {
+        setHighlight(ctx, disc, null);
       }
-      m.dispose();
+      disc.destroy();
     }
-    this.junctionMeshes = [];
+    this.junctionDiscs = [];
     this.highlightedJunctions.clear();
-    this.junctionMaterial?.dispose();
-    this.junctionMaterial = null;
     // Clear the "built against" sentinel so a reconnect (or any next
     // `rebuildJunctions`) starts from a clean slate. `rebuildJunctions`
     // re-sets it immediately after calling us; the order is fine.
     this.builtPath = null;
   }
 
-  get junctions(): Mesh[] {
-    return this.junctionMeshes;
+  get junctions(): Graphics[] {
+    return this.junctionDiscs;
   }
 }
 
-function parseColor(input: string | undefined): Color3 | undefined {
-  if (!input) {
+function parseColor(input: string | undefined): number | undefined {
+  const hex = input?.match(/^#?([0-9a-fA-F]{6})$/)?.[1];
+  if (hex === undefined) {
     return undefined;
   }
-  const m = input.match(/^#?([0-9a-fA-F]{6})$/);
-  if (!m) {
-    return undefined;
-  }
-  const hex = m[1]!;
-  return new Color3(
-    parseInt(hex.slice(0, 2), 16) / 255,
-    parseInt(hex.slice(2, 4), 16) / 255,
-    parseInt(hex.slice(4, 6), 16) / 255,
-  );
+  return parseInt(hex, 16);
 }
 
 declare global {

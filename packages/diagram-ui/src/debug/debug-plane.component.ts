@@ -1,41 +1,33 @@
 import { LitElement, css, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { consume } from "@lit/context";
-import {
-  Color3,
-  Mesh,
-  MeshBuilder,
-  StandardMaterial,
-  type Scene,
-  type Texture,
-  type TransformNode,
-} from "@babylonjs/core";
+import { Container, Sprite, Texture } from "pixi.js";
 import type { CoordinateSystem, IconLayer } from "@dicode/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
+import { sceneContext, type SceneContext } from "../scene/scene-context.js";
 import {
   iconProviderContext,
   type IconProviderContext,
 } from "../icon-provider/icon-provider-context.js";
 
 /**
- * `<om-debug-plane>` — diagnostic single-plane element used by the
+ * `<om-debug-plane>` — diagnostic single-sprite element used by the
  * `diagram-ui/IconDebug` stories. Each story passes a different
  * `textureFactory` so we can isolate which step of the texture
  * pipeline succeeds vs. fails:
  *
- *   1. `null` → bare plane with `emissiveColor` only (sanity check
- *      that scene + camera + material + mesh work)
- *   2. procedural `DynamicTexture` → tests canvas → texture upload
- *   3. PNG `data:` URL via `canvas.toDataURL` → tests PNG decode
+ *   1. `null` → bare sprite tinted with `fallbackColor` (sanity check
+ *      that scene + sprite work)
+ *   2. canvas-baked `Texture` → tests canvas → texture upload
+ *   3. PNG `data:` URL → tests PNG decode
  *   4. SVG `data:` URL → tests SVG decode (current production path)
- *
- * The plane uses the same unlit material setup as `OmShapeNode` so
- * results are directly comparable to the real icon pipeline.
  *
  * Placement is in diagram coords (`x`, `y`, `size`). `parentNodeContext`
  * is consumed so the element can live inside `<om-scene>` as a sibling
- * of grid + entities.
+ * of grid + entities. The sprite counter-flips `scale.y` against the
+ * `worldRoot` +y-up flip so textures render upright — making this probe
+ * a direct check for flip regressions.
  */
 @customElement("om-debug-plane")
 export class OmDebugPlane extends LitElement {
@@ -50,18 +42,16 @@ export class OmDebugPlane extends LitElement {
   @property({ type: Number }) size = 20;
 
   /**
-   * Babylon `Color3` used as `emissiveColor` while no texture is
-   * bound. When a texture loads, emissiveColor is forced to black
-   * (same as `OmShapeNode`). Bright red default so a story without a
-   * `textureFactory` immediately shows.
+   * Tint (`0xRRGGBB`) applied while no texture is bound. When a texture
+   * loads, the tint is reset to white. Bright red default so a story
+   * without a `textureFactory` immediately shows.
    */
   @property({ attribute: false })
-  fallbackColor: Color3 = new Color3(0.85, 0.2, 0.2);
+  fallbackColor = 0xd93333;
 
   /**
    * Async factory that returns the texture to display, or `null` for
-   * "no texture" (fallbackColor only). Receives the live `Scene` so
-   * the factory can construct DynamicTextures / Textures inline.
+   * "no texture" (fallbackColor tint only).
    *
    * If both `textureFactory` and `layers` are set, `layers` wins —
    * lets a story drop into the production icon-provider path with
@@ -69,11 +59,11 @@ export class OmDebugPlane extends LitElement {
    */
   @property({ attribute: false })
   textureFactory:
-    | ((scene: Scene) => Texture | null | Promise<Texture | null>)
+    | (() => Texture | null | Promise<Texture | null>)
     | undefined = undefined;
 
   /**
-   * Drives the plane through the production `iconProviderContext`
+   * Drives the sprite through the production `iconProviderContext`
    * instead of an inline factory. Lets the IconProvider stories show
    * exactly what `<om-component>` would see for a given fixture.
    */
@@ -86,13 +76,15 @@ export class OmDebugPlane extends LitElement {
   coordinateSystem: CoordinateSystem | undefined = undefined;
 
   @consume({ context: parentNodeContext, subscribe: true })
-  private parentTransform: TransformNode | null = null;
+  private parentContainer: Container | null = null;
+
+  @consume({ context: sceneContext, subscribe: true })
+  private sceneCtx: SceneContext | null = null;
 
   @consume({ context: iconProviderContext, subscribe: true })
   private iconProvider: IconProviderContext | null = null;
 
-  private mesh: Mesh | null = null;
-  private material: StandardMaterial | null = null;
+  private sprite: Sprite | null = null;
   private pendingToken: symbol | null = null;
 
   override render() {
@@ -100,7 +92,7 @@ export class OmDebugPlane extends LitElement {
   }
 
   override updated(): void {
-    this.ensureMesh();
+    this.ensureSprite();
     this.applyTransform();
     void this.refreshTexture();
   }
@@ -108,105 +100,93 @@ export class OmDebugPlane extends LitElement {
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.pendingToken = null;
-    this.mesh?.dispose();
-    this.material?.dispose();
-    this.mesh = null;
-    this.material = null;
+    // The texture is owned by the icon-provider / story factory.
+    this.sprite?.destroy({ texture: false });
+    this.sprite = null;
+    this.sceneCtx?.requestRender();
   }
 
-  private ensureMesh(): void {
-    if (this.mesh) {
+  private ensureSprite(): void {
+    if (this.sprite) {
       return;
     }
-    const parent = this.parentTransform;
+    const parent = this.parentContainer;
     if (!parent) {
       return;
     }
-    const scene = parent.getScene();
-    this.material = new StandardMaterial("om-debug-mat", scene);
-    this.material.disableLighting = true;
-    this.material.specularColor = new Color3(0, 0, 0);
-    this.material.emissiveColor = this.fallbackColor.clone();
-    this.material.backFaceCulling = false;
-    this.material.useAlphaFromDiffuseTexture = true;
-
-    this.mesh = MeshBuilder.CreatePlane(
-      "om-debug-plane",
-      { width: 1, height: 1, sideOrientation: Mesh.DOUBLESIDE },
-      scene,
-    );
-    this.mesh.material = this.material;
-    this.mesh.parent = parent;
-    this.mesh.isPickable = false;
+    const sprite = new Sprite(Texture.WHITE);
+    sprite.label = "om-debug-plane";
+    sprite.anchor.set(0.5);
+    sprite.eventMode = "none";
+    sprite.tint = this.fallbackColor;
+    parent.addChild(sprite);
+    this.sprite = sprite;
   }
 
   private applyTransform(): void {
-    if (!this.mesh) {
+    const sprite = this.sprite;
+    if (!sprite) {
       return;
     }
-    this.mesh.position.set(this.x, this.y, 0);
-    this.mesh.scaling.set(this.size, this.size, 1);
+    sprite.position.set(this.x, this.y);
+    sprite.width = this.size;
+    sprite.height = this.size;
+    // Counter-flip against the worldRoot +y-up flip so the texture is
+    // upright. `width`/`height` are unsigned extents, so the sign lives
+    // on the scale component directly.
+    sprite.scale.y = -Math.abs(sprite.scale.y);
+    this.sceneCtx?.requestRender();
   }
 
   private async refreshTexture(): Promise<void> {
-    const mesh = this.mesh;
-    const material = this.material;
-    if (!mesh || !material) {
+    const sprite = this.sprite;
+    if (!sprite) {
       return;
     }
-    // Resolve which source to use this update.
-    let source:
-      | ((scene: Scene) => Texture | null | Promise<Texture | null>)
-      | undefined;
+    let source: (() => Texture | null | Promise<Texture | null>) | undefined;
     if (this.layers && this.layers.length > 0 && this.iconProvider) {
       const layers = this.layers;
       const coordinateSystem = this.coordinateSystem;
       const provider = this.iconProvider;
-      source = () =>
-        provider.textureForLayers(layers, coordinateSystem) as Promise<Texture>;
+      source = () => provider.textureForLayers(layers, coordinateSystem);
     } else {
       source = this.textureFactory;
     }
     if (!source) {
-      material.emissiveTexture = null;
-      material.diffuseTexture = null;
-      material.emissiveColor.copyFrom(this.fallbackColor);
+      this.applyFallback(sprite);
       return;
     }
     const token = Symbol();
     this.pendingToken = token;
-    const scene = mesh.getScene();
     try {
-      const tex = await source(scene);
-      if (this.pendingToken !== token) {
+      const tex = await source();
+      if (this.pendingToken !== token || this.sprite !== sprite) {
         return;
       }
       if (tex) {
-        tex.hasAlpha = true;
-        material.emissiveTexture = tex;
-        material.diffuseTexture = tex;
-        material.emissiveColor.set(0, 0, 0);
+        sprite.texture = tex;
+        sprite.tint = 0xffffff;
+        this.applyTransform();
       } else {
-        material.emissiveTexture = null;
-        material.diffuseTexture = null;
-        material.emissiveColor.copyFrom(this.fallbackColor);
+        this.applyFallback(sprite);
       }
     } catch (err) {
       console.error("[om-debug-plane] texture factory failed:", err);
-      if (this.pendingToken === token) {
-        material.emissiveTexture = null;
-        material.diffuseTexture = null;
-        material.emissiveColor.copyFrom(this.fallbackColor);
+      if (this.pendingToken === token && this.sprite === sprite) {
+        this.applyFallback(sprite);
       }
     }
   }
 
-  /** Test accessors. */
-  get debugMesh(): Mesh | null {
-    return this.mesh;
+  private applyFallback(sprite: Sprite): void {
+    sprite.texture = Texture.WHITE;
+    sprite.tint = this.fallbackColor;
+    this.applyTransform();
   }
-  get debugMaterial(): StandardMaterial | null {
-    return this.material;
+
+  /** Test accessor. */
+  get debugSprite(): Sprite | null {
+    return this.sprite;
   }
 }
 

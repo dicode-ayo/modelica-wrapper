@@ -259,6 +259,7 @@ export class OmScene extends LitElement {
       worldRoot,
       diagramRoot,
       pick: (x, y) => this.pick(x, y),
+      worldPerPixel: () => this.worldPerPixel(),
       requestRender: () => requestSceneRender(stage),
     };
     this.sceneProvider.setValue(ctx);
@@ -446,6 +447,12 @@ export class OmScene extends LitElement {
     if (this.stage) {
       requestSceneRender(this.stage);
     }
+  }
+
+  /** Diagram units per CSS pixel at the current zoom (`1 / ppu`). */
+  private worldPerPixel(): number {
+    const { height } = this.rendererSize();
+    return (2 * this.zoom) / height;
   }
 
   /** CSS-pixel render size — the renderer's screen if live, else host. */

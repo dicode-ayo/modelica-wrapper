@@ -35,6 +35,14 @@ export interface SceneContext {
    */
   pick: (x: number, y: number) => Container | null;
 
+  /**
+   * Diagram units per CSS pixel at the current zoom (= `1 / ppu`). Used
+   * by screen-constant sizing — a stroke/handle that should stay N
+   * pixels wide regardless of zoom uses `N * worldPerPixel()` diagram
+   * units. Replaces reading the Babylon ortho camera's extents.
+   */
+  worldPerPixel: () => number;
+
   /** Schedule a coalesced on-demand repaint. No-op when `renderer` is null. */
   requestRender: () => void;
 }

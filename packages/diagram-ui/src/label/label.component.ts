@@ -1,20 +1,28 @@
 import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { consume } from "@lit/context";
-import { TransformNode } from "@babylonjs/core";
-import { TextBlock } from "@babylonjs/gui";
+import { Container, Point, Text, TextStyle } from "pixi.js";
 import { expressionToString } from "@dicode/diagram-svg";
 import type { Expression } from "@dicode/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
-import { requestSceneRender } from "../scene/render-scheduler.js";
-import { ensureLabelTexture } from "./label-texture.js";
+import { sceneContext, type SceneContext } from "../scene/scene-context.js";
+import {
+  viewStateContext,
+  type ViewStateStore,
+} from "../scene/view-state-store.js";
+import { tagEntity } from "../interaction/node-keys.js";
+import { ensureLabelLayer } from "./label-texture.js";
+
+const ANCHOR_ORIGIN = new Point(0, 0);
 
 /**
- * `<om-label>` — places a text label in the scene linked to a Babylon
- * `TransformNode`. Renders via the shared `AdvancedDynamicTexture`
- * fullscreen UI, so font sizes are in screen pixels and stay readable
- * across the full zoom range.
+ * `<om-label>` — places a text label in the scene linked to an in-world
+ * anchor `Container`. The visible `Text` lives in a screen-space overlay
+ * (see `ensureLabelLayer`) outside the pan/zoom/Y-flip transform, so font
+ * sizes are in screen pixels and stay readable across the full zoom
+ * range. Each frame the `Text` is reprojected to the anchor's global
+ * (screen) position.
  *
  * Properties:
  *   - `x`, `y`            — diagram-coord position (parent local space)
@@ -48,11 +56,18 @@ export class OmLabel extends LitElement {
   @property() color: string = "#222";
 
   @consume({ context: parentNodeContext, subscribe: true })
-  private parentTransform: TransformNode | null = null;
+  private parentContainer: Container | null = null;
 
-  private anchor: TransformNode | null = null;
-  private textBlock: TextBlock | null = null;
+  @consume({ context: sceneContext, subscribe: true })
+  private sceneCtx: SceneContext | null = null;
+
+  @consume({ context: viewStateContext, subscribe: true })
+  private viewStore: ViewStateStore | null = null;
+
+  private anchor: Container | null = null;
+  private text2d: Text | null = null;
   private pendingText = "";
+  private unsubscribe: (() => void) | null = null;
 
   override render() {
     return html``;
@@ -65,58 +80,91 @@ export class OmLabel extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
-    if (this.textBlock) {
-      this.textBlock.dispose();
-      this.textBlock = null;
+    this.unsubscribe?.();
+    this.unsubscribe = null;
+    if (this.text2d) {
+      this.text2d.destroy();
+      this.text2d = null;
     }
-    this.anchor?.dispose();
-    this.anchor = null;
+    if (this.anchor) {
+      this.anchor.destroy();
+      this.anchor = null;
+    }
   }
 
   private ensureAnchor(): void {
-    if (this.anchor || !this.parentTransform) {
+    if (this.anchor || !this.parentContainer) {
       return;
     }
-    const scene = this.parentTransform.getScene();
-    this.anchor = new TransformNode(
-      this.nodeId ? `om-label:${this.nodeId}` : "om-label",
-      scene,
-    );
-    this.anchor.parent = this.parentTransform;
+    const anchor = new Container();
+    anchor.eventMode = "none";
+    tagEntity(anchor, "label", this.nodeId);
+    this.parentContainer.addChild(anchor);
+    this.anchor = anchor;
 
-    const texture = ensureLabelTexture(scene);
-    if (texture) {
-      const block = new TextBlock();
-      block.text = "";
-      block.color = this.color;
-      block.fontSize = this.fontSize;
-      block.fontFamily = "sans-serif";
-      block.resizeToFit = true;
-      texture.addControl(block);
-      block.linkWithMesh(this.anchor);
-      this.textBlock = block;
+    const ctx = this.sceneCtx;
+    if (!ctx) {
+      return;
+    }
+    const layer = ensureLabelLayer(ctx);
+    if (!layer) {
+      return;
+    }
+    const text = new Text({
+      text: "",
+      style: new TextStyle({
+        fill: this.color,
+        fontSize: this.fontSize,
+        fontFamily: "sans-serif",
+      }),
+    });
+    text.anchor.set(0.5);
+    text.eventMode = "none";
+    text.resolution = ctx.renderer?.resolution ?? 1;
+    layer.addChild(text);
+    this.text2d = text;
+
+    if (this.viewStore && !this.unsubscribe) {
+      this.unsubscribe = this.viewStore.subscribe(() => this.reproject());
     }
   }
 
   private sync(): void {
-    if (!this.anchor) {
+    const anchor = this.anchor;
+    if (!anchor) {
       return;
     }
-    this.anchor.position.set(this.x, this.y, 0);
+    anchor.position.set(this.x, this.y);
     this.pendingText = renderText(this.text);
-    if (this.textBlock) {
-      this.textBlock.text = this.pendingText;
-      this.textBlock.fontSize = this.fontSize;
-      this.textBlock.color = this.color;
-      this.textBlock.rotation = (this.rotation * Math.PI) / 180;
+    const text = this.text2d;
+    if (text) {
+      text.text = this.pendingText;
+      text.style.fontSize = this.fontSize;
+      text.style.fill = this.color;
+      text.rotation = (this.rotation * Math.PI) / 180;
+      this.reproject();
     }
-    requestSceneRender(this.anchor.getScene());
+    this.sceneCtx?.requestRender();
+  }
+
+  /**
+   * Project the in-world anchor's origin to screen pixels and place the
+   * overlay `Text` there. `toGlobal` refreshes the transform chain, so
+   * this stays correct before the first render and after any pan/zoom.
+   */
+  private reproject(): void {
+    const text = this.text2d;
+    const anchor = this.anchor;
+    if (!text || !anchor || anchor.destroyed) {
+      return;
+    }
+    anchor.toGlobal(ANCHOR_ORIGIN, text.position);
   }
 
   /** Returns the current text — useful for headless tests where the
-   *  GUI texture is suppressed under `NullEngine`. */
+   *  overlay `Text` is suppressed without a renderer. */
   get currentText(): string {
-    return this.textBlock?.text ?? this.pendingText;
+    return this.text2d?.text ?? this.pendingText;
   }
 }
 
