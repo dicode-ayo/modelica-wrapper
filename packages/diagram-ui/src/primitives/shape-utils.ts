@@ -466,6 +466,23 @@ const STROKE_WIDTH_SCALE = 2;
  *  control stays live for default-thickness lines (else they all clamp here). */
 const MIN_STROKE_WIDTH = 1;
 
+/**
+ * On-screen stroke width (px) for a Modelica `thickness`, normalized to the
+ * default thickness so `scale` ≈ px for a default line and an explicit
+ * `thickness` multiplies up from there; floored so it never vanishes.
+ */
+export function strokeWidthFor(
+  thickness: number | undefined,
+  scale: number | undefined,
+): number {
+  const thicknessRatio =
+    (thickness ?? DEFAULT_STROKE_THICKNESS) / DEFAULT_STROKE_THICKNESS;
+  return Math.max(
+    thicknessRatio * (scale ?? STROKE_WIDTH_SCALE),
+    MIN_STROKE_WIDTH,
+  );
+}
+
 export function buildStroke(
   scene: Scene,
   parent: TransformNode,
@@ -477,7 +494,12 @@ export function buildStroke(
   thickness?: number,
   scale?: number,
 ): OwnedResource | null {
-  if (points.length < 2 || pattern === "None") {
+  const first = points[0];
+  if (points.length < 2 || pattern === "None" || first === undefined) {
+    return null;
+  }
+  // All-coincident points build a degenerate (invisible) line — skip it.
+  if (!points.some(([x, y]) => x !== first[0] || y !== first[1])) {
     return null;
   }
 
@@ -492,13 +514,7 @@ export function buildStroke(
     flat.push(x, y, z);
   }
   const dash = patternIsDashed(pattern);
-  // Normalize to the default thickness so the scale ≈ on-screen px for a
-  // default line (and an explicit `lineThickness` multiplies up from there) —
-  // otherwise the ×0.25 default crushes the scale's range to ~1px.
-  const widthScale = scale ?? STROKE_WIDTH_SCALE;
-  const thicknessRatio =
-    (thickness ?? DEFAULT_STROKE_THICKNESS) / DEFAULT_STROKE_THICKNESS;
-  const width = Math.max(thicknessRatio * widthScale, MIN_STROKE_WIDTH);
+  const width = strokeWidthFor(thickness, scale);
   const mesh = CreateGreasedLine(
     baseName,
     { points: flat },

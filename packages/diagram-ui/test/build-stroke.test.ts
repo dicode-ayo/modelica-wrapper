@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { NullEngine, Scene, TransformNode } from "@babylonjs/core";
 import type { Color } from "@dicode/omc-client";
 
-import { buildStroke } from "../src/primitives/shape-utils.js";
+import { buildStroke, strokeWidthFor } from "../src/primitives/shape-utils.js";
 
 function makeScene(): {
   scene: Scene;
@@ -30,6 +30,19 @@ function makeScene(): {
 
 const RED: Color = [255, 0, 0];
 
+describe("strokeWidthFor", () => {
+  it("normalizes to default thickness, scales, and floors", () => {
+    // No thickness/scale → default thickness at the default scale (2px).
+    expect(strokeWidthFor(undefined, undefined)).toBe(2);
+    // Default thickness → scale maps ~1:1 to px.
+    expect(strokeWidthFor(0.25, 6)).toBe(6);
+    // 2× the default thickness → 2× the width.
+    expect(strokeWidthFor(0.5, 6)).toBe(12);
+    // A sub-floor result clamps to the anti-vanish minimum.
+    expect(strokeWidthFor(0.01, 2)).toBe(1);
+  });
+});
+
 describe("buildStroke", () => {
   it("returns null for a non-drawable stroke", () => {
     const { scene, parent, dispose } = makeScene();
@@ -46,6 +59,21 @@ describe("buildStroke", () => {
         ],
         RED,
         "None",
+        0,
+        "s",
+      ),
+    ).toBeNull();
+    // All-coincident points → degenerate → null.
+    expect(
+      buildStroke(
+        scene,
+        parent,
+        [
+          [5, 5],
+          [5, 5],
+        ],
+        RED,
+        undefined,
         0,
         "s",
       ),

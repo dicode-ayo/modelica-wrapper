@@ -382,6 +382,7 @@ export class OmGraphicalLayout extends LitElement {
   }
 
   override willUpdate(changed: Map<string, unknown>): void {
+    super.willUpdate(changed);
     if (changed.has("lineThicknessScale")) {
       this.strokeScaleProvider.setValue(this.lineThicknessScale);
     }
