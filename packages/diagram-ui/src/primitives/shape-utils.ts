@@ -1,6 +1,7 @@
 import {
   Color3,
   Mesh,
+  MeshBuilder,
   StandardMaterial,
   TransformNode as TransformNodeImpl,
   Vector3,
@@ -8,7 +9,7 @@ import {
   type Scene,
   type TransformNode,
 } from "@babylonjs/core";
-import { CreateGreasedLine } from "@babylonjs/core/Meshes/Builders/greasedLineBuilder.js";
+import { CreateDashedLines } from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
 import type { Color, Extent, Point } from "@dicode/omc-client";
 import type { FillSpec } from "@dicode/diagram-svg";
 
@@ -461,6 +462,11 @@ function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
 const DEFAULT_STROKE_THICKNESS = 0.25;
 /** Floor (diagram units) so a hairline still reads at default zoom. */
 const MIN_STROKE_WIDTH = 0.5;
+/** Per-segment sides of the visible stroke tube. */
+const STROKE_TESSELLATION = 8;
+/** Dash / gap length (diagram units) for dashed strokes. */
+const DEFAULT_DASH_SIZE = 4;
+const DEFAULT_DASH_GAP = 3;
 
 export function buildStroke(
   scene: Scene,
@@ -475,41 +481,81 @@ export function buildStroke(
   if (points.length < 2 || pattern === "None") {
     return null;
   }
-  const flat: number[] = [];
-  for (const [x, y] of points) {
-    flat.push(x, y, z);
+  const colour = colorToColor3(color);
+
+  // Dashed strokes stay 1px GL_LINES for now — width via dashed tubes is a
+  // follow-up. Solid strokes get real width from a world-space tube.
+  if (patternIsDashed(pattern)) {
+    const mesh = CreateDashedLines(
+      baseName,
+      {
+        points: points.map(([x, y]) => new Vector3(x, y, z)),
+        dashSize: DEFAULT_DASH_SIZE,
+        gapSize: DEFAULT_DASH_GAP,
+        dashNb: Math.max(8, points.length * 8),
+        updatable: false,
+      },
+      scene,
+    );
+    mesh.color = colour;
+    mesh.parent = parent;
+    mesh.isPickable = false;
+    return { dispose: () => mesh.dispose() };
   }
 
-  // A GreasedLine ribbon honors `thickness` (GL_LINES is hard-capped at 1px).
-  // `sizeAttenuation: false` → `width` is in scene units, so it scales with
-  // zoom like the shape it borders (Modelica thickness-in-mm) AND stays even
-  // across orientations (screen-relative width is stretched by the viewport
-  // aspect, so horizontal vs vertical segments would differ). Every
-  // GreasedLine in the scene must share this mode + material type, or some
-  // drop out scene-wide.
-  const dash = patternIsDashed(pattern);
-  const width = Math.max(
-    thickness ?? DEFAULT_STROKE_THICKNESS,
-    MIN_STROKE_WIDTH,
-  );
-  const mesh = CreateGreasedLine(
-    baseName,
-    { points: flat },
-    {
-      width,
-      sizeAttenuation: false,
-      color: colorToColor3(color),
-      useDash: dash,
-      dashCount: dash ? Math.max(8, points.length * 4) : 0,
-      dashRatio: 0.4,
-    },
-    scene,
-  );
-  mesh.parent = parent;
-  mesh.isPickable = false;
+  // A world-space tube honors `thickness` (GL_LINES is hard-capped at 1px) and
+  // stays even across orientations — the radius is real geometry, so an
+  // aspect-preserving camera projects it the same width whatever the angle
+  // (GreasedLine's shader width is skewed by the viewport aspect). Per-segment
+  // capsules (rounded caps) join cleanly at corners without `CreateTube`'s
+  // sharp-angle pinch.
+  const radius =
+    Math.max(thickness ?? DEFAULT_STROKE_THICKNESS, MIN_STROKE_WIDTH) / 2;
+  const segments: Mesh[] = [];
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    if (
+      a === undefined ||
+      b === undefined ||
+      (a[0] === b[0] && a[1] === b[1])
+    ) {
+      continue;
+    }
+    segments.push(
+      MeshBuilder.CreateTube(
+        `${baseName}.${i}`,
+        {
+          path: [new Vector3(a[0], a[1], z), new Vector3(b[0], b[1], z)],
+          radius,
+          tessellation: STROKE_TESSELLATION,
+          cap: Mesh.CAP_ALL,
+          updatable: false,
+        },
+        scene,
+      ),
+    );
+  }
+  const first = segments[0];
+  if (first === undefined) {
+    return null;
+  }
+  const merged =
+    segments.length === 1
+      ? first
+      : (Mesh.MergeMeshes(segments, true, true) ?? first);
+  merged.name = baseName;
+  const material = new StandardMaterial(`${baseName}.mat`, scene);
+  material.disableLighting = true;
+  material.emissiveColor = colour;
+  material.backFaceCulling = false;
+  merged.material = material;
+  merged.parent = parent;
+  merged.isPickable = false;
   return {
     dispose(): void {
-      mesh.dispose(false, true);
+      merged.dispose();
+      material.dispose();
     },
   };
 }
