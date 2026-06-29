@@ -164,9 +164,10 @@ export function buildGrid(
   return result;
 }
 
-function buildExtentRect(
-  rect: NonNullable<GridOptions["extentRect"]>,
-): { fill: Graphics; border?: Graphics } {
+function buildExtentRect(rect: NonNullable<GridOptions["extentRect"]>): {
+  fill: Graphics;
+  border?: Graphics;
+} {
   const minX = Math.min(rect.x1, rect.x2);
   const maxX = Math.max(rect.x1, rect.x2);
   const minY = Math.min(rect.y1, rect.y2);
@@ -185,12 +186,10 @@ function buildExtentRect(
   }
   const border = new Graphics({ label: "om-grid-extent-border" });
   border.eventMode = "none";
-  border
-    .rect(minX, minY, width, height)
-    .stroke({
-      width: 1,
-      color: rect.borderColor ?? DEFAULT_EXTENT_BORDER_COLOR,
-      pixelLine: true,
-    });
+  border.rect(minX, minY, width, height).stroke({
+    width: 1,
+    color: rect.borderColor ?? DEFAULT_EXTENT_BORDER_COLOR,
+    pixelLine: true,
+  });
   return { fill, border };
 }

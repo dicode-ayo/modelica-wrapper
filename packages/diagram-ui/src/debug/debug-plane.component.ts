@@ -58,9 +58,8 @@ export class OmDebugPlane extends LitElement {
    * one line.
    */
   @property({ attribute: false })
-  textureFactory:
-    | (() => Texture | null | Promise<Texture | null>)
-    | undefined = undefined;
+  textureFactory: (() => Texture | null | Promise<Texture | null>) | undefined =
+    undefined;
 
   /**
    * Drives the sprite through the production `iconProviderContext`

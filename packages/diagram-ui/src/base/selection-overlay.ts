@@ -361,7 +361,11 @@ export class VertexHandles {
       handle.visible = false;
       handle.eventMode = "static";
       handle.hitArea = new Circle(0, 0, VERTEX_DOT_RADIUS);
-      tagEntity(handle, "vertex-handle" satisfies EntityKind, `${ownerId}/${i}`);
+      tagEntity(
+        handle,
+        "vertex-handle" satisfies EntityKind,
+        `${ownerId}/${i}`,
+      );
       parent.addChild(handle);
       this.handles.push(handle);
     });

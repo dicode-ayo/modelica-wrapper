@@ -186,7 +186,8 @@ function appendDashedPath(g: Graphics, points: Point[]): void {
     return;
   }
   const period = total / DEFAULT_DASH_COUNT;
-  const run = (DEFAULT_DASH_SIZE * period) / (DEFAULT_DASH_SIZE + DEFAULT_DASH_GAP);
+  const run =
+    (DEFAULT_DASH_SIZE * period) / (DEFAULT_DASH_SIZE + DEFAULT_DASH_GAP);
   for (let i = 0; i + 1 < points.length; i++) {
     const a = points[i];
     const b = points[i + 1];

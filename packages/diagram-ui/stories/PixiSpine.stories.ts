@@ -29,10 +29,7 @@ export const GridOnly: StoryObj = {
   render: (): TemplateResult => html`
     <div style="width:880px;height:600px;border:1px solid #ccc;">
       <om-scene .zoom=${120}>
-        <om-grid-axis
-          .coordinateSystem=${CS}
-          .extent=${500}
-        ></om-grid-axis>
+        <om-grid-axis .coordinateSystem=${CS} .extent=${500}></om-grid-axis>
       </om-scene>
     </div>
   `,

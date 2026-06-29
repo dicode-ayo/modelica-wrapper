@@ -80,11 +80,13 @@ const defaultRendererFactory: RendererFactory = (canvas, size) =>
  *    overlays.
  *
  * Coordinate convention:
- *   diagram (x, y) maps to CSS pixels via `diagramRoot`'s transform:
+ *   diagram (x, y) maps to CSS pixels via `worldRoot`'s transform (the
+ *   pan/zoom anchor; `diagramRoot` is its identity child whose local
+ *   space is therefore diagram coordinates):
  *     ppu = renderHeight / (2 * zoom)
- *     diagramRoot.scale    = (ppu, -ppu)   // -y flips canvas +y-down to
- *                                          //   Modelica +y-up
- *     diagramRoot.position = (W/2 - panX*ppu, H/2 + panY*ppu)
+ *     worldRoot.scale    = (ppu, -ppu)   // -y flips canvas +y-down to
+ *                                        //   Modelica +y-up
+ *     worldRoot.position = (W/2 - panX*ppu, H/2 + panY*ppu)
  *   so world +x is screen right and world +y is screen up. Geometry
  *   (fills/strokes/polylines) is built in raw diagram coordinates; text
  *   and raster sprites apply a local `scale.y = -1` to stay upright
@@ -533,7 +535,10 @@ function containsGlobalPoint(node: Container, x: number, y: number): boolean {
  * Recompute `worldTransform` for a container subtree the way the render
  * loop does, so geometric hit-testing works without a live renderer.
  */
-function refreshWorldTransforms(target: Container, parentWorld: Matrix | null): void {
+function refreshWorldTransforms(
+  target: Container,
+  parentWorld: Matrix | null,
+): void {
   target.updateLocalTransform();
   if (parentWorld) {
     target.worldTransform.appendFrom(target.localTransform, parentWorld);
