@@ -47,7 +47,8 @@
     "@dicode/diagram-svg": "workspace:*",
     "@dicode/omc-client": "workspace:*",
     "@dicode/ui-common": "workspace:*",
-    "lit": "^3.2.0"
+    "lit": "^3.2.0",
+    "pixi.js": "^8.19.0"
   },
   "devDependencies": {
     "@playwright/test": "1.60.0",
