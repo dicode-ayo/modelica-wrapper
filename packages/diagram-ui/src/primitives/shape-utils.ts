@@ -9,11 +9,6 @@ import {
   type TransformNode,
 } from "@babylonjs/core";
 import { CreateGreasedLine } from "@babylonjs/core/Meshes/Builders/greasedLineBuilder.js";
-import {
-  GreasedLineMeshColorMode,
-  GreasedLineMeshMaterialType,
-} from "@babylonjs/core/Materials/GreasedLine/greasedLineMaterialInterfaces.js";
-import "@babylonjs/core/Materials/GreasedLine/greasedLineSimpleMaterial.js";
 import type { Color, Extent, Point } from "@dicode/omc-client";
 import type { FillSpec } from "@dicode/diagram-svg";
 
@@ -462,11 +457,12 @@ function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
 
 // ---------- stroke (polyline) ----------
 
-/** Modelica default stroke thickness (mm / diagram units). */
+/** Modelica default stroke thickness (mm). */
 const DEFAULT_STROKE_THICKNESS = 0.25;
-/** Floor on rendered stroke width (diagram units) so a hairline still reads
- *  at default zoom — GL_LINES used to give every stroke a flat 1px. */
-const MIN_STROKE_WIDTH = 0.5;
+/** Maps Modelica thickness (mm) to a GreasedLine screen-relative width. */
+const STROKE_WIDTH_SCALE = 6;
+/** Floor so a hairline still reads — GL_LINES used to give a flat 1px. */
+const MIN_STROKE_WIDTH = 1;
 
 export function buildStroke(
   scene: Scene,
@@ -487,18 +483,22 @@ export function buildStroke(
   }
 
   // A GreasedLine ribbon honors `thickness` (GL_LINES is hard-capped at 1px).
-  // `sizeAttenuation: false` makes `width` scene units, so it scales with zoom
-  // like the shape it borders — matching Modelica's thickness-in-mm.
+  // Match the selection outline's config exactly — default material type
+  // (StandardMaterial + GreasedLine plugin) and `sizeAttenuation: true`:
+  // mixing the simple material with the plugin material, or world-unit with
+  // screen-relative widths, makes GreasedLines vanish scene-wide.
   const dash = patternIsDashed(pattern);
+  const width = Math.max(
+    (thickness ?? DEFAULT_STROKE_THICKNESS) * STROKE_WIDTH_SCALE,
+    MIN_STROKE_WIDTH,
+  );
   const mesh = CreateGreasedLine(
     baseName,
     { points: flat },
     {
-      width: Math.max(thickness ?? DEFAULT_STROKE_THICKNESS, MIN_STROKE_WIDTH),
-      sizeAttenuation: false,
+      width,
+      sizeAttenuation: true,
       color: colorToColor3(color),
-      colorMode: GreasedLineMeshColorMode.COLOR_MODE_SET,
-      materialType: GreasedLineMeshMaterialType.MATERIAL_TYPE_SIMPLE,
       useDash: dash,
       dashCount: dash ? Math.max(8, points.length * 4) : 0,
       dashRatio: 0.4,
