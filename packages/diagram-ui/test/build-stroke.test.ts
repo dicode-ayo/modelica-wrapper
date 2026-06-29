@@ -1,13 +1,8 @@
 import { describe, expect, it } from "vitest";
-import {
-  NullEngine,
-  Scene,
-  StandardMaterial,
-  TransformNode,
-} from "@babylonjs/core";
+import { NullEngine, Scene, TransformNode } from "@babylonjs/core";
 import type { Color } from "@dicode/omc-client";
 
-import { buildStroke, worldScaleOf } from "../src/primitives/shape-utils.js";
+import { buildStroke, strokeWidthFor } from "../src/primitives/shape-utils.js";
 
 function makeScene(): {
   scene: Scene;
@@ -35,26 +30,16 @@ function makeScene(): {
 
 const RED: Color = [255, 0, 0];
 
-describe("worldScaleOf", () => {
-  it("is the geometric mean of |x|/|y| scale, sign-safe and floored", () => {
-    const { scene, dispose } = makeScene();
-    const n = new TransformNode("n", scene);
-
-    n.scaling.set(1, 1, 1);
-    expect(worldScaleOf(n)).toBeCloseTo(1);
-
-    n.scaling.set(0.1, 0.1, 1);
-    expect(worldScaleOf(n)).toBeCloseTo(0.1);
-
-    // Non-square + mirrored: |(-0.2) * 0.05| = 0.01 → 0.1, never negative.
-    n.scaling.set(-0.2, 0.05, 1);
-    expect(worldScaleOf(n)).toBeCloseTo(0.1);
-
-    // Degenerate zero scale falls back to 1 (no divide-by-zero radius).
-    n.scaling.set(0, 0, 1);
-    expect(worldScaleOf(n)).toBe(1);
-
-    dispose();
+describe("strokeWidthFor", () => {
+  it("normalizes to default thickness, scales, and floors", () => {
+    // No thickness/scale → default thickness at the default scale (2px).
+    expect(strokeWidthFor(undefined, undefined)).toBe(2);
+    // Default thickness → scale maps ~1:1 to px.
+    expect(strokeWidthFor(0.25, 6)).toBe(6);
+    // 2× the default thickness → 2× the width.
+    expect(strokeWidthFor(0.5, 6)).toBe(12);
+    // A sub-floor result clamps to the anti-vanish minimum.
+    expect(strokeWidthFor(0.01, 2)).toBe(1);
   });
 });
 
@@ -78,7 +63,7 @@ describe("buildStroke", () => {
         "s",
       ),
     ).toBeNull();
-    // All-equal points → no segment → null.
+    // All-coincident points → degenerate → null.
     expect(
       buildStroke(
         scene,
@@ -96,7 +81,7 @@ describe("buildStroke", () => {
     dispose();
   });
 
-  it("builds a solid stroke as an unlit, non-pickable tube in the stroke colour", () => {
+  it("builds a solid stroke as a non-pickable GreasedLine", () => {
     const { scene, parent, dispose } = makeScene();
     const res = buildStroke(
       scene,
@@ -113,15 +98,11 @@ describe("buildStroke", () => {
     expect(res).not.toBeNull();
     const mesh = scene.meshes.find((m) => m.name === "stroke");
     expect(mesh?.isPickable).toBe(false);
-    const mat = mesh?.material;
-    expect(mat).toBeInstanceOf(StandardMaterial);
-    expect((mat as StandardMaterial).disableLighting).toBe(true);
-    expect((mat as StandardMaterial).emissiveColor.r).toBeCloseTo(1);
-    expect((mat as StandardMaterial).emissiveColor.g).toBeCloseTo(0);
+    expect(mesh?.getClassName()).toContain("GreasedLine");
     dispose();
   });
 
-  it("builds a dashed stroke as a GL line (no material), not a tube", () => {
+  it("builds a dashed stroke as a GreasedLine too (unified renderer)", () => {
     const { scene, parent, dispose } = makeScene();
     const res = buildStroke(
       scene,
@@ -138,8 +119,7 @@ describe("buildStroke", () => {
     expect(res).not.toBeNull();
     const mesh = scene.meshes.find((m) => m.name === "dashed");
     expect(mesh?.isPickable).toBe(false);
-    // The dashed branch is a GL LinesMesh, not the solid path's tube Mesh.
-    expect(mesh?.getClassName()).toBe("LinesMesh");
+    expect(mesh?.getClassName()).toContain("GreasedLine");
     dispose();
   });
 });

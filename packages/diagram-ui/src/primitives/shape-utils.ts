@@ -1,7 +1,7 @@
 import {
   Color3,
+  CreateGreasedLine,
   Mesh,
-  MeshBuilder,
   StandardMaterial,
   TransformNode as TransformNodeImpl,
   Vector3,
@@ -9,7 +9,6 @@ import {
   type Scene,
   type TransformNode,
 } from "@babylonjs/core";
-import { CreateDashedLines } from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
 import type { Color, Extent, Point } from "@dicode/omc-client";
 import type { FillSpec } from "@dicode/diagram-svg";
 
@@ -458,27 +457,30 @@ function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
 
 // ---------- stroke (polyline) ----------
 
-/** Modelica default stroke thickness (mm / diagram units). */
+/** Modelica default stroke thickness (mm). */
 const DEFAULT_STROKE_THICKNESS = 0.25;
-/** Floor (diagram units) so a hairline still reads at default zoom. */
-const MIN_STROKE_WIDTH = 0.5;
-/** Per-segment sides of the visible stroke tube. */
-const STROKE_TESSELLATION = 8;
-/** Dash / gap length (diagram units) for dashed strokes. */
-const DEFAULT_DASH_SIZE = 4;
-const DEFAULT_DASH_GAP = 3;
+/** On-screen px for a default-thickness line when the host provides no
+ *  `lineThicknessScale`. The host control overrides it. */
+const STROKE_WIDTH_SCALE = 2;
+/** Screen-px anti-vanish floor — kept low so the host's lineThicknessScale
+ *  control stays live for default-thickness lines (else they all clamp here). */
+const MIN_STROKE_WIDTH = 1;
 
 /**
- * A node's accumulated world scale as a single factor — the geometric mean of
- * its absolute x/y scale, so a non-square parent gives one in-between value
- * (a tube radius is uniform, so it can't honor x and y separately) and the
- * sign of a mirrored placement can't yield a negative radius. Forces a
- * world-matrix recompute so the value reflects the parent's current placement.
+ * On-screen stroke width (px) for a Modelica `thickness`, normalized to the
+ * default thickness so `scale` ≈ px for a default line and an explicit
+ * `thickness` multiplies up from there; floored so it never vanishes.
  */
-export function worldScaleOf(node: TransformNode): number {
-  node.computeWorldMatrix(true);
-  const s = node.absoluteScaling;
-  return Math.sqrt(Math.abs(s.x * s.y)) || 1;
+export function strokeWidthFor(
+  thickness: number | undefined,
+  scale: number | undefined,
+): number {
+  const thicknessRatio =
+    (thickness ?? DEFAULT_STROKE_THICKNESS) / DEFAULT_STROKE_THICKNESS;
+  return Math.max(
+    thicknessRatio * (scale ?? STROKE_WIDTH_SCALE),
+    MIN_STROKE_WIDTH,
+  );
 }
 
 export function buildStroke(
@@ -490,85 +492,47 @@ export function buildStroke(
   z: number,
   baseName: string,
   thickness?: number,
+  scale?: number,
 ): OwnedResource | null {
-  if (points.length < 2 || pattern === "None") {
+  const first = points[0];
+  if (points.length < 2 || pattern === "None" || first === undefined) {
     return null;
   }
-  const colour = colorToColor3(color);
-
-  // Dashed strokes are screen-constant 1px GL_LINES; solid strokes (below)
-  // are world-space tubes that honor thickness.
-  if (patternIsDashed(pattern)) {
-    const mesh = CreateDashedLines(
-      baseName,
-      {
-        points: points.map(([x, y]) => new Vector3(x, y, z)),
-        dashSize: DEFAULT_DASH_SIZE,
-        gapSize: DEFAULT_DASH_GAP,
-        dashNb: Math.max(8, points.length * 8),
-        updatable: false,
-      },
-      scene,
-    );
-    mesh.color = colour;
-    mesh.parent = parent;
-    mesh.isPickable = false;
-    return { dispose: () => mesh.dispose() };
-  }
-
-  // Solid stroke: a world-space tube whose radius is divided by the parent's
-  // world scale, so a stroke under a scaled-down component resolves to the
-  // same on-screen width as an unscaled host stroke. Floored so it never goes
-  // sub-pixel. Real geometry, so the width is even at every orientation.
-  const worldScale = worldScaleOf(parent);
-  const naturalWidth = thickness ?? DEFAULT_STROKE_THICKNESS;
-  const worldWidth = Math.max(naturalWidth * worldScale, MIN_STROKE_WIDTH);
-  const radius = worldWidth / worldScale / 2;
-  const segments: Mesh[] = [];
-  for (let i = 0; i + 1 < points.length; i++) {
-    const a = points[i];
-    const b = points[i + 1];
-    if (
-      a === undefined ||
-      b === undefined ||
-      (a[0] === b[0] && a[1] === b[1])
-    ) {
-      continue;
-    }
-    segments.push(
-      MeshBuilder.CreateTube(
-        `${baseName}.${i}`,
-        {
-          path: [new Vector3(a[0], a[1], z), new Vector3(b[0], b[1], z)],
-          radius,
-          tessellation: STROKE_TESSELLATION,
-          cap: Mesh.CAP_ALL,
-          updatable: false,
-        },
-        scene,
-      ),
-    );
-  }
-  const first = segments[0];
-  if (first === undefined) {
+  // All-coincident points build a degenerate (invisible) line — skip it.
+  if (!points.some(([x, y]) => x !== first[0] || y !== first[1])) {
     return null;
   }
-  const merged =
-    segments.length === 1
-      ? first
-      : (Mesh.MergeMeshes(segments, true, true) ?? first);
-  merged.name = baseName;
-  const material = new StandardMaterial(`${baseName}.mat`, scene);
-  material.disableLighting = true;
-  material.emissiveColor = colour;
-  material.backFaceCulling = false;
-  merged.material = material;
-  merged.parent = parent;
-  merged.isPickable = false;
+
+  // One GreasedLine config for EVERY stroke and the selection outline:
+  // default material (StandardMaterial + GreasedLine plugin) + screen-relative
+  // width (`sizeAttenuation`). Mixing GreasedLine material flavors in one
+  // scene makes some drop out, so they must stay identical. Screen-relative
+  // width honors `thickness`, stays a constant on-screen size at any zoom /
+  // icon scale, and doesn't poke out of the drawing plane.
+  const flat: number[] = [];
+  for (const [x, y] of points) {
+    flat.push(x, y, z);
+  }
+  const dash = patternIsDashed(pattern);
+  const width = strokeWidthFor(thickness, scale);
+  const mesh = CreateGreasedLine(
+    baseName,
+    { points: flat },
+    {
+      width,
+      sizeAttenuation: true,
+      color: colorToColor3(color),
+      useDash: dash,
+      dashCount: dash ? Math.max(8, points.length * 4) : 0,
+      dashRatio: dash ? 0.5 : 0,
+    },
+    scene,
+  );
+  mesh.parent = parent;
+  mesh.isPickable = false;
   return {
     dispose(): void {
-      merged.dispose();
-      material.dispose();
+      mesh.dispose(false, true);
     },
   };
 }
