@@ -75,6 +75,7 @@ export class OmLabel extends LitElement {
 
   override updated(): void {
     this.ensureAnchor();
+    this.ensureText();
     this.sync();
   }
 
@@ -101,7 +102,19 @@ export class OmLabel extends LitElement {
     tagEntity(anchor, "label", this.nodeId);
     this.parentContainer.addChild(anchor);
     this.anchor = anchor;
+  }
 
+  /**
+   * Create the overlay `Text` once the screen-space layer exists. Split
+   * from `ensureAnchor` because the renderer (and thus the layer) only
+   * arrives after the synchronous mount — this retries each update until
+   * the layer is available. Renderer-less (headless tests) it stays a
+   * no-op and `currentText` reports the pending string.
+   */
+  private ensureText(): void {
+    if (this.text2d || !this.anchor) {
+      return;
+    }
     const ctx = this.sceneCtx;
     if (!ctx) {
       return;

@@ -311,6 +311,11 @@ export class OmScene extends LitElement {
     this.schedulerRegistered = true;
 
     this.handleResize();
+    // The renderer arrives a frame or two after the synchronous mount
+    // that first provided the context. Re-emit so consumers that gate on
+    // a live renderer (labels measure Pixi Text through a real canvas)
+    // build now that it exists.
+    this.sceneProvider.setValue({ ...ctx });
     requestSceneRender(ctx.stage);
   }
 
