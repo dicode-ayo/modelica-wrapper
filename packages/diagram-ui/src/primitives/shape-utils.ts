@@ -9,10 +9,7 @@ import {
   type Scene,
   type TransformNode,
 } from "@babylonjs/core";
-import {
-  CreateDashedLines,
-  CreateLines,
-} from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
+import { CreateDashedLines } from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
 import type { Color, Extent, Point } from "@dicode/omc-client";
 import type { FillSpec } from "@dicode/diagram-svg";
 
@@ -480,48 +477,43 @@ export function buildStroke(
   z: number,
   baseName: string,
   thickness?: number,
-  worldWidth = false,
 ): OwnedResource | null {
   if (points.length < 2 || pattern === "None") {
     return null;
   }
   const colour = colorToColor3(color);
 
-  // 1px GL_LINES for icon strokes (drawn under a scaled component — a
-  // world-space width would shrink with the icon to sub-pixel) and for any
-  // dashed stroke (dashed-tube width is a follow-up). They're screen-constant,
-  // so they stay crisp at any icon scale. Only an UNSCALED host-diagram solid
-  // stroke (`worldWidth`) takes the tube path below.
-  const dash = patternIsDashed(pattern);
-  if (!worldWidth || dash) {
-    const verts = points.map(([x, y]) => new Vector3(x, y, z));
-    const mesh = dash
-      ? CreateDashedLines(
-          baseName,
-          {
-            points: verts,
-            dashSize: DEFAULT_DASH_SIZE,
-            gapSize: DEFAULT_DASH_GAP,
-            dashNb: Math.max(8, points.length * 8),
-            updatable: false,
-          },
-          scene,
-        )
-      : CreateLines(baseName, { points: verts, updatable: false }, scene);
+  // Dashed strokes stay 1px GL_LINES for now (dashed-tube width is a
+  // follow-up); they're screen-constant, so crisp at any scale.
+  if (patternIsDashed(pattern)) {
+    const mesh = CreateDashedLines(
+      baseName,
+      {
+        points: points.map(([x, y]) => new Vector3(x, y, z)),
+        dashSize: DEFAULT_DASH_SIZE,
+        gapSize: DEFAULT_DASH_GAP,
+        dashNb: Math.max(8, points.length * 8),
+        updatable: false,
+      },
+      scene,
+    );
     mesh.color = colour;
     mesh.parent = parent;
     mesh.isPickable = false;
     return { dispose: () => mesh.dispose() };
   }
 
-  // A world-space tube honors `thickness` (GL_LINES is hard-capped at 1px) and
-  // stays even across orientations — the radius is real geometry, so an
-  // aspect-preserving camera projects it the same width whatever the angle
-  // (GreasedLine's shader width is skewed by the viewport aspect). Per-segment
-  // capsules (rounded caps) join cleanly at corners without `CreateTube`'s
-  // sharp-angle pinch.
-  const radius =
-    Math.max(thickness ?? DEFAULT_STROKE_THICKNESS, MIN_STROKE_WIDTH) / 2;
+  // Solid strokes are a world-space tube: real geometry, so the width is even
+  // at every orientation (aspect-preserving camera) and scales with zoom.
+  // The radius is divided by the parent's accumulated world scale, so an icon
+  // stroke (drawn under a scaled-down component) gets the SAME on-screen width
+  // as an unscaled host stroke — one mechanism, consistent everywhere. Width =
+  // `max(thickness * scale, floor)`: honors thickness, never sub-pixel.
+  parent.computeWorldMatrix(true);
+  const worldScale = parent.absoluteScaling.x || 1;
+  const naturalWidth = thickness ?? DEFAULT_STROKE_THICKNESS;
+  const worldWidth = Math.max(naturalWidth * worldScale, MIN_STROKE_WIDTH);
+  const radius = worldWidth / worldScale / 2;
   const segments: Mesh[] = [];
   for (let i = 0; i + 1 < points.length; i++) {
     const a = points[i];
