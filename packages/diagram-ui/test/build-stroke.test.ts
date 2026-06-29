@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { NullEngine, Scene, TransformNode } from "@babylonjs/core";
 import type { Color } from "@dicode/omc-client";
 
-import { buildStroke, worldScaleOf } from "../src/primitives/shape-utils.js";
+import { buildStroke } from "../src/primitives/shape-utils.js";
 
 function makeScene(): {
   scene: Scene;
@@ -29,29 +29,6 @@ function makeScene(): {
 }
 
 const RED: Color = [255, 0, 0];
-
-describe("worldScaleOf", () => {
-  it("is the geometric mean of |x|/|y| scale, sign-safe and floored", () => {
-    const { scene, dispose } = makeScene();
-    const n = new TransformNode("n", scene);
-
-    n.scaling.set(1, 1, 1);
-    expect(worldScaleOf(n)).toBeCloseTo(1);
-
-    n.scaling.set(0.1, 0.1, 1);
-    expect(worldScaleOf(n)).toBeCloseTo(0.1);
-
-    // Non-square + mirrored: |(-0.2) * 0.05| = 0.01 → 0.1, never negative.
-    n.scaling.set(-0.2, 0.05, 1);
-    expect(worldScaleOf(n)).toBeCloseTo(0.1);
-
-    // Degenerate zero scale falls back to 1 (no divide-by-zero radius).
-    n.scaling.set(0, 0, 1);
-    expect(worldScaleOf(n)).toBe(1);
-
-    dispose();
-  });
-});
 
 describe("buildStroke", () => {
   it("returns null for a non-drawable stroke", () => {

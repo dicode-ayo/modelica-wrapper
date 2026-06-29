@@ -466,19 +466,6 @@ const STROKE_WIDTH_SCALE = 2;
  *  control stays live for default-thickness lines (else they all clamp here). */
 const MIN_STROKE_WIDTH = 1;
 
-/**
- * A node's accumulated world scale as a single factor — the geometric mean of
- * its absolute x/y scale, so a non-square parent gives one in-between value
- * (a tube radius is uniform, so it can't honor x and y separately) and the
- * sign of a mirrored placement can't yield a negative radius. Forces a
- * world-matrix recompute so the value reflects the parent's current placement.
- */
-export function worldScaleOf(node: TransformNode): number {
-  node.computeWorldMatrix(true);
-  const s = node.absoluteScaling;
-  return Math.sqrt(Math.abs(s.x * s.y)) || 1;
-}
-
 export function buildStroke(
   scene: Scene,
   parent: TransformNode,
