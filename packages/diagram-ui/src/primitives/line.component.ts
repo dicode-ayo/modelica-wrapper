@@ -6,6 +6,7 @@ import { OmShapePrimitive, type EntityBounds } from "./shape-primitive.js";
 import {
   DEFAULT_LINE_COLOR,
   buildStroke,
+  dashRunsFor,
   pointsExtent,
 } from "./shape-utils.js";
 
@@ -24,6 +25,14 @@ export class OmLine extends OmShapePrimitive {
 
   protected override entityKind(): string {
     return "line";
+  }
+
+  /** A dashed pattern's rhythm is screen-constant, so a zoom change must
+   *  re-stroke it even though the shape data didn't change. */
+  protected override onViewChange(): void {
+    if (dashRunsFor(this.shape?.pattern)) {
+      this.forceRebuild();
+    }
   }
 
   protected override entityBounds(): EntityBounds | null {
@@ -64,6 +73,7 @@ export class OmLine extends OmShapePrimitive {
       `om-line.${this.zOrder}`,
       s.thickness,
       this.lineThicknessScale,
+      this.sceneCtx?.worldPerPixel(),
     );
     if (stroke) {
       this.resources.push(stroke);

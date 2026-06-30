@@ -371,9 +371,15 @@ function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
 const DEFAULT_STROKE_THICKNESS = 0.25;
 /** Floor (diagram units) so a hairline still reads at default zoom. */
 const MIN_STROKE_WIDTH = 0.5;
-/** Dash / gap length (diagram units) for dashed strokes. */
+/** Dash / gap length, nominally in CSS pixels — `buildStroke` scales these by
+ *  `worldPerPixel` so the dash rhythm reads at a constant on-screen size
+ *  across zoom. Used as raw diagram units when no `worldPerPixel` is given
+ *  (e.g. a renderer-less caller with no scene context). */
 const DEFAULT_DASH_SIZE = 4;
 const DEFAULT_DASH_GAP = 3;
+/** Floor (diagram units) on a scaled dash/gap run so an extreme zoom-in
+ *  can't shrink a run toward zero and blow up the segmentation loop. */
+const MIN_DASH_RUN = 0.05;
 
 /**
  * Accumulated diagram-space scale of a container as a single factor — the
@@ -395,6 +401,7 @@ export function buildStroke(
   baseName: string,
   thickness?: number,
   lineThicknessScale?: number,
+  worldPerPixel?: number,
 ): OwnedResource | null {
   if (points.length < 2 || pattern === "None") {
     return null;
@@ -415,8 +422,20 @@ export function buildStroke(
 
   const dashRuns = dashRunsFor(pattern);
   if (dashRuns) {
-    // Pixi has no native dash, so the path is segmented by arc length.
-    if (!strokeDashedPath(g, points, dashRuns)) {
+    // Pixi has no native dash, so the path is segmented by arc length. Scale
+    // the nominal CSS-pixel runs to local units the same way stroke width is
+    // scale-compensated, so the dash rhythm reads constant on screen across
+    // zoom (and icon scale) instead of stretching/compressing with either.
+    const dashScale =
+      worldPerPixel !== undefined &&
+      Number.isFinite(worldPerPixel) &&
+      worldPerPixel > 0
+        ? worldPerPixel / worldScale
+        : 1;
+    const scaledRuns = dashRuns.map((r) =>
+      Math.max(MIN_DASH_RUN, r * dashScale),
+    );
+    if (!strokeDashedPath(g, points, scaledRuns)) {
       g.destroy();
       return null;
     }
@@ -531,8 +550,12 @@ const DASH_RUNS: Readonly<Record<string, readonly number[]>> = {
 };
 
 /** Dash/gap runs for a dashed `LinePattern`, or `null` for solid / `"None"`.
- *  Unknown dashed-looking patterns fall back to a plain dash. */
-function dashRunsFor(pattern: string | undefined): readonly number[] | null {
+ *  Unknown dashed-looking patterns fall back to a plain dash. Exported so
+ *  callers can tell whether a stroke needs to react to zoom (re-running
+ *  `buildStroke` to keep its dash rhythm screen-constant). */
+export function dashRunsFor(
+  pattern: string | undefined,
+): readonly number[] | null {
   if (pattern === undefined || pattern === "None" || pattern === "Solid") {
     return null;
   }

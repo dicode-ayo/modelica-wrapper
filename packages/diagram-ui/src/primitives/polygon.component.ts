@@ -9,6 +9,7 @@ import {
   STROKE_Z_DELTA,
   buildFilledPolygon,
   buildStroke,
+  dashRunsFor,
   pointsExtent,
   stripClosingDuplicate,
 } from "./shape-utils.js";
@@ -29,6 +30,14 @@ export class OmPolygon extends OmShapePrimitive {
 
   protected override entityKind(): string {
     return "polygon";
+  }
+
+  /** A dashed pattern's rhythm is screen-constant, so a zoom change must
+   *  re-stroke it even though the shape data didn't change. */
+  protected override onViewChange(): void {
+    if (dashRunsFor(this.shape?.pattern)) {
+      this.forceRebuild();
+    }
   }
 
   protected override entityBounds(): EntityBounds | null {
@@ -97,6 +106,7 @@ export class OmPolygon extends OmShapePrimitive {
       `${baseName}.stroke`,
       s.lineThickness,
       this.lineThicknessScale,
+      this.sceneCtx?.worldPerPixel(),
     );
     if (stroke) {
       this.resources.push(stroke);

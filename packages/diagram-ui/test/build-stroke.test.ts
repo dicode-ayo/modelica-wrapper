@@ -131,4 +131,110 @@ describe("buildStroke", () => {
     expect(style?.cap).toBe("round");
     expect(style?.pixelLine).toBe(false);
   });
+
+  /** Count of drawn dash runs in a stroked Graphics. Pixi batches every
+   *  `moveTo`/`lineTo` into the single `stroke` instruction's path, so the
+   *  dash count is the `lineTo` count within that path's own instructions —
+   *  each run is one `moveTo` + `lineTo` pair. */
+  function dashCount(g: Graphics): number {
+    type PathInstruction = { action: string };
+    type StrokeInstruction = {
+      action: string;
+      data: { path?: { instructions: PathInstruction[] } };
+    };
+    return (g.context.instructions as ReadonlyArray<StrokeInstruction>)
+      .flatMap((i) => i.data.path?.instructions ?? [])
+      .filter((i) => i.action === "lineTo").length;
+  }
+
+  it("scales the dash rhythm by worldPerPixel so it reads a constant size on screen", () => {
+    const { parent } = makeScene();
+    const longPath: Array<[number, number]> = [
+      [0, 0],
+      [1000, 0],
+    ];
+    // Zoomed in (small worldPerPixel) needs a smaller world-space dash
+    // period to stay the same screen size, so more dashes fit the path.
+    buildStroke(
+      parent,
+      longPath,
+      RED,
+      "Dash",
+      0,
+      "zoomed-in",
+      undefined,
+      undefined,
+      0.1,
+    );
+    // Zoomed out (large worldPerPixel) needs a larger period, so fewer.
+    buildStroke(
+      parent,
+      longPath,
+      RED,
+      "Dash",
+      0,
+      "zoomed-out",
+      undefined,
+      undefined,
+      5,
+    );
+    const zoomedIn = parent.getChildByLabel("zoomed-in", true);
+    const zoomedOut = parent.getChildByLabel("zoomed-out", true);
+    if (!(zoomedIn instanceof Graphics) || !(zoomedOut instanceof Graphics)) {
+      throw new Error("expected both dashed graphics");
+    }
+    expect(dashCount(zoomedIn)).toBeGreaterThan(dashCount(zoomedOut));
+  });
+
+  it("without a worldPerPixel, dashes at the raw diagram-unit size (legacy fallback)", () => {
+    const { parent } = makeScene();
+    const longPath: Array<[number, number]> = [
+      [0, 0],
+      [1000, 0],
+    ];
+    buildStroke(parent, longPath, RED, "Dash", 0, "no-wpp");
+    buildStroke(
+      parent,
+      longPath,
+      RED,
+      "Dash",
+      0,
+      "wpp-one",
+      undefined,
+      undefined,
+      1,
+    );
+    const noWpp = parent.getChildByLabel("no-wpp", true);
+    const wppOne = parent.getChildByLabel("wpp-one", true);
+    if (!(noWpp instanceof Graphics) || !(wppOne instanceof Graphics)) {
+      throw new Error("expected both dashed graphics");
+    }
+    // worldScale is 1 here (default container scale), so worldPerPixel=1
+    // scales every run by 1 — identical to the no-scaling legacy path.
+    expect(dashCount(noWpp)).toBe(dashCount(wppOne));
+  });
+
+  it("floors a scaled dash run so an extreme zoom-in can't collapse it to zero", () => {
+    const { parent } = makeScene();
+    const res = buildStroke(
+      parent,
+      [
+        [0, 0],
+        [10, 0],
+      ],
+      RED,
+      "Dash",
+      0,
+      "floored",
+      undefined,
+      undefined,
+      1e-9,
+    );
+    expect(res).not.toBeNull();
+    const g = parent.getChildByLabel("floored", true);
+    if (!(g instanceof Graphics)) throw new Error("expected the graphic");
+    const count = dashCount(g);
+    expect(count).toBeGreaterThan(0);
+    expect(count).toBeLessThan(10_000);
+  });
 });

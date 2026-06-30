@@ -14,6 +14,10 @@ import {
 } from "../interaction/interaction-state.js";
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
 import {
+  viewStateContext,
+  type ViewStateStore,
+} from "../scene/view-state-store.js";
+import {
   graphicItemNode,
   worldScaleOf,
   zForOrder,
@@ -117,6 +121,7 @@ export abstract class OmShapePrimitive extends LitElement {
   private shapeNode: OmShapeNode | null = null;
   private hovered = false;
   private interactionUnsub: (() => void) | null = null;
+  private viewUnsub: (() => void) | null = null;
 
   constructor() {
     super();
@@ -129,6 +134,31 @@ export abstract class OmShapePrimitive extends LitElement {
       subscribe: true,
       callback: (store) => this.onInteractionStore(store),
     });
+    new ContextConsumer(this, {
+      context: viewStateContext,
+      subscribe: true,
+      callback: (store) => this.resubscribeViewState(store),
+    });
+  }
+
+  private resubscribeViewState(store: ViewStateStore | null): void {
+    this.viewUnsub?.();
+    this.viewUnsub = store ? store.subscribe(() => this.onViewChange()) : null;
+  }
+
+  /**
+   * Override to react to pan/zoom — e.g. a dashed stroke whose on-screen
+   * dash rhythm must stay constant across zoom. Most primitives don't
+   * depend on the view and leave this a no-op.
+   */
+  protected onViewChange(): void {}
+
+  /** Bypass the structural-key cache and force the next `updated()` to
+   *  rebuild even though `fingerprint()` is unchanged — for state (like
+   *  `worldPerPixel`) that lives outside the shape data. */
+  protected forceRebuild(): void {
+    this.lastBuiltKey = null;
+    this.requestUpdate();
   }
 
   override render() {
@@ -229,6 +259,8 @@ export abstract class OmShapePrimitive extends LitElement {
     super.disconnectedCallback();
     this.interactionUnsub?.();
     this.interactionUnsub = null;
+    this.viewUnsub?.();
+    this.viewUnsub = null;
     this.tearDownMeshes();
     this.shapeNode?.dispose();
     this.shapeNode = null;

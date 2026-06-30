@@ -1,11 +1,15 @@
 import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { consume } from "@lit/context";
+import { ContextConsumer, consume } from "@lit/context";
 import { Container } from "pixi.js";
 import type { Point } from "@dicode/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
+import {
+  viewStateContext,
+  type ViewStateStore,
+} from "../scene/view-state-store.js";
 import { tagEntity } from "../interaction/node-keys.js";
 import { pointsEqual } from "../interaction/connection-route.js";
 import {
@@ -64,6 +68,37 @@ export class OmEdge extends LitElement {
    * equal `path` is a no-op — see `pointsEqual`.
    */
   private builtPath: Point[] | null = null;
+  private viewUnsub: (() => void) | null = null;
+
+  constructor() {
+    super();
+    new ContextConsumer(this, {
+      context: viewStateContext,
+      subscribe: true,
+      callback: (store) => this.resubscribeViewState(store),
+    });
+  }
+
+  private resubscribeViewState(store: ViewStateStore | null): void {
+    this.viewUnsub?.();
+    this.viewUnsub = store ? store.subscribe(() => this.onViewChange()) : null;
+  }
+
+  /** A `clocked` dash rhythm is screen-constant, so a zoom change must
+   *  re-stroke it even though `path` didn't change. */
+  private onViewChange(): void {
+    if (!this.clocked || !this.meshes) {
+      return;
+    }
+    updateEdgePoints(
+      this.meshes.line,
+      this.path,
+      this.effectiveColor(),
+      this.clocked,
+      this.sceneCtx?.worldPerPixel(),
+    );
+    this.sceneCtx?.requestRender();
+  }
 
   override render() {
     return html``;
@@ -95,6 +130,8 @@ export class OmEdge extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.viewUnsub?.();
+    this.viewUnsub = null;
     this.disposeMeshes();
   }
 
@@ -117,10 +154,12 @@ export class OmEdge extends LitElement {
     }
     this.baseColor = parseColor(this.stroke) ?? DEFAULT_EDGE_COLOR;
     const name = this.edgeName();
+    const wpp = this.sceneCtx?.worldPerPixel();
     this.meshes = buildEdge(this.parentTransform, name, {
       points: this.path,
       clocked: this.clocked,
       color: this.effectiveColor(),
+      ...(wpp !== undefined ? { worldPerPixel: wpp } : {}),
     });
     if (this.meshes) {
       tagEntity(this.meshes.line, "edge", this.nodeId);
@@ -146,6 +185,7 @@ export class OmEdge extends LitElement {
       this.path,
       this.effectiveColor(),
       this.clocked,
+      this.sceneCtx?.worldPerPixel(),
     );
     this.meshes.hitArea.destroy();
     const hit = rebuildHitTube(
@@ -169,6 +209,7 @@ export class OmEdge extends LitElement {
       this.path,
       this.effectiveColor(),
       this.clocked,
+      this.sceneCtx?.worldPerPixel(),
     );
     this.appliedSelected = this.selected;
     this.sceneCtx?.requestRender();

@@ -34,6 +34,13 @@ export interface EdgeOptions {
    * radius (`WAYPOINT_RADIUS`) and the two read as one shape.
    */
   hitRadius?: number;
+  /**
+   * Diagram units per CSS pixel at the current zoom (`SceneContext.worldPerPixel()`).
+   * Used to keep a `clocked` dash rhythm a constant on-screen size; omit for
+   * the legacy length-normalized fallback (e.g. a renderer-less caller with
+   * no scene context).
+   */
+  worldPerPixel?: number;
 }
 
 /** Default edge colour (near-black slate), matching the junction disc. */
@@ -53,12 +60,17 @@ export const HIT_HOVER_OPACITY = 0.3;
 /** Blue-500 hover band, matching the selection accent. */
 const HIT_HOVER_COLOR = 0x3d82f5;
 
-/** Dash sizing tuned for diagram-coord paths (tens of units long). */
+/** Dash / gap length, nominally in CSS pixels — scaled by `worldPerPixel` so
+ *  the dash rhythm reads a constant on-screen size across zoom. */
 const DEFAULT_DASH_SIZE = 4;
 const DEFAULT_DASH_GAP = 3;
-/** Dash count distributed across the whole path, not an absolute length —
- *  keeps the dash density stable across variable path lengths. */
+/** Legacy fallback when no `worldPerPixel` is given: the dash period is
+ *  the path normalized to a fixed count, so a path-length change still
+ *  redistributes (but a zoom change does not). */
 const DEFAULT_DASH_COUNT = 24;
+/** Floor (diagram units) on the dash period so an extreme zoom-in can't
+ *  shrink it toward zero and blow up the per-segment dash count. */
+const MIN_DASH_PERIOD = 0.1;
 
 export interface EdgeMeshes {
   /** Visible stroked polyline. Decorative — picks land on `hitArea`. */
@@ -81,7 +93,13 @@ export function buildEdge(
   const line = new Graphics({ label: name });
   line.eventMode = "none";
   line.zIndex = zIndex;
-  drawEdgeLine(line, options.points, color, options.clocked ?? false);
+  drawEdgeLine(
+    line,
+    options.points,
+    color,
+    options.clocked ?? false,
+    options.worldPerPixel,
+  );
 
   const hitArea = buildHitTube(
     `${name}.hit`,
@@ -109,8 +127,9 @@ export function updateEdgePoints(
   newPoints: Point[],
   color: number,
   clocked: boolean,
+  worldPerPixel?: number,
 ): void {
-  drawEdgeLine(line, newPoints, color, clocked);
+  drawEdgeLine(line, newPoints, color, clocked, worldPerPixel);
 }
 
 /**
@@ -140,10 +159,11 @@ function drawEdgeLine(
   points: Point[],
   color: number,
   clocked: boolean,
+  worldPerPixel?: number,
 ): void {
   line.clear();
   if (clocked) {
-    appendDashedPath(line, points);
+    appendDashedPath(line, points, worldPerPixel);
   } else {
     appendSolidPath(line, points);
   }
@@ -166,12 +186,21 @@ function appendSolidPath(g: Graphics, points: Point[]): void {
 }
 
 /**
- * Hand-rolled dash segmentation (Pixi has no dashed stroke): one dash+gap
- * period spans `totalLength / dashNb`, the drawn run is
- * `dashSize / (dashSize + gapSize)` of it, and the phase restarts at each
- * vertex so dashes break at corners.
+ * Hand-rolled dash segmentation (Pixi has no dashed stroke), phase restarting
+ * at each vertex so dashes break at corners.
+ *
+ * With a `worldPerPixel`, one dash+gap period is `(DEFAULT_DASH_SIZE +
+ * DEFAULT_DASH_GAP) * worldPerPixel` — a fixed on-screen size, so the dash
+ * count per segment falls out of its length instead of the period
+ * stretching/compressing with zoom. Without one (no scene context), period
+ * falls back to `totalLength / DEFAULT_DASH_COUNT`, distributing a fixed
+ * dash count across the whole path.
  */
-function appendDashedPath(g: Graphics, points: Point[]): void {
+function appendDashedPath(
+  g: Graphics,
+  points: Point[],
+  worldPerPixel?: number,
+): void {
   let total = 0;
   for (let i = 0; i + 1 < points.length; i++) {
     const a = points[i];
@@ -184,7 +213,16 @@ function appendDashedPath(g: Graphics, points: Point[]): void {
   if (total <= 0) {
     return;
   }
-  const period = total / DEFAULT_DASH_COUNT;
+  const validWpp =
+    worldPerPixel !== undefined &&
+    Number.isFinite(worldPerPixel) &&
+    worldPerPixel > 0;
+  const period = Math.max(
+    MIN_DASH_PERIOD,
+    validWpp
+      ? (DEFAULT_DASH_SIZE + DEFAULT_DASH_GAP) * worldPerPixel
+      : total / DEFAULT_DASH_COUNT,
+  );
   const run =
     (DEFAULT_DASH_SIZE * period) / (DEFAULT_DASH_SIZE + DEFAULT_DASH_GAP);
   for (let i = 0; i + 1 < points.length; i++) {
