@@ -1,4 +1,4 @@
-import type { LinesMesh, Scene, TransformNode } from "@babylonjs/core";
+import type { Container, Graphics } from "pixi.js";
 
 import type {
   DiagramPoint,
@@ -29,12 +29,11 @@ interface Rect {
 export class SelectMode implements GestureMode {
   readonly id = "select";
   private start: DiagramPoint | null = null;
-  private rect: LinesMesh | null = null;
+  private rect: Graphics | null = null;
 
   constructor(
     private readonly emit: DragEmit,
-    private readonly scene: Scene,
-    private readonly parent: TransformNode,
+    private readonly parent: Container,
   ) {}
 
   /** Build the outline once, then rewrite its corners in place — a fixed
@@ -43,7 +42,7 @@ export class SelectMode implements GestureMode {
     if (this.rect) {
       updateRectMesh(this.rect, rect);
     } else {
-      this.rect = buildRectMesh(this.scene, this.parent, rect);
+      this.rect = buildRectMesh(this.parent, rect);
     }
   }
 

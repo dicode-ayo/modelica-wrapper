@@ -1,4 +1,4 @@
-import type { Node } from "@babylonjs/core";
+import type { Container } from "pixi.js";
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { ContextProvider } from "@lit/context";
@@ -22,7 +22,7 @@ import "../label/label.component.js";
 import "../debug/perf-hud.component.js";
 import "../library-browser/library-browser.component.js";
 import "../context-menu/context-menu.component.js";
-import type { OmScene, EngineFactory } from "../scene/scene.component.js";
+import type { OmScene, RendererFactory } from "../scene/scene.component.js";
 import type { OmConnector } from "../connector/connector.component.js";
 import type { OmComponent } from "../component/component.component.js";
 import type { LibraryBrowserDataSource } from "../library-browser/library-browser.component.js";
@@ -106,9 +106,10 @@ import { emitEvent } from "../dom-event.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
 
 /**
- * World-z offset applied to the host class's own shapes so they sit behind
+ * Paint-order offset for the host class's own shapes so they sit behind
  * every component / connector but in front of the grid's extent rectangle.
- * Camera at -Z, so larger z = farther:
+ * Uses the diagram z convention where more-negative is nearer the viewer
+ * (inverted into `zIndex` by `OmShapeNode`):
  *
  *   extent rect  z = +0.10  (white background, drawn by `<om-grid-axis>`)
  *   grid lines   z = +0.05
@@ -116,7 +117,7 @@ import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
  *   components   z =  0.0
  *
  * Shared by a shape's visual and its hit geometry so picks land in the same
- * depth band and a component always wins a pick over a shape beneath it.
+ * band and a component always wins a pick over a shape beneath it.
  */
 export const HOST_SHAPE_Z_BIAS = 0.025;
 
@@ -224,10 +225,10 @@ export class OmGraphicalLayout extends LitElement {
   @property({ type: Boolean, reflect: true })
   readonly = false;
 
-  /** Optional engine factory forwarded to the inner `<om-scene>`. Used
-   *  by tests to inject a `NullEngine`. */
+  /** Optional renderer factory forwarded to the inner `<om-scene>`. Used
+   *  by tests to mount renderer-less (factory returns `null`). */
   @property({ attribute: false })
-  engineFactory: EngineFactory | undefined = undefined;
+  rendererFactory: RendererFactory | undefined = undefined;
 
   /** Optional picker factory. Defaults to `defaultPicker` (scene raycast);
    *  tests inject a deterministic picker so pointer gestures resolve to
@@ -235,7 +236,7 @@ export class OmGraphicalLayout extends LitElement {
   @property({ attribute: false })
   pickerFactory: PickerFactory | undefined = undefined;
 
-  /** Forwarded to `<om-scene>`: opens Babylon's Inspector when `true`. */
+  /** Forwarded to `<om-scene>`: enables verbose icon-rasteriser logging. */
   @property({ type: Boolean, reflect: true })
   debug = false;
 
@@ -249,10 +250,10 @@ export class OmGraphicalLayout extends LitElement {
   cameraMode: "2d" | "3d" = "2d";
 
   /**
-   * Stroke-width multiplier forwarded to every entity. Currently a
-   * no-op under the primitives renderer (line widths come straight
-   * from Modelica annotations); kept on the public API for forward-
-   * compat with hosts that already set it.
+   * Stroke-width multiplier published on `lineThicknessScaleContext`;
+   * descendant shape primitives multiply their solid stroke width by it,
+   * so one value scales every primitive stroke at once. `undefined` is the
+   * renderer default.
    */
   @property({ type: Number, attribute: "line-thickness-scale" })
   lineThicknessScale: number | undefined = undefined;
@@ -368,6 +369,8 @@ export class OmGraphicalLayout extends LitElement {
   private readonly commands = new CommandRegistry(DIAGRAM_COMMANDS);
   private readonly keymap = DEFAULT_KEYMAP;
 
+  // Serves `lineThicknessScale` to every descendant shape primitive, which
+  // reads it from context inside `buildStroke`.
   private readonly strokeScaleProvider = new ContextProvider(this, {
     context: lineThicknessScaleContext,
     initialValue: undefined,
@@ -398,7 +401,7 @@ export class OmGraphicalLayout extends LitElement {
     return html`
       <om-scene
         @om-view-change=${this.onViewChange}
-        .engineFactory=${this.engineFactory ?? undefined}
+        .rendererFactory=${this.rendererFactory ?? undefined}
         ?debug=${this.debug}
         camera-mode=${this.cameraMode}
         tabindex="0"
@@ -463,7 +466,7 @@ export class OmGraphicalLayout extends LitElement {
     // Lit schedules child element updates *after* the parent's, so
     // when this fires the inner <om-scene> has been rendered into
     // our shadow DOM but its own `firstUpdated()` (where it mounts
-    // the Babylon engine + provides the scene context) hasn't run
+    // the Pixi renderer + provides the scene context) hasn't run
     // yet. Awaiting its updateComplete lets that finish before we
     // try to grab the picker / canvas — otherwise both come back
     // null and the InteractionManager / DragController never attach,
@@ -846,7 +849,7 @@ export class OmGraphicalLayout extends LitElement {
     if (!sceneEl || !ctx || !canvas) {
       return;
     }
-    const picker = (this.pickerFactory ?? defaultPicker)(ctx.scene, canvas);
+    const picker = (this.pickerFactory ?? defaultPicker)(ctx, canvas);
     this.modeRouter = new ModeRouter({
       canvas,
       picker,
@@ -855,7 +858,6 @@ export class OmGraphicalLayout extends LitElement {
       onInteraction: (type, detail) => this.onInteraction(type, detail),
       onDrag: (type, detail) => this.onDrag(type, detail),
       store: this.interactionStore,
-      scene: ctx.scene,
       overlayParent: ctx.diagramRoot,
       connectorPosition: (key) => this.connectorDiagramPosition(key),
       evaluateCompat: (from, toKey) => this.evaluateCompat(from, toKey),
@@ -924,7 +926,7 @@ export class OmGraphicalLayout extends LitElement {
    * when consumed (so the library-browser path is skipped), `false` when
    * the picked node isn't an editable polyline.
    */
-  private handlePolylineDblClick(node: Node, e: MouseEvent): boolean {
+  private handlePolylineDblClick(node: Container, e: MouseEvent): boolean {
     if (!this.layout) {
       return false;
     }

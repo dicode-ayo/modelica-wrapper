@@ -1,13 +1,8 @@
 import { describe, expect, it } from "vitest";
-import {
-  ArcRotateCamera,
-  NullEngine,
-  Scene,
-  TransformNode,
-  Vector3,
-} from "@babylonjs/core";
+import { Container } from "pixi.js";
 
 import { ResizeHandles, RotateHandle } from "../src/base/selection-overlay.js";
+import type { SceneContext } from "../src/scene/scene-context.js";
 
 /**
  * Handles are parented to the shape's transform, which carries the
@@ -16,66 +11,65 @@ import { ResizeHandles, RotateHandle } from "../src/base/selection-overlay.js";
  * component placed small (parent scale ≪ 1) renders sub-pixel handles.
  */
 function makeScene(): {
-  scene: Scene;
-  parent: TransformNode;
+  ctx: SceneContext;
+  parent: Container;
   dispose: () => void;
 } {
-  const engine = new NullEngine({
-    renderWidth: 100,
-    renderHeight: 100,
-    textureSize: 64,
-    deterministicLockstep: false,
-    lockstepMaxSteps: 1,
-  });
-  const scene = new Scene(engine);
-  const camera = new ArcRotateCamera("cam", 0, 0, 10, Vector3.Zero(), scene);
-  // World width 100 across a 100px canvas → worldPerPixel = 1.
-  camera.orthoLeft = -50;
-  camera.orthoRight = 50;
-  camera.orthoTop = 50;
-  camera.orthoBottom = -50;
-  scene.activeCamera = camera;
-  const parent = new TransformNode("om-shape", scene);
+  const stage = new Container({ label: "om-stage" });
+  const worldRoot = new Container({ label: "om-world" });
+  const diagramRoot = new Container({ label: "om-diagram" });
+  worldRoot.addChild(diagramRoot);
+  stage.addChild(worldRoot);
+  // worldPerPixel = 1: a screen pixel spans one diagram unit, matching the
+  // old ortho camera with world width 100 across a 100px canvas.
+  const ctx: SceneContext = {
+    renderer: null,
+    stage,
+    worldRoot,
+    diagramRoot,
+    pick: () => null,
+    worldPerPixel: () => 1,
+    requestRender: () => {},
+  };
+  const parent = new Container({ label: "om-shape" });
+  diagramRoot.addChild(parent);
   return {
-    scene,
+    ctx,
     parent,
-    dispose: () => {
-      scene.dispose();
-      engine.dispose();
-    },
+    dispose: () => stage.destroy({ children: true }),
   };
 }
 
 describe("selection handle pixel sizing", () => {
   it("divides the rotate handle's scaling by the parent transform scale", () => {
-    const { scene, parent, dispose } = makeScene();
-    parent.scaling.set(0.1, 0.1, 1);
+    const { ctx, parent, dispose } = makeScene();
+    parent.scale.set(0.1, 0.1);
 
-    const handle = new RotateHandle(scene, parent, 20, 20, 0, 0);
+    const handle = new RotateHandle(ctx, parent, 20, 20, 0, 0);
     handle.setVisible(true);
 
-    const mesh = scene.getMeshByName("om-rotate-handle");
-    if (!mesh) throw new Error("expected the rotate handle mesh");
+    const mesh = parent.getChildByLabel("om-rotate-handle:rotate", true);
+    if (!mesh) throw new Error("expected the rotate handle container");
     // worldPerPixel = 1, pixelSize = 10, parentScale = 0.1 → 10 / 0.1 = 100.
-    expect(mesh.scaling.x).toBeCloseTo(100);
-    expect(mesh.scaling.y).toBeCloseTo(100);
+    expect(mesh.scale.x).toBeCloseTo(100);
+    expect(mesh.scale.y).toBeCloseTo(100);
 
     handle.dispose();
     dispose();
   });
 
   it("divides each resize handle's scaling by the parent transform scale", () => {
-    const { scene, parent, dispose } = makeScene();
-    parent.scaling.set(0.1, 0.1, 1);
+    const { ctx, parent, dispose } = makeScene();
+    parent.scale.set(0.1, 0.1);
 
-    const handles = new ResizeHandles(scene, parent, 20, 20, 0, 0);
+    const handles = new ResizeHandles(ctx, parent, 20, 20, 0, 0);
     handles.setVisible(true);
 
-    const corner = scene.getMeshByName("om-handle:tl");
-    if (!corner) throw new Error("expected a corner handle mesh");
+    const corner = parent.getChildByLabel("om-handle:tl", true);
+    if (!corner) throw new Error("expected a corner handle container");
     // worldPerPixel = 1, pixelSize = 8, parentScale = 0.1 → 8 / 0.1 = 80.
-    expect(corner.scaling.x).toBeCloseTo(80);
-    expect(corner.scaling.y).toBeCloseTo(80);
+    expect(corner.scale.x).toBeCloseTo(80);
+    expect(corner.scale.y).toBeCloseTo(80);
 
     handles.dispose();
     dispose();

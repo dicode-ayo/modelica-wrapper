@@ -1,5 +1,5 @@
 import { customElement, property } from "lit/decorators.js";
-import type { TransformNode } from "@babylonjs/core";
+import type { Container } from "pixi.js";
 import type { PolygonShape } from "@dicode/omc-client";
 import { fillSpec } from "@dicode/diagram-svg";
 
@@ -45,7 +45,7 @@ export class OmPolygon extends OmShapePrimitive {
   }
 
   protected override buildMeshes(
-    parent: TransformNode,
+    parent: Container,
     z: number,
     inEntityFrame = false,
   ): void {
@@ -53,15 +53,21 @@ export class OmPolygon extends OmShapePrimitive {
     if (!s) {
       return;
     }
-    const scene = parent.getScene();
     const points = stripClosingDuplicate(s.points);
     const first = points[0];
     if (points.length < 3 || first === undefined) {
       return;
     }
 
+    const renderer = this.renderer();
     const baseName = `om-polygon.${this.zOrder}`;
-    const root = this.graphicRoot(parent, s, `${baseName}.gi`, inEntityFrame);
+    const root = this.graphicRoot(
+      parent,
+      s,
+      `${baseName}.gi`,
+      inEntityFrame,
+      z,
+    );
     const fill = fillSpec({
       fillColor: s.fillColor,
       lineColor: s.lineColor,
@@ -69,7 +75,7 @@ export class OmPolygon extends OmShapePrimitive {
     });
     if (fill.kind !== "none") {
       const filled = buildFilledPolygon(
-        scene,
+        renderer,
         root,
         points,
         fill,
@@ -83,7 +89,6 @@ export class OmPolygon extends OmShapePrimitive {
 
     const strokePoints = [...points, first];
     const stroke = buildStroke(
-      scene,
       root,
       strokePoints,
       s.lineColor ?? DEFAULT_LINE_COLOR,

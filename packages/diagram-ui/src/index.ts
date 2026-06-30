@@ -1,27 +1,27 @@
 /**
  * @dicode/diagram-ui
  *
- * Lit + Babylon.js custom elements (`<om-*>`) that render a Modelica
+ * Lit + PixiJS custom elements (`<om-*>`) that render a Modelica
  * graphical layout inside the VSCode webview.
  *
  * Inputs:
  *   - `DiagramLayout` from `@dicode/omc-client` (the producer
  *     output over `getModelInstance` JSON).
  *   - SVG icon strings from `@dicode/diagram-svg`, rasterised
- *     into Babylon `Texture`s by the icon-provider (added in stage C).
+ *     into Pixi `Texture`s by the icon-provider.
  *
  * Composition:
- *   `<om-scene>` creates the Babylon engine and provides a parentNodeCtx
- *   (`TransformNode`). Each entity element (`<om-component>`,
+ *   `<om-scene>` creates the Pixi renderer and provides a parentNodeCtx
+ *   (`Container`). Each entity element (`<om-component>`,
  *   `<om-connector>`, `<om-edge>`, `<om-label>`, ...) is a thin
- *   Lit→Babylon bridge that consumes its parent node, creates one
- *   `TransformNode`, syncs Lit properties to Babylon state, and provides
+ *   Lit→Pixi bridge that consumes its parent container, creates one
+ *   `Container`, syncs Lit properties to the scene graph, and provides
  *   itself as the parent context to its own children.
  */
 
 export const PACKAGE_NAME = "@dicode/diagram-ui";
 
-export { OmScene, type EngineFactory } from "./scene/scene.component.js";
+export { OmScene, type RendererFactory } from "./scene/scene.component.js";
 export { sceneContext, type SceneContext } from "./scene/scene-context.js";
 export { parentNodeContext } from "./base/parent-node-context.js";
 export {
@@ -45,9 +45,8 @@ export { OmMultibodyRoot } from "./multibody/multibody-root.component.js";
 export {
   buildGrid,
   DEFAULT_GRID_OPTIONS,
-  GRID_Z,
   type GridOptions,
-  type GridMeshes,
+  type GridGraphics,
 } from "./axis/grid-build.js";
 export {
   OmGraphicalLayout,
@@ -69,7 +68,7 @@ export { OmConnector } from "./connector/connector.component.js";
 export { OmEdge } from "./connection/edge.component.js";
 export { OmConnection } from "./connection/connection.component.js";
 export { OmLabel } from "./label/label.component.js";
-export { ensureLabelTexture } from "./label/label-texture.js";
+export { ensureLabelLayer } from "./label/label-texture.js";
 export {
   InteractionManager,
   defaultPicker,
@@ -136,7 +135,7 @@ export {
 export { OmShapeElement } from "./base/shape-element.js";
 export { OmShapeNode } from "./base/shape-node.js";
 export { OmIconOverlay } from "./base/icon-overlay.component.js";
-export { ResizeHandles, setMeshHighlight } from "./base/selection-overlay.js";
+export { ResizeHandles, setHighlight } from "./base/selection-overlay.js";
 export {
   applyPlacement,
   coordSystemSize,

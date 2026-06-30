@@ -1,29 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { NullEngine, Node, Scene, TransformNode } from "@babylonjs/core";
+import { Container } from "pixi.js";
 
 import { DragMode } from "../src/interaction/drag-mode.js";
 import type {
   DragEvents,
   GestureStart,
 } from "../src/interaction/gesture-mode.js";
-import { entityKeyForNode } from "../src/interaction/node-keys.js";
+import { entityKeyForNode, tagEntity } from "../src/interaction/node-keys.js";
 
-function makeScene(): { scene: Scene; dispose: () => void } {
-  const engine = new NullEngine({
-    renderWidth: 100,
-    renderHeight: 100,
-    textureSize: 64,
-    deterministicLockstep: false,
-    lockstepMaxSteps: 1,
-  });
-  const scene = new Scene(engine);
-  return {
-    scene,
-    dispose: () => {
-      scene.dispose();
-      engine.dispose();
-    },
-  };
+/** A tagged entity container, optionally parented under an owner. */
+function node(
+  kind: Parameters<typeof tagEntity>[1],
+  nodeId: string,
+  parent?: Container,
+): Container {
+  const c = new Container();
+  tagEntity(c, kind, nodeId);
+  parent?.addChild(c);
+  return c;
 }
 
 interface CapturedEvent<K extends keyof DragEvents> {
@@ -45,7 +39,7 @@ function setup(): {
 }
 
 function start(
-  node: Node | null,
+  node: Container | null,
   point: { x: number; y: number },
   opts: { shiftKey?: boolean; selection?: string[] } = {},
 ): GestureStart {
@@ -63,11 +57,10 @@ const move = (x: number, y: number) =>
 
 describe("DragMode", () => {
   it("emits drag events when a component is dragged", () => {
-    const { scene, dispose } = makeScene();
-    const node = new TransformNode("om-component:R1", scene);
+    const tn = node("component", "R1");
     const { mode, events } = setup();
 
-    expect(mode.begin(start(node, { x: 10, y: 10 }))).toBe(true);
+    expect(mode.begin(start(tn, { x: 10, y: 10 }))).toBe(true);
     mode.update({ x: 30, y: 25 }, move(30, 25));
     mode.commit({ x: 30, y: 25 }, move(30, 25));
 
@@ -85,15 +78,13 @@ describe("DragMode", () => {
       dy: 15,
       draft: false,
     });
-    dispose();
   });
 
   it("drags the full selection when the clicked entity is already selected", () => {
-    const { scene, dispose } = makeScene();
-    const node = new TransformNode("om-component:R1", scene);
+    const tn = node("component", "R1");
     const { mode, events } = setup();
 
-    mode.begin(start(node, { x: 0, y: 0 }, { selection: ["c:R1", "c:C1"] }));
+    mode.begin(start(tn, { x: 0, y: 0 }, { selection: ["c:R1", "c:C1"] }));
     mode.update({ x: 5, y: 5 }, move(5, 5));
 
     const drag = events.find((e) => e.type === "drag") as
@@ -101,20 +92,16 @@ describe("DragMode", () => {
       | undefined;
     expect(drag).toBeDefined();
     expect(drag!.detail.keys.sort()).toEqual(["c:C1", "c:R1"]);
-    dispose();
   });
 
   it.each(["tl", "tr", "br", "bl"] as const)(
     "emits resize on the %s handle with the matching corner",
     (corner) => {
-      const { scene, dispose } = makeScene();
-      const ownerTn = new TransformNode("om-component:R1", scene);
-      const handleMesh = new TransformNode(`om-handle:${corner}`, scene);
-      handleMesh.parent = ownerTn;
-      handleMesh.metadata = { kind: "handle", nodeId: corner };
+      const ownerTn = node("component", "R1");
+      const handle = node("handle", corner, ownerTn);
       const { mode, events } = setup();
 
-      mode.begin(start(handleMesh, { x: 100, y: 50 }));
+      mode.begin(start(handle, { x: 100, y: 50 }));
       mode.update({ x: 120, y: 70 }, move(120, 70));
       mode.commit({ x: 120, y: 70 }, move(120, 70));
 
@@ -126,19 +113,15 @@ describe("DragMode", () => {
         draft: true,
       });
       expect(resizes[2]!.detail).toMatchObject({ draft: false });
-      dispose();
     },
   );
 
   it("emits draft rotate on begin + move, then a commit", () => {
-    const { scene, dispose } = makeScene();
-    const ownerTn = new TransformNode("om-component:R1", scene);
-    const rotateMesh = new TransformNode("om-rotate-handle", scene);
-    rotateMesh.parent = ownerTn;
-    rotateMesh.metadata = { kind: "rotate-handle", nodeId: "rotate" };
+    const ownerTn = node("component", "R1");
+    const rotate = node("rotate-handle", "rotate", ownerTn);
     const { mode, events } = setup();
 
-    mode.begin(start(rotateMesh, { x: 40, y: 10 }));
+    mode.begin(start(rotate, { x: 40, y: 10 }));
     mode.update({ x: 60, y: 30 }, move(60, 30));
     mode.commit({ x: 60, y: 30 }, move(60, 30));
 
@@ -148,18 +131,14 @@ describe("DragMode", () => {
       { key: "c:R1", x: 60, y: 30, free: false, draft: true },
       { key: "c:R1", x: 60, y: 30, free: false, draft: false },
     ]);
-    dispose();
   });
 
   it("flags `free` when Shift is held during a rotate move", () => {
-    const { scene, dispose } = makeScene();
-    const ownerTn = new TransformNode("om-component:R1", scene);
-    const rotateMesh = new TransformNode("om-rotate-handle", scene);
-    rotateMesh.parent = ownerTn;
-    rotateMesh.metadata = { kind: "rotate-handle", nodeId: "rotate" };
+    const ownerTn = node("component", "R1");
+    const rotate = node("rotate-handle", "rotate", ownerTn);
     const { mode, events } = setup();
 
-    mode.begin(start(rotateMesh, { x: 40, y: 10 }));
+    mode.begin(start(rotate, { x: 40, y: 10 }));
     mode.update(
       { x: 60, y: 30 },
       new PointerEvent("pointermove", {
@@ -172,13 +151,10 @@ describe("DragMode", () => {
     const last = events.filter((e) => e.type === "rotate").at(-1);
     if (last === undefined) throw new Error("expected a rotate event");
     expect(last.detail).toMatchObject({ free: true, draft: true });
-    dispose();
   });
 
   it("emits edgeDrag with the grab point and cumulative delta", () => {
-    const { scene, dispose } = makeScene();
-    const edge = new TransformNode("om-edge:0", scene);
-    edge.metadata = { kind: "edge", nodeId: "0" };
+    const edge = node("edge", "0");
     const { mode, events } = setup();
 
     mode.begin(start(edge, { x: 100, y: 50 }));
@@ -195,16 +171,12 @@ describe("DragMode", () => {
       draft: true,
     });
     expect(edgeDrags[1]!.detail).toMatchObject({ draft: false });
-    dispose();
   });
 
   it("does not start on an edge with a non-numeric index", () => {
-    const { scene, dispose } = makeScene();
-    const edge = new TransformNode("om-edge:x", scene);
-    edge.metadata = { kind: "edge", nodeId: "x" };
+    const edge = node("edge", "x");
     const { mode } = setup();
 
     expect(mode.begin(start(edge, { x: 0, y: 0 }))).toBe(false);
-    dispose();
   });
 });

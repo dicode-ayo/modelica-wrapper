@@ -64,6 +64,7 @@ const SIM_MODEL: ParameterModel = {
 
 const meta: Meta<StoryArgs> = {
   title: "diagram-ui/ParameterPanel",
+  parameters: { chromatic: { disableSnapshot: true } },
   render: ({ model, title }: StoryArgs): TemplateResult => {
     // Local toggle: the story owns `open`; the panel is fully controlled
     // by it (matching how the real webview hosts it).

@@ -1,6 +1,7 @@
 import { LitElement, css, html, type TemplateResult } from "lit";
 import { property } from "lit/decorators.js";
 import { ContextConsumer, ContextProvider, consume } from "@lit/context";
+import type { Container } from "pixi.js";
 import type {
   CoordinateSystem,
   IconLayer,
@@ -10,6 +11,7 @@ import type {
 import { parentNodeContext } from "./parent-node-context.js";
 import { OmShapeNode } from "./shape-node.js";
 import { renderLayers } from "../primitives/render-shape.js";
+import { sceneContext, type SceneContext } from "../scene/scene-context.js";
 import {
   viewStateContext,
   type ViewStateStore,
@@ -17,20 +19,21 @@ import {
 
 /**
  * Base class for `<om-component>`, `<om-connector>`, and other shape-
- * carrying entities. Bridges the Lit lifecycle to a Babylon `OmShapeNode`:
+ * carrying entities. Bridges the Lit lifecycle to an `OmShapeNode`:
  *
- *  - Consumes the parent `TransformNode` from the Lit context.
- *  - Provides its own `TransformNode` as the parent context for
+ *  - Consumes the parent `Container` from the Lit context.
+ *  - Provides its own entity `Container` as the parent context for
  *    children (`<om-rectangle>`, `<om-text>`, …, plus nested
- *    `<om-connector>` / labels) — children attach in the entity's
- *    local icon coordinate system.
- *  - Renders each shape in `layers` as a primitive custom element.
- *    Each primitive owns its own Babylon meshes and lifecycle, so an
- *    OMC roundtrip on a single shape only rebuilds that shape.
+ *    `<om-connector>` / labels) — children attach in the entity's local
+ *    icon coordinate system.
+ *  - Renders each shape in `layers` as a primitive custom element. Each
+ *    primitive owns its own `Graphics` and lifecycle, so an OMC roundtrip
+ *    on a single shape only rebuilds that shape.
  *
  * Subclasses only need to:
- *   - Pick a `nodeName` for debugging
- *   - Optionally override `onShapeNodeReady(node)` to add extra meshes
+ *   - Pick an `entityNodeName` for the entity's canonical `om-<kind>:<id>`
+ *     name (which also tags its picking identity)
+ *   - Optionally override `onShapeNodeReady(node)` to add extra geometry
  *     (e.g. the port-indicator dot on `<om-connector>`)
  */
 export abstract class OmShapeElement extends LitElement {
@@ -58,11 +61,10 @@ export abstract class OmShapeElement extends LitElement {
   coordinateSystem: CoordinateSystem | undefined = undefined;
 
   /**
-   * Stroke-width multiplier kept on the public API for forward-compat
-   * with the previous SVG renderer. The primitives renderer currently
-   * ignores it — line widths are taken directly from the Modelica
-   * annotations. Kept as a property so existing host code that sets
-   * it doesn't fail.
+   * Stroke-width multiplier accepted for host API compatibility. The live
+   * scale reaches shape strokes through `lineThicknessScaleContext` (read by
+   * the shape primitives), not this property; this element does not apply it
+   * to its own rasterised icon.
    */
   @property({ type: Number, attribute: "line-thickness-scale" })
   lineThicknessScale: number | undefined = undefined;
@@ -76,8 +78,10 @@ export abstract class OmShapeElement extends LitElement {
   readonly = false;
 
   @consume({ context: parentNodeContext, subscribe: true })
-  protected parentTransform: import("@babylonjs/core").TransformNode | null =
-    null;
+  protected parentTransform: Container | null = null;
+
+  @consume({ context: sceneContext, subscribe: true })
+  protected sceneCtx: SceneContext | null = null;
 
   protected readonly childContextProvider = new ContextProvider(this, {
     context: parentNodeContext,
@@ -112,18 +116,19 @@ export abstract class OmShapeElement extends LitElement {
       : null;
   }
 
-  protected abstract babylonNodeName(): string;
+  protected abstract entityNodeName(): string;
 
-  /** Hook for subclasses to add extra Babylon geometry to the shape. */
+  /** Hook for subclasses to add extra geometry to the shape. */
   protected onShapeNodeReady(_node: OmShapeNode): void {
     /* default: no-op */
   }
 
   /**
-   * Z-axis offset (in parent local units) used to layer entities. The
-   * default `0` puts components on the diagram plane; subclasses
-   * override to lift themselves slightly toward the camera (which sits
-   * on +Z), e.g. connectors render on top of components.
+   * Paint-order offset used to layer entities. The default `0` puts
+   * components on the diagram plane; subclasses override to lift themselves
+   * in front, e.g. connectors render on top of components. More negative
+   * values render further in front (`OmShapeNode` inverts the sign into a
+   * Pixi `zIndex`).
    */
   protected zOffset(): number {
     return 0;
@@ -159,11 +164,11 @@ export abstract class OmShapeElement extends LitElement {
       return;
     }
     const parent = this.parentTransform;
-    if (!parent) {
+    const ctx = this.sceneCtx;
+    if (!parent || !ctx) {
       return;
     }
-    const scene = parent.getScene();
-    this.shapeNode = new OmShapeNode(scene, parent, this.babylonNodeName());
+    this.shapeNode = new OmShapeNode(ctx, parent, this.entityNodeName());
     this.childContextProvider.setValue(this.shapeNode.transform);
     this.onShapeNodeReady(this.shapeNode);
   }

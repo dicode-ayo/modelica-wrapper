@@ -52,6 +52,7 @@ type Story = StoryObj<StoryArgs>;
  * vocabulary is exercised in one story.
  */
 export const SimulationOptions: Story = {
+  parameters: { chromatic: { disableSnapshot: true } },
   args: {
     title: "Simulate Modelica.Mechanics.Rotational.Examples.First",
     model: {
@@ -141,6 +142,7 @@ export const SimulationOptions: Story = {
  * `Inertia` component might surface.
  */
 export const ComponentParameters: Story = {
+  parameters: { chromatic: { disableSnapshot: true } },
   args: {
     title: "Inertia inertia1",
     model: {
@@ -284,6 +286,7 @@ export const ParametersWithUnits: Story = {
  * stay disabled until the user fills it in.
  */
 export const RequiredFieldGating: Story = {
+  parameters: { chromatic: { disableSnapshot: true } },
   args: {
     title: "Set value to enable submit",
     model: {

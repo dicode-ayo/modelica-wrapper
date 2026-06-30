@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { NullEngine } from "@babylonjs/core";
 
 import "../src/scene/scene.component.js";
 import "../src/multibody/multibody-root.component.js";
@@ -15,14 +14,7 @@ afterEach(() => {
 
 async function mountScene(): Promise<OmScene> {
   const scene = document.createElement("om-scene") as OmScene;
-  scene.engineFactory = () =>
-    new NullEngine({
-      renderWidth: 200,
-      renderHeight: 200,
-      textureSize: 128,
-      deterministicLockstep: false,
-      lockstepMaxSteps: 1,
-    });
+  scene.rendererFactory = () => null;
   document.body.appendChild(scene);
   teardowns.push(() => scene.remove());
   await scene.updateComplete;
@@ -32,33 +24,23 @@ async function mountScene(): Promise<OmScene> {
 describe("camera mode toggle", () => {
   it("defaults to orthographic 2d mode", async () => {
     const scene = await mountScene();
-    const ctx = scene.sceneContextValue;
-    if (!ctx) throw new Error("no scene context");
-    const camera = ctx.camera;
-    expect(camera.mode).toBe(1); // ORTHOGRAPHIC
     expect(scene.cameraMode).toBe("2d");
   });
 
-  it("switches to perspective when cameraMode='3d'", async () => {
+  it("switches to 3d when cameraMode='3d'", async () => {
     const scene = await mountScene();
     scene.cameraMode = "3d";
     await scene.updateComplete;
-    const ctx = scene.sceneContextValue;
-    if (!ctx) throw new Error("no scene context");
-    const camera = ctx.camera;
-    expect(camera.mode).toBe(0); // PERSPECTIVE
+    expect(scene.cameraMode).toBe("3d");
   });
 
-  it("returns to ortho when cameraMode flips back to 2d", async () => {
+  it("returns to 2d when cameraMode flips back", async () => {
     const scene = await mountScene();
     scene.cameraMode = "3d";
     await scene.updateComplete;
     scene.cameraMode = "2d";
     await scene.updateComplete;
-    const ctx = scene.sceneContextValue;
-    if (!ctx) throw new Error("no scene context");
-    const camera = ctx.camera;
-    expect(camera.mode).toBe(1);
+    expect(scene.cameraMode).toBe("2d");
   });
 });
 
@@ -67,7 +49,7 @@ describe("<om-multibody-root>", () => {
     expect(customElements.get("om-multibody-root")).toBeDefined();
   });
 
-  it("parents its TransformNode under the scene's worldRoot", async () => {
+  it("parents its root Container under the scene's worldRoot", async () => {
     const scene = await mountScene();
     const mb = document.createElement("om-multibody-root") as OmMultibodyRoot;
     scene.appendChild(mb);
@@ -80,7 +62,7 @@ describe("<om-multibody-root>", () => {
     expect(rootNode.parent).toBe(ctx.worldRoot);
   });
 
-  it("disposes its TransformNode on disconnect", async () => {
+  it("disposes its root Container on disconnect", async () => {
     const scene = await mountScene();
     const mb = document.createElement("om-multibody-root") as OmMultibodyRoot;
     scene.appendChild(mb);
@@ -88,6 +70,6 @@ describe("<om-multibody-root>", () => {
     const node = mb.rootNode;
     if (!node) throw new Error("expected rootNode");
     mb.remove();
-    expect(node.isDisposed()).toBe(true);
+    expect(node.destroyed).toBe(true);
   });
 });

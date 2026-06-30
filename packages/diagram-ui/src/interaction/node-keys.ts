@@ -1,4 +1,4 @@
-import type { Node } from "@babylonjs/core";
+import type { Container } from "pixi.js";
 
 /**
  * Canonical key format for diagram entities. Mirrors dyad-ui's short
@@ -42,19 +42,6 @@ const KIND_PREFIX: Record<EntityKind, string> = {
 const PREFIX_KIND: Record<string, EntityKind> = Object.fromEntries(
   Object.entries(KIND_PREFIX).map(([k, v]) => [v, k as EntityKind]),
 );
-
-const KIND_BABYLON_NAME: Record<EntityKind, string> = {
-  component: "om-component",
-  connector: "om-connector",
-  shape: "om-shape",
-  edge: "om-edge",
-  junction: "om-junction",
-  label: "om-label",
-  port: "om-port",
-  handle: "om-handle",
-  "rotate-handle": "om-rotate-handle",
-  "vertex-handle": "om-vertex-handle",
-};
 
 /** All non-connector kinds share this flat shape. */
 interface SimpleKey<K extends EntityKind> {
@@ -291,52 +278,69 @@ export function isNestedConnector(key: ConnectorKey): boolean {
   return key.componentName !== null;
 }
 
-// ── Babylon-node walker ──────────────────────────────────────────────
+// ── Entity identity side-channel ─────────────────────────────────────
+
+interface EntityMeta {
+  kind: EntityKind;
+  nodeId: string;
+}
+
+/**
+ * Identity tag attached to a `Container` out-of-band. A `WeakMap` keeps
+ * the renderer scene graph free of app metadata and drops entries when
+ * containers are GC'd. Producers (`OmShapeNode`, edges, junctions,
+ * ports, labels, handles) call `tagEntity`; `entityKeyForNode` reads it
+ * while walking the parent chain.
+ */
+const entityMeta = new WeakMap<Container, EntityMeta>();
+
+/** Tag a container with its entity identity. Also mirrors the id into
+ *  `label` for devtools readability. */
+export function tagEntity(
+  container: Container,
+  kind: EntityKind,
+  nodeId: string,
+): void {
+  entityMeta.set(container, { kind, nodeId });
+  container.label = `om-${kind}:${nodeId}`;
+}
+
+/** Read a container's own entity tag, or `null` if untagged. */
+export function readEntityMeta(container: Container): EntityMeta | null {
+  return entityMeta.get(container) ?? null;
+}
+
+/** Drop a container's entity tag so it resolves identity via an ancestor. */
+export function clearEntityTag(container: Container): void {
+  entityMeta.delete(container);
+}
 
 /**
  * Walks `node`'s parent chain looking for the first ancestor that
- * advertises an entity identity, either through:
+ * carries an entity identity (set via `tagEntity`).
  *
- *   - `metadata: { kind, nodeId }`   — set explicitly by elements that
- *     don't carry their identity in the Babylon node name (edges,
- *     junctions, port indicators)
- *
- *   - `name: "om-<kind>:<id>"`        — set by `OmShapeNode` /
- *     `<om-label>` for entities whose TransformNode owns the identity
- *
- * Nested connectors (a `<om-connector>` inside an `<om-component>`)
- * are disambiguated by composing the parent component's id into the
- * key: `om-connector:p` inside `om-component:R1` yields
+ * Nested connectors (a `<om-connector>` inside an `<om-component>`) are
+ * disambiguated by composing the parent component's id into the key:
+ * a connector `p` inside component `R1` yields
  * `{kind: "connector", nodeId: "R1.p", componentName: "R1", portName: "p"}`.
- * Without this, two components each with a port `p` collide on `k:p`
- * and the host element can't tell which one the user clicked.
+ * Without this, two components each with a port `p` collide on `k:p` and
+ * the host element can't tell which one the user clicked.
  */
-export function entityKeyForNode(start: Node | null): EntityKey | null {
-  let cur: Node | null = start;
+export function entityKeyForNode(start: Container | null): EntityKey | null {
+  let cur: Container | null = start;
   let pendingConnector: string | null = null;
   while (cur) {
-    const meta = cur.metadata as
-      | { kind?: string; nodeId?: string }
-      | null
-      | undefined;
-    if (meta && typeof meta.kind === "string") {
-      const kind = meta.kind as EntityKind;
-      if (KIND_BABYLON_NAME[kind]) {
-        return makeKey(kind, meta.nodeId ?? "");
-      }
-    }
-    const m = cur.name?.match(/^om-(component|connector|label|shape):(.*)$/);
-    if (m) {
-      const kind = m[1] as EntityKind;
-      const id = m[2] ?? "";
+    const meta = entityMeta.get(cur);
+    if (meta) {
+      const { kind, nodeId } = meta;
       if (kind === "connector" && pendingConnector === null) {
         // Keep walking — a connector might be nested inside a
         // component, in which case we want the qualified key.
-        pendingConnector = id;
+        pendingConnector = nodeId;
       } else if (kind === "component" && pendingConnector !== null) {
-        return makeKey("connector", `${id}.${pendingConnector}`);
+        return makeKey("connector", `${nodeId}.${pendingConnector}`);
       } else {
-        return makeKey(kind, id);
+        return makeKey(kind, nodeId);
       }
     }
     cur = cur.parent;

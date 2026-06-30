@@ -1,21 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { NullEngine, Scene, TransformNode } from "@babylonjs/core";
+import { Container } from "pixi.js";
 
 import "../src/scene/scene.component.js";
 import "../src/axis/grid-axis.component.js";
 import type { OmScene } from "../src/scene/scene.component.js";
 import type { OmGridAxis } from "../src/axis/grid-axis.component.js";
 import { buildGrid } from "../src/axis/grid-build.js";
-
-function makeNullEngine(): NullEngine {
-  return new NullEngine({
-    renderWidth: 640,
-    renderHeight: 480,
-    textureSize: 256,
-    deterministicLockstep: false,
-    lockstepMaxSteps: 1,
-  });
-}
 
 let mounted: HTMLElement[] = [];
 
@@ -27,23 +17,17 @@ afterEach(() => {
 });
 
 describe("buildGrid", () => {
-  it("creates three meshes parented to the provided TransformNode", () => {
-    const engine = makeNullEngine();
-    const scene = new Scene(engine);
-    const parent = new TransformNode("test-parent", scene);
-    const m = buildGrid(scene, parent);
+  it("creates three grid layers parented to the provided container", () => {
+    const parent = new Container();
+    const m = buildGrid(parent);
     expect(m.minor.parent).toBe(parent);
     expect(m.major.parent).toBe(parent);
     expect(m.axes.parent).toBe(parent);
-    scene.dispose();
-    engine.dispose();
   });
 
   it("places lines covering the requested extent", () => {
-    const engine = makeNullEngine();
-    const scene = new Scene(engine);
-    const parent = new TransformNode("test-parent", scene);
-    const m = buildGrid(scene, parent, {
+    const parent = new Container();
+    const m = buildGrid(parent, {
       extent: 100,
       minorStep: 10,
       majorStep: 50,
@@ -51,8 +35,6 @@ describe("buildGrid", () => {
     expect(m.minor).toBeDefined();
     expect(m.major).toBeDefined();
     expect(m.axes).toBeDefined();
-    scene.dispose();
-    engine.dispose();
   });
 });
 
@@ -61,9 +43,9 @@ describe("<om-grid-axis>", () => {
     expect(customElements.get("om-grid-axis")).toBeDefined();
   });
 
-  it("creates the grid meshes when nested inside <om-scene>", async () => {
+  it("creates the grid graphics when nested inside <om-scene>", async () => {
     const scene = document.createElement("om-scene") as OmScene;
-    scene.engineFactory = () => makeNullEngine();
+    scene.rendererFactory = () => null;
     document.body.appendChild(scene);
     mounted.push(scene);
     await scene.updateComplete;
@@ -72,22 +54,23 @@ describe("<om-grid-axis>", () => {
     scene.appendChild(grid);
     await grid.updateComplete;
 
-    const meshes = grid.gridMeshes;
-    expect(meshes).not.toBeNull();
-    if (!meshes) throw new Error("expected gridMeshes");
-    expect(meshes.minor.parent).toBeDefined();
+    const graphics = grid.gridGraphics;
+    expect(graphics).not.toBeNull();
+    if (!graphics) throw new Error("expected gridGraphics");
+    expect(graphics.minor.parent).toBeDefined();
     const ctx = scene.sceneContextValue;
     if (!ctx) throw new Error("no scene context");
-    expect(meshes.minor.parent?.parent).toBe(ctx.worldRoot);
+    // The layers sit under the grid Container, which sits under worldRoot.
+    expect(graphics.minor.parent?.parent).toBe(ctx.worldRoot);
   });
 
   it("does not rebuild the grid when an equivalent coordinateSystem is reassigned", async () => {
     // After an OMC layout roundtrip the `coordinateSystem` arrives as
-    // a fresh object with identical numbers. The grid's GL meshes must
+    // a fresh object with identical numbers. The grid's Graphics must
     // survive that intact — otherwise every commit/refresh blanks and
     // repaints the axis underlay.
     const sceneEl = document.createElement("om-scene") as OmScene;
-    sceneEl.engineFactory = () => makeNullEngine();
+    sceneEl.rendererFactory = () => null;
     document.body.appendChild(sceneEl);
     mounted.push(sceneEl);
     await sceneEl.updateComplete;
@@ -102,7 +85,7 @@ describe("<om-grid-axis>", () => {
     };
     sceneEl.appendChild(grid);
     await grid.updateComplete;
-    const original = grid.gridMeshes;
+    const original = grid.gridGraphics;
     expect(original).not.toBeNull();
 
     grid.coordinateSystem = {
@@ -113,14 +96,14 @@ describe("<om-grid-axis>", () => {
       grid: [2, 2],
     };
     await grid.updateComplete;
-    expect(grid.gridMeshes).toBe(original);
-    if (!original) throw new Error("expected gridMeshes");
-    expect(original.minor.isDisposed()).toBe(false);
+    expect(grid.gridGraphics).toBe(original);
+    if (!original) throw new Error("expected gridGraphics");
+    expect(original.minor.destroyed).toBe(false);
   });
 
   it("rebuilds the grid when the coordinateSystem actually changes", async () => {
     const sceneEl = document.createElement("om-scene") as OmScene;
-    sceneEl.engineFactory = () => makeNullEngine();
+    sceneEl.rendererFactory = () => null;
     document.body.appendChild(sceneEl);
     mounted.push(sceneEl);
     await sceneEl.updateComplete;
@@ -135,7 +118,7 @@ describe("<om-grid-axis>", () => {
     };
     sceneEl.appendChild(grid);
     await grid.updateComplete;
-    const original = grid.gridMeshes;
+    const original = grid.gridGraphics;
 
     grid.coordinateSystem = {
       extent: [
@@ -145,14 +128,14 @@ describe("<om-grid-axis>", () => {
       grid: [2, 2],
     };
     await grid.updateComplete;
-    expect(grid.gridMeshes).not.toBe(original);
-    if (!original) throw new Error("expected gridMeshes");
-    expect(original.minor.isDisposed()).toBe(true);
+    expect(grid.gridGraphics).not.toBe(original);
+    if (!original) throw new Error("expected gridGraphics");
+    expect(original.minor.destroyed).toBe(true);
   });
 
-  it("disposes meshes on disconnect", async () => {
+  it("disposes graphics on disconnect", async () => {
     const sceneEl = document.createElement("om-scene") as OmScene;
-    sceneEl.engineFactory = () => makeNullEngine();
+    sceneEl.rendererFactory = () => null;
     document.body.appendChild(sceneEl);
     mounted.push(sceneEl);
     await sceneEl.updateComplete;
@@ -161,10 +144,10 @@ describe("<om-grid-axis>", () => {
     sceneEl.appendChild(grid);
     await grid.updateComplete;
 
-    const gridMeshes = grid.gridMeshes;
-    if (!gridMeshes) throw new Error("expected gridMeshes");
-    const minorMesh = gridMeshes.minor;
+    const graphics = grid.gridGraphics;
+    if (!graphics) throw new Error("expected gridGraphics");
+    const minor = graphics.minor;
     grid.remove();
-    expect(minorMesh.isDisposed()).toBe(true);
+    expect(minor.destroyed).toBe(true);
   });
 });
