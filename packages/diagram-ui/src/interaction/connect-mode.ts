@@ -1,9 +1,4 @@
-import type {
-  AbstractMesh,
-  Color3,
-  Scene,
-  TransformNode,
-} from "@babylonjs/core";
+import type { Container, Graphics } from "pixi.js";
 
 import { entityKeyForNode, formatKey } from "./node-keys.js";
 import {
@@ -35,29 +30,22 @@ export class ConnectMode implements GestureMode {
   readonly id = "connect";
   private fromKey: string | null = null;
   private fromPoint: DiagramPoint | null = null;
-  private wire: AbstractMesh | null = null;
+  private wire: Graphics | null = null;
 
   constructor(
     private readonly picker: Picker,
     private readonly emit: DragEmit,
-    private readonly scene: Scene,
-    private readonly parent: TransformNode,
+    private readonly parent: Container,
     private readonly connectorPosition: ConnectorPosition,
     private readonly evaluateCompat: CompatCheck,
   ) {}
 
-  private drawWire(to: DiagramPoint, color: Color3): void {
+  private drawWire(to: DiagramPoint, color: number): void {
     if (!this.fromPoint) {
       return;
     }
     disposeOverlayMesh(this.wire);
-    this.wire = buildWireMesh(
-      this.scene,
-      this.parent,
-      this.fromPoint,
-      to,
-      color,
-    );
+    this.wire = buildWireMesh(this.parent, this.fromPoint, to, color);
   }
 
   private clearWire(): void {

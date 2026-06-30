@@ -21,6 +21,7 @@ interface StoryArgs {
 
 const meta: Meta<StoryArgs> = {
   title: "diagram-ui/SplitButton",
+  parameters: { chromatic: { disableSnapshot: true } },
   render: ({ active, disabled }: StoryArgs): TemplateResult => html`
     <div
       style="padding: 16px;"

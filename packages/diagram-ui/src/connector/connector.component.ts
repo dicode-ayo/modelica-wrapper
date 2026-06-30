@@ -1,17 +1,21 @@
 import { css } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import {
-  Color3,
-  MeshBuilder,
-  StandardMaterial,
-  type Mesh,
-} from "@babylonjs/core";
+import { Circle, Graphics } from "pixi.js";
 
 import { OmShapeElement } from "../base/shape-element.js";
 import type { OmShapeNode } from "../base/shape-node.js";
 import { coordSystemSize } from "../base/placement-math.js";
-import { setMeshHighlight } from "../base/selection-overlay.js";
-import { requestSceneRender } from "../scene/render-scheduler.js";
+import { setHighlight } from "../base/selection-overlay.js";
+import { tagEntity } from "../interaction/node-keys.js";
+
+/** Port-indicator fill — translucent blue-400. */
+const PORT_INDICATOR_COLOR = 0x6199fa;
+const PORT_INDICATOR_ALPHA = 0.45;
+/** Radius of the port disc as a fraction of the smaller icon dimension. */
+const PORT_RADIUS_FRACTION = 0.22;
+/** Paint band lifting the indicator above the icon, below the selection
+ *  outline / handles. */
+const PORT_INDICATOR_Z_INDEX = 5;
 
 /**
  * `<om-connector>` — connector port. Behaves like `<om-component>` but
@@ -42,8 +46,7 @@ export class OmConnector extends OmShapeElement {
   @property({ type: Number, attribute: "hit-multiplier" })
   hitMultiplier = 1;
 
-  private portIndicator: Mesh | null = null;
-  private portMaterial: StandardMaterial | null = null;
+  private portIndicator: Graphics | null = null;
   private indicatorVisible = false;
   private hovered = false;
   /**
@@ -55,22 +58,15 @@ export class OmConnector extends OmShapeElement {
   private hoverLayerAttached = false;
   private hoverLayerColor: "normal" | "error" | null = null;
 
-  protected override babylonNodeName(): string {
+  protected override entityNodeName(): string {
     return this.nodeId ? `om-connector:${this.nodeId}` : "om-connector";
   }
 
   /**
-   * Connectors paint on top of components by lifting their TransformNode
-   * a fraction toward the camera. The camera sits at -Z, so "toward
-   * the camera" is *negative* z — hence the negative value. The
-   * host-coord units used here are tiny compared to entity sizes so
-   * the offset is invisible geometrically — only the depth ordering
-   * changes.
-   *
-   * Note: the offset stacks with the parent component's local scaling,
-   * so the actual world delta is `parent.scale * 1.5`. Even on a very
-   * small component (`scale = 0.01`) that still gives 0.015 world units
-   * of separation — comfortably above the ortho depth-test resolution.
+   * Connectors paint on top of components. The default `0` puts an entity
+   * on the diagram plane; a more-negative offset lifts it in front
+   * (`OmShapeNode` inverts the sign into a `zIndex`), so the routed
+   * connectors sit above the components they terminate on.
    */
   protected override zOffset(): number {
     return -1.5;
@@ -79,9 +75,9 @@ export class OmConnector extends OmShapeElement {
   override updated(changed: Map<string, unknown>): void {
     super.updated(changed);
     // Re-assert hover outline. `OmShapeElement.updated()` runs
-    // `shapeNode.setSelected(this.selected)`, which can flip the
-    // HighlightLayer membership for our mesh; the next pass through
-    // this method restores hover if the user is still pointing at us.
+    // `shapeNode.setSelected(this.selected)`, which can flip the highlight
+    // membership for our hit plane; the next pass restores hover if the
+    // user is still pointing at us.
     if (this.hovered) {
       this.hoverLayerAttached = false;
       this.hoverLayerColor = null;
@@ -90,28 +86,23 @@ export class OmConnector extends OmShapeElement {
   }
 
   protected override onShapeNodeReady(node: OmShapeNode): void {
-    const scene = node.transform.getScene();
     const icon = coordSystemSize(this.coordinateSystem);
-    const radius = Math.min(icon.width, icon.height) * 0.22;
-    const mat = new StandardMaterial("om-port-mat", scene);
-    mat.disableLighting = true;
-    mat.emissiveColor = new Color3(0.38, 0.6, 0.98); // blue-400
-    mat.alpha = 0.45;
-    this.portMaterial = mat;
+    const radius = Math.min(icon.width, icon.height) * PORT_RADIUS_FRACTION;
 
-    const disc = MeshBuilder.CreateDisc(
-      "om-port-indicator",
-      { radius, tessellation: 32 },
-      scene,
-    );
-    disc.material = mat;
-    disc.parent = node.transform;
-    // Negative z = closer to camera (sits at -Z) so the port
-    // indicator paints on top of the connector icon plane.
-    disc.position.set(icon.cx, icon.cy, -0.01);
-    disc.isVisible = false;
-    disc.isPickable = true;
-    disc.metadata = { kind: "port" };
+    const disc = new Graphics();
+    disc.circle(0, 0, radius).fill({
+      color: PORT_INDICATOR_COLOR,
+      alpha: PORT_INDICATOR_ALPHA,
+    });
+    disc.position.set(icon.cx, icon.cy);
+    disc.zIndex = PORT_INDICATOR_Z_INDEX;
+    disc.visible = false;
+    disc.eventMode = "static";
+    disc.hitArea = new Circle(0, 0, radius);
+    // The port disc resolves to a `port` identity; the picker walks up to
+    // the owning connector via the parent chain (nested-connector aware).
+    tagEntity(disc, "port", this.nodeId);
+    node.transform.addChild(disc);
     this.portIndicator = disc;
   }
 
@@ -119,8 +110,8 @@ export class OmConnector extends OmShapeElement {
   setPortIndicatorVisible(visible: boolean): void {
     this.indicatorVisible = visible;
     if (this.portIndicator) {
-      this.portIndicator.isVisible = visible;
-      requestSceneRender(this.portIndicator.getScene());
+      this.portIndicator.visible = visible;
+      this.sceneCtx?.requestRender();
     }
   }
 
@@ -158,14 +149,14 @@ export class OmConnector extends OmShapeElement {
 
   private applyHoverOutline(): void {
     const node = this.shapeNode;
-    if (!node) {
+    const ctx = this.sceneCtx;
+    if (!node || !ctx) {
       return;
     }
-    const scene = node.transform.getScene();
-    // `setSelected` already manages this mesh in the HighlightLayer
-    // with the brighter selection colour. Don't fight it — when the
-    // user selects + hovers the same connector, the selection
-    // outline wins; we restore the hover outline on un-select.
+    // `setSelected` already manages this hit plane with the brighter
+    // selection colour. Don't fight it — when the user selects + hovers
+    // the same connector, the selection outline wins; we restore the
+    // hover outline on un-select.
     if (node.isSelected()) {
       this.hoverLayerAttached = false;
       this.hoverLayerColor = null;
@@ -177,8 +168,8 @@ export class OmConnector extends OmShapeElement {
     if (wantColor === this.hoverLayerColor) {
       return;
     }
-    setMeshHighlight(
-      scene,
+    setHighlight(
+      ctx,
       node.mesh,
       wantColor === null
         ? null
@@ -191,48 +182,41 @@ export class OmConnector extends OmShapeElement {
   }
 
   /**
-   * Diagram-space position of the connector's port (centre of the icon
-   * coord system, transformed by every ancestor placement). Returns
-   * `null` if the shape node hasn't been mounted yet.
+   * Diagram-space position of the connector's port (the entity origin,
+   * transformed by every ancestor placement). Returns `null` if the shape
+   * node hasn't been mounted yet.
    *
    * Used by the host element to anchor the rubber-band edge while the
    * user drags a connection out of this port.
    */
   getPortDiagramPosition(): { x: number; y: number } | null {
     const t = this.shapeNode?.transform;
-    if (!t) {
+    const ctx = this.sceneCtx;
+    if (!t || !ctx) {
       return null;
     }
-    t.computeWorldMatrix(true);
-    const p = t.getAbsolutePosition();
-    return { x: p.x, y: p.y };
+    const local = ctx.diagramRoot.toLocal(t.getGlobalPosition());
+    return { x: local.x, y: local.y };
   }
 
   override disconnectedCallback(): void {
-    // Remove the hover outline before the underlying mesh is disposed
-    // by the base class — HighlightLayer holds a mesh reference and
-    // will crash on next render if the mesh vanishes while still in
-    // the layer.
-    if (this.hoverLayerAttached && this.shapeNode) {
-      setMeshHighlight(
-        this.shapeNode.transform.getScene(),
-        this.shapeNode.mesh,
-        null,
-      );
+    // Remove the hover outline before the base class disposes the hit
+    // plane — the highlight registry holds a container reference and
+    // would redraw against a destroyed container otherwise.
+    if (this.hoverLayerAttached && this.shapeNode && this.sceneCtx) {
+      setHighlight(this.sceneCtx, this.shapeNode.mesh, null);
       this.hoverLayerAttached = false;
     }
-    this.portIndicator?.dispose();
-    this.portMaterial?.dispose();
+    this.portIndicator?.destroy();
     this.portIndicator = null;
-    this.portMaterial = null;
     super.disconnectedCallback();
   }
 }
 
-/** Softer blue than the selection outline. */
-const HOVER_COLOR = new Color3(0.61, 0.78, 1); // blue-300
-/** Red glow used when the connector is an incompatible drop target. */
-const HOVER_ERROR_COLOR = new Color3(0.97, 0.44, 0.44); // red-400
+/** Softer blue than the selection outline (blue-300). */
+const HOVER_COLOR = 0x9cc7ff;
+/** Red glow used when the connector is an incompatible drop target (red-400). */
+const HOVER_ERROR_COLOR = 0xf77070;
 
 declare global {
   interface HTMLElementTagNameMap {

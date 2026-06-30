@@ -1,4 +1,4 @@
-import type { Node } from "@babylonjs/core";
+import type { Container } from "pixi.js";
 
 import {
   entityKeyForNode,
@@ -7,7 +7,7 @@ import {
   type EntityKind,
 } from "./node-keys.js";
 
-export type Picker = (clientX: number, clientY: number) => Node | null;
+export type Picker = (clientX: number, clientY: number) => Container | null;
 export type ClientToDiagram = (
   clientX: number,
   clientY: number,
@@ -35,6 +35,18 @@ export interface DragEvents {
   resize: {
     key: string;
     corner: "tl" | "tr" | "bl" | "br";
+    x: number;
+    y: number;
+    draft: boolean;
+  };
+  /**
+   * Drag of a poly shape's vertex handle. `key` is the self-describing vertex
+   * wire key (`vtx:<shapeKind>:<shapeIndex>/<vertexIndex>`); `x, y` is the
+   * live pointer in diagram coords. Draft on every move, committed on
+   * pointerup.
+   */
+  vertexDrag: {
+    key: string;
     x: number;
     y: number;
     draft: boolean;
@@ -105,7 +117,7 @@ export type DiagramPoint = { x: number; y: number };
 
 /** What the router resolved for the `pointerdown` that may start a gesture. */
 export interface GestureStart {
-  node: Node | null;
+  node: Container | null;
   entity: EntityKey | null;
   point: DiagramPoint;
   shiftKey: boolean;
@@ -135,6 +147,7 @@ export interface GestureMode {
  */
 export const MOVE_KINDS: ReadonlySet<EntityKind> = new Set([
   "component",
+  "shape",
   "label",
   "junction",
 ]);
@@ -162,14 +175,14 @@ export function releasePointer(
 }
 
 /**
- * Resize / rotate handles live inside the owning shape's TransformNode
- * chain. The owner is the first ancestor whose `name` matches the
- * `om-component:` / `om-connector:` pattern.
+ * Resize / rotate handles live inside the owning shape's container chain.
+ * The owner is the first ancestor whose `label` matches the
+ * `om-component:` / `om-connector:` / `om-shape:` pattern.
  */
-export function ownerOfHandle(start: Node | null): string | null {
-  let cur: Node | null = start;
+export function ownerOfHandle(start: Container | null): string | null {
+  let cur: Container | null = start;
   while (cur) {
-    const m = cur.name?.match(/^om-(component|connector):(.*)$/);
+    const m = cur.label?.match(/^om-(component|connector|shape):(.*)$/);
     if (m) {
       return formatKey(m[1] as EntityKind, m[2] ?? "");
     }
@@ -179,12 +192,12 @@ export function ownerOfHandle(start: Node | null): string | null {
 }
 
 /**
- * Port indicator meshes carry `metadata.kind = "port"` but are parented
- * inside the connector's TransformNode. Resolve the owning connector via
+ * Port indicator containers carry `kind: "port"` identity but are parented
+ * inside the connector's container. Resolve the owning connector via
  * `entityKeyForNode` so nested connectors pick up the parent-component
  * prefix (`k:R1.p`) instead of colliding on the bare port name (`k:p`).
  */
-export function ownerOfPort(start: Node | null): string | null {
+export function ownerOfPort(start: Container | null): string | null {
   const entity = entityKeyForNode(start?.parent ?? null);
   if (!entity || entity.kind !== "connector") {
     return null;

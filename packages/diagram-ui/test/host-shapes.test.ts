@@ -1,12 +1,13 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { NullEngine } from "@babylonjs/core";
+import { Container } from "pixi.js";
 import { diagram, ModelInstanceSchema } from "@dicode/omc-client";
 import type { DiagramLayout } from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
+import type { OmScene } from "../src/scene/scene.component.js";
 
 function layoutWithHostShapes(): DiagramLayout {
   return {
@@ -63,20 +64,30 @@ afterEach(() => {
 
 async function mount(layout: DiagramLayout): Promise<OmGraphicalLayout> {
   const el = document.createElement("om-graphical-layout") as OmGraphicalLayout;
-  el.engineFactory = () =>
-    new NullEngine({
-      renderWidth: 200,
-      renderHeight: 200,
-      textureSize: 128,
-      deterministicLockstep: false,
-      lockstepMaxSteps: 1,
-    });
+  // Renderer-less: build the Pixi container tree on the CPU, no GPU context.
+  el.rendererFactory = () => null;
   el.layout = layout;
   document.body.appendChild(el);
   teardowns.push(() => el.remove());
   await el.updateComplete;
   await new Promise((r) => setTimeout(r, 0));
   return el;
+}
+
+/** Every container in the scene's diagram subtree. */
+function diagramContainers(el: OmGraphicalLayout): Container[] {
+  const sceneEl = el.shadowRoot?.querySelector("om-scene") as OmScene | null;
+  const root = sceneEl?.sceneContextValue?.diagramRoot;
+  if (!root) return [];
+  const out: Container[] = [];
+  const walk = (c: Container): void => {
+    for (const child of c.children) {
+      out.push(child);
+      walk(child);
+    }
+  };
+  walk(root);
+  return out;
 }
 
 describe("<om-graphical-layout> host shapes", () => {
@@ -94,27 +105,19 @@ describe("<om-graphical-layout> host shapes", () => {
     ).toEqual({ rects: 1, texts: 1, lines: 1 });
   });
 
-  it("actually builds Babylon meshes for the host's shapes", async () => {
+  it("actually builds Pixi graphics for the host's shapes", async () => {
     const el = await mount(layoutWithHostShapes());
     // Wait an extra tick so the primitives' @consume callback fires
     // after om-scene's mount() has provided the parentNode context.
     await new Promise((r) => setTimeout(r, 0));
     await el.updateComplete;
-    const shadowRoot = el.shadowRoot;
-    if (!shadowRoot) throw new Error("no shadowRoot");
-    const sceneEl = shadowRoot.querySelector("om-scene") as
-      | (HTMLElement & {
-          sceneContextValue?: { scene: { meshes: { name: string }[] } };
-        })
-      | null;
-    const meshes = sceneEl?.sceneContextValue?.scene.meshes ?? [];
-    const names = meshes.map((m) => m.name);
+    const names = diagramContainers(el).map((c) => c.label);
     const rectFromHost = names.some((n) => n.startsWith("om-rectangle"));
     const lineFromHost = names.some((n) => n.startsWith("om-line"));
     const textFromHost = names.some((n) => n.startsWith("om-text"));
     expect(
       { rect: rectFromHost, line: lineFromHost, text: textFromHost },
-      `scene meshes:\n${names.join("\n")}`,
+      `scene containers:\n${names.join("\n")}`,
     ).toEqual({ rect: true, line: true, text: true });
   });
 

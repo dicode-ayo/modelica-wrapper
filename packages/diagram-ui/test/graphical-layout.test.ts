@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { NullEngine } from "@babylonjs/core";
 import type { DiagramLayout } from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
@@ -48,16 +47,9 @@ afterEach(() => {
 
 async function mount(layout: DiagramLayout): Promise<OmGraphicalLayout> {
   const el = document.createElement("om-graphical-layout") as OmGraphicalLayout;
-  // Inject test factories BEFORE connection so the inner scene's
-  // firstUpdated sees them.
-  el.engineFactory = () =>
-    new NullEngine({
-      renderWidth: 200,
-      renderHeight: 200,
-      textureSize: 128,
-      deterministicLockstep: false,
-      lockstepMaxSteps: 1,
-    });
+  // Inject the renderer-less factory BEFORE connection so the inner scene's
+  // firstUpdated sees it.
+  el.rendererFactory = () => null;
   el.layout = layout;
   document.body.appendChild(el);
   teardowns.push(() => el.remove());

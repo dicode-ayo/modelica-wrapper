@@ -9,57 +9,90 @@ import "./text.component.js";
 import "./bitmap.component.js";
 
 /**
- * Render one Modelica `Shape` as the matching `<om-*>` primitive. Used
- * in two places: by `OmShapeElement` to render a component's own icon
- * shapes, and by `OmGraphicalLayout` to render the host class's own
- * diagram-level shapes. Both call paths share the switch — they only
- * differ in the `zBias` they pass.
+ * Makes a rendered shape a first-class editable entity: `index` is its
+ * `shape:` key index in the host's own layer; `selected` drives the
+ * selection overlay. Omitted for non-interactive paint (icon shapes,
+ * inherited host shapes).
+ */
+export interface ShapeEntity {
+  index: number;
+  selected: boolean;
+}
+
+/**
+ * Render one Modelica `Shape` as the matching `<om-*>` primitive. Used by
+ * `OmShapeElement` for a component's icon shapes and by `OmGraphicalLayout`
+ * for the host class's diagram shapes. Passing `entity` makes it editable —
+ * the primitive then owns its own hit geometry + selection overlay;
+ * otherwise it's pure paint.
  */
 export function renderShape(
   shape: Shape,
   zOrder: number,
   zBias: number = 0,
+  entity?: ShapeEntity,
 ): TemplateResult {
   // Per-shape GraphicItem visibility (§18.6, issue #76 item 15): a
   // `visible=false` graphic is dropped entirely. origin/rotation are applied
   // inside each primitive via the shared OmShapePrimitive transform.
   if (shape.visible === false) return html``;
+  const editable = entity !== undefined;
+  const index = entity?.index ?? 0;
+  const selected = entity?.selected ?? false;
   switch (shape.kind) {
     case "rectangle":
       return html`<om-rectangle
         .shape=${shape}
         .zOrder=${zOrder}
         .zBias=${zBias}
+        ?editable=${editable}
+        .entityIndex=${index}
+        ?selected=${selected}
       ></om-rectangle>`;
     case "polygon":
       return html`<om-polygon
         .shape=${shape}
         .zOrder=${zOrder}
         .zBias=${zBias}
+        ?editable=${editable}
+        .entityIndex=${index}
+        ?selected=${selected}
       ></om-polygon>`;
     case "line":
       return html`<om-line
         .shape=${shape}
         .zOrder=${zOrder}
         .zBias=${zBias}
+        ?editable=${editable}
+        .entityIndex=${index}
+        ?selected=${selected}
       ></om-line>`;
     case "ellipse":
       return html`<om-ellipse
         .shape=${shape}
         .zOrder=${zOrder}
         .zBias=${zBias}
+        ?editable=${editable}
+        .entityIndex=${index}
+        ?selected=${selected}
       ></om-ellipse>`;
     case "text":
       return html`<om-text
         .shape=${shape}
         .zOrder=${zOrder}
         .zBias=${zBias}
+        ?editable=${editable}
+        .entityIndex=${index}
+        ?selected=${selected}
       ></om-text>`;
     case "bitmap":
       return html`<om-bitmap
         .shape=${shape}
         .zOrder=${zOrder}
         .zBias=${zBias}
+        ?editable=${editable}
+        .entityIndex=${index}
+        ?selected=${selected}
       ></om-bitmap>`;
     default: {
       const _exhaustive: never = shape;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NullEngine, Scene, TransformNode, Mesh } from "@babylonjs/core";
+import { Container } from "pixi.js";
 
 import {
   entityKeyForNode,
@@ -7,6 +7,7 @@ import {
   formatConnectorKey,
   formatKey,
   formatShapeKey,
+  formatVertexKey,
   isComponentKey,
   isConnectorKey,
   isEdgeKey,
@@ -14,24 +15,16 @@ import {
   isNestedConnector,
   isShapeKey,
   parseKey,
+  tagEntity,
+  vertexShapeKey,
+  type EntityKind,
 } from "../src/interaction/node-keys.js";
 
-function makeScene(): { scene: Scene; dispose: () => void } {
-  const engine = new NullEngine({
-    renderWidth: 100,
-    renderHeight: 100,
-    textureSize: 64,
-    deterministicLockstep: false,
-    lockstepMaxSteps: 1,
-  });
-  const scene = new Scene(engine);
-  return {
-    scene,
-    dispose: () => {
-      scene.dispose();
-      engine.dispose();
-    },
-  };
+/** A tagged Container — the identity side-channel producers use in prod. */
+function tagged(kind: EntityKind, nodeId: string): Container {
+  const c = new Container();
+  tagEntity(c, kind, nodeId);
+  return c;
 }
 
 describe("formatKey / parseKey", () => {
@@ -171,80 +164,101 @@ describe("type guards", () => {
 });
 
 describe("entityKeyForNode", () => {
-  it("recognises a TransformNode by 'om-<kind>:<id>' naming", () => {
-    const { scene, dispose } = makeScene();
-    const t = new TransformNode("om-component:R1", scene);
-    expect(entityKeyForNode(t)).toEqual({ kind: "component", nodeId: "R1" });
-    dispose();
+  it("resolves a tagged container directly", () => {
+    const c = tagged("component", "R1");
+    expect(entityKeyForNode(c)).toEqual({ kind: "component", nodeId: "R1" });
   });
 
-  it("recognises a host shape by its 'om-shape:<kind>:<index>' wrapper name", () => {
-    const { scene, dispose } = makeScene();
-    const wrapper = new TransformNode("om-shape:rectangle:0", scene);
-    const hitPlane = new Mesh("hit", scene);
-    hitPlane.parent = wrapper;
+  it("resolves a host shape from its 'om-shape:<kind>:<index>' wrapper", () => {
+    const wrapper = tagged("shape", "rectangle:0");
+    const hitPlane = new Container();
+    wrapper.addChild(hitPlane);
     expect(entityKeyForNode(hitPlane)).toEqual({
       kind: "shape",
       nodeId: "rectangle:0",
       shapeKind: "rectangle",
       index: 0,
     });
-    dispose();
   });
 
-  it("recognises a Mesh through its metadata", () => {
-    const { scene, dispose } = makeScene();
-    const m = new Mesh("anything", scene);
-    m.metadata = { kind: "edge", nodeId: "e1" };
-    expect(entityKeyForNode(m)).toEqual({ kind: "edge", nodeId: "e1" });
-    dispose();
+  it("resolves an edge container through its tag", () => {
+    const c = tagged("edge", "e1");
+    expect(entityKeyForNode(c)).toEqual({ kind: "edge", nodeId: "e1" });
   });
 
-  it("walks parents up the chain", () => {
-    const { scene, dispose } = makeScene();
-    const parent = new TransformNode("om-component:R2", scene);
-    const child = new TransformNode("om-port:dot", scene);
-    child.parent = parent;
-    const grandchild = new Mesh("dot-mesh", scene);
-    grandchild.parent = child;
+  it("resolves a vertex dot to a self-describing vertex key", () => {
+    const wrapper = tagged("shape", "line:2");
+    const dot = tagged("vertex-handle", "line:2/1");
+    wrapper.addChild(dot);
+    // The dot carries its whole identity — shape kind, shape index, vertex.
+    const key = entityKeyForNode(dot);
+    expect(key).toEqual({
+      kind: "vertex-handle",
+      nodeId: "line:2/1",
+      shapeKind: "line",
+      shapeIndex: 2,
+      vertexIndex: 1,
+    });
+    // …so the owning shape is derivable from the key, no chain walk.
+    expect(key?.kind === "vertex-handle" && vertexShapeKey(key)).toBe(
+      "shape:line:2",
+    );
+  });
+
+  it("round-trips a vertex key through format + parse", () => {
+    expect(formatVertexKey("polygon", 3, 4)).toBe("vtx:polygon:3/4");
+    expect(parseKey("vtx:polygon:3/4")).toEqual({
+      kind: "vertex-handle",
+      nodeId: "polygon:3/4",
+      shapeKind: "polygon",
+      shapeIndex: 3,
+      vertexIndex: 4,
+    });
+  });
+
+  it("fails closed on a malformed vertex key rather than addressing slot 0", () => {
+    // Missing slash, non-integer vertex, and missing shape index each NaN out
+    // so the array lookup no-ops instead of confidently hitting index 0.
+    expect(parseKey("vtx:line:1")).toMatchObject({ vertexIndex: NaN });
+    expect(parseKey("vtx:line:1/x")).toMatchObject({ vertexIndex: NaN });
+    expect(parseKey("vtx:line:/2")).toMatchObject({ shapeIndex: NaN });
+  });
+
+  it("walks up the chain to the nearest tagged ancestor", () => {
+    const parent = tagged("component", "R2");
+    const child = new Container();
+    parent.addChild(child);
+    const grandchild = new Container();
+    child.addChild(grandchild);
     expect(entityKeyForNode(grandchild)).toEqual({
       kind: "component",
       nodeId: "R2",
     });
-    dispose();
   });
 
   it("qualifies a nested connector with its parent component and decomposes the parts", () => {
-    const { scene, dispose } = makeScene();
-    const comp = new TransformNode("om-component:R3", scene);
-    const conn = new TransformNode("om-connector:p", scene);
-    conn.parent = comp;
-    const found = entityKeyForNode(conn);
-    expect(found).toEqual({
+    const comp = tagged("component", "R3");
+    const conn = tagged("connector", "p");
+    comp.addChild(conn);
+    expect(entityKeyForNode(conn)).toEqual({
       kind: "connector",
       nodeId: "R3.p",
       componentName: "R3",
       portName: "p",
     });
-    dispose();
   });
 
   it("returns a standalone connector when no component ancestor is found", () => {
-    const { scene, dispose } = makeScene();
-    const conn = new TransformNode("om-connector:p", scene);
+    const conn = tagged("connector", "p");
     expect(entityKeyForNode(conn)).toEqual({
       kind: "connector",
       nodeId: "p",
       componentName: null,
       portName: "p",
     });
-    dispose();
   });
 
   it("returns null when nothing in the chain is tagged", () => {
-    const { scene, dispose } = makeScene();
-    const t = new TransformNode("plain", scene);
-    expect(entityKeyForNode(t)).toBeNull();
-    dispose();
+    expect(entityKeyForNode(new Container())).toBeNull();
   });
 });

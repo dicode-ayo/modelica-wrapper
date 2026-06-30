@@ -16,7 +16,7 @@ import {
   snapPoint,
   type SnapGrid,
 } from "./snap-math.js";
-import type { ExtentKind, PolyKind } from "./tools.js";
+import { POLY_MIN_VERTICES, type ExtentKind, type PolyKind } from "./tools.js";
 
 /**
  * Pure layout mutations. Each function takes a `DiagramLayout` and
@@ -115,11 +115,16 @@ function shiftPlacement(p: Placement, dx: number, dy: number): Placement {
 }
 
 /**
- * Drags one extent corner to (x, y) in the parent's diagram coords,
- * holding the opposite corner fixed. `corner` sets a fixed pair of extent
- * coordinates regardless of flip, so dragging past the anchor inverts an
- * axis — a Modelica mirror. Shared by component/connector placements and
- * host shapes, both of which carry an `extent` + optional `origin`.
+ * Drags one visual extent corner to (x, y) in the parent's diagram coords,
+ * holding the opposite corner fixed. The grabbed corner is named by what the
+ * user sees — `tr` = the right (max-x) + top (max-y) edges — and maps to
+ * whichever extent slots currently hold those edges, so it works no matter
+ * how the corners were authored (host-shape annotations can store the top
+ * corner first; component placements store the min corner first). Dragging
+ * past the anchor leaves the output extent inverted on that axis — a
+ * Modelica mirror. Callers pass the original (gesture-start) extent on every
+ * move, so the slot mapping stays fixed for the whole drag. Shared by
+ * component/connector placements and host shapes.
  */
 function dragCorner(
   extent: Extent,
@@ -130,17 +135,17 @@ function dragCorner(
 ): Extent {
   const ox = origin?.[0] ?? 0;
   const oy = origin?.[1] ?? 0;
-  let [[x1, y1], [x2, y2]] = extent;
-  const ex = x - ox;
-  const ey = y - oy;
-  if (corner === "tl" || corner === "bl") x1 = ex;
-  else x2 = ex;
-  if (corner === "bl" || corner === "br") y1 = ey;
-  else y2 = ey;
-  return [
-    [x1, y1],
-    [x2, y2],
+  const out: Extent = [
+    [extent[0][0], extent[0][1]],
+    [extent[1][0], extent[1][1]],
   ];
+  const xMaxAt0 = extent[0][0] >= extent[1][0];
+  const yMaxAt0 = extent[0][1] >= extent[1][1];
+  const wantMaxX = corner[1] === "r";
+  const wantMaxY = corner[0] === "t";
+  out[wantMaxX === xMaxAt0 ? 0 : 1][0] = x - ox;
+  out[wantMaxY === yMaxAt0 ? 0 : 1][1] = y - oy;
+  return out;
 }
 
 // ── Host-shape ops ───────────────────────────────────────────────────
@@ -217,14 +222,21 @@ function updateOwnShapes(
     : layout;
 }
 
-/** Translates a shape by (dx, dy): extent shapes move their extent, poly
- *  shapes move every vertex. `origin` is left untouched. */
+/** Translates a shape by (dx, dy): poly shapes move every vertex; extent
+ *  shapes move their extent, or — when rotated — their `origin`, since the
+ *  extent lives inside the shape's rotation and shifting it there would
+ *  translate along the rotated axes. */
 function moveShape(s: Shape, dx: number, dy: number): Shape {
   if (isPolyShape(s)) {
     return {
       ...s,
       points: s.points.map(([x, y]) => [x + dx, y + dy] as Point),
     };
+  }
+  if (s.rotation) {
+    const ox = s.origin?.[0] ?? 0;
+    const oy = s.origin?.[1] ?? 0;
+    return { ...s, origin: [ox + dx, oy + dy] };
   }
   return { ...s, extent: shiftExtent(s.extent, dx, dy) };
 }
@@ -244,28 +256,59 @@ function resizeShapeExtent(
   return { ...s, extent: dragCorner(s.extent, s.origin, corner, x, y) };
 }
 
-/** Sets a shape's absolute rotation; `null` when already at `norm`. */
-function rotateShape(s: Shape, norm: number): Shape | null {
-  return (s.rotation ?? 0) === norm ? null : { ...s, rotation: norm };
+/**
+ * Re-expresses an extent shape so its `origin` sits at the shape's visual
+ * centre, with `extent` recentred about it — appearance unchanged. A
+ * Modelica shape rotates about its `origin`, so this makes the rotation
+ * pivot the centre the user expects (otherwise a shape with `origin={0,0}`
+ * swings around the diagram origin).
+ */
+function centreOrigin(s: Extract<Shape, { extent: Extent }>): typeof s {
+  const cx = (s.extent[0][0] + s.extent[1][0]) / 2;
+  const cy = (s.extent[0][1] + s.extent[1][1]) / 2;
+  const ox = s.origin?.[0] ?? 0;
+  const oy = s.origin?.[1] ?? 0;
+  return {
+    ...s,
+    origin: [ox + cx, oy + cy],
+    extent: [
+      [s.extent[0][0] - cx, s.extent[0][1] - cy],
+      [s.extent[1][0] - cx, s.extent[1][1] - cy],
+    ],
+  };
 }
 
-/** Pivot for drag-to-rotate: extent centre, or the vertices' bounding-box
- *  centre. */
+/** Sets a shape's absolute rotation, pivoting about its visual centre;
+ *  `null` when already at `norm`. */
+function rotateShape(s: Shape, norm: number): Shape | null {
+  if ((s.rotation ?? 0) === norm) {
+    return null;
+  }
+  if (isPolyShape(s)) {
+    return { ...s, rotation: norm };
+  }
+  return { ...centreOrigin(s), rotation: norm };
+}
+
+/** Visual centre of a shape (origin + geometry centre) — the pivot for
+ *  drag-to-rotate, matching the point the renderer rotates about. */
 function shapeCentreOf(s: Shape): Point {
+  const ox = s.origin?.[0] ?? 0;
+  const oy = s.origin?.[1] ?? 0;
   if (isPolyShape(s)) {
     if (s.points.length === 0) {
-      return [0, 0];
+      return [ox, oy];
     }
     const xs = s.points.map((p) => p[0]);
     const ys = s.points.map((p) => p[1]);
     return [
-      (Math.min(...xs) + Math.max(...xs)) / 2,
-      (Math.min(...ys) + Math.max(...ys)) / 2,
+      ox + (Math.min(...xs) + Math.max(...xs)) / 2,
+      oy + (Math.min(...ys) + Math.max(...ys)) / 2,
     ];
   }
   return [
-    (s.extent[0][0] + s.extent[1][0]) / 2,
-    (s.extent[0][1] + s.extent[1][1]) / 2,
+    ox + (s.extent[0][0] + s.extent[1][0]) / 2,
+    oy + (s.extent[0][1] + s.extent[1][1]) / 2,
   ];
 }
 
@@ -697,6 +740,151 @@ export function applyRotation(
       )
     : layout;
   return updateOwnShapes(base, set.shapes, (s) => rotateShape(s, norm));
+}
+
+// ── Poly vertex ops ──────────────────────────────────────────────────
+//
+// Line / Polygon are edited per-vertex (no bounding-box resize). A vertex
+// is addressed by the shape key plus its index into `points`. Deletes
+// respect `POLY_MIN_VERTICES` so a line stays a segment and a polygon a
+// triangle — the same floor the draw tool uses.
+
+/**
+ * Maps a diagram point into a poly shape's local frame — the frame its
+ * `points` live in. Translate by `-origin`, then un-rotate by `-rotation`,
+ * inverting the transform the renderer / hit frame applies (`origin` +
+ * `R(rotation)·point`). Without the un-rotation, editing a rotated poly's
+ * vertices would land them off-cursor.
+ */
+function toShapeLocal(
+  s: Extract<Shape, { kind: "line" | "polygon" }>,
+  x: number,
+  y: number,
+): Point {
+  const dx = x - (s.origin?.[0] ?? 0);
+  const dy = y - (s.origin?.[1] ?? 0);
+  const rot = s.rotation ?? 0;
+  if (rot === 0) {
+    return [dx, dy];
+  }
+  const rad = (rot * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return [dx * cos + dy * sin, -dx * sin + dy * cos];
+}
+
+/** Resolves `key` to a single own-layer poly shape and replaces it via `fn`
+ *  (which returns `null` to leave it unchanged). No-ops for any non-poly or
+ *  unresolvable key. */
+function updatePolyShape(
+  layout: DiagramLayout,
+  key: string,
+  fn: (poly: Extract<Shape, { kind: "line" | "polygon" }>) => Shape | null,
+): DiagramLayout {
+  const parsed = parseKey(key);
+  if (!parsed || parsed.kind !== "shape" || !Number.isInteger(parsed.index)) {
+    return layout;
+  }
+  return updateOwnShapes(layout, new Set([parsed.index]), (s) =>
+    isPolyShape(s) ? fn(s) : null,
+  );
+}
+
+/** Moves one vertex of a poly shape to (x, y) in diagram coords. */
+export function applyShapeVertexDrag(
+  layout: DiagramLayout,
+  key: string,
+  vertexIndex: number,
+  x: number,
+  y: number,
+): DiagramLayout {
+  return updatePolyShape(layout, key, (s) => {
+    const cur = s.points[vertexIndex];
+    if (cur === undefined) {
+      return null;
+    }
+    const [nx, ny] = toShapeLocal(s, x, y);
+    if (cur[0] === nx && cur[1] === ny) {
+      return null;
+    }
+    return {
+      ...s,
+      points: s.points.map((p, i) => (i === vertexIndex ? [nx, ny] : p)),
+    };
+  });
+}
+
+/** Inserts a vertex on the segment of a poly nearest `point`, splitting it.
+ *  A polygon also considers its closing edge (last → first). */
+export function applyShapeVertexInsert(
+  layout: DiagramLayout,
+  key: string,
+  point: { x: number; y: number },
+): DiagramLayout {
+  return updatePolyShape(layout, key, (s) => {
+    const pts = s.points;
+    if (pts.length < 2) {
+      return null;
+    }
+    const [lx, ly] = toShapeLocal(s, point.x, point.y);
+    const local = { x: lx, y: ly };
+    const segments = s.kind === "polygon" ? pts.length : pts.length - 1;
+    let bestAt = 1;
+    let bestProj: Point | null = null;
+    let bestDist = Infinity;
+    for (let i = 0; i < segments; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      if (a === undefined || b === undefined) {
+        continue;
+      }
+      const proj = projectOntoSegment(a, b, local);
+      const dx = proj[0] - local.x;
+      const dy = proj[1] - local.y;
+      const dist = dx * dx + dy * dy;
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestAt = i + 1;
+        bestProj = proj;
+      }
+    }
+    if (bestProj === null) {
+      return null;
+    }
+    return {
+      ...s,
+      points: [...pts.slice(0, bestAt), bestProj, ...pts.slice(bestAt)],
+    };
+  });
+}
+
+/** Removes one vertex of a poly shape, refusing to drop below the kind's
+ *  minimum (2 for a line, 3 for a polygon). */
+export function applyShapeVertexDelete(
+  layout: DiagramLayout,
+  key: string,
+  vertexIndex: number,
+): DiagramLayout {
+  return updatePolyShape(layout, key, (s) => {
+    if (
+      s.points[vertexIndex] === undefined ||
+      s.points.length <= POLY_MIN_VERTICES[s.kind]
+    ) {
+      return null;
+    }
+    return { ...s, points: s.points.filter((_, i) => i !== vertexIndex) };
+  });
+}
+
+/** Toggles a poly shape's `smooth` between Bezier and straight segments. */
+export function applyShapeSmoothToggle(
+  layout: DiagramLayout,
+  key: string,
+): DiagramLayout {
+  return updatePolyShape(layout, key, (s) => ({
+    ...s,
+    smooth: s.smooth === "Bezier" ? "None" : "Bezier",
+  }));
 }
 
 /** Maps a diagram point rigidly attached to a transformed shape from
@@ -1260,10 +1448,14 @@ export function applyRotate(
   cw: boolean,
 ): DiagramLayout {
   const delta = cw ? -90 : 90;
-  return forEachShape(layout, keys, (p) => ({
+  const base = forEachShape(layout, keys, (p) => ({
     ...p,
     rotation: ((p.rotation ?? 0) + delta + 360) % 360,
   }));
+  const set = partitionKeys(keys);
+  return updateOwnShapes(base, set.shapes, (s) =>
+    rotateShape(s, ((((s.rotation ?? 0) + delta) % 360) + 360) % 360),
+  );
 }
 
 /**
@@ -1275,19 +1467,47 @@ export function applyFlip(
   keys: Iterable<string>,
   horizontal: boolean,
 ): DiagramLayout {
-  return forEachShape(layout, keys, (p) => {
-    const [[x1, y1], [x2, y2]] = p.extent;
-    const ext: Extent = horizontal
-      ? [
-          [x2, y1],
-          [x1, y2],
-        ]
-      : [
-          [x1, y2],
-          [x2, y1],
-        ];
-    return { ...p, extent: ext };
-  });
+  const base = forEachShape(layout, keys, (p) => ({
+    ...p,
+    extent: flipExtent(p.extent, horizontal),
+  }));
+  const set = partitionKeys(keys);
+  return updateOwnShapes(base, set.shapes, (s) => flipShape(s, horizontal));
+}
+
+/** Mirrors an extent about its own centre by swapping one axis' corners. */
+function flipExtent(extent: Extent, horizontal: boolean): Extent {
+  const [[x1, y1], [x2, y2]] = extent;
+  return horizontal
+    ? [
+        [x2, y1],
+        [x1, y2],
+      ]
+    : [
+        [x1, y2],
+        [x2, y1],
+      ];
+}
+
+/** Mirrors a shape in place: extent shapes swap an extent axis, poly shapes
+ *  reflect every vertex about their bounding-box centre. */
+function flipShape(s: Shape, horizontal: boolean): Shape {
+  if (!isPolyShape(s)) {
+    return { ...s, extent: flipExtent(s.extent, horizontal) };
+  }
+  if (s.points.length === 0) {
+    return s;
+  }
+  const xs = s.points.map((p) => p[0]);
+  const ys = s.points.map((p) => p[1]);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  return {
+    ...s,
+    points: s.points.map(([x, y]) =>
+      horizontal ? [2 * cx - x, y] : [x, 2 * cy - y],
+    ),
+  };
 }
 
 function forEachShape(

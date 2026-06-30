@@ -46,6 +46,7 @@ function spyTarget(l: DiagramLayout, keys: string[]): SpyTarget {
   return {
     layout: l,
     selectedKeys: new Set(keys),
+    contextVertex: null,
     commitLayout: (n) => committed.push(n),
     setSelection: (k) => selections.push([...k]),
     committed,
@@ -68,6 +69,8 @@ function ctx(patch: Partial<ContextKeys> = {}): ContextKeys {
     readonly: false,
     viewLayer: "diagram",
     hasClipboard: false,
+    vertexTarget: false,
+    polySelection: false,
     ...patch,
   };
 }
@@ -100,16 +103,70 @@ describe("DIAGRAM_COMMANDS", () => {
     expect(t.committed).toHaveLength(0);
   });
 
-  it("every command requires a non-readonly, non-empty selection", () => {
-    for (const c of DIAGRAM_COMMANDS) {
-      const when = c.when;
-      if (!when) throw new Error(`${c.id} should gate on selection`);
+  it("the selection edit ops require a non-readonly, non-empty selection", () => {
+    const selectionOps = [
+      "diagram.delete",
+      "diagram.rotateCw",
+      "diagram.rotateCcw",
+      "diagram.flipHorizontal",
+      "diagram.flipVertical",
+    ];
+    for (const id of selectionOps) {
+      const when = command(id).when;
+      if (!when) throw new Error(`${id} should gate on selection`);
       expect(when(ctx())).toBe(true);
       expect(when(ctx({ selectionCount: 0, selectionKind: "none" }))).toBe(
         false,
       );
       expect(when(ctx({ readonly: true }))).toBe(false);
     }
+  });
+
+  it("deleteVertex gates on a right-clicked vertex; toggleSmooth on a poly selection", () => {
+    const del = command("diagram.deleteVertex").when;
+    const smooth = command("diagram.toggleSmooth").when;
+    if (!del || !smooth) throw new Error("missing gate");
+    // Neither fires off a plain selection.
+    expect(del(ctx())).toBe(false);
+    expect(smooth(ctx())).toBe(false);
+    // Each fires on its own context, and never when read-only.
+    expect(del(ctx({ vertexTarget: true }))).toBe(true);
+    expect(del(ctx({ vertexTarget: true, readonly: true }))).toBe(false);
+    expect(smooth(ctx({ polySelection: true }))).toBe(true);
+    expect(smooth(ctx({ polySelection: true, readonly: true }))).toBe(false);
+  });
+
+  it("deleteVertex parses its vertex key and drops that point", () => {
+    const polyLayout: DiagramLayout = {
+      ...layout(),
+      diagramLayers: [
+        {
+          from: "Demo",
+          shapes: [
+            {
+              kind: "line",
+              points: [
+                [0, 0],
+                [10, 0],
+                [20, 0],
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const t = spyTarget(polyLayout, []);
+    command("diagram.deleteVertex").run({
+      ...t,
+      contextVertex: "vtx:line:0/1",
+    });
+    expect(t.committed).toHaveLength(1);
+    expect(t.committed[0]?.diagramLayers[0]?.shapes[0]).toMatchObject({
+      points: [
+        [0, 0],
+        [20, 0],
+      ],
+    });
   });
 
   it("every default key binding resolves to a registered command", () => {

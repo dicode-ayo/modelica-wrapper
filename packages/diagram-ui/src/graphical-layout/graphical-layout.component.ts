@@ -1,4 +1,4 @@
-import type { Node } from "@babylonjs/core";
+import type { Container } from "pixi.js";
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { ContextProvider } from "@lit/context";
@@ -7,9 +7,11 @@ import type {
   ComponentInstance,
   ConnectorInstance,
   DiagramLayout,
+  IconLayer,
 } from "@dicode/omc-client";
 
-import { renderLayers } from "../primitives/render-shape.js";
+import { renderShape } from "../primitives/render-shape.js";
+import { lineThicknessScaleContext } from "../primitives/stroke-scale-context.js";
 import { buildSubstitutions } from "../label/build-substitutions.js";
 import "../scene/scene.component.js";
 import "../axis/grid-axis.component.js";
@@ -20,7 +22,7 @@ import "../label/label.component.js";
 import "../debug/perf-hud.component.js";
 import "../library-browser/library-browser.component.js";
 import "../context-menu/context-menu.component.js";
-import type { OmScene, EngineFactory } from "../scene/scene.component.js";
+import type { OmScene, RendererFactory } from "../scene/scene.component.js";
 import type { OmConnector } from "../connector/connector.component.js";
 import type { OmComponent } from "../component/component.component.js";
 import type { LibraryBrowserDataSource } from "../library-browser/library-browser.component.js";
@@ -38,6 +40,8 @@ import {
   applyEdgeSegmentDrag,
   applyResize,
   applyRotation,
+  applyShapeVertexDrag,
+  applyShapeVertexInsert,
   applySnapToExtents,
   applyWaypointDelete,
   applyWaypointDrag,
@@ -68,11 +72,15 @@ import {
   entityKeyForNode,
   formatComponentKey,
   formatConnectorKey,
+  formatShapeKey,
   isComponentKey,
   isConnectorKey,
   isEdgeKey,
   isJunctionKey,
+  isShapeKey,
   parseKey,
+  vertexKeyForEntity,
+  vertexShapeKey,
 } from "../interaction/node-keys.js";
 import type { LibraryEvents } from "../library-browser/library-browser.component.js";
 import {
@@ -101,21 +109,20 @@ import { emitEvent } from "../dom-event.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
 
 /**
- * World-z offset applied to the host class's own shapes so they sit
- * behind every component / connector but IN FRONT of the grid's
- * extent-rectangle (the white drawing-area plane). Stacking, camera
- * at -Z so larger z = farther:
+ * Paint-order offset for the host class's own shapes so they sit behind
+ * every component / connector but in front of the grid's extent rectangle.
+ * Uses the diagram z convention where more-negative is nearer the viewer
+ * (inverted into `zIndex` by `OmShapeNode`):
  *
- *   extent-rect  z = +0.10  (white background, drawn by `<om-grid-axis>`)
+ *   extent rect  z = +0.10  (white background, drawn by `<om-grid-axis>`)
  *   grid lines   z = +0.05
- *   host shapes  z = +0.025 ← us
- *   components   z =  0.0   (default `OmShapeNode` placement)
+ *   host shapes  z = +0.025 ← here
+ *   components   z =  0.0
  *
- * A value at +0.5 (the original guess) put host shapes well behind
- * the extent-rect — visible in scene.meshes but never painted because
- * the white plane occluded them on every frame.
+ * Shared by a shape's visual and its hit geometry so picks land in the same
+ * band and a component always wins a pick over a shape beneath it.
  */
-const HOST_SHAPE_Z_BIAS = 0.025;
+export const HOST_SHAPE_Z_BIAS = 0.025;
 
 interface BBox {
   minX: number;
@@ -221,10 +228,10 @@ export class OmGraphicalLayout extends LitElement {
   @property({ type: Boolean, reflect: true })
   readonly = false;
 
-  /** Optional engine factory forwarded to the inner `<om-scene>`. Used
-   *  by tests to inject a `NullEngine`. */
+  /** Optional renderer factory forwarded to the inner `<om-scene>`. Used
+   *  by tests to mount renderer-less (factory returns `null`). */
   @property({ attribute: false })
-  engineFactory: EngineFactory | undefined = undefined;
+  rendererFactory: RendererFactory | undefined = undefined;
 
   /** Optional picker factory. Defaults to `defaultPicker` (scene raycast);
    *  tests inject a deterministic picker so pointer gestures resolve to
@@ -232,7 +239,7 @@ export class OmGraphicalLayout extends LitElement {
   @property({ attribute: false })
   pickerFactory: PickerFactory | undefined = undefined;
 
-  /** Forwarded to `<om-scene>`: opens Babylon's Inspector when `true`. */
+  /** Forwarded to `<om-scene>`: enables verbose icon-rasteriser logging. */
   @property({ type: Boolean, reflect: true })
   debug = false;
 
@@ -246,10 +253,10 @@ export class OmGraphicalLayout extends LitElement {
   cameraMode: "2d" | "3d" = "2d";
 
   /**
-   * Stroke-width multiplier forwarded to every entity. Currently a
-   * no-op under the primitives renderer (line widths come straight
-   * from Modelica annotations); kept on the public API for forward-
-   * compat with hosts that already set it.
+   * Stroke-width multiplier published on `lineThicknessScaleContext`;
+   * descendant shape primitives multiply their solid stroke width by it,
+   * so one value scales every primitive stroke at once. `undefined` is the
+   * renderer default.
    */
   @property({ type: Number, attribute: "line-thickness-scale" })
   lineThicknessScale: number | undefined = undefined;
@@ -327,6 +334,10 @@ export class OmGraphicalLayout extends LitElement {
    *  that spot through pan/zoom). Null when the menu is closed. */
   private contextMenuAnchor: { x: number; y: number } | null = null;
 
+  /** The vertex wire key a right-click landed on — target for `Delete vertex`.
+   *  Set when the context menu opens on a vertex dot, cleared on close. */
+  private contextVertex: string | null = null;
+
   private modeRouter: ModeRouter | null = null;
   private dblClickPicker: PickerFn | null = null;
   private dblClickCanvas: HTMLCanvasElement | null = null;
@@ -361,12 +372,26 @@ export class OmGraphicalLayout extends LitElement {
   private readonly commands = new CommandRegistry(DIAGRAM_COMMANDS);
   private readonly keymap = DEFAULT_KEYMAP;
 
+  // Serves `lineThicknessScale` to every descendant shape primitive, which
+  // reads it from context inside `buildStroke`.
+  private readonly strokeScaleProvider = new ContextProvider(this, {
+    context: lineThicknessScaleContext,
+    initialValue: undefined,
+  });
+
   constructor() {
     super();
     new ContextProvider(this, {
       context: interactionStateContext,
       initialValue: this.interactionStore,
     });
+  }
+
+  override willUpdate(changed: Map<string, unknown>): void {
+    super.willUpdate(changed);
+    if (changed.has("lineThicknessScale")) {
+      this.strokeScaleProvider.setValue(this.lineThicknessScale);
+    }
   }
 
   override render(): TemplateResult {
@@ -379,7 +404,7 @@ export class OmGraphicalLayout extends LitElement {
     return html`
       <om-scene
         @om-view-change=${this.onViewChange}
-        .engineFactory=${this.engineFactory ?? undefined}
+        .rendererFactory=${this.rendererFactory ?? undefined}
         ?debug=${this.debug}
         camera-mode=${this.cameraMode}
         tabindex="0"
@@ -389,7 +414,7 @@ export class OmGraphicalLayout extends LitElement {
           .extent=${500}
           .coordinateSystem=${active.coordinateSystem ?? undefined}
         ></om-grid-axis>
-        ${this.renderHostShapes(active)}
+        ${this.renderHostShapes(active)} ${this.renderHostShapeEntities(active)}
         ${repeat(
           componentEntries,
           ([id]) => id,
@@ -444,7 +469,7 @@ export class OmGraphicalLayout extends LitElement {
     // Lit schedules child element updates *after* the parent's, so
     // when this fires the inner <om-scene> has been rendered into
     // our shadow DOM but its own `firstUpdated()` (where it mounts
-    // the Babylon engine + provides the scene context) hasn't run
+    // the Pixi renderer + provides the scene context) hasn't run
     // yet. Awaiting its updateComplete lets that finish before we
     // try to grab the picker / canvas — otherwise both come back
     // null and the InteractionManager / DragController never attach,
@@ -626,10 +651,55 @@ export class OmGraphicalLayout extends LitElement {
    * practice — the producer fills the one that matches the requested
    * view.
    */
+  /** The layer set the current view shows: `iconLayers` or `diagramLayers`. */
+  private activeLayers(layout: DiagramLayout): IconLayer[] {
+    return layout.kind === "icon" ? layout.iconLayers : layout.diagramLayers;
+  }
+
+  /**
+   * Paints the host's INHERITED (ancestor) shapes only, non-interactive.
+   * Own-layer shapes are drawn by their editable entity in
+   * `renderHostShapeEntities`, which owns both their visual and interaction.
+   */
   private renderHostShapes(layout: DiagramLayout): TemplateResult[] {
-    const layers =
-      layout.kind === "icon" ? layout.iconLayers : layout.diagramLayers;
-    return renderLayers(layers, HOST_SHAPE_Z_BIAS);
+    const out: TemplateResult[] = [];
+    let zOrder = 0;
+    for (const layer of this.activeLayers(layout)) {
+      const own = layer.from === layout.className;
+      for (const shape of layer.shapes) {
+        if (!own) {
+          out.push(renderShape(shape, zOrder, HOST_SHAPE_Z_BIAS));
+        }
+        // Count own shapes too so inherited shapes keep their cross-layer
+        // paint index; own shapes paint via renderHostShapeEntities.
+        zOrder++;
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The host's OWN drawn shapes (`from === className`) as editable entities —
+   * each its own `<om-*>` primitive owning its visual, hit geometry, and
+   * selection overlay. Inherited ancestor shapes stay non-interactive.
+   * `index` is the `shape:` key index.
+   */
+  private renderHostShapeEntities(layout: DiagramLayout): TemplateResult[] {
+    if (this.readonly) {
+      return [];
+    }
+    const own = this.activeLayers(layout).find(
+      (l) => l.from === layout.className,
+    );
+    if (!own) {
+      return [];
+    }
+    return own.shapes.map((shape, index) =>
+      renderShape(shape, index, HOST_SHAPE_Z_BIAS, {
+        index,
+        selected: this.selectedKeys.has(formatShapeKey(shape.kind, index)),
+      }),
+    );
   }
 
   /**
@@ -782,7 +852,7 @@ export class OmGraphicalLayout extends LitElement {
     if (!sceneEl || !ctx || !canvas) {
       return;
     }
-    const picker = (this.pickerFactory ?? defaultPicker)(ctx.scene, canvas);
+    const picker = (this.pickerFactory ?? defaultPicker)(ctx, canvas);
     this.modeRouter = new ModeRouter({
       canvas,
       picker,
@@ -791,7 +861,6 @@ export class OmGraphicalLayout extends LitElement {
       onInteraction: (type, detail) => this.onInteraction(type, detail),
       onDrag: (type, detail) => this.onDrag(type, detail),
       store: this.interactionStore,
-      scene: ctx.scene,
       overlayParent: ctx.diagramRoot,
       connectorPosition: (key) => this.connectorDiagramPosition(key),
       evaluateCompat: (from, toKey) => this.evaluateCompat(from, toKey),
@@ -830,10 +899,10 @@ export class OmGraphicalLayout extends LitElement {
       return;
     }
     const node = this.dblClickPicker(e.clientX, e.clientY);
-    // Double-clicking a connection edits its route: a hit on the edge
-    // line inserts a waypoint at the click; a hit on a junction disc
-    // deletes that waypoint.
-    if (node && this.handleWaypointDblClick(node, e)) {
+    // Double-clicking a polyline edits its vertices: a connection edge
+    // inserts a waypoint (a junction disc deletes one); a poly shape's
+    // line inserts a vertex at the click.
+    if (node && this.handlePolylineDblClick(node, e)) {
       return;
     }
     if (!this.libraryDataSource) {
@@ -854,18 +923,36 @@ export class OmGraphicalLayout extends LitElement {
   };
 
   /**
-   * Resolve a double-click on a connection's edge / junction into a
-   * waypoint insert / delete and commit it. Returns `true` when the
-   * gesture was consumed (so the library-browser path is skipped),
-   * `false` when the picked node isn't a connection.
+   * Resolve a double-click on a polyline into a vertex edit and commit it:
+   * a connection edge inserts a waypoint, a junction disc deletes one, and
+   * a poly host shape's line inserts a vertex at the click. Returns `true`
+   * when consumed (so the library-browser path is skipped), `false` when
+   * the picked node isn't an editable polyline.
    */
-  private handleWaypointDblClick(node: Node, e: MouseEvent): boolean {
+  private handlePolylineDblClick(node: Container, e: MouseEvent): boolean {
     if (!this.layout) {
       return false;
     }
     const entity = entityKeyForNode(node);
     if (!entity) {
       return false;
+    }
+    if (
+      isShapeKey(entity) &&
+      (entity.shapeKind === "line" || entity.shapeKind === "polygon")
+    ) {
+      const point = this.sceneEl?.clientToDiagram(e.clientX, e.clientY);
+      if (!point) {
+        return false;
+      }
+      this.commitLayout(
+        applyShapeVertexInsert(
+          this.layout,
+          formatShapeKey(entity.shapeKind, entity.index),
+          point,
+        ),
+      );
+      return true;
     }
     if (isEdgeKey(entity)) {
       // Edge nodeId is the connection index.
@@ -1045,7 +1132,12 @@ export class OmGraphicalLayout extends LitElement {
       case "contextMenu": {
         const d = detail as InteractionEvents["contextMenu"];
         this.emit("om-context-menu", d);
-        this.selectForContext(d.key);
+        // A right-click on a vertex dot targets that vertex (keeping the
+        // shape selected); anything else adjusts selection as usual.
+        this.contextVertex = this.resolveContextVertex(d.clientX, d.clientY);
+        if (!this.contextVertex) {
+          this.selectForContext(d.key);
+        }
         this.openContextMenu(d.clientX, d.clientY);
         return;
       }
@@ -1265,6 +1357,32 @@ export class OmGraphicalLayout extends LitElement {
         }
         return;
       }
+      case "vertexDrag": {
+        // Drag one vertex of a poly shape to the snapped pointer. Live
+        // preview on draft, persist on commit — same pipeline as resize.
+        const d = detail as DragEvents["vertexDrag"];
+        const vertex = parseKey(d.key);
+        if (!vertex || vertex.kind !== "vertex-handle") {
+          return;
+        }
+        const shapeKey = vertexShapeKey(vertex);
+        const { x, y } = snapPoint(d.x, d.y, this.currentSnapGrid());
+        const edited = applyShapeVertexDrag(
+          this.layout,
+          shapeKey,
+          vertex.vertexIndex,
+          x,
+          y,
+        );
+        if (d.draft) {
+          this.draftLayout = edited;
+          this.setInteractionState({ kind: "moving", keys: [shapeKey] });
+        } else {
+          this.commitLayout(edited);
+          this.endInteraction();
+        }
+        return;
+      }
     }
   }
 
@@ -1353,9 +1471,34 @@ export class OmGraphicalLayout extends LitElement {
     return {
       layout: this.layout,
       selectedKeys: this.selectedKeys,
+      contextVertex: this.contextVertex,
       commitLayout: (next) => this.commitLayout(next),
       setSelection: (keys) => this.setSelection(keys),
     };
+  }
+
+  /** Resolve a right-click position to the vertex wire key under it, if any. */
+  private resolveContextVertex(
+    clientX: number,
+    clientY: number,
+  ): string | null {
+    const node = this.dblClickPicker?.(clientX, clientY) ?? null;
+    const entity = node ? entityKeyForNode(node) : null;
+    return entity ? vertexKeyForEntity(entity) : null;
+  }
+
+  /** True when exactly one line / polygon host shape is selected. */
+  private singlePolyShapeSelected(): boolean {
+    if (this.selectedKeys.size !== 1) {
+      return false;
+    }
+    const [key] = this.selectedKeys;
+    const parsed = key ? parseKey(key) : null;
+    return (
+      !!parsed &&
+      isShapeKey(parsed) &&
+      (parsed.shapeKind === "line" || parsed.shapeKind === "polygon")
+    );
   }
 
   private commandContext(): ContextKeys {
@@ -1368,6 +1511,8 @@ export class OmGraphicalLayout extends LitElement {
         readonly: this.readonly,
         viewLayer: this.layout?.kind ?? "diagram",
         hasClipboard: false,
+        vertexTarget: this.contextVertex !== null,
+        polySelection: this.singlePolyShapeSelected(),
       },
     );
   }
@@ -1425,6 +1570,7 @@ export class OmGraphicalLayout extends LitElement {
 
   private readonly onContextMenuClose = (): void => {
     this.contextMenuAnchor = null;
+    this.contextVertex = null;
   };
 
   private readonly onContextMenuSelect = (

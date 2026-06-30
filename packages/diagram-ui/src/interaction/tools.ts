@@ -15,6 +15,14 @@ export type ToolId = "select" | DrawKind;
 export const EXTENT_KINDS: readonly ExtentKind[] = ["rectangle", "ellipse"];
 export const POLY_KINDS: readonly PolyKind[] = ["line", "polygon"];
 
+/** Vertices a poly shape must keep — a line stays a segment, a polygon a
+ *  triangle. Shared by the draw tool (when to allow finishing) and the
+ *  vertex editor (when to refuse a delete). */
+export const POLY_MIN_VERTICES: Record<PolyKind, number> = {
+  line: 2,
+  polygon: 3,
+};
+
 /** The extent shape a tool draws by press-drag, or `null` otherwise. Keyed on
  *  `EXTENT_KINDS` so a poly (or future) tool can't leak through as an
  *  `ExtentKind`. Takes a bare `string` so it also narrows a raw event value. */

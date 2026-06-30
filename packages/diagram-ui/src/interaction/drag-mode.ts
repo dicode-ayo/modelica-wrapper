@@ -1,4 +1,4 @@
-import { formatKey } from "./node-keys.js";
+import { formatKey, vertexKeyForEntity } from "./node-keys.js";
 import {
   MOVE_KINDS,
   ownerOfHandle,
@@ -40,6 +40,12 @@ interface RotateState {
   key: string;
 }
 
+interface VertexState {
+  kind: "vertex";
+  /** The vertex wire key (`vtx:<shapeKind>:<shapeIndex>/<vertexIndex>`). */
+  key: string;
+}
+
 interface EdgeState {
   kind: "edge";
   connIdx: number;
@@ -47,7 +53,12 @@ interface EdgeState {
   startY: number;
 }
 
-type DragState = MoveState | ResizeState | RotateState | EdgeState;
+type DragState =
+  | MoveState
+  | ResizeState
+  | RotateState
+  | VertexState
+  | EdgeState;
 
 /**
  * Manipulating existing entities: move (one or the whole selection),
@@ -101,6 +112,16 @@ export class DragMode implements GestureMode {
         y: pt.y,
         draft: true,
       });
+      return true;
+    }
+
+    if (entity.kind === "vertex-handle") {
+      const key = vertexKeyForEntity(entity);
+      if (!key) {
+        return false;
+      }
+      this.state = { kind: "vertex", key };
+      this.emit("vertexDrag", { key, x: pt.x, y: pt.y, draft: true });
       return true;
     }
 
@@ -170,6 +191,14 @@ export class DragMode implements GestureMode {
           x: pt.x,
           y: pt.y,
           free: e.shiftKey,
+          draft,
+        });
+        return;
+      case "vertex":
+        this.emit("vertexDrag", {
+          key: state.key,
+          x: pt.x,
+          y: pt.y,
           draft,
         });
         return;

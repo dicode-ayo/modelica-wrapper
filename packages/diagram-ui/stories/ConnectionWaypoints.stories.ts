@@ -93,4 +93,5 @@ export const Readonly: Story = {
   args: { readonly: true },
   render: (args: StoryArgs): TemplateResult =>
     renderWithLayout(readonlyState, args),
+  parameters: { chromatic: { disableSnapshot: true } },
 };

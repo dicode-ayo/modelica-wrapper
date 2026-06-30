@@ -17,6 +17,10 @@ export interface ContextEnv {
   readonly: boolean;
   viewLayer: "icon" | "diagram";
   hasClipboard: boolean;
+  /** A right-click landed on a poly vertex handle (enables vertex delete). */
+  vertexTarget: boolean;
+  /** The selection is a single line / polygon host shape (enables smooth). */
+  polySelection: boolean;
 }
 
 export interface ContextKeys {
@@ -27,6 +31,8 @@ export interface ContextKeys {
   readonly: boolean;
   viewLayer: "icon" | "diagram";
   hasClipboard: boolean;
+  vertexTarget: boolean;
+  polySelection: boolean;
 }
 
 export function deriveContextKeys(
@@ -42,6 +48,8 @@ export function deriveContextKeys(
     readonly: env.readonly,
     viewLayer: env.viewLayer,
     hasClipboard: env.hasClipboard,
+    vertexTarget: env.vertexTarget,
+    polySelection: env.polySelection,
   };
 }
 

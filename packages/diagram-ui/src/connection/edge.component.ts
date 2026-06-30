@@ -1,11 +1,12 @@
 import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { consume } from "@lit/context";
-import { Color3, type TransformNode } from "@babylonjs/core";
+import { Container } from "pixi.js";
 import type { Point } from "@dicode/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
-import { requestSceneRender } from "../scene/render-scheduler.js";
+import { sceneContext, type SceneContext } from "../scene/scene-context.js";
+import { tagEntity } from "../interaction/node-keys.js";
 import { pointsEqual } from "../interaction/connection-route.js";
 import {
   DEFAULT_EDGE_COLOR,
@@ -17,21 +18,19 @@ import {
 } from "./edge-build.js";
 
 /** Highlight colour applied to the visible line when the edge is selected. */
-const SELECTED_EDGE_COLOR = new Color3(0.24, 0.51, 0.96); // blue-500
+const SELECTED_EDGE_COLOR = 0x3d82f5; // blue-500
 
 /**
- * `<om-edge>` — renders a single connection route as a 1-pixel GL
- * `LinesMesh` (or `DashedLinesMesh` when `clocked`), plus an invisible
- * tube-shaped hit-area mesh so `scene.pick` can actually hit it.
+ * `<om-edge>` — renders a single connection route as a crisp 1-pixel
+ * `Graphics` polyline (dashed when `clocked`), plus an invisible
+ * follow-the-line hit band so `pick` can land on the thin stroke.
  *
  * Properties:
  *   - `path`     — diagram-coord waypoints (>=2 points)
  *   - `stroke`   — CSS-style `#rrggbb` colour, optional
  *   - `clocked`  — dashed pattern for synchronous-clock connections
- *   - `selected` — when true, the visible line switches to the
- *                  selected highlight colour
- *   - `hovered`  — when true, the pick tube is revealed as a
- *                  translucent band hugging the line
+ *   - `selected` — switches the visible line to the selection colour
+ *   - `hovered`  — reveals the pick band as a translucent hover ribbon
  */
 @customElement("om-edge")
 export class OmEdge extends LitElement {
@@ -49,15 +48,20 @@ export class OmEdge extends LitElement {
   @property({ type: Boolean }) hovered = false;
 
   @consume({ context: parentNodeContext, subscribe: true })
-  private parentTransform: TransformNode | null = null;
+  private parentTransform: Container | null = null;
+
+  @consume({ context: sceneContext, subscribe: true })
+  private sceneCtx: SceneContext | null = null;
 
   private meshes: EdgeMeshes | null = null;
-  private baseColor: Color3 = DEFAULT_EDGE_COLOR;
+  private baseColor: number = DEFAULT_EDGE_COLOR;
+  /** Selection state the line is currently drawn against; `null` forces a
+   *  re-stroke after a (re)build. */
+  private appliedSelected: boolean | null = null;
   /**
-   * Last waypoint list actually applied to the LinesMesh. Compared by
-   * content (not reference) so that an OMC-roundtripped layout that
-   * produces a fresh-but-equal `path` array is recognised as a no-op
-   * and skips the dispose/rebuild — see `pointsEqual` for the why.
+   * Last waypoint list the line was drawn against. Compared by content
+   * (not reference) so an OMC-roundtripped layout producing a fresh-but-
+   * equal `path` is a no-op — see `pointsEqual`.
    */
   private builtPath: Point[] | null = null;
 
@@ -66,11 +70,9 @@ export class OmEdge extends LitElement {
   }
 
   override updated(changed: Map<string, unknown>): void {
-    // Recreate the geometry on visual-option changes; for path-only
-    // changes prefer an in-place vertex update so a component drag
-    // (which shifts every connected edge's waypoints each pointermove)
-    // doesn't churn the GPU buffers. Selection is a colour swap on the
-    // existing mesh, never a rebuild.
+    // Visual-option changes recreate the geometry; path-only changes redraw
+    // in place so a component drag doesn't churn the scene graph. Selection
+    // is a colour re-stroke on the existing line, never a rebuild.
     const visualChanged =
       changed.has("stroke") || changed.has("clocked") || changed.has("nodeId");
     const pathChanged =
@@ -78,51 +80,30 @@ export class OmEdge extends LitElement {
     if (!this.meshes || visualChanged) {
       this.rebuild();
     } else if (pathChanged) {
-      if (!this.tryUpdateInPlace()) {
-        this.rebuild();
+      // A path that shrank below two points can't be drawn; tear the edge
+      // down rather than redrawing in place and leaving a stale stroke.
+      if (this.path.length < 2) {
+        this.disposeMeshes();
+        this.sceneCtx?.requestRender();
+      } else {
+        this.redrawInPlace();
       }
     }
     this.applySelection();
     this.applyHover();
   }
 
-  /**
-   * Update the vertex buffer of the existing LinesMesh without
-   * disposing it. Returns `false` when the new path has a different
-   * number of points than the existing mesh was built with — Babylon's
-   * `instance` parameter on `CreateLines` rejects topology changes, so
-   * the caller must fall back to a full rebuild in that case.
-   *
-   * The hit tube (invisible merged mesh) can't be updated this way and
-   * is rebuilt anyway. Because it's invisible the rebuild costs nothing
-   * visually, only a small GPU upload.
-   */
-  private tryUpdateInPlace(): boolean {
-    if (!this.meshes || !this.builtPath || !this.parentTransform) {
-      return false;
-    }
-    if (this.path.length !== this.builtPath.length) {
-      return false;
-    }
-    const scene = this.parentTransform.getScene();
-    updateEdgePoints(scene, this.meshes.line, this.path, this.clocked);
-    const meta = this.meshes.hitArea.metadata;
-    this.meshes.hitArea.dispose(false, true);
-    this.meshes.hitArea = rebuildHitTube(
-      scene,
-      this.parentTransform,
-      `om-edge:${this.nodeId || "anon"}.hit`,
-      this.path,
-    );
-    this.meshes.hitArea.metadata = meta;
-    this.builtPath = this.path;
-    requestSceneRender(scene);
-    return true;
-  }
-
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.disposeMeshes();
+  }
+
+  private edgeName(): string {
+    return `om-edge:${this.nodeId || "anon"}`;
+  }
+
+  private effectiveColor(): number {
+    return this.selected ? SELECTED_EDGE_COLOR : this.baseColor;
   }
 
   private rebuild(): void {
@@ -134,52 +115,86 @@ export class OmEdge extends LitElement {
       this.builtPath = null;
       return;
     }
-    const scene = this.parentTransform.getScene();
     this.baseColor = parseColor(this.stroke) ?? DEFAULT_EDGE_COLOR;
-    this.meshes = buildEdge(
-      scene,
-      this.parentTransform,
-      `om-edge:${this.nodeId || "anon"}`,
-      {
-        points: this.path,
-        clocked: this.clocked,
-        color: this.baseColor,
-      },
-    );
+    const name = this.edgeName();
+    this.meshes = buildEdge(this.parentTransform, name, {
+      points: this.path,
+      clocked: this.clocked,
+      color: this.effectiveColor(),
+    });
     if (this.meshes) {
-      const meta = { kind: "edge", nodeId: this.nodeId };
-      this.meshes.line.metadata = meta;
-      this.meshes.hitArea.metadata = meta;
+      tagEntity(this.meshes.line, "edge", this.nodeId);
+      tagEntity(this.meshes.hitArea, "edge", this.nodeId);
     }
     this.builtPath = this.path;
+    this.appliedSelected = this.selected;
+    this.sceneCtx?.requestRender();
+  }
+
+  /**
+   * Redraw the existing line against the new path and swap in a fresh hit
+   * band (its `hitArea` is recomputed from the points). The visible line
+   * keeps its identity tag; the band is re-tagged after the swap, so no
+   * manual metadata copy is needed.
+   */
+  private redrawInPlace(): void {
+    if (!this.meshes || !this.parentTransform) {
+      return;
+    }
+    updateEdgePoints(
+      this.meshes.line,
+      this.path,
+      this.effectiveColor(),
+      this.clocked,
+    );
+    this.meshes.hitArea.destroy();
+    const hit = rebuildHitTube(
+      this.parentTransform,
+      `${this.edgeName()}.hit`,
+      this.path,
+    );
+    tagEntity(hit, "edge", this.nodeId);
+    this.meshes.hitArea = hit;
+    this.builtPath = this.path;
+    this.appliedSelected = this.selected;
+    this.sceneCtx?.requestRender();
   }
 
   private applySelection(): void {
-    if (!this.meshes) {
+    if (!this.meshes || this.appliedSelected === this.selected) {
       return;
     }
-    this.meshes.line.color = this.selected
-      ? SELECTED_EDGE_COLOR
-      : this.baseColor;
-    requestSceneRender(this.meshes.line.getScene());
+    updateEdgePoints(
+      this.meshes.line,
+      this.path,
+      this.effectiveColor(),
+      this.clocked,
+    );
+    this.appliedSelected = this.selected;
+    this.sceneCtx?.requestRender();
   }
 
   private applyHover(): void {
     if (!this.meshes) {
       return;
     }
-    this.meshes.hitArea.visibility = this.hovered ? HIT_HOVER_OPACITY : 0;
-    requestSceneRender(this.meshes.hitArea.getScene());
+    const alpha = this.hovered ? HIT_HOVER_OPACITY : 0;
+    if (this.meshes.hitArea.alpha === alpha) {
+      return;
+    }
+    this.meshes.hitArea.alpha = alpha;
+    this.sceneCtx?.requestRender();
   }
 
   private disposeMeshes(): void {
     if (!this.meshes) {
       return;
     }
-    this.meshes.line.dispose(false, true);
-    this.meshes.hitArea.dispose(false, true);
+    this.meshes.line.destroy();
+    this.meshes.hitArea.destroy();
     this.meshes = null;
     this.builtPath = null;
+    this.appliedSelected = null;
   }
 
   /** Test accessors. */
@@ -188,20 +203,15 @@ export class OmEdge extends LitElement {
   }
 }
 
-function parseColor(input: string | undefined): Color3 | undefined {
+function parseColor(input: string | undefined): number | undefined {
   if (!input) {
     return undefined;
   }
-  const m = input.match(/^#?([0-9a-fA-F]{6})$/);
-  if (!m) {
+  const hex = input.match(/^#?([0-9a-fA-F]{6})$/)?.[1];
+  if (hex === undefined) {
     return undefined;
   }
-  const hex = m[1]!;
-  return new Color3(
-    parseInt(hex.slice(0, 2), 16) / 255,
-    parseInt(hex.slice(2, 4), 16) / 255,
-    parseInt(hex.slice(4, 6), 16) / 255,
-  );
+  return parseInt(hex, 16);
 }
 
 declare global {

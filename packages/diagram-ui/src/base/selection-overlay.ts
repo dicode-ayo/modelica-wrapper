@@ -1,208 +1,181 @@
-import {
-  Color3,
-  CreateGreasedLine,
-  HighlightLayer,
-  Mesh,
-  MeshBuilder,
-  StandardMaterial,
-  Vector3,
-  type AbstractMesh,
-  type ArcRotateCamera,
-  type Scene,
-  type TransformNode,
-} from "@babylonjs/core";
+import { Circle, Container, Graphics, Rectangle } from "pixi.js";
 
-import { requestSceneRender } from "../scene/render-scheduler.js";
-import { findOrthoCamera, worldScaleXY } from "../scene/ortho-camera.js";
-import { worldPerPixel } from "../scene/text-resolution.js";
-import type { EntityKind } from "../interaction/node-keys.js";
+import type { Point } from "@dicode/omc-client";
+
+import { worldScaleXY } from "../scene/ortho-camera.js";
+import { tagEntity, type EntityKind } from "../interaction/node-keys.js";
+import type { SceneContext } from "../scene/scene-context.js";
 
 /** Accent blue shared by the selection outline stroke and rotate handle. */
-const SELECTION_BLUE = new Color3(0.38, 0.6, 0.98);
+const SELECTION_BLUE = 0x6199fa;
+/** Near-white fill of the corner resize handles. */
+const HANDLE_FILL = 0xf5faff;
+/** Near-black of a poly vertex dot — matches the connection junction disc. */
+const VERTEX_DOT_COLOR = 0x1a1a2e;
+/** Vertex-dot radius in diagram units — matches the connection waypoint disc
+ *  (and the hit tube) so the dot is a real grab target that grows with zoom,
+ *  not a hard-to-hit screen-pixel speck the line-body drag wins over. */
+const VERTEX_DOT_RADIUS = 1.5;
+
+/** zIndex bands inside an entity container: outline over the icon, handles
+ *  over the outline (no depth buffer — higher draws on top, and the pick
+ *  returns the topmost interactive container). */
+const OUTLINE_Z_INDEX = 10;
+const HANDLE_Z_INDEX = 20;
+/** Highlight outline drawn above the highlighted container's own content. */
+const HIGHLIGHT_Z_INDEX = 1000;
 
 /**
- * Per-scene HighlightLayer with refcounted lifecycle.
+ * Per-scene highlight registry with refcounted lifecycle.
  *
- * Babylon's `HighlightLayer` runs render-to-texture + gaussian blur
- * passes every frame whenever the layer exists, even when no mesh is
- * currently highlighted. In software-rendered WebGL (Linux/VSCode with
- * hardware acceleration off) those passes dominate the frame budget.
- * The fix: create the layer only when the first mesh is added, dispose
- * it again when the last mesh leaves. With nothing selected, there is
- * no layer and no per-frame work.
+ * Pixi has no built-in glow pass, so a highlight is a hand-drawn outline
+ * traced around the target container's bounds. The registry is keyed by
+ * the stage container and maps each highlighted container to its outline
+ * `Graphics`, so a colour change recolours in place and a removal destroys
+ * the outline. Headless scenes (`renderer === null`) skip the visual — the
+ * `selected` state flag still drives behaviour, only the outline is absent.
  *
- * `NullEngine` doesn't support HighlightLayer (no stencil buffer), so
- * the helpers are no-ops there — headless tests still drive the
- * `selected` state flag on entities but skip the visual outline.
+ * `outlines` is a `WeakMap` so an entity destroyed while still highlighted
+ * (delete-while-hovered, no explicit clear) drops its entry instead of
+ * pinning the dead container for the life of the scene.
  */
-const STATE_KEY = "omHighlightState";
-
 interface HighlightState {
-  layer: HighlightLayer | null;
-  members: Set<Mesh>;
+  outlines: WeakMap<Container, Graphics>;
 }
 
-interface SceneMeta {
-  [STATE_KEY]?: HighlightState | undefined;
-}
+const highlightStates = new WeakMap<Container, HighlightState>();
 
-function getOrCreateState(scene: Scene): HighlightState | null {
-  if (scene.getEngine().constructor.name === "NullEngine") {
-    return null;
+function highlightStateFor(stage: Container): HighlightState {
+  let state = highlightStates.get(stage);
+  if (!state) {
+    state = { outlines: new WeakMap() };
+    highlightStates.set(stage, state);
   }
-  const md = (scene.metadata as SceneMeta | null | undefined) ?? {};
-  let state = md[STATE_KEY];
-  if (state) {
-    return state;
-  }
-  state = { layer: null, members: new Set() };
-  md[STATE_KEY] = state;
-  scene.metadata = md;
-  scene.onDisposeObservable.add(() => {
-    state!.layer?.dispose();
-    state!.layer = null;
-    state!.members.clear();
-    md[STATE_KEY] = undefined;
-  });
   return state;
 }
 
-function createHighlightLayer(scene: Scene): HighlightLayer {
-  const layer = new HighlightLayer("om-highlight", scene);
-  layer.innerGlow = false;
-  layer.outerGlow = true;
-  layer.blurHorizontalSize = 0.6;
-  layer.blurVerticalSize = 0.6;
-  return layer;
-}
-
 /**
- * Toggle a mesh's highlight outline. Passing `color` adds (or recolours)
- * the mesh; passing `null` removes it. The HighlightLayer itself is
- * lazily created on the first add and disposed when the last mesh is
- * removed — so a scene with no current selection pays zero per-frame
- * cost for the layer's post-processing passes.
+ * Toggle a container's highlight outline. Passing `color` adds (or
+ * recolours) the outline; passing `null` removes it. A no-op when the
+ * scene is renderer-less.
  */
-export function setMeshHighlight(
-  scene: Scene,
-  mesh: Mesh,
-  color: Color3 | null,
+export function setHighlight(
+  ctx: SceneContext,
+  target: Container,
+  color: number | null,
 ): void {
-  const state = getOrCreateState(scene);
-  if (!state) {
+  if (ctx.renderer === null) {
     return;
   }
+  const state = highlightStateFor(ctx.stage);
+  const existing = state.outlines.get(target);
+
   if (color === null) {
-    if (!state.members.has(mesh)) {
+    if (!existing) {
       return;
     }
-    state.layer?.removeMesh(mesh);
-    state.members.delete(mesh);
-    if (state.members.size === 0 && state.layer) {
-      state.layer.dispose();
-      state.layer = null;
-    }
-    requestSceneRender(scene);
+    existing.destroy();
+    state.outlines.delete(target);
+    ctx.requestRender();
     return;
   }
-  if (!state.layer) {
-    state.layer = createHighlightLayer(scene);
+
+  const outline = existing ?? new Graphics({ label: "om-highlight" });
+  if (!existing) {
+    outline.eventMode = "none";
+    outline.zIndex = HIGHLIGHT_Z_INDEX;
+    target.addChild(outline);
+    state.outlines.set(target, outline);
   }
-  // HighlightLayer keys by mesh, so a colour change is remove-then-add.
-  if (state.members.has(mesh)) {
-    state.layer.removeMesh(mesh);
-  }
-  state.layer.addMesh(mesh, color);
-  state.members.add(mesh);
-  requestSceneRender(scene);
+  drawHighlight(outline, target, color, ctx.worldPerPixel());
+  ctx.requestRender();
+}
+
+function drawHighlight(
+  outline: Graphics,
+  target: Container,
+  color: number,
+  worldPerPixel: number,
+): void {
+  // Clear before measuring so the (cleared) outline contributes no bounds
+  // and can't feed its own width back into the traced rectangle.
+  outline.clear();
+  const b = target.getLocalBounds();
+  const s = worldScaleXY(target);
+  const widthLocal = (3 * worldPerPixel) / Math.sqrt(s.x * s.y);
+  const pad = widthLocal;
+  outline
+    .rect(b.x - pad, b.y - pad, b.width + 2 * pad, b.height + 2 * pad)
+    .stroke({ width: widthLocal, color, alignment: 0.5 });
 }
 
 /**
- * Crisp rectangular outline around a shape's icon extent. Built from
- * a single closed `GreasedLine`, so we get a multi-pixel-wide stroke
- * without the gaussian-blur shimmer the old `HighlightLayer` produced
- * over a field of opaque primitive meshes. Cheap to create and dispose;
- * rebuilt on size change the same way `ResizeHandles` is.
+ * Crisp rectangular outline around a shape's icon extent. A single closed
+ * `Graphics` rect stroke; the 4-unit width is in world units so it rides the
+ * view transform and zoom-attenuates. Cheap to create and dispose; redrawn
+ * on size change the same way `ResizeHandles` is.
  */
 export class SelectionOutline {
-  private line: AbstractMesh;
+  private readonly outline: Graphics;
 
   constructor(
-    private readonly scene: Scene,
-    private readonly parent: TransformNode,
+    private readonly ctx: SceneContext,
+    parent: Container,
     iconWidth: number,
     iconHeight: number,
     iconCx: number,
     iconCy: number,
-    private color: Color3 = SELECTION_BLUE,
-    private widthPx: number = 4,
+    private readonly color: number = SELECTION_BLUE,
+    private readonly widthUnits: number = 4,
   ) {
-    this.line = this.build(iconWidth, iconHeight, iconCx, iconCy);
+    this.outline = new Graphics({ label: "om-selection-outline" });
+    this.outline.eventMode = "none";
+    this.outline.zIndex = OUTLINE_Z_INDEX;
+    this.outline.visible = false;
+    parent.addChild(this.outline);
+    this.draw(iconWidth, iconHeight, iconCx, iconCy);
   }
 
-  private build(
+  private draw(
     iconWidth: number,
     iconHeight: number,
     iconCx: number,
     iconCy: number,
-  ): AbstractMesh {
-    const x0 = iconCx - iconWidth / 2;
-    const x1 = iconCx + iconWidth / 2;
-    const y0 = iconCy - iconHeight / 2;
-    const y1 = iconCy + iconHeight / 2;
-    // Slight -Z bias keeps the outline above the icon primitives (camera
-    // sits on +Z). One step closer than the resize handles' -0.02 so
-    // the corner handles still paint on top of the outline.
-    const z = -0.01;
-    const points = [
-      new Vector3(x0, y0, z),
-      new Vector3(x1, y0, z),
-      new Vector3(x1, y1, z),
-      new Vector3(x0, y1, z),
-      new Vector3(x0, y0, z),
-    ];
-    const line = CreateGreasedLine(
-      "om-selection-outline",
-      { points },
-      {
-        width: this.widthPx,
-        sizeAttenuation: true,
-        color: this.color,
-      },
-      this.scene,
-    );
-    line.parent = this.parent;
-    line.isPickable = false;
-    line.isVisible = false;
-    return line;
+  ): void {
+    this.outline.clear();
+    this.outline
+      .rect(
+        iconCx - iconWidth / 2,
+        iconCy - iconHeight / 2,
+        iconWidth,
+        iconHeight,
+      )
+      .stroke({ width: this.widthUnits, color: this.color, alignment: 0.5 });
   }
 
-  /** Rebuild geometry after the icon extent changes. */
+  /** Redraw geometry after the icon extent changes. */
   resize(
     iconWidth: number,
     iconHeight: number,
     iconCx: number,
     iconCy: number,
   ): void {
-    const wasVisible = this.line.isVisible;
-    this.line.dispose();
-    this.line = this.build(iconWidth, iconHeight, iconCx, iconCy);
-    this.line.isVisible = wasVisible;
-    if (wasVisible) {
-      requestSceneRender(this.scene);
+    this.draw(iconWidth, iconHeight, iconCx, iconCy);
+    if (this.outline.visible) {
+      this.ctx.requestRender();
     }
   }
 
   setVisible(visible: boolean): void {
-    if (this.line.isVisible === visible) {
+    if (this.outline.visible === visible) {
       return;
     }
-    this.line.isVisible = visible;
-    requestSceneRender(this.scene);
+    this.outline.visible = visible;
+    this.ctx.requestRender();
   }
 
   dispose(): void {
-    this.line.dispose();
+    this.outline.destroy();
   }
 }
 
@@ -212,24 +185,18 @@ export class SelectionOutline {
  * view change — zoom or pan).
  */
 export class ResizeHandles {
-  private readonly handles: Mesh[] = [];
-  private readonly material: StandardMaterial;
+  private readonly handles: Graphics[] = [];
   private currentVisible = false;
 
   constructor(
-    private readonly scene: Scene,
-    private readonly parent: TransformNode,
+    private readonly ctx: SceneContext,
+    private readonly parent: Container,
     iconWidth: number,
     iconHeight: number,
     iconCx: number,
     iconCy: number,
     private readonly handlePixelSize: number = 8,
-    private readonly camera: ArcRotateCamera | null = null,
   ) {
-    this.material = new StandardMaterial("om-handle-mat", scene);
-    this.material.disableLighting = true;
-    this.material.emissiveColor = new Color3(0.96, 0.98, 1);
-
     const corners: Array<["tl" | "tr" | "br" | "bl", number, number]> = [
       ["tl", iconCx - iconWidth / 2, iconCy + iconHeight / 2],
       ["tr", iconCx + iconWidth / 2, iconCy + iconHeight / 2],
@@ -237,19 +204,16 @@ export class ResizeHandles {
       ["bl", iconCx - iconWidth / 2, iconCy - iconHeight / 2],
     ];
     for (const [corner, lx, ly] of corners) {
-      const handle = MeshBuilder.CreatePlane(
-        `om-handle:${corner}`,
-        { width: 1, height: 1 },
-        scene,
-      );
-      handle.material = this.material;
-      handle.parent = parent;
-      // Negative z = closer to camera (sits at -Z) so resize handles
-      // paint on top of every other entity.
-      handle.position.set(lx, ly, -0.02);
-      handle.isVisible = false;
-      handle.isPickable = true;
-      handle.metadata = { kind: "handle", nodeId: corner };
+      // Unit square scaled to a screen-constant pixel size by `rescale()`.
+      const handle = new Graphics();
+      handle.rect(-0.5, -0.5, 1, 1).fill(HANDLE_FILL);
+      handle.position.set(lx, ly);
+      handle.zIndex = HANDLE_Z_INDEX;
+      handle.visible = false;
+      handle.eventMode = "static";
+      handle.hitArea = new Rectangle(-0.5, -0.5, 1, 1);
+      tagEntity(handle, "handle", corner);
+      this.parent.addChild(handle);
       this.handles.push(handle);
     }
   }
@@ -257,12 +221,12 @@ export class ResizeHandles {
   setVisible(visible: boolean): void {
     this.currentVisible = visible;
     for (const h of this.handles) {
-      h.isVisible = visible;
+      h.visible = visible;
     }
     if (visible) {
       this.rescale();
     }
-    requestSceneRender(this.scene);
+    this.ctx.requestRender();
   }
 
   isVisible(): boolean {
@@ -271,36 +235,24 @@ export class ResizeHandles {
 
   dispose(): void {
     for (const h of this.handles) {
-      h.dispose();
+      h.destroy();
     }
     this.handles.length = 0;
-    this.material.dispose();
   }
 
   /**
-   * Resize handles to a constant screen-pixel size given the camera's
-   * current orthographic extents. Call after any change that affects
-   * `worldPerPixel` — zoom or canvas resize. No-op while invisible.
+   * Resize handles to a constant screen-pixel size. Call after any change
+   * that affects the world-per-pixel ratio — zoom or canvas resize. No-op
+   * while invisible.
    */
   rescale(): void {
     if (!this.currentVisible) {
       return;
     }
-    const camera = this.camera ?? findOrthoCamera(this.scene);
-    if (!camera) {
-      return;
-    }
-    const engine = this.scene.getEngine();
-    const canvasW = engine.getRenderWidth() || 1;
-    const wpp = worldPerPixel(
-      camera.orthoLeft ?? -1,
-      camera.orthoRight ?? 1,
-      canvasW,
-    );
-    const size = this.handlePixelSize * wpp;
-    const parentScale = worldScaleXY(this.parent);
+    const size = this.handlePixelSize * this.ctx.worldPerPixel();
+    const s = worldScaleXY(this.parent);
     for (const h of this.handles) {
-      h.scaling.set(size / parentScale.x, size / parentScale.y, 1);
+      h.scale.set(size / s.x, size / s.y);
     }
   }
 }
@@ -314,73 +266,51 @@ export class ResizeHandles {
 const ROTATE_HANDLE_GAP_FRACTION = 0.2;
 
 /**
- * Single rotate affordance for a shape node. A pickable disc floating
- * just above the shape's top edge. Picking it starts a rotate-drag
- * gesture (see `DragController`'s rotate branch); the mesh carries
- * `metadata.kind = "rotate-handle"` so the picker walks up to the
- * owning shape.
- *
- * The disc is sized in screen pixels (kept constant by `rescale()`), but
- * its gap above the edge is icon-relative so it scales with the component.
+ * Single rotate affordance for a shape node: a pickable disc floating just
+ * above the shape's top edge. It carries a `rotate-handle` identity tag so
+ * the picker walks up to the owning shape; picking it starts a rotate-drag
+ * gesture. Sized in screen pixels (kept constant by `rescale()`), but its
+ * gap above the edge is icon-relative so it scales with the component.
  */
 export class RotateHandle {
-  private readonly handle: Mesh;
-  private readonly material: StandardMaterial;
+  private readonly handle: Graphics;
   private currentVisible = false;
-  private readonly topEdgeY: number;
-  private readonly anchorX: number;
-  private readonly gapLocal: number;
 
   // Signature mirrors ResizeHandles / SelectionOutline so OmShapeNode
   // constructs all three identically; the single top-centre handle
   // doesn't need the width.
   constructor(
-    private readonly scene: Scene,
-    private readonly parent: TransformNode,
+    private readonly ctx: SceneContext,
+    private readonly parent: Container,
     _iconWidth: number,
     iconHeight: number,
     iconCx: number,
     iconCy: number,
     private readonly handlePixelSize: number = 10,
-    private readonly camera: ArcRotateCamera | null = null,
   ) {
-    this.material = new StandardMaterial("om-rotate-handle-mat", scene);
-    this.material.disableLighting = true;
-    this.material.emissiveColor = SELECTION_BLUE;
+    const topEdgeY = iconCy + iconHeight / 2;
+    const gapLocal = iconHeight * ROTATE_HANDLE_GAP_FRACTION;
 
-    this.topEdgeY = iconCy + iconHeight / 2;
-    this.anchorX = iconCx;
-    this.gapLocal = iconHeight * ROTATE_HANDLE_GAP_FRACTION;
-
-    this.handle = MeshBuilder.CreateDisc(
-      "om-rotate-handle",
-      { radius: 0.5, tessellation: 24 },
-      scene,
-    );
-    this.handle.material = this.material;
-    this.handle.parent = parent;
-    this.handle.position.set(
-      this.anchorX,
-      this.topEdgeY + this.gapLocal,
-      -0.02,
-    );
-    this.handle.isVisible = false;
-    this.handle.isPickable = true;
-    // nodeId is inert here — `entityKeyForNode` resolves the owning shape
-    // by walking the parent chain, so any value works.
-    this.handle.metadata = {
-      kind: "rotate-handle" satisfies EntityKind,
-      nodeId: "rotate",
-    };
+    this.handle = new Graphics();
+    this.handle.circle(0, 0, 0.5).fill(SELECTION_BLUE);
+    this.handle.position.set(iconCx, topEdgeY + gapLocal);
+    this.handle.zIndex = HANDLE_Z_INDEX;
+    this.handle.visible = false;
+    this.handle.eventMode = "static";
+    this.handle.hitArea = new Circle(0, 0, 0.5);
+    // nodeId is inert — `entityKeyForNode` resolves the owning shape by
+    // walking the parent chain, so any value works.
+    tagEntity(this.handle, "rotate-handle", "rotate");
+    this.parent.addChild(this.handle);
   }
 
   setVisible(visible: boolean): void {
     this.currentVisible = visible;
-    this.handle.isVisible = visible;
+    this.handle.visible = visible;
     if (visible) {
       this.rescale();
     }
-    requestSceneRender(this.scene);
+    this.ctx.requestRender();
   }
 
   isVisible(): boolean {
@@ -388,33 +318,82 @@ export class RotateHandle {
   }
 
   dispose(): void {
-    this.handle.dispose();
-    this.material.dispose();
+    this.handle.destroy();
   }
 
   /**
-   * Size the disc to a constant screen-pixel diameter given the camera's
-   * current orthographic extents. The gap above the edge is icon-relative
-   * and fixed at construction, so only the diameter tracks zoom. No-op
-   * while invisible.
+   * Size the disc to a constant screen-pixel diameter. The gap above the
+   * edge is icon-relative and fixed at construction, so only the diameter
+   * tracks zoom. No-op while invisible.
    */
   rescale(): void {
     if (!this.currentVisible) {
       return;
     }
-    const camera = this.camera ?? findOrthoCamera(this.scene);
-    if (!camera) {
-      return;
-    }
-    const engine = this.scene.getEngine();
-    const canvasW = engine.getRenderWidth() || 1;
-    const wpp = worldPerPixel(
-      camera.orthoLeft ?? -1,
-      camera.orthoRight ?? 1,
-      canvasW,
-    );
-    const size = this.handlePixelSize * wpp;
-    const parentScale = worldScaleXY(this.parent);
-    this.handle.scaling.set(size / parentScale.x, size / parentScale.y, 1);
+    const size = this.handlePixelSize * this.ctx.worldPerPixel();
+    const s = worldScaleXY(this.parent);
+    this.handle.scale.set(size / s.x, size / s.y);
   }
+}
+
+/**
+ * Per-vertex drag handles for a poly (line / polygon) shape. One small
+ * pickable disc sits on each vertex; picking one starts a vertex-drag
+ * gesture. Each carries a `vertex-handle` tag with a self-describing
+ * `nodeId` of `${ownerId}/${vertexIndex}` (e.g. `line:1/2`). Positions are
+ * the shape's own `points` — valid only because a poly host shape uses an
+ * identity diagram frame (the parent sits at the shape origin, unscaled),
+ * so a point coordinate is already the handle's local position.
+ */
+export class VertexHandles {
+  private readonly handles: Graphics[] = [];
+  private currentVisible = false;
+
+  constructor(
+    private readonly ctx: SceneContext,
+    parent: Container,
+    points: ReadonlyArray<Point>,
+    ownerId: string,
+  ) {
+    points.forEach(([x, y], i) => {
+      // Diagram-unit disc matching the connection junction — a grab target
+      // that scales with zoom (the entity's poly frame is unscaled).
+      const handle = new Graphics();
+      handle.circle(0, 0, VERTEX_DOT_RADIUS).fill(VERTEX_DOT_COLOR);
+      handle.position.set(x, y);
+      handle.zIndex = HANDLE_Z_INDEX;
+      handle.visible = false;
+      handle.eventMode = "static";
+      handle.hitArea = new Circle(0, 0, VERTEX_DOT_RADIUS);
+      tagEntity(
+        handle,
+        "vertex-handle" satisfies EntityKind,
+        `${ownerId}/${i}`,
+      );
+      parent.addChild(handle);
+      this.handles.push(handle);
+    });
+  }
+
+  setVisible(visible: boolean): void {
+    this.currentVisible = visible;
+    for (const h of this.handles) {
+      h.visible = visible;
+    }
+    this.ctx.requestRender();
+  }
+
+  isVisible(): boolean {
+    return this.currentVisible;
+  }
+
+  dispose(): void {
+    for (const h of this.handles) {
+      h.destroy();
+    }
+    this.handles.length = 0;
+  }
+
+  /** No-op: the dots are diagram-sized, so they track zoom on their own. */
+  rescale(): void {}
 }

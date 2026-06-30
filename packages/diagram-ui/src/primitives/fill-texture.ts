@@ -1,24 +1,18 @@
-import {
-  DynamicTexture,
-  Texture,
-  type Scene,
-  type BaseTexture,
-} from "@babylonjs/core";
+import { CanvasSource, Texture, TextureStyle, type Renderer } from "pixi.js";
 import type { FillSpec, HatchSpec } from "@dicode/diagram-svg";
 import { LruCache } from "../lru-cache.js";
 
 /**
- * Bakes a renderer-neutral `FillSpec` (gradient or hatch) to a Babylon
- * `DynamicTexture` for the diagram-layer's native meshes. Mirrors the
- * `<om-text>` DynamicTexture pattern and the icon-cache's per-scene
- * deduplication: identical fills collapse to one GPU texture.
+ * Bakes a renderer-neutral `FillSpec` (gradient or hatch) to a Pixi `Texture`
+ * for the diagram-layer's native `Graphics` fills. Identical fills collapse to
+ * one GPU texture via a per-renderer LRU.
  *
  * Gradients bake a `CanvasGradient` onto a square canvas mapped over the
- * shape's UVs. Hatches bake a small `spacing × spacing` tile drawn once and
- * tiled with `WRAP` addressing, so the line density stays fixed in icon units
- * and crisp under zoom rather than stretching with the shape.
+ * shape's bbox. Hatches bake a small `spacing × spacing` tile drawn once and
+ * tiled with `repeat` addressing, so the line density stays fixed in icon
+ * units and crisp under zoom rather than stretching with the shape.
  *
- * Solid / none specs return `null` — the caller keeps its flat material.
+ * Solid / none specs return `null` — the caller keeps its flat fill.
  */
 
 const GRADIENT_TEXTURE_EDGE = 128;
@@ -27,78 +21,97 @@ const GRADIENT_TEXTURE_EDGE = 128;
 const HATCH_PIXELS_PER_UNIT = 8;
 
 /**
- * Maximum number of baked `DynamicTexture`s kept in the scene-level LRU. Each
- * entry costs GPU memory proportional to its canvas size, so this cap bounds
- * diagrams with many distinct hatch aspects (one cache key per aspect). Evicted
- * textures are deferred until scene teardown — not disposed immediately —
- * because mesh materials may still reference them between renders.
+ * Maximum number of baked `Texture`s kept per-renderer. Each entry costs GPU
+ * memory proportional to its canvas size, so this cap bounds diagrams with many
+ * distinct hatch aspects (one cache key per aspect). Evicted textures are
+ * deferred — not destroyed immediately — because live `Graphics` fills may
+ * still reference them between renders; they are released by
+ * {@link destroyFillTextureCache} on renderer teardown.
  */
 export const FILL_TEXTURE_CACHE_CAPACITY = 256;
 
-const SCENE_META_KEY = "omFillTextureCache";
-
-interface SceneMeta {
-  [SCENE_META_KEY]?: LruCache<string, DynamicTexture> | undefined;
+interface FillCache {
+  lru: LruCache<string, Texture>;
+  evicted: Texture[];
 }
+
+const caches = new WeakMap<Renderer, FillCache>();
+/** Cache for the renderer-less (headless) path, where textures are built
+ *  CPU-side without a GPU upload. */
+let headlessCache: FillCache | null = null;
 
 /**
  * Resolve (and cache) the baked fill texture for `spec`. Returns `null` for
  * `solid` / `none` specs, and when the canvas 2D context is unavailable.
  *
- * `aspect` (mesh width / height) keys the hatch path so a tile baked for one
+ * `aspect` (shape width / height) keys the hatch path so a tile baked for one
  * shape isn't reused at a different aspect. Gradients bake to a fixed square
  * and are aspect-independent, so they omit it and share one texture across
  * differently-proportioned shapes.
  */
 export function resolveFillTexture(
-  scene: Scene,
+  renderer: Renderer | null,
   spec: FillSpec,
   aspect: number,
-): BaseTexture | null {
+): Texture | null {
   if (spec.kind === "solid" || spec.kind === "none") {
     return null;
   }
-  const cache = ensureCache(scene);
+  const cache = ensureCache(renderer);
   const key = fillCacheKey(spec, aspect);
-  const hit = cache.get(key);
+  const hit = cache.lru.get(key);
   if (hit) {
     return hit;
   }
-  const texture =
-    spec.kind === "hatch" ? bakeHatch(scene, spec) : bakeGradient(scene, spec);
+  const texture = spec.kind === "hatch" ? bakeHatch(spec) : bakeGradient(spec);
   if (!texture) {
     return null;
   }
-  cache.set(key, texture);
+  cache.lru.set(key, texture);
   return texture;
 }
 
-function ensureCache(scene: Scene): LruCache<string, DynamicTexture> {
-  const metadata = (scene.metadata as SceneMeta | null | undefined) ?? {};
-  const existing = metadata[SCENE_META_KEY];
-  if (existing) {
-    return existing;
+/** Release every baked texture (cached + deferred-evicted) for `renderer`.
+ *  Call on renderer teardown. */
+export function destroyFillTextureCache(renderer: Renderer | null): void {
+  const cache = renderer ? caches.get(renderer) : headlessCache;
+  if (!cache) {
+    return;
   }
-  // Textures evicted from the LRU are still referenced by mesh materials, so
-  // we defer disposal to scene teardown rather than disposing immediately.
-  const evictedPending: DynamicTexture[] = [];
-  const cache = new LruCache<string, DynamicTexture>(
-    FILL_TEXTURE_CACHE_CAPACITY,
-    (_key, tex) => evictedPending.push(tex),
-  );
-  metadata[SCENE_META_KEY] = cache;
-  scene.metadata = metadata;
-  scene.onDisposeObservable.add(() => {
-    for (const tex of cache.values()) {
-      tex.dispose();
-    }
-    for (const tex of evictedPending) {
-      tex.dispose();
-    }
-    cache.clear();
-    metadata[SCENE_META_KEY] = undefined;
-  });
+  for (const tex of cache.lru.values()) {
+    tex.destroy(true);
+  }
+  for (const tex of cache.evicted) {
+    tex.destroy(true);
+  }
+  cache.lru.clear();
+  cache.evicted.length = 0;
+  if (renderer) {
+    caches.delete(renderer);
+  } else {
+    headlessCache = null;
+  }
+}
+
+function ensureCache(renderer: Renderer | null): FillCache {
+  if (!renderer) {
+    return (headlessCache ??= makeCache());
+  }
+  let cache = caches.get(renderer);
+  if (!cache) {
+    cache = makeCache();
+    caches.set(renderer, cache);
+  }
   return cache;
+}
+
+function makeCache(): FillCache {
+  const evicted: Texture[] = [];
+  const lru = new LruCache<string, Texture>(
+    FILL_TEXTURE_CACHE_CAPACITY,
+    (_key, tex) => evicted.push(tex),
+  );
+  return { lru, evicted };
 }
 
 export function fillCacheKey(
@@ -116,20 +129,37 @@ export function fillCacheKey(
   return `linear|${spec.x1},${spec.y1},${spec.x2},${spec.y2}|${stops}`;
 }
 
-function bakeGradient(scene: Scene, spec: FillSpec): DynamicTexture | null {
+function makeCanvas(width: number, height: number): HTMLCanvasElement | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
+
+function textureFromCanvas(
+  canvas: HTMLCanvasElement,
+  repeat: boolean,
+): Texture {
+  const source = new CanvasSource({ resource: canvas });
+  source.style = new TextureStyle({
+    scaleMode: "linear",
+    addressModeU: repeat ? "repeat" : "clamp-to-edge",
+    addressModeV: repeat ? "repeat" : "clamp-to-edge",
+  });
+  return new Texture({ source });
+}
+
+function bakeGradient(spec: FillSpec): Texture | null {
   if (spec.kind !== "linear-gradient" && spec.kind !== "radial-gradient") {
     return null;
   }
   const size = GRADIENT_TEXTURE_EDGE;
-  const texture = new DynamicTexture(
-    "om-fill.gradient",
-    { width: size, height: size },
-    scene,
-    true,
-  );
-  const ctx = texture.getContext() as CanvasRenderingContext2D | null;
-  if (!ctx) {
-    texture.dispose();
+  const canvas = makeCanvas(size, size);
+  const ctx = canvas?.getContext("2d");
+  if (!canvas || !ctx) {
     return null;
   }
   const gradient =
@@ -153,23 +183,14 @@ function bakeGradient(scene: Scene, spec: FillSpec): DynamicTexture | null {
   }
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, size, size);
-  texture.update();
-  texture.wrapU = Texture.CLAMP_ADDRESSMODE;
-  texture.wrapV = Texture.CLAMP_ADDRESSMODE;
-  return texture;
+  return textureFromCanvas(canvas, false);
 }
 
-function bakeHatch(scene: Scene, spec: HatchSpec): DynamicTexture | null {
+function bakeHatch(spec: HatchSpec): Texture | null {
   const tile = Math.max(2, Math.round(spec.spacing * HATCH_PIXELS_PER_UNIT));
-  const texture = new DynamicTexture(
-    "om-fill.hatch",
-    { width: tile, height: tile },
-    scene,
-    true,
-  );
-  const ctx = texture.getContext() as CanvasRenderingContext2D | null;
-  if (!ctx) {
-    texture.dispose();
+  const canvas = makeCanvas(tile, tile);
+  const ctx = canvas?.getContext("2d");
+  if (!canvas || !ctx) {
     return null;
   }
   ctx.fillStyle = rgb(spec.background);
@@ -179,12 +200,7 @@ function bakeHatch(scene: Scene, spec: HatchSpec): DynamicTexture | null {
   ctx.beginPath();
   drawHatchLines(ctx, spec.direction, tile);
   ctx.stroke();
-  texture.update();
-  // WRAP so the small tile repeats over the shape's UVs at a fixed icon-unit
-  // density rather than stretching to fill.
-  texture.wrapU = Texture.WRAP_ADDRESSMODE;
-  texture.wrapV = Texture.WRAP_ADDRESSMODE;
-  return texture;
+  return textureFromCanvas(canvas, true);
 }
 
 function drawHatchLines(

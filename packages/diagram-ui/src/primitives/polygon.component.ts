@@ -1,15 +1,15 @@
 import { customElement, property } from "lit/decorators.js";
-import type { TransformNode } from "@babylonjs/core";
+import type { Container } from "pixi.js";
 import type { PolygonShape } from "@dicode/omc-client";
 import { fillSpec } from "@dicode/diagram-svg";
 
-import { OmShapePrimitive } from "./shape-primitive.js";
+import { OmShapePrimitive, type EntityBounds } from "./shape-primitive.js";
 import {
   DEFAULT_LINE_COLOR,
   STROKE_Z_DELTA,
   buildFilledPolygon,
   buildStroke,
-  graphicItemNode,
+  pointsExtent,
   stripClosingDuplicate,
 } from "./shape-utils.js";
 
@@ -27,20 +27,47 @@ export class OmPolygon extends OmShapePrimitive {
     return JSON.stringify(this.shape);
   }
 
-  protected override buildMeshes(parent: TransformNode, z: number): void {
+  protected override entityKind(): string {
+    return "polygon";
+  }
+
+  protected override entityBounds(): EntityBounds | null {
+    const s = this.shape;
+    if (!s || s.points.length < 3) {
+      return null;
+    }
+    return {
+      extent: pointsExtent(s.points),
+      origin: s.origin,
+      rotation: s.rotation,
+      points: s.points,
+    };
+  }
+
+  protected override buildMeshes(
+    parent: Container,
+    z: number,
+    inEntityFrame = false,
+  ): void {
     const s = this.shape;
     if (!s) {
       return;
     }
-    const scene = parent.getScene();
     const points = stripClosingDuplicate(s.points);
-    if (points.length < 3) {
+    const first = points[0];
+    if (points.length < 3 || first === undefined) {
       return;
     }
 
+    const renderer = this.renderer();
     const baseName = `om-polygon.${this.zOrder}`;
-    const gi = graphicItemNode(parent, s, `${baseName}.gi`);
-    const root = gi.node;
+    const root = this.graphicRoot(
+      parent,
+      s,
+      `${baseName}.gi`,
+      inEntityFrame,
+      z,
+    );
     const fill = fillSpec({
       fillColor: s.fillColor,
       lineColor: s.lineColor,
@@ -48,7 +75,7 @@ export class OmPolygon extends OmShapePrimitive {
     });
     if (fill.kind !== "none") {
       const filled = buildFilledPolygon(
-        scene,
+        renderer,
         root,
         points,
         fill,
@@ -60,20 +87,20 @@ export class OmPolygon extends OmShapePrimitive {
       }
     }
 
-    const strokePoints = [...points, points[0]!];
+    const strokePoints = [...points, first];
     const stroke = buildStroke(
-      scene,
       root,
       strokePoints,
       s.lineColor ?? DEFAULT_LINE_COLOR,
       s.pattern,
       z + STROKE_Z_DELTA,
       `${baseName}.stroke`,
+      s.lineThickness,
+      this.lineThicknessScale,
     );
     if (stroke) {
       this.resources.push(stroke);
     }
-    this.resources.push(gi);
   }
 }
 

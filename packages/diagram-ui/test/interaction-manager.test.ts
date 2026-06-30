@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { NullEngine, Scene, TransformNode } from "@babylonjs/core";
-import type { Node } from "@babylonjs/core";
+import { Container } from "pixi.js";
 
 import {
   InteractionManager,
   type InteractionEvents,
 } from "../src/interaction/interaction-manager.js";
+import { tagEntity } from "../src/interaction/node-keys.js";
 
 /** Drive the listener-free InteractionManager from dispatched events. */
 function wireInteraction(
@@ -36,22 +36,14 @@ function makeCanvas(width = 800, height = 400): HTMLCanvasElement {
   return c;
 }
 
-function makeScene(): { scene: Scene; dispose: () => void } {
-  const engine = new NullEngine({
-    renderWidth: 100,
-    renderHeight: 100,
-    textureSize: 64,
-    deterministicLockstep: false,
-    lockstepMaxSteps: 1,
-  });
-  const scene = new Scene(engine);
-  return {
-    scene,
-    dispose: () => {
-      scene.dispose();
-      engine.dispose();
-    },
-  };
+/** A tagged entity container the picker stub returns. */
+function node(
+  kind: Parameters<typeof tagEntity>[1],
+  nodeId: string,
+): Container {
+  const c = new Container();
+  tagEntity(c, kind, nodeId);
+  return c;
 }
 
 interface CapturedEvent<K extends keyof InteractionEvents> {
@@ -81,10 +73,9 @@ function captureEmits(): {
 describe("InteractionManager", () => {
   it("emits hover with the picked entity key when the pointer moves over an entity", () => {
     const canvas = makeCanvas();
-    const { scene, dispose } = makeScene();
-    const tn = new TransformNode("om-component:foo", scene);
+    const tn = node("component", "foo");
     const { emit, events } = captureEmits();
-    const picker = (_x: number, _y: number): Node | null => tn;
+    const picker = (_x: number, _y: number): Container | null => tn;
     const mgr = new InteractionManager(picker, emit);
     wireInteraction(canvas, mgr);
 
@@ -92,14 +83,12 @@ describe("InteractionManager", () => {
       new PointerEvent("pointermove", { clientX: 10, clientY: 10 }),
     );
     expect(events).toEqual([{ type: "hover", detail: { key: "c:foo" } }]);
-    dispose();
     canvas.remove();
   });
 
   it("does not re-emit hover when the key doesn't change", () => {
     const canvas = makeCanvas();
-    const { scene, dispose } = makeScene();
-    const tn = new TransformNode("om-component:foo", scene);
+    const tn = node("component", "foo");
     const { emit, events } = captureEmits();
     const mgr = new InteractionManager(() => tn, emit);
     wireInteraction(canvas, mgr);
@@ -111,14 +100,12 @@ describe("InteractionManager", () => {
       new PointerEvent("pointermove", { clientX: 12, clientY: 12 }),
     );
     expect(events).toHaveLength(1);
-    dispose();
     canvas.remove();
   });
 
   it("emits select on primary-button pointerdown", () => {
     const canvas = makeCanvas();
-    const { scene, dispose } = makeScene();
-    const tn = new TransformNode("om-connector:p", scene);
+    const tn = node("connector", "p");
     const { emit, events } = captureEmits();
     const mgr = new InteractionManager(() => tn, emit);
     wireInteraction(canvas, mgr);
@@ -133,17 +120,14 @@ describe("InteractionManager", () => {
     expect(events).toEqual([
       { type: "select", detail: { key: "k:p", addToSelection: false } },
     ]);
-    dispose();
     canvas.remove();
   });
 
   it("does NOT emit select when a resize/rotate handle is picked", () => {
     const canvas = makeCanvas();
-    const { scene, dispose } = makeScene();
     const { emit, events } = captureEmits();
     for (const kind of ["handle", "rotate-handle"] as const) {
-      const handle = new TransformNode(`om-${kind}`, scene);
-      handle.metadata = { kind, nodeId: "tl" };
+      const handle = node(kind, "tl");
       const mgr = new InteractionManager(() => handle, emit);
       wireInteraction(canvas, mgr);
       canvas.dispatchEvent(
@@ -151,14 +135,12 @@ describe("InteractionManager", () => {
       );
     }
     expect(events).toHaveLength(0);
-    dispose();
     canvas.remove();
   });
 
   it("shift+primary down DOES NOT emit select (pan modifier)", () => {
     const canvas = makeCanvas();
-    const { scene, dispose } = makeScene();
-    const tn = new TransformNode("om-component:R1", scene);
+    const tn = node("component", "R1");
     const { emit, events } = captureEmits();
     const mgr = new InteractionManager(() => tn, emit);
     wireInteraction(canvas, mgr);
@@ -172,14 +154,12 @@ describe("InteractionManager", () => {
       }),
     );
     expect(events).toHaveLength(0);
-    dispose();
     canvas.remove();
   });
 
   it("emits doubleClick on a second select within the window", () => {
     const canvas = makeCanvas();
-    const { scene, dispose } = makeScene();
-    const tn = new TransformNode("om-component:R1", scene);
+    const tn = node("component", "R1");
     const { emit, events } = captureEmits();
     const mgr = new InteractionManager(() => tn, emit, {
       doubleClickMs: 1000,
@@ -194,14 +174,12 @@ describe("InteractionManager", () => {
     );
     const types = events.map((e) => e.type);
     expect(types).toEqual(["select", "select", "doubleClick"]);
-    dispose();
     canvas.remove();
   });
 
   it("emits contextMenu on secondary-button pointerup", () => {
     const canvas = makeCanvas();
-    const { scene, dispose } = makeScene();
-    const tn = new TransformNode("om-component:R1", scene);
+    const tn = node("component", "R1");
     const { emit, events } = captureEmits();
     const mgr = new InteractionManager(() => tn, emit);
     wireInteraction(canvas, mgr);
@@ -215,7 +193,30 @@ describe("InteractionManager", () => {
         detail: { key: "c:R1", clientX: 50, clientY: 60 },
       },
     ]);
-    dispose();
+    canvas.remove();
+  });
+
+  it("hovering a vertex dot reports the owner shape, but pressing it still selects nothing", () => {
+    const canvas = makeCanvas();
+    const shape = node("shape", "line:1");
+    const dot = new Container();
+    tagEntity(dot, "vertex-handle", "0");
+    shape.addChild(dot);
+    const { emit, events } = captureEmits();
+    const mgr = new InteractionManager(() => dot, emit);
+    wireInteraction(canvas, mgr);
+
+    // Hover resolves to the owner so the dots don't flicker out under the cursor.
+    canvas.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 10, clientY: 10 }),
+    );
+    // Press is still a no-op for selection — the dot belongs to DragMode.
+    canvas.dispatchEvent(
+      new PointerEvent("pointerdown", { button: 0, clientX: 10, clientY: 10 }),
+    );
+    expect(events).toEqual([
+      { type: "hover", detail: { key: "shape:line:1" } },
+    ]);
     canvas.remove();
   });
 });

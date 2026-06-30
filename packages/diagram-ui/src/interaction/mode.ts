@@ -1,4 +1,4 @@
-import type { Scene, TransformNode } from "@babylonjs/core";
+import type { Container } from "pixi.js";
 
 import {
   InteractionManager,
@@ -36,9 +36,8 @@ export interface ModeRouterDeps {
   onInteraction: EmitFn;
   onDrag: DragEmit;
   store: InteractionStateStore;
-  /** Scene + parent the gesture modes draw their transient meshes into. */
-  scene: Scene;
-  overlayParent: TransformNode;
+  /** Container the gesture modes draw their transient overlays into. */
+  overlayParent: Container;
   /** Diagram-space position of a connector (for the routing wire). */
   connectorPosition: ConnectorPosition;
   /** Local compatibility check between two connector keys. */
@@ -93,16 +92,11 @@ export class ModeRouter {
       deps.picker,
       deps.onInteraction,
     );
-    this.selectMode = new SelectMode(
-      deps.onDrag,
-      deps.scene,
-      deps.overlayParent,
-    );
+    this.selectMode = new SelectMode(deps.onDrag, deps.overlayParent);
     this.dragMode = new DragMode(deps.onDrag);
     this.connectMode = new ConnectMode(
       deps.picker,
       deps.onDrag,
-      deps.scene,
       deps.overlayParent,
       deps.connectorPosition,
       deps.evaluateCompat,
@@ -206,6 +200,7 @@ export class ModeRouter {
       entity &&
       (entity.kind === "rotate-handle" ||
         entity.kind === "handle" ||
+        entity.kind === "vertex-handle" ||
         entity.kind === "edge" ||
         MOVE_KINDS.has(entity.kind))
     ) {
