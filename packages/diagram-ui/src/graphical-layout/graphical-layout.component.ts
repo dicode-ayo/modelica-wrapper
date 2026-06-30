@@ -377,7 +377,6 @@ export class OmGraphicalLayout extends LitElement {
    * action-panel buttons drive, so a shortcut and its button can't diverge.
    */
   private readonly commands = new CommandRegistry(DIAGRAM_COMMANDS);
-  private readonly keymap = DEFAULT_KEYMAP;
 
   // Serves `lineThicknessScale` to every descendant shape primitive, which
   // reads it from context inside `buildStroke`.
@@ -1393,7 +1392,7 @@ export class OmGraphicalLayout extends LitElement {
     if (this.hostManagedKeys) {
       return;
     }
-    const id = this.keymap.get(chordFromEvent(e));
+    const id = DEFAULT_KEYMAP.get(chordFromEvent(e));
     if (id && this.runCommand(id)) {
       e.preventDefault();
     }

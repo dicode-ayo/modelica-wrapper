@@ -244,6 +244,28 @@
           "when": "activeWebviewPanelId == modelicaDiagram",
           "group": "navigation@0"
         }
+      ],
+      "commandPalette": [
+        {
+          "command": "modelica.diagram.delete",
+          "when": "activeWebviewPanelId == modelicaDiagram"
+        },
+        {
+          "command": "modelica.diagram.rotateCw",
+          "when": "activeWebviewPanelId == modelicaDiagram"
+        },
+        {
+          "command": "modelica.diagram.rotateCcw",
+          "when": "activeWebviewPanelId == modelicaDiagram"
+        },
+        {
+          "command": "modelica.diagram.flipHorizontal",
+          "when": "activeWebviewPanelId == modelicaDiagram"
+        },
+        {
+          "command": "modelica.diagram.flipVertical",
+          "when": "activeWebviewPanelId == modelicaDiagram"
+        }
       ]
     },
     "keybindings": [

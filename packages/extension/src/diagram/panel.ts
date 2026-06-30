@@ -107,6 +107,8 @@ export class DiagramPanel {
   private readonly disposables: vscode.Disposable[] = [];
   private ready = false;
   private readonly pendingMessages: ExtensionToWebview[] = [];
+  /** Whether this panel's webview last reported an editable field focused. */
+  private inputFocused = false;
 
   /** Class name of the currently active diagram, or undefined if none. */
   static activeClassName(): string | undefined {
@@ -152,11 +154,12 @@ export class DiagramPanel {
       this.panel.onDidChangeViewState((e) => {
         if (e.webviewPanel.active) {
           DiagramPanel.activePanel = this;
+          // A panel blur/refocus doesn't round-trip through the iframe's
+          // focusin/focusout, so the webview can't re-announce focus on the
+          // way back. This panel's last-known state is the source of truth.
+          setInputFocusContext(this.inputFocused);
         } else if (DiagramPanel.activePanel === this) {
           DiagramPanel.activePanel = undefined;
-          // The webview can't fire focusout when the whole panel blurs, so a
-          // stale `true` would suppress shortcuts on the next focus.
-          setInputFocusContext(false);
         }
       }),
     );
@@ -267,7 +270,10 @@ export class DiagramPanel {
         this.handlers.onSelectionChange?.(message.keys);
         return;
       case "inputFocus":
-        setInputFocusContext(message.focused);
+        this.inputFocused = message.focused;
+        if (DiagramPanel.activePanel === this) {
+          setInputFocusContext(message.focused);
+        }
         return;
       case "actionUndo":
         this.handlers.onActionUndo?.();
