@@ -2,10 +2,18 @@ import * as vscode from "vscode";
 import type { DiagramLayout, ParameterModel } from "@dicode/omc-client";
 
 import type {
+  DiagramCommandId,
   ExtensionToWebview,
   LibraryClassInfo,
   WebviewToExtension,
 } from "../webview/protocol.js";
+
+/**
+ * Context key gating the diagram's single-letter keybindings (`r`/`f`/Delete)
+ * so they only fire over the canvas, never while typing in the parameter
+ * modal. The webview reports its editable-field focus; we mirror it here.
+ */
+const INPUT_FOCUS_CONTEXT = "modelicaDiagramInputFocus";
 
 /**
  * Wraps a `vscode.WebviewPanel` and the message handlers between the
@@ -146,6 +154,9 @@ export class DiagramPanel {
           DiagramPanel.activePanel = this;
         } else if (DiagramPanel.activePanel === this) {
           DiagramPanel.activePanel = undefined;
+          // The webview can't fire focusout when the whole panel blurs, so a
+          // stale `true` would suppress shortcuts on the next focus.
+          setInputFocusContext(false);
         }
       }),
     );
@@ -176,14 +187,16 @@ export class DiagramPanel {
     this.send({ type: "layout", layout });
   }
 
-  updateKeymap(overrides: ReadonlyMap<string, string | null>): void {
-    this.send({ type: "keymapConfig", overrides: [...overrides] });
-  }
-
-  static updateAllKeymaps(overrides: ReadonlyMap<string, string | null>): void {
-    for (const panel of DiagramPanel.panels.values()) {
-      panel.updateKeymap(overrides);
-    }
+  /**
+   * Push a diagram command (resolved from a VSCode keybinding) into the active
+   * panel's webview. Returns `false` when no diagram panel is focused so the
+   * command can surface a hint, mirroring {@link undoActive}.
+   */
+  static runActiveCommand(commandId: DiagramCommandId): boolean {
+    const panel = DiagramPanel.activePanel;
+    if (!panel) return false;
+    panel.send({ type: "runCommand", commandId });
+    return true;
   }
 
   /** Tell the webview to open its parameter modal with this model. */
@@ -212,6 +225,7 @@ export class DiagramPanel {
     DiagramPanel.panels.delete(this.className);
     if (DiagramPanel.activePanel === this) {
       DiagramPanel.activePanel = undefined;
+      setInputFocusContext(false);
     }
     for (const d of this.disposables) {
       try {
@@ -251,6 +265,9 @@ export class DiagramPanel {
         return;
       case "selectionChange":
         this.handlers.onSelectionChange?.(message.keys);
+        return;
+      case "inputFocus":
+        setInputFocusContext(message.focused);
         return;
       case "actionUndo":
         this.handlers.onActionUndo?.();
@@ -394,6 +411,14 @@ export class DiagramPanel {
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
   }
+}
+
+function setInputFocusContext(focused: boolean): void {
+  void vscode.commands.executeCommand(
+    "setContext",
+    INPUT_FOCUS_CONTEXT,
+    focused,
+  );
 }
 
 function randomNonce(): string {

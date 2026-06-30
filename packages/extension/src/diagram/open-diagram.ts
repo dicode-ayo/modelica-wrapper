@@ -583,14 +583,6 @@ export async function openDiagram(
       }
     },
   });
-  panel.updateKeymap(readKeymapOverrides());
-}
-
-export function readKeymapOverrides(): ReadonlyMap<string, string | null> {
-  const cfg = vscode.workspace.getConfiguration("modelica");
-  const raw =
-    cfg.get<Record<string, string | null>>("diagram.keymapOverrides") ?? {};
-  return new Map(Object.entries(raw));
 }
 
 /**

@@ -66,6 +66,26 @@
         "icon": "$(discard)"
       },
       {
+        "command": "modelica.diagram.delete",
+        "title": "Modelica: Delete Diagram Selection"
+      },
+      {
+        "command": "modelica.diagram.rotateCw",
+        "title": "Modelica: Rotate Diagram Selection Clockwise"
+      },
+      {
+        "command": "modelica.diagram.rotateCcw",
+        "title": "Modelica: Rotate Diagram Selection Counterclockwise"
+      },
+      {
+        "command": "modelica.diagram.flipHorizontal",
+        "title": "Modelica: Flip Diagram Selection Horizontally"
+      },
+      {
+        "command": "modelica.diagram.flipVertical",
+        "title": "Modelica: Flip Diagram Selection Vertically"
+      },
+      {
         "command": "modelica.loadLibrary",
         "title": "Modelica: Load Library...",
         "icon": "$(cloud-download)"
@@ -232,6 +252,36 @@
         "key": "ctrl+z",
         "mac": "cmd+z",
         "when": "activeWebviewPanelId == modelicaDiagram"
+      },
+      {
+        "command": "modelica.diagram.delete",
+        "key": "delete",
+        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus"
+      },
+      {
+        "command": "modelica.diagram.delete",
+        "key": "backspace",
+        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus"
+      },
+      {
+        "command": "modelica.diagram.rotateCw",
+        "key": "r",
+        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus"
+      },
+      {
+        "command": "modelica.diagram.rotateCcw",
+        "key": "shift+r",
+        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus"
+      },
+      {
+        "command": "modelica.diagram.flipHorizontal",
+        "key": "f",
+        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus"
+      },
+      {
+        "command": "modelica.diagram.flipVertical",
+        "key": "shift+f",
+        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus"
       }
     ],
     "configuration": {
@@ -252,17 +302,6 @@
           "default": 750,
           "minimum": 250,
           "description": "Debounce window (ms) between the last edit and the auto-check pipeline. Minimum 250 ms."
-        },
-        "modelica.diagram.keymapOverrides": {
-          "type": "object",
-          "additionalProperties": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "default": {},
-          "description": "Custom chord → command-id bindings for the Modelica diagram editor. Each key is a chord (e.g. \"ctrl+d\", \"shift+Delete\"); each value is a diagram command id (e.g. \"diagram.delete\") or null to unbind the default. Valid command ids: diagram.delete, diagram.rotateCw, diagram.rotateCcw, diagram.flipHorizontal, diagram.flipVertical."
         }
       }
     }

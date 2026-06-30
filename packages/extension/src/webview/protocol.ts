@@ -30,6 +30,20 @@ export interface LibraryClassInfo {
 }
 
 /**
+ * Wire-format mirror of diagram-ui's `DiagramCommandId`. Kept local for the
+ * same CommonJS / Node16-resolution reason as {@link LibraryClassRestriction};
+ * the webview side assigns it straight into diagram-ui's identical union.
+ */
+export type DiagramCommandId =
+  | "diagram.delete"
+  | "diagram.rotateCw"
+  | "diagram.rotateCcw"
+  | "diagram.flipHorizontal"
+  | "diagram.flipVertical"
+  | "diagram.deleteVertex"
+  | "diagram.toggleSmooth";
+
+/**
  * Message protocol between the extension host (Node) and the diagram
  * webview (browser). All messages are JSON-serialisable.
  *
@@ -124,9 +138,10 @@ export type ExtensionToWebview =
       error?: string;
     }
   | {
-      // null value unbinds the chord; any other value adds or replaces it.
-      type: "keymapConfig";
-      overrides: ReadonlyArray<readonly [string, string | null]>;
+      // Host-resolved diagram shortcut (a VSCode keybinding fired while the
+      // diagram panel was focused). The webview runs it through its registry.
+      type: "runCommand";
+      commandId: DiagramCommandId;
     };
 
 export type WebviewToExtension =
@@ -144,6 +159,13 @@ export type WebviewToExtension =
       waypoints: ReadonlyArray<readonly [number, number]>;
     }
   | { type: "selectionChange"; keys: string[] }
+  | {
+      // Whether keyboard focus sits in an editable field inside the webview.
+      // Drives the `modelicaDiagramInputFocus` context key so the diagram's
+      // single-letter keybindings (r/f/Delete) don't fire while typing.
+      type: "inputFocus";
+      focused: boolean;
+    }
   | { type: "error"; message: string }
   | { type: "actionUndo" }
   | { type: "actionCheck" }
