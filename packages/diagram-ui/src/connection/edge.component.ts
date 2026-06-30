@@ -86,15 +86,22 @@ export class OmEdge extends LitElement {
     if (wpp === this.lastDashWpp) {
       return;
     }
-    this.lastDashWpp = wpp;
+    this.restrokeLine(this.meshes, wpp);
+    this.sceneCtx?.requestRender();
+  }
+
+  /** Re-stroke `meshes.line` against the current `path`/`clocked`/colour
+   *  and `wpp`, updating `lastDashWpp` to match — the bookkeeping shared by
+   *  every re-stroke path (zoom, path change, selection). */
+  private restrokeLine(meshes: EdgeMeshes, wpp: number | undefined): void {
     updateEdgePoints(
-      this.meshes.line,
+      meshes.line,
       this.path,
       this.effectiveColor(),
       this.clocked,
       wpp,
     );
-    this.sceneCtx?.requestRender();
+    this.lastDashWpp = wpp;
   }
 
   override render() {
@@ -177,14 +184,7 @@ export class OmEdge extends LitElement {
     if (!this.meshes || !this.parentTransform) {
       return;
     }
-    const wpp = this.sceneCtx?.worldPerPixel();
-    updateEdgePoints(
-      this.meshes.line,
-      this.path,
-      this.effectiveColor(),
-      this.clocked,
-      wpp,
-    );
+    this.restrokeLine(this.meshes, this.sceneCtx?.worldPerPixel());
     this.meshes.hitArea.destroy();
     const hit = rebuildHitTube(
       this.parentTransform,
@@ -195,7 +195,6 @@ export class OmEdge extends LitElement {
     this.meshes.hitArea = hit;
     this.builtPath = this.path;
     this.appliedSelected = this.selected;
-    this.lastDashWpp = wpp;
     this.sceneCtx?.requestRender();
   }
 
@@ -203,16 +202,8 @@ export class OmEdge extends LitElement {
     if (!this.meshes || this.appliedSelected === this.selected) {
       return;
     }
-    const wpp = this.sceneCtx?.worldPerPixel();
-    updateEdgePoints(
-      this.meshes.line,
-      this.path,
-      this.effectiveColor(),
-      this.clocked,
-      wpp,
-    );
+    this.restrokeLine(this.meshes, this.sceneCtx?.worldPerPixel());
     this.appliedSelected = this.selected;
-    this.lastDashWpp = wpp;
     this.sceneCtx?.requestRender();
   }
 

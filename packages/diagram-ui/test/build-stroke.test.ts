@@ -3,6 +3,7 @@ import { Container, Graphics } from "pixi.js";
 import type { Color } from "@dicode/omc-client";
 
 import { buildStroke, worldScaleOf } from "../src/primitives/shape-utils.js";
+import { dashCount } from "./pixi-dash.helper.js";
 
 function makeScene(): { parent: Container } {
   return { parent: new Container({ label: "parent" }) };
@@ -131,21 +132,6 @@ describe("buildStroke", () => {
     expect(style?.cap).toBe("round");
     expect(style?.pixelLine).toBe(false);
   });
-
-  /** Count of drawn dash runs in a stroked Graphics. Pixi batches every
-   *  `moveTo`/`lineTo` into the single `stroke` instruction's path, so the
-   *  dash count is the `lineTo` count within that path's own instructions —
-   *  each run is one `moveTo` + `lineTo` pair. */
-  function dashCount(g: Graphics): number {
-    type PathInstruction = { action: string };
-    type StrokeInstruction = {
-      action: string;
-      data: { path?: { instructions: PathInstruction[] } };
-    };
-    return (g.context.instructions as ReadonlyArray<StrokeInstruction>)
-      .flatMap((i) => i.data.path?.instructions ?? [])
-      .filter((i) => i.action === "lineTo").length;
-  }
 
   it("scales the dash rhythm by worldPerPixel so it reads a constant size on screen", () => {
     const { parent } = makeScene();

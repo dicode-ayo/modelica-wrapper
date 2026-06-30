@@ -1,26 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { Container, Graphics } from "pixi.js";
+import { Container } from "pixi.js";
 
 import "../src/scene/scene.component.js";
 import "../src/connection/edge.component.js";
 import type { OmScene } from "../src/scene/scene.component.js";
 import type { OmEdge } from "../src/connection/edge.component.js";
 import { buildEdge } from "../src/connection/edge-build.js";
-
-/** Count of drawn dash runs in a stroked line. Pixi batches every
- *  `moveTo`/`lineTo` into the single `stroke` instruction's path, so the
- *  dash count is the `lineTo` count within that path's own instructions —
- *  each run is one `moveTo` + `lineTo` pair. */
-function dashCount(g: Graphics): number {
-  type PathInstruction = { action: string };
-  type StrokeInstruction = {
-    action: string;
-    data: { path?: { instructions: PathInstruction[] } };
-  };
-  return (g.context.instructions as ReadonlyArray<StrokeInstruction>)
-    .flatMap((i) => i.data.path?.instructions ?? [])
-    .filter((i) => i.action === "lineTo").length;
-}
+import { dashCount } from "./pixi-dash.helper.js";
 
 const teardowns: Array<() => void> = [];
 afterEach(() => {

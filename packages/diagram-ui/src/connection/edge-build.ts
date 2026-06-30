@@ -64,12 +64,17 @@ export const HIT_HOVER_OPACITY = 0.3;
 /** Blue-500 hover band, matching the selection accent. */
 const HIT_HOVER_COLOR = 0x3d82f5;
 
-/** Legacy fallback when no `worldPerPixel` is given: the dash period is
- *  the path normalized to a fixed count, so a path-length change still
- *  redistributes (but a zoom change does not). */
+/** Dash period when no `worldPerPixel` is given (a renderer-less caller with
+ *  no scene context): the path normalized to a fixed count, so a path-length
+ *  change still redistributes but a zoom change does not. */
 const DEFAULT_DASH_COUNT = 24;
-/** Floor (diagram units) on the dash period so an extreme zoom-in can't
- *  shrink it toward zero and blow up the per-segment dash count. */
+/** Floor (diagram units) on the whole dash *period* — `shape-utils.ts`
+ *  floors each individual run instead (`MIN_DASH_RUN`), since that
+ *  algorithm cycles a multi-run pattern (Dot/DashDot/…) rather than a
+ *  single period/run split. Both exist to keep an extreme zoom-in from
+ *  shrinking toward zero and blowing up their respective segmentation
+ *  loop; same intent, different unit because the two are genuinely
+ *  different algorithms. */
 const MIN_DASH_PERIOD = 0.1;
 
 export interface EdgeMeshes {
@@ -192,9 +197,17 @@ function appendSolidPath(g: Graphics, points: Point[]): void {
  * With a `worldPerPixel`, one dash+gap period is `(DEFAULT_DASH_SIZE +
  * DEFAULT_DASH_GAP) * worldPerPixel` — a fixed on-screen size, so the dash
  * count per segment falls out of its length instead of the period
- * stretching/compressing with zoom. Without one (no scene context), period
- * falls back to `totalLength / DEFAULT_DASH_COUNT`, distributing a fixed
- * dash count across the whole path.
+ * stretching/compressing with zoom. Without one (a renderer-less caller),
+ * period is `totalLength / DEFAULT_DASH_COUNT`, distributing a fixed dash
+ * count across the whole path.
+ *
+ * Unlike `buildStroke`'s dash scaling (`shape-utils.ts`), this doesn't also
+ * divide out a parent `worldScale` — a connection's `parentTransform` is
+ * always the diagram root (`<om-connection>` renders directly under
+ * `<om-scene>`, never nested under a component's scaled icon container), so
+ * that scale is always 1 and the divide-out would be a no-op. If a
+ * connection is ever parented under a scaled container, this needs the same
+ * `worldScaleOf(parent)` divide-out `buildStroke` does.
  */
 function appendDashedPath(
   g: Graphics,
