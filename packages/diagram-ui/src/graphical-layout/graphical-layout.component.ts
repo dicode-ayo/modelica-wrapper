@@ -250,10 +250,10 @@ export class OmGraphicalLayout extends LitElement {
   cameraMode: "2d" | "3d" = "2d";
 
   /**
-   * Stroke-width multiplier forwarded to every entity. Currently a
-   * no-op under the primitives renderer (line widths come straight
-   * from Modelica annotations); kept on the public API for forward-
-   * compat with hosts that already set it.
+   * Stroke-width multiplier published on `lineThicknessScaleContext`;
+   * descendant shape primitives multiply their solid stroke width by it,
+   * so one value scales every primitive stroke at once. `undefined` is the
+   * renderer default.
    */
   @property({ type: Number, attribute: "line-thickness-scale" })
   lineThicknessScale: number | undefined = undefined;
@@ -369,6 +369,8 @@ export class OmGraphicalLayout extends LitElement {
   private readonly commands = new CommandRegistry(DIAGRAM_COMMANDS);
   private readonly keymap = DEFAULT_KEYMAP;
 
+  // Serves `lineThicknessScale` to every descendant shape primitive, which
+  // reads it from context inside `buildStroke`.
   private readonly strokeScaleProvider = new ContextProvider(this, {
     context: lineThicknessScaleContext,
     initialValue: undefined,

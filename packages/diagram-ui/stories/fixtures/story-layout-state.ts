@@ -99,7 +99,7 @@ function placeholderClass(className: string): ClassDef {
             fontSize: 0,
           },
         ],
-      } as ClassDef["iconLayers"][number],
+      } satisfies ClassDef["iconLayers"][number],
     ],
     connectors: {},
     parameters: {},

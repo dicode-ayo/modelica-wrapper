@@ -286,7 +286,7 @@ export class OmScene extends LitElement {
     // Surface a renderer-init failure instead of leaving a blank canvas
     // with no clue (e.g. a host CSP that blocks WebGL).
     void this.initRenderer(canvas, ctx).catch((err: unknown) => {
-      console.error("[om-scene] renderer initialisation failed:", err);
+      console.error("[om-scene] renderer initialization failed:", err);
     });
   }
 

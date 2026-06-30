@@ -61,10 +61,10 @@ export abstract class OmShapeElement extends LitElement {
   coordinateSystem: CoordinateSystem | undefined = undefined;
 
   /**
-   * Stroke-width multiplier kept on the public API for forward-compat with
-   * the previous SVG renderer. The primitives renderer currently ignores it
-   * — line widths are taken directly from the Modelica annotations. Kept as
-   * a property so existing host code that sets it doesn't fail.
+   * Stroke-width multiplier accepted for host API compatibility. The live
+   * scale reaches shape strokes through `lineThicknessScaleContext` (read by
+   * the shape primitives), not this property; this element does not apply it
+   * to its own rasterised icon.
    */
   @property({ type: Number, attribute: "line-thickness-scale" })
   lineThicknessScale: number | undefined = undefined;
