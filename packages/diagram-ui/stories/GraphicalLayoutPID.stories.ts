@@ -119,7 +119,6 @@ let currentLayout: DiagramLayout = pidLayout;
 
 interface StoryArgs {
   readonly: boolean;
-  cameraMode: "2d" | "3d";
   lineThicknessScale: number;
   perfHud: boolean;
 }
@@ -128,36 +127,26 @@ const meta: Meta<StoryArgs> = {
   title: "diagram-ui/GraphicalLayoutPID",
   render: ({
     readonly,
-    cameraMode,
     lineThicknessScale,
     perfHud,
   }: StoryArgs): TemplateResult => html`
     <div class="om-story">
       <h3>
         &lt;om-graphical-layout&gt; — Modelica.Blocks.Examples.PID_Controller
-        (${cameraMode})
       </h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
         Full diagram of the PID controller example: LimPID + driveAngle
         (KinematicPTP) + inertia1/2 + spring + torque + sensors + load torque,
-        wired together as in the Modelica standard library.
-        ${cameraMode === "2d"
-          ? html`In 2D mode: drag components, rubber-band select, Delete to
-            remove, R/F to rotate/flip. Touchpad two-finger scroll pans, pinch
-            zooms. Double-click on empty canvas to open the library browser
-            (this story uses a fake catalog).`
-          : html`In 3D mode: Babylon's ArcRotateCamera takes over — left-drag
-            orbits, wheel dollies in/out. The SVG overlays hide automatically;
-            the in-canvas textured planes are the visible icons. Use this view
-            to see the diagram as a plane in 3D space (useful preview for
-            MultiBody overlays).`}
+        wired together as in the Modelica standard library. Drag components,
+        rubber-band select, Delete to remove, R/F to rotate/flip. Touchpad
+        two-finger scroll pans, pinch zooms. Double-click on empty canvas to
+        open the library browser (this story uses a fake catalog).
       </p>
       <div class="om-story-canvas-host" style="height: 600px;">
         <om-graphical-layout
           .layout=${currentLayout}
           ?readonly=${readonly}
           ?perf-hud=${perfHud}
-          camera-mode=${cameraMode}
           .lineThicknessScale=${lineThicknessScale}
           .libraryDataSource=${fakeLibrarySource}
           @om-graphical-layout-change=${(e: CustomEvent<DiagramLayout>) => {
@@ -184,11 +173,6 @@ const meta: Meta<StoryArgs> = {
   `,
   argTypes: {
     readonly: { control: { type: "boolean" } },
-    cameraMode: {
-      control: { type: "inline-radio" },
-      options: ["2d", "3d"],
-      name: "camera-mode",
-    },
     lineThicknessScale: {
       control: { type: "range", min: 0.5, max: 10, step: 0.25 },
       name: "line-thickness-scale",
@@ -207,7 +191,6 @@ type Story = StoryObj<StoryArgs>;
 export const Editable: Story = {
   args: {
     readonly: false,
-    cameraMode: "2d",
     lineThicknessScale: 4,
     perfHud: true,
   },
@@ -216,16 +199,11 @@ export const Editable: Story = {
 export const Readonly: Story = {
   args: {
     readonly: true,
-    cameraMode: "2d",
     lineThicknessScale: 4,
     perfHud: true,
   },
 };
 
-export const Orbit3D: Story = {
-  args: { readonly: true, cameraMode: "3d", lineThicknessScale: 4 },
-};
-
 export const ThickLines: Story = {
-  args: { readonly: true, cameraMode: "2d", lineThicknessScale: 8 },
+  args: { readonly: true, lineThicknessScale: 8 },
 };
