@@ -374,9 +374,11 @@ const MIN_STROKE_WIDTH = 0.5;
 /** Dash / gap length, nominally in CSS pixels — `buildStroke` scales these by
  *  `worldPerPixel` so the dash rhythm reads at a constant on-screen size
  *  across zoom. Used as raw diagram units when no `worldPerPixel` is given
- *  (e.g. a renderer-less caller with no scene context). */
-const DEFAULT_DASH_SIZE = 4;
-const DEFAULT_DASH_GAP = 3;
+ *  (e.g. a renderer-less caller with no scene context). Exported so
+ *  `edge-build.ts`'s separate dash algorithm shares the same nominal
+ *  rhythm instead of redeclaring its own copy. */
+export const DEFAULT_DASH_SIZE = 4;
+export const DEFAULT_DASH_GAP = 3;
 /** Floor (diagram units) on a scaled dash/gap run so an extreme zoom-in
  *  can't shrink a run toward zero and blow up the segmentation loop. */
 const MIN_DASH_RUN = 0.05;

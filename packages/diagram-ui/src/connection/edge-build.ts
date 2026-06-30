@@ -2,6 +2,10 @@ import { Container, Graphics } from "pixi.js";
 import type { Point } from "@dicode/omc-client";
 
 import { buildHitTube } from "../base/hit-tube.js";
+import {
+  DEFAULT_DASH_GAP,
+  DEFAULT_DASH_SIZE,
+} from "../primitives/shape-utils.js";
 
 /**
  * Pure builder for a connection's stroked path. The visible stroke is a
@@ -60,10 +64,6 @@ export const HIT_HOVER_OPACITY = 0.3;
 /** Blue-500 hover band, matching the selection accent. */
 const HIT_HOVER_COLOR = 0x3d82f5;
 
-/** Dash / gap length, nominally in CSS pixels — scaled by `worldPerPixel` so
- *  the dash rhythm reads a constant on-screen size across zoom. */
-const DEFAULT_DASH_SIZE = 4;
-const DEFAULT_DASH_GAP = 3;
 /** Legacy fallback when no `worldPerPixel` is given: the dash period is
  *  the path normalized to a fixed count, so a path-length change still
  *  redistributes (but a zoom change does not). */

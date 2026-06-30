@@ -13,11 +13,9 @@ import {
   type InteractionStateStore,
 } from "../interaction/interaction-state.js";
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
+import { watchViewState } from "../scene/view-state-store.js";
 import {
-  viewStateContext,
-  type ViewStateStore,
-} from "../scene/view-state-store.js";
-import {
+  dashRunsFor,
   graphicItemNode,
   worldScaleOf,
   zForOrder,
@@ -121,7 +119,7 @@ export abstract class OmShapePrimitive extends LitElement {
   private shapeNode: OmShapeNode | null = null;
   private hovered = false;
   private interactionUnsub: (() => void) | null = null;
-  private viewUnsub: (() => void) | null = null;
+  private readonly viewWatch: { dispose: () => void };
 
   constructor() {
     super();
@@ -134,31 +132,30 @@ export abstract class OmShapePrimitive extends LitElement {
       subscribe: true,
       callback: (store) => this.onInteractionStore(store),
     });
-    new ContextConsumer(this, {
-      context: viewStateContext,
-      subscribe: true,
-      callback: (store) => this.resubscribeViewState(store),
-    });
-  }
-
-  private resubscribeViewState(store: ViewStateStore | null): void {
-    this.viewUnsub?.();
-    this.viewUnsub = store ? store.subscribe(() => this.onViewChange()) : null;
+    this.viewWatch = watchViewState(this, () => this.onViewChange());
   }
 
   /**
-   * Override to react to pan/zoom — e.g. a dashed stroke whose on-screen
-   * dash rhythm must stay constant across zoom. Most primitives don't
-   * depend on the view and leave this a no-op.
+   * The shape's Modelica line pattern, for primitives with a dashable
+   * stroke (line / polygon / rectangle / ellipse). `undefined` (the
+   * default) means this primitive never needs a dash-zoom rebuild.
    */
-  protected onViewChange(): void {}
+  protected dashPattern(): string | undefined {
+    return undefined;
+  }
 
-  /** Bypass the structural-key cache and force the next `updated()` to
-   *  rebuild even though `fingerprint()` is unchanged — for state (like
-   *  `worldPerPixel`) that lives outside the shape data. */
-  protected forceRebuild(): void {
-    this.lastBuiltKey = null;
-    this.requestUpdate();
+  /**
+   * React to pan/zoom. The default re-runs `updated()` (via
+   * `requestUpdate()`) only when `dashPattern()` names a dashed pattern —
+   * its build key folds in `worldPerPixel` below, so the key comparison
+   * itself makes a pure pan (worldPerPixel unchanged) a cheap no-op rather
+   * than a rebuild. Override for state outside the dash/key mechanism
+   * entirely, e.g. `<om-text>`'s zoom-dependent resolution.
+   */
+  protected onViewChange(): void {
+    if (dashRunsFor(this.dashPattern())) {
+      this.requestUpdate();
+    }
   }
 
   override render() {
@@ -177,7 +174,7 @@ export abstract class OmShapePrimitive extends LitElement {
     // The parent's world scale feeds the stroke's scale-compensated width
     // (`buildStroke`), so a placement/resize change must rebuild even though
     // the shape data is unchanged.
-    const key = `${this.zOrder}|${this.zBias}|${worldScaleOf(parent)}|${this.lineThicknessScale}|${this.fingerprint()}`;
+    const key = `${this.zOrder}|${this.zBias}|${worldScaleOf(parent)}|${this.lineThicknessScale}|${this.dashZoomKey()}|${this.fingerprint()}`;
     if (key === this.lastBuiltKey) {
       return;
     }
@@ -203,7 +200,7 @@ export abstract class OmShapePrimitive extends LitElement {
     const node = this.shapeNode;
     node.setEntityName(this.entityName());
     node.setHovered(this.hovered);
-    const key = `${this.zOrder}|${this.zBias}|${this.lineThicknessScale}|${this.fingerprint()}`;
+    const key = `${this.zOrder}|${this.zBias}|${this.lineThicknessScale}|${this.dashZoomKey()}|${this.fingerprint()}`;
     if (key !== this.lastBuiltKey) {
       this.lastBuiltKey = key;
       this.tearDownMeshes();
@@ -221,6 +218,15 @@ export abstract class OmShapePrimitive extends LitElement {
     }
     node.setSelected(this.selected);
     this.requestRender();
+  }
+
+  /** The build key's zoom term: `worldPerPixel`, but only for a dashed
+   *  pattern — a solid shape's key stays zoom-independent so panning never
+   *  rebuilds it. */
+  private dashZoomKey(): string {
+    return dashRunsFor(this.dashPattern())
+      ? String(this.sceneCtx?.worldPerPixel())
+      : "";
   }
 
   private entityName(): string {
@@ -259,8 +265,7 @@ export abstract class OmShapePrimitive extends LitElement {
     super.disconnectedCallback();
     this.interactionUnsub?.();
     this.interactionUnsub = null;
-    this.viewUnsub?.();
-    this.viewUnsub = null;
+    this.viewWatch.dispose();
     this.tearDownMeshes();
     this.shapeNode?.dispose();
     this.shapeNode = null;

@@ -41,6 +41,10 @@ export class OmEllipse extends OmShapePrimitive {
     return this.shape ? extentEntityBounds(this.shape) : null;
   }
 
+  protected override dashPattern(): string | undefined {
+    return this.shape?.pattern;
+  }
+
   protected override buildMeshes(
     parent: Container,
     z: number,
@@ -108,6 +112,7 @@ export class OmEllipse extends OmShapePrimitive {
       `${baseName}.stroke`,
       s.lineThickness,
       this.lineThicknessScale,
+      this.sceneCtx?.worldPerPixel(),
     );
     if (stroke) {
       this.resources.push(stroke);

@@ -1,40 +1,51 @@
 /**
- * A dashed `<om-line>` / `<om-polygon>` stroke's on-screen rhythm should
- * stay a constant size across zoom (issue #165). These pin the rebuild
- * wiring end to end: zooming the host `<om-scene>` rebuilds a dashed
- * primitive's stroke (a new Graphics, since the dash period changed), but
- * leaves a solid primitive's stroke untouched (no needless churn).
+ * A dashed shape primitive's stroke should hold a constant on-screen rhythm
+ * across zoom. These pin the rebuild wiring end to end: zooming the host
+ * `<om-scene>` rebuilds a dashed primitive's stroke (a new Graphics, since
+ * the dash period changed), but leaves a solid primitive's stroke untouched
+ * (no needless churn), and the same wiring covers every dashable primitive
+ * kind via `OmShapePrimitive.dashPattern()` — not just `<om-line>`.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { Container, Graphics } from "pixi.js";
-import type { DiagramLayout } from "@dicode/omc-client";
+import type { DiagramLayout, Shape } from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
 import type { OmScene } from "../src/scene/scene.component.js";
 
-function layoutWith(pattern: string | undefined): DiagramLayout {
+function layoutWithLine(pattern: string | undefined): DiagramLayout {
+  return layout({
+    kind: "line",
+    points: [
+      [-500, 0],
+      [500, 0],
+    ],
+    color: [255, 0, 0],
+    ...(pattern !== undefined ? { pattern } : {}),
+  });
+}
+
+function layoutWithRectangle(pattern: string | undefined): DiagramLayout {
+  return layout({
+    kind: "rectangle",
+    extent: [
+      [-500, -50],
+      [500, 50],
+    ],
+    lineColor: [255, 0, 0],
+    fillPattern: "None",
+    ...(pattern !== undefined ? { pattern } : {}),
+  });
+}
+
+function layout(shape: Shape): DiagramLayout {
   return {
     kind: "diagram",
     className: "T",
     source: { file: "T.mo", line: 1, column: 1 } as never,
     iconLayers: [],
-    diagramLayers: [
-      {
-        from: "T",
-        shapes: [
-          {
-            kind: "line",
-            points: [
-              [-500, 0],
-              [500, 0],
-            ],
-            color: [255, 0, 0],
-            ...(pattern !== undefined ? { pattern } : {}),
-          },
-        ],
-      },
-    ],
+    diagramLayers: [{ from: "T", shapes: [shape] }],
     labels: [],
     classes: {},
     components: {},
@@ -65,9 +76,9 @@ function sceneOf(el: OmGraphicalLayout): OmScene {
   return scene;
 }
 
-/** The host line's stroke Graphics — labeled `om-line.<zOrder>` (`0` here),
- *  a child of its `graphicItemNode` wrapper under the diagram root. */
-function lineStroke(el: OmGraphicalLayout): Graphics {
+/** The host shape's stroke Graphics by exact label, a descendant of the
+ *  diagram root (nested under its `graphicItemNode` wrapper). */
+function strokeWithLabel(el: OmGraphicalLayout, label: string): Graphics {
   const root = sceneOf(el).sceneContextValue?.diagramRoot;
   if (!root) throw new Error("expected a diagram root");
   const found: Container[] = [];
@@ -78,39 +89,66 @@ function lineStroke(el: OmGraphicalLayout): Graphics {
     }
   };
   walk(root);
-  const g = found.find((c) => c.label === "om-line.0" && c instanceof Graphics);
-  if (!(g instanceof Graphics)) throw new Error("expected the line stroke");
+  const g = found.find((c) => c.label === label && c instanceof Graphics);
+  if (!(g instanceof Graphics)) throw new Error(`expected the ${label} stroke`);
   return g;
 }
 
-describe("dashed stroke rebuild on zoom", () => {
-  it("rebuilds a dashed line's stroke when the scene zooms", async () => {
-    const el = await mount(layoutWith("Dash"));
+async function zoomBy(
+  el: OmGraphicalLayout,
+  scene: OmScene,
+  factor: number,
+): Promise<void> {
+  scene.zoom = scene.zoom * factor;
+  await scene.updateComplete;
+  await el.updateComplete;
+  await new Promise((r) => setTimeout(r, 0));
+}
+
+describe.each([
+  { kind: "line", build: layoutWithLine, label: "om-line.0" },
+  {
+    kind: "rectangle",
+    build: layoutWithRectangle,
+    label: "om-rectangle.0.stroke",
+  },
+])("dashed $kind stroke rebuild on zoom", ({ build, label }) => {
+  it("rebuilds the dashed stroke when the scene zooms", async () => {
+    const el = await mount(build("Dash"));
     const scene = sceneOf(el);
-    const before = lineStroke(el);
+    const before = strokeWithLabel(el, label);
     expect(before.destroyed).toBe(false);
 
-    scene.zoom = scene.zoom / 20;
-    await scene.updateComplete;
-    await el.updateComplete;
-    await new Promise((r) => setTimeout(r, 0));
+    await zoomBy(el, scene, 1 / 20);
 
-    const after = lineStroke(el);
+    const after = strokeWithLabel(el, label);
     expect(after).not.toBe(before);
     expect(before.destroyed).toBe(true);
   });
 
-  it("does not rebuild a solid line's stroke when the scene zooms", async () => {
-    const el = await mount(layoutWith(undefined));
+  it("does not rebuild a solid stroke when the scene zooms", async () => {
+    const el = await mount(build(undefined));
     const scene = sceneOf(el);
-    const before = lineStroke(el);
+    const before = strokeWithLabel(el, label);
 
-    scene.zoom = scene.zoom / 20;
+    await zoomBy(el, scene, 1 / 20);
+
+    const after = strokeWithLabel(el, label);
+    expect(after).toBe(before);
+    expect(before.destroyed).toBe(false);
+  });
+
+  it("does not rebuild a dashed stroke on a pure pan (no zoom change)", async () => {
+    const el = await mount(build("Dash"));
+    const scene = sceneOf(el);
+    const before = strokeWithLabel(el, label);
+
+    scene.panX = scene.panX + 50;
     await scene.updateComplete;
     await el.updateComplete;
     await new Promise((r) => setTimeout(r, 0));
 
-    const after = lineStroke(el);
+    const after = strokeWithLabel(el, label);
     expect(after).toBe(before);
     expect(before.destroyed).toBe(false);
   });

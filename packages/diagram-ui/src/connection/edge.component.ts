@@ -1,15 +1,12 @@
 import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { ContextConsumer, consume } from "@lit/context";
+import { consume } from "@lit/context";
 import { Container } from "pixi.js";
 import type { Point } from "@dicode/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
-import {
-  viewStateContext,
-  type ViewStateStore,
-} from "../scene/view-state-store.js";
+import { watchViewState } from "../scene/view-state-store.js";
 import { tagEntity } from "../interaction/node-keys.js";
 import { pointsEqual } from "../interaction/connection-route.js";
 import {
@@ -68,34 +65,34 @@ export class OmEdge extends LitElement {
    * equal `path` is a no-op — see `pointsEqual`.
    */
   private builtPath: Point[] | null = null;
-  private viewUnsub: (() => void) | null = null;
+  /** `worldPerPixel` the line was last drawn against, so a pure pan (no
+   *  zoom change) is a no-op rather than a needless re-stroke. */
+  private lastDashWpp: number | undefined = undefined;
+  private readonly viewWatch: { dispose: () => void };
 
   constructor() {
     super();
-    new ContextConsumer(this, {
-      context: viewStateContext,
-      subscribe: true,
-      callback: (store) => this.resubscribeViewState(store),
-    });
-  }
-
-  private resubscribeViewState(store: ViewStateStore | null): void {
-    this.viewUnsub?.();
-    this.viewUnsub = store ? store.subscribe(() => this.onViewChange()) : null;
+    this.viewWatch = watchViewState(this, () => this.onViewChange());
   }
 
   /** A `clocked` dash rhythm is screen-constant, so a zoom change must
-   *  re-stroke it even though `path` didn't change. */
+   *  re-stroke it even though `path` didn't change — but a pure pan
+   *  (worldPerPixel unchanged) shouldn't. */
   private onViewChange(): void {
     if (!this.clocked || !this.meshes) {
       return;
     }
+    const wpp = this.sceneCtx?.worldPerPixel();
+    if (wpp === this.lastDashWpp) {
+      return;
+    }
+    this.lastDashWpp = wpp;
     updateEdgePoints(
       this.meshes.line,
       this.path,
       this.effectiveColor(),
       this.clocked,
-      this.sceneCtx?.worldPerPixel(),
+      wpp,
     );
     this.sceneCtx?.requestRender();
   }
@@ -130,8 +127,7 @@ export class OmEdge extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
-    this.viewUnsub?.();
-    this.viewUnsub = null;
+    this.viewWatch.dispose();
     this.disposeMeshes();
   }
 
@@ -167,6 +163,7 @@ export class OmEdge extends LitElement {
     }
     this.builtPath = this.path;
     this.appliedSelected = this.selected;
+    this.lastDashWpp = wpp;
     this.sceneCtx?.requestRender();
   }
 
@@ -180,12 +177,13 @@ export class OmEdge extends LitElement {
     if (!this.meshes || !this.parentTransform) {
       return;
     }
+    const wpp = this.sceneCtx?.worldPerPixel();
     updateEdgePoints(
       this.meshes.line,
       this.path,
       this.effectiveColor(),
       this.clocked,
-      this.sceneCtx?.worldPerPixel(),
+      wpp,
     );
     this.meshes.hitArea.destroy();
     const hit = rebuildHitTube(
@@ -197,6 +195,7 @@ export class OmEdge extends LitElement {
     this.meshes.hitArea = hit;
     this.builtPath = this.path;
     this.appliedSelected = this.selected;
+    this.lastDashWpp = wpp;
     this.sceneCtx?.requestRender();
   }
 
@@ -204,14 +203,16 @@ export class OmEdge extends LitElement {
     if (!this.meshes || this.appliedSelected === this.selected) {
       return;
     }
+    const wpp = this.sceneCtx?.worldPerPixel();
     updateEdgePoints(
       this.meshes.line,
       this.path,
       this.effectiveColor(),
       this.clocked,
-      this.sceneCtx?.worldPerPixel(),
+      wpp,
     );
     this.appliedSelected = this.selected;
+    this.lastDashWpp = wpp;
     this.sceneCtx?.requestRender();
   }
 
@@ -236,6 +237,7 @@ export class OmEdge extends LitElement {
     this.meshes = null;
     this.builtPath = null;
     this.appliedSelected = null;
+    this.lastDashWpp = undefined;
   }
 
   /** Test accessors. */

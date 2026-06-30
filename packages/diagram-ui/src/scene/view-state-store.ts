@@ -16,7 +16,8 @@
  * (0, 0) before any pan happens.
  */
 
-import { createContext } from "@lit/context";
+import { ContextConsumer, createContext } from "@lit/context";
+import type { ReactiveControllerHost } from "lit";
 
 import type { ViewState } from "./view-math.js";
 
@@ -73,3 +74,31 @@ export class ViewStateStore {
 export const viewStateContext = createContext<ViewStateStore | null>(
   Symbol("om-view-state"),
 );
+
+/**
+ * Subscribe a Lit element to the nearest `viewStateContext`, invoking
+ * `onChange` on every pan/zoom emission — immediately on subscribe (the
+ * store's behaviour-subject semantics), and again whenever the store
+ * itself is swapped (mount/unmount/hot-reload). Call from the element's
+ * constructor; call the returned `dispose()` from `disconnectedCallback`.
+ */
+export function watchViewState(
+  host: ReactiveControllerHost & HTMLElement,
+  onChange: () => void,
+): { dispose: () => void } {
+  let unsub: (() => void) | null = null;
+  new ContextConsumer(host, {
+    context: viewStateContext,
+    subscribe: true,
+    callback: (store) => {
+      unsub?.();
+      unsub = store ? store.subscribe(onChange) : null;
+    },
+  });
+  return {
+    dispose: () => {
+      unsub?.();
+      unsub = null;
+    },
+  };
+}
