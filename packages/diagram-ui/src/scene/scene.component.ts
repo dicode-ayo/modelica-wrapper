@@ -9,6 +9,12 @@ import {
   type Matrix,
   type Renderer,
 } from "pixi.js";
+// Pixi compiles its shader / uniform-upload functions with `new Function`,
+// which a strict CSP (`script-src` without `'unsafe-eval'` — the VSCode
+// webview) blocks, leaving the canvas blank. This side-effect import swaps
+// in eval-free polyfills so the renderer works under that CSP. Must load
+// before any renderer is created.
+import "pixi.js/unsafe-eval";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
 import { sceneContext, type SceneContext } from "./scene-context.js";
@@ -277,7 +283,11 @@ export class OmScene extends LitElement {
     this.resizeObserver.observe(this);
     setRasterizerDebug(this.debug);
 
-    void this.initRenderer(canvas, ctx);
+    // Surface a renderer-init failure instead of leaving a blank canvas
+    // with no clue (e.g. a host CSP that blocks WebGL).
+    void this.initRenderer(canvas, ctx).catch((err: unknown) => {
+      console.error("[om-scene] renderer initialisation failed:", err);
+    });
   }
 
   private async initRenderer(
