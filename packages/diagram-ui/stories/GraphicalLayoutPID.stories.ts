@@ -29,77 +29,10 @@ import { produceDiagramLayout } from "@dicode/omc-client/api/diagram/index.js";
 import type { DiagramLayout, ModelInstance } from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
-import type {
-  LibraryBrowserDataSource,
-  LibraryClassInfo,
-  LibraryClassRestriction,
-} from "../src/library-browser/library-browser.component.js";
 
 import pidFixture from "./fixtures/pidController.modelInstance.json";
 import { appendConnection } from "./fixtures/story-layout-state.js";
-
-// Minimal fake library source so double-clicking empty canvas in the
-// story opens a populated browser. The real extension wires this to
-// `client.getClassNames(...)` + `client.getClassRestriction(...)`.
-type FakeEntry = readonly [string, LibraryClassRestriction];
-const FAKE_TREE: Record<string, readonly FakeEntry[]> = {
-  __ROOT__: [
-    ["Modelica", "package"],
-    ["Complex", "operator record"],
-  ],
-  Modelica: [
-    ["Modelica.Blocks", "package"],
-    ["Modelica.Mechanics", "package"],
-    ["Modelica.Math", "package"],
-  ],
-  "Modelica.Blocks": [
-    ["Modelica.Blocks.Math", "package"],
-    ["Modelica.Blocks.Sources", "package"],
-    ["Modelica.Blocks.Continuous", "package"],
-  ],
-  "Modelica.Blocks.Math": [
-    ["Modelica.Blocks.Math.Gain", "block"],
-    ["Modelica.Blocks.Math.Add", "block"],
-    ["Modelica.Blocks.Math.Sum", "block"],
-  ],
-  "Modelica.Blocks.Sources": [
-    ["Modelica.Blocks.Sources.Constant", "block"],
-    ["Modelica.Blocks.Sources.Step", "block"],
-    ["Modelica.Blocks.Sources.Sine", "block"],
-  ],
-  "Modelica.Blocks.Continuous": [
-    ["Modelica.Blocks.Continuous.Integrator", "block"],
-    ["Modelica.Blocks.Continuous.PID", "block"],
-  ],
-  "Modelica.Math": [
-    ["Modelica.Math.sin", "function"],
-    ["Modelica.Math.cos", "function"],
-  ],
-};
-const ALL_FLAT: LibraryClassInfo[] = (() => {
-  const seen = new Set<string>();
-  const out: LibraryClassInfo[] = [];
-  for (const rows of Object.values(FAKE_TREE)) {
-    for (const [qualified, restriction] of rows) {
-      if (seen.has(qualified)) continue;
-      seen.add(qualified);
-      out.push({ qualified, restriction });
-    }
-  }
-  return out;
-})();
-const fakeLibrarySource: LibraryBrowserDataSource = {
-  async listChildren(parent) {
-    await new Promise((r) => setTimeout(r, 80));
-    const rows = FAKE_TREE[parent ?? "__ROOT__"] ?? [];
-    return rows.map(([qualified, restriction]) => ({ qualified, restriction }));
-  },
-  async searchAll(query) {
-    await new Promise((r) => setTimeout(r, 80));
-    const q = query.toLowerCase();
-    return ALL_FLAT.filter((info) => info.qualified.toLowerCase().includes(q));
-  },
-};
+import { fakeLibrarySource } from "./fixtures/fake-library.js";
 
 // The fixture was captured against a real OMC and is known-valid
 // (the producer's own test suite validates it on every push). We
