@@ -31,7 +31,7 @@ import {
  *    on a single shape only rebuilds that shape.
  *
  * Subclasses only need to:
- *   - Pick a `babylonNodeName` for the entity's canonical `om-<kind>:<id>`
+ *   - Pick an `entityNodeName` for the entity's canonical `om-<kind>:<id>`
  *     name (which also tags its picking identity)
  *   - Optionally override `onShapeNodeReady(node)` to add extra geometry
  *     (e.g. the port-indicator dot on `<om-connector>`)
@@ -116,7 +116,7 @@ export abstract class OmShapeElement extends LitElement {
       : null;
   }
 
-  protected abstract babylonNodeName(): string;
+  protected abstract entityNodeName(): string;
 
   /** Hook for subclasses to add extra geometry to the shape. */
   protected onShapeNodeReady(_node: OmShapeNode): void {
@@ -168,7 +168,7 @@ export abstract class OmShapeElement extends LitElement {
     if (!parent || !ctx) {
       return;
     }
-    this.shapeNode = new OmShapeNode(ctx, parent, this.babylonNodeName());
+    this.shapeNode = new OmShapeNode(ctx, parent, this.entityNodeName());
     this.childContextProvider.setValue(this.shapeNode.transform);
     this.onShapeNodeReady(this.shapeNode);
   }

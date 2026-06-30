@@ -248,11 +248,11 @@ function parseColor(input: string | undefined): number | undefined {
   if (!input) {
     return undefined;
   }
-  const m = input.match(/^#?([0-9a-fA-F]{6})$/);
-  if (!m) {
+  const hex = input.match(/^#?([0-9a-fA-F]{6})$/)?.[1];
+  if (hex === undefined) {
     return undefined;
   }
-  return parseInt(m[1]!, 16);
+  return parseInt(hex, 16);
 }
 
 declare global {

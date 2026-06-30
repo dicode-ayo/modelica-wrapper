@@ -58,7 +58,7 @@ export class OmConnector extends OmShapeElement {
   private hoverLayerAttached = false;
   private hoverLayerColor: "normal" | "error" | null = null;
 
-  protected override babylonNodeName(): string {
+  protected override entityNodeName(): string {
     return this.nodeId ? `om-connector:${this.nodeId}` : "om-connector";
   }
 

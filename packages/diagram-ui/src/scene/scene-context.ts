@@ -30,8 +30,7 @@ export interface SceneContext {
 
   /**
    * Topmost interactive container at a stage-space point (CSS pixels
-   * relative to the canvas top-left), or `null`. Replaces Babylon's
-   * `scene.pick`.
+   * relative to the canvas top-left), or `null`.
    */
   pick: (x: number, y: number) => Container | null;
 
@@ -39,7 +38,7 @@ export interface SceneContext {
    * Diagram units per CSS pixel at the current zoom (= `1 / ppu`). Used
    * by screen-constant sizing — a stroke/handle that should stay N
    * pixels wide regardless of zoom uses `N * worldPerPixel()` diagram
-   * units. Replaces reading the Babylon ortho camera's extents.
+   * units.
    */
   worldPerPixel: () => number;
 

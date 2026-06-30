@@ -166,11 +166,10 @@ function appendSolidPath(g: Graphics, points: Point[]): void {
 }
 
 /**
- * Hand-rolled dash segmentation mirroring Babylon's `CreateDashedLines`:
- * one dash+gap period spans `totalLength / dashNb`, the drawn run is
+ * Hand-rolled dash segmentation (Pixi has no dashed stroke): one dash+gap
+ * period spans `totalLength / dashNb`, the drawn run is
  * `dashSize / (dashSize + gapSize)` of it, and the phase restarts at each
- * vertex (dashes break at corners). Reproduced so the dashed pattern
- * matches the pre-migration baseline.
+ * vertex so dashes break at corners.
  */
 function appendDashedPath(g: Graphics, points: Point[]): void {
   let total = 0;

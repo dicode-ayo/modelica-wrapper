@@ -485,8 +485,9 @@ const tmpLocal = new Point();
  * target when its `eventMode` is `"static"`/`"dynamic"`; `"none"` skips
  * the whole subtree. `hitArea` overrides geometry; otherwise a node's
  * own `containsPoint` (e.g. `Graphics`/`Sprite`) is tested in its local
- * space. Replaces Babylon's `scene.pick` and Pixi's `EventBoundary`
- * (which needs the renderer-installed event mixin to hit-test).
+ * space. Hand-rolled rather than Pixi's `EventBoundary`, which only
+ * hit-tests once the renderer has installed its event mixin — absent
+ * renderer-less and before the first frame.
  */
 function pickAtPoint(node: Container, x: number, y: number): Container | null {
   if (node.visible === false || node.renderable === false) {

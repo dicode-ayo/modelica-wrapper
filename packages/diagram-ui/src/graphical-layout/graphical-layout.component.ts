@@ -234,7 +234,7 @@ export class OmGraphicalLayout extends LitElement {
   @property({ attribute: false })
   pickerFactory: PickerFactory | undefined = undefined;
 
-  /** Forwarded to `<om-scene>`: opens Babylon's Inspector when `true`. */
+  /** Forwarded to `<om-scene>`: enables verbose icon-rasteriser logging. */
   @property({ type: Boolean, reflect: true })
   debug = false;
 
@@ -450,7 +450,7 @@ export class OmGraphicalLayout extends LitElement {
     // Lit schedules child element updates *after* the parent's, so
     // when this fires the inner <om-scene> has been rendered into
     // our shadow DOM but its own `firstUpdated()` (where it mounts
-    // the Babylon engine + provides the scene context) hasn't run
+    // the Pixi renderer + provides the scene context) hasn't run
     // yet. Awaiting its updateComplete lets that finish before we
     // try to grab the picker / canvas — otherwise both come back
     // null and the InteractionManager / DragController never attach,

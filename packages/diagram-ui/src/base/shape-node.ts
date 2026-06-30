@@ -212,8 +212,8 @@ export class OmShapeNode {
     hitCy: number,
   ): void {
     this.transform.position.set(posX, posY);
-    // The z offset becomes a paint-order band; higher zIndex draws in front,
-    // so the Babylon "more negative = nearer the camera" sign is inverted.
+    // posZ follows the painter convention where more-negative is nearer the
+    // viewer; zIndex is the opposite (higher draws in front), so negate.
     this.transform.zIndex = -posZ;
     this.transform.scale.set(scaleX, scaleY);
 
