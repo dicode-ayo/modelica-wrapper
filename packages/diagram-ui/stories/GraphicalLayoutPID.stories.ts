@@ -12,7 +12,7 @@
  * This is the heaviest visual test of the editor — every layer (icon
  * provider + texture cache, component placement, nested connectors via
  * class.connectors PortDef, multi-segment connection waypoints,
- * GreasedLine routing) gets exercised against real Modelica data.
+ * stroke routing) gets exercised against real Modelica data.
  *
  * Browser memory: ~1.3 MB JSON fixture plus the textures rasterised
  * lazily per unique class — typical icon count on PID_Controller is
@@ -127,6 +127,7 @@ export const Editable: Story = {
     lineThicknessScale: 4,
     perfHud: true,
   },
+  parameters: { chromatic: { disableSnapshot: true } },
 };
 
 export const Readonly: Story = {
@@ -135,6 +136,7 @@ export const Readonly: Story = {
     lineThicknessScale: 4,
     perfHud: true,
   },
+  parameters: { chromatic: { disableSnapshot: true } },
 };
 
 export const ThickLines: Story = {

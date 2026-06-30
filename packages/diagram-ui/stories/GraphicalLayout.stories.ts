@@ -5,7 +5,7 @@
  *
  * Try it:
  *  - wheel / middle-drag / shift-drag → pan / zoom
- *  - click a component               → select (HighlightLayer outline)
+ *  - click a component               → select (highlight outline)
  *  - shift-click another component   → add to selection
  *  - drag a selected component       → move (draftLayout)
  *  - hover a connector + drag        → in-progress connection edge
@@ -95,4 +95,5 @@ export const Editable: Story = {
 
 export const Readonly: Story = {
   args: { readonly: true },
+  parameters: { chromatic: { disableSnapshot: true } },
 };

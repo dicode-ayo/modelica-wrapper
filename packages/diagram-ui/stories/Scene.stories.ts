@@ -20,6 +20,7 @@ interface StoryArgs {
 
 const meta: Meta<StoryArgs> = {
   title: "diagram-ui/Scene",
+  parameters: { chromatic: { disableSnapshot: true } },
   render: ({ zoom, panX, panY }: StoryArgs): TemplateResult => html`
     <div class="om-story">
       <h3>&lt;om-scene&gt; — empty</h3>

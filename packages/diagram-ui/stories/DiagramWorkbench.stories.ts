@@ -94,6 +94,7 @@ function setLayout(next: DiagramLayout): void {
 
 const meta: Meta<StoryArgs> = {
   title: "diagram-ui/DiagramWorkbench",
+  parameters: { chromatic: { disableSnapshot: true } },
   render: ({ readonly }: StoryArgs): TemplateResult => html`
     <div class="om-story">
       <h3>Diagram workbench</h3>

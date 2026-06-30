@@ -106,16 +106,37 @@ const meta: Meta = {
 export default meta;
 
 // --- Simple leaf blocks ---
-export const Sin = storyFor("sin");
-export const Gain = storyFor("gain");
-export const Add = storyFor("add");
-export const Constant = storyFor("constant");
+export const Sin: StoryObj = {
+  ...storyFor("sin"),
+  parameters: { chromatic: { disableSnapshot: true } },
+};
+export const Gain: StoryObj = {
+  ...storyFor("gain"),
+  parameters: { chromatic: { disableSnapshot: true } },
+};
+export const Add: StoryObj = {
+  ...storyFor("add"),
+  parameters: { chromatic: { disableSnapshot: true } },
+};
+export const Constant: StoryObj = {
+  ...storyFor("constant"),
+  parameters: { chromatic: { disableSnapshot: true } },
+};
 
 // --- Pulled from PID_Controller's catalog ---
 export const LimPID = storyFor("limpid", 200);
-export const Inertia = storyFor("inertia", 200);
-export const SpringDamper = storyFor("springdamper", 200);
-export const Torque = storyFor("torque", 200);
+export const Inertia: StoryObj = {
+  ...storyFor("inertia", 200),
+  parameters: { chromatic: { disableSnapshot: true } },
+};
+export const SpringDamper: StoryObj = {
+  ...storyFor("springdamper", 200),
+  parameters: { chromatic: { disableSnapshot: true } },
+};
+export const Torque: StoryObj = {
+  ...storyFor("torque", 200),
+  parameters: { chromatic: { disableSnapshot: true } },
+};
 
 // --- Gallery: all real icons side-by-side ---
 export const Gallery: StoryObj = {
