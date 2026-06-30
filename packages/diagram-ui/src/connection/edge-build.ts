@@ -1,220 +1,215 @@
-import {
-  Color3,
-  Mesh,
-  MeshBuilder,
-  StandardMaterial,
-  Vector3,
-} from "@babylonjs/core";
-import {
-  CreateDashedLines,
-  CreateLines,
-} from "@babylonjs/core/Meshes/Builders/linesBuilder.js";
-import type { LinesMesh, Scene, TransformNode } from "@babylonjs/core";
+import { Container, Graphics } from "pixi.js";
 import type { Point } from "@dicode/omc-client";
 
+import { buildHitTube } from "../base/hit-tube.js";
+
 /**
- * Pure builder for the connection's stroked path. Edges use Babylon's
- * built-in GL `LinesMesh` (1-pixel `gl.LINES` primitive) for the
- * visible stroke — matches OMEdit's crisp single-pixel look and keeps
- * draw-call cost tiny.
+ * Pure builder for a connection's stroked path. The visible stroke is a
+ * single `Graphics` polyline drawn with `pixelLine` — a crisp 1-device-
+ * pixel line at every zoom, matching OMEdit's look.
  *
- * Picking gl.LINES is unreliable (the line has zero geometric width),
- * so the builder also returns an invisible "hit area" mesh — a fat
- * tube along each segment — that `scene.pick` can hit. Both meshes
- * share the entity metadata so the picker resolves the same edge
- * either way.
+ * A thin line is hard to land a pick on, so the builder also returns an
+ * invisible `Graphics` "hit band" (`buildHitTube`, shared with poly host
+ * shapes): a fat round-capped stroke at `2 * hitRadius` backed by an
+ * explicit point-to-segment `hitArea`, drawn at `alpha = 0`. A caller
+ * raises its alpha to reveal a hover band. Both share the same entity tag
+ * so the picker resolves the same edge either way.
  *
- * `clocked` swaps the visible builder to `CreateDashedLines` for the
- * Modelica synchronous-clock convention.
+ * `clocked` swaps the visible stroke to a hand-rolled dashed pattern for
+ * the Modelica synchronous-clock convention (Pixi v8 has no native dash).
  */
 export interface EdgeOptions {
   points: Point[];
-  color?: Color3;
+  /** Stroke colour as 0xRRGGBB. */
+  color?: number;
   clocked?: boolean;
   /**
-   * Z offset placing the line in front of components (which sit at
-   * z = 0) so the routed wire is visible even when it crosses an
-   * intermediate component. The camera sits at -Z, so "closer to
-   * camera" means *negative* z — hence the negative default.
+   * Paint-order offset. Negated into a `zIndex` so the wire sits in front
+   * of components (`zIndex 0`) even where it crosses one.
    */
   zOffset?: number;
   /**
-   * Radius of the picking tube around each segment, in diagram units.
-   * Doubles as the width of the hover band, so it tracks the waypoint
-   * disc radius (`WAYPOINT_RADIUS`) and the two read as one shape.
+   * Radius of the picking band around each segment, in diagram units.
+   * Doubles as the hover-band half-width, so it tracks the waypoint disc
+   * radius (`WAYPOINT_RADIUS`) and the two read as one shape.
    */
   hitRadius?: number;
 }
 
-export const DEFAULT_EDGE_COLOR = new Color3(0.1, 0.1, 0.18);
+/** Default edge colour (near-black slate), matching the junction disc. */
+export const DEFAULT_EDGE_COLOR = 0x1a1a2e;
 export const EDGE_Z_OFFSET = -0.005;
 
 /**
  * Radius of a connection waypoint, in diagram units. Shared by the
- * junction discs and the edge pick tube so the hover band lines up
- * with the discs sitting on it.
+ * junction discs and the edge pick band so the hover band lines up with
+ * the discs sitting on it.
  */
 export const WAYPOINT_RADIUS = 1.5;
 const DEFAULT_HIT_RADIUS = WAYPOINT_RADIUS;
 
-/** Opacity the pick tube renders at while its edge is hovered. */
+/** Alpha the pick band renders at while its edge is hovered. */
 export const HIT_HOVER_OPACITY = 0.3;
-const HIT_HOVER_COLOR = new Color3(0.24, 0.51, 0.96); // blue-500
+/** Blue-500 hover band, matching the selection accent. */
+const HIT_HOVER_COLOR = 0x3d82f5;
 
-/** Dash sizing tuned for diagram-coord paths (~10s of units long). */
+/** Dash sizing tuned for diagram-coord paths (tens of units long). */
 const DEFAULT_DASH_SIZE = 4;
 const DEFAULT_DASH_GAP = 3;
+/** Dash count distributed across the whole path, not an absolute length —
+ *  keeps the dash density stable across variable path lengths. */
 const DEFAULT_DASH_COUNT = 24;
 
 export interface EdgeMeshes {
-  /** Visible stroked polyline. Picking it directly is unreliable. */
-  line: LinesMesh;
-  /** Invisible per-segment tube that the picker actually hits. */
-  hitArea: Mesh;
+  /** Visible stroked polyline. Decorative — picks land on `hitArea`. */
+  line: Graphics;
+  /** Invisible follow-the-line band the picker actually hits. */
+  hitArea: Graphics;
 }
 
 export function buildEdge(
-  scene: Scene,
-  parent: TransformNode | null,
+  parent: Container | null,
   name: string,
   options: EdgeOptions,
 ): EdgeMeshes | null {
   if (options.points.length < 2) {
     return null;
   }
-  const z = options.zOffset ?? EDGE_Z_OFFSET;
-  const points = options.points.map(([x, y]) => new Vector3(x, y, z));
-  // `updatable: true` lets `updateEdgePoints` rewrite the vertex
-  // buffer in place via the `instance` parameter on subsequent
-  // `CreateLines` calls. The cost (a slightly larger GPU buffer
-  // allocation) is negligible compared to disposing + recreating the
-  // mesh on every pointermove of a component drag.
-  const line = options.clocked
-    ? CreateDashedLines(
-        name,
-        {
-          points,
-          dashNb: DEFAULT_DASH_COUNT,
-          dashSize: DEFAULT_DASH_SIZE,
-          gapSize: DEFAULT_DASH_GAP,
-          updatable: true,
-        },
-        scene,
-      )
-    : CreateLines(name, { points, updatable: true }, scene);
-  line.color = options.color ?? DEFAULT_EDGE_COLOR;
-  if (parent) {
-    line.parent = parent;
-  }
+  const color = options.color ?? DEFAULT_EDGE_COLOR;
+  const zIndex = -(options.zOffset ?? EDGE_Z_OFFSET);
+
+  const line = new Graphics({ label: name });
+  line.eventMode = "none";
+  line.zIndex = zIndex;
+  drawEdgeLine(line, options.points, color, options.clocked ?? false);
 
   const hitArea = buildHitTube(
-    scene,
     `${name}.hit`,
-    points,
+    options.points,
     options.hitRadius ?? DEFAULT_HIT_RADIUS,
+    HIT_HOVER_COLOR,
   );
+  hitArea.zIndex = zIndex;
+
   if (parent) {
-    hitArea.parent = parent;
+    parent.sortableChildren = true;
+    parent.addChild(line, hitArea);
   }
   return { line, hitArea };
 }
 
 /**
- * In-place vertex update for the visible LinesMesh. Callers MUST
- * already have verified that the new point count matches the mesh's
- * original — Babylon's `instance` parameter accepts position updates
- * but not topology changes (see the docstrings on `CreateLines` /
- * `CreateDashedLines`). The hit tube is a merged mesh and can't be
- * updated this way; the caller rebuilds it separately if needed.
+ * Redraw the visible line in place against a new point set and colour.
+ * Operating on the same `Graphics` keeps its identity tag and parent
+ * linkage, so a component drag (which shifts every connected edge each
+ * pointermove) doesn't churn the scene graph.
  */
 export function updateEdgePoints(
-  scene: Scene,
-  line: LinesMesh,
+  line: Graphics,
   newPoints: Point[],
+  color: number,
   clocked: boolean,
-  zOffset: number = EDGE_Z_OFFSET,
 ): void {
-  const points = newPoints.map(([x, y]) => new Vector3(x, y, zOffset));
-  if (clocked) {
-    CreateDashedLines(
-      line.name,
-      {
-        points,
-        dashNb: DEFAULT_DASH_COUNT,
-        dashSize: DEFAULT_DASH_SIZE,
-        gapSize: DEFAULT_DASH_GAP,
-        updatable: true,
-        instance: line,
-      },
-      scene,
-    );
-  } else {
-    CreateLines(line.name, { points, updatable: true, instance: line }, scene);
-  }
+  drawEdgeLine(line, newPoints, color, clocked);
 }
 
 /**
- * Rebuild the picking-hit tube against a new point set. Exported so
- * `OmEdge` can refresh just the hit geometry after an in-place line
- * update — the visible mesh stays alive, only the invisible tube is
- * recycled.
+ * Build a fresh hit band against a new point set. The hit area is an
+ * `IHitArea` recomputed from the points, so the band is rebuilt rather
+ * than mutated in place; the caller re-tags it and swaps it for the old
+ * one (no manual metadata copy — the tag is reapplied via `tagEntity`).
  */
 export function rebuildHitTube(
-  scene: Scene,
-  parent: TransformNode | null,
+  parent: Container | null,
   name: string,
   newPoints: Point[],
   hitRadius: number = DEFAULT_HIT_RADIUS,
   zOffset: number = EDGE_Z_OFFSET,
-): Mesh {
-  const points = newPoints.map(([x, y]) => new Vector3(x, y, zOffset));
-  const hitArea = buildHitTube(scene, name, points, hitRadius);
+): Graphics {
+  const hitArea = buildHitTube(name, newPoints, hitRadius, HIT_HOVER_COLOR);
+  hitArea.zIndex = -zOffset;
   if (parent) {
-    hitArea.parent = parent;
+    parent.sortableChildren = true;
+    parent.addChild(hitArea);
   }
   return hitArea;
 }
 
-/**
- * Build a single mesh whose volume covers every segment of the
- * polyline. `MeshBuilder.CreateTube` doesn't accept disjoint segments,
- * so we merge per-segment tubes into one mesh. The tube renders at
- * `visibility = 0` (transparent) so it stays pickable — Babylon's
- * default `scene.pick` predicate skips `isVisible = false` meshes but
- * ignores `visibility`. Revealing it (raising `visibility`) doubles as
- * the edge's hover affordance.
- */
-function buildHitTube(
-  scene: Scene,
-  name: string,
-  points: Vector3[],
-  radius: number,
-): Mesh {
-  const segments: Mesh[] = [];
-  for (let i = 0; i < points.length - 1; i++) {
-    const seg = MeshBuilder.CreateTube(
-      `${name}.${i}`,
-      {
-        path: [points[i]!, points[i + 1]!],
-        radius,
-        tessellation: 6,
-        cap: 0,
-        updatable: false,
-      },
-      scene,
-    );
-    segments.push(seg);
+function drawEdgeLine(
+  line: Graphics,
+  points: Point[],
+  color: number,
+  clocked: boolean,
+): void {
+  line.clear();
+  if (clocked) {
+    appendDashedPath(line, points);
+  } else {
+    appendSolidPath(line, points);
   }
-  const merged =
-    segments.length === 1
-      ? segments[0]!
-      : (Mesh.MergeMeshes(segments, true, true) ?? segments[0]!);
-  merged.name = name;
-  const material = new StandardMaterial(`${name}.mat`, scene);
-  material.disableLighting = true;
-  material.emissiveColor = HIT_HOVER_COLOR;
-  merged.material = material;
-  merged.visibility = 0;
-  merged.isPickable = true;
-  return merged;
+  line.stroke({ width: 1, color, pixelLine: true, alignment: 0.5 });
+}
+
+function appendSolidPath(g: Graphics, points: Point[]): void {
+  const first = points[0];
+  if (first === undefined) {
+    return;
+  }
+  g.moveTo(first[0], first[1]);
+  for (let i = 1; i < points.length; i++) {
+    const p = points[i];
+    if (p === undefined) {
+      continue;
+    }
+    g.lineTo(p[0], p[1]);
+  }
+}
+
+/**
+ * Hand-rolled dash segmentation (Pixi has no dashed stroke): one dash+gap
+ * period spans `totalLength / dashNb`, the drawn run is
+ * `dashSize / (dashSize + gapSize)` of it, and the phase restarts at each
+ * vertex so dashes break at corners.
+ */
+function appendDashedPath(g: Graphics, points: Point[]): void {
+  let total = 0;
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    if (a === undefined || b === undefined) {
+      continue;
+    }
+    total += Math.hypot(b[0] - a[0], b[1] - a[1]);
+  }
+  if (total <= 0) {
+    return;
+  }
+  const period = total / DEFAULT_DASH_COUNT;
+  const run =
+    (DEFAULT_DASH_SIZE * period) / (DEFAULT_DASH_SIZE + DEFAULT_DASH_GAP);
+  for (let i = 0; i + 1 < points.length; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    if (a === undefined || b === undefined) {
+      continue;
+    }
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy);
+    if (len === 0) {
+      continue;
+    }
+    const nx = dx / len;
+    const ny = dy / len;
+    // Draw at least one dash so a segment shorter than one period still
+    // renders; clamp each dash to the segment end so the forced dash on a
+    // short span doesn't overshoot point `b`.
+    const count = Math.max(1, Math.floor(len / period));
+    for (let j = 0; j < count; j++) {
+      const start = period * j;
+      const end = Math.min(start + run, len);
+      g.moveTo(a[0] + start * nx, a[1] + start * ny);
+      g.lineTo(a[0] + end * nx, a[1] + end * ny);
+    }
+  }
 }

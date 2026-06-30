@@ -10,6 +10,10 @@ import type { ContextKeys } from "../interaction/context-keys.js";
 export interface CommandTarget {
   readonly layout: DiagramLayout | null;
   readonly selectedKeys: ReadonlySet<string>;
+  /** The vertex wire key (`vtx:<shapeKind>:<shapeIndex>/<vertexIndex>`) a
+   *  right-click landed on, for vertex-targeted commands; `null` outside a
+   *  vertex context menu. */
+  readonly contextVertex: string | null;
   /** Persist a new layout (emits the host's change event). */
   commitLayout(next: DiagramLayout): void;
   /** Replace the current selection. */

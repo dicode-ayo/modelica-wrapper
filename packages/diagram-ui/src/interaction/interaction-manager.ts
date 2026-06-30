@@ -1,20 +1,21 @@
-import type { Node, Scene } from "@babylonjs/core";
+import type { Container } from "pixi.js";
 
+import type { SceneContext } from "../scene/scene-context.js";
 import { entityKeyForNode, formatKey } from "./node-keys.js";
 
 /**
  * Picker function: given client (viewport) pixel coords, return the
- * Babylon node under that pixel — or `null` for misses. The interaction
- * manager doesn't talk to Babylon directly; the picker is injected so
- * tests can stub it with deterministic results (NullEngine can't
- * raycast against actual geometry).
+ * topmost interactive container under that pixel — or `null` for misses.
+ * The interaction manager doesn't talk to the renderer directly; the
+ * picker is injected so tests can stub it with deterministic results
+ * (a renderer-less scene graph can't hit-test against laid-out geometry).
  */
-export type PickerFn = (clientX: number, clientY: number) => Node | null;
+export type PickerFn = (clientX: number, clientY: number) => Container | null;
 
 /** Builds a {@link PickerFn} for a scene/canvas pair. `defaultPicker` is
  *  the production implementation; tests inject a deterministic one. */
 export type PickerFactory = (
-  scene: Scene,
+  ctx: SceneContext,
   canvas: HTMLCanvasElement,
 ) => PickerFn;
 
@@ -71,11 +72,28 @@ export class InteractionManager {
   }
 
   handlePointerMove(e: PointerEvent): void {
-    const key = this.pickKey(e.clientX, e.clientY);
+    const key = this.hoverKeyAt(e.clientX, e.clientY);
     if (key !== this.hoverKey) {
       this.hoverKey = key;
       this.emit("hover", { key });
     }
+  }
+
+  /**
+   * Hover resolution: like {@link pickKey}, but a vertex dot resolves to its
+   * owner shape instead of `null`. The dots are revealed *by* that hover, so
+   * collapsing to `null` the moment the pointer reaches one would make them
+   * flicker out from under the cursor. (Select / context-menu still use
+   * `pickKey`, where a handle must stay non-selectable.)
+   */
+  private hoverKeyAt(clientX: number, clientY: number): string | null {
+    const node = this.picker(clientX, clientY);
+    const entity = entityKeyForNode(node);
+    if (entity?.kind === "vertex-handle" && node) {
+      const owner = entityKeyForNode(node.parent ?? null);
+      return owner ? formatKey(owner.kind, owner.nodeId) : null;
+    }
+    return this.pickKey(clientX, clientY);
   }
 
   handlePointerLeave(): void {
@@ -129,15 +147,19 @@ export class InteractionManager {
   private pickKey(clientX: number, clientY: number): string | null {
     const node = this.picker(clientX, clientY);
     let entity = entityKeyForNode(node);
-    // Selection handles (resize corners + rotate disc) belong to
-    // `DragMode`. They are not selectable entities, so picking one must
+    // Selection handles (resize corners, rotate disc, vertex dots) belong
+    // to `DragMode`. They are not selectable entities, so picking one must
     // not emit a `select` — otherwise the handle's own key replaces the
     // component in the selection and the shape deselects out from under
     // the gesture, taking its handles with it.
-    if (entity?.kind === "handle" || entity?.kind === "rotate-handle") {
+    if (
+      entity?.kind === "handle" ||
+      entity?.kind === "rotate-handle" ||
+      entity?.kind === "vertex-handle"
+    ) {
       return null;
     }
-    // A `port` indicator is a child of its connector's TransformNode.
+    // A `port` indicator is a child of its connector's container.
     // Once the indicator becomes visible (it lights up on hover), the
     // next pointermove can pick it instead of the connector behind
     // it — without this step the hover key would flip
@@ -155,19 +177,17 @@ export class InteractionManager {
 }
 
 /**
- * Builds the default picker bound to a Babylon Scene + canvas. The
- * scene must already be mounted. Filters out grid / axis lines via
- * `isPickable` settings (`<om-grid-axis>` keeps those off).
+ * Builds the default picker bound to a {@link SceneContext} + canvas. The
+ * scene must already be mounted. Converts client coords to canvas-local
+ * (stage) pixels and delegates to `ctx.pick`, which returns the topmost
+ * interactive container (decorative subtrees opt out via `eventMode`).
  */
 export function defaultPicker(
-  scene: Scene,
+  ctx: SceneContext,
   canvas: HTMLCanvasElement,
 ): PickerFn {
   return (clientX, clientY) => {
     const rect = canvas.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-    const info = scene.pick(x, y);
-    return info?.pickedMesh ?? null;
+    return ctx.pick(clientX - rect.left, clientY - rect.top);
   };
 }

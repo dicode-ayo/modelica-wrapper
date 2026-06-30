@@ -18,6 +18,8 @@ const env = {
   readonly: false,
   viewLayer: "diagram" as const,
   hasClipboard: false,
+  vertexTarget: false,
+  polySelection: false,
 };
 
 describe("deriveContextKeys", () => {
@@ -61,7 +63,13 @@ describe("deriveContextKeys", () => {
         mode: "connect",
         state: { kind: "connecting", fromKey: "k:p", toKey: null },
       }),
-      { readonly: true, viewLayer: "icon", hasClipboard: true },
+      {
+        readonly: true,
+        viewLayer: "icon",
+        hasClipboard: true,
+        vertexTarget: false,
+        polySelection: false,
+      },
     );
     expect(ctx).toMatchObject({
       mode: "connect",

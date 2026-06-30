@@ -1,8 +1,18 @@
 /**
- * The diagram as the extension wires it: `<om-graphical-layout>` with the
- * `<om-action-panel>` toolbar overlaid, hooked together exactly like
- * `webview-entry.ts`. Pick a shape from the toolbar and drag to draw, R/F to
- * rotate/flip the selection, etc. — the one story to exercise the whole surface.
+ * The diagram as the extension wires it (`webview-entry.ts`): the
+ * `<om-graphical-layout>` canvas, the `<om-action-panel>` toolbar, and the
+ * `<om-parameter-panel>` side drawer, hooked together so the whole editor
+ * surface is exercisable without an extension host. The host round-trips
+ * that normally hit OMC are faked in-story:
+ *
+ *   - **Add components** — double-click empty canvas to open the library
+ *     browser (a fake Modelica tree), pick a class, and it's instantiated
+ *     at the drop point (`om-add-component-request` → `appendComponent`).
+ *   - **Edit parameters** — double-click a component to open its parameter
+ *     form; the toolbar's simulate button opens the simulation-setup form.
+ *   - **Draw / select / move** — toolbar shapes draw into the host layer;
+ *     click selects, drag moves, R/F rotate/flip, Delete removes.
+ *   - **Connect** — drag connector-to-connector lays a routed connection.
  */
 
 import type { Meta, StoryObj } from "@storybook/web-components";
@@ -11,16 +21,29 @@ import type { DiagramLayout } from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
 import "../src/action-panel/action-panel.component.js";
+import "../src/parameter-form/parameter-panel.component.js";
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
 import type { OmActionPanel } from "../src/action-panel/action-panel.component.js";
-import type { LayoutEvents } from "../src/graphical-layout/layout-events.js";
+import type { OmParameterPanel } from "../src/parameter-form/parameter-panel.component.js";
 import type {
   ActionFlipDetail,
   ActionRotateDetail,
   ActionToolDetail,
 } from "../src/action-panel/action-panel.component.js";
+import type { LayoutEvents } from "../src/graphical-layout/layout-events.js";
+import type { ParameterFormSubmitDetail } from "../src/parameter-form/parameter-form.component.js";
+import { isComponentKey, parseKey } from "../src/interaction/node-keys.js";
+
 import { sampleLayout } from "./fixtures/sample-layout.js";
-import { appendConnection } from "./fixtures/story-layout-state.js";
+import {
+  appendComponent,
+  appendConnection,
+} from "./fixtures/story-layout-state.js";
+import { fakeLibrarySource } from "./fixtures/fake-library.js";
+import {
+  componentParamsModel,
+  simulationOptionsModel,
+} from "./fixtures/fake-parameters.js";
 
 interface StoryArgs {
   readonly: boolean;
@@ -28,49 +51,129 @@ interface StoryArgs {
 
 let currentLayout: DiagramLayout = sampleLayout();
 
-const diagram = (): OmGraphicalLayout | null =>
-  document.querySelector("om-graphical-layout");
-const panel = (): OmActionPanel | null =>
-  document.querySelector("om-action-panel");
+/**
+ * Per-story root. Scoping queries here (instead of `document`) keeps the
+ * Docs view — which renders every story onto one page — from matching the
+ * first story's elements for all of them.
+ */
+const storyRoot = (node: EventTarget | null): ParentNode | null =>
+  node instanceof Element ? node.closest(".om-story-canvas-host") : null;
+
+const diagram = (root: ParentNode | null): OmGraphicalLayout | null =>
+  root?.querySelector("om-graphical-layout") ?? null;
+const actionPanel = (root: ParentNode | null): OmActionPanel | null =>
+  root?.querySelector("om-action-panel") ?? null;
+const paramPanel = (root: ParentNode | null): OmParameterPanel | null =>
+  root?.querySelector("om-parameter-panel") ?? null;
+
+/** Which flow opened the form, so the story logs the committed kind. */
+let paramKind: "simulate" | "component" | null = null;
+
+function openParams(
+  root: ParentNode | null,
+  opts: {
+    kind: "simulate" | "component";
+    model: ReturnType<typeof simulationOptionsModel>;
+    title: string;
+    submitLabel: string;
+    showReset: boolean;
+    crefPrefix?: string;
+  },
+): void {
+  const panel = paramPanel(root);
+  if (!panel) return;
+  paramKind = opts.kind;
+  panel.model = opts.model;
+  panel.title = opts.title;
+  panel.submitLabel = opts.submitLabel;
+  panel.showReset = opts.showReset;
+  panel.crefPrefix = opts.crefPrefix;
+  panel.open = true;
+}
+
+function closeParams(root: ParentNode | null): void {
+  const panel = paramPanel(root);
+  if (panel) panel.open = false;
+  paramKind = null;
+}
+
+function setLayout(root: ParentNode | null, next: DiagramLayout): void {
+  currentLayout = next;
+  const el = diagram(root);
+  if (el) el.layout = currentLayout;
+}
 
 const meta: Meta<StoryArgs> = {
   title: "diagram-ui/DiagramWorkbench",
+  parameters: { chromatic: { disableSnapshot: true } },
   render: ({ readonly }: StoryArgs): TemplateResult => html`
     <div class="om-story">
       <h3>Diagram workbench</h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
-        Toolbar + canvas, wired as in the extension. Pick Rectangle / Ellipse
-        from the draw dropdown (top-right) and drag on the canvas to draw;
-        Escape disarms. Click to select, drag to move, R/F to rotate/flip.
+        The full editor as the extension wires it. Double-click empty canvas to
+        add a component from the library; double-click a component to edit its
+        parameters; the toolbar's simulate button opens simulation setup. Draw
+        shapes from the toolbar, click/drag to select/move, R/F to rotate/flip.
       </p>
       <div
         class="om-story-canvas-host"
-        style="position: relative; height: 540px;"
+        style="position: relative; height: 560px;"
       >
         <om-graphical-layout
           .layout=${currentLayout}
           ?readonly=${readonly}
+          ?perf-hud=${true}
+          .libraryDataSource=${fakeLibrarySource}
           @om-graphical-layout-change=${(e: CustomEvent<DiagramLayout>) => {
             currentLayout = e.detail;
           }}
           @om-selection-change=${(
             e: CustomEvent<LayoutEvents["om-selection-change"]>,
           ) => {
-            const p = panel();
+            const p = actionPanel(storyRoot(e.currentTarget));
             if (p) p.noSelection = e.detail.keys.length === 0;
           }}
           @om-tool-change=${(
             e: CustomEvent<LayoutEvents["om-tool-change"]>,
           ) => {
-            const p = panel();
+            const p = actionPanel(storyRoot(e.currentTarget));
             if (p) p.tool = e.detail.tool;
           }}
           @om-connection-create=${(
             e: CustomEvent<LayoutEvents["om-connection-create"]>,
           ) => {
-            currentLayout = appendConnection(currentLayout, e.detail);
-            const el = diagram();
-            if (el) el.layout = currentLayout;
+            setLayout(
+              storyRoot(e.currentTarget),
+              appendConnection(currentLayout, e.detail),
+            );
+          }}
+          @om-add-component-request=${(
+            e: CustomEvent<LayoutEvents["om-add-component-request"]>,
+          ) => {
+            setLayout(
+              storyRoot(e.currentTarget),
+              appendComponent(
+                currentLayout,
+                e.detail.className,
+                e.detail.position,
+              ),
+            );
+          }}
+          @om-double-click=${(
+            e: CustomEvent<LayoutEvents["om-double-click"]>,
+          ) => {
+            const parsed = parseKey(e.detail.key);
+            if (!parsed || !isComponentKey(parsed) || parsed.nodeId === "") {
+              return;
+            }
+            openParams(storyRoot(e.currentTarget), {
+              kind: "component",
+              model: componentParamsModel(parsed.nodeId),
+              title: parsed.nodeId,
+              submitLabel: "Apply",
+              showReset: true,
+              crefPrefix: parsed.nodeId,
+            });
           }}
         ></om-graphical-layout>
         <om-action-panel
@@ -79,14 +182,34 @@ const meta: Meta<StoryArgs> = {
           @om-action-undo=${() => console.log("undo")}
           @om-action-check=${() => console.log("check")}
           @om-action-simulate=${() => console.log("simulate")}
-          @om-action-parameters=${() => console.log("parameters")}
+          @om-action-parameters=${(e: Event) =>
+            openParams(storyRoot(e.currentTarget), {
+              kind: "simulate",
+              model: simulationOptionsModel(currentLayout.className),
+              title: "Simulation setup",
+              submitLabel: "Simulate",
+              showReset: false,
+            })}
           @om-action-rotate=${(e: CustomEvent<ActionRotateDetail>) =>
-            diagram()?.rotateSelection(e.detail.direction === "cw")}
+            diagram(storyRoot(e.currentTarget))?.rotateSelection(
+              e.detail.direction === "cw",
+            )}
           @om-action-flip=${(e: CustomEvent<ActionFlipDetail>) =>
-            diagram()?.flipSelection(e.detail.axis === "horizontal")}
+            diagram(storyRoot(e.currentTarget))?.flipSelection(
+              e.detail.axis === "horizontal",
+            )}
           @om-action-tool=${(e: CustomEvent<ActionToolDetail>) =>
-            diagram()?.setActiveTool(e.detail.tool)}
+            diagram(storyRoot(e.currentTarget))?.setActiveTool(e.detail.tool)}
         ></om-action-panel>
+        <om-parameter-panel
+          @om-panel-submit=${(e: CustomEvent<ParameterFormSubmitDetail>) => {
+            console.log(`apply (${paramKind})`, e.detail.values);
+            closeParams(storyRoot(e.currentTarget));
+          }}
+          @om-panel-cancel=${(e: Event) =>
+            closeParams(storyRoot(e.currentTarget))}
+          @om-panel-reset=${() => console.log("reset to defaults")}
+        ></om-parameter-panel>
       </div>
     </div>
   `,

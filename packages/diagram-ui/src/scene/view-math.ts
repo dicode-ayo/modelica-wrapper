@@ -1,6 +1,6 @@
 /**
  * Pure view-math used by `<om-scene>` and its `PanZoom` helper. No
- * Babylon, no DOM — just maps between viewport pixel coordinates and
+ * renderer, no DOM — just maps between viewport pixel coordinates and
  * diagram coordinates given the current view state.
  *
  * View state is described by:

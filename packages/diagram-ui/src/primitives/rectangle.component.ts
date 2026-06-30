@@ -1,20 +1,21 @@
 import { customElement, property } from "lit/decorators.js";
-import type { TransformNode } from "@babylonjs/core";
+import type { Container } from "pixi.js";
 import type { RectangleShape } from "@dicode/omc-client";
 import { fillSpec } from "@dicode/diagram-svg";
 
-import { OmShapePrimitive } from "./shape-primitive.js";
+import {
+  OmShapePrimitive,
+  extentEntityBounds,
+  type EntityBounds,
+} from "./shape-primitive.js";
 import {
   DEFAULT_LINE_COLOR,
   STROKE_Z_DELTA,
-  buildFilledPolygon,
-  buildFilledQuad,
+  buildFilledRect,
   buildStroke,
   clampCornerRadius,
   extentToRect,
-  graphicItemNode,
   roundedRectRing,
-  stripClosingDuplicate,
 } from "./shape-utils.js";
 
 /**
@@ -32,22 +33,37 @@ export class OmRectangle extends OmShapePrimitive {
     return JSON.stringify(this.shape);
   }
 
-  protected override buildMeshes(parent: TransformNode, z: number): void {
+  protected override entityKind(): string {
+    return "rectangle";
+  }
+
+  protected override entityBounds(): EntityBounds | null {
+    return this.shape ? extentEntityBounds(this.shape) : null;
+  }
+
+  protected override buildMeshes(
+    parent: Container,
+    z: number,
+    inEntityFrame = false,
+  ): void {
     const s = this.shape;
     if (!s) {
       return;
     }
-    const scene = parent.getScene();
     const { x, y, width, height } = extentToRect(s.extent);
     if (width <= 0 || height <= 0) {
       return;
     }
 
+    const renderer = this.renderer();
     const baseName = `om-rectangle.${this.zOrder}`;
-    // Per-shape origin/rotation (issue #76 item 15): parent the meshes under
-    // a transform node when the shape carries a non-default origin/rotation.
-    const gi = graphicItemNode(parent, s, `${baseName}.gi`);
-    const root = gi.node;
+    const root = this.graphicRoot(
+      parent,
+      s,
+      `${baseName}.gi`,
+      inEntityFrame,
+      z,
+    );
     const radius = clampCornerRadius(s.radius, width, height);
     const corners = roundedRectRing(x, y, width, height, radius);
     const fill = fillSpec({
@@ -56,45 +72,32 @@ export class OmRectangle extends OmShapePrimitive {
       pattern: s.fillPattern,
     });
     if (fill.kind !== "none") {
-      // A degenerate rounded ring triangulates to null; the shape then renders
-      // as outline only rather than a missing region.
-      const filled =
-        radius > 0
-          ? buildFilledPolygon(
-              scene,
-              root,
-              stripClosingDuplicate(corners),
-              fill,
-              z,
-              `${baseName}.fill`,
-            )
-          : buildFilledQuad(
-              scene,
-              root,
-              { x, y, width, height },
-              fill,
-              z,
-              `${baseName}.fill`,
-            );
-      if (filled) {
-        this.resources.push(filled);
-      }
+      this.resources.push(
+        buildFilledRect(
+          renderer,
+          root,
+          { x, y, width, height },
+          radius,
+          fill,
+          z,
+          `${baseName}.fill`,
+        ),
+      );
     }
 
     const stroke = buildStroke(
-      scene,
       root,
       corners,
       s.lineColor ?? DEFAULT_LINE_COLOR,
       s.pattern,
       z + STROKE_Z_DELTA,
       `${baseName}.stroke`,
+      s.lineThickness,
+      this.lineThicknessScale,
     );
     if (stroke) {
       this.resources.push(stroke);
     }
-    // Dispose the wrapper node last (after its child meshes).
-    this.resources.push(gi);
   }
 }
 

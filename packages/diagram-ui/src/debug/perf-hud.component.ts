@@ -1,22 +1,21 @@
 /**
- * `<om-perf-hud>` — togglable corner overlay showing live Babylon engine
- * stats. Mount inside `<om-graphical-layout>` (or `<om-scene>`) and set
- * the `show` attribute to enable.
+ * `<om-perf-hud>` — togglable corner overlay showing live renderer stats.
+ * Mount inside `<om-graphical-layout>` (or `<om-scene>`) and set the
+ * `show` attribute to enable.
  *
- * Stats sampled per animation frame:
- *   - FPS              (`engine.getFps()` — smoothed)
+ * Stats sampled on a ~10 Hz timer off the HUD's own animation-frame loop:
+ *   - FPS              (animation-frame cadence — drops visibly on jank)
  *   - frame time (ms)  (1000 / fps)
- *   - active meshes    (`scene.getActiveMeshes().length`)
- *   - draw calls       (`engine.drawCalls` if exposed by the build)
+ *   - scene nodes      (containers under the stage)
  *
- * The HUD itself paints into a fixed-position div in the host's light DOM
- * — no canvas, no extra Babylon work, so it can't perturb the numbers it
- * is measuring.
+ * The HUD paints into a fixed-position div in the host's light DOM — no
+ * canvas work, so it can't perturb the numbers it is measuring.
  */
 
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { ContextConsumer, consume } from "@lit/context";
+import type { Container } from "pixi.js";
 
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
 import {
@@ -35,8 +34,7 @@ import { parseKey, type EntityKind } from "../interaction/node-keys.js";
 type PerfStats = {
   fps: number;
   frameMs: number;
-  meshes: number;
-  drawCalls: number;
+  nodes: number;
 };
 
 /** Pointer position in diagram (Modelica) coordinates, or null when
@@ -111,7 +109,7 @@ export class OmPerfHud extends LitElement {
   private viewStore: ViewStateStore | null = null;
 
   @state()
-  private stats: PerfStats = { fps: 0, frameMs: 0, meshes: 0, drawCalls: 0 };
+  private stats: PerfStats = { fps: 0, frameMs: 0, nodes: 0 };
 
   @state()
   private pointer: DiagramPoint = null;
@@ -130,9 +128,10 @@ export class OmPerfHud extends LitElement {
 
   private rafId = 0;
   private lastSampleAt = 0;
+  /** Animation frames counted since the last stats sample (for FPS). */
+  private frameCount = 0;
   /** Canvas the pointer listeners are bound to. Tracked so we can
-   *  remove them cleanly even if `ctx.engine.getRenderingCanvas()`
-   *  later returns a different element. */
+   *  remove them cleanly even if the renderer's canvas later changes. */
   private pointerCanvas: HTMLCanvasElement | null = null;
   /** Unsubscribe from the interaction store; rebound when the context
    *  resolves to a new store (mount, scene teardown, hot reload). */
@@ -185,8 +184,8 @@ export class OmPerfHud extends LitElement {
       this.rafId = requestAnimationFrame(this.tick);
     }
     // Pointer listeners need re-binding whenever the scene context
-    // resolves (or changes) — `ctx.engine.getRenderingCanvas()` is
-    // null until OmScene mounts the engine.
+    // resolves (or changes) — the renderer canvas is null until OmScene
+    // finishes mounting.
     this.attachPointerListeners();
   }
 
@@ -196,7 +195,8 @@ export class OmPerfHud extends LitElement {
    * second call against the same canvas is a no-op.
    */
   private attachPointerListeners(): void {
-    const canvas = this.ctx?.engine.getRenderingCanvas() ?? null;
+    const view = this.ctx?.renderer?.canvas;
+    const canvas = view instanceof HTMLCanvasElement ? view : null;
     if (canvas === this.pointerCanvas) return;
     this.detachPointerListeners();
     if (!canvas) return;
@@ -233,7 +233,7 @@ export class OmPerfHud extends LitElement {
 
   override render(): TemplateResult | typeof nothing {
     if (!this.show) return nothing;
-    const { fps, frameMs, meshes, drawCalls } = this.stats;
+    const { fps, frameMs, nodes } = this.stats;
     // Colour FPS by health band so the eye catches drops quickly.
     const fpsClass = fps >= 55 ? "" : fps >= 30 ? "warn" : "bad";
     // "Software" / "SwiftShader" in the GPU string almost always means
@@ -252,9 +252,7 @@ export class OmPerfHud extends LitElement {
     const selectionLine = formatSelectionLine(this.interaction.selectedKeys);
     const fpsTxt = `${fps.toFixed(0).padStart(3)} fps`;
     const msTxt = `${frameMs.toFixed(1).padStart(4)} ms`;
-    const countsTxt = `meshes ${String(meshes).padStart(4)}   drawcalls ${String(
-      drawCalls,
-    ).padStart(4)}`;
+    const countsTxt = `nodes ${String(nodes).padStart(4)}`;
     // Padding lives in these strings, not in the template text — `.row` is
     // `white-space: pre`, so every space here is rendered verbatim while the
     // markup stays free of layout-significant whitespace.
@@ -273,29 +271,21 @@ export class OmPerfHud extends LitElement {
   }
 
   private tick(): void {
+    this.frameCount++;
     const now = performance.now();
     // Sample at ~10 Hz so the DOM doesn't repaint every frame and add
     // its own cost to what we're measuring.
-    if (now - this.lastSampleAt >= 100) {
+    const elapsed = now - this.lastSampleAt;
+    if (elapsed >= 100) {
+      const fps = elapsed > 0 ? (this.frameCount * 1000) / elapsed : 0;
+      this.frameCount = 0;
       this.lastSampleAt = now;
       const ctx = this.ctx;
-      if (ctx) {
-        const fps = ctx.engine.getFps();
-        // `drawCalls` is a `PerfCounter` in recent Babylon builds; read
-        // `.current` and fall back to 0 if the field isn't there.
-        const dcField = (ctx.engine as unknown as { drawCalls?: unknown })
-          .drawCalls;
-        const drawCalls =
-          typeof dcField === "number"
-            ? dcField
-            : ((dcField as { current?: number } | undefined)?.current ?? 0);
-        this.stats = {
-          fps,
-          frameMs: fps > 0 ? 1000 / fps : 0,
-          meshes: ctx.scene.getActiveMeshes().length,
-          drawCalls,
-        };
-      }
+      this.stats = {
+        fps,
+        frameMs: fps > 0 ? 1000 / fps : 0,
+        nodes: ctx ? countNodes(ctx.stage) : 0,
+      };
     }
     if (this.show) {
       this.rafId = requestAnimationFrame(this.tick);
@@ -303,6 +293,15 @@ export class OmPerfHud extends LitElement {
       this.rafId = 0;
     }
   }
+}
+
+/** Total descendant containers under `root` (inclusive). */
+function countNodes(root: Container): number {
+  let n = 1;
+  for (const child of root.children) {
+    n += countNodes(child);
+  }
+  return n;
 }
 
 declare global {
@@ -314,12 +313,14 @@ declare global {
 const ENTITY_LABEL: Record<EntityKind, string> = {
   component: "component",
   connector: "connector",
+  shape: "shape",
   edge: "edge",
   junction: "junction",
   label: "label",
   port: "port",
   handle: "handle",
   "rotate-handle": "rotate-handle",
+  "vertex-handle": "vertex-handle",
 };
 
 /** "moving 2 items" / "connecting c:R1.p → c:R2.in" / "idle" etc. */

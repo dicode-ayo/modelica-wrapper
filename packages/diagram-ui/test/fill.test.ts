@@ -1,57 +1,33 @@
 /**
- * Headless coverage for the gradient / hatch fill path. Babylon's
- * `DynamicTexture.getContext()` returns null under `NullEngine`, so the baked
- * texture itself can't be exercised here (it's covered visually by the
- * Storybook/Chromatic stories). These tests pin the parts that survive
- * headless:
- *  - the bbox-derived UVs the texture path requires on every filled mesh,
- *  - the flat-material fallback colour (a gradient degrades to its fill, a
- *    hatch to its background — never to a black/line rectangle),
- *  - that solid / none specs never take the texture path.
+ * Headless coverage for the gradient / hatch fill path. happy-dom has no
+ * canvas 2D context, so the baked `Texture` can't be exercised here (it's
+ * covered visually by the Storybook/Chromatic stories). These tests pin the
+ * parts that survive renderer-less:
+ *  - solid / none specs never take the texture path,
+ *  - a gradient / hatch fill collapses to one cache key (or per-aspect for a
+ *    hatch),
+ *  - the flat-fill fallback colour: a gradient degrades to its representative
+ *    fill colour, a hatch to its background — never to a black/line edge.
+ *
+ * Pixi `Graphics` fills triangulate internally and map a texture via a
+ * matrix/textureSpace, so there are no per-vertex UV buffers to assert
+ * (the Babylon `getVerticesData(UVKind)` checks have no Pixi analogue).
  */
-import { afterEach, describe, expect, it } from "vitest";
-import {
-  NullEngine,
-  Scene,
-  StandardMaterial,
-  TransformNode,
-  VertexBuffer,
-} from "@babylonjs/core";
+import { describe, expect, it } from "vitest";
+import { Container, Graphics } from "pixi.js";
 import { fillSpec } from "@dicode/diagram-svg";
 
 import {
-  buildFanFromCenter,
+  buildFilledEllipse,
   buildFilledPolygon,
-  buildFilledQuad,
+  buildFilledRect,
+  packColor,
   type RectBox,
 } from "../src/primitives/shape-utils.js";
 import {
   fillCacheKey,
   resolveFillTexture,
 } from "../src/primitives/fill-texture.js";
-
-const teardowns: Array<() => void> = [];
-
-function makeScene(): { scene: Scene; parent: TransformNode } {
-  const engine = new NullEngine({
-    renderWidth: 320,
-    renderHeight: 240,
-    textureSize: 256,
-    deterministicLockstep: false,
-    lockstepMaxSteps: 1,
-  });
-  const scene = new Scene(engine);
-  const parent = new TransformNode("test-parent", scene);
-  teardowns.push(() => {
-    scene.dispose();
-    engine.dispose();
-  });
-  return { scene, parent };
-}
-
-afterEach(() => {
-  for (const t of teardowns.splice(0)) t();
-});
 
 const FILL: [number, number, number] = [192, 192, 192];
 const LINE: [number, number, number] = [64, 64, 64];
@@ -69,25 +45,22 @@ const hatch = fillSpec({
 });
 const solid = fillSpec({ fillColor: FILL, lineColor: LINE, pattern: "Solid" });
 
-function materialOf(scene: Scene, name: string): StandardMaterial {
-  const mat = scene.getMaterialByName(name);
-  if (!(mat instanceof StandardMaterial)) {
-    throw new Error(`material ${name} missing`);
-  }
-  return mat;
-}
-
-function uvOf(scene: Scene, mesh: string): Float32Array | number[] | null {
-  return (
-    scene.getMeshByName(mesh)?.getVerticesData(VertexBuffer.UVKind) ?? null
-  );
+/** Packed `0xRRGGBB` flat fill colour recorded on a Graphics' instruction. */
+function fillColor(g: Graphics): number {
+  const ins = (
+    g.context.instructions as ReadonlyArray<{
+      action: string;
+      data: { style: { color: number } };
+    }>
+  ).find((i) => i.action === "fill");
+  if (!ins) throw new Error("expected a fill instruction");
+  return ins.data.style.color;
 }
 
 describe("resolveFillTexture", () => {
   it("returns null for solid and none specs", () => {
-    const { scene } = makeScene();
-    expect(resolveFillTexture(scene, solid, 2)).toBeNull();
-    expect(resolveFillTexture(scene, { kind: "none" }, 2)).toBeNull();
+    expect(resolveFillTexture(null, solid, 2)).toBeNull();
+    expect(resolveFillTexture(null, { kind: "none" }, 2)).toBeNull();
   });
 });
 
@@ -107,70 +80,67 @@ describe("fillCacheKey", () => {
   });
 });
 
-describe("buildFilledQuad", () => {
-  it("emits per-corner UVs for the fill texture", () => {
-    const { scene, parent } = makeScene();
-    const res = buildFilledQuad(scene, parent, BOX, cylinder, 0, "quad");
-    // 4 corners × 2 components.
-    expect(uvOf(scene, "quad")?.length).toBe(8);
-    res.dispose();
-  });
-
-  it("falls back to a flat material in the gradient's fill colour", () => {
-    const { scene, parent } = makeScene();
-    const res = buildFilledQuad(scene, parent, BOX, cylinder, 0, "quad-grad");
-    const mat = materialOf(scene, "quad-grad.mat");
-    // No canvas headless → flat fallback, and it degrades to fill (192/255),
+describe("buildFilledRect", () => {
+  it("falls back to the gradient's fill colour when no texture bakes", () => {
+    const parent = new Container();
+    const res = buildFilledRect(null, parent, BOX, 0, cylinder, 0, "quad-grad");
+    const g = parent.getChildByLabel("quad-grad", true);
+    if (!(g instanceof Graphics)) throw new Error("expected the fill graphic");
+    // No canvas 2D context → flat fallback, degrading to the fill colour,
     // never to the black/line edge.
-    expect(mat.emissiveColor.r).toBeCloseTo(192 / 255, 5);
+    expect(fillColor(g)).toBe(packColor(FILL));
     res.dispose();
   });
 
   it("hatch falls back to its background colour", () => {
-    const { scene, parent } = makeScene();
-    const res = buildFilledQuad(scene, parent, BOX, hatch, 0, "quad-hatch");
-    const mat = materialOf(scene, "quad-hatch.mat");
-    expect(mat.emissiveColor.r).toBeCloseTo(192 / 255, 5);
+    const parent = new Container();
+    const res = buildFilledRect(null, parent, BOX, 0, hatch, 0, "quad-hatch");
+    const g = parent.getChildByLabel("quad-hatch", true);
+    if (!(g instanceof Graphics)) throw new Error("expected the fill graphic");
+    expect(fillColor(g)).toBe(packColor(FILL));
     res.dispose();
   });
 });
 
-describe("buildFanFromCenter", () => {
-  it("emits per-vertex UVs (centre + ring) the texture path needs", () => {
-    const { scene, parent } = makeScene();
-    const ring: Array<[number, number]> = [
-      [0, -5],
-      [10, 5],
-      [-10, 5],
-    ];
-    const res = buildFanFromCenter(
-      scene,
+describe("buildFilledEllipse", () => {
+  it("falls back to the gradient's fill colour", () => {
+    const parent = new Container();
+    const res = buildFilledEllipse(
+      null,
       parent,
       0,
       0,
-      ring,
+      10,
+      5,
       BOX,
       cylinder,
       0,
       "fan",
     );
-    // centre + 3 ring vertices = 4 verts × 2 components.
-    expect(uvOf(scene, "fan")?.length).toBe(8);
+    const g = parent.getChildByLabel("fan", true);
+    if (!(g instanceof Graphics)) throw new Error("expected the fill graphic");
+    expect(fillColor(g)).toBe(packColor(FILL));
     res.dispose();
   });
 });
 
 describe("buildFilledPolygon", () => {
-  it("emits per-vertex UVs derived from the point bbox", () => {
-    const { scene, parent } = makeScene();
+  it("builds a flat fallback fill from the point list (null for < 3 points)", () => {
+    const parent = new Container();
     const points: Array<[number, number]> = [
       [-10, -5],
       [10, -5],
       [0, 5],
     ];
-    const res = buildFilledPolygon(scene, parent, points, hatch, 0, "poly");
+    const res = buildFilledPolygon(null, parent, points, hatch, 0, "poly");
     if (!res) throw new Error("polygon fill should build");
-    expect(uvOf(scene, "poly")?.length).toBe(6);
+    const g = parent.getChildByLabel("poly", true);
+    if (!(g instanceof Graphics)) throw new Error("expected the fill graphic");
+    expect(fillColor(g)).toBe(packColor(FILL));
     res.dispose();
+
+    expect(
+      buildFilledPolygon(null, parent, [[0, 0]], hatch, 0, "degenerate"),
+    ).toBeNull();
   });
 });

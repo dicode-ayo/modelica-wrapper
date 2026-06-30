@@ -9,8 +9,8 @@
  *   </om-icon-provider>
  *
  * Uses real Modelica icons captured against OMC (`*.icon.json`) so the
- * SVG renderer, the icon-provider canvas rasteriser and the Babylon
- * plane mesh all get exercised end-to-end.
+ * SVG renderer, the icon-provider canvas rasteriser and the Pixi sprite
+ * all get exercised end-to-end.
  */
 
 import type { Meta, StoryObj } from "@storybook/web-components";
@@ -70,7 +70,7 @@ const meta: Meta<StoryArgs> = {
         <h3>&lt;om-component&gt; — ${fixture}</h3>
         <p style="font-size:11px;color:#666;margin:4px 0;">
           End-to-end: getModelInstance fixture → renderIconLayersToSvg → canvas
-          rasteriser → Babylon Texture → plane mesh.
+          rasteriser → Pixi Texture → sprite.
         </p>
         <div class="om-story-canvas-host">
           <om-scene .zoom=${zoom}>

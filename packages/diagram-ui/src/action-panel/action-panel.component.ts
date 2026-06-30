@@ -38,8 +38,8 @@ import { omTokens } from "@dicode/ui-common";
 import { emitEvent } from "../dom-event.js";
 
 import {
-  DRAW_KINDS,
   drawKindOf,
+  polyKindOf,
   type DrawKind,
   type ToolId,
 } from "../interaction/tools.js";
@@ -48,7 +48,7 @@ import type { SplitButtonSelectDetail } from "./split-button.component.js";
 import { toolbarButtonStyles } from "./toolbar-styles.js";
 import {
   checkIcon,
-  drawKindIcon,
+  drawToolIcon,
   flipIcon,
   flipVerticalIcon,
   parametersIcon,
@@ -96,14 +96,28 @@ export type ActionPanelEventName = keyof ActionPanelEvents;
 const DRAW_LABELS: Record<DrawKind, string> = {
   rectangle: "Rectangle",
   ellipse: "Ellipse",
+  line: "Line",
+  polygon: "Polygon",
 };
+
+/** Every draw kind in dropdown order: extent tools first, then poly. */
+const DRAW_KINDS_ORDERED: readonly DrawKind[] = [
+  "rectangle",
+  "ellipse",
+  "line",
+  "polygon",
+];
+
+/** Tooltip for the main button, naming the gesture each family uses. */
+function drawMainTitle(kind: DrawKind): string {
+  const label = DRAW_LABELS[kind].toLowerCase();
+  return polyKindOf(kind)
+    ? `Draw a ${label} (click to place points, double-click to finish)`
+    : `Draw a ${label} (drag on the canvas)`;
+}
 
 const ROTATE_DIRECTIONS: readonly RotateDirection[] = ["cw", "ccw"];
 const FLIP_AXES: readonly FlipAxis[] = ["horizontal", "vertical"];
-
-function asDrawKind(value: string): DrawKind | undefined {
-  return DRAW_KINDS.find((k) => k === value);
-}
 
 @customElement("om-action-panel")
 export class OmActionPanel extends LitElement {
@@ -295,25 +309,22 @@ export class OmActionPanel extends LitElement {
     const armed = drawKindOf(this.tool);
     const shown = armed ?? this.lastDrawKind;
     return html`<om-split-button
-      .mainIcon=${drawKindIcon(shown)}
-      main-title=${`Draw a ${DRAW_LABELS[shown].toLowerCase()} (drag on the canvas)`}
+      .mainIcon=${drawToolIcon(shown)}
+      main-title=${drawMainTitle(shown)}
       chevron-title="Draw shape"
       ?active=${armed !== null}
       ?disabled=${this.disabled}
-      .items=${[
-        {
-          value: "rectangle",
-          icon: drawKindIcon("rectangle"),
-          label: "Rectangle",
-        },
-        { value: "ellipse", icon: drawKindIcon("ellipse"), label: "Ellipse" },
-      ]}
+      .items=${DRAW_KINDS_ORDERED.map((kind) => ({
+        value: kind,
+        icon: drawToolIcon(kind),
+        label: DRAW_LABELS[kind],
+      }))}
       @om-split-main=${() =>
         this.emit("om-action-tool", {
           tool: armed === shown ? "select" : shown,
         })}
       @om-split-select=${(e: CustomEvent<SplitButtonSelectDetail>) => {
-        const kind = asDrawKind(e.detail.value);
+        const kind = drawKindOf(e.detail.value);
         if (kind) this.emit("om-action-tool", { tool: kind });
       }}
     ></om-split-button>`;

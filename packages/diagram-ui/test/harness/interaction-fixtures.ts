@@ -1,11 +1,12 @@
 import { afterEach } from "vitest";
-import { NullEngine, Scene, TransformNode } from "@babylonjs/core";
+import { Container } from "pixi.js";
 import type { DiagramLayout } from "@dicode/omc-client";
 
 import "../../src/graphical-layout/graphical-layout.component.js";
 import type { OmGraphicalLayout } from "../../src/graphical-layout/graphical-layout.component.js";
 import type { OmScene } from "../../src/scene/scene.component.js";
 import type { PickerFn } from "../../src/interaction/interaction-manager.js";
+import { tagEntity } from "../../src/interaction/node-keys.js";
 
 /**
  * Shared fixtures for driving `<om-graphical-layout>` interaction through
@@ -20,38 +21,34 @@ afterEach(() => {
   }
 });
 
-/** A throwaway `NullEngine` scene for building pickable fake nodes. */
-export function nullScene(): Scene {
-  const engine = new NullEngine({
-    renderWidth: 100,
-    renderHeight: 100,
-    textureSize: 64,
-    deterministicLockstep: false,
-    lockstepMaxSteps: 1,
-  });
-  const scene = new Scene(engine);
-  teardowns.push(() => {
-    scene.dispose();
-    engine.dispose();
-  });
-  return scene;
+/** A bare entity container tagged with its identity — the renderer-less
+ *  analog of a named Babylon node, picked by the test stubs. */
+export function entityNode(
+  kind: Parameters<typeof tagEntity>[1],
+  nodeId: string,
+): Container {
+  const c = new Container();
+  tagEntity(c, kind, nodeId);
+  return c;
+}
+
+/** A component container — resolves to `c:<id>`. */
+export function componentNode(id: string): Container {
+  return entityNode("component", id);
 }
 
 /** A connector with a pickable port indicator — resolves to `k:<id>`. */
-export function portMesh(scene: Scene, connectorId: string): TransformNode {
-  const conn = new TransformNode(`om-connector:${connectorId}`, scene);
-  const port = new TransformNode("om-port-indicator", scene);
-  port.parent = conn;
-  port.metadata = { kind: "port" };
+export function portMesh(connectorId: string): Container {
+  const conn = entityNode("connector", connectorId);
+  const port = new Container();
+  tagEntity(port, "port", connectorId);
+  conn.addChild(port);
   return port;
 }
 
-/** A bare connector node — resolves to `k:<id>`. */
-export function connectorMesh(
-  scene: Scene,
-  connectorId: string,
-): TransformNode {
-  return new TransformNode(`om-connector:${connectorId}`, scene);
+/** A bare connector container — resolves to `k:<id>`. */
+export function connectorMesh(connectorId: string): Container {
+  return entityNode("connector", connectorId);
 }
 
 export function emptyLayout(): DiagramLayout {
@@ -74,14 +71,7 @@ export async function mountLayout(opts: {
   layout?: DiagramLayout;
 }): Promise<OmGraphicalLayout> {
   const el = document.createElement("om-graphical-layout") as OmGraphicalLayout;
-  el.engineFactory = () =>
-    new NullEngine({
-      renderWidth: 200,
-      renderHeight: 200,
-      textureSize: 128,
-      deterministicLockstep: false,
-      lockstepMaxSteps: 1,
-    });
+  el.rendererFactory = () => null;
   el.pickerFactory = () => opts.picker;
   el.layout = opts.layout ?? emptyLayout();
   document.body.appendChild(el);
@@ -92,8 +82,8 @@ export async function mountLayout(opts: {
 }
 
 /**
- * The scene canvas, with a pinned bounding box. jsdom doesn't lay out, so
- * the canvas measures 0×0 and `clientToDiagram` degenerates without it.
+ * The scene canvas, with a pinned bounding box. happy-dom doesn't lay out,
+ * so the canvas measures 0×0 and `clientToDiagram` degenerates without it.
  */
 export function sceneCanvas(el: OmGraphicalLayout): HTMLCanvasElement {
   const scene = el.shadowRoot?.querySelector("om-scene") as OmScene | null;

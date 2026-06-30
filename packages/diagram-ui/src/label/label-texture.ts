@@ -1,50 +1,37 @@
-import { AdvancedDynamicTexture } from "@babylonjs/gui";
-import type { Scene } from "@babylonjs/core";
+import { Container } from "pixi.js";
+
+import type { SceneContext } from "../scene/scene-context.js";
 
 /**
- * Lazy per-scene `AdvancedDynamicTexture` reused by every `<om-label>`.
+ * Lazy per-scene screen-space overlay `Container` reused by every
+ * `<om-label>`.
  *
- * Creating one texture per scene rather than per label keeps the GUI
- * draw call count flat as we add hundreds of labels. The texture is
- * stashed under `scene.metadata.omLabelTexture` (we don't subclass
- * Scene; the metadata bag is the standard escape hatch).
+ * Labels live outside the pan/zoom/Y-flip transform so their font size
+ * stays in screen pixels across the full zoom range. The layer is a
+ * top-level sibling of `worldRoot` under the stage (identity transform),
+ * added after it so labels paint on top. Each `<om-label>` parents its
+ * `Text` here and reprojects it per frame from its in-world anchor.
  *
- * Returns `null` on `NullEngine` (headless test contexts). Babylon's
- * AdvancedDynamicTexture schedules a debounced refresh that would
- * otherwise fire on a disposed render context and surface as an
- * unhandled exception in vitest. Headless tests still get a real
- * anchor TransformNode and the `currentText` getter on the label —
- * they just skip the actual GUI render.
- *
- * Disposed when the scene disposes.
+ * Returns `null` when built renderer-less (headless tests): Pixi measures
+ * `Text` glyphs through a 2D canvas, so a label skips its `Text` and falls
+ * back to the `currentText` getter. The layer rides stage destruction —
+ * `stage.destroy({ children: true })` tears it down with no extra hook.
  */
-const SCENE_META_KEY = "omLabelTexture";
+const layers = new WeakMap<Container, Container>();
 
-interface SceneMeta {
-  [SCENE_META_KEY]?: AdvancedDynamicTexture | undefined;
-}
-
-export function ensureLabelTexture(
-  scene: Scene,
-): AdvancedDynamicTexture | null {
-  if (scene.getEngine().constructor.name === "NullEngine") {
+export function ensureLabelLayer(ctx: SceneContext): Container | null {
+  if (ctx.renderer === null) {
     return null;
   }
-  const metadata = (scene.metadata as SceneMeta | null | undefined) ?? {};
-  const existing = metadata[SCENE_META_KEY];
-  if (existing) {
+  const stage = ctx.stage;
+  const existing = layers.get(stage);
+  if (existing && !existing.destroyed) {
     return existing;
   }
-  const tex = AdvancedDynamicTexture.CreateFullscreenUI(
-    "om-label-ui",
-    true,
-    scene,
-  );
-  metadata[SCENE_META_KEY] = tex;
-  scene.metadata = metadata;
-  scene.onDisposeObservable.add(() => {
-    tex.dispose();
-    metadata[SCENE_META_KEY] = undefined;
-  });
-  return tex;
+  const layer = new Container({ label: "om-label-layer" });
+  layer.eventMode = "none";
+  layer.interactiveChildren = false;
+  stage.addChild(layer);
+  layers.set(stage, layer);
+  return layer;
 }

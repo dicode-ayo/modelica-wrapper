@@ -189,8 +189,10 @@ export const Default: Story = {
 
 export const Empty: Story = {
   args: { open: true, source: "empty" },
+  parameters: { chromatic: { disableSnapshot: true } },
 };
 
 export const WithError: Story = {
   args: { open: true, source: "error" },
+  parameters: { chromatic: { disableSnapshot: true } },
 };

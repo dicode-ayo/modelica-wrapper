@@ -1,4 +1,4 @@
-import type { Node } from "@babylonjs/core";
+import type { Container } from "pixi.js";
 
 /**
  * Canonical key format for diagram entities. Mirrors dyad-ui's short
@@ -17,38 +17,31 @@ import type { Node } from "@babylonjs/core";
 export type EntityKind =
   | "component"
   | "connector"
+  | "shape"
   | "edge"
   | "junction"
   | "label"
   | "port"
   | "handle"
-  | "rotate-handle";
+  | "rotate-handle"
+  | "vertex-handle";
 
 const KIND_PREFIX: Record<EntityKind, string> = {
   component: "c",
   connector: "k",
+  shape: "shape",
   edge: "edge",
   junction: "junc",
   label: "lbl",
   port: "port",
   handle: "h",
   "rotate-handle": "rot",
+  "vertex-handle": "vtx",
 };
 
 const PREFIX_KIND: Record<string, EntityKind> = Object.fromEntries(
   Object.entries(KIND_PREFIX).map(([k, v]) => [v, k as EntityKind]),
 );
-
-const KIND_BABYLON_NAME: Record<EntityKind, string> = {
-  component: "om-component",
-  connector: "om-connector",
-  edge: "om-edge",
-  junction: "om-junction",
-  label: "om-label",
-  port: "om-port",
-  handle: "om-handle",
-  "rotate-handle": "om-rotate-handle",
-};
 
 /** All non-connector kinds share this flat shape. */
 interface SimpleKey<K extends EntityKind> {
@@ -78,15 +71,41 @@ export interface ConnectorKey {
   portName: string;
 }
 
+export interface ShapeKey {
+  kind: "shape";
+  /** Raw id — `${shapeKind}:${index}` (e.g. `rectangle:3`). */
+  nodeId: string;
+  /** Primitive kind: `rectangle` / `ellipse` / `line` / `polygon` / `text` / `bitmap`. */
+  shapeKind: string;
+  /** Position in the host's own-layer (`from === className`) shape array. */
+  index: number;
+}
+
+/**
+ * A single vertex of a poly shape — self-describing, so a dragged or
+ * right-clicked dot carries its full identity without re-deriving the owner.
+ * Raw id: `${shapeKind}:${shapeIndex}/${vertexIndex}` (e.g. `line:1/2`),
+ * mirroring the junction key's `<owner>/<index>` shape.
+ */
+export interface VertexHandleKey {
+  kind: "vertex-handle";
+  nodeId: string;
+  shapeKind: string;
+  shapeIndex: number;
+  vertexIndex: number;
+}
+
 export type EntityKey =
   | ComponentKey
   | ConnectorKey
+  | ShapeKey
   | EdgeKey
   | JunctionKey
   | LabelKey
   | PortKey
   | HandleKey
-  | RotateHandleKey;
+  | RotateHandleKey
+  | VertexHandleKey;
 
 // ── Format ───────────────────────────────────────────────────────────
 
@@ -96,6 +115,45 @@ export function formatKey(kind: EntityKind, nodeId: string): string {
 
 export function formatComponentKey(componentName: string): string {
   return formatKey("component", componentName);
+}
+
+/** Build a shape wire key from its primitive kind and own-layer index. */
+export function formatShapeKey(shapeKind: string, index: number): string {
+  return formatKey("shape", `${shapeKind}:${index}`);
+}
+
+/** Build a vertex wire key from its owning shape and the vertex's position. */
+export function formatVertexKey(
+  shapeKind: string,
+  shapeIndex: number,
+  vertexIndex: number,
+): string {
+  return formatKey(
+    "vertex-handle",
+    `${shapeKind}:${shapeIndex}/${vertexIndex}`,
+  );
+}
+
+/** The shape wire key owning a vertex — `shape:<shapeKind>:<shapeIndex>`. */
+export function vertexShapeKey(vertex: VertexHandleKey): string {
+  return formatShapeKey(vertex.shapeKind, vertex.shapeIndex);
+}
+
+/** A picked entity → its vertex wire key, or `null` unless it's a
+ *  well-formed vertex handle (integer shape + vertex indices). */
+export function vertexKeyForEntity(entity: EntityKey): string | null {
+  if (
+    entity.kind !== "vertex-handle" ||
+    !Number.isInteger(entity.shapeIndex) ||
+    !Number.isInteger(entity.vertexIndex)
+  ) {
+    return null;
+  }
+  return formatVertexKey(
+    entity.shapeKind,
+    entity.shapeIndex,
+    entity.vertexIndex,
+  );
 }
 
 /**
@@ -143,7 +201,42 @@ function makeKey(kind: EntityKind, nodeId: string): EntityKey {
       portName: nodeId.slice(dot + 1),
     };
   }
+  if (kind === "shape") {
+    const { shapeKind, index } = parseShapeId(nodeId);
+    return { kind, nodeId, shapeKind, index };
+  }
+  if (kind === "vertex-handle") {
+    const slash = nodeId.lastIndexOf("/");
+    const shapeId = slash < 0 ? nodeId : nodeId.slice(0, slash);
+    const { shapeKind, index: shapeIndex } = parseShapeId(shapeId);
+    return {
+      kind,
+      nodeId,
+      shapeKind,
+      shapeIndex,
+      vertexIndex: slash < 0 ? NaN : failClosedIndex(nodeId.slice(slash + 1)),
+    };
+  }
   return { kind, nodeId } as EntityKey;
+}
+
+/** Decompose a shape id `${shapeKind}:${index}` (e.g. `line:1`). */
+function parseShapeId(id: string): { shapeKind: string; index: number } {
+  const colon = id.lastIndexOf(":");
+  return {
+    shapeKind: colon < 0 ? id : id.slice(0, colon),
+    index: failClosedIndex(colon < 0 ? "" : id.slice(colon + 1)),
+  };
+}
+
+/**
+ * Parse an index, failing closed to `NaN`. An absent / non-integer index
+ * must not confidently address a real slot (`Number("")` is `0`); `NaN`
+ * no-ops at the array lookup instead.
+ */
+function failClosedIndex(raw: string): number {
+  const n = Number(raw);
+  return raw !== "" && Number.isInteger(n) ? n : NaN;
 }
 
 // ── Type guards ──────────────────────────────────────────────────────
@@ -154,6 +247,10 @@ export function isComponentKey(key: EntityKey): key is ComponentKey {
 
 export function isConnectorKey(key: EntityKey): key is ConnectorKey {
   return key.kind === "connector";
+}
+
+export function isShapeKey(key: EntityKey): key is ShapeKey {
+  return key.kind === "shape";
 }
 
 export function isEdgeKey(key: EntityKey): key is EdgeKey {
@@ -181,52 +278,69 @@ export function isNestedConnector(key: ConnectorKey): boolean {
   return key.componentName !== null;
 }
 
-// ── Babylon-node walker ──────────────────────────────────────────────
+// ── Entity identity side-channel ─────────────────────────────────────
+
+interface EntityMeta {
+  kind: EntityKind;
+  nodeId: string;
+}
+
+/**
+ * Identity tag attached to a `Container` out-of-band. A `WeakMap` keeps
+ * the renderer scene graph free of app metadata and drops entries when
+ * containers are GC'd. Producers (`OmShapeNode`, edges, junctions,
+ * ports, labels, handles) call `tagEntity`; `entityKeyForNode` reads it
+ * while walking the parent chain.
+ */
+const entityMeta = new WeakMap<Container, EntityMeta>();
+
+/** Tag a container with its entity identity. Also mirrors the id into
+ *  `label` for devtools readability. */
+export function tagEntity(
+  container: Container,
+  kind: EntityKind,
+  nodeId: string,
+): void {
+  entityMeta.set(container, { kind, nodeId });
+  container.label = `om-${kind}:${nodeId}`;
+}
+
+/** Read a container's own entity tag, or `null` if untagged. */
+export function readEntityMeta(container: Container): EntityMeta | null {
+  return entityMeta.get(container) ?? null;
+}
+
+/** Drop a container's entity tag so it resolves identity via an ancestor. */
+export function clearEntityTag(container: Container): void {
+  entityMeta.delete(container);
+}
 
 /**
  * Walks `node`'s parent chain looking for the first ancestor that
- * advertises an entity identity, either through:
+ * carries an entity identity (set via `tagEntity`).
  *
- *   - `metadata: { kind, nodeId }`   — set explicitly by elements that
- *     don't carry their identity in the Babylon node name (edges,
- *     junctions, port indicators)
- *
- *   - `name: "om-<kind>:<id>"`        — set by `OmShapeNode` /
- *     `<om-label>` for entities whose TransformNode owns the identity
- *
- * Nested connectors (a `<om-connector>` inside an `<om-component>`)
- * are disambiguated by composing the parent component's id into the
- * key: `om-connector:p` inside `om-component:R1` yields
+ * Nested connectors (a `<om-connector>` inside an `<om-component>`) are
+ * disambiguated by composing the parent component's id into the key:
+ * a connector `p` inside component `R1` yields
  * `{kind: "connector", nodeId: "R1.p", componentName: "R1", portName: "p"}`.
- * Without this, two components each with a port `p` collide on `k:p`
- * and the host element can't tell which one the user clicked.
+ * Without this, two components each with a port `p` collide on `k:p` and
+ * the host element can't tell which one the user clicked.
  */
-export function entityKeyForNode(start: Node | null): EntityKey | null {
-  let cur: Node | null = start;
+export function entityKeyForNode(start: Container | null): EntityKey | null {
+  let cur: Container | null = start;
   let pendingConnector: string | null = null;
   while (cur) {
-    const meta = cur.metadata as
-      | { kind?: string; nodeId?: string }
-      | null
-      | undefined;
-    if (meta && typeof meta.kind === "string") {
-      const kind = meta.kind as EntityKind;
-      if (KIND_BABYLON_NAME[kind]) {
-        return makeKey(kind, meta.nodeId ?? "");
-      }
-    }
-    const m = cur.name?.match(/^om-(component|connector|label):(.*)$/);
-    if (m) {
-      const kind = m[1] as EntityKind;
-      const id = m[2] ?? "";
+    const meta = entityMeta.get(cur);
+    if (meta) {
+      const { kind, nodeId } = meta;
       if (kind === "connector" && pendingConnector === null) {
         // Keep walking — a connector might be nested inside a
         // component, in which case we want the qualified key.
-        pendingConnector = id;
+        pendingConnector = nodeId;
       } else if (kind === "component" && pendingConnector !== null) {
-        return makeKey("connector", `${id}.${pendingConnector}`);
+        return makeKey("connector", `${nodeId}.${pendingConnector}`);
       } else {
-        return makeKey(kind, id);
+        return makeKey(kind, nodeId);
       }
     }
     cur = cur.parent;

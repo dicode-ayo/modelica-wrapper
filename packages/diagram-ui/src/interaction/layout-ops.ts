@@ -10,8 +10,13 @@ import type {
 
 import { parseKey, type EntityKind } from "./node-keys.js";
 import { orthogonalRoute, pointsEqual } from "./connection-route.js";
-import { snapPlacement, type SnapGrid } from "./snap-math.js";
-import type { DrawKind } from "./tools.js";
+import {
+  snapExtent,
+  snapPlacement,
+  snapPoint,
+  type SnapGrid,
+} from "./snap-math.js";
+import { POLY_MIN_VERTICES, type ExtentKind, type PolyKind } from "./tools.js";
 
 /**
  * Pure layout mutations. Each function takes a `DiagramLayout` and
@@ -36,6 +41,8 @@ interface KeySet {
   connections: Set<number>;
   /** Per-waypoint refs from junction keys (`junc:<conn>/<wp>`). */
   junctions: JunctionRef[];
+  /** Own-layer shape indices from `shape:<kind>:<index>` keys. */
+  shapes: Set<number>;
 }
 
 function partitionKeys(keys: Iterable<string>): KeySet {
@@ -44,10 +51,17 @@ function partitionKeys(keys: Iterable<string>): KeySet {
     connectors: new Set(),
     connections: new Set(),
     junctions: [],
+    shapes: new Set(),
   };
   for (const k of keys) {
     const parsed = parseKey(k);
     if (!parsed) {
+      continue;
+    }
+    if (parsed.kind === "shape") {
+      if (Number.isInteger(parsed.index)) {
+        out.shapes.add(parsed.index);
+      }
       continue;
     }
     routeKey(out, parsed.kind, parsed.nodeId);
@@ -98,6 +112,221 @@ function shiftExtent(extent: Extent, dx: number, dy: number): Extent {
 
 function shiftPlacement(p: Placement, dx: number, dy: number): Placement {
   return { ...p, extent: shiftExtent(p.extent, dx, dy) };
+}
+
+/**
+ * Drags one visual extent corner to (x, y) in the parent's diagram coords,
+ * holding the opposite corner fixed. The grabbed corner is named by what the
+ * user sees — `tr` = the right (max-x) + top (max-y) edges — and maps to
+ * whichever extent slots currently hold those edges, so it works no matter
+ * how the corners were authored (host-shape annotations can store the top
+ * corner first; component placements store the min corner first). Dragging
+ * past the anchor leaves the output extent inverted on that axis — a
+ * Modelica mirror. Callers pass the original (gesture-start) extent on every
+ * move, so the slot mapping stays fixed for the whole drag. Shared by
+ * component/connector placements and host shapes.
+ */
+function dragCorner(
+  extent: Extent,
+  origin: Point | undefined,
+  corner: "tl" | "tr" | "bl" | "br",
+  x: number,
+  y: number,
+): Extent {
+  const ox = origin?.[0] ?? 0;
+  const oy = origin?.[1] ?? 0;
+  const out: Extent = [
+    [extent[0][0], extent[0][1]],
+    [extent[1][0], extent[1][1]],
+  ];
+  const xMaxAt0 = extent[0][0] >= extent[1][0];
+  const yMaxAt0 = extent[0][1] >= extent[1][1];
+  const wantMaxX = corner[1] === "r";
+  const wantMaxY = corner[0] === "t";
+  out[wantMaxX === xMaxAt0 ? 0 : 1][0] = x - ox;
+  out[wantMaxY === yMaxAt0 ? 0 : 1][1] = y - oy;
+  return out;
+}
+
+// ── Host-shape ops ───────────────────────────────────────────────────
+//
+// Drawn primitives live positionally in the host class's OWN layer
+// (`from === className`) of the current view (`icon` vs `diagram`).
+// A `shape:<kind>:<index>` key addresses one by its index there. Unlike
+// components/connectors, no connection terminates on a host shape, so
+// these ops never re-anchor.
+
+/** Line / Polygon carry `points`; the other primitives carry an `extent`. */
+function isPolyShape(
+  s: Shape,
+): s is Extract<Shape, { kind: "line" | "polygon" }> {
+  return s.kind === "line" || s.kind === "polygon";
+}
+
+/** The host's own editable layer, or `null` when it has no own graphics. */
+function ownLayer(layout: DiagramLayout): {
+  field: "iconLayers" | "diagramLayers";
+  index: number;
+  shapes: Shape[];
+} | null {
+  const field = layout.kind === "icon" ? "iconLayers" : "diagramLayers";
+  const layers = layout[field];
+  const index = layers.findIndex((l) => l.from === layout.className);
+  const own = index < 0 ? undefined : layers[index];
+  return own ? { field, index, shapes: own.shapes } : null;
+}
+
+function replaceOwnShapes(
+  layout: DiagramLayout,
+  field: "iconLayers" | "diagramLayers",
+  layerIndex: number,
+  shapes: Shape[],
+): DiagramLayout {
+  const layers = layout[field].map((l, i) =>
+    i === layerIndex ? { ...l, shapes } : l,
+  );
+  return { ...layout, [field]: layers };
+}
+
+/**
+ * Replaces each own-layer shape in `indices` via `fn`. A `fn` returning
+ * `null` (or the same reference) leaves that shape untouched; the whole
+ * call returns the same `layout` reference when nothing changed.
+ */
+function updateOwnShapes(
+  layout: DiagramLayout,
+  indices: ReadonlySet<number>,
+  fn: (shape: Shape) => Shape | null,
+): DiagramLayout {
+  if (indices.size === 0) {
+    return layout;
+  }
+  const own = ownLayer(layout);
+  if (!own) {
+    return layout;
+  }
+  let mutated = false;
+  const shapes = own.shapes.map((s, i) => {
+    if (!indices.has(i)) {
+      return s;
+    }
+    const next = fn(s);
+    if (next && next !== s) {
+      mutated = true;
+      return next;
+    }
+    return s;
+  });
+  return mutated
+    ? replaceOwnShapes(layout, own.field, own.index, shapes)
+    : layout;
+}
+
+/** Translates a shape by (dx, dy): poly shapes move every vertex; extent
+ *  shapes move their extent, or — when rotated — their `origin`, since the
+ *  extent lives inside the shape's rotation and shifting it there would
+ *  translate along the rotated axes. */
+function moveShape(s: Shape, dx: number, dy: number): Shape {
+  if (isPolyShape(s)) {
+    return {
+      ...s,
+      points: s.points.map(([x, y]) => [x + dx, y + dy] as Point),
+    };
+  }
+  if (s.rotation) {
+    const ox = s.origin?.[0] ?? 0;
+    const oy = s.origin?.[1] ?? 0;
+    return { ...s, origin: [ox + dx, oy + dy] };
+  }
+  return { ...s, extent: shiftExtent(s.extent, dx, dy) };
+}
+
+/** Drags one extent corner of an extent shape, holding the opposite corner
+ *  fixed. Poly shapes have no extent and return `null` (resize is
+ *  extent-only; vertex editing is its own gesture). */
+function resizeShapeExtent(
+  s: Shape,
+  corner: "tl" | "tr" | "bl" | "br",
+  x: number,
+  y: number,
+): Shape | null {
+  if (isPolyShape(s)) {
+    return null;
+  }
+  return { ...s, extent: dragCorner(s.extent, s.origin, corner, x, y) };
+}
+
+/**
+ * Re-expresses an extent shape so its `origin` sits at the shape's visual
+ * centre, with `extent` recentred about it — appearance unchanged. A
+ * Modelica shape rotates about its `origin`, so this makes the rotation
+ * pivot the centre the user expects (otherwise a shape with `origin={0,0}`
+ * swings around the diagram origin).
+ */
+function centreOrigin(s: Extract<Shape, { extent: Extent }>): typeof s {
+  const cx = (s.extent[0][0] + s.extent[1][0]) / 2;
+  const cy = (s.extent[0][1] + s.extent[1][1]) / 2;
+  const ox = s.origin?.[0] ?? 0;
+  const oy = s.origin?.[1] ?? 0;
+  return {
+    ...s,
+    origin: [ox + cx, oy + cy],
+    extent: [
+      [s.extent[0][0] - cx, s.extent[0][1] - cy],
+      [s.extent[1][0] - cx, s.extent[1][1] - cy],
+    ],
+  };
+}
+
+/** Sets a shape's absolute rotation, pivoting about its visual centre;
+ *  `null` when already at `norm`. */
+function rotateShape(s: Shape, norm: number): Shape | null {
+  if ((s.rotation ?? 0) === norm) {
+    return null;
+  }
+  if (isPolyShape(s)) {
+    return { ...s, rotation: norm };
+  }
+  return { ...centreOrigin(s), rotation: norm };
+}
+
+/** Visual centre of a shape (origin + geometry centre) — the pivot for
+ *  drag-to-rotate, matching the point the renderer rotates about. */
+function shapeCentreOf(s: Shape): Point {
+  const ox = s.origin?.[0] ?? 0;
+  const oy = s.origin?.[1] ?? 0;
+  if (isPolyShape(s)) {
+    if (s.points.length === 0) {
+      return [ox, oy];
+    }
+    const xs = s.points.map((p) => p[0]);
+    const ys = s.points.map((p) => p[1]);
+    return [
+      ox + (Math.min(...xs) + Math.max(...xs)) / 2,
+      oy + (Math.min(...ys) + Math.max(...ys)) / 2,
+    ];
+  }
+  return [
+    ox + (s.extent[0][0] + s.extent[1][0]) / 2,
+    oy + (s.extent[0][1] + s.extent[1][1]) / 2,
+  ];
+}
+
+/** Snaps a shape's geometry to the grid; same reference when unchanged. */
+function snapShape(s: Shape, grid: SnapGrid): Shape {
+  if (isPolyShape(s)) {
+    let changed = false;
+    const points = s.points.map(([x, y]) => {
+      const { x: sx, y: sy } = snapPoint(x, y, grid);
+      if (sx !== x || sy !== y) {
+        changed = true;
+      }
+      return [sx, sy] as Point;
+    });
+    return changed ? { ...s, points } : s;
+  }
+  const snapped = snapExtent(s.extent, grid);
+  return snapped === s.extent ? s : { ...s, extent: snapped };
 }
 
 /** Translates every entity in `keys` by (dx, dy) diagram units. */
@@ -226,10 +455,10 @@ export function applyDeltaMove(
     }
   }
 
-  if (!mutated) {
-    return layout;
-  }
-  return { ...layout, components, connectors, connections };
+  const base = mutated
+    ? { ...layout, components, connectors, connections }
+    : layout;
+  return updateOwnShapes(base, set.shapes, (s) => moveShape(s, dx, dy));
 }
 
 const ORTHO_EPS = 1e-6;
@@ -356,10 +585,11 @@ export function applySnapToExtents(
       mutated = true;
     }
   }
-  if (!mutated) {
-    return layout;
-  }
-  return { ...layout, components, connectors };
+  const base = mutated ? { ...layout, components, connectors } : layout;
+  return updateOwnShapes(base, set.shapes, (s) => {
+    const snapped = snapShape(s, grid);
+    return snapped === s ? null : snapped;
+  });
 }
 
 /** Sets the absolute placement extent of a single component. */
@@ -426,21 +656,11 @@ export function applyResize(
   if (!parsed) {
     return layout;
   }
-  const resizedExtent = (p: Placement): Extent => {
-    const ox = p.origin?.[0] ?? 0;
-    const oy = p.origin?.[1] ?? 0;
-    let [[x1, y1], [x2, y2]] = p.extent;
-    const ex = x - ox;
-    const ey = y - oy;
-    if (corner === "tl" || corner === "bl") x1 = ex;
-    else x2 = ex;
-    if (corner === "bl" || corner === "br") y1 = ey;
-    else y2 = ey;
-    return [
-      [x1, y1],
-      [x2, y2],
-    ];
-  };
+  if (parsed.kind === "shape") {
+    return updateOwnShapes(layout, new Set([parsed.index]), (s) =>
+      resizeShapeExtent(s, corner, x, y),
+    );
+  }
   const lookup =
     parsed.kind === "component"
       ? layout.components[parsed.nodeId]
@@ -451,7 +671,13 @@ export function applyResize(
     return layout;
   }
   const oldCentre = placementCentre(lookup.placement);
-  const newExtent = resizedExtent(lookup.placement);
+  const newExtent = dragCorner(
+    lookup.placement.extent,
+    lookup.placement.origin,
+    corner,
+    x,
+    y,
+  );
   const newCentre = placementCentre({ ...lookup.placement, extent: newExtent });
   const xf = scaleAbout(
     oldCentre,
@@ -506,14 +732,159 @@ export function applyRotation(
     connectors[id] = { ...c, placement: { ...c.placement, rotation: norm } };
     mutated = true;
   }
-  if (!mutated) {
+  const base = mutated
+    ? reanchorConnections(
+        { ...layout, components, connectors },
+        componentXf,
+        connectorXf,
+      )
+    : layout;
+  return updateOwnShapes(base, set.shapes, (s) => rotateShape(s, norm));
+}
+
+// ── Poly vertex ops ──────────────────────────────────────────────────
+//
+// Line / Polygon are edited per-vertex (no bounding-box resize). A vertex
+// is addressed by the shape key plus its index into `points`. Deletes
+// respect `POLY_MIN_VERTICES` so a line stays a segment and a polygon a
+// triangle — the same floor the draw tool uses.
+
+/**
+ * Maps a diagram point into a poly shape's local frame — the frame its
+ * `points` live in. Translate by `-origin`, then un-rotate by `-rotation`,
+ * inverting the transform the renderer / hit frame applies (`origin` +
+ * `R(rotation)·point`). Without the un-rotation, editing a rotated poly's
+ * vertices would land them off-cursor.
+ */
+function toShapeLocal(
+  s: Extract<Shape, { kind: "line" | "polygon" }>,
+  x: number,
+  y: number,
+): Point {
+  const dx = x - (s.origin?.[0] ?? 0);
+  const dy = y - (s.origin?.[1] ?? 0);
+  const rot = s.rotation ?? 0;
+  if (rot === 0) {
+    return [dx, dy];
+  }
+  const rad = (rot * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return [dx * cos + dy * sin, -dx * sin + dy * cos];
+}
+
+/** Resolves `key` to a single own-layer poly shape and replaces it via `fn`
+ *  (which returns `null` to leave it unchanged). No-ops for any non-poly or
+ *  unresolvable key. */
+function updatePolyShape(
+  layout: DiagramLayout,
+  key: string,
+  fn: (poly: Extract<Shape, { kind: "line" | "polygon" }>) => Shape | null,
+): DiagramLayout {
+  const parsed = parseKey(key);
+  if (!parsed || parsed.kind !== "shape" || !Number.isInteger(parsed.index)) {
     return layout;
   }
-  return reanchorConnections(
-    { ...layout, components, connectors },
-    componentXf,
-    connectorXf,
+  return updateOwnShapes(layout, new Set([parsed.index]), (s) =>
+    isPolyShape(s) ? fn(s) : null,
   );
+}
+
+/** Moves one vertex of a poly shape to (x, y) in diagram coords. */
+export function applyShapeVertexDrag(
+  layout: DiagramLayout,
+  key: string,
+  vertexIndex: number,
+  x: number,
+  y: number,
+): DiagramLayout {
+  return updatePolyShape(layout, key, (s) => {
+    const cur = s.points[vertexIndex];
+    if (cur === undefined) {
+      return null;
+    }
+    const [nx, ny] = toShapeLocal(s, x, y);
+    if (cur[0] === nx && cur[1] === ny) {
+      return null;
+    }
+    return {
+      ...s,
+      points: s.points.map((p, i) => (i === vertexIndex ? [nx, ny] : p)),
+    };
+  });
+}
+
+/** Inserts a vertex on the segment of a poly nearest `point`, splitting it.
+ *  A polygon also considers its closing edge (last → first). */
+export function applyShapeVertexInsert(
+  layout: DiagramLayout,
+  key: string,
+  point: { x: number; y: number },
+): DiagramLayout {
+  return updatePolyShape(layout, key, (s) => {
+    const pts = s.points;
+    if (pts.length < 2) {
+      return null;
+    }
+    const [lx, ly] = toShapeLocal(s, point.x, point.y);
+    const local = { x: lx, y: ly };
+    const segments = s.kind === "polygon" ? pts.length : pts.length - 1;
+    let bestAt = 1;
+    let bestProj: Point | null = null;
+    let bestDist = Infinity;
+    for (let i = 0; i < segments; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      if (a === undefined || b === undefined) {
+        continue;
+      }
+      const proj = projectOntoSegment(a, b, local);
+      const dx = proj[0] - local.x;
+      const dy = proj[1] - local.y;
+      const dist = dx * dx + dy * dy;
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestAt = i + 1;
+        bestProj = proj;
+      }
+    }
+    if (bestProj === null) {
+      return null;
+    }
+    return {
+      ...s,
+      points: [...pts.slice(0, bestAt), bestProj, ...pts.slice(bestAt)],
+    };
+  });
+}
+
+/** Removes one vertex of a poly shape, refusing to drop below the kind's
+ *  minimum (2 for a line, 3 for a polygon). */
+export function applyShapeVertexDelete(
+  layout: DiagramLayout,
+  key: string,
+  vertexIndex: number,
+): DiagramLayout {
+  return updatePolyShape(layout, key, (s) => {
+    if (
+      s.points[vertexIndex] === undefined ||
+      s.points.length <= POLY_MIN_VERTICES[s.kind]
+    ) {
+      return null;
+    }
+    return { ...s, points: s.points.filter((_, i) => i !== vertexIndex) };
+  });
+}
+
+/** Toggles a poly shape's `smooth` between Bezier and straight segments. */
+export function applyShapeSmoothToggle(
+  layout: DiagramLayout,
+  key: string,
+): DiagramLayout {
+  return updatePolyShape(layout, key, (s) => ({
+    ...s,
+    smooth: s.smooth === "Bezier" ? "None" : "Bezier",
+  }));
 }
 
 /** Maps a diagram point rigidly attached to a transformed shape from
@@ -628,15 +999,21 @@ export function shapeCentre(layout: DiagramLayout, key: string): Point | null {
     const c = layout.connectors[parsed.nodeId];
     return c ? placementCentre(c.placement) : null;
   }
+  if (parsed.kind === "shape") {
+    const own = ownLayer(layout);
+    const s = own?.shapes[parsed.index];
+    return s ? shapeCentreOf(s) : null;
+  }
   return null;
 }
 
 /**
- * Filters `keys` down to those still backed by a component / connector
- * in `layout`. Selection survives an in-place edit (move / rotate /
+ * Filters `keys` down to those still backed by an entity in `layout`:
+ * a component / connector by id, or a host shape by its own-layer
+ * `(kind, index)`. Selection survives an in-place edit (move / rotate /
  * resize echoed back from the host) but drops anything the layout no
- * longer contains; non-shape keys (edges / junctions, whose indices can
- * shift on relayout) are not retained.
+ * longer contains. Edge / junction keys, whose indices can shift on
+ * relayout, are not retained.
  */
 export function retainExistingSelection(
   layout: DiagramLayout,
@@ -653,6 +1030,13 @@ export function retainExistingSelection(
       layout.connectors[parsed.nodeId]
     ) {
       out.add(k);
+    } else if (parsed.kind === "shape") {
+      // Positional re-key: keep the selection only if the same own-layer
+      // index still holds a shape of the same kind after a refetch.
+      const own = ownLayer(layout);
+      if (own?.shapes[parsed.index]?.kind === parsed.shapeKind) {
+        out.add(k);
+      }
     }
   }
   return out;
@@ -667,7 +1051,8 @@ export function applyDelete(
   if (
     set.components.size === 0 &&
     set.connectors.size === 0 &&
-    set.connections.size === 0
+    set.connections.size === 0 &&
+    set.shapes.size === 0
   ) {
     return layout;
   }
@@ -682,7 +1067,18 @@ export function applyDelete(
   const connections = layout.connections.filter(
     (_, idx) => !set.connections.has(idx),
   );
-  return { ...layout, components, connectors, connections };
+  const base = { ...layout, components, connectors, connections };
+  if (set.shapes.size === 0) {
+    return base;
+  }
+  const own = ownLayer(base);
+  if (!own) {
+    return base;
+  }
+  const shapes = own.shapes.filter((_, i) => !set.shapes.has(i));
+  return shapes.length === own.shapes.length
+    ? base
+    : replaceOwnShapes(base, own.field, own.index, shapes);
 }
 
 /**
@@ -1052,10 +1448,14 @@ export function applyRotate(
   cw: boolean,
 ): DiagramLayout {
   const delta = cw ? -90 : 90;
-  return forEachShape(layout, keys, (p) => ({
+  const base = forEachShape(layout, keys, (p) => ({
     ...p,
     rotation: ((p.rotation ?? 0) + delta + 360) % 360,
   }));
+  const set = partitionKeys(keys);
+  return updateOwnShapes(base, set.shapes, (s) =>
+    rotateShape(s, ((((s.rotation ?? 0) + delta) % 360) + 360) % 360),
+  );
 }
 
 /**
@@ -1067,19 +1467,47 @@ export function applyFlip(
   keys: Iterable<string>,
   horizontal: boolean,
 ): DiagramLayout {
-  return forEachShape(layout, keys, (p) => {
-    const [[x1, y1], [x2, y2]] = p.extent;
-    const ext: Extent = horizontal
-      ? [
-          [x2, y1],
-          [x1, y2],
-        ]
-      : [
-          [x1, y2],
-          [x2, y1],
-        ];
-    return { ...p, extent: ext };
-  });
+  const base = forEachShape(layout, keys, (p) => ({
+    ...p,
+    extent: flipExtent(p.extent, horizontal),
+  }));
+  const set = partitionKeys(keys);
+  return updateOwnShapes(base, set.shapes, (s) => flipShape(s, horizontal));
+}
+
+/** Mirrors an extent about its own centre by swapping one axis' corners. */
+function flipExtent(extent: Extent, horizontal: boolean): Extent {
+  const [[x1, y1], [x2, y2]] = extent;
+  return horizontal
+    ? [
+        [x2, y1],
+        [x1, y2],
+      ]
+    : [
+        [x1, y2],
+        [x2, y1],
+      ];
+}
+
+/** Mirrors a shape in place: extent shapes swap an extent axis, poly shapes
+ *  reflect every vertex about their bounding-box centre. */
+function flipShape(s: Shape, horizontal: boolean): Shape {
+  if (!isPolyShape(s)) {
+    return { ...s, extent: flipExtent(s.extent, horizontal) };
+  }
+  if (s.points.length === 0) {
+    return s;
+  }
+  const xs = s.points.map((p) => p[0]);
+  const ys = s.points.map((p) => p[1]);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+  return {
+    ...s,
+    points: s.points.map(([x, y]) =>
+      horizontal ? [2 * cx - x, y] : [x, 2 * cy - y],
+    ),
+  };
 }
 
 function forEachShape(
@@ -1169,10 +1597,21 @@ export function selectByDiagramRect(
 const DRAWN_LINE_COLOR: Color = [0, 0, 0];
 
 /** Build a default extent primitive for a freshly-drawn shape. */
-export function buildExtentShape(kind: DrawKind, extent: Extent): Shape {
+export function buildExtentShape(kind: ExtentKind, extent: Extent): Shape {
   return kind === "rectangle"
     ? { kind: "rectangle", extent, lineColor: DRAWN_LINE_COLOR }
     : { kind: "ellipse", extent, lineColor: DRAWN_LINE_COLOR };
+}
+
+/**
+ * Build a default poly primitive for a freshly-drawn shape. A `line` stays
+ * open; a `polygon` is closed by the renderer, so `points` carries only the
+ * distinct vertices — no duplicated closing point.
+ */
+export function buildPolyShape(kind: PolyKind, points: Point[]): Shape {
+  return kind === "line"
+    ? { kind: "line", points, color: DRAWN_LINE_COLOR }
+    : { kind: "polygon", points, lineColor: DRAWN_LINE_COLOR };
 }
 
 /**

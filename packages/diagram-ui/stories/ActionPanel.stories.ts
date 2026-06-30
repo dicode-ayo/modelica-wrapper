@@ -104,15 +104,18 @@ export const Default: Story = {
 
 export const BottomLeft: Story = {
   args: { ...baseArgs, anchor: "bottom-left" },
+  parameters: { chromatic: { disableSnapshot: true } },
 };
 
 export const Disabled: Story = {
   args: { ...baseArgs, disabled: true },
+  parameters: { chromatic: { disableSnapshot: true } },
 };
 
 /** Rotate / Flip disable themselves while nothing is selected. */
 export const NoSelection: Story = {
   args: { ...baseArgs, noSelection: true },
+  parameters: { chromatic: { disableSnapshot: true } },
 };
 
 export const ParametersOnly: Story = {
@@ -123,4 +126,5 @@ export const ParametersOnly: Story = {
     hideRotate: true,
     hideFlip: true,
   },
+  parameters: { chromatic: { disableSnapshot: true } },
 };

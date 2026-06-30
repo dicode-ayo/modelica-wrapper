@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { DiagramLayout, Point } from "@dicode/omc-client";
+import type { DiagramLayout, Point, Shape } from "@dicode/omc-client";
 
 import {
   applyAddGraphic,
+  buildPolyShape,
   applyDelete,
   applyDeltaMove,
   applyEdgeSegmentDrag,
@@ -11,6 +12,11 @@ import {
   applyResize,
   applyRotate,
   applyRotation,
+  applyShapeSmoothToggle,
+  applyShapeVertexDelete,
+  applyShapeVertexDrag,
+  applyShapeVertexInsert,
+  applySnapToExtents,
   applyWaypointDelete,
   applyWaypointInsert,
   buildExtentShape,
@@ -82,6 +88,49 @@ function withRoute(route: Point[]): DiagramLayout {
     ...base,
     connections: [{ ...base.connections[0]!, waypoints: route }],
   };
+}
+
+const RECT_0: Shape = {
+  kind: "rectangle",
+  extent: [
+    [0, 0],
+    [10, 10],
+  ],
+  lineColor: [0, 0, 0],
+};
+const LINE_1: Shape = {
+  kind: "line",
+  points: [
+    [0, 0],
+    [10, 0],
+  ],
+  color: [0, 0, 0],
+};
+
+/**
+ * baseLayout() carrying host-own (`from === "Demo"`) diagram shapes, plus
+ * an inherited (`from === "Base"`) layer that shape ops must never touch.
+ */
+function withShapes(shapes: Shape[]): DiagramLayout {
+  const inherited: Shape = {
+    kind: "rectangle",
+    extent: [
+      [-1, -1],
+      [1, 1],
+    ],
+  };
+  return {
+    ...baseLayout(),
+    diagramLayers: [
+      { from: "Base", shapes: [inherited] },
+      { from: "Demo", shapes },
+    ],
+  };
+}
+
+/** The host-own (`from === "Demo"`) layer's shapes after an op. */
+function ownShapes(layout: DiagramLayout): Shape[] {
+  return layout.diagramLayers.find((l) => l.from === "Demo")?.shapes ?? [];
 }
 
 describe("applyDeltaMove", () => {
@@ -683,6 +732,391 @@ describe("retainExistingSelection", () => {
     ]);
     expect([...out].sort()).toEqual(["c:R1", "k:p"]);
   });
+
+  it("retains a host-shape key only when its index still holds the same kind", () => {
+    const layout = withShapes([RECT_0, LINE_1]);
+    const out = retainExistingSelection(layout, [
+      "shape:rectangle:0", // index 0 is still a rectangle → kept
+      "shape:line:1", // index 1 is still a line → kept
+      "shape:ellipse:0", // index 0 is a rectangle, not ellipse → dropped
+      "shape:rectangle:5", // out of range → dropped
+    ]);
+    expect([...out].sort()).toEqual(["shape:line:1", "shape:rectangle:0"]);
+  });
+});
+
+describe("host shape ops", () => {
+  it("moves an extent shape by shifting its extent, poly shapes by every vertex", () => {
+    const rect = applyDeltaMove(
+      withShapes([RECT_0]),
+      ["shape:rectangle:0"],
+      5,
+      -3,
+    );
+    expect(ownShapes(rect)[0]).toMatchObject({
+      extent: [
+        [5, -3],
+        [15, 7],
+      ],
+    });
+
+    const line = applyDeltaMove(withShapes([LINE_1]), ["shape:line:0"], 5, -3);
+    expect(ownShapes(line)[0]).toMatchObject({
+      points: [
+        [5, -3],
+        [15, -3],
+      ],
+    });
+  });
+
+  it("moves only the addressed shape and never an inherited layer", () => {
+    const out = applyDeltaMove(
+      withShapes([RECT_0, LINE_1]),
+      ["shape:line:1"],
+      2,
+      2,
+    );
+    // Index 0 (rectangle) untouched; the inherited "Base" layer untouched.
+    expect(ownShapes(out)[0]).toEqual(RECT_0);
+    expect(out.diagramLayers.find((l) => l.from === "Base")?.shapes).toEqual([
+      {
+        kind: "rectangle",
+        extent: [
+          [-1, -1],
+          [1, 1],
+        ],
+      },
+    ]);
+    expect(ownShapes(out)[1]).toMatchObject({
+      points: [
+        [2, 2],
+        [12, 2],
+      ],
+    });
+  });
+
+  it("resizes an extent shape by a corner; poly resize is a no-op", () => {
+    // `tr` holds the bottom-left fixed and drags the top-right corner.
+    const resized = applyResize(
+      withShapes([RECT_0]),
+      "shape:rectangle:0",
+      "tr",
+      20,
+      30,
+    );
+    expect(ownShapes(resized)[0]).toMatchObject({
+      extent: [
+        [0, 0],
+        [20, 30],
+      ],
+    });
+
+    const layout = withShapes([LINE_1]);
+    expect(applyResize(layout, "shape:line:0", "tr", 99, 99)).toBe(layout);
+  });
+
+  it("resizes by the visual corner even when the extent is stored top-first", () => {
+    // Authored top-left → bottom-right: extent[0] holds the TOP (max y),
+    // extent[1] the BOTTOM — the order OMEdit annotations commonly use.
+    const topFirst: Shape = {
+      kind: "rectangle",
+      extent: [
+        [-10, 10],
+        [10, -10],
+      ],
+    };
+    // Drag the visual top-right corner to (20, 20): the right edge → x=20 and
+    // the top edge → y=20, holding left/bottom. A fixed-index map would move
+    // the bottom edge instead and collapse the shape.
+    const out = applyResize(
+      withShapes([topFirst]),
+      "shape:rectangle:0",
+      "tr",
+      20,
+      20,
+    );
+    expect(ownShapes(out)[0]).toMatchObject({
+      extent: [
+        [-10, 20],
+        [20, -10],
+      ],
+    });
+  });
+
+  it("rotates about the visual centre by rebasing origin (in place, not the diagram origin)", () => {
+    // RECT_0 extent [[0,0],[10,10]] with no origin → visual centre (5,5).
+    const out = applyRotation(withShapes([RECT_0]), ["shape:rectangle:0"], 90);
+    expect(ownShapes(out)[0]).toMatchObject({
+      origin: [5, 5],
+      extent: [
+        [-5, -5],
+        [5, 5],
+      ],
+      rotation: 90,
+    });
+  });
+
+  it("is idempotent at the same angle once the origin is already centred", () => {
+    const once = applyRotation(withShapes([RECT_0]), ["shape:rectangle:0"], 90);
+    expect(applyRotation(once, ["shape:rectangle:0"], 90)).toBe(once);
+  });
+
+  it("moves a rotated shape via origin so it translates along diagram axes", () => {
+    const rotated: Shape = {
+      kind: "rectangle",
+      extent: [
+        [-5, -5],
+        [5, 5],
+      ],
+      origin: [5, 5],
+      rotation: 90,
+    };
+    const out = applyDeltaMove(
+      withShapes([rotated]),
+      ["shape:rectangle:0"],
+      10,
+      -3,
+    );
+    // Origin shifts by the raw delta; extent (inside the rotation) is left be.
+    expect(ownShapes(out)[0]).toMatchObject({
+      origin: [15, 2],
+      extent: [
+        [-5, -5],
+        [5, 5],
+      ],
+      rotation: 90,
+    });
+  });
+
+  it("shapeCentre is the visual centre, including origin", () => {
+    const centred: Shape = {
+      kind: "rectangle",
+      extent: [
+        [-5, -5],
+        [5, 5],
+      ],
+      origin: [5, 5],
+    };
+    expect(shapeCentre(withShapes([centred]), "shape:rectangle:0")).toEqual([
+      5, 5,
+    ]);
+  });
+
+  it("deletes a shape by position and re-indexes its siblings", () => {
+    const out = applyDelete(withShapes([RECT_0, LINE_1]), [
+      "shape:rectangle:0",
+    ]);
+    // The line, previously index 1, is now the sole own shape at index 0.
+    expect(ownShapes(out)).toEqual([LINE_1]);
+    // Components are untouched by a shape-only delete.
+    expect(out.components.R1).toBeDefined();
+  });
+
+  it("snaps a shape's geometry to the grid on commit", () => {
+    const off: Shape = {
+      kind: "rectangle",
+      extent: [
+        [1, 1],
+        [9, 9],
+      ],
+    };
+    const out = applySnapToExtents(
+      withShapes([off]),
+      ["shape:rectangle:0"],
+      [5, 5],
+    );
+    expect(ownShapes(out)[0]).toMatchObject({
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+    });
+  });
+
+  it("returns the shape centre for the rotate pivot", () => {
+    expect(shapeCentre(withShapes([RECT_0]), "shape:rectangle:0")).toEqual([
+      5, 5,
+    ]);
+    expect(shapeCentre(withShapes([LINE_1]), "shape:line:0")).toEqual([5, 0]);
+  });
+
+  it("context-menu rotate turns a shape ±90° about its centre", () => {
+    const cw = applyRotate(withShapes([RECT_0]), ["shape:rectangle:0"], true);
+    expect(ownShapes(cw)[0]).toMatchObject({
+      origin: [5, 5],
+      extent: [
+        [-5, -5],
+        [5, 5],
+      ],
+      rotation: 270,
+    });
+  });
+
+  it("context-menu flip mirrors an extent shape and a poly in place", () => {
+    const rect = applyFlip(withShapes([RECT_0]), ["shape:rectangle:0"], true);
+    expect(ownShapes(rect)[0]).toMatchObject({
+      extent: [
+        [10, 0],
+        [0, 10],
+      ],
+    });
+
+    // LINE_1 points [[0,0],[10,0]] → bbox centre x=5; horizontal mirror swaps.
+    const line = applyFlip(withShapes([LINE_1]), ["shape:line:0"], true);
+    expect(ownShapes(line)[0]).toMatchObject({
+      points: [
+        [10, 0],
+        [0, 0],
+      ],
+    });
+  });
+
+  it("ignores out-of-range and malformed shape keys without throwing", () => {
+    const layout = withShapes([RECT_0]);
+    expect(applyDeltaMove(layout, ["shape:rectangle:9"], 5, 5)).toBe(layout);
+    expect(applyDelete(layout, ["shape:rectangle:"])).toBe(layout);
+    expect(applyDeltaMove(layout, ["shape:rectangle:"], 5, 5)).toBe(layout);
+  });
+});
+
+describe("poly vertex ops", () => {
+  const POLY_3: Shape = {
+    kind: "polygon",
+    points: [
+      [0, 0],
+      [10, 0],
+      [10, 10],
+    ],
+    lineColor: [0, 0, 0],
+  };
+
+  it("drags a vertex to a diagram point (origin-aware)", () => {
+    const out = applyShapeVertexDrag(
+      withShapes([LINE_1]),
+      "shape:line:0",
+      1,
+      7,
+      4,
+    );
+    expect(ownShapes(out)[0]).toMatchObject({
+      points: [
+        [0, 0],
+        [7, 4],
+      ],
+    });
+  });
+
+  it("is a no-op dragging to the same spot or an out-of-range vertex", () => {
+    const layout = withShapes([LINE_1]);
+    expect(applyShapeVertexDrag(layout, "shape:line:0", 1, 10, 0)).toBe(layout);
+    expect(applyShapeVertexDrag(layout, "shape:line:0", 9, 1, 1)).toBe(layout);
+  });
+
+  it("un-rotates the pointer when dragging a vertex on a rotated poly", () => {
+    const rotated: Shape = {
+      kind: "line",
+      points: [
+        [0, 0],
+        [10, 0],
+      ],
+      rotation: 90,
+    };
+    // Vertex 1 renders at world (0,10) under the 90° rotation; dragging it to
+    // (0,20) must map back to local (20,0), not the un-rotated (0,20).
+    const out = applyShapeVertexDrag(
+      withShapes([rotated]),
+      "shape:line:0",
+      1,
+      0,
+      20,
+    );
+    const moved = (ownShapes(out)[0] as { points: Point[] }).points[1];
+    if (!moved) throw new Error("expected a moved vertex");
+    expect(moved[0]).toBeCloseTo(20);
+    expect(moved[1]).toBeCloseTo(0);
+  });
+
+  it("inserts a vertex on the nearest segment, splitting it", () => {
+    // LINE_1 [[0,0],[10,0]]; a point near (5,1) projects onto the only segment.
+    const out = applyShapeVertexInsert(withShapes([LINE_1]), "shape:line:0", {
+      x: 5,
+      y: 1,
+    });
+    expect(ownShapes(out)[0]).toMatchObject({
+      points: [
+        [0, 0],
+        [5, 0],
+        [10, 0],
+      ],
+    });
+  });
+
+  it("considers a polygon's closing edge when inserting", () => {
+    // Near the closing edge (10,10)→(0,0); midpoint ~ (5,5).
+    const out = applyShapeVertexInsert(
+      withShapes([POLY_3]),
+      "shape:polygon:0",
+      {
+        x: 5,
+        y: 5,
+      },
+    );
+    expect(ownShapes(out)[0]).toMatchObject({
+      points: [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+        [5, 5],
+      ],
+    });
+  });
+
+  it("deletes a vertex but refuses to drop below the kind's minimum", () => {
+    const poly4: Shape = {
+      kind: "polygon",
+      points: [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+        [0, 10],
+      ],
+    };
+    const out = applyShapeVertexDelete(
+      withShapes([poly4]),
+      "shape:polygon:0",
+      1,
+    );
+    expect(ownShapes(out)[0]).toMatchObject({
+      points: [
+        [0, 0],
+        [10, 10],
+        [0, 10],
+      ],
+    });
+    // A 3-vertex polygon is at its floor — deleting is refused.
+    const atFloor = withShapes([POLY_3]);
+    expect(applyShapeVertexDelete(atFloor, "shape:polygon:0", 0)).toBe(atFloor);
+    // A line floors at 2.
+    const line = withShapes([LINE_1]);
+    expect(applyShapeVertexDelete(line, "shape:line:0", 0)).toBe(line);
+  });
+
+  it("toggles smooth between Bezier and straight", () => {
+    const on = applyShapeSmoothToggle(withShapes([LINE_1]), "shape:line:0");
+    expect(ownShapes(on)[0]).toMatchObject({ smooth: "Bezier" });
+    const off = applyShapeSmoothToggle(on, "shape:line:0");
+    expect(ownShapes(off)[0]).toMatchObject({ smooth: "None" });
+  });
+
+  it("no-ops on a non-poly or unresolvable key", () => {
+    const layout = withShapes([RECT_0]);
+    expect(applyShapeVertexDrag(layout, "shape:rectangle:0", 0, 1, 1)).toBe(
+      layout,
+    );
+    expect(applyShapeVertexInsert(layout, "shape:line:9", { x: 0, y: 0 })).toBe(
+      layout,
+    );
+  });
 });
 
 describe("buildExtentShape", () => {
@@ -706,6 +1140,44 @@ describe("buildExtentShape", () => {
         [10, 10],
       ]).kind,
     ).toBe("ellipse");
+  });
+});
+
+describe("buildPolyShape", () => {
+  it("builds an open line carrying its vertices and outline color", () => {
+    expect(
+      buildPolyShape("line", [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+      ]),
+    ).toEqual({
+      kind: "line",
+      points: [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+      ],
+      color: [0, 0, 0],
+    });
+  });
+
+  it("builds a polygon with the distinct vertices and a line color", () => {
+    const poly = buildPolyShape("polygon", [
+      [0, 0],
+      [10, 0],
+      [5, 10],
+    ]);
+    expect(poly.kind).toBe("polygon");
+    expect(poly).toEqual({
+      kind: "polygon",
+      points: [
+        [0, 0],
+        [10, 0],
+        [5, 10],
+      ],
+      lineColor: [0, 0, 0],
+    });
   });
 });
 

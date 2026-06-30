@@ -8,6 +8,7 @@
  */
 
 import type {
+  ClassDef,
   ConnectionEndpoint,
   DiagramLayout,
   Point,
@@ -54,5 +55,106 @@ export function appendConnection(
   return {
     ...layout,
     connections: [...layout.connections, { lhs, rhs, waypoints }],
+  };
+}
+
+/** Short (unqualified) name of a Modelica class path. */
+function shortName(className: string): string {
+  return className.split(".").pop() ?? className;
+}
+
+/**
+ * Minimal stand-in class for a library pick the layout doesn't already
+ * know about. In the extension the host re-fetches the real icon from
+ * OMC; here a labelled box keeps the freshly-added component visible.
+ */
+function placeholderClass(
+  className: string,
+  restriction: string = "block",
+): ClassDef {
+  return {
+    name: className,
+    restriction,
+    iconLayers: [
+      {
+        from: className,
+        shapes: [
+          {
+            kind: "rectangle",
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+            lineColor: [0, 0, 127],
+            fillColor: [245, 245, 250],
+            pattern: "Solid",
+            fillPattern: "Solid",
+            lineThickness: 0.25,
+          },
+          {
+            kind: "text",
+            extent: [
+              [-90, -40],
+              [90, 40],
+            ],
+            textString: shortName(className),
+            textColor: [0, 0, 127],
+            fontSize: 0,
+          },
+        ],
+      } satisfies ClassDef["iconLayers"][number],
+    ],
+    connectors: {},
+    parameters: {},
+  };
+}
+
+/** First free `<short><n>` instance name for a class in the layout. */
+function uniqueComponentName(layout: DiagramLayout, className: string): string {
+  const base = shortName(className).replace(/[^A-Za-z0-9_]/g, "") || "comp";
+  const lower = base.charAt(0).toLowerCase() + base.slice(1);
+  let n = 1;
+  while (layout.components[`${lower}${n}`]) {
+    n += 1;
+  }
+  return `${lower}${n}`;
+}
+
+/**
+ * Append a component instantiated from `className` at a drop point,
+ * mirroring the extension's add-component round-trip (event → addComponent
+ * RPC → OMC re-fetch → new layout). Synthesises a placeholder class when
+ * the layout doesn't already carry the picked class's icon.
+ */
+export function appendComponent(
+  layout: DiagramLayout,
+  className: string,
+  position: { x: number; y: number },
+  restriction?: string,
+): DiagramLayout {
+  const name = uniqueComponentName(layout, className);
+  const half = 10;
+  const classes = layout.classes[className]
+    ? layout.classes
+    : {
+        ...layout.classes,
+        [className]: placeholderClass(className, restriction),
+      };
+  return {
+    ...layout,
+    classes,
+    components: {
+      ...layout.components,
+      [name]: {
+        name,
+        classRef: className,
+        placement: {
+          extent: [
+            [position.x - half, position.y - half],
+            [position.x + half, position.y + half],
+          ],
+        },
+      },
+    },
   };
 }

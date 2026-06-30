@@ -77,7 +77,25 @@ export const ellipseIcon = glyph(
 
 export const chevronDownIcon = glyph(svg`<path d="m6 9 6 6 6-6" />`);
 
-/** The glyph for a drawing tool's shape. */
-export function drawKindIcon(kind: DrawKind): TemplateResult {
-  return kind === "rectangle" ? rectangleIcon : ellipseIcon;
+export const lineIcon = glyph(
+  svg`<path d="m3 17 6-7 4 4 8-9" />
+    <circle cx="3" cy="17" r="1.4" /><circle cx="21" cy="5" r="1.4" />`,
+);
+
+export const polygonIcon = glyph(
+  svg`<path d="M12 3 21 9.5 17.5 20h-11L3 9.5z" />`,
+);
+
+/** The glyph for a drawing tool's shape, extent or poly. */
+export function drawToolIcon(kind: DrawKind): TemplateResult {
+  switch (kind) {
+    case "rectangle":
+      return rectangleIcon;
+    case "ellipse":
+      return ellipseIcon;
+    case "line":
+      return lineIcon;
+    case "polygon":
+      return polygonIcon;
+  }
 }
