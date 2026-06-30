@@ -11,6 +11,7 @@ import type {
 } from "@dicode/omc-client";
 
 import { renderShape } from "../primitives/render-shape.js";
+import { lineThicknessScaleContext } from "../primitives/stroke-scale-context.js";
 import { buildSubstitutions } from "../label/build-substitutions.js";
 import "../scene/scene.component.js";
 import "../axis/grid-axis.component.js";
@@ -105,9 +106,10 @@ import { emitEvent } from "../dom-event.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
 
 /**
- * World-z offset applied to the host class's own shapes so they sit behind
+ * Paint-order offset for the host class's own shapes so they sit behind
  * every component / connector but in front of the grid's extent rectangle.
- * Camera at -Z, so larger z = farther:
+ * Uses the diagram z convention where more-negative is nearer the viewer
+ * (inverted into `zIndex` by `OmShapeNode`):
  *
  *   extent rect  z = +0.10  (white background, drawn by `<om-grid-axis>`)
  *   grid lines   z = +0.05
@@ -115,7 +117,7 @@ import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
  *   components   z =  0.0
  *
  * Shared by a shape's visual and its hit geometry so picks land in the same
- * depth band and a component always wins a pick over a shape beneath it.
+ * band and a component always wins a pick over a shape beneath it.
  */
 export const HOST_SHAPE_Z_BIAS = 0.025;
 
@@ -367,12 +369,24 @@ export class OmGraphicalLayout extends LitElement {
   private readonly commands = new CommandRegistry(DIAGRAM_COMMANDS);
   private readonly keymap = DEFAULT_KEYMAP;
 
+  private readonly strokeScaleProvider = new ContextProvider(this, {
+    context: lineThicknessScaleContext,
+    initialValue: undefined,
+  });
+
   constructor() {
     super();
     new ContextProvider(this, {
       context: interactionStateContext,
       initialValue: this.interactionStore,
     });
+  }
+
+  override willUpdate(changed: Map<string, unknown>): void {
+    super.willUpdate(changed);
+    if (changed.has("lineThicknessScale")) {
+      this.strokeScaleProvider.setValue(this.lineThicknessScale);
+    }
   }
 
   override render(): TemplateResult {

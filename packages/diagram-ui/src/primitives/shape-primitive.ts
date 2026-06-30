@@ -6,6 +6,7 @@ import type { Container, Renderer } from "pixi.js";
 import type { Extent, Point } from "@dicode/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
+import { lineThicknessScaleContext } from "./stroke-scale-context.js";
 import { OmShapeNode } from "../base/shape-node.js";
 import {
   interactionStateContext,
@@ -108,6 +109,9 @@ export abstract class OmShapePrimitive extends LitElement {
   @consume({ context: sceneContext, subscribe: true })
   protected sceneCtx: SceneContext | null = null;
 
+  @consume({ context: lineThicknessScaleContext, subscribe: true })
+  protected lineThicknessScale: number | undefined = undefined;
+
   protected resources: OwnedResource[] = [];
   private lastBuiltKey: string | null = null;
   private shapeNode: OmShapeNode | null = null;
@@ -143,7 +147,7 @@ export abstract class OmShapePrimitive extends LitElement {
     // The parent's world scale feeds the stroke's scale-compensated width
     // (`buildStroke`), so a placement/resize change must rebuild even though
     // the shape data is unchanged.
-    const key = `${this.zOrder}|${this.zBias}|${worldScaleOf(parent)}|${this.fingerprint()}`;
+    const key = `${this.zOrder}|${this.zBias}|${worldScaleOf(parent)}|${this.lineThicknessScale}|${this.fingerprint()}`;
     if (key === this.lastBuiltKey) {
       return;
     }
@@ -169,7 +173,7 @@ export abstract class OmShapePrimitive extends LitElement {
     const node = this.shapeNode;
     node.setEntityName(this.entityName());
     node.setHovered(this.hovered);
-    const key = `${this.zBias}|${this.fingerprint()}`;
+    const key = `${this.zBias}|${this.lineThicknessScale}|${this.fingerprint()}`;
     if (key !== this.lastBuiltKey) {
       this.lastBuiltKey = key;
       this.tearDownMeshes();

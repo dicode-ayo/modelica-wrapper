@@ -394,6 +394,7 @@ export function buildStroke(
   z: number,
   baseName: string,
   thickness?: number,
+  lineThicknessScale?: number,
 ): OwnedResource | null {
   if (points.length < 2 || pattern === "None") {
     return null;
@@ -417,7 +418,8 @@ export function buildStroke(
     // diagram-space scale to keep a consistent on-screen width, floored so it
     // never goes sub-pixel.
     const worldScale = worldScaleOf(parent);
-    const naturalWidth = thickness ?? DEFAULT_STROKE_THICKNESS;
+    const naturalWidth =
+      (thickness ?? DEFAULT_STROKE_THICKNESS) * (lineThicknessScale ?? 1);
     const localWidth = Math.max(naturalWidth, MIN_STROKE_WIDTH / worldScale);
     if (!strokePath(g, points)) {
       g.destroy();
