@@ -44,8 +44,7 @@ describe("buildEdge", () => {
     expect(result.line.parent).toBe(parent);
     expect(result.hitArea.parent).toBe(parent);
     // Pickable but transparent: the hit band stays grabbable at zero
-    // opacity (eventMode `static` + an explicit hitArea), where Babylon
-    // relied on `isVisible = true` + `visibility = 0`. `visible` stays
+    // opacity (eventMode `static` + an explicit hitArea). `visible` stays
     // true so the picker doesn't skip it.
     expect(result.hitArea.eventMode).toBe("static");
     expect(result.hitArea.hitArea).not.toBeNull();
@@ -154,9 +153,7 @@ describe("<om-edge>", () => {
 
   it("redraws the line in place when a waypoint is added", async () => {
     // A `Graphics` redraw is `clear()` + re-path, so a topology change
-    // (added / dropped waypoint) reuses the same object — unlike Babylon's
-    // `instance` path, which rejected vertex-count changes and forced a
-    // dispose + recreate. The invariant that matters now: the same line
+    // (added / dropped waypoint) reuses the same object: the same line
     // survives and its drawn geometry reflects the new waypoint.
     const scene = await mountScene();
     const edge = document.createElement("om-edge") as OmEdge;

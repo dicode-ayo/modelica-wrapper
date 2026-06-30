@@ -63,14 +63,23 @@ describe("<om-scene> Pixi spine", () => {
   it("picks the topmost interactive container at a canvas point", async () => {
     const el = await mountScene({ zoom: 100 });
     const ctx = contextOf(el);
-    const box = new Graphics({ label: "hit-box" });
-    box.rect(-50, -50, 100, 100).fill(0x3366cc);
-    box.eventMode = "static";
-    ctx.diagramRoot.addChild(box);
 
-    // Diagram (0,0) projects to the canvas centre (W/2, H/2).
-    expect(ctx.pick(W / 2, H / 2)).toBe(box);
-    // A point well outside the box hits nothing.
+    const back = new Graphics({ label: "back-box" });
+    back.rect(-50, -50, 100, 100).fill(0x3366cc);
+    back.eventMode = "static";
+
+    const front = new Graphics({ label: "front-box" });
+    front.rect(-50, -50, 100, 100).fill(0xcc6633);
+    front.eventMode = "static";
+    front.zIndex = 1;
+
+    ctx.diagramRoot.sortableChildren = true;
+    ctx.diagramRoot.addChild(back, front);
+
+    // Diagram (0,0) projects to the canvas centre (W/2, H/2). Both boxes
+    // cover it; the higher-zIndex one must win.
+    expect(ctx.pick(W / 2, H / 2)).toBe(front);
+    // A point well outside the boxes hits nothing.
     expect(ctx.pick(5, 5)).toBeNull();
   });
 });

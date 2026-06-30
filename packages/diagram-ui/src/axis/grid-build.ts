@@ -103,21 +103,33 @@ export function buildGrid(
   const minor = new Graphics({ label: "om-grid-minor" });
   const major = new Graphics({ label: "om-grid-major" });
 
+  // A non-finite or non-positive minor step makes the draw loop never
+  // advance (browser hang); a non-positive major step turns the modulo
+  // into NaN. Skip the family / treat every line as minor in those cases.
+  const minorXok = Number.isFinite(minorX) && minorX > 0;
+  const minorYok = Number.isFinite(minorY) && minorY > 0;
+  const majorXok = Number.isFinite(majorX) && majorX > 0;
+  const majorYok = Number.isFinite(majorY) && majorY > 0;
+
   // Vertical lines (constant x), stepped by X grid spacing.
-  for (let v = -extent; v <= extent; v += minorX) {
-    if (Math.abs(v) < 1e-9) {
-      continue; // axes drawn separately
+  if (minorXok) {
+    for (let v = -extent; v <= extent; v += minorX) {
+      if (Math.abs(v) < 1e-9) {
+        continue; // axes drawn separately
+      }
+      const g = majorXok && Math.abs(v) % majorX < 1e-9 ? major : minor;
+      g.moveTo(v, -extent).lineTo(v, extent);
     }
-    const g = Math.abs(v) % majorX < 1e-9 ? major : minor;
-    g.moveTo(v, -extent).lineTo(v, extent);
   }
   // Horizontal lines (constant y), stepped by Y grid spacing.
-  for (let v = -extent; v <= extent; v += minorY) {
-    if (Math.abs(v) < 1e-9) {
-      continue;
+  if (minorYok) {
+    for (let v = -extent; v <= extent; v += minorY) {
+      if (Math.abs(v) < 1e-9) {
+        continue;
+      }
+      const g = majorYok && Math.abs(v) % majorY < 1e-9 ? major : minor;
+      g.moveTo(-extent, v).lineTo(extent, v);
     }
-    const g = Math.abs(v) % majorY < 1e-9 ? major : minor;
-    g.moveTo(-extent, v).lineTo(extent, v);
   }
   minor.stroke({
     width: 1,

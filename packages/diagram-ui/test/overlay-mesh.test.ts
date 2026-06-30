@@ -87,12 +87,16 @@ describe("overlay-mesh", () => {
     const { parent } = makeScene();
 
     const rect = buildRectMesh(parent, { x1: 0, y1: 0, x2: 10, y2: 10 });
+    expect(parent.getChildByLabel("om-rubber-band", true)).toBe(rect);
     vi.mocked(requestSceneRender).mockClear();
     updateRectMesh(rect, { x1: 0, y1: 0, x2: 20, y2: 30 });
 
     expect(
       parent.children.filter((c) => c.label === "om-rubber-band"),
     ).toHaveLength(1);
+    // Rewritten in place: the same Graphics instance survives, not a
+    // dispose-and-recreate.
+    expect(parent.getChildByLabel("om-rubber-band", true)).toBe(rect);
     expect(requestSceneRender).toHaveBeenCalledWith(parent);
   });
 

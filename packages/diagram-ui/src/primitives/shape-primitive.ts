@@ -173,7 +173,7 @@ export abstract class OmShapePrimitive extends LitElement {
     const node = this.shapeNode;
     node.setEntityName(this.entityName());
     node.setHovered(this.hovered);
-    const key = `${this.zBias}|${this.lineThicknessScale}|${this.fingerprint()}`;
+    const key = `${this.zOrder}|${this.zBias}|${this.lineThicknessScale}|${this.fingerprint()}`;
     if (key !== this.lastBuiltKey) {
       this.lastBuiltKey = key;
       this.tearDownMeshes();

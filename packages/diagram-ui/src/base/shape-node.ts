@@ -8,7 +8,11 @@ import {
   SelectionOutline,
   VertexHandles,
 } from "./selection-overlay.js";
-import { tagEntity, type EntityKind } from "../interaction/node-keys.js";
+import {
+  clearEntityTag,
+  tagEntity,
+  type EntityKind,
+} from "../interaction/node-keys.js";
 import type { SceneContext } from "../scene/scene-context.js";
 import type {
   CoordinateSystem,
@@ -127,6 +131,7 @@ export class OmShapeNode {
    *  name. A name without a `:` (e.g. the bare `om-component` fallback)
    *  stays untagged, so the picker resolves the owner via an ancestor. */
   private tagFromName(name: string): void {
+    clearEntityTag(this.transform);
     if (!name.startsWith("om-")) {
       return;
     }
@@ -288,6 +293,7 @@ export class OmShapeNode {
         POLY_HIT_RADIUS,
         HIGHLIGHT_COLOR,
       );
+      this.hitTube.alpha = this.hovered ? HIT_HOVER_OPACITY : 0;
       this.transform.addChild(this.hitTube);
     } else {
       this.mesh.eventMode = "static";

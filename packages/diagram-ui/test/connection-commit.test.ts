@@ -10,10 +10,9 @@ import type { LayoutEvents } from "../src/graphical-layout/layout-events.js";
 import { tagEntity } from "../src/interaction/node-keys.js";
 
 /**
- * Characterization of the connection-commit gate in `onDrag`: an
- * `om-connection-create` fires only when the drag lands on a snap target
- * that the local compatibility check didn't reject. Locks the behavior
- * before connection-create is lifted into its own mode.
+ * The connection-commit gate in `onDrag`: an `om-connection-create` fires
+ * only when the drag lands on a snap target that the local compatibility
+ * check didn't reject.
  *
  * Renderer-less: the picker is injected, so the fake entities are plain
  * tagged `Container`s — the gesture layer resolves them through the same

@@ -201,11 +201,15 @@ function appendDashedPath(g: Graphics, points: Point[]): void {
     }
     const nx = dx / len;
     const ny = dy / len;
-    const count = Math.floor(len / period);
+    // Draw at least one dash so a segment shorter than one period still
+    // renders; clamp each dash to the segment end so the forced dash on a
+    // short span doesn't overshoot point `b`.
+    const count = Math.max(1, Math.floor(len / period));
     for (let j = 0; j < count; j++) {
       const start = period * j;
+      const end = Math.min(start + run, len);
       g.moveTo(a[0] + start * nx, a[1] + start * ny);
-      g.lineTo(a[0] + (start + run) * nx, a[1] + (start + run) * ny);
+      g.lineTo(a[0] + end * nx, a[1] + end * ny);
     }
   }
 }

@@ -6,8 +6,7 @@ import type { OmScene } from "../src/scene/scene.component.js";
 /**
  * Tests run under happy-dom with a renderer-less Pixi scene graph, so no
  * WebGL is required. We exercise mount → context exposure → unmount, plus
- * property → view-transform propagation. The visual surface is covered by
- * the Storybook story.
+ * property → view-transform propagation.
  */
 
 // happy-dom has no layout, so getBoundingClientRect is 0 and the scene

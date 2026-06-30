@@ -106,7 +106,7 @@ describe("buildStroke", () => {
     expect(style?.pixelLine).toBe(false);
   });
 
-  it("builds a dashed stroke as a screen-constant 1-px line, not a world-frame band", () => {
+  it("builds a dashed stroke at the same scale-compensated band as solid", () => {
     const { parent } = makeScene();
     const res = buildStroke(
       parent,
@@ -124,8 +124,11 @@ describe("buildStroke", () => {
     if (!(g instanceof Graphics))
       throw new Error("expected the dashed graphic");
     expect(g.eventMode).toBe("none");
-    // The dashed branch is a `pixelLine` (1-device-px regardless of zoom),
-    // the analogue of Babylon's GL `LinesMesh` — not the solid path's band.
-    expect(styleOf(g, "stroke")?.pixelLine).toBe(true);
+    const style = styleOf(g, "stroke");
+    expect(style?.color).toBe(0xff0000);
+    // Dashed honours the same scale-compensated round-cap band as solid —
+    // only the path is segmented, so it is not a 1-px GL line.
+    expect(style?.cap).toBe("round");
+    expect(style?.pixelLine).toBe(false);
   });
 });

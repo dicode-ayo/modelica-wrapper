@@ -51,25 +51,36 @@ interface StoryArgs {
 
 let currentLayout: DiagramLayout = sampleLayout();
 
-const diagram = (): OmGraphicalLayout | null =>
-  document.querySelector("om-graphical-layout");
-const actionPanel = (): OmActionPanel | null =>
-  document.querySelector("om-action-panel");
-const paramPanel = (): OmParameterPanel | null =>
-  document.querySelector("om-parameter-panel");
+/**
+ * Per-story root. Scoping queries here (instead of `document`) keeps the
+ * Docs view — which renders every story onto one page — from matching the
+ * first story's elements for all of them.
+ */
+const storyRoot = (node: EventTarget | null): ParentNode | null =>
+  node instanceof Element ? node.closest(".om-story-canvas-host") : null;
+
+const diagram = (root: ParentNode | null): OmGraphicalLayout | null =>
+  root?.querySelector("om-graphical-layout") ?? null;
+const actionPanel = (root: ParentNode | null): OmActionPanel | null =>
+  root?.querySelector("om-action-panel") ?? null;
+const paramPanel = (root: ParentNode | null): OmParameterPanel | null =>
+  root?.querySelector("om-parameter-panel") ?? null;
 
 /** Which flow opened the form, so the story logs the committed kind. */
 let paramKind: "simulate" | "component" | null = null;
 
-function openParams(opts: {
-  kind: "simulate" | "component";
-  model: ReturnType<typeof simulationOptionsModel>;
-  title: string;
-  submitLabel: string;
-  showReset: boolean;
-  crefPrefix?: string;
-}): void {
-  const panel = paramPanel();
+function openParams(
+  root: ParentNode | null,
+  opts: {
+    kind: "simulate" | "component";
+    model: ReturnType<typeof simulationOptionsModel>;
+    title: string;
+    submitLabel: string;
+    showReset: boolean;
+    crefPrefix?: string;
+  },
+): void {
+  const panel = paramPanel(root);
   if (!panel) return;
   paramKind = opts.kind;
   panel.model = opts.model;
@@ -80,15 +91,15 @@ function openParams(opts: {
   panel.open = true;
 }
 
-function closeParams(): void {
-  const panel = paramPanel();
+function closeParams(root: ParentNode | null): void {
+  const panel = paramPanel(root);
   if (panel) panel.open = false;
   paramKind = null;
 }
 
-function setLayout(next: DiagramLayout): void {
+function setLayout(root: ParentNode | null, next: DiagramLayout): void {
   currentLayout = next;
-  const el = diagram();
+  const el = diagram(root);
   if (el) el.layout = currentLayout;
 }
 
@@ -119,24 +130,28 @@ const meta: Meta<StoryArgs> = {
           @om-selection-change=${(
             e: CustomEvent<LayoutEvents["om-selection-change"]>,
           ) => {
-            const p = actionPanel();
+            const p = actionPanel(storyRoot(e.currentTarget));
             if (p) p.noSelection = e.detail.keys.length === 0;
           }}
           @om-tool-change=${(
             e: CustomEvent<LayoutEvents["om-tool-change"]>,
           ) => {
-            const p = actionPanel();
+            const p = actionPanel(storyRoot(e.currentTarget));
             if (p) p.tool = e.detail.tool;
           }}
           @om-connection-create=${(
             e: CustomEvent<LayoutEvents["om-connection-create"]>,
           ) => {
-            setLayout(appendConnection(currentLayout, e.detail));
+            setLayout(
+              storyRoot(e.currentTarget),
+              appendConnection(currentLayout, e.detail),
+            );
           }}
           @om-add-component-request=${(
             e: CustomEvent<LayoutEvents["om-add-component-request"]>,
           ) => {
             setLayout(
+              storyRoot(e.currentTarget),
               appendComponent(
                 currentLayout,
                 e.detail.className,
@@ -151,7 +166,7 @@ const meta: Meta<StoryArgs> = {
             if (!parsed || !isComponentKey(parsed) || parsed.nodeId === "") {
               return;
             }
-            openParams({
+            openParams(storyRoot(e.currentTarget), {
               kind: "component",
               model: componentParamsModel(parsed.nodeId),
               title: parsed.nodeId,
@@ -167,8 +182,8 @@ const meta: Meta<StoryArgs> = {
           @om-action-undo=${() => console.log("undo")}
           @om-action-check=${() => console.log("check")}
           @om-action-simulate=${() => console.log("simulate")}
-          @om-action-parameters=${() =>
-            openParams({
+          @om-action-parameters=${(e: Event) =>
+            openParams(storyRoot(e.currentTarget), {
               kind: "simulate",
               model: simulationOptionsModel(currentLayout.className),
               title: "Simulation setup",
@@ -176,18 +191,23 @@ const meta: Meta<StoryArgs> = {
               showReset: false,
             })}
           @om-action-rotate=${(e: CustomEvent<ActionRotateDetail>) =>
-            diagram()?.rotateSelection(e.detail.direction === "cw")}
+            diagram(storyRoot(e.currentTarget))?.rotateSelection(
+              e.detail.direction === "cw",
+            )}
           @om-action-flip=${(e: CustomEvent<ActionFlipDetail>) =>
-            diagram()?.flipSelection(e.detail.axis === "horizontal")}
+            diagram(storyRoot(e.currentTarget))?.flipSelection(
+              e.detail.axis === "horizontal",
+            )}
           @om-action-tool=${(e: CustomEvent<ActionToolDetail>) =>
-            diagram()?.setActiveTool(e.detail.tool)}
+            diagram(storyRoot(e.currentTarget))?.setActiveTool(e.detail.tool)}
         ></om-action-panel>
         <om-parameter-panel
           @om-panel-submit=${(e: CustomEvent<ParameterFormSubmitDetail>) => {
             console.log(`apply (${paramKind})`, e.detail.values);
-            closeParams();
+            closeParams(storyRoot(e.currentTarget));
           }}
-          @om-panel-cancel=${() => closeParams()}
+          @om-panel-cancel=${(e: Event) =>
+            closeParams(storyRoot(e.currentTarget))}
           @om-panel-reset=${() => console.log("reset to defaults")}
         ></om-parameter-panel>
       </div>

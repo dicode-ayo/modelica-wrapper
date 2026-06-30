@@ -76,6 +76,7 @@ export class OmLabel extends LitElement {
   override updated(): void {
     this.ensureAnchor();
     this.ensureText();
+    this.ensureViewSubscription();
     this.sync();
   }
 
@@ -91,6 +92,7 @@ export class OmLabel extends LitElement {
       this.anchor.destroy();
       this.anchor = null;
     }
+    this.sceneCtx?.requestRender();
   }
 
   private ensureAnchor(): void {
@@ -136,10 +138,21 @@ export class OmLabel extends LitElement {
     text.resolution = ctx.renderer?.resolution ?? 1;
     layer.addChild(text);
     this.text2d = text;
+  }
 
-    if (this.viewStore && !this.unsubscribe) {
-      this.unsubscribe = this.viewStore.subscribe(() => this.reproject());
+  /**
+   * Subscribe to view-state changes so the label reprojects on pan/zoom.
+   * Runs each update because `viewStateContext` can resolve after the
+   * overlay `Text` is created.
+   */
+  private ensureViewSubscription(): void {
+    if (!this.viewStore || !this.text2d || this.unsubscribe) {
+      return;
     }
+    this.unsubscribe = this.viewStore.subscribe(() => {
+      this.reproject();
+      this.sceneCtx?.requestRender();
+    });
   }
 
   private sync(): void {

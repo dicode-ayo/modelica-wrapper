@@ -68,10 +68,13 @@ function shortName(className: string): string {
  * know about. In the extension the host re-fetches the real icon from
  * OMC; here a labelled box keeps the freshly-added component visible.
  */
-function placeholderClass(className: string): ClassDef {
+function placeholderClass(
+  className: string,
+  restriction: string = "block",
+): ClassDef {
   return {
     name: className,
-    restriction: "block",
+    restriction,
     iconLayers: [
       {
         from: className,
@@ -127,12 +130,16 @@ export function appendComponent(
   layout: DiagramLayout,
   className: string,
   position: { x: number; y: number },
+  restriction?: string,
 ): DiagramLayout {
   const name = uniqueComponentName(layout, className);
   const half = 10;
   const classes = layout.classes[className]
     ? layout.classes
-    : { ...layout.classes, [className]: placeholderClass(className) };
+    : {
+        ...layout.classes,
+        [className]: placeholderClass(className, restriction),
+      };
   return {
     ...layout,
     classes,

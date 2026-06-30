@@ -21,6 +21,7 @@ import {
   buildFilledEllipse,
   buildFilledPolygon,
   buildFilledRect,
+  packColor,
   type RectBox,
 } from "../src/primitives/shape-utils.js";
 import {
@@ -44,8 +45,8 @@ const hatch = fillSpec({
 });
 const solid = fillSpec({ fillColor: FILL, lineColor: LINE, pattern: "Solid" });
 
-/** Red channel of a Graphics' flat fill colour. */
-function fillRed(g: Graphics): number {
+/** Packed `0xRRGGBB` flat fill colour recorded on a Graphics' instruction. */
+function fillColor(g: Graphics): number {
   const ins = (
     g.context.instructions as ReadonlyArray<{
       action: string;
@@ -53,7 +54,7 @@ function fillRed(g: Graphics): number {
     }>
   ).find((i) => i.action === "fill");
   if (!ins) throw new Error("expected a fill instruction");
-  return (ins.data.style.color >> 16) & 0xff;
+  return ins.data.style.color;
 }
 
 describe("resolveFillTexture", () => {
@@ -85,9 +86,9 @@ describe("buildFilledRect", () => {
     const res = buildFilledRect(null, parent, BOX, 0, cylinder, 0, "quad-grad");
     const g = parent.getChildByLabel("quad-grad", true);
     if (!(g instanceof Graphics)) throw new Error("expected the fill graphic");
-    // No canvas 2D context → flat fallback, degrading to fill (192), never
-    // to the black/line edge.
-    expect(fillRed(g)).toBe(192);
+    // No canvas 2D context → flat fallback, degrading to the fill colour,
+    // never to the black/line edge.
+    expect(fillColor(g)).toBe(packColor(FILL));
     res.dispose();
   });
 
@@ -96,7 +97,7 @@ describe("buildFilledRect", () => {
     const res = buildFilledRect(null, parent, BOX, 0, hatch, 0, "quad-hatch");
     const g = parent.getChildByLabel("quad-hatch", true);
     if (!(g instanceof Graphics)) throw new Error("expected the fill graphic");
-    expect(fillRed(g)).toBe(192);
+    expect(fillColor(g)).toBe(packColor(FILL));
     res.dispose();
   });
 });
@@ -118,7 +119,7 @@ describe("buildFilledEllipse", () => {
     );
     const g = parent.getChildByLabel("fan", true);
     if (!(g instanceof Graphics)) throw new Error("expected the fill graphic");
-    expect(fillRed(g)).toBe(192);
+    expect(fillColor(g)).toBe(packColor(FILL));
     res.dispose();
   });
 });
@@ -135,7 +136,7 @@ describe("buildFilledPolygon", () => {
     if (!res) throw new Error("polygon fill should build");
     const g = parent.getChildByLabel("poly", true);
     if (!(g instanceof Graphics)) throw new Error("expected the fill graphic");
-    expect(fillRed(g)).toBe(192);
+    expect(fillColor(g)).toBe(packColor(FILL));
     res.dispose();
 
     expect(

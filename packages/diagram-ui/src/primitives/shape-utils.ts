@@ -404,35 +404,33 @@ export function buildStroke(
   g.eventMode = "none";
   g.zIndex = z;
 
-  if (patternIsDashed(pattern)) {
-    // Dashed strokes are screen-constant 1-px lines (Pixi has no native dash,
-    // so the path is segmented by arc length).
-    if (!strokeDashedPath(g, points)) {
+  // Stroke width is scale-compensated: the rendered width is multiplied by the
+  // container's diagram-space scale, so the local width divides that scale out
+  // to keep the on-screen width invariant (Modelica thickness is a screen-space
+  // quantity, not an icon-space one), floored so it never goes sub-pixel.
+  const worldScale = worldScaleOf(parent);
+  const naturalWidth =
+    (thickness ?? DEFAULT_STROKE_THICKNESS) * (lineThicknessScale ?? 1);
+  const localWidth = Math.max(naturalWidth, MIN_STROKE_WIDTH) / worldScale;
+
+  const dashRuns = dashRunsFor(pattern);
+  if (dashRuns) {
+    // Pixi has no native dash, so the path is segmented by arc length.
+    if (!strokeDashedPath(g, points, dashRuns)) {
       g.destroy();
       return null;
     }
-    g.stroke({ width: 1, color: colour, pixelLine: true });
-  } else {
-    // Solid stroke width is scale-compensated: stroke width scales with the
-    // container transform, so the local width divides out the parent's
-    // diagram-space scale to keep a consistent on-screen width, floored so it
-    // never goes sub-pixel.
-    const worldScale = worldScaleOf(parent);
-    const naturalWidth =
-      (thickness ?? DEFAULT_STROKE_THICKNESS) * (lineThicknessScale ?? 1);
-    const localWidth = Math.max(naturalWidth, MIN_STROKE_WIDTH / worldScale);
-    if (!strokePath(g, points)) {
-      g.destroy();
-      return null;
-    }
-    g.stroke({
-      width: localWidth,
-      color: colour,
-      cap: "round",
-      join: "round",
-      alignment: 0.5,
-    });
+  } else if (!strokePath(g, points)) {
+    g.destroy();
+    return null;
   }
+  g.stroke({
+    width: localWidth,
+    color: colour,
+    cap: "round",
+    join: "round",
+    alignment: 0.5,
+  });
 
   parent.addChild(g);
   return { dispose: () => g.destroy() };
@@ -462,16 +460,17 @@ function strokePath(
   return drawn;
 }
 
-/** Emit alternating dash / gap runs along the polyline by accumulated arc
- *  length, so dash phase is continuous across segment joints. Returns `false`
- *  when nothing was drawn. */
+/** Emit the dash / gap runs in `runs` (even indices draw, odd skip) along the
+ *  polyline by accumulated arc length, cycling the pattern so its phase is
+ *  continuous across segment joints. Returns `false` when nothing was drawn. */
 function strokeDashedPath(
   g: Graphics,
   points: ReadonlyArray<readonly [number, number]>,
+  runs: readonly number[],
 ): boolean {
   let drawn = false;
-  let drawingDash = true;
-  let runLen = DEFAULT_DASH_SIZE;
+  let runIdx = 0;
+  let runLen = runs[0] ?? DEFAULT_DASH_SIZE;
   let covered = 0;
   for (let i = 1; i < points.length; i++) {
     const a = points[i - 1];
@@ -488,7 +487,7 @@ function strokeDashedPath(
     let pos = 0;
     while (pos < segLen - 1e-9) {
       const step = Math.min(segLen - pos, runLen - covered);
-      if (drawingDash) {
+      if (runIdx % 2 === 0) {
         g.moveTo(a[0] + ux * pos, a[1] + uy * pos).lineTo(
           a[0] + ux * (pos + step),
           a[1] + uy * (pos + step),
@@ -499,22 +498,43 @@ function strokeDashedPath(
       covered += step;
       if (covered >= runLen - 1e-9) {
         covered = 0;
-        drawingDash = !drawingDash;
-        runLen = drawingDash ? DEFAULT_DASH_SIZE : DEFAULT_DASH_GAP;
+        runIdx = (runIdx + 1) % runs.length;
+        runLen = runs[runIdx] ?? DEFAULT_DASH_SIZE;
       }
     }
   }
   return drawn;
 }
 
-function patternIsDashed(pattern: string | undefined): boolean {
-  switch (pattern) {
-    case "Dash":
-    case "Dot":
-    case "DashDot":
-    case "DashDotDot":
-      return true;
-    default:
-      return false;
+/** Dot run length (diagram units) — a short dash that reads as a point. */
+const DEFAULT_DOT_SIZE = 1;
+
+/** Dash / gap run lengths (diagram units) keyed by Modelica `LinePattern`; even
+ *  indices draw, odd indices skip. */
+const DASH_RUNS: Readonly<Record<string, readonly number[]>> = {
+  Dash: [DEFAULT_DASH_SIZE, DEFAULT_DASH_GAP],
+  Dot: [DEFAULT_DOT_SIZE, DEFAULT_DASH_GAP],
+  DashDot: [
+    DEFAULT_DASH_SIZE,
+    DEFAULT_DASH_GAP,
+    DEFAULT_DOT_SIZE,
+    DEFAULT_DASH_GAP,
+  ],
+  DashDotDot: [
+    DEFAULT_DASH_SIZE,
+    DEFAULT_DASH_GAP,
+    DEFAULT_DOT_SIZE,
+    DEFAULT_DASH_GAP,
+    DEFAULT_DOT_SIZE,
+    DEFAULT_DASH_GAP,
+  ],
+};
+
+/** Dash/gap runs for a dashed `LinePattern`, or `null` for solid / `"None"`.
+ *  Unknown dashed-looking patterns fall back to a plain dash. */
+function dashRunsFor(pattern: string | undefined): readonly number[] | null {
+  if (pattern === undefined || pattern === "None" || pattern === "Solid") {
+    return null;
   }
+  return DASH_RUNS[pattern] ?? DASH_RUNS.Dash ?? null;
 }

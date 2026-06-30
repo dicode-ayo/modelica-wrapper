@@ -80,7 +80,14 @@ export class OmEdge extends LitElement {
     if (!this.meshes || visualChanged) {
       this.rebuild();
     } else if (pathChanged) {
-      this.redrawInPlace();
+      // A path that shrank below two points can't be drawn; tear the edge
+      // down rather than redrawing in place and leaving a stale stroke.
+      if (this.path.length < 2) {
+        this.disposeMeshes();
+        this.sceneCtx?.requestRender();
+      } else {
+        this.redrawInPlace();
+      }
     }
     this.applySelection();
     this.applyHover();

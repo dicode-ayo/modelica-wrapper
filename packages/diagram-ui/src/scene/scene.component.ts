@@ -346,13 +346,11 @@ export class OmScene extends LitElement {
       return null;
     }
     // Pixi v8 refreshes `worldTransform` only during a render pass, and
-    // hit-testing inverse-maps the point through it. With a live
-    // renderer the on-demand loop keeps the subtree fresh; renderer-less
-    // (headless tests, a pick before the first frame) needs a manual
-    // refresh or every container reads as identity.
-    if (!this.renderer) {
-      refreshWorldTransforms(stage, null);
-    }
+    // hit-testing inverse-maps the point through it. On-demand rendering
+    // means a mutation or `applyView` can run between frames, so the
+    // subtree may be stale even with a live renderer — refresh before
+    // every pick or a container reads as identity.
+    refreshWorldTransforms(stage, null);
     return pickAtPoint(stage, x, y);
   }
 

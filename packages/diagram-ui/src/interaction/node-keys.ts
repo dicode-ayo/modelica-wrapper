@@ -310,6 +310,11 @@ export function readEntityMeta(container: Container): EntityMeta | null {
   return entityMeta.get(container) ?? null;
 }
 
+/** Drop a container's entity tag so it resolves identity via an ancestor. */
+export function clearEntityTag(container: Container): void {
+  entityMeta.delete(container);
+}
+
 /**
  * Walks `node`'s parent chain looking for the first ancestor that
  * carries an entity identity (set via `tagEntity`).

@@ -241,9 +241,15 @@ export class OmConnection extends LitElement {
 
   private rebuildJunctions(): void {
     this.disposeJunctions();
-    this.builtPath = this.path;
     const parent = this.parentTransform;
-    if (!this.showJunctions || !parent) {
+    // Leave `builtPath` null until the parent context arrives, so a build
+    // attempted before mount is retried once the parent is available rather
+    // than being marked done and skipped.
+    if (!parent) {
+      return;
+    }
+    this.builtPath = this.path;
+    if (!this.showJunctions) {
       return;
     }
     const internal = this.path.slice(1, -1);
