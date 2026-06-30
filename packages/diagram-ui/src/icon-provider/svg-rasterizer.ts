@@ -57,7 +57,7 @@ export async function rasterizeSvgToTexture(
   });
 
   const texture = new Texture({ source });
-  if (DEBUG_RASTERIZER) {
+  if (rasterizerDebug) {
     console.debug("[diagram-ui] SVG texture ready", {
       size: { w: texture.width, h: texture.height },
       svgPreview: svg.slice(0, 200),
@@ -71,11 +71,11 @@ export async function rasterizeSvgToTexture(
  * 200-char SVG preview. Useful when icons render but with the wrong
  * content. Off by default to keep production console noise low.
  */
-let DEBUG_RASTERIZER = false;
+let rasterizerDebug = false;
 
 /** Toggle the rasteriser's verbose logging at runtime. */
 export function setRasterizerDebug(enabled: boolean): void {
-  DEBUG_RASTERIZER = enabled;
+  rasterizerDebug = enabled;
 }
 
 /** Base64-encode a UTF-8 string. `btoa` chokes on non-ASCII; this path
@@ -88,14 +88,4 @@ function base64EncodeUnicode(input: string): string {
     binary += String.fromCharCode(byte);
   }
   return btoa(binary);
-}
-
-/**
- * Retained for backward compatibility with the previous SVG-injection
- * path. Now a pass-through: the icon-provider passes an explicit
- * `size` to `renderIconLayersToSvg`, so the SVG already has explicit
- * `width` / `height` attributes by the time we see it.
- */
-export function ensureSvgDimensions(svg: string, _size: number): string {
-  return svg;
 }

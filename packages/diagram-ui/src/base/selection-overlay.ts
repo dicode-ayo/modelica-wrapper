@@ -34,9 +34,13 @@ const HIGHLIGHT_Z_INDEX = 1000;
  * `Graphics`, so a colour change recolours in place and a removal destroys
  * the outline. Headless scenes (`renderer === null`) skip the visual — the
  * `selected` state flag still drives behaviour, only the outline is absent.
+ *
+ * `outlines` is a `WeakMap` so an entity destroyed while still highlighted
+ * (delete-while-hovered, no explicit clear) drops its entry instead of
+ * pinning the dead container for the life of the scene.
  */
 interface HighlightState {
-  outlines: Map<Container, Graphics>;
+  outlines: WeakMap<Container, Graphics>;
 }
 
 const highlightStates = new WeakMap<Container, HighlightState>();
@@ -44,7 +48,7 @@ const highlightStates = new WeakMap<Container, HighlightState>();
 function highlightStateFor(stage: Container): HighlightState {
   let state = highlightStates.get(stage);
   if (!state) {
-    state = { outlines: new Map() };
+    state = { outlines: new WeakMap() };
     highlightStates.set(stage, state);
   }
   return state;
@@ -107,9 +111,9 @@ function drawHighlight(
 
 /**
  * Crisp rectangular outline around a shape's icon extent. A single closed
- * `Graphics` rect stroke; the 4-unit width rides the world transform so it
- * zoom-attenuates the way the old `sizeAttenuation` ribbon did. Cheap to
- * create and dispose; redrawn on size change the same way `ResizeHandles` is.
+ * `Graphics` rect stroke; the 4-unit width is in world units so it rides the
+ * view transform and zoom-attenuates. Cheap to create and dispose; redrawn
+ * on size change the same way `ResizeHandles` is.
  */
 export class SelectionOutline {
   private readonly outline: Graphics;

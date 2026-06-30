@@ -38,6 +38,10 @@ const TRANSFORM_KINDS = new Set<EntityKind>([
   "label",
 ]);
 
+function isTransformKind(value: string): value is EntityKind {
+  return (TRANSFORM_KINDS as ReadonlySet<string>).has(value);
+}
+
 /**
  * Which bounding-box selection handles an entity offers. Poly shapes
  * (line / polygon) opt out of both — their geometry is edited per-vertex,
@@ -131,9 +135,9 @@ export class OmShapeNode {
     if (colon <= 0) {
       return;
     }
-    const kind = rest.slice(0, colon) as EntityKind;
+    const kind = rest.slice(0, colon);
     const nodeId = rest.slice(colon + 1);
-    if (nodeId === "" || !TRANSFORM_KINDS.has(kind)) {
+    if (nodeId === "" || !isTransformKind(kind)) {
       return;
     }
     tagEntity(this.transform, kind, nodeId);

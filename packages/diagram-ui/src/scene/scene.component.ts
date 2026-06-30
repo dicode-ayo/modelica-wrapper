@@ -497,9 +497,7 @@ function pickAtPoint(node: Container, x: number, y: number): Container | null {
     return null;
   }
   if (node.interactiveChildren !== false && node.children.length > 0) {
-    const ordered = [...node.children].sort(
-      (a, b) => (a.zIndex || 0) - (b.zIndex || 0),
-    );
+    const ordered = [...node.children].sort((a, b) => a.zIndex - b.zIndex);
     for (let i = ordered.length - 1; i >= 0; i--) {
       const child = ordered[i];
       if (child) {
