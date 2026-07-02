@@ -141,29 +141,13 @@ describe("buildStroke", () => {
     ];
     // Zoomed in (small worldPerPixel) needs a smaller world-space dash
     // period to stay the same screen size, so more dashes fit the path.
-    buildStroke(
-      parent,
-      longPath,
-      RED,
-      "Dash",
-      0,
-      "zoomed-in",
-      undefined,
-      undefined,
-      0.1,
-    );
+    buildStroke(parent, longPath, RED, "Dash", 0, "zoomed-in", {
+      worldPerPixel: 0.1,
+    });
     // Zoomed out (large worldPerPixel) needs a larger period, so fewer.
-    buildStroke(
-      parent,
-      longPath,
-      RED,
-      "Dash",
-      0,
-      "zoomed-out",
-      undefined,
-      undefined,
-      5,
-    );
+    buildStroke(parent, longPath, RED, "Dash", 0, "zoomed-out", {
+      worldPerPixel: 5,
+    });
     const zoomedIn = parent.getChildByLabel("zoomed-in", true);
     const zoomedOut = parent.getChildByLabel("zoomed-out", true);
     if (!(zoomedIn instanceof Graphics) || !(zoomedOut instanceof Graphics)) {
@@ -179,17 +163,9 @@ describe("buildStroke", () => {
       [1000, 0],
     ];
     buildStroke(parent, longPath, RED, "Dash", 0, "no-wpp");
-    buildStroke(
-      parent,
-      longPath,
-      RED,
-      "Dash",
-      0,
-      "wpp-one",
-      undefined,
-      undefined,
-      1,
-    );
+    buildStroke(parent, longPath, RED, "Dash", 0, "wpp-one", {
+      worldPerPixel: 1,
+    });
     const noWpp = parent.getChildByLabel("no-wpp", true);
     const wppOne = parent.getChildByLabel("wpp-one", true);
     if (!(noWpp instanceof Graphics) || !(wppOne instanceof Graphics)) {
@@ -212,9 +188,7 @@ describe("buildStroke", () => {
       "Dash",
       0,
       "floored",
-      undefined,
-      undefined,
-      1e-9,
+      { worldPerPixel: 1e-9 },
     );
     expect(res).not.toBeNull();
     const g = parent.getChildByLabel("floored", true);
