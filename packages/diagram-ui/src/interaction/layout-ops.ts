@@ -1174,6 +1174,10 @@ export function applyEdgeSegmentDrag(
   if (a === undefined || b === undefined) {
     return layout;
   }
+  // Coincident endpoints have no defined axis; no drag is possible.
+  if (a[0] === b[0] && a[1] === b[1]) {
+    return layout;
+  }
   const lastIdx = wps.length - 1;
   const horizontal = segmentAxis(a, b) === "h";
 

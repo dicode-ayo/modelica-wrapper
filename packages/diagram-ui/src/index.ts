@@ -210,3 +210,4 @@ export {
   type ParameterField,
   type FieldKind,
 } from "./parameter-form/parameter-fields.js";
+export type { DiagramCommandId } from "./commands/index.js";

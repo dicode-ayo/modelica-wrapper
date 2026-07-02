@@ -4,11 +4,13 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import { ContextProvider } from "@lit/context";
 import { repeat } from "lit/directives/repeat.js";
 import type {
+  Color,
   ComponentInstance,
   ConnectorInstance,
   DiagramLayout,
   IconLayer,
 } from "@dicode/omc-client";
+import { clampByte } from "@dicode/diagram-svg";
 
 import { renderShape } from "../primitives/render-shape.js";
 import { lineThicknessScaleContext } from "../primitives/stroke-scale-context.js";
@@ -126,6 +128,12 @@ interface BBox {
   minY: number;
   maxX: number;
   maxY: number;
+}
+
+/** Modelica `[r,g,b]` (0–255) → `#rrggbb`, the form `<om-edge>` parses. */
+function colorToHex(color: Color): string {
+  const hex = (n: number): string => clampByte(n).toString(16).padStart(2, "0");
+  return `#${hex(color[0])}${hex(color[1])}${hex(color[2])}`;
 }
 
 function layoutBoundingBox(layout: DiagramLayout): BBox | null {
@@ -362,12 +370,21 @@ export class OmGraphicalLayout extends LitElement {
   private readonly interactionStore = new InteractionStateStore();
 
   /**
+   * When set, the host (the VSCode extension) owns the diagram shortcuts: it
+   * binds them as VSCode keybindings and pushes the resolved command id back
+   * via {@link runCommandById}, so `onKeyDown` lets those chords propagate
+   * instead of acting on them. Unset (the default, e.g. Storybook) keeps the
+   * built-in {@link DEFAULT_KEYMAP} dispatch.
+   */
+  @property({ type: Boolean, attribute: "host-managed-keys" })
+  hostManagedKeys = false;
+
+  /**
    * The diagram command set + its key bindings. One registry backs both the
    * keymap dispatch (`onKeyDown`) and the public action methods the
    * action-panel buttons drive, so a shortcut and its button can't diverge.
    */
   private readonly commands = new CommandRegistry(DIAGRAM_COMMANDS);
-  private readonly keymap = DEFAULT_KEYMAP;
 
   // Serves `lineThicknessScale` to every descendant shape primitive, which
   // reads it from context inside `buildStroke`.
@@ -429,6 +446,7 @@ export class OmGraphicalLayout extends LitElement {
             html`<om-connection
               .nodeId=${String(idx)}
               .path=${conn.waypoints}
+              .stroke=${conn.color ? colorToHex(conn.color) : undefined}
               .selectedKeys=${this.selectedKeys}
             ></om-connection>`,
         )}
@@ -1380,7 +1398,10 @@ export class OmGraphicalLayout extends LitElement {
       e.preventDefault();
       return;
     }
-    const id = this.keymap.get(chordFromEvent(e));
+    if (this.hostManagedKeys) {
+      return;
+    }
+    const id = DEFAULT_KEYMAP.get(chordFromEvent(e));
     if (id && this.runCommand(id)) {
       e.preventDefault();
     }
@@ -1485,6 +1506,15 @@ export class OmGraphicalLayout extends LitElement {
   /** Run a command by id; returns whether it was enabled and fired. */
   private runCommand(id: DiagramCommandId): boolean {
     return this.commands.run(id, this.commandContext(), this.commandTarget());
+  }
+
+  /**
+   * Run a diagram command pushed from the host (a VSCode keybinding routed
+   * through the extension). The command's own `when` gate still applies, so an
+   * id that isn't valid for the current selection is a no-op.
+   */
+  runCommandById(id: DiagramCommandId): boolean {
+    return this.runCommand(id);
   }
 
   /**
