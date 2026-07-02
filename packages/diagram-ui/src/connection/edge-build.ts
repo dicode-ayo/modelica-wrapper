@@ -41,8 +41,8 @@ export interface EdgeOptions {
   /**
    * Diagram units per CSS pixel at the current zoom (`SceneContext.worldPerPixel()`).
    * Used to keep a `clocked` dash rhythm a constant on-screen size; omit for
-   * the legacy length-normalized fallback (e.g. a renderer-less caller with
-   * no scene context).
+   * the length-normalized fallback (e.g. a renderer-less caller with no scene
+   * context).
    */
   worldPerPixel?: number;
 }
@@ -68,13 +68,8 @@ const HIT_HOVER_COLOR = 0x3d82f5;
  *  no scene context): the path normalized to a fixed count, so a path-length
  *  change still redistributes but a zoom change does not. */
 const DEFAULT_DASH_COUNT = 24;
-/** Floor (diagram units) on the whole dash *period* — `shape-utils.ts`
- *  floors each individual run instead (`MIN_DASH_RUN`), since that
- *  algorithm cycles a multi-run pattern (Dot/DashDot/…) rather than a
- *  single period/run split. Both exist to keep an extreme zoom-in from
- *  shrinking toward zero and blowing up their respective segmentation
- *  loop; same intent, different unit because the two are genuinely
- *  different algorithms. */
+/** Floor (diagram units) on the whole dash period so an extreme zoom-in can't
+ *  shrink it toward zero and blow up the segmentation loop. */
 const MIN_DASH_PERIOD = 0.1;
 
 export interface EdgeMeshes {
@@ -205,9 +200,7 @@ function appendSolidPath(g: Graphics, points: Point[]): void {
  * divide out a parent `worldScale` — a connection's `parentTransform` is
  * always the diagram root (`<om-connection>` renders directly under
  * `<om-scene>`, never nested under a component's scaled icon container), so
- * that scale is always 1 and the divide-out would be a no-op. If a
- * connection is ever parented under a scaled container, this needs the same
- * `worldScaleOf(parent)` divide-out `buildStroke` does.
+ * that scale is always 1 and the divide-out would be a no-op.
  */
 function appendDashedPath(
   g: Graphics,
