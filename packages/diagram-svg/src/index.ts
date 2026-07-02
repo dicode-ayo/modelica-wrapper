@@ -52,7 +52,7 @@ export type {
 // Helper modules — exported so consumers can reuse the colour / pattern /
 // expression mappers when building custom renderers (e.g. a Canvas
 // fallback or a React wrapper).
-export { colorToCss } from "./color.js";
+export { colorToCss, clampByte } from "./color.js";
 export { linePatternToDashArray } from "./pattern.js";
 export {
   fillSpec,

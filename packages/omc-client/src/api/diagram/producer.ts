@@ -588,7 +588,7 @@ function waypointsFromLine(line: unknown): { x: number; y: number }[] {
 /**
  * Decode an `annotation.Line.color` value (`[r, g, b]`, each 0–255) into a
  * typed `Color`. Anything else (missing, wrong arity, non-numeric) yields
- * `undefined` so the renderer falls back to its default edge colour.
+ * `undefined` so the renderer falls back to its default edge color.
  */
 function colorFromLine(line: unknown): Color | undefined {
   if (typeof line !== "object" || line === null) return undefined;

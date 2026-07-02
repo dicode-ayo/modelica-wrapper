@@ -10,6 +10,7 @@ import type {
   DiagramLayout,
   IconLayer,
 } from "@dicode/omc-client";
+import { clampByte } from "@dicode/diagram-svg";
 
 import { renderShape } from "../primitives/render-shape.js";
 import { lineThicknessScaleContext } from "../primitives/stroke-scale-context.js";
@@ -131,10 +132,7 @@ interface BBox {
 
 /** Modelica `[r,g,b]` (0–255) → `#rrggbb`, the form `<om-edge>` parses. */
 function colorToHex(color: Color): string {
-  const hex = (n: number): string =>
-    Math.max(0, Math.min(255, Math.round(n)))
-      .toString(16)
-      .padStart(2, "0");
+  const hex = (n: number): string => clampByte(n).toString(16).padStart(2, "0");
   return `#${hex(color[0])}${hex(color[1])}${hex(color[2])}`;
 }
 

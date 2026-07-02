@@ -304,8 +304,8 @@ export interface ConnectionLayout {
    */
   waypoints: Point[];
   /**
-   * Stroke colour from the connection's `annotation.Line.color`, if the
-   * source set one. Absent means the renderer picks its default edge colour.
+   * Stroke color from the connection's `annotation.Line.color`, if the
+   * source set one. Absent means the renderer picks its default edge color.
    */
   color?: Color | undefined;
   source?: SourceLocation | undefined;
