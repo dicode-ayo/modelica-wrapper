@@ -29,6 +29,7 @@ import type {
 } from "../../_shared/modelInstance.js";
 import type {
   ClassDef,
+  Color,
   CoordinateSystem,
   ConnectionEndpoint,
   ConnectionLayout,
@@ -585,6 +586,26 @@ function waypointsFromLine(line: unknown): { x: number; y: number }[] {
 }
 
 /**
+ * Decode an `annotation.Line.color` value (`[r, g, b]`, each 0–255) into a
+ * typed `Color`. Anything else (missing, wrong arity, non-numeric) yields
+ * `undefined` so the renderer falls back to its default edge colour.
+ */
+function colorFromLine(line: unknown): Color | undefined {
+  if (typeof line !== "object" || line === null) return undefined;
+  const c = (line as { color?: unknown }).color;
+  if (
+    Array.isArray(c) &&
+    c.length === 3 &&
+    typeof c[0] === "number" &&
+    typeof c[1] === "number" &&
+    typeof c[2] === "number"
+  ) {
+    return [c[0], c[1], c[2]];
+  }
+  return undefined;
+}
+
+/**
  * True when a connection endpoint resolves to a node/port that survived
  * gating (issue #76, item 6).
  *
@@ -627,7 +648,8 @@ function emitConnection(c: ConnectionNode): ConnectionLayout | undefined {
   const waypointsXY = waypointsFromLine(line);
   // Convert {x,y} back to [x,y] tuples for the public type.
   const waypoints = waypointsXY.map((p) => [p.x, p.y] as [number, number]);
-  return { lhs, rhs, waypoints };
+  const color = colorFromLine(line);
+  return color ? { lhs, rhs, waypoints, color } : { lhs, rhs, waypoints };
 }
 
 // ---------- entry point ----------

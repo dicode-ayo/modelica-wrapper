@@ -77,6 +77,34 @@ describe("<om-graphical-layout>", () => {
     ).toBe(1);
   });
 
+  it("forwards a connection's annotation colour to its <om-edge> stroke", async () => {
+    const layout = tinyLayout();
+    layout.connections = [
+      {
+        lhs: { component: "b1", port: "y" },
+        rhs: { component: "b1", port: "u" },
+        waypoints: [
+          [-10, 0],
+          [10, 0],
+        ],
+        color: [0, 0, 127],
+      },
+      {
+        lhs: { component: "b1", port: "y" },
+        rhs: { component: "b1", port: "u" },
+        waypoints: [
+          [-10, 5],
+          [10, 5],
+        ],
+      },
+    ];
+    const el = await mount(layout);
+    const conns = el.shadowRoot?.querySelectorAll("om-connection");
+    expect(conns?.length).toBe(2);
+    expect((conns?.[0] as { stroke?: string }).stroke).toBe("#00007f");
+    expect((conns?.[1] as { stroke?: string }).stroke).toBeUndefined();
+  });
+
   it("tracks selection via setSelection / selection", async () => {
     const el = await mount(tinyLayout());
     el.setSelection(["c:b1"]);

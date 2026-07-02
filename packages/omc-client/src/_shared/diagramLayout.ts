@@ -303,6 +303,11 @@ export interface ConnectionLayout {
    * The list is never `null`/`undefined`; missing waypoints normalize to `[]`.
    */
   waypoints: Point[];
+  /**
+   * Stroke colour from the connection's `annotation.Line.color`, if the
+   * source set one. Absent means the renderer picks its default edge colour.
+   */
+  color?: Color | undefined;
   source?: SourceLocation | undefined;
 }
 
@@ -548,6 +553,7 @@ export const ConnectionLayoutSchema = z
     lhs: ConnectionEndpointSchema,
     rhs: ConnectionEndpointSchema,
     waypoints: z.array(PointSchema),
+    color: ColorSchema.optional(),
     source: SourceLocationSchema.optional(),
   })
   .strict();

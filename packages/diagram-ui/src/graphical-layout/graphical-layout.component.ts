@@ -4,6 +4,7 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import { ContextProvider } from "@lit/context";
 import { repeat } from "lit/directives/repeat.js";
 import type {
+  Color,
   ComponentInstance,
   ConnectorInstance,
   DiagramLayout,
@@ -126,6 +127,15 @@ interface BBox {
   minY: number;
   maxX: number;
   maxY: number;
+}
+
+/** Modelica `[r,g,b]` (0–255) → `#rrggbb`, the form `<om-edge>` parses. */
+function colorToHex(color: Color): string {
+  const hex = (n: number): string =>
+    Math.max(0, Math.min(255, Math.round(n)))
+      .toString(16)
+      .padStart(2, "0");
+  return `#${hex(color[0])}${hex(color[1])}${hex(color[2])}`;
 }
 
 function layoutBoundingBox(layout: DiagramLayout): BBox | null {
@@ -438,6 +448,7 @@ export class OmGraphicalLayout extends LitElement {
             html`<om-connection
               .nodeId=${String(idx)}
               .path=${conn.waypoints}
+              .stroke=${conn.color ? colorToHex(conn.color) : undefined}
               .selectedKeys=${this.selectedKeys}
             ></om-connection>`,
         )}
