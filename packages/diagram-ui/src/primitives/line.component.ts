@@ -26,6 +26,10 @@ export class OmLine extends OmShapePrimitive {
     return "line";
   }
 
+  protected override dashPattern(): string | undefined {
+    return this.shape?.pattern;
+  }
+
   protected override entityBounds(): EntityBounds | null {
     const s = this.shape;
     if (!s || s.points.length < 2) {
@@ -64,6 +68,7 @@ export class OmLine extends OmShapePrimitive {
       `om-line.${this.zOrder}`,
       s.thickness,
       this.lineThicknessScale,
+      this.sceneCtx?.worldPerPixel(),
     );
     if (stroke) {
       this.resources.push(stroke);

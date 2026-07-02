@@ -1,5 +1,5 @@
 import { customElement, property } from "lit/decorators.js";
-import { ContextConsumer, consume } from "@lit/context";
+import { consume } from "@lit/context";
 import { Text, TextStyle, type Container } from "pixi.js";
 import {
   expressionToString,
@@ -15,10 +15,6 @@ import {
 } from "./shape-primitive.js";
 import { colorToCss, extentToRect } from "./shape-utils.js";
 import { substitutionsContext } from "../label/substitutions-context.js";
-import {
-  viewStateContext,
-  type ViewStateStore,
-} from "../scene/view-state-store.js";
 import { worldScaleXY } from "../scene/ortho-camera.js";
 
 /**
@@ -58,28 +54,10 @@ export class OmText extends OmShapePrimitive {
 
   private text: Text | null = null;
   private currentResolution = MIN_TEXT_RESOLUTION;
-  private viewUnsub: (() => void) | null = null;
 
-  constructor() {
-    super();
-    new ContextConsumer(this, {
-      context: viewStateContext,
-      subscribe: true,
-      callback: (store) => this.resubscribeViewState(store),
-    });
-  }
-
-  private resubscribeViewState(store: ViewStateStore | null): void {
-    this.viewUnsub?.();
-    this.viewUnsub = store
-      ? store.subscribe(() => this.applyResolution())
-      : null;
-  }
-
-  override disconnectedCallback(): void {
-    super.disconnectedCallback();
-    this.viewUnsub?.();
-    this.viewUnsub = null;
+  /** Raise the `Text` resolution to match the new zoom (never lowered). */
+  protected override onViewChange(): void {
+    this.applyResolution();
   }
 
   /** Body to draw — `textString` resolved against the in-scope

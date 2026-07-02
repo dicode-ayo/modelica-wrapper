@@ -6,6 +6,7 @@ import "../src/connection/edge.component.js";
 import type { OmScene } from "../src/scene/scene.component.js";
 import type { OmEdge } from "../src/connection/edge.component.js";
 import { buildEdge } from "../src/connection/edge-build.js";
+import { dashCount } from "./pixi-dash.helper.js";
 
 const teardowns: Array<() => void> = [];
 afterEach(() => {
@@ -50,6 +51,41 @@ describe("buildEdge", () => {
     expect(result.hitArea.hitArea).not.toBeNull();
     expect(result.hitArea.visible).toBe(true);
     expect(result.hitArea.alpha).toBe(0);
+  });
+
+  it("scales a clocked dash rhythm by worldPerPixel so it reads a constant size on screen", () => {
+    const longPath: Array<[number, number]> = [
+      [0, 0],
+      [1000, 0],
+    ];
+    const zoomedIn = buildEdge(new Container(), "in", {
+      points: longPath,
+      clocked: true,
+      worldPerPixel: 0.1,
+    });
+    const zoomedOut = buildEdge(new Container(), "out", {
+      points: longPath,
+      clocked: true,
+      worldPerPixel: 5,
+    });
+    if (zoomedIn === null || zoomedOut === null) {
+      throw new Error("expected both clocked edges");
+    }
+    expect(dashCount(zoomedIn.line)).toBeGreaterThan(dashCount(zoomedOut.line));
+  });
+
+  it("falls back to length-normalized dashing without a worldPerPixel", () => {
+    const result = buildEdge(new Container(), "clocked", {
+      points: [
+        [0, 0],
+        [100, 0],
+      ],
+      clocked: true,
+    });
+    if (result === null) throw new Error("expected a clocked edge");
+    // The legacy fallback still produces a dashed (segmented) line, not a
+    // single continuous run.
+    expect(dashCount(result.line)).toBeGreaterThan(1);
   });
 });
 
@@ -191,5 +227,54 @@ describe("<om-edge>", () => {
     edge.remove();
     expect(meshes?.line.destroyed).toBe(true);
     expect(meshes?.hitArea.destroyed).toBe(true);
+  });
+
+  it("re-strokes a clocked edge's dash rhythm in place when the scene zooms", async () => {
+    const scene = await mountScene();
+    const edge = document.createElement("om-edge") as OmEdge;
+    edge.clocked = true;
+    edge.path = [
+      [0, 0],
+      [1000, 0],
+    ];
+    scene.appendChild(edge);
+    await edge.updateComplete;
+    const line = edge.edgeMesh?.line;
+    if (!line) throw new Error("expected a clocked edge mesh");
+    const dashesBefore = dashCount(line);
+
+    scene.zoom = scene.zoom / 20; // zoom in a lot
+    await scene.updateComplete;
+    await edge.updateComplete;
+
+    // Redrawn in place — same Graphics identity, no scene-graph churn.
+    expect(edge.edgeMesh?.line).toBe(line);
+    expect(line.destroyed).toBe(false);
+    expect(dashCount(line)).toBeGreaterThan(dashesBefore);
+  });
+
+  it("does not redraw a non-clocked edge when the scene zooms", async () => {
+    const scene = await mountScene();
+    const edge = document.createElement("om-edge") as OmEdge;
+    edge.path = [
+      [0, 0],
+      [1000, 0],
+    ];
+    scene.appendChild(edge);
+    await edge.updateComplete;
+    const line = edge.edgeMesh?.line;
+    if (!line) throw new Error("expected an edge mesh");
+    const before = (
+      line.context.instructions as ReadonlyArray<unknown>
+    ).slice();
+
+    scene.zoom = scene.zoom / 20;
+    await scene.updateComplete;
+    await edge.updateComplete;
+
+    expect(edge.edgeMesh?.line).toBe(line);
+    expect((line.context.instructions as ReadonlyArray<unknown>).length).toBe(
+      before.length,
+    );
   });
 });

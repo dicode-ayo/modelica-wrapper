@@ -31,6 +31,10 @@ export class OmPolygon extends OmShapePrimitive {
     return "polygon";
   }
 
+  protected override dashPattern(): string | undefined {
+    return this.shape?.pattern;
+  }
+
   protected override entityBounds(): EntityBounds | null {
     const s = this.shape;
     if (!s || s.points.length < 3) {
@@ -97,6 +101,7 @@ export class OmPolygon extends OmShapePrimitive {
       `${baseName}.stroke`,
       s.lineThickness,
       this.lineThicknessScale,
+      this.sceneCtx?.worldPerPixel(),
     );
     if (stroke) {
       this.resources.push(stroke);
