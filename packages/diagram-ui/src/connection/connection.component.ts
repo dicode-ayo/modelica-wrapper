@@ -20,6 +20,7 @@ import {
   tagEntity,
 } from "../interaction/node-keys.js";
 import { WAYPOINT_RADIUS } from "./edge-build.js";
+import { parseCssColor } from "./parse-color.js";
 import "./edge.component.js";
 
 /** Near-black slate, matching the default edge colour. */
@@ -46,7 +47,8 @@ const JUNCTION_Z_INDEX = 0.01;
  *
  * Properties:
  *   - `path`             — `Point[]` of waypoints
- *   - `stroke`           — `#rrggbb` colour, forwarded to <om-edge>
+ *   - `stroke`           — CSS colour (`#rrggbb` or `rgb(r,g,b)`), forwarded
+ *                          to <om-edge>
  *   - `clocked`          — dashed pattern, forwarded
  *   - `showJunctions`    — render a dot at each internal waypoint
  *   - `selectedKeys`     — set of entity keys (`edge:<nodeId>` and
@@ -257,7 +259,7 @@ export class OmConnection extends LitElement {
       this.sceneCtx?.requestRender();
       return;
     }
-    const color = parseColor(this.stroke) ?? JUNCTION_BASE_COLOR;
+    const color = parseCssColor(this.stroke) ?? JUNCTION_BASE_COLOR;
     parent.sortableChildren = true;
 
     // Internal waypoints map to `path` indices 1 .. path.length - 2.
@@ -350,14 +352,6 @@ export class OmConnection extends LitElement {
   get junctions(): Graphics[] {
     return this.junctionDiscs;
   }
-}
-
-function parseColor(input: string | undefined): number | undefined {
-  const hex = input?.match(/^#?([0-9a-fA-F]{6})$/)?.[1];
-  if (hex === undefined) {
-    return undefined;
-  }
-  return parseInt(hex, 16);
 }
 
 declare global {
