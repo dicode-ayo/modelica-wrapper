@@ -43,6 +43,20 @@ describe("parseEntityKey", () => {
     expect(formatEntityKey("connector", "R1.p")).toBe("k:R1.p");
     expect(formatEntityKey("component", "R1")).toBe("c:R1");
   });
+
+  it("decomposes shape keys into shapeKind + index", () => {
+    expect(parseEntityKey("shape:rectangle:3")).toEqual({
+      kind: "shape",
+      nodeId: "rectangle:3",
+      shapeKind: "rectangle",
+      index: 3,
+    });
+  });
+
+  it("yields a NaN index for a shape key with a non-integer index", () => {
+    const parsed = parseEntityKey("shape:rectangle:x");
+    expect(parsed?.kind === "shape" && Number.isNaN(parsed.index)).toBe(true);
+  });
 });
 
 describe("type guards", () => {

@@ -259,7 +259,7 @@ export class OmParameterForm extends LitElement {
       .color-swatch {
         display: block;
         width: 100%;
-        height: 28px;
+        height: var(--om-input-size-xs, 28px);
         padding: 0 2px;
         border: 1px solid var(--vscode-input-border, #d4d4d4);
         border-radius: var(--om-radius-sm, 4px);

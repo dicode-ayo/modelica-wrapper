@@ -104,9 +104,11 @@ export async function openDiagram(
   // is being edited so onParametersSubmit can route the write.
   let shapePropertiesLayerKind: GraphicsLayer | null = null;
   let shapePropertiesIndex: number | null = null;
+  let shapePropertiesShapeKind: string | null = null;
   const clearShapePropertiesState = (): void => {
     shapePropertiesLayerKind = null;
     shapePropertiesIndex = null;
+    shapePropertiesShapeKind = null;
   };
 
   // Guards against a double-click on "Reset to defaults" firing two
@@ -468,7 +470,11 @@ export async function openDiagram(
         }
         const layerKind = shapePropertiesLayerKind;
         const index = shapePropertiesIndex;
-        const found = lookupHostShape(prevLayout, index);
+        const found = lookupHostShape(
+          prevLayout,
+          index,
+          shapePropertiesShapeKind ?? undefined,
+        );
         if (found === null || found.layerKind !== layerKind) {
           log.warn(
             "shapePropertiesSubmit",
@@ -620,18 +626,14 @@ export async function openDiagram(
       const parsed = parseEntityKey(key);
       if (parsed === null || !isShapeKey(parsed)) return;
       if (!Number.isInteger(parsed.index)) return;
-      const found = lookupHostShape(prevLayout, parsed.index);
+      const found = lookupHostShape(prevLayout, parsed.index, parsed.shapeKind);
       if (found === null) return;
-      const form = buildShapePropertiesForm(
-        found.shape,
-        found.layerKind,
-        parsed.index,
-      );
-      shapePropertiesLayerKind = form.layerKind;
-      shapePropertiesIndex = form.index;
+      shapePropertiesLayerKind = found.layerKind;
+      shapePropertiesIndex = parsed.index;
+      shapePropertiesShapeKind = parsed.shapeKind;
       panel.openParameters({
         kind: "shapeProperties",
-        model: form.model,
+        model: buildShapePropertiesForm(found.shape),
         title: `Shape: ${found.shape.kind}`,
         submitLabel: "Apply",
       });

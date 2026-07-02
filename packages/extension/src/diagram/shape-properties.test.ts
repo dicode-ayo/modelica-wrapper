@@ -144,31 +144,33 @@ describe("lookupHostShape", () => {
     const result = lookupHostShape(layout, 0);
     expect(result?.shape).toBe(RECT);
   });
+
+  it("rejects a shapeKind mismatch so a shifted index can't reroute a write", () => {
+    const layout = makeLayout({
+      diagramLayers: [{ from: "MyClass", shapes: [RECT] }],
+    });
+    expect(lookupHostShape(layout, 0, "line")).toBeNull();
+    expect(lookupHostShape(layout, 0, "rectangle")?.shape).toBe(RECT);
+  });
 });
 
 // ── buildShapePropertiesForm ──────────────────────────────────────────────────
 
 describe("buildShapePropertiesForm", () => {
   it("emits model with className matching shape kind", () => {
-    const { model } = buildShapePropertiesForm(RECT, "diagram", 2);
+    const model = buildShapePropertiesForm(RECT);
     expect(model.className).toBe("Rectangle");
   });
 
-  it("returns the layerKind and index unchanged", () => {
-    const result = buildShapePropertiesForm(RECT, "icon", 7);
-    expect(result.layerKind).toBe("icon");
-    expect(result.index).toBe(7);
-  });
-
   it("includes visible and rotation fields", () => {
-    const { model } = buildShapePropertiesForm(RECT, "diagram", 0);
+    const model = buildShapePropertiesForm(RECT);
     const names = model.fields.map((f) => f.name);
     expect(names).toContain("visible");
     expect(names).toContain("rotation");
   });
 
   it("rectangle form includes lineColor, fillColor, pattern, fillPattern, lineThickness, borderPattern, radius", () => {
-    const { model } = buildShapePropertiesForm(RECT, "diagram", 0);
+    const model = buildShapePropertiesForm(RECT);
     const names = model.fields.map((f) => f.name);
     expect(names).toContain("lineColor");
     expect(names).toContain("fillColor");
@@ -180,7 +182,7 @@ describe("buildShapePropertiesForm", () => {
   });
 
   it("seeds lineColor from the shape's color", () => {
-    const { model } = buildShapePropertiesForm(RECT, "diagram", 0);
+    const model = buildShapePropertiesForm(RECT);
     const f = model.fields.find((x) => x.name === "lineColor");
     expect(f?.value).toBe("#000000");
   });
@@ -195,7 +197,7 @@ describe("buildShapePropertiesForm", () => {
       color: [255, 0, 0] as [number, number, number],
       thickness: 0.5,
     };
-    const { model } = buildShapePropertiesForm(line, "diagram", 0);
+    const model = buildShapePropertiesForm(line);
     const names = model.fields.map((f) => f.name);
     expect(names).toContain("color");
     expect(names).toContain("thickness");
@@ -216,7 +218,7 @@ describe("buildShapePropertiesForm", () => {
       startAngle: 45,
       endAngle: 270,
     };
-    const { model } = buildShapePropertiesForm(ellipse, "diagram", 0);
+    const model = buildShapePropertiesForm(ellipse);
     const names = model.fields.map((f) => f.name);
     expect(names).toContain("startAngle");
     expect(names).toContain("endAngle");
@@ -234,7 +236,7 @@ describe("buildShapePropertiesForm", () => {
       ] as [[number, number], [number, number]],
       textString: "hello",
     };
-    const { model } = buildShapePropertiesForm(text, "diagram", 0);
+    const model = buildShapePropertiesForm(text);
     const tf = model.fields.find((x) => x.name === "textString");
     expect(tf?.value).toBe("hello");
   });
@@ -252,17 +254,15 @@ describe("buildShapePropertiesForm", () => {
         arguments: ["a", "b"],
       },
     };
-    const { model } = buildShapePropertiesForm(
+    const model = buildShapePropertiesForm(
       text as unknown as Parameters<typeof buildShapePropertiesForm>[0],
-      "diagram",
-      0,
     );
     const tf = model.fields.find((x) => x.name === "textString");
     expect(tf?.value).toBeNull();
   });
 
   it("enum fields carry enumChoices and enumTypeName", () => {
-    const { model } = buildShapePropertiesForm(RECT, "diagram", 0);
+    const model = buildShapePropertiesForm(RECT);
     const patternField = model.fields.find((x) => x.name === "pattern");
     expect(patternField?.kind).toBe("enum");
     expect(patternField?.enumTypeName).toBe("LinePattern");

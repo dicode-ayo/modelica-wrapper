@@ -73,21 +73,33 @@ function findHostLayer(
  * Checks `diagramLayers` first (preferred for diagram-mode panels), then
  * `iconLayers`. Returns `null` when the index is out of range or the host
  * has no own shapes in either layer.
+ *
+ * `shapeKind`, when supplied, must match the shape's own kind — the caller
+ * re-resolves against a freshly-fetched layout, so an undo/edit that shifted
+ * indices between selection and submit would otherwise route the write onto
+ * whatever shape now sits at that index. Mismatches yield `null`.
  */
 export function lookupHostShape(
   layout: DiagramLayout,
   index: number,
+  shapeKind?: string,
 ): { shape: Shape; layerKind: GraphicsLayer } | null {
   if (!Number.isInteger(index) || index < 0) return null;
+  const matches = (shape: Shape): boolean =>
+    shapeKind === undefined || shape.kind === shapeKind;
   const diagLayer = findHostLayer(layout.diagramLayers, layout.className);
   if (diagLayer !== undefined) {
     const shape = diagLayer.shapes[index];
-    if (shape !== undefined) return { shape, layerKind: "diagram" };
+    if (shape !== undefined && matches(shape)) {
+      return { shape, layerKind: "diagram" };
+    }
   }
   const iconLayer = findHostLayer(layout.iconLayers, layout.className);
   if (iconLayer !== undefined) {
     const shape = iconLayer.shapes[index];
-    if (shape !== undefined) return { shape, layerKind: "icon" };
+    if (shape !== undefined && matches(shape)) {
+      return { shape, layerKind: "icon" };
+    }
   }
   return null;
 }
@@ -427,14 +439,9 @@ const SHAPE_LABEL: Record<Shape["kind"], string> = {
 
 /**
  * Build a `ParameterModel` for the given shape so the standard parameter-form
- * webview can render it as an annotation-property editor. Returns the model
- * alongside the layer and index so the submit handler can route the write.
+ * webview can render it as an annotation-property editor.
  */
-export function buildShapePropertiesForm(
-  shape: Shape,
-  layerKind: GraphicsLayer,
-  index: number,
-): { model: ParameterModel; layerKind: GraphicsLayer; index: number } {
+export function buildShapePropertiesForm(shape: Shape): ParameterModel {
   const fieldInits: FieldInit[] = ((): FieldInit[] => {
     switch (shape.kind) {
       case "line":
@@ -452,12 +459,10 @@ export function buildShapePropertiesForm(
     }
   })();
 
-  const model: ParameterModel = {
+  return {
     className: SHAPE_LABEL[shape.kind],
     fields: fieldInits.map(f),
   };
-
-  return { model, layerKind, index };
 }
 
 // ── Value applier ─────────────────────────────────────────────────────────────
