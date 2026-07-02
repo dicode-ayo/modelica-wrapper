@@ -754,6 +754,46 @@ describe("produceDiagramLayout: connection filter on edge cases", () => {
     expect(layout.connections).toHaveLength(1);
     expect(layout.connections[0]?.waypoints).toEqual([]);
   });
+
+  it("surfaces the connection's annotation.Line.color", () => {
+    const layout = produceDiagramLayout(
+      withConnections([
+        {
+          lhs: { $kind: "cref", parts: [{ name: "a" }, { name: "p" }] },
+          rhs: { $kind: "cref", parts: [{ name: "b" }, { name: "p" }] },
+          annotation: {
+            Line: { points: [], color: [0, 0, 127] },
+          } as unknown as ConnectionNode["annotation"],
+        },
+      ]),
+      "diagram",
+    );
+    expect(layout.connections[0]?.color).toEqual([0, 0, 127]);
+  });
+
+  it("omits color when the Line has none or it is malformed", () => {
+    const layout = produceDiagramLayout(
+      withConnections([
+        {
+          lhs: { $kind: "cref", parts: [{ name: "a" }, { name: "p" }] },
+          rhs: { $kind: "cref", parts: [{ name: "b" }, { name: "p" }] },
+          annotation: {
+            Line: { points: [] },
+          } as unknown as ConnectionNode["annotation"],
+        },
+        {
+          lhs: { $kind: "cref", parts: [{ name: "a" }, { name: "p" }] },
+          rhs: { $kind: "cref", parts: [{ name: "b" }, { name: "p" }] },
+          annotation: {
+            Line: { points: [], color: [0, 0] },
+          } as unknown as ConnectionNode["annotation"],
+        },
+      ]),
+      "diagram",
+    );
+    expect(layout.connections[0]?.color).toBeUndefined();
+    expect(layout.connections[1]?.color).toBeUndefined();
+  });
 });
 
 describe("produceDiagramLayout: connections to gated-out endpoints (issue #76, item 6)", () => {

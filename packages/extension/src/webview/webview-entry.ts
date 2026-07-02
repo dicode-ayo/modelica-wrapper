@@ -215,18 +215,39 @@ class OmWebviewRoot extends LitElement {
     this.vscode = getVsCodeApi();
     this.librarySource = new WebviewLibraryDataSource((msg) => this.post(msg));
     window.addEventListener("message", this.onHostMessage);
+    document.addEventListener("focusin", this.onFocusChange);
+    document.addEventListener("focusout", this.onFocusChange);
     this.vscode.postMessage({ type: "ready" });
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     window.removeEventListener("message", this.onHostMessage);
+    document.removeEventListener("focusin", this.onFocusChange);
+    document.removeEventListener("focusout", this.onFocusChange);
   }
+
+  /** Last reported editable-focus state, so we only post on a transition. */
+  private inputFocused = false;
+
+  // `focusout` retargets at shadow boundaries and its `relatedTarget` is often
+  // null, so we recompute from the post-event active element rather than trust
+  // the event target. Deferred a tick so `document.activeElement` reflects the
+  // element being focused, not the one being left.
+  private readonly onFocusChange = (): void => {
+    queueMicrotask(() => {
+      const focused = isEditableTarget(deepActiveElement());
+      if (focused === this.inputFocused) return;
+      this.inputFocused = focused;
+      this.post({ type: "inputFocus", focused });
+    });
+  };
 
   override render(): TemplateResult {
     return html`
       <om-graphical-layout
         .layout=${this.layout}
+        host-managed-keys
         ?perf-hud=${true}
         .libraryDataSource=${this.librarySource}
         @om-graphical-layout-change=${this.onLayoutChange}
@@ -307,6 +328,9 @@ class OmWebviewRoot extends LitElement {
         return;
       case "libraryIconResult":
         this.librarySource?.handleIconResponse(message);
+        return;
+      case "runCommand":
+        this.diagram?.runCommandById(message.commandId);
         return;
       case "error":
         console.error("[diagram-ui] backend error:", message.message);
@@ -393,6 +417,31 @@ class OmWebviewRoot extends LitElement {
       componentName: this.paramComponentName,
     });
   };
+}
+
+/** Innermost focused node, descending through open shadow roots. */
+function deepActiveElement(): Element | null {
+  let el: Element | null = document.activeElement;
+  while (el?.shadowRoot?.activeElement) {
+    el = el.shadowRoot.activeElement;
+  }
+  return el;
+}
+
+function isEditableTarget(node: Element | null): boolean {
+  if (node === null) return false;
+  if (node instanceof HTMLInputElement) {
+    // Buttons / checkboxes don't swallow typed characters, so a shortcut over
+    // one is still the diagram's to handle.
+    return !["button", "checkbox", "radio", "submit", "reset"].includes(
+      node.type,
+    );
+  }
+  return (
+    node instanceof HTMLTextAreaElement ||
+    node instanceof HTMLSelectElement ||
+    (node instanceof HTMLElement && node.isContentEditable)
+  );
 }
 
 declare global {

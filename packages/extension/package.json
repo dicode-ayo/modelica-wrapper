@@ -66,6 +66,26 @@
         "icon": "$(discard)"
       },
       {
+        "command": "modelica.diagram.delete",
+        "title": "Modelica: Delete Diagram Selection"
+      },
+      {
+        "command": "modelica.diagram.rotateCw",
+        "title": "Modelica: Rotate Diagram Selection Clockwise"
+      },
+      {
+        "command": "modelica.diagram.rotateCcw",
+        "title": "Modelica: Rotate Diagram Selection Counterclockwise"
+      },
+      {
+        "command": "modelica.diagram.flipHorizontal",
+        "title": "Modelica: Flip Diagram Selection Horizontally"
+      },
+      {
+        "command": "modelica.diagram.flipVertical",
+        "title": "Modelica: Flip Diagram Selection Vertically"
+      },
+      {
         "command": "modelica.loadLibrary",
         "title": "Modelica: Load Library...",
         "icon": "$(cloud-download)"
@@ -224,6 +244,28 @@
           "when": "activeWebviewPanelId == modelicaDiagram",
           "group": "navigation@0"
         }
+      ],
+      "commandPalette": [
+        {
+          "command": "modelica.diagram.delete",
+          "when": "activeWebviewPanelId == modelicaDiagram"
+        },
+        {
+          "command": "modelica.diagram.rotateCw",
+          "when": "activeWebviewPanelId == modelicaDiagram"
+        },
+        {
+          "command": "modelica.diagram.rotateCcw",
+          "when": "activeWebviewPanelId == modelicaDiagram"
+        },
+        {
+          "command": "modelica.diagram.flipHorizontal",
+          "when": "activeWebviewPanelId == modelicaDiagram"
+        },
+        {
+          "command": "modelica.diagram.flipVertical",
+          "when": "activeWebviewPanelId == modelicaDiagram"
+        }
       ]
     },
     "keybindings": [
@@ -232,6 +274,36 @@
         "key": "ctrl+z",
         "mac": "cmd+z",
         "when": "activeWebviewPanelId == modelicaDiagram"
+      },
+      {
+        "command": "modelica.diagram.delete",
+        "key": "delete",
+        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus"
+      },
+      {
+        "command": "modelica.diagram.delete",
+        "key": "backspace",
+        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus"
+      },
+      {
+        "command": "modelica.diagram.rotateCw",
+        "key": "r",
+        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus"
+      },
+      {
+        "command": "modelica.diagram.rotateCcw",
+        "key": "shift+r",
+        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus"
+      },
+      {
+        "command": "modelica.diagram.flipHorizontal",
+        "key": "f",
+        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus"
+      },
+      {
+        "command": "modelica.diagram.flipVertical",
+        "key": "shift+f",
+        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus"
       }
     ],
     "configuration": {
