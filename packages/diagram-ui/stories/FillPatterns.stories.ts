@@ -2,8 +2,8 @@
  * Visual coverage for Modelica `FillPattern` rendering on the diagram layer.
  * Each gradient (HorizontalCylinder / VerticalCylinder / Sphere) and hatch
  * (Horizontal / Vertical / Cross / Forward / Backward / CrossDiag) is baked to
- * a Babylon `DynamicTexture` and mapped onto the native shape mesh — Chromatic
- * snapshots this so a regression in the bake or UV path is caught visually.
+ * a canvas `Texture` and mapped onto the shape `Graphics` — Chromatic snapshots
+ * this so a regression in the bake or fill path is caught visually.
  *
  * The gradients render on a rectangle (cylinders) and an ellipse (sphere) to
  * exercise both the quad and the fan-from-centre UV paths; hatches render on

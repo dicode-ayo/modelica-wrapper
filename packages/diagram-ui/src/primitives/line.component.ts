@@ -1,5 +1,5 @@
 import { customElement, property } from "lit/decorators.js";
-import type { TransformNode } from "@babylonjs/core";
+import type { Container } from "pixi.js";
 import type { LineShape } from "@dicode/omc-client";
 
 import { OmShapePrimitive, type EntityBounds } from "./shape-primitive.js";
@@ -11,9 +11,7 @@ import {
 
 /**
  * `<om-line>` — one Modelica `LineShape`. Pure polyline; no fill side.
- * `lineThickness` is reserved on the Modelica side but ignored here —
- * GL_LINES caps at 1px in WebGL, which matches OMEdit's typical
- * appearance for the default thickness range.
+ * `thickness` is honored via the shared scale-compensated stroke (`buildStroke`).
  */
 @customElement("om-line")
 export class OmLine extends OmShapePrimitive {
@@ -42,7 +40,7 @@ export class OmLine extends OmShapePrimitive {
   }
 
   protected override buildMeshes(
-    parent: TransformNode,
+    parent: Container,
     z: number,
     inEntityFrame = false,
   ): void {
@@ -55,15 +53,17 @@ export class OmLine extends OmShapePrimitive {
       s,
       `om-line.${this.zOrder}.gi`,
       inEntityFrame,
+      z,
     );
     const stroke = buildStroke(
-      parent.getScene(),
       root,
       s.points,
       s.color ?? DEFAULT_LINE_COLOR,
       s.pattern,
       z,
       `om-line.${this.zOrder}`,
+      s.thickness,
+      this.lineThicknessScale,
     );
     if (stroke) {
       this.resources.push(stroke);

@@ -65,7 +65,9 @@ jobs:
           # over. Code on main is already reviewed and merged — let the
           # post-merge main build bless the current render as the new baseline.
           autoAcceptChanges: main
-          # NOTE: `onlyChanged: true` (TurboSnap) requires `preview-stats.json`
-          # from the Storybook build, which the Vite builder doesn't emit by
-          # default. Left off until we wire `--stats-json` into build-storybook
-          # or migrate to a builder that emits stats out of the box.
+          # TurboSnap: only snapshot stories whose code (or imported deps)
+          # changed since the baseline, so a typical PR bills a handful of
+          # snapshots instead of the whole Storybook. Relies on
+          # `preview-stats.json`, which `build-storybook` now emits via
+          # `--stats-json`.
+          onlyChanged: true

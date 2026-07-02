@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { NullEngine, Texture, type Scene } from "@babylonjs/core";
+import { Container, Texture } from "pixi.js";
 import type { IconLayer, Placement } from "@dicode/omc-client";
 
 import "../src/scene/scene.component.js";
@@ -8,18 +8,22 @@ import "../src/component/component.component.js";
 import type { OmScene } from "../src/scene/scene.component.js";
 import type { OmIconProvider } from "../src/icon-provider/icon-provider.component.js";
 import type { OmComponent } from "../src/component/component.component.js";
-
-function makeNullEngine(): NullEngine {
-  return new NullEngine({
-    renderWidth: 320,
-    renderHeight: 240,
-    textureSize: 256,
-    deterministicLockstep: false,
-    lockstepMaxSteps: 1,
-  });
-}
+import { readEntityMeta } from "../src/interaction/node-keys.js";
 
 const teardowns: Array<() => void> = [];
+
+/** Resolve the component's entity container by its tagged identity rather
+ *  than by child index, which is sensitive to sibling insertion order. */
+function componentContainer(scene: OmScene, nodeId: string): Container {
+  const ctx = scene.sceneContextValue;
+  if (!ctx) throw new Error("no scene context");
+  const found = ctx.diagramRoot.children.find((c) => {
+    const meta = readEntityMeta(c);
+    return meta?.kind === "component" && meta.nodeId === nodeId;
+  });
+  if (!found) throw new Error(`no component container tagged ${nodeId}`);
+  return found;
+}
 
 afterEach(() => {
   for (const t of teardowns.splice(0)) {
@@ -37,10 +41,10 @@ async function mountChain(): Promise<{
     if (first === undefined) throw new Error("expected at least one layer");
     return `svg:${first.from}`;
   };
-  provider.rasterize = (svg: string, scene: Scene): Promise<Texture> =>
-    Promise.resolve(new Texture(`data:text/plain,${svg}`, scene, true, false));
+  provider.rasterize = (_svg: string): Promise<Texture> =>
+    Promise.resolve(Texture.EMPTY);
   const scene = document.createElement("om-scene") as OmScene;
-  scene.engineFactory = () => makeNullEngine();
+  scene.rendererFactory = () => null;
   provider.appendChild(scene);
   document.body.appendChild(provider);
   teardowns.push(() => provider.remove());
@@ -69,17 +73,14 @@ describe("<om-component>", () => {
     await comp.updateComplete;
     // Wait a tick for the iconProvider promise to resolve and apply.
     await new Promise((r) => setTimeout(r, 0));
-    expect(comp).toBeDefined();
-    const ctx = scene.sceneContextValue;
-    if (!ctx) throw new Error("no scene context");
-    const transform = ctx.diagramRoot;
-    // The component's TransformNode is a child of diagramRoot.
-    expect(transform.getChildTransformNodes(true).length).toBeGreaterThan(0);
+    const container = componentContainer(scene, "R1");
+    expect(container.parent).toBe(scene.sceneContextValue?.diagramRoot);
   });
 
-  it("applies placement to the shape node's TransformNode", async () => {
+  it("applies placement to the shape node's container", async () => {
     const { scene } = await mountChain();
     const comp = document.createElement("om-component") as OmComponent;
+    comp.nodeId = "P1";
     comp.placement = {
       extent: [
         [20, 30],
@@ -88,11 +89,7 @@ describe("<om-component>", () => {
     } as Placement;
     scene.appendChild(comp);
     await comp.updateComplete;
-    // First child TransformNode after diagramRoot.
-    const ctx = scene.sceneContextValue;
-    if (!ctx) throw new Error("no scene context");
-    const child = ctx.diagramRoot.getChildTransformNodes(true).at(0);
-    if (!child) throw new Error("expected child TransformNode");
+    const child = componentContainer(scene, "P1");
     expect(child.position.x).toBe(30);
     expect(child.position.y).toBe(40);
   });

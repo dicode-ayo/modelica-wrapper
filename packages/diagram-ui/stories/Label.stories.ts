@@ -1,6 +1,6 @@
 /**
- * Visual story for `<om-label>`. Demonstrates an HTML/GUI text label
- * linked to a Babylon TransformNode in diagram-coord space.
+ * Visual story for `<om-label>`. Demonstrates a text label linked to an
+ * in-world anchor `Container` in diagram-coord space.
  *
  * Font size is in screen pixels — pan/zoom the scene and watch the
  * label stay legible at any zoom.
@@ -37,8 +37,8 @@ const meta: Meta<StoryArgs> = {
     <div class="om-story">
       <h3>&lt;om-label&gt;</h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
-        Linked to a TransformNode at (${x}, ${y}). Font is rendered via
-        Babylon.GUI's AdvancedDynamicTexture so it stays sharp at any zoom.
+        Linked to an anchor at (${x}, ${y}). Rendered as a screen-space Pixi
+        Text overlay so it stays sharp at any zoom.
       </p>
       <div class="om-story-canvas-host">
         <om-scene .zoom=${zoom}>

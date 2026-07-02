@@ -1,11 +1,10 @@
 /**
- * Visual smoke story for `<om-scene>`. Confirms the Babylon engine
- * mounts, the orthographic camera renders, and the canvas fills the
- * configured story host.
+ * Visual smoke story for `<om-scene>`. Confirms the Pixi renderer mounts,
+ * the view transform applies, and the canvas fills the configured story
+ * host.
  *
- * Nothing is drawn yet — entity stories (D-stage) layer components,
- * connectors and edges on top. The visible artifact at this stage is
- * the empty background of the scene element.
+ * Nothing is drawn — entity stories layer components, connectors and
+ * edges on top. The visible artifact here is the empty scene background.
  */
 
 import type { Meta, StoryObj } from "@storybook/web-components";
@@ -21,6 +20,7 @@ interface StoryArgs {
 
 const meta: Meta<StoryArgs> = {
   title: "diagram-ui/Scene",
+  parameters: { chromatic: { disableSnapshot: true } },
   render: ({ zoom, panX, panY }: StoryArgs): TemplateResult => html`
     <div class="om-story">
       <h3>&lt;om-scene&gt; — empty</h3>

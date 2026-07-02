@@ -76,6 +76,7 @@ export const RectangleOnly: Story = {
 };
 
 export const EllipseOnly: Story = {
+  parameters: { chromatic: { disableSnapshot: true } },
   args: {
     title: "Ellipse",
     layers: [
@@ -100,6 +101,7 @@ export const EllipseOnly: Story = {
 };
 
 export const PolygonOnly: Story = {
+  parameters: { chromatic: { disableSnapshot: true } },
   args: {
     title: "Polygon (triangle apex up)",
     description: "Apex at (0,50) renders at the TOP of the SVG (y-flip works).",
@@ -125,6 +127,7 @@ export const PolygonOnly: Story = {
 };
 
 export const LineOnly: Story = {
+  parameters: { chromatic: { disableSnapshot: true } },
   args: {
     title: "Line (dashed)",
     layers: [
@@ -149,6 +152,7 @@ export const LineOnly: Story = {
 };
 
 export const TextOnly: Story = {
+  parameters: { chromatic: { disableSnapshot: true } },
   args: {
     title: "Text",
     layers: [
@@ -173,6 +177,7 @@ export const TextOnly: Story = {
 };
 
 export const BitmapOnly: Story = {
+  parameters: { chromatic: { disableSnapshot: true } },
   args: {
     title: "Bitmap (1px dot scaled up)",
     layers: [

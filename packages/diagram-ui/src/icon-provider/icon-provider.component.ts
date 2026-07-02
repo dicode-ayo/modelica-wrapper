@@ -1,7 +1,7 @@
 import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { ContextProvider, consume } from "@lit/context";
-import type { Texture } from "@babylonjs/core";
+import type { Texture } from "pixi.js";
 import { renderIconLayersToSvg, type RenderOptions } from "@dicode/diagram-svg";
 import type { CoordinateSystem, IconLayer } from "@dicode/omc-client";
 
@@ -64,8 +64,8 @@ function buildRenderSvg(
  *     </om-icon-provider>
  *
  * The provider holds an `IconCache` keyed by SVG output; downstream
- * entity elements (added in D-stage) call `textureFor(req)` to obtain
- * a `Promise<Texture>` and apply it to their plane mesh once resolved.
+ * entity elements call `textureFor(req)` to obtain a `Promise<Texture>`
+ * and apply it to their icon Sprite once resolved.
  *
  * Both the SVG renderer and the rasteriser are injectable via
  * properties so tests can replace them with deterministic stubs.
@@ -171,15 +171,11 @@ export class OmIconProvider extends LitElement {
   }
 
   private buildContext(): IconProviderContext {
-    const get = (): {
-      cache: IconCache;
-      ctx: SceneContext;
-      size: number;
-    } | null => {
+    const get = (): { cache: IconCache; size: number } | null => {
       if (!this.cache || !this.sceneCtx) {
         return null;
       }
-      return { cache: this.cache, ctx: this.sceneCtx, size: this.resolution };
+      return { cache: this.cache, size: this.resolution };
     };
     return {
       textureFor(req: IconRequest): Promise<Texture> {
@@ -191,7 +187,7 @@ export class OmIconProvider extends LitElement {
         }
         const merged: IconRequest =
           req.size === undefined ? { ...req, size: live.size } : req;
-        return live.cache.resolve(live.ctx.scene, merged);
+        return live.cache.resolve(merged);
       },
       textureForLayers(
         layers: IconLayer[],
@@ -203,7 +199,7 @@ export class OmIconProvider extends LitElement {
             new Error("icon-provider not connected to a scene"),
           );
         }
-        return live.cache.resolve(live.ctx.scene, {
+        return live.cache.resolve({
           layers,
           coordinateSystem,
           size: live.size,

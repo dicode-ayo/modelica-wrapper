@@ -1,5 +1,5 @@
 import { customElement, property } from "lit/decorators.js";
-import type { TransformNode } from "@babylonjs/core";
+import type { Container } from "pixi.js";
 import type { RectangleShape } from "@dicode/omc-client";
 import { fillSpec } from "@dicode/diagram-svg";
 
@@ -11,13 +11,11 @@ import {
 import {
   DEFAULT_LINE_COLOR,
   STROKE_Z_DELTA,
-  buildFilledPolygon,
-  buildFilledQuad,
+  buildFilledRect,
   buildStroke,
   clampCornerRadius,
   extentToRect,
   roundedRectRing,
-  stripClosingDuplicate,
 } from "./shape-utils.js";
 
 /**
@@ -44,7 +42,7 @@ export class OmRectangle extends OmShapePrimitive {
   }
 
   protected override buildMeshes(
-    parent: TransformNode,
+    parent: Container,
     z: number,
     inEntityFrame = false,
   ): void {
@@ -52,14 +50,20 @@ export class OmRectangle extends OmShapePrimitive {
     if (!s) {
       return;
     }
-    const scene = parent.getScene();
     const { x, y, width, height } = extentToRect(s.extent);
     if (width <= 0 || height <= 0) {
       return;
     }
 
+    const renderer = this.renderer();
     const baseName = `om-rectangle.${this.zOrder}`;
-    const root = this.graphicRoot(parent, s, `${baseName}.gi`, inEntityFrame);
+    const root = this.graphicRoot(
+      parent,
+      s,
+      `${baseName}.gi`,
+      inEntityFrame,
+      z,
+    );
     const radius = clampCornerRadius(s.radius, width, height);
     const corners = roundedRectRing(x, y, width, height, radius);
     const fill = fillSpec({
@@ -68,39 +72,28 @@ export class OmRectangle extends OmShapePrimitive {
       pattern: s.fillPattern,
     });
     if (fill.kind !== "none") {
-      // A degenerate rounded ring triangulates to null; the shape then renders
-      // as outline only rather than a missing region.
-      const filled =
-        radius > 0
-          ? buildFilledPolygon(
-              scene,
-              root,
-              stripClosingDuplicate(corners),
-              fill,
-              z,
-              `${baseName}.fill`,
-            )
-          : buildFilledQuad(
-              scene,
-              root,
-              { x, y, width, height },
-              fill,
-              z,
-              `${baseName}.fill`,
-            );
-      if (filled) {
-        this.resources.push(filled);
-      }
+      this.resources.push(
+        buildFilledRect(
+          renderer,
+          root,
+          { x, y, width, height },
+          radius,
+          fill,
+          z,
+          `${baseName}.fill`,
+        ),
+      );
     }
 
     const stroke = buildStroke(
-      scene,
       root,
       corners,
       s.lineColor ?? DEFAULT_LINE_COLOR,
       s.pattern,
       z + STROKE_Z_DELTA,
       `${baseName}.stroke`,
+      s.lineThickness,
+      this.lineThicknessScale,
     );
     if (stroke) {
       this.resources.push(stroke);

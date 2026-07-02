@@ -612,10 +612,6 @@ export async function openDiagram(
     // ── Library browser ────────────────────────────────────────────────
     onLibraryListChildren: (parent) => librarySource.listChildren(parent),
     onLibrarySearch: (query) => librarySource.searchAll(query),
-    // Lazy per-row icon thumbnail (issue #76, item 8): the cheap
-    // `fetchIconLayout` path rendered to a self-contained SVG. Best-effort
-    // — a fetch / render failure resolves to `undefined` so the browser
-    // keeps its restriction-letter badge.
     onLibraryIcon: (target) => libraryIconSvg(client, target),
     onSelectionChange: (keys) => {
       if (keys.length !== 1) return;
