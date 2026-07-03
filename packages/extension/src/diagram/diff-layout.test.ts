@@ -165,6 +165,61 @@ describe("diffLayouts", () => {
     ).toBe(false);
   });
 
+  it("carries the connection's style on connectionWaypoints so it survives the write (issue #219)", () => {
+    const a = baseLayout();
+    a.connections[0] = {
+      ...a.connections[0]!,
+      color: [255, 0, 0],
+      thickness: 0.5,
+      pattern: "Dash",
+    };
+    const b = baseLayout();
+    // Same style, only the route changes (e.g. a component drag).
+    b.connections = [
+      {
+        ...a.connections[0]!,
+        waypoints: [
+          [5, 0],
+          [20, 0],
+        ],
+      },
+    ];
+    const edits = diffLayouts(a, b);
+    const edit = edits.find((e) => e.kind === "connectionWaypoints");
+    expect(edit).toMatchObject({
+      style: { color: [255, 0, 0], thickness: 0.5, pattern: "Dash" },
+    });
+  });
+
+  it("emits connectionWaypoints on a style-only change, even with waypoints unchanged", () => {
+    const a = baseLayout();
+    const b = baseLayout();
+    b.connections = [{ ...b.connections[0]!, color: [0, 255, 0] }];
+    const edits = diffLayouts(a, b);
+    expect(edits).toContainEqual({
+      kind: "connectionWaypoints",
+      from: "R1.p",
+      to: "C1.n",
+      waypoints: b.connections[0]!.waypoints,
+      style: { color: [0, 255, 0] },
+    });
+  });
+
+  it("carries style on connectionAdded for a newly appearing styled connection", () => {
+    const a = baseLayout();
+    a.connections = [];
+    const b = baseLayout();
+    b.connections = [{ ...b.connections[0]!, pattern: "Dot" }];
+    const edits = diffLayouts(a, b);
+    expect(edits).toContainEqual({
+      kind: "connectionAdded",
+      from: "R1.p",
+      to: "C1.n",
+      waypoints: b.connections[0]!.waypoints,
+      style: { pattern: "Dot" },
+    });
+  });
+
   describe("connectionRenamed (vector-port re-index, issue #26)", () => {
     // A connectorSizing re-index shifts an indexed endpoint
     // (pins[3].p → pins[2].p) while the other endpoint and the
@@ -409,6 +464,39 @@ describe("lineAnnotation", () => {
         [10, 20],
       ]),
     ).toBe("Line(points={{0,0},{10,0},{10,20}})");
+  });
+
+  it("includes the full style alongside points (issue #219)", () => {
+    expect(
+      lineAnnotation(
+        [
+          [0, 0],
+          [10, 0],
+        ],
+        {
+          color: [255, 0, 0],
+          thickness: 0.5,
+          pattern: "Dash",
+          arrow: ["None", "Filled"],
+          arrowSize: 3,
+          smooth: "Bezier",
+        },
+      ),
+    ).toBe(
+      "Line(points={{0,0},{10,0}},color={255,0,0},thickness=0.5," +
+        "pattern=LinePattern.Dash,arrow={Arrow.None,Arrow.Filled}," +
+        "arrowSize=3,smooth=Smooth.Bezier)",
+    );
+  });
+
+  it("emits style fields even when waypoints are empty (auto-route + style)", () => {
+    expect(lineAnnotation([], { color: [0, 0, 255] })).toBe(
+      "Line(color={0,0,255})",
+    );
+  });
+
+  it("still returns empty string when there are neither waypoints nor style", () => {
+    expect(lineAnnotation([], {})).toBe("");
   });
 });
 

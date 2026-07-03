@@ -308,6 +308,17 @@ export interface ConnectionLayout {
    * source set one. Absent means the renderer picks its default edge color.
    */
   color?: Color | undefined;
+  /**
+   * Remaining `Line` style fields (issue #219, P1). Absent means the source
+   * didn't set that field. These round-trip through the write path
+   * (`diff-layout.ts` / `apply-edits.ts`) alongside `waypoints`/`color` so a
+   * waypoint edit doesn't silently strip a hand-authored style.
+   */
+  thickness?: number | undefined;
+  pattern?: string | undefined;
+  arrow?: [string, string] | undefined;
+  arrowSize?: number | undefined;
+  smooth?: string | undefined;
   source?: SourceLocation | undefined;
 }
 
@@ -554,6 +565,11 @@ export const ConnectionLayoutSchema = z
     rhs: ConnectionEndpointSchema,
     waypoints: z.array(PointSchema),
     color: ColorSchema.optional(),
+    thickness: z.number().optional(),
+    pattern: z.string().optional(),
+    arrow: ArrowSchema.optional(),
+    arrowSize: z.number().optional(),
+    smooth: z.string().optional(),
     source: SourceLocationSchema.optional(),
   })
   .strict();

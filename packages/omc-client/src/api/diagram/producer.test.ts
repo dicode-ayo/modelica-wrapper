@@ -794,6 +794,59 @@ describe("produceDiagramLayout: connection filter on edge cases", () => {
     expect(layout.connections[0]?.color).toBeUndefined();
     expect(layout.connections[1]?.color).toBeUndefined();
   });
+
+  it("surfaces thickness/pattern/arrow/arrowSize/smooth from annotation.Line (issue #219)", () => {
+    const layout = produceDiagramLayout(
+      withConnections([
+        {
+          lhs: { $kind: "cref", parts: [{ name: "a" }, { name: "p" }] },
+          rhs: { $kind: "cref", parts: [{ name: "b" }, { name: "p" }] },
+          annotation: {
+            Line: {
+              points: [],
+              thickness: 0.5,
+              pattern: { $kind: "enum", name: "LinePattern.Dash", index: 2 },
+              arrow: [
+                { $kind: "enum", name: "Arrow.None", index: 0 },
+                { $kind: "enum", name: "Arrow.Filled", index: 1 },
+              ],
+              arrowSize: 3,
+              smooth: { $kind: "enum", name: "Smooth.Bezier", index: 1 },
+            },
+          } as unknown as ConnectionNode["annotation"],
+        },
+      ]),
+      "diagram",
+    );
+    expect(layout.connections[0]).toMatchObject({
+      thickness: 0.5,
+      pattern: "Dash",
+      arrow: ["None", "Filled"],
+      arrowSize: 3,
+      smooth: "Bezier",
+    });
+  });
+
+  it("omits the new style fields when the Line doesn't set them", () => {
+    const layout = produceDiagramLayout(
+      withConnections([
+        {
+          lhs: { $kind: "cref", parts: [{ name: "a" }, { name: "p" }] },
+          rhs: { $kind: "cref", parts: [{ name: "b" }, { name: "p" }] },
+          annotation: {
+            Line: { points: [] },
+          } as unknown as ConnectionNode["annotation"],
+        },
+      ]),
+      "diagram",
+    );
+    const conn = layout.connections[0];
+    expect(conn?.thickness).toBeUndefined();
+    expect(conn?.pattern).toBeUndefined();
+    expect(conn?.arrow).toBeUndefined();
+    expect(conn?.arrowSize).toBeUndefined();
+    expect(conn?.smooth).toBeUndefined();
+  });
 });
 
 describe("produceDiagramLayout: connections to gated-out endpoints (issue #76, item 6)", () => {

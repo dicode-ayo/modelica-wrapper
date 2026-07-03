@@ -164,14 +164,23 @@ validation at connect time and surfaced errors only on simulate; v1.21.0
 (`PR #10704`) re-added some connect-time type checking.
 
 **Ours.** Connections are read from the instance, kept only when they carry an
-`annotation.Line` (bare `connect(...)` is skipped). Write-back lives in
+`annotation.Line` (bare `connect(...)` is skipped). `ConnectionLayout` carries
+the full `Line` style — `waypoints`, `color`, `thickness`, `pattern`, `arrow`,
+`arrowSize`, `smooth` — not just the route (issue #219). Write-back lives in
 [apply-edits.ts](../packages/extension/src/diagram/apply-edits.ts):
 `connectionAdded → addConnection`, `connectionDeleted → deleteConnection`,
 `connectionWaypoints → updateConnection`, `connectionRenamed →
-updateConnectionNames` (vector-port re-index). Edits are produced by
-[diffLayouts()](../packages/extension/src/diagram/diff-layout.ts). **Fragile:**
-the vector-port re-index detection (`connectionRenamed`) is a noted
-greedy-loop/cascade-shift risk (issue #76).
+updateConnectionNames` (vector-port re-index). Both `addConnection` and
+`updateConnection` replace the whole `Line(...)` annotation, so
+[diffLayouts()](../packages/extension/src/diagram/diff-layout.ts) carries the
+connection's style alongside its waypoints on `connectionAdded`/
+`connectionWaypoints` edits and `lineAnnotation()` re-emits every set field —
+otherwise a waypoint-only edit (e.g. a component drag re-routing an adjacent
+connection) would silently strip a hand-authored style. `connectionRenamed`
+doesn't touch the annotation, so it's unaffected. **Fragile:** the vector-port
+re-index detection (`connectionRenamed`) is a noted greedy-loop/cascade-shift
+risk (issue #76). Rendering the new style fields (arrowheads, dashed/Bezier
+strokes) is deferred — tracked in #219's P2/P3.
 
 ---
 
@@ -207,7 +216,7 @@ lazy per row via the cheap `getModelInstanceAnnotation` path.
 | Move / resize component | `componentPlacement` | `updateComponent(…, placementAnnotation)` | ✅ (placement from view-centre on add, not pixel-precise) |
 | Delete component | `componentDeleted` | `deleteComponent` | ✅ |
 | Add component (library→canvas) | — | `addComponent` | ✅ via `onAddComponent`, position = view centre |
-| Connection add/delete/reroute | `connectionAdded/Deleted/Waypoints` | `addConnection`/`deleteConnection`/`updateConnection` | ✅ (drag *existing* waypoints only) |
+| Connection add/delete/reroute | `connectionAdded/Deleted/Waypoints` | `addConnection`/`deleteConnection`/`updateConnection` | ✅ (drag *existing* waypoints only; `Line` style round-trips alongside the route, issue #219) |
 | Vector-port re-index | `connectionRenamed` | `updateConnectionNames` | ⚠️ fragile (cascade-shift risk) |
 | Component params | — | `setElementModifierValue` | ✅ [parameter-edits.ts](../packages/extension/src/diagram/parameter-edits.ts) |
 | Class params | — | `setParameterValue` / `setExtendsModifierValue` | ✅ |
