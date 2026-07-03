@@ -38,6 +38,7 @@ import type {
   DiagramLayout,
   IconLayer,
   LabelLayout,
+  LineStyle,
   ParameterDef,
   PortDef,
   Shape,
@@ -707,12 +708,7 @@ function emitConnection(c: ConnectionNode): ConnectionLayout | undefined {
   const waypointsXY = waypointsFromLine(line);
   // Convert {x,y} back to [x,y] tuples for the public type.
   const waypoints = waypointsXY.map((p) => [p.x, p.y] as [number, number]);
-  const style: Partial<
-    Pick<
-      ConnectionLayout,
-      "color" | "thickness" | "pattern" | "arrow" | "arrowSize" | "smooth"
-    >
-  > = {};
+  const style: LineStyle = {};
   const color = colorFromLine(line);
   if (color) style.color = color;
   const thickness = thicknessFromLine(line);

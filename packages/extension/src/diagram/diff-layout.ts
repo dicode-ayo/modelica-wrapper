@@ -3,6 +3,7 @@ import type {
   DiagramLayout,
   Extent,
   IconLayer,
+  LineStyle,
   Shape,
 } from "@dicode/omc-client";
 
@@ -13,14 +14,9 @@ export type GraphicsLayer = "icon" | "diagram";
  * A connection's `Line` style fields, carried alongside `waypoints` so a
  * waypoint-only edit (e.g. a component drag re-routing its connections)
  * doesn't silently strip a hand-authored `color`/`thickness`/`pattern`/
- * `arrow`/`smooth` when the annotation is rebuilt (issue #219). Absent
- * fields mean the source never set them; an edit with no style at all omits
- * `style` entirely rather than carrying an empty object.
+ * `arrow`/`smooth` when the annotation is rebuilt (issue #219).
  */
-export type ConnectionLineStyle = Pick<
-  ConnectionLayout,
-  "color" | "thickness" | "pattern" | "arrow" | "arrowSize" | "smooth"
->;
+export type ConnectionLineStyle = LineStyle;
 
 /**
  * Diffs two `DiagramLayout` snapshots and emits a flat list of mutation
@@ -246,7 +242,7 @@ export function diffLayouts(
     const key = `${c.from}|${c.to}`;
     if (consumedNext.has(key)) continue;
     const before = prevByKey.get(key);
-    const style = styleOrUndefined(c.style);
+    const style = c.style;
     if (!before) {
       edits.push({
         kind: "connectionAdded",
@@ -462,11 +458,15 @@ interface Conn {
   from: string;
   to: string;
   waypoints: ReadonlyArray<readonly [number, number]>;
-  style: ConnectionLineStyle;
+  style: ConnectionLineStyle | undefined;
 }
 
-/** Collects a connection's set `Line` style fields into one comparable object. */
-function connStyle(c: ConnectionLayout): ConnectionLineStyle {
+/**
+ * Collects a connection's set `Line` style fields into one comparable
+ * object, or `undefined` if it has none — so an edit with no style at all
+ * omits the field entirely rather than carrying an empty object.
+ */
+function connStyle(c: ConnectionLayout): ConnectionLineStyle | undefined {
   const style: ConnectionLineStyle = {};
   if (c.color) style.color = c.color;
   if (c.thickness !== undefined) style.thickness = c.thickness;
@@ -474,13 +474,6 @@ function connStyle(c: ConnectionLayout): ConnectionLineStyle {
   if (c.arrow) style.arrow = c.arrow;
   if (c.arrowSize !== undefined) style.arrowSize = c.arrowSize;
   if (c.smooth) style.smooth = c.smooth;
-  return style;
-}
-
-/** `undefined` for an empty style so edits omit the field rather than carry `{}`. */
-function styleOrUndefined(
-  style: ConnectionLineStyle,
-): ConnectionLineStyle | undefined {
   return Object.keys(style).length > 0 ? style : undefined;
 }
 
