@@ -7,6 +7,15 @@ import {
   placementAnnotation,
 } from "./diff-layout.js";
 
+/** `baseLayout()` always seeds exactly one connection; guard the index access. */
+function firstConnection(
+  layout: DiagramLayout,
+): DiagramLayout["connections"][number] {
+  const conn = layout.connections[0];
+  if (conn === undefined) throw new Error("expected at least one connection");
+  return conn;
+}
+
 function baseLayout(): DiagramLayout {
   return {
     kind: "diagram",
@@ -167,17 +176,18 @@ describe("diffLayouts", () => {
 
   it("carries the connection's style on connectionWaypoints so it survives the write (issue #219)", () => {
     const a = baseLayout();
-    a.connections[0] = {
-      ...a.connections[0]!,
-      color: [255, 0, 0],
+    const styledConn = {
+      ...firstConnection(a),
+      color: [255, 0, 0] as [number, number, number],
       thickness: 0.5,
       pattern: "Dash",
     };
+    a.connections[0] = styledConn;
     const b = baseLayout();
     // Same style, only the route changes (e.g. a component drag).
     b.connections = [
       {
-        ...a.connections[0]!,
+        ...styledConn,
         waypoints: [
           [5, 0],
           [20, 0],
@@ -194,13 +204,13 @@ describe("diffLayouts", () => {
   it("emits connectionWaypoints on a style-only change, even with waypoints unchanged", () => {
     const a = baseLayout();
     const b = baseLayout();
-    b.connections = [{ ...b.connections[0]!, color: [0, 255, 0] }];
+    b.connections = [{ ...firstConnection(b), color: [0, 255, 0] }];
     const edits = diffLayouts(a, b);
     expect(edits).toContainEqual({
       kind: "connectionWaypoints",
       from: "R1.p",
       to: "C1.n",
-      waypoints: b.connections[0]!.waypoints,
+      waypoints: firstConnection(b).waypoints,
       style: { color: [0, 255, 0] },
     });
   });
@@ -209,13 +219,13 @@ describe("diffLayouts", () => {
     const a = baseLayout();
     a.connections = [];
     const b = baseLayout();
-    b.connections = [{ ...b.connections[0]!, pattern: "Dot" }];
+    b.connections = [{ ...firstConnection(b), pattern: "Dot" }];
     const edits = diffLayouts(a, b);
     expect(edits).toContainEqual({
       kind: "connectionAdded",
       from: "R1.p",
       to: "C1.n",
-      waypoints: b.connections[0]!.waypoints,
+      waypoints: firstConnection(b).waypoints,
       style: { pattern: "Dot" },
     });
   });
