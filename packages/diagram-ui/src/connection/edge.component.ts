@@ -9,6 +9,7 @@ import { sceneContext, type SceneContext } from "../scene/scene-context.js";
 import { watchViewState } from "../scene/view-state-store.js";
 import { tagEntity } from "../interaction/node-keys.js";
 import { pointsEqual } from "../interaction/connection-route.js";
+import { parseCssColor } from "./parse-color.js";
 import {
   DEFAULT_EDGE_COLOR,
   HIT_HOVER_OPACITY,
@@ -28,7 +29,7 @@ const SELECTED_EDGE_COLOR = 0x3d82f5; // blue-500
  *
  * Properties:
  *   - `path`     — diagram-coord waypoints (>=2 points)
- *   - `stroke`   — CSS-style `#rrggbb` colour, optional
+ *   - `stroke`   — CSS colour (`#rrggbb` or `rgb(r,g,b)`), optional
  *   - `clocked`  — dashed pattern for synchronous-clock connections
  *   - `selected` — switches the visible line to the selection colour
  *   - `hovered`  — reveals the pick band as a translucent hover ribbon
@@ -155,7 +156,7 @@ export class OmEdge extends LitElement {
       this.builtPath = null;
       return;
     }
-    this.baseColor = parseColor(this.stroke) ?? DEFAULT_EDGE_COLOR;
+    this.baseColor = parseCssColor(this.stroke) ?? DEFAULT_EDGE_COLOR;
     const name = this.edgeName();
     const wpp = this.sceneCtx?.worldPerPixel();
     this.meshes = buildEdge(this.parentTransform, name, {
@@ -235,17 +236,6 @@ export class OmEdge extends LitElement {
   get edgeMesh(): EdgeMeshes | null {
     return this.meshes;
   }
-}
-
-function parseColor(input: string | undefined): number | undefined {
-  if (!input) {
-    return undefined;
-  }
-  const hex = input.match(/^#?([0-9a-fA-F]{6})$/)?.[1];
-  if (hex === undefined) {
-    return undefined;
-  }
-  return parseInt(hex, 16);
 }
 
 declare global {

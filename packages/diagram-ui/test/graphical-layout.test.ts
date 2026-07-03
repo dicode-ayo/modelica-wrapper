@@ -104,16 +104,16 @@ describe("<om-graphical-layout>", () => {
           [-10, 10],
           [10, 10],
         ],
-        // Out-of-range / fractional channels clamp + round to a valid hex.
+        // Out-of-range / fractional channels clamp + round to a valid colour.
         color: [300, 15.6, -4],
       },
     ];
     const el = await mount(layout);
     const conns = el.shadowRoot?.querySelectorAll("om-connection");
     expect(conns?.length).toBe(3);
-    expect((conns?.[0] as { stroke?: string }).stroke).toBe("#00007f");
+    expect((conns?.[0] as { stroke?: string }).stroke).toBe("rgb(0,0,127)");
     expect((conns?.[1] as { stroke?: string }).stroke).toBeUndefined();
-    expect((conns?.[2] as { stroke?: string }).stroke).toBe("#ff1000");
+    expect((conns?.[2] as { stroke?: string }).stroke).toBe("rgb(255,16,0)");
   });
 
   it("tracks selection via setSelection / selection", async () => {
