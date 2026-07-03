@@ -401,13 +401,16 @@ export function buildStroke(
   pattern: string | undefined,
   z: number,
   baseName: string,
-  thickness?: number,
-  lineThicknessScale?: number,
-  worldPerPixel?: number,
+  opts?: {
+    thickness?: number | undefined;
+    lineThicknessScale?: number | undefined;
+    worldPerPixel?: number | undefined;
+  },
 ): OwnedResource | null {
   if (points.length < 2 || pattern === "None") {
     return null;
   }
+  const { thickness, lineThicknessScale, worldPerPixel } = opts ?? {};
   const colour = packColor(color);
   const g = new Graphics({ label: baseName });
   g.eventMode = "none";

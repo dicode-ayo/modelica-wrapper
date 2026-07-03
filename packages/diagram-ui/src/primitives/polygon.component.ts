@@ -99,9 +99,11 @@ export class OmPolygon extends OmShapePrimitive {
       s.pattern,
       z + STROKE_Z_DELTA,
       `${baseName}.stroke`,
-      s.lineThickness,
-      this.lineThicknessScale,
-      this.sceneCtx?.worldPerPixel(),
+      {
+        thickness: s.lineThickness,
+        lineThicknessScale: this.lineThicknessScale,
+        worldPerPixel: this.sceneCtx?.worldPerPixel(),
+      },
     );
     if (stroke) {
       this.resources.push(stroke);

@@ -66,9 +66,11 @@ export class OmLine extends OmShapePrimitive {
       s.pattern,
       z,
       `om-line.${this.zOrder}`,
-      s.thickness,
-      this.lineThicknessScale,
-      this.sceneCtx?.worldPerPixel(),
+      {
+        thickness: s.thickness,
+        lineThicknessScale: this.lineThicknessScale,
+        worldPerPixel: this.sceneCtx?.worldPerPixel(),
+      },
     );
     if (stroke) {
       this.resources.push(stroke);
