@@ -136,11 +136,15 @@ This section is spec-normative and is where "behaves weirdly" bugs usually hide.
   rotate-with-component behaviour.
 
 **Ours.** [`produceDiagramLayout()`](../packages/omc-client/src/api/diagram/producer.ts)
-composes inherited icon/diagram layers ancestor-first;
+composes inherited icon/diagram layers ancestor-first via `walkLayerEntries()` in
+[`walker.ts`](../packages/omc-client/src/api/diagram/walker.ts);
 [render-shape.ts](../packages/diagram-ui/src/primitives/render-shape.ts)
-`renderLayers()` flattens `IconLayer[]` to z-ordered primitives. **Not handled /
-verify:** `IconMap`/`DiagramMap` remapping + `primitivesVisible`, `DynamicSelect`,
-the `iconTransformation`-fallback rule, and the two-rotation-centres distinction.
+`renderLayers()` flattens `IconLayer[]` to z-ordered primitives.
+`walkLayerEntries` reads `IconMap`/`DiagramMap.primitivesVisible` from each
+`extends` clause annotation and propagates suppression to all deeper ancestors.
+**Not handled / verify:** `IconMap`/`DiagramMap` coordinate-system remapping
+(non-default `extent`), `DynamicSelect`, the `iconTransformation`-fallback rule,
+and the two-rotation-centres distinction.
 
 ---
 

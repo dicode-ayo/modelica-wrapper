@@ -51,6 +51,7 @@ import {
   ownSubComponents,
   walkConnectors,
   walkExtendsChain,
+  walkLayerEntries,
 } from "./walker.js";
 
 // ---------- condition gating ----------
@@ -290,8 +291,8 @@ function collectLayers(
   kind: "icon" | "diagram",
 ): IconLayer[] {
   const out: IconLayer[] = [];
-  for (const klass of walkExtendsChain(mi)) {
-    const graphics = graphicsForKind(klass, kind);
+  for (const { klass, primitivesVisible } of walkLayerEntries(mi, kind)) {
+    const graphics = primitivesVisible ? graphicsForKind(klass, kind) : [];
     const cs = coordinateSystemForKind(klass, kind);
     if (graphics.length === 0 && !cs) continue;
     const shapes: Shape[] = [];
