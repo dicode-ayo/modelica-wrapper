@@ -394,6 +394,23 @@ export function worldScaleOf(node: Container): number {
   return Math.sqrt(Math.abs(x * y)) || 1;
 }
 
+/**
+ * Local (icon-space) stroke width for a Modelica `thickness`, scale-compensated
+ * against `parent` the same way {@link buildStroke} compensates its own stroke
+ * — so a caller drawing stroke-consistent geometry alongside the main stroke
+ * (e.g. an arrowhead outline) matches its on-screen width.
+ */
+export function resolveStrokeWidth(
+  parent: Container,
+  thickness: number | undefined,
+  lineThicknessScale: number | undefined,
+): number {
+  const worldScale = worldScaleOf(parent);
+  const naturalWidth =
+    (thickness ?? DEFAULT_STROKE_THICKNESS) * (lineThicknessScale ?? 1);
+  return Math.max(naturalWidth, MIN_STROKE_WIDTH) / worldScale;
+}
+
 export function buildStroke(
   parent: Container,
   points: ReadonlyArray<readonly [number, number]>,
@@ -421,9 +438,7 @@ export function buildStroke(
   // to keep the on-screen width invariant (Modelica thickness is a screen-space
   // quantity, not an icon-space one), floored so it never goes sub-pixel.
   const worldScale = worldScaleOf(parent);
-  const naturalWidth =
-    (thickness ?? DEFAULT_STROKE_THICKNESS) * (lineThicknessScale ?? 1);
-  const localWidth = Math.max(naturalWidth, MIN_STROKE_WIDTH) / worldScale;
+  const localWidth = resolveStrokeWidth(parent, thickness, lineThicknessScale);
 
   const dashRuns = dashRunsFor(pattern);
   if (dashRuns) {

@@ -179,8 +179,9 @@ otherwise a waypoint-only edit (e.g. a component drag re-routing an adjacent
 connection) would silently strip a hand-authored style. `connectionRenamed`
 doesn't touch the annotation, so it's unaffected. **Fragile:** the vector-port
 re-index detection (`connectionRenamed`) is a noted greedy-loop/cascade-shift
-risk (issue #76). Rendering the new style fields (arrowheads, dashed/Bezier
-strokes) is deferred — tracked in #219's P2/P3.
+risk (issue #76). `<om-line>` now renders `arrow`/`arrowSize` (issue #219 P2);
+connections themselves still render via the edge builder, not `<om-line>`, so
+a connection's own arrow styling isn't drawn yet — tracked in #219's P3.
 
 ---
 
