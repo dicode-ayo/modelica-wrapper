@@ -199,7 +199,7 @@ async function applyOne(
           from: edit.from,
           to: edit.to,
           typeName: hostClass,
-          annotation: lineAnnotation(edit.waypoints),
+          annotation: lineAnnotation(edit.waypoints, edit.style),
         }),
       );
       return;
@@ -225,7 +225,7 @@ async function applyOne(
           typeName: hostClass,
           from: edit.from,
           to: edit.to,
-          annotation: lineAnnotation(edit.waypoints),
+          annotation: lineAnnotation(edit.waypoints, edit.style),
         }),
       );
       return;

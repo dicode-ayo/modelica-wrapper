@@ -1,12 +1,22 @@
 import type {
+  ConnectionLayout,
   DiagramLayout,
   Extent,
   IconLayer,
+  LineStyle,
   Shape,
 } from "@dicode/omc-client";
 
 /** The two annotation layers a class carries graphics in. */
 export type GraphicsLayer = "icon" | "diagram";
+
+/**
+ * A connection's `Line` style fields, carried alongside `waypoints` so a
+ * waypoint-only edit (e.g. a component drag re-routing its connections)
+ * doesn't silently strip a hand-authored `color`/`thickness`/`pattern`/
+ * `arrow`/`smooth` when the annotation is rebuilt (issue #219).
+ */
+export type ConnectionLineStyle = LineStyle;
 
 /**
  * Diffs two `DiagramLayout` snapshots and emits a flat list of mutation
@@ -20,7 +30,10 @@ export type GraphicsLayer = "icon" | "diagram";
  *   - new connection                      → `connectionAdded`
  *   - waypoint changes on existing connection → `connectionWaypoints`
  *     (needed so a component drag's locally-re-routed connections
- *     don't snap back to their old shape after the OMC round-trip)
+ *     don't snap back to their old shape after the OMC round-trip;
+ *     also fires on a style-only change so `lineAnnotation` re-emits the
+ *     connection's `color`/`thickness`/`pattern`/`arrow`/`smooth` instead
+ *     of dropping them — see issue #219)
  *   - vector-port re-index rename         → `connectionRenamed`
  *     (a `connectorSizing` re-index shifts an indexed endpoint, e.g.
  *     `pins[3].p → pins[2].p`, while the other endpoint and the
@@ -50,6 +63,7 @@ export type LayoutEdit =
       from: string;
       to: string;
       waypoints: ReadonlyArray<readonly [number, number]>;
+      style?: ConnectionLineStyle | undefined;
     }
   | {
       kind: "connectionDeleted";
@@ -61,6 +75,7 @@ export type LayoutEdit =
       from: string;
       to: string;
       waypoints: ReadonlyArray<readonly [number, number]>;
+      style?: ConnectionLineStyle | undefined;
     }
   | {
       kind: "connectionRenamed";
@@ -131,11 +146,13 @@ export function diffLayouts(
     from: endpointToCref(c.lhs),
     to: endpointToCref(c.rhs),
     waypoints: c.waypoints,
+    style: connStyle(c),
   }));
   const nextConns = next.connections.map((c) => ({
     from: endpointToCref(c.lhs),
     to: endpointToCref(c.rhs),
     waypoints: c.waypoints,
+    style: connStyle(c),
   }));
   const prevByKey = new Map(prevConns.map((c) => [`${c.from}|${c.to}`, c]));
   const nextByKey = new Map(nextConns.map((c) => [`${c.from}|${c.to}`, c]));
@@ -225,19 +242,25 @@ export function diffLayouts(
     const key = `${c.from}|${c.to}`;
     if (consumedNext.has(key)) continue;
     const before = prevByKey.get(key);
+    const style = c.style;
     if (!before) {
       edits.push({
         kind: "connectionAdded",
         from: c.from,
         to: c.to,
         waypoints: c.waypoints as ReadonlyArray<readonly [number, number]>,
+        ...(style && { style }),
       });
-    } else if (!deepEqual(before.waypoints, c.waypoints)) {
+    } else if (
+      !deepEqual(before.waypoints, c.waypoints) ||
+      !deepEqual(before.style, c.style)
+    ) {
       edits.push({
         kind: "connectionWaypoints",
         from: c.from,
         to: c.to,
         waypoints: c.waypoints as ReadonlyArray<readonly [number, number]>,
+        ...(style && { style }),
       });
     }
   }
@@ -435,6 +458,23 @@ interface Conn {
   from: string;
   to: string;
   waypoints: ReadonlyArray<readonly [number, number]>;
+  style: ConnectionLineStyle | undefined;
+}
+
+/**
+ * Collects a connection's set `Line` style fields into one comparable
+ * object, or `undefined` if it has none — so an edit with no style at all
+ * omits the field entirely rather than carrying an empty object.
+ */
+function connStyle(c: ConnectionLayout): ConnectionLineStyle | undefined {
+  const style: ConnectionLineStyle = {};
+  if (c.color) style.color = c.color;
+  if (c.thickness !== undefined) style.thickness = c.thickness;
+  if (c.pattern) style.pattern = c.pattern;
+  if (c.arrow) style.arrow = c.arrow;
+  if (c.arrowSize !== undefined) style.arrowSize = c.arrowSize;
+  if (c.smooth) style.smooth = c.smooth;
+  return Object.keys(style).length > 0 ? style : undefined;
 }
 
 /**
@@ -471,6 +511,7 @@ function splitVectorIndex(cref: string): { base: string; index?: string } {
  */
 function isReindexRename(before: Conn, after: Conn): boolean {
   if (!deepEqual(before.waypoints, after.waypoints)) return false;
+  if (!deepEqual(before.style, after.style)) return false;
 
   const fromChanged = before.from !== after.from;
   const toChanged = before.to !== after.to;
@@ -528,13 +569,33 @@ export function placementAnnotation(extent: Extent, rotation: number): string {
   return `Placement(transformation(extent={{${x1},${y1}},{${x2},${y2}}}${rot}))`;
 }
 
-/** Builds a Modelica `Line(points={...})` annotation for `addConnection`. */
+/**
+ * Builds a Modelica `Line(...)` annotation for `addConnection`/
+ * `updateConnection`. `style` carries the connection's existing
+ * `color`/`thickness`/`pattern`/`arrow`/`arrowSize`/`smooth` (issue #219)
+ * so a waypoint-only edit re-emits them instead of silently dropping
+ * them — `updateConnection` replaces the whole annotation, not just
+ * `points`. Returns `""` (no annotation) when there's neither a route nor
+ * any style to record.
+ */
 export function lineAnnotation(
   waypoints: ReadonlyArray<readonly [number, number]>,
+  style?: ConnectionLineStyle,
 ): string {
-  if (waypoints.length === 0) {
-    return "";
+  const fields: string[] = [];
+  if (waypoints.length > 0) {
+    const pts = waypoints.map(([x, y]) => `{${x},${y}}`).join(",");
+    fields.push(`points={${pts}}`);
   }
-  const pts = waypoints.map(([x, y]) => `{${x},${y}}`).join(",");
-  return `Line(points={${pts}})`;
+  if (style?.color) fields.push(`color={${style.color.join(",")}}`);
+  if (style?.thickness !== undefined)
+    fields.push(`thickness=${style.thickness}`);
+  if (style?.pattern) fields.push(`pattern=LinePattern.${style.pattern}`);
+  if (style?.arrow) {
+    fields.push(`arrow={Arrow.${style.arrow[0]},Arrow.${style.arrow[1]}}`);
+  }
+  if (style?.arrowSize !== undefined)
+    fields.push(`arrowSize=${style.arrowSize}`);
+  if (style?.smooth) fields.push(`smooth=Smooth.${style.smooth}`);
+  return fields.length > 0 ? `Line(${fields.join(",")})` : "";
 }

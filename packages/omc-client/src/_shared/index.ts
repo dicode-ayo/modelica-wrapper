@@ -87,6 +87,7 @@ export {
   type Point,
   type Extent,
   type Color,
+  type LineStyle,
   type LineShape,
   type PolygonShape,
   type RectangleShape,
