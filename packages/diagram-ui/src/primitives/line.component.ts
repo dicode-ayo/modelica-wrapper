@@ -7,11 +7,14 @@ import {
   DEFAULT_LINE_COLOR,
   buildStroke,
   pointsExtent,
+  resolveStrokeWidth,
 } from "./shape-utils.js";
+import { DEFAULT_ARROW_SIZE, buildArrowhead } from "./arrow-utils.js";
 
 /**
- * `<om-line>` — one Modelica `LineShape`. Pure polyline; no fill side.
- * `thickness` is honored via the shared scale-compensated stroke (`buildStroke`).
+ * `<om-line>` — one Modelica `LineShape`. Polyline with optional arrowheads
+ * at each end (`arrow` / `arrowSize`); no fill side. `thickness` is honored
+ * via the shared scale-compensated stroke (`buildStroke`).
  */
 @customElement("om-line")
 export class OmLine extends OmShapePrimitive {
@@ -59,10 +62,11 @@ export class OmLine extends OmShapePrimitive {
       inEntityFrame,
       z,
     );
+    const color = s.color ?? DEFAULT_LINE_COLOR;
     const stroke = buildStroke(
       root,
       s.points,
-      s.color ?? DEFAULT_LINE_COLOR,
+      color,
       s.pattern,
       z,
       `om-line.${this.zOrder}`,
@@ -75,6 +79,40 @@ export class OmLine extends OmShapePrimitive {
     if (stroke) {
       this.resources.push(stroke);
     }
+
+    const [startKind, endKind] = s.arrow ?? ["None", "None"];
+    const arrowSize = s.arrowSize ?? DEFAULT_ARROW_SIZE;
+    const strokeWidth = resolveStrokeWidth(
+      root,
+      s.thickness,
+      this.lineThicknessScale,
+    );
+
+    const addArrow = (
+      tip: readonly [number, number] | undefined,
+      back: readonly [number, number] | undefined,
+      kind: string,
+      suffix: string,
+    ): void => {
+      if (!tip || !back || kind === "None") return;
+      const a = buildArrowhead(
+        root,
+        tip,
+        tip[0] - back[0],
+        tip[1] - back[1],
+        arrowSize,
+        kind,
+        color,
+        z,
+        `om-line.${this.zOrder}.${suffix}`,
+        strokeWidth,
+      );
+      if (a) this.resources.push(a);
+    };
+
+    addArrow(s.points[0], s.points[1], startKind, "arrow-start");
+    const lastIdx = s.points.length - 1;
+    addArrow(s.points[lastIdx], s.points[lastIdx - 1], endKind, "arrow-end");
   }
 }
 
