@@ -1,13 +1,13 @@
 /**
  * Unit tests for the `onChangeClassRequest` handler inside `openDiagram`.
  *
- * The handler shows a VSCode input box pre-filled with the component's current
- * type, then calls `setElementType` if the user confirmed a different value.
+ * The handler opens a searchable class quick pick, then calls `setElementType`
+ * if the user picked a different class.
  *
  * Branches covered:
- *   - happy path: new class entered → setElementType called, layout refreshed;
- *   - user cancels the input box → no setElementType call;
- *   - user confirms the same class (no change) → no setElementType call;
+ *   - happy path: new class picked → setElementType called, layout refreshed;
+ *   - user cancels the quick pick → no setElementType call;
+ *   - user picks the same class (no change) → no setElementType call;
  *   - OMC returns success=false → error toast, no layout refresh;
  *   - RPC throws → error toast, no layout refresh.
  */
@@ -89,12 +89,53 @@ vi.mock("./panel.js", () => ({
 
 vi.mock("./library-source.js", () => ({
   LibraryBrowserSource: class {
-    listChildren = vi.fn();
-    searchAll = vi.fn();
+    listChildren = vi.fn().mockResolvedValue([]);
+    searchAll = vi.fn().mockResolvedValue([]);
   },
 }));
 
 const { openDiagram } = await import("./open-diagram.js");
+
+/**
+ * Minimal `QuickPick` double for `pickClassToSwap`: on `show()` it fires
+ * `onDidAccept` with `pickedLabel` selected, or `onDidHide` when the label is
+ * `undefined` (the user dismissed the picker).
+ */
+function stubQuickPick(pickedLabel: string | undefined): unknown {
+  let acceptCb: (() => void) | undefined;
+  let hideCb: (() => void) | undefined;
+  const qp = {
+    title: "",
+    placeholder: "",
+    matchOnDescription: false,
+    busy: false,
+    items: [] as unknown[],
+    value: "",
+    selectedItems: [] as { label: string }[],
+    onDidChangeValue: () => ({ dispose: () => {} }),
+    onDidAccept: (cb: () => void) => {
+      acceptCb = cb;
+      return { dispose: () => {} };
+    },
+    onDidHide: (cb: () => void) => {
+      hideCb = cb;
+      return { dispose: () => {} };
+    },
+    show: () => {
+      queueMicrotask(() => {
+        if (pickedLabel !== undefined) {
+          qp.selectedItems = [{ label: pickedLabel }];
+          acceptCb?.();
+        } else {
+          hideCb?.();
+        }
+      });
+    },
+    hide: () => hideCb?.(),
+    dispose: () => {},
+  };
+  return qp;
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -146,9 +187,9 @@ beforeEach(() => {
   fakePanel.update.mockReset();
   fakePanel.openParameters.mockReset();
   fakePanel.closeParameters.mockReset();
-  // Default: user confirms the new class name.
-  vi.spyOn(vscodeMock.window, "showInputBox").mockResolvedValue(
-    "Modelica.Blocks.Math.Abs",
+  // Default: user picks a different class from the quick pick.
+  vi.spyOn(vscodeMock.window, "createQuickPick").mockImplementation(
+    () => stubQuickPick("Modelica.Blocks.Math.Abs") as never,
   );
 });
 
@@ -176,11 +217,13 @@ describe("onChangeClassRequest handler", () => {
     expect(recordedMessages.filter((m) => m.level === "error")).toHaveLength(0);
   });
 
-  it("does nothing when the user cancels the input box", async () => {
+  it("does nothing when the user cancels the quick pick", async () => {
     const { client, setElementType } = makeClient();
     await openAndCapture(client);
 
-    vi.spyOn(vscodeMock.window, "showInputBox").mockResolvedValue(undefined);
+    vi.spyOn(vscodeMock.window, "createQuickPick").mockImplementation(
+      () => stubQuickPick(undefined) as never,
+    );
 
     await capturedHandlers.onChangeClassRequest!(
       "gain1" as never,
@@ -195,9 +238,9 @@ describe("onChangeClassRequest handler", () => {
     const { client, setElementType } = makeClient();
     await openAndCapture(client);
 
-    // User confirms the same value as currentClass.
-    vi.spyOn(vscodeMock.window, "showInputBox").mockResolvedValue(
-      "Modelica.Blocks.Math.Gain",
+    // User picks the same value as currentClass.
+    vi.spyOn(vscodeMock.window, "createQuickPick").mockImplementation(
+      () => stubQuickPick("Modelica.Blocks.Math.Gain") as never,
     );
 
     await capturedHandlers.onChangeClassRequest!(

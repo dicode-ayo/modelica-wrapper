@@ -617,12 +617,11 @@ export async function openDiagram(
     },
     // ── Library browser ────────────────────────────────────────────────
     onChangeClassRequest: async (componentName, currentClass) => {
-      const newClass = await vscode.window.showInputBox({
-        prompt: `New type for ${componentName}`,
-        value: currentClass,
-        validateInput: (v) =>
-          v.trim().length > 0 ? undefined : "Type name cannot be empty",
-      });
+      const newClass = await pickClassToSwap(
+        librarySource,
+        componentName,
+        currentClass,
+      );
       if (!newClass || newClass.trim() === currentClass.trim()) return;
       const trimmedNew = newClass.trim();
       let label = `setElementType ${className} ${componentName}`;
@@ -756,6 +755,53 @@ export async function openDiagram(
  * keyword, etc.). We don't try to compete with OMEdit's identifier
  * shrubbery here — the user can rename in the parameter panel.
  */
+/**
+ * Live-searchable class picker for the "Change class" command. The loaded
+ * libraries hold thousands of classes, so we query `searchAll` as the user
+ * types rather than materialising the whole list. Resolves to the chosen
+ * fully-qualified class name, or `undefined` if dismissed.
+ */
+function pickClassToSwap(
+  librarySource: LibraryBrowserSource,
+  componentName: string,
+  currentClass: string,
+): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const quickPick = vscode.window.createQuickPick();
+    quickPick.title = `Change class of ${componentName}`;
+    quickPick.placeholder = `Search for a class (currently ${currentClass})`;
+    quickPick.matchOnDescription = true;
+    // Guards against a slow earlier query overwriting a newer one's results.
+    let seq = 0;
+    const runSearch = async (query: string): Promise<void> => {
+      const mine = ++seq;
+      quickPick.busy = true;
+      try {
+        const results = await librarySource.searchAll(query);
+        if (mine !== seq) return;
+        quickPick.items = results.map((c) => ({
+          label: c.qualified,
+          description: c.restriction,
+        }));
+      } finally {
+        if (mine === seq) quickPick.busy = false;
+      }
+    };
+    quickPick.onDidChangeValue((v) => void runSearch(v));
+    quickPick.onDidAccept(() => {
+      const picked = quickPick.selectedItems[0]?.label;
+      resolve(picked);
+      quickPick.hide();
+    });
+    quickPick.onDidHide(() => {
+      quickPick.dispose();
+      resolve(undefined);
+    });
+    quickPick.show();
+    void runSearch(currentClass);
+  });
+}
+
 function uniqueComponentName(
   layout: DiagramLayout,
   componentClass: string,
