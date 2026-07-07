@@ -134,13 +134,14 @@ export class OmLibraryTree extends LitElement {
          * icon+label content. */
         width: 100%;
         box-sizing: border-box;
-      }
-      .row:hover {
-        background: var(--vscode-list-hoverBackground);
-      }
-      .row[data-selected="true"] {
-        background: var(--vscode-list-activeSelectionBackground);
-        color: var(--vscode-list-activeSelectionForeground, inherit);
+
+        &:hover {
+          background: var(--vscode-list-hoverBackground);
+        }
+        &[data-selected="true"] {
+          background: var(--vscode-list-activeSelectionBackground);
+          color: var(--vscode-list-activeSelectionForeground, inherit);
+        }
       }
 
       .indent {
@@ -170,14 +171,16 @@ export class OmLibraryTree extends LitElement {
         font-weight: var(--om-badge-font-weight);
         line-height: 1;
         font-family: var(--vscode-editor-font-family, ui-monospace, monospace);
-      }
-      .icon-svg {
-        background: none;
-        border-radius: 0;
-      }
-      .icon-svg svg {
-        width: 100%;
-        height: 100%;
+
+        &.icon-svg {
+          background: none;
+          border-radius: 0;
+
+          & svg {
+            width: 100%;
+            height: 100%;
+          }
+        }
       }
 
       .label {
@@ -185,10 +188,11 @@ export class OmLibraryTree extends LitElement {
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
-      }
-      .label.loading {
-        opacity: var(--om-disabled-opacity);
-        font-style: italic;
+
+        &.loading {
+          opacity: var(--om-disabled-opacity);
+          font-style: italic;
+        }
       }
       .qualifier {
         font-size: var(--om-qualifier-size);
@@ -243,6 +247,16 @@ export class OmLibraryTree extends LitElement {
     this.nodeCache.clear();
     this.iconSvgCache.clear();
     this.iconRequested.clear();
+    // A source swap invalidates any search against the previous source.
+    if (this.searchTimer !== null) {
+      clearTimeout(this.searchTimer);
+      this.searchTimer = null;
+    }
+    this.searchSeq++;
+    this.query = "";
+    this.searchResults = null;
+    this.searchLoading = false;
+    this.searchError = null;
     const source = this.dataSource;
     if (!source) {
       this.tree = undefined;
@@ -386,8 +400,11 @@ export class OmLibraryTree extends LitElement {
     return html`
       <div
         class="row"
+        role="option"
+        tabindex="0"
         draggable="true"
         @click=${() => this.fireSelect(q)}
+        @keydown=${(e: KeyboardEvent) => this.onSearchRowKeydown(e, q)}
         @dragstart=${(e: DragEvent) => this.onSearchRowDragStart(e, q)}
       >
         <span class="leaf-dot">•</span>
@@ -447,6 +464,15 @@ export class OmLibraryTree extends LitElement {
       .catch(() => {
         // Best-effort — keep the badge on failure.
       });
+  }
+
+  // Search rows aren't Headless Tree items, so they don't get the tree's
+  // keyboard activation; wire Enter/Space to selection ourselves.
+  private onSearchRowKeydown(event: KeyboardEvent, className: string): void {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      this.fireSelect(className);
+    }
   }
 
   // Search rows aren't Headless Tree items, so they can't ride the tree's

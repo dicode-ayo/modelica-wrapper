@@ -2,9 +2,12 @@
  * Lit directive that adapts Headless Tree's React-shaped prop bag
  * (`item.getProps()`) onto a real DOM node: `ref` registers the element,
  * `onX` keys become native listeners, `style` merges as inline styles, and
- * the rest map to attributes / properties. Listeners are re-bound on every
- * update (the virtualizer recycles a row element across items), so stale
- * ones are torn down first.
+ * the rest map to attributes / properties.
+ *
+ * The virtualizer recycles a row element across items, so whatever a bind
+ * applies (listeners, attributes, style props) is tracked and the entries
+ * absent from the next prop bag are cleared first — otherwise a stale key
+ * from the previous item leaks onto the reused element.
  */
 
 import { noChange } from "lit";
@@ -18,8 +21,15 @@ import {
 
 type PropBag = Record<string, unknown>;
 
+const toKebabCase = (key: string): string =>
+  key.startsWith("--")
+    ? key
+    : key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+
 class BindItemPropsDirective extends Directive {
   private listeners: Array<[string, EventListener]> = [];
+  private attributes = new Set<string>();
+  private styleProps = new Set<string>();
 
   constructor(partInfo: PartInfo) {
     super(partInfo);
@@ -38,10 +48,13 @@ class BindItemPropsDirective extends Directive {
   }
 
   private bind(element: Element, props: PropBag): void {
+    const htmlEl = element as HTMLElement;
     for (const [type, listener] of this.listeners) {
       element.removeEventListener(type, listener);
     }
-    const next: Array<[string, EventListener]> = [];
+    const nextListeners: Array<[string, EventListener]> = [];
+    const nextAttributes = new Set<string>();
+    const nextStyleProps = new Set<string>();
 
     for (const [key, value] of Object.entries(props)) {
       if (value === undefined || value === null || key === "key") continue;
@@ -55,25 +68,40 @@ class BindItemPropsDirective extends Directive {
       if (typeof value === "function" && key.startsWith("on")) {
         const type = key.slice(2).toLowerCase();
         element.addEventListener(type, value as EventListener);
-        next.push([type, value as EventListener]);
+        nextListeners.push([type, value as EventListener]);
         continue;
       }
       if (key === "style" && typeof value === "object") {
-        Object.assign((element as HTMLElement).style, value);
+        for (const [prop, raw] of Object.entries(value as PropBag)) {
+          if (raw === undefined || raw === null) continue;
+          const name = toKebabCase(prop);
+          htmlEl.style.setProperty(name, String(raw));
+          nextStyleProps.add(name);
+        }
         continue;
       }
       if (key === "tabIndex") {
-        (element as HTMLElement).tabIndex = Number(value);
+        htmlEl.tabIndex = Number(value);
         continue;
       }
       if (key === "draggable") {
-        (element as HTMLElement).draggable = Boolean(value);
+        htmlEl.draggable = Boolean(value);
         continue;
       }
       element.setAttribute(key, String(value));
+      nextAttributes.add(key);
     }
 
-    this.listeners = next;
+    for (const attr of this.attributes) {
+      if (!nextAttributes.has(attr)) element.removeAttribute(attr);
+    }
+    for (const prop of this.styleProps) {
+      if (!nextStyleProps.has(prop)) htmlEl.style.removeProperty(prop);
+    }
+
+    this.listeners = nextListeners;
+    this.attributes = nextAttributes;
+    this.styleProps = nextStyleProps;
   }
 }
 

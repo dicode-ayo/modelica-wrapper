@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { ItemInstance, TreeInstance } from "@headless-tree/core";
 
 import type {
@@ -9,41 +9,10 @@ import type {
 import "./library-tree.component.js";
 import type { OmLibraryTree } from "./library-tree.component.js";
 import type { LibraryTreeNode } from "./library-tree-model.js";
-
-const FAKE_TREE: Record<string, LibraryClassInfo[]> = {
-  __ROOT__: [
-    { qualified: "Modelica", restriction: "package" },
-    { qualified: "Complex", restriction: "operator record" },
-  ],
-  Modelica: [{ qualified: "Modelica.Blocks", restriction: "package" }],
-};
-
-const ALL_FLAT: LibraryClassInfo[] = [
-  { qualified: "Modelica.Blocks.Math.Gain", restriction: "block" },
-  { qualified: "Modelica.Blocks.Math.Add", restriction: "block" },
-];
-
-function makeSource(): {
-  source: LibraryBrowserDataSource;
-  listChildren: ReturnType<typeof vi.fn>;
-  searchAll: ReturnType<typeof vi.fn>;
-  iconSvg: ReturnType<typeof vi.fn>;
-} {
-  const listChildren = vi.fn(
-    async (parent: string | null): Promise<LibraryClassInfo[]> =>
-      (parent === null ? FAKE_TREE["__ROOT__"] : FAKE_TREE[parent]) ?? [],
-  );
-  const searchAll = vi.fn(async (q: string) =>
-    ALL_FLAT.filter((i) => i.qualified.toLowerCase().includes(q.toLowerCase())),
-  );
-  const iconSvg = vi.fn(async () => undefined);
-  return {
-    source: { listChildren, searchAll, iconSvg },
-    listChildren,
-    searchAll,
-    iconSvg,
-  };
-}
+import {
+  FAKE_TREE,
+  makeFakeLibrarySource as makeSource,
+} from "./library-tree.fixtures.js";
 
 const teardowns: Array<() => void> = [];
 afterEach(() => {
@@ -213,5 +182,56 @@ describe("<om-library-tree>", () => {
     const requested = iconSvg.mock.calls.map((c) => c[0]);
     expect(requested).toContain("Modelica");
     expect(requested).toContain("Complex");
+  });
+
+  it("resets search state when the data source is swapped", async () => {
+    const first = makeSource();
+    const el = await mount(first.source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+
+    const input = el.shadowRoot?.querySelector<HTMLInputElement>(".search");
+    if (!input) throw new Error("search input missing");
+    input.value = "gain";
+    input.dispatchEvent(new Event("input"));
+    await waitFor(() => first.searchAll.mock.calls.length > 0);
+
+    el.dataSource = makeSource().source;
+    await el.updateComplete;
+
+    const state = el as unknown as {
+      query: string;
+      searchResults: LibraryClassInfo[] | null;
+      searchLoading: boolean;
+      searchError: string | null;
+    };
+    expect(state.query).toBe("");
+    expect(state.searchResults).toBeNull();
+    expect(state.searchLoading).toBe(false);
+    expect(state.searchError).toBeNull();
+  });
+
+  it("activates a search row on Enter and Space", async () => {
+    const { source } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+
+    const selected: string[] = [];
+    el.addEventListener("om-library-select", (e) => {
+      selected.push((e as CustomEvent<LibrarySelectDetail>).detail.className);
+    });
+    // `<lit-virtualizer>` doesn't render search rows under happy-dom; drive the
+    // keyboard handler directly to pin the activation invariant.
+    const onKeydown = (
+      el as unknown as {
+        onSearchRowKeydown(e: KeyboardEvent, className: string): void;
+      }
+    ).onSearchRowKeydown.bind(el);
+    onKeydown(
+      new KeyboardEvent("keydown", { key: "Enter" }),
+      "Modelica.Blocks",
+    );
+    onKeydown(new KeyboardEvent("keydown", { key: " " }), "Modelica.Blocks");
+    onKeydown(new KeyboardEvent("keydown", { key: "a" }), "Modelica.Blocks");
+    expect(selected).toEqual(["Modelica.Blocks", "Modelica.Blocks"]);
   });
 });
