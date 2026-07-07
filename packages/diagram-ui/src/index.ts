@@ -206,6 +206,19 @@ export {
   type LibraryCancelDetail,
 } from "./library-browser/library-browser.component.js";
 export {
+  OmLibraryTree,
+  LIBRARY_TREE_DRAG_FORMAT,
+} from "./library-tree/library-tree.component.js";
+export {
+  LIBRARY_TREE_ROOT_ID,
+  createLibraryDataLoader,
+  isExpandable as isLibraryClassExpandable,
+  matchLabel,
+  type LibraryTreeNode,
+  type LibraryDataLoader,
+  type LabelMatch,
+} from "./library-tree/library-tree-model.js";
+export {
   parameterFieldsFromModel,
   initialValuesFromFields,
   isComplete,

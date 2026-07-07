@@ -96,6 +96,12 @@ export const omTokens: CSSResult = css`
     --om-library-dialog-width: 560px;
     --om-library-body-min-height: 320px;
 
+    /* --- library tree ---
+     * Virtualized row height (fixed so the virtualizer can size the scroll
+     * range without measuring) and the per-level indentation step. */
+    --om-tree-row-height: 22px;
+    --om-tree-indent: 14px;
+
     /* --- state --- */
     --om-disabled-opacity: 0.55;
   }
