@@ -84,7 +84,10 @@ import {
   vertexShapeKey,
 } from "../interaction/node-keys.js";
 import type { LibraryEvents } from "../library-browser/library-browser.component.js";
-import { orthogonalRoute } from "../interaction/connection-route.js";
+import {
+  orthogonalRoute,
+  resolveConnectionWaypoints,
+} from "../interaction/connection-route.js";
 import {
   canConnect,
   resolvePortInfo,
@@ -438,7 +441,7 @@ export class OmGraphicalLayout extends LitElement {
           (conn, idx) =>
             html`<om-connection
               .nodeId=${String(idx)}
-              .path=${conn.waypoints}
+              .path=${resolveConnectionWaypoints(active, conn)}
               .stroke=${conn.color ? colorToCss(conn.color) : undefined}
               .selectedKeys=${this.selectedKeys}
             ></om-connection>`,
@@ -969,7 +972,13 @@ export class OmGraphicalLayout extends LitElement {
       if (Number.isNaN(connIdx) || !point) {
         return false;
       }
-      this.commitLayout(applyWaypointInsert(this.layout, connIdx, point));
+      this.commitLayout(
+        applyWaypointInsert(
+          this.withMaterialisedRoute(this.layout, connIdx),
+          connIdx,
+          point,
+        ),
+      );
       return true;
     }
     if (isJunctionKey(entity)) {
@@ -1010,7 +1019,37 @@ export class OmGraphicalLayout extends LitElement {
     if (Number.isNaN(connIdx) || Number.isNaN(waypointIdx)) {
       return layout;
     }
-    return applyWaypointDrag(layout, connIdx, waypointIdx, dx, dy);
+    return applyWaypointDrag(
+      this.withMaterialisedRoute(layout, connIdx),
+      connIdx,
+      waypointIdx,
+      dx,
+      dy,
+    );
+  }
+
+  /**
+   * Returns a layout copy where the connection at `connIdx` has its
+   * waypoints materialised from endpoint positions when they are currently
+   * empty (`waypoints: []`). Returns the original layout reference when the
+   * connection already has a route or can't be resolved.
+   */
+  private withMaterialisedRoute(
+    layout: DiagramLayout,
+    connIdx: number,
+  ): DiagramLayout {
+    const conn = layout.connections[connIdx];
+    if (!conn || conn.waypoints.length > 0) {
+      return layout;
+    }
+    const waypoints = resolveConnectionWaypoints(layout, conn);
+    if (waypoints.length < 2) {
+      return layout;
+    }
+    const connections = layout.connections.map((c, i) =>
+      i === connIdx ? { ...c, waypoints } : c,
+    );
+    return { ...layout, connections };
   }
 
   private onLibrarySelect = (
@@ -1128,11 +1167,7 @@ export class OmGraphicalLayout extends LitElement {
     this.interactionStore.next({ selectedKeys: Array.from(next) });
   }
 
-  /**
-   * Single entry point for state transitions driven by `DragController`.
-   * Centralised so a future test can assert the machine's behaviour
-   * against a sequence of events without re-wiring the whole host.
-   */
+  /** Single entry point for state transitions driven by `DragController`. */
   private setInteractionState(state: InteractionState): void {
     this.interactionStore.next({ state });
   }
@@ -1207,7 +1242,7 @@ export class OmGraphicalLayout extends LitElement {
         const grid = this.currentSnapGrid();
         const { dx, dy } = snapDelta(d.dx, d.dy, grid);
         const moved = applyEdgeSegmentDrag(
-          this.layout,
+          this.withMaterialisedRoute(this.layout, d.connIdx),
           d.connIdx,
           d.grab,
           dx,
