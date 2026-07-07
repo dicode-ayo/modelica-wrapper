@@ -78,6 +78,11 @@ export interface DiagramPanelHandlers {
     className: string,
     position: { x: number; y: number },
   ) => void;
+  /**
+   * User triggered "Change class" on a selected component. The host shows
+   * an input prompt, calls `setElementType`, and refreshes the layout.
+   */
+  onChangeClassRequest?: (componentName: string, currentClass: string) => void;
 }
 
 export interface OpenParametersOptions {
@@ -301,6 +306,12 @@ export class DiagramPanel {
         return;
       case "editComponent":
         this.handlers.onEditComponent?.(message.componentName);
+        return;
+      case "changeClassRequest":
+        this.handlers.onChangeClassRequest?.(
+          message.componentName,
+          message.currentClass,
+        );
         return;
       case "libraryListChildren":
         void this.handleLibraryRequest(

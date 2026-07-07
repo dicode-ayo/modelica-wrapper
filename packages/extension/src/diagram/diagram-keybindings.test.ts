@@ -46,12 +46,14 @@ describe("diagram selection keybindings", () => {
   });
 
   it("guards single-letter shortcuts so they don't fire while typing", () => {
-    // Without `!modelicaDiagramInputFocus`, Backspace / r / f would act on the
-    // diagram while the user types in the parameter modal.
+    // `!modelicaDiagramInputFocus` covers inputs inside the webview (the
+    // parameter modal); `!inputFocus` covers native VSCode inputs (e.g. the
+    // change-class quick pick). Without both, Backspace / r / f would act on
+    // the diagram while the user types.
     for (const id of Object.keys(SELECTION_KEYS)) {
       for (const binding of keybindings.filter((k) => k.command === id)) {
         expect(binding.when).toBe(
-          "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus",
+          "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus && !inputFocus",
         );
       }
     }

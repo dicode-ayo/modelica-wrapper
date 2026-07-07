@@ -57,6 +57,13 @@ export interface ToolChangeDetail {
   tool: ToolId;
 }
 
+/** User triggered "Change class" on a selected component. */
+export interface ChangeClassRequestDetail {
+  componentName: string;
+  /** Fully-qualified current type — pre-filled value for the host's input box. */
+  currentClass: string;
+}
+
 /**
  * Event-name → detail-type map. Source of truth shared by:
  *   - `emit<K extends LayoutEventName>(name, detail)` inside the component,
@@ -70,6 +77,7 @@ export interface LayoutEvents {
   "om-connection-create": ConnectionCreateDetail;
   "om-add-component-request": AddComponentRequestDetail;
   "om-tool-change": ToolChangeDetail;
+  "om-change-class-request": ChangeClassRequestDetail;
 }
 
 export type LayoutEventName = keyof LayoutEvents;

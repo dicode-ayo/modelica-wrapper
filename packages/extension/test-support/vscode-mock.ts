@@ -209,4 +209,22 @@ export const window = {
     return Promise.resolve(undefined);
   },
   showInputBox: () => Promise.resolve(undefined),
+  createQuickPick() {
+    const noop = () => ({ dispose: () => {} });
+    return {
+      title: "",
+      placeholder: "",
+      matchOnDescription: false,
+      busy: false,
+      items: [] as unknown[],
+      value: "",
+      selectedItems: [] as unknown[],
+      onDidChangeValue: noop,
+      onDidAccept: noop,
+      onDidHide: noop,
+      show: () => {},
+      hide: () => {},
+      dispose: () => {},
+    };
+  },
 };

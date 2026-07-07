@@ -616,6 +616,57 @@ export async function openDiagram(
       }
     },
     // ── Library browser ────────────────────────────────────────────────
+    onChangeClassRequest: async (componentName, currentClass) => {
+      const newClass = await pickClassToSwap(
+        librarySource,
+        componentName,
+        currentClass,
+      );
+      if (!newClass || newClass.trim() === currentClass.trim()) return;
+      const trimmedNew = newClass.trim();
+      let label = `setElementType ${className} ${componentName}`;
+      const refreshLabel = (): void => {
+        if (client.lastCall) label = client.lastCall;
+      };
+      await pushUndoSnapshot();
+      try {
+        await client.getErrorString();
+        const { success } = await client.setElementType({
+          typeName: `${className}.${componentName}`,
+          newTypeName: trimmedNew,
+        });
+        refreshLabel();
+        const replLog = createReplLog(label);
+        if (!success) {
+          const { errorString } = await client.getErrorString();
+          const reason = errorString.trim() || "OMC returned success=false.";
+          replLog.error(reason);
+          void vscode.window.showErrorMessage(
+            `Modelica: setElementType ${componentName} failed: ${reason}`,
+          );
+          undoStack.pop();
+          return;
+        }
+        replLog.success(`${componentName} : ${trimmedNew}`);
+      } catch (err) {
+        refreshLabel();
+        const msg = (err as Error).message;
+        createReplLog(label).error(msg);
+        void vscode.window.showErrorMessage(
+          `Modelica: setElementType ${componentName} failed: ${msg}`,
+        );
+        undoStack.pop();
+        return;
+      }
+      try {
+        prevLayout = await fetchLayout(client, className);
+        panel.update(prevLayout);
+      } catch (err) {
+        void vscode.window.showErrorMessage(
+          `Modelica: re-fetch after setElementType failed: ${(err as Error).message}`,
+        );
+      }
+    },
     onLibraryListChildren: (parent) => librarySource.listChildren(parent),
     onLibrarySearch: (query) => librarySource.searchAll(query),
     onLibraryIcon: (target) => libraryIconSvg(client, target),
@@ -704,6 +755,53 @@ export async function openDiagram(
  * keyword, etc.). We don't try to compete with OMEdit's identifier
  * shrubbery here — the user can rename in the parameter panel.
  */
+/**
+ * Live-searchable class picker for the "Change class" command. The loaded
+ * libraries hold thousands of classes, so we query `searchAll` as the user
+ * types rather than materialising the whole list. Resolves to the chosen
+ * fully-qualified class name, or `undefined` if dismissed.
+ */
+function pickClassToSwap(
+  librarySource: LibraryBrowserSource,
+  componentName: string,
+  currentClass: string,
+): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const quickPick = vscode.window.createQuickPick();
+    quickPick.title = `Change class of ${componentName}`;
+    quickPick.placeholder = `Search for a class (currently ${currentClass})`;
+    quickPick.matchOnDescription = true;
+    // Guards against a slow earlier query overwriting a newer one's results.
+    let seq = 0;
+    const runSearch = async (query: string): Promise<void> => {
+      const mine = ++seq;
+      quickPick.busy = true;
+      try {
+        const results = await librarySource.searchAll(query);
+        if (mine !== seq) return;
+        quickPick.items = results.map((c) => ({
+          label: c.qualified,
+          description: c.restriction,
+        }));
+      } finally {
+        if (mine === seq) quickPick.busy = false;
+      }
+    };
+    quickPick.onDidChangeValue((v) => void runSearch(v));
+    quickPick.onDidAccept(() => {
+      const picked = quickPick.selectedItems[0]?.label;
+      resolve(picked);
+      quickPick.hide();
+    });
+    quickPick.onDidHide(() => {
+      quickPick.dispose();
+      resolve(undefined);
+    });
+    quickPick.show();
+    void runSearch(currentClass);
+  });
+}
+
 function uniqueComponentName(
   layout: DiagramLayout,
   componentClass: string,

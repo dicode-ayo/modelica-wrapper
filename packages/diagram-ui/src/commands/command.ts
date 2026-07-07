@@ -18,6 +18,8 @@ export interface CommandTarget {
   commitLayout(next: DiagramLayout): void;
   /** Replace the current selection. */
   setSelection(keys: Iterable<string>): void;
+  /** Delegates a class-swap to the host — commands stay synchronous. */
+  requestClassChange?(componentName: string, currentClass: string): void;
 }
 
 /** A UI surface a command can be placed on. */

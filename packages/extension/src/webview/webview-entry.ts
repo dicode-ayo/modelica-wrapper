@@ -27,6 +27,7 @@ import {
   type ActionFlipDetail,
   type ActionRotateDetail,
   type ActionToolDetail,
+  type ChangeClassRequestDetail,
   type LayoutEvents,
   type LibraryBrowserDataSource,
   type LibraryClassInfo,
@@ -257,6 +258,7 @@ class OmWebviewRoot extends LitElement {
         @om-double-click=${this.onDoubleClick}
         @om-tool-change=${(e: CustomEvent<LayoutEvents["om-tool-change"]>) =>
           (this.activeTool = e.detail.tool)}
+        @om-change-class-request=${this.onChangeClassRequest}
       ></om-graphical-layout>
       <om-action-panel
         anchor="top-right"
@@ -385,6 +387,13 @@ class OmWebviewRoot extends LitElement {
       className,
       position,
     });
+  };
+
+  private onChangeClassRequest = (
+    e: CustomEvent<ChangeClassRequestDetail>,
+  ): void => {
+    const { componentName, currentClass } = e.detail;
+    this.post({ type: "changeClassRequest", componentName, currentClass });
   };
 
   private onParamSubmit = (e: CustomEvent<ParameterFormSubmitDetail>): void => {

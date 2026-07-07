@@ -278,32 +278,32 @@
       {
         "command": "modelica.diagram.delete",
         "key": "delete",
-        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus"
+        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus && !inputFocus"
       },
       {
         "command": "modelica.diagram.delete",
         "key": "backspace",
-        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus"
+        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus && !inputFocus"
       },
       {
         "command": "modelica.diagram.rotateCw",
         "key": "r",
-        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus"
+        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus && !inputFocus"
       },
       {
         "command": "modelica.diagram.rotateCcw",
         "key": "shift+r",
-        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus"
+        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus && !inputFocus"
       },
       {
         "command": "modelica.diagram.flipHorizontal",
         "key": "f",
-        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus"
+        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus && !inputFocus"
       },
       {
         "command": "modelica.diagram.flipVertical",
         "key": "shift+f",
-        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus"
+        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus && !inputFocus"
       }
     ],
     "configuration": {

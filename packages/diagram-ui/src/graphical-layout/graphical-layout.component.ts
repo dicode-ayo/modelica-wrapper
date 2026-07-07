@@ -1488,6 +1488,9 @@ export class OmGraphicalLayout extends LitElement {
       contextVertex: this.contextVertex,
       commitLayout: (next) => this.commitLayout(next),
       setSelection: (keys) => this.setSelection(keys),
+      requestClassChange: (componentName, currentClass) => {
+        this.emit("om-change-class-request", { componentName, currentClass });
+      },
     };
   }
 

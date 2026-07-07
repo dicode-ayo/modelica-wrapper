@@ -207,4 +207,9 @@ export type WebviewToExtension =
       type: "libraryIcon";
       requestId: string;
       className: string;
+    }
+  | {
+      type: "changeClassRequest";
+      componentName: string;
+      currentClass: string;
     };
