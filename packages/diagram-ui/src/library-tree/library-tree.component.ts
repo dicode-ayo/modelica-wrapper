@@ -21,7 +21,14 @@
  * under `LIBRARY_TREE_DRAG_FORMAT`, ready for a drop-to-instantiate handler.
  */
 
-import { LitElement, css, html, nothing, type TemplateResult } from "lit";
+import {
+  LitElement,
+  css,
+  html,
+  nothing,
+  type PropertyValues,
+  type TemplateResult,
+} from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { styleMap } from "lit/directives/style-map.js";
 import { unsafeSVG } from "lit/directives/unsafe-svg.js";
@@ -215,7 +222,7 @@ export class OmLibraryTree extends LitElement {
   // Building the tree here (not in `updated`) keeps Headless Tree's
   // `setState` re-render calls inside the update cycle, so they never
   // schedule a post-commit `requestUpdate` — which would loop.
-  override willUpdate(changed: Map<string, unknown>): void {
+  override willUpdate(changed: PropertyValues<this>): void {
     if (changed.has("dataSource")) {
       this.rebuildForDataSource();
     }
@@ -241,15 +248,13 @@ export class OmLibraryTree extends LitElement {
       }),
       dataLoader: createLibraryDataLoader(source, this.nodeCache),
       onPrimaryAction: (item) => this.fireSelect(item.getItemData().className),
-      createForeignDragObject: (items) => {
-        const first = items.at(0);
-        const className = first?.getItemData().className ?? "";
-        return {
-          format: LIBRARY_TREE_DRAG_FORMAT,
-          data: dragPayload(className),
-          effectAllowed: "copy",
-        };
-      },
+      canDrag: (items) =>
+        items.every((item) => item.getItemData().className !== ""),
+      createForeignDragObject: (items) => ({
+        format: LIBRARY_TREE_DRAG_FORMAT,
+        data: dragPayload(items.at(0)?.getItemData().className ?? ""),
+        effectAllowed: "copy",
+      }),
       state: {},
       setState: () => this.requestUpdate(),
       features: [
@@ -459,8 +464,9 @@ export class OmLibraryTree extends LitElement {
       return;
     }
     this.searchLoading = true;
+    const query = value.trim();
     this.searchTimer = setTimeout(() => {
-      void this.runSearch(value);
+      void this.runSearch(query);
     }, SEARCH_DEBOUNCE_MS);
   };
 
