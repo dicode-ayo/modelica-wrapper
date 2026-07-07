@@ -98,9 +98,11 @@ export const omTokens: CSSResult = css`
 
     /* --- library tree ---
      * Virtualized row height (fixed so the virtualizer can size the scroll
-     * range without measuring) and the per-level indentation step. */
+     * range without measuring), the per-level indentation step, and the
+     * row font size (fallback for --vscode-font-size outside the webview). */
     --om-tree-row-height: 22px;
     --om-tree-indent: 14px;
+    --om-tree-font-size: 13px;
 
     /* --- state --- */
     --om-disabled-opacity: 0.55;

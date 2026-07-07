@@ -75,9 +75,13 @@ export class OmLibraryTree extends LitElement {
         display: flex;
         flex-direction: column;
         gap: var(--om-space-md);
+        /* Clip to the slot the embedder gives us so rows scroll internally
+         * instead of pushing past a bounded flex parent. */
+        min-width: 0;
         min-height: 0;
+        overflow: hidden;
         font-family: var(--vscode-font-family, system-ui, sans-serif);
-        font-size: var(--vscode-font-size, 13px);
+        font-size: var(--vscode-font-size, var(--om-tree-font-size));
         color: var(--vscode-foreground);
       }
 
@@ -90,8 +94,10 @@ export class OmLibraryTree extends LitElement {
         border-radius: var(--om-radius-md);
       }
 
+      /* flex-basis 0 (not auto) so the scroll box sizes to the slot rather
+       * than to its full content height. */
       lit-virtualizer {
-        flex: 1 1 auto;
+        flex: 1 1 0;
         min-height: 0;
         overflow: auto;
       }
@@ -178,11 +184,7 @@ export class OmLibraryTree extends LitElement {
     `,
   ];
 
-  /**
-   * Data source. When `null` (default) the tree renders a "no data source
-   * configured" message — useful in stories before the embedder wires
-   * anything up.
-   */
+  /** Data source; `null` renders a "no data source configured" message. */
   @property({ attribute: false })
   dataSource: LibraryBrowserDataSource | null = null;
 
@@ -210,6 +212,9 @@ export class OmLibraryTree extends LitElement {
     super.disconnectedCallback();
   }
 
+  // Building the tree here (not in `updated`) keeps Headless Tree's
+  // `setState` re-render calls inside the update cycle, so they never
+  // schedule a post-commit `requestUpdate` — which would loop.
   override willUpdate(changed: Map<string, unknown>): void {
     if (changed.has("dataSource")) {
       this.rebuildForDataSource();
@@ -362,10 +367,9 @@ export class OmLibraryTree extends LitElement {
   }
 
   /**
-   * Icon slot: a rendered class SVG once the lazy `iconSvg` fetch resolves,
-   * falling back to the restriction-letter badge until then (or permanently
-   * when the data source has no icon support). The fetch is kicked off here,
-   * on first render of the row, and cached by qualified name.
+   * Rendered class SVG once the lazy `iconSvg` fetch resolves, else the
+   * restriction-letter badge. Rendering a row kicks off the fetch as a side
+   * effect (idempotent per class name via `requestIcon`).
    */
   private renderIcon(
     className: string,
