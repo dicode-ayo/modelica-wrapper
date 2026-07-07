@@ -4,6 +4,9 @@
  * (`asyncDataLoaderFeature`) rows rendered in our own Lit, virtualized by
  * `@lit-labs/virtualizer`. Not production wiring.
  *
+ * Rows carry an inline icon (stand-in for the per-class Modelica SVG) and a
+ * search box wired to `searchFeature` filters + highlights loaded matches.
+ *
  * Three things under test:
  *   1. Lazy + virtualized at scale — a synthetic ~15.5k-node tree whose
  *      children load on expand (async loader + simulated OMC latency). Only
@@ -25,6 +28,7 @@ import {
   createTree,
   dragAndDropFeature,
   hotkeysCoreFeature,
+  searchFeature,
   selectionFeature,
   type ItemInstance,
   type TreeConfig,
@@ -144,6 +148,34 @@ export class OmLibraryTreeSpike extends LitElement {
       opacity: 0.55;
       font-style: italic;
     }
+    /* Stand-in for the real per-class Modelica icon (reused via the existing
+     * lazy onLibraryIcon SVG path in the production component). */
+    .icon {
+      flex: 0 0 auto;
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 700;
+      color: #fff;
+    }
+    mark {
+      background: var(--vscode-editor-findMatchHighlightBackground, #ffe58a);
+      color: inherit;
+    }
+
+    .search {
+      padding: 3px 6px;
+      font: inherit;
+      color: inherit;
+      background: var(--vscode-input-background, #fff);
+      border: 1px solid var(--vscode-input-border, #ccc);
+      border-radius: 4px;
+      min-width: 220px;
+    }
 
     canvas {
       flex: 1 1 50%;
@@ -212,6 +244,7 @@ export class OmLibraryTreeSpike extends LitElement {
         selectionFeature,
         hotkeysCoreFeature,
         dragAndDropFeature,
+        searchFeature,
       ],
     };
     this.tree = createTree<SpikeNode>(config);
@@ -277,6 +310,7 @@ export class OmLibraryTreeSpike extends LitElement {
     const level = item.getItemMeta().level;
     const props = item.getProps();
     const chevron = item.isExpanded() ? "▾" : "▸";
+    const loading = item.isLoading();
     return html`
       <div
         class="row"
@@ -286,12 +320,48 @@ export class OmLibraryTreeSpike extends LitElement {
         ${item.isFolder()
           ? html`<span class="chevron">${chevron}</span>`
           : html`<span class="leaf-dot">•</span>`}
-        <span class=${item.isLoading() ? "loading" : ""}>
-          ${item.isLoading() ? "Loading…" : item.getItemName()}
+        ${this.renderIcon(item)}
+        <span class=${loading ? "loading" : ""}>
+          ${loading ? "Loading…" : this.highlight(item.getItemName())}
         </span>
       </div>
     `;
   };
+
+  // Stand-in for the real per-class Modelica icon: a folder-ish "P" for a
+  // package, a "B" chip for a leaf block. The production component drops the
+  // lazily-fetched class SVG here instead.
+  private renderIcon(item: ItemInstance<SpikeNode>): TemplateResult {
+    const folder = item.isFolder();
+    return html`<span
+      class="icon"
+      style="background:${folder ? "#c48a12" : "#2f6feb"}"
+      >${folder ? "P" : "B"}</span
+    >`;
+  }
+
+  // Wraps the matched substring in <mark> so search hits read at a glance.
+  private highlight(label: string): TemplateResult {
+    const q = this.tree.getSearchValue();
+    if (!q) return html`${label}`;
+    const at = label.toLowerCase().indexOf(q.toLowerCase());
+    if (at < 0) return html`${label}`;
+    return html`${label.slice(0, at)}<mark>${label.slice(
+      at,
+      at + q.length,
+    )}</mark>${label.slice(at + q.length)}`;
+  }
+
+  private onSearch(event: Event): void {
+    const value = (event.target as HTMLInputElement).value;
+    if (value) {
+      if (this.tree.isSearchOpen()) this.tree.setSearch(value);
+      else this.tree.openSearch(value);
+    } else {
+      this.tree.closeSearch();
+    }
+    this.requestUpdate();
+  }
 
   private onCanvasDragOver(event: DragEvent): void {
     event.preventDefault();
@@ -349,7 +419,11 @@ export class OmLibraryTreeSpike extends LitElement {
   }
 
   render(): TemplateResult {
-    const items = this.tree.getItems();
+    // Search only matches already-loaded nodes; the production component pairs
+    // this with the flat `searchAll` OMC path for whole-library search.
+    const searching = this.tree.getSearchValue().length > 0;
+    const matches = searching ? this.tree.getSearchMatchingItems() : [];
+    const items = searching ? matches : this.tree.getItems();
     const dropLabel = this.lastDrop
       ? `${this.lastDrop.name} @ (${Math.round(this.lastDrop.x)}, ${Math.round(
           this.lastDrop.y,
@@ -357,9 +431,18 @@ export class OmLibraryTreeSpike extends LitElement {
       : "— drag a row onto the canvas →";
     return html`
       <div class="stats">
+        <input
+          class="search"
+          type="search"
+          placeholder="Search loaded nodes…"
+          @input=${this.onSearch}
+        />
         <span>Potential nodes: <strong>${this.totalNodes}</strong></span>
-        <span>Rows in DOM: <strong>${this.renderedRows}</strong></span>
-        <span>Flat visible: <strong>${items.length}</strong></span>
+        ${searching
+          ? html`<span>Matches: <strong>${matches.length}</strong></span>`
+          : html`<span
+              >Rows in DOM: <strong>${this.renderedRows}</strong></span
+            >`}
         <span>Last drop: <strong>${dropLabel}</strong></span>
       </div>
       <div class="split">
