@@ -35,6 +35,9 @@ import type WaTreeItem from "@awesome.me/webawesome/dist/components/tree-item/tr
 
 import { omTokens } from "@dicode/ui-common";
 
+import { iconStyleFor } from "../library-tree/restriction-icon.js";
+import { isExpandable } from "../library-tree/library-tree-model.js";
+
 /**
  * Modelica class restrictions surfaced in the palette. Mirrors OMC's
  * `getClassRestriction` output, plus an `"unknown"` fallback for
@@ -114,61 +117,6 @@ export interface LibraryBrowserDataSource {
 }
 
 const SEARCH_DEBOUNCE_MS = 200;
-
-/**
- * Tree expansion is restricted to `package` (the only Modelica
- * restriction whose primary role is to *contain* other classes). The
- * `unknown` fallback is also treated as expandable so a data source
- * that hasn't resolved the kind yet doesn't accidentally orphan its
- * children.
- */
-function isExpandable(r: LibraryClassRestriction): boolean {
-  return r === "package" || r === "unknown";
-}
-
-interface IconStyle {
-  /** Single-character glyph rendered in the badge. */
-  glyph: string;
-  /** Foreground colour of the glyph. */
-  fg: string;
-  /** Background colour of the badge. */
-  bg: string;
-}
-
-/**
- * Map a Modelica restriction to a coloured letter badge. Colours
- * follow loose VSCode symbol-kind conventions: blue=package,
- * purple=class/model, green=block, orange=connector, red=function,
- * yellow=record/type.
- */
-function iconStyleFor(r: LibraryClassRestriction): IconStyle {
-  switch (r) {
-    case "package":
-      return { glyph: "P", fg: "#fff", bg: "#3b82f6" };
-    case "model":
-      return { glyph: "M", fg: "#fff", bg: "#7c3aed" };
-    case "block":
-      return { glyph: "B", fg: "#fff", bg: "#10b981" };
-    case "class":
-      return { glyph: "C", fg: "#fff", bg: "#64748b" };
-    case "connector":
-    case "expandable connector":
-      return { glyph: "K", fg: "#fff", bg: "#f59e0b" };
-    case "record":
-      return { glyph: "R", fg: "#1f1f1f", bg: "#fde68a" };
-    case "function":
-    case "operator function":
-      return { glyph: "ƒ", fg: "#fff", bg: "#ef4444" };
-    case "type":
-      return { glyph: "T", fg: "#1f1f1f", bg: "#bae6fd" };
-    case "operator":
-    case "operator record":
-      return { glyph: "O", fg: "#fff", bg: "#0ea5e9" };
-    case "unknown":
-    default:
-      return { glyph: "?", fg: "#fff", bg: "#9ca3af" };
-  }
-}
 
 /**
  * Tree-item state held in light DOM. `qualified` and `restriction` are

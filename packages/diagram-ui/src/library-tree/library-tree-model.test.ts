@@ -1,0 +1,141 @@
+import { describe, expect, it, vi } from "vitest";
+
+import type {
+  LibraryBrowserDataSource,
+  LibraryClassInfo,
+} from "../library-browser/library-browser.component.js";
+import {
+  LIBRARY_TREE_ROOT_ID,
+  createLibraryDataLoader,
+  isExpandable,
+  leafLabel,
+  matchLabel,
+  nodeFromInfo,
+  rootNode,
+  type LibraryTreeNode,
+} from "./library-tree-model.js";
+
+function source(
+  overrides: Partial<LibraryBrowserDataSource> = {},
+): LibraryBrowserDataSource {
+  return {
+    listChildren: vi.fn(async () => []),
+    searchAll: vi.fn(async () => []),
+    ...overrides,
+  };
+}
+
+describe("isExpandable", () => {
+  it("treats package and unknown as containers, leaves otherwise", () => {
+    expect(isExpandable("package")).toBe(true);
+    expect(isExpandable("unknown")).toBe(true);
+    expect(isExpandable("block")).toBe(false);
+    expect(isExpandable("function")).toBe(false);
+  });
+});
+
+describe("leafLabel", () => {
+  it("returns the trailing dotted segment", () => {
+    expect(leafLabel("Modelica.Blocks.Math.Gain")).toBe("Gain");
+    expect(leafLabel("Complex")).toBe("Complex");
+  });
+});
+
+describe("nodeFromInfo", () => {
+  it("builds a node with className, leaf label, and restriction", () => {
+    const info: LibraryClassInfo = {
+      qualified: "Modelica.Blocks.Math.Gain",
+      restriction: "block",
+    };
+    expect(nodeFromInfo(info)).toEqual({
+      className: "Modelica.Blocks.Math.Gain",
+      label: "Gain",
+      restriction: "block",
+    });
+  });
+});
+
+describe("createLibraryDataLoader", () => {
+  it("maps the synthetic root id to listChildren(null)", async () => {
+    const listChildren = vi.fn(async () => [
+      { qualified: "Modelica", restriction: "package" } as LibraryClassInfo,
+    ]);
+    const cache = new Map<string, LibraryTreeNode>();
+    const loader = createLibraryDataLoader(source({ listChildren }), cache);
+
+    const children = await loader.getChildrenWithData(LIBRARY_TREE_ROOT_ID);
+
+    expect(listChildren).toHaveBeenCalledWith(null);
+    expect(children).toEqual([
+      {
+        id: "Modelica",
+        data: nodeFromInfo({ qualified: "Modelica", restriction: "package" }),
+      },
+    ]);
+  });
+
+  it("lists a parent's children by its own id and caches them", async () => {
+    const listChildren = vi.fn(async () => [
+      {
+        qualified: "Modelica.Blocks",
+        restriction: "package",
+      } as LibraryClassInfo,
+    ]);
+    const cache = new Map<string, LibraryTreeNode>();
+    const loader = createLibraryDataLoader(source({ listChildren }), cache);
+
+    await loader.getChildrenWithData("Modelica");
+
+    expect(listChildren).toHaveBeenCalledWith("Modelica");
+    expect(cache.get("Modelica.Blocks")).toEqual({
+      className: "Modelica.Blocks",
+      label: "Blocks",
+      restriction: "package",
+    });
+  });
+
+  it("prefixes bare child names with the parent path", async () => {
+    const listChildren = vi.fn(async () => [
+      { qualified: "Gain", restriction: "block" } as LibraryClassInfo,
+    ]);
+    const cache = new Map<string, LibraryTreeNode>();
+    const loader = createLibraryDataLoader(source({ listChildren }), cache);
+
+    const [child] = await loader.getChildrenWithData("Modelica.Blocks.Math");
+
+    expect(child?.id).toBe("Modelica.Blocks.Math.Gain");
+  });
+
+  it("resolves the root node and cached / fallback items via getItem", async () => {
+    const cache = new Map<string, LibraryTreeNode>();
+    const loader = createLibraryDataLoader(source(), cache);
+    cache.set("Modelica", {
+      className: "Modelica",
+      label: "Modelica",
+      restriction: "package",
+    });
+
+    expect(loader.getItem(LIBRARY_TREE_ROOT_ID)).toEqual(rootNode());
+    expect(loader.getItem("Modelica").restriction).toBe("package");
+    expect(loader.getItem("Not.Listed")).toEqual({
+      className: "Not.Listed",
+      label: "Listed",
+      restriction: "unknown",
+    });
+  });
+});
+
+describe("matchLabel", () => {
+  it("splits a label around a case-insensitive match", () => {
+    expect(matchLabel("Integrator", "gra")).toEqual({
+      before: "Inte",
+      match: "gra",
+      after: "tor",
+    });
+  });
+
+  it("returns null when the query is empty or absent", () => {
+    expect(matchLabel("Gain", "")).toBeNull();
+    expect(matchLabel("Gain", "xyz")).toBeNull();
+  });
+});
