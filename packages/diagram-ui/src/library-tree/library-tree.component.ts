@@ -23,6 +23,7 @@
 
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { styleMap } from "lit/directives/style-map.js";
 import { unsafeSVG } from "lit/directives/unsafe-svg.js";
 
 import {
@@ -126,6 +127,7 @@ export class OmLibraryTree extends LitElement {
 
       .indent {
         flex: 0 0 auto;
+        width: calc(var(--om-tree-level, 0) * var(--om-tree-indent));
       }
       .chevron,
       .leaf-dot {
@@ -300,7 +302,7 @@ export class OmLibraryTree extends LitElement {
       >
         <span
           class="indent"
-          style=${`width: calc(${level} * var(--om-tree-indent))`}
+          style=${styleMap({ "--om-tree-level": String(level) })}
         ></span>
         ${item.isFolder()
           ? html`<span class="chevron">${item.isExpanded() ? "▾" : "▸"}</span>`
@@ -379,12 +381,13 @@ export class OmLibraryTree extends LitElement {
     const style = iconStyleFor(restriction);
     return html`<span
       class="icon"
-      style=${`color: ${style.fg}; background: ${style.bg};`}
+      style=${styleMap({ color: style.fg, background: style.bg })}
       title=${restriction}
       >${style.glyph}</span
     >`;
   }
 
+  /** Fire-and-cache a lazy icon fetch for `className`, at most once. */
   private requestIcon(className: string): void {
     if (!className) return;
     if (!this.dataSource?.iconSvg) return;

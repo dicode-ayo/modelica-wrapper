@@ -62,6 +62,8 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   throw new Error("waitFor: condition never became true");
 }
 
+// happy-dom doesn't render `<lit-virtualizer>`, so the tree/data invariants
+// are asserted through the (private) tree instance rather than the DOM.
 function treeOf(el: OmLibraryTree): TreeInstance<LibraryTreeNode> {
   const tree = (el as unknown as { tree?: TreeInstance<LibraryTreeNode> }).tree;
   if (!tree) throw new Error("tree not initialised");

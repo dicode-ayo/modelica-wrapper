@@ -42,13 +42,13 @@
     "@dicode/diagram-svg": "workspace:*",
     "@dicode/omc-client": "workspace:*",
     "@dicode/ui-common": "workspace:*",
+    "@headless-tree/core": "^1.7.0",
+    "@lit-labs/virtualizer": "^2.1.1",
     "@lit/context": "^1.1.4",
     "lit": "^3.2.0",
     "pixi.js": "^8.19.0"
   },
   "devDependencies": {
-    "@headless-tree/core": "^1.7.0",
-    "@lit-labs/virtualizer": "^2.1.1",
     "@playwright/test": "1.60.0",
     "@storybook/addon-essentials": "^8.4.0",
     "@storybook/web-components": "^8.4.0",
