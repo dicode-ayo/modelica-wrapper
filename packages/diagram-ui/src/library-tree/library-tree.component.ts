@@ -312,11 +312,32 @@ export class OmLibraryTree extends LitElement {
         ${item.isFolder()
           ? html`<span class="chevron">${item.isExpanded() ? "▾" : "▸"}</span>`
           : html`<span class="leaf-dot">•</span>`}
-        ${loading ? nothing : this.renderIcon(node.className, node.restriction)}
-        <span class="label ${loading ? "loading" : ""}"
-          >${loading ? "Loading…" : node.label}</span
-        >
+        ${loading
+          ? html`<span class="label loading">Loading…</span>`
+          : this.renderClassContent(
+              node.className,
+              node.restriction,
+              node.label,
+            )}
       </div>
+    `;
+  }
+
+  /** Icon + label (+ optional highlighted qualifier), shared by both rows. */
+  private renderClassContent(
+    className: string,
+    restriction: LibraryClassRestriction,
+    label: string,
+    opts: { highlight?: boolean; qualifier?: string } = {},
+  ): TemplateResult {
+    return html`
+      ${this.renderIcon(className, restriction)}
+      <span class="label"
+        >${opts.highlight ? this.highlight(label) : label}</span
+      >
+      ${opts.qualifier
+        ? html`<span class="qualifier">${opts.qualifier}</span>`
+        : nothing}
     `;
   }
 
@@ -344,7 +365,6 @@ export class OmLibraryTree extends LitElement {
     const q = info.qualified;
     const dot = q.lastIndexOf(".");
     const head = dot >= 0 ? q.slice(0, dot) : "";
-    const tail = leafLabel(q);
     return html`
       <div
         class="row"
@@ -353,9 +373,10 @@ export class OmLibraryTree extends LitElement {
         @dragstart=${(e: DragEvent) => this.onSearchRowDragStart(e, q)}
       >
         <span class="leaf-dot">•</span>
-        ${this.renderIcon(q, info.restriction)}
-        <span class="label">${this.highlight(tail)}</span>
-        ${head ? html`<span class="qualifier">${head}</span>` : nothing}
+        ${this.renderClassContent(q, info.restriction, leafLabel(q), {
+          highlight: true,
+          qualifier: head,
+        })}
       </div>
     `;
   }
@@ -410,6 +431,8 @@ export class OmLibraryTree extends LitElement {
       });
   }
 
+  // Search rows aren't Headless Tree items, so they can't ride the tree's
+  // createForeignDragObject path; carry the same payload manually.
   private onSearchRowDragStart(event: DragEvent, className: string): void {
     if (!event.dataTransfer) return;
     event.dataTransfer.setData(
@@ -427,6 +450,9 @@ export class OmLibraryTree extends LitElement {
       this.searchTimer = null;
     }
     if (value.trim().length === 0) {
+      // Bump the sequence so an in-flight runSearch can't write its result
+      // back after the query was cleared.
+      this.searchSeq++;
       this.searchResults = null;
       this.searchError = null;
       this.searchLoading = false;

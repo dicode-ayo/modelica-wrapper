@@ -146,6 +146,43 @@ describe("<om-library-tree>", () => {
     expect(treeOf(el).getItems().length).toBeGreaterThanOrEqual(2);
   });
 
+  it("drops an in-flight search that resolves after the query is cleared", async () => {
+    let resolveSearch: (r: LibraryClassInfo[]) => void = () => {};
+    let searchCalled = false;
+    const source: LibraryBrowserDataSource = {
+      async listChildren(parent) {
+        return (
+          (parent === null ? FAKE_TREE["__ROOT__"] : FAKE_TREE[parent]) ?? []
+        );
+      },
+      searchAll: () =>
+        new Promise<LibraryClassInfo[]>((res) => {
+          searchCalled = true;
+          resolveSearch = res;
+        }),
+    };
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+
+    const input = el.shadowRoot?.querySelector<HTMLInputElement>(".search");
+    if (!input) throw new Error("search input missing");
+    input.value = "gain";
+    input.dispatchEvent(new Event("input"));
+    await waitFor(() => searchCalled);
+
+    input.value = "";
+    input.dispatchEvent(new Event("input"));
+    resolveSearch([
+      { qualified: "Modelica.Blocks.Math.Gain", restriction: "block" },
+    ]);
+    await flush();
+
+    const results = (
+      el as unknown as { searchResults: LibraryClassInfo[] | null }
+    ).searchResults;
+    expect(results).toBeNull();
+  });
+
   it("emits om-library-select with the activated className", async () => {
     const { source } = makeSource();
     const el = await mount(source);

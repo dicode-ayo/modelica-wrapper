@@ -104,6 +104,23 @@ export const omTokens: CSSResult = css`
     --om-tree-indent: 14px;
     --om-tree-font-size: 13px;
 
+    /* --- restriction badges ---
+     * Fallback letter-badge palette (loose VSCode symbol-kind colours) shown
+     * in front of a class until its rendered SVG icon arrives. Two glyph
+     * colours cover every badge; the background varies per restriction. */
+    --om-restriction-fg-on-dark: #fff;
+    --om-restriction-fg-on-light: #1f1f1f;
+    --om-restriction-package-bg: #3b82f6;
+    --om-restriction-model-bg: #7c3aed;
+    --om-restriction-block-bg: #10b981;
+    --om-restriction-class-bg: #64748b;
+    --om-restriction-connector-bg: #f59e0b;
+    --om-restriction-record-bg: #fde68a;
+    --om-restriction-function-bg: #ef4444;
+    --om-restriction-type-bg: #bae6fd;
+    --om-restriction-operator-bg: #0ea5e9;
+    --om-restriction-unknown-bg: #9ca3af;
+
     /* --- state --- */
     --om-disabled-opacity: 0.55;
   }
