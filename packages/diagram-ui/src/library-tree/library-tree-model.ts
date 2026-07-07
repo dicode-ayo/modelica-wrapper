@@ -1,7 +1,7 @@
 /**
  * Data-layer glue between the `LibraryBrowserDataSource` contract and
- * Headless Tree's `asyncDataLoaderFeature`. Kept free of Lit / DOM so the
- * lazy-load, node-building, and search-highlight logic is unit-testable
+ * Headless Tree's `asyncDataLoaderFeature`. Free of Lit / DOM so the
+ * lazy-load, node-building, and search-highlight logic can be exercised
  * with a plain mock data source.
  */
 
@@ -65,7 +65,7 @@ export function rootNode(): LibraryTreeNode {
 /**
  * Resolve a child row's fully qualified id. A data source may return either
  * fully qualified names or bare trailing segments; the latter are prefixed
- * with the parent path (mirrors `om-library-browser`'s lazy-load path).
+ * with the parent path.
  */
 function childId(parentId: string | null, info: LibraryClassInfo): string {
   if (parentId === null) return info.qualified;
