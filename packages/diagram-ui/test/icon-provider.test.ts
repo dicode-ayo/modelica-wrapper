@@ -1,21 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { NullEngine, Texture, type Scene } from "@babylonjs/core";
+import { Texture } from "pixi.js";
 
 import "../src/scene/scene.component.js";
 import "../src/icon-provider/icon-provider.component.js";
 import type { OmScene } from "../src/scene/scene.component.js";
 import type { OmIconProvider } from "../src/icon-provider/icon-provider.component.js";
 import type { IconLayer } from "@dicode/omc-client";
-
-function makeNullEngine(): NullEngine {
-  return new NullEngine({
-    renderWidth: 320,
-    renderHeight: 240,
-    textureSize: 256,
-    deterministicLockstep: false,
-    lockstepMaxSteps: 1,
-  });
-}
 
 let mounted: HTMLElement[] = [];
 
@@ -31,7 +21,7 @@ describe("<om-icon-provider>", () => {
     expect(customElements.get("om-icon-provider")).toBeDefined();
   });
 
-  it("resolves identical layers to the same texture via the context", async () => {
+  it("resolves identical layers to the same texture via the cache", async () => {
     const provider = document.createElement(
       "om-icon-provider",
     ) as OmIconProvider;
@@ -40,12 +30,10 @@ describe("<om-icon-provider>", () => {
       if (first === undefined) throw new Error("expected at least one layer");
       return `svg:${first.from}`;
     };
-    provider.rasterize = (svg: string, scene: Scene): Promise<Texture> =>
-      Promise.resolve(
-        new Texture(`data:text/plain,${svg}`, scene, true, false),
-      );
+    provider.rasterize = (): Promise<Texture> => Promise.resolve(new Texture());
     const scene = document.createElement("om-scene") as OmScene;
-    scene.engineFactory = () => makeNullEngine();
+    // Renderer-less: build the Pixi scene graph on the CPU, no GPU context.
+    scene.rendererFactory = () => null;
     provider.appendChild(scene);
     document.body.appendChild(provider);
     mounted.push(provider);
@@ -56,22 +44,14 @@ describe("<om-icon-provider>", () => {
     if (!cache) throw new Error("expected iconCache");
     const layersA: IconLayer[] = [{ from: "A", shapes: [] }];
     const layersB: IconLayer[] = [{ from: "B", shapes: [] }];
-    const ctx = scene.sceneContextValue;
-    if (!ctx) throw new Error("no scene context");
-    const a1 = await cache.resolve(ctx.scene, {
-      layers: layersA,
-    });
-    const a2 = await cache.resolve(ctx.scene, {
-      layers: layersA,
-    });
-    const b = await cache.resolve(ctx.scene, {
-      layers: layersB,
-    });
+    const a1 = await cache.resolve({ layers: layersA });
+    const a2 = await cache.resolve({ layers: layersA });
+    const b = await cache.resolve({ layers: layersB });
     expect(a1).toBe(a2);
     expect(a1).not.toBe(b);
   });
 
-  it("disposes the cache when removed from the DOM", async () => {
+  it("destroys the cache when removed from the DOM", async () => {
     const provider = document.createElement(
       "om-icon-provider",
     ) as OmIconProvider;

@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { TransformNode } from "@babylonjs/core";
 
 import type { PickerFn } from "../src/interaction/interaction-manager.js";
 import type { LayoutEvents } from "../src/graphical-layout/layout-events.js";
 import {
+  componentNode,
   mountLayout,
-  nullScene,
   sceneCanvas,
 } from "./harness/interaction-fixtures.js";
 
@@ -27,9 +26,8 @@ function click(canvas: HTMLCanvasElement, x: number): void {
 
 describe("<om-graphical-layout> click selection", () => {
   it("selects the clicked entity and replaces a prior selection", async () => {
-    const scene = nullScene();
-    const r1 = new TransformNode("om-component:R1", scene);
-    const c1 = new TransformNode("om-component:C1", scene);
+    const r1 = componentNode("R1");
+    const c1 = componentNode("C1");
     const picker: PickerFn = (cx) => (cx < 100 ? r1 : c1);
 
     const el = await mountLayout({ picker });

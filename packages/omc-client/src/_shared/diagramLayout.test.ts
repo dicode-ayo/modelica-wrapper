@@ -90,6 +90,44 @@ describe("DiagramLayoutSchema: round-trip on a minimal valid layout", () => {
     expect(parsed.connections[0]?.lhs.component).toBeUndefined();
     expect(parsed.connections[0]?.lhs.port).toBe("u");
   });
+
+  it("accepts a connection carrying full Line style fields (issue #219)", () => {
+    const layout = {
+      kind: "diagram" as const,
+      className: "Foo.Bar",
+      source: SOURCE,
+      iconLayers: [],
+      diagramLayers: [],
+      labels: [],
+      classes: {},
+      components: {},
+      connectors: {},
+      connections: [
+        {
+          lhs: { component: undefined, port: "u" },
+          rhs: { component: "sub", port: "y" },
+          waypoints: [
+            [0, 0],
+            [10, 10],
+          ],
+          color: [255, 0, 0],
+          thickness: 0.5,
+          pattern: "Dash",
+          arrow: ["None", "Filled"],
+          arrowSize: 3,
+          smooth: "Bezier",
+        },
+      ],
+    };
+    const parsed = DiagramLayoutSchema.parse(layout);
+    expect(parsed.connections[0]).toMatchObject({
+      thickness: 0.5,
+      pattern: "Dash",
+      arrow: ["None", "Filled"],
+      arrowSize: 3,
+      smooth: "Bezier",
+    });
+  });
 });
 
 describe("DiagramLayoutSchema: rejects malformed input", () => {

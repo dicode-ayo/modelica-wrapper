@@ -89,7 +89,8 @@ test("right-click selects the clicked component and opens its menu", async ({
   await page.mouse.click(centre.x, centre.y, { button: "right" });
 
   expect(await selection(page)).toContain(`c:${name}`);
-  await expect(page.locator("om-context-menu button")).toHaveCount(5);
+  // delete, rotate cw/ccw, flip h/v, and change-class for a single component.
+  await expect(page.locator("om-context-menu button")).toHaveCount(6);
 });
 
 test("right-click on empty space clears the selection and shows no menu", async ({

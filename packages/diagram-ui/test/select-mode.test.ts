@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LinesMesh, Scene, TransformNode } from "@babylonjs/core";
+import { Container, type Graphics } from "pixi.js";
 
 vi.mock("../src/base/overlay-mesh.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/base/overlay-mesh.js")>()),
   buildWireMesh: vi.fn(() => null),
-  buildRectMesh: vi.fn(() => ({}) as unknown as LinesMesh),
+  buildRectMesh: vi.fn(() => ({}) as unknown as Graphics),
   updateRectMesh: vi.fn(),
   disposeOverlayMesh: vi.fn(),
 }));
@@ -20,18 +20,11 @@ import {
   disposeOverlayMesh,
 } from "../src/base/overlay-mesh.js";
 
-const NO_SCENE = {} as Scene;
-const NO_PARENT = {} as TransformNode;
-
 function setup(): { mode: SelectMode; rects: DragEvents["rubberBand"][] } {
   const rects: DragEvents["rubberBand"][] = [];
-  const mode = new SelectMode(
-    (type, detail) => {
-      if (type === "rubberBand") rects.push(detail as DragEvents["rubberBand"]);
-    },
-    NO_SCENE,
-    NO_PARENT,
-  );
+  const mode = new SelectMode((type, detail) => {
+    if (type === "rubberBand") rects.push(detail as DragEvents["rubberBand"]);
+  }, new Container());
   return { mode, rects };
 }
 

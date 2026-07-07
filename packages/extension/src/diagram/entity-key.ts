@@ -15,6 +15,7 @@
 export type EntityKind =
   | "component"
   | "connector"
+  | "shape"
   | "edge"
   | "junction"
   | "label"
@@ -24,6 +25,7 @@ export type EntityKind =
 const KIND_PREFIX: Record<EntityKind, string> = {
   component: "c",
   connector: "k",
+  shape: "shape",
   edge: "edge",
   junction: "junc",
   label: "lbl",
@@ -57,9 +59,20 @@ export interface ConnectorKey {
   portName: string;
 }
 
+export interface ShapeKey {
+  kind: "shape";
+  /** Raw id — `${shapeKind}:${index}` (e.g. `rectangle:3`). */
+  nodeId: string;
+  /** Primitive kind: `rectangle` / `ellipse` / `line` / `polygon` / `text` / `bitmap`. */
+  shapeKind: string;
+  /** Index in the host's own-layer shape array. */
+  index: number;
+}
+
 export type EntityKey =
   | ComponentKey
   | ConnectorKey
+  | ShapeKey
   | EdgeKey
   | JunctionKey
   | LabelKey
@@ -89,6 +102,14 @@ export function parseEntityKey(key: string): EntityKey | null {
       portName: nodeId.slice(dot + 1),
     };
   }
+  if (kind === "shape") {
+    const colon = nodeId.lastIndexOf(":");
+    const shapeKind = colon < 0 ? nodeId : nodeId.slice(0, colon);
+    const indexStr = colon < 0 ? "" : nodeId.slice(colon + 1);
+    const n = Number(indexStr);
+    const index = indexStr !== "" && Number.isInteger(n) ? n : NaN;
+    return { kind, nodeId, shapeKind, index };
+  }
   return { kind, nodeId } as EntityKey;
 }
 
@@ -98,6 +119,10 @@ export function isComponentKey(key: EntityKey): key is ComponentKey {
 
 export function isConnectorKey(key: EntityKey): key is ConnectorKey {
   return key.kind === "connector";
+}
+
+export function isShapeKey(key: EntityKey): key is ShapeKey {
+  return key.kind === "shape";
 }
 
 export function isEdgeKey(key: EntityKey): key is EdgeKey {

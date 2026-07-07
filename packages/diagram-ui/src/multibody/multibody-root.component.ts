@@ -1,21 +1,19 @@
 import { LitElement, css, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
 import { consume, ContextProvider } from "@lit/context";
-import { TransformNode } from "@babylonjs/core";
+import { Container } from "pixi.js";
 
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
 import { parentNodeContext } from "../base/parent-node-context.js";
 
 /**
- * `<om-multibody-root>` — placeholder element for the MultiBody 3D
- * layer. Creates a TransformNode parented to the scene's `worldRoot`
- * (NOT `diagramRoot`, so its content lives in true 3D space alongside
- * the diagram plane). Provides itself as the `parentNodeContext` for
- * any descendant body elements.
+ * `<om-multibody-root>` — placeholder element for the MultiBody view.
+ * Creates a `Container` parented to the scene's `worldRoot` and provides
+ * itself as the `parentNodeContext` for any descendant body elements.
  *
- * The actual `<om-mb-box>` / `<om-mb-cylinder>` / `<om-mb-sphere>` /
- * file-mesh loader elements come in a follow-up. This commit is the
- * scaffolding so the seam exists alongside the camera-mode toggle.
+ * The 2D Pixi renderer cannot host true 3D geometry, so the MultiBody
+ * body elements remain deferred; this keeps the seam and the context
+ * provider in place.
  */
 @customElement("om-multibody-root")
 export class OmMultibodyRoot extends LitElement {
@@ -28,7 +26,7 @@ export class OmMultibodyRoot extends LitElement {
   @consume({ context: sceneContext, subscribe: true })
   private sceneCtx: SceneContext | null = null;
 
-  private ownNode: TransformNode | null = null;
+  private ownNode: Container | null = null;
   private readonly childContextProvider = new ContextProvider(this, {
     context: parentNodeContext,
     initialValue: null,
@@ -40,24 +38,22 @@ export class OmMultibodyRoot extends LitElement {
 
   override updated(): void {
     if (!this.ownNode && this.sceneCtx) {
-      this.ownNode = new TransformNode(
-        "om-multibody-root",
-        this.sceneCtx.scene,
-      );
-      this.ownNode.parent = this.sceneCtx.worldRoot;
-      this.childContextProvider.setValue(this.ownNode);
+      const node = new Container({ label: "om-multibody-root" });
+      this.sceneCtx.worldRoot.addChild(node);
+      this.ownNode = node;
+      this.childContextProvider.setValue(node);
     }
   }
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
-    this.ownNode?.dispose(false, true);
+    this.ownNode?.destroy({ children: true });
     this.ownNode = null;
     this.childContextProvider.setValue(null);
   }
 
-  /** Live root TransformNode for tests. */
-  get rootNode(): TransformNode | null {
+  /** Live root container for tests. */
+  get rootNode(): Container | null {
     return this.ownNode;
   }
 }

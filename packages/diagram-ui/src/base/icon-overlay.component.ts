@@ -3,7 +3,7 @@ import { customElement, property } from "lit/decorators.js";
 
 /**
  * `<om-icon-overlay>` — a single HTML element that paints the icon SVG
- * on top of the Babylon canvas in screen-space. Lives inside the
+ * on top of the renderer canvas in screen-space. Lives inside the
  * shadow DOM of `<om-component>` / `<om-connector>` (one per entity).
  *
  * Layout strategy:
@@ -64,8 +64,8 @@ export class OmIconOverlay extends LitElement {
 
   /**
    * Set the projected bounding box + rotation in one call. Marks the
-   * overlay visible. Cheap; intended to be called from a per-frame
-   * Babylon observer.
+   * overlay visible. Cheap; intended to be called per frame from the
+   * view-state reprojection.
    */
   setLayout(
     centerX: number,

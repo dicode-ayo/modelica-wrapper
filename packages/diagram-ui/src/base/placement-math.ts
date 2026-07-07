@@ -77,8 +77,6 @@ export function applyPlacement(
   const py2 = extent[1][1];
   const placementCx = (px1 + px2) / 2;
   const placementCy = (py1 + py2) / 2;
-  const placementW = Math.abs(px2 - px1) || 1;
-  const placementH = Math.abs(py2 - py1) || 1;
 
   const icon = coordSystemSize(iconCoordSystem);
 
@@ -90,8 +88,11 @@ export function applyPlacement(
 
   const rotationZ = ((placement.rotation ?? 0) * Math.PI) / 180;
 
-  const scaleX = placementW / icon.width;
-  const scaleY = placementH / icon.height;
+  // Signed scale: a negative value encodes a mirror flip (x2 < x1 = horizontal
+  // flip, y2 < y1 = vertical flip). The || fallback handles degenerate extents
+  // where px2 === px1 / py2 === py1.
+  const scaleX = (px2 - px1) / icon.width || 1;
+  const scaleY = (py2 - py1) / icon.height || 1;
 
   return {
     position: { x: positionX, y: positionY, z },

@@ -1,11 +1,11 @@
 /**
  * Pure resolution math for the zoom-dependent `<om-text>` texture. No
- * Babylon, no DOM — given the camera's orthographic extents and the
- * label's icon-space size, it derives the canvas edge (in texels) that
- * keeps texel density at or above one texel per on-screen device pixel.
+ * renderer, no DOM — given the view's `worldPerPixel` and the label's
+ * icon-space size, it derives the canvas edge (in texels) that keeps
+ * texel density at or above one texel per on-screen device pixel.
  *
  * The `<om-text>` plane spans `iconUnits` units in its parent's local
- * space. Under the orthographic camera those units land on screen at
+ * space. Under the orthographic projection those units land on screen at
  * `worldScale / worldPerPixel` device pixels each, so a label needs
  * `iconUnits * worldScale / worldPerPixel` texels along an edge to hit
  * 1 texel/pixel. The result is clamped to `[minEdge, maxEdge]`: the

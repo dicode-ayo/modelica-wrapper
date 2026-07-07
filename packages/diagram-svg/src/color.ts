@@ -23,7 +23,8 @@ export function colorToCss(
   return `rgb(${clampByte(r)},${clampByte(g)},${clampByte(b)})`;
 }
 
-function clampByte(n: number): number {
+/** Clamp a color channel to an integer in `0..255`; non-finite → `0`. */
+export function clampByte(n: number): number {
   if (!Number.isFinite(n)) return 0;
   if (n < 0) return 0;
   if (n > 255) return 255;

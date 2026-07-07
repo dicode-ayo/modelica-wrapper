@@ -1,12 +1,4 @@
-import {
-  Color3,
-  Mesh,
-  MeshBuilder,
-  StandardMaterial,
-  TransformNode,
-  Vector3,
-  type Scene,
-} from "@babylonjs/core";
+import { Container, Graphics, Rectangle } from "pixi.js";
 
 import { applyPlacement, type AppliedTransform } from "./placement-math.js";
 import { buildHitTube } from "./hit-tube.js";
@@ -16,7 +8,12 @@ import {
   SelectionOutline,
   VertexHandles,
 } from "./selection-overlay.js";
-import { requestSceneRender } from "../scene/render-scheduler.js";
+import {
+  clearEntityTag,
+  tagEntity,
+  type EntityKind,
+} from "../interaction/node-keys.js";
+import type { SceneContext } from "../scene/scene-context.js";
 import type {
   CoordinateSystem,
   Extent,
@@ -24,7 +21,8 @@ import type {
   Point,
 } from "@dicode/omc-client";
 
-const HIGHLIGHT_COLOR = new Color3(0.38, 0.6, 0.98);
+/** Hover band / hit-tube colour. */
+const HIGHLIGHT_COLOR = 0x6199fa;
 
 /** Pick tolerance (diagram units) of a poly shape's follow-the-line hit
  *  tube — matches the connection edge's `WAYPOINT_RADIUS`. */
@@ -33,6 +31,20 @@ const POLY_HIT_RADIUS = 1.5;
 /** Opacity the hit tube reveals at while the poly is hovered — matches the
  *  connection edge's hover band. */
 const HIT_HOVER_OPACITY = 0.3;
+
+/** Entity kinds carried by a shape-node transform. Other tags (handles,
+ *  ports, junctions) are produced elsewhere, so a name with one of those
+ *  prefixes is not treated as the transform's own identity. */
+const TRANSFORM_KINDS = new Set<EntityKind>([
+  "component",
+  "connector",
+  "shape",
+  "label",
+]);
+
+function isTransformKind(value: string): value is EntityKind {
+  return (TRANSFORM_KINDS as ReadonlySet<string>).has(value);
+}
 
 /**
  * Which bounding-box selection handles an entity offers. Poly shapes
@@ -45,27 +57,26 @@ export interface SelectionAffordances {
 }
 
 /**
- * Babylon-side wrapper for one entity element. Owns:
+ * Renderer-side wrapper for one entity element. Owns:
  *
- *  - `transform` — the entity TransformNode (anchored at the placement
+ *  - `transform` — the entity `Container` (anchored at the placement
  *    origin + extent centre in the parent's coord system; rotation
- *    pivots here).
- *  - `mesh` — a transparent "hit plane" sized to the icon extent. It's
- *    the picking + highlight target, so picks land on the full
- *    component box and the selection outline traces the extent
- *    regardless of which individual shape was clicked.
- *  - The selection outline + resize / rotate handles (the latter gated
- *    by `setSelectionAffordances`, so poly shapes show outline only).
+ *    pivots here). `sortableChildren` is on so child zIndex orders the
+ *    icon, outline and handles.
+ *  - `mesh` — a transparent "hit plane" `Graphics` sized to the icon
+ *    extent. It's the picking + highlight target, so picks land on the
+ *    full component box regardless of which individual shape was clicked.
+ *  - The selection outline + resize / rotate handles (the latter gated by
+ *    `setSelectionAffordances`, so poly shapes show outline only).
  *
  * Icon graphics themselves are NOT owned here — the parent
- * `OmShapeElement` renders one `<om-rectangle>` / `<om-text>` / …
- * per Modelica shape inside its template, and those primitive
- * components attach their meshes to this `transform` via Lit context.
+ * `OmShapeElement` renders one `<om-rectangle>` / `<om-text>` / … per
+ * Modelica shape inside its template, and those primitive components
+ * attach their `Graphics` to this `transform` via Lit context.
  */
 export class OmShapeNode {
-  readonly transform: TransformNode;
-  private readonly hitMaterial: StandardMaterial;
-  readonly mesh: Mesh;
+  readonly transform: Container;
+  readonly mesh: Graphics;
 
   private currentIconWidth = 1;
   private currentIconHeight = 1;
@@ -79,46 +90,69 @@ export class OmShapeNode {
   private outline: SelectionOutline | null = null;
   private vertices: Point[] | null = null;
   private vertexHandles: VertexHandles | null = null;
-  private hitTube: Mesh | null = null;
+  private hitTube: Graphics | null = null;
   private hovered = false;
-  private readonly scene: Scene;
 
-  constructor(scene: Scene, parent: TransformNode, name = "om-shape") {
-    this.scene = scene;
-    this.transform = new TransformNode(name, scene);
-    this.transform.parent = parent;
+  constructor(
+    private readonly ctx: SceneContext,
+    parent: Container,
+    name = "om-shape",
+  ) {
+    this.transform = new Container({ label: name });
+    this.transform.sortableChildren = true;
+    this.tagFromName(name);
+    // The parent orders entities (and host-shape z-bands) by zIndex; without
+    // sorting they would paint in insertion order and ignore `zOffset`.
+    parent.sortableChildren = true;
+    parent.addChild(this.transform);
 
-    // Hit plane: transparent, pickable, covers the icon extent. We
-    // intentionally leave the material at alpha = 0 (rather than
-    // `isVisible = false`) so the HighlightLayer's offscreen pass
-    // still renders the silhouette and produces a selection outline
-    // around the extent box.
-    this.hitMaterial = new StandardMaterial(`${name}-hit-mat`, scene);
-    this.hitMaterial.disableLighting = true;
-    this.hitMaterial.alpha = 0;
-    this.hitMaterial.specularColor = new Color3(0, 0, 0);
-    this.hitMaterial.emissiveColor = new Color3(0, 0, 0);
-    this.hitMaterial.backFaceCulling = false;
-
-    // Mesh name uses a `plane.<owner>` prefix so it doesn't satisfy
-    // `entityKeyForNode`'s `^om-(component|connector|label):` regex —
-    // the walker resolves the owner via the parent TransformNode
-    // (named `om-component:<id>` etc.) instead.
-    this.mesh = MeshBuilder.CreatePlane(
-      `plane.${name}`,
-      { width: 1, height: 1, sideOrientation: Mesh.DOUBLESIDE },
-      scene,
-    );
-    this.mesh.material = this.hitMaterial;
-    this.mesh.parent = this.transform;
-    this.mesh.isPickable = true;
+    // Hit plane: a unit rect filled at alpha 0 — invisible but pickable,
+    // scaled in `placeTransform` to cover the icon extent. The explicit
+    // `hitArea` keeps it grabbable despite the zero-alpha fill.
+    this.mesh = new Graphics({ label: `plane.${name}` });
+    this.mesh.rect(-0.5, -0.5, 1, 1).fill({ color: 0x000000, alpha: 0 });
+    this.mesh.hitArea = new Rectangle(-0.5, -0.5, 1, 1);
+    this.mesh.eventMode = "static";
+    this.transform.addChild(this.mesh);
   }
 
   /**
-   * Applies a placement (extent + optional origin + optional rotation
-   * in degrees) and resizes the hit plane to the icon coordinate
-   * system. Returns the resolved transform so callers (and tests) can
-   * read the icon-local origin and size.
+   * Rename the entity transform and re-tag its identity. The `name` is the
+   * canonical `om-<kind>:<nodeId>` form; editable shapes call this when
+   * their kind/index changes.
+   */
+  setEntityName(name: string): void {
+    this.transform.label = name;
+    this.mesh.label = `plane.${name}`;
+    this.tagFromName(name);
+  }
+
+  /** Tag the transform's identity from its canonical `om-<kind>:<nodeId>`
+   *  name. A name without a `:` (e.g. the bare `om-component` fallback)
+   *  stays untagged, so the picker resolves the owner via an ancestor. */
+  private tagFromName(name: string): void {
+    clearEntityTag(this.transform);
+    if (!name.startsWith("om-")) {
+      return;
+    }
+    const rest = name.slice(3);
+    const colon = rest.indexOf(":");
+    if (colon <= 0) {
+      return;
+    }
+    const kind = rest.slice(0, colon);
+    const nodeId = rest.slice(colon + 1);
+    if (nodeId === "" || !isTransformKind(kind)) {
+      return;
+    }
+    tagEntity(this.transform, kind, nodeId);
+  }
+
+  /**
+   * Applies a placement (extent + optional origin + optional rotation in
+   * degrees) and resizes the hit plane to the icon coordinate system.
+   * Returns the resolved transform so callers (and tests) can read the
+   * icon-local origin and size.
    */
   setPlacement(
     placement: Placement,
@@ -126,7 +160,9 @@ export class OmShapeNode {
     zOffset: number = 0,
   ): AppliedTransform {
     const t = applyPlacement(placement, iconCoordSystem, zOffset);
-    this.transform.rotation.set(0, 0, t.rotationZ);
+    // The flip lives on the diagram root, so Modelica's CCW-positive degrees
+    // map straight to Pixi `rotation` with no sign negation.
+    this.transform.rotation = t.rotationZ;
     this.placeTransform(
       t.position.x,
       t.position.y,
@@ -159,7 +195,7 @@ export class OmShapeNode {
     const h = Math.abs(extent[1][1] - extent[0][1]) || 1;
     const cx = (extent[0][0] + extent[1][0]) / 2;
     const cy = (extent[0][1] + extent[1][1]) / 2;
-    this.transform.rotation.set(0, 0, (rotation * Math.PI) / 180);
+    this.transform.rotation = (rotation * Math.PI) / 180;
     this.placeTransform(
       origin?.[0] ?? 0,
       origin?.[1] ?? 0,
@@ -184,8 +220,11 @@ export class OmShapeNode {
     hitCx: number,
     hitCy: number,
   ): void {
-    this.transform.position.set(posX, posY, posZ);
-    this.transform.scaling.set(scaleX, scaleY, 1);
+    this.transform.position.set(posX, posY);
+    // posZ follows the painter convention where more-negative is nearer the
+    // viewer; zIndex is the opposite (higher draws in front), so negate.
+    this.transform.zIndex = -posZ;
+    this.transform.scale.set(scaleX, scaleY);
 
     const sizeChanged =
       this.currentIconWidth !== hitW || this.currentIconHeight !== hitH;
@@ -194,11 +233,11 @@ export class OmShapeNode {
     if (sizeChanged) {
       this.currentIconWidth = hitW;
       this.currentIconHeight = hitH;
-      this.mesh.scaling.set(hitW, hitH, 1);
+      this.mesh.scale.set(hitW, hitH);
     }
     this.currentIconCx = hitCx;
     this.currentIconCy = hitCy;
-    this.mesh.position.set(hitCx, hitCy, 0);
+    this.mesh.position.set(hitCx, hitCy);
 
     // Handles + outline trace the extent box, so they must follow its size
     // AND its centre. Rotation rebases the origin, which shifts the centre
@@ -223,7 +262,7 @@ export class OmShapeNode {
         this.currentIconCy,
       );
     }
-    requestSceneRender(this.scene);
+    this.ctx.requestRender();
   }
 
   /**
@@ -241,30 +280,30 @@ export class OmShapeNode {
     this.vertices = points;
     this.vertexHandles?.dispose();
     this.vertexHandles = null;
-    this.hitTube?.dispose();
+    this.hitTube?.destroy();
     this.hitTube = null;
 
     if (points && points.length >= 2) {
       // The bbox hit plane gives way to a tube tracing the segments; the
       // identity poly frame means a point is already a local coordinate.
-      this.mesh.isPickable = false;
+      this.mesh.eventMode = "none";
       this.hitTube = buildHitTube(
-        this.scene,
-        `hit.${this.transform.name}`,
-        points.map(([x, y]) => new Vector3(x, y, -0.01)),
+        `hit.${this.transform.label}`,
+        points,
         POLY_HIT_RADIUS,
         HIGHLIGHT_COLOR,
       );
-      this.hitTube.parent = this.transform;
+      this.hitTube.alpha = this.hovered ? HIT_HOVER_OPACITY : 0;
+      this.transform.addChild(this.hitTube);
     } else {
-      this.mesh.isPickable = true;
+      this.mesh.eventMode = "static";
     }
     this.syncSelectionOverlay();
   }
 
   private createHandles(): ResizeHandles {
     return new ResizeHandles(
-      this.scene,
+      this.ctx,
       this.transform,
       this.currentIconWidth,
       this.currentIconHeight,
@@ -275,7 +314,7 @@ export class OmShapeNode {
 
   private createRotateHandle(): RotateHandle {
     return new RotateHandle(
-      this.scene,
+      this.ctx,
       this.transform,
       this.currentIconWidth,
       this.currentIconHeight,
@@ -303,14 +342,15 @@ export class OmShapeNode {
     }
     this.hovered = hovered;
     if (this.hitTube) {
-      this.hitTube.visibility = hovered ? HIT_HOVER_OPACITY : 0;
+      this.hitTube.alpha = hovered ? HIT_HOVER_OPACITY : 0;
+      this.ctx.requestRender();
     }
     this.syncSelectionOverlay();
   }
 
   /**
-   * Configures which bounding-box handles this entity offers. Applied
-   * live, so toggling affordances on an already-selected entity hides the
+   * Configures which bounding-box handles this entity offers. Applied live,
+   * so toggling affordances on an already-selected entity hides the
    * now-disallowed handles. A poly shape passes `{resize:false,
    * rotate:false}` to show only the outline.
    */
@@ -335,7 +375,7 @@ export class OmShapeNode {
 
     if (showOutline && !this.outline) {
       this.outline = new SelectionOutline(
-        this.scene,
+        this.ctx,
         this.transform,
         this.currentIconWidth,
         this.currentIconHeight,
@@ -360,7 +400,7 @@ export class OmShapeNode {
       (this.selected || this.hovered) && this.vertices !== null;
     if (showVertices && !this.vertexHandles) {
       this.vertexHandles = new VertexHandles(
-        this.scene,
+        this.ctx,
         this.transform,
         this.vertices ?? [],
         this.ownerId(),
@@ -370,11 +410,11 @@ export class OmShapeNode {
   }
 
   /** The owning shape's id (`<shapeKind>:<index>`) for vertex keys, taken
-   *  from the entity transform name (`om-shape:<shapeKind>:<index>`). A name
-   *  without the `om-<kind>:` prefix yields `""`, which fails closed at the
-   *  key parse rather than minting a bogus owner. */
+   *  from the entity transform label (`om-shape:<shapeKind>:<index>`). A
+   *  label without the `om-<kind>:` prefix yields `""`, which fails closed
+   *  at the key parse rather than minting a bogus owner. */
   private ownerId(): string {
-    const name = this.transform.name;
+    const name = this.transform.label;
     const colon = name.indexOf(":");
     return colon < 0 ? "" : name.slice(colon + 1);
   }
@@ -385,8 +425,8 @@ export class OmShapeNode {
 
   /**
    * Resize the selection handles (corner resize + rotate) to a constant
-   * screen-pixel size. Call when the camera's zoom or canvas aspect
-   * changes. No-op when handles are not currently visible.
+   * screen-pixel size. Call when the zoom or canvas aspect changes. No-op
+   * when handles are not currently visible.
    */
   rescaleSelectionHandles(): void {
     this.resizeHandles?.rescale();
@@ -403,10 +443,9 @@ export class OmShapeNode {
     this.rotateHandle = null;
     this.vertexHandles?.dispose();
     this.vertexHandles = null;
-    this.hitTube?.dispose();
+    this.hitTube?.destroy();
     this.hitTube = null;
-    this.mesh.dispose();
-    this.hitMaterial.dispose();
-    this.transform.dispose();
+    this.transform.destroy({ children: true });
+    this.ctx.requestRender();
   }
 }

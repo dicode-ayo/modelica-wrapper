@@ -1,4 +1,9 @@
-import type { Point } from "@dicode/omc-client";
+import type {
+  ConnectionEndpoint,
+  ConnectionLayout,
+  DiagramLayout,
+  Point,
+} from "@dicode/omc-client";
 
 /**
  * Reference-tolerant content equality for waypoint arrays. After an OMC
@@ -68,4 +73,103 @@ export function orthogonalRoute(
     [x2, midY],
     [x2, y2],
   ];
+}
+
+/**
+ * Diagram-space centre of a connection endpoint, derived from the layout
+ * data alone (no DOM query).
+ *
+ * For standalone host-class ports (`ep.component === undefined`) the
+ * placement is already in diagram coordinates; for sub-component ports the
+ * icon-space position is projected into the component's diagram-space frame
+ * using the component's extent + rotation.
+ *
+ * Returns `null` when the endpoint can't be resolved (missing component,
+ * missing class, missing port definition).
+ */
+export function endpointCentreFromLayout(
+  layout: DiagramLayout,
+  ep: ConnectionEndpoint,
+): { x: number; y: number } | null {
+  if (ep.component === undefined) {
+    const conn = layout.connectors[ep.port];
+    if (!conn) return null;
+    const [[x1, y1], [x2, y2]] = conn.placement.extent;
+    const ox = conn.placement.origin?.[0] ?? 0;
+    const oy = conn.placement.origin?.[1] ?? 0;
+    return { x: ox + (x1 + x2) / 2, y: oy + (y1 + y2) / 2 };
+  }
+
+  const comp = layout.components[ep.component];
+  if (!comp) return null;
+  const classDef = layout.classes[comp.classRef];
+  if (!classDef) return null;
+  const portDef = classDef.connectors[ep.port];
+  if (!portDef) return null;
+
+  const ce = comp.placement.extent;
+  const cox = comp.placement.origin?.[0] ?? 0;
+  const coy = comp.placement.origin?.[1] ?? 0;
+  const compCx = cox + (ce[0][0] + ce[1][0]) / 2;
+  const compCy = coy + (ce[0][1] + ce[1][1]) / 2;
+  const compW = Math.abs(ce[1][0] - ce[0][0]) || 1;
+  const compH = Math.abs(ce[1][1] - ce[0][1]) || 1;
+  const compRot = ((comp.placement.rotation ?? 0) * Math.PI) / 180;
+
+  const ics = classDef.coordinateSystem;
+  const iconExtent = ics?.extent;
+  const iconP0 = iconExtent?.[0];
+  const iconP1 = iconExtent?.[1];
+  const rawIconW =
+    iconP0 !== undefined && iconP1 !== undefined
+      ? Math.abs((iconP1[0] ?? 100) - (iconP0[0] ?? -100))
+      : 200;
+  const rawIconH =
+    iconP0 !== undefined && iconP1 !== undefined
+      ? Math.abs((iconP1[1] ?? 100) - (iconP0[1] ?? -100))
+      : 200;
+  const iconW = rawIconW || 200;
+  const iconH = rawIconH || 200;
+
+  const scaleX = compW / iconW;
+  const scaleY = compH / iconH;
+
+  const pe = portDef.placement.extent;
+  const pox = portDef.placement.origin?.[0] ?? 0;
+  const poy = portDef.placement.origin?.[1] ?? 0;
+  const portIconX = pox + (pe[0][0] + pe[1][0]) / 2;
+  const portIconY = poy + (pe[0][1] + pe[1][1]) / 2;
+
+  const localX = portIconX * scaleX;
+  const localY = portIconY * scaleY;
+  const cosR = Math.cos(compRot);
+  const sinR = Math.sin(compRot);
+
+  return {
+    x: compCx + localX * cosR - localY * sinR,
+    y: compCy + localX * sinR + localY * cosR,
+  };
+}
+
+/**
+ * Resolves the path to render for a connection.
+ *
+ * When `conn.waypoints` has two or more points it is returned as-is.
+ * When it is empty the two endpoint centres are computed from the layout
+ * and an orthogonal route is generated. Returns an empty array only when
+ * both endpoints can't be resolved.
+ */
+export function resolveConnectionWaypoints(
+  layout: DiagramLayout,
+  conn: ConnectionLayout,
+): Point[] {
+  if (conn.waypoints.length >= 2) {
+    return conn.waypoints;
+  }
+  const from = endpointCentreFromLayout(layout, conn.lhs);
+  const to = endpointCentreFromLayout(layout, conn.rhs);
+  if (!from || !to) {
+    return conn.waypoints;
+  }
+  return orthogonalRoute(from, to);
 }
