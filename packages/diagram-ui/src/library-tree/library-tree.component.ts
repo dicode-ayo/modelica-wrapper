@@ -101,12 +101,13 @@ export class OmLibraryTree extends LitElement {
         border-radius: var(--om-radius-md);
       }
 
-      /* flex-basis 0 (not auto) so the scroll box sizes to the slot rather
-       * than to its full content height. */
+      /* The scroller attribute (set on the element) makes the virtualizer its
+       * own scroll container — without it a virtualizer scrolls an ancestor and
+       * sizes to full content, so it can't bound itself. flex-basis 0 sizes the
+       * scroll box to the slot, not its content. */
       lit-virtualizer {
         flex: 1 1 0;
         min-height: 0;
-        overflow: auto;
       }
 
       .empty,
@@ -129,6 +130,10 @@ export class OmLibraryTree extends LitElement {
         white-space: nowrap;
         cursor: grab;
         user-select: none;
+        /* Fill the row so hover / selection span its full width, not just the
+         * icon+label content. */
+        width: 100%;
+        box-sizing: border-box;
       }
       .row:hover {
         background: var(--vscode-list-hoverBackground);
@@ -175,6 +180,12 @@ export class OmLibraryTree extends LitElement {
         height: 100%;
       }
 
+      .label {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
       .label.loading {
         opacity: var(--om-disabled-opacity);
         font-style: italic;
@@ -291,6 +302,7 @@ export class OmLibraryTree extends LitElement {
     }
     return html`
       <lit-virtualizer
+        scroller
         .items=${items}
         .keyFunction=${(item: ItemInstance<LibraryTreeNode>) => item.getId()}
         .renderItem=${(item: ItemInstance<LibraryTreeNode>) =>
@@ -359,6 +371,7 @@ export class OmLibraryTree extends LitElement {
     }
     return html`
       <lit-virtualizer
+        scroller
         .items=${results}
         .keyFunction=${(info: LibraryClassInfo) => info.qualified}
         .renderItem=${(info: LibraryClassInfo) => this.renderSearchRow(info)}
