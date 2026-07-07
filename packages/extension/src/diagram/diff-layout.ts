@@ -24,11 +24,13 @@ export type ConnectionLineStyle = LineStyle;
  * call (see `apply-edits.ts`).
  *
  * Scope (v1):
- *   - component placement extent changes  → `componentPlacement`
- *   - component deletion                  → `componentDeleted`
- *   - connection deletion                 → `connectionDeleted`
- *   - new connection                      → `connectionAdded`
- *   - waypoint changes on existing connection → `connectionWaypoints`
+ *   - component placement extent changes              → `componentPlacement`
+ *   - component deletion                              → `componentDeleted`
+ *   - standalone connector placement extent changes   → `componentPlacement`
+ *   - standalone connector deletion                   → `componentDeleted`
+ *   - connection deletion                             → `connectionDeleted`
+ *   - new connection                                  → `connectionAdded`
+ *   - waypoint changes on existing connection         → `connectionWaypoints`
  *     (needed so a component drag's locally-re-routed connections
  *     don't snap back to their old shape after the OMC round-trip;
  *     also fires on a style-only change so `lineAnnotation` re-emits the
@@ -39,12 +41,12 @@ export type ConnectionLineStyle = LineStyle;
  *     `pins[3].p → pins[2].p`, while the other endpoint and the
  *     waypoints carry over; routed in-place via `updateConnectionNames`
  *     instead of the more-disruptive delete+add — see issue #26)
- *   - own-class icon/diagram shape add/modify/delete → `writeClassGraphics`
+ *   - own-class icon/diagram shape add/modify/delete  → `writeClassGraphics`
  *     (positional identity; see `diffGraphics` for the insert/delete caveat)
  *
  * Out of scope (deferred):
  *   - component class swaps
- *   - connector mutations (rare in practice)
+ *   - connector additions (requires a type-picker UI)
  */
 export type LayoutEdit =
   | {
@@ -112,6 +114,28 @@ export function diffLayouts(
   // dragging gesture in a future stage.
   for (const [name, before] of Object.entries(prev.components)) {
     const after = next.components[name];
+    if (!after) {
+      edits.push({ kind: "componentDeleted", componentName: name });
+      continue;
+    }
+    const placementChanged =
+      !deepEqual(before.placement.extent, after.placement.extent) ||
+      (before.placement.rotation ?? 0) !== (after.placement.rotation ?? 0);
+    if (placementChanged) {
+      edits.push({
+        kind: "componentPlacement",
+        componentName: name,
+        componentClass: after.classRef,
+        extent: after.placement.extent,
+        rotation: after.placement.rotation ?? 0,
+      });
+    }
+  }
+
+  // Standalone connectors (ports declared on the host class): same
+  // placement-change + deletion detection as components above.
+  for (const [name, before] of Object.entries(prev.connectors)) {
+    const after = next.connectors[name];
     if (!after) {
       edits.push({ kind: "componentDeleted", componentName: name });
       continue;
