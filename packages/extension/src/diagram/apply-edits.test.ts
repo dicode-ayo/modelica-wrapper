@@ -235,3 +235,41 @@ describe("applyEdits: graphics", () => {
     expect(ops).toEqual(["modify", "delete", "add"]);
   });
 });
+
+describe("applyEdits: connection style round-trip (issue #219)", () => {
+  it("threads edit.style into the addConnection annotation", async () => {
+    const { client, invoke } = mockClient([{ success: true }]);
+    const edit: LayoutEdit = {
+      kind: "connectionAdded",
+      from: "a.p",
+      to: "b.n",
+      waypoints: [[0, 0]],
+      style: { color: [255, 0, 0], thickness: 0.5 },
+    };
+    await applyEdits(client, "MyPkg.M", [edit]);
+    expect(invoke).toHaveBeenCalledWith("addConnection", {
+      from: "a.p",
+      to: "b.n",
+      typeName: "MyPkg.M",
+      annotation: "Line(points={{0,0}},color={255,0,0},thickness=0.5)",
+    });
+  });
+
+  it("threads edit.style into the updateConnection annotation", async () => {
+    const { client, invoke } = mockClient([{ success: true }]);
+    const edit: LayoutEdit = {
+      kind: "connectionWaypoints",
+      from: "a.p",
+      to: "b.n",
+      waypoints: [[5, 0]],
+      style: { pattern: "Dash" },
+    };
+    await applyEdits(client, "MyPkg.M", [edit]);
+    expect(invoke).toHaveBeenCalledWith("updateConnection", {
+      typeName: "MyPkg.M",
+      from: "a.p",
+      to: "b.n",
+      annotation: "Line(points={{5,0}},pattern=LinePattern.Dash)",
+    });
+  });
+});

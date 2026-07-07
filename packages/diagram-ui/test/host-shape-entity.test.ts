@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { NullEngine, type TransformNode } from "@babylonjs/core";
+import type { Container } from "pixi.js";
 import type { DiagramLayout } from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
 import { HOST_SHAPE_Z_BIAS } from "../src/graphical-layout/graphical-layout.component.js";
 import { entityKeyForNode } from "../src/interaction/node-keys.js";
+import type { OmScene } from "../src/scene/scene.component.js";
 
 /**
  * `T` owns a diagram layer (`from: "T"`) with a rectangle + a line, plus an
@@ -79,14 +80,8 @@ afterEach(() => {
 
 async function mount(l: DiagramLayout): Promise<OmGraphicalLayout> {
   const el = document.createElement("om-graphical-layout") as OmGraphicalLayout;
-  el.engineFactory = () =>
-    new NullEngine({
-      renderWidth: 200,
-      renderHeight: 200,
-      textureSize: 128,
-      deterministicLockstep: false,
-      lockstepMaxSteps: 1,
-    });
+  // Renderer-less: build the Pixi container tree on the CPU, no GPU context.
+  el.rendererFactory = () => null;
   el.layout = l;
   document.body.appendChild(el);
   teardowns.push(() => el.remove());
@@ -97,37 +92,41 @@ async function mount(l: DiagramLayout): Promise<OmGraphicalLayout> {
   return el;
 }
 
-interface SceneHandle extends HTMLElement {
-  sceneContextValue?: {
-    scene: {
-      transformNodes: TransformNode[];
-      meshes: { name: string; isVisible: boolean }[];
-    };
+function diagramRootOf(el: OmGraphicalLayout): Container | null {
+  const sceneEl = el.shadowRoot?.querySelector("om-scene") as OmScene | null;
+  return sceneEl?.sceneContextValue?.diagramRoot ?? null;
+}
+
+/** Every container in the scene's diagram subtree. */
+function containers(el: OmGraphicalLayout): Container[] {
+  const root = diagramRootOf(el);
+  if (!root) return [];
+  const out: Container[] = [];
+  const walk = (c: Container): void => {
+    for (const child of c.children) {
+      out.push(child);
+      walk(child);
+    }
   };
+  walk(root);
+  return out;
 }
 
-function sceneOf(el: OmGraphicalLayout) {
-  const sceneEl = el.shadowRoot?.querySelector(
-    "om-scene",
-  ) as SceneHandle | null;
-  return sceneEl?.sceneContextValue?.scene;
+function byLabel(el: OmGraphicalLayout, label: string): Container | undefined {
+  return containers(el).find((c) => c.label === label);
 }
 
-function transformNodes(el: OmGraphicalLayout): TransformNode[] {
-  return sceneOf(el)?.transformNodes ?? [];
-}
-
-/** Visible resize-corner handle meshes currently in the scene. */
+/** Visible resize-corner handle containers currently in the scene. */
 function visibleResizeHandles(el: OmGraphicalLayout): number {
-  return (sceneOf(el)?.meshes ?? []).filter(
-    (m) => m.isVisible && m.name.startsWith("om-handle:"),
+  return containers(el).filter(
+    (c) => c.visible && c.label.startsWith("om-handle:"),
   ).length;
 }
 
-/** Visible per-vertex handle meshes currently in the scene. */
+/** Visible per-vertex handle containers currently in the scene. */
 function visibleVertexHandles(el: OmGraphicalLayout): number {
-  return (sceneOf(el)?.meshes ?? []).filter(
-    (m) => m.isVisible && m.name === "om-vertex-handle",
+  return containers(el).filter(
+    (c) => c.visible && c.label.startsWith("om-vertex-handle"),
   ).length;
 }
 
@@ -143,14 +142,15 @@ describe("host shape selection entities", () => {
 
   it("names each entity om-shape:<kind>:<index> so picks resolve to a shape key", async () => {
     const el = await mount(layout());
-    const nodes = transformNodes(el);
-    const rectWrapper = nodes.find((n) => n.name === "om-shape:rectangle:0");
-    const lineWrapper = nodes.find((n) => n.name === "om-shape:line:1");
+    const rectWrapper = byLabel(el, "om-shape:rectangle:0");
+    const lineWrapper = byLabel(el, "om-shape:line:1");
     expect(rectWrapper, "rectangle wrapper").toBeDefined();
     expect(lineWrapper, "line wrapper").toBeDefined();
 
     // The pickable hit plane lives under the wrapper; resolve a key from it.
-    const hitPlane = rectWrapper?.getChildMeshes().find((m) => m.isPickable);
+    const hitPlane = rectWrapper?.children.find(
+      (c) => c.eventMode === "static",
+    );
     expect(hitPlane, "pickable hit plane").toBeDefined();
     expect(entityKeyForNode(hitPlane ?? null)).toEqual({
       kind: "shape",
@@ -160,17 +160,16 @@ describe("host shape selection entities", () => {
     });
   });
 
-  it("seats host-shape hit planes behind components via the z-bias", async () => {
+  it("seats host-shape entities behind components via the z-bias band", async () => {
     const el = await mount(layout());
-    const nodes = transformNodes(el);
-    const shapeZ = nodes.find((n) => n.name === "om-shape:rectangle:0")
-      ?.position.z;
-    const componentZ = nodes.find((n) => n.name === "om-component:R1")?.position
-      .z;
-    expect(shapeZ).toBeCloseTo(HOST_SHAPE_Z_BIAS);
+    const shapeZ = byLabel(el, "om-shape:rectangle:0")?.zIndex;
+    const componentZ = byLabel(el, "om-component:R1")?.zIndex;
+    // The flip inverts Babylon's z-sign into a zIndex: the host shape sits at
+    // -HOST_SHAPE_Z_BIAS, the component at 0.
+    expect(shapeZ).toBeCloseTo(-HOST_SHAPE_Z_BIAS);
     expect(componentZ).toBeCloseTo(0);
-    // Camera at -Z: larger z = farther, so the component wins a coincident pick.
-    expect(shapeZ ?? 0).toBeGreaterThan(componentZ ?? 0);
+    // Higher zIndex paints in front, so the component wins a coincident pick.
+    expect(componentZ ?? 0).toBeGreaterThan(shapeZ ?? 0);
   });
 
   it("shows resize handles for a selected extent shape but not a poly", async () => {
@@ -187,17 +186,16 @@ describe("host shape selection entities", () => {
 
   it("picks a poly along a follow-the-line hit tube, not the bbox plane", async () => {
     const el = await mount(layout());
-    const lineWrapper = transformNodes(el).find(
-      (n) => n.name === "om-shape:line:1",
-    );
-    const meshes = lineWrapper?.getChildMeshes() ?? [];
+    const lineWrapper = byLabel(el, "om-shape:line:1");
+    const children = lineWrapper?.children ?? [];
     // The bbox hit plane is no longer the pick target for a polyline…
-    expect(
-      meshes.find((m) => m.name === "plane.om-shape:line:1")?.isPickable,
-    ).toBe(false);
+    const plane = children.find((c) => c.label === "plane.om-shape:line:1");
+    expect(plane?.eventMode).toBe("none");
     // …a hit tube tracing the segments is, and it resolves to the shape key.
-    const tube = meshes.find((m) => m.name.startsWith("hit.om-shape:line:1"));
-    expect(tube?.isPickable).toBe(true);
+    const tube = children.find((c) =>
+      c.label.startsWith("hit.om-shape:line:1"),
+    );
+    expect(tube?.eventMode).toBe("static");
     expect(entityKeyForNode(tube ?? null)).toMatchObject({
       kind: "shape",
       shapeKind: "line",
@@ -239,13 +237,12 @@ describe("host shape selection entities", () => {
       ],
     };
     const el = await mount(rotated);
-    const nodes = transformNodes(el);
     // The entity transform carries the 90° rotation once…
-    const wrapper = nodes.find((n) => n.name === "om-shape:line:0");
-    expect(wrapper?.rotation.z).toBeCloseTo(Math.PI / 2);
+    const wrapper = byLabel(el, "om-shape:line:0");
+    expect(wrapper?.rotation).toBeCloseTo(Math.PI / 2);
     // …so the primitive must NOT also wrap the stroke in its own
     // origin/rotation `graphicItemNode` — that would rotate it twice.
-    expect(nodes.some((n) => n.name.endsWith(".gi"))).toBe(false);
+    expect(containers(el).some((c) => c.label.endsWith(".gi"))).toBe(false);
   });
 
   it("seats an extent shape at its origin and pivots its rotation there", async () => {
@@ -269,14 +266,12 @@ describe("host shape selection entities", () => {
       ],
     };
     const el = await mount(rotated);
-    const wrapper = transformNodes(el).find(
-      (n) => n.name === "om-shape:rectangle:0",
-    );
+    const wrapper = byLabel(el, "om-shape:rectangle:0");
     // Modelica rotates about `origin`: the entity transform sits at the
     // origin and carries the rotation, not the extent centre.
     expect(wrapper?.position.x).toBeCloseTo(20);
     expect(wrapper?.position.y).toBeCloseTo(10);
-    expect(wrapper?.position.z).toBeCloseTo(HOST_SHAPE_Z_BIAS);
-    expect(wrapper?.rotation.z).toBeCloseTo(Math.PI / 2);
+    expect(wrapper?.zIndex).toBeCloseTo(-HOST_SHAPE_Z_BIAS);
+    expect(wrapper?.rotation).toBeCloseTo(Math.PI / 2);
   });
 });

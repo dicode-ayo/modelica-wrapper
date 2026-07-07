@@ -126,6 +126,44 @@ export function ownExtendsElements(mi: ModelInstance): ElementNode[] {
 }
 
 /**
+ * Inheritance-aware layer collection: walks the extends chain in post-order,
+ * yielding each class together with whether its graphics primitives should be
+ * rendered.
+ *
+ * `primitivesVisible` is false when an `extends` annotation carries
+ * `IconMap(primitivesVisible=false)` (for `kind="icon"`) or
+ * `DiagramMap(primitivesVisible=false)` (for `kind="diagram"`). Suppression
+ * propagates: if a parent's `extends` annotation hides primitives, all deeper
+ * ancestor layers are hidden too.
+ *
+ * The host class's own primitives are always visible (Modelica spec §18.6.3:
+ * `primitivesVisible` only applies to the referenced base class, not the
+ * extends-ing class itself).
+ */
+export function* walkLayerEntries(
+  mi: ModelInstance,
+  kind: "icon" | "diagram",
+): Iterable<{ klass: ModelInstance; primitivesVisible: boolean }> {
+  const mapKey = kind === "icon" ? "IconMap" : "DiagramMap";
+  for (const e of mi.elements ?? []) {
+    if (e.$kind !== "extends" || typeof e.baseClass !== "object") continue;
+    const rawMap = e.annotation?.[mapKey];
+    const primitivesVisible = !(
+      typeof rawMap === "object" &&
+      rawMap !== null &&
+      (rawMap as { primitivesVisible?: unknown }).primitivesVisible === false
+    );
+    for (const entry of walkLayerEntries(e.baseClass, kind)) {
+      yield {
+        klass: entry.klass,
+        primitivesVisible: primitivesVisible && entry.primitivesVisible,
+      };
+    }
+  }
+  yield { klass: mi, primitivesVisible: true };
+}
+
+/**
  * Inheritance-aware connector collection: walks the extends chain in
  * post-order and yields each connector together with the qualified name
  * of the class that declared it. If the same connector name appears at

@@ -103,3 +103,61 @@ describe("applyPlacement", () => {
     expect(t.meshLocal.y).toBe(100);
   });
 });
+
+describe("applyPlacement: mirrored extents (flip)", () => {
+  it("produces negative scaleX when x2 < x1 (horizontal flip)", () => {
+    const p: Placement = {
+      extent: [
+        [10, -10],
+        [-10, 10],
+      ],
+    };
+    const t = applyPlacement(p, undefined);
+    expect(t.scale.x).toBeLessThan(0);
+    expect(t.scale.y).toBeGreaterThan(0);
+  });
+
+  it("produces negative scaleY when y2 < y1 (vertical flip)", () => {
+    const p: Placement = {
+      extent: [
+        [-10, 10],
+        [10, -10],
+      ],
+    };
+    const t = applyPlacement(p, undefined);
+    expect(t.scale.x).toBeGreaterThan(0);
+    expect(t.scale.y).toBeLessThan(0);
+  });
+
+  it("computes signed scale magnitude correctly for a doubly-flipped extent", () => {
+    // Extent [20,-20] → [-20,20]: both axes flipped, 40 units wide/tall.
+    const p: Placement = {
+      extent: [
+        [20, -20],
+        [-20, 20],
+      ],
+    };
+    const t = applyPlacement(p, {
+      extent: [
+        [-100, -100],
+        [100, 100],
+      ],
+    });
+    // 40 wide / 200 = 0.2 (negative); 40 tall / 200 = 0.2 (positive).
+    expect(t.scale.x).toBeCloseTo(-0.2);
+    expect(t.scale.y).toBeCloseTo(0.2);
+  });
+
+  it("position is still at the extent centre regardless of flip direction", () => {
+    const p: Placement = {
+      extent: [
+        [10, -5],
+        [-10, 5],
+      ],
+    };
+    const t = applyPlacement(p, undefined);
+    // centre of [10,-10] is x=0, centre of [-5,5] is y=0
+    expect(t.position.x).toBe(0);
+    expect(t.position.y).toBe(0);
+  });
+});

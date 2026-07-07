@@ -69,6 +69,7 @@ export const Empty: Story = {
  * is the closest thing to the live editor without OMC/VSCode.
  */
 export const Playground: Story = {
+  parameters: { chromatic: { disableSnapshot: true } },
   render: (): TemplateResult => html`
     <div class="om-story-host">
       <om-result-view-mock-host></om-result-view-mock-host>
@@ -77,6 +78,7 @@ export const Playground: Story = {
 };
 
 export const WithMissingResult: Story = {
+  parameters: { chromatic: { disableSnapshot: true } },
   render: (): TemplateResult => html`
     <div class="om-story-host">
       <om-result-view-app

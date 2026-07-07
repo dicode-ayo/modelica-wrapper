@@ -12,8 +12,23 @@ import { openDiagram } from "../diagram/open-diagram.js";
 import { DiagramPanel } from "../diagram/panel.js";
 import { qualifiedNameFromUri, sourceUriFor } from "../source-provider.js";
 import type { LibraryNode } from "../tree/library-tree.js";
+import type { DiagramCommandId } from "../webview/protocol.js";
 
 import type { CommandContext } from "./context.js";
+
+/**
+ * VSCode command id → diagram command id. These are bound as keybindings
+ * (`when: activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus`)
+ * and forwarded into the focused diagram webview, so the diagram shortcuts
+ * live in VSCode's keymap and are remappable from the Keyboard Shortcuts UI.
+ */
+const SELECTION_COMMANDS: ReadonlyArray<readonly [string, DiagramCommandId]> = [
+  ["modelica.diagram.delete", "diagram.delete"],
+  ["modelica.diagram.rotateCw", "diagram.rotateCw"],
+  ["modelica.diagram.rotateCcw", "diagram.rotateCcw"],
+  ["modelica.diagram.flipHorizontal", "diagram.flipHorizontal"],
+  ["modelica.diagram.flipVertical", "diagram.flipVertical"],
+];
 
 export function registerDiagramCommands(
   ctx: CommandContext,
@@ -41,6 +56,15 @@ export function registerDiagramCommands(
         );
       }
     }),
+    ...SELECTION_COMMANDS.map(([vscodeId, diagramId]) =>
+      vscode.commands.registerCommand(vscodeId, async () => {
+        if (!DiagramPanel.runActiveCommand(diagramId)) {
+          await vscode.window.showWarningMessage(
+            "Modelica: no active diagram (focus a diagram first).",
+          );
+        }
+      }),
+    ),
     vscode.commands.registerCommand(
       "modelica.viewSource",
       async (node?: LibraryNode) => {

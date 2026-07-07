@@ -1,7 +1,7 @@
 import { LitElement, css, html } from "lit";
 import { property } from "lit/decorators.js";
 import { ContextConsumer, consume } from "@lit/context";
-import type { Scene, TransformNode } from "@babylonjs/core";
+import type { Container, Renderer } from "pixi.js";
 
 import type { Extent, Point } from "@dicode/omc-client";
 
@@ -12,13 +12,12 @@ import {
   interactionStateContext,
   type InteractionStateStore,
 } from "../interaction/interaction-state.js";
-import { requestSceneRender } from "../scene/render-scheduler.js";
+import { sceneContext, type SceneContext } from "../scene/scene-context.js";
+import { watchViewState } from "../scene/view-state-store.js";
 import {
-  viewStateContext,
-  type ViewStateStore,
-} from "../scene/view-state-store.js";
-import {
+  dashRunsFor,
   graphicItemNode,
+  worldScaleOf,
   zForOrder,
   type GraphicItemTransform,
   type OwnedResource,
@@ -53,12 +52,13 @@ export function extentEntityBounds(shape: {
 /**
  * Base class for the six Modelica shape primitives (`<om-rectangle>`,
  * `<om-polygon>`, `<om-line>`, `<om-ellipse>`, `<om-text>`, `<om-bitmap>`).
- * Each is a Lit element that consumes a parent `TransformNode` via Lit
- * context. Subclasses declare their own shape-data property and implement:
+ * Each is a Lit element that consumes a parent `Container` via Lit context.
+ * Subclasses declare their own shape-data property and implement:
  *
  *   - `fingerprint()` — a structural cache key; the base skips the
  *     dispose+rebuild when the shape content is unchanged.
- *   - `buildMeshes(parent, z, inEntityFrame)` — creates the Babylon meshes.
+ *   - `buildMeshes(parent, z, inEntityFrame)` — builds the Pixi
+ *     `Graphics` / `Sprite` / `Text`.
  *   - `entityKind()` / `entityBounds()` — only needed to support `editable`
  *     (the shape's `shape:` kind and its entity frame).
  *
@@ -74,19 +74,17 @@ export abstract class OmShapePrimitive extends LitElement {
 
   /**
    * Draw order within the icon. The parent `<om-component>` numbers
-   * shapes flat across layers; higher numbers paint on top (camera
-   * sits at -Z, so we accumulate a small negative z per step).
+   * shapes flat across layers; higher numbers paint on top via a
+   * larger zIndex.
    */
   @property({ type: Number, attribute: "z-order" })
   zOrder = 0;
 
   /**
-   * Larger-scale z offset added to `zForOrder(zOrder)`. Used by host-
-   * class shapes (rendered directly under `<om-scene>` as background)
-   * to sit safely behind component icons — camera sits at -Z, so a
-   * positive `zBias` pushes the mesh away from the camera. Default
-   * `0` keeps shape-inside-component primitives in the component's
-   * local plane.
+   * zIndex offset added to `zForOrder(zOrder)`. Host-class shapes
+   * (rendered directly under `<om-scene>` as background) pass a negative
+   * bias so they sit behind component icons. Default `0` keeps
+   * shape-inside-component primitives in the component's local band.
    */
   @property({ type: Number, attribute: "z-bias" })
   zBias = 0;
@@ -96,7 +94,7 @@ export abstract class OmShapePrimitive extends LitElement {
    * `OmShapeNode` (a named transform + pickable hit geometry + selection
    * overlay / vertex handles), and draws its visual under that node. When
    * `false` (the default — every icon primitive), it's pure paint drawn
-   * under the parent transform with no interaction.
+   * under the parent container with no interaction.
    */
   @property({ type: Boolean }) editable = false;
 
@@ -108,10 +106,11 @@ export abstract class OmShapePrimitive extends LitElement {
   @property({ type: Number }) entityIndex = 0;
 
   @consume({ context: parentNodeContext, subscribe: true })
-  protected parentTransform: TransformNode | null = null;
+  protected parentTransform: Container | null = null;
 
-  /** Host-provided `lineThickness` → screen-width multiplier (a debug knob);
-   *  `undefined` uses the renderer default. */
+  @consume({ context: sceneContext, subscribe: true })
+  protected sceneCtx: SceneContext | null = null;
+
   @consume({ context: lineThicknessScaleContext, subscribe: true })
   protected lineThicknessScale: number | undefined = undefined;
 
@@ -120,25 +119,43 @@ export abstract class OmShapePrimitive extends LitElement {
   private shapeNode: OmShapeNode | null = null;
   private hovered = false;
   private interactionUnsub: (() => void) | null = null;
-  private viewRescaleUnsub: (() => void) | null = null;
+  private readonly viewWatch: { dispose: () => void };
 
   constructor() {
     super();
-    // Both consumers are registered for every primitive (the controller
-    // handles connect / reconnect), but only an `editable` one subscribes to
-    // the stores — icon paint never reacts to hover, and its selection handles
-    // (pixel-sized) only need rescaling when it owns an entity. The context
-    // value is the store reference, so each fires once per (re)connect.
+    // Registered for every primitive (the controller handles connect /
+    // reconnect), but only an `editable` one subscribes to the store — icon
+    // paint never reacts to hover. The context value is the store reference,
+    // so this fires once per (re)connect, not per pointer move.
     new ContextConsumer(this, {
       context: interactionStateContext,
       subscribe: true,
       callback: (store) => this.onInteractionStore(store),
     });
-    new ContextConsumer(this, {
-      context: viewStateContext,
-      subscribe: true,
-      callback: (store) => this.onViewStore(store),
-    });
+    this.viewWatch = watchViewState(this, () => this.onViewChange());
+  }
+
+  /**
+   * The shape's Modelica line pattern, for primitives with a dashable
+   * stroke (line / polygon / rectangle / ellipse). `undefined` (the
+   * default) means this primitive never needs a dash-zoom rebuild.
+   */
+  protected dashPattern(): string | undefined {
+    return undefined;
+  }
+
+  /**
+   * React to pan/zoom. The default re-runs `updated()` (via
+   * `requestUpdate()`) only when `dashPattern()` names a dashed pattern —
+   * its build key folds in `worldPerPixel` below, so the key comparison
+   * itself makes a pure pan (worldPerPixel unchanged) a cheap no-op rather
+   * than a rebuild. Override for state outside the dash/key mechanism
+   * entirely, e.g. `<om-text>`'s zoom-dependent resolution.
+   */
+  protected onViewChange(): void {
+    if (dashRunsFor(this.dashPattern())) {
+      this.requestUpdate();
+    }
   }
 
   override render() {
@@ -154,7 +171,10 @@ export abstract class OmShapePrimitive extends LitElement {
       this.updateEditable(parent);
       return;
     }
-    const key = `${this.zOrder}|${this.zBias}|${this.lineThicknessScale}|${this.fingerprint()}`;
+    // The parent's world scale feeds the stroke's scale-compensated width
+    // (`buildStroke`), so a placement/resize change must rebuild even though
+    // the shape data is unchanged.
+    const key = `${this.zOrder}|${this.zBias}|${worldScaleOf(parent)}|${this.lineThicknessScale}|${this.dashZoomKey()}|${this.fingerprint()}`;
     if (key === this.lastBuiltKey) {
       return;
     }
@@ -169,18 +189,18 @@ export abstract class OmShapePrimitive extends LitElement {
    * visual under it, so the same shape that renders in an icon becomes a
    * selectable, hit-testable, vertex-editable entity on the host canvas.
    */
-  private updateEditable(parent: TransformNode): void {
+  private updateEditable(parent: Container): void {
+    const ctx = this.sceneCtx;
+    if (!ctx) {
+      return;
+    }
     if (!this.shapeNode) {
-      this.shapeNode = new OmShapeNode(
-        parent.getScene(),
-        parent,
-        this.entityName(),
-      );
+      this.shapeNode = new OmShapeNode(ctx, parent, this.entityName());
     }
     const node = this.shapeNode;
-    node.transform.name = this.entityName();
+    node.setEntityName(this.entityName());
     node.setHovered(this.hovered);
-    const key = `${this.zBias}|${this.lineThicknessScale}|${this.fingerprint()}`;
+    const key = `${this.zOrder}|${this.zBias}|${this.lineThicknessScale}|${this.dashZoomKey()}|${this.fingerprint()}`;
     if (key !== this.lastBuiltKey) {
       this.lastBuiltKey = key;
       this.tearDownMeshes();
@@ -198,6 +218,15 @@ export abstract class OmShapePrimitive extends LitElement {
     }
     node.setSelected(this.selected);
     this.requestRender();
+  }
+
+  /** The build key's zoom term: `worldPerPixel`, but only for a dashed
+   *  pattern — a solid shape's key stays zoom-independent so panning never
+   *  rebuilds it. */
+  private dashZoomKey(): string {
+    return dashRunsFor(this.dashPattern())
+      ? String(this.sceneCtx?.worldPerPixel())
+      : "";
   }
 
   private entityName(): string {
@@ -232,25 +261,11 @@ export abstract class OmShapePrimitive extends LitElement {
     this.shapeNode?.setHovered(hovered);
   }
 
-  /**
-   * Attach to the view-state store so an editable entity's pixel-sized
-   * selection handles re-rescale on zoom / pan / resize — without this they
-   * stay at their selection-time world size and drift (or vanish) on zoom.
-   */
-  private onViewStore(store: ViewStateStore | null): void {
-    this.viewRescaleUnsub?.();
-    this.viewRescaleUnsub =
-      this.editable && store
-        ? store.subscribe(() => this.shapeNode?.rescaleSelectionHandles())
-        : null;
-  }
-
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.interactionUnsub?.();
     this.interactionUnsub = null;
-    this.viewRescaleUnsub?.();
-    this.viewRescaleUnsub = null;
+    this.viewWatch.dispose();
     this.tearDownMeshes();
     this.shapeNode?.dispose();
     this.shapeNode = null;
@@ -272,34 +287,45 @@ export abstract class OmShapePrimitive extends LitElement {
     return null;
   }
 
-  protected scene(): Scene | null {
-    return this.parentTransform?.getScene() ?? null;
+  /** The renderer this primitive draws into, or `null` headless. */
+  protected renderer(): Renderer | null {
+    return this.sceneCtx?.renderer ?? null;
   }
 
   protected requestRender(): void {
-    const scene = this.scene();
-    if (scene) {
-      requestSceneRender(scene);
-    }
+    this.sceneCtx?.requestRender();
   }
 
   /**
-   * The transform a primitive draws its geometry under. Off the editable
+   * The container a primitive draws its geometry under. Off the editable
    * path it's a `graphicItemNode` carrying the shape's origin/rotation; in
    * the entity frame the parent already carries those, so it's the parent
    * itself (applying them again would place the shape twice).
+   *
+   * `z` is the shape's draw-order band. When a `graphicItemNode` wrapper is
+   * created its fill/stroke are nested a level deeper than a sibling shape that
+   * attaches straight to `parent`, and `zIndex` only sorts among siblings — so
+   * the wrapper carries `z` to keep inter-shape order correct regardless of the
+   * order Lit runs the sibling primitives. `sortableChildren` lets stroke draw
+   * above fill within the root.
    */
   protected graphicRoot(
-    parent: TransformNode,
+    parent: Container,
     shape: GraphicItemTransform,
     name: string,
     inEntityFrame: boolean,
-  ): TransformNode {
+    z: number,
+  ): Container {
     if (inEntityFrame) {
+      parent.sortableChildren = true;
       return parent;
     }
     const gi = graphicItemNode(parent, shape, name);
     this.resources.push(gi);
+    if (gi.node !== parent) {
+      gi.node.zIndex = z;
+    }
+    gi.node.sortableChildren = true;
     return gi.node;
   }
 
@@ -318,14 +344,14 @@ export abstract class OmShapePrimitive extends LitElement {
   protected abstract fingerprint(): string;
 
   /**
-   * Build the Babylon meshes for the current shape data and push the
+   * Build the Pixi graphics for the current shape data and push the
    * disposables onto `this.resources`. `inEntityFrame` is `true` on the
    * editable path, where `parent` already carries the shape's
    * origin/rotation — the primitive must then draw raw geometry without its
    * own `graphicItemNode`, or the placement applies twice.
    */
   protected abstract buildMeshes(
-    parent: TransformNode,
+    parent: Container,
     z: number,
     inEntityFrame?: boolean,
   ): void;

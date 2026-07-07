@@ -76,7 +76,7 @@ export interface ComponentParameterFormState extends ParameterFormState {
 function refForField(field: ParameterField): ParameterRef {
   const ref: ParameterRef = {
     name: field.name,
-    kind: field.kind,
+    kind: field.kind === "color" ? "unsupported" : field.kind,
     tab: field.dialog.tab,
     group: field.dialog.group,
   };

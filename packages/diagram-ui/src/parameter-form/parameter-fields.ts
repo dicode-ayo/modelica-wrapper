@@ -37,6 +37,7 @@ export type FieldKind =
   | "integer"
   | "boolean"
   | "enum"
+  | "color"
   | "array"
   | "unsupported";
 

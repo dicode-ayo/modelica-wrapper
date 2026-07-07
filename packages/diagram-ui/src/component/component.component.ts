@@ -6,14 +6,14 @@ import { OmShapeElement } from "../base/shape-element.js";
 import { substitutionsContext } from "../label/substitutions-context.js";
 
 /**
- * `<om-component>` — renders a Modelica `ComponentInstance` as a
- * textured plane in the scene. Inherits the full Lit→Babylon bridge
- * from `OmShapeElement`:
+ * `<om-component>` — renders a Modelica `ComponentInstance` as an icon
+ * sprite in the scene. Inherits the full Lit→Pixi bridge from
+ * `OmShapeElement`:
  *
- *   - placement → TransformNode position/rotation/scale
+ *   - placement → Container position/rotation/scale
  *   - layers + coordinateSystem → icon texture via icon-provider
  *   - children (`<om-connector>`, `<om-label>`) attach to the component's
- *     `TransformNode` and therefore live in the component class's icon
+ *     `Container` and therefore live in the component class's icon
  *     coord system (e.g. [-100, 100]²)
  *
  * Typical usage:
@@ -50,7 +50,7 @@ export class OmComponent extends OmShapeElement {
     initialValue: null as TextSubstitutions | null,
   });
 
-  protected override babylonNodeName(): string {
+  protected override entityNodeName(): string {
     return this.nodeId ? `om-component:${this.nodeId}` : "om-component";
   }
 

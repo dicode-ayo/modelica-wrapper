@@ -1,10 +1,10 @@
 /**
  * Per-scene render scheduler. Implements the "on-demand rendering"
- * strategy: the Babylon engine is NOT driven by a continuous render
- * loop — instead, every code path that mutates scene state calls
- * `requestSceneRender(scene)`, which schedules a single `scene.render()`
- * on the next animation frame and coalesces further requests until that
- * frame fires.
+ * strategy: the Pixi renderer is NOT driven by a continuous ticker —
+ * instead, every code path that mutates scene state calls
+ * `requestSceneRender(root)`, which schedules a single render on the
+ * next animation frame and coalesces further requests until that frame
+ * fires.
  *
  * Why: under software-rendered WebGL (Linux/VSCode with hardware
  * acceleration off) a continuous 60 Hz loop burns the entire CPU budget
@@ -12,21 +12,16 @@
  * diagram costs 0 frames/sec; interactive frames are produced only
  * during pan, zoom, drag, selection, texture-load, etc.
  *
- * Lifecycle: `OmScene.mount` registers a scheduler against the Babylon
- * `Scene` it creates; `OmScene.unmount` unregisters. Mutation sites
- * (shape-node, selection-overlay, edge, label, ...) call
- * `requestSceneRender(scene)` after touching Babylon state. The call is
- * a safe no-op when no scheduler is registered (e.g. headless tests
- * that build a `Scene` directly without going through `OmScene`).
+ * The scheduler is keyed by an opaque render-root token (the stage
+ * `Container`) so it takes no dependency on the renderer type. The
+ * call is a safe no-op when no scheduler is registered (e.g. headless
+ * tests that build the scene graph without a GPU renderer).
  */
 
-import type { Scene } from "@babylonjs/core";
+/** Opaque per-scene token the scheduler is keyed by (the stage container). */
+export type RenderRoot = object;
 
-/**
- * Drives the actual `scene.render()` call. `OmScene` provides this
- * function so we don't take a hard dependency on the Babylon Scene
- * type at the scheduler layer.
- */
+/** Drives the actual render call. `OmScene` provides this function. */
 type Renderer = () => void;
 
 interface Scheduler {
@@ -34,37 +29,40 @@ interface Scheduler {
   pendingId: number;
 }
 
-const schedulers = new WeakMap<Scene, Scheduler>();
+const schedulers = new WeakMap<RenderRoot, Scheduler>();
 
 /**
  * Register a render function for a scene. Called by `OmScene.mount`.
  * Replacing an existing registration cancels any pending frame from
  * the prior entry — guards against rapid re-mounts (hot reload).
  */
-export function registerRenderScheduler(scene: Scene, render: Renderer): void {
-  const existing = schedulers.get(scene);
+export function registerRenderScheduler(
+  root: RenderRoot,
+  render: Renderer,
+): void {
+  const existing = schedulers.get(root);
   if (existing && existing.pendingId) {
     cancelAnimationFrame(existing.pendingId);
   }
-  schedulers.set(scene, { render, pendingId: 0 });
+  schedulers.set(root, { render, pendingId: 0 });
 }
 
 /** Tear down the scheduler. Called by `OmScene.unmount`. */
-export function unregisterRenderScheduler(scene: Scene): void {
-  const s = schedulers.get(scene);
+export function unregisterRenderScheduler(root: RenderRoot): void {
+  const s = schedulers.get(root);
   if (s && s.pendingId) {
     cancelAnimationFrame(s.pendingId);
   }
-  schedulers.delete(scene);
+  schedulers.delete(root);
 }
 
 /**
- * Request a render for `scene`. Coalesces: if a frame is already
+ * Request a render for `root`. Coalesces: if a frame is already
  * scheduled, this is a no-op. No-op when no scheduler is registered
  * (headless tests, post-teardown).
  */
-export function requestSceneRender(scene: Scene): void {
-  const s = schedulers.get(scene);
+export function requestSceneRender(root: RenderRoot): void {
+  const s = schedulers.get(root);
   if (!s || s.pendingId) {
     return;
   }

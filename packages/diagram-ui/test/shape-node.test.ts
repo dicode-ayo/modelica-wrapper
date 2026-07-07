@@ -1,26 +1,36 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { NullEngine, Scene, TransformNode } from "@babylonjs/core";
+import { Container } from "pixi.js";
 import type { Placement } from "@dicode/omc-client";
 
 import { OmShapeNode } from "../src/base/shape-node.js";
+import type { SceneContext } from "../src/scene/scene-context.js";
 
 const teardowns: Array<() => void> = [];
 
-function makeScene(): { scene: Scene; parent: TransformNode } {
-  const engine = new NullEngine({
-    renderWidth: 320,
-    renderHeight: 240,
-    textureSize: 256,
-    deterministicLockstep: false,
-    lockstepMaxSteps: 1,
-  });
-  const scene = new Scene(engine);
-  const parent = new TransformNode("test-parent", scene);
-  teardowns.push(() => {
-    scene.dispose();
-    engine.dispose();
-  });
-  return { scene, parent };
+/** Renderer-less scene context: a Pixi container tree with no GPU. */
+function headlessCtx(): SceneContext {
+  const stage = new Container({ label: "om-stage" });
+  const worldRoot = new Container({ label: "om-world" });
+  const diagramRoot = new Container({ label: "om-diagram" });
+  worldRoot.addChild(diagramRoot);
+  stage.addChild(worldRoot);
+  return {
+    renderer: null,
+    stage,
+    worldRoot,
+    diagramRoot,
+    pick: () => null,
+    worldPerPixel: () => 1,
+    requestRender: () => {},
+  };
+}
+
+function makeScene(): { ctx: SceneContext; parent: Container } {
+  const ctx = headlessCtx();
+  const parent = new Container({ label: "test-parent" });
+  ctx.diagramRoot.addChild(parent);
+  teardowns.push(() => ctx.stage.destroy({ children: true }));
+  return { ctx, parent };
 }
 
 afterEach(() => {
@@ -30,16 +40,16 @@ afterEach(() => {
 });
 
 describe("OmShapeNode", () => {
-  it("creates a TransformNode parented under the provided node", () => {
-    const { scene, parent } = makeScene();
-    const node = new OmShapeNode(scene, parent);
+  it("creates an entity Container parented under the provided node", () => {
+    const { ctx, parent } = makeScene();
+    const node = new OmShapeNode(ctx, parent);
     expect(node.transform.parent).toBe(parent);
     expect(node.mesh.parent).toBe(node.transform);
   });
 
-  it("setPlacement aligns the TransformNode to the placement center", () => {
-    const { scene, parent } = makeScene();
-    const node = new OmShapeNode(scene, parent);
+  it("setPlacement aligns the entity Container to the placement center", () => {
+    const { ctx, parent } = makeScene();
+    const node = new OmShapeNode(ctx, parent);
     const placement: Placement = {
       extent: [
         [10, 20],
@@ -52,8 +62,8 @@ describe("OmShapeNode", () => {
   });
 
   it("setPlacement scales by (placement / coord-system) to keep local space icon-native", () => {
-    const { scene, parent } = makeScene();
-    const node = new OmShapeNode(scene, parent);
+    const { ctx, parent } = makeScene();
+    const node = new OmShapeNode(ctx, parent);
     const placement: Placement = {
       extent: [
         [-10, -10],
@@ -66,16 +76,16 @@ describe("OmShapeNode", () => {
         [100, 100],
       ],
     });
-    expect(node.transform.scaling.x).toBeCloseTo(20 / 200);
-    expect(node.transform.scaling.y).toBeCloseTo(20 / 200);
+    expect(node.transform.scale.x).toBeCloseTo(20 / 200);
+    expect(node.transform.scale.y).toBeCloseTo(20 / 200);
   });
 
-  it("dispose cleans up the TransformNode and mesh", () => {
-    const { scene, parent } = makeScene();
-    const node = new OmShapeNode(scene, parent);
+  it("dispose cleans up the entity Container and hit plane", () => {
+    const { ctx, parent } = makeScene();
+    const node = new OmShapeNode(ctx, parent);
     const mesh = node.mesh;
     node.dispose();
-    expect(mesh.isDisposed()).toBe(true);
-    expect(node.transform.isDisposed()).toBe(true);
+    expect(mesh.destroyed).toBe(true);
+    expect(node.transform.destroyed).toBe(true);
   });
 });
