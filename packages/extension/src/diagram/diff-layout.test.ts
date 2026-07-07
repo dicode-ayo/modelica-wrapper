@@ -7,6 +7,15 @@ import {
   placementAnnotation,
 } from "./diff-layout.js";
 
+/** `baseLayout()` always seeds exactly one connection; guard the index access. */
+function firstConnection(
+  layout: DiagramLayout,
+): DiagramLayout["connections"][number] {
+  const conn = layout.connections[0];
+  if (conn === undefined) throw new Error("expected at least one connection");
+  return conn;
+}
+
 function baseLayout(): DiagramLayout {
   return {
     kind: "diagram",
@@ -163,6 +172,62 @@ describe("diffLayouts", () => {
     expect(
       diffLayouts(a, b).some((e) => e.kind === "connectionWaypoints"),
     ).toBe(false);
+  });
+
+  it("carries the connection's style on connectionWaypoints so it survives the write (issue #219)", () => {
+    const a = baseLayout();
+    const styledConn = {
+      ...firstConnection(a),
+      color: [255, 0, 0] as [number, number, number],
+      thickness: 0.5,
+      pattern: "Dash",
+    };
+    a.connections[0] = styledConn;
+    const b = baseLayout();
+    // Same style, only the route changes (e.g. a component drag).
+    b.connections = [
+      {
+        ...styledConn,
+        waypoints: [
+          [5, 0],
+          [20, 0],
+        ],
+      },
+    ];
+    const edits = diffLayouts(a, b);
+    const edit = edits.find((e) => e.kind === "connectionWaypoints");
+    expect(edit).toMatchObject({
+      style: { color: [255, 0, 0], thickness: 0.5, pattern: "Dash" },
+    });
+  });
+
+  it("emits connectionWaypoints on a style-only change, even with waypoints unchanged", () => {
+    const a = baseLayout();
+    const b = baseLayout();
+    b.connections = [{ ...firstConnection(b), color: [0, 255, 0] }];
+    const edits = diffLayouts(a, b);
+    expect(edits).toContainEqual({
+      kind: "connectionWaypoints",
+      from: "R1.p",
+      to: "C1.n",
+      waypoints: firstConnection(b).waypoints,
+      style: { color: [0, 255, 0] },
+    });
+  });
+
+  it("carries style on connectionAdded for a newly appearing styled connection", () => {
+    const a = baseLayout();
+    a.connections = [];
+    const b = baseLayout();
+    b.connections = [{ ...firstConnection(b), pattern: "Dot" }];
+    const edits = diffLayouts(a, b);
+    expect(edits).toContainEqual({
+      kind: "connectionAdded",
+      from: "R1.p",
+      to: "C1.n",
+      waypoints: firstConnection(b).waypoints,
+      style: { pattern: "Dot" },
+    });
   });
 
   describe("connectionRenamed (vector-port re-index, issue #26)", () => {
@@ -410,6 +475,39 @@ describe("lineAnnotation", () => {
       ]),
     ).toBe("Line(points={{0,0},{10,0},{10,20}})");
   });
+
+  it("includes the full style alongside points (issue #219)", () => {
+    expect(
+      lineAnnotation(
+        [
+          [0, 0],
+          [10, 0],
+        ],
+        {
+          color: [255, 0, 0],
+          thickness: 0.5,
+          pattern: "Dash",
+          arrow: ["None", "Filled"],
+          arrowSize: 3,
+          smooth: "Bezier",
+        },
+      ),
+    ).toBe(
+      "Line(points={{0,0},{10,0}},color={255,0,0},thickness=0.5," +
+        "pattern=LinePattern.Dash,arrow={Arrow.None,Arrow.Filled}," +
+        "arrowSize=3,smooth=Smooth.Bezier)",
+    );
+  });
+
+  it("emits style fields even when waypoints are empty (auto-route + style)", () => {
+    expect(lineAnnotation([], { color: [0, 0, 255] })).toBe(
+      "Line(color={0,0,255})",
+    );
+  });
+
+  it("still returns empty string when there are neither waypoints nor style", () => {
+    expect(lineAnnotation([], {})).toBe("");
+  });
 });
 
 describe("diffLayouts — graphics", () => {
@@ -482,19 +580,44 @@ describe("diffLayouts — graphics", () => {
     ]);
   });
 
-  it("represents a non-contiguous multi-delete as shift-modifies + trailing deletes", () => {
-    // Delete indices 1 and 3 of [A,B,C,D], keeping A and C. With positional
-    // identity the diff can't express "delete 1 and 3"; it shifts C up into
-    // slot 1 (modify) then trims the tail (deletes, descending). Applying
-    // modify→delete in that order yields the correct final array [A, C].
+  it("emits minimal deletes for a non-contiguous multi-delete (pure deletion)", () => {
+    // Delete indices 1 and 3 of [A,B,C,D], keeping A and C. LCS detects that
+    // rect(0) and rect(40) survive and emits only two targeted deletes (in
+    // descending order) rather than a shift-modify + trailing deletes.
     const edits = diffLayouts(
       withIcon([rect(0), rect(20), rect(40), rect(60)]),
       withIcon([rect(0), rect(40)]),
     );
     expect(edits).toEqual([
-      { kind: "graphicsModified", layer: "icon", index: 1, shape: rect(40) },
       { kind: "graphicsDeleted", layer: "icon", index: 3 },
+      { kind: "graphicsDeleted", layer: "icon", index: 1 },
+    ]);
+  });
+
+  it("falls back to positional modifies when a deletion coincides with a shape change", () => {
+    // rect(20) is removed AND rect(0) is edited to rect(5): mixed delete+modify.
+    // isPureDeletion is false (rect(5) not in before), so the positional fallback
+    // runs: scan the first after.length=2 positions for mods (modify(0,rect(5))
+    // and modify(1,rect(40))), then delete the one trailing slot (delete(2)).
+    const edits = diffLayouts(
+      withIcon([rect(0), rect(20), rect(40)]),
+      withIcon([rect(5), rect(40)]),
+    );
+    expect(edits).toEqual([
+      { kind: "graphicsModified", layer: "icon", index: 0, shape: rect(5) },
+      { kind: "graphicsModified", layer: "icon", index: 1, shape: rect(40) },
       { kind: "graphicsDeleted", layer: "icon", index: 2 },
+    ]);
+  });
+
+  it("emits a single delete for a non-contiguous single-shape removal", () => {
+    // Remove the middle shape from three: LCS matches the outer two.
+    const edits = diffLayouts(
+      withIcon([rect(0), rect(20), rect(40)]),
+      withIcon([rect(0), rect(40)]),
+    );
+    expect(edits).toEqual([
+      { kind: "graphicsDeleted", layer: "icon", index: 1 },
     ]);
   });
 

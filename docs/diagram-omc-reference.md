@@ -136,11 +136,15 @@ This section is spec-normative and is where "behaves weirdly" bugs usually hide.
   rotate-with-component behaviour.
 
 **Ours.** [`produceDiagramLayout()`](../packages/omc-client/src/api/diagram/producer.ts)
-composes inherited icon/diagram layers ancestor-first;
+composes inherited icon/diagram layers ancestor-first via `walkLayerEntries()` in
+[`walker.ts`](../packages/omc-client/src/api/diagram/walker.ts);
 [render-shape.ts](../packages/diagram-ui/src/primitives/render-shape.ts)
-`renderLayers()` flattens `IconLayer[]` to z-ordered primitives. **Not handled /
-verify:** `IconMap`/`DiagramMap` remapping + `primitivesVisible`, `DynamicSelect`,
-the `iconTransformation`-fallback rule, and the two-rotation-centres distinction.
+`renderLayers()` flattens `IconLayer[]` to z-ordered primitives.
+`walkLayerEntries` reads `IconMap`/`DiagramMap.primitivesVisible` from each
+`extends` clause annotation and propagates suppression to all deeper ancestors.
+**Not handled / verify:** `IconMap`/`DiagramMap` coordinate-system remapping
+(non-default `extent`), `DynamicSelect`, the `iconTransformation`-fallback rule,
+and the two-rotation-centres distinction.
 
 ---
 
@@ -160,14 +164,24 @@ validation at connect time and surfaced errors only on simulate; v1.21.0
 (`PR #10704`) re-added some connect-time type checking.
 
 **Ours.** Connections are read from the instance, kept only when they carry an
-`annotation.Line` (bare `connect(...)` is skipped). Write-back lives in
+`annotation.Line` (bare `connect(...)` is skipped). `ConnectionLayout` carries
+the full `Line` style — `waypoints`, `color`, `thickness`, `pattern`, `arrow`,
+`arrowSize`, `smooth` — not just the route (issue #219). Write-back lives in
 [apply-edits.ts](../packages/extension/src/diagram/apply-edits.ts):
 `connectionAdded → addConnection`, `connectionDeleted → deleteConnection`,
 `connectionWaypoints → updateConnection`, `connectionRenamed →
-updateConnectionNames` (vector-port re-index). Edits are produced by
-[diffLayouts()](../packages/extension/src/diagram/diff-layout.ts). **Fragile:**
-the vector-port re-index detection (`connectionRenamed`) is a noted
-greedy-loop/cascade-shift risk (issue #76).
+updateConnectionNames` (vector-port re-index). Both `addConnection` and
+`updateConnection` replace the whole `Line(...)` annotation, so
+[diffLayouts()](../packages/extension/src/diagram/diff-layout.ts) carries the
+connection's style alongside its waypoints on `connectionAdded`/
+`connectionWaypoints` edits and `lineAnnotation()` re-emits every set field —
+otherwise a waypoint-only edit (e.g. a component drag re-routing an adjacent
+connection) would silently strip a hand-authored style. `connectionRenamed`
+doesn't touch the annotation, so it's unaffected. **Fragile:** the vector-port
+re-index detection (`connectionRenamed`) is a noted greedy-loop/cascade-shift
+risk (issue #76). `<om-line>` now renders `arrow`/`arrowSize` (issue #219 P2);
+connections themselves still render via the edge builder, not `<om-line>`, so
+a connection's own arrow styling isn't drawn yet — tracked in #219's P3.
 
 ---
 
@@ -203,7 +217,7 @@ lazy per row via the cheap `getModelInstanceAnnotation` path.
 | Move / resize component | `componentPlacement` | `updateComponent(…, placementAnnotation)` | ✅ (placement from view-centre on add, not pixel-precise) |
 | Delete component | `componentDeleted` | `deleteComponent` | ✅ |
 | Add component (library→canvas) | — | `addComponent` | ✅ via `onAddComponent`, position = view centre |
-| Connection add/delete/reroute | `connectionAdded/Deleted/Waypoints` | `addConnection`/`deleteConnection`/`updateConnection` | ✅ (drag *existing* waypoints only) |
+| Connection add/delete/reroute | `connectionAdded/Deleted/Waypoints` | `addConnection`/`deleteConnection`/`updateConnection` | ✅ (drag *existing* waypoints only; `Line` style round-trips alongside the route, issue #219) |
 | Vector-port re-index | `connectionRenamed` | `updateConnectionNames` | ⚠️ fragile (cascade-shift risk) |
 | Component params | — | `setElementModifierValue` | ✅ [parameter-edits.ts](../packages/extension/src/diagram/parameter-edits.ts) |
 | Class params | — | `setParameterValue` / `setExtendsModifierValue` | ✅ |

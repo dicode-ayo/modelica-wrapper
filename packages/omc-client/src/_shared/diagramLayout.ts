@@ -81,15 +81,25 @@ export interface GraphicItem {
   rotation?: number | undefined;
 }
 
-export interface LineShape extends GraphicItem {
-  kind: "line";
-  points: Point[];
+/**
+ * The `Line` record's style fields (spec §18.6), shared between a drawn
+ * `LineShape` and a `connect()`'s `ConnectionLayout` — a connection's visual
+ * *is* a `Line` record (issue #219). All optional: absent means the source
+ * didn't set that field.
+ */
+export interface LineStyle {
+  /** Absent means the renderer picks its own default (e.g. a connection's default edge color). */
   color?: Color | undefined;
   thickness?: number | undefined;
   pattern?: string | undefined;
   arrow?: [string, string] | undefined;
   arrowSize?: number | undefined;
   smooth?: string | undefined;
+}
+
+export interface LineShape extends GraphicItem, LineStyle {
+  kind: "line";
+  points: Point[];
 }
 
 export interface PolygonShape extends GraphicItem {
@@ -294,7 +304,13 @@ export interface ConnectionEndpoint {
   port: string;
 }
 
-export interface ConnectionLayout {
+/**
+ * A connection's visual *is* a `Line` record (issue #219) — `LineStyle`'s
+ * fields round-trip through the write path (`diff-layout.ts` /
+ * `apply-edits.ts`) alongside `waypoints` so a waypoint-only edit doesn't
+ * silently strip a hand-authored style.
+ */
+export interface ConnectionLayout extends LineStyle {
   lhs: ConnectionEndpoint;
   rhs: ConnectionEndpoint;
   /**
@@ -303,11 +319,6 @@ export interface ConnectionLayout {
    * The list is never `null`/`undefined`; missing waypoints normalize to `[]`.
    */
   waypoints: Point[];
-  /**
-   * Stroke color from the connection's `annotation.Line.color`, if the
-   * source set one. Absent means the renderer picks its default edge color.
-   */
-  color?: Color | undefined;
   source?: SourceLocation | undefined;
 }
 
@@ -374,16 +385,21 @@ const graphicItemFields = {
   rotation: z.number().optional(),
 };
 
+/** The `Line` record's style fields (§18.6), spread into `LineShapeSchema` and `ConnectionLayoutSchema` — see `LineStyle`. */
+const lineStyleFields = {
+  color: ColorSchema.optional(),
+  thickness: z.number().optional(),
+  pattern: z.string().optional(),
+  arrow: ArrowSchema.optional(),
+  arrowSize: z.number().optional(),
+  smooth: z.string().optional(),
+};
+
 export const LineShapeSchema = z
   .object({
     kind: z.literal("line"),
     points: z.array(PointSchema),
-    color: ColorSchema.optional(),
-    thickness: z.number().optional(),
-    pattern: z.string().optional(),
-    arrow: ArrowSchema.optional(),
-    arrowSize: z.number().optional(),
-    smooth: z.string().optional(),
+    ...lineStyleFields,
     ...graphicItemFields,
   })
   .strict();
@@ -553,7 +569,7 @@ export const ConnectionLayoutSchema = z
     lhs: ConnectionEndpointSchema,
     rhs: ConnectionEndpointSchema,
     waypoints: z.array(PointSchema),
-    color: ColorSchema.optional(),
+    ...lineStyleFields,
     source: SourceLocationSchema.optional(),
   })
   .strict();

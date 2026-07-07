@@ -13,7 +13,7 @@ import {
 
 import { renderIconLayersToSvg } from "@dicode/diagram-svg";
 
-import { isConnectorKey, parseEntityKey } from "./entity-key.js";
+import { isConnectorKey, isShapeKey, parseEntityKey } from "./entity-key.js";
 
 import { createReplLog } from "../commands/repl.js";
 import {
@@ -33,7 +33,17 @@ import {
   type ComponentParameterRef,
 } from "./parameter-edits.js";
 import { clearComponentModifiers } from "./clear-modifiers.js";
-import { diffLayouts, lineAnnotation, type LayoutEdit } from "./diff-layout.js";
+import {
+  diffLayouts,
+  lineAnnotation,
+  type GraphicsLayer,
+  type LayoutEdit,
+} from "./diff-layout.js";
+import {
+  applyShapeProperties,
+  buildShapePropertiesForm,
+  lookupHostShape,
+} from "./shape-properties.js";
 import { applyDisplayUnits } from "./display-unit.js";
 import { buildUnitTableForModel, sessionUnitCache } from "./unit-table.js";
 import { LibraryBrowserSource } from "./library-source.js";
@@ -90,6 +100,17 @@ export async function openDiagram(
   let componentParamRefs: Record<string, ComponentParameterRef> = {};
   let componentParamInitialValues: Record<string, unknown> = {};
   let componentParamComponentName: string | null = null;
+  // Per-modal state for the shape properties panel — records which shape
+  // is being edited so onParametersSubmit can route the write.
+  let shapePropertiesLayerKind: GraphicsLayer | null = null;
+  let shapePropertiesIndex: number | null = null;
+  let shapePropertiesShapeKind: string | null = null;
+  const clearShapePropertiesState = (): void => {
+    shapePropertiesLayerKind = null;
+    shapePropertiesIndex = null;
+    shapePropertiesShapeKind = null;
+  };
+
   // Guards against a double-click on "Reset to defaults" firing two
   // concurrent reset round-trips (each one re-fetches + re-opens the
   // modal). A second invocation while one is in flight returns early.
@@ -164,12 +185,12 @@ export async function openDiagram(
         { snapshot: true },
       );
       if (result.failed.length > 0) {
-        const first = result.failed[0]!;
+        const first = result.failed.at(0);
         const rolled = result.rolledBack
           ? " — rolled back to the pre-edit state"
           : "";
         void vscode.window.showWarningMessage(
-          `Modelica: ${result.failed.length} of ${edits.length} edits failed (${first.error})${rolled}.`,
+          `Modelica: ${result.failed.length} of ${edits.length} edits failed (${first?.error})${rolled}.`,
         );
         // The batch was auto-rolled-back, so the pre-batch snapshot we just
         // pushed for manual Undo would be a no-op (it equals current state).
@@ -435,6 +456,71 @@ export async function openDiagram(
         panel.closeParameters();
         return;
       }
+      if (kind === "shapeProperties") {
+        if (
+          shapePropertiesLayerKind === null ||
+          shapePropertiesIndex === null
+        ) {
+          log.warn(
+            "shapePropertiesSubmit",
+            "missing layer/index — modal opened without state",
+          );
+          panel.closeParameters();
+          return;
+        }
+        const layerKind = shapePropertiesLayerKind;
+        const index = shapePropertiesIndex;
+        const found = lookupHostShape(
+          prevLayout,
+          index,
+          shapePropertiesShapeKind ?? undefined,
+        );
+        if (found === null || found.layerKind !== layerKind) {
+          log.warn(
+            "shapePropertiesSubmit",
+            `shape at index ${index} not found in ${layerKind} layer`,
+          );
+          panel.closeParameters();
+          return;
+        }
+        const updatedShape = applyShapeProperties(found.shape, values);
+        await pushUndoSnapshot();
+        const edit: LayoutEdit = {
+          kind: "graphicsModified",
+          layer: layerKind,
+          index,
+          shape: updatedShape,
+        };
+        const result = await applyEdits(
+          client,
+          className,
+          [edit],
+          (e, command, error) => {
+            const replLog = createReplLog(command);
+            if (error !== undefined) {
+              replLog.error(error);
+            } else {
+              replLog.success(editSummary(e));
+            }
+          },
+          { snapshot: true },
+        );
+        if (result.failed.length > 0) {
+          const first = result.failed.at(0);
+          void vscode.window.showWarningMessage(
+            `Modelica: shape edit failed — ${first?.error}`,
+          );
+          if (result.rolledBack) undoStack.pop();
+        }
+        try {
+          prevLayout = await fetchLayout(client, className);
+          panel.update(prevLayout);
+        } catch (err) {
+          log.error("shapePropertiesRefetch", `failed for ${className}`, err);
+        }
+        panel.closeParameters();
+        return;
+      }
       // Unknown kinds: close the modal so the UI doesn't get stuck, and
       // log a warning. We don't surface to the user because the panel was
       // their action — silence is the cheapest "nothing happened".
@@ -443,6 +529,7 @@ export async function openDiagram(
     },
     onParametersCancel: (kind) => {
       log.info("parametersCancel", `kind=${kind}`);
+      if (kind === "shapeProperties") clearShapePropertiesState();
     },
     onResetComponentParameters: async (componentName) => {
       // A double-click can fire two concurrent resets; the first owns the
@@ -532,6 +619,25 @@ export async function openDiagram(
     onLibraryListChildren: (parent) => librarySource.listChildren(parent),
     onLibrarySearch: (query) => librarySource.searchAll(query),
     onLibraryIcon: (target) => libraryIconSvg(client, target),
+    onSelectionChange: (keys) => {
+      if (keys.length !== 1) return;
+      const key = keys[0];
+      if (key === undefined) return;
+      const parsed = parseEntityKey(key);
+      if (parsed === null || !isShapeKey(parsed)) return;
+      if (!Number.isInteger(parsed.index)) return;
+      const found = lookupHostShape(prevLayout, parsed.index, parsed.shapeKind);
+      if (found === null) return;
+      shapePropertiesLayerKind = found.layerKind;
+      shapePropertiesIndex = parsed.index;
+      shapePropertiesShapeKind = parsed.shapeKind;
+      panel.openParameters({
+        kind: "shapeProperties",
+        model: buildShapePropertiesForm(found.shape),
+        title: `Shape: ${found.shape.kind}`,
+        submitLabel: "Apply",
+      });
+    },
     onAddComponent: async (componentClass, position) => {
       const componentName = uniqueComponentName(prevLayout, componentClass);
       const annotation = placementAt(position);

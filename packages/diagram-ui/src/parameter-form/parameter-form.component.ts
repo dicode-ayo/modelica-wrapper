@@ -256,6 +256,21 @@ export class OmParameterForm extends LitElement {
       /* Read-only display widget for non-editable (record / complex)
        * parameters. Sized to match the xs inputs so the control column
        * stays visually consistent across rows. */
+      .color-swatch {
+        display: block;
+        width: 100%;
+        height: var(--om-input-size-xs, 28px);
+        padding: 0 2px;
+        border: 1px solid var(--vscode-input-border, #d4d4d4);
+        border-radius: var(--om-radius-sm, 4px);
+        background: none;
+        cursor: pointer;
+      }
+      .color-swatch:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
       .readonly-display {
         display: inline-block;
         width: 100%;
@@ -792,6 +807,25 @@ export class OmParameterForm extends LitElement {
             >${this.renderLabelSlot(f)}${this.renderHintSlot(f)}</wa-input
           >
         `;
+      case "color": {
+        const hex =
+          typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v) ? v : "#000000";
+        return html`<input
+          id=${`f-${f.name}`}
+          type="color"
+          class="color-swatch"
+          ?disabled=${!enabled}
+          .value=${hex}
+          @input=${(e: Event) => {
+            const next = (e.target as HTMLInputElement).value;
+            this.setField(f.name, next);
+          }}
+          @change=${(e: Event) => {
+            const next = (e.target as HTMLInputElement).value;
+            this.setField(f.name, next, { commit: true });
+          }}
+        />`;
+      }
       case "unsupported": {
         // Record / complex parameters can't be edited yet, but we still
         // want the user to see what's currently bound. The builder

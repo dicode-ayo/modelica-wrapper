@@ -4,13 +4,12 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import { ContextProvider } from "@lit/context";
 import { repeat } from "lit/directives/repeat.js";
 import type {
-  Color,
   ComponentInstance,
   ConnectorInstance,
   DiagramLayout,
   IconLayer,
 } from "@dicode/omc-client";
-import { clampByte } from "@dicode/diagram-svg";
+import { colorToCss } from "@dicode/diagram-svg";
 
 import { renderShape } from "../primitives/render-shape.js";
 import { lineThicknessScaleContext } from "../primitives/stroke-scale-context.js";
@@ -131,12 +130,6 @@ interface BBox {
   minY: number;
   maxX: number;
   maxY: number;
-}
-
-/** Modelica `[r,g,b]` (0–255) → `#rrggbb`, the form `<om-edge>` parses. */
-function colorToHex(color: Color): string {
-  const hex = (n: number): string => clampByte(n).toString(16).padStart(2, "0");
-  return `#${hex(color[0])}${hex(color[1])}${hex(color[2])}`;
 }
 
 function layoutBoundingBox(layout: DiagramLayout): BBox | null {
@@ -449,7 +442,7 @@ export class OmGraphicalLayout extends LitElement {
             html`<om-connection
               .nodeId=${String(idx)}
               .path=${resolveConnectionWaypoints(active, conn)}
-              .stroke=${conn.color ? colorToHex(conn.color) : undefined}
+              .stroke=${conn.color ? colorToCss(conn.color) : undefined}
               .selectedKeys=${this.selectedKeys}
             ></om-connection>`,
         )}

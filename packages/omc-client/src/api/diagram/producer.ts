@@ -38,6 +38,7 @@ import type {
   DiagramLayout,
   IconLayer,
   LabelLayout,
+  LineStyle,
   ParameterDef,
   PortDef,
   Shape,
@@ -51,6 +52,7 @@ import {
   ownSubComponents,
   walkConnectors,
   walkExtendsChain,
+  walkLayerEntries,
 } from "./walker.js";
 
 // ---------- condition gating ----------
@@ -290,8 +292,8 @@ function collectLayers(
   kind: "icon" | "diagram",
 ): IconLayer[] {
   const out: IconLayer[] = [];
-  for (const klass of walkExtendsChain(mi)) {
-    const graphics = graphicsForKind(klass, kind);
+  for (const { klass, primitivesVisible } of walkLayerEntries(mi, kind)) {
+    const graphics = primitivesVisible ? graphicsForKind(klass, kind) : [];
     const cs = coordinateSystemForKind(klass, kind);
     if (graphics.length === 0 && !cs) continue;
     const shapes: Shape[] = [];
@@ -606,6 +608,64 @@ function colorFromLine(line: unknown): Color | undefined {
 }
 
 /**
+ * Strip an enum literal (`{ $kind: "enum", name: "LinePattern.Dash", ... }`)
+ * or a bare qualified string down to its unqualified suffix (`"Dash"`).
+ * OMC's `getModelInstance` emits Line's enum-typed fields (`pattern`,
+ * `arrow`, `smooth`) as enum literals, matching `EnumLiteral` in
+ * `modelInstance.ts`.
+ */
+function enumTail(v: unknown): string | undefined {
+  const name =
+    typeof v === "string"
+      ? v
+      : typeof v === "object" &&
+          v !== null &&
+          (v as { $kind?: unknown }).$kind === "enum" &&
+          typeof (v as { name?: unknown }).name === "string"
+        ? ((v as { name: string }).name as string)
+        : undefined;
+  if (name === undefined) return undefined;
+  const idx = name.lastIndexOf(".");
+  return idx >= 0 ? name.slice(idx + 1) : name;
+}
+
+/** Decode `annotation.Line.thickness` (a plain number). */
+function thicknessFromLine(line: unknown): number | undefined {
+  if (typeof line !== "object" || line === null) return undefined;
+  const t = (line as { thickness?: unknown }).thickness;
+  return typeof t === "number" && Number.isFinite(t) ? t : undefined;
+}
+
+/** Decode `annotation.Line.pattern` (a `LinePattern` enum literal). */
+function patternFromLine(line: unknown): string | undefined {
+  if (typeof line !== "object" || line === null) return undefined;
+  return enumTail((line as { pattern?: unknown }).pattern);
+}
+
+/** Decode `annotation.Line.arrow` (`{Arrow.<start>, Arrow.<end>}`). */
+function arrowFromLine(line: unknown): [string, string] | undefined {
+  if (typeof line !== "object" || line === null) return undefined;
+  const a = (line as { arrow?: unknown }).arrow;
+  if (!Array.isArray(a) || a.length !== 2) return undefined;
+  const head = enumTail(a[0]);
+  const tail = enumTail(a[1]);
+  return head !== undefined && tail !== undefined ? [head, tail] : undefined;
+}
+
+/** Decode `annotation.Line.arrowSize` (a plain number). */
+function arrowSizeFromLine(line: unknown): number | undefined {
+  if (typeof line !== "object" || line === null) return undefined;
+  const s = (line as { arrowSize?: unknown }).arrowSize;
+  return typeof s === "number" && Number.isFinite(s) ? s : undefined;
+}
+
+/** Decode `annotation.Line.smooth` (a `Smooth` enum literal). */
+function smoothFromLine(line: unknown): string | undefined {
+  if (typeof line !== "object" || line === null) return undefined;
+  return enumTail((line as { smooth?: unknown }).smooth);
+}
+
+/**
  * True when a connection endpoint resolves to a node/port that survived
  * gating (issue #76, item 6).
  *
@@ -648,8 +708,20 @@ function emitConnection(c: ConnectionNode): ConnectionLayout | undefined {
   const waypointsXY = waypointsFromLine(line);
   // Convert {x,y} back to [x,y] tuples for the public type.
   const waypoints = waypointsXY.map((p) => [p.x, p.y] as [number, number]);
+  const style: LineStyle = {};
   const color = colorFromLine(line);
-  return color ? { lhs, rhs, waypoints, color } : { lhs, rhs, waypoints };
+  if (color) style.color = color;
+  const thickness = thicknessFromLine(line);
+  if (thickness !== undefined) style.thickness = thickness;
+  const pattern = patternFromLine(line);
+  if (pattern) style.pattern = pattern;
+  const arrow = arrowFromLine(line);
+  if (arrow) style.arrow = arrow;
+  const arrowSize = arrowSizeFromLine(line);
+  if (arrowSize !== undefined) style.arrowSize = arrowSize;
+  const smooth = smoothFromLine(line);
+  if (smooth) style.smooth = smooth;
+  return { lhs, rhs, waypoints, ...style };
 }
 
 // ---------- entry point ----------
