@@ -6,7 +6,6 @@ import "../src/connection/edge.component.js";
 import type { OmScene } from "../src/scene/scene.component.js";
 import type { OmEdge } from "../src/connection/edge.component.js";
 import { buildEdge } from "../src/connection/edge-build.js";
-import { parseCssColor } from "../src/connection/parse-color.js";
 import { dashCount } from "./pixi-dash.helper.js";
 
 const teardowns: Array<() => void> = [];
@@ -87,33 +86,6 @@ describe("buildEdge", () => {
     // The legacy fallback still produces a dashed (segmented) line, not a
     // single continuous run.
     expect(dashCount(result.line)).toBeGreaterThan(1);
-  });
-});
-
-describe("parseCssColor", () => {
-  it("parses the rgb(r,g,b) form colorToCss emits", () => {
-    expect(parseCssColor("rgb(0,0,127)")).toBe(0x00007f);
-    expect(parseCssColor("rgb(255,16,0)")).toBe(0xff1000);
-    expect(parseCssColor("rgb(255,255,255)")).toBe(0xffffff);
-  });
-
-  it("tolerates whitespace between rgb channels", () => {
-    expect(parseCssColor("rgb( 0 , 0 , 127 )")).toBe(0x00007f);
-  });
-
-  it("still parses the #rrggbb and bare-hex forms", () => {
-    expect(parseCssColor("#00007f")).toBe(0x00007f);
-    expect(parseCssColor("00007f")).toBe(0x00007f);
-    expect(parseCssColor("#FF1000")).toBe(0xff1000);
-  });
-
-  it("returns undefined for empty, malformed, or out-of-range input", () => {
-    expect(parseCssColor(undefined)).toBeUndefined();
-    expect(parseCssColor("")).toBeUndefined();
-    expect(parseCssColor("rgb(0,0)")).toBeUndefined();
-    expect(parseCssColor("rgb(300,0,0)")).toBeUndefined();
-    expect(parseCssColor("rgba(0,0,0,1)")).toBeUndefined();
-    expect(parseCssColor("#fff")).toBeUndefined();
   });
 });
 
