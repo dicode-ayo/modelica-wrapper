@@ -1086,13 +1086,20 @@ export class OmGraphicalLayout extends LitElement {
       this.pendingAddPosition ??
       (sceneEl ? { x: sceneEl.panX, y: sceneEl.panY } : { x: 0, y: 0 });
     this.pendingAddPosition = null;
-    // Snap the drop point to the active grid so the new component
-    // lands on a grid intersection — same rule the drag handler
-    // applies, so subsequent moves don't visibly "correct" the
-    // position on first interaction.
-    const position = snapPoint(raw.x, raw.y, this.currentSnapGrid());
-    this.emit("om-add-component-request", { className, position });
+    this.requestAddComponent(className, raw);
   };
+
+  /** Snap a diagram-space point to the active grid and ask the host to
+   *  instantiate `className` there. Single-sourced so every add path (library
+   *  overlay, drag-drop) lands on a grid intersection under the same rule and
+   *  a first move doesn't visibly "correct" the position. */
+  private requestAddComponent(
+    className: string,
+    point: { x: number; y: number },
+  ): void {
+    const position = snapPoint(point.x, point.y, this.currentSnapGrid());
+    this.emit("om-add-component-request", { className, position });
+  }
 
   private onLibraryCancel = (
     e: CustomEvent<LibraryEvents["om-library-cancel"]>,
@@ -1106,15 +1113,28 @@ export class OmGraphicalLayout extends LitElement {
    *  format; `preventDefault` marks the canvas a valid `copy` drop target.
    *  Other drags fall through untouched so we don't hijack them. */
   private onDragOver = (e: DragEvent): void => {
-    if (this.readonly) return;
+    if (this.readonly) {
+      return;
+    }
     const dt = e.dataTransfer;
-    if (!dt || !dt.types.includes(LIBRARY_TREE_DRAG_FORMAT)) return;
+    if (!dt || !dt.types.includes(LIBRARY_TREE_DRAG_FORMAT)) {
+      return;
+    }
     e.preventDefault();
     dt.dropEffect = "copy";
     this.dropActive = true;
   };
 
-  private onDragLeave = (): void => {
+  // `dragleave` fires whenever the cursor crosses onto any child of
+  // `om-scene` (the events bubble up), not just when it leaves the canvas —
+  // clearing unconditionally would flicker the affordance over a populated
+  // diagram. Keep it lit while the cursor is still within the scene subtree.
+  private onDragLeave = (e: DragEvent): void => {
+    const scene = this.sceneEl;
+    const next = e.relatedTarget;
+    if (scene && next instanceof Node && scene.contains(next)) {
+      return;
+    }
     this.dropActive = false;
   };
 
@@ -1129,11 +1149,14 @@ export class OmGraphicalLayout extends LitElement {
     }
     e.preventDefault();
     const className = parseLibraryDrag(dt.getData(LIBRARY_TREE_DRAG_FORMAT));
-    if (className === null) return;
+    if (className === null) {
+      return;
+    }
     const point = this.sceneEl?.clientToDiagram(e.clientX, e.clientY) ?? null;
-    if (point === null) return;
-    const position = snapPoint(point.x, point.y, this.currentSnapGrid());
-    this.emit("om-add-component-request", { className, position });
+    if (point === null) {
+      return;
+    }
+    this.requestAddComponent(className, point);
   };
 
   private onInteraction<K extends keyof InteractionEvents>(

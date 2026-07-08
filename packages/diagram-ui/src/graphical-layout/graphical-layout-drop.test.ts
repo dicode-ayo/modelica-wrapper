@@ -30,6 +30,13 @@ function emptyLayout(): DiagramLayout {
   return {
     kind: "diagram",
     className: "Test",
+    source: {
+      filename: "Test.mo",
+      lineStart: 1,
+      columnStart: 1,
+      lineEnd: 1,
+      columnEnd: 1,
+    },
     classes: {},
     components: {},
     connectors: {},
@@ -37,7 +44,7 @@ function emptyLayout(): DiagramLayout {
     labels: [],
     iconLayers: [],
     diagramLayers: [],
-  } as unknown as DiagramLayout;
+  };
 }
 
 /** Minimal `DataTransfer` — happy-dom's constructor doesn't ride a synthetic
@@ -187,6 +194,17 @@ describe("<om-graphical-layout> drag-to-instantiate", () => {
     );
 
     expect(detail).not.toHaveBeenCalled();
+  });
+
+  it("does not mark a readonly canvas a drop target on dragover", async () => {
+    const { scene } = await mount(true);
+    const dt = libraryDataTransfer("Modelica.Blocks.Math.Gain");
+    const event = makeDragEvent("dragover", { dataTransfer: dt });
+
+    scene.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(dt.dropEffect).toBe("none");
   });
 
   it("does not emit when the payload is malformed", async () => {
