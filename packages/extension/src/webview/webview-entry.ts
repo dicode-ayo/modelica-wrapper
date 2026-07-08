@@ -249,6 +249,7 @@ class OmWebviewRoot extends LitElement {
       <om-graphical-layout
         .layout=${this.layout}
         host-managed-keys
+        show-palette
         ?perf-hud=${true}
         .libraryDataSource=${this.librarySource}
         @om-graphical-layout-change=${this.onLayoutChange}
