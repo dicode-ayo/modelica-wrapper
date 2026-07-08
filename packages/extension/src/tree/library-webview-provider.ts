@@ -18,6 +18,7 @@ import type { OmcClient } from "@dicode/omc-client";
 import { LibraryBrowserSource } from "../diagram/library-source.js";
 import { libraryIconSvg } from "../diagram/open-diagram.js";
 import { DiagramPanel } from "../diagram/panel.js";
+import { randomNonce } from "../webview/nonce.js";
 import type {
   ExtensionToLibraryView,
   LibraryViewToExtension,
@@ -104,6 +105,10 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
       case "loadLibrary":
         void vscode.commands.executeCommand("modelica.loadLibrary");
         return;
+      default:
+        // A new protocol variant must add a case above; this keeps the
+        // compiler enforcing that.
+        return message satisfies never;
     }
   }
 
@@ -188,14 +193,4 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
   </body>
 </html>`;
   }
-}
-
-function randomNonce(): string {
-  let s = "";
-  const chars =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    s += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return s;
 }

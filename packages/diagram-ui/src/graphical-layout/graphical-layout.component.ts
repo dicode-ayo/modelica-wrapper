@@ -353,7 +353,10 @@ export class OmGraphicalLayout extends LitElement {
         font-family: var(--vscode-font-family, system-ui, sans-serif);
         font-size: var(--om-description-size);
         color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
-        background: var(--vscode-editorWidget-background, rgba(0, 0, 0, 0.75));
+        background: var(
+          --vscode-editorWidget-background,
+          var(--vscode-editor-background)
+        );
         border: 1px solid var(--vscode-widget-border, transparent);
       }
     `,

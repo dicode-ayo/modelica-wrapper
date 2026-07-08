@@ -7,6 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { OmcClient } from "@dicode/omc-client";
 
 import { DiagramPanel } from "../diagram/panel.js";
 import type {
@@ -66,7 +67,10 @@ function makeProvider() {
     fsPath: "/ext",
     path: "/ext",
   } as unknown as import("vscode").Uri;
-  const provider = new LibraryWebviewProvider(uri, async () => client as never);
+  const provider = new LibraryWebviewProvider(
+    uri,
+    async () => client as unknown as OmcClient,
+  );
   return { provider, client };
 }
 

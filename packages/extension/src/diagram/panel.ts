@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import type { DiagramLayout, ParameterModel } from "@dicode/omc-client";
 
+import { randomNonce } from "../webview/nonce.js";
 import type {
   DiagramCommandId,
   ExtensionToWebview,
@@ -452,14 +453,4 @@ function setInputFocusContext(focused: boolean): void {
     INPUT_FOCUS_CONTEXT,
     focused,
   );
-}
-
-function randomNonce(): string {
-  let s = "";
-  const chars =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    s += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return s;
 }

@@ -14,7 +14,7 @@ export interface PlacementPoint {
 }
 
 /** Client-coordinate rectangle, as returned by `getBoundingClientRect`. */
-export interface ClientRect {
+export interface EdgeRect {
   readonly left: number;
   readonly right: number;
   readonly top: number;
@@ -22,7 +22,7 @@ export interface ClientRect {
 }
 
 /** Whether a client point falls within `rect` (edges inclusive). */
-export function pointInRect(x: number, y: number, rect: ClientRect): boolean {
+export function pointInRect(x: number, y: number, rect: EdgeRect): boolean {
   return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
 
