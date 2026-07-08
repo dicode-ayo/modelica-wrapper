@@ -230,13 +230,13 @@ export class OmGraphicalLayout extends LitElement {
        * remaining width so the palette docks beside it without overlapping. */
       .workbench {
         display: flex;
-        width: 100%;
-        height: 100%;
-        min-height: 0;
+        inline-size: 100%;
+        block-size: 100%;
+        min-block-size: 0;
       }
       om-scene {
         flex: 1 1 auto;
-        min-width: 0;
+        min-inline-size: 0;
       }
       /* Drop affordance while a draggable library class hovers the canvas. */
       om-scene.om-drop-active {
@@ -249,7 +249,7 @@ export class OmGraphicalLayout extends LitElement {
         flex: 0 0 var(--om-library-palette-size);
         display: flex;
         flex-direction: column;
-        min-height: 0;
+        min-block-size: 0;
         border-inline-end: 1px solid var(--vscode-widget-border, #454545);
         background: var(
           --vscode-sideBar-background,
@@ -269,11 +269,17 @@ export class OmGraphicalLayout extends LitElement {
         font-size: var(--om-description-size);
         color: var(--vscode-foreground);
         text-transform: uppercase;
-        letter-spacing: 0.04em;
       }
       om-library-tree {
         flex: 1 1 auto;
-        min-height: 0;
+        min-block-size: 0;
+      }
+      /* Inline SVG (not a glyph font) so the toggle icon renders under the
+       * webview CSP, matching the diagram's other inline-SVG affordances. */
+      .palette-icon {
+        inline-size: var(--om-icon-size-sm);
+        block-size: var(--om-icon-size-sm);
+        display: block;
       }
       .palette-toggle,
       .palette-rail {
@@ -601,7 +607,7 @@ export class OmGraphicalLayout extends LitElement {
         aria-label="Show library palette"
         @click=${this.togglePalette}
       >
-        ☰
+        ${this.paletteChevron("right")}
       </button>`;
     }
     return html`<aside class="palette">
@@ -614,11 +620,29 @@ export class OmGraphicalLayout extends LitElement {
           aria-label="Hide library palette"
           @click=${this.togglePalette}
         >
-          ◀
+          ${this.paletteChevron("left")}
         </button>
       </div>
       <om-library-tree .dataSource=${source}></om-library-tree>
     </aside>`;
+  }
+
+  /** A single-triangle chevron pointing `left` (collapse) or `right` (expand),
+   *  in a 16×16 box. Inline `<svg>` root so `html` parses it in the SVG
+   *  namespace; `currentColor` inherits the button's icon colour. */
+  private paletteChevron(dir: "left" | "right"): TemplateResult {
+    const d =
+      dir === "right"
+        ? "M5.5 3.5 11 8l-5.5 4.5V3.5z"
+        : "M10.5 3.5 5 8l5.5 4.5V3.5z";
+    return html`<svg
+      class="palette-icon"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d=${d}></path>
+    </svg>`;
   }
 
   private readonly togglePalette = (): void => {

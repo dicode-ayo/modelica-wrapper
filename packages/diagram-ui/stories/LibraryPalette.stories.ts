@@ -26,45 +26,9 @@ interface StoryArgs {
   showPalette: boolean;
 }
 
-let currentLayout: DiagramLayout = sampleLayout();
-
 const meta: Meta<StoryArgs> = {
   title: "diagram-ui/LibraryPalette",
   parameters: { chromatic: { disableSnapshot: true } },
-  render: ({ readonly, showPalette }: StoryArgs): TemplateResult => html`
-    <div class="om-story">
-      <h3>Library palette</h3>
-      <p style="font-size:11px;color:#666;margin:4px 0;">
-        Drag a class row from the docked palette onto the canvas to instantiate
-        it. Use the header button to collapse the palette to its show-rail;
-        double-click empty canvas still opens the library browser overlay.
-      </p>
-      <div class="om-story-canvas-host" style="height:560px;">
-        <om-graphical-layout
-          .layout=${currentLayout}
-          ?readonly=${readonly}
-          ?show-palette=${showPalette}
-          .libraryDataSource=${fakeLibrarySource}
-          @om-graphical-layout-change=${(e: CustomEvent<DiagramLayout>) => {
-            currentLayout = e.detail;
-          }}
-          @om-add-component-request=${(
-            e: CustomEvent<AddComponentRequestDetail>,
-          ) => {
-            currentLayout = appendComponent(
-              currentLayout,
-              e.detail.className,
-              e.detail.position,
-            );
-            const el = e.currentTarget as HTMLElement & {
-              layout: DiagramLayout;
-            };
-            el.layout = currentLayout;
-          }}
-        ></om-graphical-layout>
-      </div>
-    </div>
-  `,
   argTypes: {
     readonly: { control: { type: "boolean" } },
     showPalette: { control: { type: "boolean" } },
@@ -76,8 +40,52 @@ export default meta;
 
 type Story = StoryObj<StoryArgs>;
 
-export const Default: Story = {};
+/**
+ * One story instance. Each closes over its own mutable `layout` so drops in
+ * one story don't bleed into another when the Docs page renders them together.
+ */
+function paletteStory(overrides: Partial<StoryArgs> = {}): Story {
+  let layout: DiagramLayout = sampleLayout();
+  return {
+    args: overrides,
+    render: ({ readonly, showPalette }: StoryArgs): TemplateResult => html`
+      <div class="om-story">
+        <h3>Library palette</h3>
+        <p class="om-story-caption">
+          Drag a class row from the docked palette onto the canvas to
+          instantiate it. Use the header button to collapse the palette to its
+          show-rail; double-click empty canvas still opens the library browser
+          overlay.
+        </p>
+        <div class="om-story-canvas-host">
+          <om-graphical-layout
+            .layout=${layout}
+            ?readonly=${readonly}
+            ?show-palette=${showPalette}
+            .libraryDataSource=${fakeLibrarySource}
+            @om-graphical-layout-change=${(e: CustomEvent<DiagramLayout>) => {
+              layout = e.detail;
+            }}
+            @om-add-component-request=${(
+              e: CustomEvent<AddComponentRequestDetail>,
+            ) => {
+              layout = appendComponent(
+                layout,
+                e.detail.className,
+                e.detail.position,
+              );
+              const el = e.currentTarget as HTMLElement & {
+                layout: DiagramLayout;
+              };
+              el.layout = layout;
+            }}
+          ></om-graphical-layout>
+        </div>
+      </div>
+    `,
+  };
+}
 
-export const Collapsed: Story = {
-  args: { showPalette: false },
-};
+export const Default: Story = paletteStory();
+
+export const Collapsed: Story = paletteStory({ showPalette: false });

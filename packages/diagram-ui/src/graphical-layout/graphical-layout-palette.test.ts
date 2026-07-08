@@ -21,7 +21,9 @@ import type { LibraryBrowserDataSource } from "../library-browser/library-browse
 
 const teardowns: Array<() => void> = [];
 afterEach(() => {
-  for (const t of teardowns.splice(0)) t();
+  for (const t of teardowns.splice(0)) {
+    t();
+  }
 });
 
 function emptyLayout(): DiagramLayout {
@@ -66,7 +68,9 @@ async function mount(opts: {
   el.rendererFactory = () => null;
   el.layout = emptyLayout();
   el.libraryDataSource = opts.source;
-  if (opts.showPalette) el.showPalette = true;
+  if (opts.showPalette) {
+    el.showPalette = true;
+  }
   document.body.appendChild(el);
   teardowns.push(() => el.remove());
   await el.updateComplete;
@@ -76,17 +80,24 @@ async function mount(opts: {
 const paletteTree = (el: OmGraphicalLayout): OmLibraryTree | null =>
   el.shadowRoot?.querySelector("om-library-tree") ?? null;
 
+// Query the toggles by their a11y label, not a class, so the assertions ride
+// the accessible contract and survive a style rename.
+const showRail = (el: OmGraphicalLayout): HTMLButtonElement | null =>
+  el.shadowRoot?.querySelector('[aria-label="Show library palette"]') ?? null;
+const collapseButton = (el: OmGraphicalLayout): HTMLButtonElement | null =>
+  el.shadowRoot?.querySelector('[aria-label="Hide library palette"]') ?? null;
+
 describe("<om-graphical-layout> library palette", () => {
   it("renders no palette when no data source is set", async () => {
     const el = await mount({ source: null, showPalette: true });
     expect(el.shadowRoot?.querySelector(".palette")).toBeNull();
-    expect(el.shadowRoot?.querySelector(".palette-rail")).toBeNull();
+    expect(showRail(el)).toBeNull();
     expect(paletteTree(el)).toBeNull();
   });
 
   it("collapses to a show-rail (no tree) when a source is set but the palette is hidden", async () => {
     const el = await mount({ source: stubSource() });
-    expect(el.shadowRoot?.querySelector(".palette-rail")).not.toBeNull();
+    expect(showRail(el)).not.toBeNull();
     expect(el.shadowRoot?.querySelector(".palette")).toBeNull();
     expect(paletteTree(el)).toBeNull();
   });
@@ -96,7 +107,7 @@ describe("<om-graphical-layout> library palette", () => {
     const el = await mount({ source, showPalette: true });
     const tree = paletteTree(el);
     expect(tree).not.toBeNull();
-    expect(el.shadowRoot?.querySelector(".palette-rail")).toBeNull();
+    expect(showRail(el)).toBeNull();
     // Same object, not a second data path.
     expect(tree?.dataSource).toBe(source);
   });
@@ -105,17 +116,19 @@ describe("<om-graphical-layout> library palette", () => {
     const el = await mount({ source: stubSource() });
     expect(paletteTree(el)).toBeNull();
 
-    const rail =
-      el.shadowRoot?.querySelector<HTMLButtonElement>(".palette-rail");
-    if (!rail) throw new Error("show-rail missing");
+    const rail = showRail(el);
+    if (!rail) {
+      throw new Error("show-rail missing");
+    }
     rail.click();
     await el.updateComplete;
     expect(el.showPalette).toBe(true);
     expect(paletteTree(el)).not.toBeNull();
 
-    const collapse =
-      el.shadowRoot?.querySelector<HTMLButtonElement>(".palette-toggle");
-    if (!collapse) throw new Error("collapse button missing");
+    const collapse = collapseButton(el);
+    if (!collapse) {
+      throw new Error("collapse button missing");
+    }
     collapse.click();
     await el.updateComplete;
     expect(el.showPalette).toBe(false);
