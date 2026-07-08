@@ -75,6 +75,11 @@ export const omTokens: CSSResult = css`
     /* --- action panel --- */
     --om-action-panel-offset: 8px;
 
+    /* --- drop target affordance ---
+     * Outline width the diagram canvas paints while a draggable library class
+     * hovers over it, signalling it accepts the drop. */
+    --om-drop-outline-width: 2px;
+
     /* --- typography --- */
     --om-title-size: 1.1em;
     --om-description-size: 0.92em;
