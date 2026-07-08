@@ -142,6 +142,50 @@ describe("<om-library-tree>", () => {
     ]);
   });
 
+  it("keeps working after interacting with a filtered row and clearing the query", async () => {
+    const { source, searchAll } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+
+    const input = el.shadowRoot?.querySelector<HTMLInputElement>(".search");
+    if (!input) throw new Error("search input missing");
+    input.value = "gain";
+    input.dispatchEvent(new Event("input"));
+    await waitFor(() => searchAll.mock.calls.length > 0);
+    await el.updateComplete;
+
+    const rows = (el as unknown as { searchTreeRows: SearchTreeRow[] })
+      .searchTreeRows;
+    const leaf = rows.find((r) => r.isMatch);
+    if (!leaf) throw new Error("no match leaf");
+    const priv = el as unknown as {
+      onSearchRowClick(c: string): void;
+      fireSelect(c: string): void;
+      selectedClassName: string | null;
+      searchLoading: boolean;
+    };
+    const opened = onSelect(el);
+
+    // Filtered-row interaction is keyed by className — no Headless Tree item.
+    priv.onSearchRowClick(leaf.qualified); // single click selects
+    expect(priv.selectedClassName).toBe(leaf.qualified);
+    expect(opened).toEqual([]);
+    priv.fireSelect(leaf.qualified); // double click / Enter opens
+    expect(opened).toEqual([leaf.qualified]);
+
+    // Clearing the query returns to a working, interactive lazy tree.
+    input.value = "";
+    input.dispatchEvent(new Event("input"));
+    await el.updateComplete;
+    expect(priv.searchLoading).toBe(false);
+    expect(treeOf(el).getItems().length).toBeGreaterThanOrEqual(2);
+    const item = treeOf(el).getItemInstance("Complex");
+    (
+      el as unknown as { onItemClick(i: ItemInstance<LibraryTreeNode>): void }
+    ).onItemClick(item);
+    expect(item.isSelected()).toBe(true);
+  });
+
   it("marks the matching segment and leaves ancestor labels unmarked", async () => {
     const { source } = makeSource();
     const el = await mount(source);
@@ -226,16 +270,69 @@ describe("<om-library-tree>", () => {
     expect(results).toBeNull();
   });
 
-  it("emits om-library-select with the activated className", async () => {
-    const { source } = makeSource();
-    const el = await mount(source);
-    await waitFor(() => treeOf(el).getItems().length >= 2);
-
+  function onSelect(el: OmLibraryTree): string[] {
     const selected: string[] = [];
     el.addEventListener("om-library-select", (e) => {
       selected.push((e as CustomEvent<LibrarySelectDetail>).detail.className);
     });
+    return selected;
+  }
+
+  /** Render a tree row standalone and return its `.row` element, so click /
+   *  dblclick bindings can be exercised (the virtualizer doesn't mount here). */
+  function renderRowEl(
+    el: OmLibraryTree,
+    item: ItemInstance<LibraryTreeNode>,
+  ): HTMLElement {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    teardowns.push(() => container.remove());
+    const renderRow = (
+      el as unknown as {
+        renderRow(i: ItemInstance<LibraryTreeNode>): unknown;
+      }
+    ).renderRow.bind(el);
+    render(renderRow(item) as never, container);
+    const row = container.querySelector<HTMLElement>(".row");
+    if (!row) throw new Error("row not rendered");
+    return row;
+  }
+
+  it("opens on keyboard activation (primaryAction)", async () => {
+    const { source } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+    const selected = onSelect(el);
     treeOf(el).getItemInstance("Complex").primaryAction();
+    expect(selected).toEqual(["Complex"]);
+  });
+
+  it("single click selects a row, it does not open it", async () => {
+    const { source } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+    const item = treeOf(el).getItemInstance("Complex");
+    const selected = onSelect(el);
+
+    renderRowEl(el, item).dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    );
+
+    expect(item.isSelected()).toBe(true);
+    expect(selected).toEqual([]);
+  });
+
+  it("double click opens the row", async () => {
+    const { source } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+    const item = treeOf(el).getItemInstance("Complex");
+    const selected = onSelect(el);
+
+    renderRowEl(el, item).dispatchEvent(
+      new MouseEvent("dblclick", { bubbles: true }),
+    );
+
     expect(selected).toEqual(["Complex"]);
   });
 
@@ -272,18 +369,18 @@ describe("<om-library-tree>", () => {
     expect(selected).toEqual([]);
   });
 
-  it("row activation selects without toggling expansion (the open path)", async () => {
+  it("opening a folder row does not toggle its expansion", async () => {
     const { source } = makeSource();
     const el = await mount(source);
     await waitFor(() => treeOf(el).getItems().length >= 2);
     const item = treeOf(el).getItemInstance("Modelica");
     expect(item.isExpanded()).toBe(false);
+    const selected = onSelect(el);
 
-    const selected: string[] = [];
-    el.addEventListener("om-library-select", (e) => {
-      selected.push((e as CustomEvent<LibrarySelectDetail>).detail.className);
-    });
-    item.primaryAction();
+    renderRowEl(el, item).dispatchEvent(
+      new MouseEvent("dblclick", { bubbles: true }),
+    );
+
     expect(selected).toEqual(["Modelica"]);
     expect(item.isExpanded()).toBe(false);
   });
@@ -349,28 +446,33 @@ describe("<om-library-tree>", () => {
     expect(state.searchError).toBeNull();
   });
 
-  it("activates a search row on Enter and Space", async () => {
+  it("opens a search row on Enter and selects it on Space", async () => {
     const { source } = makeSource();
     const el = await mount(source);
     await waitFor(() => treeOf(el).getItems().length >= 2);
 
-    const selected: string[] = [];
-    el.addEventListener("om-library-select", (e) => {
-      selected.push((e as CustomEvent<LibrarySelectDetail>).detail.className);
-    });
+    const opened = onSelect(el);
+    const priv = el as unknown as {
+      onSearchRowKeydown(e: KeyboardEvent, className: string): void;
+      selectedClassName: string | null;
+    };
     // `<lit-virtualizer>` doesn't render search rows under happy-dom; drive the
-    // keyboard handler directly to pin the activation invariant.
-    const onKeydown = (
-      el as unknown as {
-        onSearchRowKeydown(e: KeyboardEvent, className: string): void;
-      }
-    ).onSearchRowKeydown.bind(el);
-    onKeydown(
+    // keyboard handler directly to pin the open (Enter) vs. select (Space) split.
+    priv.onSearchRowKeydown(
+      new KeyboardEvent("keydown", { key: " " }),
+      "Modelica.Blocks",
+    );
+    expect(priv.selectedClassName).toBe("Modelica.Blocks");
+    expect(opened).toEqual([]);
+
+    priv.onSearchRowKeydown(
       new KeyboardEvent("keydown", { key: "Enter" }),
       "Modelica.Blocks",
     );
-    onKeydown(new KeyboardEvent("keydown", { key: " " }), "Modelica.Blocks");
-    onKeydown(new KeyboardEvent("keydown", { key: "a" }), "Modelica.Blocks");
-    expect(selected).toEqual(["Modelica.Blocks", "Modelica.Blocks"]);
+    priv.onSearchRowKeydown(
+      new KeyboardEvent("keydown", { key: "a" }),
+      "Modelica.Blocks",
+    );
+    expect(opened).toEqual(["Modelica.Blocks"]);
   });
 });
