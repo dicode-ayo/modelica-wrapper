@@ -100,7 +100,7 @@ export interface LibraryBrowserDataSource {
    * resolve `undefined` when the class has no usable icon. Optional: a
    * data source that omits it (or returns undefined) leaves rows showing
    * their restriction-letter badge. Requested lazily per row so the icon
-   * fetch never runs for the whole tree (issue #76, item 8).
+   * fetch never runs for the whole tree.
    */
   iconSvg?(className: string): Promise<string | undefined>;
 }
@@ -117,7 +117,7 @@ export class OmLibraryBrowser extends LitElement {
       /* Bound the embedded tree to a definite height so its virtualizer
        * scrolls internally instead of growing the dialog to full content. */
       om-library-tree {
-        height: var(--om-library-body-min-height);
+        height: var(--om-library-body-height);
       }
     `,
   ];
