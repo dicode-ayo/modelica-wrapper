@@ -208,6 +208,7 @@ export const window = {
     recordedMessages.push({ level: "error", message });
     return Promise.resolve(undefined);
   },
+  registerWebviewViewProvider: (): Disposable => new Disposable(),
   showInputBox: () => Promise.resolve(undefined),
   createQuickPick() {
     const noop = () => ({ dispose: () => {} });
@@ -226,5 +227,16 @@ export const window = {
       hide: () => {},
       dispose: () => {},
     };
+  },
+};
+
+/** Recorded `commands.executeCommand` calls, so tests can assert which command
+ *  a code path fired without a real extension host. */
+export const executedCommands: Array<{ command: string; args: unknown[] }> = [];
+
+export const commands = {
+  executeCommand(command: string, ...args: unknown[]): Promise<undefined> {
+    executedCommands.push({ command, args });
+    return Promise.resolve(undefined);
   },
 };

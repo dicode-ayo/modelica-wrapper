@@ -11,10 +11,9 @@ import * as vscode from "vscode";
 import { openDiagram } from "../diagram/open-diagram.js";
 import { DiagramPanel } from "../diagram/panel.js";
 import { qualifiedNameFromUri, sourceUriFor } from "../source-provider.js";
-import type { LibraryNode } from "../tree/library-tree.js";
 import type { DiagramCommandId } from "../webview/protocol.js";
 
-import type { CommandContext } from "./context.js";
+import type { CommandContext, LibraryNode } from "./context.js";
 
 /**
  * VSCode command id → diagram command id. These are bound as keybindings

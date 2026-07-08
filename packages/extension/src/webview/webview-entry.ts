@@ -29,109 +29,13 @@ import {
   type ActionToolDetail,
   type ChangeClassRequestDetail,
   type LayoutEvents,
-  type LibraryBrowserDataSource,
-  type LibraryClassInfo,
   type OmGraphicalLayout,
   type ParameterFormSubmitDetail,
   type ToolId,
 } from "@dicode/diagram-ui";
 
 import type { ExtensionToWebview, WebviewToExtension } from "./protocol.js";
-
-/**
- * Bridges the diagram-ui's `LibraryBrowserDataSource` interface (which
- * speaks plain promises) onto our async postMessage protocol. Each
- * `listChildren` / `searchAll` call mints a `requestId`, posts the
- * matching request, and parks the resolve/reject pair in `pending`.
- * The webview-root forwards every `libraryChildren` /
- * `librarySearchResult` message in via `handleResponse`, which drains
- * the matching entry.
- *
- * Requests stay in the map until a response arrives — there's no
- * timeout. The extension host always replies (success or
- * `{ error: …}`), so a stuck request implies a host bug worth seeing
- * in the console rather than masking with a fake rejection.
- */
-class WebviewLibraryDataSource implements LibraryBrowserDataSource {
-  private nextId = 0;
-  private readonly pending = new Map<
-    string,
-    {
-      resolve: (items: LibraryClassInfo[]) => void;
-      reject: (err: Error) => void;
-    }
-  >();
-  // Icon requests resolve to an SVG string (or undefined for "no icon"),
-  // so they get their own correlation map keyed on the same id space.
-  private readonly pendingIcons = new Map<
-    string,
-    {
-      resolve: (svg: string | undefined) => void;
-      reject: (err: Error) => void;
-    }
-  >();
-
-  constructor(private readonly post: (msg: WebviewToExtension) => void) {}
-
-  listChildren(parent: string | null): Promise<LibraryClassInfo[]> {
-    return new Promise((resolve, reject) => {
-      const requestId = this.mintId();
-      this.pending.set(requestId, { resolve, reject });
-      this.post({ type: "libraryListChildren", requestId, parent });
-    });
-  }
-
-  searchAll(query: string): Promise<LibraryClassInfo[]> {
-    return new Promise((resolve, reject) => {
-      const requestId = this.mintId();
-      this.pending.set(requestId, { resolve, reject });
-      this.post({ type: "librarySearch", requestId, query });
-    });
-  }
-
-  iconSvg(className: string): Promise<string | undefined> {
-    return new Promise((resolve, reject) => {
-      const requestId = this.mintId();
-      this.pendingIcons.set(requestId, { resolve, reject });
-      this.post({ type: "libraryIcon", requestId, className });
-    });
-  }
-
-  handleResponse(message: {
-    requestId: string;
-    items?: LibraryClassInfo[];
-    error?: string;
-  }): void {
-    const entry = this.pending.get(message.requestId);
-    if (!entry) return;
-    this.pending.delete(message.requestId);
-    if (message.error !== undefined) {
-      entry.reject(new Error(message.error));
-      return;
-    }
-    entry.resolve(message.items ?? []);
-  }
-
-  handleIconResponse(message: {
-    requestId: string;
-    svg?: string;
-    error?: string;
-  }): void {
-    const entry = this.pendingIcons.get(message.requestId);
-    if (!entry) return;
-    this.pendingIcons.delete(message.requestId);
-    if (message.error !== undefined) {
-      entry.reject(new Error(message.error));
-      return;
-    }
-    entry.resolve(message.svg);
-  }
-
-  private mintId(): string {
-    this.nextId += 1;
-    return `lib-${this.nextId}`;
-  }
-}
+import { WebviewLibraryDataSource } from "./library-data-source.js";
 
 // Injected by esbuild `define`. Captures the build's wall-clock time so we
 // can tell at a glance whether the iframe is running freshly-bundled JS.
@@ -249,7 +153,6 @@ class OmWebviewRoot extends LitElement {
       <om-graphical-layout
         .layout=${this.layout}
         host-managed-keys
-        show-palette
         ?perf-hud=${true}
         .libraryDataSource=${this.librarySource}
         @om-graphical-layout-change=${this.onLayoutChange}
@@ -334,6 +237,12 @@ class OmWebviewRoot extends LitElement {
         return;
       case "runCommand":
         this.diagram?.runCommandById(message.commandId);
+        return;
+      case "placementStart":
+        this.diagram?.beginPlacement(message.className);
+        return;
+      case "placementCancel":
+        this.diagram?.cancelPlacement();
         return;
       case "error":
         console.error("[diagram-ui] backend error:", message.message);

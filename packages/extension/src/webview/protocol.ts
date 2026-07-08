@@ -142,7 +142,15 @@ export type ExtensionToWebview =
       // diagram panel was focused). The webview runs it through its registry.
       type: "runCommand";
       commandId: DiagramCommandId;
-    };
+    }
+  | {
+      // Host-relayed placement: a library row was pressed in the sidebar
+      // webview and dragged toward the canvas. The diagram arms its own
+      // cursor-tracking ghost and commits on release over the canvas.
+      type: "placementStart";
+      className: string;
+    }
+  | { type: "placementCancel" };
 
 export type WebviewToExtension =
   | { type: "ready" }

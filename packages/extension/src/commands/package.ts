@@ -13,12 +13,11 @@ import { writeFile } from "node:fs/promises";
 
 import * as vscode from "vscode";
 
-import type { LibraryNode } from "../tree/library-tree.js";
-
 import {
   sanitizeIdentifier,
   validateIdentifier,
   type CommandContext,
+  type LibraryNode,
 } from "./context.js";
 import { createReplLog } from "./repl.js";
 

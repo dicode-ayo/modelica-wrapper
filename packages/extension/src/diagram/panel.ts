@@ -207,6 +207,22 @@ export class DiagramPanel {
     return true;
   }
 
+  /**
+   * Relay a placement gesture from the library sidebar to the active diagram.
+   * `className !== null` arms placement; `null` cancels it. Returns `false`
+   * when no diagram panel is active so the caller can no-op quietly.
+   */
+  static relayPlacement(className: string | null): boolean {
+    const panel = DiagramPanel.activePanel;
+    if (!panel) return false;
+    panel.send(
+      className === null
+        ? { type: "placementCancel" }
+        : { type: "placementStart", className },
+    );
+    return true;
+  }
+
   /** Tell the webview to open its parameter modal with this model. */
   openParameters(opts: OpenParametersOptions): void {
     const msg: ExtensionToWebview = {

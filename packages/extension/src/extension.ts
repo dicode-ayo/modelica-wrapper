@@ -25,7 +25,7 @@ import {
   MODELICA_SOURCE_SCHEME,
   ModelicaSourceProvider,
 } from "./source-provider.js";
-import { LibraryTreeProvider } from "./tree/library-tree.js";
+import { LibraryWebviewProvider } from "./tree/library-webview-provider.js";
 import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
 import { discoverEntryPoints } from "./workspace-scan.js";
 
@@ -47,11 +47,15 @@ export async function activate(
   context: vscode.ExtensionContext,
 ): Promise<ModelicaExtensionApi> {
   log.info("activate", "extension activating");
-  const libraryTree = new LibraryTreeProvider(ensureClient);
-  const libraryView = vscode.window.createTreeView("modelica.libraries", {
-    treeDataProvider: libraryTree,
-    showCollapseAll: true,
-  });
+  const libraryTree = new LibraryWebviewProvider(
+    context.extensionUri,
+    ensureClient,
+  );
+  const libraryView = vscode.window.registerWebviewViewProvider(
+    "modelica.libraries",
+    libraryTree,
+    { webviewOptions: { retainContextWhenHidden: true } },
+  );
 
   const sourceProvider = new ModelicaSourceProvider(ensureClient);
 
@@ -181,7 +185,7 @@ async function resetClient(): Promise<OmcClient> {
  * don't abort the whole sweep — one bad file shouldn't block others.
  */
 async function autoLoadWorkspaceModels(
-  libraryTree: LibraryTreeProvider,
+  libraryTree: LibraryWebviewProvider,
 ): Promise<void> {
   const folders = vscode.workspace.workspaceFolders ?? [];
   if (folders.length === 0) return;

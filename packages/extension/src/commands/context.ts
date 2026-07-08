@@ -7,8 +7,25 @@ import * as vscode from "vscode";
 
 import type { OmcClient } from "@dicode/omc-client";
 
-import type { LibraryTreeProvider, LibraryNode } from "../tree/library-tree.js";
+import type { LibraryWebviewProvider } from "../tree/library-webview-provider.js";
 import type { ModelicaSourceProvider } from "../source-provider.js";
+
+/**
+ * A loaded Modelica class as a command argument. Commands invoked with a
+ * qualified target (e.g. from a context menu) receive one; invoked bare (the
+ * command palette, the sidebar view/title actions) they receive `undefined`
+ * and fall back to prompting.
+ */
+export interface LibraryNode {
+  /** Dotted fully-qualified Modelica name, e.g. `Modelica.Blocks.Math.Add`. */
+  readonly qualifiedName: string;
+  /** Last segment (a display / file-name default). */
+  readonly displayName: string;
+  /** OMC `getClassRestriction` keyword, or `"library"` for root nodes. */
+  readonly restriction: string;
+  /** Library version (root nodes only). */
+  readonly version?: string;
+}
 
 export interface CommandContext {
   /** Forwarded so commands that need extension assets (e.g. webview HTML) can reach them. */
@@ -22,8 +39,9 @@ export interface CommandContext {
    * `extension.ts` wirings still type-check.
    */
   readonly resetClient?: () => Promise<OmcClient>;
-  /** Activity-bar library tree; commands call `.refresh()` after mutations. */
-  readonly libraryTree: LibraryTreeProvider;
+  /** Activity-bar library sidebar (webview view); commands call `.refresh()`
+   *  after mutations so it re-fetches. */
+  readonly libraryTree: LibraryWebviewProvider;
   /** Virtual `modelica-source:` file-system provider; commands fire `notifySourceChanged(typeName)`
    *  after mutations to invalidate any open editors backed by this scheme. */
   readonly sourceProvider: ModelicaSourceProvider;
