@@ -330,10 +330,7 @@ export class OmLibraryTree extends LitElement {
   /** Request icons for the rows the virtualizer just (re)rendered. */
   private onTreeRangeChanged = (event: RangeChangedEvent): void => {
     const items = this.tree?.getItems() ?? [];
-    for (let i = event.first; i <= event.last; i++) {
-      const className = items[i]?.getItemData().className;
-      if (className) this.requestIcon(className);
-    }
+    this.requestIconsInRange(event, (i) => items[i]?.getItemData().className);
   };
 
   private renderRow(item: ItemInstance<LibraryTreeNode>): TemplateResult {
@@ -408,11 +405,19 @@ export class OmLibraryTree extends LitElement {
   /** Request icons for the search rows the virtualizer just (re)rendered. */
   private onSearchRangeChanged = (event: RangeChangedEvent): void => {
     const results = this.searchResults ?? [];
-    for (let i = event.first; i <= event.last; i++) {
-      const className = results[i]?.qualified;
+    this.requestIconsInRange(event, (i) => results[i]?.qualified);
+  };
+
+  /** Shared walk for `onTreeRangeChanged`/`onSearchRangeChanged`. */
+  private requestIconsInRange(
+    range: { first: number; last: number },
+    classNameAt: (index: number) => string | undefined,
+  ): void {
+    for (let i = range.first; i <= range.last; i++) {
+      const className = classNameAt(i);
       if (className) this.requestIcon(className);
     }
-  };
+  }
 
   private renderSearchRow(info: LibraryClassInfo): TemplateResult {
     const q = info.qualified;
