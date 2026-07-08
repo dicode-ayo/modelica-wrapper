@@ -43,6 +43,7 @@ import {
   type TreeInstance,
 } from "@headless-tree/core";
 import "@lit-labs/virtualizer";
+import type { RangeChangedEvent } from "@lit-labs/virtualizer/events.js";
 
 import { omTokens } from "@dicode/ui-common";
 
@@ -321,9 +322,16 @@ export class OmLibraryTree extends LitElement {
         .keyFunction=${(item: ItemInstance<LibraryTreeNode>) => item.getId()}
         .renderItem=${(item: ItemInstance<LibraryTreeNode>) =>
           this.renderRow(item)}
+        @rangeChanged=${this.onTreeRangeChanged}
       ></lit-virtualizer>
     `;
   }
+
+  /** Request icons for the rows the virtualizer just (re)rendered. */
+  private onTreeRangeChanged = (event: RangeChangedEvent): void => {
+    const items = this.tree?.getItems() ?? [];
+    this.requestIconsInRange(event, (i) => items[i]?.getItemData().className);
+  };
 
   private renderRow(item: ItemInstance<LibraryTreeNode>): TemplateResult {
     const node = item.getItemData();
@@ -389,8 +397,26 @@ export class OmLibraryTree extends LitElement {
         .items=${results}
         .keyFunction=${(info: LibraryClassInfo) => info.qualified}
         .renderItem=${(info: LibraryClassInfo) => this.renderSearchRow(info)}
+        @rangeChanged=${this.onSearchRangeChanged}
       ></lit-virtualizer>
     `;
+  }
+
+  /** Request icons for the search rows the virtualizer just (re)rendered. */
+  private onSearchRangeChanged = (event: RangeChangedEvent): void => {
+    const results = this.searchResults ?? [];
+    this.requestIconsInRange(event, (i) => results[i]?.qualified);
+  };
+
+  /** Shared walk for `onTreeRangeChanged`/`onSearchRangeChanged`. */
+  private requestIconsInRange(
+    range: { first: number; last: number },
+    classNameAt: (index: number) => string | undefined,
+  ): void {
+    for (let i = range.first; i <= range.last; i++) {
+      const className = classNameAt(i);
+      if (className) this.requestIcon(className);
+    }
   }
 
   private renderSearchRow(info: LibraryClassInfo): TemplateResult {
@@ -424,14 +450,15 @@ export class OmLibraryTree extends LitElement {
 
   /**
    * Rendered class SVG once the lazy `iconSvg` fetch resolves, else the
-   * restriction-letter badge. Rendering a row kicks off the fetch as a side
-   * effect (idempotent per class name via `requestIcon`).
+   * restriction-letter badge. The fetch itself is triggered from the
+   * virtualizer's `rangeChanged` event (`onTreeRangeChanged` /
+   * `onSearchRangeChanged`), not from here — this is a pure read of the
+   * cache.
    */
   private renderIcon(
     className: string,
     restriction: LibraryClassRestriction,
   ): TemplateResult {
-    this.requestIcon(className);
     const svg = this.iconSvgCache.get(className);
     if (svg) {
       return html`<span class="icon icon-svg" title=${restriction}

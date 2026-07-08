@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { ItemInstance, TreeInstance } from "@headless-tree/core";
+import { RangeChangedEvent } from "@lit-labs/virtualizer/events.js";
 
 import type {
   LibraryBrowserDataSource,
@@ -115,6 +116,31 @@ describe("<om-library-tree>", () => {
     expect(treeOf(el).getItems().length).toBeGreaterThanOrEqual(2);
   });
 
+  it("issues a lazy icon request for search rows in the virtualizer's rendered range", async () => {
+    const { source, searchAll, iconSvg } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+
+    const input = el.shadowRoot?.querySelector<HTMLInputElement>(".search");
+    if (!input) throw new Error("search input missing");
+    input.value = "gain";
+    input.dispatchEvent(new Event("input"));
+    await waitFor(() => searchAll.mock.calls.length > 0);
+    await el.updateComplete;
+
+    // `<lit-virtualizer>` doesn't mount under happy-dom (its constructor
+    // needs a real ResizeObserver), so drive the `rangeChanged` handler
+    // directly.
+    const onSearchRangeChanged = (
+      el as unknown as { onSearchRangeChanged(e: RangeChangedEvent): void }
+    ).onSearchRangeChanged.bind(el);
+    onSearchRangeChanged(new RangeChangedEvent({ first: 0, last: 0 }));
+
+    expect(iconSvg.mock.calls.map((c) => c[0])).toContain(
+      "Modelica.Blocks.Math.Gain",
+    );
+  });
+
   it("drops an in-flight search that resolves after the query is cleared", async () => {
     let resolveSearch: (r: LibraryClassInfo[]) => void = () => {};
     let searchCalled = false;
@@ -165,19 +191,35 @@ describe("<om-library-tree>", () => {
     expect(selected).toEqual(["Complex"]);
   });
 
-  it("issues a lazy icon request when a row renders", async () => {
+  it("does not issue an icon request merely from rendering a row", async () => {
     const { source, iconSvg } = makeSource();
     const el = await mount(source);
     await waitFor(() => treeOf(el).getItems().length >= 2);
 
-    // `<lit-virtualizer>` doesn't render rows under happy-dom, so drive the
-    // row renderer directly — the per-row icon fetch is the invariant.
+    // Rendering must be side-effect-free — the fetch is driven by the
+    // virtualizer's `rangeChanged` event, not by building the row template.
     const renderRow = (
       el as unknown as {
         renderRow(item: ItemInstance<LibraryTreeNode>): unknown;
       }
     ).renderRow.bind(el);
     for (const item of treeOf(el).getItems()) renderRow(item);
+
+    expect(iconSvg).not.toHaveBeenCalled();
+  });
+
+  it("issues a lazy icon request for rows in the virtualizer's rendered range", async () => {
+    const { source, iconSvg } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+
+    const onTreeRangeChanged = (
+      el as unknown as { onTreeRangeChanged(e: RangeChangedEvent): void }
+    ).onTreeRangeChanged.bind(el);
+    const itemCount = treeOf(el).getItems().length;
+    onTreeRangeChanged(
+      new RangeChangedEvent({ first: 0, last: itemCount - 1 }),
+    );
 
     const requested = iconSvg.mock.calls.map((c) => c[0]);
     expect(requested).toContain("Modelica");
