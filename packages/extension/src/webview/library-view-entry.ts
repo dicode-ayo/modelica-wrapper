@@ -4,11 +4,13 @@
  * `tree/library-webview-provider.ts`.
  *
  * Renders a full-height `<om-library-tree>` fed by the shared
- * `WebviewLibraryDataSource` bridge, plus its own loading / empty / error
- * chrome (a webview view gets no `viewsWelcome`). A row click opens the class's
- * diagram; a row press-drag begins host-mediated placement onto the diagram
- * canvas (HTML5 drag can't cross the webview iframe, so only the class name is
- * relayed — the diagram draws its own ghost).
+ * `WebviewLibraryDataSource` bridge. The tree's single root fetch drives the
+ * empty / error chrome (via `om-library-root-loaded`) — a webview view gets no
+ * `viewsWelcome`, and a second probe fetch would race the tree's own on the one
+ * OMC socket. A row double-click opens the class's diagram; a row press-drag
+ * begins host-mediated placement onto the diagram canvas (HTML5 drag can't
+ * cross the webview iframe, so only the class name is relayed — the diagram
+ * draws its own ghost).
  */
 
 import { LitElement, css, html, type TemplateResult } from "lit";
@@ -17,6 +19,7 @@ import { customElement, state } from "lit/decorators.js";
 import "@dicode/diagram-ui";
 import type {
   LibraryPlacementStartDetail,
+  LibraryRootLoadedDetail,
   LibraryEvents,
 } from "@dicode/diagram-ui";
 import { omTokens } from "@dicode/ui-common";
@@ -106,8 +109,6 @@ export class OmLibraryViewRoot extends LitElement {
   private readonly source = new WebviewLibraryDataSource((msg) =>
     this.vscode.postMessage(msg),
   );
-  /** Drops stale top-level probes when reloads overlap during OMC startup. */
-  private probeSeq = 0;
   /** True between a row press and the matching release, so a release cancels an
    *  uncommitted placement (a plain click, or a drag that never reached the
    *  canvas). A drop over the canvas commits in the diagram webview and never
@@ -120,7 +121,8 @@ export class OmLibraryViewRoot extends LitElement {
     window.addEventListener("pointerup", this.onGlobalPointerUp);
     window.addEventListener("pointercancel", this.onGlobalPointerUp);
     window.addEventListener("keydown", this.onKeyDown);
-    this.reload();
+    // The tree fetches its root once on mount and reports the outcome via
+    // `om-library-root-loaded`; we don't issue a second probe fetch here.
     this.vscode.postMessage({ type: "ready" });
   }
 
@@ -132,24 +134,12 @@ export class OmLibraryViewRoot extends LitElement {
     window.removeEventListener("keydown", this.onKeyDown);
   }
 
-  /** Re-fetch on the existing source: bump the token so the tree rebuilds, and
-   *  probe the top level to pick the chrome (loading → empty / error / ready).
-   *  Overlapping reloads during OMC startup are serialised by `probeSeq`. */
-  private reload(): void {
+  /** A user-initiated reload (toolbar Refresh, Load Library, Create Class):
+   *  bump the token so the mounted tree rebuilds and re-fetches once. The phase
+   *  then follows the tree's `om-library-root-loaded`. */
+  private onReload(): void {
     this.phase = "loading";
     this.reloadToken += 1;
-    const seq = ++this.probeSeq;
-    this.source
-      .listChildren(null)
-      .then((items) => {
-        if (seq !== this.probeSeq) return;
-        this.phase = items.length === 0 ? "empty" : "ready";
-      })
-      .catch((err: unknown) => {
-        if (seq !== this.probeSeq) return;
-        this.errorText = err instanceof Error ? err.message : String(err);
-        this.phase = "error";
-      });
   }
 
   private readonly onHostMessage = (e: MessageEvent): void => {
@@ -164,7 +154,7 @@ export class OmLibraryViewRoot extends LitElement {
         this.source.handleIconResponse(data);
         return;
       case "reload":
-        this.reload();
+        this.onReload();
         return;
     }
   };
@@ -186,33 +176,46 @@ export class OmLibraryViewRoot extends LitElement {
   }
 
   override render(): TemplateResult {
-    switch (this.phase) {
-      case "loading":
-        return html`<div class="state">Loading libraries…</div>`;
-      case "error":
-        return html`<div class="state error">
-          <span>Failed to load libraries: ${this.errorText}</span>
-          <button @click=${this.onReloadClick}>Retry</button>
-        </div>`;
-      case "empty":
-        return html`<div class="state">
-          <span>No Modelica libraries are loaded yet.</span>
-          <button @click=${this.onLoadLibrary}>Load Library…</button>
-          <span class="hint"
-            >The default "Modelica" name resolves the Modelica Standard Library
-            from your MODELICAPATH.</span
-          >
-        </div>`;
-      case "ready":
-        return html`<om-library-tree
-          placement-drag
-          .dataSource=${this.source}
-          .reloadToken=${this.reloadToken}
-          @om-library-select=${this.onSelect}
-          @om-library-placement-start=${this.onPlacementStart}
-        ></om-library-tree>`;
+    // The tree stays mounted while loading and ready so its single root fetch
+    // drives the phase (via `om-library-root-loaded`); empty / error swap in
+    // their own chrome. Reusing one `tree` template keeps the element across
+    // the loading → ready transition (no remount, no second fetch).
+    if (this.phase === "empty") {
+      return html`<div class="state">
+        <span>No Modelica libraries are loaded yet.</span>
+        <button @click=${this.onLoadLibrary}>Load Library…</button>
+        <span class="hint"
+          >The default "Modelica" name resolves the Modelica Standard Library
+          from your MODELICAPATH.</span
+        >
+      </div>`;
     }
+    if (this.phase === "error") {
+      return html`<div class="state error">
+        <span>Failed to load libraries: ${this.errorText}</span>
+        <button @click=${this.onReloadClick}>Retry</button>
+      </div>`;
+    }
+    return html`<om-library-tree
+      placement-drag
+      .dataSource=${this.source}
+      .reloadToken=${this.reloadToken}
+      @om-library-select=${this.onSelect}
+      @om-library-placement-start=${this.onPlacementStart}
+      @om-library-root-loaded=${this.onRootLoaded}
+    ></om-library-tree>`;
   }
+
+  private readonly onRootLoaded = (
+    e: CustomEvent<LibraryRootLoadedDetail>,
+  ): void => {
+    if (e.detail.ok) {
+      this.phase = e.detail.empty ? "empty" : "ready";
+    } else {
+      this.errorText = e.detail.error;
+      this.phase = "error";
+    }
+  };
 
   private readonly onSelect = (
     e: CustomEvent<LibraryEvents["om-library-select"]>,
@@ -238,7 +241,7 @@ export class OmLibraryViewRoot extends LitElement {
   };
 
   private readonly onReloadClick = (): void => {
-    this.reload();
+    this.onReload();
   };
 }
 

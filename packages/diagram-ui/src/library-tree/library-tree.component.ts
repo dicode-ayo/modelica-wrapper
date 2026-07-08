@@ -61,6 +61,7 @@ import {
   isExpandable,
   matchLabel,
   type LibraryTreeNode,
+  type LibraryRootLoad,
 } from "./library-tree-model.js";
 import {
   LIBRARY_TREE_DRAG_FORMAT,
@@ -302,7 +303,9 @@ export class OmLibraryTree extends LitElement {
         label: "Loading…",
         restriction: "unknown",
       }),
-      dataLoader: createLibraryDataLoader(source, this.nodeCache),
+      dataLoader: createLibraryDataLoader(source, this.nodeCache, (result) =>
+        this.emitRootLoaded(result),
+      ),
       onPrimaryAction: (item) => this.fireSelect(item.getItemData().className),
       canDrag: (items) =>
         items.every((item) => item.getItemData().className !== ""),
@@ -638,6 +641,18 @@ export class OmLibraryTree extends LitElement {
     );
   }
 
+  // Surface the tree's own root load so an embedder can render loading / empty
+  // / error chrome without a second `listChildren(null)`.
+  private emitRootLoaded(detail: LibraryRootLoadedDetail): void {
+    this.dispatchEvent(
+      new CustomEvent<LibraryRootLoadedDetail>("om-library-root-loaded", {
+        detail,
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
   // Single-click a tree row selects (highlights) it only; opening is the
   // double-click / Enter gesture. Focus + selection go through Headless Tree
   // so keyboard navigation stays in sync.
@@ -686,6 +701,10 @@ export class OmLibraryTree extends LitElement {
 export interface LibraryPlacementStartDetail {
   className: string;
 }
+
+/** Detail for `om-library-root-loaded`, fired when the top-level list resolves
+ *  or rejects — the embedder's cue for empty / ready / error chrome. */
+export type LibraryRootLoadedDetail = LibraryRootLoad;
 
 /**
  * Headless Tree item props with the interaction keys we own removed: `onClick`

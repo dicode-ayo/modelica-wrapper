@@ -123,6 +123,53 @@ describe("createLibraryDataLoader", () => {
       restriction: "unknown",
     });
   });
+
+  it("reports the root load outcome via onRootLoad (ready)", async () => {
+    const onRootLoad = vi.fn();
+    const listChildren = vi.fn(async () => [
+      { qualified: "Modelica", restriction: "package" } as LibraryClassInfo,
+    ]);
+    const loader = createLibraryDataLoader(
+      source({ listChildren }),
+      new Map(),
+      onRootLoad,
+    );
+
+    await loader.getChildrenWithData(LIBRARY_TREE_ROOT_ID);
+    expect(onRootLoad).toHaveBeenCalledWith({ ok: true, empty: false });
+  });
+
+  it("reports an empty root and does not fire onRootLoad for non-root loads", async () => {
+    const onRootLoad = vi.fn();
+    const loader = createLibraryDataLoader(source(), new Map(), onRootLoad);
+
+    await loader.getChildrenWithData(LIBRARY_TREE_ROOT_ID);
+    expect(onRootLoad).toHaveBeenCalledWith({ ok: true, empty: true });
+
+    onRootLoad.mockClear();
+    await loader.getChildrenWithData("Modelica");
+    expect(onRootLoad).not.toHaveBeenCalled();
+  });
+
+  it("reports a root load failure via onRootLoad and rethrows", async () => {
+    const onRootLoad = vi.fn();
+    const listChildren = vi.fn(async () => {
+      throw new Error("Socket is busy writing");
+    });
+    const loader = createLibraryDataLoader(
+      source({ listChildren }),
+      new Map(),
+      onRootLoad,
+    );
+
+    await expect(
+      loader.getChildrenWithData(LIBRARY_TREE_ROOT_ID),
+    ).rejects.toThrow("Socket is busy writing");
+    expect(onRootLoad).toHaveBeenCalledWith({
+      ok: false,
+      error: "Socket is busy writing",
+    });
+  });
 });
 
 describe("matchLabel", () => {

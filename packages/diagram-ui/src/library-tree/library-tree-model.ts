@@ -74,15 +74,25 @@ function childId(parentId: string | null, info: LibraryClassInfo): string {
     : `${parentId}.${info.qualified}`;
 }
 
+/** Outcome of the root (`listChildren(null)`) load, reported to `onRootLoad`. */
+export type LibraryRootLoad =
+  | { ok: true; empty: boolean }
+  | { ok: false; error: string };
+
 /**
  * Build the Headless Tree data loader over a `LibraryBrowserDataSource`.
  * `getChildrenWithData` carries the `LibraryClassInfo` inline so restriction
  * (and thus icon + expandability) is known without a second round trip; the
  * shared `cache` lets `getItem` resolve an already-listed node.
+ *
+ * `onRootLoad`, when given, fires once the top-level list resolves or rejects,
+ * so an embedder can derive an empty / ready / error state from the tree's own
+ * root fetch instead of issuing a second `listChildren(null)`.
  */
 export function createLibraryDataLoader(
   dataSource: LibraryBrowserDataSource,
   cache: Map<string, LibraryTreeNode>,
+  onRootLoad?: (result: LibraryRootLoad) => void,
 ): LibraryDataLoader {
   return {
     getItem(itemId) {
@@ -96,8 +106,23 @@ export function createLibraryDataLoader(
       );
     },
     async getChildrenWithData(itemId) {
-      const parent = itemId === LIBRARY_TREE_ROOT_ID ? null : itemId;
-      const infos = await dataSource.listChildren(parent);
+      const isRoot = itemId === LIBRARY_TREE_ROOT_ID;
+      const parent = isRoot ? null : itemId;
+      let infos;
+      try {
+        infos = await dataSource.listChildren(parent);
+      } catch (err) {
+        if (isRoot && onRootLoad) {
+          onRootLoad({
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        throw err;
+      }
+      if (isRoot && onRootLoad) {
+        onRootLoad({ ok: true, empty: infos.length === 0 });
+      }
       return infos.map((info) => {
         const id = childId(parent, info);
         const data: LibraryTreeNode = {

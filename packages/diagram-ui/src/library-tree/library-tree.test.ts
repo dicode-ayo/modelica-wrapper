@@ -9,7 +9,10 @@ import type {
   LibrarySelectDetail,
 } from "../library-browser/library-browser.component.js";
 import "./library-tree.component.js";
-import type { OmLibraryTree } from "./library-tree.component.js";
+import type {
+  LibraryRootLoadedDetail,
+  OmLibraryTree,
+} from "./library-tree.component.js";
 import type { LibraryTreeNode } from "./library-tree-model.js";
 import type { SearchTreeRow } from "./search-tree.js";
 import {
@@ -76,6 +79,38 @@ describe("<om-library-tree>", () => {
       .map((i) => i.getId());
     expect(ids).toContain("Modelica");
     expect(ids).toContain("Complex");
+  });
+
+  it("emits om-library-root-loaded once its root list resolves", async () => {
+    const { source } = makeSource();
+    const events: LibraryRootLoadedDetail[] = [];
+    // Listen before append so the initial root load can't fire first.
+    const el = document.createElement("om-library-tree") as OmLibraryTree;
+    el.addEventListener("om-library-root-loaded", (e) =>
+      events.push((e as CustomEvent<LibraryRootLoadedDetail>).detail),
+    );
+    el.dataSource = source;
+    document.body.appendChild(el);
+    teardowns.push(() => el.remove());
+    await waitFor(() => events.length > 0);
+    expect(events[0]).toEqual({ ok: true, empty: false });
+  });
+
+  it("reports an empty root via om-library-root-loaded", async () => {
+    const source: LibraryBrowserDataSource = {
+      listChildren: async () => [],
+      searchAll: async () => [],
+    };
+    const events: LibraryRootLoadedDetail[] = [];
+    const el = document.createElement("om-library-tree") as OmLibraryTree;
+    el.addEventListener("om-library-root-loaded", (e) =>
+      events.push((e as CustomEvent<LibraryRootLoadedDetail>).detail),
+    );
+    el.dataSource = source;
+    document.body.appendChild(el);
+    teardowns.push(() => el.remove());
+    await waitFor(() => events.length > 0);
+    expect(events[0]).toEqual({ ok: true, empty: true });
   });
 
   it("lazily lists a package's children only when it expands", async () => {

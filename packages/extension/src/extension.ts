@@ -84,7 +84,7 @@ export async function activate(
   );
 
   // Non-blocking — we don't want to delay activation on OMC startup.
-  void autoLoadWorkspaceModels(libraryTree);
+  void autoLoadWorkspaceModels();
 
   // Exported API surface. Tested separately via the `repl-eval` integration
   // suite; the wiring here is just plumbing.
@@ -184,9 +184,7 @@ async function resetClient(): Promise<OmcClient> {
  * pull in dependent libraries from MODELICAPATH. Failures are logged but
  * don't abort the whole sweep — one bad file shouldn't block others.
  */
-async function autoLoadWorkspaceModels(
-  libraryTree: LibraryWebviewProvider,
-): Promise<void> {
+async function autoLoadWorkspaceModels(): Promise<void> {
   const folders = vscode.workspace.workspaceFolders ?? [];
   if (folders.length === 0) return;
   const files = await discoverEntryPoints(folders.map((f) => f.uri.fsPath));
@@ -211,7 +209,10 @@ async function autoLoadWorkspaceModels(
         );
       }
     }
-    libraryTree.refresh();
+    // No sidebar refresh here: the webview tree fetches its root once when the
+    // view opens, and forcing a rebuild mid-cold-start piles concurrent OMC
+    // calls onto the single ZeroMQ socket (epic #260). The toolbar Refresh is
+    // the staleness escape hatch until then.
   } catch (err) {
     log.warn("autoLoad", `OMC client unavailable: ${(err as Error).message}`);
   }
