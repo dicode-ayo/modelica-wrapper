@@ -59,7 +59,6 @@ import {
   LIBRARY_TREE_ROOT_ID,
   createLibraryDataLoader,
   isExpandable,
-  leafLabel,
   matchLabel,
   type LibraryTreeNode,
 } from "./library-tree-model.js";
@@ -67,6 +66,7 @@ import {
   LIBRARY_TREE_DRAG_FORMAT,
   serializeLibraryDrag,
 } from "./library-drag.js";
+import { buildSearchTree, type SearchTreeRow } from "./search-tree.js";
 
 export { LIBRARY_TREE_DRAG_FORMAT } from "./library-drag.js";
 
@@ -233,6 +233,9 @@ export class OmLibraryTree extends LitElement {
 
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
   private searchSeq = 0;
+  /** Flattened filtered-tree rows for the current results, stashed so the
+   *  virtualizer's `rangeChanged` can map row indices back to class names. */
+  private searchTreeRows: SearchTreeRow[] = [];
 
   /** Rendered icon SVG keyed by qualified name (lazy per row). */
   private readonly iconSvgCache = new Map<string, string>();
@@ -253,6 +256,9 @@ export class OmLibraryTree extends LitElement {
   override willUpdate(changed: PropertyValues<this>): void {
     if (changed.has("dataSource")) {
       this.rebuildForDataSource();
+    }
+    if (changed.has("searchResults")) {
+      this.searchTreeRows = buildSearchTree(this.searchResults ?? []);
     }
   }
 
@@ -411,21 +417,27 @@ export class OmLibraryTree extends LitElement {
     if (results.length === 0) {
       return html`<div class="empty">No matches.</div>`;
     }
+    // Matches are shown in their hierarchy: every ancestor package of a match
+    // gets a row, fully expanded, so the path to each result is visible. Rows
+    // are derived in `willUpdate` (see `searchTreeRows`).
     return html`
       <lit-virtualizer
         scroller
-        .items=${results}
-        .keyFunction=${(info: LibraryClassInfo) => info.qualified}
-        .renderItem=${(info: LibraryClassInfo) => this.renderSearchRow(info)}
+        .items=${this.searchTreeRows}
+        .keyFunction=${(row: SearchTreeRow) => row.qualified}
+        .renderItem=${(row: SearchTreeRow) => this.renderSearchTreeRow(row)}
         @rangeChanged=${this.onSearchRangeChanged}
       ></lit-virtualizer>
     `;
   }
 
-  /** Request icons for the search rows the virtualizer just (re)rendered. */
+  /** Request icons for the search rows the virtualizer just (re)rendered — only
+   *  for match leaves; ancestor packages keep their restriction badge. */
   private onSearchRangeChanged = (event: RangeChangedEvent): void => {
-    const results = this.searchResults ?? [];
-    this.requestIconsInRange(event, (i) => results[i]?.qualified);
+    this.requestIconsInRange(event, (i) => {
+      const row = this.searchTreeRows[i];
+      return row?.isMatch ? row.qualified : undefined;
+    });
   };
 
   /** Shared walk for `onTreeRangeChanged`/`onSearchRangeChanged`. */
@@ -439,10 +451,8 @@ export class OmLibraryTree extends LitElement {
     }
   }
 
-  private renderSearchRow(info: LibraryClassInfo): TemplateResult {
-    const q = info.qualified;
-    const dot = q.lastIndexOf(".");
-    const head = dot >= 0 ? q.slice(0, dot) : "";
+  private renderSearchTreeRow(row: SearchTreeRow): TemplateResult {
+    const q = row.qualified;
     return html`
       <div
         class="row"
@@ -454,10 +464,15 @@ export class OmLibraryTree extends LitElement {
         @pointerdown=${(e: PointerEvent) => this.onRowPointerDown(e, q)}
         @dragstart=${(e: DragEvent) => this.onSearchRowDragStart(e, q)}
       >
-        <span class="leaf-dot">•</span>
-        ${this.renderClassContent(q, info.restriction, leafLabel(q), {
+        <span
+          class="indent"
+          style=${styleMap({ "--om-tree-level": String(row.level) })}
+        ></span>
+        ${row.hasChildren
+          ? html`<span class="chevron">▾</span>`
+          : html`<span class="leaf-dot">•</span>`}
+        ${this.renderClassContent(q, row.restriction, row.label, {
           highlight: true,
-          qualifier: head,
         })}
       </div>
     `;

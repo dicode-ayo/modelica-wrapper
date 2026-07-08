@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { render, type TemplateResult } from "lit";
 import type { ItemInstance, TreeInstance } from "@headless-tree/core";
 import { RangeChangedEvent } from "@lit-labs/virtualizer/events.js";
 
@@ -10,6 +11,7 @@ import type {
 import "./library-tree.component.js";
 import type { OmLibraryTree } from "./library-tree.component.js";
 import type { LibraryTreeNode } from "./library-tree-model.js";
+import type { SearchTreeRow } from "./search-tree.js";
 import {
   FAKE_TREE,
   makeFakeLibrarySource as makeSource,
@@ -116,6 +118,49 @@ describe("<om-library-tree>", () => {
     expect(treeOf(el).getItems().length).toBeGreaterThanOrEqual(2);
   });
 
+  it("shows search matches in their package hierarchy, not a flat list", async () => {
+    const { source, searchAll } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+
+    const input = el.shadowRoot?.querySelector<HTMLInputElement>(".search");
+    if (!input) throw new Error("search input missing");
+    input.value = "gain";
+    input.dispatchEvent(new Event("input"));
+    await waitFor(() => searchAll.mock.calls.length > 0);
+    await el.updateComplete;
+
+    const rows = (el as unknown as { searchTreeRows: SearchTreeRow[] })
+      .searchTreeRows;
+    // Ancestor packages lead down to the match, indented — not a single
+    // flat `Modelica.Blocks.Math.Gain` row.
+    expect(rows.map((r) => [r.label, r.level, r.isMatch])).toEqual([
+      ["Modelica", 0, false],
+      ["Blocks", 1, false],
+      ["Math", 2, false],
+      ["Gain", 3, true],
+    ]);
+  });
+
+  it("marks the matching segment and leaves ancestor labels unmarked", async () => {
+    const { source } = makeSource();
+    const el = await mount(source);
+    (el as unknown as { query: string }).query = "gain";
+    const highlight = (
+      el as unknown as { highlight(label: string): TemplateResult }
+    ).highlight.bind(el);
+
+    // happy-dom scrambles text bindings around a mid-template element, so this
+    // asserts the `<mark>` element's presence, not its text content.
+    const matched = document.createElement("div");
+    render(highlight("Gain"), matched);
+    expect(matched.querySelector("mark")).not.toBeNull();
+
+    const ancestor = document.createElement("div");
+    render(highlight("Blocks"), ancestor);
+    expect(ancestor.querySelector("mark")).toBeNull();
+  });
+
   it("issues a lazy icon request for search rows in the virtualizer's rendered range", async () => {
     const { source, searchAll, iconSvg } = makeSource();
     const el = await mount(source);
@@ -134,11 +179,14 @@ describe("<om-library-tree>", () => {
     const onSearchRangeChanged = (
       el as unknown as { onSearchRangeChanged(e: RangeChangedEvent): void }
     ).onSearchRangeChanged.bind(el);
-    onSearchRangeChanged(new RangeChangedEvent({ first: 0, last: 0 }));
+    // Rows are the filtered hierarchy Modelica → Blocks → Math → Gain; the
+    // range spans them so the match leaf is included.
+    onSearchRangeChanged(new RangeChangedEvent({ first: 0, last: 3 }));
 
-    expect(iconSvg.mock.calls.map((c) => c[0])).toContain(
-      "Modelica.Blocks.Math.Gain",
-    );
+    const requested = iconSvg.mock.calls.map((c) => c[0]);
+    expect(requested).toContain("Modelica.Blocks.Math.Gain");
+    // Ancestor packages keep their badge — no icon fetch for them.
+    expect(requested).not.toContain("Modelica");
   });
 
   it("drops an in-flight search that resolves after the query is cleared", async () => {
