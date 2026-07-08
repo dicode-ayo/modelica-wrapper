@@ -92,6 +92,10 @@ export class OmLibraryTree extends LitElement {
       }
 
       .search {
+        /* Inset from the container edges so the field isn't flush; rows below
+         * stay full-width for their hover / selection bands. */
+        margin-block-start: var(--om-space-sm);
+        margin-inline: var(--om-space-sm);
         padding: var(--om-input-padding);
         font: inherit;
         color: inherit;
@@ -360,7 +364,12 @@ export class OmLibraryTree extends LitElement {
           style=${styleMap({ "--om-tree-level": String(level) })}
         ></span>
         ${item.isFolder()
-          ? html`<span class="chevron">${item.isExpanded() ? "▾" : "▸"}</span>`
+          ? html`<span
+              class="chevron"
+              @pointerdown=${(e: Event) => e.stopPropagation()}
+              @click=${(e: Event) => this.onChevronClick(e, item)}
+              >${item.isExpanded() ? "▾" : "▸"}</span
+            >`
           : html`<span class="leaf-dot">•</span>`}
         ${loading
           ? html`<span class="label loading">Loading…</span>`
@@ -578,6 +587,21 @@ export class OmLibraryTree extends LitElement {
         composed: true,
       }),
     );
+  }
+
+  // Chevron toggles expansion only; stopping propagation keeps the row's
+  // click from also firing select (the open path). Keyboard expansion runs
+  // through Headless Tree's hotkeys, untouched.
+  private onChevronClick(
+    event: Event,
+    item: ItemInstance<LibraryTreeNode>,
+  ): void {
+    event.stopPropagation();
+    if (item.isExpanded()) {
+      item.collapse();
+    } else {
+      item.expand();
+    }
   }
 
   // In placement-drag mode a primary-button press begins host-mediated

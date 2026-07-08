@@ -191,6 +191,55 @@ describe("<om-library-tree>", () => {
     expect(selected).toEqual(["Complex"]);
   });
 
+  it("chevron click toggles expansion without selecting", async () => {
+    const { source } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+    const item = treeOf(el).getItemInstance("Modelica");
+    expect(item.isExpanded()).toBe(false);
+
+    const selected: string[] = [];
+    el.addEventListener("om-library-select", (e) => {
+      selected.push((e as CustomEvent<LibrarySelectDetail>).detail.className);
+    });
+    let stopped = false;
+    const event = {
+      stopPropagation: () => {
+        stopped = true;
+      },
+    } as unknown as Event;
+    const onChevronClick = (
+      el as unknown as {
+        onChevronClick(e: Event, i: ItemInstance<LibraryTreeNode>): void;
+      }
+    ).onChevronClick.bind(el);
+
+    onChevronClick(event, item);
+    expect(stopped).toBe(true);
+    expect(item.isExpanded()).toBe(true);
+    expect(selected).toEqual([]);
+
+    onChevronClick(event, item);
+    expect(item.isExpanded()).toBe(false);
+    expect(selected).toEqual([]);
+  });
+
+  it("row activation selects without toggling expansion (the open path)", async () => {
+    const { source } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+    const item = treeOf(el).getItemInstance("Modelica");
+    expect(item.isExpanded()).toBe(false);
+
+    const selected: string[] = [];
+    el.addEventListener("om-library-select", (e) => {
+      selected.push((e as CustomEvent<LibrarySelectDetail>).detail.className);
+    });
+    item.primaryAction();
+    expect(selected).toEqual(["Modelica"]);
+    expect(item.isExpanded()).toBe(false);
+  });
+
   it("does not issue an icon request merely from rendering a row", async () => {
     const { source, iconSvg } = makeSource();
     const el = await mount(source);
