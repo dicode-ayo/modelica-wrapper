@@ -27,6 +27,7 @@ import {
 } from "./source-provider.js";
 import { LibraryWebviewProvider } from "./tree/library-webview-provider.js";
 import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
+import { loadEntryFilesAndRefresh } from "./workspace-autoload.js";
 import { discoverEntryPoints } from "./workspace-scan.js";
 
 let client: OmcClient | undefined;
@@ -84,7 +85,7 @@ export async function activate(
   );
 
   // Non-blocking — we don't want to delay activation on OMC startup.
-  void autoLoadWorkspaceModels();
+  void autoLoadWorkspaceModels(libraryTree);
 
   // Exported API surface. Tested separately via the `repl-eval` integration
   // suite; the wiring here is just plumbing.
@@ -184,7 +185,9 @@ async function resetClient(): Promise<OmcClient> {
  * pull in dependent libraries from MODELICAPATH. Failures are logged but
  * don't abort the whole sweep — one bad file shouldn't block others.
  */
-async function autoLoadWorkspaceModels(): Promise<void> {
+async function autoLoadWorkspaceModels(
+  libraryTree: LibraryWebviewProvider,
+): Promise<void> {
   const folders = vscode.workspace.workspaceFolders ?? [];
   if (folders.length === 0) return;
   const files = await discoverEntryPoints(folders.map((f) => f.uri.fsPath));
@@ -193,26 +196,11 @@ async function autoLoadWorkspaceModels(): Promise<void> {
   }
   try {
     const c = await ensureClient();
-    for (const fileName of files) {
-      try {
-        const { success } = await c.loadFile({ fileName });
-        if (!success) {
-          const { errorString } = await c.getErrorString();
-          log.warn("autoLoad", `loadFile failed: ${fileName}: ${errorString}`);
-        } else {
-          log.info("autoLoad", `loaded ${fileName}`);
-        }
-      } catch (err) {
-        log.warn(
-          "autoLoad",
-          `loadFile threw for ${fileName}: ${(err as Error).message}`,
-        );
-      }
-    }
-    // No sidebar refresh here: the webview tree fetches its root once when the
-    // view opens, and forcing a rebuild mid-cold-start piles concurrent OMC
-    // calls onto the single ZeroMQ socket (epic #260). The toolbar Refresh is
-    // the staleness escape hatch until then.
+    // One refresh after all loads settle — not per file, which would pile
+    // concurrent OMC fetches onto the single ZeroMQ socket during startup
+    // (epic #260). The webview tree's own mount fetch is serialized with this
+    // one through the client, so they can't overlap into a busy-socket send.
+    await loadEntryFilesAndRefresh(c, files, () => libraryTree.refresh());
   } catch (err) {
     log.warn("autoLoad", `OMC client unavailable: ${(err as Error).message}`);
   }
