@@ -7,6 +7,7 @@ import {
   produceSimulationModel,
   type DiagramLayout,
   type ModelInstance,
+  type PortDef,
   type UnitTable,
   type Value,
 } from "@dicode/omc-client";
@@ -23,6 +24,11 @@ import {
 import { log } from "../logger.js";
 
 import { applyEdits } from "./apply-edits.js";
+import {
+  connectedPortsOf,
+  filterCompatibleCandidates,
+  type CandidateConnectorsClient,
+} from "./change-class-filter.js";
 import {
   buildClassParameterForm,
   buildComponentParameterForm,
@@ -621,6 +627,8 @@ export async function openDiagram(
         librarySource,
         componentName,
         currentClass,
+        client,
+        prevLayout,
       );
       if (!newClass || newClass.trim() === currentClass.trim()) return;
       const trimmedNew = newClass.trim();
@@ -760,17 +768,32 @@ export async function openDiagram(
  * libraries hold thousands of classes, so we query `searchAll` as the user
  * types rather than materialising the whole list. Resolves to the chosen
  * fully-qualified class name, or `undefined` if dismissed.
+ *
+ * Candidates are filtered to those that keep the component's existing
+ * connections valid (issue #239): `requiredPorts` — the connector profile
+ * of everything `componentName` currently has wired up — is computed once
+ * from `layout` (no OMC call), and each search result is checked against
+ * it lazily via `filterCompatibleCandidates`, which fetches (and caches)
+ * one `getModelInstance` per candidate. A component with no connections
+ * skips the filter entirely and behaves exactly as before.
  */
 function pickClassToSwap(
   librarySource: LibraryBrowserSource,
   componentName: string,
   currentClass: string,
+  client: CandidateConnectorsClient,
+  layout: DiagramLayout,
 ): Promise<string | undefined> {
   return new Promise((resolve) => {
     const quickPick = vscode.window.createQuickPick();
     quickPick.title = `Change class of ${componentName}`;
     quickPick.placeholder = `Search for a class (currently ${currentClass})`;
     quickPick.matchOnDescription = true;
+    const requiredPorts = connectedPortsOf(layout, currentClass, componentName);
+    const connectorCache = new Map<
+      string,
+      Record<string, PortDef> | undefined
+    >();
     // Guards against a slow earlier query overwriting a newer one's results.
     let seq = 0;
     const runSearch = async (query: string): Promise<void> => {
@@ -778,8 +801,14 @@ function pickClassToSwap(
       quickPick.busy = true;
       try {
         const results = await librarySource.searchAll(query);
+        const compatible = await filterCompatibleCandidates(
+          client,
+          results,
+          requiredPorts,
+          connectorCache,
+        );
         if (mine !== seq) return;
-        quickPick.items = results.map((c) => ({
+        quickPick.items = compatible.map((c) => ({
           label: c.qualified,
           description: c.restriction,
         }));

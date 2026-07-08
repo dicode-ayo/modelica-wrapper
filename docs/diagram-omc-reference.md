@@ -221,6 +221,7 @@ lazy per row via the cheap `getModelInstanceAnnotation` path.
 | Vector-port re-index | `connectionRenamed` | `updateConnectionNames` | ⚠️ fragile (cascade-shift risk) |
 | Component params | — | `setElementModifierValue` | ✅ [parameter-edits.ts](../packages/extension/src/diagram/parameter-edits.ts) |
 | Class params | — | `setParameterValue` / `setExtendsModifierValue` | ✅ |
+| Change component class | — | `setElementType` | ✅ [open-diagram.ts](../packages/extension/src/diagram/open-diagram.ts) `pickClassToSwap` — candidates filtered to classes that keep the component's existing connections valid (name + connector type + causality match, via [change-class-filter.ts](../packages/extension/src/diagram/change-class-filter.ts); issue #239). Pragmatic connector-match, not the Modelica-correct `constrainedby`-subtype check — no single OMC call enumerates "all subtypes of C". |
 | Reset to defaults | — | `removeElementModifiers(keepRedeclares)` | ✅ [clear-modifiers.ts](../packages/extension/src/diagram/clear-modifiers.ts) |
 | Undo | snapshot | `listFile`+`getSourceFile` / `loadString` restore | ✅ [snapshot-stack.ts](../packages/extension/src/diagram/snapshot-stack.ts) |
 
@@ -231,8 +232,6 @@ lazy per row via the cheap `getModelInstanceAnnotation` path.
   layout diff) and **flip/mirror** (`applyFlip` exists but is unreachable).
 - **Waypoint insert/delete** (only drag existing); no routing-style control.
 - **Connector (port) add/delete/move.**
-- **Component class swap / redeclare UI** (explicitly deferred in
-  [diff-layout.ts](../packages/extension/src/diagram/diff-layout.ts)).
 - **Copy/paste**; **multi-select UI** (selection *state* is tracked, no
   affordance); rounded-rectangle corners (renderer parity TODO).
 - **Component-level parameter label `%value` substitution** (deferred half of
