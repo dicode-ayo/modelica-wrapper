@@ -209,6 +209,16 @@ export class OmLibraryTree extends LitElement {
   @property({ attribute: false })
   dataSource: LibraryBrowserDataSource | null = null;
 
+  /**
+   * Swap the row gesture from HTML5 drag to a `pointerdown`-driven
+   * `om-library-placement-start` event. Used by the sidebar view, where HTML5
+   * drag can't cross the webview iframe to the diagram canvas; the host relays
+   * the class name instead. Row activation (`om-library-select`) is unaffected,
+   * so a plain click still opens the class.
+   */
+  @property({ type: Boolean, reflect: true, attribute: "placement-drag" })
+  placementDrag = false;
+
   @state() private query = "";
   @state() private searchResults: LibraryClassInfo[] | null = null;
   @state() private searchLoading = false;
@@ -335,11 +345,14 @@ export class OmLibraryTree extends LitElement {
     const node = item.getItemData();
     const level = item.getItemMeta().level;
     const loading = item.isLoading();
-    const props = item.getProps();
+    const rawProps = item.getProps();
+    const props = this.placementDrag ? stripDragProps(rawProps) : rawProps;
     return html`
       <div
         class="row"
         data-selected=${item.isSelected() ? "true" : "false"}
+        @pointerdown=${(e: PointerEvent) =>
+          this.onRowPointerDown(e, node.className)}
         ${bindItemProps(props)}
       >
         <span
@@ -426,9 +439,10 @@ export class OmLibraryTree extends LitElement {
         class="row"
         role="option"
         tabindex="0"
-        draggable="true"
+        draggable=${this.placementDrag ? "false" : "true"}
         @click=${() => this.fireSelect(q)}
         @keydown=${(e: KeyboardEvent) => this.onSearchRowKeydown(e, q)}
+        @pointerdown=${(e: PointerEvent) => this.onRowPointerDown(e, q)}
         @dragstart=${(e: DragEvent) => this.onSearchRowDragStart(e, q)}
       >
         <span class="leaf-dot">•</span>
@@ -565,6 +579,49 @@ export class OmLibraryTree extends LitElement {
       }),
     );
   }
+
+  // In placement-drag mode a primary-button press begins host-mediated
+  // placement. `preventDefault` suppresses text selection and any native drag
+  // image; the subsequent click still fires, so a press-release-in-place opens
+  // the class via `om-library-select`.
+  private onRowPointerDown(event: PointerEvent, className: string): void {
+    if (!this.placementDrag || event.button !== 0 || className === "") return;
+    event.preventDefault();
+    this.dispatchEvent(
+      new CustomEvent<LibraryPlacementStartDetail>(
+        "om-library-placement-start",
+        {
+          detail: { className },
+          bubbles: true,
+          composed: true,
+        },
+      ),
+    );
+  }
+}
+
+/** Detail for `om-library-placement-start`, fired on a row press in
+ *  {@link OmLibraryTree.placementDrag} mode. */
+export interface LibraryPlacementStartDetail {
+  className: string;
+}
+
+/** Strip Headless Tree's drag props so placement-drag rows aren't also native
+ *  HTML5 drag sources. */
+function stripDragProps(
+  props: Record<string, unknown>,
+): Record<string, unknown> {
+  const {
+    draggable: _draggable,
+    onDragStart: _onDragStart,
+    onDragOver: _onDragOver,
+    onDrop: _onDrop,
+    onDragEnter: _onDragEnter,
+    onDragLeave: _onDragLeave,
+    onDragEnd: _onDragEnd,
+    ...rest
+  } = props;
+  return rest;
 }
 
 declare global {

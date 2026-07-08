@@ -208,6 +208,7 @@ export {
 export {
   OmLibraryTree,
   LIBRARY_TREE_DRAG_FORMAT,
+  type LibraryPlacementStartDetail,
 } from "./library-tree/library-tree.component.js";
 export {
   LIBRARY_TREE_ROOT_ID,
