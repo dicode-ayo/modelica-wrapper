@@ -130,8 +130,7 @@ describe("<om-library-tree>", () => {
 
     // `<lit-virtualizer>` doesn't mount under happy-dom (its constructor
     // needs a real ResizeObserver), so drive the `rangeChanged` handler
-    // directly — the same limitation the existing tree test above works
-    // around via `treeOf`/private-method casts.
+    // directly.
     const onSearchRangeChanged = (
       el as unknown as { onSearchRangeChanged(e: RangeChangedEvent): void }
     ).onSearchRangeChanged.bind(el);
