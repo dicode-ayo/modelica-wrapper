@@ -63,16 +63,14 @@ import {
   matchLabel,
   type LibraryTreeNode,
 } from "./library-tree-model.js";
+import {
+  LIBRARY_TREE_DRAG_FORMAT,
+  serializeLibraryDrag,
+} from "./library-drag.js";
 
-/** `DataTransfer` type carrying `{ className }` on a dragged row. */
-export const LIBRARY_TREE_DRAG_FORMAT = "application/x-om-library-class";
+export { LIBRARY_TREE_DRAG_FORMAT } from "./library-drag.js";
 
 const SEARCH_DEBOUNCE_MS = 200;
-
-/** Serialise the drag payload for a class row (foreign-drop consumers). */
-function dragPayload(className: string): string {
-  return JSON.stringify({ className });
-}
 
 @customElement("om-library-tree")
 export class OmLibraryTree extends LitElement {
@@ -278,7 +276,7 @@ export class OmLibraryTree extends LitElement {
         items.every((item) => item.getItemData().className !== ""),
       createForeignDragObject: (items) => ({
         format: LIBRARY_TREE_DRAG_FORMAT,
-        data: dragPayload(items.at(0)?.getItemData().className ?? ""),
+        data: serializeLibraryDrag(items.at(0)?.getItemData().className ?? ""),
         effectAllowed: "copy",
       }),
       state: {},
@@ -508,7 +506,7 @@ export class OmLibraryTree extends LitElement {
     if (!event.dataTransfer) return;
     event.dataTransfer.setData(
       LIBRARY_TREE_DRAG_FORMAT,
-      dragPayload(className),
+      serializeLibraryDrag(className),
     );
     event.dataTransfer.effectAllowed = "copy";
   }

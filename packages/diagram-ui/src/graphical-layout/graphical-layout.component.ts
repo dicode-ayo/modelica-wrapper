@@ -107,6 +107,10 @@ import {
 import type { ToolId } from "../interaction/tools.js";
 import type { ToolDraw } from "../interaction/tool-mode.js";
 import { emitEvent } from "../dom-event.js";
+import {
+  LIBRARY_TREE_DRAG_FORMAT,
+  parseLibraryDrag,
+} from "../library-tree/library-drag.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
 
 /**
@@ -202,9 +206,10 @@ function layoutBoundingBox(layout: DiagramLayout): BBox | null {
  *   - `om-context-menu`            { detail: { key, clientX, clientY } }
  *   - `om-connection-create`       { detail: { fromKey, toKey, waypoints } }
  *   - `om-add-component-request`   { detail: { className, position } }
- *       — fired after the user picks a class from the library-browser
- *         overlay (double-click on empty canvas). The host wires this
- *         to `addComponent(...)` + a layout refresh.
+ *       — the user picked a class to instantiate, either from the
+ *         library-browser overlay (double-click on empty canvas) or by
+ *         dropping a row dragged from `<om-library-tree>` onto the canvas.
+ *         The host wires this to `addComponent(...)` + a layout refresh.
  */
 @customElement("om-graphical-layout")
 export class OmGraphicalLayout extends LitElement {
@@ -220,6 +225,12 @@ export class OmGraphicalLayout extends LitElement {
     om-scene {
       width: 100%;
       height: 100%;
+    }
+    /* Drop affordance while a draggable library class hovers the canvas. */
+    om-scene.om-drop-active {
+      outline: var(--om-drop-outline-width) dashed
+        var(--vscode-focusBorder, #007fd4);
+      outline-offset: calc(-1 * var(--om-drop-outline-width));
     }
   `;
 
@@ -322,6 +333,9 @@ export class OmGraphicalLayout extends LitElement {
     compat: { ok: boolean; reason?: string } | null;
   } | null = null;
   @state() private libraryBrowserOpen = false;
+  /** True while a draggable library class hovers the canvas — drives the
+   *  drop-affordance outline. Cleared on drop or when the drag leaves. */
+  @state() private dropActive = false;
   /** The armed drawing tool. `select` (default) rubber-bands + picks; a draw
    *  tool routes input to its `ToolMode` (extent press-drag or multi-click
    *  poly). Sticky — stays armed across draws until reset (toolbar, Escape,
@@ -413,12 +427,16 @@ export class OmGraphicalLayout extends LitElement {
     const connectorEntries = Object.entries(active.connectors);
     return html`
       <om-scene
+        class=${this.dropActive ? "om-drop-active" : nothing}
         @om-view-change=${this.onViewChange}
         .rendererFactory=${this.rendererFactory ?? undefined}
         ?debug=${this.debug}
         camera-mode=${this.cameraMode}
         tabindex="0"
         @keydown=${this.onKeyDown}
+        @dragover=${this.onDragOver}
+        @dragleave=${this.onDragLeave}
+        @drop=${this.onDrop}
       >
         <om-grid-axis
           .extent=${500}
@@ -1068,13 +1086,20 @@ export class OmGraphicalLayout extends LitElement {
       this.pendingAddPosition ??
       (sceneEl ? { x: sceneEl.panX, y: sceneEl.panY } : { x: 0, y: 0 });
     this.pendingAddPosition = null;
-    // Snap the drop point to the active grid so the new component
-    // lands on a grid intersection — same rule the drag handler
-    // applies, so subsequent moves don't visibly "correct" the
-    // position on first interaction.
-    const position = snapPoint(raw.x, raw.y, this.currentSnapGrid());
-    this.emit("om-add-component-request", { className, position });
+    this.requestAddComponent(className, raw);
   };
+
+  /** Snap a diagram-space point to the active grid and ask the host to
+   *  instantiate `className` there. Single-sourced so every add path (library
+   *  overlay, drag-drop) lands on a grid intersection under the same rule and
+   *  a first move doesn't visibly "correct" the position. */
+  private requestAddComponent(
+    className: string,
+    point: { x: number; y: number },
+  ): void {
+    const position = snapPoint(point.x, point.y, this.currentSnapGrid());
+    this.emit("om-add-component-request", { className, position });
+  }
 
   private onLibraryCancel = (
     e: CustomEvent<LibraryEvents["om-library-cancel"]>,
@@ -1082,6 +1107,56 @@ export class OmGraphicalLayout extends LitElement {
     e.stopPropagation();
     this.libraryBrowserOpen = false;
     this.pendingAddPosition = null;
+  };
+
+  /** Accept a class dragged from `<om-library-tree>` iff the drag carries our
+   *  format; `preventDefault` marks the canvas a valid `copy` drop target.
+   *  Other drags fall through untouched so we don't hijack them. */
+  private onDragOver = (e: DragEvent): void => {
+    if (this.readonly) {
+      return;
+    }
+    const dt = e.dataTransfer;
+    if (!dt || !dt.types.includes(LIBRARY_TREE_DRAG_FORMAT)) {
+      return;
+    }
+    e.preventDefault();
+    dt.dropEffect = "copy";
+    this.dropActive = true;
+  };
+
+  // `dragleave` fires whenever the cursor crosses onto any child of
+  // `om-scene` (the events bubble up), not just when it leaves the canvas —
+  // clearing unconditionally would flicker the affordance over a populated
+  // diagram. Keep it lit while the cursor is still within the scene subtree.
+  private onDragLeave = (e: DragEvent): void => {
+    const scene = this.sceneEl;
+    const next = e.relatedTarget;
+    if (scene && next instanceof Node && scene.contains(next)) {
+      return;
+    }
+    this.dropActive = false;
+  };
+
+  /** Instantiate the dragged class at the drop point. No-op when readonly, when
+   *  the payload is missing/malformed, or when the drop coordinates can't be
+   *  mapped into diagram space (canvas not yet sized). */
+  private onDrop = (e: DragEvent): void => {
+    this.dropActive = false;
+    const dt = e.dataTransfer;
+    if (this.readonly || !dt || !dt.types.includes(LIBRARY_TREE_DRAG_FORMAT)) {
+      return;
+    }
+    e.preventDefault();
+    const className = parseLibraryDrag(dt.getData(LIBRARY_TREE_DRAG_FORMAT));
+    if (className === null) {
+      return;
+    }
+    const point = this.sceneEl?.clientToDiagram(e.clientX, e.clientY) ?? null;
+    if (point === null) {
+      return;
+    }
+    this.requestAddComponent(className, point);
   };
 
   private onInteraction<K extends keyof InteractionEvents>(
