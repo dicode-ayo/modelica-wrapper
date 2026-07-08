@@ -10,6 +10,7 @@ import type {
   IconLayer,
 } from "@dicode/omc-client";
 import { colorToCss } from "@dicode/diagram-svg";
+import { omTokens } from "@dicode/ui-common";
 
 import { renderShape } from "../primitives/render-shape.js";
 import { lineThicknessScaleContext } from "../primitives/stroke-scale-context.js";
@@ -22,6 +23,7 @@ import "../connection/connection.component.js";
 import "../label/label.component.js";
 import "../debug/perf-hud.component.js";
 import "../library-browser/library-browser.component.js";
+import "../library-tree/library-tree.component.js";
 import "../context-menu/context-menu.component.js";
 import type { OmScene, RendererFactory } from "../scene/scene.component.js";
 import type { OmConnector } from "../connector/connector.component.js";
@@ -213,26 +215,102 @@ function layoutBoundingBox(layout: DiagramLayout): BBox | null {
  */
 @customElement("om-graphical-layout")
 export class OmGraphicalLayout extends LitElement {
-  static override styles = css`
-    :host {
-      display: block;
-      position: relative;
-      width: 100%;
-      height: 100%;
-      /* Belt-and-suspenders clip — see om-scene for the why. */
-      overflow: hidden;
-    }
-    om-scene {
-      width: 100%;
-      height: 100%;
-    }
-    /* Drop affordance while a draggable library class hovers the canvas. */
-    om-scene.om-drop-active {
-      outline: var(--om-drop-outline-width) dashed
-        var(--vscode-focusBorder, #007fd4);
-      outline-offset: calc(-1 * var(--om-drop-outline-width));
-    }
-  `;
+  static override styles = [
+    omTokens,
+    css`
+      :host {
+        display: block;
+        position: relative;
+        width: 100%;
+        height: 100%;
+        /* Belt-and-suspenders clip — see om-scene for the why. */
+        overflow: hidden;
+      }
+      /* Canvas + optional library palette share a row; the scene takes the
+       * remaining width so the palette docks beside it without overlapping. */
+      .workbench {
+        display: flex;
+        inline-size: 100%;
+        block-size: 100%;
+        min-block-size: 0;
+      }
+      om-scene {
+        flex: 1 1 auto;
+        min-inline-size: 0;
+      }
+      /* Drop affordance while a draggable library class hovers the canvas. */
+      om-scene.om-drop-active {
+        outline: var(--om-drop-outline-width) dashed
+          var(--vscode-focusBorder, #007fd4);
+        outline-offset: calc(-1 * var(--om-drop-outline-width));
+      }
+
+      .palette {
+        flex: 0 0 var(--om-library-palette-size);
+        display: flex;
+        flex-direction: column;
+        min-block-size: 0;
+        border-inline-end: 1px solid var(--vscode-widget-border, #454545);
+        background: var(
+          --vscode-sideBar-background,
+          var(--vscode-editor-background, transparent)
+        );
+      }
+      .palette-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--om-space-xs);
+        padding: var(--om-space-xs) var(--om-space-sm);
+        border-block-end: 1px solid var(--vscode-widget-border, #454545);
+      }
+      .palette-title {
+        font-family: var(--vscode-font-family, system-ui, sans-serif);
+        font-size: var(--om-description-size);
+        color: var(--vscode-foreground);
+        text-transform: uppercase;
+      }
+      om-library-tree {
+        flex: 1 1 auto;
+        min-block-size: 0;
+      }
+      /* Inline SVG (not a glyph font) so the toggle icon renders under the
+       * webview CSP, matching the diagram's other inline-SVG affordances. */
+      .palette-icon {
+        inline-size: var(--om-icon-size-sm);
+        block-size: var(--om-icon-size-sm);
+        display: block;
+      }
+      .palette-toggle,
+      .palette-rail {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: var(--om-space-2xs);
+        border: none;
+        border-radius: var(--om-radius-sm);
+        background: transparent;
+        color: var(
+          --vscode-icon-foreground,
+          var(--vscode-foreground, currentColor)
+        );
+        font: inherit;
+        cursor: pointer;
+      }
+      .palette-toggle:hover,
+      .palette-rail:hover {
+        background: var(
+          --vscode-toolbar-hoverBackground,
+          rgba(128, 128, 128, 0.2)
+        );
+      }
+      .palette-rail {
+        flex: 0 0 auto;
+        align-self: flex-start;
+        margin: var(--om-space-xs);
+      }
+    `,
+  ];
 
   @property({ attribute: false })
   layout: DiagramLayout | null = null;
@@ -288,6 +366,16 @@ export class OmGraphicalLayout extends LitElement {
    */
   @property({ attribute: false })
   libraryDataSource: LibraryBrowserDataSource | null = null;
+
+  /**
+   * Whether the docked library palette (`<om-library-tree>` beside the
+   * canvas) is expanded. The palette only appears when
+   * {@link libraryDataSource} is set; with a source but this off, a slim
+   * rail with a show button takes its place. Reflected so an embedder can
+   * open it declaratively (`show-palette`) and the collapse button flips it.
+   */
+  @property({ type: Boolean, reflect: true, attribute: "show-palette" })
+  showPalette = false;
 
   /**
    * Optional snap-to-grid override. Priority order:
@@ -426,59 +514,63 @@ export class OmGraphicalLayout extends LitElement {
     const componentEntries = Object.entries(active.components);
     const connectorEntries = Object.entries(active.connectors);
     return html`
-      <om-scene
-        class=${this.dropActive ? "om-drop-active" : nothing}
-        @om-view-change=${this.onViewChange}
-        .rendererFactory=${this.rendererFactory ?? undefined}
-        ?debug=${this.debug}
-        camera-mode=${this.cameraMode}
-        tabindex="0"
-        @keydown=${this.onKeyDown}
-        @dragover=${this.onDragOver}
-        @dragleave=${this.onDragLeave}
-        @drop=${this.onDrop}
-      >
-        <om-grid-axis
-          .extent=${500}
-          .coordinateSystem=${active.coordinateSystem ?? undefined}
-        ></om-grid-axis>
-        ${this.renderHostShapes(active)} ${this.renderHostShapeEntities(active)}
-        ${repeat(
-          componentEntries,
-          ([id]) => id,
-          ([id, comp]) => this.renderComponent(id, comp, active),
-        )}
-        ${repeat(
-          connectorEntries,
-          ([id]) => id,
-          ([id, conn]) => this.renderStandaloneConnector(id, conn, active),
-        )}
-        ${repeat(
-          active.connections,
-          (_, idx) => `conn:${idx}`,
-          (conn, idx) =>
-            html`<om-connection
-              .nodeId=${String(idx)}
-              .path=${resolveConnectionWaypoints(active, conn)}
-              .stroke=${conn.color ? colorToCss(conn.color) : undefined}
-              .selectedKeys=${this.selectedKeys}
-            ></om-connection>`,
-        )}
-        ${repeat(
-          active.labels,
-          (_, idx) => `lbl:${idx}`,
-          (label, idx) =>
-            html`<om-label
-              .nodeId=${String(idx)}
-              .text=${label.text}
-              .x=${(label.extent[0][0] + label.extent[1][0]) / 2}
-              .y=${(label.extent[0][1] + label.extent[1][1]) / 2}
-              .rotation=${label.rotation}
-              .fontSize=${label.fontSize ?? 12}
-            ></om-label>`,
-        )}
-        <om-perf-hud ?show=${this.perfHud}></om-perf-hud>
-      </om-scene>
+      <div class="workbench">
+        ${this.renderPalette()}
+        <om-scene
+          class=${this.dropActive ? "om-drop-active" : nothing}
+          @om-view-change=${this.onViewChange}
+          .rendererFactory=${this.rendererFactory ?? undefined}
+          ?debug=${this.debug}
+          camera-mode=${this.cameraMode}
+          tabindex="0"
+          @keydown=${this.onKeyDown}
+          @dragover=${this.onDragOver}
+          @dragleave=${this.onDragLeave}
+          @drop=${this.onDrop}
+        >
+          <om-grid-axis
+            .extent=${500}
+            .coordinateSystem=${active.coordinateSystem ?? undefined}
+          ></om-grid-axis>
+          ${this.renderHostShapes(active)}
+          ${this.renderHostShapeEntities(active)}
+          ${repeat(
+            componentEntries,
+            ([id]) => id,
+            ([id, comp]) => this.renderComponent(id, comp, active),
+          )}
+          ${repeat(
+            connectorEntries,
+            ([id]) => id,
+            ([id, conn]) => this.renderStandaloneConnector(id, conn, active),
+          )}
+          ${repeat(
+            active.connections,
+            (_, idx) => `conn:${idx}`,
+            (conn, idx) =>
+              html`<om-connection
+                .nodeId=${String(idx)}
+                .path=${resolveConnectionWaypoints(active, conn)}
+                .stroke=${conn.color ? colorToCss(conn.color) : undefined}
+                .selectedKeys=${this.selectedKeys}
+              ></om-connection>`,
+          )}
+          ${repeat(
+            active.labels,
+            (_, idx) => `lbl:${idx}`,
+            (label, idx) =>
+              html`<om-label
+                .nodeId=${String(idx)}
+                .text=${label.text}
+                .x=${(label.extent[0][0] + label.extent[1][0]) / 2}
+                .y=${(label.extent[0][1] + label.extent[1][1]) / 2}
+                .rotation=${label.rotation}
+                .fontSize=${label.fontSize ?? 12}
+              ></om-label>`,
+          )}
+          <om-perf-hud ?show=${this.perfHud}></om-perf-hud>
+        </om-scene>
+      </div>
       ${this.libraryBrowserOpen
         ? html`<om-library-browser
             open
@@ -493,6 +585,69 @@ export class OmGraphicalLayout extends LitElement {
       ></om-context-menu>
     `;
   }
+
+  /**
+   * The library palette docked left of the canvas. Nothing renders without a
+   * {@link libraryDataSource} — the palette is a drag source for the same
+   * classes the double-click library browser lists, so it shares that source
+   * rather than opening a second data path. Collapsed to a slim show-rail
+   * unless {@link showPalette} is set; the tree that expands is the HTML5 drag
+   * source the canvas already accepts as a drop.
+   */
+  private renderPalette(): TemplateResult | typeof nothing {
+    const source = this.libraryDataSource;
+    if (!source) {
+      return nothing;
+    }
+    if (!this.showPalette) {
+      return html`<button
+        class="palette-rail"
+        type="button"
+        title="Show library palette"
+        aria-label="Show library palette"
+        @click=${this.togglePalette}
+      >
+        ${this.paletteChevron("right")}
+      </button>`;
+    }
+    return html`<aside class="palette">
+      <div class="palette-header">
+        <span class="palette-title">Library</span>
+        <button
+          class="palette-toggle"
+          type="button"
+          title="Hide library palette"
+          aria-label="Hide library palette"
+          @click=${this.togglePalette}
+        >
+          ${this.paletteChevron("left")}
+        </button>
+      </div>
+      <om-library-tree .dataSource=${source}></om-library-tree>
+    </aside>`;
+  }
+
+  /** A single-triangle chevron pointing `left` (collapse) or `right` (expand),
+   *  in a 16×16 box. Inline `<svg>` root so `html` parses it in the SVG
+   *  namespace; `currentColor` inherits the button's icon colour. */
+  private paletteChevron(dir: "left" | "right"): TemplateResult {
+    const d =
+      dir === "right"
+        ? "M5.5 3.5 11 8l-5.5 4.5V3.5z"
+        : "M10.5 3.5 5 8l5.5 4.5V3.5z";
+    return html`<svg
+      class="palette-icon"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d=${d}></path>
+    </svg>`;
+  }
+
+  private readonly togglePalette = (): void => {
+    this.showPalette = !this.showPalette;
+  };
 
   override async firstUpdated(): Promise<void> {
     // Lit schedules child element updates *after* the parent's, so

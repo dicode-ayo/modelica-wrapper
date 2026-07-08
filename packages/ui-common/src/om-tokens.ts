@@ -75,6 +75,11 @@ export const omTokens: CSSResult = css`
     /* --- action panel --- */
     --om-action-panel-offset: 8px;
 
+    /* --- library palette (diagram-side dock) ---
+     * Expanded width of the collapsible library tree docked beside the
+     * canvas inside <om-graphical-layout>. */
+    --om-library-palette-size: 260px;
+
     /* --- drop target affordance ---
      * Outline width the diagram canvas paints while a draggable library class
      * hovers over it, signalling it accepts the drop. */
