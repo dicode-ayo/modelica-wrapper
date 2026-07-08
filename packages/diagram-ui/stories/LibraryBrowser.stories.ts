@@ -1,12 +1,13 @@
 /**
  * Stories for `<om-library-browser>`.
  *
- * Uses a hardcoded fake `LibraryBrowserDataSource` so the story bundle
- * stays browser-only — the real wiring in the extension calls into OMC
+ * The dialog embeds `<om-library-tree>`; these stories drive the modal
+ * shell around it. A hardcoded fake `LibraryBrowserDataSource` keeps the
+ * bundle browser-only — the real wiring in the extension calls into OMC
  * via `client.getClassNames(...)`, which can't load in a browser.
  *
- *   - Default: open browser, expand Modelica → Blocks, pick a class.
- *   - WithSearch: type `gain` to see search-mode results.
+ *   - Default: open the browser, expand Modelica → Blocks or search, pick
+ *     a class.
  *   - Empty: data-source returns `[]` to demonstrate the empty state.
  *   - WithError: data-source rejects to show the inline error.
  */
