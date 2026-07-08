@@ -40,7 +40,12 @@ export interface LibraryIconResponse {
   error?: string;
 }
 
+/** Monotonic across instances so request ids can't collide if two sources ever
+ *  coexist (a response then can't cross-match another instance's pending map). */
+let instanceCount = 0;
+
 export class WebviewLibraryDataSource implements LibraryBrowserDataSource {
+  private readonly idPrefix = `lib${(instanceCount += 1)}`;
   private nextId = 0;
   private readonly pending = new Map<
     string,
@@ -109,6 +114,6 @@ export class WebviewLibraryDataSource implements LibraryBrowserDataSource {
 
   private mintId(): string {
     this.nextId += 1;
-    return `lib-${this.nextId}`;
+    return `${this.idPrefix}-${this.nextId}`;
   }
 }

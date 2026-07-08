@@ -94,9 +94,20 @@ export class OmLibraryViewRoot extends LitElement {
 
   @state() private phase: Phase = "loading";
   @state() private errorText = "";
-  @state() private source: WebviewLibraryDataSource | null = null;
+  /** Bumped on each reload so `<om-library-tree>` re-fetches against the same
+   *  source. A fresh source would restart request ids and collide with any
+   *  in-flight request, routing its response to the wrong instance. */
+  @state() private reloadToken = 0;
 
   private readonly vscode = getVsCodeApi();
+  /** One persistent bridge for the view's lifetime — never swapped. Replacing
+   *  it while a tree fetch is in flight would orphan that request's response
+   *  and hang the row on "Loading…". */
+  private readonly source = new WebviewLibraryDataSource((msg) =>
+    this.vscode.postMessage(msg),
+  );
+  /** Drops stale top-level probes when reloads overlap during OMC startup. */
+  private probeSeq = 0;
   /** True between a row press and the matching release, so a release cancels an
    *  uncommitted placement (a plain click, or a drag that never reached the
    *  canvas). A drop over the canvas commits in the diagram webview and never
@@ -121,22 +132,21 @@ export class OmLibraryViewRoot extends LitElement {
     window.removeEventListener("keydown", this.onKeyDown);
   }
 
-  /** Rebuild the data source (so the tree re-fetches) and probe the top level
-   *  to pick the chrome: loading → empty / error / ready. */
+  /** Re-fetch on the existing source: bump the token so the tree rebuilds, and
+   *  probe the top level to pick the chrome (loading → empty / error / ready).
+   *  Overlapping reloads during OMC startup are serialised by `probeSeq`. */
   private reload(): void {
     this.phase = "loading";
-    const source = new WebviewLibraryDataSource((msg) =>
-      this.vscode.postMessage(msg),
-    );
-    this.source = source;
-    source
+    this.reloadToken += 1;
+    const seq = ++this.probeSeq;
+    this.source
       .listChildren(null)
       .then((items) => {
-        if (this.source !== source) return;
+        if (seq !== this.probeSeq) return;
         this.phase = items.length === 0 ? "empty" : "ready";
       })
       .catch((err: unknown) => {
-        if (this.source !== source) return;
+        if (seq !== this.probeSeq) return;
         this.errorText = err instanceof Error ? err.message : String(err);
         this.phase = "error";
       });
@@ -148,10 +158,10 @@ export class OmLibraryViewRoot extends LitElement {
     switch (data.type) {
       case "libraryChildren":
       case "librarySearchResult":
-        this.source?.handleResponse(data);
+        this.source.handleResponse(data);
         return;
       case "libraryIconResult":
-        this.source?.handleIconResponse(data);
+        this.source.handleIconResponse(data);
         return;
       case "reload":
         this.reload();
@@ -197,6 +207,7 @@ export class OmLibraryViewRoot extends LitElement {
         return html`<om-library-tree
           placement-drag
           .dataSource=${this.source}
+          .reloadToken=${this.reloadToken}
           @om-library-select=${this.onSelect}
           @om-library-placement-start=${this.onPlacementStart}
         ></om-library-tree>`;

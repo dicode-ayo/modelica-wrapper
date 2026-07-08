@@ -223,6 +223,15 @@ export class OmLibraryTree extends LitElement {
   @property({ type: Boolean, reflect: true, attribute: "placement-drag" })
   placementDrag = false;
 
+  /**
+   * Change this to force a re-fetch against the current data source without
+   * swapping the source instance — the embedder bumps it when the loaded
+   * libraries change. Swapping the source instead would restart the bridge's
+   * request ids and orphan any in-flight fetch.
+   */
+  @property({ attribute: false })
+  reloadToken = 0;
+
   @state() private query = "";
   @state() private searchResults: LibraryClassInfo[] | null = null;
   @state() private searchLoading = false;
@@ -258,7 +267,7 @@ export class OmLibraryTree extends LitElement {
   // `setState` re-render calls inside the update cycle, so they never
   // schedule a post-commit `requestUpdate` — which would loop.
   override willUpdate(changed: PropertyValues<this>): void {
-    if (changed.has("dataSource")) {
+    if (changed.has("dataSource") || changed.has("reloadToken")) {
       this.rebuildForDataSource();
     }
   }
