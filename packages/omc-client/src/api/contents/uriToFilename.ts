@@ -31,7 +31,7 @@ import { z } from "zod";
 import type { CallContext } from "../../_shared/callContext.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
 import { quote } from "../../_shared/format.js";
-import { asString, parse } from "../../parse.js";
+import { expectString, parse } from "../../parse.js";
 
 export const UriToFilenameInputSchema = z.object({
   uri: z
@@ -59,9 +59,9 @@ export async function uriToFilename(
   input: UriToFilenameInput,
 ): Promise<UriToFilenameOutput> {
   const raw = await ctx.call(`uriToFilename(${quote(input.uri)})`);
-  return parseOutput(
-    UriToFilenameOutputSchema,
-    { filename: asString(parse(raw)) ?? "" },
-    "uriToFilename",
-  );
+  const v = parse(raw);
+  // OMC can return its null sentinel (`-`) when the URI cannot be resolved;
+  // that is an expected failure mode, not a protocol error — map it to `""`.
+  const filename = v.kind === "null" ? "" : expectString(v);
+  return parseOutput(UriToFilenameOutputSchema, { filename }, "uriToFilename");
 }

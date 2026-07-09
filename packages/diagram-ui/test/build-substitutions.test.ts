@@ -116,6 +116,22 @@ describe("buildSubstitutions", () => {
     expect(subs.parameters?.k).toBe("fromHost");
   });
 
+  it("does not leak deeper nested-path keys as direct parameter entries", () => {
+    // `comp.sub.param` strips the `comp.` prefix and leaves `sub.param`.
+    // That still contains a `.`, so it must be discarded — it addresses
+    // a parameter of `comp`'s sub-component, not `comp` itself.
+    const subs = buildSubstitutions(
+      makeInstance({ name: "comp" }),
+      makeClass({ direct: { name: "direct", value: "classDefault" } }),
+      {
+        "comp.direct": "ok",
+        "comp.sub.param": "shouldNotLeak",
+      },
+    );
+    expect(subs.parameters?.direct).toBe("ok");
+    expect(subs.parameters?.["sub.param"]).toBeUndefined();
+  });
+
   it("appends a single array dimension to %name", () => {
     const subs = buildSubstitutions(
       makeInstance({ name: "pins", dims: ["3"] }),

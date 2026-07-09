@@ -41,11 +41,27 @@ describe("uriToFilename parsing", () => {
     expect(out).toEqual({ filename: "" });
   });
 
+  it("falls back to empty string when OMC returns its null sentinel", async () => {
+    const { ctx } = fakeCtx("-");
+    const out = await uriToFilename(ctx, { uri: "modelica://Nope/x.png" });
+    expect(out).toEqual({ filename: "" });
+  });
+
   it("quotes the URI argument in the command (audit §2.10)", async () => {
     const { ctx, call } = fakeCtx('""');
     await uriToFilename(ctx, { uri: "modelica://Modelica/package.mo" });
     expect(call).toHaveBeenCalledWith(
       'uriToFilename("modelica://Modelica/package.mo")',
     );
+  });
+
+  it("throws when OMC returns a non-string (drift detection)", async () => {
+    // OMC always returns a string, but if the response shape drifts
+    // (e.g. a boolean `false` on error) the parse should throw rather
+    // than silently returning an empty filename.
+    const { ctx } = fakeCtx("false");
+    await expect(
+      uriToFilename(ctx, { uri: "modelica://Nope/x.png" }),
+    ).rejects.toThrow();
   });
 });

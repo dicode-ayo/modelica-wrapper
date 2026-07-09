@@ -41,9 +41,12 @@ export function buildSubstitutions(
   if (hostResolvedParameters !== undefined) {
     const prefix = `${instance.name}.`;
     for (const [key, value] of Object.entries(hostResolvedParameters)) {
-      if (key.startsWith(prefix)) {
-        parameters[key.slice(prefix.length)] = value;
-      }
+      if (!key.startsWith(prefix)) continue;
+      const stripped = key.slice(prefix.length);
+      // A dot remaining after stripping the prefix means the key addresses a
+      // nested sub-parameter, not a direct parameter of this instance.
+      if (stripped.includes(".")) continue;
+      parameters[stripped] = value;
     }
   }
   const overrides = topLevelModifierMap(instance.modifiers);
