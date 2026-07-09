@@ -59,3 +59,33 @@ test("a readonly canvas refuses the drop", async ({ page }) => {
 
   await expect.poll(() => componentCount(page)).toBe(before);
 });
+
+test("a package row is not a drag source", async ({ page }) => {
+  await page.goto(WORKBENCH_STORY, { waitUntil: "networkidle" });
+  const before = await componentCount(page);
+
+  // Tree mode, no search: the roots are the packages `Modelica` and `Complex`.
+  const root = page.locator("om-library-tree .row", { hasText: "Modelica" });
+  await expect(root).toBeVisible();
+
+  await root.dragTo(page.locator("om-scene"));
+
+  // `addComponent(Modelica)` would ask OMC to instantiate a package.
+  await expect.poll(() => componentCount(page)).toBe(before);
+  // And the row shouldn't offer a grab cursor it won't honour.
+  await expect(root).not.toHaveAttribute("draggable", "true");
+});
+
+test("a non-instantiable search hit is not a drag source", async ({ page }) => {
+  await page.goto(WORKBENCH_STORY, { waitUntil: "networkidle" });
+  const before = await componentCount(page);
+
+  // `Modelica.Math.sin` is a function; the fixture's search returns it for "sin".
+  await page.locator("om-library-tree input.search").fill("sin");
+  const hit = page.locator("om-library-tree .row", { hasText: "sin" }).last();
+  await expect(hit).toBeVisible();
+
+  await hit.dragTo(page.locator("om-scene"));
+  await expect.poll(() => componentCount(page)).toBe(before);
+  await expect(hit).toHaveAttribute("draggable", "false");
+});
