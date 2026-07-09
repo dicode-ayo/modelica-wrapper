@@ -219,13 +219,20 @@ class Parser {
    * Read a possibly-leading-dot dotted ident (e.g. `foo`, `Modelica.Blocks.M.Gain`,
    * `.OpenModelica.Scripting.ErrorKind.syntax`). Returns the raw text including
    * the leading dot, if any. Caller is responsible for trimming if needed.
+   *
+   * A segment may be a quoted identifier (`Complex.'-'.negate`, Modelica spec
+   * §2.3.1). Its quotes and escapes are kept verbatim: the name round-trips
+   * back to OMC as a command argument, where stripping them would not parse.
    */
   private readDottedName(): string {
     const start = this.pos;
     if (this.src[this.pos] === ".") this.pos++;
     while (this.pos < this.src.length) {
       const c = this.src[this.pos]!;
-      if (isIdentPart(c) || c === ".") {
+      if (c === "'") {
+        // Advances past the segment; the raw text comes from the outer slice.
+        this.readQuoted("'");
+      } else if (isIdentPart(c) || c === ".") {
         this.pos++;
       } else break;
     }
@@ -252,7 +259,16 @@ class Parser {
 
   /** Q-IDENT per Modelica spec §2.3.1 — same escape rules as strings. */
   private parseQuotedIdent(): Value {
-    return { kind: "ident", name: this.readQuoted("'") };
+    // A quoted segment can open a dotted name (`'a b'.c`). Only a bare quoted
+    // identifier is unescaped; a dotted one keeps its raw text so it can be
+    // sent back to OMC.
+    const start = this.pos;
+    const name = this.readQuoted("'");
+    if (this.src[this.pos] === ".") {
+      this.pos = start;
+      return this.parseIdentOrCall();
+    }
+    return { kind: "ident", name };
   }
 
   /** Reads `<quote>…<quote>` and returns the unescaped body. Consumes both quotes. */
@@ -410,16 +426,7 @@ class Parser {
 
   private parseIdentOrCall(): Value {
     const start = this.pos;
-    // Allow a single leading `.` for fully-qualified names like
-    // `.OpenModelica.Scripting.ErrorKind.syntax`.
-    if (this.src[this.pos] === ".") this.pos++;
-    while (this.pos < this.src.length) {
-      const c = this.src[this.pos]!;
-      if (isIdentPart(c) || c === ".") {
-        this.pos++;
-      } else break;
-    }
-    const name = this.src.slice(start, this.pos);
+    const name = this.readDottedName();
     if (name === "true") return { kind: "bool", value: true };
     if (name === "false") return { kind: "bool", value: false };
     if (name === "") throw new Error(`expected identifier at ${start}`);

@@ -287,6 +287,66 @@ describe("parse: quoted identifiers (Q-IDENT, Modelica spec §2.3.1)", () => {
   it("throws on an unterminated quoted ident", () => {
     expect(() => parse(`'unterminated`)).toThrow(/unterminated '/);
   });
+
+  // `searchClassNames` returns these for Complex's operator overloads. The
+  // parsed name is fed straight back to OMC as a command argument, so its
+  // quotes have to survive the round trip.
+  it("keeps a quoted segment inside a dotted class name", () => {
+    expect(parse(`Complex.'-'.negate`)).toEqual({
+      kind: "ident",
+      name: `Complex.'-'.negate`,
+    });
+  });
+
+  it("keeps every quoted segment in a list of class names", () => {
+    const v = parse(
+      `{Complex.'constructor'.fromReal, Complex.'*'.scalarProduct, Modelica}`,
+    );
+    if (v.kind !== "list") throw new Error("expected list");
+    expect(v.items.map((i) => (i.kind === "ident" ? i.name : i.kind))).toEqual([
+      `Complex.'constructor'.fromReal`,
+      `Complex.'*'.scalarProduct`,
+      "Modelica",
+    ]);
+  });
+
+  it("does not mistake a quoted `-` segment for the null sentinel", () => {
+    const v = parse(`{Complex.'-'.subtract, -}`);
+    if (v.kind !== "list") throw new Error("expected list");
+    expect(v.items[0]).toEqual({
+      kind: "ident",
+      name: `Complex.'-'.subtract`,
+    });
+    expect(v.items[1]?.kind).toBe("null");
+  });
+
+  it("reads a dotted name that opens with a quoted segment", () => {
+    expect(parse(`'a b'.c`)).toEqual({ kind: "ident", name: `'a b'.c` });
+  });
+
+  // A dot inside a quoted segment is part of the name, not a separator. This is
+  // the invariant a scanner that stopped at `.` would break.
+  it("keeps a dot inside a quoted segment from splitting the name", () => {
+    expect(parse(`Complex.'a.b'.negate`)).toEqual({
+      kind: "ident",
+      name: `Complex.'a.b'.negate`,
+    });
+  });
+
+  it("keeps a name that ends in a quoted segment", () => {
+    expect(parse(`Complex.'-'`)).toEqual({
+      kind: "ident",
+      name: `Complex.'-'`,
+    });
+  });
+
+  it("keeps an escaped quote inside a dotted segment", () => {
+    // Source text is Pkg.'it\'s'.f — the escape must not close the segment.
+    expect(parse(`Pkg.'it\\'s'.f`)).toEqual({
+      kind: "ident",
+      name: `Pkg.'it\\'s'.f`,
+    });
+  });
 });
 
 describe("parse: leading-dot qualified idents", () => {
