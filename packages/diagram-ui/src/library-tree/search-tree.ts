@@ -13,7 +13,7 @@
 import type {
   LibraryClassInfo,
   LibraryClassRestriction,
-} from "../library-browser/library-browser.component.js";
+} from "./library-types.js";
 
 export interface SearchTreeRow {
   /** Fully-qualified path of this node. */

@@ -1,9 +1,7 @@
 /**
- * Browser-side bridge that adapts diagram-ui's `LibraryBrowserDataSource`
- * (plain promises) onto the extension host's async postMessage protocol.
- * Shared by the diagram webview (`webview-entry.ts`) and the library sidebar
- * view (`library-view-entry.ts`) so both browse the same OMC-backed data
- * through one correlation-map implementation.
+ * Webview-side bridge that adapts diagram-ui's `LibraryDataSource`
+ * (plain promises) onto the extension host's async postMessage protocol,
+ * for the library sidebar view (`library-view-entry.ts`).
  *
  * Each `listChildren` / `searchAll` / `iconSvg` call mints a `requestId`, posts
  * the matching request, and parks the resolve/reject pair. The webview root
@@ -13,10 +11,7 @@
  * request implies a host bug worth seeing in the console.
  */
 
-import type {
-  LibraryBrowserDataSource,
-  LibraryClassInfo,
-} from "@dicode/diagram-ui";
+import type { LibraryDataSource, LibraryClassInfo } from "@dicode/diagram-ui";
 
 import type {
   LibraryIconResponse,
@@ -34,7 +29,7 @@ export type {
  *  coexist (a response then can't cross-match another instance's pending map). */
 let instanceCount = 0;
 
-export class WebviewLibraryDataSource implements LibraryBrowserDataSource {
+export class WebviewLibraryDataSource implements LibraryDataSource {
   private readonly idPrefix = `lib${(instanceCount += 1)}`;
   private nextId = 0;
   private readonly pending = new Map<

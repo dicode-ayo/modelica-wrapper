@@ -1,19 +1,9 @@
 import type { DiagramLayout, ParameterModel } from "@dicode/omc-client";
 
-import type {
-  LibraryClassInfo,
-  LibraryRequestMessage,
-} from "./library-messages.js";
-
-export type {
-  LibraryClassInfo,
-  LibraryClassRestriction,
-} from "./library-messages.js";
-
 /**
- * Wire-format mirror of diagram-ui's `DiagramCommandId`. Kept local for the
- * same CommonJS / Node16-resolution reason as {@link LibraryClassRestriction};
- * the webview side assigns it straight into diagram-ui's identical union.
+ * Wire-format mirror of diagram-ui's `DiagramCommandId`. Kept local because the
+ * CommonJS extension host can't import the ESM-only diagram-ui package; the
+ * webview side assigns it straight into diagram-ui's identical union.
  */
 export type DiagramCommandId =
   | "diagram.delete"
@@ -41,8 +31,6 @@ export type DiagramCommandId =
  *                            extension uses to route the eventual submit
  *                            ("simulate", "componentParams", …).
  *   - `parametersClose`    — dismiss the parameter modal.
- *   - `libraryChildren`    — response to `libraryListChildren`.
- *   - `librarySearchResult`— response to `librarySearch`.
  *
  * Webview → extension:
  *   - `ready`               — webview has finished loading.
@@ -59,18 +47,9 @@ export type DiagramCommandId =
  *                             defaults" button (component params only);
  *                             the host bulk-clears the sub-component's
  *                             modifiers and re-opens the refreshed form.
- *   - `addComponent`        — user picked a class in the library
- *                             browser and we want to instantiate it
- *                             into the active diagram at `position`.
- *   - `libraryListChildren` — request: enumerate child classes of
- *                             `parent` (null for root packages).
- *   - `librarySearch`       — request: search loaded libraries.
- *
- * Library messages use a `requestId` so the webview can correlate
- * responses with in-flight Promises in its data source. The wire
- * format is deliberately tagged union; the webview's data source
- * holds a `Map<requestId, {resolve, reject}>` and drains it on the
- * matching response message.
+ *   - `addComponent`        — user dropped or placed a class on the canvas
+ *                             and we want to instantiate it into the active
+ *                             diagram at `position`.
  */
 
 export type ExtensionToWebview =
@@ -97,27 +76,6 @@ export type ExtensionToWebview =
       crefPrefix?: string;
     }
   | { type: "parametersClose" }
-  | {
-      type: "libraryChildren";
-      requestId: string;
-      items?: LibraryClassInfo[];
-      error?: string;
-    }
-  | {
-      type: "librarySearchResult";
-      requestId: string;
-      items?: LibraryClassInfo[];
-      error?: string;
-    }
-  | {
-      // Response to `libraryIcon`. `svg` is a self-contained `<svg>`
-      // thumbnail for the class's icon (rendered host-side via the cheap
-      // `getModelInstanceAnnotation` path); absent on failure / no icon.
-      type: "libraryIconResult";
-      requestId: string;
-      svg?: string;
-      error?: string;
-    }
   | {
       // Host-resolved diagram shortcut (a VSCode keybinding fired while the
       // diagram panel was focused). The webview runs it through its registry.
@@ -184,7 +142,6 @@ export type WebviewToExtension =
       className: string;
       position: { x: number; y: number };
     }
-  | LibraryRequestMessage
   | {
       type: "changeClassRequest";
       componentName: string;

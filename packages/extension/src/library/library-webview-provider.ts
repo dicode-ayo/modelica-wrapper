@@ -6,7 +6,7 @@
  * webview iframe boundary.
  *
  * The webview browses the same OMC-backed data the diagram library browser uses
- * (`LibraryBrowserSource`); this provider owns the host end of that bridge plus
+ * (`LibrarySource`); this provider owns the host end of that bridge plus
  * the sidebar-only actions (open a class's diagram, relay a placement to the
  * active diagram, run Load Library, reload after a mutation).
  */
@@ -15,11 +15,11 @@ import * as vscode from "vscode";
 
 import type { OmcClient } from "@dicode/omc-client";
 
-import { LibraryBrowserSource } from "../diagram/library-source.js";
+import { LibrarySource } from "../diagram/library-source.js";
 import { libraryIconSvg } from "../diagram/open-diagram.js";
 import { DiagramPanel } from "../diagram/panel.js";
 import { randomNonce } from "../webview/nonce.js";
-import type { LibraryClassInfo } from "../webview/protocol.js";
+import type { LibraryClassInfo } from "../webview/library-messages.js";
 import type {
   ExtensionToLibraryView,
   LibraryViewToExtension,
@@ -31,9 +31,7 @@ type EnsureClient = () => Promise<OmcClient>;
 
 export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
-  private cached:
-    | { client: OmcClient; source: LibraryBrowserSource }
-    | undefined;
+  private cached: { client: OmcClient; source: LibrarySource } | undefined;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -112,10 +110,10 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   /** Lazily build (and cache) the OMC-backed source for the current client. */
-  private async source(): Promise<LibraryBrowserSource> {
+  private async source(): Promise<LibrarySource> {
     const client = await this.ensureClient();
     if (this.cached?.client !== client) {
-      this.cached = { client, source: new LibraryBrowserSource(client) };
+      this.cached = { client, source: new LibrarySource(client) };
     }
     return this.cached.source;
   }
@@ -124,7 +122,7 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
     webview: vscode.Webview,
     requestId: string,
     responseType: "libraryChildren" | "librarySearchResult",
-    fetch: (source: LibraryBrowserSource) => Promise<LibraryClassInfo[]>,
+    fetch: (source: LibrarySource) => Promise<LibraryClassInfo[]>,
   ): Promise<void> {
     try {
       const items = await fetch(await this.source());

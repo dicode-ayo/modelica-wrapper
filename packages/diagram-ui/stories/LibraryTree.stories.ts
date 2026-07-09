@@ -14,12 +14,12 @@ import { html, type TemplateResult } from "lit";
 
 import "../src/library-tree/library-tree.component.js";
 import type {
-  LibraryBrowserDataSource,
+  LibraryDataSource,
   LibrarySelectDetail,
-} from "../src/library-browser/library-browser.component.js";
+} from "../src/library-tree/library-types.js";
 import { fakeLibrarySource } from "./fixtures/fake-library.js";
 
-const emptySource: LibraryBrowserDataSource = {
+const emptySource: LibraryDataSource = {
   async listChildren() {
     return [];
   },

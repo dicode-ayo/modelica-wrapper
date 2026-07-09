@@ -75,7 +75,7 @@ In a Lit/HTML template the same element is just:
 | `<om-icon-provider>` | SVG → Babylon texture cache for component icons. |
 | `<om-grid-axis>` | Grid + coordinate-system extent. |
 | `<om-parameter-panel>` / `<om-parameter-form>` | Schema-driven parameter side drawer. |
-| `<om-library-browser>` | Class picker for drag-to-place. |
+| `<om-library-tree>` | Virtualized class tree; drag source for place-on-canvas. |
 | `<om-action-panel>` | Toolbar (undo / check / simulate / parameters). |
 | `<om-multibody-root>` | MultiBody 3D preview root (experimental). |
 

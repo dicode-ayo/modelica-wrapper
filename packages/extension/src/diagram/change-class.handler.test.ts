@@ -88,7 +88,7 @@ vi.mock("./panel.js", () => ({
 }));
 
 vi.mock("./library-source.js", () => ({
-  LibraryBrowserSource: class {
+  LibrarySource: class {
     listChildren = vi.fn().mockResolvedValue([]);
     searchAll = vi.fn().mockResolvedValue([]);
   },

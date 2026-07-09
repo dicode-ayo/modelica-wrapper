@@ -1,15 +1,12 @@
 /**
- * Shared fixture data + a spy-backed `LibraryBrowserDataSource` for the
+ * Shared fixture data + a spy-backed `LibraryDataSource` for the
  * `<om-library-tree>` unit tests. Mirrors how `stories/fixtures/fake-library.ts`
  * factors story data, kept out of the test file so several suites can reuse it.
  */
 
 import { vi } from "vitest";
 
-import type {
-  LibraryBrowserDataSource,
-  LibraryClassInfo,
-} from "../library-browser/library-browser.component.js";
+import type { LibraryDataSource, LibraryClassInfo } from "./library-types.js";
 
 /** `listChildren` responses keyed by parent id; `__ROOT__` is `listChildren(null)`. */
 export const FAKE_TREE: Record<string, LibraryClassInfo[]> = {
@@ -28,13 +25,13 @@ export const ALL_FLAT: LibraryClassInfo[] = [
 ];
 
 export interface FakeLibrarySource {
-  source: LibraryBrowserDataSource;
+  source: LibraryDataSource;
   listChildren: ReturnType<typeof vi.fn>;
   searchAll: ReturnType<typeof vi.fn>;
   iconSvg: ReturnType<typeof vi.fn>;
 }
 
-/** A `LibraryBrowserDataSource` over the fixtures with each method spied. */
+/** A `LibraryDataSource` over the fixtures with each method spied. */
 export function makeFakeLibrarySource(): FakeLibrarySource {
   const listChildren = vi.fn(
     async (parent: string | null): Promise<LibraryClassInfo[]> =>

@@ -75,11 +75,6 @@ export const omTokens: CSSResult = css`
     /* --- action panel --- */
     --om-action-panel-offset: 8px;
 
-    /* --- library palette (diagram-side dock) ---
-     * Expanded width of the collapsible library tree docked beside the
-     * canvas inside <om-graphical-layout>. */
-    --om-library-palette-size: 260px;
-
     /* --- drop target affordance ---
      * Outline width the diagram canvas paints while a draggable library class
      * hovers over it, signalling it accepts the drop. */
@@ -95,7 +90,7 @@ export const omTokens: CSSResult = css`
     /* --- inline icons / badges ---
      * icon-sm is for cursor-style affordances (chevrons, indicators
      * inside text rows); icon-md is for full-sized badges and the
-     * library-browser restriction glyphs. */
+     * library restriction glyphs. */
     --om-icon-size-sm: 0.85em;
     --om-icon-size-md: 16px;
 

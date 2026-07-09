@@ -1,12 +1,11 @@
 /**
- * Backs the diagram webview's library-browser data source with real
- * OMC calls. The webview pings the extension host with
- * `libraryListChildren` / `librarySearch` messages; this module owns
- * the OMC fetches and converts results into the
- * `LibraryClassInfo[]` shape the browser renders.
+ * Backs the library sidebar's data source with real OMC calls. The webview
+ * pings the extension host with `libraryListChildren` / `librarySearch`
+ * messages; this module owns the OMC fetches and converts results into the
+ * `LibraryClassInfo[]` shape the tree renders.
  *
  * Restrictions are cached per-class for the lifetime of the
- * `LibraryBrowserSource` instance — usually one per diagram panel —
+ * `LibrarySource` instance —
  * so re-expanding a node or repeating a search doesn't re-hit OMC
  * for restrictions it already knows. We do *not* cache the children
  * list itself: OMC may load new packages after the panel opens, and
@@ -19,7 +18,7 @@ import type { OmcClient } from "@dicode/omc-client";
 import type {
   LibraryClassInfo,
   LibraryClassRestriction,
-} from "../webview/protocol.js";
+} from "../webview/library-messages.js";
 
 /** Cap on search results so a `searchAll("a")` doesn't fetch 6000+
  *  restrictions in parallel. The browser shows a flat list; beyond
@@ -55,7 +54,7 @@ function normaliseRestriction(raw: string): LibraryClassRestriction {
     : "unknown";
 }
 
-export class LibraryBrowserSource {
+export class LibrarySource {
   private readonly restrictionCache = new Map<
     string,
     LibraryClassRestriction

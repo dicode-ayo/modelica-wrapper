@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { LibraryClassInfo } from "../library-browser/library-browser.component.js";
+import type { LibraryClassInfo } from "./library-types.js";
 import { buildSearchTree } from "./search-tree.js";
 
 const info = (

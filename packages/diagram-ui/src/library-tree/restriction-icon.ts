@@ -5,7 +5,7 @@
  * apply `omTokens` to the badge's shadow root.
  */
 
-import type { LibraryClassRestriction } from "../library-browser/library-browser.component.js";
+import type { LibraryClassRestriction } from "./library-types.js";
 
 export interface IconStyle {
   /** Single-character glyph rendered in the badge. */

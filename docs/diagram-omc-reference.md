@@ -34,8 +34,8 @@ design proposal.
 | SVG renderer (icons) | `renderIconLayersToSvg()` | [packages/diagram-svg/src](../packages/diagram-svg/src) |
 | Layout diff / write-back | `diffLayouts()`, `applyEdits()` | [diff-layout.ts](../packages/extension/src/diagram/diff-layout.ts) · [apply-edits.ts](../packages/extension/src/diagram/apply-edits.ts) |
 | Undo | `SnapshotStack`, `captureSnapshot()` | [snapshot-stack.ts](../packages/extension/src/diagram/snapshot-stack.ts) · [omc-snapshot.ts](../packages/extension/src/diagram/omc-snapshot.ts) |
-| Library tree (VSCode) | `LibraryTreeProvider` | [tree/library-tree.ts](../packages/extension/src/tree/library-tree.ts) |
-| Library browser (diagram) | `LibraryBrowserSource` | [diagram/library-source.ts](../packages/extension/src/diagram/library-source.ts) |
+| Library sidebar | `LibraryWebviewProvider` | [library/library-webview-provider.ts](../packages/extension/src/library/library-webview-provider.ts) |
+| Library data source | `LibrarySource` | [diagram/library-source.ts](../packages/extension/src/diagram/library-source.ts) |
 | Host↔webview wire | message catalog | [webview/protocol.ts](../packages/extension/src/webview/protocol.ts) |
 
 ---
@@ -199,12 +199,11 @@ supporting both lazy single-level and eager recursive population. Restriction vi
 lazily caches `getElements` per item behind an `mComponentsLoaded` flag were
 **not confirmed** — 1-2.)
 
-**Ours.** [`LibraryTreeProvider`](../packages/extension/src/tree/library-tree.ts)
-is a `vscode.TreeDataProvider`: root → `getLoadedLibraries()` +
+**Ours.** [`LibraryWebviewProvider`](../packages/extension/src/library/library-webview-provider.ts)
+backs the library sidebar webview: root → `getLoadedLibraries()` +
 `getClassNames({sort:true})`; expansion → `getClassNames({typeName, sort:true})`;
-restriction per child in parallel via `getClassRestriction`. Tree item command is
-`modelica.openDiagram(qualifiedName)`. The in-diagram library browser
-[`LibraryBrowserSource`](../packages/extension/src/diagram/library-source.ts)
+restriction per child via `getClassRestriction`.
+[`LibrarySource`](../packages/extension/src/diagram/library-source.ts)
 adds `searchClassNames` (capped at 80) and session-cached restrictions; icons are
 lazy per row via the cheap `getModelInstanceAnnotation` path.
 

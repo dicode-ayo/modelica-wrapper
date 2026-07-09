@@ -35,7 +35,6 @@ import {
 } from "@dicode/diagram-ui";
 
 import type { ExtensionToWebview, WebviewToExtension } from "./protocol.js";
-import { WebviewLibraryDataSource } from "./library-data-source.js";
 import { getVsCodeApi, type VsCodeApi } from "./vscode-api.js";
 
 // Injected by esbuild `define`. Captures the build's wall-clock time so we
@@ -85,11 +84,6 @@ class OmWebviewRoot extends LitElement {
   private paramKind: string | null = null;
 
   private vscode: VsCodeApi<WebviewToExtension> | null = null;
-  /** Async bridge for the library browser. Constructed lazily on
-   *  first connect because it captures `this.post` which is bound to
-   *  the cached VSCode API handle. */
-  private librarySource: WebviewLibraryDataSource | null = null;
-
   private get diagram(): OmGraphicalLayout | null {
     return this.renderRoot.querySelector("om-graphical-layout");
   }
@@ -97,7 +91,6 @@ class OmWebviewRoot extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this.vscode = getVsCodeApi<WebviewToExtension>();
-    this.librarySource = new WebviewLibraryDataSource((msg) => this.post(msg));
     window.addEventListener("message", this.onHostMessage);
     document.addEventListener("focusin", this.onFocusChange);
     document.addEventListener("focusout", this.onFocusChange);
@@ -133,7 +126,6 @@ class OmWebviewRoot extends LitElement {
         .layout=${this.layout}
         host-managed-keys
         ?perf-hud=${true}
-        .libraryDataSource=${this.librarySource}
         @om-graphical-layout-change=${this.onLayoutChange}
         @om-connection-create=${this.onConnectionCreate}
         @om-selection-change=${this.onSelectionChange}
@@ -205,15 +197,6 @@ class OmWebviewRoot extends LitElement {
         this.paramKind = null;
         this.paramComponentName = null;
         return;
-      case "libraryChildren":
-      case "librarySearchResult":
-        // Both share the same {requestId, items?, error?} shape; the
-        // data source's correlation map keys on requestId alone.
-        this.librarySource?.handleResponse(message);
-        return;
-      case "libraryIconResult":
-        this.librarySource?.handleIconResponse(message);
-        return;
       case "runCommand":
         this.diagram?.runCommandById(message.commandId);
         return;
@@ -258,8 +241,7 @@ class OmWebviewRoot extends LitElement {
   ): void => {
     // Components are the only kind we route to the extension as an
     // edit gesture. Connectors / labels / empty canvas double-clicks
-    // reach us via the same event but go through other gestures
-    // (library browser, etc.) — silently ignore them here.
+    // reach us via the same event — silently ignore them here.
     const parsed = parseKey(e.detail.key);
     if (!parsed || !isComponentKey(parsed) || parsed.nodeId.length === 0) {
       return;

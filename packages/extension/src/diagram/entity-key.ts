@@ -3,8 +3,7 @@
  * format. Mirrors the SHAPE of `@dicode/diagram-ui`'s
  * `node-keys.ts` — same prefixes, same nodeId conventions — but lives
  * here as a small standalone module because the extension host can't
- * import the ESM-only diagram-ui package directly (same constraint
- * `webview/protocol.ts` documents for `LibraryClassRestriction`).
+ * import the ESM-only diagram-ui package directly.
  *
  * Keep the two in sync if either side ever introduces new kinds. The
  * wire prefixes are listed in `KIND_PREFIX` below — if you add one in

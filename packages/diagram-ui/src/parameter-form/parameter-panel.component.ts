@@ -64,8 +64,7 @@ export class OmParameterPanel extends LitElement {
   override render(): TemplateResult {
     // Only render the wa-drawer when open: wa-button (which the drawer
     // uses internally for its close button) is form-associated and
-    // crashes happy-dom on connectedCallback. Same pattern as
-    // `<om-library-browser>`.
+    // crashes happy-dom on connectedCallback.
     if (!this.open) return html`${nothing}`;
     return html`
       <wa-drawer

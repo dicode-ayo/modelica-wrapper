@@ -124,7 +124,7 @@ vi.mock("./panel.js", () => ({
 
 // Library browser source is constructed in openDiagram; stub it out.
 vi.mock("./library-source.js", () => ({
-  LibraryBrowserSource: class {
+  LibrarySource: class {
     listChildren = vi.fn();
     searchAll = vi.fn();
   },

@@ -46,7 +46,7 @@ import {
 } from "./shape-properties.js";
 import { applyDisplayUnits } from "./display-unit.js";
 import { buildUnitTableForModel, sessionUnitCache } from "./unit-table.js";
-import { LibraryBrowserSource } from "./library-source.js";
+import { LibrarySource } from "./library-source.js";
 import { captureSnapshot, restoreSnapshot } from "./omc-snapshot.js";
 import { DiagramPanel } from "./panel.js";
 import { SnapshotStack } from "./snapshot-stack.js";
@@ -87,7 +87,7 @@ export async function openDiagram(
   // One library source per panel — holds a restriction cache keyed
   // by qualified class name so re-expanding the tree doesn't re-hit
   // OMC for restrictions already seen.
-  const librarySource = new LibraryBrowserSource(client);
+  const librarySource = new LibrarySource(client);
 
   // Per-modal state for the top-level class-parameter editor. Captured
   // here (vs. on the panel) because the panel only round-trips the
@@ -667,9 +667,6 @@ export async function openDiagram(
         );
       }
     },
-    onLibraryListChildren: (parent) => librarySource.listChildren(parent),
-    onLibrarySearch: (query) => librarySource.searchAll(query),
-    onLibraryIcon: (target) => libraryIconSvg(client, target),
     onSelectionChange: (keys) => {
       if (keys.length !== 1) return;
       const key = keys[0];
@@ -762,7 +759,7 @@ export async function openDiagram(
  * fully-qualified class name, or `undefined` if dismissed.
  */
 function pickClassToSwap(
-  librarySource: LibraryBrowserSource,
+  librarySource: LibrarySource,
   componentName: string,
   currentClass: string,
 ): Promise<string | undefined> {

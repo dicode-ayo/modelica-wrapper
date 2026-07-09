@@ -5,7 +5,6 @@ import { randomNonce } from "../webview/nonce.js";
 import type {
   DiagramCommandId,
   ExtensionToWebview,
-  LibraryClassInfo,
   WebviewToExtension,
 } from "../webview/protocol.js";
 
@@ -54,26 +53,9 @@ export interface DiagramPanelHandlers {
   /** User double-clicked a sub-component on the diagram. */
   onEditComponent?: (componentName: string) => void;
   /**
-   * Library-browser request: enumerate child classes of `parent`
-   * (null for top-level loaded packages). Return promises resolve into
-   * a `libraryChildren` reply; rejections become `{ error: msg }`.
-   */
-  onLibraryListChildren?: (
-    parent: string | null,
-  ) => Promise<LibraryClassInfo[]>;
-  /** Library-browser request: substring search of loaded class names. */
-  onLibrarySearch?: (query: string) => Promise<LibraryClassInfo[]>;
-  /**
-   * Lazy library-browser request: render a class's icon thumbnail as a
-   * self-contained SVG string. Resolves to `undefined` when the class has
-   * no usable icon. Fired per row as it becomes visible so the icon fetch
-   * never runs for the whole tree (issue #76, item 8).
-   */
-  onLibraryIcon?: (className: string) => Promise<string | undefined>;
-  /**
-   * User picked a class in the library browser. `position` is the
-   * current view-centre in diagram coordinates — the host turns it
-   * into a Placement annotation for `addComponent`.
+   * User dropped or placed a class on the canvas. `position` is the drop point
+   * in diagram coordinates — the host turns it into a Placement annotation for
+   * `addComponent`.
    */
   onAddComponent?: (
     className: string,
@@ -330,75 +312,11 @@ export class DiagramPanel {
           message.currentClass,
         );
         return;
-      case "libraryListChildren":
-        void this.handleLibraryRequest(
-          message.requestId,
-          "libraryChildren",
-          () =>
-            this.handlers.onLibraryListChildren?.(message.parent) ??
-            Promise.resolve([]),
-        );
-        return;
-      case "librarySearch":
-        void this.handleLibraryRequest(
-          message.requestId,
-          "librarySearchResult",
-          () =>
-            this.handlers.onLibrarySearch?.(message.query) ??
-            Promise.resolve([]),
-        );
-        return;
-      case "libraryIcon":
-        void this.handleLibraryIconRequest(
-          message.requestId,
-          message.className,
-        );
-        return;
       case "error":
         void vscode.window.showWarningMessage(
           `Modelica diagram: ${message.message}`,
         );
         return;
-    }
-  }
-
-  /**
-   * Drive a library-browser request: run the provided async fetcher
-   * and post the matching response message with either `items` (on
-   * success) or `error` (on rejection). Errors are surfaced via the
-   * data-source's reject path; the host doesn't pop a toast because
-   * the browser already renders an inline error state.
-   */
-  private async handleLibraryRequest(
-    requestId: string,
-    responseType: "libraryChildren" | "librarySearchResult",
-    fetch: () => Promise<LibraryClassInfo[]>,
-  ): Promise<void> {
-    try {
-      const items = await fetch();
-      this.send({ type: responseType, requestId, items });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.send({ type: responseType, requestId, error: msg });
-    }
-  }
-
-  /** Lazy icon-thumbnail request → `libraryIconResult` reply. */
-  private async handleLibraryIconRequest(
-    requestId: string,
-    className: string,
-  ): Promise<void> {
-    try {
-      const svg = await (this.handlers.onLibraryIcon?.(className) ??
-        Promise.resolve(undefined));
-      this.send(
-        svg === undefined
-          ? { type: "libraryIconResult", requestId }
-          : { type: "libraryIconResult", requestId, svg },
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.send({ type: "libraryIconResult", requestId, error: msg });
     }
   }
 
