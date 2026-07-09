@@ -94,13 +94,6 @@ export const omTokens: CSSResult = css`
     --om-icon-size-sm: 0.85em;
     --om-icon-size-md: 16px;
 
-    /* --- library browser ---
-     * Modal-internal layout: dialog width + minimum body height so the
-     * tree has room to breathe even on first paint before children
-     * lazy-load. */
-    --om-library-dialog-width: 560px;
-    --om-library-body-min-height: 320px;
-
     /* --- library tree ---
      * Virtualized row height (fixed so the virtualizer can size the scroll
      * range without measuring), the per-level indentation step, and the

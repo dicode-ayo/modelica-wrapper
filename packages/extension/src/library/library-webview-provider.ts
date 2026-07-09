@@ -5,8 +5,8 @@
  * can begin host-mediated placement onto the canvas — HTML5 drag can't cross the
  * webview iframe boundary.
  *
- * The webview browses the same OMC-backed data the diagram library browser uses
- * (`LibrarySource`); this provider owns the host end of that bridge plus
+ * The webview browses OMC-backed data through `LibrarySource`; this provider
+ * owns the host end of that bridge plus
  * the sidebar-only actions (open a class's diagram, relay a placement to the
  * active diagram, run Load Library, reload after a mutation).
  */
