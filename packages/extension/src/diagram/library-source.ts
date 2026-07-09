@@ -12,8 +12,7 @@
  * of holding onto an old tree.
  */
 
-import type { OmcClient } from "@dicode/omc-client";
-
+import { log } from "../logger.js";
 import type {
   LibraryClassInfo,
   LibraryClassRestriction,
@@ -40,6 +39,18 @@ const KNOWN_RESTRICTIONS: ReadonlySet<LibraryClassRestriction> = new Set([
   "unknown",
 ]);
 
+/** Thrown out of `searchAll` once the webview stops wanting the result. */
+export class SearchAbortedError extends Error {
+  constructor() {
+    super("search aborted");
+    this.name = "SearchAbortedError";
+  }
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new SearchAbortedError();
+}
+
 function normaliseRestriction(raw: string): LibraryClassRestriction {
   // OMC may pad with whitespace and occasionally returns capitalised
   // forms (`"Model"`); we want the lowercase canonical variant the
@@ -53,19 +64,34 @@ function normaliseRestriction(raw: string): LibraryClassRestriction {
     : "unknown";
 }
 
+/** The OMC surface the library tree needs. `OmcClient` satisfies it. */
+export interface LibraryOmcClient {
+  getClassNames(input: {
+    typeName?: string;
+    sort?: boolean;
+  }): Promise<{ classNames: string[] }>;
+  searchClassNames(input: {
+    searchText: string;
+  }): Promise<{ classNames: string[] }>;
+  getClassRestriction(input: {
+    typeName: string;
+  }): Promise<{ restriction: string }>;
+}
+
 export class LibrarySource {
   private readonly restrictionCache = new Map<
     string,
     LibraryClassRestriction
   >();
 
-  constructor(private readonly client: OmcClient) {}
+  constructor(private readonly client: LibraryOmcClient) {}
 
   /**
    * Enumerate immediate child classes of `parent`. `null` returns
    * loaded top-level packages.
    */
   async listChildren(parent: string | null): Promise<LibraryClassInfo[]> {
+    const started = Date.now();
     const input = parent === null ? {} : { typeName: parent };
     const { classNames } = await this.client.getClassNames({
       ...input,
@@ -79,12 +105,19 @@ export class LibrarySource {
       local,
       qualified: parent ? `${parent}.${local}` : local,
     }));
-    return Promise.all(
+    const misses = this.uncachedCount(qualifiedPairs.map((p) => p.qualified));
+    const rows = await Promise.all(
       qualifiedPairs.map(async ({ qualified }) => ({
         qualified,
         restriction: await this.getRestriction(qualified),
       })),
     );
+    log.debug(
+      "librarySource",
+      `listChildren(${parent ?? "<roots>"}) → ${rows.length} rows, ` +
+        `${misses} restriction calls, ${Date.now() - started}ms`,
+    );
+    return rows;
   }
 
   /**
@@ -93,19 +126,45 @@ export class LibrarySource {
    * trigger a flood of restriction calls — the user will refine
    * anyway, and the tree shows a flat list that doesn't paginate.
    */
-  async searchAll(query: string): Promise<LibraryClassInfo[]> {
+  async searchAll(
+    query: string,
+    signal?: AbortSignal,
+  ): Promise<LibraryClassInfo[]> {
     const trimmed = query.trim();
     if (trimmed.length === 0) return [];
+    const started = Date.now();
     const { classNames } = await this.client.searchClassNames({
       searchText: trimmed,
     });
     const limited = classNames.slice(0, SEARCH_LIMIT);
-    return Promise.all(
-      limited.map(async (qualified) => ({
+    const misses = this.uncachedCount(limited);
+    // OMC serializes these; checking `signal.aborted` between lookups lets an
+    // abort drop the rest instead of queueing them all upfront.
+    const rows: LibraryClassInfo[] = [];
+    for (const qualified of limited) {
+      throwIfAborted(signal);
+      rows.push({
         qualified,
         restriction: await this.getRestriction(qualified),
-      })),
+      });
+    }
+    log.debug(
+      "librarySource",
+      `searchAll(${JSON.stringify(trimmed)}) → ${classNames.length} hits, ` +
+        `${rows.length} shown, ${misses} restriction calls, ${Date.now() - started}ms`,
     );
+    if (classNames.length > SEARCH_LIMIT) {
+      log.debug(
+        "librarySource",
+        `searchAll(${JSON.stringify(trimmed)}) truncated to ${SEARCH_LIMIT} of ${classNames.length}`,
+      );
+    }
+    return rows;
+  }
+
+  /** How many of `qualified` would cost an OMC round-trip right now. */
+  private uncachedCount(qualified: readonly string[]): number {
+    return qualified.filter((q) => !this.restrictionCache.has(q)).length;
   }
 
   private async getRestriction(
@@ -120,11 +179,15 @@ export class LibrarySource {
       const norm = normaliseRestriction(restriction);
       this.restrictionCache.set(qualified, norm);
       return norm;
-    } catch {
+    } catch (err) {
       // A failed restriction lookup is non-fatal: the tree still
       // renders the row with an `unknown` badge. Don't cache the
       // failure — a later attempt may succeed (e.g. after the user
       // loads more libraries).
+      log.debug(
+        "librarySource",
+        `getClassRestriction(${qualified}) failed: ${(err as Error).message}`,
+      );
       return "unknown";
     }
   }

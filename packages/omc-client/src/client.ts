@@ -3,7 +3,7 @@
  * ZeroMQ scripting API.
  *
  * - Single OMC subprocess + REQ socket per instance
- * - All calls serialize through a promise-chain mutex (OMC is single-threaded)
+ * - All calls serialize through a single-slot queue (OMC is single-threaded)
  * - Each method delegates to a per-function module in `./api/<category>/<fn>.ts`
  *   that owns its Zod input/output schemas
  *
@@ -15,6 +15,7 @@ import type { CallContext } from "./_shared/callContext.js";
 import type { OmcCommand } from "./commands.js";
 import { spawnOmc, type OmcProcess } from "./process.js";
 import { OmcTransport } from "./transport.js";
+import { SerialQueue } from "./queue.js";
 import { expectBool, parse } from "./parse.js";
 
 import * as browsing from "./api/browsing/index.js";
@@ -55,8 +56,8 @@ export class OmcClient implements CallContext {
     private callTimeoutMs: number,
   ) {}
 
-  /** Promise-chain mutex: every call awaits the previous before issuing. */
-  private chain: Promise<unknown> = Promise.resolve();
+  /** OMC's REQ/REP socket admits one round-trip at a time. */
+  private readonly queue = new SerialQueue();
   private closed = false;
   /**
    * Raw OMC command string from the most recent `call()` invocation, or
@@ -151,17 +152,7 @@ export class OmcClient implements CallContext {
     // Record the raw command before we enqueue / send, so it's already
     // readable via `lastCall` even if the transport hangs or throws.
     this._lastCall = cmd;
-    const prev = this.chain;
-    let release!: () => void;
-    this.chain = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    try {
-      await prev;
-      return await this.transport.send(cmd, this.callTimeoutMs);
-    } finally {
-      release();
-    }
+    return this.queue.run(() => this.transport.send(cmd, this.callTimeoutMs));
   }
 
   /**

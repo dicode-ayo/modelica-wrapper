@@ -129,6 +129,32 @@ describe("<om-library-tree>", () => {
     expect(listChildren).toHaveBeenCalledWith("Modelica");
   });
 
+  it("aborts the in-flight search when the query is cleared", async () => {
+    const { source, searchAll } = makeSource();
+    let captured: AbortSignal | undefined;
+    searchAll.mockImplementation(
+      (_q: string, signal?: AbortSignal) =>
+        new Promise(() => {
+          captured = signal;
+        }),
+    );
+    const el = await mount(source);
+
+    const input = el.shadowRoot?.querySelector<HTMLInputElement>(".search");
+    if (!input) throw new Error("search input missing");
+    input.value = "gain";
+    input.dispatchEvent(new Event("input"));
+    await waitFor(() => captured !== undefined);
+    expect(captured?.aborted).toBe(false);
+
+    input.value = "";
+    input.dispatchEvent(new Event("input"));
+    await el.updateComplete;
+
+    // The host drops its queued restriction lookups off this signal.
+    expect(captured?.aborted).toBe(true);
+  });
+
   it("switches to searchAll for a non-empty query and back to the tree when cleared", async () => {
     const { source, searchAll, listChildren } = makeSource();
     const el = await mount(source);
@@ -141,7 +167,7 @@ describe("<om-library-tree>", () => {
     input.value = "gain";
     input.dispatchEvent(new Event("input"));
     await waitFor(() => searchAll.mock.calls.length > 0);
-    expect(searchAll).toHaveBeenCalledWith("gain");
+    expect(searchAll).toHaveBeenCalledWith("gain", expect.any(AbortSignal));
 
     input.value = "";
     input.dispatchEvent(new Event("input"));

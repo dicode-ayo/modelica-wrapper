@@ -247,6 +247,9 @@ export class OmLibraryTree extends LitElement {
 
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
   private searchSeq = 0;
+  /** Aborts the in-flight search when it is superseded or the query is cleared,
+   *  so the backend can drop its queued work instead of resolving into nothing. */
+  private searchAbort: AbortController | null = null;
   /** Flattened filtered-tree rows, kept in step with `searchResults`, so the
    *  virtualizer's `rangeChanged` can map row indices back to class names. */
   private searchTreeRows: SearchTreeRow[] = [];
@@ -261,6 +264,7 @@ export class OmLibraryTree extends LitElement {
       clearTimeout(this.searchTimer);
       this.searchTimer = null;
     }
+    this.abortSearch();
     super.disconnectedCallback();
   }
 
@@ -283,6 +287,7 @@ export class OmLibraryTree extends LitElement {
       this.searchTimer = null;
     }
     this.searchSeq++;
+    this.abortSearch();
     this.query = "";
     this.searchResults = null;
     this.searchTreeRows = [];
@@ -602,6 +607,7 @@ export class OmLibraryTree extends LitElement {
       // Bump the sequence so an in-flight runSearch can't write its result
       // back after the query was cleared.
       this.searchSeq++;
+      this.abortSearch();
       this.searchResults = null;
       this.searchTreeRows = [];
       this.searchError = null;
@@ -616,11 +622,20 @@ export class OmLibraryTree extends LitElement {
     }, SEARCH_DEBOUNCE_MS);
   };
 
+  /** Abandon the in-flight search, if any. */
+  private abortSearch(): void {
+    this.searchAbort?.abort(new Error("search superseded"));
+    this.searchAbort = null;
+  }
+
   private async runSearch(query: string): Promise<void> {
     if (!this.dataSource) return;
     const seq = ++this.searchSeq;
+    this.abortSearch();
+    const controller = new AbortController();
+    this.searchAbort = controller;
     try {
-      const results = await this.dataSource.searchAll(query);
+      const results = await this.dataSource.searchAll(query, controller.signal);
       // Drop stale responses — the user has typed more since this request
       // was issued, so an older slow query must not clobber the latest.
       if (seq !== this.searchSeq) return;
@@ -635,6 +650,9 @@ export class OmLibraryTree extends LitElement {
     } finally {
       if (seq === this.searchSeq) {
         this.searchLoading = false;
+      }
+      if (this.searchAbort === controller) {
+        this.searchAbort = null;
       }
     }
   }
