@@ -7,7 +7,7 @@ import * as vscode from "vscode";
 
 import type { OmcClient } from "@dicode/omc-client";
 
-import type { LibraryWebviewProvider } from "../tree/library-webview-provider.js";
+import type { LibraryWebviewProvider } from "../library/library-webview-provider.js";
 import type { ModelicaSourceProvider } from "../source-provider.js";
 
 /**

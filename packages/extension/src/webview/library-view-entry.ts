@@ -1,7 +1,7 @@
 /**
  * Browser entry for the library sidebar webview view. Bundled by esbuild into
  * `out/library-view.js` and loaded inside the sidebar's webview iframe by
- * `tree/library-webview-provider.ts`.
+ * `library/library-webview-provider.ts`.
  *
  * Renders a full-height `<om-library-tree>` fed by the shared
  * `WebviewLibraryDataSource` bridge. The tree's single root fetch drives the
