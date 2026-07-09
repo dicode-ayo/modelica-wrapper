@@ -1,8 +1,8 @@
 /**
  * Fake `LibraryDataSource` for stories. In the extension this is
  * wired to OMC (`getClassNames` / `getClassRestriction` / icon SVG); here
- * a static tree + substring search stand in so the library browser (and
- * the add-component flow it drives) work without an extension host.
+ * a static tree + substring search stand in so the library tree (and the
+ * add-component flow it drives) work without an extension host.
  */
 
 import type {

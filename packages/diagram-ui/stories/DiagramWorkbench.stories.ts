@@ -117,15 +117,12 @@ const meta: Meta<StoryArgs> = {
         setup. Draw shapes from the toolbar, click/drag to select/move, R/F to
         rotate/flip.
       </p>
-      <div style="display:flex;gap:12px;height:560px;">
+      <div class="om-story-workbench">
         <om-library-tree
+          class="om-story-library-panel"
           .dataSource=${fakeLibrarySource}
-          style="flex:0 0 300px;min-height:0;border:1px solid var(--vscode-widget-border,#d0d0d0);border-radius:4px;padding:8px"
         ></om-library-tree>
-        <div
-          class="om-story-canvas-host"
-          style="position: relative; flex: 1; min-width: 0;"
-        >
+        <div class="om-story-canvas-host">
           <om-graphical-layout
             .layout=${currentLayout}
             ?readonly=${readonly}
