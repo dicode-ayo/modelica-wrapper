@@ -1,10 +1,9 @@
 /**
- * Unit tests for `fetchIconLayout`'s annotation fallback (issue #76, item 9).
- *
- * The cheap `getModelInstanceAnnotation` path can come back UNUSABLE in two
- * ways: a thrown error, OR valid JSON whose `annotation` is null / has no
- * Icon (the PID_Controller-on-OM-fork case). Both must fall back to the full
- * `getModelInstance`, which carries the inherited icon layers.
+ * `fetchIconLayout` resolves an icon from the cheap filtered annotation call and
+ * only instantiates the class when that call fails to answer at all. A class
+ * that merely has no Icon must not be instantiated: OMC never returns for the
+ * builtins, and a deep hierarchy costs seconds on a channel every other call
+ * shares.
  *
  * `open-diagram.ts` imports `vscode`; the extension's vitest config aliases
  * it to a mock, so this runs in plain Node.
@@ -65,7 +64,7 @@ function makeClient(handlers: {
   return { client, calls };
 }
 
-describe("fetchIconLayout: annotation fallback (issue #76, item 9)", () => {
+describe("fetchIconLayout: when the annotation path is trusted", () => {
   it("uses the cheap annotation path when it returns a usable Icon", async () => {
     const { client, calls } = makeClient({
       annotation: async () => ({ instance: WITH_ICON }),
@@ -76,14 +75,25 @@ describe("fetchIconLayout: annotation fallback (issue #76, item 9)", () => {
     expect(layout.iconLayers.length).toBeGreaterThan(0);
   });
 
-  it("falls back to getModelInstance when the annotation is null (no throw)", async () => {
+  it("does not instantiate a class whose annotation carries no Icon", async () => {
     const { client, calls } = makeClient({
       annotation: async () => ({ instance: NULL_ANNOTATION }),
       full: async () => ({ instance: WITH_ICON }),
     });
     const layout = await fetchIconLayout(client, "Pkg.NullAnno");
-    // Both calls fired: cheap path came back without an Icon, so the full
-    // instance was fetched as the fallback.
+    // Instantiating here is what hangs OMC on `String` and costs seconds on
+    // deep models, to rediscover there is nothing to paint.
+    expect(calls).toEqual(["getModelInstanceAnnotation"]);
+    expect(layout.iconLayers).toHaveLength(0);
+  });
+
+  it("falls back to getModelInstance when the annotation call answers with nothing", async () => {
+    const { client, calls } = makeClient({
+      annotation: async () =>
+        ({ instance: null }) as unknown as { instance: ModelInstance },
+      full: async () => ({ instance: WITH_ICON }),
+    });
+    const layout = await fetchIconLayout(client, "Pkg.Empty");
     expect(calls).toEqual(["getModelInstanceAnnotation", "getModelInstance"]);
     expect(layout.iconLayers.length).toBeGreaterThan(0);
   });

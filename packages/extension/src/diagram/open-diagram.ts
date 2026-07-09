@@ -1191,18 +1191,15 @@ export async function fetchIconLayout(
         filter: [...ICON_ANNOTATION_FILTER],
       },
     );
-    // Issue #76, item 9: the filtered call can return valid JSON with a
-    // null / empty annotation (e.g. PID_Controller on the OM fork) — no
-    // throw, but no Icon to paint either. Detecting that and falling back
-    // to the full `getModelInstance` (which carries the inherited icon
-    // layers) is what OMEdit does; a thrown error is only one of the two
-    // ways the cheap path can come back unusable.
-    if (hasIconAnnotation(annotationInstance)) {
-      instance = annotationInstance;
-    } else {
+    // A class that simply has no Icon is not a failed call. Instantiating it to
+    // look again costs seconds on deep hierarchies (and never returns for the
+    // builtins), all to rediscover that there is nothing to paint. Only an
+    // empty reply means the cheap path failed to answer.
+    instance = annotationInstance ?? undefined;
+    if (instance === undefined) {
       log.warn(
         "fetchIconLayout",
-        `getModelInstanceAnnotation returned no Icon for ${className}; falling back to full getModelInstance`,
+        `getModelInstanceAnnotation returned nothing for ${className}; falling back to full getModelInstance`,
       );
     }
   } catch (err) {
@@ -1241,24 +1238,6 @@ export async function libraryIconSvg(
     );
     return undefined;
   }
-}
-
-/**
- * True when the annotation-only instance carries a usable Icon somewhere in
- * its inheritance — either the host's own `annotation.Icon` or an `extends`
- * ancestor's. Mirrors how the producer collects icon layers up the chain, so
- * a class whose icon lives purely on a base class still counts as drawable.
- */
-function hasIconAnnotation(mi: ModelInstance | undefined): boolean {
-  if (mi === undefined || mi === null) return false;
-  const ann = mi.annotation as { Icon?: unknown } | null | undefined;
-  if (ann && ann.Icon != null) return true;
-  for (const e of mi.elements ?? []) {
-    if (e.$kind === "extends" && typeof e.baseClass === "object") {
-      if (hasIconAnnotation(e.baseClass)) return true;
-    }
-  }
-  return false;
 }
 
 /**
