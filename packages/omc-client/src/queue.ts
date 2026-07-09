@@ -11,7 +11,7 @@ export class SerialQueue {
 
   /** Queue `task` behind everything already submitted; resolve with its result. */
   run<T>(task: () => Promise<T>): Promise<T> {
-    const result = this.tail.then(task, task);
+    const result = this.tail.then(task);
     // `tail` must never reject, or a single failed task would reject every
     // task queued after it when they await their predecessor.
     this.tail = result.then(

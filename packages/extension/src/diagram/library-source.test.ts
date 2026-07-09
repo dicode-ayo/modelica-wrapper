@@ -6,7 +6,6 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import type { OmcClient } from "@dicode/omc-client";
 
 import { LibrarySource, SearchAbortedError } from "./library-source.js";
 
@@ -17,9 +16,6 @@ function fakeClient(hits: string[]) {
     getClassNames: vi.fn(async () => ({ classNames: [] })),
   };
 }
-
-const asClient = (c: ReturnType<typeof fakeClient>): OmcClient =>
-  c as unknown as OmcClient;
 
 describe("LibrarySource.searchAll", () => {
   it("stops resolving restrictions once the search is aborted", async () => {
@@ -32,7 +28,7 @@ describe("LibrarySource.searchAll", () => {
       return { restriction: "model" };
     });
 
-    const source = new LibrarySource(asClient(client));
+    const source = new LibrarySource(client);
     await expect(
       source.searchAll("a", controller.signal),
     ).rejects.toBeInstanceOf(SearchAbortedError);
@@ -46,7 +42,7 @@ describe("LibrarySource.searchAll", () => {
     const controller = new AbortController();
     controller.abort();
 
-    const source = new LibrarySource(asClient(client));
+    const source = new LibrarySource(client);
     await expect(
       source.searchAll("a", controller.signal),
     ).rejects.toBeInstanceOf(SearchAbortedError);
@@ -55,7 +51,7 @@ describe("LibrarySource.searchAll", () => {
 
   it("resolves every hit when nothing aborts it", async () => {
     const client = fakeClient(["A", "B", "C"]);
-    const source = new LibrarySource(asClient(client));
+    const source = new LibrarySource(client);
 
     const rows = await source.searchAll("a");
 
@@ -65,7 +61,7 @@ describe("LibrarySource.searchAll", () => {
 
   it("serves a repeated search's restrictions from cache", async () => {
     const client = fakeClient(["A", "B"]);
-    const source = new LibrarySource(asClient(client));
+    const source = new LibrarySource(client);
 
     await source.searchAll("a");
     await source.searchAll("a");

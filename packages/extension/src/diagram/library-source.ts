@@ -12,8 +12,6 @@
  * of holding onto an old tree.
  */
 
-import type { OmcClient } from "@dicode/omc-client";
-
 import { log } from "../logger.js";
 import type {
   LibraryClassInfo,
@@ -66,13 +64,27 @@ function normaliseRestriction(raw: string): LibraryClassRestriction {
     : "unknown";
 }
 
+/** The OMC surface the library tree needs. `OmcClient` satisfies it. */
+export interface LibraryOmcClient {
+  getClassNames(input: {
+    typeName?: string;
+    sort?: boolean;
+  }): Promise<{ classNames: string[] }>;
+  searchClassNames(input: {
+    searchText: string;
+  }): Promise<{ classNames: string[] }>;
+  getClassRestriction(input: {
+    typeName: string;
+  }): Promise<{ restriction: string }>;
+}
+
 export class LibrarySource {
   private readonly restrictionCache = new Map<
     string,
     LibraryClassRestriction
   >();
 
-  constructor(private readonly client: OmcClient) {}
+  constructor(private readonly client: LibraryOmcClient) {}
 
   /**
    * Enumerate immediate child classes of `parent`. `null` returns
@@ -126,9 +138,8 @@ export class LibrarySource {
     });
     const limited = classNames.slice(0, SEARCH_LIMIT);
     const misses = this.uncachedCount(limited);
-    // Sequential, not `Promise.all`: OMC runs these one at a time regardless,
-    // and issuing them upfront would put every lookup on the queue before the
-    // first `signal.aborted` check could drop the rest.
+    // OMC serializes these; checking `signal.aborted` between lookups lets an
+    // abort drop the rest instead of queueing them all upfront.
     const rows: LibraryClassInfo[] = [];
     for (const qualified of limited) {
       throwIfAborted(signal);

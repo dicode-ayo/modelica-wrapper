@@ -40,10 +40,12 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
    *  Rendering one instantiates the class in OMC, so a miss is expensive and a
    *  negative result is worth remembering. */
   private iconCache = new Map<string, string | undefined>();
-  /** Renders not yet settled, so a burst of rows sharing a class renders once. */
+  /** Renders not yet settled, so a burst of rows sharing a class renders once.
+   *  Tagged with the generation they started under: a render from before a
+   *  Refresh carries pre-Refresh bytes and must not be joined after it. */
   private readonly iconInFlight = new Map<
     string,
-    Promise<string | undefined>
+    { generation: number; promise: Promise<string | undefined> }
   >();
   /** Bumped whenever the cache is dropped, so a render started against the old
    *  library state can't write its result into the new one. */
@@ -214,14 +216,14 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
       log.debug("libraryIcon", `cache hit ${className}`);
       return Promise.resolve(this.iconCache.get(className));
     }
+    const generation = this.iconGeneration;
     const inFlight = this.iconInFlight.get(className);
-    if (inFlight) {
+    if (inFlight && inFlight.generation === generation) {
       log.debug("libraryIcon", `joining in-flight render ${className}`);
-      return inFlight;
+      return inFlight.promise;
     }
     const started = Date.now();
-    const generation = this.iconGeneration;
-    const render = (async () => {
+    const promise = (async () => {
       const client = await this.ensureClient();
       const svg = await libraryIconSvg(client, className);
       if (generation === this.iconGeneration) {
@@ -234,10 +236,13 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
       );
       return svg;
     })().finally(() => {
-      this.iconInFlight.delete(className);
+      // A newer generation may have replaced this entry; only clear our own.
+      if (this.iconInFlight.get(className)?.promise === promise) {
+        this.iconInFlight.delete(className);
+      }
     });
-    this.iconInFlight.set(className, render);
-    return render;
+    this.iconInFlight.set(className, { generation, promise });
+    return promise;
   }
 
   private post(

@@ -90,6 +90,29 @@ describe("OmcTransport timeout handling", () => {
     expect(sockets).toHaveLength(3);
   });
 
+  it("does not redial a socket that close() has already disposed", async () => {
+    const sockets: FakeSocket[] = [];
+    const transport = new OmcTransport("tcp://127.0.0.1:1", () => {
+      const sock = new FakeSocket([null]);
+      sockets.push(sock);
+      return sock;
+    });
+    await transport.dial();
+
+    // `close()` doesn't queue behind calls, so it can land while a timed-out
+    // send is inside reset(), awaiting its redial.
+    const inFlight = transport.send("getVersion()", 10);
+    await transport.close();
+    await expect(inFlight).rejects.toThrow(/timed out/);
+
+    // A socket dialed after close would never be closed by anyone.
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0]?.closed).toBe(true);
+    await expect(transport.send("getVersion()", 10)).rejects.toThrow(
+      /not connected/,
+    );
+  });
+
   it("leaves the socket in place when a call succeeds", async () => {
     const sockets: FakeSocket[] = [];
     const transport = new OmcTransport("tcp://127.0.0.1:1", () => {

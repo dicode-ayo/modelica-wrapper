@@ -40,6 +40,7 @@ export type SocketFactory = () => OmcSocket;
 
 export class OmcTransport {
   private socket: OmcSocket | undefined;
+  private disposed = false;
 
   constructor(
     private readonly endpoint: string,
@@ -95,17 +96,21 @@ export class OmcTransport {
     );
   }
 
-  /** Discard the desynced socket and dial a fresh one. */
+  /** Discard the desynced socket and dial a fresh one. `close()` does not go
+   *  through the caller's queue, so it can land while this is awaiting `dial()`;
+   *  redialing then would leave a live socket nobody closes. */
   private async reset(): Promise<void> {
     const stale = this.socket;
     this.socket = undefined;
     stale?.close();
+    if (this.disposed) return;
     await this.dial();
   }
 
   async close(): Promise<void> {
-    if (!this.socket) return;
+    this.disposed = true;
     const sock = this.socket;
+    if (!sock) return;
     this.socket = undefined;
     sock.close();
   }
