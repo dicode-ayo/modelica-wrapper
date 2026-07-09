@@ -17,7 +17,6 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import type { LibraryNode } from "../tree/library-tree.js";
 import { pathExists } from "../fs-util.js";
 import {
   linkPersistedClass,
@@ -29,6 +28,7 @@ import {
   sanitizeIdentifier,
   validateIdentifier,
   type CommandContext,
+  type LibraryNode,
 } from "./context.js";
 import { loadRootPackage } from "./package.js";
 import { createReplLog } from "./repl.js";

@@ -224,15 +224,31 @@ const postprocessingConfig = {
   outfile: "out/postprocessing.js",
 };
 
+/**
+ * 4. library-view.js — browser bundle of the library sidebar webview view
+ *    (`<om-library-view-root>`), loaded by `tree/library-webview-provider.ts`.
+ *    Same shape as the diagram webview; it renders `<om-library-tree>` with
+ *    adopted stylesheets only, so no sibling `.css` is emitted.
+ *
+ * @type {import('esbuild').BuildOptions}
+ */
+const libraryViewConfig = {
+  ...webviewConfig,
+  entryPoints: ["src/webview/library-view-entry.ts"],
+  outfile: "out/library-view.js",
+};
+
 if (watch) {
   const a = await esbuild.context(extensionConfig);
   const b = await esbuild.context(webviewConfig);
   const c = await esbuild.context(postprocessingConfig);
-  await Promise.all([a.watch(), b.watch(), c.watch()]);
+  const d = await esbuild.context(libraryViewConfig);
+  await Promise.all([a.watch(), b.watch(), c.watch(), d.watch()]);
 } else {
   await Promise.all([
     esbuild.build(extensionConfig),
     esbuild.build(webviewConfig),
     esbuild.build(postprocessingConfig),
+    esbuild.build(libraryViewConfig),
   ]);
 }

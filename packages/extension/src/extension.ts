@@ -25,8 +25,9 @@ import {
   MODELICA_SOURCE_SCHEME,
   ModelicaSourceProvider,
 } from "./source-provider.js";
-import { LibraryTreeProvider } from "./tree/library-tree.js";
+import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
+import { loadEntryFilesAndRefresh } from "./workspace-autoload.js";
 import { discoverEntryPoints } from "./workspace-scan.js";
 
 let client: OmcClient | undefined;
@@ -47,11 +48,15 @@ export async function activate(
   context: vscode.ExtensionContext,
 ): Promise<ModelicaExtensionApi> {
   log.info("activate", "extension activating");
-  const libraryTree = new LibraryTreeProvider(ensureClient);
-  const libraryView = vscode.window.createTreeView("modelica.libraries", {
-    treeDataProvider: libraryTree,
-    showCollapseAll: true,
-  });
+  const libraryTree = new LibraryWebviewProvider(
+    context.extensionUri,
+    ensureClient,
+  );
+  const libraryView = vscode.window.registerWebviewViewProvider(
+    "modelica.libraries",
+    libraryTree,
+    { webviewOptions: { retainContextWhenHidden: true } },
+  );
 
   const sourceProvider = new ModelicaSourceProvider(ensureClient);
 
@@ -181,7 +186,7 @@ async function resetClient(): Promise<OmcClient> {
  * don't abort the whole sweep — one bad file shouldn't block others.
  */
 async function autoLoadWorkspaceModels(
-  libraryTree: LibraryTreeProvider,
+  libraryTree: LibraryWebviewProvider,
 ): Promise<void> {
   const folders = vscode.workspace.workspaceFolders ?? [];
   if (folders.length === 0) return;
@@ -191,23 +196,11 @@ async function autoLoadWorkspaceModels(
   }
   try {
     const c = await ensureClient();
-    for (const fileName of files) {
-      try {
-        const { success } = await c.loadFile({ fileName });
-        if (!success) {
-          const { errorString } = await c.getErrorString();
-          log.warn("autoLoad", `loadFile failed: ${fileName}: ${errorString}`);
-        } else {
-          log.info("autoLoad", `loaded ${fileName}`);
-        }
-      } catch (err) {
-        log.warn(
-          "autoLoad",
-          `loadFile threw for ${fileName}: ${(err as Error).message}`,
-        );
-      }
-    }
-    libraryTree.refresh();
+    // One refresh after all loads settle — not per file, which would pile
+    // concurrent OMC fetches onto the single ZeroMQ socket during startup. The
+    // webview tree's own mount fetch is serialized with this one through the
+    // client, so they can't overlap into a busy-socket send.
+    await loadEntryFilesAndRefresh(c, files, () => libraryTree.refresh());
   } catch (err) {
     log.warn("autoLoad", `OMC client unavailable: ${(err as Error).message}`);
   }

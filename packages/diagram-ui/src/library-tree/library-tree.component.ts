@@ -59,14 +59,16 @@ import {
   LIBRARY_TREE_ROOT_ID,
   createLibraryDataLoader,
   isExpandable,
-  leafLabel,
+  isOpenableRestriction,
   matchLabel,
   type LibraryTreeNode,
+  type LibraryRootLoad,
 } from "./library-tree-model.js";
 import {
   LIBRARY_TREE_DRAG_FORMAT,
   serializeLibraryDrag,
 } from "./library-drag.js";
+import { buildSearchTree, type SearchTreeRow } from "./search-tree.js";
 
 export { LIBRARY_TREE_DRAG_FORMAT } from "./library-drag.js";
 
@@ -92,6 +94,10 @@ export class OmLibraryTree extends LitElement {
       }
 
       .search {
+        /* Inset from the container edges so the field isn't flush; rows below
+         * stay full-width for their hover / selection bands. */
+        margin-block-start: var(--om-space-sm);
+        margin-inline: var(--om-space-sm);
         padding: var(--om-input-padding);
         font: inherit;
         color: inherit;
@@ -209,16 +215,42 @@ export class OmLibraryTree extends LitElement {
   @property({ attribute: false })
   dataSource: LibraryBrowserDataSource | null = null;
 
+  /**
+   * Swap the row gesture from HTML5 drag to a `pointerdown`-driven
+   * `om-library-placement-start` event. Used by the sidebar view, where HTML5
+   * drag can't cross the webview iframe to the diagram canvas; the host relays
+   * the class name instead. Row activation (`om-library-select`) is unaffected,
+   * so a plain click still opens the class.
+   */
+  @property({ type: Boolean, reflect: true, attribute: "placement-drag" })
+  placementDrag = false;
+
+  /**
+   * Change this to force a re-fetch against the current data source without
+   * swapping the source instance — the embedder bumps it when the loaded
+   * libraries change. Swapping the source instead would restart the bridge's
+   * request ids and orphan any in-flight fetch.
+   */
+  @property({ attribute: false })
+  reloadToken = 0;
+
   @state() private query = "";
   @state() private searchResults: LibraryClassInfo[] | null = null;
   @state() private searchLoading = false;
   @state() private searchError: string | null = null;
+  /** Highlighted class in filtered (search) mode. Tree mode uses Headless
+   *  Tree's own selection; search rows aren't tree items, so their single-click
+   *  selection is tracked here. */
+  @state() private selectedClassName: string | null = null;
 
   private tree: TreeInstance<LibraryTreeNode> | undefined;
   private readonly nodeCache = new Map<string, LibraryTreeNode>();
 
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
   private searchSeq = 0;
+  /** Flattened filtered-tree rows, kept in step with `searchResults`, so the
+   *  virtualizer's `rangeChanged` can map row indices back to class names. */
+  private searchTreeRows: SearchTreeRow[] = [];
 
   /** Rendered icon SVG keyed by qualified name (lazy per row). */
   private readonly iconSvgCache = new Map<string, string>();
@@ -237,7 +269,7 @@ export class OmLibraryTree extends LitElement {
   // `setState` re-render calls inside the update cycle, so they never
   // schedule a post-commit `requestUpdate` — which would loop.
   override willUpdate(changed: PropertyValues<this>): void {
-    if (changed.has("dataSource")) {
+    if (changed.has("dataSource") || changed.has("reloadToken")) {
       this.rebuildForDataSource();
     }
   }
@@ -254,8 +286,10 @@ export class OmLibraryTree extends LitElement {
     this.searchSeq++;
     this.query = "";
     this.searchResults = null;
+    this.searchTreeRows = [];
     this.searchLoading = false;
     this.searchError = null;
+    this.selectedClassName = null;
     const source = this.dataSource;
     if (!source) {
       this.tree = undefined;
@@ -270,8 +304,13 @@ export class OmLibraryTree extends LitElement {
         label: "Loading…",
         restriction: "unknown",
       }),
-      dataLoader: createLibraryDataLoader(source, this.nodeCache),
-      onPrimaryAction: (item) => this.fireSelect(item.getItemData().className),
+      dataLoader: createLibraryDataLoader(source, this.nodeCache, (result) =>
+        this.emitRootLoaded(result),
+      ),
+      onPrimaryAction: (item) => {
+        const node = item.getItemData();
+        this.fireSelect(node.className, node.restriction);
+      },
       canDrag: (items) =>
         items.every((item) => item.getItemData().className !== ""),
       createForeignDragObject: (items) => ({
@@ -335,11 +374,15 @@ export class OmLibraryTree extends LitElement {
     const node = item.getItemData();
     const level = item.getItemMeta().level;
     const loading = item.isLoading();
-    const props = item.getProps();
+    const props = rowItemProps(item.getProps(), this.placementDrag);
     return html`
       <div
         class="row"
         data-selected=${item.isSelected() ? "true" : "false"}
+        @pointerdown=${(e: PointerEvent) =>
+          this.onRowPointerDown(e, node.className, node.restriction)}
+        @click=${() => this.onItemClick(item)}
+        @dblclick=${() => this.fireSelect(node.className, node.restriction)}
         ${bindItemProps(props)}
       >
         <span
@@ -347,7 +390,12 @@ export class OmLibraryTree extends LitElement {
           style=${styleMap({ "--om-tree-level": String(level) })}
         ></span>
         ${item.isFolder()
-          ? html`<span class="chevron">${item.isExpanded() ? "▾" : "▸"}</span>`
+          ? html`<span
+              class="chevron"
+              @pointerdown=${(e: Event) => e.stopPropagation()}
+              @click=${(e: Event) => this.onChevronClick(e, item)}
+              >${item.isExpanded() ? "▾" : "▸"}</span
+            >`
           : html`<span class="leaf-dot">•</span>`}
         ${loading
           ? html`<span class="label loading">Loading…</span>`
@@ -389,21 +437,27 @@ export class OmLibraryTree extends LitElement {
     if (results.length === 0) {
       return html`<div class="empty">No matches.</div>`;
     }
+    // Matches are shown in their hierarchy: every ancestor package of a match
+    // gets a row, fully expanded, so the path to each result is visible
+    // (`searchTreeRows`, kept in step with the results).
     return html`
       <lit-virtualizer
         scroller
-        .items=${results}
-        .keyFunction=${(info: LibraryClassInfo) => info.qualified}
-        .renderItem=${(info: LibraryClassInfo) => this.renderSearchRow(info)}
+        .items=${this.searchTreeRows}
+        .keyFunction=${(row: SearchTreeRow) => row.qualified}
+        .renderItem=${(row: SearchTreeRow) => this.renderSearchTreeRow(row)}
         @rangeChanged=${this.onSearchRangeChanged}
       ></lit-virtualizer>
     `;
   }
 
-  /** Request icons for the search rows the virtualizer just (re)rendered. */
+  /** Request icons for the search rows the virtualizer just (re)rendered — only
+   *  for match leaves; ancestor packages keep their restriction badge. */
   private onSearchRangeChanged = (event: RangeChangedEvent): void => {
-    const results = this.searchResults ?? [];
-    this.requestIconsInRange(event, (i) => results[i]?.qualified);
+    this.requestIconsInRange(event, (i) => {
+      const row = this.searchTreeRows[i];
+      return row?.isMatch ? row.qualified : undefined;
+    });
   };
 
   /** Shared walk for `onTreeRangeChanged`/`onSearchRangeChanged`. */
@@ -417,24 +471,37 @@ export class OmLibraryTree extends LitElement {
     }
   }
 
-  private renderSearchRow(info: LibraryClassInfo): TemplateResult {
-    const q = info.qualified;
-    const dot = q.lastIndexOf(".");
-    const head = dot >= 0 ? q.slice(0, dot) : "";
+  private renderSearchTreeRow(row: SearchTreeRow): TemplateResult {
+    const q = row.qualified;
     return html`
       <div
         class="row"
         role="option"
         tabindex="0"
-        draggable="true"
-        @click=${() => this.fireSelect(q)}
-        @keydown=${(e: KeyboardEvent) => this.onSearchRowKeydown(e, q)}
+        data-selected=${this.selectedClassName === q ? "true" : "false"}
+        draggable=${this.placementDrag ? "false" : "true"}
+        @click=${() => this.onSearchRowClick(q)}
+        @dblclick=${() => this.fireSelect(q, row.restriction)}
+        @keydown=${(e: KeyboardEvent) =>
+          this.onSearchRowKeydown(e, q, row.restriction)}
+        @pointerdown=${(e: PointerEvent) =>
+          this.onRowPointerDown(e, q, row.restriction)}
         @dragstart=${(e: DragEvent) => this.onSearchRowDragStart(e, q)}
       >
-        <span class="leaf-dot">•</span>
-        ${this.renderClassContent(q, info.restriction, leafLabel(q), {
+        <span
+          class="indent"
+          style=${styleMap({ "--om-tree-level": String(row.level) })}
+        ></span>
+        ${row.hasChildren
+          ? html`<span
+              class="chevron"
+              @pointerdown=${(e: Event) => e.stopPropagation()}
+              @click=${(e: Event) => e.stopPropagation()}
+              >▾</span
+            >`
+          : html`<span class="leaf-dot">•</span>`}
+        ${this.renderClassContent(q, row.restriction, row.label, {
           highlight: true,
-          qualifier: head,
         })}
       </div>
     `;
@@ -491,12 +558,26 @@ export class OmLibraryTree extends LitElement {
       });
   }
 
+  // Single-click a search row selects (highlights) only; opening is the
+  // double-click / Enter gesture. Search rows aren't Headless Tree items, so
+  // their selection is tracked locally.
+  private onSearchRowClick(className: string): void {
+    this.selectedClassName = className;
+  }
+
   // Search rows aren't Headless Tree items, so they don't get the tree's
-  // keyboard activation; wire Enter/Space to selection ourselves.
-  private onSearchRowKeydown(event: KeyboardEvent, className: string): void {
-    if (event.key === "Enter" || event.key === " ") {
+  // keyboard handling; Enter opens (like a double-click), Space selects.
+  private onSearchRowKeydown(
+    event: KeyboardEvent,
+    className: string,
+    restriction: LibraryClassRestriction,
+  ): void {
+    if (event.key === "Enter") {
       event.preventDefault();
-      this.fireSelect(className);
+      this.fireSelect(className, restriction);
+    } else if (event.key === " ") {
+      event.preventDefault();
+      this.selectedClassName = className;
     }
   }
 
@@ -523,8 +604,10 @@ export class OmLibraryTree extends LitElement {
       // back after the query was cleared.
       this.searchSeq++;
       this.searchResults = null;
+      this.searchTreeRows = [];
       this.searchError = null;
       this.searchLoading = false;
+      this.selectedClassName = null;
       return;
     }
     this.searchLoading = true;
@@ -543,11 +626,13 @@ export class OmLibraryTree extends LitElement {
       // was issued, so an older slow query must not clobber the latest.
       if (seq !== this.searchSeq) return;
       this.searchResults = results;
+      this.searchTreeRows = buildSearchTree(results);
       this.searchError = null;
     } catch (err) {
       if (seq !== this.searchSeq) return;
       this.searchError = err instanceof Error ? err.message : String(err);
       this.searchResults = null;
+      this.searchTreeRows = [];
     } finally {
       if (seq === this.searchSeq) {
         this.searchLoading = false;
@@ -555,8 +640,14 @@ export class OmLibraryTree extends LitElement {
     }
   }
 
-  private fireSelect(className: string): void {
-    if (!className) return;
+  // Only classes with a meaningful diagram open; packages / connectors / the
+  // synthetic filtered-tree ancestors don't emit select (opening a package as a
+  // diagram wedges the view).
+  private fireSelect(
+    className: string,
+    restriction: LibraryClassRestriction,
+  ): void {
+    if (!className || !isOpenableRestriction(restriction)) return;
     this.dispatchEvent(
       new CustomEvent<LibraryEvents["om-library-select"]>("om-library-select", {
         detail: { className },
@@ -565,6 +656,109 @@ export class OmLibraryTree extends LitElement {
       }),
     );
   }
+
+  // Surface the tree's own root load so an embedder can render loading / empty
+  // / error chrome without a second `listChildren(null)`.
+  private emitRootLoaded(detail: LibraryRootLoadedDetail): void {
+    this.dispatchEvent(
+      new CustomEvent<LibraryRootLoadedDetail>("om-library-root-loaded", {
+        detail,
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  // Single-click a tree row selects (highlights) it only; opening is the
+  // double-click / Enter gesture. Focus + selection go through Headless Tree
+  // so keyboard navigation stays in sync.
+  private onItemClick(item: ItemInstance<LibraryTreeNode>): void {
+    item.setFocused();
+    this.tree?.setSelectedItems([item.getId()]);
+  }
+
+  // Chevron toggles expansion only; stopping propagation keeps the row's
+  // click from also selecting. Keyboard expansion runs through Headless Tree's
+  // hotkeys, untouched.
+  private onChevronClick(
+    event: Event,
+    item: ItemInstance<LibraryTreeNode>,
+  ): void {
+    event.stopPropagation();
+    if (item.isExpanded()) {
+      item.collapse();
+    } else {
+      item.expand();
+    }
+  }
+
+  // In placement-drag mode a primary-button press begins host-mediated
+  // placement. `preventDefault` suppresses text selection and any native drag
+  // image; the subsequent click still fires, so a press-release-in-place opens
+  // the class via `om-library-select`.
+  private onRowPointerDown(
+    event: PointerEvent,
+    className: string,
+    restriction: LibraryClassRestriction,
+  ): void {
+    if (!this.placementDrag || event.button !== 0 || className === "") return;
+    // A package / connector isn't a placeable component; don't arm placement.
+    if (!isOpenableRestriction(restriction)) return;
+    event.preventDefault();
+    this.dispatchEvent(
+      new CustomEvent<LibraryPlacementStartDetail>(
+        "om-library-placement-start",
+        {
+          detail: { className },
+          bubbles: true,
+          composed: true,
+        },
+      ),
+    );
+  }
+}
+
+/** Detail for `om-library-placement-start`, fired on a row press in
+ *  {@link OmLibraryTree.placementDrag} mode. */
+export interface LibraryPlacementStartDetail {
+  className: string;
+}
+
+/** Detail for `om-library-root-loaded`, fired when the top-level list resolves
+ *  or rejects — the embedder's cue for empty / ready / error chrome. */
+export type LibraryRootLoadedDetail = LibraryRootLoad;
+
+/**
+ * Headless Tree item props with the interaction keys we own removed: `onClick`
+ * / `onDoubleClick` (HT's single-click opens + toggles expand, which we replace
+ * with single-click-selects / double-click-opens / chevron-expands) and, in
+ * placement-drag mode, the native HTML5 drag props. Keyboard nav, focus, and
+ * selection state stay wired through the remaining props.
+ */
+function rowItemProps(
+  props: Record<string, unknown>,
+  placementDrag: boolean,
+): Record<string, unknown> {
+  const { onClick: _onClick, onDoubleClick: _onDoubleClick, ...rest } = props;
+  return placementDrag ? stripDragProps(rest) : rest;
+}
+
+/** Strip Headless Tree's drag props so placement-drag rows aren't also native
+ *  HTML5 drag sources. */
+function stripDragProps(
+  props: Record<string, unknown>,
+): Record<string, unknown> {
+  const {
+    draggable: _draggable,
+    onDragStart: _onDragStart,
+    onDragOver: _onDragOver,
+    onDrop: _onDrop,
+    onDragEnter: _onDragEnter,
+    onDragLeave: _onDragLeave,
+    onDragEnd: _onDragEnd,
+    ...rest
+  } = props;
+  return rest;
 }
 
 declare global {

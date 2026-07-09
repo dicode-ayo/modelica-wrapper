@@ -3,6 +3,7 @@ import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { ContextProvider } from "@lit/context";
 import { repeat } from "lit/directives/repeat.js";
+import { styleMap } from "lit/directives/style-map.js";
 import type {
   ComponentInstance,
   ConnectorInstance,
@@ -113,6 +114,12 @@ import {
   LIBRARY_TREE_DRAG_FORMAT,
   parseLibraryDrag,
 } from "../library-tree/library-drag.js";
+import { leafLabel } from "../library-tree/library-tree-model.js";
+import {
+  PlacementController,
+  pointInRect,
+  type PlacementPoint,
+} from "./placement-mode.js";
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
 
 /**
@@ -309,6 +316,49 @@ export class OmGraphicalLayout extends LitElement {
         align-self: flex-start;
         margin: var(--om-space-xs);
       }
+
+      /* Placement ghost follows the cursor in client space, so it is fixed to
+       * the viewport (matching clientX/clientY) and must never eat the pointerup
+       * that commits the drop. */
+      .placement-ghost {
+        position: fixed;
+        pointer-events: none;
+      }
+      /* A cursor crosshair drawn with two gradient bars — no inline SVG, which
+       * the webview CSP blocks as a glyph font and which happy-dom mis-parses. */
+      .placement-crosshair {
+        position: absolute;
+        inline-size: var(--om-icon-size-md);
+        block-size: var(--om-icon-size-md);
+        transform: translate(-50%, -50%);
+        background:
+          linear-gradient(
+              var(--vscode-focusBorder, currentColor),
+              var(--vscode-focusBorder, currentColor)
+            )
+            center / 100% var(--om-drop-outline-width) no-repeat,
+          linear-gradient(
+              var(--vscode-focusBorder, currentColor),
+              var(--vscode-focusBorder, currentColor)
+            )
+            center / var(--om-drop-outline-width) 100% no-repeat;
+      }
+      .placement-chip {
+        position: absolute;
+        inset-inline-start: var(--om-space-md);
+        inset-block-start: var(--om-space-md);
+        white-space: nowrap;
+        padding: var(--om-space-2xs) var(--om-space-sm);
+        border-radius: var(--om-radius-sm);
+        font-family: var(--vscode-font-family, system-ui, sans-serif);
+        font-size: var(--om-description-size);
+        color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
+        background: var(
+          --vscode-editorWidget-background,
+          var(--vscode-editor-background)
+        );
+        border: 1px solid var(--vscode-widget-border, transparent);
+      }
     `,
   ];
 
@@ -429,6 +479,14 @@ export class OmGraphicalLayout extends LitElement {
    *  poly). Sticky — stays armed across draws until reset (toolbar, Escape,
    *  or readonly). */
   @state() private activeTool: ToolId = "select";
+
+  /** Host-mediated placement (a library row pressed in the sidebar webview and
+   *  dragged onto the canvas). Armed via {@link beginPlacement}; the ghost and
+   *  commit are driven by this element's own window pointer events. */
+  private readonly placement = new PlacementController();
+  @state() private placementClass: string | null = null;
+  @state() private placementGhost: PlacementPoint | null = null;
+  private placementListening = false;
 
   @query("om-scene") private sceneEl?: OmScene;
   @query("om-context-menu") private contextMenuEl?: OmContextMenu;
@@ -579,11 +637,33 @@ export class OmGraphicalLayout extends LitElement {
             @om-library-cancel=${this.onLibraryCancel}
           ></om-library-browser>`
         : nothing}
+      ${this.renderPlacementGhost()}
       <om-context-menu
         @om-context-menu-select=${this.onContextMenuSelect}
         @om-context-menu-close=${this.onContextMenuClose}
       ></om-context-menu>
     `;
+  }
+
+  /** The cursor-tracking ghost + status hint shown while a placement is armed
+   *  and the cursor is over the canvas. Renders last so DOM order stacks it
+   *  above the scene without a z-index. */
+  private renderPlacementGhost(): TemplateResult | typeof nothing {
+    const ghost = this.placementGhost;
+    const cls = this.placementClass;
+    if (!ghost || cls === null) {
+      return nothing;
+    }
+    return html`<div
+      class="placement-ghost"
+      style=${styleMap({ left: `${ghost.x}px`, top: `${ghost.y}px` })}
+      aria-hidden="true"
+    >
+      <span class="placement-crosshair"></span>
+      <span class="placement-chip"
+        >Placing ${leafLabel(cls)} — release on canvas, Esc to cancel</span
+      >
+    </div>`;
   }
 
   /**
@@ -665,6 +745,9 @@ export class OmGraphicalLayout extends LitElement {
   }
 
   override updated(changed: Map<string, unknown>): void {
+    if (changed.has("readonly") && this.readonly) {
+      this.cancelPlacement();
+    }
     if (changed.has("layout")) {
       this.draftLayout = null;
       if (!this.isInternalLayoutChange()) {
@@ -750,6 +833,9 @@ export class OmGraphicalLayout extends LitElement {
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.detachManagers();
+    // Disarm too, not just detach listeners — a detach mid-placement would
+    // otherwise leave the controller armed with no listeners to end it.
+    this.cancelPlacement();
   }
 
   private internalLayoutChange = false;
@@ -1313,6 +1399,110 @@ export class OmGraphicalLayout extends LitElement {
     }
     this.requestAddComponent(className, point);
   };
+
+  /**
+   * Arm host-mediated placement for `className`. The diagram then tracks its own
+   * window pointer events: a ghost follows the cursor over the canvas and a
+   * release there instantiates the class (the same {@link requestAddComponent}
+   * path a drop uses). No-op when readonly or `className` is empty.
+   */
+  beginPlacement(className: string): void {
+    if (this.readonly || className === "") {
+      return;
+    }
+    this.placement.begin(className);
+    this.placementClass = this.placement.active;
+    this.placementGhost = null;
+    this.addPlacementListeners();
+  }
+
+  /** Disarm placement and drop the ghost (e.g. the host relayed a cancel). */
+  cancelPlacement(): void {
+    if (this.placement.active === null) {
+      return;
+    }
+    this.placement.reset();
+    this.placementClass = null;
+    this.placementGhost = null;
+    this.removePlacementListeners();
+  }
+
+  /** The class name of the armed placement, or `null` when idle. */
+  get placementClassName(): string | null {
+    return this.placementClass;
+  }
+
+  /** Client-space ghost anchor while the cursor is over the canvas, else `null`
+   *  (idle or off-canvas). Drives {@link renderPlacementGhost}. */
+  get placementGhostPoint(): PlacementPoint | null {
+    return this.placementGhost;
+  }
+
+  private isOverCanvas(x: number, y: number): boolean {
+    const rect = this.sceneEl?.getBoundingClientRect();
+    return rect ? pointInRect(x, y, rect) : false;
+  }
+
+  private readonly onPlacementMove = (e: MouseEvent): void => {
+    if (this.placement.active === null) {
+      return;
+    }
+    this.placementGhost = this.placement.move(
+      e.clientX,
+      e.clientY,
+      this.isOverCanvas(e.clientX, e.clientY),
+    );
+  };
+
+  private readonly onPlacementUp = (e: MouseEvent): void => {
+    const className = this.placement.active;
+    if (className === null) {
+      return;
+    }
+    const point = this.placement.release(
+      e.clientX,
+      e.clientY,
+      this.isOverCanvas(e.clientX, e.clientY),
+    );
+    this.placementClass = null;
+    this.placementGhost = null;
+    this.removePlacementListeners();
+    if (point === null) {
+      return;
+    }
+    const diagramPoint =
+      this.sceneEl?.clientToDiagram(point.x, point.y) ?? null;
+    if (diagramPoint === null) {
+      return;
+    }
+    this.requestAddComponent(className, diagramPoint);
+  };
+
+  private readonly onPlacementKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === "Escape") {
+      this.cancelPlacement();
+    }
+  };
+
+  private addPlacementListeners(): void {
+    if (this.placementListening) {
+      return;
+    }
+    this.placementListening = true;
+    window.addEventListener("pointermove", this.onPlacementMove);
+    window.addEventListener("pointerup", this.onPlacementUp);
+    window.addEventListener("keydown", this.onPlacementKeyDown);
+  }
+
+  private removePlacementListeners(): void {
+    if (!this.placementListening) {
+      return;
+    }
+    this.placementListening = false;
+    window.removeEventListener("pointermove", this.onPlacementMove);
+    window.removeEventListener("pointerup", this.onPlacementUp);
+    window.removeEventListener("keydown", this.onPlacementKeyDown);
+  }
 
   private onInteraction<K extends keyof InteractionEvents>(
     type: K,

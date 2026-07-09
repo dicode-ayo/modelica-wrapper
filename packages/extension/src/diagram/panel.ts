@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import type { DiagramLayout, ParameterModel } from "@dicode/omc-client";
 
+import { randomNonce } from "../webview/nonce.js";
 import type {
   DiagramCommandId,
   ExtensionToWebview,
@@ -204,6 +205,22 @@ export class DiagramPanel {
     const panel = DiagramPanel.activePanel;
     if (!panel) return false;
     panel.send({ type: "runCommand", commandId });
+    return true;
+  }
+
+  /**
+   * Relay a placement gesture from the library sidebar to the active diagram.
+   * `className !== null` arms placement; `null` cancels it. Returns `false`
+   * when no diagram panel is active so the caller can no-op quietly.
+   */
+  static relayPlacement(className: string | null): boolean {
+    const panel = DiagramPanel.activePanel;
+    if (!panel) return false;
+    panel.send(
+      className === null
+        ? { type: "placementCancel" }
+        : { type: "placementStart", className },
+    );
     return true;
   }
 
@@ -436,14 +453,4 @@ function setInputFocusContext(focused: boolean): void {
     INPUT_FOCUS_CONTEXT,
     focused,
   );
-}
-
-function randomNonce(): string {
-  let s = "";
-  const chars =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  for (let i = 0; i < 32; i++) {
-    s += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return s;
 }

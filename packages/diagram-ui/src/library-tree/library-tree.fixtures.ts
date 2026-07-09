@@ -16,6 +16,7 @@ export const FAKE_TREE: Record<string, LibraryClassInfo[]> = {
   __ROOT__: [
     { qualified: "Modelica", restriction: "package" },
     { qualified: "Complex", restriction: "operator record" },
+    { qualified: "Sine", restriction: "model" },
   ],
   Modelica: [{ qualified: "Modelica.Blocks", restriction: "package" }],
 };

@@ -1222,12 +1222,12 @@ export async function fetchIconLayout(
 
 /**
  * Render a class's icon to a self-contained SVG thumbnail for the library
- * browser (issue #76, item 8 — the consumer that makes `fetchIconLayout`
- * live). Best-effort: returns `undefined` on any failure or when the class
+ * browser. Best-effort: returns `undefined` on any failure or when the class
  * has no drawable icon layers, so the browser falls back to its
- * restriction-letter badge.
+ * restriction-letter badge. Shared by the diagram panel and the library
+ * sidebar view.
  */
-async function libraryIconSvg(
+export async function libraryIconSvg(
   client: OmcClient,
   className: string,
 ): Promise<string | undefined> {

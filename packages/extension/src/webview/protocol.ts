@@ -1,33 +1,14 @@
 import type { DiagramLayout, ParameterModel } from "@dicode/omc-client";
 
-/**
- * Wire-format mirror of diagram-ui's `LibraryClassRestriction`.
- * Kept as a plain string union local to the protocol because the
- * extension host is CommonJS / Node16-resolution and importing
- * ESM-only type-only declarations from `@dicode/diagram-ui`
- * would need a `resolution-mode` import attribute. The webview side
- * still consumes diagram-ui's `LibraryClassInfo` — the shapes are
- * structurally identical so assignment is implicit.
- */
-export type LibraryClassRestriction =
-  | "package"
-  | "model"
-  | "block"
-  | "class"
-  | "connector"
-  | "expandable connector"
-  | "record"
-  | "function"
-  | "type"
-  | "operator"
-  | "operator function"
-  | "operator record"
-  | "unknown";
+import type {
+  LibraryClassInfo,
+  LibraryRequestMessage,
+} from "./library-messages.js";
 
-export interface LibraryClassInfo {
-  qualified: string;
-  restriction: LibraryClassRestriction;
-}
+export type {
+  LibraryClassInfo,
+  LibraryClassRestriction,
+} from "./library-messages.js";
 
 /**
  * Wire-format mirror of diagram-ui's `DiagramCommandId`. Kept local for the
@@ -45,7 +26,7 @@ export type DiagramCommandId =
 
 /**
  * Message protocol between the extension host (Node) and the diagram
- * webview (browser). All messages are JSON-serialisable.
+ * webview (browser). All messages are JSON-serializable.
  *
  * Extension → webview:
  *   - `init`               — sent once after the webview's `ready` to
@@ -142,7 +123,15 @@ export type ExtensionToWebview =
       // diagram panel was focused). The webview runs it through its registry.
       type: "runCommand";
       commandId: DiagramCommandId;
-    };
+    }
+  | {
+      // Host-relayed placement: a library row was pressed in the sidebar
+      // webview and dragged toward the canvas. The diagram arms its own
+      // cursor-tracking ghost and commits on release over the canvas.
+      type: "placementStart";
+      className: string;
+    }
+  | { type: "placementCancel" };
 
 export type WebviewToExtension =
   | { type: "ready" }
@@ -195,19 +184,7 @@ export type WebviewToExtension =
       className: string;
       position: { x: number; y: number };
     }
-  | {
-      type: "libraryListChildren";
-      requestId: string;
-      parent: string | null;
-    }
-  | { type: "librarySearch"; requestId: string; query: string }
-  | {
-      // Lazy request for a class's icon thumbnail — fired per row as it
-      // becomes visible, so we never pay the icon fetch for the whole tree.
-      type: "libraryIcon";
-      requestId: string;
-      className: string;
-    }
+  | LibraryRequestMessage
   | {
       type: "changeClassRequest";
       componentName: string;
