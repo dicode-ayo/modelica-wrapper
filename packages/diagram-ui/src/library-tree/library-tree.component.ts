@@ -319,7 +319,10 @@ export class OmLibraryTree extends LitElement {
         this.fireSelect(node.className, node.restriction);
       },
       canDrag: (items) =>
-        items.every((item) => item.getItemData().className !== ""),
+        items.every((item) => {
+          const node = item.getItemData();
+          return isInstantiableClass(node.className, node.restriction);
+        }),
       createForeignDragObject: (items) => ({
         format: LIBRARY_TREE_DRAG_FORMAT,
         data: serializeLibraryDrag(items.at(0)?.getItemData().className ?? ""),
@@ -381,7 +384,12 @@ export class OmLibraryTree extends LitElement {
     const node = item.getItemData();
     const level = item.getItemMeta().level;
     const loading = item.isLoading();
-    const props = rowItemProps(item.getProps(), this.placementDrag);
+    // Headless Tree marks every row `draggable` regardless of `canDrag`, which
+    // leaves a grab cursor on rows the canvas would refuse.
+    const stripDrag =
+      this.placementDrag ||
+      !isInstantiableClass(node.className, node.restriction);
+    const props = rowItemProps(item.getProps(), stripDrag);
     return html`
       <div
         class="row"
@@ -491,14 +499,18 @@ export class OmLibraryTree extends LitElement {
         role="option"
         tabindex="0"
         data-selected=${this.selectedClassName === q ? "true" : "false"}
-        draggable=${this.placementDrag ? "false" : "true"}
+        draggable=${!this.placementDrag &&
+        isInstantiableClass(q, row.restriction)
+          ? "true"
+          : "false"}
         @click=${() => this.onSearchRowClick(q)}
         @dblclick=${() => this.fireSelect(q, row.restriction)}
         @keydown=${(e: KeyboardEvent) =>
           this.onSearchRowKeydown(e, q, row.restriction)}
         @pointerdown=${(e: PointerEvent) =>
           this.onRowPointerDown(e, q, row.restriction)}
-        @dragstart=${(e: DragEvent) => this.onSearchRowDragStart(e, q)}
+        @dragstart=${(e: DragEvent) =>
+          this.onSearchRowDragStart(e, q, row.restriction)}
       >
         <span
           class="indent"
@@ -595,8 +607,16 @@ export class OmLibraryTree extends LitElement {
 
   // Search rows aren't Headless Tree items, so they can't ride the tree's
   // createForeignDragObject path; carry the same payload manually.
-  private onSearchRowDragStart(event: DragEvent, className: string): void {
+  private onSearchRowDragStart(
+    event: DragEvent,
+    className: string,
+    restriction: LibraryClassRestriction,
+  ): void {
     if (!event.dataTransfer) return;
+    if (!isInstantiableClass(className, restriction)) {
+      event.preventDefault();
+      return;
+    }
     event.dataTransfer.setData(
       LIBRARY_TREE_DRAG_FORMAT,
       serializeLibraryDrag(className),
@@ -672,7 +692,7 @@ export class OmLibraryTree extends LitElement {
     className: string,
     restriction: LibraryClassRestriction,
   ): void {
-    if (!className || !isOpenableRestriction(restriction)) return;
+    if (!isInstantiableClass(className, restriction)) return;
     this.dispatchEvent(
       new CustomEvent<LibraryEvents["om-library-select"]>("om-library-select", {
         detail: { className },
@@ -726,9 +746,8 @@ export class OmLibraryTree extends LitElement {
     className: string,
     restriction: LibraryClassRestriction,
   ): void {
-    if (!this.placementDrag || event.button !== 0 || className === "") return;
-    // A package / connector isn't a placeable component; don't arm placement.
-    if (!isOpenableRestriction(restriction)) return;
+    if (!this.placementDrag || event.button !== 0) return;
+    if (!isInstantiableClass(className, restriction)) return;
     event.preventDefault();
     this.dispatchEvent(
       new CustomEvent<LibraryPlacementStartDetail>(
@@ -754,18 +773,30 @@ export interface LibraryPlacementStartDetail {
 export type LibraryRootLoadedDetail = LibraryRootLoad;
 
 /**
+ * A concrete, named class. The synthetic ancestor rows of a filtered search
+ * carry no class name, and `addComponent` does not validate what it is handed —
+ * OMC will write a package in as a component if asked.
+ */
+function isInstantiableClass(
+  className: string,
+  restriction: LibraryClassRestriction,
+): boolean {
+  return className !== "" && isOpenableRestriction(restriction);
+}
+
+/**
  * Headless Tree item props with the interaction keys we own removed: `onClick`
  * / `onDoubleClick` (HT's single-click opens + toggles expand, which we replace
- * with single-click-selects / double-click-opens / chevron-expands) and, in
- * placement-drag mode, the native HTML5 drag props. Keyboard nav, focus, and
- * selection state stay wired through the remaining props.
+ * with single-click-selects / double-click-opens / chevron-expands) and, when
+ * `stripDrag`, the native HTML5 drag props. Keyboard nav, focus, and selection
+ * state stay wired through the remaining props.
  */
 function rowItemProps(
   props: Record<string, unknown>,
-  placementDrag: boolean,
+  stripDrag: boolean,
 ): Record<string, unknown> {
   const { onClick: _onClick, onDoubleClick: _onDoubleClick, ...rest } = props;
-  return placementDrag ? stripDragProps(rest) : rest;
+  return stripDrag ? stripDragProps(rest) : rest;
 }
 
 /** Strip Headless Tree's drag props so placement-drag rows aren't also native

@@ -7,6 +7,8 @@
  *   - Default: lazy tree over the fake library — expand packages, activate a
  *     class to fire `om-library-select`.
  *   - Empty: a data source that returns no classes.
+ *   - PlacementDrag: rows arm `om-library-placement-start` on pointer-down
+ *     instead of an HTML5 drag, as the sidebar webview needs.
  */
 
 import type { Meta, StoryObj } from "@storybook/web-components";
@@ -17,6 +19,7 @@ import type {
   LibraryDataSource,
   LibrarySelectDetail,
 } from "../src/library-tree/library-types.js";
+import type { LibraryPlacementStartDetail } from "../src/library-tree/library-tree.component.js";
 import { fakeLibrarySource } from "./fixtures/fake-library.js";
 
 const emptySource: LibraryDataSource = {
@@ -30,12 +33,19 @@ const emptySource: LibraryDataSource = {
 
 interface StoryArgs {
   source: "fake" | "empty";
+  placementDrag: boolean;
 }
 
 function onSelect(e: Event): void {
   const { className } = (e as CustomEvent<LibrarySelectDetail>).detail;
   const log = document.querySelector("#om-library-tree-log");
   if (log) log.textContent = `Selected: ${className}`;
+}
+
+function onPlacementStart(e: Event): void {
+  const { className } = (e as CustomEvent<LibraryPlacementStartDetail>).detail;
+  const log = document.querySelector("#om-library-tree-placement");
+  if (log) log.textContent = `Placing: ${className}`;
 }
 
 function render(args: StoryArgs): TemplateResult {
@@ -46,11 +56,16 @@ function render(args: StoryArgs): TemplateResult {
     >
       <om-library-tree
         .dataSource=${source}
+        ?placement-drag=${args.placementDrag}
         @om-library-select=${onSelect}
+        @om-library-placement-start=${onPlacementStart}
         style="flex:1;min-height:0;border:1px solid var(--vscode-widget-border,#d0d0d0);border-radius:4px;padding:8px"
       ></om-library-tree>
       <output id="om-library-tree-log" style="font:12px monospace"
         >No selection yet.</output
+      >
+      <output id="om-library-tree-placement" style="font:12px monospace"
+        >No placement yet.</output
       >
     </div>
   `;
@@ -60,8 +75,9 @@ const meta: Meta<StoryArgs> = {
   title: "diagram-ui/LibraryTree",
   argTypes: {
     source: { control: "inline-radio", options: ["fake", "empty"] },
+    placementDrag: { control: "boolean" },
   },
-  args: { source: "fake" },
+  args: { source: "fake", placementDrag: false },
   render,
 };
 
@@ -72,3 +88,5 @@ type Story = StoryObj<StoryArgs>;
 export const Default: Story = {};
 
 export const Empty: Story = { args: { source: "empty" } };
+
+export const PlacementDrag: Story = { args: { placementDrag: true } };
