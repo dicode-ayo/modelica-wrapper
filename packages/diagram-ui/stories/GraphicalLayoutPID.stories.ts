@@ -32,7 +32,6 @@ import "../src/graphical-layout/graphical-layout.component.js";
 
 import pidFixture from "./fixtures/pidController.modelInstance.json";
 import { appendConnection } from "./fixtures/story-layout-state.js";
-import { fakeLibrarySource } from "./fixtures/fake-library.js";
 
 // The fixture was captured against a real OMC and is known-valid
 // (the producer's own test suite validates it on every push). We
@@ -81,7 +80,6 @@ const meta: Meta<StoryArgs> = {
           ?readonly=${readonly}
           ?perf-hud=${perfHud}
           .lineThicknessScale=${lineThicknessScale}
-          .libraryDataSource=${fakeLibrarySource}
           @om-graphical-layout-change=${(e: CustomEvent<DiagramLayout>) => {
             currentLayout = e.detail;
           }}
@@ -96,9 +94,6 @@ const meta: Meta<StoryArgs> = {
               layout: DiagramLayout;
             };
             el.layout = currentLayout;
-          }}
-          @om-add-component-request=${(e: CustomEvent) => {
-            console.log("add component request", e.detail);
           }}
         ></om-graphical-layout>
       </div>

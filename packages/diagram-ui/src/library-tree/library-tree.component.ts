@@ -4,8 +4,7 @@
  * rows rendered in our own Lit and virtualized by `<lit-virtualizer>`.
  *
  * Data-source driven: the component knows nothing about OMC. The embedder
- * supplies a `LibraryBrowserDataSource` (the same contract
- * `<om-library-browser>` consumes) and the tree handles lazy expansion, flat
+ * supplies a `LibraryDataSource` and the tree handles lazy expansion, flat
  * search, per-class icons, selection, and drag payloads on top of it.
  *
  *   - empty search → tree mode: top-level classes from `listChildren(null)`,
@@ -15,7 +14,7 @@
  *
  * Events:
  *   - `om-library-select` { detail: { className } } — emitted on row
- *     activation (click / Enter). Same event `<om-library-browser>` emits.
+ *     activation (click / Enter).
  *
  * Rows are draggable and carry `{ className }` on the drag `DataTransfer`
  * under `LIBRARY_TREE_DRAG_FORMAT`, ready for a drop-to-instantiate handler.
@@ -48,11 +47,11 @@ import type { RangeChangedEvent } from "@lit-labs/virtualizer/events.js";
 import { omTokens } from "@dicode/ui-common";
 
 import type {
-  LibraryBrowserDataSource,
+  LibraryDataSource,
   LibraryClassInfo,
   LibraryClassRestriction,
   LibraryEvents,
-} from "../library-browser/library-browser.component.js";
+} from "./library-types.js";
 import { bindItemProps } from "./bind-item-props.js";
 import { iconStyleFor } from "./restriction-icon.js";
 import {
@@ -213,7 +212,7 @@ export class OmLibraryTree extends LitElement {
 
   /** Data source; `null` renders a "no data source configured" message. */
   @property({ attribute: false })
-  dataSource: LibraryBrowserDataSource | null = null;
+  dataSource: LibraryDataSource | null = null;
 
   /**
    * Swap the row gesture from HTML5 drag to a `pointerdown`-driven

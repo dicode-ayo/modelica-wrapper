@@ -1,7 +1,7 @@
 /**
  * Message wiring of the library sidebar webview provider. Drives the provider
  * with a fake `WebviewView` and asserts the host end of the bridge: library
- * requests round-trip through `LibraryBrowserSource`, a select opens the class,
+ * requests round-trip through `LibrarySource`, a select opens the class,
  * placement forwards to the active diagram, Load Library runs its command, and
  * `refresh()` posts a reload. No live OMC — a plain fake client backs the data.
  */

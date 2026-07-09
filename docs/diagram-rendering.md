@@ -79,7 +79,7 @@ elements.
 | `<om-icon-provider>` | SVG → Babylon texture cache for component icons. |
 | `<om-grid-axis>` | Grid + coordinate-system extent rectangle. |
 | `<om-parameter-panel>` / `<om-parameter-form>` | The parameter side drawer (see [parameter-panel.md](parameter-panel.md)). |
-| `<om-library-browser>` | Class picker for drag-to-place. |
+| `<om-library-tree>` | Virtualized class tree; drag source for place-on-canvas. |
 
 ### Drawing a component's icon
 

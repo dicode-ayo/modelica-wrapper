@@ -64,6 +64,12 @@ if (typeof document !== "undefined" && !document.getElementById(styleId)) {
     .om-story h3 { font-size: 12px; margin: 0 0 8px 0; color: #444; }
     .om-story-canvas-host { width: 640px; height: 480px; position: relative; }
 
+    /* Canvas with a library panel docked beside it: the panel is a fixed-width
+       drag source, the canvas takes the rest. */
+    .om-story-workbench { display: flex; gap: 12px; height: 560px; }
+    .om-story-workbench .om-story-canvas-host { flex: 1; width: auto; height: auto; min-width: 0; }
+    .om-story-library-panel { flex: 0 0 300px; min-height: 0; border: 1px solid #ddd; border-radius: 4px; padding: 8px; }
+
     /* result-ui fullscreen host */
     .om-story-host { height: 540px; border: 1px solid var(--vscode-panel-border); }
   `;

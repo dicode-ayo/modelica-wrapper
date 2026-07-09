@@ -1,15 +1,15 @@
 /**
- * Data-layer glue between the `LibraryBrowserDataSource` contract and
+ * Data-layer glue between the `LibraryDataSource` contract and
  * Headless Tree's `asyncDataLoaderFeature`. Free of Lit / DOM so the
  * lazy-load, node-building, and search-highlight logic can be exercised
  * with a plain mock data source.
  */
 
 import type {
-  LibraryBrowserDataSource,
+  LibraryDataSource,
   LibraryClassInfo,
   LibraryClassRestriction,
-} from "../library-browser/library-browser.component.js";
+} from "./library-types.js";
 
 /**
  * Synthetic root the tree hangs its top-level classes under. Headless Tree
@@ -91,7 +91,7 @@ export type LibraryRootLoad =
   | { ok: false; error: string };
 
 /**
- * Build the Headless Tree data loader over a `LibraryBrowserDataSource`.
+ * Build the Headless Tree data loader over a `LibraryDataSource`.
  * `getChildrenWithData` carries the `LibraryClassInfo` inline so restriction
  * (and thus icon + expandability) is known without a second round trip; the
  * shared `cache` lets `getItem` resolve an already-listed node.
@@ -101,7 +101,7 @@ export type LibraryRootLoad =
  * root fetch instead of issuing a second `listChildren(null)`.
  */
 export function createLibraryDataLoader(
-  dataSource: LibraryBrowserDataSource,
+  dataSource: LibraryDataSource,
   cache: Map<string, LibraryTreeNode>,
   onRootLoad?: (result: LibraryRootLoad) => void,
 ): LibraryDataLoader {

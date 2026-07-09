@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type {
-  LibraryBrowserDataSource,
-  LibraryClassInfo,
-} from "../library-browser/library-browser.component.js";
+import type { LibraryDataSource, LibraryClassInfo } from "./library-types.js";
 import {
   LIBRARY_TREE_ROOT_ID,
   createLibraryDataLoader,
@@ -15,9 +12,7 @@ import {
   type LibraryTreeNode,
 } from "./library-tree-model.js";
 
-function source(
-  overrides: Partial<LibraryBrowserDataSource> = {},
-): LibraryBrowserDataSource {
+function source(overrides: Partial<LibraryDataSource> = {}): LibraryDataSource {
   return {
     listChildren: vi.fn(async () => []),
     searchAll: vi.fn(async () => []),

@@ -5,9 +5,9 @@
  * surface is exercisable without an extension host. The host round-trips
  * that normally hit OMC are faked in-story:
  *
- *   - **Add components** — double-click empty canvas to open the library
- *     browser (a fake Modelica tree), pick a class, and it's instantiated
- *     at the drop point (`om-add-component-request` → `appendComponent`).
+ *   - **Add components** — drag a class row from the docked `<om-library-tree>`
+ *     (a fake Modelica tree) onto the canvas and it's instantiated at the drop
+ *     point (`om-add-component-request` → `appendComponent`).
  *   - **Edit parameters** — double-click a component to open its parameter
  *     form; the toolbar's simulate button opens the simulation-setup form.
  *   - **Draw / select / move** — toolbar shapes draw into the host layer;
@@ -20,6 +20,7 @@ import { html, type TemplateResult } from "lit";
 import type { DiagramLayout } from "@dicode/omc-client";
 
 import "../src/graphical-layout/graphical-layout.component.js";
+import "../src/library-tree/library-tree.component.js";
 import "../src/action-panel/action-panel.component.js";
 import "../src/parameter-form/parameter-panel.component.js";
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
@@ -110,106 +111,109 @@ const meta: Meta<StoryArgs> = {
     <div class="om-story">
       <h3>Diagram workbench</h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
-        The full editor as the extension wires it. Double-click empty canvas to
-        add a component from the library; double-click a component to edit its
-        parameters; the toolbar's simulate button opens simulation setup. Draw
-        shapes from the toolbar, click/drag to select/move, R/F to rotate/flip.
+        The full editor as the extension wires it. Drag a class row from the
+        library tree onto the canvas to instantiate it; double-click a component
+        to edit its parameters; the toolbar's simulate button opens simulation
+        setup. Draw shapes from the toolbar, click/drag to select/move, R/F to
+        rotate/flip.
       </p>
-      <div
-        class="om-story-canvas-host"
-        style="position: relative; height: 560px;"
-      >
-        <om-graphical-layout
-          .layout=${currentLayout}
-          ?readonly=${readonly}
-          ?perf-hud=${true}
-          .libraryDataSource=${fakeLibrarySource}
-          @om-graphical-layout-change=${(e: CustomEvent<DiagramLayout>) => {
-            currentLayout = e.detail;
-          }}
-          @om-selection-change=${(
-            e: CustomEvent<LayoutEvents["om-selection-change"]>,
-          ) => {
-            const p = actionPanel(storyRoot(e.currentTarget));
-            if (p) p.noSelection = e.detail.keys.length === 0;
-          }}
-          @om-tool-change=${(
-            e: CustomEvent<LayoutEvents["om-tool-change"]>,
-          ) => {
-            const p = actionPanel(storyRoot(e.currentTarget));
-            if (p) p.tool = e.detail.tool;
-          }}
-          @om-connection-create=${(
-            e: CustomEvent<LayoutEvents["om-connection-create"]>,
-          ) => {
-            setLayout(
-              storyRoot(e.currentTarget),
-              appendConnection(currentLayout, e.detail),
-            );
-          }}
-          @om-add-component-request=${(
-            e: CustomEvent<LayoutEvents["om-add-component-request"]>,
-          ) => {
-            setLayout(
-              storyRoot(e.currentTarget),
-              appendComponent(
-                currentLayout,
-                e.detail.className,
-                e.detail.position,
-              ),
-            );
-          }}
-          @om-double-click=${(
-            e: CustomEvent<LayoutEvents["om-double-click"]>,
-          ) => {
-            const parsed = parseKey(e.detail.key);
-            if (!parsed || !isComponentKey(parsed) || parsed.nodeId === "") {
-              return;
-            }
-            openParams(storyRoot(e.currentTarget), {
-              kind: "component",
-              model: componentParamsModel(parsed.nodeId),
-              title: parsed.nodeId,
-              submitLabel: "Apply",
-              showReset: true,
-              crefPrefix: parsed.nodeId,
-            });
-          }}
-        ></om-graphical-layout>
-        <om-action-panel
-          anchor="top-right"
-          ?no-selection=${true}
-          @om-action-undo=${() => console.log("undo")}
-          @om-action-check=${() => console.log("check")}
-          @om-action-simulate=${() => console.log("simulate")}
-          @om-action-parameters=${(e: Event) =>
-            openParams(storyRoot(e.currentTarget), {
-              kind: "simulate",
-              model: simulationOptionsModel(currentLayout.className),
-              title: "Simulation setup",
-              submitLabel: "Simulate",
-              showReset: false,
-            })}
-          @om-action-rotate=${(e: CustomEvent<ActionRotateDetail>) =>
-            diagram(storyRoot(e.currentTarget))?.rotateSelection(
-              e.detail.direction === "cw",
-            )}
-          @om-action-flip=${(e: CustomEvent<ActionFlipDetail>) =>
-            diagram(storyRoot(e.currentTarget))?.flipSelection(
-              e.detail.axis === "horizontal",
-            )}
-          @om-action-tool=${(e: CustomEvent<ActionToolDetail>) =>
-            diagram(storyRoot(e.currentTarget))?.setActiveTool(e.detail.tool)}
-        ></om-action-panel>
-        <om-parameter-panel
-          @om-panel-submit=${(e: CustomEvent<ParameterFormSubmitDetail>) => {
-            console.log(`apply (${paramKind})`, e.detail.values);
-            closeParams(storyRoot(e.currentTarget));
-          }}
-          @om-panel-cancel=${(e: Event) =>
-            closeParams(storyRoot(e.currentTarget))}
-          @om-panel-reset=${() => console.log("reset to defaults")}
-        ></om-parameter-panel>
+      <div class="om-story-workbench">
+        <om-library-tree
+          class="om-story-library-panel"
+          .dataSource=${fakeLibrarySource}
+        ></om-library-tree>
+        <div class="om-story-canvas-host">
+          <om-graphical-layout
+            .layout=${currentLayout}
+            ?readonly=${readonly}
+            ?perf-hud=${true}
+            @om-graphical-layout-change=${(e: CustomEvent<DiagramLayout>) => {
+              currentLayout = e.detail;
+            }}
+            @om-selection-change=${(
+              e: CustomEvent<LayoutEvents["om-selection-change"]>,
+            ) => {
+              const p = actionPanel(storyRoot(e.currentTarget));
+              if (p) p.noSelection = e.detail.keys.length === 0;
+            }}
+            @om-tool-change=${(
+              e: CustomEvent<LayoutEvents["om-tool-change"]>,
+            ) => {
+              const p = actionPanel(storyRoot(e.currentTarget));
+              if (p) p.tool = e.detail.tool;
+            }}
+            @om-connection-create=${(
+              e: CustomEvent<LayoutEvents["om-connection-create"]>,
+            ) => {
+              setLayout(
+                storyRoot(e.currentTarget),
+                appendConnection(currentLayout, e.detail),
+              );
+            }}
+            @om-add-component-request=${(
+              e: CustomEvent<LayoutEvents["om-add-component-request"]>,
+            ) => {
+              setLayout(
+                storyRoot(e.currentTarget),
+                appendComponent(
+                  currentLayout,
+                  e.detail.className,
+                  e.detail.position,
+                ),
+              );
+            }}
+            @om-double-click=${(
+              e: CustomEvent<LayoutEvents["om-double-click"]>,
+            ) => {
+              const parsed = parseKey(e.detail.key);
+              if (!parsed || !isComponentKey(parsed) || parsed.nodeId === "") {
+                return;
+              }
+              openParams(storyRoot(e.currentTarget), {
+                kind: "component",
+                model: componentParamsModel(parsed.nodeId),
+                title: parsed.nodeId,
+                submitLabel: "Apply",
+                showReset: true,
+                crefPrefix: parsed.nodeId,
+              });
+            }}
+          ></om-graphical-layout>
+          <om-action-panel
+            anchor="top-right"
+            ?no-selection=${true}
+            @om-action-undo=${() => console.log("undo")}
+            @om-action-check=${() => console.log("check")}
+            @om-action-simulate=${() => console.log("simulate")}
+            @om-action-parameters=${(e: Event) =>
+              openParams(storyRoot(e.currentTarget), {
+                kind: "simulate",
+                model: simulationOptionsModel(currentLayout.className),
+                title: "Simulation setup",
+                submitLabel: "Simulate",
+                showReset: false,
+              })}
+            @om-action-rotate=${(e: CustomEvent<ActionRotateDetail>) =>
+              diagram(storyRoot(e.currentTarget))?.rotateSelection(
+                e.detail.direction === "cw",
+              )}
+            @om-action-flip=${(e: CustomEvent<ActionFlipDetail>) =>
+              diagram(storyRoot(e.currentTarget))?.flipSelection(
+                e.detail.axis === "horizontal",
+              )}
+            @om-action-tool=${(e: CustomEvent<ActionToolDetail>) =>
+              diagram(storyRoot(e.currentTarget))?.setActiveTool(e.detail.tool)}
+          ></om-action-panel>
+          <om-parameter-panel
+            @om-panel-submit=${(e: CustomEvent<ParameterFormSubmitDetail>) => {
+              console.log(`apply (${paramKind})`, e.detail.values);
+              closeParams(storyRoot(e.currentTarget));
+            }}
+            @om-panel-cancel=${(e: Event) =>
+              closeParams(storyRoot(e.currentTarget))}
+            @om-panel-reset=${() => console.log("reset to defaults")}
+          ></om-parameter-panel>
+        </div>
       </div>
     </div>
   `,

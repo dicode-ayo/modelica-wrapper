@@ -19,7 +19,7 @@ only by `postMessage`.
 flowchart TB
     subgraph WV["Webview (browser sandbox, CSP-locked)"]
         direction TB
-        DUI["diagram-ui — Lit + Babylon.js<br/>&lt;om-graphical-layout&gt;, &lt;om-scene&gt;,<br/>&lt;om-parameter-panel&gt;, &lt;om-library-browser&gt;"]
+        DUI["diagram-ui — Lit + Babylon.js<br/>&lt;om-graphical-layout&gt;, &lt;om-scene&gt;,<br/>&lt;om-parameter-panel&gt;, &lt;om-library-tree&gt;"]
         ROOT["&lt;om-webview-root&gt; (webview-entry.ts)<br/>bridge: DOM events ⇄ postMessage"]
         DSVG1["diagram-svg (icon → SVG → texture)"]
         DUI --- ROOT

@@ -196,15 +196,14 @@ export {
   type ParameterFormSubmitDetail,
 } from "./parameter-form/parameter-form.component.js";
 export { OmParameterPanel } from "./parameter-form/parameter-panel.component.js";
-export {
-  OmLibraryBrowser,
-  type LibraryBrowserDataSource,
-  type LibraryClassInfo,
-  type LibraryClassRestriction,
-  type LibraryEvents,
-  type LibrarySelectDetail,
-  type LibraryCancelDetail,
-} from "./library-browser/library-browser.component.js";
+export type {
+  LibraryDataSource,
+  LibraryClassInfo,
+  LibraryClassRestriction,
+  LibraryEvents,
+  LibrarySelectDetail,
+  LibraryCancelDetail,
+} from "./library-tree/library-types.js";
 export {
   OmLibraryTree,
   LIBRARY_TREE_DRAG_FORMAT,

@@ -4,11 +4,11 @@ import type { ItemInstance, TreeInstance } from "@headless-tree/core";
 import { RangeChangedEvent } from "@lit-labs/virtualizer/events.js";
 
 import type {
-  LibraryBrowserDataSource,
+  LibraryDataSource,
   LibraryClassInfo,
   LibraryClassRestriction,
   LibrarySelectDetail,
-} from "../library-browser/library-browser.component.js";
+} from "./library-types.js";
 import "./library-tree.component.js";
 import type {
   LibraryRootLoadedDetail,
@@ -46,9 +46,7 @@ function treeOf(el: OmLibraryTree): TreeInstance<LibraryTreeNode> {
   return tree;
 }
 
-async function mount(
-  source: LibraryBrowserDataSource | null,
-): Promise<OmLibraryTree> {
+async function mount(source: LibraryDataSource | null): Promise<OmLibraryTree> {
   const el = document.createElement("om-library-tree") as OmLibraryTree;
   el.dataSource = source;
   document.body.appendChild(el);
@@ -98,7 +96,7 @@ describe("<om-library-tree>", () => {
   });
 
   it("reports an empty root via om-library-root-loaded", async () => {
-    const source: LibraryBrowserDataSource = {
+    const source: LibraryDataSource = {
       listChildren: async () => [],
       searchAll: async () => [],
     };
@@ -272,7 +270,7 @@ describe("<om-library-tree>", () => {
   it("drops an in-flight search that resolves after the query is cleared", async () => {
     let resolveSearch: (r: LibraryClassInfo[]) => void = () => {};
     let searchCalled = false;
-    const source: LibraryBrowserDataSource = {
+    const source: LibraryDataSource = {
       async listChildren(parent) {
         return (
           (parent === null ? FAKE_TREE["__ROOT__"] : FAKE_TREE[parent]) ?? []

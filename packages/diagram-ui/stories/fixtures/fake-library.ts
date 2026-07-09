@@ -1,15 +1,15 @@
 /**
- * Fake `LibraryBrowserDataSource` for stories. In the extension this is
+ * Fake `LibraryDataSource` for stories. In the extension this is
  * wired to OMC (`getClassNames` / `getClassRestriction` / icon SVG); here
- * a static tree + substring search stand in so the library browser (and
- * the add-component flow it drives) work without an extension host.
+ * a static tree + substring search stand in so the library tree (and the
+ * add-component flow it drives) work without an extension host.
  */
 
 import type {
-  LibraryBrowserDataSource,
+  LibraryDataSource,
   LibraryClassInfo,
   LibraryClassRestriction,
-} from "../../src/library-browser/library-browser.component.js";
+} from "../../src/library-tree/library-types.js";
 
 type FakeEntry = readonly [string, LibraryClassRestriction];
 
@@ -61,7 +61,7 @@ const ALL_FLAT: LibraryClassInfo[] = (() => {
   return out;
 })();
 
-export const fakeLibrarySource: LibraryBrowserDataSource = {
+export const fakeLibrarySource: LibraryDataSource = {
   async listChildren(parent) {
     await new Promise((r) => setTimeout(r, 80));
     const rows = FAKE_TREE[parent ?? "__ROOT__"] ?? [];

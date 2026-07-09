@@ -13,7 +13,7 @@ import type {
   LibraryPlacementStartDetail,
   OmLibraryTree,
 } from "./library-tree.component.js";
-import type { LibraryClassRestriction } from "../library-browser/library-browser.component.js";
+import type { LibraryClassRestriction } from "./library-types.js";
 
 const teardowns: Array<() => void> = [];
 afterEach(() => {
