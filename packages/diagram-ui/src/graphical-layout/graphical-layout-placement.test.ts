@@ -7,7 +7,7 @@
  * headlessly.
  *
  * happy-dom pointer/mouse events don't carry client coords, so they're
- * synthesised from plain `Event`s with the coords defined on top.
+ * synthesized from plain `Event`s with the coords defined on top.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";

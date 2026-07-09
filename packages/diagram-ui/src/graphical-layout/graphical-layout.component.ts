@@ -833,7 +833,9 @@ export class OmGraphicalLayout extends LitElement {
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.detachManagers();
-    this.removePlacementListeners();
+    // Disarm too, not just detach listeners — a detach mid-placement would
+    // otherwise leave the controller armed with no listeners to end it.
+    this.cancelPlacement();
   }
 
   private internalLayoutChange = false;
