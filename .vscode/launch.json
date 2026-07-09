@@ -10,7 +10,12 @@
       ],
       "outFiles": ["${workspaceFolder}/packages/extension/out/**/*.js"],
       "preLaunchTask": "extension: build",
-      "sourceMaps": true
+      "sourceMaps": true,
+      // `log.debug` is silent unless this is set, and the OMC call trace it
+      // writes is the first thing anyone debugging the extension wants.
+      "env": {
+        "MODELICA_DEBUG": "1"
+      }
     }
   ]
 }
