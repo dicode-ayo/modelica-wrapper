@@ -130,6 +130,58 @@ describe("LibraryWebviewProvider", () => {
     });
   });
 
+  it("renders a class's icon once and serves later requests from cache", async () => {
+    const { provider, client } = makeProvider();
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    send({ type: "libraryIcon", requestId: "1", className: "Modelica" });
+    await flush();
+    const afterFirst = client.invoke.mock.calls.length;
+    expect(afterFirst).toBeGreaterThan(0);
+
+    send({ type: "libraryIcon", requestId: "2", className: "Modelica" });
+    await flush();
+
+    // Rendering instantiates the class in OMC; a cache hit must not re-enter it.
+    expect(client.invoke.mock.calls.length).toBe(afterFirst);
+  });
+
+  it("collapses concurrent requests for the same class into one render", async () => {
+    const { provider, client } = makeProvider();
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    send({ type: "libraryIcon", requestId: "warm", className: "Modelica" });
+    await flush();
+    const perRender = client.invoke.mock.calls.length;
+    provider.refresh();
+    client.invoke.mockClear();
+
+    // Both arrive before the render settles, as a scroll burst does.
+    send({ type: "libraryIcon", requestId: "1", className: "Modelica" });
+    send({ type: "libraryIcon", requestId: "2", className: "Modelica" });
+    await flush();
+
+    expect(client.invoke.mock.calls.length).toBe(perRender);
+  });
+
+  it("re-renders icons after a refresh invalidates them", async () => {
+    const { provider, client } = makeProvider();
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    send({ type: "libraryIcon", requestId: "1", className: "Modelica" });
+    await flush();
+    const afterFirst = client.invoke.mock.calls.length;
+
+    provider.refresh();
+    send({ type: "libraryIcon", requestId: "2", className: "Modelica" });
+    await flush();
+
+    expect(client.invoke.mock.calls.length).toBeGreaterThan(afterFirst);
+  });
+
   it("opens the class diagram on select", () => {
     const { provider } = makeProvider();
     const { view, send } = fakeView();

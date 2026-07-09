@@ -18,6 +18,15 @@ import type { OmcCommand } from "./commands.js";
 
 const TIMED_OUT = Symbol("omc call timed out");
 
+/** Commands carrying a whole class source (`loadString`) would swamp the log. */
+const MAX_LOGGED_COMMAND = 200;
+
+function abbreviate(cmd: string): string {
+  return cmd.length <= MAX_LOGGED_COMMAND
+    ? cmd
+    : `${cmd.slice(0, MAX_LOGGED_COMMAND)}… (${cmd.length} chars)`;
+}
+
 /** The slice of a zeromq `Request` socket this transport drives. */
 export interface OmcSocket {
   linger: number;
@@ -81,7 +90,9 @@ export class OmcTransport {
     // The abandoned receive rejects once the socket closes; nobody awaits it.
     op.catch(() => undefined);
     await this.reset();
-    throw new Error(`omc call timed out after ${timeoutMs}ms`);
+    throw new Error(
+      `omc call timed out after ${timeoutMs}ms: ${abbreviate(cmd)}`,
+    );
   }
 
   /** Discard the desynced socket and dial a fresh one. */

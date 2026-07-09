@@ -61,7 +61,7 @@ describe("OmcTransport timeout handling", () => {
     await transport.dial();
 
     await expect(transport.send("getVersion()", 10)).rejects.toThrow(
-      /timed out after 10ms/,
+      /timed out after 10ms: getVersion\(\)/,
     );
 
     await expect(transport.send("getVersion()", 1_000)).resolves.toBe("1.26.7");

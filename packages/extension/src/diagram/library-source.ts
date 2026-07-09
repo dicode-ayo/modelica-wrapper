@@ -14,6 +14,7 @@
 
 import type { OmcClient } from "@dicode/omc-client";
 
+import { log } from "../logger.js";
 import type {
   LibraryClassInfo,
   LibraryClassRestriction,
@@ -66,6 +67,7 @@ export class LibrarySource {
    * loaded top-level packages.
    */
   async listChildren(parent: string | null): Promise<LibraryClassInfo[]> {
+    const started = Date.now();
     const input = parent === null ? {} : { typeName: parent };
     const { classNames } = await this.client.getClassNames({
       ...input,
@@ -79,12 +81,19 @@ export class LibrarySource {
       local,
       qualified: parent ? `${parent}.${local}` : local,
     }));
-    return Promise.all(
+    const misses = this.uncachedCount(qualifiedPairs.map((p) => p.qualified));
+    const rows = await Promise.all(
       qualifiedPairs.map(async ({ qualified }) => ({
         qualified,
         restriction: await this.getRestriction(qualified),
       })),
     );
+    log.debug(
+      "librarySource",
+      `listChildren(${parent ?? "<roots>"}) → ${rows.length} rows, ` +
+        `${misses} restriction calls, ${Date.now() - started}ms`,
+    );
+    return rows;
   }
 
   /**
@@ -96,16 +105,35 @@ export class LibrarySource {
   async searchAll(query: string): Promise<LibraryClassInfo[]> {
     const trimmed = query.trim();
     if (trimmed.length === 0) return [];
+    const started = Date.now();
     const { classNames } = await this.client.searchClassNames({
       searchText: trimmed,
     });
     const limited = classNames.slice(0, SEARCH_LIMIT);
-    return Promise.all(
+    const misses = this.uncachedCount(limited);
+    const rows = await Promise.all(
       limited.map(async (qualified) => ({
         qualified,
         restriction: await this.getRestriction(qualified),
       })),
     );
+    log.debug(
+      "librarySource",
+      `searchAll(${JSON.stringify(trimmed)}) → ${classNames.length} hits, ` +
+        `${rows.length} shown, ${misses} restriction calls, ${Date.now() - started}ms`,
+    );
+    if (classNames.length > SEARCH_LIMIT) {
+      log.debug(
+        "librarySource",
+        `searchAll(${JSON.stringify(trimmed)}) truncated to ${SEARCH_LIMIT} of ${classNames.length}`,
+      );
+    }
+    return rows;
+  }
+
+  /** How many of `qualified` would cost an OMC round-trip right now. */
+  private uncachedCount(qualified: readonly string[]): number {
+    return qualified.filter((q) => !this.restrictionCache.has(q)).length;
   }
 
   private async getRestriction(
@@ -120,11 +148,15 @@ export class LibrarySource {
       const norm = normaliseRestriction(restriction);
       this.restrictionCache.set(qualified, norm);
       return norm;
-    } catch {
+    } catch (err) {
       // A failed restriction lookup is non-fatal: the tree still
       // renders the row with an `unknown` badge. Don't cache the
       // failure — a later attempt may succeed (e.g. after the user
       // loads more libraries).
+      log.debug(
+        "librarySource",
+        `getClassRestriction(${qualified}) failed: ${(err as Error).message}`,
+      );
       return "unknown";
     }
   }

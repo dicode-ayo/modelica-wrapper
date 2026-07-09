@@ -18,6 +18,7 @@ import type { OmcClient } from "@dicode/omc-client";
 import { LibrarySource } from "../diagram/library-source.js";
 import { libraryIconSvg } from "../diagram/open-diagram.js";
 import { DiagramPanel } from "../diagram/panel.js";
+import { log } from "../logger.js";
 import { randomNonce } from "../webview/nonce.js";
 import type { LibraryClassInfo } from "../webview/library-messages.js";
 import type {
@@ -32,6 +33,18 @@ type EnsureClient = () => Promise<OmcClient>;
 export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
   private view: vscode.WebviewView | undefined;
   private cached: { client: OmcClient; source: LibrarySource } | undefined;
+  /** Rendered icon SVG per class, or `undefined` for "this class has no icon".
+   *  Rendering one instantiates the class in OMC, so a miss is expensive and a
+   *  negative result is worth remembering. */
+  private iconCache = new Map<string, string | undefined>();
+  /** Renders not yet settled, so a burst of rows sharing a class renders once. */
+  private readonly iconInFlight = new Map<
+    string,
+    Promise<string | undefined>
+  >();
+  /** Bumped whenever the cache is dropped, so a render started against the old
+   *  library state can't write its result into the new one. */
+  private iconGeneration = 0;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -56,7 +69,16 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
   /** Tell the webview to re-fetch after a mutation (Load Library / Create Class
    *  / auto-load on activation). No-op when the view isn't resolved. */
   refresh(): void {
+    // A mutation may have changed what a class's icon looks like, or removed it.
+    this.dropIconCache();
     void this.post({ type: "reload" });
+  }
+
+  private dropIconCache(): void {
+    this.iconGeneration++;
+    const dropped = this.iconCache.size;
+    this.iconCache.clear();
+    log.debug("libraryIcon", `dropped ${dropped} cached icons`);
   }
 
   private handleMessage(
@@ -114,6 +136,7 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
     const client = await this.ensureClient();
     if (this.cached?.client !== client) {
       this.cached = { client, source: new LibrarySource(client) };
+      this.dropIconCache();
     }
     return this.cached.source;
   }
@@ -129,6 +152,7 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
       await this.post({ type: responseType, requestId, items }, webview);
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
+      log.warn("libraryView", `${responseType} failed: ${error}`);
       await this.post({ type: responseType, requestId, error }, webview);
     }
   }
@@ -139,8 +163,7 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
     className: string,
   ): Promise<void> {
     try {
-      const client = await this.ensureClient();
-      const svg = await libraryIconSvg(client, className);
+      const svg = await this.iconSvg(className);
       await this.post(
         svg === undefined
           ? { type: "libraryIconResult", requestId }
@@ -149,8 +172,46 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
       );
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
+      log.warn("libraryIcon", `render failed for ${className}: ${error}`);
       await this.post({ type: "libraryIconResult", requestId, error }, webview);
     }
+  }
+
+  /**
+   * Rendered icon for `className`, memoized. Concurrent requests for the same
+   * class share one render: rows scroll into view in bursts, and OMC serializes
+   * every call, so a duplicate render is a round-trip the whole channel waits
+   * behind.
+   */
+  private iconSvg(className: string): Promise<string | undefined> {
+    if (this.iconCache.has(className)) {
+      log.debug("libraryIcon", `cache hit ${className}`);
+      return Promise.resolve(this.iconCache.get(className));
+    }
+    const inFlight = this.iconInFlight.get(className);
+    if (inFlight) {
+      log.debug("libraryIcon", `joining in-flight render ${className}`);
+      return inFlight;
+    }
+    const started = Date.now();
+    const generation = this.iconGeneration;
+    const render = (async () => {
+      const client = await this.ensureClient();
+      const svg = await libraryIconSvg(client, className);
+      if (generation === this.iconGeneration) {
+        this.iconCache.set(className, svg);
+      }
+      const shape = svg === undefined ? "no icon" : `${svg.length} bytes`;
+      log.debug(
+        "libraryIcon",
+        `rendered ${className} in ${Date.now() - started}ms (${shape})`,
+      );
+      return svg;
+    })().finally(() => {
+      this.iconInFlight.delete(className);
+    });
+    this.iconInFlight.set(className, render);
+    return render;
   }
 
   private post(

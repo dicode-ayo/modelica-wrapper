@@ -22,7 +22,7 @@ describe("OmcTransport against a mute peer", () => {
     try {
       for (let i = 0; i < 4; i++) {
         await expect(transport.send("getVersion()", 25)).rejects.toThrow(
-          /timed out after 25ms/,
+          /timed out after 25ms: getVersion\(\)/,
         );
       }
     } finally {
