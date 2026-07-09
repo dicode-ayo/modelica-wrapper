@@ -36,6 +36,7 @@ import {
 
 import type { ExtensionToWebview, WebviewToExtension } from "./protocol.js";
 import { WebviewLibraryDataSource } from "./library-data-source.js";
+import { getVsCodeApi, type VsCodeApi } from "./vscode-api.js";
 
 // Injected by esbuild `define`. Captures the build's wall-clock time so we
 // can tell at a glance whether the iframe is running freshly-bundled JS.
@@ -44,28 +45,6 @@ declare const __WEBVIEW_BUILD_TIME__: string;
 console.log(
   `[webview boot] build=${__WEBVIEW_BUILD_TIME__} loaded=${new Date().toISOString()}`,
 );
-
-interface VsCodeApi {
-  postMessage(msg: WebviewToExtension): void;
-  getState(): unknown;
-  setState(state: unknown): void;
-}
-
-declare function acquireVsCodeApi(): VsCodeApi;
-
-/**
- * Lazy singleton — `acquireVsCodeApi()` can only be called once per
- * webview, so cache the handle in module scope. Read at first use
- * (rather than at module load) so test bundles that import this file
- * without a `acquireVsCodeApi` shim don't crash on parse.
- */
-let cachedApi: VsCodeApi | null = null;
-function getVsCodeApi(): VsCodeApi {
-  if (!cachedApi) {
-    cachedApi = acquireVsCodeApi();
-  }
-  return cachedApi;
-}
 
 @customElement("om-webview-root")
 class OmWebviewRoot extends LitElement {
@@ -105,7 +84,7 @@ class OmWebviewRoot extends LitElement {
    *  back to the right command flow. */
   private paramKind: string | null = null;
 
-  private vscode: VsCodeApi | null = null;
+  private vscode: VsCodeApi<WebviewToExtension> | null = null;
   /** Async bridge for the library browser. Constructed lazily on
    *  first connect because it captures `this.post` which is bound to
    *  the cached VSCode API handle. */
@@ -117,7 +96,7 @@ class OmWebviewRoot extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
-    this.vscode = getVsCodeApi();
+    this.vscode = getVsCodeApi<WebviewToExtension>();
     this.librarySource = new WebviewLibraryDataSource((msg) => this.post(msg));
     window.addEventListener("message", this.onHostMessage);
     document.addEventListener("focusin", this.onFocusChange);

@@ -1,11 +1,9 @@
 /**
- * Correlation integrity of the postMessage bridge. The sidebar view keeps ONE
- * `WebviewLibraryDataSource` for its lifetime and re-fetches on the same
- * instance across reloads; the earlier bug swapped in a fresh source per reload,
- * which restarted request ids so a response for an in-flight request landed on
- * the wrong instance and the tree hung on "Loading…". These pin that a reused
- * source still resolves its in-flight request, that instances mint distinct
- * ids, and that a foreign id is ignored rather than wrongly matched.
+ * Correlation integrity of the postMessage bridge. A source must resolve a
+ * request that resolves after it is reused across a reload, mint request ids
+ * distinct from any other instance, and ignore a foreign id rather than
+ * matching it against the wrong pending request. Together these guarantee a
+ * reload can't orphan an in-flight request and hang the tree on "Loading…".
  */
 
 import { describe, expect, it } from "vitest";

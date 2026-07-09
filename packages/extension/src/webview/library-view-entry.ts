@@ -29,22 +29,7 @@ import type {
   ExtensionToLibraryView,
   LibraryViewToExtension,
 } from "./library-view-protocol.js";
-
-interface VsCodeApi {
-  postMessage(msg: LibraryViewToExtension): void;
-  getState(): unknown;
-  setState(state: unknown): void;
-}
-
-declare function acquireVsCodeApi(): VsCodeApi;
-
-let cachedApi: VsCodeApi | null = null;
-function getVsCodeApi(): VsCodeApi {
-  if (!cachedApi) {
-    cachedApi = acquireVsCodeApi();
-  }
-  return cachedApi;
-}
+import { getVsCodeApi } from "./vscode-api.js";
 
 type Phase = "loading" | "empty" | "error" | "ready";
 
@@ -102,7 +87,7 @@ export class OmLibraryViewRoot extends LitElement {
    *  in-flight request, routing its response to the wrong instance. */
   @state() private reloadToken = 0;
 
-  private readonly vscode = getVsCodeApi();
+  private readonly vscode = getVsCodeApi<LibraryViewToExtension>();
   /** One persistent bridge for the view's lifetime — never swapped. Replacing
    *  it while a tree fetch is in flight would orphan that request's response
    *  and hang the row on "Loading…". */
@@ -123,7 +108,6 @@ export class OmLibraryViewRoot extends LitElement {
     window.addEventListener("keydown", this.onKeyDown);
     // The tree fetches its root once on mount and reports the outcome via
     // `om-library-root-loaded`; we don't issue a second probe fetch here.
-    this.vscode.postMessage({ type: "ready" });
   }
 
   override disconnectedCallback(): void {

@@ -35,10 +35,8 @@ export async function loadEntryFilesAndRefresh(
         log.warn("autoLoad", `loadFile failed: ${fileName}: ${errorString}`);
       }
     } catch (err) {
-      log.warn(
-        "autoLoad",
-        `loadFile threw for ${fileName}: ${(err as Error).message}`,
-      );
+      const message = err instanceof Error ? err.message : String(err);
+      log.warn("autoLoad", `loadFile threw for ${fileName}: ${message}`);
     }
   }
   if (loadedAny) {

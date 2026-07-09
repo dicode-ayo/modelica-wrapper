@@ -37,11 +37,7 @@ import type {
   TracePayload,
   WebviewToExtension,
 } from "./postprocessing-protocol.js";
-
-interface VsCodeApi {
-  postMessage(msg: WebviewToExtension): void;
-}
-declare function acquireVsCodeApi(): VsCodeApi;
+import { getVsCodeApi } from "./vscode-api.js";
 
 @customElement("om-result-view-root")
 export class OmResultViewRoot extends LitElement {
@@ -52,7 +48,7 @@ export class OmResultViewRoot extends LitElement {
     }
   `;
 
-  private readonly vscode = acquireVsCodeApi();
+  private readonly vscode = getVsCodeApi<WebviewToExtension>();
 
   // Defaults to the empty document (the same literal `<om-result-view-app>`
   // defaults to) so the themed app renders its own empty state during the

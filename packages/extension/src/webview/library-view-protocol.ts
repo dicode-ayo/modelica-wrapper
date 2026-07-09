@@ -1,46 +1,31 @@
 /**
  * Message protocol between the extension host (Node) and the library sidebar
- * webview view (`library-view-entry.ts`). All messages are JSON-serialisable.
+ * webview view (`library-view-entry.ts`). All messages are JSON-serializable.
  *
- * The library list / search / icon request+response messages are structurally
- * identical to the diagram webview's (see {@link ../diagram/library-source} and
- * {@link ./library-data-source}); the shared `WebviewLibraryDataSource` bridge
- * drives both. This view adds the sidebar-only affordances: opening a diagram
- * on select, the Load-Library empty-state action, the host-mediated placement
- * gesture, and a host-driven reload.
+ * The library list / search / icon request+response payloads are shared with
+ * the `WebviewLibraryDataSource` bridge — composed from its exported types so
+ * bridge and protocol can't drift. This view adds the sidebar-only affordances:
+ * opening a diagram on select, the Load-Library empty-state action, the
+ * host-mediated placement gesture, and a host-driven reload.
  */
 
-import type { LibraryClassInfo } from "./protocol.js";
+import type {
+  LibraryIconResponse,
+  LibraryItemsResponse,
+  LibraryRequestMessage,
+} from "./library-messages.js";
 
 export type ExtensionToLibraryView =
-  | {
-      type: "libraryChildren";
-      requestId: string;
-      items?: LibraryClassInfo[];
-      error?: string;
-    }
-  | {
-      type: "librarySearchResult";
-      requestId: string;
-      items?: LibraryClassInfo[];
-      error?: string;
-    }
-  | {
-      type: "libraryIconResult";
-      requestId: string;
-      svg?: string;
-      error?: string;
-    }
+  | ({ type: "libraryChildren" } & LibraryItemsResponse)
+  | ({ type: "librarySearchResult" } & LibraryItemsResponse)
+  | ({ type: "libraryIconResult" } & LibraryIconResponse)
   | {
       // Re-fetch after a mutation (Load Library / Create Class / auto-load).
       type: "reload";
     };
 
 export type LibraryViewToExtension =
-  | { type: "ready" }
-  | { type: "libraryListChildren"; requestId: string; parent: string | null }
-  | { type: "librarySearch"; requestId: string; query: string }
-  | { type: "libraryIcon"; requestId: string; className: string }
+  | LibraryRequestMessage
   | {
       // A class row was activated (click / Enter) — open its diagram.
       type: "openDiagram";

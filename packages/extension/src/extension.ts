@@ -197,9 +197,9 @@ async function autoLoadWorkspaceModels(
   try {
     const c = await ensureClient();
     // One refresh after all loads settle — not per file, which would pile
-    // concurrent OMC fetches onto the single ZeroMQ socket during startup
-    // (epic #260). The webview tree's own mount fetch is serialized with this
-    // one through the client, so they can't overlap into a busy-socket send.
+    // concurrent OMC fetches onto the single ZeroMQ socket during startup. The
+    // webview tree's own mount fetch is serialized with this one through the
+    // client, so they can't overlap into a busy-socket send.
     await loadEntryFilesAndRefresh(c, files, () => libraryTree.refresh());
   } catch (err) {
     log.warn("autoLoad", `OMC client unavailable: ${(err as Error).message}`);

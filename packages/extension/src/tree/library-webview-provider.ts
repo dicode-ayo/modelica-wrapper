@@ -19,6 +19,7 @@ import { LibraryBrowserSource } from "../diagram/library-source.js";
 import { libraryIconSvg } from "../diagram/open-diagram.js";
 import { DiagramPanel } from "../diagram/panel.js";
 import { randomNonce } from "../webview/nonce.js";
+import type { LibraryClassInfo } from "../webview/protocol.js";
 import type {
   ExtensionToLibraryView,
   LibraryViewToExtension,
@@ -65,8 +66,6 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
     message: LibraryViewToExtension,
   ): void {
     switch (message.type) {
-      case "ready":
-        return;
       case "libraryListChildren":
         void this.handleItemsRequest(
           webview,
@@ -125,9 +124,7 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
     webview: vscode.Webview,
     requestId: string,
     responseType: "libraryChildren" | "librarySearchResult",
-    fetch: (
-      source: LibraryBrowserSource,
-    ) => ReturnType<LibraryBrowserSource["listChildren"]>,
+    fetch: (source: LibraryBrowserSource) => Promise<LibraryClassInfo[]>,
   ): Promise<void> {
     try {
       const items = await fetch(await this.source());

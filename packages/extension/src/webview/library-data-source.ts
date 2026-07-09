@@ -18,27 +18,17 @@ import type {
   LibraryClassInfo,
 } from "@dicode/diagram-ui";
 
-/** The three request messages this bridge posts to the host. Both webview
- *  protocols include these members, so either entry's `postMessage` accepts
- *  a poster typed against this union. */
-export type LibraryRequestMessage =
-  | { type: "libraryListChildren"; requestId: string; parent: string | null }
-  | { type: "librarySearch"; requestId: string; query: string }
-  | { type: "libraryIcon"; requestId: string; className: string };
+import type {
+  LibraryIconResponse,
+  LibraryItemsResponse,
+  LibraryRequestMessage,
+} from "./library-messages.js";
 
-/** Response payload shape for `libraryChildren` / `librarySearchResult`. */
-export interface LibraryItemsResponse {
-  requestId: string;
-  items?: LibraryClassInfo[];
-  error?: string;
-}
-
-/** Response payload shape for `libraryIconResult`. */
-export interface LibraryIconResponse {
-  requestId: string;
-  svg?: string;
-  error?: string;
-}
+export type {
+  LibraryIconResponse,
+  LibraryItemsResponse,
+  LibraryRequestMessage,
+};
 
 /** Monotonic across instances so request ids can't collide if two sources ever
  *  coexist (a response then can't cross-match another instance's pending map). */
