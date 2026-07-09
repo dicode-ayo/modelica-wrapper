@@ -1,4 +1,9 @@
-import { noopLogger, type Logger } from "@dicode/modelica-lang-core";
+import {
+  enclosingScope,
+  leafName,
+  noopLogger,
+  type Logger,
+} from "@dicode/modelica-lang-core";
 
 import {
   builtInTypeCandidates,
@@ -64,9 +69,7 @@ function enclosingScopes(owningClass: string): string[] {
   let scope = owningClass;
   while (scope.length > 0) {
     scopes.push(scope);
-    const lastDot = scope.lastIndexOf(".");
-    if (lastDot === -1) break;
-    scope = scope.slice(0, lastDot);
+    scope = enclosingScope(scope);
   }
   return scopes;
 }
@@ -124,7 +127,7 @@ async function classNameCandidates(
         // is not in scope, so insert the FQN: inserting the bare name would
         // leave an unresolvable reference. (`getClassNames` candidates above are
         // in-scope simple names, so their default range/filter is correct.)
-        const lastSegment = name.slice(name.lastIndexOf(".") + 1);
+        const lastSegment = leafName(name);
         out.push({
           label: name,
           kind: CompletionCandidateKind.Class,

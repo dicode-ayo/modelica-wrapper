@@ -6,4 +6,5 @@
 
 export * from "./cursor.js";
 export * from "./resolve.js";
+export * from "./qualified-name.js";
 export { noopLogger, type Logger } from "./logger.js";

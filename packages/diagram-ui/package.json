@@ -40,6 +40,7 @@
   "dependencies": {
     "@awesome.me/webawesome": "^3.7.0",
     "@dicode/diagram-svg": "workspace:*",
+    "@dicode/modelica-lang-core": "workspace:*",
     "@dicode/omc-client": "workspace:*",
     "@dicode/ui-common": "workspace:*",
     "@headless-tree/core": "^1.7.0",

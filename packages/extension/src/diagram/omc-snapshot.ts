@@ -14,6 +14,8 @@
  * class in a shape the diff replay can't describe.
  */
 
+import { enclosingScope } from "@dicode/modelica-lang-core";
+
 /**
  * The slice of `OmcClient` this module depends on. Typing against a
  * structural surface (rather than the full class) keeps the primitive
@@ -54,15 +56,6 @@ export interface OmcSnapshot {
    * scope so the restore replaces the original package member.
    */
   contents: string;
-}
-
-/**
- * Enclosing scope of a fully-qualified class name, or `""` for a top-level
- * class. `Pkg.Sub.Foo` → `Pkg.Sub`; `Foo` → `""`.
- */
-function enclosingScope(className: string): string {
-  const lastDot = className.lastIndexOf(".");
-  return lastDot < 0 ? "" : className.slice(0, lastDot);
 }
 
 /**

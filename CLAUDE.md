@@ -85,6 +85,10 @@ export interface ResolveClient {
   fourth `try { await fsp.access(p); ... }`; use this.
 - `packages/extension/src/language/position.ts` — `omcToVscodePosition`,
   `ZeroBasedPosition`, `ZeroBasedRange`. The single 1-based-to-0-based shift.
+- `packages/lang-core/src/qualified-name.ts` — `leafName`, `enclosingScope`.
+  Splitting a dotted class name at the trailing segment, skipping over a
+  quoted identifier (Q-IDENT) that itself contains a `.`. Don't roll a fourth
+  `name.slice(name.lastIndexOf(".") + 1)`; use this.
 
 ### OMC coordinate conventions diverge per API
 
