@@ -59,6 +59,7 @@ import {
   LIBRARY_TREE_ROOT_ID,
   createLibraryDataLoader,
   isExpandable,
+  isOpenableRestriction,
   matchLabel,
   type LibraryTreeNode,
   type LibraryRootLoad,
@@ -306,7 +307,10 @@ export class OmLibraryTree extends LitElement {
       dataLoader: createLibraryDataLoader(source, this.nodeCache, (result) =>
         this.emitRootLoaded(result),
       ),
-      onPrimaryAction: (item) => this.fireSelect(item.getItemData().className),
+      onPrimaryAction: (item) => {
+        const node = item.getItemData();
+        this.fireSelect(node.className, node.restriction);
+      },
       canDrag: (items) =>
         items.every((item) => item.getItemData().className !== ""),
       createForeignDragObject: (items) => ({
@@ -376,9 +380,9 @@ export class OmLibraryTree extends LitElement {
         class="row"
         data-selected=${item.isSelected() ? "true" : "false"}
         @pointerdown=${(e: PointerEvent) =>
-          this.onRowPointerDown(e, node.className)}
+          this.onRowPointerDown(e, node.className, node.restriction)}
         @click=${() => this.onItemClick(item)}
-        @dblclick=${() => this.fireSelect(node.className)}
+        @dblclick=${() => this.fireSelect(node.className, node.restriction)}
         ${bindItemProps(props)}
       >
         <span
@@ -477,9 +481,11 @@ export class OmLibraryTree extends LitElement {
         data-selected=${this.selectedClassName === q ? "true" : "false"}
         draggable=${this.placementDrag ? "false" : "true"}
         @click=${() => this.onSearchRowClick(q)}
-        @dblclick=${() => this.fireSelect(q)}
-        @keydown=${(e: KeyboardEvent) => this.onSearchRowKeydown(e, q)}
-        @pointerdown=${(e: PointerEvent) => this.onRowPointerDown(e, q)}
+        @dblclick=${() => this.fireSelect(q, row.restriction)}
+        @keydown=${(e: KeyboardEvent) =>
+          this.onSearchRowKeydown(e, q, row.restriction)}
+        @pointerdown=${(e: PointerEvent) =>
+          this.onRowPointerDown(e, q, row.restriction)}
         @dragstart=${(e: DragEvent) => this.onSearchRowDragStart(e, q)}
       >
         <span
@@ -561,10 +567,14 @@ export class OmLibraryTree extends LitElement {
 
   // Search rows aren't Headless Tree items, so they don't get the tree's
   // keyboard handling; Enter opens (like a double-click), Space selects.
-  private onSearchRowKeydown(event: KeyboardEvent, className: string): void {
+  private onSearchRowKeydown(
+    event: KeyboardEvent,
+    className: string,
+    restriction: LibraryClassRestriction,
+  ): void {
     if (event.key === "Enter") {
       event.preventDefault();
-      this.fireSelect(className);
+      this.fireSelect(className, restriction);
     } else if (event.key === " ") {
       event.preventDefault();
       this.selectedClassName = className;
@@ -630,8 +640,14 @@ export class OmLibraryTree extends LitElement {
     }
   }
 
-  private fireSelect(className: string): void {
-    if (!className) return;
+  // Only classes with a meaningful diagram open; packages / connectors / the
+  // synthetic filtered-tree ancestors don't emit select (opening a package as a
+  // diagram wedges the view).
+  private fireSelect(
+    className: string,
+    restriction: LibraryClassRestriction,
+  ): void {
+    if (!className || !isOpenableRestriction(restriction)) return;
     this.dispatchEvent(
       new CustomEvent<LibraryEvents["om-library-select"]>("om-library-select", {
         detail: { className },
@@ -680,8 +696,14 @@ export class OmLibraryTree extends LitElement {
   // placement. `preventDefault` suppresses text selection and any native drag
   // image; the subsequent click still fires, so a press-release-in-place opens
   // the class via `om-library-select`.
-  private onRowPointerDown(event: PointerEvent, className: string): void {
+  private onRowPointerDown(
+    event: PointerEvent,
+    className: string,
+    restriction: LibraryClassRestriction,
+  ): void {
     if (!this.placementDrag || event.button !== 0 || className === "") return;
+    // A package / connector isn't a placeable component; don't arm placement.
+    if (!isOpenableRestriction(restriction)) return;
     event.preventDefault();
     this.dispatchEvent(
       new CustomEvent<LibraryPlacementStartDetail>(

@@ -6,6 +6,7 @@ import { RangeChangedEvent } from "@lit-labs/virtualizer/events.js";
 import type {
   LibraryBrowserDataSource,
   LibraryClassInfo,
+  LibraryClassRestriction,
   LibrarySelectDetail,
 } from "../library-browser/library-browser.component.js";
 import "./library-tree.component.js";
@@ -195,7 +196,7 @@ describe("<om-library-tree>", () => {
     if (!leaf) throw new Error("no match leaf");
     const priv = el as unknown as {
       onSearchRowClick(c: string): void;
-      fireSelect(c: string): void;
+      fireSelect(c: string, r: SearchTreeRow["restriction"]): void;
       selectedClassName: string | null;
       searchLoading: boolean;
     };
@@ -205,7 +206,7 @@ describe("<om-library-tree>", () => {
     priv.onSearchRowClick(leaf.qualified); // single click selects
     expect(priv.selectedClassName).toBe(leaf.qualified);
     expect(opened).toEqual([]);
-    priv.fireSelect(leaf.qualified); // double click / Enter opens
+    priv.fireSelect(leaf.qualified, leaf.restriction); // double click / Enter opens
     expect(opened).toEqual([leaf.qualified]);
 
     // Clearing the query returns to a working, interactive lazy tree.
@@ -333,20 +334,30 @@ describe("<om-library-tree>", () => {
     return row;
   }
 
-  it("opens on keyboard activation (primaryAction)", async () => {
+  it("opens an openable class on keyboard activation (primaryAction)", async () => {
     const { source } = makeSource();
     const el = await mount(source);
     await waitFor(() => treeOf(el).getItems().length >= 2);
     const selected = onSelect(el);
+    treeOf(el).getItemInstance("Sine").primaryAction();
+    expect(selected).toEqual(["Sine"]);
+  });
+
+  it("does not open a non-openable class on activation (packages, records)", async () => {
+    const { source } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+    const selected = onSelect(el);
+    treeOf(el).getItemInstance("Modelica").primaryAction();
     treeOf(el).getItemInstance("Complex").primaryAction();
-    expect(selected).toEqual(["Complex"]);
+    expect(selected).toEqual([]);
   });
 
   it("single click selects a row, it does not open it", async () => {
     const { source } = makeSource();
     const el = await mount(source);
     await waitFor(() => treeOf(el).getItems().length >= 2);
-    const item = treeOf(el).getItemInstance("Complex");
+    const item = treeOf(el).getItemInstance("Sine");
     const selected = onSelect(el);
 
     renderRowEl(el, item).dispatchEvent(
@@ -357,18 +368,32 @@ describe("<om-library-tree>", () => {
     expect(selected).toEqual([]);
   });
 
-  it("double click opens the row", async () => {
+  it("double click opens an openable row", async () => {
     const { source } = makeSource();
     const el = await mount(source);
     await waitFor(() => treeOf(el).getItems().length >= 2);
-    const item = treeOf(el).getItemInstance("Complex");
+    const item = treeOf(el).getItemInstance("Sine");
     const selected = onSelect(el);
 
     renderRowEl(el, item).dispatchEvent(
       new MouseEvent("dblclick", { bubbles: true }),
     );
 
-    expect(selected).toEqual(["Complex"]);
+    expect(selected).toEqual(["Sine"]);
+  });
+
+  it("double click does not open a package row", async () => {
+    const { source } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+    const item = treeOf(el).getItemInstance("Modelica");
+    const selected = onSelect(el);
+
+    renderRowEl(el, item).dispatchEvent(
+      new MouseEvent("dblclick", { bubbles: true }),
+    );
+
+    expect(selected).toEqual([]);
   });
 
   it("chevron click toggles expansion without selecting", async () => {
@@ -404,7 +429,7 @@ describe("<om-library-tree>", () => {
     expect(selected).toEqual([]);
   });
 
-  it("opening a folder row does not toggle its expansion", async () => {
+  it("double-clicking a package neither opens nor toggles its expansion", async () => {
     const { source } = makeSource();
     const el = await mount(source);
     await waitFor(() => treeOf(el).getItems().length >= 2);
@@ -416,7 +441,7 @@ describe("<om-library-tree>", () => {
       new MouseEvent("dblclick", { bubbles: true }),
     );
 
-    expect(selected).toEqual(["Modelica"]);
+    expect(selected).toEqual([]);
     expect(item.isExpanded()).toBe(false);
   });
 
@@ -481,33 +506,46 @@ describe("<om-library-tree>", () => {
     expect(state.searchError).toBeNull();
   });
 
-  it("opens a search row on Enter and selects it on Space", async () => {
+  it("search row: Enter opens an openable class, Space selects, and a package never opens", async () => {
     const { source } = makeSource();
     const el = await mount(source);
     await waitFor(() => treeOf(el).getItems().length >= 2);
 
     const opened = onSelect(el);
     const priv = el as unknown as {
-      onSearchRowKeydown(e: KeyboardEvent, className: string): void;
+      onSearchRowKeydown(
+        e: KeyboardEvent,
+        className: string,
+        restriction: LibraryClassRestriction,
+      ): void;
       selectedClassName: string | null;
     };
     // `<lit-virtualizer>` doesn't render search rows under happy-dom; drive the
-    // keyboard handler directly to pin the open (Enter) vs. select (Space) split.
+    // keyboard handler directly to pin the open (Enter) vs. select (Space) split
+    // and the package gate.
     priv.onSearchRowKeydown(
       new KeyboardEvent("keydown", { key: " " }),
       "Modelica.Blocks",
+      "package",
     );
     expect(priv.selectedClassName).toBe("Modelica.Blocks");
     expect(opened).toEqual([]);
 
+    // Enter on a package must not open — opening a package as a diagram wedges
+    // the view.
     priv.onSearchRowKeydown(
       new KeyboardEvent("keydown", { key: "Enter" }),
       "Modelica.Blocks",
+      "package",
     );
+    expect(opened).toEqual([]);
+
+    // Enter on an openable class opens it.
     priv.onSearchRowKeydown(
-      new KeyboardEvent("keydown", { key: "a" }),
-      "Modelica.Blocks",
+      new KeyboardEvent("keydown", { key: "Enter" }),
+      "Modelica.Blocks.Math.Gain",
+      "block",
     );
-    expect(opened).toEqual(["Modelica.Blocks"]);
+    expect(opened).toEqual(["Modelica.Blocks.Math.Gain"]);
   });
 });

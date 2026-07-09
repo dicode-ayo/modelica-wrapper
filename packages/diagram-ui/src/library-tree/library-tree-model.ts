@@ -45,6 +45,17 @@ export function isExpandable(r: LibraryClassRestriction): boolean {
   return r === "package" || r === "unknown";
 }
 
+/**
+ * Restrictions that have a diagram worth opening / instantiating — the same set
+ * the native tree opened. Packages, connectors, records, functions, etc. (and
+ * synthetic filtered-tree ancestors) are excluded: opening a package as a
+ * diagram wedges the view, and placing one is meaningless. Gates select, open,
+ * and placement alike.
+ */
+export function isOpenableRestriction(r: LibraryClassRestriction): boolean {
+  return r === "model" || r === "block" || r === "class";
+}
+
 /** Trailing dotted segment of `qualified`, falling back to the whole name. */
 export function leafLabel(qualified: string): string {
   return qualified.slice(qualified.lastIndexOf(".") + 1) || qualified;

@@ -13,6 +13,7 @@ import type {
   LibraryPlacementStartDetail,
   OmLibraryTree,
 } from "./library-tree.component.js";
+import type { LibraryClassRestriction } from "../library-browser/library-browser.component.js";
 
 const teardowns: Array<() => void> = [];
 afterEach(() => {
@@ -27,7 +28,11 @@ function mount(placementDrag: boolean): OmLibraryTree {
   return el;
 }
 
-type RowHandler = (event: PointerEvent, className: string) => void;
+type RowHandler = (
+  event: PointerEvent,
+  className: string,
+  restriction: LibraryClassRestriction,
+) => void;
 function rowPointerDown(el: OmLibraryTree): RowHandler {
   return (
     el as unknown as { onRowPointerDown: RowHandler }
@@ -49,7 +54,7 @@ describe("<om-library-tree> placement-drag", () => {
       detail((e as CustomEvent<LibraryPlacementStartDetail>).detail),
     );
     const event = pressEvent();
-    rowPointerDown(el)(event, "Modelica.Blocks.Math.Gain");
+    rowPointerDown(el)(event, "Modelica.Blocks.Math.Gain", "block");
 
     expect(event.preventDefault).toHaveBeenCalled();
     expect(detail).toHaveBeenCalledWith({
@@ -62,19 +67,21 @@ describe("<om-library-tree> placement-drag", () => {
     const fired = vi.fn();
     el.addEventListener("om-library-placement-start", fired);
     const event = pressEvent();
-    rowPointerDown(el)(event, "A");
+    rowPointerDown(el)(event, "A", "block");
 
     expect(event.preventDefault).not.toHaveBeenCalled();
     expect(fired).not.toHaveBeenCalled();
   });
 
-  it("ignores non-primary buttons and empty class names", () => {
+  it("ignores non-primary buttons, empty class names, and non-placeable rows", () => {
     const el = mount(true);
     const fired = vi.fn();
     el.addEventListener("om-library-placement-start", fired);
 
-    rowPointerDown(el)(pressEvent(2), "A");
-    rowPointerDown(el)(pressEvent(0), "");
+    rowPointerDown(el)(pressEvent(2), "A", "block");
+    rowPointerDown(el)(pressEvent(0), "", "block");
+    // A package can't be instantiated — a primary press must not arm placement.
+    rowPointerDown(el)(pressEvent(0), "Modelica.Blocks", "package");
 
     expect(fired).not.toHaveBeenCalled();
   });
