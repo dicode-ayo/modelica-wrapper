@@ -72,6 +72,9 @@ import { buildSearchTree, type SearchTreeRow } from "./search-tree.js";
 export { LIBRARY_TREE_DRAG_FORMAT } from "./library-drag.js";
 
 const SEARCH_DEBOUNCE_MS = 200;
+/** A single character matches thousands of classes in the standard library, and
+ *  each hit costs a serialized OMC round-trip to resolve its restriction. */
+const SEARCH_MIN_CHARS = 2;
 
 @customElement("om-library-tree")
 export class OmLibraryTree extends LitElement {
@@ -431,6 +434,11 @@ export class OmLibraryTree extends LitElement {
   }
 
   private renderSearch(): TemplateResult {
+    if (this.query.trim().length < SEARCH_MIN_CHARS) {
+      return html`<div class="empty">
+        Type at least ${SEARCH_MIN_CHARS} characters to search.
+      </div>`;
+    }
     if (this.searchLoading && this.searchResults === null) {
       return html`<div class="loading">Searching…</div>`;
     }
@@ -603,9 +611,10 @@ export class OmLibraryTree extends LitElement {
       clearTimeout(this.searchTimer);
       this.searchTimer = null;
     }
-    if (value.trim().length === 0) {
-      // Bump the sequence so an in-flight runSearch can't write its result
-      // back after the query was cleared.
+    const query = value.trim();
+    if (query.length < SEARCH_MIN_CHARS) {
+      // Bump the sequence so an in-flight runSearch can't write its result back
+      // after the query stopped being searchable.
       this.searchSeq++;
       this.abortSearch();
       this.searchResults = null;
@@ -616,7 +625,6 @@ export class OmLibraryTree extends LitElement {
       return;
     }
     this.searchLoading = true;
-    const query = value.trim();
     this.searchTimer = setTimeout(() => {
       void this.runSearch(query);
     }, SEARCH_DEBOUNCE_MS);
