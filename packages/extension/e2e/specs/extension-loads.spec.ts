@@ -6,9 +6,11 @@
  *
  *   - A. The Monaco workbench mounts.
  *   - B. The Modelica activity-bar item is registered (`contributes.viewsContainers`).
- *   - C. Opening it reveals the Libraries view with its `viewsWelcome`
- *        empty-state ("No Modelica libraries are loaded yet."), which proves
- *        both the views contribution and the extension is reachable on demand.
+ *   - C. Opening it reveals the Libraries view, whose webview renders — which
+ *        proves the views contribution and that the extension activates and
+ *        resolves the view provider on demand. The empty-state text
+ *        ("No Modelica libraries are loaded yet.") lives inside that webview
+ *        iframe, so this asserts the iframe rather than reaching into it.
  *
  * Feature PRs (`feat/lang-*`) layer their own `*.spec.ts` files alongside this
  * one and assert their own behavior (highlighting, outline, hover, completion,
@@ -19,7 +21,7 @@ import { expect, test } from "../test-base.js";
 import { waitForWorkbench } from "../helpers.js";
 
 test.describe("Extension loads (baseline, no language features)", () => {
-  test("workbench mounts, Modelica activity-bar item appears, Libraries welcome shows", async ({
+  test("workbench mounts, Modelica activity-bar item appears, Libraries webview renders", async ({
     page,
     codeServer,
   }) => {
@@ -38,13 +40,15 @@ test.describe("Extension loads (baseline, no language features)", () => {
       .first();
     await expect(modelicaActivity).toBeVisible({ timeout: 30_000 });
 
-    // ----- C. The Libraries view opens with its viewsWelcome empty-state -----
+    // ----- C. The Libraries view opens and its webview renders -----
     // Clicking the activity-bar item reveals the sidebar containing the
-    // `modelica.libraries` view. Its `viewsWelcome` text is the empty-state
-    // shown when no library is loaded — always the case at startup.
+    // `modelica.libraries` view. It's a webview view (a WebviewViewProvider),
+    // so its content — including the empty-state — lives inside a webview
+    // iframe; the iframe appearing proves the provider resolved (the extension
+    // activated on the `onView` event).
     await modelicaActivity.click();
-    await expect(
-      page.getByText(/No Modelica libraries are loaded yet/i),
-    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("iframe.webview").first()).toBeVisible({
+      timeout: 30_000,
+    });
   });
 });
