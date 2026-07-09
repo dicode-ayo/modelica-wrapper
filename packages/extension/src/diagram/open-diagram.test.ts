@@ -87,17 +87,8 @@ describe("fetchIconLayout: when the annotation path is trusted", () => {
     expect(layout.iconLayers).toHaveLength(0);
   });
 
-  it("falls back to getModelInstance when the annotation call answers with nothing", async () => {
-    const { client, calls } = makeClient({
-      annotation: async () =>
-        ({ instance: null }) as unknown as { instance: ModelInstance },
-      full: async () => ({ instance: WITH_ICON }),
-    });
-    const layout = await fetchIconLayout(client, "Pkg.Empty");
-    expect(calls).toEqual(["getModelInstanceAnnotation", "getModelInstance"]);
-    expect(layout.iconLayers.length).toBeGreaterThan(0);
-  });
-
+  // An empty OMC reply throws in `JSON.parse` and a malformed one fails the
+  // schema, so throwing is the only way the cheap call fails to answer.
   it("falls back to getModelInstance when the annotation call throws", async () => {
     const { client, calls } = makeClient({
       annotation: async () => {
@@ -120,7 +111,9 @@ describe("fetchIconLayout: when the annotation path is trusted", () => {
     const { client, calls } = makeClient({
       annotation: async () => ({ instance: inherited }),
     });
-    await fetchIconLayout(client, "Pkg.Derived");
+    const layout = await fetchIconLayout(client, "Pkg.Derived");
     expect(calls).toEqual(["getModelInstanceAnnotation"]);
+    // Deleting the instantiating fallback must not cost us inherited icons.
+    expect(layout.iconLayers.length).toBeGreaterThan(0);
   });
 });

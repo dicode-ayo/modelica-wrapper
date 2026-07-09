@@ -1192,16 +1192,11 @@ export async function fetchIconLayout(
       },
     );
     // A class that simply has no Icon is not a failed call. Instantiating it to
-    // look again costs seconds on deep hierarchies (and never returns for the
-    // builtins), all to rediscover that there is nothing to paint. Only an
-    // empty reply means the cheap path failed to answer.
-    instance = annotationInstance ?? undefined;
-    if (instance === undefined) {
-      log.warn(
-        "fetchIconLayout",
-        `getModelInstanceAnnotation returned nothing for ${className}; falling back to full getModelInstance`,
-      );
-    }
+    // look again costs seconds on deep hierarchies, and never returns for the
+    // builtins, all to rediscover there is nothing to paint. The cheap call can
+    // only fail to answer by throwing — an empty reply fails `JSON.parse`, a
+    // malformed one fails the schema — so the fallback belongs in the catch.
+    instance = annotationInstance;
   } catch (err) {
     log.warn(
       "fetchIconLayout",
