@@ -230,27 +230,13 @@ class Parser {
     while (this.pos < this.src.length) {
       const c = this.src[this.pos]!;
       if (c === "'") {
-        this.skipQuotedIdent();
+        // Advances past the segment; the raw text comes from the outer slice.
+        this.readQuoted("'");
       } else if (isIdentPart(c) || c === ".") {
         this.pos++;
       } else break;
     }
     return this.src.slice(start, this.pos);
-  }
-
-  /** Advance past a `'…'` segment, leaving its raw text in the source slice. */
-  private skipQuotedIdent(): void {
-    this.pos++;
-    while (this.pos < this.src.length) {
-      const c = this.src[this.pos]!;
-      if (c === "\\" && this.pos + 1 < this.src.length) {
-        this.pos += 2;
-        continue;
-      }
-      this.pos++;
-      if (c === "'") return;
-    }
-    throw new Error("unterminated quoted identifier");
   }
 
   /** Returns true if `-` at pos is the null sentinel (followed by `,` `}` `)`). */

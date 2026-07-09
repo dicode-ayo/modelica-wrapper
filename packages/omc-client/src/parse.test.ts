@@ -324,6 +324,22 @@ describe("parse: quoted identifiers (Q-IDENT, Modelica spec §2.3.1)", () => {
     expect(parse(`'a b'.c`)).toEqual({ kind: "ident", name: `'a b'.c` });
   });
 
+  // A dot inside a quoted segment is part of the name, not a separator. This is
+  // the invariant a scanner that stopped at `.` would break.
+  it("keeps a dot inside a quoted segment from splitting the name", () => {
+    expect(parse(`Complex.'a.b'.negate`)).toEqual({
+      kind: "ident",
+      name: `Complex.'a.b'.negate`,
+    });
+  });
+
+  it("keeps a name that ends in a quoted segment", () => {
+    expect(parse(`Complex.'-'`)).toEqual({
+      kind: "ident",
+      name: `Complex.'-'`,
+    });
+  });
+
   it("keeps an escaped quote inside a dotted segment", () => {
     // Source text is Pkg.'it\'s'.f — the escape must not close the segment.
     expect(parse(`Pkg.'it\\'s'.f`)).toEqual({
