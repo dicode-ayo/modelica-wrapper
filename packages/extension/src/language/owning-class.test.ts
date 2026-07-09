@@ -83,6 +83,17 @@ describe("resolveOwningClass — parseFile confirmation", () => {
     expect(result?.qualifiedName).toBe("A.Foo");
   });
 
+  it("does not split inside a quoted identifier containing a dot", async () => {
+    // `'a.b'` is a single Q-IDENT segment (Modelica spec §2.3.1); the leaf
+    // is the whole quoted segment, not `b'`.
+    const client = clientFor({ "/lib/A/Foo.mo": ["A.'a.b'"] });
+    const result = await resolveOwningClass("/lib/A/Foo.mo", {
+      probe: probeFor([`/lib/A/${PACKAGE_FILE}`]),
+      client,
+    });
+    expect(result?.qualifiedName).toBe("A.'a.b'");
+  });
+
   it("falls back to the filename candidate when parseFile is ambiguous", async () => {
     const client = clientFor({ "/work/Foo.mo": ["Foo", "Bar"] });
     const result = await resolveOwningClass("/work/Foo.mo", {

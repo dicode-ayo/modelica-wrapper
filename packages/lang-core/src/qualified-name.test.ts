@@ -25,6 +25,10 @@ describe("leafName", () => {
   it("skips an escaped quote inside the quoted segment", () => {
     expect(leafName(String.raw`Pkg.'a\'.b'.Leaf`)).toBe("Leaf");
   });
+
+  it("falls back to the whole name for a trailing dot", () => {
+    expect(leafName("Pkg.")).toBe("Pkg.");
+  });
 });
 
 describe("enclosingScope", () => {

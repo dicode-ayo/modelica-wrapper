@@ -27,6 +27,8 @@
 
 import * as path from "node:path";
 
+import { leafName } from "@dicode/modelica-lang-core";
+
 import { pathExists } from "../fs-util.js";
 
 export interface OwningClassClient {
@@ -147,15 +149,9 @@ async function confirmLeaf(
     // `parseFile` may return a qualified name (within-clause); the prefix is
     // already supplied by the package walk so take the last segment only.
     // `noUncheckedIndexedAccess` types `only` as `string | undefined`.
-    return only !== undefined ? lastSegment(only) : candidate;
+    return only !== undefined ? leafName(only) : candidate;
   }
   return candidate;
-}
-
-/** Last dotted segment (`A.B.C` → `C`). */
-function lastSegment(name: string): string {
-  const dot = name.lastIndexOf(".");
-  return dot < 0 ? name : name.slice(dot + 1);
 }
 
 function stripMoExtension(filename: string): string {

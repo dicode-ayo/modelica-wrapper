@@ -3,9 +3,10 @@
  * scope. A segment may be a quoted identifier (Q-IDENT, Modelica spec
  * §2.3.1) that itself contains a `.` — e.g. `Complex.'-'.negate` or
  * `Pkg.'a.b'` — so a plain `lastIndexOf(".")` splits inside the quotes.
- * These scan backwards for the separating dot while skipping over any
- * `'...'` run (respecting `\'`/`\\` escapes), mirroring the forward scan
- * `readDottedName` already does in `omc-client`'s parser.
+ * These scan forward for the separating dot, skipping over any `'...'` run
+ * (respecting `\'`/`\\` escapes) so a dot inside it is never a candidate —
+ * the same escape handling `readDottedName` already does in `omc-client`'s
+ * parser.
  */
 
 /**
@@ -41,7 +42,10 @@ export function lastUnquotedDotIndex(name: string): number {
 /** Trailing dotted segment of `qualified`, falling back to the whole name. */
 export function leafName(qualified: string): string {
   const dot = lastUnquotedDotIndex(qualified);
-  return dot === -1 ? qualified : qualified.slice(dot + 1);
+  const leaf = dot === -1 ? qualified : qualified.slice(dot + 1);
+  // A trailing dot (e.g. a malformed "Pkg.") slices to "" — fall back to the
+  // whole name rather than surface an empty label.
+  return leaf || qualified;
 }
 
 /**
