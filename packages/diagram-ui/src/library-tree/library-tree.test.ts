@@ -129,6 +129,34 @@ describe("<om-library-tree>", () => {
     expect(listChildren).toHaveBeenCalledWith("Modelica");
   });
 
+  it("does not search on a single character", async () => {
+    const { source, searchAll } = makeSource();
+    const el = await mount(source);
+
+    const input = el.shadowRoot?.querySelector<HTMLInputElement>(".search");
+    if (!input) throw new Error("search input missing");
+    input.value = "g";
+    input.dispatchEvent(new Event("input"));
+    await new Promise((r) => setTimeout(r, 300));
+    await el.updateComplete;
+
+    // One character matches thousands of classes, each a serialized OMC call.
+    expect(searchAll).not.toHaveBeenCalled();
+  });
+
+  it("searches once the query reaches the minimum length", async () => {
+    const { source, searchAll } = makeSource();
+    const el = await mount(source);
+
+    const input = el.shadowRoot?.querySelector<HTMLInputElement>(".search");
+    if (!input) throw new Error("search input missing");
+    input.value = "ga";
+    input.dispatchEvent(new Event("input"));
+    await waitFor(() => searchAll.mock.calls.length > 0);
+
+    expect(searchAll).toHaveBeenCalledWith("ga", expect.any(AbortSignal));
+  });
+
   it("aborts the in-flight search when the query is cleared", async () => {
     const { source, searchAll } = makeSource();
     let captured: AbortSignal | undefined;
