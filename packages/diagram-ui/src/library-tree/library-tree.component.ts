@@ -321,7 +321,7 @@ export class OmLibraryTree extends LitElement {
       canDrag: (items) =>
         items.every((item) => {
           const node = item.getItemData();
-          return isPlaceable(node.className, node.restriction);
+          return isInstantiableClass(node.className, node.restriction);
         }),
       createForeignDragObject: (items) => ({
         format: LIBRARY_TREE_DRAG_FORMAT,
@@ -387,7 +387,8 @@ export class OmLibraryTree extends LitElement {
     // Headless Tree marks every row `draggable` regardless of `canDrag`, which
     // leaves a grab cursor on rows the canvas would refuse.
     const stripDrag =
-      this.placementDrag || !isPlaceable(node.className, node.restriction);
+      this.placementDrag ||
+      !isInstantiableClass(node.className, node.restriction);
     const props = rowItemProps(item.getProps(), stripDrag);
     return html`
       <div
@@ -498,7 +499,8 @@ export class OmLibraryTree extends LitElement {
         role="option"
         tabindex="0"
         data-selected=${this.selectedClassName === q ? "true" : "false"}
-        draggable=${!this.placementDrag && isPlaceable(q, row.restriction)
+        draggable=${!this.placementDrag &&
+        isInstantiableClass(q, row.restriction)
           ? "true"
           : "false"}
         @click=${() => this.onSearchRowClick(q)}
@@ -611,7 +613,7 @@ export class OmLibraryTree extends LitElement {
     restriction: LibraryClassRestriction,
   ): void {
     if (!event.dataTransfer) return;
-    if (!isPlaceable(className, restriction)) {
+    if (!isInstantiableClass(className, restriction)) {
       event.preventDefault();
       return;
     }
@@ -690,7 +692,7 @@ export class OmLibraryTree extends LitElement {
     className: string,
     restriction: LibraryClassRestriction,
   ): void {
-    if (!className || !isOpenableRestriction(restriction)) return;
+    if (!isInstantiableClass(className, restriction)) return;
     this.dispatchEvent(
       new CustomEvent<LibraryEvents["om-library-select"]>("om-library-select", {
         detail: { className },
@@ -745,7 +747,7 @@ export class OmLibraryTree extends LitElement {
     restriction: LibraryClassRestriction,
   ): void {
     if (!this.placementDrag || event.button !== 0) return;
-    if (!isPlaceable(className, restriction)) return;
+    if (!isInstantiableClass(className, restriction)) return;
     event.preventDefault();
     this.dispatchEvent(
       new CustomEvent<LibraryPlacementStartDetail>(
@@ -771,12 +773,11 @@ export interface LibraryPlacementStartDetail {
 export type LibraryRootLoadedDetail = LibraryRootLoad;
 
 /**
- * A row can be dragged onto a canvas only if the host could instantiate it as a
- * component. Packages, functions, and the synthetic ancestor rows of a filtered
- * search have no component form; dropping one asks OMC to add a class it cannot
- * add. Same gate as select and host-mediated placement.
+ * A concrete, named class. The synthetic ancestor rows of a filtered search
+ * carry no class name, and `addComponent` does not validate what it is handed —
+ * OMC will write a package in as a component if asked.
  */
-function isPlaceable(
+function isInstantiableClass(
   className: string,
   restriction: LibraryClassRestriction,
 ): boolean {
