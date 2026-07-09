@@ -2,21 +2,43 @@
  * ZeroMQ REQ socket transport to OMC's REP socket.
  *
  * OMC uses strict REQ/REP semantics: every send must be followed by a receive
- * before the next send. The OmcClient layer enforces serialization with a
- * promise-chain mutex.
+ * before the next send. `OmcClient` serializes calls so only one round-trip is
+ * ever in flight.
+ *
+ * A timed-out call has already put its request on the wire, and OMC will
+ * eventually reply into a socket nobody is reading. Reusing that socket would
+ * pair every later request with the previous request's reply. The socket is
+ * discarded and redialed before the timeout is reported, trading one lost
+ * reply for a channel that still works.
  */
 
 import { Request } from "zeromq";
 
 import type { OmcCommand } from "./commands.js";
 
-export class OmcTransport {
-  private socket: Request | undefined;
+const TIMED_OUT = Symbol("omc call timed out");
 
-  constructor(private readonly endpoint: string) {}
+/** The slice of a zeromq `Request` socket this transport drives. */
+export interface OmcSocket {
+  linger: number;
+  connect(endpoint: string): void;
+  send(cmd: string): Promise<void>;
+  receive(): Promise<Buffer[]>;
+  close(): void;
+}
+
+export type SocketFactory = () => OmcSocket;
+
+export class OmcTransport {
+  private socket: OmcSocket | undefined;
+
+  constructor(
+    private readonly endpoint: string,
+    private readonly createSocket: SocketFactory = () => new Request(),
+  ) {}
 
   async dial(): Promise<void> {
-    const sock = new Request();
+    const sock = this.createSocket();
     // OMC closes its REP socket on quit(); without a short linger, our
     // process can hang on shutdown waiting for unsent messages to drain.
     sock.linger = 200;
@@ -31,8 +53,8 @@ export class OmcTransport {
    * @param timeoutMs cap on the round-trip; 0 disables.
    */
   async send(cmd: OmcCommand, timeoutMs: number): Promise<string> {
-    if (!this.socket) throw new Error("transport not connected");
     const sock = this.socket;
+    if (!sock) throw new Error("transport not connected");
 
     const op = (async () => {
       await sock.send(cmd);
@@ -44,18 +66,30 @@ export class OmcTransport {
     if (timeoutMs <= 0) return op;
 
     let timer: NodeJS.Timeout | undefined;
-    const timeoutErr = new Promise<never>((_, reject) => {
-      timer = setTimeout(
-        () => reject(new Error(`omc call timed out after ${timeoutMs}ms`)),
-        timeoutMs,
-      );
+    const expiry = new Promise<typeof TIMED_OUT>((resolve) => {
+      timer = setTimeout(() => resolve(TIMED_OUT), timeoutMs);
     });
 
+    let outcome: string | typeof TIMED_OUT;
     try {
-      return await Promise.race([op, timeoutErr]);
+      outcome = await Promise.race([op, expiry]);
     } finally {
       if (timer) clearTimeout(timer);
     }
+    if (outcome !== TIMED_OUT) return outcome;
+
+    // The abandoned receive rejects once the socket closes; nobody awaits it.
+    op.catch(() => undefined);
+    await this.reset();
+    throw new Error(`omc call timed out after ${timeoutMs}ms`);
+  }
+
+  /** Discard the desynced socket and dial a fresh one. */
+  private async reset(): Promise<void> {
+    const stale = this.socket;
+    this.socket = undefined;
+    stale?.close();
+    await this.dial();
   }
 
   async close(): Promise<void> {
