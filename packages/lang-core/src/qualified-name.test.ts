@@ -43,6 +43,10 @@ describe("enclosingScope", () => {
     expect(enclosingScope("Pkg.'a.b'")).toBe("Pkg");
     expect(enclosingScope("Complex.'a.b'.negate")).toBe("Complex.'a.b'");
   });
+
+  it("returns everything before a trailing dot", () => {
+    expect(enclosingScope("Pkg.")).toBe("Pkg");
+  });
 });
 
 describe("lastUnquotedDotIndex", () => {
