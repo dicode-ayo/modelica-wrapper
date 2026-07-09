@@ -182,6 +182,42 @@ describe("LibraryWebviewProvider", () => {
     expect(client.invoke.mock.calls.length).toBeGreaterThan(afterFirst);
   });
 
+  it("abandons a search's queued lookups when the webview cancels it", async () => {
+    const { provider, client } = makeProvider();
+    const { view, posted, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    client.searchClassNames.mockResolvedValueOnce({
+      classNames: ["A", "B", "C", "D"],
+    });
+    // Cancel while the first restriction lookup is in flight.
+    client.getClassRestriction.mockImplementationOnce(async () => {
+      send({ type: "libraryCancel", requestId: "s1" });
+      return { restriction: "model" };
+    });
+
+    send({ type: "librarySearch", requestId: "s1", query: "a" });
+    await flush();
+
+    expect(client.getClassRestriction).toHaveBeenCalledTimes(1);
+    // The webview already settled this request; a reply would find no entry.
+    expect(posted.filter((m) => m.type === "librarySearchResult")).toHaveLength(
+      0,
+    );
+  });
+
+  it("replies normally to a search that is never cancelled", async () => {
+    const { provider } = makeProvider();
+    const { view, posted, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    send({ type: "librarySearch", requestId: "s2", query: "gain" });
+    await flush();
+
+    const reply = posted.find((m) => m.type === "librarySearchResult");
+    expect(reply).toMatchObject({ requestId: "s2" });
+  });
+
   it("opens the class diagram on select", () => {
     const { provider } = makeProvider();
     const { view, send } = fakeView();

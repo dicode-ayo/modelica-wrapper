@@ -29,6 +29,11 @@ export type {
  *  coexist (a response then can't cross-match another instance's pending map). */
 let instanceCount = 0;
 
+function abortError(signal: AbortSignal): Error {
+  const reason: unknown = signal.reason;
+  return reason instanceof Error ? reason : new Error("search superseded");
+}
+
 export class WebviewLibraryDataSource implements LibraryDataSource {
   private readonly idPrefix = `lib${(instanceCount += 1)}`;
   private nextId = 0;
@@ -59,11 +64,27 @@ export class WebviewLibraryDataSource implements LibraryDataSource {
     });
   }
 
-  searchAll(query: string): Promise<LibraryClassInfo[]> {
+  searchAll(query: string, signal?: AbortSignal): Promise<LibraryClassInfo[]> {
     return new Promise((resolve, reject) => {
       const requestId = this.mintId();
+      if (signal?.aborted) {
+        reject(abortError(signal));
+        return;
+      }
       this.pending.set(requestId, { resolve, reject });
       this.post({ type: "librarySearch", requestId, query });
+      signal?.addEventListener(
+        "abort",
+        () => {
+          // Settle here rather than waiting for a reply: the host drops the
+          // request, so no `librarySearchResult` is coming for this id.
+          if (this.pending.delete(requestId)) {
+            this.post({ type: "libraryCancel", requestId });
+            reject(abortError(signal));
+          }
+        },
+        { once: true },
+      );
     });
   }
 

@@ -49,6 +49,54 @@ describe("WebviewLibraryDataSource", () => {
     await expect(pending).resolves.toEqual([item("Modelica")]);
   });
 
+  it("cancels a superseded search host-ward and rejects its promise", async () => {
+    const posted: LibraryRequestMessage[] = [];
+    const source = new WebviewLibraryDataSource((m) => posted.push(m));
+    const controller = new AbortController();
+
+    const search = source.searchAll("gain", controller.signal);
+    const request = posted.find((m) => m.type === "librarySearch");
+    expect(request).toBeDefined();
+
+    controller.abort(new Error("search superseded"));
+
+    await expect(search).rejects.toThrow("search superseded");
+    // The host must be told, or its queued restriction lookups run for nothing.
+    expect(posted).toContainEqual({
+      type: "libraryCancel",
+      requestId: request?.requestId,
+    });
+  });
+
+  it("never posts a search that is already aborted", async () => {
+    const posted: LibraryRequestMessage[] = [];
+    const source = new WebviewLibraryDataSource((m) => posted.push(m));
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(source.searchAll("gain", controller.signal)).rejects.toThrow();
+    expect(posted).toEqual([]);
+  });
+
+  it("ignores a late response for a cancelled search", async () => {
+    const posted: LibraryRequestMessage[] = [];
+    const source = new WebviewLibraryDataSource((m) => posted.push(m));
+    const controller = new AbortController();
+
+    const search = source.searchAll("gain", controller.signal);
+    const request = posted.find((m) => m.type === "librarySearch");
+    controller.abort();
+    await expect(search).rejects.toThrow();
+
+    // A reply that raced the cancel must not throw on an absent pending entry.
+    expect(() =>
+      source.handleResponse({
+        requestId: request?.requestId ?? "",
+        items: [item("Modelica.Blocks.Math.Gain")],
+      }),
+    ).not.toThrow();
+  });
+
   it("mints distinct request ids per instance so responses can't cross-match", () => {
     const a: LibraryRequestMessage[] = [];
     const b: LibraryRequestMessage[] = [];

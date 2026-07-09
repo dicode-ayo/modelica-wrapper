@@ -15,7 +15,10 @@ import * as vscode from "vscode";
 
 import type { OmcClient } from "@dicode/omc-client";
 
-import { LibrarySource } from "../diagram/library-source.js";
+import {
+  LibrarySource,
+  SearchAbortedError,
+} from "../diagram/library-source.js";
 import { libraryIconSvg } from "../diagram/open-diagram.js";
 import { DiagramPanel } from "../diagram/panel.js";
 import { log } from "../logger.js";
@@ -45,6 +48,8 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
   /** Bumped whenever the cache is dropped, so a render started against the old
    *  library state can't write its result into the new one. */
   private iconGeneration = 0;
+  /** In-flight searches, so `libraryCancel` can abandon their queued lookups. */
+  private readonly searches = new Map<string, AbortController>();
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -74,6 +79,16 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
     void this.post({ type: "reload" });
   }
 
+  /** Abandon a search the webview no longer wants. Its queued OMC lookups stop
+   *  at the next `signal.aborted` check instead of running to completion. */
+  private cancelSearch(requestId: string): void {
+    const controller = this.searches.get(requestId);
+    if (!controller) return;
+    controller.abort();
+    this.searches.delete(requestId);
+    log.debug("librarySource", `search ${requestId} cancelled by the webview`);
+  }
+
   private dropIconCache(): void {
     this.iconGeneration++;
     const dropped = this.iconCache.size;
@@ -94,14 +109,20 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
           (s) => s.listChildren(message.parent),
         );
         return;
-      case "librarySearch":
+      case "libraryCancel":
+        this.cancelSearch(message.requestId);
+        return;
+      case "librarySearch": {
+        const controller = new AbortController();
+        this.searches.set(message.requestId, controller);
         void this.handleItemsRequest(
           webview,
           message.requestId,
           "librarySearchResult",
-          (s) => s.searchAll(message.query),
-        );
+          (s) => s.searchAll(message.query, controller.signal),
+        ).finally(() => this.searches.delete(message.requestId));
         return;
+      }
       case "libraryIcon":
         void this.handleIconRequest(
           webview,
@@ -151,6 +172,11 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
       const items = await fetch(await this.source());
       await this.post({ type: responseType, requestId, items }, webview);
     } catch (err) {
+      if (err instanceof SearchAbortedError) {
+        // The webview settled this request when it aborted; a reply would find
+        // no pending entry, and an error toast would be a lie.
+        return;
+      }
       const error = err instanceof Error ? err.message : String(err);
       log.warn("libraryView", `${responseType} failed: ${error}`);
       await this.post({ type: responseType, requestId, error }, webview);

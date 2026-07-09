@@ -37,7 +37,11 @@ export interface LibraryClassInfo {
 export type LibraryRequestMessage =
   | { type: "libraryListChildren"; requestId: string; parent: string | null }
   | { type: "librarySearch"; requestId: string; query: string }
-  | { type: "libraryIcon"; requestId: string; className: string };
+  | { type: "libraryIcon"; requestId: string; className: string }
+  // The webview no longer wants `requestId`'s result. OMC serializes every
+  // call, so abandoning a superseded search's queued lookups is the difference
+  // between the channel being idle and being busy on nothing.
+  | { type: "libraryCancel"; requestId: string };
 
 /** Response payload for `libraryChildren` / `librarySearchResult`. */
 export interface LibraryItemsResponse {

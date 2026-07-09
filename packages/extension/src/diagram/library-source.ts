@@ -41,6 +41,18 @@ const KNOWN_RESTRICTIONS: ReadonlySet<LibraryClassRestriction> = new Set([
   "unknown",
 ]);
 
+/** Thrown out of `searchAll` once the webview stops wanting the result. */
+export class SearchAbortedError extends Error {
+  constructor() {
+    super("search aborted");
+    this.name = "SearchAbortedError";
+  }
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new SearchAbortedError();
+}
+
 function normaliseRestriction(raw: string): LibraryClassRestriction {
   // OMC may pad with whitespace and occasionally returns capitalised
   // forms (`"Model"`); we want the lowercase canonical variant the
@@ -102,7 +114,10 @@ export class LibrarySource {
    * trigger a flood of restriction calls — the user will refine
    * anyway, and the tree shows a flat list that doesn't paginate.
    */
-  async searchAll(query: string): Promise<LibraryClassInfo[]> {
+  async searchAll(
+    query: string,
+    signal?: AbortSignal,
+  ): Promise<LibraryClassInfo[]> {
     const trimmed = query.trim();
     if (trimmed.length === 0) return [];
     const started = Date.now();
@@ -111,12 +126,17 @@ export class LibrarySource {
     });
     const limited = classNames.slice(0, SEARCH_LIMIT);
     const misses = this.uncachedCount(limited);
-    const rows = await Promise.all(
-      limited.map(async (qualified) => ({
+    // Sequential, not `Promise.all`: OMC runs these one at a time regardless,
+    // and issuing them upfront would put every lookup on the queue before the
+    // first `signal.aborted` check could drop the rest.
+    const rows: LibraryClassInfo[] = [];
+    for (const qualified of limited) {
+      throwIfAborted(signal);
+      rows.push({
         qualified,
         restriction: await this.getRestriction(qualified),
-      })),
-    );
+      });
+    }
     log.debug(
       "librarySource",
       `searchAll(${JSON.stringify(trimmed)}) → ${classNames.length} hits, ` +

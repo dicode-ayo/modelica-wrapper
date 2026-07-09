@@ -68,8 +68,12 @@ export interface LibraryDataSource {
    * Return qualified class names matching `query`. The tree debounces user
    * input before calling this, but the implementation is responsible for any
    * backend-side query optimisation.
+   *
+   * `signal` aborts when the query is superseded or cleared. Resolving a
+   * search costs one backend round-trip per hit, so an implementation that can
+   * abandon that work should honour the signal and reject with `signal.reason`.
    */
-  searchAll(query: string): Promise<LibraryClassInfo[]>;
+  searchAll(query: string, signal?: AbortSignal): Promise<LibraryClassInfo[]>;
   /**
    * Render `className`'s icon to a self-contained SVG thumbnail, or resolve
    * `undefined` when the class has no usable icon. Optional: a data source
