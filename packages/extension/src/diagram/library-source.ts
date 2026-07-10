@@ -47,7 +47,7 @@ export class SearchAbortedError extends Error {
   }
 }
 
-function throwIfAborted(signal: AbortSignal | undefined): void {
+export function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new SearchAbortedError();
 }
 

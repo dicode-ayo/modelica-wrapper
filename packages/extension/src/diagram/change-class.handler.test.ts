@@ -29,6 +29,7 @@ const stubLayout = {
   components: {},
   connectors: {},
   classes: {},
+  connections: [],
 } as unknown as DiagramLayout;
 
 vi.mock("@dicode/omc-client", async (importOriginal) => {
