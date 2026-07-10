@@ -24,6 +24,12 @@ import { log } from "../logger.js";
 
 import { applyEdits } from "./apply-edits.js";
 import {
+  connectedPortsOf,
+  filterCompatibleCandidates,
+  type CandidateElementsClient,
+  type PortMapCache,
+} from "./change-class-filter.js";
+import {
   buildClassParameterForm,
   buildComponentParameterForm,
   classParameterValueToExpr,
@@ -46,7 +52,7 @@ import {
 } from "./shape-properties.js";
 import { applyDisplayUnits } from "./display-unit.js";
 import { buildUnitTableForModel, sessionUnitCache } from "./unit-table.js";
-import { LibrarySource } from "./library-source.js";
+import { LibrarySource, SearchAbortedError } from "./library-source.js";
 import { captureSnapshot, restoreSnapshot } from "./omc-snapshot.js";
 import { DiagramPanel } from "./panel.js";
 import { SnapshotStack } from "./snapshot-stack.js";
@@ -621,6 +627,8 @@ export async function openDiagram(
         librarySource,
         componentName,
         currentClass,
+        client,
+        prevLayout,
       );
       if (!newClass || newClass.trim() === currentClass.trim()) return;
       const trimmedNew = newClass.trim();
@@ -757,29 +765,52 @@ export async function openDiagram(
  * libraries hold thousands of classes, so we query `searchAll` as the user
  * types rather than materialising the whole list. Resolves to the chosen
  * fully-qualified class name, or `undefined` if dismissed.
+ *
+ * Candidates are narrowed to those that keep `componentName`'s existing
+ * connections valid. Each keystroke aborts the previous query so its
+ * queued OMC lookups drop instead of holding the serialized socket on
+ * behalf of a search nobody is waiting for.
  */
 function pickClassToSwap(
   librarySource: LibrarySource,
   componentName: string,
   currentClass: string,
+  client: CandidateElementsClient,
+  layout: DiagramLayout,
 ): Promise<string | undefined> {
   return new Promise((resolve) => {
     const quickPick = vscode.window.createQuickPick();
     quickPick.title = `Change class of ${componentName}`;
     quickPick.placeholder = `Search for a class (currently ${currentClass})`;
     quickPick.matchOnDescription = true;
+    const requiredPorts = connectedPortsOf(layout, currentClass, componentName);
+    const portCache: PortMapCache = new Map();
     // Guards against a slow earlier query overwriting a newer one's results.
     let seq = 0;
+    let inFlight: AbortController | undefined;
     const runSearch = async (query: string): Promise<void> => {
       const mine = ++seq;
+      inFlight?.abort();
+      const controller = new AbortController();
+      inFlight = controller;
       quickPick.busy = true;
       try {
-        const results = await librarySource.searchAll(query);
+        const results = await librarySource.searchAll(query, controller.signal);
+        const compatible = await filterCompatibleCandidates(
+          client,
+          results,
+          requiredPorts,
+          portCache,
+          controller.signal,
+        );
         if (mine !== seq) return;
-        quickPick.items = results.map((c) => ({
+        quickPick.items = compatible.map((c) => ({
           label: c.qualified,
           description: c.restriction,
         }));
+      } catch (err) {
+        if (err instanceof SearchAbortedError) return;
+        log.error("changeClassSearch", `search for ${query} failed`, err);
       } finally {
         if (mine === seq) quickPick.busy = false;
       }
@@ -791,6 +822,7 @@ function pickClassToSwap(
       quickPick.hide();
     });
     quickPick.onDidHide(() => {
+      inFlight?.abort();
       quickPick.dispose();
       resolve(undefined);
     });

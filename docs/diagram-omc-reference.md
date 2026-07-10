@@ -220,8 +220,11 @@ lazy per row via the cheap `getModelInstanceAnnotation` path.
 | Vector-port re-index | `connectionRenamed` | `updateConnectionNames` | ⚠️ fragile (cascade-shift risk) |
 | Component params | — | `setElementModifierValue` | ✅ [parameter-edits.ts](../packages/extension/src/diagram/parameter-edits.ts) |
 | Class params | — | `setParameterValue` / `setExtendsModifierValue` | ✅ |
+| Change component class | — | `setElementType` | ✅ [open-diagram.ts](../packages/extension/src/diagram/open-diagram.ts) `pickClassToSwap` — candidates filtered by connection compatibility (issue #239, see below) |
 | Reset to defaults | — | `removeElementModifiers(keepRedeclares)` | ✅ [clear-modifiers.ts](../packages/extension/src/diagram/clear-modifiers.ts) |
 | Undo | snapshot | `listFile`+`getSourceFile` / `loadString` restore | ✅ [snapshot-stack.ts](../packages/extension/src/diagram/snapshot-stack.ts) |
+
+**Change-class candidate filtering** ([change-class-filter.ts](../packages/extension/src/diagram/change-class-filter.ts), issue #239). `setElementType` swaps a component's class even when the new class drops a connector its existing `connect()` equations reference, leaving dangling connections. `pickClassToSwap` keeps only candidates that expose a matching port (name + connector type) for every currently-connected port. Each candidate's ports come from a cached `getElements` walk over its extends chain — never `getModelInstance`, which never returns for builtins like `String` and would stall the shared OMC socket. `getElements` reports only locally-declared elements and omits `extends` rows, so the chain is walked explicitly.
 
 **Missing / not implemented** (vs a full graphical editor):
 - **Icon/diagram graphics editing** — shapes are **read-only**; no add/move/delete
@@ -230,8 +233,6 @@ lazy per row via the cheap `getModelInstanceAnnotation` path.
   layout diff) and **flip/mirror** (`applyFlip` exists but is unreachable).
 - **Waypoint insert/delete** (only drag existing); no routing-style control.
 - **Connector (port) add/delete/move.**
-- **Component class swap / redeclare UI** (explicitly deferred in
-  [diff-layout.ts](../packages/extension/src/diagram/diff-layout.ts)).
 - **Copy/paste**; **multi-select UI** (selection *state* is tracked, no
   affordance); rounded-rectangle corners (renderer parity TODO).
 - **Component-level parameter label `%value` substitution** (deferred half of
