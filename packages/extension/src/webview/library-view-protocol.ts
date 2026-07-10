@@ -6,7 +6,9 @@
  * the `WebviewLibraryDataSource` bridge — composed from its exported types so
  * bridge and protocol can't drift. This view adds the sidebar-only affordances:
  * opening a diagram on select, the Load-Library empty-state action, the
- * host-mediated placement gesture, and a host-driven reload.
+ * host-mediated placement gesture, a host-driven reload, and a row's
+ * context-menu action (relaying the `LibraryNode` the native `view/item/context`
+ * menu used to supply before the sidebar became a webview view).
  */
 
 import type {
@@ -41,4 +43,15 @@ export type LibraryViewToExtension =
   | {
       // The empty-state "Load Library" affordance was pressed.
       type: "loadLibrary";
+    }
+  | {
+      // A row's context-menu action was chosen; relay to the matching command
+      // with the target row as its `LibraryNode` argument.
+      type: "libraryNodeCommand";
+      command: "viewSource" | "createClass" | "savePackage";
+      node: {
+        qualifiedName: string;
+        displayName: string;
+        restriction: string;
+      };
     };

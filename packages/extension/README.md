@@ -27,7 +27,8 @@ install as a subprocess.
 
 - **Library browser** — an activity-bar view of loaded libraries with search and
   lazy-rendered icon thumbnails. Loads the Modelica Standard Library from your
-  `MODELICAPATH`, or any library by name/path.
+  `MODELICAPATH`, or any library by name/path. Right-click a row for View
+  Source, and a package row for New Class / Save Package As.
 - **Diagram editor** — open any class as a Babylon.js-rendered diagram:
   - drag a class from the library onto the canvas to instantiate it
   - draw, move, and delete connections

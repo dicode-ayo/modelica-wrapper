@@ -15,6 +15,9 @@
  * Events:
  *   - `om-library-select` { detail: { className } } — emitted on row
  *     activation (click / Enter).
+ *   - `om-library-context-menu` { detail: { className, restriction,
+ *     displayName, x, y } } — emitted on row right-click; the embedder decides
+ *     what actions apply and runs them.
  *
  * Rows are draggable and carry `{ className }` on the drag `DataTransfer`
  * under `LIBRARY_TREE_DRAG_FORMAT`, ready for a drop-to-instantiate handler.
@@ -398,6 +401,13 @@ export class OmLibraryTree extends LitElement {
           this.onRowPointerDown(e, node.className, node.restriction)}
         @click=${() => this.onItemClick(item)}
         @dblclick=${() => this.fireSelect(node.className, node.restriction)}
+        @contextmenu=${(e: MouseEvent) =>
+          this.onRowContextMenu(
+            e,
+            node.className,
+            node.restriction,
+            node.label,
+          )}
         ${bindItemProps(props)}
       >
         <span
@@ -510,6 +520,8 @@ export class OmLibraryTree extends LitElement {
           this.onRowPointerDown(e, q, row.restriction)}
         @dragstart=${(e: DragEvent) =>
           this.onSearchRowDragStart(e, q, row.restriction)}
+        @contextmenu=${(e: MouseEvent) =>
+          this.onRowContextMenu(e, q, row.restriction, row.label)}
       >
         <span
           class="indent"
@@ -753,6 +765,36 @@ export class OmLibraryTree extends LitElement {
         "om-library-placement-start",
         {
           detail: { className },
+          bubbles: true,
+          composed: true,
+        },
+      ),
+    );
+  }
+
+  // Right-click relays the target row back to the embedder rather than
+  // showing a menu itself — the tree knows nothing about which actions apply
+  // (that's host/command-registry knowledge). Suppresses the native browser
+  // menu; a loading placeholder row (empty className) has nothing to act on.
+  private onRowContextMenu(
+    event: MouseEvent,
+    className: string,
+    restriction: LibraryClassRestriction,
+    displayName: string,
+  ): void {
+    if (className === "") return;
+    event.preventDefault();
+    this.dispatchEvent(
+      new CustomEvent<LibraryEvents["om-library-context-menu"]>(
+        "om-library-context-menu",
+        {
+          detail: {
+            className,
+            restriction,
+            displayName,
+            x: event.clientX,
+            y: event.clientY,
+          },
           bubbles: true,
           composed: true,
         },
