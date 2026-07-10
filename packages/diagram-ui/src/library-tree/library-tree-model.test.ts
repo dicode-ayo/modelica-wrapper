@@ -10,6 +10,8 @@ import {
   nodeFromInfo,
   rootNode,
   type LibraryTreeNode,
+  isPlaceableRestriction,
+  isOpenableRestriction,
 } from "./library-tree-model.js";
 
 function source(overrides: Partial<LibraryDataSource> = {}): LibraryDataSource {
@@ -179,5 +181,54 @@ describe("matchLabel", () => {
   it("returns null when the query is empty or absent", () => {
     expect(matchLabel("Gain", "")).toBeNull();
     expect(matchLabel("Gain", "xyz")).toBeNull();
+  });
+});
+
+describe("restriction gates", () => {
+  // OMEdit's GraphicsView::addComponent accepts exactly these on a diagram.
+  const placeable = [
+    "class",
+    "model",
+    "block",
+    "connector",
+    "expandable connector",
+    "record",
+  ] as const;
+  const notPlaceable = [
+    "package",
+    "function",
+    "type",
+    "operator",
+    "operator function",
+    "operator record",
+    "unknown",
+  ] as const;
+
+  it.each(placeable)("%s can be placed on a diagram", (r) => {
+    expect(isPlaceableRestriction(r)).toBe(true);
+  });
+
+  it.each(notPlaceable)("%s cannot be placed on a diagram", (r) => {
+    expect(isPlaceableRestriction(r)).toBe(false);
+  });
+
+  // Opening is narrower: a connector is placeable but has no diagram.
+  it.each(["class", "model", "block"] as const)("%s has a diagram", (r) => {
+    expect(isOpenableRestriction(r)).toBe(true);
+  });
+
+  it.each(["connector", "expandable connector", "record", "package"] as const)(
+    "%s has no diagram to open",
+    (r) => {
+      expect(isOpenableRestriction(r)).toBe(false);
+    },
+  );
+
+  it("every openable restriction is also placeable", () => {
+    for (const r of [...placeable, ...notPlaceable]) {
+      if (isOpenableRestriction(r)) {
+        expect(isPlaceableRestriction(r)).toBe(true);
+      }
+    }
   });
 });
