@@ -225,8 +225,10 @@ describe("restriction gates", () => {
   );
 
   it("every openable restriction is also placeable", () => {
-    for (const r of ["class", "model", "block"] as const) {
-      expect(isPlaceableRestriction(r)).toBe(true);
+    for (const r of [...placeable, ...notPlaceable]) {
+      if (isOpenableRestriction(r)) {
+        expect(isPlaceableRestriction(r)).toBe(true);
+      }
     }
   });
 });

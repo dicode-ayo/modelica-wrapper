@@ -771,11 +771,6 @@ export interface LibraryPlacementStartDetail {
  *  or rejects — the embedder's cue for empty / ready / error chrome. */
 export type LibraryRootLoadedDetail = LibraryRootLoad;
 
-/**
- * A concrete, named class. The synthetic ancestor rows of a filtered search
- * carry no class name, and `addComponent` does not validate what it is handed —
- * OMC will write a package in as a component if asked.
- */
 /** A concrete class a diagram can hold as a component. The synthetic ancestor
  *  rows of a filtered search carry no class name, and `addComponent` validates
  *  nothing — OMC will write a package in as a component if asked. */
