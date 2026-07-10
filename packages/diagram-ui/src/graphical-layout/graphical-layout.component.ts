@@ -5,6 +5,7 @@ import { ContextProvider } from "@lit/context";
 import { repeat } from "lit/directives/repeat.js";
 import { styleMap } from "lit/directives/style-map.js";
 import type {
+  ClassDef,
   ComponentInstance,
   ConnectorInstance,
   DiagramLayout,
@@ -111,6 +112,7 @@ import {
   parseLibraryDrag,
 } from "../library-tree/library-drag.js";
 import { leafLabel } from "../library-tree/library-tree-model.js";
+import { buildPlacementPreview } from "./placement-preview.js";
 import {
   PlacementController,
   pointInRect,
@@ -389,6 +391,9 @@ export class OmGraphicalLayout extends LitElement {
   private readonly placement = new PlacementController();
   @state() private placementClass: string | null = null;
   @state() private placementGhost: PlacementPoint | null = null;
+  /** The armed class's renderable definition, once the host resolves it. Null
+   *  until then, so the crosshair ghost stands in until the real node can draw. */
+  @state() private placementPreview: ClassDef | null = null;
   private placementListening = false;
 
   @query("om-scene") private sceneEl?: OmScene;
@@ -459,11 +464,33 @@ export class OmGraphicalLayout extends LitElement {
     }
   }
 
+  /** Diagram-space point the preview node sits at, snapped to the active grid
+   *  exactly as a commit is, or `null` when the cursor is off-canvas. */
+  private previewPoint(): { x: number; y: number } | null {
+    const ghost = this.placementGhost;
+    if (ghost === null) return null;
+    const raw = this.sceneEl?.clientToDiagram(ghost.x, ghost.y) ?? null;
+    if (raw === null) return null;
+    return snapPoint(raw.x, raw.y, this.currentSnapGrid());
+  }
+
+  /** The base layout with the placement preview merged in, or the base layout
+   *  itself when no preview should render (not armed, class unresolved, or the
+   *  cursor is off-canvas). */
+  private layoutWithPreview(base: DiagramLayout): DiagramLayout {
+    const def = this.placementPreview;
+    if (this.placementClass === null || def === null) return base;
+    const point = this.previewPoint();
+    if (point === null) return base;
+    return buildPlacementPreview(base, def, point);
+  }
+
   override render(): TemplateResult {
-    const active = this.draftLayout ?? this.layout;
-    if (!active) {
+    const base = this.draftLayout ?? this.layout;
+    if (!base) {
       return html``;
     }
+    const active = this.layoutWithPreview(base);
     const componentEntries = Object.entries(active.components);
     const connectorEntries = Object.entries(active.connectors);
     return html`
@@ -528,21 +555,23 @@ export class OmGraphicalLayout extends LitElement {
     `;
   }
 
-  /** The cursor-tracking ghost + status hint shown while a placement is armed
-   *  and the cursor is over the canvas. Renders last so DOM order stacks it
-   *  above the scene without a z-index. */
+  /** The cursor-tracking hint shown while a placement is armed and the cursor is
+   *  over the canvas. The crosshair stands in until the real preview node can
+   *  draw; once it does, only the status chip remains. Renders last so DOM order
+   *  stacks it above the scene without a z-index. */
   private renderPlacementGhost(): TemplateResult | typeof nothing {
     const ghost = this.placementGhost;
     const cls = this.placementClass;
     if (!ghost || cls === null) {
       return nothing;
     }
+    const hasNode = this.placementPreview !== null;
     return html`<div
       class="placement-ghost"
       style=${styleMap({ left: `${ghost.x}px`, top: `${ghost.y}px` })}
       aria-hidden="true"
     >
-      <span class="placement-crosshair"></span>
+      ${hasNode ? nothing : html`<span class="placement-crosshair"></span>`}
       <span class="placement-chip"
         >Placing ${leafLabel(cls)} — release on canvas, Esc to cancel</span
       >
@@ -1188,6 +1217,7 @@ export class OmGraphicalLayout extends LitElement {
     this.placement.begin(className);
     this.placementClass = this.placement.active;
     this.placementGhost = null;
+    this.placementPreview = null;
     this.addPlacementListeners();
   }
 
@@ -1199,7 +1229,21 @@ export class OmGraphicalLayout extends LitElement {
     this.placement.reset();
     this.placementClass = null;
     this.placementGhost = null;
+    this.placementPreview = null;
     this.removePlacementListeners();
+  }
+
+  /**
+   * Supply (or clear) the renderable definition of the armed class, so the
+   * preview shows the real component instead of the crosshair. Ignored unless a
+   * placement for `def.name` is armed, so a late resolution for a superseded or
+   * cancelled placement can't paint a stale node.
+   */
+  setPlacementPreview(def: ClassDef | null): void {
+    if (def !== null && this.placementClass !== def.name) {
+      return;
+    }
+    this.placementPreview = def;
   }
 
   /** The class name of the armed placement, or `null` when idle. */
@@ -1241,6 +1285,7 @@ export class OmGraphicalLayout extends LitElement {
     );
     this.placementClass = null;
     this.placementGhost = null;
+    this.placementPreview = null;
     this.removePlacementListeners();
     if (point === null) {
       return;
