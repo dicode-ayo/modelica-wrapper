@@ -841,6 +841,9 @@ function uniqueComponentName(
  */
 function placementAt(position: { x: number; y: number }): string {
   const { x, y } = position;
+  // This 10-unit half-extent is mirrored by `PLACEMENT_HALF_EXTENT` in
+  // diagram-ui's placement preview so the dragged node is the size of the
+  // result; the two must agree. Kept separate across the CJS/ESM boundary.
   return `Placement(transformation(extent={{${x - 10}, ${y - 10}}, {${x + 10}, ${y + 10}}}))`;
 }
 

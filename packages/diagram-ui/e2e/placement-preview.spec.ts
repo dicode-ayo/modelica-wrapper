@@ -54,14 +54,39 @@ test("the preview node replaces the crosshair, keeping the hint", async ({
   page,
 }) => {
   await page.goto(STORY, { waitUntil: "networkidle" });
+  const before = await nodeCount(page);
   await armPreview(page);
   const center = await sceneCenter(page);
   await page.mouse.move(center.x, center.y);
 
+  // The real node is in the scene, and the ghost keeps only the chip.
+  await expect.poll(() => nodeCount(page)).toBe(before + 1);
   const ghost = page.locator("om-graphical-layout").locator(".placement-ghost");
-  // The chip stays; the crosshair gives way to the real node.
   await expect(ghost.locator(".placement-chip")).toContainText("Placing Gain");
   await expect(ghost.locator(".placement-crosshair")).toHaveCount(0);
+});
+
+test("the preview node is not selectable", async ({ page }) => {
+  await page.goto(STORY, { waitUntil: "networkidle" });
+  await page.locator("om-graphical-layout").evaluate((node) => {
+    (node as unknown as { __sel: unknown[] }).__sel = [];
+    node.addEventListener("om-selection-change", (e) =>
+      (node as unknown as { __sel: unknown[] }).__sel.push(
+        (e as CustomEvent).detail,
+      ),
+    );
+  });
+  await armPreview(page);
+  const center = await sceneCenter(page);
+  await page.mouse.move(center.x, center.y);
+  // Press on the preview node — placement owns the pointer, so no selection.
+  await page.mouse.down();
+  const selWhilePlacing = await page
+    .locator("om-graphical-layout")
+    .evaluate((node) => (node as unknown as { __sel: unknown[] }).__sel.length);
+  await page.mouse.up();
+
+  expect(selWhilePlacing).toBe(0);
 });
 
 test("moving off-canvas drops the preview node", async ({ page }) => {
@@ -73,5 +98,29 @@ test("moving off-canvas drops the preview node", async ({ page }) => {
   await expect.poll(() => nodeCount(page)).toBe(before + 1);
 
   await page.mouse.move(2, 2);
+  await expect.poll(() => nodeCount(page)).toBe(before);
+});
+
+test("a mismatched definition does not paint a preview", async ({ page }) => {
+  await page.goto(STORY, { waitUntil: "networkidle" });
+  const before = await nodeCount(page);
+
+  // Arm one class, then resolve a definition for a *different* class — a late
+  // reply for a superseded placement must not paint a stale node.
+  await page.locator("om-graphical-layout").evaluate((node, gain) => {
+    const el = node as unknown as {
+      layout: { classes: Record<string, unknown> };
+      beginPlacement(name: string): void;
+      setPlacementPreview(def: unknown): void;
+    };
+    el.beginPlacement(gain);
+    el.setPlacementPreview({
+      ...(el.layout.classes[gain] as object),
+      name: "Some.Other.Class",
+    });
+  }, GAIN);
+  const center = await sceneCenter(page);
+  await page.mouse.move(center.x, center.y);
+
   await expect.poll(() => nodeCount(page)).toBe(before);
 });

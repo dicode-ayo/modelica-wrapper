@@ -12,8 +12,8 @@ import type {
   DiagramLayout,
 } from "@dicode/omc-client";
 
-/** Instance id of the preview component. Prefixed so it can't collide with a
- *  real component name (Modelica identifiers don't start with `$`). */
+/** Instance id of the preview component. The `$` prefix keeps it clear of
+ *  ordinary Modelica identifiers so it won't shadow a real component. */
 export const PLACEMENT_PREVIEW_ID = "$placement-preview";
 
 /** Half the side of the placement extent, in diagram units. Matches the extent

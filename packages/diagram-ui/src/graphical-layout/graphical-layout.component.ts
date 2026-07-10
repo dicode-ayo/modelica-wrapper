@@ -1328,6 +1328,13 @@ export class OmGraphicalLayout extends LitElement {
     type: K,
     detail: InteractionEvents[K],
   ): void {
+    // A resolved placement renders its synthetic preview node into the scene,
+    // where the picker can hit it. Placement owns the pointer, so hover and
+    // select must not act on it — otherwise `$placement-preview` escapes on
+    // `om-selection-change`.
+    if (this.placementClass !== null) {
+      return;
+    }
     switch (type) {
       case "hover": {
         const d = detail as InteractionEvents["hover"];
