@@ -782,8 +782,10 @@ export class OmLibraryTree extends LitElement {
     restriction: LibraryClassRestriction,
     displayName: string,
   ): void {
-    if (className === "") return;
+    // Suppress the native browser menu even on a loading placeholder row
+    // (empty className) — only the embedder-facing dispatch is skipped there.
     event.preventDefault();
+    if (className === "") return;
     this.dispatchEvent(
       new CustomEvent<LibraryEvents["om-library-context-menu"]>(
         "om-library-context-menu",

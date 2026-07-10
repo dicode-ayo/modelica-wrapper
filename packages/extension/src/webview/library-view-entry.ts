@@ -176,6 +176,7 @@ export class OmLibraryViewRoot extends LitElement {
     return html`${this.renderBody()}
       <om-context-menu
         @om-context-menu-select=${this.onContextMenuSelect}
+        @om-context-menu-close=${this.onContextMenuClose}
       ></om-context-menu>`;
   }
 
@@ -260,6 +261,7 @@ export class OmLibraryViewRoot extends LitElement {
     e: CustomEvent<ContextMenuSelectDetail>,
   ): void => {
     const node = this.contextMenuNode;
+    this.contextMenuNode = null;
     if (!node || !isLibraryNodeCommand(e.detail.id)) return;
     this.vscode.postMessage({
       type: "libraryNodeCommand",
@@ -270,6 +272,10 @@ export class OmLibraryViewRoot extends LitElement {
         restriction: node.restriction,
       },
     });
+  };
+
+  private readonly onContextMenuClose = (): void => {
+    this.contextMenuNode = null;
   };
 
   private readonly onReloadClick = (): void => {
@@ -299,11 +305,13 @@ function isLibraryNodeCommand(id: string): id is LibraryNodeCommand {
 
 /**
  * The per-node actions offered for `restriction`. View Source applies to any
- * concrete row; New Class / Save Package As only make sense on a package-like
- * container — `"package"`, or `"unknown"` (a row whose restriction lookup
- * failed but that the tree still treats as expandable, see diagram-ui's
- * `isExpandable`) — mirrors `modelica.createClass`'s `parentFromNode` and
- * `modelica.savePackage` requiring a package/library node.
+ * concrete row; New Class / Save Package As require exactly what
+ * `modelica.createClass`'s `parentFromNode` (`commands/context.ts`) treats as
+ * a valid nesting parent — `restriction === "package"`. A row whose
+ * restriction lookup failed (`"unknown"`) is deliberately excluded even
+ * though diagram-ui's `isExpandable` still lets it be browsed as a container:
+ * offering New Class there would let `parentFromNode` silently fall back to
+ * creating a top-level class instead of nesting under the clicked row.
  */
 function contextMenuItemsFor(
   restriction: LibraryContextMenuDetail["restriction"],
@@ -311,7 +319,7 @@ function contextMenuItemsFor(
   const items: ContextMenuItem[] = [
     { id: "viewSource", label: "View Source", group: "class" },
   ];
-  if (restriction === "package" || restriction === "unknown") {
+  if (restriction === "package") {
     items.push(
       { id: "createClass", label: "New Class...", group: "package" },
       { id: "savePackage", label: "Save Package As...", group: "package" },

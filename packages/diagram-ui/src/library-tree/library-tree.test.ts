@@ -434,6 +434,31 @@ describe("<om-library-tree>", () => {
     ]);
   });
 
+  it("suppresses the native menu on a loading placeholder row without emitting", async () => {
+    const { source } = makeSource();
+    const el = await mount(source);
+    const events: LibraryContextMenuDetail[] = [];
+    el.addEventListener("om-library-context-menu", (e) =>
+      events.push((e as CustomEvent<LibraryContextMenuDetail>).detail),
+    );
+
+    const onRowContextMenu = (
+      el as unknown as {
+        onRowContextMenu(
+          e: MouseEvent,
+          className: string,
+          restriction: LibraryClassRestriction,
+          displayName: string,
+        ): void;
+      }
+    ).onRowContextMenu.bind(el);
+    const event = new MouseEvent("contextmenu", { cancelable: true });
+    onRowContextMenu(event, "", "unknown", "Loading…");
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(events).toEqual([]);
+  });
+
   it("emits om-library-context-menu on a search row right-click", async () => {
     const { source, searchAll } = makeSource();
     const el = await mount(source);
