@@ -280,6 +280,15 @@ describe("declaredComponentsOf", () => {
     );
   });
 
+  it("keeps a component whose row omits the visibility field", () => {
+    const elements = list(
+      list(str("co"), str("-"), ident(REAL_INPUT), ident("u")),
+    );
+    expect(declaredComponentsOf(elements)).toEqual(
+      new Map([["u", REAL_INPUT]]),
+    );
+  });
+
   it("skips rows that aren't components and rows with a malformed shape", () => {
     const elements = list(
       list(

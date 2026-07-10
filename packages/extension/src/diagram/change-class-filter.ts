@@ -63,7 +63,15 @@ export function connectedPortsOf(
   return profiles;
 }
 
-/** True when `candidatePorts` reproduces every entry in `required`. */
+/**
+ * True when `candidatePorts` reproduces every entry in `required`.
+ *
+ * The type match is exact, not subtype-aware: a candidate whose port is
+ * typed on a base or sibling connector that Modelica would still accept
+ * is rejected. The error is one-directional — a valid candidate can be
+ * hidden, an invalid one is never kept — which keeps the swap safe at the
+ * cost of occasionally under-offering.
+ */
 export function candidateCoversPorts(
   candidatePorts: PortMap,
   required: readonly ConnectedPortProfile[],
@@ -92,8 +100,10 @@ function stringValue(v: Value | undefined): string | undefined {
  *
  * Rows are positional and their arity varies across OMC versions, so
  * anything that doesn't present a `"co"` kind with an identifier type and
- * name is skipped rather than trusted. Protected components are dropped:
- * a connection from the enclosing class can't reference them.
+ * name is skipped rather than trusted. Only an explicit `"protected"`
+ * marker drops a component — a connection from the enclosing class can't
+ * reference one — so an OMC build that omits the visibility field keeps
+ * the ports rather than dropping every candidate's connectors.
  */
 export function declaredComponentsOf(elements: Value): Map<string, string> {
   const components = new Map<string, string>();
@@ -102,7 +112,7 @@ export function declaredComponentsOf(elements: Value): Map<string, string> {
     if (row.kind !== "list") continue;
     const { items } = row;
     if (stringValue(items[ROW_KIND]) !== "co") continue;
-    if (stringValue(items[ROW_VISIBILITY]) !== "public") continue;
+    if (stringValue(items[ROW_VISIBILITY]) === "protected") continue;
     const typeName = identName(items[ROW_TYPE]);
     const name = identName(items[ROW_NAME]);
     if (typeName === undefined || name === undefined) continue;
@@ -185,10 +195,8 @@ async function resolvePorts(
     return ports;
   } catch (err) {
     if (err instanceof SearchAbortedError) throw err;
-    log.debug(
-      "changeClassPorts",
-      `resolving ${className} failed: ${(err as Error).message}`,
-    );
+    const message = err instanceof Error ? err.message : String(err);
+    log.debug("changeClassPorts", `resolving ${className} failed: ${message}`);
     return undefined;
   } finally {
     pending.delete(className);

@@ -220,9 +220,11 @@ lazy per row via the cheap `getModelInstanceAnnotation` path.
 | Vector-port re-index | `connectionRenamed` | `updateConnectionNames` | ⚠️ fragile (cascade-shift risk) |
 | Component params | — | `setElementModifierValue` | ✅ [parameter-edits.ts](../packages/extension/src/diagram/parameter-edits.ts) |
 | Class params | — | `setParameterValue` / `setExtendsModifierValue` | ✅ |
-| Change component class | — | `setElementType` | ✅ [open-diagram.ts](../packages/extension/src/diagram/open-diagram.ts) `pickClassToSwap` — candidates filtered to classes that keep the component's existing connections valid (matching port name + connector type per required port, via [change-class-filter.ts](../packages/extension/src/diagram/change-class-filter.ts); issue #239). Each candidate's ports come from a cached `getElements` walk over its extends chain — never `getModelInstance`, which hangs on builtins and stalls the shared socket. |
+| Change component class | — | `setElementType` | ✅ [open-diagram.ts](../packages/extension/src/diagram/open-diagram.ts) `pickClassToSwap` — candidates filtered by connection compatibility (issue #239, see below) |
 | Reset to defaults | — | `removeElementModifiers(keepRedeclares)` | ✅ [clear-modifiers.ts](../packages/extension/src/diagram/clear-modifiers.ts) |
 | Undo | snapshot | `listFile`+`getSourceFile` / `loadString` restore | ✅ [snapshot-stack.ts](../packages/extension/src/diagram/snapshot-stack.ts) |
+
+**Change-class candidate filtering** ([change-class-filter.ts](../packages/extension/src/diagram/change-class-filter.ts), issue #239). `setElementType` swaps a component's class even when the new class drops a connector its existing `connect()` equations reference, leaving dangling connections. `pickClassToSwap` keeps only candidates that expose a matching port (name + connector type) for every currently-connected port. Each candidate's ports come from a cached `getElements` walk over its extends chain — never `getModelInstance`, which never returns for builtins like `String` and would stall the shared OMC socket. `getElements` reports only locally-declared elements and omits `extends` rows, so the chain is walked explicitly.
 
 **Missing / not implemented** (vs a full graphical editor):
 - **Icon/diagram graphics editing** — shapes are **read-only**; no add/move/delete
