@@ -367,44 +367,41 @@ describe("<om-library-tree>", () => {
     return selected;
   }
 
-  /** Render a tree row standalone and return its `.row` element, so click /
-   *  dblclick bindings can be exercised (the virtualizer doesn't mount here). */
-  function renderRowEl(
-    el: OmLibraryTree,
-    item: ItemInstance<LibraryTreeNode>,
-  ): HTMLElement {
+  /** Render a row template into a detached container and return its `.row`
+   *  element, so click / dblclick / contextmenu bindings can be exercised (the
+   *  virtualizer doesn't mount rows under happy-dom). */
+  function renderIntoContainer(build: () => unknown): HTMLElement {
     const container = document.createElement("div");
     document.body.appendChild(container);
     teardowns.push(() => container.remove());
-    const renderRow = (
-      el as unknown as {
-        renderRow(i: ItemInstance<LibraryTreeNode>): unknown;
-      }
-    ).renderRow.bind(el);
-    render(renderRow(item) as never, container);
+    render(build() as never, container);
     const row = container.querySelector<HTMLElement>(".row");
     if (!row) throw new Error("row not rendered");
     return row;
   }
 
-  /** Render a search row standalone and return its `.row` element, mirroring
-   *  `renderRowEl` for the filtered-tree path. */
+  function renderRowEl(
+    el: OmLibraryTree,
+    item: ItemInstance<LibraryTreeNode>,
+  ): HTMLElement {
+    const renderRow = (
+      el as unknown as {
+        renderRow(i: ItemInstance<LibraryTreeNode>): unknown;
+      }
+    ).renderRow.bind(el);
+    return renderIntoContainer(() => renderRow(item));
+  }
+
   function renderSearchRowEl(
     el: OmLibraryTree,
     row: SearchTreeRow,
   ): HTMLElement {
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    teardowns.push(() => container.remove());
     const renderSearchTreeRow = (
       el as unknown as {
         renderSearchTreeRow(r: SearchTreeRow): unknown;
       }
     ).renderSearchTreeRow.bind(el);
-    render(renderSearchTreeRow(row) as never, container);
-    const found = container.querySelector<HTMLElement>(".row");
-    if (!found) throw new Error("row not rendered");
-    return found;
+    return renderIntoContainer(() => renderSearchTreeRow(row));
   }
 
   it("emits om-library-context-menu on a tree row right-click, suppressing the native menu", async () => {

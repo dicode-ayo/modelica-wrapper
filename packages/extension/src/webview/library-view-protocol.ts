@@ -7,15 +7,17 @@
  * bridge and protocol can't drift. This view adds the sidebar-only affordances:
  * opening a diagram on select, the Load-Library empty-state action, the
  * host-mediated placement gesture, a host-driven reload, and a row's
- * context-menu action (relaying the `LibraryNode` the native `view/item/context`
- * menu used to supply before the sidebar became a webview view).
+ * context-menu action — a webview view has no native per-item context menu, so
+ * the target row's `LibraryNode` fields travel over this message instead.
  */
 
 import type {
+  LibraryClassRestriction,
   LibraryIconResponse,
   LibraryItemsResponse,
   LibraryRequestMessage,
 } from "./library-messages.js";
+import type { LibraryNode } from "../commands/context.js";
 
 export type ExtensionToLibraryView =
   | ({ type: "libraryChildren" } & LibraryItemsResponse)
@@ -49,9 +51,7 @@ export type LibraryViewToExtension =
       // with the target row as its `LibraryNode` argument.
       type: "libraryNodeCommand";
       command: "viewSource" | "createClass" | "savePackage";
-      node: {
-        qualifiedName: string;
-        displayName: string;
-        restriction: string;
+      node: Pick<LibraryNode, "qualifiedName" | "displayName"> & {
+        restriction: LibraryClassRestriction;
       };
     };

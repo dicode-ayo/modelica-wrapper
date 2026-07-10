@@ -277,24 +277,33 @@ export class OmLibraryViewRoot extends LitElement {
   };
 }
 
-/** The `libraryNodeCommand` variants a context-menu selection can resolve to. */
-const LIBRARY_NODE_COMMANDS = [
-  "viewSource",
-  "createClass",
-  "savePackage",
-] as const;
-type LibraryNodeCommand = (typeof LIBRARY_NODE_COMMANDS)[number];
+/** The `libraryNodeCommand` variants a context-menu selection can resolve to,
+ *  derived from the protocol message itself. `LIBRARY_NODE_COMMAND_SET` must
+ *  list every member of `LibraryNodeCommand` — TypeScript rejects a missing
+ *  key, so a command added to the protocol's union and not here fails to
+ *  compile instead of silently no-op-ing at runtime. */
+type LibraryNodeCommand = Extract<
+  LibraryViewToExtension,
+  { type: "libraryNodeCommand" }
+>["command"];
+
+const LIBRARY_NODE_COMMAND_SET: Record<LibraryNodeCommand, true> = {
+  viewSource: true,
+  createClass: true,
+  savePackage: true,
+};
 
 function isLibraryNodeCommand(id: string): id is LibraryNodeCommand {
-  return (LIBRARY_NODE_COMMANDS as readonly string[]).includes(id);
+  return id in LIBRARY_NODE_COMMAND_SET;
 }
 
 /**
  * The per-node actions offered for `restriction`. View Source applies to any
- * concrete row; New Class / Save Package As only make sense on a package (or
- * a loaded library's root, which reports restriction `"package"` too) —
- * mirrors `modelica.createClass`'s `parentFromNode` and `modelica.savePackage`
- * requiring a package/library node.
+ * concrete row; New Class / Save Package As only make sense on a package-like
+ * container — `"package"`, or `"unknown"` (a row whose restriction lookup
+ * failed but that the tree still treats as expandable, see diagram-ui's
+ * `isExpandable`) — mirrors `modelica.createClass`'s `parentFromNode` and
+ * `modelica.savePackage` requiring a package/library node.
  */
 function contextMenuItemsFor(
   restriction: LibraryContextMenuDetail["restriction"],
@@ -302,7 +311,7 @@ function contextMenuItemsFor(
   const items: ContextMenuItem[] = [
     { id: "viewSource", label: "View Source", group: "class" },
   ];
-  if (restriction === "package") {
+  if (restriction === "package" || restriction === "unknown") {
     items.push(
       { id: "createClass", label: "New Class...", group: "package" },
       { id: "savePackage", label: "Save Package As...", group: "package" },
