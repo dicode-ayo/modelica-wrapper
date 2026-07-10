@@ -73,6 +73,34 @@ describe("<om-library-tree> placement-drag", () => {
     expect(fired).not.toHaveBeenCalled();
   });
 
+  // A connector or a record has no diagram of its own, but a diagram can hold
+  // one as a component — which is what OMEdit accepts on a drop.
+  it.each(["connector", "expandable connector", "record"] as const)(
+    "arms placement for a %s row",
+    (restriction) => {
+      const el = mount(true);
+      const fired = vi.fn();
+      el.addEventListener("om-library-placement-start", fired);
+
+      rowPointerDown(el)(pressEvent(0), "Pkg.C", restriction);
+
+      expect(fired).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(["package", "function", "type", "unknown"] as const)(
+    "refuses placement for a %s row",
+    (restriction) => {
+      const el = mount(true);
+      const fired = vi.fn();
+      el.addEventListener("om-library-placement-start", fired);
+
+      rowPointerDown(el)(pressEvent(0), "Pkg.X", restriction);
+
+      expect(fired).not.toHaveBeenCalled();
+    },
+  );
+
   it("ignores non-primary buttons, empty class names, and non-placeable rows", () => {
     const el = mount(true);
     const fired = vi.fn();

@@ -24,9 +24,14 @@ const FAKE_TREE: Record<string, readonly FakeEntry[]> = {
     ["Modelica.Math", "package"],
   ],
   "Modelica.Blocks": [
+    ["Modelica.Blocks.Interfaces", "package"],
     ["Modelica.Blocks.Math", "package"],
     ["Modelica.Blocks.Sources", "package"],
     ["Modelica.Blocks.Continuous", "package"],
+  ],
+  "Modelica.Blocks.Interfaces": [
+    ["Modelica.Blocks.Interfaces.RealInput", "connector"],
+    ["Modelica.Blocks.Interfaces.RealOutput", "connector"],
   ],
   "Modelica.Blocks.Math": [
     ["Modelica.Blocks.Math.Gain", "block"],

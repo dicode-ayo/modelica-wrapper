@@ -59,6 +59,7 @@ import {
   createLibraryDataLoader,
   isExpandable,
   isOpenableRestriction,
+  isPlaceableRestriction,
   matchLabel,
   type LibraryTreeNode,
   type LibraryRootLoad,
@@ -321,7 +322,7 @@ export class OmLibraryTree extends LitElement {
       canDrag: (items) =>
         items.every((item) => {
           const node = item.getItemData();
-          return isInstantiableClass(node.className, node.restriction);
+          return isPlaceable(node.className, node.restriction);
         }),
       createForeignDragObject: (items) => ({
         format: LIBRARY_TREE_DRAG_FORMAT,
@@ -387,8 +388,7 @@ export class OmLibraryTree extends LitElement {
     // Headless Tree marks every row `draggable` regardless of `canDrag`, which
     // leaves a grab cursor on rows the canvas would refuse.
     const stripDrag =
-      this.placementDrag ||
-      !isInstantiableClass(node.className, node.restriction);
+      this.placementDrag || !isPlaceable(node.className, node.restriction);
     const props = rowItemProps(item.getProps(), stripDrag);
     return html`
       <div
@@ -499,8 +499,7 @@ export class OmLibraryTree extends LitElement {
         role="option"
         tabindex="0"
         data-selected=${this.selectedClassName === q ? "true" : "false"}
-        draggable=${!this.placementDrag &&
-        isInstantiableClass(q, row.restriction)
+        draggable=${!this.placementDrag && isPlaceable(q, row.restriction)
           ? "true"
           : "false"}
         @click=${() => this.onSearchRowClick(q)}
@@ -613,7 +612,7 @@ export class OmLibraryTree extends LitElement {
     restriction: LibraryClassRestriction,
   ): void {
     if (!event.dataTransfer) return;
-    if (!isInstantiableClass(className, restriction)) {
+    if (!isPlaceable(className, restriction)) {
       event.preventDefault();
       return;
     }
@@ -692,7 +691,7 @@ export class OmLibraryTree extends LitElement {
     className: string,
     restriction: LibraryClassRestriction,
   ): void {
-    if (!isInstantiableClass(className, restriction)) return;
+    if (!isOpenable(className, restriction)) return;
     this.dispatchEvent(
       new CustomEvent<LibraryEvents["om-library-select"]>("om-library-select", {
         detail: { className },
@@ -747,7 +746,7 @@ export class OmLibraryTree extends LitElement {
     restriction: LibraryClassRestriction,
   ): void {
     if (!this.placementDrag || event.button !== 0) return;
-    if (!isInstantiableClass(className, restriction)) return;
+    if (!isPlaceable(className, restriction)) return;
     event.preventDefault();
     this.dispatchEvent(
       new CustomEvent<LibraryPlacementStartDetail>(
@@ -777,7 +776,19 @@ export type LibraryRootLoadedDetail = LibraryRootLoad;
  * carry no class name, and `addComponent` does not validate what it is handed —
  * OMC will write a package in as a component if asked.
  */
-function isInstantiableClass(
+/** A concrete class a diagram can hold as a component. The synthetic ancestor
+ *  rows of a filtered search carry no class name, and `addComponent` validates
+ *  nothing — OMC will write a package in as a component if asked. */
+function isPlaceable(
+  className: string,
+  restriction: LibraryClassRestriction,
+): boolean {
+  return className !== "" && isPlaceableRestriction(restriction);
+}
+
+/** A concrete class with a diagram worth opening. Narrower than
+ *  {@link isPlaceable}: a connector can be placed but has no diagram. */
+function isOpenable(
   className: string,
   restriction: LibraryClassRestriction,
 ): boolean {

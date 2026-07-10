@@ -26,11 +26,16 @@ const componentCount = (page: Page): Promise<number> =>
   });
 
 /** Search narrows the tree to a flat result list, which avoids expanding the
- *  lazy tree row by row to reach a leaf. */
-async function searchFor(page: Page, query: string): Promise<void> {
+ *  lazy tree row by row to reach a leaf. Waits for `leaf` to appear so the row
+ *  locators below don't race the debounced search. */
+async function searchFor(
+  page: Page,
+  query: string,
+  leaf: string,
+): Promise<void> {
   await page.locator("om-library-tree input.search").fill(query);
   await expect(
-    page.locator("om-library-tree .row", { hasText: "Gain" }).first(),
+    page.locator("om-library-tree .row", { hasText: leaf }).first(),
   ).toBeVisible();
 }
 
@@ -40,7 +45,7 @@ test("dragging a class row onto the canvas instantiates it", async ({
   await page.goto(WORKBENCH_STORY, { waitUntil: "networkidle" });
 
   const before = await componentCount(page);
-  await searchFor(page, DRAGGABLE_CLASS);
+  await searchFor(page, DRAGGABLE_CLASS, "Gain");
 
   const row = page.locator("om-library-tree .row[draggable='true']").first();
   await row.dragTo(page.locator("om-scene"));
@@ -52,12 +57,25 @@ test("a readonly canvas refuses the drop", async ({ page }) => {
   await page.goto(WORKBENCH_STORY_READONLY, { waitUntil: "networkidle" });
 
   const before = await componentCount(page);
-  await searchFor(page, DRAGGABLE_CLASS);
+  await searchFor(page, DRAGGABLE_CLASS, "Gain");
 
   const row = page.locator("om-library-tree .row[draggable='true']").first();
   await row.dragTo(page.locator("om-scene"));
 
   await expect.poll(() => componentCount(page)).toBe(before);
+});
+
+// A connector has no diagram of its own, but a diagram can hold one as a
+// component — the rule OMEdit applies on a drop.
+test("a connector row is a drag source and instantiates", async ({ page }) => {
+  await page.goto(WORKBENCH_STORY, { waitUntil: "networkidle" });
+  const before = await componentCount(page);
+
+  await searchFor(page, "RealInput", "RealInput");
+  const row = page.locator("om-library-tree .row[draggable='true']").first();
+  await row.dragTo(page.locator("om-scene"));
+
+  await expect.poll(() => componentCount(page)).toBe(before + 1);
 });
 
 test("a package row is not a drag source", async ({ page }) => {

@@ -46,14 +46,28 @@ export function isExpandable(r: LibraryClassRestriction): boolean {
 }
 
 /**
- * Restrictions that have a diagram worth opening / instantiating — the same set
- * the native tree opened. Packages, connectors, records, functions, etc. (and
- * synthetic filtered-tree ancestors) are excluded: opening a package as a
- * diagram wedges the view, and placing one is meaningless. Gates select, open,
- * and placement alike.
+ * Restrictions with a diagram worth opening. Opening a package as a diagram
+ * wedges the view; a connector or record has no diagram layer to show. Gates
+ * select and open.
  */
 export function isOpenableRestriction(r: LibraryClassRestriction): boolean {
   return r === "model" || r === "block" || r === "class";
+}
+
+/**
+ * Restrictions a diagram can hold as a component. Wider than
+ * {@link isOpenableRestriction}: a connector or a record is instantiable even
+ * though it has no diagram of its own. Mirrors what OMEdit accepts on a drop
+ * (`GraphicsView::addComponent`); OMC itself validates nothing and will write a
+ * package in as a component if asked. Gates drag and placement.
+ */
+export function isPlaceableRestriction(r: LibraryClassRestriction): boolean {
+  return (
+    isOpenableRestriction(r) ||
+    r === "connector" ||
+    r === "expandable connector" ||
+    r === "record"
+  );
 }
 
 /** Trailing dotted segment of `qualified`, falling back to the whole name. */
