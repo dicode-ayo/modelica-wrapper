@@ -382,6 +382,17 @@ function buildClassDef(
 }
 
 /**
+ * Build a self-contained `ClassDef` for a class in isolation — its icon,
+ * coordinate system, and ports — from that class's own `ModelInstance`. Unlike
+ * {@link produceDiagramLayout}, which lays a class out as a diagram, this yields
+ * the class as it appears when placed as a component. Used to render a
+ * placement preview without adding the component first.
+ */
+export function produceComponentClass(mi: ModelInstance): ClassDef {
+  return buildClassDef(mi, new Map());
+}
+
+/**
  * Register a class in the catalog if it's not already there.
  *
  * v1 dedup key: `type.name`. If the same name shows up with non-equal

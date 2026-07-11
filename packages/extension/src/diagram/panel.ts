@@ -1,5 +1,9 @@
 import * as vscode from "vscode";
-import type { DiagramLayout, ParameterModel } from "@dicode/omc-client";
+import type {
+  ClassDef,
+  DiagramLayout,
+  ParameterModel,
+} from "@dicode/omc-client";
 
 import { randomNonce } from "../webview/nonce.js";
 import type {
@@ -203,6 +207,15 @@ export class DiagramPanel {
         ? { type: "placementCancel" }
         : { type: "placementStart", className },
     );
+    return true;
+  }
+
+  /** Relay the armed class's resolved definition so the diagram can upgrade the
+   *  crosshair to the real preview node. No-op when no panel is active. */
+  static relayPlacementPreview(className: string, classDef: ClassDef): boolean {
+    const panel = DiagramPanel.activePanel;
+    if (!panel) return false;
+    panel.send({ type: "placementPreview", className, classDef });
     return true;
   }
 

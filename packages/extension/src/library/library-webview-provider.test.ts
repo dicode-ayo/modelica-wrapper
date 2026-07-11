@@ -30,6 +30,25 @@ function fakeClient() {
     invoke: vi.fn(async () => {
       throw new Error("no annotation");
     }),
+    // fetchComponentClass (placement preview) goes through this.
+    getModelInstance: vi.fn(async () => ({
+      instance: {
+        name: "Modelica.Blocks.Math.Gain",
+        restriction: "block",
+        annotation: {
+          Icon: {
+            coordinateSystem: {
+              extent: [
+                [-100, -100],
+                [100, 100],
+              ],
+            },
+            graphics: [],
+          },
+        },
+        elements: [],
+      },
+    })),
   };
 }
 
@@ -278,6 +297,40 @@ describe("LibraryWebviewProvider", () => {
     send({ type: "placementCancel" });
     expect(relay).toHaveBeenNthCalledWith(1, "Modelica.Blocks.Math.Gain");
     expect(relay).toHaveBeenNthCalledWith(2, null);
+  });
+
+  it("resolves and relays the preview definition after a placement start", async () => {
+    vi.spyOn(DiagramPanel, "relayPlacement").mockReturnValue(true);
+    const preview = vi
+      .spyOn(DiagramPanel, "relayPlacementPreview")
+      .mockReturnValue(true);
+    const { provider } = makeProvider();
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    send({ type: "placementStart", className: "Modelica.Blocks.Math.Gain" });
+    await flush();
+
+    expect(preview).toHaveBeenCalledTimes(1);
+    const [name, def] = preview.mock.calls[0] ?? [];
+    expect(name).toBe("Modelica.Blocks.Math.Gain");
+    expect((def as { name: string }).name).toBe("Modelica.Blocks.Math.Gain");
+  });
+
+  it("relays no preview when the class can't be resolved", async () => {
+    vi.spyOn(DiagramPanel, "relayPlacement").mockReturnValue(true);
+    const preview = vi
+      .spyOn(DiagramPanel, "relayPlacementPreview")
+      .mockReturnValue(true);
+    const { provider, client } = makeProvider();
+    client.getModelInstance.mockRejectedValueOnce(new Error("no such class"));
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    send({ type: "placementStart", className: "Bad.Class" });
+    await flush();
+
+    expect(preview).not.toHaveBeenCalled();
   });
 
   it("posts a reload on refresh()", () => {

@@ -203,6 +203,9 @@ class OmWebviewRoot extends LitElement {
       case "placementStart":
         this.diagram?.beginPlacement(message.className);
         return;
+      case "placementPreview":
+        this.diagram?.setPlacementPreview(message.classDef);
+        return;
       case "placementCancel":
         this.diagram?.cancelPlacement();
         return;

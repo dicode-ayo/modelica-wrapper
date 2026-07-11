@@ -1,4 +1,8 @@
-import type { DiagramLayout, ParameterModel } from "@dicode/omc-client";
+import type {
+  ClassDef,
+  DiagramLayout,
+  ParameterModel,
+} from "@dicode/omc-client";
 
 /**
  * Wire-format mirror of diagram-ui's `DiagramCommandId`. Kept local because the
@@ -88,6 +92,13 @@ export type ExtensionToWebview =
       // cursor-tracking ghost and commits on release over the canvas.
       type: "placementStart";
       className: string;
+    }
+  | {
+      // The armed class's renderable definition, resolved by the host after the
+      // placement started. Upgrades the crosshair to the real preview node.
+      type: "placementPreview";
+      className: string;
+      classDef: ClassDef;
     }
   | { type: "placementCancel" };
 
