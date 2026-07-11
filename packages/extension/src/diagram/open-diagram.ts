@@ -5,6 +5,7 @@ import {
   diagram,
   produceParameterModel,
   produceSimulationModel,
+  type ClassDef,
   type DiagramLayout,
   type ModelInstance,
   type UnitTable,
@@ -1265,6 +1266,31 @@ export async function libraryIconSvg(
     log.warn(
       "libraryIconSvg",
       `icon render failed for ${className}: ${(err as Error).message}`,
+    );
+    return undefined;
+  }
+}
+
+/**
+ * Resolve a class's renderable definition — icon, coordinate system, and ports
+ * — for the drag-to-place preview. Best-effort: returns `undefined` on any
+ * failure, so a class the preview can't resolve just keeps the crosshair.
+ *
+ * Uses the full `getModelInstance`: the ports come only from it, not the
+ * annotation-filtered call. That is bounded here — one user-chosen, placeable
+ * class per drag, not a fan-out.
+ */
+export async function fetchComponentClass(
+  client: OmcClient,
+  className: string,
+): Promise<ClassDef | undefined> {
+  try {
+    const { instance } = await client.getModelInstance({ typeName: className });
+    return diagram.produceComponentClass(instance);
+  } catch (err) {
+    log.warn(
+      "fetchComponentClass",
+      `preview resolve failed for ${className}: ${(err as Error).message}`,
     );
     return undefined;
   }

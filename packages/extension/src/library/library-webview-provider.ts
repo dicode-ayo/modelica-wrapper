@@ -13,13 +13,16 @@
 
 import * as vscode from "vscode";
 
-import type { OmcClient } from "@dicode/omc-client";
+import type { ClassDef, OmcClient } from "@dicode/omc-client";
 
 import {
   LibrarySource,
   SearchAbortedError,
 } from "../diagram/library-source.js";
-import { libraryIconSvg } from "../diagram/open-diagram.js";
+import {
+  fetchComponentClass,
+  libraryIconSvg,
+} from "../diagram/open-diagram.js";
 import { DiagramPanel } from "../diagram/panel.js";
 import { log } from "../logger.js";
 import { randomNonce } from "../webview/nonce.js";
@@ -40,6 +43,11 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
    *  Rendering one instantiates the class in OMC, so a miss is expensive and a
    *  negative result is worth remembering. */
   private iconCache = new Map<string, string | undefined>();
+  /** Successfully resolved preview definitions per class, so re-dragging one
+   *  doesn't re-fetch its full model instance. A class that fails to resolve is
+   *  not cached — the crosshair covers the interim and the next drag retries,
+   *  so a transient failure isn't remembered as a permanent no-preview. */
+  private previewCache = new Map<string, ClassDef>();
   /** Renders not yet settled, so a burst of rows sharing a class renders once.
    *  Tagged with the generation they started under: a render from before a
    *  Refresh carries pre-Refresh bytes and must not be joined after it. */
@@ -95,7 +103,33 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
     this.iconGeneration++;
     const dropped = this.iconCache.size;
     this.iconCache.clear();
+    this.previewCache.clear();
     log.debug("libraryIcon", `dropped ${dropped} cached icons`);
+  }
+
+  /** Resolve `className`'s renderable definition and relay it to the diagram so
+   *  the placement preview upgrades from the crosshair to the real node. Silent
+   *  on a miss — the crosshair simply stays. */
+  private async relayPreview(className: string): Promise<void> {
+    try {
+      let def = this.previewCache.get(className);
+      if (def === undefined) {
+        const started = Date.now();
+        const client = await this.ensureClient();
+        const resolved = await fetchComponentClass(client, className);
+        if (resolved === undefined) return;
+        def = resolved;
+        this.previewCache.set(className, def);
+        log.debug(
+          "placementPreview",
+          `resolved ${className} in ${Date.now() - started}ms (${Object.keys(def.connectors).length} ports)`,
+        );
+      }
+      DiagramPanel.relayPlacementPreview(className, def);
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      log.warn("placementPreview", `resolve failed for ${className}: ${error}`);
+    }
   }
 
   private handleMessage(
@@ -140,6 +174,7 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
         return;
       case "placementStart":
         DiagramPanel.relayPlacement(message.className);
+        void this.relayPreview(message.className);
         return;
       case "placementCancel":
         DiagramPanel.relayPlacement(null);

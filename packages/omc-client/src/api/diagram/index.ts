@@ -6,7 +6,7 @@
  * no rendering. Validate the input with the Zod schemas in
  * `_shared/modelInstance.ts` before calling `produceDiagramLayout`.
  */
-export { produceDiagramLayout } from "./producer.js";
+export { produceDiagramLayout, produceComponentClass } from "./producer.js";
 export { parseInstantiatedParameters } from "./resolved-parameters.js";
 export {
   annotationGraphics,

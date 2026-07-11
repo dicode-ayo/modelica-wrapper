@@ -37,7 +37,7 @@ import type {
   Placement,
   Shape,
 } from "../../_shared/diagramLayout.js";
-import { produceDiagramLayout } from "./producer.js";
+import { produceComponentClass, produceDiagramLayout } from "./producer.js";
 
 // =====================================================================
 // Synthetic ModelInstance builders.
@@ -1958,5 +1958,25 @@ describe("produceDiagramLayout: parameter unit from type-alias chain (#71)", () 
     const cls = layout.classes["Synth.SiHost"];
     expect(cls?.parameters.J?.unit).toBe("kg.m2");
     expect(cls?.parameters.J?.displayUnit).toBeUndefined();
+  });
+});
+
+describe("produceComponentClass", () => {
+  it("yields a self-contained class: own icon, coordinate system, and ports", () => {
+    const def = produceComponentClass(GainClass as ModelInstance);
+
+    expect(def.name).toBe("Synth.Gain");
+    expect(def.restriction).toBe("block");
+    expect(def.iconLayers.length).toBeGreaterThan(0);
+    expect(def.coordinateSystem?.extent).toEqual([
+      [-100, -100],
+      [100, 100],
+    ]);
+    // Ports are inherited from GainBase; each carries its own icon so the
+    // preview can draw it without a second fetch.
+    expect(Object.keys(def.connectors).sort()).toEqual(["kFF", "u", "y"]);
+    for (const port of Object.values(def.connectors)) {
+      expect(port.iconLayers.length).toBeGreaterThan(0);
+    }
   });
 });
