@@ -43,10 +43,11 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
    *  Rendering one instantiates the class in OMC, so a miss is expensive and a
    *  negative result is worth remembering. */
   private iconCache = new Map<string, string | undefined>();
-  /** Resolved preview definitions per class, so re-dragging one doesn't re-fetch
-   *  its full model instance. `undefined` records a class the preview couldn't
-   *  resolve, so a repeat drag doesn't retry a slow miss. */
-  private previewCache = new Map<string, ClassDef | undefined>();
+  /** Successfully resolved preview definitions per class, so re-dragging one
+   *  doesn't re-fetch its full model instance. A class that fails to resolve is
+   *  not cached — the crosshair covers the interim and the next drag retries,
+   *  so a transient failure isn't remembered as a permanent no-preview. */
+  private previewCache = new Map<string, ClassDef>();
   /** Renders not yet settled, so a burst of rows sharing a class renders once.
    *  Tagged with the generation they started under: a render from before a
    *  Refresh carries pre-Refresh bytes and must not be joined after it. */
@@ -110,18 +111,25 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
    *  the placement preview upgrades from the crosshair to the real node. Silent
    *  on a miss — the crosshair simply stays. */
   private async relayPreview(className: string): Promise<void> {
-    const started = Date.now();
-    let def = this.previewCache.get(className);
-    if (!this.previewCache.has(className)) {
-      const client = await this.ensureClient();
-      def = await fetchComponentClass(client, className);
-      this.previewCache.set(className, def);
-      log.debug(
-        "placementPreview",
-        `resolved ${className} in ${Date.now() - started}ms (${def ? `${Object.keys(def.connectors).length} ports` : "unresolved"})`,
-      );
+    try {
+      let def = this.previewCache.get(className);
+      if (def === undefined) {
+        const started = Date.now();
+        const client = await this.ensureClient();
+        const resolved = await fetchComponentClass(client, className);
+        if (resolved === undefined) return;
+        def = resolved;
+        this.previewCache.set(className, def);
+        log.debug(
+          "placementPreview",
+          `resolved ${className} in ${Date.now() - started}ms (${Object.keys(def.connectors).length} ports)`,
+        );
+      }
+      DiagramPanel.relayPlacementPreview(className, def);
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err);
+      log.warn("placementPreview", `resolve failed for ${className}: ${error}`);
     }
-    if (def) DiagramPanel.relayPlacementPreview(className, def);
   }
 
   private handleMessage(

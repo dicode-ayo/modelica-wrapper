@@ -1976,7 +1976,7 @@ describe("produceComponentClass", () => {
     // preview can draw it without a second fetch.
     expect(Object.keys(def.connectors).sort()).toEqual(["kFF", "u", "y"]);
     for (const port of Object.values(def.connectors)) {
-      expect(Array.isArray(port.iconLayers)).toBe(true);
+      expect(port.iconLayers.length).toBeGreaterThan(0);
     }
   });
 });

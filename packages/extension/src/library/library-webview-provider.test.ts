@@ -333,6 +333,39 @@ describe("LibraryWebviewProvider", () => {
     expect(preview).not.toHaveBeenCalled();
   });
 
+  it("resolves a class once and serves repeat drags from cache", async () => {
+    vi.spyOn(DiagramPanel, "relayPlacement").mockReturnValue(true);
+    vi.spyOn(DiagramPanel, "relayPlacementPreview").mockReturnValue(true);
+    const { provider, client } = makeProvider();
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    send({ type: "placementStart", className: "Modelica.Blocks.Math.Gain" });
+    await flush();
+    send({ type: "placementStart", className: "Modelica.Blocks.Math.Gain" });
+    await flush();
+
+    // The full model instance is fetched once; the repeat drag reuses it.
+    expect(client.getModelInstance).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries an unresolvable class on the next drag", async () => {
+    vi.spyOn(DiagramPanel, "relayPlacement").mockReturnValue(true);
+    vi.spyOn(DiagramPanel, "relayPlacementPreview").mockReturnValue(true);
+    const { provider, client } = makeProvider();
+    client.getModelInstance.mockRejectedValueOnce(new Error("busy"));
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    send({ type: "placementStart", className: "Modelica.Blocks.Math.Gain" });
+    await flush();
+    send({ type: "placementStart", className: "Modelica.Blocks.Math.Gain" });
+    await flush();
+
+    // A failed resolve isn't cached, so the second drag tries again.
+    expect(client.getModelInstance).toHaveBeenCalledTimes(2);
+  });
+
   it("posts a reload on refresh()", () => {
     const { provider } = makeProvider();
     const { view, posted } = fakeView();
