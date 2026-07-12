@@ -4,10 +4,8 @@ import type { OmcClient } from "@dicode/omc-client";
 
 import { log } from "../logger.js";
 import { qualifiedNameFromUri } from "../source-provider.js";
-import type {
-  ExtensionToWebview,
-  WebviewToExtension,
-} from "../webview/protocol.js";
+import type { WebviewToExtension } from "../webview/protocol.js";
+import { createReadyGate } from "../webview/ready-gate.js";
 
 import { renderDiagramWebviewHtml } from "./diagram-webview-html.js";
 import { fetchDiagramLayout } from "./open-diagram.js";
@@ -71,12 +69,10 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
 }
 
 /**
- * Wire a resolved diagram editor onto its webview panel. Extracted from the
- * provider so the read-only render path is unit-testable without the
- * custom-editor registration machinery.
- *
- * An `undefined` className (a real `file:` `.mo`, whose class mapping is not
- * yet resolved) renders a static placeholder instead of the diagram bundle.
+ * Wire a resolved diagram editor onto its webview panel: boot the diagram-ui
+ * bundle for `className`, then seed the layout once the webview signals
+ * `ready`. An `undefined` `className` (a real `file:` `.mo`, whose class
+ * mapping is unresolved) renders a static placeholder instead.
  */
 export function resolveDiagramEditor(
   webviewPanel: vscode.WebviewPanel,
@@ -97,25 +93,11 @@ export function resolveDiagramEditor(
 
   webview.html = renderDiagramWebviewHtml(webview, extensionUri, className);
 
-  // The webview posts `ready` once its bundle mounts; messages queued before
-  // then are flushed on that signal (mirrors `DiagramPanel`'s handshake).
-  let ready = false;
-  const pending: ExtensionToWebview[] = [];
-  const send = (msg: ExtensionToWebview): void => {
-    if (!ready) {
-      pending.push(msg);
-      return;
-    }
-    void webview.postMessage(msg);
-  };
-
+  const gate = createReadyGate(webview);
   const sub = webview.onDidReceiveMessage((msg: WebviewToExtension) => {
     // Read-only: only the readiness handshake is honoured. Edit and action
     // messages from the webview are ignored, so nothing round-trips to OMC.
-    if (msg.type !== "ready") return;
-    ready = true;
-    for (const m of pending) void webview.postMessage(m);
-    pending.length = 0;
+    if (msg.type === "ready") gate.markReady();
   });
   webviewPanel.onDidDispose(() => sub.dispose());
 
@@ -123,10 +105,10 @@ export function resolveDiagramEditor(
     try {
       const client = await ensureClient();
       const layout = await fetchDiagramLayout(client, className);
-      send({ type: "init", layout, className });
+      gate.send({ type: "init", layout, className });
     } catch (err) {
       const message = `Failed to render diagram for ${className}: ${(err as Error).message}`;
-      send({ type: "error", message });
+      gate.send({ type: "error", message });
       log.warn("diagramEditor", message);
     }
   })();

@@ -10,6 +10,7 @@ import type {
   ExtensionToWebview,
   WebviewToExtension,
 } from "../webview/protocol.js";
+import { createReadyGate, type ReadyGate } from "../webview/ready-gate.js";
 import { renderDiagramWebviewHtml } from "./diagram-webview-html.js";
 
 /**
@@ -97,8 +98,7 @@ export class DiagramPanel {
   private static activePanel: DiagramPanel | undefined;
   private readonly panel: vscode.WebviewPanel;
   private readonly disposables: vscode.Disposable[] = [];
-  private ready = false;
-  private readonly pendingMessages: ExtensionToWebview[] = [];
+  private readonly gate: ReadyGate;
   /** Whether this panel's webview last reported an editable field focused. */
   private inputFocused = false;
 
@@ -138,6 +138,7 @@ export class DiagramPanel {
         localResourceRoots: [vscode.Uri.joinPath(extensionUri, "out")],
       },
     );
+    this.gate = createReadyGate(this.panel.webview);
     this.panel.webview.html = this.renderHtml();
     this.disposables.push(
       this.panel.webview.onDidReceiveMessage((m) => this.handleMessage(m)),
@@ -257,21 +258,13 @@ export class DiagramPanel {
   }
 
   private send(message: ExtensionToWebview): void {
-    if (!this.ready) {
-      this.pendingMessages.push(message);
-      return;
-    }
-    void this.panel.webview.postMessage(message);
+    this.gate.send(message);
   }
 
   private handleMessage(message: WebviewToExtension): void {
     switch (message.type) {
       case "ready":
-        this.ready = true;
-        for (const msg of this.pendingMessages) {
-          void this.panel.webview.postMessage(msg);
-        }
-        this.pendingMessages.length = 0;
+        this.gate.markReady();
         return;
       case "change":
         this.handlers.onChange?.(message.layout);

@@ -2,6 +2,10 @@ import * as vscode from "vscode";
 
 import { randomNonce } from "../webview/nonce.js";
 
+// Diagrams render on a fixed light canvas (Modelica convention); the scene's
+// stroke/fill colors assume it, so this must not follow the VSCode theme.
+const DIAGRAM_CANVAS_BG = "#f7f7f8";
+
 /**
  * Build the CSP-locked HTML that boots the diagram-ui bundle (`out/webview.js`
  * + `out/webview.css`, root `<om-webview-root>`). Shared by the diagram
@@ -38,7 +42,7 @@ export function renderDiagramWebviewHtml(
     <title>Modelica diagram: ${escapeHtml(className)}</title>
     <link rel="stylesheet" href="${stylesUri}" />
     <style>
-      html, body { margin: 0; height: 100%; background: #f7f7f8; overflow: hidden; }
+      html, body { margin: 0; height: 100%; background: ${DIAGRAM_CANVAS_BG}; overflow: hidden; }
     </style>
   </head>
   <body>
