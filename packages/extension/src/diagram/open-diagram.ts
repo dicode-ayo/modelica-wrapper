@@ -83,7 +83,7 @@ export async function openDiagram(
   }
   let prevLayout: DiagramLayout;
   try {
-    prevLayout = await fetchLayout(client, className);
+    prevLayout = await fetchDiagramLayout(client, className);
   } catch (err) {
     void vscode.window.showErrorMessage(
       `Modelica: failed to open diagram for ${className}: ${(err as Error).message}`,
@@ -205,7 +205,7 @@ export async function openDiagram(
         if (result.rolledBack) undoStack.pop();
       }
       try {
-        prevLayout = await fetchLayout(client, className);
+        prevLayout = await fetchDiagramLayout(client, className);
         panel.update(prevLayout);
       } catch (err) {
         void vscode.window.showErrorMessage(
@@ -247,7 +247,7 @@ export async function openDiagram(
         }
         refreshLabel();
         createReplLog(label).success(`connected ${from} ↔ ${to}`);
-        prevLayout = await fetchLayout(client, className);
+        prevLayout = await fetchDiagramLayout(client, className);
         panel.update(prevLayout);
       } catch (err) {
         refreshLabel();
@@ -293,7 +293,7 @@ export async function openDiagram(
         replLog.success(
           `restored ${className} (${undoStack.size} undo step(s) left)`,
         );
-        prevLayout = await fetchLayout(client, className);
+        prevLayout = await fetchDiagramLayout(client, className);
         panel.update(prevLayout);
       } catch (err) {
         // Replay threw — re-push so the snapshot isn't lost, then report.
@@ -426,7 +426,7 @@ export async function openDiagram(
           values,
         );
         try {
-          prevLayout = await fetchLayout(client, className);
+          prevLayout = await fetchDiagramLayout(client, className);
           panel.update(prevLayout);
         } catch (err) {
           log.error("classParamsRefetch", `failed for ${className}`, err);
@@ -455,7 +455,7 @@ export async function openDiagram(
           values,
         );
         try {
-          prevLayout = await fetchLayout(client, className);
+          prevLayout = await fetchDiagramLayout(client, className);
           panel.update(prevLayout);
         } catch (err) {
           log.error("componentParamsRefetch", `failed for ${className}`, err);
@@ -520,7 +520,7 @@ export async function openDiagram(
           if (result.rolledBack) undoStack.pop();
         }
         try {
-          prevLayout = await fetchLayout(client, className);
+          prevLayout = await fetchDiagramLayout(client, className);
           panel.update(prevLayout);
         } catch (err) {
           log.error("shapePropertiesRefetch", `failed for ${className}`, err);
@@ -668,7 +668,7 @@ export async function openDiagram(
         return;
       }
       try {
-        prevLayout = await fetchLayout(client, className);
+        prevLayout = await fetchDiagramLayout(client, className);
         panel.update(prevLayout);
       } catch (err) {
         void vscode.window.showErrorMessage(
@@ -734,7 +734,7 @@ export async function openDiagram(
         // can see what landed in the model without having to diff
         // the file.
         replLog.success(`${componentName} : ${componentClass}`);
-        prevLayout = await fetchLayout(client, className);
+        prevLayout = await fetchDiagramLayout(client, className);
         panel.update(prevLayout);
       } catch (err) {
         refreshLabel();
@@ -1041,7 +1041,7 @@ function readRecordString(record: Value, fieldName: string): string {
   return "";
 }
 
-async function fetchLayout(
+export async function fetchDiagramLayout(
   client: OmcClient,
   className: string,
 ): Promise<DiagramLayout> {
@@ -1051,7 +1051,7 @@ async function fetchLayout(
 
 /**
  * Build the display-ready `DiagramLayout` from an ALREADY-fetched
- * `ModelInstance`. Split out from `fetchLayout` so callers that need both
+ * `ModelInstance`. Split out from `fetchDiagramLayout` so callers that need both
  * the layout and the form (the reset re-open) can share one
  * `getModelInstance` round-trip instead of paying for two back-to-back.
  */

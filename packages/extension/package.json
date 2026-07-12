@@ -49,6 +49,16 @@
           }
         ],
         "priority": "default"
+      },
+      {
+        "viewType": "modelica.diagram",
+        "displayName": "Modelica Diagram",
+        "selector": [
+          {
+            "filenamePattern": "*.mo"
+          }
+        ],
+        "priority": "option"
       }
     ],
     "commands": [

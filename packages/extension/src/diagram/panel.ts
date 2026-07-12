@@ -5,12 +5,12 @@ import type {
   ParameterModel,
 } from "@dicode/omc-client";
 
-import { randomNonce } from "../webview/nonce.js";
 import type {
   DiagramCommandId,
   ExtensionToWebview,
   WebviewToExtension,
 } from "../webview/protocol.js";
+import { renderDiagramWebviewHtml } from "./diagram-webview-html.js";
 
 /**
  * Context key gating the diagram's single-letter keybindings (`r`/`f`/Delete)
@@ -334,47 +334,11 @@ export class DiagramPanel {
   }
 
   private renderHtml(): string {
-    const scriptUri = this.panel.webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, "out", "webview.js"),
+    return renderDiagramWebviewHtml(
+      this.panel.webview,
+      this.extensionUri,
+      this.className,
     );
-    // esbuild collects every `import "*.css"` in the webview bundle
-    // (Web Awesome's theme + our vscode bridge) into a sibling
-    // `webview.css`. We <link> to it via the webview's cspSource.
-    const stylesUri = this.panel.webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, "out", "webview.css"),
-    );
-    const nonce = randomNonce();
-    const csp = [
-      `default-src 'none'`,
-      `script-src 'nonce-${nonce}'`,
-      `style-src ${this.panel.webview.cspSource} 'unsafe-inline'`,
-      `img-src ${this.panel.webview.cspSource} data: blob:`,
-      `font-src ${this.panel.webview.cspSource} data:`,
-    ].join("; ");
-    return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="${csp}" />
-    <title>Modelica diagram: ${this.escapeHtml(this.className)}</title>
-    <link rel="stylesheet" href="${stylesUri}" />
-    <style>
-      html, body { margin: 0; height: 100%; background: #f7f7f8; overflow: hidden; }
-    </style>
-  </head>
-  <body>
-    <om-webview-root></om-webview-root>
-    <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
-  </body>
-</html>`;
-  }
-
-  private escapeHtml(s: string): string {
-    return s
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
   }
 }
 
