@@ -63,35 +63,28 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       webviewPanel,
       this.extensionUri,
       this.ensureClient,
-      classNameFromDocument(document),
+      document,
     );
   }
 }
 
 /**
- * Wire a resolved diagram editor onto its webview panel: boot the diagram-ui
- * bundle for `className`, then seed the layout once the webview signals
- * `ready`. An `undefined` `className` (a real `file:` `.mo`, whose class
- * mapping is unresolved) renders a static placeholder instead.
+ * Wire a resolved diagram editor onto its webview panel: resolve the class the
+ * `.mo` document stands for, boot the diagram-ui bundle, then seed the layout
+ * once the webview signals `ready`. A document whose class can't be resolved
+ * renders a static placeholder instead.
  */
 export function resolveDiagramEditor(
   webviewPanel: vscode.WebviewPanel,
   extensionUri: vscode.Uri,
   ensureClient: () => Promise<OmcClient>,
-  className: string | undefined,
+  document: vscode.TextDocument,
 ): void {
   const { webview } = webviewPanel;
   webview.options = {
     enableScripts: true,
     localResourceRoots: [vscode.Uri.joinPath(extensionUri, "out")],
   };
-
-  if (className === undefined) {
-    webview.html = renderPlaceholderHtml(webview.cspSource);
-    return;
-  }
-
-  webview.html = renderDiagramWebviewHtml(webview, extensionUri, className);
 
   const gate = createReadyGate(webview);
   const sub = webview.onDidReceiveMessage((msg: WebviewToExtension) => {
@@ -101,6 +94,33 @@ export function resolveDiagramEditor(
   });
   webviewPanel.onDidDispose(() => sub.dispose());
 
+  // The `modelica-source:` scheme encodes the class in its path — resolve it
+  // synchronously so the bundle boots without an OMC round-trip.
+  const fromScheme = classNameFromDocument(document);
+  if (fromScheme !== undefined) {
+    renderDiagram(webview, extensionUri, gate, ensureClient, fromScheme);
+    return;
+  }
+
+  void (async (): Promise<void> => {
+    const className = await classNameFromFile(document, ensureClient);
+    if (className === undefined) {
+      webview.html = renderPlaceholderHtml(webview.cspSource);
+      return;
+    }
+    renderDiagram(webview, extensionUri, gate, ensureClient, className);
+  })();
+}
+
+/** Boot the diagram bundle for `className` and seed its layout once ready. */
+function renderDiagram(
+  webview: vscode.Webview,
+  extensionUri: vscode.Uri,
+  gate: ReturnType<typeof createReadyGate>,
+  ensureClient: () => Promise<OmcClient>,
+  className: string,
+): void {
+  webview.html = renderDiagramWebviewHtml(webview, extensionUri, className);
   void (async (): Promise<void> => {
     try {
       const client = await ensureClient();
@@ -112,6 +132,43 @@ export function resolveDiagramEditor(
       log.warn("diagramEditor", message);
     }
   })();
+}
+
+/**
+ * Resolve the top-level class of an on-disk `file:` `.mo` via OMC `parseFile`,
+ * which reads the file WITHOUT loading it into the symbol table. Returns the
+ * first declared class, or `undefined` when the document isn't a `file:` `.mo`,
+ * parsing fails, or no class is declared.
+ *
+ * Read-only-safe: resolving against the on-disk file only picks a class to
+ * render — it never creates a second editable buffer, so the deferred `file:`
+ * *edit* policy (needed once #286+ add the write path) is untouched here.
+ */
+async function classNameFromFile(
+  document: vscode.TextDocument,
+  ensureClient: () => Promise<OmcClient>,
+): Promise<string | undefined> {
+  const { uri } = document;
+  if (uri.scheme !== "file" || !uri.path.endsWith(".mo")) return undefined;
+  try {
+    const client = await ensureClient();
+    const { classNames } = await client.parseFile({ fileName: uri.fsPath });
+    const first = classNames.at(0);
+    if (first === undefined) return undefined;
+    if (classNames.length > 1) {
+      log.info(
+        "diagramEditor",
+        `${uri.fsPath} declares ${classNames.length} top-level classes; rendering ${first}`,
+      );
+    }
+    return first;
+  } catch (err) {
+    log.warn(
+      "diagramEditor",
+      `parseFile failed for ${uri.fsPath}: ${(err as Error).message}`,
+    );
+    return undefined;
+  }
 }
 
 function renderPlaceholderHtml(cspSource: string): string {
