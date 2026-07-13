@@ -11,8 +11,15 @@ import { qualifiedNameFromUri } from "../source-provider.js";
 import type { WebviewToExtension } from "../webview/protocol.js";
 import { createReadyGate, type ReadyGate } from "../webview/ready-gate.js";
 
-import { lineAnnotation } from "./diff-layout.js";
+import { applyEdits } from "./apply-edits.js";
+import {
+  lineAnnotation,
+  type GraphicsLayer,
+  type LayoutEdit,
+} from "./diff-layout.js";
 import { renderDiagramWebviewHtml } from "./diagram-webview-html.js";
+import { isShapeKey, parseEntityKey } from "./entity-key.js";
+import { LibrarySource } from "./library-source.js";
 import {
   applyClassParameterEdits,
   applyComponentParameterEdits,
@@ -23,6 +30,7 @@ import {
   fetchModelInstance,
   keyToCref,
   layoutFromInstance,
+  pickClassToSwap,
   placementAt,
   resetComponentParameters,
   uniqueComponentName,
@@ -35,6 +43,11 @@ import {
   type ComponentParameterRef,
 } from "./parameter-edits.js";
 import { createShadowBuffer, type ShadowBuffer } from "./shadow-buffer.js";
+import {
+  applyShapeProperties,
+  buildShapePropertiesForm,
+  lookupHostShape,
+} from "./shape-properties.js";
 
 export const DIAGRAM_VIEW_TYPE = "modelica.diagram";
 
@@ -217,6 +230,12 @@ export class DiagramEditController {
   // Drops a double-clicked "Reset to defaults" second invocation while the
   // first is still re-fetching and re-opening.
   private resetInFlight = false;
+  // The shape a shapeProperties modal is editing — captured on selection, read
+  // back on submit.
+  private shapeLayerKind: GraphicsLayer | null = null;
+  private shapeIndex: number | null = null;
+  private shapeKind: string | null = null;
+  private readonly librarySource: LibrarySource;
 
   constructor(
     private readonly deps: EditControllerDeps,
@@ -228,6 +247,7 @@ export class DiagramEditController {
   ) {
     this.prevLayout = initialLayout;
     this.shadow = makeShadow(() => this.onForeignChange());
+    this.librarySource = new LibrarySource(deps.client);
   }
 
   private queue: Promise<void> = Promise.resolve();
@@ -318,6 +338,12 @@ export class DiagramEditController {
         return;
       case "parametersCancel":
         this.onParametersCancel(msg.kind);
+        return;
+      case "selectionChange":
+        this.onSelectionChange(msg.keys);
+        return;
+      case "changeClassRequest":
+        await this.onChangeClassRequest(msg.componentName, msg.currentClass);
         return;
       case "resetComponentParameters":
         await this.onResetComponentParameters(msg.componentName);
@@ -499,6 +525,8 @@ export class DiagramEditController {
           );
           await this.reflect(await fetchDiagramLayout(client, className));
         }
+      } else if (kind === "shapeProperties") {
+        await this.applyShapePropertiesSubmit(values);
       }
     } catch (err) {
       this.reportError(`applying parameters failed: ${(err as Error).message}`);
@@ -507,8 +535,104 @@ export class DiagramEditController {
     }
   }
 
+  private async applyShapePropertiesSubmit(
+    values: Record<string, unknown>,
+  ): Promise<void> {
+    const { client, className } = this.deps;
+    if (this.shapeLayerKind === null || this.shapeIndex === null) return;
+    const layer = this.shapeLayerKind;
+    const index = this.shapeIndex;
+    const found = lookupHostShape(
+      this.prevLayout,
+      index,
+      this.shapeKind ?? undefined,
+    );
+    if (found === null || found.layerKind !== layer) return;
+    const edit: LayoutEdit = {
+      kind: "graphicsModified",
+      layer,
+      index,
+      shape: applyShapeProperties(found.shape, values),
+    };
+    const result = await applyEdits(client, className, [edit], undefined, {
+      snapshot: true,
+    });
+    if (result.failed.length > 0) {
+      this.reportError(
+        `shape edit failed: ${result.failed.at(0)?.error ?? "unknown"}`,
+      );
+    }
+    await this.reflect(await fetchDiagramLayout(client, className));
+  }
+
   private onParametersCancel(kind: string): void {
     if (kind === "componentParams") this.clearComponentParamState();
+    if (kind === "shapeProperties") this.clearShapeState();
+  }
+
+  private onSelectionChange(keys: string[]): void {
+    if (keys.length !== 1) return;
+    const key = keys[0];
+    if (key === undefined) return;
+    const parsed = parseEntityKey(key);
+    if (parsed === null || !isShapeKey(parsed)) return;
+    if (!Number.isInteger(parsed.index)) return;
+    const found = lookupHostShape(
+      this.prevLayout,
+      parsed.index,
+      parsed.shapeKind,
+    );
+    if (found === null) return;
+    this.shapeLayerKind = found.layerKind;
+    this.shapeIndex = parsed.index;
+    this.shapeKind = parsed.shapeKind;
+    this.deps.gate.send({
+      type: "parametersOpen",
+      kind: "shapeProperties",
+      model: buildShapePropertiesForm(found.shape),
+      title: `Shape: ${found.shape.kind}`,
+      submitLabel: "Apply",
+    });
+  }
+
+  private async onChangeClassRequest(
+    componentName: string,
+    currentClass: string,
+  ): Promise<void> {
+    const { client, className } = this.deps;
+    try {
+      const newClass = await pickClassToSwap(
+        this.librarySource,
+        componentName,
+        currentClass,
+        client,
+        this.prevLayout,
+      );
+      if (!newClass || newClass.trim() === currentClass.trim()) return;
+      await client.getErrorString();
+      const { success } = await client.setElementType({
+        typeName: `${className}.${componentName}`,
+        newTypeName: newClass.trim(),
+      });
+      if (!success) {
+        const { errorString } = await client.getErrorString();
+        this.reportError(
+          `setElementType ${componentName} failed: ${errorString.trim() || "OMC returned success=false"}`,
+        );
+        return;
+      }
+      await this.reflect(await fetchDiagramLayout(client, className));
+    } catch (err) {
+      this.reportError(
+        `setElementType ${componentName} failed: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  private clearShapeState(): void {
+    this.shapeLayerKind = null;
+    this.shapeIndex = null;
+    this.shapeKind = null;
   }
 
   private async onResetComponentParameters(

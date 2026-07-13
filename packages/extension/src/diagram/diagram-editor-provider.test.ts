@@ -9,7 +9,7 @@
  * so this runs in plain Node.
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 import type {
   ComponentElement,
@@ -18,12 +18,23 @@ import type {
   OmcClient,
 } from "@dicode/omc-client";
 
+import * as vscodeMock from "../../test-support/vscode-mock.js";
 import {
   appliedEdits,
   pendingApplies,
   setApplyEditManual,
   setApplyEditResult,
 } from "../../test-support/vscode-mock.js";
+
+// The change-class path constructs a real `LibrarySource`; stub it so the
+// quick-pick search resolves without an OMC library round-trip.
+vi.mock("./library-source.js", () => ({
+  LibrarySource: class {
+    searchAll = vi.fn().mockResolvedValue([]);
+    listChildren = vi.fn().mockResolvedValue([]);
+  },
+  SearchAbortedError: class extends Error {},
+}));
 import type {
   ExtensionToWebview,
   WebviewToExtension,
@@ -43,6 +54,50 @@ beforeEach(() => {
   setApplyEditManual(false);
   setApplyEditResult(true);
 });
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+/**
+ * A `QuickPick` double for `pickClassToSwap`: on `show()` it fires `onDidAccept`
+ * with `pickedLabel` selected, or `onDidHide` when the label is `undefined`.
+ */
+function stubQuickPick(pickedLabel: string | undefined): unknown {
+  let acceptCb: (() => void) | undefined;
+  let hideCb: (() => void) | undefined;
+  const qp = {
+    title: "",
+    placeholder: "",
+    matchOnDescription: false,
+    busy: false,
+    items: [] as unknown[],
+    value: "",
+    selectedItems: [] as { label: string }[],
+    onDidChangeValue: () => ({ dispose: () => {} }),
+    onDidAccept: (cb: () => void) => {
+      acceptCb = cb;
+      return { dispose: () => {} };
+    },
+    onDidHide: (cb: () => void) => {
+      hideCb = cb;
+      return { dispose: () => {} };
+    },
+    show: () => {
+      queueMicrotask(() => {
+        if (pickedLabel !== undefined) {
+          qp.selectedItems = [{ label: pickedLabel }];
+          acceptCb?.();
+        } else {
+          hideCb?.();
+        }
+      });
+    },
+    hide: () => hideCb?.(),
+    dispose: () => {},
+  };
+  return qp;
+}
 
 /**
  * A minimal instance with an Icon coordinate system — enough for the producer
@@ -309,6 +364,7 @@ function makeEditClient(opts?: {
   loadStringCalls: Array<Record<string, unknown>>;
   setModifierCalls: Array<Record<string, unknown>>;
   removeModifierCalls: Array<Record<string, unknown>>;
+  setElementTypeCalls: Array<Record<string, unknown>>;
   ops: string[];
 } {
   const invoked: string[] = [];
@@ -318,6 +374,7 @@ function makeEditClient(opts?: {
   const loadStringCalls: Array<Record<string, unknown>> = [];
   const setModifierCalls: Array<Record<string, unknown>> = [];
   const removeModifierCalls: Array<Record<string, unknown>> = [];
+  const setElementTypeCalls: Array<Record<string, unknown>> = [];
   const ops: string[] = [];
   const client = {
     lastCall: "mock",
@@ -365,6 +422,11 @@ function makeEditClient(opts?: {
       removeModifierCalls.push(input);
       return Promise.resolve({ success: true });
     }),
+    setElementType: vi.fn((input: Record<string, unknown>) => {
+      ops.push("setElementType");
+      setElementTypeCalls.push(input);
+      return Promise.resolve({ success: true });
+    }),
     getErrorString: vi.fn(() => Promise.resolve({ errorString: "boom" })),
   } as unknown as OmcClient;
   return {
@@ -376,6 +438,7 @@ function makeEditClient(opts?: {
     loadStringCalls,
     setModifierCalls,
     removeModifierCalls,
+    setElementTypeCalls,
     ops,
   };
 }
@@ -979,5 +1042,194 @@ describe("DiagramEditController: parameter editing", () => {
       "setElementModifierValue",
       "listFile",
     ]);
+  });
+});
+
+const RECT = {
+  kind: "rectangle",
+  extent: [
+    [-40, -40],
+    [40, 40],
+  ],
+  lineColor: [0, 0, 0],
+};
+
+function shapeLayout(): DiagramLayout {
+  return layout({
+    diagramLayers: [
+      { from: "Pkg.M", shapes: [RECT] },
+    ] as unknown as DiagramLayout["diagramLayers"],
+  });
+}
+
+describe("DiagramEditController: shape properties", () => {
+  it("opens the shape modal on a single-shape selection (read, no write)", async () => {
+    const { client, invoked } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      shapeLayout(),
+      factory,
+    );
+
+    await controller.handle({
+      type: "selectionChange",
+      keys: ["shape:rectangle:0"],
+    });
+
+    expect(posted.find((m) => m.type === "parametersOpen")).toMatchObject({
+      kind: "shapeProperties",
+    });
+    expect(writes).toEqual([]);
+    expect(invoked).not.toContain("writeClassGraphics");
+  });
+
+  it("applies a shape-property edit and reflects the buffer", async () => {
+    const { client, invoked } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      shapeLayout(),
+      factory,
+    );
+
+    await controller.handle({
+      type: "selectionChange",
+      keys: ["shape:rectangle:0"],
+    });
+    await controller.handle({
+      type: "parametersSubmit",
+      kind: "shapeProperties",
+      values: { lineColor: "#ff0000" },
+    });
+
+    expect(invoked).toContain("writeClassGraphics");
+    expect(writes).toContain(LISTED_SOURCE);
+    expect(posted.at(-1)?.type).toBe("parametersClose");
+  });
+});
+
+function swapLayout(): DiagramLayout {
+  return layout({
+    components: {
+      r1: {
+        classRef: "Modelica.Blocks.Math.Gain",
+        placement: {
+          extent: [
+            [-10, -10],
+            [10, 10],
+          ],
+          rotation: 0,
+        },
+      },
+    } as unknown as DiagramLayout["components"],
+  });
+}
+
+describe("DiagramEditController: change class", () => {
+  it("swaps a component's class via setElementType and reflects", async () => {
+    vi.spyOn(vscodeMock.window, "createQuickPick").mockImplementation(
+      () => stubQuickPick("Modelica.Blocks.Math.Abs") as never,
+    );
+    const { client, setElementTypeCalls } = makeEditClient();
+    const { gate } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      swapLayout(),
+      factory,
+    );
+
+    await controller.handle({
+      type: "changeClassRequest",
+      componentName: "r1",
+      currentClass: "Modelica.Blocks.Math.Gain",
+    });
+
+    expect(setElementTypeCalls[0]).toMatchObject({
+      typeName: "Pkg.M.r1",
+      newTypeName: "Modelica.Blocks.Math.Abs",
+    });
+    expect(writes).toContain(LISTED_SOURCE);
+  });
+
+  it("is a no-op when the picked class is unchanged", async () => {
+    vi.spyOn(vscodeMock.window, "createQuickPick").mockImplementation(
+      () => stubQuickPick("Modelica.Blocks.Math.Gain") as never,
+    );
+    const { client, setElementTypeCalls } = makeEditClient();
+    const { gate } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      swapLayout(),
+      factory,
+    );
+
+    await controller.handle({
+      type: "changeClassRequest",
+      componentName: "r1",
+      currentClass: "Modelica.Blocks.Math.Gain",
+    });
+
+    expect(setElementTypeCalls).toEqual([]);
+  });
+
+  it("serializes a change-class after an in-flight forward edit", async () => {
+    vi.spyOn(vscodeMock.window, "createQuickPick").mockImplementation(
+      () => stubQuickPick("Modelica.Blocks.Math.Abs") as never,
+    );
+    const { client, ops } = makeEditClient();
+    const { gate } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      swapLayout(),
+      factory,
+    );
+
+    const edit = controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 0, y: 0 },
+    });
+    const swap = controller.handle({
+      type: "changeClassRequest",
+      componentName: "r1",
+      currentClass: "Modelica.Blocks.Math.Gain",
+    });
+    await Promise.all([edit, swap]);
+
+    // The forward edit fully applies + reflects before the class swap runs.
+    expect(ops).toEqual([
+      "addComponent",
+      "listFile",
+      "setElementType",
+      "listFile",
+    ]);
+  });
+
+  it("is a no-op when the pick is dismissed", async () => {
+    vi.spyOn(vscodeMock.window, "createQuickPick").mockImplementation(
+      () => stubQuickPick(undefined) as never,
+    );
+    const { client, setElementTypeCalls } = makeEditClient();
+    const { gate } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      swapLayout(),
+      factory,
+    );
+
+    await controller.handle({
+      type: "changeClassRequest",
+      componentName: "r1",
+      currentClass: "Modelica.Blocks.Math.Gain",
+    });
+
+    expect(setElementTypeCalls).toEqual([]);
   });
 });

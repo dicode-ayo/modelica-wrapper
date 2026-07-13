@@ -772,7 +772,7 @@ export async function openDiagram(
  * queued OMC lookups drop instead of holding the serialized socket on
  * behalf of a search nobody is waiting for.
  */
-function pickClassToSwap(
+export function pickClassToSwap(
   librarySource: LibrarySource,
   componentName: string,
   currentClass: string,
