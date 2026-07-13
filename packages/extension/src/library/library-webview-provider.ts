@@ -23,8 +23,10 @@ import {
   fetchComponentClass,
   libraryIconSvg,
 } from "../diagram/open-diagram.js";
-import { DIAGRAM_VIEW_TYPE } from "../diagram/diagram-editor-provider.js";
-import { DiagramPanel } from "../diagram/panel.js";
+import {
+  DIAGRAM_VIEW_TYPE,
+  DiagramEditorProvider,
+} from "../diagram/diagram-editor-provider.js";
 import { log } from "../logger.js";
 import { sourceUriFor } from "../source-provider.js";
 import { randomNonce } from "../webview/nonce.js";
@@ -127,7 +129,7 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
           `resolved ${className} in ${Date.now() - started}ms (${Object.keys(def.connectors).length} ports)`,
         );
       }
-      DiagramPanel.relayPlacementPreview(className, def);
+      DiagramEditorProvider.relayPlacementPreview(className, def);
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
       log.warn("placementPreview", `resolve failed for ${className}: ${error}`);
@@ -176,11 +178,11 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
         );
         return;
       case "placementStart":
-        DiagramPanel.relayPlacement(message.className);
+        DiagramEditorProvider.relayPlacement(message.className);
         void this.relayPreview(message.className);
         return;
       case "placementCancel":
-        DiagramPanel.relayPlacement(null);
+        DiagramEditorProvider.relayPlacement(null);
         return;
       case "loadLibrary":
         void vscode.commands.executeCommand("modelica.loadLibrary");

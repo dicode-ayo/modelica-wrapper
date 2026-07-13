@@ -9,10 +9,34 @@
  * it to a mock, so this runs in plain Node.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelInstance, OmcClient } from "@dicode/omc-client";
 
-import { fetchIconLayout } from "./open-diagram.js";
+import { executedCommands } from "../../test-support/vscode-mock.js";
+import { fetchIconLayout, openDiagram } from "./open-diagram.js";
+
+describe("openDiagram", () => {
+  beforeEach(() => {
+    executedCommands.length = 0;
+  });
+
+  it("opens the class in the modelica.diagram custom editor via openWith", async () => {
+    await openDiagram("Modelica.Blocks.Math.Gain");
+    const call = executedCommands.find((c) => c.command === "vscode.openWith");
+    expect(call).toBeDefined();
+    expect(String(call?.args[0])).toBe(
+      "modelica-source:/Modelica.Blocks.Math.Gain.mo",
+    );
+    expect(call?.args[1]).toBe("modelica.diagram");
+  });
+
+  it("does nothing when no class is resolved", async () => {
+    await openDiagram(undefined);
+    expect(executedCommands.some((c) => c.command === "vscode.openWith")).toBe(
+      false,
+    );
+  });
+});
 
 /**
  * A minimal instance with a usable Icon annotation. Empty `graphics` but a

@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OmcClient } from "@dicode/omc-client";
 
-import { DiagramPanel } from "../diagram/panel.js";
+import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
 import type {
   ExtensionToLibraryView,
   LibraryViewToExtension,
@@ -290,7 +290,7 @@ describe("LibraryWebviewProvider", () => {
 
   it("relays placement start and cancel to the active diagram", () => {
     const relay = vi
-      .spyOn(DiagramPanel, "relayPlacement")
+      .spyOn(DiagramEditorProvider, "relayPlacement")
       .mockReturnValue(true);
     const { provider } = makeProvider();
     const { view, send } = fakeView();
@@ -302,9 +302,9 @@ describe("LibraryWebviewProvider", () => {
   });
 
   it("resolves and relays the preview definition after a placement start", async () => {
-    vi.spyOn(DiagramPanel, "relayPlacement").mockReturnValue(true);
+    vi.spyOn(DiagramEditorProvider, "relayPlacement").mockReturnValue(true);
     const preview = vi
-      .spyOn(DiagramPanel, "relayPlacementPreview")
+      .spyOn(DiagramEditorProvider, "relayPlacementPreview")
       .mockReturnValue(true);
     const { provider } = makeProvider();
     const { view, send } = fakeView();
@@ -320,9 +320,9 @@ describe("LibraryWebviewProvider", () => {
   });
 
   it("relays no preview when the class can't be resolved", async () => {
-    vi.spyOn(DiagramPanel, "relayPlacement").mockReturnValue(true);
+    vi.spyOn(DiagramEditorProvider, "relayPlacement").mockReturnValue(true);
     const preview = vi
-      .spyOn(DiagramPanel, "relayPlacementPreview")
+      .spyOn(DiagramEditorProvider, "relayPlacementPreview")
       .mockReturnValue(true);
     const { provider, client } = makeProvider();
     client.getModelInstance.mockRejectedValueOnce(new Error("no such class"));
@@ -336,8 +336,10 @@ describe("LibraryWebviewProvider", () => {
   });
 
   it("resolves a class once and serves repeat drags from cache", async () => {
-    vi.spyOn(DiagramPanel, "relayPlacement").mockReturnValue(true);
-    vi.spyOn(DiagramPanel, "relayPlacementPreview").mockReturnValue(true);
+    vi.spyOn(DiagramEditorProvider, "relayPlacement").mockReturnValue(true);
+    vi.spyOn(DiagramEditorProvider, "relayPlacementPreview").mockReturnValue(
+      true,
+    );
     const { provider, client } = makeProvider();
     const { view, send } = fakeView();
     provider.resolveWebviewView(view);
@@ -352,8 +354,10 @@ describe("LibraryWebviewProvider", () => {
   });
 
   it("retries an unresolvable class on the next drag", async () => {
-    vi.spyOn(DiagramPanel, "relayPlacement").mockReturnValue(true);
-    vi.spyOn(DiagramPanel, "relayPlacementPreview").mockReturnValue(true);
+    vi.spyOn(DiagramEditorProvider, "relayPlacement").mockReturnValue(true);
+    vi.spyOn(DiagramEditorProvider, "relayPlacementPreview").mockReturnValue(
+      true,
+    );
     const { provider, client } = makeProvider();
     client.getModelInstance.mockRejectedValueOnce(new Error("busy"));
     const { view, send } = fakeView();

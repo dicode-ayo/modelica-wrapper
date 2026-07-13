@@ -12,13 +12,7 @@ import type {
 } from "../webview/protocol.js";
 import { createReadyGate, type ReadyGate } from "../webview/ready-gate.js";
 import { renderDiagramWebviewHtml } from "./diagram-webview-html.js";
-
-/**
- * Context key gating the diagram's single-letter keybindings (`r`/`f`/Delete)
- * so they only fire over the canvas, never while typing in the parameter
- * modal. The webview reports its editable-field focus; we mirror it here.
- */
-const INPUT_FOCUS_CONTEXT = "modelicaDiagramInputFocus";
+import { setInputFocusContext } from "./input-focus.js";
 
 /**
  * Wraps a `vscode.WebviewPanel` and the message handlers between the
@@ -333,12 +327,4 @@ export class DiagramPanel {
       this.className,
     );
   }
-}
-
-function setInputFocusContext(focused: boolean): void {
-  void vscode.commands.executeCommand(
-    "setContext",
-    INPUT_FOCUS_CONTEXT,
-    focused,
-  );
 }

@@ -20,6 +20,17 @@ export enum ProgressLocation {
   Notification = 15,
 }
 
+export enum FilePermission {
+  Readonly = 1,
+}
+
+let statPermissions = 0;
+
+/** Control what `workspace.fs.stat` reports for the readonly-gate tests. */
+export function setStatReadonly(readonly: boolean): void {
+  statPermissions = readonly ? FilePermission.Readonly : 0;
+}
+
 export class Position {
   constructor(
     public readonly line: number,
@@ -213,6 +224,23 @@ export const workspace = {
     return {
       get: <T>(_key: string, defaultValue?: T): T | undefined => defaultValue,
     };
+  },
+  fs: {
+    stat(_uri: unknown): Promise<{
+      type: number;
+      ctime: number;
+      mtime: number;
+      size: number;
+      permissions: number;
+    }> {
+      return Promise.resolve({
+        type: 1,
+        ctime: 0,
+        mtime: 0,
+        size: 0,
+        permissions: statPermissions,
+      });
+    },
   },
   applyEdit(edit: WorkspaceEdit): Promise<boolean> {
     appliedEdits.push(edit);

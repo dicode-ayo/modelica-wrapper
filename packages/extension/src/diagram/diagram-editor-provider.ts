@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 import type {
+  ClassDef,
   ComponentElement,
   DiagramLayout,
   OmcClient,
@@ -9,7 +10,11 @@ import { produceSimulationModel } from "@dicode/omc-client";
 
 import { log } from "../logger.js";
 import { qualifiedNameFromUri } from "../source-provider.js";
-import type { WebviewToExtension } from "../webview/protocol.js";
+import type {
+  DiagramCommandId,
+  ExtensionToWebview,
+  WebviewToExtension,
+} from "../webview/protocol.js";
 import { createReadyGate, type ReadyGate } from "../webview/ready-gate.js";
 
 import { applyEdits } from "./apply-edits.js";
@@ -51,8 +56,10 @@ import {
   buildShapePropertiesForm,
   lookupHostShape,
 } from "./shape-properties.js";
+import { setInputFocusContext } from "./input-focus.js";
+import { DIAGRAM_VIEW_TYPE } from "./view-type.js";
 
-export const DIAGRAM_VIEW_TYPE = "modelica.diagram";
+export { DIAGRAM_VIEW_TYPE };
 
 /**
  * Resolve the Modelica class a `.mo` document stands for. The
@@ -111,6 +118,66 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       document,
     );
   }
+
+  // ── Active-editor registry ──────────────────────────────────────────────
+  // Mirrors DiagramPanel's statics so the diagram-shortcut command, check-model
+  // and the library sidebar drive the focused custom editor.
+  private static active: EditorSession | undefined;
+
+  /** Class of the focused diagram editor, or undefined when none is focused. */
+  static activeClassName(): string | undefined {
+    return DiagramEditorProvider.active?.className();
+  }
+
+  /** Push a diagram shortcut to the focused editor's webview; false if none. */
+  static runActiveCommand(commandId: DiagramCommandId): boolean {
+    const session = DiagramEditorProvider.active;
+    if (!session) return false;
+    session.send({ type: "runCommand", commandId });
+    return true;
+  }
+
+  /** Relay a placement gesture from the sidebar; `null` cancels. False if none. */
+  static relayPlacement(className: string | null): boolean {
+    const session = DiagramEditorProvider.active;
+    if (!session) return false;
+    session.send(
+      className === null
+        ? { type: "placementCancel" }
+        : { type: "placementStart", className },
+    );
+    return true;
+  }
+
+  /** Relay the armed class's resolved definition to the focused editor. */
+  static relayPlacementPreview(className: string, classDef: ClassDef): boolean {
+    const session = DiagramEditorProvider.active;
+    if (!session) return false;
+    session.send({ type: "placementPreview", className, classDef });
+    return true;
+  }
+
+  static setActive(session: EditorSession): void {
+    DiagramEditorProvider.active = session;
+    setInputFocusContext(session.inputFocused);
+  }
+
+  static clearActive(session: EditorSession): void {
+    if (DiagramEditorProvider.active === session) {
+      DiagramEditorProvider.active = undefined;
+      setInputFocusContext(false);
+    }
+  }
+
+  static isActive(session: EditorSession): boolean {
+    return DiagramEditorProvider.active === session;
+  }
+}
+
+interface EditorSession {
+  className(): string | undefined;
+  send(msg: ExtensionToWebview): void;
+  inputFocused: boolean;
 }
 
 /**
@@ -134,31 +201,56 @@ export function resolveDiagramEditor(
 
   const gate = createReadyGate(webview);
   let controller: DiagramEditController | undefined;
+  let resolvedClassName: string | undefined;
+  const session: EditorSession = {
+    className: () => resolvedClassName,
+    send: (msg) => gate.send(msg),
+    inputFocused: false,
+  };
 
   const sub = webview.onDidReceiveMessage((msg: WebviewToExtension) => {
     if (msg.type === "ready") {
       gate.markReady();
       return;
     }
+    if (msg.type === "inputFocus") {
+      session.inputFocused = msg.focused;
+      if (DiagramEditorProvider.isActive(session)) {
+        setInputFocusContext(msg.focused);
+      }
+      return;
+    }
     // The controller exists only after the initial layout resolves; the webview
     // sends edits only after `init`, so a missing controller means "not yet".
     void controller?.handle(msg);
   });
+  const viewStateSub = webviewPanel.onDidChangeViewState((e) => {
+    if (e.webviewPanel.active) DiagramEditorProvider.setActive(session);
+    else DiagramEditorProvider.clearActive(session);
+  });
   webviewPanel.onDidDispose(() => {
     sub.dispose();
+    viewStateSub.dispose();
+    DiagramEditorProvider.clearActive(session);
     controller?.dispose();
   });
 
   const start = (className: string): void => {
+    resolvedClassName = className;
     webview.html = renderDiagramWebviewHtml(webview, extensionUri, className);
     void (async (): Promise<void> => {
       try {
         const client = await ensureClient();
+        // A read-only class (an MSL library, reported by the source provider's
+        // stat) still renders and answers read actions, but rejects edits.
+        const readOnly = await isReadOnlyDocument(document);
         const layout = await fetchDiagramLayout(client, className);
         controller = new DiagramEditController(
           { client, document, className, gate },
           layout,
           (onForeignChange) => createShadowBuffer(document, onForeignChange),
+          defaultScheduler,
+          readOnly,
         );
         gate.send({ type: "init", layout, className });
       } catch (err) {
@@ -167,6 +259,7 @@ export function resolveDiagramEditor(
         log.warn("diagramEditor", message);
       }
     })();
+    if (webviewPanel.active) DiagramEditorProvider.setActive(session);
   };
 
   // The `modelica-source:` scheme encodes the class in its path — resolve it
@@ -185,6 +278,23 @@ export function resolveDiagramEditor(
     }
     start(className);
   })();
+}
+
+/**
+ * Whether the document's backing source is read-only — the source provider
+ * reports `Readonly` for MSL / installed-library classes, and a `file:` `.mo`
+ * carries the real file's permission. Best-effort: a failed stat is treated as
+ * writable so a transient error doesn't lock the editor.
+ */
+async function isReadOnlyDocument(
+  document: vscode.TextDocument,
+): Promise<boolean> {
+  try {
+    const stat = await vscode.workspace.fs.stat(document.uri);
+    return ((stat.permissions ?? 0) & vscode.FilePermission.Readonly) !== 0;
+  } catch {
+    return false;
+  }
 }
 
 interface EditControllerDeps {
@@ -247,10 +357,22 @@ export class DiagramEditController {
       onForeignChange: (document: vscode.TextDocument) => void,
     ) => ShadowBuffer,
     private readonly scheduler: Scheduler = defaultScheduler,
+    private readonly readOnly: boolean = false,
   ) {
     this.prevLayout = initialLayout;
     this.shadow = makeShadow(() => this.onForeignChange());
     this.librarySource = new LibrarySource(deps.client);
+  }
+
+  /**
+   * Reject an edit against a read-only class (an MSL / installed-library
+   * source): the diagram renders and read actions work, but mutating the class
+   * source is refused so we never dirty a buffer that can't be saved.
+   */
+  private rejectIfReadOnly(): boolean {
+    if (!this.readOnly) return false;
+    this.reportError("This class is read-only and can't be edited.");
+    return true;
   }
 
   private queue: Promise<void> = Promise.resolve();
@@ -365,6 +487,7 @@ export class DiagramEditController {
   }
 
   private async onChange(next: DiagramLayout): Promise<void> {
+    if (this.rejectIfReadOnly()) return;
     const { client, className } = this.deps;
     try {
       const result = await applyDiagramEdits(
@@ -389,6 +512,7 @@ export class DiagramEditController {
     componentClass: string,
     position: { x: number; y: number },
   ): Promise<void> {
+    if (this.rejectIfReadOnly()) return;
     const { client, className } = this.deps;
     const componentName = uniqueComponentName(this.prevLayout, componentClass);
     try {
@@ -417,6 +541,7 @@ export class DiagramEditController {
     toKey: string,
     waypoints: ReadonlyArray<readonly [number, number]>,
   ): Promise<void> {
+    if (this.rejectIfReadOnly()) return;
     const { client, className } = this.deps;
     const from = keyToCref(this.prevLayout, fromKey);
     const to = keyToCref(this.prevLayout, toKey);
@@ -514,7 +639,14 @@ export class DiagramEditController {
   ): Promise<void> {
     const { client, className, gate } = this.deps;
     try {
-      if (kind === "classParams") {
+      if (kind === "simulate") {
+        // Simulate runs the model and emits a result file; it does not change
+        // the class source, so there is nothing to reflect to the buffer (and
+        // it stays allowed on a read-only class).
+        await runSimulate(client, className, values);
+      } else if (this.rejectIfReadOnly()) {
+        // A parameter / shape submit mutates the class source — refused.
+      } else if (kind === "classParams") {
         await applyClassParameterEdits(
           client,
           className,
@@ -537,10 +669,6 @@ export class DiagramEditController {
         }
       } else if (kind === "shapeProperties") {
         await this.applyShapePropertiesSubmit(values);
-      } else if (kind === "simulate") {
-        // Simulate runs the model and emits a result file; it does not change
-        // the class source, so there is nothing to reflect to the buffer.
-        await runSimulate(client, className, values);
       }
     } catch (err) {
       this.reportError(`applying parameters failed: ${(err as Error).message}`);
@@ -648,6 +776,7 @@ export class DiagramEditController {
     componentName: string,
     currentClass: string,
   ): Promise<void> {
+    if (this.rejectIfReadOnly()) return;
     const { client, className } = this.deps;
     try {
       const newClass = await pickClassToSwap(
@@ -687,6 +816,7 @@ export class DiagramEditController {
   private async onResetComponentParameters(
     componentName: string,
   ): Promise<void> {
+    if (this.rejectIfReadOnly()) return;
     if (this.resetInFlight) return;
     this.resetInFlight = true;
     const { client, className, gate } = this.deps;

@@ -4,7 +4,7 @@
  * Resolution order for the target class:
  *   0. An explicit `className` command argument, when passed (the diagram
  *      custom editor names its class directly).
- *   1. The active diagram panel, if any (`DiagramPanel.activeClassName()`).
+ *   1. The active diagram editor, if any (`DiagramEditorProvider.activeClassName()`).
  *   2. The active text editor when its document uses the `modelica-source:`
  *      scheme (mapped back to a qualified name via `qualifiedNameFromUri`).
  *   3. None — show a warning and bail.
@@ -25,7 +25,7 @@ import * as vscode from "vscode";
 import type { OmcClient } from "@dicode/omc-client";
 
 import { mapOmcMessagesToDiagnostics } from "../diagnostics/from-omc.js";
-import { DiagramPanel } from "../diagram/panel.js";
+import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
 import { log } from "../logger.js";
 import {
   MODELICA_SOURCE_SCHEME,
@@ -72,7 +72,7 @@ export function registerCheckModelCommand(
 }
 
 function resolveTargetClass(): string | undefined {
-  const fromDiagram = DiagramPanel.activeClassName();
+  const fromDiagram = DiagramEditorProvider.activeClassName();
   if (fromDiagram) return fromDiagram;
   const editor = vscode.window.activeTextEditor;
   if (editor && editor.document.uri.scheme === MODELICA_SOURCE_SCHEME) {

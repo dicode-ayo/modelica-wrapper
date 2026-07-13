@@ -44,6 +44,7 @@ import type { ReadyGate } from "../webview/ready-gate.js";
 import {
   classNameFromDocument,
   DiagramEditController,
+  DiagramEditorProvider,
   resolveDiagramEditor,
   type Scheduler,
 } from "./diagram-editor-provider.js";
@@ -135,14 +136,21 @@ interface FakeWebview {
   };
 }
 
-function makePanel(): {
+function makePanel(active = false): {
   panel: vscode.WebviewPanel;
   webview: FakeWebview;
   posted: ExtensionToWebview[];
   fireReady: () => void;
+  fireMessage: (m: WebviewToExtension) => void;
+  fireViewState: (isActive: boolean) => void;
+  fireDispose: () => void;
 } {
   const posted: ExtensionToWebview[] = [];
   let listener: ((m: WebviewToExtension) => void) | undefined;
+  let viewStateListener:
+    | ((e: { webviewPanel: { active: boolean } }) => void)
+    | undefined;
+  let disposeListener: (() => void) | undefined;
   const webview: FakeWebview = {
     options: undefined,
     cspSource: "vscode-webview:",
@@ -159,13 +167,29 @@ function makePanel(): {
   };
   const panel = {
     webview,
-    onDidDispose: (_l: () => void) => ({ dispose: () => {} }),
+    active,
+    onDidDispose: (l: () => void) => {
+      disposeListener = l;
+      return { dispose: () => {} };
+    },
+    onDidChangeViewState: (
+      l: (e: { webviewPanel: { active: boolean } }) => void,
+    ) => {
+      viewStateListener = l;
+      return { dispose: () => {} };
+    },
   };
   return {
     panel: panel as unknown as vscode.WebviewPanel,
     webview,
     posted,
     fireReady: () => listener?.({ type: "ready" }),
+    fireMessage: (m) => listener?.(m),
+    fireViewState: (isActive) => {
+      panel.active = isActive;
+      viewStateListener?.({ webviewPanel: { active: isActive } });
+    },
+    fireDispose: () => disposeListener?.(),
   };
 }
 
@@ -1328,5 +1352,125 @@ describe("DiagramEditController: simulate and check actions", () => {
 
     // The forward edit fully applies + reflects before the simulate runs.
     expect(ops).toEqual(["addComponent", "listFile", "simulate"]);
+  });
+});
+
+describe("DiagramEditorProvider: active-editor registry", () => {
+  it("tracks the active class and routes commands/placement to its webview", async () => {
+    const { panel, posted, fireReady, fireViewState } = makePanel();
+    const { client } = makeEditClient();
+    const ensureClient = vi.fn(() => Promise.resolve(client));
+
+    resolveDiagramEditor(
+      panel,
+      EXT_URI,
+      ensureClient,
+      docFor(vscode.Uri.parse("modelica-source:/Pkg.M.mo")),
+    );
+    fireReady();
+    fireViewState(true);
+
+    expect(DiagramEditorProvider.activeClassName()).toBe("Pkg.M");
+
+    posted.length = 0;
+    expect(DiagramEditorProvider.runActiveCommand("diagram.delete")).toBe(true);
+    expect(posted).toContainEqual({
+      type: "runCommand",
+      commandId: "diagram.delete",
+    });
+
+    posted.length = 0;
+    expect(
+      DiagramEditorProvider.relayPlacement("Modelica.Blocks.Math.Gain"),
+    ).toBe(true);
+    expect(posted).toContainEqual({
+      type: "placementStart",
+      className: "Modelica.Blocks.Math.Gain",
+    });
+
+    // Deactivating clears the registry.
+    fireViewState(false);
+    expect(DiagramEditorProvider.activeClassName()).toBeUndefined();
+    expect(DiagramEditorProvider.runActiveCommand("diagram.delete")).toBe(
+      false,
+    );
+    expect(DiagramEditorProvider.relayPlacement(null)).toBe(false);
+  });
+});
+
+describe("DiagramEditController: writable-class gate", () => {
+  function readOnlyController(deps: {
+    client: OmcClient;
+    gate: ReadyGate;
+    factory: ShadowFactory;
+    initial?: DiagramLayout;
+  }): DiagramEditController {
+    return new DiagramEditController(
+      {
+        client: deps.client,
+        document: SRC_DOC,
+        className: "Pkg.M",
+        gate: deps.gate,
+      },
+      deps.initial ?? layout({}),
+      deps.factory,
+      undefined,
+      true,
+    );
+  }
+
+  it("rejects a drag on a read-only class without mutating OMC", async () => {
+    const { client, addComponentCalls } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = readOnlyController({ client, gate, factory });
+
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 0, y: 0 },
+    });
+
+    expect(addComponentCalls).toEqual([]);
+    expect(writes).toEqual([]);
+    expect(posted.at(-1)?.type).toBe("error");
+  });
+
+  it("rejects a parameter submit on a read-only class", async () => {
+    const { client, setModifierCalls } = makeEditClient({
+      instance: CLASS_PARAM_INSTANCE,
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = readOnlyController({ client, gate, factory });
+
+    await controller.handle({ type: "actionParameters" }); // read — allowed
+    await controller.handle({
+      type: "parametersSubmit",
+      kind: "classParams",
+      values: { gain: 5 },
+    });
+
+    expect(setModifierCalls).toEqual([]); // mutation refused
+    expect(posted.some((m) => m.type === "error")).toBe(true);
+  });
+
+  it("still opens a modal and runs simulate on a read-only class", async () => {
+    const { client, simulateCalls } = makeEditClient({
+      instance: CLASS_PARAM_INSTANCE,
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = readOnlyController({ client, gate, factory });
+
+    await controller.handle({ type: "actionParameters" });
+    expect(posted.some((m) => m.type === "parametersOpen")).toBe(true);
+
+    await controller.handle({
+      type: "parametersSubmit",
+      kind: "simulate",
+      values: { stopTime: 1 },
+    });
+    expect(simulateCalls).toHaveLength(1);
   });
 });
