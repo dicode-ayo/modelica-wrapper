@@ -340,9 +340,6 @@ export class DiagramEditController {
   private componentParamRefs: Record<string, ComponentParameterRef> = {};
   private componentParamInitialValues: Record<string, unknown> = {};
   private componentParamComponentName: string | null = null;
-  // Drops a double-clicked "Reset to defaults" second invocation while the
-  // first is still re-fetching and re-opening.
-  private resetInFlight = false;
   // The shape a shapeProperties modal is editing — captured on selection, read
   // back on submit.
   private shapeLayerKind: GraphicsLayer | null = null;
@@ -817,8 +814,6 @@ export class DiagramEditController {
     componentName: string,
   ): Promise<void> {
     if (this.rejectIfReadOnly()) return;
-    if (this.resetInFlight) return;
-    this.resetInFlight = true;
     const { client, className, gate } = this.deps;
     try {
       // Bulk-clear the sub-component's modifiers (keepRedeclares keeps any
@@ -831,7 +826,17 @@ export class DiagramEditController {
       );
       if (!ok) return;
       const instance = await fetchModelInstance(client, className);
-      await this.reflect(await layoutFromInstance(client, className, instance));
+      // A flaky layout rebuild must not swallow the modal re-open: the reset
+      // already committed, so re-open with the fresh instance regardless.
+      try {
+        await this.reflect(
+          await layoutFromInstance(client, className, instance),
+        );
+      } catch (err) {
+        this.reportError(
+          `reset ${componentName} refetch failed: ${(err as Error).message}`,
+        );
+      }
       const component = findSubComponent(instance, componentName);
       if (!component) {
         this.clearComponentParamState();
@@ -860,8 +865,6 @@ export class DiagramEditController {
       this.reportError(
         `reset ${componentName} failed: ${(err as Error).message}`,
       );
-    } finally {
-      this.resetInFlight = false;
     }
   }
 

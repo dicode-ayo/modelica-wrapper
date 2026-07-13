@@ -381,6 +381,9 @@ const LISTED_SOURCE = "model M end M;";
 function makeEditClient(opts?: {
   loadStringSuccess?: boolean;
   instance?: ModelInstance;
+  setElementTypeSuccess?: boolean;
+  setElementTypeThrows?: boolean;
+  getModelInstanceThrows?: boolean;
 }): {
   client: OmcClient;
   invoked: string[];
@@ -408,8 +411,11 @@ function makeEditClient(opts?: {
     lastCall: "mock",
     invoke: vi.fn((fn: string) => {
       invoked.push(fn);
-      if (fn === "getModelInstance")
-        return Promise.resolve({ instance: opts?.instance ?? INSTANCE });
+      if (fn === "getModelInstance") {
+        return opts?.getModelInstanceThrows
+          ? Promise.reject(new Error("getModelInstance failed"))
+          : Promise.resolve({ instance: opts?.instance ?? INSTANCE });
+      }
       if (fn === "getInstantiatedParametersAndValues") {
         return Promise.reject(new Error("no params"));
       }
@@ -453,7 +459,10 @@ function makeEditClient(opts?: {
     setElementType: vi.fn((input: Record<string, unknown>) => {
       ops.push("setElementType");
       setElementTypeCalls.push(input);
-      return Promise.resolve({ success: true });
+      if (opts?.setElementTypeThrows) {
+        return Promise.reject(new Error("setElementType threw"));
+      }
+      return Promise.resolve({ success: opts?.setElementTypeSuccess ?? true });
     }),
     simulate: vi.fn((input: Record<string, unknown>) => {
       ops.push("simulate");
@@ -912,6 +921,32 @@ function componentInstance(): ModelInstance {
               type: "Real",
               value: { binding: 1 },
               prefixes: { variability: "parameter" },
+            },
+          ],
+        },
+      } as unknown as ComponentElement,
+    ],
+  } as unknown as ModelInstance;
+}
+
+/** A component whose type declares no editable (parameter-variability) member. */
+function componentInstanceNoParams(): ModelInstance {
+  return {
+    name: "Pkg.M",
+    restriction: "model",
+    elements: [
+      {
+        $kind: "component",
+        name: "PI",
+        type: {
+          name: "MyLib.Block",
+          restriction: "block",
+          elements: [
+            {
+              $kind: "component",
+              name: "y",
+              type: "Real",
+              prefixes: { variability: "" },
             },
           ],
         },
@@ -1472,5 +1507,152 @@ describe("DiagramEditController: writable-class gate", () => {
       values: { stopTime: 1 },
     });
     expect(simulateCalls).toHaveLength(1);
+  });
+});
+
+describe("DiagramEditController: change-class error branches", () => {
+  it("reports an error and does not reflect when setElementType returns success=false", async () => {
+    vi.spyOn(vscodeMock.window, "createQuickPick").mockImplementation(
+      () => stubQuickPick("Modelica.Blocks.Math.Abs") as never,
+    );
+    const { client, setElementTypeCalls } = makeEditClient({
+      setElementTypeSuccess: false,
+    });
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      swapLayout(),
+      factory,
+    );
+
+    await controller.handle({
+      type: "changeClassRequest",
+      componentName: "r1",
+      currentClass: "Modelica.Blocks.Math.Gain",
+    });
+
+    expect(setElementTypeCalls).toHaveLength(1);
+    expect(writes).toEqual([]); // no reflect on failure
+    expect(posted.at(-1)?.type).toBe("error");
+  });
+
+  it("reports an error when the setElementType RPC throws", async () => {
+    vi.spyOn(vscodeMock.window, "createQuickPick").mockImplementation(
+      () => stubQuickPick("Modelica.Blocks.Math.Abs") as never,
+    );
+    const { client } = makeEditClient({ setElementTypeThrows: true });
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      swapLayout(),
+      factory,
+    );
+
+    await controller.handle({
+      type: "changeClassRequest",
+      componentName: "r1",
+      currentClass: "Modelica.Blocks.Math.Gain",
+    });
+
+    expect(writes).toEqual([]);
+    expect(posted.at(-1)?.type).toBe("error");
+  });
+});
+
+describe("DiagramEditController: reset error branches", () => {
+  it("closes the modal and clears state when the component vanished after reset", async () => {
+    const { client, setModifierCalls } = makeEditClient({
+      instance: componentInstance(),
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+    );
+
+    // Seed component-param state, then reset a name absent from the instance.
+    await controller.handle({ type: "editComponent", componentName: "PI" });
+    await controller.handle({
+      type: "resetComponentParameters",
+      componentName: "Ghost",
+    });
+
+    expect(posted.at(-1)?.type).toBe("parametersClose"); // modal closed
+    // State cleared: a later component submit finds no target and writes nothing.
+    await controller.handle({
+      type: "parametersSubmit",
+      kind: "componentParams",
+      values: { k: 9 },
+    });
+    expect(setModifierCalls).toEqual([]);
+  });
+
+  it("closes the modal and clears state when no editable params remain", async () => {
+    const { client, setModifierCalls } = makeEditClient({
+      instance: componentInstanceNoParams(),
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({
+      type: "resetComponentParameters",
+      componentName: "PI",
+    });
+
+    expect(posted.at(-1)?.type).toBe("parametersClose");
+    await controller.handle({
+      type: "parametersSubmit",
+      kind: "componentParams",
+      values: { k: 9 },
+    });
+    expect(setModifierCalls).toEqual([]);
+  });
+
+  it("reports an error when the re-open getModelInstance fails", async () => {
+    const { client } = makeEditClient({ getModelInstanceThrows: true });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({
+      type: "resetComponentParameters",
+      componentName: "PI",
+    });
+
+    expect(posted.at(-1)?.type).toBe("error");
+  });
+});
+
+describe("DiagramEditorProvider: registry dispose", () => {
+  it("clears the active editor when the active session disposes", async () => {
+    const { panel, fireReady, fireViewState, fireDispose } = makePanel();
+    const { client } = makeEditClient();
+    const ensureClient = vi.fn(() => Promise.resolve(client));
+
+    resolveDiagramEditor(
+      panel,
+      EXT_URI,
+      ensureClient,
+      docFor(vscode.Uri.parse("modelica-source:/Pkg.M.mo")),
+    );
+    fireReady();
+    fireViewState(true);
+    expect(DiagramEditorProvider.activeClassName()).toBe("Pkg.M");
+
+    fireDispose();
+    expect(DiagramEditorProvider.activeClassName()).toBeUndefined();
   });
 });
