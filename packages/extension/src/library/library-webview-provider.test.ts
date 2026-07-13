@@ -264,15 +264,17 @@ describe("LibraryWebviewProvider", () => {
     expect(reply).toMatchObject({ requestId: "s2" });
   });
 
-  it("opens the class diagram on select", () => {
+  it("opens the class diagram custom editor on the modelica-source doc", () => {
     const { provider } = makeProvider();
     const { view, send } = fakeView();
     provider.resolveWebviewView(view);
     send({ type: "openDiagram", className: "Modelica.Blocks.Math.Gain" });
-    expect(executedCommands).toContainEqual({
-      command: "modelica.openDiagram",
-      args: ["Modelica.Blocks.Math.Gain"],
-    });
+    const call = executedCommands.find((c) => c.command === "vscode.openWith");
+    expect(call).toBeDefined();
+    expect(String(call?.args[0])).toBe(
+      "modelica-source:/Modelica.Blocks.Math.Gain.mo",
+    );
+    expect(call?.args[1]).toBe("modelica.diagram");
   });
 
   it("runs Load Library from the empty-state affordance", () => {

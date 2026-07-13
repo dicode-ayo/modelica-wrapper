@@ -23,8 +23,10 @@ import {
   fetchComponentClass,
   libraryIconSvg,
 } from "../diagram/open-diagram.js";
+import { DIAGRAM_VIEW_TYPE } from "../diagram/diagram-editor-provider.js";
 import { DiagramPanel } from "../diagram/panel.js";
 import { log } from "../logger.js";
+import { sourceUriFor } from "../source-provider.js";
 import { randomNonce } from "../webview/nonce.js";
 import type { LibraryClassInfo } from "../webview/library-messages.js";
 import type {
@@ -168,8 +170,9 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
         return;
       case "openDiagram":
         void vscode.commands.executeCommand(
-          "modelica.openDiagram",
-          message.className,
+          "vscode.openWith",
+          sourceUriFor(message.className),
+          DIAGRAM_VIEW_TYPE,
         );
         return;
       case "placementStart":
