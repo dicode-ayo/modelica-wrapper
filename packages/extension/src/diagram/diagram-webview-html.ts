@@ -8,9 +8,8 @@ const DIAGRAM_CANVAS_BG = "#f7f7f8";
 
 /**
  * Build the CSP-locked HTML that boots the diagram-ui bundle (`out/webview.js`
- * + `out/webview.css`, root `<om-webview-root>`). Shared by the diagram
- * `WebviewPanel` and the `modelica.diagram` custom editor so both surfaces
- * load the identical webview.
+ * + `out/webview.css`, root `<om-webview-root>`) for the `modelica.diagram`
+ * custom editor.
  */
 export function renderDiagramWebviewHtml(
   webview: vscode.Webview,

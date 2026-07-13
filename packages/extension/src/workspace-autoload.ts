@@ -41,19 +41,25 @@ export async function loadEntryFilesAndRefresh(
   };
 
   let loadedAny = false;
-  const failed: string[] = [];
+  let failed: string[] = [];
   for (const fileName of files) {
     if (await tryLoad(fileName)) loadedAny = true;
     else failed.push(fileName);
   }
   // A `within <Parent>;` child in a standalone file fails to insert when its
   // parent package file hasn't loaded yet (discovery order is arbitrary — a
-  // child can sort before its parent). Retry the failures once, now that the
-  // first pass has put every parent into the symbol table.
-  if (failed.length > 0 && loadedAny) {
+  // child can sort before its parent). Retry the still-failed set pass by pass
+  // as long as each pass loads at least one; a pass that loads a parent unblocks
+  // its children, which unblocks grandchildren, until no pass makes progress.
+  while (failed.length > 0 && loadedAny) {
+    const stillFailed: string[] = [];
+    let progressed = false;
     for (const fileName of failed) {
-      if (await tryLoad(fileName)) loadedAny = true;
+      if (await tryLoad(fileName)) progressed = true;
+      else stillFailed.push(fileName);
     }
+    failed = stillFailed;
+    if (!progressed) break;
   }
   if (loadedAny) {
     refresh();

@@ -5,6 +5,7 @@ import type {
   ComponentElement,
   DiagramLayout,
   OmcClient,
+  Shape,
 } from "@dicode/omc-client";
 import { produceSimulationModel } from "@dicode/omc-client";
 
@@ -345,6 +346,11 @@ export class DiagramEditController {
   private shapeLayerKind: GraphicsLayer | null = null;
   private shapeIndex: number | null = null;
   private shapeKind: string | null = null;
+  // The exact shape captured at selection. The modal stays open across queued
+  // units, so an interleaved reverse-sync can re-fetch `prevLayout` with shifted
+  // graphics indices; submit requires this identity so an edit can't land on a
+  // different shape that now occupies the same index/kind/layer.
+  private shapeSnapshot: Shape | null = null;
   private readonly librarySource: LibrarySource;
 
   constructor(
@@ -405,7 +411,12 @@ export class DiagramEditController {
   }
 
   private enqueue(unit: () => Promise<void>): Promise<void> {
-    this.queue = this.queue.then(unit);
+    // A single rejection would sever the chain — every later `.then(unit)` would
+    // be skipped and each dropped unit surface as an unhandled rejection. The
+    // one place the chain is built is the one place the catch belongs.
+    this.queue = this.queue.then(unit).catch((err) => {
+      this.reportError(`queued edit failed: ${(err as Error).message}`);
+    });
     return this.queue;
   }
 
@@ -418,6 +429,9 @@ export class DiagramEditController {
   private async reverseSync(): Promise<void> {
     const { client, className, document } = this.deps;
     try {
+      // Drain stale diagnostics so the post-load `getErrorString` attributes
+      // only errors this load produced.
+      await client.getErrorString();
       const { success } = await client.loadString({
         data: document.getText(),
         filename: document.uri.toString(),
@@ -719,7 +733,16 @@ export class DiagramEditController {
       index,
       this.shapeKind ?? undefined,
     );
-    if (found === null || found.layerKind !== layer) return;
+    if (
+      found === null ||
+      found.layerKind !== layer ||
+      JSON.stringify(found.shape) !== JSON.stringify(this.shapeSnapshot)
+    ) {
+      this.reportError(
+        "shape changed while the properties modal was open — edit not applied",
+      );
+      return;
+    }
     const edit: LayoutEdit = {
       kind: "graphicsModified",
       layer,
@@ -758,6 +781,7 @@ export class DiagramEditController {
     this.shapeLayerKind = found.layerKind;
     this.shapeIndex = parsed.index;
     this.shapeKind = parsed.shapeKind;
+    this.shapeSnapshot = found.shape;
     this.deps.gate.send({
       type: "parametersOpen",
       kind: "shapeProperties",
@@ -806,6 +830,7 @@ export class DiagramEditController {
     this.shapeLayerKind = null;
     this.shapeIndex = null;
     this.shapeKind = null;
+    this.shapeSnapshot = null;
   }
 
   private async onResetComponentParameters(

@@ -24,6 +24,56 @@ export enum FilePermission {
   Readonly = 1,
 }
 
+export enum FileType {
+  Unknown = 0,
+  File = 1,
+  Directory = 2,
+  SymbolicLink = 64,
+}
+
+export enum FileChangeType {
+  Changed = 1,
+  Created = 2,
+  Deleted = 3,
+}
+
+/** `FileSystemError` stand-in — carries the `code` VSCode routes on. */
+export class FileSystemError extends Error {
+  readonly code: string;
+  private constructor(code: string, message: string) {
+    super(message || code);
+    this.code = code;
+    this.name = "FileSystemError";
+  }
+  static FileNotFound(messageOrUri?: unknown): FileSystemError {
+    return new FileSystemError("FileNotFound", String(messageOrUri ?? ""));
+  }
+  static NoPermissions(messageOrUri?: unknown): FileSystemError {
+    return new FileSystemError("NoPermissions", String(messageOrUri ?? ""));
+  }
+  static Unavailable(messageOrUri?: unknown): FileSystemError {
+    return new FileSystemError("Unavailable", String(messageOrUri ?? ""));
+  }
+}
+
+/** Minimal `EventEmitter` — records listeners and fires them synchronously. */
+export class EventEmitter<T> {
+  private listeners: Array<(e: T) => void> = [];
+  readonly event = (listener: (e: T) => void): Disposable => {
+    this.listeners.push(listener);
+    return new Disposable(() => {
+      const i = this.listeners.indexOf(listener);
+      if (i !== -1) this.listeners.splice(i, 1);
+    });
+  };
+  fire(data: T): void {
+    for (const l of this.listeners) l(data);
+  }
+  dispose(): void {
+    this.listeners = [];
+  }
+}
+
 let statPermissions = 0;
 
 /** Control what `workspace.fs.stat` reports for the readonly-gate tests. */

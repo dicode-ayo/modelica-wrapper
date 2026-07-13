@@ -132,6 +132,15 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
     const client = await this.ensureClient();
     const text = Buffer.from(content).toString("utf8");
 
+    // A transient OMC failure makes `readFile` seed an EMPTY buffer for a real
+    // class; saving that would `loadString("")` (no error) and truncate the
+    // on-disk source. A class never legitimately has empty source, so refuse.
+    if (text.trim().length === 0) {
+      throw vscode.FileSystemError.Unavailable(
+        `refusing to save empty source over ${typeName}`,
+      );
+    }
+
     // Snapshot fileName before loadString — loadString rewrites OMC's
     // `fileName` field for the class to whatever pseudo-filename we pass it,
     // so we'd lose the disk path otherwise.

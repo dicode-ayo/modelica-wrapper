@@ -1133,6 +1133,53 @@ function shapeLayout(): DiagramLayout {
   });
 }
 
+// Positional §18.6 Rectangle record, so the producer decodes a real
+// RectangleShape into a reverse-synced layout.
+const SOLID_LINE = { $kind: "enum", name: "LinePattern.Solid", index: 1 };
+const SOLID_FILL = { $kind: "enum", name: "FillPattern.Solid", index: 1 };
+const NO_BORDER = { $kind: "enum", name: "BorderPattern.None", index: 1 };
+
+function rectRecord(extent: number[][]): unknown {
+  return {
+    $kind: "record",
+    name: "Rectangle",
+    elements: [
+      true,
+      [0, 0],
+      0,
+      [0, 0, 0],
+      [255, 255, 255],
+      SOLID_LINE,
+      SOLID_FILL,
+      1,
+      NO_BORDER,
+      extent,
+      0,
+    ],
+  };
+}
+
+/** An instance whose host Diagram layer carries a single rectangle. */
+function diagramRectInstance(extent: number[][]): ModelInstance {
+  return {
+    name: "Pkg.M",
+    restriction: "model",
+    elements: [],
+    annotation: {
+      Icon: {
+        coordinateSystem: {
+          extent: [
+            [-100, -100],
+            [100, 100],
+          ],
+        },
+        graphics: [],
+      },
+      Diagram: { graphics: [rectRecord(extent)] },
+    },
+  } as unknown as ModelInstance;
+}
+
 describe("DiagramEditController: shape properties", () => {
   it("opens the shape modal on a single-shape selection (read, no write)", async () => {
     const { client, invoked } = makeEditClient();
@@ -1179,6 +1226,83 @@ describe("DiagramEditController: shape properties", () => {
     expect(invoked).toContain("writeClassGraphics");
     expect(writes).toContain(LISTED_SOURCE);
     expect(posted.at(-1)?.type).toBe("parametersClose");
+  });
+
+  it("refuses the submit when a reverse-sync swapped the shape at the same index/kind", async () => {
+    // The reverse-sync's layout carries a DIFFERENT rectangle at diagram
+    // index 0 than the one captured at selection.
+    const { client, invoked } = makeEditClient({
+      instance: diagramRectInstance([
+        [0, 0],
+        [10, 10],
+      ]),
+    });
+    const { gate, posted } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler, flush: flushDebounce } = manualScheduler();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      shapeLayout(),
+      factory,
+      scheduler,
+    );
+
+    // Capture the selected shape (the hand-crafted RECT).
+    await controller.handle({
+      type: "selectionChange",
+      keys: ["shape:rectangle:0"],
+    });
+
+    // A foreign edit reverse-syncs and replaces prevLayout's index-0 shape.
+    fireForeign();
+    flushDebounce();
+    await drain();
+
+    // Submit the still-open modal — it must not land on the swapped shape.
+    await controller.handle({
+      type: "parametersSubmit",
+      kind: "shapeProperties",
+      values: { lineColor: "#ff0000" },
+    });
+
+    expect(invoked).not.toContain("writeClassGraphics");
+    expect(
+      posted.some((m) => m.type === "error" && /shape changed/.test(m.message)),
+    ).toBe(true);
+    controller.dispose();
+  });
+});
+
+describe("DiagramEditController: queue resilience", () => {
+  it("catches a synchronous dispatch throw so the next unit still runs", async () => {
+    const { client, addComponentCalls } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    // An unknown shape kind makes buildShapePropertiesForm throw synchronously
+    // inside the selectionChange dispatch case.
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({
+        diagramLayers: [
+          { from: "Pkg.M", shapes: [{ kind: "bogus" }] },
+        ] as unknown as DiagramLayout["diagramLayers"],
+      }),
+      factory,
+    );
+
+    await controller.handle({
+      type: "selectionChange",
+      keys: ["shape:bogus:0"],
+    });
+    expect(posted.at(-1)?.type).toBe("error"); // caught at the chain level
+
+    // The queue survives the throw: a later unit still dispatches.
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 0, y: 0 },
+    });
+    expect(addComponentCalls).toHaveLength(1);
   });
 });
 

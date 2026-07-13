@@ -1,6 +1,6 @@
 /**
  * Diagram + source-view commands:
- * - `modelica.openDiagram(arg)` — open a class in the diagram webview.
+ * - `modelica.openDiagram(arg)` — open a class in the diagram custom editor.
  * - `modelica.viewSource(node?)` — open the `modelica-source://` view.
  * - `modelica.openDiagramFromSource()` — title-bar action on source tabs.
  */
@@ -16,7 +16,7 @@ import type { CommandContext, LibraryNode } from "./context.js";
 
 /**
  * VSCode command id → diagram command id. These are bound as keybindings
- * (`when: activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus`)
+ * (`when: activeCustomEditorId == modelica.diagram && !modelicaDiagramInputFocus`)
  * and forwarded into the focused diagram webview, so the diagram shortcuts
  * live in VSCode's keymap and are remappable from the Keyboard Shortcuts UI.
  */

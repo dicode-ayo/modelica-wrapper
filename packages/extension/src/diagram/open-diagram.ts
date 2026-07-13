@@ -61,19 +61,6 @@ export async function openDiagram(arg: unknown): Promise<void> {
 }
 
 /**
- * Derive a Modelica-legal component instance name from a class name.
- * Strategy: lowercase the leaf segment ("Gain" → "gain"), then suffix
- * a counter ("gain1", "gain2", …) to avoid clashing with existing
- * components in the active class. The counter starts at 1 even when
- * no clash exists so two consecutive adds produce `gain1`, `gain2`
- * (vs. `gain`, `gain1` which reads less consistently).
- *
- * Falls back to `component<n>` if the leaf doesn't yield a valid
- * Modelica identifier (digits or symbols at the start, reserved
- * keyword, etc.). We don't try to compete with OMEdit's identifier
- * shrubbery here — the user can rename in the parameter panel.
- */
-/**
  * Live-searchable class picker for the "Change class" command. The loaded
  * libraries hold thousands of classes, so we query `searchAll` as the user
  * types rather than materialising the whole list. Resolves to the chosen
@@ -144,6 +131,19 @@ export function pickClassToSwap(
   });
 }
 
+/**
+ * Derive a Modelica-legal component instance name from a class name.
+ * Strategy: lowercase the leaf segment ("Gain" → "gain"), then suffix
+ * a counter ("gain1", "gain2", …) to avoid clashing with existing
+ * components in the active class. The counter starts at 1 even when
+ * no clash exists so two consecutive adds produce `gain1`, `gain2`
+ * (vs. `gain`, `gain1` which reads less consistently).
+ *
+ * Falls back to `component<n>` if the leaf doesn't yield a valid
+ * Modelica identifier (digits or symbols at the start, reserved
+ * keyword, etc.). We don't try to compete with OMEdit's identifier
+ * shrubbery here — the user can rename in the parameter panel.
+ */
 export function uniqueComponentName(
   layout: DiagramLayout,
   componentClass: string,
@@ -536,10 +536,9 @@ export async function fetchIconLayout(
 
 /**
  * Render a class's icon to a self-contained SVG thumbnail for the library
- * browser. Best-effort: returns `undefined` on any failure or when the class
- * has no drawable icon layers, so the browser falls back to its
- * restriction-letter badge. Shared by the diagram panel and the library
- * sidebar view.
+ * sidebar. Best-effort: returns `undefined` on any failure or when the class
+ * has no drawable icon layers, so the sidebar falls back to its
+ * restriction-letter badge.
  */
 export async function libraryIconSvg(
   client: OmcClient,
