@@ -28,6 +28,7 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { prettyPrint } from "../../_shared/fields.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import {
+  assertModelInstanceLoaded,
   ModelInstanceSchema,
   type ModelInstance,
 } from "../../_shared/modelInstance.js";
@@ -60,6 +61,7 @@ export async function getModelInstance(
   const raw = await ctx.call(`getModelInstance(${args})`);
   const json = expectString(parse(raw));
   const parsed: unknown = JSON.parse(json);
+  assertModelInstanceLoaded(parsed, input.typeName);
   const validated = parseOutput(
     GetModelInstanceOutputSchema,
     { instance: parsed },

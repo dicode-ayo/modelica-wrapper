@@ -26,6 +26,7 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { mlBool, quoteListOrFillEmpty } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import {
+  assertModelInstanceLoaded,
   ModelInstanceAnnotationSchema,
   type ModelInstanceAnnotation,
 } from "../../_shared/modelInstance.js";
@@ -76,6 +77,7 @@ export async function getModelInstanceAnnotation(
   );
   const json = expectString(parse(raw));
   const parsed: unknown = JSON.parse(json);
+  assertModelInstanceLoaded(parsed, input.typeName);
   const validated = parseOutput(
     GetModelInstanceAnnotationOutputSchema,
     { instance: parsed },

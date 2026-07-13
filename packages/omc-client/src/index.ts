@@ -70,6 +70,8 @@ export {
   OptionalTypeNameInput,
   ModelInstanceSchema,
   ModelInstanceAnnotationSchema,
+  ModelInstanceNotFullyLoadedError,
+  assertModelInstanceLoaded,
   ComponentRefSchema,
   ComponentElementSchema,
   ExtendsElementSchema,

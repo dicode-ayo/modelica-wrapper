@@ -26,6 +26,8 @@ export { ValueSchema } from "./value.js";
 export {
   ModelInstanceSchema,
   ModelInstanceAnnotationSchema,
+  ModelInstanceNotFullyLoadedError,
+  assertModelInstanceLoaded,
   ComponentRefSchema,
   ComponentElementSchema,
   ExtendsElementSchema,

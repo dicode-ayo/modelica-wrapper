@@ -507,3 +507,36 @@ export const ConnectionSchema =
  */
 export const ModelInstanceAnnotationSchema = ModelInstanceSchema;
 export type ModelInstanceAnnotation = ModelInstance;
+
+/**
+ * Thrown instead of a raw Zod validation error when OMC's `getModelInstance`/
+ * `getModelInstanceAnnotation` response has no `name` string. `name` is the
+ * one field every valid instance carries; its absence is what a
+ * partially-loaded class looks like on the wire (e.g. a `within <Parent>;`
+ * child registered before its parent package), not an arbitrary schema
+ * mismatch — a mismatch further into the tree still throws the generic
+ * `parseOutput` error.
+ */
+export class ModelInstanceNotFullyLoadedError extends Error {
+  constructor(public readonly className: string) {
+    super(
+      `Class "${className}" is not fully loaded — OMC returned an incomplete model instance. Try loading its enclosing package first.`,
+    );
+    this.name = "ModelInstanceNotFullyLoadedError";
+  }
+}
+
+/**
+ * Guard `getModelInstance`/`getModelInstanceAnnotation` responses before Zod
+ * validation, so the not-fully-loaded case gets {@link ModelInstanceNotFullyLoadedError}
+ * instead of `parseOutput`'s generic "OMC response shape mismatch" message.
+ */
+export function assertModelInstanceLoaded(
+  parsed: unknown,
+  className: string,
+): void {
+  if (typeof parsed !== "object" || parsed === null) return;
+  if (typeof (parsed as { name?: unknown }).name !== "string") {
+    throw new ModelInstanceNotFullyLoadedError(className);
+  }
+}
