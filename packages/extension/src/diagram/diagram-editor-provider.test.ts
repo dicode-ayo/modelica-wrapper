@@ -282,11 +282,13 @@ function makeEditClient(): {
   addComponentCalls: Array<Record<string, unknown>>;
   addConnectionCalls: Array<Record<string, unknown>>;
   listedTypes: string[];
+  ops: string[];
 } {
   const invoked: string[] = [];
   const addComponentCalls: Array<Record<string, unknown>> = [];
   const addConnectionCalls: Array<Record<string, unknown>> = [];
   const listedTypes: string[] = [];
+  const ops: string[] = [];
   const client = {
     lastCall: "mock",
     invoke: vi.fn((fn: string) => {
@@ -300,6 +302,7 @@ function makeEditClient(): {
       return Promise.resolve({ success: true });
     }),
     addComponent: vi.fn((input: Record<string, unknown>) => {
+      ops.push("addComponent");
       addComponentCalls.push(input);
       return Promise.resolve({ success: true });
     }),
@@ -308,6 +311,7 @@ function makeEditClient(): {
       return Promise.resolve({ success: true });
     }),
     listFile: vi.fn((input: { typeName: string }) => {
+      ops.push("listFile");
       listedTypes.push(input.typeName);
       return Promise.resolve({ contents: LISTED_SOURCE });
     }),
@@ -318,6 +322,7 @@ function makeEditClient(): {
     addComponentCalls,
     addConnectionCalls,
     listedTypes,
+    ops,
   };
 }
 
@@ -471,6 +476,60 @@ describe("DiagramEditController: forward write path", () => {
 
     expect(addConnectionCalls).toEqual([]);
     expect(writes).toEqual([]);
+    expect(posted.at(-1)?.type).toBe("error");
+  });
+
+  it("serializes queued edits so each apply→reflect finishes before the next", async () => {
+    const { client, ops } = makeEditClient();
+    const { gate } = makeGate();
+    const { shadow } = makeShadow();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      shadow,
+    );
+
+    const first = controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 0, y: 0 },
+    });
+    const second = controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Add",
+      position: { x: 1, y: 1 },
+    });
+    await Promise.all([first, second]);
+
+    // Serialized: the first edit's reflect (listFile) completes before the
+    // second edit's mutation begins — not interleaved.
+    expect(ops).toEqual([
+      "addComponent",
+      "listFile",
+      "addComponent",
+      "listFile",
+    ]);
+  });
+
+  it("routes a failed buffer reflect through the error path", async () => {
+    const { client } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const shadow: ShadowBuffer = {
+      write: () => Promise.reject(new Error("applyEdit rejected")),
+      dispose: () => {},
+    };
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      shadow,
+    );
+
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 0, y: 0 },
+    });
+
     expect(posted.at(-1)?.type).toBe("error");
   });
 });

@@ -9,7 +9,14 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
-import { appliedEdits, emitChange } from "../../test-support/vscode-mock.js";
+import {
+  appliedEdits,
+  completeApply,
+  emitChange,
+  pendingApplies,
+  setApplyEditManual,
+  setApplyEditResult,
+} from "../../test-support/vscode-mock.js";
 
 import { createShadowBuffer } from "./shadow-buffer.js";
 
@@ -21,6 +28,9 @@ const DOC_URI = vscode.Uri.parse("modelica-source:/Pkg.Model.mo");
 
 beforeEach(() => {
   appliedEdits.length = 0;
+  pendingApplies.length = 0;
+  setApplyEditManual(false);
+  setApplyEditResult(true);
 });
 
 describe("createShadowBuffer", () => {
@@ -69,5 +79,33 @@ describe("createShadowBuffer", () => {
     emitChange({ document: { uri: DOC_URI } });
 
     expect(onForeign).not.toHaveBeenCalled();
+  });
+
+  it("keeps overlapping writes out of the foreign path (counter, not boolean)", async () => {
+    setApplyEditManual(true);
+    const onForeign = vi.fn();
+    const buffer = createShadowBuffer(docFor(DOC_URI), onForeign);
+
+    // Two writes in flight at once. Completing the first (which fires its
+    // change and lets its `finally` run) must not release the guard for the
+    // second's still-pending change — a boolean flag would misfire here.
+    const first = buffer.write("A");
+    const second = buffer.write("B");
+
+    completeApply(0);
+    await first;
+    completeApply(1);
+    await second;
+
+    expect(onForeign).not.toHaveBeenCalled();
+    buffer.dispose();
+  });
+
+  it("throws when applyEdit rejects the write, so a failed reflect surfaces", async () => {
+    setApplyEditResult(false);
+    const buffer = createShadowBuffer(docFor(DOC_URI), vi.fn());
+
+    await expect(buffer.write("A")).rejects.toThrow(/applyEdit rejected/);
+    buffer.dispose();
   });
 });

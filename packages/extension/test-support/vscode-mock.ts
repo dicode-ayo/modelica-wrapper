@@ -110,6 +110,38 @@ export class WorkspaceEdit {
 /** Every `WorkspaceEdit` passed to `workspace.applyEdit`, for assertions. */
 export const appliedEdits: WorkspaceEdit[] = [];
 
+let applyEditResult = true;
+let applyEditManual = false;
+
+interface PendingApply {
+  fire: () => void;
+  resolve: () => void;
+}
+
+/** Applies awaiting `completeApply`, when `setApplyEditManual(true)` is set. */
+export const pendingApplies: PendingApply[] = [];
+
+/** Control the boolean `workspace.applyEdit` resolves with. */
+export function setApplyEditResult(value: boolean): void {
+  applyEditResult = value;
+}
+
+/**
+ * When manual, `applyEdit` defers both its change event and its resolution
+ * until `completeApply` — letting a test interleave two writes deterministically.
+ */
+export function setApplyEditManual(value: boolean): void {
+  applyEditManual = value;
+}
+
+/** Fire the deferred change event and resolve the pending apply at `index`. */
+export function completeApply(index = 0): void {
+  const pending = pendingApplies[index];
+  if (pending === undefined) return;
+  pending.fire();
+  pending.resolve();
+}
+
 /**
  * Minimal `window` namespace. The message helpers record their args on a
  * module-level log so unit tests can assert which toast a code path
@@ -178,14 +210,22 @@ export const workspace = {
   },
   applyEdit(edit: WorkspaceEdit): Promise<boolean> {
     appliedEdits.push(edit);
+    const fire = (): void => {
+      for (const r of edit.replacements) {
+        for (const listener of workspaceListeners.change) {
+          listener({ document: { uri: r.uri } });
+        }
+      }
+    };
+    if (applyEditManual) {
+      return new Promise<boolean>((resolve) => {
+        pendingApplies.push({ fire, resolve: () => resolve(applyEditResult) });
+      });
+    }
     // VSCode fires onDidChangeTextDocument synchronously while applying an
     // edit; mirror that so self-write guards can be exercised.
-    for (const r of edit.replacements) {
-      for (const listener of workspaceListeners.change) {
-        listener({ document: { uri: r.uri } });
-      }
-    }
-    return Promise.resolve(true);
+    fire();
+    return Promise.resolve(applyEditResult);
   },
 };
 

@@ -1055,10 +1055,6 @@ export async function fetchDiagramLayout(
  * snapshot so a partial failure rolls the class back, then re-reads the layout
  * from OMC (the render source of truth). Returns `null` when the two layouts
  * are identical (nothing to apply).
- *
- * The diagram panel's `onChange` closure runs the same diff→apply→refetch shape
- * with REPL logging and snapshot-undo bolted on; both should converge on this
- * seam at the panel cutover.
  */
 export async function applyDiagramEdits(
   client: OmcClient,

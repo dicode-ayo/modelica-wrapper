@@ -24,11 +24,14 @@ export function createShadowBuffer(
   document: vscode.TextDocument,
   onForeignChange: (document: vscode.TextDocument) => void,
 ): ShadowBuffer {
-  let selfWriteInFlight = false;
+  // Count, not a boolean: an overlapping write's `finally` must not clear the
+  // flag while an earlier write's change event is still pending, or that change
+  // would be misclassified as foreign.
+  let selfWrites = 0;
 
   const sub = vscode.workspace.onDidChangeTextDocument((e) => {
     if (e.document.uri.toString() !== document.uri.toString()) return;
-    if (selfWriteInFlight) return;
+    if (selfWrites > 0) return;
     onForeignChange(e.document);
   });
 
@@ -40,11 +43,14 @@ export function createShadowBuffer(
         new vscode.Range(0, 0, document.lineCount, 0),
         text,
       );
-      selfWriteInFlight = true;
+      selfWrites += 1;
       try {
-        await vscode.workspace.applyEdit(edit);
+        const applied = await vscode.workspace.applyEdit(edit);
+        if (!applied) {
+          throw new Error(`applyEdit rejected for ${document.uri.toString()}`);
+        }
       } finally {
-        selfWriteInFlight = false;
+        selfWrites -= 1;
       }
     },
     dispose() {

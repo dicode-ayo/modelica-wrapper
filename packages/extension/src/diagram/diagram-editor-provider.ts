@@ -37,7 +37,8 @@ export function classNameFromDocument(
  * renders a class's diagram from OMC and applies graphical edits. Edits mutate
  * the OMC AST (the render model), and the class's canonical source is reflected
  * back into the document through a shadow buffer so VSCode tracks dirty state
- * and undo. Reverse sync (loadString on a foreign change) and save land later.
+ * and undo. Reverse sync (loadString on a foreign change) and save are not
+ * wired here — `onForeignChange` is a logged no-op.
  */
 export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   private constructor(
@@ -117,11 +118,11 @@ export function resolveDiagramEditor(
   const start = (className: string): void => {
     webview.html = renderDiagramWebviewHtml(webview, extensionUri, className);
     shadow = createShadowBuffer(document, (doc) => {
-      // Foreign change (manual text edit or undo/redo): #287 loadStrings the
-      // buffer back into OMC and re-renders. No-op here.
+      // A foreign change (manual text edit or undo/redo) would re-sync into OMC
+      // and re-render; that reverse path is not wired here.
       log.info(
         "diagramEditor",
-        `external change to ${doc.uri.toString()}; reverse-sync lands in #287`,
+        `external change to ${doc.uri.toString()}; reverse sync into OMC is not wired here`,
       );
     });
     void (async (): Promise<void> => {
@@ -186,7 +187,21 @@ export class DiagramEditController {
     this.prevLayout = initialLayout;
   }
 
-  async handle(msg: WebviewToExtension): Promise<void> {
+  private queue: Promise<void> = Promise.resolve();
+
+  /**
+   * Serialize edits through a one-slot promise chain so each edit's full
+   * apply→reflect (which advances `prevLayout`) completes before the next one
+   * diffs — otherwise concurrent edits would all diff against a stale layout
+   * and interleave OMC calls. This orders edits within one editor; cross-editor
+   * contention on the OMC socket is the client's `SerialQueue`'s job.
+   */
+  handle(msg: WebviewToExtension): Promise<void> {
+    this.queue = this.queue.then(() => this.dispatch(msg));
+    return this.queue;
+  }
+
+  private async dispatch(msg: WebviewToExtension): Promise<void> {
     switch (msg.type) {
       case "change":
         await this.onChange(msg.layout);
@@ -198,7 +213,7 @@ export class DiagramEditController {
         await this.onConnectionCreate(msg.fromKey, msg.toKey, msg.waypoints);
         return;
       default:
-        // Parameter / shape / action messages are wired in later stages.
+        // Parameter / shape / action messages are not handled here.
         return;
     }
   }
