@@ -128,4 +128,22 @@ describe("getModelInstanceAnnotation: response handling", () => {
       getModelInstanceAnnotation(ctx, { typeName: "Some.Child" }),
     ).rejects.toThrow(ModelInstanceNotFullyLoadedError);
   });
+
+  it("still throws the generic shape-mismatch error for an unrelated malformed field", async () => {
+    const { ctx } = stubCtx(
+      quote(
+        JSON.stringify({
+          name: "Some.Class",
+          restriction: "model",
+          elements: "not-an-array",
+        }),
+      ),
+    );
+
+    await expect(
+      getModelInstanceAnnotation(ctx, { typeName: "Some.Class" }),
+    ).rejects.toThrow(
+      /OMC response shape mismatch for getModelInstanceAnnotation/,
+    );
+  });
 });

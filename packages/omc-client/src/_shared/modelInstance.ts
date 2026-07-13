@@ -529,8 +529,7 @@ export class ModelInstanceNotFullyLoadedError extends Error {
 /**
  * `getModelInstance`/`getModelInstanceAnnotation`'s `parseOutput`, specialized
  * to distinguish a not-fully-loaded class from any other schema mismatch.
- * Classifies off the Zod failure's own issue path (`instance.name`) rather
- * than re-deriving "must have a name" as a separate hand-rolled check, so
+ * Classifies off the Zod failure's own issue path (`instance.name`) so
  * `ModelInstanceSchema`'s `name: z.string()` stays the one place that
  * invariant is declared.
  */

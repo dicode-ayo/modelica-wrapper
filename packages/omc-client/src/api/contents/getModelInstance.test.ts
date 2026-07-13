@@ -15,13 +15,17 @@ import { quote } from "../../_shared/format.js";
 import { getModelInstance } from "./getModelInstance.js";
 
 function stubCtx(response?: string): { ctx: CallContext } {
-  const json = JSON.stringify({
-    name: "Modelica.Blocks.Math.Sin",
-    restriction: "block",
-  });
   const ctx: CallContext = {
     async call() {
-      return response ?? quote(json);
+      return (
+        response ??
+        quote(
+          JSON.stringify({
+            name: "Modelica.Blocks.Math.Sin",
+            restriction: "block",
+          }),
+        )
+      );
     },
     async getErrorString() {
       return { errorString: "" };
