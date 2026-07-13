@@ -29,10 +29,6 @@ function glyph(body: SVGTemplateResult): TemplateResult {
   </svg>`;
 }
 
-export const undoIcon = glyph(
-  svg`<path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H10" />`,
-);
-
 export const checkIcon = glyph(svg`<path d="M20 6 9 17l-5-5" />`);
 
 export const simulateIcon = glyph(

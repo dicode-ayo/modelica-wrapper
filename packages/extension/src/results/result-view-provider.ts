@@ -1,6 +1,6 @@
 /**
  * `ResultViewEditorProvider` — the custom editor behind `*.omresults`
- * postprocessing documents, sibling to the diagram's `DiagramPanel`.
+ * postprocessing documents, sibling to the diagram custom editor.
  *
  * It renders a CSP-locked webview that loads the `out/postprocessing` bundle
  * (root `<om-result-view-root>`), parses the document with the pure

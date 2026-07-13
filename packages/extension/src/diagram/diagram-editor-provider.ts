@@ -120,8 +120,8 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   }
 
   // ── Active-editor registry ──────────────────────────────────────────────
-  // Mirrors DiagramPanel's statics so the diagram-shortcut command, check-model
-  // and the library sidebar drive the focused custom editor.
+  // Tracks the focused diagram editor so the diagram-shortcut command,
+  // check-model and the library sidebar can drive it.
   private static active: EditorSession | undefined;
 
   /** Class of the focused diagram editor, or undefined when none is focused. */
@@ -477,8 +477,6 @@ export class DiagramEditController {
         await this.onResetComponentParameters(msg.componentName);
         return;
       default:
-        // The toolbar Undo message (`actionUndo`) is intentionally unhandled:
-        // native ⌘Z on the shared document is the undo path for this editor.
         return;
     }
   }

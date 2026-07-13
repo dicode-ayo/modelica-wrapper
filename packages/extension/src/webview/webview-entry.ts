@@ -139,7 +139,6 @@ class OmWebviewRoot extends LitElement {
         anchor="top-right"
         ?no-selection=${!this.hasSelection}
         .tool=${this.activeTool}
-        @om-action-undo=${() => this.post({ type: "actionUndo" })}
         @om-action-check=${() => this.post({ type: "actionCheck" })}
         @om-action-simulate=${() => this.post({ type: "actionSimulate" })}
         @om-action-parameters=${() => this.post({ type: "actionParameters" })}

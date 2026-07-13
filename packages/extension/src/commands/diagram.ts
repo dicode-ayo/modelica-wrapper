@@ -1,7 +1,6 @@
 /**
  * Diagram + source-view commands:
  * - `modelica.openDiagram(arg)` — open a class in the diagram webview.
- * - `modelica.diagram.undo()` — diagram-local snapshot undo (issue #29).
  * - `modelica.viewSource(node?)` — open the `modelica-source://` view.
  * - `modelica.openDiagramFromSource()` — title-bar action on source tabs.
  */
@@ -10,7 +9,6 @@ import * as vscode from "vscode";
 
 import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
 import { openDiagram } from "../diagram/open-diagram.js";
-import { DiagramPanel } from "../diagram/panel.js";
 import { qualifiedNameFromUri, sourceUriFor } from "../source-provider.js";
 import type { DiagramCommandId } from "../webview/protocol.js";
 
@@ -40,18 +38,6 @@ export function registerDiagramCommands(
       } catch (err) {
         await vscode.window.showErrorMessage(
           `Modelica: openDiagram failed: ${(err as Error).message}`,
-        );
-      }
-    }),
-    vscode.commands.registerCommand("modelica.diagram.undo", async () => {
-      // Routes to the active diagram panel's diagram-local undo handler
-      // (issue #29) — the same path the toolbar Undo button fires. We do NOT
-      // hijack native Ctrl-Z: diagram edits never touch a TextDocument, so a
-      // global undo binding would fight the editor. The command is scoped to
-      // the diagram webview via its `when` clause in package.json.
-      if (!DiagramPanel.undoActive()) {
-        await vscode.window.showWarningMessage(
-          "Modelica: no active diagram to undo (focus a diagram first).",
         );
       }
     }),
