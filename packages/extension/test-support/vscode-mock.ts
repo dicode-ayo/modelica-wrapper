@@ -14,6 +14,12 @@ export enum DiagnosticSeverity {
   Hint = 3,
 }
 
+export enum ProgressLocation {
+  SourceControl = 1,
+  Window = 10,
+  Notification = 15,
+}
+
 export class Position {
   constructor(
     public readonly line: number,
@@ -277,6 +283,15 @@ export const window = {
   },
   registerWebviewViewProvider: (): Disposable => new Disposable(),
   showInputBox: () => Promise.resolve(undefined),
+  withProgress<T>(
+    _options: unknown,
+    task: (
+      progress: { report(value: unknown): void },
+      token: { isCancellationRequested: boolean },
+    ) => Promise<T>,
+  ): Promise<T> {
+    return task({ report: () => {} }, { isCancellationRequested: false });
+  },
   createQuickPick() {
     const noop = () => ({ dispose: () => {} });
     return {

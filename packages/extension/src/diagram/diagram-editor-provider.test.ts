@@ -21,6 +21,7 @@ import type {
 import * as vscodeMock from "../../test-support/vscode-mock.js";
 import {
   appliedEdits,
+  executedCommands,
   pendingApplies,
   setApplyEditManual,
   setApplyEditResult,
@@ -51,6 +52,7 @@ import { createShadowBuffer, type ShadowBuffer } from "./shadow-buffer.js";
 beforeEach(() => {
   appliedEdits.length = 0;
   pendingApplies.length = 0;
+  executedCommands.length = 0;
   setApplyEditManual(false);
   setApplyEditResult(true);
 });
@@ -365,6 +367,7 @@ function makeEditClient(opts?: {
   setModifierCalls: Array<Record<string, unknown>>;
   removeModifierCalls: Array<Record<string, unknown>>;
   setElementTypeCalls: Array<Record<string, unknown>>;
+  simulateCalls: Array<Record<string, unknown>>;
   ops: string[];
 } {
   const invoked: string[] = [];
@@ -375,6 +378,7 @@ function makeEditClient(opts?: {
   const setModifierCalls: Array<Record<string, unknown>> = [];
   const removeModifierCalls: Array<Record<string, unknown>> = [];
   const setElementTypeCalls: Array<Record<string, unknown>> = [];
+  const simulateCalls: Array<Record<string, unknown>> = [];
   const ops: string[] = [];
   const client = {
     lastCall: "mock",
@@ -427,6 +431,13 @@ function makeEditClient(opts?: {
       setElementTypeCalls.push(input);
       return Promise.resolve({ success: true });
     }),
+    simulate: vi.fn((input: Record<string, unknown>) => {
+      ops.push("simulate");
+      simulateCalls.push(input);
+      return Promise.resolve({
+        simulationResult: { kind: "call", name: "SimulationResult", args: [] },
+      });
+    }),
     getErrorString: vi.fn(() => Promise.resolve({ errorString: "boom" })),
   } as unknown as OmcClient;
   return {
@@ -439,6 +450,7 @@ function makeEditClient(opts?: {
     setModifierCalls,
     removeModifierCalls,
     setElementTypeCalls,
+    simulateCalls,
     ops,
   };
 }
@@ -1231,5 +1243,90 @@ describe("DiagramEditController: change class", () => {
     });
 
     expect(setElementTypeCalls).toEqual([]);
+  });
+});
+
+describe("DiagramEditController: simulate and check actions", () => {
+  it("opens the simulate modal on the simulate action (read, no write)", async () => {
+    const { client } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({ type: "actionSimulate" });
+
+    expect(posted.find((m) => m.type === "parametersOpen")).toMatchObject({
+      kind: "simulate",
+    });
+    expect(writes).toEqual([]);
+  });
+
+  it("runs simulate on submit without reflecting to the buffer", async () => {
+    const { client, simulateCalls } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({
+      type: "parametersSubmit",
+      kind: "simulate",
+      values: { stopTime: 2 },
+    });
+
+    expect(simulateCalls).toHaveLength(1);
+    expect(writes).toEqual([]); // simulate emits a result file, not a source change
+    expect(posted.at(-1)?.type).toBe("parametersClose");
+  });
+
+  it("routes the check action to modelica.checkModel with the class name", async () => {
+    const { client } = makeEditClient();
+    const { gate } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({ type: "actionCheck" });
+
+    expect(executedCommands).toContainEqual({
+      command: "modelica.checkModel",
+      args: ["Pkg.M"],
+    });
+  });
+
+  it("serializes a simulate submit after an in-flight forward edit", async () => {
+    const { client, ops } = makeEditClient();
+    const { gate } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+    );
+
+    const edit = controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 0, y: 0 },
+    });
+    const sim = controller.handle({
+      type: "parametersSubmit",
+      kind: "simulate",
+      values: { stopTime: 1 },
+    });
+    await Promise.all([edit, sim]);
+
+    // The forward edit fully applies + reflects before the simulate runs.
+    expect(ops).toEqual(["addComponent", "listFile", "simulate"]);
   });
 });

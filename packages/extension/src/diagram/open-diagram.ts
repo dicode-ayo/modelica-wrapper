@@ -937,7 +937,7 @@ function editSummary(edit: LayoutEdit): string {
  * Kept as a free function (not a method on a wrapper) so it's easy to
  * read alongside the other action handlers — one place, one purpose.
  */
-async function runSimulate(
+export async function runSimulate(
   client: OmcClient,
   className: string,
   values: Record<string, unknown>,
@@ -1163,7 +1163,7 @@ type GetSimulationOptionsOutput = Awaited<
  * experiment annotation) make the wrapper throw; OMC's documented defaults are
  * the sensible fallback there, matching the old `buildSimulateForm` behaviour.
  */
-async function fetchSimulationOptions(
+export async function fetchSimulationOptions(
   client: OmcClient,
   className: string,
 ): Promise<GetSimulationOptionsOutput> {

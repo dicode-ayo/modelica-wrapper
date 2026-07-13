@@ -5,6 +5,7 @@ import type {
   DiagramLayout,
   OmcClient,
 } from "@dicode/omc-client";
+import { produceSimulationModel } from "@dicode/omc-client";
 
 import { log } from "../logger.js";
 import { qualifiedNameFromUri } from "../source-provider.js";
@@ -28,11 +29,13 @@ import {
   buildComponentUnitTable,
   fetchDiagramLayout,
   fetchModelInstance,
+  fetchSimulationOptions,
   keyToCref,
   layoutFromInstance,
   pickClassToSwap,
   placementAt,
   resetComponentParameters,
+  runSimulate,
   uniqueComponentName,
 } from "./open-diagram.js";
 import {
@@ -330,6 +333,12 @@ export class DiagramEditController {
       case "actionParameters":
         await this.onActionParameters();
         return;
+      case "actionSimulate":
+        await this.onActionSimulate();
+        return;
+      case "actionCheck":
+        await this.onActionCheck();
+        return;
       case "editComponent":
         await this.onEditComponent(msg.componentName);
         return;
@@ -349,7 +358,8 @@ export class DiagramEditController {
         await this.onResetComponentParameters(msg.componentName);
         return;
       default:
-        // Simulate / check / shape / change-class messages are not handled here.
+        // The toolbar Undo message (`actionUndo`) is intentionally unhandled:
+        // native ⌘Z on the shared document is the undo path for this editor.
         return;
     }
   }
@@ -527,11 +537,50 @@ export class DiagramEditController {
         }
       } else if (kind === "shapeProperties") {
         await this.applyShapePropertiesSubmit(values);
+      } else if (kind === "simulate") {
+        // Simulate runs the model and emits a result file; it does not change
+        // the class source, so there is nothing to reflect to the buffer.
+        await runSimulate(client, className, values);
       }
     } catch (err) {
       this.reportError(`applying parameters failed: ${(err as Error).message}`);
     } finally {
       gate.send({ type: "parametersClose" });
+    }
+  }
+
+  private async onActionSimulate(): Promise<void> {
+    const { client, className, gate } = this.deps;
+    try {
+      const model = produceSimulationModel({
+        className,
+        options: await fetchSimulationOptions(client, className),
+      });
+      gate.send({
+        type: "parametersOpen",
+        kind: "simulate",
+        model,
+        title: `Simulate ${className}`,
+        submitLabel: "Run",
+      });
+    } catch (err) {
+      this.reportError(
+        `could not open the simulate panel for ${className}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  private async onActionCheck(): Promise<void> {
+    // Route to the existing `modelica.checkModel` command, naming the class
+    // (a custom editor isn't a text editor, so the command's active-target
+    // fallback can't find it). Check reports diagnostics — no source change.
+    try {
+      await vscode.commands.executeCommand(
+        "modelica.checkModel",
+        this.deps.className,
+      );
+    } catch (err) {
+      this.reportError(`check model failed: ${(err as Error).message}`);
     }
   }
 

@@ -2,6 +2,8 @@
  * `modelica.checkModel` — user-triggered structural + semantic check.
  *
  * Resolution order for the target class:
+ *   0. An explicit `className` command argument, when passed (the diagram
+ *      custom editor names its class directly).
  *   1. The active diagram panel, if any (`DiagramPanel.activeClassName()`).
  *   2. The active text editor when its document uses the `modelica-source:`
  *      scheme (mapped back to a qualified name via `qualifiedNameFromUri`).
@@ -38,28 +40,35 @@ import { createReplLog } from "./repl.js";
 export function registerCheckModelCommand(
   ctx: CommandContext,
 ): vscode.Disposable {
-  return vscode.commands.registerCommand("modelica.checkModel", async () => {
-    const className = resolveTargetClass();
-    if (!className) {
-      await vscode.window.showWarningMessage(
-        "Modelica: no active class to check (focus a diagram or a Modelica source view first).",
-      );
-      return;
-    }
-    try {
-      const client = await ctx.ensureClient();
-      // Serialize against any in-flight live-check so we don't fight over
-      // the OMC error buffer or the shared diagnostic collection.
-      await liveCheckLock.acquire(() =>
-        runCheckModel(client, ctx.diagnostics, className),
-      );
-    } catch (err) {
-      log.error("checkModel", `failed for ${className}`, err);
-      await vscode.window.showErrorMessage(
-        `Modelica: Check Model failed for ${className}: ${(err as Error).message}`,
-      );
-    }
-  });
+  return vscode.commands.registerCommand(
+    "modelica.checkModel",
+    async (arg?: unknown) => {
+      // A caller can name the class directly (the diagram custom editor, which
+      // isn't a text editor and so wouldn't be found by the fallback); the
+      // arg-less panel / source-view callers keep the active-target resolution.
+      const className =
+        typeof arg === "string" && arg.length > 0 ? arg : resolveTargetClass();
+      if (!className) {
+        await vscode.window.showWarningMessage(
+          "Modelica: no active class to check (focus a diagram or a Modelica source view first).",
+        );
+        return;
+      }
+      try {
+        const client = await ctx.ensureClient();
+        // Serialize against any in-flight live-check so we don't fight over
+        // the OMC error buffer or the shared diagnostic collection.
+        await liveCheckLock.acquire(() =>
+          runCheckModel(client, ctx.diagnostics, className),
+        );
+      } catch (err) {
+        log.error("checkModel", `failed for ${className}`, err);
+        await vscode.window.showErrorMessage(
+          `Modelica: Check Model failed for ${className}: ${(err as Error).message}`,
+        );
+      }
+    },
+  );
 }
 
 function resolveTargetClass(): string | undefined {
