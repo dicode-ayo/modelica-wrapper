@@ -11,16 +11,23 @@
 
 import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
-import type { ModelInstance, OmcClient } from "@dicode/omc-client";
+import type {
+  DiagramLayout,
+  ModelInstance,
+  OmcClient,
+} from "@dicode/omc-client";
 
 import type {
   ExtensionToWebview,
   WebviewToExtension,
 } from "../webview/protocol.js";
+import type { ReadyGate } from "../webview/ready-gate.js";
 import {
   classNameFromDocument,
+  DiagramEditController,
   resolveDiagramEditor,
 } from "./diagram-editor-provider.js";
+import type { ShadowBuffer } from "./shadow-buffer.js";
 
 /**
  * A minimal instance with an Icon coordinate system — enough for the producer
@@ -264,5 +271,206 @@ describe("resolveDiagramEditor: on-disk file: path", () => {
     expect(webview.html).toContain("library sidebar");
     expect(ensureClient).not.toHaveBeenCalled();
     expect(posted).toEqual([]);
+  });
+});
+
+const LISTED_SOURCE = "model M end M;";
+
+function makeEditClient(): {
+  client: OmcClient;
+  invoked: string[];
+  addComponentCalls: Array<Record<string, unknown>>;
+  addConnectionCalls: Array<Record<string, unknown>>;
+  listedTypes: string[];
+} {
+  const invoked: string[] = [];
+  const addComponentCalls: Array<Record<string, unknown>> = [];
+  const addConnectionCalls: Array<Record<string, unknown>> = [];
+  const listedTypes: string[] = [];
+  const client = {
+    lastCall: "mock",
+    invoke: vi.fn((fn: string) => {
+      invoked.push(fn);
+      if (fn === "getModelInstance")
+        return Promise.resolve({ instance: INSTANCE });
+      if (fn === "getInstantiatedParametersAndValues") {
+        return Promise.reject(new Error("no params"));
+      }
+      // updateComponent / deleteComponent / addConnection / ... report success.
+      return Promise.resolve({ success: true });
+    }),
+    addComponent: vi.fn((input: Record<string, unknown>) => {
+      addComponentCalls.push(input);
+      return Promise.resolve({ success: true });
+    }),
+    addConnection: vi.fn((input: Record<string, unknown>) => {
+      addConnectionCalls.push(input);
+      return Promise.resolve({ success: true });
+    }),
+    listFile: vi.fn((input: { typeName: string }) => {
+      listedTypes.push(input.typeName);
+      return Promise.resolve({ contents: LISTED_SOURCE });
+    }),
+  } as unknown as OmcClient;
+  return {
+    client,
+    invoked,
+    addComponentCalls,
+    addConnectionCalls,
+    listedTypes,
+  };
+}
+
+function makeGate(): { gate: ReadyGate; posted: ExtensionToWebview[] } {
+  const posted: ExtensionToWebview[] = [];
+  return {
+    gate: {
+      send: (m: ExtensionToWebview) => posted.push(m),
+      markReady: () => {},
+    },
+    posted,
+  };
+}
+
+function makeShadow(): { shadow: ShadowBuffer; writes: string[] } {
+  const writes: string[] = [];
+  return {
+    shadow: {
+      write: (t: string) => {
+        writes.push(t);
+        return Promise.resolve();
+      },
+      dispose: () => {},
+    },
+    writes,
+  };
+}
+
+const SRC_DOC = docFor(vscode.Uri.parse("modelica-source:/Pkg.M.mo"));
+
+function layout(fields: Partial<DiagramLayout>): DiagramLayout {
+  return {
+    className: "Pkg.M",
+    components: {},
+    connectors: {},
+    connections: [],
+    classes: {},
+    iconLayers: [],
+    diagramLayers: [],
+    ...fields,
+  } as unknown as DiagramLayout;
+}
+
+function movedComponent(extent: number[][]): DiagramLayout {
+  return layout({
+    components: {
+      gain1: {
+        classRef: "Modelica.Blocks.Math.Gain",
+        placement: { extent, rotation: 0 },
+      },
+    } as unknown as DiagramLayout["components"],
+  });
+}
+
+describe("DiagramEditController: forward write path", () => {
+  it("reflects a component move into the buffer after mutating OMC", async () => {
+    const { client, invoked, listedTypes } = makeEditClient();
+    const { gate } = makeGate();
+    const { shadow, writes } = makeShadow();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      movedComponent([
+        [-10, -10],
+        [10, 10],
+      ]),
+      shadow,
+    );
+
+    await controller.handle({
+      type: "change",
+      layout: movedComponent([
+        [0, 0],
+        [20, 20],
+      ]),
+    });
+
+    expect(invoked).toContain("updateComponent");
+    expect(listedTypes).toContain("Pkg.M");
+    expect(writes).toEqual([LISTED_SOURCE]); // dirty state is VSCode-managed
+  });
+
+  it("adds a component and reflects the buffer", async () => {
+    const { client, addComponentCalls, listedTypes } = makeEditClient();
+    const { gate } = makeGate();
+    const { shadow, writes } = makeShadow();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      shadow,
+    );
+
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 5, y: 5 },
+    });
+
+    expect(addComponentCalls[0]).toMatchObject({
+      componentName: "gain1",
+      componentClass: "Modelica.Blocks.Math.Gain",
+      intoTypeName: "Pkg.M",
+    });
+    expect(String(addComponentCalls[0]?.annotation)).toContain("Placement");
+    expect(listedTypes).toEqual(["Pkg.M"]);
+    expect(writes).toEqual([LISTED_SOURCE]);
+  });
+
+  it("adds a connection between standalone connectors and reflects the buffer", async () => {
+    const { client, addConnectionCalls } = makeEditClient();
+    const { gate } = makeGate();
+    const { shadow, writes } = makeShadow();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({
+        connectors: { p: {}, q: {} } as unknown as DiagramLayout["connectors"],
+      }),
+      shadow,
+    );
+
+    await controller.handle({
+      type: "connectionCreate",
+      fromKey: "k:p",
+      toKey: "k:q",
+      waypoints: [],
+    });
+
+    expect(addConnectionCalls[0]).toMatchObject({
+      from: "p",
+      to: "q",
+      typeName: "Pkg.M",
+    });
+    expect(writes).toEqual([LISTED_SOURCE]);
+  });
+
+  it("does not reflect when a connection endpoint can't be resolved", async () => {
+    const { client, addConnectionCalls } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { shadow, writes } = makeShadow();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      shadow,
+    );
+
+    await controller.handle({
+      type: "connectionCreate",
+      fromKey: "k:p",
+      toKey: "k:q",
+      waypoints: [],
+    });
+
+    expect(addConnectionCalls).toEqual([]);
+    expect(writes).toEqual([]);
+    expect(posted.at(-1)?.type).toBe("error");
   });
 });

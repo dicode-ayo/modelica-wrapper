@@ -99,6 +99,17 @@ class UriImpl {
 export const Uri = UriImpl;
 export type Uri = UriImpl;
 
+/** Minimal `WorkspaceEdit` — records whole-document replacements for assertions. */
+export class WorkspaceEdit {
+  readonly replacements: { uri: UriImpl; range: Range; text: string }[] = [];
+  replace(uri: UriImpl, range: Range, text: string): void {
+    this.replacements.push({ uri, range, text });
+  }
+}
+
+/** Every `WorkspaceEdit` passed to `workspace.applyEdit`, for assertions. */
+export const appliedEdits: WorkspaceEdit[] = [];
+
 /**
  * Minimal `window` namespace. The message helpers record their args on a
  * module-level log so unit tests can assert which toast a code path
@@ -165,7 +176,23 @@ export const workspace = {
       get: <T>(_key: string, defaultValue?: T): T | undefined => defaultValue,
     };
   },
+  applyEdit(edit: WorkspaceEdit): Promise<boolean> {
+    appliedEdits.push(edit);
+    // VSCode fires onDidChangeTextDocument synchronously while applying an
+    // edit; mirror that so self-write guards can be exercised.
+    for (const r of edit.replacements) {
+      for (const listener of workspaceListeners.change) {
+        listener({ document: { uri: r.uri } });
+      }
+    }
+    return Promise.resolve(true);
+  },
 };
+
+/** Fire all captured `onDidChangeTextDocument` listeners with `event`. */
+export function emitChange(event: unknown): void {
+  for (const listener of workspaceListeners.change) listener(event);
+}
 
 /** Fire all captured `onDidSaveTextDocument` listeners with `document`. */
 export function emitSave(document: unknown): void {

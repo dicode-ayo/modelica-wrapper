@@ -832,7 +832,7 @@ function pickClassToSwap(
   });
 }
 
-function uniqueComponentName(
+export function uniqueComponentName(
   layout: DiagramLayout,
   componentClass: string,
 ): string {
@@ -872,7 +872,7 @@ function uniqueComponentName(
  * `packages/omc-client/test/addComponent-placement.integration.test.ts`
  * for the probe.
  */
-function placementAt(position: { x: number; y: number }): string {
+export function placementAt(position: { x: number; y: number }): string {
   const { x, y } = position;
   // This 10-unit half-extent is mirrored by `PLACEMENT_HALF_EXTENT` in
   // diagram-ui's placement preview so the dragged node is the size of the
@@ -1047,6 +1047,36 @@ export async function fetchDiagramLayout(
 ): Promise<DiagramLayout> {
   const instance = await fetchModelInstance(client, className);
   return layoutFromInstance(client, className, instance);
+}
+
+/**
+ * Apply the graphical delta between `prevLayout` and `next` to OMC and return
+ * the re-fetched layout. Diffs to `LayoutEdit`s, applies them with an OMC-level
+ * snapshot so a partial failure rolls the class back, then re-reads the layout
+ * from OMC (the render source of truth). Returns `null` when the two layouts
+ * are identical (nothing to apply).
+ *
+ * The diagram panel's `onChange` closure runs the same diff→apply→refetch shape
+ * with REPL logging and snapshot-undo bolted on; both should converge on this
+ * seam at the panel cutover.
+ */
+export async function applyDiagramEdits(
+  client: OmcClient,
+  className: string,
+  prevLayout: DiagramLayout,
+  next: DiagramLayout,
+): Promise<{
+  layout: DiagramLayout;
+  failed: ReadonlyArray<{ error: string }>;
+  rolledBack: boolean;
+} | null> {
+  const edits = diffLayouts(prevLayout, next);
+  if (edits.length === 0) return null;
+  const result = await applyEdits(client, className, edits, undefined, {
+    snapshot: true,
+  });
+  const layout = await fetchDiagramLayout(client, className);
+  return { layout, failed: result.failed, rolledBack: result.rolledBack };
 }
 
 /**
@@ -1533,7 +1563,7 @@ async function resolveClassName(arg: unknown): Promise<string | undefined> {
  * exists in the current layout. Returns the same dotted form OMC
  * expects on `addConnection`.
  */
-function keyToCref(layout: DiagramLayout, key: string): string | null {
+export function keyToCref(layout: DiagramLayout, key: string): string | null {
   const parsed = parseEntityKey(key);
   if (!parsed || !isConnectorKey(parsed)) return null;
   if (parsed.componentName === null) {
