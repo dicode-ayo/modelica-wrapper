@@ -1,6 +1,10 @@
 import * as vscode from "vscode";
 
-import type { DiagramLayout, OmcClient } from "@dicode/omc-client";
+import type {
+  ComponentElement,
+  DiagramLayout,
+  OmcClient,
+} from "@dicode/omc-client";
 
 import { log } from "../logger.js";
 import { qualifiedNameFromUri } from "../source-provider.js";
@@ -10,12 +14,26 @@ import { createReadyGate, type ReadyGate } from "../webview/ready-gate.js";
 import { lineAnnotation } from "./diff-layout.js";
 import { renderDiagramWebviewHtml } from "./diagram-webview-html.js";
 import {
+  applyClassParameterEdits,
+  applyComponentParameterEdits,
   applyDiagramEdits,
+  buildClassUnitTable,
+  buildComponentUnitTable,
   fetchDiagramLayout,
+  fetchModelInstance,
   keyToCref,
+  layoutFromInstance,
   placementAt,
+  resetComponentParameters,
   uniqueComponentName,
 } from "./open-diagram.js";
+import {
+  buildClassParameterForm,
+  buildComponentParameterForm,
+  findSubComponent,
+  type ClassParameterRef,
+  type ComponentParameterRef,
+} from "./parameter-edits.js";
 import { createShadowBuffer, type ShadowBuffer } from "./shadow-buffer.js";
 
 export const DIAGRAM_VIEW_TYPE = "modelica.diagram";
@@ -189,6 +207,17 @@ export class DiagramEditController {
   private readonly shadow: ShadowBuffer;
   private reverseTimer: { cancel(): void } | undefined;
 
+  // Per-modal submit state, captured when a parameter modal opens and read
+  // back when it submits — mirrors the diagram panel's closure state.
+  private classParamRefs: Record<string, ClassParameterRef> = {};
+  private classParamInitialValues: Record<string, unknown> = {};
+  private componentParamRefs: Record<string, ComponentParameterRef> = {};
+  private componentParamInitialValues: Record<string, unknown> = {};
+  private componentParamComponentName: string | null = null;
+  // Drops a double-clicked "Reset to defaults" second invocation while the
+  // first is still re-fetching and re-opening.
+  private resetInFlight = false;
+
   constructor(
     private readonly deps: EditControllerDeps,
     initialLayout: DiagramLayout,
@@ -278,8 +307,23 @@ export class DiagramEditController {
       case "connectionCreate":
         await this.onConnectionCreate(msg.fromKey, msg.toKey, msg.waypoints);
         return;
+      case "actionParameters":
+        await this.onActionParameters();
+        return;
+      case "editComponent":
+        await this.onEditComponent(msg.componentName);
+        return;
+      case "parametersSubmit":
+        await this.onParametersSubmit(msg.kind, msg.values);
+        return;
+      case "parametersCancel":
+        this.onParametersCancel(msg.kind);
+        return;
+      case "resetComponentParameters":
+        await this.onResetComponentParameters(msg.componentName);
+        return;
       default:
-        // Parameter / shape / action messages are not handled here.
+        // Simulate / check / shape / change-class messages are not handled here.
         return;
     }
   }
@@ -363,6 +407,167 @@ export class DiagramEditController {
     }
   }
 
+  private async onActionParameters(): Promise<void> {
+    const { client, className, gate } = this.deps;
+    try {
+      const instance = await fetchModelInstance(client, className);
+      const unitTable = await buildClassUnitTable(client, instance);
+      const form = buildClassParameterForm(instance, unitTable);
+      if (!form) {
+        void vscode.window.showInformationMessage(
+          `Modelica: ${className} has no editable scalar parameters.`,
+        );
+        return;
+      }
+      this.classParamRefs = form.refs;
+      this.classParamInitialValues = form.values;
+      gate.send({
+        type: "parametersOpen",
+        kind: "classParams",
+        model: form.model,
+        title: `Parameters: ${className}`,
+        submitLabel: "Apply",
+      });
+    } catch (err) {
+      this.reportError(
+        `could not open parameters for ${className}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  private async onEditComponent(componentName: string): Promise<void> {
+    const { client, className, gate } = this.deps;
+    try {
+      const instance = await fetchModelInstance(client, className);
+      const component = findSubComponent(instance, componentName);
+      if (!component) {
+        void vscode.window.showInformationMessage(
+          `Modelica: component "${componentName}" not found on ${className}.`,
+        );
+        return;
+      }
+      const unitTable = await buildComponentUnitTable(client, component);
+      const form = buildComponentParameterForm(component, unitTable);
+      if (!form) {
+        void vscode.window.showInformationMessage(
+          `Modelica: ${componentName} has no editable scalar parameters.`,
+        );
+        return;
+      }
+      this.componentParamRefs = form.refs;
+      this.componentParamInitialValues = form.values;
+      this.componentParamComponentName = form.componentName;
+      gate.send({
+        type: "parametersOpen",
+        kind: "componentParams",
+        model: form.model,
+        title: `Parameters: ${componentName}${componentTypeSuffix(component)}`,
+        submitLabel: "Apply",
+        crefPrefix: componentName,
+      });
+    } catch (err) {
+      this.reportError(
+        `could not open parameters for ${componentName}: ${(err as Error).message}`,
+      );
+    }
+  }
+
+  private async onParametersSubmit(
+    kind: string,
+    values: Record<string, unknown>,
+  ): Promise<void> {
+    const { client, className, gate } = this.deps;
+    try {
+      if (kind === "classParams") {
+        await applyClassParameterEdits(
+          client,
+          className,
+          this.classParamRefs,
+          this.classParamInitialValues,
+          values,
+        );
+        await this.reflect(await fetchDiagramLayout(client, className));
+      } else if (kind === "componentParams") {
+        if (this.componentParamComponentName !== null) {
+          await applyComponentParameterEdits(
+            client,
+            className,
+            this.componentParamComponentName,
+            this.componentParamRefs,
+            this.componentParamInitialValues,
+            values,
+          );
+          await this.reflect(await fetchDiagramLayout(client, className));
+        }
+      }
+    } catch (err) {
+      this.reportError(`applying parameters failed: ${(err as Error).message}`);
+    } finally {
+      gate.send({ type: "parametersClose" });
+    }
+  }
+
+  private onParametersCancel(kind: string): void {
+    if (kind === "componentParams") this.clearComponentParamState();
+  }
+
+  private async onResetComponentParameters(
+    componentName: string,
+  ): Promise<void> {
+    if (this.resetInFlight) return;
+    this.resetInFlight = true;
+    const { client, className, gate } = this.deps;
+    try {
+      // Bulk-clear the sub-component's modifiers (keepRedeclares keeps any
+      // substituted type), then re-render + re-open the modal with the exposed
+      // type defaults.
+      const ok = await resetComponentParameters(
+        client,
+        className,
+        componentName,
+      );
+      if (!ok) return;
+      const instance = await fetchModelInstance(client, className);
+      await this.reflect(await layoutFromInstance(client, className, instance));
+      const component = findSubComponent(instance, componentName);
+      if (!component) {
+        this.clearComponentParamState();
+        gate.send({ type: "parametersClose" });
+        return;
+      }
+      const unitTable = await buildComponentUnitTable(client, component);
+      const form = buildComponentParameterForm(component, unitTable);
+      if (!form) {
+        this.clearComponentParamState();
+        gate.send({ type: "parametersClose" });
+        return;
+      }
+      this.componentParamRefs = form.refs;
+      this.componentParamInitialValues = form.values;
+      this.componentParamComponentName = form.componentName;
+      gate.send({
+        type: "parametersOpen",
+        kind: "componentParams",
+        model: form.model,
+        title: `Parameters: ${componentName}${componentTypeSuffix(component)}`,
+        submitLabel: "Apply",
+        crefPrefix: componentName,
+      });
+    } catch (err) {
+      this.reportError(
+        `reset ${componentName} failed: ${(err as Error).message}`,
+      );
+    } finally {
+      this.resetInFlight = false;
+    }
+  }
+
+  private clearComponentParamState(): void {
+    this.componentParamRefs = {};
+    this.componentParamInitialValues = {};
+    this.componentParamComponentName = null;
+  }
+
   /**
    * Push the re-fetched layout to the webview and reflect the class's canonical
    * OMC source into the shadow buffer, recording one undo step and flipping the
@@ -383,6 +588,14 @@ export class DiagramEditController {
     this.deps.gate.send({ type: "error", message });
     log.warn("diagramEditor", message);
   }
+}
+
+/** The ` (TypeName)` suffix a component modal's title carries, or "". */
+function componentTypeSuffix(component: ComponentElement): string {
+  const type = component.type;
+  const typeName =
+    typeof type === "object" && type !== null ? type.name : String(type ?? "");
+  return typeName ? ` (${typeName})` : "";
 }
 
 /**

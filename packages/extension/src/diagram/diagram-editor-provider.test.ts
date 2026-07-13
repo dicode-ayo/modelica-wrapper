@@ -12,6 +12,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 import type {
+  ComponentElement,
   DiagramLayout,
   ModelInstance,
   OmcClient,
@@ -296,13 +297,18 @@ describe("resolveDiagramEditor: on-disk file: path", () => {
 
 const LISTED_SOURCE = "model M end M;";
 
-function makeEditClient(opts?: { loadStringSuccess?: boolean }): {
+function makeEditClient(opts?: {
+  loadStringSuccess?: boolean;
+  instance?: ModelInstance;
+}): {
   client: OmcClient;
   invoked: string[];
   addComponentCalls: Array<Record<string, unknown>>;
   addConnectionCalls: Array<Record<string, unknown>>;
   listedTypes: string[];
   loadStringCalls: Array<Record<string, unknown>>;
+  setModifierCalls: Array<Record<string, unknown>>;
+  removeModifierCalls: Array<Record<string, unknown>>;
   ops: string[];
 } {
   const invoked: string[] = [];
@@ -310,13 +316,15 @@ function makeEditClient(opts?: { loadStringSuccess?: boolean }): {
   const addConnectionCalls: Array<Record<string, unknown>> = [];
   const listedTypes: string[] = [];
   const loadStringCalls: Array<Record<string, unknown>> = [];
+  const setModifierCalls: Array<Record<string, unknown>> = [];
+  const removeModifierCalls: Array<Record<string, unknown>> = [];
   const ops: string[] = [];
   const client = {
     lastCall: "mock",
     invoke: vi.fn((fn: string) => {
       invoked.push(fn);
       if (fn === "getModelInstance")
-        return Promise.resolve({ instance: INSTANCE });
+        return Promise.resolve({ instance: opts?.instance ?? INSTANCE });
       if (fn === "getInstantiatedParametersAndValues") {
         return Promise.reject(new Error("no params"));
       }
@@ -342,6 +350,21 @@ function makeEditClient(opts?: { loadStringSuccess?: boolean }): {
       loadStringCalls.push(input);
       return Promise.resolve({ success: opts?.loadStringSuccess ?? true });
     }),
+    setElementModifierValue: vi.fn((input: Record<string, unknown>) => {
+      ops.push("setElementModifierValue");
+      setModifierCalls.push(input);
+      return Promise.resolve({ success: true });
+    }),
+    setExtendsModifierValue: vi.fn((input: Record<string, unknown>) => {
+      ops.push("setExtendsModifierValue");
+      setModifierCalls.push(input);
+      return Promise.resolve({ success: true });
+    }),
+    removeElementModifiers: vi.fn((input: Record<string, unknown>) => {
+      ops.push("removeElementModifiers");
+      removeModifierCalls.push(input);
+      return Promise.resolve({ success: true });
+    }),
     getErrorString: vi.fn(() => Promise.resolve({ errorString: "boom" })),
   } as unknown as OmcClient;
   return {
@@ -351,6 +374,8 @@ function makeEditClient(opts?: { loadStringSuccess?: boolean }): {
     addConnectionCalls,
     listedTypes,
     loadStringCalls,
+    setModifierCalls,
+    removeModifierCalls,
     ops,
   };
 }
@@ -752,5 +777,207 @@ describe("DiagramEditController: forward write path", () => {
 
     expect(loadStringCalls).toEqual([]);
     controller.dispose();
+  });
+});
+
+const CLASS_PARAM_INSTANCE = {
+  name: "Pkg.M",
+  restriction: "model",
+  elements: [
+    {
+      $kind: "component",
+      name: "gain",
+      type: "Real",
+      value: { binding: 2 },
+      prefixes: { variability: "parameter" },
+    },
+  ],
+} as unknown as ModelInstance;
+
+/** A sub-component whose type declares a single Real parameter `k`. */
+function componentInstance(): ModelInstance {
+  return {
+    name: "Pkg.M",
+    restriction: "model",
+    elements: [
+      {
+        $kind: "component",
+        name: "PI",
+        type: {
+          name: "MyLib.Block",
+          restriction: "block",
+          elements: [
+            {
+              $kind: "component",
+              name: "k",
+              type: "Real",
+              value: { binding: 1 },
+              prefixes: { variability: "parameter" },
+            },
+          ],
+        },
+      } as unknown as ComponentElement,
+    ],
+  } as unknown as ModelInstance;
+}
+
+describe("DiagramEditController: parameter editing", () => {
+  it("opens the class-parameter modal (read) without reflecting", async () => {
+    const { client, setModifierCalls } = makeEditClient({
+      instance: CLASS_PARAM_INSTANCE,
+    });
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({ type: "actionParameters" });
+
+    const open = posted.find((m) => m.type === "parametersOpen");
+    expect(open).toMatchObject({ kind: "classParams" });
+    expect(setModifierCalls).toEqual([]); // a modal open is a read
+    expect(writes).toEqual([]); // reads never reflect to the buffer
+  });
+
+  it("applies a changed class parameter to OMC and reflects to the buffer", async () => {
+    const { client, setModifierCalls } = makeEditClient({
+      instance: CLASS_PARAM_INSTANCE,
+    });
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({ type: "actionParameters" });
+    await controller.handle({
+      type: "parametersSubmit",
+      kind: "classParams",
+      values: { gain: 5 },
+    });
+
+    expect(setModifierCalls[0]).toMatchObject({
+      typeName: "Pkg.M",
+      elementName: "gain",
+    });
+    expect(String(setModifierCalls[0]?.expr)).toContain("5");
+    expect(writes).toContain(LISTED_SOURCE); // reflected + dirty
+    expect(posted.at(-1)?.type).toBe("parametersClose");
+  });
+
+  it("does not write an unchanged class parameter", async () => {
+    const { client, setModifierCalls } = makeEditClient({
+      instance: CLASS_PARAM_INSTANCE,
+    });
+    const { gate } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({ type: "actionParameters" });
+    await controller.handle({
+      type: "parametersSubmit",
+      kind: "classParams",
+      values: { gain: 2 },
+    });
+
+    expect(setModifierCalls).toEqual([]);
+  });
+
+  it("applies a changed component parameter as <comp>.<param> and reflects", async () => {
+    const { client, setModifierCalls } = makeEditClient({
+      instance: componentInstance(),
+    });
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({ type: "editComponent", componentName: "PI" });
+    const open = posted.find((m) => m.type === "parametersOpen");
+    expect(open).toMatchObject({ kind: "componentParams", crefPrefix: "PI" });
+
+    await controller.handle({
+      type: "parametersSubmit",
+      kind: "componentParams",
+      values: { k: 3 },
+    });
+
+    expect(setModifierCalls[0]).toMatchObject({
+      typeName: "Pkg.M",
+      elementName: "PI.k",
+    });
+    expect(writes).toContain(LISTED_SOURCE);
+  });
+
+  it("resets a component's modifiers (keepRedeclares) and re-opens the modal", async () => {
+    const { client, removeModifierCalls } = makeEditClient({
+      instance: componentInstance(),
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({
+      type: "resetComponentParameters",
+      componentName: "PI",
+    });
+
+    expect(removeModifierCalls[0]).toMatchObject({
+      typeName: "Pkg.M",
+      componentName: "PI",
+      keepRedeclares: true,
+    });
+    expect(posted.at(-1)).toMatchObject({
+      type: "parametersOpen",
+      kind: "componentParams",
+    });
+  });
+
+  it("serializes a parameter submit after an in-flight forward edit", async () => {
+    const { client, ops } = makeEditClient({ instance: CLASS_PARAM_INSTANCE });
+    const { gate } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({ type: "actionParameters" }); // seed refs/values
+    const edit = controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 0, y: 0 },
+    });
+    const submit = controller.handle({
+      type: "parametersSubmit",
+      kind: "classParams",
+      values: { gain: 5 },
+    });
+    await Promise.all([edit, submit]);
+
+    // The forward edit fully applies + reflects before the submit's write.
+    expect(ops).toEqual([
+      "addComponent",
+      "listFile",
+      "setElementModifierValue",
+      "listFile",
+    ]);
   });
 });

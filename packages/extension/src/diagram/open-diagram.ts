@@ -1081,7 +1081,7 @@ export async function applyDiagramEdits(
  * the layout and the form (the reset re-open) can share one
  * `getModelInstance` round-trip instead of paying for two back-to-back.
  */
-async function layoutFromInstance(
+export async function layoutFromInstance(
   client: OmcClient,
   className: string,
   instance: ModelInstance,
@@ -1121,7 +1121,7 @@ async function layoutFromInstance(
  * the cache (memoised, so a re-open issues zero new OMC calls) — fed back into
  * `buildClassParameterForm` to fill the per-field option lists.
  */
-function buildClassUnitTable(
+export function buildClassUnitTable(
   client: OmcClient,
   instance: ModelInstance,
 ): Promise<UnitTable> {
@@ -1137,7 +1137,7 @@ function buildClassUnitTable(
  * parent-class overrides, then resolves its base units through the same cache.
  * Returns `undefined` for a primitive-typed leaf (no inspectable type).
  */
-function buildComponentUnitTable(
+export function buildComponentUnitTable(
   client: OmcClient,
   component: Parameters<typeof buildComponentParameterForm>[0],
 ): Promise<UnitTable | undefined> {
@@ -1199,7 +1199,7 @@ async function fetchResolvedParameters(
   }
 }
 
-async function fetchModelInstance(
+export async function fetchModelInstance(
   client: OmcClient,
   className: string,
 ): Promise<ModelInstance> {
@@ -1341,7 +1341,7 @@ export async function fetchComponentClass(
  * toast once the batch completes; we keep going on individual failures
  * so a typo in one field doesn't strand the rest.
  */
-async function applyClassParameterEdits(
+export async function applyClassParameterEdits(
   client: OmcClient,
   className: string,
   refs: Record<string, ClassParameterRef>,
@@ -1409,7 +1409,7 @@ async function applyClassParameterEdits(
  * expr)` so the modifier lands on the parent class — not on the type
  * declaration. Same per-field REPL + summary-toast policy.
  */
-async function applyComponentParameterEdits(
+export async function applyComponentParameterEdits(
   client: OmcClient,
   className: string,
   componentName: string,
