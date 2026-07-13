@@ -37,8 +37,9 @@ export function classNameFromDocument(
  * renders a class's diagram from OMC and applies graphical edits. Edits mutate
  * the OMC AST (the render model), and the class's canonical source is reflected
  * back into the document through a shadow buffer so VSCode tracks dirty state
- * and undo. Reverse sync (loadString on a foreign change) and save are not
- * wired here — `onForeignChange` is a logged no-op.
+ * and undo. A foreign buffer change (undo/redo or a manual text edit) is
+ * `loadString`ed back into OMC and the layout re-fetched; save flushes the
+ * reflected buffer through its document provider.
  */
 export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   private constructor(
@@ -197,7 +198,7 @@ export class DiagramEditController {
     private readonly scheduler: Scheduler = defaultScheduler,
   ) {
     this.prevLayout = initialLayout;
-    this.shadow = makeShadow((doc) => this.onForeignChange(doc));
+    this.shadow = makeShadow(() => this.onForeignChange());
   }
 
   private queue: Promise<void> = Promise.resolve();
@@ -211,8 +212,7 @@ export class DiagramEditController {
    * editor; cross-editor socket contention is the client's `SerialQueue`'s job.
    */
   handle(msg: WebviewToExtension): Promise<void> {
-    this.queue = this.queue.then(() => this.dispatch(msg));
-    return this.queue;
+    return this.enqueue(() => this.dispatch(msg));
   }
 
   dispose(): void {
@@ -225,7 +225,7 @@ export class DiagramEditController {
    * burst, then enqueue a reverse sync so OMC's AST is reloaded from the buffer.
    * The self-write guard in the shadow buffer keeps our own reflects out of here.
    */
-  private onForeignChange(_doc: vscode.TextDocument): void {
+  private onForeignChange(): void {
     this.reverseTimer?.cancel();
     this.reverseTimer = this.scheduler.schedule(() => {
       this.reverseTimer = undefined;
@@ -391,9 +391,9 @@ export class DiagramEditController {
  * first declared class, or `undefined` when the document isn't a `file:` `.mo`,
  * parsing fails, or no class is declared.
  *
- * Read-only-safe: resolving against the on-disk file only picks a class to
- * render — it never creates a second editable buffer, so the deferred `file:`
- * *edit* policy (needed once #286+ add the write path) is untouched here.
+ * Resolving against the on-disk file only picks a class to render; it never
+ * creates a second editable buffer, so it is independent of the `file:` edit
+ * policy the write path needs.
  */
 async function classNameFromFile(
   document: vscode.TextDocument,
