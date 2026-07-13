@@ -27,7 +27,7 @@ export {
   ModelInstanceSchema,
   ModelInstanceAnnotationSchema,
   ModelInstanceNotFullyLoadedError,
-  assertModelInstanceLoaded,
+  parseModelInstanceOutput,
   ComponentRefSchema,
   ComponentElementSchema,
   ExtendsElementSchema,

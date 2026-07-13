@@ -28,11 +28,10 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { prettyPrint } from "../../_shared/fields.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import {
-  assertModelInstanceLoaded,
   ModelInstanceSchema,
+  parseModelInstanceOutput,
   type ModelInstance,
 } from "../../_shared/modelInstance.js";
-import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
 
 export const GetModelInstanceInputSchema = TypeNameInput.extend({
@@ -61,11 +60,11 @@ export async function getModelInstance(
   const raw = await ctx.call(`getModelInstance(${args})`);
   const json = expectString(parse(raw));
   const parsed: unknown = JSON.parse(json);
-  assertModelInstanceLoaded(parsed, input.typeName);
-  const validated = parseOutput(
+  const validated = parseModelInstanceOutput(
     GetModelInstanceOutputSchema,
     { instance: parsed },
     "getModelInstance",
+    input.typeName,
   );
   return { instance: validated.instance };
 }

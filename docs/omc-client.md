@@ -174,13 +174,14 @@ call replaces the ~30 round-trips an OMEdit-style read would make; inheritance i
 pre-walked by OMC. It is the read half of the
 [diagram pipeline](diagram-rendering.md).
 
-Before schema validation, both `getModelInstance` and
-`getModelInstanceAnnotation` run `assertModelInstanceLoaded` — if OMC's
-response has no `name` string, that's the shape a partially-loaded class
-returns (e.g. a `within <Parent>;` child registered before its parent
-package), so the wrapper throws `ModelInstanceNotFullyLoadedError` with the
-class name instead of surfacing a bare Zod "expected string, got null". Any
-other schema mismatch still falls through to `parseOutput`'s generic error.
+Both `getModelInstance` and `getModelInstanceAnnotation` validate through
+`parseModelInstanceOutput` rather than the generic `parseOutput` — it runs the
+same Zod `safeParse`, but when validation fails on the root `instance.name`
+field specifically, that's the shape a partially-loaded class returns (e.g. a
+`within <Parent>;` child registered before its parent package), so it throws
+`ModelInstanceNotFullyLoadedError` with the class name instead of surfacing a
+bare Zod "expected string, got null". Any other schema mismatch still throws
+the same generic "OMC response shape mismatch" error `parseOutput` would.
 
 ## Validation
 

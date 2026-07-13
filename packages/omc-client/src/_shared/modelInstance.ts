@@ -527,16 +527,26 @@ export class ModelInstanceNotFullyLoadedError extends Error {
 }
 
 /**
- * Guard `getModelInstance`/`getModelInstanceAnnotation` responses before Zod
- * validation, so the not-fully-loaded case gets {@link ModelInstanceNotFullyLoadedError}
- * instead of `parseOutput`'s generic "OMC response shape mismatch" message.
+ * `getModelInstance`/`getModelInstanceAnnotation`'s `parseOutput`, specialized
+ * to distinguish a not-fully-loaded class from any other schema mismatch.
+ * Classifies off the Zod failure's own issue path (`instance.name`) rather
+ * than re-deriving "must have a name" as a separate hand-rolled check, so
+ * `ModelInstanceSchema`'s `name: z.string()` stays the one place that
+ * invariant is declared.
  */
-export function assertModelInstanceLoaded(
-  parsed: unknown,
+export function parseModelInstanceOutput<T extends { instance: unknown }>(
+  schema: z.ZodType<T>,
+  data: unknown,
+  cmd: string,
   className: string,
-): void {
-  if (typeof parsed !== "object" || parsed === null) return;
-  if (typeof (parsed as { name?: unknown }).name !== "string") {
-    throw new ModelInstanceNotFullyLoadedError(className);
-  }
+): T {
+  const result = schema.safeParse(data);
+  if (result.success) return result.data;
+  const missingName = result.error.issues.some(
+    (issue) => issue.path.join(".") === "instance.name",
+  );
+  if (missingName) throw new ModelInstanceNotFullyLoadedError(className);
+  throw new Error(
+    `OMC response shape mismatch for ${cmd}: ${result.error.message}`,
+  );
 }
