@@ -38,6 +38,8 @@ import * as vscode from "vscode";
 
 import type { OmcClient } from "@dicode/omc-client";
 
+import { log } from "./logger.js";
+
 import {
   isLikelyDiskPath,
   linkPersistedClass,
@@ -70,19 +72,32 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
   async stat(uri: vscode.Uri): Promise<vscode.FileStat> {
     const typeName = qualifiedNameFromUri(uri);
     if (!typeName) throw vscode.FileSystemError.FileNotFound(uri);
-    const client = await this.ensureClient();
-    const info = await client.getClassInformation({ typeName });
-    const { contents } = await client.listFile({ typeName });
     const mtime = this.versions.get(uri.toString()) ?? 0;
-    return {
-      type: vscode.FileType.File,
-      ctime: 0,
-      mtime,
-      size: Buffer.byteLength(contents, "utf8"),
-      ...(info.fileReadOnly
-        ? { permissions: vscode.FilePermission.Readonly }
-        : {}),
-    };
+    // A custom editor (the diagram) restores its document by URI on window
+    // reload, which can `stat` a class before workspace-autoload has loaded it
+    // — or one that no longer exists. Throwing here surfaces as VSCode's opaque
+    // "Unable to resolve resource"; resolve to an empty file instead so the
+    // editor opens and can report a clean not-loaded state.
+    try {
+      const client = await this.ensureClient();
+      const info = await client.getClassInformation({ typeName });
+      const { contents } = await client.listFile({ typeName });
+      return {
+        type: vscode.FileType.File,
+        ctime: 0,
+        mtime,
+        size: Buffer.byteLength(contents, "utf8"),
+        ...(info.fileReadOnly
+          ? { permissions: vscode.FilePermission.Readonly }
+          : {}),
+      };
+    } catch (err) {
+      log.warn(
+        "modelicaSource",
+        `stat ${typeName} failed; resolving as empty: ${(err as Error).message}`,
+      );
+      return { type: vscode.FileType.File, ctime: 0, mtime, size: 0 };
+    }
   }
 
   readDirectory(): [string, vscode.FileType][] {
@@ -96,9 +111,19 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
   async readFile(uri: vscode.Uri): Promise<Uint8Array> {
     const typeName = qualifiedNameFromUri(uri);
     if (!typeName) throw vscode.FileSystemError.FileNotFound(uri);
-    const client = await this.ensureClient();
-    const { contents } = await client.listFile({ typeName });
-    return Buffer.from(contents, "utf8");
+    try {
+      const client = await this.ensureClient();
+      const { contents } = await client.listFile({ typeName });
+      return Buffer.from(contents, "utf8");
+    } catch (err) {
+      // Mirror `stat`: a class that isn't loaded (or no longer exists) reads as
+      // empty rather than hard-failing the editor that opened it.
+      log.warn(
+        "modelicaSource",
+        `readFile ${typeName} failed; returning empty: ${(err as Error).message}`,
+      );
+      return new Uint8Array();
+    }
   }
 
   async writeFile(uri: vscode.Uri, content: Uint8Array): Promise<void> {
@@ -106,6 +131,15 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
     if (!typeName) throw vscode.FileSystemError.FileNotFound(uri);
     const client = await this.ensureClient();
     const text = Buffer.from(content).toString("utf8");
+
+    // A transient OMC failure makes `readFile` seed an EMPTY buffer for a real
+    // class; saving that would `loadString("")` (no error) and truncate the
+    // on-disk source. A class never legitimately has empty source, so refuse.
+    if (text.trim().length === 0) {
+      throw vscode.FileSystemError.Unavailable(
+        `refusing to save empty source over ${typeName}`,
+      );
+    }
 
     // Snapshot fileName before loadString — loadString rewrites OMC's
     // `fileName` field for the class to whatever pseudo-filename we pass it,

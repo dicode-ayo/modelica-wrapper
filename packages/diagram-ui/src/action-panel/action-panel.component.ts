@@ -5,20 +5,20 @@
  * (typically `<om-graphical-layout>`). Top-right by default; flippable
  * with the `anchor` attribute.
  *
- * Buttons are icon-only (`title` carries the description + hotkey). Undo,
- * Check, Simulate, Parameters are plain buttons; Rotate, Flip and Draw are
- * split buttons — the main half does the primary action (rotate cw / flip
+ * Buttons are icon-only (`title` carries the description + hotkey). Check,
+ * Simulate, Parameters are plain buttons; Rotate, Flip and Draw are split
+ * buttons — the main half does the primary action (rotate cw / flip
  * horizontal / arm the current shape) and the chevron opens a menu to pick the
  * variant (cw·ccw / horizontal·vertical / rectangle·ellipse).
  *
  * Events (bubble + composed):
- *   - `om-action-undo` / `-check` / `-simulate` / `-parameters` — no detail.
+ *   - `om-action-check` / `-simulate` / `-parameters` — no detail.
  *   - `om-action-rotate` — `{ direction: "cw" | "ccw" }`.
  *   - `om-action-flip` — `{ axis: "horizontal" | "vertical" }`.
  *   - `om-action-tool` — `{ tool }`, the tool to arm (or `select` to disarm).
  *     The host owns tool state and feeds it back via `tool`.
  *
- * Buttons hide individually via boolean attributes (`hide-undo`, …, `hide-draw`).
+ * Buttons hide individually via boolean attributes (`hide-check`, …, `hide-draw`).
  */
 
 import {
@@ -55,7 +55,6 @@ import {
   rotateCcwIcon,
   rotateIcon,
   simulateIcon,
-  undoIcon,
 } from "./toolbar-icons.js";
 
 export type ActionPanelAnchor =
@@ -67,7 +66,6 @@ export type ActionPanelAnchor =
 export type RotateDirection = "cw" | "ccw";
 export type FlipAxis = "horizontal" | "vertical";
 
-export type ActionUndoDetail = undefined;
 export type ActionCheckDetail = undefined;
 export type ActionSimulateDetail = undefined;
 export type ActionParametersDetail = undefined;
@@ -82,7 +80,6 @@ export interface ActionToolDetail {
 }
 
 export interface ActionPanelEvents {
-  "om-action-undo": ActionUndoDetail;
   "om-action-check": ActionCheckDetail;
   "om-action-simulate": ActionSimulateDetail;
   "om-action-parameters": ActionParametersDetail;
@@ -175,7 +172,6 @@ export class OmActionPanel extends LitElement {
   @property()
   tool: ToolId = "select";
 
-  @property({ type: Boolean, attribute: "hide-undo" }) hideUndo = false;
   @property({ type: Boolean, attribute: "hide-check" }) hideCheck = false;
   @property({ type: Boolean, attribute: "hide-simulate" }) hideSimulate = false;
   @property({ type: Boolean, attribute: "hide-parameters" })
@@ -207,14 +203,6 @@ export class OmActionPanel extends LitElement {
 
   override render(): TemplateResult {
     return html`
-      ${this.iconButton(
-        this.hideUndo,
-        "neutral",
-        "outlined",
-        undoIcon,
-        "Undo last diagram edit (diagram-local)",
-        () => this.emit("om-action-undo", undefined),
-      )}
       ${this.iconButton(
         this.hideCheck,
         "brand",

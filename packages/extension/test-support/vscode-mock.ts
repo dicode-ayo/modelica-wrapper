@@ -14,6 +14,73 @@ export enum DiagnosticSeverity {
   Hint = 3,
 }
 
+export enum ProgressLocation {
+  SourceControl = 1,
+  Window = 10,
+  Notification = 15,
+}
+
+export enum FilePermission {
+  Readonly = 1,
+}
+
+export enum FileType {
+  Unknown = 0,
+  File = 1,
+  Directory = 2,
+  SymbolicLink = 64,
+}
+
+export enum FileChangeType {
+  Changed = 1,
+  Created = 2,
+  Deleted = 3,
+}
+
+/** `FileSystemError` stand-in — carries the `code` VSCode routes on. */
+export class FileSystemError extends Error {
+  readonly code: string;
+  private constructor(code: string, message: string) {
+    super(message || code);
+    this.code = code;
+    this.name = "FileSystemError";
+  }
+  static FileNotFound(messageOrUri?: unknown): FileSystemError {
+    return new FileSystemError("FileNotFound", String(messageOrUri ?? ""));
+  }
+  static NoPermissions(messageOrUri?: unknown): FileSystemError {
+    return new FileSystemError("NoPermissions", String(messageOrUri ?? ""));
+  }
+  static Unavailable(messageOrUri?: unknown): FileSystemError {
+    return new FileSystemError("Unavailable", String(messageOrUri ?? ""));
+  }
+}
+
+/** Minimal `EventEmitter` — records listeners and fires them synchronously. */
+export class EventEmitter<T> {
+  private listeners: Array<(e: T) => void> = [];
+  readonly event = (listener: (e: T) => void): Disposable => {
+    this.listeners.push(listener);
+    return new Disposable(() => {
+      const i = this.listeners.indexOf(listener);
+      if (i !== -1) this.listeners.splice(i, 1);
+    });
+  };
+  fire(data: T): void {
+    for (const l of this.listeners) l(data);
+  }
+  dispose(): void {
+    this.listeners = [];
+  }
+}
+
+let statPermissions = 0;
+
+/** Control what `workspace.fs.stat` reports for the readonly-gate tests. */
+export function setStatReadonly(readonly: boolean): void {
+  statPermissions = readonly ? FilePermission.Readonly : 0;
+}
+
 export class Position {
   constructor(
     public readonly line: number,
@@ -99,6 +166,49 @@ class UriImpl {
 export const Uri = UriImpl;
 export type Uri = UriImpl;
 
+/** Minimal `WorkspaceEdit` — records whole-document replacements for assertions. */
+export class WorkspaceEdit {
+  readonly replacements: { uri: UriImpl; range: Range; text: string }[] = [];
+  replace(uri: UriImpl, range: Range, text: string): void {
+    this.replacements.push({ uri, range, text });
+  }
+}
+
+/** Every `WorkspaceEdit` passed to `workspace.applyEdit`, for assertions. */
+export const appliedEdits: WorkspaceEdit[] = [];
+
+let applyEditResult = true;
+let applyEditManual = false;
+
+interface PendingApply {
+  fire: () => void;
+  resolve: () => void;
+}
+
+/** Applies awaiting `completeApply`, when `setApplyEditManual(true)` is set. */
+export const pendingApplies: PendingApply[] = [];
+
+/** Control the boolean `workspace.applyEdit` resolves with. */
+export function setApplyEditResult(value: boolean): void {
+  applyEditResult = value;
+}
+
+/**
+ * When manual, `applyEdit` defers both its change event and its resolution
+ * until `completeApply` — letting a test interleave two writes deterministically.
+ */
+export function setApplyEditManual(value: boolean): void {
+  applyEditManual = value;
+}
+
+/** Fire the deferred change event and resolve the pending apply at `index`. */
+export function completeApply(index = 0): void {
+  const pending = pendingApplies[index];
+  if (pending === undefined) return;
+  pending.fire();
+  pending.resolve();
+}
+
 /**
  * Minimal `window` namespace. The message helpers record their args on a
  * module-level log so unit tests can assert which toast a code path
@@ -165,7 +275,48 @@ export const workspace = {
       get: <T>(_key: string, defaultValue?: T): T | undefined => defaultValue,
     };
   },
+  fs: {
+    stat(_uri: unknown): Promise<{
+      type: number;
+      ctime: number;
+      mtime: number;
+      size: number;
+      permissions: number;
+    }> {
+      return Promise.resolve({
+        type: 1,
+        ctime: 0,
+        mtime: 0,
+        size: 0,
+        permissions: statPermissions,
+      });
+    },
+  },
+  applyEdit(edit: WorkspaceEdit): Promise<boolean> {
+    appliedEdits.push(edit);
+    const fire = (): void => {
+      for (const r of edit.replacements) {
+        for (const listener of workspaceListeners.change) {
+          listener({ document: { uri: r.uri } });
+        }
+      }
+    };
+    if (applyEditManual) {
+      return new Promise<boolean>((resolve) => {
+        pendingApplies.push({ fire, resolve: () => resolve(applyEditResult) });
+      });
+    }
+    // VSCode fires onDidChangeTextDocument synchronously while applying an
+    // edit; mirror that so self-write guards can be exercised.
+    fire();
+    return Promise.resolve(applyEditResult);
+  },
 };
+
+/** Fire all captured `onDidChangeTextDocument` listeners with `event`. */
+export function emitChange(event: unknown): void {
+  for (const listener of workspaceListeners.change) listener(event);
+}
 
 /** Fire all captured `onDidSaveTextDocument` listeners with `document`. */
 export function emitSave(document: unknown): void {
@@ -210,6 +361,15 @@ export const window = {
   },
   registerWebviewViewProvider: (): Disposable => new Disposable(),
   showInputBox: () => Promise.resolve(undefined),
+  withProgress<T>(
+    _options: unknown,
+    task: (
+      progress: { report(value: unknown): void },
+      token: { isCancellationRequested: boolean },
+    ) => Promise<T>,
+  ): Promise<T> {
+    return task({ report: () => {} }, { isCancellationRequested: false });
+  },
   createQuickPick() {
     const noop = () => ({ dispose: () => {} });
     return {

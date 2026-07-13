@@ -166,7 +166,6 @@ export {
   type ActionPanelAnchor,
   type ActionPanelEvents,
   type ActionPanelEventName,
-  type ActionUndoDetail,
   type ActionCheckDetail,
   type ActionSimulateDetail,
   type ActionParametersDetail,

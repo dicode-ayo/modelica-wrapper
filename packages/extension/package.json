@@ -49,6 +49,16 @@
           }
         ],
         "priority": "default"
+      },
+      {
+        "viewType": "modelica.diagram",
+        "displayName": "Modelica Diagram",
+        "selector": [
+          {
+            "filenamePattern": "*.mo"
+          }
+        ],
+        "priority": "option"
       }
     ],
     "commands": [
@@ -59,11 +69,6 @@
       {
         "command": "modelica.openDiagram",
         "title": "Modelica: Open Diagram"
-      },
-      {
-        "command": "modelica.diagram.undo",
-        "title": "Modelica: Undo Diagram Edit",
-        "icon": "$(discard)"
       },
       {
         "command": "modelica.diagram.delete",
@@ -194,89 +199,78 @@
       "editor/title": [
         {
           "command": "modelica.openDiagramFromSource",
-          "when": "resourceScheme == modelica-source",
+          "when": "resourceScheme == modelica-source && !activeCustomEditorId",
           "group": "navigation@1"
         },
         {
           "command": "modelica.viewSource",
-          "when": "activeWebviewPanelId == modelicaDiagram",
+          "when": "activeCustomEditorId == modelica.diagram",
           "group": "navigation@1"
         },
         {
           "command": "modelica.checkModel",
-          "when": "resourceScheme == modelica-source",
+          "when": "resourceScheme == modelica-source && !activeCustomEditorId",
           "group": "navigation@2"
         },
         {
           "command": "modelica.checkModel",
-          "when": "activeWebviewPanelId == modelicaDiagram",
+          "when": "activeCustomEditorId == modelica.diagram",
           "group": "navigation@2"
-        },
-        {
-          "command": "modelica.diagram.undo",
-          "when": "activeWebviewPanelId == modelicaDiagram",
-          "group": "navigation@0"
         }
       ],
       "commandPalette": [
         {
           "command": "modelica.diagram.delete",
-          "when": "activeWebviewPanelId == modelicaDiagram"
+          "when": "activeCustomEditorId == modelica.diagram"
         },
         {
           "command": "modelica.diagram.rotateCw",
-          "when": "activeWebviewPanelId == modelicaDiagram"
+          "when": "activeCustomEditorId == modelica.diagram"
         },
         {
           "command": "modelica.diagram.rotateCcw",
-          "when": "activeWebviewPanelId == modelicaDiagram"
+          "when": "activeCustomEditorId == modelica.diagram"
         },
         {
           "command": "modelica.diagram.flipHorizontal",
-          "when": "activeWebviewPanelId == modelicaDiagram"
+          "when": "activeCustomEditorId == modelica.diagram"
         },
         {
           "command": "modelica.diagram.flipVertical",
-          "when": "activeWebviewPanelId == modelicaDiagram"
+          "when": "activeCustomEditorId == modelica.diagram"
         }
       ]
     },
     "keybindings": [
       {
-        "command": "modelica.diagram.undo",
-        "key": "ctrl+z",
-        "mac": "cmd+z",
-        "when": "activeWebviewPanelId == modelicaDiagram"
-      },
-      {
         "command": "modelica.diagram.delete",
         "key": "delete",
-        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus && !inputFocus"
+        "when": "activeCustomEditorId == modelica.diagram && !modelicaDiagramInputFocus && !inputFocus"
       },
       {
         "command": "modelica.diagram.delete",
         "key": "backspace",
-        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus && !inputFocus"
+        "when": "activeCustomEditorId == modelica.diagram && !modelicaDiagramInputFocus && !inputFocus"
       },
       {
         "command": "modelica.diagram.rotateCw",
         "key": "r",
-        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus && !inputFocus"
+        "when": "activeCustomEditorId == modelica.diagram && !modelicaDiagramInputFocus && !inputFocus"
       },
       {
         "command": "modelica.diagram.rotateCcw",
         "key": "shift+r",
-        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus && !inputFocus"
+        "when": "activeCustomEditorId == modelica.diagram && !modelicaDiagramInputFocus && !inputFocus"
       },
       {
         "command": "modelica.diagram.flipHorizontal",
         "key": "f",
-        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus && !inputFocus"
+        "when": "activeCustomEditorId == modelica.diagram && !modelicaDiagramInputFocus && !inputFocus"
       },
       {
         "command": "modelica.diagram.flipVertical",
         "key": "shift+f",
-        "when": "activeWebviewPanelId == modelicaDiagram && !modelicaDiagramInputFocus && !inputFocus"
+        "when": "activeCustomEditorId == modelica.diagram && !modelicaDiagramInputFocus && !inputFocus"
       }
     ],
     "configuration": {
