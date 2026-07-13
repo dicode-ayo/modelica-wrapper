@@ -37,6 +37,10 @@ export function createShadowBuffer(
 
   return {
     async write(text) {
+      // An edit that re-emits identical source (e.g. a parameter submit that
+      // changed nothing) would still register as an undo step and dirty the
+      // document. Skip it so only real changes touch the buffer.
+      if (text === document.getText()) return;
       const edit = new vscode.WorkspaceEdit();
       edit.replace(
         document.uri,

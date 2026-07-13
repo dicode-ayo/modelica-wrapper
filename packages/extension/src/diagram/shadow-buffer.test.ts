@@ -20,8 +20,12 @@ import {
 
 import { createShadowBuffer } from "./shadow-buffer.js";
 
-function docFor(uri: vscode.Uri): vscode.TextDocument {
-  return { uri, lineCount: 0 } as unknown as vscode.TextDocument;
+function docFor(uri: vscode.Uri, text = ""): vscode.TextDocument {
+  return {
+    uri,
+    lineCount: 0,
+    getText: () => text,
+  } as unknown as vscode.TextDocument;
 }
 
 const DOC_URI = vscode.Uri.parse("modelica-source:/Pkg.Model.mo");
@@ -45,6 +49,20 @@ describe("createShadowBuffer", () => {
       "model Pkg.Model end Pkg.Model;",
     );
     // applyEdit fires the change event while our self-write flag is set.
+    expect(onForeign).not.toHaveBeenCalled();
+    buffer.dispose();
+  });
+
+  it("skips a write whose text already equals the document, so it stays clean", async () => {
+    const onForeign = vi.fn();
+    const buffer = createShadowBuffer(
+      docFor(DOC_URI, "model Pkg.Model end Pkg.Model;"),
+      onForeign,
+    );
+
+    await buffer.write("model Pkg.Model end Pkg.Model;");
+
+    expect(appliedEdits).toHaveLength(0);
     expect(onForeign).not.toHaveBeenCalled();
     buffer.dispose();
   });
