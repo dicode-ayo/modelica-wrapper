@@ -204,22 +204,22 @@
       "editor/title": [
         {
           "command": "modelica.openDiagramFromSource",
-          "when": "resourceScheme == modelica-source",
+          "when": "resourceScheme == modelica-source && !activeCustomEditorId",
           "group": "navigation@1"
         },
         {
           "command": "modelica.viewSource",
-          "when": "activeWebviewPanelId == modelicaDiagram",
+          "when": "activeCustomEditorId == modelica.diagram",
           "group": "navigation@1"
         },
         {
           "command": "modelica.checkModel",
-          "when": "resourceScheme == modelica-source",
+          "when": "resourceScheme == modelica-source && !activeCustomEditorId",
           "group": "navigation@2"
         },
         {
           "command": "modelica.checkModel",
-          "when": "activeWebviewPanelId == modelicaDiagram",
+          "when": "activeCustomEditorId == modelica.diagram",
           "group": "navigation@2"
         },
         {
