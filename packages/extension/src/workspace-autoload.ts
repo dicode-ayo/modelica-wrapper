@@ -23,20 +23,36 @@ export async function loadEntryFilesAndRefresh(
   files: readonly string[],
   refresh: () => void,
 ): Promise<void> {
-  let loadedAny = false;
-  for (const fileName of files) {
+  const tryLoad = async (fileName: string): Promise<boolean> => {
     try {
       const { success } = await client.loadFile({ fileName });
       if (success) {
-        loadedAny = true;
         log.info("autoLoad", `loaded ${fileName}`);
-      } else {
-        const { errorString } = await client.getErrorString();
-        log.warn("autoLoad", `loadFile failed: ${fileName}: ${errorString}`);
+        return true;
       }
+      const { errorString } = await client.getErrorString();
+      log.warn("autoLoad", `loadFile failed: ${fileName}: ${errorString}`);
+      return false;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.warn("autoLoad", `loadFile threw for ${fileName}: ${message}`);
+      return false;
+    }
+  };
+
+  let loadedAny = false;
+  const failed: string[] = [];
+  for (const fileName of files) {
+    if (await tryLoad(fileName)) loadedAny = true;
+    else failed.push(fileName);
+  }
+  // A `within <Parent>;` child in a standalone file fails to insert when its
+  // parent package file hasn't loaded yet (discovery order is arbitrary — a
+  // child can sort before its parent). Retry the failures once, now that the
+  // first pass has put every parent into the symbol table.
+  if (failed.length > 0 && loadedAny) {
+    for (const fileName of failed) {
+      if (await tryLoad(fileName)) loadedAny = true;
     }
   }
   if (loadedAny) {
