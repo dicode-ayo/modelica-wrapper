@@ -99,7 +99,6 @@ export function resolveDiagramEditor(
 
   const gate = createReadyGate(webview);
   let controller: DiagramEditController | undefined;
-  let shadow: ShadowBuffer | undefined;
 
   const sub = webview.onDidReceiveMessage((msg: WebviewToExtension) => {
     if (msg.type === "ready") {
@@ -112,30 +111,20 @@ export function resolveDiagramEditor(
   });
   webviewPanel.onDidDispose(() => {
     sub.dispose();
-    shadow?.dispose();
+    controller?.dispose();
   });
 
   const start = (className: string): void => {
     webview.html = renderDiagramWebviewHtml(webview, extensionUri, className);
-    shadow = createShadowBuffer(document, (doc) => {
-      // A foreign change (manual text edit or undo/redo) would re-sync into OMC
-      // and re-render; that reverse path is not wired here.
-      log.info(
-        "diagramEditor",
-        `external change to ${doc.uri.toString()}; reverse sync into OMC is not wired here`,
-      );
-    });
     void (async (): Promise<void> => {
       try {
         const client = await ensureClient();
         const layout = await fetchDiagramLayout(client, className);
-        if (shadow !== undefined) {
-          controller = new DiagramEditController(
-            { client, document, className, gate },
-            layout,
-            shadow,
-          );
-        }
+        controller = new DiagramEditController(
+          { client, document, className, gate },
+          layout,
+          (onForeignChange) => createShadowBuffer(document, onForeignChange),
+        );
         gate.send({ type: "init", layout, className });
       } catch (err) {
         const message = `Failed to render diagram for ${className}: ${(err as Error).message}`;
@@ -170,35 +159,112 @@ interface EditControllerDeps {
   gate: ReadyGate;
 }
 
+/** Deferred one-shot timer, injectable so tests drive the debounce directly. */
+export interface Scheduler {
+  schedule(fn: () => void, delayMs: number): { cancel(): void };
+}
+
+const defaultScheduler: Scheduler = {
+  schedule(fn, delayMs) {
+    const id = setTimeout(fn, delayMs);
+    return { cancel: () => clearTimeout(id) };
+  },
+};
+
+// Coalesce a burst of foreign changes (holding undo/redo, or typing in the
+// text view) into one reverse sync once the buffer settles.
+const REVERSE_SYNC_DEBOUNCE_MS = 150;
+
 /**
- * Per-editor write controller: turns a webview edit gesture into an OMC
- * mutation, then reflects the class's canonical `listFile` source into the
- * shadow buffer. The OMC AST stays the render model — every applied edit
- * re-fetches the layout from OMC and pushes it back to the webview.
+ * Per-editor write controller. Forward: a webview edit gesture mutates the OMC
+ * AST (the render model), then the class's canonical `listFile` source is
+ * reflected into the shadow buffer. Reverse: a foreign buffer change (undo/redo
+ * or a manual text edit) is `loadString`ed back into OMC and the layout
+ * re-fetched. Both directions re-fetch from OMC and push the layout to the
+ * webview; every unit runs through one serialized queue.
  */
 export class DiagramEditController {
   private prevLayout: DiagramLayout;
+  private readonly shadow: ShadowBuffer;
+  private reverseTimer: { cancel(): void } | undefined;
 
   constructor(
     private readonly deps: EditControllerDeps,
     initialLayout: DiagramLayout,
-    private readonly shadow: ShadowBuffer,
+    makeShadow: (
+      onForeignChange: (document: vscode.TextDocument) => void,
+    ) => ShadowBuffer,
+    private readonly scheduler: Scheduler = defaultScheduler,
   ) {
     this.prevLayout = initialLayout;
+    this.shadow = makeShadow((doc) => this.onForeignChange(doc));
   }
 
   private queue: Promise<void> = Promise.resolve();
 
   /**
-   * Serialize edits through a one-slot promise chain so each edit's full
-   * apply→reflect (which advances `prevLayout`) completes before the next one
-   * diffs — otherwise concurrent edits would all diff against a stale layout
-   * and interleave OMC calls. This orders edits within one editor; cross-editor
-   * contention on the OMC socket is the client's `SerialQueue`'s job.
+   * Serialize edits through a one-slot promise chain so each unit's full
+   * apply→reflect (or reverse sync) — which advances `prevLayout` — completes
+   * before the next one diffs. Otherwise concurrent edits would diff against a
+   * stale layout, and an undo's `loadString` racing an in-flight edit's writes
+   * on the single OMC socket would corrupt state. This orders work within one
+   * editor; cross-editor socket contention is the client's `SerialQueue`'s job.
    */
   handle(msg: WebviewToExtension): Promise<void> {
     this.queue = this.queue.then(() => this.dispatch(msg));
     return this.queue;
+  }
+
+  dispose(): void {
+    this.reverseTimer?.cancel();
+    this.shadow.dispose();
+  }
+
+  /**
+   * A foreign change reverts/edits the buffer out from under OMC. Debounce the
+   * burst, then enqueue a reverse sync so OMC's AST is reloaded from the buffer.
+   * The self-write guard in the shadow buffer keeps our own reflects out of here.
+   */
+  private onForeignChange(_doc: vscode.TextDocument): void {
+    this.reverseTimer?.cancel();
+    this.reverseTimer = this.scheduler.schedule(() => {
+      this.reverseTimer = undefined;
+      void this.enqueue(() => this.reverseSync());
+    }, REVERSE_SYNC_DEBOUNCE_MS);
+  }
+
+  private enqueue(unit: () => Promise<void>): Promise<void> {
+    this.queue = this.queue.then(unit);
+    return this.queue;
+  }
+
+  /**
+   * Reload the buffer's text into OMC (replacing the class) and re-render from
+   * the re-fetched layout. On failure the last-good render is kept — the diagram
+   * never goes blank on a bad undo. No reflect back to the buffer: the buffer is
+   * already the source of this change, and writing it would fight VSCode's undo.
+   */
+  private async reverseSync(): Promise<void> {
+    const { client, className, document } = this.deps;
+    try {
+      const { success } = await client.loadString({
+        data: document.getText(),
+        filename: document.uri.toString(),
+        merge: false,
+      });
+      if (!success) {
+        const { errorString } = await client.getErrorString();
+        this.reportError(
+          `reverse sync rejected by OMC: ${errorString.trim() || "loadString returned success=false"}`,
+        );
+        return;
+      }
+      const layout = await fetchDiagramLayout(client, className);
+      this.prevLayout = layout;
+      this.deps.gate.send({ type: "layout", layout });
+    } catch (err) {
+      this.reportError(`reverse sync failed: ${(err as Error).message}`);
+    }
   }
 
   private async dispatch(msg: WebviewToExtension): Promise<void> {

@@ -9,7 +9,7 @@
  * so this runs in plain Node.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 import type {
   DiagramLayout,
@@ -17,6 +17,12 @@ import type {
   OmcClient,
 } from "@dicode/omc-client";
 
+import {
+  appliedEdits,
+  pendingApplies,
+  setApplyEditManual,
+  setApplyEditResult,
+} from "../../test-support/vscode-mock.js";
 import type {
   ExtensionToWebview,
   WebviewToExtension,
@@ -26,8 +32,16 @@ import {
   classNameFromDocument,
   DiagramEditController,
   resolveDiagramEditor,
+  type Scheduler,
 } from "./diagram-editor-provider.js";
-import type { ShadowBuffer } from "./shadow-buffer.js";
+import { createShadowBuffer, type ShadowBuffer } from "./shadow-buffer.js";
+
+beforeEach(() => {
+  appliedEdits.length = 0;
+  pendingApplies.length = 0;
+  setApplyEditManual(false);
+  setApplyEditResult(true);
+});
 
 /**
  * A minimal instance with an Icon coordinate system — enough for the producer
@@ -133,6 +147,12 @@ function makeClient(opts?: {
 
 /** Drain the async resolution + layout fetch. */
 async function flush(): Promise<void> {
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+}
+
+/** Let queued controller units (edit / reverse-sync) settle. */
+async function drain(): Promise<void> {
   await new Promise((r) => setTimeout(r, 0));
   await new Promise((r) => setTimeout(r, 0));
 }
@@ -276,18 +296,20 @@ describe("resolveDiagramEditor: on-disk file: path", () => {
 
 const LISTED_SOURCE = "model M end M;";
 
-function makeEditClient(): {
+function makeEditClient(opts?: { loadStringSuccess?: boolean }): {
   client: OmcClient;
   invoked: string[];
   addComponentCalls: Array<Record<string, unknown>>;
   addConnectionCalls: Array<Record<string, unknown>>;
   listedTypes: string[];
+  loadStringCalls: Array<Record<string, unknown>>;
   ops: string[];
 } {
   const invoked: string[] = [];
   const addComponentCalls: Array<Record<string, unknown>> = [];
   const addConnectionCalls: Array<Record<string, unknown>> = [];
   const listedTypes: string[] = [];
+  const loadStringCalls: Array<Record<string, unknown>> = [];
   const ops: string[] = [];
   const client = {
     lastCall: "mock",
@@ -315,6 +337,12 @@ function makeEditClient(): {
       listedTypes.push(input.typeName);
       return Promise.resolve({ contents: LISTED_SOURCE });
     }),
+    loadString: vi.fn((input: Record<string, unknown>) => {
+      ops.push("loadString");
+      loadStringCalls.push(input);
+      return Promise.resolve({ success: opts?.loadStringSuccess ?? true });
+    }),
+    getErrorString: vi.fn(() => Promise.resolve({ errorString: "boom" })),
   } as unknown as OmcClient;
   return {
     client,
@@ -322,6 +350,7 @@ function makeEditClient(): {
     addComponentCalls,
     addConnectionCalls,
     listedTypes,
+    loadStringCalls,
     ops,
   };
 }
@@ -337,21 +366,76 @@ function makeGate(): { gate: ReadyGate; posted: ExtensionToWebview[] } {
   };
 }
 
-function makeShadow(): { shadow: ShadowBuffer; writes: string[] } {
+type ShadowFactory = (
+  onForeignChange: (doc: vscode.TextDocument) => void,
+) => ShadowBuffer;
+
+/**
+ * A fake shadow that records reflected writes and captures the controller's
+ * `onForeignChange` callback so tests can drive a foreign change directly.
+ */
+function makeShadowFactory(): {
+  factory: ShadowFactory;
+  writes: string[];
+  fireForeign: (doc?: vscode.TextDocument) => void;
+} {
   const writes: string[] = [];
-  return {
-    shadow: {
+  let captured: ((doc: vscode.TextDocument) => void) | undefined;
+  const factory: ShadowFactory = (onForeignChange) => {
+    captured = onForeignChange;
+    return {
       write: (t: string) => {
         writes.push(t);
         return Promise.resolve();
       },
       dispose: () => {},
-    },
+    };
+  };
+  return {
+    factory,
     writes,
+    fireForeign: (doc = SRC_DOC) => captured?.(doc),
   };
 }
 
-const SRC_DOC = docFor(vscode.Uri.parse("modelica-source:/Pkg.M.mo"));
+/** A scheduler whose single pending callback the test fires via `flush`. */
+function manualScheduler(): {
+  scheduler: Scheduler;
+  flush: () => void;
+  scheduleCount: () => number;
+} {
+  let pending: (() => void) | undefined;
+  let count = 0;
+  return {
+    scheduler: {
+      schedule(fn) {
+        count += 1;
+        pending = fn;
+        return {
+          cancel: () => {
+            if (pending === fn) pending = undefined;
+          },
+        };
+      },
+    },
+    flush: () => {
+      const fn = pending;
+      pending = undefined;
+      fn?.();
+    },
+    scheduleCount: () => count,
+  };
+}
+
+function srcDoc(text = LISTED_SOURCE): vscode.TextDocument {
+  return {
+    uri: vscode.Uri.parse("modelica-source:/Pkg.M.mo"),
+    lineCount: 1,
+    getText: () => text,
+  } as unknown as vscode.TextDocument;
+}
+
+const SRC_DOC = srcDoc();
 
 function layout(fields: Partial<DiagramLayout>): DiagramLayout {
   return {
@@ -381,14 +465,14 @@ describe("DiagramEditController: forward write path", () => {
   it("reflects a component move into the buffer after mutating OMC", async () => {
     const { client, invoked, listedTypes } = makeEditClient();
     const { gate } = makeGate();
-    const { shadow, writes } = makeShadow();
+    const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
       { client, document: SRC_DOC, className: "Pkg.M", gate },
       movedComponent([
         [-10, -10],
         [10, 10],
       ]),
-      shadow,
+      factory,
     );
 
     await controller.handle({
@@ -407,11 +491,11 @@ describe("DiagramEditController: forward write path", () => {
   it("adds a component and reflects the buffer", async () => {
     const { client, addComponentCalls, listedTypes } = makeEditClient();
     const { gate } = makeGate();
-    const { shadow, writes } = makeShadow();
+    const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
       { client, document: SRC_DOC, className: "Pkg.M", gate },
       layout({}),
-      shadow,
+      factory,
     );
 
     await controller.handle({
@@ -433,13 +517,13 @@ describe("DiagramEditController: forward write path", () => {
   it("adds a connection between standalone connectors and reflects the buffer", async () => {
     const { client, addConnectionCalls } = makeEditClient();
     const { gate } = makeGate();
-    const { shadow, writes } = makeShadow();
+    const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
       { client, document: SRC_DOC, className: "Pkg.M", gate },
       layout({
         connectors: { p: {}, q: {} } as unknown as DiagramLayout["connectors"],
       }),
-      shadow,
+      factory,
     );
 
     await controller.handle({
@@ -460,11 +544,11 @@ describe("DiagramEditController: forward write path", () => {
   it("does not reflect when a connection endpoint can't be resolved", async () => {
     const { client, addConnectionCalls } = makeEditClient();
     const { gate, posted } = makeGate();
-    const { shadow, writes } = makeShadow();
+    const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
       { client, document: SRC_DOC, className: "Pkg.M", gate },
       layout({}),
-      shadow,
+      factory,
     );
 
     await controller.handle({
@@ -482,11 +566,11 @@ describe("DiagramEditController: forward write path", () => {
   it("serializes queued edits so each apply→reflect finishes before the next", async () => {
     const { client, ops } = makeEditClient();
     const { gate } = makeGate();
-    const { shadow } = makeShadow();
+    const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
       { client, document: SRC_DOC, className: "Pkg.M", gate },
       layout({}),
-      shadow,
+      factory,
     );
 
     const first = controller.handle({
@@ -514,14 +598,14 @@ describe("DiagramEditController: forward write path", () => {
   it("routes a failed buffer reflect through the error path", async () => {
     const { client } = makeEditClient();
     const { gate, posted } = makeGate();
-    const shadow: ShadowBuffer = {
+    const rejectingShadow: ShadowFactory = () => ({
       write: () => Promise.reject(new Error("applyEdit rejected")),
       dispose: () => {},
-    };
+    });
     const controller = new DiagramEditController(
       { client, document: SRC_DOC, className: "Pkg.M", gate },
       layout({}),
-      shadow,
+      rejectingShadow,
     );
 
     await controller.handle({
@@ -531,5 +615,142 @@ describe("DiagramEditController: forward write path", () => {
     });
 
     expect(posted.at(-1)?.type).toBe("error");
+  });
+
+  it("reverse-syncs a foreign change: loadString the buffer, refetch, no reflect", async () => {
+    const { client, loadStringCalls, invoked } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory, writes, fireForeign } = makeShadowFactory();
+    const { scheduler, flush: flushDebounce } = manualScheduler();
+    const controller = new DiagramEditController(
+      {
+        client,
+        document: srcDoc("model M2 end M2;"),
+        className: "Pkg.M",
+        gate,
+      },
+      layout({}),
+      factory,
+      scheduler,
+    );
+
+    fireForeign();
+    flushDebounce();
+    await drain();
+
+    expect(loadStringCalls[0]).toMatchObject({
+      data: "model M2 end M2;",
+      merge: false,
+    });
+    expect(invoked).toContain("getModelInstance"); // layout re-fetched
+    expect(posted.at(-1)?.type).toBe("layout"); // pushed to the webview
+    expect(writes).toEqual([]); // no reflect back into the buffer
+    controller.dispose();
+  });
+
+  it("serializes a reverse sync after an in-flight forward edit", async () => {
+    const { client, ops } = makeEditClient();
+    const { gate } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler, flush: flushDebounce } = manualScheduler();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+      scheduler,
+    );
+
+    const edit = controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 0, y: 0 },
+    });
+    fireForeign();
+    flushDebounce();
+    await edit;
+    await drain();
+
+    // The forward edit fully applies + reflects before the reverse sync loads.
+    expect(ops).toEqual(["addComponent", "listFile", "loadString"]);
+    controller.dispose();
+  });
+
+  it("keeps the last-good render and does not poison the queue when loadString fails", async () => {
+    const { client, addComponentCalls } = makeEditClient({
+      loadStringSuccess: false,
+    });
+    const { gate, posted } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler, flush: flushDebounce } = manualScheduler();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+      scheduler,
+    );
+
+    fireForeign();
+    flushDebounce();
+    await drain();
+
+    expect(posted.at(-1)?.type).toBe("error");
+    expect(posted.some((m) => m.type === "layout")).toBe(false); // last-good kept
+
+    // A subsequent edit still dispatches — the queue wasn't poisoned.
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 0, y: 0 },
+    });
+    expect(addComponentCalls).toHaveLength(1);
+    controller.dispose();
+  });
+
+  it("debounces a burst of foreign changes into a single reverse sync", async () => {
+    const { client, loadStringCalls } = makeEditClient();
+    const { gate } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler, flush: flushDebounce } = manualScheduler();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+      scheduler,
+    );
+
+    fireForeign();
+    fireForeign();
+    fireForeign();
+    flushDebounce();
+    await drain();
+
+    expect(loadStringCalls).toHaveLength(1);
+    controller.dispose();
+  });
+
+  it("does not reverse-sync on our own reflect write (real self-write guard)", async () => {
+    const { client, loadStringCalls } = makeEditClient();
+    const { gate } = makeGate();
+    const { scheduler, flush: flushDebounce } = manualScheduler();
+    const doc = srcDoc();
+    const controller = new DiagramEditController(
+      { client, document: doc, className: "Pkg.M", gate },
+      layout({}),
+      (onForeignChange) => createShadowBuffer(doc, onForeignChange),
+      scheduler,
+    );
+
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 0, y: 0 },
+    });
+    // The reflect's own applyEdit fired a change event; the guard must keep it
+    // out of the reverse path, so nothing is scheduled and no loadString runs.
+    flushDebounce();
+    await drain();
+
+    expect(loadStringCalls).toEqual([]);
+    controller.dispose();
   });
 });
