@@ -69,6 +69,16 @@
           }
         ],
         "priority": "option"
+      },
+      {
+        "viewType": "modelica.documentation",
+        "displayName": "Modelica Documentation",
+        "selector": [
+          {
+            "filenamePattern": "*.mo"
+          }
+        ],
+        "priority": "option"
       }
     ],
     "commands": [
@@ -362,6 +372,7 @@
     "@dicode/omc-client": "workspace:*",
     "@dicode/result-ui": "workspace:*",
     "@dicode/ui-common": "workspace:*",
+    "dompurify": "^3.2.4",
     "lit": "^3.2.0",
     "web-tree-sitter": "^0.25.10",
     "zeromq": "^6.1.0"

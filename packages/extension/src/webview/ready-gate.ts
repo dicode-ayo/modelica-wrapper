@@ -2,9 +2,9 @@ import type * as vscode from "vscode";
 
 import type { ExtensionToWebview } from "./protocol.js";
 
-export interface ReadyGate {
+export interface ReadyGate<M = ExtensionToWebview> {
   /** Post a message, buffering it until the webview has signalled `ready`. */
-  send(msg: ExtensionToWebview): void;
+  send(msg: M): void;
   /** Mark the webview ready and flush any buffered messages, once. */
   markReady(): void;
 }
@@ -15,11 +15,13 @@ export interface ReadyGate {
  * mounted is dropped silently, so every seed must wait on the `ready`
  * handshake.
  */
-export function createReadyGate(webview: vscode.Webview): ReadyGate {
+export function createReadyGate<M = ExtensionToWebview>(
+  webview: vscode.Webview,
+): ReadyGate<M> {
   let ready = false;
-  const pending: ExtensionToWebview[] = [];
+  const pending: M[] = [];
   return {
-    send(msg) {
+    send(msg: M) {
       if (!ready) {
         pending.push(msg);
         return;

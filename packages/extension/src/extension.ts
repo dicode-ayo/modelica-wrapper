@@ -18,7 +18,12 @@ import { OmcClient } from "@dicode/omc-client";
 
 import { registerCommands } from "./commands/index.js";
 import { DiagramEditorProvider } from "./diagram/diagram-editor-provider.js";
-import { DIAGRAM_VIEW_TYPE, ICON_VIEW_TYPE } from "./diagram/view-type.js";
+import {
+  DIAGRAM_VIEW_TYPE,
+  DOCUMENTATION_VIEW_TYPE,
+  ICON_VIEW_TYPE,
+} from "./diagram/view-type.js";
+import { DocumentationEditorProvider } from "./documentation/documentation-editor-provider.js";
 import { registerLanguageFeatures } from "./language/index.js";
 import { log } from "./logger.js";
 import { ResultViewEditorProvider } from "./results/result-view-provider.js";
@@ -81,6 +86,11 @@ export async function activate(
       ensureClient,
       ICON_VIEW_TYPE,
       "icon",
+    ),
+    DocumentationEditorProvider.register(
+      context,
+      ensureClient,
+      DOCUMENTATION_VIEW_TYPE,
     ),
     registerLanguageFeatures(context, ensureClient),
     vscode.workspace.registerFileSystemProvider(

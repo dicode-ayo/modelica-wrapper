@@ -147,7 +147,7 @@ const watchMarkers = {
 };
 
 /**
- * Three-bundle build:
+ * Bundle build:
  *
  *   1. extension.js     — Node.js host code (CommonJS, externals for
  *      `vscode` + `zeromq`).
@@ -160,6 +160,9 @@ const watchMarkers = {
  *   3. postprocessing.js — browser bundle of the postprocessing webview
  *      (`<om-result-view-root>`), loaded by the `*.omresults` custom
  *      editor. No Babylon — Lit + ECharts (later) only.
+ *
+ * The library sidebar and documentation webviews add two more browser
+ * bundles, defined below.
  */
 
 /** @type {import('esbuild').BuildOptions} */
@@ -238,17 +241,33 @@ const libraryViewConfig = {
   outfile: "out/library-view.js",
 };
 
+/**
+ * 5. documentation.js — browser bundle of the documentation webview
+ *    (`<om-documentation-root>`), loaded by the `modelica.documentation` custom
+ *    editor. Same shape as the diagram webview; it renders with adopted
+ *    stylesheets only, so no sibling `.css` is emitted.
+ *
+ * @type {import('esbuild').BuildOptions}
+ */
+const documentationConfig = {
+  ...webviewConfig,
+  entryPoints: ["src/webview/documentation-entry.ts"],
+  outfile: "out/documentation.js",
+};
+
 if (watch) {
   const a = await esbuild.context(extensionConfig);
   const b = await esbuild.context(webviewConfig);
   const c = await esbuild.context(postprocessingConfig);
   const d = await esbuild.context(libraryViewConfig);
-  await Promise.all([a.watch(), b.watch(), c.watch(), d.watch()]);
+  const e = await esbuild.context(documentationConfig);
+  await Promise.all([a.watch(), b.watch(), c.watch(), d.watch(), e.watch()]);
 } else {
   await Promise.all([
     esbuild.build(extensionConfig),
     esbuild.build(webviewConfig),
     esbuild.build(postprocessingConfig),
     esbuild.build(libraryViewConfig),
+    esbuild.build(documentationConfig),
   ]);
 }
