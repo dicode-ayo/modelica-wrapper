@@ -54,6 +54,11 @@ export class OmDocumentationEditor extends LitElement {
   private parts: InfoParts = { prefix: "", inner: "", suffix: "" };
   private editor: Editor | null = null;
   private editTimer: ReturnType<typeof setTimeout> | undefined;
+  // Set while a programmatic `setContent` runs. `emitUpdate: false` does not
+  // reliably suppress `onUpdate` on a mounted view, and a load transaction that
+  // reached `onEditorUpdate` would capture the editor's transient empty state
+  // (`<p></p>`) into `current`, blanking the doc on the next tab switch.
+  private loading = false;
 
   private get editorHost(): HTMLElement | null {
     return this.renderRoot.querySelector(".om-doc-editor");
@@ -95,12 +100,17 @@ export class OmDocumentationEditor extends LitElement {
    */
   private loadIntoEditor(): void {
     if (!this.editor) return;
-    this.editor.setEditable(!this.readOnly);
-    this.editor.commands.setContent(this.parts.inner, { emitUpdate: false });
+    this.loading = true;
+    try {
+      this.editor.setEditable(!this.readOnly);
+      this.editor.commands.setContent(this.parts.inner, { emitUpdate: false });
+    } finally {
+      this.loading = false;
+    }
   }
 
   private onEditorUpdate(): void {
-    if (!this.editor) return;
+    if (!this.editor || this.loading) return;
     this.current = wrapInfo(this.editor.getHTML(), this.parts);
     this.scheduleChange();
   }
@@ -121,10 +131,16 @@ export class OmDocumentationEditor extends LitElement {
 
   private setMode(mode: Mode): void {
     if (mode === this.mode) return;
-    // Leaving Source: the raw text may have changed the wrapper too, so re-split
-    // and reload the editor from it (out-of-schema tags drop — that's the tab's
-    // documented trade-off).
-    if (mode === "wysiwyg") {
+    if (mode === "source") {
+      // Capture the live editor content so Source shows the true current doc,
+      // not a `current` that a missed `onUpdate` left stale.
+      if (this.editor) {
+        this.current = wrapInfo(this.editor.getHTML(), this.parts);
+      }
+    } else {
+      // Entering Edit: the raw Source text may have changed the wrapper too, so
+      // re-split and reload the editor from it (out-of-schema tags drop — the
+      // tab's documented trade-off).
       this.parts = splitInfoWrapper(this.current);
       this.loadIntoEditor();
     }
