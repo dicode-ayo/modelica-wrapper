@@ -8,6 +8,12 @@ export const DIAGRAM_VIEW_TYPE = "modelica.diagram";
 export const ICON_VIEW_TYPE = "modelica.icon";
 
 /**
+ * The `modelica.documentation` custom-editor viewType — a class's
+ * `Documentation(info=…)` HTML.
+ */
+export const DOCUMENTATION_VIEW_TYPE = "modelica.documentation";
+
+/**
  * Which graphics a provider instance renders: `"diagram"` shows the component
  * graph (`fetchDiagramLayout`), `"icon"` shows the class's own icon layers
  * (`fetchIconLayout`). The layout's `kind` discriminant drives the webview.

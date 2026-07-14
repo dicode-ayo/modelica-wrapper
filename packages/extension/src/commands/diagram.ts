@@ -1,9 +1,10 @@
 /**
  * Diagram + source-view commands:
  * - `modelica.openDiagram(arg)` — open a class in the diagram custom editor.
- * - `modelica.openAsText` / `openAsIcon` / `openAsDiagram` — the title-bar view
- *   switcher: flip the active editor between the class's text, icon, and
- *   diagram views in place (closing the tab it came from).
+ * - `modelica.openAsText` / `openAsIcon` / `openAsDiagram` /
+ *   `openAsDocumentation` — the title-bar view switcher: flip the active editor
+ *   between the class's text, icon, diagram, and documentation views in place
+ *   (closing the tab it came from).
  * - `modelica.viewSource(node?)` — open the `modelica-source:` text view for a
  *   class (e.g. from a library-tree node).
  * - `modelica.openDiagramFromSource()` — open the diagram from a source tab.
@@ -13,7 +14,12 @@ import * as vscode from "vscode";
 
 import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
 import { openDiagram } from "../diagram/open-diagram.js";
-import { DIAGRAM_VIEW_TYPE, ICON_VIEW_TYPE } from "../diagram/view-type.js";
+import {
+  DIAGRAM_VIEW_TYPE,
+  DOCUMENTATION_VIEW_TYPE,
+  ICON_VIEW_TYPE,
+} from "../diagram/view-type.js";
+import { DocumentationEditorProvider } from "../documentation/documentation-editor-provider.js";
 import { qualifiedNameFromUri, sourceUriFor } from "../source-provider.js";
 import type { DiagramCommandId } from "../webview/protocol.js";
 
@@ -28,7 +34,9 @@ const TEXT_VIEW = "default";
  * `modelica-source:` text editor.
  */
 function activeClass(): string | undefined {
-  const fromCustom = DiagramEditorProvider.activeClassName();
+  const fromCustom =
+    DiagramEditorProvider.activeClassName() ??
+    DocumentationEditorProvider.activeClassName();
   if (fromCustom) return fromCustom;
   const uri = vscode.window.activeTextEditor?.document.uri;
   return uri ? qualifiedNameFromUri(uri) : undefined;
@@ -115,6 +123,9 @@ export function registerDiagramCommands(
     ),
     vscode.commands.registerCommand("modelica.openAsDiagram", () =>
       switchView(DIAGRAM_VIEW_TYPE),
+    ),
+    vscode.commands.registerCommand("modelica.openAsDocumentation", () =>
+      switchView(DOCUMENTATION_VIEW_TYPE),
     ),
     vscode.commands.registerCommand(
       "modelica.viewSource",
