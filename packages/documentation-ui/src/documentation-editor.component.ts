@@ -27,9 +27,10 @@ const EDIT_DEBOUNCE_MS = 300;
  *
  * TipTap parses HTML against an explicit schema, so the editor also *is* the
  * sanitizer — it only ever renders a parsed ProseMirror document, never a raw
- * HTML string. Raw-HTML editing is the host's job: when `source-editable` is set
- * an "Edit HTML" button emits `om-documentation-edit-source` (in VSCode the host
- * opens a native HTML editor).
+ * HTML string. The "Edit HTML" button toggles a built-in inline `<pre>` of the
+ * pretty-printed source; a host that has its own raw-HTML editor sets
+ * `external-source`, and the button then emits `om-documentation-edit-source`
+ * instead (in VSCode, to open a native HTML editor).
  *
  * Renders into light DOM (`createRenderRoot` returns `this`): ProseMirror's
  * selection handling is unreliable across shadow-DOM boundaries. Styles are
@@ -44,12 +45,18 @@ export class OmDocumentationEditor extends LitElement {
   /** Full `info` (wrapper included). The authoritative value the host sets. */
   @property({ attribute: false }) info = "";
   @property({ type: Boolean, reflect: true }) readOnly = false;
-  /** Whether to offer the "Edit HTML" button (a host that handles the event). */
-  @property({ type: Boolean, attribute: "source-editable" }) sourceEditable =
-    false;
+  /**
+   * The host provides its own raw-HTML editor (in VSCode, a native HTML text
+   * editor): the "Edit HTML" button then emits `om-documentation-edit-source`
+   * instead of toggling the built-in inline `<pre>` source view.
+   */
+  @property({ type: Boolean, attribute: "external-source" })
+  externalSource = false;
 
   @state() private linkEditing = false;
   @state() private linkDraft = "";
+  /** Inline `<pre>` source view is showing (only when no external editor). */
+  @state() private showSource = false;
 
   private parts: InfoParts = { prefix: "", inner: "", suffix: "" };
   private editor: Editor | null = null;
@@ -61,6 +68,10 @@ export class OmDocumentationEditor extends LitElement {
 
   private get editorHost(): HTMLElement | null {
     return this.renderRoot.querySelector(".om-doc-editor");
+  }
+
+  private get sourcePre(): HTMLElement | null {
+    return this.renderRoot.querySelector(".om-doc-source");
   }
 
   override disconnectedCallback(): void {
@@ -115,22 +126,49 @@ export class OmDocumentationEditor extends LitElement {
 
   private onEditorUpdate(): void {
     if (!this.editor || this.loading) return;
-    this.scheduleChange();
+    this.scheduleChange(() => this.serialize());
   }
 
-  private scheduleChange(): void {
+  private scheduleChange(getInfo: () => string): void {
     if (this.editTimer !== undefined) clearTimeout(this.editTimer);
     this.editTimer = setTimeout(() => {
       this.editTimer = undefined;
       this.dispatchEvent(
         new CustomEvent<DocumentationChangeDetail>("om-documentation-change", {
-          detail: { info: this.serialize() },
+          detail: { info: getInfo() },
           bubbles: true,
           composed: true,
         }),
       );
     }, EDIT_DEBOUNCE_MS);
   }
+
+  /**
+   * Toggle the built-in inline source view — a `<pre>` of the pretty-printed
+   * HTML, editable unless read-only. Used when the host has no external editor
+   * (the web path). Its content is set imperatively so a re-render can't clobber
+   * the caret; a raw edit is emitted verbatim (the Source escape hatch) and, on
+   * switch back, re-parsed into the WYSIWYG editor (out-of-schema tags drop).
+   */
+  private toggleSource(): void {
+    if (this.showSource) {
+      const text = this.sourcePre?.textContent ?? "";
+      this.parts = splitInfoWrapper(text);
+      this.showSource = false;
+      this.loadIntoEditor();
+      return;
+    }
+    this.showSource = true;
+    void this.updateComplete.then(() => {
+      const pre = this.sourcePre;
+      if (pre) pre.textContent = this.serialize();
+    });
+  }
+
+  private readonly onSourceInput = (): void => {
+    const pre = this.sourcePre;
+    if (pre) this.scheduleChange(() => pre.textContent ?? "");
+  };
 
   private run(fn: (chain: ReturnType<Editor["chain"]>) => void): void {
     if (!this.editor) return;
@@ -181,25 +219,45 @@ export class OmDocumentationEditor extends LitElement {
     return html`
       ${STYLE}
       <div class="om-doc-toolbar">
-        ${!this.readOnly ? this.renderFormatButtons() : null}
-        ${this.sourceEditable
-          ? html`<button
-              class="om-doc-source-btn"
-              title="Edit the raw HTML in a text editor"
-              @click=${() => this.emitEditSource()}
-            >
-              Edit HTML ↗
-            </button>`
+        ${!this.readOnly && !this.showSource
+          ? this.renderFormatButtons()
           : null}
+        ${this.renderSourceButton()}
         ${this.readOnly
           ? html`<span class="om-doc-badge">Read-only</span>`
           : null}
       </div>
 
-      ${this.linkEditing ? this.renderLinkInput() : null}
+      ${this.linkEditing && !this.showSource ? this.renderLinkInput() : null}
 
-      <div class="om-doc-editor"></div>
+      <div class="om-doc-editor" ?hidden=${this.showSource}></div>
+      <pre
+        class="om-doc-source"
+        spellcheck="false"
+        ?hidden=${!this.showSource}
+        contenteditable=${this.readOnly ? "false" : "plaintext-only"}
+        @input=${this.onSourceInput}
+      ></pre>
     `;
+  }
+
+  private renderSourceButton(): TemplateResult {
+    if (this.externalSource) {
+      return html`<button
+        class="om-doc-source-btn"
+        title="Edit the raw HTML in a text editor"
+        @click=${() => this.emitEditSource()}
+      >
+        Edit HTML ↗
+      </button>`;
+    }
+    return html`<button
+      class="om-doc-source-btn ${this.showSource ? "is-active" : ""}"
+      title="Show the raw HTML"
+      @click=${() => this.toggleSource()}
+    >
+      ${this.showSource ? "Done" : "Edit HTML"}
+    </button>`;
   }
 
   private renderFormatButtons(): TemplateResult {
@@ -349,7 +407,7 @@ const STYLE = html`
     om-documentation-editor button:hover {
       background: var(--vscode-toolbar-hoverBackground);
     }
-    om-documentation-editor .om-doc-format button.is-active {
+    om-documentation-editor button.is-active {
       background: var(
         --vscode-toolbar-activeBackground,
         var(--om-doc-active-fallback)
@@ -370,12 +428,28 @@ const STYLE = html`
       border-radius: var(--om-doc-control-radius);
       padding: var(--om-doc-control-pad-block) var(--om-doc-control-pad-inline);
     }
-    om-documentation-editor .om-doc-editor {
+    om-documentation-editor .om-doc-editor,
+    om-documentation-editor .om-doc-source {
       flex: 1 1 auto;
       min-height: 0;
       min-width: 0;
       overflow: auto;
       padding: var(--om-doc-pad);
+    }
+    om-documentation-editor .om-doc-source {
+      margin: 0;
+      color: var(--vscode-editor-foreground);
+      background: var(--vscode-editor-background);
+      font-family: var(--vscode-editor-font-family, monospace);
+      font-size: var(--vscode-editor-font-size, inherit);
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+    }
+    om-documentation-editor .om-doc-source:focus {
+      outline: none;
+    }
+    om-documentation-editor [hidden] {
+      display: none !important;
     }
     om-documentation-editor .om-doc-editor .ProseMirror {
       min-height: 100%;

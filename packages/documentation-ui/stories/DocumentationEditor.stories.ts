@@ -52,21 +52,25 @@ type Story = StoryObj;
 
 function host(
   info: string,
-  opts?: { readOnly?: boolean; sourceEditable?: boolean },
+  opts?: { readOnly?: boolean; externalSource?: boolean },
 ): TemplateResult {
   return html`
     <div style="height: 32rem; display: flex; border: 1px solid #8884;">
       <om-documentation-editor
         .info=${info}
         ?readOnly=${opts?.readOnly ?? false}
-        ?source-editable=${opts?.sourceEditable ?? false}
+        ?external-source=${opts?.externalSource ?? false}
         style="flex: 1 1 auto;"
       ></om-documentation-editor>
     </div>
   `;
 }
 
-/** A rich doc: headings, a cross-reference link, a table, a code block, lists. */
+/**
+ * A rich doc (headings, a cross-reference link, a table, a code block, lists).
+ * The web default: "Edit HTML" toggles an inline `<pre>` of the pretty-printed
+ * HTML, editable as the raw-source escape hatch.
+ */
 export const RichDoc: Story = { render: () => host(RICH) };
 
 /** A short doc — the common case for most blocks. */
@@ -75,9 +79,13 @@ export const SimpleDoc: Story = { render: () => host(SIMPLE) };
 /** No documentation yet — an empty canvas ready to type into. */
 export const Empty: Story = { render: () => host("<html></html>") };
 
-/** With a host that handles raw-HTML editing: the "Edit HTML" button appears. */
-export const SourceEditable: Story = {
-  render: () => host(RICH, { sourceEditable: true }),
+/**
+ * With a host that provides its own raw-HTML editor (VSCode's native HTML
+ * editor): "Edit HTML ↗" emits `om-documentation-edit-source` instead of the
+ * inline `<pre>`. Watch the Actions panel.
+ */
+export const ExternalSource: Story = {
+  render: () => host(RICH, { externalSource: true }),
 };
 
 /** Read-only (an MSL/library class, or one with an infoHeader): no toolbar, not editable. */

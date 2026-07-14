@@ -83,7 +83,7 @@ export class OmDocumentationRoot extends LitElement {
       <om-documentation-editor
         .info=${this.info}
         ?readOnly=${this.readOnly}
-        ?source-editable=${!this.readOnly}
+        external-source
         @om-documentation-change=${this.onChange}
         @om-documentation-edit-source=${this.onEditSource}
       ></om-documentation-editor>
