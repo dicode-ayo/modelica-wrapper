@@ -318,12 +318,20 @@ export async function fetchDiagramLayout(
  * snapshot so a partial failure rolls the class back, then re-reads the layout
  * from OMC (the render source of truth). Returns `null` when the two layouts
  * are identical (nothing to apply).
+ *
+ * `refetch` selects which layout the fresh render is read from — the diagram
+ * editor passes `fetchDiagramLayout` (the default) and the icon editor passes
+ * `fetchIconLayout`, so an icon-layer shape edit re-reads the icon layout.
  */
 export async function applyDiagramEdits(
   client: OmcClient,
   className: string,
   prevLayout: DiagramLayout,
   next: DiagramLayout,
+  refetch: (
+    client: OmcClient,
+    className: string,
+  ) => Promise<DiagramLayout> = fetchDiagramLayout,
 ): Promise<{
   layout: DiagramLayout;
   failed: ReadonlyArray<{ error: string }>;
@@ -334,7 +342,7 @@ export async function applyDiagramEdits(
   const result = await applyEdits(client, className, edits, undefined, {
     snapshot: true,
   });
-  const layout = await fetchDiagramLayout(client, className);
+  const layout = await refetch(client, className);
   return { layout, failed: result.failed, rolledBack: result.rolledBack };
 }
 

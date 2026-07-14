@@ -513,6 +513,8 @@ function makeEditClient(opts?: {
   setElementTypeSuccess?: boolean;
   setElementTypeThrows?: boolean;
   getModelInstanceThrows?: boolean;
+  classRestriction?: string;
+  classRestrictionThrows?: boolean;
 }): {
   client: OmcClient;
   invoked: string[];
@@ -524,6 +526,8 @@ function makeEditClient(opts?: {
   removeModifierCalls: Array<Record<string, unknown>>;
   setElementTypeCalls: Array<Record<string, unknown>>;
   simulateCalls: Array<Record<string, unknown>>;
+  graphicsWrites: Array<Record<string, unknown>>;
+  classInfoQueries: string[];
   ops: string[];
 } {
   const invoked: string[] = [];
@@ -535,12 +539,16 @@ function makeEditClient(opts?: {
   const removeModifierCalls: Array<Record<string, unknown>> = [];
   const setElementTypeCalls: Array<Record<string, unknown>> = [];
   const simulateCalls: Array<Record<string, unknown>> = [];
+  const graphicsWrites: Array<Record<string, unknown>> = [];
+  const classInfoQueries: string[] = [];
   const ops: string[] = [];
   const client = {
     lastCall: "mock",
-    invoke: vi.fn((fn: string) => {
+    invoke: vi.fn((fn: string, input?: Record<string, unknown>) => {
       invoked.push(fn);
-      if (fn === "getModelInstance") {
+      // The icon fetch path uses the annotation-filtered call; answer it with
+      // the same instance so an icon-mode re-fetch resolves.
+      if (fn === "getModelInstance" || fn === "getModelInstanceAnnotation") {
         return opts?.getModelInstanceThrows
           ? Promise.reject(new Error("getModelInstance failed"))
           : Promise.resolve({ instance: opts?.instance ?? INSTANCE });
@@ -548,8 +556,18 @@ function makeEditClient(opts?: {
       if (fn === "getInstantiatedParametersAndValues") {
         return Promise.reject(new Error("no params"));
       }
+      if (fn === "writeClassGraphics") {
+        if (input !== undefined) graphicsWrites.push(input);
+        return Promise.resolve({ success: true });
+      }
       // updateComponent / deleteComponent / addConnection / ... report success.
       return Promise.resolve({ success: true });
+    }),
+    getClassInformation: vi.fn((input: { typeName: string }) => {
+      classInfoQueries.push(input.typeName);
+      return opts?.classRestrictionThrows
+        ? Promise.reject(new Error("getClassInformation failed"))
+        : Promise.resolve({ restriction: opts?.classRestriction ?? "model" });
     }),
     addComponent: vi.fn((input: Record<string, unknown>) => {
       ops.push("addComponent");
@@ -613,6 +631,8 @@ function makeEditClient(opts?: {
     removeModifierCalls,
     setElementTypeCalls,
     simulateCalls,
+    graphicsWrites,
+    classInfoQueries,
     ops,
   };
 }
@@ -1399,6 +1419,201 @@ describe("DiagramEditController: shape properties", () => {
       posted.some((m) => m.type === "error" && /shape changed/.test(m.message)),
     ).toBe(true);
     controller.dispose();
+  });
+});
+
+/** A host icon layer carrying `shapes`, for icon-mode edit tests. */
+function iconShapeLayout(shapes: unknown[]): DiagramLayout {
+  return layout({
+    iconLayers: [
+      { from: "Pkg.M", shapes },
+    ] as unknown as DiagramLayout["iconLayers"],
+  });
+}
+
+/** A host diagram layer carrying `shapes`, for the diagram-mode regression. */
+function diagramShapeLayout(shapes: unknown[]): DiagramLayout {
+  return layout({
+    diagramLayers: [
+      { from: "Pkg.M", shapes },
+    ] as unknown as DiagramLayout["diagramLayers"],
+  });
+}
+
+function iconController(
+  client: OmcClient,
+  gate: ReadyGate,
+  factory: ShadowFactory,
+  initial: DiagramLayout,
+): DiagramEditController {
+  return new DiagramEditController(
+    { client, document: SRC_DOC, className: "Pkg.M", gate },
+    initial,
+    factory,
+    undefined,
+    false,
+    "icon",
+  );
+}
+
+describe("DiagramEditController: icon mode", () => {
+  it("draws a shape onto the ICON layer and reflects the buffer", async () => {
+    const { client, invoked, graphicsWrites } = makeEditClient();
+    const { gate } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = iconController(
+      client,
+      gate,
+      factory,
+      iconShapeLayout([]),
+    );
+
+    await controller.handle({
+      type: "change",
+      layout: iconShapeLayout([RECT]),
+    });
+
+    expect(invoked).toContain("writeClassGraphics");
+    // Layer targeting: the draw lands on the icon layer, never the diagram one.
+    expect(graphicsWrites[0]).toMatchObject({
+      layer: "icon",
+      op: { kind: "add" },
+    });
+    // Mode-driven re-fetch: icon mode re-reads via the annotation-filtered call,
+    // so prevLayout stays an icon layout and subsequent draws keep the icon
+    // field (a diagram-mode re-fetch would read getModelInstance instead).
+    expect(invoked).toContain("getModelInstanceAnnotation");
+    expect(writes).toContain(LISTED_SOURCE); // dirty
+  });
+
+  it("edits an icon-layer shape via the shape modal and reflects", async () => {
+    const { client, invoked, graphicsWrites } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = iconController(
+      client,
+      gate,
+      factory,
+      iconShapeLayout([RECT]),
+    );
+
+    await controller.handle({
+      type: "selectionChange",
+      keys: ["shape:rectangle:0"],
+    });
+    expect(posted.find((m) => m.type === "parametersOpen")).toMatchObject({
+      kind: "shapeProperties",
+    });
+
+    await controller.handle({
+      type: "parametersSubmit",
+      kind: "shapeProperties",
+      values: { lineColor: "#ff0000" },
+    });
+
+    expect(invoked).toContain("writeClassGraphics");
+    expect(graphicsWrites.at(-1)).toMatchObject({
+      layer: "icon",
+      op: { kind: "modify", index: 0 },
+    });
+    expect(writes).toContain(LISTED_SOURCE);
+  });
+
+  it("accepts a connector class onto the icon (addComponent)", async () => {
+    const { client, addComponentCalls, classInfoQueries } = makeEditClient({
+      classRestriction: "connector",
+    });
+    const { gate } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = iconController(client, gate, factory, layout({}));
+
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Interfaces.RealInput",
+      position: { x: 0, y: 0 },
+    });
+
+    expect(classInfoQueries).toContain("Modelica.Blocks.Interfaces.RealInput");
+    expect(addComponentCalls).toHaveLength(1);
+    expect(writes).toContain(LISTED_SOURCE);
+  });
+
+  it("rejects a non-connector class on the icon and does NOT add it", async () => {
+    const { client, addComponentCalls } = makeEditClient({
+      classRestriction: "block",
+    });
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = iconController(client, gate, factory, layout({}));
+
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 0, y: 0 },
+    });
+
+    expect(addComponentCalls).toEqual([]);
+    expect(writes).toEqual([]);
+    expect(
+      posted.some((m) => m.type === "error" && /connector/i.test(m.message)),
+    ).toBe(true);
+  });
+
+  it("ignores a diagram-only change-class request in icon mode", async () => {
+    const { client, setElementTypeCalls } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = iconController(client, gate, factory, swapLayout());
+
+    await controller.handle({
+      type: "changeClassRequest",
+      componentName: "r1",
+      currentClass: "Modelica.Blocks.Math.Gain",
+    });
+
+    expect(setElementTypeCalls).toEqual([]); // no OMC mutation
+    expect(writes).toEqual([]); // no reflect
+    expect(posted).toEqual([]); // no modal, no error
+  });
+
+  it("ignores a diagram-only class-parameter submit in icon mode", async () => {
+    const { client, setModifierCalls } = makeEditClient({
+      instance: CLASS_PARAM_INSTANCE,
+    });
+    const { gate } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = iconController(client, gate, factory, layout({}));
+
+    await controller.handle({
+      type: "parametersSubmit",
+      kind: "classParams",
+      values: { gain: 5 },
+    });
+
+    expect(setModifierCalls).toEqual([]);
+    expect(writes).toEqual([]);
+  });
+
+  it("diagram mode draws the same shape onto the DIAGRAM layer (regression)", async () => {
+    const { client, graphicsWrites } = makeEditClient();
+    const { gate } = makeGate();
+    const { factory } = makeShadowFactory();
+    // Default (diagram) mode — the same gesture must target the diagram layer.
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      diagramShapeLayout([]),
+      factory,
+    );
+
+    await controller.handle({
+      type: "change",
+      layout: diagramShapeLayout([RECT]),
+    });
+
+    expect(graphicsWrites[0]).toMatchObject({
+      layer: "diagram",
+      op: { kind: "add" },
+    });
   });
 });
 
