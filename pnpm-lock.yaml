@@ -144,6 +144,52 @@ importers:
         specifier: ^2.1.0
         version: 2.1.9(@types/node@22.19.17)(happy-dom@15.11.7)
 
+  packages/documentation-ui:
+    dependencies:
+      '@tiptap/core':
+        specifier: ^3
+        version: 3.27.4(@tiptap/pm@3.27.4)
+      '@tiptap/extension-image':
+        specifier: ^3
+        version: 3.27.4(@tiptap/core@3.27.4(@tiptap/pm@3.27.4))
+      '@tiptap/extension-link':
+        specifier: ^3
+        version: 3.27.4(@tiptap/core@3.27.4(@tiptap/pm@3.27.4))(@tiptap/pm@3.27.4)
+      '@tiptap/extension-subscript':
+        specifier: ^3
+        version: 3.27.4(@tiptap/core@3.27.4(@tiptap/pm@3.27.4))(@tiptap/pm@3.27.4)
+      '@tiptap/extension-superscript':
+        specifier: ^3
+        version: 3.27.4(@tiptap/core@3.27.4(@tiptap/pm@3.27.4))(@tiptap/pm@3.27.4)
+      '@tiptap/extension-table':
+        specifier: ^3
+        version: 3.27.4(@tiptap/core@3.27.4(@tiptap/pm@3.27.4))(@tiptap/pm@3.27.4)
+      '@tiptap/pm':
+        specifier: ^3
+        version: 3.27.4
+      '@tiptap/starter-kit':
+        specifier: ^3
+        version: 3.27.4
+      lit:
+        specifier: ^3.2.0
+        version: 3.3.2
+    devDependencies:
+      '@storybook/web-components':
+        specifier: ^8.4.0
+        version: 8.6.18(lit@3.3.2)(storybook@8.6.18(prettier@3.8.3))
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      happy-dom:
+        specifier: ^15.11.0
+        version: 15.11.7
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@22.19.17)(happy-dom@15.11.7)
+
   packages/extension:
     dependencies:
       '@dicode/diagram-svg':
@@ -152,6 +198,9 @@ importers:
       '@dicode/diagram-ui':
         specifier: workspace:*
         version: link:../diagram-ui
+      '@dicode/documentation-ui':
+        specifier: workspace:*
+        version: link:../documentation-ui
       '@dicode/modelica-completion':
         specifier: workspace:*
         version: link:../completion
@@ -167,33 +216,6 @@ importers:
       '@dicode/ui-common':
         specifier: workspace:*
         version: link:../ui-common
-      '@tiptap/core':
-        specifier: ^3.27.4
-        version: 3.27.4(@tiptap/pm@3.27.4)
-      '@tiptap/extension-image':
-        specifier: ^3.27.4
-        version: 3.27.4(@tiptap/core@3.27.4(@tiptap/pm@3.27.4))
-      '@tiptap/extension-link':
-        specifier: ^3.27.4
-        version: 3.27.4(@tiptap/core@3.27.4(@tiptap/pm@3.27.4))(@tiptap/pm@3.27.4)
-      '@tiptap/extension-subscript':
-        specifier: ^3.27.4
-        version: 3.27.4(@tiptap/core@3.27.4(@tiptap/pm@3.27.4))(@tiptap/pm@3.27.4)
-      '@tiptap/extension-superscript':
-        specifier: ^3.27.4
-        version: 3.27.4(@tiptap/core@3.27.4(@tiptap/pm@3.27.4))(@tiptap/pm@3.27.4)
-      '@tiptap/extension-table':
-        specifier: ^3.27.4
-        version: 3.27.4(@tiptap/core@3.27.4(@tiptap/pm@3.27.4))(@tiptap/pm@3.27.4)
-      '@tiptap/html':
-        specifier: ^3.27.4
-        version: 3.27.4(@tiptap/core@3.27.4(@tiptap/pm@3.27.4))(@tiptap/pm@3.27.4)(happy-dom@15.11.7)
-      '@tiptap/pm':
-        specifier: ^3.27.4
-        version: 3.27.4
-      '@tiptap/starter-kit':
-        specifier: ^3.27.4
-        version: 3.27.4
       lit:
         specifier: ^3.2.0
         version: 3.3.2
@@ -213,9 +235,6 @@ importers:
       esbuild:
         specifier: ^0.24.0
         version: 0.24.2
-      happy-dom:
-        specifier: ^15.11.7
-        version: 15.11.7
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
@@ -309,6 +328,9 @@ importers:
       '@dicode/diagram-ui':
         specifier: workspace:*
         version: link:../diagram-ui
+      '@dicode/documentation-ui':
+        specifier: workspace:*
+        version: link:../documentation-ui
       '@dicode/result-ui':
         specifier: workspace:*
         version: link:../result-ui
@@ -1357,13 +1379,6 @@ packages:
     peerDependencies:
       '@tiptap/core': 3.27.4
       '@tiptap/pm': 3.27.4
-
-  '@tiptap/html@3.27.4':
-    resolution: {integrity: sha512-6dOx8FkCpInufw820nGJ8bOjZMc5Uz7s9CA16aNKSxFUjDzTqPTj3OR+kiubillVM7pKovSz/ifmFx20/f+zZw==}
-    peerDependencies:
-      '@tiptap/core': 3.27.4
-      '@tiptap/pm': 3.27.4
-      happy-dom: ^20.8.9
 
   '@tiptap/pm@3.27.4':
     resolution: {integrity: sha512-UB8lcyomfWk7YGI2PZKNqcYXfyRA+PFj+QntlsUXyrsiA5JJIaE8SHKYjxKlGG/xtW3EtPm1b0p38T9Mk4xiFw==}
@@ -3327,12 +3342,6 @@ snapshots:
     dependencies:
       '@tiptap/core': 3.27.4(@tiptap/pm@3.27.4)
       '@tiptap/pm': 3.27.4
-
-  '@tiptap/html@3.27.4(@tiptap/core@3.27.4(@tiptap/pm@3.27.4))(@tiptap/pm@3.27.4)(happy-dom@15.11.7)':
-    dependencies:
-      '@tiptap/core': 3.27.4(@tiptap/pm@3.27.4)
-      '@tiptap/pm': 3.27.4
-      happy-dom: 15.11.7
 
   '@tiptap/pm@3.27.4':
     dependencies:

@@ -13,7 +13,7 @@ pnpm-lock.yaml
 packages/extension/grammar/
 packages/omc-client/test/fixtures/
 # Real OMC documentation strings, kept byte-verbatim for the round-trip test.
-packages/extension/src/webview/__fixtures__/
+packages/documentation-ui/src/__fixtures__/
 packages/extension/e2e/node_modules/
 packages/extension/e2e/test-results/
 packages/extension/e2e/workspace/

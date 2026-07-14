@@ -1,4 +1,4 @@
-import { generateHTML, generateJSON } from "@tiptap/html";
+import { Editor } from "@tiptap/core";
 
 import { documentationExtensions } from "./documentation-schema.js";
 
@@ -35,15 +35,24 @@ export function wrapInfo(inner: string, parts: InfoParts): string {
 
 /**
  * Round-trip an inner HTML body through the documentation schema: parse to a
- * ProseMirror document and re-serialize. Out-of-schema tags drop out; the result
- * is the canonical form the live editor also emits, and re-applying it is a
- * fixed point.
+ * ProseMirror document and re-serialize. Out-of-schema tags drop out and the
+ * result is a fixed point.
+ *
+ * This runs a headless `Editor` and reads `getHTML()` — the exact call the live
+ * editor emits on a real edit — rather than `@tiptap/html`'s `generateHTML`,
+ * which serializes slightly differently (e.g. a leading newline inside
+ * `<pre><code>`) and would make this a canonical form the editor never produces.
  */
 export function canonicalizeInner(inner: string): string {
-  return generateHTML(
-    generateJSON(inner, documentationExtensions),
-    documentationExtensions,
-  );
+  const editor = new Editor({
+    extensions: documentationExtensions,
+    content: inner,
+  });
+  try {
+    return editor.getHTML();
+  } finally {
+    editor.destroy();
+  }
 }
 
 /**

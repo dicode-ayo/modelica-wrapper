@@ -291,11 +291,11 @@ export class DocumentationEditController {
       info,
       revisions: this.revision,
     });
+    // The wrapper's `parseMutationSuccess` throws (→ the queue's catch surfaces
+    // the OMC message) when OMC reports an error, so a bare `false` here means it
+    // failed without one.
     if (!bool) {
-      const { errorString } = await client.getErrorString();
-      this.reportError(
-        `setDocumentationAnnotation failed: ${errorString.trim() || "OMC returned false"}`,
-      );
+      this.reportError("setDocumentationAnnotation returned false");
       return;
     }
     await this.reflect();

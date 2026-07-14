@@ -1,17 +1,15 @@
-// @vitest-environment happy-dom
-//
 // The canonical round-trip is the crux of the documentation editor: the source
 // annotation must only ever be rewritten in a form that survives being rewritten
-// again, or every save would churn the diff. These pin that against a corpus of
-// real MSL `Documentation(info=…)` strings (fetched from OMC, under
-// `__fixtures__/doc-info`): canonicalizing is a fixed point, the `<html>` wrapper
-// is preserved verbatim, and the Modelica-specific bits (`modelica://` links and
-// resource images, tables) survive the schema.
-//
-// `@tiptap/html` needs a DOM, so this file runs under happy-dom rather than the
-// suite's default node environment.
+// again, or every save would churn the diff. `canonicalizeInner` runs the same
+// headless `Editor.getHTML()` the live editor emits on a real edit, so these pin
+// what the write path actually produces against a corpus of real MSL
+// `Documentation(info=…)` strings (fetched from OMC, under `__fixtures__/doc-info`):
+// canonicalizing is a fixed point, the `<html>` wrapper is preserved verbatim, and
+// the Modelica-specific bits (`modelica://` links and resource images, tables)
+// survive the schema.
 
 import { readFileSync, readdirSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -20,7 +18,7 @@ import {
   wrapInfo,
 } from "./documentation-roundtrip.js";
 
-const FIXTURE_DIR = "src/webview/__fixtures__/doc-info";
+const FIXTURE_DIR = "src/__fixtures__/doc-info";
 
 function corpus(): { name: string; info: string }[] {
   return readdirSync(FIXTURE_DIR)

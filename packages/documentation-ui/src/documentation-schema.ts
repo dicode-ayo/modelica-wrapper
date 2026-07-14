@@ -14,8 +14,8 @@ import StarterKit from "@tiptap/starter-kit";
 /**
  * The Modelica `Documentation(info=…)` tag subset, expressed as a fixed TipTap
  * extension set. It is the single schema shared by the live editor and the
- * headless `generateHTML`/`generateJSON` serializer, so what the user edits and
- * what round-trips through the golden test cannot drift.
+ * headless round-trip (`canonicalizeInner`), so what the user edits and what the
+ * golden test checks cannot drift.
  *
  * Being an explicit schema is the point: ProseMirror drops any tag outside it,
  * which is why the raw-HTML Source tab exists as the escape hatch. StarterKit

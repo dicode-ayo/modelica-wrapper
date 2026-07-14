@@ -2,7 +2,7 @@
   "name": "@dicode/storybook",
   "version": "0.0.1",
   "private": true,
-  "description": "Aggregator Storybook: combines the diagram-svg, diagram-ui and result-ui stories into one build, published to a single Chromatic project.",
+  "description": "Aggregator Storybook: combines the diagram-svg, diagram-ui, result-ui and documentation-ui stories into one build, published to a single Chromatic project.",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -16,6 +16,7 @@
   "dependencies": {
     "@dicode/diagram-svg": "workspace:*",
     "@dicode/diagram-ui": "workspace:*",
+    "@dicode/documentation-ui": "workspace:*",
     "@dicode/result-ui": "workspace:*",
     "@dicode/ui-common": "workspace:*"
   },
