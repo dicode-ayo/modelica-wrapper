@@ -186,10 +186,10 @@ export function resolveDocumentationEditor(
   void (async (): Promise<void> => {
     try {
       const client: DocumentationClient = await ensureClient();
-      const readOnlyBase = await isReadOnlyDocument(document);
+      const readOnly = await isReadOnlyDocument(document);
       controller = new DocumentationEditController(
         { client, document, className, gate },
-        readOnlyBase,
+        readOnly,
         (onForeignChange) => createShadowBuffer(document, onForeignChange),
       );
       registerController(className, controller);
@@ -271,7 +271,7 @@ export class DocumentationEditController {
 
   constructor(
     private readonly deps: EditControllerDeps,
-    private readonly readOnlyBase: boolean,
+    private readonly readOnly: boolean,
     makeShadow: (
       onForeignChange: (document: vscode.TextDocument) => void,
     ) => ShadowBuffer,
@@ -327,7 +327,7 @@ export class DocumentationEditController {
   }
 
   private async onEdit(info: string): Promise<void> {
-    if (this.readOnlyBase) {
+    if (this.readOnly) {
       this.reportError("This class is read-only and can't be edited.");
       return;
     }
@@ -405,7 +405,7 @@ export class DocumentationEditController {
       type: "doc",
       className,
       info,
-      readOnly: this.readOnlyBase,
+      readOnly: this.readOnly,
       resources,
     });
   }

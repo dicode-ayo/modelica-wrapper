@@ -25,7 +25,6 @@ export const SetFullDocumentationAnnotationInputSchema = z.object({
   info: z
     .string()
     .optional()
-    .default("")
     .describe(
       "HTML body for the Documentation `info` section; empty clears it.",
     ),
