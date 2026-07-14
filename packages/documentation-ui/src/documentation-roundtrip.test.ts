@@ -53,6 +53,18 @@ describe("documentation round-trip corpus", () => {
     expect(once).toMatch(/^<html>/);
     expect(once.trimEnd()).toMatch(/<\/html>$/);
   });
+
+  // Snapshot the whole canonical output per fixture so a schema/TipTap change
+  // that silently drops a tag surfaces as a reviewable diff, not just a still-
+  // green fixed point. Snapshots live under the prettier-ignored fixtures dir.
+  it.each(fixtures)(
+    "canonical $name matches its snapshot",
+    async ({ name, info }) => {
+      await expect(canonicalizeInfo(info)).toMatchFileSnapshot(
+        `./__fixtures__/canonical/${name}`,
+      );
+    },
+  );
 });
 
 describe("documentation round-trip preservation", () => {

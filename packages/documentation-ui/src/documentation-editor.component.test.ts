@@ -18,7 +18,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import "./documentation-editor.component.js";
-import type { OmDocumentationEditor } from "./documentation-editor.component.js";
+import {
+  EDIT_DEBOUNCE_MS,
+  type OmDocumentationEditor,
+} from "./documentation-editor.component.js";
 
 const INFO = "<html><p>Hello <strong>world</strong></p></html>";
 
@@ -51,7 +54,7 @@ describe("om-documentation-editor", () => {
     // A reverse sync sets info again; a load must not echo an edit.
     el.info = "<html><p>reloaded</p></html>";
     await el.updateComplete;
-    await new Promise((r) => setTimeout(r, 350));
+    await new Promise((r) => setTimeout(r, EDIT_DEBOUNCE_MS + 50));
     expect(emitted).toBe(0);
   });
 });

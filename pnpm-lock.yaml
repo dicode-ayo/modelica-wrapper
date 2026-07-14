@@ -147,28 +147,28 @@ importers:
   packages/documentation-ui:
     dependencies:
       '@tiptap/core':
-        specifier: ^3
+        specifier: ^3.27.4
         version: 3.27.4(@tiptap/pm@3.27.4)
       '@tiptap/extension-image':
-        specifier: ^3
+        specifier: ^3.27.4
         version: 3.27.4(@tiptap/core@3.27.4(@tiptap/pm@3.27.4))
       '@tiptap/extension-link':
-        specifier: ^3
+        specifier: ^3.27.4
         version: 3.27.4(@tiptap/core@3.27.4(@tiptap/pm@3.27.4))(@tiptap/pm@3.27.4)
       '@tiptap/extension-subscript':
-        specifier: ^3
+        specifier: ^3.27.4
         version: 3.27.4(@tiptap/core@3.27.4(@tiptap/pm@3.27.4))(@tiptap/pm@3.27.4)
       '@tiptap/extension-superscript':
-        specifier: ^3
+        specifier: ^3.27.4
         version: 3.27.4(@tiptap/core@3.27.4(@tiptap/pm@3.27.4))(@tiptap/pm@3.27.4)
       '@tiptap/extension-table':
-        specifier: ^3
+        specifier: ^3.27.4
         version: 3.27.4(@tiptap/core@3.27.4(@tiptap/pm@3.27.4))(@tiptap/pm@3.27.4)
       '@tiptap/pm':
-        specifier: ^3
+        specifier: ^3.27.4
         version: 3.27.4
       '@tiptap/starter-kit':
-        specifier: ^3
+        specifier: ^3.27.4
         version: 3.27.4
       js-beautify:
         specifier: ^1.15.4

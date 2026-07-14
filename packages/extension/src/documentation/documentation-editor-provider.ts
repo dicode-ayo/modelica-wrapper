@@ -7,6 +7,7 @@ import {
   type ShadowBuffer,
 } from "../diagram/shadow-buffer.js";
 import { DOCUMENTATION_VIEW_TYPE } from "../diagram/view-type.js";
+import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 import { qualifiedNameFromUri } from "../source-provider.js";
 import type {
@@ -21,7 +22,7 @@ import { renderDocumentationWebviewHtml } from "./documentation-webview-html.js"
 export { DOCUMENTATION_VIEW_TYPE };
 
 /** The subset of OMC the documentation editor drives. */
-interface DocumentationClient {
+export interface DocumentationClient {
   getDocumentationAnnotation(input: {
     typeName: string;
   }): Promise<{ info: string; revision: string; infoHeader: string }>;
@@ -164,6 +165,7 @@ export function resolveDocumentationEditor(
     sub.dispose();
     viewStateSub.dispose();
     DocumentationEditorProvider.clearActive(token);
+    if (controller) unregisterController(className, controller);
     controller?.dispose();
   });
   if (webviewPanel.active) {
@@ -185,14 +187,38 @@ export function resolveDocumentationEditor(
         readOnlyBase,
         (onForeignChange) => createShadowBuffer(document, onForeignChange),
       );
+      registerController(className, controller);
       controller.start();
     } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
-      const message = `Failed to load documentation for ${className}: ${detail}`;
+      const message = `Failed to load documentation for ${className}: ${errorDetail(err)}`;
       gate.send({ type: "error", message });
       log.warn("documentationEditor", message);
     }
   })();
+}
+
+// Focused-class → controller, so a write from the native HTML editor can re-sync
+// the open webview through its serialized queue instead of relying on VSCode's
+// (dirty-gated) buffer revert.
+const controllers = new Map<string, DocumentationEditController>();
+
+function registerController(
+  className: string,
+  controller: DocumentationEditController,
+): void {
+  controllers.set(className, controller);
+}
+
+function unregisterController(
+  className: string,
+  controller: DocumentationEditController,
+): void {
+  if (controllers.get(className) === controller) controllers.delete(className);
+}
+
+/** Re-sync the open documentation webview after an external write to `className`. */
+export function notifyDocumentationChanged(className: string): void {
+  void controllers.get(className)?.refreshFromExternalWrite();
 }
 
 interface EditControllerDeps {
@@ -239,6 +265,9 @@ export class DocumentationEditController {
   // Whether edits are refused: an MSL/library source, or a class carrying an
   // `__OpenModelica_infoHeader` the write API would silently drop.
   private readOnly: boolean;
+  // A successful fetch has seeded `revision`/`readOnly`. An edit before that
+  // would write `revisions: ""` and clear the section, so it's refused.
+  private seeded = false;
 
   constructor(
     private readonly deps: EditControllerDeps,
@@ -259,7 +288,7 @@ export class DocumentationEditController {
         await this.refetchAndSend();
       } catch (err) {
         this.reportError(
-          `Failed to load documentation for ${this.deps.className}: ${detail(err)}`,
+          `Failed to load documentation for ${this.deps.className}: ${errorDetail(err)}`,
         );
       }
     });
@@ -280,14 +309,31 @@ export class DocumentationEditController {
     // A single rejection would sever the chain, so the one place the chain is
     // built is the one place the catch belongs.
     this.queue = this.queue.then(unit).catch((err) => {
-      this.reportError(`documentation edit failed: ${detail(err)}`);
+      this.reportError(`documentation edit failed: ${errorDetail(err)}`);
     });
     return this.queue;
+  }
+
+  /**
+   * Re-sync after the class's documentation was written elsewhere (the native
+   * HTML editor): reflect the canonical source into the buffer — even a dirty
+   * one, through the self-write guard — and re-send the fresh annotation so the
+   * webview can't hold a stale `info` and clobber the write on its next edit.
+   */
+  refreshFromExternalWrite(): Promise<void> {
+    return this.enqueue(async () => {
+      await this.reflect();
+      await this.refetchAndSend();
+    });
   }
 
   private async onEdit(info: string): Promise<void> {
     if (this.readOnly) {
       this.reportError("This class is read-only and can't be edited.");
+      return;
+    }
+    if (!this.seeded) {
+      this.reportError("Documentation hasn't loaded yet; edit discarded.");
       return;
     }
     const { client, className } = this.deps;
@@ -349,7 +395,7 @@ export class DocumentationEditController {
       }
       await this.refetchAndSend();
     } catch (err) {
-      this.reportError(`reverse sync failed: ${detail(err)}`);
+      this.reportError(`reverse sync failed: ${errorDetail(err)}`);
     }
   }
 
@@ -359,6 +405,7 @@ export class DocumentationEditController {
       await client.getDocumentationAnnotation({ typeName: className });
     this.revision = revision;
     this.readOnly = this.readOnlyBase || infoHeader.trim().length > 0;
+    this.seeded = true;
     gate.send({ type: "doc", className, info, readOnly: this.readOnly });
   }
 
@@ -366,10 +413,6 @@ export class DocumentationEditController {
     this.deps.gate.send({ type: "error", message });
     log.warn("documentationEditor", message);
   }
-}
-
-function detail(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 /**
@@ -390,7 +433,7 @@ async function openHtmlSourceEditor(className: string): Promise<void> {
     });
   } catch (err) {
     void vscode.window.showErrorMessage(
-      `Modelica: could not open the documentation HTML for ${className}: ${detail(err)}`,
+      `Modelica: could not open the documentation HTML for ${className}: ${errorDetail(err)}`,
     );
   }
 }

@@ -34,14 +34,14 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
-    "@tiptap/core": "^3",
-    "@tiptap/extension-image": "^3",
-    "@tiptap/extension-link": "^3",
-    "@tiptap/extension-subscript": "^3",
-    "@tiptap/extension-superscript": "^3",
-    "@tiptap/extension-table": "^3",
-    "@tiptap/pm": "^3",
-    "@tiptap/starter-kit": "^3",
+    "@tiptap/core": "^3.27.4",
+    "@tiptap/extension-image": "^3.27.4",
+    "@tiptap/extension-link": "^3.27.4",
+    "@tiptap/extension-subscript": "^3.27.4",
+    "@tiptap/extension-superscript": "^3.27.4",
+    "@tiptap/extension-table": "^3.27.4",
+    "@tiptap/pm": "^3.27.4",
+    "@tiptap/starter-kit": "^3.27.4",
     "js-beautify": "^1.15.4",
     "lit": "^3.2.0"
   },

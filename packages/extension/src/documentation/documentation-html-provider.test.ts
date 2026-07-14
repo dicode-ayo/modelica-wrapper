@@ -10,11 +10,11 @@
 
 import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
-import type { OmcClient } from "@dicode/omc-client";
 
 import {
   DocumentationHtmlProvider,
   docHtmlUriFor,
+  type DocHtmlClient,
 } from "./documentation-html-provider.js";
 
 interface Calls {
@@ -22,17 +22,24 @@ interface Calls {
 }
 
 function makeClient(
-  anno: { info?: string; revision?: string; infoHeader?: string },
+  anno: {
+    info?: string;
+    revision?: string;
+    infoHeader?: string;
+    fail?: boolean;
+  },
   opts?: { fileReadOnly?: boolean; setOk?: boolean },
-): { client: OmcClient; calls: Calls } {
+): { client: DocHtmlClient; calls: Calls } {
   const calls: Calls = { setArgs: [] };
-  const client = {
+  const client: DocHtmlClient = {
     getDocumentationAnnotation: vi.fn(() =>
-      Promise.resolve({
-        info: anno.info ?? "",
-        revision: anno.revision ?? "",
-        infoHeader: anno.infoHeader ?? "",
-      }),
+      anno.fail
+        ? Promise.reject(new Error("OMC down"))
+        : Promise.resolve({
+            info: anno.info ?? "",
+            revision: anno.revision ?? "",
+            infoHeader: anno.infoHeader ?? "",
+          }),
     ),
     getClassInformation: vi.fn(() =>
       Promise.resolve({ fileReadOnly: opts?.fileReadOnly ?? false }),
@@ -43,7 +50,7 @@ function makeClient(
         return Promise.resolve({ bool: opts?.setOk ?? true });
       },
     ),
-  } as unknown as OmcClient;
+  };
   return { client, calls };
 }
 
@@ -59,6 +66,15 @@ describe("DocumentationHtmlProvider", () => {
     );
     const bytes = await provider.readFile(URI);
     expect(Buffer.from(bytes).toString("utf8")).toBe("<html><p>hi</p></html>");
+  });
+
+  it("fails the read on OMC error instead of serving empty (a save would wipe)", async () => {
+    const { client } = makeClient({ fail: true });
+    const provider = new DocumentationHtmlProvider(
+      () => Promise.resolve(client),
+      () => {},
+    );
+    await expect(provider.readFile(URI)).rejects.toThrow();
   });
 
   it("writes carrying the current revisions, then notifies the class", async () => {

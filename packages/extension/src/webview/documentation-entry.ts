@@ -76,10 +76,13 @@ export class OmDocumentationRoot extends LitElement {
   };
 
   override render(): TemplateResult {
+    // Keep the error node always present: a leading `${…}` before an element
+    // with attribute bindings can scramble those bindings (the Lit
+    // leading-interpolation gotcha).
     return html`
-      ${this.error !== null
-        ? html`<div class="om-doc-host-error">${this.error}</div>`
-        : null}
+      <div class="om-doc-host-error" ?hidden=${this.error === null}>
+        ${this.error}
+      </div>
       <om-documentation-editor
         .info=${this.info}
         ?readOnly=${this.readOnly}

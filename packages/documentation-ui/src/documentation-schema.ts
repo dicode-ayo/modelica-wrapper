@@ -18,7 +18,7 @@ import StarterKit from "@tiptap/starter-kit";
  * golden test checks cannot drift.
  *
  * Being an explicit schema is the point: ProseMirror drops any tag outside it,
- * which is why the raw-HTML Source tab exists as the escape hatch. StarterKit
+ * which is why the "Edit HTML" raw-source view is the escape hatch. StarterKit
  * carries the base nodes and marks (paragraphs, headings, lists, blockquote,
  * code, bold/italic/strike/underline); the rest below fills in the Modelica
  * subset it omits (links to `modelica://`, images, sub/superscript, tables). Two

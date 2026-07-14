@@ -23,7 +23,10 @@ import {
   DOCUMENTATION_VIEW_TYPE,
   ICON_VIEW_TYPE,
 } from "./diagram/view-type.js";
-import { DocumentationEditorProvider } from "./documentation/documentation-editor-provider.js";
+import {
+  DocumentationEditorProvider,
+  notifyDocumentationChanged,
+} from "./documentation/documentation-editor-provider.js";
 import {
   DocumentationHtmlProvider,
   MODELICA_DOC_SCHEME,
@@ -71,8 +74,14 @@ export async function activate(
   );
 
   const sourceProvider = new ModelicaSourceProvider(ensureClient);
-  const docHtmlProvider = new DocumentationHtmlProvider(ensureClient, (name) =>
-    sourceProvider.notifySourceChanged(name),
+  const docHtmlProvider = new DocumentationHtmlProvider(
+    ensureClient,
+    (name) => {
+      // The webview's controller re-syncs even a dirty buffer through its queue;
+      // notifySourceChanged also reloads a plain `.mo` text editor if one is open.
+      notifyDocumentationChanged(name);
+      sourceProvider.notifySourceChanged(name);
+    },
   );
 
   // One DiagnosticCollection shared by the user-triggered Check Model command

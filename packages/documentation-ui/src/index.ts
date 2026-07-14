@@ -16,8 +16,7 @@ export const PACKAGE_NAME = "@dicode/documentation-ui";
 // The event components emit.
 export * from "./events.js";
 
-// The canonical `Documentation(info=…)` schema + round-trip (also unit-tested in
-// isolation), exposed so a host can canonicalize outside the editor if needed.
+// The canonical `Documentation(info=…)` schema + round-trip.
 export { documentationExtensions } from "./documentation-schema.js";
 export {
   splitInfoWrapper,

@@ -1,14 +1,13 @@
 import * as vscode from "vscode";
 
-import type { OmcClient } from "@dicode/omc-client";
-
+import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 import { qualifiedNameFromUri } from "../source-provider.js";
 
 export const MODELICA_DOC_SCHEME = "modelica-doc";
 
 /** The subset of OMC this provider drives. */
-interface DocHtmlClient {
+export interface DocHtmlClient {
   getDocumentationAnnotation(input: {
     typeName: string;
   }): Promise<{ info: string; revision: string; infoHeader: string }>;
@@ -20,6 +19,12 @@ interface DocHtmlClient {
   getClassInformation(input: {
     typeName: string;
   }): Promise<{ fileReadOnly: boolean }>;
+}
+
+interface DocState {
+  info: string;
+  revision: string;
+  readOnly: boolean;
 }
 
 /** `modelica-doc:/Pkg.Cls.html` — a class's `Documentation(info=…)` as an editable file. */
@@ -53,9 +58,28 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
   private readonly versions = new Map<string, number>();
 
   constructor(
-    private readonly ensureClient: () => Promise<OmcClient>,
+    private readonly ensureClient: () => Promise<DocHtmlClient>,
     private readonly notifyClassChanged: (className: string) => void,
   ) {}
+
+  /**
+   * The class's current documentation and whether it's editable, in one place.
+   * A class is read-only when its source is (an MSL/library) or it carries an
+   * `__OpenModelica_infoHeader` the write API can't preserve.
+   */
+  private async docState(className: string): Promise<DocState> {
+    const client = await this.ensureClient();
+    const { info, revision, infoHeader } =
+      await client.getDocumentationAnnotation({ typeName: className });
+    const { fileReadOnly } = await client.getClassInformation({
+      typeName: className,
+    });
+    return {
+      info,
+      revision,
+      readOnly: fileReadOnly || infoHeader.trim().length > 0,
+    };
+  }
 
   /**
    * Refresh the open HTML editor for a class when its `.mo` changed elsewhere (a
@@ -77,14 +101,7 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
     if (!className) throw vscode.FileSystemError.FileNotFound(uri);
     const mtime = this.versions.get(uri.toString()) ?? 0;
     try {
-      const client: DocHtmlClient = await this.ensureClient();
-      const { info, infoHeader } = await client.getDocumentationAnnotation({
-        typeName: className,
-      });
-      const { fileReadOnly } = await client.getClassInformation({
-        typeName: className,
-      });
-      const readOnly = fileReadOnly || infoHeader.trim().length > 0;
+      const { info, readOnly } = await this.docState(className);
       return {
         type: vscode.FileType.File,
         ctime: 0,
@@ -95,7 +112,7 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
     } catch (err) {
       log.warn(
         "documentationHtml",
-        `stat ${className} failed; resolving as empty: ${(err as Error).message}`,
+        `stat ${className} failed; resolving as empty: ${errorDetail(err)}`,
       );
       return { type: vscode.FileType.File, ctime: 0, mtime, size: 0 };
     }
@@ -113,32 +130,25 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
     const className = classFromDocHtmlUri(uri);
     if (!className) throw vscode.FileSystemError.FileNotFound(uri);
     try {
-      const client: DocHtmlClient = await this.ensureClient();
-      const { info } = await client.getDocumentationAnnotation({
-        typeName: className,
-      });
+      const { info } = await this.docState(className);
       return Buffer.from(info, "utf8");
     } catch (err) {
-      log.warn(
-        "documentationHtml",
-        `readFile ${className} failed; returning empty: ${(err as Error).message}`,
+      // Unlike the `.mo` provider, this file exists to be edited and saved:
+      // serving empty on a transient read failure would let the first save write
+      // empty `info` over the real documentation. Fail loudly instead.
+      throw vscode.FileSystemError.Unavailable(
+        `could not read the documentation for ${className}: ${errorDetail(err)}`,
       );
-      return new Uint8Array();
     }
   }
 
   async writeFile(uri: vscode.Uri, content: Uint8Array): Promise<void> {
     const className = classFromDocHtmlUri(uri);
     if (!className) throw vscode.FileSystemError.FileNotFound(uri);
-    const client: DocHtmlClient = await this.ensureClient();
+    const client = await this.ensureClient();
 
-    const { revision, infoHeader } = await client.getDocumentationAnnotation({
-      typeName: className,
-    });
-    const { fileReadOnly } = await client.getClassInformation({
-      typeName: className,
-    });
-    if (fileReadOnly || infoHeader.trim().length > 0) {
+    const { revision, readOnly } = await this.docState(className);
+    if (readOnly) {
       throw vscode.FileSystemError.NoPermissions(uri);
     }
 

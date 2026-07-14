@@ -16,8 +16,8 @@ import {
 } from "./documentation-roundtrip.js";
 import { documentationExtensions } from "./documentation-schema.js";
 
-// Coalesce a burst of keystrokes into one change once the editor settles.
-const EDIT_DEBOUNCE_MS = 300;
+/** Coalesce a burst of keystrokes into one change once the editor settles. */
+export const EDIT_DEBOUNCE_MS = 300;
 
 /**
  * WYSIWYG editor for a Modelica class's `Documentation(info="<html>…</html>")`.
@@ -61,6 +61,7 @@ export class OmDocumentationEditor extends LitElement {
   private parts: InfoParts = { prefix: "", inner: "", suffix: "" };
   private editor: Editor | null = null;
   private editTimer: ReturnType<typeof setTimeout> | undefined;
+  private pendingChange: (() => string) | undefined;
   // Set while a programmatic `setContent` runs. `emitUpdate: false` does not
   // reliably suppress `onUpdate` on a mounted view, and a load transaction that
   // reached `onEditorUpdate` would emit a spurious change back to the host.
@@ -76,7 +77,10 @@ export class OmDocumentationEditor extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
-    if (this.editTimer !== undefined) clearTimeout(this.editTimer);
+    // Flush, don't drop: the last ≤300 ms of typing would otherwise be lost when
+    // the panel is disposed. The listener is on this element, so a dispatch from
+    // a just-disconnected element still reaches the host.
+    this.flushChange();
     this.editor?.destroy();
     this.editor = null;
   }
@@ -85,6 +89,9 @@ export class OmDocumentationEditor extends LitElement {
     if (changed.has("info")) {
       this.parts = splitInfoWrapper(this.info);
       this.loadIntoEditor();
+      // A visible source view would otherwise show stale text that "Done" then
+      // re-parses back into the editor.
+      if (this.showSource) this.refreshSourceView();
     } else if (changed.has("readOnly")) {
       this.editor?.setEditable(!this.readOnly);
     }
@@ -130,17 +137,33 @@ export class OmDocumentationEditor extends LitElement {
   }
 
   private scheduleChange(getInfo: () => string): void {
+    this.pendingChange = getInfo;
     if (this.editTimer !== undefined) clearTimeout(this.editTimer);
-    this.editTimer = setTimeout(() => {
+    this.editTimer = setTimeout(() => this.flushChange(), EDIT_DEBOUNCE_MS);
+  }
+
+  private flushChange(): void {
+    if (this.editTimer !== undefined) {
+      clearTimeout(this.editTimer);
       this.editTimer = undefined;
-      this.dispatchEvent(
-        new CustomEvent<DocumentationChangeDetail>("om-documentation-change", {
-          detail: { info: getInfo() },
-          bubbles: true,
-          composed: true,
-        }),
-      );
-    }, EDIT_DEBOUNCE_MS);
+    }
+    const getInfo = this.pendingChange;
+    this.pendingChange = undefined;
+    if (!getInfo) return;
+    this.dispatchEvent(
+      new CustomEvent<DocumentationChangeDetail>("om-documentation-change", {
+        detail: { info: getInfo() },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
+  private refreshSourceView(): void {
+    void this.updateComplete.then(() => {
+      const pre = this.sourcePre;
+      if (pre) pre.textContent = this.serialize();
+    });
   }
 
   /**
@@ -159,10 +182,7 @@ export class OmDocumentationEditor extends LitElement {
       return;
     }
     this.showSource = true;
-    void this.updateComplete.then(() => {
-      const pre = this.sourcePre;
-      if (pre) pre.textContent = this.serialize();
-    });
+    this.refreshSourceView();
   }
 
   private readonly onSourceInput = (): void => {
@@ -449,7 +469,7 @@ const STYLE = html`
       outline: none;
     }
     om-documentation-editor [hidden] {
-      display: none !important;
+      display: none;
     }
     om-documentation-editor .om-doc-editor .ProseMirror {
       min-height: 100%;

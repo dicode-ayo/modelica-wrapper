@@ -24,6 +24,7 @@ import {
   DocumentationEditController,
   DocumentationEditorProvider,
   resolveDocumentationEditor,
+  type DocumentationClient,
   type Scheduler,
 } from "./documentation-editor-provider.js";
 
@@ -328,17 +329,24 @@ interface EditClientCalls {
 }
 
 function makeEditClient(
-  anno: { info: string; revision?: string; infoHeader?: string },
+  anno: {
+    info: string;
+    revision?: string;
+    infoHeader?: string;
+    fail?: boolean;
+  },
   opts?: { setOk?: boolean; loadOk?: boolean; contents?: string },
-): { client: OmcClient; calls: EditClientCalls } {
+): { client: DocumentationClient; calls: EditClientCalls } {
   const calls: EditClientCalls = { setArgs: [], loaded: [] };
-  const client = {
+  const client: DocumentationClient = {
     getDocumentationAnnotation: vi.fn(() =>
-      Promise.resolve({
-        info: anno.info,
-        revision: anno.revision ?? "",
-        infoHeader: anno.infoHeader ?? "",
-      }),
+      anno.fail
+        ? Promise.reject(new Error("OMC down"))
+        : Promise.resolve({
+            info: anno.info,
+            revision: anno.revision ?? "",
+            infoHeader: anno.infoHeader ?? "",
+          }),
     ),
     setDocumentationAnnotation: vi.fn(
       (a: { typeName: string; info: string; revisions: string }) => {
@@ -354,7 +362,7 @@ function makeEditClient(
       return Promise.resolve({ success: opts?.loadOk ?? true });
     }),
     getErrorString: vi.fn(() => Promise.resolve({ errorString: "" })),
-  } as unknown as OmcClient;
+  };
   return { client, calls };
 }
 
@@ -404,6 +412,43 @@ describe("DocumentationEditController write path", () => {
     expect(calls.setArgs).toEqual([]);
     expect(writes).toEqual([]);
     expect(posted.some((m) => m.type === "error")).toBe(true);
+  });
+
+  it("refuses an edit before the first fetch seeded revisions (no wipe)", async () => {
+    const { client, calls } = makeEditClient({ info: "", fail: true });
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DocumentationEditController(
+      { client, document: srcDoc(), className: CLASS, gate },
+      false,
+      factory,
+    );
+
+    controller.start(); // fetch fails → never seeded
+    await controller.handle({ type: "edit", info: "<html><p>x</p></html>" });
+
+    expect(calls.setArgs).toEqual([]); // would have written revisions: ""
+    expect(writes).toEqual([]);
+    expect(posted.some((m) => m.type === "error")).toBe(true);
+  });
+
+  it("re-syncs on an external write: reflects the source and re-sends the doc", async () => {
+    const { client } = makeEditClient({ info: "<html><p>after</p></html>" });
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DocumentationEditController(
+      { client, document: srcDoc(), className: CLASS, gate },
+      false,
+      factory,
+    );
+
+    controller.start();
+    await controller.refreshFromExternalWrite();
+
+    // The native HTML editor already wrote OMC; the controller reflects the
+    // canonical source into the (possibly dirty) buffer and re-sends the doc.
+    expect(writes).toEqual([LISTED]);
+    expect(posted.filter((m) => m.type === "doc").length).toBeGreaterThan(0);
   });
 
   it("reverse-syncs a foreign buffer change: loadString then re-send the doc", async () => {
