@@ -9,6 +9,7 @@ import { customElement, property, state } from "lit/decorators.js";
 
 import type { DocumentationChangeDetail } from "./events.js";
 import {
+  formatBody,
   splitInfoWrapper,
   wrapInfo,
   type InfoParts,
@@ -18,18 +19,17 @@ import { documentationExtensions } from "./documentation-schema.js";
 // Coalesce a burst of keystrokes into one change once the editor settles.
 const EDIT_DEBOUNCE_MS = 300;
 
-type Mode = "wysiwyg" | "source";
-
 /**
  * WYSIWYG editor for a Modelica class's `Documentation(info="<html>…</html>")`.
- * A pure renderer: it takes `info` in and emits `om-documentation-change` out,
- * with no host dependency, so the same element serves the VSCode custom editor
- * and a web client.
+ * A pure renderer: it takes `info` in and emits `om-documentation-change` out
+ * (the canonical, pretty-printed HTML), with no host dependency, so the same
+ * element serves the VSCode custom editor and a web client.
  *
  * TipTap parses HTML against an explicit schema, so the editor also *is* the
  * sanitizer — it only ever renders a parsed ProseMirror document, never a raw
- * HTML string. A raw-HTML Source tab is the escape hatch for markup the schema
- * drops.
+ * HTML string. Raw-HTML editing is the host's job: when `source-editable` is set
+ * an "Edit HTML" button emits `om-documentation-edit-source` (in VSCode the host
+ * opens a native HTML editor).
  *
  * Renders into light DOM (`createRenderRoot` returns `this`): ProseMirror's
  * selection handling is unreliable across shadow-DOM boundaries. Styles are
@@ -44,10 +44,10 @@ export class OmDocumentationEditor extends LitElement {
   /** Full `info` (wrapper included). The authoritative value the host sets. */
   @property({ attribute: false }) info = "";
   @property({ type: Boolean, reflect: true }) readOnly = false;
+  /** Whether to offer the "Edit HTML" button (a host that handles the event). */
+  @property({ type: Boolean, attribute: "source-editable" }) sourceEditable =
+    false;
 
-  @state() private mode: Mode = "wysiwyg";
-  /** The working `info` — diverges from `info` between edit and the next load. */
-  @state() private current = "";
   @state() private linkEditing = false;
   @state() private linkDraft = "";
 
@@ -56,8 +56,7 @@ export class OmDocumentationEditor extends LitElement {
   private editTimer: ReturnType<typeof setTimeout> | undefined;
   // Set while a programmatic `setContent` runs. `emitUpdate: false` does not
   // reliably suppress `onUpdate` on a mounted view, and a load transaction that
-  // reached `onEditorUpdate` would capture the editor's transient empty state
-  // (`<p></p>`) into `current`, blanking the doc on the next tab switch.
+  // reached `onEditorUpdate` would emit a spurious change back to the host.
   private loading = false;
 
   private get editorHost(): HTMLElement | null {
@@ -73,7 +72,6 @@ export class OmDocumentationEditor extends LitElement {
 
   override willUpdate(changed: PropertyValues<this>): void {
     if (changed.has("info")) {
-      this.current = this.info;
       this.parts = splitInfoWrapper(this.info);
       this.loadIntoEditor();
     } else if (changed.has("readOnly")) {
@@ -95,7 +93,7 @@ export class OmDocumentationEditor extends LitElement {
   }
 
   /**
-   * Seed the editor from `current` without emitting an update — loading is not a
+   * Seed the editor from `info` without emitting an update — loading is not a
    * user edit, so it must not emit one back and dirty the host's buffer.
    */
   private loadIntoEditor(): void {
@@ -109,9 +107,14 @@ export class OmDocumentationEditor extends LitElement {
     }
   }
 
+  /** The canonical, wrapper-preserved, pretty-printed `info` for the live doc. */
+  private serialize(): string {
+    if (!this.editor) return this.info;
+    return wrapInfo(formatBody(this.editor.getHTML()), this.parts);
+  }
+
   private onEditorUpdate(): void {
     if (!this.editor || this.loading) return;
-    this.current = wrapInfo(this.editor.getHTML(), this.parts);
     this.scheduleChange();
   }
 
@@ -121,36 +124,13 @@ export class OmDocumentationEditor extends LitElement {
       this.editTimer = undefined;
       this.dispatchEvent(
         new CustomEvent<DocumentationChangeDetail>("om-documentation-change", {
-          detail: { info: this.current },
+          detail: { info: this.serialize() },
           bubbles: true,
           composed: true,
         }),
       );
     }, EDIT_DEBOUNCE_MS);
   }
-
-  private setMode(mode: Mode): void {
-    if (mode === this.mode) return;
-    if (mode === "source") {
-      // Capture the live editor content so Source shows the true current doc,
-      // not a `current` that a missed `onUpdate` left stale.
-      if (this.editor) {
-        this.current = wrapInfo(this.editor.getHTML(), this.parts);
-      }
-    } else {
-      // Entering Edit: the raw Source text may have changed the wrapper too, so
-      // re-split and reload the editor from it (out-of-schema tags drop — the
-      // tab's documented trade-off).
-      this.parts = splitInfoWrapper(this.current);
-      this.loadIntoEditor();
-    }
-    this.mode = mode;
-  }
-
-  private readonly onSourceInput = (e: Event): void => {
-    this.current = (e.target as HTMLTextAreaElement).value;
-    this.scheduleChange();
-  };
 
   private run(fn: (chain: ReturnType<Editor["chain"]>) => void): void {
     if (!this.editor) return;
@@ -187,28 +167,29 @@ export class OmDocumentationEditor extends LitElement {
     }
   };
 
+  private emitEditSource(): void {
+    this.dispatchEvent(
+      new CustomEvent("om-documentation-edit-source", {
+        detail: {},
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  }
+
   override render(): TemplateResult {
     return html`
       ${STYLE}
       <div class="om-doc-toolbar">
-        <div class="om-doc-tabs" role="tablist">
-          <button
-            role="tab"
-            aria-selected=${this.mode === "wysiwyg"}
-            @click=${() => this.setMode("wysiwyg")}
-          >
-            Edit
-          </button>
-          <button
-            role="tab"
-            aria-selected=${this.mode === "source"}
-            @click=${() => this.setMode("source")}
-          >
-            Source
-          </button>
-        </div>
-        ${this.mode === "wysiwyg" && !this.readOnly
-          ? this.renderFormatButtons()
+        ${!this.readOnly ? this.renderFormatButtons() : null}
+        ${this.sourceEditable
+          ? html`<button
+              class="om-doc-source-btn"
+              title="Edit the raw HTML in a text editor"
+              @click=${() => this.emitEditSource()}
+            >
+              Edit HTML ↗
+            </button>`
           : null}
         ${this.readOnly
           ? html`<span class="om-doc-badge">Read-only</span>`
@@ -217,15 +198,7 @@ export class OmDocumentationEditor extends LitElement {
 
       ${this.linkEditing ? this.renderLinkInput() : null}
 
-      <div class="om-doc-editor" ?hidden=${this.mode !== "wysiwyg"}></div>
-      <textarea
-        class="om-doc-source"
-        spellcheck="false"
-        ?hidden=${this.mode !== "source"}
-        ?readonly=${this.readOnly}
-        .value=${this.current}
-        @input=${this.onSourceInput}
-      ></textarea>
+      <div class="om-doc-editor"></div>
     `;
   }
 
@@ -351,10 +324,12 @@ const STYLE = html`
       border-bottom: 1px solid var(--vscode-editorWidget-border, transparent);
       flex: 0 0 auto;
     }
-    om-documentation-editor .om-doc-tabs,
     om-documentation-editor .om-doc-format {
       display: flex;
       gap: var(--om-doc-control-gap);
+    }
+    om-documentation-editor .om-doc-source-btn {
+      margin-inline-start: auto;
     }
     om-documentation-editor .om-doc-badge {
       margin-inline-start: auto;
@@ -374,7 +349,6 @@ const STYLE = html`
     om-documentation-editor button:hover {
       background: var(--vscode-toolbar-hoverBackground);
     }
-    om-documentation-editor .om-doc-tabs button[aria-selected="true"],
     om-documentation-editor .om-doc-format button.is-active {
       background: var(
         --vscode-toolbar-activeBackground,
@@ -396,8 +370,7 @@ const STYLE = html`
       border-radius: var(--om-doc-control-radius);
       padding: var(--om-doc-control-pad-block) var(--om-doc-control-pad-inline);
     }
-    om-documentation-editor .om-doc-editor,
-    om-documentation-editor .om-doc-source {
+    om-documentation-editor .om-doc-editor {
       flex: 1 1 auto;
       min-height: 0;
       min-width: 0;
@@ -464,21 +437,8 @@ const STYLE = html`
     om-documentation-editor .om-doc-editor img {
       max-width: 100%;
     }
-    om-documentation-editor .om-doc-source {
-      resize: none;
-      border: none;
-      color: var(--vscode-editor-foreground);
-      background: var(--vscode-editor-background);
-      font-family: var(--vscode-editor-font-family, monospace);
-      white-space: pre-wrap;
-      overflow-wrap: break-word;
-    }
-    om-documentation-editor .om-doc-source:focus,
     om-documentation-editor .om-doc-editor .ProseMirror:focus {
       outline: none;
-    }
-    om-documentation-editor [hidden] {
-      display: none !important;
     }
   </style>
 `;

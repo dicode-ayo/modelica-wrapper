@@ -22,10 +22,12 @@ export { documentationExtensions } from "./documentation-schema.js";
 export {
   splitInfoWrapper,
   wrapInfo,
+  formatBody,
   canonicalizeInner,
   canonicalizeInfo,
   type InfoParts,
 } from "./documentation-roundtrip.js";
+export { prettyPrintHtml } from "./documentation-pretty.js";
 
 // Component.
 export { OmDocumentationEditor } from "./documentation-editor.component.js";

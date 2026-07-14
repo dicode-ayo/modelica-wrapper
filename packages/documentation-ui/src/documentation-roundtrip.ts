@@ -1,6 +1,7 @@
 import { Editor } from "@tiptap/core";
 
 import { documentationExtensions } from "./documentation-schema.js";
+import { prettyPrintHtml } from "./documentation-pretty.js";
 
 /**
  * A `Documentation(info=…)` string split around its `<html>…</html>` wrapper.
@@ -34,14 +35,24 @@ export function wrapInfo(inner: string, parts: InfoParts): string {
 }
 
 /**
- * Round-trip an inner HTML body through the documentation schema: parse to a
- * ProseMirror document and re-serialize. Out-of-schema tags drop out and the
- * result is a fixed point.
+ * Serialize an editor's `getHTML()` output into the canonical multi-line body: a
+ * pretty-printed HTML block bracketed by newlines so, once wrapped, it reads as
+ * `<html>\n…\n</html>` — the form written to the `.mo` and shown in the source
+ * editor. The live editor and the headless {@link canonicalizeInner} both route
+ * through here so what the user writes and what the golden test checks agree.
+ */
+export function formatBody(editorHtml: string): string {
+  return `\n${prettyPrintHtml(editorHtml)}\n`;
+}
+
+/**
+ * Round-trip an inner HTML body through the documentation schema and format it:
+ * parse to a ProseMirror document, re-serialize, pretty-print. Out-of-schema
+ * tags drop out and the result is a fixed point.
  *
  * This runs a headless `Editor` and reads `getHTML()` — the exact call the live
- * editor emits on a real edit — rather than `@tiptap/html`'s `generateHTML`,
- * which serializes slightly differently (e.g. a leading newline inside
- * `<pre><code>`) and would make this a canonical form the editor never produces.
+ * editor emits on a real edit — so the canonical form is one the editor actually
+ * produces (`@tiptap/html`'s `generateHTML` serializes `<pre><code>` differently).
  */
 export function canonicalizeInner(inner: string): string {
   const editor = new Editor({
@@ -49,7 +60,7 @@ export function canonicalizeInner(inner: string): string {
     content: inner,
   });
   try {
-    return editor.getHTML();
+    return formatBody(editor.getHTML());
   } finally {
     editor.destroy();
   }

@@ -42,10 +42,12 @@
     "@tiptap/extension-table": "^3",
     "@tiptap/pm": "^3",
     "@tiptap/starter-kit": "^3",
+    "js-beautify": "^1.15.4",
     "lit": "^3.2.0"
   },
   "devDependencies": {
     "@storybook/web-components": "^8.4.0",
+    "@types/js-beautify": "^1.14.3",
     "@types/node": "^22.0.0",
     "happy-dom": "^15.11.0",
     "typescript": "^5.6.0",

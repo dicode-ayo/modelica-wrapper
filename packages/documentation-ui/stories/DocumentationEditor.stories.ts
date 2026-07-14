@@ -1,11 +1,12 @@
 /**
  * Stories for `<om-documentation-editor>`, driven by representative Modelica
  * `Documentation(info=…)` HTML (no host, no OMC). The component's bubbling,
- * composed `om-documentation-change` is captured by the actions addon and shown
- * in the Actions panel — the real webview routes the same event to a
- * `setDocumentationAnnotation` write. This is the closest thing to the live
- * editor without VSCode: type, toggle formatting, add a `modelica://` link, and
- * flip to the Source tab to see the canonical HTML the write path emits.
+ * composed events are captured by the actions addon and shown in the Actions
+ * panel — the real webview routes `om-documentation-change` to a
+ * `setDocumentationAnnotation` write, and `om-documentation-edit-source` to
+ * opening a native HTML editor. This is the closest thing to the live editor
+ * without VSCode: type, toggle formatting, add a `modelica://` link, and watch
+ * the pretty-printed `info` the write path emits in the Actions panel.
  */
 
 import type { Meta, StoryObj } from "@storybook/web-components";
@@ -40,19 +41,25 @@ const SIMPLE = `<html>
 const meta: Meta = {
   title: "documentation-ui/DocumentationEditor",
   parameters: {
-    actions: { handles: ["om-documentation-change"] },
+    actions: {
+      handles: ["om-documentation-change", "om-documentation-edit-source"],
+    },
   },
 };
 export default meta;
 
 type Story = StoryObj;
 
-function host(info: string, readOnly = false): TemplateResult {
+function host(
+  info: string,
+  opts?: { readOnly?: boolean; sourceEditable?: boolean },
+): TemplateResult {
   return html`
     <div style="height: 32rem; display: flex; border: 1px solid #8884;">
       <om-documentation-editor
         .info=${info}
-        ?readOnly=${readOnly}
+        ?readOnly=${opts?.readOnly ?? false}
+        ?source-editable=${opts?.sourceEditable ?? false}
         style="flex: 1 1 auto;"
       ></om-documentation-editor>
     </div>
@@ -68,5 +75,10 @@ export const SimpleDoc: Story = { render: () => host(SIMPLE) };
 /** No documentation yet — an empty canvas ready to type into. */
 export const Empty: Story = { render: () => host("<html></html>") };
 
+/** With a host that handles raw-HTML editing: the "Edit HTML" button appears. */
+export const SourceEditable: Story = {
+  render: () => host(RICH, { sourceEditable: true }),
+};
+
 /** Read-only (an MSL/library class, or one with an infoHeader): no toolbar, not editable. */
-export const ReadOnly: Story = { render: () => host(RICH, true) };
+export const ReadOnly: Story = { render: () => host(RICH, { readOnly: true }) };

@@ -12,8 +12,16 @@ export interface DocumentationChangeDetail {
   info: string;
 }
 
+/**
+ * Emitted when the user asks to edit the raw HTML in the host's own editor (in
+ * VSCode, a native HTML text editor). A pure web host may leave this unhandled
+ * and not set `source-editable`.
+ */
+export type DocumentationEditSourceDetail = Record<string, never>;
+
 declare global {
   interface HTMLElementEventMap {
     "om-documentation-change": CustomEvent<DocumentationChangeDetail>;
+    "om-documentation-edit-source": CustomEvent<DocumentationEditSourceDetail>;
   }
 }
