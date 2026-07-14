@@ -19,9 +19,16 @@ export interface DocumentationChangeDetail {
  */
 export type DocumentationEditSourceDetail = Record<string, never>;
 
+/** Emitted when the user follows a `modelica://` link (the host resolves it). */
+export interface DocumentationOpenLinkDetail {
+  /** The `modelica://…` href — a class cross-reference or a resource path. */
+  href: string;
+}
+
 declare global {
   interface HTMLElementEventMap {
     "om-documentation-change": CustomEvent<DocumentationChangeDetail>;
     "om-documentation-edit-source": CustomEvent<DocumentationEditSourceDetail>;
+    "om-documentation-open-link": CustomEvent<DocumentationOpenLinkDetail>;
   }
 }

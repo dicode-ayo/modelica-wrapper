@@ -17,6 +17,8 @@ import type {
 import { createReadyGate, type ReadyGate } from "../webview/ready-gate.js";
 
 import { docHtmlUriFor } from "./documentation-html-provider.js";
+import { openModelicaLink } from "./documentation-link.js";
+import { resolveDocResources } from "./documentation-resources.js";
 import { renderDocumentationWebviewHtml } from "./documentation-webview-html.js";
 
 export { DOCUMENTATION_VIEW_TYPE };
@@ -38,6 +40,7 @@ export interface DocumentationClient {
     merge: boolean;
   }): Promise<{ success: boolean }>;
   getErrorString(): Promise<{ errorString: string }>;
+  uriToFilename(input: { uri: string }): Promise<{ filename: string }>;
 }
 
 /**
@@ -148,6 +151,10 @@ export function resolveDocumentationEditor(
     }
     if (msg.type === "editSource") {
       void openHtmlSourceEditor(className);
+      return;
+    }
+    if (msg.type === "openLink") {
+      void openModelicaLink(msg.href, ensureClient);
       return;
     }
     void controller?.handle(msg);
@@ -406,7 +413,14 @@ export class DocumentationEditController {
     this.revision = revision;
     this.readOnly = this.readOnlyBase || infoHeader.trim().length > 0;
     this.seeded = true;
-    gate.send({ type: "doc", className, info, readOnly: this.readOnly });
+    const resources = await resolveDocResources(client, info);
+    gate.send({
+      type: "doc",
+      className,
+      info,
+      readOnly: this.readOnly,
+      resources,
+    });
   }
 
   private reportError(message: string): void {

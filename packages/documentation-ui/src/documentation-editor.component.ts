@@ -7,7 +7,11 @@ import {
 } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 
-import type { DocumentationChangeDetail } from "./events.js";
+import type {
+  DocumentationChangeDetail,
+  DocumentationOpenLinkDetail,
+} from "./events.js";
+import { ORIGINAL_SRC_DATASET } from "./documentation-image.js";
 import {
   formatBody,
   splitInfoWrapper,
@@ -18,6 +22,13 @@ import { documentationExtensions } from "./documentation-schema.js";
 
 /** Coalesce a burst of keystrokes into one change once the editor settles. */
 export const EDIT_DEBOUNCE_MS = 300;
+
+/** The follow-a-link modifier label for the current platform. */
+function followModifier(): string {
+  const platform =
+    typeof navigator === "undefined" ? "" : navigator.platform || "";
+  return /Mac|iPhone|iPad/i.test(platform) ? "⌘" : "Ctrl";
+}
 
 /**
  * WYSIWYG editor for a Modelica class's `Documentation(info="<html>…</html>")`.
@@ -44,6 +55,8 @@ export class OmDocumentationEditor extends LitElement {
 
   /** Full `info` (wrapper included). The authoritative value the host sets. */
   @property({ attribute: false }) info = "";
+  /** Map of image `src` → loadable URI (a `modelica://` resource → `data:` URI). */
+  @property({ attribute: false }) resources: Record<string, string> = {};
   @property({ type: Boolean, reflect: true }) readOnly = false;
   /**
    * The host provides its own raw-HTML editor (in VSCode, a native HTML text
@@ -81,11 +94,17 @@ export class OmDocumentationEditor extends LitElement {
     // the panel is disposed. The listener is on this element, so a dispatch from
     // a just-disconnected element still reaches the host.
     this.flushChange();
+    const host = this.editorHost;
+    host?.removeEventListener("click", this.onEditorClick);
+    host?.removeEventListener("mouseover", this.onEditorMouseOver);
     this.editor?.destroy();
     this.editor = null;
   }
 
   override willUpdate(changed: PropertyValues<this>): void {
+    // Apply the resolver before (re)loading so image node views render the
+    // resolved `src` on first paint rather than flashing broken.
+    if (changed.has("resources")) this.applyImageResolver();
     if (changed.has("info")) {
       this.parts = splitInfoWrapper(this.info);
       this.loadIntoEditor();
@@ -100,6 +119,8 @@ export class OmDocumentationEditor extends LitElement {
   override firstUpdated(): void {
     const host = this.editorHost;
     if (host === null) return;
+    host.addEventListener("click", this.onEditorClick);
+    host.addEventListener("mouseover", this.onEditorMouseOver);
     this.editor = new Editor({
       element: host,
       extensions: documentationExtensions,
@@ -107,7 +128,66 @@ export class OmDocumentationEditor extends LitElement {
       onUpdate: () => this.onEditorUpdate(),
       onTransaction: () => this.requestUpdate(),
     });
+    this.applyImageResolver();
     this.loadIntoEditor();
+  }
+
+  // Follow a `modelica://` cross-reference: on a plain click when read-only, or
+  // a modifier-click while editing (a plain click there places the caret). The
+  // host resolves the target; the link's href stays `modelica://` in the source.
+  private readonly onEditorClick = (e: MouseEvent): void => {
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    const href = target.closest("a[href]")?.getAttribute("href");
+    if (href === null || href === undefined || !/^modelica:\/\//i.test(href)) {
+      return;
+    }
+    if (!this.readOnly && !e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    this.dispatchEvent(
+      new CustomEvent<DocumentationOpenLinkDetail>(
+        "om-documentation-open-link",
+        {
+          detail: { href },
+          bubbles: true,
+          composed: true,
+        },
+      ),
+    );
+  };
+
+  // Set a display-only tooltip on hovered `modelica://` links — it lives on the
+  // live DOM, never the ProseMirror model, so it stays out of `getHTML()`/the
+  // source. Re-set on every hover so a `readOnly` flip updates the wording.
+  // Plain click follows only when read-only; while editing it takes the modifier.
+  private readonly onEditorMouseOver = (e: Event): void => {
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    const link = target.closest("a[href]");
+    if (!(link instanceof HTMLElement)) return;
+    const href = link.getAttribute("href");
+    if (href === null || !/^modelica:\/\//i.test(href)) return;
+    link.title = this.readOnly
+      ? `Click to open ${href}`
+      : `${followModifier()}-click to open ${href}`;
+  };
+
+  /**
+   * Point the image node view's resolver at the current `resources` map, and
+   * re-resolve any already-rendered image so a `resources` change without a doc
+   * reload (its library only now resolves) repaints without a stale broken src.
+   */
+  private applyImageResolver(): void {
+    const storage = this.editor?.storage.image;
+    if (storage) storage.resolveSrc = (src) => this.resources[src] ?? src;
+    this.editorHost
+      ?.querySelectorAll<HTMLImageElement>("img[data-om-original-src]")
+      .forEach((img) => {
+        const original = img.dataset[ORIGINAL_SRC_DATASET];
+        if (original !== undefined) {
+          img.setAttribute("src", this.resources[original] ?? original);
+        }
+      });
   }
 
   /**
@@ -510,6 +590,7 @@ const STYLE = html`
     }
     om-documentation-editor .om-doc-editor a {
       color: var(--vscode-textLink-foreground);
+      cursor: pointer;
     }
     om-documentation-editor .om-doc-editor code,
     om-documentation-editor .om-doc-editor pre {

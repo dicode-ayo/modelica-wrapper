@@ -15,7 +15,10 @@
  */
 
 import "@dicode/documentation-ui";
-import type { DocumentationChangeDetail } from "@dicode/documentation-ui";
+import type {
+  DocumentationChangeDetail,
+  DocumentationOpenLinkDetail,
+} from "@dicode/documentation-ui";
 import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 
@@ -33,6 +36,7 @@ export class OmDocumentationRoot extends LitElement {
 
   @state() private info = "";
   @state() private readOnly = false;
+  @state() private resources: Record<string, string> = {};
   @state() private error: string | null = null;
 
   private readonly vscode = getVsCodeApi<DocWebviewToExtension>();
@@ -55,6 +59,7 @@ export class OmDocumentationRoot extends LitElement {
     if (!msg || typeof msg !== "object" || !("type" in msg)) return;
     switch (msg.type) {
       case "doc":
+        this.resources = msg.resources;
         this.info = msg.info;
         this.readOnly = msg.readOnly;
         this.error = null;
@@ -75,6 +80,12 @@ export class OmDocumentationRoot extends LitElement {
     this.vscode.postMessage({ type: "editSource" });
   };
 
+  private readonly onOpenLink = (
+    e: CustomEvent<DocumentationOpenLinkDetail>,
+  ): void => {
+    this.vscode.postMessage({ type: "openLink", href: e.detail.href });
+  };
+
   override render(): TemplateResult {
     // Keep the error node always present: a leading `${…}` before an element
     // with attribute bindings can scramble those bindings (the Lit
@@ -85,10 +96,12 @@ export class OmDocumentationRoot extends LitElement {
       </div>
       <om-documentation-editor
         .info=${this.info}
+        .resources=${this.resources}
         ?readOnly=${this.readOnly}
         external-source
         @om-documentation-change=${this.onChange}
         @om-documentation-edit-source=${this.onEditSource}
+        @om-documentation-open-link=${this.onOpenLink}
       ></om-documentation-editor>
       <style>
         om-documentation-root {
