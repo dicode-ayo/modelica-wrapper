@@ -5,12 +5,12 @@ import { randomNonce } from "../webview/nonce.js";
 /**
  * Build the CSP-locked HTML that boots the documentation-ui bundle
  * (`out/documentation.js`, root `<om-documentation-root>`) for the
- * `modelica.documentation` custom editor. The bundle carries its styles as
- * adopted stylesheets, so no sibling `.css` is linked.
+ * `modelica.documentation` custom editor. The bundle injects its own `<style>`
+ * (allowed by `style-src 'unsafe-inline'`), so no sibling `.css` is linked.
  *
- * `script-src` is nonce-only (no `'unsafe-inline'`), so any `<script>` or
- * inline handler carried in the rendered `Documentation` HTML is inert — the
- * webview sanitizes on top of that, not instead of it.
+ * `script-src` is nonce-only (no `'unsafe-inline'`) as a backstop, but the
+ * webview never injects the raw `Documentation` string: TipTap parses it against
+ * an explicit schema and only the resulting ProseMirror document reaches the DOM.
  */
 export function renderDocumentationWebviewHtml(
   webview: vscode.Webview,

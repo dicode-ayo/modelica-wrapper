@@ -378,12 +378,12 @@
   "dependencies": {
     "@dicode/diagram-svg": "workspace:*",
     "@dicode/diagram-ui": "workspace:*",
+    "@dicode/documentation-ui": "workspace:*",
     "@dicode/modelica-completion": "workspace:*",
     "@dicode/modelica-lang-core": "workspace:*",
     "@dicode/omc-client": "workspace:*",
     "@dicode/result-ui": "workspace:*",
     "@dicode/ui-common": "workspace:*",
-    "dompurify": "^3.2.4",
     "lit": "^3.2.0",
     "web-tree-sitter": "^0.25.10",
     "zeromq": "^6.1.0"

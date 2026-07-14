@@ -6,7 +6,8 @@ import type { StorybookConfig } from "@storybook/web-components-vite";
  * One Storybook, one Chromatic project: this globs the stories from every
  * visual package so a single build snapshots them together. Story titles are
  * already namespaced per package (`diagram-svg/…`, `diagram-ui/…`,
- * `result-ui/…`), so they fall into clean top-level sidebar groups.
+ * `result-ui/…`, `documentation-ui/…`), so they fall into clean top-level
+ * sidebar groups.
  *
  * Framework is `web-components-vite` because diagram-ui and result-ui are Lit
  * custom elements (`<om-*>`). The diagram-svg stories return plain DOM nodes,
@@ -18,6 +19,7 @@ const config: StorybookConfig = {
     "../../diagram-svg/stories/**/*.stories.@(ts|tsx|js|jsx)",
     "../../diagram-ui/stories/**/*.stories.@(ts|tsx|js|jsx)",
     "../../result-ui/stories/**/*.stories.@(ts|tsx|js|jsx)",
+    "../../documentation-ui/stories/**/*.stories.@(ts|tsx|js|jsx)",
   ],
   addons: ["@storybook/addon-essentials"],
   framework: {

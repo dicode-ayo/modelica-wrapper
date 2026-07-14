@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false
+  },
+  "include": ["src/**/*", "stories/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

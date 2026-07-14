@@ -1,26 +1,38 @@
 /**
- * `resolveDocumentationEditor` renders a class's `Documentation(info=…)` HTML in
- * a read-only custom editor. These pin the contracts the plumbing rests on: the
- * `info` HTML is seeded to the webview only after its `ready` handshake, a
- * failed OMC read surfaces as an `error` (never a `doc`), and a document whose
- * class can't be resolved renders a placeholder without wiring the bundle.
+ * The documentation editor renders and edits a class's `Documentation(info=…)`.
+ * These pin the contracts the plumbing rests on: the `info` is seeded to the
+ * webview only after its `ready` handshake; a failed OMC read surfaces as an
+ * `error`; an unresolved class renders a placeholder without reading OMC; the
+ * focused class is tracked for the switcher; and — the load-bearing invariant —
+ * an edit writes through OMC carrying the current `revisions` back (so that
+ * section isn't cleared) and reflects the canonical source into the buffer,
+ * while a class that would lose an `__OpenModelica_infoHeader`, or an MSL source,
+ * is refused.
  *
- * `vscode` is aliased to the in-repo mock via the extension's vitest config, so
- * this runs in plain Node.
+ * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 import type { OmcClient } from "@dicode/omc-client";
 
 import type { DocExtensionToWebview } from "../webview/documentation-protocol.js";
+import type { ReadyGate } from "../webview/ready-gate.js";
+import { setStatReadonly } from "../../test-support/vscode-mock.js";
 
 import {
+  DocumentationEditController,
   DocumentationEditorProvider,
   resolveDocumentationEditor,
+  type DocumentationClient,
+  type Scheduler,
 } from "./documentation-editor-provider.js";
 
 const EXT_URI = vscode.Uri.file("/ext");
+
+afterEach(() => setStatReadonly(false));
+
+// ── resolve path ───────────────────────────────────────────────────────────
 
 interface FakeWebview {
   options: unknown;
@@ -88,29 +100,28 @@ function makePanel(active = false): {
   };
 }
 
-function makeClient(
-  getDocumentationAnnotation: (input: {
-    typeName: string;
-  }) => Promise<{ info: string }>,
-): { client: OmcClient; seen: () => string | undefined } {
-  let seen: string | undefined;
-  const client = {
-    getDocumentationAnnotation: vi.fn((input: { typeName: string }) => {
-      seen = input.typeName;
-      return getDocumentationAnnotation(input);
-    }),
+function makeResolveClient(anno: {
+  info: string;
+  revision?: string;
+  infoHeader?: string;
+}): OmcClient {
+  return {
+    getDocumentationAnnotation: vi.fn(() =>
+      Promise.resolve({
+        info: anno.info,
+        revision: anno.revision ?? "",
+        infoHeader: anno.infoHeader ?? "",
+      }),
+    ),
   } as unknown as OmcClient;
-  return { client, seen: () => seen };
 }
 
 function docFor(uri: vscode.Uri): vscode.TextDocument {
   return { uri } as unknown as vscode.TextDocument;
 }
 
-/** Drain the async OMC read. */
 async function flush(): Promise<void> {
-  await new Promise((r) => setTimeout(r, 0));
-  await new Promise((r) => setTimeout(r, 0));
+  for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
 }
 
 const PID_DOC = docFor(
@@ -118,47 +129,89 @@ const PID_DOC = docFor(
 );
 
 describe("resolveDocumentationEditor", () => {
-  it("queues the info until ready, then posts a single doc", async () => {
+  it("queues the info until ready, then posts a single writable doc", async () => {
     const { panel, webview, posted, fireReady } = makePanel();
-    const { client, seen } = makeClient(() =>
-      Promise.resolve({ info: "<html><p>PID</p></html>" }),
+    const ensureClient = vi.fn(() =>
+      Promise.resolve(makeResolveClient({ info: "<html><p>PID</p></html>" })),
     );
-    const ensureClient = vi.fn(() => Promise.resolve(client));
 
     resolveDocumentationEditor(panel, EXT_URI, ensureClient, PID_DOC);
     expect(webview.html).toContain("om-documentation-root");
 
     await flush();
-    expect(posted).toEqual([]); // held back until the webview signals ready
+    expect(posted).toEqual([]); // held back until ready
 
     fireReady();
+    await flush();
     expect(posted).toHaveLength(1);
     const msg = posted[0];
     expect(msg?.type).toBe("doc");
     if (msg?.type === "doc") {
       expect(msg.className).toBe("Modelica.Blocks.Continuous.PID");
       expect(msg.info).toBe("<html><p>PID</p></html>");
+      expect(msg.readOnly).toBe(false);
     }
-    expect(seen()).toBe("Modelica.Blocks.Continuous.PID");
+  });
+
+  it("marks a class carrying an infoHeader read-only", async () => {
+    const { panel, posted, fireReady } = makePanel();
+    const ensureClient = vi.fn(() =>
+      Promise.resolve(
+        makeResolveClient({
+          info: "<html><p>x</p></html>",
+          infoHeader: "<html><p>header</p></html>",
+        }),
+      ),
+    );
+
+    resolveDocumentationEditor(panel, EXT_URI, ensureClient, PID_DOC);
+    await flush();
+    fireReady();
+    await flush();
+
+    const msg = posted.find((m) => m.type === "doc");
+    expect(msg?.type === "doc" && msg.readOnly).toBe(true);
+  });
+
+  it("marks an MSL (readonly-stat) source read-only", async () => {
+    setStatReadonly(true);
+    const { panel, posted, fireReady } = makePanel();
+    const ensureClient = vi.fn(() =>
+      Promise.resolve(makeResolveClient({ info: "<html><p>x</p></html>" })),
+    );
+
+    resolveDocumentationEditor(panel, EXT_URI, ensureClient, PID_DOC);
+    await flush();
+    fireReady();
+    await flush();
+
+    const msg = posted.find((m) => m.type === "doc");
+    expect(msg?.type === "doc" && msg.readOnly).toBe(true);
   });
 
   it("posts an error, not a doc, when the OMC read throws", async () => {
     const { panel, posted, fireReady } = makePanel();
-    const { client } = makeClient(() => Promise.reject(new Error("OMC down")));
+    const client = {
+      getDocumentationAnnotation: vi.fn(() =>
+        Promise.reject(new Error("OMC down")),
+      ),
+    } as unknown as OmcClient;
     const ensureClient = vi.fn(() => Promise.resolve(client));
 
     resolveDocumentationEditor(panel, EXT_URI, ensureClient, PID_DOC);
     await flush();
     fireReady();
+    await flush();
 
-    expect(posted).toHaveLength(1);
-    expect(posted[0]?.type).toBe("error");
+    expect(posted.some((m) => m.type === "error")).toBe(true);
+    expect(posted.some((m) => m.type === "doc")).toBe(false);
   });
 
   it("tracks the focused class for the switcher, and clears it on blur/dispose", () => {
     const { panel, fireViewState, fireDispose } = makePanel(true);
-    const { client } = makeClient(() => Promise.resolve({ info: "" }));
-    const ensureClient = vi.fn(() => Promise.resolve(client));
+    const ensureClient = vi.fn(() =>
+      Promise.resolve(makeResolveClient({ info: "" })),
+    );
 
     resolveDocumentationEditor(panel, EXT_URI, ensureClient, PID_DOC);
     expect(DocumentationEditorProvider.activeClassName()).toBe(
@@ -178,9 +231,10 @@ describe("resolveDocumentationEditor", () => {
   });
 
   it("renders a placeholder and never reads OMC for an unresolved class", async () => {
-    const { panel, webview, posted, fireReady } = makePanel();
-    const { client } = makeClient(() => Promise.resolve({ info: "" }));
-    const ensureClient = vi.fn(() => Promise.resolve(client));
+    const { panel, webview, posted } = makePanel();
+    const ensureClient = vi.fn(() =>
+      Promise.resolve(makeResolveClient({ info: "" })),
+    );
 
     resolveDocumentationEditor(
       panel,
@@ -189,10 +243,235 @@ describe("resolveDocumentationEditor", () => {
       docFor(vscode.Uri.file("/ws/Foo.mo")),
     );
     await flush();
-    fireReady();
 
     expect(webview.html).not.toContain("om-documentation-root");
     expect(ensureClient).not.toHaveBeenCalled();
     expect(posted).toEqual([]);
+  });
+});
+
+// ── controller (write + reverse) ─────────────────────────────────────────────
+
+const CLASS = "Pkg.M";
+const SRC_URI = vscode.Uri.parse("modelica-source:/Pkg.M.mo");
+const LISTED =
+  'model M annotation(Documentation(info="<html><p>new</p></html>")); end M;';
+
+function srcDoc(text = "buffer text"): vscode.TextDocument {
+  return {
+    uri: SRC_URI,
+    lineCount: 1,
+    getText: () => text,
+  } as unknown as vscode.TextDocument;
+}
+
+function makeGate(): {
+  gate: ReadyGate<DocExtensionToWebview>;
+  posted: DocExtensionToWebview[];
+} {
+  const posted: DocExtensionToWebview[] = [];
+  return {
+    posted,
+    gate: { send: (m) => posted.push(m), markReady: () => {} },
+  };
+}
+
+function makeShadowFactory(): {
+  factory: (onForeign: (d: vscode.TextDocument) => void) => {
+    write(t: string): Promise<void>;
+    dispose(): void;
+  };
+  writes: string[];
+  fireForeign: () => void;
+} {
+  const writes: string[] = [];
+  let captured: ((d: vscode.TextDocument) => void) | undefined;
+  return {
+    writes,
+    fireForeign: () => captured?.(srcDoc()),
+    factory: (onForeign) => {
+      captured = onForeign;
+      return {
+        write: (t) => {
+          writes.push(t);
+          return Promise.resolve();
+        },
+        dispose: () => {},
+      };
+    },
+  };
+}
+
+function manualScheduler(): { scheduler: Scheduler; flush: () => void } {
+  let pending: (() => void) | undefined;
+  return {
+    scheduler: {
+      schedule(fn) {
+        pending = fn;
+        return {
+          cancel: () => {
+            if (pending === fn) pending = undefined;
+          },
+        };
+      },
+    },
+    flush: () => {
+      const fn = pending;
+      pending = undefined;
+      fn?.();
+    },
+  };
+}
+
+interface EditClientCalls {
+  setArgs: { typeName: string; info: string; revisions: string }[];
+  loaded: string[];
+}
+
+function makeEditClient(
+  anno: {
+    info: string;
+    revision?: string;
+    infoHeader?: string;
+    fail?: boolean;
+  },
+  opts?: { setOk?: boolean; loadOk?: boolean; contents?: string },
+): { client: DocumentationClient; calls: EditClientCalls } {
+  const calls: EditClientCalls = { setArgs: [], loaded: [] };
+  const client: DocumentationClient = {
+    getDocumentationAnnotation: vi.fn(() =>
+      anno.fail
+        ? Promise.reject(new Error("OMC down"))
+        : Promise.resolve({
+            info: anno.info,
+            revision: anno.revision ?? "",
+            infoHeader: anno.infoHeader ?? "",
+          }),
+    ),
+    setDocumentationAnnotation: vi.fn(
+      (a: { typeName: string; info: string; revisions: string }) => {
+        calls.setArgs.push(a);
+        return Promise.resolve({ bool: opts?.setOk ?? true });
+      },
+    ),
+    listFile: vi.fn(() =>
+      Promise.resolve({ contents: opts?.contents ?? LISTED }),
+    ),
+    loadString: vi.fn((a: { data: string }) => {
+      calls.loaded.push(a.data);
+      return Promise.resolve({ success: opts?.loadOk ?? true });
+    }),
+    getErrorString: vi.fn(() => Promise.resolve({ errorString: "" })),
+  };
+  return { client, calls };
+}
+
+describe("DocumentationEditController write path", () => {
+  it("writes the edit through OMC carrying the current revisions, then reflects", async () => {
+    const { client, calls } = makeEditClient({
+      info: "<html><p>orig</p></html>",
+      revision: "<html><p>REV 1.0</p></html>",
+    });
+    const { gate } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DocumentationEditController(
+      { client, document: srcDoc(), className: CLASS, gate },
+      false,
+      factory,
+    );
+
+    controller.start();
+    await controller.handle({
+      type: "edit",
+      info: "<html><p>edited</p></html>",
+    });
+
+    expect(calls.setArgs).toEqual([
+      {
+        typeName: CLASS,
+        info: "<html><p>edited</p></html>",
+        revisions: "<html><p>REV 1.0</p></html>",
+      },
+    ]);
+    expect(writes).toEqual([LISTED]); // canonical source reflected; dirty is VSCode's
+  });
+
+  it("refuses an edit on a read-only class and never writes", async () => {
+    const { client, calls } = makeEditClient({ info: "<html></html>" });
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DocumentationEditController(
+      { client, document: srcDoc(), className: CLASS, gate },
+      true,
+      factory,
+    );
+
+    controller.start();
+    await controller.handle({ type: "edit", info: "<html><p>x</p></html>" });
+
+    expect(calls.setArgs).toEqual([]);
+    expect(writes).toEqual([]);
+    expect(posted.some((m) => m.type === "error")).toBe(true);
+  });
+
+  it("refuses an edit before the first fetch seeded revisions (no wipe)", async () => {
+    const { client, calls } = makeEditClient({ info: "", fail: true });
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DocumentationEditController(
+      { client, document: srcDoc(), className: CLASS, gate },
+      false,
+      factory,
+    );
+
+    controller.start(); // fetch fails → never seeded
+    await controller.handle({ type: "edit", info: "<html><p>x</p></html>" });
+
+    expect(calls.setArgs).toEqual([]); // would have written revisions: ""
+    expect(writes).toEqual([]);
+    expect(posted.some((m) => m.type === "error")).toBe(true);
+  });
+
+  it("re-syncs on an external write: reflects the source and re-sends the doc", async () => {
+    const { client } = makeEditClient({ info: "<html><p>after</p></html>" });
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DocumentationEditController(
+      { client, document: srcDoc(), className: CLASS, gate },
+      false,
+      factory,
+    );
+
+    controller.start();
+    await controller.refreshFromExternalWrite();
+
+    // The native HTML editor already wrote OMC; the controller reflects the
+    // canonical source into the (possibly dirty) buffer and re-sends the doc.
+    expect(writes).toEqual([LISTED]);
+    expect(posted.filter((m) => m.type === "doc").length).toBeGreaterThan(0);
+  });
+
+  it("reverse-syncs a foreign buffer change: loadString then re-send the doc", async () => {
+    const { client, calls } = makeEditClient({ info: "<html><p>x</p></html>" });
+    const { gate, posted } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler, flush: flushTimer } = manualScheduler();
+    const controller = new DocumentationEditController(
+      { client, document: srcDoc("undone text"), className: CLASS, gate },
+      false,
+      factory,
+      scheduler,
+    );
+
+    controller.start();
+    await Promise.resolve();
+    posted.length = 0; // drop the initial doc
+
+    fireForeign();
+    flushTimer();
+    await flush();
+
+    expect(calls.loaded).toEqual(["undone text"]);
+    expect(posted.some((m) => m.type === "doc")).toBe(true);
   });
 });
