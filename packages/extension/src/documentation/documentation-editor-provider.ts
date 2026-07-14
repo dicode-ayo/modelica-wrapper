@@ -28,11 +28,12 @@ export interface DocumentationClient {
   getDocumentationAnnotation(input: {
     typeName: string;
   }): Promise<{ info: string; revision: string; infoHeader: string }>;
-  setDocumentationAnnotation(input: {
+  setFullDocumentationAnnotation(input: {
     typeName: string;
     info: string;
     revisions: string;
-  }): Promise<{ bool: boolean }>;
+    infoHeader: string;
+  }): Promise<{ success: boolean }>;
   listFile(input: { typeName: string }): Promise<{ contents: string }>;
   loadString(input: {
     data: string;
@@ -46,13 +47,12 @@ export interface DocumentationClient {
 /**
  * Documentation custom editor: a `CustomTextEditorProvider` bound to `*.mo` that
  * renders and edits a class's `Documentation(info="<html>…</html>")` HTML. A
- * WYSIWYG edit rewrites the annotation through OMC (`setDocumentationAnnotation`)
- * and the class's canonical source is reflected back into the document via a
- * shadow buffer, so VSCode tracks dirty state and undo; a foreign buffer change
- * (undo/redo or a manual text edit) is `loadString`ed back into OMC and the
- * annotation re-fetched. A read-only class (an MSL library, or one carrying an
- * `__OpenModelica_infoHeader` the write API can't preserve) renders but rejects
- * edits.
+ * WYSIWYG edit rewrites the annotation through OMC
+ * (`setFullDocumentationAnnotation`) and the class's canonical source is
+ * reflected back into the document via a shadow buffer, so VSCode tracks
+ * dirty state and undo; a foreign buffer change (undo/redo or a manual text
+ * edit) is `loadString`ed back into OMC and the annotation re-fetched. A
+ * read-only class (an MSL library) renders but rejects edits.
  */
 export class DocumentationEditorProvider
   implements vscode.CustomTextEditorProvider
@@ -253,27 +253,28 @@ const REVERSE_SYNC_DEBOUNCE_MS = 150;
 
 /**
  * Per-editor write controller. Forward: an `edit` from the webview carries the
- * full canonical `info`; it is written through `setDocumentationAnnotation`
- * (passing the current `revisions` back so that section isn't cleared), then the
- * class's canonical `listFile` source is reflected into the shadow buffer.
- * Reverse: a foreign buffer change is `loadString`ed back into OMC and the
- * annotation re-fetched and re-sent. Every unit runs through one serialized
- * queue so an edit can't diff against a half-applied reverse sync on the single
- * OMC socket.
+ * full canonical `info`; it is written through `setFullDocumentationAnnotation`
+ * (passing the current `revisions` and `infoHeader` back so neither section is
+ * cleared), then the class's canonical `listFile` source is reflected into the
+ * shadow buffer. Reverse: a foreign buffer change is `loadString`ed back into
+ * OMC and the annotation re-fetched and re-sent. Every unit runs through one
+ * serialized queue so an edit can't diff against a half-applied reverse sync
+ * on the single OMC socket.
  */
 export class DocumentationEditController {
   private queue: Promise<void> = Promise.resolve();
   private readonly shadow: ShadowBuffer;
   private reverseTimer: { cancel(): void } | undefined;
 
-  // The `revisions` section, remembered from the last fetch and passed on every
-  // write — `setDocumentationAnnotation` clears any section it isn't given.
+  // The `revisions` and `infoHeader` sections, remembered from the last fetch
+  // and passed on every write — `setFullDocumentationAnnotation` replaces the
+  // whole annotation, so a section left out here would be cleared.
   private revision = "";
-  // Whether edits are refused: an MSL/library source, or a class carrying an
-  // `__OpenModelica_infoHeader` the write API would silently drop.
+  private infoHeader = "";
+  // Whether edits are refused: an MSL/library source.
   private readOnly: boolean;
-  // A successful fetch has seeded `revision`/`readOnly`. An edit before that
-  // would write `revisions: ""` and clear the section, so it's refused.
+  // A successful fetch has seeded `revision`/`infoHeader`. An edit before that
+  // would write them as "" and clear the sections, so it's refused.
   private seeded = false;
 
   constructor(
@@ -344,16 +345,14 @@ export class DocumentationEditController {
       return;
     }
     const { client, className } = this.deps;
-    const { bool } = await client.setDocumentationAnnotation({
+    const { success } = await client.setFullDocumentationAnnotation({
       typeName: className,
       info,
       revisions: this.revision,
+      infoHeader: this.infoHeader,
     });
-    // The wrapper's `parseMutationSuccess` throws (→ the queue's catch surfaces
-    // the OMC message) when OMC reports an error, so a bare `false` here means it
-    // failed without one.
-    if (!bool) {
-      this.reportError("setDocumentationAnnotation returned false");
+    if (!success) {
+      this.reportError("setFullDocumentationAnnotation returned false");
       return;
     }
     await this.reflect();
@@ -411,7 +410,8 @@ export class DocumentationEditController {
     const { info, revision, infoHeader } =
       await client.getDocumentationAnnotation({ typeName: className });
     this.revision = revision;
-    this.readOnly = this.readOnlyBase || infoHeader.trim().length > 0;
+    this.infoHeader = infoHeader;
+    this.readOnly = this.readOnlyBase;
     this.seeded = true;
     const resources = await resolveDocResources(client, info);
     gate.send({

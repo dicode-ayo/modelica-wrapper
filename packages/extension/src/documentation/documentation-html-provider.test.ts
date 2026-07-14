@@ -1,9 +1,9 @@
 /**
  * `DocumentationHtmlProvider` serves a class's `Documentation(info=…)` as an
  * editable `modelica-doc:` file. These pin the contracts: a read renders the
- * current annotation, a write carries the current `revisions` back (so that
- * section isn't cleared) and reflects into the class's `.mo`, and a read-only
- * source or an `__OpenModelica_infoHeader`-bearing class refuses writes.
+ * current annotation, a write carries the current `revisions` and
+ * `infoHeader` back (so neither section is cleared) and reflects into the
+ * class's `.mo`, and a read-only source refuses writes.
  *
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
@@ -18,7 +18,12 @@ import {
 } from "./documentation-html-provider.js";
 
 interface Calls {
-  setArgs: { typeName: string; info: string; revisions: string }[];
+  setArgs: {
+    typeName: string;
+    info: string;
+    revisions: string;
+    infoHeader: string;
+  }[];
 }
 
 function makeClient(
@@ -44,10 +49,15 @@ function makeClient(
     getClassInformation: vi.fn(() =>
       Promise.resolve({ fileReadOnly: opts?.fileReadOnly ?? false }),
     ),
-    setDocumentationAnnotation: vi.fn(
-      (a: { typeName: string; info: string; revisions: string }) => {
+    setFullDocumentationAnnotation: vi.fn(
+      (a: {
+        typeName: string;
+        info: string;
+        revisions: string;
+        infoHeader: string;
+      }) => {
         calls.setArgs.push(a);
-        return Promise.resolve({ bool: opts?.setOk ?? true });
+        return Promise.resolve({ success: opts?.setOk ?? true });
       },
     ),
   };
@@ -95,6 +105,7 @@ describe("DocumentationHtmlProvider", () => {
         typeName: CLASS,
         info: "<html><p>new</p></html>",
         revisions: "<html><p>REV</p></html>",
+        infoHeader: "",
       },
     ]);
     expect(notified).toEqual([CLASS]);
@@ -115,7 +126,10 @@ describe("DocumentationHtmlProvider", () => {
     expect(calls.setArgs).toEqual([]);
   });
 
-  it("refuses to write a class carrying an infoHeader", async () => {
+  it("carries the current infoHeader back on write, unchanged", async () => {
+    // The load-bearing regression for #304: this class used to be refused
+    // writes entirely because the old write path had no way to preserve
+    // infoHeader. It now writes and passes the header back verbatim.
     const { client, calls } = makeClient({
       info: "<html></html>",
       infoHeader: "<html><p>header</p></html>",
@@ -124,10 +138,17 @@ describe("DocumentationHtmlProvider", () => {
       () => Promise.resolve(client),
       () => {},
     );
-    await expect(
-      provider.writeFile(URI, Buffer.from("<html><p>x</p></html>")),
-    ).rejects.toThrow();
-    expect(calls.setArgs).toEqual([]);
+
+    await provider.writeFile(URI, Buffer.from("<html><p>x</p></html>"));
+
+    expect(calls.setArgs).toEqual([
+      {
+        typeName: CLASS,
+        info: "<html><p>x</p></html>",
+        revisions: "",
+        infoHeader: "<html><p>header</p></html>",
+      },
+    ]);
   });
 
   it("fires a change event when the class's .mo changed elsewhere", () => {

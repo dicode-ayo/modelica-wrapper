@@ -198,6 +198,7 @@ export type OmcFunction =
   | "setComponentComment"
   | "setClassComment"
   | "setDocumentationAnnotation"
+  | "setFullDocumentationAnnotation"
   | "addInitialState"
   | "deleteInitialState"
   | "updateInitialState"
