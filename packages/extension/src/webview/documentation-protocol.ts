@@ -10,9 +10,11 @@
  *   - `error` — surface a backend error (e.g. the OMC read or write failed).
  *
  * Webview → extension:
- *   - `ready` — the webview bundle has mounted and is listening.
- *   - `edit`  — the user changed the documentation; carries the full canonical
- *               `info` (wrapper included) to write back.
+ *   - `ready`      — the webview bundle has mounted and is listening.
+ *   - `edit`       — the user changed the documentation; carries the full
+ *                    canonical `info` (wrapper included) to write back.
+ *   - `editSource` — the user asked to edit the raw HTML; the host opens a
+ *                    native HTML editor on the class's `info`.
  */
 export type DocExtensionToWebview =
   | { type: "doc"; className: string; info: string; readOnly: boolean }
@@ -20,4 +22,5 @@ export type DocExtensionToWebview =
 
 export type DocWebviewToExtension =
   | { type: "ready" }
-  | { type: "edit"; info: string };
+  | { type: "edit"; info: string }
+  | { type: "editSource" };

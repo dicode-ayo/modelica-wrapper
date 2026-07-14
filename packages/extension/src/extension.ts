@@ -24,6 +24,11 @@ import {
   ICON_VIEW_TYPE,
 } from "./diagram/view-type.js";
 import { DocumentationEditorProvider } from "./documentation/documentation-editor-provider.js";
+import {
+  DocumentationHtmlProvider,
+  MODELICA_DOC_SCHEME,
+  wireDocHtmlRefresh,
+} from "./documentation/documentation-html-provider.js";
 import { registerLanguageFeatures } from "./language/index.js";
 import { log } from "./logger.js";
 import { ResultViewEditorProvider } from "./results/result-view-provider.js";
@@ -66,6 +71,9 @@ export async function activate(
   );
 
   const sourceProvider = new ModelicaSourceProvider(ensureClient);
+  const docHtmlProvider = new DocumentationHtmlProvider(ensureClient, (name) =>
+    sourceProvider.notifySourceChanged(name),
+  );
 
   // One DiagnosticCollection shared by the user-triggered Check Model command
   // (clear-all + replace) and the live-check pipeline (per-file updates).
@@ -98,6 +106,12 @@ export async function activate(
       sourceProvider,
       { isCaseSensitive: true },
     ),
+    vscode.workspace.registerFileSystemProvider(
+      MODELICA_DOC_SCHEME,
+      docHtmlProvider,
+      { isCaseSensitive: true },
+    ),
+    wireDocHtmlRefresh(docHtmlProvider),
     ...registerCommands({
       extensionContext: context,
       ensureClient,

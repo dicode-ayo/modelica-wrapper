@@ -15,6 +15,7 @@ import type {
 } from "../webview/documentation-protocol.js";
 import { createReadyGate, type ReadyGate } from "../webview/ready-gate.js";
 
+import { docHtmlUriFor } from "./documentation-html-provider.js";
 import { renderDocumentationWebviewHtml } from "./documentation-webview-html.js";
 
 export { DOCUMENTATION_VIEW_TYPE };
@@ -142,6 +143,10 @@ export function resolveDocumentationEditor(
   const sub = webview.onDidReceiveMessage((msg: DocWebviewToExtension) => {
     if (msg.type === "ready") {
       gate.markReady();
+      return;
+    }
+    if (msg.type === "editSource") {
+      void openHtmlSourceEditor(className);
       return;
     }
     void controller?.handle(msg);
@@ -365,6 +370,29 @@ export class DocumentationEditController {
 
 function detail(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Open the class's `Documentation(info=…)` HTML in a native editor beside the
+ * documentation view. The `modelica-doc:` provider serves it as an editable
+ * `.html` file, so VSCode gives it HTML highlighting and formatting; saving
+ * writes back through `setDocumentationAnnotation`.
+ */
+async function openHtmlSourceEditor(className: string): Promise<void> {
+  try {
+    const doc = await vscode.workspace.openTextDocument(
+      docHtmlUriFor(className),
+    );
+    await vscode.languages.setTextDocumentLanguage(doc, "html");
+    await vscode.window.showTextDocument(doc, {
+      viewColumn: vscode.ViewColumn.Beside,
+      preview: false,
+    });
+  } catch (err) {
+    void vscode.window.showErrorMessage(
+      `Modelica: could not open the documentation HTML for ${className}: ${detail(err)}`,
+    );
+  }
 }
 
 /**

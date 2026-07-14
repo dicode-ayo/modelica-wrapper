@@ -71,6 +71,10 @@ export class OmDocumentationRoot extends LitElement {
     this.vscode.postMessage({ type: "edit", info: e.detail.info });
   };
 
+  private readonly onEditSource = (): void => {
+    this.vscode.postMessage({ type: "editSource" });
+  };
+
   override render(): TemplateResult {
     return html`
       ${this.error !== null
@@ -79,7 +83,9 @@ export class OmDocumentationRoot extends LitElement {
       <om-documentation-editor
         .info=${this.info}
         ?readOnly=${this.readOnly}
+        ?source-editable=${!this.readOnly}
         @om-documentation-change=${this.onChange}
+        @om-documentation-edit-source=${this.onEditSource}
       ></om-documentation-editor>
       <style>
         om-documentation-root {
