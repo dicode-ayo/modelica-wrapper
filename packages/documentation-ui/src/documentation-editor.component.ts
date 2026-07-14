@@ -8,6 +8,7 @@ import {
 import { customElement, property, state } from "lit/decorators.js";
 
 import type { DocumentationChangeDetail } from "./events.js";
+import type { ModelicaImageStorage } from "./documentation-image.js";
 import {
   formatBody,
   splitInfoWrapper,
@@ -44,6 +45,8 @@ export class OmDocumentationEditor extends LitElement {
 
   /** Full `info` (wrapper included). The authoritative value the host sets. */
   @property({ attribute: false }) info = "";
+  /** Map of image `src` → loadable URI (a `modelica://` resource → `data:` URI). */
+  @property({ attribute: false }) resources: Record<string, string> = {};
   @property({ type: Boolean, reflect: true }) readOnly = false;
   /**
    * The host provides its own raw-HTML editor (in VSCode, a native HTML text
@@ -86,6 +89,9 @@ export class OmDocumentationEditor extends LitElement {
   }
 
   override willUpdate(changed: PropertyValues<this>): void {
+    // Apply the resolver before (re)loading so image node views render the
+    // resolved `src` on first paint rather than flashing broken.
+    if (changed.has("resources")) this.applyImageResolver();
     if (changed.has("info")) {
       this.parts = splitInfoWrapper(this.info);
       this.loadIntoEditor();
@@ -107,7 +113,17 @@ export class OmDocumentationEditor extends LitElement {
       onUpdate: () => this.onEditorUpdate(),
       onTransaction: () => this.requestUpdate(),
     });
+    this.applyImageResolver();
     this.loadIntoEditor();
+  }
+
+  /** Point the image node view's resolver at the current `resources` map. */
+  private applyImageResolver(): void {
+    const storages = this.editor?.storage as
+      | Record<string, ModelicaImageStorage | undefined>
+      | undefined;
+    const image = storages?.image;
+    if (image) image.resolveSrc = (src) => this.resources[src] ?? src;
   }
 
   /**

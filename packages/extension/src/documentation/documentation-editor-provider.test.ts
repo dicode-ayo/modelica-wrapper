@@ -362,6 +362,7 @@ function makeEditClient(
       return Promise.resolve({ success: opts?.loadOk ?? true });
     }),
     getErrorString: vi.fn(() => Promise.resolve({ errorString: "" })),
+    uriToFilename: vi.fn(() => Promise.resolve({ filename: "" })),
   };
   return { client, calls };
 }

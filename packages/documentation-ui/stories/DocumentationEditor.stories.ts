@@ -52,12 +52,17 @@ type Story = StoryObj;
 
 function host(
   info: string,
-  opts?: { readOnly?: boolean; externalSource?: boolean },
+  opts?: {
+    readOnly?: boolean;
+    externalSource?: boolean;
+    resources?: Record<string, string>;
+  },
 ): TemplateResult {
   return html`
     <div style="height: 32rem; display: flex; border: 1px solid #8884;">
       <om-documentation-editor
         .info=${info}
+        .resources=${opts?.resources ?? {}}
         ?readOnly=${opts?.readOnly ?? false}
         ?external-source=${opts?.externalSource ?? false}
         style="flex: 1 1 auto;"
@@ -65,6 +70,21 @@ function host(
     </div>
   `;
 }
+
+const IMAGE_URI = "modelica://Modelica/Resources/Images/Sample.svg";
+const IMAGE_DOC = `<html>
+<p>The output signal:</p>
+<p><img src="${IMAGE_URI}" alt="signal"></p>
+</html>`;
+// What the host's resolver would send back for IMAGE_URI (a data: URI).
+const IMAGE_DATA =
+  "data:image/svg+xml;base64," +
+  btoa(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="60">' +
+      '<rect width="160" height="60" fill="#3a6ea5"/>' +
+      '<text x="80" y="38" fill="#fff" font-size="20" text-anchor="middle" font-family="sans-serif">signal</text>' +
+      "</svg>",
+  );
 
 /**
  * A rich doc (headings, a cross-reference link, a table, a code block, lists).
@@ -86,6 +106,15 @@ export const Empty: Story = { render: () => host("<html></html>") };
  */
 export const ExternalSource: Story = {
   render: () => host(RICH, { externalSource: true }),
+};
+
+/**
+ * A `modelica://` resource image. The stored `src` stays `modelica://`; the host
+ * resolves it to a `data:` URI (the `resources` map) which the image node view
+ * renders. Without the map the `<img>` would be broken.
+ */
+export const ImageResolved: Story = {
+  render: () => host(IMAGE_DOC, { resources: { [IMAGE_URI]: IMAGE_DATA } }),
 };
 
 /** Read-only (an MSL/library class, or one with an infoHeader): no toolbar, not editable. */

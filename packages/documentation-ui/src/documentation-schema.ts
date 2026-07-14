@@ -1,5 +1,4 @@
 import type { Extensions } from "@tiptap/core";
-import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Subscript from "@tiptap/extension-subscript";
 import Superscript from "@tiptap/extension-superscript";
@@ -10,6 +9,8 @@ import {
   TableRow,
 } from "@tiptap/extension-table";
 import StarterKit from "@tiptap/starter-kit";
+
+import { ModelicaImage } from "./documentation-image.js";
 
 /**
  * The Modelica `Documentation(info=…)` tag subset, expressed as a fixed TipTap
@@ -38,7 +39,7 @@ export const documentationExtensions: Extensions = [
     protocols: ["modelica"],
     HTMLAttributes: { target: null, rel: null },
   }),
-  Image.configure({ inline: true, HTMLAttributes: {} }),
+  ModelicaImage.configure({ inline: true, HTMLAttributes: {} }),
   Subscript,
   Superscript,
   Table,
