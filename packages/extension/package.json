@@ -137,17 +137,20 @@
       {
         "command": "modelica.openAsText",
         "title": "Modelica: Open as Text",
-        "icon": "$(file-code)"
+        "icon": "$(file-code)",
+        "enablement": "activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon"
       },
       {
         "command": "modelica.openAsIcon",
         "title": "Modelica: Open as Icon",
-        "icon": "$(symbol-color)"
+        "icon": "$(symbol-color)",
+        "enablement": "activeCustomEditorId != modelica.icon"
       },
       {
         "command": "modelica.openAsDiagram",
         "title": "Modelica: Open as Diagram",
-        "icon": "$(circuit-board)"
+        "icon": "$(circuit-board)",
+        "enablement": "activeCustomEditorId != modelica.diagram"
       },
       {
         "command": "modelica.showLogs",
@@ -224,17 +227,17 @@
       "editor/title": [
         {
           "command": "modelica.openAsText",
-          "when": "activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon",
+          "when": "resourceScheme == modelica-source",
           "group": "navigation@1"
         },
         {
           "command": "modelica.openAsIcon",
-          "when": "(resourceScheme == modelica-source && !activeCustomEditorId) || activeCustomEditorId == modelica.diagram",
+          "when": "resourceScheme == modelica-source",
           "group": "navigation@2"
         },
         {
           "command": "modelica.openAsDiagram",
-          "when": "(resourceScheme == modelica-source && !activeCustomEditorId) || activeCustomEditorId == modelica.icon",
+          "when": "resourceScheme == modelica-source",
           "group": "navigation@3"
         },
         {
