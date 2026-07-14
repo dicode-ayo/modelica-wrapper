@@ -392,7 +392,6 @@
     "@tiptap/html": "^3.27.4",
     "@tiptap/pm": "^3.27.4",
     "@tiptap/starter-kit": "^3.27.4",
-    "dompurify": "^3.2.4",
     "lit": "^3.2.0",
     "web-tree-sitter": "^0.25.10",
     "zeromq": "^6.1.0"
