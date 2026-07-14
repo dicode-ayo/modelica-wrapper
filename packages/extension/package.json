@@ -59,6 +59,16 @@
           }
         ],
         "priority": "option"
+      },
+      {
+        "viewType": "modelica.icon",
+        "displayName": "Modelica Icon",
+        "selector": [
+          {
+            "filenamePattern": "*.mo"
+          }
+        ],
+        "priority": "option"
       }
     ],
     "commands": [

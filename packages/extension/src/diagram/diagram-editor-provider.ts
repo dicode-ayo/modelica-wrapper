@@ -34,6 +34,7 @@ import {
   buildClassUnitTable,
   buildComponentUnitTable,
   fetchDiagramLayout,
+  fetchIconLayout,
   fetchModelInstance,
   fetchSimulationOptions,
   keyToCref,
@@ -58,9 +59,13 @@ import {
   lookupHostShape,
 } from "./shape-properties.js";
 import { setInputFocusContext } from "./input-focus.js";
-import { DIAGRAM_VIEW_TYPE } from "./view-type.js";
+import {
+  DIAGRAM_VIEW_TYPE,
+  ICON_VIEW_TYPE,
+  type DiagramMode,
+} from "./view-type.js";
 
-export { DIAGRAM_VIEW_TYPE };
+export { DIAGRAM_VIEW_TYPE, ICON_VIEW_TYPE };
 
 /**
  * Resolve the Modelica class a `.mo` document stands for. The
@@ -76,35 +81,38 @@ export function classNameFromDocument(
 
 /**
  * Diagram custom editor: a `CustomTextEditorProvider` bound to `*.mo` that
- * renders a class's diagram from OMC and applies graphical edits. Edits mutate
- * the OMC AST (the render model), and the class's canonical source is reflected
- * back into the document through a shadow buffer so VSCode tracks dirty state
- * and undo. A foreign buffer change (undo/redo or a manual text edit) is
- * `loadString`ed back into OMC and the layout re-fetched; save flushes the
- * reflected buffer through its document provider.
+ * renders a class's graphics from OMC. In `"diagram"` mode it renders the
+ * component graph and applies graphical edits — edits mutate the OMC AST (the
+ * render model), and the class's canonical source is reflected back into the
+ * document through a shadow buffer so VSCode tracks dirty state and undo; a
+ * foreign buffer change (undo/redo or a manual text edit) is `loadString`ed
+ * back into OMC and the layout re-fetched, and save flushes the reflected
+ * buffer through its document provider. In `"icon"` mode it renders the class's
+ * own icon annotation read-only, sharing the same webview bundle, registry, and
+ * shadow-buffer machinery.
  */
 export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   private constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly ensureClient: () => Promise<OmcClient>,
+    private readonly mode: DiagramMode,
   ) {}
 
   static register(
     context: vscode.ExtensionContext,
     ensureClient: () => Promise<OmcClient>,
+    viewType: string,
+    mode: DiagramMode,
   ): vscode.Disposable {
     const provider = new DiagramEditorProvider(
       context.extensionUri,
       ensureClient,
+      mode,
     );
-    return vscode.window.registerCustomEditorProvider(
-      DIAGRAM_VIEW_TYPE,
-      provider,
-      {
-        webviewOptions: { retainContextWhenHidden: true },
-        supportsMultipleEditorsPerDocument: false,
-      },
-    );
+    return vscode.window.registerCustomEditorProvider(viewType, provider, {
+      webviewOptions: { retainContextWhenHidden: true },
+      supportsMultipleEditorsPerDocument: false,
+    });
   }
 
   resolveCustomTextEditor(
@@ -117,6 +125,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       this.extensionUri,
       this.ensureClient,
       document,
+      this.mode,
     );
   }
 
@@ -187,12 +196,16 @@ interface EditorSession {
  * the webview signals `ready`, and route edit gestures through a write
  * controller. A document whose class can't be resolved renders a static
  * placeholder instead.
+ *
+ * In `"icon"` mode the class's own icon layout is rendered read-only: no write
+ * controller is created, so edit gestures from the webview are ignored.
  */
 export function resolveDiagramEditor(
   webviewPanel: vscode.WebviewPanel,
   extensionUri: vscode.Uri,
   ensureClient: () => Promise<OmcClient>,
   document: vscode.TextDocument,
+  mode: DiagramMode,
 ): void {
   const { webview } = webviewPanel;
   webview.options = {
@@ -242,6 +255,13 @@ export function resolveDiagramEditor(
     void (async (): Promise<void> => {
       try {
         const client = await ensureClient();
+        if (mode === "icon") {
+          // The icon editor renders the class's own icon annotation read-only:
+          // no write controller, so webview edit gestures are ignored.
+          const layout = await fetchIconLayout(client, className);
+          gate.send({ type: "init", layout, className });
+          return;
+        }
         // A read-only class (an MSL library, reported by the source provider's
         // stat) still renders and answers read actions, but rejects edits.
         const readOnly = await isReadOnlyDocument(document);
@@ -255,7 +275,7 @@ export function resolveDiagramEditor(
         );
         gate.send({ type: "init", layout, className });
       } catch (err) {
-        const message = `Failed to render diagram for ${className}: ${(err as Error).message}`;
+        const message = `Failed to render ${mode} for ${className}: ${(err as Error).message}`;
         gate.send({ type: "error", message });
         log.warn("diagramEditor", message);
       }

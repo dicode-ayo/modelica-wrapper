@@ -45,6 +45,8 @@ import {
   classNameFromDocument,
   DiagramEditController,
   DiagramEditorProvider,
+  DIAGRAM_VIEW_TYPE,
+  ICON_VIEW_TYPE,
   resolveDiagramEditor,
   type Scheduler,
 } from "./diagram-editor-provider.js";
@@ -271,6 +273,7 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
       EXT_URI,
       ensureClient,
       docFor(vscode.Uri.parse("modelica-source:/Modelica.Blocks.Math.Gain.mo")),
+      "diagram",
     );
     expect(webview.html).toContain("om-webview-root");
 
@@ -300,12 +303,135 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
       EXT_URI,
       ensureClient,
       docFor(vscode.Uri.parse("modelica-source:/Pkg.Broken.mo")),
+      "diagram",
     );
 
     await flush();
     fireReady();
     expect(posted).toHaveLength(1);
     expect(posted[0]?.type).toBe("error");
+  });
+});
+
+/**
+ * A client whose `invoke` records the OMC functions it was asked for and
+ * answers both `getModelInstance` and the icon-only `getModelInstanceAnnotation`
+ * with the same instance — enough to tell the diagram fetch path (full
+ * instance) from the icon fetch path (annotation-filtered) apart.
+ */
+function makeModeClient(): { client: OmcClient; invokedFns: string[] } {
+  const invokedFns: string[] = [];
+  const client = {
+    invoke: vi.fn((fn: string) => {
+      invokedFns.push(fn);
+      if (fn === "getModelInstance" || fn === "getModelInstanceAnnotation") {
+        return Promise.resolve({ instance: INSTANCE });
+      }
+      return Promise.reject(new Error(`unexpected invoke: ${fn}`));
+    }),
+  } as unknown as OmcClient;
+  return { client, invokedFns };
+}
+
+const GAIN_MODE_DOC = docFor(
+  vscode.Uri.parse("modelica-source:/Modelica.Blocks.Math.Gain.mo"),
+);
+
+describe("resolveDiagramEditor: render mode", () => {
+  it("icon mode fetches the icon layout and posts an icon-kind init", async () => {
+    const { panel, posted, fireReady } = makePanel();
+    const { client, invokedFns } = makeModeClient();
+    const ensureClient = vi.fn(() => Promise.resolve(client));
+
+    resolveDiagramEditor(panel, EXT_URI, ensureClient, GAIN_MODE_DOC, "icon");
+    await flush();
+    fireReady();
+
+    expect(invokedFns).toContain("getModelInstanceAnnotation"); // icon path
+    const msg = posted[0];
+    expect(msg?.type).toBe("init");
+    if (msg?.type === "init") expect(msg.layout.kind).toBe("icon");
+  });
+
+  it("diagram mode fetches the diagram layout without the icon annotation call", async () => {
+    const { panel, posted, fireReady } = makePanel();
+    const { client, invokedFns } = makeModeClient();
+    const ensureClient = vi.fn(() => Promise.resolve(client));
+
+    resolveDiagramEditor(
+      panel,
+      EXT_URI,
+      ensureClient,
+      GAIN_MODE_DOC,
+      "diagram",
+    );
+    await flush();
+    fireReady();
+
+    expect(invokedFns).toContain("getModelInstance");
+    expect(invokedFns).not.toContain("getModelInstanceAnnotation");
+    const msg = posted[0];
+    expect(msg?.type).toBe("init");
+    if (msg?.type === "init") expect(msg.layout.kind).toBe("diagram");
+  });
+});
+
+describe("DiagramEditorProvider: registration", () => {
+  it("registers both viewTypes, each provider carrying its mode", async () => {
+    const registered: Array<{
+      viewType: string;
+      provider: vscode.CustomTextEditorProvider;
+    }> = [];
+    vi.spyOn(
+      vscodeMock.window,
+      "registerCustomEditorProvider",
+    ).mockImplementation(((
+      viewType: string,
+      provider: vscode.CustomTextEditorProvider,
+    ) => {
+      registered.push({ viewType, provider });
+      return { dispose: () => {} };
+    }) as never);
+    const context = {
+      extensionUri: EXT_URI,
+    } as unknown as vscode.ExtensionContext;
+    const ensureClient = (): Promise<OmcClient> =>
+      Promise.resolve(makeModeClient().client);
+
+    DiagramEditorProvider.register(
+      context,
+      ensureClient,
+      DIAGRAM_VIEW_TYPE,
+      "diagram",
+    );
+    DiagramEditorProvider.register(
+      context,
+      ensureClient,
+      ICON_VIEW_TYPE,
+      "icon",
+    );
+
+    expect(registered.map((r) => r.viewType)).toEqual([
+      "modelica.diagram",
+      "modelica.icon",
+    ]);
+
+    // The registered icon provider carries "icon" mode: resolving it produces
+    // an icon-kind layout, which only the icon fetch path emits.
+    const iconEntry = registered.find((r) => r.viewType === ICON_VIEW_TYPE);
+    if (iconEntry === undefined)
+      throw new Error("icon provider not registered");
+    const { panel, posted, fireReady } = makePanel();
+    iconEntry.provider.resolveCustomTextEditor(
+      GAIN_MODE_DOC,
+      panel,
+      {} as vscode.CancellationToken,
+    );
+    await flush();
+    fireReady();
+    const msg = posted[0];
+    expect(msg?.type).toBe("init");
+    if (msg?.type === "init") expect(msg.layout.kind).toBe("icon");
   });
 });
 
@@ -322,6 +448,7 @@ describe("resolveDiagramEditor: on-disk file: path", () => {
       EXT_URI,
       ensureClient,
       docFor(vscode.Uri.file("/ws/Foo.mo")),
+      "diagram",
     );
 
     await flush();
@@ -348,6 +475,7 @@ describe("resolveDiagramEditor: on-disk file: path", () => {
       EXT_URI,
       ensureClient,
       docFor(vscode.Uri.file("/ws/Empty.mo")),
+      "diagram",
     );
 
     await flush();
@@ -367,6 +495,7 @@ describe("resolveDiagramEditor: on-disk file: path", () => {
       EXT_URI,
       ensureClient,
       docFor(vscode.Uri.parse("untitled:/foo.mo")),
+      "diagram",
     );
 
     await flush();
@@ -1525,6 +1654,7 @@ describe("DiagramEditorProvider: active-editor registry", () => {
       EXT_URI,
       ensureClient,
       docFor(vscode.Uri.parse("modelica-source:/Pkg.M.mo")),
+      "diagram",
     );
     fireReady();
     fireViewState(true);
@@ -1771,6 +1901,7 @@ describe("DiagramEditorProvider: registry dispose", () => {
       EXT_URI,
       ensureClient,
       docFor(vscode.Uri.parse("modelica-source:/Pkg.M.mo")),
+      "diagram",
     );
     fireReady();
     fireViewState(true);

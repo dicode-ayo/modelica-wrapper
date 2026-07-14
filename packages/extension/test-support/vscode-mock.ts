@@ -360,6 +360,11 @@ export const window = {
     return Promise.resolve(undefined);
   },
   registerWebviewViewProvider: (): Disposable => new Disposable(),
+  registerCustomEditorProvider: (
+    _viewType: string,
+    _provider: unknown,
+    _options?: unknown,
+  ): Disposable => new Disposable(),
   showInputBox: () => Promise.resolve(undefined),
   withProgress<T>(
     _options: unknown,
