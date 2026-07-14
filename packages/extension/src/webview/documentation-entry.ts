@@ -10,7 +10,6 @@
  * markup survives even that.
  */
 
-import DOMPurify from "dompurify";
 import { LitElement, css, html, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
@@ -19,6 +18,7 @@ import type {
   DocExtensionToWebview,
   DocWebviewToExtension,
 } from "./documentation-protocol.js";
+import { sanitizeDoc, type SanitizedDoc } from "./documentation-sanitize.js";
 import { getVsCodeApi } from "./vscode-api.js";
 
 @customElement("om-documentation-root")
@@ -87,7 +87,7 @@ export class OmDocumentationRoot extends LitElement {
     }
   `;
 
-  @state() private info: string | null = null;
+  @state() private doc: SanitizedDoc | null = null;
   @state() private error: string | null = null;
 
   private readonly vscode = getVsCodeApi<DocWebviewToExtension>();
@@ -110,7 +110,7 @@ export class OmDocumentationRoot extends LitElement {
     if (!msg || typeof msg !== "object" || !("type" in msg)) return;
     switch (msg.type) {
       case "doc":
-        this.info = msg.info;
+        this.doc = sanitizeDoc(msg.info);
         this.error = null;
         return;
       case "error":
@@ -123,14 +123,13 @@ export class OmDocumentationRoot extends LitElement {
     if (this.error !== null) {
       return html`<div class="error">${this.error}</div>`;
     }
-    if (this.info === null) {
+    if (this.doc === null) {
       return html`<div class="empty">Loading documentation…</div>`;
     }
-    const clean = DOMPurify.sanitize(this.info);
-    if (clean.trim().length === 0) {
+    if (this.doc.isEmpty) {
       return html`<div class="empty">This class has no documentation.</div>`;
     }
-    return html`<article class="doc">${unsafeHTML(clean)}</article>`;
+    return html`<article class="doc">${unsafeHTML(this.doc.html)}</article>`;
   }
 }
 

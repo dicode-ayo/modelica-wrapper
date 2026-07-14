@@ -15,7 +15,10 @@ import type { OmcClient } from "@dicode/omc-client";
 
 import type { DocExtensionToWebview } from "../webview/documentation-protocol.js";
 
-import { resolveDocumentationEditor } from "./documentation-editor-provider.js";
+import {
+  DocumentationEditorProvider,
+  resolveDocumentationEditor,
+} from "./documentation-editor-provider.js";
 
 const EXT_URI = vscode.Uri.file("/ext");
 
@@ -30,15 +33,19 @@ interface FakeWebview {
   };
 }
 
-function makePanel(): {
+function makePanel(active = false): {
   panel: vscode.WebviewPanel;
   webview: FakeWebview;
   posted: DocExtensionToWebview[];
   fireReady: () => void;
+  fireViewState: (isActive: boolean) => void;
   fireDispose: () => void;
 } {
   const posted: DocExtensionToWebview[] = [];
   let listener: ((m: { type: "ready" }) => void) | undefined;
+  let viewStateListener:
+    | ((e: { webviewPanel: { active: boolean } }) => void)
+    | undefined;
   let disposeListener: (() => void) | undefined;
   const webview: FakeWebview = {
     options: undefined,
@@ -56,8 +63,15 @@ function makePanel(): {
   };
   const panel = {
     webview,
+    active,
     onDidDispose: (l: () => void) => {
       disposeListener = l;
+      return { dispose: () => {} };
+    },
+    onDidChangeViewState: (
+      l: (e: { webviewPanel: { active: boolean } }) => void,
+    ) => {
+      viewStateListener = l;
       return { dispose: () => {} };
     },
   };
@@ -66,6 +80,10 @@ function makePanel(): {
     webview,
     posted,
     fireReady: () => listener?.({ type: "ready" }),
+    fireViewState: (isActive) => {
+      panel.active = isActive;
+      viewStateListener?.({ webviewPanel: { active: isActive } });
+    },
     fireDispose: () => disposeListener?.(),
   };
 }
@@ -135,6 +153,28 @@ describe("resolveDocumentationEditor", () => {
 
     expect(posted).toHaveLength(1);
     expect(posted[0]?.type).toBe("error");
+  });
+
+  it("tracks the focused class for the switcher, and clears it on blur/dispose", () => {
+    const { panel, fireViewState, fireDispose } = makePanel(true);
+    const { client } = makeClient(() => Promise.resolve({ info: "" }));
+    const ensureClient = vi.fn(() => Promise.resolve(client));
+
+    resolveDocumentationEditor(panel, EXT_URI, ensureClient, PID_DOC);
+    expect(DocumentationEditorProvider.activeClassName()).toBe(
+      "Modelica.Blocks.Continuous.PID",
+    );
+
+    fireViewState(false);
+    expect(DocumentationEditorProvider.activeClassName()).toBeUndefined();
+
+    fireViewState(true);
+    expect(DocumentationEditorProvider.activeClassName()).toBe(
+      "Modelica.Blocks.Continuous.PID",
+    );
+
+    fireDispose();
+    expect(DocumentationEditorProvider.activeClassName()).toBeUndefined();
   });
 
   it("renders a placeholder and never reads OMC for an unresolved class", async () => {

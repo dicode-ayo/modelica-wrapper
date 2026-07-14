@@ -25,9 +25,8 @@ interface DocumentationClient {
 /**
  * Documentation custom editor: a `CustomTextEditorProvider` bound to `*.mo`
  * that renders a class's `Documentation(info="<html>…</html>")` HTML. It reads
- * the annotation from OMC and renders it, sanitized, in a webview. Editing is a
- * later surface; for now the view is read-only, so it never touches the backing
- * document.
+ * the annotation from OMC and renders it, sanitized, in a webview. The view is
+ * read-only and never mutates the backing document.
  */
 export class DocumentationEditorProvider
   implements vscode.CustomTextEditorProvider
@@ -63,6 +62,29 @@ export class DocumentationEditorProvider
       this.ensureClient,
       document,
     );
+  }
+
+  // ── Active-editor registry ──────────────────────────────────────────────
+  // Tracks the focused documentation editor so the title-bar view switcher can
+  // resolve its class when flipping away from the documentation view.
+  private static activeToken: object | undefined;
+  private static activeName: string | undefined;
+
+  /** Class of the focused documentation editor, or undefined when none is. */
+  static activeClassName(): string | undefined {
+    return DocumentationEditorProvider.activeName;
+  }
+
+  static setActive(token: object, className: string): void {
+    DocumentationEditorProvider.activeToken = token;
+    DocumentationEditorProvider.activeName = className;
+  }
+
+  static clearActive(token: object): void {
+    if (DocumentationEditorProvider.activeToken === token) {
+      DocumentationEditorProvider.activeToken = undefined;
+      DocumentationEditorProvider.activeName = undefined;
+    }
   }
 }
 
@@ -100,7 +122,23 @@ export function resolveDocumentationEditor(
   const sub = webview.onDidReceiveMessage((msg: DocWebviewToExtension) => {
     if (msg.type === "ready") gate.markReady();
   });
-  webviewPanel.onDidDispose(() => sub.dispose());
+
+  const token = {};
+  const viewStateSub = webviewPanel.onDidChangeViewState((e) => {
+    if (e.webviewPanel.active) {
+      DocumentationEditorProvider.setActive(token, className);
+    } else {
+      DocumentationEditorProvider.clearActive(token);
+    }
+  });
+  webviewPanel.onDidDispose(() => {
+    sub.dispose();
+    viewStateSub.dispose();
+    DocumentationEditorProvider.clearActive(token);
+  });
+  if (webviewPanel.active) {
+    DocumentationEditorProvider.setActive(token, className);
+  }
 
   webview.html = renderDocumentationWebviewHtml(
     webview,
@@ -116,7 +154,8 @@ export function resolveDocumentationEditor(
       });
       gate.send({ type: "doc", className, info });
     } catch (err) {
-      const message = `Failed to load documentation for ${className}: ${(err as Error).message}`;
+      const detail = err instanceof Error ? err.message : String(err);
+      const message = `Failed to load documentation for ${className}: ${detail}`;
       gate.send({ type: "error", message });
       log.warn("documentationEditor", message);
     }
@@ -137,7 +176,7 @@ function renderPlaceholderHtml(cspSource: string): string {
     <style>
       body {
         margin: 0;
-        height: 100vh;
+        height: 100dvh;
         display: grid;
         place-items: center;
         font-family: var(--vscode-font-family);

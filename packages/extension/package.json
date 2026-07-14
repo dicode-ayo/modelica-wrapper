@@ -148,7 +148,7 @@
         "command": "modelica.openAsText",
         "title": "Modelica: Open as Text",
         "icon": "$(file-code)",
-        "enablement": "activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon"
+        "enablement": "activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon || activeCustomEditorId == modelica.documentation"
       },
       {
         "command": "modelica.openAsIcon",
@@ -161,6 +161,12 @@
         "title": "Modelica: Open as Diagram",
         "icon": "$(circuit-board)",
         "enablement": "activeCustomEditorId != modelica.diagram"
+      },
+      {
+        "command": "modelica.openAsDocumentation",
+        "title": "Modelica: Open as Documentation",
+        "icon": "$(book)",
+        "enablement": "activeCustomEditorId != modelica.documentation"
       },
       {
         "command": "modelica.showLogs",
@@ -251,20 +257,25 @@
           "group": "navigation@3"
         },
         {
-          "command": "modelica.checkModel",
-          "when": "resourceScheme == modelica-source && !activeCustomEditorId",
+          "command": "modelica.openAsDocumentation",
+          "when": "resourceScheme == modelica-source",
           "group": "navigation@4"
         },
         {
           "command": "modelica.checkModel",
+          "when": "resourceScheme == modelica-source && !activeCustomEditorId",
+          "group": "navigation@5"
+        },
+        {
+          "command": "modelica.checkModel",
           "when": "activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon",
-          "group": "navigation@4"
+          "group": "navigation@5"
         }
       ],
       "commandPalette": [
         {
           "command": "modelica.openAsText",
-          "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && resourceScheme == modelica-source"
+          "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon || activeCustomEditorId == modelica.documentation) && resourceScheme == modelica-source"
         },
         {
           "command": "modelica.openAsIcon",
@@ -272,6 +283,10 @@
         },
         {
           "command": "modelica.openAsDiagram",
+          "when": "resourceScheme == modelica-source"
+        },
+        {
+          "command": "modelica.openAsDocumentation",
           "when": "resourceScheme == modelica-source"
         },
         {
