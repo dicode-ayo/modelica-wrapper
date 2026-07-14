@@ -4,9 +4,10 @@
  * webview only after its `ready` handshake; a failed OMC read surfaces as an
  * `error`; an unresolved class renders a placeholder without reading OMC; the
  * focused class is tracked for the switcher; and — the load-bearing invariant —
- * an edit writes through OMC carrying the current `revisions` and `infoHeader`
- * back (so neither section is cleared) and reflects the canonical source into
- * the buffer, while an MSL source is refused.
+ * an edit writes the new `info` through OMC and reflects the canonical source
+ * into the buffer, while an MSL source is refused. Preserving `revisions` and
+ * `infoHeader` on write is `setFullDocumentationAnnotation`'s own contract,
+ * pinned in omc-client's tests, not the controller's.
  *
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
@@ -323,20 +324,13 @@ function manualScheduler(): { scheduler: Scheduler; flush: () => void } {
 }
 
 interface EditClientCalls {
-  setArgs: {
-    typeName: string;
-    info: string;
-    revisions: string;
-    infoHeader: string;
-  }[];
+  setArgs: { typeName: string; info: string }[];
   loaded: string[];
 }
 
 function makeEditClient(
   anno: {
     info: string;
-    revision?: string;
-    infoHeader?: string;
     fail?: boolean;
   },
   opts?: { setOk?: boolean; loadOk?: boolean; contents?: string },
@@ -346,19 +340,10 @@ function makeEditClient(
     getDocumentationAnnotation: vi.fn(() =>
       anno.fail
         ? Promise.reject(new Error("OMC down"))
-        : Promise.resolve({
-            info: anno.info,
-            revision: anno.revision ?? "",
-            infoHeader: anno.infoHeader ?? "",
-          }),
+        : Promise.resolve({ info: anno.info }),
     ),
     setFullDocumentationAnnotation: vi.fn(
-      (a: {
-        typeName: string;
-        info: string;
-        revisions: string;
-        infoHeader: string;
-      }) => {
+      (a: { typeName: string; info: string }) => {
         calls.setArgs.push(a);
         return Promise.resolve({ success: opts?.setOk ?? true });
       },
@@ -377,10 +362,9 @@ function makeEditClient(
 }
 
 describe("DocumentationEditController write path", () => {
-  it("writes the edit through OMC carrying the current revisions, then reflects", async () => {
+  it("writes the edit through OMC, then reflects the canonical source", async () => {
     const { client, calls } = makeEditClient({
       info: "<html><p>orig</p></html>",
-      revision: "<html><p>REV 1.0</p></html>",
     });
     const { gate } = makeGate();
     const { factory, writes } = makeShadowFactory();
@@ -397,47 +381,9 @@ describe("DocumentationEditController write path", () => {
     });
 
     expect(calls.setArgs).toEqual([
-      {
-        typeName: CLASS,
-        info: "<html><p>edited</p></html>",
-        revisions: "<html><p>REV 1.0</p></html>",
-        infoHeader: "",
-      },
+      { typeName: CLASS, info: "<html><p>edited</p></html>" },
     ]);
     expect(writes).toEqual([LISTED]); // canonical source reflected; dirty is VSCode's
-  });
-
-  it("carries the current infoHeader back on write, unchanged", async () => {
-    // The load-bearing regression for #304: a class carrying an
-    // `__OpenModelica_infoHeader` used to be refused edits entirely, because
-    // the old `setDocumentationAnnotation` write path had no way to preserve
-    // it. `setFullDocumentationAnnotation` carries it back verbatim instead.
-    const { client, calls } = makeEditClient({
-      info: "<html><p>orig</p></html>",
-      infoHeader: "<html><p>header</p></html>",
-    });
-    const { gate } = makeGate();
-    const { factory } = makeShadowFactory();
-    const controller = new DocumentationEditController(
-      { client, document: srcDoc(), className: CLASS, gate },
-      false,
-      factory,
-    );
-
-    controller.start();
-    await controller.handle({
-      type: "edit",
-      info: "<html><p>edited</p></html>",
-    });
-
-    expect(calls.setArgs).toEqual([
-      {
-        typeName: CLASS,
-        info: "<html><p>edited</p></html>",
-        revisions: "",
-        infoHeader: "<html><p>header</p></html>",
-      },
-    ]);
   });
 
   it("refuses an edit on a read-only class and never writes", async () => {
@@ -458,7 +404,7 @@ describe("DocumentationEditController write path", () => {
     expect(posted.some((m) => m.type === "error")).toBe(true);
   });
 
-  it("refuses an edit before the first fetch seeded revisions (no wipe)", async () => {
+  it("refuses an edit before the first fetch has seeded the controller", async () => {
     const { client, calls } = makeEditClient({ info: "", fail: true });
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
@@ -471,7 +417,7 @@ describe("DocumentationEditController write path", () => {
     controller.start(); // fetch fails → never seeded
     await controller.handle({ type: "edit", info: "<html><p>x</p></html>" });
 
-    expect(calls.setArgs).toEqual([]); // would have written revisions: ""
+    expect(calls.setArgs).toEqual([]);
     expect(writes).toEqual([]);
     expect(posted.some((m) => m.type === "error")).toBe(true);
   });

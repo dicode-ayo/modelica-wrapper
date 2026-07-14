@@ -15,12 +15,33 @@ interface StubLog {
   sent: string[];
 }
 
-function stubCtx(response: string): { ctx: CallContext; log: StubLog } {
+/** `getDocumentationAnnotation`'s wire shape: a `String[3]` list literal. */
+function docAnnotationResponse(
+  info: string,
+  revision: string,
+  infoHeader: string,
+): string {
+  const q = (s: string): string => `"${s.replace(/"/g, '\\"')}"`;
+  return `{${q(info)}, ${q(revision)}, ${q(infoHeader)}}`;
+}
+
+function stubCtx(
+  currentRevision: string,
+  currentInfoHeader: string,
+  setResponse = "true",
+): { ctx: CallContext; log: StubLog } {
   const log: StubLog = { sent: [] };
   const ctx: CallContext = {
     async call(cmd) {
       log.sent.push(cmd);
-      return response;
+      if (cmd.startsWith("getDocumentationAnnotation")) {
+        return docAnnotationResponse(
+          "<html><p>ignored</p></html>",
+          currentRevision,
+          currentInfoHeader,
+        );
+      }
+      return setResponse;
     },
     async getErrorString() {
       return { errorString: "" };
@@ -30,36 +51,39 @@ function stubCtx(response: string): { ctx: CallContext; log: StubLog } {
 }
 
 describe("setFullDocumentationAnnotation: outgoing command shape", () => {
-  it("composes info, revisions, and infoHeader into one addClassAnnotation call", async () => {
-    const { ctx, log } = stubCtx("true");
+  it("reads the current revisions/infoHeader, then writes info alongside them unchanged", async () => {
+    const { ctx, log } = stubCtx(
+      "<html><p>REV 1.0</p></html>",
+      "<html><p>header</p></html>",
+    );
     await setFullDocumentationAnnotation(ctx, {
       typeName: "MyPkg.MyModel",
       info: "<html><p>New info</p></html>",
-      revisions: "<html><p>v1</p></html>",
-      infoHeader: "<html><p>header</p></html>",
     });
     expect(log.sent).toEqual([
+      "getDocumentationAnnotation(MyPkg.MyModel)",
       'addClassAnnotation(MyPkg.MyModel, Documentation(info="<html><p>New info</p></html>", ' +
-        'revisions="<html><p>v1</p></html>", __OpenModelica_infoHeader="<html><p>header</p></html>"))',
+        'revisions="<html><p>REV 1.0</p></html>", __OpenModelica_infoHeader="<html><p>header</p></html>"))',
     ]);
   });
 
-  it("defaults every section to an empty string when omitted", async () => {
-    const { ctx, log } = stubCtx("true");
+  it("defaults info to an empty string when omitted", async () => {
+    const { ctx, log } = stubCtx("", "");
     await setFullDocumentationAnnotation(ctx, { typeName: "MyPkg.MyModel" });
     expect(log.sent).toEqual([
+      "getDocumentationAnnotation(MyPkg.MyModel)",
       'addClassAnnotation(MyPkg.MyModel, Documentation(info="", revisions="", __OpenModelica_infoHeader=""))',
     ]);
   });
 
-  it("escapes quotes and newlines in each section", async () => {
-    const { ctx, log } = stubCtx("true");
+  it("escapes quotes and newlines in the new info", async () => {
+    const { ctx, log } = stubCtx("", "");
     await setFullDocumentationAnnotation(ctx, {
       typeName: "MyPkg.MyModel",
       info: 'a "quoted" line\nsecond line',
-      infoHeader: "",
     });
     expect(log.sent).toEqual([
+      "getDocumentationAnnotation(MyPkg.MyModel)",
       'addClassAnnotation(MyPkg.MyModel, Documentation(info="a \\"quoted\\" line\\nsecond line", ' +
         'revisions="", __OpenModelica_infoHeader=""))',
     ]);
@@ -68,7 +92,7 @@ describe("setFullDocumentationAnnotation: outgoing command shape", () => {
 
 describe("setFullDocumentationAnnotation: response parsing", () => {
   it("returns success=true on a clean true response", async () => {
-    const { ctx } = stubCtx("true");
+    const { ctx } = stubCtx("", "", "true");
     const out = await setFullDocumentationAnnotation(ctx, {
       typeName: "MyPkg.MyModel",
     });
@@ -76,7 +100,7 @@ describe("setFullDocumentationAnnotation: response parsing", () => {
   });
 
   it("returns success=false on a clean false response", async () => {
-    const { ctx } = stubCtx("false");
+    const { ctx } = stubCtx("", "", "false");
     const out = await setFullDocumentationAnnotation(ctx, {
       typeName: "MyPkg.MyModel",
     });

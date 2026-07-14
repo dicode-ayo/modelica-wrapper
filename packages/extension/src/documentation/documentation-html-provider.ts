@@ -10,12 +10,10 @@ export const MODELICA_DOC_SCHEME = "modelica-doc";
 export interface DocHtmlClient {
   getDocumentationAnnotation(input: {
     typeName: string;
-  }): Promise<{ info: string; revision: string; infoHeader: string }>;
+  }): Promise<{ info: string }>;
   setFullDocumentationAnnotation(input: {
     typeName: string;
     info: string;
-    revisions: string;
-    infoHeader: string;
   }): Promise<{ success: boolean }>;
   getClassInformation(input: {
     typeName: string;
@@ -24,8 +22,6 @@ export interface DocHtmlClient {
 
 interface DocState {
   info: string;
-  revision: string;
-  infoHeader: string;
   readOnly: boolean;
 }
 
@@ -44,10 +40,10 @@ function classFromDocHtmlUri(uri: vscode.Uri): string | undefined {
  * Serves a class's `Documentation(info=…)` HTML as an editable `modelica-doc:`
  * file so it can be edited in a native VSCode HTML editor. Reads render the
  * current annotation from OMC; a save writes it back through
- * `setFullDocumentationAnnotation` (carrying the current `revisions` and
- * `infoHeader` so neither section is cleared) and notifies the class's `.mo`
- * so the diagram/documentation views reload. It also watches `.mo` changes
- * and refreshes any open HTML editor, so a WYSIWYG edit doesn't leave a stale
+ * `setFullDocumentationAnnotation`, which preserves `revisions` and
+ * `infoHeader` on its own, and notifies the class's `.mo` so the
+ * diagram/documentation views reload. It also watches `.mo` changes and
+ * refreshes any open HTML editor, so a WYSIWYG edit doesn't leave a stale
  * HTML buffer that a later save would clobber. A class whose source is
  * read-only refuses writes.
  */
@@ -70,17 +66,13 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
    */
   private async docState(className: string): Promise<DocState> {
     const client = await this.ensureClient();
-    const { info, revision, infoHeader } =
-      await client.getDocumentationAnnotation({ typeName: className });
+    const { info } = await client.getDocumentationAnnotation({
+      typeName: className,
+    });
     const { fileReadOnly } = await client.getClassInformation({
       typeName: className,
     });
-    return {
-      info,
-      revision,
-      infoHeader,
-      readOnly: fileReadOnly,
-    };
+    return { info, readOnly: fileReadOnly };
   }
 
   /**
@@ -149,7 +141,7 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
     if (!className) throw vscode.FileSystemError.FileNotFound(uri);
     const client = await this.ensureClient();
 
-    const { revision, infoHeader, readOnly } = await this.docState(className);
+    const { readOnly } = await this.docState(className);
     if (readOnly) {
       throw vscode.FileSystemError.NoPermissions(uri);
     }
@@ -158,8 +150,6 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
     const { success } = await client.setFullDocumentationAnnotation({
       typeName: className,
       info,
-      revisions: revision,
-      infoHeader,
     });
     if (!success) {
       throw vscode.FileSystemError.Unavailable(
