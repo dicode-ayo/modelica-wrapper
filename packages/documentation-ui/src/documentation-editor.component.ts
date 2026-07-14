@@ -84,6 +84,7 @@ export class OmDocumentationEditor extends LitElement {
     // the panel is disposed. The listener is on this element, so a dispatch from
     // a just-disconnected element still reaches the host.
     this.flushChange();
+    this.editorHost?.removeEventListener("click", this.onEditorClick);
     this.editor?.destroy();
     this.editor = null;
   }
@@ -106,6 +107,7 @@ export class OmDocumentationEditor extends LitElement {
   override firstUpdated(): void {
     const host = this.editorHost;
     if (host === null) return;
+    host.addEventListener("click", this.onEditorClick);
     this.editor = new Editor({
       element: host,
       extensions: documentationExtensions,
@@ -116,6 +118,27 @@ export class OmDocumentationEditor extends LitElement {
     this.applyImageResolver();
     this.loadIntoEditor();
   }
+
+  // Follow a `modelica://` cross-reference: on a plain click when read-only, or
+  // a modifier-click while editing (a plain click there places the caret). The
+  // host resolves the target; the link's href stays `modelica://` in the source.
+  private readonly onEditorClick = (e: MouseEvent): void => {
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    const href = target.closest("a[href]")?.getAttribute("href");
+    if (href === null || href === undefined || !/^modelica:\/\//i.test(href)) {
+      return;
+    }
+    if (!this.readOnly && !e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    this.dispatchEvent(
+      new CustomEvent("om-documentation-open-link", {
+        detail: { href },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+  };
 
   /** Point the image node view's resolver at the current `resources` map. */
   private applyImageResolver(): void {

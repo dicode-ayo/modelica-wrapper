@@ -16,6 +16,8 @@
  *                    canonical `info` (wrapper included) to write back.
  *   - `editSource` — the user asked to edit the raw HTML; the host opens a
  *                    native HTML editor on the class's `info`.
+ *   - `openLink`   — the user followed a `modelica://` link; the host resolves
+ *                    it and opens the target class's documentation (or file).
  */
 export type DocExtensionToWebview =
   | {
@@ -30,4 +32,5 @@ export type DocExtensionToWebview =
 export type DocWebviewToExtension =
   | { type: "ready" }
   | { type: "edit"; info: string }
-  | { type: "editSource" };
+  | { type: "editSource" }
+  | { type: "openLink"; href: string };

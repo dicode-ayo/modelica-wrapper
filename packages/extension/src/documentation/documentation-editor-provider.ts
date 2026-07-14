@@ -17,6 +17,7 @@ import type {
 import { createReadyGate, type ReadyGate } from "../webview/ready-gate.js";
 
 import { docHtmlUriFor } from "./documentation-html-provider.js";
+import { openModelicaLink } from "./documentation-link.js";
 import { resolveDocResources } from "./documentation-resources.js";
 import { renderDocumentationWebviewHtml } from "./documentation-webview-html.js";
 
@@ -150,6 +151,10 @@ export function resolveDocumentationEditor(
     }
     if (msg.type === "editSource") {
       void openHtmlSourceEditor(className);
+      return;
+    }
+    if (msg.type === "openLink") {
+      void openModelicaLink(msg.href, ensureClient);
       return;
     }
     void controller?.handle(msg);

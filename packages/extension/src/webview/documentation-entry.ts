@@ -15,7 +15,10 @@
  */
 
 import "@dicode/documentation-ui";
-import type { DocumentationChangeDetail } from "@dicode/documentation-ui";
+import type {
+  DocumentationChangeDetail,
+  DocumentationOpenLinkDetail,
+} from "@dicode/documentation-ui";
 import { LitElement, html, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 
@@ -77,6 +80,12 @@ export class OmDocumentationRoot extends LitElement {
     this.vscode.postMessage({ type: "editSource" });
   };
 
+  private readonly onOpenLink = (
+    e: CustomEvent<DocumentationOpenLinkDetail>,
+  ): void => {
+    this.vscode.postMessage({ type: "openLink", href: e.detail.href });
+  };
+
   override render(): TemplateResult {
     // Keep the error node always present: a leading `${…}` before an element
     // with attribute bindings can scramble those bindings (the Lit
@@ -92,6 +101,7 @@ export class OmDocumentationRoot extends LitElement {
         external-source
         @om-documentation-change=${this.onChange}
         @om-documentation-edit-source=${this.onEditSource}
+        @om-documentation-open-link=${this.onOpenLink}
       ></om-documentation-editor>
       <style>
         om-documentation-root {
