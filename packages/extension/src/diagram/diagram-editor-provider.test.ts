@@ -45,6 +45,8 @@ import {
   classNameFromDocument,
   DiagramEditController,
   DiagramEditorProvider,
+  DIAGRAM_VIEW_TYPE,
+  ICON_VIEW_TYPE,
   resolveDiagramEditor,
   type Scheduler,
 } from "./diagram-editor-provider.js";
@@ -271,6 +273,7 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
       EXT_URI,
       ensureClient,
       docFor(vscode.Uri.parse("modelica-source:/Modelica.Blocks.Math.Gain.mo")),
+      "diagram",
     );
     expect(webview.html).toContain("om-webview-root");
 
@@ -300,12 +303,135 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
       EXT_URI,
       ensureClient,
       docFor(vscode.Uri.parse("modelica-source:/Pkg.Broken.mo")),
+      "diagram",
     );
 
     await flush();
     fireReady();
     expect(posted).toHaveLength(1);
     expect(posted[0]?.type).toBe("error");
+  });
+});
+
+/**
+ * A client whose `invoke` records the OMC functions it was asked for and
+ * answers both `getModelInstance` and the icon-only `getModelInstanceAnnotation`
+ * with the same instance — enough to tell the diagram fetch path (full
+ * instance) from the icon fetch path (annotation-filtered) apart.
+ */
+function makeModeClient(): { client: OmcClient; invokedFns: string[] } {
+  const invokedFns: string[] = [];
+  const client = {
+    invoke: vi.fn((fn: string) => {
+      invokedFns.push(fn);
+      if (fn === "getModelInstance" || fn === "getModelInstanceAnnotation") {
+        return Promise.resolve({ instance: INSTANCE });
+      }
+      return Promise.reject(new Error(`unexpected invoke: ${fn}`));
+    }),
+  } as unknown as OmcClient;
+  return { client, invokedFns };
+}
+
+const GAIN_MODE_DOC = docFor(
+  vscode.Uri.parse("modelica-source:/Modelica.Blocks.Math.Gain.mo"),
+);
+
+describe("resolveDiagramEditor: render mode", () => {
+  it("icon mode fetches the icon layout and posts an icon-kind init", async () => {
+    const { panel, posted, fireReady } = makePanel();
+    const { client, invokedFns } = makeModeClient();
+    const ensureClient = vi.fn(() => Promise.resolve(client));
+
+    resolveDiagramEditor(panel, EXT_URI, ensureClient, GAIN_MODE_DOC, "icon");
+    await flush();
+    fireReady();
+
+    expect(invokedFns).toContain("getModelInstanceAnnotation"); // icon path
+    const msg = posted[0];
+    expect(msg?.type).toBe("init");
+    if (msg?.type === "init") expect(msg.layout.kind).toBe("icon");
+  });
+
+  it("diagram mode fetches the diagram layout without the icon annotation call", async () => {
+    const { panel, posted, fireReady } = makePanel();
+    const { client, invokedFns } = makeModeClient();
+    const ensureClient = vi.fn(() => Promise.resolve(client));
+
+    resolveDiagramEditor(
+      panel,
+      EXT_URI,
+      ensureClient,
+      GAIN_MODE_DOC,
+      "diagram",
+    );
+    await flush();
+    fireReady();
+
+    expect(invokedFns).toContain("getModelInstance");
+    expect(invokedFns).not.toContain("getModelInstanceAnnotation");
+    const msg = posted[0];
+    expect(msg?.type).toBe("init");
+    if (msg?.type === "init") expect(msg.layout.kind).toBe("diagram");
+  });
+});
+
+describe("DiagramEditorProvider: registration", () => {
+  it("registers both viewTypes, each provider carrying its mode", async () => {
+    const registered: Array<{
+      viewType: string;
+      provider: vscode.CustomTextEditorProvider;
+    }> = [];
+    vi.spyOn(
+      vscodeMock.window,
+      "registerCustomEditorProvider",
+    ).mockImplementation(((
+      viewType: string,
+      provider: vscode.CustomTextEditorProvider,
+    ) => {
+      registered.push({ viewType, provider });
+      return { dispose: () => {} };
+    }) as never);
+    const context = {
+      extensionUri: EXT_URI,
+    } as unknown as vscode.ExtensionContext;
+    const ensureClient = (): Promise<OmcClient> =>
+      Promise.resolve(makeModeClient().client);
+
+    DiagramEditorProvider.register(
+      context,
+      ensureClient,
+      DIAGRAM_VIEW_TYPE,
+      "diagram",
+    );
+    DiagramEditorProvider.register(
+      context,
+      ensureClient,
+      ICON_VIEW_TYPE,
+      "icon",
+    );
+
+    expect(registered.map((r) => r.viewType)).toEqual([
+      "modelica.diagram",
+      "modelica.icon",
+    ]);
+
+    // The registered icon provider carries "icon" mode: resolving it produces
+    // an icon-kind layout, which only the icon fetch path emits.
+    const iconEntry = registered.find((r) => r.viewType === ICON_VIEW_TYPE);
+    if (iconEntry === undefined)
+      throw new Error("icon provider not registered");
+    const { panel, posted, fireReady } = makePanel();
+    iconEntry.provider.resolveCustomTextEditor(
+      GAIN_MODE_DOC,
+      panel,
+      {} as vscode.CancellationToken,
+    );
+    await flush();
+    fireReady();
+    const msg = posted[0];
+    expect(msg?.type).toBe("init");
+    if (msg?.type === "init") expect(msg.layout.kind).toBe("icon");
   });
 });
 
@@ -322,6 +448,7 @@ describe("resolveDiagramEditor: on-disk file: path", () => {
       EXT_URI,
       ensureClient,
       docFor(vscode.Uri.file("/ws/Foo.mo")),
+      "diagram",
     );
 
     await flush();
@@ -348,6 +475,7 @@ describe("resolveDiagramEditor: on-disk file: path", () => {
       EXT_URI,
       ensureClient,
       docFor(vscode.Uri.file("/ws/Empty.mo")),
+      "diagram",
     );
 
     await flush();
@@ -367,6 +495,7 @@ describe("resolveDiagramEditor: on-disk file: path", () => {
       EXT_URI,
       ensureClient,
       docFor(vscode.Uri.parse("untitled:/foo.mo")),
+      "diagram",
     );
 
     await flush();
@@ -384,6 +513,8 @@ function makeEditClient(opts?: {
   setElementTypeSuccess?: boolean;
   setElementTypeThrows?: boolean;
   getModelInstanceThrows?: boolean;
+  classRestriction?: string;
+  classRestrictionThrows?: boolean;
 }): {
   client: OmcClient;
   invoked: string[];
@@ -395,6 +526,8 @@ function makeEditClient(opts?: {
   removeModifierCalls: Array<Record<string, unknown>>;
   setElementTypeCalls: Array<Record<string, unknown>>;
   simulateCalls: Array<Record<string, unknown>>;
+  graphicsWrites: Array<Record<string, unknown>>;
+  classInfoQueries: string[];
   ops: string[];
 } {
   const invoked: string[] = [];
@@ -406,12 +539,16 @@ function makeEditClient(opts?: {
   const removeModifierCalls: Array<Record<string, unknown>> = [];
   const setElementTypeCalls: Array<Record<string, unknown>> = [];
   const simulateCalls: Array<Record<string, unknown>> = [];
+  const graphicsWrites: Array<Record<string, unknown>> = [];
+  const classInfoQueries: string[] = [];
   const ops: string[] = [];
   const client = {
     lastCall: "mock",
-    invoke: vi.fn((fn: string) => {
+    invoke: vi.fn((fn: string, input?: Record<string, unknown>) => {
       invoked.push(fn);
-      if (fn === "getModelInstance") {
+      // The icon fetch path uses the annotation-filtered call; answer it with
+      // the same instance so an icon-mode re-fetch resolves.
+      if (fn === "getModelInstance" || fn === "getModelInstanceAnnotation") {
         return opts?.getModelInstanceThrows
           ? Promise.reject(new Error("getModelInstance failed"))
           : Promise.resolve({ instance: opts?.instance ?? INSTANCE });
@@ -419,8 +556,18 @@ function makeEditClient(opts?: {
       if (fn === "getInstantiatedParametersAndValues") {
         return Promise.reject(new Error("no params"));
       }
+      if (fn === "writeClassGraphics") {
+        if (input !== undefined) graphicsWrites.push(input);
+        return Promise.resolve({ success: true });
+      }
       // updateComponent / deleteComponent / addConnection / ... report success.
       return Promise.resolve({ success: true });
+    }),
+    getClassInformation: vi.fn((input: { typeName: string }) => {
+      classInfoQueries.push(input.typeName);
+      return opts?.classRestrictionThrows
+        ? Promise.reject(new Error("getClassInformation failed"))
+        : Promise.resolve({ restriction: opts?.classRestriction ?? "model" });
     }),
     addComponent: vi.fn((input: Record<string, unknown>) => {
       ops.push("addComponent");
@@ -484,6 +631,8 @@ function makeEditClient(opts?: {
     removeModifierCalls,
     setElementTypeCalls,
     simulateCalls,
+    graphicsWrites,
+    classInfoQueries,
     ops,
   };
 }
@@ -1273,6 +1422,201 @@ describe("DiagramEditController: shape properties", () => {
   });
 });
 
+/** A host icon layer carrying `shapes`, for icon-mode edit tests. */
+function iconShapeLayout(shapes: unknown[]): DiagramLayout {
+  return layout({
+    iconLayers: [
+      { from: "Pkg.M", shapes },
+    ] as unknown as DiagramLayout["iconLayers"],
+  });
+}
+
+/** A host diagram layer carrying `shapes`, for the diagram-mode regression. */
+function diagramShapeLayout(shapes: unknown[]): DiagramLayout {
+  return layout({
+    diagramLayers: [
+      { from: "Pkg.M", shapes },
+    ] as unknown as DiagramLayout["diagramLayers"],
+  });
+}
+
+function iconController(
+  client: OmcClient,
+  gate: ReadyGate,
+  factory: ShadowFactory,
+  initial: DiagramLayout,
+): DiagramEditController {
+  return new DiagramEditController(
+    { client, document: SRC_DOC, className: "Pkg.M", gate },
+    initial,
+    factory,
+    undefined,
+    false,
+    "icon",
+  );
+}
+
+describe("DiagramEditController: icon mode", () => {
+  it("draws a shape onto the ICON layer and reflects the buffer", async () => {
+    const { client, invoked, graphicsWrites } = makeEditClient();
+    const { gate } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = iconController(
+      client,
+      gate,
+      factory,
+      iconShapeLayout([]),
+    );
+
+    await controller.handle({
+      type: "change",
+      layout: iconShapeLayout([RECT]),
+    });
+
+    expect(invoked).toContain("writeClassGraphics");
+    // Layer targeting: the draw lands on the icon layer, never the diagram one.
+    expect(graphicsWrites[0]).toMatchObject({
+      layer: "icon",
+      op: { kind: "add" },
+    });
+    // Mode-driven re-fetch: icon mode re-reads via the annotation-filtered call,
+    // so prevLayout stays an icon layout and subsequent draws keep the icon
+    // field (a diagram-mode re-fetch would read getModelInstance instead).
+    expect(invoked).toContain("getModelInstanceAnnotation");
+    expect(writes).toContain(LISTED_SOURCE); // dirty
+  });
+
+  it("edits an icon-layer shape via the shape modal and reflects", async () => {
+    const { client, invoked, graphicsWrites } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = iconController(
+      client,
+      gate,
+      factory,
+      iconShapeLayout([RECT]),
+    );
+
+    await controller.handle({
+      type: "selectionChange",
+      keys: ["shape:rectangle:0"],
+    });
+    expect(posted.find((m) => m.type === "parametersOpen")).toMatchObject({
+      kind: "shapeProperties",
+    });
+
+    await controller.handle({
+      type: "parametersSubmit",
+      kind: "shapeProperties",
+      values: { lineColor: "#ff0000" },
+    });
+
+    expect(invoked).toContain("writeClassGraphics");
+    expect(graphicsWrites.at(-1)).toMatchObject({
+      layer: "icon",
+      op: { kind: "modify", index: 0 },
+    });
+    expect(writes).toContain(LISTED_SOURCE);
+  });
+
+  it("accepts a connector class onto the icon (addComponent)", async () => {
+    const { client, addComponentCalls, classInfoQueries } = makeEditClient({
+      classRestriction: "connector",
+    });
+    const { gate } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = iconController(client, gate, factory, layout({}));
+
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Interfaces.RealInput",
+      position: { x: 0, y: 0 },
+    });
+
+    expect(classInfoQueries).toContain("Modelica.Blocks.Interfaces.RealInput");
+    expect(addComponentCalls).toHaveLength(1);
+    expect(writes).toContain(LISTED_SOURCE);
+  });
+
+  it("rejects a non-connector class on the icon and does NOT add it", async () => {
+    const { client, addComponentCalls } = makeEditClient({
+      classRestriction: "block",
+    });
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = iconController(client, gate, factory, layout({}));
+
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 0, y: 0 },
+    });
+
+    expect(addComponentCalls).toEqual([]);
+    expect(writes).toEqual([]);
+    expect(
+      posted.some((m) => m.type === "error" && /connector/i.test(m.message)),
+    ).toBe(true);
+  });
+
+  it("ignores a diagram-only change-class request in icon mode", async () => {
+    const { client, setElementTypeCalls } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = iconController(client, gate, factory, swapLayout());
+
+    await controller.handle({
+      type: "changeClassRequest",
+      componentName: "r1",
+      currentClass: "Modelica.Blocks.Math.Gain",
+    });
+
+    expect(setElementTypeCalls).toEqual([]); // no OMC mutation
+    expect(writes).toEqual([]); // no reflect
+    expect(posted).toEqual([]); // no modal, no error
+  });
+
+  it("ignores a diagram-only class-parameter submit in icon mode", async () => {
+    const { client, setModifierCalls } = makeEditClient({
+      instance: CLASS_PARAM_INSTANCE,
+    });
+    const { gate } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = iconController(client, gate, factory, layout({}));
+
+    await controller.handle({
+      type: "parametersSubmit",
+      kind: "classParams",
+      values: { gain: 5 },
+    });
+
+    expect(setModifierCalls).toEqual([]);
+    expect(writes).toEqual([]);
+  });
+
+  it("diagram mode draws the same shape onto the DIAGRAM layer (regression)", async () => {
+    const { client, graphicsWrites } = makeEditClient();
+    const { gate } = makeGate();
+    const { factory } = makeShadowFactory();
+    // Default (diagram) mode — the same gesture must target the diagram layer.
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      diagramShapeLayout([]),
+      factory,
+    );
+
+    await controller.handle({
+      type: "change",
+      layout: diagramShapeLayout([RECT]),
+    });
+
+    expect(graphicsWrites[0]).toMatchObject({
+      layer: "diagram",
+      op: { kind: "add" },
+    });
+  });
+});
+
 describe("DiagramEditController: queue resilience", () => {
   it("catches a synchronous dispatch throw so the next unit still runs", async () => {
     const { client, addComponentCalls } = makeEditClient();
@@ -1525,6 +1869,7 @@ describe("DiagramEditorProvider: active-editor registry", () => {
       EXT_URI,
       ensureClient,
       docFor(vscode.Uri.parse("modelica-source:/Pkg.M.mo")),
+      "diagram",
     );
     fireReady();
     fireViewState(true);
@@ -1771,6 +2116,7 @@ describe("DiagramEditorProvider: registry dispose", () => {
       EXT_URI,
       ensureClient,
       docFor(vscode.Uri.parse("modelica-source:/Pkg.M.mo")),
+      "diagram",
     );
     fireReady();
     fireViewState(true);

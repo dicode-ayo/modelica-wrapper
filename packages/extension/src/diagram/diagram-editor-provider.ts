@@ -34,6 +34,7 @@ import {
   buildClassUnitTable,
   buildComponentUnitTable,
   fetchDiagramLayout,
+  fetchIconLayout,
   fetchModelInstance,
   fetchSimulationOptions,
   keyToCref,
@@ -58,9 +59,13 @@ import {
   lookupHostShape,
 } from "./shape-properties.js";
 import { setInputFocusContext } from "./input-focus.js";
-import { DIAGRAM_VIEW_TYPE } from "./view-type.js";
+import {
+  DIAGRAM_VIEW_TYPE,
+  ICON_VIEW_TYPE,
+  type DiagramMode,
+} from "./view-type.js";
 
-export { DIAGRAM_VIEW_TYPE };
+export { DIAGRAM_VIEW_TYPE, ICON_VIEW_TYPE };
 
 /**
  * Resolve the Modelica class a `.mo` document stands for. The
@@ -76,35 +81,39 @@ export function classNameFromDocument(
 
 /**
  * Diagram custom editor: a `CustomTextEditorProvider` bound to `*.mo` that
- * renders a class's diagram from OMC and applies graphical edits. Edits mutate
- * the OMC AST (the render model), and the class's canonical source is reflected
- * back into the document through a shadow buffer so VSCode tracks dirty state
- * and undo. A foreign buffer change (undo/redo or a manual text edit) is
- * `loadString`ed back into OMC and the layout re-fetched; save flushes the
- * reflected buffer through its document provider.
+ * renders a class's graphics from OMC. In `"diagram"` mode it renders the
+ * component graph and applies graphical edits — edits mutate the OMC AST (the
+ * render model), and the class's canonical source is reflected back into the
+ * document through a shadow buffer so VSCode tracks dirty state and undo; a
+ * foreign buffer change (undo/redo or a manual text edit) is `loadString`ed
+ * back into OMC and the layout re-fetched, and save flushes the reflected
+ * buffer through its document provider. In `"icon"` mode it renders and edits
+ * the class's own icon annotation, sharing the same machinery but honoring only
+ * icon-appropriate edits: drawing/editing primitive shapes on the icon layer and
+ * placing connectors.
  */
 export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   private constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly ensureClient: () => Promise<OmcClient>,
+    private readonly mode: DiagramMode,
   ) {}
 
   static register(
     context: vscode.ExtensionContext,
     ensureClient: () => Promise<OmcClient>,
+    viewType: string,
+    mode: DiagramMode,
   ): vscode.Disposable {
     const provider = new DiagramEditorProvider(
       context.extensionUri,
       ensureClient,
+      mode,
     );
-    return vscode.window.registerCustomEditorProvider(
-      DIAGRAM_VIEW_TYPE,
-      provider,
-      {
-        webviewOptions: { retainContextWhenHidden: true },
-        supportsMultipleEditorsPerDocument: false,
-      },
-    );
+    return vscode.window.registerCustomEditorProvider(viewType, provider, {
+      webviewOptions: { retainContextWhenHidden: true },
+      supportsMultipleEditorsPerDocument: false,
+    });
   }
 
   resolveCustomTextEditor(
@@ -117,6 +126,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       this.extensionUri,
       this.ensureClient,
       document,
+      this.mode,
     );
   }
 
@@ -187,12 +197,17 @@ interface EditorSession {
  * the webview signals `ready`, and route edit gestures through a write
  * controller. A document whose class can't be resolved renders a static
  * placeholder instead.
+ *
+ * In `"icon"` mode the class's own icon layout is rendered and its controller
+ * honors only icon-appropriate edits (shape draw/edit on the icon layer, and
+ * connector placement); all other webview gestures are no-ops.
  */
 export function resolveDiagramEditor(
   webviewPanel: vscode.WebviewPanel,
   extensionUri: vscode.Uri,
   ensureClient: () => Promise<OmcClient>,
   document: vscode.TextDocument,
+  mode: DiagramMode,
 ): void {
   const { webview } = webviewPanel;
   webview.options = {
@@ -245,17 +260,21 @@ export function resolveDiagramEditor(
         // A read-only class (an MSL library, reported by the source provider's
         // stat) still renders and answers read actions, but rejects edits.
         const readOnly = await isReadOnlyDocument(document);
-        const layout = await fetchDiagramLayout(client, className);
+        const layout =
+          mode === "icon"
+            ? await fetchIconLayout(client, className)
+            : await fetchDiagramLayout(client, className);
         controller = new DiagramEditController(
           { client, document, className, gate },
           layout,
           (onForeignChange) => createShadowBuffer(document, onForeignChange),
           defaultScheduler,
           readOnly,
+          mode,
         );
         gate.send({ type: "init", layout, className });
       } catch (err) {
-        const message = `Failed to render diagram for ${className}: ${(err as Error).message}`;
+        const message = `Failed to render ${mode} for ${className}: ${(err as Error).message}`;
         gate.send({ type: "error", message });
         log.warn("diagramEditor", message);
       }
@@ -353,6 +372,14 @@ export class DiagramEditController {
   private shapeSnapshot: Shape | null = null;
   private readonly librarySource: LibrarySource;
 
+  // Which layout the fresh render is read from after each edit. Icon mode reads
+  // the icon layout so a shape edit targets the `"icon"` graphics layer and a
+  // placed connector re-renders; diagram mode reads the full diagram layout.
+  private readonly refetch: (
+    client: OmcClient,
+    className: string,
+  ) => Promise<DiagramLayout>;
+
   constructor(
     private readonly deps: EditControllerDeps,
     initialLayout: DiagramLayout,
@@ -361,10 +388,12 @@ export class DiagramEditController {
     ) => ShadowBuffer,
     private readonly scheduler: Scheduler = defaultScheduler,
     private readonly readOnly: boolean = false,
+    private readonly mode: DiagramMode = "diagram",
   ) {
     this.prevLayout = initialLayout;
     this.shadow = makeShadow(() => this.onForeignChange());
     this.librarySource = new LibrarySource(deps.client);
+    this.refetch = mode === "icon" ? fetchIconLayout : fetchDiagramLayout;
   }
 
   /**
@@ -444,7 +473,7 @@ export class DiagramEditController {
         );
         return;
       }
-      const layout = await fetchDiagramLayout(client, className);
+      const layout = await this.refetch(client, className);
       this.prevLayout = layout;
       this.deps.gate.send({ type: "layout", layout });
     } catch (err) {
@@ -453,6 +482,10 @@ export class DiagramEditController {
   }
 
   private async dispatch(msg: WebviewToExtension): Promise<void> {
+    // Icon mode honors only shape edits and connector placement; every other
+    // gesture (add non-connector, connections, change-class, parameters,
+    // simulate, check) is a no-op here.
+    if (this.mode === "icon" && !iconHonorsMessage(msg)) return;
     switch (msg.type) {
       case "change":
         await this.onChange(msg.layout);
@@ -504,6 +537,7 @@ export class DiagramEditController {
         className,
         this.prevLayout,
         next,
+        this.refetch,
       );
       if (result === null) return;
       if (result.failed.length > 0) {
@@ -522,6 +556,12 @@ export class DiagramEditController {
     position: { x: number; y: number },
   ): Promise<void> {
     if (this.rejectIfReadOnly()) return;
+    if (
+      this.mode === "icon" &&
+      !(await this.isConnectorClass(componentClass))
+    ) {
+      return;
+    }
     const { client, className } = this.deps;
     const componentName = uniqueComponentName(this.prevLayout, componentClass);
     try {
@@ -537,12 +577,38 @@ export class DiagramEditController {
         );
         return;
       }
-      await this.reflect(await fetchDiagramLayout(client, className));
+      await this.reflect(await this.refetch(client, className));
     } catch (err) {
       this.reportError(
         `addComponent ${componentClass} failed: ${(err as Error).message}`,
       );
     }
+  }
+
+  /**
+   * Whether `componentClass` is a connector-restriction class — the only kind
+   * the icon editor lets you place. Resolves the restriction via OMC; a
+   * non-connector (or a failed resolve) reports a message and returns false so
+   * the placement is refused. `endsWith` catches `"expandable connector"`.
+   */
+  private async isConnectorClass(componentClass: string): Promise<boolean> {
+    let restriction: string;
+    try {
+      ({ restriction } = await this.deps.client.getClassInformation({
+        typeName: componentClass,
+      }));
+    } catch (err) {
+      this.reportError(
+        `could not resolve the restriction of ${componentClass}: ${(err as Error).message}`,
+      );
+      return false;
+    }
+    const kind = restriction.trim();
+    if (kind.endsWith("connector")) return true;
+    this.reportError(
+      `Only connectors can be placed on an icon — ${componentClass} is a ${kind || "non-connector class"}.`,
+    );
+    return false;
   }
 
   private async onConnectionCreate(
@@ -571,7 +637,7 @@ export class DiagramEditController {
         );
         return;
       }
-      await this.reflect(await fetchDiagramLayout(client, className));
+      await this.reflect(await this.refetch(client, className));
     } catch (err) {
       this.reportError(`addConnection failed: ${(err as Error).message}`);
     }
@@ -663,7 +729,7 @@ export class DiagramEditController {
           this.classParamInitialValues,
           values,
         );
-        await this.reflect(await fetchDiagramLayout(client, className));
+        await this.reflect(await this.refetch(client, className));
       } else if (kind === "componentParams") {
         if (this.componentParamComponentName !== null) {
           await applyComponentParameterEdits(
@@ -674,7 +740,7 @@ export class DiagramEditController {
             this.componentParamInitialValues,
             values,
           );
-          await this.reflect(await fetchDiagramLayout(client, className));
+          await this.reflect(await this.refetch(client, className));
         }
       } else if (kind === "shapeProperties") {
         await this.applyShapePropertiesSubmit(values);
@@ -757,7 +823,7 @@ export class DiagramEditController {
         `shape edit failed: ${result.failed.at(0)?.error ?? "unknown"}`,
       );
     }
-    await this.reflect(await fetchDiagramLayout(client, className));
+    await this.reflect(await this.refetch(client, className));
   }
 
   private onParametersCancel(kind: string): void {
@@ -818,7 +884,7 @@ export class DiagramEditController {
         );
         return;
       }
-      await this.reflect(await fetchDiagramLayout(client, className));
+      await this.reflect(await this.refetch(client, className));
     } catch (err) {
       this.reportError(
         `setElementType ${componentName} failed: ${(err as Error).message}`,
@@ -916,6 +982,28 @@ export class DiagramEditController {
   private reportError(message: string): void {
     this.deps.gate.send({ type: "error", message });
     log.warn("diagramEditor", message);
+  }
+}
+
+/**
+ * Webview messages the icon editor honors. Shape draw/edit flows through
+ * `change` and the `shapeProperties` modal (`selectionChange` +
+ * `parametersSubmit`/`parametersCancel`); connector placement flows through
+ * `addComponent` (restriction-gated in `onAddComponent`). Everything else —
+ * connections, change-class, class/component parameters, simulate, check — is a
+ * no-op in icon mode.
+ */
+function iconHonorsMessage(msg: WebviewToExtension): boolean {
+  switch (msg.type) {
+    case "change":
+    case "selectionChange":
+    case "addComponent":
+      return true;
+    case "parametersSubmit":
+    case "parametersCancel":
+      return msg.kind === "shapeProperties";
+    default:
+      return false;
   }
 }
 
