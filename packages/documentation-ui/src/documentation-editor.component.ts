@@ -7,8 +7,11 @@ import {
 } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 
-import type { DocumentationChangeDetail } from "./events.js";
-import type { ModelicaImageStorage } from "./documentation-image.js";
+import type {
+  DocumentationChangeDetail,
+  DocumentationOpenLinkDetail,
+} from "./events.js";
+import { ORIGINAL_SRC_DATASET } from "./documentation-image.js";
 import {
   formatBody,
   splitInfoWrapper,
@@ -142,18 +145,21 @@ export class OmDocumentationEditor extends LitElement {
     if (!this.readOnly && !e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
     this.dispatchEvent(
-      new CustomEvent("om-documentation-open-link", {
-        detail: { href },
-        bubbles: true,
-        composed: true,
-      }),
+      new CustomEvent<DocumentationOpenLinkDetail>(
+        "om-documentation-open-link",
+        {
+          detail: { href },
+          bubbles: true,
+          composed: true,
+        },
+      ),
     );
   };
 
-  // Set a display-only tooltip on `modelica://` links the first time each is
-  // hovered — it lives on the live DOM, never the ProseMirror model, so it
-  // stays out of `getHTML()`/the source. Plain click follows only when
-  // read-only; while editing it takes the follow modifier.
+  // Set a display-only tooltip on hovered `modelica://` links — it lives on the
+  // live DOM, never the ProseMirror model, so it stays out of `getHTML()`/the
+  // source. Re-set on every hover so a `readOnly` flip updates the wording.
+  // Plain click follows only when read-only; while editing it takes the modifier.
   private readonly onEditorMouseOver = (e: Event): void => {
     const target = e.target;
     if (!(target instanceof Element)) return;
@@ -166,13 +172,22 @@ export class OmDocumentationEditor extends LitElement {
       : `${followModifier()}-click to open ${href}`;
   };
 
-  /** Point the image node view's resolver at the current `resources` map. */
+  /**
+   * Point the image node view's resolver at the current `resources` map, and
+   * re-resolve any already-rendered image so a `resources` change without a doc
+   * reload (its library only now resolves) repaints without a stale broken src.
+   */
   private applyImageResolver(): void {
-    const storages = this.editor?.storage as
-      | Record<string, ModelicaImageStorage | undefined>
-      | undefined;
-    const image = storages?.image;
-    if (image) image.resolveSrc = (src) => this.resources[src] ?? src;
+    const storage = this.editor?.storage.image;
+    if (storage) storage.resolveSrc = (src) => this.resources[src] ?? src;
+    this.editorHost
+      ?.querySelectorAll<HTMLImageElement>("img[data-om-original-src]")
+      .forEach((img) => {
+        const original = img.dataset[ORIGINAL_SRC_DATASET];
+        if (original !== undefined) {
+          img.setAttribute("src", this.resources[original] ?? original);
+        }
+      });
   }
 
   /**

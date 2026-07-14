@@ -47,6 +47,50 @@ describe("om-documentation-editor", () => {
     expect(pm?.textContent).toContain("Hello world");
   });
 
+  it("renders a modelica:// image through the resources map", async () => {
+    const uri = "modelica://Modelica/Resources/Images/Logo.png";
+    const data = "data:image/png;base64,AAAA";
+    const el = document.createElement(
+      "om-documentation-editor",
+    ) as OmDocumentationEditor;
+    el.info = `<html><p><img src="${uri}"></p></html>`;
+    el.resources = { [uri]: data };
+    document.body.appendChild(el);
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 0));
+    await el.updateComplete;
+
+    const img = el.querySelector<HTMLImageElement>(".ProseMirror img");
+    expect(img?.getAttribute("src")).toBe(data);
+  });
+
+  it("re-renders images when resources arrives after mount", async () => {
+    const uri = "modelica://Modelica/Resources/Images/Logo.png";
+    const data = "data:image/png;base64,BBBB";
+    const el = document.createElement(
+      "om-documentation-editor",
+    ) as OmDocumentationEditor;
+    el.info = `<html><p><img src="${uri}"></p></html>`;
+    document.body.appendChild(el);
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 0));
+    // Before the map, the node view leaves the unresolved src.
+    expect(
+      el
+        .querySelector<HTMLImageElement>(".ProseMirror img")
+        ?.getAttribute("src"),
+    ).toBe(uri);
+
+    el.resources = { [uri]: data };
+    await el.updateComplete;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(
+      el
+        .querySelector<HTMLImageElement>(".ProseMirror img")
+        ?.getAttribute("src"),
+    ).toBe(data);
+  });
+
   it("does not emit a change for a load (mount or reverse-sync)", async () => {
     const el = await mount(INFO);
     let emitted = 0;

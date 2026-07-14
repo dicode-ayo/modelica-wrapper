@@ -27,6 +27,15 @@ describe("parseModelicaLink", () => {
     });
   });
 
+  it("drops a trailing anchor on a resource path too", () => {
+    expect(
+      parseModelicaLink("modelica://Modelica/Resources/UsersGuide.html#Intro"),
+    ).toEqual({
+      kind: "resource",
+      uri: "modelica://Modelica/Resources/UsersGuide.html",
+    });
+  });
+
   it("returns null for a non-modelica or empty href", () => {
     expect(parseModelicaLink("https://example.com")).toBeNull();
     expect(parseModelicaLink("modelica://")).toBeNull();

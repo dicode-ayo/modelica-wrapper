@@ -1,6 +1,7 @@
 import { promises as fsp } from "node:fs";
 import * as path from "node:path";
 
+import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 
 /** The subset of OMC used to resolve resource URIs. */
@@ -11,7 +12,9 @@ export interface UriResolveClient {
 /** Map of an original image `src` (e.g. `modelica://…`) → a loadable `data:` URI. */
 export type ResourceMap = Record<string, string>;
 
-const IMG_SRC = /<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']/gi;
+// `\ssrc` (not `\bsrc`) so `data-src` — where `-` is a word boundary — isn't
+// captured as if it were a real `src`.
+const IMG_SRC = /<img\b[^>]*?\ssrc\s*=\s*["']([^"']+)["']/gi;
 
 const MIME_BY_EXT: Record<string, string> = {
   ".png": "image/png",
@@ -47,7 +50,7 @@ async function fileToDataUri(filename: string): Promise<string | undefined> {
   } catch (err) {
     log.warn(
       "documentationResources",
-      `read ${filename} failed: ${(err as Error).message}`,
+      `read ${filename} failed: ${errorDetail(err)}`,
     );
     return undefined;
   }
@@ -67,10 +70,18 @@ export async function resolveDocResources(
 ): Promise<ResourceMap> {
   const out: ResourceMap = {};
   for (const uri of imageUrisIn(info)) {
-    const { filename } = await client.uriToFilename({ uri });
-    if (filename.length === 0) continue;
-    const dataUri = await fileToDataUri(filename);
-    if (dataUri !== undefined) out[uri] = dataUri;
+    try {
+      const { filename } = await client.uriToFilename({ uri });
+      if (filename.length === 0) continue;
+      const dataUri = await fileToDataUri(filename);
+      if (dataUri !== undefined) out[uri] = dataUri;
+    } catch (err) {
+      // One broken image must not take the whole (already-fetched) doc down.
+      log.warn(
+        "documentationResources",
+        `resolve ${uri} failed: ${errorDetail(err)}`,
+      );
+    }
   }
   return out;
 }

@@ -25,10 +25,12 @@ export type ModelicaLink =
 export function parseModelicaLink(href: string): ModelicaLink | null {
   const m = /^\s*modelica:\/\/(.+?)\s*$/i.exec(href);
   if (!m) return null;
-  const rest = m[1] ?? "";
-  if (rest.includes("/")) return { kind: "resource", uri: href.trim() };
-  const className = (rest.split(/[#?]/)[0] ?? "").trim();
-  return className.length > 0 ? { kind: "class", className } : null;
+  // Drop a trailing in-document anchor / query — MSL UsersGuide links use them.
+  const rest = (m[1] ?? "").split(/[#?]/)[0] ?? "";
+  if (rest.length === 0) return null;
+  if (rest.includes("/"))
+    return { kind: "resource", uri: `modelica://${rest}` };
+  return { kind: "class", className: rest };
 }
 
 /**

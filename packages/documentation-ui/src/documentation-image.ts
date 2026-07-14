@@ -5,6 +5,12 @@ export interface ModelicaImageStorage {
   resolveSrc: (src: string) => string;
 }
 
+declare module "@tiptap/core" {
+  interface Storage {
+    image: ModelicaImageStorage;
+  }
+}
+
 /**
  * The `Image` node, extended with a node view that renders the `<img>` with a
  * *resolved* `src` (a host-provided `data:` URI for `modelica://…` resources)
@@ -21,19 +27,26 @@ export const ModelicaImage = Image.extend<ImageOptions, ModelicaImageStorage>({
   },
 
   addNodeView() {
-    return ({ node }) => {
+    return ({ node, HTMLAttributes }) => {
       const dom = document.createElement("img");
-      const attrs = node.attrs as {
-        src?: unknown;
-        alt?: unknown;
-        title?: unknown;
-      };
-      if (typeof attrs.alt === "string") dom.alt = attrs.alt;
-      if (typeof attrs.title === "string") dom.title = attrs.title;
-      if (typeof attrs.src === "string") {
-        dom.setAttribute("src", this.storage.resolveSrc(attrs.src));
+      // Copy every schema attribute (alt, title, width, height, …); only the
+      // display `src` diverges from the model.
+      for (const [name, value] of Object.entries(HTMLAttributes)) {
+        if (value !== null && value !== undefined) {
+          dom.setAttribute(name, String(value));
+        }
+      }
+      const src = (node.attrs as { src?: unknown }).src;
+      if (typeof src === "string") {
+        // Stash the model src so the resolver can re-resolve the live image if
+        // the `resources` map changes without a doc reload.
+        dom.dataset[ORIGINAL_SRC_DATASET] = src;
+        dom.setAttribute("src", this.storage.resolveSrc(src));
       }
       return { dom };
     };
   },
 });
+
+/** `dataset` key (→ `data-om-original-src`) holding an image's model `src`. */
+export const ORIGINAL_SRC_DATASET = "omOriginalSrc";

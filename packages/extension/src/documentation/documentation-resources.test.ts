@@ -46,20 +46,31 @@ describe("resolveDocResources", () => {
     expect(map[URI]).toContain(PNG.toString("base64"));
   });
 
-  it("ignores srcs that don't need resolving and dedupes the rest", async () => {
+  it("ignores non-resolving/data-src srcs and dedupes the rest", async () => {
     const uriToFilename = vi.fn(() => Promise.resolve({ filename: tempPng() }));
     const client: UriResolveClient = { uriToFilename };
     const info = `
       <img src="${URI}">
       <img src="${URI}">
       <img src="https://example.com/x.png">
+      <img data-src="${URI}">
       <img src="data:image/png;base64,AAAA">`;
 
     await resolveDocResources(client, info);
 
-    // Only the modelica:// URI is resolved, and only once.
+    // Only the real modelica:// src is resolved, once — not the data-src.
     expect(uriToFilename).toHaveBeenCalledTimes(1);
     expect(uriToFilename).toHaveBeenCalledWith({ uri: URI });
+  });
+
+  it("resolves a file:// image too", async () => {
+    const file = tempPng();
+    const client: UriResolveClient = {
+      uriToFilename: vi.fn(() => Promise.resolve({ filename: file })),
+    };
+    const src = "file:///some/logo.png";
+    const map = await resolveDocResources(client, `<img src="${src}">`);
+    expect(map[src]).toMatch(/^data:image\/png;base64,/);
   });
 
   it("omits an unresolvable URI (empty filename)", async () => {
@@ -68,5 +79,23 @@ describe("resolveDocResources", () => {
     };
     const map = await resolveDocResources(client, `<img src="${URI}">`);
     expect(map[URI]).toBeUndefined();
+  });
+
+  it("keeps resolving other images when one URI rejects", async () => {
+    const ok = "modelica://Modelica/Resources/Images/Ok.png";
+    const file = tempPng();
+    const client: UriResolveClient = {
+      uriToFilename: vi.fn((a: { uri: string }) =>
+        a.uri === URI
+          ? Promise.reject(new Error("channel error"))
+          : Promise.resolve({ filename: file }),
+      ),
+    };
+    const map = await resolveDocResources(
+      client,
+      `<img src="${URI}"><img src="${ok}">`,
+    );
+    expect(map[URI]).toBeUndefined();
+    expect(map[ok]).toMatch(/^data:image\/png;base64,/);
   });
 });
