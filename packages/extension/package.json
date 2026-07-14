@@ -147,26 +147,22 @@
       {
         "command": "modelica.openAsText",
         "title": "Modelica: Open as Text",
-        "icon": "$(file-code)",
-        "enablement": "activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon || activeCustomEditorId == modelica.documentation"
+        "icon": "$(file-code)"
       },
       {
         "command": "modelica.openAsIcon",
         "title": "Modelica: Open as Icon",
-        "icon": "$(symbol-color)",
-        "enablement": "activeCustomEditorId != modelica.icon"
+        "icon": "$(symbol-color)"
       },
       {
         "command": "modelica.openAsDiagram",
         "title": "Modelica: Open as Diagram",
-        "icon": "$(circuit-board)",
-        "enablement": "activeCustomEditorId != modelica.diagram"
+        "icon": "$(circuit-board)"
       },
       {
         "command": "modelica.openAsDocumentation",
         "title": "Modelica: Open as Documentation",
-        "icon": "$(book)",
-        "enablement": "activeCustomEditorId != modelica.documentation"
+        "icon": "$(book)"
       },
       {
         "command": "modelica.showLogs",
