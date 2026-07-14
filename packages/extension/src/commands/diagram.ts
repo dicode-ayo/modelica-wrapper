@@ -43,11 +43,14 @@ function tabUri(tab: vscode.Tab): vscode.Uri | undefined {
 
 /**
  * Flip the active editor to another view (`target` is a custom-editor viewType
- * or the text-editor id) of the same class. Closes the tab it came from when
- * that's a different view of the same class, so the views toggle in place
- * rather than accumulating a tab per representation.
+ * or the text-editor id) of the same class. Closes any other view of the same
+ * class, so the views toggle in place rather than accumulating a tab per
+ * representation. The tabs to close are re-derived from the fresh tab list
+ * after the switch — a `vscode.Tab` is a snapshot, and VSCode reuses the tab
+ * input in place for preview editors, so a pre-switch handle can go stale and
+ * name the freshly-switched editor.
  */
-async function switchView(target: string): Promise<void> {
+export async function switchView(target: string): Promise<void> {
   const className = activeClass();
   if (!className) {
     await vscode.window.showWarningMessage(
@@ -56,19 +59,23 @@ async function switchView(target: string): Promise<void> {
     return;
   }
   const uri = sourceUriFor(className);
-  const from = vscode.window.tabGroups.activeTabGroup.activeTab;
   await vscode.commands.executeCommand("vscode.openWith", uri, target);
-  const active = vscode.window.tabGroups.activeTabGroup.activeTab;
-  if (from && from !== active && tabUri(from)?.toString() === uri.toString()) {
-    await vscode.window.tabGroups.close(from);
-  }
+  const isTargetView = (tab: vscode.Tab): boolean =>
+    target === TEXT_VIEW
+      ? tab.input instanceof vscode.TabInputText
+      : tab.input instanceof vscode.TabInputCustom &&
+        tab.input.viewType === target;
+  const stale = vscode.window.tabGroups.activeTabGroup.tabs.filter(
+    (tab) => tabUri(tab)?.toString() === uri.toString() && !isTargetView(tab),
+  );
+  if (stale.length > 0) await vscode.window.tabGroups.close(stale);
 }
 
 /**
  * VSCode command id → diagram command id. These are bound as keybindings
- * (`when: activeCustomEditorId == modelica.diagram && !modelicaDiagramInputFocus`)
- * and forwarded into the focused diagram webview, so the diagram shortcuts
- * live in VSCode's keymap and are remappable from the Keyboard Shortcuts UI.
+ * gated on a focused diagram or icon custom editor and forwarded into that
+ * webview, so the shortcuts live in VSCode's keymap and are remappable from
+ * the Keyboard Shortcuts UI.
  */
 const SELECTION_COMMANDS: ReadonlyArray<readonly [string, DiagramCommandId]> = [
   ["modelica.diagram.delete", "diagram.delete"],

@@ -253,24 +253,36 @@
       ],
       "commandPalette": [
         {
+          "command": "modelica.openAsText",
+          "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && resourceScheme == modelica-source"
+        },
+        {
+          "command": "modelica.openAsIcon",
+          "when": "resourceScheme == modelica-source"
+        },
+        {
+          "command": "modelica.openAsDiagram",
+          "when": "resourceScheme == modelica-source"
+        },
+        {
           "command": "modelica.diagram.delete",
-          "when": "activeCustomEditorId == modelica.diagram"
+          "when": "activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon"
         },
         {
           "command": "modelica.diagram.rotateCw",
-          "when": "activeCustomEditorId == modelica.diagram"
+          "when": "activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon"
         },
         {
           "command": "modelica.diagram.rotateCcw",
-          "when": "activeCustomEditorId == modelica.diagram"
+          "when": "activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon"
         },
         {
           "command": "modelica.diagram.flipHorizontal",
-          "when": "activeCustomEditorId == modelica.diagram"
+          "when": "activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon"
         },
         {
           "command": "modelica.diagram.flipVertical",
-          "when": "activeCustomEditorId == modelica.diagram"
+          "when": "activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon"
         }
       ]
     },
@@ -278,32 +290,32 @@
       {
         "command": "modelica.diagram.delete",
         "key": "delete",
-        "when": "activeCustomEditorId == modelica.diagram && !modelicaDiagramInputFocus && !inputFocus"
+        "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus"
       },
       {
         "command": "modelica.diagram.delete",
         "key": "backspace",
-        "when": "activeCustomEditorId == modelica.diagram && !modelicaDiagramInputFocus && !inputFocus"
+        "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus"
       },
       {
         "command": "modelica.diagram.rotateCw",
         "key": "r",
-        "when": "activeCustomEditorId == modelica.diagram && !modelicaDiagramInputFocus && !inputFocus"
+        "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus"
       },
       {
         "command": "modelica.diagram.rotateCcw",
         "key": "shift+r",
-        "when": "activeCustomEditorId == modelica.diagram && !modelicaDiagramInputFocus && !inputFocus"
+        "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus"
       },
       {
         "command": "modelica.diagram.flipHorizontal",
         "key": "f",
-        "when": "activeCustomEditorId == modelica.diagram && !modelicaDiagramInputFocus && !inputFocus"
+        "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus"
       },
       {
         "command": "modelica.diagram.flipVertical",
         "key": "shift+f",
-        "when": "activeCustomEditorId == modelica.diagram && !modelicaDiagramInputFocus && !inputFocus"
+        "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus"
       }
     ],
     "configuration": {

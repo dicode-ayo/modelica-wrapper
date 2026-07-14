@@ -319,19 +319,15 @@ export async function fetchDiagramLayout(
  * from OMC (the render source of truth). Returns `null` when the two layouts
  * are identical (nothing to apply).
  *
- * `refetch` selects which layout the fresh render is read from — the diagram
- * editor passes `fetchDiagramLayout` (the default) and the icon editor passes
- * `fetchIconLayout`, so an icon-layer shape edit re-reads the icon layout.
+ * `refetch` selects which layout the fresh render is read from, so an
+ * icon-layer shape edit re-reads the icon layout rather than the diagram one.
  */
 export async function applyDiagramEdits(
   client: OmcClient,
   className: string,
   prevLayout: DiagramLayout,
   next: DiagramLayout,
-  refetch: (
-    client: OmcClient,
-    className: string,
-  ) => Promise<DiagramLayout> = fetchDiagramLayout,
+  refetch: (client: OmcClient, className: string) => Promise<DiagramLayout>,
 ): Promise<{
   layout: DiagramLayout;
   failed: ReadonlyArray<{ error: string }>;

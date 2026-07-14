@@ -603,9 +603,10 @@ export class DiagramEditController {
       );
       return false;
     }
-    if (restriction.trim().endsWith("connector")) return true;
+    const kind = restriction.trim();
+    if (kind.endsWith("connector")) return true;
     this.reportError(
-      `Only connectors can be placed on an icon — ${componentClass} is a ${restriction.trim() || "non-connector class"}.`,
+      `Only connectors can be placed on an icon — ${componentClass} is a ${kind || "non-connector class"}.`,
     );
     return false;
   }
@@ -636,7 +637,7 @@ export class DiagramEditController {
         );
         return;
       }
-      await this.reflect(await fetchDiagramLayout(client, className));
+      await this.reflect(await this.refetch(client, className));
     } catch (err) {
       this.reportError(`addConnection failed: ${(err as Error).message}`);
     }
@@ -728,7 +729,7 @@ export class DiagramEditController {
           this.classParamInitialValues,
           values,
         );
-        await this.reflect(await fetchDiagramLayout(client, className));
+        await this.reflect(await this.refetch(client, className));
       } else if (kind === "componentParams") {
         if (this.componentParamComponentName !== null) {
           await applyComponentParameterEdits(
@@ -739,7 +740,7 @@ export class DiagramEditController {
             this.componentParamInitialValues,
             values,
           );
-          await this.reflect(await fetchDiagramLayout(client, className));
+          await this.reflect(await this.refetch(client, className));
         }
       } else if (kind === "shapeProperties") {
         await this.applyShapePropertiesSubmit(values);
@@ -883,7 +884,7 @@ export class DiagramEditController {
         );
         return;
       }
-      await this.reflect(await fetchDiagramLayout(client, className));
+      await this.reflect(await this.refetch(client, className));
     } catch (err) {
       this.reportError(
         `setElementType ${componentName} failed: ${(err as Error).message}`,

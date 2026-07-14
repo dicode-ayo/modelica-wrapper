@@ -53,7 +53,7 @@ describe("diagram selection keybindings", () => {
     for (const id of Object.keys(SELECTION_KEYS)) {
       for (const binding of keybindings.filter((k) => k.command === id)) {
         expect(binding.when).toBe(
-          "activeCustomEditorId == modelica.diagram && !modelicaDiagramInputFocus && !inputFocus",
+          "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus",
         );
       }
     }

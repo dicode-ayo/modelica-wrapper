@@ -166,6 +166,46 @@ class UriImpl {
 export const Uri = UriImpl;
 export type Uri = UriImpl;
 
+/** `TabInputText` stand-in — a text editor's tab input, carrying its `uri`. */
+export class TabInputText {
+  constructor(public readonly uri: UriImpl) {}
+}
+
+/** `TabInputCustom` stand-in — a custom editor's tab input (`uri` + `viewType`). */
+export class TabInputCustom {
+  constructor(
+    public readonly uri: UriImpl,
+    public readonly viewType: string,
+  ) {}
+}
+
+export interface Tab {
+  input: TabInputText | TabInputCustom | unknown;
+}
+
+let activeGroupTabs: Tab[] = [];
+
+/** Tabs passed to `window.tabGroups.close`, flattened, for assertions. */
+export const closedTabs: Tab[] = [];
+
+/** Populate the active tab group the mock reports to `switchView`. */
+export function setActiveGroupTabs(tabs: Tab[]): void {
+  activeGroupTabs = tabs;
+}
+
+/** Clear the tab model between tests. */
+export function resetTabs(): void {
+  activeGroupTabs = [];
+  closedTabs.length = 0;
+}
+
+let activeTextEditorValue: { document: { uri: UriImpl } } | undefined;
+
+/** Set (or clear) the URI the mock's `window.activeTextEditor` reports. */
+export function setActiveTextEditorUri(uri: UriImpl | undefined): void {
+  activeTextEditorValue = uri ? { document: { uri } } : undefined;
+}
+
 /** Minimal `WorkspaceEdit` — records whole-document replacements for assertions. */
 export class WorkspaceEdit {
   readonly replacements: { uri: UriImpl; range: Range; text: string }[] = [];
@@ -336,6 +376,22 @@ export const languages = {
 };
 
 export const window = {
+  get activeTextEditor(): { document: { uri: UriImpl } } | undefined {
+    return activeTextEditorValue;
+  },
+  tabGroups: {
+    get activeTabGroup(): { tabs: Tab[] } {
+      return {
+        get tabs(): Tab[] {
+          return activeGroupTabs;
+        },
+      };
+    },
+    close(tabOrTabs: Tab | Tab[]): Promise<void> {
+      closedTabs.push(...(Array.isArray(tabOrTabs) ? tabOrTabs : [tabOrTabs]));
+      return Promise.resolve();
+    },
+  },
   createOutputChannel(_name: string) {
     return {
       append: () => {},
