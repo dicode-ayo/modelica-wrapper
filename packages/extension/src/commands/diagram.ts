@@ -1,18 +1,68 @@
 /**
  * Diagram + source-view commands:
  * - `modelica.openDiagram(arg)` — open a class in the diagram custom editor.
- * - `modelica.viewSource(node?)` — open the `modelica-source://` view.
- * - `modelica.openDiagramFromSource()` — title-bar action on source tabs.
+ * - `modelica.openAsText` / `openAsIcon` / `openAsDiagram` — the title-bar view
+ *   switcher: flip the active editor between the class's text, icon, and
+ *   diagram views in place (closing the tab it came from).
+ * - `modelica.viewSource(node?)` — open the `modelica-source:` text view for a
+ *   class (e.g. from a library-tree node).
+ * - `modelica.openDiagramFromSource()` — open the diagram from a source tab.
  */
 
 import * as vscode from "vscode";
 
 import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
 import { openDiagram } from "../diagram/open-diagram.js";
+import { DIAGRAM_VIEW_TYPE, ICON_VIEW_TYPE } from "../diagram/view-type.js";
 import { qualifiedNameFromUri, sourceUriFor } from "../source-provider.js";
 import type { DiagramCommandId } from "../webview/protocol.js";
 
 import type { CommandContext, LibraryNode } from "./context.js";
+
+/** The built-in text editor id — the `openWith` override for the text view. */
+const TEXT_VIEW = "default";
+
+/**
+ * Resolve the Modelica class the active editor is showing: the focused
+ * diagram/icon custom editor if there is one, else the active
+ * `modelica-source:` text editor.
+ */
+function activeClass(): string | undefined {
+  const fromCustom = DiagramEditorProvider.activeClassName();
+  if (fromCustom) return fromCustom;
+  const uri = vscode.window.activeTextEditor?.document.uri;
+  return uri ? qualifiedNameFromUri(uri) : undefined;
+}
+
+function tabUri(tab: vscode.Tab): vscode.Uri | undefined {
+  const input = tab.input;
+  if (input instanceof vscode.TabInputText) return input.uri;
+  if (input instanceof vscode.TabInputCustom) return input.uri;
+  return undefined;
+}
+
+/**
+ * Flip the active editor to another view (`target` is a custom-editor viewType
+ * or the text-editor id) of the same class. Closes the tab it came from when
+ * that's a different view of the same class, so the views toggle in place
+ * rather than accumulating a tab per representation.
+ */
+async function switchView(target: string): Promise<void> {
+  const className = activeClass();
+  if (!className) {
+    await vscode.window.showWarningMessage(
+      "Modelica: no Modelica class in the active editor.",
+    );
+    return;
+  }
+  const uri = sourceUriFor(className);
+  const from = vscode.window.tabGroups.activeTabGroup.activeTab;
+  await vscode.commands.executeCommand("vscode.openWith", uri, target);
+  const active = vscode.window.tabGroups.activeTabGroup.activeTab;
+  if (from && from !== active && tabUri(from)?.toString() === uri.toString()) {
+    await vscode.window.tabGroups.close(from);
+  }
+}
 
 /**
  * VSCode command id → diagram command id. These are bound as keybindings
@@ -49,6 +99,15 @@ export function registerDiagramCommands(
           );
         }
       }),
+    ),
+    vscode.commands.registerCommand("modelica.openAsText", () =>
+      switchView(TEXT_VIEW),
+    ),
+    vscode.commands.registerCommand("modelica.openAsIcon", () =>
+      switchView(ICON_VIEW_TYPE),
+    ),
+    vscode.commands.registerCommand("modelica.openAsDiagram", () =>
+      switchView(DIAGRAM_VIEW_TYPE),
     ),
     vscode.commands.registerCommand(
       "modelica.viewSource",

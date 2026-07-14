@@ -135,6 +135,21 @@
         "icon": "$(circuit-board)"
       },
       {
+        "command": "modelica.openAsText",
+        "title": "Modelica: Open as Text",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "modelica.openAsIcon",
+        "title": "Modelica: Open as Icon",
+        "icon": "$(symbol-color)"
+      },
+      {
+        "command": "modelica.openAsDiagram",
+        "title": "Modelica: Open as Diagram",
+        "icon": "$(circuit-board)"
+      },
+      {
         "command": "modelica.showLogs",
         "title": "Modelica: Show Logs",
         "icon": "$(output)"
@@ -208,24 +223,29 @@
       ],
       "editor/title": [
         {
-          "command": "modelica.openDiagramFromSource",
-          "when": "resourceScheme == modelica-source && !activeCustomEditorId",
+          "command": "modelica.openAsText",
+          "when": "activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon",
           "group": "navigation@1"
         },
         {
-          "command": "modelica.viewSource",
-          "when": "activeCustomEditorId == modelica.diagram",
-          "group": "navigation@1"
+          "command": "modelica.openAsIcon",
+          "when": "(resourceScheme == modelica-source && !activeCustomEditorId) || activeCustomEditorId == modelica.diagram",
+          "group": "navigation@2"
+        },
+        {
+          "command": "modelica.openAsDiagram",
+          "when": "(resourceScheme == modelica-source && !activeCustomEditorId) || activeCustomEditorId == modelica.icon",
+          "group": "navigation@3"
         },
         {
           "command": "modelica.checkModel",
           "when": "resourceScheme == modelica-source && !activeCustomEditorId",
-          "group": "navigation@2"
+          "group": "navigation@4"
         },
         {
           "command": "modelica.checkModel",
-          "when": "activeCustomEditorId == modelica.diagram",
-          "group": "navigation@2"
+          "when": "activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon",
+          "group": "navigation@4"
         }
       ],
       "commandPalette": [
