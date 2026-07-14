@@ -20,6 +20,13 @@ import { documentationExtensions } from "./documentation-schema.js";
 /** Coalesce a burst of keystrokes into one change once the editor settles. */
 export const EDIT_DEBOUNCE_MS = 300;
 
+/** The follow-a-link modifier label for the current platform. */
+function followModifier(): string {
+  const platform =
+    typeof navigator === "undefined" ? "" : navigator.platform || "";
+  return /Mac|iPhone|iPad/i.test(platform) ? "⌘" : "Ctrl";
+}
+
 /**
  * WYSIWYG editor for a Modelica class's `Documentation(info="<html>…</html>")`.
  * A pure renderer: it takes `info` in and emits `om-documentation-change` out
@@ -84,7 +91,9 @@ export class OmDocumentationEditor extends LitElement {
     // the panel is disposed. The listener is on this element, so a dispatch from
     // a just-disconnected element still reaches the host.
     this.flushChange();
-    this.editorHost?.removeEventListener("click", this.onEditorClick);
+    const host = this.editorHost;
+    host?.removeEventListener("click", this.onEditorClick);
+    host?.removeEventListener("mouseover", this.onEditorMouseOver);
     this.editor?.destroy();
     this.editor = null;
   }
@@ -108,6 +117,7 @@ export class OmDocumentationEditor extends LitElement {
     const host = this.editorHost;
     if (host === null) return;
     host.addEventListener("click", this.onEditorClick);
+    host.addEventListener("mouseover", this.onEditorMouseOver);
     this.editor = new Editor({
       element: host,
       extensions: documentationExtensions,
@@ -138,6 +148,22 @@ export class OmDocumentationEditor extends LitElement {
         composed: true,
       }),
     );
+  };
+
+  // Set a display-only tooltip on `modelica://` links the first time each is
+  // hovered — it lives on the live DOM, never the ProseMirror model, so it
+  // stays out of `getHTML()`/the source. Plain click follows only when
+  // read-only; while editing it takes the follow modifier.
+  private readonly onEditorMouseOver = (e: Event): void => {
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    const link = target.closest("a[href]");
+    if (!(link instanceof HTMLElement)) return;
+    const href = link.getAttribute("href");
+    if (href === null || !/^modelica:\/\//i.test(href)) return;
+    link.title = this.readOnly
+      ? `Click to open ${href}`
+      : `${followModifier()}-click to open ${href}`;
   };
 
   /** Point the image node view's resolver at the current `resources` map. */
@@ -549,6 +575,7 @@ const STYLE = html`
     }
     om-documentation-editor .om-doc-editor a {
       color: var(--vscode-textLink-foreground);
+      cursor: pointer;
     }
     om-documentation-editor .om-doc-editor code,
     om-documentation-editor .om-doc-editor pre {
