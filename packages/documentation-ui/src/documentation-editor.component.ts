@@ -332,6 +332,11 @@ const STYLE = html`
       --om-doc-active-fallback: rgba(128, 128, 128, 0.2);
       display: flex;
       flex-direction: column;
+      /* A flex child defaults to min-width/min-height:auto, which refuses to
+         shrink below its content — a wide table or long line then forces the
+         whole editor wider than its panel instead of wrapping/scrolling. */
+      min-width: 0;
+      min-height: 0;
       height: 100%;
       color: var(--vscode-editor-foreground);
       background: var(--vscode-editor-background);
@@ -394,6 +399,8 @@ const STYLE = html`
     om-documentation-editor .om-doc-editor,
     om-documentation-editor .om-doc-source {
       flex: 1 1 auto;
+      min-height: 0;
+      min-width: 0;
       overflow: auto;
       padding: var(--om-doc-pad);
     }
@@ -402,6 +409,37 @@ const STYLE = html`
       outline: none;
       line-height: 1.5;
       max-width: var(--om-doc-measure);
+      /* ProseMirror's essential base: wrap long lines and break unbreakable
+         tokens (e.g. a long modelica:// href) rather than overflow. */
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+    }
+    om-documentation-editor .om-doc-editor .ProseMirror > :first-child {
+      margin-block-start: 0;
+    }
+    om-documentation-editor .om-doc-editor .ProseMirror p,
+    om-documentation-editor .om-doc-editor .ProseMirror ul,
+    om-documentation-editor .om-doc-editor .ProseMirror ol,
+    om-documentation-editor .om-doc-editor .ProseMirror blockquote,
+    om-documentation-editor .om-doc-editor .ProseMirror table {
+      margin-block: var(--om-doc-gap);
+    }
+    om-documentation-editor .om-doc-editor .ProseMirror h1,
+    om-documentation-editor .om-doc-editor .ProseMirror h2,
+    om-documentation-editor .om-doc-editor .ProseMirror h3,
+    om-documentation-editor .om-doc-editor .ProseMirror h4 {
+      margin-block: var(--om-doc-pad) var(--om-doc-gap);
+      line-height: 1.25;
+    }
+    om-documentation-editor .om-doc-editor .ProseMirror ul,
+    om-documentation-editor .om-doc-editor .ProseMirror ol {
+      padding-inline-start: 1.5rem;
+    }
+    om-documentation-editor .om-doc-editor .ProseMirror blockquote {
+      margin-inline: 0;
+      padding-inline-start: var(--om-doc-pad);
+      border-inline-start: 3px solid
+        var(--vscode-editorWidget-border, currentColor);
     }
     om-documentation-editor .om-doc-editor a {
       color: var(--vscode-textLink-foreground);
@@ -432,7 +470,8 @@ const STYLE = html`
       color: var(--vscode-editor-foreground);
       background: var(--vscode-editor-background);
       font-family: var(--vscode-editor-font-family, monospace);
-      white-space: pre;
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
     }
     om-documentation-editor .om-doc-source:focus,
     om-documentation-editor .om-doc-editor .ProseMirror:focus {

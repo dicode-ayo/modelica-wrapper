@@ -89,6 +89,7 @@ export class OmDocumentationRoot extends LitElement {
         }
         om-documentation-root > om-documentation-editor {
           flex: 1 1 auto;
+          min-width: 0;
           min-height: 0;
         }
         om-documentation-root .om-doc-host-error {
