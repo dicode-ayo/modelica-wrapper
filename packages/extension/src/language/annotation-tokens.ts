@@ -6,7 +6,7 @@
  * `AnnotationSemanticTokensProvider` (see `annotation-tokens-provider.ts`) maps
  * these onto `vscode.SemanticTokens`.
  *
- * ## Two syntactic worlds inside an annotation (OpenModelica/tree-sitter-modelica v0.2.2)
+ * ## Two syntactic worlds inside an annotation
  *
  * An annotation nests records in two different shapes; the walk covers both:
  *
@@ -161,15 +161,17 @@ function classifyRecordConstructor(node: Node, out: AnnotationToken[]): void {
   const callee = node.child(0);
   if (!callee || callee.type !== NODE.componentReference) return;
   const ident = firstIdent(callee);
-  if (ident)
+  if (ident) {
     out.push({ range: rangeOf(ident), type: AnnotationTokenType.Record });
+  }
 }
 
 /** A `named_argument`'s leading `IDENT` is a record-constructor FIELD name. */
 function classifyNamedArgument(node: Node, out: AnnotationToken[]): void {
   const ident = firstIdent(node);
-  if (ident)
+  if (ident) {
     out.push({ range: rangeOf(ident), type: AnnotationTokenType.Field });
+  }
 }
 
 /**

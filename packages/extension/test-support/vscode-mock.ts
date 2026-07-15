@@ -132,11 +132,8 @@ export class SemanticTokens {
 }
 
 export class SemanticTokensBuilder {
-  public readonly pushed: Array<{ range: Range; tokenType: string }> = [];
   constructor(private readonly legend?: SemanticTokensLegend) {}
-  push(range: Range, tokenType: string): void {
-    this.pushed.push({ range, tokenType });
-  }
+  push(_range: Range, _tokenType: string): void {}
   build(): SemanticTokens {
     return new SemanticTokens(new Uint32Array());
   }

@@ -60,7 +60,17 @@ export class AnnotationSemanticTokensProvider
     );
     try {
       const tree = await this.cache.parse(document);
-      for (const token of computeAnnotationTokens(tree)) {
+      // The builder encodes each token as a delta from the previous one, so it
+      // requires ascending (line, character) order; sort rather than rely on
+      // the walk's emission order.
+      const tokens = computeAnnotationTokens(tree)
+        .slice()
+        .sort(
+          (a, b) =>
+            a.range.start.line - b.range.start.line ||
+            a.range.start.character - b.range.start.character,
+        );
+      for (const token of tokens) {
         builder.push(toVscodeRange(token.range), TOKEN_TYPE[token.type]);
       }
     } catch (err) {

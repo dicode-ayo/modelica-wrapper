@@ -235,7 +235,7 @@ export function annotationFieldValues(field: string): readonly string[] {
 export const ANNOTATION_ENUM_NAMES: ReadonlySet<string> = new Set(
   Object.values(ANNOTATION_VALUE_SCHEMA).flatMap((values) =>
     values
-      .map((value) => value.slice(0, value.indexOf(".")))
-      .filter((name) => name.length > 0),
+      .filter((value) => value.includes("."))
+      .map((value) => value.slice(0, value.indexOf("."))),
   ),
 );

@@ -140,4 +140,24 @@ end M;`;
 end M;`;
     expect(computeAnnotationTokens(parse(src))).toEqual([]);
   });
+
+  it("emits tokens in document order across both worlds", () => {
+    const src = `model M
+  annotation(Icon(graphics={Line(points={{0,0}}, pattern=LinePattern.Dash)}));
+end M;`;
+    expect(classify(src)).toEqual([
+      { type: AnnotationTokenType.Record, text: "Icon" },
+      { type: AnnotationTokenType.Field, text: "graphics" },
+      { type: AnnotationTokenType.Record, text: "Line" },
+      { type: AnnotationTokenType.Field, text: "points" },
+      { type: AnnotationTokenType.Field, text: "pattern" },
+      { type: AnnotationTokenType.EnumMember, text: "LinePattern.Dash" },
+    ]);
+  });
+
+  it("does not throw on a truncated, unclosed annotation", () => {
+    const src = `model M
+  annotation(Diagram(graphics={Line(points={{0,0`;
+    expect(() => computeAnnotationTokens(parse(src))).not.toThrow();
+  });
 });
