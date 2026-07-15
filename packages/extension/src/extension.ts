@@ -34,6 +34,7 @@ import {
 } from "./documentation/documentation-html-provider.js";
 import { registerLanguageFeatures } from "./language/index.js";
 import { log } from "./logger.js";
+import { recoverRestoredCustomEditors } from "./restore-recovery.js";
 import { ResultViewEditorProvider } from "./results/result-view-provider.js";
 import { evalLine } from "./repl/repl-eval.js";
 import {
@@ -141,12 +142,8 @@ export async function activate(
     }),
   );
 
-  // Registering the provider inside `activate()` doesn't retroactively fix a
-  // custom editor that already failed to restore: the provider registration is
-  // proxied to the workbench asynchronously, so an editor VSCode restored while
-  // activation was still in flight can resolve against a scheme the file service
-  // didn't know yet, and VSCode never retries it. Re-open any such tab now that
-  // the scheme is live.
+  // Re-open editors VSCode restored before the scheme went live; see the note
+  // on `recoverRestoredCustomEditors`.
   void recoverRestoredCustomEditors();
 
   // Non-blocking — we don't want to delay activation on OMC startup.
@@ -166,65 +163,6 @@ export async function activate(
       },
     },
   };
-}
-
-/**
- * Re-open Modelica custom editors that VSCode restored before the
- * `modelica-source` provider was live — they otherwise stay stuck on VSCode's
- * "Unable to resolve resource" page, since VSCode never retries a failed
- * custom-editor restore. Runs only at activation, the one moment every open
- * Modelica custom editor is necessarily a restored tab, and skips dirty tabs so
- * closing one can never discard an unsaved edit. Closing then re-opening forces
- * a fresh document resolution against the now-registered scheme; a tab that
- * restored cleanly merely reloads.
- */
-async function recoverRestoredCustomEditors(): Promise<void> {
-  const ours = new Set<string>([
-    DIAGRAM_VIEW_TYPE,
-    ICON_VIEW_TYPE,
-    DOCUMENTATION_VIEW_TYPE,
-  ]);
-  const targets: {
-    tab: vscode.Tab;
-    uri: vscode.Uri;
-    viewType: string;
-    column: vscode.ViewColumn;
-  }[] = [];
-  for (const group of vscode.window.tabGroups.all) {
-    for (const tab of group.tabs) {
-      const input = tab.input;
-      if (
-        input instanceof vscode.TabInputCustom &&
-        input.uri.scheme === MODELICA_SOURCE_SCHEME &&
-        ours.has(input.viewType) &&
-        !tab.isDirty
-      ) {
-        targets.push({
-          tab,
-          uri: input.uri,
-          viewType: input.viewType,
-          column: group.viewColumn,
-        });
-      }
-    }
-  }
-  if (targets.length === 0) return;
-  try {
-    await vscode.window.tabGroups.close(targets.map((t) => t.tab));
-    for (const { uri, viewType, column } of targets) {
-      await vscode.commands.executeCommand(
-        "vscode.openWith",
-        uri,
-        viewType,
-        column,
-      );
-    }
-  } catch (err) {
-    log.warn(
-      "activate",
-      `re-opening restored custom editors failed: ${(err as Error).message}`,
-    );
-  }
 }
 
 export async function deactivate(): Promise<void> {

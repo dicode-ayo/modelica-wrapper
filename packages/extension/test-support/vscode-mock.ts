@@ -181,21 +181,33 @@ export class TabInputCustom {
 
 export interface Tab {
   input: TabInputText | TabInputCustom | unknown;
+  isDirty?: boolean;
 }
 
-let activeGroupTabs: Tab[] = [];
+/** A tab group the mock reports through `window.tabGroups`. */
+export interface TabGroup {
+  viewColumn: number;
+  tabs: Tab[];
+}
+
+let tabGroupModel: TabGroup[] = [];
 
 /** Tabs passed to `window.tabGroups.close`, flattened, for assertions. */
 export const closedTabs: Tab[] = [];
 
-/** Populate the active tab group the mock reports to `switchView`. */
+/** Populate the single active tab group the mock reports (column 1). */
 export function setActiveGroupTabs(tabs: Tab[]): void {
-  activeGroupTabs = tabs;
+  tabGroupModel = [{ viewColumn: 1, tabs }];
+}
+
+/** Populate the full multi-column tab-group model. */
+export function setTabGroups(groups: TabGroup[]): void {
+  tabGroupModel = groups;
 }
 
 /** Clear the tab model between tests. */
 export function resetTabs(): void {
-  activeGroupTabs = [];
+  tabGroupModel = [];
   closedTabs.length = 0;
 }
 
@@ -383,9 +395,12 @@ export const window = {
     get activeTabGroup(): { tabs: Tab[] } {
       return {
         get tabs(): Tab[] {
-          return activeGroupTabs;
+          return tabGroupModel[0]?.tabs ?? [];
         },
       };
+    },
+    get all(): TabGroup[] {
+      return tabGroupModel;
     },
     close(tabOrTabs: Tab | Tab[]): Promise<void> {
       closedTabs.push(...(Array.isArray(tabOrTabs) ? tabOrTabs : [tabOrTabs]));
