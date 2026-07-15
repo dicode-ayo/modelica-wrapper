@@ -1031,6 +1031,47 @@ describe("DiagramEditController: forward write path", () => {
     controller.dispose();
   });
 
+  it("drops a racing 'change' message flushed against a pending reverse sync, instead of diffing a stale snapshot", async () => {
+    const { client, ops } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler } = manualScheduler();
+    const controller = new DiagramEditController(
+      {
+        client,
+        document: SRC_DOC,
+        className: "Pkg.M",
+        gate,
+      },
+      movedComponent([
+        [-10, -10],
+        [10, 10],
+      ]),
+      factory,
+      scheduler,
+    );
+
+    // An undo restores a component the webview's still-stale `next` doesn't
+    // know about yet.
+    fireForeign();
+    const edit = controller.handle({
+      type: "change",
+      layout: movedComponent([
+        [0, 0],
+        [20, 20],
+      ]),
+    });
+    await edit;
+    await drain();
+
+    // Only the flushed reverse sync runs — the stale `next` is never diffed
+    // against the refreshed `prevLayout`, so it can't invent a false
+    // `componentDeleted` for whatever the reload alone changed.
+    expect(ops).toEqual(["loadString"]);
+    expect(posted.some((m) => m.type === "error")).toBe(true);
+    controller.dispose();
+  });
+
   it("keeps the last-good render and does not poison the queue when loadString fails", async () => {
     const { client, addComponentCalls } = makeEditClient({
       loadStringSuccess: false,

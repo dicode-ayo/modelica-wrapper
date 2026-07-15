@@ -419,7 +419,19 @@ export class DiagramEditController {
    * editor; cross-editor socket contention is the client's `SerialQueue`'s job.
    */
   handle(msg: WebviewToExtension): Promise<void> {
-    this.flushPendingReverseSync();
+    if (this.flushPendingReverseSync() && msg.type === "change") {
+      // `next` was computed by the webview against the diagram as it stood
+      // before the reload just flushed ahead of it; diffing it against the
+      // now-refreshed `prevLayout` could invent edits — e.g. a false
+      // `componentDeleted` for something the reload alone restored — instead
+      // of the drag the user actually made. Drop it: the reverse sync's own
+      // `layout` push resyncs the webview, and the gesture can be repeated
+      // against it.
+      this.reportError(
+        "the diagram was resynced from an external change — please retry the edit",
+      );
+      return this.queue;
+    }
     return this.enqueue(() => this.dispatch(msg));
   }
 
@@ -435,10 +447,10 @@ export class DiagramEditController {
    */
   private onForeignChange(): void {
     this.reverseTimer?.cancel();
-    this.reverseTimer = this.scheduler.schedule(() => {
-      this.reverseTimer = undefined;
-      void this.enqueue(() => this.reverseSync());
-    }, REVERSE_SYNC_DEBOUNCE_MS);
+    this.reverseTimer = this.scheduler.schedule(
+      () => this.runReverseSyncNow(),
+      REVERSE_SYNC_DEBOUNCE_MS,
+    );
   }
 
   /**
@@ -447,11 +459,17 @@ export class DiagramEditController {
    * not-yet-reverted `prevLayout` and its reflect could silently overwrite the
    * foreign change (e.g. an undo) the timer hasn't synced in yet. Cancel the
    * timer and enqueue the reverse sync ahead of the incoming edit so it always
-   * runs — and lands in the buffer — first.
+   * runs — and lands in the buffer — first. Returns whether a sync was
+   * actually pending (and so just got flushed).
    */
-  private flushPendingReverseSync(): void {
-    if (this.reverseTimer === undefined) return;
+  private flushPendingReverseSync(): boolean {
+    if (this.reverseTimer === undefined) return false;
     this.reverseTimer.cancel();
+    this.runReverseSyncNow();
+    return true;
+  }
+
+  private runReverseSyncNow(): void {
     this.reverseTimer = undefined;
     void this.enqueue(() => this.reverseSync());
   }
