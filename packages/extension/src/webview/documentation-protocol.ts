@@ -1,13 +1,17 @@
+import type { DocumentationInterface } from "@dicode/documentation-ui/interface-model";
+
 /**
  * Message protocol between the extension host (Node) and the documentation
  * webview (browser). All messages are JSON-serializable.
  *
  * Extension → webview:
  *   - `doc`   — the class's `Documentation(info=…)` HTML, whether the class is
- *               read-only, and a `resources` map resolving each `modelica://`
- *               image `src` to a `data:` URI the webview can render. Sent once
- *               after the webview's `ready` handshake, and again after a reverse
- *               sync (an undo/redo or manual text edit reloaded the annotation).
+ *               read-only, a `resources` map resolving each `modelica://`
+ *               image `src` to a `data:` URI the webview can render, and the
+ *               auto-generated `interface` sections (extends tree, parameters,
+ *               connectors) when the class instantiated. Sent once after the
+ *               webview's `ready` handshake, and again after a reverse sync (an
+ *               undo/redo or manual text edit reloaded the annotation).
  *   - `error` — surface a backend error (e.g. the OMC read or write failed).
  *
  * Webview → extension:
@@ -26,6 +30,7 @@ export type DocExtensionToWebview =
       info: string;
       readOnly: boolean;
       resources: Record<string, string>;
+      interface?: DocumentationInterface | undefined;
     }
   | { type: "error"; message: string };
 

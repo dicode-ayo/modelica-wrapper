@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
-import type { OmcClient } from "@dicode/omc-client";
+import type { ModelInstance, OmcClient } from "@dicode/omc-client";
+import type { DocumentationInterface } from "@dicode/documentation-ui/interface-model";
 
 import {
   createShadowBuffer,
@@ -17,6 +18,7 @@ import type {
 import { createReadyGate, type ReadyGate } from "../webview/ready-gate.js";
 
 import { docHtmlUriFor } from "./documentation-html-provider.js";
+import { buildDocumentationInterface } from "./documentation-interface.js";
 import { openModelicaLink } from "./documentation-link.js";
 import { resolveDocResources } from "./documentation-resources.js";
 import { renderDocumentationWebviewHtml } from "./documentation-webview-html.js";
@@ -28,6 +30,9 @@ export interface DocumentationClient {
   getDocumentationAnnotation(input: {
     typeName: string;
   }): Promise<{ info: string }>;
+  getModelInstance(input: {
+    typeName: string;
+  }): Promise<{ instance: ModelInstance }>;
   setFullDocumentationAnnotation(input: {
     typeName: string;
     info: string;
@@ -401,13 +406,37 @@ export class DocumentationEditController {
     });
     this.seeded = true;
     const resources = await resolveDocResources(client, info);
-    gate.send({
+    const message: DocExtensionToWebview = {
       type: "doc",
       className,
       info,
       readOnly: this.readOnly,
       resources,
-    });
+    };
+    const iface = await this.fetchInterface();
+    if (iface !== undefined) message.interface = iface;
+    gate.send(message);
+  }
+
+  /**
+   * Derive the auto-generated interface sections from the class's instance
+   * tree. Best-effort: a class that can't instantiate (a partial or erroring
+   * class) drops the sections rather than blanking the documentation.
+   */
+  private async fetchInterface(): Promise<DocumentationInterface | undefined> {
+    const { client, className } = this.deps;
+    try {
+      const { instance } = await client.getModelInstance({
+        typeName: className,
+      });
+      return buildDocumentationInterface(instance);
+    } catch (err) {
+      log.warn(
+        "documentationEditor",
+        `interface unavailable for ${className}: ${errorDetail(err)}`,
+      );
+      return undefined;
+    }
   }
 
   private reportError(message: string): void {

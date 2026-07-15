@@ -14,7 +14,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
-import type { OmcClient } from "@dicode/omc-client";
+import { ModelInstanceSchema, type OmcClient } from "@dicode/omc-client";
 
 import type { DocExtensionToWebview } from "../webview/documentation-protocol.js";
 import type { ReadyGate } from "../webview/ready-gate.js";
@@ -113,8 +113,43 @@ function makeResolveClient(anno: {
         infoHeader: anno.infoHeader ?? "",
       }),
     ),
+    getModelInstance: vi.fn(() => Promise.resolve({ instance: PID_INSTANCE })),
   } as unknown as OmcClient;
 }
+
+/** A minimal PID-like instance: one parameter, one connector, one extends. */
+const PID_INSTANCE = ModelInstanceSchema.parse({
+  name: "Modelica.Blocks.Continuous.PID",
+  restriction: "block",
+  elements: [
+    {
+      $kind: "extends",
+      baseClass: {
+        name: "Modelica.Blocks.Interfaces.SISO",
+        restriction: "block",
+        comment: "Single Input Single Output",
+      },
+    },
+    {
+      $kind: "component",
+      name: "k",
+      type: "Real",
+      value: { binding: 1 },
+      prefixes: { variability: "parameter" },
+      comment: "Gain",
+    },
+    {
+      $kind: "component",
+      name: "u",
+      type: {
+        name: "Modelica.Blocks.Interfaces.RealInput",
+        restriction: "connector",
+        elements: [],
+      },
+      prefixes: { connector: "input" },
+    },
+  ],
+});
 
 function docFor(uri: vscode.Uri): vscode.TextDocument {
   return { uri } as unknown as vscode.TextDocument;
@@ -150,6 +185,15 @@ describe("resolveDocumentationEditor", () => {
       expect(msg.className).toBe("Modelica.Blocks.Continuous.PID");
       expect(msg.info).toBe("<html><p>PID</p></html>");
       expect(msg.readOnly).toBe(false);
+      expect(msg.interface?.parameters).toEqual([
+        { name: "k", label: "Gain", value: "1", group: "Parameters" },
+      ]);
+      expect(msg.interface?.connectors).toEqual([
+        { name: "u", label: "u", typeName: "RealInput", direction: "input" },
+      ]);
+      expect(msg.interface?.extendsTree.map((n) => n.name)).toEqual([
+        "Modelica.Blocks.Interfaces.SISO",
+      ]);
     }
   });
 
