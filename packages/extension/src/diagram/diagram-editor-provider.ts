@@ -419,6 +419,7 @@ export class DiagramEditController {
    * editor; cross-editor socket contention is the client's `SerialQueue`'s job.
    */
   handle(msg: WebviewToExtension): Promise<void> {
+    this.flushPendingReverseSync();
     return this.enqueue(() => this.dispatch(msg));
   }
 
@@ -438,6 +439,21 @@ export class DiagramEditController {
       this.reverseTimer = undefined;
       void this.enqueue(() => this.reverseSync());
     }, REVERSE_SYNC_DEBOUNCE_MS);
+  }
+
+  /**
+   * While a reverse sync is still a pending timer (not yet enqueued), a
+   * webview edit arriving in that window would diff against the
+   * not-yet-reverted `prevLayout` and its reflect could silently overwrite the
+   * foreign change (e.g. an undo) the timer hasn't synced in yet. Cancel the
+   * timer and enqueue the reverse sync ahead of the incoming edit so it always
+   * runs — and lands in the buffer — first.
+   */
+  private flushPendingReverseSync(): void {
+    if (this.reverseTimer === undefined) return;
+    this.reverseTimer.cancel();
+    this.reverseTimer = undefined;
+    void this.enqueue(() => this.reverseSync());
   }
 
   private enqueue(unit: () => Promise<void>): Promise<void> {

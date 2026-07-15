@@ -994,6 +994,43 @@ describe("DiagramEditController: forward write path", () => {
     controller.dispose();
   });
 
+  it("flushes a pending reverse sync before a racing forward edit lands", async () => {
+    const { client, ops } = makeEditClient();
+    const { gate } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler } = manualScheduler();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+      scheduler,
+    );
+
+    // An undo (foreign change) schedules the debounced reverse sync — the
+    // timer hasn't fired yet.
+    fireForeign();
+    // A webview drag arrives inside that ~150ms window, before the debounce
+    // would otherwise fire.
+    const edit = controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 0, y: 0 },
+    });
+    await edit;
+    await drain();
+
+    // The pending reverse sync is flushed ahead of the racing forward edit, so
+    // the undo lands in OMC before the drag diffs against `prevLayout` — never
+    // the other way around, which would silently discard the undo.
+    expect(ops).toEqual([
+      "loadString",
+      "isPartial",
+      "addComponent",
+      "listFile",
+    ]);
+    controller.dispose();
+  });
+
   it("keeps the last-good render and does not poison the queue when loadString fails", async () => {
     const { client, addComponentCalls } = makeEditClient({
       loadStringSuccess: false,
