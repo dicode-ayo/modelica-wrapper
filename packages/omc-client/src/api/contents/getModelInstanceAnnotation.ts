@@ -27,9 +27,9 @@ import { mlBool, quoteListOrFillEmpty } from "../../_shared/format.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import {
   ModelInstanceAnnotationSchema,
+  parseModelInstanceOutput,
   type ModelInstanceAnnotation,
 } from "../../_shared/modelInstance.js";
-import { parseOutput } from "../../_shared/parseOutput.js";
 import { expectString, parse } from "../../parse.js";
 
 export const GetModelInstanceAnnotationInputSchema = TypeNameInput.extend({
@@ -76,10 +76,11 @@ export async function getModelInstanceAnnotation(
   );
   const json = expectString(parse(raw));
   const parsed: unknown = JSON.parse(json);
-  const validated = parseOutput(
+  const validated = parseModelInstanceOutput(
     GetModelInstanceAnnotationOutputSchema,
     { instance: parsed },
     "getModelInstanceAnnotation",
+    input.typeName,
   );
   return {
     instance: validated.instance,
