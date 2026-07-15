@@ -53,14 +53,17 @@ const FIELD = {
  * The kind of an annotation token. The host provider maps each onto a standard
  * VSCode semantic-token type (see `annotation-tokens-provider.ts`).
  */
-export enum AnnotationTokenType {
+export const AnnotationTokenType = {
   /** A record name — `Diagram`, `Icon`, `Line`, `Rectangle`, `Documentation`. */
-  Record = "record",
+  Record: "record",
   /** A field name — `graphics`, `points`, `color`, `extent`, `info`. */
-  Field = "field",
+  Field: "field",
   /** A graphical-enum reference in value position — `LinePattern.Dash`. */
-  EnumMember = "enumMember",
-}
+  EnumMember: "enumMember",
+} as const;
+
+export type AnnotationTokenType =
+  (typeof AnnotationTokenType)[keyof typeof AnnotationTokenType];
 
 /** One classified span inside an annotation, as plain data (no `vscode`). */
 export interface AnnotationToken {
