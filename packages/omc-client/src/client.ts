@@ -1249,6 +1249,12 @@ export class OmcClient implements CallContext {
     return editing.setDocumentationAnnotation(this, input);
   }
 
+  setFullDocumentationAnnotation(
+    input: editing.SetFullDocumentationAnnotationInput,
+  ): Promise<editing.SetFullDocumentationAnnotationOutput> {
+    return editing.setFullDocumentationAnnotation(this, input);
+  }
+
   addInitialState(
     input: editing.AddInitialStateInput,
   ): Promise<editing.AddInitialStateOutput> {

@@ -19,6 +19,7 @@ export * from "./setComponentDimensions.js";
 export * from "./setComponentComment.js";
 export * from "./setClassComment.js";
 export * from "./setDocumentationAnnotation.js";
+export * from "./setFullDocumentationAnnotation.js";
 export * from "./addInitialState.js";
 export * from "./deleteInitialState.js";
 export * from "./updateInitialState.js";

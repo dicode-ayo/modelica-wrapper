@@ -27,12 +27,11 @@ export { DOCUMENTATION_VIEW_TYPE };
 export interface DocumentationClient {
   getDocumentationAnnotation(input: {
     typeName: string;
-  }): Promise<{ info: string; revision: string; infoHeader: string }>;
-  setDocumentationAnnotation(input: {
+  }): Promise<{ info: string }>;
+  setFullDocumentationAnnotation(input: {
     typeName: string;
     info: string;
-    revisions: string;
-  }): Promise<{ bool: boolean }>;
+  }): Promise<{ success: boolean }>;
   listFile(input: { typeName: string }): Promise<{ contents: string }>;
   loadString(input: {
     data: string;
@@ -46,13 +45,12 @@ export interface DocumentationClient {
 /**
  * Documentation custom editor: a `CustomTextEditorProvider` bound to `*.mo` that
  * renders and edits a class's `Documentation(info="<html>…</html>")` HTML. A
- * WYSIWYG edit rewrites the annotation through OMC (`setDocumentationAnnotation`)
- * and the class's canonical source is reflected back into the document via a
- * shadow buffer, so VSCode tracks dirty state and undo; a foreign buffer change
- * (undo/redo or a manual text edit) is `loadString`ed back into OMC and the
- * annotation re-fetched. A read-only class (an MSL library, or one carrying an
- * `__OpenModelica_infoHeader` the write API can't preserve) renders but rejects
- * edits.
+ * WYSIWYG edit rewrites the annotation through OMC
+ * (`setFullDocumentationAnnotation`) and the class's canonical source is
+ * reflected back into the document via a shadow buffer, so VSCode tracks
+ * dirty state and undo; a foreign buffer change (undo/redo or a manual text
+ * edit) is `loadString`ed back into OMC and the annotation re-fetched. A
+ * read-only class (an MSL library) renders but rejects edits.
  */
 export class DocumentationEditorProvider
   implements vscode.CustomTextEditorProvider
@@ -188,10 +186,10 @@ export function resolveDocumentationEditor(
   void (async (): Promise<void> => {
     try {
       const client: DocumentationClient = await ensureClient();
-      const readOnlyBase = await isReadOnlyDocument(document);
+      const readOnly = await isReadOnlyDocument(document);
       controller = new DocumentationEditController(
         { client, document, className, gate },
-        readOnlyBase,
+        readOnly,
         (onForeignChange) => createShadowBuffer(document, onForeignChange),
       );
       registerController(className, controller);
@@ -253,38 +251,32 @@ const REVERSE_SYNC_DEBOUNCE_MS = 150;
 
 /**
  * Per-editor write controller. Forward: an `edit` from the webview carries the
- * full canonical `info`; it is written through `setDocumentationAnnotation`
- * (passing the current `revisions` back so that section isn't cleared), then the
- * class's canonical `listFile` source is reflected into the shadow buffer.
- * Reverse: a foreign buffer change is `loadString`ed back into OMC and the
- * annotation re-fetched and re-sent. Every unit runs through one serialized
- * queue so an edit can't diff against a half-applied reverse sync on the single
- * OMC socket.
+ * new `info`; it is written through `setFullDocumentationAnnotation`, which
+ * reads the class's current `revisions`/`infoHeader` itself and reconstructs
+ * the whole annotation so neither section is cleared, then the class's
+ * canonical `listFile` source is reflected into the shadow buffer. Reverse: a
+ * foreign buffer change is `loadString`ed back into OMC and the annotation
+ * re-fetched and re-sent. Every unit runs through one serialized queue so an
+ * edit can't diff against a half-applied reverse sync on the single OMC
+ * socket.
  */
 export class DocumentationEditController {
   private queue: Promise<void> = Promise.resolve();
   private readonly shadow: ShadowBuffer;
   private reverseTimer: { cancel(): void } | undefined;
 
-  // The `revisions` section, remembered from the last fetch and passed on every
-  // write — `setDocumentationAnnotation` clears any section it isn't given.
-  private revision = "";
-  // Whether edits are refused: an MSL/library source, or a class carrying an
-  // `__OpenModelica_infoHeader` the write API would silently drop.
-  private readOnly: boolean;
-  // A successful fetch has seeded `revision`/`readOnly`. An edit before that
-  // would write `revisions: ""` and clear the section, so it's refused.
+  // A successful fetch confirms the class resolved to something real. An edit
+  // before that is refused rather than targeting a not-yet-confirmed class.
   private seeded = false;
 
   constructor(
     private readonly deps: EditControllerDeps,
-    private readonly readOnlyBase: boolean,
+    private readonly readOnly: boolean,
     makeShadow: (
       onForeignChange: (document: vscode.TextDocument) => void,
     ) => ShadowBuffer,
     private readonly scheduler: Scheduler = defaultScheduler,
   ) {
-    this.readOnly = readOnlyBase;
     this.shadow = makeShadow(() => this.onForeignChange());
   }
 
@@ -344,16 +336,12 @@ export class DocumentationEditController {
       return;
     }
     const { client, className } = this.deps;
-    const { bool } = await client.setDocumentationAnnotation({
+    const { success } = await client.setFullDocumentationAnnotation({
       typeName: className,
       info,
-      revisions: this.revision,
     });
-    // The wrapper's `parseMutationSuccess` throws (→ the queue's catch surfaces
-    // the OMC message) when OMC reports an error, so a bare `false` here means it
-    // failed without one.
-    if (!bool) {
-      this.reportError("setDocumentationAnnotation returned false");
+    if (!success) {
+      this.reportError("setFullDocumentationAnnotation returned false");
       return;
     }
     await this.reflect();
@@ -408,10 +396,9 @@ export class DocumentationEditController {
 
   private async refetchAndSend(): Promise<void> {
     const { client, className, gate } = this.deps;
-    const { info, revision, infoHeader } =
-      await client.getDocumentationAnnotation({ typeName: className });
-    this.revision = revision;
-    this.readOnly = this.readOnlyBase || infoHeader.trim().length > 0;
+    const { info } = await client.getDocumentationAnnotation({
+      typeName: className,
+    });
     this.seeded = true;
     const resources = await resolveDocResources(client, info);
     gate.send({
@@ -433,7 +420,7 @@ export class DocumentationEditController {
  * Open the class's `Documentation(info=…)` HTML in a native editor beside the
  * documentation view. The `modelica-doc:` provider serves it as an editable
  * `.html` file, so VSCode gives it HTML highlighting and formatting; saving
- * writes back through `setDocumentationAnnotation`.
+ * writes back through `setFullDocumentationAnnotation`.
  */
 async function openHtmlSourceEditor(className: string): Promise<void> {
   try {

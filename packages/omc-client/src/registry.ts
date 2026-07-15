@@ -1283,6 +1283,13 @@ export const REGISTRY = {
     editing.SetDocumentationAnnotationOutputSchema,
     editing.SetDocumentationAnnotationDescription,
   ),
+  setFullDocumentationAnnotation: entry(
+    "editing",
+    editing.setFullDocumentationAnnotation,
+    editing.SetFullDocumentationAnnotationInputSchema,
+    editing.SetFullDocumentationAnnotationOutputSchema,
+    editing.SetFullDocumentationAnnotationDescription,
+  ),
   addInitialState: entry(
     "editing",
     editing.addInitialState,

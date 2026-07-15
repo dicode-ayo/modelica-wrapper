@@ -10,12 +10,11 @@ export const MODELICA_DOC_SCHEME = "modelica-doc";
 export interface DocHtmlClient {
   getDocumentationAnnotation(input: {
     typeName: string;
-  }): Promise<{ info: string; revision: string; infoHeader: string }>;
-  setDocumentationAnnotation(input: {
+  }): Promise<{ info: string }>;
+  setFullDocumentationAnnotation(input: {
     typeName: string;
     info: string;
-    revisions: string;
-  }): Promise<{ bool: boolean }>;
+  }): Promise<{ success: boolean }>;
   getClassInformation(input: {
     typeName: string;
   }): Promise<{ fileReadOnly: boolean }>;
@@ -23,7 +22,6 @@ export interface DocHtmlClient {
 
 interface DocState {
   info: string;
-  revision: string;
   readOnly: boolean;
 }
 
@@ -42,12 +40,12 @@ function classFromDocHtmlUri(uri: vscode.Uri): string | undefined {
  * Serves a class's `Documentation(info=…)` HTML as an editable `modelica-doc:`
  * file so it can be edited in a native VSCode HTML editor. Reads render the
  * current annotation from OMC; a save writes it back through
- * `setDocumentationAnnotation` (carrying the current `revisions` so that section
- * isn't cleared) and notifies the class's `.mo` so the diagram/documentation
- * views reload. It also watches `.mo` changes and refreshes any open HTML editor,
- * so a WYSIWYG edit doesn't leave a stale HTML buffer that a later save would
- * clobber. Classes whose source is read-only, or that carry an
- * `__OpenModelica_infoHeader` the write API can't preserve, refuse writes.
+ * `setFullDocumentationAnnotation`, which preserves `revisions` and
+ * `infoHeader` on its own, and notifies the class's `.mo` so the
+ * diagram/documentation views reload. It also watches `.mo` changes and
+ * refreshes any open HTML editor, so a WYSIWYG edit doesn't leave a stale
+ * HTML buffer that a later save would clobber. A class whose source is
+ * read-only refuses writes.
  */
 export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
   private readonly _onDidChangeFile = new vscode.EventEmitter<
@@ -63,22 +61,18 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
   ) {}
 
   /**
-   * The class's current documentation and whether it's editable, in one place.
-   * A class is read-only when its source is (an MSL/library) or it carries an
-   * `__OpenModelica_infoHeader` the write API can't preserve.
+   * The class's current documentation and whether it's editable, in one
+   * place. A class is read-only when its source is (an MSL/library).
    */
   private async docState(className: string): Promise<DocState> {
     const client = await this.ensureClient();
-    const { info, revision, infoHeader } =
-      await client.getDocumentationAnnotation({ typeName: className });
+    const { info } = await client.getDocumentationAnnotation({
+      typeName: className,
+    });
     const { fileReadOnly } = await client.getClassInformation({
       typeName: className,
     });
-    return {
-      info,
-      revision,
-      readOnly: fileReadOnly || infoHeader.trim().length > 0,
-    };
+    return { info, readOnly: fileReadOnly };
   }
 
   /**
@@ -147,18 +141,17 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
     if (!className) throw vscode.FileSystemError.FileNotFound(uri);
     const client = await this.ensureClient();
 
-    const { revision, readOnly } = await this.docState(className);
+    const { readOnly } = await this.docState(className);
     if (readOnly) {
       throw vscode.FileSystemError.NoPermissions(uri);
     }
 
     const info = Buffer.from(content).toString("utf8");
-    const { bool } = await client.setDocumentationAnnotation({
+    const { success } = await client.setFullDocumentationAnnotation({
       typeName: className,
       info,
-      revisions: revision,
     });
-    if (!bool) {
+    if (!success) {
       throw vscode.FileSystemError.Unavailable(
         `OMC rejected the documentation for ${className}`,
       );

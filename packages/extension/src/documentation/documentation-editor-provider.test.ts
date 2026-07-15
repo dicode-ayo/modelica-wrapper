@@ -4,10 +4,10 @@
  * webview only after its `ready` handshake; a failed OMC read surfaces as an
  * `error`; an unresolved class renders a placeholder without reading OMC; the
  * focused class is tracked for the switcher; and — the load-bearing invariant —
- * an edit writes through OMC carrying the current `revisions` back (so that
- * section isn't cleared) and reflects the canonical source into the buffer,
- * while a class that would lose an `__OpenModelica_infoHeader`, or an MSL source,
- * is refused.
+ * an edit writes the new `info` through OMC and reflects the canonical source
+ * into the buffer, while an MSL source is refused. Preserving `revisions` and
+ * `infoHeader` on write is `setFullDocumentationAnnotation`'s own contract,
+ * pinned in omc-client's tests, not the controller's.
  *
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
@@ -153,7 +153,7 @@ describe("resolveDocumentationEditor", () => {
     }
   });
 
-  it("marks a class carrying an infoHeader read-only", async () => {
+  it("does not mark a class carrying an infoHeader read-only", async () => {
     const { panel, posted, fireReady } = makePanel();
     const ensureClient = vi.fn(() =>
       Promise.resolve(
@@ -170,7 +170,7 @@ describe("resolveDocumentationEditor", () => {
     await flush();
 
     const msg = posted.find((m) => m.type === "doc");
-    expect(msg?.type === "doc" && msg.readOnly).toBe(true);
+    expect(msg?.type === "doc" && msg.readOnly).toBe(false);
   });
 
   it("marks an MSL (readonly-stat) source read-only", async () => {
@@ -324,15 +324,13 @@ function manualScheduler(): { scheduler: Scheduler; flush: () => void } {
 }
 
 interface EditClientCalls {
-  setArgs: { typeName: string; info: string; revisions: string }[];
+  setArgs: { typeName: string; info: string }[];
   loaded: string[];
 }
 
 function makeEditClient(
   anno: {
     info: string;
-    revision?: string;
-    infoHeader?: string;
     fail?: boolean;
   },
   opts?: { setOk?: boolean; loadOk?: boolean; contents?: string },
@@ -342,16 +340,12 @@ function makeEditClient(
     getDocumentationAnnotation: vi.fn(() =>
       anno.fail
         ? Promise.reject(new Error("OMC down"))
-        : Promise.resolve({
-            info: anno.info,
-            revision: anno.revision ?? "",
-            infoHeader: anno.infoHeader ?? "",
-          }),
+        : Promise.resolve({ info: anno.info }),
     ),
-    setDocumentationAnnotation: vi.fn(
-      (a: { typeName: string; info: string; revisions: string }) => {
+    setFullDocumentationAnnotation: vi.fn(
+      (a: { typeName: string; info: string }) => {
         calls.setArgs.push(a);
-        return Promise.resolve({ bool: opts?.setOk ?? true });
+        return Promise.resolve({ success: opts?.setOk ?? true });
       },
     ),
     listFile: vi.fn(() =>
@@ -368,10 +362,9 @@ function makeEditClient(
 }
 
 describe("DocumentationEditController write path", () => {
-  it("writes the edit through OMC carrying the current revisions, then reflects", async () => {
+  it("writes the edit through OMC, then reflects the canonical source", async () => {
     const { client, calls } = makeEditClient({
       info: "<html><p>orig</p></html>",
-      revision: "<html><p>REV 1.0</p></html>",
     });
     const { gate } = makeGate();
     const { factory, writes } = makeShadowFactory();
@@ -388,11 +381,7 @@ describe("DocumentationEditController write path", () => {
     });
 
     expect(calls.setArgs).toEqual([
-      {
-        typeName: CLASS,
-        info: "<html><p>edited</p></html>",
-        revisions: "<html><p>REV 1.0</p></html>",
-      },
+      { typeName: CLASS, info: "<html><p>edited</p></html>" },
     ]);
     expect(writes).toEqual([LISTED]); // canonical source reflected; dirty is VSCode's
   });
@@ -415,7 +404,7 @@ describe("DocumentationEditController write path", () => {
     expect(posted.some((m) => m.type === "error")).toBe(true);
   });
 
-  it("refuses an edit before the first fetch seeded revisions (no wipe)", async () => {
+  it("refuses an edit before the first fetch has seeded the controller", async () => {
     const { client, calls } = makeEditClient({ info: "", fail: true });
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
@@ -428,7 +417,7 @@ describe("DocumentationEditController write path", () => {
     controller.start(); // fetch fails → never seeded
     await controller.handle({ type: "edit", info: "<html><p>x</p></html>" });
 
-    expect(calls.setArgs).toEqual([]); // would have written revisions: ""
+    expect(calls.setArgs).toEqual([]);
     expect(writes).toEqual([]);
     expect(posted.some((m) => m.type === "error")).toBe(true);
   });
