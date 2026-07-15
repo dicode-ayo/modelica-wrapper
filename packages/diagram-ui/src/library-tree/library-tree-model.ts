@@ -5,6 +5,8 @@
  * with a plain mock data source.
  */
 
+import { leafName } from "@dicode/modelica-lang-core";
+
 import type {
   LibraryDataSource,
   LibraryClassInfo,
@@ -70,9 +72,13 @@ export function isPlaceableRestriction(r: LibraryClassRestriction): boolean {
   );
 }
 
-/** Trailing dotted segment of `qualified`, falling back to the whole name. */
+/**
+ * Trailing dotted segment of `qualified`, falling back to the whole name.
+ * Quote-aware: a segment may itself be a quoted identifier containing a dot
+ * (e.g. `Pkg.'a.b'`), so this doesn't split inside the quotes.
+ */
 export function leafLabel(qualified: string): string {
-  return qualified.slice(qualified.lastIndexOf(".") + 1) || qualified;
+  return leafName(qualified);
 }
 
 export function nodeFromInfo(info: LibraryClassInfo): LibraryTreeNode {

@@ -313,6 +313,29 @@ describe("computeCompletions — type / extends / component-type position", () =
     expect(bare?.filterText).toBeUndefined();
     expect(bare?.insertText).toBeUndefined();
   });
+
+  it("filters by the true trailing segment when a quoted identifier contains a dot", async () => {
+    // `'a.b'` is a single Q-IDENT segment (Modelica spec §2.3.1); the true
+    // trailing segment is `negate`, not `b'`.
+    const src = "model Circuit\n  ne r;\nend Circuit;";
+    const client = makeClient({
+      getClassNames: vi.fn(() => Promise.resolve({ classNames: [] })),
+      searchClassNames: vi.fn(() =>
+        Promise.resolve({ classNames: ["Complex.'a.b'.negate"] }),
+      ),
+    });
+
+    const out = await candidatesOf(
+      parse(src),
+      offsetOf(src, "ne r;"),
+      "MyPkg.Circuit",
+      client,
+    );
+
+    const dotted = out.find((c) => c.label === "Complex.'a.b'.negate");
+    expect(dotted).toBeDefined();
+    expect(dotted?.filterText).toBe("negate");
+  });
 });
 
 describe("computeCompletions — static channels", () => {

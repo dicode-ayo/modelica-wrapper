@@ -91,6 +91,9 @@ importers:
       '@dicode/diagram-svg':
         specifier: workspace:*
         version: link:../diagram-svg
+      '@dicode/modelica-lang-core':
+        specifier: workspace:*
+        version: link:../lang-core
       '@dicode/omc-client':
         specifier: workspace:*
         version: link:../omc-client

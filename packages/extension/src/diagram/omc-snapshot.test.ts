@@ -140,6 +140,16 @@ describe("captureSnapshot", () => {
     expect(snap?.contents).toBe("within A.B.C;\nmodel Foo\nend Foo;\n");
   });
 
+  it("keeps a quoted identifier containing a dot inside the enclosing scope", async () => {
+    // `'a.b'` is a single Q-IDENT segment (Modelica spec §2.3.1); the
+    // enclosing scope is `Pkg.'a.b'`, not `Pkg.'a`.
+    const { client } = mockClient({
+      listFile: "model Foo\nend Foo;\n",
+    });
+    const snap = await captureSnapshot(client, "Pkg.'a.b'.Foo");
+    expect(snap?.contents).toBe("within Pkg.'a.b';\nmodel Foo\nend Foo;\n");
+  });
+
   it("does not double a within clause OMC already emitted", async () => {
     const { client } = mockClient({
       listFile: "within Pkg;\nmodel Foo\nend Foo;\n",

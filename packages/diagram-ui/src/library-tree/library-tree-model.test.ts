@@ -36,6 +36,16 @@ describe("leafLabel", () => {
     expect(leafLabel("Modelica.Blocks.Math.Gain")).toBe("Gain");
     expect(leafLabel("Complex")).toBe("Complex");
   });
+
+  it("does not split inside a quoted identifier containing a dot", () => {
+    // `'a.b'` is a single Q-IDENT segment (Modelica spec §2.3.1); the
+    // trailing label is the whole quoted segment, not `b'`.
+    expect(leafLabel("Pkg.'a.b'")).toBe("'a.b'");
+  });
+
+  it("falls back to the whole name for a trailing dot", () => {
+    expect(leafLabel("Pkg.")).toBe("Pkg.");
+  });
 });
 
 describe("nodeFromInfo", () => {
