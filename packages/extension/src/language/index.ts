@@ -12,6 +12,10 @@ import type { OmcClient } from "@dicode/omc-client";
 import { log } from "../logger.js";
 
 import {
+  ANNOTATION_SEMANTIC_TOKENS_LEGEND,
+  AnnotationSemanticTokensProvider,
+} from "./annotation-tokens-provider.js";
+import {
   COMPLETION_TRIGGER_CHARACTER,
   ModelicaCompletionProvider,
 } from "./completion-provider.js";
@@ -77,6 +81,15 @@ export {
   type CompletionResult,
   type CompletionClient,
 } from "@dicode/modelica-completion";
+export {
+  AnnotationSemanticTokensProvider,
+  ANNOTATION_SEMANTIC_TOKENS_LEGEND,
+} from "./annotation-tokens-provider.js";
+export {
+  computeAnnotationTokens,
+  AnnotationTokenType,
+  type AnnotationToken,
+} from "./annotation-tokens.js";
 
 /** Lazy OMC client accessor — same shape the commands use. */
 export type EnsureClient = () => Promise<OmcClient>;
@@ -165,6 +178,8 @@ export function registerLanguageFeatures(
   // Document symbols / outline is OMC-free — it walks the parsed tree alone,
   // so it shares only the parse cache.
   const symbolProvider = new ModelicaDocumentSymbolProvider(cache);
+  // Annotation semantic highlighting is likewise OMC-free — tree only.
+  const semanticTokensProvider = new AnnotationSemanticTokensProvider(cache);
   const completionProvider = new ModelicaCompletionProvider(
     cache,
     cachedEnsureClient,
@@ -186,6 +201,12 @@ export function registerLanguageFeatures(
     MODELICA_DOCUMENT_SELECTOR,
     symbolProvider,
   );
+  const semanticTokensRegistration =
+    vscode.languages.registerDocumentSemanticTokensProvider(
+      MODELICA_DOCUMENT_SELECTOR,
+      semanticTokensProvider,
+      ANNOTATION_SEMANTIC_TOKENS_LEGEND,
+    );
   // `.` triggers member-access completion; for the other contexts VSCode invokes
   // the provider on the normal identifier-typing path.
   const completionRegistration =
@@ -220,6 +241,7 @@ export function registerLanguageFeatures(
     definitionRegistration.dispose();
     hoverRegistration.dispose();
     symbolRegistration.dispose();
+    semanticTokensRegistration.dispose();
     completionRegistration.dispose();
     onChange.dispose();
     onSave.dispose();

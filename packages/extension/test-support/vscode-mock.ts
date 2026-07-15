@@ -117,6 +117,31 @@ export class Diagnostic {
   ) {}
 }
 
+export class SemanticTokensLegend {
+  constructor(
+    public readonly tokenTypes: string[],
+    public readonly tokenModifiers: string[] = [],
+  ) {}
+}
+
+export class SemanticTokens {
+  constructor(
+    public readonly data: Uint32Array,
+    public readonly resultId?: string,
+  ) {}
+}
+
+export class SemanticTokensBuilder {
+  public readonly pushed: Array<{ range: Range; tokenType: string }> = [];
+  constructor(private readonly legend?: SemanticTokensLegend) {}
+  push(range: Range, tokenType: string): void {
+    this.pushed.push({ range, tokenType });
+  }
+  build(): SemanticTokens {
+    return new SemanticTokens(new Uint32Array());
+  }
+}
+
 class UriImpl {
   private constructor(
     public readonly scheme: string,
@@ -384,6 +409,7 @@ export const languages = {
   registerDefinitionProvider: (): Disposable => new Disposable(),
   registerHoverProvider: (): Disposable => new Disposable(),
   registerDocumentSymbolProvider: (): Disposable => new Disposable(),
+  registerDocumentSemanticTokensProvider: (): Disposable => new Disposable(),
   registerCompletionItemProvider: (): Disposable => new Disposable(),
 };
 

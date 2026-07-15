@@ -52,7 +52,7 @@
       "name": "keyword.operator.assignment"
     },
     {
-      "match": "\\b(algorithm|equation|initial algorithm|initial equation|protected|public|end|pure|impure|external|encapsulated|in|inner|operator|outer)\\b",
+      "match": "\\b(algorithm|equation|initial algorithm|initial equation|protected|public|end|pure|impure|external|encapsulated|in|inner|operator|outer|annotation)\\b",
       "name": "keyword"
     },
     {
@@ -90,18 +90,6 @@
         "3": { "name": "comment.line" }
       },
       "match": "((function)\\s+\\w+\\s*(\".*\")*)"
-    },
-    {
-      "begin": "annotation",
-      "end": ";\\s*\\n",
-      "name": "comment.block",
-      "patterns": [
-        {
-          "begin": "\"",
-          "end": "\"",
-          "name": "comment.block"
-        }
-      ]
     },
     {
       "captures": {
