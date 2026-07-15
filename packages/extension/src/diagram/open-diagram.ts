@@ -192,6 +192,46 @@ export function placementAt(position: { x: number; y: number }): string {
   return `Placement(transformation(extent={{${x - 10}, ${y - 10}}, {${x + 10}, ${y + 10}}}))`;
 }
 
+/** Structural client for the partial-class drop guard. */
+export interface PartialCheckClient {
+  isPartial(input: { typeName: string }): Promise<{ b: boolean }>;
+}
+
+/** Result of {@link guardAddComponent}: whether the drop may proceed. */
+export type AddComponentGuardResult =
+  | { kind: "proceed" }
+  | { kind: "blocked"; message: string }
+  | { kind: "guard-failed"; message: string };
+
+/**
+ * OMEdit refuses to drop a `partial` class as a component —
+ * `GraphicsView::addComponent` runs `performElementCreationChecks` before
+ * instantiating. OMC's own `addComponent` performs no such check and will
+ * happily write an abstract class in as a component. A failure of the guard's
+ * own OMC call (`isPartial`) is returned as `guard-failed` rather than thrown,
+ * so the caller can fail-open and let `addComponent`'s own error path decide,
+ * instead of aborting a drop on a transient guard hiccup.
+ */
+export async function guardAddComponent(
+  client: PartialCheckClient,
+  componentClass: string,
+): Promise<AddComponentGuardResult> {
+  try {
+    const { b } = await client.isPartial({ typeName: componentClass });
+    return b
+      ? {
+          kind: "blocked",
+          message: `${componentClass} is a partial class and cannot be placed as a component.`,
+        }
+      : { kind: "proceed" };
+  } catch (err) {
+    return {
+      kind: "guard-failed",
+      message: `isPartial ${componentClass} failed: ${(err as Error).message}`,
+    };
+  }
+}
+
 /**
  * Run `simulate(typeName, …)` with the form's submitted values and
  * mirror the result into the REPL transcript. Errors bubble up via the

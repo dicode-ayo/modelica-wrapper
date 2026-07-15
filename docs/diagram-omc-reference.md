@@ -215,7 +215,7 @@ lazy per row via the cheap `getModelInstanceAnnotation` path.
 | --- | --- | --- | --- |
 | Move / resize component | `componentPlacement` | `updateComponent(…, placementAnnotation)` | ✅ (placement from view-centre on add, not pixel-precise) |
 | Delete component | `componentDeleted` | `deleteComponent` | ✅ |
-| Add component (library→canvas) | — | `addComponent` | ✅ via `onAddComponent`, position = view centre |
+| Add component (library→canvas) | — | `addComponent` | ✅ via `onAddComponent`, position = view centre; `isPartial` refuses `partial` classes before the write (issue #277) |
 | Connection add/delete/reroute | `connectionAdded/Deleted/Waypoints` | `addConnection`/`deleteConnection`/`updateConnection` | ✅ (drag *existing* waypoints only; `Line` style round-trips alongside the route, issue #219) |
 | Vector-port re-index | `connectionRenamed` | `updateConnectionNames` | ⚠️ fragile (cascade-shift risk) |
 | Component params | — | `setElementModifierValue` | ✅ [parameter-edits.ts](../packages/extension/src/diagram/parameter-edits.ts) |
