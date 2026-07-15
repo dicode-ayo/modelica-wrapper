@@ -224,3 +224,18 @@ const ANNOTATION_VALUE_SCHEMA: Readonly<Record<string, readonly string[]>> = {
 export function annotationFieldValues(field: string): readonly string[] {
   return ANNOTATION_VALUE_SCHEMA[field] ?? [];
 }
+
+/**
+ * The simple names of the spec graphical enums that appear as annotation values
+ * (`FillPattern`, `LinePattern`, `Smooth`, `Arrow`, …), derived from the
+ * `Enum.Member` entries of {@link ANNOTATION_VALUE_SCHEMA}. Boolean fields
+ * (`true`/`false`, no dot) contribute nothing. Consumers use it to recognise an
+ * enum reference in value position (e.g. semantic highlighting).
+ */
+export const ANNOTATION_ENUM_NAMES: ReadonlySet<string> = new Set(
+  Object.values(ANNOTATION_VALUE_SCHEMA).flatMap((values) =>
+    values
+      .filter((value) => value.includes("."))
+      .map((value) => value.slice(0, value.indexOf("."))),
+  ),
+);

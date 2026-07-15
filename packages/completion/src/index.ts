@@ -14,3 +14,4 @@ export {
   type CompletionResult,
 } from "./candidate.js";
 export type { CompletionClient } from "./client.js";
+export { ANNOTATION_ENUM_NAMES } from "./annotation-schema.js";
