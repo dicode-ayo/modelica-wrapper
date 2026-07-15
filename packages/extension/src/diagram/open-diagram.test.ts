@@ -13,7 +13,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelInstance, OmcClient } from "@dicode/omc-client";
 
 import { executedCommands } from "../../test-support/vscode-mock.js";
-import { fetchIconLayout, openDiagram } from "./open-diagram.js";
+import {
+  fetchIconLayout,
+  guardAddComponent,
+  openDiagram,
+  type PartialCheckClient,
+} from "./open-diagram.js";
 
 describe("openDiagram", () => {
   beforeEach(() => {
@@ -139,5 +144,38 @@ describe("fetchIconLayout: when the annotation path is trusted", () => {
     expect(calls).toEqual(["getModelInstanceAnnotation"]);
     // Deleting the instantiating fallback must not cost us inherited icons.
     expect(layout.iconLayers.length).toBeGreaterThan(0);
+  });
+});
+
+describe("guardAddComponent", () => {
+  it("proceeds for a non-partial class", async () => {
+    const client: PartialCheckClient = {
+      isPartial: async () => ({ b: false }),
+    };
+    const result = await guardAddComponent(client, "Pkg.ConcreteModel");
+    expect(result).toEqual({ kind: "proceed" });
+  });
+
+  it("blocks a partial class with a warning-worthy message", async () => {
+    const client: PartialCheckClient = { isPartial: async () => ({ b: true }) };
+    const result = await guardAddComponent(client, "Pkg.PartialModel");
+    expect(result).toEqual({
+      kind: "blocked",
+      message:
+        "Pkg.PartialModel is a partial class and cannot be placed as a component.",
+    });
+  });
+
+  it("turns a failing isPartial call into a guard-failed result instead of throwing", async () => {
+    const client: PartialCheckClient = {
+      isPartial: async () => {
+        throw new Error("OMC socket timeout");
+      },
+    };
+    const result = await guardAddComponent(client, "Pkg.Unknown");
+    expect(result).toEqual({
+      kind: "guard-failed",
+      message: "isPartial Pkg.Unknown failed: OMC socket timeout",
+    });
   });
 });

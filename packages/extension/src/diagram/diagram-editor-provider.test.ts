@@ -515,6 +515,7 @@ function makeEditClient(opts?: {
   getModelInstanceThrows?: boolean;
   classRestriction?: string;
   classRestrictionThrows?: boolean;
+  isPartial?: boolean;
 }): {
   client: OmcClient;
   invoked: string[];
@@ -568,6 +569,10 @@ function makeEditClient(opts?: {
       return opts?.classRestrictionThrows
         ? Promise.reject(new Error("getClassInformation failed"))
         : Promise.resolve({ restriction: opts?.classRestriction ?? "model" });
+    }),
+    isPartial: vi.fn((_input: { typeName: string }) => {
+      ops.push("isPartial");
+      return Promise.resolve({ b: opts?.isPartial ?? false });
     }),
     addComponent: vi.fn((input: Record<string, unknown>) => {
       ops.push("addComponent");
@@ -796,6 +801,31 @@ describe("DiagramEditController: forward write path", () => {
     expect(writes).toEqual([LISTED_SOURCE]);
   });
 
+  it("refuses to add a partial class and never writes it", async () => {
+    const { client, addComponentCalls } = makeEditClient({ isPartial: true });
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Interfaces.PartialBlock",
+      position: { x: 5, y: 5 },
+    });
+
+    expect(addComponentCalls).toEqual([]);
+    expect(writes).toEqual([]);
+    expect(posted.at(-1)).toEqual({
+      type: "error",
+      message:
+        "Modelica.Blocks.Interfaces.PartialBlock is a partial class and cannot be placed as a component.",
+    });
+  });
+
   it("adds a connection between standalone connectors and reflects the buffer", async () => {
     const { client, addConnectionCalls } = makeEditClient();
     const { gate } = makeGate();
@@ -870,8 +900,10 @@ describe("DiagramEditController: forward write path", () => {
     // Serialized: the first edit's reflect (listFile) completes before the
     // second edit's mutation begins — not interleaved.
     expect(ops).toEqual([
+      "isPartial",
       "addComponent",
       "listFile",
+      "isPartial",
       "addComponent",
       "listFile",
     ]);
@@ -953,7 +985,12 @@ describe("DiagramEditController: forward write path", () => {
     await drain();
 
     // The forward edit fully applies + reflects before the reverse sync loads.
-    expect(ops).toEqual(["addComponent", "listFile", "loadString"]);
+    expect(ops).toEqual([
+      "isPartial",
+      "addComponent",
+      "listFile",
+      "loadString",
+    ]);
     controller.dispose();
   });
 
@@ -1257,6 +1294,7 @@ describe("DiagramEditController: parameter editing", () => {
 
     // The forward edit fully applies + reflects before the submit's write.
     expect(ops).toEqual([
+      "isPartial",
       "addComponent",
       "listFile",
       "setElementModifierValue",
@@ -1743,6 +1781,7 @@ describe("DiagramEditController: change class", () => {
 
     // The forward edit fully applies + reflects before the class swap runs.
     expect(ops).toEqual([
+      "isPartial",
       "addComponent",
       "listFile",
       "setElementType",
@@ -1854,7 +1893,7 @@ describe("DiagramEditController: simulate and check actions", () => {
     await Promise.all([edit, sim]);
 
     // The forward edit fully applies + reflects before the simulate runs.
-    expect(ops).toEqual(["addComponent", "listFile", "simulate"]);
+    expect(ops).toEqual(["isPartial", "addComponent", "listFile", "simulate"]);
   });
 });
 

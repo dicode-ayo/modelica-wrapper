@@ -39,6 +39,7 @@ import {
   fetchSimulationOptions,
   keyToCref,
   layoutFromInstance,
+  guardAddComponent,
   pickClassToSwap,
   placementAt,
   resetComponentParameters,
@@ -563,6 +564,14 @@ export class DiagramEditController {
       return;
     }
     const { client, className } = this.deps;
+    const guard = await guardAddComponent(client, componentClass);
+    if (guard.kind === "blocked") {
+      this.reportError(guard.message);
+      return;
+    }
+    // Fail-open: the guard's own OMC call couldn't verify, so let addComponent
+    // proceed and be the authority on whether the write actually succeeds.
+    if (guard.kind === "guard-failed") log.warn("diagramEditor", guard.message);
     const componentName = uniqueComponentName(this.prevLayout, componentClass);
     try {
       const { success, diagnostic } = await client.addComponent({
