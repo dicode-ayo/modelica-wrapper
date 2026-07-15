@@ -88,6 +88,26 @@ export async function activate(
   // (clear-all + replace) and the live-check pipeline (per-file updates).
   const diagnostics = vscode.languages.createDiagnosticCollection("modelica");
 
+  // The virtual filesystem providers must exist before anything else in
+  // activation: on window reload VSCode restores the diagram/icon/documentation
+  // custom editors and resolves their `modelica-source:` documents through the
+  // file service the instant activation is reached. If the scheme has no
+  // provider yet, the restore fails with "Unable to resolve resource" and the
+  // tab is stuck. Registering these first — ahead of the custom editors and any
+  // registration that could throw — keeps the scheme resolvable throughout.
+  context.subscriptions.push(
+    vscode.workspace.registerFileSystemProvider(
+      MODELICA_SOURCE_SCHEME,
+      sourceProvider,
+      { isCaseSensitive: true },
+    ),
+    vscode.workspace.registerFileSystemProvider(
+      MODELICA_DOC_SCHEME,
+      docHtmlProvider,
+      { isCaseSensitive: true },
+    ),
+  );
+
   context.subscriptions.push(
     libraryView,
     diagnostics,
@@ -110,16 +130,6 @@ export async function activate(
       DOCUMENTATION_VIEW_TYPE,
     ),
     registerLanguageFeatures(context, ensureClient),
-    vscode.workspace.registerFileSystemProvider(
-      MODELICA_SOURCE_SCHEME,
-      sourceProvider,
-      { isCaseSensitive: true },
-    ),
-    vscode.workspace.registerFileSystemProvider(
-      MODELICA_DOC_SCHEME,
-      docHtmlProvider,
-      { isCaseSensitive: true },
-    ),
     wireDocHtmlRefresh(docHtmlProvider),
     ...registerCommands({
       extensionContext: context,
@@ -130,6 +140,14 @@ export async function activate(
       diagnostics,
     }),
   );
+
+  // Registering the provider inside `activate()` doesn't retroactively fix a
+  // custom editor that already failed to restore: the provider registration is
+  // proxied to the workbench asynchronously, so an editor VSCode restored while
+  // activation was still in flight can resolve against a scheme the file service
+  // didn't know yet, and VSCode never retries it. Re-open any such tab now that
+  // the scheme is live.
+  void recoverRestoredCustomEditors();
 
   // Non-blocking — we don't want to delay activation on OMC startup.
   void autoLoadWorkspaceModels(libraryTree);
@@ -148,6 +166,65 @@ export async function activate(
       },
     },
   };
+}
+
+/**
+ * Re-open Modelica custom editors that VSCode restored before the
+ * `modelica-source` provider was live — they otherwise stay stuck on VSCode's
+ * "Unable to resolve resource" page, since VSCode never retries a failed
+ * custom-editor restore. Runs only at activation, the one moment every open
+ * Modelica custom editor is necessarily a restored tab, and skips dirty tabs so
+ * closing one can never discard an unsaved edit. Closing then re-opening forces
+ * a fresh document resolution against the now-registered scheme; a tab that
+ * restored cleanly merely reloads.
+ */
+async function recoverRestoredCustomEditors(): Promise<void> {
+  const ours = new Set<string>([
+    DIAGRAM_VIEW_TYPE,
+    ICON_VIEW_TYPE,
+    DOCUMENTATION_VIEW_TYPE,
+  ]);
+  const targets: {
+    tab: vscode.Tab;
+    uri: vscode.Uri;
+    viewType: string;
+    column: vscode.ViewColumn;
+  }[] = [];
+  for (const group of vscode.window.tabGroups.all) {
+    for (const tab of group.tabs) {
+      const input = tab.input;
+      if (
+        input instanceof vscode.TabInputCustom &&
+        input.uri.scheme === MODELICA_SOURCE_SCHEME &&
+        ours.has(input.viewType) &&
+        !tab.isDirty
+      ) {
+        targets.push({
+          tab,
+          uri: input.uri,
+          viewType: input.viewType,
+          column: group.viewColumn,
+        });
+      }
+    }
+  }
+  if (targets.length === 0) return;
+  try {
+    await vscode.window.tabGroups.close(targets.map((t) => t.tab));
+    for (const { uri, viewType, column } of targets) {
+      await vscode.commands.executeCommand(
+        "vscode.openWith",
+        uri,
+        viewType,
+        column,
+      );
+    }
+  } catch (err) {
+    log.warn(
+      "activate",
+      `re-opening restored custom editors failed: ${(err as Error).message}`,
+    );
+  }
 }
 
 export async function deactivate(): Promise<void> {
