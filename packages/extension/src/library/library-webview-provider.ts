@@ -8,7 +8,8 @@
  * The webview browses OMC-backed data through `LibrarySource`; this provider
  * owns the host end of that bridge plus
  * the sidebar-only actions (open a class's diagram, relay a placement to the
- * active diagram, run Load Library, reload after a mutation).
+ * active diagram, run Load Library, reload after a mutation, run a row's
+ * context-menu command).
  */
 
 import * as vscode from "vscode";
@@ -186,6 +187,13 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
         return;
       case "loadLibrary":
         void vscode.commands.executeCommand("modelica.loadLibrary");
+        return;
+      case "libraryNodeCommand":
+        void vscode.commands.executeCommand(`modelica.${message.command}`, {
+          qualifiedName: message.node.qualifiedName,
+          displayName: message.node.displayName,
+          restriction: message.node.restriction,
+        });
         return;
       default:
         // A new protocol variant must add a case above; this keeps the

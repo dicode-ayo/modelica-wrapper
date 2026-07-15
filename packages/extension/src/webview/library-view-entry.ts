@@ -10,17 +10,25 @@
  * OMC socket. A row double-click opens the class's diagram; a row press-drag
  * begins host-mediated placement onto the diagram canvas (HTML5 drag can't
  * cross the webview iframe, so only the class name is relayed — the diagram
- * draws its own ghost).
+ * draws its own ghost). A row right-click opens `<om-context-menu>` with the
+ * per-node actions a webview view's rows otherwise have no way to reach
+ * (`view/item/context` doesn't exist for webview views) — View Source always,
+ * New Class / Save Package As for a package row — and relays the choice to the
+ * matching `modelica.*` command.
  */
 
 import { LitElement, css, html, type TemplateResult } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { customElement, query, state } from "lit/decorators.js";
 
 import "@dicode/diagram-ui";
 import type {
+  ContextMenuItem,
+  ContextMenuSelectDetail,
+  LibraryContextMenuDetail,
   LibraryPlacementStartDetail,
   LibraryRootLoadedDetail,
   LibraryEvents,
+  OmContextMenu,
 } from "@dicode/diagram-ui";
 import { omTokens } from "@dicode/ui-common";
 
@@ -100,6 +108,11 @@ export class OmLibraryViewRoot extends LitElement {
    *  reaches this iframe's `pointerup`. */
   private placing = false;
 
+  @query("om-context-menu") private contextMenuEl?: OmContextMenu;
+  /** The row the open context menu was raised for, so a selected action knows
+   *  which class to target. */
+  private contextMenuNode: LibraryContextMenuDetail | null = null;
+
   override connectedCallback(): void {
     super.connectedCallback();
     window.addEventListener("message", this.onHostMessage);
@@ -160,6 +173,14 @@ export class OmLibraryViewRoot extends LitElement {
   }
 
   override render(): TemplateResult {
+    return html`${this.renderBody()}
+      <om-context-menu
+        @om-context-menu-select=${this.onContextMenuSelect}
+        @om-context-menu-close=${this.onContextMenuClose}
+      ></om-context-menu>`;
+  }
+
+  private renderBody(): TemplateResult {
     // The tree stays mounted while loading and ready so its single root fetch
     // drives the phase (via `om-library-root-loaded`); empty / error swap in
     // their own chrome. Reusing one `tree` template keeps the element across
@@ -187,6 +208,7 @@ export class OmLibraryViewRoot extends LitElement {
       @om-library-select=${this.onSelect}
       @om-library-placement-start=${this.onPlacementStart}
       @om-library-root-loaded=${this.onRootLoaded}
+      @om-library-context-menu=${this.onRowContextMenu}
     ></om-library-tree>`;
   }
 
@@ -224,9 +246,86 @@ export class OmLibraryViewRoot extends LitElement {
     this.vscode.postMessage({ type: "loadLibrary" });
   };
 
+  private readonly onRowContextMenu = (
+    e: CustomEvent<LibraryEvents["om-library-context-menu"]>,
+  ): void => {
+    const node = e.detail;
+    const menu = this.contextMenuEl;
+    if (!menu) return;
+    this.contextMenuNode = node;
+    menu.items = contextMenuItemsFor(node.restriction);
+    menu.open(node.x, node.y);
+  };
+
+  private readonly onContextMenuSelect = (
+    e: CustomEvent<ContextMenuSelectDetail>,
+  ): void => {
+    const node = this.contextMenuNode;
+    this.contextMenuNode = null;
+    if (!node || !isLibraryNodeCommand(e.detail.id)) return;
+    this.vscode.postMessage({
+      type: "libraryNodeCommand",
+      command: e.detail.id,
+      node: {
+        qualifiedName: node.className,
+        displayName: node.displayName,
+        restriction: node.restriction,
+      },
+    });
+  };
+
+  private readonly onContextMenuClose = (): void => {
+    this.contextMenuNode = null;
+  };
+
   private readonly onReloadClick = (): void => {
     this.onReload();
   };
+}
+
+/** The `libraryNodeCommand` variants a context-menu selection can resolve to,
+ *  derived from the protocol message itself. `LIBRARY_NODE_COMMAND_SET` must
+ *  list every member of `LibraryNodeCommand` — TypeScript rejects a missing
+ *  key, so a command added to the protocol's union and not here fails to
+ *  compile instead of silently no-op-ing at runtime. */
+type LibraryNodeCommand = Extract<
+  LibraryViewToExtension,
+  { type: "libraryNodeCommand" }
+>["command"];
+
+const LIBRARY_NODE_COMMAND_SET: Record<LibraryNodeCommand, true> = {
+  viewSource: true,
+  createClass: true,
+  savePackage: true,
+};
+
+function isLibraryNodeCommand(id: string): id is LibraryNodeCommand {
+  return id in LIBRARY_NODE_COMMAND_SET;
+}
+
+/**
+ * The per-node actions offered for `restriction`. View Source applies to any
+ * concrete row; New Class / Save Package As require exactly what
+ * `modelica.createClass`'s `parentFromNode` (`commands/context.ts`) treats as
+ * a valid nesting parent — `restriction === "package"`. A row whose
+ * restriction lookup failed (`"unknown"`) is deliberately excluded even
+ * though diagram-ui's `isExpandable` still lets it be browsed as a container:
+ * offering New Class there would let `parentFromNode` silently fall back to
+ * creating a top-level class instead of nesting under the clicked row.
+ */
+function contextMenuItemsFor(
+  restriction: LibraryContextMenuDetail["restriction"],
+): ContextMenuItem[] {
+  const items: ContextMenuItem[] = [
+    { id: "viewSource", label: "View Source", group: "class" },
+  ];
+  if (restriction === "package") {
+    items.push(
+      { id: "createClass", label: "New Class...", group: "package" },
+      { id: "savePackage", label: "Save Package As...", group: "package" },
+    );
+  }
+  return items;
 }
 
 declare global {

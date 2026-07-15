@@ -372,6 +372,31 @@ describe("LibraryWebviewProvider", () => {
     expect(client.getModelInstance).toHaveBeenCalledTimes(2);
   });
 
+  it("runs a row's context-menu command with a populated LibraryNode", () => {
+    const { provider } = makeProvider();
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+    send({
+      type: "libraryNodeCommand",
+      command: "savePackage",
+      node: {
+        qualifiedName: "Modelica.Blocks",
+        displayName: "Blocks",
+        restriction: "package",
+      },
+    });
+    expect(executedCommands).toContainEqual({
+      command: "modelica.savePackage",
+      args: [
+        {
+          qualifiedName: "Modelica.Blocks",
+          displayName: "Blocks",
+          restriction: "package",
+        },
+      ],
+    });
+  });
+
   it("posts a reload on refresh()", () => {
     const { provider } = makeProvider();
     const { view, posted } = fakeView();

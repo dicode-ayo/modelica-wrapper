@@ -4,6 +4,7 @@ import type { ItemInstance, TreeInstance } from "@headless-tree/core";
 import { RangeChangedEvent } from "@lit-labs/virtualizer/events.js";
 
 import type {
+  LibraryContextMenuDetail,
   LibraryDataSource,
   LibraryClassInfo,
   LibraryClassRestriction,
@@ -366,25 +367,138 @@ describe("<om-library-tree>", () => {
     return selected;
   }
 
-  /** Render a tree row standalone and return its `.row` element, so click /
-   *  dblclick bindings can be exercised (the virtualizer doesn't mount here). */
+  /** Render a row template into a detached container and return its `.row`
+   *  element, so click / dblclick / contextmenu bindings can be exercised (the
+   *  virtualizer doesn't mount rows under happy-dom). */
+  function renderIntoContainer(build: () => unknown): HTMLElement {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    teardowns.push(() => container.remove());
+    render(build() as never, container);
+    const row = container.querySelector<HTMLElement>(".row");
+    if (!row) throw new Error("row not rendered");
+    return row;
+  }
+
   function renderRowEl(
     el: OmLibraryTree,
     item: ItemInstance<LibraryTreeNode>,
   ): HTMLElement {
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    teardowns.push(() => container.remove());
     const renderRow = (
       el as unknown as {
         renderRow(i: ItemInstance<LibraryTreeNode>): unknown;
       }
     ).renderRow.bind(el);
-    render(renderRow(item) as never, container);
-    const row = container.querySelector<HTMLElement>(".row");
-    if (!row) throw new Error("row not rendered");
-    return row;
+    return renderIntoContainer(() => renderRow(item));
   }
+
+  function renderSearchRowEl(
+    el: OmLibraryTree,
+    row: SearchTreeRow,
+  ): HTMLElement {
+    const renderSearchTreeRow = (
+      el as unknown as {
+        renderSearchTreeRow(r: SearchTreeRow): unknown;
+      }
+    ).renderSearchTreeRow.bind(el);
+    return renderIntoContainer(() => renderSearchTreeRow(row));
+  }
+
+  it("emits om-library-context-menu on a tree row right-click, suppressing the native menu", async () => {
+    const { source } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+    const item = treeOf(el).getItemInstance("Modelica");
+    const events: LibraryContextMenuDetail[] = [];
+    el.addEventListener("om-library-context-menu", (e) =>
+      events.push((e as CustomEvent<LibraryContextMenuDetail>).detail),
+    );
+
+    const event = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 12,
+      clientY: 34,
+    });
+    const notPrevented = renderRowEl(el, item).dispatchEvent(event);
+
+    expect(notPrevented).toBe(false);
+    expect(events).toEqual([
+      {
+        className: "Modelica",
+        restriction: "package",
+        displayName: "Modelica",
+        x: 12,
+        y: 34,
+      },
+    ]);
+  });
+
+  it("suppresses the native menu on a loading placeholder row without emitting", async () => {
+    const { source } = makeSource();
+    const el = await mount(source);
+    const events: LibraryContextMenuDetail[] = [];
+    el.addEventListener("om-library-context-menu", (e) =>
+      events.push((e as CustomEvent<LibraryContextMenuDetail>).detail),
+    );
+
+    const onRowContextMenu = (
+      el as unknown as {
+        onRowContextMenu(
+          e: MouseEvent,
+          className: string,
+          restriction: LibraryClassRestriction,
+          displayName: string,
+        ): void;
+      }
+    ).onRowContextMenu.bind(el);
+    const event = new MouseEvent("contextmenu", { cancelable: true });
+    onRowContextMenu(event, "", "unknown", "Loading…");
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(events).toEqual([]);
+  });
+
+  it("emits om-library-context-menu on a search row right-click", async () => {
+    const { source, searchAll } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+
+    const input = el.shadowRoot?.querySelector<HTMLInputElement>(".search");
+    if (!input) throw new Error("search input missing");
+    input.value = "gain";
+    input.dispatchEvent(new Event("input"));
+    await waitFor(() => searchAll.mock.calls.length > 0);
+    await el.updateComplete;
+
+    const rows = (el as unknown as { searchTreeRows: SearchTreeRow[] })
+      .searchTreeRows;
+    const leaf = rows.find((r) => r.isMatch);
+    if (!leaf) throw new Error("no match leaf");
+
+    const events: LibraryContextMenuDetail[] = [];
+    el.addEventListener("om-library-context-menu", (e) =>
+      events.push((e as CustomEvent<LibraryContextMenuDetail>).detail),
+    );
+    renderSearchRowEl(el, leaf).dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 5,
+        clientY: 6,
+      }),
+    );
+
+    expect(events).toEqual([
+      {
+        className: leaf.qualified,
+        restriction: leaf.restriction,
+        displayName: leaf.label,
+        x: 5,
+        y: 6,
+      },
+    ]);
+  });
 
   it("opens an openable class on keyboard activation (primaryAction)", async () => {
     const { source } = makeSource();

@@ -44,6 +44,17 @@ export interface LibrarySelectDetail {
 /** `om-library-cancel` carries no detail; the type is here for symmetry. */
 export type LibraryCancelDetail = undefined;
 
+/** Class the user right-clicked, for a per-node context-menu action. */
+export interface LibraryContextMenuDetail {
+  className: string;
+  restriction: LibraryClassRestriction;
+  /** Trailing name segment shown in the row (a file-name / display default). */
+  displayName: string;
+  /** Client coordinates to anchor the menu at. */
+  x: number;
+  y: number;
+}
+
 /**
  * Event-name → detail-type map. Consumers can write
  * `(e: CustomEvent<LibraryEvents["om-library-select"]>) => …` or import
@@ -52,6 +63,7 @@ export type LibraryCancelDetail = undefined;
 export interface LibraryEvents {
   "om-library-select": LibrarySelectDetail;
   "om-library-cancel": LibraryCancelDetail;
+  "om-library-context-menu": LibraryContextMenuDetail;
 }
 
 /**

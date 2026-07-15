@@ -202,7 +202,15 @@ export type {
   LibraryEvents,
   LibrarySelectDetail,
   LibraryCancelDetail,
+  LibraryContextMenuDetail,
 } from "./library-tree/library-types.js";
+export {
+  OmContextMenu,
+  type ContextMenuItem,
+  type ContextMenuSelectDetail,
+  type ContextMenuCloseDetail,
+  type ContextMenuEvents,
+} from "./context-menu/context-menu.component.js";
 export {
   OmLibraryTree,
   LIBRARY_TREE_DRAG_FORMAT,
