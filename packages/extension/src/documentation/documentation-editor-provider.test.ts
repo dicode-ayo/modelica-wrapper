@@ -146,7 +146,7 @@ const PID_INSTANCE = ModelInstanceSchema.parse({
         restriction: "connector",
         elements: [],
       },
-      prefixes: { connector: "input" },
+      prefixes: { direction: "input" },
     },
   ],
 });
@@ -178,20 +178,25 @@ describe("resolveDocumentationEditor", () => {
 
     fireReady();
     await flush();
-    expect(posted).toHaveLength(1);
-    const msg = posted[0];
-    expect(msg?.type).toBe("doc");
-    if (msg?.type === "doc") {
-      expect(msg.className).toBe("Modelica.Blocks.Continuous.PID");
-      expect(msg.info).toBe("<html><p>PID</p></html>");
-      expect(msg.readOnly).toBe(false);
-      expect(msg.interface?.parameters).toEqual([
-        { name: "k", label: "Gain", value: "1", group: "Parameters" },
+    // The HTML paints first; the interface follows in its own message.
+    expect(posted.map((m) => m.type)).toEqual(["doc", "interface"]);
+    const doc = posted[0];
+    expect(doc?.type).toBe("doc");
+    if (doc?.type === "doc") {
+      expect(doc.className).toBe("Modelica.Blocks.Continuous.PID");
+      expect(doc.info).toBe("<html><p>PID</p></html>");
+      expect(doc.readOnly).toBe(false);
+    }
+    const iface = posted[1];
+    expect(iface?.type).toBe("interface");
+    if (iface?.type === "interface") {
+      expect(iface.interface.parameters).toEqual([
+        { name: "k", description: "Gain", value: "1", group: "Parameters" },
       ]);
-      expect(msg.interface?.connectors).toEqual([
-        { name: "u", label: "u", typeName: "RealInput", direction: "input" },
+      expect(iface.interface.connectors).toEqual([
+        { name: "u", typeName: "RealInput", direction: "input" },
       ]);
-      expect(msg.interface?.extendsTree.map((n) => n.name)).toEqual([
+      expect(iface.interface.extendsTree.map((n) => n.name)).toEqual([
         "Modelica.Blocks.Interfaces.SISO",
       ]);
     }
@@ -386,6 +391,7 @@ function makeEditClient(
         ? Promise.reject(new Error("OMC down"))
         : Promise.resolve({ info: anno.info }),
     ),
+    getModelInstance: vi.fn(() => Promise.resolve({ instance: PID_INSTANCE })),
     setFullDocumentationAnnotation: vi.fn(
       (a: { typeName: string; info: string }) => {
         calls.setArgs.push(a);

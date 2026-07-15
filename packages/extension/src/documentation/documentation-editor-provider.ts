@@ -406,16 +406,19 @@ export class DocumentationEditController {
     });
     this.seeded = true;
     const resources = await resolveDocResources(client, info);
-    const message: DocExtensionToWebview = {
+    gate.send({
       type: "doc",
       className,
       info,
       readOnly: this.readOnly,
       resources,
-    };
+    });
+    // The interface follows in its own message so the HTML paints without
+    // waiting on the (comparatively slow) full instantiate.
     const iface = await this.fetchInterface();
-    if (iface !== undefined) message.interface = iface;
-    gate.send(message);
+    if (iface !== undefined) {
+      gate.send({ type: "interface", className, interface: iface });
+    }
   }
 
   /**

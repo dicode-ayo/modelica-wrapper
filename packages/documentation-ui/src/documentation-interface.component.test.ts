@@ -51,7 +51,7 @@ describe("om-documentation-interface", () => {
       parameters: [
         {
           name: "k",
-          label: "Gain of controller",
+          description: "Gain of controller",
           value: "1.5",
           unit: "rad",
           group: "Parameters",
@@ -87,9 +87,7 @@ describe("om-documentation-interface", () => {
   it("renders connector rows with leaf type and direction", async () => {
     const el = await mount({
       ...EMPTY,
-      connectors: [
-        { name: "u", label: "u", typeName: "RealInput", direction: "input" },
-      ],
+      connectors: [{ name: "u", typeName: "RealInput", direction: "input" }],
     });
     const text = el.shadowRoot?.textContent ?? "";
     expect(text).toContain("Connectors");
@@ -101,8 +99,8 @@ describe("om-documentation-interface", () => {
     const single = await mount({
       ...EMPTY,
       parameters: [
-        { name: "a", label: "a", value: "1", group: "Parameters" },
-        { name: "b", label: "b", value: "2", group: "Parameters" },
+        { name: "a", value: "1", group: "Parameters" },
+        { name: "b", value: "2", group: "Parameters" },
       ],
     });
     expect(single.shadowRoot?.querySelector("td.group")).toBeNull();
@@ -110,8 +108,8 @@ describe("om-documentation-interface", () => {
     const multi = await mount({
       ...EMPTY,
       parameters: [
-        { name: "a", label: "a", value: "1", group: "Parameters" },
-        { name: "b", label: "b", value: "2", group: "Advanced" },
+        { name: "a", value: "1", group: "Parameters" },
+        { name: "b", value: "2", group: "Advanced" },
       ],
     });
     expect(multi.shadowRoot?.querySelector("td.group")).not.toBeNull();

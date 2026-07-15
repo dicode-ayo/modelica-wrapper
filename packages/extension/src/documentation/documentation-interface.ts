@@ -38,13 +38,12 @@ function buildParameterRows(instance: ModelInstance): DocParameterRow[] {
   return produceParameterModel(instance).fields.map((field) => {
     const row: DocParameterRow = {
       name: field.name,
-      label: field.label,
       value: displayValue(field.value),
       group: field.dialog.group,
     };
+    // `label` is the comment-else-name; carry it only when it's a real comment.
+    if (field.label !== field.name) row.description = field.label;
     if (field.unit !== undefined) row.unit = field.unit;
-    if (field.inheritedFrom !== undefined)
-      row.inheritedFrom = field.inheritedFrom;
     return row;
   });
 }
@@ -66,14 +65,16 @@ function buildConnectorRows(instance: ModelInstance): DocConnectorRow[] {
   const rows: DocConnectorRow[] = [];
   const seen = new Set<string>();
   for (const el of walkComponents(instance)) {
+    // A more-derived redeclaration (yielded first) claims the name for good,
+    // even when it isn't itself a connector — matching Modelica flattening.
     if (seen.has(el.name)) continue;
-    if (!isConnector(el)) continue;
     seen.add(el.name);
+    if (!isConnector(el)) continue;
     const row: DocConnectorRow = {
       name: el.name,
-      label: el.comment ?? el.name,
       typeName: connectorTypeName(el),
     };
+    if (el.comment !== undefined) row.description = el.comment;
     const direction = connectorDirection(el);
     if (direction !== undefined) row.direction = direction;
     rows.push(row);
@@ -84,7 +85,7 @@ function buildConnectorRows(instance: ModelInstance): DocConnectorRow[] {
 function isConnector(el: ComponentElement): boolean {
   const type = el.type;
   if (type === undefined || typeof type === "string") return false;
-  return type.restriction.includes("connector");
+  return type.restriction === "connector";
 }
 
 function connectorTypeName(el: ComponentElement): string {
@@ -96,22 +97,32 @@ function connectorTypeName(el: ComponentElement): string {
 }
 
 /**
- * Connector causality. OMC tags it on the component prefixes as `connector`
- * (`"input"` / `"output"`), with `direction` as the older spelling.
+ * Connector causality. OMC reports it in `prefixes.direction`;
+ * `prefixes.connector` carries the connector keyword (`flow` / `stream`) on a
+ * connector's inner variables, not the port's causality.
  */
 function connectorDirection(
   el: ComponentElement,
 ): "input" | "output" | undefined {
-  const raw = el.prefixes?.connector ?? el.prefixes?.direction;
+  const raw = el.prefixes?.direction;
   return raw === "input" || raw === "output" ? raw : undefined;
 }
 
-/** Own components plus those reached through `extends`, ancestors last. */
+/**
+ * Own components first, then those reached through `extends`. `extends` clauses
+ * conventionally precede components in the source, so yielding own components
+ * ahead of the recursion lets the more-derived declaration win the by-name
+ * dedup regardless of element order.
+ */
 function* walkComponents(mi: ModelInstance): Iterable<ComponentElement> {
-  for (const el of mi.elements ?? []) {
+  const elements = mi.elements ?? [];
+  for (const el of elements) {
     if (el.$kind === "component") yield el;
-    else if (typeof el.baseClass === "object")
+  }
+  for (const el of elements) {
+    if (el.$kind === "extends" && typeof el.baseClass === "object") {
       yield* walkComponents(el.baseClass);
+    }
   }
 }
 

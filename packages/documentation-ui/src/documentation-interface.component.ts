@@ -2,11 +2,12 @@ import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
 import type { DocumentationOpenLinkDetail } from "./events.js";
-import type {
-  DocConnectorRow,
-  DocExtendsNode,
-  DocParameterRow,
-  DocumentationInterface,
+import {
+  hasInterfaceSections,
+  type DocConnectorRow,
+  type DocExtendsNode,
+  type DocParameterRow,
+  type DocumentationInterface,
 } from "./interface-model.js";
 
 /**
@@ -26,20 +27,28 @@ export class OmDocumentationInterface extends LitElement {
 
   static override styles = css`
     :host {
+      --om-doc-section-gap: 1.5rem;
+      --om-doc-heading-gap: 0.5rem;
+      --om-doc-heading-size: 1.1em;
+      --om-doc-cell-pad-block: 0.25rem;
+      --om-doc-cell-pad-inline: 0.75rem;
+      --om-doc-group-gap: 0.75rem;
+      --om-doc-indent: 1.25rem;
+      --om-doc-border: 1px solid var(--vscode-editorWidget-border, transparent);
       display: block;
       color: var(--vscode-editor-foreground);
       font-family: var(--vscode-font-family);
       font-size: var(--vscode-font-size);
     }
     section {
-      margin-block-start: 1.5rem;
+      margin-block-start: var(--om-doc-section-gap);
     }
     h2 {
-      margin-block-end: 0.5rem;
-      font-size: 1.1em;
+      margin-block-end: var(--om-doc-heading-gap);
+      font-size: var(--om-doc-heading-size);
       font-weight: 600;
-      border-bottom: 1px solid var(--vscode-editorWidget-border, transparent);
-      padding-block-end: 0.25rem;
+      border-block-end: var(--om-doc-border);
+      padding-block-end: var(--om-doc-cell-pad-block);
     }
     table {
       border-collapse: collapse;
@@ -49,15 +58,16 @@ export class OmDocumentationInterface extends LitElement {
     td {
       text-align: start;
       vertical-align: top;
-      padding: 0.25rem 0.75rem 0.25rem 0;
-      border-bottom: 1px solid var(--vscode-editorWidget-border, transparent);
+      padding-block: var(--om-doc-cell-pad-block);
+      padding-inline: 0 var(--om-doc-cell-pad-inline);
+      border-block-end: var(--om-doc-border);
     }
     th {
       color: var(--vscode-descriptionForeground);
       font-weight: 600;
     }
     td.group {
-      padding-block-start: 0.75rem;
+      padding-block-start: var(--om-doc-group-gap);
       color: var(--vscode-descriptionForeground);
       font-weight: 600;
     }
@@ -70,11 +80,8 @@ export class OmDocumentationInterface extends LitElement {
     }
     ul {
       margin: 0;
-      padding-inline-start: 1.25rem;
+      padding-inline-start: var(--om-doc-indent);
       list-style: none;
-    }
-    ul ul {
-      padding-inline-start: 1.25rem;
     }
     li::before {
       content: "⌞ ";
@@ -95,18 +102,15 @@ export class OmDocumentationInterface extends LitElement {
 
   override render(): typeof nothing | TemplateResult {
     const model = this.model;
-    if (model === undefined) return nothing;
-    const { extendsTree, parameters, connectors } = model;
-    if (
-      extendsTree.length === 0 &&
-      parameters.length === 0 &&
-      connectors.length === 0
-    ) {
-      return nothing;
-    }
+    if (!hasInterfaceSections(model)) return nothing;
+    // happy-dom (the test environment) drops sibling child-parts at a
+    // template root; a single wrapping element keeps every section rendered
+    // under it. The row tables flatten their rows into arrays for the same
+    // reason (see renderParameters).
     return html`<div class="sections">
-      ${this.renderExtends(extendsTree)} ${this.renderParameters(parameters)}
-      ${this.renderConnectors(connectors)}
+      ${this.renderExtends(model.extendsTree)}
+      ${this.renderParameters(model.parameters)}
+      ${this.renderConnectors(model.connectors)}
     </div>`;
   }
 
@@ -153,6 +157,8 @@ export class OmDocumentationInterface extends LitElement {
     // present; a single default `Parameters` group reads as noise.
     const groups = [...new Set(rows.map((r) => r.group))];
     const showGroups = groups.length > 1;
+    // Flattened into one array (not nested group/row `map`s) so the `<tbody>`
+    // holds a single child-part — happy-dom drops sibling child-parts.
     const bodyRows: TemplateResult[] = [];
     for (const group of groups) {
       if (showGroups) {
@@ -166,9 +172,9 @@ export class OmDocumentationInterface extends LitElement {
         bodyRows.push(
           html`<tr>
             <td><code>${row.name}</code></td>
-            <td>${row.value || nothing}</td>
+            <td>${row.value}</td>
             <td class="unit">${row.unit ?? nothing}</td>
-            <td>${row.label === row.name ? nothing : row.label}</td>
+            <td>${row.description ?? nothing}</td>
           </tr>`,
         );
       }
@@ -218,7 +224,7 @@ export class OmDocumentationInterface extends LitElement {
                       : nothing}
                   </td>
                   <td><code>${row.name}</code></td>
-                  <td>${row.label === row.name ? nothing : row.label}</td>
+                  <td>${row.description ?? nothing}</td>
                 </tr>
               `,
             )}

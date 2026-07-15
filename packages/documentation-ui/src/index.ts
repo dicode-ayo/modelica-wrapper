@@ -32,10 +32,6 @@ export { prettyPrintHtml } from "./documentation-pretty.js";
 export { OmDocumentationEditor } from "./documentation-editor.component.js";
 export { OmDocumentationInterface } from "./documentation-interface.component.js";
 
-// The read-only interface-section model (extends tree, parameters, connectors).
-export type {
-  DocConnectorRow,
-  DocExtendsNode,
-  DocParameterRow,
-  DocumentationInterface,
-} from "./interface-model.js";
+// The read-only interface-section model (extends tree, parameters, connectors)
+// is published on the `./interface-model` subpath — a DOM-free entry the Node
+// host imports without pulling these components in.

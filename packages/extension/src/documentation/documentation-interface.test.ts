@@ -36,6 +36,21 @@ function connectorType(name: string): unknown {
   return { name, restriction: "connector", elements: [] };
 }
 
+function connector(
+  name: string,
+  typeName: string,
+  direction: "input" | "output",
+  comment?: string,
+): unknown {
+  return {
+    $kind: "component",
+    name,
+    type: connectorType(typeName),
+    prefixes: { direction },
+    ...(comment !== undefined ? { comment } : {}),
+  };
+}
+
 describe("buildDocumentationInterface — parameters", () => {
   it("lists parameter components with value, unit, and description", () => {
     const mi = instance([
@@ -52,7 +67,7 @@ describe("buildDocumentationInterface — parameters", () => {
     expect(parameters).toHaveLength(1);
     expect(parameters[0]).toMatchObject({
       name: "k",
-      label: "Gain of controller",
+      description: "Gain of controller",
       value: "1.5",
       unit: "rad",
       group: "Parameters",
@@ -85,31 +100,24 @@ describe("buildDocumentationInterface — parameters", () => {
 });
 
 describe("buildDocumentationInterface — connectors", () => {
-  it("lists connector components with leaf type name and direction", () => {
+  it("lists connector components with leaf type name, direction, and comment", () => {
     const mi = instance([
-      {
-        $kind: "component",
-        name: "u",
-        type: connectorType("Modelica.Blocks.Interfaces.RealInput"),
-        prefixes: { connector: "input" },
-        comment: "Setpoint",
-      },
-      {
-        $kind: "component",
-        name: "y",
-        type: connectorType("Modelica.Blocks.Interfaces.RealOutput"),
-        prefixes: { connector: "output" },
-      },
+      connector(
+        "u",
+        "Modelica.Blocks.Interfaces.RealInput",
+        "input",
+        "Setpoint",
+      ),
+      connector("y", "Modelica.Blocks.Interfaces.RealOutput", "output"),
     ]);
-    const { connectors } = buildDocumentationInterface(mi);
-    expect(connectors).toEqual([
+    expect(buildDocumentationInterface(mi).connectors).toEqual([
       {
         name: "u",
-        label: "Setpoint",
+        description: "Setpoint",
         typeName: "RealInput",
         direction: "input",
       },
-      { name: "y", label: "y", typeName: "RealOutput", direction: "output" },
+      { name: "y", typeName: "RealOutput", direction: "output" },
     ]);
   });
 
@@ -118,6 +126,44 @@ describe("buildDocumentationInterface — connectors", () => {
       {
         $kind: "component",
         name: "gain",
+        type: { name: "Modelica.Blocks.Math.Gain", restriction: "block" },
+      },
+    ]);
+    expect(buildDocumentationInterface(mi).connectors).toEqual([]);
+  });
+
+  it("includes a connector inherited through extends", () => {
+    const base = {
+      name: "Modelica.Blocks.Interfaces.SISO",
+      restriction: "block",
+      elements: [
+        connector("u", "Modelica.Blocks.Interfaces.RealInput", "input"),
+      ],
+    };
+    const mi = instance([
+      { $kind: "extends", baseClass: base },
+      connector("y", "Modelica.Blocks.Interfaces.RealOutput", "output"),
+    ]);
+    expect(
+      buildDocumentationInterface(mi).connectors.map((c) => c.name),
+    ).toEqual(["y", "u"]);
+  });
+
+  it("lets a more-derived redeclaration shadow an inherited connector of the same name", () => {
+    const base = {
+      name: "Base",
+      restriction: "block",
+      elements: [
+        connector("u", "Modelica.Blocks.Interfaces.RealInput", "input"),
+      ],
+    };
+    // The host redeclares `u` as a plain (non-connector) component; the base
+    // connector must not resurface.
+    const mi = instance([
+      { $kind: "extends", baseClass: base },
+      {
+        $kind: "component",
+        name: "u",
         type: { name: "Modelica.Blocks.Math.Gain", restriction: "block" },
       },
     ]);

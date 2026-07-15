@@ -17,9 +17,12 @@
 import "@dicode/documentation-ui";
 import type {
   DocumentationChangeDetail,
-  DocumentationInterface,
   DocumentationOpenLinkDetail,
 } from "@dicode/documentation-ui";
+import {
+  hasInterfaceSections,
+  type DocumentationInterface,
+} from "@dicode/documentation-ui/interface-model";
 import { LitElement, html, nothing, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 
@@ -64,8 +67,13 @@ export class OmDocumentationRoot extends LitElement {
         this.resources = msg.resources;
         this.info = msg.info;
         this.readOnly = msg.readOnly;
-        this.interface = msg.interface;
+        // Cleared here; the interface arrives in its own follow-up message so a
+        // stale table never shows against freshly reloaded HTML.
+        this.interface = undefined;
         this.error = null;
+        return;
+      case "interface":
+        this.interface = msg.interface;
         return;
       case "error":
         this.error = msg.message;
@@ -89,16 +97,6 @@ export class OmDocumentationRoot extends LitElement {
     this.vscode.postMessage({ type: "openLink", href: e.detail.href });
   };
 
-  private get hasInterface(): boolean {
-    const model = this.interface;
-    return (
-      model !== undefined &&
-      (model.extendsTree.length > 0 ||
-        model.parameters.length > 0 ||
-        model.connectors.length > 0)
-    );
-  }
-
   override render(): TemplateResult {
     // Keep the error node always present: a leading `${…}` before an element
     // with attribute bindings can scramble those bindings (the Lit
@@ -116,7 +114,7 @@ export class OmDocumentationRoot extends LitElement {
         @om-documentation-edit-source=${this.onEditSource}
         @om-documentation-open-link=${this.onOpenLink}
       ></om-documentation-editor>
-      ${this.hasInterface
+      ${hasInterfaceSections(this.interface)
         ? html`<om-documentation-interface
             class="om-doc-interface"
             .model=${this.interface}
@@ -136,11 +134,13 @@ export class OmDocumentationRoot extends LitElement {
         }
         om-documentation-root > .om-doc-interface {
           flex: 0 1 auto;
-          min-height: 0;
-          max-height: 50%;
+          min-block-size: 0;
+          max-block-size: 50%;
           overflow: auto;
-          padding: 0 1rem 1rem;
-          border-top: 1px solid var(--vscode-editorWidget-border, transparent);
+          padding-block: 0 1rem;
+          padding-inline: 1rem;
+          border-block-start: 1px solid
+            var(--vscode-editorWidget-border, transparent);
         }
         om-documentation-root .om-doc-host-error {
           flex: 0 0 auto;

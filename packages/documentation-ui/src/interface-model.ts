@@ -14,24 +14,22 @@
 export interface DocParameterRow {
   /** Relative parameter name (e.g. `k`). */
   name: string;
-  /** The declaration comment, else the name. */
-  label: string;
+  /** The declaration comment, when it has one. */
+  description?: string | undefined;
   /** Pre-rendered default/value string; empty when neither source has one. */
   value: string;
   /** Base unit (e.g. `rad`), when the declaration carries one. */
   unit?: string | undefined;
   /** Dialog group the parameter is filed under (spec default `Parameters`). */
   group: string;
-  /** Direct extends base the parameter is inherited through, if any. */
-  inheritedFrom?: string | undefined;
 }
 
 /** One connector row: name, type, and description of a connector component. */
 export interface DocConnectorRow {
   /** Connector instance name (e.g. `u`, `y`). */
   name: string;
-  /** The declaration comment, else the name. */
-  label: string;
+  /** The declaration comment, when it has one. */
+  description?: string | undefined;
   /** Leaf name of the connector type (e.g. `RealInput`). */
   typeName: string;
   /** Causality when the declaration marks one. */
@@ -52,4 +50,16 @@ export interface DocumentationInterface {
   extendsTree: DocExtendsNode[];
   parameters: DocParameterRow[];
   connectors: DocConnectorRow[];
+}
+
+/** True when at least one section has content worth rendering. */
+export function hasInterfaceSections(
+  model: DocumentationInterface | undefined,
+): model is DocumentationInterface {
+  return (
+    model !== undefined &&
+    (model.extendsTree.length > 0 ||
+      model.parameters.length > 0 ||
+      model.connectors.length > 0)
+  );
 }
