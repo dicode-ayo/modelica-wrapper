@@ -34,6 +34,7 @@ import {
 } from "./documentation/documentation-html-provider.js";
 import { registerLanguageFeatures } from "./language/index.js";
 import { log } from "./logger.js";
+import { recoverRestoredCustomEditors } from "./restore-recovery.js";
 import { ResultViewEditorProvider } from "./results/result-view-provider.js";
 import { evalLine } from "./repl/repl-eval.js";
 import {
@@ -88,6 +89,26 @@ export async function activate(
   // (clear-all + replace) and the live-check pipeline (per-file updates).
   const diagnostics = vscode.languages.createDiagnosticCollection("modelica");
 
+  // The virtual filesystem providers must exist before anything else in
+  // activation: on window reload VSCode restores the diagram/icon/documentation
+  // custom editors and resolves their `modelica-source:` documents through the
+  // file service the instant activation is reached. If the scheme has no
+  // provider yet, the restore fails with "Unable to resolve resource" and the
+  // tab is stuck. Registering these first — ahead of the custom editors and any
+  // registration that could throw — keeps the scheme resolvable throughout.
+  context.subscriptions.push(
+    vscode.workspace.registerFileSystemProvider(
+      MODELICA_SOURCE_SCHEME,
+      sourceProvider,
+      { isCaseSensitive: true },
+    ),
+    vscode.workspace.registerFileSystemProvider(
+      MODELICA_DOC_SCHEME,
+      docHtmlProvider,
+      { isCaseSensitive: true },
+    ),
+  );
+
   context.subscriptions.push(
     libraryView,
     diagnostics,
@@ -110,16 +131,6 @@ export async function activate(
       DOCUMENTATION_VIEW_TYPE,
     ),
     registerLanguageFeatures(context, ensureClient),
-    vscode.workspace.registerFileSystemProvider(
-      MODELICA_SOURCE_SCHEME,
-      sourceProvider,
-      { isCaseSensitive: true },
-    ),
-    vscode.workspace.registerFileSystemProvider(
-      MODELICA_DOC_SCHEME,
-      docHtmlProvider,
-      { isCaseSensitive: true },
-    ),
     wireDocHtmlRefresh(docHtmlProvider),
     ...registerCommands({
       extensionContext: context,
@@ -130,6 +141,10 @@ export async function activate(
       diagnostics,
     }),
   );
+
+  // Re-open editors VSCode restored before the scheme went live; see the note
+  // on `recoverRestoredCustomEditors`.
+  void recoverRestoredCustomEditors();
 
   // Non-blocking — we don't want to delay activation on OMC startup.
   void autoLoadWorkspaceModels(libraryTree);

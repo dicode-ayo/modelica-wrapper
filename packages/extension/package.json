@@ -16,7 +16,9 @@
   ],
   "main": "./out/extension.js",
   "activationEvents": [
-    "workspaceContains:**/*.mo"
+    "workspaceContains:**/*.mo",
+    "onFileSystem:modelica-source",
+    "onFileSystem:modelica-doc"
   ],
   "contributes": {
     "languages": [
