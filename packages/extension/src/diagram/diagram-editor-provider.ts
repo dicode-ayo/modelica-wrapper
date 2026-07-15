@@ -459,8 +459,8 @@ export class DiagramEditController {
    * not-yet-reverted `prevLayout` and its reflect could silently overwrite the
    * foreign change (e.g. an undo) the timer hasn't synced in yet. Cancel the
    * timer and enqueue the reverse sync ahead of the incoming edit so it always
-   * runs — and lands in the buffer — first. Returns whether a sync was
-   * actually pending (and so just got flushed).
+   * runs — and lands in OMC — first. Returns whether a sync was actually
+   * pending (and so just got flushed).
    */
   private flushPendingReverseSync(): boolean {
     if (this.reverseTimer === undefined) return false;
