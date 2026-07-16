@@ -55,9 +55,24 @@ describe("expressionToString", () => {
     ).toBe("a + b + 1");
   });
 
-  it("parenthesizes a looser-bound operand", () => {
+  it("parenthesizes a looser-bound operand on either side", () => {
     expect(expressionToString(bin("*", 2, bin("+", cref("a"), 1)))).toBe(
       "2 * (a + 1)",
+    );
+    expect(expressionToString(bin("*", bin("+", cref("a"), 1), 2))).toBe(
+      "(a + 1) * 2",
+    );
+    expect(expressionToString(bin("*", un("-", cref("a")), cref("b")))).toBe(
+      "(-a) * b",
+    );
+  });
+
+  it("parenthesizes nested exponentiation on either side", () => {
+    expect(expressionToString(bin("^", bin("^", cref("a"), 2), 3))).toBe(
+      "(a ^ 2) ^ 3",
+    );
+    expect(expressionToString(bin("^", cref("a"), bin("^", 2, 3)))).toBe(
+      "a ^ (2 ^ 3)",
     );
   });
 

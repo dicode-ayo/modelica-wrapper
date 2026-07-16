@@ -98,7 +98,10 @@ export interface ParameterField {
    * The declaration's raw, unevaluated binding expression, when OMC reported
    * one. Present even when it could not be coerced into `value` — a symbolic
    * default (`2*pi`, a cref, `DynamicSelect`) keeps `value: null` but carries
-   * its AST here so a read-only view can still render it.
+   * its AST here so a read-only view can still render it. Rides the whole
+   * model to the parameter-form webview on purpose: it is the hook for an
+   * OMEdit-style symbolic placeholder on fields whose default the form
+   * cannot show as a literal.
    */
   binding?: Expression | undefined;
   /**

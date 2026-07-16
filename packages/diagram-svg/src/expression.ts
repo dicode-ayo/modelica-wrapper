@@ -130,12 +130,19 @@ function unaryPrecedence(op: string): number {
   return op === "not" ? 2.5 : 4.5;
 }
 
+const POW_PRECEDENCE = binaryPrecedence("^");
+
 /**
  * Render one operand, parenthesizing when its own operator binds looser
  * than the parent (`2 * (a + b)`), or equally tight on the right of a
- * non-associative chain (`a - (b - c)`). A unary operand on the right is
- * always wrapped — the MLS grammar admits a sign only at the start of an
- * arithmetic expression, so `a - -b` is not writable Modelica.
+ * non-associative chain (`a - (b - c)`). `^` wraps an equal-precedence
+ * operand on either side — `factor : primary [("^" | ".^") primary]`
+ * admits a single exponent, so `a ^ 2 ^ 3` is not writable Modelica.
+ * A unary operand on the right is always wrapped. Inside the arithmetic
+ * tiers that is required (a sign is only writable at the start of an
+ * arithmetic expression, so `a - -b` is not valid Modelica); elsewhere
+ * (`a and (not b)`, `a < (-b)`) it is deliberately conservative —
+ * redundant parentheses, never wrong ones.
  */
 function operandToString(
   operand: Expression,
@@ -148,6 +155,7 @@ function operandToString(
   if (info === undefined) return rendered;
   if (
     info.prec < parentPrec ||
+    (info.prec === parentPrec && parentPrec === POW_PRECEDENCE) ||
     (isRhs && (info.prec <= parentPrec || info.unary))
   ) {
     return `(${rendered})`;
