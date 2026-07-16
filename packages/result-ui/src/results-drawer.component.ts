@@ -73,7 +73,7 @@ export class OmResultsDrawer extends LitElement {
         opacity: 0.65;
       }
       .chip .label {
-        font-weight: 600;
+        font-weight: var(--om-title-weight);
         font-size: var(--om-description-size);
       }
       .label-row {
@@ -111,7 +111,7 @@ export class OmResultsDrawer extends LitElement {
       }
       .rename-input {
         font: inherit;
-        font-weight: 600;
+        font-weight: var(--om-title-weight);
         font-size: var(--om-description-size);
         background: var(--vscode-input-background, transparent);
         border: 1px solid var(--vscode-focusBorder, var(--vscode-panel-border));

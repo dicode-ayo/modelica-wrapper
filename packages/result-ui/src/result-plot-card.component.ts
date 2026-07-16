@@ -50,7 +50,7 @@ export class OmResultPlotCard extends LitElement {
       header h4 {
         margin: 0;
         font-size: var(--om-description-size);
-        font-weight: 600;
+        font-weight: var(--om-title-weight);
       }
       .trace {
         display: flex;
