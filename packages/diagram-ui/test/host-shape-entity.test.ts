@@ -6,6 +6,7 @@ import "../src/graphical-layout/graphical-layout.component.js";
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
 import { HOST_SHAPE_Z_BIAS } from "../src/graphical-layout/graphical-layout.component.js";
 import { entityKeyForNode } from "../src/interaction/node-keys.js";
+import { STROKE_Z_DELTA, zForOrder } from "../src/primitives/shape-utils.js";
 import type { OmScene } from "../src/scene/scene.component.js";
 
 /**
@@ -29,6 +30,8 @@ function layout(): DiagramLayout {
               [-9, -9],
               [9, 9],
             ],
+            fillColor: [255, 255, 255],
+            fillPattern: "Solid",
           },
         ],
       },
@@ -78,10 +81,14 @@ afterEach(() => {
   for (const t of teardowns.splice(0)) t();
 });
 
-async function mount(l: DiagramLayout): Promise<OmGraphicalLayout> {
+async function mount(
+  l: DiagramLayout,
+  opts?: { readonly?: boolean },
+): Promise<OmGraphicalLayout> {
   const el = document.createElement("om-graphical-layout") as OmGraphicalLayout;
   // Renderer-less: build the Pixi container tree on the CPU, no GPU context.
   el.rendererFactory = () => null;
+  el.readonly = opts?.readonly ?? false;
   el.layout = l;
   document.body.appendChild(el);
   teardowns.push(() => el.remove());
@@ -164,9 +171,9 @@ describe("host shape selection entities", () => {
     const el = await mount(layout());
     const shapeZ = byLabel(el, "om-shape:rectangle:0")?.zIndex;
     const componentZ = byLabel(el, "om-component:R1")?.zIndex;
-    // The flip inverts Babylon's z-sign into a zIndex: the host shape sits at
-    // -HOST_SHAPE_Z_BIAS, the component at 0.
-    expect(shapeZ).toBeCloseTo(-HOST_SHAPE_Z_BIAS);
+    // The entity's zIndex folds its flat draw order (index 1, after the
+    // inherited Base rectangle) into the z-bias band; the component sits at 0.
+    expect(shapeZ).toBeCloseTo(zForOrder(1) - HOST_SHAPE_Z_BIAS, 5);
     expect(componentZ).toBeCloseTo(0);
     // Higher zIndex paints in front, so the component wins a coincident pick.
     expect(componentZ ?? 0).toBeGreaterThan(shapeZ ?? 0);
@@ -243,6 +250,37 @@ describe("host shape selection entities", () => {
     // …so the primitive must NOT also wrap the stroke in its own
     // origin/rotation `graphicItemNode` — that would rotate it twice.
     expect(containers(el).some((c) => c.label.endsWith(".gi"))).toBe(false);
+  });
+
+  it("paints host shapes in flat annotation-array order, below components", async () => {
+    const el = await mount(layout());
+    // The inherited Base fill (flat index 0) paints at the bottom of the
+    // host-shape band…
+    const inherited = byLabel(el, "om-rectangle.0.fill")?.zIndex ?? NaN;
+    expect(inherited).toBeCloseTo(zForOrder(0) - HOST_SHAPE_Z_BIAS, 5);
+    // …the own rectangle (flat 1) and line (flat 2) above it, still below
+    // the component band at 0 — so a PID-style inherited background fill
+    // can't paint over the shapes the annotation lists after it.
+    const ownRect = byLabel(el, "om-shape:rectangle:0")?.zIndex ?? NaN;
+    const ownLine = byLabel(el, "om-shape:line:1")?.zIndex ?? NaN;
+    expect(ownRect).toBeGreaterThan(inherited);
+    expect(ownLine).toBeGreaterThan(ownRect);
+    expect(ownLine).toBeLessThan(0);
+  });
+
+  it("paints own shapes as plain visuals when readonly", async () => {
+    const el = await mount(layout(), { readonly: true });
+    // No editable entities…
+    expect(el.shadowRoot?.querySelectorAll("[editable]").length).toBe(0);
+    expect(byLabel(el, "om-shape:rectangle:0")).toBeUndefined();
+    // …but the own shapes still paint, keeping their flat order above the
+    // inherited fill.
+    const ownStroke = byLabel(el, "om-rectangle.1.stroke")?.zIndex ?? NaN;
+    expect(ownStroke).toBeCloseTo(
+      zForOrder(1) - HOST_SHAPE_Z_BIAS + STROKE_Z_DELTA,
+      5,
+    );
+    expect(byLabel(el, "om-line.2")).toBeDefined();
   });
 
   it("seats an extent shape at its origin and pivots its rotation there", async () => {

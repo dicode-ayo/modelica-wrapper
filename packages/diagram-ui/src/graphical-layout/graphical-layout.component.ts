@@ -10,6 +10,7 @@ import type {
   ConnectorInstance,
   DiagramLayout,
   IconLayer,
+  Shape,
 } from "@dicode/omc-client";
 import { colorToCss } from "@dicode/diagram-svg";
 import { omTokens } from "@dicode/ui-common";
@@ -121,20 +122,32 @@ import {
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
 
 /**
- * Paint-order offset for the host class's own shapes so they sit behind
- * every component / connector but in front of the grid's extent rectangle.
- * Uses the diagram z convention where more-negative is nearer the viewer
- * (inverted into `zIndex` by `OmShapeNode`):
+ * Paint-order bias for the host class's shapes (own and inherited) so they
+ * sit behind every component / connector but in front of the grid. Uses the
+ * scene-z convention where positive is further from the viewer — both
+ * primitive paths negate it into `zIndex`, then add `zForOrder(zOrder)` so
+ * annotation-array order paints first-at-the-bottom within the band:
  *
- *   extent rect  z = +0.10  (white background, drawn by `<om-grid-axis>`)
- *   grid lines   z = +0.05
- *   host shapes  z = +0.025 ← here
- *   components   z =  0.0
+ *   grid         zIndex = -1
+ *   host shapes  zIndex = zForOrder(i) - HOST_SHAPE_Z_BIAS ← here
+ *   components   zIndex =  0
+ *
+ * The band's capacity is where `zForOrder(i)` reaches the bias (500 shapes
+ * at `SHAPE_Z_STEP` 0.001); a shape past that would paint over components.
  *
  * Shared by a shape's visual and its hit geometry so picks land in the same
  * band and a component always wins a pick over a shape beneath it.
  */
-export const HOST_SHAPE_Z_BIAS = 0.025;
+export const HOST_SHAPE_Z_BIAS = 0.5;
+
+/** One host shape with its flat cross-layer paint index. `ownIndex` is the
+ *  `shape:` key index within the host's own layer, `null` for an inherited
+ *  shape. */
+interface HostShapeSlot {
+  shape: Shape;
+  zOrder: number;
+  ownIndex: number | null;
+}
 
 interface BBox {
   minX: number;
@@ -762,67 +775,59 @@ export class OmGraphicalLayout extends LitElement {
     ></om-connector>`;
   }
 
-  /**
-   * Render the host class's own shapes — the diagram-level visuals it
-   * authored. For a PID controller class, this is typically a labelled
-   * background rectangle plus annotations that frame the sub-component
-   * layout. Sat behind the components with a positive z-bias so the
-   * depth test puts them in the back layer; the camera lives at -Z, so
-   * positive z is away from the viewer.
-   *
-   * `kind` picks the layer set: `"diagram"` shows `diagramLayers`,
-   * `"icon"` shows `iconLayers`. The two are mutually exclusive in
-   * practice — the producer fills the one that matches the requested
-   * view.
-   */
   /** The layer set the current view shows: `iconLayers` or `diagramLayers`. */
   private activeLayers(layout: DiagramLayout): IconLayer[] {
     return layout.kind === "icon" ? layout.iconLayers : layout.diagramLayers;
   }
 
+  /** Every host shape with its flat cross-layer paint index. Layers arrive
+   *  ancestor-first / host-last and the index follows that walk, so
+   *  annotation-array order is paint order. */
+  private hostShapeSlots(layout: DiagramLayout): HostShapeSlot[] {
+    let zOrder = 0;
+    return this.activeLayers(layout).flatMap((layer) => {
+      const own = layer.from === layout.className;
+      return layer.shapes.map((shape, index) => ({
+        shape,
+        zOrder: zOrder++,
+        ownIndex: own ? index : null,
+      }));
+    });
+  }
+
   /**
-   * Paints the host's INHERITED (ancestor) shapes only, non-interactive.
+   * Paints the host's INHERITED (ancestor) shapes, non-interactive.
    * Own-layer shapes are drawn by their editable entity in
-   * `renderHostShapeEntities`, which owns both their visual and interaction.
+   * `renderHostShapeEntities` (which owns both their visual and
+   * interaction) — except when readonly, where they paint here as plain
+   * visuals.
    */
   private renderHostShapes(layout: DiagramLayout): TemplateResult[] {
-    const out: TemplateResult[] = [];
-    let zOrder = 0;
-    for (const layer of this.activeLayers(layout)) {
-      const own = layer.from === layout.className;
-      for (const shape of layer.shapes) {
-        if (!own) {
-          out.push(renderShape(shape, zOrder, HOST_SHAPE_Z_BIAS));
-        }
-        // Count own shapes too so inherited shapes keep their cross-layer
-        // paint index; own shapes paint via renderHostShapeEntities.
-        zOrder++;
-      }
-    }
-    return out;
+    return this.hostShapeSlots(layout)
+      .filter((s) => s.ownIndex === null || this.readonly)
+      .map((s) => renderShape(s.shape, s.zOrder, HOST_SHAPE_Z_BIAS));
   }
 
   /**
    * The host's OWN drawn shapes (`from === className`) as editable entities —
    * each its own `<om-*>` primitive owning its visual, hit geometry, and
    * selection overlay. Inherited ancestor shapes stay non-interactive.
-   * `index` is the `shape:` key index.
    */
   private renderHostShapeEntities(layout: DiagramLayout): TemplateResult[] {
     if (this.readonly) {
       return [];
     }
-    const own = this.activeLayers(layout).find(
-      (l) => l.from === layout.className,
-    );
-    if (!own) {
-      return [];
-    }
-    return own.shapes.map((shape, index) =>
-      renderShape(shape, index, HOST_SHAPE_Z_BIAS, {
-        index,
-        selected: this.selectedKeys.has(formatShapeKey(shape.kind, index)),
-      }),
+    return this.hostShapeSlots(layout).flatMap((s) =>
+      s.ownIndex === null
+        ? []
+        : [
+            renderShape(s.shape, s.zOrder, HOST_SHAPE_Z_BIAS, {
+              index: s.ownIndex,
+              selected: this.selectedKeys.has(
+                formatShapeKey(s.shape.kind, s.ownIndex),
+              ),
+            }),
+          ],
     );
   }
 

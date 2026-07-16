@@ -81,10 +81,11 @@ export abstract class OmShapePrimitive extends LitElement {
   zOrder = 0;
 
   /**
-   * zIndex offset added to `zForOrder(zOrder)`. Host-class shapes
-   * (rendered directly under `<om-scene>` as background) pass a negative
-   * bias so they sit behind component icons. Default `0` keeps
-   * shape-inside-component primitives in the component's local band.
+   * Scene-z bias subtracted from `zForOrder(zOrder)` — positive pushes the
+   * shape behind. Host-class shapes (rendered directly under `<om-scene>`)
+   * pass `HOST_SHAPE_Z_BIAS` so they sit behind component icons. Default
+   * `0` keeps shape-inside-component primitives in the component's local
+   * band.
    */
   @property({ type: Number, attribute: "z-bias" })
   zBias = 0;
@@ -180,7 +181,7 @@ export abstract class OmShapePrimitive extends LitElement {
     }
     this.lastBuiltKey = key;
     this.tearDownMeshes();
-    this.buildMeshes(parent, this.zBias + zForOrder(this.zOrder));
+    this.buildMeshes(parent, this.paintZIndex());
     this.requestRender();
   }
 
@@ -206,7 +207,12 @@ export abstract class OmShapePrimitive extends LitElement {
       this.tearDownMeshes();
       const b = this.entityBounds();
       if (b) {
-        node.setDiagramBounds(b.extent, b.origin, b.rotation ?? 0, this.zBias);
+        node.setDiagramBounds(
+          b.extent,
+          b.origin,
+          b.rotation ?? 0,
+          -this.paintZIndex(),
+        );
         node.setPolyPoints(b.points ?? null);
         // A poly is edited per-vertex — no bounding-box resize/rotate.
         const poly = b.points !== undefined;
@@ -218,6 +224,14 @@ export abstract class OmShapePrimitive extends LitElement {
     }
     node.setSelected(this.selected);
     this.requestRender();
+  }
+
+  /** The Pixi `zIndex` this shape paints at: draw order folded into the
+   *  z-bias band. Both primitive paths derive from this — the editable path
+   *  negates it into `setDiagramBounds`' scene-z `zOffset`, which
+   *  `placeTransform` negates back. */
+  private paintZIndex(): number {
+    return zForOrder(this.zOrder) - this.zBias;
   }
 
   /** The build key's zoom term: `worldPerPixel`, but only for a dashed
