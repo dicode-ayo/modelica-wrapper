@@ -181,7 +181,7 @@ export abstract class OmShapePrimitive extends LitElement {
     }
     this.lastBuiltKey = key;
     this.tearDownMeshes();
-    this.buildMeshes(parent, zForOrder(this.zOrder) - this.zBias);
+    this.buildMeshes(parent, this.paintZIndex());
     this.requestRender();
   }
 
@@ -207,14 +207,11 @@ export abstract class OmShapePrimitive extends LitElement {
       this.tearDownMeshes();
       const b = this.entityBounds();
       if (b) {
-        // The zOffset folds in the draw order so the entity's zIndex
-        // (`-zOffset` after `placeTransform` negates) matches what the
-        // non-editable path would paint this shape at.
         node.setDiagramBounds(
           b.extent,
           b.origin,
           b.rotation ?? 0,
-          this.zBias - zForOrder(this.zOrder),
+          -this.paintZIndex(),
         );
         node.setPolyPoints(b.points ?? null);
         // A poly is edited per-vertex — no bounding-box resize/rotate.
@@ -227,6 +224,14 @@ export abstract class OmShapePrimitive extends LitElement {
     }
     node.setSelected(this.selected);
     this.requestRender();
+  }
+
+  /** The Pixi `zIndex` this shape paints at: draw order folded into the
+   *  z-bias band. Both primitive paths derive from this — the editable path
+   *  negates it into `setDiagramBounds`' scene-z `zOffset`, which
+   *  `placeTransform` negates back. */
+  private paintZIndex(): number {
+    return zForOrder(this.zOrder) - this.zBias;
   }
 
   /** The build key's zoom term: `worldPerPixel`, but only for a dashed
