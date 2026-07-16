@@ -30,6 +30,9 @@ export interface DocumentationClient {
   getDocumentationAnnotation(input: {
     typeName: string;
   }): Promise<{ info: string }>;
+  getClassRestriction(input: {
+    typeName: string;
+  }): Promise<{ restriction: string }>;
   getModelInstance(input: {
     typeName: string;
   }): Promise<{ instance: ModelInstance }>;
@@ -255,6 +258,20 @@ const defaultScheduler: Scheduler = {
 const REVERSE_SYNC_DEBOUNCE_MS = 150;
 
 /**
+ * Class restrictions whose interface sections are worth a full instantiate.
+ * Anything else — packages, functions, `type` aliases, the builtins — is
+ * skipped without touching `getModelInstance` (see `fetchInterface`).
+ */
+const INTERFACE_RESTRICTIONS: ReadonlySet<string> = new Set([
+  "model",
+  "block",
+  "class",
+  "connector",
+  "expandable connector",
+  "record",
+]);
+
+/**
  * Per-editor write controller. Forward: an `edit` from the webview carries the
  * new `info`; it is written through `setFullDocumentationAnnotation`, which
  * reads the class's current `revisions`/`infoHeader` itself and reconstructs
@@ -425,10 +442,21 @@ export class DocumentationEditController {
    * Derive the auto-generated interface sections from the class's instance
    * tree. Best-effort: a class that can't instantiate (a partial or erroring
    * class) drops the sections rather than blanking the documentation.
+   *
+   * Gated on the cheap `getClassRestriction` lookup: the full instantiate
+   * costs seconds on deep hierarchies and never returns for the builtins
+   * (`fetchIconLayout` documents the same hazard), and the OMC socket is
+   * serialized, so a hung call wedges every later one. OMEdit's
+   * DocumentationWidget never instantiates — its only OMC call is
+   * `getDocumentationAnnotation` — so nothing here may block the doc path.
    */
   private async fetchInterface(): Promise<DocumentationInterface | undefined> {
     const { client, className } = this.deps;
     try {
+      const { restriction } = await client.getClassRestriction({
+        typeName: className,
+      });
+      if (!INTERFACE_RESTRICTIONS.has(restriction.trim())) return undefined;
       const { instance } = await client.getModelInstance({
         typeName: className,
       });

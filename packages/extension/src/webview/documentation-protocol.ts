@@ -15,7 +15,8 @@ import type { DocumentationInterface } from "@dicode/documentation-ui/interface-
  *                   parameters, connectors), sent right after the `doc` it
  *                   belongs to. Split out so the HTML paints without waiting on
  *                   the full `getModelInstance`; absent when the class can't
- *                   instantiate.
+ *                   instantiate or isn't a kind worth instantiating (a package,
+ *                   function, `type`, or builtin).
  *   - `error`     — surface a backend error (e.g. the OMC read or write failed).
  *
  * Webview → extension:

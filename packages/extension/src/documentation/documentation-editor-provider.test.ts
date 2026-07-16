@@ -104,6 +104,7 @@ function makeResolveClient(anno: {
   info: string;
   revision?: string;
   infoHeader?: string;
+  restriction?: string;
 }): OmcClient {
   return {
     getDocumentationAnnotation: vi.fn(() =>
@@ -112,6 +113,9 @@ function makeResolveClient(anno: {
         revision: anno.revision ?? "",
         infoHeader: anno.infoHeader ?? "",
       }),
+    ),
+    getClassRestriction: vi.fn(() =>
+      Promise.resolve({ restriction: anno.restriction ?? "block" }),
     ),
     getModelInstance: vi.fn(() => Promise.resolve({ instance: PID_INSTANCE })),
   } as unknown as OmcClient;
@@ -200,6 +204,26 @@ describe("resolveDocumentationEditor", () => {
         "Modelica.Blocks.Interfaces.SISO",
       ]);
     }
+  });
+
+  it("never instantiates a package/type/builtin for the interface", async () => {
+    // getModelInstance never returns for the builtins and costs seconds on
+    // deep hierarchies; the restriction gate must keep it off the serialized
+    // OMC socket entirely, not merely tolerate its failure.
+    const { panel, posted, fireReady } = makePanel();
+    const client = makeResolveClient({
+      info: "<html><p>pkg</p></html>",
+      restriction: "package",
+    });
+    const ensureClient = vi.fn(() => Promise.resolve(client));
+
+    resolveDocumentationEditor(panel, EXT_URI, ensureClient, PID_DOC);
+    await flush();
+    fireReady();
+    await flush();
+
+    expect(posted.map((m) => m.type)).toEqual(["doc"]);
+    expect(client.getModelInstance).not.toHaveBeenCalled();
   });
 
   it("does not mark a class carrying an infoHeader read-only", async () => {
@@ -391,6 +415,7 @@ function makeEditClient(
         ? Promise.reject(new Error("OMC down"))
         : Promise.resolve({ info: anno.info }),
     ),
+    getClassRestriction: vi.fn(() => Promise.resolve({ restriction: "block" })),
     getModelInstance: vi.fn(() => Promise.resolve({ instance: PID_INSTANCE })),
     setFullDocumentationAnnotation: vi.fn(
       (a: { typeName: string; info: string }) => {
