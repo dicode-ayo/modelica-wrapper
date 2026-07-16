@@ -97,7 +97,7 @@ export function registerPackageCommands(
             );
             return;
           }
-          ctx.libraryTree.refresh();
+          ctx.libraryTree.childrenChanged(null);
           ctx.sourceProvider.notifySourceChanged();
           log.success(`initialized ${ws.uri.fsPath} as package ${pkgName}`);
           await vscode.window.showInformationMessage(
@@ -145,7 +145,7 @@ export function registerPackageCommands(
             typeName: node.qualifiedName,
             fileName: target.fsPath,
           });
-          ctx.libraryTree.refresh();
+          // Only `fileName` changed — nothing the tree shows.
           log.success(`saved to ${target.fsPath}`);
           await vscode.window.showInformationMessage(
             `Modelica: saved ${node.qualifiedName} to ${target.fsPath}`,

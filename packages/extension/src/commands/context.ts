@@ -39,8 +39,9 @@ export interface CommandContext {
    * `extension.ts` wirings still type-check.
    */
   readonly resetClient?: () => Promise<OmcClient>;
-  /** Activity-bar library sidebar (webview view); commands call `.refresh()`
-   *  after mutations so it re-fetches. */
+  /** Activity-bar library sidebar (webview view); mutating commands signal it
+   *  with `childrenChanged` / `iconChanged`, the manual Refresh command with
+   *  the wholesale `refresh()`. */
   readonly libraryTree: LibraryWebviewProvider;
   /** Virtual `modelica-source:` file-system provider; commands fire `notifySourceChanged(typeName)`
    *  after mutations to invalidate any open editors backed by this scheme. */
@@ -89,42 +90,4 @@ export function parentFromNode(
     return node.qualifiedName;
   }
   return undefined;
-}
-
-/**
- * Send a generated `loadString` snippet to OMC, surface OMC errors via
- * `getErrorString`, and refresh the views. Returns `true` on success.
- */
-export async function runLoadString(
-  ctx: CommandContext,
-  data: string,
-  qualified: string,
-  failurePrefix: string,
-): Promise<boolean> {
-  try {
-    const c = await ctx.ensureClient();
-    const { success } = await c.loadString({
-      data,
-      filename: `<runtime:${qualified}>`,
-      merge: true,
-    });
-    if (!success) {
-      const { errorString } = await c.getErrorString();
-      await vscode.window.showErrorMessage(
-        `${failurePrefix} ${qualified}${errorString ? `: ${errorString}` : ""}`,
-      );
-      return false;
-    }
-    ctx.libraryTree.refresh();
-    // No specific typeName here — `runLoadString` is used by class creation,
-    // which loads a fresh class and we don't know if other open buffers are
-    // affected. Invalidate every open `modelica-source:` editor.
-    ctx.sourceProvider.notifySourceChanged();
-    return true;
-  } catch (err) {
-    await vscode.window.showErrorMessage(
-      `${failurePrefix} ${qualified}: ${(err as Error).message}`,
-    );
-    return false;
-  }
 }

@@ -98,6 +98,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     private readonly extensionUri: vscode.Uri,
     private readonly ensureClient: () => Promise<OmcClient>,
     private readonly mode: DiagramMode,
+    private readonly onClassContentChanged?: (className: string) => void,
   ) {}
 
   static register(
@@ -105,11 +106,13 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     ensureClient: () => Promise<OmcClient>,
     viewType: string,
     mode: DiagramMode,
+    onClassContentChanged?: (className: string) => void,
   ): vscode.Disposable {
     const provider = new DiagramEditorProvider(
       context.extensionUri,
       ensureClient,
       mode,
+      onClassContentChanged,
     );
     return vscode.window.registerCustomEditorProvider(viewType, provider, {
       webviewOptions: { retainContextWhenHidden: true },
@@ -128,6 +131,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       this.ensureClient,
       document,
       this.mode,
+      this.onClassContentChanged,
     );
   }
 
@@ -209,6 +213,7 @@ export function resolveDiagramEditor(
   ensureClient: () => Promise<OmcClient>,
   document: vscode.TextDocument,
   mode: DiagramMode,
+  onClassContentChanged?: (className: string) => void,
 ): void {
   const { webview } = webviewPanel;
   webview.options = {
@@ -266,7 +271,7 @@ export function resolveDiagramEditor(
             ? await fetchIconLayout(client, className)
             : await fetchDiagramLayout(client, className);
         controller = new DiagramEditController(
-          { client, document, className, gate },
+          { client, document, className, gate, onClassContentChanged },
           layout,
           (onForeignChange) => createShadowBuffer(document, onForeignChange),
           defaultScheduler,
@@ -326,6 +331,13 @@ interface EditControllerDeps {
   document: vscode.TextDocument;
   className: string;
   gate: ReadyGate;
+  /** Fired after every re-render from a committed change (forward reflect or
+   *  reverse sync) — the class's rendered icon may differ now, and the library
+   *  sidebar wants to know without polling. Deliberately unfiltered: it also
+   *  fires for edits that cannot affect the icon (a diagram-layer move) —
+   *  the icon-safe subset is narrow (parameter values, connectors, and
+   *  change-class all can alter it) and the eviction+re-render is cheap. */
+  onClassContentChanged?: ((className: string) => void) | undefined;
 }
 
 /** Deferred one-shot timer, injectable so tests drive the debounce directly. */
@@ -480,6 +492,7 @@ export class DiagramEditController {
       const layout = await this.refetch(client, className);
       this.prevLayout = layout;
       this.deps.gate.send({ type: "layout", layout });
+      this.deps.onClassContentChanged?.(className);
     } catch (err) {
       this.reportError(`reverse sync failed: ${(err as Error).message}`);
     }
@@ -983,6 +996,7 @@ export class DiagramEditController {
   private async reflect(layout: DiagramLayout): Promise<void> {
     this.prevLayout = layout;
     this.deps.gate.send({ type: "layout", layout });
+    this.deps.onClassContentChanged?.(this.deps.className);
     const { contents } = await this.deps.client.listFile({
       typeName: this.deps.className,
     });

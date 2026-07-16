@@ -30,7 +30,7 @@ export function registerLibraryCommands(
           );
           return;
         }
-        ctx.libraryTree.refresh();
+        ctx.libraryTree.childrenChanged(null);
         log.success(`loaded ${name}`);
       } catch (err) {
         log.error((err as Error).message);

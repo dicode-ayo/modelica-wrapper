@@ -118,12 +118,14 @@ export async function activate(
       ensureClient,
       DIAGRAM_VIEW_TYPE,
       "diagram",
+      (className) => libraryTree.iconChanged(className),
     ),
     DiagramEditorProvider.register(
       context,
       ensureClient,
       ICON_VIEW_TYPE,
       "icon",
+      (className) => libraryTree.iconChanged(className),
     ),
     DocumentationEditorProvider.register(
       context,
@@ -262,7 +264,9 @@ async function autoLoadWorkspaceModels(
     // concurrent OMC fetches onto the single ZeroMQ socket during startup. The
     // webview tree's own mount fetch is serialized with this one through the
     // client, so they can't overlap into a busy-socket send.
-    await loadEntryFilesAndRefresh(c, files, () => libraryTree.refresh());
+    await loadEntryFilesAndRefresh(c, files, () =>
+      libraryTree.childrenChanged(null),
+    );
   } catch (err) {
     log.warn("autoLoad", `OMC client unavailable: ${(err as Error).message}`);
   }

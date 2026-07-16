@@ -101,6 +101,10 @@ export function registerClassCommands(
               }
               pkgLog.success(`initialized workspace as package ${pkgName}`);
               parent = pkgName;
+              // The root listing changed the moment the package loaded;
+              // firing now keeps the package visible even if creating the
+              // class inside it fails below.
+              ctx.libraryTree.childrenChanged(null);
             } catch (err) {
               pkgLog.error((err as Error).message);
               await vscode.window.showErrorMessage(
@@ -149,7 +153,7 @@ export function registerClassCommands(
               `Modelica: ${qualified} created in OMC memory only — open a folder to enable on-disk save.`,
             );
           }
-          ctx.libraryTree.refresh();
+          ctx.libraryTree.childrenChanged(parent ?? null);
           ctx.sourceProvider.notifySourceChanged();
           log.success(
             diskPath

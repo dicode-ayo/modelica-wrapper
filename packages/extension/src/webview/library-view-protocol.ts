@@ -24,8 +24,22 @@ export type ExtensionToLibraryView =
   | ({ type: "librarySearchResult" } & LibraryItemsResponse)
   | ({ type: "libraryIconResult" } & LibraryIconResponse)
   | {
-      // Re-fetch after a mutation (Load Library / Create Class / auto-load).
+      // Drop everything and re-fetch — the manual Refresh command's wholesale
+      // escape hatch. Mutations with a known scope send the targeted messages
+      // below instead.
       type: "reload";
+    }
+  | {
+      // The class list under `parent` changed (a library loaded, a class
+      // created); `null` targets the root listing. Only that node's children
+      // re-list — icons, untouched subtrees, expansion, and search survive.
+      type: "libraryChildrenChanged";
+      parent: string | null;
+    }
+  | {
+      // `className`'s rendered icon may have changed; re-request it if shown.
+      type: "libraryIconChanged";
+      className: string;
     };
 
 export type LibraryViewToExtension =
