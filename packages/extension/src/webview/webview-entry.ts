@@ -3,8 +3,8 @@
  * `out/webview.js` and loaded inside the VSCode webview iframe.
  *
  * The script just registers a single `<om-webview-root>` Lit element —
- * the host page (`packages/extension/src/diagram/panel.ts`) drops the
- * tag straight into its body. All wiring (acquiring the VSCode API,
+ * the host page (`packages/extension/src/diagram/diagram-webview-html.ts`)
+ * drops the tag straight into its body. All wiring (acquiring the VSCode API,
  * listening for host→webview messages, sending `ready`) lives in
  * `connectedCallback` so the element is self-contained.
  */
@@ -16,7 +16,7 @@ import { customElement, state } from "lit/decorators.js";
 // import: pulls in the default theme CSS and the bridge sheet so all
 // `<wa-*>` elements rendered downstream pick up VSCode's palette
 // automatically. esbuild's `.css` loader collects these into
-// `out/webview.css`, which `diagram/panel.ts` <link>s to.
+// `out/webview.css`, which `diagram/diagram-webview-html.ts` <link>s to.
 import "@dicode/ui-common/webawesome-setup";
 
 import "@dicode/diagram-ui";
@@ -45,6 +45,10 @@ console.log(
   `[webview boot] build=${__WEBVIEW_BUILD_TIME__} loaded=${new Date().toISOString()}`,
 );
 
+const RENDER_ERROR_HINT =
+  "Make sure the class and its enclosing package load without errors, " +
+  "then reopen this editor.";
+
 @customElement("om-webview-root")
 class OmWebviewRoot extends LitElement {
   static override styles = css`
@@ -61,6 +65,13 @@ class OmWebviewRoot extends LitElement {
   `;
 
   @state() private layout: DiagramLayout | null = null;
+  /** Set when the host's initial layout fetch failed — there is nothing to
+   *  render, so the whole surface becomes an error state. Cleared by a later
+   *  successful `init`/`layout`. */
+  @state() private renderError: Extract<
+    ExtensionToWebview,
+    { type: "renderError" }
+  > | null = null;
   /** Mirrors whether the diagram has a non-empty selection, so the
    *  action panel can disable the selection-scoped rotate / flip
    *  buttons when nothing is picked. */
@@ -121,6 +132,16 @@ class OmWebviewRoot extends LitElement {
   };
 
   override render(): TemplateResult {
+    if (this.renderError !== null) {
+      return html`
+        <om-error-state
+          heading="Can't render the ${this.renderError.mode}"
+          subject=${this.renderError.className}
+          detail=${this.renderError.detail}
+          hint=${RENDER_ERROR_HINT}
+        ></om-error-state>
+      `;
+    }
     return html`
       <om-graphical-layout
         .layout=${this.layout}
@@ -174,6 +195,13 @@ class OmWebviewRoot extends LitElement {
       case "init":
       case "layout":
         this.layout = message.layout;
+        this.renderError = null;
+        return;
+      case "renderError":
+        this.renderError = message;
+        console.error(
+          `[diagram-ui] failed to render ${message.mode} for ${message.className}: ${message.detail}`,
+        );
         return;
       case "parametersOpen":
         this.paramModel = message.model;

@@ -275,9 +275,12 @@ export function resolveDiagramEditor(
         );
         gate.send({ type: "init", layout, className });
       } catch (err) {
-        const message = `Failed to render ${mode} for ${className}: ${(err as Error).message}`;
-        gate.send({ type: "error", message });
-        log.warn("diagramEditor", message);
+        const detail = (err as Error).message;
+        gate.send({ type: "renderError", className, mode, detail });
+        log.warn(
+          "diagramEditor",
+          `Failed to render ${mode} for ${className}: ${detail}`,
+        );
       }
     })();
     if (webviewPanel.active) DiagramEditorProvider.setActive(session);

@@ -4,6 +4,8 @@ import type {
   ParameterModel,
 } from "@dicode/omc-client";
 
+import type { DiagramMode } from "../diagram/view-type.js";
+
 /**
  * Wire-format mirror of diagram-ui's `DiagramCommandId`. Kept local because the
  * CommonJS extension host can't import the ESM-only diagram-ui package; the
@@ -29,6 +31,9 @@ export type DiagramCommandId =
  *                            re-read from OMC because the user
  *                            accepted a mutation).
  *   - `error`              — surface a backend error to the webview UI.
+ *   - `renderError`        — the initial layout fetch failed, so there is
+ *                            no canvas to show; the webview replaces it
+ *                            with a full error state.
  *   - `parametersOpen`     — open the parameter modal for the given
  *                            `ParameterModel` (fields carry their own
  *                            values) + title. `kind` is an opaque tag the
@@ -58,6 +63,14 @@ export type ExtensionToWebview =
   | { type: "init"; layout: DiagramLayout; className: string }
   | { type: "layout"; layout: DiagramLayout }
   | { type: "error"; message: string }
+  | {
+      type: "renderError";
+      className: string;
+      mode: DiagramMode;
+      /** Backend failure text, e.g. `ModelInstanceNotFullyLoadedError`'s
+       *  message. */
+      detail: string;
+    }
   | {
       type: "parametersOpen";
       kind: string;

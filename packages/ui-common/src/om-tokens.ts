@@ -75,6 +75,10 @@ export const omTokens: CSSResult = css`
     /* --- action panel --- */
     --om-action-panel-offset: 8px;
 
+    /* --- error state card --- */
+    --om-error-card-max-width: 480px;
+    --om-error-card-icon-size: 32px;
+
     /* --- drop target affordance ---
      * Outline width the diagram canvas paints while a draggable library class
      * hovers over it, signalling it accepts the drop. */
@@ -82,6 +86,7 @@ export const omTokens: CSSResult = css`
 
     /* --- typography --- */
     --om-title-size: 1.1em;
+    --om-title-weight: 600;
     --om-description-size: 0.92em;
     --om-qualifier-size: 0.85em;
     --om-badge-font-size: 10px;

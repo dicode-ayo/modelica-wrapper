@@ -30,6 +30,7 @@ export class OmDocumentationInterface extends LitElement {
       --om-doc-section-gap: 1.5rem;
       --om-doc-heading-gap: 0.5rem;
       --om-doc-heading-size: 1.1em;
+      --om-doc-strong-weight: 600;
       --om-doc-cell-pad-block: 0.25rem;
       --om-doc-cell-pad-inline: 0.75rem;
       --om-doc-group-gap: 0.75rem;
@@ -46,7 +47,7 @@ export class OmDocumentationInterface extends LitElement {
     h2 {
       margin-block-end: var(--om-doc-heading-gap);
       font-size: var(--om-doc-heading-size);
-      font-weight: 600;
+      font-weight: var(--om-doc-strong-weight);
       border-block-end: var(--om-doc-border);
       padding-block-end: var(--om-doc-cell-pad-block);
     }
@@ -64,12 +65,12 @@ export class OmDocumentationInterface extends LitElement {
     }
     th {
       color: var(--vscode-descriptionForeground);
-      font-weight: 600;
+      font-weight: var(--om-doc-strong-weight);
     }
     td.group {
       padding-block-start: var(--om-doc-group-gap);
       color: var(--vscode-descriptionForeground);
-      font-weight: 600;
+      font-weight: var(--om-doc-strong-weight);
     }
     code {
       font-family: var(--vscode-editor-font-family, monospace);
