@@ -68,7 +68,6 @@ export {
   type SolidFillSpec,
   type NoneFillSpec,
 } from "./fill-spec.js";
-export { expressionToString } from "./expression.js";
 export {
   interpolateTemplate,
   type TextSubstitutions,

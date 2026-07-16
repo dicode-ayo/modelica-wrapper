@@ -29,7 +29,9 @@
  */
 
 import { colorToCss } from "./color.js";
-import { expressionToString } from "./expression.js";
+// Sub-path import: the evaluator subtree only, so the browser bundles
+// this renderer lands in don't drag the OMC transport along.
+import { expressionToString } from "@dicode/omc-client/eval";
 import { linePatternToDashArray, resolveFill } from "./pattern.js";
 import type {
   BitmapShape,

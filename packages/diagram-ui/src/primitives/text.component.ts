@@ -2,11 +2,11 @@ import { customElement, property } from "lit/decorators.js";
 import { consume } from "@lit/context";
 import { Text, TextStyle, type Container } from "pixi.js";
 import {
-  expressionToString,
   interpolateTemplate,
   type TextSubstitutions,
 } from "@dicode/diagram-svg";
 import type { TextShape } from "@dicode/omc-client";
+import { expressionToString } from "@dicode/omc-client/eval";
 
 import {
   OmShapePrimitive,

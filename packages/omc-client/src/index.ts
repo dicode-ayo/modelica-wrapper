@@ -237,6 +237,7 @@ export * as solver from "./api/solver/index.js";
 
 export {
   evaluateExpression,
+  expressionToString,
   chainScopes,
   prefixStrippingScope,
   recordScope,

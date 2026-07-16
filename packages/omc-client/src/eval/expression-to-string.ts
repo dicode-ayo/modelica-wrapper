@@ -1,7 +1,9 @@
 /**
- * Resolve a producer-emitted `Expression` (the union upstream is permissive
- * — see `_shared/modelInstance.ts`) into a flat display string for use as
- * the body of an SVG `<text>` element or a read-only value cell.
+ * Unparse a producer-emitted `Expression` (the union is permissive — see
+ * `_shared/modelInstance.ts`) into a flat display string: the body of an
+ * SVG `<text>` element, a read-only value cell. Sibling to
+ * `expression-evaluator.ts` — same `$kind` dispatch, but this one prints
+ * instead of computing.
  *
  * Rules implemented:
  *  - `string`                       → as-is
@@ -28,7 +30,7 @@ import type {
   EnumLiteral,
   Expression,
   UnaryOpExpr,
-} from "./types.js";
+} from "../_shared/modelInstance.js";
 
 export function expressionToString(expr: Expression | undefined): string {
   if (expr === null || expr === undefined) return "";
