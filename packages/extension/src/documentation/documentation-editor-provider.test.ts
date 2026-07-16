@@ -206,25 +206,28 @@ describe("resolveDocumentationEditor", () => {
     }
   });
 
-  it("never instantiates a package/type/builtin for the interface", async () => {
-    // getModelInstance never returns for the builtins and costs seconds on
-    // deep hierarchies; the restriction gate must keep it off the serialized
-    // OMC socket entirely, not merely tolerate its failure.
-    const { panel, posted, fireReady } = makePanel();
-    const client = makeResolveClient({
-      info: "<html><p>pkg</p></html>",
-      restriction: "package",
-    });
-    const ensureClient = vi.fn(() => Promise.resolve(client));
+  it.each(["package", "type", "function"])(
+    "never instantiates a %s for the interface",
+    async (restriction) => {
+      // getModelInstance never returns for the builtins and costs seconds on
+      // deep hierarchies; the restriction gate must keep it off the serialized
+      // OMC socket entirely, not merely tolerate its failure.
+      const { panel, posted, fireReady } = makePanel();
+      const client = makeResolveClient({
+        info: "<html><p>pkg</p></html>",
+        restriction,
+      });
+      const ensureClient = vi.fn(() => Promise.resolve(client));
 
-    resolveDocumentationEditor(panel, EXT_URI, ensureClient, PID_DOC);
-    await flush();
-    fireReady();
-    await flush();
+      resolveDocumentationEditor(panel, EXT_URI, ensureClient, PID_DOC);
+      await flush();
+      fireReady();
+      await flush();
 
-    expect(posted.map((m) => m.type)).toEqual(["doc"]);
-    expect(client.getModelInstance).not.toHaveBeenCalled();
-  });
+      expect(posted.map((m) => m.type)).toEqual(["doc"]);
+      expect(client.getModelInstance).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not mark a class carrying an infoHeader read-only", async () => {
     const { panel, posted, fireReady } = makePanel();

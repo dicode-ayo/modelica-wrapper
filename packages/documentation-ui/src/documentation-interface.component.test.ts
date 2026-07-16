@@ -1,11 +1,11 @@
 /**
  * `<om-documentation-interface>`: it renders the read-only interface sections
- * from a `DocumentationInterface` and renders nothing when every section is
- * empty. The click-to-open contract (the `om-documentation-open-link` event) is
- * verified in the extension host — happy-dom can't dispatch Lit `@click`
- * handlers on these elements.
+ * from a `DocumentationInterface`, renders nothing when every section is
+ * empty, and emits `om-documentation-open-link` when a base class is clicked.
  *
- * Runs under happy-dom (the package default) so the element mounts.
+ * Runs under happy-dom (the package default) so the element mounts. Unlike the
+ * editor's light-DOM buttons, Lit `@click` handlers on this shadow-DOM
+ * element's content do fire under happy-dom.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -64,6 +64,23 @@ describe("om-documentation-interface", () => {
     expect(text).toContain("1.5");
     expect(text).toContain("rad");
     expect(text).toContain("Gain of controller");
+  });
+
+  it("emits om-documentation-open-link when a base class is clicked", async () => {
+    const el = await mount({
+      ...EMPTY,
+      extendsTree: [{ name: "Modelica.Blocks.Interfaces.SISO", children: [] }],
+    });
+    const hrefs: string[] = [];
+    el.addEventListener("om-documentation-open-link", (e) =>
+      hrefs.push(e.detail.href),
+    );
+    el.shadowRoot
+      ?.querySelector("a")
+      ?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    expect(hrefs).toEqual(["modelica://Modelica.Blocks.Interfaces.SISO"]);
   });
 
   it("renders the extends tree with a modelica:// link per base", async () => {

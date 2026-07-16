@@ -110,19 +110,20 @@ export class OmDocumentationRoot extends LitElement {
         .resources=${this.resources}
         ?readOnly=${this.readOnly}
         external-source
+        host-scroll
         @om-documentation-change=${this.onChange}
         @om-documentation-edit-source=${this.onEditSource}
         @om-documentation-open-link=${this.onOpenLink}
       ></om-documentation-editor>
       ${hasInterfaceSections(this.interface)
         ? html`<om-documentation-interface
-            class="om-doc-interface"
             .model=${this.interface}
             @om-documentation-open-link=${this.onOpenLink}
           ></om-documentation-interface>`
         : nothing}
       <style>
         om-documentation-root {
+          --om-doc-page-pad: 1rem;
           display: flex;
           flex-direction: column;
           block-size: 100%;
@@ -130,32 +131,18 @@ export class OmDocumentationRoot extends LitElement {
         }
         om-documentation-root > om-documentation-editor {
           flex: 1 0 auto;
-          block-size: auto;
           min-inline-size: 0;
         }
-        /* The composed page owns the scrolling: the editor's internal panes
-           give up theirs so the info HTML and the interface sections share
-           one scrollbar, with the toolbar pinned. */
-        om-documentation-root om-documentation-editor .om-doc-editor,
-        om-documentation-root om-documentation-editor .om-doc-source {
-          overflow: visible;
-        }
-        om-documentation-root om-documentation-editor .om-doc-toolbar {
-          position: sticky;
-          inset-block-start: 0;
-          z-index: 1;
-          background: var(--vscode-editor-background);
-        }
-        om-documentation-root > .om-doc-interface {
+        om-documentation-root > om-documentation-interface {
           flex: none;
-          padding-block: 0 1rem;
-          padding-inline: 1rem;
+          padding-block: 0 var(--om-doc-page-pad);
+          padding-inline: var(--om-doc-page-pad);
           border-block-start: 1px solid
             var(--vscode-editorWidget-border, transparent);
         }
         om-documentation-root .om-doc-host-error {
           flex: none;
-          padding: 0.5rem 1rem;
+          padding: 0.5rem var(--om-doc-page-pad);
           color: var(--vscode-errorForeground);
         }
       </style>

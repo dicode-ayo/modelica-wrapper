@@ -16,7 +16,7 @@ export interface DocParameterRow {
   name: string;
   /** The declaration comment, when it has one. */
   description?: string | undefined;
-  /** Pre-rendered default/value string; empty when neither source has one. */
+  /** Pre-rendered default/value string; empty when absent or non-scalar. */
   value: string;
   /** Base unit (e.g. `rad`), when the declaration carries one. */
   unit?: string | undefined;

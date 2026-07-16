@@ -269,6 +269,7 @@ const INTERFACE_RESTRICTIONS: ReadonlySet<string> = new Set([
   "connector",
   "expandable connector",
   "record",
+  "operator record",
 ]);
 
 /**
@@ -446,9 +447,8 @@ export class DocumentationEditController {
    * Gated on the cheap `getClassRestriction` lookup: the full instantiate
    * costs seconds on deep hierarchies and never returns for the builtins
    * (`fetchIconLayout` documents the same hazard), and the OMC socket is
-   * serialized, so a hung call wedges every later one. OMEdit's
-   * DocumentationWidget never instantiates — its only OMC call is
-   * `getDocumentationAnnotation` — so nothing here may block the doc path.
+   * serialized, so a hung call wedges every later one. Nothing on this path
+   * may block the doc render.
    */
   private async fetchInterface(): Promise<DocumentationInterface | undefined> {
     const { client, className } = this.deps;
@@ -456,7 +456,7 @@ export class DocumentationEditController {
       const { restriction } = await client.getClassRestriction({
         typeName: className,
       });
-      if (!INTERFACE_RESTRICTIONS.has(restriction.trim())) return undefined;
+      if (!INTERFACE_RESTRICTIONS.has(restriction)) return undefined;
       const { instance } = await client.getModelInstance({
         typeName: className,
       });

@@ -88,7 +88,7 @@ export default meta;
 
 type Story = StoryObj;
 
-function host(model: DocumentationInterface | undefined): TemplateResult {
+function host(model: DocumentationInterface): TemplateResult {
   return html`
     <div style="max-width: 48rem; padding: 1rem; border: 1px solid #8884;">
       <om-documentation-interface .model=${model}></om-documentation-interface>
