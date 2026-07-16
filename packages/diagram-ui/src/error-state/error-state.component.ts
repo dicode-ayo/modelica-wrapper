@@ -11,25 +11,20 @@
  * `subject`, `detail`, and `hint` each render only when non-empty.
  */
 
-import { LitElement, css, html, nothing, svg, type TemplateResult } from "lit";
+import { LitElement, css, html, nothing, svg } from "lit";
+import type { TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
 import { omTokens } from "@dicode/ui-common";
 
-// Lucide (MIT) triangle-alert, matching the toolbar glyph grid.
-const warningIcon = html`<svg
-  class="icon"
-  viewBox="0 0 24 24"
-  fill="none"
-  stroke="currentColor"
-  stroke-width="2"
-  stroke-linecap="round"
-  stroke-linejoin="round"
-  aria-hidden="true"
->
-  ${svg`<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 20h16a2 2 0 0 0 1.73-2" />
-    <path d="M12 9v4" /><path d="M12 17h.01" />`}
-</svg>`;
+import { glyph } from "../action-panel/toolbar-icons.js";
+
+// Lucide (MIT) triangle-alert.
+const warningIcon = glyph(
+  svg`<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 20h16a2 2 0 0 0 1.73-2" />
+    <path d="M12 9v4" /><path d="M12 17h.01" />`,
+  "icon",
+);
 
 @customElement("om-error-state")
 export class OmErrorState extends LitElement {
@@ -39,8 +34,8 @@ export class OmErrorState extends LitElement {
       :host {
         display: grid;
         place-items: center;
-        width: 100%;
-        height: 100%;
+        inline-size: 100%;
+        block-size: 100%;
         font-family: var(--vscode-font-family, system-ui, sans-serif);
         font-size: var(--vscode-font-size, 13px);
         color: var(--vscode-foreground);
@@ -50,19 +45,19 @@ export class OmErrorState extends LitElement {
         flex-direction: column;
         align-items: center;
         gap: var(--om-space-md);
-        max-width: var(--om-error-card-max-width);
+        max-inline-size: var(--om-error-card-max-width);
         padding: var(--om-space-xl);
         text-align: center;
       }
       .icon {
-        width: var(--om-error-card-icon-size);
-        height: var(--om-error-card-icon-size);
+        inline-size: var(--om-error-card-icon-size);
+        block-size: var(--om-error-card-icon-size);
         color: var(--vscode-errorForeground, #f14c4c);
       }
       h2 {
         margin: 0;
         font-size: var(--om-title-size);
-        font-weight: 600;
+        font-weight: var(--om-title-weight);
       }
       code {
         font-family: var(--vscode-editor-font-family, monospace);

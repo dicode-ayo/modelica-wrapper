@@ -194,8 +194,8 @@ export {
   type ParameterFormChangeDetail,
   type ParameterFormSubmitDetail,
 } from "./parameter-form/parameter-form.component.js";
-export { OmErrorState } from "./error-state/error-state.component.js";
 export { OmParameterPanel } from "./parameter-form/parameter-panel.component.js";
+export { OmErrorState } from "./error-state/error-state.component.js";
 export type {
   LibraryDataSource,
   LibraryClassInfo,

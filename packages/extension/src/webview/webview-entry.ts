@@ -68,11 +68,10 @@ class OmWebviewRoot extends LitElement {
   /** Set when the host's initial layout fetch failed — there is nothing to
    *  render, so the whole surface becomes an error state. Cleared by a later
    *  successful `init`/`layout`. */
-  @state() private renderError: {
-    className: string;
-    mode: "diagram" | "icon";
-    detail: string;
-  } | null = null;
+  @state() private renderError: Extract<
+    ExtensionToWebview,
+    { type: "renderError" }
+  > | null = null;
   /** Mirrors whether the diagram has a non-empty selection, so the
    *  action panel can disable the selection-scoped rotate / flip
    *  buttons when nothing is picked. */
@@ -198,14 +197,12 @@ class OmWebviewRoot extends LitElement {
         this.layout = message.layout;
         this.renderError = null;
         return;
-      case "renderError": {
-        const { className, mode, detail } = message;
-        this.renderError = { className, mode, detail };
+      case "renderError":
+        this.renderError = message;
         console.error(
-          `[diagram-ui] failed to render ${mode} for ${className}: ${detail}`,
+          `[diagram-ui] failed to render ${message.mode} for ${message.className}: ${message.detail}`,
         );
         return;
-      }
       case "parametersOpen":
         this.paramModel = message.model;
         this.paramTitle = message.title;

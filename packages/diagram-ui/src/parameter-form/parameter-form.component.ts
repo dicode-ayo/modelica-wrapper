@@ -142,7 +142,7 @@ export class OmParameterForm extends LitElement {
       }
 
       .title {
-        font-weight: 600;
+        font-weight: var(--om-title-weight);
         margin: 0 0 var(--om-space-lg) 0;
         font-size: var(--om-title-size);
       }
@@ -293,7 +293,7 @@ export class OmParameterForm extends LitElement {
         margin-top: 0;
       }
       .group-title {
-        font-weight: 600;
+        font-weight: var(--om-title-weight);
         font-size: var(--om-description-size);
         text-transform: uppercase;
         letter-spacing: 0.04em;

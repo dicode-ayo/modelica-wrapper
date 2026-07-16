@@ -14,9 +14,12 @@ import type { DrawKind } from "../interaction/tools.js";
  * once slotted into the `<svg>`.
  */
 
-function glyph(body: SVGTemplateResult): TemplateResult {
+export function glyph(
+  body: SVGTemplateResult,
+  klass = "toolbar-icon",
+): TemplateResult {
   return html`<svg
-    class="toolbar-icon"
+    class=${klass}
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"

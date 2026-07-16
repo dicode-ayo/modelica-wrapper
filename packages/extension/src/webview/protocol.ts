@@ -4,6 +4,8 @@ import type {
   ParameterModel,
 } from "@dicode/omc-client";
 
+import type { DiagramMode } from "../diagram/view-type.js";
+
 /**
  * Wire-format mirror of diagram-ui's `DiagramCommandId`. Kept local because the
  * CommonJS extension host can't import the ESM-only diagram-ui package; the
@@ -64,9 +66,7 @@ export type ExtensionToWebview =
   | {
       type: "renderError";
       className: string;
-      /** Mirrors the host's `DiagramMode` (same CommonJS/ESM split as
-       *  `DiagramCommandId` above). */
-      mode: "diagram" | "icon";
+      mode: DiagramMode;
       /** Backend failure text, e.g. `ModelInstanceNotFullyLoadedError`'s
        *  message. */
       detail: string;

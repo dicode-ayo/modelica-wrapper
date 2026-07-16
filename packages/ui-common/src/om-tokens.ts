@@ -86,6 +86,7 @@ export const omTokens: CSSResult = css`
 
     /* --- typography --- */
     --om-title-size: 1.1em;
+    --om-title-weight: 600;
     --om-description-size: 0.92em;
     --om-qualifier-size: 0.85em;
     --om-badge-font-size: 10px;
