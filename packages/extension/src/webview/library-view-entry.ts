@@ -133,9 +133,9 @@ export class OmLibraryViewRoot extends LitElement {
     window.removeEventListener("keydown", this.onKeyDown);
   }
 
-  /** A user-initiated reload (toolbar Refresh, Load Library, Create Class):
-   *  bump the token so the mounted tree rebuilds and re-fetches once. The phase
-   *  then follows the tree's `om-library-root-loaded`. */
+  /** A wholesale reload (toolbar Refresh, or the fallback when a targeted
+   *  invalidation can't run): bump the token so the mounted tree rebuilds and
+   *  re-fetches once. The phase then follows `om-library-root-loaded`. */
   private onReload(): void {
     this.phase = "loading";
     this.reloadToken += 1;
@@ -155,16 +155,29 @@ export class OmLibraryViewRoot extends LitElement {
       case "reload":
         this.onReload();
         return;
-      case "libraryChildrenChanged":
+      case "libraryChildrenChanged": {
         // The empty / error states render no tree — a first library load must
         // still land, so fall back to the full reload (which also drives the
-        // phase machinery back through `om-library-root-loaded`).
-        if (this.treeEl) this.treeEl.invalidateChildren(data.parent);
-        else this.onReload();
+        // phase machinery back through `om-library-root-loaded`). Same
+        // fallback when the targeted re-list itself fails: a rejected
+        // invalidation would leave the node wedged on "Loading…".
+        const treeEl = this.treeEl;
+        if (treeEl) {
+          void treeEl
+            .invalidateChildren(data.parent)
+            .catch(() => this.onReload());
+        } else {
+          this.onReload();
+        }
         return;
+      }
       case "libraryIconChanged":
         this.treeEl?.invalidateIcon(data.className);
         return;
+      default:
+        // A new protocol variant must add a case above; this keeps the
+        // compiler enforcing that.
+        return data satisfies never;
     }
   };
 

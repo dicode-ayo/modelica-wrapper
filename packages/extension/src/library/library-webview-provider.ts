@@ -8,8 +8,8 @@
  * The webview browses OMC-backed data through `LibrarySource`; this provider
  * owns the host end of that bridge plus
  * the sidebar-only actions (open a class's diagram, relay a placement to the
- * active diagram, run Load Library, reload after a mutation, run a row's
- * context-menu command).
+ * active diagram, run Load Library, signal targeted invalidations after a
+ * mutation, run a row's context-menu command).
  */
 
 import * as vscode from "vscode";
@@ -54,15 +54,13 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
    *  so a transient failure isn't remembered as a permanent no-preview. */
   private previewCache = new Map<string, ClassDef>();
   /** Renders not yet settled, so a burst of rows sharing a class renders once.
-   *  Tagged with the generation they started under: a render from before a
-   *  Refresh carries pre-Refresh bytes and must not be joined after it. */
+   *  Map membership is ownership: `refresh` (wholesale) and `iconChanged`
+   *  (per class) disown a render by removing its entry, so it can neither be
+   *  joined nor write its pre-mutation bytes into the cache. */
   private readonly iconInFlight = new Map<
     string,
-    { generation: number; promise: Promise<string | undefined> }
+    Promise<string | undefined>
   >();
-  /** Bumped whenever the cache is dropped, so a render started against the old
-   *  library state can't write its result into the new one. */
-  private iconGeneration = 0;
   /** In-flight searches, so `libraryCancel` can abandon their queued lookups. */
   private readonly searches = new Map<string, AbortController>();
 
@@ -125,10 +123,10 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
   }
 
   private dropIconCache(): void {
-    this.iconGeneration++;
     const dropped = this.iconCache.size;
     this.iconCache.clear();
     this.previewCache.clear();
+    this.iconInFlight.clear();
     log.debug("libraryIcon", `dropped ${dropped} cached icons`);
   }
 
@@ -284,27 +282,21 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
       log.debug("libraryIcon", `cache hit ${className}`);
       return Promise.resolve(this.iconCache.get(className));
     }
-    const generation = this.iconGeneration;
     const inFlight = this.iconInFlight.get(className);
-    if (inFlight && inFlight.generation === generation) {
+    if (inFlight) {
       log.debug("libraryIcon", `joining in-flight render ${className}`);
-      return inFlight.promise;
+      return inFlight;
     }
     const started = Date.now();
-    const entry = {
-      generation,
-      promise: Promise.resolve<string | undefined>(undefined),
-    };
-    entry.promise = (async () => {
+    // `self` aliases `promise` for the ownership checks — the const can't be
+    // referenced inside its own initializer's immediately-invoked body.
+    let self: Promise<string | undefined> | undefined = undefined;
+    const promise = (async () => {
       const client = await this.ensureClient();
       const svg = await libraryIconSvg(client, className);
-      // Cache only while still owned: a Refresh bumps the generation, a
-      // per-class `iconChanged` disowns the in-flight entry — either way this
-      // render carries pre-mutation bytes.
-      if (
-        generation === this.iconGeneration &&
-        this.iconInFlight.get(className) === entry
-      ) {
+      // Cache only while still owned: `refresh` and `iconChanged` disown the
+      // in-flight entry, and a disowned render carries pre-mutation bytes.
+      if (self !== undefined && this.iconInFlight.get(className) === self) {
         this.iconCache.set(className, svg);
       }
       const shape = svg === undefined ? "no icon" : `${svg.length} bytes`;
@@ -315,12 +307,13 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
       return svg;
     })().finally(() => {
       // A newer render may have replaced this entry; only clear our own.
-      if (this.iconInFlight.get(className) === entry) {
+      if (self !== undefined && this.iconInFlight.get(className) === self) {
         this.iconInFlight.delete(className);
       }
     });
-    this.iconInFlight.set(className, entry);
-    return entry.promise;
+    self = promise;
+    this.iconInFlight.set(className, promise);
+    return promise;
   }
 
   private post(

@@ -203,6 +203,20 @@ describe("<om-library-tree>", () => {
     expect(listChildren).not.toHaveBeenCalled();
   });
 
+  it("invalidateChildren skips a visible but never-expanded parent", async () => {
+    const { source, listChildren } = makeSource();
+    const el = await mount(source);
+    // "Modelica" is a root row, but its children were never listed — a
+    // targeted invalidation must not trigger an eager fetch for it.
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+    listChildren.mockClear();
+
+    el.invalidateChildren("Modelica");
+    await flush();
+
+    expect(listChildren).not.toHaveBeenCalled();
+  });
+
   it("invalidateChildren preserves the typed search query", async () => {
     const { source } = makeSource();
     const el = await mount(source);

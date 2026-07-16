@@ -251,6 +251,10 @@ export class OmLibraryTree extends LitElement {
 
   private tree: TreeInstance<LibraryTreeNode> | undefined;
   private readonly nodeCache = new Map<string, LibraryTreeNode>();
+  /** Parents whose children this tree instance has actually listed —
+   *  `nodeCache` can't stand in for this: it records "appeared as a row",
+   *  which includes visible-but-never-expanded packages. */
+  private readonly listedParents = new Set<string>();
 
   private searchTimer: ReturnType<typeof setTimeout> | null = null;
   private searchSeq = 0;
@@ -286,6 +290,7 @@ export class OmLibraryTree extends LitElement {
 
   private rebuildForDataSource(): void {
     this.nodeCache.clear();
+    this.listedParents.clear();
     this.iconSvgCache.clear();
     this.iconRequested.clear();
     // A source swap invalidates any search against the previous source.
@@ -318,6 +323,7 @@ export class OmLibraryTree extends LitElement {
       dataLoader: createLibraryDataLoader(source, this.nodeCache, (result) =>
         this.emitRootLoaded(result),
       ),
+      onLoadedChildren: (itemId) => this.listedParents.add(itemId),
       onPrimaryAction: (item) => {
         const node = item.getItemData();
         this.fireSelect(node.className, node.restriction);
@@ -349,15 +355,19 @@ export class OmLibraryTree extends LitElement {
    * Re-list `parent`'s children (`null` = the root listing) after a host-side
    * structural change. The tree instance survives — expansion, selection,
    * icons, and the typed search stay intact; only the one child list
-   * refetches. A parent this tree has never listed is skipped: its eventual
-   * first expand fetches fresh data anyway.
+   * refetches. A parent whose children this tree never listed (including a
+   * visible-but-never-expanded package) is skipped: its eventual first expand
+   * fetches fresh data anyway. Rejects when the re-list itself fails, so the
+   * embedder can fall back to a wholesale reload.
    */
-  invalidateChildren(parent: string | null): void {
+  invalidateChildren(parent: string | null): Promise<void> {
     const tree = this.tree;
-    if (!tree) return;
-    if (parent !== null && !this.nodeCache.has(parent)) return;
+    if (!tree) return Promise.resolve();
+    if (parent !== null && !this.listedParents.has(parent)) {
+      return Promise.resolve();
+    }
     const itemId = parent ?? LIBRARY_TREE_ROOT_ID;
-    void tree.getItemInstance(itemId).invalidateChildrenIds(true);
+    return tree.getItemInstance(itemId).invalidateChildrenIds(true);
   }
 
   /**

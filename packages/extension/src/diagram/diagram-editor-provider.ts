@@ -333,7 +333,10 @@ interface EditControllerDeps {
   gate: ReadyGate;
   /** Fired after every re-render from a committed change (forward reflect or
    *  reverse sync) — the class's rendered icon may differ now, and the library
-   *  sidebar wants to know without polling. */
+   *  sidebar wants to know without polling. Deliberately unfiltered: it also
+   *  fires for edits that cannot affect the icon (a diagram-layer move) —
+   *  the icon-safe subset is narrow (parameter values, connectors, and
+   *  change-class all can alter it) and the eviction+re-render is cheap. */
   onClassContentChanged?: ((className: string) => void) | undefined;
 }
 
