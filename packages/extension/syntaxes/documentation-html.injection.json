@@ -1,0 +1,24 @@
+{
+  "scopeName": "modelica.documentation.html.injection",
+  "injectionSelector": "L:source.modelica",
+  "patterns": [{ "include": "#documentation-info-html" }],
+  "repository": {
+    "documentation-info-html": {
+      "comment": "Embed HTML in a Documentation info string, gated on the <html> wrapper the Modelica spec (§18) uses as the plaintext-vs-HTML marker. Attribute values written with escaped \\\" are not recognised by text.html.basic — tags and structure highlight, those values do not.",
+      "begin": "\\b(info|revisions)\\s*(=)\\s*(\")(?=\\s*<html)",
+      "beginCaptures": {
+        "1": { "name": "variable.other.property.modelica" },
+        "2": { "name": "keyword.operator.assignment.modelica" },
+        "3": {
+          "name": "punctuation.definition.string.begin.modelica"
+        }
+      },
+      "end": "(?<!\\\\)\"",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.modelica" }
+      },
+      "contentName": "text.html",
+      "patterns": [{ "include": "text.html.basic" }]
+    }
+  }
+}

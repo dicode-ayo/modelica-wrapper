@@ -39,6 +39,16 @@
         "language": "modelica",
         "scopeName": "source.modelica",
         "path": "./syntaxes/modelica.tmLanguage.json"
+      },
+      {
+        "scopeName": "modelica.documentation.html.injection",
+        "path": "./syntaxes/documentation-html.injection.json",
+        "injectTo": [
+          "source.modelica"
+        ],
+        "embeddedLanguages": {
+          "text.html": "html"
+        }
       }
     ],
     "customEditors": [
