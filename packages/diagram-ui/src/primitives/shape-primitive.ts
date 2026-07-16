@@ -81,10 +81,11 @@ export abstract class OmShapePrimitive extends LitElement {
   zOrder = 0;
 
   /**
-   * zIndex offset added to `zForOrder(zOrder)`. Host-class shapes
-   * (rendered directly under `<om-scene>` as background) pass a negative
-   * bias so they sit behind component icons. Default `0` keeps
-   * shape-inside-component primitives in the component's local band.
+   * Scene-z bias subtracted from `zForOrder(zOrder)` — positive pushes the
+   * shape behind. Host-class shapes (rendered directly under `<om-scene>`)
+   * pass `HOST_SHAPE_Z_BIAS` so they sit behind component icons. Default
+   * `0` keeps shape-inside-component primitives in the component's local
+   * band.
    */
   @property({ type: Number, attribute: "z-bias" })
   zBias = 0;
@@ -180,7 +181,7 @@ export abstract class OmShapePrimitive extends LitElement {
     }
     this.lastBuiltKey = key;
     this.tearDownMeshes();
-    this.buildMeshes(parent, this.zBias + zForOrder(this.zOrder));
+    this.buildMeshes(parent, zForOrder(this.zOrder) - this.zBias);
     this.requestRender();
   }
 
@@ -206,7 +207,15 @@ export abstract class OmShapePrimitive extends LitElement {
       this.tearDownMeshes();
       const b = this.entityBounds();
       if (b) {
-        node.setDiagramBounds(b.extent, b.origin, b.rotation ?? 0, this.zBias);
+        // The zOffset folds in the draw order so the entity's zIndex
+        // (`-zOffset` after `placeTransform` negates) matches what the
+        // non-editable path would paint this shape at.
+        node.setDiagramBounds(
+          b.extent,
+          b.origin,
+          b.rotation ?? 0,
+          this.zBias - zForOrder(this.zOrder),
+        );
         node.setPolyPoints(b.points ?? null);
         // A poly is edited per-vertex — no bounding-box resize/rotate.
         const poly = b.points !== undefined;

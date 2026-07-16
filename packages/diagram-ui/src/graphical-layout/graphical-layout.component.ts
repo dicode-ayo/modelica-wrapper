@@ -121,15 +121,15 @@ import {
 import type { LayoutEventName, LayoutEvents } from "./layout-events.js";
 
 /**
- * Paint-order offset for the host class's own shapes so they sit behind
- * every component / connector but in front of the grid's extent rectangle.
- * Uses the diagram z convention where more-negative is nearer the viewer
- * (inverted into `zIndex` by `OmShapeNode`):
+ * Paint-order bias for the host class's shapes (own and inherited) so they
+ * sit behind every component / connector but in front of the grid. Uses the
+ * scene-z convention where positive is further from the viewer — both
+ * primitive paths negate it into `zIndex`, then add `zForOrder(zOrder)` so
+ * annotation-array order paints first-at-the-bottom within the band:
  *
- *   extent rect  z = +0.10  (white background, drawn by `<om-grid-axis>`)
- *   grid lines   z = +0.05
- *   host shapes  z = +0.025 ← here
- *   components   z =  0.0
+ *   grid         zIndex = -1
+ *   host shapes  zIndex = -0.025 + 0.001·i ← here
+ *   components   zIndex =  0.0
  *
  * Shared by a shape's visual and its hit geometry so picks land in the same
  * band and a component always wins a pick over a shape beneath it.
@@ -762,28 +762,18 @@ export class OmGraphicalLayout extends LitElement {
     ></om-connector>`;
   }
 
-  /**
-   * Render the host class's own shapes — the diagram-level visuals it
-   * authored. For a PID controller class, this is typically a labelled
-   * background rectangle plus annotations that frame the sub-component
-   * layout. Sat behind the components with a positive z-bias so the
-   * depth test puts them in the back layer; the camera lives at -Z, so
-   * positive z is away from the viewer.
-   *
-   * `kind` picks the layer set: `"diagram"` shows `diagramLayers`,
-   * `"icon"` shows `iconLayers`. The two are mutually exclusive in
-   * practice — the producer fills the one that matches the requested
-   * view.
-   */
   /** The layer set the current view shows: `iconLayers` or `diagramLayers`. */
   private activeLayers(layout: DiagramLayout): IconLayer[] {
     return layout.kind === "icon" ? layout.iconLayers : layout.diagramLayers;
   }
 
   /**
-   * Paints the host's INHERITED (ancestor) shapes only, non-interactive.
-   * Own-layer shapes are drawn by their editable entity in
-   * `renderHostShapeEntities`, which owns both their visual and interaction.
+   * Paints the host's INHERITED (ancestor) shapes, non-interactive. Layers
+   * arrive ancestor-first / host-last and the flat cross-layer `zOrder`
+   * follows that walk, so annotation-array order is paint order. Own-layer
+   * shapes are drawn by their editable entity in `renderHostShapeEntities`
+   * (which owns both their visual and interaction) — except when readonly,
+   * where they paint here as plain visuals.
    */
   private renderHostShapes(layout: DiagramLayout): TemplateResult[] {
     const out: TemplateResult[] = [];
@@ -791,11 +781,9 @@ export class OmGraphicalLayout extends LitElement {
     for (const layer of this.activeLayers(layout)) {
       const own = layer.from === layout.className;
       for (const shape of layer.shapes) {
-        if (!own) {
+        if (!own || this.readonly) {
           out.push(renderShape(shape, zOrder, HOST_SHAPE_Z_BIAS));
         }
-        // Count own shapes too so inherited shapes keep their cross-layer
-        // paint index; own shapes paint via renderHostShapeEntities.
         zOrder++;
       }
     }
@@ -806,24 +794,29 @@ export class OmGraphicalLayout extends LitElement {
    * The host's OWN drawn shapes (`from === className`) as editable entities —
    * each its own `<om-*>` primitive owning its visual, hit geometry, and
    * selection overlay. Inherited ancestor shapes stay non-interactive.
-   * `index` is the `shape:` key index.
+   * `index` is the `shape:` key index within the own layer; the `zOrder`
+   * continues `renderHostShapes`' flat cross-layer count so own shapes
+   * interleave correctly with inherited ones.
    */
   private renderHostShapeEntities(layout: DiagramLayout): TemplateResult[] {
     if (this.readonly) {
       return [];
     }
-    const own = this.activeLayers(layout).find(
-      (l) => l.from === layout.className,
-    );
-    if (!own) {
-      return [];
+    let zOrder = 0;
+    for (const layer of this.activeLayers(layout)) {
+      if (layer.from !== layout.className) {
+        zOrder += layer.shapes.length;
+        continue;
+      }
+      const base = zOrder;
+      return layer.shapes.map((shape, index) =>
+        renderShape(shape, base + index, HOST_SHAPE_Z_BIAS, {
+          index,
+          selected: this.selectedKeys.has(formatShapeKey(shape.kind, index)),
+        }),
+      );
     }
-    return own.shapes.map((shape, index) =>
-      renderShape(shape, index, HOST_SHAPE_Z_BIAS, {
-        index,
-        selected: this.selectedKeys.has(formatShapeKey(shape.kind, index)),
-      }),
-    );
+    return [];
   }
 
   /**
