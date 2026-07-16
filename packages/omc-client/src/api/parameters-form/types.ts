@@ -95,6 +95,13 @@ export interface ParameterField {
    */
   value: Expression | string | number | boolean | null;
   /**
+   * The declaration's raw, unevaluated binding expression, when OMC reported
+   * one. Present even when it could not be coerced into `value` — a symbolic
+   * default (`2*pi`, a cref, `DynamicSelect`) keeps `value: null` but carries
+   * its AST here so a read-only view can still render it.
+   */
+  binding?: Expression | undefined;
+  /**
    * Type-declaration default (pre-instance-modifier), kept for
    * dirty-detection / reset-to-defaults. Absent when the declaration has no
    * default.
