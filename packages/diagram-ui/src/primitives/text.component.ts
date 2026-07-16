@@ -5,7 +5,8 @@ import {
   interpolateTemplate,
   type TextSubstitutions,
 } from "@dicode/diagram-svg";
-import { expressionToString, type TextShape } from "@dicode/omc-client";
+import type { TextShape } from "@dicode/omc-client";
+import { expressionToString } from "@dicode/omc-client/eval";
 
 import {
   OmShapePrimitive,
