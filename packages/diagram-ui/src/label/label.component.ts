@@ -2,8 +2,7 @@ import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { consume } from "@lit/context";
 import { Container, Point, Text, TextStyle } from "pixi.js";
-import { expressionToString } from "@dicode/diagram-svg";
-import type { Expression } from "@dicode/omc-client";
+import { expressionToString, type Expression } from "@dicode/omc-client";
 
 import { parentNodeContext } from "../base/parent-node-context.js";
 import { sceneContext, type SceneContext } from "../scene/scene-context.js";
