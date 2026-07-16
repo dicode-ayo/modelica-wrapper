@@ -291,7 +291,7 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
     expect(parsedFiles).toEqual([]);
   });
 
-  it("posts an error, not an init, when the layout fetch throws", async () => {
+  it("posts a renderError, not an init, when the layout fetch throws", async () => {
     const { panel, posted, fireReady } = makePanel();
     const { client } = makeClient({
       getModelInstance: () => Promise.reject(new Error("OMC down")),
@@ -309,7 +309,12 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
     await flush();
     fireReady();
     expect(posted).toHaveLength(1);
-    expect(posted[0]?.type).toBe("error");
+    expect(posted[0]).toEqual({
+      type: "renderError",
+      className: "Pkg.Broken",
+      mode: "diagram",
+      detail: "OMC down",
+    });
   });
 });
 

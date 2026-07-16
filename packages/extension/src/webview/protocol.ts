@@ -29,6 +29,9 @@ export type DiagramCommandId =
  *                            re-read from OMC because the user
  *                            accepted a mutation).
  *   - `error`              — surface a backend error to the webview UI.
+ *   - `renderError`        — the initial layout fetch failed, so there is
+ *                            no canvas to show; the webview replaces it
+ *                            with a full error state.
  *   - `parametersOpen`     — open the parameter modal for the given
  *                            `ParameterModel` (fields carry their own
  *                            values) + title. `kind` is an opaque tag the
@@ -58,6 +61,16 @@ export type ExtensionToWebview =
   | { type: "init"; layout: DiagramLayout; className: string }
   | { type: "layout"; layout: DiagramLayout }
   | { type: "error"; message: string }
+  | {
+      type: "renderError";
+      className: string;
+      /** Mirrors the host's `DiagramMode` (same CommonJS/ESM split as
+       *  `DiagramCommandId` above). */
+      mode: "diagram" | "icon";
+      /** Backend failure text, e.g. `ModelInstanceNotFullyLoadedError`'s
+       *  message. */
+      detail: string;
+    }
   | {
       type: "parametersOpen";
       kind: string;
