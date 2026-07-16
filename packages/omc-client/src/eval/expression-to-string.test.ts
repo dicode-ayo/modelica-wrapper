@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { expressionToString } from "./expression.js";
-import type { Expression } from "./types.js";
+import { expressionToString } from "./expression-to-string.js";
+import type { Expression } from "../_shared/modelInstance.js";
 
 function cref(...names: string[]): Expression {
   return { $kind: "cref", parts: names.map((name) => ({ name })) };

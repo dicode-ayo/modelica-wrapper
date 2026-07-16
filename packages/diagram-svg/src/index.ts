@@ -68,7 +68,9 @@ export {
   type SolidFillSpec,
   type NoneFillSpec,
 } from "./fill-spec.js";
-export { expressionToString } from "./expression.js";
+// The unparser lives beside the evaluator in omc-client; re-exported so
+// renderer consumers keep one import seam for `Text.textString` resolution.
+export { expressionToString } from "@dicode/omc-client";
 export {
   interpolateTemplate,
   type TextSubstitutions,

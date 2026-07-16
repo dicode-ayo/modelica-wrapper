@@ -16,8 +16,7 @@ import type {
   ModelInstance,
   ParameterField,
 } from "@dicode/omc-client";
-import { produceParameterModel } from "@dicode/omc-client";
-import { expressionToString } from "@dicode/diagram-svg";
+import { expressionToString, produceParameterModel } from "@dicode/omc-client";
 import type {
   DocConnectorRow,
   DocExtendsNode,

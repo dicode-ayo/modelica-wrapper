@@ -29,7 +29,7 @@
  */
 
 import { colorToCss } from "./color.js";
-import { expressionToString } from "./expression.js";
+import { expressionToString } from "@dicode/omc-client";
 import { linePatternToDashArray, resolveFill } from "./pattern.js";
 import type {
   BitmapShape,
