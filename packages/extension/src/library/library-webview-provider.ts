@@ -86,12 +86,32 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  /** Tell the webview to re-fetch after a mutation (Load Library / Create Class
-   *  / auto-load on activation). No-op when the view isn't resolved. */
+  /** Tell the webview to drop everything and re-fetch. The manual Refresh
+   *  command's wholesale escape hatch; mutations with a known scope use
+   *  `childrenChanged` / `iconChanged` instead. No-op when the view isn't
+   *  resolved. */
   refresh(): void {
     // A mutation may have changed what a class's icon looks like, or removed it.
     this.dropIconCache();
     void this.post({ type: "reload" });
+  }
+
+  /** A structural change under `parent` (`null` = the root listing): the
+   *  webview re-lists that node's children and keeps every other cache —
+   *  icons, untouched subtrees, expansion, search — warm. */
+  childrenChanged(parent: string | null): void {
+    void this.post({ type: "libraryChildrenChanged", parent });
+  }
+
+  /** `className`'s rendered icon may have changed: evict that one class from
+   *  the host caches and tell the webview to re-request it. A render already
+   *  in flight carries pre-mutation bytes — disowning its `iconInFlight`
+   *  entry keeps it from writing into the cache or being joined. */
+  iconChanged(className: string): void {
+    this.iconCache.delete(className);
+    this.previewCache.delete(className);
+    this.iconInFlight.delete(className);
+    void this.post({ type: "libraryIconChanged", className });
   }
 
   /** Abandon a search the webview no longer wants. Its queued OMC lookups stop
@@ -271,10 +291,20 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
       return inFlight.promise;
     }
     const started = Date.now();
-    const promise = (async () => {
+    const entry = {
+      generation,
+      promise: Promise.resolve<string | undefined>(undefined),
+    };
+    entry.promise = (async () => {
       const client = await this.ensureClient();
       const svg = await libraryIconSvg(client, className);
-      if (generation === this.iconGeneration) {
+      // Cache only while still owned: a Refresh bumps the generation, a
+      // per-class `iconChanged` disowns the in-flight entry — either way this
+      // render carries pre-mutation bytes.
+      if (
+        generation === this.iconGeneration &&
+        this.iconInFlight.get(className) === entry
+      ) {
         this.iconCache.set(className, svg);
       }
       const shape = svg === undefined ? "no icon" : `${svg.length} bytes`;
@@ -284,13 +314,13 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
       );
       return svg;
     })().finally(() => {
-      // A newer generation may have replaced this entry; only clear our own.
-      if (this.iconInFlight.get(className)?.promise === promise) {
+      // A newer render may have replaced this entry; only clear our own.
+      if (this.iconInFlight.get(className) === entry) {
         this.iconInFlight.delete(className);
       }
     });
-    this.iconInFlight.set(className, { generation, promise });
-    return promise;
+    this.iconInFlight.set(className, entry);
+    return entry.promise;
   }
 
   private post(

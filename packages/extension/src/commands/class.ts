@@ -52,6 +52,7 @@ export function registerClassCommands(
       "modelica.createClass",
       async (node?: LibraryNode) => {
         let parent = parentFromNode(node);
+        let createdRootPackage = false;
         const kind = (await vscode.window.showQuickPick([...CLASS_KINDS], {
           placeHolder: "Class kind",
           title: parent ? `New class inside ${parent}` : "New top-level class",
@@ -101,6 +102,7 @@ export function registerClassCommands(
               }
               pkgLog.success(`initialized workspace as package ${pkgName}`);
               parent = pkgName;
+              createdRootPackage = true;
             } catch (err) {
               pkgLog.error((err as Error).message);
               await vscode.window.showErrorMessage(
@@ -149,7 +151,12 @@ export function registerClassCommands(
               `Modelica: ${qualified} created in OMC memory only — open a folder to enable on-disk save.`,
             );
           }
-          ctx.libraryTree.refresh();
+          // A freshly-initialized root package appears at the root; the new
+          // class inside it lists on first expand (nothing cached yet).
+          // Otherwise only the parent's child list grew.
+          ctx.libraryTree.childrenChanged(
+            createdRootPackage ? null : (parent ?? null),
+          );
           ctx.sourceProvider.notifySourceChanged();
           log.success(
             diskPath

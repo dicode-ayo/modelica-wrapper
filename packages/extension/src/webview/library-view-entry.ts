@@ -29,6 +29,7 @@ import type {
   LibraryRootLoadedDetail,
   LibraryEvents,
   OmContextMenu,
+  OmLibraryTree,
 } from "@dicode/diagram-ui";
 import { omTokens } from "@dicode/ui-common";
 
@@ -109,6 +110,7 @@ export class OmLibraryViewRoot extends LitElement {
   private placing = false;
 
   @query("om-context-menu") private contextMenuEl?: OmContextMenu;
+  @query("om-library-tree") private treeEl?: OmLibraryTree;
   /** The row the open context menu was raised for, so a selected action knows
    *  which class to target. */
   private contextMenuNode: LibraryContextMenuDetail | null = null;
@@ -152,6 +154,16 @@ export class OmLibraryViewRoot extends LitElement {
         return;
       case "reload":
         this.onReload();
+        return;
+      case "libraryChildrenChanged":
+        // The empty / error states render no tree — a first library load must
+        // still land, so fall back to the full reload (which also drives the
+        // phase machinery back through `om-library-root-loaded`).
+        if (this.treeEl) this.treeEl.invalidateChildren(data.parent);
+        else this.onReload();
+        return;
+      case "libraryIconChanged":
+        this.treeEl?.invalidateIcon(data.className);
         return;
     }
   };

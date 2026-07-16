@@ -228,6 +228,76 @@ describe("LibraryWebviewProvider", () => {
     expect(client.invoke.mock.calls.length).toBeGreaterThan(afterFirst);
   });
 
+  it("childrenChanged posts a targeted message and keeps the icon cache warm", async () => {
+    const { provider, client } = makeProvider();
+    const { view, posted, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    send({ type: "libraryIcon", requestId: "1", className: "Modelica" });
+    await flush();
+    const afterFirst = client.invoke.mock.calls.length;
+
+    provider.childrenChanged(null);
+    expect(posted.at(-1)).toEqual({
+      type: "libraryChildrenChanged",
+      parent: null,
+    });
+
+    send({ type: "libraryIcon", requestId: "2", className: "Modelica" });
+    await flush();
+    expect(client.invoke.mock.calls.length).toBe(afterFirst); // cache hit
+  });
+
+  it("iconChanged evicts only the named class and posts the targeted message", async () => {
+    const { provider, client } = makeProvider();
+    const { view, posted, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    send({ type: "libraryIcon", requestId: "1", className: "Lib.A" });
+    send({ type: "libraryIcon", requestId: "2", className: "Lib.B" });
+    await flush();
+    const afterWarm = client.invoke.mock.calls.length;
+
+    provider.iconChanged("Lib.A");
+    expect(posted.at(-1)).toEqual({
+      type: "libraryIconChanged",
+      className: "Lib.A",
+    });
+
+    send({ type: "libraryIcon", requestId: "3", className: "Lib.B" });
+    await flush();
+    expect(client.invoke.mock.calls.length).toBe(afterWarm); // B still cached
+
+    send({ type: "libraryIcon", requestId: "4", className: "Lib.A" });
+    await flush();
+    expect(client.invoke.mock.calls.length).toBeGreaterThan(afterWarm); // A re-renders
+  });
+
+  it("a render in flight when iconChanged fires cannot write into the cache", async () => {
+    const { provider, client } = makeProvider();
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    client.invoke.mockImplementationOnce(async () => {
+      await held;
+      throw new Error("no annotation");
+    });
+
+    send({ type: "libraryIcon", requestId: "1", className: "Lib.A" });
+    await flush();
+    provider.iconChanged("Lib.A"); // disowns the held render
+    release();
+    await flush();
+
+    const beforeRetry = client.invoke.mock.calls.length;
+    send({ type: "libraryIcon", requestId: "2", className: "Lib.A" });
+    await flush();
+    // A fresh render runs — the disowned result was not cached.
+    expect(client.invoke.mock.calls.length).toBeGreaterThan(beforeRetry);
+  });
+
   it("abandons a search's queued lookups when the webview cancels it", async () => {
     const { provider, client } = makeProvider();
     const { view, posted, send } = fakeView();

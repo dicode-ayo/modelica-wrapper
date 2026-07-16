@@ -6,6 +6,7 @@
 import * as vscode from "vscode";
 
 import type { OmcClient } from "@dicode/omc-client";
+import { enclosingScope } from "@dicode/modelica-lang-core";
 
 import type { LibraryWebviewProvider } from "../library/library-webview-provider.js";
 import type { ModelicaSourceProvider } from "../source-provider.js";
@@ -115,7 +116,7 @@ export async function runLoadString(
       );
       return false;
     }
-    ctx.libraryTree.refresh();
+    ctx.libraryTree.childrenChanged(enclosingScope(qualified) || null);
     // No specific typeName here — `runLoadString` is used by class creation,
     // which loads a fresh class and we don't know if other open buffers are
     // affected. Invalidate every open `modelica-source:` editor.

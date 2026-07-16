@@ -130,6 +130,129 @@ describe("<om-library-tree>", () => {
     expect(listChildren).toHaveBeenCalledWith("Modelica");
   });
 
+  it("invalidateChildren re-lists only the target node and keeps the tree instance", async () => {
+    const { source, listChildren } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+    treeOf(el).getItemInstance("Modelica").expand();
+    await waitFor(() =>
+      treeOf(el)
+        .getItems()
+        .some(
+          (i: ItemInstance<LibraryTreeNode>) => i.getId() === "Modelica.Blocks",
+        ),
+    );
+    const treeBefore = treeOf(el);
+    listChildren.mockClear();
+
+    // A class was created under Modelica; a targeted invalidation picks it up.
+    const original = FAKE_TREE["Modelica"];
+    FAKE_TREE["Modelica"] = [
+      { qualified: "Modelica.Blocks", restriction: "package" },
+      { qualified: "Modelica.Units", restriction: "package" },
+    ];
+    teardowns.push(() => {
+      if (original) FAKE_TREE["Modelica"] = original;
+    });
+
+    el.invalidateChildren("Modelica");
+    await waitFor(() =>
+      treeOf(el)
+        .getItems()
+        .some(
+          (i: ItemInstance<LibraryTreeNode>) => i.getId() === "Modelica.Units",
+        ),
+    );
+
+    expect(listChildren).toHaveBeenCalledWith("Modelica");
+    expect(listChildren).not.toHaveBeenCalledWith(null);
+    // Same tree instance — expansion state survived, no wholesale rebuild.
+    expect(treeOf(el)).toBe(treeBefore);
+    expect(
+      treeOf(el)
+        .getItems()
+        .some(
+          (i: ItemInstance<LibraryTreeNode>) => i.getId() === "Modelica.Blocks",
+        ),
+    ).toBe(true);
+  });
+
+  it("invalidateChildren(null) re-lists the root without dropping the tree", async () => {
+    const { source, listChildren } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+    const treeBefore = treeOf(el);
+    listChildren.mockClear();
+
+    el.invalidateChildren(null);
+    await waitFor(() => listChildren.mock.calls.length > 0);
+
+    expect(listChildren).toHaveBeenCalledWith(null);
+    expect(treeOf(el)).toBe(treeBefore);
+  });
+
+  it("invalidateChildren skips a parent the tree has never listed", async () => {
+    const { source, listChildren } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+    listChildren.mockClear();
+
+    el.invalidateChildren("Modelica.Blocks.Math");
+    await flush();
+
+    expect(listChildren).not.toHaveBeenCalled();
+  });
+
+  it("invalidateChildren preserves the typed search query", async () => {
+    const { source } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+
+    const input = el.shadowRoot?.querySelector("input");
+    if (!input) throw new Error("no search input");
+    input.value = "gain";
+    input.dispatchEvent(new Event("input"));
+    await waitFor(
+      () =>
+        (el as unknown as { searchResults: unknown[] | null }).searchResults !==
+        null,
+    );
+
+    el.invalidateChildren(null);
+    await flush();
+
+    expect(input.value).toBe("gain");
+    expect(
+      (el as unknown as { searchResults: unknown[] | null }).searchResults,
+    ).not.toBeNull();
+  });
+
+  it("invalidateIcon re-requests a shown icon and skips one never shown", async () => {
+    const { source, iconSvg } = makeSource();
+    iconSvg.mockResolvedValueOnce("<svg>old</svg>");
+    iconSvg.mockResolvedValueOnce("<svg>new</svg>");
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+
+    const raw = el as unknown as {
+      requestIcon(className: string): void;
+      iconSvgCache: Map<string, string>;
+    };
+    raw.requestIcon("Modelica");
+    await flush();
+    expect(iconSvg).toHaveBeenCalledTimes(1);
+    expect(raw.iconSvgCache.get("Modelica")).toBe("<svg>old</svg>");
+
+    el.invalidateIcon("Modelica");
+    await flush();
+    expect(iconSvg).toHaveBeenCalledTimes(2);
+    expect(raw.iconSvgCache.get("Modelica")).toBe("<svg>new</svg>");
+
+    el.invalidateIcon("Never.Shown");
+    await flush();
+    expect(iconSvg).toHaveBeenCalledTimes(2);
+  });
+
   it("does not search on a single character", async () => {
     const { source, searchAll } = makeSource();
     const el = await mount(source);

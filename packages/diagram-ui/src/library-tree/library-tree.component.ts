@@ -345,6 +345,34 @@ export class OmLibraryTree extends LitElement {
     this.tree.rebuildTree();
   }
 
+  /**
+   * Re-list `parent`'s children (`null` = the root listing) after a host-side
+   * structural change. The tree instance survives — expansion, selection,
+   * icons, and the typed search stay intact; only the one child list
+   * refetches. A parent this tree has never listed is skipped: its eventual
+   * first expand fetches fresh data anyway.
+   */
+  invalidateChildren(parent: string | null): void {
+    const tree = this.tree;
+    if (!tree) return;
+    if (parent !== null && !this.nodeCache.has(parent)) return;
+    const itemId = parent ?? LIBRARY_TREE_ROOT_ID;
+    void tree.getItemInstance(itemId).invalidateChildrenIds(true);
+  }
+
+  /**
+   * Drop `className`'s cached icon and re-request it, if it was ever shown.
+   * A class never rendered has nothing cached — its first scroll-into-view
+   * fetches fresh bytes. The immediate update repaints the fallback badge in
+   * case the class no longer has an icon at all.
+   */
+  invalidateIcon(className: string): void {
+    if (!this.iconRequested.delete(className)) return;
+    this.iconSvgCache.delete(className);
+    this.requestUpdate();
+    this.requestIcon(className);
+  }
+
   override render(): TemplateResult {
     if (!this.dataSource) {
       return html`<div class="empty">No library data source configured.</div>`;
