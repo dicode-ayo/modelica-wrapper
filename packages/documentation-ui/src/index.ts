@@ -28,5 +28,10 @@ export {
 } from "./documentation-roundtrip.js";
 export { prettyPrintHtml } from "./documentation-pretty.js";
 
-// Component.
+// Components.
 export { OmDocumentationEditor } from "./documentation-editor.component.js";
+export { OmDocumentationInterface } from "./documentation-interface.component.js";
+
+// The read-only interface-section model (extends tree, parameters, connectors)
+// is published on the `./interface-model` subpath — a DOM-free entry the Node
+// host imports without pulling these components in.

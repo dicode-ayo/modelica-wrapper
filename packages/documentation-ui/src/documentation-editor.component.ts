@@ -65,6 +65,14 @@ export class OmDocumentationEditor extends LitElement {
    */
   @property({ type: Boolean, attribute: "external-source" })
   externalSource = false;
+  /**
+   * The host page owns scrolling: the panes give up their internal overflow
+   * and contribute natural height, and the header (toolbar + link bar) sticks
+   * to the page's scrollport. Off, the editor fills its container and the
+   * content pane scrolls on its own.
+   */
+  @property({ type: Boolean, reflect: true, attribute: "host-scroll" })
+  hostScroll = false;
 
   @state() private linkEditing = false;
   @state() private linkDraft = "";
@@ -318,17 +326,18 @@ export class OmDocumentationEditor extends LitElement {
   override render(): TemplateResult {
     return html`
       ${STYLE}
-      <div class="om-doc-toolbar">
-        ${!this.readOnly && !this.showSource
-          ? this.renderFormatButtons()
-          : null}
-        ${this.renderSourceButton()}
-        ${this.readOnly
-          ? html`<span class="om-doc-badge">Read-only</span>`
-          : null}
+      <div class="om-doc-header">
+        <div class="om-doc-toolbar">
+          ${!this.readOnly && !this.showSource
+            ? this.renderFormatButtons()
+            : null}
+          ${this.renderSourceButton()}
+          ${this.readOnly
+            ? html`<span class="om-doc-badge">Read-only</span>`
+            : null}
+        </div>
+        ${this.linkEditing && !this.showSource ? this.renderLinkInput() : null}
       </div>
-
-      ${this.linkEditing && !this.showSource ? this.renderLinkInput() : null}
 
       <div class="om-doc-editor" ?hidden=${this.showSource}></div>
       <pre
@@ -474,13 +483,28 @@ const STYLE = html`
       font-family: var(--vscode-font-family);
       font-size: var(--vscode-font-size);
     }
+    om-documentation-editor .om-doc-header {
+      flex: 0 0 auto;
+    }
+    om-documentation-editor[host-scroll] {
+      height: auto;
+    }
+    om-documentation-editor[host-scroll] .om-doc-editor,
+    om-documentation-editor[host-scroll] .om-doc-source {
+      overflow: visible;
+    }
+    om-documentation-editor[host-scroll] .om-doc-header {
+      position: sticky;
+      inset-block-start: 0;
+      z-index: 1;
+      background: var(--vscode-editor-background);
+    }
     om-documentation-editor .om-doc-toolbar {
       display: flex;
       align-items: center;
       gap: var(--om-doc-gap);
       padding: var(--om-doc-gap) var(--om-doc-pad);
       border-bottom: 1px solid var(--vscode-editorWidget-border, transparent);
-      flex: 0 0 auto;
     }
     om-documentation-editor .om-doc-format {
       display: flex;

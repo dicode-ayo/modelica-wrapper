@@ -6,7 +6,8 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./interface-model": "./src/interface-model.ts"
   },
   "files": [
     "dist"
@@ -22,6 +23,10 @@
       ".": {
         "types": "./dist/index.d.ts",
         "import": "./dist/index.js"
+      },
+      "./interface-model": {
+        "types": "./dist/interface-model.d.ts",
+        "import": "./dist/interface-model.js"
       }
     }
   },

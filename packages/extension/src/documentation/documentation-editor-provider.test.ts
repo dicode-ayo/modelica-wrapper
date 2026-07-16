@@ -14,7 +14,7 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
-import type { OmcClient } from "@dicode/omc-client";
+import { ModelInstanceSchema, type OmcClient } from "@dicode/omc-client";
 
 import type { DocExtensionToWebview } from "../webview/documentation-protocol.js";
 import type { ReadyGate } from "../webview/ready-gate.js";
@@ -104,6 +104,7 @@ function makeResolveClient(anno: {
   info: string;
   revision?: string;
   infoHeader?: string;
+  restriction?: string;
 }): OmcClient {
   return {
     getDocumentationAnnotation: vi.fn(() =>
@@ -113,8 +114,46 @@ function makeResolveClient(anno: {
         infoHeader: anno.infoHeader ?? "",
       }),
     ),
+    getClassRestriction: vi.fn(() =>
+      Promise.resolve({ restriction: anno.restriction ?? "block" }),
+    ),
+    getModelInstance: vi.fn(() => Promise.resolve({ instance: PID_INSTANCE })),
   } as unknown as OmcClient;
 }
+
+/** A minimal PID-like instance: one parameter, one connector, one extends. */
+const PID_INSTANCE = ModelInstanceSchema.parse({
+  name: "Modelica.Blocks.Continuous.PID",
+  restriction: "block",
+  elements: [
+    {
+      $kind: "extends",
+      baseClass: {
+        name: "Modelica.Blocks.Interfaces.SISO",
+        restriction: "block",
+        comment: "Single Input Single Output",
+      },
+    },
+    {
+      $kind: "component",
+      name: "k",
+      type: "Real",
+      value: { binding: 1 },
+      prefixes: { variability: "parameter" },
+      comment: "Gain",
+    },
+    {
+      $kind: "component",
+      name: "u",
+      type: {
+        name: "Modelica.Blocks.Interfaces.RealInput",
+        restriction: "connector",
+        elements: [],
+      },
+      prefixes: { direction: "input" },
+    },
+  ],
+});
 
 function docFor(uri: vscode.Uri): vscode.TextDocument {
   return { uri } as unknown as vscode.TextDocument;
@@ -143,15 +182,52 @@ describe("resolveDocumentationEditor", () => {
 
     fireReady();
     await flush();
-    expect(posted).toHaveLength(1);
-    const msg = posted[0];
-    expect(msg?.type).toBe("doc");
-    if (msg?.type === "doc") {
-      expect(msg.className).toBe("Modelica.Blocks.Continuous.PID");
-      expect(msg.info).toBe("<html><p>PID</p></html>");
-      expect(msg.readOnly).toBe(false);
+    // The HTML paints first; the interface follows in its own message.
+    expect(posted.map((m) => m.type)).toEqual(["doc", "interface"]);
+    const doc = posted[0];
+    expect(doc?.type).toBe("doc");
+    if (doc?.type === "doc") {
+      expect(doc.className).toBe("Modelica.Blocks.Continuous.PID");
+      expect(doc.info).toBe("<html><p>PID</p></html>");
+      expect(doc.readOnly).toBe(false);
+    }
+    const iface = posted[1];
+    expect(iface?.type).toBe("interface");
+    if (iface?.type === "interface") {
+      expect(iface.interface.parameters).toEqual([
+        { name: "k", description: "Gain", value: "1", group: "Parameters" },
+      ]);
+      expect(iface.interface.connectors).toEqual([
+        { name: "u", typeName: "RealInput", direction: "input" },
+      ]);
+      expect(iface.interface.extendsTree.map((n) => n.name)).toEqual([
+        "Modelica.Blocks.Interfaces.SISO",
+      ]);
     }
   });
+
+  it.each(["package", "type", "function"])(
+    "never instantiates a %s for the interface",
+    async (restriction) => {
+      // getModelInstance never returns for the builtins and costs seconds on
+      // deep hierarchies; the restriction gate must keep it off the serialized
+      // OMC socket entirely, not merely tolerate its failure.
+      const { panel, posted, fireReady } = makePanel();
+      const client = makeResolveClient({
+        info: "<html><p>pkg</p></html>",
+        restriction,
+      });
+      const ensureClient = vi.fn(() => Promise.resolve(client));
+
+      resolveDocumentationEditor(panel, EXT_URI, ensureClient, PID_DOC);
+      await flush();
+      fireReady();
+      await flush();
+
+      expect(posted.map((m) => m.type)).toEqual(["doc"]);
+      expect(client.getModelInstance).not.toHaveBeenCalled();
+    },
+  );
 
   it("does not mark a class carrying an infoHeader read-only", async () => {
     const { panel, posted, fireReady } = makePanel();
@@ -342,6 +418,8 @@ function makeEditClient(
         ? Promise.reject(new Error("OMC down"))
         : Promise.resolve({ info: anno.info }),
     ),
+    getClassRestriction: vi.fn(() => Promise.resolve({ restriction: "block" })),
+    getModelInstance: vi.fn(() => Promise.resolve({ instance: PID_INSTANCE })),
     setFullDocumentationAnnotation: vi.fn(
       (a: { typeName: string; info: string }) => {
         calls.setArgs.push(a);

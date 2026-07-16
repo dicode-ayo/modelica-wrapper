@@ -4,7 +4,7 @@ import { defineConfig } from "tsup";
 // Dev resolution stays on ./src/*.ts; this config feeds `pnpm build` /
 // `prepublishOnly`, and `publishConfig` repoints the published package at dist.
 export default defineConfig({
-  entry: ["src/index.ts"],
+  entry: ["src/index.ts", "src/interface-model.ts"],
   format: ["esm"],
   dts: true,
   sourcemap: true,

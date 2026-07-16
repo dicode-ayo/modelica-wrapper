@@ -19,7 +19,11 @@ import type {
   DocumentationChangeDetail,
   DocumentationOpenLinkDetail,
 } from "@dicode/documentation-ui";
-import { LitElement, html, type TemplateResult } from "lit";
+import {
+  hasInterfaceSections,
+  type DocumentationInterface,
+} from "@dicode/documentation-ui/interface-model";
+import { LitElement, html, nothing, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 
 import type {
@@ -37,6 +41,7 @@ export class OmDocumentationRoot extends LitElement {
   @state() private info = "";
   @state() private readOnly = false;
   @state() private resources: Record<string, string> = {};
+  @state() private interface: DocumentationInterface | undefined = undefined;
   @state() private error: string | null = null;
 
   private readonly vscode = getVsCodeApi<DocWebviewToExtension>();
@@ -62,7 +67,13 @@ export class OmDocumentationRoot extends LitElement {
         this.resources = msg.resources;
         this.info = msg.info;
         this.readOnly = msg.readOnly;
+        // Cleared here; the interface arrives in its own follow-up message so a
+        // stale table never shows against freshly reloaded HTML.
+        this.interface = undefined;
         this.error = null;
+        return;
+      case "interface":
+        this.interface = msg.interface;
         return;
       case "error":
         this.error = msg.message;
@@ -99,24 +110,39 @@ export class OmDocumentationRoot extends LitElement {
         .resources=${this.resources}
         ?readOnly=${this.readOnly}
         external-source
+        host-scroll
         @om-documentation-change=${this.onChange}
         @om-documentation-edit-source=${this.onEditSource}
         @om-documentation-open-link=${this.onOpenLink}
       ></om-documentation-editor>
+      ${hasInterfaceSections(this.interface)
+        ? html`<om-documentation-interface
+            .model=${this.interface}
+            @om-documentation-open-link=${this.onOpenLink}
+          ></om-documentation-interface>`
+        : nothing}
       <style>
         om-documentation-root {
+          --om-doc-page-pad: 1rem;
           display: flex;
           flex-direction: column;
-          height: 100%;
+          block-size: 100%;
+          overflow-y: auto;
         }
         om-documentation-root > om-documentation-editor {
-          flex: 1 1 auto;
-          min-width: 0;
-          min-height: 0;
+          flex: 1 0 auto;
+          min-inline-size: 0;
+        }
+        om-documentation-root > om-documentation-interface {
+          flex: none;
+          padding-block: 0 var(--om-doc-page-pad);
+          padding-inline: var(--om-doc-page-pad);
+          border-block-start: 1px solid
+            var(--vscode-editorWidget-border, transparent);
         }
         om-documentation-root .om-doc-host-error {
-          flex: 0 0 auto;
-          padding: 0.5rem 1rem;
+          flex: none;
+          padding: 0.5rem var(--om-doc-page-pad);
           color: var(--vscode-errorForeground);
         }
       </style>
