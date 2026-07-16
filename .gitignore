@@ -26,3 +26,7 @@ storybook-static/
 # grammar/README.md and grammar/grammar-source.mjs stay tracked.
 # The glob also covers the `*.wasm.download` temp the fetch writes before rename.
 packages/extension/grammar/*.wasm*
+
+# Per-session agent worktrees — nested checkouts a blanket `git add` would
+# otherwise stage as gitlinks.
+.claude/worktrees/
