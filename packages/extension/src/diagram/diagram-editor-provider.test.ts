@@ -125,6 +125,38 @@ const INSTANCE: ModelInstance = {
   },
 } as unknown as ModelInstance;
 
+/** A placeable sub-component class — enough for the diagram producer to place it. */
+const GAIN_TYPE: unknown = {
+  name: "Modelica.Blocks.Math.Gain",
+  restriction: "block",
+  elements: [],
+};
+
+/**
+ * An instance of `Pkg.M` with a single real, placed sub-component — run
+ * through the actual `produceDiagramLayout` (via `fetchDiagramLayout`), not
+ * the `layout()`/`movedComponent()` shortcuts that bypass it. Used where a
+ * test needs the reverse sync's refetch to resolve a component the
+ * hand-built webview-side layout doesn't know about.
+ */
+function instanceWithComponent(
+  name: string,
+  extent: [[number, number], [number, number]],
+): ModelInstance {
+  return {
+    name: "Pkg.M",
+    restriction: "model",
+    elements: [
+      {
+        $kind: "component",
+        name,
+        type: GAIN_TYPE,
+        annotation: { Placement: { transformation: { extent } } },
+      },
+    ],
+  } as unknown as ModelInstance;
+}
+
 const EXT_URI = vscode.Uri.file("/ext");
 
 interface FakeWebview {
@@ -996,6 +1028,116 @@ describe("DiagramEditController: forward write path", () => {
       "listFile",
       "loadString",
     ]);
+    controller.dispose();
+  });
+
+  it("flushes a pending reverse sync before a racing forward edit lands", async () => {
+    const { client, ops } = makeEditClient();
+    const { gate } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler } = manualScheduler();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+      scheduler,
+    );
+
+    // An undo (foreign change) schedules the debounced reverse sync — the
+    // timer hasn't fired yet.
+    fireForeign();
+    // A webview drag arrives inside that ~150ms window, before the debounce
+    // would otherwise fire.
+    const edit = controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 0, y: 0 },
+    });
+    await edit;
+    await drain();
+
+    // The pending reverse sync is flushed ahead of the racing forward edit, so
+    // the undo lands in OMC before the drag diffs against `prevLayout` — never
+    // the other way around, which would silently discard the undo.
+    expect(ops).toEqual([
+      "loadString",
+      "isPartial",
+      "addComponent",
+      "listFile",
+    ]);
+    controller.dispose();
+  });
+
+  it("drops a racing 'change' message flushed against a pending reverse sync, instead of diffing a stale snapshot", async () => {
+    // The reverse sync's refetch resolves gain1 as a real, placed
+    // component — the reload restored it (e.g. an undone deletion). The
+    // racing "change" message's `next` (built by the webview before the
+    // reload) has no components at all, mirroring the diagram as it stood
+    // pre-undo. Left undropped, diffing this `next` against the
+    // post-reload `prevLayout` would read gain1 as newly deleted and fire
+    // a real `deleteComponent` — exactly the corruption this guard exists
+    // to prevent.
+    const { client, ops, invoked } = makeEditClient({
+      instance: instanceWithComponent("gain1", [
+        [-10, -10],
+        [10, 10],
+      ]),
+    });
+    const { gate, posted } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler } = manualScheduler();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+      scheduler,
+    );
+
+    fireForeign();
+    const edit = controller.handle({ type: "change", layout: layout({}) });
+    await edit;
+    await drain();
+
+    // Only the flushed reverse sync runs — the stale `next` is never diffed
+    // against the refreshed `prevLayout`, so gain1 is never reported as
+    // deleted to OMC.
+    expect(ops).toEqual(["loadString"]);
+    expect(invoked).not.toContain("deleteComponent");
+    expect(posted.some((m) => m.type === "error")).toBe(true);
+    controller.dispose();
+  });
+
+  it("drops a racing 'change' message even after the debounce timer has fired but the reverse sync hasn't resolved", async () => {
+    // Same corruption setup as above, but the race lands in the narrower
+    // window between the debounce timer firing (`reverseTimer` already
+    // cleared) and the enqueued reverse sync's own OMC round-trip
+    // completing — `reverseTimer === undefined` alone can't distinguish
+    // this from "no sync pending at all".
+    const { client, ops, invoked } = makeEditClient({
+      instance: instanceWithComponent("gain1", [
+        [-10, -10],
+        [10, 10],
+      ]),
+    });
+    const { gate, posted } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler, flush: flushDebounce } = manualScheduler();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+      scheduler,
+    );
+
+    fireForeign();
+    flushDebounce(); // the timer fires; the reverse sync is enqueued, not yet resolved
+    const edit = controller.handle({ type: "change", layout: layout({}) });
+    await edit;
+    await drain();
+
+    expect(ops).toEqual(["loadString"]);
+    expect(invoked).not.toContain("deleteComponent");
+    expect(posted.some((m) => m.type === "error")).toBe(true);
     controller.dispose();
   });
 

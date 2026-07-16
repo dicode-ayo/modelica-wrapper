@@ -368,6 +368,11 @@ export class DiagramEditController {
   private prevLayout: DiagramLayout;
   private readonly shadow: ShadowBuffer;
   private reverseTimer: { cancel(): void } | undefined;
+  // True from the moment a reverse sync is enqueued until it resolves —
+  // covers the gap between the debounce timer firing and the queued unit's
+  // `loadString`/refetch actually completing, which `reverseTimer` alone
+  // (cleared the instant the timer fires) does not.
+  private reverseSyncInFlight = false;
 
   // Per-modal submit state, captured when a parameter modal opens and read
   // back when it submits — mirrors the diagram panel's closure state.
@@ -434,6 +439,19 @@ export class DiagramEditController {
    * editor; cross-editor socket contention is the client's `SerialQueue`'s job.
    */
   handle(msg: WebviewToExtension): Promise<void> {
+    if (this.reverseSyncIsRacing() && msg.type === "change") {
+      // `next` was computed by the webview against the diagram as it stood
+      // before the reverse sync racing this message; diffing it against
+      // `prevLayout` once that sync lands could invent edits — e.g. a false
+      // `componentDeleted` for something the sync alone restored — instead of
+      // the drag the user actually made. Drop it: the reverse sync's own
+      // `layout` push resyncs the webview, and the gesture can be repeated
+      // against it.
+      this.reportError(
+        "the diagram was resynced from an external change — please retry the edit",
+      );
+      return this.queue;
+    }
     return this.enqueue(() => this.dispatch(msg));
   }
 
@@ -449,10 +467,37 @@ export class DiagramEditController {
    */
   private onForeignChange(): void {
     this.reverseTimer?.cancel();
-    this.reverseTimer = this.scheduler.schedule(() => {
-      this.reverseTimer = undefined;
-      void this.enqueue(() => this.reverseSync());
-    }, REVERSE_SYNC_DEBOUNCE_MS);
+    this.reverseTimer = this.scheduler.schedule(
+      () => this.runReverseSyncNow(),
+      REVERSE_SYNC_DEBOUNCE_MS,
+    );
+  }
+
+  /**
+   * True while a foreign change hasn't finished syncing into OMC — whether
+   * it's still a pending timer (not yet enqueued) or already enqueued/running
+   * (`loadString`/refetch in flight). A pending timer is flushed here
+   * (cancelled and enqueued ahead of the caller) rather than left to fire on
+   * its own, so a racing edit never diffs against a `prevLayout` the sync
+   * hasn't reverted yet — whichever of the two windows it lands in.
+   */
+  private reverseSyncIsRacing(): boolean {
+    if (this.reverseTimer !== undefined) {
+      this.reverseTimer.cancel();
+      this.runReverseSyncNow();
+      return true;
+    }
+    return this.reverseSyncInFlight;
+  }
+
+  private runReverseSyncNow(): void {
+    this.reverseTimer = undefined;
+    this.reverseSyncInFlight = true;
+    void this.enqueue(() =>
+      this.reverseSync().finally(() => {
+        this.reverseSyncInFlight = false;
+      }),
+    );
   }
 
   private enqueue(unit: () => Promise<void>): Promise<void> {
