@@ -173,6 +173,12 @@ function buildField(
   if (unit !== undefined) base.unit = unit;
   if (displayUnit !== undefined) base.displayUnit = displayUnit;
   if (inheritedFrom !== undefined) base.inheritedFrom = inheritedFrom;
+  // Untyped on the wire (`value: z.unknown()`), like Dialog.enable; consumers
+  // of the AST (expressionToString) are total over unknown shapes.
+  const binding = readValueBinding(el.value);
+  if (binding !== undefined && binding !== null) {
+    base.binding = binding as Expression;
+  }
 
   const enumChoices = enumLeavesIfEnum(el.type);
   if (enumChoices) {

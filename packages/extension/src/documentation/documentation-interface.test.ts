@@ -97,6 +97,54 @@ describe("buildDocumentationInterface — parameters", () => {
     ]);
     expect(buildDocumentationInterface(mi).parameters[0]?.value).toBe("");
   });
+
+  it("renders a symbolic default from the raw binding (cref, arithmetic)", () => {
+    const mi = instance([
+      {
+        $kind: "component",
+        name: "T",
+        type: "Real",
+        value: {
+          binding: {
+            $kind: "binary_op",
+            op: "*",
+            lhs: 2,
+            rhs: { $kind: "cref", parts: [{ name: "pi" }] },
+          },
+        },
+        prefixes: { variability: "parameter" },
+      },
+      {
+        $kind: "component",
+        name: "kd",
+        type: "Real",
+        value: { binding: { $kind: "cref", parts: [{ name: "k" }] } },
+        prefixes: { variability: "parameter" },
+      },
+    ]);
+    const { parameters } = buildDocumentationInterface(mi);
+    expect(parameters[0]?.value).toBe("2 * pi");
+    expect(parameters[1]?.value).toBe("k");
+  });
+
+  it("renders a DynamicSelect default by its static branch", () => {
+    const mi = instance([
+      {
+        $kind: "component",
+        name: "level",
+        type: "Real",
+        value: {
+          binding: {
+            $kind: "call",
+            name: "DynamicSelect",
+            arguments: [0.5, { $kind: "cref", parts: [{ name: "level" }] }],
+          },
+        },
+        prefixes: { variability: "parameter" },
+      },
+    ]);
+    expect(buildDocumentationInterface(mi).parameters[0]?.value).toBe("0.5");
+  });
 });
 
 describe("buildDocumentationInterface — connectors", () => {

@@ -18,6 +18,9 @@ export type {
   ComponentRef,
   ComponentRefPart,
   CallExpr,
+  EnumLiteral,
+  BinaryOpExpr,
+  UnaryOpExpr,
   // shapes
   LineShape,
   PolygonShape,

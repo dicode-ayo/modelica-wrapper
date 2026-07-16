@@ -17,6 +17,7 @@ import type {
   ParameterField,
 } from "@dicode/omc-client";
 import { produceParameterModel } from "@dicode/omc-client";
+import { expressionToString } from "@dicode/diagram-svg";
 import type {
   DocConnectorRow,
   DocExtendsNode,
@@ -38,7 +39,7 @@ function buildParameterRows(instance: ModelInstance): DocParameterRow[] {
   return produceParameterModel(instance).fields.map((field) => {
     const row: DocParameterRow = {
       name: field.name,
-      value: displayValue(field.value),
+      value: displayValue(field),
       group: field.dialog.group,
     };
     // `label` is the comment-else-name; carry it only when it's a real comment.
@@ -48,11 +49,18 @@ function buildParameterRows(instance: ModelInstance): DocParameterRow[] {
   });
 }
 
-/** Render a parameter's resolved value for a read-only cell. */
-function displayValue(value: ParameterField["value"]): string {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "object") return "";
-  return String(value);
+/**
+ * Render a parameter's resolved value for a read-only cell. A default the
+ * producer could not coerce to a scalar (a cref, arithmetic, DynamicSelect)
+ * falls back to stringifying the raw binding AST, as OMEdit does.
+ */
+function displayValue(field: ParameterField): string {
+  const { value } = field;
+  if (value !== null && value !== undefined) {
+    if (typeof value !== "object") return String(value);
+    return expressionToString(value);
+  }
+  return expressionToString(field.binding);
 }
 
 /**

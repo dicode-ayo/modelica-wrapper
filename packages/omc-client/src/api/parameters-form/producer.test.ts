@@ -288,6 +288,39 @@ describe("produceParameterModel — class params", () => {
     ]);
     expect(fieldByName(produceParameterModel(mi), "yMin").value).toBe(-12);
   });
+
+  it("carries the raw binding AST even when it cannot be coerced into value", () => {
+    const binding = {
+      $kind: "binary_op",
+      op: "*",
+      lhs: 2,
+      rhs: { $kind: "cref", parts: [{ name: "pi" }] },
+    };
+    const mi = instance([
+      {
+        $kind: "component",
+        name: "w",
+        type: "Real",
+        value: { binding },
+        prefixes: { variability: "parameter" },
+      },
+    ]);
+    const field = fieldByName(produceParameterModel(mi), "w");
+    expect(field.value).toBeNull();
+    expect(field.binding).toEqual(binding);
+  });
+
+  it("leaves binding absent when the declaration has none", () => {
+    const mi = instance([
+      {
+        $kind: "component",
+        name: "k",
+        type: "Real",
+        prefixes: { variability: "parameter" },
+      },
+    ]);
+    expect(fieldByName(produceParameterModel(mi), "k").binding).toBeUndefined();
+  });
 });
 
 describe("produceParameterModel — extends chain + inheritedFrom", () => {
