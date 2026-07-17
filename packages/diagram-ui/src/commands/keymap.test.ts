@@ -47,7 +47,7 @@ describe("formatChord", () => {
     expect(formatChord("Backspace")).toBe("Backspace");
   });
 
-  it("orders and labels every modifier", () => {
+  it("labels every modifier in canonical order", () => {
     expect(formatChord("ctrl+meta+alt+shift+a")).toBe("Ctrl+Cmd+Alt+Shift+A");
   });
 });

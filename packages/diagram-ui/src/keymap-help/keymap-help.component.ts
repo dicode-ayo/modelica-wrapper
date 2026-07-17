@@ -1,9 +1,9 @@
 /**
  * `<om-keymap-help>` — dialog listing every diagram command that has a bound
- * keyboard shortcut, grouped by category. Dumb on purpose: the host computes
- * `groups` (via `commandsToKeymapHelpGroups`, reading the same
- * `CommandRegistry` and keymap the context menu and action panel consume)
- * and sets it here; this component only displays it.
+ * keyboard shortcut, grouped by category. The host builds `groups` (via
+ * `commandsToKeymapHelpGroups`, reading the same `CommandRegistry` and keymap
+ * the context menu and action panel consume) and sets it here, so this view
+ * can never drift from what's actually bound.
  *
  * Backed by `<wa-dialog>` for focus trapping, Escape-to-close, and
  * light-dismiss — the same pattern `<om-parameter-panel>` uses for its
@@ -19,6 +19,8 @@ import { customElement, property } from "lit/decorators.js";
 import "@awesome.me/webawesome/dist/components/dialog/dialog.js";
 
 import { omTokens } from "@dicode/ui-common";
+
+import { emitEvent } from "../dom-event.js";
 
 export interface KeymapHelpItem {
   id: string;
@@ -170,13 +172,7 @@ export class OmKeymapHelp extends LitElement {
     type: K,
     detail: KeymapHelpEvents[K],
   ): void {
-    this.dispatchEvent(
-      new CustomEvent<KeymapHelpEvents[K]>(type, {
-        detail,
-        bubbles: true,
-        composed: true,
-      }),
-    );
+    emitEvent(this, type, detail);
   }
 }
 

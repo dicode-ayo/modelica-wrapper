@@ -29,7 +29,7 @@ const KEYBOUND_KEYS: Record<string, readonly string[]> = {
   "modelica.diagram.showKeymapHelp": ["shift+/"],
 };
 
-describe("diagram selection keybindings", () => {
+describe("diagram keybindings", () => {
   it("declares every keybound command in contributes.commands", () => {
     const declared = new Set(commands.map((c) => c.command));
     for (const id of Object.keys(KEYBOUND_KEYS)) {
