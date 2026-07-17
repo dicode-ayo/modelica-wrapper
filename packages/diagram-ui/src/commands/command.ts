@@ -20,6 +20,8 @@ export interface CommandTarget {
   setSelection(keys: Iterable<string>): void;
   /** Delegates a class-swap to the host — commands stay synchronous. */
   requestClassChange?(componentName: string, currentClass: string): void;
+  /** Opens the keyboard-shortcuts help dialog. */
+  showKeymapHelp?(): void;
 }
 
 /** A UI surface a command can be placed on. */

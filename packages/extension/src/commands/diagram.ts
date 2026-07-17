@@ -85,12 +85,13 @@ export async function switchView(target: string): Promise<void> {
  * webview, so the shortcuts live in VSCode's keymap and are remappable from
  * the Keyboard Shortcuts UI.
  */
-const SELECTION_COMMANDS: ReadonlyArray<readonly [string, DiagramCommandId]> = [
+const KEYBOUND_COMMANDS: ReadonlyArray<readonly [string, DiagramCommandId]> = [
   ["modelica.diagram.delete", "diagram.delete"],
   ["modelica.diagram.rotateCw", "diagram.rotateCw"],
   ["modelica.diagram.rotateCcw", "diagram.rotateCcw"],
   ["modelica.diagram.flipHorizontal", "diagram.flipHorizontal"],
   ["modelica.diagram.flipVertical", "diagram.flipVertical"],
+  ["modelica.diagram.showKeymapHelp", "diagram.showKeymapHelp"],
 ];
 
 export function registerDiagramCommands(
@@ -106,7 +107,7 @@ export function registerDiagramCommands(
         );
       }
     }),
-    ...SELECTION_COMMANDS.map(([vscodeId, diagramId]) =>
+    ...KEYBOUND_COMMANDS.map(([vscodeId, diagramId]) =>
       vscode.commands.registerCommand(vscodeId, async () => {
         if (!DiagramEditorProvider.runActiveCommand(diagramId)) {
           await vscode.window.showWarningMessage(

@@ -97,6 +97,18 @@ In a Lit/HTML template the same element is just:
 The parameter form (`<om-parameter-panel>` / `<om-parameter-form>`) emits
 `om-panel-change`, `om-panel-submit`, `om-panel-cancel`, and `om-panel-reset`.
 
+## Keyboard shortcuts
+
+`<om-graphical-layout>` binds a small default keymap (`DEFAULT_KEYMAP` in
+`src/commands/diagram-commands.ts`) for its edit commands — rotate, flip,
+delete, and so on. Press **?** (Shift+/) to open the keyboard-shortcuts help
+dialog, generated from the same `CommandRegistry` and keymap the context menu
+and action panel read, so the reference can never drift from what's actually
+bound. A host that sets `host-managed-keys` (e.g. the VSCode extension, which
+binds shortcuts as native keybindings and dispatches them via
+`runCommandById`) still gets an accurate help dialog, since it reads the same
+registry and keymap regardless of who triggers the dispatch.
+
 ## Parameter panel
 
 `<om-parameter-panel>` is a schema-driven side drawer: set its `schema`

@@ -14,3 +14,22 @@ export function chordFromEvent(e: KeyboardEvent): KeyChord {
   parts.push(e.key.length === 1 ? e.key.toLowerCase() : e.key);
   return parts.join("+");
 }
+
+const MODIFIER_LABELS: Readonly<Record<string, string>> = {
+  ctrl: "Ctrl",
+  meta: "Cmd",
+  alt: "Alt",
+  shift: "Shift",
+};
+
+/** Render a {@link KeyChord} for display, e.g. `"shift+r"` -> `"Shift+R"`. */
+export function formatChord(chord: KeyChord): string {
+  return chord
+    .split("+")
+    .map(
+      (part) =>
+        MODIFIER_LABELS[part] ??
+        (part.length === 1 ? part.toUpperCase() : part),
+    )
+    .join("+");
+}

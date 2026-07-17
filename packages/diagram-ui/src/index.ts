@@ -213,6 +213,14 @@ export {
   type ContextMenuEvents,
 } from "./context-menu/context-menu.component.js";
 export {
+  OmKeymapHelp,
+  type KeymapHelpItem,
+  type KeymapHelpGroup,
+  type KeymapHelpCloseDetail,
+  type KeymapHelpEvents,
+} from "./keymap-help/keymap-help.component.js";
+export { commandsToKeymapHelpGroups } from "./keymap-help/keymap-help-items.js";
+export {
   OmLibraryTree,
   LIBRARY_TREE_DRAG_FORMAT,
   type LibraryPlacementStartDetail,

@@ -169,6 +169,23 @@ describe("DIAGRAM_COMMANDS", () => {
     });
   });
 
+  it("showKeymapHelp delegates to target.showKeymapHelp and tolerates its absence", () => {
+    const t = spyTarget(layout(), []);
+    let opened = false;
+    command("diagram.showKeymapHelp").run({
+      ...t,
+      showKeymapHelp: () => {
+        opened = true;
+      },
+    });
+    expect(opened).toBe(true);
+    expect(() => command("diagram.showKeymapHelp").run(t)).not.toThrow();
+  });
+
+  it("showKeymapHelp has no when gate — always available", () => {
+    expect(command("diagram.showKeymapHelp").when).toBeUndefined();
+  });
+
   it("every default key binding resolves to a registered command", () => {
     const registry = new CommandRegistry(DIAGRAM_COMMANDS);
     for (const id of DEFAULT_KEYMAP.values()) {

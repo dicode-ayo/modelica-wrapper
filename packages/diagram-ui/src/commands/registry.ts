@@ -9,8 +9,8 @@ import type {
 /**
  * Holds the diagram {@link Command} set and resolves an id to a run, gated by
  * the command's `when` predicate. One registry instance backs every surface
- * that invokes commands — the keymap, the action-panel buttons, and (later)
- * the context menu and keymap-help view — so they can never drift.
+ * that invokes commands — the keymap, the action-panel buttons, the context
+ * menu, and the keymap-help view — so they can never drift.
  */
 export class CommandRegistry<Id extends string = string> {
   private readonly byId = new Map<Id, Command<Id>>();
