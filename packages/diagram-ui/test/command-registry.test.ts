@@ -2,24 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import type { Command, CommandTarget } from "../src/commands/command.js";
 import { CommandRegistry } from "../src/commands/registry.js";
-import type { ContextKeys } from "../src/interaction/context-keys.js";
+import { makeContextKeys as ctx } from "../src/interaction/context-keys.fixture.js";
 
 const NO_TARGET = {} as CommandTarget;
-
-function ctx(patch: Partial<ContextKeys> = {}): ContextKeys {
-  return {
-    mode: "select",
-    gesture: "idle",
-    selectionKind: "none",
-    selectionCount: 0,
-    readonly: false,
-    viewLayer: "diagram",
-    hasClipboard: false,
-    vertexTarget: false,
-    polySelection: false,
-    ...patch,
-  };
-}
 
 const cmd = (over: Partial<Command> = {}): Command => ({
   id: "a",
