@@ -18,7 +18,8 @@ export type DiagramCommandId =
   | "diagram.flipHorizontal"
   | "diagram.flipVertical"
   | "diagram.deleteVertex"
-  | "diagram.toggleSmooth";
+  | "diagram.toggleSmooth"
+  | "diagram.showKeymapHelp";
 
 /**
  * Message protocol between the extension host (Node) and the diagram

@@ -22,7 +22,8 @@ export type DiagramCommandId =
   | "diagram.flipVertical"
   | "diagram.deleteVertex"
   | "diagram.toggleSmooth"
-  | "diagram.changeClass";
+  | "diagram.changeClass"
+  | "diagram.showKeymapHelp";
 
 const requireSelection = (ctx: ContextKeys): boolean =>
   !ctx.readonly && ctx.selectionCount > 0;
@@ -153,6 +154,12 @@ export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
       target.requestClassChange?.(parsed.nodeId, comp.classRef);
     },
   },
+  {
+    id: "diagram.showKeymapHelp",
+    title: "Show keyboard shortcuts",
+    category: "Help",
+    run: (target) => target.showKeymapHelp?.(),
+  },
 ];
 
 /**
@@ -167,4 +174,5 @@ export const DEFAULT_KEYMAP: ReadonlyMap<KeyChord, DiagramCommandId> = new Map([
   ["shift+r", "diagram.rotateCcw"],
   ["f", "diagram.flipHorizontal"],
   ["shift+f", "diagram.flipVertical"],
+  ["shift+?", "diagram.showKeymapHelp"],
 ]);

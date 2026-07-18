@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_KEYMAP } from "./diagram-commands.js";
-import { chordFromEvent } from "./keymap.js";
+import { chordFromEvent, formatChord } from "./keymap.js";
 
 const chord = (init: KeyboardEventInit): string =>
   chordFromEvent(new KeyboardEvent("keydown", init));
@@ -33,5 +33,21 @@ describe("chordFromEvent", () => {
     expect(DEFAULT_KEYMAP.get(chord({ key: "F", shiftKey: true }))).toBe(
       "diagram.flipVertical",
     );
+  });
+});
+
+describe("formatChord", () => {
+  it("title-cases modifiers and upper-cases a single-character base key", () => {
+    expect(formatChord("shift+r")).toBe("Shift+R");
+    expect(formatChord("r")).toBe("R");
+  });
+
+  it("keeps named keys verbatim", () => {
+    expect(formatChord("Delete")).toBe("Delete");
+    expect(formatChord("Backspace")).toBe("Backspace");
+  });
+
+  it("labels every modifier in canonical order", () => {
+    expect(formatChord("ctrl+meta+alt+shift+a")).toBe("Ctrl+Cmd+Alt+Shift+A");
   });
 });

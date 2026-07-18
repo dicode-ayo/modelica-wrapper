@@ -26,6 +26,7 @@ import "../connection/connection.component.js";
 import "../label/label.component.js";
 import "../debug/perf-hud.component.js";
 import "../context-menu/context-menu.component.js";
+import "../keymap-help/keymap-help.component.js";
 import type { OmScene, RendererFactory } from "../scene/scene.component.js";
 import type { OmConnector } from "../connector/connector.component.js";
 import type { OmComponent } from "../component/component.component.js";
@@ -67,6 +68,8 @@ import type {
 } from "../context-menu/context-menu.component.js";
 import { commandsToMenuItems } from "../context-menu/command-menu-items.js";
 import { nextContextSelection } from "../context-menu/context-selection.js";
+import type { OmKeymapHelp } from "../keymap-help/keymap-help.component.js";
+import { commandsToKeymapHelpGroups } from "../keymap-help/keymap-help-items.js";
 import {
   deriveContextKeys,
   type ContextKeys,
@@ -411,6 +414,7 @@ export class OmGraphicalLayout extends LitElement {
 
   @query("om-scene") private sceneEl?: OmScene;
   @query("om-context-menu") private contextMenuEl?: OmContextMenu;
+  @query("om-keymap-help") private keymapHelpEl?: OmKeymapHelp;
 
   /** Diagram-space point the open context menu is anchored to (so it tracks
    *  that spot through pan/zoom). Null when the menu is closed. */
@@ -570,6 +574,7 @@ export class OmGraphicalLayout extends LitElement {
         @om-context-menu-select=${this.onContextMenuSelect}
         @om-context-menu-close=${this.onContextMenuClose}
       ></om-context-menu>
+      <om-keymap-help></om-keymap-help>
     `;
   }
 
@@ -1748,7 +1753,23 @@ export class OmGraphicalLayout extends LitElement {
       requestClassChange: (componentName, currentClass) => {
         this.emit("om-change-class-request", { componentName, currentClass });
       },
+      showKeymapHelp: () => this.openKeymapHelp(),
     };
+  }
+
+  /** Open the keyboard-shortcuts help dialog, sourced from the same command
+   *  registry and keymap the context menu and action panel read. */
+  private openKeymapHelp(): void {
+    const el = this.keymapHelpEl;
+    if (!el) {
+      return;
+    }
+    el.groups = commandsToKeymapHelpGroups(
+      this.commands,
+      DEFAULT_KEYMAP,
+      this.commandContext(),
+    );
+    el.open = true;
   }
 
   /** Resolve a right-click position to the vertex wire key under it, if any. */

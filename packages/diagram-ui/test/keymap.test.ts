@@ -40,5 +40,6 @@ describe("DEFAULT_KEYMAP", () => {
     expect(DEFAULT_KEYMAP.get("shift+r")).toBe("diagram.rotateCcw");
     expect(DEFAULT_KEYMAP.get("f")).toBe("diagram.flipHorizontal");
     expect(DEFAULT_KEYMAP.get("shift+f")).toBe("diagram.flipVertical");
+    expect(DEFAULT_KEYMAP.get("shift+?")).toBe("diagram.showKeymapHelp");
   });
 });

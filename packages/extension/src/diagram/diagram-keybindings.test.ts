@@ -20,24 +20,25 @@ const commands = manifest.contributes.commands;
 const keybindings = manifest.contributes.keybindings;
 
 /** VSCode command id → expected default chord, mirroring `DEFAULT_KEYMAP`. */
-const SELECTION_KEYS: Record<string, readonly string[]> = {
+const KEYBOUND_KEYS: Record<string, readonly string[]> = {
   "modelica.diagram.delete": ["delete", "backspace"],
   "modelica.diagram.rotateCw": ["r"],
   "modelica.diagram.rotateCcw": ["shift+r"],
   "modelica.diagram.flipHorizontal": ["f"],
   "modelica.diagram.flipVertical": ["shift+f"],
+  "modelica.diagram.showKeymapHelp": ["shift+/"],
 };
 
-describe("diagram selection keybindings", () => {
-  it("declares every selection command in contributes.commands", () => {
+describe("diagram keybindings", () => {
+  it("declares every keybound command in contributes.commands", () => {
     const declared = new Set(commands.map((c) => c.command));
-    for (const id of Object.keys(SELECTION_KEYS)) {
+    for (const id of Object.keys(KEYBOUND_KEYS)) {
       expect(declared).toContain(id);
     }
   });
 
-  it("binds each selection command to its default chord(s)", () => {
-    for (const [id, keys] of Object.entries(SELECTION_KEYS)) {
+  it("binds each command to its default chord(s)", () => {
+    for (const [id, keys] of Object.entries(KEYBOUND_KEYS)) {
       const bound = keybindings
         .filter((k) => k.command === id)
         .map((k) => k.key);
@@ -50,7 +51,7 @@ describe("diagram selection keybindings", () => {
     // parameter modal); `!inputFocus` covers native VSCode inputs (e.g. the
     // change-class quick pick). Without both, Backspace / r / f would act on
     // the diagram while the user types.
-    for (const id of Object.keys(SELECTION_KEYS)) {
+    for (const id of Object.keys(KEYBOUND_KEYS)) {
       for (const binding of keybindings.filter((k) => k.command === id)) {
         expect(binding.when).toBe(
           "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus",
