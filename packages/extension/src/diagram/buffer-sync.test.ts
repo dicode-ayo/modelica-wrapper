@@ -1,9 +1,7 @@
 /**
- * `reloadBufferIntoOmc` and `isReadOnlyDocument` are shared by the diagram and
- * documentation edit controllers' reverse-sync path. These pin the two
- * behaviors a duplicated inline implementation could silently drift on: the
- * stale-diagnostics drain runs before the load, and a rejected load's message
- * comes from the *second* `getErrorString` call, not the first.
+ * `reloadBufferIntoOmc` pins the stale-diagnostics drain running before the
+ * load, and a rejected load's message coming from the *second*
+ * `getErrorString` call, not the first.
  *
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
