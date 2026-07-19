@@ -8,6 +8,7 @@ import {
   isReadOnlyDocument,
   reloadBufferIntoOmc,
   REVERSE_SYNC_DEBOUNCE_MS,
+  type BufferSyncClient,
   type Scheduler,
 } from "../diagram/buffer-sync.js";
 import {
@@ -33,7 +34,7 @@ import { renderDocumentationWebviewHtml } from "./documentation-webview-html.js"
 export { DOCUMENTATION_VIEW_TYPE };
 
 /** The subset of OMC the documentation editor drives. */
-export interface DocumentationClient {
+export interface DocumentationClient extends BufferSyncClient {
   getDocumentationAnnotation(input: {
     typeName: string;
   }): Promise<{ info: string }>;
@@ -48,12 +49,6 @@ export interface DocumentationClient {
     info: string;
   }): Promise<{ success: boolean }>;
   listFile(input: { typeName: string }): Promise<{ contents: string }>;
-  loadString(input: {
-    data: string;
-    filename: string;
-    merge: boolean;
-  }): Promise<{ success: boolean }>;
-  getErrorString(): Promise<{ errorString: string }>;
   uriToFilename(input: { uri: string }): Promise<{ filename: string }>;
 }
 

@@ -4,8 +4,10 @@ import * as vscode from "vscode";
  * Machinery shared by the diagram and documentation edit controllers: both
  * debounce a burst of foreign buffer changes into one reverse sync, then
  * `loadString` the buffer back into OMC before re-fetching their render
- * model. Only the post-load re-fetch differs between the two, so it stays
- * in each controller.
+ * model. Each controller still owns its own debounce-timer field and the
+ * post-load re-fetch step — the diagram controller additionally tracks
+ * whether a sync is in flight to detect a racing forward edit, which the
+ * documentation controller has no equivalent of.
  */
 
 /** Deferred one-shot timer, injectable so tests drive the debounce directly. */
