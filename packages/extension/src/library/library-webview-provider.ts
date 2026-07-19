@@ -61,6 +61,10 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
     string,
     Promise<string | undefined>
   >();
+  /** Classes whose next render must force a full re-elaboration. `iconChanged`
+   *  marks the edited class here because OMC's cheap annotation read lags a
+   *  commit behind; the mark is consumed by the render it triggers. */
+  private readonly freshOnce = new Set<string>();
   /** In-flight searches, so `libraryCancel` can abandon their queued lookups. */
   private readonly searches = new Map<string, AbortController>();
 
@@ -104,11 +108,14 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
   /** `className`'s rendered icon may have changed: evict that one class from
    *  the host caches and tell the webview to re-request it. A render already
    *  in flight carries pre-mutation bytes — disowning its `iconInFlight`
-   *  entry keeps it from writing into the cache or being joined. */
+   *  entry keeps it from writing into the cache or being joined. The re-request
+   *  must re-elaborate the class (`freshOnce`): a mutation just landed, and
+   *  OMC's cheap annotation read would still report the prior elaboration. */
   iconChanged(className: string): void {
     this.iconCache.delete(className);
     this.previewCache.delete(className);
     this.iconInFlight.delete(className);
+    this.freshOnce.add(className);
     void this.post({ type: "libraryIconChanged", className });
   }
 
@@ -127,6 +134,9 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
     this.iconCache.clear();
     this.previewCache.clear();
     this.iconInFlight.clear();
+    // A wholesale reload re-renders the whole tree; force-instantiating every
+    // class would be the expensive fan-out the annotation path exists to avoid.
+    this.freshOnce.clear();
     log.debug("libraryIcon", `dropped ${dropped} cached icons`);
   }
 
@@ -288,12 +298,16 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
       return inFlight;
     }
     const started = Date.now();
+    // Consumed here, not on join/cache-hit: only a render that actually starts
+    // clears the mark, and a disowned render leaves it set so its replacement
+    // still re-elaborates.
+    const fresh = this.freshOnce.delete(className);
     // `self` aliases `promise` for the ownership checks — the const can't be
     // referenced inside its own initializer's immediately-invoked body.
     let self: Promise<string | undefined> | undefined = undefined;
     const promise = (async () => {
       const client = await this.ensureClient();
-      const svg = await libraryIconSvg(client, className);
+      const svg = await libraryIconSvg(client, className, fresh);
       // Cache only while still owned: `refresh` and `iconChanged` disown the
       // in-flight entry, and a disowned render carries pre-mutation bytes.
       if (self !== undefined && this.iconInFlight.get(className) === self) {

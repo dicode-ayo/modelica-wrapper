@@ -298,6 +298,59 @@ describe("LibraryWebviewProvider", () => {
     expect(client.invoke.mock.calls.length).toBeGreaterThan(beforeRetry);
   });
 
+  it("re-renders an edited class from a full instance, not the stale annotation", async () => {
+    // Both reads answer; the assertion is which OMC call the render makes, not
+    // the rendered bytes — an empty-icon instance still routes through one.
+    const instance = {
+      name: "Lib.A",
+      restriction: "model",
+      annotation: {
+        Icon: {
+          coordinateSystem: {
+            extent: [
+              [-100, -100],
+              [100, 100],
+            ],
+          },
+          graphics: [],
+        },
+      },
+      elements: [],
+    };
+    const client = {
+      getClassNames: vi.fn(async () => ({ classNames: ["Modelica"] })),
+      searchClassNames: vi.fn(async () => ({ classNames: [] })),
+      getClassRestriction: vi.fn(async () => ({ restriction: "model" })),
+      invoke: vi.fn(async () => ({ instance })),
+    };
+    const uri = {
+      fsPath: "/ext",
+      path: "/ext",
+    } as unknown as import("vscode").Uri;
+    const provider = new LibraryWebviewProvider(
+      uri,
+      async () => client as unknown as OmcClient,
+    );
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    // First paint takes the cheap annotation path.
+    send({ type: "libraryIcon", requestId: "1", className: "Lib.A" });
+    await flush();
+    const apis = (): unknown[] => client.invoke.mock.calls.map((c) => c[0]);
+    expect(apis()).toContain("getModelInstanceAnnotation");
+
+    // An edit lands; the next render must re-elaborate rather than trust the
+    // annotation read, which still reports the pre-edit state.
+    provider.iconChanged("Lib.A");
+    client.invoke.mockClear();
+    send({ type: "libraryIcon", requestId: "2", className: "Lib.A" });
+    await flush();
+
+    expect(apis()).toContain("getModelInstance");
+    expect(apis()).not.toContain("getModelInstanceAnnotation");
+  });
+
   it("abandons a search's queued lookups when the webview cancels it", async () => {
     const { provider, client } = makeProvider();
     const { view, posted, send } = fakeView();
