@@ -5,23 +5,8 @@ import {
   DEFAULT_KEYMAP,
   DIAGRAM_COMMANDS,
 } from "../commands/diagram-commands.js";
-import type { ContextKeys } from "../interaction/context-keys.js";
+import { makeContextKeys } from "../interaction/context-keys.fixture.js";
 import { commandsToKeymapHelpGroups } from "./keymap-help-items.js";
-
-function makeCtx(overrides: Partial<ContextKeys> = {}): ContextKeys {
-  return {
-    mode: "select",
-    gesture: "idle",
-    readonly: false,
-    selectionCount: 0,
-    selectionKind: "none",
-    viewLayer: "diagram",
-    hasClipboard: false,
-    vertexTarget: false,
-    polySelection: false,
-    ...overrides,
-  };
-}
 
 describe("commandsToKeymapHelpGroups", () => {
   const registry = new CommandRegistry(DIAGRAM_COMMANDS);
@@ -30,7 +15,7 @@ describe("commandsToKeymapHelpGroups", () => {
     const groups = commandsToKeymapHelpGroups(
       registry,
       DEFAULT_KEYMAP,
-      makeCtx(),
+      makeContextKeys(),
     );
 
     const editGroup = groups.find((g) => g.category === "Edit");
@@ -51,7 +36,7 @@ describe("commandsToKeymapHelpGroups", () => {
     const groups = commandsToKeymapHelpGroups(
       registry,
       DEFAULT_KEYMAP,
-      makeCtx(),
+      makeContextKeys(),
     );
     const ids = groups.flatMap((g) => g.items.map((i) => i.id));
     expect(ids).not.toContain("diagram.changeClass");
@@ -61,12 +46,12 @@ describe("commandsToKeymapHelpGroups", () => {
     const withSelection = commandsToKeymapHelpGroups(
       registry,
       DEFAULT_KEYMAP,
-      makeCtx({ selectionCount: 1, selectionKind: "component" }),
+      makeContextKeys({ selectionCount: 1, selectionKind: "component" }),
     );
     const withoutSelection = commandsToKeymapHelpGroups(
       registry,
       DEFAULT_KEYMAP,
-      makeCtx(),
+      makeContextKeys(),
     );
 
     const enabledRotate = withSelection
@@ -84,7 +69,7 @@ describe("commandsToKeymapHelpGroups", () => {
     const groups = commandsToKeymapHelpGroups(
       registry,
       DEFAULT_KEYMAP,
-      makeCtx(),
+      makeContextKeys(),
     );
     const helpGroup = groups.find((g) => g.category === "Help");
     const helpItem = helpGroup?.items.find(

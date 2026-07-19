@@ -24,6 +24,7 @@ import {
   DIAGRAM_COMMANDS,
 } from "../src/commands/diagram-commands.js";
 import type { ContextKeys } from "../src/interaction/context-keys.js";
+import { makeContextKeys } from "../src/interaction/context-keys.fixture.js";
 
 const registry = new CommandRegistry(DIAGRAM_COMMANDS);
 
@@ -32,17 +33,10 @@ interface StoryArgs {
 }
 
 function contextFor(selectionCount: number): ContextKeys {
-  return {
-    mode: "select",
-    gesture: "idle",
+  return makeContextKeys({
     selectionKind: selectionCount > 0 ? "component" : "none",
     selectionCount,
-    readonly: false,
-    viewLayer: "diagram",
-    hasClipboard: false,
-    vertexTarget: false,
-    polySelection: false,
-  };
+  });
 }
 
 const meta: Meta<StoryArgs> = {

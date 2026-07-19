@@ -15,6 +15,7 @@ import type { DiagramLayout } from "@dicode/omc-client";
 import { DIAGRAM_COMMANDS } from "./diagram-commands.js";
 import type { CommandTarget } from "./command.js";
 import type { ContextKeys } from "../interaction/context-keys.js";
+import { makeContextKeys } from "../interaction/context-keys.fixture.js";
 
 const changeClassCmd = DIAGRAM_COMMANDS.find(
   (c) => c.id === "diagram.changeClass",
@@ -49,18 +50,11 @@ function makeTarget(
 }
 
 function makeCtx(overrides: Partial<ContextKeys> = {}): ContextKeys {
-  return {
-    mode: "select",
-    gesture: "idle",
-    readonly: false,
+  return makeContextKeys({
     selectionCount: 1,
     selectionKind: "component",
-    viewLayer: "diagram",
-    hasClipboard: false,
-    vertexTarget: false,
-    polySelection: false,
     ...overrides,
-  };
+  });
 }
 
 describe("diagram.changeClass command", () => {

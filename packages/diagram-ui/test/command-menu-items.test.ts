@@ -3,20 +3,14 @@ import { describe, expect, it } from "vitest";
 import { commandsToMenuItems } from "../src/context-menu/command-menu-items.js";
 import { CommandRegistry, DIAGRAM_COMMANDS } from "../src/commands/index.js";
 import type { ContextKeys } from "../src/interaction/context-keys.js";
+import { makeContextKeys } from "../src/interaction/context-keys.fixture.js";
 
 function ctx(patch: Partial<ContextKeys> = {}): ContextKeys {
-  return {
-    mode: "select",
-    gesture: "idle",
+  return makeContextKeys({
     selectionKind: "component",
     selectionCount: 1,
-    readonly: false,
-    viewLayer: "diagram",
-    hasClipboard: false,
-    vertexTarget: false,
-    polySelection: false,
     ...patch,
-  };
+  });
 }
 
 describe("commandsToMenuItems", () => {
