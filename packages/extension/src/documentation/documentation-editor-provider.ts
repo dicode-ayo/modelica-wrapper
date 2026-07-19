@@ -4,6 +4,13 @@ import type { ModelInstance, OmcClient } from "@dicode/omc-client";
 import type { DocumentationInterface } from "@dicode/documentation-ui/interface-model";
 
 import {
+  defaultScheduler,
+  isReadOnlyDocument,
+  reloadBufferIntoOmc,
+  REVERSE_SYNC_DEBOUNCE_MS,
+  type Scheduler,
+} from "../diagram/buffer-sync.js";
+import {
   createShadowBuffer,
   type ShadowBuffer,
 } from "../diagram/shadow-buffer.js";
@@ -241,22 +248,6 @@ interface EditControllerDeps {
   gate: ReadyGate<DocExtensionToWebview>;
 }
 
-/** Deferred one-shot timer, injectable so tests drive the debounce directly. */
-export interface Scheduler {
-  schedule(fn: () => void, delayMs: number): { cancel(): void };
-}
-
-const defaultScheduler: Scheduler = {
-  schedule(fn, delayMs) {
-    const id = setTimeout(fn, delayMs);
-    return { cancel: () => clearTimeout(id) };
-  },
-};
-
-// Coalesce a burst of foreign changes (holding undo/redo, or typing in the text
-// view) into one reverse sync once the buffer settles.
-const REVERSE_SYNC_DEBOUNCE_MS = 150;
-
 /**
  * Class restrictions whose interface sections are worth a full instantiate.
  * Anything else — packages, functions, `type` aliases, the builtins — is
@@ -396,19 +387,9 @@ export class DocumentationEditController {
   private async reverseSync(): Promise<void> {
     const { client, document } = this.deps;
     try {
-      // Drain stale diagnostics so the post-load `getErrorString` attributes
-      // only errors this load produced.
-      await client.getErrorString();
-      const { success } = await client.loadString({
-        data: document.getText(),
-        filename: document.uri.toString(),
-        merge: false,
-      });
-      if (!success) {
-        const { errorString } = await client.getErrorString();
-        this.reportError(
-          `reverse sync rejected by OMC: ${errorString.trim() || "loadString returned success=false"}`,
-        );
+      const reload = await reloadBufferIntoOmc(client, document);
+      if (!reload.ok) {
+        this.reportError(reload.message);
         return;
       }
       await this.refetchAndSend();
@@ -496,22 +477,6 @@ async function openHtmlSourceEditor(className: string): Promise<void> {
     void vscode.window.showErrorMessage(
       `Modelica: could not open the documentation HTML for ${className}: ${errorDetail(err)}`,
     );
-  }
-}
-
-/**
- * Whether the document's backing source is read-only — the source provider
- * reports `Readonly` for MSL / installed-library classes. Best-effort: a failed
- * stat is treated as writable so a transient error doesn't lock the editor.
- */
-async function isReadOnlyDocument(
-  document: vscode.TextDocument,
-): Promise<boolean> {
-  try {
-    const stat = await vscode.workspace.fs.stat(document.uri);
-    return ((stat.permissions ?? 0) & vscode.FilePermission.Readonly) !== 0;
-  } catch {
-    return false;
   }
 }
 

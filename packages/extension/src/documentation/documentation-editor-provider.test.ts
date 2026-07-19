@@ -19,13 +19,13 @@ import { ModelInstanceSchema, type OmcClient } from "@dicode/omc-client";
 import type { DocExtensionToWebview } from "../webview/documentation-protocol.js";
 import type { ReadyGate } from "../webview/ready-gate.js";
 import { setStatReadonly } from "../../test-support/vscode-mock.js";
+import { type Scheduler } from "../diagram/buffer-sync.js";
 
 import {
   DocumentationEditController,
   DocumentationEditorProvider,
   resolveDocumentationEditor,
   type DocumentationClient,
-  type Scheduler,
 } from "./documentation-editor-provider.js";
 
 const EXT_URI = vscode.Uri.file("/ext");
