@@ -554,28 +554,24 @@ const ICON_ANNOTATION_FILTER = [
  * `connections`, and diagram-mode labels are all dropped, so the
  * annotation tree's pruned sub-component types cost us nothing here.
  */
-export async function fetchIconLayout(
+async function fetchIconInstance(
   client: OmcClient,
   className: string,
-  forceInstantiate = false,
-): Promise<DiagramLayout> {
-  let instance: ModelInstance | undefined;
+  forceInstantiate: boolean,
+): Promise<ModelInstance> {
   if (!forceInstantiate) {
     try {
-      const { instance: annotationInstance } = await client.invoke(
-        "getModelInstanceAnnotation",
-        {
-          typeName: className,
-          filter: [...ICON_ANNOTATION_FILTER],
-        },
-      );
+      const { instance } = await client.invoke("getModelInstanceAnnotation", {
+        typeName: className,
+        filter: [...ICON_ANNOTATION_FILTER],
+      });
       // A class that simply has no Icon is not a failed call. Instantiating it
       // to look again costs seconds on deep hierarchies, and never returns for
       // the builtins, all to rediscover there is nothing to paint. The cheap
       // call can only fail to answer by throwing — an empty reply fails
       // `JSON.parse`, a malformed one fails the schema — so the fallback
       // belongs in the catch.
-      instance = annotationInstance;
+      return instance;
     } catch (err) {
       log.warn(
         "fetchIconLayout",
@@ -583,17 +579,38 @@ export async function fetchIconLayout(
       );
     }
   }
-  if (instance === undefined) {
-    instance = await fetchModelInstance(client, className);
-  }
+  return fetchModelInstance(client, className);
+}
+
+export async function fetchIconLayout(
+  client: OmcClient,
+  className: string,
+  forceInstantiate = false,
+): Promise<DiagramLayout> {
+  const instance = await fetchIconInstance(client, className, forceInstantiate);
   return diagram.produceDiagramLayout(instance, "icon");
 }
 
 /**
+ * The qualified names of every class in `instance`'s `extends` chain (the host
+ * itself excluded). A class's rendered icon includes its ancestors' graphics,
+ * so an edit to any of these can change how this class's icon looks.
+ */
+function iconDependencies(instance: ModelInstance): string[] {
+  const deps = new Set<string>();
+  for (const ancestor of diagram.walkExtendsChain(instance)) {
+    if (ancestor !== instance) deps.add(ancestor.name);
+  }
+  return [...deps];
+}
+
+/**
  * Render a class's icon to a self-contained SVG thumbnail for the library
- * sidebar. Best-effort: returns `undefined` on any failure or when the class
- * has no drawable icon layers, so the sidebar falls back to its
- * restriction-letter badge.
+ * sidebar, alongside the classes its icon inherits from (`dependsOn` — its
+ * `extends` chain). Best-effort: `svg` is `undefined` on any failure or when
+ * the class has no drawable icon layers, so the sidebar falls back to its
+ * restriction-letter badge; `dependsOn` is empty when the instance can't be
+ * fetched.
  *
  * `fresh` forces a full re-elaboration (see {@link fetchIconLayout}); the
  * sidebar sets it for a class it just observed change, so the thumbnail
@@ -603,19 +620,24 @@ export async function libraryIconSvg(
   client: OmcClient,
   className: string,
   fresh = false,
-): Promise<string | undefined> {
+): Promise<{ svg: string | undefined; dependsOn: string[] }> {
   try {
-    const layout = await fetchIconLayout(client, className, fresh);
-    if (layout.iconLayers.length === 0) return undefined;
-    return renderIconLayersToSvg(layout.iconLayers, {
-      coordinateSystem: layout.coordinateSystem,
-    });
+    const instance = await fetchIconInstance(client, className, fresh);
+    const dependsOn = iconDependencies(instance);
+    const layout = diagram.produceDiagramLayout(instance, "icon");
+    const svg =
+      layout.iconLayers.length === 0
+        ? undefined
+        : renderIconLayersToSvg(layout.iconLayers, {
+            coordinateSystem: layout.coordinateSystem,
+          });
+    return { svg, dependsOn };
   } catch (err) {
     log.warn(
       "libraryIconSvg",
       `icon render failed for ${className}: ${(err as Error).message}`,
     );
-    return undefined;
+    return { svg: undefined, dependsOn: [] };
   }
 }
 

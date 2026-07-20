@@ -7,6 +7,7 @@
  * `_shared/modelInstance.ts` before calling `produceDiagramLayout`.
  */
 export { produceDiagramLayout, produceComponentClass } from "./producer.js";
+export { walkExtendsChain } from "./walker.js";
 export { parseInstantiatedParameters } from "./resolved-parameters.js";
 export {
   annotationGraphics,

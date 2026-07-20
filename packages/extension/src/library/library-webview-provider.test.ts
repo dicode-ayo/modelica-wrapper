@@ -112,6 +112,35 @@ const EMPTY_ICON_INSTANCE = {
   elements: [],
 };
 
+/** A subtype whose icon is inherited from `Lib.Base`. Rendering it records the
+ *  base as a dependency, so an edit to the base cascades back to this class. */
+const SUBTYPE_ICON_INSTANCE = {
+  name: "Lib.Sub",
+  restriction: "model",
+  annotation: null,
+  elements: [
+    {
+      $kind: "extends",
+      baseClass: {
+        name: "Lib.Base",
+        restriction: "model",
+        annotation: {
+          Icon: {
+            coordinateSystem: {
+              extent: [
+                [-100, -100],
+                [100, 100],
+              ],
+            },
+            graphics: [],
+          },
+        },
+        elements: [],
+      },
+    },
+  ],
+};
+
 /**
  * A provider whose client answers every icon read — both the cheap
  * `getModelInstanceAnnotation` and the full `getModelInstance` — so a test can
@@ -412,6 +441,51 @@ describe("LibraryWebviewProvider", () => {
 
     expect(apis()).toContain("getModelInstance");
     expect(apis()).not.toContain("getModelInstanceAnnotation");
+  });
+
+  it("re-elaborates a subtype's icon when its base class is edited", async () => {
+    const { provider, client, apis } = makeInstanceProbe();
+    client.invoke.mockImplementation(async () => ({
+      instance: SUBTYPE_ICON_INSTANCE,
+    }));
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    // Rendering the subtype records `Lib.Base` as a dependency of its icon.
+    send({ type: "libraryIcon", requestId: "1", className: "Lib.Sub" });
+    await flush();
+    expect(apis()).toContain("getModelInstanceAnnotation");
+
+    // Editing the base cascades to the subtype; its inherited icon must
+    // re-elaborate even though the subtype itself was not the edited class.
+    provider.iconChanged("Lib.Base");
+    client.invoke.mockClear();
+    send({ type: "libraryIcon", requestId: "2", className: "Lib.Sub" });
+    await flush();
+
+    expect(apis()).toContain("getModelInstance");
+    expect(apis()).not.toContain("getModelInstanceAnnotation");
+  });
+
+  it("leaves a subtype's cached icon untouched when an unrelated class is edited", async () => {
+    const { provider, client, apis } = makeInstanceProbe();
+    client.invoke.mockImplementation(async () => ({
+      instance: SUBTYPE_ICON_INSTANCE,
+    }));
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    send({ type: "libraryIcon", requestId: "1", className: "Lib.Sub" });
+    await flush();
+
+    // An edit to a class the subtype does not inherit from must not evict it;
+    // the next request serves the cache without any OMC read.
+    provider.iconChanged("Lib.Unrelated");
+    client.invoke.mockClear();
+    send({ type: "libraryIcon", requestId: "2", className: "Lib.Sub" });
+    await flush();
+
+    expect(apis()).toEqual([]);
   });
 
   it("abandons a search's queued lookups when the webview cancels it", async () => {

@@ -16,6 +16,7 @@ import { executedCommands } from "../../test-support/vscode-mock.js";
 import {
   fetchIconLayout,
   guardAddComponent,
+  libraryIconSvg,
   openDiagram,
   type PartialCheckClient,
 } from "./open-diagram.js";
@@ -144,6 +145,45 @@ describe("fetchIconLayout: when the annotation path is trusted", () => {
     expect(calls).toEqual(["getModelInstanceAnnotation"]);
     // Deleting the instantiating fallback must not cost us inherited icons.
     expect(layout.iconLayers.length).toBeGreaterThan(0);
+  });
+});
+
+describe("libraryIconSvg: dependency reporting", () => {
+  it("reports the extends chain as the icon's dependencies", async () => {
+    const derived: ModelInstance = {
+      name: "Pkg.Derived",
+      restriction: "model",
+      annotation: null,
+      elements: [{ $kind: "extends", baseClass: WITH_ICON }],
+    } as unknown as ModelInstance;
+    const { client } = makeClient({
+      annotation: async () => ({ instance: derived }),
+    });
+    const { svg, dependsOn } = await libraryIconSvg(client, "Pkg.Derived");
+    expect(svg).toBeDefined();
+    expect(dependsOn).toEqual(["Pkg.HasIcon"]);
+  });
+
+  it("reports no dependencies for a class with no extends chain", async () => {
+    const { client } = makeClient({
+      annotation: async () => ({ instance: WITH_ICON }),
+    });
+    const { dependsOn } = await libraryIconSvg(client, "Pkg.HasIcon");
+    expect(dependsOn).toEqual([]);
+  });
+
+  it("reports no dependencies when the instance can't be fetched", async () => {
+    const { client } = makeClient({
+      annotation: async () => {
+        throw new Error("filtered call failed");
+      },
+      full: async () => {
+        throw new Error("instantiation failed");
+      },
+    });
+    const { svg, dependsOn } = await libraryIconSvg(client, "Pkg.Broken");
+    expect(svg).toBeUndefined();
+    expect(dependsOn).toEqual([]);
   });
 });
 
