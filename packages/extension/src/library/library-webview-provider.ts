@@ -360,7 +360,11 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
       // in-flight entry, and a disowned render carries pre-mutation bytes.
       if (self !== undefined && this.iconInFlight.get(className) === self) {
         this.iconCache.set(className, svg);
-        this.recordIconDependencies(className, dependsOn);
+        // A failed render reports `dependsOn` as `undefined` (chain unknown);
+        // keep the last good edges rather than pruning them off a transient miss.
+        if (dependsOn !== undefined) {
+          this.recordIconDependencies(className, dependsOn);
+        }
       }
       const shape = svg === undefined ? "no icon" : `${svg.length} bytes`;
       log.debug(

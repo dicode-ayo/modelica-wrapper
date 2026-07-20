@@ -595,6 +595,11 @@ export async function fetchIconLayout(
  * The qualified names of every class in `instance`'s `extends` chain (the host
  * itself excluded). A class's rendered icon includes its ancestors' graphics,
  * so an edit to any of these can change how this class's icon looks.
+ *
+ * A base OMC reports as a bare string rather than an expanded instance (an
+ * unexpanded builtin or a not-fully-loaded reply) yields no name — it is not a
+ * user-editable, icon-bearing class, so it can never be the source of an edit
+ * this index needs to cascade.
  */
 function iconDependencies(instance: ModelInstance): string[] {
   const deps = new Set<string>();
@@ -609,8 +614,10 @@ function iconDependencies(instance: ModelInstance): string[] {
  * sidebar, alongside the classes its icon inherits from (`dependsOn` — its
  * `extends` chain). Best-effort: `svg` is `undefined` on any failure or when
  * the class has no drawable icon layers, so the sidebar falls back to its
- * restriction-letter badge; `dependsOn` is empty when the instance can't be
- * fetched.
+ * restriction-letter badge. `dependsOn` is `undefined` when the render failed
+ * — the chain is unknown, distinct from a successful `[]` for a class that
+ * genuinely extends nothing — so the caller keeps its previously recorded
+ * edges rather than dropping them on a transient failure.
  *
  * `fresh` forces a full re-elaboration (see {@link fetchIconInstance}); the
  * sidebar sets it for a class it just observed change, so the thumbnail
@@ -620,7 +627,10 @@ export async function libraryIconSvg(
   client: OmcClient,
   className: string,
   fresh = false,
-): Promise<{ svg: string | undefined; dependsOn: string[] }> {
+): Promise<{
+  svg: string | undefined;
+  dependsOn: readonly string[] | undefined;
+}> {
   try {
     const instance = await fetchIconInstance(client, className, fresh);
     const dependsOn = iconDependencies(instance);
@@ -637,7 +647,7 @@ export async function libraryIconSvg(
       "libraryIconSvg",
       `icon render failed for ${className}: ${(err as Error).message}`,
     );
-    return { svg: undefined, dependsOn: [] };
+    return { svg: undefined, dependsOn: undefined };
   }
 }
 

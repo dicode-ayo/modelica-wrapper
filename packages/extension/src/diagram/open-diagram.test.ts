@@ -172,7 +172,7 @@ describe("libraryIconSvg: dependency reporting", () => {
     expect(dependsOn).toEqual([]);
   });
 
-  it("reports no dependencies when the instance can't be fetched", async () => {
+  it("reports dependencies as undefined when the instance can't be fetched", async () => {
     const { client } = makeClient({
       annotation: async () => {
         throw new Error("filtered call failed");
@@ -183,7 +183,8 @@ describe("libraryIconSvg: dependency reporting", () => {
     });
     const { svg, dependsOn } = await libraryIconSvg(client, "Pkg.Broken");
     expect(svg).toBeUndefined();
-    expect(dependsOn).toEqual([]);
+    // Undefined, not `[]`: the chain is unknown, so the caller keeps its edges.
+    expect(dependsOn).toBeUndefined();
   });
 });
 
