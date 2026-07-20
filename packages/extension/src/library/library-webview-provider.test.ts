@@ -392,6 +392,28 @@ describe("LibraryWebviewProvider", () => {
     expect(apis()).not.toContain("getModelInstanceAnnotation");
   });
 
+  it("keeps an edited class's freshness across a wholesale reload", async () => {
+    const { provider, client, apis } = makeInstanceProbe();
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    send({ type: "libraryIcon", requestId: "1", className: "Lib.A" });
+    await flush();
+    expect(apis()).toContain("getModelInstanceAnnotation");
+
+    // An edit marks the class fresh, then a manual Refresh drops the caches
+    // before the mark is consumed; the class must still re-elaborate rather
+    // than fall back to the annotation read the reload would otherwise take.
+    provider.iconChanged("Lib.A");
+    provider.refresh();
+    client.invoke.mockClear();
+    send({ type: "libraryIcon", requestId: "2", className: "Lib.A" });
+    await flush();
+
+    expect(apis()).toContain("getModelInstance");
+    expect(apis()).not.toContain("getModelInstanceAnnotation");
+  });
+
   it("abandons a search's queued lookups when the webview cancels it", async () => {
     const { provider, client } = makeProvider();
     const { view, posted, send } = fakeView();

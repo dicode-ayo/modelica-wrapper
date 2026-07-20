@@ -134,9 +134,10 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
     this.iconCache.clear();
     this.previewCache.clear();
     this.iconInFlight.clear();
-    // A wholesale reload re-renders the whole tree; force-instantiating every
-    // class would be the expensive fan-out the annotation path exists to avoid.
-    this.freshOnce.clear();
+    // `freshOnce` is left intact: it marks only classes edited since their last
+    // render, so a reload racing a just-landed edit must still re-elaborate them
+    // rather than repaint the stale annotation read. Clearing it re-stales the
+    // very class `iconChanged` just marked.
     log.debug("libraryIcon", `dropped ${dropped} cached icons`);
   }
 

@@ -110,6 +110,10 @@ export async function activate(
     ),
   );
 
+  // Save-triggered icon refresh. The diagram/icon editors invalidate their own
+  // class on an unsaved graphical commit (their `iconChanged` callback below);
+  // this is the disjoint path for text-editor saves, which reach the sidebar
+  // only through the source provider's change broadcast.
   context.subscriptions.push(syncIconsWithSource(sourceProvider, libraryTree));
 
   context.subscriptions.push(
