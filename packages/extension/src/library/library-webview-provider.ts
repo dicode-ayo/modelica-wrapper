@@ -67,7 +67,10 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
   private readonly freshOnce = new Set<string>();
   /** Base class → the rendered classes whose icon inherits its graphics, built
    *  from each render's `extends` chain. `iconChanged` cascades an edit down
-   *  this index so a subtype's inherited icon refreshes with its base. */
+   *  this index so a subtype's inherited icon refreshes with its base. Edges
+   *  are not pruned on cache eviction, only on re-render: a stale or emptied
+   *  edge can only over-invalidate (a redundant re-request), never render wrong
+   *  bytes, and it self-heals on the subtype's next render. */
   private readonly iconDependents = new Map<string, Set<string>>();
   /** Class → the base classes recorded for its last render, so a re-render can
    *  prune its stale reverse edges out of {@link iconDependents} before adding
@@ -141,7 +144,9 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
 
   /** Record the base classes a render found in `className`'s `extends` chain,
    *  replacing any edges from its previous render, so `iconChanged` on a base
-   *  reaches this subtype. */
+   *  reaches this subtype. Recorded at render completion: a base edited during
+   *  the subtype's very first render has no edge yet, so that one render can
+   *  miss the cascade until the subtype is next requested. */
   private recordIconDependencies(
     className: string,
     dependsOn: readonly string[],

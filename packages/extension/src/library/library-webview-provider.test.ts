@@ -467,6 +467,60 @@ describe("LibraryWebviewProvider", () => {
     expect(apis()).not.toContain("getModelInstanceAnnotation");
   });
 
+  it("drops the stale reverse edge when a subtype's extends chain changes", async () => {
+    const { provider, client, apis } = makeInstanceProbe();
+    const otherBaseInstance = {
+      name: "Lib.Sub",
+      restriction: "model",
+      annotation: null,
+      elements: [
+        {
+          $kind: "extends",
+          baseClass: {
+            name: "Lib.Other",
+            restriction: "model",
+            annotation: {
+              Icon: {
+                coordinateSystem: {
+                  extent: [
+                    [-100, -100],
+                    [100, 100],
+                  ],
+                },
+                graphics: [],
+              },
+            },
+            elements: [],
+          },
+        },
+      ],
+    };
+    client.invoke
+      .mockImplementationOnce(async () => ({ instance: SUBTYPE_ICON_INSTANCE }))
+      .mockImplementation(async () => ({ instance: otherBaseInstance }));
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    // First render records `Lib.Base` → `Lib.Sub`.
+    send({ type: "libraryIcon", requestId: "1", className: "Lib.Sub" });
+    await flush();
+
+    // Re-render the subtype against a different base; recording the new edge
+    // must prune the old `Lib.Base` → `Lib.Sub` one.
+    provider.iconChanged("Lib.Sub");
+    send({ type: "libraryIcon", requestId: "2", className: "Lib.Sub" });
+    await flush();
+
+    // Editing the former base must no longer reach the subtype: its cached
+    // icon stays, so the next request serves the cache without an OMC read.
+    client.invoke.mockClear();
+    provider.iconChanged("Lib.Base");
+    send({ type: "libraryIcon", requestId: "3", className: "Lib.Sub" });
+    await flush();
+
+    expect(apis()).toEqual([]);
+  });
+
   it("leaves a subtype's cached icon untouched when an unrelated class is edited", async () => {
     const { provider, client, apis } = makeInstanceProbe();
     client.invoke.mockImplementation(async () => ({

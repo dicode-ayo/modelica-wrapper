@@ -574,7 +574,7 @@ async function fetchIconInstance(
       return instance;
     } catch (err) {
       log.warn(
-        "fetchIconLayout",
+        "fetchIconInstance",
         `filtered getModelInstanceAnnotation failed for ${className}; falling back to full getModelInstance: ${(err as Error).message}`,
       );
     }
@@ -612,7 +612,7 @@ function iconDependencies(instance: ModelInstance): string[] {
  * restriction-letter badge; `dependsOn` is empty when the instance can't be
  * fetched.
  *
- * `fresh` forces a full re-elaboration (see {@link fetchIconLayout}); the
+ * `fresh` forces a full re-elaboration (see {@link fetchIconInstance}); the
  * sidebar sets it for a class it just observed change, so the thumbnail
  * catches up to the committed state instead of OMC's prior elaboration.
  */
