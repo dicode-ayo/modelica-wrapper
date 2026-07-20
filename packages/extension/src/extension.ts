@@ -41,6 +41,7 @@ import {
   MODELICA_SOURCE_SCHEME,
   ModelicaSourceProvider,
 } from "./source-provider.js";
+import { syncIconsWithSource } from "./source-icon-sync.js";
 import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
 import { loadEntryFilesAndRefresh } from "./workspace-autoload.js";
@@ -108,6 +109,8 @@ export async function activate(
       { isCaseSensitive: true },
     ),
   );
+
+  context.subscriptions.push(syncIconsWithSource(sourceProvider, libraryTree));
 
   context.subscriptions.push(
     libraryView,
