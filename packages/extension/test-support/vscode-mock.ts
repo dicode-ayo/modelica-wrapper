@@ -152,6 +152,22 @@ class UriImpl {
     return new UriImpl("file", "", fsPath, "", "");
   }
 
+  static from(components: {
+    scheme: string;
+    authority?: string;
+    path?: string;
+    query?: string;
+    fragment?: string;
+  }): UriImpl {
+    return new UriImpl(
+      components.scheme,
+      components.authority ?? "",
+      components.path ?? "",
+      components.query ?? "",
+      components.fragment ?? "",
+    );
+  }
+
   static joinPath(base: UriImpl, ...segments: string[]): UriImpl {
     const joined = [base.path, ...segments].join("/").replace(/\/+/g, "/");
     return new UriImpl(base.scheme, base.authority, joined, "", "");

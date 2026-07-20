@@ -3,13 +3,15 @@ import type * as vscode from "vscode";
 
 import {
   buildResultRef,
+  isScratchResultViewUri,
   resolveResultPath,
+  scratchResultViewUri,
   storeResultPath,
 } from "./add-result.js";
 
-// The path helpers only read `.fsPath`, so a minimal fake stands in for a `Uri`.
+// A saved view is a `file:` doc; the helpers read `.fsPath` + `.scheme`.
 function docUri(fsPath: string): vscode.Uri {
-  return { fsPath } as vscode.Uri;
+  return { fsPath, scheme: "file" } as vscode.Uri;
 }
 
 describe("resolveResultPath", () => {
@@ -36,6 +38,14 @@ describe("storeResultPath", () => {
 
   it("keeps an absolute path when the `.mat` is outside the document's folder", () => {
     expect(storeResultPath(uri, "/other/b.mat")).toBe("/other/b.mat");
+  });
+
+  it("stores absolute for an unsaved (non-file) view — no folder to anchor to", () => {
+    const scratch = {
+      fsPath: "/Simulation results.omresults",
+      scheme: "untitled",
+    } as vscode.Uri;
+    expect(storeResultPath(scratch, "/ws/a.mat")).toBe("/ws/a.mat");
   });
 
   it("round-trips with resolveResultPath for an under-folder file", () => {
@@ -70,5 +80,27 @@ describe("buildResultRef", () => {
     const ref = buildResultRef(uri, "/ws/views/a.mat", "cache");
     expect(ref.model).toBeUndefined();
     expect(ref.parameters).toBeUndefined();
+  });
+});
+
+describe("scratch result view", () => {
+  it("mints an untitled `.omresults` URI", () => {
+    const uri = scratchResultViewUri();
+    expect(uri.scheme).toBe("untitled");
+    expect(uri.path.endsWith(".omresults")).toBe(true);
+    expect(isScratchResultViewUri(uri)).toBe(true);
+  });
+
+  it("recognizes only untitled `.omresults` as a scratch view", () => {
+    const untitledOther = {
+      scheme: "untitled",
+      path: "notes.txt",
+    } as vscode.Uri;
+    const savedView = {
+      scheme: "file",
+      path: "/ws/run.omresults",
+    } as vscode.Uri;
+    expect(isScratchResultViewUri(untitledOther)).toBe(false);
+    expect(isScratchResultViewUri(savedView)).toBe(false);
   });
 });
