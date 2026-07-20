@@ -41,6 +41,7 @@ import type {
   WebviewToExtension,
 } from "../webview/protocol.js";
 import type { ReadyGate } from "../webview/ready-gate.js";
+import { type Scheduler } from "./buffer-sync.js";
 import {
   classNameFromDocument,
   DiagramEditController,
@@ -48,7 +49,6 @@ import {
   DIAGRAM_VIEW_TYPE,
   ICON_VIEW_TYPE,
   resolveDiagramEditor,
-  type Scheduler,
 } from "./diagram-editor-provider.js";
 import { createShadowBuffer, type ShadowBuffer } from "./shadow-buffer.js";
 
