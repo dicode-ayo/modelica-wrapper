@@ -543,6 +543,13 @@ const ICON_ANNOTATION_FILTER = [
  * OMEdit — some classes (parse errors, partial loads) only return a
  * usable tree from the unfiltered call.
  *
+ * `forceInstantiate` skips the annotation read and goes straight to the
+ * full `getModelInstance`. OMC's annotation reply reflects the class's last
+ * elaboration, so right after an edit it lags one commit behind; the full
+ * call re-elaborates and returns the committed state. Reserved for the
+ * just-edited class (never a fan-out over the tree, never a builtin) where
+ * that freshness is worth one instantiation.
+ *
  * The producer runs in `"icon"` mode either way: `diagramLayers`,
  * `connections`, and diagram-mode labels are all dropped, so the
  * annotation tree's pruned sub-component types cost us nothing here.
@@ -550,27 +557,31 @@ const ICON_ANNOTATION_FILTER = [
 export async function fetchIconLayout(
   client: OmcClient,
   className: string,
+  forceInstantiate = false,
 ): Promise<DiagramLayout> {
   let instance: ModelInstance | undefined;
-  try {
-    const { instance: annotationInstance } = await client.invoke(
-      "getModelInstanceAnnotation",
-      {
-        typeName: className,
-        filter: [...ICON_ANNOTATION_FILTER],
-      },
-    );
-    // A class that simply has no Icon is not a failed call. Instantiating it to
-    // look again costs seconds on deep hierarchies, and never returns for the
-    // builtins, all to rediscover there is nothing to paint. The cheap call can
-    // only fail to answer by throwing — an empty reply fails `JSON.parse`, a
-    // malformed one fails the schema — so the fallback belongs in the catch.
-    instance = annotationInstance;
-  } catch (err) {
-    log.warn(
-      "fetchIconLayout",
-      `filtered getModelInstanceAnnotation failed for ${className}; falling back to full getModelInstance: ${(err as Error).message}`,
-    );
+  if (!forceInstantiate) {
+    try {
+      const { instance: annotationInstance } = await client.invoke(
+        "getModelInstanceAnnotation",
+        {
+          typeName: className,
+          filter: [...ICON_ANNOTATION_FILTER],
+        },
+      );
+      // A class that simply has no Icon is not a failed call. Instantiating it
+      // to look again costs seconds on deep hierarchies, and never returns for
+      // the builtins, all to rediscover there is nothing to paint. The cheap
+      // call can only fail to answer by throwing — an empty reply fails
+      // `JSON.parse`, a malformed one fails the schema — so the fallback
+      // belongs in the catch.
+      instance = annotationInstance;
+    } catch (err) {
+      log.warn(
+        "fetchIconLayout",
+        `filtered getModelInstanceAnnotation failed for ${className}; falling back to full getModelInstance: ${(err as Error).message}`,
+      );
+    }
   }
   if (instance === undefined) {
     instance = await fetchModelInstance(client, className);
@@ -583,13 +594,18 @@ export async function fetchIconLayout(
  * sidebar. Best-effort: returns `undefined` on any failure or when the class
  * has no drawable icon layers, so the sidebar falls back to its
  * restriction-letter badge.
+ *
+ * `fresh` forces a full re-elaboration (see {@link fetchIconLayout}); the
+ * sidebar sets it for a class it just observed change, so the thumbnail
+ * catches up to the committed state instead of OMC's prior elaboration.
  */
 export async function libraryIconSvg(
   client: OmcClient,
   className: string,
+  fresh = false,
 ): Promise<string | undefined> {
   try {
-    const layout = await fetchIconLayout(client, className);
+    const layout = await fetchIconLayout(client, className, fresh);
     if (layout.iconLayers.length === 0) return undefined;
     return renderIconLayersToSvg(layout.iconLayers, {
       coordinateSystem: layout.coordinateSystem,

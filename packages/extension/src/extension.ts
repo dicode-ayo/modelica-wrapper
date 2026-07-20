@@ -41,6 +41,7 @@ import {
   MODELICA_SOURCE_SCHEME,
   ModelicaSourceProvider,
 } from "./source-provider.js";
+import { syncIconsWithSource } from "./source-icon-sync.js";
 import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
 import { loadEntryFilesAndRefresh } from "./workspace-autoload.js";
@@ -108,6 +109,12 @@ export async function activate(
       { isCaseSensitive: true },
     ),
   );
+
+  // Save-triggered icon refresh. The diagram/icon editors invalidate their own
+  // class on an unsaved graphical commit (their `iconChanged` callback below);
+  // this is the disjoint path for text-editor saves, which reach the sidebar
+  // only through the source provider's change broadcast.
+  context.subscriptions.push(syncIconsWithSource(sourceProvider, libraryTree));
 
   context.subscriptions.push(
     libraryView,
