@@ -369,9 +369,11 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
     // re-elaborate. `iconChanged` re-arms the mark when it disowns a running
     // render, so the replacement this starts still forces a full instance.
     const fresh = this.freshOnce.delete(className);
-    // Snapshot before the fetch: a base invalidated past this tick while the
-    // render runs isn't in the bytes it produces, and its edge doesn't exist
-    // yet to cascade, so the completion re-invalidates on it.
+    // Snapshot before the fetch: a base invalidated past this tick may predate
+    // the bytes this render produces, and its edge doesn't exist yet to
+    // cascade, so the completion re-invalidates on it. Conservative — the
+    // snapshot precedes the OMC read, so at worst it costs one needless
+    // re-render, never a stale icon.
     const startTick = this.invalidationTick;
     // `self` aliases `promise` for the ownership checks — the const can't be
     // referenced inside its own initializer's immediately-invoked body.

@@ -558,12 +558,14 @@ describe("LibraryWebviewProvider", () => {
     await flush();
 
     // Completion must notice the mid-render edit and re-invalidate the subtype;
-    // a fresh request re-elaborates rather than serving the pre-edit bytes.
+    // the re-request forces a full instantiation rather than a cheap annotation
+    // re-read that would still report the pre-edit inherited shapes.
     client.invoke.mockClear();
     send({ type: "libraryIcon", requestId: "2", className: "Lib.Sub" });
     await flush();
 
     expect(apis()).toContain("getModelInstance");
+    expect(apis()).not.toContain("getModelInstanceAnnotation");
   });
 
   it("leaves a subtype's cached icon untouched when an unrelated class is edited", async () => {
