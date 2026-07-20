@@ -112,6 +112,38 @@ const EMPTY_ICON_INSTANCE = {
   elements: [],
 };
 
+/** `Lib.Sub`, whose icon is inherited from `baseName`. Rendering it records
+ *  the base as a dependency, so an edit to the base cascades back to `Lib.Sub`.
+ *  Varying `baseName` exercises the reverse-edge prune when the chain changes. */
+function subtypeInstance(baseName: string) {
+  return {
+    name: "Lib.Sub",
+    restriction: "model",
+    annotation: null,
+    elements: [
+      {
+        $kind: "extends",
+        baseClass: {
+          name: baseName,
+          restriction: "model",
+          annotation: {
+            Icon: {
+              coordinateSystem: {
+                extent: [
+                  [-100, -100],
+                  [100, 100],
+                ],
+              },
+              graphics: [],
+            },
+          },
+          elements: [],
+        },
+      },
+    ],
+  };
+}
+
 /**
  * A provider whose client answers every icon read — both the cheap
  * `getModelInstanceAnnotation` and the full `getModelInstance` — so a test can
@@ -412,6 +444,115 @@ describe("LibraryWebviewProvider", () => {
 
     expect(apis()).toContain("getModelInstance");
     expect(apis()).not.toContain("getModelInstanceAnnotation");
+  });
+
+  it("re-elaborates a subtype's icon when its base class is edited", async () => {
+    const { provider, client, apis } = makeInstanceProbe();
+    client.invoke.mockImplementation(async () => ({
+      instance: subtypeInstance("Lib.Base"),
+    }));
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    // Rendering the subtype records `Lib.Base` as a dependency of its icon.
+    send({ type: "libraryIcon", requestId: "1", className: "Lib.Sub" });
+    await flush();
+    expect(apis()).toContain("getModelInstanceAnnotation");
+
+    // Editing the base cascades to the subtype; its inherited icon must
+    // re-elaborate even though the subtype itself was not the edited class.
+    provider.iconChanged("Lib.Base");
+    client.invoke.mockClear();
+    send({ type: "libraryIcon", requestId: "2", className: "Lib.Sub" });
+    await flush();
+
+    expect(apis()).toContain("getModelInstance");
+    expect(apis()).not.toContain("getModelInstanceAnnotation");
+  });
+
+  it("drops the stale reverse edge when a subtype's extends chain changes", async () => {
+    const { provider, client, apis } = makeInstanceProbe();
+    client.invoke
+      .mockImplementationOnce(async () => ({
+        instance: subtypeInstance("Lib.Base"),
+      }))
+      .mockImplementation(async () => ({
+        instance: subtypeInstance("Lib.Other"),
+      }));
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    // First render records `Lib.Base` → `Lib.Sub`.
+    send({ type: "libraryIcon", requestId: "1", className: "Lib.Sub" });
+    await flush();
+
+    // Re-render the subtype against a different base; recording the new edge
+    // must prune the old `Lib.Base` → `Lib.Sub` one.
+    provider.iconChanged("Lib.Sub");
+    send({ type: "libraryIcon", requestId: "2", className: "Lib.Sub" });
+    await flush();
+
+    // Editing the former base must no longer reach the subtype: its cached
+    // icon stays, so the next request serves the cache without an OMC read.
+    client.invoke.mockClear();
+    provider.iconChanged("Lib.Base");
+    send({ type: "libraryIcon", requestId: "3", className: "Lib.Sub" });
+    await flush();
+
+    expect(apis()).toEqual([]);
+  });
+
+  it("keeps a subtype's dependency edge when a re-render fails", async () => {
+    const { provider, client, apis } = makeInstanceProbe();
+    client.invoke
+      .mockImplementationOnce(async () => ({
+        instance: subtypeInstance("Lib.Base"),
+      }))
+      .mockImplementation(async () => {
+        throw new Error("OMC read failed");
+      });
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    // First render records `Lib.Base` → `Lib.Sub`.
+    send({ type: "libraryIcon", requestId: "1", className: "Lib.Sub" });
+    await flush();
+
+    // A failing re-render reports an unknown chain, not an empty one, so the
+    // recorded edge must survive rather than being pruned.
+    provider.iconChanged("Lib.Sub");
+    send({ type: "libraryIcon", requestId: "2", className: "Lib.Sub" });
+    await flush();
+
+    // Editing the base must still reach the subtype: it re-renders rather than
+    // serving a cache hit.
+    client.invoke.mockClear();
+    provider.iconChanged("Lib.Base");
+    send({ type: "libraryIcon", requestId: "3", className: "Lib.Sub" });
+    await flush();
+
+    expect(apis()).toContain("getModelInstance");
+  });
+
+  it("leaves a subtype's cached icon untouched when an unrelated class is edited", async () => {
+    const { provider, client, apis } = makeInstanceProbe();
+    client.invoke.mockImplementation(async () => ({
+      instance: subtypeInstance("Lib.Base"),
+    }));
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    send({ type: "libraryIcon", requestId: "1", className: "Lib.Sub" });
+    await flush();
+
+    // An edit to a class the subtype does not inherit from must not evict it;
+    // the next request serves the cache without any OMC read.
+    provider.iconChanged("Lib.Unrelated");
+    client.invoke.mockClear();
+    send({ type: "libraryIcon", requestId: "2", className: "Lib.Sub" });
+    await flush();
+
+    expect(apis()).toEqual([]);
   });
 
   it("abandons a search's queued lookups when the webview cancels it", async () => {

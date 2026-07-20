@@ -65,6 +65,17 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
    *  marks the edited class here because OMC's cheap annotation read lags a
    *  commit behind; the mark is consumed by the render it triggers. */
   private readonly freshOnce = new Set<string>();
+  /** Base class → the rendered classes whose icon inherits its graphics, built
+   *  from each render's `extends` chain. `iconChanged` cascades an edit down
+   *  this index so a subtype's inherited icon refreshes with its base. Edges
+   *  are not pruned on cache eviction, only on re-render: a stale or emptied
+   *  edge can only over-invalidate (a redundant re-request), never render wrong
+   *  bytes, and it self-heals on the subtype's next render. */
+  private readonly iconDependents = new Map<string, Set<string>>();
+  /** Class → the base classes recorded for its last render, so a re-render can
+   *  prune its stale reverse edges out of {@link iconDependents} before adding
+   *  the fresh ones. */
+  private readonly iconDependsOn = new Map<string, readonly string[]>();
   /** In-flight searches, so `libraryCancel` can abandon their queued lookups. */
   private readonly searches = new Map<string, AbortController>();
 
@@ -105,18 +116,53 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
     void this.post({ type: "libraryChildrenChanged", parent });
   }
 
-  /** `className`'s rendered icon may have changed: evict that one class from
-   *  the host caches and tell the webview to re-request it. A render already
-   *  in flight carries pre-mutation bytes — disowning its `iconInFlight`
-   *  entry keeps it from writing into the cache or being joined. The re-request
-   *  must re-elaborate the class (`freshOnce`): a mutation just landed, and
-   *  OMC's cheap annotation read would still report the prior elaboration. */
+  /** `className`'s rendered icon may have changed: invalidate it and every
+   *  class whose icon inherits its graphics. A subtype's icon includes its
+   *  base's shapes, so an edit to the base must refresh the subtype too — the
+   *  base is not part of the subtype's own last elaboration, so its cheap
+   *  annotation read would still paint the pre-edit inherited icon. */
   iconChanged(className: string): void {
+    this.invalidateIcon(className);
+    for (const dependent of this.iconDependents.get(className) ?? []) {
+      this.invalidateIcon(dependent);
+    }
+  }
+
+  /** Evict one class from the host caches and tell the webview to re-request
+   *  it. A render already in flight carries pre-mutation bytes — disowning its
+   *  `iconInFlight` entry keeps it from writing into the cache or being joined.
+   *  The re-request must re-elaborate the class (`freshOnce`): a mutation just
+   *  landed, and OMC's cheap annotation read would still report the prior
+   *  elaboration. */
+  private invalidateIcon(className: string): void {
     this.iconCache.delete(className);
     this.previewCache.delete(className);
     this.iconInFlight.delete(className);
     this.freshOnce.add(className);
     void this.post({ type: "libraryIconChanged", className });
+  }
+
+  /** Record the base classes a render found in `className`'s `extends` chain,
+   *  replacing any edges from its previous render, so `iconChanged` on a base
+   *  reaches this subtype. Recorded at render completion: a base edited during
+   *  the subtype's very first render has no edge yet, so that one render can
+   *  miss the cascade until the subtype is next requested. */
+  private recordIconDependencies(
+    className: string,
+    dependsOn: readonly string[],
+  ): void {
+    for (const base of this.iconDependsOn.get(className) ?? []) {
+      this.iconDependents.get(base)?.delete(className);
+    }
+    this.iconDependsOn.set(className, dependsOn);
+    for (const base of dependsOn) {
+      let dependents = this.iconDependents.get(base);
+      if (dependents === undefined) {
+        dependents = new Set();
+        this.iconDependents.set(base, dependents);
+      }
+      dependents.add(className);
+    }
   }
 
   /** Abandon a search the webview no longer wants. Its queued OMC lookups stop
@@ -309,11 +355,16 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
     let self: Promise<string | undefined> | undefined = undefined;
     const promise = (async () => {
       const client = await this.ensureClient();
-      const svg = await libraryIconSvg(client, className, fresh);
+      const { svg, dependsOn } = await libraryIconSvg(client, className, fresh);
       // Cache only while still owned: `refresh` and `iconChanged` disown the
       // in-flight entry, and a disowned render carries pre-mutation bytes.
       if (self !== undefined && this.iconInFlight.get(className) === self) {
         this.iconCache.set(className, svg);
+        // A failed render reports `dependsOn` as `undefined` (chain unknown);
+        // keep the last good edges rather than pruning them off a transient miss.
+        if (dependsOn !== undefined) {
+          this.recordIconDependencies(className, dependsOn);
+        }
       }
       const shape = svg === undefined ? "no icon" : `${svg.length} bytes`;
       log.debug(
