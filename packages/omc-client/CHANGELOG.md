@@ -1,0 +1,127 @@
+# Changelog
+
+## [0.0.2](https://github.com/dicode-ayo/modelica-wrapper/compare/@dicode/omc-client-v0.0.1...@dicode/omc-client-v0.0.2) (2026-07-20)
+
+
+### Features
+
+* add produceSimulationModel + SOLVER_METHODS to omc-client ([49e28fd](https://github.com/dicode-ayo/modelica-wrapper/commit/49e28fd825821c476b897e6fc16f9cc826fdc765))
+* add pure produceParameterModel producer to omc-client ([f9d6251](https://github.com/dicode-ayo/modelica-wrapper/commit/f9d625144fa7d7452c4f4c48ab45c7f736439d12))
+* adding and moving ([6aece74](https://github.com/dicode-ayo/modelica-wrapper/commit/6aece7431041aa90cb289b3b150f22be20b3212b))
+* better renderer ([442db61](https://github.com/dicode-ayo/modelica-wrapper/commit/442db61b9e20f54bc957071d95823c1fe2fad758))
+* ci and api update ([df3ebee](https://github.com/dicode-ayo/modelica-wrapper/commit/df3ebee9bf18fdda891e11a3f19611ff814311d3))
+* conditional ports/components + resolved-parameter label overlay ([6038ee1](https://github.com/dicode-ayo/modelica-wrapper/commit/6038ee1f659dc3c841bd5808c664b60c5741d323))
+* connector check ([9701dd2](https://github.com/dicode-ayo/modelica-wrapper/commit/9701dd298ecbf557d9b8ea89adcb81b22cf7c8a4))
+* debounced semantic check for modelica-source edits with structured diagnostics ([06edec0](https://github.com/dicode-ayo/modelica-wrapper/commit/06edec0e83cb0bdb2de8826fe314debb8e045508))
+* debounced semantic check for modelica-source edits with structured diagnostics ([7fe7d24](https://github.com/dicode-ayo/modelica-wrapper/commit/7fe7d240c34f67ad234ab9de862a2787a0552cb1))
+* **diagram-svg:** SVG icon renderer + Storybook ([e2c9d06](https://github.com/dicode-ayo/modelica-wrapper/commit/e2c9d062179f256226680dac173132f54c7842e3))
+* **diagram:** honour connection annotation colour ([#219](https://github.com/dicode-ayo/modelica-wrapper/issues/219)) ([#232](https://github.com/dicode-ayo/modelica-wrapper/issues/232)) ([a95765a](https://github.com/dicode-ayo/modelica-wrapper/commit/a95765aa1150e3ca45d7a18a5446f3c6983da159))
+* **documentation:** render symbolic parameter defaults like OMEdit ([#322](https://github.com/dicode-ayo/modelica-wrapper/issues/322)) ([630d46f](https://github.com/dicode-ayo/modelica-wrapper/commit/630d46fa4c8be42282b41eaaad88bd2dedb2f922))
+* expression eval ([a571eea](https://github.com/dicode-ayo/modelica-wrapper/commit/a571eeabd3704891ec92b7cb6f90faffb630ccbb))
+* **extension:** resolve and relay the drag-to-place preview definition ([#259](https://github.com/dicode-ayo/modelica-wrapper/issues/259)) ([5923725](https://github.com/dicode-ayo/modelica-wrapper/commit/5923725b0fdcee92de4aa3e8b16c1b773290d76e))
+* **extension:** shape properties panel for annotation editing (C6, [#211](https://github.com/dicode-ayo/modelica-wrapper/issues/211)) ([#224](https://github.com/dicode-ayo/modelica-wrapper/issues/224)) ([07e42f1](https://github.com/dicode-ayo/modelica-wrapper/commit/07e42f1dd7ce09c01e866ed1bd5d8d776f15e68f))
+* gate conditional components/ports + plumb resolved params into the layout ([19e2481](https://github.com/dicode-ayo/modelica-wrapper/commit/19e248100b2a9eff1e5c5df874b0a042e82d6a5b))
+* getModelInstance + getModelInstanceAnnotation wrappers ([533d814](https://github.com/dicode-ayo/modelica-wrapper/commit/533d8146e814b115cd763030c9830807602c9884))
+* grid allign ([5275110](https://github.com/dicode-ayo/modelica-wrapper/commit/527511056c0fff91ae4a89745d1200fbe2823846))
+* **label:** array dims in %name + convertUnits wrapper ([#28](https://github.com/dicode-ayo/modelica-wrapper/issues/28)) ([#59](https://github.com/dicode-ayo/modelica-wrapper/issues/59)) ([62e0fd5](https://github.com/dicode-ayo/modelica-wrapper/commit/62e0fd5e68e15e278d2a038d5c3cc5373788e4b7))
+* **library:** refresh a subtype's icon when its base class changes ([#337](https://github.com/dicode-ayo/modelica-wrapper/issues/337)) ([dc05d15](https://github.com/dicode-ayo/modelica-wrapper/commit/dc05d1581b71424fe23ced10ea94fee9bb324cae))
+* more omc functions ([2245c0e](https://github.com/dicode-ayo/modelica-wrapper/commit/2245c0e7718841213ca933c6ad4ae65657669eb6))
+* omc api ([4fe996f](https://github.com/dicode-ayo/modelica-wrapper/commit/4fe996f6a061f4f368f671ddbe753b65ffed6a36))
+* **omc-client,extension:** preserve __OpenModelica_infoHeader on documentation write ([#308](https://github.com/dicode-ayo/modelica-wrapper/issues/308)) ([b62fee6](https://github.com/dicode-ayo/modelica-wrapper/commit/b62fee671981c5118e6afb8a2f92be407eef2247))
+* **omc-client:** add getModelInstance and getModelInstanceAnnotation wrappers ([7f7fd41](https://github.com/dicode-ayo/modelica-wrapper/commit/7f7fd419ad722be9dc45fe6ad7ebe55576633c76))
+* **omc-client:** add MCP-ready descriptions to every wrapper, schema, and registry entry ([208bb2b](https://github.com/dicode-ayo/modelica-wrapper/commit/208bb2b16a327efbee64790782c9476c36ff9416))
+* **omc-client:** add modern element + model-instance + library APIs ([2aa2693](https://github.com/dicode-ayo/modelica-wrapper/commit/2aa26939411e8b6dee7a5b657d09af3b76114715))
+* **omc-client:** cover extends-modifier wrappers + add derived-class readers ([#36](https://github.com/dicode-ayo/modelica-wrapper/issues/36)) ([#55](https://github.com/dicode-ayo/modelica-wrapper/issues/55)) ([486ae92](https://github.com/dicode-ayo/modelica-wrapper/commit/486ae926d597ca4b95e03b9bc35bd4a1cdc16ed9))
+* **omc-client:** DiagramLayout producer over getModelInstance ([86fe42f](https://github.com/dicode-ayo/modelica-wrapper/commit/86fe42f37b0c107cc9a4a39ebf462fea4e882ade))
+* **omc-client:** DiagramLayout producer over getModelInstance ([3f93804](https://github.com/dicode-ayo/modelica-wrapper/commit/3f93804198b106d6d96cc8c8147ed7b983f01f65))
+* **omc-client:** graphics write path — Icon/Diagram shape add/modify/delete ([#186](https://github.com/dicode-ayo/modelica-wrapper/issues/186)) ([#197](https://github.com/dicode-ayo/modelica-wrapper/issues/197)) ([7464600](https://github.com/dicode-ayo/modelica-wrapper/commit/7464600cf08ef83dade8fc4dd0fa7ef41240210c))
+* **omc-client:** parse Q-IDENT (Modelica spec §2.3.1 quoted identifiers) ([7bd14e7](https://github.com/dicode-ayo/modelica-wrapper/commit/7bd14e73c18a1e0c7baa336a363b4345e4f347a3))
+* **omc-client:** wrap 16 indexed getNth* / count readers ([#34](https://github.com/dicode-ayo/modelica-wrapper/issues/34)) ([#53](https://github.com/dicode-ayo/modelica-wrapper/issues/53)) ([88f4275](https://github.com/dicode-ayo/modelica-wrapper/commit/88f4275be3b1697ae387de1f34aec37640d0a86e))
+* **omc-client:** wrap 5 solver getter siblings ([#41](https://github.com/dicode-ayo/modelica-wrapper/issues/41)) ([#49](https://github.com/dicode-ayo/modelica-wrapper/issues/49)) ([ebd3a37](https://github.com/dicode-ayo/modelica-wrapper/commit/ebd3a371231461d399eba7e4598f4ad92371a270))
+* **omc-client:** wrap 9 is* class-shape predicates ([#33](https://github.com/dicode-ayo/modelica-wrapper/issues/33)) ([#51](https://github.com/dicode-ayo/modelica-wrapper/issues/51)) ([cd63a40](https://github.com/dicode-ayo/modelica-wrapper/commit/cd63a4083abfe152c6612a315a51c36051a7507d))
+* **omc-client:** wrap browsing extras (extendsFrom, getAllSubtypeOf, ...) ([#42](https://github.com/dicode-ayo/modelica-wrapper/issues/42)) ([#52](https://github.com/dicode-ayo/modelica-wrapper/issues/52)) ([a1dea8a](https://github.com/dicode-ayo/modelica-wrapper/commit/a1dea8a58dfd68b6410665ab092fad5f7d85dd2e))
+* **omc-client:** wrap getDerivedUnits, uriToFilename, qualifyPath, loadClassContentString ([#63](https://github.com/dicode-ayo/modelica-wrapper/issues/63) [#64](https://github.com/dicode-ayo/modelica-wrapper/issues/64) [#65](https://github.com/dicode-ayo/modelica-wrapper/issues/65)) ([#67](https://github.com/dicode-ayo/modelica-wrapper/issues/67)) ([d692537](https://github.com/dicode-ayo/modelica-wrapper/commit/d6925374aa5e85572c02ccc015301c6965e3c476))
+* **omc-client:** wrap getImportCount + getNthImport ([#43](https://github.com/dicode-ayo/modelica-wrapper/issues/43)) ([#46](https://github.com/dicode-ayo/modelica-wrapper/issues/46)) ([7d301ca](https://github.com/dicode-ayo/modelica-wrapper/commit/7d301cacbbb4f78a75600432b2b5e2d0462824be))
+* **omc-client:** wrap library version-conversion + gate network tests ([#40](https://github.com/dicode-ayo/modelica-wrapper/issues/40)) ([#48](https://github.com/dicode-ayo/modelica-wrapper/issues/48)) ([4df5980](https://github.com/dicode-ayo/modelica-wrapper/commit/4df5980b61b9a88fa9161558cc7fecb0793d3dbc))
+* **omc-client:** wrap newModel; confirm create*/save ⛔ on pin ([#35](https://github.com/dicode-ayo/modelica-wrapper/issues/35)) ([#54](https://github.com/dicode-ayo/modelica-wrapper/issues/54)) ([88d19cd](https://github.com/dicode-ayo/modelica-wrapper/commit/88d19cd9b95fa24321586eed3464f23d7536d7b1))
+* **omc-client:** wrap updateConnectionNames + updateTransition ([#37](https://github.com/dicode-ayo/modelica-wrapper/issues/37)) ([#47](https://github.com/dicode-ayo/modelica-wrapper/issues/47)) ([a87072f](https://github.com/dicode-ayo/modelica-wrapper/commit/a87072fcdea924d81efdcb199f31821f8f80359d))
+* parameter drover ([e000e80](https://github.com/dicode-ayo/modelica-wrapper/commit/e000e8048307e17900093ab172ecb82f266df500))
+* per-instance hiddenPorts (handles torque.useSupport et al.) ([6b46139](https://github.com/dicode-ayo/modelica-wrapper/commit/6b4613961aed68b5dc44e96b5ef516fc54fe35fd))
+* **postprocessing:** result-view contract + pure helpers + result-ui/ui-common packages ([#82](https://github.com/dicode-ayo/modelica-wrapper/issues/82)) ([f98f04e](https://github.com/dicode-ayo/modelica-wrapper/commit/f98f04ec9d7904fd4955c207c581fb99f00cd863))
+* **postprocessing:** result-view document contract + pure helpers ([039a9dd](https://github.com/dicode-ayo/modelica-wrapper/commit/039a9ddf617b5f0d8500124f8772e08fbb52e570))
+* pure produceParameterModel producer in omc-client (PR 1/2) ([97090f0](https://github.com/dicode-ayo/modelica-wrapper/commit/97090f06aeca22bfab008d52b4124ee73445a649))
+* refactor help ([5baf361](https://github.com/dicode-ayo/modelica-wrapper/commit/5baf361214d4d42e04232ab6e5d3aa4f0a5a36b8))
+* **release:** build [@modelica-wrapper](https://github.com/modelica-wrapper) libs with tsup and publish to npm ([0a4ae50](https://github.com/dicode-ayo/modelica-wrapper/commit/0a4ae506928f19fa1579cda0ca78f5e95a40d376))
+* run simulation ([9900767](https://github.com/dicode-ayo/modelica-wrapper/commit/990076756524b71546dafc06fe4b753b37b0bc9c))
+* show units on diagram value labels ([#71](https://github.com/dicode-ayo/modelica-wrapper/issues/71)) ([c265736](https://github.com/dicode-ayo/modelica-wrapper/commit/c265736579e278ea5923844a6302db8313ddcde9))
+* show units on diagram value labels ([#71](https://github.com/dicode-ayo/modelica-wrapper/issues/71)) ([09cd3a2](https://github.com/dicode-ayo/modelica-wrapper/commit/09cd3a2d0f767055bffb8f4015cc4c01618d3502))
+* simulation results postprocessing ([0083645](https://github.com/dicode-ayo/modelica-wrapper/commit/0083645d794a4d848f6c10df82369811b63230ed))
+* simulation results postprocessing ([ef36367](https://github.com/dicode-ayo/modelica-wrapper/commit/ef3636752e34fff38d58f40c75499c8bc1eeb391))
+* updateConnectionNames for in-place connection-endpoint rename ([#26](https://github.com/dicode-ayo/modelica-wrapper/issues/26)) ([#60](https://github.com/dicode-ayo/modelica-wrapper/issues/60)) ([090e3ed](https://github.com/dicode-ayo/modelica-wrapper/commit/090e3edfaf886a6123ea3ce28ee3cdc54f5a9f30))
+
+
+### Bug Fixes
+
+* address post-merge review follow-ups ([#76](https://github.com/dicode-ayo/modelica-wrapper/issues/76), items 1–18) ([d4e1bff](https://github.com/dicode-ayo/modelica-wrapper/commit/d4e1bff92199360cca2447bffe22a3bfcbfc476a))
+* correct coverage.md headline + assert it in recount script ([#76](https://github.com/dicode-ayo/modelica-wrapper/issues/76) item 18) ([53d7bd5](https://github.com/dicode-ayo/modelica-wrapper/commit/53d7bd59e3edbf1e40c1eaf573a62eaddd93fc1e))
+* **diagram,omc-client:** close remaining issue [#76](https://github.com/dicode-ayo/modelica-wrapper/issues/76) nits ([#194](https://github.com/dicode-ayo/modelica-wrapper/issues/194)) ([45fe725](https://github.com/dicode-ayo/modelica-wrapper/commit/45fe725a5fe1784eb2ea6b880c52b449451f3f32))
+* **diagram:** carry connection Line style through the write path ([#219](https://github.com/dicode-ayo/modelica-wrapper/issues/219) P1) ([#237](https://github.com/dicode-ayo/modelica-wrapper/issues/237)) ([8c1474c](https://github.com/dicode-ayo/modelica-wrapper/commit/8c1474cf6610c3f7e6b261c083f19f82c5692e44))
+* **diagram:** honour placement flip and primitivesVisible in icon layers ([#220](https://github.com/dicode-ayo/modelica-wrapper/issues/220)) ([393b95d](https://github.com/dicode-ayo/modelica-wrapper/commit/393b95d9cd1120a7799a4320e3077e80bbe8a68f))
+* gate wrapped per-port conditions + filter connections to gated endpoints ([#76](https://github.com/dicode-ayo/modelica-wrapper/issues/76) items 5, 6) ([8317408](https://github.com/dicode-ayo/modelica-wrapper/commit/8317408d510127ef7234de98cb3d7257eb867940))
+* getModelInstanceAnnotation test uses Sin instead of PID_Controller ([955bfe7](https://github.com/dicode-ayo/modelica-wrapper/commit/955bfe7caf8cf35d57cfecb04d3c54de873d0398))
+* host-class display units, formatNumber rounding, convertUnits fallback ([#76](https://github.com/dicode-ayo/modelica-wrapper/issues/76) items 10, 11, 12) ([3d52d89](https://github.com/dicode-ayo/modelica-wrapper/commit/3d52d89607b52a7b9c9b190b36d301e42ec7c974))
+* importFMU.workdir defaults to "" (use cwd), not literal "&lt;default&gt;" ([#76](https://github.com/dicode-ayo/modelica-wrapper/issues/76) item 16) ([7bbafae](https://github.com/dicode-ayo/modelica-wrapper/commit/7bbafaed9ef240db6a8d66dce9a64fde8e4fb44e))
+* **importFMU:** modelName is TypeName, not String + FMU pipeline test ([0adc684](https://github.com/dicode-ayo/modelica-wrapper/commit/0adc684a69c7dd64f8aff4ed4e9d83452586d76f))
+* **omc-client:** add cd wrapper; route REPL :cd through it ([323c776](https://github.com/dicode-ayo/modelica-wrapper/commit/323c776442b2ed7b8dd212c44b50fc8966f15a6e))
+* **omc-client:** address PR review feedback ([4528abb](https://github.com/dicode-ayo/modelica-wrapper/commit/4528abbe337b965b9a0c038f2da2921b1925189b))
+* **omc-client:** keep quoted identifiers inside dotted class names ([#265](https://github.com/dicode-ayo/modelica-wrapper/issues/265)) ([e7415ba](https://github.com/dicode-ayo/modelica-wrapper/commit/e7415ba5a4f727753ee0811b5827c9216c42e0fa))
+* **omc-client:** make port-file path deterministic via TMPDIR + USER override ([38b9e57](https://github.com/dicode-ayo/modelica-wrapper/commit/38b9e5708a121780d91c7077209f0ca6ab51b4f9))
+* **omc-client:** probe root-uid port-file path; capture OMC stderr in CI ([1edc756](https://github.com/dicode-ayo/modelica-wrapper/commit/1edc756412b090fa5d0baddfc3a81e7cd7879bfb))
+* **omc-client:** surface a clear error when getModelInstance sees a partially-loaded class ([#301](https://github.com/dicode-ayo/modelica-wrapper/issues/301)) ([8166e16](https://github.com/dicode-ayo/modelica-wrapper/commit/8166e168ba0fe0c1c54cbffc2acfeaf64ed0aee8))
+* **omc-client:** survive a timed-out call; stop draining superseded library searches ([#260](https://github.com/dicode-ayo/modelica-wrapper/issues/260)) ([34ade9d](https://github.com/dicode-ayo/modelica-wrapper/commit/34ade9d85bf0bc7850295f9a31b163e0d5d68b8c))
+* **omc-client:** teach parse.ts to handle keyword args and $-prefixed idents ([cc5ce13](https://github.com/dicode-ayo/modelica-wrapper/commit/cc5ce1319133e3112f1956dc4d95fc9bfd7bcba1))
+* **omc-client:** tighten ModelInstance schema recursion + drop wrapper casts ([1974bf1](https://github.com/dicode-ayo/modelica-wrapper/commit/1974bf183835feeaf3a00a952ad24a45f0cee649))
+* **omc-client:** wire setElementAnnotation working payload ([#38](https://github.com/dicode-ayo/modelica-wrapper/issues/38)) ([#50](https://github.com/dicode-ayo/modelica-wrapper/issues/50)) ([1037cc9](https://github.com/dicode-ayo/modelica-wrapper/commit/1037cc9f0e92c077ccf5638de1a730d324edb2ab))
+* parser robustness + CI integration infrastructure ([93d0d46](https://github.com/dicode-ayo/modelica-wrapper/commit/93d0d4643d98312e502ca34768b9c5a1107d571a))
+* surface and apply per-shape GraphicItem origin/rotation/visible ([#76](https://github.com/dicode-ayo/modelica-wrapper/issues/76) item 15) ([2c37c5d](https://github.com/dicode-ayo/modelica-wrapper/commit/2c37c5db11e75f40ba452d037708f5690c45f115))
+* surface success:false on connection/component mutators ([#76](https://github.com/dicode-ayo/modelica-wrapper/issues/76) root cause, items 7, 13) ([b352944](https://github.com/dicode-ayo/modelica-wrapper/commit/b352944053115a42bc8b2e87f1f0028bce11ffbc))
+
+
+### Performance Improvements
+
+* filtered getModelInstanceAnnotation for icon-only loads ([#25](https://github.com/dicode-ayo/modelica-wrapper/issues/25)) ([#56](https://github.com/dicode-ayo/modelica-wrapper/issues/56)) ([dec8e69](https://github.com/dicode-ayo/modelica-wrapper/commit/dec8e691d410f5fcaa943a66906fca87426a1174))
+
+
+### Code Refactoring
+
+* extension migration to produceParameterModel + session unit cache (PR 2/2) ([7250703](https://github.com/dicode-ayo/modelica-wrapper/commit/72507033f99b66585d415e475a7286f0c1e597ca))
+* **omc-client:** drop unused parameterModelToJsonSchema adapter (YAGNI) ([50e875e](https://github.com/dicode-ayo/modelica-wrapper/commit/50e875e18cbd61473c80f464fe80d17b6f30ee82))
+* **omc-client:** extract atomic Zod field schemas for second DRY pass ([7a83dd5](https://github.com/dicode-ayo/modelica-wrapper/commit/7a83dd5842976e29c4aa9f584b1365c7d47a213a))
+* **omc-client:** extract shared schemas; reduce schema duplication ([dd74155](https://github.com/dicode-ayo/modelica-wrapper/commit/dd7415547c27493f88fed550f3ecb5ca8078ac50))
+* **omc-client:** move expressionToString beside the expression evaluator ([#324](https://github.com/dicode-ayo/modelica-wrapper/issues/324)) ([765cb7f](https://github.com/dicode-ayo/modelica-wrapper/commit/765cb7fe6bc6f29644c2ec281b1614d6a0f27a91))
+* **omc-client:** regenerate ModelInstance fixtures on demand instead of committing them ([cc9dbfb](https://github.com/dicode-ayo/modelica-wrapper/commit/cc9dbfb1aef31d7059f0a2051547aef045724514))
+* **postprocessing:** address review feedback ([27caece](https://github.com/dicode-ayo/modelica-wrapper/commit/27caeced0200c4f656caf79479b068c2570e7d71))
+* **postprocessing:** review-pass polish on result-view cards UI (follow-up to [#84](https://github.com/dicode-ayo/modelica-wrapper/issues/84)) ([ea5a8ab](https://github.com/dicode-ayo/modelica-wrapper/commit/ea5a8ab72f3e27246e9359de4bc9f39d2bd25915))
+* **postprocessing:** review-pass polish on the result-view cards UI ([b041ecd](https://github.com/dicode-ayo/modelica-wrapper/commit/b041ecd7e783dbc2067742bb3d5533b049d3d63c))
+* **producer:** drop the evaluator-based condition path ([1a86411](https://github.com/dicode-ayo/modelica-wrapper/commit/1a864119ac6de5ecf8acee636b1ea337163c57e2))
+* **release:** publish libraries under the [@dicode](https://github.com/dicode) npm scope ([550c81c](https://github.com/dicode-ayo/modelica-wrapper/commit/550c81c7fde30179d419e968b821429b7b488b59))
+
+
+### Documentation
+
+* codify OMEdit cross-reference as the prioritization method (audit §1.1) ([#66](https://github.com/dicode-ayo/modelica-wrapper/issues/66)) ([0c89ee5](https://github.com/dicode-ayo/modelica-wrapper/commit/0c89ee5975bd3af5d291bd1c79a9add29358c0ba))
+* standalone docs for packages ([ba40263](https://github.com/dicode-ayo/modelica-wrapper/commit/ba4026330bab5d476c6923cd66543d174f1daff4))
+* update docs ([f9e3ccc](https://github.com/dicode-ayo/modelica-wrapper/commit/f9e3ccc8b35c6fb1f57029b1b1e2a60a7647ad08))
+
+
+### Tests
+
+* address PR [#3](https://github.com/dicode-ayo/modelica-wrapper/issues/3) review — fixture imports + process.test docstring ([ed6a2b4](https://github.com/dicode-ayo/modelica-wrapper/commit/ed6a2b458836f669cd89d90cef108d95eb025372))
+* api test coverage ([b49a2fe](https://github.com/dicode-ayo/modelica-wrapper/commit/b49a2fe645d0d91d0d257b6d966e32080026422a))
+* clear 20 it.todos + fix silent getParameterValue String-quote bug ([757cbc8](https://github.com/dicode-ayo/modelica-wrapper/commit/757cbc846c8924c5db8732a1f61504ebc19997b9))
+* clear 9 more it.todos via fixture-based tests ([fc0fa88](https://github.com/dicode-ayo/modelica-wrapper/commit/fc0fa88b827453f64d734a3c20a2772452a0eed9))
+* cover translate/build/simulate/translateModelXML in heavy suite ([20f5df1](https://github.com/dicode-ayo/modelica-wrapper/commit/20f5df1f7bf5a199ad97d3e42ca92ad2ed237ee0))
+* **omc-client:** cover inherited-class map annotation readers ([#39](https://github.com/dicode-ayo/modelica-wrapper/issues/39)) ([#44](https://github.com/dicode-ayo/modelica-wrapper/issues/44)) ([00ceca7](https://github.com/dicode-ayo/modelica-wrapper/commit/00ceca77b44be01edc98e241dc8ab6d61335486e))
+* **omc-client:** drop stale raw-JSON-string assertion for getModelInstance ([26311f4](https://github.com/dicode-ayo/modelica-wrapper/commit/26311f488af3b3f9d40d80cf9fc40a1a1b7e6fe0))
+* **omc-client:** replace JSON fixtures with synthetic ModelInstance ([be8f162](https://github.com/dicode-ayo/modelica-wrapper/commit/be8f1627e74df9b3bd1b195f11fa671dfc72b0a7))
+* **omc-client:** replace snapshot dumps with structural well-formedness tests ([e2da510](https://github.com/dicode-ayo/modelica-wrapper/commit/e2da51094694ddb1e7acca4cf5db567f59d43f62))
