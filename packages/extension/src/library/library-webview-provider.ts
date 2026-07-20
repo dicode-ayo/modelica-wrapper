@@ -76,6 +76,12 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
    *  prune its stale reverse edges out of {@link iconDependents} before adding
    *  the fresh ones. */
   private readonly iconDependsOn = new Map<string, readonly string[]>();
+  /** Monotonic tick bumped by every {@link invalidateIcon}. A render snapshots
+   *  it at the start and compares against {@link lastInvalidated} on completion
+   *  to catch a base edited mid-render, before its edge existed to cascade. */
+  private invalidationTick = 0;
+  /** Class → the {@link invalidationTick} at which it was last invalidated. */
+  private readonly lastInvalidated = new Map<string, number>();
   /** In-flight searches, so `libraryCancel` can abandon their queued lookups. */
   private readonly searches = new Map<string, AbortController>();
 
@@ -139,14 +145,15 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
     this.previewCache.delete(className);
     this.iconInFlight.delete(className);
     this.freshOnce.add(className);
+    this.lastInvalidated.set(className, ++this.invalidationTick);
     void this.post({ type: "libraryIconChanged", className });
   }
 
   /** Record the base classes a render found in `className`'s `extends` chain,
    *  replacing any edges from its previous render, so `iconChanged` on a base
-   *  reaches this subtype. Recorded at render completion: a base edited during
-   *  the subtype's very first render has no edge yet, so that one render can
-   *  miss the cascade until the subtype is next requested. */
+   *  reaches this subtype. Edges are recorded at render completion; an edit to a
+   *  base during the render lands before its edge exists, and the caller's
+   *  {@link baseInvalidatedSince} check covers that window. */
   private recordIconDependencies(
     className: string,
     dependsOn: readonly string[],
@@ -163,6 +170,18 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
       }
       dependents.add(className);
     }
+  }
+
+  /** Whether any of `bases` was invalidated after `sinceTick` — i.e. edited
+   *  while a render that started at `sinceTick` was still in flight, so that
+   *  render's bytes predate the edit. */
+  private baseInvalidatedSince(
+    bases: readonly string[],
+    sinceTick: number,
+  ): boolean {
+    return bases.some(
+      (base) => (this.lastInvalidated.get(base) ?? 0) > sinceTick,
+    );
   }
 
   /** Abandon a search the webview no longer wants. Its queued OMC lookups stop
@@ -350,6 +369,12 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
     // re-elaborate. `iconChanged` re-arms the mark when it disowns a running
     // render, so the replacement this starts still forces a full instance.
     const fresh = this.freshOnce.delete(className);
+    // Snapshot before the fetch: a base invalidated past this tick may predate
+    // the bytes this render produces, and its edge doesn't exist yet to
+    // cascade, so the completion re-invalidates on it. Conservative — the
+    // snapshot precedes the OMC read, so at worst it costs one needless
+    // re-render, never a stale icon.
+    const startTick = this.invalidationTick;
     // `self` aliases `promise` for the ownership checks — the const can't be
     // referenced inside its own initializer's immediately-invoked body.
     let self: Promise<string | undefined> | undefined = undefined;
@@ -364,6 +389,11 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
         // keep the last good edges rather than pruning them off a transient miss.
         if (dependsOn !== undefined) {
           this.recordIconDependencies(className, dependsOn);
+          // A base edited mid-render missed the cascade (no edge yet); now that
+          // its edge exists, drop the possibly-stale bytes and re-render.
+          if (this.baseInvalidatedSince(dependsOn, startTick)) {
+            this.invalidateIcon(className);
+          }
         }
       }
       const shape = svg === undefined ? "no icon" : `${svg.length} bytes`;

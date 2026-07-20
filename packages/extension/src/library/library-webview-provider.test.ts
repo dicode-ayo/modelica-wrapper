@@ -534,6 +534,40 @@ describe("LibraryWebviewProvider", () => {
     expect(apis()).toContain("getModelInstance");
   });
 
+  it("re-invalidates a subtype when its base is edited during the subtype's first render", async () => {
+    const { provider, client, apis } = makeInstanceProbe();
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    client.invoke
+      .mockImplementationOnce(async () => {
+        await held;
+        return { instance: subtypeInstance("Lib.Base") };
+      })
+      .mockImplementation(async () => ({
+        instance: subtypeInstance("Lib.Base"),
+      }));
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    // Hold the subtype's first render open and edit the base while it is in
+    // flight, before the base → subtype edge has been recorded.
+    send({ type: "libraryIcon", requestId: "1", className: "Lib.Sub" });
+    await flush();
+    provider.iconChanged("Lib.Base");
+    release();
+    await flush();
+
+    // Completion must notice the mid-render edit and re-invalidate the subtype;
+    // the re-request forces a full instantiation rather than a cheap annotation
+    // re-read that would still report the pre-edit inherited shapes.
+    client.invoke.mockClear();
+    send({ type: "libraryIcon", requestId: "2", className: "Lib.Sub" });
+    await flush();
+
+    expect(apis()).toContain("getModelInstance");
+    expect(apis()).not.toContain("getModelInstanceAnnotation");
+  });
+
   it("leaves a subtype's cached icon untouched when an unrelated class is edited", async () => {
     const { provider, client, apis } = makeInstanceProbe();
     client.invoke.mockImplementation(async () => ({
