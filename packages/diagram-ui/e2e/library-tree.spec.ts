@@ -1,11 +1,10 @@
 /**
  * Real-browser coverage for `<om-library-tree>`'s lazy, per-visible-row icon
  * fetch and `invalidateIcon`. happy-dom can't render `<lit-virtualizer>` (its
- * constructor needs a real `ResizeObserver`), so the fetch driven by the
- * virtualizer's `rangeChanged` event — and the `.icon-svg` markup it produces
- * — isn't observable through the vitest suite; that harness instead drove the
- * private `renderRow`/`onTreeRangeChanged`/`onSearchRangeChanged` directly.
- * The `WithIcons` story logs every `iconSvg` call to `#om-library-tree-icon-calls`.
+ * constructor needs a real `ResizeObserver`), so neither the `rangeChanged`-
+ * driven fetch nor the `.icon-svg` markup it produces is observable through
+ * the vitest suite. The `WithIcons` story logs every `iconSvg` call to
+ * `#om-library-tree-icon-calls`.
  */
 
 import { test, expect, type Page } from "@playwright/test";
@@ -30,17 +29,19 @@ function invalidateIcon(page: Page, className: string): Promise<void> {
   return page.evaluate(
     (name) =>
       (
-        document.querySelector("om-library-tree") as unknown as LibraryTreeEl
-      ).invalidateIcon(name),
+        document.querySelector("om-library-tree") as LibraryTreeEl | null
+      )?.invalidateIcon(name),
     className,
   );
 }
 
+test.beforeEach(async ({ page }) => {
+  await page.goto(STORY, { waitUntil: "networkidle" });
+});
+
 test("fetches and renders icons lazily for rows the virtualizer shows, and only those", async ({
   page,
 }) => {
-  await page.goto(STORY, { waitUntil: "networkidle" });
-
   // Both roots ("Modelica", "Complex") are within the initial viewport.
   await expect(row(page, "Modelica").locator(".icon-svg")).toBeVisible();
   await expect(row(page, "Complex").locator(".icon-svg")).toBeVisible();
@@ -56,8 +57,6 @@ test("fetches and renders icons lazily for rows the virtualizer shows, and only 
 test("invalidateIcon re-fetches a shown icon and skips one never shown", async ({
   page,
 }) => {
-  await page.goto(STORY, { waitUntil: "networkidle" });
-
   const title = row(page, "Modelica").locator(".icon-svg title");
   await expect(title).toHaveText("Modelica v1");
 
@@ -72,8 +71,6 @@ test("invalidateIcon re-fetches a shown icon and skips one never shown", async (
 test("search rows also get their icons lazily fetched; ancestor packages don't", async ({
   page,
 }) => {
-  await page.goto(STORY, { waitUntil: "networkidle" });
-
   await page.locator("om-library-tree input.search").fill("gain");
   const hit = row(page, "Gain");
   await expect(hit).toBeVisible();

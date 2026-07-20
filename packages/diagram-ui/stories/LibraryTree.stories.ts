@@ -10,10 +10,9 @@
  *   - PlacementDrag: rows arm `om-library-placement-start` on pointer-down
  *     instead of an HTML5 drag, as the sidebar webview needs.
  *   - WithIcons: a data source that resolves `iconSvg`, logging every call to
- *     `#om-library-tree-icon-calls` — the real-browser harness for the lazy,
- *     per-visible-row icon fetch (`packages/diagram-ui/e2e/library-tree.spec.ts`).
- *     happy-dom can't render `<lit-virtualizer>`, so this behavior isn't
- *     observable through the vitest suite.
+ *     `#om-library-tree-icon-calls`. happy-dom can't render `<lit-virtualizer>`,
+ *     so the lazy, per-visible-row icon fetch isn't observable through the
+ *     vitest suite.
  */
 
 import type { Meta, StoryObj } from "@storybook/web-components";
