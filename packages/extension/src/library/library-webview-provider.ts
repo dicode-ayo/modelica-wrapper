@@ -298,9 +298,10 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
       return inFlight;
     }
     const started = Date.now();
-    // Consumed here, not on join/cache-hit: only a render that actually starts
-    // clears the mark, and a disowned render leaves it set so its replacement
-    // still re-elaborates.
+    // Consumed here, not on join/cache-hit: a cache-hit serves evicted-then-
+    // stale bytes and a join rides an already-started render, so neither would
+    // re-elaborate. `iconChanged` re-arms the mark when it disowns a running
+    // render, so the replacement this starts still forces a full instance.
     const fresh = this.freshOnce.delete(className);
     // `self` aliases `promise` for the ownership checks — the const can't be
     // referenced inside its own initializer's immediately-invoked body.

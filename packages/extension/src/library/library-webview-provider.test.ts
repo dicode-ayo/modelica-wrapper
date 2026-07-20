@@ -93,6 +93,50 @@ function makeProvider() {
   return { provider, client };
 }
 
+/** A class with no drawable graphics — the icon render still routes through an
+ *  OMC read, which is what the freshness probes assert on. */
+const EMPTY_ICON_INSTANCE = {
+  name: "Lib.A",
+  restriction: "model",
+  annotation: {
+    Icon: {
+      coordinateSystem: {
+        extent: [
+          [-100, -100],
+          [100, 100],
+        ],
+      },
+      graphics: [],
+    },
+  },
+  elements: [],
+};
+
+/**
+ * A provider whose client answers every icon read — both the cheap
+ * `getModelInstanceAnnotation` and the full `getModelInstance` — so a test can
+ * assert on WHICH call a render makes. `apis()` lists the OMC method names
+ * invoked so far.
+ */
+function makeInstanceProbe() {
+  const client = {
+    getClassNames: vi.fn(async () => ({ classNames: ["Modelica"] })),
+    searchClassNames: vi.fn(async () => ({ classNames: [] })),
+    getClassRestriction: vi.fn(async () => ({ restriction: "model" })),
+    invoke: vi.fn(async () => ({ instance: EMPTY_ICON_INSTANCE })),
+  };
+  const uri = {
+    fsPath: "/ext",
+    path: "/ext",
+  } as unknown as import("vscode").Uri;
+  const provider = new LibraryWebviewProvider(
+    uri,
+    async () => client as unknown as OmcClient,
+  );
+  const apis = (): unknown[] => client.invoke.mock.calls.map((c) => c[0]);
+  return { provider, client, apis };
+}
+
 beforeEach(() => {
   executedCommands.length = 0;
 });
@@ -299,45 +343,13 @@ describe("LibraryWebviewProvider", () => {
   });
 
   it("re-renders an edited class from a full instance, not the stale annotation", async () => {
-    // Both reads answer; the assertion is which OMC call the render makes, not
-    // the rendered bytes — an empty-icon instance still routes through one.
-    const instance = {
-      name: "Lib.A",
-      restriction: "model",
-      annotation: {
-        Icon: {
-          coordinateSystem: {
-            extent: [
-              [-100, -100],
-              [100, 100],
-            ],
-          },
-          graphics: [],
-        },
-      },
-      elements: [],
-    };
-    const client = {
-      getClassNames: vi.fn(async () => ({ classNames: ["Modelica"] })),
-      searchClassNames: vi.fn(async () => ({ classNames: [] })),
-      getClassRestriction: vi.fn(async () => ({ restriction: "model" })),
-      invoke: vi.fn(async () => ({ instance })),
-    };
-    const uri = {
-      fsPath: "/ext",
-      path: "/ext",
-    } as unknown as import("vscode").Uri;
-    const provider = new LibraryWebviewProvider(
-      uri,
-      async () => client as unknown as OmcClient,
-    );
+    const { provider, client, apis } = makeInstanceProbe();
     const { view, send } = fakeView();
     provider.resolveWebviewView(view);
 
     // First paint takes the cheap annotation path.
     send({ type: "libraryIcon", requestId: "1", className: "Lib.A" });
     await flush();
-    const apis = (): unknown[] => client.invoke.mock.calls.map((c) => c[0]);
     expect(apis()).toContain("getModelInstanceAnnotation");
 
     // An edit lands; the next render must re-elaborate rather than trust the
@@ -347,6 +359,35 @@ describe("LibraryWebviewProvider", () => {
     send({ type: "libraryIcon", requestId: "2", className: "Lib.A" });
     await flush();
 
+    expect(apis()).toContain("getModelInstance");
+    expect(apis()).not.toContain("getModelInstanceAnnotation");
+  });
+
+  it("forces a full instance on the render that replaces one disowned mid-edit", async () => {
+    const { provider, client, apis } = makeInstanceProbe();
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    // Hold the first (annotation) render open so the edit lands while it is in
+    // flight; iconChanged then disowns it and marks the class fresh.
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    client.invoke.mockImplementationOnce(async () => {
+      await held;
+      return { instance: EMPTY_ICON_INSTANCE };
+    });
+
+    send({ type: "libraryIcon", requestId: "1", className: "Lib.A" });
+    await flush();
+    provider.iconChanged("Lib.A");
+    release();
+    await flush();
+
+    // The replacement render must still re-elaborate, not fall back to the
+    // annotation read whose reply predates the edit.
+    client.invoke.mockClear();
+    send({ type: "libraryIcon", requestId: "2", className: "Lib.A" });
+    await flush();
     expect(apis()).toContain("getModelInstance");
     expect(apis()).not.toContain("getModelInstanceAnnotation");
   });
