@@ -13,6 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 import type { OmcClient } from "@dicode/omc-client";
 
+import { createSelfWriteGuard } from "./self-write-guard.js";
 import { ModelicaSourceProvider, sourceUriFor } from "./source-provider.js";
 
 const URI = sourceUriFor("Pkg.M");
@@ -43,7 +44,10 @@ function makeClient(opts?: {
 describe("ModelicaSourceProvider: graceful resolution", () => {
   it("stats an unresolvable class as an empty file instead of throwing", async () => {
     const { client } = makeClient({ getClassInformationThrows: true });
-    const provider = new ModelicaSourceProvider(() => Promise.resolve(client));
+    const provider = new ModelicaSourceProvider(
+      () => Promise.resolve(client),
+      createSelfWriteGuard(),
+    );
 
     const stat = await provider.stat(URI);
 
@@ -52,8 +56,9 @@ describe("ModelicaSourceProvider: graceful resolution", () => {
   });
 
   it("stats an empty file when ensureClient itself throws", async () => {
-    const provider = new ModelicaSourceProvider(() =>
-      Promise.reject(new Error("OMC unavailable")),
+    const provider = new ModelicaSourceProvider(
+      () => Promise.reject(new Error("OMC unavailable")),
+      createSelfWriteGuard(),
     );
 
     const stat = await provider.stat(URI);
@@ -64,7 +69,10 @@ describe("ModelicaSourceProvider: graceful resolution", () => {
 
   it("reads an unresolvable class as empty instead of hard-failing", async () => {
     const { client } = makeClient({ listFileThrows: true });
-    const provider = new ModelicaSourceProvider(() => Promise.resolve(client));
+    const provider = new ModelicaSourceProvider(
+      () => Promise.resolve(client),
+      createSelfWriteGuard(),
+    );
 
     const bytes = await provider.readFile(URI);
 
@@ -75,7 +83,10 @@ describe("ModelicaSourceProvider: graceful resolution", () => {
 describe("ModelicaSourceProvider: empty-source save guard", () => {
   it("refuses to persist a blank buffer over a real class (no truncation)", async () => {
     const { client, loadString } = makeClient();
-    const provider = new ModelicaSourceProvider(() => Promise.resolve(client));
+    const provider = new ModelicaSourceProvider(
+      () => Promise.resolve(client),
+      createSelfWriteGuard(),
+    );
 
     await expect(
       provider.writeFile(URI, Buffer.from("   \n\t  ")),

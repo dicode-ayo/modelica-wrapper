@@ -21,6 +21,7 @@ import {
   linkPersistedClass,
   persistClassUnderWorkspace,
 } from "./persist.js";
+import { createSelfWriteGuard } from "./self-write-guard.js";
 
 describe("isLikelyDiskPath", () => {
   it("rejects empty + pseudo paths, accepts real paths", () => {
@@ -119,6 +120,7 @@ function baseClassInfo(fileName: string) {
 
 describe("persistClassUnderWorkspace", () => {
   let tmp: string;
+  const guard = createSelfWriteGuard();
   beforeEach(async () => {
     tmp = await fsp.mkdtemp(path.join(os.tmpdir(), "persist-test-"));
   });
@@ -133,6 +135,7 @@ describe("persistClassUnderWorkspace", () => {
       tmp,
       "TempModel",
       "model TempModel\nend TempModel;\n",
+      guard,
     );
     expect(result.leafPath).toBe(path.join(tmp, "TempModel.mo"));
     expect(result.newParents).toEqual([]);
@@ -149,6 +152,7 @@ describe("persistClassUnderWorkspace", () => {
       tmp,
       "MyLib.Sub.Model",
       "block Model\nend Model;\n",
+      guard,
     );
     expect(result.leafPath).toBe(path.join(tmp, "MyLib", "Sub", "Model.mo"));
     expect(result.newParents).toEqual([
@@ -183,6 +187,7 @@ describe("persistClassUnderWorkspace", () => {
       tmp,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      guard,
     );
     // Still still our hand-edited content — persist must not clobber.
     expect(await fsp.readFile(path.join(myLibDir, "package.mo"), "utf8")).toBe(
@@ -203,6 +208,7 @@ describe("persistClassUnderWorkspace", () => {
       tmp,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      guard,
     );
     // Leaf lands inside MyLib's existing directory, NOT under tmp.
     expect(result.leafPath).toBe(path.join(externalDir, "Model.mo"));
@@ -226,6 +232,7 @@ describe("persistClassUnderWorkspace", () => {
       tmp,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      guard,
     );
     expect(result.leafPath).toBe(path.join(tmp, "MyLib", "Model.mo"));
     expect(result.newParents).toEqual([
@@ -242,6 +249,7 @@ describe("persistClassUnderWorkspace", () => {
       tmp,
       "MyLib.Sub.Model",
       "block Model\nend Model;\n",
+      guard,
     );
     expect(
       await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
@@ -262,6 +270,7 @@ describe("persistClassUnderWorkspace", () => {
       tmp,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      guard,
     );
     expect(
       await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
@@ -280,6 +289,7 @@ describe("persistClassUnderWorkspace", () => {
       tmp,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      guard,
     );
     expect(
       await fsp.readFile(path.join(myLibDir, "package.order"), "utf8"),
@@ -295,6 +305,7 @@ describe("persistClassUnderWorkspace", () => {
       tmp,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      guard,
     );
     expect(
       await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
@@ -310,6 +321,7 @@ describe("persistClassUnderWorkspace", () => {
       tmp,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      guard,
     );
     expect(
       await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
@@ -325,6 +337,7 @@ describe("persistClassUnderWorkspace", () => {
       tmp,
       "MyLib.Model",
       "model Model\nend Model;\n",
+      guard,
     );
     expect(
       await fsp.readFile(path.join(tmp, "MyLib", "package.order"), "utf8"),
@@ -338,6 +351,7 @@ describe("persistClassUnderWorkspace", () => {
       tmp,
       "MyPkg",
       "package MyPkg\nend MyPkg;\n",
+      guard,
       "package",
     );
     expect(result.leafPath).toBe(path.join(tmp, "MyPkg", "package.mo"));
@@ -356,6 +370,7 @@ describe("persistClassUnderWorkspace", () => {
       tmp,
       "MyLib.SubPkg",
       "within MyLib;\npackage SubPkg\nend SubPkg;\n",
+      guard,
       "package",
     );
     expect(result.leafPath).toBe(
@@ -377,6 +392,7 @@ describe("persistClassUnderWorkspace", () => {
       tmp,
       "MyPkg",
       "package MyPkg\nend MyPkg;\n",
+      guard,
       "package",
     );
     await linkPersistedClass(client, "MyPkg", result);
@@ -402,6 +418,7 @@ describe("persistClassUnderWorkspace", () => {
       tmp,
       "MyPkg.Child",
       "within MyPkg;\nmodel Child\nend Child;\n",
+      guard,
     );
     expect(result.leafPath).toBe(path.join(tmp, "MyPkg", "Child.mo"));
     expect(result.newParents).toEqual([]);

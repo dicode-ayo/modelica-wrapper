@@ -8,6 +8,7 @@ import * as vscode from "vscode";
 import type { OmcClient } from "@dicode/omc-client";
 
 import type { LibraryWebviewProvider } from "../library/library-webview-provider.js";
+import type { SelfWriteGuard } from "../self-write-guard.js";
 import type { ModelicaSourceProvider } from "../source-provider.js";
 
 /**
@@ -48,6 +49,8 @@ export interface CommandContext {
   readonly sourceProvider: ModelicaSourceProvider;
   /** Shared `vscode.DiagnosticCollection("modelica")` for OMC-emitted diagnostics. */
   readonly diagnostics: vscode.DiagnosticCollection;
+  /** Tags the extension's own `.mo` disk writes so the workspace watcher skips them. */
+  readonly selfWriteGuard: SelfWriteGuard;
 }
 
 /**

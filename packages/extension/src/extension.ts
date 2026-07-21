@@ -41,6 +41,8 @@ import {
   MODELICA_SOURCE_SCHEME,
   ModelicaSourceProvider,
 } from "./source-provider.js";
+import { registerMoFileWatcher } from "./mo-file-watcher.js";
+import { createSelfWriteGuard } from "./self-write-guard.js";
 import { syncIconsWithSource } from "./source-icon-sync.js";
 import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
@@ -75,7 +77,11 @@ export async function activate(
     { webviewOptions: { retainContextWhenHidden: true } },
   );
 
-  const sourceProvider = new ModelicaSourceProvider(ensureClient);
+  const selfWriteGuard = createSelfWriteGuard();
+  const sourceProvider = new ModelicaSourceProvider(
+    ensureClient,
+    selfWriteGuard,
+  );
   const docHtmlProvider = new DocumentationHtmlProvider(
     ensureClient,
     (name) => {
@@ -116,6 +122,17 @@ export async function activate(
   // only through the source provider's change broadcast.
   context.subscriptions.push(syncIconsWithSource(sourceProvider, libraryTree));
 
+  // Keep OMC and the sidebar reactive to bare `.mo` edits (text-editor saves,
+  // Explorer/external create/delete) that never pass through a mutation command.
+  context.subscriptions.push(
+    registerMoFileWatcher({
+      ensureClient,
+      libraryTree,
+      sourceProvider,
+      guard: selfWriteGuard,
+    }),
+  );
+
   context.subscriptions.push(
     libraryView,
     diagnostics,
@@ -148,6 +165,7 @@ export async function activate(
       libraryTree,
       sourceProvider,
       diagnostics,
+      selfWriteGuard,
     }),
   );
 

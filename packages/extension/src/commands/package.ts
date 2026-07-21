@@ -9,9 +9,10 @@
  */
 
 import * as path from "node:path";
-import { writeFile } from "node:fs/promises";
 
 import * as vscode from "vscode";
+
+import type { SelfWriteGuard } from "../self-write-guard.js";
 
 import {
   sanitizeIdentifier,
@@ -45,6 +46,7 @@ export async function loadRootPackage(
   client: PkgInitClient,
   wsUri: vscode.Uri,
   pkgName: string,
+  guard: SelfWriteGuard,
 ): Promise<PkgInitResult> {
   const pkgFile = vscode.Uri.joinPath(wsUri, "package.mo").fsPath;
   const pkgBody = `package ${pkgName}\nend ${pkgName};\n`;
@@ -60,7 +62,7 @@ export async function loadRootPackage(
       errorString: errorString || "loadString returned success=false",
     };
   }
-  await writeFile(pkgFile, pkgBody, "utf8");
+  await guard.write(pkgFile, pkgBody);
   await client.setSourceFile({ typeName: pkgName, fileName: pkgFile });
   return { success: true, pkgFile };
 }
@@ -89,7 +91,12 @@ export function registerPackageCommands(
         const log = createReplLog(`initializeWorkspaceAsPackage ${pkgName}`);
         try {
           const c = await ctx.ensureClient();
-          const result = await loadRootPackage(c, ws.uri, pkgName);
+          const result = await loadRootPackage(
+            c,
+            ws.uri,
+            pkgName,
+            ctx.selfWriteGuard,
+          );
           if (!result.success) {
             log.error(result.errorString);
             await vscode.window.showErrorMessage(
@@ -140,7 +147,7 @@ export function registerPackageCommands(
           const { contents } = await c.listFile({
             typeName: node.qualifiedName,
           });
-          await writeFile(target.fsPath, contents, "utf8");
+          await ctx.selfWriteGuard.write(target.fsPath, contents);
           await c.setSourceFile({
             typeName: node.qualifiedName,
             fileName: target.fsPath,
