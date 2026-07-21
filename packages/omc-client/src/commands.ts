@@ -19,6 +19,7 @@ export type OmcFunction =
   | "getVersion"
 
   // --- Browsing ---
+  | "getModelicaPath"
   | "getClassNames"
   | "searchClassNames"
   | "getClassInformation"

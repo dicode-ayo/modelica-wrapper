@@ -46,6 +46,7 @@ import {
   persistClassUnderWorkspace,
 } from "./persist.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
+import { isSystemLibraryClass } from "./system-library.js";
 
 export { isLikelyDiskPath, linkPersistedClass, persistClassUnderWorkspace };
 export type { PersistResult } from "./persist.js";
@@ -62,6 +63,12 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
 
   /** Per-URI version counter used as mtime; bumped on write + external invalidate. */
   private readonly versions = new Map<string, number>();
+
+  /**
+   * Per-class read-only verdict, captured on first read (before any mutation
+   * repoints the class's source path away from its MODELICAPATH origin).
+   */
+  private readonly readOnly = new Map<string, boolean>();
 
   constructor(
     private readonly ensureClient: EnsureClient,
@@ -118,6 +125,9 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
     try {
       const client = await this.ensureClient();
       const { contents } = await client.listFile({ typeName });
+      // Capture the read-only verdict now, while the class still points at its
+      // on-disk origin — a later edit repoints it to this scheme's URI.
+      await this.isReadOnly(typeName);
       return Buffer.from(contents, "utf8");
     } catch (err) {
       // Mirror `stat`: a class that isn't loaded (or no longer exists) reads as
@@ -133,6 +143,16 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
   async writeFile(uri: vscode.Uri, content: Uint8Array): Promise<void> {
     const typeName = qualifiedNameFromUri(uri);
     if (!typeName) throw vscode.FileSystemError.FileNotFound(uri);
+
+    // System libraries (loaded from MODELICAPATH) are read-only by origin even
+    // when their files are writable on disk. Refuse before any OMC mutation so
+    // a save can't corrupt an installed library's source.
+    if (await this.isReadOnly(typeName)) {
+      throw vscode.FileSystemError.NoPermissions(
+        `${typeName} belongs to a read-only system library`,
+      );
+    }
+
     const client = await this.ensureClient();
     const text = Buffer.from(content).toString("utf8");
 
@@ -245,6 +265,25 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
 
   private bump(uri: vscode.Uri): void {
     this.versions.set(uri.toString(), Date.now());
+  }
+
+  /**
+   * Whether `typeName` is a read-only system-library class. Memoized on the
+   * first lookup — which `readFile` forces before any edit — so the verdict
+   * reflects the class's on-disk origin, not a source path a mutation has since
+   * repointed to this scheme's URI. Failures don't block editing.
+   */
+  async isReadOnly(typeName: string): Promise<boolean> {
+    const cached = this.readOnly.get(typeName);
+    if (cached !== undefined) return cached;
+    try {
+      const client = await this.ensureClient();
+      const verdict = await isSystemLibraryClass(client, typeName);
+      this.readOnly.set(typeName, verdict);
+      return verdict;
+    } catch {
+      return false;
+    }
   }
 }
 
