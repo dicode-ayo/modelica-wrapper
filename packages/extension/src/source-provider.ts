@@ -45,6 +45,7 @@ import {
   linkPersistedClass,
   persistClassUnderWorkspace,
 } from "./persist.js";
+import type { SelfWriteGuard } from "./self-write-guard.js";
 
 export { isLikelyDiskPath, linkPersistedClass, persistClassUnderWorkspace };
 export type { PersistResult } from "./persist.js";
@@ -62,7 +63,10 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
   /** Per-URI version counter used as mtime; bumped on write + external invalidate. */
   private readonly versions = new Map<string, number>();
 
-  constructor(private readonly ensureClient: EnsureClient) {}
+  constructor(
+    private readonly ensureClient: EnsureClient,
+    private readonly guard: SelfWriteGuard,
+  ) {}
 
   // No real watchers; OMC mutations are surfaced via `notifySourceChanged`.
   watch(): vscode.Disposable {
@@ -175,8 +179,7 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
 
     if (isLikelyDiskPath(info.fileName)) {
       // (a) Write through to the existing on-disk source.
-      const fsp = await import("node:fs/promises");
-      await fsp.writeFile(info.fileName, text, "utf8");
+      await this.guard.write(info.fileName, text);
     } else {
       // (b) OMC-memory-only class — materialize under the workspace folder.
       const ws = vscode.workspace.workspaceFolders?.[0];
@@ -194,6 +197,7 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
           ws.uri.fsPath,
           typeName,
           text,
+          this.guard,
           restriction === "package" ? "package" : undefined,
         );
         await linkPersistedClass(client, typeName, result);

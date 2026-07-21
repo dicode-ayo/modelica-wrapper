@@ -91,7 +91,12 @@ export function registerClassCommands(
             const pkgLog = createReplLog(`createClass package ${pkgName}`);
             try {
               const c = await ctx.ensureClient();
-              const init = await loadRootPackage(c, ws.uri, pkgName);
+              const init = await loadRootPackage(
+                c,
+                ws.uri,
+                pkgName,
+                ctx.selfWriteGuard,
+              );
               if (!init.success) {
                 pkgLog.error(init.errorString);
                 await vscode.window.showErrorMessage(
@@ -144,6 +149,7 @@ export function registerClassCommands(
               ws.uri.fsPath,
               qualified,
               data,
+              ctx.selfWriteGuard,
               kind === "package" ? "package" : undefined,
             );
             await linkPersistedClass(c, qualified, result);

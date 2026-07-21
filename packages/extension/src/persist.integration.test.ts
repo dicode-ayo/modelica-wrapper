@@ -23,6 +23,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { OmcClient } from "@dicode/omc-client";
 
 import { linkPersistedClass, persistClassUnderWorkspace } from "./persist.js";
+import { createSelfWriteGuard } from "./self-write-guard.js";
 
 function shouldRun(): boolean {
   const flag = process.env.OMC_INTEGRATION;
@@ -67,6 +68,7 @@ async function loadStepwise(
 describeIf("persist + OMC roundtrip", () => {
   let client: OmcClient;
   let ws: string;
+  const guard = createSelfWriteGuard();
 
   beforeEach(async () => {
     client = await OmcClient.create({ omcPath: process.env.OMC_PATH ?? "" });
@@ -100,6 +102,7 @@ describeIf("persist + OMC roundtrip", () => {
       ws,
       "RoundtripFlat",
       src,
+      guard,
     );
     await linkPersistedClass(client, "RoundtripFlat", result);
 
@@ -132,6 +135,7 @@ describeIf("persist + OMC roundtrip", () => {
       ws,
       "RoundtripPkg.Sub.Model",
       src,
+      guard,
     );
     await linkPersistedClass(client, "RoundtripPkg.Sub.Model", result);
 
@@ -186,6 +190,7 @@ describeIf("persist + OMC roundtrip", () => {
       ws,
       "Roundtrip2.Sub.Reloaded",
       src,
+      guard,
     );
     await linkPersistedClass(client, "Roundtrip2.Sub.Reloaded", result);
     await client.close();

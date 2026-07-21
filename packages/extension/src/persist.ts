@@ -17,6 +17,7 @@ import * as path from "node:path";
 import type { OmcClient } from "@dicode/omc-client";
 
 import { pathExists } from "./fs-util.js";
+import type { SelfWriteGuard } from "./self-write-guard.js";
 
 /**
  * True if `s` looks like a real filesystem path we can hand to `fs.writeFile`.
@@ -72,6 +73,7 @@ export async function persistClassUnderWorkspace(
   workspaceRoot: string,
   qualifiedName: string,
   classText: string,
+  guard: SelfWriteGuard,
   leafKind?: "package",
 ): Promise<PersistResult> {
   const parts = qualifiedName.split(".");
@@ -90,10 +92,9 @@ export async function persistClassUnderWorkspace(
     if (!(await pathExists(pkgFile))) {
       const within = parts.slice(0, i).join(".");
       const header = within ? `within ${within};\n` : "";
-      await fsp.writeFile(
+      await guard.write(
         pkgFile,
         `${header}package ${parts[i]}\nend ${parts[i]};\n`,
-        "utf8",
       );
     }
     const orderFile = path.join(baseDir, "package.order");
@@ -128,7 +129,7 @@ export async function persistClassUnderWorkspace(
     leafPath = path.join(baseDir, `${leafName}.mo`);
     await fsp.mkdir(baseDir, { recursive: true });
   }
-  await fsp.writeFile(leafPath, classText, "utf8");
+  await guard.write(leafPath, classText);
   return { leafPath, newParents };
 }
 
