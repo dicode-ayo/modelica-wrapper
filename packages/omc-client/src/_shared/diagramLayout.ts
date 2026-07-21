@@ -302,6 +302,15 @@ export interface ConnectionEndpoint {
   component: string | undefined;
   /** The port name (last cref part). */
   port: string;
+  /**
+   * Rendered subscript suffix on the component part (e.g. `"[3]"`), absent
+   * when the component is unsubscripted. Kept separate from `component` so
+   * port/component lookups stay keyed by the bare name while the write path
+   * can still reconstruct the exact `connect(...)` cref OMC expects.
+   */
+  componentSubscripts?: string | undefined;
+  /** Rendered subscript suffix on the port part (e.g. `"[1]"`), absent when unsubscripted. */
+  portSubscripts?: string | undefined;
 }
 
 /**
@@ -561,6 +570,8 @@ export const ConnectionEndpointSchema = z
   .object({
     component: z.string().optional(),
     port: z.string(),
+    componentSubscripts: z.string().optional(),
+    portSubscripts: z.string().optional(),
   })
   .strict();
 

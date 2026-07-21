@@ -274,6 +274,47 @@ describe("diffLayouts", () => {
     expect(edits.some((e) => e.kind === "connectionAdded")).toBe(false);
   });
 
+  it("keys connectionWaypoints by the subscripted cref for a vector-port endpoint", () => {
+    // `connect(kinematicPTP.y[1], integrator.u)`: the `[1]` must survive into
+    // the `from` cref, else `updateConnection` matches nothing and silently
+    // drops the moved waypoints (the PID_Controller drag corruption).
+    const a = baseLayout();
+    a.connections = [
+      {
+        lhs: { component: "kinematicPTP", port: "y", portSubscripts: "[1]" },
+        rhs: { component: "integrator", port: "u" },
+        waypoints: [
+          [-71, 30],
+          [-65, 30],
+        ],
+      },
+    ];
+    const b = baseLayout();
+    b.connections = [
+      {
+        lhs: { component: "kinematicPTP", port: "y", portSubscripts: "[1]" },
+        rhs: { component: "integrator", port: "u" },
+        waypoints: [
+          [-71, 30],
+          [-48, 30],
+          [-48, 60],
+          [-25, 60],
+        ],
+      },
+    ];
+    expect(diffLayouts(a, b)).toContainEqual({
+      kind: "connectionWaypoints",
+      from: "kinematicPTP.y[1]",
+      to: "integrator.u",
+      waypoints: [
+        [-71, 30],
+        [-48, 30],
+        [-48, 60],
+        [-25, 60],
+      ],
+    });
+  });
+
   it("does not emit connectionWaypoints when waypoints are unchanged", () => {
     const a = baseLayout();
     const b = baseLayout();
