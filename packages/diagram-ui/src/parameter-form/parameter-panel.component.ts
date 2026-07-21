@@ -55,6 +55,9 @@ export class OmParameterPanel extends LitElement {
 
   /** Forwarded to `<om-parameter-form>` — gate the reset affordance. */
   @property({ type: Boolean, attribute: "show-reset" }) showReset = false;
+
+  /** Read-only: forwarded to `<om-parameter-form>` to render fields inert. */
+  @property({ type: Boolean, reflect: true }) readonly = false;
   @property({ attribute: "reset-label" }) resetLabel = "Reset to defaults";
 
   /** Forwarded straight to `<om-parameter-form>` — see its property docs. */
@@ -80,6 +83,7 @@ export class OmParameterPanel extends LitElement {
           .model=${this.model}
           .crefPrefix=${this.crefPrefix}
           ?show-reset=${this.showReset}
+          ?readonly=${this.readonly}
           title=${this.title}
           submit-label=${this.submitLabel}
           cancel-label=${this.cancelLabel}

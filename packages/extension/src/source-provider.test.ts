@@ -134,4 +134,29 @@ describe("ModelicaSourceProvider: read-only system libraries", () => {
     expect(await sysProvider.isReadOnly("Modelica.Blocks")).toBe(true);
     expect(await wsProvider.isReadOnly("Pkg.M")).toBe(false);
   });
+
+  it("stats a system-library class with the read-only permission", async () => {
+    const { client } = makeClient({ systemLib: true });
+    const provider = new ModelicaSourceProvider(
+      () => Promise.resolve(client),
+      createSelfWriteGuard(),
+    );
+
+    const stat = await provider.stat(URI);
+
+    // Drives the diagram editor's read-only view via `isReadOnlyDocument`.
+    expect(stat.permissions).toBe(vscode.FilePermission.Readonly);
+  });
+
+  it("stats a workspace class as writable", async () => {
+    const { client } = makeClient({ systemLib: false });
+    const provider = new ModelicaSourceProvider(
+      () => Promise.resolve(client),
+      createSelfWriteGuard(),
+    );
+
+    const stat = await provider.stat(URI);
+
+    expect(stat.permissions).toBeUndefined();
+  });
 });

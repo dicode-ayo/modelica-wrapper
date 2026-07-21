@@ -76,6 +76,8 @@ class OmWebviewRoot extends LitElement {
    *  action panel can disable the selection-scoped rotate / flip
    *  buttons when nothing is picked. */
   @state() private hasSelection = false;
+  /** Read-only class (system library): all edit affordances are suppressed. */
+  @state() private readOnly = false;
   @state() private activeTool: ToolId = "select";
   @state() private paramOpen = false;
   @state() private paramModel: ParameterModel | undefined = undefined;
@@ -146,6 +148,7 @@ class OmWebviewRoot extends LitElement {
       <om-graphical-layout
         .layout=${this.layout}
         host-managed-keys
+        ?readonly=${this.readOnly}
         ?perf-hud=${true}
         @om-graphical-layout-change=${this.onLayoutChange}
         @om-connection-create=${this.onConnectionCreate}
@@ -159,6 +162,9 @@ class OmWebviewRoot extends LitElement {
       <om-action-panel
         anchor="top-right"
         ?no-selection=${!this.hasSelection}
+        ?hide-rotate=${this.readOnly}
+        ?hide-flip=${this.readOnly}
+        ?hide-draw=${this.readOnly}
         .tool=${this.activeTool}
         @om-action-check=${() => this.post({ type: "actionCheck" })}
         @om-action-simulate=${() => this.post({ type: "actionSimulate" })}
@@ -172,6 +178,7 @@ class OmWebviewRoot extends LitElement {
       ></om-action-panel>
       <om-parameter-panel
         ?open=${this.paramOpen}
+        ?readonly=${this.readOnly}
         ?show-reset=${this.paramComponentName !== null}
         .model=${this.paramModel}
         .title=${this.paramTitle}
@@ -193,6 +200,10 @@ class OmWebviewRoot extends LitElement {
   private apply(message: ExtensionToWebview): void {
     switch (message.type) {
       case "init":
+        this.readOnly = message.readOnly;
+        this.layout = message.layout;
+        this.renderError = null;
+        return;
       case "layout":
         this.layout = message.layout;
         this.renderError = null;

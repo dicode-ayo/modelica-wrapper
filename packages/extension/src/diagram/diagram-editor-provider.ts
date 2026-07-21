@@ -285,7 +285,7 @@ export function resolveDiagramEditor(
           readOnly,
           mode,
         );
-        gate.send({ type: "init", layout, className });
+        gate.send({ type: "init", layout, className, readOnly });
       } catch (err) {
         const detail = (err as Error).message;
         gate.send({ type: "renderError", className, mode, detail });
