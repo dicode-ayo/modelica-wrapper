@@ -329,6 +329,197 @@ describe("applyDeltaMove", () => {
   });
 });
 
+describe("applySnapToExtents — connection re-anchor", () => {
+  const GRID: [number, number] = [2, 2];
+
+  // Component A off-grid on x: extent [[-9,-4],[1,6]] snaps to [[-8,-4],[2,6]]
+  // on the {2,2} grid — centre (-4,1) → (-3,1), a +1 x-translation.
+  function withComponentA(waypoints: Point[]): DiagramLayout {
+    return {
+      ...baseLayout(),
+      components: {
+        A: {
+          name: "A",
+          classRef: "K",
+          placement: {
+            extent: [
+              [-9, -4],
+              [1, 6],
+            ],
+          },
+        },
+      },
+      connectors: {},
+      connections: [
+        {
+          lhs: { component: "A", port: "y" },
+          rhs: { component: "ground", port: "u" },
+          waypoints,
+        },
+      ],
+    };
+  }
+
+  it("shifts the endpoint on the snapped component, keeping internal waypoints", () => {
+    // Without the re-anchor the port moves +1 but the wire's first point stays
+    // put, so the connection detaches from the block on commit.
+    const out = applySnapToExtents(
+      withComponentA([
+        [1, 1],
+        [5, 1],
+        [5, 20],
+      ]),
+      ["c:A"],
+      GRID,
+    );
+    expect(out.connections[0]?.waypoints).toEqual([
+      [2, 1],
+      [5, 1],
+      [5, 20],
+    ]);
+  });
+
+  it("snaps the component placement itself onto the grid", () => {
+    const out = applySnapToExtents(
+      withComponentA([
+        [1, 1],
+        [5, 20],
+      ]),
+      ["c:A"],
+      GRID,
+    );
+    expect(out.components.A?.placement.extent).toEqual([
+      [-8, -4],
+      [2, 6],
+    ]);
+  });
+
+  it("leaves a connection untouched when neither endpoint sits on a snapped entity", () => {
+    const layout: DiagramLayout = {
+      ...baseLayout(),
+      components: {
+        A: {
+          name: "A",
+          classRef: "K",
+          placement: {
+            extent: [
+              [-9, -4],
+              [1, 6],
+            ],
+          },
+        },
+      },
+      connectors: {},
+      connections: [
+        {
+          lhs: { component: "B", port: "y" },
+          rhs: { component: "ground", port: "u" },
+          waypoints: [
+            [0, 0],
+            [10, 0],
+          ],
+        },
+      ],
+    };
+    const out = applySnapToExtents(layout, ["c:A"], GRID);
+    expect(out.connections[0]?.waypoints).toEqual([
+      [0, 0],
+      [10, 0],
+    ]);
+  });
+
+  it("shifts the last waypoint when the snapped component is the rhs endpoint", () => {
+    const layout: DiagramLayout = {
+      ...baseLayout(),
+      components: {
+        A: {
+          name: "A",
+          classRef: "K",
+          placement: {
+            extent: [
+              [-9, -4],
+              [1, 6],
+            ],
+          },
+        },
+      },
+      connectors: {},
+      connections: [
+        {
+          lhs: { component: "source", port: "y" },
+          rhs: { component: "A", port: "u" },
+          waypoints: [
+            [5, 20],
+            [5, 1],
+            [1, 1],
+          ],
+        },
+      ],
+    };
+    const out = applySnapToExtents(layout, ["c:A"], GRID);
+    // rhs (on A) follows +1; the lhs end and the internal junction stay put.
+    expect(out.connections[0]?.waypoints).toEqual([
+      [5, 20],
+      [5, 1],
+      [2, 1],
+    ]);
+  });
+
+  it("re-anchors an endpoint on a snapped standalone connector", () => {
+    // Off-grid connector q: extent [[-51,-2],[-47,2]] snaps to [[-50,-2],[-46,2]]
+    // — centre (-49,0) → (-48,0), a +1 x-translation. The endpoint references it
+    // via `component: undefined, port: "q"`, exercising the connectorXf path.
+    const layout: DiagramLayout = {
+      ...baseLayout(),
+      connectors: {
+        q: {
+          name: "q",
+          classRef: "Pin",
+          placement: {
+            extent: [
+              [-51, -2],
+              [-47, 2],
+            ],
+          },
+        },
+      },
+      connections: [
+        {
+          lhs: { component: undefined, port: "q" },
+          rhs: { component: "R1", port: "p" },
+          waypoints: [
+            [-47, 0],
+            [0, 0],
+          ],
+        },
+      ],
+    };
+    const out = applySnapToExtents(layout, ["k:q"], GRID);
+    expect(out.connections[0]?.waypoints).toEqual([
+      [-46, 0],
+      [0, 0],
+    ]);
+    expect(out.connectors.q?.placement.extent).toEqual([
+      [-50, -2],
+      [-46, 2],
+    ]);
+  });
+
+  it("returns the same layout reference when the component is already on-grid", () => {
+    const layout = withComponentA([
+      [2, 1],
+      [5, 1],
+    ]);
+    layout.components.A!.placement = {
+      extent: [
+        [-8, -4],
+        [2, 6],
+      ],
+    };
+    expect(applySnapToExtents(layout, ["c:A"], GRID)).toBe(layout);
+  });
+});
+
 describe("applyDelete", () => {
   it("removes a component", () => {
     const l = applyDelete(baseLayout(), ["c:R1"]);

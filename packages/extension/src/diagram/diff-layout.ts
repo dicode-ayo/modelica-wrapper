@@ -99,8 +99,12 @@ export type LayoutEdit =
 function endpointToCref(c: {
   component: string | undefined;
   port: string;
+  componentSubscripts?: string | undefined;
+  portSubscripts?: string | undefined;
 }): string {
-  return c.component ? `${c.component}.${c.port}` : c.port;
+  const port = `${c.port}${c.portSubscripts ?? ""}`;
+  if (c.component === undefined) return port;
+  return `${c.component}${c.componentSubscripts ?? ""}.${port}`;
 }
 
 export function diffLayouts(

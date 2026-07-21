@@ -1,5 +1,7 @@
 import type {
   Color,
+  ConnectionEndpoint,
+  ConnectionLayout,
   DiagramLayout,
   Extent,
   IconLayer,
@@ -511,12 +513,15 @@ export function applySnapToExtents(
   }
   const set = partitionKeys(keys);
   let mutated = false;
+  const componentXf = new Map<string, PointXf>();
+  const connectorXf = new Map<string, PointXf>();
   const components = { ...layout.components };
   for (const id of set.components) {
     const c = components[id];
     if (!c) continue;
     const snapped = snapPlacement(c.placement, grid);
     if (snapped !== c.placement) {
+      componentXf.set(id, snapTransform(c.placement, snapped));
       components[id] = { ...c, placement: snapped };
       mutated = true;
     }
@@ -527,15 +532,73 @@ export function applySnapToExtents(
     if (!c) continue;
     const snapped = snapPlacement(c.placement, grid);
     if (snapped !== c.placement) {
+      connectorXf.set(id, snapTransform(c.placement, snapped));
       connectors[id] = { ...c, placement: snapped };
       mutated = true;
     }
   }
-  const base = mutated ? { ...layout, components, connectors } : layout;
+  const base = mutated
+    ? reanchorEndpointsToSnap(
+        { ...layout, components, connectors },
+        componentXf,
+        connectorXf,
+      )
+    : layout;
   return updateOwnShapes(base, set.shapes, (s) => {
     const snapped = snapShape(s, grid);
     return snapped === s ? null : snapped;
   });
+}
+
+/** The frame shift a grid snap imposes on a placement: a scale-about-centre,
+ *  since `snapExtent` rounds each corner independently (degenerates to a pure
+ *  translation when both corners shift by the same delta). */
+function snapTransform(before: Placement, after: Placement): PointXf {
+  return scaleAbout(
+    placementCentre(before),
+    placementCentre(after),
+    extentSpan(before.extent),
+    extentSpan(after.extent),
+  );
+}
+
+/**
+ * Re-anchor the terminal waypoint of each connection whose endpoint sits on a
+ * just-snapped component / connector, so the wire follows the port through the
+ * on-commit grid snap instead of detaching. Only `waypoints[0]` (lhs) and
+ * `waypoints[last]` (rhs) are transformed; internal waypoints are left intact,
+ * so a user-shaped route survives a snap.
+ */
+function reanchorEndpointsToSnap(
+  layout: DiagramLayout,
+  componentXf: Map<string, PointXf>,
+  connectorXf: Map<string, PointXf>,
+): DiagramLayout {
+  if (componentXf.size === 0 && connectorXf.size === 0) {
+    return layout;
+  }
+  let mutated = false;
+  const connections = layout.connections.map((conn) => {
+    if (conn.waypoints.length < 2) {
+      return conn;
+    }
+    const { lhsXf, rhsXf } = endpointTransforms(conn, componentXf, connectorXf);
+    if (!lhsXf && !rhsXf) {
+      return conn;
+    }
+    const waypoints = conn.waypoints.map(([x, y]) => [x, y] as Point);
+    const lastIdx = waypoints.length - 1;
+    const first = waypoints[0];
+    const last = waypoints[lastIdx];
+    if (first === undefined || last === undefined) {
+      return conn;
+    }
+    if (lhsXf) waypoints[0] = lhsXf(first);
+    if (rhsXf) waypoints[lastIdx] = rhsXf(last);
+    mutated = true;
+    return { ...conn, waypoints };
+  });
+  return mutated ? { ...layout, connections } : layout;
 }
 
 /** Sets the absolute placement extent of a single component. */
@@ -886,6 +949,24 @@ function scaleAbout(
  * endpoint moves; the alternative (rigidly carrying junctions) would
  * tilt segments off-axis once an endpoint rotates or scales.
  */
+/**
+ * The transforms to apply to a connection's lhs / rhs endpoints, resolved from
+ * the per-entity frame-change maps. A port sits on a sub-component
+ * (`endpoint.component`) or a standalone connector (`endpoint.port`); `undefined`
+ * means that endpoint's entity didn't move.
+ */
+function endpointTransforms(
+  conn: ConnectionLayout,
+  componentXf: Map<string, PointXf>,
+  connectorXf: Map<string, PointXf>,
+): { lhsXf: PointXf | undefined; rhsXf: PointXf | undefined } {
+  const resolve = (ep: ConnectionEndpoint): PointXf | undefined =>
+    ep.component !== undefined
+      ? componentXf.get(ep.component)
+      : connectorXf.get(ep.port);
+  return { lhsXf: resolve(conn.lhs), rhsXf: resolve(conn.rhs) };
+}
+
 function reanchorConnections(
   layout: DiagramLayout,
   componentXf: Map<string, PointXf>,
@@ -899,14 +980,7 @@ function reanchorConnections(
     if (conn.waypoints.length < 2) {
       return conn;
     }
-    const lhsXf =
-      conn.lhs.component !== undefined
-        ? componentXf.get(conn.lhs.component)
-        : connectorXf.get(conn.lhs.port);
-    const rhsXf =
-      conn.rhs.component !== undefined
-        ? componentXf.get(conn.rhs.component)
-        : connectorXf.get(conn.rhs.port);
+    const { lhsXf, rhsXf } = endpointTransforms(conn, componentXf, connectorXf);
     if (!lhsXf && !rhsXf) {
       return conn;
     }

@@ -274,6 +274,83 @@ describe("diffLayouts", () => {
     expect(edits.some((e) => e.kind === "connectionAdded")).toBe(false);
   });
 
+  it("keys connectionWaypoints by the subscripted cref for a vector-port endpoint", () => {
+    // `connect(kinematicPTP.y[1], integrator.u)`: the `[1]` must survive into
+    // the `from` cref, else `updateConnection` matches nothing and silently
+    // drops the moved waypoints (the PID_Controller drag corruption).
+    const a = baseLayout();
+    a.connections = [
+      {
+        lhs: { component: "kinematicPTP", port: "y", portSubscripts: "[1]" },
+        rhs: { component: "integrator", port: "u" },
+        waypoints: [
+          [-71, 30],
+          [-65, 30],
+        ],
+      },
+    ];
+    const b = baseLayout();
+    b.connections = [
+      {
+        lhs: { component: "kinematicPTP", port: "y", portSubscripts: "[1]" },
+        rhs: { component: "integrator", port: "u" },
+        waypoints: [
+          [-71, 30],
+          [-48, 30],
+          [-48, 60],
+          [-25, 60],
+        ],
+      },
+    ];
+    expect(diffLayouts(a, b)).toContainEqual({
+      kind: "connectionWaypoints",
+      from: "kinematicPTP.y[1]",
+      to: "integrator.u",
+      waypoints: [
+        [-71, 30],
+        [-48, 30],
+        [-48, 60],
+        [-25, 60],
+      ],
+    });
+  });
+
+  it("keys connectionWaypoints by the subscripted cref for a vector component", () => {
+    // Subscript on the component part (`pins[3].p`) must survive into `from`
+    // too, not just the port part.
+    const mk = (waypoints: [number, number][]): DiagramLayout => {
+      const l = baseLayout();
+      l.connections = [
+        {
+          lhs: { component: "pins", port: "p", componentSubscripts: "[3]" },
+          rhs: { component: "ground", port: "p" },
+          waypoints,
+        },
+      ];
+      return l;
+    };
+    expect(
+      diffLayouts(
+        mk([
+          [0, 0],
+          [10, 0],
+        ]),
+        mk([
+          [0, 0],
+          [10, 10],
+        ]),
+      ),
+    ).toContainEqual({
+      kind: "connectionWaypoints",
+      from: "pins[3].p",
+      to: "ground.p",
+      waypoints: [
+        [0, 0],
+        [10, 10],
+      ],
+    });
+  });
+
   it("does not emit connectionWaypoints when waypoints are unchanged", () => {
     const a = baseLayout();
     const b = baseLayout();

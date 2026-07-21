@@ -12,8 +12,10 @@
 import type {
   ComponentElement,
   ComponentRef,
+  ComponentRefPart,
   PlacementAnnotation,
 } from "../../_shared/modelInstance.js";
+import { expressionToString } from "../../eval/expression-to-string.js";
 import type {
   ConnectionEndpoint,
   Extent,
@@ -123,14 +125,48 @@ export function flattenCref(ref: ComponentRef): ConnectionEndpoint | undefined {
   const parts = ref.parts;
   if (!parts || parts.length === 0) return undefined;
   if (parts.length === 1) {
-    const port = parts[0]?.name;
-    if (typeof port !== "string") return undefined;
-    return { component: undefined, port };
+    const portPart = parts[0];
+    if (portPart === undefined || typeof portPart.name !== "string") {
+      return undefined;
+    }
+    return {
+      component: undefined,
+      port: portPart.name,
+      portSubscripts: renderSubscripts(portPart),
+    };
   }
-  const first = parts[0]?.name;
-  const last = parts[parts.length - 1]?.name;
-  if (typeof first !== "string" || typeof last !== "string") return undefined;
-  return { component: first, port: last };
+  const firstPart = parts[0];
+  const lastPart = parts[parts.length - 1];
+  if (
+    firstPart === undefined ||
+    lastPart === undefined ||
+    typeof firstPart.name !== "string" ||
+    typeof lastPart.name !== "string"
+  ) {
+    return undefined;
+  }
+  return {
+    component: firstPart.name,
+    port: lastPart.name,
+    componentSubscripts: renderSubscripts(firstPart),
+    portSubscripts: renderSubscripts(lastPart),
+  };
+}
+
+/**
+ * Rendered subscript suffix for a cref part (`"[3]"`, `"[2,4]"`), or
+ * `undefined` when the part is unsubscripted. `expressionToString` returns
+ * `""` for a subscript it can't print; we drop the whole suffix in that case
+ * rather than fabricate a `"[]"` — a wrong cref would silently miss on the
+ * `updateConnection` write path, the exact failure this suffix exists to
+ * prevent, so failing loud (endpoint won't persist) beats corrupting quietly.
+ */
+function renderSubscripts(part: ComponentRefPart): string | undefined {
+  const subs = part.subscripts;
+  if (!subs || subs.length === 0) return undefined;
+  const rendered = subs.map((s) => expressionToString(s));
+  if (rendered.some((s) => s.length === 0)) return undefined;
+  return `[${rendered.join(",")}]`;
 }
 
 export const _internal = {
