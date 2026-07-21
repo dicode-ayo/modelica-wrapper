@@ -341,6 +341,12 @@ export class OmParameterForm extends LitElement {
   @property({ attribute: "reset-label" }) resetLabel = "Reset to defaults";
 
   /**
+   * Read-only: render every field inert and drop the apply/reset actions, so a
+   * system-library class can be inspected but not edited.
+   */
+  @property({ type: Boolean, reflect: true }) readonly = false;
+
+  /**
    * Optional cref-prefix to strip when evaluating `Dialog.enable`
    * expressions. Component-level parameter forms set this to the
    * owning sub-component name so `PI.controllerType` in the
@@ -459,7 +465,7 @@ export class OmParameterForm extends LitElement {
       <form @submit=${this.onSubmit}>
         ${this.renderBody()}
         <div class="actions">
-          ${this.showReset
+          ${this.showReset && !this.readonly
             ? html`<wa-button
                 class="reset"
                 type="button"
@@ -474,15 +480,17 @@ export class OmParameterForm extends LitElement {
             variant="neutral"
             appearance="outlined"
             @click=${this.onCancel}
-            >${this.cancelLabel}</wa-button
+            >${this.readonly ? "Close" : this.cancelLabel}</wa-button
           >
-          <wa-button
-            type="submit"
-            variant="brand"
-            appearance="filled"
-            ?disabled=${!canSubmit}
-            >${this.submitLabel}</wa-button
-          >
+          ${this.readonly
+            ? nothing
+            : html`<wa-button
+                type="submit"
+                variant="brand"
+                appearance="filled"
+                ?disabled=${!canSubmit}
+                >${this.submitLabel}</wa-button
+              >`}
         </div>
       </form>
     `;
@@ -538,7 +546,7 @@ export class OmParameterForm extends LitElement {
   }
 
   private renderField(f: ParameterField): TemplateResult {
-    const enabled = this.isFieldEnabled(f);
+    const enabled = this.isFieldEnabled(f) && !this.readonly;
     // wa-input / wa-select host the label and hint internally (so WA's
     // form-control-label part can position them adjacent to the input);
     // wa-checkbox and the read-only "unsupported" display still need an

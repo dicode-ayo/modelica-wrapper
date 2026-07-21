@@ -93,14 +93,15 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
       const client = await this.ensureClient();
       const info = await client.getClassInformation({ typeName });
       const { contents } = await client.listFile({ typeName });
+      // A system-library class is read-only by origin even when its file is
+      // writable on disk, so `fileReadOnly` alone misses it.
+      const readOnly = info.fileReadOnly || (await this.isReadOnly(typeName));
       return {
         type: vscode.FileType.File,
         ctime: 0,
         mtime,
         size: Buffer.byteLength(contents, "utf8"),
-        ...(info.fileReadOnly
-          ? { permissions: vscode.FilePermission.Readonly }
-          : {}),
+        ...(readOnly ? { permissions: vscode.FilePermission.Readonly } : {}),
       };
     } catch (err) {
       log.warn(

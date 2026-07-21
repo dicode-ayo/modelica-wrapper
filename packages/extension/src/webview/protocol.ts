@@ -61,7 +61,13 @@ export type DiagramCommandId =
  */
 
 export type ExtensionToWebview =
-  | { type: "init"; layout: DiagramLayout; className: string }
+  | {
+      type: "init";
+      layout: DiagramLayout;
+      className: string;
+      /** True for a read-only class (system library); the webview suppresses all edit affordances. */
+      readOnly: boolean;
+    }
   | { type: "layout"; layout: DiagramLayout }
   | { type: "error"; message: string }
   | {
