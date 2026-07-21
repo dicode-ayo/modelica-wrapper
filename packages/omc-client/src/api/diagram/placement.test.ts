@@ -61,14 +61,25 @@ describe("flattenCref", () => {
     ).toEqual({
       component: "grid",
       port: "p",
-      componentSubscripts: "[2, 4]",
+      componentSubscripts: "[2,4]",
     });
   });
 
-  it("omits subscript fields entirely when unsubscripted", () => {
+  it("leaves subscript fields undefined when unsubscripted", () => {
     const ep = flattenCref(cref([{ name: "a" }, { name: "b" }]));
-    expect(ep).not.toHaveProperty("componentSubscripts");
-    expect(ep).not.toHaveProperty("portSubscripts");
+    expect(ep?.componentSubscripts).toBeUndefined();
+    expect(ep?.portSubscripts).toBeUndefined();
+  });
+
+  it("drops the whole suffix when a subscript can't be rendered", () => {
+    // A subscript `expressionToString` can't print would otherwise fabricate a
+    // `"[]"` cref that silently misses on the updateConnection write path.
+    const unprintable = { $kind: "range" } as unknown;
+    expect(
+      flattenCref(
+        cref([{ name: "pins", subscripts: [unprintable] }, { name: "p" }]),
+      )?.componentSubscripts,
+    ).toBeUndefined();
   });
 
   it("returns undefined for a malformed (empty) cref", () => {

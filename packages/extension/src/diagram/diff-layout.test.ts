@@ -315,6 +315,42 @@ describe("diffLayouts", () => {
     });
   });
 
+  it("keys connectionWaypoints by the subscripted cref for a vector component", () => {
+    // Subscript on the component part (`pins[3].p`) must survive into `from`
+    // too, not just the port part.
+    const mk = (waypoints: [number, number][]): DiagramLayout => {
+      const l = baseLayout();
+      l.connections = [
+        {
+          lhs: { component: "pins", port: "p", componentSubscripts: "[3]" },
+          rhs: { component: "ground", port: "p" },
+          waypoints,
+        },
+      ];
+      return l;
+    };
+    expect(
+      diffLayouts(
+        mk([
+          [0, 0],
+          [10, 0],
+        ]),
+        mk([
+          [0, 0],
+          [10, 10],
+        ]),
+      ),
+    ).toContainEqual({
+      kind: "connectionWaypoints",
+      from: "pins[3].p",
+      to: "ground.p",
+      waypoints: [
+        [0, 0],
+        [10, 10],
+      ],
+    });
+  });
+
   it("does not emit connectionWaypoints when waypoints are unchanged", () => {
     const a = baseLayout();
     const b = baseLayout();

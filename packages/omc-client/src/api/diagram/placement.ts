@@ -132,7 +132,7 @@ export function flattenCref(ref: ComponentRef): ConnectionEndpoint | undefined {
     return {
       component: undefined,
       port: portPart.name,
-      ...withKey("portSubscripts", renderSubscripts(portPart)),
+      portSubscripts: renderSubscripts(portPart),
     };
   }
   const firstPart = parts[0];
@@ -148,25 +148,25 @@ export function flattenCref(ref: ComponentRef): ConnectionEndpoint | undefined {
   return {
     component: firstPart.name,
     port: lastPart.name,
-    ...withKey("componentSubscripts", renderSubscripts(firstPart)),
-    ...withKey("portSubscripts", renderSubscripts(lastPart)),
+    componentSubscripts: renderSubscripts(firstPart),
+    portSubscripts: renderSubscripts(lastPart),
   };
 }
 
-/** `"[3]"`, `"[1, 2]"`, … for a subscripted part; `undefined` otherwise. */
+/**
+ * Rendered subscript suffix for a cref part (`"[3]"`, `"[2,4]"`), or
+ * `undefined` when the part is unsubscripted. `expressionToString` returns
+ * `""` for a subscript it can't print; we drop the whole suffix in that case
+ * rather than fabricate a `"[]"` — a wrong cref would silently miss on the
+ * `updateConnection` write path, the exact failure this suffix exists to
+ * prevent, so failing loud (endpoint won't persist) beats corrupting quietly.
+ */
 function renderSubscripts(part: ComponentRefPart): string | undefined {
   const subs = part.subscripts;
   if (!subs || subs.length === 0) return undefined;
-  return `[${subs.map((s) => expressionToString(s)).join(", ")}]`;
-}
-
-/** Spreadable single-key object, or `{}` when the value is absent — keeps
- *  `exactOptionalPropertyTypes` happy without writing `key: undefined`. */
-function withKey<K extends string>(
-  key: K,
-  value: string | undefined,
-): Record<K, string> | Record<string, never> {
-  return value === undefined ? {} : ({ [key]: value } as Record<K, string>);
+  const rendered = subs.map((s) => expressionToString(s));
+  if (rendered.some((s) => s.length === 0)) return undefined;
+  return `[${rendered.join(",")}]`;
 }
 
 export const _internal = {
