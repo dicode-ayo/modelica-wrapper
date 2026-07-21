@@ -224,4 +224,41 @@ describe("ModelicaSourceProvider: snapshotted source path (#348)", () => {
       vscode.recordedMessages.some((m) => m.message.includes("memory only")),
     ).toBe(false);
   });
+
+  it("notifySourceChanged drops the cached path so a relocated class writes through to its new location", async () => {
+    // `getSourceFile`/`getClassInformation` report the class's disk path as
+    // it stands right now — swapped once mid-test to simulate an external
+    // relocation (e.g. `savePackage`'s `setSourceFile`, or the `.mo` watcher
+    // reacting to an on-disk rename).
+    let diskPath = "/ws/Pkg/M.mo";
+    const client = {
+      getClassInformation: vi.fn(() =>
+        Promise.resolve({ fileName: diskPath, fileReadOnly: false }),
+      ),
+      listFile: vi.fn(() => Promise.resolve({ contents: "model M end M;" })),
+      getSourceFile: vi.fn(() => Promise.resolve({ fileName: diskPath })),
+      getModelicaPath: vi.fn(() =>
+        Promise.resolve({ modelicaPath: "/home/u/.openmodelica/libraries" }),
+      ),
+      loadString: vi.fn(() => Promise.resolve({ success: true })),
+      getErrorString: vi.fn(() => Promise.resolve({ errorString: "" })),
+    } as unknown as OmcClient;
+    const { guard, write } = makeGuardSpy();
+    const provider = new ModelicaSourceProvider(
+      () => Promise.resolve(client),
+      guard,
+    );
+
+    await provider.readFile(URI);
+    await provider.writeFile(URI, Buffer.from("model M end M;"));
+    expect(write.mock.calls[0]?.[0]).toBe("/ws/Pkg/M.mo");
+
+    // The class relocates on disk; without invalidation the provider would
+    // keep writing to the old, now-stale path.
+    diskPath = "/ws/Pkg2/M.mo";
+    provider.notifySourceChanged("Pkg.M");
+    await provider.writeFile(URI, Buffer.from("model M Real x; end M;"));
+
+    expect(write.mock.calls[1]?.[0]).toBe("/ws/Pkg2/M.mo");
+  });
 });

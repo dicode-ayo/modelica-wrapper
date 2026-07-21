@@ -42,4 +42,17 @@ describe("systemLibraryCreateGuard", () => {
     expect(refusal).toContain("Modelica.Blocks");
     expect(refusal).toContain("read-only system library");
   });
+
+  it("doesn't block creation when the origin lookup fails transiently", async () => {
+    const client: SystemLibraryClient = {
+      getSourceFile: vi.fn(() => Promise.reject(new Error("OMC busy"))),
+      getModelicaPath: vi.fn(() =>
+        Promise.resolve({ modelicaPath: "/home/u/.openmodelica/libraries" }),
+      ),
+    };
+
+    // Matches `ModelicaSourceProvider.isReadOnly`'s "failures don't block
+    // editing" contract for the same origin check.
+    expect(await systemLibraryCreateGuard(client, "Pkg")).toBeUndefined();
+  });
 });

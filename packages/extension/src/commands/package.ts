@@ -152,7 +152,10 @@ export function registerPackageCommands(
             typeName: node.qualifiedName,
             fileName: target.fsPath,
           });
-          // Only `fileName` changed — nothing the tree shows.
+          // The tree itself shows nothing new, but the source provider's
+          // cached disk path/read-only verdict for this class is now stale —
+          // invalidate so a later editor save writes through to `target`.
+          ctx.sourceProvider.notifySourceChanged(node.qualifiedName);
           log.success(`saved to ${target.fsPath}`);
           await vscode.window.showInformationMessage(
             `Modelica: saved ${node.qualifiedName} to ${target.fsPath}`,

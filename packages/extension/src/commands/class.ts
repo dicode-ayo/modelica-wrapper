@@ -196,13 +196,21 @@ export function registerClassCommands(
  * class — persisting would extract a new file directly into an installed
  * MODELICAPATH library. Returns the refusal message, or `undefined` when
  * creation may proceed (top-level, or `parent` isn't a system library).
+ *
+ * A failed origin lookup (transient OMC error) doesn't block creation —
+ * matching `ModelicaSourceProvider.isReadOnly`'s "failures don't block
+ * editing" contract for the same check.
  */
 export async function systemLibraryCreateGuard(
   client: SystemLibraryClient,
   parent: string | undefined,
 ): Promise<string | undefined> {
   if (!parent) return undefined;
-  if (!(await isSystemLibraryClass(client, parent))) return undefined;
+  try {
+    if (!(await isSystemLibraryClass(client, parent))) return undefined;
+  } catch {
+    return undefined;
+  }
   return `cannot create a class inside ${parent} — it belongs to a read-only system library.`;
 }
 

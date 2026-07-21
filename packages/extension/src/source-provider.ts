@@ -78,8 +78,8 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
    * so a second save in the same session must not re-derive "is this class
    * already on disk?" from OMC's current state — it would see the pseudo-URI
    * and wrongly conclude the class is memory-only, extracting it to a new
-   * file next to its real one (the corruption in #348). `undefined` means the
-   * class had no disk origin at first read (still OMC-memory-only).
+   * file next to its real one. `undefined` means the class had no disk
+   * origin at first read (still OMC-memory-only).
    */
   private readonly sourcePath = new Map<string, string | undefined>();
 
@@ -192,10 +192,11 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
     // The class's real on-disk path, if it has one — memoized at first read
     // so a second save in the same session (after our own prior loadString
     // already repointed OMC's live fileName) still recognizes it as
-    // already-on-disk instead of re-extracting it to a new path.
-    const diskPath =
-      (await this.sourcePathFor(typeName)) ??
-      (isLikelyDiskPath(info.fileName) ? info.fileName : undefined);
+    // already-on-disk instead of re-extracting it to a new path. Deliberately
+    // not falling back to `info.fileName` here: on a second save that field
+    // is already the pseudo-URI our own prior loadString wrote, so trusting
+    // it would reintroduce the exact misclassification this guards against.
+    const diskPath = await this.sourcePathFor(typeName);
 
     // Drain any stale errors so the post-loadString check below only sees
     // diagnostics produced by this save.
@@ -265,14 +266,20 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
 
   /**
    * External hook: call when OMC mutates a class outside writeFile (e.g.
-   * `addComponent`, `addConnection`). Bumps the per-URI mtime and fires
-   * onDidChangeFile so open editors reload from `readFile`.
+   * `addComponent`, `addConnection`), or when a class's on-disk origin moves
+   * (`setSourceFile` from `savePackage`, an external rename picked up by the
+   * `.mo` watcher). Bumps the per-URI mtime and fires onDidChangeFile so open
+   * editors reload from `readFile`; also drops the cached read-only verdict
+   * and disk path so they're re-derived from OMC's current state instead of
+   * the stale snapshot from the class's first read.
    *
    * Pass `undefined` to invalidate all currently-open `modelica-source:`
    * documents — useful for coarse refreshes after a `loadFile` of a package.
    */
   notifySourceChanged(typeName?: string): void {
     if (typeName) {
+      this.readOnly.delete(typeName);
+      this.sourcePath.delete(typeName);
       const uri = sourceUriFor(typeName);
       this.bump(uri);
       this._onDidChangeFile.fire([
@@ -280,6 +287,8 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
       ]);
       return;
     }
+    this.readOnly.clear();
+    this.sourcePath.clear();
     const events: vscode.FileChangeEvent[] = [];
     for (const doc of vscode.workspace.textDocuments) {
       if (doc.uri.scheme === MODELICA_SOURCE_SCHEME) {
