@@ -75,19 +75,28 @@ describe("addResultToView", () => {
     expect(recordedMessages).toHaveLength(0);
   });
 
-  it("reuses the same scratch URI across runs rather than minting a second", async () => {
-    vi.spyOn(ResultViewEditorProvider, "getActiveDocument").mockReturnValue(
-      undefined,
-    );
+  it("appends the next run to the now-focused scratch instead of a second tab", async () => {
+    const active = vi
+      .spyOn(ResultViewEditorProvider, "getActiveDocument")
+      .mockReturnValue(undefined);
 
     await addResultToView(RUN);
+    // Opening the scratch makes it the active view; model that for the next run.
+    const scratchUri = openWithCalls()[0]?.args[0] as vscode.Uri;
+    active.mockReturnValue({
+      uri: scratchUri,
+      getText: () => "",
+      lineCount: 1,
+    } as unknown as vscode.TextDocument);
+
     await addResultToView(RUN);
 
-    const opens = openWithCalls();
-    expect(opens).toHaveLength(2);
-    expect((opens[0]?.args[0] as vscode.Uri).toString()).toBe(
-      (opens[1]?.args[0] as vscode.Uri).toString(),
-    );
+    expect(openWithCalls()).toHaveLength(1); // no second tab opened
+    expect(appliedEdits).toHaveLength(2); // both runs added a result
+    expect(recordedMessages).toContainEqual({
+      level: "info",
+      message: "Added DCMotor_res to the result view.",
+    });
   });
 
   it("ignores a run with no result file", async () => {

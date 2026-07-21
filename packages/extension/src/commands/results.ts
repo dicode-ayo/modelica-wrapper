@@ -14,11 +14,7 @@ import * as vscode from "vscode";
 
 import { emptyResultViewDoc, type ResultRef } from "@dicode/omc-client";
 
-import {
-  applyAddResults,
-  buildResultRef,
-  scratchResultViewUri,
-} from "../results/add-result.js";
+import { applyAddResults, buildResultRef } from "../results/add-result.js";
 import { serializeResultViewDoc } from "../results/result-doc.js";
 import {
   RESULT_VIEW_VIEW_TYPE,
@@ -98,18 +94,22 @@ export async function addResultToView(
 }
 
 /**
- * Add the run's result to the unsaved ("scratch") result view. The scratch URI
- * is fixed, so `openTextDocument` returns the already-open scratch document when
- * there is one — repeated runs accumulate into a single tab. Revealing the view
- * is the feedback here; unlike the focused-view path there is no toast.
+ * Surface the run's result in a fresh unsaved ("scratch") result view. A
+ * pathless untitled document keeps `Ctrl+S` a Save-As (a named untitled would
+ * save straight to a bogus root path), and `openWith` forces our editor despite
+ * the missing `.omresults` suffix. Once open the view becomes the active target,
+ * so follow-up runs append through the focused-view path above rather than here.
+ * Revealing the view is the feedback; unlike that path there is no toast.
  */
 async function surfaceInScratchView(args: AddResultToViewArgs): Promise<void> {
-  const uri = scratchResultViewUri();
-  const document = await vscode.workspace.openTextDocument(uri);
-  await applyAddResults(document, [simulateRef(uri, args)]);
+  const document = await vscode.workspace.openTextDocument({
+    content: "",
+    language: "json",
+  });
+  await applyAddResults(document, [simulateRef(document.uri, args)]);
   await vscode.commands.executeCommand(
     "vscode.openWith",
-    uri,
+    document.uri,
     RESULT_VIEW_VIEW_TYPE,
   );
 }

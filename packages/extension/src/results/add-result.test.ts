@@ -4,7 +4,6 @@ import type * as vscode from "vscode";
 import {
   buildResultRef,
   resolveResultPath,
-  scratchResultViewUri,
   storeResultPath,
 } from "./add-result.js";
 
@@ -79,15 +78,5 @@ describe("buildResultRef", () => {
     const ref = buildResultRef(uri, "/ws/views/a.mat", "cache");
     expect(ref.model).toBeUndefined();
     expect(ref.parameters).toBeUndefined();
-  });
-});
-
-describe("scratchResultViewUri", () => {
-  it("mints a fixed untitled `.omresults` URI", () => {
-    const uri = scratchResultViewUri();
-    expect(uri.scheme).toBe("untitled");
-    expect(uri.path.endsWith(".omresults")).toBe(true);
-    // Fixed path: two calls resolve to the same document.
-    expect(uri.path).toBe(scratchResultViewUri().path);
   });
 });
