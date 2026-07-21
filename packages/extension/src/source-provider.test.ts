@@ -14,6 +14,7 @@ import * as vscode from "vscode";
 import type { OmcClient } from "@dicode/omc-client";
 
 import { createSelfWriteGuard } from "./self-write-guard.js";
+import type { SelfWriteGuard } from "./self-write-guard.js";
 import { ModelicaSourceProvider, sourceUriFor } from "./source-provider.js";
 
 const URI = sourceUriFor("Pkg.M");
@@ -158,5 +159,69 @@ describe("ModelicaSourceProvider: read-only system libraries", () => {
     const stat = await provider.stat(URI);
 
     expect(stat.permissions).toBeUndefined();
+  });
+});
+
+/** A `SelfWriteGuard` stub that records writes instead of touching disk. */
+function makeGuardSpy(): {
+  guard: SelfWriteGuard;
+  write: ReturnType<typeof vi.fn>;
+} {
+  const write = vi.fn(() => Promise.resolve());
+  const guard: SelfWriteGuard = {
+    record: vi.fn(),
+    claim: vi.fn(() => false),
+    write,
+  };
+  return { guard, write };
+}
+
+describe("ModelicaSourceProvider: snapshotted source path (#348)", () => {
+  it("writes a second save through to the class's disk path instead of re-extracting it", async () => {
+    // OMC repoints a class's live `fileName` to the pseudo-URI we pass
+    // `loadString` on every save. `getClassInformation` here mimics that:
+    // the real disk path only on the very first call (mirroring a class
+    // opened fresh), a pseudo-URI on every call after — the state a second
+    // save in the same session would actually see.
+    let classInfoCalls = 0;
+    const loadString = vi.fn(() => Promise.resolve({ success: true }));
+    const client = {
+      getClassInformation: vi.fn(() => {
+        classInfoCalls++;
+        return Promise.resolve({
+          fileName: classInfoCalls === 1 ? "/ws/Pkg/M.mo" : URI.toString(),
+          fileReadOnly: false,
+        });
+      }),
+      listFile: vi.fn(() => Promise.resolve({ contents: "model M end M;" })),
+      getSourceFile: vi.fn(() => Promise.resolve({ fileName: "/ws/Pkg/M.mo" })),
+      getModelicaPath: vi.fn(() =>
+        Promise.resolve({ modelicaPath: "/home/u/.openmodelica/libraries" }),
+      ),
+      loadString,
+      getErrorString: vi.fn(() => Promise.resolve({ errorString: "" })),
+    } as unknown as OmcClient;
+    const { guard, write } = makeGuardSpy();
+    const provider = new ModelicaSourceProvider(
+      () => Promise.resolve(client),
+      guard,
+    );
+    vscode.recordedMessages.length = 0;
+
+    // Opening the editor always reads first — this is what snapshots the
+    // real disk path before any save can repoint OMC's live state.
+    await provider.readFile(URI);
+
+    await provider.writeFile(URI, Buffer.from("model M end M;"));
+    await provider.writeFile(URI, Buffer.from("model M Real x; end M;"));
+
+    expect(write).toHaveBeenCalledTimes(2);
+    expect(write.mock.calls[0]?.[0]).toBe("/ws/Pkg/M.mo");
+    expect(write.mock.calls[1]?.[0]).toBe("/ws/Pkg/M.mo");
+    // Branch (b)'s memory-only path (no workspace folder in this mock) would
+    // have shown this warning had the second save misclassified the class.
+    expect(
+      vscode.recordedMessages.some((m) => m.message.includes("memory only")),
+    ).toBe(false);
   });
 });

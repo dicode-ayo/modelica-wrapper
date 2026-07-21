@@ -10,6 +10,10 @@
  * Works from:
  *   - title bar (no parent → top-level class)
  *   - context menu on a library or package node (any depth → nested class)
+ *
+ * Refuses when `parent` is a system-library class (loaded from
+ * MODELICAPATH) — persisting would extract a new file directly into an
+ * installed library's directory.
  */
 
 import * as fsp from "node:fs/promises";
@@ -22,6 +26,10 @@ import {
   linkPersistedClass,
   persistClassUnderWorkspace,
 } from "../source-provider.js";
+import {
+  isSystemLibraryClass,
+  type SystemLibraryClient,
+} from "../system-library.js";
 
 import {
   parentFromNode,
@@ -127,6 +135,12 @@ export function registerClassCommands(
         const log = createReplLog(`createClass ${kind} ${qualified}`);
         try {
           const c = await ctx.ensureClient();
+          const refusal = await systemLibraryCreateGuard(c, parent);
+          if (refusal !== undefined) {
+            log.error(refusal);
+            await vscode.window.showErrorMessage(`Modelica: ${refusal}`);
+            return;
+          }
           const { success } = await c.loadString({
             data,
             filename: `<runtime:${qualified}>`,
@@ -175,6 +189,21 @@ export function registerClassCommands(
       },
     ),
   ];
+}
+
+/**
+ * Refuses to create a class inside `parent` when `parent` is a system-library
+ * class — persisting would extract a new file directly into an installed
+ * MODELICAPATH library. Returns the refusal message, or `undefined` when
+ * creation may proceed (top-level, or `parent` isn't a system library).
+ */
+export async function systemLibraryCreateGuard(
+  client: SystemLibraryClient,
+  parent: string | undefined,
+): Promise<string | undefined> {
+  if (!parent) return undefined;
+  if (!(await isSystemLibraryClass(client, parent))) return undefined;
+  return `cannot create a class inside ${parent} — it belongs to a read-only system library.`;
 }
 
 function defaultPlaceholder(kind: ClassKind): string {

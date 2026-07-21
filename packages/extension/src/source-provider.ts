@@ -8,9 +8,11 @@
  * Behavior:
  *  - `readFile`  → OMC `listFile`
  *  - `writeFile` → parse-validate via OMC `loadString`; on success, persist
- *    to disk. Two paths:
- *      (a) Class already has a real on-disk source (`fileName` is an
- *          absolute disk path): write through to that path.
+ *    to disk. Two paths, chosen from the disk path snapshotted at first
+ *    `readFile` (not OMC's live `fileName`, which our own `loadString`
+ *    repoints to this scheme's URI on every save):
+ *      (a) Class already has a real on-disk source: write through to that
+ *          path.
  *      (b) Class is OMC-memory-only (fileName is empty or a pseudo-URI like
  *          `<runtime:...>` / `modelica-source:...`): materialize under the
  *          workspace folder as nested directories with `package.mo` files
@@ -70,6 +72,17 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
    */
   private readonly readOnly = new Map<string, boolean>();
 
+  /**
+   * Per-class on-disk source path, captured on first read. A save's own
+   * `loadString` repoints OMC's live `fileName` to this scheme's pseudo-URI,
+   * so a second save in the same session must not re-derive "is this class
+   * already on disk?" from OMC's current state — it would see the pseudo-URI
+   * and wrongly conclude the class is memory-only, extracting it to a new
+   * file next to its real one (the corruption in #348). `undefined` means the
+   * class had no disk origin at first read (still OMC-memory-only).
+   */
+  private readonly sourcePath = new Map<string, string | undefined>();
+
   constructor(
     private readonly ensureClient: EnsureClient,
     private readonly guard: SelfWriteGuard,
@@ -126,9 +139,11 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
     try {
       const client = await this.ensureClient();
       const { contents } = await client.listFile({ typeName });
-      // Capture the read-only verdict now, while the class still points at its
-      // on-disk origin — a later edit repoints it to this scheme's URI.
+      // Capture the read-only verdict and on-disk source path now, while the
+      // class still points at its on-disk origin — a later edit repoints it
+      // to this scheme's URI.
       await this.isReadOnly(typeName);
+      await this.sourcePathFor(typeName);
       return Buffer.from(contents, "utf8");
     } catch (err) {
       // Mirror `stat`: a class that isn't loaded (or no longer exists) reads as
@@ -174,6 +189,14 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
       throw vscode.FileSystemError.NoPermissions(uri);
     }
 
+    // The class's real on-disk path, if it has one — memoized at first read
+    // so a second save in the same session (after our own prior loadString
+    // already repointed OMC's live fileName) still recognizes it as
+    // already-on-disk instead of re-extracting it to a new path.
+    const diskPath =
+      (await this.sourcePathFor(typeName)) ??
+      (isLikelyDiskPath(info.fileName) ? info.fileName : undefined);
+
     // Drain any stale errors so the post-loadString check below only sees
     // diagnostics produced by this save.
     await client.getErrorString();
@@ -198,9 +221,9 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
       );
     }
 
-    if (isLikelyDiskPath(info.fileName)) {
+    if (diskPath) {
       // (a) Write through to the existing on-disk source.
-      await this.guard.write(info.fileName, text);
+      await this.guard.write(diskPath, text);
     } else {
       // (b) OMC-memory-only class — materialize under the workspace folder.
       const ws = vscode.workspace.workspaceFolders?.[0];
@@ -222,6 +245,9 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
           restriction === "package" ? "package" : undefined,
         );
         await linkPersistedClass(client, typeName, result);
+        // Remember the new disk path so a later save this session writes
+        // through to it instead of extracting a second copy.
+        this.sourcePath.set(typeName, result.leafPath);
       }
     }
 
@@ -284,6 +310,27 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
       return verdict;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * The class's real on-disk source path, or `undefined` if it's still
+   * OMC-memory-only. Memoized on first lookup — which `readFile` forces
+   * before any edit — for the same reason as `isReadOnly`: a mutation
+   * repoints OMC's live `fileName` to this scheme's URI, so re-deriving this
+   * from OMC's current state on a later save would misclassify an
+   * already-on-disk class as memory-only.
+   */
+  private async sourcePathFor(typeName: string): Promise<string | undefined> {
+    if (this.sourcePath.has(typeName)) return this.sourcePath.get(typeName);
+    try {
+      const client = await this.ensureClient();
+      const { fileName } = await client.getSourceFile({ typeName });
+      const resolved = isLikelyDiskPath(fileName) ? fileName : undefined;
+      this.sourcePath.set(typeName, resolved);
+      return resolved;
+    } catch {
+      return undefined;
     }
   }
 }
