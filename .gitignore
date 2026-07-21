@@ -30,3 +30,6 @@ packages/extension/grammar/*.wasm*
 # Per-session agent worktrees — nested checkouts a blanket `git add` would
 # otherwise stage as gitlinks.
 .claude/worktrees/
+
+# OpenModelica workspace build cache (created by the extension in any opened folder)
+.modelica/

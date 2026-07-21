@@ -16,6 +16,21 @@
       "env": {
         "MODELICA_DEBUG": "1"
       }
+    },
+    {
+      "name": "Run Extension (ResistorDemo)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "${workspaceFolder}/examples/ResistorDemo",
+        "--extensionDevelopmentPath=${workspaceFolder}/packages/extension"
+      ],
+      "outFiles": ["${workspaceFolder}/packages/extension/out/**/*.js"],
+      "preLaunchTask": "extension: build",
+      "sourceMaps": true,
+      "env": {
+        "MODELICA_DEBUG": "1"
+      }
     }
   ]
 }
