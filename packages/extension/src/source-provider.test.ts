@@ -176,25 +176,24 @@ function makeGuardSpy(): {
   return { guard, write };
 }
 
-describe("ModelicaSourceProvider: snapshotted source path (#348)", () => {
+describe("ModelicaSourceProvider: snapshotted source path", () => {
   it("writes a second save through to the class's disk path instead of re-extracting it", async () => {
-    // OMC repoints a class's live `fileName` to the pseudo-URI we pass
-    // `loadString` on every save. `getClassInformation` here mimics that:
-    // the real disk path only on the very first call (mirroring a class
-    // opened fresh), a pseudo-URI on every call after — the state a second
-    // save in the same session would actually see.
-    let classInfoCalls = 0;
-    const loadString = vi.fn(() => Promise.resolve({ success: true }));
+    // OMC repoints a class's source `fileName` to the pseudo-URI our own
+    // `loadString` passes on every save, so a second save must not re-derive
+    // the disk path from OMC's live state. Model that on `getSourceFile` —
+    // the API `sourcePathFor` reads — flipped by `loadString`, as production
+    // does.
+    let sourceFileName = "/ws/Pkg/M.mo";
+    const loadString = vi.fn(() => {
+      sourceFileName = URI.toString();
+      return Promise.resolve({ success: true });
+    });
     const client = {
-      getClassInformation: vi.fn(() => {
-        classInfoCalls++;
-        return Promise.resolve({
-          fileName: classInfoCalls === 1 ? "/ws/Pkg/M.mo" : URI.toString(),
-          fileReadOnly: false,
-        });
-      }),
+      getClassInformation: vi.fn(() =>
+        Promise.resolve({ fileName: sourceFileName, fileReadOnly: false }),
+      ),
       listFile: vi.fn(() => Promise.resolve({ contents: "model M end M;" })),
-      getSourceFile: vi.fn(() => Promise.resolve({ fileName: "/ws/Pkg/M.mo" })),
+      getSourceFile: vi.fn(() => Promise.resolve({ fileName: sourceFileName })),
       getModelicaPath: vi.fn(() =>
         Promise.resolve({ modelicaPath: "/home/u/.openmodelica/libraries" }),
       ),

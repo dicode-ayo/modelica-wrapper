@@ -1,7 +1,7 @@
 /**
  * `systemLibraryCreateGuard` is what stops `modelica.createClass` from
  * extracting a new file directly into an installed MODELICAPATH library when
- * invoked on a system-library parent node (see #348).
+ * invoked on a system-library parent node.
  */
 
 import { describe, expect, it, vi } from "vitest";
