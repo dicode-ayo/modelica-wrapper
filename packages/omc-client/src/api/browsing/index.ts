@@ -9,6 +9,7 @@
  */
 
 export * from "./getVersion.js";
+export * from "./getModelicaPath.js";
 export * from "./getClassNames.js";
 export * from "./searchClassNames.js";
 export * from "./getClassInformation.js";

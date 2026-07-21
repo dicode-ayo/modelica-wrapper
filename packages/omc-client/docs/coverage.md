@@ -6,7 +6,7 @@ Tracks which functions in [`src/registry.ts`](../src/registry.ts) are exercised 
 
 **Last updated:** 2026-05-20 (#63/#64/#65: wrapped 4 OMEdit utilities — `getDerivedUnits`, `uriToFilename`, `qualifyPath`, `loadClassContentString` — all verified live on 1.26.7).
 
-**Current coverage:** **201 wrappers in package; 191 ✅ verified end-to-end, 9 🟡 cheap unverified, 1 ⛔ broken on pin (95% verified).** 2026-05-20: omc-coverage epic (#31) added import readers (#43), solver getter siblings (#41), 9 class-shape `is*` predicates (#33), browsing extras (#42), editing siblings (#37), 3 library version-conversion wrappers (#40), 21 indexed/count contents readers (#34), `newModel` (#35), verified the two inherited-class map annotation readers (#39), brought Parameters to 16/16 (#36), and rescued `setElementAnnotation` (#38: `$Code((expr))` payload). The OMEdit call-surface cross-reference then added 4 utilities (#63/#64/#65): `getDerivedUnits`, `uriToFilename`, `qualifyPath` (contents) + `loadClassContentString` (lifecycle), all verified live. The 9 library/package-manager calls are exercised opt-in behind `OMC_INTEGRATION_NETWORK=1`. Counts reconciled at merge time. A 2026-05-20 audit also identified ~40 documented OMC scripting functions in scope that are not yet wrapped — see the [100% coverage epic](https://github.com/dicode-ayo/modelica-wrapper/issues?q=is%3Aissue+label%3Aepic+label%3Aomc-coverage) for the plan to close that gap.
+**Current coverage:** **202 wrappers in package; 192 ✅ verified end-to-end, 9 🟡 cheap unverified, 1 ⛔ broken on pin (95% verified).** 2026-05-20: omc-coverage epic (#31) added import readers (#43), solver getter siblings (#41), 9 class-shape `is*` predicates (#33), browsing extras (#42), editing siblings (#37), 3 library version-conversion wrappers (#40), 21 indexed/count contents readers (#34), `newModel` (#35), verified the two inherited-class map annotation readers (#39), brought Parameters to 16/16 (#36), and rescued `setElementAnnotation` (#38: `$Code((expr))` payload). The OMEdit call-surface cross-reference then added 4 utilities (#63/#64/#65): `getDerivedUnits`, `uriToFilename`, `qualifyPath` (contents) + `loadClassContentString` (lifecycle), all verified live. The 9 library/package-manager calls are exercised opt-in behind `OMC_INTEGRATION_NETWORK=1`. Counts reconciled at merge time. A 2026-05-20 audit also identified ~40 documented OMC scripting functions in scope that are not yet wrapped — see the [100% coverage epic](https://github.com/dicode-ayo/modelica-wrapper/issues?q=is%3Aissue+label%3Aepic+label%3Aomc-coverage) for the plan to close that gap.
 
 > Run `pnpm --filter @dicode/omc-client test` to exercise the integration suite. It auto-skips when `omc` isn't on PATH.
 
@@ -34,7 +34,7 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 
 ---
 
-## Browsing — 42/42 ✅
+## Browsing — 43/43 ✅
 
 ### Original 10 (all ✅ verified)
 
@@ -83,6 +83,12 @@ Each row links to the OMC scripting docs URL. A `404` link means the function is
 | `classAnnotationExists` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.classAnnotationExists.html) — verified against a class with an `experiment(...)` annotation (true) and a sibling without it (false). |
 | `getNthInheritedClass` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getNthInheritedClass.html) — indexed counterpart to `getInheritedClasses`; verified by asserting index 1 matches `getInheritedClasses(...)[0]`. |
 | `isShortDefinition` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.isShortDefinition.html) — verified true on a `type T = Real;` short definition and false on a `model`. |
+
+### Environment (added 2026-07-22) — #349
+
+| Function | Status | Docs |
+|---|---|---|
+| `getModelicaPath` | ✅ | [docs](https://build.openmodelica.org/Documentation/OpenModelica.Scripting.getModelicaPath.html) — returns the platform-separated `MODELICAPATH`; used to classify a class as a read-only system library by its source location. |
 
 ### Class-shape / component predicates — 9 added 2026-05-20 (#33, all ✅)
 
@@ -372,7 +378,7 @@ need lives in the maintained `SOLVER_METHODS` constant in
 
 | Category | Covered | Total | Notes |
 |---|---|---|---|
-| Browsing | 42 | 42 | All ✅. Custom fixtures cover `isClass`, `isReplaceable`, `isProtectedClass`, the 9 class-shape predicates (#33: `isConstant`, `isParameter`, `isProtected`, `isRedeclare`, `isPrimitive`, `isOperator`, `isOperatorFunction`, `isOperatorRecord`, `isOptimization`), and the #42 extras (`extendsFrom`, `getAllSubtypeOf`, `classAnnotationExists`, `getNthInheritedClass`, `isShortDefinition`). |
+| Browsing | 43 | 43 | All ✅. Custom fixtures cover `isClass`, `isReplaceable`, `isProtectedClass`, the 9 class-shape predicates (#33: `isConstant`, `isParameter`, `isProtected`, `isRedeclare`, `isPrimitive`, `isOperator`, `isOperatorFunction`, `isOperatorRecord`, `isOptimization`), and the #42 extras (`extendsFrom`, `getAllSubtypeOf`, `classAnnotationExists`, `getNthInheritedClass`, `isShortDefinition`). |
 | Reading model contents | 54 | 54 | All ✅. 2026-05-20: `getImportCount` + `getNthImport` (#43); the two inherited-class map annotations verified (#39); +21 indexed/count readers (#34: component / annotation / algorithm / initial-algorithm / equation / initial-equation families), all ✅ via a rich `loadString` fixture (the leading-`=` modification binding `getNthComponentModification` returns is now handled by `parse.ts`). `convertUnits` added + verified live (#28) for label render-time display-unit conversion. **+3 OMEdit utilities verified live (#63/#64/#65):** `getDerivedUnits` (unit-dropdown partner to `convertUnits`), `uriToFilename` (resolve `modelica://` resource URIs), `qualifyPath` (qualify a short type name in a class scope). |
 | Lifecycle | 17 | 18 | **`newModel` added + verified 2026-05-20 (#35)** as the migration path off the (now-removed) class-create wrappers (nested `model` creation; `withinPath` required — no top-level form). 1 ⛔ remains — `save` (present but deprecated/unreliable persistence, *not* symbol-missing). The genuinely-absent `createClass`/`createSubClass` wrappers were **removed** 2026-05-21 (#80; see "Removed wrappers"). **`moveClass` rescued 2026-05-19**: it's an in-place reorder by `Integer offset`, not a TypeName-destination relocate. **`loadClassContentString` added + verified live (#65)** — inserts string content into a loaded class (the OMC call behind diagram paste/duplicate), with an optional Placement offset. |
 | Parameters & modifiers | 16 | 16 | **All ✅ as of 2026-05-20 (#36).** The 3 extends-modifier 🟡s verified via a self-contained `extends Base(k = 2.5)` fixture; 4 derived-class / extends wrappers added (`getDerivedClassModifierNames`, `getDerivedClassModifierValue`, `isExtendsModifierFinal`, `setExtendsModifier`). `getExtendsModifierValue` needed a bare-scalar fallback (OMC returns numeric bindings unquoted). **`getParameterValue` wrapper bugfix 2026-05-19**: `parameterName` is a `String`, not a TypeName — the bare-ident form silently returned "" since day one. |
@@ -382,7 +388,7 @@ need lives in the maintained `SOLVER_METHODS` constant in
 | Solver / runtime config | 8 | 8 | All verified. Includes the getter siblings (`getMatchingAlgorithm`, `getAvailableMatchingAlgorithms`, `getIndexReductionMethod`, `getAvailableIndexReductionMethods`, `getAvailableTearingMethods`) added in #41. The 5 phantom list-getters (`getSolverMethods` + friends) were **removed** 2026-05-21 (#80; see "Removed wrappers") — absent from `OpenModelica.Scripting` on the pin. |
 | Execution | 9 | 9 | All ✅ via the heavy suite. The FMU pipeline (`buildModelFMU` → `importFMU`) is chained: build the ramp into a `.fmu`, then import it back to a Modelica wrapper. `importFMU` needed a wrapper bugfix on the way — `modelName` is a `TypeName` (bare ident), not a String (see [audit.md §2.10](./audit.md)). |
 | Results | 8 | 8 | All ✅ via [`../test/results-heavy.integration.test.ts`](../test/results-heavy.integration.test.ts) — simulates a tiny ramp model in a `mkdtemp` directory, exercises every results wrapper on the produced `.mat`, cleans up. Gated by `OMC_INTEGRATION_HEAVY=1`. The deprecated `compareSimulationResults` wrapper was **removed** 2026-05-21 (#80; see "Removed wrappers") — prefer `diffSimulationResults`. |
-| **Total verified** | **191** | **201** | **95%** ✅. Of the 10 unverified: 1 ⛔ (`save` — present but deprecated/unreliable persistence on the pin), 9 🟡 network-only library/package-manager calls (exercised opt-in via `OMC_INTEGRATION_NETWORK=1`). 8 deprecated/phantom wrappers were removed 2026-05-21 (#80; see "Removed wrappers"). **Audit also identified ~40 documented OMC functions in scope but not yet wrapped — see the 100% coverage epic.** |
+| **Total verified** | **192** | **202** | **95%** ✅. Of the 10 unverified: 1 ⛔ (`save` — present but deprecated/unreliable persistence on the pin), 9 🟡 network-only library/package-manager calls (exercised opt-in via `OMC_INTEGRATION_NETWORK=1`). 8 deprecated/phantom wrappers were removed 2026-05-21 (#80; see "Removed wrappers"). **Audit also identified ~40 documented OMC functions in scope but not yet wrapped — see the 100% coverage epic.** |
 
 ---
 

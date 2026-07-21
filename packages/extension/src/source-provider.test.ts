@@ -22,8 +22,12 @@ const URI = sourceUriFor("Pkg.M");
 function makeClient(opts?: {
   getClassInformationThrows?: boolean;
   listFileThrows?: boolean;
+  systemLib?: boolean;
 }): { client: OmcClient; loadString: ReturnType<typeof vi.fn> } {
   const loadString = vi.fn(() => Promise.resolve({ success: true }));
+  const sourceFile = opts?.systemLib
+    ? "/home/u/.openmodelica/libraries/Modelica 4.0.0/Blocks/package.mo"
+    : "/ws/Pkg/M.mo";
   const client = {
     getClassInformation: vi.fn(() =>
       opts?.getClassInformationThrows
@@ -34,6 +38,10 @@ function makeClient(opts?: {
       opts?.listFileThrows
         ? Promise.reject(new Error("class not loaded"))
         : Promise.resolve({ contents: "model M end M;" }),
+    ),
+    getSourceFile: vi.fn(() => Promise.resolve({ fileName: sourceFile })),
+    getModelicaPath: vi.fn(() =>
+      Promise.resolve({ modelicaPath: "/home/u/.openmodelica/libraries" }),
     ),
     loadString,
     getErrorString: vi.fn(() => Promise.resolve({ errorString: "" })),
@@ -93,5 +101,37 @@ describe("ModelicaSourceProvider: empty-source save guard", () => {
     ).rejects.toMatchObject({ code: "Unavailable" });
     // The guard fires before any OMC mutation, so nothing truncates on disk.
     expect(loadString).not.toHaveBeenCalled();
+  });
+});
+
+describe("ModelicaSourceProvider: read-only system libraries", () => {
+  it("refuses to save a class whose source lives under MODELICAPATH", async () => {
+    const { client, loadString } = makeClient({ systemLib: true });
+    const provider = new ModelicaSourceProvider(
+      () => Promise.resolve(client),
+      createSelfWriteGuard(),
+    );
+
+    await expect(
+      provider.writeFile(URI, Buffer.from("model M end M;")),
+    ).rejects.toMatchObject({ code: "NoPermissions" });
+    // Refused before touching OMC — no chance to corrupt the installed library.
+    expect(loadString).not.toHaveBeenCalled();
+  });
+
+  it("verdicts a MODELICAPATH class read-only and a workspace class writable", async () => {
+    const { client: sys } = makeClient({ systemLib: true });
+    const { client: ws } = makeClient({ systemLib: false });
+    const sysProvider = new ModelicaSourceProvider(
+      () => Promise.resolve(sys),
+      createSelfWriteGuard(),
+    );
+    const wsProvider = new ModelicaSourceProvider(
+      () => Promise.resolve(ws),
+      createSelfWriteGuard(),
+    );
+
+    expect(await sysProvider.isReadOnly("Modelica.Blocks")).toBe(true);
+    expect(await wsProvider.isReadOnly("Pkg.M")).toBe(false);
   });
 });

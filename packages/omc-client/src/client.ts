@@ -195,6 +195,10 @@ export class OmcClient implements CallContext {
     return browsing.getVersion(this, input);
   }
 
+  getModelicaPath(): Promise<browsing.GetModelicaPathOutput> {
+    return browsing.getModelicaPath(this);
+  }
+
   getClassNames(
     input: browsing.GetClassNamesInput = {},
   ): Promise<browsing.GetClassNamesOutput> {
