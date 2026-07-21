@@ -32,6 +32,15 @@
           ".mo"
         ],
         "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "omresults",
+        "aliases": [
+          "Modelica Result View"
+        ],
+        "extensions": [
+          ".omresults"
+        ]
       }
     ],
     "grammars": [

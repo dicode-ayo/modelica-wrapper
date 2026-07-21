@@ -104,7 +104,7 @@ export async function addResultToView(
 async function surfaceInScratchView(args: AddResultToViewArgs): Promise<void> {
   const document = await vscode.workspace.openTextDocument({
     content: "",
-    language: "json",
+    language: "omresults",
   });
   await applyAddResults(document, [simulateRef(document.uri, args)]);
   await vscode.commands.executeCommand(
