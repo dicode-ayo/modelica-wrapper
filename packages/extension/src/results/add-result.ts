@@ -24,25 +24,19 @@ import {
 } from "./result-doc.js";
 
 const MAT_EXTENSION = ".mat";
-const RESULT_VIEW_EXTENSION = ".omresults";
 
 /** Filename of the unsaved ("scratch") result view Simulate opens when no view
  *  exists yet. The `.omresults` suffix binds it to the result-view editor. */
 export const SCRATCH_RESULT_VIEW_NAME = "Simulation results.omresults";
 
 /** Untitled URI backing the scratch result view. Its content is the buffer;
- *  Save-As writes it to a real `.omresults`. */
+ *  Save-As writes it to a real `.omresults`. The path is fixed so a later
+ *  `openTextDocument` returns the same document instead of minting a second. */
 export function scratchResultViewUri(): vscode.Uri {
   return vscode.Uri.from({
     scheme: "untitled",
     path: SCRATCH_RESULT_VIEW_NAME,
   });
-}
-
-/** Whether `uri` is an unsaved result view (an untitled `.omresults`). Users
- *  can't create untitled `.omresults` by hand, so this only ever matches ours. */
-export function isScratchResultViewUri(uri: vscode.Uri): boolean {
-  return uri.scheme === "untitled" && uri.path.endsWith(RESULT_VIEW_EXTENSION);
 }
 
 /** Resolve a stored result path: relative paths hang off the document's folder. */

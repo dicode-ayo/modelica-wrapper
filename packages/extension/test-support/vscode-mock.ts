@@ -365,6 +365,15 @@ export const workspace = {
       get: <T>(_key: string, defaultValue?: T): T | undefined => defaultValue,
     };
   },
+  /** Minimal open-text-document stub: returns an empty document bound to `uri`.
+   *  The path helpers + `applyAddResults` only read `.uri`/`.getText`/`.lineCount`. */
+  openTextDocument(uri: UriImpl): Promise<{
+    uri: UriImpl;
+    getText(): string;
+    lineCount: number;
+  }> {
+    return Promise.resolve({ uri, getText: () => "", lineCount: 1 });
+  },
   fs: {
     stat(_uri: unknown): Promise<{
       type: number;

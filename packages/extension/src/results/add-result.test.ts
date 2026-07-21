@@ -3,7 +3,6 @@ import type * as vscode from "vscode";
 
 import {
   buildResultRef,
-  isScratchResultViewUri,
   resolveResultPath,
   scratchResultViewUri,
   storeResultPath,
@@ -83,24 +82,12 @@ describe("buildResultRef", () => {
   });
 });
 
-describe("scratch result view", () => {
-  it("mints an untitled `.omresults` URI", () => {
+describe("scratchResultViewUri", () => {
+  it("mints a fixed untitled `.omresults` URI", () => {
     const uri = scratchResultViewUri();
     expect(uri.scheme).toBe("untitled");
     expect(uri.path.endsWith(".omresults")).toBe(true);
-    expect(isScratchResultViewUri(uri)).toBe(true);
-  });
-
-  it("recognizes only untitled `.omresults` as a scratch view", () => {
-    const untitledOther = {
-      scheme: "untitled",
-      path: "notes.txt",
-    } as vscode.Uri;
-    const savedView = {
-      scheme: "file",
-      path: "/ws/run.omresults",
-    } as vscode.Uri;
-    expect(isScratchResultViewUri(untitledOther)).toBe(false);
-    expect(isScratchResultViewUri(savedView)).toBe(false);
+    // Fixed path: two calls resolve to the same document.
+    expect(uri.path).toBe(scratchResultViewUri().path);
   });
 });

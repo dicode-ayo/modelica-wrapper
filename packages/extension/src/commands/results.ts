@@ -12,12 +12,11 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import { emptyResultViewDoc } from "@dicode/omc-client";
+import { emptyResultViewDoc, type ResultRef } from "@dicode/omc-client";
 
 import {
   applyAddResults,
   buildResultRef,
-  isScratchResultViewUri,
   scratchResultViewUri,
 } from "../results/add-result.js";
 import { serializeResultViewDoc } from "../results/result-doc.js";
@@ -79,7 +78,9 @@ async function createResultView(): Promise<void> {
   );
 }
 
-async function addResultToView(args: AddResultToViewArgs): Promise<void> {
+export async function addResultToView(
+  args: AddResultToViewArgs,
+): Promise<void> {
   if (typeof args?.resultFile !== "string" || args.resultFile === "") {
     return;
   }
@@ -96,14 +97,15 @@ async function addResultToView(args: AddResultToViewArgs): Promise<void> {
   await surfaceInScratchView(args);
 }
 
-/** Add the run's result to an unsaved result view, reusing one if already open
- *  (so repeated runs accumulate into a single scratch tab) else creating one. */
+/**
+ * Add the run's result to the unsaved ("scratch") result view. The scratch URI
+ * is fixed, so `openTextDocument` returns the already-open scratch document when
+ * there is one — repeated runs accumulate into a single tab. Revealing the view
+ * is the feedback here; unlike the focused-view path there is no toast.
+ */
 async function surfaceInScratchView(args: AddResultToViewArgs): Promise<void> {
-  const open = vscode.workspace.textDocuments.find((d) =>
-    isScratchResultViewUri(d.uri),
-  );
-  const uri = open?.uri ?? scratchResultViewUri();
-  const document = open ?? (await vscode.workspace.openTextDocument(uri));
+  const uri = scratchResultViewUri();
+  const document = await vscode.workspace.openTextDocument(uri);
   await applyAddResults(document, [simulateRef(uri, args)]);
   await vscode.commands.executeCommand(
     "vscode.openWith",
@@ -113,7 +115,10 @@ async function surfaceInScratchView(args: AddResultToViewArgs): Promise<void> {
 }
 
 /** Build the `simulate`-sourced `ResultRef` for a run's `.mat`. */
-function simulateRef(documentUri: vscode.Uri, args: AddResultToViewArgs) {
+function simulateRef(
+  documentUri: vscode.Uri,
+  args: AddResultToViewArgs,
+): ResultRef {
   return buildResultRef(
     documentUri,
     resolveSimResult(args.resultFile),
