@@ -41,6 +41,11 @@ export function storeResultPath(
   documentUri: vscode.Uri,
   absMatPath: string,
 ): string {
+  // An unsaved (untitled/virtual) view has no folder to relativize against;
+  // store absolute so its paths survive a later Save-As to any location.
+  if (documentUri.scheme !== "file") {
+    return absMatPath;
+  }
   const rel = path.relative(path.dirname(documentUri.fsPath), absMatPath);
   return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel)
     ? rel

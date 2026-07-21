@@ -76,6 +76,9 @@ export class EventEmitter<T> {
 
 let statPermissions = 0;
 
+/** Monotonic counter for untitled documents minted by `openTextDocument`. */
+let untitledSeq = 0;
+
 /** Control what `workspace.fs.stat` reports for the readonly-gate tests. */
 export function setStatReadonly(readonly: boolean): void {
   statPermissions = readonly ? FilePermission.Readonly : 0;
@@ -150,6 +153,22 @@ class UriImpl {
 
   static file(fsPath: string): UriImpl {
     return new UriImpl("file", "", fsPath, "", "");
+  }
+
+  static from(components: {
+    scheme: string;
+    authority?: string;
+    path?: string;
+    query?: string;
+    fragment?: string;
+  }): UriImpl {
+    return new UriImpl(
+      components.scheme,
+      components.authority ?? "",
+      components.path ?? "",
+      components.query ?? "",
+      components.fragment ?? "",
+    );
   }
 
   static joinPath(base: UriImpl, ...segments: string[]): UriImpl {
@@ -348,6 +367,23 @@ export const workspace = {
     return {
       get: <T>(_key: string, defaultValue?: T): T | undefined => defaultValue,
     };
+  },
+  /** Minimal open-text-document stub. Accepts a `Uri` or the `{ content }`
+   *  untitled form; the latter mints a fresh `untitled:` document. Callers here
+   *  only read `.uri`/`.getText`/`.lineCount`. */
+  openTextDocument(
+    arg: UriImpl | { content?: string; language?: string },
+  ): Promise<{ uri: UriImpl; getText(): string; lineCount: number }> {
+    if (arg instanceof UriImpl) {
+      return Promise.resolve({ uri: arg, getText: () => "", lineCount: 1 });
+    }
+    const content = arg.content ?? "";
+    const uri = UriImpl.from({
+      scheme: "untitled",
+      path: `Untitled-${++untitledSeq}`,
+    });
+    const lineCount = content === "" ? 1 : content.split("\n").length;
+    return Promise.resolve({ uri, getText: () => content, lineCount });
   },
   fs: {
     stat(_uri: unknown): Promise<{

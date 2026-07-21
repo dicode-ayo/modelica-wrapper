@@ -3,15 +3,16 @@
  * - `modelica.createResultView()` — create an empty `*.omresults` and open it
  *   in the result-view editor (the only way to bring a view into existence).
  * - `modelica.addResultToView(args)` — programmatic; the diagram's Simulate
- *   handler fires it to add the just-produced `.mat` to the focused view. A
- *   silent no-op when no result view is focused (Simulate never forces one open).
+ *   handler fires it with the just-produced `.mat`. It adds to the focused
+ *   result view when there is one; otherwise it surfaces the result in an
+ *   unsaved ("scratch") view so a run is never silently dropped.
  */
 
 import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import { emptyResultViewDoc } from "@dicode/omc-client";
+import { emptyResultViewDoc, type ResultRef } from "@dicode/omc-client";
 
 import { applyAddResults, buildResultRef } from "../results/add-result.js";
 import { serializeResultViewDoc } from "../results/result-doc.js";
@@ -73,18 +74,53 @@ async function createResultView(): Promise<void> {
   );
 }
 
-async function addResultToView(args: AddResultToViewArgs): Promise<void> {
-  const document = ResultViewEditorProvider.getActiveDocument();
-  // No focused result view — Simulate stays out of the way (by design).
-  if (
-    !document ||
-    typeof args?.resultFile !== "string" ||
-    args.resultFile === ""
-  ) {
+export async function addResultToView(
+  args: AddResultToViewArgs,
+): Promise<void> {
+  if (typeof args?.resultFile !== "string" || args.resultFile === "") {
     return;
   }
-  const ref = buildResultRef(
+  const active = ResultViewEditorProvider.getActiveDocument();
+  if (active) {
+    const ref = simulateRef(active.uri, args);
+    if ((await applyAddResults(active, [ref])) > 0) {
+      void vscode.window.showInformationMessage(
+        `Added ${ref.label} to the result view.`,
+      );
+    }
+    return;
+  }
+  await surfaceInScratchView(args);
+}
+
+/**
+ * Surface the run's result in a fresh unsaved ("scratch") result view. A
+ * pathless untitled document keeps `Ctrl+S` a Save-As (a named untitled would
+ * save straight to a bogus root path), and `openWith` forces our editor despite
+ * the missing `.omresults` suffix. Once open the view becomes the active target,
+ * so follow-up runs append through the focused-view path above rather than here.
+ * Revealing the view is the feedback; unlike that path there is no toast.
+ */
+async function surfaceInScratchView(args: AddResultToViewArgs): Promise<void> {
+  const document = await vscode.workspace.openTextDocument({
+    content: "",
+    language: "omresults",
+  });
+  await applyAddResults(document, [simulateRef(document.uri, args)]);
+  await vscode.commands.executeCommand(
+    "vscode.openWith",
     document.uri,
+    RESULT_VIEW_VIEW_TYPE,
+  );
+}
+
+/** Build the `simulate`-sourced `ResultRef` for a run's `.mat`. */
+function simulateRef(
+  documentUri: vscode.Uri,
+  args: AddResultToViewArgs,
+): ResultRef {
+  return buildResultRef(
+    documentUri,
     resolveSimResult(args.resultFile),
     "simulate",
     {
@@ -92,12 +128,6 @@ async function addResultToView(args: AddResultToViewArgs): Promise<void> {
       ...(args.parameters ? { parameters: args.parameters } : {}),
     },
   );
-  const added = await applyAddResults(document, [ref]);
-  if (added > 0) {
-    void vscode.window.showInformationMessage(
-      `Added ${ref.label} to the result view.`,
-    );
-  }
 }
 
 /** Resolve OMC's `resultFile` to an absolute path: relative paths hang off the

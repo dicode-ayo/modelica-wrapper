@@ -7,9 +7,9 @@ import {
   storeResultPath,
 } from "./add-result.js";
 
-// The path helpers only read `.fsPath`, so a minimal fake stands in for a `Uri`.
+// A saved view is a `file:` doc; the helpers read `.fsPath` + `.scheme`.
 function docUri(fsPath: string): vscode.Uri {
-  return { fsPath } as vscode.Uri;
+  return { fsPath, scheme: "file" } as vscode.Uri;
 }
 
 describe("resolveResultPath", () => {
@@ -36,6 +36,14 @@ describe("storeResultPath", () => {
 
   it("keeps an absolute path when the `.mat` is outside the document's folder", () => {
     expect(storeResultPath(uri, "/other/b.mat")).toBe("/other/b.mat");
+  });
+
+  it("stores absolute for an unsaved (non-file) view — no folder to anchor to", () => {
+    const scratch = {
+      fsPath: "/Simulation results.omresults",
+      scheme: "untitled",
+    } as vscode.Uri;
+    expect(storeResultPath(scratch, "/ws/a.mat")).toBe("/ws/a.mat");
   });
 
   it("round-trips with resolveResultPath for an under-folder file", () => {
