@@ -23,10 +23,20 @@ describe("SelfWriteGuard", () => {
     );
   });
 
-  it("consumes the entry so a second identical event is external", () => {
+  it("stays claimed across a coalesced repeat of the same write", () => {
+    const guard = createSelfWriteGuard();
+    guard.record("/ws/Foo.mo", "model Foo end Foo;");
+    // One write can surface as create+change; both must claim.
+    expect(guard.claim("/ws/Foo.mo", "model Foo end Foo;")).toBe(true);
+    expect(guard.claim("/ws/Foo.mo", "model Foo end Foo;")).toBe(true);
+  });
+
+  it("drops the parking once disk diverges, so the next edit is external", () => {
     const guard = createSelfWriteGuard();
     guard.record("/ws/Foo.mo", "model Foo end Foo;");
     expect(guard.claim("/ws/Foo.mo", "model Foo end Foo;")).toBe(true);
+    expect(guard.claim("/ws/Foo.mo", "edited")).toBe(false);
+    // Parking is gone: a later event echoing the old text is external too.
     expect(guard.claim("/ws/Foo.mo", "model Foo end Foo;")).toBe(false);
   });
 

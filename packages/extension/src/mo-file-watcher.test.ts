@@ -97,7 +97,8 @@ describe("handleMoChange", () => {
   });
 
   it("unloads a class the file no longer declares", async () => {
-    const { deps, client, childrenChanged, iconChanged } = makeDeps();
+    const { deps, client, childrenChanged, iconChanged, notifySourceChanged } =
+      makeDeps();
     deps.index.set(FILE, ["Top.A", "Top.B"]);
     client.parseFile.mockResolvedValue({ classNames: ["Top.A"] });
 
@@ -106,6 +107,8 @@ describe("handleMoChange", () => {
     expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "Top.B" });
     expect(iconChanged).not.toHaveBeenCalledWith("Top.B");
     expect(childrenChanged).toHaveBeenCalledWith("Top");
+    // The removed class's open source doc must be invalidated too.
+    expect(notifySourceChanged).toHaveBeenCalledWith("Top.B");
     expect(deps.index.get(FILE)).toEqual(["Top.A"]);
   });
 

@@ -17,8 +17,10 @@ export interface SelfWriteGuard {
   record(fsPath: string, text: string): void;
   /**
    * True when `fsPath` has a parked self-write whose text equals `diskText` —
-   * the event is ours and should be skipped. Consumes the entry either way, so
-   * a later event for the same path is treated as external.
+   * the event is ours and should be skipped. The entry stays parked while the
+   * disk still matches, so a single write surfaced as coalesced create+change
+   * events stays claimed; it's dropped only once the disk text diverges, which
+   * marks a genuine external edit.
    */
   claim(fsPath: string, diskText: string): boolean;
   /** Park a self-write then perform it, so no watcher event can slip in first. */
@@ -34,10 +36,11 @@ export function createSelfWriteGuard(): SelfWriteGuard {
     },
     claim(fsPath, diskText) {
       const k = key(fsPath);
-      if (!pending.has(k)) return false;
       const expected = pending.get(k);
+      if (expected === undefined) return false;
+      if (expected === diskText) return true;
       pending.delete(k);
-      return expected === diskText;
+      return false;
     },
     async write(fsPath, text) {
       guard.record(fsPath, text);

@@ -86,16 +86,15 @@ export async function persistClassUnderWorkspace(
       baseDir = existingDir;
       continue;
     }
-    baseDir = path.join(baseDir, parts[i]!);
+    const part = parts[i];
+    if (part === undefined) continue;
+    baseDir = path.join(baseDir, part);
     await fsp.mkdir(baseDir, { recursive: true });
     const pkgFile = path.join(baseDir, "package.mo");
     if (!(await pathExists(pkgFile))) {
       const within = parts.slice(0, i).join(".");
       const header = within ? `within ${within};\n` : "";
-      await guard.write(
-        pkgFile,
-        `${header}package ${parts[i]}\nend ${parts[i]};\n`,
-      );
+      await guard.write(pkgFile, `${header}package ${part}\nend ${part};\n`);
     }
     const orderFile = path.join(baseDir, "package.order");
     if (!(await pathExists(orderFile))) {

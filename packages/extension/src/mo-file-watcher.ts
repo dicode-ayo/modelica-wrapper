@@ -13,7 +13,7 @@
  *     from a path→class index, since the file can no longer be parsed), then
  *     re-list their enclosing scope.
  *
- * Two edits are deliberately not reacted to:
+ * The watcher leaves two kinds of edit alone:
  *   - our own disk writes, matched by content through the {@link SelfWriteGuard}
  *     so a save doesn't fight the custom editor's shadow-buffer sync;
  *   - an edit to a class open *and dirty* in an editor, where reloading OMC
@@ -134,6 +134,7 @@ export async function handleMoChange(
   }
   for (const name of removed) scopes.add(scopeOf(name));
   for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
+  for (const name of removed) deps.sourceProvider.notifySourceChanged(name);
   for (const name of names) {
     deps.libraryTree.iconChanged(name);
     deps.sourceProvider.notifySourceChanged(name);
@@ -252,13 +253,29 @@ export function registerMoFileWatcher(deps: {
     isBusy: isDeclaredClassBusy,
   };
 
-  const watcher = vscode.workspace.createFileSystemWatcher("**/*.mo");
+  // Seed before reacting: a delete resolves its classes from the index, so an
+  // event that lands mid-seed must wait or it would no-op a real deletion.
+  const seedReady = seedWorkspaceIndex(deps.ensureClient, index);
+
+  // Serialize per path so overlapping events (a rename is delete+create; rapid
+  // saves) can't interleave their index writes and leave it out of sync.
+  const inFlight = new Map<string, Promise<void>>();
   const run = (fsPath: string, fn: () => Promise<void>): void => {
-    fn().catch((err) =>
-      log.warn("moWatcher", `handling ${fsPath} failed: ${asMessage(err)}`),
-    );
+    const key = path.resolve(fsPath);
+    const prior = inFlight.get(key) ?? Promise.resolve();
+    const next = prior
+      .then(() => seedReady)
+      .then(fn)
+      .catch((err) =>
+        log.warn("moWatcher", `handling ${fsPath} failed: ${asMessage(err)}`),
+      );
+    inFlight.set(key, next);
+    void next.finally(() => {
+      if (inFlight.get(key) === next) inFlight.delete(key);
+    });
   };
 
+  const watcher = vscode.workspace.createFileSystemWatcher("**/*.mo");
   const subs = [
     watcher,
     watcher.onDidChange((uri) =>
@@ -271,8 +288,6 @@ export function registerMoFileWatcher(deps: {
       run(uri.fsPath, () => handleMoDelete(watcherDeps, uri.fsPath)),
     ),
   ];
-
-  void seedWorkspaceIndex(deps.ensureClient, index);
 
   return vscode.Disposable.from(...subs);
 }
