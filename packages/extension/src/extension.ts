@@ -41,6 +41,7 @@ import {
   MODELICA_SOURCE_SCHEME,
   ModelicaSourceProvider,
 } from "./source-provider.js";
+import { registerMoFileWatcher } from "./mo-file-watcher.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import { syncIconsWithSource } from "./source-icon-sync.js";
 import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
@@ -120,6 +121,17 @@ export async function activate(
   // this is the disjoint path for text-editor saves, which reach the sidebar
   // only through the source provider's change broadcast.
   context.subscriptions.push(syncIconsWithSource(sourceProvider, libraryTree));
+
+  // Keep OMC and the sidebar reactive to bare `.mo` edits (text-editor saves,
+  // Explorer/external create/delete) that never pass through a mutation command.
+  context.subscriptions.push(
+    registerMoFileWatcher({
+      ensureClient,
+      libraryTree,
+      sourceProvider,
+      guard: selfWriteGuard,
+    }),
+  );
 
   context.subscriptions.push(
     libraryView,
