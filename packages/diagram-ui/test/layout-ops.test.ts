@@ -428,6 +428,83 @@ describe("applySnapToExtents — connection re-anchor", () => {
     ]);
   });
 
+  it("shifts the last waypoint when the snapped component is the rhs endpoint", () => {
+    const layout: DiagramLayout = {
+      ...baseLayout(),
+      components: {
+        A: {
+          name: "A",
+          classRef: "K",
+          placement: {
+            extent: [
+              [-9, -4],
+              [1, 6],
+            ],
+          },
+        },
+      },
+      connectors: {},
+      connections: [
+        {
+          lhs: { component: "source", port: "y" },
+          rhs: { component: "A", port: "u" },
+          waypoints: [
+            [5, 20],
+            [5, 1],
+            [1, 1],
+          ],
+        },
+      ],
+    };
+    const out = applySnapToExtents(layout, ["c:A"], GRID);
+    // rhs (on A) follows +1; the lhs end and the internal junction stay put.
+    expect(out.connections[0]?.waypoints).toEqual([
+      [5, 20],
+      [5, 1],
+      [2, 1],
+    ]);
+  });
+
+  it("re-anchors an endpoint on a snapped standalone connector", () => {
+    // Off-grid connector q: extent [[-51,-2],[-47,2]] snaps to [[-50,-2],[-46,2]]
+    // — centre (-49,0) → (-48,0), a +1 x-translation. The endpoint references it
+    // via `component: undefined, port: "q"`, exercising the connectorXf path.
+    const layout: DiagramLayout = {
+      ...baseLayout(),
+      connectors: {
+        q: {
+          name: "q",
+          classRef: "Pin",
+          placement: {
+            extent: [
+              [-51, -2],
+              [-47, 2],
+            ],
+          },
+        },
+      },
+      connections: [
+        {
+          lhs: { component: undefined, port: "q" },
+          rhs: { component: "R1", port: "p" },
+          waypoints: [
+            [-47, 0],
+            [0, 0],
+          ],
+        },
+      ],
+    };
+    const out = applySnapToExtents(layout, ["k:q"], GRID);
+    expect(out.connections[0]?.waypoints).toEqual([
+      [-46, 0],
+      [0, 0],
+    ]);
+    expect(out.connectors.q?.placement.extent).toEqual([
+      [-50, -2],
+      [-46, 2],
+    ]);
+  });
+
   it("returns the same layout reference when the component is already on-grid", () => {
     const layout = withComponentA([
       [2, 1],
