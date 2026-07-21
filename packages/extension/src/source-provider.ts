@@ -189,13 +189,10 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
       throw vscode.FileSystemError.NoPermissions(uri);
     }
 
-    // The class's real on-disk path, if it has one — memoized at first read
-    // so a second save in the same session (after our own prior loadString
-    // already repointed OMC's live fileName) still recognizes it as
-    // already-on-disk instead of re-extracting it to a new path. Deliberately
-    // not falling back to `info.fileName` here: on a second save that field
-    // is already the pseudo-URI our own prior loadString wrote, so trusting
-    // it would reintroduce the exact misclassification this guards against.
+    // Not `info.fileName`: on a second save that field is already the
+    // pseudo-URI our prior loadString wrote, so trusting it would
+    // misclassify an already-on-disk class as memory-only and extract a
+    // second copy. `sourcePathFor` reads the origin snapshotted at first read.
     const diskPath = await this.sourcePathFor(typeName);
 
     // Drain any stale errors so the post-loadString check below only sees
