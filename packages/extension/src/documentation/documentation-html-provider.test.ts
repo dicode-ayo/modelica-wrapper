@@ -104,7 +104,7 @@ describe("DocumentationHtmlProvider", () => {
     );
     await expect(
       provider.writeFile(URI, Buffer.from("<html><p>x</p></html>")),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "NoPermissions" });
     expect(calls.setArgs).toEqual([]);
   });
 
@@ -119,7 +119,7 @@ describe("DocumentationHtmlProvider", () => {
     );
     await expect(
       provider.writeFile(URI, Buffer.from("<html><p>x</p></html>")),
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ code: "NoPermissions" });
     expect(calls.setArgs).toEqual([]);
   });
 
