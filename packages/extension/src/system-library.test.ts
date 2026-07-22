@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { isSystemLibraryClass } from "./system-library.js";
+import {
+  isSystemLibraryClass,
+  systemLibraryVerdict,
+} from "./system-library.js";
 
 function makeClient(
   fileName: string,
@@ -45,5 +48,27 @@ describe("isSystemLibraryClass", () => {
       "/home/u/.openmodelica/libraries:/opt/om/lib/omlibrary",
     );
     expect(await isSystemLibraryClass(client, "Complex")).toBe(true);
+  });
+});
+
+describe("systemLibraryVerdict", () => {
+  it("returns true/false when the class's origin is resolvable", async () => {
+    expect(
+      await systemLibraryVerdict(
+        makeClient("/home/u/.openmodelica/libraries/Modelica/package.mo"),
+        "Modelica",
+      ),
+    ).toBe(true);
+    expect(
+      await systemLibraryVerdict(makeClient("/ws/MyLib/R.mo"), "MyLib.R"),
+    ).toBe(false);
+  });
+
+  it("returns undefined for an unresolved class (no on-disk source)", async () => {
+    // A not-yet-loaded class has no source path to classify — the caller must
+    // not cache this as writable.
+    expect(await systemLibraryVerdict(makeClient(""), "Not.Loaded")).toBe(
+      undefined,
+    );
   });
 });

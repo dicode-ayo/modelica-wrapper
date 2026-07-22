@@ -270,13 +270,16 @@ export function resolveDiagramEditor(
     void (async (): Promise<void> => {
       try {
         const client = await ensureClient();
-        // A read-only class (an MSL library, reported by the source provider's
-        // stat) still renders and answers read actions, but rejects edits.
-        const readOnly = await isReadOnlyDocument(document);
         const layout =
           mode === "icon"
             ? await fetchIconLayout(client, className)
             : await fetchDiagramLayout(client, className);
+        // A read-only class (an MSL library, reported by the source provider's
+        // stat) still renders and answers read actions, but rejects edits.
+        // Evaluated after the fetch: fetching resolves a not-yet-loaded class,
+        // so a verdict taken earlier (e.g. on a restored tab) would read as
+        // writable and strand the editor in edit mode.
+        const readOnly = await isReadOnlyDocument(document);
         controller = new DiagramEditController(
           { client, document, className, gate, onClassContentChanged },
           layout,
