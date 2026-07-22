@@ -196,10 +196,8 @@ export function resolveDocumentationEditor(
   void (async (): Promise<void> => {
     try {
       const client: DocumentationClient = await ensureClient();
-      const readOnly = await isReadOnlyDocument(document);
       controller = new DocumentationEditController(
         { client, document, className, gate },
-        readOnly,
         (onForeignChange) => createShadowBuffer(document, onForeignChange),
       );
       registerController(className, controller);
@@ -278,9 +276,14 @@ export class DocumentationEditController {
   // before that is refused rather than targeting a not-yet-confirmed class.
   private seeded = false;
 
+  // Conclusive only once `refetchAndSend` has resolved the class (a restored
+  // tab's class isn't loaded yet, so an earlier verdict would read writable);
+  // the safe-true default is moot in practice since `seeded` already refuses
+  // edits before the first fetch.
+  private readOnly = true;
+
   constructor(
     private readonly deps: EditControllerDeps,
-    private readonly readOnly: boolean,
     makeShadow: (
       onForeignChange: (document: vscode.TextDocument) => void,
     ) => ShadowBuffer,
@@ -394,11 +397,15 @@ export class DocumentationEditController {
   }
 
   private async refetchAndSend(): Promise<void> {
-    const { client, className, gate } = this.deps;
+    const { client, className, gate, document } = this.deps;
     const { info } = await client.getDocumentationAnnotation({
       typeName: className,
     });
     this.seeded = true;
+    // Evaluated after the fetch, which resolves a not-yet-loaded class (a
+    // restored tab): a verdict taken earlier would read as writable and strand
+    // the editor in edit mode for a system-library class.
+    this.readOnly = await isReadOnlyDocument(document);
     const resources = await resolveDocResources(client, info);
     gate.send({
       type: "doc",

@@ -265,6 +265,47 @@ describe("resolveDocumentationEditor", () => {
     expect(msg?.type === "doc" && msg.readOnly).toBe(true);
   });
 
+  it("evaluates readOnly after getDocumentationAnnotation resolves the class", async () => {
+    const { panel, posted, fireReady } = makePanel();
+    // Read-only becomes visible only once the fetch has resolved the class; a
+    // verdict taken before the fetch (the restored-tab bug) would read
+    // writable. Restriction "package" also confirms this no longer depends on
+    // fetchInterface's getModelInstance, which packages never call.
+    let fetched = false;
+    const client = {
+      getDocumentationAnnotation: vi.fn(() => {
+        fetched = true;
+        return Promise.resolve({ info: "<html><p>x</p></html>" });
+      }),
+      getClassRestriction: vi.fn(() =>
+        Promise.resolve({ restriction: "package" }),
+      ),
+    } as unknown as OmcClient;
+    const ensureClient = vi.fn(() => Promise.resolve(client));
+    const statSpy = vi
+      .spyOn(vscode.workspace.fs, "stat")
+      .mockImplementation(() =>
+        Promise.resolve({
+          type: vscode.FileType.File,
+          ctime: 0,
+          mtime: 0,
+          size: 1,
+          permissions: fetched ? vscode.FilePermission.Readonly : undefined,
+        }),
+      );
+    try {
+      resolveDocumentationEditor(panel, EXT_URI, ensureClient, PID_DOC);
+      await flush();
+      fireReady();
+      await flush();
+
+      const msg = posted.find((m) => m.type === "doc");
+      expect(msg?.type === "doc" && msg.readOnly).toBe(true);
+    } finally {
+      statSpy.mockRestore();
+    }
+  });
+
   it("posts an error, not a doc, when the OMC read throws", async () => {
     const { panel, posted, fireReady } = makePanel();
     const client = {
@@ -448,7 +489,6 @@ describe("DocumentationEditController write path", () => {
     const { factory, writes } = makeShadowFactory();
     const controller = new DocumentationEditController(
       { client, document: srcDoc(), className: CLASS, gate },
-      false,
       factory,
     );
 
@@ -468,9 +508,9 @@ describe("DocumentationEditController write path", () => {
     const { client, calls } = makeEditClient({ info: "<html></html>" });
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
+    setStatReadonly(true);
     const controller = new DocumentationEditController(
       { client, document: srcDoc(), className: CLASS, gate },
-      true,
       factory,
     );
 
@@ -488,7 +528,6 @@ describe("DocumentationEditController write path", () => {
     const { factory, writes } = makeShadowFactory();
     const controller = new DocumentationEditController(
       { client, document: srcDoc(), className: CLASS, gate },
-      false,
       factory,
     );
 
@@ -506,7 +545,6 @@ describe("DocumentationEditController write path", () => {
     const { factory, writes } = makeShadowFactory();
     const controller = new DocumentationEditController(
       { client, document: srcDoc(), className: CLASS, gate },
-      false,
       factory,
     );
 
@@ -526,7 +564,6 @@ describe("DocumentationEditController write path", () => {
     const { scheduler, flush: flushTimer } = manualScheduler();
     const controller = new DocumentationEditController(
       { client, document: srcDoc("undone text"), className: CLASS, gate },
-      false,
       factory,
       scheduler,
     );
