@@ -14,6 +14,7 @@ import * as vscode from "vscode";
 import type { OmcClient } from "@dicode/omc-client";
 
 import { createSelfWriteGuard } from "./self-write-guard.js";
+import type { SelfWriteGuard } from "./self-write-guard.js";
 import { ModelicaSourceProvider, sourceUriFor } from "./source-provider.js";
 
 const URI = sourceUriFor("Pkg.M");
@@ -158,5 +159,89 @@ describe("ModelicaSourceProvider: read-only system libraries", () => {
     const stat = await provider.stat(URI);
 
     expect(stat.permissions).toBeUndefined();
+  });
+});
+
+describe("ModelicaSourceProvider: whole-file save for shared files", () => {
+  /** Guard that records writes instead of touching disk. */
+  function recordingGuard(): {
+    guard: SelfWriteGuard;
+    write: ReturnType<typeof vi.fn>;
+  } {
+    const write = vi.fn(() => Promise.resolve());
+    return {
+      guard: { record: vi.fn(), claim: () => false, write },
+      write,
+    };
+  }
+
+  /** Client whose source files and `listFile` are keyed per class. */
+  function sharedFileClient(opts: {
+    fileName: string;
+    sources: Record<string, string>;
+    listing: Record<string, string>;
+  }): { client: OmcClient; loadString: ReturnType<typeof vi.fn> } {
+    const loadString = vi.fn(() => Promise.resolve({ success: true }));
+    const client = {
+      getClassInformation: vi.fn(() =>
+        Promise.resolve({ fileName: opts.fileName, fileReadOnly: false }),
+      ),
+      getSourceFile: vi.fn(({ typeName }: { typeName: string }) =>
+        Promise.resolve({ fileName: opts.sources[typeName] ?? "" }),
+      ),
+      listFile: vi.fn(({ typeName }: { typeName: string }) =>
+        Promise.resolve({ contents: opts.listing[typeName] ?? "" }),
+      ),
+      getModelicaPath: vi.fn(() =>
+        Promise.resolve({ modelicaPath: "/home/u/.openmodelica/libraries" }),
+      ),
+      loadString,
+      getErrorString: vi.fn(() => Promise.resolve({ errorString: "" })),
+    } as unknown as OmcClient;
+    return { client, loadString };
+  }
+
+  it("writes the whole owning file, not just the edited member", async () => {
+    const { client, loadString } = sharedFileClient({
+      fileName: "/ws/Pkg.mo",
+      sources: { "Pkg.M": "/ws/Pkg.mo", Pkg: "/ws/Pkg.mo" },
+      listing: {
+        Pkg: "package Pkg model M ... end M; model Other ... end Pkg;",
+      },
+    });
+    const { guard, write } = recordingGuard();
+    const provider = new ModelicaSourceProvider(
+      () => Promise.resolve(client),
+      guard,
+    );
+
+    await provider.writeFile(URI, Buffer.from("model M edited end M;"));
+
+    // Loaded under the real file so the member stays put, not the URI.
+    expect(loadString).toHaveBeenCalledWith(
+      expect.objectContaining({ filename: "/ws/Pkg.mo" }),
+    );
+    // Wrote the whole file (owner `Pkg`'s listing), preserving `Other`.
+    expect(write).toHaveBeenCalledWith(
+      "/ws/Pkg.mo",
+      "package Pkg model M ... end M; model Other ... end Pkg;",
+    );
+  });
+
+  it("writes the buffer verbatim when the class owns its file", async () => {
+    const { client } = sharedFileClient({
+      fileName: "/ws/M.mo",
+      sources: { "Pkg.M": "/ws/M.mo", Pkg: "/ws/package.mo" },
+      listing: {},
+    });
+    const { guard, write } = recordingGuard();
+    const provider = new ModelicaSourceProvider(
+      () => Promise.resolve(client),
+      guard,
+    );
+
+    await provider.writeFile(URI, Buffer.from("model M edited end M;"));
+
+    expect(write).toHaveBeenCalledWith("/ws/M.mo", "model M edited end M;");
   });
 });

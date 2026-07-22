@@ -94,6 +94,47 @@ describe("reloadBufferIntoOmc", () => {
   });
 });
 
+describe("reloadBufferIntoOmc — source-file resolution", () => {
+  it("loads under the class's real source file so an inline member stays put", async () => {
+    let loadedFilename: string | undefined;
+    const client: BufferSyncClient = {
+      getErrorString: vi.fn(async () => ({ errorString: "" })),
+      getSourceFile: vi.fn(async () => ({ fileName: "/ws/Pkg/package.mo" })),
+      loadString: vi.fn(async (input) => {
+        loadedFilename = input.filename;
+        return { success: true };
+      }),
+    };
+
+    await reloadBufferIntoOmc(
+      client,
+      docFor(DOC_URI, "model Model end Model;"),
+    );
+
+    expect(loadedFilename).toBe("/ws/Pkg/package.mo");
+  });
+
+  it("falls back to the document URI when the source path is non-disk", async () => {
+    let loadedFilename: string | undefined;
+    const client: BufferSyncClient = {
+      getErrorString: vi.fn(async () => ({ errorString: "" })),
+      // A memory-only / already-repointed class has no on-disk source.
+      getSourceFile: vi.fn(async () => ({ fileName: "<runtime:Model>" })),
+      loadString: vi.fn(async (input) => {
+        loadedFilename = input.filename;
+        return { success: true };
+      }),
+    };
+
+    await reloadBufferIntoOmc(
+      client,
+      docFor(DOC_URI, "model Model end Model;"),
+    );
+
+    expect(loadedFilename).toBe(DOC_URI.toString());
+  });
+});
+
 describe("isReadOnlyDocument", () => {
   it("reports false for a writable document", async () => {
     setStatReadonly(false);

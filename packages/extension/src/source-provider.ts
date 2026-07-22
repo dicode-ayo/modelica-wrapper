@@ -45,6 +45,7 @@ import {
   linkPersistedClass,
   persistClassUnderWorkspace,
 } from "./persist.js";
+import { fileOwnerClass } from "./file-owner.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
 import { isSystemLibraryClass } from "./system-library.js";
 
@@ -166,24 +167,25 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
       );
     }
 
-    // Snapshot fileName before loadString — loadString rewrites OMC's
-    // `fileName` field for the class to whatever pseudo-filename we pass it,
-    // so we'd lose the disk path otherwise.
     const info = await client.getClassInformation({ typeName });
     if (info.fileReadOnly) {
       throw vscode.FileSystemError.NoPermissions(uri);
     }
+    const onDisk = isLikelyDiskPath(info.fileName);
 
     // Drain any stale errors so the post-loadString check below only sees
     // diagnostics produced by this save.
     await client.getErrorString();
 
-    // Update OMC's in-memory AST. `merge=false` (the default) replaces the
-    // existing class; we pass the source URI as a pseudo-filename so OMC's
-    // diagnostics point back at this buffer until `setSourceFile` updates it.
+    // Update OMC's in-memory AST. Load with the class's real source file as the
+    // filename: OMC keys a class to its file, so a class stored inline in a
+    // shared `package.mo` stays in place with its siblings — passing a
+    // per-class pseudo-filename evicts it from that file. A memory-only class
+    // has no disk path yet, so it carries the buffer URI until `setSourceFile`.
+    const loadFilename = onDisk ? info.fileName : uri.toString();
     const { success } = await client.loadString({
       data: text,
-      filename: uri.toString(),
+      filename: loadFilename,
     });
     const { errorString } = await client.getErrorString();
     if (!success || (errorString.length > 0 && /error/i.test(errorString))) {
@@ -198,9 +200,18 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
       );
     }
 
-    if (isLikelyDiskPath(info.fileName)) {
-      // (a) Write through to the existing on-disk source.
-      await this.guard.write(info.fileName, text);
+    if (onDisk) {
+      // (a) Write through to the existing on-disk source. When the class shares
+      // its file with siblings (an inline package member), write the whole file
+      // — `listFile` of the file's owning class — so the save doesn't drop the
+      // siblings. A class that owns its file writes its buffer verbatim.
+      const owner = await fileOwnerClass(client, typeName);
+      if (owner === typeName) {
+        await this.guard.write(info.fileName, text);
+      } else {
+        const { contents } = await client.listFile({ typeName: owner });
+        await this.guard.write(info.fileName, contents);
+      }
     } else {
       // (b) OMC-memory-only class — materialize under the workspace folder.
       const ws = vscode.workspace.workspaceFolders?.[0];
