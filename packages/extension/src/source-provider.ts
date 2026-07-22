@@ -210,6 +210,14 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
         await this.guard.write(info.fileName, text);
       } else {
         const { contents } = await client.listFile({ typeName: owner });
+        // Same truncation guard as the member path: an empty owner listing
+        // (owner momentarily unresolved) would blank the shared file, taking
+        // every sibling with it.
+        if (contents.trim().length === 0) {
+          throw vscode.FileSystemError.Unavailable(
+            `refusing to save empty source over ${info.fileName}`,
+          );
+        }
         await this.guard.write(info.fileName, contents);
       }
     } else {
