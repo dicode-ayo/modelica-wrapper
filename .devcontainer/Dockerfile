@@ -3,7 +3,7 @@
 # in `renovate.json` keeps `SUPPORTED_OMC.primary` in
 # `packages/omc-client/src/version.ts` in sync via the same OpenModelica
 # GitHub release datasource.
-FROM openmodelica/openmodelica:v1.26.7-minimal
+FROM openmodelica/openmodelica:v1.27.0-minimal
 
 ENV DEBIAN_FRONTEND=noninteractive
 

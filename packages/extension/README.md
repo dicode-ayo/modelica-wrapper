@@ -17,7 +17,7 @@ every gesture is written straight back into the `.mo` source.
 
 - **OpenModelica installed** with `omc` on your `PATH` (or set `modelica.omcPath`).
   Get it from <https://openmodelica.org/download/>. The extension is built and
-  audited against a specific OMC version; nearby `1.26.x` releases work too.
+  audited against a specific OMC version; nearby `1.27.x` releases work too.
 - **VSCode ≥ 1.95**.
 
 The extension does **not** bundle OpenModelica — it drives your local `omc`

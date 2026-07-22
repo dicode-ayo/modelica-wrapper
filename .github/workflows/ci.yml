@@ -54,7 +54,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        omc: ["v1.26.7"]
+        omc: ["v1.27.0"]
     container:
       image: openmodelica/openmodelica:${{ matrix.omc }}-minimal
       # GitHub Actions runs container jobs as root by default.

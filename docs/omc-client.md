@@ -200,8 +200,8 @@ sometimes `null`, sometimes an error string) into a uniform
 
 ```ts
 export const SUPPORTED_OMC = {
-  primary: "1.26.7",                       // verified pin
-  compatibleMinor: { major: 1, minor: 26 }, // same major.minor ⇒ no warning
+  primary: "1.27.0",                       // verified pin
+  compatibleMinor: { major: 1, minor: 27 }, // same major.minor ⇒ no warning
   auditedOn: "2026-05-20",                  // last full per-function audit
 };
 ```

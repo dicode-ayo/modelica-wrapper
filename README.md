@@ -134,7 +134,7 @@ The OMC version is **pinned in three places** that Renovate keeps in lock-step:
 
 - [`.devcontainer/Dockerfile`](.devcontainer/Dockerfile) — `FROM openmodelica/openmodelica:vX.Y.Z-minimal`
 - [`.github/workflows/ci.yml`](.github/workflows/ci.yml) — same image in the integration matrix
-- [`packages/omc-client/src/version.ts`](packages/omc-client/src/version.ts) — `SUPPORTED_OMC.primary` (currently `1.26.7`), exposed at runtime via `OmcClient.getVersionStatus()`
+- [`packages/omc-client/src/version.ts`](packages/omc-client/src/version.ts) — `SUPPORTED_OMC.primary`, exposed at runtime via `OmcClient.getVersionStatus()`
 
 ### Local dev without the container
 

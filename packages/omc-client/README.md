@@ -18,7 +18,7 @@ No VSCode dependency. Works in any Node ≥20 process.
 - **`omc` on your `PATH`** (or pass an explicit path) — install
   [OpenModelica](https://openmodelica.org/download/). The client is pinned to and
   audited against a specific OMC version (see [`src/version.ts`](src/version.ts));
-  other `1.26.x` releases are treated as compatible.
+  other `1.27.x` releases are treated as compatible.
 - ZeroMQ is used under the hood via the prebuilt-binary [`zeromq`](https://www.npmjs.com/package/zeromq) package.
 
 ## Install
@@ -36,7 +36,7 @@ import { OmcClient } from "@dicode/omc-client";
 const client = await OmcClient.create();          // spawns `omc --interactive=zmq`
 try {
   const { version } = await client.getVersion();
-  console.log(version);                            // "OpenModelica 1.26.7"
+  console.log(version);                            // "OpenModelica 1.27.0"
 
   await client.loadModel({ typeName: "Modelica" });
 
