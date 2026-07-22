@@ -7,6 +7,18 @@ import type {
 import type { DiagramMode } from "../diagram/view-type.js";
 
 /**
+ * Which parameter modal the panel is showing. `classParams`, `componentParams`,
+ * and `shapeProperties` write back to the class source; `simulate` runs the
+ * model and emits a result file without touching source, so it stays usable on
+ * a read-only class.
+ */
+export type ParameterFormKind =
+  | "classParams"
+  | "componentParams"
+  | "shapeProperties"
+  | "simulate";
+
+/**
  * Wire-format mirror of diagram-ui's `DiagramCommandId`. Kept local because the
  * CommonJS extension host can't import the ESM-only diagram-ui package; the
  * webview side assigns it straight into diagram-ui's identical union.
@@ -37,9 +49,9 @@ export type DiagramCommandId =
  *                            with a full error state.
  *   - `parametersOpen`     — open the parameter modal for the given
  *                            `ParameterModel` (fields carry their own
- *                            values) + title. `kind` is an opaque tag the
- *                            extension uses to route the eventual submit
- *                            ("simulate", "componentParams", …).
+ *                            values) + title. `kind` (a `ParameterFormKind`)
+ *                            routes the eventual submit and gates whether the
+ *                            form is read-only.
  *   - `parametersClose`    — dismiss the parameter modal.
  *
  * Webview → extension:
@@ -80,7 +92,7 @@ export type ExtensionToWebview =
     }
   | {
       type: "parametersOpen";
-      kind: string;
+      kind: ParameterFormKind;
       /**
        * The typed parameter model the form renders directly. Its fields
        * carry their own current values, type defaults, units, unit options,
@@ -148,10 +160,10 @@ export type WebviewToExtension =
   | { type: "editComponent"; componentName: string }
   | {
       type: "parametersSubmit";
-      kind: string;
+      kind: ParameterFormKind;
       values: Record<string, unknown>;
     }
-  | { type: "parametersCancel"; kind: string }
+  | { type: "parametersCancel"; kind: ParameterFormKind }
   | {
       /**
        * "Reset to defaults" pressed in the component parameter modal.
