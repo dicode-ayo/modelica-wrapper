@@ -35,11 +35,9 @@ export async function isSystemLibraryClass(
 
 /**
  * `true` / `false` when `className`'s origin is resolvable, `undefined` when it
- * isn't — a class not yet loaded (or already repointed to this scheme's URI)
- * has no on-disk source to classify. The `undefined` case must not be cached as
- * writable: a restored system-library editor resolves its class only when its
- * layout is fetched, so a verdict taken before that would strand it in edit
- * mode once the class loads.
+ * isn't — a class not yet loaded (or repointed to an editor-buffer URI) has no
+ * on-disk source to classify. `undefined` is inconclusive: the class may
+ * resolve later, so callers must not treat it as a durable "writable".
  */
 export async function systemLibraryVerdict(
   client: SystemLibraryClient,

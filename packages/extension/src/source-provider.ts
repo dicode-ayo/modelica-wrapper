@@ -288,10 +288,12 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
   }
 
   /**
-   * Whether `typeName` is a read-only system-library class. Memoized on the
-   * first lookup — which `readFile` forces before any edit — so the verdict
+   * Whether `typeName` is a read-only system-library class. A conclusive
+   * verdict is memoized — `readFile` forces the lookup before any edit — so it
    * reflects the class's on-disk origin, not a source path a mutation has since
-   * repointed to this scheme's URI. Failures don't block editing.
+   * repointed to this scheme's URI. An inconclusive lookup (the class isn't
+   * resolved yet) returns `false` without caching, so it re-evaluates once the
+   * class loads. Failures don't block editing.
    */
   async isReadOnly(typeName: string): Promise<boolean> {
     const cached = this.readOnly.get(typeName);
