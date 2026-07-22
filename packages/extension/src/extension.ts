@@ -42,6 +42,7 @@ import {
   ModelicaSourceProvider,
 } from "./source-provider.js";
 import { registerMoFileWatcher } from "./mo-file-watcher.js";
+import { createOmcClientCache } from "./omc-client-cache.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import { syncIconsWithSource } from "./source-icon-sync.js";
 import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
@@ -49,7 +50,16 @@ import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
 import { loadEntryFilesAndRefresh } from "./workspace-autoload.js";
 import { discoverEntryPoints } from "./workspace-scan.js";
 
-let client: OmcClient | undefined;
+const omcClientCache = createOmcClientCache(
+  async () => {
+    const cfg = vscode.workspace.getConfiguration("modelica");
+    const omcPath = cfg.get<string>("omcPath") ?? "";
+    const c = await OmcClient.create({ omcPath });
+    await cdIntoWorkspaceCacheDir(c);
+    return c;
+  },
+  (c) => c.close(),
+);
 
 /**
  * Public shape returned from `activate()`. Other extensions can reach this
@@ -193,21 +203,12 @@ export async function activate(
 }
 
 export async function deactivate(): Promise<void> {
-  if (client) {
-    const c = client;
-    client = undefined;
-    await c.close();
-  }
+  await omcClientCache.close();
   log.dispose();
 }
 
-async function ensureClient(): Promise<OmcClient> {
-  if (client) return client;
-  const cfg = vscode.workspace.getConfiguration("modelica");
-  const omcPath = cfg.get<string>("omcPath") ?? "";
-  client = await OmcClient.create({ omcPath });
-  await cdIntoWorkspaceCacheDir(client);
-  return client;
+function ensureClient(): Promise<OmcClient> {
+  return omcClientCache.ensure();
 }
 
 /**
@@ -254,13 +255,8 @@ async function cdIntoWorkspaceCacheDir(c: OmcClient): Promise<void> {
  * OMC's in-memory state (loaded classes, last simulation result, command-
  * line options) is wiped.
  */
-async function resetClient(): Promise<OmcClient> {
-  if (client) {
-    const c = client;
-    client = undefined;
-    await c.close();
-  }
-  return ensureClient();
+function resetClient(): Promise<OmcClient> {
+  return omcClientCache.reset();
 }
 
 /**
