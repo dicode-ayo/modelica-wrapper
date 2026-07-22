@@ -178,7 +178,7 @@ class OmWebviewRoot extends LitElement {
       ></om-action-panel>
       <om-parameter-panel
         ?open=${this.paramOpen}
-        ?readonly=${this.readOnly}
+        ?readonly=${this.readOnly && this.paramKind !== "simulate"}
         ?show-reset=${this.paramComponentName !== null}
         .model=${this.paramModel}
         .title=${this.paramTitle}
