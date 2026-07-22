@@ -34,7 +34,12 @@ import {
   type ToolId,
 } from "@dicode/diagram-ui";
 
-import type { ExtensionToWebview, WebviewToExtension } from "./protocol.js";
+import { panelReadonly } from "./panel-readonly.js";
+import type {
+  ExtensionToWebview,
+  ParameterFormKind,
+  WebviewToExtension,
+} from "./protocol.js";
 import { getVsCodeApi, type VsCodeApi } from "./vscode-api.js";
 
 // Injected by esbuild `define`. Captures the build's wall-clock time so we
@@ -92,9 +97,9 @@ class OmWebviewRoot extends LitElement {
    */
   @state() private paramComponentName: string | null = null;
 
-  /** Opaque tag the extension uses to route the modal's submit/cancel
-   *  back to the right command flow. */
-  private paramKind: string | null = null;
+  /** Which modal is open: routes its submit/cancel and, via {@link panelReadonly},
+   *  gates whether the form is read-only. Reactive — `render` reads it. */
+  @state() private paramKind: ParameterFormKind | null = null;
 
   private vscode: VsCodeApi<WebviewToExtension> | null = null;
   private get diagram(): OmGraphicalLayout | null {
@@ -178,7 +183,7 @@ class OmWebviewRoot extends LitElement {
       ></om-action-panel>
       <om-parameter-panel
         ?open=${this.paramOpen}
-        ?readonly=${this.readOnly}
+        ?readonly=${panelReadonly(this.readOnly, this.paramKind)}
         ?show-reset=${this.paramComponentName !== null}
         .model=${this.paramModel}
         .title=${this.paramTitle}
