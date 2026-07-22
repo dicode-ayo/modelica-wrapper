@@ -29,14 +29,26 @@ export function createOmcClientCache<T>(
   function ensure(): Promise<T> {
     if (client !== undefined) return Promise.resolve(client);
     if (inFlight === undefined) {
-      inFlight = spawn().then((c) => {
-        client = c;
-        return c;
-      });
-      // On failure clear the in-flight promise so a later call can respawn.
-      void inFlight.catch(() => {
-        inFlight = undefined;
-      });
+      // Identity-guard the continuations against `inFlight` being swapped out
+      // by a `close()`/`reset()` that races this spawn: adopt the client only
+      // while this attempt still owns the slot, otherwise reap the orphaned
+      // process; clear the slot on failure only if it's still ours (a stale
+      // reject must not clobber a newer in-flight spawn).
+      const attempt: Promise<T> = spawn().then(
+        async (c) => {
+          if (inFlight !== attempt) {
+            await closeClient(c);
+            throw new Error("OMC client cache was closed during spawn");
+          }
+          client = c;
+          return c;
+        },
+        (error: unknown) => {
+          if (inFlight === attempt) inFlight = undefined;
+          throw error;
+        },
+      );
+      inFlight = attempt;
     }
     return inFlight;
   }
