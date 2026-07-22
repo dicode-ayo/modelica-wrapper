@@ -276,10 +276,7 @@ export class DocumentationEditController {
   // before that is refused rather than targeting a not-yet-confirmed class.
   private seeded = false;
 
-  // Conclusive only once `refetchAndSend` has resolved the class (a restored
-  // tab's class isn't loaded yet, so an earlier verdict would read writable);
-  // the safe-true default is moot in practice since `seeded` already refuses
-  // edits before the first fetch.
+  // Safe default until `refetchAndSend` resolves the class and evaluates it.
   private readOnly = true;
 
   constructor(

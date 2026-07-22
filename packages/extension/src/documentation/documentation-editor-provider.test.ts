@@ -268,9 +268,9 @@ describe("resolveDocumentationEditor", () => {
   it("evaluates readOnly after getDocumentationAnnotation resolves the class", async () => {
     const { panel, posted, fireReady } = makePanel();
     // Read-only becomes visible only once the fetch has resolved the class; a
-    // verdict taken before the fetch (the restored-tab bug) would read
-    // writable. Restriction "package" also confirms this no longer depends on
-    // fetchInterface's getModelInstance, which packages never call.
+    // verdict taken before the fetch would read writable. Restriction
+    // "package" also confirms this no longer depends on fetchInterface's
+    // getModelInstance, which packages never call.
     let fetched = false;
     const client = {
       getDocumentationAnnotation: vi.fn(() => {
