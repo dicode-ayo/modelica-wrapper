@@ -13,6 +13,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 
 import type { SelfWriteGuard } from "../self-write-guard.js";
+import { isSystemLibraryClass } from "../system-library.js";
 
 import {
   sanitizeIdentifier,
@@ -144,6 +145,14 @@ export function registerPackageCommands(
         const log = createReplLog(`savePackage ${node.qualifiedName}`);
         try {
           const c = await ctx.ensureClient();
+          // `setSourceFile` below would repoint the class off MODELICAPATH,
+          // silently stripping read-only protection from the whole subtree.
+          if (await isSystemLibraryClass(c, node.qualifiedName)) {
+            const msg = `cannot save ${node.qualifiedName} — it belongs to a read-only system library.`;
+            log.error(msg);
+            await vscode.window.showErrorMessage(`Modelica: ${msg}`);
+            return;
+          }
           const { contents } = await c.listFile({
             typeName: node.qualifiedName,
           });

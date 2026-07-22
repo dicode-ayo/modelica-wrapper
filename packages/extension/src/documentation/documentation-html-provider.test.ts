@@ -25,9 +25,12 @@ interface Calls {
 
 function makeClient(
   anno: { info?: string; fail?: boolean },
-  opts?: { fileReadOnly?: boolean; setOk?: boolean },
+  opts?: { fileReadOnly?: boolean; setOk?: boolean; systemLib?: boolean },
 ): { client: DocHtmlClient; calls: Calls } {
   const calls: Calls = { setArgs: [] };
+  const sourceFile = opts?.systemLib
+    ? "/home/u/.openmodelica/libraries/Modelica/Blocks/package.mo"
+    : "/ws/Pkg/M.mo";
   const client: DocHtmlClient = {
     getDocumentationAnnotation: vi.fn(() =>
       anno.fail
@@ -36,6 +39,10 @@ function makeClient(
     ),
     getClassInformation: vi.fn(() =>
       Promise.resolve({ fileReadOnly: opts?.fileReadOnly ?? false }),
+    ),
+    getSourceFile: vi.fn(() => Promise.resolve({ fileName: sourceFile })),
+    getModelicaPath: vi.fn(() =>
+      Promise.resolve({ modelicaPath: "/home/u/.openmodelica/libraries" }),
     ),
     setFullDocumentationAnnotation: vi.fn(
       (a: { typeName: string; info: string }) => {
@@ -90,6 +97,21 @@ describe("DocumentationHtmlProvider", () => {
     const { client, calls } = makeClient(
       { info: "<html></html>" },
       { fileReadOnly: true },
+    );
+    const provider = new DocumentationHtmlProvider(
+      () => Promise.resolve(client),
+      () => {},
+    );
+    await expect(
+      provider.writeFile(URI, Buffer.from("<html><p>x</p></html>")),
+    ).rejects.toThrow();
+    expect(calls.setArgs).toEqual([]);
+  });
+
+  it("refuses to write a system-library class whose file is writable", async () => {
+    const { client, calls } = makeClient(
+      { info: "<html></html>" },
+      { systemLib: true },
     );
     const provider = new DocumentationHtmlProvider(
       () => Promise.resolve(client),

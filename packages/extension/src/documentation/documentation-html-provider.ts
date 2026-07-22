@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 import { qualifiedNameFromUri } from "../source-provider.js";
+import { isSystemLibraryClass } from "../system-library.js";
 
 export const MODELICA_DOC_SCHEME = "modelica-doc";
 
@@ -18,6 +19,8 @@ export interface DocHtmlClient {
   getClassInformation(input: {
     typeName: string;
   }): Promise<{ fileReadOnly: boolean }>;
+  getSourceFile(input: { typeName: string }): Promise<{ fileName: string }>;
+  getModelicaPath(): Promise<{ modelicaPath: string }>;
 }
 
 interface DocState {
@@ -62,7 +65,9 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
 
   /**
    * The class's current documentation and whether it's editable, in one
-   * place. A class is read-only when its source is (an MSL/library).
+   * place. A class is read-only when its file is (`fileReadOnly`) or when it
+   * belongs to a system library — an installed MODELICAPATH library is
+   * user-writable on disk, so `fileReadOnly` alone misses it.
    */
   private async docState(className: string): Promise<DocState> {
     const client = await this.ensureClient();
@@ -72,7 +77,9 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
     const { fileReadOnly } = await client.getClassInformation({
       typeName: className,
     });
-    return { info, readOnly: fileReadOnly };
+    const readOnly =
+      fileReadOnly || (await isSystemLibraryClass(client, className));
+    return { info, readOnly };
   }
 
   /**
