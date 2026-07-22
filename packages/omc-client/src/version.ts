@@ -31,9 +31,9 @@ export const SUPPORTED_OMC = {
    *
    * **Renovate-managed** via the regex customManager in `renovate.json`. When
    * Renovate proposes a bump, the audit workflow runs the test suite against
-   * the new OMC and a human reviews the resulting `coverage.md` deltas
-   * before merge. Do not edit by hand outside of a Renovate PR — keep
-   * `auditedOn` in sync.
+   * the new OMC and a human reviews the resulting `coverage.md` deltas before
+   * merge. A hand bump is fine when it ships together with the drift fixes and
+   * a `coverage.md` re-probe record; `auditedOn` only moves for a full §3 audit.
    */
   primary: "1.27.0",
   /** Same major.minor is treated as compatible without warning. */
@@ -53,7 +53,7 @@ export const SUPPORTED_OMC = {
    * results wrappers, and surfaced a `getParameterValue` String-quoting
    * bug — those passes together count as the most recent full audit.
    */
-  auditedOn: "2026-07-22",
+  auditedOn: "2026-05-20",
 } as const;
 
 /** Parse OMC's `getVersion()` response into a structured version. */
