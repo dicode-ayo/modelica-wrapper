@@ -30,8 +30,21 @@ export async function isSystemLibraryClass(
   client: SystemLibraryClient,
   className: string,
 ): Promise<boolean> {
+  return (await systemLibraryVerdict(client, className)) === true;
+}
+
+/**
+ * `true` / `false` when `className`'s origin is resolvable, `undefined` when it
+ * isn't — a class not yet loaded (or repointed to an editor-buffer URI) has no
+ * on-disk source to classify. `undefined` is inconclusive: the class may
+ * resolve later, so callers must not treat it as a durable "writable".
+ */
+export async function systemLibraryVerdict(
+  client: SystemLibraryClient,
+  className: string,
+): Promise<boolean | undefined> {
   const { fileName } = await client.getSourceFile({ typeName: className });
-  if (!isLikelyDiskPath(fileName)) return false;
+  if (!isLikelyDiskPath(fileName)) return undefined;
   const { modelicaPath } = await client.getModelicaPath();
   const roots = modelicaPath
     .split(path.delimiter)

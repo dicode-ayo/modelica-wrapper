@@ -120,6 +120,27 @@ describe("ModelicaSourceProvider: read-only system libraries", () => {
     expect(loadString).not.toHaveBeenCalled();
   });
 
+  it("re-evaluates read-only once an unresolved class loads (no false-negative cache)", async () => {
+    // First lookup: class not loaded yet → getSourceFile empty (a restored tab
+    // before OMC resolves it). Second: resolved under MODELICAPATH.
+    let fileName = "";
+    const client = {
+      getSourceFile: vi.fn(() => Promise.resolve({ fileName })),
+      getModelicaPath: vi.fn(() =>
+        Promise.resolve({ modelicaPath: "/home/u/.openmodelica/libraries" }),
+      ),
+    } as unknown as OmcClient;
+    const provider = new ModelicaSourceProvider(
+      () => Promise.resolve(client),
+      createSelfWriteGuard(),
+    );
+
+    expect(await provider.isReadOnly("Modelica.Blocks")).toBe(false);
+    fileName = "/home/u/.openmodelica/libraries/Modelica/Blocks/package.mo";
+    // The inconclusive verdict was not cached, so this now resolves read-only.
+    expect(await provider.isReadOnly("Modelica.Blocks")).toBe(true);
+  });
+
   it("verdicts a MODELICAPATH class read-only and a workspace class writable", async () => {
     const { client: sys } = makeClient({ systemLib: true });
     const { client: ws } = makeClient({ systemLib: false });

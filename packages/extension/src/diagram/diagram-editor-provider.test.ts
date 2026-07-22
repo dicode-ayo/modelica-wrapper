@@ -348,6 +348,49 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
       detail: "OMC down",
     });
   });
+
+  it("evaluates readOnly after the layout fetch resolves the class", async () => {
+    const { panel, posted, fireReady } = makePanel();
+    // Read-only becomes visible only once the fetch has resolved the class; a
+    // verdict taken before the fetch (the restored-tab bug) would read writable.
+    let fetched = false;
+    const { client } = makeClient({
+      getModelInstance: () => {
+        fetched = true;
+        return Promise.resolve({ instance: INSTANCE });
+      },
+    });
+    const ensureClient = vi.fn(() => Promise.resolve(client));
+    const statSpy = vi
+      .spyOn(vscode.workspace.fs, "stat")
+      .mockImplementation(() =>
+        Promise.resolve({
+          type: vscode.FileType.File,
+          ctime: 0,
+          mtime: 0,
+          size: 1,
+          permissions: fetched ? vscode.FilePermission.Readonly : undefined,
+        }),
+      );
+    try {
+      resolveDiagramEditor(
+        panel,
+        EXT_URI,
+        ensureClient,
+        docFor(
+          vscode.Uri.parse("modelica-source:/Modelica.Blocks.Math.Gain.mo"),
+        ),
+        "diagram",
+      );
+      await flush();
+      fireReady();
+      const msg = posted[0];
+      expect(msg?.type).toBe("init");
+      if (msg?.type === "init") expect(msg.readOnly).toBe(true);
+    } finally {
+      statSpy.mockRestore();
+    }
+  });
 });
 
 /**

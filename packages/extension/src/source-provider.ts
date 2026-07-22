@@ -47,7 +47,7 @@ import {
 } from "./persist.js";
 import { fileOwnerClass } from "./file-owner.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
-import { isSystemLibraryClass } from "./system-library.js";
+import { systemLibraryVerdict } from "./system-library.js";
 
 export { isLikelyDiskPath, linkPersistedClass, persistClassUnderWorkspace };
 export type { PersistResult } from "./persist.js";
@@ -288,19 +288,24 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
   }
 
   /**
-   * Whether `typeName` is a read-only system-library class. Memoized on the
-   * first lookup — which `readFile` forces before any edit — so the verdict
+   * Whether `typeName` is a read-only system-library class. A conclusive
+   * verdict is memoized — `readFile` forces the lookup before any edit — so it
    * reflects the class's on-disk origin, not a source path a mutation has since
-   * repointed to this scheme's URI. Failures don't block editing.
+   * repointed to this scheme's URI. An inconclusive lookup (the class isn't
+   * resolved yet) returns `false` without caching, so it re-evaluates once the
+   * class loads. Failures don't block editing.
    */
   async isReadOnly(typeName: string): Promise<boolean> {
     const cached = this.readOnly.get(typeName);
     if (cached !== undefined) return cached;
     try {
       const client = await this.ensureClient();
-      const verdict = await isSystemLibraryClass(client, typeName);
-      this.readOnly.set(typeName, verdict);
-      return verdict;
+      const verdict = await systemLibraryVerdict(client, typeName);
+      // Memoize only a conclusive verdict: a class not yet resolved reads as
+      // `undefined`, and caching that as writable would strand a restored
+      // system-library editor in edit mode once its class loads.
+      if (verdict !== undefined) this.readOnly.set(typeName, verdict);
+      return verdict ?? false;
     } catch {
       return false;
     }
