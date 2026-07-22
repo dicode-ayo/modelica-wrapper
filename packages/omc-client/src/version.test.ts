@@ -30,12 +30,12 @@ describe("compatibilityReport", () => {
   });
 
   it("returns 'minor-compatible' for the same major.minor", () => {
-    const r = compatibilityReport("OpenModelica 1.26.99");
+    const r = compatibilityReport("OpenModelica 1.27.99");
     expect(r.level).toBe("minor-compatible");
   });
 
   it("returns 'untested' for a different major.minor", () => {
-    const r = compatibilityReport("OpenModelica 1.27.0");
+    const r = compatibilityReport("OpenModelica 1.26.0");
     expect(r.level).toBe("untested");
   });
 

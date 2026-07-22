@@ -33,14 +33,7 @@ import { z } from "zod";
 import type { CallContext } from "../../_shared/callContext.js";
 import { TypeNameInput } from "../../_shared/inputs.js";
 import { parseOutput } from "../../_shared/parseOutput.js";
-import {
-  asBool,
-  asInt,
-  asString,
-  expectList,
-  parse,
-  type Value,
-} from "../../parse.js";
+import { asBool, asInt, asString, expectList, parse } from "../../parse.js";
 
 export const GetClassInformationInputSchema = TypeNameInput;
 export type GetClassInformationInput = z.input<
@@ -132,18 +125,33 @@ export async function getClassInformation(
 ): Promise<GetClassInformationOutput> {
   const raw = await ctx.call(`getClassInformation(${input.typeName})`);
   const items = expectList(parse(raw));
-  if (items.length < 22) {
+  // OMC 1.27.0 drops the four trailing version-annotation fields (indices
+  // 18–21) for a class with no such annotation — where 1.26.7 padded them with
+  // empty strings — so a not-found / annotation-free class comes back as 18
+  // items. The fields we depend on (restriction, fileName, line/column) all sit
+  // in 0–17; read the trailing four defensively rather than requiring 22.
+  if (items.length < 18) {
     throw new Error(
-      `getClassInformation: got ${items.length} fields, want >=22`,
+      `getClassInformation: got ${items.length} fields, want >=18`,
     );
   }
-  const at = (i: number): Value => items[i] as Value;
-  const str = (i: number): string => asString(at(i)) ?? "";
-  const bl = (i: number): boolean => asBool(at(i)) ?? false;
-  const num = (i: number): number => asInt(at(i)) ?? 0;
-  const dimsRaw = at(11);
+  const str = (i: number): string => {
+    const v = items[i];
+    return v === undefined ? "" : (asString(v) ?? "");
+  };
+  const bl = (i: number): boolean => {
+    const v = items[i];
+    return v === undefined ? false : (asBool(v) ?? false);
+  };
+  const num = (i: number): number => {
+    const v = items[i];
+    return v === undefined ? 0 : (asInt(v) ?? 0);
+  };
+  const dimsRaw = items[11];
   const dimensions =
-    dimsRaw.kind === "list" ? dimsRaw.items.map((d) => asString(d) ?? "") : [];
+    dimsRaw !== undefined && dimsRaw.kind === "list"
+      ? dimsRaw.items.map((d) => asString(d) ?? "")
+      : [];
   return parseOutput(
     GetClassInformationOutputSchema,
     {

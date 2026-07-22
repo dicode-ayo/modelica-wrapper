@@ -35,9 +35,9 @@ export const SUPPORTED_OMC = {
    * before merge. Do not edit by hand outside of a Renovate PR — keep
    * `auditedOn` in sync.
    */
-  primary: "1.26.7",
+  primary: "1.27.0",
   /** Same major.minor is treated as compatible without warning. */
-  compatibleMinor: { major: 1, minor: 26 },
+  compatibleMinor: { major: 1, minor: 27 },
   /**
    * Date of the last full per-function audit against the pinned OMC.
    *
@@ -53,7 +53,7 @@ export const SUPPORTED_OMC = {
    * results wrappers, and surfaced a `getParameterValue` String-quoting
    * bug — those passes together count as the most recent full audit.
    */
-  auditedOn: "2026-05-20",
+  auditedOn: "2026-07-22",
 } as const;
 
 /** Parse OMC's `getVersion()` response into a structured version. */
