@@ -4,20 +4,26 @@
  * than running to completion on the shared channel, and that the restriction
  * cache keeps a repeat search off OMC entirely.
  *
- * They also pin the order a package's members reach the tree in: `getClassNames`
- * here sorts when asked, as OMC does, so a listing that asks for a sort is
- * distinguishable from one that doesn't.
+ * They also pin which levels of the tree keep the order their author chose:
+ * a package's members do, the roots don't.
  */
 
 import { describe, expect, it, vi } from "vitest";
 
-import { LibrarySource, SearchAbortedError } from "./library-source.js";
+import {
+  LibrarySource,
+  SearchAbortedError,
+  type LibraryOmcClient,
+} from "./library-source.js";
 
+type GetClassNamesInput = Parameters<LibraryOmcClient["getClassNames"]>[0];
+
+/** `getClassNames` sorts only when asked, as OMC does. */
 function fakeClient(hits: string[], members: string[] = []) {
   return {
     searchClassNames: vi.fn(async () => ({ classNames: hits })),
     getClassRestriction: vi.fn(async () => ({ restriction: "model" })),
-    getClassNames: vi.fn(async ({ sort }: { sort?: boolean }) => ({
+    getClassNames: vi.fn(async ({ sort }: GetClassNamesInput) => ({
       classNames: sort === true ? [...members].sort() : members,
     })),
   };
