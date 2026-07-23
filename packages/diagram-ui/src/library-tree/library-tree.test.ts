@@ -851,4 +851,46 @@ describe("<om-library-tree>", () => {
     );
     expect(opened).toEqual(["Modelica.Blocks.Math.Gain"]);
   });
+
+  it("shows an optimistic chevron on a non-package class before its children are known", async () => {
+    const { source } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+
+    // "Resistor" and "Sine" are `model`s, not `package`s — before #345 these
+    // never showed a chevron at all, regardless of whether they had children.
+    expect(treeOf(el).getItemInstance("Resistor").isFolder()).toBe(true);
+    expect(treeOf(el).getItemInstance("Sine").isFolder()).toBe(true);
+  });
+
+  it("expands a model to reveal its nested classes, not just a package", async () => {
+    const { source, listChildren } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+
+    treeOf(el).getItemInstance("Resistor").expand();
+    await waitFor(() =>
+      treeOf(el)
+        .getItems()
+        .some(
+          (i: ItemInstance<LibraryTreeNode>) => i.getId() === "Resistor.Inner",
+        ),
+    );
+
+    expect(listChildren).toHaveBeenCalledWith("Resistor");
+    expect(treeOf(el).getItemInstance("Resistor").isFolder()).toBe(true);
+  });
+
+  it("collapses a model to a leaf once its first expand comes back empty", async () => {
+    const { source } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+    const item = treeOf(el).getItemInstance("Sine");
+
+    item.expand();
+
+    // "Sine" has no listChildren entry (an empty result) — the optimistic
+    // chevron shown before expansion must not linger on a genuine leaf.
+    await waitFor(() => item.isFolder() === false);
+  });
 });

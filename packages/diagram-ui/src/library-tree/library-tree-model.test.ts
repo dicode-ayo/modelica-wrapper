@@ -23,11 +23,16 @@ function source(overrides: Partial<LibraryDataSource> = {}): LibraryDataSource {
 }
 
 describe("isExpandable", () => {
-  it("treats package and unknown as containers, leaves otherwise", () => {
-    expect(isExpandable("package")).toBe(true);
-    expect(isExpandable("unknown")).toBe(true);
-    expect(isExpandable("block")).toBe(false);
-    expect(isExpandable("function")).toBe(false);
+  it("is optimistic while hasChildren is unresolved, regardless of restriction", () => {
+    expect(isExpandable({})).toBe(true);
+  });
+
+  it("expands once hasChildren is confirmed true", () => {
+    expect(isExpandable({ hasChildren: true })).toBe(true);
+  });
+
+  it("collapses to a leaf once hasChildren is confirmed false", () => {
+    expect(isExpandable({ hasChildren: false })).toBe(false);
   });
 });
 

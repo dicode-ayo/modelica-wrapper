@@ -334,9 +334,9 @@ function isLibraryNodeCommand(id: string): id is LibraryNodeCommand {
  * `modelica.createClass`'s `parentFromNode` (`commands/context.ts`) treats as
  * a valid nesting parent — `restriction === "package"`. A row whose
  * restriction lookup failed (`"unknown"`) is deliberately excluded even
- * though diagram-ui's `isExpandable` still lets it be browsed as a container:
- * offering New Class there would let `parentFromNode` silently fall back to
- * creating a top-level class instead of nesting under the clicked row.
+ * though diagram-ui's `isExpandable` still lets it be browsed into: offering
+ * New Class there would let `parentFromNode` silently fall back to creating a
+ * top-level class instead of nesting under the clicked row.
  */
 function contextMenuItemsFor(
   restriction: LibraryContextMenuDetail["restriction"],

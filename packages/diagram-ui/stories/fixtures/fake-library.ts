@@ -17,7 +17,11 @@ const FAKE_TREE: Record<string, readonly FakeEntry[]> = {
   __ROOT__: [
     ["Modelica", "package"],
     ["Complex", "operator record"],
+    // A `model` that nests a class — expandable exactly like a package
+    // (issue #345), not a dead leaf.
+    ["ResistorDemo", "model"],
   ],
+  ResistorDemo: [["ResistorDemo.Inner", "model"]],
   Modelica: [
     ["Modelica.Blocks", "package"],
     ["Modelica.Mechanics", "package"],

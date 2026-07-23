@@ -314,7 +314,7 @@ export class OmLibraryTree extends LitElement {
     this.tree = createTree<LibraryTreeNode>({
       rootItemId: LIBRARY_TREE_ROOT_ID,
       getItemName: (item) => item.getItemData().label,
-      isItemFolder: (item) => isExpandable(item.getItemData().restriction),
+      isItemFolder: (item) => isExpandable(item.getItemData()),
       createLoadingItemData: () => ({
         className: "",
         label: "Loading…",
@@ -323,7 +323,10 @@ export class OmLibraryTree extends LitElement {
       dataLoader: createLibraryDataLoader(source, this.nodeCache, (result) =>
         this.emitRootLoaded(result),
       ),
-      onLoadedChildren: (itemId) => this.listedParents.add(itemId),
+      onLoadedChildren: (itemId, childrenIds) => {
+        this.listedParents.add(itemId);
+        this.syncHasChildren(itemId, childrenIds);
+      },
       onPrimaryAction: (item) => {
         const node = item.getItemData();
         this.fireSelect(node.className, node.restriction);
@@ -368,6 +371,26 @@ export class OmLibraryTree extends LitElement {
     }
     const itemId = parent ?? LIBRARY_TREE_ROOT_ID;
     return tree.getItemInstance(itemId).invalidateChildrenIds(true);
+  }
+
+  /**
+   * Reconcile a node's `hasChildren` with what `listChildren` actually
+   * returned. The optimistic chevron shown before any node's kind is known
+   * (`isExpandable`) collapses to a leaf the first time its `listChildren`
+   * comes back empty; a later re-list (`invalidateChildren`, e.g. after the
+   * host adds a nested class) can just as well un-collapse it. A no-op write
+   * is skipped so the common "still has children" case doesn't force an
+   * extra tree rebuild on every expand. Root has no row of its own to sync.
+   */
+  private syncHasChildren(itemId: string, childrenIds: string[]): void {
+    if (itemId === LIBRARY_TREE_ROOT_ID) return;
+    const node = this.nodeCache.get(itemId);
+    if (!node) return;
+    const hasChildren = childrenIds.length > 0;
+    if (hasChildren === (node.hasChildren !== false)) return;
+    const updated: LibraryTreeNode = { ...node, hasChildren };
+    this.nodeCache.set(itemId, updated);
+    this.tree?.getItemInstance(itemId).updateCachedData(updated);
   }
 
   /**
