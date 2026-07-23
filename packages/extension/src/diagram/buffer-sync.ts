@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 
-import { realSourceFilename } from "../file-owner.js";
-import { qualifiedNameFromUri } from "../source-provider.js";
+import { omcFilenameForDocument } from "../source-provider.js";
 
 /**
  * Machinery shared by the diagram and documentation edit controllers: both
@@ -52,14 +51,9 @@ export async function reloadBufferIntoOmc(
   document: vscode.TextDocument,
 ): Promise<ReloadResult> {
   await client.getErrorString();
-  // Load under the class's real source file, not its `modelica-source:` URI:
-  // OMC keys a class to its file, so a URI filename evicts an inline package
-  // member from the `package.mo` it shares with its siblings.
   const { success } = await client.loadString({
     data: document.getText(),
-    filename:
-      (await realSourceFilename(client, qualifiedNameFromUri(document.uri))) ??
-      document.uri.toString(),
+    filename: await omcFilenameForDocument(client, document.uri),
     merge: false,
   });
   if (!success) {

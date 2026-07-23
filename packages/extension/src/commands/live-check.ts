@@ -23,14 +23,13 @@
 
 import * as vscode from "vscode";
 
-import type { OmcClient, ErrorMessage } from "@dicode/omc-client";
+import type { ErrorMessage } from "@dicode/omc-client";
 
 import { mapOmcMessagesToDiagnostics } from "../diagnostics/from-omc.js";
-import { isReadOnlyDocument } from "../diagram/buffer-sync.js";
-import { realSourceFilename } from "../file-owner.js";
 import { log } from "../logger.js";
 import {
   MODELICA_SOURCE_SCHEME,
+  omcFilenameForDocument,
   qualifiedNameFromUri,
 } from "../source-provider.js";
 
@@ -39,6 +38,16 @@ import type { CommandContext } from "./context.js";
 
 const DEFAULT_DEBOUNCE_MS = 750;
 const MIN_DEBOUNCE_MS = 250;
+
+/** The OMC surface the check pipeline drives. `OmcClient` satisfies it. */
+export interface LiveCheckClient {
+  getSourceFile(input: { typeName: string }): Promise<{ fileName: string }>;
+  getErrorString(): Promise<{ errorString: string }>;
+  parseString(input: { data: string; filename: string }): Promise<unknown>;
+  loadString(input: { data: string; filename: string }): Promise<unknown>;
+  checkModel(input: { typeName: string }): Promise<unknown>;
+  getMessagesStringInternal(): Promise<{ messages: ErrorMessage[] }>;
+}
 
 type DocState = {
   timer?: NodeJS.Timeout;
@@ -112,11 +121,6 @@ async function runCheck(
   // Bail if the document already changed again.
   if (state.token !== capturedToken) return;
 
-  // A read-only class can't be edited, so a change on its buffer is never the
-  // user's; loading one back into OMC would only risk disturbing an installed
-  // library's AST.
-  if (await isReadOnlyDocument(document)) return;
-
   // Serialize against the user-triggered Check Model command and any other
   // in-flight live check; OMC is single-threaded and our wrapper is mutex'd
   // anyway, but the lock lets us cancel cleanly when a newer edit arrives.
@@ -124,8 +128,21 @@ async function runCheck(
     if (state.token !== capturedToken) return;
     const uri = document.uri;
     const text = document.getText();
+    const typeName = qualifiedNameFromUri(uri);
 
-    let client: OmcClient;
+    // A system-library class can't legitimately be edited, so a change on its
+    // buffer is never the user's; loading one back into OMC would repoint an
+    // installed library's source at this URI. The provider memoizes a
+    // conclusive verdict, and `readFile` forced the lookup when the document
+    // opened, so this costs nothing per keystroke.
+    if (
+      typeName !== undefined &&
+      (await ctx.sourceProvider.isReadOnly(typeName))
+    )
+      return;
+    if (state.token !== capturedToken) return;
+
+    let client: LiveCheckClient;
     try {
       client = await ctx.ensureClient();
     } catch (err) {
@@ -137,10 +154,10 @@ async function runCheck(
     // Check under the class's real source file, not its `modelica-source:` URI:
     // `loadString` binds a class to the filename it is given, so the URI would
     // evict an inline member from the `package.mo` it shares with its siblings.
-    // A memory-only class has no disk path and keeps the URI.
-    const typeName = qualifiedNameFromUri(uri);
-    const filename =
-      (await realSourceFilename(client, typeName)) ?? uri.toString();
+    // A memory-only class has no disk path and keeps the URI. Resolved before
+    // the drain below, so a failed lookup's message doesn't reach this run's
+    // diagnostics.
+    const filename = await omcFilenameForDocument(client, uri);
     if (state.token !== capturedToken) return;
 
     // Drain pre-existing diagnostics so what we read after parseString /
@@ -221,7 +238,12 @@ async function runCheck(
       return undefined;
     };
     const grouped = mapOmcMessagesToDiagnostics(messages, resolver);
-    const diagsForUri = grouped.get(uri) ?? [];
+    // The filename we checked under can hold sibling classes, whose diagnostics
+    // carry positions in that file rather than in this buffer. VSCode would
+    // clamp an out-of-range one onto the last line as if it were the user's.
+    const diagsForUri = (grouped.get(uri) ?? []).filter(
+      (d) => d.range.start.line < document.lineCount,
+    );
     ctx.diagnostics.set(uri, diagsForUri);
   });
 }

@@ -45,7 +45,11 @@ import {
   linkPersistedClass,
   persistClassUnderWorkspace,
 } from "./persist.js";
-import { fileOwnerClass } from "./file-owner.js";
+import {
+  fileOwnerClass,
+  realSourceFilename,
+  type FileOwnerClient,
+} from "./file-owner.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
 import { systemLibraryVerdict } from "./system-library.js";
 
@@ -320,4 +324,18 @@ export function qualifiedNameFromUri(uri: vscode.Uri): string | undefined {
   if (uri.scheme !== MODELICA_SOURCE_SCHEME) return undefined;
   const p = uri.path.replace(/^\//, "");
   return p.endsWith(".mo") ? p.slice(0, -3) : p;
+}
+
+/**
+ * The filename to hand OMC when loading `uri`'s buffer back in. `loadString`
+ * binds a class to the filename it is given and drops it from the file it was
+ * stored in, so a class with a real source must be reloaded under that path;
+ * one that is memory-only carries the buffer URI until `setSourceFile`.
+ */
+export async function omcFilenameForDocument(
+  client: FileOwnerClient,
+  uri: vscode.Uri,
+): Promise<string> {
+  const resolved = await realSourceFilename(client, qualifiedNameFromUri(uri));
+  return resolved ?? uri.toString();
 }
