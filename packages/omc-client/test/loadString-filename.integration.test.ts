@@ -91,19 +91,23 @@ end ${packageName};
     await fsp.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it("keeps a member in its package's file when reloaded under that file", async () => {
+  it("updates a member in place in its package's file when reloaded under it", async () => {
     const { packageName, packagePath, memberSource } =
       await loadInlinePackage();
+    // Reloading the text unchanged would pass even if the load silently did
+    // nothing, so carry an edit through and look for it in the file.
+    const edited = memberSource.replace("Real x;", "Real x;\n  Real edited;");
+    expect(edited).not.toBe(memberSource);
 
     const { success } = await client.loadString({
-      data: memberSource,
+      data: edited,
       filename: packagePath,
       merge: false,
     });
     expect(success).toBe(true);
 
     const { contents } = await client.listFile({ typeName: packageName });
-    expect(contents).toContain("model A");
+    expect(contents).toContain("Real edited");
     expect(contents).toContain("model B");
     const { fileName } = await client.getSourceFile({
       typeName: `${packageName}.A`,
@@ -114,9 +118,10 @@ end ${packageName};
   it("evicts a member from its package's file when reloaded under a per-class filename", async () => {
     const { packageName, memberSource } = await loadInlinePackage();
     const pseudoFilename = `modelica-source:/${packageName}.A.mo`;
+    const edited = memberSource.replace("Real x;", "Real x;\n  Real edited;");
 
     const { success } = await client.loadString({
-      data: memberSource,
+      data: edited,
       filename: pseudoFilename,
       merge: false,
     });

@@ -19,14 +19,17 @@ import {
   workspaceListeners,
 } from "../../test-support/vscode-mock.js";
 
+import type { ModelicaSourceProvider } from "../source-provider.js";
+
 import type { CommandContext } from "./context.js";
 import { registerLiveCheck, type LiveCheckClient } from "./live-check.js";
 
 const DOC_URI = vscode.Uri.parse("modelica-source:/P.A.mo");
 const PACKAGE_MO = "/ws/P/package.mo";
 const DEBOUNCE_MS = 750;
-/** The buffer's line count — diagnostics past it belong to another class. */
-const DOC_LINES = 3;
+const DOC_TEXT = "model A\n  Real x;\nend A;";
+/** Diagnostics past the buffer's last line belong to another class. */
+const DOC_LINES = DOC_TEXT.split("\n").length;
 
 /** `line` is 1-based, as OMC reports it. */
 function errorAt(filename: string, message: string, line = 1): ErrorMessage {
@@ -71,12 +74,18 @@ function makeClient(overrides: Partial<LiveCheckClient> = {}) {
 
 function makeContext(client: LiveCheckClient, readOnly = false) {
   const set = vi.fn();
+  const ensureClient = vi.fn(async () => client);
+  // Typed against the provider so a rename there fails the build rather than
+  // leaving a green test whose read-only gate silently stopped firing.
+  const sourceProvider: Pick<ModelicaSourceProvider, "isReadOnly"> = {
+    isReadOnly: vi.fn(async () => readOnly),
+  };
   const ctx = {
-    ensureClient: async () => client,
-    sourceProvider: { isReadOnly: async () => readOnly },
+    ensureClient,
+    sourceProvider,
     diagnostics: { set } as unknown as vscode.DiagnosticCollection,
   } as unknown as CommandContext;
-  return { ctx, set };
+  return { ctx, set, ensureClient };
 }
 
 function changeEvent(text: string) {
@@ -84,7 +93,7 @@ function changeEvent(text: string) {
     document: {
       uri: DOC_URI,
       getText: () => text,
-      lineCount: DOC_LINES,
+      lineCount: text.split("\n").length,
     } as unknown as vscode.TextDocument,
     contentChanges: [{}],
   };
@@ -97,7 +106,7 @@ function changeEvent(text: string) {
 const MICROTASK_DRAIN_ROUNDS = 50;
 
 /** Fire a change and let the debounce plus the pipeline's awaits settle. */
-async function runPipeline(text = "model A end A;"): Promise<void> {
+async function runPipeline(text = DOC_TEXT): Promise<void> {
   emitChange(changeEvent(text));
   await vi.advanceTimersByTimeAsync(DEBOUNCE_MS);
   for (let i = 0; i < MICROTASK_DRAIN_ROUNDS; i++) {
@@ -134,11 +143,12 @@ describe("registerLiveCheck", () => {
 
     // A `modelica-source:` filename would drop `P.A` out of `package.mo`.
     expect(client.loadString).toHaveBeenCalledWith({
-      data: "model A end A;",
+      data: DOC_TEXT,
       filename: PACKAGE_MO,
+      merge: false,
     });
     expect(client.parseString).toHaveBeenCalledWith({
-      data: "model A end A;",
+      data: DOC_TEXT,
       filename: PACKAGE_MO,
     });
   });
@@ -157,17 +167,31 @@ describe("registerLiveCheck", () => {
     expect(diags).toHaveLength(1);
   });
 
-  it("drops a diagnostic positioned past the buffer's end", async () => {
+  it("drops a diagnostic positioned past the buffer's last line", async () => {
     const { client, queue } = makeClient();
     const { ctx, set } = makeContext(client);
     // A sibling class further down the shared file; VSCode would clamp this
     // onto the buffer's last line.
-    queue([errorAt(PACKAGE_MO, "sibling", DOC_LINES + 40)]);
+    queue([errorAt(PACKAGE_MO, "sibling", DOC_LINES + 1)]);
     register(ctx);
 
     await runPipeline();
 
     expect(set).toHaveBeenCalledWith(DOC_URI, []);
+  });
+
+  it("keeps a diagnostic on the buffer's last line", async () => {
+    const { client, queue } = makeClient();
+    const { ctx, set } = makeContext(client);
+    // A missing `end` reports against the final line — one past the boundary
+    // the filter draws, and the user's own error.
+    queue([errorAt(PACKAGE_MO, "missing end", DOC_LINES)]);
+    register(ctx);
+
+    await runPipeline();
+
+    const [, diags] = set.mock.calls[0] ?? [];
+    expect(diags).toHaveLength(1);
   });
 
   it("keeps the buffer URI for a class with no on-disk source", async () => {
@@ -180,21 +204,24 @@ describe("registerLiveCheck", () => {
     await runPipeline();
 
     expect(client.loadString).toHaveBeenCalledWith({
-      data: "model A end A;",
+      data: DOC_TEXT,
       filename: DOC_URI.toString(),
+      merge: false,
     });
   });
 
   it("checks nothing for a class the source provider reports read-only", async () => {
     const { client } = makeClient();
-    const { ctx, set } = makeContext(client, true);
+    const { ctx, set, ensureClient } = makeContext(client, true);
     register(ctx);
 
     await runPipeline();
 
+    // The gate sits above the client, so a read-only class never even spawns
+    // OMC on a workspace that hasn't needed it yet.
+    expect(ensureClient).not.toHaveBeenCalled();
     expect(client.parseString).not.toHaveBeenCalled();
     expect(client.loadString).not.toHaveBeenCalled();
-    expect(client.getSourceFile).not.toHaveBeenCalled();
     expect(set).not.toHaveBeenCalled();
   });
 });

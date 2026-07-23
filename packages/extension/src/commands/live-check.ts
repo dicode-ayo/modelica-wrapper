@@ -26,6 +26,7 @@ import * as vscode from "vscode";
 import type { ErrorMessage } from "@dicode/omc-client";
 
 import { mapOmcMessagesToDiagnostics } from "../diagnostics/from-omc.js";
+import type { FileOwnerClient } from "../file-owner.js";
 import { log } from "../logger.js";
 import {
   MODELICA_SOURCE_SCHEME,
@@ -39,12 +40,19 @@ import type { CommandContext } from "./context.js";
 const DEFAULT_DEBOUNCE_MS = 750;
 const MIN_DEBOUNCE_MS = 250;
 
-/** The OMC surface the check pipeline drives. `OmcClient` satisfies it. */
-export interface LiveCheckClient {
-  getSourceFile(input: { typeName: string }): Promise<{ fileName: string }>;
+/**
+ * The OMC surface the check pipeline drives. `OmcClient` satisfies it.
+ * `getSourceFile` comes from {@link FileOwnerClient} — the pipeline never calls
+ * it itself, it hands the client to `omcFilenameForDocument`.
+ */
+export interface LiveCheckClient extends FileOwnerClient {
   getErrorString(): Promise<{ errorString: string }>;
   parseString(input: { data: string; filename: string }): Promise<unknown>;
-  loadString(input: { data: string; filename: string }): Promise<unknown>;
+  loadString(input: {
+    data: string;
+    filename: string;
+    merge: boolean;
+  }): Promise<unknown>;
   checkModel(input: { typeName: string }): Promise<unknown>;
   getMessagesStringInternal(): Promise<{ messages: ErrorMessage[] }>;
 }
@@ -134,12 +142,14 @@ async function runCheck(
     // buffer is never the user's; loading one back into OMC would repoint an
     // installed library's source at this URI. The provider memoizes a
     // conclusive verdict, and `readFile` forced the lookup when the document
-    // opened, so this costs nothing per keystroke.
+    // opened, so this costs nothing per keystroke. Origin only — a class whose
+    // file is merely read-only on disk still gets checked, and fails at save.
     if (
       typeName !== undefined &&
       (await ctx.sourceProvider.isReadOnly(typeName))
-    )
+    ) {
       return;
+    }
     if (state.token !== capturedToken) return;
 
     let client: LiveCheckClient;
@@ -189,7 +199,7 @@ async function runCheck(
     if (!hasParseError) {
       // Syntax-clean — load into OMC and run the semantic check.
       try {
-        await client.loadString({ data: text, filename });
+        await client.loadString({ data: text, filename, merge: false });
       } catch (err) {
         log.error("liveCheck", "loadString failed", err);
         return;
@@ -241,6 +251,8 @@ async function runCheck(
     // The filename we checked under can hold sibling classes, whose diagnostics
     // carry positions in that file rather than in this buffer. VSCode would
     // clamp an out-of-range one onto the last line as if it were the user's.
+    // Partial: a sibling declared ahead of this class lands inside the range,
+    // and OMC reports a filename, not the class it belongs to.
     const diagsForUri = (grouped.get(uri) ?? []).filter(
       (d) => d.range.start.line < document.lineCount,
     );
