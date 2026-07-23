@@ -1,20 +1,25 @@
 /**
  * `LibrarySource` resolves one restriction per search hit, and OMC runs those
  * one at a time. These pin that a superseded search stops issuing them rather
- * than running to completion on the shared channel, that the restriction
- * cache keeps a repeat search off OMC entirely, and that a package's members
- * reach the tree in the order OMC reports them.
+ * than running to completion on the shared channel, and that the restriction
+ * cache keeps a repeat search off OMC entirely.
+ *
+ * They also pin the order a package's members reach the tree in: `getClassNames`
+ * here sorts when asked, as OMC does, so a listing that asks for a sort is
+ * distinguishable from one that doesn't.
  */
 
 import { describe, expect, it, vi } from "vitest";
 
 import { LibrarySource, SearchAbortedError } from "./library-source.js";
 
-function fakeClient(hits: string[]) {
+function fakeClient(hits: string[], members: string[] = []) {
   return {
     searchClassNames: vi.fn(async () => ({ classNames: hits })),
     getClassRestriction: vi.fn(async () => ({ restriction: "model" })),
-    getClassNames: vi.fn(async () => ({ classNames: [] })),
+    getClassNames: vi.fn(async ({ sort }: { sort?: boolean }) => ({
+      classNames: sort === true ? [...members].sort() : members,
+    })),
   };
 }
 
@@ -72,32 +77,23 @@ describe("LibrarySource.searchAll", () => {
 });
 
 describe("LibrarySource.listChildren", () => {
-  /** `package.order` puts `Resistor` before `Capacitor`; sorting would not. */
-  function packageClient(members: string[]) {
-    return {
-      searchClassNames: vi.fn(async () => ({ classNames: [] })),
-      getClassRestriction: vi.fn(async () => ({ restriction: "model" })),
-      getClassNames: vi.fn(async () => ({ classNames: members })),
-    };
-  }
-
   it("keeps a package's members in the order OMC reports them", async () => {
-    const client = packageClient(["Resistor", "Capacitor"]);
+    // A `package.order` putting `Resistor` before `Capacitor` survives only if
+    // the listing never asks OMC to sort.
+    const client = fakeClient([], ["Resistor", "Capacitor"]);
     const source = new LibrarySource(client);
 
     const rows = await source.listChildren("P");
 
     expect(rows.map((r) => r.qualified)).toEqual(["P.Resistor", "P.Capacitor"]);
-    // `sort` would replace the author's `package.order` with alphabetical.
-    expect(client.getClassNames).toHaveBeenCalledWith({ typeName: "P" });
   });
 
   it("sorts the roots, which have no authored order", async () => {
-    const client = packageClient(["Modelica"]);
+    const client = fakeClient([], ["Zebra", "Alpha"]);
     const source = new LibrarySource(client);
 
-    await source.listChildren(null);
+    const rows = await source.listChildren(null);
 
-    expect(client.getClassNames).toHaveBeenCalledWith({ sort: true });
+    expect(rows.map((r) => r.qualified)).toEqual(["Alpha", "Zebra"]);
   });
 });
