@@ -893,4 +893,30 @@ describe("<om-library-tree>", () => {
     // chevron shown before expansion must not linger on a genuine leaf.
     await waitFor(() => item.isFolder() === false);
   });
+
+  it("re-expands a leaf once invalidateChildren finds children after all", async () => {
+    const { source, listChildren } = makeSource();
+    const el = await mount(source);
+    await waitFor(() => treeOf(el).getItems().length >= 2);
+    const item = treeOf(el).getItemInstance("Sine");
+
+    item.expand();
+    await waitFor(() => item.isFolder() === false);
+    listChildren.mockClear();
+
+    // A class was nested under a previously-empty model and re-listed (e.g.
+    // via the .mo file watcher) — the collapsed leaf must re-expand, not
+    // stay stuck as a leaf forever.
+    const original = FAKE_TREE["Sine"];
+    FAKE_TREE["Sine"] = [{ qualified: "Sine.Inner", restriction: "model" }];
+    teardowns.push(() => {
+      if (original) FAKE_TREE["Sine"] = original;
+      else delete FAKE_TREE["Sine"];
+    });
+
+    el.invalidateChildren("Sine");
+    await waitFor(() => item.isFolder() === true);
+
+    expect(listChildren).toHaveBeenCalledWith("Sine");
+  });
 });
