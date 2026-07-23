@@ -1,8 +1,9 @@
 /**
  * `LibrarySource` resolves one restriction per search hit, and OMC runs those
  * one at a time. These pin that a superseded search stops issuing them rather
- * than running to completion on the shared channel, and that the restriction
- * cache keeps a repeat search off OMC entirely.
+ * than running to completion on the shared channel, that the restriction
+ * cache keeps a repeat search off OMC entirely, and that a package's members
+ * reach the tree in the order OMC reports them.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -67,5 +68,36 @@ describe("LibrarySource.searchAll", () => {
     await source.searchAll("a");
 
     expect(client.getClassRestriction).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("LibrarySource.listChildren", () => {
+  /** `package.order` puts `Resistor` before `Capacitor`; sorting would not. */
+  function packageClient(members: string[]) {
+    return {
+      searchClassNames: vi.fn(async () => ({ classNames: [] })),
+      getClassRestriction: vi.fn(async () => ({ restriction: "model" })),
+      getClassNames: vi.fn(async () => ({ classNames: members })),
+    };
+  }
+
+  it("keeps a package's members in the order OMC reports them", async () => {
+    const client = packageClient(["Resistor", "Capacitor"]);
+    const source = new LibrarySource(client);
+
+    const rows = await source.listChildren("P");
+
+    expect(rows.map((r) => r.qualified)).toEqual(["P.Resistor", "P.Capacitor"]);
+    // `sort` would replace the author's `package.order` with alphabetical.
+    expect(client.getClassNames).toHaveBeenCalledWith({ typeName: "P" });
+  });
+
+  it("sorts the roots, which have no authored order", async () => {
+    const client = packageClient(["Modelica"]);
+    const source = new LibrarySource(client);
+
+    await source.listChildren(null);
+
+    expect(client.getClassNames).toHaveBeenCalledWith({ sort: true });
   });
 });

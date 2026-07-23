@@ -92,11 +92,14 @@ export class LibrarySource {
    */
   async listChildren(parent: string | null): Promise<LibraryClassInfo[]> {
     const started = Date.now();
-    const input = parent === null ? {} : { typeName: parent };
-    const { classNames } = await this.client.getClassNames({
-      ...input,
-      sort: true,
-    });
+    // A package's members come back in `package.order` — the order its author
+    // chose, and the one OMEdit shows — unless `sort` discards it. The roots
+    // are whatever happens to be loaded, with no authored order to preserve,
+    // so they stay alphabetical.
+    const { classNames } =
+      parent === null
+        ? await this.client.getClassNames({ sort: true })
+        : await this.client.getClassNames({ typeName: parent });
     // `getClassNames` returns local (unqualified) names. Reconstruct
     // the fully-qualified form so the tree, which keys on
     // qualified names for selection + lazy expansion, doesn't have
