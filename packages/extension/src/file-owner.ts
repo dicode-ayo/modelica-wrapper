@@ -1,6 +1,6 @@
 /**
- * Resolves the top-level class that owns a `.mo` file when several classes
- * share it (a package's inline members, a single-file package).
+ * Resolves how a class maps onto its `.mo` file when several classes share one
+ * (a package's inline members, a single-file package).
  *
  * A save must rewrite the whole file, not the one class being edited: OMC
  * stores inline members inside their package's `package.mo`, so writing just
@@ -10,6 +10,8 @@
  */
 
 import { enclosingScope } from "@dicode/modelica-lang-core";
+
+import { isLikelyDiskPath } from "./persist.js";
 
 export interface FileOwnerClient {
   getSourceFile(input: { typeName: string }): Promise<{ fileName: string }>;
@@ -38,4 +40,26 @@ export async function fileOwnerClass(
     scope = enclosingScope(owner);
   }
   return owner;
+}
+
+/**
+ * The class's real on-disk source path, or `undefined` when it has none —
+ * `typeName` is unknown to OMC, or the class is memory-only and carries a
+ * pseudo-filename (`<interactive>`, a `modelica-source:` URI).
+ *
+ * `loadString` binds a class to whatever filename it is given, evicting it from
+ * the file it was stored in, so every buffer reload must pass this path rather
+ * than the per-class URI it was read through.
+ */
+export async function realSourceFilename(
+  client: FileOwnerClient,
+  typeName: string | undefined,
+): Promise<string | undefined> {
+  if (typeName === undefined) return undefined;
+  try {
+    const { fileName } = await client.getSourceFile({ typeName });
+    return isLikelyDiskPath(fileName) ? fileName : undefined;
+  } catch {
+    return undefined;
+  }
 }

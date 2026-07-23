@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-import { isLikelyDiskPath } from "../persist.js";
+import { realSourceFilename } from "../file-owner.js";
 import { qualifiedNameFromUri } from "../source-provider.js";
 
 /**
@@ -57,7 +57,9 @@ export async function reloadBufferIntoOmc(
   // member from the `package.mo` it shares with its siblings.
   const { success } = await client.loadString({
     data: document.getText(),
-    filename: await realSourceFilename(client, document.uri),
+    filename:
+      (await realSourceFilename(client, qualifiedNameFromUri(document.uri))) ??
+      document.uri.toString(),
     merge: false,
   });
   if (!success) {
@@ -68,24 +70,6 @@ export async function reloadBufferIntoOmc(
     };
   }
   return { ok: true };
-}
-
-/**
- * The class's real on-disk source file, falling back to the document URI when
- * the class is memory-only or its file can't be resolved.
- */
-async function realSourceFilename(
-  client: BufferSyncClient,
-  uri: vscode.Uri,
-): Promise<string> {
-  const typeName = qualifiedNameFromUri(uri);
-  if (typeName === undefined) return uri.toString();
-  try {
-    const { fileName } = await client.getSourceFile({ typeName });
-    return isLikelyDiskPath(fileName) ? fileName : uri.toString();
-  } catch {
-    return uri.toString();
-  }
 }
 
 /**
