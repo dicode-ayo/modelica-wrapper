@@ -27,6 +27,14 @@ export interface LibraryTreeNode {
   /** Trailing name segment shown as the row label. */
   label: string;
   restriction: LibraryClassRestriction;
+  /**
+   * Whether this node has at least one child class. `undefined` means
+   * unresolved: the tree hasn't listed this node's children yet, so it's
+   * shown with an optimistic chevron. Set to `false` once a `listChildren`
+   * call comes back empty, collapsing the node to a leaf (see
+   * `onLoadedChildren` in `library-tree.component.ts`).
+   */
+  hasChildren?: boolean;
 }
 
 /** Data loader shape consumed by Headless Tree's `asyncDataLoaderFeature`. */
@@ -38,13 +46,16 @@ export interface LibraryDataLoader {
 }
 
 /**
- * Tree expansion is restricted to `package` (the only Modelica restriction
- * whose primary role is to contain other classes). `unknown` is also treated
- * as expandable so a data source that hasn't resolved the kind yet doesn't
- * orphan its children.
+ * A node is expandable until proven otherwise: OMEdit's Libraries Browser
+ * drives its expand arrow off containment, not restriction, so a `model` or
+ * `record` with nested classes expands exactly like a `package`. `hasChildren`
+ * starts unresolved (optimistic chevron) and only flips to `false` once the
+ * node's own `listChildren` call comes back empty.
  */
-export function isExpandable(r: LibraryClassRestriction): boolean {
-  return r === "package" || r === "unknown";
+export function isExpandable(
+  node: Pick<LibraryTreeNode, "hasChildren">,
+): boolean {
+  return node.hasChildren !== false;
 }
 
 /**

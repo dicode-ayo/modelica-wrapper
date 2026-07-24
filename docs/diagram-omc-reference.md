@@ -206,6 +206,12 @@ restriction per child via `getClassRestriction`.
 [`LibrarySource`](../packages/extension/src/diagram/library-source.ts)
 adds `searchClassNames` (capped at 80) and session-cached restrictions; icons are
 lazy per row via the cheap `getModelInstanceAnnotation` path.
+The tree's expand affordance (`isExpandable`,
+[`library-tree-model.ts`](../packages/diagram-ui/src/library-tree/library-tree-model.ts))
+mirrors OMEdit's containment-based chevron rather than gating on restriction: any
+concrete row shows an optimistic chevron until its first `listChildren` comes
+back empty, so a `model`/`record`/`block` that nests a class expands exactly
+like a `package` (issue #345).
 
 ---
 
