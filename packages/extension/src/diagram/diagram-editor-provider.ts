@@ -494,6 +494,7 @@ export class DiagramEditController {
    * already the source of this change, and writing it would fight VSCode's undo.
    */
   private async reverseSync(): Promise<void> {
+    if (this.rejectIfReadOnly()) return;
     const { client, className, document } = this.deps;
     try {
       const reload = await reloadBufferIntoOmc(client, document);

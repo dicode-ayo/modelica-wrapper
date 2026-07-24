@@ -380,6 +380,10 @@ export class DocumentationEditController {
    * the source of this change, and writing it would fight VSCode's undo.
    */
   private async reverseSync(): Promise<void> {
+    if (this.readOnly) {
+      this.reportError("This class is read-only and can't be edited.");
+      return;
+    }
     const { client, document } = this.deps;
     try {
       const reload = await reloadBufferIntoOmc(client, document);
