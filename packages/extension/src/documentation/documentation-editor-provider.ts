@@ -6,6 +6,7 @@ import type { DocumentationInterface } from "@dicode/documentation-ui/interface-
 import {
   defaultScheduler,
   isReadOnlyDocument,
+  READ_ONLY_EDIT_MESSAGE,
   reloadBufferIntoOmc,
   REVERSE_SYNC_DEBOUNCE_MS,
   type BufferSyncClient,
@@ -335,11 +336,15 @@ export class DocumentationEditController {
     });
   }
 
+  /** Reject an edit against a read-only (MSL / installed-library) class. */
+  private rejectIfReadOnly(): boolean {
+    if (!this.readOnly) return false;
+    this.reportError(READ_ONLY_EDIT_MESSAGE);
+    return true;
+  }
+
   private async onEdit(info: string): Promise<void> {
-    if (this.readOnly) {
-      this.reportError("This class is read-only and can't be edited.");
-      return;
-    }
+    if (this.rejectIfReadOnly()) return;
     if (!this.seeded) {
       this.reportError("Documentation hasn't loaded yet; edit discarded.");
       return;
@@ -380,10 +385,7 @@ export class DocumentationEditController {
    * the source of this change, and writing it would fight VSCode's undo.
    */
   private async reverseSync(): Promise<void> {
-    if (this.readOnly) {
-      this.reportError("This class is read-only and can't be edited.");
-      return;
-    }
+    if (this.rejectIfReadOnly()) return;
     const { client, document } = this.deps;
     try {
       const reload = await reloadBufferIntoOmc(client, document);

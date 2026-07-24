@@ -22,6 +22,7 @@ import { applyEdits } from "./apply-edits.js";
 import {
   defaultScheduler,
   isReadOnlyDocument,
+  READ_ONLY_EDIT_MESSAGE,
   reloadBufferIntoOmc,
   REVERSE_SYNC_DEBOUNCE_MS,
   type Scheduler,
@@ -401,7 +402,7 @@ export class DiagramEditController {
    */
   private rejectIfReadOnly(): boolean {
     if (!this.readOnly) return false;
-    this.reportError("This class is read-only and can't be edited.");
+    this.reportError(READ_ONLY_EDIT_MESSAGE);
     return true;
   }
 
