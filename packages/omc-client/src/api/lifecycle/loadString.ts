@@ -2,8 +2,14 @@
  * OMC: `function loadString`
  *
  * Parses Modelica definitions from a string and merges (or replaces) them with
- * the already-loaded AST. `filename` is used only for diagnostics. Encoding is
- * deprecated by OMC — strings are UTF-8.
+ * the already-loaded AST. Encoding is deprecated by OMC — strings are UTF-8.
+ *
+ * `filename` binds the loaded class(es) to that file in OMC's symbol table (and
+ * drives diagnostics). Loading a class under a filename other than the one it
+ * currently lives in *evicts* it from that file: an inline package member
+ * loaded under a per-class pseudo-filename disappears from its `package.mo`,
+ * so a later save of that package drops its siblings. When updating a class
+ * that already exists on disk, pass its real source path (`getSourceFile`).
  *
  * ```modelica
  * function loadString
@@ -34,7 +40,9 @@ export const LoadStringInputSchema = z.object({
     .string()
     .optional()
     .default("<interactive>")
-    .describe("Pseudo-filename used in OMC diagnostics for the loaded code."),
+    .describe(
+      "File the loaded class(es) are bound to in OMC's symbol table, and the name used in diagnostics. Loading under a different filename evicts the class from the file it was stored in — pass the real source path when updating an existing class.",
+    ),
   encoding: z
     .string()
     .optional()

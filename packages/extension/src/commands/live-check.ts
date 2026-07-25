@@ -23,12 +23,14 @@
 
 import * as vscode from "vscode";
 
-import type { OmcClient, ErrorMessage } from "@dicode/omc-client";
+import type { ErrorMessage } from "@dicode/omc-client";
 
 import { mapOmcMessagesToDiagnostics } from "../diagnostics/from-omc.js";
+import type { FileOwnerClient } from "../file-owner.js";
 import { log } from "../logger.js";
 import {
   MODELICA_SOURCE_SCHEME,
+  omcFilenameForDocument,
   qualifiedNameFromUri,
 } from "../source-provider.js";
 
@@ -37,6 +39,23 @@ import type { CommandContext } from "./context.js";
 
 const DEFAULT_DEBOUNCE_MS = 750;
 const MIN_DEBOUNCE_MS = 250;
+
+/**
+ * The OMC surface the check pipeline drives. `OmcClient` satisfies it.
+ * `getSourceFile` comes from {@link FileOwnerClient} — the pipeline never calls
+ * it itself, it hands the client to `omcFilenameForDocument`.
+ */
+export interface LiveCheckClient extends FileOwnerClient {
+  getErrorString(): Promise<{ errorString: string }>;
+  parseString(input: { data: string; filename: string }): Promise<unknown>;
+  loadString(input: {
+    data: string;
+    filename: string;
+    merge: boolean;
+  }): Promise<unknown>;
+  checkModel(input: { typeName: string }): Promise<unknown>;
+  getMessagesStringInternal(): Promise<{ messages: ErrorMessage[] }>;
+}
 
 type DocState = {
   timer?: NodeJS.Timeout;
@@ -117,15 +136,38 @@ async function runCheck(
     if (state.token !== capturedToken) return;
     const uri = document.uri;
     const text = document.getText();
-    const filename = uri.toString();
+    const typeName = qualifiedNameFromUri(uri);
 
-    let client: OmcClient;
+    // A system-library class can't legitimately be edited, so a change on its
+    // buffer is never the user's; loading one back into OMC would repoint an
+    // installed library's source at this URI. The provider memoizes a
+    // conclusive verdict, and `readFile` forced the lookup when the document
+    // opened, so this costs nothing per keystroke. Origin only — a class whose
+    // file is merely read-only on disk still gets checked, and fails at save.
+    if (
+      typeName !== undefined &&
+      (await ctx.sourceProvider.isReadOnly(typeName))
+    ) {
+      return;
+    }
+    if (state.token !== capturedToken) return;
+
+    let client: LiveCheckClient;
     try {
       client = await ctx.ensureClient();
     } catch (err) {
       log.error("liveCheck", "failed to acquire OMC client", err);
       return;
     }
+    if (state.token !== capturedToken) return;
+
+    // Check under the class's real source file, not its `modelica-source:` URI:
+    // `loadString` binds a class to the filename it is given, so the URI would
+    // evict an inline member from the `package.mo` it shares with its siblings.
+    // A memory-only class has no disk path and keeps the URI. Resolved before
+    // the drain below, so a failed lookup's message doesn't reach this run's
+    // diagnostics.
+    const filename = await omcFilenameForDocument(client, uri);
     if (state.token !== capturedToken) return;
 
     // Drain pre-existing diagnostics so what we read after parseString /
@@ -157,13 +199,12 @@ async function runCheck(
     if (!hasParseError) {
       // Syntax-clean — load into OMC and run the semantic check.
       try {
-        await client.loadString({ data: text, filename });
+        await client.loadString({ data: text, filename, merge: false });
       } catch (err) {
         log.error("liveCheck", "loadString failed", err);
         return;
       }
       if (state.token !== capturedToken) return;
-      const typeName = qualifiedNameFromUri(uri);
       if (typeName) {
         try {
           await client.checkModel({ typeName });
@@ -189,8 +230,8 @@ async function runCheck(
     );
 
     // Per-file replace. Map every OMC filename back to THIS uri when it
-    // matches the pseudo-name we passed to parseString/loadString; that
-    // way squiggles land in the user's actual buffer. The probe in
+    // matches the name we checked under, so squiggles land in the user's
+    // buffer rather than the file it happens to be stored in. The probe in
     // `lsp-probe.integration.test.ts` (Probe 2b) confirms OMC echoes a
     // `modelica-source:` URI verbatim, but as belt-and-suspenders the
     // resolver also parses any modelica-source: URI string OMC might emit
@@ -207,7 +248,14 @@ async function runCheck(
       return undefined;
     };
     const grouped = mapOmcMessagesToDiagnostics(messages, resolver);
-    const diagsForUri = grouped.get(uri) ?? [];
+    // The filename we checked under can hold sibling classes, whose diagnostics
+    // carry positions in that file rather than in this buffer. VSCode would
+    // clamp an out-of-range one onto the last line as if it were the user's.
+    // Partial: a sibling declared ahead of this class lands inside the range,
+    // and OMC reports a filename, not the class it belongs to.
+    const diagsForUri = (grouped.get(uri) ?? []).filter(
+      (d) => d.range.start.line < document.lineCount,
+    );
     ctx.diagnostics.set(uri, diagsForUri);
   });
 }

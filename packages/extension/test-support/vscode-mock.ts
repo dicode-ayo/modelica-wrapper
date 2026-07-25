@@ -343,7 +343,10 @@ export const workspaceListeners: {
   save: Array<(document: unknown) => void>;
   change: Array<(event: unknown) => void>;
   close: Array<(document: unknown) => void>;
-} = { save: [], change: [], close: [] };
+  configuration: Array<
+    (event: { affectsConfiguration(s: string): boolean }) => void
+  >;
+} = { save: [], change: [], close: [], configuration: [] };
 
 function register<T>(list: T[], listener: T): Disposable {
   list.push(listener);
@@ -362,6 +365,11 @@ export const workspace = {
   },
   onDidCloseTextDocument(listener: (document: unknown) => void): Disposable {
     return register(workspaceListeners.close, listener);
+  },
+  onDidChangeConfiguration(
+    listener: (event: { affectsConfiguration(s: string): boolean }) => void,
+  ): Disposable {
+    return register(workspaceListeners.configuration, listener);
   },
   getConfiguration(_section?: string) {
     return {

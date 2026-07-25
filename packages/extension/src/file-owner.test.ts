@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { fileOwnerClass } from "./file-owner.js";
+import { fileOwnerClass, realSourceFilename } from "./file-owner.js";
 
 /** A client whose `getSourceFile` answers from a class→file map. */
 function makeClient(files: Record<string, string>) {
@@ -50,5 +50,31 @@ describe("fileOwnerClass", () => {
   it("returns the class when an ancestor's source can't be resolved", async () => {
     const client = makeClient({ "A.B": "/ws/A/B.mo" });
     expect(await fileOwnerClass(client, "A.B")).toBe("A.B");
+  });
+});
+
+describe("realSourceFilename", () => {
+  it("resolves the on-disk file a class is stored in", async () => {
+    const client = makeClient({ "P.A": "/ws/P/package.mo" });
+    expect(await realSourceFilename(client, "P.A")).toBe("/ws/P/package.mo");
+  });
+
+  it.each(["<interactive>", "modelica-source:/P.A.mo", ""])(
+    "reports no source file for the pseudo-filename %o",
+    async (fileName) => {
+      const client = makeClient({ "P.A": fileName });
+      expect(await realSourceFilename(client, "P.A")).toBeUndefined();
+    },
+  );
+
+  it("reports no source file when the class is unknown to OMC", async () => {
+    const client = makeClient({});
+    expect(await realSourceFilename(client, "P.A")).toBeUndefined();
+  });
+
+  it("reports no source file without a class name", async () => {
+    const client = makeClient({ "P.A": "/ws/P/package.mo" });
+    expect(await realSourceFilename(client, undefined)).toBeUndefined();
+    expect(client.getSourceFile).not.toHaveBeenCalled();
   });
 });
