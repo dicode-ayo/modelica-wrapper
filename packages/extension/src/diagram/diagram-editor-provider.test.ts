@@ -2137,6 +2137,7 @@ describe("DiagramEditController: writable-class gate", () => {
     gate: ReadyGate;
     factory: ShadowFactory;
     initial?: DiagramLayout;
+    scheduler?: Scheduler;
   }): DiagramEditController {
     return new DiagramEditController(
       {
@@ -2147,7 +2148,7 @@ describe("DiagramEditController: writable-class gate", () => {
       },
       deps.initial ?? layout({}),
       deps.factory,
-      undefined,
+      deps.scheduler,
       true,
     );
   }
@@ -2205,6 +2206,23 @@ describe("DiagramEditController: writable-class gate", () => {
       values: { stopTime: 1 },
     });
     expect(simulateCalls).toHaveLength(1);
+  });
+
+  it("rejects a reverse sync on a read-only class without loading it into OMC", async () => {
+    const { client, loadStringCalls } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory, fireForeign, writes } = makeShadowFactory();
+    const { scheduler, flush: flushDebounce } = manualScheduler();
+    const controller = readOnlyController({ client, gate, factory, scheduler });
+
+    fireForeign();
+    flushDebounce();
+    await drain();
+
+    expect(loadStringCalls).toEqual([]);
+    expect(writes).toEqual([]);
+    expect(posted.some((m) => m.type === "error")).toBe(true);
+    controller.dispose();
   });
 });
 

@@ -22,6 +22,7 @@ import { applyEdits } from "./apply-edits.js";
 import {
   defaultScheduler,
   isReadOnlyDocument,
+  READ_ONLY_EDIT_MESSAGE,
   reloadBufferIntoOmc,
   REVERSE_SYNC_DEBOUNCE_MS,
   type Scheduler,
@@ -401,7 +402,7 @@ export class DiagramEditController {
    */
   private rejectIfReadOnly(): boolean {
     if (!this.readOnly) return false;
-    this.reportError("This class is read-only and can't be edited.");
+    this.reportError(READ_ONLY_EDIT_MESSAGE);
     return true;
   }
 
@@ -494,6 +495,7 @@ export class DiagramEditController {
    * already the source of this change, and writing it would fight VSCode's undo.
    */
   private async reverseSync(): Promise<void> {
+    if (this.rejectIfReadOnly()) return;
     const { client, className, document } = this.deps;
     try {
       const reload = await reloadBufferIntoOmc(client, document);

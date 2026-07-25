@@ -579,4 +579,28 @@ describe("DocumentationEditController write path", () => {
     expect(calls.loaded).toEqual(["undone text"]);
     expect(posted.some((m) => m.type === "doc")).toBe(true);
   });
+
+  it("refuses a reverse sync on a read-only class and never loads it into OMC", async () => {
+    const { client, calls } = makeEditClient({ info: "<html><p>x</p></html>" });
+    const { gate, posted } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler, flush: flushTimer } = manualScheduler();
+    setStatReadonly(true);
+    const controller = new DocumentationEditController(
+      { client, document: srcDoc("undone text"), className: CLASS, gate },
+      factory,
+      scheduler,
+    );
+
+    controller.start();
+    await Promise.resolve();
+    posted.length = 0; // drop the initial doc
+
+    fireForeign();
+    flushTimer();
+    await flush();
+
+    expect(calls.loaded).toEqual([]);
+    expect(posted.some((m) => m.type === "error")).toBe(true);
+  });
 });

@@ -42,6 +42,10 @@ export interface BufferSyncClient {
 
 export type ReloadResult = { ok: true } | { ok: false; message: string };
 
+/** Shared refusal message for both edit controllers' read-only gates. */
+export const READ_ONLY_EDIT_MESSAGE =
+  "This class is read-only and can't be edited.";
+
 /**
  * Reload `document`'s text into OMC, replacing the class. Drains stale
  * diagnostics first so a failure's `getErrorString` attributes only errors
