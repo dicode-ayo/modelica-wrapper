@@ -3,17 +3,29 @@
  * one at a time. These pin that a superseded search stops issuing them rather
  * than running to completion on the shared channel, and that the restriction
  * cache keeps a repeat search off OMC entirely.
+ *
+ * They also pin which levels of the tree keep the order their author chose:
+ * a package's members do, the roots don't.
  */
 
 import { describe, expect, it, vi } from "vitest";
 
-import { LibrarySource, SearchAbortedError } from "./library-source.js";
+import {
+  LibrarySource,
+  SearchAbortedError,
+  type LibraryOmcClient,
+} from "./library-source.js";
 
-function fakeClient(hits: string[]) {
+type GetClassNamesInput = Parameters<LibraryOmcClient["getClassNames"]>[0];
+
+/** `getClassNames` sorts only when asked, as OMC does. */
+function fakeClient(hits: string[], members: string[] = []) {
   return {
     searchClassNames: vi.fn(async () => ({ classNames: hits })),
     getClassRestriction: vi.fn(async () => ({ restriction: "model" })),
-    getClassNames: vi.fn(async () => ({ classNames: [] })),
+    getClassNames: vi.fn(async ({ sort }: GetClassNamesInput) => ({
+      classNames: sort === true ? [...members].sort() : members,
+    })),
   };
 }
 
@@ -67,5 +79,27 @@ describe("LibrarySource.searchAll", () => {
     await source.searchAll("a");
 
     expect(client.getClassRestriction).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("LibrarySource.listChildren", () => {
+  it("keeps a package's members in the order OMC reports them", async () => {
+    // A `package.order` putting `Resistor` before `Capacitor` survives only if
+    // the listing never asks OMC to sort.
+    const client = fakeClient([], ["Resistor", "Capacitor"]);
+    const source = new LibrarySource(client);
+
+    const rows = await source.listChildren("P");
+
+    expect(rows.map((r) => r.qualified)).toEqual(["P.Resistor", "P.Capacitor"]);
+  });
+
+  it("sorts the roots, which have no authored order", async () => {
+    const client = fakeClient([], ["Zebra", "Alpha"]);
+    const source = new LibrarySource(client);
+
+    const rows = await source.listChildren(null);
+
+    expect(rows.map((r) => r.qualified)).toEqual(["Alpha", "Zebra"]);
   });
 });

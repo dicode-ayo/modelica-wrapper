@@ -92,11 +92,10 @@ export class LibrarySource {
    */
   async listChildren(parent: string | null): Promise<LibraryClassInfo[]> {
     const started = Date.now();
-    const input = parent === null ? {} : { typeName: parent };
-    const { classNames } = await this.client.getClassNames({
-      ...input,
-      sort: true,
-    });
+    // OMC's default order for a package's members is its `package.order`;
+    // `sort` discards it. The roots have no authored order to preserve.
+    const input = parent === null ? { sort: true } : { typeName: parent };
+    const { classNames } = await this.client.getClassNames(input);
     // `getClassNames` returns local (unqualified) names. Reconstruct
     // the fully-qualified form so the tree, which keys on
     // qualified names for selection + lazy expansion, doesn't have
