@@ -557,6 +557,25 @@ describe("DocumentationEditController write path", () => {
     expect(posted.filter((m) => m.type === "doc").length).toBeGreaterThan(0);
   });
 
+  it("refuses an external-write refresh on a read-only class and never reflects it", async () => {
+    const { client } = makeEditClient({ info: "<html><p>after</p></html>" });
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    setStatReadonly(true);
+    const controller = new DocumentationEditController(
+      { client, document: srcDoc(), className: CLASS, gate },
+      factory,
+    );
+
+    controller.start();
+    await controller.refreshFromExternalWrite();
+
+    // The reflect is skipped, but the webview still needs the re-sent doc so
+    // it can't hold a stale `info`/`readOnly` state.
+    expect(writes).toEqual([]);
+    expect(posted.some((m) => m.type === "doc")).toBe(true);
+  });
+
   it("reverse-syncs a foreign buffer change: loadString then re-send the doc", async () => {
     const { client, calls } = makeEditClient({ info: "<html><p>x</p></html>" });
     const { gate, posted } = makeGate();
