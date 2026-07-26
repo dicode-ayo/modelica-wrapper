@@ -15,30 +15,12 @@
  * (or `OMC_PATH` / `OMC_INTEGRATION=1` is set); auto-skips otherwise.
  */
 
-import { execSync } from "node:child_process";
-
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it } from "vitest";
 
 import { OmcClient } from "@dicode/omc-client";
 
+import { describeIf } from "../../test-support/integration-gate.js";
 import { clearComponentModifiers } from "./clear-modifiers.js";
-
-function shouldRun(): boolean {
-  const flag = process.env.OMC_INTEGRATION;
-  if (flag === "0") return false;
-  if (flag === "1") return true;
-  if (process.env.OMC_PATH && process.env.OMC_PATH.length > 0) return true;
-  try {
-    execSync(process.platform === "win32" ? "where omc" : "command -v omc", {
-      stdio: "ignore",
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const describeIf = shouldRun() ? describe : describe.skip;
 
 describeIf("reset-to-defaults clear against real OMC", () => {
   let client: OmcClient;

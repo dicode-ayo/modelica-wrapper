@@ -26,31 +26,14 @@
  * Auto-skips when `omc` isn't on PATH.
  */
 
-import { execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it } from "vitest";
 
 import { OmcClient, diagram } from "@dicode/omc-client";
 
+import { describeIf } from "../../test-support/integration-gate.js";
 import { applyDisplayUnits } from "./display-unit.js";
-
-function shouldRun(): boolean {
-  const flag = process.env.OMC_INTEGRATION;
-  if (flag === "0") return false;
-  if (flag === "1") return true;
-  if (process.env.OMC_PATH && process.env.OMC_PATH.length > 0) return true;
-  try {
-    execSync(process.platform === "win32" ? "where omc" : "command -v omc", {
-      stdio: "ignore",
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const describeIf = shouldRun() ? describe : describe.skip;
 
 describeIf("displayUnit conversion (live OMC) (#28)", () => {
   let client: OmcClient;
