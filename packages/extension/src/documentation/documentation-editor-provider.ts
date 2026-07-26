@@ -328,10 +328,13 @@ export class DocumentationEditController {
    * HTML editor): reflect the canonical source into the buffer — even a dirty
    * one, through the self-write guard — and re-send the fresh annotation so the
    * webview can't hold a stale `info` and clobber the write on its next edit.
+   * A read-only class skips the reflect (nothing should have written it in the
+   * first place) but still re-sends, so the webview can't be left holding a
+   * stale `info`/`readOnly` state.
    */
   refreshFromExternalWrite(): Promise<void> {
     return this.enqueue(async () => {
-      await this.reflect();
+      if (!this.rejectIfReadOnly()) await this.reflect();
       await this.refetchAndSend();
     });
   }
