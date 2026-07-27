@@ -54,6 +54,12 @@ const DRAG_SLOP_PX = 3;
 interface PendingSelect {
   key: string;
   pointerId: number;
+}
+
+/** The still-down press being watched for drag travel, keyed to the pointer
+ *  that made it — used to tell a click from a drag's initial press. */
+interface PressOrigin {
+  pointerId: number;
   clientX: number;
   clientY: number;
 }
@@ -76,6 +82,11 @@ interface PendingSelect {
  * {@link DRAG_SLOP_PX}. `DragMode.begin` reads the selection during the same
  * `pointerdown`, so narrowing there would leave it one key to carry and no
  * group could ever be dragged.
+ *
+ * Every select-eligible press is watched the same way for drag travel, not
+ * just a deferred one: a press that moves past {@link DRAG_SLOP_PX} before
+ * release was a drag, not a click, so it must not arm the double-click window
+ * for whatever gets clicked next.
  */
 export class InteractionManager {
   private readonly picker: PickerFn;
@@ -86,6 +97,7 @@ export class InteractionManager {
   private lastSelectKey: string | null = null;
   private lastSelectAt = 0;
   private pendingSelect: PendingSelect | null = null;
+  private pressOrigin: PressOrigin | null = null;
 
   constructor(
     picker: PickerFn,
@@ -100,7 +112,7 @@ export class InteractionManager {
   }
 
   handlePointerMove(e: PointerEvent): void {
-    this.dropPendingSelectOnDrag(e);
+    this.trackPressTravel(e);
     const key = this.hoverKeyAt(e.clientX, e.clientY);
     if (key !== this.hoverKey) {
       this.hoverKey = key;
@@ -154,17 +166,17 @@ export class InteractionManager {
       now - this.lastSelectAt < this.doubleClickMs;
     this.lastSelectKey = key;
     this.lastSelectAt = now;
+    this.pressOrigin = {
+      pointerId: e.pointerId,
+      clientX: e.clientX,
+      clientY: e.clientY,
+    };
 
     const addToSelection = e.ctrlKey || e.metaKey;
     // A second press within the window must keep emitting on the press, or
     // the deferral would swallow the `doubleClick` that rides with it.
     if (!addToSelection && !isDouble && this.isInMultiSelection(key)) {
-      this.pendingSelect = {
-        key,
-        pointerId: e.pointerId,
-        clientX: e.clientX,
-        clientY: e.clientY,
-      };
+      this.pendingSelect = { key, pointerId: e.pointerId };
       return;
     }
 
@@ -190,6 +202,7 @@ export class InteractionManager {
     if (e.button !== 0) {
       return;
     }
+    this.clearPressOrigin(e.pointerId);
     const pending = this.takePendingSelect(e.pointerId);
     if (pending !== null) {
       this.emit("select", { key: pending.key, addToSelection: false });
@@ -198,6 +211,7 @@ export class InteractionManager {
 
   /** A cancelled pointer is not a click — the deferred narrowing is dropped. */
   handlePointerCancel(e: PointerEvent): void {
+    this.clearPressOrigin(e.pointerId);
     this.takePendingSelect(e.pointerId);
   }
 
@@ -215,15 +229,29 @@ export class InteractionManager {
     return pending;
   }
 
-  private dropPendingSelectOnDrag(e: PointerEvent): void {
-    const pending = this.pendingSelect;
-    if (pending === null || pending.pointerId !== e.pointerId) {
+  /**
+   * Watches the tracked press for drag travel. Past the slop, it was a drag,
+   * not a click: drop any deferred narrowing it armed, and forget it as
+   * `lastSelectKey` so it can't pair with a later click to fake a double.
+   */
+  private trackPressTravel(e: PointerEvent): void {
+    const origin = this.pressOrigin;
+    if (origin === null || origin.pointerId !== e.pointerId) {
       return;
     }
-    const dx = e.clientX - pending.clientX;
-    const dy = e.clientY - pending.clientY;
-    if (dx * dx + dy * dy > DRAG_SLOP_PX * DRAG_SLOP_PX) {
-      this.pendingSelect = null;
+    const dx = e.clientX - origin.clientX;
+    const dy = e.clientY - origin.clientY;
+    if (dx * dx + dy * dy <= DRAG_SLOP_PX * DRAG_SLOP_PX) {
+      return;
+    }
+    this.pressOrigin = null;
+    this.pendingSelect = null;
+    this.lastSelectKey = null;
+  }
+
+  private clearPressOrigin(pointerId: number): void {
+    if (this.pressOrigin?.pointerId === pointerId) {
+      this.pressOrigin = null;
     }
   }
 

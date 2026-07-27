@@ -1,0 +1,325 @@
+/**
+ * `InteractionManager` translates pointer events into select/hover/
+ * doubleClick/contextMenu. Centered on #383: finishing a move-drag and then
+ * clicking the same entity within the double-click window used to fire a
+ * spurious `doubleClick`, because the press that started the drag was never
+ * distinguished from an actual click when arming the double-click window.
+ */
+
+import { Container } from "pixi.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { SelectionProvider } from "./gesture-mode.js";
+import {
+  InteractionManager,
+  type EmitFn,
+  type InteractionEvents,
+  type PickerFn,
+} from "./interaction-manager.js";
+import { tagEntity } from "./node-keys.js";
+
+const DOUBLE_CLICK_MS = 350;
+
+function componentNode(id: string): Container {
+  const node = new Container();
+  tagEntity(node, "component", id);
+  return node;
+}
+
+function pointerEvent(
+  type: string,
+  init: {
+    button?: number;
+    pointerId?: number;
+    clientX?: number;
+    clientY?: number;
+    ctrlKey?: boolean;
+    metaKey?: boolean;
+    shiftKey?: boolean;
+  } = {},
+): PointerEvent {
+  const event = new Event(type, { bubbles: true }) as PointerEvent;
+  Object.defineProperty(event, "button", { value: init.button ?? 0 });
+  Object.defineProperty(event, "pointerId", { value: init.pointerId ?? 1 });
+  Object.defineProperty(event, "clientX", { value: init.clientX ?? 0 });
+  Object.defineProperty(event, "clientY", { value: init.clientY ?? 0 });
+  Object.defineProperty(event, "ctrlKey", { value: init.ctrlKey ?? false });
+  Object.defineProperty(event, "metaKey", { value: init.metaKey ?? false });
+  Object.defineProperty(event, "shiftKey", { value: init.shiftKey ?? false });
+  return event;
+}
+
+interface Recorded {
+  type: keyof InteractionEvents;
+  detail: InteractionEvents[keyof InteractionEvents];
+}
+
+function makeManager(opts: {
+  target: Container | null;
+  selection?: string[];
+}): { manager: InteractionManager; events: Recorded[] } {
+  const events: Recorded[] = [];
+  const emit: EmitFn = (type, detail) => {
+    events.push({ type, detail });
+  };
+  const picker: PickerFn = () => opts.target;
+  const getSelectionKeys: SelectionProvider = () => opts.selection ?? [];
+  const manager = new InteractionManager(picker, emit, getSelectionKeys, {
+    doubleClickMs: DOUBLE_CLICK_MS,
+  });
+  return { manager, events };
+}
+
+function selectEvents(events: Recorded[]): InteractionEvents["select"][] {
+  return events
+    .filter((e) => e.type === "select")
+    .map((e) => e.detail as InteractionEvents["select"]);
+}
+
+function doubleClickCount(events: Recorded[]): number {
+  return events.filter((e) => e.type === "doubleClick").length;
+}
+
+describe("InteractionManager", () => {
+  let now = 0;
+  beforeEach(() => {
+    now = 0;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("emits select on a plain primary press", () => {
+    const a = componentNode("A");
+    const { manager, events } = makeManager({ target: a });
+
+    manager.handlePointerDown(pointerEvent("pointerdown"));
+
+    expect(selectEvents(events)).toEqual([
+      { key: "c:A", addToSelection: false },
+    ]);
+  });
+
+  it("marks addToSelection on a ctrl/cmd press", () => {
+    const a = componentNode("A");
+    const { manager, events } = makeManager({ target: a });
+
+    manager.handlePointerDown(pointerEvent("pointerdown", { ctrlKey: true }));
+
+    expect(selectEvents(events)).toEqual([
+      { key: "c:A", addToSelection: true },
+    ]);
+  });
+
+  it("emits doubleClick on two stationary presses on the same key within the window", () => {
+    const a = componentNode("A");
+    const { manager, events } = makeManager({ target: a });
+
+    manager.handlePointerDown(pointerEvent("pointerdown"));
+    manager.handlePointerUp(pointerEvent("pointerup"));
+    now += 100;
+    manager.handlePointerDown(pointerEvent("pointerdown"));
+
+    expect(doubleClickCount(events)).toBe(1);
+  });
+
+  it("does not emit doubleClick once the window has elapsed", () => {
+    const a = componentNode("A");
+    const { manager, events } = makeManager({ target: a });
+
+    manager.handlePointerDown(pointerEvent("pointerdown"));
+    manager.handlePointerUp(pointerEvent("pointerup"));
+    now += DOUBLE_CLICK_MS + 1;
+    manager.handlePointerDown(pointerEvent("pointerdown"));
+
+    expect(doubleClickCount(events)).toBe(0);
+  });
+
+  describe("press-drag then click (#383)", () => {
+    it("does not arm a spurious double click after a press that drags away and back", () => {
+      const a = componentNode("A");
+      const { manager, events } = makeManager({ target: a });
+
+      // Press, drag well past the slop, release — a move-drag, not a click.
+      manager.handlePointerDown(
+        pointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
+      );
+      manager.handlePointerMove(
+        pointerEvent("pointermove", { clientX: 50, clientY: 50 }),
+      );
+      manager.handlePointerUp(
+        pointerEvent("pointerup", { clientX: 50, clientY: 50 }),
+      );
+
+      // A stationary click on the same entity, within the window.
+      now += 50;
+      manager.handlePointerDown(pointerEvent("pointerdown"));
+      manager.handlePointerUp(pointerEvent("pointerup"));
+
+      expect(doubleClickCount(events)).toBe(0);
+      // The click itself still selects.
+      expect(selectEvents(events).at(-1)).toEqual({
+        key: "c:A",
+        addToSelection: false,
+      });
+    });
+
+    it("still counts a press that stays under the drag slop toward a double click", () => {
+      const a = componentNode("A");
+      const { manager, events } = makeManager({ target: a });
+
+      manager.handlePointerDown(
+        pointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
+      );
+      manager.handlePointerMove(
+        pointerEvent("pointermove", { clientX: 1, clientY: 0 }),
+      );
+      manager.handlePointerUp(pointerEvent("pointerup", { clientX: 1 }));
+
+      now += 50;
+      manager.handlePointerDown(pointerEvent("pointerdown"));
+
+      expect(doubleClickCount(events)).toBe(1);
+    });
+
+    it("does not carry drag invalidation across pointer ids", () => {
+      const a = componentNode("A");
+      const { manager, events } = makeManager({ target: a });
+
+      manager.handlePointerDown(
+        pointerEvent("pointerdown", { pointerId: 1, clientX: 0, clientY: 0 }),
+      );
+      manager.handlePointerUp(pointerEvent("pointerup", { pointerId: 1 }));
+
+      // A different pointer travelling far should not affect pointer 1's
+      // click bookkeeping.
+      manager.handlePointerMove(
+        pointerEvent("pointermove", {
+          pointerId: 2,
+          clientX: 999,
+          clientY: 999,
+        }),
+      );
+
+      now += 50;
+      manager.handlePointerDown(pointerEvent("pointerdown", { pointerId: 1 }));
+
+      expect(doubleClickCount(events)).toBe(1);
+    });
+  });
+
+  describe("deferred select on a multi-selection member", () => {
+    it("defers select to pointerup and drops it if the press drags past the slop", () => {
+      const a = componentNode("A");
+      const { manager, events } = makeManager({
+        target: a,
+        selection: ["c:A", "c:B"],
+      });
+
+      manager.handlePointerDown(
+        pointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
+      );
+      expect(selectEvents(events)).toEqual([]);
+
+      manager.handlePointerMove(
+        pointerEvent("pointermove", { clientX: 50, clientY: 50 }),
+      );
+      manager.handlePointerUp(
+        pointerEvent("pointerup", { clientX: 50, clientY: 50 }),
+      );
+
+      expect(selectEvents(events)).toEqual([]);
+    });
+
+    it("emits the deferred select on a stationary release", () => {
+      const a = componentNode("A");
+      const { manager, events } = makeManager({
+        target: a,
+        selection: ["c:A", "c:B"],
+      });
+
+      manager.handlePointerDown(pointerEvent("pointerdown"));
+      manager.handlePointerUp(pointerEvent("pointerup"));
+
+      expect(selectEvents(events)).toEqual([
+        { key: "c:A", addToSelection: false },
+      ]);
+    });
+
+    it("drops the deferred select on pointercancel", () => {
+      const a = componentNode("A");
+      const { manager, events } = makeManager({
+        target: a,
+        selection: ["c:A", "c:B"],
+      });
+
+      manager.handlePointerDown(pointerEvent("pointerdown"));
+      manager.handlePointerCancel(pointerEvent("pointercancel"));
+      manager.handlePointerUp(pointerEvent("pointerup"));
+
+      expect(selectEvents(events)).toEqual([]);
+    });
+
+    it("does not defer when ctrl/cmd is held", () => {
+      const a = componentNode("A");
+      const { manager, events } = makeManager({
+        target: a,
+        selection: ["c:A", "c:B"],
+      });
+
+      manager.handlePointerDown(pointerEvent("pointerdown", { ctrlKey: true }));
+
+      expect(selectEvents(events)).toEqual([
+        { key: "c:A", addToSelection: true },
+      ]);
+    });
+  });
+
+  describe("hover", () => {
+    it("emits hover when the entity under the pointer changes", () => {
+      const a = componentNode("A");
+      const { manager, events } = makeManager({ target: a });
+
+      manager.handlePointerMove(pointerEvent("pointermove"));
+
+      expect(events).toContainEqual({ type: "hover", detail: { key: "c:A" } });
+    });
+
+    it("does not re-emit hover for the same key", () => {
+      const a = componentNode("A");
+      const { manager, events } = makeManager({ target: a });
+
+      manager.handlePointerMove(pointerEvent("pointermove", { clientX: 0 }));
+      manager.handlePointerMove(pointerEvent("pointermove", { clientX: 1 }));
+
+      expect(events.filter((e) => e.type === "hover")).toHaveLength(1);
+    });
+
+    it("emits hover with a null key on pointer leave", () => {
+      const a = componentNode("A");
+      const { manager, events } = makeManager({ target: a });
+
+      manager.handlePointerMove(pointerEvent("pointermove"));
+      manager.handlePointerLeave();
+
+      expect(events.at(-1)).toEqual({ type: "hover", detail: { key: null } });
+    });
+  });
+
+  describe("contextMenu", () => {
+    it("emits contextMenu on secondary-button release", () => {
+      const a = componentNode("A");
+      const { manager, events } = makeManager({ target: a });
+
+      manager.handlePointerUp(
+        pointerEvent("pointerup", { button: 2, clientX: 12, clientY: 34 }),
+      );
+
+      expect(events).toContainEqual({
+        type: "contextMenu",
+        detail: { key: "c:A", clientX: 12, clientY: 34 },
+      });
+    });
+  });
+});
