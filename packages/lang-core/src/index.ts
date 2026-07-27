@@ -4,6 +4,7 @@
  * interface, and hot-path diagnostic tracing as an injected {@link Logger}.
  */
 
+export { assertUnreachable } from "./assert-unreachable.js";
 export * from "./cursor.js";
 export * from "./resolve.js";
 export { leafName, enclosingScope } from "./qualified-name.js";

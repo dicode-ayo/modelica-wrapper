@@ -1,4 +1,5 @@
 import { OmcClient } from "@dicode/omc-client";
+import { assertUnreachable } from "@dicode/modelica-lang-core";
 
 import {
   lineAnnotation,
@@ -275,5 +276,10 @@ async function applyOne(
         }),
       );
       return;
+    default:
+      // `applyOne` returns void, so a `LayoutEdit` kind added without a case
+      // here would be a silent no-op — the edit reported as applied and
+      // nothing written.
+      return assertUnreachable(edit, "LayoutEdit");
   }
 }

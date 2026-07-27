@@ -19,21 +19,13 @@ export type ParameterFormKind =
   | "simulate";
 
 /**
- * Wire-format mirror of diagram-ui's `DiagramCommandId`. Kept local because the
- * CommonJS extension host can't import the ESM-only diagram-ui package; the
- * webview side assigns it straight into diagram-ui's identical union.
+ * Re-exported from the `command-ids` subpath rather than the package root: the
+ * root drags in the Lit and Pixi component tree, whose types need the DOM lib
+ * the host's Node program doesn't have.
  */
-export type DiagramCommandId =
-  | "diagram.delete"
-  | "diagram.rotateCw"
-  | "diagram.rotateCcw"
-  | "diagram.flipHorizontal"
-  | "diagram.flipVertical"
-  | "diagram.deleteVertex"
-  | "diagram.toggleSmooth"
-  | "diagram.copy"
-  | "diagram.paste"
-  | "diagram.showKeymapHelp";
+import type { DiagramCommandId } from "@dicode/diagram-ui/command-ids";
+
+export type { DiagramCommandId };
 
 /**
  * Message protocol between the extension host (Node) and the diagram

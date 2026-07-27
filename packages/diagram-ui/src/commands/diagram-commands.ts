@@ -10,22 +10,10 @@ import {
 } from "../interaction/layout-ops.js";
 import { parseKey, vertexShapeKey } from "../interaction/node-keys.js";
 import type { Command, CommandPlacement, CommandTarget } from "./command.js";
+import type { DiagramCommandId } from "./command-ids.js";
 import type { KeyChord } from "./keymap.js";
 
-/** The ids of the built-in diagram commands; the keymap and every dispatch
- *  site are checked against this union. */
-export type DiagramCommandId =
-  | "diagram.delete"
-  | "diagram.rotateCw"
-  | "diagram.rotateCcw"
-  | "diagram.flipHorizontal"
-  | "diagram.flipVertical"
-  | "diagram.deleteVertex"
-  | "diagram.toggleSmooth"
-  | "diagram.changeClass"
-  | "diagram.copy"
-  | "diagram.paste"
-  | "diagram.showKeymapHelp";
+export type { DiagramCommandId } from "./command-ids.js";
 
 const requireSelection = (ctx: ContextKeys): boolean =>
   !ctx.readonly && ctx.selectionCount > 0;
