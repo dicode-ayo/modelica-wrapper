@@ -834,6 +834,43 @@ describe("diffLayouts — graphics", () => {
       ]);
     });
 
+    it("detects every single move, and never encodes one that does not reproduce the array", () => {
+      // The candidate pair is derived from the first and last differing index,
+      // which is only obviously exhaustive for a move at one of those ends.
+      // Enumerate instead: every single move must be found, and any move
+      // reported for an arbitrary permutation must reproduce it exactly.
+      const applyMove = <T>(
+        arr: readonly T[],
+        from: number,
+        to: number,
+      ): T[] => {
+        const out = [...arr];
+        const [moved] = out.splice(from, 1);
+        if (moved === undefined) throw new Error("bad from index");
+        out.splice(to, 0, moved);
+        return out;
+      };
+
+      for (let n = 2; n <= 6; n += 1) {
+        const shapes = Array.from({ length: n }, (_, i) => rect(i * 10));
+        for (let from = 0; from < n; from += 1) {
+          for (let to = 0; to < n; to += 1) {
+            const after = applyMove(shapes, from, to);
+            if (after.every((s, i) => s === shapes[i])) continue;
+            const edits = diffLayouts(withIcon(shapes), withIcon(after));
+            expect(edits).toHaveLength(1);
+            const edit = edits[0];
+            if (edit?.kind !== "graphicsReordered") {
+              throw new Error(
+                `expected graphicsReordered for ${from}->${to} of ${n}, got ${edit?.kind}`,
+              );
+            }
+            expect(applyMove(shapes, edit.from, edit.to)).toEqual(after);
+          }
+        }
+      }
+    });
+
     it("falls back to modifies when a permutation needs more than one move", () => {
       // [a,b,c,d] → [b,a,d,c] is two independent swaps.
       const d = rect(60);
