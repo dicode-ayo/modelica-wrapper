@@ -49,7 +49,11 @@ export type ClipboardEntry = ClipboardComponent | ClipboardShape;
  */
 export class DiagramClipboard {
   private items: readonly ClipboardEntry[] = [];
-  private pastes = 0;
+  // Per host class: the cascade exists so a second paste doesn't land on the
+  // first, which is only true within one class. A window-wide counter would
+  // offset the first paste into a second model by however many times the
+  // clipboard had been pasted into the first.
+  private readonly pastes = new Map<string, number>();
 
   get isEmpty(): boolean {
     return this.items.length === 0;
@@ -61,13 +65,14 @@ export class DiagramClipboard {
 
   write(items: readonly ClipboardEntry[]): void {
     this.items = items;
-    this.pastes = 0;
+    this.pastes.clear();
   }
 
-  /** Offset for the next paste of the current contents. */
-  nextOffset(): number {
-    this.pastes += 1;
-    return this.pastes * PASTE_OFFSET;
+  /** Offset for the next paste of the current contents into `hostClass`. */
+  nextOffset(hostClass: string): number {
+    const n = (this.pastes.get(hostClass) ?? 0) + 1;
+    this.pastes.set(hostClass, n);
+    return n * PASTE_OFFSET;
   }
 }
 

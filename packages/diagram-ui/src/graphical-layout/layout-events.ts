@@ -66,13 +66,12 @@ export interface ChangeClassRequestDetail {
 
 /**
  * User invoked copy or paste. The clipboard lives in the host (it is shared
- * across editors), so the layout reports the gesture and the current selection
- * rather than carrying a payload of its own. `keys` is empty for `"paste"`.
+ * across editors), so the layout reports the gesture and — for a copy — what
+ * was selected, rather than carrying a payload of its own.
  */
-export interface ClipboardRequestDetail {
-  action: "copy" | "paste";
-  keys: string[];
-}
+export type ClipboardRequestDetail =
+  | { action: "copy"; keys: string[] }
+  | { action: "paste" };
 
 /**
  * Event-name → detail-type map. Source of truth shared by:

@@ -14,6 +14,7 @@ import {
   isShapeKey,
   parseEntityKey,
 } from "./entity-key.js";
+import { firstFreeName, takenNames } from "./open-diagram.js";
 import { lookupHostShape } from "./shape-properties.js";
 
 /** OMC surface the copy path needs: the modifiers authored on a declaration. */
@@ -181,10 +182,7 @@ export async function pasteClipboardItems(
   // The layout is not re-fetched between adds, so every name handed out is
   // recorded here — otherwise a two-component paste would ask for the same
   // free name twice.
-  const taken = new Set([
-    ...Object.keys(layout.components),
-    ...Object.keys(layout.connectors),
-  ]);
+  const taken = takenNames(layout);
 
   for (const item of items) {
     if (item.kind === "shape") {
@@ -204,30 +202,39 @@ export async function pasteClipboardItems(
 
     const componentName = uniquePasteName(item.name, taken);
     taken.add(componentName);
-    const failure = await pasteComponent(
+    const outcome = await pasteComponent(
       client,
       hostClass,
       item,
       componentName,
       offset,
     );
-    if (failure === null) result.added.push(componentName);
-    else {
-      taken.delete(componentName);
-      result.failed.push(failure);
-    }
+    if (outcome.declared) result.added.push(componentName);
+    else taken.delete(componentName);
+    if (outcome.failure !== null) result.failed.push(outcome.failure);
   }
   return result;
 }
 
-/** Returns null on success, or the diagnostic to report. */
+/**
+ * `declared` is whether the declaration reached the class, which is NOT the
+ * same as success: a rejected modifier write leaves the component in place.
+ * Reporting the two separately keeps the caller from handing the name out
+ * again — and from skipping the reflect that gives the half-applied paste an
+ * undo step.
+ */
+interface PasteComponentOutcome {
+  declared: boolean;
+  failure: string | null;
+}
+
 async function pasteComponent(
   client: PasteClient,
   hostClass: string,
   item: ClipboardComponent,
   componentName: string,
   offset: number,
-): Promise<string | null> {
+): Promise<PasteComponentOutcome> {
   const add = await client.addComponent({
     componentName,
     componentClass: item.className,
@@ -238,7 +245,10 @@ async function pasteComponent(
     ),
   });
   if (!add.success) {
-    return `paste ${item.className}: ${add.diagnostic ?? "OMC rejected addComponent"}`;
+    return {
+      declared: false,
+      failure: `paste ${item.className}: ${add.diagnostic ?? "OMC rejected addComponent"}`,
+    };
   }
   for (const modifier of item.modifiers) {
     const set = await client.setElementModifierValue({
@@ -247,10 +257,13 @@ async function pasteComponent(
       expr: modifier.expr,
     });
     if (!set.success) {
-      return `paste ${componentName}.${modifier.path}: ${set.diagnostic ?? "OMC rejected setElementModifierValue"}`;
+      return {
+        declared: true,
+        failure: `paste ${componentName}.${modifier.path}: ${set.diagnostic ?? "OMC rejected setElementModifierValue"}`,
+      };
     }
   }
-  return null;
+  return { declared: true, failure: null };
 }
 
 /**
@@ -262,9 +275,5 @@ export function uniquePasteName(
   base: string,
   taken: ReadonlySet<string>,
 ): string {
-  const stem = base.replace(/\d+$/, "") || base;
-  for (let i = 1; ; i += 1) {
-    const candidate = `${stem}${i}`;
-    if (!taken.has(candidate)) return candidate;
-  }
+  return firstFreeName(base.replace(/\d+$/, ""), taken);
 }

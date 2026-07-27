@@ -2406,7 +2406,8 @@ describe("DiagramEditController: clipboard", () => {
     ops: string[];
     addComponentCalls: Array<Record<string, unknown>>;
     setModifierCalls: Array<Record<string, unknown>>;
-    clipboardEvents: boolean[];
+    /** How many times the editor announced a clipboard change. */
+    broadcasts: () => number;
   } {
     const { client, ops, addComponentCalls, setModifierCalls } = makeEditClient(
       {
@@ -2419,7 +2420,7 @@ describe("DiagramEditController: clipboard", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const clipboard = new DiagramClipboard();
-    const clipboardEvents: boolean[] = [];
+    let broadcasts = 0;
     const controller = new DiagramEditController(
       {
         client,
@@ -2427,7 +2428,9 @@ describe("DiagramEditController: clipboard", () => {
         className: "Pkg.M",
         gate,
         clipboard,
-        onClipboardChanged: (has) => clipboardEvents.push(has),
+        onClipboardChanged: () => {
+          broadcasts += 1;
+        },
       },
       twoGains(),
       factory,
@@ -2443,12 +2446,12 @@ describe("DiagramEditController: clipboard", () => {
       ops,
       addComponentCalls,
       setModifierCalls,
-      clipboardEvents,
+      broadcasts: () => broadcasts,
     };
   }
 
   it("fills the clipboard from the selection and announces it", async () => {
-    const { controller, clipboard, clipboardEvents } = makeController({
+    const { controller, clipboard, broadcasts } = makeController({
       modifiers: { k: "2.5" },
     });
 
@@ -2467,7 +2470,7 @@ describe("DiagramEditController: clipboard", () => {
         modifiers: [{ path: "k", expr: "2.5" }],
       },
     ]);
-    expect(clipboardEvents).toEqual([true]);
+    expect(broadcasts()).toBe(1);
   });
 
   it("copies from a read-only class — only paste writes", async () => {
@@ -2533,6 +2536,42 @@ describe("DiagramEditController: clipboard", () => {
     expect(setModifierCalls).toEqual([
       { typeName: "Pkg.M", elementName: "gain3.k", expr: "2.5" },
     ]);
+  });
+
+  it("reflects a paste whose modifier write failed — the class still changed", async () => {
+    // `addComponent` landed; only the modifier was rejected. Skipping the
+    // reflect would leave OMC holding a component the buffer never saw, with
+    // no undo step and a stale `prevLayout`.
+    const { client, ops } = makeEditClient({ modifiers: { k: "2.5" } });
+    (
+      client as unknown as {
+        setElementModifierValue: (i: unknown) => Promise<unknown>;
+      }
+    ).setElementModifierValue = () => {
+      ops.push("setElementModifierValue");
+      return Promise.resolve({ success: false, diagnostic: "bad modifier" });
+    };
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const clipboard = new DiagramClipboard();
+    const controller = new DiagramEditController(
+      {
+        client,
+        document: SRC_DOC,
+        className: "Pkg.M",
+        gate,
+        clipboard,
+        onClipboardChanged: () => {},
+      },
+      twoGains(),
+      factory,
+    );
+
+    await controller.handle({ type: "copySelection", keys: ["c:gain1"] });
+    await controller.handle({ type: "paste" });
+
+    expect(writes).toHaveLength(1);
+    expect(posted.some((m) => m.type === "error")).toBe(true);
   });
 
   it("does not reflect when the clipboard has nothing this editor accepts", async () => {

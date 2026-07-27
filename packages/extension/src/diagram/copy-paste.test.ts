@@ -29,7 +29,13 @@ function layout(): DiagramLayout {
   return {
     kind: "diagram",
     className: "Demo",
-    source: { file: "demo.mo", line: 1, column: 1 } as never,
+    source: {
+      filename: "demo.mo",
+      lineStart: 1,
+      columnStart: 1,
+      lineEnd: 1,
+      columnEnd: 1,
+    },
     iconLayers: [],
     diagramLayers: [{ from: "Demo", shapes: [rect] }],
     labels: [],
@@ -304,6 +310,34 @@ describe("pasteClipboardItems", () => {
     expect(client.calls.map((c) => c.fn)).toEqual(["addComponent"]);
   });
 
+  it("keeps the name of a component whose modifier write failed", async () => {
+    // The declaration reached the class even though the modifier didn't —
+    // handing the name out again would declare it twice.
+    const client = pasteClient((c) =>
+      c.fn === "setElementModifierValue" ? "bad modifier" : null,
+    );
+    const result = await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({ modifiers: [{ path: "k", expr: "2.5" }] }),
+        componentItem(),
+      ],
+      "diagram",
+      PASTE_OFFSET,
+    );
+    expect(
+      client.calls
+        .filter((c) => c.fn === "addComponent")
+        .map((c) => (c.arg as { componentName: string }).componentName),
+    ).toEqual(["gain2", "gain3"]);
+    // The half-applied component still counts as added, so the caller reflects
+    // it and it gets an undo step.
+    expect(result.added).toEqual(["gain2", "gain3"]);
+    expect(result.failed).toEqual(["paste gain2.k: bad modifier"]);
+  });
+
   it("frees the name a rejected add reserved, so the next item can take it", async () => {
     let first = true;
     const client = pasteClient((c) => {
@@ -334,18 +368,28 @@ describe("DiagramClipboard", () => {
     expect(clipboard.isEmpty).toBe(false);
   });
 
-  it("cascades successive pastes of one copy", () => {
+  it("cascades successive pastes into one class", () => {
     const clipboard = new DiagramClipboard();
     clipboard.write([componentItem()]);
-    expect(clipboard.nextOffset()).toBe(PASTE_OFFSET);
-    expect(clipboard.nextOffset()).toBe(2 * PASTE_OFFSET);
+    expect(clipboard.nextOffset("Demo")).toBe(PASTE_OFFSET);
+    expect(clipboard.nextOffset("Demo")).toBe(2 * PASTE_OFFSET);
+  });
+
+  it("cascades per class, so a second model starts at the first offset", () => {
+    // The cascade exists so a paste doesn't land on the previous one, which is
+    // only true within a class. Offsetting a first paste into `Other` by two
+    // steps would drop it where nothing sits.
+    const clipboard = new DiagramClipboard();
+    clipboard.write([componentItem()]);
+    clipboard.nextOffset("Demo");
+    expect(clipboard.nextOffset("Other")).toBe(PASTE_OFFSET);
   });
 
   it("restarts the cascade on a fresh copy", () => {
     const clipboard = new DiagramClipboard();
     clipboard.write([componentItem()]);
-    clipboard.nextOffset();
+    clipboard.nextOffset("Demo");
     clipboard.write([componentItem()]);
-    expect(clipboard.nextOffset()).toBe(PASTE_OFFSET);
+    expect(clipboard.nextOffset("Demo")).toBe(PASTE_OFFSET);
   });
 });

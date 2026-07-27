@@ -91,7 +91,7 @@ export type ExtensionToWebview =
       hasClipboard: boolean;
     }
   | { type: "layout"; layout: DiagramLayout }
-  | { type: "clipboard"; hasContent: boolean }
+  | { type: "clipboard"; hasClipboard: boolean }
   | { type: "error"; message: string }
   | {
       type: "renderError";

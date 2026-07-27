@@ -1762,10 +1762,12 @@ export class OmGraphicalLayout extends LitElement {
         this.emit("om-change-class-request", { componentName, currentClass });
       },
       requestClipboard: (action) => {
-        this.emit("om-clipboard-request", {
-          action,
-          keys: action === "copy" ? Array.from(this.selectedKeys) : [],
-        });
+        this.emit(
+          "om-clipboard-request",
+          action === "copy"
+            ? { action, keys: Array.from(this.selectedKeys) }
+            : { action },
+        );
       },
       showKeymapHelp: () => this.openKeymapHelp(),
     };

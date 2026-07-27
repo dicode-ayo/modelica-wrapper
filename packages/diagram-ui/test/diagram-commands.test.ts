@@ -215,8 +215,6 @@ describe("DIAGRAM_COMMANDS", () => {
   });
 
   it("copy stays available on a read-only class", () => {
-    // Copying reads the class; only paste writes one. Gating copy on
-    // `readonly` would make a system-library model uncopyable.
     const when = command("diagram.copy").when;
     if (!when) throw new Error("copy should gate on selection");
     expect(when(ctx({ readonly: true }))).toBe(true);
@@ -266,10 +264,8 @@ describe("DIAGRAM_COMMANDS", () => {
     expect(() => command("diagram.paste").run(t)).not.toThrow();
   });
 
-  it("binds copy and paste on both Ctrl and Cmd", () => {
+  it("binds copy and paste to the clipboard chords", () => {
     expect(DEFAULT_KEYMAP.get("ctrl+c")).toBe("diagram.copy");
-    expect(DEFAULT_KEYMAP.get("meta+c")).toBe("diagram.copy");
     expect(DEFAULT_KEYMAP.get("ctrl+v")).toBe("diagram.paste");
-    expect(DEFAULT_KEYMAP.get("meta+v")).toBe("diagram.paste");
   });
 });

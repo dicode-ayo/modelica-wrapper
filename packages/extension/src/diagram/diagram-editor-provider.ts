@@ -201,9 +201,10 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   }
 
   /** Tell every open editor whether the shared clipboard holds anything. */
-  static broadcastClipboard(hasContent: boolean): void {
+  static broadcastClipboard(): void {
+    const hasClipboard = !diagramClipboard.isEmpty;
     for (const session of DiagramEditorProvider.sessions) {
-      session.send({ type: "clipboard", hasContent });
+      session.send({ type: "clipboard", hasClipboard });
     }
   }
 
@@ -317,8 +318,8 @@ export function resolveDiagramEditor(
             gate,
             onClassContentChanged,
             clipboard: diagramClipboard,
-            onClipboardChanged: (hasContent) =>
-              DiagramEditorProvider.broadcastClipboard(hasContent),
+            onClipboardChanged: () =>
+              DiagramEditorProvider.broadcastClipboard(),
           },
           layout,
           (onForeignChange) => createShadowBuffer(document, onForeignChange),
@@ -378,7 +379,7 @@ interface EditControllerDeps {
   /** The window-wide clipboard this editor copies into and pastes from. */
   clipboard: DiagramClipboard;
   /** Fired when a copy fills the clipboard, so every open editor enables paste. */
-  onClipboardChanged?: ((hasContent: boolean) => void) | undefined;
+  onClipboardChanged: () => void;
 }
 
 /**
@@ -677,11 +678,7 @@ export class DiagramEditController {
     }
   }
 
-  /**
-   * Fill the shared clipboard from the selection. Not gated on read-only:
-   * copying reads the class, it doesn't write it, and lifting a sub-system out
-   * of an MSL model into your own is the main thing a clipboard is for.
-   */
+  /** Fill the shared clipboard from the selection. Copying reads the class. */
   private async onCopySelection(keys: string[]): Promise<void> {
     try {
       const items = await captureClipboardItems(
@@ -694,7 +691,7 @@ export class DiagramEditController {
         return;
       }
       this.deps.clipboard.write(items);
-      this.deps.onClipboardChanged?.(true);
+      this.deps.onClipboardChanged();
     } catch (err) {
       this.reportError(`copy failed: ${(err as Error).message}`);
     }
@@ -717,13 +714,16 @@ export class DiagramEditController {
         this.prevLayout,
         items,
         this.mode === "icon" ? "icon" : "diagram",
-        clipboard.nextOffset(),
+        clipboard.nextOffset(className),
       );
       if (result.failed.length > 0) {
         this.reportError(
           `${result.failed.length} paste(s) failed: ${result.failed.at(0) ?? "unknown"}`,
         );
       }
+      // Reflect on anything that reached the class, failures included — a
+      // half-applied paste still changed the source, and skipping the reflect
+      // would leave it with no undo step and `prevLayout` out of date.
       if (result.added.length === 0 && result.shapes === 0) return;
       await this.reflect(await this.refetch(client, className));
     } catch (err) {
@@ -734,20 +734,26 @@ export class DiagramEditController {
   /**
    * Narrow the clipboard to what this editor may receive. The icon editor
    * takes shapes and connectors only, the same restriction `onAddComponent`
-   * enforces for a drop.
+   * enforces for a drop. The verdict is cached per class so pasting several
+   * copies of one connector doesn't re-ask OMC for each.
    */
   private async pasteableItems(
     items: readonly ClipboardEntry[],
-  ): Promise<ClipboardEntry[]> {
-    if (this.mode !== "icon") return [...items];
+  ): Promise<readonly ClipboardEntry[]> {
+    if (this.mode !== "icon") return items;
+    const verdicts = new Map<string, boolean>();
     const allowed: ClipboardEntry[] = [];
     for (const item of items) {
-      if (
-        item.kind === "shape" ||
-        (await this.isConnectorClass(item.className))
-      ) {
+      if (item.kind === "shape") {
         allowed.push(item);
+        continue;
       }
+      let isConnector = verdicts.get(item.className);
+      if (isConnector === undefined) {
+        isConnector = await this.isConnectorClass(item.className);
+        verdicts.set(item.className, isConnector);
+      }
+      if (isConnector) allowed.push(item);
     }
     return allowed;
   }

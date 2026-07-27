@@ -167,8 +167,7 @@ export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
     id: "diagram.copy",
     title: "Copy",
     category: "Edit",
-    // Not gated on `readonly`: copying out of a system-library class is the
-    // point of having a shared clipboard.
+    // Copying reads the class; only paste writes one.
     when: (ctx) => ctx.selectionCount > 0,
     placements: [clipboardMenu(0)],
     run: (target) => target.requestClipboard?.("copy"),
@@ -201,12 +200,7 @@ export const DEFAULT_KEYMAP: ReadonlyMap<KeyChord, DiagramCommandId> = new Map([
   ["shift+r", "diagram.rotateCcw"],
   ["f", "diagram.flipHorizontal"],
   ["shift+f", "diagram.flipVertical"],
-  // Bound on both modifiers rather than a platform check: `chordFromEvent`
-  // reports whichever the user actually pressed, and only one exists per
-  // keyboard.
   ["ctrl+c", "diagram.copy"],
-  ["meta+c", "diagram.copy"],
   ["ctrl+v", "diagram.paste"],
-  ["meta+v", "diagram.paste"],
   ["shift+?", "diagram.showKeymapHelp"],
 ]);

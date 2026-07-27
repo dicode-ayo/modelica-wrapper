@@ -215,7 +215,7 @@ class OmWebviewRoot extends LitElement {
         this.renderError = null;
         return;
       case "clipboard":
-        this.hasClipboard = message.hasContent;
+        this.hasClipboard = message.hasClipboard;
         return;
       case "layout":
         this.layout = message.layout;
@@ -324,9 +324,10 @@ class OmWebviewRoot extends LitElement {
   private onClipboardRequest = (
     e: CustomEvent<LayoutEvents["om-clipboard-request"]>,
   ): void => {
+    const detail = e.detail;
     this.post(
-      e.detail.action === "copy"
-        ? { type: "copySelection", keys: e.detail.keys }
+      detail.action === "copy"
+        ? { type: "copySelection", keys: detail.keys }
         : { type: "paste" },
     );
   };

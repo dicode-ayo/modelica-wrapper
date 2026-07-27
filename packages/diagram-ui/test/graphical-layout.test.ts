@@ -224,6 +224,24 @@ describe("<om-graphical-layout>", () => {
     expect(el.shadowRoot?.querySelector("om-context-menu")).not.toBeNull();
   });
 
+  it("routes the hasClipboard property into the command context", async () => {
+    // The property is pushed by the host (the clipboard is shared across
+    // editors), and this is the only thing that makes paste reachable.
+    const el = await mount(tinyLayout());
+    const requests: unknown[] = [];
+    el.addEventListener("om-clipboard-request", (e) =>
+      requests.push((e as CustomEvent<unknown>).detail),
+    );
+
+    expect(el.runCommandById("diagram.paste")).toBe(false);
+
+    el.hasClipboard = true;
+    await el.updateComplete;
+
+    expect(el.runCommandById("diagram.paste")).toBe(true);
+    expect(requests).toEqual([{ action: "paste" }]);
+  });
+
   it("mounts an <om-keymap-help> for the ? shortcut", async () => {
     // Dispatching Shift+? for real (and asserting the open state it drives)
     // is verified end-to-end in a real browser (Storybook): `<wa-dialog>`'s
