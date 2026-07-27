@@ -93,6 +93,10 @@ const KEYBOUND_COMMANDS: ReadonlyArray<readonly [string, DiagramCommandId]> = [
   ["modelica.diagram.flipVertical", "diagram.flipVertical"],
   ["modelica.diagram.copy", "diagram.copy"],
   ["modelica.diagram.paste", "diagram.paste"],
+  ["modelica.diagram.bringToFront", "diagram.bringToFront"],
+  ["modelica.diagram.bringForward", "diagram.bringForward"],
+  ["modelica.diagram.sendBackward", "diagram.sendBackward"],
+  ["modelica.diagram.sendToBack", "diagram.sendToBack"],
   ["modelica.diagram.showKeymapHelp", "diagram.showKeymapHelp"],
 ];
 

@@ -269,3 +269,120 @@ describe("DIAGRAM_COMMANDS", () => {
     expect(DEFAULT_KEYMAP.get("ctrl+v")).toBe("diagram.paste");
   });
 });
+
+describe("z-order commands", () => {
+  const A: DiagramLayout["diagramLayers"][number]["shapes"][number] = {
+    kind: "rectangle",
+    extent: [
+      [0, 0],
+      [1, 1],
+    ],
+  };
+  const B: typeof A = {
+    kind: "rectangle",
+    extent: [
+      [2, 2],
+      [3, 3],
+    ],
+  };
+  const C: typeof A = {
+    kind: "rectangle",
+    extent: [
+      [4, 4],
+      [5, 5],
+    ],
+  };
+
+  /** `layout()` with three host-owned diagram shapes. */
+  function shaped(): DiagramLayout {
+    return {
+      ...layout(),
+      diagramLayers: [{ from: "Demo", shapes: [A, B, C] }],
+    };
+  }
+
+  function own(l: DiagramLayout | undefined): unknown[] {
+    return l?.diagramLayers.find((x) => x.from === "Demo")?.shapes ?? [];
+  }
+
+  it("bringToFront moves the shape to the end of the paint order", () => {
+    const t = spyTarget(shaped(), ["shape:rectangle:0"]);
+    command("diagram.bringToFront").run(t);
+    expect(own(t.committed[0])).toEqual([B, C, A]);
+  });
+
+  it("sendToBack moves the shape to the start", () => {
+    const t = spyTarget(shaped(), ["shape:rectangle:2"]);
+    command("diagram.sendToBack").run(t);
+    expect(own(t.committed[0])).toEqual([C, A, B]);
+  });
+
+  it("bringForward and sendBackward step one slot", () => {
+    const fwd = spyTarget(shaped(), ["shape:rectangle:0"]);
+    command("diagram.bringForward").run(fwd);
+    expect(own(fwd.committed[0])).toEqual([B, A, C]);
+
+    const back = spyTarget(shaped(), ["shape:rectangle:2"]);
+    command("diagram.sendBackward").run(back);
+    expect(own(back.committed[0])).toEqual([A, C, B]);
+  });
+
+  it("re-keys the selection to the shape's new index", () => {
+    // Shape keys are positional, so without this the selection would follow
+    // whichever shape slid into the vacated slot.
+    const t = spyTarget(shaped(), ["shape:rectangle:0"]);
+    command("diagram.bringToFront").run(t);
+    expect(t.selections).toEqual([["shape:rectangle:2"]]);
+  });
+
+  it("does not commit when the shape is already at that end", () => {
+    const front = spyTarget(shaped(), ["shape:rectangle:2"]);
+    command("diagram.bringToFront").run(front);
+    expect(front.committed).toHaveLength(0);
+    expect(front.selections).toHaveLength(0);
+
+    const back = spyTarget(shaped(), ["shape:rectangle:0"]);
+    command("diagram.sendToBack").run(back);
+    expect(back.committed).toHaveLength(0);
+  });
+
+  it("does not commit for a non-shape selection or a missing layout", () => {
+    const comp = spyTarget(shaped(), ["c:R1"]);
+    command("diagram.bringToFront").run(comp);
+    expect(comp.committed).toHaveLength(0);
+
+    const none = spyTarget(shaped(), ["shape:rectangle:0"]);
+    command("diagram.bringToFront").run({ ...none, layout: null });
+    expect(none.committed).toHaveLength(0);
+  });
+
+  it("does not commit for a malformed shape key", () => {
+    // `parseShapeId` fails closed to NaN rather than throwing, so the index
+    // guard is what stops a bad key reaching the array.
+    const t = spyTarget(shaped(), ["shape:rectangle:x"]);
+    command("diagram.bringToFront").run(t);
+    expect(t.committed).toHaveLength(0);
+    expect(t.selections).toHaveLength(0);
+  });
+
+  it("gates on exactly one selected shape, and never read-only", () => {
+    const ids = [
+      "diagram.bringToFront",
+      "diagram.bringForward",
+      "diagram.sendBackward",
+      "diagram.sendToBack",
+    ];
+    for (const id of ids) {
+      const when = command(id).when;
+      if (!when) throw new Error(`${id} should gate on a shape selection`);
+      expect(when(ctx({ selectionKind: "shape" }))).toBe(true);
+      // A component selection has no paint order to change.
+      expect(when(ctx({ selectionKind: "component" }))).toBe(false);
+      // Two shapes have no single destination.
+      expect(when(ctx({ selectionKind: "shape", selectionCount: 2 }))).toBe(
+        false,
+      );
+      expect(when(ctx({ selectionKind: "shape", readonly: true }))).toBe(false);
+    }
+  });
+});

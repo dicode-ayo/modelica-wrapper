@@ -1,3 +1,4 @@
+import { moveWithin } from "@dicode/omc-client";
 import type {
   ConnectionLayout,
   DiagramLayout,
@@ -94,7 +95,13 @@ export type LayoutEdit =
       index: number;
       shape: Shape;
     }
-  | { kind: "graphicsDeleted"; layer: GraphicsLayer; index: number };
+  | { kind: "graphicsDeleted"; layer: GraphicsLayer; index: number }
+  | {
+      kind: "graphicsReordered";
+      layer: GraphicsLayer;
+      from: number;
+      to: number;
+    };
 
 export function endpointToCref(c: {
   component: string | undefined;
@@ -399,10 +406,52 @@ function isPureDeletion(beforeKeys: string[], afterKeys: string[]): boolean {
 }
 
 /**
+ * The single-element move turning `before` into `after`, or `null` if no one
+ * move does it. Candidates are derived from the first and last differing
+ * index — a move from `i` to `j` can only be `i→j` or `j→i` — then applied and
+ * compared, so a match is a proof rather than an inference.
+ *
+ * Correctness does not depend on guessing the user's intent: if the move
+ * reproduces `after` exactly, emitting it produces the right array.
+ */
+function singleMove(
+  before: readonly string[],
+  after: readonly string[],
+): { from: number; to: number } | null {
+  let first = 0;
+  while (first < before.length && before[first] === after[first]) first += 1;
+  if (first === before.length) {
+    return null;
+  }
+  let last = before.length - 1;
+  while (last > first && before[last] === after[last]) last -= 1;
+  // One differing slot is a value change; no move produces it.
+  if (last === first) {
+    return null;
+  }
+
+  for (const [from, to] of [
+    [first, last],
+    [last, first],
+  ] as const) {
+    const trial = moveWithin(before, from, to);
+    if (trial && trial.every((v, i) => v === after[i])) {
+      return { from, to };
+    }
+  }
+  return null;
+}
+
+/**
  * Diff the host's OWN icon/diagram shapes (never inherited ancestor layers —
  * the write targets only `className`'s annotation).
  *
- * Two strategies are applied depending on the change shape:
+ * Strategies, applied depending on the change shape:
+ *
+ * - **Single move** (same length, one move reproduces `after`): one
+ *   `graphicsReordered`. Array order is paint order, so this is what the
+ *   z-order commands produce; the positional scan below would instead report
+ *   a modify per moved slot, each a whole-array rewrite.
  *
  * - **Same length or growth**: positional scan — a same-index value change is
  *   a modify, trailing extras are appends. This is optimal for the common
@@ -432,14 +481,28 @@ function diffGraphics(
   for (const [layer, field] of layers) {
     const before = ownShapes(prev[field], prev.className);
     const after = ownShapes(next[field], next.className);
+    // Serialize once per layer: the reorder probe, the positional scans and
+    // the shrink path's LCS all compare shapes by value.
+    const beforeKeys = before.map(stableJson);
+    const afterKeys = after.map(stableJson);
+
+    if (before.length === after.length) {
+      // A reorder permutes the array, which the positional scan below would
+      // report as a modify per moved slot — N whole-array rewrites, each
+      // leaving a transiently duplicated shape in the file, instead of one.
+      const move = singleMove(beforeKeys, afterKeys);
+      if (move) {
+        edits.push({ kind: "graphicsReordered", layer, ...move });
+        continue;
+      }
+    }
 
     if (before.length <= after.length) {
       // Same length or growth: positional modifies + appends.
       const common = before.length;
       for (let i = 0; i < common; i += 1) {
-        const a = before[i];
         const b = after[i];
-        if (a !== undefined && b !== undefined && !deepEqual(a, b)) {
+        if (b !== undefined && beforeKeys[i] !== afterKeys[i]) {
           edits.push({ kind: "graphicsModified", layer, index: i, shape: b });
         }
       }
@@ -453,9 +516,6 @@ function diffGraphics(
     }
 
     // Shrunk. Use LCS for pure deletions; fall back to positional otherwise.
-    // Pre-compute keys once so both isPureDeletion and lcsIndices share them.
-    const beforeKeys = before.map(stableJson);
-    const afterKeys = after.map(stableJson);
     if (isPureDeletion(beforeKeys, afterKeys)) {
       const pairs = lcsIndices(beforeKeys, afterKeys, (a, b) => a === b);
       const matchedBefore = new Set(pairs.map(([bi]) => bi));
@@ -468,9 +528,8 @@ function diffGraphics(
       // Mixed delete+modify: positional fallback.
       const common = after.length;
       for (let i = 0; i < common; i += 1) {
-        const a = before[i];
         const b = after[i];
-        if (a !== undefined && b !== undefined && !deepEqual(a, b)) {
+        if (b !== undefined && beforeKeys[i] !== afterKeys[i]) {
           edits.push({ kind: "graphicsModified", layer, index: i, shape: b });
         }
       }

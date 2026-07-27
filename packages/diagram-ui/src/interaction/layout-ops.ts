@@ -896,6 +896,66 @@ export function applyShapeSmoothToggle(
   }));
 }
 
+/** A z-order step. Modelica paints graphics in array order, so the last
+ *  element is topmost and "front" means the end of the array. */
+export type ZOrderMove = "front" | "forward" | "backward" | "back";
+
+/** Number of shapes in the host's own editable layer. */
+export function ownShapeCount(layout: DiagramLayout): number {
+  return ownLayer(layout)?.shapes.length ?? 0;
+}
+
+/**
+ * Destination index for a z-order move, or `null` when it would not move —
+ * the shape is already at that end, or `from` is out of range. Callers use
+ * the `null` to leave both the layout and the selection untouched.
+ */
+export function zOrderTarget(
+  move: ZOrderMove,
+  from: number,
+  count: number,
+): number | null {
+  if (!Number.isInteger(from) || from < 0 || from >= count) {
+    return null;
+  }
+  const to =
+    move === "front"
+      ? count - 1
+      : move === "back"
+        ? 0
+        : from + (move === "forward" ? 1 : -1);
+  return to === from || to < 0 || to >= count ? null : to;
+}
+
+/** Moves one own-layer shape to another index, changing what paints on top. */
+export function applyShapeReorder(
+  layout: DiagramLayout,
+  from: number,
+  to: number,
+): DiagramLayout {
+  const own = ownLayer(layout);
+  if (!own || from === to) {
+    return layout;
+  }
+  const count = own.shapes.length;
+  if (!Number.isInteger(from) || from < 0 || from >= count) {
+    return layout;
+  }
+  if (!Number.isInteger(to) || to < 0 || to >= count) {
+    return layout;
+  }
+  // `moveWithin` in @dicode/omc-client is the same splice, but importing a
+  // value from that package's root pulls the zeromq transport into the webview
+  // bundle. Only `pnpm build` catches that, so the move stays local here.
+  const shapes = [...own.shapes];
+  const [moved] = shapes.splice(from, 1);
+  if (moved === undefined) {
+    return layout;
+  }
+  shapes.splice(to, 0, moved);
+  return replaceOwnShapes(layout, own.field, own.index, shapes);
+}
+
 /** Maps a diagram point rigidly attached to a transformed shape from
  *  its old to its new position. */
 type PointXf = (p: Point) => Point;

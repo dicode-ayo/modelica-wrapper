@@ -112,6 +112,7 @@ export {
   type Modifier,
   // DiagramLayout (producer output)
   LineShapeSchema,
+  moveWithin,
   PolygonShapeSchema,
   RectangleShapeSchema,
   EllipseShapeSchema,

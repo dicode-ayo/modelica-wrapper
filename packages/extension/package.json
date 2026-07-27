@@ -144,6 +144,22 @@
         "title": "Modelica: Show Diagram Keyboard Shortcuts"
       },
       {
+        "command": "modelica.diagram.bringToFront",
+        "title": "Modelica: Bring Diagram Shape to Front"
+      },
+      {
+        "command": "modelica.diagram.bringForward",
+        "title": "Modelica: Bring Diagram Shape Forward"
+      },
+      {
+        "command": "modelica.diagram.sendBackward",
+        "title": "Modelica: Send Diagram Shape Backward"
+      },
+      {
+        "command": "modelica.diagram.sendToBack",
+        "title": "Modelica: Send Diagram Shape to Back"
+      },
+      {
         "command": "modelica.loadLibrary",
         "title": "Modelica: Load Library...",
         "icon": "$(cloud-download)"
@@ -393,6 +409,30 @@
         "command": "modelica.diagram.paste",
         "key": "ctrl+v",
         "mac": "cmd+v",
+        "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus"
+      },
+      {
+        "command": "modelica.diagram.bringForward",
+        "key": "ctrl+]",
+        "mac": "cmd+]",
+        "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus"
+      },
+      {
+        "command": "modelica.diagram.sendBackward",
+        "key": "ctrl+[",
+        "mac": "cmd+[",
+        "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus"
+      },
+      {
+        "command": "modelica.diagram.bringToFront",
+        "key": "ctrl+shift+]",
+        "mac": "cmd+shift+]",
+        "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus"
+      },
+      {
+        "command": "modelica.diagram.sendToBack",
+        "key": "ctrl+shift+[",
+        "mac": "cmd+shift+[",
         "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus"
       },
       {

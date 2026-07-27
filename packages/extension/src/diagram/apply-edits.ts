@@ -143,6 +143,11 @@ function order(e: LayoutEdit): number {
       return 6;
     case "graphicsAdded":
       return 7;
+    // Indices are layer-scoped and a reorder is the only graphics edit its
+    // own layer emits, so nothing in the batch shifts the indices it
+    // addresses — the other layer's adds and deletes are free to co-occur.
+    case "graphicsReordered":
+      return 8;
   }
 }
 
@@ -273,6 +278,16 @@ async function applyOne(
           typeName: hostClass,
           layer: edit.layer,
           op: { kind: "delete", index: edit.index },
+        }),
+      );
+      return;
+    case "graphicsReordered":
+      assertMutationApplied(
+        "writeClassGraphics",
+        await client.invoke("writeClassGraphics", {
+          typeName: hostClass,
+          layer: edit.layer,
+          op: { kind: "reorder", from: edit.from, to: edit.to },
         }),
       );
       return;

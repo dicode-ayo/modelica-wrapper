@@ -69,6 +69,7 @@ export {
 } from "./modelInstance.js";
 export {
   LineShapeSchema,
+  moveWithin,
   PolygonShapeSchema,
   RectangleShapeSchema,
   EllipseShapeSchema,
