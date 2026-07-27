@@ -42,4 +42,23 @@ describe("DEFAULT_KEYMAP", () => {
     expect(DEFAULT_KEYMAP.get("shift+f")).toBe("diagram.flipVertical");
     expect(DEFAULT_KEYMAP.get("shift+?")).toBe("diagram.showKeymapHelp");
   });
+
+  it("binds z-order to the chords the bracket keys actually report", () => {
+    // `e.key` carries the shifted glyph, so Ctrl+Shift+] arrives as `}`.
+    // Binding `ctrl+shift+]` here would be a silently dead shortcut; the
+    // VSCode manifest spells the physical key and so differs on purpose.
+    expect(chordFromEvent(ev({ key: "]", ctrlKey: true }))).toBe("ctrl+]");
+    expect(chordFromEvent(ev({ key: "[", ctrlKey: true }))).toBe("ctrl+[");
+    expect(
+      chordFromEvent(ev({ key: "}", ctrlKey: true, shiftKey: true })),
+    ).toBe("ctrl+shift+}");
+    expect(
+      chordFromEvent(ev({ key: "{", ctrlKey: true, shiftKey: true })),
+    ).toBe("ctrl+shift+{");
+
+    expect(DEFAULT_KEYMAP.get("ctrl+]")).toBe("diagram.bringForward");
+    expect(DEFAULT_KEYMAP.get("ctrl+[")).toBe("diagram.sendBackward");
+    expect(DEFAULT_KEYMAP.get("ctrl+shift+}")).toBe("diagram.bringToFront");
+    expect(DEFAULT_KEYMAP.get("ctrl+shift+{")).toBe("diagram.sendToBack");
+  });
 });

@@ -29,6 +29,10 @@ const KEYBOUND_KEYS: Record<string, readonly string[]> = {
   "modelica.diagram.flipVertical": ["shift+f"],
   "modelica.diagram.copy": ["ctrl+c"],
   "modelica.diagram.paste": ["ctrl+v"],
+  "modelica.diagram.bringForward": ["ctrl+]"],
+  "modelica.diagram.sendBackward": ["ctrl+["],
+  "modelica.diagram.bringToFront": ["ctrl+shift+]"],
+  "modelica.diagram.sendToBack": ["ctrl+shift+["],
   "modelica.diagram.showKeymapHelp": ["shift+/"],
 };
 
@@ -36,6 +40,10 @@ const KEYBOUND_KEYS: Record<string, readonly string[]> = {
 const MAC_OVERRIDES: Record<string, string> = {
   "modelica.diagram.copy": "cmd+c",
   "modelica.diagram.paste": "cmd+v",
+  "modelica.diagram.bringForward": "cmd+]",
+  "modelica.diagram.sendBackward": "cmd+[",
+  "modelica.diagram.bringToFront": "cmd+shift+]",
+  "modelica.diagram.sendToBack": "cmd+shift+[",
 };
 
 describe("diagram keybindings", () => {

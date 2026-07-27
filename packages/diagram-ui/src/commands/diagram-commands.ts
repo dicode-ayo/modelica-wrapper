@@ -268,5 +268,13 @@ export const DEFAULT_KEYMAP: ReadonlyMap<KeyChord, DiagramCommandId> = new Map([
   ["shift+f", "diagram.flipVertical"],
   ["ctrl+c", "diagram.copy"],
   ["ctrl+v", "diagram.paste"],
+  // `chordFromEvent` reads `e.key`, which carries the shifted glyph: pressing
+  // Ctrl+Shift+] reports `}`, not `]`. The VSCode manifest binds the physical
+  // key (`ctrl+shift+]`), so the two spellings differ on purpose — as they
+  // already do for `shift+?` / `shift+/`.
+  ["ctrl+]", "diagram.bringForward"],
+  ["ctrl+[", "diagram.sendBackward"],
+  ["ctrl+shift+}", "diagram.bringToFront"],
+  ["ctrl+shift+{", "diagram.sendToBack"],
   ["shift+?", "diagram.showKeymapHelp"],
 ]);
