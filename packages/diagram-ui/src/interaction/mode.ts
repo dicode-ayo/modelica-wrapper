@@ -91,6 +91,7 @@ export class ModeRouter {
     this.interactionManager = new InteractionManager(
       deps.picker,
       deps.onInteraction,
+      { getSelectionKeys: deps.getSelectionKeys },
     );
     this.selectMode = new SelectMode(deps.onDrag, deps.overlayParent);
     this.dragMode = new DragMode(deps.onDrag);
@@ -328,6 +329,7 @@ export class ModeRouter {
       this.cancelActiveTool();
       return;
     }
+    this.interactionManager.handlePointerCancel(e);
     this.onPointerUp(e);
   };
 

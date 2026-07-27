@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { Container } from "pixi.js";
 
 import { ModeRouter } from "../src/interaction/mode.js";
+import type { DragEvents } from "../src/interaction/gesture-mode.js";
 import { InteractionStateStore } from "../src/interaction/interaction-state.js";
 import { tagEntity } from "../src/interaction/node-keys.js";
 import type { ToolDraw } from "../src/interaction/tool-mode.js";
@@ -27,14 +28,19 @@ interface Harness {
   router: ModeRouter;
   store: InteractionStateStore;
   calls: string[];
+  moves: DragEvents["drag"][];
   tool: ToolDraw[];
   setPicked: (n: Container | null) => void;
   dispose: () => void;
 }
 
-function setup(activeTool: ToolId = "select"): Harness {
+function setup(
+  activeTool: ToolId = "select",
+  selection: string[] = [],
+): Harness {
   let picked: Container | null = null;
   const calls: string[] = [];
+  const moves: DragEvents["drag"][] = [];
   const tool: ToolDraw[] = [];
   const store = new InteractionStateStore();
   const canvas = document.createElement("canvas");
@@ -42,9 +48,14 @@ function setup(activeTool: ToolId = "select"): Harness {
     canvas,
     picker: () => picked,
     clientToDiagram: (cx, cy) => ({ x: cx, y: cy }),
-    getSelectionKeys: () => [],
+    getSelectionKeys: () => selection,
     onInteraction: () => calls.push("interaction"),
-    onDrag: () => calls.push("drag"),
+    onDrag: (type, detail) => {
+      calls.push("drag");
+      if (type === "drag") {
+        moves.push(detail as DragEvents["drag"]);
+      }
+    },
     store,
     overlayParent: new Container(),
     connectorPosition: () => null,
@@ -58,6 +69,7 @@ function setup(activeTool: ToolId = "select"): Harness {
     router,
     store,
     calls,
+    moves,
     tool,
     setPicked: (n) => (picked = n),
     dispose: () => {
@@ -235,6 +247,46 @@ describe("ModeRouter", () => {
     expect(tool.at(-1)).toEqual({ phase: "cancel" });
     expect(router.isGestureActive()).toBe(false);
     expect(store.value.mode).toBe("idle");
+    dispose();
+  });
+
+  it("carries the whole selection when a member is press-dragged", () => {
+    const { canvas, calls, moves, setPicked, dispose } = setup("select", [
+      "c:R1",
+      "c:R2",
+    ]);
+    setPicked(componentNode("R1"));
+    canvas.dispatchEvent(down());
+    // The press must not narrow the selection: DragMode.begin reads it during
+    // this same event, and a narrowed one leaves it a single key to carry.
+    expect(calls).not.toContain("interaction");
+    canvas.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 25, clientY: 25 }),
+    );
+    canvas.dispatchEvent(
+      new PointerEvent("pointerup", { button: 0, clientX: 25, clientY: 25 }),
+    );
+
+    expect(moves.at(-1)).toEqual({
+      keys: ["c:R1", "c:R2"],
+      dx: 20,
+      dy: 20,
+      draft: false,
+    });
+    dispose();
+  });
+
+  it("narrows to the pressed member when the press does not become a drag", () => {
+    const { canvas, calls, moves, setPicked, dispose } = setup("select", [
+      "c:R1",
+      "c:R2",
+    ]);
+    setPicked(componentNode("R1"));
+    canvas.dispatchEvent(down());
+    canvas.dispatchEvent(up());
+
+    expect(calls).toContain("interaction");
+    expect(moves.at(-1)?.dx).toBe(0);
     dispose();
   });
 

@@ -15,6 +15,7 @@ function wireInteraction(
   canvas.addEventListener("pointermove", (e) => m.handlePointerMove(e));
   canvas.addEventListener("pointerdown", (e) => m.handlePointerDown(e));
   canvas.addEventListener("pointerup", (e) => m.handlePointerUp(e));
+  canvas.addEventListener("pointercancel", (e) => m.handlePointerCancel(e));
   canvas.addEventListener("pointerleave", () => m.handlePointerLeave());
 }
 
@@ -232,6 +233,187 @@ describe("InteractionManager", () => {
         type: "contextMenu",
         detail: { key: "c:R1", clientX: 50, clientY: 60 },
       },
+    ]);
+    canvas.remove();
+  });
+
+  describe("pressing a member of a multi-selection", () => {
+    const selection = ["c:R1", "c:R2"];
+
+    it("defers the select to the release so a drag can carry the group", () => {
+      const canvas = makeCanvas();
+      const tn = node("component", "R1");
+      const { emit, events } = captureEmits();
+      const mgr = new InteractionManager(() => tn, emit, {
+        getSelectionKeys: () => selection,
+      });
+      wireInteraction(canvas, mgr);
+
+      canvas.dispatchEvent(
+        new PointerEvent("pointerdown", { button: 0, clientX: 5, clientY: 5 }),
+      );
+      // Nothing emitted yet: DragMode.begin reads the selection during this
+      // same press and must still see both keys.
+      expect(events).toHaveLength(0);
+
+      canvas.dispatchEvent(
+        new PointerEvent("pointerup", { button: 0, clientX: 5, clientY: 5 }),
+      );
+      expect(events).toEqual([
+        { type: "select", detail: { key: "c:R1", addToSelection: false } },
+      ]);
+      canvas.remove();
+    });
+
+    it("drops the deferred select once the pointer travels past the slop", () => {
+      const canvas = makeCanvas();
+      const tn = node("component", "R1");
+      const { emit, events } = captureEmits();
+      const mgr = new InteractionManager(() => tn, emit, {
+        getSelectionKeys: () => selection,
+      });
+      wireInteraction(canvas, mgr);
+
+      canvas.dispatchEvent(
+        new PointerEvent("pointerdown", { button: 0, clientX: 5, clientY: 5 }),
+      );
+      canvas.dispatchEvent(
+        new PointerEvent("pointermove", { clientX: 60, clientY: 60 }),
+      );
+      canvas.dispatchEvent(
+        new PointerEvent("pointerup", { button: 0, clientX: 60, clientY: 60 }),
+      );
+      expect(events.filter((e) => e.type === "select")).toHaveLength(0);
+      canvas.remove();
+    });
+
+    it("keeps the deferred select through jitter under the slop", () => {
+      const canvas = makeCanvas();
+      const tn = node("component", "R1");
+      const { emit, events } = captureEmits();
+      const mgr = new InteractionManager(() => tn, emit, {
+        getSelectionKeys: () => selection,
+      });
+      wireInteraction(canvas, mgr);
+
+      canvas.dispatchEvent(
+        new PointerEvent("pointerdown", { button: 0, clientX: 5, clientY: 5 }),
+      );
+      canvas.dispatchEvent(
+        new PointerEvent("pointermove", { clientX: 6, clientY: 6 }),
+      );
+      canvas.dispatchEvent(
+        new PointerEvent("pointerup", { button: 0, clientX: 6, clientY: 6 }),
+      );
+      expect(events.filter((e) => e.type === "select")).toEqual([
+        { type: "select", detail: { key: "c:R1", addToSelection: false } },
+      ]);
+      canvas.remove();
+    });
+
+    it("drops the deferred select on pointercancel rather than narrowing", () => {
+      const canvas = makeCanvas();
+      const tn = node("component", "R1");
+      const { emit, events } = captureEmits();
+      const mgr = new InteractionManager(() => tn, emit, {
+        getSelectionKeys: () => selection,
+      });
+      wireInteraction(canvas, mgr);
+
+      canvas.dispatchEvent(
+        new PointerEvent("pointerdown", { button: 0, clientX: 5, clientY: 5 }),
+      );
+      canvas.dispatchEvent(
+        new PointerEvent("pointercancel", { clientX: 5, clientY: 5 }),
+      );
+      canvas.dispatchEvent(
+        new PointerEvent("pointerup", { button: 0, clientX: 5, clientY: 5 }),
+      );
+      expect(events).toHaveLength(0);
+      canvas.remove();
+    });
+
+    it("still toggles immediately under ctrl/cmd", () => {
+      const canvas = makeCanvas();
+      const tn = node("component", "R1");
+      const { emit, events } = captureEmits();
+      const mgr = new InteractionManager(() => tn, emit, {
+        getSelectionKeys: () => selection,
+      });
+      wireInteraction(canvas, mgr);
+
+      canvas.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          button: 0,
+          ctrlKey: true,
+          clientX: 5,
+          clientY: 5,
+        }),
+      );
+      expect(events).toEqual([
+        { type: "select", detail: { key: "c:R1", addToSelection: true } },
+      ]);
+      canvas.remove();
+    });
+
+    it("still emits doubleClick on the press, not the release", () => {
+      const canvas = makeCanvas();
+      const tn = node("component", "R1");
+      const { emit, events } = captureEmits();
+      const mgr = new InteractionManager(() => tn, emit, {
+        doubleClickMs: 1000,
+        getSelectionKeys: () => selection,
+      });
+      wireInteraction(canvas, mgr);
+
+      const press = (): void => {
+        canvas.dispatchEvent(
+          new PointerEvent("pointerdown", {
+            button: 0,
+            clientX: 0,
+            clientY: 0,
+          }),
+        );
+      };
+      press();
+      press();
+      expect(events.map((e) => e.type)).toEqual(["select", "doubleClick"]);
+      canvas.remove();
+    });
+  });
+
+  it("selects immediately when the pressed entity is outside the selection", () => {
+    const canvas = makeCanvas();
+    const tn = node("component", "R3");
+    const { emit, events } = captureEmits();
+    const mgr = new InteractionManager(() => tn, emit, {
+      getSelectionKeys: () => ["c:R1", "c:R2"],
+    });
+    wireInteraction(canvas, mgr);
+
+    canvas.dispatchEvent(
+      new PointerEvent("pointerdown", { button: 0, clientX: 5, clientY: 5 }),
+    );
+    expect(events).toEqual([
+      { type: "select", detail: { key: "c:R3", addToSelection: false } },
+    ]);
+    canvas.remove();
+  });
+
+  it("selects immediately when the pressed entity is the lone selection", () => {
+    const canvas = makeCanvas();
+    const tn = node("component", "R1");
+    const { emit, events } = captureEmits();
+    const mgr = new InteractionManager(() => tn, emit, {
+      getSelectionKeys: () => ["c:R1"],
+    });
+    wireInteraction(canvas, mgr);
+
+    canvas.dispatchEvent(
+      new PointerEvent("pointerdown", { button: 0, clientX: 5, clientY: 5 }),
+    );
+    expect(events).toEqual([
+      { type: "select", detail: { key: "c:R1", addToSelection: false } },
     ]);
     canvas.remove();
   });
