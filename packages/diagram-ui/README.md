@@ -74,9 +74,10 @@ In a Lit/HTML template the same element is just:
 | `<om-rectangle>` `<om-polygon>` `<om-line>` `<om-ellipse>` `<om-text>` `<om-bitmap>` | The six shape primitives. |
 | `<om-icon-provider>` | SVG → Babylon texture cache for component icons. |
 | `<om-grid-axis>` | Grid + coordinate-system extent. |
-| `<om-parameter-panel>` / `<om-parameter-form>` | Schema-driven parameter side drawer. |
+| `<om-parameter-panel>` / `<om-parameter-form>` | Model-driven floating parameter card. |
 | `<om-library-tree>` | Virtualized class tree; drag source for place-on-canvas. |
 | `<om-action-panel>` | Toolbar (undo / check / simulate / parameters). |
+| `<om-overlay-stack>` | Corner rail that stacks and clamps the floating overlays. |
 | `<om-multibody-root>` | MultiBody 3D preview root (experimental). |
 
 ## Events
@@ -111,23 +112,32 @@ registry and keymap regardless of who triggers the dispatch.
 
 ## Parameter panel
 
-`<om-parameter-panel>` is a schema-driven side drawer: set its `schema`
-(`JsonSchema`), `values`, `title`, `open`, and (optionally) `show-reset`, and it
+`<om-parameter-panel>` is a model-driven floating card: set its `model`
+(`ParameterModel`), `heading`, `open`, and (optionally) `show-reset`, and it
 renders one row per field — text/number/boolean/enum/array widgets, optional unit
 dropdowns with affine conversion, `Dialog` tab/group layout, and `Dialog.enable`
 gating. On submit it back-converts display units to base units and drops disabled
-fields. The full flow is documented
+fields.
+
+It does not position itself — the host is a plain flow box, so the embedder
+places and clamps it. `<om-overlay-stack>` is that container: a corner rail
+that stacks the card under `<om-action-panel>` and bounds its height, after
+which the card scrolls its own body.
+
+It is non-modal: no backdrop, and the surface behind it stays interactive.
+Escape, the header's ✕, and the form's Cancel all emit `om-panel-cancel`; the
+embedder owns `open` and clears it. The full flow is documented
 [here](https://github.com/dicode-ayo/modelica-wrapper/blob/main/docs/parameter-panel.md).
 
 ## Styling
 
 The look is driven by `--om-*` CSS custom properties defined in
-[`src/base/om-tokens.ts`](src/base/om-tokens.ts) (spacing, radii, z-layers, form
-control sizing, modal/drawer dimensions, typography, state opacities). They
+[`om-tokens.ts`](../ui-common/src/om-tokens.ts) (spacing, radii, z-layers, form
+control sizing, modal/panel dimensions, typography, state opacities). They
 inherit through the shadow DOM, so override any of them on a light-DOM ancestor:
 
 ```css
-body { --om-space-md: 10px; --om-panel-drawer-size: 480px; }
+body { --om-space-md: 10px; --om-panel-float-width: 480px; }
 ```
 
 ## What it does *not* do

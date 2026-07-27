@@ -27,6 +27,10 @@ if (typeof document !== "undefined" && !document.getElementById(styleId)) {
     .om-story-workbench { display: flex; gap: 12px; height: 560px; }
     .om-story-workbench .om-story-canvas-host { flex: 1; width: auto; height: auto; min-width: 0; }
     .om-story-library-panel { flex: 0 0 300px; min-height: 0; border: 1px solid #ddd; border-radius: 4px; padding: 8px; }
+
+    /* Gridded stand-in for the diagram canvas, for stories about what floats
+       over it rather than what it renders. */
+    .om-story-canvas-stand-in { background: repeating-linear-gradient(0deg, #eee 0 1px, transparent 1px 40px), repeating-linear-gradient(90deg, #eee 0 1px, transparent 1px 40px); }
   `;
   document.head.appendChild(style);
 }

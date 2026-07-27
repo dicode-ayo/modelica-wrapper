@@ -1,9 +1,9 @@
 /**
  * `<om-action-panel>` — floating overlay with the diagram toolbar.
  *
- * Sits absolutely-positioned over whichever container it's nested in
- * (typically `<om-graphical-layout>`). Top-right by default; flippable
- * with the `anchor` attribute.
+ * Positioned by its embedder unless `anchor` is set, in which case it pins
+ * itself absolutely to that corner of the nearest positioned ancestor
+ * (typically `<om-graphical-layout>`).
  *
  * Buttons are icon-only (`title` carries the description + hotkey). Check,
  * Simulate, Parameters are plain buttons; Rotate, Flip and Draw are split
@@ -36,6 +36,7 @@ import "@awesome.me/webawesome/dist/components/button/button.js";
 import { omTokens } from "@dicode/ui-common";
 
 import { emitEvent } from "../dom-event.js";
+import type { OverlayAnchor } from "../overlay-stack/overlay-stack.component.js";
 
 import {
   drawKindOf,
@@ -57,11 +58,7 @@ import {
   simulateIcon,
 } from "./toolbar-icons.js";
 
-export type ActionPanelAnchor =
-  | "top-right"
-  | "top-left"
-  | "bottom-right"
-  | "bottom-left";
+export type ActionPanelAnchor = OverlayAnchor;
 
 export type RotateDirection = "cw" | "ccw";
 export type FlipAxis = "horizontal" | "vertical";
@@ -123,8 +120,6 @@ export class OmActionPanel extends LitElement {
     toolbarButtonStyles,
     css`
       :host {
-        position: absolute;
-        z-index: var(--om-z-overlay);
         display: flex;
         gap: var(--om-space-sm);
         padding: var(--om-space-sm);
@@ -139,6 +134,11 @@ export class OmActionPanel extends LitElement {
         font-family: var(--vscode-font-family, system-ui, sans-serif);
         font-size: var(--vscode-font-size, 13px);
         color: var(--vscode-foreground, #1f1f1f);
+      }
+
+      :host([anchor]) {
+        position: absolute;
+        z-index: var(--om-z-overlay);
       }
 
       :host([anchor="top-right"]) {
@@ -160,9 +160,9 @@ export class OmActionPanel extends LitElement {
     `,
   ];
 
-  /** Corner anchor for the floating panel. */
+  /** Corner to pin the panel to. Leave unset to let the embedder position it. */
   @property({ reflect: true })
-  anchor: ActionPanelAnchor = "top-right";
+  anchor: ActionPanelAnchor | undefined = undefined;
 
   /** When true, the buttons render disabled (e.g. before a model is loaded). */
   @property({ type: Boolean, reflect: true })

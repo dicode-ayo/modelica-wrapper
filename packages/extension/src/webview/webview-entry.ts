@@ -20,6 +20,7 @@ import { customElement, state } from "lit/decorators.js";
 import "@dicode/ui-common/webawesome-setup";
 
 import "@dicode/diagram-ui";
+import { omTokens } from "@dicode/ui-common";
 import type { DiagramLayout, ParameterModel } from "@dicode/omc-client";
 import {
   isComponentKey,
@@ -56,18 +57,21 @@ const RENDER_ERROR_HINT =
 
 @customElement("om-webview-root")
 class OmWebviewRoot extends LitElement {
-  static override styles = css`
-    :host {
-      display: block;
-      position: absolute;
-      inset: 0;
-    }
-    om-graphical-layout {
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
-  `;
+  static override styles = [
+    omTokens,
+    css`
+      :host {
+        display: block;
+        position: absolute;
+        inset: 0;
+      }
+      om-graphical-layout {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+    `,
+  ];
 
   @state() private layout: DiagramLayout | null = null;
   /** Set when the host's initial layout fetch failed — there is nothing to
@@ -168,35 +172,36 @@ class OmWebviewRoot extends LitElement {
         @om-change-class-request=${this.onChangeClassRequest}
         @om-clipboard-request=${this.onClipboardRequest}
       ></om-graphical-layout>
-      <om-action-panel
-        anchor="top-right"
-        ?no-selection=${!this.hasSelection}
-        ?hide-rotate=${this.readOnly}
-        ?hide-flip=${this.readOnly}
-        ?hide-draw=${this.readOnly}
-        .tool=${this.activeTool}
-        @om-action-check=${() => this.post({ type: "actionCheck" })}
-        @om-action-simulate=${() => this.post({ type: "actionSimulate" })}
-        @om-action-parameters=${() => this.post({ type: "actionParameters" })}
-        @om-action-rotate=${(e: CustomEvent<ActionRotateDetail>) =>
-          this.diagram?.rotateSelection(e.detail.direction === "cw")}
-        @om-action-flip=${(e: CustomEvent<ActionFlipDetail>) =>
-          this.diagram?.flipSelection(e.detail.axis === "horizontal")}
-        @om-action-tool=${(e: CustomEvent<ActionToolDetail>) =>
-          this.diagram?.setActiveTool(e.detail.tool)}
-      ></om-action-panel>
-      <om-parameter-panel
-        ?open=${this.paramOpen}
-        ?readonly=${panelReadonly(this.readOnly, this.paramKind)}
-        ?show-reset=${this.paramComponentName !== null}
-        .model=${this.paramModel}
-        .title=${this.paramTitle}
-        .submitLabel=${this.paramSubmitLabel}
-        .crefPrefix=${this.paramCrefPrefix}
-        @om-panel-submit=${this.onParamSubmit}
-        @om-panel-cancel=${this.onParamCancel}
-        @om-panel-reset=${this.onParamReset}
-      ></om-parameter-panel>
+      <om-overlay-stack anchor="top-right">
+        <om-action-panel
+          ?no-selection=${!this.hasSelection}
+          ?hide-rotate=${this.readOnly}
+          ?hide-flip=${this.readOnly}
+          ?hide-draw=${this.readOnly}
+          .tool=${this.activeTool}
+          @om-action-check=${() => this.post({ type: "actionCheck" })}
+          @om-action-simulate=${() => this.post({ type: "actionSimulate" })}
+          @om-action-parameters=${() => this.post({ type: "actionParameters" })}
+          @om-action-rotate=${(e: CustomEvent<ActionRotateDetail>) =>
+            this.diagram?.rotateSelection(e.detail.direction === "cw")}
+          @om-action-flip=${(e: CustomEvent<ActionFlipDetail>) =>
+            this.diagram?.flipSelection(e.detail.axis === "horizontal")}
+          @om-action-tool=${(e: CustomEvent<ActionToolDetail>) =>
+            this.diagram?.setActiveTool(e.detail.tool)}
+        ></om-action-panel>
+        <om-parameter-panel
+          ?open=${this.paramOpen}
+          ?readonly=${panelReadonly(this.readOnly, this.paramKind)}
+          ?show-reset=${this.paramComponentName !== null}
+          .model=${this.paramModel}
+          .heading=${this.paramTitle}
+          .submitLabel=${this.paramSubmitLabel}
+          .crefPrefix=${this.paramCrefPrefix}
+          @om-panel-submit=${this.onParamSubmit}
+          @om-panel-cancel=${this.onParamCancel}
+          @om-panel-reset=${this.onParamReset}
+        ></om-parameter-panel>
+      </om-overlay-stack>
     `;
   }
 

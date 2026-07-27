@@ -35,7 +35,7 @@ install as a subprocess.
   - move/resize/rotate components
   - diagram-local **undo**
 - **Parameter panels** — double-click a component (or use the toolbar for
-  class-level params) to edit parameters in a side drawer, with **live unit
+  class-level params) to edit parameters in a floating panel, with **live unit
   conversion** + unit dropdowns, `Dialog` tab/group layout, `Dialog.enable`
   gating, and a **Reset to defaults** button. Inherited parameters are routed to
   the correct base class.

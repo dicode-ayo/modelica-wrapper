@@ -62,8 +62,10 @@ export const omTokens: CSSResult = css`
     --om-modal-backdrop: rgba(0, 0, 0, 0.55);
     --om-modal-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
 
-    /* --- side drawer (parameter / simulation panel) --- */
-    --om-panel-drawer-size: 540px;
+    /* --- floating panel (parameter / simulation) ---
+     * Width has to clear the form's label column plus a control and its unit
+     * dropdown. Height is left to whatever container places the panel. */
+    --om-panel-float-width: 420px;
 
     /* --- result view (postprocessing) ---
      * Results rail width (and its collapse floor) plus the minimum height a
