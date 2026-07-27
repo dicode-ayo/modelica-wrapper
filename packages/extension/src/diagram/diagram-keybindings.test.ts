@@ -7,6 +7,7 @@ interface Command {
 interface Keybinding {
   command: string;
   key: string;
+  mac?: string;
   when?: string;
 }
 
@@ -26,7 +27,15 @@ const KEYBOUND_KEYS: Record<string, readonly string[]> = {
   "modelica.diagram.rotateCcw": ["shift+r"],
   "modelica.diagram.flipHorizontal": ["f"],
   "modelica.diagram.flipVertical": ["shift+f"],
+  "modelica.diagram.copy": ["ctrl+c"],
+  "modelica.diagram.paste": ["ctrl+v"],
   "modelica.diagram.showKeymapHelp": ["shift+/"],
+};
+
+/** Commands whose binding carries a `mac` override alongside `key`. */
+const MAC_OVERRIDES: Record<string, string> = {
+  "modelica.diagram.copy": "cmd+c",
+  "modelica.diagram.paste": "cmd+v",
 };
 
 describe("diagram keybindings", () => {
@@ -43,6 +52,13 @@ describe("diagram keybindings", () => {
         .filter((k) => k.command === id)
         .map((k) => k.key);
       expect(bound.sort()).toEqual([...keys].sort());
+    }
+  });
+
+  it("gives the clipboard chords their Cmd equivalent on macOS", () => {
+    for (const [id, mac] of Object.entries(MAC_OVERRIDES)) {
+      const bound = keybindings.filter((k) => k.command === id);
+      expect(bound.map((k) => k.mac)).toEqual([mac]);
     }
   });
 

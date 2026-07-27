@@ -31,6 +31,8 @@ export type DiagramCommandId =
   | "diagram.flipVertical"
   | "diagram.deleteVertex"
   | "diagram.toggleSmooth"
+  | "diagram.copy"
+  | "diagram.paste"
   | "diagram.showKeymapHelp";
 
 /**
@@ -53,6 +55,9 @@ export type DiagramCommandId =
  *                            routes the eventual submit and gates whether the
  *                            form is read-only.
  *   - `parametersClose`    — dismiss the parameter modal.
+ *   - `clipboard`          — the shared diagram clipboard filled or emptied;
+ *                            gates the paste affordance. Broadcast to every
+ *                            open editor, since the clipboard is window-wide.
  *
  * Webview → extension:
  *   - `ready`               — webview has finished loading.
@@ -70,6 +75,9 @@ export type DiagramCommandId =
  *   - `addComponent`        — user dropped or placed a class on the canvas
  *                             and we want to instantiate it into the active
  *                             diagram at `position`.
+ *   - `copySelection` / `paste` — clipboard commands. The host owns the
+ *                             clipboard, so the webview sends the selection
+ *                             and lets the host resolve it against the layout.
  */
 
 export type ExtensionToWebview =
@@ -79,8 +87,11 @@ export type ExtensionToWebview =
       className: string;
       /** True for a read-only class (system library); the webview suppresses all edit affordances. */
       readOnly: boolean;
+      /** Whether the window-wide diagram clipboard already holds something. */
+      hasClipboard: boolean;
     }
   | { type: "layout"; layout: DiagramLayout }
+  | { type: "clipboard"; hasContent: boolean }
   | { type: "error"; message: string }
   | {
       type: "renderError";
@@ -185,4 +196,6 @@ export type WebviewToExtension =
       type: "changeClassRequest";
       componentName: string;
       currentClass: string;
-    };
+    }
+  | { type: "copySelection"; keys: string[] }
+  | { type: "paste" };
