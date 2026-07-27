@@ -26,8 +26,6 @@
  *      live capture — they don't need a fixture-frozen tree.
  */
 
-import { execSync } from "node:child_process";
-
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { OmcClient } from "../src/client.js";
@@ -37,23 +35,7 @@ import {
   type ExtendsElement,
   type ModelInstance,
 } from "../src/_shared/modelInstance.js";
-
-function shouldRun(): boolean {
-  const flag = process.env.OMC_INTEGRATION;
-  if (flag === "0") return false;
-  if (flag === "1") return true;
-  if (process.env.OMC_PATH && process.env.OMC_PATH.length > 0) return true;
-  try {
-    execSync(process.platform === "win32" ? "where omc" : "command -v omc", {
-      stdio: "ignore",
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const describeIf = shouldRun() ? describe : describe.skip;
+import { describeIf } from "./fixtures.js";
 
 function dumpIssues(label: string, json: unknown): string {
   const r = ModelInstanceSchema.safeParse(json);

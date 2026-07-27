@@ -20,10 +20,9 @@
  * Auto-skips when `omc` isn't on PATH; honours `OMC_INTEGRATION=0/1`.
  */
 
-import { execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it } from "vitest";
 
 import {
   OmcClient,
@@ -35,6 +34,7 @@ import {
   type UnitTable,
 } from "@dicode/omc-client";
 
+import { describeIf } from "../../test-support/integration-gate.js";
 import {
   buildComponentParameterForm,
   findSubComponent,
@@ -46,23 +46,6 @@ function field(model: ParameterModel, name: string): ParameterField {
   if (!f) throw new Error(`no field ${name}`);
   return f;
 }
-
-function shouldRun(): boolean {
-  const flag = process.env.OMC_INTEGRATION;
-  if (flag === "0") return false;
-  if (flag === "1") return true;
-  if (process.env.OMC_PATH && process.env.OMC_PATH.length > 0) return true;
-  try {
-    execSync(process.platform === "win32" ? "where omc" : "command -v omc", {
-      stdio: "ignore",
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const describeIf = shouldRun() ? describe : describe.skip;
 
 /**
  * Build the injected unit table for a component via the session cache, exactly

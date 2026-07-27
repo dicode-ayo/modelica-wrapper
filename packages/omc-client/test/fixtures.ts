@@ -11,7 +11,10 @@
  * corrupt subsequent tests in the same run.
  */
 
+import { execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
+
+import { describe } from "vitest";
 
 import type { OmcClient } from "../src/client.js";
 
@@ -167,3 +170,26 @@ export async function disposeFixture(
     // Already gone, OMC closing, etc. — nothing to do.
   }
 }
+
+/**
+ * Whether an integration test suite should run against a live OMC: opt out
+ * with `OMC_INTEGRATION=0`, opt in with `OMC_INTEGRATION=1` or `OMC_PATH`,
+ * otherwise auto-detect `omc` on `PATH`.
+ */
+export function shouldRun(): boolean {
+  const flag = process.env.OMC_INTEGRATION;
+  if (flag === "0") return false;
+  if (flag === "1") return true;
+  if (process.env.OMC_PATH && process.env.OMC_PATH.length > 0) return true;
+  try {
+    execSync(process.platform === "win32" ? "where omc" : "command -v omc", {
+      stdio: "ignore",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** `describe` when {@link shouldRun} is true, `describe.skip` otherwise. */
+export const describeIf = shouldRun() ? describe : describe.skip;
