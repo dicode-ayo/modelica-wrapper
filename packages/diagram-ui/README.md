@@ -77,6 +77,7 @@ In a Lit/HTML template the same element is just:
 | `<om-parameter-panel>` / `<om-parameter-form>` | Model-driven floating parameter card. |
 | `<om-library-tree>` | Virtualized class tree; drag source for place-on-canvas. |
 | `<om-action-panel>` | Toolbar (undo / check / simulate / parameters). |
+| `<om-overlay-stack>` | Corner rail that stacks and clamps the floating overlays. |
 | `<om-multibody-root>` | MultiBody 3D preview root (experimental). |
 
 ## Events
@@ -112,16 +113,20 @@ registry and keymap regardless of who triggers the dispatch.
 ## Parameter panel
 
 `<om-parameter-panel>` is a model-driven floating card: set its `model`
-(`ParameterModel`), `title`, `open`, and (optionally) `show-reset`, and it
+(`ParameterModel`), `heading`, `open`, and (optionally) `show-reset`, and it
 renders one row per field — text/number/boolean/enum/array widgets, optional unit
 dropdowns with affine conversion, `Dialog` tab/group layout, and `Dialog.enable`
 gating. On submit it back-converts display units to base units and drops disabled
 fields.
 
 It does not position itself — the host is a plain flow box, so the embedder
-places it (the extension stacks it under `<om-action-panel>` in a corner rail).
-It is non-modal: no backdrop, and the surface behind it stays interactive. The
-full flow is documented
+places and clamps it. `<om-overlay-stack>` is that container: a corner rail
+that stacks the card under `<om-action-panel>` and bounds its height, after
+which the card scrolls its own body.
+
+It is non-modal: no backdrop, and the surface behind it stays interactive.
+Escape, the header's ✕, and the form's Cancel all emit `om-panel-cancel`; the
+embedder owns `open` and clears it. The full flow is documented
 [here](https://github.com/dicode-ayo/modelica-wrapper/blob/main/docs/parameter-panel.md).
 
 ## Styling

@@ -8,14 +8,22 @@
  * about the form's internal API.
  *
  * Placement is the embedder's job — the host is a plain flow box that its
- * container positions (the webview stacks it under `<om-action-panel>`).
+ * container positions and clamps.
  *
  * Escape, the header's close button, and the form's own Cancel button all
- * converge on `om-panel-cancel`. The form's optional "Reset to defaults"
- * button surfaces as `om-panel-reset`.
+ * *request* a close via `om-panel-cancel`; the embedder owns `open` and clears
+ * it. The form's optional "Reset to defaults" button surfaces as
+ * `om-panel-reset`.
  */
 
-import { LitElement, css, html, nothing, type TemplateResult } from "lit";
+import {
+  LitElement,
+  css,
+  html,
+  nothing,
+  type PropertyValues,
+  type TemplateResult,
+} from "lit";
 import { customElement, property } from "lit/decorators.js";
 
 import { omTokens } from "@dicode/ui-common";
@@ -38,10 +46,13 @@ export class OmParameterPanel extends LitElement {
         flex-direction: column;
         inline-size: var(--om-panel-float-width);
         max-inline-size: 100%;
-        max-block-size: var(--om-panel-float-max-height);
+        /* The card grows with its content until the container placing it runs
+         * out of room, then the body scrolls. The zero floor is what lets it
+         * shrink that far as a flex item. */
+        min-block-size: 0;
         box-sizing: border-box;
-        /* Opaque, unlike the toolbar's translucent strip: the diagram showing
-         * through a dense column of labels and inputs wrecks their contrast. */
+        /* A dense column of labels and inputs needs the contrast; the canvas
+         * must not show through. */
         background: var(--vscode-editorWidget-background, #ffffff);
         border: 1px solid var(--vscode-editorWidget-border, rgba(0, 0, 0, 0.15));
         border-radius: var(--om-radius-md);
@@ -70,9 +81,9 @@ export class OmParameterPanel extends LitElement {
         display: flex;
         align-items: center;
         gap: var(--om-space-md);
-        padding: var(--om-space-md) var(--om-space-md) var(--om-space-md)
-          var(--om-space-xl);
-        border-bottom: 1px solid
+        padding: var(--om-space-md);
+        padding-inline-start: var(--om-space-xl);
+        border-block-end: 1px solid
           var(--vscode-editorWidget-border, rgba(0, 0, 0, 0.15));
       }
 
@@ -122,7 +133,12 @@ export class OmParameterPanel extends LitElement {
   @property({ attribute: false })
   model: ParameterModel | undefined = undefined;
 
-  @property() title = "";
+  /**
+   * Heading rendered in the card's header. Not named `title`: that shadows
+   * `HTMLElement.title`, which paints a native tooltip over the whole card.
+   */
+  @property() heading = "";
+
   @property({ attribute: "submit-label" }) submitLabel = "Apply";
   @property({ attribute: "cancel-label" }) cancelLabel = "Cancel";
 
@@ -143,16 +159,9 @@ export class OmParameterPanel extends LitElement {
     // connectedCallback.
     if (!this.open) return html`${nothing}`;
     return html`
-      <div
-        class="card"
-        role="dialog"
-        aria-modal="false"
-        aria-label=${this.title}
-        tabindex="-1"
-        @keydown=${this.onKeyDown}
-      >
+      <div class="card" role="dialog" aria-label=${this.heading} tabindex="-1">
         <header class="header">
-          <h2 class="title">${this.title}</h2>
+          <h2 class="title">${this.heading}</h2>
           <button
             class="close"
             type="button"
@@ -189,16 +198,27 @@ export class OmParameterPanel extends LitElement {
     `;
   }
 
-  override updated(changed: Map<string, unknown>): void {
-    // Escape only reaches the card while focus is inside it, so opening has
-    // to move focus in.
-    if (!changed.has("open") || !this.open) return;
-    const card = this.renderRoot.querySelector<HTMLElement>(".card");
-    card?.focus();
+  override updated(changed: PropertyValues<this>): void {
+    super.updated(changed);
+    if (!changed.has("open")) return;
+    if (this.open) {
+      // The panel owns Escape while it is up, wherever focus sits — the user
+      // is free to click the canvas, and the diagram binds Escape too.
+      window.addEventListener("keydown", this.onKeyDown, { capture: true });
+      this.renderRoot.querySelector<HTMLElement>(".card")?.focus();
+      return;
+    }
+    window.removeEventListener("keydown", this.onKeyDown, { capture: true });
+  }
+
+  override disconnectedCallback(): void {
+    super.disconnectedCallback();
+    window.removeEventListener("keydown", this.onKeyDown, { capture: true });
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
     if (e.key !== "Escape") return;
+    e.preventDefault();
     e.stopPropagation();
     this.fireCancel();
   };

@@ -1,9 +1,9 @@
 /**
  * `<om-action-panel>` — floating overlay with the diagram toolbar.
  *
- * Sits absolutely-positioned over whichever container it's nested in
- * (typically `<om-graphical-layout>`). Top-right by default; flippable
- * with the `anchor` attribute.
+ * Positioned by its embedder unless `anchor` is set, in which case it pins
+ * itself absolutely to that corner of the nearest positioned ancestor
+ * (typically `<om-graphical-layout>`).
  *
  * Buttons are icon-only (`title` carries the description + hotkey). Check,
  * Simulate, Parameters are plain buttons; Rotate, Flip and Draw are split
@@ -36,6 +36,7 @@ import "@awesome.me/webawesome/dist/components/button/button.js";
 import { omTokens } from "@dicode/ui-common";
 
 import { emitEvent } from "../dom-event.js";
+import type { OverlayAnchor } from "../overlay-stack/overlay-stack.component.js";
 
 import {
   drawKindOf,
@@ -57,11 +58,7 @@ import {
   simulateIcon,
 } from "./toolbar-icons.js";
 
-export type ActionPanelAnchor =
-  | "top-right"
-  | "top-left"
-  | "bottom-right"
-  | "bottom-left";
+export type ActionPanelAnchor = OverlayAnchor;
 
 export type RotateDirection = "cw" | "ccw";
 export type FlipAxis = "horizontal" | "vertical";
@@ -163,11 +160,7 @@ export class OmActionPanel extends LitElement {
     `,
   ];
 
-  /**
-   * Corner to pin the panel to. Leave unset to let the embedder position it —
-   * without it the host is a plain flow box, so it can be stacked with other
-   * overlays instead of anchoring itself.
-   */
+  /** Corner to pin the panel to. Leave unset to let the embedder position it. */
   @property({ reflect: true })
   anchor: ActionPanelAnchor | undefined = undefined;
 

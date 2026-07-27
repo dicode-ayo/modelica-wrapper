@@ -9,7 +9,7 @@ import "../src/parameter-form/parameter-panel.component.js";
  * `e2e/parameter-panel.spec.ts`.
  */
 describe("<om-parameter-panel>", () => {
-  it("renders nothing while closed", async () => {
+  it("keeps <om-parameter-form> unmounted while closed", async () => {
     const el = document.createElement("om-parameter-panel");
     document.body.append(el);
     await el.updateComplete;

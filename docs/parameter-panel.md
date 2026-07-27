@@ -15,6 +15,9 @@ webview stacks under the toolbar in the canvas's top-right corner — wrapping
 ([parameter-form.component.ts](../packages/diagram-ui/src/parameter-form/parameter-form.component.ts)).
 There is no backdrop: the diagram stays fully interactive while the panel is up,
 and only Escape, the header's close button, or the form's Cancel dismiss it.
+Those three *request* a close by emitting `om-panel-cancel` — the host owns
+`open` and clears it. Escape is bound on `window` while the panel is up, so it
+still works once the user has clicked back onto the diagram.
 
 It is **model-driven**: the host hands it a `ParameterModel`, the form renders
 one row per field, and on submit it hands back a flat `values` map. The form

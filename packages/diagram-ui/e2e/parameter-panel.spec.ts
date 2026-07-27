@@ -1,31 +1,27 @@
 /**
- * Real-browser coverage for the floating parameter panel: it is a non-modal
- * card stacked under the toolbar, not a drawer, so the canvas underneath keeps
- * taking pointer events and only the explicit close affordances dismiss it.
- * happy-dom can't host it at all — the form's actions are form-associated
- * `wa-button`s that crash it on connect.
+ * Real-browser coverage for the floating parameter panel: a non-modal card
+ * stacked under the toolbar, so the canvas underneath keeps taking pointer
+ * events and only the explicit close affordances dismiss it. happy-dom can't
+ * host it at all — the form's actions are form-associated `wa-button`s that
+ * crash it on connect.
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+
+import { boxOf, waitForLayout } from "./story-helpers.js";
 
 const PANEL_STORY =
   "/iframe.html?id=diagram-ui-parameterpanel--simulate&viewMode=story";
+const OVERFLOWING_STORY =
+  "/iframe.html?id=diagram-ui-parameterpanel--overflowing&viewMode=story";
 const WORKBENCH_STORY =
   "/iframe.html?id=diagram-ui-diagramworkbench--default&viewMode=story";
 
+/** The rail's inset on every edge (`--om-action-panel-offset`). */
+const RAIL_INSET = 8;
+
 const CARD = "om-parameter-panel .card";
 const OPEN_PARAMS = 'om-action-panel wa-button[title="Edit parameters"]';
-
-async function boxOf(
-  page: Page,
-  selector: string,
-): Promise<{ x: number; y: number; width: number; height: number }> {
-  const box = await page.locator(selector).boundingBox();
-  if (!box) {
-    throw new Error(`no box for ${selector}`);
-  }
-  return box;
-}
 
 test.describe("standalone panel", () => {
   test.beforeEach(async ({ page }) => {
@@ -40,8 +36,6 @@ test.describe("standalone panel", () => {
   });
 
   test("closes on Escape", async ({ page }) => {
-    // Opening moves focus into the card, so Escape lands without an extra
-    // click — a click would confound this with the dismiss path.
     await page.keyboard.press("Escape");
     await expect(page.locator(CARD)).toHaveCount(0);
   });
@@ -55,15 +49,43 @@ test.describe("standalone panel", () => {
   });
 });
 
+test.describe("a model taller than the rail", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto(OVERFLOWING_STORY, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Open parameter panel" }).click();
+    await expect(page.locator(CARD)).toBeVisible();
+  });
+
+  test("grows to the bottom of the rail, keeping the rail's inset", async ({
+    page,
+  }) => {
+    const host = await boxOf(page, ".om-story-canvas-host");
+    const panel = await boxOf(page, "om-parameter-panel");
+
+    const gap = host.y + host.height - (panel.y + panel.height);
+    expect(gap).toBeGreaterThanOrEqual(RAIL_INSET - 1);
+    expect(gap).toBeLessThanOrEqual(RAIL_INSET + 1);
+  });
+
+  test("scrolls its body rather than overflowing the card", async ({
+    page,
+  }) => {
+    const overflow = await page.evaluate(() => {
+      const body = document
+        .querySelector("om-parameter-panel")
+        ?.shadowRoot?.querySelector(".body");
+      if (!body) throw new Error("no panel body");
+      return { scroll: body.scrollHeight, client: body.clientHeight };
+    });
+
+    expect(overflow.scroll).toBeGreaterThan(overflow.client);
+  });
+});
+
 test.describe("stacked with the toolbar", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto(WORKBENCH_STORY, { waitUntil: "networkidle" });
-    await page.waitForFunction(() => {
-      const el = document.querySelector("om-graphical-layout") as
-        | (HTMLElement & { layout?: { components?: object } })
-        | null;
-      return Boolean(el?.layout?.components);
-    });
+    await waitForLayout(page);
     await page.locator(OPEN_PARAMS).click();
     await expect(page.locator(CARD)).toBeVisible();
   });
@@ -91,7 +113,21 @@ test.describe("stacked with the toolbar", () => {
     const canvas = await boxOf(page, "om-graphical-layout");
     await page.mouse.click(canvas.x + 20, canvas.y + canvas.height - 20);
 
-    // A drawer's backdrop would have swallowed that click and closed the panel.
+    // Nothing overlays the canvas, so the click lands on it and the panel is
+    // untouched.
     await expect(page.locator(CARD)).toBeVisible();
+  });
+
+  test("still closes on Escape after the canvas takes focus", async ({
+    page,
+  }) => {
+    // The panel owns Escape wherever focus sits. Bound to the card alone it
+    // went dead here, and the diagram's own Escape binding swallowed the key.
+    const canvas = await boxOf(page, "om-graphical-layout");
+    await page.mouse.click(canvas.x + 20, canvas.y + canvas.height - 20);
+
+    await page.keyboard.press("Escape");
+
+    await expect(page.locator(CARD)).toHaveCount(0);
   });
 });

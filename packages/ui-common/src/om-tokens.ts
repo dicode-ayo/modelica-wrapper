@@ -64,9 +64,8 @@ export const omTokens: CSSResult = css`
 
     /* --- floating panel (parameter / simulation) ---
      * Width has to clear the form's label column plus a control and its unit
-     * dropdown; the height cap keeps the card from swallowing the canvas. */
+     * dropdown. Height is left to whatever container places the panel. */
     --om-panel-float-width: 420px;
-    --om-panel-float-max-height: 70vh;
 
     /* --- result view (postprocessing) ---
      * Results rail width (and its collapse floor) plus the minimum height a

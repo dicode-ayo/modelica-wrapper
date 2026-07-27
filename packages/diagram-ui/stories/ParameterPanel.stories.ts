@@ -12,6 +12,7 @@ import type { ParameterModel } from "@dicode/omc-client";
 import { html, type TemplateResult } from "lit";
 
 import "../src/parameter-form/parameter-panel.component.js";
+import "../src/overlay-stack/overlay-stack.component.js";
 
 interface StoryArgs {
   model: ParameterModel;
@@ -83,20 +84,13 @@ const meta: Meta<StoryArgs> = {
       if (el) el.open = false;
     };
     return html`
-      <div
-        style="position: relative; block-size: 70vh; background:
-        repeating-linear-gradient(0deg, #eee 0 1px, transparent 1px 40px),
-        repeating-linear-gradient(90deg, #eee 0 1px, transparent 1px 40px);"
-      >
-        <button @click=${openPanel}>Open parameter panel</button>
-        <div
-          style="position: absolute; inset-block-start: 8px;
-        inset-inline-end: 8px; display: flex;"
-        >
+      <button @click=${openPanel}>Open parameter panel</button>
+      <div class="om-story-canvas-host om-story-canvas-stand-in">
+        <om-overlay-stack anchor="top-right">
           <om-parameter-panel
             id="story-panel"
             .model=${model}
-            title=${title}
+            .heading=${title}
             @om-panel-cancel=${closeReason("[cancel]")}
             @om-panel-submit=${(e: Event) => {
               const ev = e as CustomEvent<{
@@ -106,7 +100,7 @@ const meta: Meta<StoryArgs> = {
               closeReason("[submit-close]")();
             }}
           ></om-parameter-panel>
-        </div>
+        </om-overlay-stack>
       </div>
     `;
   },
@@ -120,5 +114,24 @@ export const Simulate: Story = {
   args: {
     model: SIM_MODEL,
     title: "Simulate",
+  },
+};
+
+/** More fields than the rail is tall, so the card hits its bound and scrolls. */
+export const Overflowing: Story = {
+  args: {
+    model: {
+      className: "Demo.Overflowing",
+      fields: Array.from({ length: 30 }, (_, i) => ({
+        name: `p${i}`,
+        label: `p${i}`,
+        kind: "number" as const,
+        value: i,
+        defaultValue: i,
+        dialog: G,
+        unitOptions: [],
+      })),
+    },
+    title: "Parameters: Overflowing",
   },
 };

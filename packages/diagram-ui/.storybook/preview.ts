@@ -28,10 +28,9 @@ if (typeof document !== "undefined" && !document.getElementById(styleId)) {
     .om-story-workbench .om-story-canvas-host { flex: 1; width: auto; height: auto; min-width: 0; }
     .om-story-library-panel { flex: 0 0 300px; min-height: 0; border: 1px solid #ddd; border-radius: 4px; padding: 8px; }
 
-    /* Mirrors the corner rail the webview builds so the toolbar and the
-       parameter card stack the same way here as in the extension. */
-    .om-story-overlay-stack { position: absolute; top: 8px; right: 8px; z-index: 50; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; max-height: calc(100% - 16px); pointer-events: none; }
-    .om-story-overlay-stack > * { pointer-events: auto; }
+    /* Gridded stand-in for the diagram canvas, for stories about what floats
+       over it rather than what it renders. */
+    .om-story-canvas-stand-in { background: repeating-linear-gradient(0deg, #eee 0 1px, transparent 1px 40px), repeating-linear-gradient(90deg, #eee 0 1px, transparent 1px 40px); }
   `;
   document.head.appendChild(style);
 }

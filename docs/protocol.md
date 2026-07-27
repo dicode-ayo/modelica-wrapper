@@ -46,7 +46,7 @@ flowchart LR
 | `om-panel-reset` | `resetComponentParameters` |
 
 In the other direction the bridge sets Lit properties on the elements
-(`.layout`, and on `<om-parameter-panel>` the `.model`/`.title`/`open`) rather
+(`.layout`, and on `<om-parameter-panel>` the `.model`/`.heading`/`open`) rather
 than dispatching events.
 
 ## Hop 2 — the `postMessage` protocol

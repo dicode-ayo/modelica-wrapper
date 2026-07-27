@@ -70,27 +70,6 @@ class OmWebviewRoot extends LitElement {
         height: 100%;
         display: block;
       }
-
-      /* Corner rail the floating overlays share, so the parameter panel
-       * stacks under the toolbar without either having to know the other's
-       * height. Clicks fall through the gaps to the canvas. */
-      .overlay-stack {
-        position: absolute;
-        top: var(--om-action-panel-offset);
-        right: var(--om-action-panel-offset);
-        z-index: var(--om-z-overlay);
-        display: flex;
-        flex-direction: column;
-        align-items: flex-end;
-        gap: var(--om-space-md);
-        max-inline-size: calc(100% - 2 * var(--om-action-panel-offset));
-        max-block-size: calc(100% - 2 * var(--om-action-panel-offset));
-        pointer-events: none;
-      }
-
-      .overlay-stack > * {
-        pointer-events: auto;
-      }
     `,
   ];
 
@@ -193,7 +172,7 @@ class OmWebviewRoot extends LitElement {
         @om-change-class-request=${this.onChangeClassRequest}
         @om-clipboard-request=${this.onClipboardRequest}
       ></om-graphical-layout>
-      <div class="overlay-stack">
+      <om-overlay-stack anchor="top-right">
         <om-action-panel
           ?no-selection=${!this.hasSelection}
           ?hide-rotate=${this.readOnly}
@@ -215,14 +194,14 @@ class OmWebviewRoot extends LitElement {
           ?readonly=${panelReadonly(this.readOnly, this.paramKind)}
           ?show-reset=${this.paramComponentName !== null}
           .model=${this.paramModel}
-          .title=${this.paramTitle}
+          .heading=${this.paramTitle}
           .submitLabel=${this.paramSubmitLabel}
           .crefPrefix=${this.paramCrefPrefix}
           @om-panel-submit=${this.onParamSubmit}
           @om-panel-cancel=${this.onParamCancel}
           @om-panel-reset=${this.onParamReset}
         ></om-parameter-panel>
-      </div>
+      </om-overlay-stack>
     `;
   }
 

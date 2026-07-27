@@ -22,6 +22,7 @@ import type { DiagramLayout } from "@dicode/omc-client";
 import "../src/graphical-layout/graphical-layout.component.js";
 import "../src/library-tree/library-tree.component.js";
 import "../src/action-panel/action-panel.component.js";
+import "../src/overlay-stack/overlay-stack.component.js";
 import "../src/parameter-form/parameter-panel.component.js";
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
 import type { OmActionPanel } from "../src/action-panel/action-panel.component.js";
@@ -85,7 +86,7 @@ function openParams(
   if (!panel) return;
   paramKind = opts.kind;
   panel.model = opts.model;
-  panel.title = opts.title;
+  panel.heading = opts.title;
   panel.submitLabel = opts.submitLabel;
   panel.showReset = opts.showReset;
   panel.crefPrefix = opts.crefPrefix;
@@ -179,7 +180,7 @@ const meta: Meta<StoryArgs> = {
               });
             }}
           ></om-graphical-layout>
-          <div class="om-story-overlay-stack">
+          <om-overlay-stack anchor="top-right">
             <om-action-panel
               ?no-selection=${true}
               @om-action-undo=${() => console.log("undo")}
@@ -217,7 +218,7 @@ const meta: Meta<StoryArgs> = {
                 closeParams(storyRoot(e.currentTarget))}
               @om-panel-reset=${() => console.log("reset to defaults")}
             ></om-parameter-panel>
-          </div>
+          </om-overlay-stack>
         </div>
       </div>
     </div>

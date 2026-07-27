@@ -163,6 +163,10 @@ export {
 export { OmDebugPlane } from "./debug/debug-plane.component.js";
 export { OmPerfHud } from "./debug/perf-hud.component.js";
 export {
+  OmOverlayStack,
+  type OverlayAnchor,
+} from "./overlay-stack/overlay-stack.component.js";
+export {
   OmActionPanel,
   type ActionPanelAnchor,
   type ActionPanelEvents,
