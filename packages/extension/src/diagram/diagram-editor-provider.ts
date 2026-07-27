@@ -721,12 +721,13 @@ export class DiagramEditController {
         layer,
         clipboard.nextOffset(className),
       );
+      // A rejection changed nothing, so reflecting would record an undo step
+      // for a no-op.
       const failure = result.failed.at(0);
       if (failure !== undefined) {
         this.reportError(failure);
+        return;
       }
-      // OMC parses the paste as one block, so a rejection changed nothing and
-      // reflecting would record an undo step for a no-op.
       if (result.added.length === 0 && result.shapes === 0) return;
       const layout = await this.refetch(client, className);
       await this.reflect(layout);

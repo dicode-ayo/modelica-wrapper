@@ -94,9 +94,10 @@ function copyClient(
   };
 }
 
+/** The one call shape a paste makes. */
 interface PasteCall {
-  fn: string;
-  arg: unknown;
+  data: string;
+  typeName: string;
 }
 
 /**
@@ -110,12 +111,14 @@ function pasteClient(
   return {
     calls,
     data: () => {
-      const first = calls[0];
+      const first = calls.at(0);
       if (first === undefined) throw new Error("no paste call was made");
-      return (first.arg as { data: string }).data;
+      return first.data;
     },
+    getErrorString: () =>
+      Promise.resolve({ errorString: "OMC says: something is wrong" }),
     loadClassContentString: (arg) => {
-      calls.push({ fn: "loadClassContentString", arg });
+      calls.push(arg);
       const diagnostic = reject(arg.data);
       return Promise.resolve(
         diagnostic === null
@@ -546,6 +549,21 @@ describe("pasteClipboardItems", () => {
     expect(client.data()).toContain(
       "Modelica.Blocks.Math.Gain gain2(k = 2.5, limiter.uMax = 5) annotation(",
     );
+  });
+
+  it("carries a string-valued modifier through the block intact", async () => {
+    // The block is concatenated text now, so a quoted expression is the case
+    // that would break it if anything re-escaped on the way through.
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [componentItem({ modifiers: [{ path: "unit", expr: '"m/s"' }] })],
+      "diagram",
+      PASTE_OFFSET,
+    );
+    expect(client.data()).toContain('gain2(unit = "m/s") annotation(');
   });
 
   it("emits no modifier parentheses when the declaration has none", async () => {

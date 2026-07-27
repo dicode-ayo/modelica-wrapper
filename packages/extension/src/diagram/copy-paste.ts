@@ -46,20 +46,21 @@ type MutationResult = { success: boolean; diagnostic?: string | undefined };
 
 /**
  * OMC surface the paste path needs: one call that parses a block of class
- * elements and merges it into the target class.
- *
- * Declaring components one at a time costs an `addComponent` plus an
- * `setElementModifierValue` per authored modifier, each ~60-160ms of OMC work,
- * so a five-component paste ran to over a second. A declaration carries its
- * modifiers inline, so the whole paste is one parse.
+ * elements and merges it into the target class. Each per-element mutation
+ * costs OMC real parse work, so the whole paste rides on one declaration
+ * block with its modifiers inline.
  */
 export interface PasteClient {
   loadClassContentString(input: {
     data: string;
     typeName: string;
-    offsetX?: number;
-    offsetY?: number;
   }): Promise<MutationResult>;
+  /**
+   * OMC reports a rejected block as a bare `false` and leaves the reason in
+   * its error buffer, so this is the only way to tell the user what broke —
+   * and an all-or-nothing paste has nothing else to say.
+   */
+  getErrorString(): Promise<{ errorString: string }>;
 }
 
 /**
@@ -208,7 +209,7 @@ async function readModifiers(
   return out;
 }
 
-/** What a paste attempt did, so the caller can report partial failures. */
+/** What a paste attempt did, so the caller can report the failure. */
 export interface PasteResult {
   /** Instance names added, in paste order. */
   added: string[];
@@ -226,8 +227,7 @@ export interface PasteResult {
  * reflecting writes the shadow buffer, which is what records a VSCode undo
  * step, so a reflect per item would turn one paste into N undo steps.
  *
- * All-or-nothing, since OMC parses the block as a unit — there is no longer a
- * partially-applied paste to report per item.
+ * All-or-nothing: OMC parses the block as a unit.
  */
 export async function pasteClipboardItems(
   client: PasteClient,
@@ -282,22 +282,22 @@ export async function pasteClipboardItems(
     return { added: [], shapes: 0, connections: 0, failed: [] };
   }
 
+  // Placements are offset as they are serialized. OMC's own offset writes an
+  // `origin` rather than shifting the extent, which is not the placement the
+  // rest of the edit path produces.
   const write = await client.loadClassContentString({
     data: block.join("\n"),
-    // Placements are offset as they are serialized: OMC's own offset writes an
-    // `origin`, which is a different placement than the shifted extent the
-    // rest of the edit path produces.
     typeName: hostClass,
-    offsetX: 0,
-    offsetY: 0,
   });
   if (!write.success) {
+    const detail =
+      write.diagnostic ?? (await client.getErrorString()).errorString.trim();
     return {
       added: [],
       shapes: 0,
       connections: 0,
       failed: [
-        `paste: ${write.diagnostic ?? "OMC rejected loadClassContentString"}`,
+        `paste: ${detail === "" ? "OMC rejected the pasted block" : detail}`,
       ],
     };
   }
@@ -383,7 +383,7 @@ export function pastedSelectionKeys(
 /**
  * Rename whichever part of the endpoint carries its identity — the
  * sub-component, or the standalone connector's own port name. `null` when that
- * declaration wasn't pasted (its add was rejected).
+ * declaration wasn't part of this paste.
  */
 function remapEndpoint(
   endpoint: ConnectionEndpoint,

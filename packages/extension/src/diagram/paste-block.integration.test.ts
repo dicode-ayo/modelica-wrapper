@@ -23,7 +23,13 @@ function emptyLayout(className: string): DiagramLayout {
   return {
     kind: "diagram",
     className,
-    source: { file: "x.mo", line: 1, column: 1 } as never,
+    source: {
+      filename: "x.mo",
+      lineStart: 1,
+      columnStart: 1,
+      lineEnd: 1,
+      columnEnd: 1,
+    },
     iconLayers: [],
     diagramLayers: [],
     labels: [],
@@ -124,7 +130,10 @@ end ${pkg};
     expect(contents).toContain("Rectangle");
   });
 
-  it("carries a nested modifier path, which Modelica allows unparenthesised", async () => {
+  it("carries a nested modifier path, which Modelica allows unparenthesized", async () => {
+    // `limiter.uMax` addresses a modifier on a sub-component of the pasted
+    // class. Modelica permits a dotted name in a modification list, so the
+    // declaration needs no rewriting into nested parentheses.
     const result = await pasteClipboardItems(
       client,
       cls,
@@ -132,14 +141,14 @@ end ${pkg};
       [
         {
           kind: "component",
-          name: "lim",
-          className: "Modelica.Blocks.Nonlinear.Limiter",
+          name: "pid",
+          className: "Modelica.Blocks.Continuous.LimPID",
           extent: [
             [0, 0],
             [20, 20],
           ],
           rotation: 0,
-          modifiers: [{ path: "uMax", expr: "5" }],
+          modifiers: [{ path: "limiter.uMax", expr: "5" }],
         },
       ],
       "diagram",
@@ -148,7 +157,38 @@ end ${pkg};
     expect(result.failed).toEqual([]);
 
     const { contents } = await client.listFile({ typeName: cls });
-    expect(contents).toContain("uMax = 5");
+    expect(contents).toContain("limiter.uMax = 5");
+  });
+
+  it("merges a shapes-only block, keeping the class's existing graphics", async () => {
+    // Copying just a rectangle produces a block with no elements ahead of the
+    // annotation, which is a different parse than the mixed case.
+    const result = await pasteClipboardItems(
+      client,
+      cls,
+      emptyLayout(cls),
+      [
+        {
+          kind: "shape",
+          shape: {
+            kind: "ellipse",
+            extent: [
+              [0, 0],
+              [10, 10],
+            ],
+            lineColor: [255, 0, 0],
+          },
+        },
+      ],
+      "diagram",
+      0,
+    );
+    expect(result.failed).toEqual([]);
+    expect(result.shapes).toBe(1);
+
+    const { contents } = await client.listFile({ typeName: cls });
+    expect(contents).toContain("Ellipse");
+    expect(contents).toContain("Rectangle");
   });
 
   it("reports a rejected block and leaves the class untouched", async () => {
@@ -163,6 +203,10 @@ end ${pkg};
     );
     expect(result.added).toEqual([]);
     expect(result.failed).toHaveLength(1);
+    // OMC's own prose, not a canned string — a rejected block loses the whole
+    // paste, so the message is the only thing the user gets.
+    expect(result.failed.at(0)).not.toContain("OMC rejected");
+    expect(result.failed.at(0)?.length).toBeGreaterThan("paste: ".length);
 
     const after = await client.listFile({ typeName: cls });
     expect(after.contents).toBe(before.contents);
