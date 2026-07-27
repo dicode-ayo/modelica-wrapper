@@ -543,7 +543,7 @@ export class OmGraphicalLayout extends LitElement {
           // leaving old and new visuals overlaid. NUL can't appear in a
           // component name or qualified class name, so the split is
           // unambiguous.
-          ([id, comp]) => `${id} ${comp.classRef}`,
+          ([id, comp]) => `${id}\u0000${comp.classRef}`,
           ([id, comp]) => this.renderComponent(id, comp, active),
         )}
         ${repeat(
