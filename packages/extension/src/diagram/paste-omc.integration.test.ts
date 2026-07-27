@@ -18,7 +18,11 @@ import { OmcClient } from "@dicode/omc-client";
 
 import { describeIf } from "../../test-support/integration-gate.js";
 import { PASTE_OFFSET, type ClipboardEntry } from "./clipboard.js";
-import { captureClipboardItems, pasteClipboardItems } from "./copy-paste.js";
+import {
+  captureClipboardItems,
+  pastedSelectionKeys,
+  pasteClipboardItems,
+} from "./copy-paste.js";
 import { fetchDiagramLayout } from "./open-diagram.js";
 
 describeIf("paste against real OMC", () => {
@@ -115,6 +119,57 @@ end ${pkg};
       modifier: "gain3.k",
     });
     expect(value).toBe("2.5");
+  });
+
+  it("pastes a standalone connector, wired, and keys it as a connector", async () => {
+    // Two things only a live OMC settles: whether a host-class port carries
+    // its wire through the copy (its endpoint has no `component`, so identity
+    // lives in the port name), and whether OMC files the pasted declaration
+    // under `connectors` — which is what decides the `k:` selection key.
+    await client.loadString({
+      data: `package ${pkg}
+  model Ported
+    Modelica.Blocks.Interfaces.RealInput u
+      annotation(Placement(transformation(extent={{-70,-10},{-50,10}})));
+    Modelica.Blocks.Math.Gain gain1
+      annotation(Placement(transformation(extent={{-20,-10},{0,10}})));
+  equation
+    connect(u, gain1.u) annotation(Line(points={{-59,0},{-21,0}}));
+  end Ported;
+end ${pkg};
+`,
+      filename: `<fixture:${pkg}-ported>`,
+    });
+    const ported = `${pkg}.Ported`;
+
+    const before = await fetchDiagramLayout(client, ported);
+    const items = await captureClipboardItems(client, before, [
+      "k:u",
+      "c:gain1",
+    ]);
+    expect(items.filter((i) => i.kind === "connection")).toHaveLength(1);
+
+    const result = await pasteClipboardItems(
+      client,
+      ported,
+      before,
+      items,
+      "diagram",
+      PASTE_OFFSET,
+    );
+    expect(result.failed).toEqual([]);
+    expect(result.connections).toBe(1);
+
+    const after = await fetchDiagramLayout(client, ported);
+    expect(pastedSelectionKeys(after, result, "diagram")).toEqual([
+      "k:u1",
+      "c:gain2",
+    ]);
+    expect(
+      after.connections.map(
+        (c) => `${c.lhs.component ?? c.lhs.port}→${c.rhs.component}`,
+      ),
+    ).toEqual(["u→gain1", "u1→gain2"]);
   });
 
   it("offsets the pasted placement without moving the original", async () => {

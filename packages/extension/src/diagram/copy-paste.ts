@@ -132,10 +132,24 @@ export async function captureClipboardItems(
 }
 
 /**
- * The connections whose two endpoints are both components in `items`. Keyed off
- * the copied set rather than the selection: a rubber band sweeps the edge in,
- * but ctrl-clicking two components doesn't, and either way the user means to
- * take the wire between them.
+ * The declaration an endpoint names: the sub-component it sits on, or — for a
+ * port on the host class — the standalone connector itself.
+ */
+function endpointDeclaration(endpoint: ConnectionEndpoint): string {
+  return endpoint.component ?? endpoint.port;
+}
+
+/**
+ * The connections whose two endpoints are both declarations in `items`. Keyed
+ * off the copied set rather than the selection: a rubber band sweeps the edge
+ * in, but ctrl-clicking two components doesn't, and either way the user means
+ * to take the wire between them.
+ *
+ * A subscripted endpoint is refused. `addComponent` writes a scalar, so a
+ * copied `Gain gain[2]` pastes without its dimensions and a cref like
+ * `gain1[1].y` would index something that isn't an array — which OMC accepts
+ * and writes out, leaving a model that no longer compiles. Port subscripts are
+ * kept: those dimensions come from the type, which the paste does preserve.
  */
 function connectionsWithin(
   layout: DiagramLayout,
@@ -146,7 +160,8 @@ function connectionsWithin(
   );
   if (copied.size < 2) return [];
   const inCopy = (endpoint: ConnectionEndpoint): boolean =>
-    endpoint.component !== undefined && copied.has(endpoint.component);
+    endpoint.componentSubscripts === undefined &&
+    copied.has(endpointDeclaration(endpoint));
   return layout.connections
     .filter((c) => inCopy(c.lhs) && inCopy(c.rhs))
     .map(({ lhs, rhs, waypoints, source: _source, ...style }) => ({
@@ -277,15 +292,15 @@ export async function pasteClipboardItems(
   // After the components exist and their final names are known.
   for (const item of items) {
     if (item.kind !== "connection") continue;
-    const failure = await pasteConnection(
+    const outcome = await pasteConnection(
       client,
       hostClass,
       item,
       renamed,
       offset,
     );
-    if (failure === null) result.connections += 1;
-    else if (failure !== SKIPPED) result.failed.push(failure);
+    if (outcome.kind === "added") result.connections += 1;
+    if (outcome.failure !== null) result.failed.push(outcome.failure);
   }
   return result;
 }
@@ -306,7 +321,7 @@ export function pastedSelectionKeys(
 ): string[] {
   const keys = result.added.map((name) =>
     formatEntityKey(
-      name in layout.connectors ? "connector" : "component",
+      Object.hasOwn(layout.connectors, name) ? "connector" : "component",
       name,
     ),
   );
@@ -315,7 +330,11 @@ export function pastedSelectionKeys(
     layout.className,
   );
   const shapes = host?.shapes ?? [];
-  for (let i = shapes.length - result.shapes; i < shapes.length; i += 1) {
+  for (
+    let i = Math.max(0, shapes.length - result.shapes);
+    i < shapes.length;
+    i += 1
+  ) {
     const shape = shapes[i];
     if (shape !== undefined) {
       keys.push(formatEntityKey("shape", `${shape.kind}:${i}`));
@@ -324,8 +343,15 @@ export function pastedSelectionKeys(
   return keys;
 }
 
-/** A connection whose endpoints didn't both survive isn't a failure to report. */
-const SKIPPED = Symbol("skipped");
+/**
+ * `skipped` is an endpoint whose declaration never landed, which is a
+ * consequence of a failure already reported against that declaration rather
+ * than a second thing to tell the user about.
+ */
+interface PasteConnectionOutcome {
+  kind: "added" | "skipped" | "failed";
+  failure: string | null;
+}
 
 async function pasteConnection(
   client: PasteClient,
@@ -333,10 +359,10 @@ async function pasteConnection(
   item: ClipboardConnection,
   renamed: ReadonlyMap<string, string>,
   offset: number,
-): Promise<string | null | typeof SKIPPED> {
+): Promise<PasteConnectionOutcome> {
   const lhs = remapEndpoint(item.lhs, renamed);
   const rhs = remapEndpoint(item.rhs, renamed);
-  if (lhs === null || rhs === null) return SKIPPED;
+  if (lhs === null || rhs === null) return { kind: "skipped", failure: null };
   const from = endpointToCref(lhs);
   const to = endpointToCref(rhs);
   const add = await client.addConnection({
@@ -349,21 +375,27 @@ async function pasteConnection(
     ),
   });
   return add.success
-    ? null
-    : `paste connect(${from}, ${to}): ${add.diagnostic ?? "OMC rejected addConnection"}`;
+    ? { kind: "added", failure: null }
+    : {
+        kind: "failed",
+        failure: `paste connect(${from}, ${to}): ${add.diagnostic ?? "OMC rejected addConnection"}`,
+      };
 }
 
-/** `null` when the endpoint's component wasn't pasted (its add was rejected). */
+/**
+ * Rename whichever part of the endpoint carries its identity — the
+ * sub-component, or the standalone connector's own port name. `null` when that
+ * declaration wasn't pasted (its add was rejected).
+ */
 function remapEndpoint(
   endpoint: ConnectionEndpoint,
   renamed: ReadonlyMap<string, string>,
 ): ConnectionEndpoint | null {
-  const component =
-    endpoint.component === undefined
-      ? undefined
-      : renamed.get(endpoint.component);
-  if (component === undefined) return null;
-  return { ...endpoint, component };
+  const pasted = renamed.get(endpointDeclaration(endpoint));
+  if (pasted === undefined) return null;
+  return endpoint.component === undefined
+    ? { ...endpoint, port: pasted }
+    : { ...endpoint, component: pasted };
 }
 
 /**

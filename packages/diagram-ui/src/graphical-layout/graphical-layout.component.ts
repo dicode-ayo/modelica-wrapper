@@ -1926,14 +1926,19 @@ export class OmGraphicalLayout extends LitElement {
     return Array.from(this.selectedKeys);
   }
 
-  /** Convenience for callers that want to drive selection externally. */
+  /**
+   * Convenience for callers that want to drive selection externally. Emits
+   * like the pointer paths do: the host mirrors the selection to gate its own
+   * affordances, so a silent write would leave those stale — the action panel
+   * disabled over the components a paste just selected, for instance.
+   */
   setSelection(keys: Iterable<string>): void {
     this.selectedKeys = new Set(
       Array.from(keys).filter((k) => parseKey(k) !== null),
     );
-    this.interactionStore.next({
-      selectedKeys: Array.from(this.selectedKeys),
-    });
+    const next = Array.from(this.selectedKeys);
+    this.emit("om-selection-change", { keys: next });
+    this.interactionStore.next({ selectedKeys: next });
   }
 
   /** Read-only access to the live interaction state. Useful for tests

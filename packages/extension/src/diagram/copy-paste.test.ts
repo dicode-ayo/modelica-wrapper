@@ -280,13 +280,58 @@ describe("captureClipboardItems: connections", () => {
     ]);
   });
 
-  it("carries it even when the edge itself wasn't selected", async () => {
-    // Ctrl-clicking two components never sweeps the wire between them in.
+  it("carries the wire once whether or not the edge was selected", async () => {
+    // The edge key is skipped as uncopyable and the wire is then added back
+    // from the component set — the two paths must not both contribute it.
     const items = await captureClipboardItems(copyClient(), wired(), [
+      "c:gain1",
+      "edge:0",
+      "c:gain2",
+    ]);
+    expect(items.filter((i) => i.kind === "connection")).toHaveLength(1);
+  });
+
+  it("refuses a wire onto a subscripted component", async () => {
+    // `addComponent` writes a scalar, so the pasted copy of `bus[2]` has no
+    // dimensions and `bus1[1].y` would index something that isn't an array.
+    // OMC accepts that cref and writes it out, so the guard has to be ours.
+    const base = wired();
+    const arrayed: DiagramLayout = {
+      ...base,
+      connections: [
+        {
+          lhs: { component: "gain1", port: "y", componentSubscripts: "[1]" },
+          rhs: { component: "gain2", port: "u" },
+          waypoints: [],
+        },
+      ],
+    };
+    const items = await captureClipboardItems(copyClient(), arrayed, [
       "c:gain1",
       "c:gain2",
     ]);
-    expect(items.some((i) => i.kind === "connection")).toBe(true);
+    expect(items.every((i) => i.kind !== "connection")).toBe(true);
+  });
+
+  it("carries a wire onto a standalone connector on the host class", async () => {
+    // A host-class port has no `component`; its identity is the port name,
+    // and it is copyable in its own right.
+    const base = wired();
+    const withPort: DiagramLayout = {
+      ...base,
+      connections: [
+        {
+          lhs: { component: undefined, port: "u" },
+          rhs: { component: "gain1", port: "u" },
+          waypoints: [],
+        },
+      ],
+    };
+    const items = await captureClipboardItems(copyClient(), withPort, [
+      "k:u",
+      "c:gain1",
+    ]);
+    expect(items.filter((i) => i.kind === "connection")).toHaveLength(1);
   });
 
   it("drops a connection with one endpoint outside the copy", async () => {

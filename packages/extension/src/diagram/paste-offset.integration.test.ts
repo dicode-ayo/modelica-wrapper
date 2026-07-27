@@ -13,11 +13,7 @@
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 
-import {
-  OmcClient,
-  annotationGraphics,
-  type RectangleShape,
-} from "@dicode/omc-client";
+import { OmcClient, type RectangleShape } from "@dicode/omc-client";
 
 import { describeIf } from "../../test-support/integration-gate.js";
 import { offsetShape, PASTE_OFFSET } from "./clipboard.js";
@@ -71,39 +67,21 @@ end ${pkg};
     });
     expect(res.success).toBe(true);
 
-    const { annotation } = await client.getIconAnnotation({ typeName: cls });
-    expect(JSON.stringify(annotationGraphics(annotation))).toContain(
-      `"value":${PASTE_OFFSET}`,
-    );
-  });
-
-  it("reads the offset back as the pasted shape's origin", async () => {
-    await client.writeClassGraphics({
-      typeName: cls,
-      layer: "icon",
-      op: {
-        kind: "add",
-        shape: offsetShape(
-          {
-            kind: "rectangle",
-            extent: [
-              [-40, -40],
-              [40, 40],
-            ],
-            lineColor: [0, 0, 255],
-          },
-          PASTE_OFFSET,
-        ),
-      },
-    });
-
     const layout = await fetchIconLayout(client, cls);
     const shapes = layout.iconLayers.at(-1)?.shapes ?? [];
 
-    // The original is untouched; the pasted copy carries the offset.
+    // The original is untouched; the pasted copy carries the offset, and its
+    // extent is unchanged — origin translates, it doesn't resize.
     expect(shapes.map((s) => s.origin)).toEqual([
       undefined,
       [PASTE_OFFSET, PASTE_OFFSET],
     ]);
+    expect(shapes.at(-1)).toMatchObject({
+      kind: "rectangle",
+      extent: [
+        [-40, -40],
+        [40, 40],
+      ],
+    });
   });
 });

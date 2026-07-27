@@ -157,6 +157,46 @@ describe("InteractionManager", () => {
     canvas.remove();
   });
 
+  it("ctrl/cmd+primary down emits select with addToSelection", () => {
+    // Shift is taken by pan, so additive selection rides Ctrl/Cmd instead.
+    for (const modifier of ["ctrlKey", "metaKey"] as const) {
+      const canvas = makeCanvas();
+      const tn = node("component", "R1");
+      const { emit, events } = captureEmits();
+      const mgr = new InteractionManager(() => tn, emit);
+      wireInteraction(canvas, mgr);
+
+      canvas.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          button: 0,
+          [modifier]: true,
+          clientX: 5,
+          clientY: 5,
+        }),
+      );
+      expect(events).toEqual([
+        { type: "select", detail: { key: "c:R1", addToSelection: true } },
+      ]);
+      canvas.remove();
+    }
+  });
+
+  it("an unmodified primary down replaces rather than adds", () => {
+    const canvas = makeCanvas();
+    const tn = node("component", "R1");
+    const { emit, events } = captureEmits();
+    const mgr = new InteractionManager(() => tn, emit);
+    wireInteraction(canvas, mgr);
+
+    canvas.dispatchEvent(
+      new PointerEvent("pointerdown", { button: 0, clientX: 5, clientY: 5 }),
+    );
+    expect(events).toEqual([
+      { type: "select", detail: { key: "c:R1", addToSelection: false } },
+    ]);
+    canvas.remove();
+  });
+
   it("emits doubleClick on a second select within the window", () => {
     const canvas = makeCanvas();
     const tn = node("component", "R1");

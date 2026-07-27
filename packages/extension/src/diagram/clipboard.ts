@@ -124,9 +124,6 @@ export function offsetShape(shape: Shape, d: number): Shape {
 }
 
 /** Translate a connection route by `(d, d)`, so it still meets its ports. */
-export function offsetPoints(
-  points: readonly Point[],
-  d: number,
-): Array<[number, number]> {
+export function offsetPoints(points: readonly Point[], d: number): Point[] {
   return points.map(([x, y]) => [x + d, y + d]);
 }

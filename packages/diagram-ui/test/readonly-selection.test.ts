@@ -73,6 +73,34 @@ describe("<om-graphical-layout> read-only selection", () => {
     expect([...el.selection].sort()).toEqual(["c:c1", "c:r1"]);
   });
 
+  it("still refuses to move anything on a read-only class", async () => {
+    // The carve-out exempts `rubberBand` alone. Widening it to the gestures
+    // that DO mutate is the mistake this guards against.
+    const r1 = componentNode("r1");
+    const el = await mountLayout({ picker: () => r1, layout: twoComponents() });
+    el.readonly = true;
+    await el.updateComplete;
+    let committed = 0;
+    el.addEventListener("om-graphical-layout-change", () => (committed += 1));
+    const canvas = sceneCanvas(el);
+
+    canvas.dispatchEvent(
+      new PointerEvent("pointerdown", { button: 0, clientX: 10, clientY: 20 }),
+    );
+    canvas.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 300, clientY: 200 }),
+    );
+    canvas.dispatchEvent(
+      new PointerEvent("pointerup", { button: 0, clientX: 300, clientY: 200 }),
+    );
+
+    expect(committed).toBe(0);
+    expect(el.layout?.components.r1?.placement.extent).toEqual([
+      [-40, -10],
+      [-20, 10],
+    ]);
+  });
+
   it("ctrl-clicks into a multi-selection on a read-only class", async () => {
     const r1 = componentNode("r1");
     const c1 = componentNode("c1");
