@@ -1,9 +1,8 @@
 /**
  * `InteractionManager` translates pointer events into select/hover/
- * doubleClick/contextMenu. Centered on #383: finishing a move-drag and then
- * clicking the same entity within the double-click window used to fire a
- * spurious `doubleClick`, because the press that started the drag was never
- * distinguished from an actual click when arming the double-click window.
+ * doubleClick/contextMenu. A double click requires two actual clicks: a
+ * press that travels past the drag slop before release is a drag, not a
+ * click, and must not pair with a later click to fake one.
  */
 
 import { Container } from "pixi.js";
@@ -187,13 +186,11 @@ describe("InteractionManager", () => {
       const a = componentNode("A");
       const { manager, events } = makeManager({ target: a });
 
+      // Pointer 1's press stays open (no release yet) while an unrelated
+      // pointer 2 travels far — that must not invalidate pointer 1's click.
       manager.handlePointerDown(
         pointerEvent("pointerdown", { pointerId: 1, clientX: 0, clientY: 0 }),
       );
-      manager.handlePointerUp(pointerEvent("pointerup", { pointerId: 1 }));
-
-      // A different pointer travelling far should not affect pointer 1's
-      // click bookkeeping.
       manager.handlePointerMove(
         pointerEvent("pointermove", {
           pointerId: 2,
@@ -201,9 +198,49 @@ describe("InteractionManager", () => {
           clientY: 999,
         }),
       );
+      manager.handlePointerUp(pointerEvent("pointerup", { pointerId: 1 }));
 
       now += 50;
       manager.handlePointerDown(pointerEvent("pointerdown", { pointerId: 1 }));
+
+      expect(doubleClickCount(events)).toBe(1);
+    });
+
+    it("clears a leftover press origin on the next pointerdown, even a miss", () => {
+      // A draw tool armed mid-press swallows the pointerup (ModeRouter routes
+      // release to the tool instead of the InteractionManager), so a press
+      // can be abandoned without ever reaching handlePointerUp.
+      const a = componentNode("A");
+      let target: Container | null = a;
+      const events: Recorded[] = [];
+      const emit: EmitFn = (type, detail) => {
+        events.push({ type, detail });
+      };
+      const manager = new InteractionManager(
+        () => target,
+        emit,
+        () => [],
+        { doubleClickMs: DOUBLE_CLICK_MS },
+      );
+
+      manager.handlePointerDown(
+        pointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
+      );
+
+      // The next press misses everything, but must still clear the leftover
+      // origin — otherwise a later, unrelated move would invalidate the
+      // click above via a press that never actually released.
+      target = null;
+      manager.handlePointerDown(
+        pointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
+      );
+      target = a;
+      manager.handlePointerMove(
+        pointerEvent("pointermove", { clientX: 999, clientY: 999 }),
+      );
+
+      now += 50;
+      manager.handlePointerDown(pointerEvent("pointerdown"));
 
       expect(doubleClickCount(events)).toBe(1);
     });

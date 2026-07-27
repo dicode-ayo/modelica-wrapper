@@ -148,8 +148,10 @@ export class InteractionManager {
     // A new press supersedes any pending one. Several paths below return
     // without ever reaching a release — an armed draw tool swallows the
     // `pointerup` entirely — and a survivor would narrow the selection under
-    // whatever gesture came next.
+    // whatever gesture came next, or have `trackPressTravel` compare a later,
+    // unrelated pointer move against a press that never actually released.
     this.pendingSelect = null;
+    this.pressOrigin = null;
     if (this.isPanModifier(e)) {
       return; // pan modifier — PanZoom owns it
     }
