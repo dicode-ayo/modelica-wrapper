@@ -1,6 +1,7 @@
 import type { Container } from "pixi.js";
 
 import type { SceneContext } from "../scene/scene-context.js";
+import type { SelectionProvider } from "./gesture-mode.js";
 import { entityKeyForNode, formatKey } from "./node-keys.js";
 
 /**
@@ -41,6 +42,22 @@ export interface InteractionManagerOptions {
 
 const DEFAULT_DOUBLE_CLICK_MS = 350;
 
+/** Pointer travel that makes a press a drag rather than a click. */
+const DRAG_SLOP_PX = 3;
+
+/**
+ * A press on a member of a multi-selection, awaiting its release. Only one is
+ * ever held: `pointerId` is a staleness guard so a release from an unrelated
+ * pointer can't claim it, not multi-pointer support. A second pointer pressing
+ * another member supersedes the first, whose narrowing is then dropped.
+ */
+interface PendingSelect {
+  key: string;
+  pointerId: number;
+  clientX: number;
+  clientY: number;
+}
+
 /**
  * Translates pointer events (fed by the interaction router) into typed
  * interaction events keyed by entity. Three observable events are
@@ -53,26 +70,37 @@ const DEFAULT_DOUBLE_CLICK_MS = 350;
  *   - shift + primary    → swallowed (PanZoom owns it)
  *   - secondary button   → `contextMenu`
  *   - middle button      → swallowed (PanZoom owns it)
+ *
+ * An unmodified press on a member of a multi-selection defers its `select`
+ * to the release, and drops it entirely once the pointer travels
+ * {@link DRAG_SLOP_PX}. `DragMode.begin` reads the selection during the same
+ * `pointerdown`, so narrowing there would leave it one key to carry and no
+ * group could ever be dragged.
  */
 export class InteractionManager {
   private readonly picker: PickerFn;
   private readonly emit: EmitFn;
   private readonly doubleClickMs: number;
+  private readonly getSelectionKeys: SelectionProvider;
   private hoverKey: string | null = null;
   private lastSelectKey: string | null = null;
   private lastSelectAt = 0;
+  private pendingSelect: PendingSelect | null = null;
 
   constructor(
     picker: PickerFn,
     emit: EmitFn,
+    getSelectionKeys: SelectionProvider,
     options: InteractionManagerOptions = {},
   ) {
     this.picker = picker;
     this.emit = emit;
+    this.getSelectionKeys = getSelectionKeys;
     this.doubleClickMs = options.doubleClickMs ?? DEFAULT_DOUBLE_CLICK_MS;
   }
 
   handlePointerMove(e: PointerEvent): void {
+    this.dropPendingSelectOnDrag(e);
     const key = this.hoverKeyAt(e.clientX, e.clientY);
     if (key !== this.hoverKey) {
       this.hoverKey = key;
@@ -105,6 +133,11 @@ export class InteractionManager {
   }
 
   handlePointerDown(e: PointerEvent): void {
+    // A new press supersedes any pending one. Several paths below return
+    // without ever reaching a release — an armed draw tool swallows the
+    // `pointerup` entirely — and a survivor would narrow the selection under
+    // whatever gesture came next.
+    this.pendingSelect = null;
     if (this.isPanModifier(e)) {
       return; // pan modifier — PanZoom owns it
     }
@@ -122,25 +155,76 @@ export class InteractionManager {
     this.lastSelectKey = key;
     this.lastSelectAt = now;
 
-    this.emit("select", {
-      key,
-      addToSelection: e.ctrlKey || e.metaKey,
-    });
+    const addToSelection = e.ctrlKey || e.metaKey;
+    // A second press within the window must keep emitting on the press, or
+    // the deferral would swallow the `doubleClick` that rides with it.
+    if (!addToSelection && !isDouble && this.isInMultiSelection(key)) {
+      this.pendingSelect = {
+        key,
+        pointerId: e.pointerId,
+        clientX: e.clientX,
+        clientY: e.clientY,
+      };
+      return;
+    }
+
+    this.emit("select", { key, addToSelection });
     if (isDouble) {
       this.emit("doubleClick", { key });
     }
   }
 
   handlePointerUp(e: PointerEvent): void {
-    if (e.button !== 2) {
+    if (e.button === 2) {
+      // The menu opens against the whole selection, so a deferred narrowing
+      // must not land on top of it once the primary button comes up.
+      this.pendingSelect = null;
+      const key = this.pickKey(e.clientX, e.clientY);
+      this.emit("contextMenu", {
+        key,
+        clientX: e.clientX,
+        clientY: e.clientY,
+      });
       return;
     }
-    const key = this.pickKey(e.clientX, e.clientY);
-    this.emit("contextMenu", {
-      key,
-      clientX: e.clientX,
-      clientY: e.clientY,
-    });
+    if (e.button !== 0) {
+      return;
+    }
+    const pending = this.takePendingSelect(e.pointerId);
+    if (pending !== null) {
+      this.emit("select", { key: pending.key, addToSelection: false });
+    }
+  }
+
+  /** A cancelled pointer is not a click — the deferred narrowing is dropped. */
+  handlePointerCancel(e: PointerEvent): void {
+    this.takePendingSelect(e.pointerId);
+  }
+
+  private isInMultiSelection(key: string): boolean {
+    const selection = this.getSelectionKeys();
+    return selection.length > 1 && selection.includes(key);
+  }
+
+  private takePendingSelect(pointerId: number): PendingSelect | null {
+    const pending = this.pendingSelect;
+    if (pending === null || pending.pointerId !== pointerId) {
+      return null;
+    }
+    this.pendingSelect = null;
+    return pending;
+  }
+
+  private dropPendingSelectOnDrag(e: PointerEvent): void {
+    const pending = this.pendingSelect;
+    if (pending === null || pending.pointerId !== e.pointerId) {
+      return;
+    }
+    const dx = e.clientX - pending.clientX;
+    const dy = e.clientY - pending.clientY;
+    if (dx * dx + dy * dy > DRAG_SLOP_PX * DRAG_SLOP_PX) {
+      this.pendingSelect = null;
+    }
   }
 
   /**
