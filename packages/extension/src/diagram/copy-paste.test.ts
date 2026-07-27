@@ -6,10 +6,12 @@ import {
   DiagramClipboard,
   PASTE_OFFSET,
   type ClipboardComponent,
+  type ClipboardConnection,
   type ClipboardEntry,
 } from "./clipboard.js";
 import {
   captureClipboardItems,
+  pastedSelectionKeys,
   pasteClipboardItems,
   uniquePasteName,
   type CopyClient,
@@ -120,6 +122,7 @@ function pasteClient(
     addComponent: (arg) => record("addComponent", arg),
     setElementModifierValue: (arg) => record("setElementModifierValue", arg),
     writeClassGraphics: (arg) => record("writeClassGraphics", arg),
+    addConnection: (arg) => record("addConnection", arg),
   };
 }
 
@@ -207,6 +210,220 @@ describe("captureClipboardItems", () => {
       "shape:ellipse:0",
     ]);
     expect(items).toEqual([]);
+  });
+});
+
+describe("captureClipboardItems: connections", () => {
+  /** `gain1 → gain2`, plus a wire out to a component that isn't copied. */
+  function wired(): DiagramLayout {
+    const base = layout();
+    return {
+      ...base,
+      components: {
+        ...base.components,
+        gain2: {
+          name: "gain2",
+          classRef: "Modelica.Blocks.Math.Gain",
+          placement: {
+            extent: [
+              [40, 0],
+              [60, 20],
+            ],
+          },
+        },
+        sink: {
+          name: "sink",
+          classRef: "Modelica.Blocks.Interfaces.RealInput",
+          placement: {
+            extent: [
+              [80, 0],
+              [100, 20],
+            ],
+          },
+        },
+      },
+      connections: [
+        {
+          lhs: { component: "gain1", port: "y" },
+          rhs: { component: "gain2", port: "u" },
+          waypoints: [
+            [20, 10],
+            [40, 10],
+          ],
+          color: [255, 0, 0],
+        },
+        {
+          lhs: { component: "gain2", port: "y" },
+          rhs: { component: "sink", port: "u" },
+          waypoints: [],
+        },
+      ],
+    };
+  }
+
+  it("carries a connection whose endpoints are both copied", async () => {
+    const items = await captureClipboardItems(copyClient(), wired(), [
+      "c:gain1",
+      "c:gain2",
+    ]);
+    expect(items.filter((i) => i.kind === "connection")).toEqual([
+      {
+        kind: "connection",
+        lhs: { component: "gain1", port: "y" },
+        rhs: { component: "gain2", port: "u" },
+        waypoints: [
+          [20, 10],
+          [40, 10],
+        ],
+        style: { color: [255, 0, 0] },
+      },
+    ]);
+  });
+
+  it("carries it even when the edge itself wasn't selected", async () => {
+    // Ctrl-clicking two components never sweeps the wire between them in.
+    const items = await captureClipboardItems(copyClient(), wired(), [
+      "c:gain1",
+      "c:gain2",
+    ]);
+    expect(items.some((i) => i.kind === "connection")).toBe(true);
+  });
+
+  it("drops a connection with one endpoint outside the copy", async () => {
+    const items = await captureClipboardItems(copyClient(), wired(), [
+      "c:gain2",
+      "c:sink",
+    ]);
+    // `gain2 → sink` is inside this copy; `gain1 → gain2` is not.
+    expect(items.filter((i) => i.kind === "connection")).toHaveLength(1);
+  });
+
+  it("carries nothing when a single component is copied", async () => {
+    const items = await captureClipboardItems(copyClient(), wired(), [
+      "c:gain1",
+    ]);
+    expect(items.every((i) => i.kind !== "connection")).toBe(true);
+  });
+});
+
+describe("pasteClipboardItems: connections", () => {
+  const connection: ClipboardConnection = {
+    kind: "connection",
+    lhs: { component: "gain1", port: "y" },
+    rhs: { component: "other", port: "u" },
+    waypoints: [
+      [20, 10],
+      [40, 10],
+    ],
+    style: { color: [255, 0, 0] },
+  };
+
+  it("rewires to the pasted components, not the copied ones", async () => {
+    const client = pasteClient();
+    const result = await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({ name: "gain1" }),
+        componentItem({ name: "other" }),
+        connection,
+      ],
+      "diagram",
+      PASTE_OFFSET,
+    );
+    expect(result.connections).toBe(1);
+    expect(client.calls.at(-1)).toEqual({
+      fn: "addConnection",
+      arg: {
+        from: "gain2.y",
+        to: "other1.u",
+        typeName: "Demo",
+        annotation: `Line(points={{${20 + PASTE_OFFSET},${10 + PASTE_OFFSET}},{${40 + PASTE_OFFSET},${10 + PASTE_OFFSET}}},color={255,0,0})`,
+      },
+    });
+  });
+
+  it("wires only after every component exists", async () => {
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({ name: "gain1" }),
+        connection,
+        componentItem({ name: "other" }),
+      ],
+      "diagram",
+      PASTE_OFFSET,
+    );
+    // The connection is listed before the second component, but a
+    // `connect()` naming a component OMC hasn't seen yet would be rejected.
+    expect(client.calls.map((c) => c.fn)).toEqual([
+      "addComponent",
+      "addComponent",
+      "addConnection",
+    ]);
+  });
+
+  it("skips a connection whose component was rejected, without reporting it", async () => {
+    const client = pasteClient((c) =>
+      c.fn === "addComponent" &&
+      (c.arg as { componentName: string }).componentName === "other1"
+        ? "rejected"
+        : null,
+    );
+    const result = await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({ name: "gain1" }),
+        componentItem({ name: "other" }),
+        connection,
+      ],
+      "diagram",
+      PASTE_OFFSET,
+    );
+    expect(result.connections).toBe(0);
+    expect(client.calls.some((c) => c.fn === "addConnection")).toBe(false);
+    // One failure — the rejected component. The wire it made impossible is
+    // not a second thing to tell the user about.
+    expect(result.failed).toHaveLength(1);
+  });
+});
+
+describe("pastedSelectionKeys", () => {
+  it("keys the pasted components so the fresh copy is what drags", () => {
+    const base = layout();
+    const connector = base.connectors.u;
+    if (connector === undefined) throw new Error("fixture lost its connector");
+    const after: DiagramLayout = {
+      ...base,
+      connectors: { ...base.connectors, u1: { ...connector, name: "u1" } },
+    };
+    expect(
+      pastedSelectionKeys(
+        after,
+        { added: ["gain2", "u1"], shapes: 0, connections: 0, failed: [] },
+        "diagram",
+      ),
+    ).toEqual(["c:gain2", "k:u1"]);
+  });
+
+  it("keys appended shapes by their tail position in the host layer", () => {
+    const after: DiagramLayout = {
+      ...layout(),
+      diagramLayers: [{ from: "Demo", shapes: [rect, rect, rect] }],
+    };
+    expect(
+      pastedSelectionKeys(
+        after,
+        { added: [], shapes: 2, connections: 0, failed: [] },
+        "diagram",
+      ),
+    ).toEqual(["shape:rectangle:1", "shape:rectangle:2"]);
   });
 });
 

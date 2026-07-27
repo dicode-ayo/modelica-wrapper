@@ -1,21 +1,34 @@
-import type { DiagramLayout, Placement, Shape } from "@dicode/omc-client";
+import type {
+  ConnectionEndpoint,
+  DiagramLayout,
+  Placement,
+  Shape,
+} from "@dicode/omc-client";
 
 import {
   offsetExtent,
+  offsetPoints,
   offsetShape,
   type ClipboardComponent,
+  type ClipboardConnection,
   type ClipboardEntry,
   type ClipboardModifier,
 } from "./clipboard.js";
-import { placementAnnotation, type GraphicsLayer } from "./diff-layout.js";
 import {
+  endpointToCref,
+  lineAnnotation,
+  placementAnnotation,
+  type GraphicsLayer,
+} from "./diff-layout.js";
+import {
+  formatEntityKey,
   isComponentKey,
   isConnectorKey,
   isShapeKey,
   parseEntityKey,
 } from "./entity-key.js";
 import { firstFreeName, takenNames } from "./open-diagram.js";
-import { lookupHostShape } from "./shape-properties.js";
+import { findHostLayer, lookupHostShape } from "./shape-properties.js";
 
 /** OMC surface the copy path needs: the modifiers authored on a declaration. */
 export interface CopyClient {
@@ -48,6 +61,12 @@ export interface PasteClient {
     typeName: string;
     layer: GraphicsLayer;
     op: { kind: "add"; shape: Shape };
+  }): Promise<MutationResult>;
+  addConnection(input: {
+    from: string;
+    to: string;
+    typeName: string;
+    annotation: string;
   }): Promise<MutationResult>;
 }
 
@@ -108,7 +127,35 @@ export async function captureClipboardItems(
       items.push({ kind: "shape", shape: found.shape });
     }
   }
+  items.push(...connectionsWithin(layout, items));
   return items;
+}
+
+/**
+ * The connections whose two endpoints are both components in `items`. Keyed off
+ * the copied set rather than the selection: a rubber band sweeps the edge in,
+ * but ctrl-clicking two components doesn't, and either way the user means to
+ * take the wire between them.
+ */
+function connectionsWithin(
+  layout: DiagramLayout,
+  items: readonly ClipboardEntry[],
+): ClipboardConnection[] {
+  const copied = new Set(
+    items.filter((i) => i.kind === "component").map((i) => i.name),
+  );
+  if (copied.size < 2) return [];
+  const inCopy = (endpoint: ConnectionEndpoint): boolean =>
+    endpoint.component !== undefined && copied.has(endpoint.component);
+  return layout.connections
+    .filter((c) => inCopy(c.lhs) && inCopy(c.rhs))
+    .map(({ lhs, rhs, waypoints, source: _source, ...style }) => ({
+      kind: "connection" as const,
+      lhs,
+      rhs,
+      waypoints,
+      style,
+    }));
 }
 
 async function captureComponent(
@@ -160,6 +207,8 @@ export interface PasteResult {
   added: string[];
   /** Shapes appended to the class's own graphics annotation. */
   shapes: number;
+  /** `connect()` equations added between the pasted components. */
+  connections: number;
   failed: string[];
 }
 
@@ -178,13 +227,22 @@ export async function pasteClipboardItems(
   layer: GraphicsLayer,
   offset: number,
 ): Promise<PasteResult> {
-  const result: PasteResult = { added: [], shapes: 0, failed: [] };
+  const result: PasteResult = {
+    added: [],
+    shapes: 0,
+    connections: 0,
+    failed: [],
+  };
   // The layout is not re-fetched between adds, so every name handed out is
   // recorded here — otherwise a two-component paste would ask for the same
   // free name twice.
   const taken = takenNames(layout);
+  // Copied instance name → the name it was actually pasted under, so the
+  // connections can be rewired to the new components rather than the originals.
+  const renamed = new Map<string, string>();
 
   for (const item of items) {
+    if (item.kind === "connection") continue;
     if (item.kind === "shape") {
       const write = await client.writeClassGraphics({
         typeName: hostClass,
@@ -209,11 +267,103 @@ export async function pasteClipboardItems(
       componentName,
       offset,
     );
-    if (outcome.declared) result.added.push(componentName);
-    else taken.delete(componentName);
+    if (outcome.declared) {
+      result.added.push(componentName);
+      renamed.set(item.name, componentName);
+    } else taken.delete(componentName);
     if (outcome.failure !== null) result.failed.push(outcome.failure);
   }
+
+  // After the components exist and their final names are known.
+  for (const item of items) {
+    if (item.kind !== "connection") continue;
+    const failure = await pasteConnection(
+      client,
+      hostClass,
+      item,
+      renamed,
+      offset,
+    );
+    if (failure === null) result.connections += 1;
+    else if (failure !== SKIPPED) result.failed.push(failure);
+  }
   return result;
+}
+
+/**
+ * Entity keys for what a paste just created, so the caller can hand the fresh
+ * copy to the webview as the live selection — the usual next action is to drag
+ * it somewhere, and hunting for it first is the annoying part.
+ *
+ * Resolved against the REFETCHED layout: an instance's key prefix depends on
+ * whether OMC filed it as a component or a standalone connector, and appended
+ * shapes are the tail of the host's own layer.
+ */
+export function pastedSelectionKeys(
+  layout: DiagramLayout,
+  result: PasteResult,
+  layer: GraphicsLayer,
+): string[] {
+  const keys = result.added.map((name) =>
+    formatEntityKey(
+      name in layout.connectors ? "connector" : "component",
+      name,
+    ),
+  );
+  const host = findHostLayer(
+    layer === "icon" ? layout.iconLayers : layout.diagramLayers,
+    layout.className,
+  );
+  const shapes = host?.shapes ?? [];
+  for (let i = shapes.length - result.shapes; i < shapes.length; i += 1) {
+    const shape = shapes[i];
+    if (shape !== undefined) {
+      keys.push(formatEntityKey("shape", `${shape.kind}:${i}`));
+    }
+  }
+  return keys;
+}
+
+/** A connection whose endpoints didn't both survive isn't a failure to report. */
+const SKIPPED = Symbol("skipped");
+
+async function pasteConnection(
+  client: PasteClient,
+  hostClass: string,
+  item: ClipboardConnection,
+  renamed: ReadonlyMap<string, string>,
+  offset: number,
+): Promise<string | null | typeof SKIPPED> {
+  const lhs = remapEndpoint(item.lhs, renamed);
+  const rhs = remapEndpoint(item.rhs, renamed);
+  if (lhs === null || rhs === null) return SKIPPED;
+  const from = endpointToCref(lhs);
+  const to = endpointToCref(rhs);
+  const add = await client.addConnection({
+    from,
+    to,
+    typeName: hostClass,
+    annotation: lineAnnotation(
+      offsetPoints(item.waypoints, offset),
+      item.style,
+    ),
+  });
+  return add.success
+    ? null
+    : `paste connect(${from}, ${to}): ${add.diagnostic ?? "OMC rejected addConnection"}`;
+}
+
+/** `null` when the endpoint's component wasn't pasted (its add was rejected). */
+function remapEndpoint(
+  endpoint: ConnectionEndpoint,
+  renamed: ReadonlyMap<string, string>,
+): ConnectionEndpoint | null {
+  const component =
+    endpoint.component === undefined
+      ? undefined
+      : renamed.get(endpoint.component);
+  if (component === undefined) return null;
+  return { ...endpoint, component };
 }
 
 /**

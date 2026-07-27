@@ -92,6 +92,12 @@ export type ExtensionToWebview =
     }
   | { type: "layout"; layout: DiagramLayout }
   | { type: "clipboard"; hasClipboard: boolean }
+  | {
+      // Replace the webview's selection — sent after a paste so the fresh
+      // components are the ones under the next drag.
+      type: "select";
+      keys: string[];
+    }
   | { type: "error"; message: string }
   | {
       type: "renderError";

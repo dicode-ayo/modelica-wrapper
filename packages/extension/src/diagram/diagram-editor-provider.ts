@@ -24,7 +24,11 @@ import {
   type ClipboardEntry,
   type DiagramClipboard,
 } from "./clipboard.js";
-import { captureClipboardItems, pasteClipboardItems } from "./copy-paste.js";
+import {
+  captureClipboardItems,
+  pastedSelectionKeys,
+  pasteClipboardItems,
+} from "./copy-paste.js";
 import {
   defaultScheduler,
   isReadOnlyDocument,
@@ -705,6 +709,7 @@ export class DiagramEditController {
   private async onPaste(): Promise<void> {
     if (this.rejectIfReadOnly()) return;
     const { client, className, clipboard } = this.deps;
+    const layer = this.mode === "icon" ? "icon" : "diagram";
     try {
       const items = await this.pasteableItems(clipboard.read());
       if (items.length === 0) return;
@@ -713,7 +718,7 @@ export class DiagramEditController {
         className,
         this.prevLayout,
         items,
-        this.mode === "icon" ? "icon" : "diagram",
+        layer,
         clipboard.nextOffset(className),
       );
       if (result.failed.length > 0) {
@@ -725,7 +730,14 @@ export class DiagramEditController {
       // half-applied paste still changed the source, and skipping the reflect
       // would leave it with no undo step and `prevLayout` out of date.
       if (result.added.length === 0 && result.shapes === 0) return;
-      await this.reflect(await this.refetch(client, className));
+      const layout = await this.refetch(client, className);
+      await this.reflect(layout);
+      // After the reflect: the layout push it sends would otherwise re-key the
+      // webview's selection out from under this one.
+      this.deps.gate.send({
+        type: "select",
+        keys: pastedSelectionKeys(layout, result, layer),
+      });
     } catch (err) {
       this.reportError(`paste failed: ${(err as Error).message}`);
     }
@@ -744,6 +756,9 @@ export class DiagramEditController {
     const verdicts = new Map<string, boolean>();
     const allowed: ClipboardEntry[] = [];
     for (const item of items) {
+      // An icon has no connect() equations; a dropped connection is silent
+      // rather than an error, since the user copied components, not wires.
+      if (item.kind === "connection") continue;
       if (item.kind === "shape") {
         allowed.push(item);
         continue;

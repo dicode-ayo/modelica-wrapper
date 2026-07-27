@@ -1,4 +1,10 @@
-import type { Extent, Shape } from "@dicode/omc-client";
+import type {
+  ConnectionEndpoint,
+  Extent,
+  LineStyle,
+  Point,
+  Shape,
+} from "@dicode/omc-client";
 
 /**
  * Diagram units each successive paste of one copy is offset by, so repeated
@@ -40,7 +46,26 @@ export interface ClipboardShape {
   shape: Shape;
 }
 
-export type ClipboardEntry = ClipboardComponent | ClipboardShape;
+/**
+ * A `connect()` equation between two copied components. Carried whenever BOTH
+ * of its endpoints are in the copy, whether or not the edge itself was
+ * selected — a group copy that arrived with no wires would be worth little.
+ *
+ * Endpoints name instances by their pre-paste names; paste remaps them to
+ * whatever each component was actually renamed to.
+ */
+export interface ClipboardConnection {
+  kind: "connection";
+  lhs: ConnectionEndpoint;
+  rhs: ConnectionEndpoint;
+  waypoints: readonly Point[];
+  style: LineStyle;
+}
+
+export type ClipboardEntry =
+  | ClipboardComponent
+  | ClipboardShape
+  | ClipboardConnection;
 
 /**
  * The diagram clipboard, shared by every open diagram/icon editor in the
@@ -96,4 +121,12 @@ export function offsetExtent(extent: Extent, d: number): Extent {
 export function offsetShape(shape: Shape, d: number): Shape {
   const [ox, oy] = shape.origin ?? [0, 0];
   return { ...shape, origin: [ox + d, oy + d] };
+}
+
+/** Translate a connection route by `(d, d)`, so it still meets its ports. */
+export function offsetPoints(
+  points: readonly Point[],
+  d: number,
+): Array<[number, number]> {
+  return points.map(([x, y]) => [x + d, y + d]);
 }

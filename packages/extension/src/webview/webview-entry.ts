@@ -217,6 +217,9 @@ class OmWebviewRoot extends LitElement {
       case "clipboard":
         this.hasClipboard = message.hasClipboard;
         return;
+      case "select":
+        this.diagram?.setSelection(message.keys);
+        return;
       case "layout":
         this.layout = message.layout;
         this.renderError = null;
