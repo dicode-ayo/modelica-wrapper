@@ -760,21 +760,27 @@ describe("diffLayouts — graphics", () => {
     const b = rect(20);
     const c = rect(40);
 
-    /** The array a `graphicsReordered` edit produces from `before`. */
-    function applyMove(
-      before: readonly RectangleShape[],
-      edit: LayoutEdit,
-    ): RectangleShape[] {
-      if (edit.kind !== "graphicsReordered") {
-        throw new Error(`expected graphicsReordered, got ${edit.kind}`);
-      }
-      const out = [...before];
-      const [moved] = out.splice(edit.from, 1);
-      if (moved === undefined) {
-        throw new Error(`from index ${edit.from} out of range`);
-      }
-      out.splice(edit.to, 0, moved);
+    /**
+     * Deliberately a hand-rolled splice rather than `moveWithin` from
+     * @dicode/omc-client: this is the oracle the production move is checked
+     * against, and sharing the implementation would make it tautological.
+     */
+    function applyMove<T>(arr: readonly T[], from: number, to: number): T[] {
+      const out = [...arr];
+      const [moved] = out.splice(from, 1);
+      if (moved === undefined) throw new Error(`from index ${from} invalid`);
+      out.splice(to, 0, moved);
       return out;
+    }
+
+    /** The sole reorder a diff produced; fails loudly on any other shape. */
+    function soleReorder(edits: LayoutEdit[]): { from: number; to: number } {
+      expect(edits).toHaveLength(1);
+      const edit = edits[0];
+      if (edit?.kind !== "graphicsReordered") {
+        throw new Error(`expected graphicsReordered, got ${edit?.kind}`);
+      }
+      return { from: edit.from, to: edit.to };
     }
 
     it("emits one graphicsReordered for a send-to-back instead of N modifies", () => {
@@ -796,13 +802,10 @@ describe("diffLayouts — graphics", () => {
     it("emits one graphicsReordered for an adjacent swap", () => {
       // A two-element swap has two equally correct encodings (0→1 and 1→0),
       // so pin the array it produces rather than one arbitrary pair.
-      const edits = diffLayouts(withIcon([a, b, c]), withIcon([b, a, c]));
-      expect(edits).toHaveLength(1);
-      const edit = edits[0];
-      expect(edit?.kind).toBe("graphicsReordered");
-      if (edit) {
-        expect(applyMove([a, b, c], edit)).toEqual([b, a, c]);
-      }
+      const { from, to } = soleReorder(
+        diffLayouts(withIcon([a, b, c]), withIcon([b, a, c])),
+      );
+      expect(applyMove([a, b, c], from, to)).toEqual([b, a, c]);
     });
 
     it("reorders the diagram layer independently of the icon layer", () => {
@@ -815,15 +818,38 @@ describe("diffLayouts — graphics", () => {
         diagramLayers: [{ from: "T", shapes: [b, a] }],
       };
       const edits = diffLayouts(prev, next);
-      expect(edits).toHaveLength(1);
-      const edit = edits[0];
-      expect(edit).toMatchObject({
+      expect(edits[0]).toMatchObject({
         kind: "graphicsReordered",
         layer: "diagram",
       });
-      if (edit) {
-        expect(applyMove([a, b], edit)).toEqual([b, a]);
-      }
+      const { from, to } = soleReorder(edits);
+      expect(applyMove([a, b], from, to)).toEqual([b, a]);
+    });
+
+    it("emits a reorder alongside another layer's add, each layer-scoped", () => {
+      // `editRank` puts a reorder last on the claim that nothing in the batch
+      // shifts the indices it addresses. That holds because indices are
+      // layer-scoped, not because a reorder is emitted alone.
+      const prev: DiagramLayout = {
+        ...baseLayout(),
+        iconLayers: [{ from: "T", shapes: [a, b] }],
+        diagramLayers: [{ from: "T", shapes: [c] }],
+      };
+      const next: DiagramLayout = {
+        ...baseLayout(),
+        iconLayers: [{ from: "T", shapes: [b, a] }],
+        diagramLayers: [{ from: "T", shapes: [c, rect(99)] }],
+      };
+      const edits = diffLayouts(prev, next);
+      expect(edits).toHaveLength(2);
+      expect(edits).toContainEqual({
+        kind: "graphicsAdded",
+        layer: "diagram",
+        shape: rect(99),
+      });
+      const reorders = edits.filter((e) => e.kind === "graphicsReordered");
+      expect(reorders).toHaveLength(1);
+      expect(reorders[0]).toMatchObject({ layer: "icon" });
     });
 
     it("falls back to modifies when the change is not a permutation", () => {
@@ -839,33 +865,16 @@ describe("diffLayouts — graphics", () => {
       // which is only obviously exhaustive for a move at one of those ends.
       // Enumerate instead: every single move must be found, and any move
       // reported for an arbitrary permutation must reproduce it exactly.
-      const applyMove = <T>(
-        arr: readonly T[],
-        from: number,
-        to: number,
-      ): T[] => {
-        const out = [...arr];
-        const [moved] = out.splice(from, 1);
-        if (moved === undefined) throw new Error("bad from index");
-        out.splice(to, 0, moved);
-        return out;
-      };
-
       for (let n = 2; n <= 6; n += 1) {
         const shapes = Array.from({ length: n }, (_, i) => rect(i * 10));
         for (let from = 0; from < n; from += 1) {
           for (let to = 0; to < n; to += 1) {
             const after = applyMove(shapes, from, to);
             if (after.every((s, i) => s === shapes[i])) continue;
-            const edits = diffLayouts(withIcon(shapes), withIcon(after));
-            expect(edits).toHaveLength(1);
-            const edit = edits[0];
-            if (edit?.kind !== "graphicsReordered") {
-              throw new Error(
-                `expected graphicsReordered for ${from}->${to} of ${n}, got ${edit?.kind}`,
-              );
-            }
-            expect(applyMove(shapes, edit.from, edit.to)).toEqual(after);
+            const move = soleReorder(
+              diffLayouts(withIcon(shapes), withIcon(after)),
+            );
+            expect(applyMove(shapes, move.from, move.to)).toEqual(after);
           }
         }
       }

@@ -25,7 +25,7 @@
 import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
-import { ShapeSchema } from "../../_shared/diagramLayout.js";
+import { ShapeSchema, moveWithin } from "../../_shared/diagramLayout.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
 import {
   annotationCoordinateSystem,
@@ -116,11 +116,11 @@ export async function writeClassGraphics(
   if (op.kind === "add") {
     shapes.push(op.shape);
   } else if (op.kind === "reorder") {
-    if (op.from >= shapes.length) throw outOfRange(op.from);
-    if (op.to >= shapes.length) throw outOfRange(op.to);
-    const [moved] = shapes.splice(op.from, 1);
-    if (moved === undefined) throw outOfRange(op.from);
-    shapes.splice(op.to, 0, moved);
+    const moved = moveWithin(shapes, op.from, op.to);
+    if (moved === null) {
+      throw outOfRange(op.from >= shapes.length ? op.from : op.to);
+    }
+    shapes.splice(0, shapes.length, ...moved);
   } else {
     if (op.index >= shapes.length) throw outOfRange(op.index);
     if (op.kind === "modify") shapes[op.index] = op.shape;

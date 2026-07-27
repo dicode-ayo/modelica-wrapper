@@ -923,9 +923,7 @@ export function zOrderTarget(
       ? count - 1
       : move === "back"
         ? 0
-        : move === "forward"
-          ? from + 1
-          : from - 1;
+        : from + (move === "forward" ? 1 : -1);
   return to === from || to < 0 || to >= count ? null : to;
 }
 
@@ -940,9 +938,15 @@ export function applyShapeReorder(
     return layout;
   }
   const count = own.shapes.length;
-  if (from < 0 || from >= count || to < 0 || to >= count) {
+  if (!Number.isInteger(from) || from < 0 || from >= count) {
     return layout;
   }
+  if (!Number.isInteger(to) || to < 0 || to >= count) {
+    return layout;
+  }
+  // `moveWithin` in @dicode/omc-client is the same splice, but importing a
+  // value from that package's root pulls the zeromq transport into the webview
+  // bundle. Only `pnpm build` catches that, so the move stays local here.
   const shapes = [...own.shapes];
   const [moved] = shapes.splice(from, 1);
   if (moved === undefined) {

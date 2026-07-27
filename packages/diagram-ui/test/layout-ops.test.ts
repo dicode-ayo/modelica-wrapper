@@ -1509,7 +1509,9 @@ describe("z-order", () => {
       expect(zOrderTarget("front", 3, 3)).toBeNull();
       expect(zOrderTarget("front", -1, 3)).toBeNull();
       expect(zOrderTarget("front", 0, 0)).toBeNull();
-      expect(zOrderTarget("front", 1.5, 3)).toBeNull();
+      // `parseShapeId` fails closed to NaN for a malformed key, so NaN is the
+      // reachable non-integer here — not a fractional index.
+      expect(zOrderTarget("front", Number.NaN, 3)).toBeNull();
     });
   });
 

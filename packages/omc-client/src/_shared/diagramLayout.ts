@@ -613,3 +613,37 @@ const DiagramLayoutObject = z
   .strict();
 export const DiagramLayoutSchema =
   DiagramLayoutObject as unknown as z.ZodType<DiagramLayout>;
+
+/**
+ * `arr` with the element at `from` moved to `to`, or `null` when either index
+ * is outside the array. Removal happens before insertion, so `to` is the
+ * element's index in the *result*, not in the input — moving 0→2 of [A,B,C]
+ * gives [B,C,A].
+ *
+ * A layer's graphics array is painted in order, so this is the whole of a
+ * z-order change; it is shared because the layout op, the layout differ and
+ * the annotation write all have to agree on those index semantics.
+ */
+export function moveWithin<T>(
+  arr: readonly T[],
+  from: number,
+  to: number,
+): T[] | null {
+  if (
+    !Number.isInteger(from) ||
+    !Number.isInteger(to) ||
+    from < 0 ||
+    to < 0 ||
+    from >= arr.length ||
+    to >= arr.length
+  ) {
+    return null;
+  }
+  const out = [...arr];
+  const [moved] = out.splice(from, 1);
+  if (moved === undefined) {
+    return null;
+  }
+  out.splice(to, 0, moved);
+  return out;
+}

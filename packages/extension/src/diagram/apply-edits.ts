@@ -143,8 +143,9 @@ function order(e: LayoutEdit): number {
       return 6;
     case "graphicsAdded":
       return 7;
-    // A reorder is emitted only when it alone explains the layer's change, so
-    // it never shares a batch with the index-shifting kinds above.
+    // Indices are layer-scoped and a reorder is the only graphics edit its
+    // own layer emits, so nothing in the batch shifts the indices it
+    // addresses — the other layer's adds and deletes are free to co-occur.
     case "graphicsReordered":
       return 8;
   }

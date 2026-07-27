@@ -356,6 +356,15 @@ describe("z-order commands", () => {
     expect(none.committed).toHaveLength(0);
   });
 
+  it("does not commit for a malformed shape key", () => {
+    // `parseShapeId` fails closed to NaN rather than throwing, so the index
+    // guard is what stops a bad key reaching the array.
+    const t = spyTarget(shaped(), ["shape:rectangle:x"]);
+    command("diagram.bringToFront").run(t);
+    expect(t.committed).toHaveLength(0);
+    expect(t.selections).toHaveLength(0);
+  });
+
   it("gates on exactly one selected shape, and never read-only", () => {
     const ids = [
       "diagram.bringToFront",
