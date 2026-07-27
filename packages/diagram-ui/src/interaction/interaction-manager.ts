@@ -46,22 +46,23 @@ const DEFAULT_DOUBLE_CLICK_MS = 350;
 const DRAG_SLOP_PX = 3;
 
 /**
- * A press on a member of a multi-selection, awaiting its release. Only one is
- * ever held: `pointerId` is a staleness guard so a release from an unrelated
- * pointer can't claim it, not multi-pointer support. A second pointer pressing
- * another member supersedes the first, whose narrowing is then dropped.
+ * The still-down press being watched, keyed to the pointer that made it. Only
+ * one is ever held: `pointerId` is a staleness guard so a release (or move)
+ * from an unrelated pointer can't claim or disturb it, not multi-pointer
+ * support. A second pointer pressing another member supersedes the first,
+ * whose tracking is then abandoned.
  */
-interface PendingSelect {
-  key: string;
-  pointerId: number;
-}
-
-/** The still-down press being watched for drag travel, keyed to the pointer
- *  that made it — used to tell a click from a drag's initial press. */
-interface PressOrigin {
+interface TrackedPress {
   pointerId: number;
   clientX: number;
   clientY: number;
+  /**
+   * Set when this press is on a member of a multi-selection, deferring its
+   * `select` to the release — narrowing only if the press turns out to be a
+   * plain click rather than the start of a group drag. `null` for a press
+   * whose `select` already fired on the down.
+   */
+  deferredKey: string | null;
 }
 
 /**
@@ -86,7 +87,13 @@ interface PressOrigin {
  * Every select-eligible press is watched the same way for drag travel, not
  * just a deferred one: a press that moves past {@link DRAG_SLOP_PX} before
  * release was a drag, not a click, so it must not arm the double-click window
- * for whatever gets clicked next.
+ * for whatever gets clicked next. The same holds for a press that never
+ * resolves into a release at all — cancelled, or superseded by a press that
+ * hits nothing (an armed draw tool can swallow a `pointerup` before it
+ * reaches here, leaving the next press to notice the leftover). A press on a
+ * *different* button (e.g. a right-click while the primary is still held)
+ * does not touch it — that press was never a candidate for tracking, and the
+ * primary's own drag is still worth watching through the interruption.
  */
 export class InteractionManager {
   private readonly picker: PickerFn;
@@ -96,8 +103,7 @@ export class InteractionManager {
   private hoverKey: string | null = null;
   private lastSelectKey: string | null = null;
   private lastSelectAt = 0;
-  private pendingSelect: PendingSelect | null = null;
-  private pressOrigin: PressOrigin | null = null;
+  private trackedPress: TrackedPress | null = null;
 
   constructor(
     picker: PickerFn,
@@ -145,21 +151,21 @@ export class InteractionManager {
   }
 
   handlePointerDown(e: PointerEvent): void {
-    // A new press supersedes any pending one. Several paths below return
-    // without ever reaching a release — an armed draw tool swallows the
-    // `pointerup` entirely — and a survivor would narrow the selection under
-    // whatever gesture came next, or have `trackPressTravel` compare a later,
-    // unrelated pointer move against a press that never actually released.
-    this.pendingSelect = null;
-    this.pressOrigin = null;
     if (this.isPanModifier(e)) {
       return; // pan modifier — PanZoom owns it
     }
     if (e.button !== 0) {
+      // A different button, most notably a right-click while the primary is
+      // still held: not a candidate for tracking itself, and must leave the
+      // primary press's tracking alone rather than abandon it.
       return;
     }
     const key = this.pickKey(e.clientX, e.clientY);
     if (key === null) {
+      // A primary press that hits nothing still supersedes whatever was
+      // being watched, the same as a hit does below — it just has nothing
+      // of its own to start tracking in its place.
+      this.abandonPress();
       return;
     }
     const now = performance.now();
@@ -168,17 +174,18 @@ export class InteractionManager {
       now - this.lastSelectAt < this.doubleClickMs;
     this.lastSelectKey = key;
     this.lastSelectAt = now;
-    this.pressOrigin = {
-      pointerId: e.pointerId,
-      clientX: e.clientX,
-      clientY: e.clientY,
-    };
 
     const addToSelection = e.ctrlKey || e.metaKey;
     // A second press within the window must keep emitting on the press, or
     // the deferral would swallow the `doubleClick` that rides with it.
-    if (!addToSelection && !isDouble && this.isInMultiSelection(key)) {
-      this.pendingSelect = { key, pointerId: e.pointerId };
+    const defer = !addToSelection && !isDouble && this.isInMultiSelection(key);
+    this.trackedPress = {
+      pointerId: e.pointerId,
+      clientX: e.clientX,
+      clientY: e.clientY,
+      deferredKey: defer ? key : null,
+    };
+    if (defer) {
       return;
     }
 
@@ -191,8 +198,12 @@ export class InteractionManager {
   handlePointerUp(e: PointerEvent): void {
     if (e.button === 2) {
       // The menu opens against the whole selection, so a deferred narrowing
-      // must not land on top of it once the primary button comes up.
-      this.pendingSelect = null;
+      // must not land on top of it once the primary button comes up. A press
+      // tracked only for its own drag is a different press's business — it
+      // keeps watching through this interruption rather than being dropped.
+      if (this.trackedPress?.deferredKey !== null) {
+        this.trackedPress = null;
+      }
       const key = this.pickKey(e.clientX, e.clientY);
       this.emit("contextMenu", {
         key,
@@ -204,17 +215,18 @@ export class InteractionManager {
     if (e.button !== 0) {
       return;
     }
-    this.clearPressOrigin(e.pointerId);
-    const pending = this.takePendingSelect(e.pointerId);
-    if (pending !== null) {
-      this.emit("select", { key: pending.key, addToSelection: false });
+    const press = this.takeTrackedPress(e.pointerId);
+    if (press !== null && press.deferredKey !== null) {
+      this.emit("select", { key: press.deferredKey, addToSelection: false });
     }
   }
 
-  /** A cancelled pointer is not a click — the deferred narrowing is dropped. */
+  /** A cancelled pointer is not a click — neither the deferred narrowing nor
+   *  the double-click window it was arming survives it. */
   handlePointerCancel(e: PointerEvent): void {
-    this.clearPressOrigin(e.pointerId);
-    this.takePendingSelect(e.pointerId);
+    if (this.trackedPress?.pointerId === e.pointerId) {
+      this.abandonPress();
+    }
   }
 
   private isInMultiSelection(key: string): boolean {
@@ -222,39 +234,44 @@ export class InteractionManager {
     return selection.length > 1 && selection.includes(key);
   }
 
-  private takePendingSelect(pointerId: number): PendingSelect | null {
-    const pending = this.pendingSelect;
-    if (pending === null || pending.pointerId !== pointerId) {
+  private takeTrackedPress(pointerId: number): TrackedPress | null {
+    const press = this.trackedPress;
+    if (press === null || press.pointerId !== pointerId) {
       return null;
     }
-    this.pendingSelect = null;
-    return pending;
+    this.trackedPress = null;
+    return press;
   }
 
   /**
    * Watches the tracked press for drag travel. Past the slop, it was a drag,
-   * not a click: drop any deferred narrowing it armed, and forget it as
-   * `lastSelectKey` so it can't pair with a later click to fake a double.
+   * not a click.
    */
   private trackPressTravel(e: PointerEvent): void {
-    const origin = this.pressOrigin;
-    if (origin === null || origin.pointerId !== e.pointerId) {
+    const press = this.trackedPress;
+    if (press === null || press.pointerId !== e.pointerId) {
       return;
     }
-    const dx = e.clientX - origin.clientX;
-    const dy = e.clientY - origin.clientY;
+    const dx = e.clientX - press.clientX;
+    const dy = e.clientY - press.clientY;
     if (dx * dx + dy * dy <= DRAG_SLOP_PX * DRAG_SLOP_PX) {
       return;
     }
-    this.pressOrigin = null;
-    this.pendingSelect = null;
-    this.lastSelectKey = null;
+    this.abandonPress();
   }
 
-  private clearPressOrigin(pointerId: number): void {
-    if (this.pressOrigin?.pointerId === pointerId) {
-      this.pressOrigin = null;
+  /**
+   * A press that ends without ever resolving into a release was not a
+   * click: drop whatever it deferred, and forget it as `lastSelectKey` so it
+   * can't pair with a later click to fake a double.
+   */
+  private abandonPress(): void {
+    if (this.trackedPress === null) {
+      return;
     }
+    this.trackedPress = null;
+    this.lastSelectKey = null;
+    this.lastSelectAt = 0;
   }
 
   /**

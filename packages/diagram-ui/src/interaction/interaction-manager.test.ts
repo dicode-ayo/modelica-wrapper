@@ -48,31 +48,46 @@ function pointerEvent(
   return event;
 }
 
-interface Recorded {
-  type: keyof InteractionEvents;
-  detail: InteractionEvents[keyof InteractionEvents];
-}
+type Recorded = {
+  [K in keyof InteractionEvents]: { type: K; detail: InteractionEvents[K] };
+}[keyof InteractionEvents];
 
 function makeManager(opts: {
   target: Container | null;
   selection?: string[];
-}): { manager: InteractionManager; events: Recorded[] } {
+}): {
+  manager: InteractionManager;
+  events: Recorded[];
+  setTarget: (target: Container | null) => void;
+} {
   const events: Recorded[] = [];
+  // EmitFn's generic K correlates type/detail at the call site, but TS can't
+  // carry that through into a destructured object literal — the pairing is
+  // still guaranteed by the signature, just not provable here.
   const emit: EmitFn = (type, detail) => {
-    events.push({ type, detail });
+    events.push({ type, detail } as Recorded);
   };
-  const picker: PickerFn = () => opts.target;
+  let target = opts.target;
+  const picker: PickerFn = () => target;
   const getSelectionKeys: SelectionProvider = () => opts.selection ?? [];
   const manager = new InteractionManager(picker, emit, getSelectionKeys, {
     doubleClickMs: DOUBLE_CLICK_MS,
   });
-  return { manager, events };
+  return {
+    manager,
+    events,
+    setTarget: (next) => {
+      target = next;
+    },
+  };
 }
 
 function selectEvents(events: Recorded[]): InteractionEvents["select"][] {
   return events
-    .filter((e) => e.type === "select")
-    .map((e) => e.detail as InteractionEvents["select"]);
+    .filter(
+      (e): e is Extract<Recorded, { type: "select" }> => e.type === "select",
+    )
+    .map((e) => e.detail);
 }
 
 function doubleClickCount(events: Recorded[]): number {
@@ -135,20 +150,24 @@ describe("InteractionManager", () => {
     expect(doubleClickCount(events)).toBe(0);
   });
 
-  describe("press-drag then click (#383)", () => {
+  describe("press-drag then click", () => {
     it("does not arm a spurious double click after a press that drags away and back", () => {
       const a = componentNode("A");
       const { manager, events } = makeManager({ target: a });
 
-      // Press, drag well past the slop, release — a move-drag, not a click.
+      // Press, drag well past the slop and back to the start, release — a
+      // move-drag, not a click, regardless of where it ends up.
       manager.handlePointerDown(
         pointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
       );
       manager.handlePointerMove(
         pointerEvent("pointermove", { clientX: 50, clientY: 50 }),
       );
+      manager.handlePointerMove(
+        pointerEvent("pointermove", { clientX: 0, clientY: 0 }),
+      );
       manager.handlePointerUp(
-        pointerEvent("pointerup", { clientX: 50, clientY: 50 }),
+        pointerEvent("pointerup", { clientX: 0, clientY: 0 }),
       );
 
       // A stationary click on the same entity, within the window.
@@ -206,35 +225,27 @@ describe("InteractionManager", () => {
       expect(doubleClickCount(events)).toBe(1);
     });
 
-    it("clears a leftover press origin on the next pointerdown, even a miss", () => {
+    it("does not count a press abandoned without a release toward a double click", () => {
       // A draw tool armed mid-press swallows the pointerup (ModeRouter routes
       // release to the tool instead of the InteractionManager), so a press
-      // can be abandoned without ever reaching handlePointerUp.
+      // can be abandoned without ever reaching handlePointerUp. Whatever that
+      // press became, it wasn't observed to be a click, so it must not pair
+      // with a later click to fake a double.
       const a = componentNode("A");
-      let target: Container | null = a;
-      const events: Recorded[] = [];
-      const emit: EmitFn = (type, detail) => {
-        events.push({ type, detail });
-      };
-      const manager = new InteractionManager(
-        () => target,
-        emit,
-        () => [],
-        { doubleClickMs: DOUBLE_CLICK_MS },
-      );
+      const { manager, events, setTarget } = makeManager({ target: a });
 
       manager.handlePointerDown(
         pointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
       );
 
-      // The next press misses everything, but must still clear the leftover
-      // origin — otherwise a later, unrelated move would invalidate the
-      // click above via a press that never actually released.
-      target = null;
+      // The next press misses everything, but must still abandon the
+      // previous one — otherwise a later, unrelated move would compare
+      // against a press that never actually released.
+      setTarget(null);
       manager.handlePointerDown(
         pointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
       );
-      target = a;
+      setTarget(a);
       manager.handlePointerMove(
         pointerEvent("pointermove", { clientX: 999, clientY: 999 }),
       );
@@ -242,7 +253,46 @@ describe("InteractionManager", () => {
       now += 50;
       manager.handlePointerDown(pointerEvent("pointerdown"));
 
-      expect(doubleClickCount(events)).toBe(1);
+      expect(doubleClickCount(events)).toBe(0);
+    });
+
+    it("does not count a cancelled press toward a double click", () => {
+      const a = componentNode("A");
+      const { manager, events } = makeManager({ target: a });
+
+      manager.handlePointerDown(pointerEvent("pointerdown"));
+      manager.handlePointerCancel(pointerEvent("pointercancel"));
+
+      now += 50;
+      manager.handlePointerDown(pointerEvent("pointerdown"));
+      manager.handlePointerUp(pointerEvent("pointerup"));
+
+      expect(doubleClickCount(events)).toBe(0);
+    });
+
+    it("does not count a press interrupted by a secondary press toward a double click", () => {
+      // A right-click while the primary button is still held (e.g. to open
+      // the context menu mid-drag) must retire the primary press too — it
+      // never resolved into a release of its own.
+      const a = componentNode("A");
+      const { manager, events } = makeManager({ target: a });
+
+      manager.handlePointerDown(
+        pointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
+      );
+      manager.handlePointerDown(pointerEvent("pointerdown", { button: 2 }));
+      manager.handlePointerUp(pointerEvent("pointerup", { button: 2 }));
+      manager.handlePointerMove(
+        pointerEvent("pointermove", { clientX: 80, clientY: 0 }),
+      );
+      manager.handlePointerUp(
+        pointerEvent("pointerup", { clientX: 80, clientY: 0 }),
+      );
+
+      now += 50;
+      manager.handlePointerDown(pointerEvent("pointerdown"));
+
+      expect(doubleClickCount(events)).toBe(0);
     });
   });
 
