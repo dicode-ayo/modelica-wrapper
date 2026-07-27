@@ -89,8 +89,17 @@ test("right-click selects the clicked component and opens its menu", async ({
   await page.mouse.click(centre.x, centre.y, { button: "right" });
 
   expect(await selection(page)).toContain(`c:${name}`);
-  // delete, rotate cw/ccw, flip h/v, and change-class for a single component.
-  await expect(page.locator("om-context-menu button")).toHaveCount(6);
+  // Naming them beats counting them: a count says nothing about which command
+  // went missing, and every added command breaks it without saying why.
+  await expect(page.locator("om-context-menu button")).toHaveText([
+    "Copy",
+    "Delete",
+    "Rotate clockwise",
+    "Rotate counterclockwise",
+    "Flip horizontal",
+    "Flip vertical",
+    "Change class…",
+  ]);
 });
 
 test("right-click on empty space clears the selection and shows no menu", async ({
