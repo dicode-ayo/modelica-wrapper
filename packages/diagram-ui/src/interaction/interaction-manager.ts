@@ -38,12 +38,6 @@ export type EmitFn = <K extends keyof InteractionEvents>(
 
 export interface InteractionManagerOptions {
   doubleClickMs?: number;
-  /**
-   * The live selection. Needed to tell a press that *starts* a group drag
-   * from one that narrows the selection: without it every press narrows
-   * immediately, which is indistinguishable from having no multi-selection.
-   */
-  getSelectionKeys?: SelectionProvider;
 }
 
 const DEFAULT_DOUBLE_CLICK_MS = 350;
@@ -51,7 +45,12 @@ const DEFAULT_DOUBLE_CLICK_MS = 350;
 /** Pointer travel that makes a press a drag rather than a click. */
 const DRAG_SLOP_PX = 3;
 
-/** A press on a member of a multi-selection, awaiting its release. */
+/**
+ * A press on a member of a multi-selection, awaiting its release. Only one is
+ * ever held: `pointerId` is a staleness guard so a release from an unrelated
+ * pointer can't claim it, not multi-pointer support. A second pointer pressing
+ * another member supersedes the first, whose narrowing is then dropped.
+ */
 interface PendingSelect {
   key: string;
   pointerId: number;
@@ -91,12 +90,13 @@ export class InteractionManager {
   constructor(
     picker: PickerFn,
     emit: EmitFn,
+    getSelectionKeys: SelectionProvider,
     options: InteractionManagerOptions = {},
   ) {
     this.picker = picker;
     this.emit = emit;
+    this.getSelectionKeys = getSelectionKeys;
     this.doubleClickMs = options.doubleClickMs ?? DEFAULT_DOUBLE_CLICK_MS;
-    this.getSelectionKeys = options.getSelectionKeys ?? (() => []);
   }
 
   handlePointerMove(e: PointerEvent): void {
@@ -133,6 +133,11 @@ export class InteractionManager {
   }
 
   handlePointerDown(e: PointerEvent): void {
+    // A new press supersedes any pending one. Several paths below return
+    // without ever reaching a release — an armed draw tool swallows the
+    // `pointerup` entirely — and a survivor would narrow the selection under
+    // whatever gesture came next.
+    this.pendingSelect = null;
     if (this.isPanModifier(e)) {
       return; // pan modifier — PanZoom owns it
     }
@@ -162,7 +167,6 @@ export class InteractionManager {
       };
       return;
     }
-    this.pendingSelect = null;
 
     this.emit("select", { key, addToSelection });
     if (isDouble) {
@@ -172,6 +176,9 @@ export class InteractionManager {
 
   handlePointerUp(e: PointerEvent): void {
     if (e.button === 2) {
+      // The menu opens against the whole selection, so a deferred narrowing
+      // must not land on top of it once the primary button comes up.
+      this.pendingSelect = null;
       const key = this.pickKey(e.clientX, e.clientY);
       this.emit("contextMenu", {
         key,

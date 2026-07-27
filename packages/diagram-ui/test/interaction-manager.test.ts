@@ -4,6 +4,7 @@ import { Container } from "pixi.js";
 import {
   InteractionManager,
   type InteractionEvents,
+  type InteractionManagerOptions,
 } from "../src/interaction/interaction-manager.js";
 import { tagEntity } from "../src/interaction/node-keys.js";
 
@@ -77,7 +78,7 @@ describe("InteractionManager", () => {
     const tn = node("component", "foo");
     const { emit, events } = captureEmits();
     const picker = (_x: number, _y: number): Container | null => tn;
-    const mgr = new InteractionManager(picker, emit);
+    const mgr = new InteractionManager(picker, emit, () => []);
     wireInteraction(canvas, mgr);
 
     canvas.dispatchEvent(
@@ -91,7 +92,11 @@ describe("InteractionManager", () => {
     const canvas = makeCanvas();
     const tn = node("component", "foo");
     const { emit, events } = captureEmits();
-    const mgr = new InteractionManager(() => tn, emit);
+    const mgr = new InteractionManager(
+      () => tn,
+      emit,
+      () => [],
+    );
     wireInteraction(canvas, mgr);
 
     canvas.dispatchEvent(
@@ -108,7 +113,11 @@ describe("InteractionManager", () => {
     const canvas = makeCanvas();
     const tn = node("connector", "p");
     const { emit, events } = captureEmits();
-    const mgr = new InteractionManager(() => tn, emit);
+    const mgr = new InteractionManager(
+      () => tn,
+      emit,
+      () => [],
+    );
     wireInteraction(canvas, mgr);
 
     canvas.dispatchEvent(
@@ -129,7 +138,11 @@ describe("InteractionManager", () => {
     const { emit, events } = captureEmits();
     for (const kind of ["handle", "rotate-handle"] as const) {
       const handle = node(kind, "tl");
-      const mgr = new InteractionManager(() => handle, emit);
+      const mgr = new InteractionManager(
+        () => handle,
+        emit,
+        () => [],
+      );
       wireInteraction(canvas, mgr);
       canvas.dispatchEvent(
         new PointerEvent("pointerdown", { button: 0, clientX: 5, clientY: 5 }),
@@ -143,7 +156,11 @@ describe("InteractionManager", () => {
     const canvas = makeCanvas();
     const tn = node("component", "R1");
     const { emit, events } = captureEmits();
-    const mgr = new InteractionManager(() => tn, emit);
+    const mgr = new InteractionManager(
+      () => tn,
+      emit,
+      () => [],
+    );
     wireInteraction(canvas, mgr);
 
     canvas.dispatchEvent(
@@ -164,7 +181,11 @@ describe("InteractionManager", () => {
       const canvas = makeCanvas();
       const tn = node("component", "R1");
       const { emit, events } = captureEmits();
-      const mgr = new InteractionManager(() => tn, emit);
+      const mgr = new InteractionManager(
+        () => tn,
+        emit,
+        () => [],
+      );
       wireInteraction(canvas, mgr);
 
       canvas.dispatchEvent(
@@ -186,7 +207,11 @@ describe("InteractionManager", () => {
     const canvas = makeCanvas();
     const tn = node("component", "R1");
     const { emit, events } = captureEmits();
-    const mgr = new InteractionManager(() => tn, emit);
+    const mgr = new InteractionManager(
+      () => tn,
+      emit,
+      () => [],
+    );
     wireInteraction(canvas, mgr);
 
     canvas.dispatchEvent(
@@ -202,9 +227,14 @@ describe("InteractionManager", () => {
     const canvas = makeCanvas();
     const tn = node("component", "R1");
     const { emit, events } = captureEmits();
-    const mgr = new InteractionManager(() => tn, emit, {
-      doubleClickMs: 1000,
-    });
+    const mgr = new InteractionManager(
+      () => tn,
+      emit,
+      () => [],
+      {
+        doubleClickMs: 1000,
+      },
+    );
     wireInteraction(canvas, mgr);
 
     canvas.dispatchEvent(
@@ -222,7 +252,11 @@ describe("InteractionManager", () => {
     const canvas = makeCanvas();
     const tn = node("component", "R1");
     const { emit, events } = captureEmits();
-    const mgr = new InteractionManager(() => tn, emit);
+    const mgr = new InteractionManager(
+      () => tn,
+      emit,
+      () => [],
+    );
     wireInteraction(canvas, mgr);
 
     canvas.dispatchEvent(
@@ -237,28 +271,49 @@ describe("InteractionManager", () => {
     canvas.remove();
   });
 
-  describe("pressing a member of a multi-selection", () => {
-    const selection = ["c:R1", "c:R2"];
+  describe("a press against the current selection", () => {
+    const pair = ["c:R1", "c:R2"];
 
-    it("defers the select to the release so a drag can carry the group", () => {
+    /** A manager whose picker always hits `pressed`, over `selection`. */
+    function overSelection(
+      pressed: Container | null,
+      selection: string[],
+      options: InteractionManagerOptions = {},
+    ): {
+      canvas: HTMLCanvasElement;
+      events: CapturedEvent<keyof InteractionEvents>[];
+    } {
       const canvas = makeCanvas();
-      const tn = node("component", "R1");
       const { emit, events } = captureEmits();
-      const mgr = new InteractionManager(() => tn, emit, {
-        getSelectionKeys: () => selection,
-      });
-      wireInteraction(canvas, mgr);
-
-      canvas.dispatchEvent(
-        new PointerEvent("pointerdown", { button: 0, clientX: 5, clientY: 5 }),
+      const mgr = new InteractionManager(
+        () => pressed,
+        emit,
+        () => selection,
+        options,
       );
-      // Nothing emitted yet: DragMode.begin reads the selection during this
-      // same press and must still see both keys.
+      wireInteraction(canvas, mgr);
+      return { canvas, events };
+    }
+
+    const downAt = (x: number, y: number, opts: PointerEventInit = {}) =>
+      new PointerEvent("pointerdown", {
+        button: 0,
+        clientX: x,
+        clientY: y,
+        ...opts,
+      });
+    const upAt = (x: number, y: number) =>
+      new PointerEvent("pointerup", { button: 0, clientX: x, clientY: y });
+    const moveTo = (x: number, y: number) =>
+      new PointerEvent("pointermove", { clientX: x, clientY: y });
+
+    it("on a member defers the select to the release so a drag carries the group", () => {
+      const { canvas, events } = overSelection(node("component", "R1"), pair);
+
+      canvas.dispatchEvent(downAt(5, 5));
       expect(events).toHaveLength(0);
 
-      canvas.dispatchEvent(
-        new PointerEvent("pointerup", { button: 0, clientX: 5, clientY: 5 }),
-      );
+      canvas.dispatchEvent(upAt(5, 5));
       expect(events).toEqual([
         { type: "select", detail: { key: "c:R1", addToSelection: false } },
       ]);
@@ -266,45 +321,21 @@ describe("InteractionManager", () => {
     });
 
     it("drops the deferred select once the pointer travels past the slop", () => {
-      const canvas = makeCanvas();
-      const tn = node("component", "R1");
-      const { emit, events } = captureEmits();
-      const mgr = new InteractionManager(() => tn, emit, {
-        getSelectionKeys: () => selection,
-      });
-      wireInteraction(canvas, mgr);
+      const { canvas, events } = overSelection(node("component", "R1"), pair);
 
-      canvas.dispatchEvent(
-        new PointerEvent("pointerdown", { button: 0, clientX: 5, clientY: 5 }),
-      );
-      canvas.dispatchEvent(
-        new PointerEvent("pointermove", { clientX: 60, clientY: 60 }),
-      );
-      canvas.dispatchEvent(
-        new PointerEvent("pointerup", { button: 0, clientX: 60, clientY: 60 }),
-      );
+      canvas.dispatchEvent(downAt(5, 5));
+      canvas.dispatchEvent(moveTo(60, 60));
+      canvas.dispatchEvent(upAt(60, 60));
       expect(events.filter((e) => e.type === "select")).toHaveLength(0);
       canvas.remove();
     });
 
     it("keeps the deferred select through jitter under the slop", () => {
-      const canvas = makeCanvas();
-      const tn = node("component", "R1");
-      const { emit, events } = captureEmits();
-      const mgr = new InteractionManager(() => tn, emit, {
-        getSelectionKeys: () => selection,
-      });
-      wireInteraction(canvas, mgr);
+      const { canvas, events } = overSelection(node("component", "R1"), pair);
 
-      canvas.dispatchEvent(
-        new PointerEvent("pointerdown", { button: 0, clientX: 5, clientY: 5 }),
-      );
-      canvas.dispatchEvent(
-        new PointerEvent("pointermove", { clientX: 6, clientY: 6 }),
-      );
-      canvas.dispatchEvent(
-        new PointerEvent("pointerup", { button: 0, clientX: 6, clientY: 6 }),
-      );
+      canvas.dispatchEvent(downAt(5, 5));
+      canvas.dispatchEvent(moveTo(6, 6));
+      canvas.dispatchEvent(upAt(6, 6));
       expect(events.filter((e) => e.type === "select")).toEqual([
         { type: "select", detail: { key: "c:R1", addToSelection: false } },
       ]);
@@ -312,110 +343,94 @@ describe("InteractionManager", () => {
     });
 
     it("drops the deferred select on pointercancel rather than narrowing", () => {
-      const canvas = makeCanvas();
-      const tn = node("component", "R1");
-      const { emit, events } = captureEmits();
-      const mgr = new InteractionManager(() => tn, emit, {
-        getSelectionKeys: () => selection,
-      });
-      wireInteraction(canvas, mgr);
+      const { canvas, events } = overSelection(node("component", "R1"), pair);
 
-      canvas.dispatchEvent(
-        new PointerEvent("pointerdown", { button: 0, clientX: 5, clientY: 5 }),
-      );
+      canvas.dispatchEvent(downAt(5, 5));
       canvas.dispatchEvent(
         new PointerEvent("pointercancel", { clientX: 5, clientY: 5 }),
       );
-      canvas.dispatchEvent(
-        new PointerEvent("pointerup", { button: 0, clientX: 5, clientY: 5 }),
-      );
+      canvas.dispatchEvent(upAt(5, 5));
       expect(events).toHaveLength(0);
       canvas.remove();
     });
 
-    it("still toggles immediately under ctrl/cmd", () => {
+    it("drops a deferred select whose release never arrived, rather than firing it under the next gesture", () => {
+      // An armed draw tool swallows the `pointerup`, so a pending select can
+      // outlive its gesture and claim an unrelated release.
+      const pressed = node("component", "R1");
+      let hit: Container | null = pressed;
       const canvas = makeCanvas();
-      const tn = node("component", "R1");
       const { emit, events } = captureEmits();
-      const mgr = new InteractionManager(() => tn, emit, {
-        getSelectionKeys: () => selection,
-      });
+      const mgr = new InteractionManager(
+        () => hit,
+        emit,
+        () => pair,
+      );
       wireInteraction(canvas, mgr);
 
+      canvas.dispatchEvent(downAt(5, 5));
+      // The release goes missing; the user then clicks empty canvas.
+      hit = null;
+      canvas.dispatchEvent(downAt(300, 300));
+      canvas.dispatchEvent(upAt(300, 300));
+      expect(events.filter((e) => e.type === "select")).toHaveLength(0);
+      canvas.remove();
+    });
+
+    it("drops a deferred select when the secondary button opens the menu", () => {
+      const { canvas, events } = overSelection(node("component", "R1"), pair);
+
+      canvas.dispatchEvent(downAt(5, 5));
       canvas.dispatchEvent(
-        new PointerEvent("pointerdown", {
-          button: 0,
-          ctrlKey: true,
-          clientX: 5,
-          clientY: 5,
-        }),
+        new PointerEvent("pointerup", { button: 2, clientX: 5, clientY: 5 }),
       );
+      canvas.dispatchEvent(upAt(5, 5));
+      expect(events.map((e) => e.type)).toEqual(["contextMenu"]);
+      canvas.remove();
+    });
+
+    it("on a member still toggles immediately under ctrl/cmd", () => {
+      const { canvas, events } = overSelection(node("component", "R1"), pair);
+
+      canvas.dispatchEvent(downAt(5, 5, { ctrlKey: true }));
       expect(events).toEqual([
         { type: "select", detail: { key: "c:R1", addToSelection: true } },
       ]);
       canvas.remove();
     });
 
-    it("still emits doubleClick on the press, not the release", () => {
-      const canvas = makeCanvas();
-      const tn = node("component", "R1");
-      const { emit, events } = captureEmits();
-      const mgr = new InteractionManager(() => tn, emit, {
+    it("on a member still emits doubleClick on the press, not the release", () => {
+      const { canvas, events } = overSelection(node("component", "R1"), pair, {
         doubleClickMs: 1000,
-        getSelectionKeys: () => selection,
       });
-      wireInteraction(canvas, mgr);
 
-      const press = (): void => {
-        canvas.dispatchEvent(
-          new PointerEvent("pointerdown", {
-            button: 0,
-            clientX: 0,
-            clientY: 0,
-          }),
-        );
-      };
-      press();
-      press();
+      canvas.dispatchEvent(downAt(0, 0));
+      canvas.dispatchEvent(downAt(0, 0));
       expect(events.map((e) => e.type)).toEqual(["select", "doubleClick"]);
       canvas.remove();
     });
-  });
 
-  it("selects immediately when the pressed entity is outside the selection", () => {
-    const canvas = makeCanvas();
-    const tn = node("component", "R3");
-    const { emit, events } = captureEmits();
-    const mgr = new InteractionManager(() => tn, emit, {
-      getSelectionKeys: () => ["c:R1", "c:R2"],
+    it("outside the selection selects immediately", () => {
+      const { canvas, events } = overSelection(node("component", "R3"), pair);
+
+      canvas.dispatchEvent(downAt(5, 5));
+      expect(events).toEqual([
+        { type: "select", detail: { key: "c:R3", addToSelection: false } },
+      ]);
+      canvas.remove();
     });
-    wireInteraction(canvas, mgr);
 
-    canvas.dispatchEvent(
-      new PointerEvent("pointerdown", { button: 0, clientX: 5, clientY: 5 }),
-    );
-    expect(events).toEqual([
-      { type: "select", detail: { key: "c:R3", addToSelection: false } },
-    ]);
-    canvas.remove();
-  });
+    it("on the lone selected entity selects immediately", () => {
+      const { canvas, events } = overSelection(node("component", "R1"), [
+        "c:R1",
+      ]);
 
-  it("selects immediately when the pressed entity is the lone selection", () => {
-    const canvas = makeCanvas();
-    const tn = node("component", "R1");
-    const { emit, events } = captureEmits();
-    const mgr = new InteractionManager(() => tn, emit, {
-      getSelectionKeys: () => ["c:R1"],
+      canvas.dispatchEvent(downAt(5, 5));
+      expect(events).toEqual([
+        { type: "select", detail: { key: "c:R1", addToSelection: false } },
+      ]);
+      canvas.remove();
     });
-    wireInteraction(canvas, mgr);
-
-    canvas.dispatchEvent(
-      new PointerEvent("pointerdown", { button: 0, clientX: 5, clientY: 5 }),
-    );
-    expect(events).toEqual([
-      { type: "select", detail: { key: "c:R1", addToSelection: false } },
-    ]);
-    canvas.remove();
   });
 
   it("hovering a vertex dot reports the owner shape, but pressing it still selects nothing", () => {
@@ -425,7 +440,11 @@ describe("InteractionManager", () => {
     tagEntity(dot, "vertex-handle", "0");
     shape.addChild(dot);
     const { emit, events } = captureEmits();
-    const mgr = new InteractionManager(() => dot, emit);
+    const mgr = new InteractionManager(
+      () => dot,
+      emit,
+      () => [],
+    );
     wireInteraction(canvas, mgr);
 
     // Hover resolves to the owner so the dots don't flicker out under the cursor.

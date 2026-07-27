@@ -3,8 +3,17 @@ import { Container } from "pixi.js";
 
 import { ModeRouter } from "../src/interaction/mode.js";
 import type { DragEvents } from "../src/interaction/gesture-mode.js";
+import type { InteractionEvents } from "../src/interaction/interaction-manager.js";
 import { InteractionStateStore } from "../src/interaction/interaction-state.js";
 import { tagEntity } from "../src/interaction/node-keys.js";
+
+/** `DragEmit` is generic, so `type` can't narrow `detail` on its own. */
+function isMove(
+  type: keyof DragEvents,
+  _detail: DragEvents[keyof DragEvents],
+): _detail is DragEvents["drag"] {
+  return type === "drag";
+}
 import type { ToolDraw } from "../src/interaction/tool-mode.js";
 import type { ToolId } from "../src/interaction/tools.js";
 
@@ -29,6 +38,10 @@ interface Harness {
   store: InteractionStateStore;
   calls: string[];
   moves: DragEvents["drag"][];
+  interactions: {
+    type: keyof InteractionEvents;
+    detail: InteractionEvents[keyof InteractionEvents];
+  }[];
   tool: ToolDraw[];
   setPicked: (n: Container | null) => void;
   dispose: () => void;
@@ -41,6 +54,7 @@ function setup(
   let picked: Container | null = null;
   const calls: string[] = [];
   const moves: DragEvents["drag"][] = [];
+  const interactions: Harness["interactions"] = [];
   const tool: ToolDraw[] = [];
   const store = new InteractionStateStore();
   const canvas = document.createElement("canvas");
@@ -49,11 +63,14 @@ function setup(
     picker: () => picked,
     clientToDiagram: (cx, cy) => ({ x: cx, y: cy }),
     getSelectionKeys: () => selection,
-    onInteraction: () => calls.push("interaction"),
+    onInteraction: (type, detail) => {
+      calls.push("interaction");
+      interactions.push({ type, detail });
+    },
     onDrag: (type, detail) => {
       calls.push("drag");
-      if (type === "drag") {
-        moves.push(detail as DragEvents["drag"]);
+      if (isMove(type, detail)) {
+        moves.push(detail);
       }
     },
     store,
@@ -70,6 +87,7 @@ function setup(
     store,
     calls,
     moves,
+    interactions,
     tool,
     setPicked: (n) => (picked = n),
     dispose: () => {
@@ -251,15 +269,12 @@ describe("ModeRouter", () => {
   });
 
   it("carries the whole selection when a member is press-dragged", () => {
-    const { canvas, calls, moves, setPicked, dispose } = setup("select", [
-      "c:R1",
-      "c:R2",
-    ]);
+    const { canvas, moves, interactions, setPicked, dispose } = setup(
+      "select",
+      ["c:R1", "c:R2"],
+    );
     setPicked(componentNode("R1"));
     canvas.dispatchEvent(down());
-    // The press must not narrow the selection: DragMode.begin reads it during
-    // this same event, and a narrowed one leaves it a single key to carry.
-    expect(calls).not.toContain("interaction");
     canvas.dispatchEvent(
       new PointerEvent("pointermove", { clientX: 25, clientY: 25 }),
     );
@@ -273,11 +288,13 @@ describe("ModeRouter", () => {
       dy: 20,
       draft: false,
     });
+    // No selection change reached the host at any point in the gesture.
+    expect(interactions.filter((i) => i.type === "select")).toHaveLength(0);
     dispose();
   });
 
   it("narrows to the pressed member when the press does not become a drag", () => {
-    const { canvas, calls, moves, setPicked, dispose } = setup("select", [
+    const { canvas, interactions, setPicked, dispose } = setup("select", [
       "c:R1",
       "c:R2",
     ]);
@@ -285,8 +302,12 @@ describe("ModeRouter", () => {
     canvas.dispatchEvent(down());
     canvas.dispatchEvent(up());
 
-    expect(calls).toContain("interaction");
-    expect(moves.at(-1)?.dx).toBe(0);
+    expect(interactions.filter((i) => i.type === "select")).toEqual([
+      {
+        type: "select",
+        detail: { key: "c:R1", addToSelection: false },
+      },
+    ]);
     dispose();
   });
 
