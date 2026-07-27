@@ -198,6 +198,7 @@ describe("DIAGRAM_COMMANDS", () => {
     expect(
       registry.commandsFor("contextMenu", ctx()).map((m) => m.command.id),
     ).toEqual([
+      "diagram.copy",
       "diagram.delete",
       "diagram.rotateCw",
       "diagram.rotateCcw",
@@ -211,5 +212,64 @@ describe("DIAGRAM_COMMANDS", () => {
         ctx({ selectionCount: 0, selectionKind: "none" }),
       ),
     ).toEqual([]);
+  });
+
+  it("copy stays available on a read-only class", () => {
+    // Copying reads the class; only paste writes one. Gating copy on
+    // `readonly` would make a system-library model uncopyable.
+    const when = command("diagram.copy").when;
+    if (!when) throw new Error("copy should gate on selection");
+    expect(when(ctx({ readonly: true }))).toBe(true);
+    expect(when(ctx({ selectionCount: 0, selectionKind: "none" }))).toBe(false);
+  });
+
+  it("paste needs a filled clipboard and a writable class", () => {
+    const when = command("diagram.paste").when;
+    if (!when) throw new Error("paste should gate on the clipboard");
+    expect(when(ctx({ hasClipboard: true }))).toBe(true);
+    expect(when(ctx({ hasClipboard: false }))).toBe(false);
+    expect(when(ctx({ hasClipboard: true, readonly: true }))).toBe(false);
+  });
+
+  it("paste shows with an empty selection once the clipboard is filled", () => {
+    const registry = new CommandRegistry(DIAGRAM_COMMANDS);
+    expect(
+      registry
+        .commandsFor(
+          "contextMenu",
+          ctx({
+            selectionCount: 0,
+            selectionKind: "none",
+            hasClipboard: true,
+          }),
+        )
+        .map((m) => m.command.id),
+    ).toEqual(["diagram.paste"]);
+  });
+
+  it("copy and paste delegate to the host, which owns the clipboard", () => {
+    const t = spyTarget(layout(), ["c:R1"]);
+    const actions: string[] = [];
+    const target = {
+      ...t,
+      requestClipboard: (action: "copy" | "paste") => actions.push(action),
+    };
+    command("diagram.copy").run(target);
+    command("diagram.paste").run(target);
+    expect(actions).toEqual(["copy", "paste"]);
+    expect(t.committed).toHaveLength(0);
+  });
+
+  it("copy and paste tolerate a target that cannot reach a clipboard", () => {
+    const t = spyTarget(layout(), ["c:R1"]);
+    expect(() => command("diagram.copy").run(t)).not.toThrow();
+    expect(() => command("diagram.paste").run(t)).not.toThrow();
+  });
+
+  it("binds copy and paste on both Ctrl and Cmd", () => {
+    expect(DEFAULT_KEYMAP.get("ctrl+c")).toBe("diagram.copy");
+    expect(DEFAULT_KEYMAP.get("meta+c")).toBe("diagram.copy");
+    expect(DEFAULT_KEYMAP.get("ctrl+v")).toBe("diagram.paste");
+    expect(DEFAULT_KEYMAP.get("meta+v")).toBe("diagram.paste");
   });
 });

@@ -65,6 +65,16 @@ export interface ChangeClassRequestDetail {
 }
 
 /**
+ * User invoked copy or paste. The clipboard lives in the host (it is shared
+ * across editors), so the layout reports the gesture and the current selection
+ * rather than carrying a payload of its own. `keys` is empty for `"paste"`.
+ */
+export interface ClipboardRequestDetail {
+  action: "copy" | "paste";
+  keys: string[];
+}
+
+/**
  * Event-name → detail-type map. Source of truth shared by:
  *   - `emit<K extends LayoutEventName>(name, detail)` inside the component,
  *   - external listeners typed `CustomEvent<LayoutEvents["om-foo"]>`.
@@ -78,6 +88,7 @@ export interface LayoutEvents {
   "om-add-component-request": AddComponentRequestDetail;
   "om-tool-change": ToolChangeDetail;
   "om-change-class-request": ChangeClassRequestDetail;
+  "om-clipboard-request": ClipboardRequestDetail;
 }
 
 export type LayoutEventName = keyof LayoutEvents;

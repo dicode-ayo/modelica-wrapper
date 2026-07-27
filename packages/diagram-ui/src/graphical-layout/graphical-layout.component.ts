@@ -309,6 +309,14 @@ export class OmGraphicalLayout extends LitElement {
   @property({ type: Boolean, reflect: true })
   readonly = false;
 
+  /**
+   * Whether the host's clipboard holds something pasteable. Pushed in, not
+   * tracked here: the clipboard is shared across editors, so a copy in another
+   * diagram has to enable paste in this one.
+   */
+  @property({ type: Boolean, reflect: true, attribute: "has-clipboard" })
+  hasClipboard = false;
+
   /** Optional renderer factory forwarded to the inner `<om-scene>`. Used
    *  by tests to mount renderer-less (factory returns `null`). */
   @property({ attribute: false })
@@ -1753,6 +1761,12 @@ export class OmGraphicalLayout extends LitElement {
       requestClassChange: (componentName, currentClass) => {
         this.emit("om-change-class-request", { componentName, currentClass });
       },
+      requestClipboard: (action) => {
+        this.emit("om-clipboard-request", {
+          action,
+          keys: action === "copy" ? Array.from(this.selectedKeys) : [],
+        });
+      },
       showKeymapHelp: () => this.openKeymapHelp(),
     };
   }
@@ -1805,7 +1819,7 @@ export class OmGraphicalLayout extends LitElement {
       {
         readonly: this.readonly,
         viewLayer: this.layout?.kind ?? "diagram",
-        hasClipboard: false,
+        hasClipboard: this.hasClipboard,
         vertexTarget: this.contextVertex !== null,
         polySelection: this.singlePolyShapeSelected(),
       },
