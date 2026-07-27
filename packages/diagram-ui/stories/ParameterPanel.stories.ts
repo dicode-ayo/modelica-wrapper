@@ -1,9 +1,10 @@
 /**
- * Stories for `<om-parameter-panel>` — the modal wrapper.
+ * Stories for `<om-parameter-panel>` — the floating card wrapper.
  *
- * The host stays interactive (a fake "open" button) so the modal can be
- * toggled and the backdrop / Escape / cancel behaviour is verifiable in
- * Storybook without contriving the open state via a control.
+ * The host stays interactive (a fake "open" button) so the panel can be
+ * toggled and the Escape / close / cancel behaviour is verifiable in
+ * Storybook without contriving the open state via a control. The gridded
+ * box stands in for the canvas the card floats over.
  */
 
 import type { Meta, StoryObj } from "@storybook/web-components";
@@ -82,20 +83,31 @@ const meta: Meta<StoryArgs> = {
       if (el) el.open = false;
     };
     return html`
-      <button @click=${openPanel}>Open parameter panel</button>
-      <om-parameter-panel
-        id="story-panel"
-        .model=${model}
-        title=${title}
-        @om-panel-cancel=${closeReason("[cancel]")}
-        @om-panel-submit=${(e: Event) => {
-          const ev = e as CustomEvent<{
-            values: Record<string, unknown>;
-          }>;
-          console.log("[submit]", ev.detail.values);
-          closeReason("[submit-close]")();
-        }}
-      ></om-parameter-panel>
+      <div
+        style="position: relative; block-size: 70vh; background:
+        repeating-linear-gradient(0deg, #eee 0 1px, transparent 1px 40px),
+        repeating-linear-gradient(90deg, #eee 0 1px, transparent 1px 40px);"
+      >
+        <button @click=${openPanel}>Open parameter panel</button>
+        <div
+          style="position: absolute; inset-block-start: 8px;
+        inset-inline-end: 8px; display: flex;"
+        >
+          <om-parameter-panel
+            id="story-panel"
+            .model=${model}
+            title=${title}
+            @om-panel-cancel=${closeReason("[cancel]")}
+            @om-panel-submit=${(e: Event) => {
+              const ev = e as CustomEvent<{
+                values: Record<string, unknown>;
+              }>;
+              console.log("[submit]", ev.detail.values);
+              closeReason("[submit-close]")();
+            }}
+          ></om-parameter-panel>
+        </div>
+      </div>
     `;
   },
 };

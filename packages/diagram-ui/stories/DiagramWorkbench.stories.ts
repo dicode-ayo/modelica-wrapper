@@ -1,7 +1,7 @@
 /**
  * The diagram as the extension wires it (`webview-entry.ts`): the
  * `<om-graphical-layout>` canvas, the `<om-action-panel>` toolbar, and the
- * `<om-parameter-panel>` side drawer, hooked together so the whole editor
+ * `<om-parameter-panel>` floating card, hooked together so the whole editor
  * surface is exercisable without an extension host. The host round-trips
  * that normally hit OMC are faked in-story:
  *
@@ -179,40 +179,45 @@ const meta: Meta<StoryArgs> = {
               });
             }}
           ></om-graphical-layout>
-          <om-action-panel
-            anchor="top-right"
-            ?no-selection=${true}
-            @om-action-undo=${() => console.log("undo")}
-            @om-action-check=${() => console.log("check")}
-            @om-action-simulate=${() => console.log("simulate")}
-            @om-action-parameters=${(e: Event) =>
-              openParams(storyRoot(e.currentTarget), {
-                kind: "simulate",
-                model: simulationOptionsModel(currentLayout.className),
-                title: "Simulation setup",
-                submitLabel: "Simulate",
-                showReset: false,
-              })}
-            @om-action-rotate=${(e: CustomEvent<ActionRotateDetail>) =>
-              diagram(storyRoot(e.currentTarget))?.rotateSelection(
-                e.detail.direction === "cw",
-              )}
-            @om-action-flip=${(e: CustomEvent<ActionFlipDetail>) =>
-              diagram(storyRoot(e.currentTarget))?.flipSelection(
-                e.detail.axis === "horizontal",
-              )}
-            @om-action-tool=${(e: CustomEvent<ActionToolDetail>) =>
-              diagram(storyRoot(e.currentTarget))?.setActiveTool(e.detail.tool)}
-          ></om-action-panel>
-          <om-parameter-panel
-            @om-panel-submit=${(e: CustomEvent<ParameterFormSubmitDetail>) => {
-              console.log(`apply (${paramKind})`, e.detail.values);
-              closeParams(storyRoot(e.currentTarget));
-            }}
-            @om-panel-cancel=${(e: Event) =>
-              closeParams(storyRoot(e.currentTarget))}
-            @om-panel-reset=${() => console.log("reset to defaults")}
-          ></om-parameter-panel>
+          <div class="om-story-overlay-stack">
+            <om-action-panel
+              ?no-selection=${true}
+              @om-action-undo=${() => console.log("undo")}
+              @om-action-check=${() => console.log("check")}
+              @om-action-simulate=${() => console.log("simulate")}
+              @om-action-parameters=${(e: Event) =>
+                openParams(storyRoot(e.currentTarget), {
+                  kind: "simulate",
+                  model: simulationOptionsModel(currentLayout.className),
+                  title: "Simulation setup",
+                  submitLabel: "Simulate",
+                  showReset: false,
+                })}
+              @om-action-rotate=${(e: CustomEvent<ActionRotateDetail>) =>
+                diagram(storyRoot(e.currentTarget))?.rotateSelection(
+                  e.detail.direction === "cw",
+                )}
+              @om-action-flip=${(e: CustomEvent<ActionFlipDetail>) =>
+                diagram(storyRoot(e.currentTarget))?.flipSelection(
+                  e.detail.axis === "horizontal",
+                )}
+              @om-action-tool=${(e: CustomEvent<ActionToolDetail>) =>
+                diagram(storyRoot(e.currentTarget))?.setActiveTool(
+                  e.detail.tool,
+                )}
+            ></om-action-panel>
+            <om-parameter-panel
+              @om-panel-submit=${(
+                e: CustomEvent<ParameterFormSubmitDetail>,
+              ) => {
+                console.log(`apply (${paramKind})`, e.detail.values);
+                closeParams(storyRoot(e.currentTarget));
+              }}
+              @om-panel-cancel=${(e: Event) =>
+                closeParams(storyRoot(e.currentTarget))}
+              @om-panel-reset=${() => console.log("reset to defaults")}
+            ></om-parameter-panel>
+          </div>
         </div>
       </div>
     </div>

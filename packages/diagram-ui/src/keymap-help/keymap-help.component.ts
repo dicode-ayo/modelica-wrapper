@@ -6,8 +6,7 @@
  * can never drift from what's actually bound.
  *
  * Backed by `<wa-dialog>` for focus trapping, Escape-to-close, and
- * light-dismiss — the same pattern `<om-parameter-panel>` uses for its
- * drawer.
+ * light-dismiss.
  *
  * Events (bubble + composed):
  *   - `om-keymap-help-close` (undefined)

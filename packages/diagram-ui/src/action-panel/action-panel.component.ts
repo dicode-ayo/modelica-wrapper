@@ -123,8 +123,6 @@ export class OmActionPanel extends LitElement {
     toolbarButtonStyles,
     css`
       :host {
-        position: absolute;
-        z-index: var(--om-z-overlay);
         display: flex;
         gap: var(--om-space-sm);
         padding: var(--om-space-sm);
@@ -139,6 +137,11 @@ export class OmActionPanel extends LitElement {
         font-family: var(--vscode-font-family, system-ui, sans-serif);
         font-size: var(--vscode-font-size, 13px);
         color: var(--vscode-foreground, #1f1f1f);
+      }
+
+      :host([anchor]) {
+        position: absolute;
+        z-index: var(--om-z-overlay);
       }
 
       :host([anchor="top-right"]) {
@@ -160,9 +163,13 @@ export class OmActionPanel extends LitElement {
     `,
   ];
 
-  /** Corner anchor for the floating panel. */
+  /**
+   * Corner to pin the panel to. Leave unset to let the embedder position it —
+   * without it the host is a plain flow box, so it can be stacked with other
+   * overlays instead of anchoring itself.
+   */
   @property({ reflect: true })
-  anchor: ActionPanelAnchor = "top-right";
+  anchor: ActionPanelAnchor | undefined = undefined;
 
   /** When true, the buttons render disabled (e.g. before a model is loaded). */
   @property({ type: Boolean, reflect: true })

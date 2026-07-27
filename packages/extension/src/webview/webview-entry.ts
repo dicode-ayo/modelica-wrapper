@@ -20,6 +20,7 @@ import { customElement, state } from "lit/decorators.js";
 import "@dicode/ui-common/webawesome-setup";
 
 import "@dicode/diagram-ui";
+import { omTokens } from "@dicode/ui-common";
 import type { DiagramLayout, ParameterModel } from "@dicode/omc-client";
 import {
   isComponentKey,
@@ -56,18 +57,42 @@ const RENDER_ERROR_HINT =
 
 @customElement("om-webview-root")
 class OmWebviewRoot extends LitElement {
-  static override styles = css`
-    :host {
-      display: block;
-      position: absolute;
-      inset: 0;
-    }
-    om-graphical-layout {
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
-  `;
+  static override styles = [
+    omTokens,
+    css`
+      :host {
+        display: block;
+        position: absolute;
+        inset: 0;
+      }
+      om-graphical-layout {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      /* Corner rail the floating overlays share, so the parameter panel
+       * stacks under the toolbar without either having to know the other's
+       * height. Clicks fall through the gaps to the canvas. */
+      .overlay-stack {
+        position: absolute;
+        top: var(--om-action-panel-offset);
+        right: var(--om-action-panel-offset);
+        z-index: var(--om-z-overlay);
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: var(--om-space-md);
+        max-inline-size: calc(100% - 2 * var(--om-action-panel-offset));
+        max-block-size: calc(100% - 2 * var(--om-action-panel-offset));
+        pointer-events: none;
+      }
+
+      .overlay-stack > * {
+        pointer-events: auto;
+      }
+    `,
+  ];
 
   @state() private layout: DiagramLayout | null = null;
   /** Set when the host's initial layout fetch failed — there is nothing to
@@ -168,35 +193,36 @@ class OmWebviewRoot extends LitElement {
         @om-change-class-request=${this.onChangeClassRequest}
         @om-clipboard-request=${this.onClipboardRequest}
       ></om-graphical-layout>
-      <om-action-panel
-        anchor="top-right"
-        ?no-selection=${!this.hasSelection}
-        ?hide-rotate=${this.readOnly}
-        ?hide-flip=${this.readOnly}
-        ?hide-draw=${this.readOnly}
-        .tool=${this.activeTool}
-        @om-action-check=${() => this.post({ type: "actionCheck" })}
-        @om-action-simulate=${() => this.post({ type: "actionSimulate" })}
-        @om-action-parameters=${() => this.post({ type: "actionParameters" })}
-        @om-action-rotate=${(e: CustomEvent<ActionRotateDetail>) =>
-          this.diagram?.rotateSelection(e.detail.direction === "cw")}
-        @om-action-flip=${(e: CustomEvent<ActionFlipDetail>) =>
-          this.diagram?.flipSelection(e.detail.axis === "horizontal")}
-        @om-action-tool=${(e: CustomEvent<ActionToolDetail>) =>
-          this.diagram?.setActiveTool(e.detail.tool)}
-      ></om-action-panel>
-      <om-parameter-panel
-        ?open=${this.paramOpen}
-        ?readonly=${panelReadonly(this.readOnly, this.paramKind)}
-        ?show-reset=${this.paramComponentName !== null}
-        .model=${this.paramModel}
-        .title=${this.paramTitle}
-        .submitLabel=${this.paramSubmitLabel}
-        .crefPrefix=${this.paramCrefPrefix}
-        @om-panel-submit=${this.onParamSubmit}
-        @om-panel-cancel=${this.onParamCancel}
-        @om-panel-reset=${this.onParamReset}
-      ></om-parameter-panel>
+      <div class="overlay-stack">
+        <om-action-panel
+          ?no-selection=${!this.hasSelection}
+          ?hide-rotate=${this.readOnly}
+          ?hide-flip=${this.readOnly}
+          ?hide-draw=${this.readOnly}
+          .tool=${this.activeTool}
+          @om-action-check=${() => this.post({ type: "actionCheck" })}
+          @om-action-simulate=${() => this.post({ type: "actionSimulate" })}
+          @om-action-parameters=${() => this.post({ type: "actionParameters" })}
+          @om-action-rotate=${(e: CustomEvent<ActionRotateDetail>) =>
+            this.diagram?.rotateSelection(e.detail.direction === "cw")}
+          @om-action-flip=${(e: CustomEvent<ActionFlipDetail>) =>
+            this.diagram?.flipSelection(e.detail.axis === "horizontal")}
+          @om-action-tool=${(e: CustomEvent<ActionToolDetail>) =>
+            this.diagram?.setActiveTool(e.detail.tool)}
+        ></om-action-panel>
+        <om-parameter-panel
+          ?open=${this.paramOpen}
+          ?readonly=${panelReadonly(this.readOnly, this.paramKind)}
+          ?show-reset=${this.paramComponentName !== null}
+          .model=${this.paramModel}
+          .title=${this.paramTitle}
+          .submitLabel=${this.paramSubmitLabel}
+          .crefPrefix=${this.paramCrefPrefix}
+          @om-panel-submit=${this.onParamSubmit}
+          @om-panel-cancel=${this.onParamCancel}
+          @om-panel-reset=${this.onParamReset}
+        ></om-parameter-panel>
+      </div>
     `;
   }
 

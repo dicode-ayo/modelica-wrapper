@@ -1,21 +1,24 @@
 /**
- * `<om-parameter-panel>` — side-drawer wrapper around `<om-parameter-form>`.
+ * `<om-parameter-panel>` — floating card wrapper around `<om-parameter-form>`.
  *
- * Backed by `<wa-drawer placement="end">` so the diagram stays visible
- * while the user edits. Visible/hidden via the `open` boolean attribute
- * so the host can toggle it declaratively. Forwards the form's events
- * out as `om-panel-*` so the embedder doesn't need to know about the
- * form's internal API.
+ * A non-modal overlay: there is no backdrop and the diagram underneath stays
+ * fully interactive while the panel is up. Visible/hidden via the `open`
+ * boolean attribute so the host can toggle it declaratively. Forwards the
+ * form's events out as `om-panel-*` so the embedder doesn't need to know
+ * about the form's internal API.
  *
- * Escape, backdrop click (`light-dismiss`), and the form's own
- * Cancel button all converge on `om-panel-cancel`. The form's optional
- * "Reset to defaults" button surfaces as `om-panel-reset`.
+ * Placement is the embedder's job — the host is a plain flow box that its
+ * container positions (the webview stacks it under `<om-action-panel>`).
+ *
+ * Escape, the header's close button, and the form's own Cancel button all
+ * converge on `om-panel-cancel`. The form's optional "Reset to defaults"
+ * button surfaces as `om-panel-reset`.
  */
 
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
-import "@awesome.me/webawesome/dist/components/drawer/drawer.js";
+import { omTokens } from "@dicode/ui-common";
 
 import type { ParameterModel } from "@dicode/omc-client";
 
@@ -27,21 +30,91 @@ import type {
 
 @customElement("om-parameter-panel")
 export class OmParameterPanel extends LitElement {
-  static override styles = css`
-    :host {
-      display: contents;
-    }
+  static override styles = [
+    omTokens,
+    css`
+      :host {
+        display: flex;
+        flex-direction: column;
+        inline-size: var(--om-panel-float-width);
+        max-inline-size: 100%;
+        max-block-size: var(--om-panel-float-max-height);
+        box-sizing: border-box;
+        /* Opaque, unlike the toolbar's translucent strip: the diagram showing
+         * through a dense column of labels and inputs wrecks their contrast. */
+        background: var(--vscode-editorWidget-background, #ffffff);
+        border: 1px solid var(--vscode-editorWidget-border, rgba(0, 0, 0, 0.15));
+        border-radius: var(--om-radius-md);
+        box-shadow: var(--om-shadow-overlay);
+        /* No backdrop-filter: blurring over a 60fps canvas pegs the GPU
+         * compositor. */
+        font-family: var(--vscode-font-family, system-ui, sans-serif);
+        font-size: var(--vscode-font-size, 13px);
+        color: var(--vscode-foreground, #1f1f1f);
+      }
 
-    /* The drawer auto-shrinks on small screens; the form just needs a
-     * sensible floor so its inputs don't squish. wa-drawer's width is
-     * controlled via --size, passed inline below. */
-    .form-host {
-      display: block;
-      min-width: 320px;
-    }
-  `;
+      :host(:not([open])) {
+        display: none;
+      }
 
-  /** Whether the modal is shown. */
+      .card {
+        display: flex;
+        flex-direction: column;
+        /* Without an explicit floor a flex item refuses to shrink below its
+         * content, so the body would never scroll. */
+        min-block-size: 0;
+        outline: none;
+      }
+
+      .header {
+        display: flex;
+        align-items: center;
+        gap: var(--om-space-md);
+        padding: var(--om-space-md) var(--om-space-md) var(--om-space-md)
+          var(--om-space-xl);
+        border-bottom: 1px solid
+          var(--vscode-editorWidget-border, rgba(0, 0, 0, 0.15));
+      }
+
+      .title {
+        flex: 1;
+        margin: 0;
+        font-size: var(--om-title-size);
+        font-weight: var(--om-title-weight);
+        overflow-wrap: anywhere;
+      }
+
+      .close {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: var(--om-space-2xs);
+        background: none;
+        border: none;
+        border-radius: var(--om-radius-sm);
+        color: inherit;
+        cursor: pointer;
+      }
+
+      .close:hover {
+        background: var(--vscode-toolbar-hoverBackground, rgba(0, 0, 0, 0.08));
+      }
+
+      .close svg {
+        inline-size: var(--om-icon-size-md);
+        block-size: var(--om-icon-size-md);
+        display: block;
+      }
+
+      .body {
+        min-block-size: 0;
+        overflow: auto;
+      }
+    `,
+  ];
+
+  /** Whether the panel is shown. */
   @property({ type: Boolean, reflect: true })
   open = false;
 
@@ -65,37 +138,70 @@ export class OmParameterPanel extends LitElement {
   crefPrefix: string | undefined = undefined;
 
   override render(): TemplateResult {
-    // Only render the wa-drawer when open: wa-button (which the drawer
-    // uses internally for its close button) is form-associated and
-    // crashes happy-dom on connectedCallback.
+    // Only render the contents when open: wa-button (which the form's
+    // actions use) is form-associated and crashes happy-dom on
+    // connectedCallback.
     if (!this.open) return html`${nothing}`;
     return html`
-      <wa-drawer
-        open
-        placement="end"
-        label=${this.title}
-        light-dismiss
-        style="--size: var(--om-panel-drawer-size)"
-        @wa-hide=${this.onDrawerHide}
+      <div
+        class="card"
+        role="dialog"
+        aria-modal="false"
+        aria-label=${this.title}
+        tabindex="-1"
+        @keydown=${this.onKeyDown}
       >
-        <om-parameter-form
-          class="form-host"
-          .model=${this.model}
-          .crefPrefix=${this.crefPrefix}
-          ?show-reset=${this.showReset}
-          ?readonly=${this.readonly}
-          title=${this.title}
-          submit-label=${this.submitLabel}
-          cancel-label=${this.cancelLabel}
-          reset-label=${this.resetLabel}
-          @om-parameter-change=${this.onChange}
-          @om-parameter-submit=${this.onSubmit}
-          @om-parameter-cancel=${this.fireCancel}
-          @om-parameter-reset=${this.onReset}
-        ></om-parameter-form>
-      </wa-drawer>
+        <header class="header">
+          <h2 class="title">${this.title}</h2>
+          <button
+            class="close"
+            type="button"
+            title="Close (Escape)"
+            aria-label="Close"
+            @click=${this.fireCancel}
+          >
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path
+                d="M4 4l8 8M12 4l-8 8"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+            </svg>
+          </button>
+        </header>
+        <div class="body">
+          <om-parameter-form
+            .model=${this.model}
+            .crefPrefix=${this.crefPrefix}
+            ?show-reset=${this.showReset}
+            ?readonly=${this.readonly}
+            submit-label=${this.submitLabel}
+            cancel-label=${this.cancelLabel}
+            reset-label=${this.resetLabel}
+            @om-parameter-change=${this.onChange}
+            @om-parameter-submit=${this.onSubmit}
+            @om-parameter-cancel=${this.fireCancel}
+            @om-parameter-reset=${this.onReset}
+          ></om-parameter-form>
+        </div>
+      </div>
     `;
   }
+
+  override updated(changed: Map<string, unknown>): void {
+    // Escape only reaches the card while focus is inside it, so opening has
+    // to move focus in.
+    if (!changed.has("open") || !this.open) return;
+    const card = this.renderRoot.querySelector<HTMLElement>(".card");
+    card?.focus();
+  }
+
+  private onKeyDown = (e: KeyboardEvent): void => {
+    if (e.key !== "Escape") return;
+    e.stopPropagation();
+    this.fireCancel();
+  };
 
   private onChange(e: CustomEvent<ParameterFormChangeDetail>): void {
     e.stopPropagation();
@@ -128,21 +234,6 @@ export class OmParameterPanel extends LitElement {
       }),
     );
   }
-
-  private onDrawerHide = (e: Event): void => {
-    // Ignore wa-hide events that bubble up from nested wa-* components
-    // (e.g. wa-select's listbox popover closing on option pick). Only
-    // act when the drawer itself is requesting to close.
-    if (e.target !== e.currentTarget) return;
-    // wa-drawer's hide is cancellable; we never cancel — but we do stop
-    // propagation so the event doesn't escape and confuse other
-    // listeners on the page.
-    e.stopPropagation();
-    if (this.open) {
-      this.open = false;
-      this.fireCancel();
-    }
-  };
 
   private fireCancel = (): void => {
     this.dispatchEvent(

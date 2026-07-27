@@ -9,13 +9,17 @@ OMC scripting call made, in order. It covers the three panel `kind`s
 (`componentParams`, `classParams`, `simulate`), live unit conversion,
 `Dialog.enable`, and reset-to-defaults.
 
-The panel itself is `<om-parameter-panel>` (a WebAwesome side drawer) wrapping
+The panel itself is `<om-parameter-panel>` — a non-modal floating card that the
+webview stacks under the toolbar in the canvas's top-right corner — wrapping
 `<om-parameter-form>`
 ([parameter-form.component.ts](../packages/diagram-ui/src/parameter-form/parameter-form.component.ts)).
-It is **schema-driven**: the host hands it a `JsonSchema` + an initial `values`
-map, the form renders one row per field, and on submit it hands back a flat
-`values` map. The form makes **no OMC calls and holds no model state** — it is a
-pure function of (schema, values) plus local edit state.
+There is no backdrop: the diagram stays fully interactive while the panel is up,
+and only Escape, the header's close button, or the form's Cancel dismiss it.
+
+It is **model-driven**: the host hands it a `ParameterModel`, the form renders
+one row per field, and on submit it hands back a flat `values` map. The form
+makes **no OMC calls and holds no model state** — it is a pure function of
+(model, edits).
 
 ## Cast of characters
 

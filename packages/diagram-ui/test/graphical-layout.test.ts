@@ -245,8 +245,7 @@ describe("<om-graphical-layout>", () => {
   it("mounts an <om-keymap-help> for the ? shortcut", async () => {
     // Dispatching Shift+? for real (and asserting the open state it drives)
     // is verified end-to-end in a real browser (Storybook): `<wa-dialog>`'s
-    // internal close button is a form-associated `wa-button`, which — like
-    // `<wa-drawer>`'s (see the comment on `OmParameterPanel.render`) —
+    // internal close button is a form-associated `wa-button`, which
     // crashes happy-dom on connect, so this only pins that the element is
     // mounted and starts closed; `shift+?`'s dispatch is pinned at the
     // registry/keymap level instead (`test/keymap.test.ts`,
