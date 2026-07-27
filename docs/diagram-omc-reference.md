@@ -233,27 +233,40 @@ like a `package` (issue #345).
 **Change-class candidate filtering** ([change-class-filter.ts](../packages/extension/src/diagram/change-class-filter.ts), issue #239). `setElementType` swaps a component's class even when the new class drops a connector its existing `connect()` equations reference, leaving dangling connections. `pickClassToSwap` keeps only candidates that expose a matching port (name + connector type) for every currently-connected port. Each candidate's ports come from a cached `getElements` walk over its extends chain — never `getModelInstance`, which never returns for builtins like `String` and would stall the shared OMC socket. `getElements` reports only locally-declared elements and omits `extends` rows, so the chain is walked explicitly.
 
 **Missing / not implemented** (vs a full graphical editor):
-- **Icon/diagram graphics editing** — shapes are **read-only**; no add/move/delete
-  of `Line`/`Rect`/… primitives, no curve editing.
-- **Interactive rotate** (no handle/shortcut; rotation only via programmatic
-  layout diff) and **flip/mirror** (`applyFlip` exists but is unreachable).
-- **Waypoint insert/delete** (only drag existing); no routing-style control.
-- **Connector (port) add/delete/move.**
-- **Copy/paste**; **multi-select UI** (selection *state* is tracked, no
-  affordance); rounded-rectangle corners (renderer parity TODO).
-- **Component-level parameter label `%value` substitution** (deferred half of
-  issue #28 — only host-level params substitute today).
+- **Text / Bitmap drawing** — both render, select, resize, restyle and
+  serialize, but no tool creates one: `ExtentKind` is `rectangle | ellipse`
+  ([tools.ts](../packages/diagram-ui/src/interaction/tools.ts)). Issue #384.
+- **Draw-then-select** — a committed draw leaves the selection empty, so a
+  freshly drawn shape has no handles. Issue #385.
+- **Shape z-order editing** — primitives paint in annotation-array order, but
+  nothing reorders that array (bring to front / send to back). Issue #328.
+- **Connection styling at render time** — `ConnectionLayout` carries
+  `color`/`thickness`/`pattern`/`arrow`/`smooth` and `<om-line>` can draw all
+  of it, but the edge still renders as a bespoke 1px GL line. Issue #219.
+- **Array dimensions on paste / add** — `addComponent` takes no `dims`, so a
+  copied vector component arrives as a scalar. Issue #379.
 
-**Behaves-weirdly suspects** (cross-referenced with §2/§3 reference):
-1. **Two rotation centres** — if `GraphicItem.rotation` (around item `origin`) and
-   `Transformation.rotation` (around `{0,0}`) are conflated, rotated primitives
-   land wrong. **Check [placement.ts](../packages/omc-client/src/api/diagram/placement.ts).**
-2. **`iconTransformation` fallback** — if absent, must reuse `transformation`;
-   missing this misplaces components that only specify the diagram-layer
-   transform.
-3. **`IconMap`/`DiagramMap` + `primitivesVisible`** — inherited graphics that
-   remap or hide base primitives will render wrong if unhandled.
-4. **`DynamicSelect`** graphics — likely rendered statically or dropped.
+**Rendering correctness — settled (#138, PR #220).** The four classic
+misreadings of §2/§3, and where each is handled. Listed so they are not
+re-investigated:
+
+1. **Two rotation centres.** `Transformation.rotation` (around `{0,0}`) is
+   applied in [placement.ts](../packages/omc-client/src/api/diagram/placement.ts);
+   `GraphicItem.rotation` (around the item's own `origin`) is applied in
+   [placement-math.ts](../packages/diagram-ui/src/base/placement-math.ts), which
+   pivots inside the transform node. They are never conflated.
+2. **`iconTransformation` fallback.** Handled in `placement.ts` — diagram mode
+   prefers `transformation`, icon mode prefers `iconTransformation`, and each
+   falls back to the other for components that define only one.
+3. **`IconMap`/`DiagramMap` + `primitivesVisible`.** Inherited layers are walked
+   in [walker.ts](../packages/omc-client/src/api/diagram/walker.ts) and
+   [producer.ts](../packages/omc-client/src/api/diagram/producer.ts); an
+   `extends` annotation that hides base primitives drops that layer's graphics.
+4. **`DynamicSelect`.** Resolved to its static default in
+   [expression-to-string.ts](../packages/omc-client/src/eval/expression-to-string.ts)
+   — it arrives as a `call` named `DynamicSelect` whose first argument is the
+   static branch. Conditional graphics are rendered statically by design;
+   re-evaluating them per-instance would need a simulation result to bind to.
 
 ---
 
@@ -263,9 +276,12 @@ like a `package` (issue #345).
   Connection / Source tree, where `coordinateSystem`/`graphics`/`placement` live,
   how redeclared elements appear). Our [Zod schema](../packages/omc-client/src/_shared/modelInstance.ts)
   is the de-facto contract; reconcile it against a live dump when in doubt.
-- Current signatures for `addComponent`/`updateComponent`/`deleteComponent` and
-  `setElementModifierValue` (only `addConnection` was line-verified upstream).
-- How `DynamicSelect`/conditional graphics are represented in the JSON.
+- Whether OMC exposes any reorder operation over a class's `graphics` array, or
+  whether a reorder must be a whole-array rewrite through `addClassAnnotation`
+  the way `writeClassGraphics` already does its add/modify/delete (issue #328).
+- Whether a `Bitmap` should persist as a `modelica://` `fileName` reference or
+  an inline base64 `imageSource`, and which OMEdit's bitmap dialog writes
+  (issue #384).
 
 ## Sources
 
