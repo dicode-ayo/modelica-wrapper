@@ -721,14 +721,12 @@ export class DiagramEditController {
         layer,
         clipboard.nextOffset(className),
       );
-      if (result.failed.length > 0) {
-        this.reportError(
-          `${result.failed.length} paste(s) failed: ${result.failed.at(0) ?? "unknown"}`,
-        );
+      const failure = result.failed.at(0);
+      if (failure !== undefined) {
+        this.reportError(failure);
       }
-      // Reflect on anything that reached the class, failures included — a
-      // half-applied paste still changed the source, and skipping the reflect
-      // would leave it with no undo step and `prevLayout` out of date.
+      // OMC parses the paste as one block, so a rejection changed nothing and
+      // reflecting would record an undo step for a no-op.
       if (result.added.length === 0 && result.shapes === 0) return;
       const layout = await this.refetch(client, className);
       await this.reflect(layout);
