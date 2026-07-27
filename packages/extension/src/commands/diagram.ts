@@ -91,6 +91,8 @@ const KEYBOUND_COMMANDS: ReadonlyArray<readonly [string, DiagramCommandId]> = [
   ["modelica.diagram.rotateCcw", "diagram.rotateCcw"],
   ["modelica.diagram.flipHorizontal", "diagram.flipHorizontal"],
   ["modelica.diagram.flipVertical", "diagram.flipVertical"],
+  ["modelica.diagram.copy", "diagram.copy"],
+  ["modelica.diagram.paste", "diagram.paste"],
   ["modelica.diagram.showKeymapHelp", "diagram.showKeymapHelp"],
 ];
 

@@ -20,6 +20,16 @@ import { createReadyGate, type ReadyGate } from "../webview/ready-gate.js";
 
 import { applyEdits } from "./apply-edits.js";
 import {
+  diagramClipboard,
+  type ClipboardEntry,
+  type DiagramClipboard,
+} from "./clipboard.js";
+import {
+  captureClipboardItems,
+  pastedSelectionKeys,
+  pasteClipboardItems,
+} from "./copy-paste.js";
+import {
   defaultScheduler,
   isReadOnlyDocument,
   READ_ONLY_EDIT_MESSAGE,
@@ -181,6 +191,27 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     return true;
   }
 
+  // ── Open-session registry ───────────────────────────────────────────────
+  // The clipboard is window-wide, so a copy in one editor has to enable paste
+  // in every other one — which needs more than the single `active` session.
+  private static sessions = new Set<EditorSession>();
+
+  static addSession(session: EditorSession): void {
+    DiagramEditorProvider.sessions.add(session);
+  }
+
+  static removeSession(session: EditorSession): void {
+    DiagramEditorProvider.sessions.delete(session);
+  }
+
+  /** Tell every open editor whether the shared clipboard holds anything. */
+  static broadcastClipboard(): void {
+    const hasClipboard = !diagramClipboard.isEmpty;
+    for (const session of DiagramEditorProvider.sessions) {
+      session.send({ type: "clipboard", hasClipboard });
+    }
+  }
+
   static setActive(session: EditorSession): void {
     DiagramEditorProvider.active = session;
     setInputFocusContext(session.inputFocused);
@@ -237,6 +268,7 @@ export function resolveDiagramEditor(
     send: (msg) => gate.send(msg),
     inputFocused: false,
   };
+  DiagramEditorProvider.addSession(session);
 
   const sub = webview.onDidReceiveMessage((msg: WebviewToExtension) => {
     if (msg.type === "ready") {
@@ -261,6 +293,7 @@ export function resolveDiagramEditor(
   webviewPanel.onDidDispose(() => {
     sub.dispose();
     viewStateSub.dispose();
+    DiagramEditorProvider.removeSession(session);
     DiagramEditorProvider.clearActive(session);
     controller?.dispose();
   });
@@ -282,14 +315,29 @@ export function resolveDiagramEditor(
         // writable and strand the editor in edit mode.
         const readOnly = await isReadOnlyDocument(document);
         controller = new DiagramEditController(
-          { client, document, className, gate, onClassContentChanged },
+          {
+            client,
+            document,
+            className,
+            gate,
+            onClassContentChanged,
+            clipboard: diagramClipboard,
+            onClipboardChanged: () =>
+              DiagramEditorProvider.broadcastClipboard(),
+          },
           layout,
           (onForeignChange) => createShadowBuffer(document, onForeignChange),
           defaultScheduler,
           readOnly,
           mode,
         );
-        gate.send({ type: "init", layout, className, readOnly });
+        gate.send({
+          type: "init",
+          layout,
+          className,
+          readOnly,
+          hasClipboard: !diagramClipboard.isEmpty,
+        });
       } catch (err) {
         const detail = (err as Error).message;
         gate.send({ type: "renderError", className, mode, detail });
@@ -332,6 +380,10 @@ interface EditControllerDeps {
    *  the icon-safe subset is narrow (parameter values, connectors, and
    *  change-class all can alter it) and the eviction+re-render is cheap. */
   onClassContentChanged?: ((className: string) => void) | undefined;
+  /** The window-wide clipboard this editor copies into and pastes from. */
+  clipboard: DiagramClipboard;
+  /** Fired when a copy fills the clipboard, so every open editor enables paste. */
+  onClipboardChanged: () => void;
 }
 
 /**
@@ -554,6 +606,12 @@ export class DiagramEditController {
       case "resetComponentParameters":
         await this.onResetComponentParameters(msg.componentName);
         return;
+      case "copySelection":
+        await this.onCopySelection(msg.keys);
+        return;
+      case "paste":
+        await this.onPaste();
+        return;
       default:
         return;
     }
@@ -622,6 +680,97 @@ export class DiagramEditController {
         `addComponent ${componentClass} failed: ${(err as Error).message}`,
       );
     }
+  }
+
+  /** Fill the shared clipboard from the selection. Copying reads the class. */
+  private async onCopySelection(keys: string[]): Promise<void> {
+    try {
+      const items = await captureClipboardItems(
+        this.deps.client,
+        this.prevLayout,
+        keys,
+      );
+      if (items.length === 0) {
+        this.reportError("nothing in the selection can be copied");
+        return;
+      }
+      this.deps.clipboard.write(items);
+      this.deps.onClipboardChanged();
+    } catch (err) {
+      this.reportError(`copy failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Paste the clipboard into this class, offset so it doesn't land exactly on
+   * the original. Every write happens before the single `reflect`, which is
+   * what records the undo step — one paste has to be one undo.
+   */
+  private async onPaste(): Promise<void> {
+    if (this.rejectIfReadOnly()) return;
+    const { client, className, clipboard } = this.deps;
+    const layer = this.mode === "icon" ? "icon" : "diagram";
+    try {
+      const items = await this.pasteableItems(clipboard.read());
+      if (items.length === 0) return;
+      const result = await pasteClipboardItems(
+        client,
+        className,
+        this.prevLayout,
+        items,
+        layer,
+        clipboard.nextOffset(className),
+      );
+      if (result.failed.length > 0) {
+        this.reportError(
+          `${result.failed.length} paste(s) failed: ${result.failed.at(0) ?? "unknown"}`,
+        );
+      }
+      // Reflect on anything that reached the class, failures included — a
+      // half-applied paste still changed the source, and skipping the reflect
+      // would leave it with no undo step and `prevLayout` out of date.
+      if (result.added.length === 0 && result.shapes === 0) return;
+      const layout = await this.refetch(client, className);
+      await this.reflect(layout);
+      // After the reflect: the layout push it sends would otherwise re-key the
+      // webview's selection out from under this one.
+      this.deps.gate.send({
+        type: "select",
+        keys: pastedSelectionKeys(layout, result, layer),
+      });
+    } catch (err) {
+      this.reportError(`paste failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Narrow the clipboard to what this editor may receive. The icon editor
+   * takes shapes and connectors only, the same restriction `onAddComponent`
+   * enforces for a drop. The verdict is cached per class so pasting several
+   * copies of one connector doesn't re-ask OMC for each.
+   */
+  private async pasteableItems(
+    items: readonly ClipboardEntry[],
+  ): Promise<readonly ClipboardEntry[]> {
+    if (this.mode !== "icon") return items;
+    const verdicts = new Map<string, boolean>();
+    const allowed: ClipboardEntry[] = [];
+    for (const item of items) {
+      // An icon has no connect() equations; a dropped connection is silent
+      // rather than an error, since the user copied components, not wires.
+      if (item.kind === "connection") continue;
+      if (item.kind === "shape") {
+        allowed.push(item);
+        continue;
+      }
+      let isConnector = verdicts.get(item.className);
+      if (isConnector === undefined) {
+        isConnector = await this.isConnectorClass(item.className);
+        verdicts.set(item.className, isConnector);
+      }
+      if (isConnector) allowed.push(item);
+    }
+    return allowed;
   }
 
   /**
@@ -1029,15 +1178,18 @@ export class DiagramEditController {
  * Webview messages the icon editor honors. Shape draw/edit flows through
  * `change` and the `shapeProperties` modal (`selectionChange` +
  * `parametersSubmit`/`parametersCancel`); connector placement flows through
- * `addComponent` (restriction-gated in `onAddComponent`). Everything else —
- * connections, change-class, class/component parameters, simulate, check — is a
- * no-op in icon mode.
+ * `addComponent` (restriction-gated in `onAddComponent`), and paste through the
+ * same restriction in `pasteableItems`. Everything else — connections,
+ * change-class, class/component parameters, simulate, check — is a no-op in
+ * icon mode.
  */
 function iconHonorsMessage(msg: WebviewToExtension): boolean {
   switch (msg.type) {
     case "change":
     case "selectionChange":
     case "addComponent":
+    case "copySelection":
+    case "paste":
       return true;
     case "parametersSubmit":
     case "parametersCancel":

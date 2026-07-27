@@ -309,6 +309,14 @@ export class OmGraphicalLayout extends LitElement {
   @property({ type: Boolean, reflect: true })
   readonly = false;
 
+  /**
+   * Whether the host's clipboard holds something pasteable. Pushed in, not
+   * tracked here: the clipboard is shared across editors, so a copy in another
+   * diagram has to enable paste in this one.
+   */
+  @property({ type: Boolean, reflect: true, attribute: "has-clipboard" })
+  hasClipboard = false;
+
   /** Optional renderer factory forwarded to the inner `<om-scene>`. Used
    *  by tests to mount renderer-less (factory returns `null`). */
   @property({ attribute: false })
@@ -1450,7 +1458,13 @@ export class OmGraphicalLayout extends LitElement {
     type: K,
     detail: DragEvents[K],
   ): void {
-    if (this.readonly || !this.layout) {
+    if (!this.layout) {
+      return;
+    }
+    // Rubber-band is the one gesture here that moves nothing — it only sets
+    // the selection, so it stays live on a read-only class. Copying a
+    // sub-system out of a system-library model needs multi-select.
+    if (this.readonly && type !== "rubberBand") {
       return;
     }
     switch (type) {
@@ -1753,6 +1767,14 @@ export class OmGraphicalLayout extends LitElement {
       requestClassChange: (componentName, currentClass) => {
         this.emit("om-change-class-request", { componentName, currentClass });
       },
+      requestClipboard: (action) => {
+        this.emit(
+          "om-clipboard-request",
+          action === "copy"
+            ? { action, keys: Array.from(this.selectedKeys) }
+            : { action },
+        );
+      },
       showKeymapHelp: () => this.openKeymapHelp(),
     };
   }
@@ -1805,7 +1827,7 @@ export class OmGraphicalLayout extends LitElement {
       {
         readonly: this.readonly,
         viewLayer: this.layout?.kind ?? "diagram",
-        hasClipboard: false,
+        hasClipboard: this.hasClipboard,
         vertexTarget: this.contextVertex !== null,
         polySelection: this.singlePolyShapeSelected(),
       },
@@ -1904,14 +1926,19 @@ export class OmGraphicalLayout extends LitElement {
     return Array.from(this.selectedKeys);
   }
 
-  /** Convenience for callers that want to drive selection externally. */
+  /**
+   * Convenience for callers that want to drive selection externally. Emits
+   * like the pointer paths do: the host mirrors the selection to gate its own
+   * affordances, so a silent write would leave those stale — the action panel
+   * disabled over the components a paste just selected, for instance.
+   */
   setSelection(keys: Iterable<string>): void {
     this.selectedKeys = new Set(
       Array.from(keys).filter((k) => parseKey(k) !== null),
     );
-    this.interactionStore.next({
-      selectedKeys: Array.from(this.selectedKeys),
-    });
+    const next = Array.from(this.selectedKeys);
+    this.emit("om-selection-change", { keys: next });
+    this.interactionStore.next({ selectedKeys: next });
   }
 
   /** Read-only access to the live interaction state. Useful for tests

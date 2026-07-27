@@ -96,7 +96,7 @@ export type LayoutEdit =
     }
   | { kind: "graphicsDeleted"; layer: GraphicsLayer; index: number };
 
-function endpointToCref(c: {
+export function endpointToCref(c: {
   component: string | undefined;
   port: string;
   componentSubscripts?: string | undefined;

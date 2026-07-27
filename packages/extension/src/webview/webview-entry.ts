@@ -83,6 +83,8 @@ class OmWebviewRoot extends LitElement {
   @state() private hasSelection = false;
   /** Read-only class (system library): all edit affordances are suppressed. */
   @state() private readOnly = false;
+  /** Host-reported: the shared diagram clipboard holds something pasteable. */
+  @state() private hasClipboard = false;
   @state() private activeTool: ToolId = "select";
   @state() private paramOpen = false;
   @state() private paramModel: ParameterModel | undefined = undefined;
@@ -154,6 +156,7 @@ class OmWebviewRoot extends LitElement {
         .layout=${this.layout}
         host-managed-keys
         ?readonly=${this.readOnly}
+        ?has-clipboard=${this.hasClipboard}
         ?perf-hud=${true}
         @om-graphical-layout-change=${this.onLayoutChange}
         @om-connection-create=${this.onConnectionCreate}
@@ -163,6 +166,7 @@ class OmWebviewRoot extends LitElement {
         @om-tool-change=${(e: CustomEvent<LayoutEvents["om-tool-change"]>) =>
           (this.activeTool = e.detail.tool)}
         @om-change-class-request=${this.onChangeClassRequest}
+        @om-clipboard-request=${this.onClipboardRequest}
       ></om-graphical-layout>
       <om-action-panel
         anchor="top-right"
@@ -206,8 +210,15 @@ class OmWebviewRoot extends LitElement {
     switch (message.type) {
       case "init":
         this.readOnly = message.readOnly;
+        this.hasClipboard = message.hasClipboard;
         this.layout = message.layout;
         this.renderError = null;
+        return;
+      case "clipboard":
+        this.hasClipboard = message.hasClipboard;
+        return;
+      case "select":
+        this.diagram?.setSelection(message.keys);
         return;
       case "layout":
         this.layout = message.layout;
@@ -311,6 +322,17 @@ class OmWebviewRoot extends LitElement {
   ): void => {
     const { componentName, currentClass } = e.detail;
     this.post({ type: "changeClassRequest", componentName, currentClass });
+  };
+
+  private onClipboardRequest = (
+    e: CustomEvent<LayoutEvents["om-clipboard-request"]>,
+  ): void => {
+    const detail = e.detail;
+    this.post(
+      detail.action === "copy"
+        ? { type: "copySelection", keys: detail.keys }
+        : { type: "paste" },
+    );
   };
 
   private onParamSubmit = (e: CustomEvent<ParameterFormSubmitDetail>): void => {

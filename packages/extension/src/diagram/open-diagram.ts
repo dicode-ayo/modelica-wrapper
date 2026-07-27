@@ -149,15 +149,37 @@ export function uniqueComponentName(
   componentClass: string,
 ): string {
   const leaf = componentClass.slice(componentClass.lastIndexOf(".") + 1);
-  const base = /^[A-Za-z_][A-Za-z_0-9]*$/.test(leaf)
-    ? leaf.charAt(0).toLowerCase() + leaf.slice(1)
-    : "component";
-  const taken = new Set(Object.keys(layout.components));
-  // Standalone connectors share the same identifier namespace inside
-  // the class — collisions there would also break addComponent.
-  for (const name of Object.keys(layout.connectors)) taken.add(name);
+  return firstFreeName(
+    leaf.charAt(0).toLowerCase() + leaf.slice(1),
+    takenNames(layout),
+  );
+}
+
+/**
+ * Every instance name declared in the class. Standalone connectors share the
+ * identifier namespace with components, so a collision there would break
+ * `addComponent` just the same.
+ */
+export function takenNames(layout: DiagramLayout): Set<string> {
+  return new Set([
+    ...Object.keys(layout.components),
+    ...Object.keys(layout.connectors),
+  ]);
+}
+
+/**
+ * `base1`, `base2`, … — the first suffix not already in `taken`. `base` falls
+ * back to `component` unless it is a plain Modelica identifier, since suffixing
+ * a quoted identifier (`'my gain'` → `'my gain'1`) yields something OMC
+ * rejects.
+ */
+export function firstFreeName(
+  base: string,
+  taken: ReadonlySet<string>,
+): string {
+  const stem = /^[A-Za-z_][A-Za-z_0-9]*$/.test(base) ? base : "component";
   for (let i = 1; ; i += 1) {
-    const candidate = `${base}${i}`;
+    const candidate = `${stem}${i}`;
     if (!taken.has(candidate)) return candidate;
   }
 }

@@ -10,20 +10,10 @@ import {
 } from "../interaction/layout-ops.js";
 import { parseKey, vertexShapeKey } from "../interaction/node-keys.js";
 import type { Command, CommandPlacement, CommandTarget } from "./command.js";
+import type { DiagramCommandId } from "./command-ids.js";
 import type { KeyChord } from "./keymap.js";
 
-/** The ids of the built-in diagram commands; the keymap and every dispatch
- *  site are checked against this union. */
-export type DiagramCommandId =
-  | "diagram.delete"
-  | "diagram.rotateCw"
-  | "diagram.rotateCcw"
-  | "diagram.flipHorizontal"
-  | "diagram.flipVertical"
-  | "diagram.deleteVertex"
-  | "diagram.toggleSmooth"
-  | "diagram.changeClass"
-  | "diagram.showKeymapHelp";
+export type { DiagramCommandId } from "./command-ids.js";
 
 const requireSelection = (ctx: ContextKeys): boolean =>
   !ctx.readonly && ctx.selectionCount > 0;
@@ -52,6 +42,13 @@ function mutate(
 const editMenu = (order: number): CommandPlacement => ({
   surface: "contextMenu",
   group: "edit",
+  order,
+});
+
+/** Clipboard ops sit in their own separated group above the edit ops. */
+const clipboardMenu = (order: number): CommandPlacement => ({
+  surface: "contextMenu",
+  group: "clipboard",
   order,
 });
 
@@ -155,6 +152,23 @@ export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
     },
   },
   {
+    id: "diagram.copy",
+    title: "Copy",
+    category: "Edit",
+    // Copying reads the class; only paste writes one.
+    when: (ctx) => ctx.selectionCount > 0,
+    placements: [clipboardMenu(0)],
+    run: (target) => target.requestClipboard?.("copy"),
+  },
+  {
+    id: "diagram.paste",
+    title: "Paste",
+    category: "Edit",
+    when: (ctx) => !ctx.readonly && ctx.hasClipboard,
+    placements: [clipboardMenu(1)],
+    run: (target) => target.requestClipboard?.("paste"),
+  },
+  {
     id: "diagram.showKeymapHelp",
     title: "Show keyboard shortcuts",
     category: "Help",
@@ -174,5 +188,7 @@ export const DEFAULT_KEYMAP: ReadonlyMap<KeyChord, DiagramCommandId> = new Map([
   ["shift+r", "diagram.rotateCcw"],
   ["f", "diagram.flipHorizontal"],
   ["shift+f", "diagram.flipVertical"],
+  ["ctrl+c", "diagram.copy"],
+  ["ctrl+v", "diagram.paste"],
   ["shift+?", "diagram.showKeymapHelp"],
 ]);

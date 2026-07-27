@@ -42,6 +42,7 @@ import type {
 } from "../webview/protocol.js";
 import type { ReadyGate } from "../webview/ready-gate.js";
 import { type Scheduler } from "./buffer-sync.js";
+import { DiagramClipboard } from "./clipboard.js";
 import {
   classNameFromDocument,
   DiagramEditController,
@@ -596,6 +597,8 @@ function makeEditClient(opts?: {
   classRestriction?: string;
   classRestrictionThrows?: boolean;
   isPartial?: boolean;
+  /** Modifier name → expression, answered for every element the copy reads. */
+  modifiers?: Record<string, string>;
 }): {
   client: OmcClient;
   invoked: string[];
@@ -702,6 +705,15 @@ function makeEditClient(opts?: {
       return Promise.resolve({
         simulationResult: { kind: "call", name: "SimulationResult", args: [] },
       });
+    }),
+    getElementModifierNames: vi.fn(() => {
+      ops.push("getElementModifierNames");
+      return Promise.resolve({ modifiers: Object.keys(opts?.modifiers ?? {}) });
+    }),
+    getElementModifierValue: vi.fn((input: { modifier: string }) => {
+      ops.push("getElementModifierValue");
+      const path = input.modifier.slice(input.modifier.indexOf(".") + 1);
+      return Promise.resolve({ value: opts?.modifiers?.[path] ?? "" });
     }),
     getErrorString: vi.fn(() => Promise.resolve({ errorString: "boom" })),
   } as unknown as OmcClient;
@@ -2348,6 +2360,243 @@ describe("DiagramEditController: reset error branches", () => {
       componentName: "PI",
     });
 
+    expect(posted.at(-1)?.type).toBe("error");
+  });
+});
+
+describe("DiagramEditController: clipboard", () => {
+  const twoGains = (): DiagramLayout =>
+    layout({
+      components: {
+        gain1: {
+          classRef: "Modelica.Blocks.Math.Gain",
+          placement: {
+            extent: [
+              [0, 0],
+              [20, 20],
+            ],
+            rotation: 0,
+          },
+        },
+        gain2: {
+          classRef: "Modelica.Blocks.Math.Gain",
+          placement: {
+            extent: [
+              [40, 0],
+              [60, 20],
+            ],
+            rotation: 0,
+          },
+        },
+      } as unknown as DiagramLayout["components"],
+    });
+
+  function makeController(
+    opts: {
+      readOnly?: boolean;
+      mode?: "diagram" | "icon";
+      classRestriction?: string;
+      modifiers?: Record<string, string>;
+    } = {},
+  ): {
+    controller: DiagramEditController;
+    clipboard: DiagramClipboard;
+    posted: ExtensionToWebview[];
+    writes: string[];
+    ops: string[];
+    addComponentCalls: Array<Record<string, unknown>>;
+    setModifierCalls: Array<Record<string, unknown>>;
+    /** How many times the editor announced a clipboard change. */
+    broadcasts: () => number;
+  } {
+    const { client, ops, addComponentCalls, setModifierCalls } = makeEditClient(
+      {
+        ...(opts.classRestriction !== undefined && {
+          classRestriction: opts.classRestriction,
+        }),
+        ...(opts.modifiers !== undefined && { modifiers: opts.modifiers }),
+      },
+    );
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const clipboard = new DiagramClipboard();
+    let broadcasts = 0;
+    const controller = new DiagramEditController(
+      {
+        client,
+        document: SRC_DOC,
+        className: "Pkg.M",
+        gate,
+        clipboard,
+        onClipboardChanged: () => {
+          broadcasts += 1;
+        },
+      },
+      twoGains(),
+      factory,
+      undefined,
+      opts.readOnly ?? false,
+      opts.mode ?? "diagram",
+    );
+    return {
+      controller,
+      clipboard,
+      posted,
+      writes,
+      ops,
+      addComponentCalls,
+      setModifierCalls,
+      broadcasts: () => broadcasts,
+    };
+  }
+
+  it("fills the clipboard from the selection and announces it", async () => {
+    const { controller, clipboard, broadcasts } = makeController({
+      modifiers: { k: "2.5" },
+    });
+
+    await controller.handle({ type: "copySelection", keys: ["c:gain1"] });
+
+    expect(clipboard.read()).toEqual([
+      {
+        kind: "component",
+        name: "gain1",
+        className: "Modelica.Blocks.Math.Gain",
+        extent: [
+          [0, 0],
+          [20, 20],
+        ],
+        rotation: 0,
+        modifiers: [{ path: "k", expr: "2.5" }],
+      },
+    ]);
+    expect(broadcasts()).toBe(1);
+  });
+
+  it("copies from a read-only class — only paste writes", async () => {
+    const { controller, clipboard, posted } = makeController({
+      readOnly: true,
+    });
+
+    await controller.handle({ type: "copySelection", keys: ["c:gain1"] });
+
+    expect(clipboard.isEmpty).toBe(false);
+    expect(posted.some((m) => m.type === "error")).toBe(false);
+  });
+
+  it("refuses to paste into a read-only class", async () => {
+    const { controller, clipboard, posted, addComponentCalls } = makeController(
+      { readOnly: true },
+    );
+    await controller.handle({ type: "copySelection", keys: ["c:gain1"] });
+
+    await controller.handle({ type: "paste" });
+
+    expect(addComponentCalls).toEqual([]);
+    expect(posted.at(-1)?.type).toBe("error");
+    expect(clipboard.isEmpty).toBe(false);
+  });
+
+  it("reflects a multi-item paste exactly once, so it is one undo step", async () => {
+    const { controller, writes, addComponentCalls } = makeController();
+    await controller.handle({
+      type: "copySelection",
+      keys: ["c:gain1", "c:gain2"],
+    });
+
+    await controller.handle({ type: "paste" });
+
+    expect(addComponentCalls).toHaveLength(2);
+    expect(writes).toHaveLength(1);
+  });
+
+  it("names each pasted component uniquely against the live layout", async () => {
+    const { controller, addComponentCalls } = makeController();
+    await controller.handle({
+      type: "copySelection",
+      keys: ["c:gain1", "c:gain2"],
+    });
+
+    await controller.handle({ type: "paste" });
+
+    expect(addComponentCalls.map((c) => c.componentName)).toEqual([
+      "gain3",
+      "gain4",
+    ]);
+  });
+
+  it("replays the copied modifiers onto the pasted instance", async () => {
+    const { controller, setModifierCalls } = makeController({
+      modifiers: { k: "2.5" },
+    });
+    await controller.handle({ type: "copySelection", keys: ["c:gain1"] });
+
+    await controller.handle({ type: "paste" });
+
+    expect(setModifierCalls).toEqual([
+      { typeName: "Pkg.M", elementName: "gain3.k", expr: "2.5" },
+    ]);
+  });
+
+  it("reflects a paste whose modifier write failed — the class still changed", async () => {
+    // `addComponent` landed; only the modifier was rejected. Skipping the
+    // reflect would leave OMC holding a component the buffer never saw, with
+    // no undo step and a stale `prevLayout`.
+    const { client, ops } = makeEditClient({ modifiers: { k: "2.5" } });
+    (
+      client as unknown as {
+        setElementModifierValue: (i: unknown) => Promise<unknown>;
+      }
+    ).setElementModifierValue = () => {
+      ops.push("setElementModifierValue");
+      return Promise.resolve({ success: false, diagnostic: "bad modifier" });
+    };
+    const { gate, posted } = makeGate();
+    const { factory, writes } = makeShadowFactory();
+    const clipboard = new DiagramClipboard();
+    const controller = new DiagramEditController(
+      {
+        client,
+        document: SRC_DOC,
+        className: "Pkg.M",
+        gate,
+        clipboard,
+        onClipboardChanged: () => {},
+      },
+      twoGains(),
+      factory,
+    );
+
+    await controller.handle({ type: "copySelection", keys: ["c:gain1"] });
+    await controller.handle({ type: "paste" });
+
+    expect(writes).toHaveLength(1);
+    expect(posted.some((m) => m.type === "error")).toBe(true);
+  });
+
+  it("does not reflect when the clipboard has nothing this editor accepts", async () => {
+    // A non-connector can't go on an icon, so the paste has no work to do and
+    // must not dirty the buffer.
+    const { controller, writes, addComponentCalls } = makeController({
+      mode: "icon",
+      classRestriction: "block",
+    });
+    // The icon controller reads the same layout; copy the component from it,
+    // then paste it back and watch it get filtered out.
+    await controller.handle({ type: "copySelection", keys: ["c:gain1"] });
+
+    await controller.handle({ type: "paste" });
+
+    expect(addComponentCalls).toEqual([]);
+    expect(writes).toEqual([]);
+  });
+
+  it("reports a selection with nothing copyable in it", async () => {
+    const { controller, clipboard, posted } = makeController();
+
+    await controller.handle({ type: "copySelection", keys: ["edge:0"] });
+
+    expect(clipboard.isEmpty).toBe(true);
     expect(posted.at(-1)?.type).toBe("error");
   });
 });

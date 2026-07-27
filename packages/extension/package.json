@@ -132,6 +132,14 @@
         "title": "Modelica: Flip Diagram Selection Vertically"
       },
       {
+        "command": "modelica.diagram.copy",
+        "title": "Modelica: Copy Diagram Selection"
+      },
+      {
+        "command": "modelica.diagram.paste",
+        "title": "Modelica: Paste Into Diagram"
+      },
+      {
         "command": "modelica.diagram.showKeymapHelp",
         "title": "Modelica: Show Diagram Keyboard Shortcuts"
       },
@@ -331,6 +339,14 @@
           "when": "activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon"
         },
         {
+          "command": "modelica.diagram.copy",
+          "when": "activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon"
+        },
+        {
+          "command": "modelica.diagram.paste",
+          "when": "activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon"
+        },
+        {
           "command": "modelica.diagram.showKeymapHelp",
           "when": "activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon"
         }
@@ -365,6 +381,18 @@
       {
         "command": "modelica.diagram.flipVertical",
         "key": "shift+f",
+        "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus"
+      },
+      {
+        "command": "modelica.diagram.copy",
+        "key": "ctrl+c",
+        "mac": "cmd+c",
+        "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus"
+      },
+      {
+        "command": "modelica.diagram.paste",
+        "key": "ctrl+v",
+        "mac": "cmd+v",
         "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus"
       },
       {

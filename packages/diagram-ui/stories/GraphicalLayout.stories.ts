@@ -6,7 +6,7 @@
  * Try it:
  *  - wheel / middle-drag / shift-drag → pan / zoom
  *  - click a component               → select (highlight outline)
- *  - shift-click another component   → add to selection
+ *  - ctrl/cmd-click another component → add to selection
  *  - drag a selected component       → move (draftLayout)
  *  - hover a connector + drag        → in-progress connection edge
  *  - click empty space + drag        → rubber-band selection
@@ -40,7 +40,7 @@ const meta: Meta<StoryArgs> = {
       <h3>&lt;om-graphical-layout&gt;</h3>
       <p style="font-size:11px;color:#666;margin:4px 0;">
         Synthetic DiagramLayout (3 mechanical-rotational blocks + 2
-        connections). Click to select, drag to move, shift+click for
+        connections). Click to select, drag to move, ctrl/cmd+click for
         multi-select, R/F for rotate/flip, Delete to remove. Hover a component,
         then drag from its port indicator to another port to create a new
         connection (orthogonal route).

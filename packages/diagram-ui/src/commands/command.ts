@@ -20,6 +20,12 @@ export interface CommandTarget {
   setSelection(keys: Iterable<string>): void;
   /** Delegates a class-swap to the host — commands stay synchronous. */
   requestClassChange?(componentName: string, currentClass: string): void;
+  /**
+   * Delegates copy/paste to the host, which owns the clipboard. Like the
+   * class-swap, the command only reports the gesture; the host resolves the
+   * selection and performs the writes.
+   */
+  requestClipboard?(action: "copy" | "paste"): void;
   /** Opens the keyboard-shortcuts help dialog. */
   showKeymapHelp?(): void;
 }

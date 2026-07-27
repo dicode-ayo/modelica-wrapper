@@ -22,7 +22,7 @@ export type PickerFactory = (
 export interface InteractionEvents {
   /** Fires whenever the entity under the pointer changes (incl. to `null`). */
   hover: { key: string | null };
-  /** Primary-button down on an entity. `addToSelection` mirrors shift. */
+  /** Primary-button down on an entity. `addToSelection` mirrors Ctrl/Cmd. */
   select: { key: string; addToSelection: boolean };
   /** Two primary-button presses within the double-click window on the same key. */
   doubleClick: { key: string };
@@ -49,9 +49,10 @@ const DEFAULT_DOUBLE_CLICK_MS = 350;
  * the `doubleClickMs` window.
  *
  * Modifiers:
- *   - shift + primary  → `select` with `addToSelection: true`
- *   - secondary button → `contextMenu`
- *   - middle button    → swallowed (PanZoom owns it)
+ *   - ctrl/cmd + primary → `select` with `addToSelection: true`
+ *   - shift + primary    → swallowed (PanZoom owns it)
+ *   - secondary button   → `contextMenu`
+ *   - middle button      → swallowed (PanZoom owns it)
  */
 export class InteractionManager {
   private readonly picker: PickerFn;
@@ -104,7 +105,7 @@ export class InteractionManager {
   }
 
   handlePointerDown(e: PointerEvent): void {
-    if (e.button !== 0 || (e.shiftKey && this.isPanModifier(e))) {
+    if (this.isPanModifier(e)) {
       return; // pan modifier — PanZoom owns it
     }
     if (e.button !== 0) {
@@ -121,7 +122,10 @@ export class InteractionManager {
     this.lastSelectKey = key;
     this.lastSelectAt = now;
 
-    this.emit("select", { key, addToSelection: e.shiftKey });
+    this.emit("select", {
+      key,
+      addToSelection: e.ctrlKey || e.metaKey,
+    });
     if (isDouble) {
       this.emit("doubleClick", { key });
     }
@@ -139,8 +143,11 @@ export class InteractionManager {
     });
   }
 
+  /**
+   * Shift+primary is reserved for pan (see PanZoom), which is why additive
+   * selection is Ctrl/Cmd+click rather than the usual Shift+click.
+   */
   private isPanModifier(e: PointerEvent): boolean {
-    // Shift+primary is reserved for pan (see PanZoom). Don't shadow it.
     return e.button === 0 && e.shiftKey;
   }
 

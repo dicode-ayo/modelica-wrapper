@@ -21,6 +21,7 @@ describe("commandsToMenuItems", () => {
       registry.commandsFor("contextMenu", ctx()),
     );
     expect(items.map((i) => i.id)).toEqual([
+      "diagram.copy",
       "diagram.delete",
       "diagram.rotateCw",
       "diagram.rotateCcw",
@@ -28,7 +29,8 @@ describe("commandsToMenuItems", () => {
       "diagram.flipVertical",
       "diagram.changeClass",
     ]);
-    expect(items[0]).toMatchObject({ label: "Delete", group: "edit" });
+    expect(items[0]).toMatchObject({ label: "Copy", group: "clipboard" });
+    expect(items[1]).toMatchObject({ label: "Delete", group: "edit" });
     // commandsFor pre-filters by `when`, so nothing is disabled.
     expect(items.every((i) => i.disabled === undefined)).toBe(true);
   });

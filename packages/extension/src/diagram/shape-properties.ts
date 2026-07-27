@@ -57,7 +57,7 @@ export function hexToColor(hex: string): Color {
 
 // ── Shape lookup ─────────────────────────────────────────────────────────────
 
-function findHostLayer(
+export function findHostLayer(
   layers: IconLayer[],
   className: string,
 ): IconLayer | undefined {

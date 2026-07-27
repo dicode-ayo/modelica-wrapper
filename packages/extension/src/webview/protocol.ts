@@ -19,19 +19,13 @@ export type ParameterFormKind =
   | "simulate";
 
 /**
- * Wire-format mirror of diagram-ui's `DiagramCommandId`. Kept local because the
- * CommonJS extension host can't import the ESM-only diagram-ui package; the
- * webview side assigns it straight into diagram-ui's identical union.
+ * Re-exported from the `command-ids` subpath rather than the package root: the
+ * root drags in the Lit and Pixi component tree, whose types need the DOM lib
+ * the host's Node program doesn't have.
  */
-export type DiagramCommandId =
-  | "diagram.delete"
-  | "diagram.rotateCw"
-  | "diagram.rotateCcw"
-  | "diagram.flipHorizontal"
-  | "diagram.flipVertical"
-  | "diagram.deleteVertex"
-  | "diagram.toggleSmooth"
-  | "diagram.showKeymapHelp";
+import type { DiagramCommandId } from "@dicode/diagram-ui/command-ids";
+
+export type { DiagramCommandId };
 
 /**
  * Message protocol between the extension host (Node) and the diagram
@@ -53,6 +47,9 @@ export type DiagramCommandId =
  *                            routes the eventual submit and gates whether the
  *                            form is read-only.
  *   - `parametersClose`    — dismiss the parameter modal.
+ *   - `clipboard`          — the shared diagram clipboard filled or emptied;
+ *                            gates the paste affordance. Broadcast to every
+ *                            open editor, since the clipboard is window-wide.
  *
  * Webview → extension:
  *   - `ready`               — webview has finished loading.
@@ -70,6 +67,9 @@ export type DiagramCommandId =
  *   - `addComponent`        — user dropped or placed a class on the canvas
  *                             and we want to instantiate it into the active
  *                             diagram at `position`.
+ *   - `copySelection` / `paste` — clipboard commands. The host owns the
+ *                             clipboard, so the webview sends the selection
+ *                             and lets the host resolve it against the layout.
  */
 
 export type ExtensionToWebview =
@@ -79,8 +79,17 @@ export type ExtensionToWebview =
       className: string;
       /** True for a read-only class (system library); the webview suppresses all edit affordances. */
       readOnly: boolean;
+      /** Whether the window-wide diagram clipboard already holds something. */
+      hasClipboard: boolean;
     }
   | { type: "layout"; layout: DiagramLayout }
+  | { type: "clipboard"; hasClipboard: boolean }
+  | {
+      // Replace the webview's selection — sent after a paste so the fresh
+      // components are the ones under the next drag.
+      type: "select";
+      keys: string[];
+    }
   | { type: "error"; message: string }
   | {
       type: "renderError";
@@ -185,4 +194,6 @@ export type WebviewToExtension =
       type: "changeClassRequest";
       componentName: string;
       currentClass: string;
-    };
+    }
+  | { type: "copySelection"; keys: string[] }
+  | { type: "paste" };
