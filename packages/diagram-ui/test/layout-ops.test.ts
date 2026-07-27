@@ -3,7 +3,10 @@ import type { DiagramLayout, Point, Shape } from "@dicode/omc-client";
 
 import {
   applyAddGraphic,
+  applyShapeReorder,
   buildPolyShape,
+  ownShapeCount,
+  zOrderTarget,
   applyDelete,
   applyDeltaMove,
   applyEdgeSegmentDrag,
@@ -1458,5 +1461,90 @@ describe("applyAddGraphic", () => {
     const next = applyAddGraphic(layout, "icon", shape);
     expect(next.iconLayers).toEqual([{ from: "Demo", shapes: [shape] }]);
     expect(next.diagramLayers).toEqual([]);
+  });
+});
+
+describe("z-order", () => {
+  const A: Shape = {
+    kind: "rectangle",
+    extent: [
+      [0, 0],
+      [1, 1],
+    ],
+  };
+  const B: Shape = {
+    kind: "rectangle",
+    extent: [
+      [2, 2],
+      [3, 3],
+    ],
+  };
+  const C: Shape = {
+    kind: "rectangle",
+    extent: [
+      [4, 4],
+      [5, 5],
+    ],
+  };
+
+  describe("zOrderTarget", () => {
+    it("sends front to the end and back to the start", () => {
+      expect(zOrderTarget("front", 0, 3)).toBe(2);
+      expect(zOrderTarget("back", 2, 3)).toBe(0);
+    });
+
+    it("steps one slot for forward and backward", () => {
+      expect(zOrderTarget("forward", 0, 3)).toBe(1);
+      expect(zOrderTarget("backward", 2, 3)).toBe(1);
+    });
+
+    it("returns null at the end a move would push past", () => {
+      expect(zOrderTarget("front", 2, 3)).toBeNull();
+      expect(zOrderTarget("forward", 2, 3)).toBeNull();
+      expect(zOrderTarget("back", 0, 3)).toBeNull();
+      expect(zOrderTarget("backward", 0, 3)).toBeNull();
+    });
+
+    it("returns null for an index outside the layer", () => {
+      expect(zOrderTarget("front", 3, 3)).toBeNull();
+      expect(zOrderTarget("front", -1, 3)).toBeNull();
+      expect(zOrderTarget("front", 0, 0)).toBeNull();
+      expect(zOrderTarget("front", 1.5, 3)).toBeNull();
+    });
+  });
+
+  describe("applyShapeReorder", () => {
+    it("moves a shape to the end without touching the inherited layer", () => {
+      const next = applyShapeReorder(withShapes([A, B, C]), 0, 2);
+      expect(ownShapes(next)).toEqual([B, C, A]);
+      expect(next.diagramLayers.at(0)?.from).toBe("Base");
+      expect(next.diagramLayers.at(0)?.shapes).toHaveLength(1);
+    });
+
+    it("moves a shape to the start", () => {
+      expect(ownShapes(applyShapeReorder(withShapes([A, B, C]), 2, 0))).toEqual(
+        [C, A, B],
+      );
+    });
+
+    it("returns the same layout for a no-op or out-of-range move", () => {
+      const layout = withShapes([A, B]);
+      expect(applyShapeReorder(layout, 1, 1)).toBe(layout);
+      expect(applyShapeReorder(layout, 2, 0)).toBe(layout);
+      expect(applyShapeReorder(layout, 0, 2)).toBe(layout);
+      expect(applyShapeReorder(layout, -1, 0)).toBe(layout);
+    });
+
+    it("returns the same layout when the class has no own layer", () => {
+      const layout = baseLayout();
+      expect(applyShapeReorder(layout, 0, 1)).toBe(layout);
+    });
+  });
+
+  describe("ownShapeCount", () => {
+    it("counts only the host's own layer", () => {
+      expect(ownShapeCount(withShapes([A, B, C]))).toBe(3);
+      expect(ownShapeCount(baseLayout())).toBe(0);
+    });
   });
 });

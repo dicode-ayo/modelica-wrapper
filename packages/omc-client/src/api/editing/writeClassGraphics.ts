@@ -14,8 +14,12 @@
  * take, which drops empty/default fields.
  *
  * Shape identity is positional `(layer, index)`: Modelica graphics have no id,
- * so `modify`/`delete` address a shape by its index in the layer's graphics
- * list (the same order `getIconAnnotation` returns).
+ * so `modify`/`delete`/`reorder` address a shape by its index in the layer's
+ * graphics list (the same order `getIconAnnotation` returns).
+ *
+ * Array order is also paint order (first = bottom), so `reorder` is what
+ * bring-to-front / send-to-back write. OMC exposes no reorder call; since this
+ * function already rewrites the whole array, the move happens here.
  */
 
 import { z } from "zod";
@@ -50,6 +54,11 @@ export const WriteClassGraphicsInputSchema = z.object({
         shape: ShapeSchema,
       }),
       z.object({ kind: z.literal("delete"), index: NonNegativeIndex }),
+      z.object({
+        kind: z.literal("reorder"),
+        from: NonNegativeIndex,
+        to: NonNegativeIndex,
+      }),
     ])
     .describe("Edit to apply to the layer's positional graphics list."),
 });
@@ -99,14 +108,21 @@ export async function writeClassGraphics(
       : await getDiagramAnnotation(ctx, { typeName });
 
   const shapes = annotationGraphics(annotation).map(decodeAnnotationShape);
+  const outOfRange = (i: number): Error =>
+    new Error(
+      `writeClassGraphics: index ${i} out of range (${shapes.length} ${layer} shapes)`,
+    );
+
   if (op.kind === "add") {
     shapes.push(op.shape);
+  } else if (op.kind === "reorder") {
+    if (op.from >= shapes.length) throw outOfRange(op.from);
+    if (op.to >= shapes.length) throw outOfRange(op.to);
+    const [moved] = shapes.splice(op.from, 1);
+    if (moved === undefined) throw outOfRange(op.from);
+    shapes.splice(op.to, 0, moved);
   } else {
-    if (op.index >= shapes.length) {
-      throw new Error(
-        `writeClassGraphics: index ${op.index} out of range (${shapes.length} ${layer} shapes)`,
-      );
-    }
+    if (op.index >= shapes.length) throw outOfRange(op.index);
     if (op.kind === "modify") shapes[op.index] = op.shape;
     else shapes.splice(op.index, 1);
   }

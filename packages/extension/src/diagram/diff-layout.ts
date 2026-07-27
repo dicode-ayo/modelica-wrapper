@@ -94,7 +94,13 @@ export type LayoutEdit =
       index: number;
       shape: Shape;
     }
-  | { kind: "graphicsDeleted"; layer: GraphicsLayer; index: number };
+  | { kind: "graphicsDeleted"; layer: GraphicsLayer; index: number }
+  | {
+      kind: "graphicsReordered";
+      layer: GraphicsLayer;
+      from: number;
+      to: number;
+    };
 
 export function endpointToCref(c: {
   component: string | undefined;
@@ -419,6 +425,42 @@ function isPureDeletion(beforeKeys: string[], afterKeys: string[]): boolean {
  *   trailing slots are deleted. Always correct; produces fewer ops than
  *   delete+add for in-place edits.
  */
+/**
+ * The single-element move turning `before` into `after`, or `null` if no one
+ * move does it. Candidates are derived from the first and last differing
+ * index — a move from `i` to `j` can only be `i→j` or `j→i` — then applied and
+ * compared, so a match is a proof rather than an inference.
+ *
+ * Correctness does not depend on guessing the user's intent: if the move
+ * reproduces `after` exactly, emitting it produces the right array.
+ */
+function singleMove(
+  before: readonly string[],
+  after: readonly string[],
+): { from: number; to: number } | null {
+  let first = 0;
+  while (first < before.length && before[first] === after[first]) first += 1;
+  if (first === before.length) {
+    return null;
+  }
+  let last = before.length - 1;
+  while (last > first && before[last] === after[last]) last -= 1;
+
+  for (const [from, to] of [
+    [first, last],
+    [last, first],
+  ] as const) {
+    const trial = [...before];
+    const [moved] = trial.splice(from, 1);
+    if (moved === undefined) continue;
+    trial.splice(to, 0, moved);
+    if (trial.every((v, i) => v === after[i])) {
+      return { from, to };
+    }
+  }
+  return null;
+}
+
 function diffGraphics(
   prev: DiagramLayout,
   next: DiagramLayout,
@@ -432,6 +474,17 @@ function diffGraphics(
   for (const [layer, field] of layers) {
     const before = ownShapes(prev[field], prev.className);
     const after = ownShapes(next[field], next.className);
+
+    if (before.length === after.length) {
+      // A reorder permutes the array, which the positional scan below would
+      // report as a modify per moved slot — N whole-array rewrites, each
+      // leaving a transiently duplicated shape in the file, instead of one.
+      const move = singleMove(before.map(stableJson), after.map(stableJson));
+      if (move) {
+        edits.push({ kind: "graphicsReordered", layer, ...move });
+        continue;
+      }
+    }
 
     if (before.length <= after.length) {
       // Same length or growth: positional modifies + appends.

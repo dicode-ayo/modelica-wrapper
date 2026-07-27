@@ -85,6 +85,34 @@ end ${pkg};
     expect(graphicsNames(after.annotation)).toEqual([]);
   });
 
+  it("persists a graphicsReordered edit as a real change of paint order", async () => {
+    // Array order IS paint order, so this is the whole of bring-to-front /
+    // send-to-back: the Rectangle must come back out behind the Ellipse.
+    await applyEdits(client, cls, [
+      { kind: "graphicsAdded", layer: "icon", shape: ellipse },
+    ]);
+
+    const result = await applyEdits(client, cls, [
+      { kind: "graphicsReordered", layer: "icon", from: 1, to: 0 },
+    ]);
+    expect(result.applied).toBe(1);
+    expect(result.failed).toEqual([]);
+
+    const after = await client.getIconAnnotation({ typeName: cls });
+    expect(graphicsNames(after.annotation)).toEqual(["Ellipse", "Rectangle"]);
+  });
+
+  it("fails a graphicsReordered edit whose index is out of range", async () => {
+    const result = await applyEdits(client, cls, [
+      { kind: "graphicsReordered", layer: "icon", from: 0, to: 9 },
+    ]);
+    expect(result.applied).toBe(0);
+    expect(result.failed).toHaveLength(1);
+
+    const after = await client.getIconAnnotation({ typeName: cls });
+    expect(graphicsNames(after.annotation)).toEqual(["Rectangle"]);
+  });
+
   it("rolls back a partially-applied graphics batch when snapshot is on", async () => {
     // The modify (ordered first) succeeds and rewrites the Rectangle to an
     // Ellipse; the out-of-range delete then fails, so the snapshot restores

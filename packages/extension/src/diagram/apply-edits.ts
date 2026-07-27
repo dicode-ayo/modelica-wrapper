@@ -143,6 +143,10 @@ function order(e: LayoutEdit): number {
       return 6;
     case "graphicsAdded":
       return 7;
+    // A reorder is emitted only when it alone explains the layer's change, so
+    // it never shares a batch with the index-shifting kinds above.
+    case "graphicsReordered":
+      return 8;
   }
 }
 
@@ -273,6 +277,16 @@ async function applyOne(
           typeName: hostClass,
           layer: edit.layer,
           op: { kind: "delete", index: edit.index },
+        }),
+      );
+      return;
+    case "graphicsReordered":
+      assertMutationApplied(
+        "writeClassGraphics",
+        await client.invoke("writeClassGraphics", {
+          typeName: hostClass,
+          layer: edit.layer,
+          op: { kind: "reorder", from: edit.from, to: edit.to },
         }),
       );
       return;

@@ -5,6 +5,7 @@ import {
   diffLayouts,
   lineAnnotation,
   placementAnnotation,
+  type LayoutEdit,
 } from "./diff-layout.js";
 
 /** `baseLayout()` always seeds exactly one connection; guard the index access. */
@@ -752,6 +753,94 @@ describe("diffLayouts — graphics", () => {
       radius: undefined,
     };
     expect(diffLayouts(withIcon([a]), withIcon([b]))).toEqual([]);
+  });
+
+  describe("reorder (z-order editing)", () => {
+    const a = rect(0);
+    const b = rect(20);
+    const c = rect(40);
+
+    /** The array a `graphicsReordered` edit produces from `before`. */
+    function applyMove(
+      before: readonly RectangleShape[],
+      edit: LayoutEdit,
+    ): RectangleShape[] {
+      if (edit.kind !== "graphicsReordered") {
+        throw new Error(`expected graphicsReordered, got ${edit.kind}`);
+      }
+      const out = [...before];
+      const [moved] = out.splice(edit.from, 1);
+      if (moved === undefined) {
+        throw new Error(`from index ${edit.from} out of range`);
+      }
+      out.splice(edit.to, 0, moved);
+      return out;
+    }
+
+    it("emits one graphicsReordered for a send-to-back instead of N modifies", () => {
+      // Positional scanning would call this three modifies, each a whole-array
+      // rewrite that transiently duplicates a shape in the file.
+      const edits = diffLayouts(withIcon([a, b, c]), withIcon([c, a, b]));
+      expect(edits).toEqual([
+        { kind: "graphicsReordered", layer: "icon", from: 2, to: 0 },
+      ]);
+    });
+
+    it("emits one graphicsReordered for a bring-to-front", () => {
+      const edits = diffLayouts(withIcon([a, b, c]), withIcon([b, c, a]));
+      expect(edits).toEqual([
+        { kind: "graphicsReordered", layer: "icon", from: 0, to: 2 },
+      ]);
+    });
+
+    it("emits one graphicsReordered for an adjacent swap", () => {
+      // A two-element swap has two equally correct encodings (0→1 and 1→0),
+      // so pin the array it produces rather than one arbitrary pair.
+      const edits = diffLayouts(withIcon([a, b, c]), withIcon([b, a, c]));
+      expect(edits).toHaveLength(1);
+      const edit = edits[0];
+      expect(edit?.kind).toBe("graphicsReordered");
+      if (edit) {
+        expect(applyMove([a, b, c], edit)).toEqual([b, a, c]);
+      }
+    });
+
+    it("reorders the diagram layer independently of the icon layer", () => {
+      const prev: DiagramLayout = {
+        ...baseLayout(),
+        diagramLayers: [{ from: "T", shapes: [a, b] }],
+      };
+      const next: DiagramLayout = {
+        ...baseLayout(),
+        diagramLayers: [{ from: "T", shapes: [b, a] }],
+      };
+      const edits = diffLayouts(prev, next);
+      expect(edits).toHaveLength(1);
+      const edit = edits[0];
+      expect(edit).toMatchObject({
+        kind: "graphicsReordered",
+        layer: "diagram",
+      });
+      if (edit) {
+        expect(applyMove([a, b], edit)).toEqual([b, a]);
+      }
+    });
+
+    it("falls back to modifies when the change is not a permutation", () => {
+      // Same length, but a value changed — no single move produces it.
+      const edits = diffLayouts(withIcon([a, b]), withIcon([a, rect(99)]));
+      expect(edits).toEqual([
+        { kind: "graphicsModified", layer: "icon", index: 1, shape: rect(99) },
+      ]);
+    });
+
+    it("falls back to modifies when a permutation needs more than one move", () => {
+      // [a,b,c,d] → [b,a,d,c] is two independent swaps.
+      const d = rect(60);
+      const edits = diffLayouts(withIcon([a, b, c, d]), withIcon([b, a, d, c]));
+      expect(edits.every((e) => e.kind === "graphicsModified")).toBe(true);
+      expect(edits).toHaveLength(4);
+    });
   });
 
   it("emits graphicsDeleted (descending) for trailing removals", () => {

@@ -5,10 +5,18 @@ import {
   applyDelete,
   applyFlip,
   applyRotate,
+  applyShapeReorder,
   applyShapeSmoothToggle,
   applyShapeVertexDelete,
+  ownShapeCount,
+  zOrderTarget,
+  type ZOrderMove,
 } from "../interaction/layout-ops.js";
-import { parseKey, vertexShapeKey } from "../interaction/node-keys.js";
+import {
+  formatShapeKey,
+  parseKey,
+  vertexShapeKey,
+} from "../interaction/node-keys.js";
 import type { Command, CommandPlacement, CommandTarget } from "./command.js";
 import type { DiagramCommandId } from "./command-ids.js";
 import type { KeyChord } from "./keymap.js";
@@ -51,6 +59,44 @@ const clipboardMenu = (order: number): CommandPlacement => ({
   group: "clipboard",
   order,
 });
+
+/** Z-order ops get their own separated group, as OMEdit's "Order" submenu. */
+const orderMenu = (order: number): CommandPlacement => ({
+  surface: "contextMenu",
+  group: "order",
+  order,
+});
+
+/** Reordering is per-shape: a multi-shape selection has no single destination. */
+const requireOneShape = (ctx: ContextKeys): boolean =>
+  !ctx.readonly && ctx.selectionKind === "shape" && ctx.selectionCount === 1;
+
+/**
+ * Move the selected shape through the layer's paint order and keep it
+ * selected. Shape keys are positional, so the selection has to be re-keyed to
+ * the destination index or it would follow whichever shape slid into the old
+ * slot.
+ */
+function reorder(target: CommandTarget, move: ZOrderMove): void {
+  const { layout } = target;
+  const key = [...target.selectedKeys][0];
+  if (!layout || key === undefined) {
+    return;
+  }
+  const parsed = parseKey(key);
+  if (!parsed || parsed.kind !== "shape") {
+    return;
+  }
+  const to = zOrderTarget(move, parsed.index, ownShapeCount(layout));
+  if (to === null) {
+    return;
+  }
+  const next = applyShapeReorder(layout, parsed.index, to);
+  if (next !== layout) {
+    target.commitLayout(next);
+    target.setSelection([formatShapeKey(parsed.shapeKind, to)]);
+  }
+}
 
 export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
   {
@@ -131,6 +177,38 @@ export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
         target.commitLayout(next);
       }
     },
+  },
+  {
+    id: "diagram.bringToFront",
+    title: "Bring to Front",
+    category: "Order",
+    when: requireOneShape,
+    placements: [orderMenu(0)],
+    run: (target) => reorder(target, "front"),
+  },
+  {
+    id: "diagram.bringForward",
+    title: "Bring Forward",
+    category: "Order",
+    when: requireOneShape,
+    placements: [orderMenu(1)],
+    run: (target) => reorder(target, "forward"),
+  },
+  {
+    id: "diagram.sendBackward",
+    title: "Send Backward",
+    category: "Order",
+    when: requireOneShape,
+    placements: [orderMenu(2)],
+    run: (target) => reorder(target, "backward"),
+  },
+  {
+    id: "diagram.sendToBack",
+    title: "Send to Back",
+    category: "Order",
+    when: requireOneShape,
+    placements: [orderMenu(3)],
+    run: (target) => reorder(target, "back"),
   },
   {
     id: "diagram.changeClass",
