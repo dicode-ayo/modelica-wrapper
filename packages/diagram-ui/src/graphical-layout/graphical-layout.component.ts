@@ -1458,7 +1458,13 @@ export class OmGraphicalLayout extends LitElement {
     type: K,
     detail: DragEvents[K],
   ): void {
-    if (this.readonly || !this.layout) {
+    if (!this.layout) {
+      return;
+    }
+    // Rubber-band is the one gesture here that moves nothing — it only sets
+    // the selection, so it stays live on a read-only class. Copying a
+    // sub-system out of a system-library model needs multi-select.
+    if (this.readonly && type !== "rubberBand") {
       return;
     }
     switch (type) {
