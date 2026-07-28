@@ -551,6 +551,33 @@ describe("pasteClipboardItems", () => {
     );
   });
 
+  it("keeps a placement origin, which a rotated boundary connector needs", async () => {
+    // OMC writes a rotated connector as `origin` plus a small extent. Dropping
+    // the origin lands it at {0,0} — the middle of the diagram — instead of on
+    // the boundary it was copied from.
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          origin: [0, -120],
+          extent: [
+            [20, -20],
+            [-20, 20],
+          ],
+          rotation: 270,
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "Placement(transformation(origin={0,-120}, extent={{20,-20},{-20,20}}, rotation=270))",
+    );
+  });
+
   it("carries a string-valued modifier through the block intact", async () => {
     // The block is concatenated text now, so a quoted expression is the case
     // that would break it if anything re-escaped on the way through.

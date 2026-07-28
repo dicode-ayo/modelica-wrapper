@@ -29,6 +29,12 @@ export interface ClipboardComponent {
   extent: Extent;
   rotation: number;
   /**
+   * Placement origin, when the declaration has one. A rotated boundary
+   * connector is written as `origin` + a small `extent`, so dropping it lands
+   * the paste at {0,0} instead of where it was copied from.
+   */
+  origin?: Point | undefined;
+  /**
    * Modifiers read off the declaration at copy time, replayed onto the pasted
    * instance. Only what the source actually authored: `addComponent` writes a
    * bare declaration, so anything inherited or defaulted stays inherited.

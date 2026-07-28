@@ -179,6 +179,7 @@ async function captureComponent(
     className,
     extent: placement.extent,
     rotation: placement.rotation ?? 0,
+    ...(placement.origin !== undefined && { origin: placement.origin }),
     modifiers: await readModifiers(client, hostClass, name),
   };
 }
@@ -320,9 +321,12 @@ function componentDeclaration(
   const mods = item.modifiers
     .map((m: ClipboardModifier) => `${m.path} = ${m.expr}`)
     .join(", ");
+  // The offset goes on the extent, which adds to `origin` rather than
+  // replacing it — a declaration carrying both keeps both.
   const placement = placementAnnotation(
     offsetExtent(item.extent, offset),
     item.rotation,
+    item.origin,
   );
   return `${item.className} ${componentName}${mods === "" ? "" : `(${mods})`} annotation(${placement});`;
 }

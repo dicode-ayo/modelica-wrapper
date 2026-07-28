@@ -191,6 +191,37 @@ end ${pkg};
     expect(contents).toContain("Rectangle");
   });
 
+  it("round-trips a rotated boundary connector's origin", async () => {
+    // `Modelica.Blocks.Continuous.LimPID` declares `u_m` as origin {0,-120}
+    // with a rotation — the shape of placement that silently lost its position.
+    const result = await pasteClipboardItems(
+      client,
+      cls,
+      emptyLayout(cls),
+      [
+        {
+          kind: "component",
+          name: "u_m",
+          className: "Modelica.Blocks.Interfaces.RealInput",
+          extent: [
+            [20, -20],
+            [-20, 20],
+          ],
+          rotation: 270,
+          origin: [0, -120],
+          modifiers: [],
+        },
+      ],
+      "diagram",
+      0,
+    );
+    expect(result.failed).toEqual([]);
+
+    const { contents } = await client.listFile({ typeName: cls });
+    expect(contents).toContain("origin = {0, -120}");
+    expect(contents).toContain("rotation = 270");
+  });
+
   it("reports a rejected block and leaves the class untouched", async () => {
     const before = await client.listFile({ typeName: cls });
     const result = await pasteClipboardItems(
