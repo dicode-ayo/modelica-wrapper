@@ -69,6 +69,26 @@ function placementFromTransformation(
 }
 
 /**
+ * The placement for the view `kind` did NOT read — a connector is placed once
+ * per view, and a declaration rebuilt from one loses its position in the other.
+ * `undefined` when the element only ever defined one.
+ */
+export function counterpartPlacementFor(
+  element: ComponentElement,
+  kind: "icon" | "diagram",
+): Placement | undefined {
+  const anno = element.annotation?.Placement;
+  if (!anno) return undefined;
+  const primary =
+    kind === "icon" ? anno.iconTransformation : anno.transformation;
+  const other = kind === "icon" ? anno.transformation : anno.iconTransformation;
+  // With only one defined, `placementFor` already fell back to it — reporting
+  // it again as the counterpart would write the same transformation twice.
+  if (!primary || !other) return undefined;
+  return placementFromTransformation(other);
+}
+
+/**
  * Pick a `Placement` for a component element given the layout kind.
  *
  * - `kind === "diagram"`: prefers `transformation`, falls back to
@@ -94,13 +114,16 @@ export function placementFor(
     kind === "icon"
       ? placementAnno.transformation
       : placementAnno.iconTransformation;
+  // `visible` sits on the Placement annotation, not on either transformation.
+  const withVisible = (p: Placement): Placement =>
+    placementAnno.visible === false ? { ...p, visible: false } : p;
   if (primary) {
     const out = placementFromTransformation(primary);
-    if (out) return out;
+    if (out) return withVisible(out);
   }
   if (secondary) {
     const out = placementFromTransformation(secondary);
-    if (out) return out;
+    if (out) return withVisible(out);
   }
   return undefined;
 }

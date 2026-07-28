@@ -2,7 +2,9 @@ import type {
   ConnectionEndpoint,
   Extent,
   LineStyle,
+  Placement,
   Point,
+  Prefixes,
   Shape,
 } from "@dicode/omc-client";
 
@@ -34,6 +36,18 @@ export interface ClipboardComponent {
    * the paste at {0,0} instead of where it was copied from.
    */
   origin?: Point | undefined;
+  /** `Placement.visible`, carried only when the declaration set it false. */
+  visible?: boolean | undefined;
+  /**
+   * A connector's diagram-view transformation, when it defines both. The
+   * fields above are then its icon-view placement, and a declaration rebuilt
+   * from those alone loses its position on the diagram.
+   */
+  diagramPlacement?: Placement | undefined;
+  /** Declaration prefixes — an `inner` pasted plain stops being `inner`. */
+  prefixes?: Prefixes | undefined;
+  /** Description string on the declaration. */
+  comment?: string | undefined;
   /**
    * Modifiers read off the declaration at copy time, replayed onto the pasted
    * instance. Only what the source actually authored: `addComponent` writes a

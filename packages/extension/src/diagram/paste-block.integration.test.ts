@@ -14,7 +14,7 @@ import { OmcClient, type DiagramLayout, type Shape } from "@dicode/omc-client";
 
 import { describeIf } from "../../test-support/integration-gate.js";
 import type { ClipboardEntry } from "./clipboard.js";
-import { pasteClipboardItems } from "./copy-paste.js";
+import { captureClipboardItems, pasteClipboardItems } from "./copy-paste.js";
 
 const GAIN = "Modelica.Blocks.Math.Gain";
 
@@ -220,6 +220,49 @@ end ${pkg};
     const { contents } = await client.listFile({ typeName: cls });
     expect(contents).toContain("origin = {0, -120}");
     expect(contents).toContain("rotation = 270");
+  });
+
+  it("round-trips both of a connector's transformations under the right keywords", async () => {
+    // A fixture rather than a library class: MSL blocks inherit their ports,
+    // so none of them declares both transformations in its own source.
+    const { fetchDiagramLayout } = await import("./open-diagram.js");
+    const donor = `${pkg}.Donor`;
+    await client.loadString({
+      data: `within ${pkg};
+model Donor
+  Modelica.Blocks.Interfaces.RealInput p "the port" annotation(
+    Placement(transformation(extent = {{-140, -20}, {-100, 20}}),
+      iconTransformation(extent = {{-110, -10}, {-90, 10}})));
+  annotation(Diagram(coordinateSystem(extent={{-200,-200},{200,200}})));
+end Donor;
+`,
+      filename: `<fixture:${pkg}donor>`,
+    });
+
+    const src = await fetchDiagramLayout(client, donor);
+    const items = await captureClipboardItems(client, src, [
+      ...Object.keys(src.components).map((n) => `c:${n}`),
+      ...Object.keys(src.connectors).map((n) => `k:${n}`),
+    ]);
+    const result = await pasteClipboardItems(
+      client,
+      cls,
+      emptyLayout(cls),
+      items,
+      "diagram",
+      0,
+    );
+    expect(result.failed).toEqual([]);
+
+    const { contents } = await client.listFile({ typeName: cls });
+    // Each transformation comes back under the keyword it went in as.
+    expect(contents).toContain(
+      "transformation(extent = {{-140, -20}, {-100, 20}})",
+    );
+    expect(contents).toContain(
+      "iconTransformation(extent = {{-110, -10}, {-90, 10}})",
+    );
+    expect(contents).toContain('"the port"');
   });
 
   it("reports a rejected block and leaves the class untouched", async () => {

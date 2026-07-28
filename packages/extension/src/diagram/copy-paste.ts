@@ -3,6 +3,7 @@ import type {
   ConnectionEndpoint,
   DiagramLayout,
   Placement,
+  Prefixes,
 } from "@dicode/omc-client";
 
 import {
@@ -92,6 +93,10 @@ export async function captureClipboardItems(
           parsed.nodeId,
           component.classRef,
           component.placement,
+          {
+            prefixes: component.prefixes,
+            comment: component.comment,
+          },
         ),
       );
       continue;
@@ -109,6 +114,11 @@ export async function captureClipboardItems(
           parsed.nodeId,
           connector.classRef,
           connector.placement,
+          {
+            diagramPlacement: connector.diagramPlacement,
+            prefixes: connector.prefixes,
+            comment: connector.comment,
+          },
         ),
       );
       continue;
@@ -172,6 +182,11 @@ async function captureComponent(
   name: string,
   className: string,
   placement: Placement,
+  extra: {
+    diagramPlacement?: Placement | undefined;
+    prefixes?: Prefixes | undefined;
+    comment?: string | undefined;
+  } = {},
 ): Promise<ClipboardComponent> {
   return {
     kind: "component",
@@ -180,6 +195,12 @@ async function captureComponent(
     extent: placement.extent,
     rotation: placement.rotation ?? 0,
     ...(placement.origin !== undefined && { origin: placement.origin }),
+    ...(placement.visible === false && { visible: false }),
+    ...(extra.diagramPlacement !== undefined && {
+      diagramPlacement: extra.diagramPlacement,
+    }),
+    ...(extra.prefixes !== undefined && { prefixes: extra.prefixes }),
+    ...(extra.comment !== undefined && { comment: extra.comment }),
     modifiers: await readModifiers(client, hostClass, name),
   };
 }
@@ -310,7 +331,63 @@ export async function pasteClipboardItems(
   };
 }
 
-/** `Class name(mods) annotation(Placement(...));` — one pasted declaration. */
+/**
+ * Declaration prefixes, in the order Modelica writes them. A declaration
+ * missing them is a different declaration — an `inner` pasted plain no longer
+ * answers the `outer` lookups that referenced it.
+ */
+function prefixWords(prefixes: Prefixes | undefined): string {
+  if (!prefixes) return "";
+  const words: string[] = [];
+  if (prefixes.redeclare) words.push("redeclare");
+  if (prefixes.final) words.push("final");
+  if (prefixes.inner) words.push("inner");
+  if (prefixes.outer) words.push("outer");
+  if (prefixes.replaceable) words.push("replaceable");
+  if (prefixes.flow) words.push("flow");
+  if (prefixes.stream) words.push("stream");
+  if (prefixes.variability) words.push(prefixes.variability);
+  if (prefixes.direction) words.push(prefixes.direction);
+  return words.length === 0 ? "" : `${words.join(" ")} `;
+}
+
+/** A placement's inner clause, renamed to `keyword`. */
+function transformationClause(
+  placement: Placement,
+  offset: number,
+  keyword: "transformation" | "iconTransformation",
+): string {
+  const whole = placementAnnotation(
+    offsetExtent(placement.extent, offset),
+    placement.rotation ?? 0,
+    placement.origin,
+  );
+  const inner = whole.slice("Placement(transformation(".length, -2);
+  return `${keyword}(${inner})`;
+}
+
+/**
+ * The declaration's `Placement(...)`. A connector is placed once per view, so
+ * one that defined both re-emits each under its own keyword — without that the
+ * pasted connector loses its position in one of them.
+ *
+ * The paste offset lands on the extent, which adds to `origin` rather than
+ * replacing it, so a placement carrying both keeps both.
+ */
+function placementClause(item: ClipboardComponent, offset: number): string {
+  const parts: string[] = [];
+  if (item.visible === false) parts.push("visible=false");
+  const diagram = item.diagramPlacement;
+  // With both, the item's own fields are the icon-view placement — a
+  // connector is read from the icon view, whichever editor is open.
+  parts.push(transformationClause(diagram ?? item, offset, "transformation"));
+  if (diagram) {
+    parts.push(transformationClause(item, offset, "iconTransformation"));
+  }
+  return `Placement(${parts.join(", ")})`;
+}
+
+/** `Class name(mods) "comment" annotation(Placement(...));` — one declaration. */
 function componentDeclaration(
   item: ClipboardComponent,
   componentName: string,
@@ -321,14 +398,11 @@ function componentDeclaration(
   const mods = item.modifiers
     .map((m: ClipboardModifier) => `${m.path} = ${m.expr}`)
     .join(", ");
-  // The offset goes on the extent, which adds to `origin` rather than
-  // replacing it — a declaration carrying both keeps both.
-  const placement = placementAnnotation(
-    offsetExtent(item.extent, offset),
-    item.rotation,
-    item.origin,
-  );
-  return `${item.className} ${componentName}${mods === "" ? "" : `(${mods})`} annotation(${placement});`;
+  const comment =
+    item.comment === undefined || item.comment === ""
+      ? ""
+      : ` ${JSON.stringify(item.comment)}`;
+  return `${prefixWords(item.prefixes)}${item.className} ${componentName}${mods === "" ? "" : `(${mods})`}${comment} annotation(${placementClause(item, offset)});`;
 }
 
 /** `connect(a, b) annotation (Line(...));`, or `null` when an endpoint's

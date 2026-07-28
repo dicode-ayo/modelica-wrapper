@@ -32,6 +32,7 @@ import type {
   CoordinateSystem,
   Expression,
   Modifier,
+  Prefixes,
   SourceLocation,
 } from "./modelInstance.js";
 
@@ -39,6 +40,7 @@ export type {
   CoordinateSystem,
   Expression,
   Modifier,
+  Prefixes,
   SourceLocation,
 } from "./modelInstance.js";
 
@@ -180,6 +182,8 @@ export interface Placement {
   origin?: Point | undefined;
   /** Rotation in degrees, Modelica convention (counter-clockwise positive). */
   rotation?: number | undefined;
+  /** `Placement.visible`, absent when it is the `true` default. */
+  visible?: boolean | undefined;
 }
 
 export interface PortDef {
@@ -287,13 +291,26 @@ export interface ComponentInstance {
    * dimension can be a non-numeric symbol when OMC can't reduce it.
    */
   dims?: string[] | undefined;
+  /**
+   * Declaration prefixes (`parameter`, `inner`, `flow`, …). Carried because a
+   * declaration rewritten without them is a different declaration — an
+   * `inner` component pasted plain no longer satisfies its `outer` lookups.
+   */
+  prefixes?: Prefixes | undefined;
 }
 
 export interface ConnectorInstance {
   name: string;
   classRef: string;
   placement: Placement;
+  /**
+   * The connector's diagram-view `transformation`, when the declaration
+   * defines both. `placement` above is the icon-view one, so a declaration
+   * rebuilt from `placement` alone loses its position on the diagram.
+   */
+  diagramPlacement?: Placement | undefined;
   comment?: string | undefined;
+  prefixes?: Prefixes | undefined;
   source?: SourceLocation | undefined;
 }
 
