@@ -86,6 +86,7 @@ export async function switchView(target: string): Promise<void> {
  * the Keyboard Shortcuts UI.
  */
 const KEYBOUND_COMMANDS: ReadonlyArray<readonly [string, DiagramCommandId]> = [
+  ["modelica.diagram.selectAll", "diagram.selectAll"],
   ["modelica.diagram.delete", "diagram.delete"],
   ["modelica.diagram.rotateCw", "diagram.rotateCw"],
   ["modelica.diagram.rotateCcw", "diagram.rotateCcw"],

@@ -112,6 +112,10 @@
         "title": "Modelica: Open Diagram"
       },
       {
+        "command": "modelica.diagram.selectAll",
+        "title": "Modelica: Select All in Diagram"
+      },
+      {
         "command": "modelica.diagram.delete",
         "title": "Modelica: Delete Diagram Selection"
       },
@@ -369,6 +373,12 @@
       ]
     },
     "keybindings": [
+      {
+        "command": "modelica.diagram.selectAll",
+        "key": "ctrl+a",
+        "mac": "cmd+a",
+        "when": "(activeCustomEditorId == modelica.diagram || activeCustomEditorId == modelica.icon) && !modelicaDiagramInputFocus && !inputFocus"
+      },
       {
         "command": "modelica.diagram.delete",
         "key": "delete",

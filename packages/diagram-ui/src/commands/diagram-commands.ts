@@ -9,6 +9,7 @@ import {
   applyShapeSmoothToggle,
   applyShapeVertexDelete,
   ownShapeCount,
+  selectAllKeys,
   zOrderTarget,
   type ZOrderMove,
 } from "../interaction/layout-ops.js";
@@ -99,6 +100,20 @@ function reorder(target: CommandTarget, move: ZOrderMove): void {
 }
 
 export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
+  {
+    id: "diagram.selectAll",
+    title: "Select All",
+    category: "Edit",
+    // Read-only classes select fine; only the edits are refused. No context
+    // menu: the menu is empty with nothing selected, and a Select All entry
+    // would be the one thing that made a right-click on bare canvas open one.
+    when: (ctx) => ctx.mode !== "draw",
+    run: (target) => {
+      const { layout } = target;
+      if (!layout) return;
+      target.setSelection(selectAllKeys(layout));
+    },
+  },
   {
     id: "diagram.delete",
     title: "Delete",
@@ -272,6 +287,7 @@ export const DEFAULT_KEYMAP: ReadonlyMap<KeyChord, DiagramCommandId> = new Map([
   // Ctrl+Shift+] reports `}`, not `]`. The VSCode manifest binds the physical
   // key (`ctrl+shift+]`), so the two spellings differ on purpose — as they
   // already do for `shift+?` / `shift+/`.
+  ["ctrl+a", "diagram.selectAll"],
   ["ctrl+]", "diagram.bringForward"],
   ["ctrl+[", "diagram.sendBackward"],
   ["ctrl+shift+}", "diagram.bringToFront"],

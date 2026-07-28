@@ -22,6 +22,7 @@ const keybindings = manifest.contributes.keybindings;
 
 /** VSCode command id → expected default chord, mirroring `DEFAULT_KEYMAP`. */
 const KEYBOUND_KEYS: Record<string, readonly string[]> = {
+  "modelica.diagram.selectAll": ["ctrl+a"],
   "modelica.diagram.delete": ["delete", "backspace"],
   "modelica.diagram.rotateCw": ["r"],
   "modelica.diagram.rotateCcw": ["shift+r"],
@@ -38,6 +39,7 @@ const KEYBOUND_KEYS: Record<string, readonly string[]> = {
 
 /** Commands whose binding carries a `mac` override alongside `key`. */
 const MAC_OVERRIDES: Record<string, string> = {
+  "modelica.diagram.selectAll": "cmd+a",
   "modelica.diagram.copy": "cmd+c",
   "modelica.diagram.paste": "cmd+v",
   "modelica.diagram.bringForward": "cmd+]",

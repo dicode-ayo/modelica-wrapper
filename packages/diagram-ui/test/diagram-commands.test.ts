@@ -270,6 +270,46 @@ describe("DIAGRAM_COMMANDS", () => {
   });
 });
 
+describe("selectAll", () => {
+  it("selects every entity, including shapes a rubber band would miss", () => {
+    const l: DiagramLayout = {
+      ...layout(),
+      diagramLayers: [
+        {
+          from: "Demo",
+          shapes: [
+            {
+              kind: "rectangle",
+              extent: [
+                [0, 0],
+                [1, 1],
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const t = spyTarget(l, []);
+    command("diagram.selectAll").run(t);
+    expect(t.selections).toEqual([["c:R1", "shape:rectangle:0"]]);
+    expect(t.committed).toEqual([]);
+  });
+
+  it("does not need a prior selection, unlike the edit ops", () => {
+    const when = command("diagram.selectAll").when;
+    if (!when) throw new Error("expected a gate");
+    expect(when(ctx({ selectionCount: 0, selectionKind: "none" }))).toBe(true);
+    // A read-only class still selects; only the edits are refused.
+    expect(when(ctx({ readonly: true }))).toBe(true);
+    // An armed draw tool owns the canvas.
+    expect(when(ctx({ mode: "draw" }))).toBe(false);
+  });
+
+  it("has no context-menu placement, so a bare-canvas right-click stays empty", () => {
+    expect(command("diagram.selectAll").placements ?? []).toEqual([]);
+  });
+});
+
 describe("z-order commands", () => {
   const A: DiagramLayout["diagramLayers"][number]["shapes"][number] = {
     kind: "rectangle",
