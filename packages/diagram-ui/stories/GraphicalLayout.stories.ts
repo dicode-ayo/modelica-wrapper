@@ -97,3 +97,46 @@ export const Readonly: Story = {
   args: { readonly: true },
   parameters: { chromatic: { disableSnapshot: true } },
 };
+
+/**
+ * `springdamper1`'s `Placement.visible` is `false` (issue #396) — it draws
+ * nothing and its port indicators aren't pickable, while the connection
+ * routed to its (now invisible) port still renders, anchored from the
+ * layout's placement data rather than a live DOM lookup.
+ */
+function hiddenComponentLayout(): DiagramLayout {
+  const layout = sampleLayout();
+  const springdamper1 = layout.components["springdamper1"];
+  if (springdamper1 === undefined) {
+    throw new Error("expected springdamper1 in the sample layout");
+  }
+  return {
+    ...layout,
+    components: {
+      ...layout.components,
+      springdamper1: {
+        ...springdamper1,
+        placement: { ...springdamper1.placement, visible: false },
+      },
+    },
+  };
+}
+
+export const HiddenComponent: Story = {
+  args: { readonly: true },
+  render: (): TemplateResult => html`
+    <div class="om-story">
+      <h3>&lt;om-graphical-layout&gt; — hidden component</h3>
+      <p style="font-size:11px;color:#666;margin:4px 0;">
+        <code>springdamper1</code> has <code>Placement.visible = false</code>:
+        it doesn't render, but the connection routed to its port still does.
+      </p>
+      <div class="om-story-canvas-host" style="height: 540px;">
+        <om-graphical-layout
+          .layout=${hiddenComponentLayout()}
+          readonly
+        ></om-graphical-layout>
+      </div>
+    </div>
+  `,
+};
