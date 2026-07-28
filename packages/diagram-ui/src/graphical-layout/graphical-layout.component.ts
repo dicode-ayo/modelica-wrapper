@@ -1921,6 +1921,15 @@ export class OmGraphicalLayout extends LitElement {
     emitEvent(this, name, detail);
   }
 
+  /**
+   * True from `pointerdown` until the gesture or tool draw ends. Swapping
+   * `layout` while this holds moves what the user has under the pointer, so a
+   * host with a refreshed layout to push drops it and waits for the commit.
+   */
+  get gestureActive(): boolean {
+    return this.modeRouter?.isGestureActive() ?? false;
+  }
+
   /** Returns the current selection as an array of canonical keys. */
   get selection(): string[] {
     return Array.from(this.selectedKeys);
