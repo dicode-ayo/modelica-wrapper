@@ -5,6 +5,7 @@ import type {
   Extent,
   IconLayer,
   LineStyle,
+  Point,
   Shape,
 } from "@dicode/omc-client";
 
@@ -649,11 +650,22 @@ function isReindexOf(a: string, b: string): boolean {
   return sa.base === sb.base;
 }
 
-/** Builds a Modelica `Placement(...)` annotation string for `updateComponent`. */
-export function placementAnnotation(extent: Extent, rotation: number): string {
+/**
+ * Builds a Modelica `Placement(...)` annotation string for `updateComponent`.
+ *
+ * `origin` is emitted only when the declaration has one. It adds to the
+ * extent rather than replacing it, so a placement that carries both has to
+ * re-emit both or the entity moves to the extent alone.
+ */
+export function placementAnnotation(
+  extent: Extent,
+  rotation: number,
+  origin?: Point | undefined,
+): string {
   const [[x1, y1], [x2, y2]] = extent;
+  const org = origin ? `origin={${origin[0]},${origin[1]}}, ` : "";
   const rot = rotation === 0 ? "" : `, rotation=${rotation}`;
-  return `Placement(transformation(extent={{${x1},${y1}},{${x2},${y2}}}${rot}))`;
+  return `Placement(transformation(${org}extent={{${x1},${y1}},{${x2},${y2}}}${rot}))`;
 }
 
 /**

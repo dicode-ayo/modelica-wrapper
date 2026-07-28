@@ -222,6 +222,8 @@ export {
   type CoordinateSystemFields,
 } from "./api/diagram/annotation-layout.js";
 
+export { shapeToRecord } from "./api/diagram/shape-serialize.js";
+
 // --- Functional API (re-export by category) ---
 export * as browsing from "./api/browsing/index.js";
 export * as contents from "./api/contents/index.js";

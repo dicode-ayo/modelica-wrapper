@@ -41,3 +41,4 @@ export type {
   SourceLocation,
 } from "../../_shared/diagramLayout.js";
 export { DiagramLayoutSchema } from "../../_shared/diagramLayout.js";
+export { shapeToRecord } from "./shape-serialize.js";

@@ -94,35 +94,38 @@ function copyClient(
   };
 }
 
+/** The one call shape a paste makes. */
 interface PasteCall {
-  fn: string;
-  arg: unknown;
+  data: string;
+  typeName: string;
 }
 
+/**
+ * Records the single block a paste hands to OMC. `reject` turns the call into
+ * an OMC rejection, which is now all-or-nothing.
+ */
 function pasteClient(
-  reject: (call: PasteCall) => string | null = () => null,
-): PasteClient & { calls: PasteCall[] } {
+  reject: (data: string) => string | null = () => null,
+): PasteClient & { calls: PasteCall[]; data: () => string } {
   const calls: PasteCall[] = [];
-  const record = (
-    fn: string,
-    arg: unknown,
-  ): Promise<{
-    success: boolean;
-    diagnostic?: string | undefined;
-  }> => {
-    const call = { fn, arg };
-    calls.push(call);
-    const diagnostic = reject(call);
-    return Promise.resolve(
-      diagnostic === null ? { success: true } : { success: false, diagnostic },
-    );
-  };
   return {
     calls,
-    addComponent: (arg) => record("addComponent", arg),
-    setElementModifierValue: (arg) => record("setElementModifierValue", arg),
-    writeClassGraphics: (arg) => record("writeClassGraphics", arg),
-    addConnection: (arg) => record("addConnection", arg),
+    data: () => {
+      const first = calls.at(0);
+      if (first === undefined) throw new Error("no paste call was made");
+      return first.data;
+    },
+    getErrorString: () =>
+      Promise.resolve({ errorString: "OMC says: something is wrong" }),
+    loadClassContentString: (arg) => {
+      calls.push(arg);
+      const diagnostic = reject(arg.data);
+      return Promise.resolve(
+        diagnostic === null
+          ? { success: true }
+          : { success: false, diagnostic },
+      );
+    },
   };
 }
 
@@ -378,18 +381,12 @@ describe("pasteClipboardItems: connections", () => {
       PASTE_OFFSET,
     );
     expect(result.connections).toBe(1);
-    expect(client.calls.at(-1)).toEqual({
-      fn: "addConnection",
-      arg: {
-        from: "gain2.y",
-        to: "other1.u",
-        typeName: "Demo",
-        annotation: `Line(points={{${20 + PASTE_OFFSET},${10 + PASTE_OFFSET}},{${40 + PASTE_OFFSET},${10 + PASTE_OFFSET}}},color={255,0,0})`,
-      },
-    });
+    expect(client.data()).toContain(
+      `connect(gain2.y, other1.u) annotation (Line(points={{${20 + PASTE_OFFSET},${10 + PASTE_OFFSET}},{${40 + PASTE_OFFSET},${10 + PASTE_OFFSET}}},color={255,0,0}));`,
+    );
   });
 
-  it("wires only after every component exists", async () => {
+  it("declares every component before the equation section", async () => {
     const client = pasteClient();
     await pasteClipboardItems(
       client,
@@ -403,22 +400,38 @@ describe("pasteClipboardItems: connections", () => {
       "diagram",
       PASTE_OFFSET,
     );
-    // The connection is listed before the second component, but a
-    // `connect()` naming a component OMC hasn't seen yet would be rejected.
-    expect(client.calls.map((c) => c.fn)).toEqual([
-      "addComponent",
-      "addComponent",
-      "addConnection",
-    ]);
+    // The connection is listed between the components, but Modelica needs
+    // every declaration ahead of the equation section that references them.
+    const lines = client.data().split("\n");
+    const equation = lines.indexOf("equation");
+    expect(equation).toBeGreaterThan(0);
+    expect(
+      lines.slice(0, equation).every((l) => l.includes("annotation(")),
+    ).toBe(true);
+    expect(lines.slice(0, equation)).toHaveLength(2);
+    expect(lines.slice(equation + 1).join("\n")).toContain("connect(");
   });
 
-  it("skips a connection whose component was rejected, without reporting it", async () => {
-    const client = pasteClient((c) =>
-      c.fn === "addComponent" &&
-      (c.arg as { componentName: string }).componentName === "other1"
-        ? "rejected"
-        : null,
+  it("drops a connection whose endpoint was not part of the paste", async () => {
+    const client = pasteClient();
+    const result = await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      // `other` is never declared, so the wire has nothing to attach to.
+      [componentItem({ name: "gain1" }), connection],
+      "diagram",
+      PASTE_OFFSET,
     );
+    expect(result.connections).toBe(0);
+    expect(client.data()).not.toContain("connect(");
+    expect(client.data()).not.toContain("equation");
+    expect(result.failed).toEqual([]);
+  });
+
+  it("reports one failure and claims nothing when OMC rejects the block", async () => {
+    // OMC parses the block as a unit, so a paste cannot half-apply.
+    const client = pasteClient(() => "syntax error");
     const result = await pasteClipboardItems(
       client,
       "Demo",
@@ -431,11 +444,10 @@ describe("pasteClipboardItems: connections", () => {
       "diagram",
       PASTE_OFFSET,
     );
+    expect(result.added).toEqual([]);
     expect(result.connections).toBe(0);
-    expect(client.calls.some((c) => c.fn === "addConnection")).toBe(false);
-    // One failure — the rejected component. The wire it made impossible is
-    // not a second thing to tell the user about.
-    expect(result.failed).toHaveLength(1);
+    expect(result.shapes).toBe(0);
+    expect(result.failed).toEqual(["paste: syntax error"]);
   });
 });
 
@@ -494,15 +506,13 @@ describe("pasteClipboardItems", () => {
       "diagram",
       PASTE_OFFSET,
     );
-    expect(client.calls[0]?.arg).toMatchObject({
-      componentName: "gain2",
-      intoTypeName: "Demo",
-      annotation: `Placement(transformation(extent={{${PASTE_OFFSET},${PASTE_OFFSET}},{${20 + PASTE_OFFSET},${20 + PASTE_OFFSET}}}, rotation=90))`,
-    });
+    expect(client.data()).toBe(
+      `Modelica.Blocks.Math.Gain gain2 annotation(Placement(transformation(extent={{${PASTE_OFFSET},${PASTE_OFFSET}},{${20 + PASTE_OFFSET},${20 + PASTE_OFFSET}}}, rotation=90)));`,
+    );
   });
 
   it("gives each item in one paste a distinct name", async () => {
-    // The layout isn't re-fetched between adds, so without tracking the names
+    // The layout isn't re-fetched mid-paste, so without tracking the names
     // handed out both components would ask for `gain2`.
     const client = pasteClient();
     const result = await pasteClipboardItems(
@@ -514,25 +524,89 @@ describe("pasteClipboardItems", () => {
       PASTE_OFFSET,
     );
     expect(result.added).toEqual(["gain2", "gain3"]);
+    expect(client.data().split("\n")).toHaveLength(2);
   });
 
-  it("replays modifiers onto the pasted instance, not the copied one", async () => {
+  it("carries modifiers inline on the declaration, under the pasted name", async () => {
+    // Inline is the whole point: a modifier written separately costs another
+    // OMC round-trip, and they dominated the cost of a multi-component paste.
     const client = pasteClient();
     await pasteClipboardItems(
       client,
       "Demo",
       layout(),
-      [componentItem({ modifiers: [{ path: "k", expr: "2.5" }] })],
+      [
+        componentItem({
+          modifiers: [
+            { path: "k", expr: "2.5" },
+            { path: "limiter.uMax", expr: "5" },
+          ],
+        }),
+      ],
       "diagram",
       PASTE_OFFSET,
     );
-    expect(client.calls[1]).toEqual({
-      fn: "setElementModifierValue",
-      arg: { typeName: "Demo", elementName: "gain2.k", expr: "2.5" },
-    });
+    expect(client.data()).toContain(
+      "Modelica.Blocks.Math.Gain gain2(k = 2.5, limiter.uMax = 5) annotation(",
+    );
   });
 
-  it("writes a shape to the receiving editor's layer, offset via origin", async () => {
+  it("keeps a placement origin, which a rotated boundary connector needs", async () => {
+    // OMC writes a rotated connector as `origin` plus a small extent. Dropping
+    // the origin lands it at {0,0} — the middle of the diagram — instead of on
+    // the boundary it was copied from.
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          origin: [0, -120],
+          extent: [
+            [20, -20],
+            [-20, 20],
+          ],
+          rotation: 270,
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "Placement(transformation(origin={0,-120}, extent={{20,-20},{-20,20}}, rotation=270))",
+    );
+  });
+
+  it("carries a string-valued modifier through the block intact", async () => {
+    // The block is concatenated text now, so a quoted expression is the case
+    // that would break it if anything re-escaped on the way through.
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [componentItem({ modifiers: [{ path: "unit", expr: '"m/s"' }] })],
+      "diagram",
+      PASTE_OFFSET,
+    );
+    expect(client.data()).toContain('gain2(unit = "m/s") annotation(');
+  });
+
+  it("emits no modifier parentheses when the declaration has none", async () => {
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [componentItem()],
+      "diagram",
+      PASTE_OFFSET,
+    );
+    expect(client.data()).toContain("Gain gain2 annotation(");
+  });
+
+  it("writes a shape into the receiving editor's layer, offset via origin", async () => {
     const client = pasteClient();
     const items: ClipboardEntry[] = [{ kind: "shape", shape: rect }];
     const result = await pasteClipboardItems(
@@ -544,81 +618,73 @@ describe("pasteClipboardItems", () => {
       PASTE_OFFSET,
     );
     expect(result.shapes).toBe(1);
-    expect(client.calls[0]?.arg).toMatchObject({
-      layer: "icon",
-      op: {
-        kind: "add",
-        shape: { ...rect, origin: [PASTE_OFFSET, PASTE_OFFSET] },
-      },
-    });
+    // OMC merges this into the class's existing graphics rather than
+    // replacing them, so the annotation carries only what the paste adds.
+    expect(client.data()).toBe(
+      `annotation (Icon(graphics={Rectangle(origin={${PASTE_OFFSET}, ${PASTE_OFFSET}}, fillColor={255, 0, 0}, extent={{-10, -10}, {10, 10}})}));`,
+    );
   });
 
-  it("reports a rejected add and skips its modifier writes", async () => {
-    const client = pasteClient((c) =>
-      c.fn === "addComponent" ? "class not found" : null,
+  it("targets the diagram layer when that is the editor", async () => {
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [{ kind: "shape", shape: rect }],
+      "diagram",
+      PASTE_OFFSET,
     );
+    expect(client.data()).toContain("annotation (Diagram(graphics={");
+  });
+
+  it("makes no OMC call when there is nothing to paste", async () => {
+    const client = pasteClient();
     const result = await pasteClipboardItems(
       client,
       "Demo",
       layout(),
-      [componentItem({ modifiers: [{ path: "k", expr: "2.5" }] })],
+      [],
       "diagram",
       PASTE_OFFSET,
     );
-    expect(result.added).toEqual([]);
-    expect(result.failed).toEqual([
-      "paste Modelica.Blocks.Math.Gain: class not found",
-    ]);
-    expect(client.calls.map((c) => c.fn)).toEqual(["addComponent"]);
+    expect(client.calls).toEqual([]);
+    expect(result).toEqual({
+      added: [],
+      shapes: 0,
+      connections: 0,
+      failed: [],
+    });
   });
 
-  it("keeps the name of a component whose modifier write failed", async () => {
-    // The declaration reached the class even though the modifier didn't —
-    // handing the name out again would declare it twice.
-    const client = pasteClient((c) =>
-      c.fn === "setElementModifierValue" ? "bad modifier" : null,
-    );
+  it("pastes components, connections and shapes in one call", async () => {
+    const client = pasteClient();
     const result = await pasteClipboardItems(
       client,
       "Demo",
       layout(),
       [
-        componentItem({ modifiers: [{ path: "k", expr: "2.5" }] }),
-        componentItem(),
+        componentItem({ name: "gain1" }),
+        componentItem({ name: "other" }),
+        {
+          kind: "connection",
+          lhs: { component: "gain1", port: "y" },
+          rhs: { component: "other", port: "u" },
+          waypoints: [],
+          style: {},
+        },
+        { kind: "shape", shape: rect },
       ],
       "diagram",
       PASTE_OFFSET,
     );
-    expect(
-      client.calls
-        .filter((c) => c.fn === "addComponent")
-        .map((c) => (c.arg as { componentName: string }).componentName),
-    ).toEqual(["gain2", "gain3"]);
-    // The half-applied component still counts as added, so the caller reflects
-    // it and it gets an undo step.
-    expect(result.added).toEqual(["gain2", "gain3"]);
-    expect(result.failed).toEqual(["paste gain2.k: bad modifier"]);
-  });
-
-  it("frees the name a rejected add reserved, so the next item can take it", async () => {
-    let first = true;
-    const client = pasteClient((c) => {
-      if (c.fn !== "addComponent") return null;
-      if (first) {
-        first = false;
-        return "rejected";
-      }
-      return null;
+    expect(client.calls).toHaveLength(1);
+    expect(result).toMatchObject({
+      added: ["gain2", "other1"],
+      connections: 1,
+      shapes: 1,
+      failed: [],
     });
-    const result = await pasteClipboardItems(
-      client,
-      "Demo",
-      layout(),
-      [componentItem(), componentItem()],
-      "diagram",
-      PASTE_OFFSET,
-    );
-    expect(result.added).toEqual(["gain2"]);
   });
 });
 

@@ -33,9 +33,11 @@ import { z } from "zod";
 
 import type { CallContext } from "../../_shared/callContext.js";
 import { quote } from "../../_shared/format.js";
-import { SuccessOutput } from "../../_shared/outputs.js";
-import { parseOutput } from "../../_shared/parseOutput.js";
-import { expectBool, parse } from "../../parse.js";
+import { SuccessWithDiagnosticOutput } from "../../_shared/outputs.js";
+import {
+  parseMutationDiagnostic,
+  parseOutput,
+} from "../../_shared/parseOutput.js";
 
 export const LoadClassContentStringInputSchema = z.object({
   data: z
@@ -63,7 +65,7 @@ export type LoadClassContentStringInput = z.input<
   typeof LoadClassContentStringInputSchema
 >;
 
-export const LoadClassContentStringOutputSchema = SuccessOutput;
+export const LoadClassContentStringOutputSchema = SuccessWithDiagnosticOutput;
 export type LoadClassContentStringOutput = z.infer<
   typeof LoadClassContentStringOutputSchema
 >;
@@ -80,7 +82,7 @@ export async function loadClassContentString(
   );
   return parseOutput(
     LoadClassContentStringOutputSchema,
-    { success: expectBool(parse(raw)) },
+    parseMutationDiagnostic(raw),
     "loadClassContentString",
   );
 }

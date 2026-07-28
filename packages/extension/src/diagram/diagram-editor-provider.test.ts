@@ -599,6 +599,8 @@ function makeEditClient(opts?: {
   isPartial?: boolean;
   /** Modifier name → expression, answered for every element the copy reads. */
   modifiers?: Record<string, string>;
+  /** Whether OMC accepts the paste block. */
+  pasteSuccess?: boolean;
 }): {
   client: OmcClient;
   invoked: string[];
@@ -611,10 +613,12 @@ function makeEditClient(opts?: {
   setElementTypeCalls: Array<Record<string, unknown>>;
   simulateCalls: Array<Record<string, unknown>>;
   graphicsWrites: Array<Record<string, unknown>>;
+  pasteBlocks: string[];
   classInfoQueries: string[];
   ops: string[];
 } {
   const invoked: string[] = [];
+  const pasteBlocks: string[] = [];
   const addComponentCalls: Array<Record<string, unknown>> = [];
   const addConnectionCalls: Array<Record<string, unknown>> = [];
   const listedTypes: string[] = [];
@@ -676,6 +680,11 @@ function makeEditClient(opts?: {
       loadStringCalls.push(input);
       return Promise.resolve({ success: opts?.loadStringSuccess ?? true });
     }),
+    loadClassContentString: vi.fn((input: Record<string, unknown>) => {
+      ops.push("loadClassContentString");
+      pasteBlocks.push(String(input.data));
+      return Promise.resolve({ success: opts?.pasteSuccess ?? true });
+    }),
     setElementModifierValue: vi.fn((input: Record<string, unknown>) => {
       ops.push("setElementModifierValue");
       setModifierCalls.push(input);
@@ -722,6 +731,7 @@ function makeEditClient(opts?: {
     invoked,
     addComponentCalls,
     addConnectionCalls,
+    pasteBlocks,
     listedTypes,
     loadStringCalls,
     setModifierCalls,
@@ -2406,17 +2416,18 @@ describe("DiagramEditController: clipboard", () => {
     ops: string[];
     addComponentCalls: Array<Record<string, unknown>>;
     setModifierCalls: Array<Record<string, unknown>>;
+    /** The block each paste handed to OMC. */
+    pasteBlocks: string[];
     /** How many times the editor announced a clipboard change. */
     broadcasts: () => number;
   } {
-    const { client, ops, addComponentCalls, setModifierCalls } = makeEditClient(
-      {
+    const { client, ops, addComponentCalls, setModifierCalls, pasteBlocks } =
+      makeEditClient({
         ...(opts.classRestriction !== undefined && {
           classRestriction: opts.classRestriction,
         }),
         ...(opts.modifiers !== undefined && { modifiers: opts.modifiers }),
-      },
-    );
+      });
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const clipboard = new DiagramClipboard();
@@ -2446,6 +2457,7 @@ describe("DiagramEditController: clipboard", () => {
       ops,
       addComponentCalls,
       setModifierCalls,
+      pasteBlocks,
       broadcasts: () => broadcasts,
     };
   }
@@ -2498,7 +2510,7 @@ describe("DiagramEditController: clipboard", () => {
   });
 
   it("reflects a multi-item paste exactly once, so it is one undo step", async () => {
-    const { controller, writes, addComponentCalls } = makeController();
+    const { controller, writes, pasteBlocks } = makeController();
     await controller.handle({
       type: "copySelection",
       keys: ["c:gain1", "c:gain2"],
@@ -2506,12 +2518,15 @@ describe("DiagramEditController: clipboard", () => {
 
     await controller.handle({ type: "paste" });
 
-    expect(addComponentCalls).toHaveLength(2);
+    // Two components, one OMC call: the cost of a paste no longer scales
+    // with how much was copied.
+    expect(pasteBlocks).toHaveLength(1);
+    expect(pasteBlocks[0]?.split("\n")).toHaveLength(2);
     expect(writes).toHaveLength(1);
   });
 
   it("names each pasted component uniquely against the live layout", async () => {
-    const { controller, addComponentCalls } = makeController();
+    const { controller, pasteBlocks } = makeController();
     await controller.handle({
       type: "copySelection",
       keys: ["c:gain1", "c:gain2"],
@@ -2519,38 +2534,30 @@ describe("DiagramEditController: clipboard", () => {
 
     await controller.handle({ type: "paste" });
 
-    expect(addComponentCalls.map((c) => c.componentName)).toEqual([
-      "gain3",
-      "gain4",
-    ]);
+    expect(pasteBlocks[0]).toContain(" gain3 ");
+    expect(pasteBlocks[0]).toContain(" gain4 ");
   });
 
-  it("replays the copied modifiers onto the pasted instance", async () => {
-    const { controller, setModifierCalls } = makeController({
+  it("carries the copied modifiers inline on the pasted declaration", async () => {
+    const { controller, pasteBlocks, setModifierCalls } = makeController({
       modifiers: { k: "2.5" },
     });
     await controller.handle({ type: "copySelection", keys: ["c:gain1"] });
 
     await controller.handle({ type: "paste" });
 
-    expect(setModifierCalls).toEqual([
-      { typeName: "Pkg.M", elementName: "gain3.k", expr: "2.5" },
-    ]);
+    expect(pasteBlocks[0]).toContain("gain3(k = 2.5)");
+    // No separate modifier round-trip — that is where the paste cost went.
+    expect(setModifierCalls).toEqual([]);
   });
 
-  it("reflects a paste whose modifier write failed — the class still changed", async () => {
-    // `addComponent` landed; only the modifier was rejected. Skipping the
-    // reflect would leave OMC holding a component the buffer never saw, with
-    // no undo step and a stale `prevLayout`.
-    const { client, ops } = makeEditClient({ modifiers: { k: "2.5" } });
-    (
-      client as unknown as {
-        setElementModifierValue: (i: unknown) => Promise<unknown>;
-      }
-    ).setElementModifierValue = () => {
-      ops.push("setElementModifierValue");
-      return Promise.resolve({ success: false, diagnostic: "bad modifier" });
-    };
+  it("reports a rejected paste without dirtying the buffer", async () => {
+    // OMC parses the block as a unit, so a rejected paste changed nothing —
+    // reflecting it would record an undo step for a no-op.
+    const { client } = makeEditClient({
+      modifiers: { k: "2.5" },
+      pasteSuccess: false,
+    });
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const clipboard = new DiagramClipboard();
@@ -2570,7 +2577,7 @@ describe("DiagramEditController: clipboard", () => {
     await controller.handle({ type: "copySelection", keys: ["c:gain1"] });
     await controller.handle({ type: "paste" });
 
-    expect(writes).toHaveLength(1);
+    expect(writes).toHaveLength(0);
     expect(posted.some((m) => m.type === "error")).toBe(true);
   });
 

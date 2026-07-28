@@ -1,8 +1,8 @@
+import { shapeToRecord } from "@dicode/omc-client";
 import type {
   ConnectionEndpoint,
   DiagramLayout,
   Placement,
-  Shape,
 } from "@dicode/omc-client";
 
 import {
@@ -44,30 +44,23 @@ export interface CopyClient {
 
 type MutationResult = { success: boolean; diagnostic?: string | undefined };
 
-/** OMC surface the paste path needs. */
+/**
+ * OMC surface the paste path needs: one call that parses a block of class
+ * elements and merges it into the target class. Each per-element mutation
+ * costs OMC real parse work, so the whole paste rides on one declaration
+ * block with its modifiers inline.
+ */
 export interface PasteClient {
-  addComponent(input: {
-    componentName: string;
-    componentClass: string;
-    intoTypeName: string;
-    annotation: string;
-  }): Promise<MutationResult>;
-  setElementModifierValue(input: {
+  loadClassContentString(input: {
+    data: string;
     typeName: string;
-    elementName: string;
-    expr: string;
   }): Promise<MutationResult>;
-  writeClassGraphics(input: {
-    typeName: string;
-    layer: GraphicsLayer;
-    op: { kind: "add"; shape: Shape };
-  }): Promise<MutationResult>;
-  addConnection(input: {
-    from: string;
-    to: string;
-    typeName: string;
-    annotation: string;
-  }): Promise<MutationResult>;
+  /**
+   * OMC reports a rejected block as a bare `false` and leaves the reason in
+   * its error buffer, so this is the only way to tell the user what broke —
+   * and an all-or-nothing paste has nothing else to say.
+   */
+  getErrorString(): Promise<{ errorString: string }>;
 }
 
 /**
@@ -186,6 +179,7 @@ async function captureComponent(
     className,
     extent: placement.extent,
     rotation: placement.rotation ?? 0,
+    ...(placement.origin !== undefined && { origin: placement.origin }),
     modifiers: await readModifiers(client, hostClass, name),
   };
 }
@@ -216,7 +210,7 @@ async function readModifiers(
   return out;
 }
 
-/** What a paste attempt did, so the caller can report partial failures. */
+/** What a paste attempt did, so the caller can report the failure. */
 export interface PasteResult {
   /** Instance names added, in paste order. */
   added: string[];
@@ -230,9 +224,11 @@ export interface PasteResult {
 /**
  * Write `items` into `hostClass`, offset by `offset` diagram units.
  *
- * Sequential, and the caller reflects ONCE afterwards: reflecting writes the
- * shadow buffer, which is what records a VSCode undo step, so a reflect per
- * item would turn one paste into N undo steps.
+ * The whole paste is one OMC call, and the caller reflects ONCE afterwards:
+ * reflecting writes the shadow buffer, which is what records a VSCode undo
+ * step, so a reflect per item would turn one paste into N undo steps.
+ *
+ * All-or-nothing: OMC parses the block as a unit.
  */
 export async function pasteClipboardItems(
   client: PasteClient,
@@ -242,67 +238,112 @@ export async function pasteClipboardItems(
   layer: GraphicsLayer,
   offset: number,
 ): Promise<PasteResult> {
-  const result: PasteResult = {
-    added: [],
-    shapes: 0,
-    connections: 0,
-    failed: [],
-  };
-  // The layout is not re-fetched between adds, so every name handed out is
+  // The layout is not re-fetched mid-paste, so every name handed out is
   // recorded here — otherwise a two-component paste would ask for the same
   // free name twice.
   const taken = takenNames(layout);
-  // Copied instance name → the name it was actually pasted under, so the
-  // connections can be rewired to the new components rather than the originals.
+  // Copied instance name → the name it is pasted under, so the connections can
+  // be rewired to the new components rather than the originals.
   const renamed = new Map<string, string>();
 
+  const added: string[] = [];
+  const declarations: string[] = [];
   for (const item of items) {
-    if (item.kind === "connection") continue;
-    if (item.kind === "shape") {
-      const write = await client.writeClassGraphics({
-        typeName: hostClass,
-        layer,
-        op: { kind: "add", shape: offsetShape(item.shape, offset) },
-      });
-      if (write.success) result.shapes += 1;
-      else {
-        result.failed.push(
-          `paste ${item.shape.kind}: ${write.diagnostic ?? "OMC rejected writeClassGraphics"}`,
-        );
-      }
-      continue;
-    }
-
+    if (item.kind !== "component") continue;
     const componentName = uniquePasteName(item.name, taken);
     taken.add(componentName);
-    const outcome = await pasteComponent(
-      client,
-      hostClass,
-      item,
-      componentName,
-      offset,
-    );
-    if (outcome.declared) {
-      result.added.push(componentName);
-      renamed.set(item.name, componentName);
-    } else taken.delete(componentName);
-    if (outcome.failure !== null) result.failed.push(outcome.failure);
+    renamed.set(item.name, componentName);
+    added.push(componentName);
+    declarations.push(componentDeclaration(item, componentName, offset));
   }
 
-  // After the components exist and their final names are known.
+  // After the final names are known, so the crefs point at the new copies.
+  const connects: string[] = [];
   for (const item of items) {
     if (item.kind !== "connection") continue;
-    const outcome = await pasteConnection(
-      client,
-      hostClass,
-      item,
-      renamed,
-      offset,
-    );
-    if (outcome.kind === "added") result.connections += 1;
-    if (outcome.failure !== null) result.failed.push(outcome.failure);
+    const statement = connectStatement(item, renamed, offset);
+    if (statement !== null) connects.push(statement);
   }
-  return result;
+
+  const shapes: string[] = [];
+  for (const item of items) {
+    if (item.kind !== "shape") continue;
+    shapes.push(shapeToRecord(offsetShape(item.shape, offset)));
+  }
+
+  const block = [...declarations];
+  if (connects.length > 0) block.push("equation", ...connects);
+  if (shapes.length > 0) {
+    // OMC merges this into the existing graphics list rather than replacing
+    // it, appending — which is also the paint order a paste should land in.
+    const view = layer === "icon" ? "Icon" : "Diagram";
+    block.push(`annotation (${view}(graphics={${shapes.join(", ")}}));`);
+  }
+  if (block.length === 0) {
+    return { added: [], shapes: 0, connections: 0, failed: [] };
+  }
+
+  // Placements are offset as they are serialized. OMC's own offset writes an
+  // `origin` rather than shifting the extent, which is not the placement the
+  // rest of the edit path produces.
+  const write = await client.loadClassContentString({
+    data: block.join("\n"),
+    typeName: hostClass,
+  });
+  if (!write.success) {
+    const detail =
+      write.diagnostic ?? (await client.getErrorString()).errorString.trim();
+    return {
+      added: [],
+      shapes: 0,
+      connections: 0,
+      failed: [
+        `paste: ${detail === "" ? "OMC rejected the pasted block" : detail}`,
+      ],
+    };
+  }
+  return {
+    added,
+    shapes: shapes.length,
+    connections: connects.length,
+    failed: [],
+  };
+}
+
+/** `Class name(mods) annotation(Placement(...));` — one pasted declaration. */
+function componentDeclaration(
+  item: ClipboardComponent,
+  componentName: string,
+  offset: number,
+): string {
+  // Modelica allows a dotted path as a modification name, so a nested modifier
+  // like `limiter.uMax` needs no rewriting into nested parentheses.
+  const mods = item.modifiers
+    .map((m: ClipboardModifier) => `${m.path} = ${m.expr}`)
+    .join(", ");
+  // The offset goes on the extent, which adds to `origin` rather than
+  // replacing it — a declaration carrying both keeps both.
+  const placement = placementAnnotation(
+    offsetExtent(item.extent, offset),
+    item.rotation,
+    item.origin,
+  );
+  return `${item.className} ${componentName}${mods === "" ? "" : `(${mods})`} annotation(${placement});`;
+}
+
+/** `connect(a, b) annotation (Line(...));`, or `null` when an endpoint's
+ *  declaration wasn't part of this paste. */
+function connectStatement(
+  item: ClipboardConnection,
+  renamed: ReadonlyMap<string, string>,
+  offset: number,
+): string | null {
+  const lhs = remapEndpoint(item.lhs, renamed);
+  const rhs = remapEndpoint(item.rhs, renamed);
+  if (lhs === null || rhs === null) return null;
+  const line = lineAnnotation(offsetPoints(item.waypoints, offset), item.style);
+  const annotation = line === "" ? "" : ` annotation (${line})`;
+  return `connect(${endpointToCref(lhs)}, ${endpointToCref(rhs)})${annotation};`;
 }
 
 /**
@@ -344,48 +385,9 @@ export function pastedSelectionKeys(
 }
 
 /**
- * `skipped` is an endpoint whose declaration never landed, which is a
- * consequence of a failure already reported against that declaration rather
- * than a second thing to tell the user about.
- */
-interface PasteConnectionOutcome {
-  kind: "added" | "skipped" | "failed";
-  failure: string | null;
-}
-
-async function pasteConnection(
-  client: PasteClient,
-  hostClass: string,
-  item: ClipboardConnection,
-  renamed: ReadonlyMap<string, string>,
-  offset: number,
-): Promise<PasteConnectionOutcome> {
-  const lhs = remapEndpoint(item.lhs, renamed);
-  const rhs = remapEndpoint(item.rhs, renamed);
-  if (lhs === null || rhs === null) return { kind: "skipped", failure: null };
-  const from = endpointToCref(lhs);
-  const to = endpointToCref(rhs);
-  const add = await client.addConnection({
-    from,
-    to,
-    typeName: hostClass,
-    annotation: lineAnnotation(
-      offsetPoints(item.waypoints, offset),
-      item.style,
-    ),
-  });
-  return add.success
-    ? { kind: "added", failure: null }
-    : {
-        kind: "failed",
-        failure: `paste connect(${from}, ${to}): ${add.diagnostic ?? "OMC rejected addConnection"}`,
-      };
-}
-
-/**
  * Rename whichever part of the endpoint carries its identity — the
  * sub-component, or the standalone connector's own port name. `null` when that
- * declaration wasn't pasted (its add was rejected).
+ * declaration wasn't part of this paste.
  */
 function remapEndpoint(
   endpoint: ConnectionEndpoint,
@@ -396,56 +398,6 @@ function remapEndpoint(
   return endpoint.component === undefined
     ? { ...endpoint, port: pasted }
     : { ...endpoint, component: pasted };
-}
-
-/**
- * `declared` is whether the declaration reached the class, which is NOT the
- * same as success: a rejected modifier write leaves the component in place.
- * Reporting the two separately keeps the caller from handing the name out
- * again — and from skipping the reflect that gives the half-applied paste an
- * undo step.
- */
-interface PasteComponentOutcome {
-  declared: boolean;
-  failure: string | null;
-}
-
-async function pasteComponent(
-  client: PasteClient,
-  hostClass: string,
-  item: ClipboardComponent,
-  componentName: string,
-  offset: number,
-): Promise<PasteComponentOutcome> {
-  const add = await client.addComponent({
-    componentName,
-    componentClass: item.className,
-    intoTypeName: hostClass,
-    annotation: placementAnnotation(
-      offsetExtent(item.extent, offset),
-      item.rotation,
-    ),
-  });
-  if (!add.success) {
-    return {
-      declared: false,
-      failure: `paste ${item.className}: ${add.diagnostic ?? "OMC rejected addComponent"}`,
-    };
-  }
-  for (const modifier of item.modifiers) {
-    const set = await client.setElementModifierValue({
-      typeName: hostClass,
-      elementName: `${componentName}.${modifier.path}`,
-      expr: modifier.expr,
-    });
-    if (!set.success) {
-      return {
-        declared: true,
-        failure: `paste ${componentName}.${modifier.path}: ${set.diagnostic ?? "OMC rejected setElementModifierValue"}`,
-      };
-    }
-  }
-  return { declared: true, failure: null };
 }
 
 /**
