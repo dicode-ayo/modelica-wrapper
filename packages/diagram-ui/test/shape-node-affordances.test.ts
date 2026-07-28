@@ -78,7 +78,11 @@ describe("OmShapeNode selection affordances", () => {
 
   it("suppresses resize + rotate handles when both affordances are off", () => {
     const { node, dispose } = makeNode();
-    node.setSelectionAffordances({ resize: false, rotate: false });
+    node.setSelectionAffordances({
+      resize: false,
+      rotate: false,
+      vertices: true,
+    });
     node.setSelected(true);
     expect(visibleHandles(node)).toEqual({ resize: 0, rotate: 0 });
     dispose();
@@ -88,7 +92,11 @@ describe("OmShapeNode selection affordances", () => {
     const { node, dispose } = makeNode();
     node.setSelected(true);
     expect(visibleHandles(node).resize).toBe(4);
-    node.setSelectionAffordances({ resize: false, rotate: false });
+    node.setSelectionAffordances({
+      resize: false,
+      rotate: false,
+      vertices: true,
+    });
     expect(visibleHandles(node)).toEqual({ resize: 0, rotate: 0 });
     dispose();
   });

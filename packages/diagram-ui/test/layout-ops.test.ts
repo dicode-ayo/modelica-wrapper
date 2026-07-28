@@ -24,6 +24,7 @@ import {
   applyWaypointInsert,
   buildExtentShape,
   retainExistingSelection,
+  selectAllKeys,
   selectByDiagramRect,
   shapeCentre,
 } from "../src/interaction/layout-ops.js";
@@ -861,6 +862,42 @@ describe("selectByDiagramRect", () => {
     expect(keys.has("k:p")).toBe(true);
   });
 
+  it("selects an own-layer shape whose centre falls inside the rect", () => {
+    // A shape was never selectable by rubber band, so sweeping a diagram and
+    // copying it silently left every graphic behind.
+    const keys = selectByDiagramRect(withShapes([RECT_0]), {
+      x1: -100,
+      y1: -100,
+      x2: 100,
+      y2: 100,
+    });
+    expect(keys.has("shape:rectangle:0")).toBe(true);
+  });
+
+  it("never selects an inherited shape", () => {
+    // `withShapes` seeds an inherited layer whose shape sits at the origin,
+    // well inside this rect. Only the host's own layer is editable.
+    const keys = selectByDiagramRect(withShapes([RECT_0]), {
+      x1: -100,
+      y1: -100,
+      x2: 100,
+      y2: 100,
+    });
+    expect([...keys].filter((k) => k.startsWith("shape:"))).toEqual([
+      "shape:rectangle:0",
+    ]);
+  });
+
+  it("excludes a shape whose centre is outside the rect", () => {
+    const keys = selectByDiagramRect(withShapes([RECT_0]), {
+      x1: 200,
+      y1: 200,
+      x2: 300,
+      y2: 300,
+    });
+    expect([...keys].some((k) => k.startsWith("shape:"))).toBe(false);
+  });
+
   it("excludes centres outside the rect", () => {
     // Rect covers only x ∈ [-100, -20]; only the connector centre at
     // (-48, 0) qualifies. R1's centre is at (0, 0) and C1's at (30, 25).
@@ -1548,5 +1585,34 @@ describe("z-order", () => {
       expect(ownShapeCount(withShapes([A, B, C]))).toBe(3);
       expect(ownShapeCount(baseLayout())).toBe(0);
     });
+  });
+});
+
+describe("selectAllKeys", () => {
+  it("takes every component, connector and own-layer shape", () => {
+    const keys = selectAllKeys(withShapes([RECT_0, LINE_1]));
+    expect(keys).toEqual(
+      new Set(["c:R1", "c:C1", "k:p", "shape:rectangle:0", "shape:line:1"]),
+    );
+  });
+
+  it("takes entities placed outside the coordinate system", () => {
+    // The reason this exists: a rubber band can only take what it covers, and
+    // a class routinely places its connectors beyond its own extent.
+    const layout = baseLayout();
+    const p = layout.connectors.p;
+    if (!p) throw new Error("expected connector p");
+    p.placement = {
+      extent: [
+        [-400, -400],
+        [-380, -380],
+      ],
+    };
+    expect(selectAllKeys(layout).has("k:p")).toBe(true);
+  });
+
+  it("takes nothing from a class with no own layer", () => {
+    const keys = selectAllKeys(baseLayout());
+    expect([...keys].some((k) => k.startsWith("shape:"))).toBe(false);
   });
 });

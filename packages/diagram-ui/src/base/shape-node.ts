@@ -54,6 +54,12 @@ function isTransformKind(value: string): value is EntityKind {
 export interface SelectionAffordances {
   resize: boolean;
   rotate: boolean;
+  /**
+   * Whether a poly's vertex dots appear. Off for an entity that may be
+   * selected but not edited — the hit tube stays, so the shape is still
+   * pickable, it just offers no handle to drag.
+   */
+  vertices: boolean;
 }
 
 /**
@@ -85,6 +91,7 @@ export class OmShapeNode {
   private selected = false;
   private affordResize = true;
   private affordRotate = true;
+  private affordVertices = true;
   private resizeHandles: ResizeHandles | null = null;
   private rotateHandle: RotateHandle | null = null;
   private outline: SelectionOutline | null = null;
@@ -357,12 +364,14 @@ export class OmShapeNode {
   setSelectionAffordances(opts: SelectionAffordances): void {
     if (
       this.affordResize === opts.resize &&
-      this.affordRotate === opts.rotate
+      this.affordRotate === opts.rotate &&
+      this.affordVertices === opts.vertices
     ) {
       return;
     }
     this.affordResize = opts.resize;
     this.affordRotate = opts.rotate;
+    this.affordVertices = opts.vertices;
     this.syncSelectionOverlay();
   }
 
@@ -397,7 +406,9 @@ export class OmShapeNode {
     this.rotateHandle?.setVisible(showRotate);
 
     const showVertices =
-      (this.selected || this.hovered) && this.vertices !== null;
+      (this.selected || this.hovered) &&
+      this.vertices !== null &&
+      this.affordVertices;
     if (showVertices && !this.vertexHandles) {
       this.vertexHandles = new VertexHandles(
         this.ctx,

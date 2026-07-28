@@ -10,7 +10,7 @@ import type {
   Shape,
 } from "@dicode/omc-client";
 
-import { parseKey, type EntityKind } from "./node-keys.js";
+import { formatShapeKey, parseKey, type EntityKind } from "./node-keys.js";
 import { orthogonalRoute, pointsEqual } from "./connection-route.js";
 import {
   snapExtent,
@@ -1661,10 +1661,13 @@ function rectContains(r: DiagramRect, x: number, y: number): boolean {
 }
 
 /**
- * Returns the keys of every component / connector whose placement
- * centre falls inside `rect`. Connections aren't selected by rubber-
- * band — their waypoints would force extra geometry awareness; the
- * host element can add that in F1 if it ends up needed.
+ * Returns the keys of every component, connector and own-layer shape whose
+ * centre falls inside `rect`. Connections aren't selected by rubber-band —
+ * their waypoints would force extra geometry awareness; the host element can
+ * add that in F1 if it ends up needed.
+ *
+ * Inherited shapes are excluded: only the host's own layer is editable, so
+ * selecting one would offer operations that cannot apply to it.
  */
 export function selectByDiagramRect(
   layout: DiagramLayout,
@@ -1684,6 +1687,29 @@ export function selectByDiagramRect(
       keys.add(`k:${id}`);
     }
   }
+  const own = ownLayer(layout);
+  own?.shapes.forEach((shape, index) => {
+    const [cx, cy] = shapeCentreOf(shape);
+    if (rectContains(r, cx, cy)) {
+      keys.add(formatShapeKey(shape.kind, index));
+    }
+  });
+  return keys;
+}
+
+/**
+ * Every selectable entity in the layout, regardless of where it sits. A
+ * rubber band can only take what it covers, and a class routinely places
+ * connectors and labels outside its own coordinate system.
+ */
+export function selectAllKeys(layout: DiagramLayout): Set<string> {
+  const keys = new Set<string>();
+  for (const id of Object.keys(layout.components)) keys.add(`c:${id}`);
+  for (const id of Object.keys(layout.connectors)) keys.add(`k:${id}`);
+  const own = ownLayer(layout);
+  own?.shapes.forEach((shape, index) => {
+    keys.add(formatShapeKey(shape.kind, index));
+  });
   return keys;
 }
 

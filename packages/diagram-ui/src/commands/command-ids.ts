@@ -10,6 +10,7 @@
  * type-only import. Add nothing to this file that imports anything.
  */
 export type DiagramCommandId =
+  | "diagram.selectAll"
   | "diagram.delete"
   | "diagram.rotateCw"
   | "diagram.rotateCcw"

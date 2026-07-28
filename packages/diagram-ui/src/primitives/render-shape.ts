@@ -17,6 +17,13 @@ import "./bitmap.component.js";
 export interface ShapeEntity {
   index: number;
   selected: boolean;
+  /**
+   * Whether the entity offers edit affordances — the hover-revealed hit tube
+   * and vertex handles. `false` keeps it pickable and selectable without
+   * them, which is what a read-only class needs: selecting a graphic to copy
+   * it is not an edit.
+   */
+  editHandles?: boolean;
 }
 
 /**
@@ -39,6 +46,7 @@ export function renderShape(
   const editable = entity !== undefined;
   const index = entity?.index ?? 0;
   const selected = entity?.selected ?? false;
+  const editHandles = entity?.editHandles !== false;
   switch (shape.kind) {
     case "rectangle":
       return html`<om-rectangle
@@ -46,6 +54,7 @@ export function renderShape(
         .zOrder=${zOrder}
         .zBias=${zBias}
         ?editable=${editable}
+        .editHandles=${editHandles}
         .entityIndex=${index}
         ?selected=${selected}
       ></om-rectangle>`;
@@ -55,6 +64,7 @@ export function renderShape(
         .zOrder=${zOrder}
         .zBias=${zBias}
         ?editable=${editable}
+        .editHandles=${editHandles}
         .entityIndex=${index}
         ?selected=${selected}
       ></om-polygon>`;
@@ -64,6 +74,7 @@ export function renderShape(
         .zOrder=${zOrder}
         .zBias=${zBias}
         ?editable=${editable}
+        .editHandles=${editHandles}
         .entityIndex=${index}
         ?selected=${selected}
       ></om-line>`;
@@ -73,6 +84,7 @@ export function renderShape(
         .zOrder=${zOrder}
         .zBias=${zBias}
         ?editable=${editable}
+        .editHandles=${editHandles}
         .entityIndex=${index}
         ?selected=${selected}
       ></om-ellipse>`;
@@ -82,6 +94,7 @@ export function renderShape(
         .zOrder=${zOrder}
         .zBias=${zBias}
         ?editable=${editable}
+        .editHandles=${editHandles}
         .entityIndex=${index}
         ?selected=${selected}
       ></om-text>`;
@@ -91,6 +104,7 @@ export function renderShape(
         .zOrder=${zOrder}
         .zBias=${zBias}
         ?editable=${editable}
+        .editHandles=${editHandles}
         .entityIndex=${index}
         ?selected=${selected}
       ></om-bitmap>`;
