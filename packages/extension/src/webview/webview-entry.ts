@@ -107,6 +107,18 @@ class OmWebviewRoot extends LitElement {
    *  gates whether the form is read-only. Reactive — `render` reads it. */
   @state() private paramKind: ParameterFormKind | null = null;
 
+  /** Revision of the layout on screen; rides back on every edit as its base. */
+  private layoutRevision = 0;
+  /**
+   * A layout push that arrived while a gesture was in flight. Applying it there
+   * would move what the user has under the pointer, so it waits for
+   * `om-interaction-end`.
+   */
+  private deferredLayout: Extract<
+    ExtensionToWebview,
+    { type: "layout" }
+  > | null = null;
+
   private vscode: VsCodeApi<WebviewToExtension> | null = null;
   private get diagram(): OmGraphicalLayout | null {
     return this.renderRoot.querySelector("om-graphical-layout");
@@ -171,6 +183,7 @@ class OmWebviewRoot extends LitElement {
           (this.activeTool = e.detail.tool)}
         @om-change-class-request=${this.onChangeClassRequest}
         @om-clipboard-request=${this.onClipboardRequest}
+        @om-interaction-end=${this.onInteractionEnd}
       ></om-graphical-layout>
       <om-overlay-stack anchor="top-right">
         <om-action-panel
@@ -216,6 +229,8 @@ class OmWebviewRoot extends LitElement {
       case "init":
         this.readOnly = message.readOnly;
         this.hasClipboard = message.hasClipboard;
+        this.deferredLayout = null;
+        this.layoutRevision = message.revision;
         this.layout = message.layout;
         this.renderError = null;
         return;
@@ -226,8 +241,11 @@ class OmWebviewRoot extends LitElement {
         this.diagram?.setSelection(message.keys);
         return;
       case "layout":
-        this.layout = message.layout;
-        this.renderError = null;
+        if (this.diagram?.gestureActive === true) {
+          this.deferredLayout = message;
+          return;
+        }
+        this.applyLayout(message);
         return;
       case "renderError":
         this.renderError = message;
@@ -274,6 +292,21 @@ class OmWebviewRoot extends LitElement {
     }
   }
 
+  private applyLayout(
+    message: Extract<ExtensionToWebview, { type: "layout" }>,
+  ): void {
+    this.layoutRevision = message.revision;
+    this.layout = message.layout;
+    this.renderError = null;
+  }
+
+  private onInteractionEnd = (): void => {
+    const deferred = this.deferredLayout;
+    if (deferred === null) return;
+    this.deferredLayout = null;
+    this.applyLayout(deferred);
+  };
+
   private post(msg: WebviewToExtension): void {
     this.vscode?.postMessage(msg);
   }
@@ -281,7 +314,11 @@ class OmWebviewRoot extends LitElement {
   private onLayoutChange = (
     e: CustomEvent<LayoutEvents["om-graphical-layout-change"]>,
   ): void => {
-    this.post({ type: "change", layout: e.detail });
+    this.post({
+      type: "change",
+      layout: e.detail,
+      baseRevision: this.layoutRevision,
+    });
   };
 
   private onConnectionCreate = (

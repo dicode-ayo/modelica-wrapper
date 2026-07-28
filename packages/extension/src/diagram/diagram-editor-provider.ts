@@ -337,6 +337,7 @@ export function resolveDiagramEditor(
           className,
           readOnly,
           hasClipboard: !diagramClipboard.isEmpty,
+          revision: controller.revision,
         });
       } catch (err) {
         const detail = (err as Error).message;
@@ -386,6 +387,11 @@ interface EditControllerDeps {
   onClipboardChanged: () => void;
 }
 
+// Only the revision the webview is showing can still be an edit's base, plus
+// however many pushes are in flight to it. A handful covers that; the cap is a
+// bound on a webview that stops acknowledging, not a working set.
+const MAX_TRACKED_BASES = 4;
+
 /**
  * Per-editor write controller. Forward: a webview edit gesture mutates the OMC
  * AST (the render model), then the class's canonical `listFile` source is
@@ -396,6 +402,17 @@ interface EditControllerDeps {
  */
 export class DiagramEditController {
   private prevLayout: DiagramLayout;
+  /**
+   * The layout the webview is showing, keyed by the revision it was pushed
+   * under. A `change` names its base revision and is diffed against that
+   * entry, never against `prevLayout` — those two diverge for as long as a
+   * push is in flight, and the whole difference between them (OMC
+   * normalisation, re-routed waypoints) would otherwise be read as edits the
+   * user never made. An entry is advanced to the committed layout as edits
+   * land on it, so a burst of gestures against one base diffs incrementally.
+   */
+  private readonly bases = new Map<number, DiagramLayout>();
+  private layoutRevision = 0;
   private readonly shadow: ShadowBuffer;
   private reverseTimer: { cancel(): void } | undefined;
   // True from the moment a reverse sync is enqueued until it resolves —
@@ -442,9 +459,15 @@ export class DiagramEditController {
     private readonly mode: DiagramMode = "diagram",
   ) {
     this.prevLayout = initialLayout;
+    this.bases.set(this.layoutRevision, initialLayout);
     this.shadow = makeShadow(() => this.onForeignChange());
     this.librarySource = new LibrarySource(deps.client);
     this.refetch = mode === "icon" ? fetchIconLayout : fetchDiagramLayout;
+  }
+
+  /** The revision the seeding `init` message must carry. */
+  get revision(): number {
+    return this.layoutRevision;
   }
 
   /**
@@ -557,7 +580,7 @@ export class DiagramEditController {
       }
       const layout = await this.refetch(client, className);
       this.prevLayout = layout;
-      this.deps.gate.send({ type: "layout", layout });
+      this.pushLayout(layout);
       this.deps.onClassContentChanged?.(className);
     } catch (err) {
       this.reportError(`reverse sync failed: ${(err as Error).message}`);
@@ -571,7 +594,7 @@ export class DiagramEditController {
     if (this.mode === "icon" && !iconHonorsMessage(msg)) return;
     switch (msg.type) {
       case "change":
-        await this.onChange(msg.layout);
+        await this.onChange(msg.layout, msg.baseRevision);
         return;
       case "addComponent":
         await this.onAddComponent(msg.className, msg.position);
@@ -617,18 +640,38 @@ export class DiagramEditController {
     }
   }
 
-  private async onChange(next: DiagramLayout): Promise<void> {
+  private async onChange(
+    next: DiagramLayout,
+    baseRevision: number,
+  ): Promise<void> {
     if (this.rejectIfReadOnly()) return;
+    const base = this.bases.get(baseRevision);
+    if (base === undefined) {
+      this.reportError(
+        "the diagram moved on before this edit arrived — please retry it",
+      );
+      return;
+    }
+    // The webview can't go back to a layout older than the one it just edited
+    // from, so nothing before it can still be a base.
+    for (const older of this.bases.keys()) {
+      if (older >= baseRevision) break;
+      this.bases.delete(older);
+    }
     const { client, className } = this.deps;
     try {
       const result = await applyDiagramEdits(
         client,
         className,
-        this.prevLayout,
+        base,
         next,
         this.refetch,
       );
       if (result === null) return;
+      // What the webview shows for this revision until it applies a push.
+      // A second gesture committed in that window then diffs against the
+      // edit this one made, not against the whole of it again.
+      this.bases.set(baseRevision, next);
       if (result.failed.length > 0) {
         this.reportError(
           `${result.failed.length} edit(s) failed: ${result.failed.at(0)?.error ?? "unknown"}`,
@@ -1157,7 +1200,7 @@ export class DiagramEditController {
    */
   private async reflect(layout: DiagramLayout): Promise<void> {
     this.prevLayout = layout;
-    this.deps.gate.send({ type: "layout", layout });
+    this.pushLayout(layout);
     this.deps.onClassContentChanged?.(this.deps.className);
     const { contents } = await this.deps.client.listFile({
       typeName: this.deps.className,
@@ -1165,6 +1208,27 @@ export class DiagramEditController {
     // A built-in with no listable source returns empty; writing that would wipe
     // the buffer.
     if (contents.length > 0) await this.shadow.write(contents);
+  }
+
+  /**
+   * Send a layout to the webview under a fresh revision, and remember it as
+   * the base any edit reporting that revision will be diffed against.
+   */
+  private pushLayout(layout: DiagramLayout): void {
+    this.layoutRevision += 1;
+    this.bases.set(this.layoutRevision, layout);
+    // A webview that stops acknowledging (closed, wedged) must not pin every
+    // layout it was ever sent. Dropping oldest-first costs at worst a rejected
+    // edit, which the user retries against the layout they can see.
+    for (const stale of this.bases.keys()) {
+      if (this.bases.size <= MAX_TRACKED_BASES) break;
+      this.bases.delete(stale);
+    }
+    this.deps.gate.send({
+      type: "layout",
+      layout,
+      revision: this.layoutRevision,
+    });
   }
 
   private reportError(message: string): void {

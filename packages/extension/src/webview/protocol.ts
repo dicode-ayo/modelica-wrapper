@@ -53,7 +53,9 @@ export type { DiagramCommandId };
  *
  * Webview → extension:
  *   - `ready`               — webview has finished loading.
- *   - `change`              — user committed a layout change.
+ *   - `change`              — user committed a layout change, reporting in
+ *                             `baseRevision` which pushed layout it was
+ *                             derived from.
  *   - `connectionCreate`    — user dragged from one connector to another.
  *   - `selectionChange`     — selection set updated.
  *   - `actionCheck` / `actionSimulate` / `actionParameters` — toolbar.
@@ -81,8 +83,10 @@ export type ExtensionToWebview =
       readOnly: boolean;
       /** Whether the window-wide diagram clipboard already holds something. */
       hasClipboard: boolean;
+      /** Identifies this layout; rides back on every `change` derived from it. */
+      revision: number;
     }
-  | { type: "layout"; layout: DiagramLayout }
+  | { type: "layout"; layout: DiagramLayout; revision: number }
   | { type: "clipboard"; hasClipboard: boolean }
   | {
       // Replace the webview's selection — sent after a paste so the fresh
@@ -143,7 +147,18 @@ export type ExtensionToWebview =
 
 export type WebviewToExtension =
   | { type: "ready" }
-  | { type: "change"; layout: DiagramLayout }
+  | {
+      type: "change";
+      layout: DiagramLayout;
+      /**
+       * The `revision` of the last `init`/`layout` the webview applied, which
+       * is the layout `layout` was derived from. The host diffs against that
+       * exact layout: its own re-fetch from OMC has usually moved on by the
+       * time an edit arrives, and diffing against it would read the
+       * difference between the two as further edits.
+       */
+      baseRevision: number;
+    }
   | {
       type: "connectionCreate";
       fromKey: string;

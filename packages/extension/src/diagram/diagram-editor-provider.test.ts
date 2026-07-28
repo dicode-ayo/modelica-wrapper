@@ -870,6 +870,7 @@ describe("DiagramEditController: forward write path", () => {
         [0, 0],
         [20, 20],
       ]),
+      baseRevision: 0,
     });
 
     expect(invoked).toContain("updateComponent");
@@ -1159,7 +1160,11 @@ describe("DiagramEditController: forward write path", () => {
     );
 
     fireForeign();
-    const edit = controller.handle({ type: "change", layout: layout({}) });
+    const edit = controller.handle({
+      type: "change",
+      layout: layout({}),
+      baseRevision: 0,
+    });
     await edit;
     await drain();
 
@@ -1196,7 +1201,11 @@ describe("DiagramEditController: forward write path", () => {
 
     fireForeign();
     flushDebounce(); // the timer fires; the reverse sync is enqueued, not yet resolved
-    const edit = controller.handle({ type: "change", layout: layout({}) });
+    const edit = controller.handle({
+      type: "change",
+      layout: layout({}),
+      baseRevision: 0,
+    });
     await edit;
     await drain();
 
@@ -1352,6 +1361,153 @@ function componentInstanceNoParams(): ModelInstance {
     ],
   } as unknown as ModelInstance;
 }
+
+/** A `Pkg.M` instance carrying both components, whatever OMC was told. */
+function instanceWithBothGains(): ModelInstance {
+  return {
+    name: "Pkg.M",
+    restriction: "model",
+    elements: ["gain1", "gain2"].map((name) => ({
+      $kind: "component",
+      name,
+      type: GAIN_TYPE,
+      annotation: {
+        Placement: {
+          transformation: {
+            extent: [
+              [-10, -10],
+              [10, 10],
+            ],
+          },
+        },
+      },
+    })),
+  } as unknown as ModelInstance;
+}
+
+function bothGains(gain1Extent: number[][]): DiagramLayout {
+  return layout({
+    components: {
+      gain1: {
+        classRef: "Modelica.Blocks.Math.Gain",
+        placement: { extent: gain1Extent, rotation: 0 },
+      },
+      gain2: {
+        classRef: "Modelica.Blocks.Math.Gain",
+        placement: {
+          extent: [
+            [30, 30],
+            [50, 50],
+          ],
+          rotation: 0,
+        },
+      },
+    } as unknown as DiagramLayout["components"],
+  });
+}
+
+describe("DiagramEditController: the base an edit is diffed against", () => {
+  it("diffs a second edit against the layout the webview edited, not the re-fetch that superseded it", async () => {
+    // The re-fetch keeps reporting gain2, so the controller's own view of the
+    // class has moved on from what the webview is showing. Diffing the second
+    // edit against that view reads gain2 — already deleted by the first edit —
+    // as deleted again, and the snapshot rolls the real edit back when the
+    // retry fails against a class that no longer has it.
+    const { client, invoked } = makeEditClient({
+      instance: instanceWithBothGains(),
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      bothGains([
+        [-10, -10],
+        [10, 10],
+      ]),
+      factory,
+    );
+
+    // Both edits report revision 0: the first one's `layout` push has not been
+    // applied by the webview by the time the second is committed.
+    await controller.handle({
+      type: "change",
+      layout: movedComponent([
+        [-10, -10],
+        [10, 10],
+      ]),
+      baseRevision: 0,
+    });
+    await controller.handle({
+      type: "change",
+      layout: movedComponent([
+        [0, 0],
+        [20, 20],
+      ]),
+      baseRevision: 0,
+    });
+
+    expect(invoked.filter((f) => f === "deleteComponent")).toHaveLength(1);
+    expect(invoked).toContain("updateComponent");
+    expect(posted.some((m) => m.type === "error")).toBe(false);
+    controller.dispose();
+  });
+
+  it("numbers each layout push so the webview can name the one it edited", async () => {
+    const { client } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      movedComponent([
+        [-10, -10],
+        [10, 10],
+      ]),
+      factory,
+    );
+
+    expect(controller.revision).toBe(0);
+    await controller.handle({
+      type: "change",
+      layout: movedComponent([
+        [0, 0],
+        [20, 20],
+      ]),
+      baseRevision: 0,
+    });
+
+    const pushes = posted.filter((m) => m.type === "layout");
+    expect(pushes).toHaveLength(1);
+    expect(pushes.at(0)).toMatchObject({ revision: 1 });
+    controller.dispose();
+  });
+
+  it("refuses an edit whose base it no longer holds instead of diffing a stand-in", async () => {
+    const { client, invoked } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      movedComponent([
+        [-10, -10],
+        [10, 10],
+      ]),
+      factory,
+    );
+
+    await controller.handle({
+      type: "change",
+      layout: movedComponent([
+        [0, 0],
+        [20, 20],
+      ]),
+      baseRevision: 99,
+    });
+
+    expect(invoked).not.toContain("updateComponent");
+    expect(posted.some((m) => m.type === "error")).toBe(true);
+    controller.dispose();
+  });
+});
 
 describe("DiagramEditController: parameter editing", () => {
   it("opens the class-parameter modal (read) without reflecting", async () => {
@@ -1721,6 +1877,7 @@ describe("DiagramEditController: icon mode", () => {
     await controller.handle({
       type: "change",
       layout: iconShapeLayout([RECT]),
+      baseRevision: 0,
     });
 
     expect(invoked).toContain("writeClassGraphics");
@@ -1858,6 +2015,7 @@ describe("DiagramEditController: icon mode", () => {
     await controller.handle({
       type: "change",
       layout: diagramShapeLayout([RECT]),
+      baseRevision: 0,
     });
 
     expect(graphicsWrites[0]).toMatchObject({
