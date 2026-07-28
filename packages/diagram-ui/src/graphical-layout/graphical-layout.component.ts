@@ -810,14 +810,13 @@ export class OmGraphicalLayout extends LitElement {
 
   /**
    * Paints the host's INHERITED (ancestor) shapes, non-interactive.
-   * Own-layer shapes are drawn by their editable entity in
-   * `renderHostShapeEntities` (which owns both their visual and
-   * interaction) — except when readonly, where they paint here as plain
-   * visuals.
+   * Own-layer shapes are drawn by their entity in
+   * `renderHostShapeEntities`, which owns both their visual and their
+   * interaction.
    */
   private renderHostShapes(layout: DiagramLayout): TemplateResult[] {
     return this.hostShapeSlots(layout)
-      .filter((s) => s.ownIndex === null || this.readonly)
+      .filter((s) => s.ownIndex === null)
       .map((s) => renderShape(s.shape, s.zOrder, HOST_SHAPE_Z_BIAS));
   }
 
@@ -827,9 +826,6 @@ export class OmGraphicalLayout extends LitElement {
    * selection overlay. Inherited ancestor shapes stay non-interactive.
    */
   private renderHostShapeEntities(layout: DiagramLayout): TemplateResult[] {
-    if (this.readonly) {
-      return [];
-    }
     return this.hostShapeSlots(layout).flatMap((s) =>
       s.ownIndex === null
         ? []
@@ -839,6 +835,10 @@ export class OmGraphicalLayout extends LitElement {
               selected: this.selectedKeys.has(
                 formatShapeKey(s.shape.kind, s.ownIndex),
               ),
+              // Selecting a graphic to copy it is not an edit, so a read-only
+              // class keeps the entity and loses only the handles. `onDrag`
+              // already refuses every gesture but the rubber band.
+              editHandles: !this.readonly,
             }),
           ],
     );

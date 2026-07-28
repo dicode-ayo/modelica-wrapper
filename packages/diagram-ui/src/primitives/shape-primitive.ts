@@ -99,6 +99,13 @@ export abstract class OmShapePrimitive extends LitElement {
    */
   @property({ type: Boolean }) editable = false;
 
+  /**
+   * Whether to reveal the hit tube and vertex handles on hover. Off for an
+   * entity that may be selected but not edited — a read-only class's own
+   * graphics, which are copyable but not movable.
+   */
+  @property({ type: Boolean }) editHandles = true;
+
   /** Selection flag, honoured only when `editable`. */
   @property({ type: Boolean }) selected = false;
 
@@ -214,9 +221,15 @@ export abstract class OmShapePrimitive extends LitElement {
           -this.paintZIndex(),
         );
         node.setPolyPoints(b.points ?? null);
-        // A poly is edited per-vertex — no bounding-box resize/rotate.
         const poly = b.points !== undefined;
-        node.setSelectionAffordances({ resize: !poly, rotate: !poly });
+        // A poly is edited per-vertex — no bounding-box resize/rotate. A
+        // read-only entity offers none of the three; it stays pickable and
+        // shows its outline.
+        node.setSelectionAffordances({
+          resize: !poly && this.editHandles,
+          rotate: !poly && this.editHandles,
+          vertices: this.editHandles,
+        });
       }
       // The entity transform carries the shape's origin + rotation
       // (setDiagramBounds), so the visual draws raw geometry in this frame.
@@ -261,7 +274,7 @@ export abstract class OmShapePrimitive extends LitElement {
   private onInteractionStore(store: InteractionStateStore | null): void {
     this.interactionUnsub?.();
     this.interactionUnsub =
-      this.editable && store
+      this.editable && this.editHandles && store
         ? store.subscribe((snap) => this.onHover(snap.hoverKey))
         : null;
   }

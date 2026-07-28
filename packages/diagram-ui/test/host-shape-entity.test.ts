@@ -6,7 +6,7 @@ import "../src/graphical-layout/graphical-layout.component.js";
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
 import { HOST_SHAPE_Z_BIAS } from "../src/graphical-layout/graphical-layout.component.js";
 import { entityKeyForNode } from "../src/interaction/node-keys.js";
-import { STROKE_Z_DELTA, zForOrder } from "../src/primitives/shape-utils.js";
+import { zForOrder } from "../src/primitives/shape-utils.js";
 import type { OmScene } from "../src/scene/scene.component.js";
 
 /**
@@ -268,19 +268,49 @@ describe("host shape selection entities", () => {
     expect(ownLine).toBeLessThan(0);
   });
 
-  it("paints own shapes as plain visuals when readonly", async () => {
+  it("keeps own shapes selectable when readonly, without edit handles", async () => {
+    // Selecting a graphic to copy it is not an edit — a read-only class is
+    // exactly what you copy from, so the entity has to survive. Only the
+    // hover-revealed handles go.
     const el = await mount(layout(), { readonly: true });
-    // No editable entities…
-    expect(el.shadowRoot?.querySelectorAll("[editable]").length).toBe(0);
-    expect(byLabel(el, "om-shape:rectangle:0")).toBeUndefined();
-    // …but the own shapes still paint, keeping their flat order above the
-    // inherited fill.
-    const ownStroke = byLabel(el, "om-rectangle.1.stroke")?.zIndex ?? NaN;
-    expect(ownStroke).toBeCloseTo(
-      zForOrder(1) - HOST_SHAPE_Z_BIAS + STROKE_Z_DELTA,
+    expect(byLabel(el, "om-shape:rectangle:0")).toBeDefined();
+
+    const entities = [
+      ...(el.shadowRoot?.querySelectorAll("[editable]") ?? []),
+    ] as { editHandles?: boolean }[];
+    expect(entities.length).toBeGreaterThan(0);
+    expect(entities.every((p) => p.editHandles === false)).toBe(true);
+
+    // Still painted in its flat order within the host-shape z band, exactly
+    // where the writable entity sits.
+    expect(byLabel(el, "om-shape:rectangle:0")?.zIndex).toBeCloseTo(
+      zForOrder(1) - HOST_SHAPE_Z_BIAS,
       5,
     );
-    expect(byLabel(el, "om-line.2")).toBeDefined();
+    expect(byLabel(el, "om-shape:line:1")).toBeDefined();
+  });
+
+  it("shows no resize or vertex handles for a selection on a readonly class", async () => {
+    // The entity exists so the shape can be picked and copied; the handles
+    // would offer edits `onDrag` refuses anyway.
+    const el = await mount(layout(), { readonly: true });
+
+    el.setSelection(["shape:rectangle:0"]);
+    await el.updateComplete;
+    expect(visibleResizeHandles(el)).toBe(0);
+
+    el.setSelection(["shape:line:1"]);
+    await el.updateComplete;
+    expect(visibleVertexHandles(el)).toBe(0);
+  });
+
+  it("keeps edit handles on a writable class", async () => {
+    const el = await mount(layout());
+    const entities = [
+      ...(el.shadowRoot?.querySelectorAll("[editable]") ?? []),
+    ] as { editHandles?: boolean }[];
+    expect(entities.length).toBeGreaterThan(0);
+    expect(entities.every((p) => p.editHandles !== false)).toBe(true);
   });
 
   it("seats an extent shape at its origin and pivots its rotation there", async () => {
