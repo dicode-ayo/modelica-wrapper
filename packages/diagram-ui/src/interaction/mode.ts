@@ -8,7 +8,7 @@ import {
 import { entityKeyForNode, type EntityKey } from "./node-keys.js";
 import {
   capturePointer,
-  releasePointer,
+  releasePointer as releasePointerCapture,
   MOVE_KINDS,
   type ClientToDiagram,
   type CompatCheck,
@@ -85,6 +85,7 @@ export class ModeRouter {
   private readonly onGestureEnd: () => void;
   private active: GestureMode | null = null;
   private pointerId = -1;
+  private gestureDepth = 0;
 
   constructor(deps: ModeRouterDeps) {
     this.canvas = deps.canvas;
@@ -136,17 +137,23 @@ export class ModeRouter {
 
   /**
    * Run `body`, then report a gesture end if it took the router back to idle.
-   * Every entry point that can end one goes through here, so the "a gesture
-   * always ends in one `onGestureEnd`" contract is a property of the router
-   * rather than of each caller remembering to say so.
+   * Every entry point that can end one goes through here. Only the outermost
+   * frame reports: `body` dispatches host events synchronously, and a host
+   * handler may re-enter the router (`setActiveTool` → `cancelActiveTool`),
+   * which must not produce a second report — nor may a throwing handler
+   * swallow the one report a gesture is owed.
    */
   private throughGesture<T>(body: () => T): T {
     const wasActive = this.isGestureActive();
-    const result = body();
-    if (wasActive && !this.isGestureActive()) {
-      this.onGestureEnd();
+    this.gestureDepth += 1;
+    try {
+      return body();
+    } finally {
+      this.gestureDepth -= 1;
+      if (this.gestureDepth === 0 && wasActive && !this.isGestureActive()) {
+        this.onGestureEnd();
+      }
     }
-    return result;
   }
 
   /** Forward a key to the armed tool; returns true when it consumed it. */
@@ -329,7 +336,7 @@ export class ModeRouter {
           y: 0,
         };
         this.pointerId = -1;
-        releasePointer(this.canvas, e.pointerId);
+        releasePointerCapture(this.canvas, e.pointerId);
         tool.release(point);
         this.syncToolMode(tool);
       }
@@ -343,7 +350,7 @@ export class ModeRouter {
     const mode = this.active;
     this.active = null;
     this.pointerId = -1;
-    releasePointer(this.canvas, e.pointerId);
+    releasePointerCapture(this.canvas, e.pointerId);
     mode.commit(point, e);
     this.store.next({ mode: "idle" });
   }
@@ -363,7 +370,7 @@ export class ModeRouter {
         e.pointerId === this.pointerId
       ) {
         this.pointerId = -1;
-        releasePointer(this.canvas, e.pointerId);
+        releasePointerCapture(this.canvas, e.pointerId);
         this.cancelTool();
         return;
       }

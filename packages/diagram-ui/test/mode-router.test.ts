@@ -43,6 +43,8 @@ interface Harness {
     detail: InteractionEvents[keyof InteractionEvents];
   }[];
   tool: ToolDraw[];
+  /** Install a listener on the tool-draw sink, to re-enter or throw from it. */
+  onToolDraw: (fn: (draw: ToolDraw) => void) => void;
   gestureEnds: () => number;
   setPicked: (n: Container | null) => void;
   dispose: () => void;
@@ -57,6 +59,7 @@ function setup(
   const moves: DragEvents["drag"][] = [];
   const interactions: Harness["interactions"] = [];
   const tool: ToolDraw[] = [];
+  let toolListener: ((draw: ToolDraw) => void) | null = null;
   let gestureEnds = 0;
   const store = new InteractionStateStore();
   const canvas = document.createElement("canvas");
@@ -81,7 +84,10 @@ function setup(
     evaluateCompat: () => null,
     getActiveTool: () => activeTool,
     getSnapGrid: () => [0, 0],
-    onTool: (draw) => tool.push(draw),
+    onTool: (draw) => {
+      tool.push(draw);
+      toolListener?.(draw);
+    },
     onGestureEnd: () => (gestureEnds += 1),
   });
   return {
@@ -92,6 +98,7 @@ function setup(
     moves,
     interactions,
     tool,
+    onToolDraw: (fn) => (toolListener = fn),
     gestureEnds: () => gestureEnds,
     setPicked: (n) => (picked = n),
     dispose: () => {
@@ -386,6 +393,98 @@ describe("ModeRouter", () => {
         new PointerEvent("pointermove", { clientX: 30, clientY: 30 }),
       );
       router.cancelActiveTool();
+      expect(gestureEnds()).toBe(1);
+      dispose();
+    });
+
+    it("reports when Escape abandons a multi-click draw", () => {
+      const { canvas, router, gestureEnds, dispose } = setup("line");
+      canvas.dispatchEvent(down());
+      canvas.dispatchEvent(down({ clientX: 40, clientY: 40 }));
+      expect(router.isGestureActive()).toBe(true);
+
+      router.handleKey(new KeyboardEvent("keydown", { key: "Escape" }));
+      expect(router.isGestureActive()).toBe(false);
+      expect(gestureEnds()).toBe(1);
+      dispose();
+    });
+
+    it("reports when Enter finishes a multi-click draw", () => {
+      const { canvas, router, gestureEnds, dispose } = setup("line");
+      canvas.dispatchEvent(down());
+      canvas.dispatchEvent(down({ clientX: 40, clientY: 40 }));
+
+      router.handleKey(new KeyboardEvent("keydown", { key: "Enter" }));
+      expect(gestureEnds()).toBe(1);
+      dispose();
+    });
+
+    it("reports when a double-click finishes a multi-click draw", () => {
+      const { canvas, router, gestureEnds, dispose } = setup("line");
+      canvas.dispatchEvent(down());
+      canvas.dispatchEvent(down({ clientX: 40, clientY: 40 }));
+
+      expect(router.handleDoubleClick()).toBe(true);
+      expect(gestureEnds()).toBe(1);
+      dispose();
+    });
+
+    // The counter-intuitive one, and the only reason `onPointerDown` is
+    // wrapped: a *press* closing a polygon on its start vertex ends the
+    // gesture rather than starting one.
+    it("reports when a press closes a polygon on its start vertex", () => {
+      const { canvas, router, gestureEnds, dispose } = setup("polygon");
+      canvas.dispatchEvent(down());
+      canvas.dispatchEvent(down({ clientX: 40, clientY: 5 }));
+      canvas.dispatchEvent(down({ clientX: 40, clientY: 40 }));
+      expect(gestureEnds()).toBe(0);
+
+      canvas.dispatchEvent(down());
+      expect(router.isGestureActive()).toBe(false);
+      expect(gestureEnds()).toBe(1);
+      dispose();
+    });
+
+    it("reports once when a host handler re-enters the router as the gesture ends", () => {
+      // The real host does exactly this: `onTool`'s commit branch calls
+      // `setActiveTool("select")`, which cancels the armed tool from inside
+      // the release that just ended it. Over-determined today — every
+      // `ToolMode` deactivates before it emits, so the re-entered frame is
+      // already idle and stays silent on its own. The depth guard is what
+      // holds this if one ever emits while still active.
+      const { canvas, router, gestureEnds, onToolDraw, dispose } =
+        setup("rectangle");
+      onToolDraw((draw) => {
+        if (draw.phase === "commit") router.cancelActiveTool();
+      });
+      canvas.dispatchEvent(down());
+      canvas.dispatchEvent(
+        new PointerEvent("pointermove", { clientX: 30, clientY: 30 }),
+      );
+      canvas.dispatchEvent(
+        new PointerEvent("pointerup", { button: 0, clientX: 30, clientY: 30 }),
+      );
+
+      expect(gestureEnds()).toBe(1);
+      dispose();
+    });
+
+    it("still reports when a host handler throws as the gesture ends", () => {
+      // A stranded layout push is exactly what this event exists to prevent,
+      // so a throwing listener must not cost the gesture its one report.
+      const { canvas, router, gestureEnds, onToolDraw, dispose } =
+        setup("line");
+      canvas.dispatchEvent(down());
+      canvas.dispatchEvent(down({ clientX: 40, clientY: 40 }));
+      onToolDraw(() => {
+        throw new Error("host blew up");
+      });
+
+      expect(() =>
+        router.handleKey(new KeyboardEvent("keydown", { key: "Escape" })),
+      ).toThrow("host blew up");
+
+      expect(router.isGestureActive()).toBe(false);
       expect(gestureEnds()).toBe(1);
       dispose();
     });
