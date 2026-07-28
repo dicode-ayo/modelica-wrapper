@@ -40,11 +40,12 @@ const placement: LayoutEdit = {
   kind: "componentPlacement",
   componentName: "gain",
   componentClass: "Modelica.Blocks.Math.Gain",
-  extent: [
-    [-10, -10],
-    [10, 10],
-  ],
-  rotation: 0,
+  transformation: {
+    extent: [
+      [-10, -10],
+      [10, 10],
+    ],
+  },
 };
 
 const addConn: LayoutEdit = {

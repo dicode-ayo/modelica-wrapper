@@ -5,6 +5,7 @@ import type {
   Extent,
   IconLayer,
   LineStyle,
+  Placement,
   Point,
   Shape,
 } from "@dicode/omc-client";
@@ -55,8 +56,15 @@ export type LayoutEdit =
       kind: "componentPlacement";
       componentName: string;
       componentClass: string;
-      extent: Extent;
-      rotation: number;
+      /**
+       * The whole placement, not its parts. `updateComponent` replaces the
+       * annotation outright, so every field the declaration had has to be
+       * re-emitted — dropping `origin` moves the entity, dropping `visible`
+       * un-hides it.
+       */
+      transformation: Placement;
+      /** A connector's other-view placement, when it declares both. */
+      iconTransformation?: Placement | undefined;
     }
   | {
       kind: "componentDeleted";
@@ -115,6 +123,56 @@ export function endpointToCref(c: {
   return `${c.component}${c.componentSubscripts ?? ""}.${port}`;
 }
 
+/**
+ * Whether a placement changed in any way the annotation records. Compared
+ * whole: `origin` adds to the extent, so an origin-only change is a real
+ * move, and a field left out here is a change that silently never writes.
+ */
+function placementDiffers(before: Placement, after: Placement): boolean {
+  return !deepEqual(before, after);
+}
+
+/** A record either loop diffs: both carry a class, a placement, and — for a
+ *  connector — the other view's placement. */
+interface PlacedEntity {
+  classRef: string;
+  placement: Placement;
+  diagramPlacement?: Placement | undefined;
+}
+
+/**
+ * Emit a delete or a placement edit per entity in `prev`.
+ *
+ * A connector is read from the icon view, so its `placement` is the icon
+ * transformation and `diagramPlacement` the counterpart; writing the former
+ * as the diagram one would put icon geometry under the wrong keyword. A
+ * component has only the one, and no counterpart.
+ */
+function diffPlacements(
+  prev: Readonly<Record<string, PlacedEntity>>,
+  next: Readonly<Record<string, PlacedEntity>>,
+  edits: LayoutEdit[],
+): void {
+  for (const [name, before] of Object.entries(prev)) {
+    const after = next[name];
+    if (!after) {
+      edits.push({ kind: "componentDeleted", componentName: name });
+      continue;
+    }
+    if (!placementDiffers(before.placement, after.placement)) {
+      continue;
+    }
+    const icon = after.diagramPlacement;
+    edits.push({
+      kind: "componentPlacement",
+      componentName: name,
+      componentClass: after.classRef,
+      transformation: icon ?? after.placement,
+      ...(icon !== undefined && { iconTransformation: after.placement }),
+    });
+  }
+}
+
 export function diffLayouts(
   prev: DiagramLayout,
   next: DiagramLayout,
@@ -124,47 +182,11 @@ export function diffLayouts(
   // Components: detect placement changes + deletions. Additions are
   // deferred — adding a component from outside the diagram is its own
   // dragging gesture in a future stage.
-  for (const [name, before] of Object.entries(prev.components)) {
-    const after = next.components[name];
-    if (!after) {
-      edits.push({ kind: "componentDeleted", componentName: name });
-      continue;
-    }
-    const placementChanged =
-      !deepEqual(before.placement.extent, after.placement.extent) ||
-      (before.placement.rotation ?? 0) !== (after.placement.rotation ?? 0);
-    if (placementChanged) {
-      edits.push({
-        kind: "componentPlacement",
-        componentName: name,
-        componentClass: after.classRef,
-        extent: after.placement.extent,
-        rotation: after.placement.rotation ?? 0,
-      });
-    }
-  }
-
-  // Standalone connectors (ports declared on the host class): same
-  // placement-change + deletion detection as components above.
-  for (const [name, before] of Object.entries(prev.connectors)) {
-    const after = next.connectors[name];
-    if (!after) {
-      edits.push({ kind: "componentDeleted", componentName: name });
-      continue;
-    }
-    const placementChanged =
-      !deepEqual(before.placement.extent, after.placement.extent) ||
-      (before.placement.rotation ?? 0) !== (after.placement.rotation ?? 0);
-    if (placementChanged) {
-      edits.push({
-        kind: "componentPlacement",
-        componentName: name,
-        componentClass: after.classRef,
-        extent: after.placement.extent,
-        rotation: after.placement.rotation ?? 0,
-      });
-    }
-  }
+  diffPlacements(prev.components, next.components, edits);
+  // Standalone connectors (ports declared on the host class) diff the same
+  // way; only their counterpart transformation differs, which
+  // `diffPlacements` reads off the record.
+  diffPlacements(prev.connectors, next.connectors, edits);
 
   // Connections: keyed by (lhs, rhs) endpoints. If a slot's endpoints
   // change we generally treat it as delete-old + add-new — but FIRST we
@@ -657,12 +679,21 @@ function isReindexOf(a: string, b: string): boolean {
  * extent rather than replacing it, so a placement that carries both has to
  * re-emit both or the entity moves to the extent alone.
  */
-export function placementAnnotation(
-  extent: Extent,
-  rotation: number,
-  origin?: Point | undefined,
-): string {
-  return `Placement(transformation(${transformationBody(extent, rotation, origin)}))`;
+export function placementAnnotation(opts: {
+  transformation: Placement;
+  iconTransformation?: Placement | undefined;
+}): string {
+  const parts: string[] = [];
+  if (opts.transformation.visible === false) parts.push("visible=false");
+  parts.push(`transformation(${placementBody(opts.transformation)})`);
+  const icon = opts.iconTransformation;
+  if (icon) parts.push(`iconTransformation(${placementBody(icon)})`);
+  return `Placement(${parts.join(", ")})`;
+}
+
+/** {@link transformationBody} for a whole {@link Placement}. */
+export function placementBody(p: Placement): string {
+  return transformationBody(p.extent, p.rotation ?? 0, p.origin);
 }
 
 /**

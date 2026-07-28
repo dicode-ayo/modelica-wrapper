@@ -1501,6 +1501,32 @@ describe("applyAddGraphic", () => {
   });
 });
 
+describe("applyDelete and attached connections", () => {
+  it("deletes the wires attached to a deleted component", () => {
+    // baseLayout's connection runs p -> R1.p. Nothing ever selects an edge
+    // key, so leaving the wire behind orphans a `connect()` on a declaration
+    // that no longer exists — invalid Modelica that OMC accepts silently.
+    const next = applyDelete(baseLayout(), ["c:R1"]);
+    expect(next.connections).toEqual([]);
+  });
+
+  it("deletes the wires attached to a deleted connector", () => {
+    const next = applyDelete(baseLayout(), ["k:p"]);
+    expect(next.connections).toEqual([]);
+  });
+
+  it("keeps a wire whose endpoints both survive", () => {
+    const base = baseLayout();
+    const next = applyDelete(base, ["c:C1"]);
+    expect(next.connections).toHaveLength(1);
+    expect(next.connections).toEqual(base.connections);
+  });
+
+  it("still honors an explicitly selected edge", () => {
+    expect(applyDelete(baseLayout(), ["edge:0"]).connections).toEqual([]);
+  });
+});
+
 describe("z-order", () => {
   const A: Shape = {
     kind: "rectangle",
