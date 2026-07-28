@@ -578,6 +578,114 @@ describe("pasteClipboardItems", () => {
     );
   });
 
+  it("keeps declaration prefixes, which change what the declaration means", async () => {
+    // An `inner` pasted plain stops answering the `outer` lookups that
+    // referenced it; a `parameter` pasted plain becomes a variable.
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [componentItem({ prefixes: { inner: true, variability: "parameter" } })],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain(
+      "inner parameter Modelica.Blocks.Math.Gain gain2",
+    );
+  });
+
+  it("emits flow/stream from the connector prefix OMC actually sends", async () => {
+    // OMC reports these as `connector: "flow" | "stream"`, not as booleans —
+    // reading a boolean drops the prefix silently.
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [componentItem({ prefixes: { connector: "flow" } })],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain("flow Modelica.Blocks.Math.Gain gain2");
+  });
+
+  it("offsets only the view being pasted into", async () => {
+    // The offset is a drop point in the target view's coordinates; applying it
+    // to the other view's transformation would move it an unrelated distance.
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          extent: [
+            [0, 0],
+            [10, 10],
+          ],
+          diagramPlacement: {
+            extent: [
+              [50, 50],
+              [60, 60],
+            ],
+          },
+        }),
+      ],
+      "diagram",
+      20,
+    );
+    expect(client.data()).toContain(
+      "transformation(extent={{70,70},{80,80}}), iconTransformation(extent={{0,0},{10,10}})",
+    );
+  });
+
+  it("re-emits a connector's other-view placement as iconTransformation", async () => {
+    // A connector is placed once per view; keeping only the one it was read
+    // from loses its position in the other.
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          extent: [
+            [-140, -20],
+            [-100, 20],
+          ],
+          diagramPlacement: {
+            extent: [
+              [-110, -10],
+              [-90, 10],
+            ],
+          },
+        }),
+      ],
+      "diagram",
+      0,
+    );
+    // The item's own extent is the icon-view placement when a diagram one is
+    // present, so each has to come back out under its own keyword.
+    expect(client.data()).toContain(
+      "Placement(transformation(extent={{-110,-10},{-90,10}}), iconTransformation(extent={{-140,-20},{-100,20}}))",
+    );
+  });
+
+  it("carries visible=false and the description comment", async () => {
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [componentItem({ visible: false, comment: "the gain" })],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain('gain2 "the gain" annotation(');
+    expect(client.data()).toContain("Placement(visible=false, transformation(");
+  });
+
   it("carries a string-valued modifier through the block intact", async () => {
     // The block is concatenated text now, so a quoted expression is the case
     // that would break it if anything re-escaped on the way through.

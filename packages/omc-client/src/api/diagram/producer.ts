@@ -45,7 +45,11 @@ import type {
   TextShape,
 } from "../../_shared/diagramLayout.js";
 import { decodeShape } from "./shapes.js";
-import { flattenCref, placementFor } from "./placement.js";
+import {
+  counterpartPlacementFor,
+  flattenCref,
+  placementFor,
+} from "./placement.js";
 import {
   ownConnectors,
   ownParameters,
@@ -463,8 +467,9 @@ function portFromConnector(
     } else if (prefixes.direction === "") {
       port.direction = "";
     }
-    if (prefixes.flow !== undefined) port.flow = prefixes.flow;
-    if (prefixes.stream !== undefined) port.stream = prefixes.stream;
+    // OMC reports the connector prefix as the word itself, not as booleans.
+    if (prefixes.connector === "flow") port.flow = true;
+    if (prefixes.connector === "stream") port.stream = true;
   }
   if (typeMi.source) port.source = typeMi.source;
   return port;
@@ -523,6 +528,7 @@ function instanceFromSubComponent(
   };
   if (el.modifiers !== undefined) instance.modifiers = el.modifiers;
   if (el.comment !== undefined) instance.comment = el.comment;
+  if (el.prefixes !== undefined) instance.prefixes = el.prefixes;
   if (el.type.source) instance.source = el.type.source;
   // Array dimensions: a vector / matrix component carries `dims`; surface
   // the reduced sizes so the renderer can append `[3]` / `[2, 4]` to the
@@ -561,7 +567,10 @@ function instanceFromConnector(
     classRef,
     placement,
   };
+  const diagram = counterpartPlacementFor(el, "icon");
+  if (diagram) inst.diagramPlacement = diagram;
   if (el.comment !== undefined) inst.comment = el.comment;
+  if (el.prefixes !== undefined) inst.prefixes = el.prefixes;
   if (el.type.source) inst.source = el.type.source;
   return inst;
 }
