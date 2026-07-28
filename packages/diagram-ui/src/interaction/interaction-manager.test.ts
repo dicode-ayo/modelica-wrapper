@@ -238,17 +238,33 @@ describe("InteractionManager", () => {
         pointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
       );
 
-      // The next press misses everything, but must still abandon the
-      // previous one — otherwise a later, unrelated move would compare
-      // against a press that never actually released.
+      // The next press misses everything, but must still abandon the previous
+      // one, which never released.
       setTarget(null);
       manager.handlePointerDown(
         pointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
       );
       setTarget(a);
-      manager.handlePointerMove(
-        pointerEvent("pointermove", { clientX: 999, clientY: 999 }),
-      );
+
+      now += 50;
+      manager.handlePointerDown(pointerEvent("pointerdown"));
+
+      expect(doubleClickCount(events)).toBe(0);
+    });
+
+    it("does not count a normally-released click toward a double click once a miss intervenes", () => {
+      // Unlike the abandoned-press case above, this press releases cleanly —
+      // the miss must still reset the double-click window on its own, not
+      // rely on a tracked press being left open to catch.
+      const a = componentNode("A");
+      const { manager, events, setTarget } = makeManager({ target: a });
+
+      manager.handlePointerDown(pointerEvent("pointerdown"));
+      manager.handlePointerUp(pointerEvent("pointerup"));
+
+      setTarget(null);
+      manager.handlePointerDown(pointerEvent("pointerdown"));
+      setTarget(a);
 
       now += 50;
       manager.handlePointerDown(pointerEvent("pointerdown"));
@@ -270,10 +286,9 @@ describe("InteractionManager", () => {
       expect(doubleClickCount(events)).toBe(0);
     });
 
-    it("does not count a press interrupted by a secondary press toward a double click", () => {
-      // A right-click while the primary button is still held (e.g. to open
-      // the context menu mid-drag) must retire the primary press too — it
-      // never resolved into a release of its own.
+    it("keeps watching a press for drag travel through a secondary press", () => {
+      // A right-click mid-press does not retire the primary press: its own
+      // drag is still what decides whether it was a click.
       const a = componentNode("A");
       const { manager, events } = makeManager({ target: a });
 
@@ -288,6 +303,26 @@ describe("InteractionManager", () => {
       manager.handlePointerUp(
         pointerEvent("pointerup", { clientX: 80, clientY: 0 }),
       );
+
+      now += 50;
+      manager.handlePointerDown(pointerEvent("pointerdown"));
+
+      expect(doubleClickCount(events)).toBe(0);
+    });
+
+    it("does not count a deferred press dropped by the context menu toward a double click", () => {
+      // The secondary button opening the menu drops the deferred narrowing
+      // (see the "deferred select" tests below) — it must also stop that
+      // press from pairing with a later click to fake a double.
+      const a = componentNode("A");
+      const { manager, events } = makeManager({
+        target: a,
+        selection: ["c:A", "c:B"],
+      });
+
+      manager.handlePointerDown(pointerEvent("pointerdown"));
+      manager.handlePointerUp(pointerEvent("pointerup", { button: 2 }));
+      manager.handlePointerUp(pointerEvent("pointerup"));
 
       now += 50;
       manager.handlePointerDown(pointerEvent("pointerdown"));

@@ -84,16 +84,11 @@ interface TrackedPress {
  * `pointerdown`, so narrowing there would leave it one key to carry and no
  * group could ever be dragged.
  *
- * Every select-eligible press is watched the same way for drag travel, not
- * just a deferred one: a press that moves past {@link DRAG_SLOP_PX} before
- * release was a drag, not a click, so it must not arm the double-click window
- * for whatever gets clicked next. The same holds for a press that never
- * resolves into a release at all — cancelled, or superseded by a press that
- * hits nothing (an armed draw tool can swallow a `pointerup` before it
- * reaches here, leaving the next press to notice the leftover). A press on a
- * *different* button (e.g. a right-click while the primary is still held)
- * does not touch it — that press was never a candidate for tracking, and the
- * primary's own drag is still worth watching through the interruption.
+ * Every select-eligible press is tracked for drag travel, not just a deferred
+ * one: past {@link DRAG_SLOP_PX} it was a drag, so it must not arm the
+ * double-click window for whatever gets clicked next. Same for a press that
+ * never releases at all — an armed draw tool can swallow the `pointerup`
+ * before it reaches here.
  */
 export class InteractionManager {
   private readonly picker: PickerFn;
@@ -198,11 +193,16 @@ export class InteractionManager {
   handlePointerUp(e: PointerEvent): void {
     if (e.button === 2) {
       // The menu opens against the whole selection, so a deferred narrowing
-      // must not land on top of it once the primary button comes up. A press
-      // tracked only for its own drag is a different press's business — it
-      // keeps watching through this interruption rather than being dropped.
-      if (this.trackedPress?.deferredKey !== null) {
-        this.trackedPress = null;
+      // must not land on top of it once the primary button comes up — nor
+      // may the press that armed it turn a later click into a spurious
+      // double. A press tracked only for its own drag is a different press's
+      // business — it keeps watching through this interruption rather than
+      // being dropped.
+      if (
+        this.trackedPress !== null &&
+        this.trackedPress.deferredKey !== null
+      ) {
+        this.abandonPress();
       }
       const key = this.pickKey(e.clientX, e.clientY);
       this.emit("contextMenu", {
@@ -261,14 +261,10 @@ export class InteractionManager {
   }
 
   /**
-   * A press that ends without ever resolving into a release was not a
-   * click: drop whatever it deferred, and forget it as `lastSelectKey` so it
-   * can't pair with a later click to fake a double.
+   * A press that did not resolve into an observed click cannot pair with a
+   * later one: drop whatever it deferred, and forget it as `lastSelectKey`.
    */
   private abandonPress(): void {
-    if (this.trackedPress === null) {
-      return;
-    }
     this.trackedPress = null;
     this.lastSelectKey = null;
     this.lastSelectAt = 0;
