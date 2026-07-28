@@ -591,6 +591,10 @@ const LISTED_SOURCE = "model M end M;";
 function makeEditClient(opts?: {
   loadStringSuccess?: boolean;
   instance?: ModelInstance;
+  /** Make OMC refuse every `updateComponent`, so the batch rolls back. */
+  updateComponentFails?: boolean;
+  /** Fires as each call is dispatched, to interleave a message mid-apply. */
+  onInvoke?: (fn: string) => void;
   setElementTypeSuccess?: boolean;
   setElementTypeThrows?: boolean;
   getModelInstanceThrows?: boolean;
@@ -634,6 +638,7 @@ function makeEditClient(opts?: {
     lastCall: "mock",
     invoke: vi.fn((fn: string, input?: Record<string, unknown>) => {
       invoked.push(fn);
+      opts?.onInvoke?.(fn);
       // The icon fetch path uses the annotation-filtered call; answer it with
       // the same instance so an icon-mode re-fetch resolves.
       if (fn === "getModelInstance" || fn === "getModelInstanceAnnotation") {
@@ -647,6 +652,9 @@ function makeEditClient(opts?: {
       if (fn === "writeClassGraphics") {
         if (input !== undefined) graphicsWrites.push(input);
         return Promise.resolve({ success: true });
+      }
+      if (fn === "updateComponent" && opts?.updateComponentFails) {
+        return Promise.resolve({ success: false });
       }
       // updateComponent / deleteComponent / addConnection / ... report success.
       return Promise.resolve({ success: true });
@@ -852,7 +860,14 @@ function movedComponent(extent: number[][]): DiagramLayout {
 
 describe("DiagramEditController: forward write path", () => {
   it("reflects a component move into the buffer after mutating OMC", async () => {
-    const { client, invoked, listedTypes } = makeEditClient();
+    // The re-fetch is the diff base, so the mock has to report the class as
+    // the pre-move layout describes it.
+    const { client, invoked, listedTypes } = makeEditClient({
+      instance: instanceWithComponent("gain1", [
+        [-10, -10],
+        [10, 10],
+      ]),
+    });
     const { gate } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
@@ -1353,6 +1368,176 @@ function componentInstanceNoParams(): ModelInstance {
   } as unknown as ModelInstance;
 }
 
+describe("DiagramEditController: reconciling reports", () => {
+  const AT = (x: number): [[number, number], [number, number]] => [
+    [x, x],
+    [x + 20, x + 20],
+  ];
+
+  it("applies only the latest report when several arrive before it can keep up", async () => {
+    const { client, invoked } = makeEditClient({
+      instance: instanceWithComponent("gain1", AT(-10)),
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      movedComponent(AT(-10)),
+      factory,
+    );
+
+    // Reported back to back, so the second and third land while the first is
+    // still being reconciled. Each carries the whole layout, so the last one
+    // says everything its predecessors did.
+    const reports = [0, 10, 20].map((x) =>
+      controller.handle({ type: "change", layout: movedComponent(AT(x)) }),
+    );
+    await Promise.all(reports);
+    await drain();
+
+    expect(invoked.filter((f) => f === "updateComponent")).toHaveLength(1);
+    // And one settle at the end, not one per report.
+    expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
+    controller.dispose();
+  });
+
+  it("withholds the settle while a further report is waiting", async () => {
+    // The settle for report one, sent while report two is already queued,
+    // describes a diagram the user has moved past — applying it snaps their
+    // second gesture backwards until the settle for it arrives.
+    let interleave: (() => void) | undefined;
+    const { client, invoked } = makeEditClient({
+      instance: instanceWithComponent("gain1", AT(-10)),
+      onInvoke: (fn) => {
+        if (fn !== "updateComponent") return;
+        const fire = interleave;
+        interleave = undefined;
+        fire?.();
+      },
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      movedComponent(AT(-10)),
+      factory,
+    );
+
+    interleave = () => {
+      void controller.handle({
+        type: "change",
+        layout: movedComponent(AT(10)),
+      });
+    };
+    await controller.handle({
+      type: "change",
+      layout: movedComponent(AT(0)),
+    });
+    await drain();
+
+    // Both reports are written — the second was not dropped, only its
+    // predecessor's settle was.
+    expect(invoked.filter((f) => f === "updateComponent")).toHaveLength(2);
+    expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
+    controller.dispose();
+  });
+
+  it("reconciles against the class as OMC holds it, not against a cached copy", async () => {
+    // The cached layout and the report agree; OMC does not. Diffing the two
+    // that agree yields nothing, and the class stays where it drifted to.
+    const { client, invoked } = makeEditClient({
+      instance: instanceWithComponent("gain1", AT(99)),
+    });
+    const { gate } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      movedComponent(AT(0)),
+      factory,
+    );
+
+    await controller.handle({
+      type: "change",
+      layout: movedComponent(AT(0)),
+    });
+
+    expect(invoked).toContain("updateComponent");
+    controller.dispose();
+  });
+
+  it("stops the burst and settles the diagram when an edit is refused", async () => {
+    // The successor has to arrive while the failing apply is in flight —
+    // reported earlier it would simply have replaced its predecessor in the
+    // slot, and the drop would never be exercised.
+    let interleave: (() => void) | undefined;
+    const { client, invoked } = makeEditClient({
+      updateComponentFails: true,
+      instance: instanceWithComponent("gain1", AT(-10)),
+      onInvoke: (fn) => {
+        if (fn !== "updateComponent") return;
+        const fire = interleave;
+        interleave = undefined;
+        fire?.();
+      },
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      movedComponent(AT(-10)),
+      factory,
+    );
+
+    interleave = () => {
+      void controller.handle({
+        type: "change",
+        layout: movedComponent(AT(10)),
+      });
+    };
+    await controller.handle({
+      type: "change",
+      layout: movedComponent(AT(0)),
+    });
+    await drain();
+
+    expect(posted.some((m) => m.type === "error")).toBe(true);
+    // The queued successor was dropped with the failure, so the class is
+    // written once and settled once rather than reconciled again against a
+    // model that just refused an edit.
+    expect(invoked.filter((f) => f === "updateComponent")).toHaveLength(1);
+    expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
+    controller.dispose();
+  });
+
+  it("drops a report that a reverse sync has already overtaken", async () => {
+    const { client, invoked } = makeEditClient({
+      instance: instanceWithComponent("gain1", AT(-10)),
+    });
+    const { gate, posted } = makeGate();
+    const { factory, fireForeign } = makeShadowFactory();
+    const { scheduler } = manualScheduler();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      movedComponent(AT(-10)),
+      factory,
+      scheduler,
+    );
+
+    fireForeign();
+    await controller.handle({
+      type: "change",
+      layout: layout({}),
+    });
+    await drain();
+
+    // Reconciling an empty report against the reloaded class would read every
+    // component the sync restored as one the user deleted.
+    expect(invoked).not.toContain("deleteComponent");
+    expect(posted.some((m) => m.type === "error")).toBe(true);
+    controller.dispose();
+  });
+});
+
 describe("DiagramEditController: parameter editing", () => {
   it("opens the class-parameter modal (read) without reflecting", async () => {
     const { client, setModifierCalls } = makeEditClient({
@@ -1729,11 +1914,11 @@ describe("DiagramEditController: icon mode", () => {
       layer: "icon",
       op: { kind: "add" },
     });
+    expect(writes).toContain(LISTED_SOURCE); // dirty
     // Mode-driven re-fetch: icon mode re-reads via the annotation-filtered call,
     // so prevLayout stays an icon layout and subsequent draws keep the icon
     // field (a diagram-mode re-fetch would read getModelInstance instead).
     expect(invoked).toContain("getModelInstanceAnnotation");
-    expect(writes).toContain(LISTED_SOURCE); // dirty
   });
 
   it("edits an icon-layer shape via the shape modal and reflects", async () => {

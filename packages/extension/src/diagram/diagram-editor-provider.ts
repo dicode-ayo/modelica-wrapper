@@ -398,6 +398,11 @@ export class DiagramEditController {
   private prevLayout: DiagramLayout;
   private readonly shadow: ShadowBuffer;
   private reverseTimer: { cancel(): void } | undefined;
+  /**
+   * The layout the webview last reported, waiting to be reconciled. One slot,
+   * not a list: a report supersedes its predecessor rather than following it.
+   */
+  private pendingChange: DiagramLayout | null = null;
   // True from the moment a reverse sync is enqueued until it resolves —
   // covers the gap between the debounce timer firing and the queued unit's
   // `loadString`/refetch actually completing, which `reverseTimer` alone
@@ -461,26 +466,29 @@ export class DiagramEditController {
   private queue: Promise<void> = Promise.resolve();
 
   /**
-   * Serialize edits through a one-slot promise chain so each unit's full
-   * apply→reflect (or reverse sync) — which advances `prevLayout` — completes
-   * before the next one diffs. Otherwise concurrent edits would diff against a
-   * stale layout, and an undo's `loadString` racing an in-flight edit's writes
-   * on the single OMC socket would corrupt state. This orders work within one
-   * editor; cross-editor socket contention is the client's `SerialQueue`'s job.
+   * Serialize work through a one-slot promise chain, so an edit's writes and an
+   * undo's `loadString` never interleave on the single OMC socket, and each
+   * unit sees the class as the one before it left it. This orders work within
+   * one editor; cross-editor socket contention is the client's `SerialQueue`'s
+   * job.
    */
   handle(msg: WebviewToExtension): Promise<void> {
-    if (this.reverseSyncIsRacing() && msg.type === "change") {
-      // `next` was computed by the webview against the diagram as it stood
-      // before the reverse sync racing this message; diffing it against
-      // `prevLayout` once that sync lands could invent edits — e.g. a false
-      // `componentDeleted` for something the sync alone restored — instead of
-      // the drag the user actually made. Drop it: the reverse sync's own
-      // `layout` push resyncs the webview, and the gesture can be repeated
-      // against it.
-      this.reportError(
-        "the diagram was resynced from an external change — please retry the edit",
-      );
-      return this.queue;
+    // `reverseSyncIsRacing` flushes a pending reverse-sync timer as a side
+    // effect, so every message calls it: an undo has to land in OMC before the
+    // next unit reads the class.
+    const racing = this.reverseSyncIsRacing();
+    if (msg.type === "change") {
+      if (racing) {
+        // The webview computed this against the diagram as it stood before the
+        // reverse sync racing it. Reconciling it afterwards would read whatever
+        // the sync restored as something the user deleted. Drop it: the sync's
+        // own `layout` push resyncs the webview to reconcile against.
+        this.reportError(
+          "the diagram was resynced from an external change — please retry the edit",
+        );
+        return this.queue;
+      }
+      this.pendingChange = msg.layout;
     }
     return this.enqueue(() => this.dispatch(msg));
   }
@@ -523,6 +531,9 @@ export class DiagramEditController {
   private runReverseSyncNow(): void {
     this.reverseTimer = undefined;
     this.reverseSyncInFlight = true;
+    // Same reason the racing `change` above is dropped: this one was reported
+    // against the pre-sync diagram too.
+    this.pendingChange = null;
     void this.enqueue(() =>
       this.reverseSync().finally(() => {
         this.reverseSyncInFlight = false;
@@ -555,10 +566,7 @@ export class DiagramEditController {
         this.reportError(reload.message);
         return;
       }
-      const layout = await this.refetch(client, className);
-      this.prevLayout = layout;
-      this.deps.gate.send({ type: "layout", layout });
-      this.deps.onClassContentChanged?.(className);
+      this.publishLayout(await this.refetch(client, className));
     } catch (err) {
       this.reportError(`reverse sync failed: ${(err as Error).message}`);
     }
@@ -571,7 +579,7 @@ export class DiagramEditController {
     if (this.mode === "icon" && !iconHonorsMessage(msg)) return;
     switch (msg.type) {
       case "change":
-        await this.onChange(msg.layout);
+        await this.drainChange();
         return;
       case "addComponent":
         await this.onAddComponent(msg.className, msg.position);
@@ -617,27 +625,81 @@ export class DiagramEditController {
     }
   }
 
-  private async onChange(next: DiagramLayout): Promise<void> {
+  /**
+   * Take whatever the webview last reported and reconcile OMC to it. A newer
+   * report supersedes an older one outright — each carries the whole layout, so
+   * nothing an earlier one said is missing from it — which is why a burst of
+   * gestures collapses to however many the queue could not keep up with.
+   */
+  private async drainChange(): Promise<void> {
+    const next = this.pendingChange;
+    // An earlier unit already took it; this one has nothing left to do.
+    if (next === null) return;
+    this.pendingChange = null;
+    await this.applyChange(next);
+  }
+
+  /**
+   * Reconcile the class to the layout the webview is showing. The base is read
+   * from OMC here, so that whatever else has touched the class, the difference
+   * between what it holds and what the user is looking at is exactly the set of
+   * edits that closes the gap.
+   */
+  private async applyChange(next: DiagramLayout): Promise<void> {
     if (this.rejectIfReadOnly()) return;
     const { client, className } = this.deps;
     try {
-      const result = await applyDiagramEdits(
-        client,
-        className,
-        this.prevLayout,
-        next,
-        this.refetch,
-      );
-      if (result === null) return;
-      if (result.failed.length > 0) {
-        this.reportError(
-          `${result.failed.length} edit(s) failed: ${result.failed.at(0)?.error ?? "unknown"}`,
-        );
+      const current = await this.refetch(client, className);
+      const result = await applyDiagramEdits(client, className, current, next);
+      if (result === null) {
+        // Nothing to write, but a withheld settle may have left `prevLayout`
+        // behind what OMC and the screen both already hold.
+        this.prevLayout = current;
+        return;
       }
-      await this.reflect(result.layout);
+      await this.writeBuffer();
+      if (result.failed.length > 0 || result.rolledBack) {
+        this.reportError(
+          `${result.failed.length} edit(s) failed: ${result.failed.at(0)?.error ?? "unknown"}` +
+            " — pending edits were dropped and the diagram resynced",
+        );
+        // The class no longer matches the screen, so the rest of the burst
+        // would reconcile against a model that just refused an edit.
+        this.pendingChange = null;
+        await this.pushCanonicalLayout();
+        return;
+      }
+      await this.pushCanonicalLayout();
     } catch (err) {
-      this.reportError(`applying edits failed: ${(err as Error).message}`);
+      this.reportError(
+        `applying edits failed: ${(err as Error).message}` +
+          " — pending edits were dropped and the diagram resynced",
+      );
+      this.pendingChange = null;
+      await this.pushCanonicalLayout();
     }
+  }
+
+  /**
+   * Re-read the class and push it, but only once the webview has stopped
+   * reporting. Pushing a layout that a queued report has already superseded
+   * settles the diagram onto a state the user has moved past, and pushing at
+   * all mid-gesture moves what is under the pointer — which the webview guards
+   * separately, since a gesture in flight has reported nothing yet.
+   */
+  private async pushCanonicalLayout(): Promise<void> {
+    if (this.pendingChange !== null) return;
+    const { client, className } = this.deps;
+    const layout = await this.refetch(client, className);
+    if (this.pendingChange !== null) return;
+    this.publishLayout(layout);
+  }
+
+  /** Adopt `layout` as canonical and hand it to everyone who tracks it. */
+  private publishLayout(layout: DiagramLayout): void {
+    this.prevLayout = layout;
+    this.deps.gate.send({ type: "layout", layout });
+    this.deps.onClassContentChanged?.(this.deps.className);
   }
 
   private async onAddComponent(
@@ -1156,9 +1218,13 @@ export class DiagramEditController {
    * document dirty.
    */
   private async reflect(layout: DiagramLayout): Promise<void> {
-    this.prevLayout = layout;
-    this.deps.gate.send({ type: "layout", layout });
-    this.deps.onClassContentChanged?.(this.deps.className);
+    this.publishLayout(layout);
+    await this.writeBuffer();
+  }
+
+  /** Reflect the class's canonical OMC source into the shadow buffer,
+   *  recording one undo step and flipping the document dirty. */
+  private async writeBuffer(): Promise<void> {
     const { contents } = await this.deps.client.listFile({
       typeName: this.deps.className,
     });

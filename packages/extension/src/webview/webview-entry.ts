@@ -35,6 +35,10 @@ import {
   type ToolId,
 } from "@dicode/diagram-ui";
 
+import {
+  canApplyLayoutPush,
+  mustFollowQueuedChange,
+} from "./change-ordering.js";
 import { panelReadonly } from "./panel-readonly.js";
 import type {
   ExtensionToWebview,
@@ -50,6 +54,10 @@ declare const __WEBVIEW_BUILD_TIME__: string;
 console.log(
   `[webview boot] build=${__WEBVIEW_BUILD_TIME__} loaded=${new Date().toISOString()}`,
 );
+
+// Long enough to swallow a re-drag, short enough that a deliberate second edit
+// a beat later still lands on its own.
+const CHANGE_DEBOUNCE_MS = 300;
 
 const RENDER_ERROR_HINT =
   "Make sure the class and its enclosing package load without errors, " +
@@ -107,6 +115,9 @@ class OmWebviewRoot extends LitElement {
    *  gates whether the form is read-only. Reactive — `render` reads it. */
   @state() private paramKind: ParameterFormKind | null = null;
 
+  private queuedChange: DiagramLayout | null = null;
+  private changeTimer: ReturnType<typeof setTimeout> | undefined;
+
   private vscode: VsCodeApi<WebviewToExtension> | null = null;
   private get diagram(): OmGraphicalLayout | null {
     return this.renderRoot.querySelector("om-graphical-layout");
@@ -116,6 +127,9 @@ class OmWebviewRoot extends LitElement {
     super.connectedCallback();
     this.vscode = getVsCodeApi<WebviewToExtension>();
     window.addEventListener("message", this.onHostMessage);
+    // `disconnectedCallback` is a DOM-removal hook; closing the panel tears the
+    // iframe down without one, which would strand the last queued commit.
+    window.addEventListener("pagehide", this.onPageHide);
     document.addEventListener("focusin", this.onFocusChange);
     document.addEventListener("focusout", this.onFocusChange);
     this.vscode.postMessage({ type: "ready" });
@@ -123,10 +137,16 @@ class OmWebviewRoot extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.flushChange();
     window.removeEventListener("message", this.onHostMessage);
+    window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("focusin", this.onFocusChange);
     document.removeEventListener("focusout", this.onFocusChange);
   }
+
+  private readonly onPageHide = (): void => {
+    this.flushChange();
+  };
 
   /** Last reported editable-focus state, so we only post on a transition. */
   private inputFocused = false;
@@ -226,6 +246,14 @@ class OmWebviewRoot extends LitElement {
         this.diagram?.setSelection(message.keys);
         return;
       case "layout":
+        if (
+          !canApplyLayoutPush({
+            gestureActive: this.diagram?.gestureActive === true,
+            hasQueuedChange: this.queuedChange !== null,
+          })
+        ) {
+          return;
+        }
         this.layout = message.layout;
         this.renderError = null;
         return;
@@ -275,14 +303,36 @@ class OmWebviewRoot extends LitElement {
   }
 
   private post(msg: WebviewToExtension): void {
+    if (mustFollowQueuedChange(msg.type)) this.flushChange();
     this.vscode?.postMessage(msg);
   }
 
+  /**
+   * Consecutive gestures land as one commit. Each carries the whole layout, so
+   * an earlier one holds nothing the later one lacks, and the host pays for one
+   * reconcile — a re-read plus one OMC write per moved component — instead of
+   * one per gesture.
+   */
   private onLayoutChange = (
     e: CustomEvent<LayoutEvents["om-graphical-layout-change"]>,
   ): void => {
-    this.post({ type: "change", layout: e.detail });
+    // Keeps the layout this element renders and the layout the diagram shows
+    // as one thing. They diverge from the first gesture otherwise, and every
+    // later render binds one that predates it.
+    this.layout = e.detail;
+    this.queuedChange = e.detail;
+    clearTimeout(this.changeTimer);
+    this.changeTimer = setTimeout(() => this.flushChange(), CHANGE_DEBOUNCE_MS);
   };
+
+  private flushChange(): void {
+    clearTimeout(this.changeTimer);
+    this.changeTimer = undefined;
+    const layout = this.queuedChange;
+    if (layout === null) return;
+    this.queuedChange = null;
+    this.vscode?.postMessage({ type: "change", layout });
+  }
 
   private onConnectionCreate = (
     e: CustomEvent<LayoutEvents["om-connection-create"]>,
