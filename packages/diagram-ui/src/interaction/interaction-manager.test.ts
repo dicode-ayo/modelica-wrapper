@@ -104,40 +104,6 @@ describe("InteractionManager", () => {
     vi.restoreAllMocks();
   });
 
-  it("emits select on a plain primary press", () => {
-    const a = componentNode("A");
-    const { manager, events } = makeManager({ target: a });
-
-    manager.handlePointerDown(pointerEvent("pointerdown"));
-
-    expect(selectEvents(events)).toEqual([
-      { key: "c:A", addToSelection: false },
-    ]);
-  });
-
-  it("marks addToSelection on a ctrl/cmd press", () => {
-    const a = componentNode("A");
-    const { manager, events } = makeManager({ target: a });
-
-    manager.handlePointerDown(pointerEvent("pointerdown", { ctrlKey: true }));
-
-    expect(selectEvents(events)).toEqual([
-      { key: "c:A", addToSelection: true },
-    ]);
-  });
-
-  it("emits doubleClick on two stationary presses on the same key within the window", () => {
-    const a = componentNode("A");
-    const { manager, events } = makeManager({ target: a });
-
-    manager.handlePointerDown(pointerEvent("pointerdown"));
-    manager.handlePointerUp(pointerEvent("pointerup"));
-    now += 100;
-    manager.handlePointerDown(pointerEvent("pointerdown"));
-
-    expect(doubleClickCount(events)).toBe(1);
-  });
-
   it("does not emit doubleClick once the window has elapsed", () => {
     const a = componentNode("A");
     const { manager, events } = makeManager({ target: a });
@@ -150,7 +116,7 @@ describe("InteractionManager", () => {
     expect(doubleClickCount(events)).toBe(0);
   });
 
-  describe("press-drag then click", () => {
+  describe("double-click arming", () => {
     it("does not arm a spurious double click after a press that drags away and back", () => {
       const a = componentNode("A");
       const { manager, events } = makeManager({ target: a });
@@ -225,12 +191,10 @@ describe("InteractionManager", () => {
       expect(doubleClickCount(events)).toBe(1);
     });
 
-    it("does not count a press abandoned without a release toward a double click", () => {
-      // A draw tool armed mid-press swallows the pointerup (ModeRouter routes
-      // release to the tool instead of the InteractionManager), so a press
-      // can be abandoned without ever reaching handlePointerUp. Whatever that
-      // press became, it wasn't observed to be a click, so it must not pair
-      // with a later click to fake a double.
+    it("disarms a press whose release never arrived once a miss intervenes", () => {
+      // An armed draw tool swallows the pointerup, so a press can reach no
+      // release at all. The miss is what disarms it — a re-press on the same
+      // key is indistinguishable from a rapid double click.
       const a = componentNode("A");
       const { manager, events, setTarget } = makeManager({ target: a });
 
@@ -311,9 +275,9 @@ describe("InteractionManager", () => {
     });
 
     it("does not count a deferred press dropped by the context menu toward a double click", () => {
-      // The secondary button opening the menu drops the deferred narrowing
-      // (see the "deferred select" tests below) — it must also stop that
-      // press from pairing with a later click to fake a double.
+      // The secondary button opening the menu drops the deferred narrowing —
+      // it must also stop that press from pairing with a later click to fake
+      // a double.
       const a = componentNode("A");
       const { manager, events } = makeManager({
         target: a,
@@ -331,117 +295,15 @@ describe("InteractionManager", () => {
     });
   });
 
-  describe("deferred select on a multi-selection member", () => {
-    it("defers select to pointerup and drops it if the press drags past the slop", () => {
-      const a = componentNode("A");
-      const { manager, events } = makeManager({
-        target: a,
-        selection: ["c:A", "c:B"],
-      });
+  it("emits hover with a null key on pointer leave", () => {
+    // Not asserted anywhere else — the sibling test/interaction-manager.test.ts
+    // covers hover-follows-the-picker and hover-dedup, but not leave.
+    const a = componentNode("A");
+    const { manager, events } = makeManager({ target: a });
 
-      manager.handlePointerDown(
-        pointerEvent("pointerdown", { clientX: 0, clientY: 0 }),
-      );
-      expect(selectEvents(events)).toEqual([]);
+    manager.handlePointerMove(pointerEvent("pointermove"));
+    manager.handlePointerLeave();
 
-      manager.handlePointerMove(
-        pointerEvent("pointermove", { clientX: 50, clientY: 50 }),
-      );
-      manager.handlePointerUp(
-        pointerEvent("pointerup", { clientX: 50, clientY: 50 }),
-      );
-
-      expect(selectEvents(events)).toEqual([]);
-    });
-
-    it("emits the deferred select on a stationary release", () => {
-      const a = componentNode("A");
-      const { manager, events } = makeManager({
-        target: a,
-        selection: ["c:A", "c:B"],
-      });
-
-      manager.handlePointerDown(pointerEvent("pointerdown"));
-      manager.handlePointerUp(pointerEvent("pointerup"));
-
-      expect(selectEvents(events)).toEqual([
-        { key: "c:A", addToSelection: false },
-      ]);
-    });
-
-    it("drops the deferred select on pointercancel", () => {
-      const a = componentNode("A");
-      const { manager, events } = makeManager({
-        target: a,
-        selection: ["c:A", "c:B"],
-      });
-
-      manager.handlePointerDown(pointerEvent("pointerdown"));
-      manager.handlePointerCancel(pointerEvent("pointercancel"));
-      manager.handlePointerUp(pointerEvent("pointerup"));
-
-      expect(selectEvents(events)).toEqual([]);
-    });
-
-    it("does not defer when ctrl/cmd is held", () => {
-      const a = componentNode("A");
-      const { manager, events } = makeManager({
-        target: a,
-        selection: ["c:A", "c:B"],
-      });
-
-      manager.handlePointerDown(pointerEvent("pointerdown", { ctrlKey: true }));
-
-      expect(selectEvents(events)).toEqual([
-        { key: "c:A", addToSelection: true },
-      ]);
-    });
-  });
-
-  describe("hover", () => {
-    it("emits hover when the entity under the pointer changes", () => {
-      const a = componentNode("A");
-      const { manager, events } = makeManager({ target: a });
-
-      manager.handlePointerMove(pointerEvent("pointermove"));
-
-      expect(events).toContainEqual({ type: "hover", detail: { key: "c:A" } });
-    });
-
-    it("does not re-emit hover for the same key", () => {
-      const a = componentNode("A");
-      const { manager, events } = makeManager({ target: a });
-
-      manager.handlePointerMove(pointerEvent("pointermove", { clientX: 0 }));
-      manager.handlePointerMove(pointerEvent("pointermove", { clientX: 1 }));
-
-      expect(events.filter((e) => e.type === "hover")).toHaveLength(1);
-    });
-
-    it("emits hover with a null key on pointer leave", () => {
-      const a = componentNode("A");
-      const { manager, events } = makeManager({ target: a });
-
-      manager.handlePointerMove(pointerEvent("pointermove"));
-      manager.handlePointerLeave();
-
-      expect(events.at(-1)).toEqual({ type: "hover", detail: { key: null } });
-    });
-  });
-
-  describe("contextMenu", () => {
-    it("emits contextMenu on secondary-button release", () => {
-      const a = componentNode("A");
-      const { manager, events } = makeManager({ target: a });
-
-      manager.handlePointerUp(
-        pointerEvent("pointerup", { button: 2, clientX: 12, clientY: 34 }),
-      );
-
-      expect(events).toContainEqual({
-        type: "contextMenu",
-        detail: { key: "c:A", clientX: 12, clientY: 34 },
-      });
-    });
+    expect(events.at(-1)).toEqual({ type: "hover", detail: { key: null } });
   });
 });

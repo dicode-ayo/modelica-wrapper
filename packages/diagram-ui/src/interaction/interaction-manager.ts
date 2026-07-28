@@ -47,8 +47,8 @@ const DRAG_SLOP_PX = 3;
 
 /**
  * The still-down press being watched, keyed to the pointer that made it. Only
- * one is ever held: `pointerId` is a staleness guard so a release (or move)
- * from an unrelated pointer can't claim or disturb it, not multi-pointer
+ * one is ever held: `pointerId` is a staleness guard so a release or move from
+ * an unrelated pointer can't claim the deferred select, not multi-pointer
  * support. A second pointer pressing another member supersedes the first,
  * whose tracking is then abandoned.
  */
@@ -86,9 +86,11 @@ interface TrackedPress {
  *
  * Every select-eligible press is tracked for drag travel, not just a deferred
  * one: past {@link DRAG_SLOP_PX} it was a drag, so it must not arm the
- * double-click window for whatever gets clicked next. Same for a press that
- * never releases at all — an armed draw tool can swallow the `pointerup`
- * before it reaches here.
+ * double-click window for whatever gets clicked next. A press that hits
+ * nothing and a cancelled pointer disarm the window as well. A press whose
+ * `pointerup` never arrives — an armed draw tool swallows it — is only
+ * disarmed by one of those three: two bare `pointerdown`s on one key are a
+ * rapid double click, not a swallowed press.
  */
 export class InteractionManager {
   private readonly picker: PickerFn;
@@ -267,7 +269,6 @@ export class InteractionManager {
   private abandonPress(): void {
     this.trackedPress = null;
     this.lastSelectKey = null;
-    this.lastSelectAt = 0;
   }
 
   /**
