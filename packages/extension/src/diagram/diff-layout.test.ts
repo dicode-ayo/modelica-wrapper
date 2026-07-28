@@ -84,11 +84,12 @@ describe("diffLayouts", () => {
         kind: "componentPlacement",
         componentName: "R1",
         componentClass: "Modelica.Electrical.Resistor",
-        extent: [
-          [5, -5],
-          [25, 5],
-        ],
-        rotation: 0,
+        transformation: {
+          extent: [
+            [5, -5],
+            [25, 5],
+          ],
+        },
       },
     ]);
   });
@@ -119,12 +120,14 @@ describe("diffLayouts", () => {
       kind: "componentPlacement",
       componentName: "R1",
       componentClass: "Modelica.Electrical.Resistor",
-      extent: [
-        [25, -15],
-        [-15, 25],
-      ],
-      rotation: 270,
-      origin: [0, -120],
+      transformation: {
+        extent: [
+          [25, -15],
+          [-15, 25],
+        ],
+        origin: [0, -120],
+        rotation: 270,
+      },
     });
   });
 
@@ -141,10 +144,11 @@ describe("diffLayouts", () => {
     };
     const edits = diffLayouts(a, b);
     expect(edits).toHaveLength(1);
-    expect(edits[0]).toMatchObject({
-      kind: "componentPlacement",
-      origin: [0, 40],
-    });
+    const edit = edits[0];
+    expect(edit?.kind).toBe("componentPlacement");
+    if (edit?.kind === "componentPlacement") {
+      expect(edit.transformation.origin).toEqual([0, 40]);
+    }
   });
 
   it("emits no origin when the placement has none", () => {
@@ -157,8 +161,11 @@ describe("diffLayouts", () => {
       ],
     };
     const edit = diffLayouts(a, b).at(0);
-    expect(edit).toBeDefined();
-    expect(edit && "origin" in edit).toBe(false);
+    expect(edit?.kind).toBe("componentPlacement");
+    if (edit?.kind === "componentPlacement") {
+      expect("origin" in edit.transformation).toBe(false);
+      expect(edit.iconTransformation).toBeUndefined();
+    }
   });
 
   it("emits componentDeleted when a component disappears", () => {
@@ -229,11 +236,12 @@ describe("diffLayouts", () => {
         kind: "componentPlacement",
         componentName: "p",
         componentClass: "Modelica.Electrical.Interfaces.Pin",
-        extent: [
-          [10, -5],
-          [20, 5],
-        ],
-        rotation: 0,
+        transformation: {
+          extent: [
+            [10, -5],
+            [20, 5],
+          ],
+        },
       });
     });
 
@@ -259,11 +267,13 @@ describe("diffLayouts", () => {
         kind: "componentPlacement",
         componentName: "p",
         componentClass: "Modelica.Electrical.Interfaces.Pin",
-        extent: [
-          [-5, -5],
-          [5, 5],
-        ],
-        rotation: 90,
+        transformation: {
+          extent: [
+            [-5, -5],
+            [5, 5],
+          ],
+          rotation: 90,
+        },
       });
     });
 
@@ -692,26 +702,70 @@ describe("diffLayouts", () => {
 describe("placementAnnotation", () => {
   it("emits a Placement with extent in {{x1,y1},{x2,y2}} form", () => {
     expect(
-      placementAnnotation(
-        [
-          [-10, -5],
-          [10, 5],
-        ],
-        0,
-      ),
+      placementAnnotation({
+        transformation: {
+          extent: [
+            [-10, -5],
+            [10, 5],
+          ],
+        },
+      }),
     ).toBe("Placement(transformation(extent={{-10,-5},{10,5}}))");
   });
 
   it("includes rotation when non-zero", () => {
     expect(
-      placementAnnotation(
-        [
-          [0, 0],
-          [10, 10],
-        ],
-        90,
-      ),
-    ).toBe("Placement(transformation(extent={{0,0},{10,10}}, rotation=90))");
+      placementAnnotation({
+        transformation: {
+          extent: [
+            [-10, -5],
+            [10, 5],
+          ],
+          rotation: 90,
+        },
+      }),
+    ).toBe("Placement(transformation(extent={{-10,-5},{10,5}}, rotation=90))");
+  });
+
+  it("re-emits origin and visible, which updateComponent would otherwise drop", () => {
+    // `updateComponent` replaces the whole annotation, so a field left out
+    // here is a field the declaration loses on its first move.
+    expect(
+      placementAnnotation({
+        transformation: {
+          extent: [
+            [20, -20],
+            [-20, 20],
+          ],
+          origin: [0, -120],
+          rotation: 270,
+          visible: false,
+        },
+      }),
+    ).toBe(
+      "Placement(visible=false, transformation(origin={0,-120}, extent={{20,-20},{-20,20}}, rotation=270))",
+    );
+  });
+
+  it("emits a connector's second transformation under its own keyword", () => {
+    expect(
+      placementAnnotation({
+        transformation: {
+          extent: [
+            [-140, -20],
+            [-100, 20],
+          ],
+        },
+        iconTransformation: {
+          extent: [
+            [-110, -10],
+            [-90, 10],
+          ],
+        },
+      }),
+    ).toBe(
+      "Placement(transformation(extent={{-140,-20},{-100,20}}), iconTransformation(extent={{-110,-10},{-90,10}}))",
+    );
   });
 });
 

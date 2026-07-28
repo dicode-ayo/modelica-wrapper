@@ -185,11 +185,10 @@ async function applyOne(
           componentName: edit.componentName,
           componentClass: edit.componentClass,
           intoTypeName: hostClass,
-          annotation: placementAnnotation(
-            edit.extent,
-            edit.rotation,
-            edit.origin,
-          ),
+          annotation: placementAnnotation({
+            transformation: edit.transformation,
+            iconTransformation: edit.iconTransformation,
+          }),
         }),
       );
       return;

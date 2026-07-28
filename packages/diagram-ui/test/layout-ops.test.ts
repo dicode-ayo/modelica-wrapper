@@ -1522,7 +1522,7 @@ describe("applyDelete and attached connections", () => {
     expect(next.connections).toEqual(base.connections);
   });
 
-  it("still honours an explicitly selected edge", () => {
+  it("still honors an explicitly selected edge", () => {
     expect(applyDelete(baseLayout(), ["edge:0"]).connections).toEqual([]);
   });
 });

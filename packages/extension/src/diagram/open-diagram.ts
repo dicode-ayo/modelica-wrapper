@@ -189,16 +189,11 @@ export function firstFreeName(
  * graphic should sit centred at `(x, y)` in diagram coordinates.
  * 10-unit half-extent matches the Modelica default.
  *
- * Encoding rationale: we deliberately use **absolute extent with no
- * `origin`**, matching `diff-layout.ts:placementAnnotation()` (the
- * helper used by `updateComponent` when the user drags). If the two
- * helpers disagreed on encoding, the round-trip would break — e.g.
- * `shiftPlacement()` only mutates `extent` on drag, so a component
- * originally stored as `origin={x,y}, extent={{-10,-10},{10,10}}`
- * would get rewritten as `extent={{0,0},{20,20}}` (origin dropped)
- * the first time it was moved, and re-fetching the layout would
- * teleport it to the bare extent centre. Keeping both helpers on
- * the same shape avoids that drift.
+ * Encoding rationale: a fresh drop has no `origin` to preserve, so the
+ * absolute extent alone places it. A declaration that does have one keeps
+ * it — `placementAnnotation()` re-emits the whole placement, and a drag
+ * moves the entity through `extent` alone (`shiftPlacement()` mutates
+ * nothing else).
  *
  * The OMC parser also rejects the positional-`transformation(...)`
  * shape once a `visible=true` sibling is present in the same

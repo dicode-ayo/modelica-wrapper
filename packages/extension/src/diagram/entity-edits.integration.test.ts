@@ -1,17 +1,18 @@
 /**
- * End-to-end gate for the two ways an entity edit used to lose data attached
- * to the entity: a move dropping its placement `origin`, and a delete leaving
- * the `connect()` equations that named it.
+ * End-to-end gate for two ways an entity edit can lose data attached to the
+ * entity: a move dropping its placement `origin`, and a delete leaving the
+ * `connect()` equations that named it.
  *
  * The move failure is in the annotation text OMC writes, so only a real OMC
  * shows it. For the delete, the layout-op guard lives in diagram-ui's unit
- * tests; what needs OMC here is that the resulting batch leaves a class that
- * still loads — the old behaviour reported every edit applied and left an
- * orphan `connect()` behind.
+ * tests; what needs OMC here is that the batch leaves a class that still
+ * loads — OMC accepts an orphan `connect()` and reports every edit applied.
  *
  * Gating mirrors the omc-client suites: auto-runs when `omc` is on PATH (or
  * `OMC_PATH` / `OMC_INTEGRATION=1` is set); auto-skips otherwise.
  */
+
+import { randomBytes } from "node:crypto";
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 
@@ -29,7 +30,6 @@ describeIf("entity edits against real OMC", () => {
 
   beforeEach(async () => {
     client = await OmcClient.create({ omcPath: process.env.OMC_PATH ?? "" });
-    const { randomBytes } = await import("node:crypto");
     pkg = `MwEntity_${randomBytes(4).toString("hex")}`;
     cls = `${pkg}.T`;
     await client.loadModel({ typeName: "Modelica" });
@@ -61,7 +61,7 @@ end ${pkg};
     const u = before.connectors.u;
     expect(u?.placement.origin).toEqual([0, -120]);
 
-    const moved = structuredClone(before) as typeof before;
+    const moved = structuredClone(before);
     const target = moved.connectors.u;
     if (!target) throw new Error("expected connector u");
     target.placement = {
@@ -83,11 +83,9 @@ end ${pkg};
 
   it("writes a delete batch that leaves a class OMC can still load", async () => {
     // The guard for `applyDelete` pruning attached wires is a diagram-ui unit
-    // test — driving it from here would pull the webview bundle into a Node
-    // test. What only a real OMC can show is the other half: a batch that
-    // deletes declarations *and* their connections leaves a loadable class,
-    // where one that deletes declarations alone reports every edit applied and
-    // leaves an orphan `connect()` behind.
+    // test — driving it from here would reach into the webview package. What
+    // only OMC can show is that a batch deleting declarations *and* their
+    // connections leaves a loadable class.
     const before = await fetchDiagramLayout(client, cls);
     const result = await applyEdits(
       client,
