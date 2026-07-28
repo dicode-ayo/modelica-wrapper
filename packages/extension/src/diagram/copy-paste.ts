@@ -18,7 +18,7 @@ import {
 import {
   endpointToCref,
   lineAnnotation,
-  placementAnnotation,
+  transformationBody,
   type GraphicsLayer,
 } from "./diff-layout.js";
 import {
@@ -186,7 +186,7 @@ async function captureComponent(
     diagramPlacement?: Placement | undefined;
     prefixes?: Prefixes | undefined;
     comment?: string | undefined;
-  } = {},
+  },
 ): Promise<ClipboardComponent> {
   return {
     kind: "component",
@@ -275,7 +275,7 @@ export async function pasteClipboardItems(
     taken.add(componentName);
     renamed.set(item.name, componentName);
     added.push(componentName);
-    declarations.push(componentDeclaration(item, componentName, offset));
+    declarations.push(componentDeclaration(item, componentName, offset, layer));
   }
 
   // After the final names are known, so the crefs point at the new copies.
@@ -335,6 +335,12 @@ export async function pasteClipboardItems(
  * Declaration prefixes, in the order Modelica writes them. A declaration
  * missing them is a different declaration — an `inner` pasted plain no longer
  * answers the `outer` lookups that referenced it.
+ *
+ * `partial` is a class prefix, not an element one. `public` has no prefix
+ * word: a protected component pastes into the public section, which is the
+ * one declaration property this does not preserve. A constrained
+ * `replaceable` emits the bare word without its `constrainedby` clause
+ * (issue #395).
  */
 function prefixWords(prefixes: Prefixes | undefined): string {
   if (!prefixes) return "";
@@ -344,26 +350,25 @@ function prefixWords(prefixes: Prefixes | undefined): string {
   if (prefixes.inner) words.push("inner");
   if (prefixes.outer) words.push("outer");
   if (prefixes.replaceable) words.push("replaceable");
-  if (prefixes.flow) words.push("flow");
-  if (prefixes.stream) words.push("stream");
+  // `flow` / `stream` arrive as the `connector` string, not as booleans.
+  if (prefixes.connector) words.push(prefixes.connector);
   if (prefixes.variability) words.push(prefixes.variability);
   if (prefixes.direction) words.push(prefixes.direction);
   return words.length === 0 ? "" : `${words.join(" ")} `;
 }
 
-/** A placement's inner clause, renamed to `keyword`. */
+/** A placement as a `transformation(...)` / `iconTransformation(...)` clause. */
 function transformationClause(
   placement: Placement,
   offset: number,
   keyword: "transformation" | "iconTransformation",
 ): string {
-  const whole = placementAnnotation(
+  const body = transformationBody(
     offsetExtent(placement.extent, offset),
     placement.rotation ?? 0,
     placement.origin,
   );
-  const inner = whole.slice("Placement(transformation(".length, -2);
-  return `${keyword}(${inner})`;
+  return `${keyword}(${body})`;
 }
 
 /**
@@ -374,15 +379,29 @@ function transformationClause(
  * The paste offset lands on the extent, which adds to `origin` rather than
  * replacing it, so a placement carrying both keeps both.
  */
-function placementClause(item: ClipboardComponent, offset: number): string {
+function placementClause(
+  item: ClipboardComponent,
+  offset: number,
+  layer: GraphicsLayer,
+): string {
   const parts: string[] = [];
   if (item.visible === false) parts.push("visible=false");
   const diagram = item.diagramPlacement;
-  // With both, the item's own fields are the icon-view placement — a
-  // connector is read from the icon view, whichever editor is open.
-  parts.push(transformationClause(diagram ?? item, offset, "transformation"));
+  // With both, the item's own fields are the icon-view placement — a connector
+  // is read from the icon view, whichever editor is open.
+  //
+  // The offset is a drop point in the pasted view's coordinates, so only that
+  // view's transformation takes it; the other lives in a different coordinate
+  // system the offset was never measured in.
+  const iconOffset = layer === "icon" ? offset : 0;
+  const diagramOffset = layer === "icon" ? 0 : offset;
+  parts.push(
+    diagram
+      ? transformationClause(diagram, diagramOffset, "transformation")
+      : transformationClause(item, offset, "transformation"),
+  );
   if (diagram) {
-    parts.push(transformationClause(item, offset, "iconTransformation"));
+    parts.push(transformationClause(item, iconOffset, "iconTransformation"));
   }
   return `Placement(${parts.join(", ")})`;
 }
@@ -392,17 +411,21 @@ function componentDeclaration(
   item: ClipboardComponent,
   componentName: string,
   offset: number,
+  layer: GraphicsLayer,
 ): string {
   // Modelica allows a dotted path as a modification name, so a nested modifier
   // like `limiter.uMax` needs no rewriting into nested parentheses.
   const mods = item.modifiers
     .map((m: ClipboardModifier) => `${m.path} = ${m.expr}`)
     .join(", ");
+  // The description came out of OMC's JSON, so JSON quoting round-trips it —
+  // the escapes only diverge from Modelica's string grammar for control
+  // characters, which a description does not carry.
   const comment =
     item.comment === undefined || item.comment === ""
       ? ""
       : ` ${JSON.stringify(item.comment)}`;
-  return `${prefixWords(item.prefixes)}${item.className} ${componentName}${mods === "" ? "" : `(${mods})`}${comment} annotation(${placementClause(item, offset)});`;
+  return `${prefixWords(item.prefixes)}${item.className} ${componentName}${mods === "" ? "" : `(${mods})`}${comment} annotation(${placementClause(item, offset, layer)});`;
 }
 
 /** `connect(a, b) annotation (Line(...));`, or `null` when an endpoint's

@@ -467,8 +467,9 @@ function portFromConnector(
     } else if (prefixes.direction === "") {
       port.direction = "";
     }
-    if (prefixes.flow !== undefined) port.flow = prefixes.flow;
-    if (prefixes.stream !== undefined) port.stream = prefixes.stream;
+    // OMC reports the connector prefix as the word itself, not as booleans.
+    if (prefixes.connector === "flow") port.flow = true;
+    if (prefixes.connector === "stream") port.stream = true;
   }
   if (typeMi.source) port.source = typeMi.source;
   return port;

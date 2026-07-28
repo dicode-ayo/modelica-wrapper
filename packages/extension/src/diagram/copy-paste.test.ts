@@ -595,6 +595,51 @@ describe("pasteClipboardItems", () => {
     );
   });
 
+  it("emits flow/stream from the connector prefix OMC actually sends", async () => {
+    // OMC reports these as `connector: "flow" | "stream"`, not as booleans —
+    // reading a boolean drops the prefix silently.
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [componentItem({ prefixes: { connector: "flow" } })],
+      "diagram",
+      0,
+    );
+    expect(client.data()).toContain("flow Modelica.Blocks.Math.Gain gain2");
+  });
+
+  it("offsets only the view being pasted into", async () => {
+    // The offset is a drop point in the target view's coordinates; applying it
+    // to the other view's transformation would move it an unrelated distance.
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          extent: [
+            [0, 0],
+            [10, 10],
+          ],
+          diagramPlacement: {
+            extent: [
+              [50, 50],
+              [60, 60],
+            ],
+          },
+        }),
+      ],
+      "diagram",
+      20,
+    );
+    expect(client.data()).toContain(
+      "transformation(extent={{70,70},{80,80}}), iconTransformation(extent={{0,0},{10,10}})",
+    );
+  });
+
   it("re-emits a connector's other-view placement as iconTransformation", async () => {
     // A connector is placed once per view; keeping only the one it was read
     // from loses its position in the other.

@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type { ComponentRef } from "../../_shared/modelInstance.js";
+import type {
+  ComponentElement,
+  ComponentRef,
+} from "../../_shared/modelInstance.js";
 
-import { flattenCref } from "./placement.js";
+import {
+  counterpartPlacementFor,
+  flattenCref,
+  placementFor,
+} from "./placement.js";
 
 function cref(
   parts: Array<{ name: string; subscripts?: unknown[] }>,
@@ -84,5 +91,81 @@ describe("flattenCref", () => {
 
   it("returns undefined for a malformed (empty) cref", () => {
     expect(flattenCref(cref([]))).toBeUndefined();
+  });
+});
+
+/** A component element carrying the given Placement transformations. */
+function withPlacement(placement: Record<string, unknown>): ComponentElement {
+  return {
+    name: "p",
+    type: { name: "Pin" },
+    annotation: { Placement: placement },
+  } as unknown as ComponentElement;
+}
+
+const DIAGRAM = {
+  extent: [
+    [-140, -20],
+    [-100, 20],
+  ],
+};
+const ICON = {
+  extent: [
+    [-110, -10],
+    [-90, 10],
+  ],
+};
+
+describe("placementFor", () => {
+  it("prefers the view's own transformation and falls back to the other", () => {
+    const both = withPlacement({
+      transformation: DIAGRAM,
+      iconTransformation: ICON,
+    });
+    expect(placementFor(both, "diagram")?.extent).toEqual(DIAGRAM.extent);
+    expect(placementFor(both, "icon")?.extent).toEqual(ICON.extent);
+
+    const onlyDiagram = withPlacement({ transformation: DIAGRAM });
+    expect(placementFor(onlyDiagram, "icon")?.extent).toEqual(DIAGRAM.extent);
+  });
+
+  it("carries visible only when the annotation set it false", () => {
+    const shown = withPlacement({ transformation: DIAGRAM });
+    expect(placementFor(shown, "diagram")?.visible).toBeUndefined();
+
+    const hidden = withPlacement({ transformation: DIAGRAM, visible: false });
+    expect(placementFor(hidden, "diagram")?.visible).toBe(false);
+  });
+});
+
+describe("counterpartPlacementFor", () => {
+  it("reports the other view's transformation when both are defined", () => {
+    const both = withPlacement({
+      transformation: DIAGRAM,
+      iconTransformation: ICON,
+    });
+    expect(counterpartPlacementFor(both, "icon")?.extent).toEqual(
+      DIAGRAM.extent,
+    );
+    expect(counterpartPlacementFor(both, "diagram")?.extent).toEqual(
+      ICON.extent,
+    );
+  });
+
+  it("reports nothing when only one is defined", () => {
+    // `placementFor` already fell back to it; naming it the counterpart would
+    // write the same transformation under both keywords.
+    const one = withPlacement({ transformation: DIAGRAM });
+    expect(counterpartPlacementFor(one, "icon")).toBeUndefined();
+    expect(counterpartPlacementFor(one, "diagram")).toBeUndefined();
+  });
+
+  it("reports nothing when the primary is present but undecodable", () => {
+    // `placementFor` falls back to the other one, so it is not a counterpart.
+    const bad = withPlacement({
+      transformation: { extent: "nonsense" },
+      iconTransformation: ICON,
+    });
+    expect(counterpartPlacementFor(bad, "diagram")).toBeUndefined();
   });
 });

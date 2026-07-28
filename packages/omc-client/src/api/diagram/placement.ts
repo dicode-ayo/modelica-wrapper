@@ -82,9 +82,11 @@ export function counterpartPlacementFor(
   const primary =
     kind === "icon" ? anno.iconTransformation : anno.transformation;
   const other = kind === "icon" ? anno.transformation : anno.iconTransformation;
-  // With only one defined, `placementFor` already fell back to it — reporting
+  // With only one usable, `placementFor` already fell back to it — reporting
   // it again as the counterpart would write the same transformation twice.
+  // A present-but-undecodable primary falls back the same way.
   if (!primary || !other) return undefined;
+  if (!placementFromTransformation(primary)) return undefined;
   return placementFromTransformation(other);
 }
 

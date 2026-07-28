@@ -353,11 +353,15 @@ export const PrefixesSchema = z
     variability: z.string().optional(),
     direction: z.string().optional(),
     final: z.boolean().optional(),
-    flow: z.boolean().optional(),
-    stream: z.boolean().optional(),
     inner: z.boolean().optional(),
     outer: z.boolean().optional(),
-    replaceable: z.boolean().optional(),
+    /**
+     * `true` for a bare `replaceable`, or the constraining clause itself when
+     * the declaration has one. OMC's schema types this `oneOf [boolean,
+     * object]`, and a bare `z.boolean()` fails the whole instance parse on any
+     * class containing a constrained replaceable.
+     */
+    replaceable: z.union([z.boolean(), z.object({}).passthrough()]).optional(),
     redeclare: z.boolean().optional(),
   })
   .passthrough();

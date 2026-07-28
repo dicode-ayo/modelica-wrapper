@@ -662,10 +662,23 @@ export function placementAnnotation(
   rotation: number,
   origin?: Point | undefined,
 ): string {
+  return `Placement(transformation(${transformationBody(extent, rotation, origin)}))`;
+}
+
+/**
+ * The inside of a `transformation(...)` clause. Shared so a caller needing the
+ * clause under another keyword — `iconTransformation` — composes it rather
+ * than slicing {@link placementAnnotation}'s output back apart.
+ */
+export function transformationBody(
+  extent: Extent,
+  rotation: number,
+  origin?: Point | undefined,
+): string {
   const [[x1, y1], [x2, y2]] = extent;
   const org = origin ? `origin={${origin[0]},${origin[1]}}, ` : "";
   const rot = rotation === 0 ? "" : `, rotation=${rotation}`;
-  return `Placement(transformation(${org}extent={{${x1},${y1}},{${x2},${y2}}}${rot}))`;
+  return `${org}extent={{${x1},${y1}},{${x2},${y2}}}${rot}`;
 }
 
 /**
