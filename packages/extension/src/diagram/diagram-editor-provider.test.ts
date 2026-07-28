@@ -591,6 +591,8 @@ const LISTED_SOURCE = "model M end M;";
 function makeEditClient(opts?: {
   loadStringSuccess?: boolean;
   instance?: ModelInstance;
+  /** Reject only the first `getModelInstance`, so one re-fetch fails. */
+  getModelInstanceThrowsOnce?: boolean;
   setElementTypeSuccess?: boolean;
   setElementTypeThrows?: boolean;
   getModelInstanceThrows?: boolean;
@@ -630,6 +632,7 @@ function makeEditClient(opts?: {
   const graphicsWrites: Array<Record<string, unknown>> = [];
   const classInfoQueries: string[] = [];
   const ops: string[] = [];
+  let instanceFetches = 0;
   const client = {
     lastCall: "mock",
     invoke: vi.fn((fn: string, input?: Record<string, unknown>) => {
@@ -637,7 +640,11 @@ function makeEditClient(opts?: {
       // The icon fetch path uses the annotation-filtered call; answer it with
       // the same instance so an icon-mode re-fetch resolves.
       if (fn === "getModelInstance" || fn === "getModelInstanceAnnotation") {
-        return opts?.getModelInstanceThrows
+        instanceFetches += 1;
+        const throws =
+          opts?.getModelInstanceThrows ||
+          (opts?.getModelInstanceThrowsOnce && instanceFetches === 1);
+        return throws
           ? Promise.reject(new Error("getModelInstance failed"))
           : Promise.resolve({ instance: opts?.instance ?? INSTANCE });
       }
@@ -1449,6 +1456,81 @@ describe("DiagramEditController: the base an edit is diffed against", () => {
     expect(invoked.filter((f) => f === "deleteComponent")).toHaveLength(1);
     expect(invoked).toContain("updateComponent");
     expect(posted.some((m) => m.type === "error")).toBe(false);
+    controller.dispose();
+  });
+
+  it("advances the base even when the re-fetch after a successful apply throws", async () => {
+    // The writes landed; only the re-fetch that follows them failed, so no
+    // push goes out and the webview keeps showing what it committed. Leaving
+    // the base where it was would make the next gesture re-derive this one —
+    // re-deleting gain2 against a class that no longer has it, which fails and
+    // takes the second edit down with it under the batch snapshot.
+    const { client, invoked } = makeEditClient({
+      instance: instanceWithBothGains(),
+      getModelInstanceThrowsOnce: true,
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      bothGains([
+        [-10, -10],
+        [10, 10],
+      ]),
+      factory,
+    );
+
+    await controller.handle({
+      type: "change",
+      layout: movedComponent([
+        [-10, -10],
+        [10, 10],
+      ]),
+      baseRevision: 0,
+    });
+    // The failed re-fetch means no push, so the webview still holds revision 0.
+    expect(posted.filter((m) => m.type === "layout")).toHaveLength(0);
+
+    await controller.handle({
+      type: "change",
+      layout: movedComponent([
+        [0, 0],
+        [20, 20],
+      ]),
+      baseRevision: 0,
+    });
+
+    expect(invoked.filter((f) => f === "deleteComponent")).toHaveLength(1);
+    controller.dispose();
+  });
+
+  it("re-pushes the current layout when it refuses an edit, so the retry has a base", async () => {
+    const { client } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      movedComponent([
+        [-10, -10],
+        [10, 10],
+      ]),
+      factory,
+    );
+
+    await controller.handle({
+      type: "change",
+      layout: movedComponent([
+        [0, 0],
+        [20, 20],
+      ]),
+      baseRevision: 99,
+    });
+
+    // Without a layout it can name, the webview's retry would be refused for
+    // the same reason, and the editor would take no edit ever again.
+    const pushes = posted.filter((m) => m.type === "layout");
+    expect(pushes).toHaveLength(1);
+    expect(pushes.at(0)).toMatchObject({ revision: controller.revision });
     controller.dispose();
   });
 

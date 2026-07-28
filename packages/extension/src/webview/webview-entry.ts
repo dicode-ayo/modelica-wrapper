@@ -35,6 +35,7 @@ import {
   type ToolId,
 } from "@dicode/diagram-ui";
 
+import { LayoutPushBuffer, type LayoutPush } from "./layout-push-buffer.js";
 import { panelReadonly } from "./panel-readonly.js";
 import type {
   ExtensionToWebview,
@@ -107,17 +108,7 @@ class OmWebviewRoot extends LitElement {
    *  gates whether the form is read-only. Reactive — `render` reads it. */
   @state() private paramKind: ParameterFormKind | null = null;
 
-  /** Revision of the layout on screen; rides back on every edit as its base. */
-  private layoutRevision = 0;
-  /**
-   * A layout push that arrived while a gesture was in flight. Applying it there
-   * would move what the user has under the pointer, so it waits for
-   * `om-interaction-end`.
-   */
-  private deferredLayout: Extract<
-    ExtensionToWebview,
-    { type: "layout" }
-  > | null = null;
+  private readonly layoutPushes = new LayoutPushBuffer();
 
   private vscode: VsCodeApi<WebviewToExtension> | null = null;
   private get diagram(): OmGraphicalLayout | null {
@@ -229,8 +220,7 @@ class OmWebviewRoot extends LitElement {
       case "init":
         this.readOnly = message.readOnly;
         this.hasClipboard = message.hasClipboard;
-        this.deferredLayout = null;
-        this.layoutRevision = message.revision;
+        this.layoutPushes.reset(message.revision);
         this.layout = message.layout;
         this.renderError = null;
         return;
@@ -241,11 +231,12 @@ class OmWebviewRoot extends LitElement {
         this.diagram?.setSelection(message.keys);
         return;
       case "layout":
-        if (this.diagram?.gestureActive === true) {
-          this.deferredLayout = message;
-          return;
-        }
-        this.applyLayout(message);
+        this.applyLayout(
+          this.layoutPushes.receive(
+            message,
+            this.diagram?.gestureActive === true,
+          ),
+        );
         return;
       case "renderError":
         this.renderError = message;
@@ -292,19 +283,14 @@ class OmWebviewRoot extends LitElement {
     }
   }
 
-  private applyLayout(
-    message: Extract<ExtensionToWebview, { type: "layout" }>,
-  ): void {
-    this.layoutRevision = message.revision;
-    this.layout = message.layout;
+  private applyLayout(push: LayoutPush | null): void {
+    if (push === null) return;
+    this.layout = push.layout;
     this.renderError = null;
   }
 
   private onInteractionEnd = (): void => {
-    const deferred = this.deferredLayout;
-    if (deferred === null) return;
-    this.deferredLayout = null;
-    this.applyLayout(deferred);
+    this.applyLayout(this.layoutPushes.release());
   };
 
   private post(msg: WebviewToExtension): void {
@@ -317,7 +303,7 @@ class OmWebviewRoot extends LitElement {
     this.post({
       type: "change",
       layout: e.detail,
-      baseRevision: this.layoutRevision,
+      baseRevision: this.layoutPushes.revision,
     });
   };
 

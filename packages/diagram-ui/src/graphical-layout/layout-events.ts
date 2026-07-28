@@ -74,9 +74,10 @@ export type ClipboardRequestDetail =
   | { action: "paste" };
 
 /**
- * A pointer gesture or tool draw finished. Carries nothing: the signal is that
- * the diagram is quiescent, which is what a host holding back a layout push
- * waits for.
+ * A pointer gesture or tool draw finished, exactly once per gesture. Carries
+ * nothing: the signal is that the diagram is quiescent, which is what a host
+ * holding back a layout push waits for. Always follows the
+ * `om-graphical-layout-change` of a gesture that committed one.
  */
 export type InteractionEndDetail = Record<string, never>;
 

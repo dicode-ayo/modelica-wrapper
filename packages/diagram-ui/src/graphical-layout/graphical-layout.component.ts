@@ -1009,6 +1009,7 @@ export class OmGraphicalLayout extends LitElement {
       getActiveTool: () => this.activeTool,
       getSnapGrid: () => this.currentSnapGrid(),
       onTool: (draw) => this.onTool(draw),
+      onGestureEnd: () => this.emit("om-interaction-end", {}),
     });
     // Native dblclick on empty canvas → open the library browser.
     // InteractionManager's `doubleClick` only fires on hits; this path
@@ -1452,7 +1453,6 @@ export class OmGraphicalLayout extends LitElement {
     // hover handler); reconcile the visible state against the current
     // hover key now that the drag is over.
     this.refreshPortIndicators();
-    this.emit("om-interaction-end", {});
   }
 
   private onDrag<K extends keyof DragEvents>(

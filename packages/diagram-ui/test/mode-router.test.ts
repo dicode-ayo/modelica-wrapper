@@ -43,6 +43,7 @@ interface Harness {
     detail: InteractionEvents[keyof InteractionEvents];
   }[];
   tool: ToolDraw[];
+  gestureEnds: () => number;
   setPicked: (n: Container | null) => void;
   dispose: () => void;
 }
@@ -56,6 +57,7 @@ function setup(
   const moves: DragEvents["drag"][] = [];
   const interactions: Harness["interactions"] = [];
   const tool: ToolDraw[] = [];
+  let gestureEnds = 0;
   const store = new InteractionStateStore();
   const canvas = document.createElement("canvas");
   const router = new ModeRouter({
@@ -80,6 +82,7 @@ function setup(
     getActiveTool: () => activeTool,
     getSnapGrid: () => [0, 0],
     onTool: (draw) => tool.push(draw),
+    onGestureEnd: () => (gestureEnds += 1),
   });
   return {
     canvas,
@@ -89,6 +92,7 @@ function setup(
     moves,
     interactions,
     tool,
+    gestureEnds: () => gestureEnds,
     setPicked: (n) => (picked = n),
     dispose: () => {
       router.destroy();
@@ -326,5 +330,72 @@ describe("ModeRouter", () => {
     expect(router.isGestureActive()).toBe(false);
     expect(store.value.mode).toBe("idle");
     dispose();
+  });
+
+  // A host defers a layout push for as long as `isGestureActive()` holds and
+  // applies it on the end report, so a path that drops the flag without
+  // reporting strands the push and leaves the diagram showing a layout the
+  // host has moved past (issue #404).
+  describe("every path that clears the gesture reports its end exactly once", () => {
+    it("reports on release, once, and not on the press", () => {
+      const { canvas, gestureEnds, setPicked, dispose } = setup();
+      setPicked(componentNode("R1"));
+      canvas.dispatchEvent(down());
+      expect(gestureEnds()).toBe(0);
+      canvas.dispatchEvent(up());
+      expect(gestureEnds()).toBe(1);
+      dispose();
+    });
+
+    it("reports once on pointercancel, not twice via the release path", () => {
+      const { canvas, gestureEnds, setPicked, dispose } = setup();
+      setPicked(componentNode("R1"));
+      canvas.dispatchEvent(down());
+      canvas.dispatchEvent(
+        new PointerEvent("pointercancel", {
+          pointerId: 0,
+          clientX: 5,
+          clientY: 5,
+        }),
+      );
+      expect(gestureEnds()).toBe(1);
+      dispose();
+    });
+
+    it("reports when a cancelled pointer abandons an in-flight extent draw", () => {
+      const { canvas, gestureEnds, dispose } = setup("rectangle");
+      canvas.dispatchEvent(down());
+      canvas.dispatchEvent(
+        new PointerEvent("pointermove", { clientX: 30, clientY: 30 }),
+      );
+      canvas.dispatchEvent(
+        new PointerEvent("pointercancel", {
+          pointerId: 0,
+          clientX: 30,
+          clientY: 30,
+        }),
+      );
+      expect(gestureEnds()).toBe(1);
+      dispose();
+    });
+
+    it("reports when a tool switch abandons an in-flight draw", () => {
+      const { canvas, router, gestureEnds, dispose } = setup("rectangle");
+      canvas.dispatchEvent(down());
+      canvas.dispatchEvent(
+        new PointerEvent("pointermove", { clientX: 30, clientY: 30 }),
+      );
+      router.cancelActiveTool();
+      expect(gestureEnds()).toBe(1);
+      dispose();
+    });
+
+    it("stays silent when nothing was in flight", () => {
+      const { canvas, router, gestureEnds, dispose } = setup();
+      canvas.dispatchEvent(up());
+      router.cancelActiveTool();
+      expect(gestureEnds()).toBe(0);
+      dispose();
+    });
   });
 });

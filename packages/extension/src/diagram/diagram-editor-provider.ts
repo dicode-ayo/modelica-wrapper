@@ -410,6 +410,8 @@ export class DiagramEditController {
    * normalisation, re-routed waypoints) would otherwise be read as edits the
    * user never made. An entry is advanced to the committed layout as edits
    * land on it, so a burst of gestures against one base diffs incrementally.
+   * Keys are only ever inserted in ascending revision order, which is what
+   * lets both prune loops stop at the first key they want to keep.
    */
   private readonly bases = new Map<number, DiagramLayout>();
   private layoutRevision = 0;
@@ -465,7 +467,7 @@ export class DiagramEditController {
     this.refetch = mode === "icon" ? fetchIconLayout : fetchDiagramLayout;
   }
 
-  /** The revision the seeding `init` message must carry. */
+  /** Revision of the most recently pushed layout. */
   get revision(): number {
     return this.layoutRevision;
   }
@@ -650,6 +652,9 @@ export class DiagramEditController {
       this.reportError(
         "the diagram moved on before this edit arrived — please retry it",
       );
+      // Without a layout the webview can name, its retry would be refused for
+      // the same reason, and the editor would take no edit again.
+      this.pushLayout(this.prevLayout);
       return;
     }
     // The webview can't go back to a layout older than the one it just edited
@@ -658,6 +663,12 @@ export class DiagramEditController {
       if (older >= baseRevision) break;
       this.bases.delete(older);
     }
+    // From the moment the webview committed, `next` is what it shows for this
+    // revision until it applies a push — however the writes below fare, and
+    // whether or not a rollback puts the class back. A second gesture
+    // committed in that window then diffs against the edit this one made,
+    // not against the whole of it again.
+    this.bases.set(baseRevision, next);
     const { client, className } = this.deps;
     try {
       const result = await applyDiagramEdits(
@@ -668,10 +679,6 @@ export class DiagramEditController {
         this.refetch,
       );
       if (result === null) return;
-      // What the webview shows for this revision until it applies a push.
-      // A second gesture committed in that window then diffs against the
-      // edit this one made, not against the whole of it again.
-      this.bases.set(baseRevision, next);
       if (result.failed.length > 0) {
         this.reportError(
           `${result.failed.length} edit(s) failed: ${result.failed.at(0)?.error ?? "unknown"}`,

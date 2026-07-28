@@ -49,6 +49,9 @@ export interface ModeRouterDeps {
   getSnapGrid: () => SnapGrid;
   /** Sink for a tool mode's draw events. */
   onTool: ToolEmit;
+  /** Called once each time {@link ModeRouter.isGestureActive} falls back to
+   *  false, whichever entry point ended the gesture. */
+  onGestureEnd: () => void;
 }
 
 /**
@@ -79,6 +82,7 @@ export class ModeRouter {
   private readonly extentTool: ToolMode;
   private readonly polyTool: ToolMode;
   private readonly getActiveTool: () => ToolId;
+  private readonly onGestureEnd: () => void;
   private active: GestureMode | null = null;
   private pointerId = -1;
 
@@ -103,6 +107,7 @@ export class ModeRouter {
       deps.evaluateCompat,
     );
     this.getActiveTool = deps.getActiveTool;
+    this.onGestureEnd = deps.onGestureEnd;
     this.extentTool = new ExtentToolMode(
       deps.onTool,
       () => extentKindOf(deps.getActiveTool()),
@@ -129,34 +134,57 @@ export class ModeRouter {
     return this.active !== null || (this.activeToolMode()?.active ?? false);
   }
 
+  /**
+   * Run `body`, then report a gesture end if it took the router back to idle.
+   * Every entry point that can end one goes through here, so the "a gesture
+   * always ends in one `onGestureEnd`" contract is a property of the router
+   * rather than of each caller remembering to say so.
+   */
+  private throughGesture<T>(body: () => T): T {
+    const wasActive = this.isGestureActive();
+    const result = body();
+    if (wasActive && !this.isGestureActive()) {
+      this.onGestureEnd();
+    }
+    return result;
+  }
+
   /** Forward a key to the armed tool; returns true when it consumed it. */
   handleKey(e: KeyboardEvent): boolean {
-    const tool = this.activeToolMode();
-    if (!tool) {
-      return false;
-    }
-    const consumed = tool.key(e);
-    if (consumed) {
-      this.syncToolMode(tool);
-    }
-    return consumed;
+    return this.throughGesture(() => {
+      const tool = this.activeToolMode();
+      if (!tool) {
+        return false;
+      }
+      const consumed = tool.key(e);
+      if (consumed) {
+        this.syncToolMode(tool);
+      }
+      return consumed;
+    });
   }
 
   /** Forward a double-click to the armed tool; returns true when a tool is
    *  armed (so the host skips its own empty-canvas double-click handling). */
   handleDoubleClick(): boolean {
-    const tool = this.activeToolMode();
-    if (!tool) {
-      return false;
-    }
-    tool.finish();
-    this.syncToolMode(tool);
-    return true;
+    return this.throughGesture(() => {
+      const tool = this.activeToolMode();
+      if (!tool) {
+        return false;
+      }
+      tool.finish();
+      this.syncToolMode(tool);
+      return true;
+    });
   }
 
   /** Abandon any in-flight draw on the armed tool (e.g. the tool is about to
    *  be switched). A no-op when nothing is in flight. */
   cancelActiveTool(): void {
+    this.throughGesture(() => this.cancelTool());
+  }
+
+  private cancelTool(): void {
     const tool = this.activeToolMode();
     if (tool) {
       tool.cancel();
@@ -211,6 +239,10 @@ export class ModeRouter {
   }
 
   private readonly onPointerDown = (e: PointerEvent): void => {
+    this.throughGesture(() => this.pressPointer(e));
+  };
+
+  private pressPointer(e: PointerEvent): void {
     // An armed draw tool owns every press — you draw over components too, so
     // select / drag and the InteractionManager are bypassed.
     const tool = this.activeToolMode();
@@ -255,7 +287,7 @@ export class ModeRouter {
       capturePointer(this.canvas, e.pointerId);
       this.store.next({ mode: mode.id });
     }
-  };
+  }
 
   private readonly onPointerMove = (e: PointerEvent): void => {
     const tool = this.activeToolMode();
@@ -284,6 +316,10 @@ export class ModeRouter {
   };
 
   private readonly onPointerUp = (e: PointerEvent): void => {
+    this.throughGesture(() => this.releasePointer(e));
+  };
+
+  private releasePointer(e: PointerEvent): void {
     const tool = this.activeToolMode();
     if (tool) {
       // Only a press-drag tool commits on release; a click tool ignores it.
@@ -310,27 +346,30 @@ export class ModeRouter {
     releasePointer(this.canvas, e.pointerId);
     mode.commit(point, e);
     this.store.next({ mode: "idle" });
-  };
+  }
 
   private readonly onPointerCancel = (e: PointerEvent): void => {
     // A cancelled pointer abandons an in-flight press-drag tool draw rather
     // than committing one at wherever the cancel reports. A multi-click poly
     // draw isn't pointer-captured, so it survives the cancel (delegates to
-    // onPointerUp, which no-ops for it). Gestures keep the commit-on-up path.
-    const tool = this.activeToolMode();
-    if (
-      tool &&
-      tool.pressDrag &&
-      tool.active &&
-      e.pointerId === this.pointerId
-    ) {
-      this.pointerId = -1;
-      releasePointer(this.canvas, e.pointerId);
-      this.cancelActiveTool();
-      return;
-    }
-    this.interactionManager.handlePointerCancel(e);
-    this.onPointerUp(e);
+    // the release path, which no-ops for it). Gestures keep the commit-on-up
+    // path.
+    this.throughGesture(() => {
+      const tool = this.activeToolMode();
+      if (
+        tool &&
+        tool.pressDrag &&
+        tool.active &&
+        e.pointerId === this.pointerId
+      ) {
+        this.pointerId = -1;
+        releasePointer(this.canvas, e.pointerId);
+        this.cancelTool();
+        return;
+      }
+      this.interactionManager.handlePointerCancel(e);
+      this.releasePointer(e);
+    });
   };
 
   private readonly onPointerLeave = (): void => {
