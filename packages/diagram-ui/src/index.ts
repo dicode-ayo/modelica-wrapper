@@ -65,6 +65,7 @@ export type {
   ToolChangeDetail,
   ChangeClassRequestDetail,
   ClipboardRequestDetail,
+  InteractionEndDetail,
 } from "./graphical-layout/layout-events.js";
 export { OmComponent } from "./component/component.component.js";
 export { OmConnector } from "./connector/connector.component.js";

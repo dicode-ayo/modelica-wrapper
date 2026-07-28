@@ -1452,6 +1452,7 @@ export class OmGraphicalLayout extends LitElement {
     // hover handler); reconcile the visible state against the current
     // hover key now that the drag is over.
     this.refreshPortIndicators();
+    this.emit("om-interaction-end", {});
   }
 
   private onDrag<K extends keyof DragEvents>(
@@ -1919,6 +1920,15 @@ export class OmGraphicalLayout extends LitElement {
     detail: LayoutEvents[K],
   ): void {
     emitEvent(this, name, detail);
+  }
+
+  /**
+   * True from `pointerdown` until the gesture or tool draw ends. Swapping
+   * `layout` while this holds moves what the user has under the pointer, so a
+   * host pushing a refreshed layout waits for `om-interaction-end` instead.
+   */
+  get gestureActive(): boolean {
+    return this.modeRouter?.isGestureActive() ?? false;
   }
 
   /** Returns the current selection as an array of canonical keys. */

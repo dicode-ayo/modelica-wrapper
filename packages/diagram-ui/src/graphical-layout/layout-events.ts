@@ -74,6 +74,13 @@ export type ClipboardRequestDetail =
   | { action: "paste" };
 
 /**
+ * A pointer gesture or tool draw finished. Carries nothing: the signal is that
+ * the diagram is quiescent, which is what a host holding back a layout push
+ * waits for.
+ */
+export type InteractionEndDetail = Record<string, never>;
+
+/**
  * Event-name → detail-type map. Source of truth shared by:
  *   - `emit<K extends LayoutEventName>(name, detail)` inside the component,
  *   - external listeners typed `CustomEvent<LayoutEvents["om-foo"]>`.
@@ -88,6 +95,7 @@ export interface LayoutEvents {
   "om-tool-change": ToolChangeDetail;
   "om-change-class-request": ChangeClassRequestDetail;
   "om-clipboard-request": ClipboardRequestDetail;
+  "om-interaction-end": InteractionEndDetail;
 }
 
 export type LayoutEventName = keyof LayoutEvents;
