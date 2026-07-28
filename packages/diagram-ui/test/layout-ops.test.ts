@@ -920,6 +920,70 @@ describe("selectByDiagramRect", () => {
     expect(keys.has("c:C1")).toBe(true);
   });
 
+  it("rotates an off-centre placement about its extent centre, as the renderer does", () => {
+    // A boundary connector: extent x ∈ [-140, -100], centre (-120, 0).
+    // Rotated 90° about that centre it paints at x ∈ [-130, -110],
+    // y ∈ [-20, 20]. Pivoting at the origin instead would put it at
+    // x ∈ [-10, 10] — the far side of the diagram.
+    const layout = baseLayout();
+    const p = layout.connectors.p;
+    if (!p) throw new Error("expected connector p");
+    p.placement = {
+      extent: [
+        [-140, -10],
+        [-100, 10],
+      ],
+      rotation: 90,
+    };
+
+    const onPaint = selectByDiagramRect(layout, {
+      x1: -130,
+      y1: -20,
+      x2: -110,
+      y2: 20,
+    });
+    expect(onPaint.has("k:p")).toBe(true);
+
+    // And nothing near the origin, where an origin pivot would have put it.
+    const atOrigin = selectByDiagramRect(layout, {
+      x1: -10,
+      y1: -140,
+      x2: 10,
+      y2: -100,
+    });
+    expect(atOrigin.has("k:p")).toBe(false);
+  });
+
+  it("rotates a poly shape counter-clockwise, the Modelica convention", () => {
+    // An asymmetric poly is the only geometry here where the sign shows:
+    // points [[0,0],[40,10]] rotated +90° about the origin span
+    // x ∈ [-10, 0], y ∈ [0, 40]. Clockwise would mirror both.
+    const line: Shape = {
+      kind: "line",
+      points: [
+        [0, 0],
+        [40, 10],
+      ],
+      rotation: 90,
+      color: [0, 0, 0],
+    };
+    const ccw = selectByDiagramRect(withShapes([line]), {
+      x1: -10,
+      y1: 30,
+      x2: -1,
+      y2: 40,
+    });
+    expect(ccw.has("shape:line:0")).toBe(true);
+
+    const cw = selectByDiagramRect(withShapes([line]), {
+      x1: 1,
+      y1: -40,
+      x2: 10,
+      y2: -30,
+    });
+    expect(cw.has("shape:line:0")).toBe(false);
+  });
+
   it("selects an own-layer shape whose centre falls inside the rect", () => {
     // A shape was never selectable by rubber band, so sweeping a diagram and
     // copying it silently left every graphic behind.
@@ -957,8 +1021,9 @@ describe("selectByDiagramRect", () => {
   });
 
   it("excludes entities the rect does not reach", () => {
-    // Rect covers only x ∈ [-100, -20]; only the connector centre at
-    // (-48, 0) qualifies. R1's centre is at (0, 0) and C1's at (30, 25).
+    // Rect covers only x ∈ [-100, -20]; only the connector's box
+    // (x ∈ [-50, -46]) reaches it. R1's box stops at x = -10, C1's starts
+    // at x = 20.
     const keys = selectByDiagramRect(baseLayout(), {
       x1: -100,
       y1: -100,

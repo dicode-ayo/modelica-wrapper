@@ -1656,11 +1656,11 @@ function placementCentre(p: Placement): Point {
   return [ox + (x1 + x2) / 2, oy + (y1 + y2) / 2];
 }
 
-/** Axis-aligned bounds of local `points` placed at `origin` and rotated about
- *  it by `deg` — the box the renderer actually paints into. */
+/** Axis-aligned bounds of local `points` placed at `pivot` and rotated about
+ *  it by `deg`. */
 function boundsOf(
   points: readonly Point[],
-  origin: Point,
+  pivot: Point,
   deg: number,
 ): DiagramRect {
   const rad = (deg * Math.PI) / 180;
@@ -1669,8 +1669,8 @@ function boundsOf(
   const xs: number[] = [];
   const ys: number[] = [];
   for (const [x, y] of points) {
-    xs.push(origin[0] + x * cos - y * sin);
-    ys.push(origin[1] + x * sin + y * cos);
+    xs.push(pivot[0] + x * cos - y * sin);
+    ys.push(pivot[1] + x * sin + y * cos);
   }
   return {
     x1: Math.min(...xs),
@@ -1690,14 +1690,32 @@ function cornersOf(extent: Extent): Point[] {
   ];
 }
 
+/**
+ * A placement rotates about its extent centre, not its origin — that is where
+ * `applyPlacement` anchors the transform node and where `applyRotation`
+ * re-anchors connections. Pivoting at the origin instead puts an off-centre
+ * extent, which is what a boundary connector has, on the wrong side of the
+ * diagram.
+ */
 function placementBounds(p: Placement): DiagramRect {
+  const [[x1, y1], [x2, y2]] = p.extent;
+  const halfW = (x2 - x1) / 2;
+  const halfH = (y2 - y1) / 2;
   return boundsOf(
-    cornersOf(p.extent),
-    [p.origin?.[0] ?? 0, p.origin?.[1] ?? 0],
+    [
+      [-halfW, -halfH],
+      [halfW, -halfH],
+      [halfW, halfH],
+      [-halfW, halfH],
+    ],
+    placementCentre(p),
     p.rotation ?? 0,
   );
 }
 
+/** A host shape sits at its `origin` and rotates about it, per
+ *  `setDiagramBounds`. A poly is bounded by its points, not its stroke path,
+ *  so a band clipping only the drawn width of a line misses it. */
 function shapeBoundsOf(s: Shape): DiagramRect {
   const origin: Point = [s.origin?.[0] ?? 0, s.origin?.[1] ?? 0];
   if (isPolyShape(s)) {
@@ -1715,13 +1733,11 @@ function rectsOverlap(a: DiagramRect, b: DiagramRect): boolean {
 
 /**
  * Returns the keys of every component, connector and own-layer shape the band
- * touches. Overlap rather than centre-containment: an entity placed on the
- * class boundary has its centre outside any band drawn over the canvas, so a
- * centre rule left boundary connectors unselectable by dragging at all.
+ * touches. Overlap decides rather than centre-containment: an entity placed on
+ * the class boundary has its centre outside any band drawable over the canvas.
  *
  * Connections aren't selected by rubber-band — their waypoints would force
- * extra geometry awareness; the host element can add that in F1 if it ends up
- * needed.
+ * extra geometry awareness.
  *
  * Inherited shapes are excluded: only the host's own layer is editable, so
  * selecting one would offer operations that cannot apply to it.
