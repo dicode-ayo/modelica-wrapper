@@ -1144,8 +1144,15 @@ export function applyDelete(
   for (const id of set.connectors) {
     delete connectors[id];
   }
+  // A `connect()` naming a declaration that no longer exists is invalid
+  // Modelica, and OMC accepts the delete without complaint — so a wire whose
+  // endpoint is going has to go with it, selected or not.
+  const gone = (endpoint: ConnectionEndpoint): boolean => {
+    const declaration = endpoint.component ?? endpoint.port;
+    return set.components.has(declaration) || set.connectors.has(declaration);
+  };
   const connections = layout.connections.filter(
-    (_, idx) => !set.connections.has(idx),
+    (c, idx) => !set.connections.has(idx) && !gone(c.lhs) && !gone(c.rhs),
   );
   const base = { ...layout, components, connectors, connections };
   if (set.shapes.size === 0) {

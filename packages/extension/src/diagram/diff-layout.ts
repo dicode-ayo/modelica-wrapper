@@ -5,6 +5,7 @@ import type {
   Extent,
   IconLayer,
   LineStyle,
+  Placement,
   Point,
   Shape,
 } from "@dicode/omc-client";
@@ -57,6 +58,11 @@ export type LayoutEdit =
       componentClass: string;
       extent: Extent;
       rotation: number;
+      /**
+       * Carried because OMC's placement is `origin` *plus* `extent`: writing
+       * the extent alone moves an entity by whatever its origin was.
+       */
+      origin?: Point | undefined;
     }
   | {
       kind: "componentDeleted";
@@ -115,6 +121,18 @@ export function endpointToCref(c: {
   return `${c.component}${c.componentSubscripts ?? ""}.${port}`;
 }
 
+/**
+ * Whether a placement moved. `origin` counts: it adds to the extent, so an
+ * origin-only change is a real move that would otherwise emit no edit.
+ */
+function placementDiffers(before: Placement, after: Placement): boolean {
+  return (
+    !deepEqual(before.extent, after.extent) ||
+    (before.rotation ?? 0) !== (after.rotation ?? 0) ||
+    !deepEqual(before.origin ?? null, after.origin ?? null)
+  );
+}
+
 export function diffLayouts(
   prev: DiagramLayout,
   next: DiagramLayout,
@@ -130,9 +148,10 @@ export function diffLayouts(
       edits.push({ kind: "componentDeleted", componentName: name });
       continue;
     }
-    const placementChanged =
-      !deepEqual(before.placement.extent, after.placement.extent) ||
-      (before.placement.rotation ?? 0) !== (after.placement.rotation ?? 0);
+    const placementChanged = placementDiffers(
+      before.placement,
+      after.placement,
+    );
     if (placementChanged) {
       edits.push({
         kind: "componentPlacement",
@@ -140,6 +159,9 @@ export function diffLayouts(
         componentClass: after.classRef,
         extent: after.placement.extent,
         rotation: after.placement.rotation ?? 0,
+        ...(after.placement.origin !== undefined && {
+          origin: after.placement.origin,
+        }),
       });
     }
   }
@@ -152,9 +174,10 @@ export function diffLayouts(
       edits.push({ kind: "componentDeleted", componentName: name });
       continue;
     }
-    const placementChanged =
-      !deepEqual(before.placement.extent, after.placement.extent) ||
-      (before.placement.rotation ?? 0) !== (after.placement.rotation ?? 0);
+    const placementChanged = placementDiffers(
+      before.placement,
+      after.placement,
+    );
     if (placementChanged) {
       edits.push({
         kind: "componentPlacement",
@@ -162,6 +185,9 @@ export function diffLayouts(
         componentClass: after.classRef,
         extent: after.placement.extent,
         rotation: after.placement.rotation ?? 0,
+        ...(after.placement.origin !== undefined && {
+          origin: after.placement.origin,
+        }),
       });
     }
   }

@@ -93,6 +93,74 @@ describe("diffLayouts", () => {
     ]);
   });
 
+  it("carries a placement origin on the move, since it adds to the extent", () => {
+    // OMC's placement is origin + extent, so writing the extent alone moves
+    // the entity by whatever its origin was — a rotated boundary connector
+    // lands in the middle of the diagram.
+    const a = baseLayout();
+    const b = baseLayout();
+    a.components.R1!.placement = {
+      extent: [
+        [20, -20],
+        [-20, 20],
+      ],
+      origin: [0, -120],
+      rotation: 270,
+    };
+    b.components.R1!.placement = {
+      extent: [
+        [25, -15],
+        [-15, 25],
+      ],
+      origin: [0, -120],
+      rotation: 270,
+    };
+    expect(diffLayouts(a, b)).toContainEqual({
+      kind: "componentPlacement",
+      componentName: "R1",
+      componentClass: "Modelica.Electrical.Resistor",
+      extent: [
+        [25, -15],
+        [-15, 25],
+      ],
+      rotation: 270,
+      origin: [0, -120],
+    });
+  });
+
+  it("emits an edit when only the origin moved", () => {
+    const a = baseLayout();
+    const b = baseLayout();
+    a.components.R1!.placement = {
+      ...a.components.R1!.placement,
+      origin: [0, 0],
+    };
+    b.components.R1!.placement = {
+      ...b.components.R1!.placement,
+      origin: [0, 40],
+    };
+    const edits = diffLayouts(a, b);
+    expect(edits).toHaveLength(1);
+    expect(edits[0]).toMatchObject({
+      kind: "componentPlacement",
+      origin: [0, 40],
+    });
+  });
+
+  it("emits no origin when the placement has none", () => {
+    const a = baseLayout();
+    const b = baseLayout();
+    b.components.R1!.placement = {
+      extent: [
+        [5, -5],
+        [25, 5],
+      ],
+    };
+    const edit = diffLayouts(a, b).at(0);
+    expect(edit).toBeDefined();
+    expect(edit && "origin" in edit).toBe(false);
+  });
+
   it("emits componentDeleted when a component disappears", () => {
     const a = baseLayout();
     const b = baseLayout();
