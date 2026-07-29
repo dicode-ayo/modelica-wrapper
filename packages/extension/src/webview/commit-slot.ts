@@ -63,7 +63,10 @@ export class CommitSlot {
   commit(layout: DiagramLayout): void {
     this.queued = layout;
     this.timer?.cancel();
-    this.timer = this.scheduler.schedule(() => this.flush(), COMMIT_DEBOUNCE_MS);
+    this.timer = this.scheduler.schedule(
+      () => this.flush(),
+      COMMIT_DEBOUNCE_MS,
+    );
   }
 
   /** Send a held commit ahead of `type` when it cannot be overtaken. */

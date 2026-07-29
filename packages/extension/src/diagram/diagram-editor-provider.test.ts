@@ -1506,10 +1506,11 @@ describe("DiagramEditController: reconciling reports", () => {
     controller.dispose();
   });
 
-  it("stops the burst and settles the diagram when an edit is refused", async () => {
-    // The successor has to arrive while the failing apply is in flight —
-    // reported earlier it would simply have replaced its predecessor in the
-    // slot, and the drop would never be exercised.
+  it("keeps reconciling the burst after an edit is refused", async () => {
+    // The base is read fresh, so the report queued behind a failure closes the
+    // gap from wherever the failed batch left the class. Dropping it would
+    // discard the gestures the user made after the one that failed — which is
+    // the edit landing at the position before last.
     let interleave: (() => void) | undefined;
     const { client, invoked } = makeEditClient({
       updateComponentFails: true,
@@ -1542,10 +1543,8 @@ describe("DiagramEditController: reconciling reports", () => {
     await drain();
 
     expect(posted.some((m) => m.type === "error")).toBe(true);
-    // The queued successor was dropped with the failure, so the class is
-    // written once and settled once rather than reconciled again against a
-    // model that just refused an edit.
-    expect(invoked.filter((f) => f === "updateComponent")).toHaveLength(1);
+    expect(invoked.filter((f) => f === "updateComponent")).toHaveLength(2);
+    // Still one settle: the first was withheld behind the queued report.
     expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
     controller.dispose();
   });

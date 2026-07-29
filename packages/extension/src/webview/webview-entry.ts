@@ -312,7 +312,6 @@ class OmWebviewRoot extends LitElement {
     this.commits.commit(e.detail);
   };
 
-
   private onConnectionCreate = (
     e: CustomEvent<LayoutEvents["om-connection-create"]>,
   ): void => {

@@ -661,22 +661,16 @@ export class DiagramEditController {
       await this.writeBuffer();
       if (result.failed.length > 0 || result.rolledBack) {
         this.reportError(
-          `${result.failed.length} edit(s) failed: ${result.failed.at(0)?.error ?? "unknown"}` +
-            " — pending edits were dropped and the diagram resynced",
+          `${result.failed.length} edit(s) failed: ${result.failed.at(0)?.error ?? "unknown"}`,
         );
-        // The class no longer matches the screen, so the rest of the burst
-        // would reconcile against a model that just refused an edit.
-        this.pendingChange = null;
-        await this.pushCanonicalLayout();
-        return;
       }
+      // Whatever state the writes left, a further report reconciles against it
+      // — the base is read fresh, so the next diff closes the gap from wherever
+      // this one got to. Dropping the rest of the burst here would discard the
+      // gestures the user made after the one that failed.
       await this.pushCanonicalLayout();
     } catch (err) {
-      this.reportError(
-        `applying edits failed: ${(err as Error).message}` +
-          " — pending edits were dropped and the diagram resynced",
-      );
-      this.pendingChange = null;
+      this.reportError(`applying edits failed: ${(err as Error).message}`);
       await this.pushCanonicalLayout();
     }
   }
@@ -1244,6 +1238,9 @@ export class DiagramEditController {
   private reportError(message: string): void {
     this.deps.gate.send({ type: "error", message });
     log.warn("diagramEditor", message);
+    // The webview has nowhere to show this, and an edit that silently does not
+    // land reads as the diagram losing the user's work for no reason.
+    void vscode.window.showErrorMessage(`Diagram: ${message}`);
   }
 }
 
