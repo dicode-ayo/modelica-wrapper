@@ -31,7 +31,7 @@ function oneComponent(): DiagramLayout {
         },
       },
     },
-  } as DiagramLayout;
+  };
 }
 
 describe("<om-graphical-layout> gestureActive", () => {

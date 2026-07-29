@@ -567,6 +567,7 @@ export class DiagramEditController {
         return;
       }
       this.publishLayout(await this.refetch(client, className));
+      this.deps.onClassContentChanged?.(className);
     } catch (err) {
       this.reportError(`reverse sync failed: ${(err as Error).message}`);
     }
@@ -688,18 +689,22 @@ export class DiagramEditController {
    * separately, since a gesture in flight has reported nothing yet.
    */
   private async pushCanonicalLayout(): Promise<void> {
+    // The re-fetch is the expensive half, so skip it outright when a report is
+    // already waiting; `publishLayout` checks again on the far side of it.
     if (this.pendingChange !== null) return;
     const { client, className } = this.deps;
-    const layout = await this.refetch(client, className);
-    if (this.pendingChange !== null) return;
-    this.publishLayout(layout);
+    this.publishLayout(await this.refetch(client, className));
   }
 
-  /** Adopt `layout` as canonical and hand it to everyone who tracks it. */
+  /**
+   * Adopt `layout` as canonical, and hand it to the webview unless a further
+   * report is already queued. That report's settle supersedes this one, and
+   * pushing now would put the diagram back on a state the user has moved past.
+   */
   private publishLayout(layout: DiagramLayout): void {
     this.prevLayout = layout;
+    if (this.pendingChange !== null) return;
     this.deps.gate.send({ type: "layout", layout });
-    this.deps.onClassContentChanged?.(this.deps.className);
   }
 
   private async onAddComponent(
@@ -1231,6 +1236,9 @@ export class DiagramEditController {
     // A built-in with no listable source returns empty; writing that would wipe
     // the buffer.
     if (contents.length > 0) await this.shadow.write(contents);
+    // Tied to the write rather than to the push: the rendered icon is stale
+    // from the moment the class changes, whether or not a settle goes out.
+    this.deps.onClassContentChanged?.(this.deps.className);
   }
 
   private reportError(message: string): void {

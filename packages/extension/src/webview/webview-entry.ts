@@ -35,10 +35,7 @@ import {
   type ToolId,
 } from "@dicode/diagram-ui";
 
-import {
-  canApplyLayoutPush,
-  mustFollowQueuedChange,
-} from "./change-ordering.js";
+import { CommitSlot } from "./commit-slot.js";
 import { panelReadonly } from "./panel-readonly.js";
 import type {
   ExtensionToWebview,
@@ -54,10 +51,6 @@ declare const __WEBVIEW_BUILD_TIME__: string;
 console.log(
   `[webview boot] build=${__WEBVIEW_BUILD_TIME__} loaded=${new Date().toISOString()}`,
 );
-
-// Long enough to swallow a re-drag, short enough that a deliberate second edit
-// a beat later still lands on its own.
-const CHANGE_DEBOUNCE_MS = 300;
 
 const RENDER_ERROR_HINT =
   "Make sure the class and its enclosing package load without errors, " +
@@ -115,8 +108,9 @@ class OmWebviewRoot extends LitElement {
    *  gates whether the form is read-only. Reactive — `render` reads it. */
   @state() private paramKind: ParameterFormKind | null = null;
 
-  private queuedChange: DiagramLayout | null = null;
-  private changeTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly commits = new CommitSlot((layout) =>
+    this.vscode?.postMessage({ type: "change", layout }),
+  );
 
   private vscode: VsCodeApi<WebviewToExtension> | null = null;
   private get diagram(): OmGraphicalLayout | null {
@@ -137,7 +131,7 @@ class OmWebviewRoot extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
-    this.flushChange();
+    this.commits.flush();
     window.removeEventListener("message", this.onHostMessage);
     window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("focusin", this.onFocusChange);
@@ -145,7 +139,7 @@ class OmWebviewRoot extends LitElement {
   }
 
   private readonly onPageHide = (): void => {
-    this.flushChange();
+    this.commits.flush();
   };
 
   /** Last reported editable-focus state, so we only post on a transition. */
@@ -246,12 +240,7 @@ class OmWebviewRoot extends LitElement {
         this.diagram?.setSelection(message.keys);
         return;
       case "layout":
-        if (
-          !canApplyLayoutPush({
-            gestureActive: this.diagram?.gestureActive === true,
-            hasQueuedChange: this.queuedChange !== null,
-          })
-        ) {
+        if (!this.commits.canApplyPush(this.diagram?.gestureActive === true)) {
           return;
         }
         this.layout = message.layout;
@@ -303,7 +292,7 @@ class OmWebviewRoot extends LitElement {
   }
 
   private post(msg: WebviewToExtension): void {
-    if (mustFollowQueuedChange(msg.type)) this.flushChange();
+    this.commits.beforeSending(msg.type);
     this.vscode?.postMessage(msg);
   }
 
@@ -320,19 +309,9 @@ class OmWebviewRoot extends LitElement {
     // as one thing. They diverge from the first gesture otherwise, and every
     // later render binds one that predates it.
     this.layout = e.detail;
-    this.queuedChange = e.detail;
-    clearTimeout(this.changeTimer);
-    this.changeTimer = setTimeout(() => this.flushChange(), CHANGE_DEBOUNCE_MS);
+    this.commits.commit(e.detail);
   };
 
-  private flushChange(): void {
-    clearTimeout(this.changeTimer);
-    this.changeTimer = undefined;
-    const layout = this.queuedChange;
-    if (layout === null) return;
-    this.queuedChange = null;
-    this.vscode?.postMessage({ type: "change", layout });
-  }
 
   private onConnectionCreate = (
     e: CustomEvent<LayoutEvents["om-connection-create"]>,

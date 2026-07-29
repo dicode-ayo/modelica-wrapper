@@ -1442,6 +1442,47 @@ describe("DiagramEditController: reconciling reports", () => {
     controller.dispose();
   });
 
+  it("withholds the settle of any edit path, not just a reported one", async () => {
+    // Every other mutating path settles through `reflect`. A drag reported
+    // while one of them is in flight is just as superseded by it, and the
+    // webview has nothing queued by then to refuse the push itself.
+    let interleave: (() => void) | undefined;
+    const { client } = makeEditClient({
+      instance: instanceWithComponent("gain1", AT(-10)),
+      onInvoke: (fn) => {
+        // The add path's own re-fetch, which runs just before it settles.
+        if (fn !== "getModelInstance") return;
+        const fire = interleave;
+        interleave = undefined;
+        fire?.();
+      },
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      movedComponent(AT(-10)),
+      factory,
+    );
+
+    interleave = () => {
+      void controller.handle({
+        type: "change",
+        layout: movedComponent(AT(0)),
+      });
+    };
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 5, y: 5 },
+    });
+    await drain();
+
+    // One settle, for the report — not one for the add and another for it.
+    expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
+    controller.dispose();
+  });
+
   it("reconciles against the class as OMC holds it, not against a cached copy", async () => {
     // The cached layout and the report agree; OMC does not. Diffing the two
     // that agree yields nothing, and the class stays where it drifted to.
