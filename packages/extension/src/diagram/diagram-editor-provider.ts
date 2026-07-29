@@ -403,6 +403,13 @@ export class DiagramEditController {
    * not a list: a report supersedes its predecessor rather than following it.
    */
   private pendingChange: DiagramLayout | null = null;
+  /**
+   * Set when a settle was suppressed because a report was already queued. The
+   * reconcile of that report pays it: a reported edit needs no settle of its
+   * own, but one owed to some other path — a paste, a drop, a parameter — is
+   * carrying something the webview has no other way to learn.
+   */
+  private settleOwed = false;
   // True from the moment a reverse sync is enqueued until it resolves —
   // covers the gap between the debounce timer firing and the queued unit's
   // `loadString`/refetch actually completing, which `reverseTimer` alone
@@ -663,12 +670,22 @@ export class DiagramEditController {
         this.reportError(
           `${result.failed.length} edit(s) failed: ${result.failed.at(0)?.error ?? "unknown"}`,
         );
+        // Now the screen and the class disagree, which is the one thing a
+        // push is for. A further report reconciles against whatever the failed
+        // batch left behind — the base is read fresh, so it closes the gap from
+        // there rather than needing the burst dropped.
+        await this.pushCanonicalLayout();
+        return;
       }
-      // Whatever state the writes left, a further report reconciles against it
-      // — the base is read fresh, so the next diff closes the gap from wherever
-      // this one got to. Dropping the rest of the burst here would discard the
-      // gestures the user made after the one that failed.
-      await this.pushCanonicalLayout();
+      if (this.settleOwed) {
+        await this.pushCanonicalLayout();
+        return;
+      }
+      // Nothing to tell the webview: it is already showing what the class now
+      // holds, and pushing a re-read of it can only arrive late enough to land
+      // on a gesture that has moved past it. Drift does not accumulate,
+      // because the next reconcile reads its base fresh.
+      this.prevLayout = next;
     } catch (err) {
       this.reportError(`applying edits failed: ${(err as Error).message}`);
       await this.pushCanonicalLayout();
@@ -685,7 +702,10 @@ export class DiagramEditController {
   private async pushCanonicalLayout(): Promise<void> {
     // The re-fetch is the expensive half, so skip it outright when a report is
     // already waiting; `publishLayout` checks again on the far side of it.
-    if (this.pendingChange !== null) return;
+    if (this.pendingChange !== null) {
+      this.settleOwed = true;
+      return;
+    }
     const { client, className } = this.deps;
     this.publishLayout(await this.refetch(client, className));
   }
@@ -697,7 +717,11 @@ export class DiagramEditController {
    */
   private publishLayout(layout: DiagramLayout): void {
     this.prevLayout = layout;
-    if (this.pendingChange !== null) return;
+    if (this.pendingChange !== null) {
+      this.settleOwed = true;
+      return;
+    }
+    this.settleOwed = false;
     this.deps.gate.send({ type: "layout", layout });
   }
 

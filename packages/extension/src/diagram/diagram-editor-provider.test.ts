@@ -1396,56 +1396,18 @@ describe("DiagramEditController: reconciling reports", () => {
     await drain();
 
     expect(invoked.filter((f) => f === "updateComponent")).toHaveLength(1);
-    // And one settle at the end, not one per report.
-    expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
+    // And nothing said back: the webview is already showing what the class
+    // now holds, so a settle could only arrive late enough to land on a
+    // gesture that has moved past it.
+    expect(posted.filter((m) => m.type === "layout")).toHaveLength(0);
     controller.dispose();
   });
 
-  it("withholds the settle while a further report is waiting", async () => {
-    // The settle for report one, sent while report two is already queued,
-    // describes a diagram the user has moved past — applying it snaps their
-    // second gesture backwards until the settle for it arrives.
-    let interleave: (() => void) | undefined;
-    const { client, invoked } = makeEditClient({
-      instance: instanceWithComponent("gain1", AT(-10)),
-      onInvoke: (fn) => {
-        if (fn !== "updateComponent") return;
-        const fire = interleave;
-        interleave = undefined;
-        fire?.();
-      },
-    });
-    const { gate, posted } = makeGate();
-    const { factory } = makeShadowFactory();
-    const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
-      movedComponent(AT(-10)),
-      factory,
-    );
-
-    interleave = () => {
-      void controller.handle({
-        type: "change",
-        layout: movedComponent(AT(10)),
-      });
-    };
-    await controller.handle({
-      type: "change",
-      layout: movedComponent(AT(0)),
-    });
-    await drain();
-
-    // Both reports are written — the second was not dropped, only its
-    // predecessor's settle was.
-    expect(invoked.filter((f) => f === "updateComponent")).toHaveLength(2);
-    expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
-    controller.dispose();
-  });
-
-  it("withholds the settle of any edit path, not just a reported one", async () => {
-    // Every other mutating path settles through `reflect`. A drag reported
-    // while one of them is in flight is just as superseded by it, and the
-    // webview has nothing queued by then to refuse the push itself.
+  it("pays a settle owed by another edit path once the reports stop", async () => {
+    // A reported edit needs no settle, but a drop, paste or parameter edit is
+    // carrying something the webview has no other way to learn. Suppressed
+    // because a report was queued behind it, that settle has to survive the
+    // reconcile of the report rather than being dropped with it.
     let interleave: (() => void) | undefined;
     const { client } = makeEditClient({
       instance: instanceWithComponent("gain1", AT(-10)),
@@ -1478,7 +1440,8 @@ describe("DiagramEditController: reconciling reports", () => {
     });
     await drain();
 
-    // One settle, for the report — not one for the add and another for it.
+    // One settle, carrying the added component — not one for the add and
+    // another for the report that suppressed it.
     expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
     controller.dispose();
   });
