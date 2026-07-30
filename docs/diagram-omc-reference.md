@@ -244,11 +244,10 @@ like a `package` (issue #345).
   `color`/`thickness`/`pattern`/`arrow`/`smooth` and `<om-line>` can draw all
   of it, but the edge still renders as a bespoke 1px GL line. Issue #219.
 - **Array dimensions on paste, precisely** — a pasted vector/matrix
-  sub-component now carries its dimensions (#379), but as the evaluated
-  shape rather than the declared one (a symbolic dimension bakes to a
-  literal, or fails the whole cross-class paste when OMC can't reduce it),
-  and a standalone connector array still has no dimensions carried at all.
-  Issue #411.
+  sub-component carries the *evaluated* shape rather than the *declared* one
+  (a symbolic dimension bakes to a literal, or fails the whole cross-class
+  paste when OMC can't reduce it), and a standalone connector array has no
+  dimensions carried at all. Issue #411.
 
 **Rendering correctness — settled (#138, PR #220).** The four classic
 misreadings of §2/§3, and where each is handled. Listed so they are not

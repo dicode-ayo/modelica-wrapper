@@ -58,8 +58,9 @@ export interface ClipboardComponent {
   comment?: string | undefined;
   /**
    * Modifiers read off the declaration at copy time, replayed onto the pasted
-   * instance. Only what the source actually authored: `addComponent` writes a
-   * bare declaration, so anything inherited or defaulted stays inherited.
+   * instance. Only what the source actually authored: the paste writes a bare
+   * declaration alongside these, so anything inherited or defaulted stays
+   * inherited.
    */
   modifiers: readonly ClipboardModifier[];
 }
