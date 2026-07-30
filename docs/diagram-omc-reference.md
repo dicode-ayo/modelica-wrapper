@@ -243,8 +243,6 @@ like a `package` (issue #345).
 - **Connection styling at render time** — `ConnectionLayout` carries
   `color`/`thickness`/`pattern`/`arrow`/`smooth` and `<om-line>` can draw all
   of it, but the edge still renders as a bespoke 1px GL line. Issue #219.
-- **Array dimensions on paste / add** — `addComponent` takes no `dims`, so a
-  copied vector component arrives as a scalar. Issue #379.
 
 **Rendering correctness — settled (#138, PR #220).** The four classic
 misreadings of §2/§3, and where each is handled. Listed so they are not

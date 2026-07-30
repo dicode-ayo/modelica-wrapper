@@ -96,6 +96,7 @@ export async function captureClipboardItems(
           {
             prefixes: component.prefixes,
             comment: component.comment,
+            dims: component.dims,
           },
         ),
       );
@@ -148,11 +149,11 @@ function endpointDeclaration(endpoint: ConnectionEndpoint): string {
  * in, but ctrl-clicking two components doesn't, and either way the user means
  * to take the wire between them.
  *
- * A subscripted endpoint is refused. `addComponent` writes a scalar, so a
- * copied `Gain gain[2]` pastes without its dimensions and a cref like
- * `gain1[1].y` would index something that isn't an array — which OMC accepts
- * and writes out, leaving a model that no longer compiles. Port subscripts are
- * kept: those dimensions come from the type, which the paste does preserve.
+ * A subscripted endpoint is carried alongside its component's `dims`
+ * (`componentDeclaration` writes the array subscript on the declaration), so
+ * `gain1[1].y` indexes a cref that really is an array. Port subscripts were
+ * always kept: those dimensions come from the type, which the paste already
+ * preserves.
  */
 function connectionsWithin(
   layout: DiagramLayout,
@@ -163,7 +164,6 @@ function connectionsWithin(
   );
   if (copied.size < 2) return [];
   const inCopy = (endpoint: ConnectionEndpoint): boolean =>
-    endpoint.componentSubscripts === undefined &&
     copied.has(endpointDeclaration(endpoint));
   return layout.connections
     .filter((c) => inCopy(c.lhs) && inCopy(c.rhs))
@@ -186,6 +186,7 @@ async function captureComponent(
     diagramPlacement?: Placement | undefined;
     prefixes?: Prefixes | undefined;
     comment?: string | undefined;
+    dims?: readonly string[] | undefined;
   },
 ): Promise<ClipboardComponent> {
   return {
@@ -201,6 +202,7 @@ async function captureComponent(
     }),
     ...(extra.prefixes !== undefined && { prefixes: extra.prefixes }),
     ...(extra.comment !== undefined && { comment: extra.comment }),
+    ...(extra.dims !== undefined && { dims: extra.dims }),
     modifiers: await readModifiers(client, hostClass, name),
   };
 }
@@ -406,13 +408,20 @@ function placementClause(
   return `Placement(${parts.join(", ")})`;
 }
 
-/** `Class name(mods) "comment" annotation(Placement(...));` — one declaration. */
+/** `Class name[dims](mods) "comment" annotation(Placement(...));` — one declaration. */
 function componentDeclaration(
   item: ClipboardComponent,
   componentName: string,
   offset: number,
   layer: GraphicsLayer,
 ): string {
+  // The array subscript sits on the declared IDENT, ahead of the modification
+  // — `Real x[3](start=1)`, not `Real x(start=1)[3]` — so a vector component
+  // pastes as a vector rather than the scalar `addComponent` would write.
+  const dims =
+    item.dims === undefined || item.dims.length === 0
+      ? ""
+      : `[${item.dims.join(",")}]`;
   // Modelica allows a dotted path as a modification name, so a nested modifier
   // like `limiter.uMax` needs no rewriting into nested parentheses.
   const mods = item.modifiers
@@ -425,7 +434,7 @@ function componentDeclaration(
     item.comment === undefined || item.comment === ""
       ? ""
       : ` ${JSON.stringify(item.comment)}`;
-  return `${prefixWords(item.prefixes)}${item.className} ${componentName}${mods === "" ? "" : `(${mods})`}${comment} annotation(${placementClause(item, offset, layer)});`;
+  return `${prefixWords(item.prefixes)}${item.className} ${componentName}${dims}${mods === "" ? "" : `(${mods})`}${comment} annotation(${placementClause(item, offset, layer)});`;
 }
 
 /** `connect(a, b) annotation (Line(...));`, or `null` when an endpoint's

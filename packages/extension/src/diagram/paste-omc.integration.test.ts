@@ -1,12 +1,13 @@
 /**
- * End-to-end gate for the paste write path against a real OMC: `addComponent`
- * for each copied instance, `setElementModifierValue` for its authored
- * modifiers, then `addConnection` for the wires between them.
+ * End-to-end gate for the paste write path against a real OMC: one
+ * `loadClassContentString` block carrying every copied declaration, its
+ * authored modifiers, and the `connect()` equations between them.
  *
  * Mocks can't answer the questions that actually bite here — whether OMC
- * accepts the `Placement` and `Line` annotations we build, and whether a
- * `connect()` naming freshly-added components resolves — so this drives the
- * real thing and re-reads the class.
+ * accepts the `Placement` and `Line` annotations we build, whether a
+ * `connect()` naming freshly-added components resolves, and whether an array
+ * subscript on a declaration actually round-trips as a vector — so this
+ * drives the real thing and re-reads the class.
  *
  * Gating mirrors the other integration suites: auto-runs when `omc` is on
  * PATH, auto-skips otherwise.
@@ -192,5 +193,103 @@ end ${pkg};
       [-40 + PASTE_OFFSET, -10 + PASTE_OFFSET],
       [-20 + PASTE_OFFSET, 10 + PASTE_OFFSET],
     ]);
+  });
+
+  it("pastes a copied vector component as a vector, wire and all", async () => {
+    // The regression #379 tracks: a copied `gain[2]` used to paste as a
+    // scalar, silently dropping both its shape and the wire that indexed it.
+    await client.loadString({
+      data: `package ${pkg}
+  model Vectored
+    Modelica.Blocks.Math.Gain gain[2](k={1, 2})
+      annotation(Placement(transformation(extent={{-40,-10},{-20,10}})));
+    Modelica.Blocks.Interfaces.RealOutput y[2]
+      annotation(Placement(transformation(extent={{20,-10},{40,10}})));
+  equation
+    connect(gain.y, y) annotation(Line(points={{-19,0},{19,0}}));
+  end Vectored;
+end ${pkg};
+`,
+      filename: `<fixture:${pkg}-vectored>`,
+    });
+    const vectored = `${pkg}.Vectored`;
+
+    const before = await fetchDiagramLayout(client, vectored);
+    expect(before.components.gain?.dims).toEqual(["2"]);
+
+    const items = await captureClipboardItems(client, before, [
+      "c:gain",
+      "c:y",
+    ]);
+    const gainItem = items.find(
+      (i) => i.kind === "component" && i.name === "gain",
+    );
+    expect(gainItem?.kind === "component" && gainItem.dims).toEqual(["2"]);
+
+    const result = await pasteClipboardItems(
+      client,
+      vectored,
+      before,
+      items,
+      "diagram",
+      PASTE_OFFSET,
+    );
+    expect(result.failed).toEqual([]);
+    expect(result.connections).toBe(1);
+
+    const after = await fetchDiagramLayout(client, vectored);
+    expect(after.components.gain1?.dims).toEqual(["2"]);
+    const { value } = await client.getElementModifierValue({
+      typeName: vectored,
+      modifier: "gain1.k",
+    });
+    expect(value).toBe("{1, 2}");
+  });
+
+  it("pastes a wire onto one element of a copied vector, subscript and all", async () => {
+    // The failure mode the issue names directly: a connection indexing a
+    // single element of the array (`gain[1].y`) rather than the whole thing.
+    await client.loadString({
+      data: `package ${pkg}
+  model Subscripted
+    Modelica.Blocks.Math.Gain gain[2]
+      annotation(Placement(transformation(extent={{-40,-10},{-20,10}})));
+    Modelica.Blocks.Interfaces.RealOutput y
+      annotation(Placement(transformation(extent={{20,-10},{40,10}})));
+  equation
+    connect(gain[1].y, y) annotation(Line(points={{-19,0},{19,0}}));
+  end Subscripted;
+end ${pkg};
+`,
+      filename: `<fixture:${pkg}-subscripted>`,
+    });
+    const subscripted = `${pkg}.Subscripted`;
+
+    const before = await fetchDiagramLayout(client, subscripted);
+    const items = await captureClipboardItems(client, before, [
+      "c:gain",
+      "c:y",
+    ]);
+    expect(items.filter((i) => i.kind === "connection")).toHaveLength(1);
+
+    const result = await pasteClipboardItems(
+      client,
+      subscripted,
+      before,
+      items,
+      "diagram",
+      PASTE_OFFSET,
+    );
+    expect(result.failed).toEqual([]);
+    expect(result.connections).toBe(1);
+
+    const after = await fetchDiagramLayout(client, subscripted);
+    expect(after.components.gain1?.dims).toEqual(["2"]);
+    expect(
+      after.connections.map(
+        (c) =>
+          `${c.lhs.component}${c.lhs.componentSubscripts ?? ""}→${c.rhs.component}`,
+      ),
+    ).toContain("gain1[1]→y1");
   });
 });

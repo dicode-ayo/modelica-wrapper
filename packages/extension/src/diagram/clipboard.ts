@@ -28,6 +28,13 @@ export interface ClipboardComponent {
   name: string;
   /** Qualified class of the instance. */
   className: string;
+  /**
+   * Array dimension sizes, one entry per dimension, when the source
+   * declaration is a vector/matrix component (e.g. `Gain gain[2]`).
+   * Absent for a scalar. Standalone connectors never carry this — array
+   * dimensions on `DiagramLayout` are a `ComponentInstance`-only field.
+   */
+  dims?: readonly string[] | undefined;
   extent: Extent;
   rotation: number;
   /**
