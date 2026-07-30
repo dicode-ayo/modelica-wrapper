@@ -1469,6 +1469,33 @@ describe("DiagramEditController: reconciling reports", () => {
     controller.dispose();
   });
 
+  it("settles a read-only class back, so a refused drag does not stay on screen", async () => {
+    const { client, invoked } = makeEditClient({
+      instance: instanceWithComponent("gain1", AT(-10)),
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      movedComponent(AT(-10)),
+      factory,
+      undefined,
+      true, // read-only: an MSL class renders and answers reads, refuses writes
+    );
+
+    await controller.handle({
+      type: "change",
+      layout: movedComponent(AT(0)),
+    });
+    await drain();
+
+    expect(invoked).not.toContain("updateComponent");
+    expect(posted.some((m) => m.type === "error")).toBe(true);
+    // The webview moved it optimistically; nothing else would put it back.
+    expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
+    controller.dispose();
+  });
+
   it("keeps reconciling the burst after an edit is refused", async () => {
     // The base is read fresh, so the report queued behind a failure closes the
     // gap from wherever the failed batch left the class. Dropping it would
@@ -1788,6 +1815,45 @@ describe("DiagramEditController: shape properties", () => {
     });
     expect(writes).toEqual([]);
     expect(invoked).not.toContain("writeClassGraphics");
+  });
+
+  it("applies a shape-property edit after a reported gesture has moved the base", async () => {
+    // A reported edit leaves `prevLayout` holding what the webview sent rather
+    // than a producer-built re-read. The shape modal resolves its target and
+    // its identity check through `prevLayout`, so it has to survive that.
+    const { client, invoked } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      shapeLayout(),
+      factory,
+    );
+
+    await controller.handle({ type: "change", layout: shapeLayout() });
+    await drain();
+
+    await controller.handle({
+      type: "selectionChange",
+      keys: ["shape:rectangle:0"],
+    });
+    expect(posted.find((m) => m.type === "parametersOpen")).toMatchObject({
+      kind: "shapeProperties",
+    });
+
+    await controller.handle({
+      type: "parametersSubmit",
+      kind: "shapeProperties",
+      values: { lineColor: "#ff0000" },
+    });
+
+    expect(
+      posted.filter(
+        (m) => m.type === "error" && m.message.includes("shape changed"),
+      ),
+    ).toEqual([]);
+    expect(invoked).toContain("writeClassGraphics");
+    controller.dispose();
   });
 
   it("applies a shape-property edit and reflects the buffer", async () => {

@@ -654,7 +654,13 @@ export class DiagramEditController {
    * edits that closes the gap.
    */
   private async applyChange(next: DiagramLayout): Promise<void> {
-    if (this.rejectIfReadOnly()) return;
+    if (this.rejectIfReadOnly()) {
+      // The webview has already moved what the user dragged. Nothing else will
+      // correct it — a reported edit gets no settle of its own — so it would
+      // otherwise keep showing an edit the class never took.
+      await this.pushCanonicalLayout();
+      return;
+    }
     const { client, className } = this.deps;
     try {
       const current = await this.refetch(client, className);

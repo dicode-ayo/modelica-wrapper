@@ -8,7 +8,12 @@ import {
   lookupHostShape,
 } from "./shape-properties.js";
 
-import type { DiagramLayout, RectangleShape } from "@dicode/omc-client";
+import type {
+  DiagramLayout,
+  ParameterField,
+  RectangleShape,
+  Shape,
+} from "@dicode/omc-client";
 
 // ── colorToHex ────────────────────────────────────────────────────────────────
 
@@ -357,4 +362,108 @@ describe("applyShapeProperties", () => {
     expect(updated.kind).toBe("rectangle");
     expect((updated as RectangleShape).extent).toEqual(RECT.extent);
   });
+});
+
+// ── form ↔ applier field agreement ───────────────────────────────────────────
+
+/**
+ * `buildShapePropertiesForm` names the fields the modal submits, and
+ * `applyShapeProperties` reads them back by name. A name only one side knows
+ * makes the modal look like it works and the shape never change — an Apply that
+ * writes the shape it was already given.
+ */
+describe("shape properties form round-trip", () => {
+  const SHAPES: Shape[] = [
+    {
+      kind: "line",
+      points: [
+        [0, 0],
+        [10, 10],
+      ],
+      color: [0, 0, 0],
+    },
+    {
+      kind: "polygon",
+      points: [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+      ],
+      lineColor: [0, 0, 0],
+      fillColor: [255, 255, 255],
+    },
+    {
+      kind: "rectangle",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      lineColor: [0, 0, 0],
+      fillColor: [255, 255, 255],
+    },
+    {
+      kind: "ellipse",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      lineColor: [0, 0, 0],
+      fillColor: [255, 255, 255],
+    },
+    {
+      kind: "text",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      textString: "hello",
+      lineColor: [0, 0, 0],
+    },
+    {
+      kind: "bitmap",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      fileName: "a.png",
+    },
+  ] as unknown as Shape[];
+
+  /** A value distinct from `field.value`, in the shape the modal would submit. */
+  function otherValue(field: ParameterField): unknown {
+    switch (field.kind) {
+      case "boolean":
+        return field.value !== true;
+      case "number":
+        return typeof field.value === "number" ? field.value + 7 : 7;
+      case "enum": {
+        const choices = field.enumChoices ?? [];
+        const other = choices.find((c) => c !== field.value);
+        return other ?? null;
+      }
+      case "color":
+        // A colour field carries `null` when the shape leaves it unset, so the
+        // substitute has to be a valid hex rather than a mutation of it.
+        return field.value === "#123456" ? "#654321" : "#123456";
+      default:
+        return typeof field.value === "string" ? `${field.value}-x` : "changed";
+    }
+  }
+
+  for (const shape of SHAPES) {
+    it(`carries every ${shape.kind} field back onto the shape`, () => {
+      const form = buildShapePropertiesForm(shape);
+      expect(form.fields.length).toBeGreaterThan(0);
+
+      for (const field of form.fields) {
+        const next = otherValue(field);
+        if (next === null || next === field.value) continue;
+        const edited = applyShapeProperties(shape, { [field.name]: next });
+        expect(
+          JSON.stringify(edited),
+          `field "${field.name}" (${field.kind}) did not reach the shape`,
+        ).not.toBe(JSON.stringify(shape));
+      }
+    });
+  }
 });
