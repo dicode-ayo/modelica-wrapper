@@ -43,7 +43,7 @@ export interface InteractionManagerOptions {
 const DEFAULT_DOUBLE_CLICK_MS = 350;
 
 /** Pointer travel that makes a press a drag rather than a click. */
-const DRAG_SLOP_PX = 3;
+export const DRAG_SLOP_PX = 3;
 
 /**
  * The still-down press being watched, keyed to the pointer that made it. Only

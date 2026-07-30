@@ -49,6 +49,8 @@ function start(
     point,
     shiftKey: opts.shiftKey ?? false,
     getSelectionKeys: () => opts.selection ?? [],
+    clientX: point.x,
+    clientY: point.y,
   };
 }
 
@@ -178,5 +180,47 @@ describe("DragMode", () => {
     const { mode } = setup();
 
     expect(mode.begin(start(edge, { x: 0, y: 0 }))).toBe(false);
+  });
+});
+
+/** `DragEvents` is a union, so `type` alone can't narrow `detail`. */
+function isDragEvent(
+  e: CapturedEvent<keyof DragEvents>,
+): e is CapturedEvent<"drag"> {
+  return e.type === "drag";
+}
+
+describe("DragMode drag slop", () => {
+  /**
+   * The second press of a double-click starts a drag on the entity already
+   * under the cursor. Committed, it snapped to a grid step and moved the
+   * entity — so double-clicking a shape to open its properties nudged it, and
+   * the properties edit was then refused for having a stale snapshot.
+   */
+  it("commits nothing when the press never leaves the slop", () => {
+    const tn = node("component", "R1");
+    const { mode, events } = setup();
+
+    expect(mode.begin(start(tn, { x: 100, y: 100 }))).toBe(true);
+    mode.update({ x: 101, y: 101 }, move(101, 101));
+    mode.commit({ x: 101, y: 101 }, move(101, 101));
+
+    // Drafts while the pointer is down are fine — they are only a preview.
+    expect(events.filter(isDragEvent).filter((e) => !e.detail.draft)).toEqual(
+      [],
+    );
+  });
+
+  it("commits a move once the press travels past the slop", () => {
+    const tn = node("component", "R1");
+    const { mode, events } = setup();
+
+    expect(mode.begin(start(tn, { x: 100, y: 100 }))).toBe(true);
+    mode.update({ x: 140, y: 100 }, move(140, 100));
+    mode.commit({ x: 140, y: 100 }, move(140, 100));
+
+    const committed = events.filter(isDragEvent).filter((e) => !e.detail.draft);
+    expect(committed).toHaveLength(1);
+    expect(committed.at(0)?.detail).toMatchObject({ dx: 40, dy: 0 });
   });
 });

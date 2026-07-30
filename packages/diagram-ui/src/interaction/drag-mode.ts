@@ -1,3 +1,4 @@
+import { DRAG_SLOP_PX } from "./interaction-manager.js";
 import { formatKey, vertexKeyForEntity } from "./node-keys.js";
 import {
   MOVE_KINDS,
@@ -70,11 +71,27 @@ type DragState =
 export class DragMode implements GestureMode {
   readonly id = "drag";
   private state: DragState | null = null;
+  private pressClient: { x: number; y: number } | null = null;
 
   constructor(private readonly emit: DragEmit) {}
 
+  /**
+   * True when the press never travelled far enough to have been a drag. The
+   * second press of a double-click is the one that matters: committed as a
+   * drag it moves the entity by a grid step, which then reads as the diagram
+   * shifting under a double-click.
+   */
+  private withinSlop(e: PointerEvent): boolean {
+    const press = this.pressClient;
+    if (press === null) return false;
+    const dx = e.clientX - press.x;
+    const dy = e.clientY - press.y;
+    return dx * dx + dy * dy <= DRAG_SLOP_PX * DRAG_SLOP_PX;
+  }
+
   begin(start: GestureStart): boolean {
     const { entity, node, point: pt, shiftKey } = start;
+    this.pressClient = { x: start.clientX, y: start.clientY };
     if (!entity) {
       return false;
     }
@@ -158,6 +175,11 @@ export class DragMode implements GestureMode {
     }
     const state = this.state;
     this.state = null;
+    // A press that stayed inside the slop was a click. Committing it writes a
+    // snapped move of one grid step for a gesture the user did not make.
+    if (this.withinSlop(e)) {
+      return;
+    }
     this.emitFor(state, point, e, false);
   }
 

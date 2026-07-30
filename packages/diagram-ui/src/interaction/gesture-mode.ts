@@ -122,6 +122,11 @@ export interface GestureStart {
   point: DiagramPoint;
   shiftKey: boolean;
   getSelectionKeys: SelectionProvider;
+  /** Press position in client pixels. Judging a press against the drag slop
+   *  needs screen space — the same travel is a different number of diagram
+   *  units at every zoom. */
+  clientX: number;
+  clientY: number;
 }
 
 /**

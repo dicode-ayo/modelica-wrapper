@@ -45,6 +45,8 @@ function start(node: Container, point: { x: number; y: number }): GestureStart {
     point,
     shiftKey: false,
     getSelectionKeys: () => [],
+    clientX: 0,
+    clientY: 0,
   };
 }
 
