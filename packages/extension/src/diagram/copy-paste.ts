@@ -149,19 +149,17 @@ function endpointDeclaration(endpoint: ConnectionEndpoint): string {
  * in, but ctrl-clicking two components doesn't, and either way the user means
  * to take the wire between them.
  *
- * A subscripted endpoint is carried alongside its component's `dims`
- * (`componentDeclaration` writes the array subscript on the declaration), so
- * `gain1[1].y` indexes a cref that really is an array. Port subscripts were
- * always kept: those dimensions come from the type, which the paste already
- * preserves.
+ * A subscripted endpoint rides along with its component's `dims`, which
+ * `componentDeclaration` writes onto the declaration, so `gain1[1].y` indexes
+ * a cref that really is an array. A subscript on a *port* comes from the
+ * port's own type, except on a standalone connector — there the port is the
+ * declaration, and its dimensions are not carried (issue #411).
  *
  * `flattenCref` (`omc-client/api/diagram/placement.ts`) collapses a 3+-part
- * cref like `sub.inner.x` to just its first and last parts, so a connection
- * into a nested sub-component's port already loses its middle segment before
- * it ever reaches here — subscripted or not. This carries that ambiguity
- * along rather than resolving it: `ConnectionEndpoint` has nothing left to
- * tell a genuinely flat array subscript from one that survived a lossy
- * collapse.
+ * cref like `sub.inner.x` to its first and last parts, so a connection into a
+ * nested sub-component's port arrives here already missing its middle
+ * segment. `ConnectionEndpoint` cannot distinguish a genuinely flat array
+ * subscript from one that survived that collapse.
  */
 function connectionsWithin(
   layout: DiagramLayout,
@@ -424,12 +422,11 @@ function componentDeclaration(
   layer: GraphicsLayer,
 ): string {
   // The array subscript sits on the declared IDENT, ahead of the modification
-  // — `Real x[3](start=1)`, not `Real x(start=1)[3]` — so a vector component
-  // pastes as a vector rather than the scalar `addComponent` would write.
+  // — `Real x[3](start=1)`, not `Real x(start=1)[3]`.
   const dims =
     item.dims === undefined || item.dims.length === 0
       ? ""
-      : `[${item.dims.join(",")}]`;
+      : `[${item.dims.join(", ")}]`;
   // Modelica allows a dotted path as a modification name, so a nested modifier
   // like `limiter.uMax` needs no rewriting into nested parentheses.
   const mods = item.modifiers

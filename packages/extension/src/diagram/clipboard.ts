@@ -30,9 +30,10 @@ export interface ClipboardComponent {
   className: string;
   /**
    * Array dimension sizes, one entry per dimension, when the source
-   * declaration is a vector/matrix component (e.g. `Gain gain[2]`).
-   * Absent for a scalar. Standalone connectors never carry this — array
-   * dimensions on `DiagramLayout` are a `ComponentInstance`-only field.
+   * declaration is a vector/matrix component (e.g. `Gain gain[2]`). Absent
+   * for a scalar, and absent for a standalone connector — `ConnectorInstance`
+   * carries no dimensions, so a subscripted host-class port still pastes as a
+   * scalar (issue #411).
    */
   dims?: readonly string[] | undefined;
   extent: Extent;

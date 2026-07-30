@@ -196,9 +196,6 @@ end ${pkg};
   });
 
   it("pastes a copied vector component as a vector, wire and all", async () => {
-    // A vector component's declaration must carry its dimensions, or the
-    // paste writes a scalar and silently drops both its shape and any wire
-    // that indexed a specific element.
     await client.loadString({
       data: `package ${pkg}
   model Vectored
@@ -222,10 +219,15 @@ end ${pkg};
       "c:gain",
       "c:y",
     ]);
-    const gainItem = items.find(
-      (i) => i.kind === "component" && i.name === "gain",
+    expect(items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "component",
+          name: "gain",
+          dims: ["2"],
+        }),
+      ]),
     );
-    expect(gainItem?.kind === "component" && gainItem.dims).toEqual(["2"]);
 
     const result = await pasteClipboardItems(
       client,

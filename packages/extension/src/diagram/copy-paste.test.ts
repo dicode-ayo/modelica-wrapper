@@ -186,7 +186,9 @@ describe("captureClipboardItems", () => {
     const items = await captureClipboardItems(copyClient(), arrayed, [
       "c:gain1",
     ]);
-    expect((items[0] as ClipboardComponent).dims).toEqual(["2"]);
+    expect(items).toEqual([
+      expect.objectContaining({ kind: "component", dims: ["2"] }),
+    ]);
   });
 
   it("captures a standalone connector", async () => {
@@ -330,10 +332,15 @@ describe("captureClipboardItems: connections", () => {
       "c:gain2",
     ]);
     expect(items.filter((i) => i.kind === "connection")).toHaveLength(1);
-    const gain1Item = items.find(
-      (i) => i.kind === "component" && i.name === "gain1",
+    expect(items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "component",
+          name: "gain1",
+          dims: ["2"],
+        }),
+      ]),
     );
-    expect(gain1Item?.kind === "component" && gain1Item.dims).toEqual(["2"]);
   });
 
   it("carries a wire onto a standalone connector on the host class", async () => {
@@ -572,8 +579,6 @@ describe("pasteClipboardItems", () => {
   });
 
   it("carries array dimensions, so a copied vector component pastes as a vector", async () => {
-    // Without this, `addComponent`'s scalar declaration would silently drop
-    // the shape of a copied `Gain gain[2]`.
     const client = pasteClient();
     await pasteClipboardItems(
       client,
@@ -583,7 +588,9 @@ describe("pasteClipboardItems", () => {
       "diagram",
       PASTE_OFFSET,
     );
-    expect(client.data()).toContain("Modelica.Blocks.Math.Gain gain2[2] ");
+    expect(client.data()).toContain(
+      "Modelica.Blocks.Math.Gain gain2[2] annotation(",
+    );
   });
 
   it("writes every dimension of a matrix component, in declaration order", async () => {
@@ -596,7 +603,9 @@ describe("pasteClipboardItems", () => {
       "diagram",
       PASTE_OFFSET,
     );
-    expect(client.data()).toContain("Modelica.Blocks.Math.Gain gain2[2,4] ");
+    expect(client.data()).toContain(
+      "Modelica.Blocks.Math.Gain gain2[2, 4] annotation(",
+    );
   });
 
   it("puts the array subscript ahead of the modification, not after it", async () => {
