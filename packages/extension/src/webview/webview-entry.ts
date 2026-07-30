@@ -24,6 +24,7 @@ import { omTokens } from "@dicode/ui-common";
 import type { DiagramLayout, ParameterModel } from "@dicode/omc-client";
 import {
   isComponentKey,
+  isShapeKey,
   parseKey,
   type ActionFlipDetail,
   type ActionRotateDetail,
@@ -329,11 +330,15 @@ class OmWebviewRoot extends LitElement {
   private onDoubleClick = (
     e: CustomEvent<LayoutEvents["om-double-click"]>,
   ): void => {
-    // Components are the only kind we route to the extension as an
-    // edit gesture. Connectors / labels / empty canvas double-clicks
-    // reach us via the same event — silently ignore them here.
+    // Components and shapes open their editor; connectors, labels and empty
+    // canvas reach us through the same event and are ignored.
     const parsed = parseKey(e.detail.key);
-    if (!parsed || !isComponentKey(parsed) || parsed.nodeId.length === 0) {
+    if (!parsed) return;
+    if (isShapeKey(parsed)) {
+      this.post({ type: "editShape", key: e.detail.key });
+      return;
+    }
+    if (!isComponentKey(parsed) || parsed.nodeId.length === 0) {
       return;
     }
     this.post({ type: "editComponent", componentName: parsed.nodeId });

@@ -1795,7 +1795,28 @@ function diagramRectInstance(extent: number[][]): ModelInstance {
 }
 
 describe("DiagramEditController: shape properties", () => {
-  it("opens the shape modal on a single-shape selection (read, no write)", async () => {
+  it("does not open the shape modal on selection alone", async () => {
+    const { client } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      shapeLayout(),
+      factory,
+    );
+
+    await controller.handle({
+      type: "selectionChange",
+      keys: ["shape:rectangle:0"],
+    });
+
+    // Picking a shape is how a drag on it starts; a modal there interrupts
+    // every one of them.
+    expect(posted.find((m) => m.type === "parametersOpen")).toBeUndefined();
+    controller.dispose();
+  });
+
+  it("opens the shape modal on a double click (read, no write)", async () => {
     const { client, invoked } = makeEditClient();
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
@@ -1806,8 +1827,8 @@ describe("DiagramEditController: shape properties", () => {
     );
 
     await controller.handle({
-      type: "selectionChange",
-      keys: ["shape:rectangle:0"],
+      type: "editShape",
+      key: "shape:rectangle:0",
     });
 
     expect(posted.find((m) => m.type === "parametersOpen")).toMatchObject({
@@ -1834,8 +1855,8 @@ describe("DiagramEditController: shape properties", () => {
     await drain();
 
     await controller.handle({
-      type: "selectionChange",
-      keys: ["shape:rectangle:0"],
+      type: "editShape",
+      key: "shape:rectangle:0",
     });
     expect(posted.find((m) => m.type === "parametersOpen")).toMatchObject({
       kind: "shapeProperties",
@@ -1867,8 +1888,8 @@ describe("DiagramEditController: shape properties", () => {
     );
 
     await controller.handle({
-      type: "selectionChange",
-      keys: ["shape:rectangle:0"],
+      type: "editShape",
+      key: "shape:rectangle:0",
     });
     await controller.handle({
       type: "parametersSubmit",
@@ -1902,8 +1923,8 @@ describe("DiagramEditController: shape properties", () => {
 
     // Capture the selected shape (the hand-crafted RECT).
     await controller.handle({
-      type: "selectionChange",
-      keys: ["shape:rectangle:0"],
+      type: "editShape",
+      key: "shape:rectangle:0",
     });
 
     // A foreign edit reverse-syncs and replaces prevLayout's index-0 shape.
@@ -2002,8 +2023,8 @@ describe("DiagramEditController: icon mode", () => {
     );
 
     await controller.handle({
-      type: "selectionChange",
-      keys: ["shape:rectangle:0"],
+      type: "editShape",
+      key: "shape:rectangle:0",
     });
     expect(posted.find((m) => m.type === "parametersOpen")).toMatchObject({
       kind: "shapeProperties",
@@ -2127,7 +2148,7 @@ describe("DiagramEditController: queue resilience", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     // An unknown shape kind makes buildShapePropertiesForm throw synchronously
-    // inside the selectionChange dispatch case.
+    // inside the editShape dispatch case.
     const controller = new DiagramEditController(
       { client, document: SRC_DOC, className: "Pkg.M", gate },
       layout({
@@ -2139,8 +2160,8 @@ describe("DiagramEditController: queue resilience", () => {
     );
 
     await controller.handle({
-      type: "selectionChange",
-      keys: ["shape:bogus:0"],
+      type: "editShape",
+      key: "shape:bogus:0",
     });
     expect(posted.at(-1)?.type).toBe("error"); // caught at the chain level
 

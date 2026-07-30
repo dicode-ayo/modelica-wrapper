@@ -616,6 +616,9 @@ export class DiagramEditController {
       case "selectionChange":
         this.onSelectionChange(msg.keys);
         return;
+      case "editShape":
+        this.onEditShape(msg.key);
+        return;
       case "changeClassRequest":
         await this.onChangeClassRequest(msg.componentName, msg.currentClass);
         return;
@@ -1109,10 +1112,20 @@ export class DiagramEditController {
     if (kind === "shapeProperties") this.clearShapeState();
   }
 
+  /** A captured shape is only the one that is still selected. */
   private onSelectionChange(keys: string[]): void {
-    if (keys.length !== 1) return;
-    const key = keys[0];
-    if (key === undefined) return;
+    const key = keys.length === 1 ? keys[0] : undefined;
+    const parsed = key === undefined ? null : parseEntityKey(key);
+    if (parsed === null || !isShapeKey(parsed)) this.clearShapeState();
+  }
+
+  /**
+   * Open the shape properties modal, capturing the shape it was opened on so
+   * the submit can refuse to land on a different one. Driven by a double
+   * click: opening on selection interrupts every pick of a shape, including
+   * the one a drag starts with.
+   */
+  private onEditShape(key: string): void {
     const parsed = parseEntityKey(key);
     if (parsed === null || !isShapeKey(parsed)) return;
     if (!Number.isInteger(parsed.index)) return;
@@ -1287,6 +1300,7 @@ function iconHonorsMessage(msg: WebviewToExtension): boolean {
   switch (msg.type) {
     case "change":
     case "selectionChange":
+    case "editShape":
     case "addComponent":
     case "copySelection":
     case "paste":
