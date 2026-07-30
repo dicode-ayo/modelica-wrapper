@@ -154,6 +154,14 @@ function endpointDeclaration(endpoint: ConnectionEndpoint): string {
  * `gain1[1].y` indexes a cref that really is an array. Port subscripts were
  * always kept: those dimensions come from the type, which the paste already
  * preserves.
+ *
+ * `flattenCref` (`omc-client/api/diagram/placement.ts`) collapses a 3+-part
+ * cref like `sub.inner.x` to just its first and last parts, so a connection
+ * into a nested sub-component's port already loses its middle segment before
+ * it ever reaches here — subscripted or not. This carries that ambiguity
+ * along rather than resolving it: `ConnectionEndpoint` has nothing left to
+ * tell a genuinely flat array subscript from one that survived a lossy
+ * collapse.
  */
 function connectionsWithin(
   layout: DiagramLayout,

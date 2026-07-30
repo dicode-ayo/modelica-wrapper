@@ -196,8 +196,9 @@ end ${pkg};
   });
 
   it("pastes a copied vector component as a vector, wire and all", async () => {
-    // The regression #379 tracks: a copied `gain[2]` used to paste as a
-    // scalar, silently dropping both its shape and the wire that indexed it.
+    // A vector component's declaration must carry its dimensions, or the
+    // paste writes a scalar and silently drops both its shape and any wire
+    // that indexed a specific element.
     await client.loadString({
       data: `package ${pkg}
   model Vectored

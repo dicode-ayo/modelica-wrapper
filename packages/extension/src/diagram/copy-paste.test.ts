@@ -309,8 +309,8 @@ describe("captureClipboardItems: connections", () => {
   });
 
   it("carries a wire onto a subscripted component, alongside its dims", async () => {
-    // Since #379, the paste writes `gain1[2]` with its dimensions, so
-    // `gain1[1].y` indexes a cref that really is an array.
+    // The paste writes `gain1[2]` with its dimensions, so `gain1[1].y`
+    // indexes a cref that really is an array.
     const base = wired();
     const gain1 = base.components["gain1"];
     if (gain1 === undefined) throw new Error("expected gain1 in the layout");
