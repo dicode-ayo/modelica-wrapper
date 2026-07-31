@@ -57,6 +57,10 @@ function makeClient(overrides: Partial<LiveCheckClient> = {}) {
     parseString: vi.fn(async () => ({ names: ["P.A"] })),
     loadString: vi.fn(async () => ({ success: true })),
     checkModel: vi.fn(async () => ({ result: "" })),
+    // The class starts its shared file by default, so the offset the pipeline
+    // derives from this is 0 and every existing buffer-relative assumption
+    // below still holds; tests that care override it explicitly.
+    getClassInformation: vi.fn(async () => ({ lineNumberStart: 1 })),
     getMessagesStringInternal: vi.fn(async () => {
       const messages = pending;
       pending = [];
@@ -70,6 +74,25 @@ function makeClient(overrides: Partial<LiveCheckClient> = {}) {
       pending = messages;
     },
   };
+}
+
+/**
+ * A client whose `getMessagesStringInternal` returns a different batch on
+ * each successive call — the pipeline reads it once after `parseString` and
+ * once after `checkModel`, and only the second batch goes through the
+ * sibling-file line-offset shift.
+ */
+function makeSequencedClient(
+  responses: readonly ErrorMessage[][],
+  overrides: Partial<LiveCheckClient> = {},
+) {
+  let call = 0;
+  const getMessagesStringInternal = vi.fn(async () => {
+    const messages = responses[call] ?? [];
+    call++;
+    return { messages };
+  });
+  return makeClient({ getMessagesStringInternal, ...overrides }).client;
 }
 
 function makeContext(client: LiveCheckClient, readOnly = false) {
@@ -223,5 +246,74 @@ describe("registerLiveCheck", () => {
     expect(client.parseString).not.toHaveBeenCalled();
     expect(client.loadString).not.toHaveBeenCalled();
     expect(set).not.toHaveBeenCalled();
+  });
+
+  describe("a class stored ahead of siblings in a shared file", () => {
+    // `A`'s pre-edit `getClassInformation` says it starts at file line 6 —
+    // e.g. a sibling declared first occupies lines 1-5 of `package.mo`.
+    const CLASS_START_LINE = 6;
+
+    it("drops a sibling's diagnostic even though its line falls inside the buffer's own range", async () => {
+      const client = makeSequencedClient(
+        [
+          [], // parseString read: nothing
+          // checkModel read: a diagnostic against the sibling declared ahead,
+          // at its real (small) file-relative line — inside [1, DOC_LINES]
+          // exactly like a diagnostic for the buffer itself would be.
+          [errorAt(PACKAGE_MO, "sibling error", 2)],
+        ],
+        {
+          getClassInformation: vi.fn(async () => ({
+            lineNumberStart: CLASS_START_LINE,
+          })),
+        },
+      );
+      const { ctx, set } = makeContext(client);
+      register(ctx);
+
+      await runPipeline();
+
+      expect(set).toHaveBeenCalledWith(DOC_URI, []);
+    });
+
+    it("shifts the edited class's own diagnostic back to buffer-relative coordinates", async () => {
+      // Buffer line 2 ("Real x;") reported at its real file line: 6 + (2-1).
+      const fileRelativeLine = CLASS_START_LINE + 1;
+      const client = makeSequencedClient(
+        [[], [errorAt(PACKAGE_MO, "own error", fileRelativeLine)]],
+        {
+          getClassInformation: vi.fn(async () => ({
+            lineNumberStart: CLASS_START_LINE,
+          })),
+        },
+      );
+      const { ctx, set } = makeContext(client);
+      register(ctx);
+
+      await runPipeline();
+
+      const [uri, diags] = set.mock.calls[0] ?? [];
+      expect(uri).toBe(DOC_URI);
+      expect(diags).toHaveLength(1);
+      expect((diags as vscode.Diagnostic[])[0]?.range.start.line).toBe(1);
+    });
+
+    it("drops a sibling declared after the edited class in the same file", async () => {
+      // Real file line past the class's own [6, 8] span (3-line DOC_TEXT).
+      const client = makeSequencedClient(
+        [[], [errorAt(PACKAGE_MO, "later sibling", CLASS_START_LINE + 10)]],
+        {
+          getClassInformation: vi.fn(async () => ({
+            lineNumberStart: CLASS_START_LINE,
+          })),
+        },
+      );
+      const { ctx, set } = makeContext(client);
+      register(ctx);
+
+      await runPipeline();
+
+      expect(set).toHaveBeenCalledWith(DOC_URI, []);
+    });
   });
 });
