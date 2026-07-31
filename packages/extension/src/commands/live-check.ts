@@ -89,7 +89,9 @@ function keepWithinBuffer(
 ): ErrorMessage[] {
   const kept: ErrorMessage[] = [];
   for (const msg of msgs) {
-    if (msg.info.filename !== filename) {
+    // `lineStart: 0` is OMC's own "missing/synthetic location" marker (see
+    // `omcToVscodePosition`) — not a real position to bound or shift.
+    if (msg.info.filename !== filename || msg.info.lineStart === 0) {
       kept.push(msg);
       continue;
     }
@@ -104,7 +106,7 @@ function keepWithinBuffer(
             info: {
               ...msg.info,
               lineStart: msg.info.lineStart - shift,
-              lineEnd: msg.info.lineEnd - shift,
+              lineEnd: Math.min(msg.info.lineEnd - shift, upperBound - shift),
             },
           },
     );
@@ -239,23 +241,18 @@ async function runCheck(
       log.error("liveCheck", "parseString failed", err);
     }
     if (state.token !== capturedToken) return;
-    const { messages: rawParseMessages } =
+    const { messages: parseMessages } =
       await client.getMessagesStringInternal();
-    // A syntax error is always in the string just parsed — never a sibling's
-    // — so no shift applies here, only the buffer-bounds check.
-    const parseMessages = keepWithinBuffer(
-      rawParseMessages,
-      filename,
-      1,
-      document.lineCount,
-      0,
-    );
-    messages.push(...parseMessages);
-    // Gate on the unfiltered read: a syntax error reported past the buffer's
-    // end is still a syntax error, and skipping straight to `loadString`
-    // would double-check a buffer `parseString` already found broken.
-    const hasParseError = rawParseMessages.some(
+    // Gate on every message parseString reported: an out-of-range one is
+    // still a syntax error, and skipping straight to `loadString` would
+    // double-check a buffer `parseString` already found broken.
+    const hasParseError = parseMessages.some(
       (m) => m.level === "error" || m.level === "internal",
+    );
+    // A syntax error is always about the string just parsed — never a
+    // sibling's — so only the buffer-bounds check applies here, no shift.
+    messages.push(
+      ...keepWithinBuffer(parseMessages, filename, 1, document.lineCount, 0),
     );
     if (!hasParseError) {
       // Syntax-clean — load into OMC and run the semantic check.
@@ -352,9 +349,6 @@ async function runCheck(
       }
       return undefined;
     };
-    // `keepWithinBuffer` already dropped anything outside the buffer's own
-    // range (a sibling declared before or after the edited class in a shared
-    // file), so every message reaching here is the edited class's own.
     const grouped = mapOmcMessagesToDiagnostics(messages, resolver);
     ctx.diagnostics.set(uri, grouped.get(uri) ?? []);
   });

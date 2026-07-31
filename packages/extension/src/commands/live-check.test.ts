@@ -57,10 +57,8 @@ function makeClient(overrides: Partial<LiveCheckClient> = {}) {
     parseString: vi.fn(async () => ({ names: ["P.A"] })),
     loadString: vi.fn(async () => ({ success: true })),
     checkModel: vi.fn(async () => ({ result: "" })),
-    // The class spans the whole shared file by default, matching DOC_TEXT,
-    // so the bounds the pipeline derives from this equal the buffer's own
-    // and every existing buffer-relative assumption below still holds;
-    // tests that care override it explicitly.
+    // `lineNumberStart: 1` is what makes the derived shift 0; tests that
+    // exercise the shift override this.
     getClassInformation: vi.fn(async () => ({
       lineNumberStart: 1,
       lineNumberEnd: DOC_LINES,
@@ -351,6 +349,57 @@ describe("registerLiveCheck", () => {
       await runPipeline(grownText);
 
       expect(set).toHaveBeenCalledWith(DOC_URI, []);
+    });
+
+    it("keeps a class-level diagnostic with no specific line rather than bounding it", async () => {
+      // `lineStart: 0` is OMC's own "missing/synthetic location" marker
+      // (see `omcToVscodePosition`) — not a real file-relative position, so
+      // it must never be bounds-checked or shifted away.
+      const noLine = errorAt(PACKAGE_MO, "class-level error", 0);
+      const client = makeSequencedClient([[], [noLine]], {
+        getClassInformation: vi.fn(async () => ({
+          lineNumberStart: CLASS_START_LINE,
+          lineNumberEnd: CLASS_END_LINE,
+        })),
+      });
+      const { ctx, set } = makeContext(client);
+      register(ctx);
+
+      await runPipeline();
+
+      const [, diags] = set.mock.calls[0] ?? [];
+      expect(diags).toHaveLength(1);
+    });
+
+    it("clamps a shifted diagnostic's end line to the buffer's own end", async () => {
+      // A multi-line diagnostic whose reported end sits past the class's own
+      // end (file-relative lines up to CLASS_END_LINE + 2) must not leak a
+      // shifted end line past the buffer once converted.
+      const spanning: ErrorMessage = {
+        ...errorAt(PACKAGE_MO, "spanning error", CLASS_START_LINE),
+        info: {
+          ...errorAt(PACKAGE_MO, "spanning error", CLASS_START_LINE).info,
+          lineEnd: CLASS_END_LINE + 2,
+        },
+      };
+      const client = makeSequencedClient([[], [spanning]], {
+        getClassInformation: vi.fn(async () => ({
+          lineNumberStart: CLASS_START_LINE,
+          lineNumberEnd: CLASS_END_LINE,
+        })),
+      });
+      const { ctx, set } = makeContext(client);
+      register(ctx);
+
+      await runPipeline();
+
+      const [, diags] = set.mock.calls[0] ?? [];
+      const diag = (diags as vscode.Diagnostic[])[0];
+      expect(diag).toBeDefined();
+      // `rangeFromInfo` converts an OMC end line to an exclusive VSCode one;
+      // the buffer has DOC_LINES lines (0-based: DOC_LINES - 1), so the
+      // clamped end must not exceed that.
+      expect(diag?.range.end.line).toBeLessThanOrEqual(DOC_LINES);
     });
   });
 });
