@@ -126,4 +126,37 @@ end ${packageName};
     });
     expect(fileName).toBe(pseudoFilename);
   });
+
+  it("reports the reloaded member's own line range against the file, not the string handed to loadString", async () => {
+    // The load-bearing assumption behind `live-check.ts`'s sibling-diagnostic
+    // fix (packages/extension/src/commands/live-check.ts): after a targeted
+    // reload, does OMC still know a shared-file member's real position in
+    // the file, or does it treat the reload as if `data` alone were now the
+    // whole file (the member's start resets to line 1)? `getClassInformation`
+    // is exactly the signal that fix reads, live, on every check — this pins
+    // what it actually reports post-reload.
+    const { packageName, packagePath, memberSource } =
+      await loadInlinePackage();
+    const before = await client.getClassInformation({
+      typeName: `${packageName}.A`,
+    });
+    // `A` sits on the line right after `package …` in the fixture.
+    expect(before.lineNumberStart).toBe(2);
+
+    // `edited` starts with `model A` on its own first line — if OMC numbered
+    // this reload's diagnostics relative to that string alone, the class's
+    // reported start would now be line 1.
+    const edited = memberSource.replace("Real x;", "Real x;\n  Real edited;");
+    const { success } = await client.loadString({
+      data: edited,
+      filename: packagePath,
+      merge: false,
+    });
+    expect(success).toBe(true);
+
+    const after = await client.getClassInformation({
+      typeName: `${packageName}.A`,
+    });
+    expect(after.lineNumberStart).toBe(before.lineNumberStart);
+  });
 });

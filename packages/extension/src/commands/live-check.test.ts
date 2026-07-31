@@ -57,10 +57,14 @@ function makeClient(overrides: Partial<LiveCheckClient> = {}) {
     parseString: vi.fn(async () => ({ names: ["P.A"] })),
     loadString: vi.fn(async () => ({ success: true })),
     checkModel: vi.fn(async () => ({ result: "" })),
-    // The class starts its shared file by default, so the offset the pipeline
-    // derives from this is 0 and every existing buffer-relative assumption
-    // below still holds; tests that care override it explicitly.
-    getClassInformation: vi.fn(async () => ({ lineNumberStart: 1 })),
+    // The class spans the whole shared file by default, matching DOC_TEXT,
+    // so the bounds the pipeline derives from this equal the buffer's own
+    // and every existing buffer-relative assumption below still holds;
+    // tests that care override it explicitly.
+    getClassInformation: vi.fn(async () => ({
+      lineNumberStart: 1,
+      lineNumberEnd: DOC_LINES,
+    })),
     getMessagesStringInternal: vi.fn(async () => {
       const messages = pending;
       pending = [];
@@ -249,9 +253,11 @@ describe("registerLiveCheck", () => {
   });
 
   describe("a class stored ahead of siblings in a shared file", () => {
-    // `A`'s pre-edit `getClassInformation` says it starts at file line 6 —
-    // e.g. a sibling declared first occupies lines 1-5 of `package.mo`.
+    // The post-load `getClassInformation` says `A` now spans file lines
+    // [6, 8] — e.g. a sibling declared first occupies lines 1-5 of
+    // `package.mo`, and OMC reports `A`'s own diagnostics file-relative.
     const CLASS_START_LINE = 6;
+    const CLASS_END_LINE = CLASS_START_LINE + DOC_LINES - 1;
 
     it("drops a sibling's diagnostic even though its line falls inside the buffer's own range", async () => {
       const client = makeSequencedClient(
@@ -265,6 +271,7 @@ describe("registerLiveCheck", () => {
         {
           getClassInformation: vi.fn(async () => ({
             lineNumberStart: CLASS_START_LINE,
+            lineNumberEnd: CLASS_END_LINE,
           })),
         },
       );
@@ -284,6 +291,7 @@ describe("registerLiveCheck", () => {
         {
           getClassInformation: vi.fn(async () => ({
             lineNumberStart: CLASS_START_LINE,
+            lineNumberEnd: CLASS_END_LINE,
           })),
         },
       );
@@ -301,10 +309,11 @@ describe("registerLiveCheck", () => {
     it("drops a sibling declared after the edited class in the same file", async () => {
       // Real file line past the class's own [6, 8] span (3-line DOC_TEXT).
       const client = makeSequencedClient(
-        [[], [errorAt(PACKAGE_MO, "later sibling", CLASS_START_LINE + 10)]],
+        [[], [errorAt(PACKAGE_MO, "later sibling", CLASS_END_LINE + 10)]],
         {
           getClassInformation: vi.fn(async () => ({
             lineNumberStart: CLASS_START_LINE,
+            lineNumberEnd: CLASS_END_LINE,
           })),
         },
       );
@@ -312,6 +321,34 @@ describe("registerLiveCheck", () => {
       register(ctx);
 
       await runPipeline();
+
+      expect(set).toHaveBeenCalledWith(DOC_URI, []);
+    });
+
+    it("grows the class's own bounds when the buffer has grown since the last reload", async () => {
+      // The "residual leak" case: if the class's *current* size (not a stale
+      // pre-edit snapshot) weren't used as the upper bound, a sibling that
+      // used to sit just past the class's old, smaller extent could shift
+      // into what looks like a valid buffer line once the buffer grows.
+      // `keepWithinBuffer` is driven by the post-load range, which — by
+      // construction — already reflects the buffer's current size, so the
+      // sibling here (originally just past the class's *old* end) stays
+      // outside the *current*, larger end and is still dropped.
+      const grownText = `${DOC_TEXT}\n  Real y;\n  Real z;`; // 5 lines now
+      const grownEnd = CLASS_START_LINE + grownText.split("\n").length - 1; // 10
+      const client = makeSequencedClient(
+        [[], [errorAt(PACKAGE_MO, "later sibling", grownEnd + 1)]],
+        {
+          getClassInformation: vi.fn(async () => ({
+            lineNumberStart: CLASS_START_LINE,
+            lineNumberEnd: grownEnd,
+          })),
+        },
+      );
+      const { ctx, set } = makeContext(client);
+      register(ctx);
+
+      await runPipeline(grownText);
 
       expect(set).toHaveBeenCalledWith(DOC_URI, []);
     });

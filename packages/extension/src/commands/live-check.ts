@@ -57,7 +57,7 @@ export interface LiveCheckClient extends FileOwnerClient {
   getMessagesStringInternal(): Promise<{ messages: ErrorMessage[] }>;
   getClassInformation(input: {
     typeName: string;
-  }): Promise<{ lineNumberStart: number }>;
+  }): Promise<{ lineNumberStart: number; lineNumberEnd: number }>;
 }
 
 type DocState = {
@@ -68,21 +68,24 @@ type DocState = {
 
 /**
  * Drop a message reported against `filename` whose (possibly shifted) line
- * falls outside the buffer, and shift the survivors back to buffer-relative
- * coordinates. A message for any other filename passes through untouched.
+ * falls outside `[lowerBound, upperBound]`, and shift the survivors back to
+ * buffer-relative coordinates by `shift`. A message for any other filename
+ * passes through untouched.
  *
- * `lineOffset` is the count of lines a shared file carries ahead of the
- * class being checked — 0 for a class with no real on-disk source, or one
- * that starts the file. Only messages produced against the *reloaded*
- * class's own extent need this shift; a sibling still bound to its original
- * on-disk position reports a line entirely outside `[1, documentLineCount]`
- * once shifted, and is dropped rather than mistaken for the edited class's.
+ * Defaults (`lowerBound=1`, `upperBound=documentLineCount`, `shift=0`) match
+ * the buffer's own bounds — correct for a class with no real on-disk source,
+ * one that starts its file, or a class whose reload OMC reports positions
+ * for relative to the string just loaded rather than the file. A shared
+ * file's sibling still bound to its own on-disk position reports a line
+ * outside the edited class's bounds and gets dropped instead of mistaken for
+ * the edited class's own.
  */
 function keepWithinBuffer(
   msgs: readonly ErrorMessage[],
   filename: string,
-  documentLineCount: number,
-  lineOffset: number,
+  lowerBound: number,
+  upperBound: number,
+  shift: number,
 ): ErrorMessage[] {
   const kept: ErrorMessage[] = [];
   for (const msg of msgs) {
@@ -90,17 +93,18 @@ function keepWithinBuffer(
       kept.push(msg);
       continue;
     }
-    const lineStart = msg.info.lineStart - lineOffset;
-    if (lineStart < 1 || lineStart > documentLineCount) continue;
+    if (msg.info.lineStart < lowerBound || msg.info.lineStart > upperBound) {
+      continue;
+    }
     kept.push(
-      lineOffset === 0
+      shift === 0
         ? msg
         : {
             ...msg,
             info: {
               ...msg.info,
-              lineStart,
-              lineEnd: msg.info.lineEnd - lineOffset,
+              lineStart: msg.info.lineStart - shift,
+              lineEnd: msg.info.lineEnd - shift,
             },
           },
     );
@@ -215,29 +219,6 @@ async function runCheck(
     const filename = await omcFilenameForDocument(client, uri);
     if (state.token !== capturedToken) return;
 
-    // A class stored inline in a shared file keeps its siblings loaded under
-    // that same filename, so `checkModel` can report a diagnostic against
-    // one of them. Their positions are real offsets into the file; the
-    // `loadString` below rewrites what OMC knows of *this* class's own
-    // extent, so the class's pre-edit start line has to be read now — there
-    // is no way back to it afterward.
-    let lineOffset = 0;
-    if (typeName !== undefined && filename !== uri.toString()) {
-      try {
-        const { lineNumberStart } = await client.getClassInformation({
-          typeName,
-        });
-        if (lineNumberStart >= 1) lineOffset = lineNumberStart - 1;
-      } catch (err) {
-        log.warn(
-          "liveCheck",
-          `getClassInformation(${typeName}) failed; a sibling's diagnostics may leak through`,
-          err,
-        );
-      }
-    }
-    if (state.token !== capturedToken) return;
-
     // Drain pre-existing diagnostics so what we read after parseString /
     // checkModel reflects this run only. Both `getErrorString` and
     // `getMessagesStringInternal` are destructive reads — they clear OMC's
@@ -261,10 +242,11 @@ async function runCheck(
     const { messages: rawParseMessages } =
       await client.getMessagesStringInternal();
     // A syntax error is always in the string just parsed — never a sibling's
-    // — so no line-offset shift applies here, only the buffer-bounds check.
+    // — so no shift applies here, only the buffer-bounds check.
     const parseMessages = keepWithinBuffer(
       rawParseMessages,
       filename,
+      1,
       document.lineCount,
       0,
     );
@@ -284,6 +266,42 @@ async function runCheck(
         return;
       }
       if (state.token !== capturedToken) return;
+
+      // A class stored inline in a shared file keeps its siblings loaded
+      // under that same filename, so `checkModel` can report a diagnostic
+      // against one of them, at their own on-disk position. Asking OMC where
+      // it now believes *this* class sits — after the `loadString` above,
+      // not before — gives the authoritative bounds for the class's own
+      // diagnostics either way: whether OMC reports them relative to the
+      // string just loaded (bounds come back ~`[1, N]`, matching the
+      // buffer, and this is a no-op) or relative to the file (bounds mirror
+      // the class's real position, and this is the fix). A failed or
+      // implausible lookup falls back to the buffer's own bounds, same as
+      // a class with no real on-disk source.
+      let lowerBound = 1;
+      let upperBound = document.lineCount;
+      let shift = 0;
+      if (typeName !== undefined && filename !== uri.toString()) {
+        try {
+          const info = await client.getClassInformation({ typeName });
+          if (
+            info.lineNumberStart >= 1 &&
+            info.lineNumberEnd >= info.lineNumberStart
+          ) {
+            lowerBound = info.lineNumberStart;
+            upperBound = info.lineNumberEnd;
+            shift = info.lineNumberStart - 1;
+          }
+        } catch (err) {
+          log.warn(
+            "liveCheck",
+            `getClassInformation(${typeName}) failed; a sibling's diagnostics may leak through`,
+            err,
+          );
+        }
+      }
+      if (state.token !== capturedToken) return;
+
       if (typeName) {
         try {
           await client.checkModel({ typeName });
@@ -304,8 +322,9 @@ async function runCheck(
         ...keepWithinBuffer(
           rawSemanticMessages,
           filename,
-          document.lineCount,
-          lineOffset,
+          lowerBound,
+          upperBound,
+          shift,
         ),
       );
     }
