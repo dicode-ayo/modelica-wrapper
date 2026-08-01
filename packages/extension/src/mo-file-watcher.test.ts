@@ -200,9 +200,12 @@ describe("handleOrderChange", () => {
     // handling) and would not re-derive the child order on its own.
     expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "My.Pkg" });
     expect(client.loadFile).toHaveBeenCalledWith({ fileName: PKG_FILE });
-    expect(client.deleteClass.mock.invocationCallOrder[0]).toBeLessThan(
-      client.loadFile.mock.invocationCallOrder[0],
-    );
+    const [deletedAt] = client.deleteClass.mock.invocationCallOrder;
+    const [loadedAt] = client.loadFile.mock.invocationCallOrder;
+    if (deletedAt === undefined || loadedAt === undefined) {
+      throw new Error("expected both deleteClass and loadFile to be called");
+    }
+    expect(deletedAt).toBeLessThan(loadedAt);
     expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
     expect(childrenChanged).toHaveBeenCalledWith("My");
     expect(iconChanged).toHaveBeenCalledWith("My.Pkg");
@@ -251,6 +254,26 @@ describe("handleOrderChange", () => {
         level: "warning",
         message: expect.stringContaining("package.order"),
       }),
+    );
+  });
+
+  it("treats a busy nested member as busy too, since deleteClass cascades to the whole subtree", async () => {
+    const seenNames: string[][] = [];
+    const { deps, client } = makeDeps({
+      readFile: async () => "A\nB\n",
+      isBusy: (_fsPath, classNames) => {
+        seenNames.push(classNames);
+        return classNames.includes("My.Pkg.Bar");
+      },
+    });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+    deps.index.set("/ws/My/Pkg/Bar.mo", ["My.Pkg.Bar"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(seenNames[0]).toEqual(
+      expect.arrayContaining(["My.Pkg", "My.Pkg.Bar"]),
     );
   });
 
@@ -324,6 +347,21 @@ describe("handleOrderDelete", () => {
       expect.objectContaining({ level: "warning" }),
     );
   });
+
+  it("no-ops silently when the owning package.mo is gone too — a whole-directory delete, not a reorder", async () => {
+    const { deps, client } = makeDeps({
+      readFile: async () => {
+        throw new Error("ENOENT");
+      },
+    });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderDelete(deps, ORDER_FILE);
+
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(recordedMessages).toHaveLength(0);
+  });
 });
 
 describe("isDeclaredClassBusy", () => {
@@ -396,5 +434,27 @@ describe("createPathClassIndex", () => {
     const index = createPathClassIndex();
     index.set("/ws/pkg/Bar.mo", ["Bar"]);
     expect(index.get("/ws/pkg/../pkg/Bar.mo")).toEqual(["Bar"]);
+  });
+
+  describe("classesUnder", () => {
+    it("includes the package itself and every class nested under it", () => {
+      const index = createPathClassIndex();
+      index.set("/ws/My/Pkg/package.mo", ["My.Pkg"]);
+      index.set("/ws/My/Pkg/Bar.mo", ["My.Pkg.Bar"]);
+      index.set("/ws/My/Other.mo", ["My.Other"]);
+
+      expect(index.classesUnder("My.Pkg")).toEqual(
+        expect.arrayContaining(["My.Pkg", "My.Pkg.Bar"]),
+      );
+      expect(index.classesUnder("My.Pkg")).not.toContain("My.Other");
+    });
+
+    it("doesn't treat a same-prefixed sibling as nested", () => {
+      const index = createPathClassIndex();
+      index.set("/ws/My/Pkg.mo", ["My.Pkg"]);
+      index.set("/ws/My/PkgTwo.mo", ["My.PkgTwo"]);
+
+      expect(index.classesUnder("My.Pkg")).toEqual(["My.Pkg"]);
+    });
   });
 });

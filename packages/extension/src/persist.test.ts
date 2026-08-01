@@ -280,6 +280,22 @@ describe("persistClassUnderWorkspace", () => {
     expect(guard.claim(orderFile, diskText)).toBe(true);
   });
 
+  it("tags the leaf package's own package.order write through the guard too", async () => {
+    const { client, seedChildren } = makeClientStub();
+    seedChildren("MyPkg", ["Model"]);
+    await persistClassUnderWorkspace(
+      client,
+      tmp,
+      "MyPkg",
+      "package MyPkg\nend MyPkg;\n",
+      guard,
+      "package",
+    );
+    const orderFile = path.join(tmp, "MyPkg", "package.order");
+    const diskText = await fsp.readFile(orderFile, "utf8");
+    expect(guard.claim(orderFile, diskText)).toBe(true);
+  });
+
   it("still writes package.order with just the leaf segment when getClassNames returns empty", async () => {
     const { client, seedChildren } = makeClientStub();
     seedChildren("MyLib", []);

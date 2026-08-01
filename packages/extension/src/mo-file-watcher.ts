@@ -13,14 +13,10 @@
  *     from a path→class index, since the file can no longer be parsed), then
  *     re-list their enclosing scope.
  *
- * `package.order` edits get a separate reaction: unlike a `.mo` change, OMC
- * doesn't re-derive a loaded package's child order from a `loadFile` alone —
- * `loadFile` merges into the existing symbol table the same way it does for a
- * `.mo` edit (see the removed-class handling above, which exists precisely
- * because a plain reload doesn't reconcile away stale members either). So a
- * `package.order` edit resolves the owning package from the path→class index,
- * `deleteClass`es it, then `loadFile`s its `package.mo` fresh — forcing OMC to
- * re-derive the child order from the file that's now on disk.
+ * A `package.order` edit needs more than a `loadFile`: OMC merges a reload
+ * into the existing symbol table rather than re-deriving a loaded package's
+ * child order. So the owning package is resolved from the path→class index,
+ * `deleteClass`ed, and its `package.mo` loaded fresh.
  *
  * The watcher leaves two kinds of edit alone:
  *   - our own disk writes, matched by content through the {@link SelfWriteGuard}
@@ -56,6 +52,8 @@ export interface PathClassIndex {
   get(fsPath: string): string[] | undefined;
   set(fsPath: string, classNames: string[]): void;
   delete(fsPath: string): void;
+  /** Every indexed class at or under `qualifiedName`, itself included. */
+  classesUnder(qualifiedName: string): string[];
 }
 
 export function createPathClassIndex(): PathClassIndex {
@@ -65,6 +63,18 @@ export function createPathClassIndex(): PathClassIndex {
     get: (p) => byPath.get(key(p)),
     set: (p, names) => void byPath.set(key(p), names),
     delete: (p) => void byPath.delete(key(p)),
+    classesUnder(qualifiedName) {
+      const prefix = `${qualifiedName}.`;
+      const found: string[] = [];
+      for (const names of byPath.values()) {
+        for (const name of names) {
+          if (name === qualifiedName || name.startsWith(prefix)) {
+            found.push(name);
+          }
+        }
+      }
+      return found;
+    },
   };
 }
 
@@ -156,16 +166,17 @@ function orderOwner(orderFsPath: string): string {
 }
 
 /**
- * `deleteClass` + `loadFile` the package that owns `pkgFile`, then re-list it —
- * the shared reaction to a `package.order` edit, wherever it came from. The
- * class list itself is unaffected by a reorder, so the index needs no update.
+ * `deleteClass` + `loadFile` the package that owns `pkgFile`, then re-list it.
+ * The class list itself is unaffected by a reorder, so the index needs no
+ * update.
  *
- * Both calls run unconditionally, even if `deleteClass` refuses a name or the
- * reload itself fails: the re-list afterward pulls whatever OMC actually ends
- * up holding, so the tree reflects reality either way. `describedPath` is the
- * file whose edit triggered this — `package.order` for a change/create, so a
- * busy warning names what the user actually touched — since deleting a class
- * that never reloads would otherwise strand it silently missing from OMC.
+ * The `loadFile` runs even when a `deleteClass` was refused, and the re-list
+ * runs even when the `loadFile` failed: a class deleted without a successful
+ * reload is silently missing from OMC, so the tree has to be pulled back to
+ * whatever OMC actually holds either way.
+ *
+ * `describedPath` names the file whose edit triggered this, so a busy warning
+ * points at what the user touched rather than at `package.mo`.
  */
 async function reorderPackage(
   deps: MoWatcherDeps,
@@ -176,12 +187,16 @@ async function reorderPackage(
   if (names === undefined || names.length === 0) {
     log.warn(
       "moWatcher",
-      `package.order changed, but ${pkgFile} is not indexed`,
+      `package.order edit for ${pkgFile}, but it is not indexed`,
     );
     return;
   }
-  if (deps.isBusy(pkgFile, names)) {
-    warnBusy(describedPath, names);
+  // deleteClass on a package cascades to every class nested under it, so a
+  // dirty buffer for a *member* — not just the package itself — is just as
+  // much at risk of being clobbered underneath its editor.
+  const affected = names.flatMap((name) => deps.index.classesUnder(name));
+  if (deps.isBusy(pkgFile, affected)) {
+    warnBusy(describedPath, affected);
     return;
   }
 
@@ -241,12 +256,24 @@ export async function handleOrderChange(
  * OMC's default child order, which still needs a fresh `loadFile` to take.
  * There's no text left to run through the self-write guard, but a delete
  * only ever removes explicit ordering, so there's nothing of ours to skip.
+ *
+ * Deleting a whole package directory fires this alongside a `.mo` delete for
+ * the same `package.mo`, in no guaranteed order. If the owning `package.mo`
+ * is already gone, the package itself was removed — `handleMoDelete` owns
+ * that case, and reordering a file that no longer exists would only produce
+ * a spurious "reload it" warning for what is really just a normal delete.
  */
 export async function handleOrderDelete(
   deps: MoWatcherDeps,
   orderFsPath: string,
 ): Promise<void> {
-  await reorderPackage(deps, orderOwner(orderFsPath), orderFsPath);
+  const pkgFile = orderOwner(orderFsPath);
+  try {
+    await deps.readFile(pkgFile);
+  } catch {
+    return;
+  }
+  await reorderPackage(deps, pkgFile, orderFsPath);
 }
 
 /**
