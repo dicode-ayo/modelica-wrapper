@@ -32,6 +32,7 @@ import * as vscode from "vscode";
 
 import { enclosingScope } from "@dicode/modelica-lang-core";
 
+import { pathExists } from "./fs-util.js";
 import { log } from "./logger.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
 import {
@@ -86,6 +87,8 @@ export interface MoWatcherDeps {
   index: PathClassIndex;
   /** Read a file's text; injected so tests need no real disk. */
   readFile: (fsPath: string) => Promise<string>;
+  /** True iff `fsPath` is still on disk; injected so tests need no real disk. */
+  fileExists: (fsPath: string) => Promise<boolean>;
   /** True when a declared class is open and dirty — reloading would clobber it. */
   isBusy: (fsPath: string, classNames: string[]) => boolean;
 }
@@ -96,10 +99,11 @@ function scopeOf(qualifiedName: string): string | null {
   return scope === "" ? null : scope;
 }
 
+/** `fsPath` is the file whose edit is being skipped — a delete has no "changed" to report either. */
 function warnBusy(fsPath: string, classNames: string[]): void {
   void vscode.window.showWarningMessage(
-    `Modelica: ${path.basename(fsPath)} changed on disk, but ${classNames.join(", ")} ` +
-      `has unsaved edits open — reload skipped. Save or close the editor to pick up the disk version.`,
+    `Modelica: ${classNames.join(", ")} has unsaved edits open, so the ` +
+      `${path.basename(fsPath)} reload was skipped. Save or close the editor to pick up the disk version.`,
   );
 }
 
@@ -220,6 +224,10 @@ async function reorderPackage(
   }
 
   if (deleteFailed || !loaded) {
+    // pkgFile can vanish between the busy check above and here — a directory
+    // delete racing this reorder — in which case it's a delete, not a failed
+    // reorder, and handleMoDelete/handleOrderDelete reconcile it instead.
+    if (!(await deps.fileExists(pkgFile))) return;
     log.warn(
       "moWatcher",
       `reordering ${pkgFile} left it out of sync with OMC (deleteFailed=${deleteFailed}, loaded=${loaded})`,
@@ -268,11 +276,7 @@ export async function handleOrderDelete(
   orderFsPath: string,
 ): Promise<void> {
   const pkgFile = orderOwner(orderFsPath);
-  try {
-    await deps.readFile(pkgFile);
-  } catch {
-    return;
-  }
+  if (!(await deps.fileExists(pkgFile))) return;
   await reorderPackage(deps, pkgFile, orderFsPath);
 }
 
@@ -385,6 +389,7 @@ export function registerMoFileWatcher(deps: {
     guard: deps.guard,
     index,
     readFile: (fsPath) => fsp.readFile(fsPath, "utf8"),
+    fileExists: pathExists,
     isBusy: isDeclaredClassBusy,
   };
 
@@ -425,10 +430,12 @@ export function registerMoFileWatcher(deps: {
       run(uri.fsPath, () => handleMoDelete(watcherDeps, uri.fsPath)),
     ),
     orderWatcher,
-    // Keyed by the owning package.mo, not the package.order path itself: a
-    // reorder and a `.mo` watcher event for the same package.mo both mutate
-    // the same OMC class and the same index entry, so they must serialize
-    // through the same in-flight slot rather than run concurrently.
+    // Keyed by the owning package.mo, not the package.order path itself, so a
+    // reorder and a `.mo` event for that same package.mo can't run
+    // concurrently. A member file's own event still keys on its own path, so
+    // a reorder's cascading deleteClass can still interleave with a member's
+    // own reload — narrower than full protection, but closes the one case
+    // this watcher pair can hit on every edit: the package.mo itself.
     orderWatcher.onDidChange((uri) =>
       run(orderOwner(uri.fsPath), () =>
         handleOrderChange(watcherDeps, uri.fsPath),

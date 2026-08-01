@@ -50,6 +50,7 @@ function makeDeps(overrides: Partial<MoWatcherDeps> = {}): {
     guard: createSelfWriteGuard(),
     index: createPathClassIndex(),
     readFile: async () => "model Bar end Bar;",
+    fileExists: async () => true,
     isBusy: () => false,
     ...overrides,
   };
@@ -322,6 +323,23 @@ describe("handleOrderChange", () => {
       expect.objectContaining({ level: "warning" }),
     );
   });
+
+  it("still re-lists but suppresses the out-of-sync warning when package.mo vanished mid-reorder", async () => {
+    // A directory delete racing this reorder: the class was already deleted,
+    // the reload against the now-gone file fails, but this is a delete, not
+    // a broken reorder — handleMoDelete/handleOrderDelete own it instead.
+    const { deps, client, childrenChanged } = makeDeps({
+      readFile: async () => "A\nB\n",
+      fileExists: async () => false,
+    });
+    client.loadFile.mockResolvedValue({ success: false });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+    expect(recordedMessages).toHaveLength(0);
+  });
 });
 
 describe("handleOrderDelete", () => {
@@ -349,11 +367,7 @@ describe("handleOrderDelete", () => {
   });
 
   it("no-ops silently when the owning package.mo is gone too — a whole-directory delete, not a reorder", async () => {
-    const { deps, client } = makeDeps({
-      readFile: async () => {
-        throw new Error("ENOENT");
-      },
-    });
+    const { deps, client } = makeDeps({ fileExists: async () => false });
     deps.index.set(PKG_FILE, ["My.Pkg"]);
 
     await handleOrderDelete(deps, ORDER_FILE);
