@@ -13,6 +13,8 @@ import {
   createPathClassIndex,
   handleMoChange,
   handleMoDelete,
+  handleOrderChange,
+  handleOrderDelete,
   isDeclaredClassBusy,
   seedPathClassIndex,
   type MoWatcherDeps,
@@ -176,6 +178,122 @@ describe("handleMoDelete", () => {
     await handleMoDelete(deps, FILE);
 
     expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(recordedMessages).toContainEqual(
+      expect.objectContaining({ level: "warning" }),
+    );
+  });
+});
+
+const PKG_FILE = "/ws/My/Pkg/package.mo";
+const ORDER_FILE = "/ws/My/Pkg/package.order";
+
+describe("handleOrderChange", () => {
+  it("reorders the owning package via delete + reload, then re-lists it", async () => {
+    const { deps, client, childrenChanged, iconChanged, notifySourceChanged } =
+      makeDeps({ readFile: async () => "B\nA\n" });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    // Reordering must go through delete + reload: `loadFile` alone merges
+    // into the existing symbol table (per `handleMoChange`'s own removed-class
+    // handling) and would not re-derive the child order on its own.
+    expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "My.Pkg" });
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: PKG_FILE });
+    expect(client.deleteClass.mock.invocationCallOrder[0]).toBeLessThan(
+      client.loadFile.mock.invocationCallOrder[0],
+    );
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+    expect(childrenChanged).toHaveBeenCalledWith("My");
+    expect(iconChanged).toHaveBeenCalledWith("My.Pkg");
+    expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg");
+  });
+
+  it("ignores our own package.order write matched by content through the guard", async () => {
+    const guard = createSelfWriteGuard();
+    guard.record(ORDER_FILE, "A\nB\n");
+    const { deps, client } = makeDeps({
+      guard,
+      readFile: async () => "A\nB\n",
+    });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(client.loadFile).not.toHaveBeenCalled();
+  });
+
+  it("warns when the owning package.mo isn't indexed", async () => {
+    const { deps, client } = makeDeps({ readFile: async () => "A\n" });
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(client.loadFile).not.toHaveBeenCalled();
+  });
+
+  it("skips a reorder that would clobber an unsaved buffer, and warns", async () => {
+    const { deps, client, childrenChanged } = makeDeps({
+      readFile: async () => "A\nB\n",
+      isBusy: () => true,
+    });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(childrenChanged).not.toHaveBeenCalled();
+    expect(recordedMessages).toContainEqual(
+      expect.objectContaining({ level: "warning" }),
+    );
+  });
+
+  it("bails when package.order can't be read", async () => {
+    const { deps, client } = makeDeps({
+      readFile: async () => {
+        throw new Error("ENOENT");
+      },
+    });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.deleteClass).not.toHaveBeenCalled();
+  });
+
+  it("does not touch the tree when the reload fails", async () => {
+    const { deps, client, childrenChanged } = makeDeps({
+      readFile: async () => "A\nB\n",
+    });
+    client.loadFile.mockResolvedValue({ success: false });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(childrenChanged).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleOrderDelete", () => {
+  it("reorders the owning package back to its default order", async () => {
+    const { deps, client, childrenChanged } = makeDeps();
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderDelete(deps, ORDER_FILE);
+
+    expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "My.Pkg" });
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: PKG_FILE });
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+  });
+
+  it("defers while a declared class is open and dirty", async () => {
+    const { deps, client } = makeDeps({ isBusy: () => true });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderDelete(deps, ORDER_FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
     expect(recordedMessages).toContainEqual(
       expect.objectContaining({ level: "warning" }),
     );

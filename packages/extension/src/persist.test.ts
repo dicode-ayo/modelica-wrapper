@@ -262,6 +262,24 @@ describe("persistClassUnderWorkspace", () => {
     ).toBe("Model\n");
   });
 
+  it("tags a new package.order write through the guard, like the package.mo beside it", async () => {
+    // A watcher reacting to this same write (mo-file-watcher.ts) must be able
+    // to tell it apart from a user's own package.order edit; the guard is
+    // what makes that possible.
+    const { client, seedChildren } = makeClientStub();
+    seedChildren("MyLib", ["Model"]);
+    await persistClassUnderWorkspace(
+      client,
+      tmp,
+      "MyLib.Model",
+      "model Model\nend Model;\n",
+      guard,
+    );
+    const orderFile = path.join(tmp, "MyLib", "package.order");
+    const diskText = await fsp.readFile(orderFile, "utf8");
+    expect(guard.claim(orderFile, diskText)).toBe(true);
+  });
+
   it("still writes package.order with just the leaf segment when getClassNames returns empty", async () => {
     const { client, seedChildren } = makeClientStub();
     seedChildren("MyLib", []);

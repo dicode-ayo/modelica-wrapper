@@ -13,6 +13,15 @@
  *     from a path→class index, since the file can no longer be parsed), then
  *     re-list their enclosing scope.
  *
+ * `package.order` edits get a separate reaction: unlike a `.mo` change, OMC
+ * doesn't re-derive a loaded package's child order from a `loadFile` alone —
+ * `loadFile` merges into the existing symbol table the same way it does for a
+ * `.mo` edit (see the removed-class handling above, which exists precisely
+ * because a plain reload doesn't reconcile away stale members either). So a
+ * `package.order` edit resolves the owning package from the path→class index,
+ * `deleteClass`es it, then `loadFile`s its `package.mo` fresh — forcing OMC to
+ * re-derive the child order from the file that's now on disk.
+ *
  * The watcher leaves two kinds of edit alone:
  *   - our own disk writes, matched by content through the {@link SelfWriteGuard}
  *     so a save doesn't fight the custom editor's shadow-buffer sync;
@@ -139,6 +148,90 @@ export async function handleMoChange(
     deps.libraryTree.iconChanged(name);
     deps.sourceProvider.notifySourceChanged(name);
   }
+}
+
+/**
+ * `deleteClass` + `loadFile` the package that owns `pkgFile`, then re-list it —
+ * the shared reaction to a `package.order` edit, wherever it came from. The
+ * class list itself is unaffected by a reorder, so the index needs no update.
+ */
+async function reorderPackage(
+  deps: MoWatcherDeps,
+  pkgFile: string,
+): Promise<void> {
+  const names = deps.index.get(pkgFile);
+  if (names === undefined || names.length === 0) {
+    log.warn(
+      "moWatcher",
+      `package.order changed, but ${pkgFile} is not indexed`,
+    );
+    return;
+  }
+  if (deps.isBusy(pkgFile, names)) {
+    warnBusy(pkgFile, names);
+    return;
+  }
+
+  const client = await deps.ensureClient();
+  for (const name of names) await client.deleteClass({ typeName: name });
+  const { success } = await client.loadFile({ fileName: pkgFile });
+  if (!success) {
+    log.warn(
+      "moWatcher",
+      `loadFile ${pkgFile} returned success=false after a package.order edit`,
+    );
+    return;
+  }
+
+  const scopes = new Set<string | null>();
+  for (const name of names) {
+    scopes.add(name);
+    scopes.add(scopeOf(name));
+  }
+  for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
+  for (const name of names) {
+    deps.libraryTree.iconChanged(name);
+    deps.sourceProvider.notifySourceChanged(name);
+  }
+}
+
+/**
+ * React to a `package.order` file appearing or changing on disk: resolve the
+ * owning package from the sibling `package.mo` (already keyed in the
+ * path→class index) and re-derive its child order via {@link reorderPackage}.
+ */
+export async function handleOrderChange(
+  deps: MoWatcherDeps,
+  orderFsPath: string,
+): Promise<void> {
+  let text: string;
+  try {
+    text = await deps.readFile(orderFsPath);
+  } catch {
+    // Raced with a delete, or unreadable — nothing to react to.
+    return;
+  }
+  if (deps.guard.claim(orderFsPath, text)) return;
+  await reorderPackage(
+    deps,
+    path.join(path.dirname(orderFsPath), "package.mo"),
+  );
+}
+
+/**
+ * React to a `package.order` file being deleted — the package reverts to
+ * OMC's default child order, which still needs a fresh `loadFile` to take.
+ * There's no text left to run through the self-write guard, but a delete
+ * only ever removes explicit ordering, so there's nothing of ours to skip.
+ */
+export async function handleOrderDelete(
+  deps: MoWatcherDeps,
+  orderFsPath: string,
+): Promise<void> {
+  await reorderPackage(
+    deps,
+    path.join(path.dirname(orderFsPath), "package.mo"),
+  );
 }
 
 /**
@@ -276,6 +369,8 @@ export function registerMoFileWatcher(deps: {
   };
 
   const watcher = vscode.workspace.createFileSystemWatcher("**/*.mo");
+  const orderWatcher =
+    vscode.workspace.createFileSystemWatcher("**/package.order");
   const subs = [
     watcher,
     watcher.onDidChange((uri) =>
@@ -286,6 +381,16 @@ export function registerMoFileWatcher(deps: {
     ),
     watcher.onDidDelete((uri) =>
       run(uri.fsPath, () => handleMoDelete(watcherDeps, uri.fsPath)),
+    ),
+    orderWatcher,
+    orderWatcher.onDidChange((uri) =>
+      run(uri.fsPath, () => handleOrderChange(watcherDeps, uri.fsPath)),
+    ),
+    orderWatcher.onDidCreate((uri) =>
+      run(uri.fsPath, () => handleOrderChange(watcherDeps, uri.fsPath)),
+    ),
+    orderWatcher.onDidDelete((uri) =>
+      run(uri.fsPath, () => handleOrderDelete(watcherDeps, uri.fsPath)),
     ),
   ];
 
