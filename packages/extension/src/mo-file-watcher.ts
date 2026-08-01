@@ -150,14 +150,27 @@ export async function handleMoChange(
   }
 }
 
+/** `dirname(orderFsPath)/package.mo` — the file that owns a `package.order`. */
+function orderOwner(orderFsPath: string): string {
+  return path.join(path.dirname(orderFsPath), "package.mo");
+}
+
 /**
  * `deleteClass` + `loadFile` the package that owns `pkgFile`, then re-list it —
  * the shared reaction to a `package.order` edit, wherever it came from. The
  * class list itself is unaffected by a reorder, so the index needs no update.
+ *
+ * Both calls run unconditionally, even if `deleteClass` refuses a name or the
+ * reload itself fails: the re-list afterward pulls whatever OMC actually ends
+ * up holding, so the tree reflects reality either way. `describedPath` is the
+ * file whose edit triggered this — `package.order` for a change/create, so a
+ * busy warning names what the user actually touched — since deleting a class
+ * that never reloads would otherwise strand it silently missing from OMC.
  */
 async function reorderPackage(
   deps: MoWatcherDeps,
   pkgFile: string,
+  describedPath: string,
 ): Promise<void> {
   const names = deps.index.get(pkgFile);
   if (names === undefined || names.length === 0) {
@@ -168,20 +181,17 @@ async function reorderPackage(
     return;
   }
   if (deps.isBusy(pkgFile, names)) {
-    warnBusy(pkgFile, names);
+    warnBusy(describedPath, names);
     return;
   }
 
   const client = await deps.ensureClient();
-  for (const name of names) await client.deleteClass({ typeName: name });
-  const { success } = await client.loadFile({ fileName: pkgFile });
-  if (!success) {
-    log.warn(
-      "moWatcher",
-      `loadFile ${pkgFile} returned success=false after a package.order edit`,
-    );
-    return;
+  let deleteFailed = false;
+  for (const name of names) {
+    const { success } = await client.deleteClass({ typeName: name });
+    if (!success) deleteFailed = true;
   }
+  const { success: loaded } = await client.loadFile({ fileName: pkgFile });
 
   const scopes = new Set<string | null>();
   for (const name of names) {
@@ -192,6 +202,17 @@ async function reorderPackage(
   for (const name of names) {
     deps.libraryTree.iconChanged(name);
     deps.sourceProvider.notifySourceChanged(name);
+  }
+
+  if (deleteFailed || !loaded) {
+    log.warn(
+      "moWatcher",
+      `reordering ${pkgFile} left it out of sync with OMC (deleteFailed=${deleteFailed}, loaded=${loaded})`,
+    );
+    void vscode.window.showWarningMessage(
+      `Modelica: reordering ${names.join(", ")} may have left it out of sync ` +
+        `with OMC. Edit and save ${path.basename(pkgFile)} to reload it fresh.`,
+    );
   }
 }
 
@@ -212,10 +233,7 @@ export async function handleOrderChange(
     return;
   }
   if (deps.guard.claim(orderFsPath, text)) return;
-  await reorderPackage(
-    deps,
-    path.join(path.dirname(orderFsPath), "package.mo"),
-  );
+  await reorderPackage(deps, orderOwner(orderFsPath), orderFsPath);
 }
 
 /**
@@ -228,10 +246,7 @@ export async function handleOrderDelete(
   deps: MoWatcherDeps,
   orderFsPath: string,
 ): Promise<void> {
-  await reorderPackage(
-    deps,
-    path.join(path.dirname(orderFsPath), "package.mo"),
-  );
+  await reorderPackage(deps, orderOwner(orderFsPath), orderFsPath);
 }
 
 /**
@@ -383,14 +398,24 @@ export function registerMoFileWatcher(deps: {
       run(uri.fsPath, () => handleMoDelete(watcherDeps, uri.fsPath)),
     ),
     orderWatcher,
+    // Keyed by the owning package.mo, not the package.order path itself: a
+    // reorder and a `.mo` watcher event for the same package.mo both mutate
+    // the same OMC class and the same index entry, so they must serialize
+    // through the same in-flight slot rather than run concurrently.
     orderWatcher.onDidChange((uri) =>
-      run(uri.fsPath, () => handleOrderChange(watcherDeps, uri.fsPath)),
+      run(orderOwner(uri.fsPath), () =>
+        handleOrderChange(watcherDeps, uri.fsPath),
+      ),
     ),
     orderWatcher.onDidCreate((uri) =>
-      run(uri.fsPath, () => handleOrderChange(watcherDeps, uri.fsPath)),
+      run(orderOwner(uri.fsPath), () =>
+        handleOrderChange(watcherDeps, uri.fsPath),
+      ),
     ),
     orderWatcher.onDidDelete((uri) =>
-      run(uri.fsPath, () => handleOrderDelete(watcherDeps, uri.fsPath)),
+      run(orderOwner(uri.fsPath), () =>
+        handleOrderDelete(watcherDeps, uri.fsPath),
+      ),
     ),
   ];
 

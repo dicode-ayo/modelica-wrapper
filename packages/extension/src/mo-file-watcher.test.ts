@@ -233,7 +233,7 @@ describe("handleOrderChange", () => {
     expect(client.loadFile).not.toHaveBeenCalled();
   });
 
-  it("skips a reorder that would clobber an unsaved buffer, and warns", async () => {
+  it("skips a reorder that would clobber an unsaved buffer, and names package.order in the warning", async () => {
     const { deps, client, childrenChanged } = makeDeps({
       readFile: async () => "A\nB\n",
       isBusy: () => true,
@@ -244,8 +244,13 @@ describe("handleOrderChange", () => {
 
     expect(client.loadFile).not.toHaveBeenCalled();
     expect(childrenChanged).not.toHaveBeenCalled();
+    // The triggering edit was to package.order, not package.mo — the warning
+    // must name the file the user actually touched.
     expect(recordedMessages).toContainEqual(
-      expect.objectContaining({ level: "warning" }),
+      expect.objectContaining({
+        level: "warning",
+        message: expect.stringContaining("package.order"),
+      }),
     );
   });
 
@@ -262,7 +267,7 @@ describe("handleOrderChange", () => {
     expect(client.deleteClass).not.toHaveBeenCalled();
   });
 
-  it("does not touch the tree when the reload fails", async () => {
+  it("still re-lists the tree and warns when the reload fails, so the tree reflects OMC's real state", async () => {
     const { deps, client, childrenChanged } = makeDeps({
       readFile: async () => "A\nB\n",
     });
@@ -271,7 +276,28 @@ describe("handleOrderChange", () => {
 
     await handleOrderChange(deps, ORDER_FILE);
 
-    expect(childrenChanged).not.toHaveBeenCalled();
+    // The class was already deleted before the failed reload — re-listing
+    // pulls whatever OMC now actually holds instead of a stale, deleted view.
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+    expect(recordedMessages).toContainEqual(
+      expect.objectContaining({ level: "warning" }),
+    );
+  });
+
+  it("re-lists but warns when a deleteClass call is refused, instead of silently reporting success", async () => {
+    const { deps, client, childrenChanged } = makeDeps({
+      readFile: async () => "A\nB\n",
+    });
+    client.deleteClass.mockResolvedValue({ success: false });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: PKG_FILE });
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+    expect(recordedMessages).toContainEqual(
+      expect.objectContaining({ level: "warning" }),
+    );
   });
 });
 
