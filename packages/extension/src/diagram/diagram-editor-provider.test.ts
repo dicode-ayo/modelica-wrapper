@@ -1449,6 +1449,74 @@ describe("DiagramEditController: reconciling reports", () => {
     controller.dispose();
   });
 
+  it("settles a reported graphics write, since OMC answers a shape with more than it was sent", async () => {
+    const { client } = makeEditClient({
+      instance: diagramRectInstance([
+        [0, 0],
+        [10, 10],
+      ]),
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      shapeLayout(),
+      factory,
+    );
+
+    await controller.handle({
+      type: "change",
+      layout: layout({
+        diagramLayers: [
+          { from: "Pkg.M", shapes: [RECT, RECT] },
+        ] as unknown as DiagramLayout["diagramLayers"],
+      }),
+    });
+    await drain();
+
+    // Without adopting the canonical shape the webview keeps the one it drew,
+    // and every later reconcile writes the difference again.
+    expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
+    controller.dispose();
+  });
+
+  it("pays an owed settle even when the report that carried it diffs to nothing", async () => {
+    // A null diff proves the diffed projection matches — placements, wires,
+    // own shapes. A debt owed by a parameter edit or a class swap is carrying
+    // what the diff never compares, so cancelling it there loses it for good.
+    let interleave: (() => void) | undefined;
+    const { client } = makeEditClient({
+      onInvoke: (fn) => {
+        if (fn !== "getModelInstance") return;
+        const fire = interleave;
+        interleave = undefined;
+        fire?.();
+      },
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+    );
+
+    interleave = () => {
+      // The default instance renders an empty diagram, so this reports it
+      // exactly as OMC already holds it and the reconcile writes nothing.
+      void controller.handle({ type: "change", layout: layout({}) });
+    };
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 5, y: 5 },
+    });
+    await drain();
+
+    expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
+    controller.dispose();
+  });
+
   it("reconciles against the class as OMC holds it, not against a cached copy", async () => {
     // The cached layout and the report agree; OMC does not. Diffing the two
     // that agree yields nothing, and the class stays where it drifted to.
@@ -1845,10 +1913,16 @@ describe("DiagramEditController: shape properties", () => {
   });
 
   it("applies a shape-property edit after a reported gesture has moved the base", async () => {
-    // A reported edit leaves `prevLayout` holding what the webview sent rather
-    // than a producer-built re-read. The shape modal resolves its target and
-    // its identity check through `prevLayout`, so it has to survive that.
-    const { client, invoked } = makeEditClient();
+    // A reported edit leaves `prevLayout` holding either what the webview sent
+    // or, for a graphics write, the re-read that follows it. The shape modal
+    // resolves its target and its identity check through `prevLayout`, so it
+    // has to survive both.
+    const { client, invoked } = makeEditClient({
+      instance: diagramRectInstance([
+        [0, 0],
+        [10, 10],
+      ]),
+    });
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(

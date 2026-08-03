@@ -674,11 +674,12 @@ export class DiagramEditController {
       const result = await applyDiagramEdits(client, className, current, next);
       if (result === null) {
         // Nothing to write, but a withheld settle may have left `prevLayout`
-        // behind what OMC and the screen both already hold. That also settles
-        // any debt: a null diff means the screen already matches canonical, so
-        // there is nothing left for an owed push to carry.
+        // behind what OMC and the screen both already hold. A null diff only
+        // proves the diffed projection matches — an owed settle can be carrying
+        // what the diff never compares, a parameter value read into a label or
+        // a swapped component's icon — so it is paid from the base in hand.
         this.prevLayout = current;
-        this.settleOwed = false;
+        if (this.settleOwed) this.publishLayout(current);
         return;
       }
       if (result.failed.length > 0 || result.rolledBack) {
@@ -698,7 +699,11 @@ export class DiagramEditController {
         return;
       }
       await this.writeBuffer();
-      if (this.settleOwed) {
+      // A graphics write is the one reported edit the webview cannot match: it
+      // sent a shape carrying what the user chose, and OMC answers with every
+      // default filled in. Without adopting that, the next reconcile finds the
+      // same difference and writes it again, for as long as the shape lives.
+      if (this.settleOwed || result.touchedGraphics) {
         await this.pushCanonicalLayout();
         return;
       }

@@ -386,13 +386,25 @@ export async function applyDiagramEdits(
 ): Promise<{
   failed: ReadonlyArray<{ error: string }>;
   rolledBack: boolean;
+  /**
+   * Whether any edit wrote the class's own graphics. OMC returns a shape with
+   * every default materialised — `pattern`, `lineThickness`, an ellipse's
+   * `closure` — where the one drawn in the webview carries only what the user
+   * chose. The two never compare equal, so a caller that does not adopt the
+   * canonical shape re-writes it on every later reconcile.
+   */
+  touchedGraphics: boolean;
 } | null> {
   const edits = diffLayouts(prevLayout, next);
   if (edits.length === 0) return null;
   const result = await applyEdits(client, className, edits, undefined, {
     snapshot: true,
   });
-  return { failed: result.failed, rolledBack: result.rolledBack };
+  return {
+    failed: result.failed,
+    rolledBack: result.rolledBack,
+    touchedGraphics: edits.some((e) => e.kind.startsWith("graphics")),
+  };
 }
 
 /**

@@ -171,24 +171,16 @@ export class DragMode implements GestureMode {
     const state = this.state;
     this.state = null;
     // A press inside the slop was a click — the second press of a double-click
-    // is the one that matters — so it commits where it began: the host
-    // short-circuits a zero delta to the same layout and emits no change. The
-    // commit itself still has to be delivered, since it is what drops the draft
-    // and ends the interaction, and `resize`/`rotate`/`vertex` draft from
-    // `begin`, so a click on a handle would otherwise strand one.
-    const at = this.withinSlop(e) ? this.pressPoint(state, point) : point;
-    this.emitFor(state, at, e, false);
-  }
-
-  /** Where a within-slop press started, for the states that read a delta. */
-  private pressPoint(state: DragState, fallback: DiagramPoint): DiagramPoint {
-    switch (state.kind) {
-      case "move":
-      case "edge":
-        return { x: state.startX, y: state.startY };
-      default:
-        return fallback;
+    // is the one that matters. It ends the gesture without a commit, so none of
+    // the mouse-up passes run: no grid snap onto an off-grid entity, no angle
+    // snap onto a freely rotated one. The host still hears about it, because
+    // `resize`/`rotate`/`vertex` draft from `begin` and something has to drop
+    // that draft.
+    if (this.withinSlop(e)) {
+      this.emit("dragCancel", {});
+      return;
     }
+    this.emitFor(state, point, e, false);
   }
 
   private emitFor(

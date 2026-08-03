@@ -1468,6 +1468,10 @@ export class OmGraphicalLayout extends LitElement {
       return;
     }
     switch (type) {
+      case "dragCancel":
+        this.draftLayout = null;
+        this.endInteraction();
+        return;
       case "drag": {
         const d = detail as DragEvents["drag"];
         // Snap the drag delta to the active grid so components glide

@@ -417,7 +417,7 @@ describe("shape properties form round-trip", () => {
         [10, 10],
       ],
       textString: "hello",
-      lineColor: [0, 0, 0],
+      textColor: [0, 0, 0],
     },
     {
       kind: "bitmap",
@@ -427,7 +427,7 @@ describe("shape properties form round-trip", () => {
       ],
       fileName: "a.png",
     },
-  ] as unknown as Shape[];
+  ];
 
   /** A value distinct from `field.value`, in the shape the modal would submit. */
   function otherValue(field: ParameterField): unknown {
@@ -457,7 +457,13 @@ describe("shape properties form round-trip", () => {
 
       for (const field of form.fields) {
         const next = otherValue(field);
-        if (next === null || next === field.value) continue;
+        // An enum with a single choice has no other value to offer; anything
+        // else answering null would be a field this test silently skips.
+        if (next === null) {
+          expect((field.enumChoices ?? []).length, field.name).toBeLessThan(2);
+          continue;
+        }
+        if (next === field.value) continue;
         const edited = applyShapeProperties(shape, { [field.name]: next });
         expect(
           JSON.stringify(edited),
