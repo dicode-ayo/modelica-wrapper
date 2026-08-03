@@ -375,7 +375,7 @@ export async function fetchDiagramLayout(
  * failure rolls the class back. Returns `null` when the two layouts are
  * identical (nothing to apply).
  *
- * Re-reading the layout is the caller's, so a burst of edits can share one
+ * Re-reading the layout is the caller's job, so a burst of edits can share one
  * re-fetch instead of paying for one each.
  */
 export async function applyDiagramEdits(

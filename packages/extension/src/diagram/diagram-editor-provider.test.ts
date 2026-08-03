@@ -1239,8 +1239,11 @@ describe("DiagramEditController: forward write path", () => {
     flushDebounce();
     await drain();
 
-    expect(posted.at(-1)?.type).toBe("error");
-    expect(posted.some((m) => m.type === "layout")).toBe(false); // last-good kept
+    expect(posted.some((m) => m.type === "error")).toBe(true);
+    // The sync wrote nothing, having dropped whatever was reported to make way
+    // for it. The webview is put back on the last good layout rather than left
+    // rendering an edit no class ever took.
+    expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
 
     // A subsequent edit still dispatches — the queue wasn't poisoned.
     await controller.handle({
@@ -1513,7 +1516,7 @@ describe("DiagramEditController: reconciling reports", () => {
       },
     });
     const { gate, posted } = makeGate();
-    const { factory } = makeShadowFactory();
+    const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
       { client, document: SRC_DOC, className: "Pkg.M", gate },
       movedComponent(AT(-10)),
@@ -1536,6 +1539,9 @@ describe("DiagramEditController: reconciling reports", () => {
     expect(invoked.filter((f) => f === "updateComponent")).toHaveLength(2);
     // Still one settle: the first was withheld behind the queued report.
     expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
+    // The snapshot put the class back byte for byte, so nothing reached the
+    // buffer — a dirty document and an undo step for an edit that never was.
+    expect(writes).toEqual([]);
     controller.dispose();
   });
 

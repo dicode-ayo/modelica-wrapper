@@ -573,12 +573,17 @@ export class DiagramEditController {
       const reload = await reloadBufferIntoOmc(client, document);
       if (!reload.ok) {
         this.reportError(reload.message);
+        // This sync dropped whatever was reported to make way for it, and then
+        // wrote nothing. Without a push the webview goes on showing an edit no
+        // class ever took.
+        this.publishLayout(this.prevLayout);
         return;
       }
       this.publishLayout(await this.refetch(client, className));
       this.deps.onClassContentChanged?.(className);
     } catch (err) {
       this.reportError(`reverse sync failed: ${(err as Error).message}`);
+      this.publishLayout(this.prevLayout);
     }
   }
 
@@ -676,11 +681,15 @@ export class DiagramEditController {
         this.settleOwed = false;
         return;
       }
-      await this.writeBuffer();
       if (result.failed.length > 0 || result.rolledBack) {
         this.reportError(
           `${result.failed.length} edit(s) failed: ${result.failed.at(0)?.error ?? "unknown"}`,
         );
+        // A rolled-back batch left the class byte-identical, so writing the
+        // buffer would dirty the document and record an undo step for an edit
+        // that did not happen. A partial failure did change it, so it still
+        // reflects.
+        if (!result.rolledBack) await this.writeBuffer();
         // Now the screen and the class disagree, which is the one thing a
         // push is for. A further report reconciles against whatever the failed
         // batch left behind — the base is read fresh, so it closes the gap from
@@ -688,6 +697,7 @@ export class DiagramEditController {
         await this.pushCanonicalLayout();
         return;
       }
+      await this.writeBuffer();
       if (this.settleOwed) {
         await this.pushCanonicalLayout();
         return;
