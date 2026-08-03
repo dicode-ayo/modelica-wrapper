@@ -27,6 +27,7 @@ interface LayoutEl extends HTMLElement {
     components: Record<string, { placement: { rotation?: number } }>;
   };
   readonly tool: string;
+  readonly selection: string[];
   setActiveTool: (tool: string) => void;
   setSelection: (keys: string[]) => void;
 }
@@ -140,6 +141,75 @@ test("drawing via the toolbar lands a shape in the host layer", async ({
     () => (document.querySelector("om-graphical-layout") as LayoutEl).tool,
   );
   expect(tool).toBe("select");
+});
+
+test("drawing a shape leaves it as the sole selection (#385)", async ({
+  page,
+}) => {
+  await page.goto(WORKBENCH_STORY, { waitUntil: "networkidle" });
+  await page.waitForFunction(() =>
+    Boolean(
+      (document.querySelector("om-graphical-layout") as LayoutEl | null)
+        ?.layout,
+    ),
+  );
+
+  await page
+    .locator('om-action-panel wa-button[title^="Draw a rectangle"]')
+    .click();
+
+  const box = await page.locator("om-graphical-layout").boundingBox();
+  if (!box) {
+    throw new Error("no canvas box");
+  }
+  await page.mouse.move(box.x + 80, box.y + 70);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 180, box.y + 150, { steps: 8 });
+  await page.mouse.up();
+
+  const selection = await page.evaluate(
+    () => (document.querySelector("om-graphical-layout") as LayoutEl).selection,
+  );
+  expect(selection).toHaveLength(1);
+  expect(selection[0]).toMatch(/^shape:rectangle:\d+$/);
+});
+
+test("a degenerate draw (click, no drag) leaves the selection untouched", async ({
+  page,
+}) => {
+  await page.goto(WORKBENCH_STORY, { waitUntil: "networkidle" });
+  await page.waitForFunction(() =>
+    Boolean(
+      (document.querySelector("om-graphical-layout") as LayoutEl | null)
+        ?.layout,
+    ),
+  );
+
+  const name = await page.evaluate(() => {
+    const el = document.querySelector("om-graphical-layout") as LayoutEl;
+    const n = Object.keys(el.layout.components)[0];
+    el.setSelection([`c:${n}`]);
+    return n;
+  });
+
+  await page
+    .locator('om-action-panel wa-button[title^="Draw a rectangle"]')
+    .click();
+
+  const box = await page.locator("om-graphical-layout").boundingBox();
+  if (!box) {
+    throw new Error("no canvas box");
+  }
+  // A press-release with no movement is degenerate (extent-tool-mode.ts) and
+  // cancels rather than committing — the pre-existing selection must survive.
+  await page.mouse.move(box.x + 80, box.y + 70);
+  await page.mouse.down();
+  await page.mouse.up();
+
+  const selection = await page.evaluate(
+    () => (document.querySelector("om-graphical-layout") as LayoutEl).selection,
+  );
+  expect(selection).toEqual([`c:${name}`]);
 });
 
 test("the draw chevron menu arms a polygon tool", async ({ page }) => {
