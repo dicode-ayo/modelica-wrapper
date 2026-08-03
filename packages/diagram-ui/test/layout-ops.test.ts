@@ -1584,10 +1584,11 @@ describe("applyAddGraphic", () => {
       [0, 0],
       [10, 10],
     ]);
-    const next = applyAddGraphic(layout, "diagram", shape);
+    const { layout: next, key } = applyAddGraphic(layout, "diagram", shape);
     expect(next.diagramLayers).toEqual([{ from: "Demo", shapes: [shape] }]);
     // Pure — the input layout is untouched.
     expect(layout.diagramLayers).toEqual([]);
+    expect(key).toBe("shape:rectangle:0");
   });
 
   it("appends to the host layer, leaving inherited layers alone", () => {
@@ -1604,12 +1605,28 @@ describe("applyAddGraphic", () => {
       [0, 0],
       [10, 10],
     ]);
-    const next = applyAddGraphic(layout, "diagram", shape);
+    const { layout: next, key } = applyAddGraphic(layout, "diagram", shape);
     expect(next.diagramLayers.at(0)).toEqual({
       from: "Base",
       shapes: [inherited],
     });
     expect(next.diagramLayers.at(1)?.shapes).toEqual([shape]);
+    expect(key).toBe("shape:rectangle:0");
+  });
+
+  it("keys the new shape past the host layer's existing shapes", () => {
+    const layout = baseLayout();
+    const existing = buildExtentShape("ellipse", [
+      [1, 1],
+      [2, 2],
+    ]);
+    layout.diagramLayers = [{ from: "Demo", shapes: [existing] }];
+    const shape = buildExtentShape("rectangle", [
+      [0, 0],
+      [10, 10],
+    ]);
+    const { key } = applyAddGraphic(layout, "diagram", shape);
+    expect(key).toBe("shape:rectangle:1");
   });
 
   it("targets the icon layer when asked", () => {
@@ -1618,7 +1635,7 @@ describe("applyAddGraphic", () => {
       [0, 0],
       [10, 10],
     ]);
-    const next = applyAddGraphic(layout, "icon", shape);
+    const { layout: next } = applyAddGraphic(layout, "icon", shape);
     expect(next.iconLayers).toEqual([{ from: "Demo", shapes: [shape] }]);
     expect(next.diagramLayers).toEqual([]);
   });

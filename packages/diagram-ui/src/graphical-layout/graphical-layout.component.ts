@@ -1726,22 +1726,19 @@ export class OmGraphicalLayout extends LitElement {
       this.endInteraction();
       return;
     }
-    const next = applyAddGraphic(this.layout, this.layout.kind, draw.shape);
+    const { layout: next, key } = applyAddGraphic(
+      this.layout,
+      this.layout.kind,
+      draw.shape,
+    );
     if (draw.phase === "draft") {
       this.draftLayout = next;
       this.setInteractionState({ kind: "drawing" });
       return;
     }
     this.draftLayout = null;
-    // `applyAddGraphic` always appends to the host's own layer (creating it
-    // if this is the class's first own shape), so the new shape's index is
-    // that layer's shape count in `next`, minus one.
-    const ownLayer = this.activeLayers(next).find(
-      (l) => l.from === next.className,
-    );
-    const newIndex = (ownLayer?.shapes.length ?? 1) - 1;
     this.commitLayout(next);
-    this.setSelection([formatShapeKey(draw.shape.kind, newIndex)]);
+    this.setSelection([key]);
     this.endInteraction();
     this.setActiveTool("select"); // one shape per arming
   }

@@ -1810,26 +1810,45 @@ export function buildPolyShape(kind: PolyKind, points: Point[]): Shape {
     : { kind: "polygon", points, lineColor: DRAWN_LINE_COLOR };
 }
 
+export interface AddGraphicResult {
+  layout: DiagramLayout;
+  /** Wire key of the shape just appended to the host's own layer. */
+  key: string;
+}
+
 /**
  * Append a graphic to the host class's OWN layer (`from === className`),
  * creating that layer when the class has no graphics yet. Inherited ancestor
  * layers are never touched — only the host's own graphics are editable, which
  * is also what the persist path (`writeClassGraphics`) writes.
+ *
+ * Returns the appended shape's own-layer key alongside the layout, so a
+ * caller that wants to select what it just drew doesn't have to re-derive
+ * the index from this function's append-only behaviour.
  */
 export function applyAddGraphic(
   layout: DiagramLayout,
   layer: "icon" | "diagram",
   shape: Shape,
-): DiagramLayout {
+): AddGraphicResult {
   const field = layer === "icon" ? "iconLayers" : "diagramLayers";
   const layers = layout[field];
   const idx = layers.findIndex((l) => l.from === layout.className);
   if (idx < 0) {
     const own: IconLayer = { from: layout.className, shapes: [shape] };
-    return { ...layout, [field]: [...layers, own] };
+    return {
+      layout: { ...layout, [field]: [...layers, own] },
+      key: formatShapeKey(shape.kind, 0),
+    };
   }
-  const next = layers.map((l, i) =>
-    i === idx ? { ...l, shapes: [...l.shapes, shape] } : l,
-  );
-  return { ...layout, [field]: next };
+  let newIndex = 0;
+  const next = layers.map((l, i) => {
+    if (i !== idx) return l;
+    newIndex = l.shapes.length;
+    return { ...l, shapes: [...l.shapes, shape] };
+  });
+  return {
+    layout: { ...layout, [field]: next },
+    key: formatShapeKey(shape.kind, newIndex),
+  };
 }
