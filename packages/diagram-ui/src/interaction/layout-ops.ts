@@ -1822,9 +1822,8 @@ export interface AddGraphicResult {
  * layers are never touched — only the host's own graphics are editable, which
  * is also what the persist path (`writeClassGraphics`) writes.
  *
- * Returns the appended shape's own-layer key alongside the layout, so a
- * caller that wants to select what it just drew doesn't have to re-derive
- * the index from this function's append-only behaviour.
+ * The returned key is positional — only valid against the returned `layout`,
+ * not the input one.
  */
 export function applyAddGraphic(
   layout: DiagramLayout,
@@ -1833,22 +1832,20 @@ export function applyAddGraphic(
 ): AddGraphicResult {
   const field = layer === "icon" ? "iconLayers" : "diagramLayers";
   const layers = layout[field];
-  const idx = layers.findIndex((l) => l.from === layout.className);
-  if (idx < 0) {
-    const own: IconLayer = { from: layout.className, shapes: [shape] };
+  const index = layers.findIndex((l) => l.from === layout.className);
+  const own = index < 0 ? undefined : layers[index];
+  if (own === undefined) {
+    const created: IconLayer = { from: layout.className, shapes: [shape] };
     return {
-      layout: { ...layout, [field]: [...layers, own] },
+      layout: { ...layout, [field]: [...layers, created] },
       key: formatShapeKey(shape.kind, 0),
     };
   }
-  let newIndex = 0;
-  const next = layers.map((l, i) => {
-    if (i !== idx) return l;
-    newIndex = l.shapes.length;
-    return { ...l, shapes: [...l.shapes, shape] };
-  });
+  const next = layers.map((l, i) =>
+    i === index ? { ...l, shapes: [...l.shapes, shape] } : l,
+  );
   return {
     layout: { ...layout, [field]: next },
-    key: formatShapeKey(shape.kind, newIndex),
+    key: formatShapeKey(shape.kind, own.shapes.length),
   };
 }

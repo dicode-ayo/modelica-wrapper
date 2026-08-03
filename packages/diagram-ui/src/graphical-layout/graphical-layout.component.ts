@@ -1715,7 +1715,8 @@ export class OmGraphicalLayout extends LitElement {
    * Applies a draw step from the armed `ToolMode`. The mode owns the shape
    * (snapping, guards, preview kind); the host only places it into whichever
    * layer this view edits (icon vs diagram): a draft previews, a commit
-   * persists + disarms, a cancel drops the preview and stays armed.
+   * persists, selects what was drawn, and disarms; a cancel drops the
+   * preview and stays armed.
    */
   private onTool(draw: ToolDraw): void {
     if (this.readonly || !this.layout) {
