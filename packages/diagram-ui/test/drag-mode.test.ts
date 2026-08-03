@@ -197,18 +197,35 @@ describe("DragMode drag slop", () => {
    * entity — so double-clicking a shape to open its properties nudged it, and
    * the properties edit was then refused for having a stale snapshot.
    */
-  it("commits nothing when the press never leaves the slop", () => {
+  it("commits no movement when the press never leaves the slop", () => {
     const tn = node("component", "R1");
     const { mode, events } = setup();
 
     expect(mode.begin(start(tn, { x: 100, y: 100 }))).toBe(true);
-    mode.update({ x: 101, y: 101 }, move(101, 101));
+    mode.update({ x: 102, y: 102 }, move(102, 102));
+    mode.commit({ x: 102, y: 102 }, move(102, 102));
+
+    const committed = events.filter(isDragEvent).filter((e) => !e.detail.draft);
+    // The commit is still delivered — it is what drops the draft and ends the
+    // interaction — but it carries the press back to where it started.
+    expect(committed).toHaveLength(1);
+    expect(committed.at(0)?.detail).toMatchObject({ dx: 0, dy: 0 });
+  });
+
+  it("still commits a handle press, so a click on one leaves no draft behind", () => {
+    // `resize` drafts from `begin`, so swallowing its commit would strand the
+    // preview and the interaction state with no gesture left to end them.
+    const wrapper = node("shape", "rectangle:0");
+    const handle = node("handle", "br");
+    wrapper.addChild(handle);
+    const { mode, events } = setup();
+
+    expect(mode.begin(start(handle, { x: 100, y: 100 }))).toBe(true);
     mode.commit({ x: 101, y: 101 }, move(101, 101));
 
-    // Drafts while the pointer is down are fine — they are only a preview.
-    expect(events.filter(isDragEvent).filter((e) => !e.detail.draft)).toEqual(
-      [],
-    );
+    expect(
+      events.filter((e) => !("draft" in e.detail) || !e.detail.draft),
+    ).toHaveLength(1);
   });
 
   it("commits a move once the press travels past the slop", () => {

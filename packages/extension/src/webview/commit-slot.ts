@@ -24,9 +24,7 @@ const UI_ONLY: ReadonlySet<WebviewToExtension["type"]> = new Set([
  * produced, so it cannot overtake it. Unknown-to-this-list types answer `true`:
  * a message added later orders conservatively until someone decides otherwise.
  */
-export function mustFollowQueuedChange(
-  type: WebviewToExtension["type"],
-): boolean {
+function mustFollowQueuedChange(type: WebviewToExtension["type"]): boolean {
   return !UI_ONLY.has(type);
 }
 

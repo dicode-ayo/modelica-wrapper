@@ -75,12 +75,7 @@ export class DragMode implements GestureMode {
 
   constructor(private readonly emit: DragEmit) {}
 
-  /**
-   * True when the press never travelled far enough to have been a drag. The
-   * second press of a double-click is the one that matters: committed as a
-   * drag it moves the entity by a grid step, which then reads as the diagram
-   * shifting under a double-click.
-   */
+  /** True when the press never travelled far enough to have been a drag. */
   private withinSlop(e: PointerEvent): boolean {
     const press = this.pressClient;
     if (press === null) return false;
@@ -175,12 +170,25 @@ export class DragMode implements GestureMode {
     }
     const state = this.state;
     this.state = null;
-    // A press that stayed inside the slop was a click. Committing it writes a
-    // snapped move of one grid step for a gesture the user did not make.
-    if (this.withinSlop(e)) {
-      return;
+    // A press inside the slop was a click — the second press of a double-click
+    // is the one that matters — so it commits where it began: the host
+    // short-circuits a zero delta to the same layout and emits no change. The
+    // commit itself still has to be delivered, since it is what drops the draft
+    // and ends the interaction, and `resize`/`rotate`/`vertex` draft from
+    // `begin`, so a click on a handle would otherwise strand one.
+    const at = this.withinSlop(e) ? this.pressPoint(state, point) : point;
+    this.emitFor(state, at, e, false);
+  }
+
+  /** Where a within-slop press started, for the states that read a delta. */
+  private pressPoint(state: DragState, fallback: DiagramPoint): DiagramPoint {
+    switch (state.kind) {
+      case "move":
+      case "edge":
+        return { x: state.startX, y: state.startY };
+      default:
+        return fallback;
     }
-    this.emitFor(state, point, e, false);
   }
 
   private emitFor(

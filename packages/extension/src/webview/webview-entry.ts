@@ -297,12 +297,6 @@ class OmWebviewRoot extends LitElement {
     this.vscode?.postMessage(msg);
   }
 
-  /**
-   * Consecutive gestures land as one commit. Each carries the whole layout, so
-   * an earlier one holds nothing the later one lacks, and the host pays for one
-   * reconcile — a re-read plus one OMC write per moved component — instead of
-   * one per gesture.
-   */
   private onLayoutChange = (
     e: CustomEvent<LayoutEvents["om-graphical-layout-change"]>,
   ): void => {

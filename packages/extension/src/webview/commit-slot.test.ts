@@ -9,11 +9,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { DiagramLayout } from "@dicode/omc-client";
 
-import {
-  CommitSlot,
-  mustFollowQueuedChange,
-  type CommitScheduler,
-} from "./commit-slot.js";
+import { CommitSlot, type CommitScheduler } from "./commit-slot.js";
 import type { WebviewToExtension } from "./protocol.js";
 
 function layout(name: string): DiagramLayout {
@@ -150,7 +146,7 @@ describe("CommitSlot", () => {
   });
 });
 
-describe("mustFollowQueuedChange", () => {
+describe("CommitSlot ordering", () => {
   it("holds every message that reads or writes the class behind a commit", () => {
     const modelAffecting: Array<WebviewToExtension["type"]> = [
       "paste",
@@ -161,21 +157,24 @@ describe("mustFollowQueuedChange", () => {
       "resetComponentParameters",
       "changeClassRequest",
       "editComponent",
+      "editShape",
       "actionCheck",
       "actionSimulate",
     ];
     for (const type of modelAffecting) {
-      expect(mustFollowQueuedChange(type), type).toBe(true);
+      const { slot, sent } = makeSlot();
+      slot.commit(layout("a"));
+      slot.beforeSending(type);
+      expect(sent, type).toEqual([layout("a")]);
     }
   });
 
   it("orders an unrecognised message conservatively", () => {
     // A message type added later has to be opted out deliberately, not by
     // being forgotten.
-    expect(
-      mustFollowQueuedChange(
-        "somethingAddedLater" as WebviewToExtension["type"],
-      ),
-    ).toBe(true);
+    const { slot, sent } = makeSlot();
+    slot.commit(layout("a"));
+    slot.beforeSending("somethingAddedLater" as WebviewToExtension["type"]);
+    expect(sent).toEqual([layout("a")]);
   });
 });

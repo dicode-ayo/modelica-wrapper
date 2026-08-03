@@ -416,19 +416,19 @@ export class DiagramEditController {
   // (cleared the instant the timer fires) does not.
   private reverseSyncInFlight = false;
 
-  // Per-modal submit state, captured when a parameter modal opens and read
-  // back when it submits — mirrors the diagram panel's closure state.
+  // Per-modal submit state, captured when a modal opens and read back when it
+  // submits — mirrors the diagram panel's closure state.
   private classParamRefs: Record<string, ClassParameterRef> = {};
   private classParamInitialValues: Record<string, unknown> = {};
   private componentParamRefs: Record<string, ComponentParameterRef> = {};
   private componentParamInitialValues: Record<string, unknown> = {};
   private componentParamComponentName: string | null = null;
-  // The shape a shapeProperties modal is editing — captured on selection, read
+  // The shape a shapeProperties modal is editing — captured when it opens, read
   // back on submit.
   private shapeLayerKind: GraphicsLayer | null = null;
   private shapeIndex: number | null = null;
   private shapeKind: string | null = null;
-  // The exact shape captured at selection. The modal stays open across queued
+  // The exact shape captured when the modal opened. It stays open across queued
   // units, so an interleaved reverse-sync can re-fetch `prevLayout` with shifted
   // graphics indices; submit requires this identity so an edit can't land on a
   // different shape that now occupies the same index/kind/layer.
@@ -480,10 +480,8 @@ export class DiagramEditController {
    * job.
    */
   handle(msg: WebviewToExtension): Promise<void> {
-    // `reverseSyncIsRacing` flushes a pending reverse-sync timer as a side
-    // effect, so every message calls it: an undo has to land in OMC before the
-    // next unit reads the class.
-    const racing = this.reverseSyncIsRacing();
+    // Every message, so an undo lands in OMC before the next unit reads the class.
+    const racing = this.flushRacingReverseSync();
     if (msg.type === "change") {
       if (racing) {
         // The webview computed this against the diagram as it stood before the
@@ -519,14 +517,13 @@ export class DiagramEditController {
   }
 
   /**
-   * True while a foreign change hasn't finished syncing into OMC — whether
-   * it's still a pending timer (not yet enqueued) or already enqueued/running
-   * (`loadString`/refetch in flight). A pending timer is flushed here
-   * (cancelled and enqueued ahead of the caller) rather than left to fire on
-   * its own, so a racing edit never diffs against a `prevLayout` the sync
-   * hasn't reverted yet — whichever of the two windows it lands in.
+   * Flush a pending reverse sync ahead of the caller and report whether one is
+   * racing it — either still a timer (not yet enqueued) or already
+   * enqueued/running (`loadString`/refetch in flight). Flushing rather than
+   * letting the timer fire on its own is what keeps a racing edit from reading
+   * a class the sync has not reverted yet, whichever window it lands in.
    */
-  private reverseSyncIsRacing(): boolean {
+  private flushRacingReverseSync(): boolean {
     if (this.reverseTimer !== undefined) {
       this.reverseTimer.cancel();
       this.runReverseSyncNow();
@@ -540,7 +537,12 @@ export class DiagramEditController {
     this.reverseSyncInFlight = true;
     // Same reason the racing `change` above is dropped: this one was reported
     // against the pre-sync diagram too.
-    this.pendingChange = null;
+    if (this.pendingChange !== null) {
+      this.pendingChange = null;
+      this.reportError(
+        "the diagram was resynced from an external change — please retry the edit",
+      );
+    }
     void this.enqueue(() =>
       this.reverseSync().finally(() => {
         this.reverseSyncInFlight = false;
@@ -613,9 +615,6 @@ export class DiagramEditController {
       case "parametersCancel":
         this.onParametersCancel(msg.kind);
         return;
-      case "selectionChange":
-        this.onSelectionChange(msg.keys);
-        return;
       case "editShape":
         this.onEditShape(msg.key);
         return;
@@ -670,8 +669,11 @@ export class DiagramEditController {
       const result = await applyDiagramEdits(client, className, current, next);
       if (result === null) {
         // Nothing to write, but a withheld settle may have left `prevLayout`
-        // behind what OMC and the screen both already hold.
+        // behind what OMC and the screen both already hold. That also settles
+        // any debt: a null diff means the screen already matches canonical, so
+        // there is nothing left for an owed push to carry.
         this.prevLayout = current;
+        this.settleOwed = false;
         return;
       }
       await this.writeBuffer();
@@ -1112,13 +1114,6 @@ export class DiagramEditController {
     if (kind === "shapeProperties") this.clearShapeState();
   }
 
-  /** A captured shape is only the one that is still selected. */
-  private onSelectionChange(keys: string[]): void {
-    const key = keys.length === 1 ? keys[0] : undefined;
-    const parsed = key === undefined ? null : parseEntityKey(key);
-    if (parsed === null || !isShapeKey(parsed)) this.clearShapeState();
-  }
-
   /**
    * Open the shape properties modal, capturing the shape it was opened on so
    * the submit can refuse to land on a different one. Driven by a double
@@ -1289,7 +1284,7 @@ export class DiagramEditController {
 
 /**
  * Webview messages the icon editor honors. Shape draw/edit flows through
- * `change` and the `shapeProperties` modal (`selectionChange` +
+ * `change` and the `shapeProperties` modal (`editShape` +
  * `parametersSubmit`/`parametersCancel`); connector placement flows through
  * `addComponent` (restriction-gated in `onAddComponent`), and paste through the
  * same restriction in `pasteableItems`. Everything else — connections,
@@ -1299,7 +1294,6 @@ export class DiagramEditController {
 function iconHonorsMessage(msg: WebviewToExtension): boolean {
   switch (msg.type) {
     case "change":
-    case "selectionChange":
     case "editShape":
     case "addComponent":
     case "copySelection":
