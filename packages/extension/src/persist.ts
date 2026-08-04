@@ -105,7 +105,7 @@ export async function persistClassUnderWorkspace(
           ? [...base, nextSegment]
           : base;
       if (children.length > 0) {
-        await fsp.writeFile(orderFile, children.join("\n") + "\n", "utf8");
+        await guard.write(orderFile, children.join("\n") + "\n");
       }
     }
     newParents.push({ typeName: parentName, pkgFile });
@@ -121,7 +121,7 @@ export async function persistClassUnderWorkspace(
     if (!(await pathExists(orderFile))) {
       const children = await safeGetClassNames(client, qualifiedName);
       if (children.length > 0) {
-        await fsp.writeFile(orderFile, children.join("\n") + "\n", "utf8");
+        await guard.write(orderFile, children.join("\n") + "\n");
       }
     }
   } else {

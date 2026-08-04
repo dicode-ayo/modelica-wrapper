@@ -13,6 +13,9 @@
  *     from a path→class index, since the file can no longer be parsed), then
  *     re-list their enclosing scope.
  *
+ * A `package.order` edit resolves the owning package from the path→class index
+ * and reloads its `package.mo`, which re-derives the child order from disk.
+ *
  * The watcher leaves two kinds of edit alone:
  *   - our own disk writes, matched by content through the {@link SelfWriteGuard}
  *     so a save doesn't fight the custom editor's shadow-buffer sync;
@@ -27,6 +30,7 @@ import * as vscode from "vscode";
 
 import { enclosingScope } from "@dicode/modelica-lang-core";
 
+import { pathExists } from "./fs-util.js";
 import { log } from "./logger.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
 import {
@@ -47,6 +51,8 @@ export interface PathClassIndex {
   get(fsPath: string): string[] | undefined;
   set(fsPath: string, classNames: string[]): void;
   delete(fsPath: string): void;
+  /** Every indexed class at or under `qualifiedName`, itself included. */
+  classesUnder(qualifiedName: string): string[];
 }
 
 export function createPathClassIndex(): PathClassIndex {
@@ -56,6 +62,18 @@ export function createPathClassIndex(): PathClassIndex {
     get: (p) => byPath.get(key(p)),
     set: (p, names) => void byPath.set(key(p), names),
     delete: (p) => void byPath.delete(key(p)),
+    classesUnder(qualifiedName) {
+      const prefix = `${qualifiedName}.`;
+      const found: string[] = [];
+      for (const names of byPath.values()) {
+        for (const name of names) {
+          if (name === qualifiedName || name.startsWith(prefix)) {
+            found.push(name);
+          }
+        }
+      }
+      return found;
+    },
   };
 }
 
@@ -67,6 +85,8 @@ export interface MoWatcherDeps {
   index: PathClassIndex;
   /** Read a file's text; injected so tests need no real disk. */
   readFile: (fsPath: string) => Promise<string>;
+  /** True iff `fsPath` is still on disk; injected so tests need no real disk. */
+  fileExists: (fsPath: string) => Promise<boolean>;
   /** True when a declared class is open and dirty — reloading would clobber it. */
   isBusy: (fsPath: string, classNames: string[]) => boolean;
 }
@@ -77,10 +97,26 @@ function scopeOf(qualifiedName: string): string | null {
   return scope === "" ? null : scope;
 }
 
+/** `fsPath` is the file whose edit is being skipped — a delete has no "changed" to report either. */
 function warnBusy(fsPath: string, classNames: string[]): void {
   void vscode.window.showWarningMessage(
-    `Modelica: ${path.basename(fsPath)} changed on disk, but ${classNames.join(", ")} ` +
-      `has unsaved edits open — reload skipped. Save or close the editor to pick up the disk version.`,
+    `Modelica: ${classNames.join(", ")} has unsaved edits open, so the ` +
+      `${path.basename(fsPath)} reload was skipped. Save or close the editor to pick up the disk version.`,
+  );
+}
+
+/**
+ * A skipped reorder does not come back on its own: saving the busy editor
+ * reloads that member alone, and nothing re-runs the reorder. So this says
+ * what actually recovers it, where a `.mo` reload can promise the save is
+ * enough (issue #419).
+ */
+function warnReorderBusy(describedPath: string, classNames: string[]): void {
+  void vscode.window.showWarningMessage(
+    `Modelica: a class in ${classNames.join(", ")} has unsaved edits open, so ` +
+      `the ${path.basename(describedPath)} reload was skipped. Save or close ` +
+      `the editor, then edit ${path.basename(describedPath)} again or refresh ` +
+      `the library.`,
   );
 }
 
@@ -139,6 +175,119 @@ export async function handleMoChange(
     deps.libraryTree.iconChanged(name);
     deps.sourceProvider.notifySourceChanged(name);
   }
+}
+
+/** `dirname(orderFsPath)/package.mo` — the file that owns a `package.order`. */
+function orderOwner(orderFsPath: string): string {
+  return path.join(path.dirname(orderFsPath), "package.mo");
+}
+
+/**
+ * Reload the package that owns `pkgFile`, then re-list it. The class list
+ * itself is unaffected by a reorder, so the index needs no update.
+ *
+ * `describedPath` names the file whose edit triggered this, so a busy warning
+ * points at what the user touched rather than at `package.mo`.
+ */
+async function reorderPackage(
+  deps: MoWatcherDeps,
+  pkgFile: string,
+  describedPath: string,
+): Promise<void> {
+  const names = deps.index.get(pkgFile);
+  if (names === undefined || names.length === 0) {
+    log.warn(
+      "moWatcher",
+      `package.order edit for ${pkgFile}, but it is not indexed`,
+    );
+    return;
+  }
+  // Reloading the package re-reads every member from disk, so a dirty buffer
+  // for a *member* — not just the package itself — is at risk of being
+  // clobbered underneath its editor.
+  const affected = names.flatMap((name) => deps.index.classesUnder(name));
+  if (deps.isBusy(pkgFile, affected)) {
+    warnReorderBusy(describedPath, names);
+    return;
+  }
+
+  // `loadFile` on the package re-derives the child order from `package.order`,
+  // for nested packages as well as this one, and picks up a member added
+  // alongside it — see `package-order-reload.integration.test.ts`. Nothing has
+  // to be unloaded first, and nothing is: a failed reload leaves OMC holding
+  // the order it already had, which is what the tree goes on showing.
+  const client = await deps.ensureClient();
+  let loaded = false;
+  try {
+    ({ success: loaded } = await client.loadFile({ fileName: pkgFile }));
+  } catch (err) {
+    log.warn("moWatcher", `reload of ${pkgFile} threw: ${asMessage(err)}`);
+  }
+
+  const scopes = new Set<string | null>();
+  for (const name of names) {
+    scopes.add(name);
+    scopes.add(scopeOf(name));
+  }
+  for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
+  for (const name of names) {
+    deps.libraryTree.iconChanged(name);
+    deps.sourceProvider.notifySourceChanged(name);
+  }
+
+  if (!loaded) {
+    // pkgFile can vanish between the busy check above and here — a directory
+    // delete racing this reorder — in which case it's a delete, not a failed
+    // reorder, and handleMoDelete/handleOrderDelete reconcile it instead.
+    if (!(await deps.fileExists(pkgFile))) return;
+    log.warn("moWatcher", `reloading ${pkgFile} after a reorder failed`);
+    void vscode.window.showWarningMessage(
+      `Modelica: ${path.basename(describedPath)} could not be applied — ` +
+        `${names.join(", ")} still has the order OMC loaded before. Edit and ` +
+        `save ${path.basename(pkgFile)} to reload it.`,
+    );
+  }
+}
+
+/**
+ * React to a `package.order` file appearing or changing on disk: resolve the
+ * owning package from the sibling `package.mo` (already keyed in the
+ * path→class index) and re-derive its child order via {@link reorderPackage}.
+ */
+export async function handleOrderChange(
+  deps: MoWatcherDeps,
+  orderFsPath: string,
+): Promise<void> {
+  let text: string;
+  try {
+    text = await deps.readFile(orderFsPath);
+  } catch {
+    // Raced with a delete, or unreadable — nothing to react to.
+    return;
+  }
+  if (deps.guard.claim(orderFsPath, text)) return;
+  await reorderPackage(deps, orderOwner(orderFsPath), orderFsPath);
+}
+
+/**
+ * React to a `package.order` file being deleted — the package reverts to
+ * OMC's default child order, which still needs a fresh `loadFile` to take.
+ * There's no text left to run through the self-write guard, but a delete
+ * only ever removes explicit ordering, so there's nothing of ours to skip.
+ *
+ * Deleting a whole package directory fires this alongside a `.mo` delete for
+ * the same `package.mo`, in no guaranteed order. If the owning `package.mo`
+ * is already gone, the package itself was removed — `handleMoDelete` owns
+ * that case, and reordering a file that no longer exists would only produce
+ * a spurious "reload it" warning for what is really just a normal delete.
+ */
+export async function handleOrderDelete(
+  deps: MoWatcherDeps,
+  orderFsPath: string,
+): Promise<void> {
+  const pkgFile = orderOwner(orderFsPath);
+  if (!(await deps.fileExists(pkgFile))) return;
+  await reorderPackage(deps, pkgFile, orderFsPath);
 }
 
 /**
@@ -250,6 +399,7 @@ export function registerMoFileWatcher(deps: {
     guard: deps.guard,
     index,
     readFile: (fsPath) => fsp.readFile(fsPath, "utf8"),
+    fileExists: pathExists,
     isBusy: isDeclaredClassBusy,
   };
 
@@ -276,6 +426,8 @@ export function registerMoFileWatcher(deps: {
   };
 
   const watcher = vscode.workspace.createFileSystemWatcher("**/*.mo");
+  const orderWatcher =
+    vscode.workspace.createFileSystemWatcher("**/package.order");
   const subs = [
     watcher,
     watcher.onDidChange((uri) =>
@@ -286,6 +438,26 @@ export function registerMoFileWatcher(deps: {
     ),
     watcher.onDidDelete((uri) =>
       run(uri.fsPath, () => handleMoDelete(watcherDeps, uri.fsPath)),
+    ),
+    orderWatcher,
+    // Keyed by the owning package.mo, not the package.order path itself, so a
+    // reorder and a `.mo` event for that same package.mo can't run
+    // concurrently. A member file's own event keys on its own path and can
+    // still interleave with the reorder's reload.
+    orderWatcher.onDidChange((uri) =>
+      run(orderOwner(uri.fsPath), () =>
+        handleOrderChange(watcherDeps, uri.fsPath),
+      ),
+    ),
+    orderWatcher.onDidCreate((uri) =>
+      run(orderOwner(uri.fsPath), () =>
+        handleOrderChange(watcherDeps, uri.fsPath),
+      ),
+    ),
+    orderWatcher.onDidDelete((uri) =>
+      run(orderOwner(uri.fsPath), () =>
+        handleOrderDelete(watcherDeps, uri.fsPath),
+      ),
     ),
   ];
 

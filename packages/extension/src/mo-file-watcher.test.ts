@@ -13,6 +13,8 @@ import {
   createPathClassIndex,
   handleMoChange,
   handleMoDelete,
+  handleOrderChange,
+  handleOrderDelete,
   isDeclaredClassBusy,
   seedPathClassIndex,
   type MoWatcherDeps,
@@ -48,6 +50,7 @@ function makeDeps(overrides: Partial<MoWatcherDeps> = {}): {
     guard: createSelfWriteGuard(),
     index: createPathClassIndex(),
     readFile: async () => "model Bar end Bar;",
+    fileExists: async () => true,
     isBusy: () => false,
     ...overrides,
   };
@@ -182,6 +185,194 @@ describe("handleMoDelete", () => {
   });
 });
 
+const PKG_FILE = "/ws/My/Pkg/package.mo";
+const ORDER_FILE = "/ws/My/Pkg/package.order";
+
+describe("handleOrderChange", () => {
+  it("reorders the owning package by reloading it, then re-lists it", async () => {
+    const { deps, client, childrenChanged, iconChanged, notifySourceChanged } =
+      makeDeps({ readFile: async () => "B\nA\n" });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    // A reload re-derives the child order from `package.order`, so nothing is
+    // unloaded first — see `package-order-reload.integration.test.ts`.
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: PKG_FILE });
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+    expect(childrenChanged).toHaveBeenCalledWith("My");
+    expect(iconChanged).toHaveBeenCalledWith("My.Pkg");
+    expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg");
+  });
+
+  it("ignores our own package.order write matched by content through the guard", async () => {
+    const guard = createSelfWriteGuard();
+    guard.record(ORDER_FILE, "A\nB\n");
+    const { deps, client } = makeDeps({
+      guard,
+      readFile: async () => "A\nB\n",
+    });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(client.loadFile).not.toHaveBeenCalled();
+  });
+
+  it("no-ops when the owning package.mo isn't indexed", async () => {
+    const { deps, client } = makeDeps({ readFile: async () => "A\n" });
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(client.loadFile).not.toHaveBeenCalled();
+  });
+
+  it("skips a reorder that would clobber an unsaved buffer, and names package.order in the warning", async () => {
+    const { deps, client, childrenChanged } = makeDeps({
+      readFile: async () => "A\nB\n",
+      isBusy: () => true,
+    });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(childrenChanged).not.toHaveBeenCalled();
+    // The triggering edit was to package.order, not package.mo — the warning
+    // must name the file the user actually touched.
+    expect(recordedMessages).toContainEqual(
+      expect.objectContaining({
+        level: "warning",
+        message: expect.stringContaining("package.order"),
+      }),
+    );
+  });
+
+  it("treats a busy nested member as busy too, since deleteClass cascades to the whole subtree", async () => {
+    const seenNames: string[][] = [];
+    const { deps, client } = makeDeps({
+      readFile: async () => "A\nB\n",
+      isBusy: (_fsPath, classNames) => {
+        seenNames.push(classNames);
+        return classNames.includes("My.Pkg.Bar");
+      },
+    });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+    deps.index.set("/ws/My/Pkg/Bar.mo", ["My.Pkg.Bar"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(seenNames[0]).toEqual(
+      expect.arrayContaining(["My.Pkg", "My.Pkg.Bar"]),
+    );
+  });
+
+  it("bails when package.order can't be read", async () => {
+    const { deps, client } = makeDeps({
+      readFile: async () => {
+        throw new Error("ENOENT");
+      },
+    });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.deleteClass).not.toHaveBeenCalled();
+  });
+
+  it("still re-lists and warns when the reload throws, not just when it reports failure", async () => {
+    // A wedged channel or a timeout must not leave the tree unrefreshed and
+    // the user untold — `success: false` was handled; a rejection was not.
+    const { deps, client, childrenChanged } = makeDeps({
+      readFile: async () => "B\nA\n",
+      fileExists: async () => true,
+    });
+    client.loadFile.mockRejectedValue(new Error("omc channel timed out"));
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+    expect(recordedMessages).toContainEqual(
+      expect.objectContaining({ level: "warning" }),
+    );
+  });
+
+  it("still re-lists the tree and warns when the reload fails, so the tree reflects OMC's real state", async () => {
+    const { deps, client, childrenChanged } = makeDeps({
+      readFile: async () => "A\nB\n",
+    });
+    client.loadFile.mockResolvedValue({ success: false });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    // The class was already deleted before the failed reload — re-listing
+    // pulls whatever OMC now actually holds instead of a stale, deleted view.
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+    expect(recordedMessages).toContainEqual(
+      expect.objectContaining({ level: "warning" }),
+    );
+  });
+
+  it("still re-lists but suppresses the out-of-sync warning when package.mo vanished mid-reorder", async () => {
+    // A directory delete racing this reorder: the class was already deleted,
+    // the reload against the now-gone file fails, but this is a delete, not
+    // a broken reorder — handleMoDelete/handleOrderDelete own it instead.
+    const { deps, client, childrenChanged } = makeDeps({
+      readFile: async () => "A\nB\n",
+      fileExists: async () => false,
+    });
+    client.loadFile.mockResolvedValue({ success: false });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+    expect(recordedMessages).toHaveLength(0);
+  });
+});
+
+describe("handleOrderDelete", () => {
+  it("reloads the owning package back to its default order", async () => {
+    const { deps, client, childrenChanged } = makeDeps();
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderDelete(deps, ORDER_FILE);
+
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: PKG_FILE });
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+  });
+
+  it("defers while a declared class is open and dirty", async () => {
+    const { deps, client } = makeDeps({ isBusy: () => true });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderDelete(deps, ORDER_FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(recordedMessages).toContainEqual(
+      expect.objectContaining({ level: "warning" }),
+    );
+  });
+
+  it("no-ops silently when the owning package.mo is gone too — a whole-directory delete, not a reorder", async () => {
+    const { deps, client } = makeDeps({ fileExists: async () => false });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderDelete(deps, ORDER_FILE);
+
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(recordedMessages).toHaveLength(0);
+  });
+});
+
 describe("isDeclaredClassBusy", () => {
   it("is true for a dirty custom editor over the class source", () => {
     setTabGroups([
@@ -252,5 +443,27 @@ describe("createPathClassIndex", () => {
     const index = createPathClassIndex();
     index.set("/ws/pkg/Bar.mo", ["Bar"]);
     expect(index.get("/ws/pkg/../pkg/Bar.mo")).toEqual(["Bar"]);
+  });
+
+  describe("classesUnder", () => {
+    it("includes the package itself and every class nested under it", () => {
+      const index = createPathClassIndex();
+      index.set("/ws/My/Pkg/package.mo", ["My.Pkg"]);
+      index.set("/ws/My/Pkg/Bar.mo", ["My.Pkg.Bar"]);
+      index.set("/ws/My/Other.mo", ["My.Other"]);
+
+      expect(index.classesUnder("My.Pkg")).toEqual(
+        expect.arrayContaining(["My.Pkg", "My.Pkg.Bar"]),
+      );
+      expect(index.classesUnder("My.Pkg")).not.toContain("My.Other");
+    });
+
+    it("doesn't treat a same-prefixed sibling as nested", () => {
+      const index = createPathClassIndex();
+      index.set("/ws/My/Pkg.mo", ["My.Pkg"]);
+      index.set("/ws/My/PkgTwo.mo", ["My.PkgTwo"]);
+
+      expect(index.classesUnder("My.Pkg")).toEqual(["My.Pkg"]);
+    });
   });
 });
