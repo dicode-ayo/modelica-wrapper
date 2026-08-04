@@ -49,6 +49,8 @@ function start(
     point,
     shiftKey: opts.shiftKey ?? false,
     getSelectionKeys: () => opts.selection ?? [],
+    clientX: point.x,
+    clientY: point.y,
   };
 }
 
@@ -178,5 +180,72 @@ describe("DragMode", () => {
     const { mode } = setup();
 
     expect(mode.begin(start(edge, { x: 0, y: 0 }))).toBe(false);
+  });
+});
+
+/** `DragEvents` is a union, so `type` alone can't narrow `detail`. */
+function isDragEvent(
+  e: CapturedEvent<keyof DragEvents>,
+): e is CapturedEvent<"drag"> {
+  return e.type === "drag";
+}
+
+function isResizeEvent(
+  e: CapturedEvent<keyof DragEvents>,
+): e is CapturedEvent<"resize"> {
+  return e.type === "resize";
+}
+
+describe("DragMode drag slop", () => {
+  /**
+   * The second press of a double-click starts a drag on the entity already
+   * under the cursor. Committed, the mouse-up passes ran over it — the grid
+   * snap moved an off-grid entity, the angle snap squared a freely rotated one
+   * — so double-clicking a shape to open its properties edited it, and the
+   * properties submit was then refused for having a stale snapshot.
+   */
+  it("cancels rather than commits when the press never leaves the slop", () => {
+    const tn = node("component", "R1");
+    const { mode, events } = setup();
+
+    expect(mode.begin(start(tn, { x: 100, y: 100 }))).toBe(true);
+    mode.update({ x: 102, y: 102 }, move(102, 102));
+    mode.commit({ x: 102, y: 102 }, move(102, 102));
+
+    expect(events.at(-1)?.type).toBe("dragCancel");
+    expect(events.filter(isDragEvent).filter((e) => !e.detail.draft)).toEqual(
+      [],
+    );
+  });
+
+  it("cancels a handle press too, so a click on one leaves no draft behind", () => {
+    // `resize` drafts from `begin`, so without the cancel the preview and the
+    // interaction state would have nothing left to end them.
+    const wrapper = node("shape", "rectangle:0");
+    const handle = node("handle", "br");
+    wrapper.addChild(handle);
+    const { mode, events } = setup();
+
+    expect(mode.begin(start(handle, { x: 100, y: 100 }))).toBe(true);
+    mode.commit({ x: 103, y: 103 }, move(103, 103));
+
+    expect(events.at(-1)?.type).toBe("dragCancel");
+    // And no committed resize, which would have re-snapped the corner.
+    expect(events.filter(isResizeEvent).filter((e) => !e.detail.draft)).toEqual(
+      [],
+    );
+  });
+
+  it("commits a move once the press travels past the slop", () => {
+    const tn = node("component", "R1");
+    const { mode, events } = setup();
+
+    expect(mode.begin(start(tn, { x: 100, y: 100 }))).toBe(true);
+    mode.update({ x: 140, y: 100 }, move(140, 100));
+    mode.commit({ x: 140, y: 100 }, move(140, 100));
+
+    const committed = events.filter(isDragEvent).filter((e) => !e.detail.draft);
+    expect(committed).toHaveLength(1);
+    expect(committed.at(0)?.detail).toMatchObject({ dx: 40, dy: 0 });
   });
 });

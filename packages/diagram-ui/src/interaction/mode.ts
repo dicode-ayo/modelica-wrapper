@@ -248,6 +248,8 @@ export class ModeRouter {
       point,
       shiftKey: e.shiftKey,
       getSelectionKeys: this.getSelectionKeys,
+      clientX: e.clientX,
+      clientY: e.clientY,
     });
     if (started) {
       this.active = mode;
