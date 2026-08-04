@@ -1,3 +1,5 @@
+import * as path from "node:path";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -17,6 +19,7 @@ import {
   handleOrderDelete,
   isDeclaredClassBusy,
   seedPathClassIndex,
+  watcherRunKey,
   type MoWatcherDeps,
 } from "./mo-file-watcher.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
@@ -127,6 +130,29 @@ describe("handleMoChange", () => {
     );
   });
 
+  it("defers deleteClass-ing a removed package whose nested member — in a different file — is open dirty as plain text", async () => {
+    const PARENT_FILE = "/ws/My/Parent.mo";
+    const NESTED_FILE = "/ws/My/Pkg/Bar.mo";
+    setTabGroups([
+      {
+        viewColumn: 1,
+        tabs: [
+          { input: new TabInputText(Uri.file(NESTED_FILE)), isDirty: true },
+        ],
+      },
+    ]);
+    const { deps, client } = makeDeps({ isBusy: isDeclaredClassBusy });
+    client.parseFile.mockResolvedValue({ classNames: ["My.Kept"] });
+    // PARENT_FILE used to also declare "My.Pkg" (now removed from source);
+    // "My.Pkg" cascades deleteClass to "My.Pkg.Bar", declared in NESTED_FILE.
+    deps.index.set(PARENT_FILE, ["My.Kept", "My.Pkg"]);
+    deps.index.set(NESTED_FILE, ["My.Pkg.Bar"]);
+
+    await handleMoChange(deps, PARENT_FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+  });
+
   it("does not touch the tree when loadFile fails", async () => {
     const { deps, client, childrenChanged } = makeDeps();
     client.loadFile.mockResolvedValue({ success: false });
@@ -177,6 +203,27 @@ describe("handleMoDelete", () => {
     deps.index.set(FILE, ["My.Pkg.Bar"]);
 
     await handleMoDelete(deps, FILE);
+
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(recordedMessages).toContainEqual(
+      expect.objectContaining({ level: "warning" }),
+    );
+  });
+
+  it("defers deleting a package whose nested member — in a different file — is open dirty as plain text", async () => {
+    const PKG_FILE = "/ws/My/Pkg/package.mo";
+    const BAR_FILE = "/ws/My/Pkg/Bar.mo";
+    setTabGroups([
+      {
+        viewColumn: 1,
+        tabs: [{ input: new TabInputText(Uri.file(BAR_FILE)), isDirty: true }],
+      },
+    ]);
+    const { deps, client } = makeDeps({ isBusy: isDeclaredClassBusy });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+    deps.index.set(BAR_FILE, ["My.Pkg.Bar"]);
+
+    await handleMoDelete(deps, PKG_FILE);
 
     expect(client.deleteClass).not.toHaveBeenCalled();
     expect(recordedMessages).toContainEqual(
@@ -251,11 +298,13 @@ describe("handleOrderChange", () => {
     );
   });
 
-  it("treats a busy nested member as busy too, since deleteClass cascades to the whole subtree", async () => {
+  it("treats a busy nested member as busy too, since a reload cascades to the whole subtree", async () => {
+    const seenFsPaths: string[][] = [];
     const seenNames: string[][] = [];
     const { deps, client } = makeDeps({
       readFile: async () => "A\nB\n",
-      isBusy: (_fsPath, classNames) => {
+      isBusy: (fsPaths, classNames) => {
+        seenFsPaths.push(fsPaths);
         seenNames.push(classNames);
         return classNames.includes("My.Pkg.Bar");
       },
@@ -268,6 +317,35 @@ describe("handleOrderChange", () => {
     expect(client.deleteClass).not.toHaveBeenCalled();
     expect(seenNames[0]).toEqual(
       expect.arrayContaining(["My.Pkg", "My.Pkg.Bar"]),
+    );
+    // The nested member's own file, not just the package's, has to be checked
+    // for a dirty plain-text buffer — that file is what a reload would clobber.
+    expect(seenFsPaths[0]).toEqual(
+      expect.arrayContaining([PKG_FILE, "/ws/My/Pkg/Bar.mo"]),
+    );
+  });
+
+  it("blocks a reorder when a nested member — not the package itself — is open dirty as plain text", async () => {
+    const BAR_FILE = "/ws/My/Pkg/Bar.mo";
+    setTabGroups([
+      {
+        viewColumn: 1,
+        tabs: [{ input: new TabInputText(Uri.file(BAR_FILE)), isDirty: true }],
+      },
+    ]);
+    const { deps, client, childrenChanged } = makeDeps({
+      readFile: async () => "A\nB\n",
+      isBusy: isDeclaredClassBusy,
+    });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+    deps.index.set(BAR_FILE, ["My.Pkg.Bar"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(childrenChanged).not.toHaveBeenCalled();
+    expect(recordedMessages).toContainEqual(
+      expect.objectContaining({ level: "warning" }),
     );
   });
 
@@ -389,7 +467,7 @@ describe("isDeclaredClassBusy", () => {
         ],
       },
     ]);
-    expect(isDeclaredClassBusy(FILE, ["My.Pkg.Bar"])).toBe(true);
+    expect(isDeclaredClassBusy([FILE], ["My.Pkg.Bar"])).toBe(true);
   });
 
   it("is true for a dirty text editor over the file on disk", () => {
@@ -399,7 +477,20 @@ describe("isDeclaredClassBusy", () => {
         tabs: [{ input: new TabInputText(Uri.file(FILE)), isDirty: true }],
       },
     ]);
-    expect(isDeclaredClassBusy(FILE, ["My.Pkg.Bar"])).toBe(true);
+    expect(isDeclaredClassBusy([FILE], ["My.Pkg.Bar"])).toBe(true);
+  });
+
+  it("is true for a dirty text editor over any file in a multi-file fsPaths list", () => {
+    const OTHER_FILE = "/ws/My/Pkg/Other.mo";
+    setTabGroups([
+      {
+        viewColumn: 1,
+        tabs: [
+          { input: new TabInputText(Uri.file(OTHER_FILE)), isDirty: true },
+        ],
+      },
+    ]);
+    expect(isDeclaredClassBusy([FILE, OTHER_FILE], ["My.Pkg.Bar"])).toBe(true);
   });
 
   it("is false when the matching tab is clean", () => {
@@ -417,7 +508,45 @@ describe("isDeclaredClassBusy", () => {
         ],
       },
     ]);
-    expect(isDeclaredClassBusy(FILE, ["My.Pkg.Bar"])).toBe(false);
+    expect(isDeclaredClassBusy([FILE], ["My.Pkg.Bar"])).toBe(false);
+  });
+});
+
+describe("watcherRunKey", () => {
+  const MEMBER_FILE = "/ws/My/Pkg/Bar.mo";
+
+  it("resolves a nested member's key to its owning package's file", () => {
+    const index = createPathClassIndex();
+    index.set(PKG_FILE, ["My.Pkg"]);
+    index.set(MEMBER_FILE, ["My.Pkg.Bar"]);
+
+    expect(watcherRunKey(index, MEMBER_FILE)).toBe(PKG_FILE);
+  });
+
+  it("matches the key a package.order event for the same package resolves to", () => {
+    // registerMoFileWatcher keys a package.order event on
+    // dirname(orderPath)/package.mo — a member's own event has to land on
+    // that same key to serialize against a reorder of its package.
+    const index = createPathClassIndex();
+    index.set(PKG_FILE, ["My.Pkg"]);
+    index.set(MEMBER_FILE, ["My.Pkg.Bar"]);
+
+    expect(watcherRunKey(index, MEMBER_FILE)).toBe(
+      path.join(path.dirname("/ws/My/Pkg/package.order"), "package.mo"),
+    );
+  });
+
+  it("falls back to the file's own path for a top-level class", () => {
+    const index = createPathClassIndex();
+    index.set("/ws/Top.mo", ["Top"]);
+
+    expect(watcherRunKey(index, "/ws/Top.mo")).toBe("/ws/Top.mo");
+  });
+
+  it("falls back to the file's own path when the file isn't indexed yet", () => {
+    const index = createPathClassIndex();
+
+    expect(watcherRunKey(index, "/ws/New.mo")).toBe("/ws/New.mo");
   });
 });
 
@@ -445,17 +574,30 @@ describe("createPathClassIndex", () => {
     expect(index.get("/ws/pkg/../pkg/Bar.mo")).toEqual(["Bar"]);
   });
 
-  describe("classesUnder", () => {
-    it("includes the package itself and every class nested under it", () => {
+  describe("filesUnder", () => {
+    it("pairs the package's own file and every nested member's file with just its matching classes", () => {
       const index = createPathClassIndex();
       index.set("/ws/My/Pkg/package.mo", ["My.Pkg"]);
       index.set("/ws/My/Pkg/Bar.mo", ["My.Pkg.Bar"]);
       index.set("/ws/My/Other.mo", ["My.Other"]);
 
-      expect(index.classesUnder("My.Pkg")).toEqual(
-        expect.arrayContaining(["My.Pkg", "My.Pkg.Bar"]),
+      const found = index.filesUnder("My.Pkg");
+
+      expect(found).toEqual(
+        expect.arrayContaining([
+          {
+            fsPath: path.resolve("/ws/My/Pkg/package.mo"),
+            classNames: ["My.Pkg"],
+          },
+          {
+            fsPath: path.resolve("/ws/My/Pkg/Bar.mo"),
+            classNames: ["My.Pkg.Bar"],
+          },
+        ]),
       );
-      expect(index.classesUnder("My.Pkg")).not.toContain("My.Other");
+      expect(found).not.toContainEqual(
+        expect.objectContaining({ fsPath: path.resolve("/ws/My/Other.mo") }),
+      );
     });
 
     it("doesn't treat a same-prefixed sibling as nested", () => {
@@ -463,7 +605,34 @@ describe("createPathClassIndex", () => {
       index.set("/ws/My/Pkg.mo", ["My.Pkg"]);
       index.set("/ws/My/PkgTwo.mo", ["My.PkgTwo"]);
 
-      expect(index.classesUnder("My.Pkg")).toEqual(["My.Pkg"]);
+      expect(index.filesUnder("My.Pkg")).toEqual([
+        { fsPath: path.resolve("/ws/My/Pkg.mo"), classNames: ["My.Pkg"] },
+      ]);
+    });
+  });
+
+  describe("pathOf", () => {
+    it("resolves a class's own file", () => {
+      const index = createPathClassIndex();
+      index.set("/ws/My/Pkg/package.mo", ["My.Pkg"]);
+
+      expect(index.pathOf("My.Pkg")).toBe(
+        path.resolve("/ws/My/Pkg/package.mo"),
+      );
+    });
+
+    it("is undefined for a class that isn't indexed", () => {
+      const index = createPathClassIndex();
+
+      expect(index.pathOf("My.Missing")).toBeUndefined();
+    });
+
+    it("forgets a class's prior file once that path is re-set without it", () => {
+      const index = createPathClassIndex();
+      index.set("/ws/My/Pkg/File.mo", ["My.Pkg.A", "My.Pkg.B"]);
+      index.set("/ws/My/Pkg/File.mo", ["My.Pkg.A"]);
+
+      expect(index.pathOf("My.Pkg.B")).toBeUndefined();
     });
   });
 });
