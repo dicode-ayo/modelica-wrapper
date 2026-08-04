@@ -1468,6 +1468,10 @@ export class OmGraphicalLayout extends LitElement {
       return;
     }
     switch (type) {
+      case "dragCancel":
+        this.draftLayout = null;
+        this.endInteraction();
+        return;
       case "drag": {
         const d = detail as DragEvents["drag"];
         // Snap the drag delta to the active grid so components glide
@@ -1925,6 +1929,15 @@ export class OmGraphicalLayout extends LitElement {
     detail: LayoutEvents[K],
   ): void {
     emitEvent(this, name, detail);
+  }
+
+  /**
+   * True from `pointerdown` until the gesture or tool draw ends. Swapping
+   * `layout` while this holds moves what the user has under the pointer, so a
+   * host with a refreshed layout to push drops it and waits for the commit.
+   */
+  get gestureActive(): boolean {
+    return this.modeRouter?.isGestureActive() ?? false;
   }
 
   /** Returns the current selection as an array of canonical keys. */

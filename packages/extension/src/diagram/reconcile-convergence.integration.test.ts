@@ -1,0 +1,126 @@
+/**
+ * The reconcile settles nothing after a successful reported edit: the webview
+ * already renders it, so the class is only re-read as the base of the *next*
+ * one. That rests on the round trip being stable — reconciling the same report
+ * a second time must find nothing left to write.
+ *
+ * If it does not, the difference is invisible. The user sees their own layout,
+ * OMC holds something slightly else, and every later gesture silently rewrites
+ * the same fields. Mocks cannot answer this; only OMC's own producer can.
+ *
+ * Gating mirrors the other integration suites: auto-runs when `omc` is on PATH
+ * (or `OMC_PATH` / `OMC_INTEGRATION=1` is set), auto-skips otherwise.
+ */
+
+import { randomBytes } from "node:crypto";
+
+import { beforeEach, expect, it } from "vitest";
+
+import { OmcClient, type DiagramLayout } from "@dicode/omc-client";
+
+import { describeIf } from "../../test-support/integration-gate.js";
+import { applyEdits } from "./apply-edits.js";
+import { diffLayouts } from "./diff-layout.js";
+import { fetchDiagramLayout } from "./open-diagram.js";
+
+describeIf("reconcile convergence against real OMC", () => {
+  let client: OmcClient;
+  let cls: string;
+
+  beforeEach(async () => {
+    client = await OmcClient.create({ omcPath: process.env.OMC_PATH ?? "" });
+    const pkg = `MwConverge_${randomBytes(4).toString("hex")}`;
+    cls = `${pkg}.T`;
+    await client.loadModel({ typeName: "Modelica" });
+    await client.loadString({
+      data: `within ;
+package ${pkg}
+  model T
+    Modelica.Blocks.Sources.Step step1 annotation(Placement(transformation(extent = {{-60, -10}, {-40, 10}})));
+    Modelica.Blocks.Math.Gain gain1 annotation(Placement(transformation(extent = {{-10, -10}, {10, 10}})));
+  equation
+    connect(step1.y, gain1.u) annotation(Line(points = {{-39, 0}, {-12, 0}}));
+    annotation(Diagram(coordinateSystem(extent = {{-100, -100}, {100, 100}}), graphics = {
+      Rectangle(extent = {{-80, 40}, {80, -40}}, lineColor = {255, 0, 0})}));
+  end T;
+end ${pkg};
+`,
+      filename: `${pkg}.mo`,
+      merge: false,
+    });
+  });
+
+  /** What a drag reports: every component shifted, wires re-routed with them. */
+  function shifted(base: DiagramLayout): DiagramLayout {
+    const next = structuredClone(base) as DiagramLayout;
+    const bump = (extent: number[][]): number[][] =>
+      extent.map(([x, y]) => [(x ?? 0) + 20, (y ?? 0) + 30]);
+    for (const comp of Object.values(next.components)) {
+      const p = comp.placement as { extent: number[][] };
+      p.extent = bump(p.extent);
+    }
+    for (const conn of next.connections) {
+      const c = conn as { waypoints?: number[][] };
+      if (c.waypoints) c.waypoints = bump(c.waypoints);
+    }
+    return next;
+  }
+
+  it("finds nothing left to write when the same report is reconciled twice", async () => {
+    const base = await fetchDiagramLayout(client, cls);
+    const reported = shifted(base);
+
+    const first = diffLayouts(base, reported);
+    expect(first.length).toBeGreaterThan(0);
+    const applied = await applyEdits(client, cls, first, undefined, {
+      snapshot: true,
+    });
+    expect(applied.failed).toEqual([]);
+
+    // The base the next gesture reconciles against. Diffing the same report
+    // against it is the second reconcile of an unchanged diagram.
+    const afterWrite = await fetchDiagramLayout(client, cls);
+    expect(diffLayouts(afterWrite, reported)).toEqual([]);
+  });
+
+  it("answers a drawn shape with every default filled in, which is why a graphics write settles", async () => {
+    // The webview sends a shape carrying what the user chose. OMC returns it
+    // with `pattern`, `fillPattern`, `lineThickness` and the ellipse angles
+    // materialised, so the two never compare equal — and a reconcile that did
+    // not adopt the canonical shape would re-write it on every later gesture,
+    // silently, for as long as the shape lives. `applyDiagramEdits` reports
+    // `touchedGraphics` so the controller settles and the webview adopts it.
+    const base = await fetchDiagramLayout(client, cls);
+    const withShape = structuredClone(base) as DiagramLayout;
+    const layer = withShape.diagramLayers.at(0);
+    if (layer === undefined) throw new Error("no own diagram layer");
+    const drawn = {
+      kind: "ellipse",
+      extent: [
+        [10, 10],
+        [30, 30],
+      ],
+      lineColor: [0, 0, 255],
+      fillColor: [255, 255, 0],
+    };
+    layer.shapes = [...layer.shapes, drawn] as (typeof layer)["shapes"];
+
+    const first = diffLayouts(base, withShape);
+    expect(first.some((e) => e.kind.startsWith("graphics"))).toBe(true);
+    const applied = await applyEdits(client, cls, first, undefined, {
+      snapshot: true,
+    });
+    expect(applied.failed).toEqual([]);
+
+    const afterWrite = await fetchDiagramLayout(client, cls);
+    const canonical = afterWrite.diagramLayers.at(0)?.shapes.at(-1);
+    expect(canonical).toMatchObject(drawn);
+    // More than it was sent, which is the whole point.
+    expect(Object.keys(canonical ?? {}).length).toBeGreaterThan(
+      Object.keys(drawn).length,
+    );
+    // And having adopted it, the next reconcile finds nothing to write.
+    const adopted = structuredClone(afterWrite) as DiagramLayout;
+    expect(diffLayouts(afterWrite, adopted)).toEqual([]);
+  });
+});

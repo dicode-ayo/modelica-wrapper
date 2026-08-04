@@ -26,6 +26,13 @@ export type CompatCheck = (
 ) => { ok: boolean; reason?: string } | null;
 
 export interface DragEvents {
+  /**
+   * The press ended without having been a drag. Nothing was moved, so the host
+   * drops its draft and ends the interaction without touching the layout —
+   * committing instead would run the mouse-up passes (grid snap, angle snap)
+   * over an entity the user only clicked.
+   */
+  dragCancel: Record<string, never>;
   drag: {
     keys: string[];
     dx: number;
@@ -122,6 +129,11 @@ export interface GestureStart {
   point: DiagramPoint;
   shiftKey: boolean;
   getSelectionKeys: SelectionProvider;
+  /** Press position in client pixels. Judging a press against the drag slop
+   *  needs screen space — the same travel is a different number of diagram
+   *  units at every zoom. */
+  clientX: number;
+  clientY: number;
 }
 
 /**

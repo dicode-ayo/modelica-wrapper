@@ -35,6 +35,8 @@ function emptyStart(point: { x: number; y: number }): GestureStart {
     point,
     shiftKey: false,
     getSelectionKeys: () => [],
+    clientX: 0,
+    clientY: 0,
   };
 }
 
@@ -98,6 +100,8 @@ describe("SelectMode", () => {
       point: { x: 5, y: 5 },
       shiftKey: false,
       getSelectionKeys: () => [],
+      clientX: 5,
+      clientY: 5,
     });
     expect(started).toBe(false);
     expect(rects).toHaveLength(0);
