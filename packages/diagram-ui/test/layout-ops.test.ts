@@ -1584,7 +1584,7 @@ describe("applyAddGraphic", () => {
       [0, 0],
       [10, 10],
     ]);
-    const { layout: next, key } = applyAddGraphic(layout, "diagram", shape);
+    const { layout: next, key } = applyAddGraphic(layout, shape);
     expect(next.diagramLayers).toEqual([{ from: "Demo", shapes: [shape] }]);
     // Pure — the input layout is untouched.
     expect(layout.diagramLayers).toEqual([]);
@@ -1605,7 +1605,7 @@ describe("applyAddGraphic", () => {
       [0, 0],
       [10, 10],
     ]);
-    const { layout: next, key } = applyAddGraphic(layout, "diagram", shape);
+    const { layout: next, key } = applyAddGraphic(layout, shape);
     expect(next.diagramLayers.at(0)).toEqual({
       from: "Base",
       shapes: [inherited],
@@ -1625,17 +1625,19 @@ describe("applyAddGraphic", () => {
       [0, 0],
       [10, 10],
     ]);
-    const { key } = applyAddGraphic(layout, "diagram", shape);
+    const { key } = applyAddGraphic(layout, shape);
     expect(key).toBe("shape:rectangle:1");
   });
 
-  it("targets the icon layer when asked", () => {
-    const layout = baseLayout();
+  it("targets the layer the view edits", () => {
+    // The layer follows `layout.kind`, so an icon view's draw cannot land on
+    // the diagram layer by a caller passing the wrong one.
+    const layout = { ...baseLayout(), kind: "icon" as const };
     const shape = buildExtentShape("rectangle", [
       [0, 0],
       [10, 10],
     ]);
-    const { layout: next } = applyAddGraphic(layout, "icon", shape);
+    const { layout: next } = applyAddGraphic(layout, shape);
     expect(next.iconLayers).toEqual([{ from: "Demo", shapes: [shape] }]);
     expect(next.diagramLayers).toEqual([]);
   });

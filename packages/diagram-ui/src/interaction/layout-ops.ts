@@ -1827,25 +1827,22 @@ export interface AddGraphicResult {
  */
 export function applyAddGraphic(
   layout: DiagramLayout,
-  layer: "icon" | "diagram",
   shape: Shape,
 ): AddGraphicResult {
-  const field = layer === "icon" ? "iconLayers" : "diagramLayers";
-  const layers = layout[field];
-  const index = layers.findIndex((l) => l.from === layout.className);
-  const own = index < 0 ? undefined : layers[index];
-  if (own === undefined) {
+  const own = ownLayer(layout);
+  if (own === null) {
+    const field = layout.kind === "icon" ? "iconLayers" : "diagramLayers";
     const created: IconLayer = { from: layout.className, shapes: [shape] };
     return {
-      layout: { ...layout, [field]: [...layers, created] },
+      layout: { ...layout, [field]: [...layout[field], created] },
       key: formatShapeKey(shape.kind, 0),
     };
   }
-  const next = layers.map((l, i) =>
-    i === index ? { ...l, shapes: [...l.shapes, shape] } : l,
-  );
   return {
-    layout: { ...layout, [field]: next },
+    layout: replaceOwnShapes(layout, own.field, own.index, [
+      ...own.shapes,
+      shape,
+    ]),
     key: formatShapeKey(shape.kind, own.shapes.length),
   };
 }

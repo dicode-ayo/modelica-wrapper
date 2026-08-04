@@ -1731,11 +1731,7 @@ export class OmGraphicalLayout extends LitElement {
       this.endInteraction();
       return;
     }
-    const { layout: next, key } = applyAddGraphic(
-      this.layout,
-      this.layout.kind,
-      draw.shape,
-    );
+    const { layout: next, key } = applyAddGraphic(this.layout, draw.shape);
     if (draw.phase === "draft") {
       this.draftLayout = next;
       this.setInteractionState({ kind: "drawing" });
