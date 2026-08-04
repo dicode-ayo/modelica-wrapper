@@ -175,6 +175,22 @@ describe("captureClipboardItems", () => {
     ]);
   });
 
+  it("captures a vector component's array dimensions", async () => {
+    const base = layout();
+    const gain1 = base.components["gain1"];
+    if (gain1 === undefined) throw new Error("expected gain1 in the layout");
+    const arrayed: DiagramLayout = {
+      ...base,
+      components: { ...base.components, gain1: { ...gain1, dims: ["2"] } },
+    };
+    const items = await captureClipboardItems(copyClient(), arrayed, [
+      "c:gain1",
+    ]);
+    expect(items).toEqual([
+      expect.objectContaining({ kind: "component", dims: ["2"] }),
+    ]);
+  });
+
   it("captures a standalone connector", async () => {
     const items = await captureClipboardItems(copyClient(), layout(), ["k:u"]);
     expect(items).toHaveLength(1);
@@ -294,13 +310,15 @@ describe("captureClipboardItems: connections", () => {
     expect(items.filter((i) => i.kind === "connection")).toHaveLength(1);
   });
 
-  it("refuses a wire onto a subscripted component", async () => {
-    // `addComponent` writes a scalar, so the pasted copy of `bus[2]` has no
-    // dimensions and `bus1[1].y` would index something that isn't an array.
-    // OMC accepts that cref and writes it out, so the guard has to be ours.
+  it("carries a wire onto a subscripted component, alongside its dims", async () => {
+    // The paste writes `gain1[2]` with its dimensions, so `gain1[1].y`
+    // indexes a cref that really is an array.
     const base = wired();
+    const gain1 = base.components["gain1"];
+    if (gain1 === undefined) throw new Error("expected gain1 in the layout");
     const arrayed: DiagramLayout = {
       ...base,
+      components: { ...base.components, gain1: { ...gain1, dims: ["2"] } },
       connections: [
         {
           lhs: { component: "gain1", port: "y", componentSubscripts: "[1]" },
@@ -313,7 +331,16 @@ describe("captureClipboardItems: connections", () => {
       "c:gain1",
       "c:gain2",
     ]);
-    expect(items.every((i) => i.kind !== "connection")).toBe(true);
+    expect(items.filter((i) => i.kind === "connection")).toHaveLength(1);
+    expect(items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "component",
+          name: "gain1",
+          dims: ["2"],
+        }),
+      ]),
+    );
   });
 
   it("carries a wire onto a standalone connector on the host class", async () => {
@@ -549,6 +576,56 @@ describe("pasteClipboardItems", () => {
     expect(client.data()).toContain(
       "Modelica.Blocks.Math.Gain gain2(k = 2.5, limiter.uMax = 5) annotation(",
     );
+  });
+
+  it("carries array dimensions, so a copied vector component pastes as a vector", async () => {
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [componentItem({ dims: ["2"] })],
+      "diagram",
+      PASTE_OFFSET,
+    );
+    expect(client.data()).toContain(
+      "Modelica.Blocks.Math.Gain gain2[2] annotation(",
+    );
+  });
+
+  it("writes every dimension of a matrix component, in declaration order", async () => {
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [componentItem({ dims: ["2", "4"] })],
+      "diagram",
+      PASTE_OFFSET,
+    );
+    expect(client.data()).toContain(
+      "Modelica.Blocks.Math.Gain gain2[2, 4] annotation(",
+    );
+  });
+
+  it("puts the array subscript ahead of the modification, not after it", async () => {
+    // Modelica's declaration grammar is `IDENT array-subscripts modification`
+    // — `gain2[2](k = 2.5)`, not `gain2(k = 2.5)[2]`.
+    const client = pasteClient();
+    await pasteClipboardItems(
+      client,
+      "Demo",
+      layout(),
+      [
+        componentItem({
+          dims: ["2"],
+          modifiers: [{ path: "k", expr: "2.5" }],
+        }),
+      ],
+      "diagram",
+      PASTE_OFFSET,
+    );
+    expect(client.data()).toContain("gain2[2](k = 2.5) annotation(");
   });
 
   it("keeps a placement origin, which a rotated boundary connector needs", async () => {

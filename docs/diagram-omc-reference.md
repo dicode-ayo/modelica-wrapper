@@ -236,15 +236,16 @@ like a `package` (issue #345).
 - **Text / Bitmap drawing** — both render, select, resize, restyle and
   serialize, but no tool creates one: `ExtentKind` is `rectangle | ellipse`
   ([tools.ts](../packages/diagram-ui/src/interaction/tools.ts)). Issue #384.
-- **Draw-then-select** — a committed draw leaves the selection empty, so a
-  freshly drawn shape has no handles. Issue #385.
 - **Shape z-order editing** — primitives paint in annotation-array order, but
   nothing reorders that array (bring to front / send to back). Issue #328.
 - **Connection styling at render time** — `ConnectionLayout` carries
   `color`/`thickness`/`pattern`/`arrow`/`smooth` and `<om-line>` can draw all
   of it, but the edge still renders as a bespoke 1px GL line. Issue #219.
-- **Array dimensions on paste / add** — `addComponent` takes no `dims`, so a
-  copied vector component arrives as a scalar. Issue #379.
+- **Array dimensions on paste, precisely** — a pasted vector/matrix
+  sub-component carries the *evaluated* shape rather than the *declared* one
+  (a symbolic dimension bakes to a literal, or fails the whole cross-class
+  paste when OMC can't reduce it), and a standalone connector array has no
+  dimensions carried at all. Issue #411.
 
 **Rendering correctness — settled (#138, PR #220).** The four classic
 misreadings of §2/§3, and where each is handled. Listed so they are not

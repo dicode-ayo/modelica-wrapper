@@ -28,6 +28,14 @@ export interface ClipboardComponent {
   name: string;
   /** Qualified class of the instance. */
   className: string;
+  /**
+   * Array dimension sizes, one entry per dimension, when the source
+   * declaration is a vector/matrix component (e.g. `Gain gain[2]`). Absent
+   * for a scalar, and absent for a standalone connector — `ConnectorInstance`
+   * carries no dimensions, so a subscripted host-class port still pastes as a
+   * scalar (issue #411).
+   */
+  dims?: readonly string[] | undefined;
   extent: Extent;
   rotation: number;
   /**
@@ -50,8 +58,9 @@ export interface ClipboardComponent {
   comment?: string | undefined;
   /**
    * Modifiers read off the declaration at copy time, replayed onto the pasted
-   * instance. Only what the source actually authored: `addComponent` writes a
-   * bare declaration, so anything inherited or defaulted stays inherited.
+   * instance. Only what the source actually authored: the paste writes a bare
+   * declaration alongside these, so anything inherited or defaulted stays
+   * inherited.
    */
   modifiers: readonly ClipboardModifier[];
 }
