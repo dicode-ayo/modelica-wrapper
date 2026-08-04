@@ -1719,7 +1719,8 @@ export class OmGraphicalLayout extends LitElement {
    * Applies a draw step from the armed `ToolMode`. The mode owns the shape
    * (snapping, guards, preview kind); the host only places it into whichever
    * layer this view edits (icon vs diagram): a draft previews, a commit
-   * persists + disarms, a cancel drops the preview and stays armed.
+   * persists, selects what was drawn, and disarms; a cancel drops the
+   * preview and stays armed.
    */
   private onTool(draw: ToolDraw): void {
     if (this.readonly || !this.layout) {
@@ -1730,7 +1731,7 @@ export class OmGraphicalLayout extends LitElement {
       this.endInteraction();
       return;
     }
-    const next = applyAddGraphic(this.layout, this.layout.kind, draw.shape);
+    const { layout: next, key } = applyAddGraphic(this.layout, draw.shape);
     if (draw.phase === "draft") {
       this.draftLayout = next;
       this.setInteractionState({ kind: "drawing" });
@@ -1738,6 +1739,7 @@ export class OmGraphicalLayout extends LitElement {
     }
     this.draftLayout = null;
     this.commitLayout(next);
+    this.setSelection([key]);
     this.endInteraction();
     this.setActiveTool("select"); // one shape per arming
   }

@@ -27,8 +27,29 @@ interface LayoutEl extends HTMLElement {
     components: Record<string, { placement: { rotation?: number } }>;
   };
   readonly tool: string;
+  readonly selection: string[];
   setActiveTool: (tool: string) => void;
   setSelection: (keys: string[]) => void;
+}
+
+/** Navigates to a layout story and waits for its layout to have mounted. */
+async function openLayoutStory(page: Page, story: string): Promise<void> {
+  await page.goto(story, { waitUntil: "networkidle" });
+  await page.waitForFunction(() =>
+    Boolean(
+      (document.querySelector("om-graphical-layout") as LayoutEl | null)
+        ?.layout,
+    ),
+  );
+}
+
+/** The `<om-graphical-layout>` canvas's bounding box, for pointer gestures. */
+async function canvasBox(page: Page) {
+  const box = await page.locator("om-graphical-layout").boundingBox();
+  if (!box) {
+    throw new Error("no canvas box");
+  }
+  return box;
 }
 
 /** Shapes in the host's own layer (`from === className`) of the edited layer. */
@@ -47,13 +68,7 @@ function hostShapeKinds(page: Page): Promise<string[]> {
 test("arming the rectangle tool and dragging draws it into the host layer", async ({
   page,
 }) => {
-  await page.goto(LAYOUT_STORY, { waitUntil: "networkidle" });
-  await page.waitForFunction(() =>
-    Boolean(
-      (document.querySelector("om-graphical-layout") as LayoutEl | null)
-        ?.layout,
-    ),
-  );
+  await openLayoutStory(page, LAYOUT_STORY);
 
   const before = await hostShapeKinds(page);
   await page.evaluate(() =>
@@ -63,10 +78,7 @@ test("arming the rectangle tool and dragging draws it into the host layer", asyn
   );
 
   // An armed tool draws anywhere on the canvas; drag out a box.
-  const box = await page.locator("om-graphical-layout").boundingBox();
-  if (!box) {
-    throw new Error("no canvas box");
-  }
+  const box = await canvasBox(page);
   await page.mouse.move(box.x + 60, box.y + 50);
   await page.mouse.down();
   await page.mouse.move(box.x + 160, box.y + 130, { steps: 8 });
@@ -107,13 +119,7 @@ test("toolbar buttons render real SVG glyphs", async ({ page }) => {
 test("drawing via the toolbar lands a shape in the host layer", async ({
   page,
 }) => {
-  await page.goto(WORKBENCH_STORY, { waitUntil: "networkidle" });
-  await page.waitForFunction(() =>
-    Boolean(
-      (document.querySelector("om-graphical-layout") as LayoutEl | null)
-        ?.layout,
-    ),
-  );
+  await openLayoutStory(page, WORKBENCH_STORY);
 
   const before = await hostShapeKinds(page);
   // The draw split's main button (title "Draw a rectangle …") arms the shown
@@ -122,10 +128,7 @@ test("drawing via the toolbar lands a shape in the host layer", async ({
     .locator('om-action-panel wa-button[title^="Draw a rectangle"]')
     .click();
 
-  const box = await page.locator("om-graphical-layout").boundingBox();
-  if (!box) {
-    throw new Error("no canvas box");
-  }
+  const box = await canvasBox(page);
   await page.mouse.move(box.x + 70, box.y + 60);
   await page.mouse.down();
   await page.mouse.move(box.x + 170, box.y + 140, { steps: 8 });
@@ -140,6 +143,61 @@ test("drawing via the toolbar lands a shape in the host layer", async ({
     () => (document.querySelector("om-graphical-layout") as LayoutEl).tool,
   );
   expect(tool).toBe("select");
+});
+
+test("drawing a shape leaves it as the sole selection (#385)", async ({
+  page,
+}) => {
+  await openLayoutStory(page, WORKBENCH_STORY);
+
+  await page
+    .locator('om-action-panel wa-button[title^="Draw a rectangle"]')
+    .click();
+
+  const box = await canvasBox(page);
+  await page.mouse.move(box.x + 80, box.y + 70);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 180, box.y + 150, { steps: 8 });
+  await page.mouse.up();
+
+  const selection = await page.evaluate(
+    () => (document.querySelector("om-graphical-layout") as LayoutEl).selection,
+  );
+  // The workbench fixture's host class starts with no own diagram layer, so
+  // this is the class's first own shape and lands at index 0.
+  expect(selection).toEqual(["shape:rectangle:0"]);
+});
+
+test("a degenerate draw (click, no drag) leaves the selection untouched", async ({
+  page,
+}) => {
+  await openLayoutStory(page, WORKBENCH_STORY);
+
+  const name = await page.evaluate(() => {
+    const el = document.querySelector("om-graphical-layout") as LayoutEl;
+    const n = Object.keys(el.layout.components).at(0);
+    if (n === undefined) {
+      throw new Error("expected at least one component in the fixture");
+    }
+    el.setSelection([`c:${n}`]);
+    return n;
+  });
+
+  await page
+    .locator('om-action-panel wa-button[title^="Draw a rectangle"]')
+    .click();
+
+  const box = await canvasBox(page);
+  // A press-release with no movement is degenerate (extent-tool-mode.ts) and
+  // cancels rather than committing — the pre-existing selection must survive.
+  await page.mouse.move(box.x + 80, box.y + 70);
+  await page.mouse.down();
+  await page.mouse.up();
+
+  const selection = await page.evaluate(
+    () => (document.querySelector("om-graphical-layout") as LayoutEl).selection,
+  );
+  expect(selection).toEqual([`c:${name}`]);
 });
 
 test("the draw chevron menu arms a polygon tool", async ({ page }) => {
@@ -158,13 +216,7 @@ test("the draw chevron menu arms a polygon tool", async ({ page }) => {
 test("clicking vertices and double-clicking draws a line into the host layer", async ({
   page,
 }) => {
-  await page.goto(WORKBENCH_STORY, { waitUntil: "networkidle" });
-  await page.waitForFunction(() =>
-    Boolean(
-      (document.querySelector("om-graphical-layout") as LayoutEl | null)
-        ?.layout,
-    ),
-  );
+  await openLayoutStory(page, WORKBENCH_STORY);
 
   const before = await hostShapeKinds(page);
   // Arm Line from the shared draw chevron (the main button shows the extent
@@ -172,10 +224,7 @@ test("clicking vertices and double-clicking draws a line into the host layer", a
   await page.locator('om-action-panel wa-button[title="Draw shape"]').click();
   await page.locator('om-action-panel wa-dropdown-item[value="line"]').click();
 
-  const box = await page.locator("om-graphical-layout").boundingBox();
-  if (!box) {
-    throw new Error("no canvas box");
-  }
+  const box = await canvasBox(page);
   // Place two vertices, then a double-click drops the third and finishes.
   await page.mouse.click(box.x + 60, box.y + 60);
   await page.mouse.click(box.x + 160, box.y + 60);
@@ -193,13 +242,7 @@ test("clicking vertices and double-clicking draws a line into the host layer", a
 });
 
 test("a polygon finishes on Enter and disarms", async ({ page }) => {
-  await page.goto(WORKBENCH_STORY, { waitUntil: "networkidle" });
-  await page.waitForFunction(() =>
-    Boolean(
-      (document.querySelector("om-graphical-layout") as LayoutEl | null)
-        ?.layout,
-    ),
-  );
+  await openLayoutStory(page, WORKBENCH_STORY);
 
   const before = await hostShapeKinds(page);
   // Arm Polygon from the shared draw chevron menu.
@@ -208,10 +251,7 @@ test("a polygon finishes on Enter and disarms", async ({ page }) => {
     .locator('om-action-panel wa-dropdown-item[value="polygon"]')
     .click();
 
-  const box = await page.locator("om-graphical-layout").boundingBox();
-  if (!box) {
-    throw new Error("no canvas box");
-  }
+  const box = await canvasBox(page);
   await page.mouse.click(box.x + 60, box.y + 60);
   await page.mouse.click(box.x + 160, box.y + 60);
   await page.mouse.click(box.x + 110, box.y + 140);
@@ -230,13 +270,7 @@ test("a polygon finishes on Enter and disarms", async ({ page }) => {
 test("the rotate chevron menu rotates the selection counter-clockwise", async ({
   page,
 }) => {
-  await page.goto(WORKBENCH_STORY, { waitUntil: "networkidle" });
-  await page.waitForFunction(() =>
-    Boolean(
-      (document.querySelector("om-graphical-layout") as LayoutEl | null)
-        ?.layout,
-    ),
-  );
+  await openLayoutStory(page, WORKBENCH_STORY);
 
   // Select a component (and enable the split, which gates on a selection).
   const name = await page.evaluate(() => {

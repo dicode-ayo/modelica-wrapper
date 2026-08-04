@@ -236,8 +236,6 @@ like a `package` (issue #345).
 - **Text / Bitmap drawing** — both render, select, resize, restyle and
   serialize, but no tool creates one: `ExtentKind` is `rectangle | ellipse`
   ([tools.ts](../packages/diagram-ui/src/interaction/tools.ts)). Issue #384.
-- **Draw-then-select** — a committed draw leaves the selection empty, so a
-  freshly drawn shape has no handles. Issue #385.
 - **Shape z-order editing** — primitives paint in annotation-array order, but
   nothing reorders that array (bring to front / send to back). Issue #328.
 - **Connection styling at render time** — `ConnectionLayout` carries

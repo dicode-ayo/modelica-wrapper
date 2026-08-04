@@ -1584,10 +1584,11 @@ describe("applyAddGraphic", () => {
       [0, 0],
       [10, 10],
     ]);
-    const next = applyAddGraphic(layout, "diagram", shape);
+    const { layout: next, key } = applyAddGraphic(layout, shape);
     expect(next.diagramLayers).toEqual([{ from: "Demo", shapes: [shape] }]);
     // Pure — the input layout is untouched.
     expect(layout.diagramLayers).toEqual([]);
+    expect(key).toBe("shape:rectangle:0");
   });
 
   it("appends to the host layer, leaving inherited layers alone", () => {
@@ -1604,21 +1605,39 @@ describe("applyAddGraphic", () => {
       [0, 0],
       [10, 10],
     ]);
-    const next = applyAddGraphic(layout, "diagram", shape);
+    const { layout: next, key } = applyAddGraphic(layout, shape);
     expect(next.diagramLayers.at(0)).toEqual({
       from: "Base",
       shapes: [inherited],
     });
     expect(next.diagramLayers.at(1)?.shapes).toEqual([shape]);
+    expect(key).toBe("shape:rectangle:0");
   });
 
-  it("targets the icon layer when asked", () => {
+  it("keys the new shape past the host layer's existing shapes", () => {
     const layout = baseLayout();
+    const existing = buildExtentShape("ellipse", [
+      [1, 1],
+      [2, 2],
+    ]);
+    layout.diagramLayers = [{ from: "Demo", shapes: [existing] }];
     const shape = buildExtentShape("rectangle", [
       [0, 0],
       [10, 10],
     ]);
-    const next = applyAddGraphic(layout, "icon", shape);
+    const { key } = applyAddGraphic(layout, shape);
+    expect(key).toBe("shape:rectangle:1");
+  });
+
+  it("targets the layer the view edits", () => {
+    // The layer follows `layout.kind`, so an icon view's draw cannot land on
+    // the diagram layer by a caller passing the wrong one.
+    const layout = { ...baseLayout(), kind: "icon" as const };
+    const shape = buildExtentShape("rectangle", [
+      [0, 0],
+      [10, 10],
+    ]);
+    const { layout: next } = applyAddGraphic(layout, shape);
     expect(next.iconLayers).toEqual([{ from: "Demo", shapes: [shape] }]);
     expect(next.diagramLayers).toEqual([]);
   });
