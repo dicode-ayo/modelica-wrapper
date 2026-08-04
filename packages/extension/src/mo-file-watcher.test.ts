@@ -153,6 +153,28 @@ describe("handleMoChange", () => {
     expect(client.loadFile).not.toHaveBeenCalled();
   });
 
+  it("doesn't pass a removed class's own file and name twice to the busy check", async () => {
+    // "My.Pkg" is both explicitly removed and, since the pre-update index
+    // still lists it under FILE, rediscovered via its own cascade lookup —
+    // the busy check's inputs must be deduplicated, not just its outcome.
+    let seenFsPaths: string[] = [];
+    let seenNames: string[] = [];
+    const { deps, client } = makeDeps({
+      isBusy: (fsPaths, classNames) => {
+        seenFsPaths = fsPaths;
+        seenNames = classNames;
+        return false;
+      },
+    });
+    client.parseFile.mockResolvedValue({ classNames: [] });
+    deps.index.set(FILE, ["My.Pkg"]);
+
+    await handleMoChange(deps, FILE);
+
+    expect(seenFsPaths.filter((p) => p === FILE)).toHaveLength(1);
+    expect(seenNames.filter((n) => n === "My.Pkg")).toHaveLength(1);
+  });
+
   it("does not touch the tree when loadFile fails", async () => {
     const { deps, client, childrenChanged } = makeDeps();
     client.loadFile.mockResolvedValue({ success: false });
@@ -523,20 +545,20 @@ describe("watcherRunKey", () => {
     expect(watcherRunKey(index, MEMBER_FILE)).toBe(PKG_FILE);
   });
 
-  it("matches the key a package.order event for the same package resolves to", () => {
-    // registerMoFileWatcher keys a package.order event on
-    // dirname(orderPath)/package.mo — a member's own event has to land on
-    // that same key to serialize against a reorder of its package.
+  it("keys a package.mo's own change event on itself, not its parent package", () => {
+    // A member's key has to land on the *same* package.mo a package.order
+    // event for that package resolves to via orderOwner — walking up the
+    // qualified name from package.mo's own declared class ("My.Pkg") would
+    // land one level too high, on "My"'s package.mo instead.
     const index = createPathClassIndex();
+    index.set("/ws/My/package.mo", ["My"]);
     index.set(PKG_FILE, ["My.Pkg"]);
     index.set(MEMBER_FILE, ["My.Pkg.Bar"]);
 
-    expect(watcherRunKey(index, MEMBER_FILE)).toBe(
-      path.join(path.dirname("/ws/My/Pkg/package.order"), "package.mo"),
-    );
+    expect(watcherRunKey(index, PKG_FILE)).toBe(PKG_FILE);
   });
 
-  it("falls back to the file's own path for a top-level class", () => {
+  it("falls back to the file's own path for a standalone file with no package.mo sibling", () => {
     const index = createPathClassIndex();
     index.set("/ws/Top.mo", ["Top"]);
 
@@ -608,31 +630,6 @@ describe("createPathClassIndex", () => {
       expect(index.filesUnder("My.Pkg")).toEqual([
         { fsPath: path.resolve("/ws/My/Pkg.mo"), classNames: ["My.Pkg"] },
       ]);
-    });
-  });
-
-  describe("pathOf", () => {
-    it("resolves a class's own file", () => {
-      const index = createPathClassIndex();
-      index.set("/ws/My/Pkg/package.mo", ["My.Pkg"]);
-
-      expect(index.pathOf("My.Pkg")).toBe(
-        path.resolve("/ws/My/Pkg/package.mo"),
-      );
-    });
-
-    it("is undefined for a class that isn't indexed", () => {
-      const index = createPathClassIndex();
-
-      expect(index.pathOf("My.Missing")).toBeUndefined();
-    });
-
-    it("forgets a class's prior file once that path is re-set without it", () => {
-      const index = createPathClassIndex();
-      index.set("/ws/My/Pkg/File.mo", ["My.Pkg.A", "My.Pkg.B"]);
-      index.set("/ws/My/Pkg/File.mo", ["My.Pkg.A"]);
-
-      expect(index.pathOf("My.Pkg.B")).toBeUndefined();
     });
   });
 });

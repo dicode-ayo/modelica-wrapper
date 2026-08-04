@@ -65,29 +65,15 @@ export interface PathClassIndex {
    * itself lives in.
    */
   filesUnder(qualifiedName: string): FilesUnderEntry[];
-  /** The file that declares `qualifiedName`, if indexed. */
-  pathOf(qualifiedName: string): string | undefined;
 }
 
 export function createPathClassIndex(): PathClassIndex {
   const byPath = new Map<string, string[]>();
-  const byName = new Map<string, string>();
   const key = (p: string): string => path.resolve(p);
   return {
     get: (p) => byPath.get(key(p)),
-    set(p, names) {
-      const k = key(p);
-      const prior = byPath.get(k);
-      if (prior !== undefined) for (const n of prior) byName.delete(n);
-      byPath.set(k, names);
-      for (const n of names) byName.set(n, k);
-    },
-    delete(p) {
-      const k = key(p);
-      const prior = byPath.get(k);
-      if (prior !== undefined) for (const n of prior) byName.delete(n);
-      byPath.delete(k);
-    },
+    set: (p, names) => void byPath.set(key(p), names),
+    delete: (p) => void byPath.delete(key(p)),
     filesUnder(qualifiedName) {
       const prefix = `${qualifiedName}.`;
       const found: FilesUnderEntry[] = [];
@@ -99,7 +85,6 @@ export function createPathClassIndex(): PathClassIndex {
       }
       return found;
     },
-    pathOf: (qualifiedName) => byName.get(qualifiedName),
   };
 }
 
@@ -151,6 +136,26 @@ function warnReorderBusy(describedPath: string, classNames: string[]): void {
 }
 
 /**
+ * Every file and class a `deleteClass` or reload of `names` can reach,
+ * deduplicated: each name's own file, plus every file holding a class nested
+ * under it. `extra` folds in classes/files that need checking regardless of
+ * cascading — the reloading file's own still-declared classes, which are
+ * not being deleted and so wouldn't otherwise appear here.
+ */
+function cascadeReach(
+  index: PathClassIndex,
+  names: string[],
+  extra: { fsPath?: string; classNames?: string[] } = {},
+): { fsPaths: string[]; classNames: string[] } {
+  const matches = names.flatMap((name) => index.filesUnder(name));
+  const fsPaths = new Set(matches.map((f) => f.fsPath));
+  if (extra.fsPath !== undefined) fsPaths.add(extra.fsPath);
+  const classNames = new Set(matches.flatMap((f) => f.classNames));
+  for (const n of extra.classNames ?? []) classNames.add(n);
+  return { fsPaths: [...fsPaths], classNames: [...classNames] };
+}
+
+/**
  * React to a `.mo` file appearing or changing on disk. Loads the new content
  * into OMC and refreshes the tree for every class the file now declares, and
  * unloads any class the file previously declared but no longer does.
@@ -182,13 +187,10 @@ export async function handleMoChange(
   // A removed class that was itself a package cascades its own deleteClass to
   // every member nested under it, wherever those live — the busy check has to
   // cover their files and names too, not just this one's.
-  const cascaded = removed.flatMap((name) => deps.index.filesUnder(name));
-  const classNames = [
-    ...names,
-    ...removed,
-    ...cascaded.flatMap((f) => f.classNames),
-  ];
-  const fsPaths = [fsPath, ...cascaded.map((f) => f.fsPath)];
+  const { fsPaths, classNames } = cascadeReach(deps.index, removed, {
+    fsPath,
+    classNames: names,
+  });
   if (deps.isBusy(fsPaths, classNames)) {
     warnBusy(fsPath, classNames);
     return;
@@ -244,9 +246,7 @@ async function reorderPackage(
   // Reloading the package re-reads every member from disk, so a dirty buffer
   // for a *member* — not just the package itself — is at risk of being
   // clobbered underneath its editor, whichever file that member lives in.
-  const cascaded = names.flatMap((name) => deps.index.filesUnder(name));
-  const classNames = cascaded.flatMap((f) => f.classNames);
-  const fsPaths = cascaded.map((f) => f.fsPath);
+  const { fsPaths, classNames } = cascadeReach(deps.index, names);
   if (deps.isBusy(fsPaths, classNames)) {
     warnReorderBusy(describedPath, names);
     return;
@@ -347,9 +347,7 @@ export async function handleMoDelete(
   }
   // Deleting a package cascades to every member nested under it, wherever
   // those live — widen the busy check to their files and names too.
-  const cascaded = names.flatMap((name) => deps.index.filesUnder(name));
-  const classNames = cascaded.flatMap((f) => f.classNames);
-  const fsPaths = cascaded.map((f) => f.fsPath);
+  const { fsPaths, classNames } = cascadeReach(deps.index, names);
   if (deps.isBusy(fsPaths, classNames)) {
     warnBusy(fsPath, classNames);
     return;
@@ -430,23 +428,21 @@ function asMessage(err: unknown): string {
 }
 
 /**
- * The `run()` serialization key for a `.mo` file event: the file that owns
- * `fsPath`'s enclosing package, found by walking one hop up the qualified
- * name via the index — the same file a sibling `package.order` event for
- * that package already keys on ({@link orderOwner}). A reorder reloads its
- * whole package from disk, so a member file's own event has to serialize
- * against that reload, not just against other events for its own path.
+ * The `run()` serialization key for a `.mo` file event: the sibling
+ * `package.mo` a `package.order` event for the same directory already keys
+ * on ({@link orderOwner}). A reorder reloads its whole package from disk, so
+ * a member file's own event has to serialize against that reload, not just
+ * against other events for its own path — and this doubles as the key for
+ * `package.mo`'s own change event, since `orderOwner` of a `package.mo` path
+ * is that same path.
  *
- * A top-level class (no enclosing package) or a file the index does not yet
- * know about — nothing has been indexed there to walk up from — falls back
- * to the file's own path, same as before this key existed.
+ * Guarded on the candidate being indexed so a standalone `.mo` file with no
+ * `package.mo` sibling doesn't key on a path nothing else ever touches,
+ * grouping it with unrelated files that merely share its directory.
  */
 export function watcherRunKey(index: PathClassIndex, fsPath: string): string {
-  const declared = index.get(fsPath)?.[0];
-  if (declared === undefined) return fsPath;
-  const scope = scopeOf(declared);
-  if (scope === null) return fsPath;
-  return index.pathOf(scope) ?? fsPath;
+  const candidate = orderOwner(fsPath);
+  return index.get(candidate) !== undefined ? candidate : fsPath;
 }
 
 /**
@@ -498,11 +494,11 @@ export function registerMoFileWatcher(deps: {
     vscode.workspace.createFileSystemWatcher("**/package.order");
   const subs = [
     watcher,
-    // Keyed by the owning package's file (walking up via the index), not the
-    // event's own path, so a member file's event and a reorder or cascaded
-    // delete of its package — which touch that member too — can't run
-    // concurrently. Matches the key a `package.order` event for the same
-    // package already uses (`orderOwner`, below).
+    // Keyed by the owning package's file, not the event's own path, so a
+    // member file's event and a reorder or cascaded delete of its package —
+    // which touch that member too — can't run concurrently. Matches the key
+    // a `package.order` event for the same package already uses
+    // (`orderOwner`, below).
     watcher.onDidChange((uri) =>
       run(watcherRunKey(index, uri.fsPath), () =>
         handleMoChange(watcherDeps, uri.fsPath),
