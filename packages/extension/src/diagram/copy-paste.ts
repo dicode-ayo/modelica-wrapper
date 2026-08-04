@@ -165,12 +165,21 @@ function connectionsWithin(
   layout: DiagramLayout,
   items: readonly ClipboardEntry[],
 ): ClipboardConnection[] {
-  const copied = new Set(
-    items.filter((i) => i.kind === "component").map((i) => i.name),
+  const copied = new Map(
+    items.filter((i) => i.kind === "component").map((i) => [i.name, i]),
   );
   if (copied.size < 2) return [];
-  const inCopy = (endpoint: ConnectionEndpoint): boolean =>
-    copied.has(endpointDeclaration(endpoint));
+  const inCopy = (endpoint: ConnectionEndpoint): boolean => {
+    const item = copied.get(endpointDeclaration(endpoint));
+    if (item === undefined) return false;
+    // A subscript only indexes something if the declaration carries the
+    // dimensions to match. Where `dimsFromElement` could not read them, the
+    // paste would write a scalar and a `connect()` that subscripts it — which
+    // OMC accepts and writes out.
+    return (
+      endpoint.componentSubscripts === undefined || item.dims !== undefined
+    );
+  };
   return layout.connections
     .filter((c) => inCopy(c.lhs) && inCopy(c.rhs))
     .map(({ lhs, rhs, waypoints, source: _source, ...style }) => ({

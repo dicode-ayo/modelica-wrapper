@@ -217,7 +217,7 @@ end ${pkg};
 
     const items = await captureClipboardItems(client, before, [
       "c:gain",
-      "c:y",
+      "k:y",
     ]);
     expect(items).toEqual(
       expect.arrayContaining([
@@ -271,7 +271,7 @@ end ${pkg};
     const before = await fetchDiagramLayout(client, subscripted);
     const items = await captureClipboardItems(client, before, [
       "c:gain",
-      "c:y",
+      "k:y",
     ]);
     expect(items.filter((i) => i.kind === "connection")).toHaveLength(1);
 
@@ -291,7 +291,7 @@ end ${pkg};
     expect(
       after.connections.map(
         (c) =>
-          `${c.lhs.component}${c.lhs.componentSubscripts ?? ""}→${c.rhs.component}`,
+          `${c.lhs.component}${c.lhs.componentSubscripts ?? ""}→${c.rhs.component ?? c.rhs.port}`,
       ),
     ).toContain("gain1[1]→y1");
   });
