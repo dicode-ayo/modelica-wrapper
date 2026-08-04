@@ -14,7 +14,7 @@
 
 import * as vscode from "vscode";
 
-import { OmcClient } from "@dicode/omc-client";
+import { OmcClient, reapOrphanedOmcSessions } from "@dicode/omc-client";
 
 import { registerCommands } from "./commands/index.js";
 import { DiagramEditorProvider } from "./diagram/diagram-editor-provider.js";
@@ -77,6 +77,8 @@ export async function activate(
   context: vscode.ExtensionContext,
 ): Promise<ModelicaExtensionApi> {
   log.info("activate", "extension activating");
+  void reapStrandedOmc();
+
   const libraryTree = new LibraryWebviewProvider(
     context.extensionUri,
     ensureClient,
@@ -209,6 +211,22 @@ export async function deactivate(): Promise<void> {
 
 function ensureClient(): Promise<OmcClient> {
   return omcClientCache.ensure();
+}
+
+/**
+ * Shut down OMC processes left behind by an extension host that died before
+ * `deactivate()`. Runs alongside activation; it only ever touches sessions
+ * whose owning process is gone, so it cannot disturb this window's client.
+ */
+async function reapStrandedOmc(): Promise<void> {
+  try {
+    const count = await reapOrphanedOmcSessions();
+    if (count > 0) {
+      log.info("activate", `reaped ${count} stranded OMC session(s)`);
+    }
+  } catch (err) {
+    log.warn("activate", `reaping stranded OMC failed: ${String(err)}`);
+  }
 }
 
 /**

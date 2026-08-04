@@ -10,10 +10,12 @@
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { OMC_PID_FILE, OWNER_PID_FILE, SESSION_DIR_PREFIX } from "./orphans.js";
 
 const PORT_FILE_TIMEOUT_MS = 30_000;
 
@@ -42,7 +44,8 @@ export async function spawnOmc(
 ): Promise<OmcProcess> {
   const bin = omcPath && omcPath.length > 0 ? omcPath : "omc";
   const suffix = `mw_${randomBytes(8).toString("hex")}`;
-  const tempDir = await mkdtemp(join(tmpdir(), "mw-omc-"));
+  const tempDir = await mkdtemp(join(tmpdir(), SESSION_DIR_PREFIX));
+  await writeFile(join(tempDir, OWNER_PID_FILE), `${process.pid}`, "utf8");
 
   // Windows OMC drops the user segment unconditionally (compile-time branch
   // in `zeromqimpl.c`), Unix includes it.
@@ -82,6 +85,11 @@ export async function spawnOmc(
     });
   }
 
+  killWhenThisProcessExits(child);
+  if (child.pid !== undefined) {
+    await writeFile(join(tempDir, OMC_PID_FILE), `${child.pid}`, "utf8");
+  }
+
   // Surface spawn failures (ENOENT for missing binary etc.) as rejection.
   const errorPromise = new Promise<never>((_, reject) => {
     child.once("error", reject);
@@ -114,6 +122,24 @@ export async function spawnOmc(
     await stop();
     throw err;
   }
+}
+
+const liveChildren = new Set<ChildProcess>();
+let exitHookInstalled = false;
+
+/**
+ * OMC survives its parent, so an exit that skips `stop()` would strand it.
+ * Covers a crash or an explicit `process.exit`; a host killed outright runs no
+ * hook at all and is caught by {@link reapOrphanedOmcSessions} on the next run.
+ */
+function killWhenThisProcessExits(child: ChildProcess): void {
+  liveChildren.add(child);
+  child.once("exit", () => liveChildren.delete(child));
+  if (exitHookInstalled) return;
+  exitHookInstalled = true;
+  process.on("exit", () => {
+    for (const c of liveChildren) c.kill("SIGKILL");
+  });
 }
 
 async function waitForPortFile(
