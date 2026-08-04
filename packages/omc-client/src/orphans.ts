@@ -7,13 +7,17 @@
  * tempdir. Every spawn stamps its owner's pid into that tempdir's name, which
  * is what lets a later run tell a live session's directory from an abandoned
  * one.
+ *
+ * Nothing here is signalled or deleted on a guess: a session whose OMC cannot
+ * be identified is left exactly as it is, because removing the directory
+ * destroys the only record that the process ever existed.
  */
 
-import { readFileSync } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { type ProcessProbe, osProcesses } from "./process-probe.js";
 import {
   OMC_PID_FILE,
   SESSION_DIR_PREFIX,
@@ -28,13 +32,6 @@ const QUIT_TIMEOUT_MS = 2_000;
 /** How long a shutdown gets before the directory is pulled out from under it. */
 const EXIT_WAIT_MS = 1_000;
 const EXIT_POLL_MS = 25;
-
-export interface ProcessProbe {
-  isRunning(pid: number): boolean;
-  /** The process's command line, or `undefined` where it cannot be read. */
-  commandLine(pid: number): string | undefined;
-  kill(pid: number): void;
-}
 
 export interface ReapOptions {
   /** Directory holding the session tempdirs. Defaults to the OS tempdir. */
@@ -74,6 +71,12 @@ export async function reapOrphanedOmcSessions(
   return reaped.filter((r) => r.status === "fulfilled" && r.value).length;
 }
 
+/** What the process table says about the OMC a session directory describes. */
+type OmcState =
+  | { readonly state: "running"; readonly pid: number }
+  | { readonly state: "gone" }
+  | { readonly state: "unidentified" };
+
 async function reapSession(
   root: string,
   name: string,
@@ -82,37 +85,72 @@ async function reapSession(
 ): Promise<boolean> {
   const dir = join(root, name);
   const owner = ownerPidFromSessionDir(name);
-  // A directory with no pid in its name predates this scheme. Its OMC cannot
-  // be identified, and removing the directory would destroy the only record
-  // that the process ever existed.
-  if (owner === undefined) return false;
   // A recycled owner pid reads as a live window and spares the session on
   // every sweep — the leak, back and invisible, until the pid's new holder
   // exits. An arbitrary host process offers nothing to fingerprint against,
   // so this one stays a plain pid check.
-  if (processes.isRunning(owner)) return false;
+  if (owner !== undefined && processes.isRunning(owner)) return false;
 
   const portFile = await findPortFile(dir);
-  await stopOmc(dir, portFile, processes, quit);
+  const suffix =
+    portFile === undefined ? undefined : suffixFromPortFileName(portFile);
+  const omc = await identifyOmc(dir, suffix, processes);
+  if (omc.state === "unidentified") return false;
+  if (omc.state === "running") {
+    const endpoint =
+      portFile === undefined ? undefined : await readEndpoint(dir, portFile);
+    await stopOmc(omc.pid, endpoint, processes, quit);
+  }
   await rm(dir, { recursive: true, force: true });
   return true;
 }
 
-async function stopOmc(
+/**
+ * Pids are recycled exactly as ports are, and these directories can be days
+ * old, so a recorded pid counts as this session's OMC only while its command
+ * line still carries the `-z=` suffix OMC was spawned with. A session that
+ * recorded no pid — one predating the scheme, or one whose host died between
+ * the spawn and the write — is looked up by that same suffix instead.
+ */
+async function identifyOmc(
   dir: string,
-  portFile: string | undefined,
+  suffix: string | undefined,
+  processes: ProcessProbe,
+): Promise<OmcState> {
+  const recorded = await readOmcPid(dir);
+  if (recorded !== undefined) {
+    if (!processes.isRunning(recorded)) return { state: "gone" };
+    const cmd = processes.commandLine(recorded);
+    if (cmd === undefined) return { state: "unidentified" };
+    if (suffix === undefined) {
+      // Nothing to match against: an OMC under this pid may well be ours.
+      return cmd.includes("--interactive=zmq")
+        ? { state: "unidentified" }
+        : { state: "gone" };
+    }
+    return cmd.includes(`-z=${suffix}`)
+      ? { state: "running", pid: recorded }
+      : { state: "gone" };
+  }
+
+  if (suffix === undefined) return { state: "unidentified" };
+  const matches = processes.findByCommandLine(`-z=${suffix}`);
+  if (matches === undefined) return { state: "unidentified" };
+  if (matches.length === 0) return { state: "gone" };
+  // Without an owner pid to check, being reparented is the only evidence that
+  // no live window is still using this OMC.
+  const pid = matches.find((match) => processes.isOrphan(match));
+  return pid === undefined
+    ? { state: "unidentified" }
+    : { state: "running", pid };
+}
+
+async function stopOmc(
+  pid: number,
+  endpoint: string | undefined,
   processes: ProcessProbe,
   quit: (endpoint: string) => Promise<void>,
 ): Promise<void> {
-  const pid = await readOmcPid(dir);
-  if (pid === undefined || !processes.isRunning(pid)) return;
-  // Pids are recycled exactly as ports are, and these directories are days
-  // old: without matching OMC's own `-z=` suffix, the signal below could land
-  // on whatever inherited the number.
-  if (!isOurOmc(processes.commandLine(pid), portFile)) return;
-
-  const endpoint =
-    portFile === undefined ? undefined : await readEndpoint(dir, portFile);
   if (endpoint !== undefined) {
     try {
       await quit(endpoint);
@@ -126,18 +164,6 @@ async function stopOmc(
   // OMC still holds this directory as its TMPDIR; removing it out from under a
   // process that has not finished exiting fails outright on Windows.
   await awaitExit(processes, pid);
-}
-
-function isOurOmc(
-  commandLine: string | undefined,
-  portFile: string | undefined,
-): boolean {
-  if (commandLine === undefined) return true;
-  const suffix =
-    portFile === undefined ? undefined : suffixFromPortFileName(portFile);
-  return suffix === undefined
-    ? commandLine.includes("omc")
-    : commandLine.includes(`-z=${suffix}`);
 }
 
 async function awaitExit(processes: ProcessProbe, pid: number): Promise<void> {
@@ -178,32 +204,6 @@ async function readEndpoint(
     return undefined;
   }
 }
-
-const osProcesses: ProcessProbe = {
-  isRunning(pid) {
-    try {
-      process.kill(pid, 0);
-      return true;
-    } catch (err) {
-      // EPERM means the pid is taken by a process we may not signal — alive.
-      return (err as NodeJS.ErrnoException).code === "EPERM";
-    }
-  },
-  commandLine(pid) {
-    try {
-      return readFileSync(`/proc/${pid}/cmdline`, "utf8").replaceAll("\0", " ");
-    } catch {
-      return undefined;
-    }
-  },
-  kill(pid) {
-    try {
-      process.kill(pid, "SIGKILL");
-    } catch {
-      /* it exited between the check and the signal */
-    }
-  },
-};
 
 async function quitViaZmq(endpoint: string): Promise<void> {
   const transport = new OmcTransport(endpoint);

@@ -1,8 +1,7 @@
 /**
  * Naming of a per-spawn OMC session directory and of the port file OMC drops
  * inside it. The spawner writes these names and the reaper reads them back, so
- * both sides have to agree on every segment — hence one module, not two
- * near-identical string builders.
+ * both sides have to agree on every segment.
  *
  * The owner's pid is part of the directory name rather than a file written
  * into it: a directory exists from the instant it is created, so there is no
@@ -28,11 +27,10 @@ export function sessionDirPrefix(ownerPid: number): string {
 
 /** The pid stamped into a session directory name, if it carries one. */
 export function ownerPidFromSessionDir(name: string): number | undefined {
-  const rest = name.slice(SESSION_DIR_PREFIX.length);
-  const end = rest.indexOf("-");
-  if (end <= 0) return undefined;
-  const pid = Number.parseInt(rest.slice(0, end), 10);
-  return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+  const stamp = /^(\d+)-/.exec(name.slice(SESSION_DIR_PREFIX.length))?.[1];
+  if (stamp === undefined) return undefined;
+  const pid = Number.parseInt(stamp, 10);
+  return pid > 0 ? pid : undefined;
 }
 
 /**
