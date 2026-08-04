@@ -168,6 +168,12 @@ export type WebviewToExtension =
   | { type: "actionParameters" }
   | { type: "editComponent"; componentName: string }
   | {
+      // User double-clicked a shape and wants its properties. Selecting one
+      // does not — a modal opening on selection interrupts every pick.
+      type: "editShape";
+      key: string;
+    }
+  | {
       type: "parametersSubmit";
       kind: ParameterFormKind;
       values: Record<string, unknown>;

@@ -1,3 +1,4 @@
+import { DRAG_SLOP_PX } from "./interaction-manager.js";
 import { formatKey, vertexKeyForEntity } from "./node-keys.js";
 import {
   MOVE_KINDS,
@@ -70,11 +71,22 @@ type DragState =
 export class DragMode implements GestureMode {
   readonly id = "drag";
   private state: DragState | null = null;
+  private pressClient: { x: number; y: number } | null = null;
 
   constructor(private readonly emit: DragEmit) {}
 
+  /** True when the press never travelled far enough to have been a drag. */
+  private withinSlop(e: PointerEvent): boolean {
+    const press = this.pressClient;
+    if (press === null) return false;
+    const dx = e.clientX - press.x;
+    const dy = e.clientY - press.y;
+    return dx * dx + dy * dy <= DRAG_SLOP_PX * DRAG_SLOP_PX;
+  }
+
   begin(start: GestureStart): boolean {
     const { entity, node, point: pt, shiftKey } = start;
+    this.pressClient = { x: start.clientX, y: start.clientY };
     if (!entity) {
       return false;
     }
@@ -158,6 +170,16 @@ export class DragMode implements GestureMode {
     }
     const state = this.state;
     this.state = null;
+    // A press inside the slop was a click — the second press of a double-click
+    // is the one that matters. It ends the gesture without a commit, so none of
+    // the mouse-up passes run: no grid snap onto an off-grid entity, no angle
+    // snap onto a freely rotated one. The host still hears about it, because
+    // `resize`/`rotate`/`vertex` draft from `begin` and something has to drop
+    // that draft.
+    if (this.withinSlop(e)) {
+      this.emit("dragCancel", {});
+      return;
+    }
     this.emitFor(state, point, e, false);
   }
 
