@@ -108,6 +108,21 @@ function warnBusy(fsPath: string, classNames: string[]): void {
 }
 
 /**
+ * A skipped reorder does not come back on its own: saving the busy editor
+ * reloads that member alone, and nothing re-runs the reorder. So this says
+ * what actually recovers it, where a `.mo` reload can promise the save is
+ * enough (issue #419).
+ */
+function warnReorderBusy(describedPath: string, classNames: string[]): void {
+  void vscode.window.showWarningMessage(
+    `Modelica: a class in ${classNames.join(", ")} has unsaved edits open, so ` +
+      `the ${path.basename(describedPath)} reload was skipped. Save or close ` +
+      `the editor, then edit ${path.basename(describedPath)} again or refresh ` +
+      `the library.`,
+  );
+}
+
+/**
  * React to a `.mo` file appearing or changing on disk. Loads the new content
  * into OMC and refreshes the tree for every class the file now declares, and
  * unloads any class the file previously declared but no longer does.
@@ -200,17 +215,27 @@ async function reorderPackage(
   // much at risk of being clobbered underneath its editor.
   const affected = names.flatMap((name) => deps.index.classesUnder(name));
   if (deps.isBusy(pkgFile, affected)) {
-    warnBusy(describedPath, affected);
+    warnReorderBusy(describedPath, names);
     return;
   }
 
   const client = await deps.ensureClient();
   let deleteFailed = false;
-  for (const name of names) {
-    const { success } = await client.deleteClass({ typeName: name });
-    if (!success) deleteFailed = true;
+  let loaded = false;
+  try {
+    for (const name of names) {
+      const { success } = await client.deleteClass({ typeName: name });
+      if (!success) deleteFailed = true;
+    }
+    ({ success: loaded } = await client.loadFile({ fileName: pkgFile }));
+  } catch (err) {
+    // A throw between the delete and the reload leaves OMC without the class
+    // while the tree still lists it. This is the one handler that deletes
+    // before it loads, so the re-list and the warning below have to run for a
+    // thrown call exactly as they do for one reporting failure.
+    log.warn("moWatcher", `reorder ${pkgFile} threw: ${asMessage(err)}`);
+    deleteFailed = true;
   }
-  const { success: loaded } = await client.loadFile({ fileName: pkgFile });
 
   const scopes = new Set<string | null>();
   for (const name of names) {

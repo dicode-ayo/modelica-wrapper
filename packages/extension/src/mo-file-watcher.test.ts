@@ -228,7 +228,7 @@ describe("handleOrderChange", () => {
     expect(client.loadFile).not.toHaveBeenCalled();
   });
 
-  it("warns when the owning package.mo isn't indexed", async () => {
+  it("no-ops when the owning package.mo isn't indexed", async () => {
     const { deps, client } = makeDeps({ readFile: async () => "A\n" });
 
     await handleOrderChange(deps, ORDER_FILE);
@@ -289,6 +289,26 @@ describe("handleOrderChange", () => {
     await handleOrderChange(deps, ORDER_FILE);
 
     expect(client.deleteClass).not.toHaveBeenCalled();
+  });
+
+  it("still re-lists and warns when the reload throws, not just when it reports failure", async () => {
+    // This is the one handler that deletes before it loads, so a thrown call —
+    // a wedged channel, a timeout — leaves OMC without the class while the tree
+    // still lists it. `success: false` was handled; a rejection was not.
+    const { deps, client, childrenChanged } = makeDeps({
+      readFile: async () => "B\nA\n",
+      fileExists: async () => true,
+    });
+    client.loadFile.mockRejectedValue(new Error("omc channel timed out"));
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "My.Pkg" });
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+    expect(recordedMessages).toContainEqual(
+      expect.objectContaining({ level: "warning" }),
+    );
   });
 
   it("still re-lists the tree and warns when the reload fails, so the tree reflects OMC's real state", async () => {
