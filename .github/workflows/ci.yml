@@ -102,6 +102,17 @@ jobs:
           OMC_DEBUG: "1"
         run: runuser -u omcrunner -- pnpm --filter @dicode/omc-client test
 
+      # The extension's suites answer what a mock cannot: whether OMC accepts
+      # the string we built. They self-gate through `describeIf`, so before
+      # this step they ran only where a developer happened to have `omc` on
+      # PATH — and a suite that never runs is a suite nobody is told about.
+      - name: Extension integration tests against real OMC
+        env:
+          OMC_INTEGRATION: "1"
+          OMC_INTEGRATION_HEAVY: "1"
+          OMC_DEBUG: "1"
+        run: runuser -u omcrunner -- pnpm --filter modelica-wrapper test
+
       - name: Build the extension bundle
         run: pnpm --filter modelica-wrapper build
 
