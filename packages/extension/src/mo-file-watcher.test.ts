@@ -189,24 +189,17 @@ const PKG_FILE = "/ws/My/Pkg/package.mo";
 const ORDER_FILE = "/ws/My/Pkg/package.order";
 
 describe("handleOrderChange", () => {
-  it("reorders the owning package via delete + reload, then re-lists it", async () => {
+  it("reorders the owning package by reloading it, then re-lists it", async () => {
     const { deps, client, childrenChanged, iconChanged, notifySourceChanged } =
       makeDeps({ readFile: async () => "B\nA\n" });
     deps.index.set(PKG_FILE, ["My.Pkg"]);
 
     await handleOrderChange(deps, ORDER_FILE);
 
-    // Reordering must go through delete + reload: `loadFile` alone merges
-    // into the existing symbol table (per `handleMoChange`'s own removed-class
-    // handling) and would not re-derive the child order on its own.
-    expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "My.Pkg" });
+    // A reload re-derives the child order from `package.order`, so nothing is
+    // unloaded first — see `package-order-reload.integration.test.ts`.
     expect(client.loadFile).toHaveBeenCalledWith({ fileName: PKG_FILE });
-    const [deletedAt] = client.deleteClass.mock.invocationCallOrder;
-    const [loadedAt] = client.loadFile.mock.invocationCallOrder;
-    if (deletedAt === undefined || loadedAt === undefined) {
-      throw new Error("expected both deleteClass and loadFile to be called");
-    }
-    expect(deletedAt).toBeLessThan(loadedAt);
+    expect(client.deleteClass).not.toHaveBeenCalled();
     expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
     expect(childrenChanged).toHaveBeenCalledWith("My");
     expect(iconChanged).toHaveBeenCalledWith("My.Pkg");
@@ -292,9 +285,8 @@ describe("handleOrderChange", () => {
   });
 
   it("still re-lists and warns when the reload throws, not just when it reports failure", async () => {
-    // This is the one handler that deletes before it loads, so a thrown call —
-    // a wedged channel, a timeout — leaves OMC without the class while the tree
-    // still lists it. `success: false` was handled; a rejection was not.
+    // A wedged channel or a timeout must not leave the tree unrefreshed and
+    // the user untold — `success: false` was handled; a rejection was not.
     const { deps, client, childrenChanged } = makeDeps({
       readFile: async () => "B\nA\n",
       fileExists: async () => true,
@@ -304,7 +296,6 @@ describe("handleOrderChange", () => {
 
     await handleOrderChange(deps, ORDER_FILE);
 
-    expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "My.Pkg" });
     expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
     expect(recordedMessages).toContainEqual(
       expect.objectContaining({ level: "warning" }),
@@ -322,22 +313,6 @@ describe("handleOrderChange", () => {
 
     // The class was already deleted before the failed reload — re-listing
     // pulls whatever OMC now actually holds instead of a stale, deleted view.
-    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
-    expect(recordedMessages).toContainEqual(
-      expect.objectContaining({ level: "warning" }),
-    );
-  });
-
-  it("re-lists but warns when a deleteClass call is refused, instead of silently reporting success", async () => {
-    const { deps, client, childrenChanged } = makeDeps({
-      readFile: async () => "A\nB\n",
-    });
-    client.deleteClass.mockResolvedValue({ success: false });
-    deps.index.set(PKG_FILE, ["My.Pkg"]);
-
-    await handleOrderChange(deps, ORDER_FILE);
-
-    expect(client.loadFile).toHaveBeenCalledWith({ fileName: PKG_FILE });
     expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
     expect(recordedMessages).toContainEqual(
       expect.objectContaining({ level: "warning" }),
@@ -363,14 +338,14 @@ describe("handleOrderChange", () => {
 });
 
 describe("handleOrderDelete", () => {
-  it("reorders the owning package back to its default order", async () => {
+  it("reloads the owning package back to its default order", async () => {
     const { deps, client, childrenChanged } = makeDeps();
     deps.index.set(PKG_FILE, ["My.Pkg"]);
 
     await handleOrderDelete(deps, ORDER_FILE);
 
-    expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "My.Pkg" });
     expect(client.loadFile).toHaveBeenCalledWith({ fileName: PKG_FILE });
+    expect(client.deleteClass).not.toHaveBeenCalled();
     expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
   });
 

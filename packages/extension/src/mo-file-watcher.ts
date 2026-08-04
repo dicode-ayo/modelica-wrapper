@@ -13,10 +13,8 @@
  *     from a path→class index, since the file can no longer be parsed), then
  *     re-list their enclosing scope.
  *
- * A `package.order` edit needs more than a `loadFile`: OMC merges a reload
- * into the existing symbol table rather than re-deriving a loaded package's
- * child order. So the owning package is resolved from the path→class index,
- * `deleteClass`ed, and its `package.mo` loaded fresh.
+ * A `package.order` edit resolves the owning package from the path→class index
+ * and reloads its `package.mo`, which re-derives the child order from disk.
  *
  * The watcher leaves two kinds of edit alone:
  *   - our own disk writes, matched by content through the {@link SelfWriteGuard}
@@ -185,14 +183,8 @@ function orderOwner(orderFsPath: string): string {
 }
 
 /**
- * `deleteClass` + `loadFile` the package that owns `pkgFile`, then re-list it.
- * The class list itself is unaffected by a reorder, so the index needs no
- * update.
- *
- * The `loadFile` runs even when a `deleteClass` was refused, and the re-list
- * runs even when the `loadFile` failed: a class deleted without a successful
- * reload is silently missing from OMC, so the tree has to be pulled back to
- * whatever OMC actually holds either way.
+ * Reload the package that owns `pkgFile`, then re-list it. The class list
+ * itself is unaffected by a reorder, so the index needs no update.
  *
  * `describedPath` names the file whose edit triggered this, so a busy warning
  * points at what the user touched rather than at `package.mo`.
@@ -210,31 +202,26 @@ async function reorderPackage(
     );
     return;
   }
-  // deleteClass on a package cascades to every class nested under it, so a
-  // dirty buffer for a *member* — not just the package itself — is just as
-  // much at risk of being clobbered underneath its editor.
+  // Reloading the package re-reads every member from disk, so a dirty buffer
+  // for a *member* — not just the package itself — is at risk of being
+  // clobbered underneath its editor.
   const affected = names.flatMap((name) => deps.index.classesUnder(name));
   if (deps.isBusy(pkgFile, affected)) {
     warnReorderBusy(describedPath, names);
     return;
   }
 
+  // `loadFile` on the package re-derives the child order from `package.order`,
+  // for nested packages as well as this one, and picks up a member added
+  // alongside it — see `package-order-reload.integration.test.ts`. Nothing has
+  // to be unloaded first, and nothing is: a failed reload leaves OMC holding
+  // the order it already had, which is what the tree goes on showing.
   const client = await deps.ensureClient();
-  let deleteFailed = false;
   let loaded = false;
   try {
-    for (const name of names) {
-      const { success } = await client.deleteClass({ typeName: name });
-      if (!success) deleteFailed = true;
-    }
     ({ success: loaded } = await client.loadFile({ fileName: pkgFile }));
   } catch (err) {
-    // A throw between the delete and the reload leaves OMC without the class
-    // while the tree still lists it. This is the one handler that deletes
-    // before it loads, so the re-list and the warning below have to run for a
-    // thrown call exactly as they do for one reporting failure.
-    log.warn("moWatcher", `reorder ${pkgFile} threw: ${asMessage(err)}`);
-    deleteFailed = true;
+    log.warn("moWatcher", `reload of ${pkgFile} threw: ${asMessage(err)}`);
   }
 
   const scopes = new Set<string | null>();
@@ -248,18 +235,16 @@ async function reorderPackage(
     deps.sourceProvider.notifySourceChanged(name);
   }
 
-  if (deleteFailed || !loaded) {
+  if (!loaded) {
     // pkgFile can vanish between the busy check above and here — a directory
     // delete racing this reorder — in which case it's a delete, not a failed
     // reorder, and handleMoDelete/handleOrderDelete reconcile it instead.
     if (!(await deps.fileExists(pkgFile))) return;
-    log.warn(
-      "moWatcher",
-      `reordering ${pkgFile} left it out of sync with OMC (deleteFailed=${deleteFailed}, loaded=${loaded})`,
-    );
+    log.warn("moWatcher", `reloading ${pkgFile} after a reorder failed`);
     void vscode.window.showWarningMessage(
-      `Modelica: reordering ${names.join(", ")} may have left it out of sync ` +
-        `with OMC. Edit and save ${path.basename(pkgFile)} to reload it fresh.`,
+      `Modelica: ${path.basename(describedPath)} could not be applied — ` +
+        `${names.join(", ")} still has the order OMC loaded before. Edit and ` +
+        `save ${path.basename(pkgFile)} to reload it.`,
     );
   }
 }
@@ -457,10 +442,8 @@ export function registerMoFileWatcher(deps: {
     orderWatcher,
     // Keyed by the owning package.mo, not the package.order path itself, so a
     // reorder and a `.mo` event for that same package.mo can't run
-    // concurrently. A member file's own event still keys on its own path, so
-    // a reorder's cascading deleteClass can still interleave with a member's
-    // own reload — narrower than full protection, but closes the one case
-    // this watcher pair can hit on every edit: the package.mo itself.
+    // concurrently. A member file's own event keys on its own path and can
+    // still interleave with the reorder's reload.
     orderWatcher.onDidChange((uri) =>
       run(orderOwner(uri.fsPath), () =>
         handleOrderChange(watcherDeps, uri.fsPath),
