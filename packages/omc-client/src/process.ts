@@ -2,10 +2,9 @@
  * OMC subprocess management.
  *
  * Spawns `omc --interactive=zmq -z=<suffix>` and waits for OMC to drop its
- * port file. OMC builds the port-file path from `${TMPDIR}/openmodelica.${USER}.port.${suffix}`
- * (Windows: no user segment), so we control the location precisely by giving
- * OMC its own per-spawn tempdir and a fixed sentinel `USER` via the spawn env.
- * No probing, no platform-specific path drift, no username surprises.
+ * port file. Giving OMC its own per-spawn tempdir and a fixed sentinel `USER`
+ * via the spawn env puts that file where `./session.ts` says it will be. No
+ * probing, no platform-specific path drift, no username surprises.
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
@@ -15,15 +14,14 @@ import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { OMC_PID_FILE, OWNER_PID_FILE, SESSION_DIR_PREFIX } from "./orphans.js";
+import {
+  OMC_PID_FILE,
+  WRAPPER_USER,
+  portFileName,
+  sessionDirPrefix,
+} from "./session.js";
 
 const PORT_FILE_TIMEOUT_MS = 30_000;
-
-/**
- * Sentinel `USER` value passed to OMC. The actual login user is irrelevant —
- * OMC only uses this string as a path segment in the port-file name.
- */
-const WRAPPER_USER = "mw";
 
 export interface OmcProcess {
   /** ZMQ endpoint, e.g. tcp://127.0.0.1:33421. */
@@ -44,15 +42,8 @@ export async function spawnOmc(
 ): Promise<OmcProcess> {
   const bin = omcPath && omcPath.length > 0 ? omcPath : "omc";
   const suffix = `mw_${randomBytes(8).toString("hex")}`;
-  const tempDir = await mkdtemp(join(tmpdir(), SESSION_DIR_PREFIX));
-  await writeFile(join(tempDir, OWNER_PID_FILE), `${process.pid}`, "utf8");
-
-  // Windows OMC drops the user segment unconditionally (compile-time branch
-  // in `zeromqimpl.c`), Unix includes it.
-  const portFile =
-    process.platform === "win32"
-      ? join(tempDir, `openmodelica.port.${suffix}`)
-      : join(tempDir, `openmodelica.${WRAPPER_USER}.port.${suffix}`);
+  const tempDir = await mkdtemp(join(tmpdir(), sessionDirPrefix(process.pid)));
+  const portFile = join(tempDir, portFileName(suffix));
 
   const env: NodeJS.ProcessEnv = { ...process.env };
   if (process.platform === "win32") {

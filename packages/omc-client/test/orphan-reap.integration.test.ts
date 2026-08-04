@@ -7,17 +7,14 @@
  */
 
 import { spawn } from "node:child_process";
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 
 import { expect, it } from "vitest";
 
-import {
-  OWNER_PID_FILE,
-  SESSION_DIR_PREFIX,
-  reapOrphanedOmcSessions,
-} from "../src/orphans.js";
+import { reapOrphanedOmcSessions } from "../src/orphans.js";
+import { SESSION_DIR_PREFIX, sessionDirPrefix } from "../src/session.js";
 import { spawnOmc } from "../src/process.js";
 import { OmcTransport } from "../src/transport.js";
 import { describeIf } from "./fixtures.js";
@@ -67,14 +64,20 @@ describeIf("reaping a stranded OMC", () => {
   it("shuts down an OMC whose owner is gone and removes its tempdir", async () => {
     const proc = await spawnOmc(process.env.OMC_PATH ?? "");
     try {
-      const dir = await sessionDirFor(proc.endpoint);
       expect(await answers(proc.endpoint)).toBe(true);
 
-      await writeFile(join(dir, OWNER_PID_FILE), `${await retiredPid()}`);
+      // Restamping the directory with a pid nobody holds is what a dead
+      // extension host looks like to the reaper.
+      const orphaned = join(
+        tmpdir(),
+        `${sessionDirPrefix(await retiredPid())}stranded`,
+      );
+      await rename(await sessionDirFor(proc.endpoint), orphaned);
+
       const count = await reapOrphanedOmcSessions();
 
       expect(count).toBeGreaterThanOrEqual(1);
-      expect(await readdir(tmpdir())).not.toContain(basename(dir));
+      expect(await readdir(tmpdir())).not.toContain(basename(orphaned));
       expect(await answers(proc.endpoint)).toBe(false);
     } finally {
       await proc.stop();
