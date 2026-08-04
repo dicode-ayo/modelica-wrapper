@@ -140,7 +140,10 @@ function warnReorderBusy(describedPath: string, classNames: string[]): void {
  * deduplicated: each name's own file, plus every file holding a class nested
  * under it. `extra` folds in classes/files that need checking regardless of
  * cascading — the reloading file's own still-declared classes, which are
- * not being deleted and so wouldn't otherwise appear here.
+ * not being deleted and so wouldn't otherwise appear here. `extra.fsPath` is
+ * resolved before joining the set, matching the normalized keys
+ * {@link PathClassIndex.filesUnder} returns — an unresolved caller path
+ * (e.g. one carrying a `..` segment) would otherwise dedupe against nothing.
  */
 function cascadeReach(
   index: PathClassIndex,
@@ -149,7 +152,7 @@ function cascadeReach(
 ): { fsPaths: string[]; classNames: string[] } {
   const matches = names.flatMap((name) => index.filesUnder(name));
   const fsPaths = new Set(matches.map((f) => f.fsPath));
-  if (extra.fsPath !== undefined) fsPaths.add(extra.fsPath);
+  if (extra.fsPath !== undefined) fsPaths.add(path.resolve(extra.fsPath));
   const classNames = new Set(matches.flatMap((f) => f.classNames));
   for (const n of extra.classNames ?? []) classNames.add(n);
   return { fsPaths: [...fsPaths], classNames: [...classNames] };
@@ -246,7 +249,9 @@ async function reorderPackage(
   // Reloading the package re-reads every member from disk, so a dirty buffer
   // for a *member* — not just the package itself — is at risk of being
   // clobbered underneath its editor, whichever file that member lives in.
-  const { fsPaths, classNames } = cascadeReach(deps.index, names);
+  const { fsPaths, classNames } = cascadeReach(deps.index, names, {
+    fsPath: pkgFile,
+  });
   if (deps.isBusy(fsPaths, classNames)) {
     warnReorderBusy(describedPath, names);
     return;
@@ -347,7 +352,7 @@ export async function handleMoDelete(
   }
   // Deleting a package cascades to every member nested under it, wherever
   // those live — widen the busy check to their files and names too.
-  const { fsPaths, classNames } = cascadeReach(deps.index, names);
+  const { fsPaths, classNames } = cascadeReach(deps.index, names, { fsPath });
   if (deps.isBusy(fsPaths, classNames)) {
     warnBusy(fsPath, classNames);
     return;

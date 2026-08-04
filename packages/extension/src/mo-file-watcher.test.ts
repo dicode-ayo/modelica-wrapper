@@ -175,6 +175,28 @@ describe("handleMoChange", () => {
     expect(seenNames.filter((n) => n === "My.Pkg")).toHaveLength(1);
   });
 
+  it("dedupes a removed class's file even when the triggering path isn't normalized", async () => {
+    // filesUnder returns path.resolve()d keys; the triggering fsPath must be
+    // resolved the same way before joining the set, or the same file reaches
+    // the busy check twice under two different spellings of its own path.
+    const UNNORMALIZED = "/ws/My/Pkg/../Pkg/Bar.mo";
+    let seenFsPaths: string[] = [];
+    const { deps, client } = makeDeps({
+      isBusy: (fsPaths) => {
+        seenFsPaths = fsPaths;
+        return false;
+      },
+    });
+    client.parseFile.mockResolvedValue({ classNames: [] });
+    deps.index.set(UNNORMALIZED, ["My.Pkg.Bar"]);
+
+    await handleMoChange(deps, UNNORMALIZED);
+
+    expect(
+      seenFsPaths.filter((p) => p === path.resolve(UNNORMALIZED)),
+    ).toHaveLength(1);
+  });
+
   it("does not touch the tree when loadFile fails", async () => {
     const { deps, client, childrenChanged } = makeDeps();
     client.loadFile.mockResolvedValue({ success: false });
