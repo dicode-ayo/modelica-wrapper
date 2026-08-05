@@ -1,5 +1,5 @@
 /**
- * Extends-chain walker utilities.
+ * Diagram-shaped walkers over a `ModelInstance`.
  *
  * Both icon collection and connector collection follow the same recursion:
  * descend `elements[$kind=="extends"].baseClass.elements` only — never
@@ -12,27 +12,12 @@
  * underneath later ones.
  */
 
+import { walkExtendsChain } from "../../_shared/extendsChain.js";
 import type {
   ComponentElement,
   ElementNode,
   ModelInstance,
 } from "../../_shared/modelInstance.js";
-
-/**
- * Walk a class and its inheritance chain in post-order.
- *
- * For a host class `C` extending `B` extending `A`, the iteration yields
- * `A`, `B`, `C` in that order. Cycles are not handled — Modelica forbids
- * inheritance cycles, and OMC would already reject them upstream.
- */
-export function* walkExtendsChain(mi: ModelInstance): Iterable<ModelInstance> {
-  for (const e of mi.elements ?? []) {
-    if (e.$kind === "extends" && typeof e.baseClass === "object") {
-      yield* walkExtendsChain(e.baseClass);
-    }
-  }
-  yield mi;
-}
 
 /**
  * The `$kind="component"` elements declared DIRECTLY on `mi`. Does not
@@ -174,7 +159,7 @@ export function* walkLayerEntries(
 export function* walkConnectors(
   mi: ModelInstance,
 ): Iterable<{ from: string; element: ComponentElement }> {
-  for (const klass of walkExtendsChain(mi)) {
+  for (const { klass } of walkExtendsChain(mi)) {
     for (const e of ownConnectors(klass)) {
       yield { from: klass.name, element: e };
     }

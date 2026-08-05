@@ -39,6 +39,12 @@ import type {
   UnitOption,
   UnitTable,
 } from "./types.js";
+import { walkExtendsChain } from "../../_shared/extendsChain.js";
+import {
+  resolveDisplayUnit,
+  resolveUnit,
+  unquoteString,
+} from "../../_shared/unitResolution.js";
 
 /**
  * Modelica Dialog-annotation defaults — see spec §18.7. Surfaced even when
@@ -100,8 +106,6 @@ export function produceParameterModel(
   for (const { klass, directBase } of walkExtendsChain(instance)) {
     // `instance` is the host (last in the post-order walk). Anything earlier
     // is an ancestor reached via `extends`, so its params are inherited.
-    // `directBase` is the host's DIRECT extends clause the param descends
-    // from (issue #76, item 3) — what `setExtendsModifierValue` needs.
     const inheritedFrom = klass === instance ? undefined : directBase;
     for (const el of klass.elements ?? []) {
       if (el.$kind !== "component") continue;
@@ -161,8 +165,8 @@ function buildField(
 ): ParameterField {
   const label = el.comment ?? el.name;
   const dialog = readDialogInfo(el.annotation);
-  const unit = parameterUnit(el);
-  const displayUnit = parameterDisplayUnit(el);
+  const unit = resolveUnit(el);
+  const displayUnit = resolveDisplayUnit(el);
 
   const base: Omit<ParameterField, "kind" | "value"> = {
     name: el.name,
@@ -296,45 +300,7 @@ function typeQualifiedName(type: ComponentElement["type"]): string | undefined {
   return type.name;
 }
 
-// ---------- unit extraction ----------
-
-/**
- * Pull the declaration `unit` for a parameter component. The unit usually
- * rides on the type alias's `extends Real(unit="…")`; we read the component's
- * own modifiers first (a use-site `unit=` override is legal but rare), then
- * walk the type's `extends` chain. Depth-limited (8) against cycles.
- */
-function parameterUnit(el: ComponentElement): string | undefined {
-  const direct = readModifierField(el.modifiers, "unit");
-  if (direct) return unquoteString(direct);
-  if (typeof el.type !== "object" || el.type === null) return undefined;
-  let cursor: ModelInstance | string | undefined = el.type;
-  for (let i = 0; i < 8; i += 1) {
-    if (cursor === undefined || typeof cursor === "string") return undefined;
-    const mi: ModelInstance = cursor;
-    let ext: ExtendsElement | undefined;
-    for (const child of mi.elements ?? []) {
-      if (child.$kind === "extends") {
-        const u = readModifierField(child.modifiers, "unit");
-        if (u) return unquoteString(u);
-        if (ext === undefined) ext = child;
-      }
-    }
-    if (ext === undefined) return undefined;
-    cursor = ext.baseClass;
-  }
-  return undefined;
-}
-
-/**
- * Pull the `displayUnit` modifier off a parameter component (e.g.
- * `Angle phi(displayUnit="deg")`). A direct modifier field, distinct from the
- * declaration `unit` which rides on the type alias's `extends`.
- */
-function parameterDisplayUnit(el: ComponentElement): string | undefined {
-  const direct = readModifierField(el.modifiers, "displayUnit");
-  return direct ? unquoteString(direct) : undefined;
-}
+// ---------- unit options ----------
 
 /**
  * Build the field's unit option list from an injected table. Empty when no
@@ -572,33 +538,6 @@ function readValueBinding(value: unknown): unknown {
   return (value as { binding?: unknown }).binding;
 }
 
-/**
- * Read a named field (`unit` / `displayUnit`) off a `Modifier` record,
- * flattening through a `$value` wrapper. Returns the raw (still-quoted)
- * string or `undefined`.
- */
-function readModifierField(
-  mod: Modifier | undefined,
-  field: string,
-): string | undefined {
-  if (mod === undefined || mod === null || typeof mod !== "object") {
-    return undefined;
-  }
-  const v = (mod as Record<string, Modifier>)[field];
-  const s = flattenModifierString(v);
-  return s.length > 0 ? s : undefined;
-}
-
-function flattenModifierString(mod: Modifier | undefined): string {
-  if (mod === undefined || mod === null) return "";
-  if (typeof mod === "string") return mod;
-  if (typeof mod === "number" || typeof mod === "boolean") return String(mod);
-  if (typeof mod === "object" && "$value" in mod) {
-    return flattenModifierString((mod as { $value?: Modifier }).$value);
-  }
-  return "";
-}
-
 // ---------- string helpers ----------
 
 function stripPrefix(name: string, qualified: string): string {
@@ -606,53 +545,9 @@ function stripPrefix(name: string, qualified: string): string {
   return name.startsWith(prefix) ? name.slice(prefix.length) : name;
 }
 
-/**
- * OMC emits string-typed modifier bindings with embedded quotes
- * (`"\"rad\""`) — strip one layer so the user edits the inner text.
- */
-function unquoteString(s: string): string {
-  if (s.length >= 2 && s.startsWith(`"`) && s.endsWith(`"`)) {
-    return s.slice(1, -1);
-  }
-  return s;
-}
-
-// ---------- extends-chain walker ----------
-
-interface WalkNode {
-  klass: ModelInstance;
-  /**
-   * Name of the host's DIRECT extends base this `klass` was reached through,
-   * or `undefined` when `klass` is the host itself. For C extends B extends A,
-   * walking A yields `directBase === <B's name>` — the direct clause on C,
-   * which `setExtendsModifierValue` needs to route a deep inherited write.
-   */
-  directBase: string | undefined;
-}
-
-/**
- * Post-order walk over `mi` and its `extends` ancestors (ancestors first, host
- * last). Each ancestor carries the host's direct `extends` clause name it
- * descends from (issue #76, item 3).
- */
-function* walkExtendsChain(
-  mi: ModelInstance,
-  directBase?: string,
-): Iterable<WalkNode> {
-  for (const e of mi.elements ?? []) {
-    if (e.$kind === "extends" && typeof e.baseClass === "object") {
-      const seed = directBase ?? e.baseClass.name;
-      yield* walkExtendsChain(e.baseClass, seed);
-    }
-  }
-  yield { klass: mi, directBase };
-}
-
 /** For tests / external introspection — kept off the public barrel. */
 export const _internal = {
   resolvePrimitive,
   enumLeavesIfEnum,
-  parameterUnit,
-  parameterDisplayUnit,
   readDialogInfo,
 };
