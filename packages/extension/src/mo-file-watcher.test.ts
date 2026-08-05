@@ -192,9 +192,6 @@ describe("handleMoChange", () => {
 
     await handleMoChange(deps, UNNORMALIZED);
 
-    // Exact-array equality, not a filtered count: an unresolved second entry
-    // for the same file would leave the count at 1 too, since the filter
-    // itself discards the very duplicate this test exists to catch.
     expect(seenFsPaths).toEqual([path.resolve(UNNORMALIZED)]);
   });
 
