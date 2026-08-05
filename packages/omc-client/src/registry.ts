@@ -72,6 +72,36 @@ function entry<TInput, TOutput>(
   return { fn, inputSchema, outputSchema, category, description };
 }
 
+/** The only value an argument-less OMC function accepts. */
+type NoInput = Record<string, never>;
+
+const NoInputSchema = z.strictObject({});
+
+/**
+ * Registration for OMC functions declared with no arguments, whose wrapper is
+ * therefore `(ctx) => …` and ships no input schema of its own.
+ *
+ * `invoke()` is an untrusted boundary, so the entry carries a strict
+ * empty-object schema: anything but `{}` is a caller bug and is rejected as
+ * one. Typing the input as `Record<string, never>` keeps that contract
+ * visible to `OmcInput`, and the schema gives `help.ts` and the MCP pipeline
+ * the "(none)" parameter list they expect for every entry.
+ */
+function noInputEntry<TOutput>(
+  category: string,
+  fn: (ctx: CallContext) => Promise<TOutput>,
+  outputSchema: z.ZodType<TOutput>,
+  description: string,
+): RegistryEntry<NoInput, TOutput> {
+  return entry<NoInput, TOutput>(
+    category,
+    fn,
+    NoInputSchema,
+    outputSchema,
+    description,
+  );
+}
+
 export const REGISTRY = {
   // --- Browsing ---
   getVersion: entry(
@@ -80,6 +110,12 @@ export const REGISTRY = {
     browsing.GetVersionInputSchema,
     browsing.GetVersionOutputSchema,
     browsing.GetVersionDescription,
+  ),
+  getModelicaPath: noInputEntry(
+    "browsing",
+    browsing.getModelicaPath,
+    browsing.GetModelicaPathOutputSchema,
+    browsing.GetModelicaPathDescription,
   ),
   getClassNames: entry(
     "browsing",
