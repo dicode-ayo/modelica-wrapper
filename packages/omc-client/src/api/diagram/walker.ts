@@ -1,5 +1,5 @@
 /**
- * Extends-chain walker utilities.
+ * Diagram-shaped walkers over a `ModelInstance`.
  *
  * Both icon collection and connector collection follow the same recursion:
  * descend `elements[$kind=="extends"].baseClass.elements` only — never
@@ -12,41 +12,12 @@
  * underneath later ones.
  */
 
+import { walkExtendsChain } from "../../_shared/extendsChain.js";
 import type {
   ComponentElement,
   ElementNode,
   ModelInstance,
 } from "../../_shared/modelInstance.js";
-
-export interface ExtendsChainNode {
-  klass: ModelInstance;
-  /**
-   * Name of the host's DIRECT `extends` clause this `klass` was reached
-   * through, or `undefined` when `klass` is the host itself. For `C extends B
-   * extends A`, walking `A` yields B's name — the clause on `C` that
-   * `setExtendsModifierValue` must target for a deep inherited write to land.
-   */
-  directBase: string | undefined;
-}
-
-/**
- * Walk a class and its inheritance chain in post-order.
- *
- * For a host class `C` extending `B` extending `A`, the iteration yields
- * `A`, `B`, `C` in that order. Cycles are not handled — Modelica forbids
- * inheritance cycles, and OMC would already reject them upstream.
- */
-export function* walkExtendsChain(
-  mi: ModelInstance,
-  directBase?: string,
-): Iterable<ExtendsChainNode> {
-  for (const e of mi.elements ?? []) {
-    if (e.$kind === "extends" && typeof e.baseClass === "object") {
-      yield* walkExtendsChain(e.baseClass, directBase ?? e.baseClass.name);
-    }
-  }
-  yield { klass: mi, directBase };
-}
 
 /**
  * The `$kind="component"` elements declared DIRECTLY on `mi`. Does not

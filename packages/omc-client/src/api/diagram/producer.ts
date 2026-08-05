@@ -54,14 +54,14 @@ import {
   ownParameters,
   ownSubComponents,
   walkConnectors,
-  walkExtendsChain,
   walkLayerEntries,
 } from "./walker.js";
+import { walkExtendsChain } from "../../_shared/extendsChain.js";
 import {
   modifierToDisplayString,
   resolveDisplayUnit,
   resolveUnit,
-} from "./unit-resolution.js";
+} from "../../_shared/unitResolution.js";
 
 // ---------- condition gating ----------
 

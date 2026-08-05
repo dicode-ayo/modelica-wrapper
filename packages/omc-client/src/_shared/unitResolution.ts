@@ -9,7 +9,7 @@ import type {
   ComponentElement,
   Modifier,
   ModelInstance,
-} from "../../_shared/modelInstance.js";
+} from "./modelInstance.js";
 
 /**
  * Guards against a malformed `baseClass` tree. Modelica forbids inheritance
@@ -38,7 +38,7 @@ export function modifierToDisplayString(mod: Modifier | undefined): string {
  * flattening through a `$value` wrapper. The result is still quoted as OMC
  * emitted it; `undefined` when the field is absent or flattens to `""`.
  */
-export function readModifierField(
+function readModifierField(
   mod: Modifier | undefined,
   field: string,
 ): string | undefined {
@@ -78,7 +78,7 @@ export function unquoteString(s: string): string {
 export function resolveUnit(el: ComponentElement): string | undefined {
   const direct = readModifierField(el.modifiers, "unit");
   if (direct !== undefined) return unquoteString(direct);
-  if (typeof el.type !== "object" || el.type === null) return undefined;
+  if (typeof el.type !== "object") return undefined;
   return unitFromInstance(el.type, 0);
 }
 
@@ -92,7 +92,7 @@ function unitFromInstance(
     const own = readModifierField(child.modifiers, "unit");
     if (own !== undefined) return unquoteString(own);
     const base = child.baseClass;
-    if (typeof base === "object" && base !== null) {
+    if (typeof base === "object") {
       const nested = unitFromInstance(base, depth + 1);
       if (nested !== undefined) return nested;
     }

@@ -39,12 +39,12 @@ import type {
   UnitOption,
   UnitTable,
 } from "./types.js";
+import { walkExtendsChain } from "../../_shared/extendsChain.js";
 import {
   resolveDisplayUnit,
   resolveUnit,
   unquoteString,
-} from "../diagram/unit-resolution.js";
-import { walkExtendsChain } from "../diagram/walker.js";
+} from "../../_shared/unitResolution.js";
 
 /**
  * Modelica Dialog-annotation defaults — see spec §18.7. Surfaced even when
@@ -106,8 +106,6 @@ export function produceParameterModel(
   for (const { klass, directBase } of walkExtendsChain(instance)) {
     // `instance` is the host (last in the post-order walk). Anything earlier
     // is an ancestor reached via `extends`, so its params are inherited.
-    // `directBase` is the host's DIRECT extends clause the param descends
-    // from (issue #76, item 3) — what `setExtendsModifierValue` needs.
     const inheritedFrom = klass === instance ? undefined : directBase;
     for (const el of klass.elements ?? []) {
       if (el.$kind !== "component") continue;

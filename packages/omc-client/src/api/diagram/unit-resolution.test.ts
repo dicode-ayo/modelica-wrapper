@@ -19,7 +19,7 @@ import { produceDiagramLayout } from "./producer.js";
 const HOST = "Test.UnitHost";
 
 /** A host class declaring one `parameter J` of the given type. */
-function hostWithParameter(type: unknown): ModelInstance {
+function hostWithParameter(type: unknown, modifiers?: unknown): ModelInstance {
   return ModelInstanceSchema.parse({
     name: HOST,
     restriction: "model",
@@ -28,6 +28,7 @@ function hostWithParameter(type: unknown): ModelInstance {
         $kind: "component",
         name: "J",
         type,
+        modifiers,
         value: { binding: 1 },
         prefixes: { variability: "parameter" },
       },
@@ -41,6 +42,16 @@ function diagramUnit(mi: ModelInstance): string | undefined {
 
 function formUnit(mi: ModelInstance): string | undefined {
   return produceParameterModel(mi).fields.find((f) => f.name === "J")?.unit;
+}
+
+function diagramDisplayUnit(mi: ModelInstance): string | undefined {
+  return produceDiagramLayout(mi, "icon").classes[HOST]?.parameters.J
+    ?.displayUnit;
+}
+
+function formDisplayUnit(mi: ModelInstance): string | undefined {
+  return produceParameterModel(mi).fields.find((f) => f.name === "J")
+    ?.displayUnit;
 }
 
 /** `type Marked = Real` — an alias contributing no unit of its own. */
@@ -71,6 +82,28 @@ const INERTIA_ALIAS = {
     },
   ],
 };
+
+/**
+ * `type L<n> = L<n-1>` nested `depth` times over an alias whose innermost
+ * `extends Real` carries `unit="m"`.
+ */
+function nestedAliasChain(depth: number): unknown {
+  let type: unknown = {
+    name: "Test.Units.Deep",
+    restriction: "type",
+    elements: [
+      { $kind: "extends", baseClass: "Real", modifiers: { unit: '"m"' } },
+    ],
+  };
+  for (let i = 1; i <= depth; i++) {
+    type = {
+      name: `Test.Units.L${String(i)}`,
+      restriction: "type",
+      elements: [{ $kind: "extends", baseClass: type }],
+    };
+  }
+  return type;
+}
 
 describe("declaration unit — diagram and parameter form agree", () => {
   it("resolves a unit reached only through the second extends clause", () => {
@@ -118,6 +151,13 @@ describe("declaration unit — diagram and parameter form agree", () => {
     expect(formUnit(mi)).toBe("g.mm2");
   });
 
+  it("prefers the component's own modifier over the one on its type", () => {
+    const mi = hostWithParameter(INERTIA_ALIAS, { unit: '"g.mm2"' });
+
+    expect(diagramUnit(mi)).toBe("g.mm2");
+    expect(formUnit(mi)).toBe("g.mm2");
+  });
+
   it("reports no unit when no clause in the chain declares one", () => {
     const mi = hostWithParameter({
       name: "Test.Units.Bare",
@@ -127,5 +167,26 @@ describe("declaration unit — diagram and parameter form agree", () => {
 
     expect(diagramUnit(mi)).toBeUndefined();
     expect(formUnit(mi)).toBeUndefined();
+  });
+
+  it("resolves a unit within the depth bound", () => {
+    const mi = hostWithParameter(nestedAliasChain(3));
+
+    expect(diagramUnit(mi)).toBe("m");
+    expect(formUnit(mi)).toBe("m");
+  });
+
+  it("gives up rather than recursing past the depth bound", () => {
+    const mi = hostWithParameter(nestedAliasChain(20));
+
+    expect(diagramUnit(mi)).toBeUndefined();
+    expect(formUnit(mi)).toBeUndefined();
+  });
+
+  it("reads displayUnit off the component's own modifier", () => {
+    const mi = hostWithParameter(INERTIA_ALIAS, { displayUnit: '"deg"' });
+
+    expect(diagramDisplayUnit(mi)).toBe("deg");
+    expect(formDisplayUnit(mi)).toBe("deg");
   });
 });
