@@ -138,9 +138,9 @@ function warnReorderBusy(describedPath: string, classNames: string[]): void {
 /**
  * Every file and class a `deleteClass` or reload of `names` can reach,
  * deduplicated: each name's own file, plus every file holding a class nested
- * under it. `extra` folds in classes/files that need checking regardless of
- * cascading — the reloading file's own still-declared classes, which are
- * not being deleted and so wouldn't otherwise appear here. `extra.fsPath`
+ * under it. `extra` is a floor included regardless of what the cascade
+ * search finds — a class the index doesn't know yet (so `filesUnder` can't
+ * cascade from it) still needs to be checked directly. `extra.fsPath`
  * needn't be pre-resolved by the caller — it's normalized here to match the
  * paths {@link PathClassIndex.filesUnder} returns, so a caller path carrying
  * e.g. a `..` segment still dedupes against the same file's cascaded entry.
