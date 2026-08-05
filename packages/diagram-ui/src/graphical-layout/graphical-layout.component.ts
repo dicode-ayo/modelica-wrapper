@@ -75,19 +75,15 @@ import {
   type ContextKeys,
 } from "../interaction/context-keys.js";
 import {
-  entityKeyForNode,
   formatComponentKey,
   formatConnectorKey,
   formatShapeKey,
-  isComponentKey,
-  isConnectorKey,
-  isEdgeKey,
-  isJunctionKey,
-  isShapeKey,
   parseKey,
   vertexKeyForEntity,
   vertexShapeKey,
-} from "../interaction/node-keys.js";
+  type JunctionKey,
+} from "../interaction/entity-keys.js";
+import { entityKeyForNode } from "../interaction/node-keys.js";
 import {
   orthogonalRoute,
   resolveConnectionWaypoints,
@@ -882,7 +878,7 @@ export class OmGraphicalLayout extends LitElement {
    */
   private findConnectorElement(key: string): OmConnector | null {
     const parsed = parseKey(key);
-    if (!parsed || !isConnectorKey(parsed)) {
+    if (parsed?.kind !== "connector") {
       return null;
     }
     const root = this.sceneEl;
@@ -947,9 +943,9 @@ export class OmGraphicalLayout extends LitElement {
       }
     };
     const parsedHover = this.hoverKey ? parseKey(this.hoverKey) : null;
-    if (parsedHover && isComponentKey(parsedHover)) {
+    if (parsedHover?.kind === "component") {
       addAllPortsOfComponent(parsedHover.nodeId);
-    } else if (parsedHover && isConnectorKey(parsedHover) && this.hoverKey) {
+    } else if (parsedHover?.kind === "connector" && this.hoverKey) {
       addByConnectorKey(this.hoverKey);
     }
     const ip = this.inProgressConnection;
@@ -1064,7 +1060,7 @@ export class OmGraphicalLayout extends LitElement {
       return;
     }
     if (
-      isShapeKey(entity) &&
+      entity.kind === "shape" &&
       (entity.shapeKind === "line" || entity.shapeKind === "polygon")
     ) {
       const point = this.sceneEl?.clientToDiagram(e.clientX, e.clientY);
@@ -1080,7 +1076,7 @@ export class OmGraphicalLayout extends LitElement {
       );
       return;
     }
-    if (isEdgeKey(entity)) {
+    if (entity.kind === "edge") {
       // Edge nodeId is the connection index.
       const connIdx = Number(entity.nodeId);
       const point = this.sceneEl?.clientToDiagram(e.clientX, e.clientY);
@@ -1096,46 +1092,35 @@ export class OmGraphicalLayout extends LitElement {
       );
       return;
     }
-    if (isJunctionKey(entity)) {
-      // Junction nodeId is the compound `<connIdx>/<waypointIdx>`.
-      const slash = entity.nodeId.indexOf("/");
-      if (slash < 0) {
+    if (entity.kind === "junction") {
+      const { connIndex, waypointIndex } = entity;
+      if (Number.isNaN(connIndex) || Number.isNaN(waypointIndex)) {
         return;
       }
-      const connIdx = Number(entity.nodeId.slice(0, slash));
-      const waypointIdx = Number(entity.nodeId.slice(slash + 1));
-      if (Number.isNaN(connIdx) || Number.isNaN(waypointIdx)) {
-        return;
-      }
-      this.commitLayout(applyWaypointDelete(this.layout, connIdx, waypointIdx));
+      this.commitLayout(
+        applyWaypointDelete(this.layout, connIndex, waypointIndex),
+      );
     }
   }
 
   /**
    * Reshape a connection's route around a dragged waypoint, keeping it
-   * orthogonal. `nodeId` is the junction's compound id
-   * (`<connIdx>/<waypointIdx>`); a malformed id leaves the layout
-   * untouched.
+   * orthogonal. A malformed junction id leaves the layout untouched.
    */
   private applyJunctionReshape(
     layout: DiagramLayout,
-    nodeId: string,
+    junction: JunctionKey,
     dx: number,
     dy: number,
   ): DiagramLayout {
-    const slash = nodeId.indexOf("/");
-    if (slash < 0) {
-      return layout;
-    }
-    const connIdx = Number(nodeId.slice(0, slash));
-    const waypointIdx = Number(nodeId.slice(slash + 1));
-    if (Number.isNaN(connIdx) || Number.isNaN(waypointIdx)) {
+    const { connIndex, waypointIndex } = junction;
+    if (Number.isNaN(connIndex) || Number.isNaN(waypointIndex)) {
       return layout;
     }
     return applyWaypointDrag(
-      this.withMaterialisedRoute(layout, connIdx),
-      connIdx,
-      waypointIdx,
+      this.withMaterialisedRoute(layout, connIndex),
+      connIndex,
+      waypointIndex,
       dx,
       dy,
     );
@@ -1485,13 +1470,8 @@ export class OmGraphicalLayout extends LitElement {
         // multi-selection) is a plain move.
         const only = d.keys.length === 1 ? d.keys[0] : undefined;
         const single = only ? parseKey(only) : null;
-        if (single && isJunctionKey(single)) {
-          const moved = this.applyJunctionReshape(
-            this.layout,
-            single.nodeId,
-            dx,
-            dy,
-          );
+        if (single?.kind === "junction") {
+          const moved = this.applyJunctionReshape(this.layout, single, dx, dy);
           if (d.draft) {
             this.draftLayout = moved;
             this.setInteractionState({ kind: "moving", keys: d.keys });
@@ -1818,8 +1798,7 @@ export class OmGraphicalLayout extends LitElement {
     const [key] = this.selectedKeys;
     const parsed = key ? parseKey(key) : null;
     return (
-      !!parsed &&
-      isShapeKey(parsed) &&
+      parsed?.kind === "shape" &&
       (parsed.shapeKind === "line" || parsed.shapeKind === "polygon")
     );
   }

@@ -13,12 +13,8 @@ import {
   type InteractionState,
   type InteractionStateStore,
 } from "../interaction/interaction-state.js";
-import {
-  isJunctionKey,
-  parseKey,
-  readEntityMeta,
-  tagEntity,
-} from "../interaction/node-keys.js";
+import { parseKey } from "../interaction/entity-keys.js";
+import { readEntityMeta, tagEntity } from "../interaction/node-keys.js";
 import { WAYPOINT_RADIUS } from "./edge-build.js";
 import { parseCssColor } from "./parse-color.js";
 import "./edge.component.js";
@@ -159,7 +155,7 @@ export class OmConnection extends LitElement {
     const parsed = parseKey(key);
     if (!parsed) return false;
     if (parsed.kind === "edge") return parsed.nodeId === this.nodeId;
-    if (isJunctionKey(parsed)) {
+    if (parsed.kind === "junction") {
       return parsed.nodeId.startsWith(`${this.nodeId}/`);
     }
     return false;

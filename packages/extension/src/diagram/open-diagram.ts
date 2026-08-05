@@ -13,7 +13,7 @@ import {
 
 import { renderIconLayersToSvg } from "@dicode/diagram-svg";
 
-import { isConnectorKey, parseEntityKey } from "./entity-key.js";
+import { parseKey } from "@dicode/diagram-ui/entity-keys";
 
 import { createReplLog } from "../commands/repl.js";
 import {
@@ -939,8 +939,8 @@ async function resolveClassName(arg: unknown): Promise<string | undefined> {
  * expects on `addConnection`.
  */
 export function keyToCref(layout: DiagramLayout, key: string): string | null {
-  const parsed = parseEntityKey(key);
-  if (!parsed || !isConnectorKey(parsed)) return null;
+  const parsed = parseKey(key);
+  if (parsed?.kind !== "connector") return null;
   if (parsed.componentName === null) {
     return layout.connectors[parsed.portName] ? parsed.portName : null;
   }

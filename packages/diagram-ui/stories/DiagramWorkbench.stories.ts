@@ -34,7 +34,7 @@ import type {
 } from "../src/action-panel/action-panel.component.js";
 import type { LayoutEvents } from "../src/graphical-layout/layout-events.js";
 import type { ParameterFormSubmitDetail } from "../src/parameter-form/parameter-form.component.js";
-import { isComponentKey, parseKey } from "../src/interaction/node-keys.js";
+import { parseKey } from "../src/interaction/entity-keys.js";
 
 import { sampleLayout } from "./fixtures/sample-layout.js";
 import {
@@ -167,7 +167,7 @@ const meta: Meta<StoryArgs> = {
               e: CustomEvent<LayoutEvents["om-double-click"]>,
             ) => {
               const parsed = parseKey(e.detail.key);
-              if (!parsed || !isComponentKey(parsed) || parsed.nodeId === "") {
+              if (parsed?.kind !== "component" || parsed.nodeId === "") {
                 return;
               }
               openParams(storyRoot(e.currentTarget), {

@@ -2,7 +2,8 @@ import type { Container } from "pixi.js";
 
 import type { SceneContext } from "../scene/scene-context.js";
 import type { SelectionProvider } from "./gesture-mode.js";
-import { entityKeyForNode, formatKey } from "./node-keys.js";
+import { formatKey } from "./entity-keys.js";
+import { entityKeyForNode } from "./node-keys.js";
 
 /**
  * Picker function: given client (viewport) pixel coords, return the

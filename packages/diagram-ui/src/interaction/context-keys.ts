@@ -1,5 +1,5 @@
 import type { InteractionSnapshot, ModeId } from "./interaction-state.js";
-import { parseKey, type EntityKind } from "./node-keys.js";
+import { parseKey, type EntityKind } from "./entity-keys.js";
 
 /**
  * Context keys derived from the interaction snapshot plus host

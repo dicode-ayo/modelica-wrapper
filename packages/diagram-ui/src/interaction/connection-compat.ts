@@ -19,7 +19,7 @@
 
 import type { DiagramLayout, PortDef } from "@dicode/omc-client";
 
-import { isConnectorKey, parseKey } from "./node-keys.js";
+import { parseKey } from "./entity-keys.js";
 
 export interface PortInfo {
   /** Qualified type name of the connector class. */
@@ -52,7 +52,7 @@ export function resolvePortInfo(
   key: string,
 ): PortInfo | null {
   const parsed = parseKey(key);
-  if (!parsed || !isConnectorKey(parsed)) {
+  if (parsed?.kind !== "connector") {
     return null;
   }
   if (parsed.componentName === null) {

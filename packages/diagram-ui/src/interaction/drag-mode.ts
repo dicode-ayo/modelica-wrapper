@@ -1,5 +1,5 @@
 import { DRAG_SLOP_PX } from "./interaction-manager.js";
-import { formatKey, vertexKeyForEntity } from "./node-keys.js";
+import { formatKey, vertexKeyForEntity } from "./entity-keys.js";
 import {
   MOVE_KINDS,
   ownerOfHandle,

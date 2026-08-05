@@ -1,11 +1,7 @@
 import type { Container } from "pixi.js";
 
-import {
-  entityKeyForNode,
-  formatKey,
-  type EntityKey,
-  type EntityKind,
-} from "./node-keys.js";
+import { formatKey, type EntityKey, type EntityKind } from "./entity-keys.js";
+import { entityKeyForNode } from "./node-keys.js";
 
 export type Picker = (clientX: number, clientY: number) => Container | null;
 export type ClientToDiagram = (
