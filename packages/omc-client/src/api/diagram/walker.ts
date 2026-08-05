@@ -18,6 +18,17 @@ import type {
   ModelInstance,
 } from "../../_shared/modelInstance.js";
 
+export interface ExtendsChainNode {
+  klass: ModelInstance;
+  /**
+   * Name of the host's DIRECT `extends` clause this `klass` was reached
+   * through, or `undefined` when `klass` is the host itself. For `C extends B
+   * extends A`, walking `A` yields B's name — the clause on `C` that
+   * `setExtendsModifierValue` must target for a deep inherited write to land.
+   */
+  directBase: string | undefined;
+}
+
 /**
  * Walk a class and its inheritance chain in post-order.
  *
@@ -25,13 +36,16 @@ import type {
  * `A`, `B`, `C` in that order. Cycles are not handled — Modelica forbids
  * inheritance cycles, and OMC would already reject them upstream.
  */
-export function* walkExtendsChain(mi: ModelInstance): Iterable<ModelInstance> {
+export function* walkExtendsChain(
+  mi: ModelInstance,
+  directBase?: string,
+): Iterable<ExtendsChainNode> {
   for (const e of mi.elements ?? []) {
     if (e.$kind === "extends" && typeof e.baseClass === "object") {
-      yield* walkExtendsChain(e.baseClass);
+      yield* walkExtendsChain(e.baseClass, directBase ?? e.baseClass.name);
     }
   }
-  yield mi;
+  yield { klass: mi, directBase };
 }
 
 /**
@@ -174,7 +188,7 @@ export function* walkLayerEntries(
 export function* walkConnectors(
   mi: ModelInstance,
 ): Iterable<{ from: string; element: ComponentElement }> {
-  for (const klass of walkExtendsChain(mi)) {
+  for (const { klass } of walkExtendsChain(mi)) {
     for (const e of ownConnectors(klass)) {
       yield { from: klass.name, element: e };
     }

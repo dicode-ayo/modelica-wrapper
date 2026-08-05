@@ -628,8 +628,8 @@ export async function fetchIconLayout(
  */
 function iconDependencies(instance: ModelInstance): string[] {
   const deps = new Set<string>();
-  for (const ancestor of diagram.walkExtendsChain(instance)) {
-    if (ancestor !== instance) deps.add(ancestor.name);
+  for (const { klass } of diagram.walkExtendsChain(instance)) {
+    if (klass !== instance) deps.add(klass.name);
   }
   return [...deps];
 }

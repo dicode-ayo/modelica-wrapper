@@ -23,7 +23,6 @@
 import type {
   ComponentElement,
   ConnectionNode,
-  Modifier,
   ModelInstance,
   RecordValue,
 } from "../../_shared/modelInstance.js";
@@ -58,6 +57,11 @@ import {
   walkExtendsChain,
   walkLayerEntries,
 } from "./walker.js";
+import {
+  modifierToDisplayString,
+  resolveDisplayUnit,
+  resolveUnit,
+} from "./unit-resolution.js";
 
 // ---------- condition gating ----------
 
@@ -91,22 +95,6 @@ function isConditionTrue(condition: unknown): boolean {
 }
 
 // ---------- parameter extraction ----------
-
-/**
- * Flatten a `Modifier` tree to a display string. Walks `$value` when
- * present so a structured `{min: "0", $value: "1"}` collapses to `"1"`.
- * Returns `""` for unsupported / missing shapes so the caller can fall
- * through to the next source without special-casing.
- */
-function modifierToDisplayString(mod: Modifier | undefined): string {
-  if (mod === undefined || mod === null) return "";
-  if (typeof mod === "string") return mod;
-  if (typeof mod === "number" || typeof mod === "boolean") return String(mod);
-  if (typeof mod === "object" && "$value" in mod) {
-    return modifierToDisplayString(mod.$value);
-  }
-  return "";
-}
 
 /**
  * Format a `value.binding` payload as a display string. OMC emits the
@@ -154,98 +142,20 @@ function parameterDisplayValue(el: ComponentElement): string {
   return modifierToDisplayString(el.modifiers);
 }
 
-/**
- * Pull `quantity` / `unit` modifiers (typically declared on SI-unit
- * type aliases via `extends`) into a single `unit` string. Used for
- * the optional `ParameterDef.unit` field; we don't surface quantity
- * because no current consumer needs it.
- *
- * The `unit` modifier can ride either directly on the component (a plain
- * `Real x(unit="m")`), on the immediate type alias's `extends` (e.g.
- * `Angle extends Real(unit="rad")`), or further down a CHAIN of aliases
- * (`Inertia extends MomentOfInertia extends Real(unit="kg.m2")`). OMC
- * inlines that chain as nested `ModelInstance` objects on each `extends`
- * element's `baseClass`, so we recurse through them to reach the unit.
- */
-function parameterUnit(el: ComponentElement): string | undefined {
-  const direct = readModifierField(el.modifiers, "unit");
-  if (direct) return stripModelicaString(direct);
-  if (typeof el.type === "object" && el.type !== null) {
-    return unitFromInstance(el.type);
-  }
-  return undefined;
-}
-
-/**
- * Walk a type instance's `extends` elements looking for a `unit` modifier,
- * recursing into each base class that is itself an inlined `ModelInstance`.
- * Depth-bounded as a defensive guard against pathological / cyclic input.
- */
-function unitFromInstance(
-  instance: ModelInstance,
-  depth = 0,
-): string | undefined {
-  if (depth > 16) return undefined;
-  for (const child of instance.elements ?? []) {
-    if (child.$kind !== "extends") continue;
-    const u = readModifierField(child.modifiers, "unit");
-    if (u) return stripModelicaString(u);
-    const base = child.baseClass;
-    if (typeof base === "object" && base !== null) {
-      const nested = unitFromInstance(base, depth + 1);
-      if (nested) return nested;
-    }
-  }
-  return undefined;
-}
-
-/**
- * Pull the `displayUnit` modifier (e.g. `Angle a(displayUnit="deg")`).
- * OMC serializes it as a direct modifier field on the component
- * (`modifiers.displayUnit`), distinct from the declaration `unit` which
- * usually rides on the type alias's `extends`. Returns the unquoted
- * string or `undefined` when not declared.
- */
-function parameterDisplayUnit(el: ComponentElement): string | undefined {
-  const direct = readModifierField(el.modifiers, "displayUnit");
-  if (direct) return stripModelicaString(direct);
-  return undefined;
-}
-
-function readModifierField(
-  mod: Modifier | undefined,
-  field: string,
-): string | undefined {
-  if (mod === undefined || mod === null) return undefined;
-  if (typeof mod !== "object") return undefined;
-  const v = (mod as Record<string, Modifier>)[field];
-  const s = modifierToDisplayString(v);
-  return s.length > 0 ? s : undefined;
-}
-
-function stripModelicaString(s: string): string {
-  // Modelica string literals come quoted ("Time", "\"s\""). Drop the
-  // outer pair if present so substitution gives users `s` not `"s"`.
-  if (s.length >= 2 && s.startsWith('"') && s.endsWith('"')) {
-    return s.slice(1, -1);
-  }
-  return s;
-}
-
 function collectParameters(mi: ModelInstance): Record<string, ParameterDef> {
   const out: Record<string, ParameterDef> = {};
   // walkExtendsChain yields ancestors first, host last. Iterating in
   // that order means more-derived declarations overwrite ancestor ones,
   // which matches Modelica's redeclare / modifier override semantics.
-  for (const klass of walkExtendsChain(mi)) {
+  for (const { klass } of walkExtendsChain(mi)) {
     for (const el of ownParameters(klass)) {
       const def: ParameterDef = {
         name: el.name,
         value: parameterDisplayValue(el),
       };
-      const unit = parameterUnit(el);
+      const unit = resolveUnit(el);
       if (unit !== undefined) def.unit = unit;
-      const displayUnit = parameterDisplayUnit(el);
+      const displayUnit = resolveDisplayUnit(el);
       if (displayUnit !== undefined) def.displayUnit = displayUnit;
       if (el.comment !== undefined) def.comment = el.comment;
       out[el.name] = def;
@@ -798,7 +708,7 @@ export function produceDiagramLayout(
   // in PID-style examples sometimes (e.g., Modelica.Icons.Example doesn't
   // declare any, but other ancestors might). Walk the chain, skip the
   // host (already done) and skip duplicates.
-  for (const klass of walkExtendsChain(mi)) {
+  for (const { klass } of walkExtendsChain(mi)) {
     if (klass === mi) continue;
     for (const el of ownSubComponents(klass)) {
       if (components[el.name]) continue;
@@ -831,7 +741,7 @@ export function produceDiagramLayout(
     // `elements[$kind=extends].baseClass.connections`, never flattened; if
     // we read `mi.connections` alone, a derived class that purely extends
     // its base would render with zero edges.
-    for (const klass of walkExtendsChain(mi)) {
+    for (const { klass } of walkExtendsChain(mi)) {
       for (const c of klass.connections ?? []) {
         const cl = emitConnection(c);
         // Drop edges whose endpoint roots / ports were gated out of the
