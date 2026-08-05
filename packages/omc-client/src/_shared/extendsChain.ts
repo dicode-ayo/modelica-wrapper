@@ -1,7 +1,7 @@
 /**
- * Inheritance-chain traversal over a `ModelInstance`. Shared by the diagram
- * producer and the parameters-form producer — both collect declarations across
- * `extends` and must agree on the order they arrive in.
+ * Inheritance-chain traversal over a `ModelInstance`. Single-sourced so
+ * every caller collecting declarations across `extends` agrees on the
+ * order they arrive in.
  */
 
 import type { ModelInstance } from "./modelInstance.js";

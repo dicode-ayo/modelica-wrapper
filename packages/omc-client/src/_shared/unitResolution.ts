@@ -1,8 +1,7 @@
 /**
  * Declaration-unit resolution over a `ModelInstance`, plus the modifier
- * readers it is built from. Shared by the diagram producer (which prints the
- * unit in a label) and the parameters-form producer (which offers it as the
- * field's base unit) — the two must never disagree about one declaration.
+ * readers it is built from. Single-sourced so every consumer reports the
+ * same unit for the same declaration.
  */
 
 import type {
@@ -10,12 +9,6 @@ import type {
   Modifier,
   ModelInstance,
 } from "./modelInstance.js";
-
-/**
- * Guards against a malformed `baseClass` tree. Modelica forbids inheritance
- * cycles and OMC rejects them upstream, so no well-formed reply reaches it.
- */
-const MAX_EXTENDS_DEPTH = 16;
 
 /**
  * Flatten a `Modifier` tree to a display string, walking `$value` so a
@@ -45,7 +38,7 @@ function readModifierField(
   if (mod === undefined || mod === null || typeof mod !== "object") {
     return undefined;
   }
-  const s = modifierToDisplayString((mod as Record<string, Modifier>)[field]);
+  const s = modifierToDisplayString(mod[field]);
   return s.length > 0 ? s : undefined;
 }
 
@@ -73,27 +66,23 @@ export function unquoteString(s: string): string {
  * clause's own modifier before descending into its base class, and
  * backtracking into the next clause when a branch yields nothing. A unit
  * behind a second `extends` clause therefore resolves the same as one behind
- * the first. Depth is bounded at {@link MAX_EXTENDS_DEPTH}.
+ * the first.
  */
 export function resolveUnit(el: ComponentElement): string | undefined {
   const direct = readModifierField(el.modifiers, "unit");
   if (direct !== undefined) return unquoteString(direct);
   if (typeof el.type !== "object") return undefined;
-  return unitFromInstance(el.type, 0);
+  return unitFromInstance(el.type);
 }
 
-function unitFromInstance(
-  mi: ModelInstance,
-  depth: number,
-): string | undefined {
-  if (depth > MAX_EXTENDS_DEPTH) return undefined;
+function unitFromInstance(mi: ModelInstance): string | undefined {
   for (const child of mi.elements ?? []) {
     if (child.$kind !== "extends") continue;
     const own = readModifierField(child.modifiers, "unit");
     if (own !== undefined) return unquoteString(own);
     const base = child.baseClass;
     if (typeof base === "object") {
-      const nested = unitFromInstance(base, depth + 1);
+      const nested = unitFromInstance(base);
       if (nested !== undefined) return nested;
     }
   }

@@ -169,18 +169,11 @@ describe("declaration unit — diagram and parameter form agree", () => {
     expect(formUnit(mi)).toBeUndefined();
   });
 
-  it("resolves a unit within the depth bound", () => {
-    const mi = hostWithParameter(nestedAliasChain(3));
+  it("resolves a unit through a deeply nested alias chain", () => {
+    const mi = hostWithParameter(nestedAliasChain(20));
 
     expect(diagramUnit(mi)).toBe("m");
     expect(formUnit(mi)).toBe("m");
-  });
-
-  it("gives up rather than recursing past the depth bound", () => {
-    const mi = hostWithParameter(nestedAliasChain(20));
-
-    expect(diagramUnit(mi)).toBeUndefined();
-    expect(formUnit(mi)).toBeUndefined();
   });
 
   it("reads displayUnit off the component's own modifier", () => {
