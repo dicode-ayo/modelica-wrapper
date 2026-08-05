@@ -137,9 +137,14 @@ async function identifyOmc(
   const matches = processes.findByCommandLine(`-z=${suffix}`);
   if (matches === undefined) return { state: "unidentified" };
   if (matches.length === 0) return { state: "gone" };
-  // Without an owner pid to check, being reparented is the only evidence that
-  // no live window is still using this OMC.
-  const pid = matches.find((match) => processes.isOrphan(match));
+  // A command line can carry the suffix without being OMC at all — a grep, a
+  // shell history. Without an owner pid to check, being reparented is the only
+  // evidence that no live window is still using the OMC among them.
+  const pid = matches.find(
+    (match) =>
+      processes.isOrphan(match) &&
+      processes.commandLine(match)?.includes("--interactive=zmq") === true,
+  );
   return pid === undefined
     ? { state: "unidentified" }
     : { state: "running", pid };

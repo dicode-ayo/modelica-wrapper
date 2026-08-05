@@ -49,7 +49,7 @@ describe("port file naming", () => {
     expect(suffixFromPortFileName(name)).toBe("mw_deadbeef");
   });
 
-  it("recognises the Windows variant, which drops the user segment", () => {
+  it("recognizes the Windows variant, which drops the user segment", () => {
     expect(isPortFileName("openmodelica.port.mw_deadbeef")).toBe(true);
     expect(suffixFromPortFileName("openmodelica.port.mw_deadbeef")).toBe(
       "mw_deadbeef",

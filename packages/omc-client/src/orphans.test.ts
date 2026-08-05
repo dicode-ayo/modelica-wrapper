@@ -267,6 +267,24 @@ describe("reapOrphanedOmcSessions", () => {
     expect(processes.killed).toEqual([OMC_PID]);
   });
 
+  it("does not signal an orphan that merely carries the suffix in its command line", async () => {
+    await unstamped("legacy");
+    const stray = 5150;
+    const processes = probe({
+      running: [stray],
+      commandLines: { [stray]: `grep -r -z=${SUFFIX} /tmp` },
+      orphans: [stray],
+    });
+    const quit = vi.fn(async () => undefined);
+
+    const count = await reapOrphanedOmcSessions({ root, processes, quit });
+
+    expect(count).toBe(0);
+    expect(quit).not.toHaveBeenCalled();
+    expect(processes.killed).toEqual([]);
+    expect(await readdir(root)).toHaveLength(1);
+  });
+
   it("spares an unstamped session whose OMC still has a live parent", async () => {
     await unstamped("legacy");
     const processes = probe({ orphans: [] });

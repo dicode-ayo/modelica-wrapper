@@ -18,7 +18,12 @@ export interface ProcessProbe {
    * `undefined` where the process table cannot be enumerated.
    */
   findByCommandLine(fragment: string): number[] | undefined;
-  /** Whether the process has outlived whatever spawned it. */
+  /**
+   * Whether the process has outlived whatever spawned it. Adoption by init is
+   * the signal; under a subreaper (`systemd --user`, a container supervisor)
+   * an orphan keeps a live parent and reads as `false`, which degrades to
+   * sparing a session — never to signalling one.
+   */
   isOrphan(pid: number): boolean;
   kill(pid: number): void;
 }
@@ -45,6 +50,36 @@ export const osProcesses: ProcessProbe = {
   },
 };
 
+/**
+ * The parent pid in a `/proc/<pid>/stat` line. The fixed fields start after
+ * the executable name, which is parenthesised and may itself contain spaces
+ * and parentheses — so the last `)`, not the first, ends it.
+ */
+export function ppidFromStat(stat: string): number | undefined {
+  const comm = stat.lastIndexOf(")");
+  if (comm < 0) return undefined;
+  const fields = stat
+    .slice(comm + 1)
+    .trim()
+    .split(/\s+/);
+  const ppid = Number.parseInt(fields[1] ?? "", 10);
+  return Number.isInteger(ppid) ? ppid : undefined;
+}
+
+/** Rows of `ps -o pid=,command=` output, skipping anything unparseable. */
+export function parsePsTable(out: string): { pid: number; command: string }[] {
+  const rows: { pid: number; command: string }[] = [];
+  for (const line of out.split("\n")) {
+    const fields = /^\s*(\d+)\s+(\S.*)$/.exec(line);
+    const rawPid = fields?.[1];
+    const command = fields?.[2];
+    if (rawPid === undefined || command === undefined) continue;
+    const pid = Number.parseInt(rawPid, 10);
+    if (pid > 0) rows.push({ pid, command });
+  }
+  return rows;
+}
+
 function isRunning(pid: number): boolean {
   try {
     process.kill(pid, 0);
@@ -56,18 +91,15 @@ function isRunning(pid: number): boolean {
 }
 
 function procfsCommandLine(pid: number): string | undefined {
-  try {
-    const raw = readFileSync(`/proc/${pid}/cmdline`, "utf8");
-    const cmd = raw.replaceAll("\0", " ").trim();
-    return cmd.length > 0 ? cmd : undefined;
-  } catch {
-    return undefined;
-  }
+  const raw = readProc(`/proc/${pid}/cmdline`);
+  if (raw === undefined) return undefined;
+  const cmd = raw.replaceAll("\0", " ").trim();
+  return cmd.length > 0 ? cmd : undefined;
 }
 
 function psCommandLine(pid: number): string | undefined {
-  const out = ps(["-p", String(pid), "-o", "command="]);
-  return out === undefined || out.trim().length === 0 ? undefined : out.trim();
+  const out = ps(["-ww", "-p", String(pid), "-o", "command="])?.trim();
+  return out === undefined || out.length === 0 ? undefined : out;
 }
 
 function procfsScan(fragment: string): number[] | undefined {
@@ -87,36 +119,31 @@ function procfsScan(fragment: string): number[] | undefined {
 }
 
 function psScan(fragment: string): number[] | undefined {
-  const out = ps(["ax", "-o", "pid=,command="]);
+  const out = ps(["axww", "-o", "pid=,command="]);
   if (out === undefined) return undefined;
-  const found: number[] = [];
-  for (const line of out.split("\n")) {
-    if (!line.includes(fragment)) continue;
-    const pid = Number.parseInt(line.trim(), 10);
-    if (Number.isInteger(pid) && pid > 0) found.push(pid);
-  }
-  return found;
+  return parsePsTable(out)
+    .filter((row) => row.command.includes(fragment))
+    .map((row) => row.pid);
 }
 
 function parentPid(pid: number): number | undefined {
-  // `/proc/<pid>/stat` puts the executable name in parentheses and it may
-  // itself contain spaces or parens, so the fixed fields start after the last
-  // `)`: state, then ppid.
-  try {
-    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-    const fields = stat
-      .slice(stat.lastIndexOf(")") + 1)
-      .trim()
-      .split(/\s+/);
-    const ppid = Number.parseInt(fields[1] ?? "", 10);
-    if (Number.isInteger(ppid)) return ppid;
-  } catch {
-    /* no procfs — ask ps */
+  const stat = readProc(`/proc/${pid}/stat`);
+  if (stat !== undefined) {
+    const ppid = ppidFromStat(stat);
+    if (ppid !== undefined) return ppid;
   }
   const out = ps(["-p", String(pid), "-o", "ppid="]);
   if (out === undefined) return undefined;
   const ppid = Number.parseInt(out.trim(), 10);
   return Number.isInteger(ppid) ? ppid : undefined;
+}
+
+function readProc(path: string): string | undefined {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return undefined;
+  }
 }
 
 function ps(args: string[]): string | undefined {
