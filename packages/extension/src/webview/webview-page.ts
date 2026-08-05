@@ -1,16 +1,5 @@
 import * as vscode from "vscode";
 
-/**
- * Every bundle esbuild produces for a webview to boot from `out/`
- * (`esbuild.config.mjs`'s `webviewConfig`, `documentationConfig`,
- * `libraryViewConfig`, `postprocessingConfig`), plus whether that bundle's
- * entry pulls in `@dicode/ui-common/webawesome-setup` (the only thing that
- * makes esbuild collect a sibling `.css`) — a build fact, not a per-render
- * choice, so it lives here rather than as a caller-supplied flag that could
- * ask for a stylesheet the build never emits. `webview-page.test.ts`
- * cross-checks the bundle filenames against that config, so a renamed
- * outfile fails a test even though the config itself isn't TypeScript.
- */
 export type WebviewEntry =
   | "webview"
   | "documentation"
@@ -18,12 +7,23 @@ export type WebviewEntry =
   | "postprocessing";
 
 interface EntryConfig {
+  /** `out/<bundle>` — esbuild's `outfile` for this entry (`esbuild.config.mjs`). */
   bundle: string;
-  /** Whether esbuild collects a sibling `<bundle>.css` for this entry. */
+  /**
+   * Whether esbuild collects a sibling `<bundle>.css`, i.e. whether this
+   * entry's `*-entry.ts` imports `@dicode/ui-common/webawesome-setup`.
+   */
   stylesheet: boolean;
 }
 
-export const ENTRY_BUNDLE: Record<WebviewEntry, EntryConfig> = {
+/**
+ * `webview-page.test.ts` cross-checks both fields of every entry here
+ * against the source they're facts about — `bundle` against
+ * `esbuild.config.mjs`'s own `outfile`s, `stylesheet` against whether the
+ * entry file actually imports `webawesome-setup` — so either drifting from
+ * its entry fails a test rather than booting a blank or 404'd webview.
+ */
+export const WEBVIEW_ENTRIES: Record<WebviewEntry, EntryConfig> = {
   webview: { bundle: "webview.js", stylesheet: true },
   documentation: { bundle: "documentation.js", stylesheet: false },
   "library-view": { bundle: "library-view.js", stylesheet: false },
@@ -69,7 +69,7 @@ export interface RenderWebviewPageOptions {
  * and the bundle's own root custom element.
  */
 export function renderWebviewPage(opts: RenderWebviewPageOptions): string {
-  const { bundle, stylesheet } = ENTRY_BUNDLE[opts.entry];
+  const { bundle, stylesheet } = WEBVIEW_ENTRIES[opts.entry];
   const scriptUri = opts.webview.asWebviewUri(
     vscode.Uri.joinPath(opts.extensionUri, "out", bundle),
   );

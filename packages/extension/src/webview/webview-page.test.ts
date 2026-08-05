@@ -2,9 +2,11 @@
  * `renderWebviewPage`/`renderPlaceholderPage` are the one place every webview
  * host's CSP-locked HTML shell is built. These pin the CSP shape (nonce-only
  * `script-src`, no `img-src`/`script-src` at all on the placeholder), that a
- * title is HTML-escaped, and that `ENTRY_BUNDLE`'s filenames stay in sync with
- * `esbuild.config.mjs`'s own `outfile`s — a renamed bundle should fail this
- * test rather than boot a blank webview.
+ * title is HTML-escaped, and that both fields of `WEBVIEW_ENTRIES` stay in
+ * sync with the facts they claim: `bundle` against `esbuild.config.mjs`'s own
+ * `outfile`s, `stylesheet` against whether the entry file actually imports
+ * `webawesome-setup`. Either drifting should fail a test rather than boot a
+ * blank or 404'd webview.
  *
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
@@ -16,7 +18,7 @@ import { describe, expect, it } from "vitest";
 import * as vscode from "vscode";
 
 import {
-  ENTRY_BUNDLE,
+  WEBVIEW_ENTRIES,
   renderPlaceholderPage,
   renderWebviewPage,
 } from "./webview-page.js";
@@ -114,8 +116,8 @@ describe("renderPlaceholderPage", () => {
   });
 });
 
-describe("ENTRY_BUNDLE", () => {
-  it("stays in sync with esbuild.config.mjs's own outfiles", () => {
+describe("WEBVIEW_ENTRIES", () => {
+  it("bundle stays in sync with esbuild.config.mjs's own outfiles", () => {
     const configPath = fileURLToPath(
       new URL("../../esbuild.config.mjs", import.meta.url),
     );
@@ -123,10 +125,33 @@ describe("ENTRY_BUNDLE", () => {
     const outfiles = [...config.matchAll(/outfile:\s*"out\/([^"]+\.js)"/g)]
       .map((m) => m[1])
       // extension.js is extensionConfig's outfile — the Node-side host
-      // bundle, not a webview a page in this module ever renders.
+      // bundle, built by a separate esbuild config with no webview page.
       .filter((f): f is string => f !== undefined && f !== "extension.js");
 
-    const bundles = Object.values(ENTRY_BUNDLE).map((e) => e.bundle);
+    const bundles = Object.values(WEBVIEW_ENTRIES).map((e) => e.bundle);
     expect(new Set(bundles)).toEqual(new Set(outfiles));
+  });
+
+  const ENTRY_SOURCE_FILE: Record<keyof typeof WEBVIEW_ENTRIES, string> = {
+    webview: "webview-entry.ts",
+    documentation: "documentation-entry.ts",
+    "library-view": "library-view-entry.ts",
+    postprocessing: "postprocessing-entry.ts",
+  };
+
+  it("stylesheet stays in sync with whether the entry imports webawesome-setup", () => {
+    for (const [entry, config] of Object.entries(WEBVIEW_ENTRIES)) {
+      const entryPath = fileURLToPath(
+        new URL(
+          `./${ENTRY_SOURCE_FILE[entry as keyof typeof WEBVIEW_ENTRIES]}`,
+          import.meta.url,
+        ),
+      );
+      const source = readFileSync(entryPath, "utf8");
+      const importsWebawesomeSetup = source.includes(
+        "@dicode/ui-common/webawesome-setup",
+      );
+      expect(config.stylesheet).toBe(importsWebawesomeSetup);
+    }
   });
 });
