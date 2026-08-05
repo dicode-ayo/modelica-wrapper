@@ -187,18 +187,18 @@ export async function handleMoChange(
 
   const previous = deps.index.get(fsPath) ?? [];
   const removed = previous.filter((n) => !names.includes(n));
+  const directNames = [...names, ...removed];
   // loadFile on fsPath reloads its whole subtree from disk when fsPath is a
   // package — same as reorderPackage's reload — so a still-declared class
   // cascades to its nested members' files exactly as a removed one cascades
   // its deleteClass to them. `classNames: names` is the floor for a
   // brand-new class the index doesn't know yet to cascade from.
-  const { fsPaths, classNames } = cascadeReach(
-    deps.index,
-    [...names, ...removed],
-    { fsPath, classNames: names },
-  );
+  const { fsPaths, classNames } = cascadeReach(deps.index, directNames, {
+    fsPath,
+    classNames: names,
+  });
   if (deps.isBusy(fsPaths, classNames)) {
-    warnBusy(fsPath, classNames);
+    warnBusy(fsPath, directNames);
     return;
   }
 
@@ -224,9 +224,14 @@ export async function handleMoChange(
   }
 }
 
-/** `dirname(orderFsPath)/package.mo` — the file that owns a `package.order`. */
-function orderOwner(orderFsPath: string): string {
-  return path.join(path.dirname(orderFsPath), "package.mo");
+/**
+ * `dirname(fsPath)/package.mo` — the file that owns anything else in its
+ * directory: a `package.order`, or a `.mo` file (itself, if `fsPath` already
+ * is a `package.mo`). Purely lexical, so it's stable across index seeding
+ * and doesn't need `fsPath` to already be indexed.
+ */
+function orderOwner(fsPath: string): string {
+  return path.join(path.dirname(fsPath), "package.mo");
 }
 
 /**
@@ -357,16 +362,21 @@ export async function handleMoDelete(
   // those live — widen the busy check to their files and names too.
   const { fsPaths, classNames } = cascadeReach(deps.index, names, { fsPath });
   if (deps.isBusy(fsPaths, classNames)) {
-    warnBusy(fsPath, classNames);
+    warnBusy(fsPath, names);
     return;
   }
 
   const client = await deps.ensureClient();
-  for (const name of names) {
-    await client.deleteClass({ typeName: name });
+  for (const name of names) await client.deleteClass({ typeName: name });
+
+  // OMC's own deleteClass cascade just took every nested member with it too,
+  // wherever those live — the index and any editor open on one of them have
+  // to be told the same way, not just for fsPath's own direct names.
+  const cascadedFiles = names.flatMap((name) => deps.index.filesUnder(name));
+  for (const file of cascadedFiles) deps.index.delete(file.fsPath);
+  for (const name of new Set(cascadedFiles.flatMap((f) => f.classNames))) {
     deps.sourceProvider.notifySourceChanged(name);
   }
-  deps.index.delete(fsPath);
 
   const scopes = new Set<string | null>();
   for (const name of names) scopes.add(scopeOf(name));
@@ -436,24 +446,6 @@ function asMessage(err: unknown): string {
 }
 
 /**
- * The `run()` serialization key for a `.mo` file event: the sibling
- * `package.mo` a `package.order` event for the same directory already keys
- * on ({@link orderOwner}). A reorder reloads its whole package from disk, so
- * a member file's own event has to serialize against that reload, not just
- * against other events for its own path — and this doubles as the key for
- * `package.mo`'s own change event, since `orderOwner` of a `package.mo` path
- * is that same path.
- *
- * Guarded on the candidate being indexed so a standalone `.mo` file with no
- * `package.mo` sibling doesn't key on a path nothing else ever touches,
- * grouping it with unrelated files that merely share its directory.
- */
-export function watcherRunKey(index: PathClassIndex, fsPath: string): string {
-  const candidate = orderOwner(fsPath);
-  return index.get(candidate) !== undefined ? candidate : fsPath;
-}
-
-/**
  * Register the workspace `.mo` watcher and kick off index seeding. Returns a
  * disposable that tears down the watcher and its handler subscriptions.
  */
@@ -502,23 +494,26 @@ export function registerMoFileWatcher(deps: {
     vscode.workspace.createFileSystemWatcher("**/package.order");
   const subs = [
     watcher,
-    // Keyed by the owning package's file, not the event's own path, so a
-    // member file's event and a reorder or cascaded delete of its package —
-    // which touch that member too — can't run concurrently. Matches the key
-    // a `package.order` event for the same package already uses
-    // (`orderOwner`, below).
+    // Keyed by the owning package's file (`orderOwner`), not the event's own
+    // path, so a member file's event and a reorder or cascaded delete of its
+    // package — which touch that member too — can't run concurrently.
+    // Lexical, not index-derived: computing it from the index instead would
+    // leave events racing during the window before the workspace seed
+    // finishes populating it. The cost is a standalone `.mo` file with no
+    // `package.mo` sibling keying on a path nothing else ever touches,
+    // serializing needlessly against unrelated files sharing its directory.
     watcher.onDidChange((uri) =>
-      run(watcherRunKey(index, uri.fsPath), () =>
+      run(orderOwner(uri.fsPath), () =>
         handleMoChange(watcherDeps, uri.fsPath),
       ),
     ),
     watcher.onDidCreate((uri) =>
-      run(watcherRunKey(index, uri.fsPath), () =>
+      run(orderOwner(uri.fsPath), () =>
         handleMoChange(watcherDeps, uri.fsPath),
       ),
     ),
     watcher.onDidDelete((uri) =>
-      run(watcherRunKey(index, uri.fsPath), () =>
+      run(orderOwner(uri.fsPath), () =>
         handleMoDelete(watcherDeps, uri.fsPath),
       ),
     ),

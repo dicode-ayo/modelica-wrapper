@@ -19,7 +19,6 @@ import {
   handleOrderDelete,
   isDeclaredClassBusy,
   seedPathClassIndex,
-  watcherRunKey,
   type MoWatcherDeps,
 } from "./mo-file-watcher.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
@@ -153,6 +152,29 @@ describe("handleMoChange", () => {
     expect(client.loadFile).not.toHaveBeenCalled();
   });
 
+  it("names only the edited file's own classes in the busy warning, not its whole cascade", async () => {
+    const PARENT_FILE = "/ws/My/Parent.mo";
+    const NESTED_FILE = "/ws/My/Pkg/Bar.mo";
+    setTabGroups([
+      {
+        viewColumn: 1,
+        tabs: [
+          { input: new TabInputText(Uri.file(NESTED_FILE)), isDirty: true },
+        ],
+      },
+    ]);
+    const { deps, client } = makeDeps({ isBusy: isDeclaredClassBusy });
+    client.parseFile.mockResolvedValue({ classNames: ["My.Kept"] });
+    deps.index.set(PARENT_FILE, ["My.Kept", "My.Pkg"]);
+    deps.index.set(NESTED_FILE, ["My.Pkg.Bar"]);
+
+    await handleMoChange(deps, PARENT_FILE);
+
+    const [warning] = recordedMessages;
+    expect(warning?.message).toContain("My.Pkg");
+    expect(warning?.message).not.toContain("My.Pkg.Bar");
+  });
+
   it("defers reloading a package.mo whose nested member — in a different file — is open dirty as plain text, even though the package's own class list is unchanged", async () => {
     // A package.mo edit that doesn't add or remove a declared class still
     // reloads the whole subtree from disk (same as reorderPackage's
@@ -254,6 +276,47 @@ describe("handleMoDelete", () => {
     expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
     expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg.Bar");
     expect(deps.index.get(FILE)).toBeUndefined();
+  });
+
+  it("clears the index and notifies source changed for a deleted package's nested member in another file", async () => {
+    // OMC's deleteClass cascades "My.Pkg" away along with "My.Pkg.Bar" —
+    // BAR_FILE's own index entry and any (clean) editor on "My.Pkg.Bar"
+    // have to be told too, even though BAR_FILE itself wasn't deleted.
+    const PKG_FILE = "/ws/My/Pkg/package.mo";
+    const BAR_FILE = "/ws/My/Pkg/Bar.mo";
+    const { deps, client, notifySourceChanged } = makeDeps();
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+    deps.index.set(BAR_FILE, ["My.Pkg.Bar"]);
+
+    await handleMoDelete(deps, PKG_FILE);
+
+    expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "My.Pkg" });
+    expect(client.deleteClass).not.toHaveBeenCalledWith({
+      typeName: "My.Pkg.Bar",
+    });
+    expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg.Bar");
+    expect(deps.index.get(BAR_FILE)).toBeUndefined();
+    expect(deps.index.get(PKG_FILE)).toBeUndefined();
+  });
+
+  it("names only the deleted file's own classes in the busy warning, not its whole cascade", async () => {
+    const PKG_FILE = "/ws/My/Pkg/package.mo";
+    const BAR_FILE = "/ws/My/Pkg/Bar.mo";
+    setTabGroups([
+      {
+        viewColumn: 1,
+        tabs: [{ input: new TabInputText(Uri.file(BAR_FILE)), isDirty: true }],
+      },
+    ]);
+    const { deps } = makeDeps({ isBusy: isDeclaredClassBusy });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+    deps.index.set(BAR_FILE, ["My.Pkg.Bar"]);
+
+    await handleMoDelete(deps, PKG_FILE);
+
+    const [warning] = recordedMessages;
+    expect(warning?.message).toContain("My.Pkg");
+    expect(warning?.message).not.toContain("My.Pkg.Bar");
   });
 
   it("no-ops a delete for a path it never indexed", async () => {
@@ -576,44 +639,6 @@ describe("isDeclaredClassBusy", () => {
       },
     ]);
     expect(isDeclaredClassBusy([FILE], ["My.Pkg.Bar"])).toBe(false);
-  });
-});
-
-describe("watcherRunKey", () => {
-  const MEMBER_FILE = "/ws/My/Pkg/Bar.mo";
-
-  it("resolves a nested member's key to its owning package's file", () => {
-    const index = createPathClassIndex();
-    index.set(PKG_FILE, ["My.Pkg"]);
-    index.set(MEMBER_FILE, ["My.Pkg.Bar"]);
-
-    expect(watcherRunKey(index, MEMBER_FILE)).toBe(PKG_FILE);
-  });
-
-  it("keys a package.mo's own change event on itself, not its parent package", () => {
-    // A member's key has to land on the *same* package.mo a package.order
-    // event for that package resolves to via orderOwner — walking up the
-    // qualified name from package.mo's own declared class ("My.Pkg") would
-    // land one level too high, on "My"'s package.mo instead.
-    const index = createPathClassIndex();
-    index.set("/ws/My/package.mo", ["My"]);
-    index.set(PKG_FILE, ["My.Pkg"]);
-    index.set(MEMBER_FILE, ["My.Pkg.Bar"]);
-
-    expect(watcherRunKey(index, PKG_FILE)).toBe(PKG_FILE);
-  });
-
-  it("falls back to the file's own path for a standalone file with no package.mo sibling", () => {
-    const index = createPathClassIndex();
-    index.set("/ws/Top.mo", ["Top"]);
-
-    expect(watcherRunKey(index, "/ws/Top.mo")).toBe("/ws/Top.mo");
-  });
-
-  it("falls back to the file's own path when the file isn't indexed yet", () => {
-    const index = createPathClassIndex();
-
-    expect(watcherRunKey(index, "/ws/New.mo")).toBe("/ws/New.mo");
   });
 });
 
