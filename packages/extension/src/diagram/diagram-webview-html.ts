@@ -22,7 +22,6 @@ export function renderDiagramWebviewHtml(
     entry: "webview",
     title: `Modelica diagram: ${className}`,
     root: "<om-webview-root></om-webview-root>",
-    stylesheet: true,
     bodyStyle: `html, body { margin: 0; height: 100%; background: ${DIAGRAM_CANVAS_BG}; overflow: hidden; }`,
   });
 }

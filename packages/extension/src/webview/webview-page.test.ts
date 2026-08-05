@@ -70,14 +70,13 @@ describe("renderWebviewPage", () => {
     expect(html).not.toContain("<title>Evil<script>");
   });
 
-  it("links a sibling stylesheet only when asked to", () => {
+  it("links a sibling stylesheet only for an entry whose build emits one", () => {
     const withStyles = renderWebviewPage({
       webview: fakeWebview(),
       extensionUri: EXT_URI,
       entry: "webview",
       title: "Foo",
       root: "<om-webview-root></om-webview-root>",
-      stylesheet: true,
     });
     expect(withStyles).toContain("out/webview.css");
 
@@ -123,8 +122,11 @@ describe("ENTRY_BUNDLE", () => {
     const config = readFileSync(configPath, "utf8");
     const outfiles = [...config.matchAll(/outfile:\s*"out\/([^"]+\.js)"/g)]
       .map((m) => m[1])
+      // extension.js is extensionConfig's outfile — the Node-side host
+      // bundle, not a webview a page in this module ever renders.
       .filter((f): f is string => f !== undefined && f !== "extension.js");
 
-    expect(new Set(Object.values(ENTRY_BUNDLE))).toEqual(new Set(outfiles));
+    const bundles = Object.values(ENTRY_BUNDLE).map((e) => e.bundle);
+    expect(new Set(bundles)).toEqual(new Set(outfiles));
   });
 });

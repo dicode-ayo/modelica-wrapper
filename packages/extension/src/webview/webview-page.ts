@@ -3,9 +3,13 @@ import * as vscode from "vscode";
 /**
  * Every bundle esbuild produces for a webview to boot from `out/`
  * (`esbuild.config.mjs`'s `webviewConfig`, `documentationConfig`,
- * `libraryViewConfig`, `postprocessingConfig`). `webview-page.test.ts`
- * cross-checks {@link ENTRY_BUNDLE}'s filenames against that config, so a
- * renamed outfile fails a test even though the config itself isn't TypeScript.
+ * `libraryViewConfig`, `postprocessingConfig`), plus whether that bundle's
+ * entry pulls in `@dicode/ui-common/webawesome-setup` (the only thing that
+ * makes esbuild collect a sibling `.css`) — a build fact, not a per-render
+ * choice, so it lives here rather than as a caller-supplied flag that could
+ * ask for a stylesheet the build never emits. `webview-page.test.ts`
+ * cross-checks the bundle filenames against that config, so a renamed
+ * outfile fails a test even though the config itself isn't TypeScript.
  */
 export type WebviewEntry =
   | "webview"
@@ -13,15 +17,21 @@ export type WebviewEntry =
   | "library-view"
   | "postprocessing";
 
-export const ENTRY_BUNDLE: Record<WebviewEntry, string> = {
-  webview: "webview.js",
-  documentation: "documentation.js",
-  "library-view": "library-view.js",
-  postprocessing: "postprocessing.js",
+interface EntryConfig {
+  bundle: string;
+  /** Whether esbuild collects a sibling `<bundle>.css` for this entry. */
+  stylesheet: boolean;
+}
+
+export const ENTRY_BUNDLE: Record<WebviewEntry, EntryConfig> = {
+  webview: { bundle: "webview.js", stylesheet: true },
+  documentation: { bundle: "documentation.js", stylesheet: false },
+  "library-view": { bundle: "library-view.js", stylesheet: false },
+  postprocessing: { bundle: "postprocessing.js", stylesheet: true },
 };
 
 /** Random nonce for a webview's Content-Security-Policy `script-src`. */
-export function randomNonce(): string {
+function randomNonce(): string {
   let s = "";
   const chars =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -31,7 +41,7 @@ export function randomNonce(): string {
   return s;
 }
 
-export function escapeHtml(s: string): string {
+function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -49,8 +59,6 @@ export interface RenderWebviewPageOptions {
   title: string;
   /** The bundle's root custom element, e.g. `<om-webview-root></om-webview-root>`. */
   root: string;
-  /** Link the sibling `.css` esbuild collects for this bundle's `import "*.css"`s. */
-  stylesheet?: boolean;
   /** `html, body` style block; defaults to a full-height, non-scrolling page. */
   bodyStyle?: string;
 }
@@ -61,7 +69,7 @@ export interface RenderWebviewPageOptions {
  * and the bundle's own root custom element.
  */
 export function renderWebviewPage(opts: RenderWebviewPageOptions): string {
-  const bundle = ENTRY_BUNDLE[opts.entry];
+  const { bundle, stylesheet } = ENTRY_BUNDLE[opts.entry];
   const scriptUri = opts.webview.asWebviewUri(
     vscode.Uri.joinPath(opts.extensionUri, "out", bundle),
   );
@@ -73,7 +81,7 @@ export function renderWebviewPage(opts: RenderWebviewPageOptions): string {
     `img-src ${opts.webview.cspSource} data: blob:`,
     `font-src ${opts.webview.cspSource} data:`,
   ].join("; ");
-  const stylesLink = opts.stylesheet
+  const stylesLink = stylesheet
     ? `\n    <link rel="stylesheet" href="${opts.webview.asWebviewUri(
         vscode.Uri.joinPath(
           opts.extensionUri,

@@ -271,16 +271,12 @@ export class ResultViewEditorProvider
   }
 
   private renderHtml(webview: vscode.Webview): string {
-    // esbuild collects every `import "*.css"` in the bundle (Web Awesome's
-    // theme + our VSCode bridge, via ui-common/webawesome-setup) into a
-    // sibling `postprocessing.css`, linked via `stylesheet: true`.
     return renderWebviewPage({
       webview,
       extensionUri: this.extensionUri,
       entry: "postprocessing",
       title: "Modelica results",
       root: "<om-result-view-root></om-result-view-root>",
-      stylesheet: true,
     });
   }
 }
