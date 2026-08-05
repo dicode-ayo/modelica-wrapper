@@ -10,7 +10,7 @@ import type {
   Shape,
 } from "@dicode/omc-client";
 
-import { formatShapeKey, parseKey, type EntityKind } from "./node-keys.js";
+import { formatShapeKey, parseKey, type EntityKey } from "./entity-keys.js";
 import { orthogonalRoute, pointsEqual } from "./connection-route.js";
 import {
   snapExtent,
@@ -60,46 +60,37 @@ function partitionKeys(keys: Iterable<string>): KeySet {
     if (!parsed) {
       continue;
     }
-    if (parsed.kind === "shape") {
-      if (Number.isInteger(parsed.index)) {
-        out.shapes.add(parsed.index);
-      }
-      continue;
-    }
-    routeKey(out, parsed.kind, parsed.nodeId);
+    routeKey(out, parsed);
   }
   return out;
 }
 
-function routeKey(out: KeySet, kind: EntityKind, id: string): void {
-  switch (kind) {
+function routeKey(out: KeySet, key: EntityKey): void {
+  switch (key.kind) {
     case "component":
-      out.components.add(id);
+      out.components.add(key.nodeId);
       break;
     case "connector":
-      out.connectors.add(id);
+      out.connectors.add(key.nodeId);
       break;
-    case "edge": {
-      // Whole-connection key — `id` is the connection index.
-      const idx = Number(id);
-      if (!Number.isNaN(idx)) {
-        out.connections.add(idx);
+    case "shape":
+      if (Number.isInteger(key.index)) {
+        out.shapes.add(key.index);
       }
       break;
-    }
-    case "junction": {
-      // Compound key `<conn>/<waypointIdx>`.
-      const slash = id.indexOf("/");
-      if (slash < 0) {
-        return;
-      }
-      const connIdx = Number(id.slice(0, slash));
-      const waypointIdx = Number(id.slice(slash + 1));
-      if (!Number.isNaN(connIdx) && !Number.isNaN(waypointIdx)) {
-        out.junctions.push({ connIdx, waypointIdx });
+    case "edge":
+      if (!Number.isNaN(key.connIndex)) {
+        out.connections.add(key.connIndex);
       }
       break;
-    }
+    case "junction":
+      if (!Number.isNaN(key.connIndex) && !Number.isNaN(key.waypointIndex)) {
+        out.junctions.push({
+          connIdx: key.connIndex,
+          waypointIdx: key.waypointIndex,
+        });
+      }
+      break;
     default:
       break;
   }

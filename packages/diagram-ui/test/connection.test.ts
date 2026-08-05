@@ -80,7 +80,7 @@ describe("<om-connection>", () => {
   it("draws a junction marker at each internal waypoint", async () => {
     const scene = await mountScene();
     const conn = document.createElement("om-connection") as OmConnection;
-    conn.nodeId = "c1";
+    conn.nodeId = "1";
     conn.path = [
       [-10, 0],
       [0, 0],
@@ -102,7 +102,7 @@ describe("<om-connection>", () => {
     // only owns the store; the connection owns the key → hover mapping.
     const { scene, store } = await mountSceneWithStore();
     const conn = document.createElement("om-connection") as OmConnection;
-    conn.nodeId = "c1";
+    conn.nodeId = "1";
     conn.path = [
       [-10, 0],
       [0, 0],
@@ -119,7 +119,7 @@ describe("<om-connection>", () => {
     }
 
     // Hovering a single junction reveals ALL of the connection's discs.
-    store.next({ hoverKey: "junc:c1/1" });
+    store.next({ hoverKey: "junc:1/1" });
     await conn.updateComplete;
     expect(conn.isHovered).toBe(true);
     for (const disc of conn.junctions) {
@@ -127,7 +127,7 @@ describe("<om-connection>", () => {
     }
 
     // A key for a different connection must NOT trigger this one.
-    store.next({ hoverKey: "junc:c2/1" });
+    store.next({ hoverKey: "junc:2/1" });
     await conn.updateComplete;
     expect(conn.isHovered).toBe(false);
     for (const disc of conn.junctions) {
@@ -135,7 +135,7 @@ describe("<om-connection>", () => {
     }
 
     // Hovering the edge itself lights the whole route too.
-    store.next({ hoverKey: "edge:c1" });
+    store.next({ hoverKey: "edge:1" });
     await conn.updateComplete;
     expect(conn.isHovered).toBe(true);
     for (const disc of conn.junctions) {
@@ -156,7 +156,7 @@ describe("<om-connection>", () => {
     // the move state's keys keeps the route lit instead of flickering.
     const { scene, store } = await mountSceneWithStore();
     const conn = document.createElement("om-connection") as OmConnection;
-    conn.nodeId = "c1";
+    conn.nodeId = "1";
     conn.path = [
       [-10, 0],
       [0, 0],
@@ -170,7 +170,7 @@ describe("<om-connection>", () => {
     // Edge drag in flight: hover key is null but the move targets us.
     store.next({
       hoverKey: null,
-      state: { kind: "moving", keys: ["edge:c1"] },
+      state: { kind: "moving", keys: ["edge:1"] },
     });
     await conn.updateComplete;
     expect(conn.isHovered).toBe(true);
@@ -179,12 +179,12 @@ describe("<om-connection>", () => {
     }
 
     // Dragging one of our junctions keeps it lit too.
-    store.next({ state: { kind: "moving", keys: ["junc:c1/1"] } });
+    store.next({ state: { kind: "moving", keys: ["junc:1/1"] } });
     await conn.updateComplete;
     expect(conn.isHovered).toBe(true);
 
     // A move targeting a different connection must NOT light us.
-    store.next({ state: { kind: "moving", keys: ["edge:c2"] } });
+    store.next({ state: { kind: "moving", keys: ["edge:2"] } });
     await conn.updateComplete;
     expect(conn.isHovered).toBe(false);
 
@@ -217,7 +217,7 @@ describe("<om-connection>", () => {
     // unchanged, so junction discs must survive intact.
     const scene = await mountScene();
     const conn = document.createElement("om-connection") as OmConnection;
-    conn.nodeId = "c1";
+    conn.nodeId = "1";
     conn.path = [
       [-10, 0],
       [0, 0],
@@ -250,7 +250,7 @@ describe("<om-connection>", () => {
     // visibly as the component moves.
     const scene = await mountScene();
     const conn = document.createElement("om-connection") as OmConnection;
-    conn.nodeId = "c1";
+    conn.nodeId = "1";
     conn.path = [
       [-10, 0],
       [0, 0],

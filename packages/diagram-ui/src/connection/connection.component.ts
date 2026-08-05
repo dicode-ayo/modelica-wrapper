@@ -13,12 +13,8 @@ import {
   type InteractionState,
   type InteractionStateStore,
 } from "../interaction/interaction-state.js";
-import {
-  isJunctionKey,
-  parseKey,
-  readEntityMeta,
-  tagEntity,
-} from "../interaction/node-keys.js";
+import { parseKey } from "../interaction/entity-keys.js";
+import { readEntityMeta, tagEntity } from "../interaction/node-keys.js";
 import { WAYPOINT_RADIUS } from "./edge-build.js";
 import { parseCssColor } from "./parse-color.js";
 import "./edge.component.js";
@@ -151,16 +147,15 @@ export class OmConnection extends LitElement {
   /**
    * Whether `key` targets this connection — either its edge
    * (`edge:${this.nodeId}`) or one of its junction discs
-   * (`junc:${this.nodeId}/${idx}`). Matches the junction by prefix so a
-   * connId containing slashes still resolves correctly.
+   * (`junc:${this.nodeId}/${idx}`).
    */
   private ownsKey(key: string | null): boolean {
     if (!key) return false;
     const parsed = parseKey(key);
     if (!parsed) return false;
     if (parsed.kind === "edge") return parsed.nodeId === this.nodeId;
-    if (isJunctionKey(parsed)) {
-      return parsed.nodeId.startsWith(`${this.nodeId}/`);
+    if (parsed.kind === "junction") {
+      return String(parsed.connIndex) === this.nodeId;
     }
     return false;
   }

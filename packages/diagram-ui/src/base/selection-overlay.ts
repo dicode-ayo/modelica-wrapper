@@ -3,7 +3,8 @@ import { Circle, Container, Graphics, Rectangle } from "pixi.js";
 import type { Point } from "@dicode/omc-client";
 
 import { worldScaleXY } from "../scene/ortho-camera.js";
-import { tagEntity, type EntityKind } from "../interaction/node-keys.js";
+import type { EntityKind } from "../interaction/entity-keys.js";
+import { tagEntity } from "../interaction/node-keys.js";
 import type { SceneContext } from "../scene/scene-context.js";
 
 /** Accent blue shared by the selection outline stroke and rotate handle. */

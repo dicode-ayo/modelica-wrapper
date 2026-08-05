@@ -43,7 +43,7 @@ import {
   type LayoutEdit,
 } from "./diff-layout.js";
 import { renderDiagramWebviewHtml } from "./diagram-webview-html.js";
-import { isShapeKey, parseEntityKey } from "./entity-key.js";
+import { parseKey } from "@dicode/diagram-ui/entity-keys";
 import { LibrarySource } from "./library-source.js";
 import {
   applyClassParameterEdits,
@@ -1136,8 +1136,8 @@ export class DiagramEditController {
    * the one a drag starts with.
    */
   private onEditShape(key: string): void {
-    const parsed = parseEntityKey(key);
-    if (parsed === null || !isShapeKey(parsed)) return;
+    const parsed = parseKey(key);
+    if (parsed?.kind !== "shape") return;
     if (!Number.isInteger(parsed.index)) return;
     const found = lookupHostShape(
       this.prevLayout,

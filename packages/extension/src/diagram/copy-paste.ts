@@ -22,12 +22,10 @@ import {
   type GraphicsLayer,
 } from "./diff-layout.js";
 import {
-  formatEntityKey,
-  isComponentKey,
-  isConnectorKey,
-  isShapeKey,
-  parseEntityKey,
-} from "./entity-key.js";
+  formatKey,
+  formatShapeKey,
+  parseKey,
+} from "@dicode/diagram-ui/entity-keys";
 import { firstFreeName, takenNames } from "./open-diagram.js";
 import { findHostLayer, lookupHostShape } from "./shape-properties.js";
 
@@ -80,10 +78,10 @@ export async function captureClipboardItems(
 ): Promise<ClipboardEntry[]> {
   const items: ClipboardEntry[] = [];
   for (const key of keys) {
-    const parsed = parseEntityKey(key);
+    const parsed = parseKey(key);
     if (parsed === null) continue;
 
-    if (isComponentKey(parsed)) {
+    if (parsed.kind === "component") {
       const component = layout.components[parsed.nodeId];
       if (component === undefined) continue;
       items.push(
@@ -105,7 +103,7 @@ export async function captureClipboardItems(
 
     // Only a standalone connector on the host class is a declaration of its
     // own; a port on a sub-component belongs to that component's type.
-    if (isConnectorKey(parsed) && parsed.componentName === null) {
+    if (parsed.kind === "connector" && parsed.componentName === null) {
       const connector = layout.connectors[parsed.nodeId];
       if (connector === undefined) continue;
       items.push(
@@ -125,7 +123,7 @@ export async function captureClipboardItems(
       continue;
     }
 
-    if (isShapeKey(parsed)) {
+    if (parsed.kind === "shape") {
       const found = lookupHostShape(layout, parsed.index, parsed.shapeKind);
       if (found === null) continue;
       items.push({ kind: "shape", shape: found.shape });
@@ -481,7 +479,7 @@ export function pastedSelectionKeys(
   layer: GraphicsLayer,
 ): string[] {
   const keys = result.added.map((name) =>
-    formatEntityKey(
+    formatKey(
       Object.hasOwn(layout.connectors, name) ? "connector" : "component",
       name,
     ),
@@ -498,7 +496,7 @@ export function pastedSelectionKeys(
   ) {
     const shape = shapes[i];
     if (shape !== undefined) {
-      keys.push(formatEntityKey("shape", `${shape.kind}:${i}`));
+      keys.push(formatShapeKey(shape.kind, i));
     }
   }
   return keys;

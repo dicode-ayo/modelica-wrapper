@@ -1,5 +1,5 @@
 import { DRAG_SLOP_PX } from "./interaction-manager.js";
-import { formatKey, vertexKeyForEntity } from "./node-keys.js";
+import { formatKey, vertexKeyForEntity } from "./entity-keys.js";
 import {
   MOVE_KINDS,
   ownerOfHandle,
@@ -147,11 +147,15 @@ export class DragMode implements GestureMode {
     }
 
     if (entity.kind === "edge") {
-      const connIdx = Number(entity.nodeId);
-      if (Number.isNaN(connIdx)) {
+      if (Number.isNaN(entity.connIndex)) {
         return false;
       }
-      this.state = { kind: "edge", connIdx, startX: pt.x, startY: pt.y };
+      this.state = {
+        kind: "edge",
+        connIdx: entity.connIndex,
+        startX: pt.x,
+        startY: pt.y,
+      };
       return true;
     }
 

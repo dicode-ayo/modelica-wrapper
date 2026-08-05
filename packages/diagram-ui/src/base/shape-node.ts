@@ -8,11 +8,8 @@ import {
   SelectionOutline,
   VertexHandles,
 } from "./selection-overlay.js";
-import {
-  clearEntityTag,
-  tagEntity,
-  type EntityKind,
-} from "../interaction/node-keys.js";
+import type { EntityKind } from "../interaction/entity-keys.js";
+import { clearEntityTag, tagEntity } from "../interaction/node-keys.js";
 import type { SceneContext } from "../scene/scene-context.js";
 import type {
   CoordinateSystem,

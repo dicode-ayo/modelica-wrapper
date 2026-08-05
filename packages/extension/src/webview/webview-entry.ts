@@ -23,8 +23,6 @@ import "@dicode/diagram-ui";
 import { omTokens } from "@dicode/ui-common";
 import type { DiagramLayout, ParameterModel } from "@dicode/omc-client";
 import {
-  isComponentKey,
-  isShapeKey,
   parseKey,
   type ActionFlipDetail,
   type ActionRotateDetail,
@@ -328,11 +326,11 @@ class OmWebviewRoot extends LitElement {
     // canvas reach us through the same event and are ignored.
     const parsed = parseKey(e.detail.key);
     if (!parsed) return;
-    if (isShapeKey(parsed)) {
+    if (parsed.kind === "shape") {
       this.post({ type: "editShape", key: e.detail.key });
       return;
     }
-    if (!isComponentKey(parsed) || parsed.nodeId.length === 0) {
+    if (parsed.kind !== "component" || parsed.nodeId.length === 0) {
       return;
     }
     this.post({ type: "editComponent", componentName: parsed.nodeId });
