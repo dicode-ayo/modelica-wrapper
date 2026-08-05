@@ -187,13 +187,16 @@ export async function handleMoChange(
 
   const previous = deps.index.get(fsPath) ?? [];
   const removed = previous.filter((n) => !names.includes(n));
-  // A removed class that was itself a package cascades its own deleteClass to
-  // every member nested under it, wherever those live — the busy check has to
-  // cover their files and names too, not just this one's.
-  const { fsPaths, classNames } = cascadeReach(deps.index, removed, {
-    fsPath,
-    classNames: names,
-  });
+  // loadFile on fsPath reloads its whole subtree from disk when fsPath is a
+  // package — same as reorderPackage's reload — so a still-declared class
+  // cascades to its nested members' files exactly as a removed one cascades
+  // its deleteClass to them. `classNames: names` is the floor for a
+  // brand-new class the index doesn't know yet to cascade from.
+  const { fsPaths, classNames } = cascadeReach(
+    deps.index,
+    [...names, ...removed],
+    { fsPath, classNames: names },
+  );
   if (deps.isBusy(fsPaths, classNames)) {
     warnBusy(fsPath, classNames);
     return;

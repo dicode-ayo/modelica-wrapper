@@ -153,6 +153,31 @@ describe("handleMoChange", () => {
     expect(client.loadFile).not.toHaveBeenCalled();
   });
 
+  it("defers reloading a package.mo whose nested member — in a different file — is open dirty as plain text, even though the package's own class list is unchanged", async () => {
+    // A package.mo edit that doesn't add or remove a declared class still
+    // reloads the whole subtree from disk (same as reorderPackage's
+    // reload) — a dirty buffer on a member declared elsewhere is at risk
+    // even though nothing was "removed" from PKG_FILE's own class list.
+    const PKG_FILE = "/ws/My/Pkg/package.mo";
+    const MEMBER_FILE = "/ws/My/Pkg/Bar.mo";
+    setTabGroups([
+      {
+        viewColumn: 1,
+        tabs: [
+          { input: new TabInputText(Uri.file(MEMBER_FILE)), isDirty: true },
+        ],
+      },
+    ]);
+    const { deps, client } = makeDeps({ isBusy: isDeclaredClassBusy });
+    client.parseFile.mockResolvedValue({ classNames: ["My.Pkg"] });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+    deps.index.set(MEMBER_FILE, ["My.Pkg.Bar"]);
+
+    await handleMoChange(deps, PKG_FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+  });
+
   it("doesn't pass a removed class's own file and name twice to the busy check", async () => {
     // "My.Pkg" is both explicitly removed and, since the pre-update index
     // still lists it under FILE, rediscovered via its own cascade lookup —
