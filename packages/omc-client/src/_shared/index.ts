@@ -1,5 +1,9 @@
 export type { CallContext } from "./callContext.js";
-export { parseOutput, parseMutationSuccess } from "./parseOutput.js";
+export {
+  parseOutput,
+  parseMutationSuccess,
+  parseMutationDiagnostic,
+} from "./parseOutput.js";
 export {
   TypeNameInput,
   OptionalTypeNameInput,

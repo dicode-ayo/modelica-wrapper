@@ -49,6 +49,10 @@ import * as solver from "./api/solver/index.js";
  * output — that would be a wasteful second pass over data already checked.
  */
 interface RegistryEntry<TInput, TOutput> {
+  /**
+   * Wrappers for argument-less OMC functions are `(ctx) => …` and are admitted
+   * through {@link noInputEntry}, which pins `TInput` to the empty-object type.
+   */
   fn: (ctx: CallContext, input: TInput) => Promise<TOutput>;
   inputSchema: z.ZodType<unknown>;
   outputSchema: z.ZodType<TOutput>;
@@ -72,6 +76,37 @@ function entry<TInput, TOutput>(
   return { fn, inputSchema, outputSchema, category, description };
 }
 
+/** The only value an argument-less OMC function accepts. */
+type NoInput = Record<string, never>;
+
+const NoInputSchema = z.strictObject({});
+
+/**
+ * Registration for OMC functions declared with no arguments, whose wrapper is
+ * therefore `(ctx) => …` and ships no input schema of its own.
+ *
+ * They still reach `invoke()` from untrusted boundaries, so they get a strict
+ * empty-object schema rather than skipping validation: passing anything but
+ * `{}` is a caller bug and is rejected as one. Typing the input as
+ * `Record<string, never>` keeps that contract visible to `OmcInput`, and the
+ * schema gives `help.ts` and the MCP pipeline the "(none)" parameter list they
+ * expect for every entry.
+ */
+function noInputEntry<TOutput>(
+  category: string,
+  fn: (ctx: CallContext) => Promise<TOutput>,
+  outputSchema: z.ZodType<TOutput>,
+  description: string,
+): RegistryEntry<NoInput, TOutput> {
+  return {
+    fn,
+    inputSchema: NoInputSchema,
+    outputSchema,
+    category,
+    description,
+  };
+}
+
 export const REGISTRY = {
   // --- Browsing ---
   getVersion: entry(
@@ -80,6 +115,12 @@ export const REGISTRY = {
     browsing.GetVersionInputSchema,
     browsing.GetVersionOutputSchema,
     browsing.GetVersionDescription,
+  ),
+  getModelicaPath: noInputEntry(
+    "browsing",
+    browsing.getModelicaPath,
+    browsing.GetModelicaPathOutputSchema,
+    browsing.GetModelicaPathDescription,
   ),
   getClassNames: entry(
     "browsing",
