@@ -192,9 +192,10 @@ describe("handleMoChange", () => {
 
     await handleMoChange(deps, UNNORMALIZED);
 
-    expect(
-      seenFsPaths.filter((p) => p === path.resolve(UNNORMALIZED)),
-    ).toHaveLength(1);
+    // Exact-array equality, not a filtered count: an unresolved second entry
+    // for the same file would leave the count at 1 too, since the filter
+    // itself discards the very duplicate this test exists to catch.
+    expect(seenFsPaths).toEqual([path.resolve(UNNORMALIZED)]);
   });
 
   it("does not touch the tree when loadFile fails", async () => {

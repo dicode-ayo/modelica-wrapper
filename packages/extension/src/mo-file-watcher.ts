@@ -140,10 +140,9 @@ function warnReorderBusy(describedPath: string, classNames: string[]): void {
  * deduplicated: each name's own file, plus every file holding a class nested
  * under it. `extra` folds in classes/files that need checking regardless of
  * cascading — the reloading file's own still-declared classes, which are
- * not being deleted and so wouldn't otherwise appear here. `extra.fsPath` is
- * resolved before joining the set, matching the normalized keys
- * {@link PathClassIndex.filesUnder} returns — an unresolved caller path
- * (e.g. one carrying a `..` segment) would otherwise dedupe against nothing.
+ * not being deleted and so wouldn't otherwise appear here. `extra.fsPath`
+ * must match {@link PathClassIndex.filesUnder}'s normalized paths to dedupe
+ * correctly, so callers may pass it exactly as received.
  */
 function cascadeReach(
   index: PathClassIndex,
