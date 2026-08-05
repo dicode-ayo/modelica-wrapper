@@ -147,8 +147,7 @@ export class OmConnection extends LitElement {
   /**
    * Whether `key` targets this connection — either its edge
    * (`edge:${this.nodeId}`) or one of its junction discs
-   * (`junc:${this.nodeId}/${idx}`). Matches the junction by prefix so a
-   * connId containing slashes still resolves correctly.
+   * (`junc:${this.nodeId}/${idx}`).
    */
   private ownsKey(key: string | null): boolean {
     if (!key) return false;
@@ -156,7 +155,7 @@ export class OmConnection extends LitElement {
     if (!parsed) return false;
     if (parsed.kind === "edge") return parsed.nodeId === this.nodeId;
     if (parsed.kind === "junction") {
-      return parsed.nodeId.startsWith(`${this.nodeId}/`);
+      return String(parsed.connIndex) === this.nodeId;
     }
     return false;
   }

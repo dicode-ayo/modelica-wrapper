@@ -30,8 +30,12 @@ describe("entityKeyForNode", () => {
   });
 
   it("resolves an edge container through its tag", () => {
-    const c = tagged("edge", "e1");
-    expect(entityKeyForNode(c)).toEqual({ kind: "edge", nodeId: "e1" });
+    const c = tagged("edge", "3");
+    expect(entityKeyForNode(c)).toEqual({
+      kind: "edge",
+      nodeId: "3",
+      connIndex: 3,
+    });
   });
 
   it("resolves a vertex dot to a self-describing vertex key", () => {

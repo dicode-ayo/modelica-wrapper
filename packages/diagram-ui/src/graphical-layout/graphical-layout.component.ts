@@ -1077,8 +1077,7 @@ export class OmGraphicalLayout extends LitElement {
       return;
     }
     if (entity.kind === "edge") {
-      // Edge nodeId is the connection index.
-      const connIdx = Number(entity.nodeId);
+      const connIdx = entity.connIndex;
       const point = this.sceneEl?.clientToDiagram(e.clientX, e.clientY);
       if (Number.isNaN(connIdx) || !point) {
         return;

@@ -78,14 +78,11 @@ function routeKey(out: KeySet, key: EntityKey): void {
         out.shapes.add(key.index);
       }
       break;
-    case "edge": {
-      // Whole-connection key — the nodeId is the connection index.
-      const idx = Number(key.nodeId);
-      if (!Number.isNaN(idx)) {
-        out.connections.add(idx);
+    case "edge":
+      if (!Number.isNaN(key.connIndex)) {
+        out.connections.add(key.connIndex);
       }
       break;
-    }
     case "junction":
       if (!Number.isNaN(key.connIndex) && !Number.isNaN(key.waypointIndex)) {
         out.junctions.push({

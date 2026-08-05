@@ -147,11 +147,15 @@ export class DragMode implements GestureMode {
     }
 
     if (entity.kind === "edge") {
-      const connIdx = Number(entity.nodeId);
-      if (Number.isNaN(connIdx)) {
+      if (Number.isNaN(entity.connIndex)) {
         return false;
       }
-      this.state = { kind: "edge", connIdx, startX: pt.x, startY: pt.y };
+      this.state = {
+        kind: "edge",
+        connIdx: entity.connIndex,
+        startX: pt.x,
+        startY: pt.y,
+      };
       return true;
     }
 

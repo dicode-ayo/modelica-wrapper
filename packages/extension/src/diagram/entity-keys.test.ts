@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ENTITY_KINDS,
   formatKey,
   parseKey,
   type EntityKey,
@@ -10,8 +11,9 @@ import {
 /**
  * Every kind the webview can emit must decode here too — an unknown prefix
  * parses to `null`, which reaches the host as "nothing was clicked" rather
- * than as an error. Keyed by `EntityKind` so a newly declared kind fails to
- * compile until it round-trips here.
+ * than as an error. The extension tsconfig never typechecks test files, so
+ * completeness is enforced at runtime by walking `ENTITY_KINDS`; the
+ * compile-time twin lives in `diagram-ui/test/entity-keys.test.ts`.
  */
 const SAMPLES: Record<EntityKind, { nodeId: string; decoded: EntityKey }> = {
   component: { nodeId: "R1", decoded: { kind: "component", nodeId: "R1" } },
@@ -33,7 +35,10 @@ const SAMPLES: Record<EntityKind, { nodeId: string; decoded: EntityKey }> = {
       index: 3,
     },
   },
-  edge: { nodeId: "0", decoded: { kind: "edge", nodeId: "0" } },
+  edge: {
+    nodeId: "0",
+    decoded: { kind: "edge", nodeId: "0", connIndex: 0 },
+  },
   junction: {
     nodeId: "2/1",
     decoded: {
@@ -64,11 +69,10 @@ const SAMPLES: Record<EntityKind, { nodeId: string; decoded: EntityKey }> = {
 
 describe("entity keys, host side", () => {
   it("round-trips every kind", () => {
-    for (const [kind, { nodeId, decoded }] of Object.entries(SAMPLES) as [
-      EntityKind,
-      { nodeId: string; decoded: EntityKey },
-    ][]) {
-      expect(parseKey(formatKey(kind, nodeId))).toEqual(decoded);
+    for (const kind of ENTITY_KINDS) {
+      const sample = SAMPLES[kind];
+      expect(sample, `missing sample for kind "${kind}"`).toBeDefined();
+      expect(parseKey(formatKey(kind, sample.nodeId))).toEqual(sample.decoded);
     }
   });
 

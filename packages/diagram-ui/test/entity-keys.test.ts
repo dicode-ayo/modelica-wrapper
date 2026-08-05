@@ -37,7 +37,10 @@ const SAMPLES: Record<EntityKind, { nodeId: string; decoded: EntityKey }> = {
       index: 3,
     },
   },
-  edge: { nodeId: "0", decoded: { kind: "edge", nodeId: "0" } },
+  edge: {
+    nodeId: "0",
+    decoded: { kind: "edge", nodeId: "0", connIndex: 0 },
+  },
   junction: {
     nodeId: "2/1",
     decoded: {
@@ -117,6 +120,14 @@ describe("formatKey / parseKey", () => {
     expect(parseKey("vtx:line:1")).toMatchObject({ vertexIndex: NaN });
     expect(parseKey("vtx:line:1/x")).toMatchObject({ vertexIndex: NaN });
     expect(parseKey("vtx:line:/2")).toMatchObject({ shapeIndex: NaN });
+  });
+
+  it("fails closed on a malformed edge key rather than addressing connection 0", () => {
+    expect(parseKey("edge:")).toMatchObject({ kind: "edge", connIndex: NaN });
+    expect(parseKey("edge:1.5")).toMatchObject({
+      kind: "edge",
+      connIndex: NaN,
+    });
   });
 
   it("fails closed on a malformed junction key", () => {

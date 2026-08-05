@@ -38,6 +38,9 @@ const KIND_PREFIX = {
 
 export type EntityKind = keyof typeof KIND_PREFIX;
 
+/** Every declared kind, for consumers that must enumerate them at runtime. */
+export const ENTITY_KINDS = Object.keys(KIND_PREFIX) as EntityKind[];
+
 const PREFIX_KIND: Record<string, EntityKind> = Object.fromEntries(
   Object.entries(KIND_PREFIX).map(([kind, prefix]) => [
     prefix,
@@ -65,6 +68,10 @@ interface KindFields {
     shapeKind: string;
     /** Position in the host's own-layer (`from === className`) shape array. */
     index: number;
+  };
+  edge: {
+    /** Index of the connection the edge addresses. */
+    connIndex: number;
   };
   junction: {
     /** Index of the connection the waypoint belongs to. */
@@ -196,6 +203,8 @@ export function makeKey(kind: EntityKind, nodeId: string): EntityKey {
       const { shapeKind, index } = parseShapeId(nodeId);
       return { kind, nodeId, shapeKind, index };
     }
+    case "edge":
+      return { kind, nodeId, connIndex: failClosedIndex(nodeId) };
     case "junction": {
       const [connId, waypointId] = splitCompoundId(nodeId, nodeId.indexOf("/"));
       return {
