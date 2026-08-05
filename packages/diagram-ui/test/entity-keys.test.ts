@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ENTITY_KINDS,
   formatComponentKey,
   formatConnectorKey,
   formatKey,
@@ -71,18 +72,17 @@ const SAMPLES: Record<EntityKind, { nodeId: string; decoded: EntityKey }> = {
 
 describe("formatKey / parseKey", () => {
   it("round-trips every kind", () => {
-    for (const [kind, { nodeId, decoded }] of Object.entries(SAMPLES) as [
-      EntityKind,
-      { nodeId: string; decoded: EntityKey },
-    ][]) {
+    for (const kind of ENTITY_KINDS) {
+      const { nodeId, decoded } = SAMPLES[kind];
       expect(parseKey(formatKey(kind, nodeId))).toEqual(decoded);
     }
   });
 
   it("gives every kind a distinct wire prefix", () => {
-    const kinds = Object.keys(SAMPLES) as EntityKind[];
-    const prefixes = kinds.map((kind) => formatKey(kind, "x").split(":")[0]);
-    expect(new Set(prefixes).size).toBe(kinds.length);
+    const prefixes = ENTITY_KINDS.map(
+      (kind) => formatKey(kind, "x").split(":")[0],
+    );
+    expect(new Set(prefixes).size).toBe(ENTITY_KINDS.length);
   });
 
   it("decomposes standalone connector keys into a null componentName", () => {
