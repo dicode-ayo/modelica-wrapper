@@ -1,9 +1,7 @@
 /**
  * `removeComponentModifiers` is one of the OMC mutations that answers with an
- * empty response on success (see `_shared/parseOutput.ts`), so a bare bool
- * parse throws on the success path. Success is decided by the error buffer.
- *
- * Uses a stub `CallContext` rather than a real OMC.
+ * empty response on success (see `_shared/parseOutput.ts`); success is
+ * decided by the error buffer, not the response body.
  */
 
 import { describe, expect, it } from "vitest";

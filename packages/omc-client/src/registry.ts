@@ -49,10 +49,6 @@ import * as solver from "./api/solver/index.js";
  * output — that would be a wasteful second pass over data already checked.
  */
 interface RegistryEntry<TInput, TOutput> {
-  /**
-   * Wrappers for argument-less OMC functions are `(ctx) => …` and are admitted
-   * through {@link noInputEntry}, which pins `TInput` to the empty-object type.
-   */
   fn: (ctx: CallContext, input: TInput) => Promise<TOutput>;
   inputSchema: z.ZodType<unknown>;
   outputSchema: z.ZodType<TOutput>;
@@ -85,12 +81,11 @@ const NoInputSchema = z.strictObject({});
  * Registration for OMC functions declared with no arguments, whose wrapper is
  * therefore `(ctx) => …` and ships no input schema of its own.
  *
- * They still reach `invoke()` from untrusted boundaries, so they get a strict
- * empty-object schema rather than skipping validation: passing anything but
- * `{}` is a caller bug and is rejected as one. Typing the input as
- * `Record<string, never>` keeps that contract visible to `OmcInput`, and the
- * schema gives `help.ts` and the MCP pipeline the "(none)" parameter list they
- * expect for every entry.
+ * `invoke()` is an untrusted boundary, so the entry carries a strict
+ * empty-object schema: anything but `{}` is a caller bug and is rejected as
+ * one. Typing the input as `Record<string, never>` keeps that contract
+ * visible to `OmcInput`, and the schema gives `help.ts` and the MCP pipeline
+ * the "(none)" parameter list they expect for every entry.
  */
 function noInputEntry<TOutput>(
   category: string,
@@ -98,13 +93,13 @@ function noInputEntry<TOutput>(
   outputSchema: z.ZodType<TOutput>,
   description: string,
 ): RegistryEntry<NoInput, TOutput> {
-  return {
-    fn,
-    inputSchema: NoInputSchema,
-    outputSchema,
+  return entry<NoInput, TOutput>(
     category,
+    fn,
+    NoInputSchema,
+    outputSchema,
     description,
-  };
+  );
 }
 
 export const REGISTRY = {

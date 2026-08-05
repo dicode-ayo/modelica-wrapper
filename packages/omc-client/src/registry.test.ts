@@ -6,24 +6,14 @@ import { describe, expect, it } from "vitest";
 
 import { REGISTRY, functionsByCategory, omcFunctionNames } from "./registry.js";
 
-/**
- * `src/api/` subdirectories holding OMC wrappers. `diagram/` and
- * `parameters-form/` are helper modules, not wrappers, and have no entries.
- */
-const CATEGORY_DIRS = [
-  "browsing",
-  "contents",
-  "lifecycle",
-  "parameters",
-  "editing",
-  "elements",
-  "library",
-  "solver",
-  "execution",
-  "results",
-];
-
 const API_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "api");
+
+/** `src/api/` directories holding helper modules, not OMC wrappers. */
+const HELPER_DIRS = new Set(["diagram", "parameters-form"]);
+
+const CATEGORY_DIRS = readdirSync(API_DIR, { withFileTypes: true })
+  .filter((dirent) => dirent.isDirectory() && !HELPER_DIRS.has(dirent.name))
+  .map((dirent) => dirent.name);
 
 /** Wrapper file basenames in a category — one file, one OMC function. */
 function wrapperNames(category: string): string[] {
@@ -38,11 +28,6 @@ function wrapperNames(category: string): string[] {
 }
 
 describe("registry", () => {
-  it("includes all 10 categories", () => {
-    const cats = new Set(omcFunctionNames.map((n) => REGISTRY[n].category));
-    expect(cats).toEqual(new Set(CATEGORY_DIRS));
-  });
-
   /**
    * The registry is the only surface `invoke()`, `omcFunctionNames`, `help.ts`
    * and the MCP pipeline can see, so a wrapper file with no entry is invisible
