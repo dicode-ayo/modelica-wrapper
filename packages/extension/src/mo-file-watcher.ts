@@ -473,19 +473,29 @@ export function registerMoFileWatcher(deps: {
 
   // Serialize per path so overlapping events (a rename is delete+create; rapid
   // saves) can't interleave their index writes and leave it out of sync.
+  // `key` and `describedPath` differ whenever an event is queued under its
+  // owning package's path rather than its own — the failure log should
+  // still name the file that actually triggered the event.
   const inFlight = new Map<string, Promise<void>>();
-  const run = (fsPath: string, fn: () => Promise<void>): void => {
-    const key = path.resolve(fsPath);
-    const prior = inFlight.get(key) ?? Promise.resolve();
+  const run = (
+    key: string,
+    describedPath: string,
+    fn: () => Promise<void>,
+  ): void => {
+    const resolvedKey = path.resolve(key);
+    const prior = inFlight.get(resolvedKey) ?? Promise.resolve();
     const next = prior
       .then(() => seedReady)
       .then(fn)
       .catch((err) =>
-        log.warn("moWatcher", `handling ${fsPath} failed: ${asMessage(err)}`),
+        log.warn(
+          "moWatcher",
+          `handling ${describedPath} failed: ${asMessage(err)}`,
+        ),
       );
-    inFlight.set(key, next);
+    inFlight.set(resolvedKey, next);
     void next.finally(() => {
-      if (inFlight.get(key) === next) inFlight.delete(key);
+      if (inFlight.get(resolvedKey) === next) inFlight.delete(resolvedKey);
     });
   };
 
@@ -503,17 +513,17 @@ export function registerMoFileWatcher(deps: {
     // `package.mo` sibling keying on a path nothing else ever touches,
     // serializing needlessly against unrelated files sharing its directory.
     watcher.onDidChange((uri) =>
-      run(orderOwner(uri.fsPath), () =>
+      run(orderOwner(uri.fsPath), uri.fsPath, () =>
         handleMoChange(watcherDeps, uri.fsPath),
       ),
     ),
     watcher.onDidCreate((uri) =>
-      run(orderOwner(uri.fsPath), () =>
+      run(orderOwner(uri.fsPath), uri.fsPath, () =>
         handleMoChange(watcherDeps, uri.fsPath),
       ),
     ),
     watcher.onDidDelete((uri) =>
-      run(orderOwner(uri.fsPath), () =>
+      run(orderOwner(uri.fsPath), uri.fsPath, () =>
         handleMoDelete(watcherDeps, uri.fsPath),
       ),
     ),
@@ -522,17 +532,17 @@ export function registerMoFileWatcher(deps: {
     // reorder and a `.mo` event for that same package.mo can't run
     // concurrently.
     orderWatcher.onDidChange((uri) =>
-      run(orderOwner(uri.fsPath), () =>
+      run(orderOwner(uri.fsPath), uri.fsPath, () =>
         handleOrderChange(watcherDeps, uri.fsPath),
       ),
     ),
     orderWatcher.onDidCreate((uri) =>
-      run(orderOwner(uri.fsPath), () =>
+      run(orderOwner(uri.fsPath), uri.fsPath, () =>
         handleOrderChange(watcherDeps, uri.fsPath),
       ),
     ),
     orderWatcher.onDidDelete((uri) =>
-      run(orderOwner(uri.fsPath), () =>
+      run(orderOwner(uri.fsPath), uri.fsPath, () =>
         handleOrderDelete(watcherDeps, uri.fsPath),
       ),
     ),
