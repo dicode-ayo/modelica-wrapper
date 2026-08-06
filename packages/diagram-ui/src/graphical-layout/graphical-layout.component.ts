@@ -46,10 +46,12 @@ import {
   applyShapeVertexDrag,
   applyShapeVertexInsert,
   applySnapToExtents,
-  retainExistingSelection,
-  selectByDiagramRect,
   shapeCentre,
 } from "../interaction/layout-ops.js";
+import {
+  retainExistingSelection,
+  selectByDiagramRect,
+} from "../interaction/selection-ops.js";
 import {
   applyEdgeSegmentDrag,
   applyWaypointDelete,

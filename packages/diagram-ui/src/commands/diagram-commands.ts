@@ -9,10 +9,10 @@ import {
   applyShapeSmoothToggle,
   applyShapeVertexDelete,
   ownShapeCount,
-  selectAllKeys,
   zOrderTarget,
   type ZOrderMove,
 } from "../interaction/layout-ops.js";
+import { selectAllKeys } from "../interaction/selection-ops.js";
 import {
   formatShapeKey,
   parseKey,
