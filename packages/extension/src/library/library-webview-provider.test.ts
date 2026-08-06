@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OmcClient } from "@dicode/omc-client";
 
 import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
+import { ClassInvalidationRegistry } from "../invalidation.js";
 import type {
   ExtensionToLibraryView,
   LibraryViewToExtension,
@@ -86,11 +87,13 @@ function makeProvider() {
     fsPath: "/ext",
     path: "/ext",
   } as unknown as import("vscode").Uri;
+  const invalidation = new ClassInvalidationRegistry();
   const provider = new LibraryWebviewProvider(
     uri,
     async () => client as unknown as OmcClient,
+    invalidation,
   );
-  return { provider, client };
+  return { provider, client, invalidation };
 }
 
 /** A class with no drawable graphics — the icon render still routes through an
@@ -164,6 +167,7 @@ function makeInstanceProbe() {
   const provider = new LibraryWebviewProvider(
     uri,
     async () => client as unknown as OmcClient,
+    new ClassInvalidationRegistry(),
   );
   const apis = (): unknown[] => client.invoke.mock.calls.map((c) => c[0]);
   return { provider, client, apis };
@@ -322,6 +326,49 @@ describe("LibraryWebviewProvider", () => {
     send({ type: "libraryIcon", requestId: "2", className: "Modelica" });
     await flush();
     expect(client.invoke.mock.calls.length).toBe(afterFirst); // cache hit
+  });
+
+  it("re-reads a changed class's restriction, so a model turned block re-badges", async () => {
+    const { provider, client, invalidation } = makeProvider();
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    send({ type: "libraryListChildren", requestId: "1", parent: null });
+    await flush();
+    const afterWarm = client.getClassRestriction.mock.calls.length;
+    expect(afterWarm).toBeGreaterThan(0);
+
+    send({ type: "libraryListChildren", requestId: "2", parent: null });
+    await flush();
+    expect(client.getClassRestriction.mock.calls.length).toBe(afterWarm);
+
+    invalidation.classChanged("Modelica");
+
+    send({ type: "libraryListChildren", requestId: "3", parent: null });
+    await flush();
+    expect(client.getClassRestriction.mock.calls.length).toBeGreaterThan(
+      afterWarm,
+    );
+  });
+
+  it("evicts a changed class's icon through the invalidation registry", async () => {
+    const { provider, client, invalidation } = makeProvider();
+    const { view, posted, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    send({ type: "libraryIcon", requestId: "1", className: "Lib.A" });
+    await flush();
+    const afterWarm = client.invoke.mock.calls.length;
+
+    invalidation.classChanged("Lib.A");
+    expect(posted.at(-1)).toEqual({
+      type: "libraryIconChanged",
+      className: "Lib.A",
+    });
+
+    send({ type: "libraryIcon", requestId: "2", className: "Lib.A" });
+    await flush();
+    expect(client.invoke.mock.calls.length).toBeGreaterThan(afterWarm);
   });
 
   it("iconChanged evicts only the named class and posts the targeted message", async () => {

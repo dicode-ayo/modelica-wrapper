@@ -28,6 +28,7 @@ import {
   DIAGRAM_VIEW_TYPE,
   DiagramEditorProvider,
 } from "../diagram/diagram-editor-provider.js";
+import type { ClassInvalidationRegistry } from "../invalidation.js";
 import { log } from "../logger.js";
 import { sourceUriFor } from "../source-provider.js";
 import { randomNonce } from "../webview/nonce.js";
@@ -88,7 +89,17 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly ensureClient: EnsureClient,
-  ) {}
+    invalidation: ClassInvalidationRegistry,
+  ) {
+    invalidation.register((className) => this.classChanged(className));
+  }
+
+  /** Drop everything this sidebar derives from `className`'s definition: its
+   *  rendered icon and the restriction its row badges. */
+  private classChanged(className: string): void {
+    this.cached?.source.invalidateRestriction(className);
+    this.iconChanged(className);
+  }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;

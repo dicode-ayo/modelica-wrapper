@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as vscode from "vscode";
 
 import {
   recordedMessages,
@@ -19,7 +20,9 @@ import {
   seedPathClassIndex,
   type MoWatcherDeps,
 } from "./mo-file-watcher.js";
+import { ClassInvalidationRegistry } from "./invalidation.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
+import { publishSourceChanges } from "./source-invalidation.js";
 import { sourceUriFor } from "./source-provider.js";
 
 const FILE = "/ws/My/Pkg/Bar.mo";
@@ -32,7 +35,6 @@ function makeDeps(overrides: Partial<MoWatcherDeps> = {}): {
     deleteClass: ReturnType<typeof vi.fn>;
   };
   childrenChanged: ReturnType<typeof vi.fn>;
-  iconChanged: ReturnType<typeof vi.fn>;
   notifySourceChanged: ReturnType<typeof vi.fn>;
 } {
   const client = {
@@ -41,11 +43,10 @@ function makeDeps(overrides: Partial<MoWatcherDeps> = {}): {
     deleteClass: vi.fn(async () => ({ success: true })),
   };
   const childrenChanged = vi.fn();
-  const iconChanged = vi.fn();
   const notifySourceChanged = vi.fn();
   const deps: MoWatcherDeps = {
     ensureClient: async () => client,
-    libraryTree: { childrenChanged, iconChanged },
+    libraryTree: { childrenChanged },
     sourceProvider: { notifySourceChanged },
     guard: createSelfWriteGuard(),
     index: createPathClassIndex(),
@@ -54,7 +55,7 @@ function makeDeps(overrides: Partial<MoWatcherDeps> = {}): {
     isBusy: () => false,
     ...overrides,
   };
-  return { deps, client, childrenChanged, iconChanged, notifySourceChanged };
+  return { deps, client, childrenChanged, notifySourceChanged };
 }
 
 beforeEach(() => {
@@ -75,16 +76,14 @@ describe("handleMoChange", () => {
     expect(childrenChanged).not.toHaveBeenCalled();
   });
 
-  it("loads a foreign edit and refreshes the class's scope and icon", async () => {
-    const { deps, client, childrenChanged, iconChanged, notifySourceChanged } =
-      makeDeps();
+  it("loads a foreign edit and refreshes the class's scope and source", async () => {
+    const { deps, client, childrenChanged, notifySourceChanged } = makeDeps();
 
     await handleMoChange(deps, FILE);
 
     expect(client.loadFile).toHaveBeenCalledWith({ fileName: FILE });
     expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
     expect(childrenChanged).toHaveBeenCalledWith("My.Pkg.Bar");
-    expect(iconChanged).toHaveBeenCalledWith("My.Pkg.Bar");
     expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg.Bar");
     expect(deps.index.get(FILE)).toEqual(["My.Pkg.Bar"]);
   });
@@ -100,15 +99,13 @@ describe("handleMoChange", () => {
   });
 
   it("unloads a class the file no longer declares", async () => {
-    const { deps, client, childrenChanged, iconChanged, notifySourceChanged } =
-      makeDeps();
+    const { deps, client, childrenChanged, notifySourceChanged } = makeDeps();
     deps.index.set(FILE, ["Top.A", "Top.B"]);
     client.parseFile.mockResolvedValue({ classNames: ["Top.A"] });
 
     await handleMoChange(deps, FILE);
 
     expect(client.deleteClass).toHaveBeenCalledWith({ typeName: "Top.B" });
-    expect(iconChanged).not.toHaveBeenCalledWith("Top.B");
     expect(childrenChanged).toHaveBeenCalledWith("Top");
     // The removed class's open source doc must be invalidated too.
     expect(notifySourceChanged).toHaveBeenCalledWith("Top.B");
@@ -190,8 +187,9 @@ const ORDER_FILE = "/ws/My/Pkg/package.order";
 
 describe("handleOrderChange", () => {
   it("reorders the owning package by reloading it, then re-lists it", async () => {
-    const { deps, client, childrenChanged, iconChanged, notifySourceChanged } =
-      makeDeps({ readFile: async () => "B\nA\n" });
+    const { deps, client, childrenChanged, notifySourceChanged } = makeDeps({
+      readFile: async () => "B\nA\n",
+    });
     deps.index.set(PKG_FILE, ["My.Pkg"]);
 
     await handleOrderChange(deps, ORDER_FILE);
@@ -202,7 +200,6 @@ describe("handleOrderChange", () => {
     expect(client.deleteClass).not.toHaveBeenCalled();
     expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
     expect(childrenChanged).toHaveBeenCalledWith("My");
-    expect(iconChanged).toHaveBeenCalledWith("My.Pkg");
     expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg");
   });
 
@@ -465,5 +462,62 @@ describe("createPathClassIndex", () => {
 
       expect(index.classesUnder("My.Pkg")).toEqual(["My.Pkg"]);
     });
+  });
+});
+
+/**
+ * The watcher announces a class through `notifySourceChanged`, whose broadcast
+ * is what {@link publishSourceChanges} turns into one invalidation. Wiring the
+ * real chain — rather than counting the watcher's own calls — is what pins the
+ * count: a second route into the sidebar shows up here and nowhere else.
+ */
+describe("class invalidation from a `.mo` change", () => {
+  function wireInvalidation() {
+    const broadcast = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
+    const invalidation = new ClassInvalidationRegistry();
+    publishSourceChanges({ onDidChangeFile: broadcast.event }, invalidation);
+    const libraryTree = { childrenChanged: vi.fn(), iconChanged: vi.fn() };
+    invalidation.register((className) => libraryTree.iconChanged(className));
+    const sourceProvider = {
+      notifySourceChanged: (typeName?: string): void => {
+        if (typeName === undefined) return;
+        broadcast.fire([
+          {
+            type: vscode.FileChangeType.Changed,
+            uri: sourceUriFor(typeName),
+          },
+        ]);
+      },
+    };
+    return { libraryTree, sourceProvider };
+  }
+
+  it("invalidates each changed class's icon exactly once", async () => {
+    const { libraryTree, sourceProvider } = wireInvalidation();
+    const { deps, client } = makeDeps({ libraryTree, sourceProvider });
+    client.parseFile.mockResolvedValue({
+      classNames: ["My.Pkg.Bar", "My.Pkg.Baz"],
+    });
+
+    await handleMoChange(deps, FILE);
+
+    expect(libraryTree.iconChanged.mock.calls).toEqual([
+      ["My.Pkg.Bar"],
+      ["My.Pkg.Baz"],
+    ]);
+  });
+
+  it("invalidates each reordered package's icon exactly once", async () => {
+    const { libraryTree, sourceProvider } = wireInvalidation();
+    const { deps } = makeDeps({
+      libraryTree,
+      sourceProvider,
+      readFile: async () => "B\nA\n",
+    });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(libraryTree.iconChanged.mock.calls).toEqual([["My.Pkg"]]);
   });
 });

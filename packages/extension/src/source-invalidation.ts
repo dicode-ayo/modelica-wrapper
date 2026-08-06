@@ -1,10 +1,7 @@
 import * as vscode from "vscode";
-import { qualifiedNameFromUri } from "./source-provider.js";
 
-/** Evicts a class's cached sidebar icon so its next render re-elaborates. */
-interface IconInvalidator {
-  iconChanged(className: string): void;
-}
+import type { ClassInvalidationRegistry } from "./invalidation.js";
+import { qualifiedNameFromUri } from "./source-provider.js";
 
 /** The source provider's change broadcast, narrowed to what this wiring reads. */
 interface SourceChangeBroadcaster {
@@ -12,21 +9,24 @@ interface SourceChangeBroadcaster {
 }
 
 /**
- * Re-elaborate a sidebar icon whenever its class's source changes. A write
- * through the source provider can alter a class's `Icon` annotation, and the
- * sidebar's cheap annotation read lags a save behind unless the icon is
- * evicted. The change broadcast names the written class, so map each changed
- * `modelica-source:` URI back to its qualified name and invalidate that icon.
+ * Turn the source provider's change broadcast into class-invalidation signals.
+ *
+ * Every write that reaches OMC — a save through the virtual filesystem, a
+ * mutation command's `notifySourceChanged`, the `.mo` watcher reloading a
+ * foreign edit — ends in this broadcast, so it is the single producer feeding
+ * {@link ClassInvalidationRegistry}. Routing the caches off it rather than off
+ * each producer is what keeps a class from being invalidated once per producer
+ * that happened to fire.
  */
-export function syncIconsWithSource(
+export function publishSourceChanges(
   source: SourceChangeBroadcaster,
-  icons: IconInvalidator,
+  invalidation: ClassInvalidationRegistry,
 ): vscode.Disposable {
   return source.onDidChangeFile((events) => {
     for (const event of events) {
       if (event.type !== vscode.FileChangeType.Changed) continue;
       const className = qualifiedNameFromUri(event.uri);
-      if (className !== undefined) icons.iconChanged(className);
+      if (className !== undefined) invalidation.classChanged(className);
     }
   });
 }

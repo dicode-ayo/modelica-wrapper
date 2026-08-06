@@ -5,13 +5,17 @@
  * read-only MODELICAPATH libraries are never watched.
  *
  * OMC stays the single source the tree lists from, so every reaction routes
- * through the targeted change protocol (`childrenChanged` / `iconChanged`)
- * rather than a wholesale reload:
- *   - change / create → `loadFile`, then re-list the affected scopes and
- *     invalidate each class's icon.
+ * through the targeted change protocol (`childrenChanged`) rather than a
+ * wholesale reload:
+ *   - change / create → `loadFile`, then re-list the affected scopes.
  *   - delete → `deleteClass` for the classes the gone file declared (resolved
  *     from a path→class index, since the file can no longer be parsed), then
  *     re-list their enclosing scope.
+ *
+ * Both announce each touched class through `notifySourceChanged`. The
+ * per-class caches — sidebar icons, class restrictions, the language caches —
+ * hang off that one broadcast through `invalidation.ts`, so the watcher
+ * invalidates none of them directly.
  *
  * A `package.order` edit resolves the owning package from the path→class index
  * and reloads its `package.mo`, which re-derives the child order from disk.
@@ -79,7 +83,7 @@ export function createPathClassIndex(): PathClassIndex {
 
 export interface MoWatcherDeps {
   ensureClient: () => Promise<WatcherOmcClient>;
-  libraryTree: Pick<LibraryWebviewProvider, "childrenChanged" | "iconChanged">;
+  libraryTree: Pick<LibraryWebviewProvider, "childrenChanged">;
   sourceProvider: Pick<ModelicaSourceProvider, "notifySourceChanged">;
   guard: SelfWriteGuard;
   index: PathClassIndex;
@@ -106,10 +110,10 @@ function warnBusy(fsPath: string, classNames: string[]): void {
 }
 
 /**
- * A skipped reorder does not come back on its own: saving the busy editor
- * reloads that member alone, and nothing re-runs the reorder. So this says
- * what actually recovers it, where a `.mo` reload can promise the save is
- * enough (issue #419).
+ * A skipped reorder is terminal: saving the busy editor reloads that member
+ * alone, and nothing re-runs the reorder (issue #440). So this says what
+ * actually recovers it, where a `.mo` reload can promise the save is enough
+ * (issue #419).
  */
 function warnReorderBusy(describedPath: string, classNames: string[]): void {
   void vscode.window.showWarningMessage(
@@ -171,10 +175,7 @@ export async function handleMoChange(
   for (const name of removed) scopes.add(scopeOf(name));
   for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
   for (const name of removed) deps.sourceProvider.notifySourceChanged(name);
-  for (const name of names) {
-    deps.libraryTree.iconChanged(name);
-    deps.sourceProvider.notifySourceChanged(name);
-  }
+  for (const name of names) deps.sourceProvider.notifySourceChanged(name);
 }
 
 /** `dirname(orderFsPath)/package.mo` — the file that owns a `package.order`. */
@@ -230,10 +231,7 @@ async function reorderPackage(
     scopes.add(scopeOf(name));
   }
   for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
-  for (const name of names) {
-    deps.libraryTree.iconChanged(name);
-    deps.sourceProvider.notifySourceChanged(name);
-  }
+  for (const name of names) deps.sourceProvider.notifySourceChanged(name);
 
   if (!loaded) {
     // pkgFile can vanish between the busy check above and here — a directory
