@@ -135,7 +135,7 @@ export async function activate(
     ),
   );
 
-  // The source provider's change broadcast is the one producer feeding the
+  // The source provider's change broadcast is the broad producer feeding the
   // registry: every write that lands in OMC — a text-editor save, a mutation
   // command, the `.mo` watcher reloading a foreign edit — ends there. An
   // unsaved graphical commit reaches OMC but not that broadcast, so the

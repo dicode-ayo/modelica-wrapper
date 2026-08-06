@@ -478,6 +478,9 @@ describe("class invalidation from a `.mo` change", () => {
     publishSourceChanges({ onDidChangeFile: broadcast.event }, invalidation);
     const libraryTree = { childrenChanged: vi.fn(), iconChanged: vi.fn() };
     invalidation.register((className) => libraryTree.iconChanged(className));
+    // Mirrors `ModelicaSourceProvider.notifySourceChanged(typeName)`: a
+    // `Changed` event on the class's source URI, for a removed class as much
+    // as a kept one. The counts below are only as faithful as that match.
     const sourceProvider = {
       notifySourceChanged: (typeName?: string): void => {
         if (typeName === undefined) return;

@@ -14,7 +14,7 @@
  *
  * Both announce each touched class through `notifySourceChanged`. The
  * per-class caches — sidebar icons, class restrictions, the language caches —
- * hang off that one broadcast through `invalidation.ts`, so the watcher
+ * hang off that one broadcast through `source-invalidation.ts`, so the watcher
  * invalidates none of them directly.
  *
  * A `package.order` edit resolves the owning package from the path→class index
