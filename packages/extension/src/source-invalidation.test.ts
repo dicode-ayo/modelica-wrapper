@@ -33,7 +33,7 @@ describe("publishSourceChanges", () => {
       { type: vscode.FileChangeType.Changed, uri: sourceUriFor("Lib.B") },
     ]);
 
-    expect(changed.mock.calls.map((c) => c[0])).toEqual(["Lib.A", "Lib.B"]);
+    expect(changed.mock.calls).toEqual([["Lib.A"], ["Lib.B"]]);
   });
 
   it("ignores create and delete events — only a content change stales a cache", () => {

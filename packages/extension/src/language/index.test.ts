@@ -1,7 +1,9 @@
 /**
- * Unit test for the cache-invalidation glue: the two events that stale the
- * language caches — a document save, and a class changing outside the editor
- * — reach `sync`, the parse cache and the lookup cache. Each cache's own
+ * Unit test for the cache-invalidation glue. The two events that stale the
+ * language caches reach different sets of them: a document save invalidates
+ * that path's loaded flag and the lookup answers, while a class changing
+ * outside the editor invalidates that class's parse tree and the lookup
+ * answers but deliberately leaves the loaded flags alone. Each cache's own
  * `invalidate` is covered in `omc-cache.test.ts` / `sync.test.ts`; what is
  * asserted here is the wiring, both through the extracted handlers and through
  * the listeners `registerLanguageFeatures` installs.
