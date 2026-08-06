@@ -80,8 +80,8 @@ export class WriteVerdicts {
    * origin to record; caching that as writable would strand a restored
    * system-library editor in edit mode once the class loads.
    *
-   * `fileReadOnly` is deliberately not memoized: a `chmod` changes it, and a
-   * fresh read is one OMC call.
+   * `fileReadOnly` is not memoized — a `chmod` changes it under us, and a
+   * fresh read costs one OMC call.
    */
   private readonly systemLibrary = new Map<string, boolean>();
 

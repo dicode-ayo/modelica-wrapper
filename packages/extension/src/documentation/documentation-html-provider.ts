@@ -3,12 +3,17 @@ import * as vscode from "vscode";
 import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 import { qualifiedNameFromUri } from "../source-provider.js";
-import { isSystemLibraryClass } from "../system-library.js";
+import type {
+  WriteAction,
+  WriteVerdict,
+  WriteVerdictClient,
+  WriteVerdicts,
+} from "../write-verdict.js";
 
 export const MODELICA_DOC_SCHEME = "modelica-doc";
 
 /** The subset of OMC this provider drives. */
-export interface DocHtmlClient {
+export interface DocHtmlClient extends WriteVerdictClient {
   getDocumentationAnnotation(input: {
     typeName: string;
   }): Promise<{ info: string }>;
@@ -16,16 +21,11 @@ export interface DocHtmlClient {
     typeName: string;
     info: string;
   }): Promise<{ success: boolean }>;
-  getClassInformation(input: {
-    typeName: string;
-  }): Promise<{ fileReadOnly: boolean }>;
-  getSourceFile(input: { typeName: string }): Promise<{ fileName: string }>;
-  getModelicaPath(): Promise<{ modelicaPath: string }>;
 }
 
 interface DocState {
   info: string;
-  readOnly: boolean;
+  verdict: WriteVerdict;
 }
 
 /** `modelica-doc:/Pkg.Cls.html` — a class's `Documentation(info=…)` as an editable file. */
@@ -61,25 +61,20 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
   constructor(
     private readonly ensureClient: () => Promise<DocHtmlClient>,
     private readonly notifyClassChanged: (className: string) => void,
+    private readonly verdicts: WriteVerdicts,
   ) {}
 
-  /**
-   * The class's current documentation and whether it's editable, in one
-   * place. A class is read-only when its file is (`fileReadOnly`) or when it
-   * belongs to a system library — an installed MODELICAPATH library is
-   * user-writable on disk, so `fileReadOnly` alone misses it.
-   */
-  private async docState(className: string): Promise<DocState> {
+  /** The class's current documentation and whether it may be written. */
+  private async docState(
+    className: string,
+    action: WriteAction,
+  ): Promise<DocState> {
     const client = await this.ensureClient();
     const { info } = await client.getDocumentationAnnotation({
       typeName: className,
     });
-    const { fileReadOnly } = await client.getClassInformation({
-      typeName: className,
-    });
-    const readOnly =
-      fileReadOnly || (await isSystemLibraryClass(client, className));
-    return { info, readOnly };
+    const verdict = await this.verdicts.forClass(client, className, action);
+    return { info, verdict };
   }
 
   /**
@@ -102,13 +97,13 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
     if (!className) throw vscode.FileSystemError.FileNotFound(uri);
     const mtime = this.versions.get(uri.toString()) ?? 0;
     try {
-      const { info, readOnly } = await this.docState(className);
+      const { info, verdict } = await this.docState(className, "edit");
       return {
         type: vscode.FileType.File,
         ctime: 0,
         mtime,
         size: Buffer.byteLength(info, "utf8"),
-        ...(readOnly ? { permissions: vscode.FilePermission.Readonly } : {}),
+        ...(verdict.ok ? {} : { permissions: vscode.FilePermission.Readonly }),
       };
     } catch (err) {
       log.warn(
@@ -131,7 +126,7 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
     const className = classFromDocHtmlUri(uri);
     if (!className) throw vscode.FileSystemError.FileNotFound(uri);
     try {
-      const { info } = await this.docState(className);
+      const { info } = await this.docState(className, "edit");
       return Buffer.from(info, "utf8");
     } catch (err) {
       // Unlike the `.mo` provider, this file exists to be edited and saved:
@@ -148,9 +143,9 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
     if (!className) throw vscode.FileSystemError.FileNotFound(uri);
     const client = await this.ensureClient();
 
-    const { readOnly } = await this.docState(className);
-    if (readOnly) {
-      throw vscode.FileSystemError.NoPermissions(uri);
+    const { verdict } = await this.docState(className, "save");
+    if (!verdict.ok) {
+      throw vscode.FileSystemError.NoPermissions(verdict.reason);
     }
 
     const info = Buffer.from(content).toString("utf8");

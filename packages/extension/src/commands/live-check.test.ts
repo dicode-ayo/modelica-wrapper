@@ -19,7 +19,7 @@ import {
   workspaceListeners,
 } from "../../test-support/vscode-mock.js";
 
-import type { ModelicaSourceProvider } from "../source-provider.js";
+import { WriteVerdicts } from "../write-verdict.js";
 
 import type { CommandContext } from "./context.js";
 import { registerLiveCheck, type LiveCheckClient } from "./live-check.js";
@@ -53,6 +53,10 @@ function makeClient(overrides: Partial<LiveCheckClient> = {}) {
   let pending: ErrorMessage[] = [];
   const client = {
     getSourceFile: vi.fn(async () => ({ fileName: PACKAGE_MO })),
+    getModelicaPath: vi.fn(async () => ({
+      modelicaPath: "/home/u/.openmodelica/libraries",
+    })),
+    getClassInformation: vi.fn(async () => ({ fileReadOnly: false })),
     getErrorString: vi.fn(async () => ({ errorString: "" })),
     parseString: vi.fn(async () => ({ names: ["P.A"] })),
     loadString: vi.fn(async () => ({ success: true })),
@@ -72,17 +76,12 @@ function makeClient(overrides: Partial<LiveCheckClient> = {}) {
   };
 }
 
-function makeContext(client: LiveCheckClient, readOnly = false) {
+function makeContext(client: LiveCheckClient) {
   const set = vi.fn();
   const ensureClient = vi.fn(async () => client);
-  // Typed against the provider so a rename there fails the build rather than
-  // leaving a green test whose read-only gate silently stopped firing.
-  const sourceProvider: Pick<ModelicaSourceProvider, "isReadOnly"> = {
-    isReadOnly: vi.fn(async () => readOnly),
-  };
   const ctx = {
     ensureClient,
-    sourceProvider,
+    writeVerdicts: new WriteVerdicts(),
     diagnostics: { set } as unknown as vscode.DiagnosticCollection,
   } as unknown as CommandContext;
   return { ctx, set, ensureClient };
@@ -210,16 +209,17 @@ describe("registerLiveCheck", () => {
     });
   });
 
-  it("checks nothing for a class the source provider reports read-only", async () => {
-    const { client } = makeClient();
-    const { ctx, set, ensureClient } = makeContext(client, true);
+  it("checks nothing for a class that can't be written", async () => {
+    const { client } = makeClient({
+      getClassInformation: vi.fn(async () => ({ fileReadOnly: true })),
+    });
+    const { ctx, set } = makeContext(client);
     register(ctx);
 
     await runPipeline();
 
-    // The gate sits above the client, so a read-only class never even spawns
-    // OMC on a workspace that hasn't needed it yet.
-    expect(ensureClient).not.toHaveBeenCalled();
+    // The gate sits above every mutating call, so an uneditable class is never
+    // loaded back into OMC.
     expect(client.parseString).not.toHaveBeenCalled();
     expect(client.loadString).not.toHaveBeenCalled();
     expect(set).not.toHaveBeenCalled();
