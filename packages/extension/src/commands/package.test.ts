@@ -6,11 +6,15 @@
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { OmcClient } from "@dicode/omc-client";
 
-import { runCommand } from "../../test-support/vscode-mock.js";
+import {
+  recordedMessages,
+  resetCommands,
+  runCommand,
+} from "../../test-support/vscode-mock.js";
 import { WriteVerdicts } from "../write-verdict.js";
 
 import type { CommandContext, LibraryNode } from "./context.js";
@@ -25,6 +29,11 @@ const NODE: LibraryNode = {
 };
 
 describe("modelica.savePackage", () => {
+  beforeEach(() => {
+    resetCommands();
+    recordedMessages.length = 0;
+  });
+
   it("refuses a system-library package before reading its source", async () => {
     const listFile = vi.fn(() => Promise.resolve({ contents: "" }));
     const setSourceFile = vi.fn(() => Promise.resolve({}));
@@ -51,7 +60,15 @@ describe("modelica.savePackage", () => {
 
     await runCommand("modelica.savePackage", NODE);
 
-    expect(listFile).not.toHaveBeenCalled();
     expect(setSourceFile).not.toHaveBeenCalled();
+    // The mock has no `showSaveDialog`, so a passing verdict would also leave
+    // `listFile` untouched — only the refusal sentence proves the gate ran, and
+    // it can only have been produced before the dialog.
+    expect(listFile).not.toHaveBeenCalled();
+    expect(recordedMessages).toContainEqual({
+      level: "error",
+      message:
+        "Modelica: Cannot save Modelica.Blocks — it belongs to a read-only system library.",
+    });
   });
 });

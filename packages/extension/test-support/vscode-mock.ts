@@ -532,7 +532,7 @@ export const window = {
 /** Answers `showQuickPick` / `showInputBox` hand back, in prompt order. */
 const promptAnswers: Array<string | undefined> = [];
 
-/** Queue the answers a command's prompts will receive, oldest first. */
+/** Replace the answers a command's prompts will receive, oldest first. */
 export function queuePromptAnswers(
   ...answers: Array<string | undefined>
 ): void {
@@ -545,10 +545,13 @@ export function queuePromptAnswers(
 export const executedCommands: Array<{ command: string; args: unknown[] }> = [];
 
 /** Commands `registerCommand` captured, so tests can invoke one directly. */
-const registeredCommands = new Map<
-  string,
-  (...args: unknown[]) => unknown | Promise<unknown>
->();
+const registeredCommands = new Map<string, (...args: unknown[]) => unknown>();
+
+/** Drop captured commands and queued prompt answers between tests. */
+export function resetCommands(): void {
+  registeredCommands.clear();
+  promptAnswers.length = 0;
+}
 
 /** Run a registered command, or throw when nothing registered that id. */
 export async function runCommand(
@@ -561,9 +564,11 @@ export async function runCommand(
 }
 
 export const commands = {
-  executeCommand(command: string, ...args: unknown[]): Promise<undefined> {
+  executeCommand(command: string, ...args: unknown[]): Promise<unknown> {
     executedCommands.push({ command, args });
-    return Promise.resolve(undefined);
+    // Built-in ids (`setContext`, `vscode.openWith`, …) are never registered,
+    // so they record and resolve undefined.
+    return Promise.resolve(registeredCommands.get(command)?.(...args));
   },
   registerCommand(
     command: string,

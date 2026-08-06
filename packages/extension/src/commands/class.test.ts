@@ -7,12 +7,13 @@
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { OmcClient } from "@dicode/omc-client";
 
 import {
   queuePromptAnswers,
+  resetCommands,
   runCommand,
 } from "../../test-support/vscode-mock.js";
 import { WriteVerdicts } from "../write-verdict.js";
@@ -56,6 +57,8 @@ function packageNode(qualifiedName: string): LibraryNode {
 }
 
 describe("modelica.createClass", () => {
+  beforeEach(resetCommands);
+
   it("creates a top-level class without asking for a verdict", async () => {
     const { ctx, verdicts, loadString } = makeContext("/ws/Pkg/package.mo");
     const forClass = vi.spyOn(verdicts, "forClass");
