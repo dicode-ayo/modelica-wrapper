@@ -13,6 +13,7 @@ import type { OmcClient } from "@dicode/omc-client";
 
 import {
   queuePromptAnswers,
+  recordedMessages,
   resetCommands,
   runCommand,
 } from "../../test-support/vscode-mock.js";
@@ -57,7 +58,10 @@ function packageNode(qualifiedName: string): LibraryNode {
 }
 
 describe("modelica.createClass", () => {
-  beforeEach(resetCommands);
+  beforeEach(() => {
+    resetCommands();
+    recordedMessages.length = 0;
+  });
 
   it("creates a top-level class without asking for a verdict", async () => {
     const { ctx, verdicts, loadString } = makeContext("/ws/Pkg/package.mo");
@@ -82,6 +86,11 @@ describe("modelica.createClass", () => {
 
     // Refused before `loadString`, so nothing lands in the installed library.
     expect(loadString).not.toHaveBeenCalled();
+    expect(recordedMessages).toContainEqual({
+      level: "error",
+      message:
+        "Modelica: Cannot create a class inside Modelica.Blocks — it belongs to a read-only system library.",
+    });
   });
 
   it("creates inside a workspace package", async () => {

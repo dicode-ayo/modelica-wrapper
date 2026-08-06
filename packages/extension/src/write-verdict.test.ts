@@ -141,6 +141,24 @@ describe("WriteVerdicts.forClass", () => {
     ).toBe(false);
   });
 
+  it("re-reads the file permission on every question", async () => {
+    // A `chmod` changes `fileReadOnly` under us, so memoizing it would strand a
+    // user who just made their own file writable again.
+    let fileReadOnly = true;
+    const client: WriteVerdictClient = {
+      getSourceFile: vi.fn(() => Promise.resolve({ fileName: "/ws/Pkg/M.mo" })),
+      getModelicaPath: vi.fn(() =>
+        Promise.resolve({ modelicaPath: MODELICA_PATH }),
+      ),
+      getClassInformation: vi.fn(() => Promise.resolve({ fileReadOnly })),
+    };
+    const verdicts = new WriteVerdicts();
+
+    expect((await verdicts.forClass(client, "Pkg.M", "edit")).ok).toBe(false);
+    fileReadOnly = false;
+    expect((await verdicts.forClass(client, "Pkg.M", "edit")).ok).toBe(true);
+  });
+
   it("treats a failed origin lookup as writable", async () => {
     const client = makeClient({ sourceFileThrows: true });
 

@@ -4,7 +4,6 @@ import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 import { qualifiedNameFromUri } from "../source-provider.js";
 import type {
-  WriteAction,
   WriteVerdict,
   WriteVerdictClient,
   WriteVerdicts,
@@ -65,15 +64,12 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
   ) {}
 
   /** The class's current documentation and whether it may be written. */
-  private async docState(
-    className: string,
-    action: WriteAction,
-  ): Promise<DocState> {
+  private async docState(className: string): Promise<DocState> {
     const client = await this.ensureClient();
     const { info } = await client.getDocumentationAnnotation({
       typeName: className,
     });
-    const verdict = await this.verdicts.forClass(client, className, action);
+    const verdict = await this.verdicts.forClass(client, className, "edit");
     return { info, verdict };
   }
 
@@ -97,7 +93,7 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
     if (!className) throw vscode.FileSystemError.FileNotFound(uri);
     const mtime = this.versions.get(uri.toString()) ?? 0;
     try {
-      const { info, verdict } = await this.docState(className, "edit");
+      const { info, verdict } = await this.docState(className);
       return {
         type: vscode.FileType.File,
         ctime: 0,
@@ -147,7 +143,7 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
     if (!className) throw vscode.FileSystemError.FileNotFound(uri);
     const client = await this.ensureClient();
 
-    const { verdict } = await this.docState(className, "save");
+    const verdict = await this.verdicts.forClass(client, className, "save");
     if (!verdict.ok) {
       throw vscode.FileSystemError.NoPermissions(verdict.reason);
     }
