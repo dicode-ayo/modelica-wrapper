@@ -1,5 +1,4 @@
 import type {
-  Color,
   ConnectionEndpoint,
   ConnectionLayout,
   DiagramLayout,
@@ -30,17 +29,19 @@ import {
   snapPoint,
   type SnapGrid,
 } from "./snap-math.js";
-import { POLY_MIN_VERTICES, type ExtentKind, type PolyKind } from "./tools.js";
+import { POLY_MIN_VERTICES } from "./tools.js";
 
 /**
- * Pure layout mutations. Each function takes a `DiagramLayout` and
- * returns a *new* `DiagramLayout` — the caller is responsible for
- * propagating the result. Mirrors dyad-ui's `layout-ops.ts` pattern
- * but operates on the omc-client `DiagramLayout` shape.
+ * Pure layout mutations. Each function takes a `DiagramLayout` and returns
+ * a *new* one, or the same reference when the edit changes nothing — the
+ * caller propagates the result.
  *
- * The mutations are intentionally permissive: unknown keys are
- * ignored, never throw. Higher layers (host element, undo stack)
- * decide what to do with stale references.
+ * The mutations are permissive: a key naming an entity the layout doesn't
+ * have is ignored rather than thrown on, since an entity key can outlive
+ * the entity it names across a refetch.
+ *
+ * Route editing lives in `route-ops`, selection derivation in
+ * `selection-ops`, and the gesture-to-mutation policy in `drag-policy`.
  */
 
 interface JunctionRef {
@@ -1168,26 +1169,6 @@ function forEachShape(
     mutated = true;
   }
   return mutated ? { ...layout, components, connectors } : layout;
-}
-
-const DRAWN_LINE_COLOR: Color = [0, 0, 0];
-
-/** Build a default extent primitive for a freshly-drawn shape. */
-export function buildExtentShape(kind: ExtentKind, extent: Extent): Shape {
-  return kind === "rectangle"
-    ? { kind: "rectangle", extent, lineColor: DRAWN_LINE_COLOR }
-    : { kind: "ellipse", extent, lineColor: DRAWN_LINE_COLOR };
-}
-
-/**
- * Build a default poly primitive for a freshly-drawn shape. A `line` stays
- * open; a `polygon` is closed by the renderer, so `points` carries only the
- * distinct vertices — no duplicated closing point.
- */
-export function buildPolyShape(kind: PolyKind, points: Point[]): Shape {
-  return kind === "line"
-    ? { kind: "line", points, color: DRAWN_LINE_COLOR }
-    : { kind: "polygon", points, lineColor: DRAWN_LINE_COLOR };
 }
 
 export interface AddGraphicResult {
