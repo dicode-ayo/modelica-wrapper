@@ -2,11 +2,12 @@
  * `renderWebviewPage`/`renderPlaceholderPage` are the one place every webview
  * host's CSP-locked HTML shell is built. These pin the CSP shape (nonce-only
  * `script-src`, no `img-src`/`script-src` at all on the placeholder), that a
- * title is HTML-escaped, and that both fields of `WEBVIEW_ENTRIES` stay in
- * sync with the facts they claim: `bundle` against `esbuild.config.mjs`'s own
- * `outfile`s, `stylesheet` against whether the entry file actually imports
- * `webawesome-setup`. Either drifting should fail a test rather than boot a
- * blank or 404'd webview.
+ * title is HTML-escaped, and that each entry's bundle URL and stylesheet-link
+ * decision stay in sync with the facts they claim: the bundle name against
+ * `esbuild.config.mjs`'s own `outfile`s, the stylesheet decision against
+ * whether that entry's `*-entry.ts` actually imports `webawesome-setup`.
+ * Either drifting should fail a test rather than boot a blank or 404'd
+ * webview.
  *
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
@@ -18,7 +19,7 @@ import { describe, expect, it } from "vitest";
 import * as vscode from "vscode";
 
 import {
-  WEBVIEW_ENTRIES,
+  ALL_WEBVIEW_ENTRIES,
   renderPlaceholderPage,
   renderWebviewPage,
 } from "./webview-page.js";
@@ -72,24 +73,16 @@ describe("renderWebviewPage", () => {
     expect(html).not.toContain("<title>Evil<script>");
   });
 
-  it("links a sibling stylesheet only for an entry whose build emits one", () => {
-    const withStyles = renderWebviewPage({
+  it("links the sibling .css next to its own bundle when it links one at all", () => {
+    // Which entries link one at all is pinned below, in "WebviewEntry naming".
+    const html = renderWebviewPage({
       webview: fakeWebview(),
       extensionUri: EXT_URI,
       entry: "webview",
       title: "Foo",
       root: "<om-webview-root></om-webview-root>",
     });
-    expect(withStyles).toContain("out/webview.css");
-
-    const without = renderWebviewPage({
-      webview: fakeWebview(),
-      extensionUri: EXT_URI,
-      entry: "library-view",
-      title: "Foo",
-      root: "<om-library-view-root></om-library-view-root>",
-    });
-    expect(without).not.toContain("<link");
+    expect(html).toContain("out/webview.css");
   });
 });
 
@@ -116,8 +109,8 @@ describe("renderPlaceholderPage", () => {
   });
 });
 
-describe("WEBVIEW_ENTRIES", () => {
-  it("bundle stays in sync with esbuild.config.mjs's own outfiles", () => {
+describe("WebviewEntry naming", () => {
+  it("every entry's bundle name is a real esbuild.config.mjs outfile", () => {
     const configPath = fileURLToPath(
       new URL("../../esbuild.config.mjs", import.meta.url),
     );
@@ -128,30 +121,27 @@ describe("WEBVIEW_ENTRIES", () => {
       // bundle, built by a separate esbuild config with no webview page.
       .filter((f): f is string => f !== undefined && f !== "extension.js");
 
-    const bundles = Object.values(WEBVIEW_ENTRIES).map((e) => e.bundle);
+    const bundles = ALL_WEBVIEW_ENTRIES.map((entry) => `${entry}.js`);
     expect(new Set(bundles)).toEqual(new Set(outfiles));
   });
 
-  const ENTRY_SOURCE_FILE: Record<keyof typeof WEBVIEW_ENTRIES, string> = {
-    webview: "webview-entry.ts",
-    documentation: "documentation-entry.ts",
-    "library-view": "library-view-entry.ts",
-    postprocessing: "postprocessing-entry.ts",
-  };
-
-  it("stylesheet stays in sync with whether the entry imports webawesome-setup", () => {
-    for (const [entry, config] of Object.entries(WEBVIEW_ENTRIES)) {
+  it("links a stylesheet exactly for the entries whose *-entry.ts imports webawesome-setup", () => {
+    for (const entry of ALL_WEBVIEW_ENTRIES) {
       const entryPath = fileURLToPath(
-        new URL(
-          `./${ENTRY_SOURCE_FILE[entry as keyof typeof WEBVIEW_ENTRIES]}`,
-          import.meta.url,
-        ),
+        new URL(`./${entry}-entry.ts`, import.meta.url),
       );
       const source = readFileSync(entryPath, "utf8");
       const importsWebawesomeSetup = source.includes(
         "@dicode/ui-common/webawesome-setup",
       );
-      expect(config.stylesheet).toBe(importsWebawesomeSetup);
+      const html = renderWebviewPage({
+        webview: fakeWebview(),
+        extensionUri: EXT_URI,
+        entry,
+        title: "Foo",
+        root: "<x></x>",
+      });
+      expect(html.includes("<link")).toBe(importsWebawesomeSetup);
     }
   });
 });

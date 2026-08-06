@@ -201,7 +201,7 @@ const webviewConfig = {
     // Web Awesome ships its theme + native form-control reset as
     // plain CSS files; importing them from JS lets esbuild collect
     // and emit a sibling `webview.css` next to `webview.js`. The
-    // webview HTML in `diagram/panel.ts` <link>s to it directly.
+    // webview HTML built by `webview/webview-page.ts` <link>s to it directly.
     ".css": "css",
   },
   // Stamped into the bundle so the runtime can prove which build it is —
@@ -229,7 +229,7 @@ const postprocessingConfig = {
 
 /**
  * 4. library-view.js — browser bundle of the library sidebar webview view
- *    (`<om-library-view-root>`), loaded by `tree/library-webview-provider.ts`.
+ *    (`<om-library-view-root>`), loaded by `library/library-webview-provider.ts`.
  *    Same shape as the diagram webview; it renders `<om-library-tree>` with
  *    adopted stylesheets only, so no sibling `.css` is emitted.
  *

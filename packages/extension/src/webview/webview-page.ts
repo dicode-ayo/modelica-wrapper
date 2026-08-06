@@ -1,34 +1,38 @@
 import * as vscode from "vscode";
 
+/**
+ * Every browser bundle esbuild produces from `src/webview/<entry>-entry.ts`
+ * into `out/<entry>.js` (`esbuild.config.mjs`'s `webviewConfig`,
+ * `documentationConfig`, `libraryViewConfig`, `postprocessingConfig` all
+ * follow this `<entry>-entry.ts` → `out/<entry>.js` naming). A typo here is
+ * a compile error, not a silently-wrong URL.
+ */
 export type WebviewEntry =
   | "webview"
   | "documentation"
   | "library-view"
   | "postprocessing";
 
-interface EntryConfig {
-  /** `out/<bundle>` — esbuild's `outfile` for this entry (`esbuild.config.mjs`). */
-  bundle: string;
-  /**
-   * Whether esbuild collects a sibling `<bundle>.css`, i.e. whether this
-   * entry's `*-entry.ts` imports `@dicode/ui-common/webawesome-setup`.
-   */
-  stylesheet: boolean;
-}
+/** Every {@link WebviewEntry}, for callers (namely tests) that need to enumerate them. */
+export const ALL_WEBVIEW_ENTRIES: readonly WebviewEntry[] = [
+  "webview",
+  "documentation",
+  "library-view",
+  "postprocessing",
+];
 
 /**
- * `webview-page.test.ts` cross-checks both fields of every entry here
- * against the source they're facts about — `bundle` against
- * `esbuild.config.mjs`'s own `outfile`s, `stylesheet` against whether the
- * entry file actually imports `webawesome-setup` — so either drifting from
- * its entry fails a test rather than booting a blank or 404'd webview.
+ * Entries whose `<entry>-entry.ts` imports `@dicode/ui-common/webawesome-setup`
+ * — the only `import "*.css"` any entry currently pulls in, which is what
+ * makes esbuild collect a sibling `out/<entry>.css`. `webview-page.test.ts`
+ * checks each entry file for that import as a proxy for the actual build
+ * output; a *different* CSS import landing in an entry's tree would need
+ * both this set and that check updated by hand.
  */
-export const WEBVIEW_ENTRIES: Record<WebviewEntry, EntryConfig> = {
-  webview: { bundle: "webview.js", stylesheet: true },
-  documentation: { bundle: "documentation.js", stylesheet: false },
-  "library-view": { bundle: "library-view.js", stylesheet: false },
-  postprocessing: { bundle: "postprocessing.js", stylesheet: true },
-};
+const STYLESHEET_ENTRIES: ReadonlySet<WebviewEntry> = new Set([
+  "webview",
+  "postprocessing",
+]);
 
 /** Random nonce for a webview's Content-Security-Policy `script-src`. */
 function randomNonce(): string {
@@ -56,10 +60,17 @@ export interface RenderWebviewPageOptions {
   webview: vscode.Webview;
   extensionUri: vscode.Uri;
   entry: WebviewEntry;
+  /** Escaped into `<title>`; the only field here that carries untrusted text. */
   title: string;
-  /** The bundle's root custom element, e.g. `<om-webview-root></om-webview-root>`. */
+  /**
+   * The bundle's root custom element, e.g. `<om-webview-root></om-webview-root>`.
+   * Emitted raw — every caller passes a static literal, never workspace data.
+   */
   root: string;
-  /** `html, body` style block; defaults to a full-height, non-scrolling page. */
+  /**
+   * `html, body` style block; defaults to a full-height, non-scrolling page.
+   * Emitted raw, same as {@link root}.
+   */
   bodyStyle?: string;
 }
 
@@ -69,7 +80,8 @@ export interface RenderWebviewPageOptions {
  * and the bundle's own root custom element.
  */
 export function renderWebviewPage(opts: RenderWebviewPageOptions): string {
-  const { bundle, stylesheet } = WEBVIEW_ENTRIES[opts.entry];
+  const bundle = `${opts.entry}.js`;
+  const stylesheet = STYLESHEET_ENTRIES.has(opts.entry);
   const scriptUri = opts.webview.asWebviewUri(
     vscode.Uri.joinPath(opts.extensionUri, "out", bundle),
   );
