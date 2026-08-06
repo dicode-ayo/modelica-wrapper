@@ -936,17 +936,6 @@ function scaleAbout(
 }
 
 /**
- * Re-anchors the endpoints of every connection terminating on a
- * transformed shape, then re-routes that connection orthogonally
- * between its (possibly new) endpoints. `componentXf` / `connectorXf`
- * map an affected shape id to the transform its rigid points undergo.
- *
- * Re-routing discards any user-placed internal junctions on an affected
- * connection — the same trade-off `applyDeltaMove` makes when only one
- * endpoint moves; the alternative (rigidly carrying junctions) would
- * tilt segments off-axis once an endpoint rotates or scales.
- */
-/**
  * The transforms to apply to a connection's lhs / rhs endpoints, resolved from
  * the per-entity frame-change maps. A port sits on a sub-component
  * (`endpoint.component`) or a standalone connector (`endpoint.port`); `undefined`
@@ -964,6 +953,17 @@ function endpointTransforms(
   return { lhsXf: resolve(conn.lhs), rhsXf: resolve(conn.rhs) };
 }
 
+/**
+ * Re-anchors the endpoints of every connection terminating on a
+ * transformed shape, then re-routes that connection orthogonally
+ * between its (possibly new) endpoints. `componentXf` / `connectorXf`
+ * map an affected shape id to the transform its rigid points undergo.
+ *
+ * Re-routing discards any user-placed internal junctions on an affected
+ * connection — the same trade-off `applyDeltaMove` makes when only one
+ * endpoint moves; the alternative (rigidly carrying junctions) would
+ * tilt segments off-axis once an endpoint rotates or scales.
+ */
 function reanchorConnections(
   layout: DiagramLayout,
   componentXf: Map<string, PointXf>,

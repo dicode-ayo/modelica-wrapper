@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { DiagramLayout, Shape } from "@dicode/omc-client";
 
-import { emptyLayout, mountLayout } from "./harness/interaction-fixtures.js";
+import { mountLayout } from "./harness/interaction-fixtures.js";
+import { emptyLayout } from "./harness/layout-fixtures.js";
 
 /**
  * Drawing a shape selects it (#385). The host then answers the write with the

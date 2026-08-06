@@ -16,8 +16,6 @@ import { emptyLayout } from "./layout-fixtures.js";
  * here are torn down after each test, so callers don't repeat cleanup.
  */
 
-export { emptyLayout } from "./layout-fixtures.js";
-
 const teardowns: Array<() => void> = [];
 afterEach(() => {
   for (const t of teardowns.splice(0)) {

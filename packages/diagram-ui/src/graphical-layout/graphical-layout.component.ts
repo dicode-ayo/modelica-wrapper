@@ -13,6 +13,7 @@ import type {
   Shape,
 } from "@dicode/omc-client";
 import { colorToCss } from "@dicode/diagram-svg";
+import { assertUnreachable } from "@dicode/modelica-lang-core";
 import { omTokens } from "@dicode/ui-common";
 
 import { renderShape } from "../primitives/render-shape.js";
@@ -41,6 +42,7 @@ import {
   resolveDrag,
   type AnyDragEvent,
   type DragEffect,
+  type InProgressConnection,
 } from "../interaction/drag-policy.js";
 import { ModeRouter } from "../interaction/mode.js";
 import {
@@ -384,11 +386,7 @@ export class OmGraphicalLayout extends LitElement {
   /** Current connection-drag state, mirrored from the mode's `connection`
    *  events — drives the source/target port indicators and the red flag
    *  on an incompatible target. `null` outside a connection drag. */
-  @state() private inProgressConnection: {
-    from: string;
-    toKey: string | null;
-    compat: { ok: boolean; reason?: string } | null;
-  } | null = null;
+  @state() private inProgressConnection: InProgressConnection | null = null;
   /** True while a draggable library class hovers the canvas — drives the
    *  drop-affordance outline. Cleared on drop or when the drag leaves. */
   @state() private dropActive = false;
@@ -1446,6 +1444,8 @@ export class OmGraphicalLayout extends LitElement {
           waypoints: effect.waypoints,
         });
         return;
+      default:
+        assertUnreachable(effect, "DragEffect");
     }
   }
 

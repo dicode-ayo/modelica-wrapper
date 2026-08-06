@@ -14,7 +14,7 @@ import {
 } from "./harness/layout-fixtures.js";
 
 describe("selectByDiagramRect", () => {
-  it("selects components whose centre falls inside the rect", () => {
+  it("selects components the band covers", () => {
     const keys = selectByDiagramRect(baseLayout(), {
       x1: -100,
       y1: -100,
@@ -148,7 +148,7 @@ describe("selectByDiagramRect", () => {
     expect(cw.has("shape:line:0")).toBe(false);
   });
 
-  it("selects an own-layer shape whose centre falls inside the rect", () => {
+  it("selects an own-layer shape the band covers", () => {
     // A shape was never selectable by rubber band, so sweeping a diagram and
     // copying it silently left every graphic behind.
     const keys = selectByDiagramRect(withShapes([RECT_0]), {
@@ -174,7 +174,7 @@ describe("selectByDiagramRect", () => {
     ]);
   });
 
-  it("excludes a shape whose centre is outside the rect", () => {
+  it("excludes a shape the band does not reach", () => {
     const keys = selectByDiagramRect(withShapes([RECT_0]), {
       x1: 200,
       y1: 200,
