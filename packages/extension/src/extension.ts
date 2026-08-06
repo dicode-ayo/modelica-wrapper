@@ -156,6 +156,7 @@ export async function activate(
   );
 
   context.subscriptions.push(
+    libraryTree,
     libraryView,
     diagnostics,
     ResultViewEditorProvider.register(context, ensureClient),

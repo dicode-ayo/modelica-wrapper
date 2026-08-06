@@ -11,6 +11,7 @@
 
 import * as vscode from "vscode";
 
+import { errorDetail } from "./error-detail.js";
 import { log } from "./logger.js";
 
 /** Drops whatever a cache holds for `className`. Must not throw to be correct. */
@@ -39,10 +40,9 @@ export class ClassInvalidationRegistry {
       try {
         listener(className);
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
         log.warn(
           "invalidation",
-          `a listener for ${className} threw: ${message}`,
+          `a listener for ${className} threw: ${errorDetail(err)}`,
         );
       }
     }

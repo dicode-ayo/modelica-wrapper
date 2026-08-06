@@ -42,7 +42,9 @@ export const LIBRARY_VIEW_ID = "modelica.libraries";
 
 type EnsureClient = () => Promise<OmcClient>;
 
-export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
+export class LibraryWebviewProvider
+  implements vscode.WebviewViewProvider, vscode.Disposable
+{
   private view: vscode.WebviewView | undefined;
   private cached: { client: OmcClient; source: LibrarySource } | undefined;
   /** Rendered icon SVG per class, or `undefined` for "this class has no icon".
@@ -86,12 +88,20 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
   /** In-flight searches, so `libraryCancel` can abandon their queued lookups. */
   private readonly searches = new Map<string, AbortController>();
 
+  private readonly onClassChanged: vscode.Disposable;
+
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly ensureClient: EnsureClient,
     invalidation: ClassInvalidationRegistry,
   ) {
-    invalidation.register((className) => this.classChanged(className));
+    this.onClassChanged = invalidation.register((className) =>
+      this.classChanged(className),
+    );
+  }
+
+  dispose(): void {
+    this.onClassChanged.dispose();
   }
 
   /** Drop everything this sidebar derives from `className`'s definition: its

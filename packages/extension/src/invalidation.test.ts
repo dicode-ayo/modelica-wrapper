@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type * as vscode from "vscode";
 
 import { ClassInvalidationRegistry } from "./invalidation.js";
 
@@ -48,5 +49,19 @@ describe("ClassInvalidationRegistry", () => {
     registry.classChanged("Lib.A");
 
     expect(late).not.toHaveBeenCalled();
+  });
+
+  it("still delivers the in-progress change to a listener disposed during it", () => {
+    const registry = new ClassInvalidationRegistry();
+    const doomed = vi.fn();
+    const later: vscode.Disposable[] = [];
+    registry.register(() => {
+      for (const subscription of later) subscription.dispose();
+    });
+    later.push(registry.register(doomed));
+
+    registry.classChanged("Lib.A");
+
+    expect(doomed).toHaveBeenCalledWith("Lib.A");
   });
 });
