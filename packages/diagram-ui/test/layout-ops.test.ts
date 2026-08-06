@@ -28,114 +28,14 @@ import {
   selectByDiagramRect,
   shapeCentre,
 } from "../src/interaction/layout-ops.js";
-
-function baseLayout(): DiagramLayout {
-  return {
-    kind: "diagram",
-    className: "Demo",
-    source: { file: "demo.mo", line: 1, column: 1 } as never,
-    iconLayers: [],
-    diagramLayers: [],
-    labels: [],
-    classes: {},
-    components: {
-      R1: {
-        name: "R1",
-        classRef: "Modelica.Electrical.Resistor",
-        placement: {
-          extent: [
-            [-10, -5],
-            [10, 5],
-          ],
-        },
-      },
-      C1: {
-        name: "C1",
-        classRef: "Modelica.Electrical.Capacitor",
-        placement: {
-          extent: [
-            [20, 20],
-            [40, 30],
-          ],
-        },
-      },
-    },
-    connectors: {
-      p: {
-        name: "p",
-        classRef: "Pin",
-        placement: {
-          extent: [
-            [-50, -2],
-            [-46, 2],
-          ],
-        },
-      },
-    },
-    connections: [
-      {
-        lhs: { component: undefined, port: "p" },
-        rhs: { component: "R1", port: "p" },
-        waypoints: [
-          [0, 0],
-          [10, 10],
-        ],
-      },
-    ],
-  };
-}
-
-/** baseLayout() with the connection's waypoints replaced by `route`. */
-function withRoute(route: Point[]): DiagramLayout {
-  const base = baseLayout();
-  return {
-    ...base,
-    connections: [{ ...base.connections[0]!, waypoints: route }],
-  };
-}
-
-const RECT_0: Shape = {
-  kind: "rectangle",
-  extent: [
-    [0, 0],
-    [10, 10],
-  ],
-  lineColor: [0, 0, 0],
-};
-const LINE_1: Shape = {
-  kind: "line",
-  points: [
-    [0, 0],
-    [10, 0],
-  ],
-  color: [0, 0, 0],
-};
-
-/**
- * baseLayout() carrying host-own (`from === "Demo"`) diagram shapes, plus
- * an inherited (`from === "Base"`) layer that shape ops must never touch.
- */
-function withShapes(shapes: Shape[]): DiagramLayout {
-  const inherited: Shape = {
-    kind: "rectangle",
-    extent: [
-      [-1, -1],
-      [1, 1],
-    ],
-  };
-  return {
-    ...baseLayout(),
-    diagramLayers: [
-      { from: "Base", shapes: [inherited] },
-      { from: "Demo", shapes },
-    ],
-  };
-}
-
-/** The host-own (`from === "Demo"`) layer's shapes after an op. */
-function ownShapes(layout: DiagramLayout): Shape[] {
-  return layout.diagramLayers.find((l) => l.from === "Demo")?.shapes ?? [];
-}
+import {
+  baseLayout,
+  LINE_1,
+  ownShapes,
+  RECT_0,
+  withRoute,
+  withShapes,
+} from "./harness/layout-fixtures.js";
 
 describe("applyDeltaMove", () => {
   it("shifts a component's placement extent", () => {
