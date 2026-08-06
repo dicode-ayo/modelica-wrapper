@@ -89,8 +89,8 @@ Every inbound message is a **gesture**, and each gesture is declared exactly onc
 in [gestures.ts](../packages/extension/src/webview/gestures.ts) — its name, its
 payload's field checks, how it orders against a queued layout commit, and
 whether the icon editor acts on it. `WebviewToExtension` is derived from that
-table, so there is no second place to add a variant and no fourth question that
-can be answered by omission.
+table, so there is no second place to add a variant and every gesture must
+answer all four.
 
 | `type` | Payload | Meaning |
 | --- | --- | --- |
@@ -113,8 +113,8 @@ can be answered by omission.
 | `paste` | — | Paste the host clipboard into this diagram. |
 
 Each gesture's ordering and icon-mode answers live on its entry in
-`gestures.ts` and are deliberately not mirrored here — that mirroring is what
-this seam was built to remove. What the two axes mean:
+`gestures.ts` and are not repeated here — a second copy can only fall out of
+sync. What the two axes mean:
 
 **Ordering** is what the commit slot reads. A commit is debounced in the
 webview, so anything that reads or writes the class has to wait behind a held

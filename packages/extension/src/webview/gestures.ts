@@ -6,13 +6,6 @@
  * fields of one entry, and {@link WebviewToExtension} is derived from the
  * table — so a gesture that compiles has answered all four, and there is no
  * second place a variant can be added.
- *
- * Consumers:
- *   - `webview-entry.ts` posts `WebviewToExtension` values,
- *   - `commit-slot.ts` reads {@link gestureOrdering},
- *   - `diagram-editor-provider.ts` validates with {@link isGestureMessage},
- *     filters icon mode with {@link iconHonorsGesture}, and dispatches over the
- *     union with `assertUnreachable` at the end.
  */
 
 import { assertUnreachable } from "@dicode/modelica-lang-core";

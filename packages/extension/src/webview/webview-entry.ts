@@ -223,7 +223,10 @@ class OmWebviewRoot extends LitElement {
 
   private readonly onHostMessage = (e: MessageEvent): void => {
     const data: unknown = e.data;
-    if (!isExtensionMessage(data)) return;
+    if (!isExtensionMessage(data)) {
+      console.warn("[diagram-ui] dropped host message of unknown type:", data);
+      return;
+    }
     this.apply(data);
   };
 
