@@ -209,7 +209,7 @@ describe("registerLiveCheck", () => {
     });
   });
 
-  it("checks nothing for a class that can't be written", async () => {
+  it("checks nothing for a class whose file OMC reports read-only", async () => {
     const { client } = makeClient({
       getClassInformation: vi.fn(async () => ({ fileReadOnly: true })),
     });
@@ -220,6 +220,23 @@ describe("registerLiveCheck", () => {
 
     // The gate sits above every mutating call, so an uneditable class is never
     // loaded back into OMC.
+    expect(client.parseString).not.toHaveBeenCalled();
+    expect(client.loadString).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it("checks nothing for a system-library class whose file is writable", async () => {
+    const { client } = makeClient({
+      getSourceFile: vi.fn(async () => ({
+        fileName: "/home/u/.openmodelica/libraries/Modelica 4.0.0/Blocks/A.mo",
+      })),
+      getClassInformation: vi.fn(async () => ({ fileReadOnly: false })),
+    });
+    const { ctx, set } = makeContext(client);
+    register(ctx);
+
+    await runPipeline();
+
     expect(client.parseString).not.toHaveBeenCalled();
     expect(client.loadString).not.toHaveBeenCalled();
     expect(set).not.toHaveBeenCalled();
