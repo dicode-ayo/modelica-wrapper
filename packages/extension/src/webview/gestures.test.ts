@@ -53,8 +53,8 @@ const SAMPLES: WebviewToExtension[] = [
 describe("isGestureMessage", () => {
   it("accepts every declared gesture's own shape", () => {
     // A field check that can never pass would disable its gesture at the
-    // boundary, so this walks the table rather than trusting each entry — and
-    // the name comparison keeps it walking a table that grew.
+    // boundary. The name comparison keeps this walking the whole table as it
+    // grows.
     const reject = vi.fn();
     expect(SAMPLES.map((sample) => sample.type).sort()).toEqual(
       gestureNames().sort(),

@@ -2,12 +2,10 @@
  * Every gesture the diagram webview can send the host, declared once.
  *
  * A gesture is four things: a name, a payload, how it orders against a queued
- * layout commit, and whether the icon editor acts on it. Declaring them apart
- * is what let a gesture reach the host and do nothing — the ordering set and
- * the icon-mode filter both answered by omission, and the dispatch switch had a
- * `default` arm to fall into. Here the four sit in one entry, all required, and
- * {@link WebviewToExtension} is derived from the table rather than written
- * beside it: a gesture that exists is a gesture that has answered all four.
+ * layout commit, and whether the icon editor acts on it. All four are required
+ * fields of one entry, and {@link WebviewToExtension} is derived from the
+ * table — so a gesture that compiles has answered all four, and there is no
+ * second place a variant can be added.
  *
  * Consumers:
  *   - `webview-entry.ts` posts `WebviewToExtension` values,
@@ -54,10 +52,9 @@ export type GestureOrdering =
  * annotation, so shape work and connector placement are its business and the
  * rest of the diagram's gestures are not.
  *
- * `shapeFormOnly` is a policy rather than a payload predicate because the
- * parameter modal messages carry the form they belong to: the icon editor opens
- * the shape-properties form and no other, so a submit naming a different form
- * is not a form it put on screen.
+ * `shapeFormOnly` covers the parameter modal messages: the shape-properties
+ * form is the only one the icon editor opens, so a submit naming another form
+ * did not come from a form it put on screen.
  */
 export type IconPolicy = "honored" | "ignored" | "shapeFormOnly";
 
@@ -78,10 +75,8 @@ interface GestureSpec<F extends FieldChecks> {
 }
 
 /**
- * Declare one gesture. Every facet is required, so a gesture cannot be added
- * without answering all of them, and `F` is inferred from `payload` so the
- * message type comes from the checks that guard it rather than a second
- * declaration that has to agree with them.
+ * Declare one gesture. `F` is inferred from `payload`, so the message type is
+ * the one the field checks guarding it describe.
  */
 function gesture<F extends FieldChecks>(spec: GestureSpec<F>): GestureSpec<F> {
   return spec;
@@ -298,10 +293,7 @@ type GestureTable = typeof GESTURES;
 
 export type GestureName = keyof GestureTable & string;
 
-/**
- * The webview → host message union, derived from {@link GESTURES}. There is no
- * second place to add a variant, so there is no second place to forget one.
- */
+/** The webview → host message union, derived from {@link GESTURES}. */
 export type WebviewToExtension = {
   [K in GestureName]: { type: K } & PayloadOf<GestureTable[K]["payload"]>;
 }[GestureName];
@@ -320,8 +312,8 @@ export function gestureNames(): GestureName[] {
  * place an inbound message stops being `unknown`; everything downstream works
  * on the narrowed union.
  *
- * `onReject` is required rather than optional because a dropped message that
- * nobody reports is the failure this whole module exists to remove.
+ * `onReject` is required: a message dropped without a report is
+ * indistinguishable from one that was handled.
  */
 export function isGestureMessage(
   value: unknown,

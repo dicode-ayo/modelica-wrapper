@@ -170,9 +170,8 @@ describe("CommitSlot ordering", () => {
   });
 
   it("takes its ordering from the gesture declaration, for every gesture", () => {
-    // The ordering can no longer be answered by omission: it is a required
-    // field of the declaration and this walks the whole table to prove none of
-    // them is left to a default.
+    // The ordering is a required field of each declaration; walking the whole
+    // table proves none of them is left to a default.
     for (const type of gestureNames()) {
       const { slot, sent } = makeSlot();
       slot.commit(layout("a"));

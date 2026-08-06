@@ -3020,9 +3020,8 @@ describe("the gesture boundary", () => {
   });
 
   it("fails loudly on a message type the dispatch does not handle", async () => {
-    // The boundary makes this unreachable in production; the point is that if
-    // a gesture ever did reach the dispatch unhandled it would report, not
-    // return quietly the way the old `default:` arm did.
+    // The boundary keeps this out of production; what it pins is that an
+    // unhandled gesture reaching the dispatch reports instead of returning.
     const { client } = makeEditClient();
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();

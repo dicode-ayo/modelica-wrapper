@@ -278,9 +278,8 @@ export function resolveDiagramEditor(
   DiagramEditorProvider.addSession(session);
 
   const sub = webview.onDidReceiveMessage((raw: unknown) => {
-    // The one place an inbound message stops being untrusted: `postMessage`
-    // hands over whatever the webview serialized, and an annotation here would
-    // only be a claim about it.
+    // `postMessage` delivers whatever the webview serialized, and nothing
+    // downstream re-checks it.
     if (
       !isGestureMessage(raw, (reason) =>
         log.warn("diagramEditor", `dropped webview message: ${reason}`),

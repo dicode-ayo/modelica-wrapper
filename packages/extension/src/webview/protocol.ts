@@ -5,6 +5,7 @@ import type {
 } from "@dicode/omc-client";
 
 import type { DiagramMode } from "../diagram/view-type.js";
+import type { ParameterFormKind } from "./gestures.js";
 
 /**
  * Re-exported from the `command-ids` subpath rather than the package root: the
@@ -14,8 +15,6 @@ import type { DiagramMode } from "../diagram/view-type.js";
 import type { DiagramCommandId } from "@dicode/diagram-ui/command-ids";
 
 export type { DiagramCommandId };
-
-import type { ParameterFormKind } from "./gestures.js";
 
 /**
  * The webview → host half of the protocol. Its variants are derived from the
@@ -78,10 +77,9 @@ export type ExtensionToWebview =
       type: "parametersOpen";
       kind: ParameterFormKind;
       /**
-       * The typed parameter model the form renders directly. Its fields
-       * carry their own current values, type defaults, units, unit options,
-       * Dialog tab/group/enable, and enum metadata — the webview no longer
-       * parses JSON Schema for forms.
+       * The typed parameter model the form renders directly. Its fields carry
+       * their own current values, type defaults, units, unit options, Dialog
+       * tab/group/enable, and enum metadata.
        */
       model: ParameterModel;
       title: string;
@@ -141,8 +139,7 @@ const EXTENSION_MESSAGE_TYPES: Readonly<
 /**
  * Narrow a raw `postMessage` payload arriving in the webview. Only the
  * discriminant is checked: the host is the sole sender and every send site is
- * typed, so what this boundary has to answer is whether the message is one of
- * ours — an unrecognised one stops here instead of reaching the dispatch.
+ * typed, so the payload behind a recognised `type` is already the one it names.
  */
 export function isExtensionMessage(
   value: unknown,
