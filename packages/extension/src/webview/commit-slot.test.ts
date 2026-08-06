@@ -10,7 +10,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { DiagramLayout } from "@dicode/omc-client";
 
 import { CommitSlot, type CommitScheduler } from "./commit-slot.js";
-import { GESTURES, gestureNames, type WebviewToExtension } from "./gestures.js";
+import {
+  gestureNames,
+  type GestureOrdering,
+  type WebviewToExtension,
+} from "./gestures.js";
 
 function layout(name: string): DiagramLayout {
   return { className: name } as unknown as DiagramLayout;
@@ -147,37 +151,38 @@ describe("CommitSlot", () => {
 });
 
 describe("CommitSlot ordering", () => {
-  it("holds every message that reads or writes the class behind a commit", () => {
-    const modelAffecting: Array<WebviewToExtension["type"]> = [
-      "paste",
-      "copySelection",
-      "addComponent",
-      "connectionCreate",
-      "parametersSubmit",
-      "resetComponentParameters",
-      "changeClassRequest",
-      "editComponent",
-      "editShape",
-      "actionCheck",
-      "actionSimulate",
-    ];
-    for (const type of modelAffecting) {
-      const { slot, sent } = makeSlot();
-      slot.commit(layout("a"));
-      slot.beforeSending(type);
-      expect(sent, type).toEqual([layout("a")]);
-    }
-  });
+  /**
+   * What each gesture's ordering has to be, written independently of the
+   * declaration so a flipped entry fails here instead of agreeing with itself.
+   * Exhaustive by its type: a new gesture has to answer this too.
+   */
+  const EXPECTED: Record<WebviewToExtension["type"], GestureOrdering> = {
+    ready: "uiOnly",
+    selectionChange: "uiOnly",
+    inputFocus: "uiOnly",
+    change: "afterCommit",
+    connectionCreate: "afterCommit",
+    actionCheck: "afterCommit",
+    actionSimulate: "afterCommit",
+    actionParameters: "afterCommit",
+    editComponent: "afterCommit",
+    editShape: "afterCommit",
+    parametersSubmit: "afterCommit",
+    parametersCancel: "afterCommit",
+    resetComponentParameters: "afterCommit",
+    addComponent: "afterCommit",
+    changeClassRequest: "afterCommit",
+    copySelection: "afterCommit",
+    paste: "afterCommit",
+  };
 
-  it("takes its ordering from the gesture declaration, for every gesture", () => {
-    // The ordering is a required field of each declaration; walking the whole
-    // table proves none of them is left to a default.
+  it("holds a queued commit behind exactly the gestures that read or write the class", () => {
     for (const type of gestureNames()) {
       const { slot, sent } = makeSlot();
       slot.commit(layout("a"));
       slot.beforeSending(type);
       expect(sent, type).toEqual(
-        GESTURES[type].ordering === "afterCommit" ? [layout("a")] : [],
+        EXPECTED[type] === "afterCommit" ? [layout("a")] : [],
       );
     }
   });

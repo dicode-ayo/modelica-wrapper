@@ -5,8 +5,8 @@
  * icon-mode answers come from the same entry that names the gesture.
  *
  * The compile-time half — a gesture that omits its ordering or icon policy, or
- * a `WebviewToExtension` variant with no entry — is enforced by
- * {@link GESTURES}' own types and cannot be expressed here.
+ * a `WebviewToExtension` variant with no entry — is enforced by the gesture
+ * table's own types and cannot be expressed here.
  */
 
 import { describe, expect, it, vi } from "vitest";

@@ -56,7 +56,7 @@ export type GestureOrdering =
  * form is the only one the icon editor opens, so a submit naming another form
  * did not come from a form it put on screen.
  */
-export type IconPolicy = "honored" | "ignored" | "shapeFormOnly";
+type IconPolicy = "honored" | "ignored" | "shapeFormOnly";
 
 /** Narrows one field of an unvalidated payload. */
 type FieldCheck<T> = (value: unknown) => value is T;
@@ -155,7 +155,7 @@ function isFormValues(value: unknown): value is Record<string, unknown> {
 
 const noPayload = {} as const;
 
-export const GESTURES = {
+const GESTURES = {
   /** Webview has finished loading; the host releases the parked `init`. */
   ready: gesture({ payload: noPayload, ordering: "uiOnly", icon: "ignored" }),
 
