@@ -12,13 +12,12 @@
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 import { ModelInstanceSchema, type OmcClient } from "@dicode/omc-client";
 
 import type { DocExtensionToWebview } from "../webview/documentation-protocol.js";
 import type { ReadyGate } from "../webview/ready-gate.js";
-import { setStatReadonly } from "../../test-support/vscode-mock.js";
 import { type Scheduler } from "../diagram/buffer-sync.js";
 
 import {
@@ -27,10 +26,28 @@ import {
   resolveDocumentationEditor,
   type DocumentationClient,
 } from "./documentation-editor-provider.js";
+import { WriteVerdicts } from "../write-verdict.js";
 
 const EXT_URI = vscode.Uri.file("/ext");
 
-afterEach(() => setStatReadonly(false));
+const MODELICA_PATH = "/home/u/.openmodelica/libraries";
+
+/** The OMC calls a write verdict is derived from. */
+function verdictWrappers(systemLib: boolean) {
+  return {
+    getSourceFile: vi.fn(() =>
+      Promise.resolve({
+        fileName: systemLib
+          ? `${MODELICA_PATH}/Modelica/Blocks/package.mo`
+          : "/ws/Pkg/M.mo",
+      }),
+    ),
+    getModelicaPath: vi.fn(() =>
+      Promise.resolve({ modelicaPath: MODELICA_PATH }),
+    ),
+    getClassInformation: vi.fn(() => Promise.resolve({ fileReadOnly: false })),
+  };
+}
 
 // ── resolve path ───────────────────────────────────────────────────────────
 
@@ -105,8 +122,10 @@ function makeResolveClient(anno: {
   revision?: string;
   infoHeader?: string;
   restriction?: string;
+  systemLib?: boolean;
 }): OmcClient {
   return {
+    ...verdictWrappers(anno.systemLib ?? false),
     getDocumentationAnnotation: vi.fn(() =>
       Promise.resolve({
         info: anno.info,
@@ -174,7 +193,13 @@ describe("resolveDocumentationEditor", () => {
       Promise.resolve(makeResolveClient({ info: "<html><p>PID</p></html>" })),
     );
 
-    resolveDocumentationEditor(panel, EXT_URI, ensureClient, PID_DOC);
+    resolveDocumentationEditor(
+      panel,
+      EXT_URI,
+      ensureClient,
+      new WriteVerdicts(),
+      PID_DOC,
+    );
     expect(webview.html).toContain("om-documentation-root");
 
     await flush();
@@ -219,7 +244,13 @@ describe("resolveDocumentationEditor", () => {
       });
       const ensureClient = vi.fn(() => Promise.resolve(client));
 
-      resolveDocumentationEditor(panel, EXT_URI, ensureClient, PID_DOC);
+      resolveDocumentationEditor(
+        panel,
+        EXT_URI,
+        ensureClient,
+        new WriteVerdicts(),
+        PID_DOC,
+      );
       await flush();
       fireReady();
       await flush();
@@ -240,7 +271,13 @@ describe("resolveDocumentationEditor", () => {
       ),
     );
 
-    resolveDocumentationEditor(panel, EXT_URI, ensureClient, PID_DOC);
+    resolveDocumentationEditor(
+      panel,
+      EXT_URI,
+      ensureClient,
+      new WriteVerdicts(),
+      PID_DOC,
+    );
     await flush();
     fireReady();
     await flush();
@@ -249,14 +286,21 @@ describe("resolveDocumentationEditor", () => {
     expect(msg?.type === "doc" && msg.readOnly).toBe(false);
   });
 
-  it("marks an MSL (readonly-stat) source read-only", async () => {
-    setStatReadonly(true);
+  it("marks an installed-library source read-only", async () => {
     const { panel, posted, fireReady } = makePanel();
     const ensureClient = vi.fn(() =>
-      Promise.resolve(makeResolveClient({ info: "<html><p>x</p></html>" })),
+      Promise.resolve(
+        makeResolveClient({ info: "<html><p>x</p></html>", systemLib: true }),
+      ),
     );
 
-    resolveDocumentationEditor(panel, EXT_URI, ensureClient, PID_DOC);
+    resolveDocumentationEditor(
+      panel,
+      EXT_URI,
+      ensureClient,
+      new WriteVerdicts(),
+      PID_DOC,
+    );
     await flush();
     fireReady();
     await flush();
@@ -267,9 +311,9 @@ describe("resolveDocumentationEditor", () => {
 
   it("evaluates readOnly after getDocumentationAnnotation resolves the class", async () => {
     const { panel, posted, fireReady } = makePanel();
-    // Read-only becomes visible only once the fetch has resolved the class; a
-    // verdict taken before the fetch would read writable. Restriction
-    // "package" also confirms this no longer depends on fetchInterface's
+    // Read-only becomes visible only once the fetch has resolved the class: an
+    // unresolved class has no source file to classify. Restriction "package"
+    // also confirms this no longer depends on fetchInterface's
     // getModelInstance, which packages never call.
     let fetched = false;
     const client = {
@@ -280,30 +324,33 @@ describe("resolveDocumentationEditor", () => {
       getClassRestriction: vi.fn(() =>
         Promise.resolve({ restriction: "package" }),
       ),
+      getSourceFile: vi.fn(() =>
+        Promise.resolve({
+          fileName: fetched ? `${MODELICA_PATH}/Modelica/package.mo` : "",
+        }),
+      ),
+      getModelicaPath: vi.fn(() =>
+        Promise.resolve({ modelicaPath: MODELICA_PATH }),
+      ),
+      getClassInformation: vi.fn(() =>
+        Promise.resolve({ fileReadOnly: false }),
+      ),
     } as unknown as OmcClient;
     const ensureClient = vi.fn(() => Promise.resolve(client));
-    const statSpy = vi
-      .spyOn(vscode.workspace.fs, "stat")
-      .mockImplementation(() =>
-        Promise.resolve({
-          type: vscode.FileType.File,
-          ctime: 0,
-          mtime: 0,
-          size: 1,
-          permissions: fetched ? vscode.FilePermission.Readonly : undefined,
-        }),
-      );
-    try {
-      resolveDocumentationEditor(panel, EXT_URI, ensureClient, PID_DOC);
-      await flush();
-      fireReady();
-      await flush();
 
-      const msg = posted.find((m) => m.type === "doc");
-      expect(msg?.type === "doc" && msg.readOnly).toBe(true);
-    } finally {
-      statSpy.mockRestore();
-    }
+    resolveDocumentationEditor(
+      panel,
+      EXT_URI,
+      ensureClient,
+      new WriteVerdicts(),
+      PID_DOC,
+    );
+    await flush();
+    fireReady();
+    await flush();
+
+    const msg = posted.find((m) => m.type === "doc");
+    expect(msg?.type === "doc" && msg.readOnly).toBe(true);
   });
 
   it("posts an error, not a doc, when the OMC read throws", async () => {
@@ -315,7 +362,13 @@ describe("resolveDocumentationEditor", () => {
     } as unknown as OmcClient;
     const ensureClient = vi.fn(() => Promise.resolve(client));
 
-    resolveDocumentationEditor(panel, EXT_URI, ensureClient, PID_DOC);
+    resolveDocumentationEditor(
+      panel,
+      EXT_URI,
+      ensureClient,
+      new WriteVerdicts(),
+      PID_DOC,
+    );
     await flush();
     fireReady();
     await flush();
@@ -330,7 +383,13 @@ describe("resolveDocumentationEditor", () => {
       Promise.resolve(makeResolveClient({ info: "" })),
     );
 
-    resolveDocumentationEditor(panel, EXT_URI, ensureClient, PID_DOC);
+    resolveDocumentationEditor(
+      panel,
+      EXT_URI,
+      ensureClient,
+      new WriteVerdicts(),
+      PID_DOC,
+    );
     expect(DocumentationEditorProvider.activeClassName()).toBe(
       "Modelica.Blocks.Continuous.PID",
     );
@@ -357,6 +416,7 @@ describe("resolveDocumentationEditor", () => {
       panel,
       EXT_URI,
       ensureClient,
+      new WriteVerdicts(),
       docFor(vscode.Uri.file("/ws/Foo.mo")),
     );
     await flush();
@@ -450,10 +510,16 @@ function makeEditClient(
     info: string;
     fail?: boolean;
   },
-  opts?: { setOk?: boolean; loadOk?: boolean; contents?: string },
+  opts?: {
+    setOk?: boolean;
+    loadOk?: boolean;
+    contents?: string;
+    systemLib?: boolean;
+  },
 ): { client: DocumentationClient; calls: EditClientCalls } {
   const calls: EditClientCalls = { setArgs: [], loaded: [] };
   const client: DocumentationClient = {
+    ...verdictWrappers(opts?.systemLib ?? false),
     getDocumentationAnnotation: vi.fn(() =>
       anno.fail
         ? Promise.reject(new Error("OMC down"))
@@ -488,7 +554,13 @@ describe("DocumentationEditController write path", () => {
     const { gate } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DocumentationEditController(
-      { client, document: srcDoc(), className: CLASS, gate },
+      {
+        client,
+        document: srcDoc(),
+        className: CLASS,
+        gate,
+        writeVerdicts: new WriteVerdicts(),
+      },
       factory,
     );
 
@@ -505,12 +577,20 @@ describe("DocumentationEditController write path", () => {
   });
 
   it("refuses an edit on a read-only class and never writes", async () => {
-    const { client, calls } = makeEditClient({ info: "<html></html>" });
+    const { client, calls } = makeEditClient(
+      { info: "<html></html>" },
+      { systemLib: true },
+    );
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
-    setStatReadonly(true);
     const controller = new DocumentationEditController(
-      { client, document: srcDoc(), className: CLASS, gate },
+      {
+        client,
+        document: srcDoc(),
+        className: CLASS,
+        gate,
+        writeVerdicts: new WriteVerdicts(),
+      },
       factory,
     );
 
@@ -527,7 +607,13 @@ describe("DocumentationEditController write path", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DocumentationEditController(
-      { client, document: srcDoc(), className: CLASS, gate },
+      {
+        client,
+        document: srcDoc(),
+        className: CLASS,
+        gate,
+        writeVerdicts: new WriteVerdicts(),
+      },
       factory,
     );
 
@@ -544,7 +630,13 @@ describe("DocumentationEditController write path", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DocumentationEditController(
-      { client, document: srcDoc(), className: CLASS, gate },
+      {
+        client,
+        document: srcDoc(),
+        className: CLASS,
+        gate,
+        writeVerdicts: new WriteVerdicts(),
+      },
       factory,
     );
 
@@ -558,12 +650,20 @@ describe("DocumentationEditController write path", () => {
   });
 
   it("refuses an external-write refresh on a read-only class and never reflects it", async () => {
-    const { client } = makeEditClient({ info: "<html><p>after</p></html>" });
+    const { client } = makeEditClient(
+      { info: "<html><p>after</p></html>" },
+      { systemLib: true },
+    );
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
-    setStatReadonly(true);
     const controller = new DocumentationEditController(
-      { client, document: srcDoc(), className: CLASS, gate },
+      {
+        client,
+        document: srcDoc(),
+        className: CLASS,
+        gate,
+        writeVerdicts: new WriteVerdicts(),
+      },
       factory,
     );
 
@@ -582,7 +682,13 @@ describe("DocumentationEditController write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushTimer } = manualScheduler();
     const controller = new DocumentationEditController(
-      { client, document: srcDoc("undone text"), className: CLASS, gate },
+      {
+        client,
+        document: srcDoc("undone text"),
+        className: CLASS,
+        gate,
+        writeVerdicts: new WriteVerdicts(),
+      },
       factory,
       scheduler,
     );
@@ -600,13 +706,21 @@ describe("DocumentationEditController write path", () => {
   });
 
   it("refuses a reverse sync on a read-only class and never loads it into OMC", async () => {
-    const { client, calls } = makeEditClient({ info: "<html><p>x</p></html>" });
+    const { client, calls } = makeEditClient(
+      { info: "<html><p>x</p></html>" },
+      { systemLib: true },
+    );
     const { gate, posted } = makeGate();
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushTimer } = manualScheduler();
-    setStatReadonly(true);
     const controller = new DocumentationEditController(
-      { client, document: srcDoc("undone text"), className: CLASS, gate },
+      {
+        client,
+        document: srcDoc("undone text"),
+        className: CLASS,
+        gate,
+        writeVerdicts: new WriteVerdicts(),
+      },
       factory,
       scheduler,
     );

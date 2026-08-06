@@ -6,13 +6,10 @@
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
-import { setStatReadonly } from "../../test-support/vscode-mock.js";
-
 import {
   defaultScheduler,
-  isReadOnlyDocument,
   reloadBufferIntoOmc,
   type BufferSyncClient,
 } from "./buffer-sync.js";
@@ -25,10 +22,6 @@ function docFor(uri: vscode.Uri, text = ""): vscode.TextDocument {
 }
 
 const DOC_URI = vscode.Uri.parse("modelica-source:/Pkg.Model.mo");
-
-beforeEach(() => {
-  setStatReadonly(false);
-});
 
 describe("reloadBufferIntoOmc", () => {
   it("drains stale diagnostics before loading the buffer's text", async () => {
@@ -132,29 +125,6 @@ describe("reloadBufferIntoOmc — source-file resolution", () => {
     );
 
     expect(loadedFilename).toBe(DOC_URI.toString());
-  });
-});
-
-describe("isReadOnlyDocument", () => {
-  it("reports false for a writable document", async () => {
-    setStatReadonly(false);
-    expect(await isReadOnlyDocument(docFor(DOC_URI))).toBe(false);
-  });
-
-  it("reports true for a document the source provider marked readonly", async () => {
-    setStatReadonly(true);
-    expect(await isReadOnlyDocument(docFor(DOC_URI))).toBe(true);
-  });
-
-  it("treats a failed stat as writable", async () => {
-    const statSpy = vi
-      .spyOn(vscode.workspace.fs, "stat")
-      .mockRejectedValueOnce(new Error("ENOENT"));
-    try {
-      expect(await isReadOnlyDocument(docFor(DOC_URI))).toBe(false);
-    } finally {
-      statSpy.mockRestore();
-    }
   });
 });
 

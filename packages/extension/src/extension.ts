@@ -159,6 +159,7 @@ export async function activate(
     DiagramEditorProvider.register(
       context,
       ensureClient,
+      writeVerdicts,
       DIAGRAM_VIEW_TYPE,
       "diagram",
       (className) => libraryTree.iconChanged(className),
@@ -166,6 +167,7 @@ export async function activate(
     DiagramEditorProvider.register(
       context,
       ensureClient,
+      writeVerdicts,
       ICON_VIEW_TYPE,
       "icon",
       (className) => libraryTree.iconChanged(className),
@@ -173,6 +175,7 @@ export async function activate(
     DocumentationEditorProvider.register(
       context,
       ensureClient,
+      writeVerdicts,
       DOCUMENTATION_VIEW_TYPE,
     ),
     registerLanguageFeatures(context, ensureClient),

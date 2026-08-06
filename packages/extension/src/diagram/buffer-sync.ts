@@ -41,10 +41,6 @@ export interface BufferSyncClient {
 
 export type ReloadResult = { ok: true } | { ok: false; message: string };
 
-/** Shared refusal message for both edit controllers' read-only gates. */
-export const READ_ONLY_EDIT_MESSAGE =
-  "This class is read-only and can't be edited.";
-
 /**
  * Reload `document`'s text into OMC, replacing the class. Drains stale
  * diagnostics first so a failure's `getErrorString` attributes only errors
@@ -68,21 +64,4 @@ export async function reloadBufferIntoOmc(
     };
   }
   return { ok: true };
-}
-
-/**
- * Whether the document's backing source is read-only — the source provider
- * reports `Readonly` for MSL / installed-library classes, and a `file:` `.mo`
- * carries the real file's permission. Best-effort: a failed stat is treated as
- * writable so a transient error doesn't lock the editor.
- */
-export async function isReadOnlyDocument(
-  document: vscode.TextDocument,
-): Promise<boolean> {
-  try {
-    const stat = await vscode.workspace.fs.stat(document.uri);
-    return ((stat.permissions ?? 0) & vscode.FilePermission.Readonly) !== 0;
-  } catch {
-    return false;
-  }
 }
