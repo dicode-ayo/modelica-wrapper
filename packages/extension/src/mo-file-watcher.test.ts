@@ -507,6 +507,22 @@ describe("class invalidation from a `.mo` change", () => {
     ]);
   });
 
+  it("announces a class the file no longer declares, ahead of the ones it keeps", async () => {
+    // A removed class is announced too: its cached icon and restriction must
+    // not survive to be served to a class of the same name loaded later.
+    const { libraryTree, sourceProvider } = wireInvalidation();
+    const { deps, client } = makeDeps({ libraryTree, sourceProvider });
+    deps.index.set(FILE, ["My.Pkg.Bar", "My.Pkg.Gone"]);
+    client.parseFile.mockResolvedValue({ classNames: ["My.Pkg.Bar"] });
+
+    await handleMoChange(deps, FILE);
+
+    expect(libraryTree.iconChanged.mock.calls).toEqual([
+      ["My.Pkg.Gone"],
+      ["My.Pkg.Bar"],
+    ]);
+  });
+
   it("invalidates each reordered package's icon exactly once", async () => {
     const { libraryTree, sourceProvider } = wireInvalidation();
     const { deps } = makeDeps({

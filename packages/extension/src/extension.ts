@@ -138,8 +138,8 @@ export async function activate(
   // The source provider's change broadcast is the one producer feeding the
   // registry: every write that lands in OMC — a text-editor save, a mutation
   // command, the `.mo` watcher reloading a foreign edit — ends there. An
-  // unsaved graphical commit never reaches OMC's source, so the diagram/icon
-  // editors announce their own class (their callback below).
+  // unsaved graphical commit reaches OMC but not that broadcast, so the
+  // diagram/icon editors announce their own class (their callback below).
   context.subscriptions.push(
     publishSourceChanges(sourceProvider, invalidation),
   );

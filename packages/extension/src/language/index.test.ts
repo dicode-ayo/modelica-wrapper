@@ -24,6 +24,7 @@ import {
   registerLanguageFeatures,
 } from "./index.js";
 import { OmcLookupCache, type CachedOmcClient } from "./omc-cache.js";
+import { ParseCache } from "./parse.js";
 import { OmcSync } from "./sync.js";
 
 /** A document stub the save handler inspects (`languageId` + `uri.fsPath`). */
@@ -117,47 +118,65 @@ describe("handleDocumentSave", () => {
 });
 
 describe("handleClassChanged", () => {
-  it("drops the parse tree, every loaded flag and the lookup cache", () => {
-    const sync = { invalidateAll: vi.fn() };
+  it("drops the class's parse tree and the lookup cache", () => {
     const parseCache = { invalidate: vi.fn() };
     const cache = new OmcLookupCache(fakeOmcClient());
     const invalidate = vi.spyOn(cache, "invalidate");
 
-    handleClassChanged("Lib.A", sync, parseCache, () => cache);
+    handleClassChanged("Lib.A", parseCache, () => cache);
 
     expect(parseCache.invalidate).toHaveBeenCalledWith(sourceUriFor("Lib.A"));
-    expect(sync.invalidateAll).toHaveBeenCalledTimes(1);
     expect(invalidate).toHaveBeenCalledTimes(1);
   });
 
   it("is a safe no-op when the lookup cache has not been created yet", () => {
-    const sync = { invalidateAll: vi.fn() };
     const parseCache = { invalidate: vi.fn() };
 
-    handleClassChanged("Lib.A", sync, parseCache, () => undefined);
+    handleClassChanged("Lib.A", parseCache, () => undefined);
 
-    expect(sync.invalidateAll).toHaveBeenCalledTimes(1);
+    expect(parseCache.invalidate).toHaveBeenCalledWith(sourceUriFor("Lib.A"));
   });
 });
 
 describe("registerLanguageFeatures — invalidation wiring", () => {
-  it("drops every loaded flag when a class changes outside the editor", () => {
-    const invalidateAll = vi.spyOn(OmcSync.prototype, "invalidateAll");
+  function register() {
     const invalidation = new ClassInvalidationRegistry();
     const disposable = registerLanguageFeatures(
       { extensionUri: Uri.file("/ext") } as never,
       vi.fn(() => Promise.resolve(fakeOmcClient())) as never,
       invalidation,
     );
+    return { invalidation, disposable };
+  }
+
+  it("drops the parse tree of a class that changed outside the editor", () => {
+    const invalidate = vi.spyOn(ParseCache.prototype, "invalidate");
+    const { invalidation, disposable } = register();
+
+    invalidation.classChanged("Lib.A");
+    expect(invalidate).toHaveBeenCalledWith(sourceUriFor("Lib.A"));
+
+    disposable.dispose();
+    invalidate.mockClear();
+    invalidation.classChanged("Lib.B");
+    expect(invalidate).not.toHaveBeenCalled();
+
+    invalidate.mockRestore();
+  });
+
+  it("leaves the loaded-into-OMC flags alone", () => {
+    // Every producer announces a class only once OMC already holds the change,
+    // so clearing a flag would schedule a `loadFile` that re-reads disk over an
+    // OMC-only edit — an unsaved graphical commit is exactly that.
+    const invalidate = vi.spyOn(OmcSync.prototype, "invalidate");
+    const { invalidation, disposable } = register();
 
     invalidation.classChanged("Lib.A");
 
-    expect(invalidateAll).toHaveBeenCalledTimes(1);
+    expect(invalidate).not.toHaveBeenCalled();
 
     disposable.dispose();
-    invalidation.classChanged("Lib.B");
-    expect(invalidateAll).toHaveBeenCalledTimes(1);
-    invalidateAll.mockRestore();
+    invalidate.mockRestore();
   });
 });
 

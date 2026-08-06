@@ -128,20 +128,22 @@ export function handleDocumentSave(
  * outside the editor — the `.mo` watcher reloading a foreign edit or a git
  * checkout, a mutation command, a graphical commit.
  *
- * The signal names a class, not a buffer, so only the parse tree of that
- * class's `modelica-source:` document can be dropped precisely. `OmcSync` is
- * keyed by the on-disk path OMC was told to load, which the class name does
- * not yield, and the lookup cache's loaded-library signature is blind to an
- * in-place reload of an already-loaded file — both are cleared wholesale.
+ * The signal names a class, not a buffer, so the parse tree is dropped for
+ * that class's `modelica-source:` document; the lookup cache is keyed by the
+ * loaded-library signature, which an in-place reload of an already-loaded file
+ * leaves unmoved, so it is cleared wholesale.
+ *
+ * `OmcSync` is left alone. Every producer announces a class only once the
+ * change is already in OMC, so its "this path is loaded" flag stays true, and
+ * clearing it would schedule a `loadFile` that re-reads disk over an OMC-only
+ * edit — which is what an unsaved graphical commit is.
  */
 export function handleClassChanged(
   className: string,
-  sync: Pick<OmcSync, "invalidateAll">,
   parseCache: Pick<ParseCache, "invalidate">,
   getLookupCache: () => Pick<OmcLookupCache, "invalidate"> | undefined,
 ): void {
   parseCache.invalidate(sourceUriFor(className));
-  sync.invalidateAll();
   getLookupCache()?.invalidate();
 }
 
@@ -154,9 +156,9 @@ export function handleClassChanged(
  *   WASM in `<extension>/out`.
  * @param ensureClient - lazy OMC client factory; the definition/hover providers
  *   call it per request and the buffer↔OMC sync loads files through it.
- * @param invalidation - the class-invalidation registry; the parse, sync and
- *   lookup caches subscribe to it for changes that never pass through a
- *   text-document event.
+ * @param invalidation - the class-invalidation registry; the parse and lookup
+ *   caches subscribe to it for changes that never pass through a text-document
+ *   event.
  */
 export function registerLanguageFeatures(
   context: vscode.ExtensionContext,
@@ -264,7 +266,7 @@ export function registerLanguageFeatures(
   });
 
   const onClassChanged = invalidation.register((className) => {
-    handleClassChanged(className, sync, cache, () => lookupCache);
+    handleClassChanged(className, cache, () => lookupCache);
   });
 
   log.info("language", "language features registered");

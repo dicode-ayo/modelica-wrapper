@@ -164,13 +164,14 @@ function makeInstanceProbe() {
     fsPath: "/ext",
     path: "/ext",
   } as unknown as import("vscode").Uri;
+  const invalidation = new ClassInvalidationRegistry();
   const provider = new LibraryWebviewProvider(
     uri,
     async () => client as unknown as OmcClient,
-    new ClassInvalidationRegistry(),
+    invalidation,
   );
   const apis = (): unknown[] => client.invoke.mock.calls.map((c) => c[0]);
-  return { provider, client, apis };
+  return { provider, client, apis, invalidation };
 }
 
 beforeEach(() => {
@@ -372,7 +373,7 @@ describe("LibraryWebviewProvider", () => {
   });
 
   it("iconChanged evicts only the named class and posts the targeted message", async () => {
-    const { provider, client } = makeProvider();
+    const { provider, client, invalidation } = makeProvider();
     const { view, posted, send } = fakeView();
     provider.resolveWebviewView(view);
 
@@ -381,7 +382,7 @@ describe("LibraryWebviewProvider", () => {
     await flush();
     const afterWarm = client.invoke.mock.calls.length;
 
-    provider.iconChanged("Lib.A");
+    invalidation.classChanged("Lib.A");
     expect(posted.at(-1)).toEqual({
       type: "libraryIconChanged",
       className: "Lib.A",
@@ -397,7 +398,7 @@ describe("LibraryWebviewProvider", () => {
   });
 
   it("a render in flight when iconChanged fires cannot write into the cache", async () => {
-    const { provider, client } = makeProvider();
+    const { provider, client, invalidation } = makeProvider();
     const { view, send } = fakeView();
     provider.resolveWebviewView(view);
 
@@ -410,7 +411,7 @@ describe("LibraryWebviewProvider", () => {
 
     send({ type: "libraryIcon", requestId: "1", className: "Lib.A" });
     await flush();
-    provider.iconChanged("Lib.A"); // disowns the held render
+    invalidation.classChanged("Lib.A"); // disowns the held render
     release();
     await flush();
 
@@ -422,7 +423,7 @@ describe("LibraryWebviewProvider", () => {
   });
 
   it("re-renders an edited class from a full instance, not the stale annotation", async () => {
-    const { provider, client, apis } = makeInstanceProbe();
+    const { provider, client, apis, invalidation } = makeInstanceProbe();
     const { view, send } = fakeView();
     provider.resolveWebviewView(view);
 
@@ -433,7 +434,7 @@ describe("LibraryWebviewProvider", () => {
 
     // An edit lands; the next render must re-elaborate rather than trust the
     // annotation read, which still reports the pre-edit state.
-    provider.iconChanged("Lib.A");
+    invalidation.classChanged("Lib.A");
     client.invoke.mockClear();
     send({ type: "libraryIcon", requestId: "2", className: "Lib.A" });
     await flush();
@@ -443,7 +444,7 @@ describe("LibraryWebviewProvider", () => {
   });
 
   it("forces a full instance on the render that replaces one disowned mid-edit", async () => {
-    const { provider, client, apis } = makeInstanceProbe();
+    const { provider, client, apis, invalidation } = makeInstanceProbe();
     const { view, send } = fakeView();
     provider.resolveWebviewView(view);
 
@@ -458,7 +459,7 @@ describe("LibraryWebviewProvider", () => {
 
     send({ type: "libraryIcon", requestId: "1", className: "Lib.A" });
     await flush();
-    provider.iconChanged("Lib.A");
+    invalidation.classChanged("Lib.A");
     release();
     await flush();
 
@@ -472,7 +473,7 @@ describe("LibraryWebviewProvider", () => {
   });
 
   it("keeps an edited class's freshness across a wholesale reload", async () => {
-    const { provider, client, apis } = makeInstanceProbe();
+    const { provider, client, apis, invalidation } = makeInstanceProbe();
     const { view, send } = fakeView();
     provider.resolveWebviewView(view);
 
@@ -483,7 +484,7 @@ describe("LibraryWebviewProvider", () => {
     // An edit marks the class fresh, then a manual Refresh drops the caches
     // before the mark is consumed; the class must still re-elaborate rather
     // than fall back to the annotation read the reload would otherwise take.
-    provider.iconChanged("Lib.A");
+    invalidation.classChanged("Lib.A");
     provider.refresh();
     client.invoke.mockClear();
     send({ type: "libraryIcon", requestId: "2", className: "Lib.A" });
@@ -494,7 +495,7 @@ describe("LibraryWebviewProvider", () => {
   });
 
   it("re-elaborates a subtype's icon when its base class is edited", async () => {
-    const { provider, client, apis } = makeInstanceProbe();
+    const { provider, client, apis, invalidation } = makeInstanceProbe();
     client.invoke.mockImplementation(async () => ({
       instance: subtypeInstance("Lib.Base"),
     }));
@@ -508,7 +509,7 @@ describe("LibraryWebviewProvider", () => {
 
     // Editing the base cascades to the subtype; its inherited icon must
     // re-elaborate even though the subtype itself was not the edited class.
-    provider.iconChanged("Lib.Base");
+    invalidation.classChanged("Lib.Base");
     client.invoke.mockClear();
     send({ type: "libraryIcon", requestId: "2", className: "Lib.Sub" });
     await flush();
@@ -518,7 +519,7 @@ describe("LibraryWebviewProvider", () => {
   });
 
   it("drops the stale reverse edge when a subtype's extends chain changes", async () => {
-    const { provider, client, apis } = makeInstanceProbe();
+    const { provider, client, apis, invalidation } = makeInstanceProbe();
     client.invoke
       .mockImplementationOnce(async () => ({
         instance: subtypeInstance("Lib.Base"),
@@ -535,14 +536,14 @@ describe("LibraryWebviewProvider", () => {
 
     // Re-render the subtype against a different base; recording the new edge
     // must prune the old `Lib.Base` → `Lib.Sub` one.
-    provider.iconChanged("Lib.Sub");
+    invalidation.classChanged("Lib.Sub");
     send({ type: "libraryIcon", requestId: "2", className: "Lib.Sub" });
     await flush();
 
     // Editing the former base must no longer reach the subtype: its cached
     // icon stays, so the next request serves the cache without an OMC read.
     client.invoke.mockClear();
-    provider.iconChanged("Lib.Base");
+    invalidation.classChanged("Lib.Base");
     send({ type: "libraryIcon", requestId: "3", className: "Lib.Sub" });
     await flush();
 
@@ -550,7 +551,7 @@ describe("LibraryWebviewProvider", () => {
   });
 
   it("keeps a subtype's dependency edge when a re-render fails", async () => {
-    const { provider, client, apis } = makeInstanceProbe();
+    const { provider, client, apis, invalidation } = makeInstanceProbe();
     client.invoke
       .mockImplementationOnce(async () => ({
         instance: subtypeInstance("Lib.Base"),
@@ -567,14 +568,14 @@ describe("LibraryWebviewProvider", () => {
 
     // A failing re-render reports an unknown chain, not an empty one, so the
     // recorded edge must survive rather than being pruned.
-    provider.iconChanged("Lib.Sub");
+    invalidation.classChanged("Lib.Sub");
     send({ type: "libraryIcon", requestId: "2", className: "Lib.Sub" });
     await flush();
 
     // Editing the base must still reach the subtype: it re-renders rather than
     // serving a cache hit.
     client.invoke.mockClear();
-    provider.iconChanged("Lib.Base");
+    invalidation.classChanged("Lib.Base");
     send({ type: "libraryIcon", requestId: "3", className: "Lib.Sub" });
     await flush();
 
@@ -582,7 +583,7 @@ describe("LibraryWebviewProvider", () => {
   });
 
   it("re-invalidates a subtype when its base is edited during the subtype's first render", async () => {
-    const { provider, client, apis } = makeInstanceProbe();
+    const { provider, client, apis, invalidation } = makeInstanceProbe();
     let release!: () => void;
     const held = new Promise<void>((resolve) => (release = resolve));
     client.invoke
@@ -600,7 +601,7 @@ describe("LibraryWebviewProvider", () => {
     // flight, before the base → subtype edge has been recorded.
     send({ type: "libraryIcon", requestId: "1", className: "Lib.Sub" });
     await flush();
-    provider.iconChanged("Lib.Base");
+    invalidation.classChanged("Lib.Base");
     release();
     await flush();
 
@@ -616,7 +617,7 @@ describe("LibraryWebviewProvider", () => {
   });
 
   it("leaves a subtype's cached icon untouched when an unrelated class is edited", async () => {
-    const { provider, client, apis } = makeInstanceProbe();
+    const { provider, client, apis, invalidation } = makeInstanceProbe();
     client.invoke.mockImplementation(async () => ({
       instance: subtypeInstance("Lib.Base"),
     }));
@@ -628,7 +629,7 @@ describe("LibraryWebviewProvider", () => {
 
     // An edit to a class the subtype does not inherit from must not evict it;
     // the next request serves the cache without any OMC read.
-    provider.iconChanged("Lib.Unrelated");
+    invalidation.classChanged("Lib.Unrelated");
     client.invoke.mockClear();
     send({ type: "libraryIcon", requestId: "2", className: "Lib.Sub" });
     await flush();

@@ -2,11 +2,10 @@
  * The one fan-out point for "this class's definition changed".
  *
  * Anything derived from a class's source — the sidebar's rendered icon, its
- * restriction badge, the tree-sitter parse tree, the loaded-into-OMC flag, the
- * read-only lookup answers — goes stale together, and each cache that holds
- * such a derivation registers a listener here instead of being wired to a
- * producer by hand. A producer signals the change once; how many caches care
- * is not its business, and a cache added later needs no producer to change.
+ * restriction badge, the tree-sitter parse tree, the read-only lookup answers
+ * — goes stale together, and each cache that holds such a derivation registers
+ * a listener here. A producer signals the change once; how many caches care is
+ * not its business, and a cache added later needs no producer to change.
  */
 
 import * as vscode from "vscode";

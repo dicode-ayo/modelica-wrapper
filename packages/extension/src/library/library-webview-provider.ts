@@ -148,7 +148,7 @@ export class LibraryWebviewProvider
    *  base's shapes, so an edit to the base must refresh the subtype too — the
    *  base is not part of the subtype's own last elaboration, so its cheap
    *  annotation read would still paint the pre-edit inherited icon. */
-  iconChanged(className: string): void {
+  private iconChanged(className: string): void {
     this.invalidateIcon(className);
     for (const dependent of this.iconDependents.get(className) ?? []) {
       this.invalidateIcon(dependent);

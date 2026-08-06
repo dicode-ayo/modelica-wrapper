@@ -3,9 +3,7 @@
  *
  *   - Load on first touch.
  *   - {@link OmcSync.invalidate} clears the loaded flag (wire to both
- *     `onDidSaveTextDocument` and `onDidCloseTextDocument`);
- *     {@link OmcSync.invalidateAll} covers a change that names a class rather
- *     than a path.
+ *     `onDidSaveTextDocument` and `onDidCloseTextDocument`).
  *   - Between saves, resolution reflects the last saved text — not the dirty
  *     buffer. See `docs/language-features-design.md` → "Buffer ↔ OMC sync".
  */
@@ -82,18 +80,6 @@ export class OmcSync {
     this.loaded.delete(key);
     this.inFlight.delete(key);
     this.generation.set(key, (this.generation.get(key) ?? 0) + 1);
-  }
-
-  /**
-   * Forget every path's loaded state. For a change announced by class name
-   * rather than by path — an external `.mo` edit reloaded by the watcher, a
-   * mutation command — there is no key to invalidate precisely, and a path
-   * left marked loaded would never be re-read.
-   */
-  invalidateAll(): void {
-    for (const key of [...this.loaded, ...this.inFlight.keys()]) {
-      this.invalidate(key);
-    }
   }
 
   isLoaded(filePath: string): boolean {
