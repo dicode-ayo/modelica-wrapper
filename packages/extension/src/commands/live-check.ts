@@ -150,7 +150,9 @@ async function runCheck(
 
     // A class that can't be written can't legitimately be edited either, so a
     // change on its buffer is never the user's; loading one back into OMC would
-    // repoint an installed library's source at this URI.
+    // repoint an installed library's source at this URI. The permission half is
+    // gated too: VSCode refuses edits on a read-only file's buffer, so a change
+    // event on one is never user-typed either.
     if (
       typeName !== undefined &&
       !(await ctx.writeVerdicts.forClass(client, typeName, "edit")).ok

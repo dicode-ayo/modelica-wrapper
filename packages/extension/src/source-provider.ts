@@ -160,6 +160,7 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
       );
     }
 
+    // Read for `fileName` — the verdict above consumed only the permission.
     const info = await client.getClassInformation({ typeName });
     const onDisk = isLikelyDiskPath(info.fileName);
 

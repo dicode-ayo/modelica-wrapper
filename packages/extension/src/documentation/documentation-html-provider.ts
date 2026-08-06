@@ -126,7 +126,11 @@ export class DocumentationHtmlProvider implements vscode.FileSystemProvider {
     const className = classFromDocHtmlUri(uri);
     if (!className) throw vscode.FileSystemError.FileNotFound(uri);
     try {
-      const { info } = await this.docState(className, "edit");
+      const client = await this.ensureClient();
+      const { info } = await client.getDocumentationAnnotation({
+        typeName: className,
+      });
+      await this.verdicts.capture(client, className);
       return Buffer.from(info, "utf8");
     } catch (err) {
       // Unlike the `.mo` provider, this file exists to be edited and saved:

@@ -17,6 +17,7 @@ import type {
   WebviewToExtension,
 } from "../webview/protocol.js";
 import { createReadyGate, type ReadyGate } from "../webview/ready-gate.js";
+import type { WriteVerdict, WriteVerdicts } from "../write-verdict.js";
 
 import { applyEdits } from "./apply-edits.js";
 import {
@@ -76,7 +77,6 @@ import {
   lookupHostShape,
 } from "./shape-properties.js";
 import { setInputFocusContext } from "./input-focus.js";
-import type { WriteVerdict, WriteVerdicts } from "../write-verdict.js";
 import {
   DIAGRAM_VIEW_TYPE,
   ICON_VIEW_TYPE,

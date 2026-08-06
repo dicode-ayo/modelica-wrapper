@@ -15,7 +15,9 @@
  * and varies only by the action the caller was about to take.
  *
  * Deriving a verdict fails **open**: a transient OMC error must not lock a user
- * out of a model that is theirs to edit.
+ * out of a model that is theirs to edit. The two halves share one failure
+ * branch, so a partial failure discards the whole derivation rather than
+ * refusing on the half that answered.
  */
 
 import * as vscode from "vscode";

@@ -360,7 +360,7 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
     const { panel, posted, fireReady } = makePanel();
     // Read-only becomes visible only once the fetch has resolved the class: an
     // unresolved class has no source file to classify, so a verdict taken
-    // before the fetch (the restored-tab bug) would read writable.
+    // before the fetch (a restored tab) would read writable.
     let fetched = false;
     const { client } = makeClient({
       getModelInstance: () => {

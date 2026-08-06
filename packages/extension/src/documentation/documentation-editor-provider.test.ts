@@ -18,6 +18,7 @@ import { ModelInstanceSchema, type OmcClient } from "@dicode/omc-client";
 
 import type { DocExtensionToWebview } from "../webview/documentation-protocol.js";
 import type { ReadyGate } from "../webview/ready-gate.js";
+import { WriteVerdicts } from "../write-verdict.js";
 import { type Scheduler } from "../diagram/buffer-sync.js";
 
 import {
@@ -26,7 +27,6 @@ import {
   resolveDocumentationEditor,
   type DocumentationClient,
 } from "./documentation-editor-provider.js";
-import { WriteVerdicts } from "../write-verdict.js";
 
 const EXT_URI = vscode.Uri.file("/ext");
 
@@ -313,7 +313,7 @@ describe("resolveDocumentationEditor", () => {
     const { panel, posted, fireReady } = makePanel();
     // Read-only becomes visible only once the fetch has resolved the class: an
     // unresolved class has no source file to classify. Restriction "package"
-    // also confirms this no longer depends on fetchInterface's
+    // also confirms the verdict is independent of fetchInterface's
     // getModelInstance, which packages never call.
     let fetched = false;
     const client = {
