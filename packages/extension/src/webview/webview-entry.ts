@@ -34,8 +34,11 @@ import {
   type ToolId,
 } from "@dicode/diagram-ui";
 
+import { assertUnreachable } from "@dicode/modelica-lang-core";
+
 import { CommitSlot } from "./commit-slot.js";
 import { panelReadonly } from "./panel-readonly.js";
+import { isExtensionMessage } from "./protocol.js";
 import type {
   ExtensionToWebview,
   ParameterFormKind,
@@ -219,8 +222,8 @@ class OmWebviewRoot extends LitElement {
   }
 
   private readonly onHostMessage = (e: MessageEvent): void => {
-    const data = e.data as ExtensionToWebview | undefined;
-    if (!data || typeof data !== "object" || !("type" in data)) return;
+    const data: unknown = e.data;
+    if (!isExtensionMessage(data)) return;
     this.apply(data);
   };
 
@@ -287,6 +290,8 @@ class OmWebviewRoot extends LitElement {
       case "error":
         console.error("[diagram-ui] backend error:", message.message);
         return;
+      default:
+        assertUnreachable(message, "ExtensionToWebview");
     }
   }
 

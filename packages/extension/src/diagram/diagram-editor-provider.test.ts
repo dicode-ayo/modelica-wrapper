@@ -166,7 +166,7 @@ interface FakeWebview {
   html: string;
   asWebviewUri: (u: vscode.Uri) => vscode.Uri;
   postMessage: (m: ExtensionToWebview) => Promise<boolean>;
-  onDidReceiveMessage: (l: (m: WebviewToExtension) => void) => {
+  onDidReceiveMessage: (l: (m: unknown) => void) => {
     dispose(): void;
   };
 }
@@ -176,12 +176,12 @@ function makePanel(active = false): {
   webview: FakeWebview;
   posted: ExtensionToWebview[];
   fireReady: () => void;
-  fireMessage: (m: WebviewToExtension) => void;
+  fireMessage: (m: unknown) => void;
   fireViewState: (isActive: boolean) => void;
   fireDispose: () => void;
 } {
   const posted: ExtensionToWebview[] = [];
-  let listener: ((m: WebviewToExtension) => void) | undefined;
+  let listener: ((m: unknown) => void) | undefined;
   let viewStateListener:
     | ((e: { webviewPanel: { active: boolean } }) => void)
     | undefined;
@@ -2982,5 +2982,64 @@ describe("DiagramEditorProvider: registry dispose", () => {
 
     fireDispose();
     expect(DiagramEditorProvider.activeClassName()).toBeUndefined();
+  });
+});
+
+describe("the gesture boundary", () => {
+  it("drops a message whose payload does not match its declaration", async () => {
+    const { panel, fireReady, fireViewState, fireMessage } = makePanel();
+    const { client } = makeEditClient();
+    resolveDiagramEditor(
+      panel,
+      EXT_URI,
+      vi.fn(() => Promise.resolve(client)),
+      docFor(vscode.Uri.parse("modelica-source:/Pkg.M.mo")),
+      "diagram",
+    );
+    fireReady();
+    fireViewState(true);
+    await flush();
+
+    const focusUpdates = (): number =>
+      executedCommands.filter(
+        (c) =>
+          c.command === "setContext" &&
+          c.args.at(0) === "modelicaDiagramInputFocus",
+      ).length;
+    const before = focusUpdates();
+
+    fireMessage({ type: "inputFocus", focused: true });
+    expect(focusUpdates()).toBe(before + 1);
+
+    // Same gesture, a payload that isn't one: it stops at the boundary rather
+    // than reaching the host with a `focused` nobody checked.
+    fireMessage({ type: "inputFocus", focused: "yes" });
+    fireMessage({ type: "somethingAddedLater" });
+    fireMessage("change");
+    expect(focusUpdates()).toBe(before + 1);
+  });
+
+  it("fails loudly on a message type the dispatch does not handle", async () => {
+    // The boundary makes this unreachable in production; the point is that if
+    // a gesture ever did reach the dispatch unhandled it would report, not
+    // return quietly the way the old `default:` arm did.
+    const { client } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({
+      type: "somethingAddedLater",
+    } as unknown as WebviewToExtension);
+
+    const errors = posted.filter((m) => m.type === "error");
+    expect(errors).toHaveLength(1);
+    expect(errors.at(0)).toMatchObject({
+      message: expect.stringContaining("WebviewToExtension"),
+    });
   });
 });

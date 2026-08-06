@@ -10,7 +10,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { DiagramLayout } from "@dicode/omc-client";
 
 import { CommitSlot, type CommitScheduler } from "./commit-slot.js";
-import type { WebviewToExtension } from "./protocol.js";
+import { GESTURES, gestureNames, type WebviewToExtension } from "./gestures.js";
 
 function layout(name: string): DiagramLayout {
   return { className: name } as unknown as DiagramLayout;
@@ -169,12 +169,17 @@ describe("CommitSlot ordering", () => {
     }
   });
 
-  it("orders an unrecognised message conservatively", () => {
-    // A message type added later has to be opted out deliberately, not by
-    // being forgotten.
-    const { slot, sent } = makeSlot();
-    slot.commit(layout("a"));
-    slot.beforeSending("somethingAddedLater" as WebviewToExtension["type"]);
-    expect(sent).toEqual([layout("a")]);
+  it("takes its ordering from the gesture declaration, for every gesture", () => {
+    // The ordering can no longer be answered by omission: it is a required
+    // field of the declaration and this walks the whole table to prove none of
+    // them is left to a default.
+    for (const type of gestureNames()) {
+      const { slot, sent } = makeSlot();
+      slot.commit(layout("a"));
+      slot.beforeSending(type);
+      expect(sent, type).toEqual(
+        GESTURES[type].ordering === "afterCommit" ? [layout("a")] : [],
+      );
+    }
   });
 });

@@ -7,18 +7,6 @@ import type {
 import type { DiagramMode } from "../diagram/view-type.js";
 
 /**
- * Which parameter modal the panel is showing. `classParams`, `componentParams`,
- * and `shapeProperties` write back to the class source; `simulate` runs the
- * model and emits a result file without touching source, so it stays usable on
- * a read-only class.
- */
-export type ParameterFormKind =
-  | "classParams"
-  | "componentParams"
-  | "shapeProperties"
-  | "simulate";
-
-/**
  * Re-exported from the `command-ids` subpath rather than the package root: the
  * root drags in the Lit and Pixi component tree, whose types need the DOM lib
  * the host's Node program doesn't have.
@@ -28,10 +16,18 @@ import type { DiagramCommandId } from "@dicode/diagram-ui/command-ids";
 export type { DiagramCommandId };
 
 /**
- * Message protocol between the extension host (Node) and the diagram
- * webview (browser). All messages are JSON-serializable.
+ * The webview → host half of the protocol. Its variants are derived from the
+ * gesture table in [gestures.ts](./gestures.ts), which also answers each
+ * gesture's ordering and icon-mode policy; re-exported here so both halves of
+ * the protocol are reachable from one module.
+ */
+import type { ParameterFormKind } from "./gestures.js";
+
+export type { ParameterFormKind, WebviewToExtension } from "./gestures.js";
+
+/**
+ * Host → webview messages. All payloads are JSON-serializable.
  *
- * Extension → webview:
  *   - `init`               — sent once after the webview's `ready` to
  *                            seed it with the current `DiagramLayout`.
  *   - `layout`             — refreshed `DiagramLayout` (e.g. after a
@@ -50,28 +46,7 @@ export type { DiagramCommandId };
  *   - `clipboard`          — the shared diagram clipboard filled or emptied;
  *                            gates the paste affordance. Broadcast to every
  *                            open editor, since the clipboard is window-wide.
- *
- * Webview → extension:
- *   - `ready`               — webview has finished loading.
- *   - `change`              — user committed a layout change.
- *   - `connectionCreate`    — user dragged from one connector to another.
- *   - `selectionChange`     — selection set updated.
- *   - `actionCheck` / `actionSimulate` / `actionParameters` — toolbar.
- *   - `editComponent`       — user double-clicked a sub-component on the
- *                             diagram and wants its parameter modal.
- *   - `parametersSubmit` / `parametersCancel` — parameter modal.
- *   - `resetComponentParameters` — user hit the modal's "Reset to
- *                             defaults" button (component params only);
- *                             the host bulk-clears the sub-component's
- *                             modifiers and re-opens the refreshed form.
- *   - `addComponent`        — user dropped or placed a class on the canvas
- *                             and we want to instantiate it into the active
- *                             diagram at `position`.
- *   - `copySelection` / `paste` — clipboard commands. The host owns the
- *                             clipboard, so the webview sends the selection
- *                             and lets the host resolve it against the layout.
  */
-
 export type ExtensionToWebview =
   | {
       type: "init";
@@ -141,65 +116,42 @@ export type ExtensionToWebview =
     }
   | { type: "placementCancel" };
 
-export type WebviewToExtension =
-  | { type: "ready" }
-  | { type: "change"; layout: DiagramLayout }
-  | {
-      type: "connectionCreate";
-      fromKey: string;
-      toKey: string;
-      /**
-       * Waypoints (in diagram coords) describing the connection route,
-       * including endpoints. Empty means "let OMC auto-route" — the
-       * webview computes an orthogonal Z-shape by default.
-       */
-      waypoints: ReadonlyArray<readonly [number, number]>;
-    }
-  | { type: "selectionChange"; keys: string[] }
-  | {
-      // Whether keyboard focus sits in an editable field inside the webview.
-      // Drives the `modelicaDiagramInputFocus` context key so the diagram's
-      // single-letter keybindings (r/f/Delete) don't fire while typing.
-      type: "inputFocus";
-      focused: boolean;
-    }
-  | { type: "actionCheck" }
-  | { type: "actionSimulate" }
-  | { type: "actionParameters" }
-  | { type: "editComponent"; componentName: string }
-  | {
-      // User double-clicked a shape and wants its properties. Selecting one
-      // does not — a modal opening on selection interrupts every pick.
-      type: "editShape";
-      key: string;
-    }
-  | {
-      type: "parametersSubmit";
-      kind: ParameterFormKind;
-      values: Record<string, unknown>;
-    }
-  | { type: "parametersCancel"; kind: ParameterFormKind }
-  | {
-      /**
-       * "Reset to defaults" pressed in the component parameter modal.
-       * `componentName` is the sub-component instance whose modifiers the
-       * host should bulk-clear via `removeElementModifiers` before
-       * re-opening the modal with the refreshed (defaulted) values. Only
-       * dispatched for the `componentParams` modal — the class-level form
-       * has no reset affordance.
-       */
-      type: "resetComponentParameters";
-      componentName: string;
-    }
-  | {
-      type: "addComponent";
-      className: string;
-      position: { x: number; y: number };
-    }
-  | {
-      type: "changeClassRequest";
-      componentName: string;
-      currentClass: string;
-    }
-  | { type: "copySelection"; keys: string[] }
-  | { type: "paste" };
+/**
+ * Every {@link ExtensionToWebview} variant, as a lookup. Its type makes the
+ * table exhaustive: a new outbound message that isn't listed here fails to
+ * compile, rather than being dropped at the webview's boundary.
+ */
+const EXTENSION_MESSAGE_TYPES: Readonly<
+  Record<ExtensionToWebview["type"], true>
+> = {
+  init: true,
+  layout: true,
+  clipboard: true,
+  select: true,
+  error: true,
+  renderError: true,
+  parametersOpen: true,
+  parametersClose: true,
+  runCommand: true,
+  placementStart: true,
+  placementPreview: true,
+  placementCancel: true,
+};
+
+/**
+ * Narrow a raw `postMessage` payload arriving in the webview. Only the
+ * discriminant is checked: the host is the sole sender and every send site is
+ * typed, so what this boundary has to answer is whether the message is one of
+ * ours — an unrecognised one stops here instead of reaching the dispatch.
+ */
+export function isExtensionMessage(
+  value: unknown,
+): value is ExtensionToWebview {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    typeof value.type === "string" &&
+    Object.hasOwn(EXTENSION_MESSAGE_TYPES, value.type)
+  );
+}
