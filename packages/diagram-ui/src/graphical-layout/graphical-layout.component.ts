@@ -41,19 +41,22 @@ import { ModeRouter } from "../interaction/mode.js";
 import {
   applyAddGraphic,
   applyDeltaMove,
-  applyEdgeSegmentDrag,
   applyResize,
   applyRotation,
   applyShapeVertexDrag,
   applyShapeVertexInsert,
   applySnapToExtents,
-  applyWaypointDelete,
-  applyWaypointDrag,
-  applyWaypointInsert,
   retainExistingSelection,
   selectByDiagramRect,
   shapeCentre,
 } from "../interaction/layout-ops.js";
+import {
+  applyEdgeSegmentDrag,
+  applyWaypointDelete,
+  applyWaypointDrag,
+  applyWaypointInsert,
+  withMaterialisedRoute,
+} from "../interaction/route-ops.js";
 import {
   chordFromEvent,
   CommandRegistry,
@@ -1084,7 +1087,7 @@ export class OmGraphicalLayout extends LitElement {
       }
       this.commitLayout(
         applyWaypointInsert(
-          this.withMaterialisedRoute(this.layout, connIdx),
+          withMaterialisedRoute(this.layout, connIdx),
           connIdx,
           point,
         ),
@@ -1117,36 +1120,12 @@ export class OmGraphicalLayout extends LitElement {
       return layout;
     }
     return applyWaypointDrag(
-      this.withMaterialisedRoute(layout, connIndex),
+      withMaterialisedRoute(layout, connIndex),
       connIndex,
       waypointIndex,
       dx,
       dy,
     );
-  }
-
-  /**
-   * Returns a layout copy where the connection at `connIdx` has its
-   * waypoints materialised from endpoint positions when they are currently
-   * empty (`waypoints: []`). Returns the original layout reference when the
-   * connection already has a route or can't be resolved.
-   */
-  private withMaterialisedRoute(
-    layout: DiagramLayout,
-    connIdx: number,
-  ): DiagramLayout {
-    const conn = layout.connections[connIdx];
-    if (!conn || conn.waypoints.length > 0) {
-      return layout;
-    }
-    const waypoints = resolveConnectionWaypoints(layout, conn);
-    if (waypoints.length < 2) {
-      return layout;
-    }
-    const connections = layout.connections.map((c, i) =>
-      i === connIdx ? { ...c, waypoints } : c,
-    );
-    return { ...layout, connections };
   }
 
   /** Snap a diagram-space point to the active grid and ask the host to
@@ -1501,7 +1480,7 @@ export class OmGraphicalLayout extends LitElement {
         const grid = this.currentSnapGrid();
         const { dx, dy } = snapDelta(d.dx, d.dy, grid);
         const moved = applyEdgeSegmentDrag(
-          this.withMaterialisedRoute(this.layout, d.connIdx),
+          withMaterialisedRoute(this.layout, d.connIdx),
           d.connIdx,
           d.grab,
           dx,
