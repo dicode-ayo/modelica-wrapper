@@ -654,8 +654,8 @@ export class DiagramEditController {
         return;
       case "ready":
       case "inputFocus":
-        // Owned by the editor session, which answers them before the
-        // controller exists.
+        // Session-scoped: answered in `resolveDiagramEditor`, which exists
+        // before the controller does and outlives every layout it holds.
         return;
       case "selectionChange":
         // Selection is the webview's own state; the host tracks nothing it

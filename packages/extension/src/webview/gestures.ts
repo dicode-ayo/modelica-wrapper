@@ -64,7 +64,7 @@ export type IconPolicy = "honored" | "ignored" | "shapeFormOnly";
 /** Narrows one field of an unvalidated payload. */
 type FieldCheck<T> = (value: unknown) => value is T;
 
-type FieldChecks = Readonly<Record<string, (value: unknown) => boolean>>;
+type FieldChecks = Readonly<Record<string, FieldCheck<unknown>>>;
 
 /** The payload a set of field checks describes once they all pass. */
 type PayloadOf<F extends FieldChecks> = {

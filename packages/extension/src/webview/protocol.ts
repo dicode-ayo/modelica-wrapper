@@ -15,14 +15,14 @@ import type { DiagramCommandId } from "@dicode/diagram-ui/command-ids";
 
 export type { DiagramCommandId };
 
-/**
- * The webview → host half of the protocol. Its variants are derived from the
- * gesture table in [gestures.ts](./gestures.ts), which also answers each
- * gesture's ordering and icon-mode policy; re-exported here so both halves of
- * the protocol are reachable from one module.
- */
 import type { ParameterFormKind } from "./gestures.js";
 
+/**
+ * The webview → host half of the protocol. Its variants are derived from the
+ * gesture table in `gestures.ts`, which also answers each gesture's ordering
+ * and icon-mode policy; re-exported here so both halves of the protocol are
+ * reachable from one module.
+ */
 export type { ParameterFormKind, WebviewToExtension } from "./gestures.js";
 
 /**
