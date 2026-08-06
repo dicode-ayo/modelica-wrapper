@@ -81,8 +81,7 @@ belongs to hop 2, which is a real process boundary.
 
 ## Hop 2 — the `postMessage` protocol
 
-29 message variants, 12 outbound and 17 inbound, discriminated on `type`. All
-payloads are JSON-serialisable.
+Two tagged unions, discriminated on `type`. All payloads are JSON-serialisable.
 
 ### Webview → extension host (`WebviewToExtension`)
 
@@ -93,34 +92,38 @@ whether the icon editor acts on it. `WebviewToExtension` is derived from that
 table, so there is no second place to add a variant and no fourth question that
 can be answered by omission.
 
-| `type` | Payload | Ordering | Icon | Meaning |
-| --- | --- | --- | --- | --- |
-| `ready` | — | ui-only | ignored | Webview finished loading; host sends the parked `init`. |
-| `change` | `{ layout }` | after commit | honored | User committed a layout change (move/resize/rotate/draw/delete). The whole layout, not a diff. |
-| `connectionCreate` | `{ fromKey, toKey, waypoints }` | after commit | ignored | User dragged from one connector to another. Empty `waypoints` ⇒ auto-route. |
-| `selectionChange` | `{ keys }` | ui-only | ignored | Selection set changed. |
-| `inputFocus` | `{ focused }` | ui-only | ignored | Keyboard focus entered/left an editable field; drives `modelicaDiagramInputFocus`. |
-| `actionCheck` | — | after commit | ignored | Toolbar Check Model. |
-| `actionSimulate` | — | after commit | ignored | Toolbar Simulate. |
-| `actionParameters` | — | after commit | ignored | Toolbar class-level Parameters. |
-| `editComponent` | `{ componentName }` | after commit | ignored | Double-click a sub-component → open its parameter modal. |
-| `editShape` | `{ key }` | after commit | honored | Double-click a shape → open its properties modal. |
-| `parametersSubmit` | `{ kind, values }` | after commit | shape form only | Parameter modal Apply/Run. |
-| `parametersCancel` | `{ kind }` | after commit | shape form only | Parameter modal dismissed. |
-| `resetComponentParameters` | `{ componentName }` | after commit | ignored | "Reset to defaults" in the component modal. |
-| `addComponent` | `{ className, position }` | after commit | honored | Instantiate a class onto the canvas at `position`. Restriction-gated host-side, which is why the icon editor honors it — only a connector gets through. |
-| `changeClassRequest` | `{ componentName, currentClass }` | after commit | ignored | Swap a sub-component's type. |
-| `copySelection` | `{ keys }` | after commit | honored | Copy — the host owns the window-wide clipboard and resolves the keys itself. |
-| `paste` | — | after commit | honored | Paste the host clipboard into this diagram. |
+| `type` | Payload | Meaning |
+| --- | --- | --- |
+| `ready` | — | Webview finished loading; host sends the parked `init`. |
+| `change` | `{ layout }` | User committed a layout change (move/resize/rotate/draw/delete). The whole layout, not a diff. |
+| `connectionCreate` | `{ fromKey, toKey, waypoints }` | User dragged from one connector to another. Empty `waypoints` ⇒ auto-route. |
+| `selectionChange` | `{ keys }` | Selection set changed. |
+| `inputFocus` | `{ focused }` | Keyboard focus entered/left an editable field; drives `modelicaDiagramInputFocus`. |
+| `actionCheck` | — | Toolbar Check Model. |
+| `actionSimulate` | — | Toolbar Simulate. |
+| `actionParameters` | — | Toolbar class-level Parameters. |
+| `editComponent` | `{ componentName }` | Double-click a sub-component → open its parameter modal. |
+| `editShape` | `{ key }` | Double-click a shape → open its properties modal. |
+| `parametersSubmit` | `{ kind, values }` | Parameter modal Apply/Run. |
+| `parametersCancel` | `{ kind }` | Parameter modal dismissed. |
+| `resetComponentParameters` | `{ componentName }` | "Reset to defaults" in the component modal. |
+| `addComponent` | `{ className, position }` | Instantiate a class onto the canvas at `position`. Restriction-gated host-side, which is what lets the icon editor honor it — only a connector gets through. |
+| `changeClassRequest` | `{ componentName, currentClass }` | Swap a sub-component's type. |
+| `copySelection` | `{ keys }` | Copy — the host owns the window-wide clipboard and resolves the keys itself. |
+| `paste` | — | Paste the host clipboard into this diagram. |
 
-**Ordering** is what the commit slot reads. A commit is debounced in the webview,
-so anything that reads or writes the class has to wait behind a held one;
-`selectionChange` in particular *must not* flush, because a drag reports its
-selection on press and its commit on release.
+Each gesture's ordering and icon-mode answers live on its entry in
+`gestures.ts` and are deliberately not mirrored here — that mirroring is what
+this seam was built to remove. What the two axes mean:
 
-**Icon** is what the icon editor's controller reads. It edits the class's own
-icon annotation, so shape work, connector placement and the clipboard are its
-business and the diagram's other gestures are no-ops there.
+**Ordering** is what the commit slot reads. A commit is debounced in the
+webview, so anything that reads or writes the class has to wait behind a held
+one; `selectionChange` in particular *must not* flush, because a drag reports
+its selection on press and its commit on release.
+
+**Icon mode** is what the icon editor's controller reads. It edits the class's
+own icon annotation, so shape work, connector placement and the clipboard are
+its business and the diagram's other gestures are no-ops there.
 
 `kind` is a `ParameterFormKind` — `"classParams" | "componentParams" |
 "shapeProperties" | "simulate"` — and stays that union all the way to the write:

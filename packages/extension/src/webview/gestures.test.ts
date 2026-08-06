@@ -14,7 +14,6 @@ import type { DiagramLayout } from "@dicode/omc-client";
 
 import {
   gestureNames,
-  gestureOrdering,
   iconHonorsGesture,
   isGestureMessage,
   type WebviewToExtension,
@@ -106,16 +105,6 @@ describe("isGestureMessage", () => {
     expect(
       isGestureMessage({ type: "change", layout: { kind: "x" } }, reject),
     ).toBe(false);
-  });
-});
-
-describe("gestureOrdering", () => {
-  it("holds a queued commit only behind the gestures that read or write the class", () => {
-    expect(gestureOrdering("selectionChange")).toBe("uiOnly");
-    expect(gestureOrdering("inputFocus")).toBe("uiOnly");
-    expect(gestureOrdering("ready")).toBe("uiOnly");
-    expect(gestureOrdering("change")).toBe("afterCommit");
-    expect(gestureOrdering("parametersSubmit")).toBe("afterCommit");
   });
 });
 

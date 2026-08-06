@@ -277,17 +277,16 @@ export function resolveDiagramEditor(
   };
   DiagramEditorProvider.addSession(session);
 
-  const sub = webview.onDidReceiveMessage((raw: unknown) => {
+  const sub = webview.onDidReceiveMessage((msg: unknown) => {
     // `postMessage` delivers whatever the webview serialized, and nothing
     // downstream re-checks it.
     if (
-      !isGestureMessage(raw, (reason) =>
+      !isGestureMessage(msg, (reason) =>
         log.warn("diagramEditor", `dropped webview message: ${reason}`),
       )
     ) {
       return;
     }
-    const msg = raw;
     if (msg.type === "ready") {
       gate.markReady();
       return;

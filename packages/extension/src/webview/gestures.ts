@@ -68,10 +68,20 @@ type PayloadOf<F extends FieldChecks> = {
   [K in keyof F]: F[K] extends FieldCheck<infer T> ? T : never;
 };
 
+/**
+ * `shapeFormOnly` reads the form kind off the payload, so only a gesture that
+ * declares one may claim it.
+ */
+type IconPolicyFor<F extends FieldChecks> = F extends {
+  kind: FieldCheck<ParameterFormKind>;
+}
+  ? IconPolicy
+  : Exclude<IconPolicy, "shapeFormOnly">;
+
 interface GestureSpec<F extends FieldChecks> {
   readonly payload: F;
   readonly ordering: GestureOrdering;
-  readonly icon: IconPolicy;
+  readonly icon: IconPolicyFor<F>;
 }
 
 /**
