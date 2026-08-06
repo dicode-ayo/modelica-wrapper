@@ -54,6 +54,38 @@ describe("OmcSync — invalidate (re-load on save / forget on close)", () => {
     expect(client.calls).toEqual(["/a/Foo.mo", "/a/Foo.mo"]);
     expect(client.loadFile).toHaveBeenCalledTimes(2);
   });
+
+  it("invalidateAll re-loads every path on its next touch", async () => {
+    const client = clientOk();
+    const sync = new OmcSync(client);
+
+    await sync.ensureLoaded("/a/Foo.mo");
+    await sync.ensureLoaded("/a/Bar.mo");
+    sync.invalidateAll();
+
+    expect(sync.isLoaded("/a/Foo.mo")).toBe(false);
+    expect(sync.isLoaded("/a/Bar.mo")).toBe(false);
+    await sync.ensureLoaded("/a/Foo.mo");
+    await sync.ensureLoaded("/a/Bar.mo");
+    expect(client.loadFile).toHaveBeenCalledTimes(4);
+  });
+
+  it("invalidateAll discards a load still in flight", async () => {
+    let release!: (value: { success: boolean }) => void;
+    const client: SyncClient = {
+      loadFile: vi.fn(
+        () => new Promise<{ success: boolean }>((r) => (release = r)),
+      ),
+    };
+    const sync = new OmcSync(client);
+
+    const pending = sync.ensureLoaded("/a/Foo.mo");
+    sync.invalidateAll();
+    release({ success: true });
+
+    expect(await pending).toBe(false);
+    expect(sync.isLoaded("/a/Foo.mo")).toBe(false);
+  });
 });
 
 describe("OmcSync — failure handling", () => {

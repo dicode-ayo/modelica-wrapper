@@ -1,14 +1,10 @@
 /**
- * Unit test for the save → cache-invalidation glue.
- *
- * The cache's own `invalidate()` is unit-tested in `omc-cache.test.ts`, and
- * `sync.invalidate` in `sync.test.ts`, but nothing proved the *wiring*: that a
- * document save for a Modelica document calls `lookupCache.invalidate()` (the
- * headline staleness defence) and `sync.invalidate`, and that a non-Modelica
- * save does neither. The reviewer flagged this glue as correct-by-inspection
- * but untested. We test the extracted {@link handleDocumentSave} helper directly
- * and also assert `registerLanguageFeatures` actually registers an
- * `onDidSaveTextDocument` listener that routes through it.
+ * Unit test for the cache-invalidation glue: the two events that stale the
+ * language caches — a document save, and a class changing outside the editor
+ * — reach `sync`, the parse cache and the lookup cache. Each cache's own
+ * `invalidate` is covered in `omc-cache.test.ts` / `sync.test.ts`; what is
+ * asserted here is the wiring, both through the extracted handlers and through
+ * the listeners `registerLanguageFeatures` installs.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -19,8 +15,16 @@ import {
   workspaceListeners,
 } from "../../test-support/vscode-mock.js";
 
-import { handleDocumentSave, registerLanguageFeatures } from "./index.js";
+import { ClassInvalidationRegistry } from "../invalidation.js";
+import { sourceUriFor } from "../source-provider.js";
+
+import {
+  handleClassChanged,
+  handleDocumentSave,
+  registerLanguageFeatures,
+} from "./index.js";
 import { OmcLookupCache, type CachedOmcClient } from "./omc-cache.js";
+import { OmcSync } from "./sync.js";
 
 /** A document stub the save handler inspects (`languageId` + `uri.fsPath`). */
 function doc(languageId: string, fsPath: string) {
@@ -112,6 +116,51 @@ describe("handleDocumentSave", () => {
   });
 });
 
+describe("handleClassChanged", () => {
+  it("drops the parse tree, every loaded flag and the lookup cache", () => {
+    const sync = { invalidateAll: vi.fn() };
+    const parseCache = { invalidate: vi.fn() };
+    const cache = new OmcLookupCache(fakeOmcClient());
+    const invalidate = vi.spyOn(cache, "invalidate");
+
+    handleClassChanged("Lib.A", sync, parseCache, () => cache);
+
+    expect(parseCache.invalidate).toHaveBeenCalledWith(sourceUriFor("Lib.A"));
+    expect(sync.invalidateAll).toHaveBeenCalledTimes(1);
+    expect(invalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it("is a safe no-op when the lookup cache has not been created yet", () => {
+    const sync = { invalidateAll: vi.fn() };
+    const parseCache = { invalidate: vi.fn() };
+
+    handleClassChanged("Lib.A", sync, parseCache, () => undefined);
+
+    expect(sync.invalidateAll).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("registerLanguageFeatures — invalidation wiring", () => {
+  it("drops every loaded flag when a class changes outside the editor", () => {
+    const invalidateAll = vi.spyOn(OmcSync.prototype, "invalidateAll");
+    const invalidation = new ClassInvalidationRegistry();
+    const disposable = registerLanguageFeatures(
+      { extensionUri: Uri.file("/ext") } as never,
+      vi.fn(() => Promise.resolve(fakeOmcClient())) as never,
+      invalidation,
+    );
+
+    invalidation.classChanged("Lib.A");
+
+    expect(invalidateAll).toHaveBeenCalledTimes(1);
+
+    disposable.dispose();
+    invalidation.classChanged("Lib.B");
+    expect(invalidateAll).toHaveBeenCalledTimes(1);
+    invalidateAll.mockRestore();
+  });
+});
+
 describe("registerLanguageFeatures — save wiring", () => {
   it("registers an onDidSaveTextDocument listener that invalidates on a Modelica save", () => {
     const invalidate = vi.spyOn(OmcLookupCache.prototype, "invalidate");
@@ -120,6 +169,7 @@ describe("registerLanguageFeatures — save wiring", () => {
     const disposable = registerLanguageFeatures(
       { extensionUri: Uri.file("/ext") } as never,
       ensureClient as never,
+      new ClassInvalidationRegistry(),
     );
 
     // A save listener is registered.

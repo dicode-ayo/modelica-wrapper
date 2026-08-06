@@ -9,7 +9,9 @@ import * as vscode from "vscode";
 
 import type { OmcClient } from "@dicode/omc-client";
 
+import type { ClassInvalidationRegistry } from "../invalidation.js";
 import { log } from "../logger.js";
+import { sourceUriFor } from "../source-provider.js";
 
 import {
   ANNOTATION_SEMANTIC_TOKENS_LEGEND,
@@ -122,6 +124,28 @@ export function handleDocumentSave(
 }
 
 /**
+ * Drop what the language layer caches for a class whose definition changed
+ * outside the editor — the `.mo` watcher reloading a foreign edit or a git
+ * checkout, a mutation command, a graphical commit.
+ *
+ * The signal names a class, not a buffer, so only the parse tree of that
+ * class's `modelica-source:` document can be dropped precisely. `OmcSync` is
+ * keyed by the on-disk path OMC was told to load, which the class name does
+ * not yield, and the lookup cache's loaded-library signature is blind to an
+ * in-place reload of an already-loaded file — both are cleared wholesale.
+ */
+export function handleClassChanged(
+  className: string,
+  sync: Pick<OmcSync, "invalidateAll">,
+  parseCache: Pick<ParseCache, "invalidate">,
+  getLookupCache: () => Pick<OmcLookupCache, "invalidate"> | undefined,
+): void {
+  parseCache.invalidate(sourceUriFor(className));
+  sync.invalidateAll();
+  getLookupCache()?.invalidate();
+}
+
+/**
  * Register the Modelica language features. Returns a single {@link vscode.Disposable}
  * that tears down the parse cache and all listeners — push it onto
  * `context.subscriptions`.
@@ -130,10 +154,14 @@ export function handleDocumentSave(
  *   WASM in `<extension>/out`.
  * @param ensureClient - lazy OMC client factory; the definition/hover providers
  *   call it per request and the buffer↔OMC sync loads files through it.
+ * @param invalidation - the class-invalidation registry; the parse, sync and
+ *   lookup caches subscribe to it for changes that never pass through a
+ *   text-document event.
  */
 export function registerLanguageFeatures(
   context: vscode.ExtensionContext,
   ensureClient: EnsureClient,
+  invalidation: ClassInvalidationRegistry,
 ): vscode.Disposable {
   // esbuild copies both `.wasm` files next to `extension.js` in `out/`.
   const wasmDir = vscode.Uri.joinPath(context.extensionUri, "out").fsPath;
@@ -235,6 +263,10 @@ export function registerLanguageFeatures(
     sync.invalidate(document.uri.fsPath);
   });
 
+  const onClassChanged = invalidation.register((className) => {
+    handleClassChanged(className, sync, cache, () => lookupCache);
+  });
+
   log.info("language", "language features registered");
 
   return new vscode.Disposable(() => {
@@ -246,6 +278,7 @@ export function registerLanguageFeatures(
     onChange.dispose();
     onSave.dispose();
     onClose.dispose();
+    onClassChanged.dispose();
     cache.dispose();
   });
 }
