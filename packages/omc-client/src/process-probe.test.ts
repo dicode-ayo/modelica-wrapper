@@ -1,12 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  commandLineFromRows,
-  findByCommandLineFromRows,
-  parentPidFromRows,
-  parseCimCsvTable,
+  nonEmpty,
+  parseCimJsonTable,
   parsePsTable,
-  parseWmicTable,
   ppidFromStat,
 } from "./process-probe.js";
 
@@ -60,15 +57,22 @@ describe("parsePsTable", () => {
   });
 });
 
-describe("parseCimCsvTable", () => {
-  it("parses a multi-row Get-CimInstance CSV dump", () => {
-    const rows = parseCimCsvTable(
-      [
-        '"ProcessId","ParentProcessId","CommandLine"',
-        '"4242","900","C:\\Program Files\\OpenModelica\\bin\\omc.exe --interactive=zmq -z=mw_abc"',
-        '"900","1","C:\\Windows\\System32\\services.exe"',
-        "",
-      ].join("\r\n"),
+describe("parseCimJsonTable", () => {
+  it("parses a multi-row Get-CimInstance JSON dump", () => {
+    const rows = parseCimJsonTable(
+      JSON.stringify([
+        {
+          ProcessId: 4242,
+          ParentProcessId: 900,
+          CommandLine:
+            "C:\\Program Files\\OpenModelica\\bin\\omc.exe --interactive=zmq -z=mw_abc",
+        },
+        {
+          ProcessId: 900,
+          ParentProcessId: 1,
+          CommandLine: "C:\\Windows\\System32\\services.exe",
+        },
+      ]),
     );
 
     expect(rows).toEqual([
@@ -82,99 +86,57 @@ describe("parseCimCsvTable", () => {
     ]);
   });
 
-  it("unescapes doubled quotes inside a quoted field, comma and all", () => {
-    const rows = parseCimCsvTable(
-      '"4242","1","C:\\bin\\omc.exe --title=""mw, omc"" -z=mw_abc"',
+  it("maps a null or missing CommandLine to an empty string", () => {
+    const rows = parseCimJsonTable(
+      JSON.stringify([
+        { ProcessId: 4242, ParentProcessId: 900, CommandLine: null },
+        { ProcessId: 900, ParentProcessId: 1 },
+      ]),
     );
 
     expect(rows).toEqual([
-      {
-        pid: 4242,
-        ppid: 1,
-        commandLine: 'C:\\bin\\omc.exe --title="mw, omc" -z=mw_abc',
-      },
+      { pid: 4242, ppid: 900, commandLine: "" },
+      { pid: 900, ppid: 1, commandLine: "" },
     ]);
   });
 
-  it("keeps rows whose command line is blank (System Idle Process)", () => {
-    const rows = parseCimCsvTable('"0","0",""');
-
-    expect(rows).toEqual([{ pid: 0, ppid: 0, commandLine: "" }]);
-  });
-
-  it("reads nothing from empty output", () => {
-    expect(parseCimCsvTable("")).toEqual([]);
-  });
-});
-
-describe("parseWmicTable", () => {
-  it("parses a multi-row wmic whitespace table", () => {
-    const rows = parseWmicTable(
-      [
-        "ProcessId  ParentProcessId  CommandLine",
-        "4242       900              C:\\Program Files\\OpenModelica\\bin\\omc.exe --interactive=zmq -z=mw_abc",
-        "900        1                C:\\Windows\\System32\\services.exe",
-        "",
-        "",
-      ].join("\r\n"),
-    );
-
-    expect(rows).toEqual([
-      {
-        pid: 4242,
-        ppid: 900,
-        commandLine:
-          "C:\\Program Files\\OpenModelica\\bin\\omc.exe --interactive=zmq -z=mw_abc",
-      },
-      { pid: 900, ppid: 1, commandLine: "C:\\Windows\\System32\\services.exe" },
-    ]);
-  });
-
-  it("skips rows with no command and header-ish noise", () => {
-    const rows = parseWmicTable(
-      ["ProcessId  ParentProcessId  CommandLine", "4242       900", ""].join(
-        "\r\n",
-      ),
+  it("skips pid-0 rows (System Idle Process)", () => {
+    const rows = parseCimJsonTable(
+      JSON.stringify([{ ProcessId: 0, ParentProcessId: 0, CommandLine: "" }]),
     );
 
     expect(rows).toEqual([]);
   });
 
+  it("reads nothing from a non-array top-level value", () => {
+    expect(
+      parseCimJsonTable(
+        JSON.stringify({
+          ProcessId: 4242,
+          ParentProcessId: 900,
+          CommandLine: "omc.exe",
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("reads nothing from malformed JSON", () => {
+    expect(parseCimJsonTable("{not json")).toEqual([]);
+  });
+
   it("reads nothing from empty output", () => {
-    expect(parseWmicTable("")).toEqual([]);
+    expect(parseCimJsonTable("")).toEqual([]);
   });
 });
 
-describe("commandLineFromRows / findByCommandLineFromRows / parentPidFromRows", () => {
-  const rows = [
-    {
-      pid: 4242,
-      ppid: 900,
-      commandLine: "omc.exe --interactive=zmq -z=mw_abc",
-    },
-    { pid: 900, ppid: 1, commandLine: "C:\\Windows\\System32\\services.exe" },
-  ];
+describe("nonEmpty", () => {
+  it("passes a non-empty table through unchanged", () => {
+    const rows = [{ pid: 4242, ppid: 900, commandLine: "omc.exe" }];
 
-  it("finds a command line by pid", () => {
-    expect(commandLineFromRows(rows, 4242)).toBe(
-      "omc.exe --interactive=zmq -z=mw_abc",
-    );
-    expect(commandLineFromRows(rows, 12345)).toBe(undefined);
+    expect(nonEmpty(rows)).toBe(rows);
   });
 
-  it("finds pids whose command line contains a fragment", () => {
-    expect(findByCommandLineFromRows(rows, "-z=mw_abc")).toEqual([4242]);
-    expect(findByCommandLineFromRows(rows, "-z=nope")).toEqual([]);
-  });
-
-  it("finds a parent pid by pid", () => {
-    expect(parentPidFromRows(rows, 4242)).toBe(900);
-    expect(parentPidFromRows(rows, 12345)).toBe(undefined);
-  });
-
-  it("degrades to undefined when the process table could not be enumerated", () => {
-    expect(commandLineFromRows(undefined, 4242)).toBe(undefined);
-    expect(findByCommandLineFromRows(undefined, "-z=mw_abc")).toBe(undefined);
-    expect(parentPidFromRows(undefined, 4242)).toBe(undefined);
+  it("turns an empty table into undefined, since no real process table is ever empty", () => {
+    expect(nonEmpty([])).toBe(undefined);
   });
 });

@@ -2,8 +2,9 @@
  * The reaper's window onto the OS process table.
  *
  * Every method answers "cannot tell" as `undefined` rather than guessing, so
- * a platform without procfs and without `ps` degrades to leaving sessions
- * alone instead of signalling processes it has not identified.
+ * a platform without procfs and without `ps` — or, on win32, a host where
+ * CIM cannot be queried — degrades to leaving sessions alone instead of
+ * signalling processes it has not identified.
  */
 
 import { execFileSync } from "node:child_process";
@@ -22,7 +23,10 @@ export interface ProcessProbe {
    * Whether the process has outlived whatever spawned it. Adoption by init is
    * the signal; under a subreaper (`systemd --user`, a container supervisor)
    * an orphan keeps a live parent and reads as `false`, which degrades to
-   * sparing a session — never to signalling one.
+   * sparing a session — never to signalling one. Windows has no init to
+   * reparent to, so there the only signal is that the recorded parent pid is
+   * no longer running; a recycled pid still reads as live and spares the
+   * session the same way, by a different mechanism.
    */
   isOrphan(pid: number): boolean;
   kill(pid: number): void;
@@ -152,10 +156,26 @@ function readProc(path: string): string | undefined {
 }
 
 function ps(args: string[]): string | undefined {
+  return runCommand("ps", args);
+}
+
+/**
+ * `execFileSync` wrapped with this file's degradation contract: any failure
+ * — missing binary, non-zero exit, timeout, output past `maxBuffer` — comes
+ * back as `undefined` rather than throwing, so callers never have to guess
+ * which platform-probing command is safe to leave unguarded.
+ */
+function runCommand(
+  cmd: string,
+  args: string[],
+  opts: { timeout?: number; maxBuffer?: number } = {},
+): string | undefined {
   try {
-    return execFileSync("ps", args, {
+    return execFileSync(cmd, args, {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
+      ...opts,
     });
   } catch {
     return undefined;
@@ -170,50 +190,50 @@ export interface WinProcessRow {
 }
 
 function winCommandLine(pid: number): string | undefined {
-  return commandLineFromRows(winProcessTable(), pid);
+  const commandLine = winProcessTable()?.find(
+    (row) => row.pid === pid,
+  )?.commandLine;
+  // Mirrors procfsCommandLine: an empty command line reads as "could not be
+  // read" (e.g. CIM reporting `null` for a protected process), not as a real,
+  // empty value — otherwise identifyOmc treats it as a definite non-match.
+  return commandLine !== undefined && commandLine.length > 0
+    ? commandLine
+    : undefined;
 }
 
 function winFindByCommandLine(fragment: string): number[] | undefined {
-  return findByCommandLineFromRows(winProcessTable(), fragment);
-}
-
-function winParentPid(pid: number): number | undefined {
-  return parentPidFromRows(winProcessTable(), pid);
-}
-
-/** `undefined` rows means the process table could not be enumerated at all. */
-export function commandLineFromRows(
-  rows: WinProcessRow[] | undefined,
-  pid: number,
-): string | undefined {
-  return rows?.find((row) => row.pid === pid)?.commandLine;
-}
-
-export function findByCommandLineFromRows(
-  rows: WinProcessRow[] | undefined,
-  fragment: string,
-): number[] | undefined {
-  if (rows === undefined) return undefined;
-  return rows
-    .filter((row) => row.commandLine.includes(fragment))
+  return winProcessTable()
+    ?.filter((row) => row.commandLine.includes(fragment))
     .map((row) => row.pid);
 }
 
-export function parentPidFromRows(
-  rows: WinProcessRow[] | undefined,
-  pid: number,
-): number | undefined {
-  return rows?.find((row) => row.pid === pid)?.ppid;
+function winParentPid(pid: number): number | undefined {
+  return winProcessTable()?.find((row) => row.pid === pid)?.ppid;
 }
 
+const PROCESS_TABLE_CACHE_TTL_MS = 5_000;
+
+let processTableCache:
+  | { rows: WinProcessRow[] | undefined; expiresAt: number }
+  | undefined;
+
 /**
- * The whole process table in one shot, so `commandLine`/`findByCommandLine`/
- * `parentPid` each pay for at most one enumeration rather than shelling out
- * per pid. CIM is tried first; `wmic` is deprecated but still present on
- * older hosts CIM cmdlets may not be.
+ * The whole process table in one shot, cached for `PROCESS_TABLE_CACHE_TTL_MS`
+ * so `commandLine`/`findByCommandLine`/`parentPid` don't each shell out to
+ * `powershell.exe` per pid within the same reap sweep — that command runs
+ * synchronously and can cost hundreds of ms. Five seconds is far shorter than
+ * any realistic pid-recycling window, so a cached row is never stale enough
+ * to misidentify a process, and comfortably longer than one sweep, so it
+ * still collapses the repeated calls a single sweep makes.
  */
 function winProcessTable(): WinProcessRow[] | undefined {
-  return winProcessTableViaCim() ?? winProcessTableViaWmic();
+  const now = Date.now();
+  if (processTableCache !== undefined && now < processTableCache.expiresAt) {
+    return processTableCache.rows;
+  }
+  const rows = winProcessTableViaCim();
+  processTableCache = { rows, expiresAt: now + PROCESS_TABLE_CACHE_TTL_MS };
+  return rows;
 }
 
 function winProcessTableViaCim(): WinProcessRow[] | undefined {
@@ -221,126 +241,76 @@ function winProcessTableViaCim(): WinProcessRow[] | undefined {
     "-NoProfile",
     "-NonInteractive",
     "-Command",
-    "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Csv -NoTypeInformation",
+    "@(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine) | ConvertTo-Json -Compress",
   ]);
-  return out === undefined ? undefined : parseCimCsvTable(out);
-}
-
-function winProcessTableViaWmic(): WinProcessRow[] | undefined {
-  const out = wmic(["process", "get", "ProcessId,ParentProcessId,CommandLine"]);
-  return out === undefined ? undefined : parseWmicTable(out);
+  return out === undefined ? undefined : nonEmpty(parseCimJsonTable(out));
 }
 
 /**
- * Rows of `Get-CimInstance Win32_Process | ... | ConvertTo-Csv -NoTypeInformation`,
+ * No real Windows process table is ever empty — the querying process itself
+ * is always in it — so a zero-row parse (an unexpected locale header, a WMI
+ * hiccup, garbled output that still exits 0) means "could not enumerate",
+ * same as a failed `execFileSync`, not "the table has zero processes".
+ */
+export function nonEmpty(rows: WinProcessRow[]): WinProcessRow[] | undefined {
+  return rows.length > 0 ? rows : undefined;
+}
+
+interface CimProcessJson {
+  ProcessId: number;
+  ParentProcessId: number;
+  CommandLine: unknown;
+}
+
+function isCimProcess(value: unknown): value is CimProcessJson {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.ProcessId === "number" &&
+    typeof record.ParentProcessId === "number"
+  );
+}
+
+/**
+ * Rows of
+ * `@(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,CommandLine) | ConvertTo-Json -Compress`,
  * e.g.:
  *
  * ```
- * "ProcessId","ParentProcessId","CommandLine"
- * "4242","900","C:\Program Files\OpenModelica\bin\omc.exe --interactive=zmq -z=mw_abc"
+ * [{"ProcessId":4242,"ParentProcessId":900,"CommandLine":"C:\\Program Files\\OpenModelica\\bin\\omc.exe --interactive=zmq -z=mw_abc"}]
  * ```
  *
- * `-NoTypeInformation` drops the leading `#TYPE ...` line; the header row
- * above is skipped because "ProcessId" fails the pid/ppid integer parse.
+ * The `@(...)` wrapper makes `ConvertTo-Json` emit an array even for a single
+ * process, which it otherwise collapses to a bare object. `CommandLine` comes
+ * back `null` for some protected processes; that (and any non-string value)
+ * becomes `""` here — `winCommandLine` is what turns `""` into `undefined`.
  */
-export function parseCimCsvTable(out: string): WinProcessRow[] {
+export function parseCimJsonTable(out: string): WinProcessRow[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(out);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+
   const rows: WinProcessRow[] = [];
-  for (const line of out.split(/\r?\n/)) {
-    if (line.trim().length === 0) continue;
-    const fields = splitCsvLine(line);
-    const pid = Number.parseInt(fields[0] ?? "", 10);
-    const ppid = Number.parseInt(fields[1] ?? "", 10);
-    const commandLine = fields[2];
-    if (!Number.isInteger(pid) || !Number.isInteger(ppid)) continue;
-    if (commandLine === undefined) continue;
+  for (const entry of parsed) {
+    if (!isCimProcess(entry)) continue;
+    const { ProcessId: pid, ParentProcessId: ppid } = entry;
+    if (!Number.isInteger(pid) || !Number.isInteger(ppid) || pid <= 0) {
+      continue;
+    }
+    const commandLine =
+      typeof entry.CommandLine === "string" ? entry.CommandLine : "";
     rows.push({ pid, ppid, commandLine });
   }
   return rows;
 }
 
-/** One line of RFC-4180-ish CSV, handling `""`-escaped quotes within quoted fields. */
-function splitCsvLine(line: string): string[] {
-  const fields: string[] = [];
-  let field = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (inQuotes) {
-      if (ch === '"' && line[i + 1] === '"') {
-        field += '"';
-        i++;
-      } else if (ch === '"') {
-        inQuotes = false;
-      } else {
-        field += ch;
-      }
-    } else if (ch === '"') {
-      inQuotes = true;
-    } else if (ch === ",") {
-      fields.push(field);
-      field = "";
-    } else {
-      field += ch;
-    }
-  }
-  fields.push(field);
-  return fields;
-}
-
-/**
- * Rows of `wmic process get ProcessId,ParentProcessId,CommandLine`, a
- * whitespace-padded table rather than CSV, e.g.:
- *
- * ```
- * ProcessId  ParentProcessId  CommandLine
- * 4242       900              C:\Program Files\OpenModelica\bin\omc.exe --interactive=zmq -z=mw_abc
- * ```
- *
- * The two leading numeric fields can't contain whitespace, so — as with
- * `parsePsTable` — everything after them to end of line is the command,
- * spacing and all.
- */
-export function parseWmicTable(out: string): WinProcessRow[] {
-  const rows: WinProcessRow[] = [];
-  for (const line of out.split(/\r?\n/)) {
-    const fields = /^\s*(\d+)\s+(\d+)\s+(\S.*\S|\S)\s*$/.exec(line);
-    const rawPid = fields?.[1];
-    const rawPpid = fields?.[2];
-    const commandLine = fields?.[3];
-    if (
-      rawPid === undefined ||
-      rawPpid === undefined ||
-      commandLine === undefined
-    ) {
-      continue;
-    }
-    const pid = Number.parseInt(rawPid, 10);
-    const ppid = Number.parseInt(rawPpid, 10);
-    if (pid > 0) rows.push({ pid, ppid, commandLine });
-  }
-  return rows;
-}
-
 function powershell(args: string[]): string | undefined {
-  try {
-    return execFileSync("powershell.exe", args, {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      windowsHide: true,
-    });
-  } catch {
-    return undefined;
-  }
-}
-
-function wmic(args: string[]): string | undefined {
-  try {
-    return execFileSync("wmic", args, {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      windowsHide: true,
-    });
-  } catch {
-    return undefined;
-  }
+  return runCommand("powershell.exe", args, {
+    timeout: 5_000,
+    maxBuffer: 10 * 1024 * 1024,
+  });
 }
