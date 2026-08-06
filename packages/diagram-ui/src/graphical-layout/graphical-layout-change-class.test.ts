@@ -17,18 +17,11 @@ import type { DiagramLayout } from "@dicode/omc-client";
 
 import type { OmGraphicalLayout } from "./graphical-layout.component.js";
 import { mountLayout } from "../../test/harness/interaction-fixtures.js";
+import { emptyLayout } from "../../test/harness/layout-fixtures.js";
 
 function layoutWith(classRef: string): DiagramLayout {
   return {
-    kind: "diagram",
-    className: "Test",
-    source: {
-      filename: "Test.mo",
-      lineStart: 1,
-      columnStart: 1,
-      lineEnd: 1,
-      columnEnd: 1,
-    },
+    ...emptyLayout(),
     classes: {
       [classRef]: {
         name: classRef,
@@ -50,11 +43,6 @@ function layoutWith(classRef: string): DiagramLayout {
         },
       },
     },
-    connectors: {},
-    connections: [],
-    labels: [],
-    iconLayers: [],
-    diagramLayers: [],
   };
 }
 

@@ -3,15 +3,12 @@ import type { DiagramLayout } from "@dicode/omc-client";
 
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
 import { mountLayout } from "./harness/interaction-fixtures.js";
+import { emptyLayout } from "./harness/layout-fixtures.js";
 
 function tinyLayout(): DiagramLayout {
   return {
-    kind: "diagram",
+    ...emptyLayout(),
     className: "T",
-    source: { file: "T.mo", line: 1, column: 1 } as never,
-    iconLayers: [],
-    diagramLayers: [],
-    labels: [],
     classes: {
       "Test.Block": {
         name: "Test.Block",
@@ -33,8 +30,6 @@ function tinyLayout(): DiagramLayout {
         },
       },
     },
-    connectors: {},
-    connections: [],
   };
 }
 

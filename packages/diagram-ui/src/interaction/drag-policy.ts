@@ -31,7 +31,7 @@ import { snapDelta, snapPoint, type SnapGrid } from "./snap-math.js";
  * entity that started off-grid onto an intersection. A gesture that ends
  * without having moved (`dragCancel`) must therefore not reach the commit
  * path at all — running the mouse-up passes over an entity the user merely
- * clicked would edit it (issue #404).
+ * clicked would edit it.
  */
 
 /** Live connection drag, mirrored to the host for the port indicators. */
@@ -136,17 +136,12 @@ function resolveMove(d: DragEvents["drag"], ctx: DragContext): DragEffect[] {
     return draftOrCommit(d.draft, moved, { kind: "moving", keys: d.keys });
   }
   const moved = applyDeltaMove(ctx.layout, d.keys, dx, dy);
-  if (d.draft) {
-    return draftOrCommit(true, moved, { kind: "moving", keys: d.keys });
-  }
   // `snapDelta` only rounds the delta, so an entity that started off-grid
-  // would stay off-grid after any move. This pass pulls the final extent
-  // corners onto grid intersections, matching OMEdit's "Snap to Grid" on
-  // mouse-up.
-  return [
-    { kind: "commit", layout: applySnapToExtents(moved, d.keys, ctx.grid) },
-    { kind: "endInteraction" },
-  ];
+  // would stay off-grid after any move. This commit-only pass pulls the
+  // final extent corners onto grid intersections, matching OMEdit's
+  // "Snap to Grid" on mouse-up.
+  const snapped = d.draft ? moved : applySnapToExtents(moved, d.keys, ctx.grid);
+  return draftOrCommit(d.draft, snapped, { kind: "moving", keys: d.keys });
 }
 
 function resolveEdgeDrag(

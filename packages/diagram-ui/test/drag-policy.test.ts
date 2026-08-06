@@ -43,13 +43,16 @@ function kinds(list: DragEffect[]): string[] {
   return list.map((e) => e.kind);
 }
 
+function isLayoutEffect(
+  e: DragEffect,
+): e is Extract<DragEffect, { kind: "draft" | "commit" }> {
+  return e.kind === "draft" || e.kind === "commit";
+}
+
 /** The single layout an effect list drafts or commits. */
 function layoutOf(list: DragEffect[]): DiagramLayout {
-  const found = list.find((e) => e.kind === "draft" || e.kind === "commit");
-  if (
-    found === undefined ||
-    (found.kind !== "draft" && found.kind !== "commit")
-  ) {
+  const found = list.find(isLayoutEffect);
+  if (found === undefined) {
     throw new Error(`no draft / commit effect in [${kinds(list).join(", ")}]`);
   }
   return found.layout;
