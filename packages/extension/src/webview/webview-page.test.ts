@@ -5,9 +5,8 @@
  * title is HTML-escaped, and that each entry's bundle URL and stylesheet-link
  * decision stay in sync with the facts they claim: the bundle name against
  * `esbuild.config.mjs`'s own `outfile`s, the stylesheet decision against
- * whether that entry's `*-entry.ts` actually imports `webawesome-setup`.
- * Either drifting should fail a test rather than boot a blank or 404'd
- * webview.
+ * whether that entry's `*-entry.ts` itself imports any CSS. Either drifting
+ * should fail a test rather than boot a blank or 404'd webview.
  *
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
@@ -125,14 +124,17 @@ describe("WebviewEntry naming", () => {
     expect(new Set(bundles)).toEqual(new Set(outfiles));
   });
 
-  it("links a stylesheet exactly for the entries whose *-entry.ts imports webawesome-setup", () => {
+  it("links a stylesheet exactly for the entries whose own source imports CSS", () => {
     for (const entry of ALL_WEBVIEW_ENTRIES) {
       const entryPath = fileURLToPath(
         new URL(`./${entry}-entry.ts`, import.meta.url),
       );
       const source = readFileSync(entryPath, "utf8");
-      const importsWebawesomeSetup = source.includes(
-        "@dicode/ui-common/webawesome-setup",
+      // Today that's always `webawesome-setup`'s own `import "*.css"`, but a
+      // direct `.css` import would make esbuild collect one too — check for
+      // either, not just the one specifier that happens to exist right now.
+      const importsCss = /^import ".*(?:webawesome-setup|\.css)";$/m.test(
+        source,
       );
       const html = renderWebviewPage({
         webview: fakeWebview(),
@@ -141,7 +143,7 @@ describe("WebviewEntry naming", () => {
         title: "Foo",
         root: "<x></x>",
       });
-      expect(html.includes("<link")).toBe(importsWebawesomeSetup);
+      expect(html.includes("<link")).toBe(importsCss);
     }
   });
 });

@@ -22,12 +22,12 @@ export const ALL_WEBVIEW_ENTRIES: readonly WebviewEntry[] = [
 ];
 
 /**
- * Entries whose `<entry>-entry.ts` imports `@dicode/ui-common/webawesome-setup`
- * — the only `import "*.css"` any entry currently pulls in, which is what
- * makes esbuild collect a sibling `out/<entry>.css`. `webview-page.test.ts`
- * checks each entry file for that import as a proxy for the actual build
- * output; a *different* CSS import landing in an entry's tree would need
- * both this set and that check updated by hand.
+ * Entries whose `<entry>-entry.ts` itself imports CSS — directly, or (the
+ * only case today) via `@dicode/ui-common/webawesome-setup`'s own
+ * `import "*.css"` — which is what makes esbuild collect a sibling
+ * `out/<entry>.css`. `webview-page.test.ts` checks each entry file's own
+ * source for either import shape as a proxy for the actual build output;
+ * CSS reaching the bundle through some other path wouldn't be seen.
  */
 const STYLESHEET_ENTRIES: ReadonlySet<WebviewEntry> = new Set([
   "webview",
@@ -40,7 +40,9 @@ function randomNonce(): string {
   const chars =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   for (let i = 0; i < 32; i++) {
-    s += chars[Math.floor(Math.random() * chars.length)];
+    // charAt (unlike indexing) returns "" rather than string | undefined
+    // out of range, so no noUncheckedIndexedAccess narrowing is needed here.
+    s += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return s;
 }
