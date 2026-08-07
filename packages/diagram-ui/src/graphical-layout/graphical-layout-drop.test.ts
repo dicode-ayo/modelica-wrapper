@@ -10,42 +10,18 @@
  * events are synthesised from a plain stub.
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { DiagramLayout } from "@dicode/omc-client";
+import { describe, expect, it, vi } from "vitest";
 
-import "./graphical-layout.component.js";
 import type { OmGraphicalLayout } from "./graphical-layout.component.js";
+import {
+  mountLayout,
+  stubSceneProjection,
+} from "../../test/harness/interaction-fixtures.js";
 import type { AddComponentRequestDetail } from "./layout-events.js";
 import {
   LIBRARY_TREE_DRAG_FORMAT,
   serializeLibraryDrag,
 } from "../library-tree/library-drag.js";
-
-const teardowns: Array<() => void> = [];
-afterEach(() => {
-  for (const t of teardowns.splice(0)) t();
-});
-
-function emptyLayout(): DiagramLayout {
-  return {
-    kind: "diagram",
-    className: "Test",
-    source: {
-      filename: "Test.mo",
-      lineStart: 1,
-      columnStart: 1,
-      lineEnd: 1,
-      columnEnd: 1,
-    },
-    classes: {},
-    components: {},
-    connectors: {},
-    connections: [],
-    labels: [],
-    iconLayers: [],
-    diagramLayers: [],
-  };
-}
 
 /** Minimal `DataTransfer` — happy-dom's constructor doesn't ride a synthetic
  *  `DragEvent`, so drops carry this stub instead. */
@@ -93,22 +69,10 @@ async function mount(readonly = false): Promise<{
   scene: HTMLElement;
   clientToDiagram: ReturnType<typeof vi.fn>;
 }> {
-  const el = document.createElement("om-graphical-layout") as OmGraphicalLayout;
-  // Null renderer → no WebGL; disable snapping so the emitted position is the
-  // raw `clientToDiagram` output, isolating the drop wiring from grid snap.
-  el.rendererFactory = () => null;
-  el.gridSnap = [0, 0];
-  el.readonly = readonly;
-  el.layout = emptyLayout();
-  document.body.appendChild(el);
-  teardowns.push(() => el.remove());
-  await el.updateComplete;
-
-  const scene = el.shadowRoot?.querySelector("om-scene");
-  if (!(scene instanceof HTMLElement)) throw new Error("om-scene not rendered");
-  const clientToDiagram = vi.fn(() => ({ x: 30, y: 40 }));
-  (scene as unknown as { clientToDiagram: unknown }).clientToDiagram =
-    clientToDiagram;
+  // Snapping off so the emitted position is the raw `clientToDiagram`
+  // output, isolating the drop wiring from grid snap.
+  const el = await mountLayout({ readonly, gridSnap: [0, 0] });
+  const { scene, clientToDiagram } = stubSceneProjection(el, { x: 30, y: 40 });
   return { el, scene, clientToDiagram };
 }
 

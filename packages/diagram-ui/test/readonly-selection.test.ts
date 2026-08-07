@@ -4,10 +4,10 @@ import type { DiagramLayout } from "@dicode/omc-client";
 import type { PickerFn } from "../src/interaction/interaction-manager.js";
 import {
   componentNode,
-  emptyLayout,
   mountLayout,
   sceneCanvas,
 } from "./harness/interaction-fixtures.js";
+import { emptyLayout } from "./harness/layout-fixtures.js";
 
 /**
  * A read-only class still has to be selectable: copying a sub-system out of a

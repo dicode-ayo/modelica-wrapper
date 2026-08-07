@@ -1,7 +1,7 @@
 import type { Extent } from "@dicode/omc-client";
 
 import type { DiagramPoint } from "./gesture-mode.js";
-import { buildExtentShape } from "./layout-ops.js";
+import { buildExtentShape } from "./shape-build.js";
 import { snapExtent, type SnapGrid } from "./snap-math.js";
 import type { ToolEmit, ToolMode } from "./tool-mode.js";
 import type { ExtentKind } from "./tools.js";

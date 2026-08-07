@@ -1,5 +1,4 @@
 import type {
-  Color,
   ConnectionEndpoint,
   ConnectionLayout,
   DiagramLayout,
@@ -10,25 +9,39 @@ import type {
   Shape,
 } from "@dicode/omc-client";
 
+import { placementCentre } from "../base/placement-math.js";
 import { formatShapeKey, parseKey, type EntityKey } from "./entity-keys.js";
-import { orthogonalRoute, pointsEqual } from "./connection-route.js";
+import {
+  isPolyShape,
+  ownLayer,
+  replaceOwnShapes,
+  updateOwnShapes,
+} from "./own-layer.js";
+import {
+  orthogonalRoute,
+  pointsEqual,
+  projectOntoSegment,
+} from "./connection-route.js";
+import { reshapeAroundWaypoint } from "./route-ops.js";
 import {
   snapExtent,
   snapPlacement,
   snapPoint,
   type SnapGrid,
 } from "./snap-math.js";
-import { POLY_MIN_VERTICES, type ExtentKind, type PolyKind } from "./tools.js";
+import { POLY_MIN_VERTICES } from "./tools.js";
 
 /**
- * Pure layout mutations. Each function takes a `DiagramLayout` and
- * returns a *new* `DiagramLayout` — the caller is responsible for
- * propagating the result. Mirrors dyad-ui's `layout-ops.ts` pattern
- * but operates on the omc-client `DiagramLayout` shape.
+ * Pure layout mutations. Each function takes a `DiagramLayout` and returns
+ * a *new* one, or the same reference when the edit changes nothing — the
+ * caller propagates the result.
  *
- * The mutations are intentionally permissive: unknown keys are
- * ignored, never throw. Higher layers (host element, undo stack)
- * decide what to do with stale references.
+ * The mutations are permissive: a key naming an entity the layout doesn't
+ * have is ignored rather than thrown on, since an entity key can outlive
+ * the entity it names across a refetch.
+ *
+ * Route editing lives in `route-ops`, selection derivation in
+ * `selection-ops`, and the gesture-to-mutation policy in `drag-policy`.
  */
 
 interface JunctionRef {
@@ -148,72 +161,6 @@ function dragCorner(
 // A `shape:<kind>:<index>` key addresses one by its index there. Unlike
 // components/connectors, no connection terminates on a host shape, so
 // these ops never re-anchor.
-
-/** Line / Polygon carry `points`; the other primitives carry an `extent`. */
-function isPolyShape(
-  s: Shape,
-): s is Extract<Shape, { kind: "line" | "polygon" }> {
-  return s.kind === "line" || s.kind === "polygon";
-}
-
-/** The host's own editable layer, or `null` when it has no own graphics. */
-function ownLayer(layout: DiagramLayout): {
-  field: "iconLayers" | "diagramLayers";
-  index: number;
-  shapes: Shape[];
-} | null {
-  const field = layout.kind === "icon" ? "iconLayers" : "diagramLayers";
-  const layers = layout[field];
-  const index = layers.findIndex((l) => l.from === layout.className);
-  const own = index < 0 ? undefined : layers[index];
-  return own ? { field, index, shapes: own.shapes } : null;
-}
-
-function replaceOwnShapes(
-  layout: DiagramLayout,
-  field: "iconLayers" | "diagramLayers",
-  layerIndex: number,
-  shapes: Shape[],
-): DiagramLayout {
-  const layers = layout[field].map((l, i) =>
-    i === layerIndex ? { ...l, shapes } : l,
-  );
-  return { ...layout, [field]: layers };
-}
-
-/**
- * Replaces each own-layer shape in `indices` via `fn`. A `fn` returning
- * `null` (or the same reference) leaves that shape untouched; the whole
- * call returns the same `layout` reference when nothing changed.
- */
-function updateOwnShapes(
-  layout: DiagramLayout,
-  indices: ReadonlySet<number>,
-  fn: (shape: Shape) => Shape | null,
-): DiagramLayout {
-  if (indices.size === 0) {
-    return layout;
-  }
-  const own = ownLayer(layout);
-  if (!own) {
-    return layout;
-  }
-  let mutated = false;
-  const shapes = own.shapes.map((s, i) => {
-    if (!indices.has(i)) {
-      return s;
-    }
-    const next = fn(s);
-    if (next && next !== s) {
-      mutated = true;
-      return next;
-    }
-    return s;
-  });
-  return mutated
-    ? replaceOwnShapes(layout, own.field, own.index, shapes)
-    : layout;
-}
 
 /** Translates a shape by (dx, dy): poly shapes move every vertex; extent
  *  shapes move their extent, or — when rotated — their `origin`, since the
@@ -431,9 +378,8 @@ export function applyDeltaMove(
       if (wpIdxs && wpIdxs.size === 1) {
         const [idx] = wpIdxs;
         if (idx === undefined) return conn;
-        const candidate = waypointsWithJog(conn.waypoints, idx, dx, dy);
-        if (candidate !== null) {
-          const waypoints = simplifyOrthogonalPath(candidate);
+        const waypoints = reshapeAroundWaypoint(conn.waypoints, idx, dx, dy);
+        if (waypoints !== null) {
           if (!pointsEqual(waypoints, conn.waypoints)) {
             connsMutated = true;
             return { ...conn, waypoints };
@@ -990,17 +936,6 @@ function scaleAbout(
 }
 
 /**
- * Re-anchors the endpoints of every connection terminating on a
- * transformed shape, then re-routes that connection orthogonally
- * between its (possibly new) endpoints. `componentXf` / `connectorXf`
- * map an affected shape id to the transform its rigid points undergo.
- *
- * Re-routing discards any user-placed internal junctions on an affected
- * connection — the same trade-off `applyDeltaMove` makes when only one
- * endpoint moves; the alternative (rigidly carrying junctions) would
- * tilt segments off-axis once an endpoint rotates or scales.
- */
-/**
  * The transforms to apply to a connection's lhs / rhs endpoints, resolved from
  * the per-entity frame-change maps. A port sits on a sub-component
  * (`endpoint.component`) or a standalone connector (`endpoint.port`); `undefined`
@@ -1018,6 +953,17 @@ function endpointTransforms(
   return { lhsXf: resolve(conn.lhs), rhsXf: resolve(conn.rhs) };
 }
 
+/**
+ * Re-anchors the endpoints of every connection terminating on a
+ * transformed shape, then re-routes that connection orthogonally
+ * between its (possibly new) endpoints. `componentXf` / `connectorXf`
+ * map an affected shape id to the transform its rigid points undergo.
+ *
+ * Re-routing discards any user-placed internal junctions on an affected
+ * connection — the same trade-off `applyDeltaMove` makes when only one
+ * endpoint moves; the alternative (rigidly carrying junctions) would
+ * tilt segments off-axis once an endpoint rotates or scales.
+ */
 function reanchorConnections(
   layout: DiagramLayout,
   componentXf: Map<string, PointXf>,
@@ -1078,41 +1024,6 @@ export function shapeCentre(layout: DiagramLayout, key: string): Point | null {
   return null;
 }
 
-/**
- * Filters `keys` down to those still backed by an entity in `layout`:
- * a component / connector by id, or a host shape by its own-layer
- * `(kind, index)`. Selection survives an in-place edit (move / rotate /
- * resize echoed back from the host) but drops anything the layout no
- * longer contains. Edge / junction keys, whose indices can shift on
- * relayout, are not retained.
- */
-export function retainExistingSelection(
-  layout: DiagramLayout,
-  keys: Iterable<string>,
-): Set<string> {
-  const out = new Set<string>();
-  for (const k of keys) {
-    const parsed = parseKey(k);
-    if (!parsed) continue;
-    if (parsed.kind === "component" && layout.components[parsed.nodeId]) {
-      out.add(k);
-    } else if (
-      parsed.kind === "connector" &&
-      layout.connectors[parsed.nodeId]
-    ) {
-      out.add(k);
-    } else if (parsed.kind === "shape") {
-      // Positional re-key: keep the selection only if the same own-layer
-      // index still holds a shape of the same kind after a refetch.
-      const own = ownLayer(layout);
-      if (own?.shapes[parsed.index]?.kind === parsed.shapeKind) {
-        out.add(k);
-      }
-    }
-  }
-  return out;
-}
-
 /** Deletes the entities under `keys` from the layout. */
 export function applyDelete(
   layout: DiagramLayout,
@@ -1157,375 +1068,6 @@ export function applyDelete(
   return shapes.length === own.shapes.length
     ? base
     : replaceOwnShapes(base, own.field, own.index, shapes);
-}
-
-/**
- * Inserts a new waypoint into a connection's route at the point on the
- * polyline closest to `point`. The waypoint lands between the two
- * existing waypoints whose segment owns the projection, so the route's
- * order stays consistent and the new corner sits on the line the user
- * grabbed.
- *
- * Endpoints are never displaced — the insert index is clamped to
- * `[1, length-1]`, i.e. strictly internal. A connection with fewer
- * than two waypoints has no segment to split and is returned unchanged.
- */
-export function applyWaypointInsert(
-  layout: DiagramLayout,
-  connIdx: number,
-  point: { x: number; y: number },
-): DiagramLayout {
-  const conn = layout.connections[connIdx];
-  if (!conn || conn.waypoints.length < 2) {
-    return layout;
-  }
-  const insertAt = closestSegmentInsertIndex(conn.waypoints, point);
-  const before = conn.waypoints[insertAt - 1];
-  const after = conn.waypoints[insertAt];
-  if (before === undefined || after === undefined) {
-    return layout;
-  }
-  const proj = projectOntoSegment(before, after, point);
-  const waypoints = [
-    ...conn.waypoints.slice(0, insertAt),
-    proj,
-    ...conn.waypoints.slice(insertAt),
-  ];
-  return replaceConnection(layout, connIdx, { ...conn, waypoints });
-}
-
-/**
- * Removes a single internal waypoint from a connection. Endpoint
- * waypoints (index 0 and the last) anchor to their connectors and are
- * never removed; an out-of-range or endpoint index returns the layout
- * unchanged.
- */
-export function applyWaypointDelete(
-  layout: DiagramLayout,
-  connIdx: number,
-  waypointIdx: number,
-): DiagramLayout {
-  const conn = layout.connections[connIdx];
-  if (!conn) {
-    return layout;
-  }
-  const lastIdx = conn.waypoints.length - 1;
-  if (waypointIdx <= 0 || waypointIdx >= lastIdx) {
-    return layout;
-  }
-  const waypoints = conn.waypoints.filter((_, i) => i !== waypointIdx);
-  return replaceConnection(layout, connIdx, { ...conn, waypoints });
-}
-
-/**
- * Drags the connection segment nearest `grab` to follow the pointer,
- * keeping the route orthogonal (Manhattan): a horizontal segment moves
- * only vertically, a vertical one only horizontally — the parallel-axis
- * delta is ignored. When the grabbed segment touches an anchored
- * endpoint (`waypoints[0]` or the last waypoint), a perpendicular jog
- * waypoint is inserted so the endpoint stays pinned to its connector.
- * Coincident / collinear waypoints the drag produces are collapsed, so
- * repeated drags don't accumulate cruft.
- *
- * Returns the same layout reference when there's nothing to move (zero
- * delta, an unknown connection, fewer than two waypoints, or a result
- * identical to the input) so `commitLayout` can skip the change event.
- */
-export function applyEdgeSegmentDrag(
-  layout: DiagramLayout,
-  connIdx: number,
-  grab: { x: number; y: number },
-  dx: number,
-  dy: number,
-): DiagramLayout {
-  if (dx === 0 && dy === 0) {
-    return layout;
-  }
-  const conn = layout.connections[connIdx];
-  if (!conn || conn.waypoints.length < 2) {
-    return layout;
-  }
-  const wps = conn.waypoints;
-  const seg = closestSegmentIndex(wps, grab);
-  const a = wps[seg];
-  const b = wps[seg + 1];
-  if (a === undefined || b === undefined) {
-    return layout;
-  }
-  // Coincident endpoints have no defined axis; no drag is possible.
-  if (a[0] === b[0] && a[1] === b[1]) {
-    return layout;
-  }
-  const lastIdx = wps.length - 1;
-  const horizontal = segmentAxis(a, b) === "h";
-
-  let p: Point;
-  let q: Point;
-  if (horizontal) {
-    const y = a[1] + dy;
-    p = [a[0], y];
-    q = [b[0], y];
-  } else {
-    const x = a[0] + dx;
-    p = [x, a[1]];
-    q = [x, b[1]];
-  }
-
-  // The grabbed endpoints become `p`/`q`. Each seam to a neighbour is
-  // reconnected through an orthogonal jog (a coincident / collinear one
-  // is collapsed by `simplifyOrthogonalPath`, so an already-aligned
-  // neighbour costs nothing). At a terminal segment the neighbour is the
-  // anchor itself, which the perpendicular move already meets squarely.
-  let left: Point[];
-  if (seg === 0) {
-    left = [[a[0], a[1]]];
-  } else {
-    const prevNb = wps[seg - 1];
-    if (prevNb === undefined) {
-      return layout;
-    }
-    left = [
-      ...wps.slice(0, seg),
-      jogFromStart(prevNb, p, segmentAxis(prevNb, a)),
-    ];
-  }
-  let right: Point[];
-  if (seg + 1 === lastIdx) {
-    right = [[b[0], b[1]]];
-  } else {
-    const nextNb = wps[seg + 2];
-    if (nextNb === undefined) {
-      return layout;
-    }
-    right = [
-      jogToEnd(q, nextNb, segmentAxis(b, nextNb)),
-      ...wps.slice(seg + 2),
-    ];
-  }
-
-  return commitReshape(layout, connIdx, conn, [...left, p, q, ...right]);
-}
-
-function waypointsWithJog(
-  waypoints: ReadonlyArray<Point>,
-  idx: number,
-  dx: number,
-  dy: number,
-): Point[] | null {
-  const lastIdx = waypoints.length - 1;
-  if (idx <= 0 || idx >= lastIdx) return null;
-  const prev = waypoints[idx - 1];
-  const curr = waypoints[idx];
-  const next = waypoints[idx + 1];
-  if (prev === undefined || curr === undefined || next === undefined)
-    return null;
-  const moved: Point = [curr[0] + dx, curr[1] + dy];
-  const inJog = jogFromStart(prev, moved, segmentAxis(prev, curr));
-  const outJog = jogToEnd(moved, next, segmentAxis(curr, next));
-  return [
-    ...waypoints.slice(0, idx - 1),
-    prev,
-    inJog,
-    moved,
-    outJog,
-    next,
-    ...waypoints.slice(idx + 2),
-  ];
-}
-
-/**
- * Drags a single internal waypoint, keeping the route orthogonal: each
- * adjacent segment is reconnected to its fixed neighbour through a
- * perpendicular jog (inserted only when the neighbour doesn't already
- * line up — `simplifyOrthogonalPath` drops the redundant ones). Endpoint
- * waypoints anchor to their connectors and aren't draggable.
- *
- * Returns the same layout reference when there's nothing to move (zero
- * delta, an unknown connection, an endpoint / out-of-range index, or a
- * result identical to the input).
- */
-export function applyWaypointDrag(
-  layout: DiagramLayout,
-  connIdx: number,
-  waypointIdx: number,
-  dx: number,
-  dy: number,
-): DiagramLayout {
-  if (dx === 0 && dy === 0) {
-    return layout;
-  }
-  const conn = layout.connections[connIdx];
-  if (!conn) {
-    return layout;
-  }
-  const candidate = waypointsWithJog(conn.waypoints, waypointIdx, dx, dy);
-  if (candidate === null) {
-    return layout;
-  }
-  return commitReshape(layout, connIdx, conn, candidate);
-}
-
-/**
- * Simplify `candidate` into a clean orthogonal route and store it on
- * `connIdx`. Returns the original `layout` reference when the result is
- * identical to the connection's current waypoints, so `commitLayout`
- * can skip the change event.
- */
-function commitReshape(
-  layout: DiagramLayout,
-  connIdx: number,
-  conn: DiagramLayout["connections"][number],
-  candidate: Point[],
-): DiagramLayout {
-  const waypoints = simplifyOrthogonalPath(candidate);
-  if (pointsEqual(waypoints, conn.waypoints)) {
-    return layout;
-  }
-  return replaceConnection(layout, connIdx, { ...conn, waypoints });
-}
-
-type Axis = "h" | "v";
-
-/** Dominant orientation of segment `a`–`b`: horizontal when its x-run is
- *  at least its y-run, vertical otherwise. */
-function segmentAxis(a: Point, b: Point): Axis {
-  return Math.abs(b[0] - a[0]) >= Math.abs(b[1] - a[1]) ? "h" : "v";
-}
-
-/** Corner that lets the segment leaving `from` run along `axis` before
- *  turning perpendicular to reach `to`. */
-function jogFromStart(from: Point, to: Point, axis: Axis): Point {
-  return axis === "h" ? [to[0], from[1]] : [from[0], to[1]];
-}
-
-/** Corner that lets the segment arriving at `to` run along `axis`, having
- *  turned from `from`. */
-function jogToEnd(from: Point, to: Point, axis: Axis): Point {
-  return axis === "h" ? [from[0], to[1]] : [to[0], from[1]];
-}
-
-/** Index of the segment (`waypoints[i]`–`waypoints[i+1]`) whose nearest
- *  point to `point` is closest. Always in `[0, length-2]`. */
-function closestSegmentIndex(
-  waypoints: ReadonlyArray<Point>,
-  point: { x: number; y: number },
-): number {
-  let best = 0;
-  let bestDist = Infinity;
-  for (let i = 0; i < waypoints.length - 1; i++) {
-    const a = waypoints[i];
-    const b = waypoints[i + 1];
-    if (a === undefined || b === undefined) {
-      continue;
-    }
-    const proj = projectOntoSegment(a, b, point);
-    const dx = proj[0] - point.x;
-    const dy = proj[1] - point.y;
-    const dist = dx * dx + dy * dy;
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = i;
-    }
-  }
-  return best;
-}
-
-/**
- * Collapse a waypoint list: drop coincident points, then drop any
- * middle point collinear (sharing an x or a y) with its neighbours. The
- * first and last waypoints — the connector anchors — are always kept.
- */
-function simplifyOrthogonalPath(points: Point[]): Point[] {
-  const dedup: Point[] = [];
-  for (const p of points) {
-    const prev = dedup.at(-1);
-    if (prev && prev[0] === p[0] && prev[1] === p[1]) {
-      continue;
-    }
-    dedup.push(p);
-  }
-  if (dedup.length <= 2) {
-    return dedup;
-  }
-  const first = dedup[0];
-  const last = dedup.at(-1);
-  if (first === undefined || last === undefined) {
-    return dedup;
-  }
-  const out: Point[] = [first];
-  for (let i = 1; i < dedup.length - 1; i++) {
-    const b = dedup[i];
-    const c = dedup[i + 1];
-    const a = out.at(-1);
-    if (a === undefined || b === undefined || c === undefined) {
-      continue;
-    }
-    const collinearX = a[0] === b[0] && b[0] === c[0];
-    const collinearY = a[1] === b[1] && b[1] === c[1];
-    if (collinearX || collinearY) {
-      continue;
-    }
-    out.push(b);
-  }
-  out.push(last);
-  return out;
-}
-
-function replaceConnection(
-  layout: DiagramLayout,
-  connIdx: number,
-  conn: DiagramLayout["connections"][number],
-): DiagramLayout {
-  const connections = layout.connections.map((c, i) =>
-    i === connIdx ? conn : c,
-  );
-  return { ...layout, connections };
-}
-
-/**
- * Index `i` such that the new waypoint belongs between `waypoints[i-1]`
- * and `waypoints[i]` — the segment whose projection of `point` is
- * nearest. Always in `[1, length-1]`, so endpoints aren't displaced.
- */
-function closestSegmentInsertIndex(
-  waypoints: ReadonlyArray<Point>,
-  point: { x: number; y: number },
-): number {
-  let best = 1;
-  let bestDist = Infinity;
-  for (let i = 1; i < waypoints.length; i++) {
-    const a = waypoints[i - 1];
-    const b = waypoints[i];
-    if (a === undefined || b === undefined) {
-      continue;
-    }
-    const proj = projectOntoSegment(a, b, point);
-    const dx = proj[0] - point.x;
-    const dy = proj[1] - point.y;
-    const dist = dx * dx + dy * dy;
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = i;
-    }
-  }
-  return best;
-}
-
-/** Closest point to `p` on the segment `a`–`b`, clamped to the segment. */
-function projectOntoSegment(
-  a: Point,
-  b: Point,
-  p: { x: number; y: number },
-): Point {
-  const abx = b[0] - a[0];
-  const aby = b[1] - a[1];
-  const lenSq = abx * abx + aby * aby;
-  if (lenSq === 0) {
-    return [a[0], a[1]];
-  }
-  const t = ((p.x - a[0]) * abx + (p.y - a[1]) * aby) / lenSq;
-  const clamped = Math.max(0, Math.min(1, t));
-  return [a[0] + clamped * abx, a[1] + clamped * aby];
 }
 
 /**
@@ -1627,178 +1169,6 @@ function forEachShape(
     mutated = true;
   }
   return mutated ? { ...layout, components, connectors } : layout;
-}
-
-/** A diagram-coord-space rectangle used by rubber-band selection. */
-export interface DiagramRect {
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-}
-
-/** Normalises so x1<=x2 and y1<=y2. */
-export function normaliseRect(r: DiagramRect): DiagramRect {
-  return {
-    x1: Math.min(r.x1, r.x2),
-    x2: Math.max(r.x1, r.x2),
-    y1: Math.min(r.y1, r.y2),
-    y2: Math.max(r.y1, r.y2),
-  };
-}
-
-function placementCentre(p: Placement): Point {
-  const [[x1, y1], [x2, y2]] = p.extent;
-  const ox = p.origin?.[0] ?? 0;
-  const oy = p.origin?.[1] ?? 0;
-  return [ox + (x1 + x2) / 2, oy + (y1 + y2) / 2];
-}
-
-/** Axis-aligned bounds of local `points` placed at `pivot` and rotated about
- *  it by `deg`. */
-function boundsOf(
-  points: readonly Point[],
-  pivot: Point,
-  deg: number,
-): DiagramRect {
-  const rad = (deg * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  const xs: number[] = [];
-  const ys: number[] = [];
-  for (const [x, y] of points) {
-    xs.push(pivot[0] + x * cos - y * sin);
-    ys.push(pivot[1] + x * sin + y * cos);
-  }
-  return {
-    x1: Math.min(...xs),
-    y1: Math.min(...ys),
-    x2: Math.max(...xs),
-    y2: Math.max(...ys),
-  };
-}
-
-function cornersOf(extent: Extent): Point[] {
-  const [[x1, y1], [x2, y2]] = extent;
-  return [
-    [x1, y1],
-    [x2, y1],
-    [x2, y2],
-    [x1, y2],
-  ];
-}
-
-/**
- * A placement rotates about its extent centre, not its origin — that is where
- * `applyPlacement` anchors the transform node and where `applyRotation`
- * re-anchors connections. Pivoting at the origin instead puts an off-centre
- * extent, which is what a boundary connector has, on the wrong side of the
- * diagram.
- */
-function placementBounds(p: Placement): DiagramRect {
-  const [[x1, y1], [x2, y2]] = p.extent;
-  const halfW = (x2 - x1) / 2;
-  const halfH = (y2 - y1) / 2;
-  return boundsOf(
-    [
-      [-halfW, -halfH],
-      [halfW, -halfH],
-      [halfW, halfH],
-      [-halfW, halfH],
-    ],
-    placementCentre(p),
-    p.rotation ?? 0,
-  );
-}
-
-/** A host shape sits at its `origin` and rotates about it, per
- *  `setDiagramBounds`. A poly is bounded by its points, not its stroke path,
- *  so a band clipping only the drawn width of a line misses it. */
-function shapeBoundsOf(s: Shape): DiagramRect {
-  const origin: Point = [s.origin?.[0] ?? 0, s.origin?.[1] ?? 0];
-  if (isPolyShape(s)) {
-    return s.points.length === 0
-      ? { x1: origin[0], y1: origin[1], x2: origin[0], y2: origin[1] }
-      : boundsOf(s.points, origin, s.rotation ?? 0);
-  }
-  return boundsOf(cornersOf(s.extent), origin, s.rotation ?? 0);
-}
-
-/** Whether two axis-aligned rects share any area, edges included. */
-function rectsOverlap(a: DiagramRect, b: DiagramRect): boolean {
-  return a.x1 <= b.x2 && a.x2 >= b.x1 && a.y1 <= b.y2 && a.y2 >= b.y1;
-}
-
-/**
- * Returns the keys of every component, connector and own-layer shape the band
- * touches. Overlap decides rather than centre-containment: an entity placed on
- * the class boundary has its centre outside any band drawable over the canvas.
- *
- * Connections aren't selected by rubber-band — their waypoints would force
- * extra geometry awareness.
- *
- * Inherited shapes are excluded: only the host's own layer is editable, so
- * selecting one would offer operations that cannot apply to it.
- */
-export function selectByDiagramRect(
-  layout: DiagramLayout,
-  rect: DiagramRect,
-): Set<string> {
-  const r = normaliseRect(rect);
-  const keys = new Set<string>();
-  for (const [id, c] of Object.entries(layout.components)) {
-    if (rectsOverlap(r, placementBounds(c.placement))) {
-      keys.add(`c:${id}`);
-    }
-  }
-  for (const [id, c] of Object.entries(layout.connectors)) {
-    if (rectsOverlap(r, placementBounds(c.placement))) {
-      keys.add(`k:${id}`);
-    }
-  }
-  const own = ownLayer(layout);
-  own?.shapes.forEach((shape, index) => {
-    if (rectsOverlap(r, shapeBoundsOf(shape))) {
-      keys.add(formatShapeKey(shape.kind, index));
-    }
-  });
-  return keys;
-}
-
-/**
- * Every selectable entity in the layout, regardless of where it sits. A
- * rubber band can only take what it covers, and a class routinely places
- * connectors and labels outside its own coordinate system.
- */
-export function selectAllKeys(layout: DiagramLayout): Set<string> {
-  const keys = new Set<string>();
-  for (const id of Object.keys(layout.components)) keys.add(`c:${id}`);
-  for (const id of Object.keys(layout.connectors)) keys.add(`k:${id}`);
-  const own = ownLayer(layout);
-  own?.shapes.forEach((shape, index) => {
-    keys.add(formatShapeKey(shape.kind, index));
-  });
-  return keys;
-}
-
-const DRAWN_LINE_COLOR: Color = [0, 0, 0];
-
-/** Build a default extent primitive for a freshly-drawn shape. */
-export function buildExtentShape(kind: ExtentKind, extent: Extent): Shape {
-  return kind === "rectangle"
-    ? { kind: "rectangle", extent, lineColor: DRAWN_LINE_COLOR }
-    : { kind: "ellipse", extent, lineColor: DRAWN_LINE_COLOR };
-}
-
-/**
- * Build a default poly primitive for a freshly-drawn shape. A `line` stays
- * open; a `polygon` is closed by the renderer, so `points` carries only the
- * distinct vertices — no duplicated closing point.
- */
-export function buildPolyShape(kind: PolyKind, points: Point[]): Shape {
-  return kind === "line"
-    ? { kind: "line", points, color: DRAWN_LINE_COLOR }
-    : { kind: "polygon", points, lineColor: DRAWN_LINE_COLOR };
 }
 
 export interface AddGraphicResult {

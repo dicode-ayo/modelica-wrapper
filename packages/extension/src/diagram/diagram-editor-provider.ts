@@ -9,12 +9,19 @@ import type {
 } from "@dicode/omc-client";
 import { produceSimulationModel } from "@dicode/omc-client";
 
+import { assertUnreachable } from "@dicode/modelica-lang-core";
+
 import { log } from "../logger.js";
 import { qualifiedNameFromUri } from "../source-provider.js";
+import {
+  iconHonorsGesture,
+  isGestureMessage,
+  type ParameterFormKind,
+  type WebviewToExtension,
+} from "../webview/gestures.js";
 import type {
   DiagramCommandId,
   ExtensionToWebview,
-  WebviewToExtension,
 } from "../webview/protocol.js";
 import { createReadyGate, type ReadyGate } from "../webview/ready-gate.js";
 import type { WriteVerdict, WriteVerdicts } from "../write-verdict.js";
@@ -274,7 +281,16 @@ export function resolveDiagramEditor(
   };
   DiagramEditorProvider.addSession(session);
 
-  const sub = webview.onDidReceiveMessage((msg: WebviewToExtension) => {
+  const sub = webview.onDidReceiveMessage((msg: unknown) => {
+    // `postMessage` delivers whatever the webview serialized, and nothing
+    // downstream re-checks it.
+    if (
+      !isGestureMessage(msg, (reason) =>
+        log.warn("diagramEditor", `dropped webview message: ${reason}`),
+      )
+    ) {
+      return;
+    }
     if (msg.type === "ready") {
       gate.markReady();
       return;
@@ -597,10 +613,9 @@ export class DiagramEditController {
   }
 
   private async dispatch(msg: WebviewToExtension): Promise<void> {
-    // Icon mode honors only shape edits and connector placement; every other
-    // gesture (add non-connector, connections, change-class, parameters,
-    // simulate, check) is a no-op here.
-    if (this.mode === "icon" && !iconHonorsMessage(msg)) return;
+    // The icon editor works on the class's own icon annotation, so each
+    // gesture's declaration says whether it belongs to that view.
+    if (this.mode === "icon" && !iconHonorsGesture(msg)) return;
     switch (msg.type) {
       case "change":
         await this.drainChange();
@@ -644,8 +659,17 @@ export class DiagramEditController {
       case "paste":
         await this.onPaste();
         return;
-      default:
+      case "ready":
+      case "inputFocus":
+        // Session-scoped: answered in `resolveDiagramEditor`, which exists
+        // before the controller does and outlives every layout it holds.
         return;
+      case "selectionChange":
+        // Selection is the webview's own state; the host tracks nothing it
+        // would have to reconcile.
+        return;
+      default:
+        return assertUnreachable(msg, "WebviewToExtension");
     }
   }
 
@@ -1016,19 +1040,32 @@ export class DiagramEditController {
   }
 
   private async onParametersSubmit(
-    kind: string,
+    kind: ParameterFormKind,
     values: Record<string, unknown>,
   ): Promise<void> {
-    const { client, className, gate } = this.deps;
     try {
-      if (kind === "simulate") {
+      await this.applyParameterSubmit(kind, values);
+    } catch (err) {
+      this.reportError(`applying parameters failed: ${(err as Error).message}`);
+    } finally {
+      this.deps.gate.send({ type: "parametersClose" });
+    }
+  }
+
+  private async applyParameterSubmit(
+    kind: ParameterFormKind,
+    values: Record<string, unknown>,
+  ): Promise<void> {
+    const { client, className } = this.deps;
+    switch (kind) {
+      case "simulate":
         // Simulate runs the model and emits a result file; it does not change
-        // the class source, so there is nothing to reflect to the buffer (and
-        // it stays allowed on a read-only class).
+        // the class source, so there is nothing to reflect to the buffer, and
+        // it stays allowed on a read-only class.
         await runSimulate(client, className, values);
-      } else if (this.rejectIfReadOnly()) {
-        // A parameter / shape submit mutates the class source — refused.
-      } else if (kind === "classParams") {
+        return;
+      case "classParams":
+        if (this.rejectIfReadOnly()) return;
         await applyClassParameterEdits(
           client,
           className,
@@ -1037,25 +1074,28 @@ export class DiagramEditController {
           values,
         );
         await this.reflect(await this.refetch(client, className));
-      } else if (kind === "componentParams") {
-        if (this.componentParamComponentName !== null) {
-          await applyComponentParameterEdits(
-            client,
-            className,
-            this.componentParamComponentName,
-            this.componentParamRefs,
-            this.componentParamInitialValues,
-            values,
-          );
-          await this.reflect(await this.refetch(client, className));
-        }
-      } else if (kind === "shapeProperties") {
-        await this.applyShapePropertiesSubmit(values);
+        return;
+      case "componentParams": {
+        if (this.rejectIfReadOnly()) return;
+        const componentName = this.componentParamComponentName;
+        if (componentName === null) return;
+        await applyComponentParameterEdits(
+          client,
+          className,
+          componentName,
+          this.componentParamRefs,
+          this.componentParamInitialValues,
+          values,
+        );
+        await this.reflect(await this.refetch(client, className));
+        return;
       }
-    } catch (err) {
-      this.reportError(`applying parameters failed: ${(err as Error).message}`);
-    } finally {
-      gate.send({ type: "parametersClose" });
+      case "shapeProperties":
+        if (this.rejectIfReadOnly()) return;
+        await this.applyShapePropertiesSubmit(values);
+        return;
+      default:
+        return assertUnreachable(kind, "ParameterFormKind");
     }
   }
 
@@ -1133,9 +1173,21 @@ export class DiagramEditController {
     await this.reflect(await this.refetch(client, className));
   }
 
-  private onParametersCancel(kind: string): void {
-    if (kind === "componentParams") this.clearComponentParamState();
-    if (kind === "shapeProperties") this.clearShapeState();
+  private onParametersCancel(kind: ParameterFormKind): void {
+    switch (kind) {
+      case "componentParams":
+        this.clearComponentParamState();
+        return;
+      case "shapeProperties":
+        this.clearShapeState();
+        return;
+      case "classParams":
+      case "simulate":
+        // Neither captures state the modal has to hand back.
+        return;
+      default:
+        return assertUnreachable(kind, "ParameterFormKind");
+    }
   }
 
   /**
@@ -1303,31 +1355,6 @@ export class DiagramEditController {
     // The webview has nowhere to show this, and an edit that silently does not
     // land reads as the diagram losing the user's work for no reason.
     void vscode.window.showErrorMessage(`Diagram: ${message}`);
-  }
-}
-
-/**
- * Webview messages the icon editor honors. Shape draw/edit flows through
- * `change` and the `shapeProperties` modal (`editShape` +
- * `parametersSubmit`/`parametersCancel`); connector placement flows through
- * `addComponent` (restriction-gated in `onAddComponent`), and paste through the
- * same restriction in `pasteableItems`. Everything else — connections,
- * change-class, class/component parameters, simulate, check — is a no-op in
- * icon mode.
- */
-function iconHonorsMessage(msg: WebviewToExtension): boolean {
-  switch (msg.type) {
-    case "change":
-    case "editShape":
-    case "addComponent":
-    case "copySelection":
-    case "paste":
-      return true;
-    case "parametersSubmit":
-    case "parametersCancel":
-      return msg.kind === "shapeProperties";
-    default:
-      return false;
   }
 }
 

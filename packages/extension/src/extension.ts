@@ -44,7 +44,8 @@ import {
 import { registerMoFileWatcher } from "./mo-file-watcher.js";
 import { createOmcClientCache } from "./omc-client-cache.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
-import { syncIconsWithSource } from "./source-icon-sync.js";
+import { ClassInvalidationRegistry } from "./invalidation.js";
+import { publishSourceChanges } from "./source-invalidation.js";
 import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
 import { WriteVerdicts } from "./write-verdict.js";
@@ -80,9 +81,15 @@ export async function activate(
   log.info("activate", "extension activating");
   void reapStrandedOmc();
 
+  // Every cache keyed by a Modelica class hangs off this: producers announce
+  // "class X changed" once and each cache registers its own listener, so the
+  // number of caches is invisible here.
+  const invalidation = new ClassInvalidationRegistry();
+
   const libraryTree = new LibraryWebviewProvider(
     context.extensionUri,
     ensureClient,
+    invalidation,
   );
   const libraryView = vscode.window.registerWebviewViewProvider(
     "modelica.libraries",
@@ -135,11 +142,14 @@ export async function activate(
     ),
   );
 
-  // Save-triggered icon refresh. The diagram/icon editors invalidate their own
-  // class on an unsaved graphical commit (their `iconChanged` callback below);
-  // this is the disjoint path for text-editor saves, which reach the sidebar
-  // only through the source provider's change broadcast.
-  context.subscriptions.push(syncIconsWithSource(sourceProvider, libraryTree));
+  // The source provider's change broadcast is the broad producer feeding the
+  // registry: every write that lands in OMC — a text-editor save, a mutation
+  // command, the `.mo` watcher reloading a foreign edit — ends there. An
+  // unsaved graphical commit reaches OMC but not that broadcast, so the
+  // diagram/icon editors announce their own class (their callback below).
+  context.subscriptions.push(
+    publishSourceChanges(sourceProvider, invalidation),
+  );
 
   // Keep OMC and the sidebar reactive to bare `.mo` edits (text-editor saves,
   // Explorer/external create/delete) that never pass through a mutation command.
@@ -153,6 +163,7 @@ export async function activate(
   );
 
   context.subscriptions.push(
+    libraryTree,
     libraryView,
     diagnostics,
     ResultViewEditorProvider.register(context, ensureClient),
@@ -162,7 +173,7 @@ export async function activate(
       writeVerdicts,
       DIAGRAM_VIEW_TYPE,
       "diagram",
-      (className) => libraryTree.iconChanged(className),
+      (className) => invalidation.classChanged(className),
     ),
     DiagramEditorProvider.register(
       context,
@@ -170,7 +181,7 @@ export async function activate(
       writeVerdicts,
       ICON_VIEW_TYPE,
       "icon",
-      (className) => libraryTree.iconChanged(className),
+      (className) => invalidation.classChanged(className),
     ),
     DocumentationEditorProvider.register(
       context,
@@ -178,7 +189,7 @@ export async function activate(
       writeVerdicts,
       DOCUMENTATION_VIEW_TYPE,
     ),
-    registerLanguageFeatures(context, ensureClient),
+    registerLanguageFeatures(context, ensureClient, invalidation),
     wireDocHtmlRefresh(docHtmlProvider),
     ...registerCommands({
       extensionContext: context,

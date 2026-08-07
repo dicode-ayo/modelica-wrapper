@@ -12,28 +12,16 @@
  * `disconnectedCallback` → `shapeNode.dispose()`.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { DiagramLayout } from "@dicode/omc-client";
 
-import "./graphical-layout.component.js";
 import type { OmGraphicalLayout } from "./graphical-layout.component.js";
-
-const teardowns: Array<() => void> = [];
-afterEach(() => {
-  for (const t of teardowns.splice(0)) t();
-});
+import { mountLayout } from "../../test/harness/interaction-fixtures.js";
+import { emptyLayout } from "../../test/harness/layout-fixtures.js";
 
 function layoutWith(classRef: string): DiagramLayout {
   return {
-    kind: "diagram",
-    className: "Test",
-    source: {
-      filename: "Test.mo",
-      lineStart: 1,
-      columnStart: 1,
-      lineEnd: 1,
-      columnEnd: 1,
-    },
+    ...emptyLayout(),
     classes: {
       [classRef]: {
         name: classRef,
@@ -55,21 +43,7 @@ function layoutWith(classRef: string): DiagramLayout {
         },
       },
     },
-    connectors: {},
-    connections: [],
-    labels: [],
-    iconLayers: [],
-    diagramLayers: [],
   };
-}
-
-async function mount(): Promise<OmGraphicalLayout> {
-  const el = document.createElement("om-graphical-layout") as OmGraphicalLayout;
-  el.rendererFactory = () => null;
-  document.body.appendChild(el);
-  teardowns.push(() => el.remove());
-  await el.updateComplete;
-  return el;
 }
 
 function componentEl(el: OmGraphicalLayout): Element | null {
@@ -78,7 +52,7 @@ function componentEl(el: OmGraphicalLayout): Element | null {
 
 describe("<om-graphical-layout> change-class render", () => {
   it("remounts the component node when its class changes", async () => {
-    const el = await mount();
+    const el = await mountLayout();
     el.layout = layoutWith("Modelica.Blocks.Continuous.Integrator");
     await el.updateComplete;
     const before = componentEl(el);
@@ -93,7 +67,7 @@ describe("<om-graphical-layout> change-class render", () => {
   });
 
   it("keeps the same node when only placement changes", async () => {
-    const el = await mount();
+    const el = await mountLayout();
     el.layout = layoutWith("Modelica.Blocks.Math.Gain");
     await el.updateComplete;
     const before = componentEl(el);
