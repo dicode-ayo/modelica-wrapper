@@ -24,6 +24,7 @@ import type {
   ExtensionToWebview,
 } from "../webview/protocol.js";
 import { createReadyGate, type ReadyGate } from "../webview/ready-gate.js";
+import type { WriteVerdict, WriteVerdicts } from "../write-verdict.js";
 
 import { applyEdits } from "./apply-edits.js";
 import {
@@ -38,8 +39,6 @@ import {
 } from "./copy-paste.js";
 import {
   defaultScheduler,
-  isReadOnlyDocument,
-  READ_ONLY_EDIT_MESSAGE,
   reloadBufferIntoOmc,
   REVERSE_SYNC_DEBOUNCE_MS,
   type Scheduler,
@@ -122,6 +121,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   private constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly ensureClient: () => Promise<OmcClient>,
+    private readonly writeVerdicts: WriteVerdicts,
     private readonly mode: DiagramMode,
     private readonly onClassContentChanged?: (className: string) => void,
   ) {}
@@ -129,6 +129,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   static register(
     context: vscode.ExtensionContext,
     ensureClient: () => Promise<OmcClient>,
+    writeVerdicts: WriteVerdicts,
     viewType: string,
     mode: DiagramMode,
     onClassContentChanged?: (className: string) => void,
@@ -136,6 +137,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     const provider = new DiagramEditorProvider(
       context.extensionUri,
       ensureClient,
+      writeVerdicts,
       mode,
       onClassContentChanged,
     );
@@ -154,6 +156,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       webviewPanel,
       this.extensionUri,
       this.ensureClient,
+      this.writeVerdicts,
       document,
       this.mode,
       this.onClassContentChanged,
@@ -257,6 +260,7 @@ export function resolveDiagramEditor(
   webviewPanel: vscode.WebviewPanel,
   extensionUri: vscode.Uri,
   ensureClient: () => Promise<OmcClient>,
+  writeVerdicts: WriteVerdicts,
   document: vscode.TextDocument,
   mode: DiagramMode,
   onClassContentChanged?: (className: string) => void,
@@ -324,12 +328,17 @@ export function resolveDiagramEditor(
           mode === "icon"
             ? await fetchIconLayout(client, className)
             : await fetchDiagramLayout(client, className);
-        // A read-only class (an MSL library, reported by the source provider's
-        // stat) still renders and answers read actions, but rejects edits.
-        // Evaluated after the fetch: fetching resolves a not-yet-loaded class,
-        // so a verdict taken earlier (e.g. on a restored tab) would read as
-        // writable and strand the editor in edit mode.
-        const readOnly = await isReadOnlyDocument(document);
+        // A class that can't be written still renders and answers read
+        // actions, but rejects edits. Evaluated after the fetch: fetching
+        // resolves a not-yet-loaded class, so a verdict taken earlier (e.g. on
+        // a restored tab) would read as writable and strand the editor in edit
+        // mode.
+        const verdict = await writeVerdicts.forDocument(
+          client,
+          document,
+          className,
+          "edit",
+        );
         controller = new DiagramEditController(
           {
             client,
@@ -344,14 +353,14 @@ export function resolveDiagramEditor(
           layout,
           (onForeignChange) => createShadowBuffer(document, onForeignChange),
           defaultScheduler,
-          readOnly,
+          verdict,
           mode,
         );
         gate.send({
           type: "init",
           layout,
           className,
-          readOnly,
+          readOnly: !verdict.ok,
           hasClipboard: !diagramClipboard.isEmpty,
         });
       } catch (err) {
@@ -466,7 +475,7 @@ export class DiagramEditController {
       onForeignChange: (document: vscode.TextDocument) => void,
     ) => ShadowBuffer,
     private readonly scheduler: Scheduler = defaultScheduler,
-    private readonly readOnly: boolean = false,
+    private readonly verdict: WriteVerdict = { ok: true },
     private readonly mode: DiagramMode = "diagram",
   ) {
     this.prevLayout = initialLayout;
@@ -476,13 +485,13 @@ export class DiagramEditController {
   }
 
   /**
-   * Reject an edit against a read-only class (an MSL / installed-library
-   * source): the diagram renders and read actions work, but mutating the class
-   * source is refused so we never dirty a buffer that can't be saved.
+   * Reject an edit against a class the write verdict refuses: the diagram
+   * renders and read actions work, but mutating the class source is refused so
+   * we never dirty a buffer that can't be saved.
    */
   private rejectIfReadOnly(): boolean {
-    if (!this.readOnly) return false;
-    this.reportError(READ_ONLY_EDIT_MESSAGE);
+    if (this.verdict.ok) return false;
+    this.reportError(this.verdict.reason);
     return true;
   }
 

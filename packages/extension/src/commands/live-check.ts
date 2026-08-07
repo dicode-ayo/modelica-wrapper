@@ -28,6 +28,7 @@ import type { ErrorMessage } from "@dicode/omc-client";
 import { mapOmcMessagesToDiagnostics } from "../diagnostics/from-omc.js";
 import type { FileOwnerClient } from "../file-owner.js";
 import { log } from "../logger.js";
+import type { WriteVerdictClient } from "../write-verdict.js";
 import {
   MODELICA_SOURCE_SCHEME,
   omcFilenameForDocument,
@@ -45,7 +46,7 @@ const MIN_DEBOUNCE_MS = 250;
  * `getSourceFile` comes from {@link FileOwnerClient} — the pipeline never calls
  * it itself, it hands the client to `omcFilenameForDocument`.
  */
-export interface LiveCheckClient extends FileOwnerClient {
+export interface LiveCheckClient extends FileOwnerClient, WriteVerdictClient {
   getErrorString(): Promise<{ errorString: string }>;
   parseString(input: { data: string; filename: string }): Promise<unknown>;
   loadString(input: {
@@ -138,25 +139,24 @@ async function runCheck(
     const text = document.getText();
     const typeName = qualifiedNameFromUri(uri);
 
-    // A system-library class can't legitimately be edited, so a change on its
-    // buffer is never the user's; loading one back into OMC would repoint an
-    // installed library's source at this URI. The provider memoizes a
-    // conclusive verdict, and `readFile` forced the lookup when the document
-    // opened, so this costs nothing per keystroke. Origin only — a class whose
-    // file is merely read-only on disk still gets checked, and fails at save.
-    if (
-      typeName !== undefined &&
-      (await ctx.sourceProvider.isReadOnly(typeName))
-    ) {
-      return;
-    }
-    if (state.token !== capturedToken) return;
-
     let client: LiveCheckClient;
     try {
       client = await ctx.ensureClient();
     } catch (err) {
       log.error("liveCheck", "failed to acquire OMC client", err);
+      return;
+    }
+    if (state.token !== capturedToken) return;
+
+    // A class that can't be written can't legitimately be edited either, so a
+    // change on its buffer is never the user's; loading one back into OMC would
+    // repoint an installed library's source at this URI. The permission half is
+    // gated too: VSCode refuses edits on a read-only file's buffer, so a change
+    // event on one is never user-typed either.
+    if (
+      typeName !== undefined &&
+      !(await ctx.writeVerdicts.forClass(client, typeName, "edit")).ok
+    ) {
       return;
     }
     if (state.token !== capturedToken) return;

@@ -16,6 +16,7 @@ import type { OmcClient } from "@dicode/omc-client";
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
 import { ModelicaSourceProvider, sourceUriFor } from "./source-provider.js";
+import { WriteVerdicts } from "./write-verdict.js";
 
 const URI = sourceUriFor("Pkg.M");
 
@@ -52,10 +53,11 @@ function makeClient(opts?: {
 
 describe("ModelicaSourceProvider: graceful resolution", () => {
   it("stats an unresolvable class as an empty file instead of throwing", async () => {
-    const { client } = makeClient({ getClassInformationThrows: true });
+    const { client } = makeClient({ listFileThrows: true });
     const provider = new ModelicaSourceProvider(
       () => Promise.resolve(client),
       createSelfWriteGuard(),
+      new WriteVerdicts(),
     );
 
     const stat = await provider.stat(URI);
@@ -68,6 +70,7 @@ describe("ModelicaSourceProvider: graceful resolution", () => {
     const provider = new ModelicaSourceProvider(
       () => Promise.reject(new Error("OMC unavailable")),
       createSelfWriteGuard(),
+      new WriteVerdicts(),
     );
 
     const stat = await provider.stat(URI);
@@ -81,6 +84,7 @@ describe("ModelicaSourceProvider: graceful resolution", () => {
     const provider = new ModelicaSourceProvider(
       () => Promise.resolve(client),
       createSelfWriteGuard(),
+      new WriteVerdicts(),
     );
 
     const bytes = await provider.readFile(URI);
@@ -95,6 +99,7 @@ describe("ModelicaSourceProvider: empty-source save guard", () => {
     const provider = new ModelicaSourceProvider(
       () => Promise.resolve(client),
       createSelfWriteGuard(),
+      new WriteVerdicts(),
     );
 
     await expect(
@@ -111,6 +116,7 @@ describe("ModelicaSourceProvider: read-only system libraries", () => {
     const provider = new ModelicaSourceProvider(
       () => Promise.resolve(client),
       createSelfWriteGuard(),
+      new WriteVerdicts(),
     );
 
     await expect(
@@ -120,41 +126,40 @@ describe("ModelicaSourceProvider: read-only system libraries", () => {
     expect(loadString).not.toHaveBeenCalled();
   });
 
-  it("re-evaluates read-only once an unresolved class loads (no false-negative cache)", async () => {
-    // First lookup: class not loaded yet → getSourceFile empty (a restored tab
-    // before OMC resolves it). Second: resolved under MODELICAPATH.
-    let fileName = "";
+  it("captures the origin on read, so a later save still refuses", async () => {
+    // Reflecting a buffer into OMC repoints `fileName` at the buffer URI; only
+    // the verdict the read captured still knows where the class came from.
+    let sourceFile =
+      "/home/u/.openmodelica/libraries/Modelica/Blocks/package.mo";
+    const loadString = vi.fn(() => Promise.resolve({ success: true }));
     const client = {
-      getSourceFile: vi.fn(() => Promise.resolve({ fileName })),
+      getSourceFile: vi.fn(() => Promise.resolve({ fileName: sourceFile })),
       getModelicaPath: vi.fn(() =>
         Promise.resolve({ modelicaPath: "/home/u/.openmodelica/libraries" }),
       ),
+      getClassInformation: vi.fn(() =>
+        Promise.resolve({ fileName: sourceFile, fileReadOnly: false }),
+      ),
+      listFile: vi.fn(() =>
+        Promise.resolve({ contents: "package Blocks end Blocks;" }),
+      ),
+      loadString,
+      getErrorString: vi.fn(() => Promise.resolve({ errorString: "" })),
     } as unknown as OmcClient;
     const provider = new ModelicaSourceProvider(
       () => Promise.resolve(client),
       createSelfWriteGuard(),
+      new WriteVerdicts(),
     );
+    const uri = sourceUriFor("Modelica.Blocks");
 
-    expect(await provider.isReadOnly("Modelica.Blocks")).toBe(false);
-    fileName = "/home/u/.openmodelica/libraries/Modelica/Blocks/package.mo";
-    // The inconclusive verdict was not cached, so this now resolves read-only.
-    expect(await provider.isReadOnly("Modelica.Blocks")).toBe(true);
-  });
+    await provider.readFile(uri);
+    sourceFile = "modelica-source:/Modelica.Blocks.mo";
 
-  it("verdicts a MODELICAPATH class read-only and a workspace class writable", async () => {
-    const { client: sys } = makeClient({ systemLib: true });
-    const { client: ws } = makeClient({ systemLib: false });
-    const sysProvider = new ModelicaSourceProvider(
-      () => Promise.resolve(sys),
-      createSelfWriteGuard(),
-    );
-    const wsProvider = new ModelicaSourceProvider(
-      () => Promise.resolve(ws),
-      createSelfWriteGuard(),
-    );
-
-    expect(await sysProvider.isReadOnly("Modelica.Blocks")).toBe(true);
-    expect(await wsProvider.isReadOnly("Pkg.M")).toBe(false);
+    await expect(
+      provider.writeFile(uri, Buffer.from("package Blocks end Blocks;")),
+    ).rejects.toMatchObject({ code: "NoPermissions" });
+    expect(loadString).not.toHaveBeenCalled();
   });
 
   it("stats a system-library class with the read-only permission", async () => {
@@ -162,11 +167,12 @@ describe("ModelicaSourceProvider: read-only system libraries", () => {
     const provider = new ModelicaSourceProvider(
       () => Promise.resolve(client),
       createSelfWriteGuard(),
+      new WriteVerdicts(),
     );
 
     const stat = await provider.stat(URI);
 
-    // Drives the diagram editor's read-only view via `isReadOnlyDocument`.
+    // Drives the editor's read-only view: VSCode refuses writes on the buffer.
     expect(stat.permissions).toBe(vscode.FilePermission.Readonly);
   });
 
@@ -175,10 +181,25 @@ describe("ModelicaSourceProvider: read-only system libraries", () => {
     const provider = new ModelicaSourceProvider(
       () => Promise.resolve(client),
       createSelfWriteGuard(),
+      new WriteVerdicts(),
     );
 
     const stat = await provider.stat(URI);
 
+    expect(stat.permissions).toBeUndefined();
+  });
+
+  it("stats writable when the verdict can't be derived", async () => {
+    const { client } = makeClient({ getClassInformationThrows: true });
+    const provider = new ModelicaSourceProvider(
+      () => Promise.resolve(client),
+      createSelfWriteGuard(),
+      new WriteVerdicts(),
+    );
+
+    const stat = await provider.stat(URI);
+
+    // A transient OMC error must not lock the user out of their own class.
     expect(stat.permissions).toBeUndefined();
   });
 });
@@ -234,6 +255,7 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
     const provider = new ModelicaSourceProvider(
       () => Promise.resolve(client),
       guard,
+      new WriteVerdicts(),
     );
 
     await provider.writeFile(URI, Buffer.from("model M edited end M;"));
@@ -259,6 +281,7 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
     const provider = new ModelicaSourceProvider(
       () => Promise.resolve(client),
       guard,
+      new WriteVerdicts(),
     );
 
     await provider.writeFile(URI, Buffer.from("model M edited end M;"));

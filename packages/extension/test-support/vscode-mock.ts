@@ -74,15 +74,8 @@ export class EventEmitter<T> {
   }
 }
 
-let statPermissions = 0;
-
 /** Monotonic counter for untitled documents minted by `openTextDocument`. */
 let untitledSeq = 0;
-
-/** Control what `workspace.fs.stat` reports for the readonly-gate tests. */
-export function setStatReadonly(readonly: boolean): void {
-  statPermissions = readonly ? FilePermission.Readonly : 0;
-}
 
 export class Position {
   constructor(
@@ -406,7 +399,7 @@ export const workspace = {
         ctime: 0,
         mtime: 0,
         size: 0,
-        permissions: statPermissions,
+        permissions: 0,
       });
     },
   },
@@ -503,7 +496,10 @@ export const window = {
     _provider: unknown,
     _options?: unknown,
   ): Disposable => new Disposable(),
-  showInputBox: () => Promise.resolve(undefined),
+  showInputBox: (): Promise<string | undefined> =>
+    Promise.resolve(promptAnswers.shift()),
+  showQuickPick: (): Promise<string | undefined> =>
+    Promise.resolve(promptAnswers.shift()),
   withProgress<T>(
     _options: unknown,
     task: (
@@ -533,13 +529,52 @@ export const window = {
   },
 };
 
+/** Answers `showQuickPick` / `showInputBox` hand back, in prompt order. */
+const promptAnswers: Array<string | undefined> = [];
+
+/** Replace the answers a command's prompts will receive, oldest first. */
+export function queuePromptAnswers(
+  ...answers: Array<string | undefined>
+): void {
+  promptAnswers.length = 0;
+  promptAnswers.push(...answers);
+}
+
 /** Recorded `commands.executeCommand` calls, so tests can assert which command
  *  a code path fired without a real extension host. */
 export const executedCommands: Array<{ command: string; args: unknown[] }> = [];
 
+/** Commands `registerCommand` captured, so tests can invoke one directly. */
+const registeredCommands = new Map<string, (...args: unknown[]) => unknown>();
+
+/** Drop captured commands and queued prompt answers between tests. */
+export function resetCommands(): void {
+  registeredCommands.clear();
+  promptAnswers.length = 0;
+}
+
+/** Run a registered command, or throw when nothing registered that id. */
+export async function runCommand(
+  command: string,
+  ...args: unknown[]
+): Promise<void> {
+  const handler = registeredCommands.get(command);
+  if (handler === undefined) throw new Error(`no such command: ${command}`);
+  await handler(...args);
+}
+
 export const commands = {
-  executeCommand(command: string, ...args: unknown[]): Promise<undefined> {
+  executeCommand(command: string, ...args: unknown[]): Promise<unknown> {
     executedCommands.push({ command, args });
-    return Promise.resolve(undefined);
+    // Built-in ids (`setContext`, `vscode.openWith`, …) are never registered,
+    // so they record and resolve undefined.
+    return Promise.resolve(registeredCommands.get(command)?.(...args));
+  },
+  registerCommand(
+    command: string,
+    handler: (...args: unknown[]) => unknown,
+  ): Disposable {
+    registeredCommands.set(command, handler);
+    return new Disposable(() => registeredCommands.delete(command));
   },
 };

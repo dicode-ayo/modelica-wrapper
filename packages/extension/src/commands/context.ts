@@ -10,6 +10,7 @@ import type { OmcClient } from "@dicode/omc-client";
 import type { LibraryWebviewProvider } from "../library/library-webview-provider.js";
 import type { SelfWriteGuard } from "../self-write-guard.js";
 import type { ModelicaSourceProvider } from "../source-provider.js";
+import type { WriteVerdicts } from "../write-verdict.js";
 
 /**
  * A loaded Modelica class as a command argument. Commands invoked with a
@@ -51,6 +52,8 @@ export interface CommandContext {
   readonly diagnostics: vscode.DiagnosticCollection;
   /** Tags the extension's own `.mo` disk writes so the workspace watcher skips them. */
   readonly selfWriteGuard: SelfWriteGuard;
+  /** Session-wide answer to "may this class be written?", with its shared memo. */
+  readonly writeVerdicts: WriteVerdicts;
 }
 
 /**

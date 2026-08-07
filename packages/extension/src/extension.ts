@@ -48,6 +48,7 @@ import { ClassInvalidationRegistry } from "./invalidation.js";
 import { publishSourceChanges } from "./source-invalidation.js";
 import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
+import { WriteVerdicts } from "./write-verdict.js";
 import { loadEntryFilesAndRefresh } from "./workspace-autoload.js";
 import { discoverEntryPoints } from "./workspace-scan.js";
 
@@ -97,9 +98,14 @@ export async function activate(
   );
 
   const selfWriteGuard = createSelfWriteGuard();
+  // One instance for the whole session: the origin half of a verdict has to be
+  // captured before the first mutation, and only a shared memo lets the source
+  // provider's capture protect every later question about the same class.
+  const writeVerdicts = new WriteVerdicts();
   const sourceProvider = new ModelicaSourceProvider(
     ensureClient,
     selfWriteGuard,
+    writeVerdicts,
   );
   const docHtmlProvider = new DocumentationHtmlProvider(
     ensureClient,
@@ -109,6 +115,7 @@ export async function activate(
       notifyDocumentationChanged(name);
       sourceProvider.notifySourceChanged(name);
     },
+    writeVerdicts,
   );
 
   // One DiagnosticCollection shared by the user-triggered Check Model command
@@ -163,6 +170,7 @@ export async function activate(
     DiagramEditorProvider.register(
       context,
       ensureClient,
+      writeVerdicts,
       DIAGRAM_VIEW_TYPE,
       "diagram",
       (className) => invalidation.classChanged(className),
@@ -170,6 +178,7 @@ export async function activate(
     DiagramEditorProvider.register(
       context,
       ensureClient,
+      writeVerdicts,
       ICON_VIEW_TYPE,
       "icon",
       (className) => invalidation.classChanged(className),
@@ -177,6 +186,7 @@ export async function activate(
     DocumentationEditorProvider.register(
       context,
       ensureClient,
+      writeVerdicts,
       DOCUMENTATION_VIEW_TYPE,
     ),
     registerLanguageFeatures(context, ensureClient, invalidation),
@@ -189,6 +199,7 @@ export async function activate(
       sourceProvider,
       diagnostics,
       selfWriteGuard,
+      writeVerdicts,
     }),
   );
 

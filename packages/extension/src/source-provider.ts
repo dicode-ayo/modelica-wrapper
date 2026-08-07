@@ -20,8 +20,8 @@
  *          left untouched; only missing ones are created. After writing,
  *          `setSourceFile` tells OMC where the class now lives so subsequent
  *          saves take path (a).
- *  - `stat`      → reports `Readonly` permission when OMC says the class
- *    sources are read-only (e.g. MSL libraries installed under
+ *  - `stat`      → reports `Readonly` permission when the class's write
+ *    verdict refuses (e.g. MSL libraries installed under
  *    `~/.openmodelica/libraries`). VSCode then refuses to write.
  *  - `notifySourceChanged(typeName)` — fired by commands that mutate OMC
  *    state outside `writeFile` (e.g. `addComponent`, `addConnection`). This
@@ -51,7 +51,7 @@ import {
   type FileOwnerClient,
 } from "./file-owner.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
-import { systemLibraryVerdict } from "./system-library.js";
+import type { WriteVerdicts } from "./write-verdict.js";
 
 export { isLikelyDiskPath, linkPersistedClass, persistClassUnderWorkspace };
 export type { PersistResult } from "./persist.js";
@@ -69,15 +69,10 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
   /** Per-URI version counter used as mtime; bumped on write + external invalidate. */
   private readonly versions = new Map<string, number>();
 
-  /**
-   * Per-class read-only verdict, captured on first read (before any mutation
-   * repoints the class's source path away from its MODELICAPATH origin).
-   */
-  private readonly readOnly = new Map<string, boolean>();
-
   constructor(
     private readonly ensureClient: EnsureClient,
     private readonly guard: SelfWriteGuard,
+    private readonly verdicts: WriteVerdicts,
   ) {}
 
   // No real watchers; OMC mutations are surfaced via `notifySourceChanged`.
@@ -96,17 +91,14 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
     // editor opens and can report a clean not-loaded state.
     try {
       const client = await this.ensureClient();
-      const info = await client.getClassInformation({ typeName });
       const { contents } = await client.listFile({ typeName });
-      // A system-library class is read-only by origin even when its file is
-      // writable on disk, so `fileReadOnly` alone misses it.
-      const readOnly = info.fileReadOnly || (await this.isReadOnly(typeName));
+      const verdict = await this.verdicts.forClass(client, typeName, "edit");
       return {
         type: vscode.FileType.File,
         ctime: 0,
         mtime,
         size: Buffer.byteLength(contents, "utf8"),
-        ...(readOnly ? { permissions: vscode.FilePermission.Readonly } : {}),
+        ...(verdict.ok ? {} : { permissions: vscode.FilePermission.Readonly }),
       };
     } catch (err) {
       log.warn(
@@ -131,9 +123,7 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
     try {
       const client = await this.ensureClient();
       const { contents } = await client.listFile({ typeName });
-      // Capture the read-only verdict now, while the class still points at its
-      // on-disk origin — a later edit repoints it to this scheme's URI.
-      await this.isReadOnly(typeName);
+      await this.verdicts.capture(client, typeName);
       return Buffer.from(contents, "utf8");
     } catch (err) {
       // Mirror `stat`: a class that isn't loaded (or no longer exists) reads as
@@ -150,16 +140,15 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
     const typeName = qualifiedNameFromUri(uri);
     if (!typeName) throw vscode.FileSystemError.FileNotFound(uri);
 
-    // System libraries (loaded from MODELICAPATH) are read-only by origin even
-    // when their files are writable on disk. Refuse before any OMC mutation so
-    // a save can't corrupt an installed library's source.
-    if (await this.isReadOnly(typeName)) {
-      throw vscode.FileSystemError.NoPermissions(
-        `${typeName} belongs to a read-only system library`,
-      );
+    const client = await this.ensureClient();
+
+    // Refuse before any OMC mutation so a save can't corrupt an installed
+    // library's source.
+    const verdict = await this.verdicts.forClass(client, typeName, "save");
+    if (!verdict.ok) {
+      throw vscode.FileSystemError.NoPermissions(verdict.reason);
     }
 
-    const client = await this.ensureClient();
     const text = Buffer.from(content).toString("utf8");
 
     // A transient OMC failure makes `readFile` seed an EMPTY buffer for a real
@@ -171,10 +160,8 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
       );
     }
 
+    // Read for `fileName` — the verdict above consumed only the permission.
     const info = await client.getClassInformation({ typeName });
-    if (info.fileReadOnly) {
-      throw vscode.FileSystemError.NoPermissions(uri);
-    }
     const onDisk = isLikelyDiskPath(info.fileName);
 
     // Drain any stale errors so the post-loadString check below only sees
@@ -289,30 +276,6 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
 
   private bump(uri: vscode.Uri): void {
     this.versions.set(uri.toString(), Date.now());
-  }
-
-  /**
-   * Whether `typeName` is a read-only system-library class. A conclusive
-   * verdict is memoized — `readFile` forces the lookup before any edit — so it
-   * reflects the class's on-disk origin, not a source path a mutation has since
-   * repointed to this scheme's URI. An inconclusive lookup (the class isn't
-   * resolved yet) returns `false` without caching, so it re-evaluates once the
-   * class loads. Failures don't block editing.
-   */
-  async isReadOnly(typeName: string): Promise<boolean> {
-    const cached = this.readOnly.get(typeName);
-    if (cached !== undefined) return cached;
-    try {
-      const client = await this.ensureClient();
-      const verdict = await systemLibraryVerdict(client, typeName);
-      // Memoize only a conclusive verdict: a class not yet resolved reads as
-      // `undefined`, and caching that as writable would strand a restored
-      // system-library editor in edit mode once its class loads.
-      if (verdict !== undefined) this.readOnly.set(typeName, verdict);
-      return verdict ?? false;
-    } catch {
-      return false;
-    }
   }
 }
 
