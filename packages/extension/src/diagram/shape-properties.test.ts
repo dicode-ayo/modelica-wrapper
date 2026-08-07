@@ -273,6 +273,25 @@ describe("buildShapePropertiesForm", () => {
     expect(patternField?.enumTypeName).toBe("LinePattern");
     expect(patternField?.enumChoices).toContain("Solid");
   });
+
+  it("seeds a property the shape omits with its Modelica default", () => {
+    const model = buildShapePropertiesForm(RECT);
+    expect(model.fields.find((x) => x.name === "radius")?.value).toBe(0);
+    expect(model.fields.find((x) => x.name === "visible")?.value).toBe(true);
+  });
+
+  it("leaves a colour the shape omits blank rather than seeding its default", () => {
+    // Seeding it would make the next Apply write a colour the source never set.
+    const fillColor = buildShapePropertiesForm(RECT).fields.find(
+      (x) => x.name === "fillColor",
+    );
+    expect(fillColor?.value).toBeNull();
+    expect(fillColor?.defaultValue).toBe("#0000ff");
+    expect(
+      (applyShapeProperties(RECT, { fillColor: null }) as RectangleShape)
+        .fillColor,
+    ).toBeUndefined();
+  });
 });
 
 // ── applyShapeProperties ──────────────────────────────────────────────────────
