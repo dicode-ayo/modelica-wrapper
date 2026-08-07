@@ -1,14 +1,12 @@
 /**
- * Unit test for the save → cache-invalidation glue.
- *
- * The cache's own `invalidate()` is unit-tested in `omc-cache.test.ts`, and
- * `sync.invalidate` in `sync.test.ts`, but nothing proved the *wiring*: that a
- * document save for a Modelica document calls `lookupCache.invalidate()` (the
- * headline staleness defence) and `sync.invalidate`, and that a non-Modelica
- * save does neither. The reviewer flagged this glue as correct-by-inspection
- * but untested. We test the extracted {@link handleDocumentSave} helper directly
- * and also assert `registerLanguageFeatures` actually registers an
- * `onDidSaveTextDocument` listener that routes through it.
+ * Unit test for the cache-invalidation glue. The two events that stale the
+ * language caches reach different sets of them: a document save invalidates
+ * that path's loaded flag and the lookup answers, while a class changing
+ * outside the editor invalidates that class's parse tree and the lookup
+ * answers but deliberately leaves the loaded flags alone. Each cache's own
+ * `invalidate` is covered in `omc-cache.test.ts` / `sync.test.ts`; what is
+ * asserted here is the wiring, both through the extracted handlers and through
+ * the listeners `registerLanguageFeatures` installs.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -19,8 +17,17 @@ import {
   workspaceListeners,
 } from "../../test-support/vscode-mock.js";
 
-import { handleDocumentSave, registerLanguageFeatures } from "./index.js";
+import { ClassInvalidationRegistry } from "../invalidation.js";
+import { sourceUriFor } from "../source-provider.js";
+
+import {
+  handleClassChanged,
+  handleDocumentSave,
+  registerLanguageFeatures,
+} from "./index.js";
 import { OmcLookupCache, type CachedOmcClient } from "./omc-cache.js";
+import { ParseCache } from "./parse.js";
+import { OmcSync } from "./sync.js";
 
 /** A document stub the save handler inspects (`languageId` + `uri.fsPath`). */
 function doc(languageId: string, fsPath: string) {
@@ -112,6 +119,69 @@ describe("handleDocumentSave", () => {
   });
 });
 
+describe("handleClassChanged", () => {
+  it("drops the class's parse tree and the lookup cache", () => {
+    const parseCache = { invalidate: vi.fn() };
+    const cache = new OmcLookupCache(fakeOmcClient());
+    const invalidate = vi.spyOn(cache, "invalidate");
+
+    handleClassChanged("Lib.A", parseCache, () => cache);
+
+    expect(parseCache.invalidate).toHaveBeenCalledWith(sourceUriFor("Lib.A"));
+    expect(invalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it("is a safe no-op when the lookup cache has not been created yet", () => {
+    const parseCache = { invalidate: vi.fn() };
+
+    handleClassChanged("Lib.A", parseCache, () => undefined);
+
+    expect(parseCache.invalidate).toHaveBeenCalledWith(sourceUriFor("Lib.A"));
+  });
+});
+
+describe("registerLanguageFeatures — invalidation wiring", () => {
+  function register() {
+    const invalidation = new ClassInvalidationRegistry();
+    const disposable = registerLanguageFeatures(
+      { extensionUri: Uri.file("/ext") } as never,
+      vi.fn(() => Promise.resolve(fakeOmcClient())) as never,
+      invalidation,
+    );
+    return { invalidation, disposable };
+  }
+
+  it("drops the parse tree of a class that changed outside the editor", () => {
+    const invalidate = vi.spyOn(ParseCache.prototype, "invalidate");
+    const { invalidation, disposable } = register();
+
+    invalidation.classChanged("Lib.A");
+    expect(invalidate).toHaveBeenCalledWith(sourceUriFor("Lib.A"));
+
+    disposable.dispose();
+    invalidate.mockClear();
+    invalidation.classChanged("Lib.B");
+    expect(invalidate).not.toHaveBeenCalled();
+
+    invalidate.mockRestore();
+  });
+
+  it("leaves the loaded-into-OMC flags alone", () => {
+    // Every producer announces a class only once OMC already holds the change,
+    // so clearing a flag would schedule a `loadFile` that re-reads disk over an
+    // OMC-only edit — an unsaved graphical commit is exactly that.
+    const invalidate = vi.spyOn(OmcSync.prototype, "invalidate");
+    const { invalidation, disposable } = register();
+
+    invalidation.classChanged("Lib.A");
+
+    expect(invalidate).not.toHaveBeenCalled();
+
+    disposable.dispose();
+    invalidate.mockRestore();
+  });
+});
+
 describe("registerLanguageFeatures — save wiring", () => {
   it("registers an onDidSaveTextDocument listener that invalidates on a Modelica save", () => {
     const invalidate = vi.spyOn(OmcLookupCache.prototype, "invalidate");
@@ -120,6 +190,7 @@ describe("registerLanguageFeatures — save wiring", () => {
     const disposable = registerLanguageFeatures(
       { extensionUri: Uri.file("/ext") } as never,
       ensureClient as never,
+      new ClassInvalidationRegistry(),
     );
 
     // A save listener is registered.

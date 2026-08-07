@@ -28,6 +28,7 @@ import {
   DIAGRAM_VIEW_TYPE,
   DiagramEditorProvider,
 } from "../diagram/diagram-editor-provider.js";
+import type { ClassInvalidationRegistry } from "../invalidation.js";
 import { log } from "../logger.js";
 import { sourceUriFor } from "../source-provider.js";
 import { renderWebviewPage } from "../webview/webview-page.js";
@@ -41,7 +42,9 @@ export const LIBRARY_VIEW_ID = "modelica.libraries";
 
 type EnsureClient = () => Promise<OmcClient>;
 
-export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
+export class LibraryWebviewProvider
+  implements vscode.WebviewViewProvider, vscode.Disposable
+{
   private view: vscode.WebviewView | undefined;
   private cached: { client: OmcClient; source: LibrarySource } | undefined;
   /** Rendered icon SVG per class, or `undefined` for "this class has no icon".
@@ -85,10 +88,28 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
   /** In-flight searches, so `libraryCancel` can abandon their queued lookups. */
   private readonly searches = new Map<string, AbortController>();
 
+  private readonly onClassChanged: vscode.Disposable;
+
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly ensureClient: EnsureClient,
-  ) {}
+    invalidation: ClassInvalidationRegistry,
+  ) {
+    this.onClassChanged = invalidation.register((className) =>
+      this.classChanged(className),
+    );
+  }
+
+  dispose(): void {
+    this.onClassChanged.dispose();
+  }
+
+  /** Drop everything this sidebar derives from `className`'s definition: its
+   *  rendered icon and the restriction its row badges. */
+  private classChanged(className: string): void {
+    this.cached?.source.invalidateRestriction(className);
+    this.iconChanged(className);
+  }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
@@ -127,7 +148,7 @@ export class LibraryWebviewProvider implements vscode.WebviewViewProvider {
    *  base's shapes, so an edit to the base must refresh the subtype too — the
    *  base is not part of the subtype's own last elaboration, so its cheap
    *  annotation read would still paint the pre-edit inherited icon. */
-  iconChanged(className: string): void {
+  private iconChanged(className: string): void {
     this.invalidateIcon(className);
     for (const dependent of this.iconDependents.get(className) ?? []) {
       this.invalidateIcon(dependent);

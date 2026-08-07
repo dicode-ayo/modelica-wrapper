@@ -1,50 +1,74 @@
 /**
- * `systemLibrarySaveGuard` is what stops `modelica.savePackage` from
- * `setSourceFile`-ing a system-library class off MODELICAPATH, which would
- * strip origin-based read-only detection from its whole subtree.
+ * `modelica.savePackage` must refuse a system-library class before it prompts
+ * for a target: its `setSourceFile` would repoint the class off MODELICAPATH,
+ * stripping origin-based read-only detection from the whole subtree.
+ *
+ * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { SystemLibraryClient } from "../system-library.js";
+import type { OmcClient } from "@dicode/omc-client";
 
-import { systemLibrarySaveGuard } from "./package.js";
+import {
+  recordedMessages,
+  resetCommands,
+  runCommand,
+} from "../../test-support/vscode-mock.js";
+import { WriteVerdicts } from "../write-verdict.js";
 
-function makeClient(sourceFile: string): SystemLibraryClient {
-  return {
-    getSourceFile: vi.fn(() => Promise.resolve({ fileName: sourceFile })),
-    getModelicaPath: vi.fn(() =>
-      Promise.resolve({ modelicaPath: "/home/u/.openmodelica/libraries" }),
-    ),
-  };
-}
+import type { CommandContext, LibraryNode } from "./context.js";
+import { registerPackageCommands } from "./package.js";
 
-describe("systemLibrarySaveGuard", () => {
-  it("allows saving a workspace package", async () => {
-    const client = makeClient("/ws/Pkg/package.mo");
-    expect(await systemLibrarySaveGuard(client, "Pkg")).toBeUndefined();
+const MODELICA_PATH = "/home/u/.openmodelica/libraries";
+
+const NODE: LibraryNode = {
+  qualifiedName: "Modelica.Blocks",
+  displayName: "Blocks",
+  restriction: "package",
+};
+
+describe("modelica.savePackage", () => {
+  beforeEach(() => {
+    resetCommands();
+    recordedMessages.length = 0;
   });
 
-  it("refuses saving a system-library package", async () => {
-    const client = makeClient(
-      "/home/u/.openmodelica/libraries/Modelica 4.0.0/Blocks/package.mo",
-    );
-
-    const refusal = await systemLibrarySaveGuard(client, "Modelica.Blocks");
-
-    expect(refusal).toContain("Modelica.Blocks");
-    expect(refusal).toContain("read-only system library");
-  });
-
-  it("doesn't block the save when the origin lookup fails transiently", async () => {
-    const client: SystemLibraryClient = {
-      getSourceFile: vi.fn(() => Promise.reject(new Error("OMC busy"))),
-      getModelicaPath: vi.fn(() =>
-        Promise.resolve({ modelicaPath: "/home/u/.openmodelica/libraries" }),
+  it("refuses a system-library package before reading its source", async () => {
+    const listFile = vi.fn(() => Promise.resolve({ contents: "" }));
+    const setSourceFile = vi.fn(() => Promise.resolve({}));
+    const client = {
+      listFile,
+      setSourceFile,
+      getSourceFile: vi.fn(() =>
+        Promise.resolve({
+          fileName: `${MODELICA_PATH}/Modelica 4.0.0/Blocks/package.mo`,
+        }),
       ),
-    };
+      getModelicaPath: vi.fn(() =>
+        Promise.resolve({ modelicaPath: MODELICA_PATH }),
+      ),
+      getClassInformation: vi.fn(() =>
+        Promise.resolve({ fileReadOnly: false }),
+      ),
+    } as unknown as OmcClient;
+    const ctx = {
+      ensureClient: () => Promise.resolve(client),
+      writeVerdicts: new WriteVerdicts(),
+    } as unknown as CommandContext;
+    registerPackageCommands(ctx);
 
-    // Matches systemLibraryCreateGuard's "failures don't block" contract.
-    expect(await systemLibrarySaveGuard(client, "Pkg")).toBeUndefined();
+    await runCommand("modelica.savePackage", NODE);
+
+    expect(setSourceFile).not.toHaveBeenCalled();
+    // The mock has no `showSaveDialog`, so a passing verdict would also leave
+    // `listFile` untouched — only the refusal sentence proves the gate ran, and
+    // it can only have been produced before the dialog.
+    expect(listFile).not.toHaveBeenCalled();
+    expect(recordedMessages).toContainEqual({
+      level: "error",
+      message:
+        "Modelica: Cannot save Modelica.Blocks — it belongs to a read-only system library.",
+    });
   });
 });

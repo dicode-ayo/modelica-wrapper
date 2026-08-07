@@ -13,10 +13,6 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 
 import type { SelfWriteGuard } from "../self-write-guard.js";
-import {
-  isSystemLibraryClass,
-  type SystemLibraryClient,
-} from "../system-library.js";
 
 import {
   sanitizeIdentifier,
@@ -69,25 +65,6 @@ export async function loadRootPackage(
   await guard.write(pkgFile, pkgBody);
   await client.setSourceFile({ typeName: pkgName, fileName: pkgFile });
   return { success: true, pkgFile };
-}
-
-/**
- * Refuses "Save Package As" for a system-library class: the command's
- * `setSourceFile` would repoint the class off MODELICAPATH, silently stripping
- * read-only detection from the whole subtree. Returns the refusal message, or
- * `undefined` when the save may proceed. A failed origin lookup doesn't block
- * the save — matching `systemLibraryCreateGuard`.
- */
-export async function systemLibrarySaveGuard(
-  client: SystemLibraryClient,
-  qualifiedName: string,
-): Promise<string | undefined> {
-  try {
-    if (!(await isSystemLibraryClass(client, qualifiedName))) return undefined;
-  } catch {
-    return undefined;
-  }
-  return `cannot save ${qualifiedName} — it belongs to a read-only system library.`;
 }
 
 export function registerPackageCommands(
@@ -156,10 +133,14 @@ export function registerPackageCommands(
           // Refuse before prompting for a target: the `setSourceFile` below
           // would repoint the class off MODELICAPATH, silently stripping
           // read-only protection from the whole subtree.
-          const refusal = await systemLibrarySaveGuard(c, node.qualifiedName);
-          if (refusal !== undefined) {
-            log.error(refusal);
-            await vscode.window.showErrorMessage(`Modelica: ${refusal}`);
+          const verdict = await ctx.writeVerdicts.forClass(
+            c,
+            node.qualifiedName,
+            "save",
+          );
+          if (!verdict.ok) {
+            log.error(verdict.reason);
+            await vscode.window.showErrorMessage(`Modelica: ${verdict.reason}`);
             return;
           }
           const defaultUri = (() => {

@@ -41,6 +41,7 @@ import type {
   WebviewToExtension,
 } from "../webview/protocol.js";
 import type { ReadyGate } from "../webview/ready-gate.js";
+import { WriteVerdicts } from "../write-verdict.js";
 import { type Scheduler } from "./buffer-sync.js";
 import { DiagramClipboard } from "./clipboard.js";
 import {
@@ -52,6 +53,9 @@ import {
   resolveDiagramEditor,
 } from "./diagram-editor-provider.js";
 import { createShadowBuffer, type ShadowBuffer } from "./shadow-buffer.js";
+
+/** Stands in for whatever sentence the write verdict refuses with. */
+const REFUSAL = "Cannot edit Pkg.M — its source file is read-only.";
 
 beforeEach(() => {
   appliedEdits.length = 0;
@@ -166,7 +170,7 @@ interface FakeWebview {
   html: string;
   asWebviewUri: (u: vscode.Uri) => vscode.Uri;
   postMessage: (m: ExtensionToWebview) => Promise<boolean>;
-  onDidReceiveMessage: (l: (m: WebviewToExtension) => void) => {
+  onDidReceiveMessage: (l: (m: unknown) => void) => {
     dispose(): void;
   };
 }
@@ -176,12 +180,12 @@ function makePanel(active = false): {
   webview: FakeWebview;
   posted: ExtensionToWebview[];
   fireReady: () => void;
-  fireMessage: (m: WebviewToExtension) => void;
+  fireMessage: (m: unknown) => void;
   fireViewState: (isActive: boolean) => void;
   fireDispose: () => void;
 } {
   const posted: ExtensionToWebview[] = [];
-  let listener: ((m: WebviewToExtension) => void) | undefined;
+  let listener: ((m: unknown) => void) | undefined;
   let viewStateListener:
     | ((e: { webviewPanel: { active: boolean } }) => void)
     | undefined;
@@ -305,6 +309,7 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
       panel,
       EXT_URI,
       ensureClient,
+      new WriteVerdicts(),
       docFor(vscode.Uri.parse("modelica-source:/Modelica.Blocks.Math.Gain.mo")),
       "diagram",
     );
@@ -335,6 +340,7 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
       panel,
       EXT_URI,
       ensureClient,
+      new WriteVerdicts(),
       docFor(vscode.Uri.parse("modelica-source:/Pkg.Broken.mo")),
       "diagram",
     );
@@ -352,8 +358,9 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
 
   it("evaluates readOnly after the layout fetch resolves the class", async () => {
     const { panel, posted, fireReady } = makePanel();
-    // Read-only becomes visible only once the fetch has resolved the class; a
-    // verdict taken before the fetch (the restored-tab bug) would read writable.
+    // Read-only becomes visible only once the fetch has resolved the class: an
+    // unresolved class has no source file to classify, so a verdict taken
+    // before the fetch (a restored tab) would read writable.
     let fetched = false;
     const { client } = makeClient({
       getModelInstance: () => {
@@ -361,36 +368,38 @@ describe("resolveDiagramEditor: modelica-source fast path", () => {
         return Promise.resolve({ instance: INSTANCE });
       },
     });
-    const ensureClient = vi.fn(() => Promise.resolve(client));
-    const statSpy = vi
-      .spyOn(vscode.workspace.fs, "stat")
-      .mockImplementation(() =>
+    const resolving = {
+      ...client,
+      getSourceFile: vi.fn(() =>
         Promise.resolve({
-          type: vscode.FileType.File,
-          ctime: 0,
-          mtime: 0,
-          size: 1,
-          permissions: fetched ? vscode.FilePermission.Readonly : undefined,
+          fileName: fetched
+            ? "/home/u/.openmodelica/libraries/Modelica/Blocks/package.mo"
+            : "",
         }),
-      );
-    try {
-      resolveDiagramEditor(
-        panel,
-        EXT_URI,
-        ensureClient,
-        docFor(
-          vscode.Uri.parse("modelica-source:/Modelica.Blocks.Math.Gain.mo"),
-        ),
-        "diagram",
-      );
-      await flush();
-      fireReady();
-      const msg = posted[0];
-      expect(msg?.type).toBe("init");
-      if (msg?.type === "init") expect(msg.readOnly).toBe(true);
-    } finally {
-      statSpy.mockRestore();
-    }
+      ),
+      getModelicaPath: vi.fn(() =>
+        Promise.resolve({ modelicaPath: "/home/u/.openmodelica/libraries" }),
+      ),
+      getClassInformation: vi.fn(() =>
+        Promise.resolve({ fileReadOnly: false }),
+      ),
+    } as unknown as OmcClient;
+    const ensureClient = vi.fn(() => Promise.resolve(resolving));
+
+    resolveDiagramEditor(
+      panel,
+      EXT_URI,
+      ensureClient,
+      new WriteVerdicts(),
+      docFor(vscode.Uri.parse("modelica-source:/Modelica.Blocks.Math.Gain.mo")),
+      "diagram",
+    );
+    await flush();
+    fireReady();
+
+    const msg = posted[0];
+    expect(msg?.type).toBe("init");
+    if (msg?.type === "init") expect(msg.readOnly).toBe(true);
   });
 });
 
@@ -424,7 +433,14 @@ describe("resolveDiagramEditor: render mode", () => {
     const { client, invokedFns } = makeModeClient();
     const ensureClient = vi.fn(() => Promise.resolve(client));
 
-    resolveDiagramEditor(panel, EXT_URI, ensureClient, GAIN_MODE_DOC, "icon");
+    resolveDiagramEditor(
+      panel,
+      EXT_URI,
+      ensureClient,
+      new WriteVerdicts(),
+      GAIN_MODE_DOC,
+      "icon",
+    );
     await flush();
     fireReady();
 
@@ -443,6 +459,7 @@ describe("resolveDiagramEditor: render mode", () => {
       panel,
       EXT_URI,
       ensureClient,
+      new WriteVerdicts(),
       GAIN_MODE_DOC,
       "diagram",
     );
@@ -482,12 +499,14 @@ describe("DiagramEditorProvider: registration", () => {
     DiagramEditorProvider.register(
       context,
       ensureClient,
+      new WriteVerdicts(),
       DIAGRAM_VIEW_TYPE,
       "diagram",
     );
     DiagramEditorProvider.register(
       context,
       ensureClient,
+      new WriteVerdicts(),
       ICON_VIEW_TYPE,
       "icon",
     );
@@ -528,6 +547,7 @@ describe("resolveDiagramEditor: on-disk file: path", () => {
       panel,
       EXT_URI,
       ensureClient,
+      new WriteVerdicts(),
       docFor(vscode.Uri.file("/ws/Foo.mo")),
       "diagram",
     );
@@ -555,6 +575,7 @@ describe("resolveDiagramEditor: on-disk file: path", () => {
       panel,
       EXT_URI,
       ensureClient,
+      new WriteVerdicts(),
       docFor(vscode.Uri.file("/ws/Empty.mo")),
       "diagram",
     );
@@ -575,6 +596,7 @@ describe("resolveDiagramEditor: on-disk file: path", () => {
       panel,
       EXT_URI,
       ensureClient,
+      new WriteVerdicts(),
       docFor(vscode.Uri.parse("untitled:/foo.mo")),
       "diagram",
     );
@@ -2056,7 +2078,7 @@ function iconController(
     initial,
     factory,
     undefined,
-    false,
+    { ok: true },
     "icon",
   );
 }
@@ -2474,6 +2496,7 @@ describe("DiagramEditorProvider: active-editor registry", () => {
       panel,
       EXT_URI,
       ensureClient,
+      new WriteVerdicts(),
       docFor(vscode.Uri.parse("modelica-source:/Pkg.M.mo")),
       "diagram",
     );
@@ -2526,7 +2549,7 @@ describe("DiagramEditController: writable-class gate", () => {
       deps.initial ?? layout({}),
       deps.factory,
       deps.scheduler,
-      true,
+      { ok: false, reason: REFUSAL },
     );
   }
 
@@ -2801,7 +2824,7 @@ describe("DiagramEditController: clipboard", () => {
       twoGains(),
       factory,
       undefined,
-      opts.readOnly ?? false,
+      opts.readOnly === true ? { ok: false, reason: REFUSAL } : { ok: true },
       opts.mode ?? "diagram",
     );
     return {
@@ -2973,6 +2996,7 @@ describe("DiagramEditorProvider: registry dispose", () => {
       panel,
       EXT_URI,
       ensureClient,
+      new WriteVerdicts(),
       docFor(vscode.Uri.parse("modelica-source:/Pkg.M.mo")),
       "diagram",
     );
@@ -2982,5 +3006,64 @@ describe("DiagramEditorProvider: registry dispose", () => {
 
     fireDispose();
     expect(DiagramEditorProvider.activeClassName()).toBeUndefined();
+  });
+});
+
+describe("the gesture boundary", () => {
+  it("drops a message whose payload does not match its declaration", async () => {
+    const { panel, fireReady, fireViewState, fireMessage } = makePanel();
+    const { client } = makeEditClient();
+    resolveDiagramEditor(
+      panel,
+      EXT_URI,
+      vi.fn(() => Promise.resolve(client)),
+      new WriteVerdicts(),
+      docFor(vscode.Uri.parse("modelica-source:/Pkg.M.mo")),
+      "diagram",
+    );
+    fireReady();
+    fireViewState(true);
+    await flush();
+
+    const focusUpdates = (): number =>
+      executedCommands.filter(
+        (c) =>
+          c.command === "setContext" &&
+          c.args.at(0) === "modelicaDiagramInputFocus",
+      ).length;
+    const before = focusUpdates();
+
+    fireMessage({ type: "inputFocus", focused: true });
+    expect(focusUpdates()).toBe(before + 1);
+
+    // Same gesture, a payload that isn't one: it stops at the boundary rather
+    // than reaching the host with a `focused` nobody checked.
+    fireMessage({ type: "inputFocus", focused: "yes" });
+    fireMessage({ type: "somethingAddedLater" });
+    fireMessage("change");
+    expect(focusUpdates()).toBe(before + 1);
+  });
+
+  it("fails loudly on a message type the dispatch does not handle", async () => {
+    // The boundary keeps this out of production; what it pins is that an
+    // unhandled gesture reaching the dispatch reports instead of returning.
+    const { client } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({
+      type: "somethingAddedLater",
+    } as unknown as WebviewToExtension);
+
+    const errors = posted.filter((m) => m.type === "error");
+    expect(errors).toHaveLength(1);
+    expect(errors.at(0)).toMatchObject({
+      message: expect.stringContaining("WebviewToExtension"),
+    });
   });
 });

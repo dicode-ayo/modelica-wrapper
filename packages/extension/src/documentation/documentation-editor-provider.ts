@@ -5,8 +5,6 @@ import type { DocumentationInterface } from "@dicode/documentation-ui/interface-
 
 import {
   defaultScheduler,
-  isReadOnlyDocument,
-  READ_ONLY_EDIT_MESSAGE,
   reloadBufferIntoOmc,
   REVERSE_SYNC_DEBOUNCE_MS,
   type BufferSyncClient,
@@ -26,6 +24,11 @@ import type {
 } from "../webview/documentation-protocol.js";
 import { createReadyGate, type ReadyGate } from "../webview/ready-gate.js";
 import { renderPlaceholderPage } from "../webview/webview-page.js";
+import type {
+  WriteVerdict,
+  WriteVerdictClient,
+  WriteVerdicts,
+} from "../write-verdict.js";
 
 import { docHtmlUriFor } from "./documentation-html-provider.js";
 import { buildDocumentationInterface } from "./documentation-interface.js";
@@ -36,7 +39,8 @@ import { renderDocumentationWebviewHtml } from "./documentation-webview-html.js"
 export { DOCUMENTATION_VIEW_TYPE };
 
 /** The subset of OMC the documentation editor drives. */
-export interface DocumentationClient extends BufferSyncClient {
+export interface DocumentationClient
+  extends BufferSyncClient, WriteVerdictClient {
   getDocumentationAnnotation(input: {
     typeName: string;
   }): Promise<{ info: string }>;
@@ -70,16 +74,19 @@ export class DocumentationEditorProvider
   private constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly ensureClient: () => Promise<OmcClient>,
+    private readonly writeVerdicts: WriteVerdicts,
   ) {}
 
   static register(
     context: vscode.ExtensionContext,
     ensureClient: () => Promise<OmcClient>,
+    writeVerdicts: WriteVerdicts,
     viewType: string,
   ): vscode.Disposable {
     const provider = new DocumentationEditorProvider(
       context.extensionUri,
       ensureClient,
+      writeVerdicts,
     );
     return vscode.window.registerCustomEditorProvider(viewType, provider, {
       webviewOptions: { retainContextWhenHidden: true },
@@ -96,6 +103,7 @@ export class DocumentationEditorProvider
       webviewPanel,
       this.extensionUri,
       this.ensureClient,
+      this.writeVerdicts,
       document,
     );
   }
@@ -135,6 +143,7 @@ export function resolveDocumentationEditor(
   webviewPanel: vscode.WebviewPanel,
   extensionUri: vscode.Uri,
   ensureClient: () => Promise<OmcClient>,
+  writeVerdicts: WriteVerdicts,
   document: vscode.TextDocument,
 ): void {
   const { webview } = webviewPanel;
@@ -204,7 +213,7 @@ export function resolveDocumentationEditor(
     try {
       const client: DocumentationClient = await ensureClient();
       controller = new DocumentationEditController(
-        { client, document, className, gate },
+        { client, document, className, gate, writeVerdicts },
         (onForeignChange) => createShadowBuffer(document, onForeignChange),
       );
       registerController(className, controller);
@@ -243,6 +252,7 @@ export function notifyDocumentationChanged(className: string): void {
 
 interface EditControllerDeps {
   client: DocumentationClient;
+  writeVerdicts: WriteVerdicts;
   document: vscode.TextDocument;
   className: string;
   gate: ReadyGate<DocExtensionToWebview>;
@@ -283,8 +293,11 @@ export class DocumentationEditController {
   // before that is refused rather than targeting a not-yet-confirmed class.
   private seeded = false;
 
-  // Safe default until `refetchAndSend` resolves the class and evaluates it.
-  private readOnly = true;
+  // Safe default until `refetchAndSend` resolves the class and judges it.
+  private verdict: WriteVerdict = {
+    ok: false,
+    reason: "The class hasn't loaded yet.",
+  };
 
   constructor(
     private readonly deps: EditControllerDeps,
@@ -345,10 +358,10 @@ export class DocumentationEditController {
     });
   }
 
-  /** Reject an edit against a read-only (MSL / installed-library) class. */
+  /** Reject an edit against a class the write verdict refuses. */
   private rejectIfReadOnly(): boolean {
-    if (!this.readOnly) return false;
-    this.reportError(READ_ONLY_EDIT_MESSAGE);
+    if (this.verdict.ok) return false;
+    this.reportError(this.verdict.reason);
     return true;
   }
 
@@ -417,13 +430,18 @@ export class DocumentationEditController {
     // Evaluated after the fetch, which resolves a not-yet-loaded class (a
     // restored tab): a verdict taken earlier would read as writable and strand
     // the editor in edit mode for a system-library class.
-    this.readOnly = await isReadOnlyDocument(document);
+    this.verdict = await this.deps.writeVerdicts.forDocument(
+      client,
+      document,
+      className,
+      "edit",
+    );
     const resources = await resolveDocResources(client, info);
     gate.send({
       type: "doc",
       className,
       info,
-      readOnly: this.readOnly,
+      readOnly: !this.verdict.ok,
       resources,
     });
     // The interface follows in its own message so the HTML paints without

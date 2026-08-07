@@ -9,7 +9,9 @@ import * as vscode from "vscode";
 
 import type { OmcClient } from "@dicode/omc-client";
 
+import type { ClassInvalidationRegistry } from "../invalidation.js";
 import { log } from "../logger.js";
+import { sourceUriFor } from "../source-provider.js";
 
 import {
   ANNOTATION_SEMANTIC_TOKENS_LEGEND,
@@ -122,6 +124,30 @@ export function handleDocumentSave(
 }
 
 /**
+ * Drop what the language layer caches for a class whose definition changed
+ * outside the editor — the `.mo` watcher reloading a foreign edit or a git
+ * checkout, a mutation command, a graphical commit.
+ *
+ * The signal names a class, not a buffer, so the parse tree is dropped for
+ * that class's `modelica-source:` document; the lookup cache is keyed by the
+ * loaded-library signature, which an in-place reload of an already-loaded file
+ * leaves unmoved, so it is cleared wholesale.
+ *
+ * `OmcSync` is left alone. Every producer announces a class only once the
+ * change is already in OMC, so its "this path is loaded" flag stays true, and
+ * clearing it would schedule a `loadFile` that re-reads disk over an OMC-only
+ * edit — which is what an unsaved graphical commit is.
+ */
+export function handleClassChanged(
+  className: string,
+  parseCache: Pick<ParseCache, "invalidate">,
+  getLookupCache: () => Pick<OmcLookupCache, "invalidate"> | undefined,
+): void {
+  parseCache.invalidate(sourceUriFor(className));
+  getLookupCache()?.invalidate();
+}
+
+/**
  * Register the Modelica language features. Returns a single {@link vscode.Disposable}
  * that tears down the parse cache and all listeners — push it onto
  * `context.subscriptions`.
@@ -130,10 +156,14 @@ export function handleDocumentSave(
  *   WASM in `<extension>/out`.
  * @param ensureClient - lazy OMC client factory; the definition/hover providers
  *   call it per request and the buffer↔OMC sync loads files through it.
+ * @param invalidation - the class-invalidation registry; the parse and lookup
+ *   caches subscribe to it for changes that never pass through a text-document
+ *   event.
  */
 export function registerLanguageFeatures(
   context: vscode.ExtensionContext,
   ensureClient: EnsureClient,
+  invalidation: ClassInvalidationRegistry,
 ): vscode.Disposable {
   // esbuild copies both `.wasm` files next to `extension.js` in `out/`.
   const wasmDir = vscode.Uri.joinPath(context.extensionUri, "out").fsPath;
@@ -235,6 +265,10 @@ export function registerLanguageFeatures(
     sync.invalidate(document.uri.fsPath);
   });
 
+  const onClassChanged = invalidation.register((className) => {
+    handleClassChanged(className, cache, () => lookupCache);
+  });
+
   log.info("language", "language features registered");
 
   return new vscode.Disposable(() => {
@@ -246,6 +280,7 @@ export function registerLanguageFeatures(
     onChange.dispose();
     onSave.dispose();
     onClose.dispose();
+    onClassChanged.dispose();
     cache.dispose();
   });
 }

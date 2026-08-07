@@ -6,6 +6,9 @@
  * is owned by the user, so a file-permission check (`fileReadOnly`) treats it as
  * editable. Read-only is a property of a class's *origin*, not its file mode —
  * the same distinction OMEdit draws with `isSystemLibrary`.
+ *
+ * This is one half of a write verdict; `write-verdict.ts` combines it with the
+ * file permission and owns the memo callers see.
  */
 
 import * as path from "node:path";
@@ -18,26 +21,15 @@ export interface SystemLibraryClient {
 }
 
 /**
- * True when `className`'s source file lives under a `MODELICAPATH` entry.
- *
- * Evaluate this *before* any mutating `loadString`: reflecting an editor buffer
- * back into OMC repoints the class's `fileName` to the `modelica-source:` URI,
- * after which the source location can no longer be compared against
- * `MODELICAPATH`. A non-disk `fileName` (empty, a `<runtime:…>` pseudo-path, or
- * an already-repointed URI) reads as not-a-system-library.
- */
-export async function isSystemLibraryClass(
-  client: SystemLibraryClient,
-  className: string,
-): Promise<boolean> {
-  return (await systemLibraryVerdict(client, className)) === true;
-}
-
-/**
  * `true` / `false` when `className`'s origin is resolvable, `undefined` when it
  * isn't — a class not yet loaded (or repointed to an editor-buffer URI) has no
  * on-disk source to classify. `undefined` is inconclusive: the class may
  * resolve later, so callers must not treat it as a durable "writable".
+ *
+ * Evaluate this *before* any mutating `loadString`: reflecting an editor buffer
+ * back into OMC repoints the class's `fileName` to the `modelica-source:` URI,
+ * after which the source location can no longer be compared against
+ * `MODELICAPATH`.
  */
 export async function systemLibraryVerdict(
   client: SystemLibraryClient,

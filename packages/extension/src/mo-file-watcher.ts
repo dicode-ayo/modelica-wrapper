@@ -5,13 +5,17 @@
  * read-only MODELICAPATH libraries are never watched.
  *
  * OMC stays the single source the tree lists from, so every reaction routes
- * through the targeted change protocol (`childrenChanged` / `iconChanged`)
- * rather than a wholesale reload:
- *   - change / create → `loadFile`, then re-list the affected scopes and
- *     invalidate each class's icon.
+ * through the targeted change protocol (`childrenChanged`) rather than a
+ * wholesale reload:
+ *   - change / create → `loadFile`, then re-list the affected scopes.
  *   - delete → `deleteClass` for the classes the gone file declared (resolved
  *     from a path→class index, since the file can no longer be parsed), then
  *     re-list their enclosing scope.
+ *
+ * Both announce each touched class through `notifySourceChanged`. The
+ * per-class caches — sidebar icons, class restrictions, the language caches —
+ * hang off that one broadcast through `source-invalidation.ts`, so the watcher
+ * invalidates none of them directly.
  *
  * A `package.order` edit resolves the owning package from the path→class index
  * and reloads its `package.mo`, which re-derives the child order from disk.
@@ -46,13 +50,25 @@ interface WatcherOmcClient {
   deleteClass(input: { typeName: string }): Promise<{ success: boolean }>;
 }
 
+/** A file holding classes at or under some scope, paired with just those classes. */
+export interface FilesUnderEntry {
+  fsPath: string;
+  classNames: string[];
+}
+
 /** Maps a normalized `.mo` path to the fully-qualified classes it declares. */
 export interface PathClassIndex {
   get(fsPath: string): string[] | undefined;
   set(fsPath: string, classNames: string[]): void;
   delete(fsPath: string): void;
-  /** Every indexed class at or under `qualifiedName`, itself included. */
-  classesUnder(qualifiedName: string): string[];
+  /**
+   * Every indexed file holding a class at or under `qualifiedName` (itself
+   * included), each paired with just the matching classes it declares. A
+   * cascade — `deleteClass` on a package, or a reload of it — can touch
+   * classes spread across several files, not just the file `qualifiedName`
+   * itself lives in.
+   */
+  filesUnder(qualifiedName: string): FilesUnderEntry[];
 }
 
 export function createPathClassIndex(): PathClassIndex {
@@ -62,15 +78,14 @@ export function createPathClassIndex(): PathClassIndex {
     get: (p) => byPath.get(key(p)),
     set: (p, names) => void byPath.set(key(p), names),
     delete: (p) => void byPath.delete(key(p)),
-    classesUnder(qualifiedName) {
+    filesUnder(qualifiedName) {
       const prefix = `${qualifiedName}.`;
-      const found: string[] = [];
-      for (const names of byPath.values()) {
-        for (const name of names) {
-          if (name === qualifiedName || name.startsWith(prefix)) {
-            found.push(name);
-          }
-        }
+      const found: FilesUnderEntry[] = [];
+      for (const [fsPath, names] of byPath) {
+        const matches = names.filter(
+          (name) => name === qualifiedName || name.startsWith(prefix),
+        );
+        if (matches.length > 0) found.push({ fsPath, classNames: matches });
       }
       return found;
     },
@@ -79,7 +94,7 @@ export function createPathClassIndex(): PathClassIndex {
 
 export interface MoWatcherDeps {
   ensureClient: () => Promise<WatcherOmcClient>;
-  libraryTree: Pick<LibraryWebviewProvider, "childrenChanged" | "iconChanged">;
+  libraryTree: Pick<LibraryWebviewProvider, "childrenChanged">;
   sourceProvider: Pick<ModelicaSourceProvider, "notifySourceChanged">;
   guard: SelfWriteGuard;
   index: PathClassIndex;
@@ -87,8 +102,12 @@ export interface MoWatcherDeps {
   readFile: (fsPath: string) => Promise<string>;
   /** True iff `fsPath` is still on disk; injected so tests need no real disk. */
   fileExists: (fsPath: string) => Promise<boolean>;
-  /** True when a declared class is open and dirty — reloading would clobber it. */
-  isBusy: (fsPath: string, classNames: string[]) => boolean;
+  /**
+   * True when a declared class is open and dirty — reloading would clobber
+   * it. `fsPaths` and `classNames` both cover the full cascade a reload or
+   * `deleteClass` can touch, not just the file the triggering event named.
+   */
+  isBusy: (fsPaths: string[], classNames: string[]) => boolean;
 }
 
 /** `""` (top-level scope) maps to the root listing; a nested scope stays as-is. */
@@ -106,10 +125,10 @@ function warnBusy(fsPath: string, classNames: string[]): void {
 }
 
 /**
- * A skipped reorder does not come back on its own: saving the busy editor
- * reloads that member alone, and nothing re-runs the reorder. So this says
- * what actually recovers it, where a `.mo` reload can promise the save is
- * enough (issue #419).
+ * A skipped reorder is terminal: saving the busy editor reloads that member
+ * alone, and nothing re-runs the reorder (issue #440). So this says what
+ * actually recovers it, where a `.mo` reload can promise the save is enough
+ * (issue #419).
  */
 function warnReorderBusy(describedPath: string, classNames: string[]): void {
   void vscode.window.showWarningMessage(
@@ -118,6 +137,29 @@ function warnReorderBusy(describedPath: string, classNames: string[]): void {
       `the editor, then edit ${path.basename(describedPath)} again or refresh ` +
       `the library.`,
   );
+}
+
+/**
+ * Every file and class a `deleteClass` or reload of `names` can reach,
+ * deduplicated: each name's own file, plus every file holding a class nested
+ * under it. `extra` is a floor included regardless of what the cascade
+ * search finds — a class the index doesn't know yet (so `filesUnder` can't
+ * cascade from it) still needs to be checked directly. `extra.fsPath`
+ * needn't be pre-resolved by the caller — it's normalized here to match the
+ * paths {@link PathClassIndex.filesUnder} returns, so a caller path carrying
+ * e.g. a `..` segment still dedupes against the same file's cascaded entry.
+ */
+function cascadeReach(
+  index: PathClassIndex,
+  names: string[],
+  extra: { fsPath?: string; classNames?: string[] } = {},
+): { fsPaths: string[]; classNames: string[] } {
+  const matches = names.flatMap((name) => index.filesUnder(name));
+  const fsPaths = new Set(matches.map((f) => f.fsPath));
+  if (extra.fsPath !== undefined) fsPaths.add(path.resolve(extra.fsPath));
+  const classNames = new Set(matches.flatMap((f) => f.classNames));
+  for (const n of extra.classNames ?? []) classNames.add(n);
+  return { fsPaths: [...fsPaths], classNames: [...classNames] };
 }
 
 /**
@@ -149,9 +191,18 @@ export async function handleMoChange(
 
   const previous = deps.index.get(fsPath) ?? [];
   const removed = previous.filter((n) => !names.includes(n));
-  const affected = [...names, ...removed];
-  if (deps.isBusy(fsPath, affected)) {
-    warnBusy(fsPath, affected);
+  const directNames = [...names, ...removed];
+  // loadFile on fsPath reloads its whole subtree from disk when fsPath is a
+  // package — same as reorderPackage's reload — so a still-declared class
+  // cascades to its nested members' files exactly as a removed one cascades
+  // its deleteClass to them. `classNames: names` is the floor for a
+  // brand-new class the index doesn't know yet to cascade from.
+  const { fsPaths, classNames } = cascadeReach(deps.index, directNames, {
+    fsPath,
+    classNames: names,
+  });
+  if (deps.isBusy(fsPaths, classNames)) {
+    warnBusy(fsPath, directNames);
     return;
   }
 
@@ -171,15 +222,17 @@ export async function handleMoChange(
   for (const name of removed) scopes.add(scopeOf(name));
   for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
   for (const name of removed) deps.sourceProvider.notifySourceChanged(name);
-  for (const name of names) {
-    deps.libraryTree.iconChanged(name);
-    deps.sourceProvider.notifySourceChanged(name);
-  }
+  for (const name of names) deps.sourceProvider.notifySourceChanged(name);
 }
 
-/** `dirname(orderFsPath)/package.mo` — the file that owns a `package.order`. */
-function orderOwner(orderFsPath: string): string {
-  return path.join(path.dirname(orderFsPath), "package.mo");
+/**
+ * `dirname(fsPath)/package.mo` — the file that owns anything else in its
+ * directory: a `package.order`, or a `.mo` file (itself, if `fsPath` already
+ * is a `package.mo`). Purely lexical, so it's stable across index seeding
+ * and doesn't need `fsPath` to already be indexed.
+ */
+function orderOwner(fsPath: string): string {
+  return path.join(path.dirname(fsPath), "package.mo");
 }
 
 /**
@@ -204,9 +257,11 @@ async function reorderPackage(
   }
   // Reloading the package re-reads every member from disk, so a dirty buffer
   // for a *member* — not just the package itself — is at risk of being
-  // clobbered underneath its editor.
-  const affected = names.flatMap((name) => deps.index.classesUnder(name));
-  if (deps.isBusy(pkgFile, affected)) {
+  // clobbered underneath its editor, whichever file that member lives in.
+  const { fsPaths, classNames } = cascadeReach(deps.index, names, {
+    fsPath: pkgFile,
+  });
+  if (deps.isBusy(fsPaths, classNames)) {
     warnReorderBusy(describedPath, names);
     return;
   }
@@ -230,10 +285,7 @@ async function reorderPackage(
     scopes.add(scopeOf(name));
   }
   for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
-  for (const name of names) {
-    deps.libraryTree.iconChanged(name);
-    deps.sourceProvider.notifySourceChanged(name);
-  }
+  for (const name of names) deps.sourceProvider.notifySourceChanged(name);
 
   if (!loaded) {
     // pkgFile can vanish between the busy check above and here — a directory
@@ -304,17 +356,25 @@ export async function handleMoDelete(
     log.warn("moWatcher", `deleted ${fsPath} declared no indexed classes`);
     return;
   }
-  if (deps.isBusy(fsPath, names)) {
+  // Deleting a package cascades to every member nested under it, wherever
+  // those live — widen the busy check to their files and names too.
+  const { fsPaths, classNames } = cascadeReach(deps.index, names, { fsPath });
+  if (deps.isBusy(fsPaths, classNames)) {
     warnBusy(fsPath, names);
     return;
   }
 
   const client = await deps.ensureClient();
-  for (const name of names) {
-    await client.deleteClass({ typeName: name });
+  for (const name of names) await client.deleteClass({ typeName: name });
+
+  // OMC's own deleteClass cascade just took every nested member with it too,
+  // wherever those live — the index and any editor open on one of them have
+  // to be told the same way, not just for fsPath's own direct names.
+  const cascadedFiles = names.flatMap((name) => deps.index.filesUnder(name));
+  for (const file of cascadedFiles) deps.index.delete(file.fsPath);
+  for (const name of new Set(cascadedFiles.flatMap((f) => f.classNames))) {
     deps.sourceProvider.notifySourceChanged(name);
   }
-  deps.index.delete(fsPath);
 
   const scopes = new Set<string | null>();
   for (const name of names) scopes.add(scopeOf(name));
@@ -323,15 +383,17 @@ export async function handleMoDelete(
 
 /**
  * True when any class in `classNames` is open and dirty — as a custom editor
- * over its `modelica-source:` URI, or as a plain text editor over the file on
- * disk. Reloading OMC under such a buffer would discard the unsaved edit.
+ * over its `modelica-source:` URI — or when any file in `fsPaths` is open and
+ * dirty as a plain text editor over the file on disk. Reloading OMC under
+ * such a buffer would discard the unsaved edit. Callers pass the full set a
+ * cascade can touch, not just the file the triggering event named.
  */
 export function isDeclaredClassBusy(
-  fsPath: string,
+  fsPaths: string[],
   classNames: string[],
 ): boolean {
   const sourceUris = new Set(classNames.map((n) => sourceUriFor(n).toString()));
-  const diskUri = vscode.Uri.file(fsPath).toString();
+  const diskUris = new Set(fsPaths.map((p) => vscode.Uri.file(p).toString()));
   for (const group of vscode.window.tabGroups.all) {
     for (const tab of group.tabs) {
       if (!tab.isDirty) continue;
@@ -345,7 +407,7 @@ export function isDeclaredClassBusy(
       }
       if (
         input instanceof vscode.TabInputText &&
-        input.uri.toString() === diskUri
+        diskUris.has(input.uri.toString())
       ) {
         return true;
       }
@@ -409,19 +471,29 @@ export function registerMoFileWatcher(deps: {
 
   // Serialize per path so overlapping events (a rename is delete+create; rapid
   // saves) can't interleave their index writes and leave it out of sync.
+  // `key` and `describedPath` differ whenever an event is queued under its
+  // owning package's path rather than its own — the failure log should
+  // still name the file that actually triggered the event.
   const inFlight = new Map<string, Promise<void>>();
-  const run = (fsPath: string, fn: () => Promise<void>): void => {
-    const key = path.resolve(fsPath);
-    const prior = inFlight.get(key) ?? Promise.resolve();
+  const run = (
+    key: string,
+    describedPath: string,
+    fn: () => Promise<void>,
+  ): void => {
+    const resolvedKey = path.resolve(key);
+    const prior = inFlight.get(resolvedKey) ?? Promise.resolve();
     const next = prior
       .then(() => seedReady)
       .then(fn)
       .catch((err) =>
-        log.warn("moWatcher", `handling ${fsPath} failed: ${asMessage(err)}`),
+        log.warn(
+          "moWatcher",
+          `handling ${describedPath} failed: ${asMessage(err)}`,
+        ),
       );
-    inFlight.set(key, next);
+    inFlight.set(resolvedKey, next);
     void next.finally(() => {
-      if (inFlight.get(key) === next) inFlight.delete(key);
+      if (inFlight.get(resolvedKey) === next) inFlight.delete(resolvedKey);
     });
   };
 
@@ -430,32 +502,45 @@ export function registerMoFileWatcher(deps: {
     vscode.workspace.createFileSystemWatcher("**/package.order");
   const subs = [
     watcher,
+    // Keyed by the owning package's file (`orderOwner`), not the event's own
+    // path, so a member file's event and a reorder or cascaded delete of its
+    // package — which touch that member too — can't run concurrently.
+    // Lexical, not index-derived: computing it from the index instead would
+    // leave events racing during the window before the workspace seed
+    // finishes populating it. The cost is a standalone `.mo` file with no
+    // `package.mo` sibling keying on a path nothing else ever touches,
+    // serializing needlessly against unrelated files sharing its directory.
     watcher.onDidChange((uri) =>
-      run(uri.fsPath, () => handleMoChange(watcherDeps, uri.fsPath)),
+      run(orderOwner(uri.fsPath), uri.fsPath, () =>
+        handleMoChange(watcherDeps, uri.fsPath),
+      ),
     ),
     watcher.onDidCreate((uri) =>
-      run(uri.fsPath, () => handleMoChange(watcherDeps, uri.fsPath)),
+      run(orderOwner(uri.fsPath), uri.fsPath, () =>
+        handleMoChange(watcherDeps, uri.fsPath),
+      ),
     ),
     watcher.onDidDelete((uri) =>
-      run(uri.fsPath, () => handleMoDelete(watcherDeps, uri.fsPath)),
+      run(orderOwner(uri.fsPath), uri.fsPath, () =>
+        handleMoDelete(watcherDeps, uri.fsPath),
+      ),
     ),
     orderWatcher,
     // Keyed by the owning package.mo, not the package.order path itself, so a
     // reorder and a `.mo` event for that same package.mo can't run
-    // concurrently. A member file's own event keys on its own path and can
-    // still interleave with the reorder's reload.
+    // concurrently.
     orderWatcher.onDidChange((uri) =>
-      run(orderOwner(uri.fsPath), () =>
+      run(orderOwner(uri.fsPath), uri.fsPath, () =>
         handleOrderChange(watcherDeps, uri.fsPath),
       ),
     ),
     orderWatcher.onDidCreate((uri) =>
-      run(orderOwner(uri.fsPath), () =>
+      run(orderOwner(uri.fsPath), uri.fsPath, () =>
         handleOrderChange(watcherDeps, uri.fsPath),
       ),
     ),
     orderWatcher.onDidDelete((uri) =>
-      run(orderOwner(uri.fsPath), () =>
+      run(orderOwner(uri.fsPath), uri.fsPath, () =>
         handleOrderDelete(watcherDeps, uri.fsPath),
       ),
     ),

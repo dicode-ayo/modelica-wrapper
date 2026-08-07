@@ -19,6 +19,7 @@ import { OmcClient } from "@dicode/omc-client";
 import { describeIf } from "../test-support/integration-gate.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import { ModelicaSourceProvider, sourceUriFor } from "./source-provider.js";
+import { WriteVerdicts } from "./write-verdict.js";
 
 const MULTI_PKG = `package MultiPkg
   model A
@@ -53,6 +54,7 @@ describeIf("whole-file save preserves inline siblings", () => {
     const provider = new ModelicaSourceProvider(
       () => Promise.resolve(client),
       createSelfWriteGuard(),
+      new WriteVerdicts(),
     );
     const uri = sourceUriFor("MultiPkg.A");
 
