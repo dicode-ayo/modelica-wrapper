@@ -1,5 +1,6 @@
 import { moveWithin } from "@dicode/omc-client";
 import type {
+  Color,
   ConnectionLayout,
   DiagramLayout,
   Extent,
@@ -336,6 +337,98 @@ function ownShapes(
   return layers.find((l) => l.from === className)?.shapes ?? [];
 }
 
+const DEFAULT_ORIGIN: Point = [0, 0];
+const DEFAULT_LINE_COLOR: Color = [0, 0, 0];
+const DEFAULT_FILL_COLOR: Color = [0, 0, 255];
+
+/**
+ * Fill a shape's optional §18.6 fields with their spec default, for the
+ * equality check `diffGraphics` runs — never for the edit payload. OMC
+ * materialises every field a shape's record type carries when it answers a
+ * write (an omitted `pattern` comes back `"Solid"`, an omitted `closure`
+ * comes back `"None"`), while the webview only ever sends what the user set.
+ * Comparing the two by raw presence sees a spurious change on the very next
+ * reconcile of a shape nobody touched; comparing them normalized doesn't.
+ *
+ * Defaults are cross-checked against `shapes.ts`'s decoder (which documents
+ * the same §18.6 field order) and `shape-properties.ts`'s form fallbacks —
+ * notably `fillColor`'s spec default is blue `{0,0,255}`, not white.
+ */
+function normalizeShape(shape: Shape): Shape {
+  const visible = shape.visible ?? true;
+  const rotation = shape.rotation ?? 0;
+  const origin = shape.origin ?? DEFAULT_ORIGIN;
+  switch (shape.kind) {
+    case "line":
+      return {
+        ...shape,
+        visible,
+        rotation,
+        origin,
+        color: shape.color ?? DEFAULT_LINE_COLOR,
+        thickness: shape.thickness ?? 0.25,
+        pattern: shape.pattern ?? "Solid",
+        smooth: shape.smooth ?? "None",
+        arrowSize: shape.arrowSize ?? 3,
+      };
+    case "polygon":
+      return {
+        ...shape,
+        visible,
+        rotation,
+        origin,
+        lineColor: shape.lineColor ?? DEFAULT_LINE_COLOR,
+        fillColor: shape.fillColor ?? DEFAULT_FILL_COLOR,
+        pattern: shape.pattern ?? "Solid",
+        fillPattern: shape.fillPattern ?? "None",
+        lineThickness: shape.lineThickness ?? 0.25,
+        smooth: shape.smooth ?? "None",
+      };
+    case "rectangle":
+      return {
+        ...shape,
+        visible,
+        rotation,
+        origin,
+        lineColor: shape.lineColor ?? DEFAULT_LINE_COLOR,
+        fillColor: shape.fillColor ?? DEFAULT_FILL_COLOR,
+        pattern: shape.pattern ?? "Solid",
+        fillPattern: shape.fillPattern ?? "None",
+        lineThickness: shape.lineThickness ?? 0.25,
+        borderPattern: shape.borderPattern ?? "None",
+        radius: shape.radius ?? 0,
+      };
+    case "ellipse":
+      return {
+        ...shape,
+        visible,
+        rotation,
+        origin,
+        lineColor: shape.lineColor ?? DEFAULT_LINE_COLOR,
+        fillColor: shape.fillColor ?? DEFAULT_FILL_COLOR,
+        pattern: shape.pattern ?? "Solid",
+        fillPattern: shape.fillPattern ?? "None",
+        lineThickness: shape.lineThickness ?? 0.25,
+        startAngle: shape.startAngle ?? 0,
+        endAngle: shape.endAngle ?? 360,
+        closure: shape.closure ?? "None",
+      };
+    case "text":
+      return {
+        ...shape,
+        visible,
+        rotation,
+        origin,
+        fontName: shape.fontName ?? "",
+        fontSize: shape.fontSize ?? 0,
+        textColor: shape.textColor ?? DEFAULT_LINE_COLOR,
+        horizontalAlignment: shape.horizontalAlignment ?? "Center",
+      };
+    case "bitmap":
+      return { ...shape, visible, rotation, origin };
+  }
+}
+
 /**
  * Order-independent, undefined-tolerant JSON of a value: object keys are
  * sorted and `undefined`-valued keys dropped (matching JSON semantics). Two
@@ -505,9 +598,12 @@ function diffGraphics(
     const before = ownShapes(prev[field], prev.className);
     const after = ownShapes(next[field], next.className);
     // Serialize once per layer: the reorder probe, the positional scans and
-    // the shrink path's LCS all compare shapes by value.
-    const beforeKeys = before.map(stableJson);
-    const afterKeys = after.map(stableJson);
+    // the shrink path's LCS all compare shapes by value. Normalized first so
+    // an omitted field and its spec default compare equal throughout —
+    // otherwise a shape OMC answers with every default materialised would
+    // look modified (or moved) against the sparser one the webview sent.
+    const beforeKeys = before.map((s) => stableJson(normalizeShape(s)));
+    const afterKeys = after.map((s) => stableJson(normalizeShape(s)));
 
     if (before.length === after.length) {
       // A reorder permutes the array, which the positional scan below would

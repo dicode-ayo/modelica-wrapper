@@ -877,6 +877,70 @@ describe("diffLayouts — graphics", () => {
     expect(diffLayouts(withIcon([a]), withIcon([b]))).toEqual([]);
   });
 
+  describe("default-aware comparison (issue #415)", () => {
+    /** What a drawn shape carries: only what the user actually chose. */
+    const sparse: RectangleShape = {
+      kind: "rectangle",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      lineColor: [1, 2, 3],
+    };
+    /** What OMC answers on re-read: `sparse` with every §18.6 default filled in. */
+    const canonical: RectangleShape = {
+      kind: "rectangle",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      lineColor: [1, 2, 3],
+      fillColor: [0, 0, 255],
+      pattern: "Solid",
+      fillPattern: "None",
+      lineThickness: 0.25,
+      borderPattern: "None",
+      radius: 0,
+      visible: true,
+      rotation: 0,
+    };
+
+    it("treats a sparse shape as unchanged against the canonical one OMC would answer", () => {
+      expect(diffLayouts(withIcon([sparse]), withIcon([canonical]))).toEqual(
+        [],
+      );
+    });
+
+    it("still emits graphicsModified when a field differs from its spec default", () => {
+      const changed: RectangleShape = {
+        kind: "rectangle",
+        extent: [
+          [0, 0],
+          [10, 10],
+        ],
+        fillPattern: "Solid", // spec default is "None"
+      };
+      const edits = diffLayouts(
+        withIcon([{ kind: "rectangle", extent: changed.extent }]),
+        withIcon([changed]),
+      );
+      expect(edits).toEqual([
+        { kind: "graphicsModified", layer: "icon", index: 0, shape: changed },
+      ]);
+    });
+
+    it("treats default-equal shapes as identical in the reorder path, not a spurious modify", () => {
+      const b = rect(20);
+      const edits = diffLayouts(
+        withIcon([sparse, b]),
+        withIcon([b, canonical]),
+      );
+      expect(edits).toEqual([
+        { kind: "graphicsReordered", layer: "icon", from: 0, to: 1 },
+      ]);
+    });
+  });
+
   describe("reorder (z-order editing)", () => {
     const a = rect(0);
     const b = rect(20);

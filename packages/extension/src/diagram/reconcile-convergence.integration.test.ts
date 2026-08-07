@@ -83,13 +83,12 @@ end ${pkg};
     expect(diffLayouts(afterWrite, reported)).toEqual([]);
   });
 
-  it("answers a drawn shape with every default filled in, which is why a graphics write settles", async () => {
-    // The webview sends a shape carrying what the user chose. OMC returns it
+  it("finds nothing left to write when a drawn shape is reconciled twice", async () => {
+    // The webview sends a shape carrying what the user chose. OMC answers it
     // with `pattern`, `fillPattern`, `lineThickness` and the ellipse angles
-    // materialised, so the two never compare equal — and a reconcile that did
-    // not adopt the canonical shape would re-write it on every later gesture,
-    // silently, for as long as the shape lives. `applyDiagramEdits` reports
-    // `touchedGraphics` so the controller settles and the webview adopts it.
+    // materialised — `diffLayouts` treats an omitted field as equal to its
+    // spec default, so that alone is not a difference the second reconcile
+    // rewrites.
     const base = await fetchDiagramLayout(client, cls);
     const withShape = structuredClone(base) as DiagramLayout;
     const layer = withShape.diagramLayers.at(0);
@@ -115,12 +114,16 @@ end ${pkg};
     const afterWrite = await fetchDiagramLayout(client, cls);
     const canonical = afterWrite.diagramLayers.at(0)?.shapes.at(-1);
     expect(canonical).toMatchObject(drawn);
-    // More than it was sent, which is the whole point.
+    // More than it was sent, which is the whole point: the defaults OMC
+    // materialised are exactly what the next line proves don't matter.
     expect(Object.keys(canonical ?? {}).length).toBeGreaterThan(
       Object.keys(drawn).length,
     );
-    // And having adopted it, the next reconcile finds nothing to write.
-    const adopted = structuredClone(afterWrite) as DiagramLayout;
-    expect(diffLayouts(afterWrite, adopted)).toEqual([]);
+
+    // The base the next gesture reconciles against, per `applyChange` in
+    // diagram-editor-provider.ts: diffing the still-partial `withShape`
+    // report against that canonical read is the second reconcile of an
+    // unchanged diagram.
+    expect(diffLayouts(afterWrite, withShape)).toEqual([]);
   });
 });
