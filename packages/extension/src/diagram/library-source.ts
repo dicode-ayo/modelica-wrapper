@@ -4,12 +4,12 @@
  * messages; this module owns the OMC fetches and converts results into the
  * `LibraryClassInfo[]` shape the tree renders.
  *
- * Restrictions are cached per-class for the lifetime of the `LibrarySource`
- * instance, so re-expanding a node or repeating a search doesn't re-hit OMC
- * for restrictions it already knows. We do *not* cache the children
- * list itself: OMC may load new packages after the view opens, and
- * the cost of re-listing is small compared to the unwanted staleness
- * of holding onto an old tree.
+ * Restrictions are cached per-class, so re-expanding a node or repeating a
+ * search doesn't re-hit OMC for restrictions it already knows; a class whose
+ * definition changes is evicted through {@link LibrarySource.invalidateRestriction}.
+ * We do *not* cache the children list itself: OMC may load new packages after
+ * the view opens, and the cost of re-listing is small compared to the unwanted
+ * staleness of holding onto an old tree.
  */
 
 import { log } from "../logger.js";
@@ -159,6 +159,13 @@ export class LibrarySource {
       );
     }
     return rows;
+  }
+
+  /** Forget `qualified`'s cached restriction, so the next row that needs it
+   *  asks OMC again. An edit can turn a `model` into a `block`, which changes
+   *  the badge the tree draws and whether the row is expandable. */
+  invalidateRestriction(qualified: string): void {
+    this.restrictionCache.delete(qualified);
   }
 
   /** How many of `qualified` would cost an OMC round-trip right now. */
