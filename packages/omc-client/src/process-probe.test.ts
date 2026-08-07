@@ -2,10 +2,41 @@ import { describe, expect, it } from "vitest";
 
 import {
   nonEmpty,
+  orphanedByParent,
   parseCimJsonTable,
   parsePsTable,
   ppidFromStat,
 } from "./process-probe.js";
+
+const noneRunning = (): boolean => false;
+const allRunning = (): boolean => true;
+
+describe("orphanedByParent", () => {
+  it("reads a parent unreadable as not orphaned, on either platform", () => {
+    expect(orphanedByParent(undefined, noneRunning, "linux")).toBe(false);
+    expect(orphanedByParent(undefined, noneRunning, "win32")).toBe(false);
+  });
+
+  it("reads reparenting to init as orphaned on posix", () => {
+    expect(orphanedByParent(1, allRunning, "linux")).toBe(true);
+    expect(orphanedByParent(0, allRunning, "linux")).toBe(true);
+  });
+
+  it("reads a dead parent as orphaned on either platform", () => {
+    expect(orphanedByParent(900, noneRunning, "linux")).toBe(true);
+    expect(orphanedByParent(900, noneRunning, "win32")).toBe(true);
+  });
+
+  it("reads a live parent as not orphaned on either platform", () => {
+    expect(orphanedByParent(900, allRunning, "linux")).toBe(false);
+    expect(orphanedByParent(900, allRunning, "win32")).toBe(false);
+  });
+
+  it("does not apply the posix init sentinel on win32", () => {
+    expect(orphanedByParent(1, allRunning, "win32")).toBe(false);
+    expect(orphanedByParent(0, noneRunning, "win32")).toBe(false);
+  });
+});
 
 describe("ppidFromStat", () => {
   it("reads the parent pid past the executable name", () => {
@@ -122,6 +153,28 @@ describe("parseCimJsonTable", () => {
     );
 
     expect(rows).toEqual([{ pid: 4242, ppid: 900, commandLine: "omc.exe" }]);
+  });
+
+  it("drops rows whose pid or parent pid is outside the Windows pid range", () => {
+    const rows = parseCimJsonTable(
+      JSON.stringify([
+        { ProcessId: 4242, ParentProcessId: -1, CommandLine: "omc.exe" },
+        { ProcessId: -4242, ParentProcessId: 900, CommandLine: "omc.exe" },
+        {
+          ProcessId: 4242,
+          ParentProcessId: 0x1_0000_0000,
+          CommandLine: "omc.exe",
+        },
+        {
+          ProcessId: Number.MAX_SAFE_INTEGER + 2,
+          ParentProcessId: 900,
+          CommandLine: "omc.exe",
+        },
+        { ProcessId: 4242, ParentProcessId: 0, CommandLine: "omc.exe" },
+      ]),
+    );
+
+    expect(rows).toEqual([{ pid: 4242, ppid: 0, commandLine: "omc.exe" }]);
   });
 
   it("reads nothing from a non-array top-level value", () => {

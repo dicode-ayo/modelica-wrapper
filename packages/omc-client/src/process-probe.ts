@@ -24,32 +24,38 @@ export interface ProcessProbe {
    * the signal; under a subreaper (`systemd --user`, a container supervisor)
    * an orphan keeps a live parent and reads as `false`, which degrades to
    * sparing a session — never to signalling one. Windows has no init to
-   * reparent to, so there the primary signal is that the recorded parent pid
-   * is no longer running; a recycled pid still reads as live and spares the
-   * session the same way, by a different mechanism. (The implementation also
-   * has a `parent <= 1` arm, which is a POSIX-only check — ppid 0/1 mean
-   * "init" there but nothing on win32, so it never fires there.)
+   * reparent to, so there the only signal is that the recorded parent pid is
+   * no longer running; a recycled pid still reads as live and spares the
+   * session the same way, by a different mechanism.
    */
   isOrphan(pid: number): boolean;
+  /**
+   * Whether `pid` is still held by a process whose command line contains
+   * `fragment`, read fresh rather than off any cached process table.
+   *
+   * `isRunning` is not enough to authorize a kill: it confirms that the pid is
+   * occupied, not that it is occupied by the same process. Windows recycles
+   * pids aggressively, so between identifying an OMC and signalling it the pid
+   * can come to hold something unrelated.
+   */
+  confirmIdentity(pid: number, fragment: string): boolean;
   kill(pid: number): void;
 }
 
 export const osProcesses: ProcessProbe = {
   isRunning,
-  commandLine(pid) {
-    return process.platform === "win32"
-      ? winCommandLine(pid)
-      : (procfsCommandLine(pid) ?? psCommandLine(pid));
-  },
+  commandLine: currentCommandLine,
   findByCommandLine(fragment) {
     return process.platform === "win32"
       ? winFindByCommandLine(fragment)
       : (procfsScan(fragment) ?? psScan(fragment));
   },
   isOrphan(pid) {
-    const parent = parentPid(pid);
-    if (parent === undefined) return false;
-    return parent <= 1 || !isRunning(parent);
+    return orphanedByParent(parentPid(pid), isRunning, process.platform);
+  },
+  confirmIdentity(pid, fragment) {
+    if (process.platform === "win32") processTableCache = undefined;
+    return currentCommandLine(pid)?.includes(fragment) === true;
   },
   kill(pid) {
     try {
@@ -59,6 +65,28 @@ export const osProcesses: ProcessProbe = {
     }
   },
 };
+
+/**
+ * Whether a recorded parent pid marks its child as orphaned.
+ *
+ * Ppid 0 and 1 mean "init owns it" on POSIX, where the kernel reparents an
+ * orphan. Windows never reparents, so the recorded parent stays whatever
+ * spawned the process and a dead parent is the only signal; ppid 0 there is
+ * what CIM reports when the parent cannot be identified at all, which is not
+ * evidence either way.
+ *
+ * An unreadable parent pid is not evidence either, and reads as `false` — the
+ * sparing answer.
+ */
+export function orphanedByParent(
+  parent: number | undefined,
+  parentIsRunning: (pid: number) => boolean,
+  platform: NodeJS.Platform,
+): boolean {
+  if (parent === undefined) return false;
+  if (platform === "win32") return parent > 0 && !parentIsRunning(parent);
+  return parent <= 1 || !parentIsRunning(parent);
+}
 
 /**
  * The parent pid in a `/proc/<pid>/stat` line. The fixed fields start after
@@ -88,6 +116,12 @@ export function parsePsTable(out: string): { pid: number; command: string }[] {
     if (pid > 0) rows.push({ pid, command });
   }
   return rows;
+}
+
+function currentCommandLine(pid: number): string | undefined {
+  return process.platform === "win32"
+    ? winCommandLine(pid)
+    : (procfsCommandLine(pid) ?? psCommandLine(pid));
 }
 
 function isRunning(pid: number): boolean {
@@ -232,8 +266,9 @@ let processTableCache:
  * The TTL is not guaranteed to outlast a sweep — `awaitExit`'s polling plus
  * `QUIT_TIMEOUT_MS` can exceed it — and a cached row can go stale within the
  * TTL if a pid is recycled. Neither matters for safety: nothing here kills a
- * process off a cached row alone. `orphans.ts`'s `stopOmc` re-checks
- * `processes.isRunning(pid)` immediately before `processes.kill(pid)`.
+ * process off a cached row. `confirmIdentity` drops this cache before it
+ * re-reads the command line, and `orphans.ts`'s `stopOmc` runs that check
+ * immediately before `processes.kill(pid)`.
  */
 function winProcessTable(): WinProcessRow[] | undefined {
   const now = Date.now();
@@ -301,6 +336,13 @@ function isCimProcess(value: unknown): value is CimProcessJson {
  * value) becomes `""` here — `winCommandLine` is what turns `""` into
  * `undefined`.
  */
+/** Windows pids are unsigned 32-bit; 0 is the System Idle Process. */
+const MAX_WINDOWS_PID = 0xffff_ffff;
+
+function isWindowsPid(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0 && value <= MAX_WINDOWS_PID;
+}
+
 export function parseCimJsonTable(out: string): WinProcessRow[] {
   let parsed: unknown;
   try {
@@ -314,9 +356,7 @@ export function parseCimJsonTable(out: string): WinProcessRow[] {
   for (const entry of parsed) {
     if (!isCimProcess(entry)) continue;
     const { ProcessId: pid, ParentProcessId: ppid } = entry;
-    if (!Number.isInteger(pid) || !Number.isInteger(ppid) || pid <= 0) {
-      continue;
-    }
+    if (!isWindowsPid(pid) || pid === 0 || !isWindowsPid(ppid)) continue;
     const commandLine =
       typeof entry.CommandLine === "string" ? entry.CommandLine : "";
     rows.push({ pid, ppid, commandLine });
