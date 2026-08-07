@@ -3017,6 +3017,7 @@ describe("the gesture boundary", () => {
       panel,
       EXT_URI,
       vi.fn(() => Promise.resolve(client)),
+      new WriteVerdicts(),
       docFor(vscode.Uri.parse("modelica-source:/Pkg.M.mo")),
       "diagram",
     );
