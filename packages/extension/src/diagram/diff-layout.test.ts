@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  BitmapShape,
   DiagramLayout,
   LineShape,
   RectangleShape,
@@ -1047,6 +1048,52 @@ describe("diffLayouts — graphics", () => {
             textString: changed.textString,
           },
         ]),
+        withIcon([changed]),
+      );
+      expect(edits).toEqual([
+        { kind: "graphicsModified", layer: "icon", index: 0, shape: changed },
+      ]);
+    });
+
+    /** What a drawn Bitmap carries: no Bitmap-drawing UI exists yet, but a
+     *  shape-properties edit can submit an empty `fileName`. */
+    const sparseBitmap: BitmapShape = {
+      kind: "bitmap",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+    };
+    /** What OMC answers on re-read: `sparseBitmap` with every §18.6 default filled in. */
+    const canonicalBitmap: BitmapShape = {
+      kind: "bitmap",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      fileName: "",
+      imageSource: "",
+      visible: true,
+      rotation: 0,
+    };
+
+    it("treats a sparse Bitmap as unchanged against the canonical one OMC would answer for fileName/imageSource", () => {
+      expect(
+        diffLayouts(withIcon([sparseBitmap]), withIcon([canonicalBitmap])),
+      ).toEqual([]);
+    });
+
+    it("still emits graphicsModified when Bitmap.fileName differs from empty", () => {
+      const changed: BitmapShape = {
+        kind: "bitmap",
+        extent: [
+          [0, 0],
+          [10, 10],
+        ],
+        fileName: "icon.png", // spec default is ""
+      };
+      const edits = diffLayouts(
+        withIcon([{ kind: "bitmap", extent: changed.extent }]),
         withIcon([changed]),
       );
       expect(edits).toEqual([

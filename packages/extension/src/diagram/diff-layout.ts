@@ -342,6 +342,7 @@ const DEFAULT_LINE_COLOR: Color = [0, 0, 0];
 const DEFAULT_FILL_COLOR: Color = [0, 0, 255];
 const DEFAULT_ARROW: [string, string] = ["None", "None"];
 const DEFAULT_TEXT_STYLE: string[] = [];
+const DEFAULT_STRING = "";
 
 /**
  * Fill a shape's optional §18.6 fields with their spec default, for the
@@ -352,9 +353,7 @@ const DEFAULT_TEXT_STYLE: string[] = [];
  * Comparing the two by raw presence sees a spurious change on the very next
  * reconcile of a shape nobody touched; comparing them normalized doesn't.
  *
- * Defaults are cross-checked against `shapes.ts`'s decoder (which documents
- * the same §18.6 field order) and `shape-properties.ts`'s form fallbacks —
- * notably `fillColor`'s spec default is blue `{0,0,255}`, not white.
+ * Note `fillColor`'s spec default is blue `{0,0,255}`, not white.
  */
 function normalizeShape(shape: Shape): Shape {
   const visible = shape.visible ?? true;
@@ -429,7 +428,14 @@ function normalizeShape(shape: Shape): Shape {
         textStyle: shape.textStyle ?? DEFAULT_TEXT_STYLE,
       };
     case "bitmap":
-      return { ...shape, visible, rotation, origin };
+      return {
+        ...shape,
+        visible,
+        rotation,
+        origin,
+        fileName: shape.fileName ?? DEFAULT_STRING,
+        imageSource: shape.imageSource ?? DEFAULT_STRING,
+      };
   }
 }
 
@@ -602,10 +608,7 @@ function diffGraphics(
     const before = ownShapes(prev[field], prev.className);
     const after = ownShapes(next[field], next.className);
     // Serialize once per layer: the reorder probe, the positional scans and
-    // the shrink path's LCS all compare shapes by value. Normalized first so
-    // an omitted field and its spec default compare equal throughout —
-    // otherwise a shape OMC answers with every default materialised would
-    // look modified (or moved) against the sparser one the webview sent.
+    // the shrink path's LCS below all reuse these same normalized keys.
     const beforeKeys = before.map((s) => stableJson(normalizeShape(s)));
     const afterKeys = after.map((s) => stableJson(normalizeShape(s)));
 
