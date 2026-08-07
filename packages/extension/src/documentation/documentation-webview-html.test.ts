@@ -1,8 +1,9 @@
 /**
- * The documentation webview HTML boots the `out/documentation.js` bundle under
- * a locked-down CSP. These pin the invariants the sanitized-render path relies
- * on: `script-src` is nonce-only (so markup carried in the doc HTML can't
- * execute) and the class name is escaped into the title.
+ * `renderDocumentationWebviewHtml` is a thin wrapper over the shared
+ * `renderWebviewPage` (see `webview/webview-page.test.ts` for the CSP/nonce/
+ * escaping invariants that module owns). This pins only what's specific to
+ * this site: the `documentation` entry, the `<om-documentation-root>` root,
+ * and the class name landing in the title.
  *
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
@@ -22,7 +23,7 @@ function fakeWebview(): vscode.Webview {
 }
 
 describe("renderDocumentationWebviewHtml", () => {
-  it("boots the documentation root and its bundle", () => {
+  it("boots the documentation root and its bundle, titled with the class name", () => {
     const html = renderDocumentationWebviewHtml(
       fakeWebview(),
       EXT_URI,
@@ -30,25 +31,8 @@ describe("renderDocumentationWebviewHtml", () => {
     );
     expect(html).toContain("<om-documentation-root></om-documentation-root>");
     expect(html).toContain("out/documentation.js");
-  });
-
-  it("locks script execution to the nonce, never unsafe-inline", () => {
-    const html = renderDocumentationWebviewHtml(fakeWebview(), EXT_URI, "Foo");
-    const scriptSrc = /script-src ([^;]*)/.exec(html)?.[1] ?? "";
-    expect(scriptSrc).toMatch(/'nonce-[A-Za-z0-9]+'/);
-    expect(scriptSrc).not.toContain("unsafe-inline");
-    // The single <script> tag must carry the same nonce, or it won't run.
-    const nonce = /'nonce-([A-Za-z0-9]+)'/.exec(html)?.[1];
-    expect(html).toContain(`nonce="${nonce}"`);
-  });
-
-  it("escapes the class name into the title", () => {
-    const html = renderDocumentationWebviewHtml(
-      fakeWebview(),
-      EXT_URI,
-      'Evil<script>"&',
+    expect(html).toContain(
+      "<title>Modelica documentation: Modelica.Blocks.Continuous.PID</title>",
     );
-    expect(html).toContain("Evil&lt;script&gt;&quot;&amp;");
-    expect(html).not.toContain("<title>Modelica documentation: Evil<script>");
   });
 });
