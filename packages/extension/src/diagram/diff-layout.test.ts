@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { DiagramLayout, RectangleShape } from "@dicode/omc-client";
+import type {
+  DiagramLayout,
+  LineShape,
+  RectangleShape,
+  Shape,
+  TextShape,
+} from "@dicode/omc-client";
 
 import {
   diffLayouts,
@@ -830,7 +836,7 @@ describe("diffLayouts — graphics", () => {
   }
 
   /** `baseLayout()` with one host-owned icon layer holding `shapes`. */
-  function withIcon(shapes: RectangleShape[], from = "T"): DiagramLayout {
+  function withIcon(shapes: Shape[], from = "T"): DiagramLayout {
     return { ...baseLayout(), iconLayers: [{ from, shapes }] };
   }
 
@@ -937,6 +943,114 @@ describe("diffLayouts — graphics", () => {
       );
       expect(edits).toEqual([
         { kind: "graphicsReordered", layer: "icon", from: 0, to: 1 },
+      ]);
+    });
+
+    /** What a drawn Line carries: no arrow-editing UI exists, so `arrow` is never set. */
+    const sparseLine: LineShape = {
+      kind: "line",
+      points: [
+        [0, 0],
+        [10, 10],
+      ],
+      color: [1, 2, 3],
+    };
+    /** What OMC answers on re-read: `sparseLine` with every §18.6 default filled in. */
+    const canonicalLine: LineShape = {
+      kind: "line",
+      points: [
+        [0, 0],
+        [10, 10],
+      ],
+      color: [1, 2, 3],
+      thickness: 0.25,
+      pattern: "Solid",
+      smooth: "None",
+      arrow: ["None", "None"],
+      arrowSize: 3,
+      visible: true,
+      rotation: 0,
+    };
+
+    it("treats a sparse Line as unchanged against the canonical one OMC would answer for arrow", () => {
+      expect(
+        diffLayouts(withIcon([sparseLine]), withIcon([canonicalLine])),
+      ).toEqual([]);
+    });
+
+    it("still emits graphicsModified when Line.arrow differs from its spec default", () => {
+      const changed: LineShape = {
+        kind: "line",
+        points: [
+          [0, 0],
+          [10, 10],
+        ],
+        arrow: ["Filled", "None"], // spec default is {Arrow.None, Arrow.None}
+      };
+      const edits = diffLayouts(
+        withIcon([{ kind: "line", points: changed.points }]),
+        withIcon([changed]),
+      );
+      expect(edits).toEqual([
+        { kind: "graphicsModified", layer: "icon", index: 0, shape: changed },
+      ]);
+    });
+
+    /** What a drawn Text carries: only what the user actually chose. */
+    const sparseText: TextShape = {
+      kind: "text",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      textString: "hello",
+      textColor: [1, 2, 3],
+    };
+    /** What OMC answers on re-read: `sparseText` with every §18.6 default filled in. */
+    const canonicalText: TextShape = {
+      kind: "text",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      textString: "hello",
+      textColor: [1, 2, 3],
+      fontName: "",
+      fontSize: 0,
+      horizontalAlignment: "Center",
+      textStyle: [],
+      visible: true,
+      rotation: 0,
+    };
+
+    it("treats a sparse Text as unchanged against the canonical one OMC would answer for textStyle", () => {
+      expect(
+        diffLayouts(withIcon([sparseText]), withIcon([canonicalText])),
+      ).toEqual([]);
+    });
+
+    it("still emits graphicsModified when Text.textStyle differs from its spec default", () => {
+      const changed: TextShape = {
+        kind: "text",
+        extent: [
+          [0, 0],
+          [10, 10],
+        ],
+        textString: "hello",
+        textStyle: ["Bold"], // spec default is {}
+      };
+      const edits = diffLayouts(
+        withIcon([
+          {
+            kind: "text",
+            extent: changed.extent,
+            textString: changed.textString,
+          },
+        ]),
+        withIcon([changed]),
+      );
+      expect(edits).toEqual([
+        { kind: "graphicsModified", layer: "icon", index: 0, shape: changed },
       ]);
     });
   });

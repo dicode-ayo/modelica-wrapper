@@ -340,6 +340,8 @@ function ownShapes(
 const DEFAULT_ORIGIN: Point = [0, 0];
 const DEFAULT_LINE_COLOR: Color = [0, 0, 0];
 const DEFAULT_FILL_COLOR: Color = [0, 0, 255];
+const DEFAULT_ARROW: [string, string] = ["None", "None"];
+const DEFAULT_TEXT_STYLE: string[] = [];
 
 /**
  * Fill a shape's optional §18.6 fields with their spec default, for the
@@ -369,6 +371,7 @@ function normalizeShape(shape: Shape): Shape {
         thickness: shape.thickness ?? 0.25,
         pattern: shape.pattern ?? "Solid",
         smooth: shape.smooth ?? "None",
+        arrow: shape.arrow ?? DEFAULT_ARROW,
         arrowSize: shape.arrowSize ?? 3,
       };
     case "polygon":
@@ -423,6 +426,7 @@ function normalizeShape(shape: Shape): Shape {
         fontSize: shape.fontSize ?? 0,
         textColor: shape.textColor ?? DEFAULT_LINE_COLOR,
         horizontalAlignment: shape.horizontalAlignment ?? "Center",
+        textStyle: shape.textStyle ?? DEFAULT_TEXT_STYLE,
       };
     case "bitmap":
       return { ...shape, visible, rotation, origin };
