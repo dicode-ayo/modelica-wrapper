@@ -52,6 +52,44 @@ describe("<om-graphical-layout>", () => {
     ).toBe(1);
   });
 
+  it("does not render a component whose placement hides it", async () => {
+    const layout = tinyLayout();
+    const b1 = layout.components["b1"];
+    if (b1 === undefined) throw new Error("expected b1 in the layout");
+    layout.components["b2"] = {
+      ...b1,
+      name: "b2",
+      placement: { ...b1.placement, visible: false },
+    };
+    const el = await mount(layout);
+    const comps = el.shadowRoot?.querySelectorAll("om-component");
+    expect(comps?.length).toBe(1);
+    expect((comps?.[0] as { nodeId?: string }).nodeId).toBe("b1");
+  });
+
+  it("still routes a connection anchored to a hidden component's port", async () => {
+    const layout = tinyLayout();
+    const b1 = layout.components["b1"];
+    if (b1 === undefined) throw new Error("expected b1 in the layout");
+    layout.components["b1"] = {
+      ...b1,
+      placement: { ...b1.placement, visible: false },
+    };
+    layout.connections = [
+      {
+        lhs: { component: "b1", port: "y" },
+        rhs: { component: "b1", port: "u" },
+        waypoints: [
+          [-10, 0],
+          [10, 0],
+        ],
+      },
+    ];
+    const el = await mount(layout);
+    expect(el.shadowRoot?.querySelectorAll("om-component").length).toBe(0);
+    expect(el.shadowRoot?.querySelectorAll("om-connection").length).toBe(1);
+  });
+
   it("forwards a connection's annotation color to its <om-edge> stroke", async () => {
     const layout = tinyLayout();
     layout.connections = [
