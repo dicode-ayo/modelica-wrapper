@@ -108,6 +108,22 @@ describe("parseCimJsonTable", () => {
     expect(rows).toEqual([]);
   });
 
+  it("drops entries that fail the process-row guard, keeping well-formed ones", () => {
+    const rows = parseCimJsonTable(
+      JSON.stringify([
+        null,
+        "not a process",
+        4242,
+        { ProcessId: "4242", ParentProcessId: 900, CommandLine: "omc.exe" },
+        { ProcessId: 4242.5, ParentProcessId: 900, CommandLine: "omc.exe" },
+        { ProcessId: 4242, CommandLine: "omc.exe" },
+        { ProcessId: 4242, ParentProcessId: 900, CommandLine: "omc.exe" },
+      ]),
+    );
+
+    expect(rows).toEqual([{ pid: 4242, ppid: 900, commandLine: "omc.exe" }]);
+  });
+
   it("reads nothing from a non-array top-level value", () => {
     expect(
       parseCimJsonTable(

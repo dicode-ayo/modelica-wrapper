@@ -24,9 +24,11 @@ export interface ProcessProbe {
    * the signal; under a subreaper (`systemd --user`, a container supervisor)
    * an orphan keeps a live parent and reads as `false`, which degrades to
    * sparing a session — never to signalling one. Windows has no init to
-   * reparent to, so there the only signal is that the recorded parent pid is
-   * no longer running; a recycled pid still reads as live and spares the
-   * session the same way, by a different mechanism.
+   * reparent to, so there the primary signal is that the recorded parent pid
+   * is no longer running; a recycled pid still reads as live and spares the
+   * session the same way, by a different mechanism. (The implementation also
+   * has a `parent <= 1` arm, which is a POSIX-only check — ppid 0/1 mean
+   * "init" there but nothing on win32, so it never fires there.)
    */
   isOrphan(pid: number): boolean;
   kill(pid: number): void;
@@ -159,23 +161,25 @@ function ps(args: string[]): string | undefined {
   return runCommand("ps", args);
 }
 
+const COMMAND_TIMEOUT_MS = 5_000;
+const COMMAND_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
+
 /**
  * `execFileSync` wrapped with this file's degradation contract: any failure
  * — missing binary, non-zero exit, timeout, output past `maxBuffer` — comes
  * back as `undefined` rather than throwing, so callers never have to guess
- * which platform-probing command is safe to leave unguarded.
+ * which platform-probing command is safe to leave unguarded. `timeout` and
+ * `maxBuffer` are fixed for every call so a wedged binary can't block a reap
+ * sweep indefinitely.
  */
-function runCommand(
-  cmd: string,
-  args: string[],
-  opts: { timeout?: number; maxBuffer?: number } = {},
-): string | undefined {
+function runCommand(cmd: string, args: string[]): string | undefined {
   try {
     return execFileSync(cmd, args, {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       windowsHide: true,
-      ...opts,
+      timeout: COMMAND_TIMEOUT_MS,
+      maxBuffer: COMMAND_MAX_BUFFER_BYTES,
     });
   } catch {
     return undefined;
@@ -220,11 +224,16 @@ let processTableCache:
 /**
  * The whole process table in one shot, cached for `PROCESS_TABLE_CACHE_TTL_MS`
  * so `commandLine`/`findByCommandLine`/`parentPid` don't each shell out to
- * `powershell.exe` per pid within the same reap sweep — that command runs
- * synchronously and can cost hundreds of ms. Five seconds is far shorter than
- * any realistic pid-recycling window, so a cached row is never stale enough
- * to misidentify a process, and comfortably longer than one sweep, so it
- * still collapses the repeated calls a single sweep makes.
+ * `powershell.exe` per pid within roughly one reap sweep — that command runs
+ * synchronously and can cost hundreds of ms. A failed enumeration (`undefined`)
+ * is cached too, so a hung or timed-out `powershell.exe` is paid once per
+ * sweep rather than once per candidate pid.
+ *
+ * The TTL is not guaranteed to outlast a sweep — `awaitExit`'s polling plus
+ * `QUIT_TIMEOUT_MS` can exceed it — and a cached row can go stale within the
+ * TTL if a pid is recycled. Neither matters for safety: nothing here kills a
+ * process off a cached row alone. `orphans.ts`'s `stopOmc` re-checks
+ * `processes.isRunning(pid)` immediately before `processes.kill(pid)`.
  */
 function winProcessTable(): WinProcessRow[] | undefined {
   const now = Date.now();
@@ -259,15 +268,16 @@ export function nonEmpty(rows: WinProcessRow[]): WinProcessRow[] | undefined {
 interface CimProcessJson {
   ProcessId: number;
   ParentProcessId: number;
-  CommandLine: unknown;
+  CommandLine?: unknown;
 }
 
 function isCimProcess(value: unknown): value is CimProcessJson {
   if (typeof value !== "object" || value === null) return false;
-  const record = value as Record<string, unknown>;
   return (
-    typeof record.ProcessId === "number" &&
-    typeof record.ParentProcessId === "number"
+    "ProcessId" in value &&
+    typeof value.ProcessId === "number" &&
+    "ParentProcessId" in value &&
+    typeof value.ParentProcessId === "number"
   );
 }
 
@@ -280,10 +290,16 @@ function isCimProcess(value: unknown): value is CimProcessJson {
  * [{"ProcessId":4242,"ParentProcessId":900,"CommandLine":"C:\\Program Files\\OpenModelica\\bin\\omc.exe --interactive=zmq -z=mw_abc"}]
  * ```
  *
- * The `@(...)` wrapper makes `ConvertTo-Json` emit an array even for a single
- * process, which it otherwise collapses to a bare object. `CommandLine` comes
- * back `null` for some protected processes; that (and any non-string value)
- * becomes `""` here — `winCommandLine` is what turns `""` into `undefined`.
+ * `ConvertTo-Json` collapses a single pipeline object to a bare object rather
+ * than a one-element array; the `@(...)` wrapper doesn't change that, since
+ * the pipe still unrolls a collection regardless of how the source expression
+ * is wrapped. `Get-CimInstance Win32_Process` with no filter always returns
+ * the whole table (System Idle Process, services.exe, etc. are always
+ * present), so the collapse is not currently reachable here — but the parser
+ * below still defends against a non-array top-level value. `CommandLine`
+ * comes back `null` for some protected processes; that (and any non-string
+ * value) becomes `""` here — `winCommandLine` is what turns `""` into
+ * `undefined`.
  */
 export function parseCimJsonTable(out: string): WinProcessRow[] {
   let parsed: unknown;
@@ -309,8 +325,5 @@ export function parseCimJsonTable(out: string): WinProcessRow[] {
 }
 
 function powershell(args: string[]): string | undefined {
-  return runCommand("powershell.exe", args, {
-    timeout: 5_000,
-    maxBuffer: 10 * 1024 * 1024,
-  });
+  return runCommand("powershell.exe", args);
 }
