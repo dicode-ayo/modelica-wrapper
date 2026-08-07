@@ -107,10 +107,12 @@ export {
   applyShapeVertexInsert,
   applyShapeVertexDelete,
   applyShapeSmoothToggle,
+} from "./interaction/layout-ops.js";
+export {
   normaliseRect,
   selectByDiagramRect,
   type DiagramRect,
-} from "./interaction/layout-ops.js";
+} from "./interaction/selection-ops.js";
 export {
   type Picker as DragPicker,
   type ClientToDiagram,

@@ -4,10 +4,10 @@ import type { DiagramLayout } from "@dicode/omc-client";
 import type { PickerFn } from "../src/interaction/interaction-manager.js";
 import {
   componentNode,
-  emptyLayout,
   mountLayout,
   sceneCanvas,
 } from "./harness/interaction-fixtures.js";
+import { emptyLayout } from "./harness/layout-fixtures.js";
 
 /**
  * A press inside the drag slop is a click, and a click must leave the layout

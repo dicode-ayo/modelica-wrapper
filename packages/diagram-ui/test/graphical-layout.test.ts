@@ -1,17 +1,14 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { DiagramLayout } from "@dicode/omc-client";
 
-import "../src/graphical-layout/graphical-layout.component.js";
 import type { OmGraphicalLayout } from "../src/graphical-layout/graphical-layout.component.js";
+import { mountLayout } from "./harness/interaction-fixtures.js";
+import { emptyLayout } from "./harness/layout-fixtures.js";
 
 function tinyLayout(): DiagramLayout {
   return {
-    kind: "diagram",
+    ...emptyLayout(),
     className: "T",
-    source: { file: "T.mo", line: 1, column: 1 } as never,
-    iconLayers: [],
-    diagramLayers: [],
-    labels: [],
     classes: {
       "Test.Block": {
         name: "Test.Block",
@@ -33,29 +30,7 @@ function tinyLayout(): DiagramLayout {
         },
       },
     },
-    connectors: {},
-    connections: [],
   };
-}
-
-const teardowns: Array<() => void> = [];
-afterEach(() => {
-  for (const t of teardowns.splice(0)) {
-    t();
-  }
-});
-
-async function mount(layout: DiagramLayout): Promise<OmGraphicalLayout> {
-  const el = document.createElement("om-graphical-layout") as OmGraphicalLayout;
-  // Inject the renderer-less factory BEFORE connection so the inner scene's
-  // firstUpdated sees it.
-  el.rendererFactory = () => null;
-  el.layout = layout;
-  document.body.appendChild(el);
-  teardowns.push(() => el.remove());
-  await el.updateComplete;
-  await new Promise((r) => setTimeout(r, 0));
-  return el;
 }
 
 describe("<om-graphical-layout>", () => {
@@ -64,7 +39,7 @@ describe("<om-graphical-layout>", () => {
   });
 
   it("renders one <om-component> per layout component", async () => {
-    const el = await mount(tinyLayout());
+    const el = await mountLayout({ layout: tinyLayout() });
     // Dump for diagnostic; the assertion message embeds the HTML so a
     // future regression points straight at the offending render output.
     const shadowRoot = el.shadowRoot;
@@ -108,7 +83,7 @@ describe("<om-graphical-layout>", () => {
         color: [300, 15.6, -4],
       },
     ];
-    const el = await mount(layout);
+    const el = await mountLayout({ layout });
     const conns = el.shadowRoot?.querySelectorAll("om-connection");
     expect(conns?.length).toBe(3);
     expect((conns?.[0] as { stroke?: string }).stroke).toBe("rgb(0,0,127)");
@@ -117,7 +92,7 @@ describe("<om-graphical-layout>", () => {
   });
 
   it("tracks selection via setSelection / selection", async () => {
-    const el = await mount(tinyLayout());
+    const el = await mountLayout({ layout: tinyLayout() });
     el.setSelection(["c:b1"]);
     expect(el.selection).toEqual(["c:b1"]);
     el.setSelection([]);
@@ -125,13 +100,13 @@ describe("<om-graphical-layout>", () => {
   });
 
   it("ignores invalid selection keys", async () => {
-    const el = await mount(tinyLayout());
+    const el = await mountLayout({ layout: tinyLayout() });
     el.setSelection(["bogus", "c:b1"]);
     expect(el.selection).toEqual(["c:b1"]);
   });
 
   it("rotateSelection rotates the selection by 90° and emits a change", async () => {
-    const el = await mount(tinyLayout());
+    const el = await mountLayout({ layout: tinyLayout() });
     el.setSelection(["c:b1"]);
     const changes: DiagramLayout[] = [];
     el.addEventListener("om-graphical-layout-change", (e) => {
@@ -147,7 +122,7 @@ describe("<om-graphical-layout>", () => {
   });
 
   it("flipSelection mirrors the selection's extent horizontally", async () => {
-    const el = await mount(tinyLayout());
+    const el = await mountLayout({ layout: tinyLayout() });
     el.setSelection(["c:b1"]);
     const changes: DiagramLayout[] = [];
     el.addEventListener("om-graphical-layout-change", (e) => {
@@ -166,7 +141,7 @@ describe("<om-graphical-layout>", () => {
   });
 
   it("rotateSelection is a no-op with no selection", async () => {
-    const el = await mount(tinyLayout());
+    const el = await mountLayout({ layout: tinyLayout() });
     let fired = false;
     el.addEventListener("om-graphical-layout-change", () => {
       fired = true;
@@ -185,7 +160,7 @@ describe("<om-graphical-layout>", () => {
     new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
 
   it("dispatches a bound key through the registry and prevents default", async () => {
-    const el = await mount(tinyLayout());
+    const el = await mountLayout({ layout: tinyLayout() });
     el.setSelection(["c:b1"]);
     const changes: DiagramLayout[] = [];
     el.addEventListener("om-graphical-layout-change", (e) => {
@@ -201,7 +176,7 @@ describe("<om-graphical-layout>", () => {
   });
 
   it("lets an unbound key fall through without preventing default", async () => {
-    const el = await mount(tinyLayout());
+    const el = await mountLayout({ layout: tinyLayout() });
     el.setSelection(["c:b1"]);
     const ev = keydown("z");
     sceneOf(el).dispatchEvent(ev);
@@ -209,7 +184,7 @@ describe("<om-graphical-layout>", () => {
   });
 
   it("does not prevent default when a bound key's command is disabled", async () => {
-    const el = await mount(tinyLayout());
+    const el = await mountLayout({ layout: tinyLayout() });
     // No selection → `diagram.delete`'s `when` fails → key falls through.
     const ev = keydown("Delete");
     sceneOf(el).dispatchEvent(ev);
@@ -220,14 +195,14 @@ describe("<om-graphical-layout>", () => {
     // The right-click → menu → run-command flow is verified end-to-end in a
     // real browser (Storybook); happy-dom can't bind a Lit `@`-listener on a
     // custom element or drive the canvas pointer interaction.
-    const el = await mount(tinyLayout());
+    const el = await mountLayout({ layout: tinyLayout() });
     expect(el.shadowRoot?.querySelector("om-context-menu")).not.toBeNull();
   });
 
   it("routes the hasClipboard property into the command context", async () => {
     // The property is pushed by the host (the clipboard is shared across
     // editors), and this is the only thing that makes paste reachable.
-    const el = await mount(tinyLayout());
+    const el = await mountLayout({ layout: tinyLayout() });
     const requests: unknown[] = [];
     el.addEventListener("om-clipboard-request", (e) =>
       requests.push((e as CustomEvent<unknown>).detail),
@@ -250,7 +225,7 @@ describe("<om-graphical-layout>", () => {
     // mounted and starts closed; `shift+?`'s dispatch is pinned at the
     // registry/keymap level instead (`test/keymap.test.ts`,
     // `test/diagram-commands.test.ts`).
-    const el = await mount(tinyLayout());
+    const el = await mountLayout({ layout: tinyLayout() });
     const help = el.shadowRoot?.querySelector("om-keymap-help") as
       | (HTMLElement & { open: boolean })
       | null;
