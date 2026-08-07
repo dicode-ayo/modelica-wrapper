@@ -21,8 +21,6 @@ import type {
   DiagramLayout,
   EllipseShape,
   Expression,
-  FilledShape,
-  GraphicItem,
   IconLayer,
   LineShape,
   PolygonShape,
@@ -136,24 +134,22 @@ const TEXT_ALIGNMENTS = ["Left", "Center", "Right"];
  * How one shape property crosses the form boundary. A submitted value arrives
  * as `unknown` — one message envelope serves four form kinds whose fields
  * differ per model — so `decode` is the only place it stops being untyped.
+ *
+ * The guarantee is over the property's *type*, not its vocabulary: an
+ * enumeration field is a `Codec<string>` like any other, so swapping
+ * {@link enumCodec} for {@link stringCodec} on one is a free-text box, not a
+ * compile error.
  */
 interface Codec<T> {
   readonly kind: ParameterField["kind"];
   readonly enumChoices?: string[] | undefined;
   readonly enumTypeName?: string | undefined;
-  /**
-   * Whether a shape that omits the property seeds the widget with the field's
-   * fallback. A colour picker has no empty state, so seeding one would write a
-   * colour the source never set on the next Apply.
-   */
-  readonly seedsFallback: boolean;
-  encode(value: T): ParameterField["value"];
-  decode(raw: unknown): T | undefined;
+  readonly encode: (value: T) => ParameterField["value"];
+  readonly decode: (raw: unknown) => T | undefined;
 }
 
 const numberCodec: Codec<number> = {
   kind: "number",
-  seedsFallback: true,
   encode: (value) => value,
   decode: (raw) => {
     if (typeof raw === "number" && !Number.isNaN(raw)) return raw;
@@ -167,7 +163,6 @@ const numberCodec: Codec<number> = {
 
 const booleanCodec: Codec<boolean> = {
   kind: "boolean",
-  seedsFallback: true,
   encode: (value) => value,
   decode: (raw) => {
     if (typeof raw === "boolean") return raw;
@@ -179,14 +174,12 @@ const booleanCodec: Codec<boolean> = {
 
 const stringCodec: Codec<string> = {
   kind: "string",
-  seedsFallback: true,
   encode: (value) => value,
   decode: (raw) => (typeof raw === "string" ? raw : undefined),
 };
 
 const colorCodec: Codec<Color> = {
   kind: "color",
-  seedsFallback: false,
   encode: colorToHex,
   decode: (raw) =>
     typeof raw === "string" && /^#[0-9a-fA-F]{6}$/.test(raw)
@@ -201,7 +194,6 @@ const colorCodec: Codec<Color> = {
  */
 const textStringCodec: Codec<NonNullable<Expression>> = {
   kind: "string",
-  seedsFallback: true,
   encode: (value) => (typeof value === "string" ? value : null),
   decode: (raw) => (typeof raw === "string" ? raw : undefined),
 };
@@ -211,7 +203,6 @@ function enumCodec(enumTypeName: string, enumChoices: string[]): Codec<string> {
     kind: "enum",
     enumChoices,
     enumTypeName,
-    seedsFallback: true,
     encode: (value) => value,
     decode: (raw) => (typeof raw === "string" && raw !== "" ? raw : undefined),
   };
@@ -224,19 +215,24 @@ function enumCodec(enumTypeName: string, enumChoices: string[]): Codec<string> {
  * the submitted value back, so a name only one half knows is a compile error
  * rather than a field the modal renders and Apply silently drops.
  */
+/**
+ * Both members are property-typed rather than methods: method syntax is checked
+ * bivariantly, which would let a field declared for one shape kind into another
+ * kind's list.
+ */
 interface ShapeField<S> {
   readonly name: string;
-  toParameterField(shape: S): ParameterField;
+  readonly toParameterField: (shape: S) => ParameterField;
   /** `shape` with `raw` applied, or `shape` itself when `raw` does not decode. */
-  write<T extends S>(shape: T, raw: unknown): T;
+  readonly write: <T extends S>(shape: T, raw: unknown) => T;
 }
 
 /**
- * Field declarations for shapes of type `S`. Curried so `S` is named by the
+ * Declare one field of a shape of type `S`. Curried so `S` is named by the
  * caller while the property key stays inferred from `name`, which is what makes
  * a `codec` that does not match the property's type a compile error.
  */
-function fieldsOf<S extends object>() {
+function fieldOf<S extends object>() {
   return function declare<K extends keyof S & string>(spec: {
     name: K;
     label: string;
@@ -246,6 +242,9 @@ function fieldsOf<S extends object>() {
     fallback: NonNullable<S[K]>;
   }): ShapeField<S> {
     const { name, label, group, codec, fallback } = spec;
+    // A colour picker has no empty state, so seeding a shape's absent colour
+    // with the default would write a colour the source never set on Apply.
+    const seedsFallback = codec.kind !== "color";
     return {
       name,
       toParameterField(shape) {
@@ -255,10 +254,10 @@ function fieldsOf<S extends object>() {
           label,
           kind: codec.kind,
           value:
-            current !== undefined || codec.seedsFallback
+            current !== undefined || seedsFallback
               ? codec.encode(current ?? fallback)
               : null,
-          defaultValue: codec.encode(fallback) ?? undefined,
+          defaultValue: codec.encode(fallback),
           enumChoices: codec.enumChoices,
           enumTypeName: codec.enumTypeName,
           dialog: { tab: "Properties", group },
@@ -273,16 +272,25 @@ function fieldsOf<S extends object>() {
   };
 }
 
-const graphicItemField = fieldsOf<GraphicItem>();
-const filledShapeField = fieldsOf<FilledShape>();
-const lineField = fieldsOf<LineShape>();
-const polygonField = fieldsOf<PolygonShape>();
-const rectangleField = fieldsOf<RectangleShape>();
-const ellipseField = fieldsOf<EllipseShape>();
-const textField = fieldsOf<TextShape>();
-const bitmapField = fieldsOf<BitmapShape>();
+/**
+ * The two shared groups are declared over the shape kinds that carry them, not
+ * over `GraphicItem` / `FilledShape`. Both records are all-optional, so every
+ * shape is structurally assignable to them — declaring against the record would
+ * let a `FilledShape` field into a `Line`'s list and write `lineColor` onto a
+ * Modelica `Line`.
+ */
+type FilledShapeKind = PolygonShape | RectangleShape | EllipseShape;
 
-const GRAPHIC_ITEM_FIELDS: ShapeField<GraphicItem>[] = [
+const graphicItemField = fieldOf<Shape>();
+const filledShapeField = fieldOf<FilledShapeKind>();
+const lineField = fieldOf<LineShape>();
+const polygonField = fieldOf<PolygonShape>();
+const rectangleField = fieldOf<RectangleShape>();
+const ellipseField = fieldOf<EllipseShape>();
+const textField = fieldOf<TextShape>();
+const bitmapField = fieldOf<BitmapShape>();
+
+const GRAPHIC_ITEM_FIELDS: ShapeField<Shape>[] = [
   graphicItemField({
     name: "visible",
     label: "Visible",
@@ -299,7 +307,7 @@ const GRAPHIC_ITEM_FIELDS: ShapeField<GraphicItem>[] = [
   }),
 ];
 
-const FILLED_SHAPE_FIELDS: ShapeField<FilledShape>[] = [
+const FILLED_SHAPE_FIELDS: ShapeField<FilledShapeKind>[] = [
   filledShapeField({
     name: "lineColor",
     label: "Line Color",
@@ -542,9 +550,11 @@ export function applyShapeProperties(
   values: Record<string, unknown>,
 ): Shape {
   return withFields(shape, (narrowed, fields) =>
+    // Seeded with a copy: a submit that decodes nothing would otherwise hand
+    // the caller the layout's own shape back as its edit payload.
     fields.reduce(
       (updated, field) => field.write(updated, values[field.name]),
-      narrowed,
+      { ...narrowed },
     ),
   );
 }
