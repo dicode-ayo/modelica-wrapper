@@ -20,11 +20,17 @@
  * A `package.order` edit resolves the owning package from the path→class index
  * and reloads its `package.mo`, which re-derives the child order from disk.
  *
- * The watcher leaves two kinds of edit alone:
- *   - our own disk writes, matched by content through the {@link SelfWriteGuard}
- *     so a save doesn't fight the custom editor's shadow-buffer sync;
- *   - an edit to a class open *and dirty* in an editor, where reloading OMC
- *     would clobber the unsaved buffer — skipped with a warning until it saves.
+ * A self-write — our own disk write, matched by content through the
+ * {@link SelfWriteGuard} — skips the `loadFile`/`deleteClass` OMC calls: the
+ * {@link ModelicaSourceProvider.writeFile} that produced it already updated
+ * OMC's in-memory model via `loadString` before writing to disk. But it still
+ * re-derives the file's declared class set (`parseFile`), updates the
+ * path→class index, and re-lists the affected scopes — otherwise a save that
+ * adds or removes a nested class leaves the sidebar and the index stale.
+ *
+ * The watcher leaves one kind of edit alone: an edit to a class open *and
+ * dirty* in an editor, where reloading OMC would clobber the unsaved buffer
+ * — skipped with a warning until it saves.
  */
 
 import * as fsp from "node:fs/promises";
@@ -163,9 +169,50 @@ function cascadeReach(
 }
 
 /**
+ * Update the path→class index for `fsPath` to `names`, then re-list every
+ * scope the change reaches — the class's own file and its enclosing scope,
+ * for both the current and now-removed declarations — and announce each
+ * through `notifySourceChanged`.
+ *
+ * Shared by the self-write and external-edit branches of {@link handleMoChange}:
+ * the two differ in how OMC's own state gets brought up to date (a self-write
+ * already reflects it, via `writeFile`'s `loadString`; an external edit needs
+ * `loadFile`/`deleteClass` first, run by the caller before this), but the
+ * extension's own bookkeeping — the index and the sidebar — updates the same
+ * way either way.
+ */
+function reindexAndRelist(
+  deps: MoWatcherDeps,
+  fsPath: string,
+  names: string[],
+  removed: string[],
+): void {
+  deps.index.set(fsPath, names);
+
+  const scopes = new Set<string | null>();
+  for (const name of names) {
+    scopes.add(name);
+    scopes.add(scopeOf(name));
+  }
+  for (const name of removed) scopes.add(scopeOf(name));
+  for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
+  for (const name of removed) deps.sourceProvider.notifySourceChanged(name);
+  for (const name of names) deps.sourceProvider.notifySourceChanged(name);
+}
+
+/**
  * React to a `.mo` file appearing or changing on disk. Loads the new content
  * into OMC and refreshes the tree for every class the file now declares, and
  * unloads any class the file previously declared but no longer does.
+ *
+ * A self-write — recognized by {@link SelfWriteGuard.claim} — skips straight
+ * to re-listing: `ModelicaSourceProvider.writeFile` already pushed the new
+ * text into OMC via `loadString` before writing it to disk, so `loadFile` and
+ * `deleteClass` here would be redundant at best, and at worst fight the very
+ * shadow-buffer sync the guard exists to protect. It also skips the busy
+ * check — a self-write only ever follows a clean, successful save through
+ * `writeFile`, never a dirty editor racing an external edit, so there's
+ * nothing for that check to catch.
  */
 export async function handleMoChange(
   deps: MoWatcherDeps,
@@ -178,9 +225,10 @@ export async function handleMoChange(
     // Raced with a delete, or unreadable — nothing to load.
     return;
   }
-  if (deps.guard.claim(fsPath, text)) return;
 
   const client = await deps.ensureClient();
+  const isSelfWrite = deps.guard.claim(fsPath, text);
+
   let names: string[];
   try {
     ({ classNames: names } = await client.parseFile({ fileName: fsPath }));
@@ -191,6 +239,12 @@ export async function handleMoChange(
 
   const previous = deps.index.get(fsPath) ?? [];
   const removed = previous.filter((n) => !names.includes(n));
+
+  if (isSelfWrite) {
+    reindexAndRelist(deps, fsPath, names, removed);
+    return;
+  }
+
   const directNames = [...names, ...removed];
   // loadFile on fsPath reloads its whole subtree from disk when fsPath is a
   // package — same as reorderPackage's reload — so a still-declared class
@@ -212,17 +266,8 @@ export async function handleMoChange(
     return;
   }
   for (const name of removed) await client.deleteClass({ typeName: name });
-  deps.index.set(fsPath, names);
 
-  const scopes = new Set<string | null>();
-  for (const name of names) {
-    scopes.add(name);
-    scopes.add(scopeOf(name));
-  }
-  for (const name of removed) scopes.add(scopeOf(name));
-  for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
-  for (const name of removed) deps.sourceProvider.notifySourceChanged(name);
-  for (const name of names) deps.sourceProvider.notifySourceChanged(name);
+  reindexAndRelist(deps, fsPath, names, removed);
 }
 
 /**

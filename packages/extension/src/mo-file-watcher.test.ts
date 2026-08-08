@@ -66,16 +66,62 @@ beforeEach(() => {
 });
 
 describe("handleMoChange", () => {
-  it("ignores our own write matched by content through the guard", async () => {
+  it("skips loadFile/deleteClass for our own write, matched by content through the guard, but still re-lists its own scope", async () => {
     const guard = createSelfWriteGuard();
     guard.record(FILE, "model Bar end Bar;");
-    const { deps, client, childrenChanged } = makeDeps({ guard });
+    const { deps, client, childrenChanged, notifySourceChanged } = makeDeps({
+      guard,
+    });
 
     await handleMoChange(deps, FILE);
 
-    expect(client.parseFile).not.toHaveBeenCalled();
     expect(client.loadFile).not.toHaveBeenCalled();
-    expect(childrenChanged).not.toHaveBeenCalled();
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(client.parseFile).toHaveBeenCalledWith({ fileName: FILE });
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg.Bar");
+    expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg.Bar");
+    expect(deps.index.get(FILE)).toEqual(["My.Pkg.Bar"]);
+  });
+
+  it("re-lists the parent scope and updates the index when a self-write adds a nested class (#446)", async () => {
+    const guard = createSelfWriteGuard();
+    const text = "package Foo model Bar end Bar; end Foo;";
+    guard.record(FILE, text);
+    const { deps, client, childrenChanged, notifySourceChanged } = makeDeps({
+      guard,
+      readFile: async () => text,
+    });
+    deps.index.set(FILE, ["Foo"]);
+    client.parseFile.mockResolvedValue({ classNames: ["Foo", "Foo.Bar"] });
+
+    await handleMoChange(deps, FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(deps.index.get(FILE)).toEqual(["Foo", "Foo.Bar"]);
+    expect(childrenChanged).toHaveBeenCalledWith("Foo");
+    expect(childrenChanged).toHaveBeenCalledWith(null);
+    expect(notifySourceChanged).toHaveBeenCalledWith("Foo.Bar");
+  });
+
+  it("removes a class from the index on a self-write that no longer declares it, without calling deleteClass", async () => {
+    const guard = createSelfWriteGuard();
+    const text = "package Foo end Foo;";
+    guard.record(FILE, text);
+    const { deps, client, childrenChanged, notifySourceChanged } = makeDeps({
+      guard,
+      readFile: async () => text,
+    });
+    deps.index.set(FILE, ["Foo", "Foo.Bar"]);
+    client.parseFile.mockResolvedValue({ classNames: ["Foo"] });
+
+    await handleMoChange(deps, FILE);
+
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(deps.index.get(FILE)).toEqual(["Foo"]);
+    expect(childrenChanged).toHaveBeenCalledWith("Foo");
+    expect(notifySourceChanged).toHaveBeenCalledWith("Foo.Bar");
   });
 
   it("loads a foreign edit and refreshes the class's scope and source", async () => {
