@@ -226,9 +226,12 @@ export async function handleMoChange(
     return;
   }
 
-  const client = await deps.ensureClient();
+  // Claimed immediately after the read, with no intervening await: a second
+  // self-write to the same path racing in here would otherwise desync the
+  // guard's pending entry from the text this call actually read.
   const isSelfWrite = deps.guard.claim(fsPath, text);
 
+  const client = await deps.ensureClient();
   let names: string[];
   try {
     ({ classNames: names } = await client.parseFile({ fileName: fsPath }));
@@ -324,13 +327,10 @@ async function reorderPackage(
     log.warn("moWatcher", `reload of ${pkgFile} threw: ${asMessage(err)}`);
   }
 
-  const scopes = new Set<string | null>();
-  for (const name of names) {
-    scopes.add(name);
-    scopes.add(scopeOf(name));
-  }
-  for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
-  for (const name of names) deps.sourceProvider.notifySourceChanged(name);
+  // The class list itself is unaffected by a reorder, so this re-sets the
+  // index to the value it already held — sharing `reindexAndRelist` with
+  // `handleMoChange` matters more here than the redundant `index.set`.
+  reindexAndRelist(deps, pkgFile, names, []);
 
   if (!loaded) {
     // pkgFile can vanish between the busy check above and here — a directory
