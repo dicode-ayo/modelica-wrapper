@@ -174,12 +174,11 @@ function cascadeReach(
  * for both the current and now-removed declarations — and announce each
  * through `notifySourceChanged`.
  *
- * Shared by the self-write and external-edit branches of {@link handleMoChange}:
- * the two differ in how OMC's own state gets brought up to date (a self-write
- * already reflects it, via `writeFile`'s `loadString`; an external edit needs
- * `loadFile`/`deleteClass` first, run by the caller before this), but the
- * extension's own bookkeeping — the index and the sidebar — updates the same
- * way either way.
+ * Shared by every caller that has already brought OMC's own state up to date
+ * for `fsPath` — {@link handleMoChange}'s self-write and external-edit
+ * branches, and {@link reorderPackage} — since from here on the extension's
+ * own bookkeeping (the index and the sidebar) updates the same way regardless
+ * of how OMC got there.
  */
 function reindexAndRelist(
   deps: MoWatcherDeps,
@@ -205,10 +204,11 @@ function reindexAndRelist(
  * into OMC and refreshes the tree for every class the file now declares, and
  * unloads any class the file previously declared but no longer does.
  *
- * A self-write — recognized by {@link SelfWriteGuard.claim} — skips straight
- * to re-listing: `ModelicaSourceProvider.writeFile` already pushed the new
- * text into OMC via `loadString` before writing it to disk, so `loadFile` and
- * `deleteClass` here would be redundant at best, and at worst fight the very
+ * A self-write — recognized by {@link SelfWriteGuard.claim} — still derives
+ * the file's current class set via `parseFile` and re-lists, but skips
+ * `loadFile`/`deleteClass`: `ModelicaSourceProvider.writeFile` already pushed
+ * the new text into OMC via `loadString` before writing it to disk, so those
+ * calls here would be redundant at best, and at worst fight the very
  * shadow-buffer sync the guard exists to protect. It also skips the busy
  * check — a self-write only ever follows a clean, successful save through
  * `writeFile`, never a dirty editor racing an external edit, so there's
@@ -244,6 +244,18 @@ export async function handleMoChange(
   const removed = previous.filter((n) => !names.includes(n));
 
   if (isSelfWrite) {
+    // `removed` is trustworthy here without a deleteClass: `parseFile` just
+    // parsed the bytes writeFile put on disk, and — for a class stored alone
+    // in its file — those bytes are the buffer loadString already loaded
+    // into OMC, so the two never disagree. For a class sharing a file with
+    // siblings, writeFile fetches what it writes via `listFile` on the
+    // shared file's owner *after* the loadString that redefined the edited
+    // member, so it's OMC's own post-write state, not a hand-assembled
+    // diff — a sibling loadString never touched still comes back from
+    // `listFile` and is never in `removed`; one that did get dropped by the
+    // member's redefinition (loadString replaces a redefined class's whole
+    // subtree, per `merge: false`) is already gone from OMC by the time
+    // parseFile runs.
     reindexAndRelist(deps, fsPath, names, removed);
     return;
   }
@@ -327,9 +339,8 @@ async function reorderPackage(
     log.warn("moWatcher", `reload of ${pkgFile} threw: ${asMessage(err)}`);
   }
 
-  // The class list itself is unaffected by a reorder, so this re-sets the
-  // index to the value it already held — sharing `reindexAndRelist` with
-  // `handleMoChange` matters more here than the redundant `index.set`.
+  // A reorder doesn't change which classes exist, so `names` (unchanged
+  // above) is also what the index already holds for `pkgFile`.
   reindexAndRelist(deps, pkgFile, names, []);
 
   if (!loaded) {
@@ -362,6 +373,11 @@ export async function handleOrderChange(
     // Raced with a delete, or unreadable — nothing to react to.
     return;
   }
+  // Unlike a `.mo` self-write, a `package.order` self-write has no
+  // structural refresh to skip to: reordering never moves a class between
+  // files (`persist.ts`'s writers don't touch `package.order` membership),
+  // so the class set an order self-write could affect is exactly what the
+  // `.mo` self-write that triggered this reorder already re-listed.
   if (deps.guard.claim(orderFsPath, text)) return;
   await reorderPackage(deps, orderOwner(orderFsPath), orderFsPath);
 }

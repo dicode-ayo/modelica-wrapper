@@ -124,6 +124,21 @@ describe("handleMoChange", () => {
     expect(notifySourceChanged).toHaveBeenCalledWith("Foo.Bar");
   });
 
+  it("proceeds on a self-write even when isBusy would refuse an external edit", async () => {
+    const guard = createSelfWriteGuard();
+    guard.record(FILE, "model Bar end Bar;");
+    const { deps, client, childrenChanged } = makeDeps({
+      guard,
+      isBusy: () => true,
+    });
+
+    await handleMoChange(deps, FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+    expect(recordedMessages).toHaveLength(0);
+  });
+
   it("loads a foreign edit and refreshes the class's scope and source", async () => {
     const { deps, client, childrenChanged, notifySourceChanged } = makeDeps();
 
