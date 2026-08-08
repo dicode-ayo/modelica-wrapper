@@ -174,11 +174,14 @@ function cascadeReach(
  * for both the current and now-removed declarations — and announce each
  * through `notifySourceChanged`.
  *
- * Shared by every caller that has already brought OMC's own state up to date
- * for `fsPath` — {@link handleMoChange}'s self-write and external-edit
- * branches, and {@link reorderPackage} — since from here on the extension's
- * own bookkeeping (the index and the sidebar) updates the same way regardless
- * of how OMC got there.
+ * Shared by every caller that has finished whatever it was going to do to
+ * bring OMC's own state to where it should be for `fsPath` —
+ * {@link handleMoChange}'s self-write and external-edit branches, and
+ * {@link reorderPackage} — including a `reorderPackage` reload that failed:
+ * OMC there still holds the order it already had, and re-listing shows
+ * exactly that, which is correct, not stale. From here on the extension's
+ * own bookkeeping (the index and the sidebar) updates the same way
+ * regardless of how the caller got there.
  */
 function reindexAndRelist(
   deps: MoWatcherDeps,
