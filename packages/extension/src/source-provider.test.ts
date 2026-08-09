@@ -222,6 +222,8 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
     fileName: string;
     sources: Record<string, string>;
     listing: Record<string, string>;
+    /** `parseFile`'s answer for `fileName` — the file's top-level classes. */
+    topLevelClassNames: string[];
   }): { client: OmcClient; loadString: ReturnType<typeof vi.fn> } {
     const loadString = vi.fn(() => Promise.resolve({ success: true }));
     const client = {
@@ -230,6 +232,9 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
       ),
       getSourceFile: vi.fn(({ typeName }: { typeName: string }) =>
         Promise.resolve({ fileName: opts.sources[typeName] ?? "" }),
+      ),
+      parseFile: vi.fn(() =>
+        Promise.resolve({ classNames: opts.topLevelClassNames }),
       ),
       listFile: vi.fn(({ typeName }: { typeName: string }) =>
         Promise.resolve({ contents: opts.listing[typeName] ?? "" }),
@@ -250,6 +255,7 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
       listing: {
         Pkg: "package Pkg model M ... end M; model Other ... end Pkg;",
       },
+      topLevelClassNames: ["Pkg"],
     });
     const { guard, write } = recordingGuard();
     const provider = new ModelicaSourceProvider(
@@ -276,6 +282,7 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
       fileName: "/ws/M.mo",
       sources: { "Pkg.M": "/ws/M.mo", Pkg: "/ws/package.mo" },
       listing: {},
+      topLevelClassNames: ["Pkg.M"],
     });
     const { guard, write } = recordingGuard();
     const provider = new ModelicaSourceProvider(
@@ -287,5 +294,32 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
     await provider.writeFile(URI, Buffer.from("model M edited end M;"));
 
     expect(write).toHaveBeenCalledWith("/ws/M.mo", "model M edited end M;");
+  });
+
+  it("reconstructs the whole file from every top-level sibling, not just the edited one (#452)", async () => {
+    // `A` and `B` are two top-level classes declared back-to-back in one file
+    // with no dotted relationship — `fileOwnerClass(client, "A")` returns `A`
+    // itself (nothing to climb), so without checking for other top-level
+    // siblings this would take the verbatim-write path above and drop `B`.
+    const uri = sourceUriFor("A");
+    const { client } = sharedFileClient({
+      fileName: "/ws/AB.mo",
+      sources: { A: "/ws/AB.mo", B: "/ws/AB.mo" },
+      listing: { A: "model A edited end A;", B: "model B end B;" },
+      topLevelClassNames: ["A", "B"],
+    });
+    const { guard, write } = recordingGuard();
+    const provider = new ModelicaSourceProvider(
+      () => Promise.resolve(client),
+      guard,
+      new WriteVerdicts(),
+    );
+
+    await provider.writeFile(uri, Buffer.from("model A edited end A;"));
+
+    expect(write).toHaveBeenCalledWith(
+      "/ws/AB.mo",
+      "model A edited end A;\n\nmodel B end B;",
+    );
   });
 });

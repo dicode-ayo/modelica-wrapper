@@ -17,6 +17,10 @@ export interface FileOwnerClient {
   getSourceFile(input: { typeName: string }): Promise<{ fileName: string }>;
 }
 
+export interface FileParseClient {
+  parseFile(input: { fileName: string }): Promise<{ classNames: string[] }>;
+}
+
 /**
  * The outermost enclosing class that still shares `className`'s source file.
  * Returns `className` itself when it owns its file (the one-class-per-file
@@ -40,6 +44,24 @@ export async function fileOwnerClass(
     scope = enclosingScope(owner);
   }
   return owner;
+}
+
+/**
+ * Every top-level class `fileName` currently declares on disk, in file order —
+ * `fileOwnerClass`'s result included, but not necessarily alone. `fileOwnerClass`
+ * only climbs `className`'s own dotted-namespace ancestry; it has no way to see
+ * an unrelated top-level class declared elsewhere in the same file (valid
+ * Modelica: a file can hold several top-level class statements in sequence,
+ * with no dotted relationship between them). A file with exactly one owns it
+ * outright; more than one means writing just the owner's own listing would
+ * drop the rest.
+ */
+export async function fileTopLevelSiblings(
+  client: FileParseClient,
+  fileName: string,
+): Promise<string[]> {
+  const { classNames } = await client.parseFile({ fileName });
+  return classNames.filter((name) => enclosingScope(name) === "");
 }
 
 /**

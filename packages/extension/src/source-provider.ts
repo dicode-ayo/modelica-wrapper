@@ -47,6 +47,7 @@ import {
 } from "./persist.js";
 import {
   fileOwnerClass,
+  fileTopLevelSiblings,
   realSourceFilename,
   type FileOwnerClient,
 } from "./file-owner.js";
@@ -193,17 +194,34 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
 
     if (onDisk) {
       // (a) Write through to the existing on-disk source. When the class shares
-      // its file with siblings (an inline package member), write the whole file
-      // — `listFile` of the file's owning class — so the save doesn't drop the
-      // siblings. A class that owns its file writes its buffer verbatim.
+      // its file with siblings (an inline package member, or another top-level
+      // class declared in the same file with no dotted relationship to this
+      // one), write the whole file so the save doesn't drop them. A class that
+      // owns its file outright writes its buffer verbatim.
       const owner = await fileOwnerClass(client, typeName);
-      if (owner === typeName) {
+      const siblings = await fileTopLevelSiblings(client, info.fileName);
+      const others = siblings.filter((name) => name !== owner);
+      if (others.length === 0 && owner === typeName) {
         await this.guard.write(info.fileName, text);
-      } else {
+      } else if (others.length === 0) {
         const { contents } = await client.listFile({ typeName: owner });
-        // Same truncation guard as the member path: an empty owner listing
-        // (owner momentarily unresolved) would blank the shared file, taking
-        // every sibling with it.
+        // Same truncation guard as below: an empty owner listing (owner
+        // momentarily unresolved) would blank the shared file, taking every
+        // sibling with it.
+        if (contents.trim().length === 0) {
+          throw vscode.FileSystemError.Unavailable(
+            `refusing to save empty source over ${info.fileName}`,
+          );
+        }
+        await this.guard.write(info.fileName, contents);
+      } else {
+        // Several unrelated top-level classes share this file — `owner` only
+        // owns its own subtree, so reconstruct the whole file from every
+        // top-level sibling's own listing, in their on-disk order.
+        const parts = await Promise.all(
+          siblings.map((name) => client.listFile({ typeName: name })),
+        );
+        const contents = parts.map((p) => p.contents).join("\n\n");
         if (contents.trim().length === 0) {
           throw vscode.FileSystemError.Unavailable(
             `refusing to save empty source over ${info.fileName}`,
