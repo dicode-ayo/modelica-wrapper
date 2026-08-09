@@ -139,6 +139,38 @@ describe("handleMoChange", () => {
     expect(recordedMessages).toHaveLength(0);
   });
 
+  it("does not bump a dirty sibling's document on a self-write to another class in the same file", async () => {
+    setTabGroups([
+      {
+        viewColumn: 1,
+        tabs: [
+          {
+            input: new TabInputCustom(sourceUriFor("Foo.Bar"), "default"),
+            isDirty: true,
+          },
+        ],
+      },
+    ]);
+    const guard = createSelfWriteGuard();
+    const text = "package Foo model Bar end Bar; model Baz end Baz; end Foo;";
+    guard.record(FILE, text);
+    const { deps, client, notifySourceChanged } = makeDeps({
+      guard,
+      isBusy: isDeclaredClassBusy,
+      readFile: async () => text,
+    });
+    deps.index.set(FILE, ["Foo", "Foo.Bar", "Foo.Baz"]);
+    client.parseFile.mockResolvedValue({
+      classNames: ["Foo", "Foo.Bar", "Foo.Baz"],
+    });
+
+    await handleMoChange(deps, FILE);
+
+    expect(notifySourceChanged).not.toHaveBeenCalledWith("Foo.Bar");
+    expect(notifySourceChanged).toHaveBeenCalledWith("Foo.Baz");
+    expect(notifySourceChanged).toHaveBeenCalledWith("Foo");
+  });
+
   it("loads a foreign edit and refreshes the class's scope and source", async () => {
     const { deps, client, childrenChanged, notifySourceChanged } = makeDeps();
 

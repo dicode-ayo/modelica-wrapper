@@ -199,7 +199,15 @@ function reindexAndRelist(
   for (const name of removed) scopes.add(scopeOf(name));
   for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
   for (const name of removed) deps.sourceProvider.notifySourceChanged(name);
-  for (const name of names) deps.sourceProvider.notifySourceChanged(name);
+  for (const name of names) {
+    // A still-declared class whose own modelica-source: document is open and
+    // dirty must not be bumped: notifySourceChanged fires onDidChangeFile,
+    // which VSCode reads as "changed on disk" for a document with unsaved
+    // edits — surfacing a conflict prompt over content that, from that
+    // editor's own perspective, never actually changed. A removed class has
+    // no such concern (it really is gone), so only this loop filters.
+    if (!deps.isBusy([], [name])) deps.sourceProvider.notifySourceChanged(name);
+  }
 }
 
 /**
