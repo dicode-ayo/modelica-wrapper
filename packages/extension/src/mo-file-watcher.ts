@@ -170,18 +170,16 @@ function cascadeReach(
 
 /**
  * Update the path→class index for `fsPath` to `names`, then re-list every
- * scope the change reaches — the class's own file and its enclosing scope,
+ * scope the change reaches — each declared class and its enclosing scope,
  * for both the current and now-removed declarations — and announce each
  * through `notifySourceChanged`.
  *
- * Shared by every caller that has finished whatever it was going to do to
- * bring OMC's own state to where it should be for `fsPath` —
- * {@link handleMoChange}'s self-write and external-edit branches, and
- * {@link reorderPackage} — including a `reorderPackage` reload that failed:
- * OMC there still holds the order it already had, and re-listing shows
- * exactly that, which is correct, not stale. From here on the extension's
- * own bookkeeping (the index and the sidebar) updates the same way
- * regardless of how the caller got there.
+ * Shared by three callers, each already at the OMC state it wants reflected:
+ * {@link handleMoChange}'s self-write branch (synced via `writeFile`'s own
+ * `loadString`), its external-edit branch (synced via `loadFile` +
+ * `deleteClass`), and {@link reorderPackage} (synced via `loadFile`, or — on
+ * a failed reload — still holding the order it had before, which re-listing
+ * correctly shows as unchanged rather than stale).
  */
 function reindexAndRelist(
   deps: MoWatcherDeps,
@@ -221,9 +219,9 @@ function reindexAndRelist(
  * the new text into OMC via `loadString` before writing it to disk, so those
  * calls here would be redundant at best, and at worst fight the very
  * shadow-buffer sync the guard exists to protect. It also skips the busy
- * check — a self-write only ever follows a clean, successful save through
- * `writeFile`, never a dirty editor racing an external edit, so there's
- * nothing for that check to catch.
+ * check — that check exists to keep `loadFile` from clobbering a dirty
+ * buffer, and this branch never calls `loadFile`, so there's nothing for it
+ * to protect.
  */
 export async function handleMoChange(
   deps: MoWatcherDeps,
@@ -255,18 +253,20 @@ export async function handleMoChange(
   const removed = previous.filter((n) => !names.includes(n));
 
   if (isSelfWrite) {
-    // `removed` is trustworthy here without a deleteClass: `parseFile` just
-    // parsed the bytes writeFile put on disk, and — for a class stored alone
-    // in its file — those bytes are the buffer loadString already loaded
-    // into OMC, so the two never disagree. For a class sharing a file with
-    // siblings, writeFile fetches what it writes via `listFile` on the
-    // shared file's owner *after* the loadString that redefined the edited
-    // member, so it's OMC's own post-write state, not a hand-assembled
-    // diff — a sibling loadString never touched still comes back from
-    // `listFile` and is never in `removed`; one that did get dropped by the
-    // member's redefinition (loadString replaces a redefined class's whole
-    // subtree, per `merge: false`) is already gone from OMC by the time
-    // parseFile runs.
+    // `removed` is trustworthy here without a deleteClass — *given* that
+    // `writeFile` wrote what it believes is the whole file: for a class
+    // sharing a file with siblings, it fetches the disk content via
+    // `listFile` on the shared file's owner *after* the loadString that
+    // redefined the edited member, so what lands on disk is OMC's own
+    // post-write state, not a hand-assembled diff — a sibling loadString
+    // never touched still comes back from `listFile` and is never in
+    // `removed`; one dropped by the member's redefinition (loadString
+    // replaces a redefined class's whole subtree, per `merge: false`) is
+    // already gone from OMC by the time parseFile runs. That "given" can
+    // fail for two top-level classes sharing one file with no dotted
+    // relationship between them — `fileOwnerClass` doesn't detect that case
+    // (see #452) — but that's a `writeFile` data-loss bug independent of
+    // this branch, not a reason to distrust `removed` here.
     reindexAndRelist(deps, fsPath, names, removed);
     return;
   }
@@ -385,10 +385,10 @@ export async function handleOrderChange(
     return;
   }
   // Unlike a `.mo` self-write, a `package.order` self-write has no
-  // structural refresh to skip to: reordering never moves a class between
-  // files (`persist.ts`'s writers don't touch `package.order` membership),
-  // so the class set an order self-write could affect is exactly what the
-  // `.mo` self-write that triggered this reorder already re-listed.
+  // structural refresh to skip to: a child's position in `package.order`
+  // affects display order, never which classes are declared, so there is no
+  // class-set change here for the index or the sidebar's structure to catch
+  // up on.
   if (deps.guard.claim(orderFsPath, text)) return;
   await reorderPackage(deps, orderOwner(orderFsPath), orderFsPath);
 }
