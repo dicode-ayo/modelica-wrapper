@@ -148,6 +148,28 @@ describe("handleMoChange", () => {
     expect(notifySourceChanged).toHaveBeenCalledWith("Baz");
   });
 
+  it("proves a removed grandchild gone transitively, through a removed child that is itself proven", async () => {
+    // Foo.Bar.Baz's own parent (Foo.Bar) is *also* removed, not surviving in
+    // `names` — proving Baz gone requires walking through Bar's own removal,
+    // not just checking Baz's immediate parent.
+    const guard = createSelfWriteGuard();
+    const text = "package Foo end Foo;";
+    guard.record(FILE, text);
+    const { deps, client, notifySourceChanged } = makeDeps({
+      guard,
+      readFile: async () => text,
+    });
+    deps.index.set(FILE, ["Foo", "Foo.Bar", "Foo.Bar.Baz"]);
+    client.parseFile.mockResolvedValue({ classNames: ["Foo"] });
+
+    await handleMoChange(deps, FILE);
+
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(deps.index.get(FILE)).toEqual(["Foo"]);
+    expect(notifySourceChanged).toHaveBeenCalledWith("Foo.Bar");
+    expect(notifySourceChanged).toHaveBeenCalledWith("Foo.Bar.Baz");
+  });
+
   it("proceeds on a self-write even when isBusy would refuse an external edit", async () => {
     const guard = createSelfWriteGuard();
     guard.record(FILE, "model Bar end Bar;");

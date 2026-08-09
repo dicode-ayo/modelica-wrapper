@@ -254,22 +254,23 @@ export async function handleMoChange(
   const removed = previous.filter((n) => !names.includes(n));
 
   if (isSelfWrite) {
-    // A removed name is only trusted as gone from OMC when it's nested under
-    // a class `names` still declares — the one case loadString's per-class
-    // redefinition (`merge: false`) provably drops a removed descendant with
-    // it. A removed name with no surviving parent in `names` (a second
-    // top-level class sharing this file with no dotted relationship to the
-    // one that was actually redefined, per the writeFile/fileOwnerClass gap
-    // tracked as #452) might still be alive in OMC's own memory — keep it in
-    // the index rather than discarding it into unreachability. Pre-#446 the
-    // self-write branch never touched the index at all, so a name like this
-    // stayed reachable (stale, but a later delete could still resolve it);
-    // this keeps that same recoverability for the one case this branch can't
-    // verify, while still cleaning up what it can.
-    const provenRemoved = removed.filter((n) => {
+    // A removed name is only trusted as gone from OMC when its removal is
+    // explained by a still-declared ancestor's redefinition — the one case
+    // loadString's per-class redefinition (`merge: false`) provably drops it
+    // (and, transitively, whatever was nested under it). A removed name
+    // whose ancestor chain never reaches a name `names` still declares (a
+    // second top-level class sharing this file with no dotted relationship
+    // to the one that was actually redefined, per the writeFile/
+    // fileOwnerClass gap tracked as #452) might still be alive in OMC's own
+    // memory, so it stays in the index instead of becoming unreachable.
+    const removedSet = new Set(removed);
+    const isProvenRemoved = (n: string): boolean => {
       const parent = scopeOf(n);
-      return parent !== null && names.includes(parent);
-    });
+      if (parent === null) return false;
+      if (names.includes(parent)) return true;
+      return removedSet.has(parent) && isProvenRemoved(parent);
+    };
+    const provenRemoved = removed.filter(isProvenRemoved);
     const unprovenRemoved = removed.filter((n) => !provenRemoved.includes(n));
     reindexAndRelist(
       deps,
