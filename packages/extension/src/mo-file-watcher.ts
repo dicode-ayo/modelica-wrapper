@@ -172,7 +172,8 @@ function cascadeReach(
  * Update the path→class index for `fsPath` to `names`, then re-list every
  * scope the change reaches — each declared class and its enclosing scope,
  * for both the current and now-removed declarations — and announce each
- * through `notifySourceChanged`.
+ * through `notifySourceChanged`, except a still-declared class whose own
+ * document is open and dirty elsewhere (see the loop below).
  *
  * Shared by three callers, each already at the OMC state it wants reflected:
  * {@link handleMoChange}'s self-write branch (synced via `writeFile`'s own
@@ -218,10 +219,10 @@ function reindexAndRelist(
  * `loadFile`/`deleteClass`: `ModelicaSourceProvider.writeFile` already pushed
  * the new text into OMC via `loadString` before writing it to disk, so those
  * calls here would be redundant at best, and at worst fight the very
- * shadow-buffer sync the guard exists to protect. It also skips the busy
- * check — that check exists to keep `loadFile` from clobbering a dirty
- * buffer, and this branch never calls `loadFile`, so there's nothing for it
- * to protect.
+ * shadow-buffer sync the guard exists to protect. It also skips the
+ * `isBusy` gate that guards `loadFile` — this branch never calls `loadFile`,
+ * so there's nothing that gate protects — though {@link reindexAndRelist}
+ * still consults `isBusy` per class, for a narrower reason of its own.
  */
 export async function handleMoChange(
   deps: MoWatcherDeps,
@@ -253,21 +254,29 @@ export async function handleMoChange(
   const removed = previous.filter((n) => !names.includes(n));
 
   if (isSelfWrite) {
-    // `removed` is trustworthy here without a deleteClass — *given* that
-    // `writeFile` wrote what it believes is the whole file: for a class
-    // sharing a file with siblings, it fetches the disk content via
-    // `listFile` on the shared file's owner *after* the loadString that
-    // redefined the edited member, so what lands on disk is OMC's own
-    // post-write state, not a hand-assembled diff — a sibling loadString
-    // never touched still comes back from `listFile` and is never in
-    // `removed`; one dropped by the member's redefinition (loadString
-    // replaces a redefined class's whole subtree, per `merge: false`) is
-    // already gone from OMC by the time parseFile runs. That "given" can
-    // fail for two top-level classes sharing one file with no dotted
-    // relationship between them — `fileOwnerClass` doesn't detect that case
-    // (see #452) — but that's a `writeFile` data-loss bug independent of
-    // this branch, not a reason to distrust `removed` here.
-    reindexAndRelist(deps, fsPath, names, removed);
+    // A removed name is only trusted as gone from OMC when it's nested under
+    // a class `names` still declares — the one case loadString's per-class
+    // redefinition (`merge: false`) provably drops a removed descendant with
+    // it. A removed name with no surviving parent in `names` (a second
+    // top-level class sharing this file with no dotted relationship to the
+    // one that was actually redefined, per the writeFile/fileOwnerClass gap
+    // tracked as #452) might still be alive in OMC's own memory — keep it in
+    // the index rather than discarding it into unreachability. Pre-#446 the
+    // self-write branch never touched the index at all, so a name like this
+    // stayed reachable (stale, but a later delete could still resolve it);
+    // this keeps that same recoverability for the one case this branch can't
+    // verify, while still cleaning up what it can.
+    const provenRemoved = removed.filter((n) => {
+      const parent = scopeOf(n);
+      return parent !== null && names.includes(parent);
+    });
+    const unprovenRemoved = removed.filter((n) => !provenRemoved.includes(n));
+    reindexAndRelist(
+      deps,
+      fsPath,
+      [...names, ...unprovenRemoved],
+      provenRemoved,
+    );
     return;
   }
 

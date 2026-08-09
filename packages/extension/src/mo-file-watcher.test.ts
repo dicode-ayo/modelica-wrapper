@@ -124,6 +124,30 @@ describe("handleMoChange", () => {
     expect(notifySourceChanged).toHaveBeenCalledWith("Foo.Bar");
   });
 
+  it("keeps a removed top-level name in the index when it has no surviving parent to prove it gone (#452)", async () => {
+    // Two top-level classes sharing one file, with no dotted relationship
+    // between them — the shape fileOwnerClass can misjudge (#452), where a
+    // self-write to one can drop the other from disk without OMC agreeing
+    // it's gone. `Baz` has no parent in `names` to prove its removal, so it
+    // must survive in the index rather than become unreachable.
+    const guard = createSelfWriteGuard();
+    const text = "model Foo end Foo;";
+    guard.record(FILE, text);
+    const { deps, client, childrenChanged, notifySourceChanged } = makeDeps({
+      guard,
+      readFile: async () => text,
+    });
+    deps.index.set(FILE, ["Foo", "Baz"]);
+    client.parseFile.mockResolvedValue({ classNames: ["Foo"] });
+
+    await handleMoChange(deps, FILE);
+
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(deps.index.get(FILE)).toEqual(["Foo", "Baz"]);
+    expect(childrenChanged).toHaveBeenCalledWith("Baz");
+    expect(notifySourceChanged).toHaveBeenCalledWith("Baz");
+  });
+
   it("proceeds on a self-write even when isBusy would refuse an external edit", async () => {
     const guard = createSelfWriteGuard();
     guard.record(FILE, "model Bar end Bar;");
