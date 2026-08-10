@@ -47,6 +47,8 @@ function unstamped(tag: string): Promise<string> {
 interface Probe extends ProcessProbe {
   killed: number[];
   retire: (pid: number) => void;
+  /** Hand the pid to an unrelated process, as a recycling OS would. */
+  recycle: (pid: number, command: string) => void;
 }
 
 interface ProbeOptions {
@@ -59,14 +61,21 @@ interface ProbeOptions {
 
 function probe(options: ProbeOptions = {}): Probe {
   const live = new Set(options.running ?? [OMC_PID]);
-  const commandLines = options.commandLines ?? { [OMC_PID]: OMC_COMMAND };
+  const commandLines: Record<number, string | undefined> = {
+    ...(options.commandLines ?? { [OMC_PID]: OMC_COMMAND }),
+  };
   const orphans = new Set(options.orphans ?? [OMC_PID]);
   const killed: number[] = [];
+  const commandLine = (pid: number): string | undefined => commandLines[pid];
   return {
     killed,
     retire: (pid) => void live.delete(pid),
+    recycle: (pid, command) => {
+      live.add(pid);
+      commandLines[pid] = command;
+    },
     isRunning: (pid) => live.has(pid),
-    commandLine: (pid) => commandLines[pid],
+    commandLine,
     findByCommandLine: (fragment) => {
       if (options.unsearchable === true) return undefined;
       return [...live].filter((pid) =>
@@ -74,6 +83,8 @@ function probe(options: ProbeOptions = {}): Probe {
       );
     },
     isOrphan: (pid) => orphans.has(pid),
+    confirmIdentity: (pid, fragment) =>
+      live.has(pid) && commandLine(pid)?.includes(fragment) === true,
     kill: (pid) => {
       killed.push(pid);
       live.delete(pid);
@@ -149,6 +160,22 @@ describe("reapOrphanedOmcSessions", () => {
     });
 
     expect(processes.killed).toEqual([OMC_PID]);
+  });
+
+  it("does not kill a pid recycled onto something else while the quit ran", async () => {
+    await stranded("recycled-mid-quit");
+    const processes = probe();
+
+    await reapOrphanedOmcSessions({
+      root,
+      processes,
+      quit: async () => {
+        processes.retire(OMC_PID);
+        processes.recycle(OMC_PID, "postgres -D /var/lib");
+      },
+    });
+
+    expect(processes.killed).toEqual([]);
   });
 
   it("treats a recycled pid as proof the OMC exited", async () => {
