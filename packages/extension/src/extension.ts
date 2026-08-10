@@ -12,6 +12,8 @@
  * Load Library step required.
  */
 
+import * as path from "node:path";
+
 import * as vscode from "vscode";
 
 import { OmcClient, reapOrphanedOmcSessions } from "@dicode/omc-client";
@@ -325,9 +327,17 @@ async function autoLoadWorkspaceModels(
     // concurrent OMC fetches onto the single ZeroMQ socket during startup. The
     // webview tree's own mount fetch is serialized with this one through the
     // client, so they can't overlap into a busy-socket send.
-    await loadEntryFilesAndRefresh(c, files, () =>
+    const skipped = await loadEntryFilesAndRefresh(c, files, () =>
       libraryTree.childrenChanged(null),
     );
+    if (skipped.length > 0) {
+      void vscode.window.showWarningMessage(
+        `Modelica: skipped ${skipped.length} file(s) that declare several ` +
+          `top-level classes — ${skipped
+            .map((s) => path.basename(s.fileName))
+            .join(", ")}. See the Modelica output channel for details.`,
+      );
+    }
   } catch (err) {
     log.warn("autoLoad", `OMC client unavailable: ${(err as Error).message}`);
   }

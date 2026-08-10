@@ -50,6 +50,10 @@ import {
   realSourceFilename,
   type FileOwnerClient,
 } from "./file-owner.js";
+import {
+  multiEntityMessage,
+  multipleTopLevelClasses,
+} from "./single-entity-file.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
 import type { WriteVerdicts } from "./write-verdict.js";
 
@@ -196,7 +200,18 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
       // its file with siblings (an inline package member), write the whole file
       // — `listFile` of the file's owning class — so the save doesn't drop the
       // siblings. A class that owns its file writes its buffer verbatim.
-      const owner = await fileOwnerClass(client, typeName);
+      const [owner, multiEntity] = await Promise.all([
+        fileOwnerClass(client, typeName),
+        multipleTopLevelClasses(client, info.fileName),
+      ]);
+      // The load paths refuse a file declaring several top-level classes, but
+      // an external edit can add one to a file already loaded. Writing then
+      // rewrites the file from this class alone and drops the rest (#452).
+      if (multiEntity) {
+        throw vscode.FileSystemError.Unavailable(
+          multiEntityMessage(info.fileName, multiEntity),
+        );
+      }
       if (owner === typeName) {
         await this.guard.write(info.fileName, text);
       } else {

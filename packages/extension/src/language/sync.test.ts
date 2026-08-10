@@ -2,10 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 
 import { defaultNormalizeKey, OmcSync, type SyncClient } from "./sync.js";
 
+/** Every file parses as a single entity unless a test says otherwise. */
+function singleEntity(classNames = ["Foo"]) {
+  return vi.fn(() => Promise.resolve({ classNames }));
+}
+
 function clientOk(success = true): SyncClient & { calls: string[] } {
   const calls: string[] = [];
   return {
     calls,
+    parseFile: singleEntity(),
     loadFile: vi.fn(({ fileName }) => {
       calls.push(fileName);
       return Promise.resolve({ success });
@@ -69,6 +75,7 @@ describe("OmcSync — failure handling", () => {
 
   it("does not throw when loadFile rejects; returns false and retries", async () => {
     const client: SyncClient = {
+      parseFile: singleEntity(),
       loadFile: vi
         .fn()
         .mockRejectedValueOnce(new Error("omc down"))
@@ -82,6 +89,52 @@ describe("OmcSync — failure handling", () => {
   });
 });
 
+describe("OmcSync — files declaring several top-level classes (#452)", () => {
+  function multiEntityClient(): SyncClient {
+    return {
+      parseFile: vi.fn(() => Promise.resolve({ classNames: ["A", "B"] })),
+      loadFile: vi.fn(() => Promise.resolve({ success: true })),
+    };
+  }
+
+  it("refuses to load one, and reports it", async () => {
+    const client = multiEntityClient();
+    const onMultiEntity = vi.fn();
+    const sync = new OmcSync(client, { onMultiEntity });
+
+    expect(await sync.ensureLoaded("/a/AB.mo")).toBe(false);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(sync.isLoaded("/a/AB.mo")).toBe(false);
+    expect(onMultiEntity).toHaveBeenCalledWith("/a/AB.mo", ["A", "B"]);
+  });
+
+  it("reports once however often the file is touched", async () => {
+    const client = multiEntityClient();
+    const onMultiEntity = vi.fn();
+    const sync = new OmcSync(client, { onMultiEntity });
+
+    await sync.ensureLoaded("/a/AB.mo");
+    await sync.ensureLoaded("/a/AB.mo");
+    await sync.ensureLoaded("/a/AB.mo");
+
+    expect(onMultiEntity).toHaveBeenCalledTimes(1);
+    expect(client.parseFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("reconsiders the file after a save splits it", async () => {
+    const client = multiEntityClient();
+    const sync = new OmcSync(client);
+    await sync.ensureLoaded("/a/AB.mo");
+
+    sync.invalidate("/a/AB.mo");
+    client.parseFile = vi.fn(() => Promise.resolve({ classNames: ["A"] }));
+
+    expect(await sync.ensureLoaded("/a/AB.mo")).toBe(true);
+    expect(client.loadFile).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("OmcSync — generation guard against save-during-load races", () => {
   it("discards an in-flight load whose generation snapshot was invalidated", async () => {
     let resolveLoad: (value: { success: boolean }) => void = () => {};
@@ -91,9 +144,12 @@ describe("OmcSync — generation guard against save-during-load races", () => {
           resolveLoad = res;
         }),
     );
-    const sync = new OmcSync({ loadFile });
+    const sync = new OmcSync({ parseFile: singleEntity(), loadFile });
 
     const inFlight = sync.ensureLoaded("/a/Foo.mo");
+    // The single-entity pre-flight parse defers `loadFile` past this tick, so
+    // `resolveLoad` isn't wired until it has actually been called.
+    await vi.waitFor(() => expect(loadFile).toHaveBeenCalled());
     sync.invalidate("/a/Foo.mo");
     resolveLoad({ success: true });
     expect(await inFlight).toBe(false);
@@ -108,13 +164,14 @@ describe("OmcSync — generation guard against save-during-load races", () => {
           pending.push(res);
         }),
     );
-    const sync = new OmcSync({ loadFile });
+    const sync = new OmcSync({ parseFile: singleEntity(), loadFile });
 
     const firstTouch = sync.ensureLoaded("/a/Foo.mo");
+    await vi.waitFor(() => expect(loadFile).toHaveBeenCalledTimes(1));
     sync.invalidate("/a/Foo.mo");
     const secondTouch = sync.ensureLoaded("/a/Foo.mo");
 
-    expect(loadFile).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(loadFile).toHaveBeenCalledTimes(2));
     // Resolve in reverse so the second isn't shadowed by the first.
     pending[1]?.({ success: true });
     pending[0]?.({ success: true });

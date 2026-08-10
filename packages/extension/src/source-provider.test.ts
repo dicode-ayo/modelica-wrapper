@@ -222,9 +222,14 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
     fileName: string;
     sources: Record<string, string>;
     listing: Record<string, string>;
+    /** What `parseFile` reports the file declares; one class unless given. */
+    declares?: string[];
   }): { client: OmcClient; loadString: ReturnType<typeof vi.fn> } {
     const loadString = vi.fn(() => Promise.resolve({ success: true }));
     const client = {
+      parseFile: vi.fn(() =>
+        Promise.resolve({ classNames: opts.declares ?? ["Pkg"] }),
+      ),
       getClassInformation: vi.fn(() =>
         Promise.resolve({ fileName: opts.fileName, fileReadOnly: false }),
       ),
@@ -287,5 +292,28 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
     await provider.writeFile(URI, Buffer.from("model M edited end M;"));
 
     expect(write).toHaveBeenCalledWith("/ws/M.mo", "model M edited end M;");
+  });
+
+  it("refuses to save into a file that gained a second top-level class (#452)", async () => {
+    // The load paths turn such a file away, but an external edit can add a
+    // class to one already loaded. `A` owns its file as far as the scope climb
+    // can tell, so without this the buffer would overwrite `B` off the disk.
+    const { client } = sharedFileClient({
+      fileName: "/ws/AB.mo",
+      sources: { A: "/ws/AB.mo", B: "/ws/AB.mo" },
+      listing: {},
+      declares: ["A", "B"],
+    });
+    const { guard, write } = recordingGuard();
+    const provider = new ModelicaSourceProvider(
+      () => Promise.resolve(client),
+      guard,
+      new WriteVerdicts(),
+    );
+
+    await expect(
+      provider.writeFile(sourceUriFor("A"), Buffer.from("model A end A;")),
+    ).rejects.toThrow(/more than one top-level class/);
+    expect(write).not.toHaveBeenCalled();
   });
 });

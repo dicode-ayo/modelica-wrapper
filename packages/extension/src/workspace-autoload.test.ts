@@ -5,10 +5,15 @@ import {
   type AutoLoadClient,
 } from "./workspace-autoload.js";
 
+/** Every entry file parses as a single entity unless a test says otherwise. */
+const singleEntity = (): AutoLoadClient["parseFile"] =>
+  vi.fn(async () => ({ classNames: ["M"] }));
+
 /** Client whose loadFile returns `results[i]` for the i-th call. */
 function client(results: boolean[]): AutoLoadClient {
   let i = 0;
   return {
+    parseFile: singleEntity(),
     loadFile: vi.fn(async () => ({ success: results[i++] ?? false })),
     getErrorString: vi.fn(async () => ({ errorString: "boom" })),
   };
@@ -63,6 +68,7 @@ describe("loadEntryFilesAndRefresh", () => {
     ]);
     const idx = new Map<string, number>();
     const c: AutoLoadClient = {
+      parseFile: singleEntity(),
       loadFile: vi.fn(async ({ fileName }: { fileName: string }) => {
         const i = idx.get(fileName) ?? 0;
         idx.set(fileName, i + 1);
@@ -96,6 +102,7 @@ describe("loadEntryFilesAndRefresh", () => {
     ]);
     const idx = new Map<string, number>();
     const c: AutoLoadClient = {
+      parseFile: singleEntity(),
       loadFile: vi.fn(async ({ fileName }: { fileName: string }) => {
         const i = idx.get(fileName) ?? 0;
         idx.set(fileName, i + 1);
@@ -121,9 +128,58 @@ describe("loadEntryFilesAndRefresh", () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
+  it("never loads an entry file declaring several top-level classes (#452)", async () => {
+    const refresh = vi.fn();
+    const c = client([true]);
+    c.parseFile = vi.fn(async ({ fileName }: { fileName: string }) => ({
+      classNames: fileName === "AB.mo" ? ["A", "B"] : ["M"],
+    }));
+
+    const skipped = await loadEntryFilesAndRefresh(
+      c,
+      ["AB.mo", "M.mo"],
+      refresh,
+    );
+
+    expect(skipped).toEqual([{ fileName: "AB.mo", classNames: ["A", "B"] }]);
+    expect(c.loadFile).toHaveBeenCalledTimes(1);
+    expect(c.loadFile).toHaveBeenCalledWith({ fileName: "M.mo" });
+  });
+
+  it("keeps a refused file out of the retry loop as well", async () => {
+    const refresh = vi.fn();
+    // `M.mo` fails its first pass and succeeds on the retry, which `P.mo`'s
+    // first-pass success is what enables — so the loop runs a second pass,
+    // which must not reconsider `AB.mo`.
+    const perFile = new Map<string, boolean[]>([
+      ["M.mo", [false, true]],
+      ["P.mo", [true]],
+    ]);
+    const idx = new Map<string, number>();
+    const c: AutoLoadClient = {
+      parseFile: vi.fn(async ({ fileName }: { fileName: string }) => ({
+        classNames: fileName === "AB.mo" ? ["A", "B"] : ["M"],
+      })),
+      loadFile: vi.fn(async ({ fileName }: { fileName: string }) => {
+        const i = idx.get(fileName) ?? 0;
+        idx.set(fileName, i + 1);
+        return { success: perFile.get(fileName)?.[i] ?? false };
+      }),
+      getErrorString: vi.fn(async () => ({ errorString: "boom" })),
+    };
+
+    await loadEntryFilesAndRefresh(c, ["AB.mo", "M.mo", "P.mo"], refresh);
+
+    const names = (c.loadFile as ReturnType<typeof vi.fn>).mock.calls.map(
+      (args) => (args[0] as { fileName: string }).fileName,
+    );
+    expect(names).toEqual(["M.mo", "P.mo", "M.mo"]);
+  });
+
   it("refreshes once even if a load throws, as long as one succeeds", async () => {
     const refresh = vi.fn();
     const c: AutoLoadClient = {
+      parseFile: singleEntity(),
       loadFile: vi
         .fn()
         .mockRejectedValueOnce(new Error("Socket is busy writing"))

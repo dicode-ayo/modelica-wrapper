@@ -5,12 +5,15 @@
  * Wired from `extension.ts` via `context.subscriptions.push`.
  */
 
+import * as path from "node:path";
+
 import * as vscode from "vscode";
 
 import type { OmcClient } from "@dicode/omc-client";
 
 import type { ClassInvalidationRegistry } from "../invalidation.js";
 import { log } from "../logger.js";
+import { multiEntityMessage } from "../single-entity-file.js";
 import { sourceUriFor } from "../source-provider.js";
 
 import {
@@ -173,8 +176,18 @@ export function registerLanguageFeatures(
   // the SyncClient adapter resolves it per load rather than at registration.
   const syncClient: SyncClient = {
     loadFile: async (input) => (await ensureClient()).loadFile(input),
+    parseFile: async (input) => (await ensureClient()).parseFile(input),
   };
-  const sync = new OmcSync(syncClient);
+  const sync = new OmcSync(syncClient, {
+    onMultiEntity: (filePath, classNames) => {
+      log.warn("language", multiEntityMessage(filePath, classNames));
+      void vscode.window.showWarningMessage(
+        `Modelica: ${path.basename(filePath)} declares ${classNames.join(", ")}, ` +
+          `so language features are unavailable for it. Split them into a file ` +
+          `each — saving one here would drop the others.`,
+      );
+    },
+  });
 
   // One shared read-only-lookup cache for resolution + completion, keyed by the
   // loaded-library signature (see `omc-cache.ts`). It is created on first use
