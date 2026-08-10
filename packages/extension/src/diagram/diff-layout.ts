@@ -10,7 +10,7 @@ import {
   POLYGON_DEFAULTS,
   RECTANGLE_DEFAULTS,
   TEXT_DEFAULTS,
-} from "./shape-defaults.js";
+} from "@dicode/omc-client/shapes";
 import type {
   Color,
   ConnectionLayout,

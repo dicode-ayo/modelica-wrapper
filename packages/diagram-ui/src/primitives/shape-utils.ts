@@ -1,5 +1,9 @@
 import { Container, Graphics, Matrix, type Renderer } from "pixi.js";
 import type { Color, Extent, Point } from "@dicode/omc-client";
+import {
+  FILLED_SHAPE_DEFAULTS,
+  LINE_DEFAULTS,
+} from "@dicode/omc-client/shapes";
 import type { FillSpec } from "@dicode/diagram-svg";
 
 import { worldScaleXY } from "../scene/ortho-camera.js";
@@ -58,7 +62,7 @@ export interface OwnedResource {
 export const SHAPE_Z_STEP = 0.001;
 /** Extra zIndex applied to a stroke so its outline draws above its own fill. */
 export const STROKE_Z_DELTA = 0.0005;
-export const DEFAULT_LINE_COLOR: Color = [0, 0, 0];
+export const DEFAULT_LINE_COLOR: Color = FILLED_SHAPE_DEFAULTS.lineColor;
 
 /** zIndex for a shape from its zero-based draw index. */
 export function zForOrder(zOrder: number): number {
@@ -368,7 +372,7 @@ function pointsBox(points: ReadonlyArray<readonly [number, number]>): RectBox {
 // ---------- stroke (polyline) ----------
 
 /** Modelica default stroke thickness (mm / diagram units). */
-const DEFAULT_STROKE_THICKNESS = 0.25;
+const DEFAULT_STROKE_THICKNESS = LINE_DEFAULTS.thickness;
 /** Floor (diagram units) so a hairline still reads at default zoom. */
 const MIN_STROKE_WIDTH = 0.5;
 /** Dash / gap length, nominally in CSS pixels — `buildStroke` scales these by

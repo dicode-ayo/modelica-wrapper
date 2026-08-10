@@ -1,20 +1,24 @@
 /**
  * The Modelica §18.6 graphical-annotation defaults, grouped by the record that
- * declares them.
+ * declares them. They live beside the schemas and the decoder because that is
+ * what defines these records; three consumers in two packages read them.
  *
- * Two places need them and mean slightly different things by them: the diff
- * normalizes both sides of a comparison so a field OMC materialized compares
- * equal to one the webview omitted, and the properties panel offers one as a
- * field's reset target. The values coincide because both answer "what does an
- * unset field mean", so they are stated once here — a default transcribed into
- * both tables is a default that drifts, and `fillColor` did.
+ * Each answers "what does an unset field mean", but each does something
+ * different with the answer: the diff normalizes both sides of a comparison so
+ * a field OMC materialized compares equal to one the webview omitted, the
+ * properties panel offers one as a field's reset target, and the renderer needs
+ * a concrete value to draw. Transcribing them per consumer is what drifts, and
+ * `fillColor` did.
+ *
+ * Reachable from a webview bundle via the `@dicode/omc-client/shapes` subpath,
+ * so this module must stay free of the OMC transport — types only.
  *
  * Where a consumer needs something other than the spec value it says so at the
  * point of use. `Text.textColor` is the one that does: OMC reports it unset as
  * a sentinel rather than as the §18.6 default.
  */
 
-import type { Color, Point } from "@dicode/omc-client";
+import type { Color, Point } from "../_shared/diagramLayout.js";
 
 /** §18.6.5.2 `GraphicItem`. `origin` is not exposed by the properties panel. */
 export const GRAPHIC_ITEM_DEFAULTS: {
