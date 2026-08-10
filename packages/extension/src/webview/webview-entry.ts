@@ -16,7 +16,10 @@ import { customElement, state } from "lit/decorators.js";
 // import: pulls in the default theme CSS and the bridge sheet so all
 // `<wa-*>` elements rendered downstream pick up VSCode's palette
 // automatically. esbuild's `.css` loader collects these into
-// `out/webview.css`, which `diagram/diagram-webview-html.ts` <link>s to.
+// `out/webview.css`, which `webview/webview-page.ts` <link>s to for this
+// entry. `webview/webview-page.test.ts` greps this file for this exact
+// import to check that against reality — deleting or aliasing it changes
+// what that test expects, not just what the bundle contains.
 import "@dicode/ui-common/webawesome-setup";
 
 import "@dicode/diagram-ui";

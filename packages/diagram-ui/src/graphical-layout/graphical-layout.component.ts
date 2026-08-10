@@ -503,7 +503,17 @@ export class OmGraphicalLayout extends LitElement {
       return html``;
     }
     const active = this.layoutWithPreview(base);
-    const componentEntries = Object.entries(active.components);
+    // Mirrors `renderShape`'s `visible === false` skip (render-shape.ts):
+    // OMEdit doesn't draw a hidden component either, so it gets no
+    // `<om-component>` at all — unpickable and unselectable, same as a
+    // hidden shape. `Placement.visible` is already resolved to a literal
+    // by the producer (`placementFor`), so there's no DynamicSelect case
+    // to peel here. Its connections still route from `layout.components`
+    // directly (`endpointCentreFromLayout`), not from this element, so
+    // they keep anchoring correctly with nothing left to crash into.
+    const componentEntries = Object.entries(active.components).filter(
+      ([, comp]) => comp.placement.visible !== false,
+    );
     const connectorEntries = Object.entries(active.connectors);
     return html`
       <om-scene

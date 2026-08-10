@@ -24,6 +24,7 @@ import type {
   ExtensionToWebview,
 } from "../webview/protocol.js";
 import { createReadyGate, type ReadyGate } from "../webview/ready-gate.js";
+import { renderPlaceholderPage } from "../webview/webview-page.js";
 import type { WriteVerdict, WriteVerdicts } from "../write-verdict.js";
 
 import { applyEdits } from "./apply-edits.js";
@@ -386,7 +387,12 @@ export function resolveDiagramEditor(
   void (async (): Promise<void> => {
     const className = await classNameFromFile(document, ensureClient);
     if (className === undefined) {
-      webview.html = renderPlaceholderHtml(webview.cspSource);
+      webview.html = renderPlaceholderPage({
+        cspSource: webview.cspSource,
+        title: "Modelica diagram",
+        message:
+          "Open a Modelica class from the library sidebar to see its diagram.",
+      });
       return;
     }
     start(className);
@@ -1401,33 +1407,4 @@ async function classNameFromFile(
     );
     return undefined;
   }
-}
-
-function renderPlaceholderHtml(cspSource: string): string {
-  const csp = [
-    `default-src 'none'`,
-    `style-src ${cspSource} 'unsafe-inline'`,
-  ].join("; ");
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="${csp}" />
-    <title>Modelica diagram</title>
-    <style>
-      body {
-        margin: 0;
-        height: 100vh;
-        display: grid;
-        place-items: center;
-        font-family: var(--vscode-font-family);
-        color: var(--vscode-descriptionForeground);
-      }
-      p { max-width: 32rem; padding: 1rem; text-align: center; }
-    </style>
-  </head>
-  <body>
-    <p>Open a Modelica class from the library sidebar to see its diagram.</p>
-  </body>
-</html>`;
 }

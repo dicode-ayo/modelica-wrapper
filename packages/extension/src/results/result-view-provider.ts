@@ -14,7 +14,7 @@
 import * as vscode from "vscode";
 
 import { log } from "../logger.js";
-import { randomNonce } from "../webview/nonce.js";
+import { renderWebviewPage } from "../webview/webview-page.js";
 import type {
   ExtensionToWebview,
   TracePayload,
@@ -271,38 +271,12 @@ export class ResultViewEditorProvider
   }
 
   private renderHtml(webview: vscode.Webview): string {
-    const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, "out", "postprocessing.js"),
-    );
-    // esbuild collects every `import "*.css"` in the bundle (Web Awesome's
-    // theme + our VSCode bridge, via ui-common/webawesome-setup) into a
-    // sibling `postprocessing.css`. We <link> to it via the webview cspSource.
-    const stylesUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, "out", "postprocessing.css"),
-    );
-    const nonce = randomNonce();
-    const csp = [
-      `default-src 'none'`,
-      `script-src 'nonce-${nonce}'`,
-      `style-src ${webview.cspSource} 'unsafe-inline'`,
-      `img-src ${webview.cspSource} data: blob:`,
-      `font-src ${webview.cspSource} data:`,
-    ].join("; ");
-    return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="${csp}" />
-    <title>Modelica results</title>
-    <link rel="stylesheet" href="${stylesUri}" />
-    <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; }
-    </style>
-  </head>
-  <body>
-    <om-result-view-root></om-result-view-root>
-    <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
-  </body>
-</html>`;
+    return renderWebviewPage({
+      webview,
+      extensionUri: this.extensionUri,
+      entry: "postprocessing",
+      title: "Modelica results",
+      root: "<om-result-view-root></om-result-view-root>",
+    });
   }
 }

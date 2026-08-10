@@ -23,6 +23,7 @@ import type {
   DocWebviewToExtension,
 } from "../webview/documentation-protocol.js";
 import { createReadyGate, type ReadyGate } from "../webview/ready-gate.js";
+import { renderPlaceholderPage } from "../webview/webview-page.js";
 import type {
   WriteVerdict,
   WriteVerdictClient,
@@ -156,7 +157,12 @@ export function resolveDocumentationEditor(
   // guessing a class.
   const className = qualifiedNameFromUri(document.uri);
   if (className === undefined) {
-    webview.html = renderPlaceholderHtml(webview.cspSource);
+    webview.html = renderPlaceholderPage({
+      cspSource: webview.cspSource,
+      title: "Modelica documentation",
+      message:
+        "Open a Modelica class from the library sidebar to see its documentation.",
+    });
     return;
   }
 
@@ -504,33 +510,4 @@ async function openHtmlSourceEditor(className: string): Promise<void> {
       `Modelica: could not open the documentation HTML for ${className}: ${errorDetail(err)}`,
     );
   }
-}
-
-function renderPlaceholderHtml(cspSource: string): string {
-  const csp = [
-    `default-src 'none'`,
-    `style-src ${cspSource} 'unsafe-inline'`,
-  ].join("; ");
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="${csp}" />
-    <title>Modelica documentation</title>
-    <style>
-      body {
-        margin: 0;
-        height: 100dvh;
-        display: grid;
-        place-items: center;
-        font-family: var(--vscode-font-family);
-        color: var(--vscode-descriptionForeground);
-      }
-      p { max-width: 32rem; padding: 1rem; text-align: center; }
-    </style>
-  </head>
-  <body>
-    <p>Open a Modelica class from the library sidebar to see its documentation.</p>
-  </body>
-</html>`;
 }

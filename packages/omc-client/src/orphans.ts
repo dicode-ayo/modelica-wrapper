@@ -71,9 +71,13 @@ export async function reapOrphanedOmcSessions(
   return reaped.filter((r) => r.status === "fulfilled" && r.value).length;
 }
 
-/** What the process table says about the OMC a session directory describes. */
+/**
+ * What the process table says about the OMC a session directory describes.
+ * `marker` is the command-line fragment the pid was identified by, which is
+ * the only evidence that re-confirms the pid still holds that same process.
+ */
 type OmcState =
-  | { readonly state: "running"; readonly pid: number }
+  | { readonly state: "running"; readonly pid: number; readonly marker: string }
   | { readonly state: "gone" }
   | { readonly state: "unidentified" };
 
@@ -99,7 +103,7 @@ async function reapSession(
   if (omc.state === "running") {
     const endpoint =
       portFile === undefined ? undefined : await readEndpoint(dir, portFile);
-    await stopOmc(omc.pid, endpoint, processes, quit);
+    await stopOmc(omc.pid, omc.marker, endpoint, processes, quit);
   }
   await rm(dir, { recursive: true, force: true });
   return true;
@@ -128,13 +132,15 @@ async function identifyOmc(
         ? { state: "unidentified" }
         : { state: "gone" };
     }
-    return cmd.includes(`-z=${suffix}`)
-      ? { state: "running", pid: recorded }
+    const marker = `-z=${suffix}`;
+    return cmd.includes(marker)
+      ? { state: "running", pid: recorded, marker }
       : { state: "gone" };
   }
 
   if (suffix === undefined) return { state: "unidentified" };
-  const matches = processes.findByCommandLine(`-z=${suffix}`);
+  const marker = `-z=${suffix}`;
+  const matches = processes.findByCommandLine(marker);
   if (matches === undefined) return { state: "unidentified" };
   if (matches.length === 0) return { state: "gone" };
   // A command line can carry the suffix without being OMC at all — a grep, a
@@ -147,11 +153,12 @@ async function identifyOmc(
   );
   return pid === undefined
     ? { state: "unidentified" }
-    : { state: "running", pid };
+    : { state: "running", pid, marker };
 }
 
 async function stopOmc(
   pid: number,
+  marker: string,
   endpoint: string | undefined,
   processes: ProcessProbe,
   quit: (endpoint: string) => Promise<void>,
@@ -164,7 +171,11 @@ async function stopOmc(
       /* mute peer — the kill below is the fallback */
     }
   }
-  if (!processes.isRunning(pid)) return;
+  // The quit above, and the polling around it, give the pid time to be
+  // recycled onto something else — so what authorizes the signal is that the
+  // pid still carries the command line it was identified by, not that it is
+  // merely occupied.
+  if (!processes.confirmIdentity(pid, marker)) return;
   processes.kill(pid);
   // OMC still holds this directory as its TMPDIR; removing it out from under a
   // process that has not finished exiting fails outright on Windows.
