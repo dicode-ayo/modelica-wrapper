@@ -338,22 +338,32 @@ function ownShapes(
 }
 
 const DEFAULT_ORIGIN: Point = [0, 0];
-const DEFAULT_LINE_COLOR: Color = [0, 0, 0];
-const DEFAULT_FILL_COLOR: Color = [0, 0, 255];
+const DEFAULT_COLOR: Color = [0, 0, 0];
 const DEFAULT_ARROW: [string, string] = ["None", "None"];
 const DEFAULT_TEXT_STYLE: string[] = [];
 const DEFAULT_STRING = "";
 
 /**
+ * OMC reports an unset `textColor` as this triple rather than as the §18.6
+ * default, so it is what an absent `textColor` has to normalize to. It is a
+ * sentinel, not a colour: an explicit black stays distinguishable from unset,
+ * and so stays writable.
+ */
+const UNSET_TEXT_COLOR: Color = [-1, -1, -1];
+
+/**
  * Fill a shape's optional §18.6 fields with their spec default, for the
  * equality check `diffGraphics` runs — never for the edit payload. OMC
- * materialises every field a shape's record type carries when it answers a
- * write (an omitted `pattern` comes back `"Solid"`, an omitted `closure`
+ * materializes every field a shape's record type carries when it answers a
+ * write (an omitted `pattern` comes back `"Solid"`, an omitted `fillPattern`
  * comes back `"None"`), while the webview only ever sends what the user set.
  * Comparing the two by raw presence sees a spurious change on the very next
  * reconcile of a shape nobody touched; comparing them normalized doesn't.
  *
- * Note `fillColor`'s spec default is blue `{0,0,255}`, not white.
+ * Every default here is pinned against live OMC by
+ * `reconcile-convergence.integration.test.ts`, one sparse shape per kind. Take
+ * a default from OMC's own answer, never from the parallel §18.6 table in
+ * `shape-properties.ts` — the two are independent and can disagree.
  */
 function normalizeShape(shape: Shape): Shape {
   const visible = shape.visible ?? true;
@@ -366,7 +376,7 @@ function normalizeShape(shape: Shape): Shape {
         visible,
         rotation,
         origin,
-        color: shape.color ?? DEFAULT_LINE_COLOR,
+        color: shape.color ?? DEFAULT_COLOR,
         thickness: shape.thickness ?? 0.25,
         pattern: shape.pattern ?? "Solid",
         smooth: shape.smooth ?? "None",
@@ -379,8 +389,8 @@ function normalizeShape(shape: Shape): Shape {
         visible,
         rotation,
         origin,
-        lineColor: shape.lineColor ?? DEFAULT_LINE_COLOR,
-        fillColor: shape.fillColor ?? DEFAULT_FILL_COLOR,
+        lineColor: shape.lineColor ?? DEFAULT_COLOR,
+        fillColor: shape.fillColor ?? DEFAULT_COLOR,
         pattern: shape.pattern ?? "Solid",
         fillPattern: shape.fillPattern ?? "None",
         lineThickness: shape.lineThickness ?? 0.25,
@@ -392,29 +402,36 @@ function normalizeShape(shape: Shape): Shape {
         visible,
         rotation,
         origin,
-        lineColor: shape.lineColor ?? DEFAULT_LINE_COLOR,
-        fillColor: shape.fillColor ?? DEFAULT_FILL_COLOR,
+        lineColor: shape.lineColor ?? DEFAULT_COLOR,
+        fillColor: shape.fillColor ?? DEFAULT_COLOR,
         pattern: shape.pattern ?? "Solid",
         fillPattern: shape.fillPattern ?? "None",
         lineThickness: shape.lineThickness ?? 0.25,
         borderPattern: shape.borderPattern ?? "None",
         radius: shape.radius ?? 0,
       };
-    case "ellipse":
+    case "ellipse": {
+      // §18.6.5.5 makes the closure default conditional on the angles, so a
+      // full ellipse and an arc normalize differently.
+      const startAngle = shape.startAngle ?? 0;
+      const endAngle = shape.endAngle ?? 360;
       return {
         ...shape,
         visible,
         rotation,
         origin,
-        lineColor: shape.lineColor ?? DEFAULT_LINE_COLOR,
-        fillColor: shape.fillColor ?? DEFAULT_FILL_COLOR,
+        lineColor: shape.lineColor ?? DEFAULT_COLOR,
+        fillColor: shape.fillColor ?? DEFAULT_COLOR,
         pattern: shape.pattern ?? "Solid",
         fillPattern: shape.fillPattern ?? "None",
         lineThickness: shape.lineThickness ?? 0.25,
-        startAngle: shape.startAngle ?? 0,
-        endAngle: shape.endAngle ?? 360,
-        closure: shape.closure ?? "None",
+        startAngle,
+        endAngle,
+        closure:
+          shape.closure ??
+          (startAngle === 0 && endAngle === 360 ? "Chord" : "Radial"),
       };
+    }
     case "text":
       return {
         ...shape,
@@ -423,7 +440,7 @@ function normalizeShape(shape: Shape): Shape {
         origin,
         fontName: shape.fontName ?? "",
         fontSize: shape.fontSize ?? 0,
-        textColor: shape.textColor ?? DEFAULT_LINE_COLOR,
+        textColor: shape.textColor ?? UNSET_TEXT_COLOR,
         horizontalAlignment: shape.horizontalAlignment ?? "Center",
         textStyle: shape.textStyle ?? DEFAULT_TEXT_STYLE,
       };

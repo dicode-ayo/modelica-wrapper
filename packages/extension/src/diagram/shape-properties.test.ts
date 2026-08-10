@@ -286,7 +286,7 @@ describe("buildShapePropertiesForm", () => {
       (x) => x.name === "fillColor",
     );
     expect(fillColor?.value).toBeNull();
-    expect(fillColor?.defaultValue).toBe("#0000ff");
+    expect(fillColor?.defaultValue).toBe("#000000");
     expect(
       (applyShapeProperties(RECT, { fillColor: null }) as RectangleShape)
         .fillColor,

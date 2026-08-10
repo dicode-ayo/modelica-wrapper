@@ -83,47 +83,114 @@ end ${pkg};
     expect(diffLayouts(afterWrite, reported)).toEqual([]);
   });
 
-  it("finds nothing left to write when a drawn shape is reconciled twice", async () => {
-    // The webview sends a shape carrying what the user chose. OMC answers it
-    // with `pattern`, `fillPattern`, `lineThickness` and the ellipse angles
-    // materialised — `diffLayouts` treats an omitted field as equal to its
-    // spec default, so that alone is not a difference the second reconcile
-    // rewrites.
-    const base = await fetchDiagramLayout(client, cls);
-    const withShape = structuredClone(base) as DiagramLayout;
-    const layer = withShape.diagramLayers.at(0);
-    if (layer === undefined) throw new Error("no own diagram layer");
-    const drawn = {
-      kind: "ellipse",
-      extent: [
-        [10, 10],
-        [30, 30],
-      ],
-      lineColor: [0, 0, 255],
-      fillColor: [255, 255, 0],
-    };
-    layer.shapes = [...layer.shapes, drawn] as (typeof layer)["shapes"];
+  /**
+   * One case per shape kind, each carrying as little as the draw tool sends.
+   * A kind covered only by the unit suite is a kind whose defaults were checked
+   * against our own table rather than against OMC's answer, which is exactly
+   * how `closure` and `fillColor` came to be wrong in both places at once.
+   */
+  const drawn = [
+    {
+      what: "a full ellipse, whose closure OMC defaults by its angles",
+      shape: {
+        kind: "ellipse",
+        extent: [
+          [10, 10],
+          [30, 30],
+        ],
+        lineColor: [0, 0, 255],
+        fillColor: [255, 255, 0],
+      },
+    },
+    {
+      what: "a partial ellipse, which takes the other closure default",
+      shape: {
+        kind: "ellipse",
+        extent: [
+          [40, 40],
+          [60, 60],
+        ],
+        startAngle: 0,
+        endAngle: 180,
+      },
+    },
+    {
+      what: "an uncoloured rectangle, whose fillColor OMC materializes",
+      shape: {
+        kind: "rectangle",
+        extent: [
+          [10, -30],
+          [30, -10],
+        ],
+      },
+    },
+    {
+      what: "an uncoloured polygon",
+      shape: {
+        kind: "polygon",
+        points: [
+          [-30, -10],
+          [-20, 10],
+          [-10, -10],
+        ],
+      },
+    },
+    {
+      what: "a line",
+      shape: {
+        kind: "line",
+        points: [
+          [-60, 20],
+          [-40, 40],
+        ],
+      },
+    },
+    {
+      what: "a text, whose unset textColor OMC reports as a sentinel",
+      shape: {
+        kind: "text",
+        extent: [
+          [50, -40],
+          [80, -20],
+        ],
+        textString: "hi",
+      },
+    },
+  ] as const;
 
-    const first = diffLayouts(base, withShape);
-    expect(first.some((e) => e.kind.startsWith("graphics"))).toBe(true);
-    const applied = await applyEdits(client, cls, first, undefined, {
-      snapshot: true,
+  for (const { what, shape } of drawn) {
+    it(`finds nothing left to write when ${what} is reconciled twice`, async () => {
+      // The webview sends a shape carrying what the user chose. OMC answers it
+      // with every field of the record materialized — `diffLayouts` treats an
+      // omitted field as equal to its spec default, so that alone is not a
+      // difference the second reconcile rewrites.
+      const base = await fetchDiagramLayout(client, cls);
+      const withShape = structuredClone(base) as DiagramLayout;
+      const layer = withShape.diagramLayers.at(0);
+      if (layer === undefined) throw new Error("no own diagram layer");
+      layer.shapes = [...layer.shapes, shape] as (typeof layer)["shapes"];
+
+      const first = diffLayouts(base, withShape);
+      expect(first.some((e) => e.kind.startsWith("graphics"))).toBe(true);
+      const applied = await applyEdits(client, cls, first, undefined, {
+        snapshot: true,
+      });
+      expect(applied.failed).toEqual([]);
+
+      const afterWrite = await fetchDiagramLayout(client, cls);
+      const canonical = afterWrite.diagramLayers.at(0)?.shapes.at(-1);
+      expect(canonical).toMatchObject(shape);
+      // More than it was sent, which is the whole point: the defaults OMC
+      // materialized are exactly what the next line proves don't matter.
+      expect(Object.keys(canonical ?? {}).length).toBeGreaterThan(
+        Object.keys(shape).length,
+      );
+
+      // The base the next gesture reconciles against, per `applyChange` in
+      // diagram-editor-provider.ts: diffing the still-partial `withShape`
+      // report against that canonical read is the second reconcile of an
+      // unchanged diagram.
+      expect(diffLayouts(afterWrite, withShape)).toEqual([]);
     });
-    expect(applied.failed).toEqual([]);
-
-    const afterWrite = await fetchDiagramLayout(client, cls);
-    const canonical = afterWrite.diagramLayers.at(0)?.shapes.at(-1);
-    expect(canonical).toMatchObject(drawn);
-    // More than it was sent, which is the whole point: the defaults OMC
-    // materialised are exactly what the next line proves don't matter.
-    expect(Object.keys(canonical ?? {}).length).toBeGreaterThan(
-      Object.keys(drawn).length,
-    );
-
-    // The base the next gesture reconciles against, per `applyChange` in
-    // diagram-editor-provider.ts: diffing the still-partial `withShape`
-    // report against that canonical read is the second reconcile of an
-    // unchanged diagram.
-    expect(diffLayouts(afterWrite, withShape)).toEqual([]);
-  });
+  }
 });

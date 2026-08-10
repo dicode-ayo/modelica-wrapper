@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import type {
   BitmapShape,
   DiagramLayout,
+  EllipseShape,
   LineShape,
+  PolygonShape,
   RectangleShape,
   Shape,
   TextShape,
@@ -902,7 +904,7 @@ describe("diffLayouts — graphics", () => {
         [10, 10],
       ],
       lineColor: [1, 2, 3],
-      fillColor: [0, 0, 255],
+      fillColor: [0, 0, 0],
       pattern: "Solid",
       fillPattern: "None",
       lineThickness: 0.25,
@@ -997,6 +999,121 @@ describe("diffLayouts — graphics", () => {
       ]);
     });
 
+    /** What a drawn Polygon carries: only what the user actually chose. */
+    const sparsePolygon: PolygonShape = {
+      kind: "polygon",
+      points: [
+        [0, 0],
+        [10, 10],
+        [20, 0],
+      ],
+      lineColor: [1, 2, 3],
+    };
+    /** What OMC answers on re-read: `sparsePolygon` with every §18.6 default filled in. */
+    const canonicalPolygon: PolygonShape = {
+      kind: "polygon",
+      points: [
+        [0, 0],
+        [10, 10],
+        [20, 0],
+      ],
+      lineColor: [1, 2, 3],
+      fillColor: [0, 0, 0],
+      pattern: "Solid",
+      fillPattern: "None",
+      lineThickness: 0.25,
+      smooth: "None",
+      visible: true,
+      rotation: 0,
+    };
+
+    it("treats a sparse Polygon as unchanged against the canonical one OMC would answer", () => {
+      expect(
+        diffLayouts(withIcon([sparsePolygon]), withIcon([canonicalPolygon])),
+      ).toEqual([]);
+    });
+
+    /** What a drawn full Ellipse carries: the angles are never set by the draw tool. */
+    const sparseEllipse: EllipseShape = {
+      kind: "ellipse",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      lineColor: [1, 2, 3],
+    };
+    /**
+     * What OMC answers on re-read. `closure` comes back `"Chord"`, not
+     * `"None"`: §18.6.5.5 defaults it by the angles, and this one spans 0–360.
+     */
+    const canonicalEllipse: EllipseShape = {
+      kind: "ellipse",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      lineColor: [1, 2, 3],
+      fillColor: [0, 0, 0],
+      pattern: "Solid",
+      fillPattern: "None",
+      lineThickness: 0.25,
+      startAngle: 0,
+      endAngle: 360,
+      closure: "Chord",
+      visible: true,
+      rotation: 0,
+    };
+
+    it("treats a sparse full Ellipse as unchanged against the canonical one OMC would answer", () => {
+      expect(
+        diffLayouts(withIcon([sparseEllipse]), withIcon([canonicalEllipse])),
+      ).toEqual([]);
+    });
+
+    it("defaults a partial Ellipse's closure to Radial, not Chord", () => {
+      const sparseArc: EllipseShape = {
+        kind: "ellipse",
+        extent: [
+          [0, 0],
+          [10, 10],
+        ],
+        startAngle: 0,
+        endAngle: 180,
+      };
+      const canonicalArc: EllipseShape = {
+        ...sparseArc,
+        lineColor: [0, 0, 0],
+        fillColor: [0, 0, 0],
+        pattern: "Solid",
+        fillPattern: "None",
+        lineThickness: 0.25,
+        closure: "Radial",
+        visible: true,
+        rotation: 0,
+      };
+      expect(
+        diffLayouts(withIcon([sparseArc]), withIcon([canonicalArc])),
+      ).toEqual([]);
+    });
+
+    it("still emits graphicsModified when Ellipse.closure differs from its angle-derived default", () => {
+      const changed: EllipseShape = {
+        kind: "ellipse",
+        extent: [
+          [0, 0],
+          [10, 10],
+        ],
+        closure: "Radial", // a 0–360 ellipse defaults to Chord
+      };
+      const edits = diffLayouts(
+        withIcon([{ kind: "ellipse", extent: changed.extent }]),
+        withIcon([changed]),
+      );
+      expect(edits).toEqual([
+        { kind: "graphicsModified", layer: "icon", index: 0, shape: changed },
+      ]);
+    });
+
     /** What a drawn Text carries: only what the user actually chose. */
     const sparseText: TextShape = {
       kind: "text",
@@ -1030,6 +1147,58 @@ describe("diffLayouts — graphics", () => {
       ).toEqual([]);
     });
 
+    it("treats an unset Text.textColor as unchanged against OMC's sentinel", () => {
+      const sparseUncolored: TextShape = {
+        kind: "text",
+        extent: [
+          [0, 0],
+          [10, 10],
+        ],
+        textString: "hello",
+      };
+      const canonicalUncolored: TextShape = {
+        ...sparseUncolored,
+        textColor: [-1, -1, -1],
+        fontName: "",
+        fontSize: 0,
+        horizontalAlignment: "Center",
+        textStyle: [],
+        visible: true,
+        rotation: 0,
+      };
+      expect(
+        diffLayouts(
+          withIcon([sparseUncolored]),
+          withIcon([canonicalUncolored]),
+        ),
+      ).toEqual([]);
+    });
+
+    it("still emits graphicsModified when Text.textColor is set to explicit black", () => {
+      const changed: TextShape = {
+        kind: "text",
+        extent: [
+          [0, 0],
+          [10, 10],
+        ],
+        textString: "hello",
+        textColor: [0, 0, 0],
+      };
+      const edits = diffLayouts(
+        withIcon([
+          {
+            kind: "text",
+            extent: changed.extent,
+            textString: changed.textString,
+          },
+        ]),
+        withIcon([changed]),
+      );
+      expect(edits).toEqual([
+        { kind: "graphicsModified", layer: "icon", index: 0, shape: changed },
+      ]);
+    });
+
     it("still emits graphicsModified when Text.textStyle differs from its spec default", () => {
       const changed: TextShape = {
         kind: "text",
@@ -1055,7 +1224,7 @@ describe("diffLayouts — graphics", () => {
       ]);
     });
 
-    /** What a drawn Bitmap carries: no Bitmap-drawing UI exists yet, but a
+    /** What a drawn Bitmap carries: no Bitmap-drawing UI exists, but a
      *  shape-properties edit can submit an empty `fileName`. */
     const sparseBitmap: BitmapShape = {
       kind: "bitmap",

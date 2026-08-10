@@ -324,7 +324,7 @@ const FILLED_SHAPE_FIELDS: ShapeField<FilledShapeKind>[] = [
     label: "Fill Color",
     group: "Style",
     codec: colorCodec,
-    fallback: [0, 0, 255],
+    fallback: [0, 0, 0],
   }),
   filledShapeField({
     name: "pattern",
