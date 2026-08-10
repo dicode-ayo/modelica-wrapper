@@ -99,42 +99,40 @@ export interface LineStyle {
   smooth?: string | undefined;
 }
 
+/**
+ * The `FilledShape` record's style fields (spec §18.6), shared by every
+ * primitive that has both an outline and an interior. All optional: absent
+ * means the source didn't set that field.
+ */
+export interface FilledShape {
+  lineColor?: Color | undefined;
+  fillColor?: Color | undefined;
+  pattern?: string | undefined;
+  fillPattern?: string | undefined;
+  lineThickness?: number | undefined;
+}
+
 export interface LineShape extends GraphicItem, LineStyle {
   kind: "line";
   points: Point[];
 }
 
-export interface PolygonShape extends GraphicItem {
+export interface PolygonShape extends GraphicItem, FilledShape {
   kind: "polygon";
   points: Point[];
-  lineColor?: Color | undefined;
-  fillColor?: Color | undefined;
-  pattern?: string | undefined;
-  fillPattern?: string | undefined;
-  lineThickness?: number | undefined;
   smooth?: string | undefined;
 }
 
-export interface RectangleShape extends GraphicItem {
+export interface RectangleShape extends GraphicItem, FilledShape {
   kind: "rectangle";
   extent: Extent;
-  lineColor?: Color | undefined;
-  fillColor?: Color | undefined;
-  pattern?: string | undefined;
-  fillPattern?: string | undefined;
-  lineThickness?: number | undefined;
   borderPattern?: string | undefined;
   radius?: number | undefined;
 }
 
-export interface EllipseShape extends GraphicItem {
+export interface EllipseShape extends GraphicItem, FilledShape {
   kind: "ellipse";
   extent: Extent;
-  lineColor?: Color | undefined;
-  fillColor?: Color | undefined;
-  pattern?: string | undefined;
-  fillPattern?: string | undefined;
-  lineThickness?: number | undefined;
   startAngle?: number | undefined;
   endAngle?: number | undefined;
   closure?: string | undefined;

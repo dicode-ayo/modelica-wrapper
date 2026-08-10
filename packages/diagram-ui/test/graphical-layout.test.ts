@@ -61,7 +61,7 @@ describe("<om-graphical-layout>", () => {
       name: "b2",
       placement: { ...b1.placement, visible: false },
     };
-    const el = await mount(layout);
+    const el = await mountLayout({ layout });
     const comps = el.shadowRoot?.querySelectorAll("om-component");
     expect(comps?.length).toBe(1);
     expect((comps?.[0] as { nodeId?: string }).nodeId).toBe("b1");
@@ -85,7 +85,7 @@ describe("<om-graphical-layout>", () => {
         ],
       },
     ];
-    const el = await mount(layout);
+    const el = await mountLayout({ layout });
     expect(el.shadowRoot?.querySelectorAll("om-component").length).toBe(0);
     expect(el.shadowRoot?.querySelectorAll("om-connection").length).toBe(1);
   });
