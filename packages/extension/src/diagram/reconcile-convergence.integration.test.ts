@@ -38,8 +38,9 @@ package ${pkg}
   model T
     Modelica.Blocks.Sources.Step step1 annotation(Placement(transformation(extent = {{-60, -10}, {-40, 10}})));
     Modelica.Blocks.Math.Gain gain1 annotation(Placement(transformation(extent = {{-10, -10}, {10, 10}})));
+    Modelica.Blocks.Math.Gain gain2 annotation(Placement(transformation(extent = {{40, -10}, {60, 10}})));
   equation
-    connect(step1.y, gain1.u) annotation(Line(points = {{-39, 0}, {-12, 0}}));
+    connect(step1.y, gain1.u) annotation(Line(points = {{-39, 0}, {-12, 0}}, color = {255, 0, 0}));
     annotation(Diagram(coordinateSystem(extent = {{-100, -100}, {100, 100}}), graphics = {
       Rectangle(extent = {{-80, 40}, {80, -40}}, lineColor = {255, 0, 0})}));
   end T;
@@ -81,6 +82,39 @@ end ${pkg};
     // against it is the second reconcile of an unchanged diagram.
     const afterWrite = await fetchDiagramLayout(client, cls);
     expect(diffLayouts(afterWrite, reported)).toEqual([]);
+  });
+
+  it("finds nothing left to write when a drawn connection is reconciled twice", async () => {
+    // A connection's visual is a `Line` record carrying the same six §18.6
+    // style fields a shape's is, and `getNthConnectionAnnotation` materializes
+    // them. `diffGraphics` normalizes shapes but `connStyle` compares raw, so
+    // what keeps a drawn wire converging is that the layout read goes through
+    // `getModelInstance`, which reports the annotation as authored. Pin it:
+    // were that to change, connections would gain #415's bug with no other
+    // gate to catch it.
+    const base = await fetchDiagramLayout(client, cls);
+    const withWire = structuredClone(base) as DiagramLayout;
+    withWire.connections = [
+      ...withWire.connections,
+      {
+        lhs: { component: "gain1", port: "y" },
+        rhs: { component: "gain2", port: "u" },
+        waypoints: [
+          [11, 0],
+          [38, 0],
+        ],
+      },
+    ] as DiagramLayout["connections"];
+
+    const first = diffLayouts(base, withWire);
+    expect(first.some((e) => e.kind === "connectionAdded")).toBe(true);
+    const applied = await applyEdits(client, cls, first, undefined, {
+      snapshot: true,
+    });
+    expect(applied.failed).toEqual([]);
+
+    const afterWrite = await fetchDiagramLayout(client, cls);
+    expect(diffLayouts(afterWrite, withWire)).toEqual([]);
   });
 
   /**
