@@ -86,12 +86,12 @@ end ${pkg};
   /**
    * One case per shape kind, each carrying as little as the draw tool sends.
    * A kind covered only by the unit suite is a kind whose defaults were checked
-   * against our own table rather than against OMC's answer, which is exactly
-   * how `closure` and `fillColor` came to be wrong in both places at once.
+   * against our own table rather than against OMC's answer.
    */
   const drawn = [
     {
       what: "a full ellipse, whose closure OMC defaults by its angles",
+      decodesMoreThanSent: true,
       shape: {
         kind: "ellipse",
         extent: [
@@ -104,6 +104,7 @@ end ${pkg};
     },
     {
       what: "a partial ellipse, which takes the other closure default",
+      decodesMoreThanSent: true,
       shape: {
         kind: "ellipse",
         extent: [
@@ -115,7 +116,8 @@ end ${pkg};
       },
     },
     {
-      what: "an uncoloured rectangle, whose fillColor OMC materializes",
+      what: "an uncolored rectangle, whose fillColor OMC materializes",
+      decodesMoreThanSent: true,
       shape: {
         kind: "rectangle",
         extent: [
@@ -125,7 +127,8 @@ end ${pkg};
       },
     },
     {
-      what: "an uncoloured polygon",
+      what: "an uncolored polygon",
+      decodesMoreThanSent: true,
       shape: {
         kind: "polygon",
         points: [
@@ -137,6 +140,7 @@ end ${pkg};
     },
     {
       what: "a line",
+      decodesMoreThanSent: true,
       shape: {
         kind: "line",
         points: [
@@ -147,6 +151,7 @@ end ${pkg};
     },
     {
       what: "a text, whose unset textColor OMC reports as a sentinel",
+      decodesMoreThanSent: true,
       shape: {
         kind: "text",
         extent: [
@@ -165,18 +170,14 @@ end ${pkg};
           [-50, -20],
         ],
       },
-      // Bitmap's only defaults are the empty `fileName`/`imageSource`, which
-      // the decoder drops again, so this one comes back exactly as sent.
-      omcMaterializes: false,
+      // OMC answers with the empty `fileName`/`imageSource` like any other
+      // default, but `decodeBitmap` drops them again, so the decoded shape
+      // matches what was sent.
+      decodesMoreThanSent: false,
     },
   ] as const;
 
-  for (const entry of drawn) {
-    const { what, shape } = entry;
-    // Every kind but Bitmap comes back with fields it was not sent; asserting
-    // so keeps a case from passing because nothing needed normalizing.
-    const omcMaterializes =
-      "omcMaterializes" in entry ? entry.omcMaterializes : true;
+  for (const { what, shape, decodesMoreThanSent } of drawn) {
     it(`finds nothing left to write when ${what} is reconciled twice`, async () => {
       // The webview sends a shape carrying what the user chose. OMC answers it
       // with every field of the record materialized — `diffLayouts` treats an
@@ -198,7 +199,7 @@ end ${pkg};
       const afterWrite = await fetchDiagramLayout(client, cls);
       const canonical = afterWrite.diagramLayers.at(0)?.shapes.at(-1);
       expect(canonical).toMatchObject(shape);
-      if (omcMaterializes) {
+      if (decodesMoreThanSent) {
         // More than it was sent, which is the whole point: the defaults OMC
         // materialized are exactly what the next line proves don't matter.
         expect(Object.keys(canonical ?? {}).length).toBeGreaterThan(

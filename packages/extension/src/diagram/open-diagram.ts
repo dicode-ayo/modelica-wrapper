@@ -23,7 +23,7 @@ import {
 import { log } from "../logger.js";
 import { sourceUriFor } from "../source-provider.js";
 
-import { applyEdits } from "./apply-edits.js";
+import { applyEdits, type ApplyEditsResult } from "./apply-edits.js";
 import { DIAGRAM_VIEW_TYPE } from "./view-type.js";
 import {
   connectedPortsOf,
@@ -383,19 +383,10 @@ export async function applyDiagramEdits(
   className: string,
   prevLayout: DiagramLayout,
   next: DiagramLayout,
-): Promise<{
-  failed: ReadonlyArray<{ error: string }>;
-  rolledBack: boolean;
-} | null> {
+): Promise<ApplyEditsResult | null> {
   const edits = diffLayouts(prevLayout, next);
   if (edits.length === 0) return null;
-  const result = await applyEdits(client, className, edits, undefined, {
-    snapshot: true,
-  });
-  return {
-    failed: result.failed,
-    rolledBack: result.rolledBack,
-  };
+  return applyEdits(client, className, edits, undefined, { snapshot: true });
 }
 
 /**

@@ -1,15 +1,28 @@
 import { moveWithin } from "@dicode/omc-client";
 
-import { defaultEllipseClosure } from "./shape-defaults.js";
+import {
+  BITMAP_DEFAULTS,
+  defaultEllipseClosure,
+  ELLIPSE_DEFAULTS,
+  FILLED_SHAPE_DEFAULTS,
+  GRAPHIC_ITEM_DEFAULTS,
+  LINE_DEFAULTS,
+  POLYGON_DEFAULTS,
+  RECTANGLE_DEFAULTS,
+  TEXT_DEFAULTS,
+} from "./shape-defaults.js";
 import type {
   Color,
   ConnectionLayout,
   DiagramLayout,
+  EllipseShape,
   Extent,
   IconLayer,
   LineStyle,
   Placement,
   Point,
+  PolygonShape,
+  RectangleShape,
   Shape,
 } from "@dicode/omc-client";
 
@@ -339,19 +352,32 @@ function ownShapes(
   return layers.find((l) => l.from === className)?.shapes ?? [];
 }
 
-const DEFAULT_ORIGIN: Point = [0, 0];
-const DEFAULT_COLOR: Color = [0, 0, 0];
-const DEFAULT_ARROW: [string, string] = ["None", "None"];
-const DEFAULT_TEXT_STYLE: string[] = [];
-const DEFAULT_STRING = "";
-
 /**
  * OMC reports an unset `textColor` as this triple rather than as the §18.6
  * default, so it is what an absent `textColor` has to normalize to. It is a
- * sentinel, not a colour: an explicit black stays distinguishable from unset,
+ * sentinel, not a color: an explicit black stays distinguishable from unset,
  * and so stays writable.
  */
 const UNSET_TEXT_COLOR: Color = [-1, -1, -1];
+
+/** The `FilledShape` five-tuple, resolved against §18.6 for one shape. */
+function filledShapeDefaults(
+  shape: PolygonShape | RectangleShape | EllipseShape,
+): {
+  lineColor: Color;
+  fillColor: Color;
+  pattern: string;
+  fillPattern: string;
+  lineThickness: number;
+} {
+  return {
+    lineColor: shape.lineColor ?? FILLED_SHAPE_DEFAULTS.lineColor,
+    fillColor: shape.fillColor ?? FILLED_SHAPE_DEFAULTS.fillColor,
+    pattern: shape.pattern ?? FILLED_SHAPE_DEFAULTS.pattern,
+    fillPattern: shape.fillPattern ?? FILLED_SHAPE_DEFAULTS.fillPattern,
+    lineThickness: shape.lineThickness ?? FILLED_SHAPE_DEFAULTS.lineThickness,
+  };
+}
 
 /**
  * Fill a shape's optional §18.6 fields with their spec default, for the
@@ -362,94 +388,72 @@ const UNSET_TEXT_COLOR: Color = [-1, -1, -1];
  * Comparing the two by raw presence sees a spurious change on the very next
  * reconcile of a shape nobody touched; comparing them normalized doesn't.
  *
- * Every default here is pinned against live OMC by
- * `reconcile-convergence.integration.test.ts`, one sparse shape per kind. Take
- * a default from OMC's own answer, never from the parallel §18.6 table in
- * `shape-properties.ts` — the two are independent and can disagree.
+ * Every default here is what live OMC answers for an unset field, pinned per
+ * kind by `reconcile-convergence.integration.test.ts`.
  */
 function normalizeShape(shape: Shape): Shape {
-  const visible = shape.visible ?? true;
-  const rotation = shape.rotation ?? 0;
-  const origin = shape.origin ?? DEFAULT_ORIGIN;
+  const item = {
+    visible: shape.visible ?? GRAPHIC_ITEM_DEFAULTS.visible,
+    rotation: shape.rotation ?? GRAPHIC_ITEM_DEFAULTS.rotation,
+    origin: shape.origin ?? GRAPHIC_ITEM_DEFAULTS.origin,
+  };
   switch (shape.kind) {
     case "line":
       return {
         ...shape,
-        visible,
-        rotation,
-        origin,
-        color: shape.color ?? DEFAULT_COLOR,
-        thickness: shape.thickness ?? 0.25,
-        pattern: shape.pattern ?? "Solid",
-        smooth: shape.smooth ?? "None",
-        arrow: shape.arrow ?? DEFAULT_ARROW,
-        arrowSize: shape.arrowSize ?? 3,
+        ...item,
+        color: shape.color ?? LINE_DEFAULTS.color,
+        thickness: shape.thickness ?? LINE_DEFAULTS.thickness,
+        pattern: shape.pattern ?? LINE_DEFAULTS.pattern,
+        smooth: shape.smooth ?? LINE_DEFAULTS.smooth,
+        arrow: shape.arrow ?? LINE_DEFAULTS.arrow,
+        arrowSize: shape.arrowSize ?? LINE_DEFAULTS.arrowSize,
       };
     case "polygon":
       return {
         ...shape,
-        visible,
-        rotation,
-        origin,
-        lineColor: shape.lineColor ?? DEFAULT_COLOR,
-        fillColor: shape.fillColor ?? DEFAULT_COLOR,
-        pattern: shape.pattern ?? "Solid",
-        fillPattern: shape.fillPattern ?? "None",
-        lineThickness: shape.lineThickness ?? 0.25,
-        smooth: shape.smooth ?? "None",
+        ...item,
+        ...filledShapeDefaults(shape),
+        smooth: shape.smooth ?? POLYGON_DEFAULTS.smooth,
       };
     case "rectangle":
       return {
         ...shape,
-        visible,
-        rotation,
-        origin,
-        lineColor: shape.lineColor ?? DEFAULT_COLOR,
-        fillColor: shape.fillColor ?? DEFAULT_COLOR,
-        pattern: shape.pattern ?? "Solid",
-        fillPattern: shape.fillPattern ?? "None",
-        lineThickness: shape.lineThickness ?? 0.25,
-        borderPattern: shape.borderPattern ?? "None",
-        radius: shape.radius ?? 0,
+        ...item,
+        ...filledShapeDefaults(shape),
+        borderPattern: shape.borderPattern ?? RECTANGLE_DEFAULTS.borderPattern,
+        radius: shape.radius ?? RECTANGLE_DEFAULTS.radius,
       };
     case "ellipse": {
-      const startAngle = shape.startAngle ?? 0;
-      const endAngle = shape.endAngle ?? 360;
+      const startAngle = shape.startAngle ?? ELLIPSE_DEFAULTS.startAngle;
+      const endAngle = shape.endAngle ?? ELLIPSE_DEFAULTS.endAngle;
       return {
         ...shape,
-        visible,
-        rotation,
-        origin,
-        lineColor: shape.lineColor ?? DEFAULT_COLOR,
-        fillColor: shape.fillColor ?? DEFAULT_COLOR,
-        pattern: shape.pattern ?? "Solid",
-        fillPattern: shape.fillPattern ?? "None",
-        lineThickness: shape.lineThickness ?? 0.25,
+        ...item,
+        ...filledShapeDefaults(shape),
         startAngle,
         endAngle,
-        closure: shape.closure ?? defaultEllipseClosure(startAngle, endAngle),
+        closure:
+          shape.closure ?? defaultEllipseClosure({ startAngle, endAngle }),
       };
     }
     case "text":
       return {
         ...shape,
-        visible,
-        rotation,
-        origin,
-        fontName: shape.fontName ?? "",
-        fontSize: shape.fontSize ?? 0,
+        ...item,
+        fontName: shape.fontName ?? TEXT_DEFAULTS.fontName,
+        fontSize: shape.fontSize ?? TEXT_DEFAULTS.fontSize,
         textColor: shape.textColor ?? UNSET_TEXT_COLOR,
-        horizontalAlignment: shape.horizontalAlignment ?? "Center",
-        textStyle: shape.textStyle ?? DEFAULT_TEXT_STYLE,
+        horizontalAlignment:
+          shape.horizontalAlignment ?? TEXT_DEFAULTS.horizontalAlignment,
+        textStyle: shape.textStyle ?? TEXT_DEFAULTS.textStyle,
       };
     case "bitmap":
       return {
         ...shape,
-        visible,
-        rotation,
-        origin,
-        fileName: shape.fileName ?? DEFAULT_STRING,
-        imageSource: shape.imageSource ?? DEFAULT_STRING,
+        ...item,
+        fileName: shape.fileName ?? BITMAP_DEFAULTS.fileName,
+        imageSource: shape.imageSource ?? BITMAP_DEFAULTS.imageSource,
       };
   }
 }

@@ -10,6 +10,8 @@ import {
 
 import type {
   DiagramLayout,
+  EllipseShape,
+  Extent,
   ParameterField,
   RectangleShape,
   Shape,
@@ -235,10 +237,10 @@ describe("buildShapePropertiesForm", () => {
   it("seeds an omitted closure from the angles, not from a constant", () => {
     // Seeding every ellipse with the same closure makes Apply write one that
     // changes how a shape nobody edited renders.
-    const extent = [
+    const extent: Extent = [
       [-20, -20],
       [20, 20],
-    ] as [[number, number], [number, number]];
+    ];
     const full = buildShapePropertiesForm({ kind: "ellipse", extent }).fields;
     expect(full.find((x) => x.name === "closure")?.value).toBe("Chord");
     expect(full.find((x) => x.name === "closure")?.defaultValue).toBe("Chord");
@@ -251,6 +253,60 @@ describe("buildShapePropertiesForm", () => {
     }).fields;
     expect(arc.find((x) => x.name === "closure")?.value).toBe("Radial");
     expect(arc.find((x) => x.name === "closure")?.defaultValue).toBe("Radial");
+  });
+
+  it("does not pin a seeded closure onto a submit that moves the angles", () => {
+    // The form submits every field, so the closure derived when the modal
+    // opened comes back whether or not the user chose it. Writing it here
+    // would leave an arc carrying the full ellipse's Chord.
+    const opened: EllipseShape = {
+      kind: "ellipse",
+      extent: [
+        [-20, -20],
+        [20, 20],
+      ],
+    };
+    const submitted = buildShapePropertiesForm(opened).fields.reduce<
+      Record<string, unknown>
+    >((acc, f) => ({ ...acc, [f.name]: f.value ?? f.defaultValue }), {});
+
+    const applied = applyShapeProperties(opened, {
+      ...submitted,
+      startAngle: 45,
+      endAngle: 270,
+    }) as EllipseShape;
+    expect(applied.startAngle).toBe(45);
+    expect(applied.endAngle).toBe(270);
+    expect(applied.closure).toBeUndefined();
+  });
+
+  it("still writes a closure the user picked over the seeded one", () => {
+    const opened: EllipseShape = {
+      kind: "ellipse",
+      extent: [
+        [-20, -20],
+        [20, 20],
+      ],
+    };
+    const applied = applyShapeProperties(opened, {
+      closure: "Radial",
+    }) as EllipseShape;
+    expect(applied.closure).toBe("Radial");
+  });
+
+  it("keeps a closure the source states explicitly", () => {
+    const opened: EllipseShape = {
+      kind: "ellipse",
+      extent: [
+        [-20, -20],
+        [20, 20],
+      ],
+      closure: "Chord",
+    };
+    const applied = applyShapeProperties(opened, {
+      closure: "Chord",
+    }) as EllipseShape;
+    expect(applied.closure).toBe("Chord");
   });
 
   it("text form exposes textString when it is a plain string", () => {

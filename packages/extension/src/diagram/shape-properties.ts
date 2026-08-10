@@ -31,7 +31,17 @@ import type {
 import type { ParameterField, ParameterModel } from "@dicode/omc-client";
 
 import type { GraphicsLayer } from "./diff-layout.js";
-import { defaultEllipseClosure } from "./shape-defaults.js";
+import {
+  BITMAP_DEFAULTS,
+  defaultEllipseClosure,
+  ELLIPSE_DEFAULTS,
+  FILLED_SHAPE_DEFAULTS,
+  GRAPHIC_ITEM_DEFAULTS,
+  LINE_DEFAULTS,
+  POLYGON_DEFAULTS,
+  RECTANGLE_DEFAULTS,
+  TEXT_DEFAULTS,
+} from "./shape-defaults.js";
 
 // ── Color helpers ─────────────────────────────────────────────────────────────
 
@@ -225,8 +235,12 @@ function enumCodec(enumTypeName: string, enumChoices: string[]): Codec<string> {
 interface ShapeField<S> {
   readonly name: string;
   readonly toParameterField: (shape: S) => ParameterField;
-  /** `shape` with `raw` applied, or `shape` itself when `raw` does not decode. */
-  readonly write: <T extends S>(shape: T, raw: unknown) => T;
+  /**
+   * `updated` with `raw` applied, or `updated` itself when `raw` does not
+   * decode. `opened` is the shape the form was built from, which a derived
+   * fallback resolves against.
+   */
+  readonly write: <T extends S>(opened: T, updated: T, raw: unknown) => T;
 }
 
 /**
@@ -262,8 +276,8 @@ function fieldOf<S extends object>() {
       spec.fallbackFrom === undefined
         ? spec.fallback
         : spec.fallbackFrom(shape);
-    // A colour picker has no empty state, so seeding a shape's absent colour
-    // with the default would write a colour the source never set on Apply.
+    // A color picker has no empty state, so seeding a shape's absent color
+    // with the default would write a color the source never set on Apply.
     const seedsFallback = codec.kind !== "color";
     return {
       name,
@@ -285,9 +299,23 @@ function fieldOf<S extends object>() {
           unitOptions: [],
         };
       },
-      write(shape, raw) {
+      write(opened, updated, raw) {
         const decoded = codec.decode(raw);
-        return decoded === undefined ? shape : { ...shape, [name]: decoded };
+        if (decoded === undefined) return updated;
+        // The form submits every field, so a derived fallback returns
+        // untouched and indistinguishable from a choice. Writing it pins a
+        // derivation the same submit may have invalidated — changing an
+        // ellipse's angles would fix its closure to the one the old angles
+        // implied. Left unset, §18.6 re-derives it from the new angles.
+        const derived = spec.fallbackFrom;
+        if (
+          derived !== undefined &&
+          opened[name] === undefined &&
+          codec.encode(decoded) === codec.encode(derived(opened))
+        ) {
+          return updated;
+        }
+        return { ...updated, [name]: decoded };
       },
     };
   };
@@ -320,14 +348,14 @@ const GRAPHIC_ITEM_FIELDS: ShapeField<Shape>[] = [
     label: "Visible",
     group: "General",
     codec: booleanCodec,
-    fallback: true,
+    fallback: GRAPHIC_ITEM_DEFAULTS.visible,
   }),
   graphicItemField({
     name: "rotation",
     label: "Rotation (°)",
     group: "General",
     codec: numberCodec,
-    fallback: 0,
+    fallback: GRAPHIC_ITEM_DEFAULTS.rotation,
   }),
 ];
 
@@ -337,35 +365,35 @@ const FILLED_SHAPE_FIELDS: ShapeField<FilledShapeKind>[] = [
     label: "Line Color",
     group: "Style",
     codec: colorCodec,
-    fallback: [0, 0, 0],
+    fallback: FILLED_SHAPE_DEFAULTS.lineColor,
   }),
   filledShapeField({
     name: "fillColor",
     label: "Fill Color",
     group: "Style",
     codec: colorCodec,
-    fallback: [0, 0, 0],
+    fallback: FILLED_SHAPE_DEFAULTS.fillColor,
   }),
   filledShapeField({
     name: "pattern",
     label: "Line Pattern",
     group: "Style",
     codec: enumCodec("LinePattern", LINE_PATTERNS),
-    fallback: "Solid",
+    fallback: FILLED_SHAPE_DEFAULTS.pattern,
   }),
   filledShapeField({
     name: "fillPattern",
     label: "Fill Pattern",
     group: "Style",
     codec: enumCodec("FillPattern", FILL_PATTERNS),
-    fallback: "None",
+    fallback: FILLED_SHAPE_DEFAULTS.fillPattern,
   }),
   filledShapeField({
     name: "lineThickness",
     label: "Line Thickness",
     group: "Style",
     codec: numberCodec,
-    fallback: 0.25,
+    fallback: FILLED_SHAPE_DEFAULTS.lineThickness,
   }),
 ];
 
@@ -376,35 +404,35 @@ const LINE_FIELDS: ShapeField<LineShape>[] = [
     label: "Color",
     group: "Style",
     codec: colorCodec,
-    fallback: [0, 0, 0],
+    fallback: LINE_DEFAULTS.color,
   }),
   lineField({
     name: "thickness",
     label: "Thickness",
     group: "Style",
     codec: numberCodec,
-    fallback: 0.25,
+    fallback: LINE_DEFAULTS.thickness,
   }),
   lineField({
     name: "pattern",
     label: "Line Pattern",
     group: "Style",
     codec: enumCodec("LinePattern", LINE_PATTERNS),
-    fallback: "Solid",
+    fallback: LINE_DEFAULTS.pattern,
   }),
   lineField({
     name: "smooth",
     label: "Smooth",
     group: "Style",
     codec: enumCodec("Smooth", SMOOTH_VALUES),
-    fallback: "None",
+    fallback: LINE_DEFAULTS.smooth,
   }),
   lineField({
     name: "arrowSize",
     label: "Arrow Size",
     group: "Style",
     codec: numberCodec,
-    fallback: 3,
+    fallback: LINE_DEFAULTS.arrowSize,
   }),
 ];
 
@@ -416,7 +444,7 @@ const POLYGON_FIELDS: ShapeField<PolygonShape>[] = [
     label: "Smooth",
     group: "Style",
     codec: enumCodec("Smooth", SMOOTH_VALUES),
-    fallback: "None",
+    fallback: POLYGON_DEFAULTS.smooth,
   }),
 ];
 
@@ -428,14 +456,14 @@ const RECTANGLE_FIELDS: ShapeField<RectangleShape>[] = [
     label: "Border Pattern",
     group: "Style",
     codec: enumCodec("BorderPattern", BORDER_PATTERNS),
-    fallback: "None",
+    fallback: RECTANGLE_DEFAULTS.borderPattern,
   }),
   rectangleField({
     name: "radius",
     label: "Radius",
     group: "Style",
     codec: numberCodec,
-    fallback: 0,
+    fallback: RECTANGLE_DEFAULTS.radius,
   }),
 ];
 
@@ -447,22 +475,21 @@ const ELLIPSE_FIELDS: ShapeField<EllipseShape>[] = [
     label: "Start Angle (°)",
     group: "Arc",
     codec: numberCodec,
-    fallback: 0,
+    fallback: ELLIPSE_DEFAULTS.startAngle,
   }),
   ellipseField({
     name: "endAngle",
     label: "End Angle (°)",
     group: "Arc",
     codec: numberCodec,
-    fallback: 360,
+    fallback: ELLIPSE_DEFAULTS.endAngle,
   }),
   ellipseField({
     name: "closure",
     label: "Closure",
     group: "Arc",
     codec: enumCodec("EllipseClosure", ELLIPSE_CLOSURES),
-    fallbackFrom: (shape) =>
-      defaultEllipseClosure(shape.startAngle, shape.endAngle),
+    fallbackFrom: defaultEllipseClosure,
   }),
 ];
 
@@ -473,35 +500,35 @@ const TEXT_FIELDS: ShapeField<TextShape>[] = [
     label: "Text",
     group: "Text",
     codec: textStringCodec,
-    fallback: "",
+    fallback: TEXT_DEFAULTS.textString,
   }),
   textField({
     name: "fontName",
     label: "Font Name",
     group: "Text",
     codec: stringCodec,
-    fallback: "",
+    fallback: TEXT_DEFAULTS.fontName,
   }),
   textField({
     name: "fontSize",
     label: "Font Size",
     group: "Text",
     codec: numberCodec,
-    fallback: 0,
+    fallback: TEXT_DEFAULTS.fontSize,
   }),
   textField({
     name: "textColor",
     label: "Text Color",
     group: "Text",
     codec: colorCodec,
-    fallback: [0, 0, 0],
+    fallback: TEXT_DEFAULTS.textColor,
   }),
   textField({
     name: "horizontalAlignment",
     label: "Horizontal Alignment",
     group: "Text",
     codec: enumCodec("TextAlignment", TEXT_ALIGNMENTS),
-    fallback: "Center",
+    fallback: TEXT_DEFAULTS.horizontalAlignment,
   }),
 ];
 
@@ -512,7 +539,7 @@ const BITMAP_FIELDS: ShapeField<BitmapShape>[] = [
     label: "File Name",
     group: "Image",
     codec: stringCodec,
-    fallback: "",
+    fallback: BITMAP_DEFAULTS.fileName,
   }),
 ];
 
@@ -576,9 +603,11 @@ export function applyShapeProperties(
 ): Shape {
   return withFields(shape, (narrowed, fields) =>
     // `write` is the identity when nothing decodes, so the seed has to be the
-    // copy.
+    // copy. Every field resolves against `narrowed` rather than the
+    // accumulator, so an earlier field's new value cannot shift what a later
+    // one treats as its untouched seed.
     fields.reduce(
-      (updated, field) => field.write(updated, values[field.name]),
+      (updated, field) => field.write(narrowed, updated, values[field.name]),
       { ...narrowed },
     ),
   );
