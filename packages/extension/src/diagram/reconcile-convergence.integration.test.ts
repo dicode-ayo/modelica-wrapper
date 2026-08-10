@@ -156,9 +156,27 @@ end ${pkg};
         textString: "hi",
       },
     },
+    {
+      what: "a bitmap with no image",
+      shape: {
+        kind: "bitmap",
+        extent: [
+          [-80, -40],
+          [-50, -20],
+        ],
+      },
+      // Bitmap's only defaults are the empty `fileName`/`imageSource`, which
+      // the decoder drops again, so this one comes back exactly as sent.
+      omcMaterializes: false,
+    },
   ] as const;
 
-  for (const { what, shape } of drawn) {
+  for (const entry of drawn) {
+    const { what, shape } = entry;
+    // Every kind but Bitmap comes back with fields it was not sent; asserting
+    // so keeps a case from passing because nothing needed normalizing.
+    const omcMaterializes =
+      "omcMaterializes" in entry ? entry.omcMaterializes : true;
     it(`finds nothing left to write when ${what} is reconciled twice`, async () => {
       // The webview sends a shape carrying what the user chose. OMC answers it
       // with every field of the record materialized — `diffLayouts` treats an
@@ -180,11 +198,13 @@ end ${pkg};
       const afterWrite = await fetchDiagramLayout(client, cls);
       const canonical = afterWrite.diagramLayers.at(0)?.shapes.at(-1);
       expect(canonical).toMatchObject(shape);
-      // More than it was sent, which is the whole point: the defaults OMC
-      // materialized are exactly what the next line proves don't matter.
-      expect(Object.keys(canonical ?? {}).length).toBeGreaterThan(
-        Object.keys(shape).length,
-      );
+      if (omcMaterializes) {
+        // More than it was sent, which is the whole point: the defaults OMC
+        // materialized are exactly what the next line proves don't matter.
+        expect(Object.keys(canonical ?? {}).length).toBeGreaterThan(
+          Object.keys(shape).length,
+        );
+      }
 
       // The base the next gesture reconciles against, per `applyChange` in
       // diagram-editor-provider.ts: diffing the still-partial `withShape`
