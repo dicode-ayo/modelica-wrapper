@@ -232,6 +232,27 @@ describe("buildShapePropertiesForm", () => {
     expect(model.fields.find((x) => x.name === "endAngle")?.value).toBe(270);
   });
 
+  it("seeds an omitted closure from the angles, not from a constant", () => {
+    // Seeding every ellipse with the same closure makes Apply write one that
+    // changes how a shape nobody edited renders.
+    const extent = [
+      [-20, -20],
+      [20, 20],
+    ] as [[number, number], [number, number]];
+    const full = buildShapePropertiesForm({ kind: "ellipse", extent }).fields;
+    expect(full.find((x) => x.name === "closure")?.value).toBe("Chord");
+    expect(full.find((x) => x.name === "closure")?.defaultValue).toBe("Chord");
+
+    const arc = buildShapePropertiesForm({
+      kind: "ellipse",
+      extent,
+      startAngle: 45,
+      endAngle: 270,
+    }).fields;
+    expect(arc.find((x) => x.name === "closure")?.value).toBe("Radial");
+    expect(arc.find((x) => x.name === "closure")?.defaultValue).toBe("Radial");
+  });
+
   it("text form exposes textString when it is a plain string", () => {
     const text = {
       kind: "text" as const,

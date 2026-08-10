@@ -1,4 +1,6 @@
 import { moveWithin } from "@dicode/omc-client";
+
+import { defaultEllipseClosure } from "./shape-defaults.js";
 import type {
   Color,
   ConnectionLayout,
@@ -411,8 +413,6 @@ function normalizeShape(shape: Shape): Shape {
         radius: shape.radius ?? 0,
       };
     case "ellipse": {
-      // §18.6.5.5 makes the closure default conditional on the angles, so a
-      // full ellipse and an arc normalize differently.
       const startAngle = shape.startAngle ?? 0;
       const endAngle = shape.endAngle ?? 360;
       return {
@@ -427,9 +427,7 @@ function normalizeShape(shape: Shape): Shape {
         lineThickness: shape.lineThickness ?? 0.25,
         startAngle,
         endAngle,
-        closure:
-          shape.closure ??
-          (startAngle === 0 && endAngle === 360 ? "Chord" : "Radial"),
+        closure: shape.closure ?? defaultEllipseClosure(startAngle, endAngle),
       };
     }
     case "text":

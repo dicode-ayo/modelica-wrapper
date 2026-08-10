@@ -31,6 +31,7 @@ import type {
 import type { ParameterField, ParameterModel } from "@dicode/omc-client";
 
 import type { GraphicsLayer } from "./diff-layout.js";
+import { defaultEllipseClosure } from "./shape-defaults.js";
 
 // ── Color helpers ─────────────────────────────────────────────────────────────
 
@@ -234,15 +235,33 @@ interface ShapeField<S> {
  * a `codec` that does not match the property's type a compile error.
  */
 function fieldOf<S extends object>() {
-  return function declare<K extends keyof S & string>(spec: {
-    name: K;
-    label: string;
-    group: string;
-    codec: Codec<NonNullable<S[K]>>;
-    /** The Modelica default (spec §18.6), reported as the field's reset target. */
-    fallback: NonNullable<S[K]>;
-  }): ShapeField<S> {
-    const { name, label, group, codec, fallback } = spec;
+  return function declare<K extends keyof S & string>(
+    spec: {
+      name: K;
+      label: string;
+      group: string;
+      codec: Codec<NonNullable<S[K]>>;
+    } & (
+      | {
+          /** The Modelica default (spec §18.6), reported as the field's reset target. */
+          fallback: NonNullable<S[K]>;
+          fallbackFrom?: undefined;
+        }
+      | {
+          fallback?: undefined;
+          /**
+           * For a §18.6 default the spec derives from other fields of the same
+           * shape, so the reset target differs per shape being edited.
+           */
+          fallbackFrom: (shape: S) => NonNullable<S[K]>;
+        }
+    ),
+  ): ShapeField<S> {
+    const { name, label, group, codec } = spec;
+    const fallbackFor = (shape: S): NonNullable<S[K]> =>
+      spec.fallbackFrom === undefined
+        ? spec.fallback
+        : spec.fallbackFrom(shape);
     // A colour picker has no empty state, so seeding a shape's absent colour
     // with the default would write a colour the source never set on Apply.
     const seedsFallback = codec.kind !== "color";
@@ -250,6 +269,7 @@ function fieldOf<S extends object>() {
       name,
       toParameterField(shape) {
         const current = shape[name];
+        const fallback = fallbackFor(shape);
         return {
           name,
           label,
@@ -441,7 +461,8 @@ const ELLIPSE_FIELDS: ShapeField<EllipseShape>[] = [
     label: "Closure",
     group: "Arc",
     codec: enumCodec("EllipseClosure", ELLIPSE_CLOSURES),
-    fallback: "None",
+    fallbackFrom: (shape) =>
+      defaultEllipseClosure(shape.startAngle, shape.endAngle),
   }),
 ];
 
