@@ -28,6 +28,7 @@ import type {
   Color,
   EllipseShape,
   Extent,
+  FilledShape,
   GraphicItem,
   LineShape,
   PolygonShape,
@@ -71,16 +72,7 @@ function graphicItemArgs(s: GraphicItem): string[] {
   return out;
 }
 
-interface FilledShapeFields {
-  lineColor?: Color | undefined;
-  fillColor?: Color | undefined;
-  pattern?: string | undefined;
-  fillPattern?: string | undefined;
-  lineThickness?: number | undefined;
-}
-
-/** The five FilledShape fields shared by Polygon/Rectangle/Ellipse/Text. */
-function filledShapeArgs(s: FilledShapeFields): string[] {
+function filledShapeArgs(s: FilledShape): string[] {
   const out: string[] = [];
   if (s.lineColor) out.push(`lineColor=${color(s.lineColor)}`);
   if (s.fillColor) out.push(`fillColor=${color(s.fillColor)}`);

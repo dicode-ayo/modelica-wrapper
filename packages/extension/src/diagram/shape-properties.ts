@@ -13,11 +13,14 @@
  * `colorToHex` / `hexToColor` are the two conversion helpers.
  */
 
+import { assertUnreachable } from "@dicode/modelica-lang-core";
+
 import type {
   BitmapShape,
   Color,
   DiagramLayout,
   EllipseShape,
+  Expression,
   IconLayer,
   LineShape,
   PolygonShape,
@@ -125,308 +128,374 @@ const BORDER_PATTERNS = ["None", "Raised", "Sunken", "Engraved"];
 const ELLIPSE_CLOSURES = ["None", "Chord", "Radial"];
 const TEXT_ALIGNMENTS = ["Left", "Center", "Right"];
 
-// ── Field construction ────────────────────────────────────────────────────────
+// ── Field codecs ──────────────────────────────────────────────────────────────
 
-type FieldInit = {
-  name: string;
-  label: string;
-  kind: ParameterField["kind"];
-  value: ParameterField["value"];
-  defaultValue?: ParameterField["defaultValue"];
-  enumChoices?: string[];
-  enumTypeName?: string;
-  group: string;
+/**
+ * How one shape property crosses the form boundary. A submitted value arrives
+ * as `unknown` — one message envelope serves four form kinds whose fields
+ * differ per model — so `decode` is the only place it stops being untyped.
+ *
+ * The guarantee is over the property's *type*, not its vocabulary: an
+ * enumeration field is a `Codec<string>` like any other, so swapping
+ * {@link enumCodec} for {@link stringCodec} on one is a free-text box, not a
+ * compile error.
+ */
+interface Codec<T> {
+  readonly kind: ParameterField["kind"];
+  readonly enumChoices?: string[] | undefined;
+  readonly enumTypeName?: string | undefined;
+  readonly encode: (value: T) => ParameterField["value"];
+  readonly decode: (raw: unknown) => T | undefined;
+}
+
+const numberCodec: Codec<number> = {
+  kind: "number",
+  encode: (value) => value,
+  decode: (raw) => {
+    if (typeof raw === "number" && !Number.isNaN(raw)) return raw;
+    if (typeof raw === "string" && raw.trim() !== "") {
+      const parsed = Number(raw);
+      return Number.isNaN(parsed) ? undefined : parsed;
+    }
+    return undefined;
+  },
 };
 
-function f({
-  name,
-  label,
-  kind,
-  value,
-  defaultValue,
-  enumChoices,
-  enumTypeName,
-  group,
-}: FieldInit): ParameterField {
+const booleanCodec: Codec<boolean> = {
+  kind: "boolean",
+  encode: (value) => value,
+  decode: (raw) => {
+    if (typeof raw === "boolean") return raw;
+    if (raw === "true") return true;
+    if (raw === "false") return false;
+    return undefined;
+  },
+};
+
+const stringCodec: Codec<string> = {
+  kind: "string",
+  encode: (value) => value,
+  decode: (raw) => (typeof raw === "string" ? raw : undefined),
+};
+
+const colorCodec: Codec<Color> = {
+  kind: "color",
+  encode: colorToHex,
+  decode: (raw) =>
+    typeof raw === "string" && /^#[0-9a-fA-F]{6}$/.test(raw)
+      ? hexToColor(raw)
+      : undefined,
+};
+
+/**
+ * `textString` stays an `Expression` so a `DynamicSelect` call round-trips; the
+ * form can only show and submit a literal, so anything else reads as blank and
+ * is left alone on submit.
+ */
+const textStringCodec: Codec<NonNullable<Expression>> = {
+  kind: "string",
+  encode: (value) => (typeof value === "string" ? value : null),
+  decode: (raw) => (typeof raw === "string" ? raw : undefined),
+};
+
+function enumCodec(enumTypeName: string, enumChoices: string[]): Codec<string> {
   return {
-    name,
-    label,
-    kind,
-    value: value ?? null,
-    defaultValue,
+    kind: "enum",
     enumChoices,
     enumTypeName,
-    dialog: { tab: "Properties", group },
-    unitOptions: [],
+    encode: (value) => value,
+    decode: (raw) => (typeof raw === "string" && raw !== "" ? raw : undefined),
   };
 }
 
-function graphicItemFields(s: Shape): FieldInit[] {
-  return [
-    {
-      name: "visible",
-      label: "Visible",
-      kind: "boolean",
-      value: s.visible ?? true,
-      defaultValue: true,
-      group: "General",
-    },
-    {
-      name: "rotation",
-      label: "Rotation (°)",
-      kind: "number",
-      value: s.rotation ?? 0,
-      defaultValue: 0,
-      group: "General",
-    },
-  ];
+// ── Field declarations ────────────────────────────────────────────────────────
+
+/**
+ * One editable shape property. The same entry seeds the form widget and writes
+ * the submitted value back, so a name only one half knows is a compile error
+ * rather than a field the modal renders and Apply silently drops.
+ *
+ * Both members are property-typed rather than methods. This is half of what
+ * keeps a field out of the wrong kind's list — see {@link FilledShapeKind} for
+ * the other half, which does not work without this one: method syntax is
+ * checked bivariantly, so a `ShapeField<PolygonShape>` would stay assignable to
+ * `ShapeField<LineShape>` however the groups are declared.
+ */
+interface ShapeField<S> {
+  readonly name: string;
+  readonly toParameterField: (shape: S) => ParameterField;
+  /** `shape` with `raw` applied, or `shape` itself when `raw` does not decode. */
+  readonly write: <T extends S>(shape: T, raw: unknown) => T;
 }
 
-function lineFields(s: LineShape): FieldInit[] {
-  return [
-    ...graphicItemFields(s),
-    {
-      name: "color",
-      label: "Color",
-      kind: "color",
-      value: s.color !== undefined ? colorToHex(s.color) : null,
-      defaultValue: colorToHex([0, 0, 0]),
-      group: "Style",
-    },
-    {
-      name: "thickness",
-      label: "Thickness",
-      kind: "number",
-      value: s.thickness ?? 0.25,
-      defaultValue: 0.25,
-      group: "Style",
-    },
-    {
-      name: "pattern",
-      label: "Line Pattern",
-      kind: "enum",
-      value: s.pattern ?? "Solid",
-      defaultValue: "Solid",
-      enumChoices: LINE_PATTERNS,
-      enumTypeName: "LinePattern",
-      group: "Style",
-    },
-    {
-      name: "smooth",
-      label: "Smooth",
-      kind: "enum",
-      value: s.smooth ?? "None",
-      defaultValue: "None",
-      enumChoices: SMOOTH_VALUES,
-      enumTypeName: "Smooth",
-      group: "Style",
-    },
-    {
-      name: "arrowSize",
-      label: "Arrow Size",
-      kind: "number",
-      value: s.arrowSize ?? 3,
-      defaultValue: 3,
-      group: "Style",
-    },
-  ];
+/**
+ * Declare one field of a shape of type `S`. Curried so `S` is named by the
+ * caller while the property key stays inferred from `name`, which is what makes
+ * a `codec` that does not match the property's type a compile error.
+ */
+function fieldOf<S extends object>() {
+  return function declare<K extends keyof S & string>(spec: {
+    name: K;
+    label: string;
+    group: string;
+    codec: Codec<NonNullable<S[K]>>;
+    /** The Modelica default (spec §18.6), reported as the field's reset target. */
+    fallback: NonNullable<S[K]>;
+  }): ShapeField<S> {
+    const { name, label, group, codec, fallback } = spec;
+    // A colour picker has no empty state, so seeding a shape's absent colour
+    // with the default would write a colour the source never set on Apply.
+    const seedsFallback = codec.kind !== "color";
+    return {
+      name,
+      toParameterField(shape) {
+        const current = shape[name];
+        return {
+          name,
+          label,
+          kind: codec.kind,
+          value:
+            current !== undefined || seedsFallback
+              ? codec.encode(current ?? fallback)
+              : null,
+          defaultValue: codec.encode(fallback),
+          enumChoices: codec.enumChoices,
+          enumTypeName: codec.enumTypeName,
+          dialog: { tab: "Properties", group },
+          unitOptions: [],
+        };
+      },
+      write(shape, raw) {
+        const decoded = codec.decode(raw);
+        return decoded === undefined ? shape : { ...shape, [name]: decoded };
+      },
+    };
+  };
 }
 
-function filledShapeFields(s: {
-  lineColor?: Color | undefined;
-  fillColor?: Color | undefined;
-  pattern?: string | undefined;
-  fillPattern?: string | undefined;
-  lineThickness?: number | undefined;
-}): FieldInit[] {
-  return [
-    {
-      name: "lineColor",
-      label: "Line Color",
-      kind: "color",
-      value: s.lineColor !== undefined ? colorToHex(s.lineColor) : null,
-      defaultValue: colorToHex([0, 0, 0]),
-      group: "Style",
-    },
-    {
-      name: "fillColor",
-      label: "Fill Color",
-      kind: "color",
-      value: s.fillColor !== undefined ? colorToHex(s.fillColor) : null,
-      defaultValue: colorToHex([0, 0, 255]),
-      group: "Style",
-    },
-    {
-      name: "pattern",
-      label: "Line Pattern",
-      kind: "enum",
-      value: s.pattern ?? "Solid",
-      defaultValue: "Solid",
-      enumChoices: LINE_PATTERNS,
-      enumTypeName: "LinePattern",
-      group: "Style",
-    },
-    {
-      name: "fillPattern",
-      label: "Fill Pattern",
-      kind: "enum",
-      value: s.fillPattern ?? "None",
-      defaultValue: "None",
-      enumChoices: FILL_PATTERNS,
-      enumTypeName: "FillPattern",
-      group: "Style",
-    },
-    {
-      name: "lineThickness",
-      label: "Line Thickness",
-      kind: "number",
-      value: s.lineThickness ?? 0.25,
-      defaultValue: 0.25,
-      group: "Style",
-    },
-  ];
-}
+/**
+ * The shared groups are declared over the shape kinds that carry them, not over
+ * the `GraphicItem` / `FilledShape` records. Both records are all-optional, so
+ * every shape is structurally assignable to them and declaring against one
+ * would let a filled-shape field into a `Line`'s list and write `lineColor`
+ * onto a Modelica `Line`.
+ *
+ * This is the other half of the pair described on {@link ShapeField}. Undoing
+ * either half reopens the hole with every gate still green.
+ */
+type FilledShapeKind = PolygonShape | RectangleShape | EllipseShape;
 
-function polygonFields(s: PolygonShape): FieldInit[] {
-  return [
-    ...graphicItemFields(s),
-    ...filledShapeFields(s),
-    {
-      name: "smooth",
-      label: "Smooth",
-      kind: "enum",
-      value: s.smooth ?? "None",
-      defaultValue: "None",
-      enumChoices: SMOOTH_VALUES,
-      enumTypeName: "Smooth",
-      group: "Style",
-    },
-  ];
-}
+const graphicItemField = fieldOf<Shape>();
+const filledShapeField = fieldOf<FilledShapeKind>();
+const lineField = fieldOf<LineShape>();
+const polygonField = fieldOf<PolygonShape>();
+const rectangleField = fieldOf<RectangleShape>();
+const ellipseField = fieldOf<EllipseShape>();
+const textField = fieldOf<TextShape>();
+const bitmapField = fieldOf<BitmapShape>();
 
-function rectangleFields(s: RectangleShape): FieldInit[] {
-  return [
-    ...graphicItemFields(s),
-    ...filledShapeFields(s),
-    {
-      name: "borderPattern",
-      label: "Border Pattern",
-      kind: "enum",
-      value: s.borderPattern ?? "None",
-      defaultValue: "None",
-      enumChoices: BORDER_PATTERNS,
-      enumTypeName: "BorderPattern",
-      group: "Style",
-    },
-    {
-      name: "radius",
-      label: "Radius",
-      kind: "number",
-      value: s.radius ?? 0,
-      defaultValue: 0,
-      group: "Style",
-    },
-  ];
-}
+const GRAPHIC_ITEM_FIELDS: ShapeField<Shape>[] = [
+  graphicItemField({
+    name: "visible",
+    label: "Visible",
+    group: "General",
+    codec: booleanCodec,
+    fallback: true,
+  }),
+  graphicItemField({
+    name: "rotation",
+    label: "Rotation (°)",
+    group: "General",
+    codec: numberCodec,
+    fallback: 0,
+  }),
+];
 
-function ellipseFields(s: EllipseShape): FieldInit[] {
-  return [
-    ...graphicItemFields(s),
-    ...filledShapeFields(s),
-    {
-      name: "startAngle",
-      label: "Start Angle (°)",
-      kind: "number",
-      value: s.startAngle ?? 0,
-      defaultValue: 0,
-      group: "Arc",
-    },
-    {
-      name: "endAngle",
-      label: "End Angle (°)",
-      kind: "number",
-      value: s.endAngle ?? 360,
-      defaultValue: 360,
-      group: "Arc",
-    },
-    {
-      name: "closure",
-      label: "Closure",
-      kind: "enum",
-      value: s.closure ?? "None",
-      defaultValue: "None",
-      enumChoices: ELLIPSE_CLOSURES,
-      enumTypeName: "EllipseClosure",
-      group: "Arc",
-    },
-  ];
-}
+const FILLED_SHAPE_FIELDS: ShapeField<FilledShapeKind>[] = [
+  filledShapeField({
+    name: "lineColor",
+    label: "Line Color",
+    group: "Style",
+    codec: colorCodec,
+    fallback: [0, 0, 0],
+  }),
+  filledShapeField({
+    name: "fillColor",
+    label: "Fill Color",
+    group: "Style",
+    codec: colorCodec,
+    fallback: [0, 0, 255],
+  }),
+  filledShapeField({
+    name: "pattern",
+    label: "Line Pattern",
+    group: "Style",
+    codec: enumCodec("LinePattern", LINE_PATTERNS),
+    fallback: "Solid",
+  }),
+  filledShapeField({
+    name: "fillPattern",
+    label: "Fill Pattern",
+    group: "Style",
+    codec: enumCodec("FillPattern", FILL_PATTERNS),
+    fallback: "None",
+  }),
+  filledShapeField({
+    name: "lineThickness",
+    label: "Line Thickness",
+    group: "Style",
+    codec: numberCodec,
+    fallback: 0.25,
+  }),
+];
 
-function textFields(s: TextShape): FieldInit[] {
-  const textStringValue =
-    typeof s.textString === "string" ? s.textString : null;
-  return [
-    ...graphicItemFields(s),
-    {
-      name: "textString",
-      label: "Text",
-      kind: "string",
-      value: textStringValue,
-      defaultValue: "",
-      group: "Text",
-    },
-    {
-      name: "fontName",
-      label: "Font Name",
-      kind: "string",
-      value: s.fontName ?? "",
-      defaultValue: "",
-      group: "Text",
-    },
-    {
-      name: "fontSize",
-      label: "Font Size",
-      kind: "number",
-      value: s.fontSize ?? 0,
-      defaultValue: 0,
-      group: "Text",
-    },
-    {
-      name: "textColor",
-      label: "Text Color",
-      kind: "color",
-      value: s.textColor !== undefined ? colorToHex(s.textColor) : null,
-      defaultValue: colorToHex([0, 0, 0]),
-      group: "Text",
-    },
-    {
-      name: "horizontalAlignment",
-      label: "Horizontal Alignment",
-      kind: "enum",
-      value: s.horizontalAlignment ?? "Center",
-      defaultValue: "Center",
-      enumChoices: TEXT_ALIGNMENTS,
-      enumTypeName: "TextAlignment",
-      group: "Text",
-    },
-  ];
-}
+const LINE_FIELDS: ShapeField<LineShape>[] = [
+  ...GRAPHIC_ITEM_FIELDS,
+  lineField({
+    name: "color",
+    label: "Color",
+    group: "Style",
+    codec: colorCodec,
+    fallback: [0, 0, 0],
+  }),
+  lineField({
+    name: "thickness",
+    label: "Thickness",
+    group: "Style",
+    codec: numberCodec,
+    fallback: 0.25,
+  }),
+  lineField({
+    name: "pattern",
+    label: "Line Pattern",
+    group: "Style",
+    codec: enumCodec("LinePattern", LINE_PATTERNS),
+    fallback: "Solid",
+  }),
+  lineField({
+    name: "smooth",
+    label: "Smooth",
+    group: "Style",
+    codec: enumCodec("Smooth", SMOOTH_VALUES),
+    fallback: "None",
+  }),
+  lineField({
+    name: "arrowSize",
+    label: "Arrow Size",
+    group: "Style",
+    codec: numberCodec,
+    fallback: 3,
+  }),
+];
 
-function bitmapFields(s: BitmapShape): FieldInit[] {
-  return [
-    ...graphicItemFields(s),
-    {
-      name: "fileName",
-      label: "File Name",
-      kind: "string",
-      value: s.fileName ?? "",
-      defaultValue: "",
-      group: "Image",
-    },
-  ];
-}
+const POLYGON_FIELDS: ShapeField<PolygonShape>[] = [
+  ...GRAPHIC_ITEM_FIELDS,
+  ...FILLED_SHAPE_FIELDS,
+  polygonField({
+    name: "smooth",
+    label: "Smooth",
+    group: "Style",
+    codec: enumCodec("Smooth", SMOOTH_VALUES),
+    fallback: "None",
+  }),
+];
 
-// ── Form builder ──────────────────────────────────────────────────────────────
+const RECTANGLE_FIELDS: ShapeField<RectangleShape>[] = [
+  ...GRAPHIC_ITEM_FIELDS,
+  ...FILLED_SHAPE_FIELDS,
+  rectangleField({
+    name: "borderPattern",
+    label: "Border Pattern",
+    group: "Style",
+    codec: enumCodec("BorderPattern", BORDER_PATTERNS),
+    fallback: "None",
+  }),
+  rectangleField({
+    name: "radius",
+    label: "Radius",
+    group: "Style",
+    codec: numberCodec,
+    fallback: 0,
+  }),
+];
+
+const ELLIPSE_FIELDS: ShapeField<EllipseShape>[] = [
+  ...GRAPHIC_ITEM_FIELDS,
+  ...FILLED_SHAPE_FIELDS,
+  ellipseField({
+    name: "startAngle",
+    label: "Start Angle (°)",
+    group: "Arc",
+    codec: numberCodec,
+    fallback: 0,
+  }),
+  ellipseField({
+    name: "endAngle",
+    label: "End Angle (°)",
+    group: "Arc",
+    codec: numberCodec,
+    fallback: 360,
+  }),
+  ellipseField({
+    name: "closure",
+    label: "Closure",
+    group: "Arc",
+    codec: enumCodec("EllipseClosure", ELLIPSE_CLOSURES),
+    fallback: "None",
+  }),
+];
+
+const TEXT_FIELDS: ShapeField<TextShape>[] = [
+  ...GRAPHIC_ITEM_FIELDS,
+  textField({
+    name: "textString",
+    label: "Text",
+    group: "Text",
+    codec: textStringCodec,
+    fallback: "",
+  }),
+  textField({
+    name: "fontName",
+    label: "Font Name",
+    group: "Text",
+    codec: stringCodec,
+    fallback: "",
+  }),
+  textField({
+    name: "fontSize",
+    label: "Font Size",
+    group: "Text",
+    codec: numberCodec,
+    fallback: 0,
+  }),
+  textField({
+    name: "textColor",
+    label: "Text Color",
+    group: "Text",
+    codec: colorCodec,
+    fallback: [0, 0, 0],
+  }),
+  textField({
+    name: "horizontalAlignment",
+    label: "Horizontal Alignment",
+    group: "Text",
+    codec: enumCodec("TextAlignment", TEXT_ALIGNMENTS),
+    fallback: "Center",
+  }),
+];
+
+const BITMAP_FIELDS: ShapeField<BitmapShape>[] = [
+  ...GRAPHIC_ITEM_FIELDS,
+  bitmapField({
+    name: "fileName",
+    label: "File Name",
+    group: "Image",
+    codec: stringCodec,
+    fallback: "",
+  }),
+];
+
+// ── Kind dispatch ─────────────────────────────────────────────────────────────
 
 const SHAPE_LABEL: Record<Shape["kind"], string> = {
   line: "Line",
@@ -437,205 +506,59 @@ const SHAPE_LABEL: Record<Shape["kind"], string> = {
   bitmap: "Bitmap",
 };
 
+/** Run `use` with `shape` narrowed to its kind and that kind's field list. */
+function withFields<R>(
+  shape: Shape,
+  use: <S extends Shape>(shape: S, fields: ShapeField<S>[]) => R,
+): R {
+  switch (shape.kind) {
+    case "line":
+      return use(shape, LINE_FIELDS);
+    case "polygon":
+      return use(shape, POLYGON_FIELDS);
+    case "rectangle":
+      return use(shape, RECTANGLE_FIELDS);
+    case "ellipse":
+      return use(shape, ELLIPSE_FIELDS);
+    case "text":
+      return use(shape, TEXT_FIELDS);
+    case "bitmap":
+      return use(shape, BITMAP_FIELDS);
+    default:
+      return assertUnreachable(shape, "Shape kind");
+  }
+}
+
+// ── Form builder and value applier ────────────────────────────────────────────
+
 /**
  * Build a `ParameterModel` for the given shape so the standard parameter-form
  * webview can render it as an annotation-property editor.
  */
 export function buildShapePropertiesForm(shape: Shape): ParameterModel {
-  const fieldInits: FieldInit[] = ((): FieldInit[] => {
-    switch (shape.kind) {
-      case "line":
-        return lineFields(shape);
-      case "polygon":
-        return polygonFields(shape);
-      case "rectangle":
-        return rectangleFields(shape);
-      case "ellipse":
-        return ellipseFields(shape);
-      case "text":
-        return textFields(shape);
-      case "bitmap":
-        return bitmapFields(shape);
-    }
-  })();
-
   return {
     className: SHAPE_LABEL[shape.kind],
-    fields: fieldInits.map(f),
-  };
-}
-
-// ── Value applier ─────────────────────────────────────────────────────────────
-
-function toNumber(v: unknown): number | undefined {
-  if (typeof v === "number" && !Number.isNaN(v)) return v;
-  if (typeof v === "string" && v.trim() !== "") {
-    const n = Number(v);
-    return Number.isNaN(n) ? undefined : n;
-  }
-  return undefined;
-}
-
-function toBoolean(v: unknown): boolean | undefined {
-  if (typeof v === "boolean") return v;
-  if (v === "true") return true;
-  if (v === "false") return false;
-  return undefined;
-}
-
-function toHexColor(v: unknown): Color | undefined {
-  if (typeof v !== "string") return undefined;
-  if (!/^#[0-9a-fA-F]{6}$/.test(v)) return undefined;
-  return hexToColor(v);
-}
-
-function toEnumString(v: unknown): string | undefined {
-  return typeof v === "string" && v.length > 0 ? v : undefined;
-}
-
-function applyGraphicItem<T extends Shape>(
-  shape: T,
-  values: Record<string, unknown>,
-): T {
-  const visible = toBoolean(values["visible"]);
-  const rotation = toNumber(values["rotation"]);
-  return {
-    ...shape,
-    ...(visible !== undefined ? { visible } : {}),
-    ...(rotation !== undefined ? { rotation } : {}),
-  };
-}
-
-function applyLine(s: LineShape, values: Record<string, unknown>): LineShape {
-  const color = toHexColor(values["color"]);
-  const thickness = toNumber(values["thickness"]);
-  const pattern = toEnumString(values["pattern"]);
-  const smooth = toEnumString(values["smooth"]);
-  const arrowSize = toNumber(values["arrowSize"]);
-  return {
-    ...applyGraphicItem(s, values),
-    ...(color !== undefined ? { color } : {}),
-    ...(thickness !== undefined ? { thickness } : {}),
-    ...(pattern !== undefined ? { pattern } : {}),
-    ...(smooth !== undefined ? { smooth } : {}),
-    ...(arrowSize !== undefined ? { arrowSize } : {}),
-  };
-}
-
-function applyFilledShape<
-  T extends {
-    lineColor?: Color | undefined;
-    fillColor?: Color | undefined;
-    pattern?: string | undefined;
-    fillPattern?: string | undefined;
-    lineThickness?: number | undefined;
-  },
->(s: T, values: Record<string, unknown>): T {
-  const lineColor = toHexColor(values["lineColor"]);
-  const fillColor = toHexColor(values["fillColor"]);
-  const pattern = toEnumString(values["pattern"]);
-  const fillPattern = toEnumString(values["fillPattern"]);
-  const lineThickness = toNumber(values["lineThickness"]);
-  return {
-    ...s,
-    ...(lineColor !== undefined ? { lineColor } : {}),
-    ...(fillColor !== undefined ? { fillColor } : {}),
-    ...(pattern !== undefined ? { pattern } : {}),
-    ...(fillPattern !== undefined ? { fillPattern } : {}),
-    ...(lineThickness !== undefined ? { lineThickness } : {}),
-  };
-}
-
-function applyPolygon(
-  s: PolygonShape,
-  values: Record<string, unknown>,
-): PolygonShape {
-  const smooth = toEnumString(values["smooth"]);
-  return {
-    ...applyFilledShape(applyGraphicItem(s, values), values),
-    ...(smooth !== undefined ? { smooth } : {}),
-  };
-}
-
-function applyRectangle(
-  s: RectangleShape,
-  values: Record<string, unknown>,
-): RectangleShape {
-  const borderPattern = toEnumString(values["borderPattern"]);
-  const radius = toNumber(values["radius"]);
-  return {
-    ...applyFilledShape(applyGraphicItem(s, values), values),
-    ...(borderPattern !== undefined ? { borderPattern } : {}),
-    ...(radius !== undefined ? { radius } : {}),
-  };
-}
-
-function applyEllipse(
-  s: EllipseShape,
-  values: Record<string, unknown>,
-): EllipseShape {
-  const startAngle = toNumber(values["startAngle"]);
-  const endAngle = toNumber(values["endAngle"]);
-  const closure = toEnumString(values["closure"]);
-  return {
-    ...applyFilledShape(applyGraphicItem(s, values), values),
-    ...(startAngle !== undefined ? { startAngle } : {}),
-    ...(endAngle !== undefined ? { endAngle } : {}),
-    ...(closure !== undefined ? { closure } : {}),
-  };
-}
-
-function applyText(s: TextShape, values: Record<string, unknown>): TextShape {
-  const textString =
-    typeof values["textString"] === "string" ? values["textString"] : undefined;
-  const fontName =
-    typeof values["fontName"] === "string" ? values["fontName"] : undefined;
-  const fontSize = toNumber(values["fontSize"]);
-  const textColor = toHexColor(values["textColor"]);
-  const horizontalAlignment = toEnumString(values["horizontalAlignment"]);
-  return {
-    ...applyGraphicItem(s, values),
-    ...(textString !== undefined ? { textString } : {}),
-    ...(fontName !== undefined ? { fontName } : {}),
-    ...(fontSize !== undefined ? { fontSize } : {}),
-    ...(textColor !== undefined ? { textColor } : {}),
-    ...(horizontalAlignment !== undefined ? { horizontalAlignment } : {}),
-  };
-}
-
-function applyBitmap(
-  s: BitmapShape,
-  values: Record<string, unknown>,
-): BitmapShape {
-  const fileName =
-    typeof values["fileName"] === "string" ? values["fileName"] : undefined;
-  return {
-    ...applyGraphicItem(s, values),
-    ...(fileName !== undefined ? { fileName } : {}),
+    fields: withFields(shape, (narrowed, fields) =>
+      fields.map((field) => field.toParameterField(narrowed)),
+    ),
   };
 }
 
 /**
  * Merge submitted form `values` into a copy of `shape`. Only fields that
- * parse cleanly are written; absent or malformed values leave the
+ * decode cleanly are written; absent or malformed values leave the
  * corresponding shape property unchanged.
  */
 export function applyShapeProperties(
   shape: Shape,
   values: Record<string, unknown>,
 ): Shape {
-  switch (shape.kind) {
-    case "line":
-      return applyLine(shape, values);
-    case "polygon":
-      return applyPolygon(shape, values);
-    case "rectangle":
-      return applyRectangle(shape, values);
-    case "ellipse":
-      return applyEllipse(shape, values);
-    case "text":
-      return applyText(shape, values);
-    case "bitmap":
-      return applyBitmap(shape, values);
-  }
+  return withFields(shape, (narrowed, fields) =>
+    // `write` is the identity when nothing decodes, so the seed has to be the
+    // copy.
+    fields.reduce(
+      (updated, field) => field.write(updated, values[field.name]),
+      { ...narrowed },
+    ),
+  );
 }
