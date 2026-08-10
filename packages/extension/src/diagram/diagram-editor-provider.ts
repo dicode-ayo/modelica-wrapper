@@ -738,11 +738,7 @@ export class DiagramEditController {
         return;
       }
       await this.writeBuffer();
-      // A graphics write is the one reported edit the webview cannot match: it
-      // sent a shape carrying what the user chose, and OMC answers with every
-      // default filled in. Without adopting that, the next reconcile finds the
-      // same difference and writes it again, for as long as the shape lives.
-      if (this.settleOwed || result.touchedGraphics) {
+      if (this.settleOwed) {
         await this.pushCanonicalLayout();
         return;
       }

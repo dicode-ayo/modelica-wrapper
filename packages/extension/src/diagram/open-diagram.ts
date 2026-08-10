@@ -23,7 +23,7 @@ import {
 import { log } from "../logger.js";
 import { sourceUriFor } from "../source-provider.js";
 
-import { applyEdits } from "./apply-edits.js";
+import { applyEdits, type ApplyEditsResult } from "./apply-edits.js";
 import { DIAGRAM_VIEW_TYPE } from "./view-type.js";
 import {
   connectedPortsOf,
@@ -383,28 +383,10 @@ export async function applyDiagramEdits(
   className: string,
   prevLayout: DiagramLayout,
   next: DiagramLayout,
-): Promise<{
-  failed: ReadonlyArray<{ error: string }>;
-  rolledBack: boolean;
-  /**
-   * Whether any edit wrote the class's own graphics. OMC returns a shape with
-   * every default materialised — `pattern`, `lineThickness`, an ellipse's
-   * `closure` — where the one drawn in the webview carries only what the user
-   * chose. The two never compare equal, so a caller that does not adopt the
-   * canonical shape re-writes it on every later reconcile.
-   */
-  touchedGraphics: boolean;
-} | null> {
+): Promise<ApplyEditsResult | null> {
   const edits = diffLayouts(prevLayout, next);
   if (edits.length === 0) return null;
-  const result = await applyEdits(client, className, edits, undefined, {
-    snapshot: true,
-  });
-  return {
-    failed: result.failed,
-    rolledBack: result.rolledBack,
-    touchedGraphics: edits.some((e) => e.kind.startsWith("graphics")),
-  };
+  return applyEdits(client, className, edits, undefined, { snapshot: true });
 }
 
 /**

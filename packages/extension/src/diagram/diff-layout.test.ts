@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import type { DiagramLayout, RectangleShape } from "@dicode/omc-client";
+import type {
+  BitmapShape,
+  DiagramLayout,
+  EllipseShape,
+  LineShape,
+  PolygonShape,
+  RectangleShape,
+  Shape,
+  TextShape,
+} from "@dicode/omc-client";
 
 import {
   diffLayouts,
@@ -830,7 +839,7 @@ describe("diffLayouts — graphics", () => {
   }
 
   /** `baseLayout()` with one host-owned icon layer holding `shapes`. */
-  function withIcon(shapes: RectangleShape[], from = "T"): DiagramLayout {
+  function withIcon(shapes: Shape[], from = "T"): DiagramLayout {
     return { ...baseLayout(), iconLayers: [{ from, shapes }] };
   }
 
@@ -875,6 +884,391 @@ describe("diffLayouts — graphics", () => {
       radius: undefined,
     };
     expect(diffLayouts(withIcon([a]), withIcon([b]))).toEqual([]);
+  });
+
+  describe("default-aware comparison (issue #415)", () => {
+    /** What a drawn shape carries: only what the user actually chose. */
+    const sparse: RectangleShape = {
+      kind: "rectangle",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      lineColor: [1, 2, 3],
+    };
+    /** What OMC answers on re-read: `sparse` with every §18.6 default filled in. */
+    const canonical: RectangleShape = {
+      kind: "rectangle",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      lineColor: [1, 2, 3],
+      fillColor: [0, 0, 0],
+      pattern: "Solid",
+      fillPattern: "None",
+      lineThickness: 0.25,
+      borderPattern: "None",
+      radius: 0,
+      visible: true,
+      rotation: 0,
+    };
+
+    it("treats a sparse shape as unchanged against the canonical one OMC would answer", () => {
+      expect(diffLayouts(withIcon([sparse]), withIcon([canonical]))).toEqual(
+        [],
+      );
+    });
+
+    it("still emits graphicsModified when a field differs from its spec default", () => {
+      const changed: RectangleShape = {
+        kind: "rectangle",
+        extent: [
+          [0, 0],
+          [10, 10],
+        ],
+        fillPattern: "Solid", // spec default is "None"
+      };
+      const edits = diffLayouts(
+        withIcon([{ kind: "rectangle", extent: changed.extent }]),
+        withIcon([changed]),
+      );
+      expect(edits).toEqual([
+        { kind: "graphicsModified", layer: "icon", index: 0, shape: changed },
+      ]);
+    });
+
+    it("treats default-equal shapes as identical in the reorder path, not a spurious modify", () => {
+      const b = rect(20);
+      const edits = diffLayouts(
+        withIcon([sparse, b]),
+        withIcon([b, canonical]),
+      );
+      expect(edits).toEqual([
+        { kind: "graphicsReordered", layer: "icon", from: 0, to: 1 },
+      ]);
+    });
+
+    /** What a drawn Line carries: no arrow-editing UI exists, so `arrow` is never set. */
+    const sparseLine: LineShape = {
+      kind: "line",
+      points: [
+        [0, 0],
+        [10, 10],
+      ],
+      color: [1, 2, 3],
+    };
+    /** What OMC answers on re-read: `sparseLine` with every §18.6 default filled in. */
+    const canonicalLine: LineShape = {
+      kind: "line",
+      points: [
+        [0, 0],
+        [10, 10],
+      ],
+      color: [1, 2, 3],
+      thickness: 0.25,
+      pattern: "Solid",
+      smooth: "None",
+      arrow: ["None", "None"],
+      arrowSize: 3,
+      visible: true,
+      rotation: 0,
+    };
+
+    it("treats a sparse Line as unchanged against the canonical one OMC would answer for arrow", () => {
+      expect(
+        diffLayouts(withIcon([sparseLine]), withIcon([canonicalLine])),
+      ).toEqual([]);
+    });
+
+    it("still emits graphicsModified when Line.arrow differs from its spec default", () => {
+      const changed: LineShape = {
+        kind: "line",
+        points: [
+          [0, 0],
+          [10, 10],
+        ],
+        arrow: ["Filled", "None"], // spec default is {Arrow.None, Arrow.None}
+      };
+      const edits = diffLayouts(
+        withIcon([{ kind: "line", points: changed.points }]),
+        withIcon([changed]),
+      );
+      expect(edits).toEqual([
+        { kind: "graphicsModified", layer: "icon", index: 0, shape: changed },
+      ]);
+    });
+
+    /** What a drawn Polygon carries: only what the user actually chose. */
+    const sparsePolygon: PolygonShape = {
+      kind: "polygon",
+      points: [
+        [0, 0],
+        [10, 10],
+        [20, 0],
+      ],
+      lineColor: [1, 2, 3],
+    };
+    /** What OMC answers on re-read: `sparsePolygon` with every §18.6 default filled in. */
+    const canonicalPolygon: PolygonShape = {
+      kind: "polygon",
+      points: [
+        [0, 0],
+        [10, 10],
+        [20, 0],
+      ],
+      lineColor: [1, 2, 3],
+      fillColor: [0, 0, 0],
+      pattern: "Solid",
+      fillPattern: "None",
+      lineThickness: 0.25,
+      smooth: "None",
+      visible: true,
+      rotation: 0,
+    };
+
+    it("treats a sparse Polygon as unchanged against the canonical one OMC would answer", () => {
+      expect(
+        diffLayouts(withIcon([sparsePolygon]), withIcon([canonicalPolygon])),
+      ).toEqual([]);
+    });
+
+    /** What a drawn full Ellipse carries: the angles are never set by the draw tool. */
+    const sparseEllipse: EllipseShape = {
+      kind: "ellipse",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      lineColor: [1, 2, 3],
+    };
+    /**
+     * What OMC answers on re-read. `closure` comes back `"Chord"`, not
+     * `"None"`: §18.6.5.5 defaults it by the angles, and this one spans 0–360.
+     */
+    const canonicalEllipse: EllipseShape = {
+      kind: "ellipse",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      lineColor: [1, 2, 3],
+      fillColor: [0, 0, 0],
+      pattern: "Solid",
+      fillPattern: "None",
+      lineThickness: 0.25,
+      startAngle: 0,
+      endAngle: 360,
+      closure: "Chord",
+      visible: true,
+      rotation: 0,
+    };
+
+    it("treats a sparse full Ellipse as unchanged against the canonical one OMC would answer", () => {
+      expect(
+        diffLayouts(withIcon([sparseEllipse]), withIcon([canonicalEllipse])),
+      ).toEqual([]);
+    });
+
+    it("defaults a partial Ellipse's closure to Radial, not Chord", () => {
+      const sparseArc: EllipseShape = {
+        kind: "ellipse",
+        extent: [
+          [0, 0],
+          [10, 10],
+        ],
+        startAngle: 0,
+        endAngle: 180,
+      };
+      const canonicalArc: EllipseShape = {
+        ...sparseArc,
+        lineColor: [0, 0, 0],
+        fillColor: [0, 0, 0],
+        pattern: "Solid",
+        fillPattern: "None",
+        lineThickness: 0.25,
+        closure: "Radial",
+        visible: true,
+        rotation: 0,
+      };
+      expect(
+        diffLayouts(withIcon([sparseArc]), withIcon([canonicalArc])),
+      ).toEqual([]);
+    });
+
+    it("still emits graphicsModified when Ellipse.closure differs from its angle-derived default", () => {
+      const changed: EllipseShape = {
+        kind: "ellipse",
+        extent: [
+          [0, 0],
+          [10, 10],
+        ],
+        closure: "Radial", // a 0–360 ellipse defaults to Chord
+      };
+      const edits = diffLayouts(
+        withIcon([{ kind: "ellipse", extent: changed.extent }]),
+        withIcon([changed]),
+      );
+      expect(edits).toEqual([
+        { kind: "graphicsModified", layer: "icon", index: 0, shape: changed },
+      ]);
+    });
+
+    /** What a drawn Text carries: only what the user actually chose. */
+    const sparseText: TextShape = {
+      kind: "text",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      textString: "hello",
+      textColor: [1, 2, 3],
+    };
+    /** What OMC answers on re-read: `sparseText` with every §18.6 default filled in. */
+    const canonicalText: TextShape = {
+      kind: "text",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      textString: "hello",
+      textColor: [1, 2, 3],
+      fontName: "",
+      fontSize: 0,
+      horizontalAlignment: "Center",
+      textStyle: [],
+      visible: true,
+      rotation: 0,
+    };
+
+    it("treats a sparse Text as unchanged against the canonical one OMC would answer for textStyle", () => {
+      expect(
+        diffLayouts(withIcon([sparseText]), withIcon([canonicalText])),
+      ).toEqual([]);
+    });
+
+    it("treats an unset Text.textColor as unchanged against OMC's sentinel", () => {
+      const sparseUncolored: TextShape = {
+        kind: "text",
+        extent: [
+          [0, 0],
+          [10, 10],
+        ],
+        textString: "hello",
+      };
+      const canonicalUncolored: TextShape = {
+        ...sparseUncolored,
+        textColor: [-1, -1, -1],
+        fontName: "",
+        fontSize: 0,
+        horizontalAlignment: "Center",
+        textStyle: [],
+        visible: true,
+        rotation: 0,
+      };
+      expect(
+        diffLayouts(
+          withIcon([sparseUncolored]),
+          withIcon([canonicalUncolored]),
+        ),
+      ).toEqual([]);
+    });
+
+    it("still emits graphicsModified when Text.textColor is set to explicit black", () => {
+      const changed: TextShape = {
+        kind: "text",
+        extent: [
+          [0, 0],
+          [10, 10],
+        ],
+        textString: "hello",
+        textColor: [0, 0, 0],
+      };
+      const edits = diffLayouts(
+        withIcon([
+          {
+            kind: "text",
+            extent: changed.extent,
+            textString: changed.textString,
+          },
+        ]),
+        withIcon([changed]),
+      );
+      expect(edits).toEqual([
+        { kind: "graphicsModified", layer: "icon", index: 0, shape: changed },
+      ]);
+    });
+
+    it("still emits graphicsModified when Text.textStyle differs from its spec default", () => {
+      const changed: TextShape = {
+        kind: "text",
+        extent: [
+          [0, 0],
+          [10, 10],
+        ],
+        textString: "hello",
+        textStyle: ["Bold"], // spec default is {}
+      };
+      const edits = diffLayouts(
+        withIcon([
+          {
+            kind: "text",
+            extent: changed.extent,
+            textString: changed.textString,
+          },
+        ]),
+        withIcon([changed]),
+      );
+      expect(edits).toEqual([
+        { kind: "graphicsModified", layer: "icon", index: 0, shape: changed },
+      ]);
+    });
+
+    /** What a drawn Bitmap carries: no Bitmap-drawing UI exists, but a
+     *  shape-properties edit can submit an empty `fileName`. */
+    const sparseBitmap: BitmapShape = {
+      kind: "bitmap",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+    };
+    /** What OMC answers on re-read: `sparseBitmap` with every §18.6 default filled in. */
+    const canonicalBitmap: BitmapShape = {
+      kind: "bitmap",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      fileName: "",
+      imageSource: "",
+      visible: true,
+      rotation: 0,
+    };
+
+    it("treats a sparse Bitmap as unchanged against the canonical one OMC would answer for fileName/imageSource", () => {
+      expect(
+        diffLayouts(withIcon([sparseBitmap]), withIcon([canonicalBitmap])),
+      ).toEqual([]);
+    });
+
+    it("still emits graphicsModified when Bitmap.fileName differs from empty", () => {
+      const changed: BitmapShape = {
+        kind: "bitmap",
+        extent: [
+          [0, 0],
+          [10, 10],
+        ],
+        fileName: "icon.png", // spec default is ""
+      };
+      const edits = diffLayouts(
+        withIcon([{ kind: "bitmap", extent: changed.extent }]),
+        withIcon([changed]),
+      );
+      expect(edits).toEqual([
+        { kind: "graphicsModified", layer: "icon", index: 0, shape: changed },
+      ]);
+    });
   });
 
   describe("reorder (z-order editing)", () => {
