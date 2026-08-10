@@ -381,6 +381,23 @@ describe("applyShapeProperties", () => {
     expect(updated.kind).toBe("rectangle");
     expect((updated as RectangleShape).extent).toEqual(RECT.extent);
   });
+
+  it("returns a copy even when no value decodes", () => {
+    // The result becomes a graphicsModified payload; handing back the layout's
+    // own shape would make the edit share an object with the layout it edits.
+    expect(applyShapeProperties(RECT, { radius: "not-a-number" })).not.toBe(
+      RECT,
+    );
+    expect(applyShapeProperties(RECT, {})).not.toBe(RECT);
+  });
+
+  it("throws on an unknown shape kind rather than returning undefined", () => {
+    // Falling through the dispatch would hand writeClassGraphics an undefined
+    // shape typed as one.
+    expect(() =>
+      applyShapeProperties({ kind: "bogus" } as unknown as Shape, {}),
+    ).toThrow(/Shape kind/);
+  });
 });
 
 // ── form ↔ applier field agreement ───────────────────────────────────────────
@@ -489,6 +506,16 @@ describe("shape properties form round-trip", () => {
           `field "${field.name}" (${field.kind}) did not reach the shape`,
         ).not.toBe(JSON.stringify(shape));
       }
+    });
+  }
+
+  for (const shape of SHAPES) {
+    // Typing a field's key against its shape does not stop a list from
+    // declaring the same key twice — two widgets bound to one property, the
+    // second silently winning on submit.
+    it(`names every ${shape.kind} field once`, () => {
+      const names = buildShapePropertiesForm(shape).fields.map((f) => f.name);
+      expect(names).toEqual([...new Set(names)]);
     });
   }
 });

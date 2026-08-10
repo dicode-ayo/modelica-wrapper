@@ -214,11 +214,12 @@ function enumCodec(enumTypeName: string, enumChoices: string[]): Codec<string> {
  * One editable shape property. The same entry seeds the form widget and writes
  * the submitted value back, so a name only one half knows is a compile error
  * rather than a field the modal renders and Apply silently drops.
- */
-/**
- * Both members are property-typed rather than methods: method syntax is checked
- * bivariantly, which would let a field declared for one shape kind into another
- * kind's list.
+ *
+ * Both members are property-typed rather than methods. This is half of what
+ * keeps a field out of the wrong kind's list — see {@link FilledShapeKind} for
+ * the other half, which does not work without this one: method syntax is
+ * checked bivariantly, so a `ShapeField<PolygonShape>` would stay assignable to
+ * `ShapeField<LineShape>` however the groups are declared.
  */
 interface ShapeField<S> {
   readonly name: string;
@@ -273,11 +274,14 @@ function fieldOf<S extends object>() {
 }
 
 /**
- * The two shared groups are declared over the shape kinds that carry them, not
- * over `GraphicItem` / `FilledShape`. Both records are all-optional, so every
- * shape is structurally assignable to them — declaring against the record would
- * let a `FilledShape` field into a `Line`'s list and write `lineColor` onto a
- * Modelica `Line`.
+ * The shared groups are declared over the shape kinds that carry them, not over
+ * the `GraphicItem` / `FilledShape` records. Both records are all-optional, so
+ * every shape is structurally assignable to them and declaring against one
+ * would let a filled-shape field into a `Line`'s list and write `lineColor`
+ * onto a Modelica `Line`.
+ *
+ * This is the other half of the pair described on {@link ShapeField}. Undoing
+ * either half reopens the hole with every gate still green.
  */
 type FilledShapeKind = PolygonShape | RectangleShape | EllipseShape;
 
@@ -550,8 +554,8 @@ export function applyShapeProperties(
   values: Record<string, unknown>,
 ): Shape {
   return withFields(shape, (narrowed, fields) =>
-    // Seeded with a copy: a submit that decodes nothing would otherwise hand
-    // the caller the layout's own shape back as its edit payload.
+    // `write` is the identity when nothing decodes, so the seed has to be the
+    // copy.
     fields.reduce(
       (updated, field) => field.write(updated, values[field.name]),
       { ...narrowed },
