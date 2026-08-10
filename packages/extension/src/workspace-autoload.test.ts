@@ -156,11 +156,13 @@ describe("loadEntryFilesAndRefresh", () => {
       ["P.mo", [true]],
     ]);
     const idx = new Map<string, number>();
+    const names: string[] = [];
     const c: AutoLoadClient = {
       parseFile: vi.fn(async ({ fileName }: { fileName: string }) => ({
         classNames: fileName === "AB.mo" ? ["A", "B"] : ["M"],
       })),
       loadFile: vi.fn(async ({ fileName }: { fileName: string }) => {
+        names.push(fileName);
         const i = idx.get(fileName) ?? 0;
         idx.set(fileName, i + 1);
         return { success: perFile.get(fileName)?.[i] ?? false };
@@ -170,9 +172,6 @@ describe("loadEntryFilesAndRefresh", () => {
 
     await loadEntryFilesAndRefresh(c, ["AB.mo", "M.mo", "P.mo"], refresh);
 
-    const names = (c.loadFile as ReturnType<typeof vi.fn>).mock.calls.map(
-      (args) => (args[0] as { fileName: string }).fileName,
-    );
     expect(names).toEqual(["M.mo", "P.mo", "M.mo"]);
   });
 

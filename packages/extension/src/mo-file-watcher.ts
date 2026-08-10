@@ -36,7 +36,7 @@ import { enclosingScope } from "@dicode/modelica-lang-core";
 
 import { pathExists } from "./fs-util.js";
 import { log } from "./logger.js";
-import { multiEntityMessage } from "./single-entity-file.js";
+import { multiEntityMessage, multiEntityToast } from "./single-entity-file.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
 import {
   MODELICA_SOURCE_SCHEME,
@@ -117,14 +117,6 @@ function scopeOf(qualifiedName: string): string | null {
   return scope === "" ? null : scope;
 }
 
-function warnMultiEntity(fsPath: string, classNames: string[]): void {
-  void vscode.window.showWarningMessage(
-    `Modelica: ${path.basename(fsPath)} declares ${classNames.join(", ")}, ` +
-      `so it was not loaded. Split them into a file each — saving one here ` +
-      `would drop the others.`,
-  );
-}
-
 /** `fsPath` is the file whose edit is being skipped — a delete has no "changed" to report either. */
 function warnBusy(fsPath: string, classNames: string[]): void {
   void vscode.window.showWarningMessage(
@@ -199,7 +191,9 @@ export async function handleMoChange(
   }
   if (names.length > 1) {
     log.warn("moWatcher", multiEntityMessage(fsPath, names));
-    warnMultiEntity(fsPath, names);
+    void vscode.window.showWarningMessage(
+      multiEntityToast(fsPath, names, "it was not loaded"),
+    );
     return;
   }
 

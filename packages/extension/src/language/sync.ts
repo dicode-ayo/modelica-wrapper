@@ -114,6 +114,11 @@ export class OmcSync {
     const snapshot = this.generation.get(key) ?? 0;
     try {
       const classNames = await multipleTopLevelClasses(this.client, filePath);
+      // Invalidated mid-parse — the parse read stale text, discard. Recording
+      // the refusal would outlive the text it was based on.
+      if (snapshot !== (this.generation.get(key) ?? 0)) {
+        return false;
+      }
       if (classNames) {
         this.multiEntity.add(key);
         this.onMultiEntity(filePath, classNames);

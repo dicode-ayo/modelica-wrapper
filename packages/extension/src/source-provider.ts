@@ -53,6 +53,7 @@ import {
 import {
   multiEntityMessage,
   multipleTopLevelClasses,
+  multipleTopLevelClassesInText,
 } from "./single-entity-file.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
 import type { WriteVerdicts } from "./write-verdict.js";
@@ -168,6 +169,32 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
     const info = await client.getClassInformation({ typeName });
     const onDisk = isLikelyDiskPath(info.fileName);
 
+    // Both screens sit ahead of the `loadString` below to keep this method's
+    // "refuse before any OMC mutation" promise. The buffer would bind every
+    // class it declares to `info.fileName`; the file may have gained a class
+    // from an external edit since it loaded. Either way the write that follows
+    // reconstructs the file from one class and drops the rest (#452). A file
+    // OMC cannot parse falls through — refusing there would block saving a fix
+    // over a corrupted file, and the buffer screen still holds.
+    if (onDisk) {
+      const inFile = await multipleTopLevelClasses(client, info.fileName);
+      if (inFile) {
+        throw vscode.FileSystemError.Unavailable(
+          multiEntityMessage(info.fileName, inFile),
+        );
+      }
+    }
+    const inBuffer = await multipleTopLevelClassesInText(
+      client,
+      text,
+      onDisk ? info.fileName : uri.toString(),
+    );
+    if (inBuffer) {
+      throw vscode.FileSystemError.Unavailable(
+        multiEntityMessage(onDisk ? info.fileName : typeName, inBuffer),
+      );
+    }
+
     // Drain any stale errors so the post-loadString check below only sees
     // diagnostics produced by this save.
     await client.getErrorString();
@@ -200,18 +227,7 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
       // its file with siblings (an inline package member), write the whole file
       // — `listFile` of the file's owning class — so the save doesn't drop the
       // siblings. A class that owns its file writes its buffer verbatim.
-      const [owner, multiEntity] = await Promise.all([
-        fileOwnerClass(client, typeName),
-        multipleTopLevelClasses(client, info.fileName),
-      ]);
-      // The load paths refuse a file declaring several top-level classes, but
-      // an external edit can add one to a file already loaded. Writing then
-      // rewrites the file from this class alone and drops the rest (#452).
-      if (multiEntity) {
-        throw vscode.FileSystemError.Unavailable(
-          multiEntityMessage(info.fileName, multiEntity),
-        );
-      }
+      const owner = await fileOwnerClass(client, typeName);
       if (owner === typeName) {
         await this.guard.write(info.fileName, text);
       } else {

@@ -28,6 +28,7 @@ import type { ErrorMessage } from "@dicode/omc-client";
 import { mapOmcMessagesToDiagnostics } from "../diagnostics/from-omc.js";
 import type { FileOwnerClient } from "../file-owner.js";
 import { log } from "../logger.js";
+import { multiEntityMessage } from "../single-entity-file.js";
 import type { WriteVerdictClient } from "../write-verdict.js";
 import {
   MODELICA_SOURCE_SCHEME,
@@ -48,7 +49,10 @@ const MIN_DEBOUNCE_MS = 250;
  */
 export interface LiveCheckClient extends FileOwnerClient, WriteVerdictClient {
   getErrorString(): Promise<{ errorString: string }>;
-  parseString(input: { data: string; filename: string }): Promise<unknown>;
+  parseString(input: {
+    data: string;
+    filename: string;
+  }): Promise<{ classNames: string[] }>;
   loadString(input: {
     data: string;
     filename: string;
@@ -184,8 +188,12 @@ async function runCheck(
     // `getErrorString` between parseString and the read, or the buffer
     // is drained before `getMessagesStringInternal` can see it.
     const messages: ErrorMessage[] = [];
+    let declared: string[] = [];
     try {
-      await client.parseString({ data: text, filename });
+      ({ classNames: declared } = await client.parseString({
+        data: text,
+        filename,
+      }));
     } catch (err) {
       log.error("liveCheck", "parseString failed", err);
     }
@@ -196,7 +204,13 @@ async function runCheck(
     const hasParseError = parseMessages.some(
       (m) => m.level === "error" || m.level === "internal",
     );
-    if (!hasParseError) {
+    // `loadString` binds every class in the text to `filename`, so loading a
+    // buffer that declares several would leave OMC holding a file no save can
+    // write back without dropping one (#452). The parse diagnostics above
+    // still publish; only the semantic stage is skipped.
+    if (declared.length > 1) {
+      log.warn("liveCheck", multiEntityMessage(filename, declared));
+    } else if (!hasParseError) {
       // Syntax-clean — load into OMC and run the semantic check.
       try {
         await client.loadString({ data: text, filename, merge: false });

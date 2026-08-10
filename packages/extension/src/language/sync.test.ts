@@ -122,6 +122,31 @@ describe("OmcSync — files declaring several top-level classes (#452)", () => {
     expect(client.parseFile).toHaveBeenCalledTimes(1);
   });
 
+  it("discards a refusal whose parse was invalidated mid-flight", async () => {
+    let resolveParse: (v: { classNames: string[] }) => void = () => {};
+    const parseFile = vi.fn(
+      () =>
+        new Promise<{ classNames: string[] }>((res) => {
+          resolveParse = res;
+        }),
+    );
+    const loadFile = vi.fn(() => Promise.resolve({ success: true }));
+    const onMultiEntity = vi.fn();
+    const sync = new OmcSync({ parseFile, loadFile }, { onMultiEntity });
+
+    const inFlight = sync.ensureLoaded("/a/AB.mo");
+    await vi.waitFor(() => expect(parseFile).toHaveBeenCalled());
+    // A save splits the file while the parse is still out; its answer now
+    // describes text that no longer exists.
+    sync.invalidate("/a/AB.mo");
+    resolveParse({ classNames: ["A", "B"] });
+    expect(await inFlight).toBe(false);
+
+    expect(onMultiEntity).not.toHaveBeenCalled();
+    parseFile.mockResolvedValue({ classNames: ["A"] });
+    expect(await sync.ensureLoaded("/a/AB.mo")).toBe(true);
+  });
+
   it("reconsiders the file after a save splits it", async () => {
     const client = multiEntityClient();
     const sync = new OmcSync(client);

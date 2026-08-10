@@ -5,15 +5,13 @@
  * Wired from `extension.ts` via `context.subscriptions.push`.
  */
 
-import * as path from "node:path";
-
 import * as vscode from "vscode";
 
 import type { OmcClient } from "@dicode/omc-client";
 
 import type { ClassInvalidationRegistry } from "../invalidation.js";
 import { log } from "../logger.js";
-import { multiEntityMessage } from "../single-entity-file.js";
+import { multiEntityMessage, multiEntityToast } from "../single-entity-file.js";
 import { sourceUriFor } from "../source-provider.js";
 
 import {
@@ -182,9 +180,11 @@ export function registerLanguageFeatures(
     onMultiEntity: (filePath, classNames) => {
       log.warn("language", multiEntityMessage(filePath, classNames));
       void vscode.window.showWarningMessage(
-        `Modelica: ${path.basename(filePath)} declares ${classNames.join(", ")}, ` +
-          `so language features are unavailable for it. Split them into a file ` +
-          `each — saving one here would drop the others.`,
+        multiEntityToast(
+          filePath,
+          classNames,
+          "language features are unavailable for it",
+        ),
       );
     },
   });
