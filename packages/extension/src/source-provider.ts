@@ -196,10 +196,6 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
           multiEntityMessage(onDisk ? info.fileName : typeName, inBuffer),
         );
       }
-      // `loadString(merge: false)` redefines per class rather than replacing
-      // the file's contents, so a buffer that renamed its class parses clean
-      // and loads as a second, unreachable class alongside `typeName` — which
-      // nothing then unloads (#459).
       const renamed = renamedClass(bufferClasses, typeName);
       if (renamed !== undefined) {
         throw vscode.FileSystemError.Unavailable(

@@ -18,7 +18,7 @@
 
 import * as path from "node:path";
 
-import { leafName } from "@dicode/modelica-lang-core";
+import { enclosingScope, leafName } from "@dicode/modelica-lang-core";
 
 import { errorDetail } from "./error-detail.js";
 import { log } from "./logger.js";
@@ -101,18 +101,21 @@ export function moreThanOne(classNames: string[]): string[] | undefined {
 
 /**
  * The name a single-entity buffer declares, when it isn't `expected` — a save
- * that renamed the class its URI addresses in text. `loadString` binds every
- * class in a buffer to the filename it's given rather than replacing the
- * file's contents, so a renamed class parses clean and loads as a second,
- * unreachable class alongside the one the save meant to replace (#459).
- * Meaningless once `classNames` holds more than one name — the
- * multiple-top-level-classes screen already refuses that buffer outright.
+ * that renamed the class its URI addresses in text, or moved it under a
+ * different `within` scope. Either way `loadString` binds every class in a
+ * buffer to the filename it's given rather than replacing the file's
+ * contents, so the buffer parses clean and loads as a second, unreachable
+ * class alongside the one the save meant to replace (#459). Meaningless once
+ * `classNames` holds more than one name — the multiple-top-level-classes
+ * screen already refuses that buffer outright.
  *
- * Compares leaf segments, not the full dotted names: `parseString` may (like
- * `parseFile`, see `owning-class.ts`'s `confirmLeaf`) return a
- * `within`-clause-qualified name for a buffer that isn't top-level, while a
- * plain member buffer with no `within` clause of its own comes back bare
- * either way.
+ * `parseString` may (like `parseFile`, see `language/owning-class.ts`'s
+ * `confirmLeaf`) return a name qualified by the buffer's own `within` clause.
+ * A bare answer carries no scope of its own — a plain member buffer with no
+ * `within` clause parses bare whether or not it moved, so only its leaf can
+ * be compared. A qualified answer names both scope and leaf, so it must match
+ * `expected` outright: leaf-only comparison would miss a `within` edit that
+ * kept the same leaf name but pointed the class at a different package.
  */
 export function renamedClass(
   classNames: string[],
@@ -120,9 +123,12 @@ export function renamedClass(
 ): string | undefined {
   if (classNames.length !== 1) return undefined;
   const [only] = classNames;
-  return only !== undefined && leafName(only) !== leafName(expected)
-    ? only
-    : undefined;
+  if (only === undefined) return undefined;
+  const moved =
+    enclosingScope(only) === ""
+      ? leafName(only) !== leafName(expected)
+      : only !== expected;
+  return moved ? only : undefined;
 }
 
 /** Shared refusal wording, so every guard site names the same recovery. */

@@ -70,6 +70,13 @@ describe("renamedClass", () => {
     expect(renamedClass(["Pkg.M2"], "Pkg.M")).toBe("Pkg.M2");
   });
 
+  it("catches a within-clause move that keeps the same leaf name", () => {
+    // Leaf-only comparison would miss this: `M`'s leaf is unchanged, but the
+    // qualified answer now names a different scope than `expected` — a
+    // different class, and #459's failure mode all the same.
+    expect(renamedClass(["Other.M"], "Pkg.M")).toBe("Other.M");
+  });
+
   it("leaves a multi-class buffer to the multiple-top-level-classes screen", () => {
     expect(renamedClass(["Foo", "Bar"], "Foo")).toBeUndefined();
   });

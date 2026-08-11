@@ -224,8 +224,12 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
     listing: Record<string, string>;
     /** What `parseFile` reports the file declares; one class unless given. */
     declares?: string[];
-    /** What `parseString` reports the buffer declares; one class unless given. */
-    bufferDeclares?: string[];
+    /**
+     * What `parseString` reports the buffer declares. No default — the
+     * rename screen reads this against the URI's class, so a stand-in value
+     * would either falsely trip it or falsely hide a real mismatch.
+     */
+    bufferDeclares: string[];
   }): { client: OmcClient; loadString: ReturnType<typeof vi.fn> } {
     const loadString = vi.fn(() => Promise.resolve({ success: true }));
     const client = {
@@ -233,7 +237,7 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
         Promise.resolve({ classNames: opts.declares ?? ["Pkg"] }),
       ),
       parseString: vi.fn(() =>
-        Promise.resolve({ classNames: opts.bufferDeclares ?? ["Pkg"] }),
+        Promise.resolve({ classNames: opts.bufferDeclares }),
       ),
       getClassInformation: vi.fn(() =>
         Promise.resolve({ fileName: opts.fileName, fileReadOnly: false }),
@@ -315,6 +319,8 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
       sources: { A: "/ws/AB.mo", B: "/ws/AB.mo" },
       listing: {},
       declares: ["A", "B"],
+      // Never read — the on-disk screen throws before `parseString` runs.
+      bufferDeclares: ["A"],
     });
     const { guard, write } = recordingGuard();
     const provider = new ModelicaSourceProvider(
@@ -357,9 +363,6 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
   });
 
   it("refuses a buffer that renamed its class instead of leaving the old one alive in OMC (#459)", async () => {
-    // `loadString(merge: false)` redefines per class rather than replacing the
-    // file's contents, so an unscreened rename would parse clean and load as a
-    // second, unreachable class alongside the one the save meant to replace.
     const { client, loadString } = sharedFileClient({
       fileName: "/ws/A.mo",
       sources: { A: "/ws/A.mo" },
