@@ -52,6 +52,7 @@ import {
 } from "./file-owner.js";
 import {
   bufferClassNames,
+  moreThanOne,
   multiEntityMessage,
   multipleTopLevelClasses,
   renamedClass,
@@ -189,9 +190,10 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
     const bufferFilename = onDisk ? info.fileName : uri.toString();
     const bufferClasses = await bufferClassNames(client, text, bufferFilename);
     if (bufferClasses !== undefined) {
-      if (bufferClasses.length > 1) {
+      const inBuffer = moreThanOne(bufferClasses);
+      if (inBuffer) {
         throw vscode.FileSystemError.Unavailable(
-          multiEntityMessage(onDisk ? info.fileName : typeName, bufferClasses),
+          multiEntityMessage(onDisk ? info.fileName : typeName, inBuffer),
         );
       }
       // `loadString(merge: false)` redefines per class rather than replacing

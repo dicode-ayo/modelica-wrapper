@@ -58,6 +58,18 @@ describe("renamedClass", () => {
     expect(renamedClass(["Foo"], "Foo")).toBeUndefined();
   });
 
+  it("compares leaf segments, so a within-qualified answer matches an unqualified member buffer", () => {
+    // `parseString` may qualify a member's declared name with its `within`
+    // clause the same way `parseFile` does; a bare buffer with no `within`
+    // clause of its own must not read as a rename against a dotted expected.
+    expect(renamedClass(["Pkg.M"], "Pkg.M")).toBeUndefined();
+    expect(renamedClass(["M"], "Pkg.M")).toBeUndefined();
+  });
+
+  it("still catches a rename under a qualified name", () => {
+    expect(renamedClass(["Pkg.M2"], "Pkg.M")).toBe("Pkg.M2");
+  });
+
   it("leaves a multi-class buffer to the multiple-top-level-classes screen", () => {
     expect(renamedClass(["Foo", "Bar"], "Foo")).toBeUndefined();
   });

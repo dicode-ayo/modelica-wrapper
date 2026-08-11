@@ -18,6 +18,8 @@
 
 import * as path from "node:path";
 
+import { leafName } from "@dicode/modelica-lang-core";
+
 import { errorDetail } from "./error-detail.js";
 import { log } from "./logger.js";
 
@@ -92,7 +94,8 @@ export async function multipleTopLevelClassesInText(
   return classNames === undefined ? undefined : moreThanOne(classNames);
 }
 
-function moreThanOne(classNames: string[]): string[] | undefined {
+/** The names in `classNames` when there's more than one, `undefined` otherwise. */
+export function moreThanOne(classNames: string[]): string[] | undefined {
   return classNames.length > 1 ? classNames : undefined;
 }
 
@@ -104,6 +107,12 @@ function moreThanOne(classNames: string[]): string[] | undefined {
  * unreachable class alongside the one the save meant to replace (#459).
  * Meaningless once `classNames` holds more than one name — the
  * multiple-top-level-classes screen already refuses that buffer outright.
+ *
+ * Compares leaf segments, not the full dotted names: `parseString` may (like
+ * `parseFile`, see `owning-class.ts`'s `confirmLeaf`) return a
+ * `within`-clause-qualified name for a buffer that isn't top-level, while a
+ * plain member buffer with no `within` clause of its own comes back bare
+ * either way.
  */
 export function renamedClass(
   classNames: string[],
@@ -111,7 +120,9 @@ export function renamedClass(
 ): string | undefined {
   if (classNames.length !== 1) return undefined;
   const [only] = classNames;
-  return only !== undefined && only !== expected ? only : undefined;
+  return only !== undefined && leafName(only) !== leafName(expected)
+    ? only
+    : undefined;
 }
 
 /** Shared refusal wording, so every guard site names the same recovery. */

@@ -260,7 +260,9 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
       listing: {
         Pkg: "package Pkg model M ... end M; model Other ... end Pkg;",
       },
-      bufferDeclares: ["Pkg.M"],
+      // Bare — the edited buffer text carries no `within` clause of its own,
+      // unlike a `parseFile` read of the file it shares with `Other`.
+      bufferDeclares: ["M"],
     });
     const { guard, write } = recordingGuard();
     const provider = new ModelicaSourceProvider(
@@ -287,6 +289,9 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
       fileName: "/ws/M.mo",
       sources: { "Pkg.M": "/ws/M.mo", Pkg: "/ws/package.mo" },
       listing: {},
+      // Qualified — `M` owns its file but is still nested under `Pkg`, so a
+      // `within Pkg;` clause of its own is exactly what a real buffer for it
+      // would carry.
       bufferDeclares: ["Pkg.M"],
     });
     const { guard, write } = recordingGuard();
