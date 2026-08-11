@@ -84,7 +84,10 @@ describe("handleMoChange", () => {
     expect(deps.index.get(FILE)).toEqual(["My.Pkg.Bar"]);
   });
 
-  it("re-lists the parent scope and updates the index when a self-write adds a nested class (#446)", async () => {
+  it("re-lists a class's own scope on a self-write, so a nested class the save added is picked up (#446)", async () => {
+    // `parseFile` reports top-level declarations only, so adding nested `Bar`
+    // leaves the file's class set at `Foo`. What surfaces it is the re-list of
+    // `Foo`'s own children, which the sidebar answers from OMC.
     const guard = createSelfWriteGuard();
     const text = "package Foo model Bar end Bar; end Foo;";
     guard.record(FILE, text);
@@ -93,43 +96,32 @@ describe("handleMoChange", () => {
       readFile: async () => text,
     });
     deps.index.set(FILE, ["Foo"]);
-    client.parseFile.mockResolvedValue({ classNames: ["Foo", "Foo.Bar"] });
+    client.parseFile.mockResolvedValue({ classNames: ["Foo"] });
 
     await handleMoChange(deps, FILE);
 
     expect(client.loadFile).not.toHaveBeenCalled();
     expect(client.deleteClass).not.toHaveBeenCalled();
-    expect(deps.index.get(FILE)).toEqual(["Foo", "Foo.Bar"]);
     expect(childrenChanged).toHaveBeenCalledWith("Foo");
     expect(childrenChanged).toHaveBeenCalledWith(null);
-    expect(notifySourceChanged).toHaveBeenCalledWith("Foo.Bar");
+    expect(notifySourceChanged).toHaveBeenCalledWith("Foo");
   });
 
-  it("removes a class from the index on a self-write that no longer declares it, without calling deleteClass", async () => {
+  it("indexes a file a self-write created, which was never seeded", async () => {
     const guard = createSelfWriteGuard();
-    const text = "package Foo end Foo;";
+    const text = "model Bar end Bar;";
     guard.record(FILE, text);
-    const { deps, client, childrenChanged, notifySourceChanged } = makeDeps({
-      guard,
-      readFile: async () => text,
-    });
-    deps.index.set(FILE, ["Foo", "Foo.Bar"]);
-    client.parseFile.mockResolvedValue({ classNames: ["Foo"] });
+    const { deps } = makeDeps({ guard, readFile: async () => text });
 
     await handleMoChange(deps, FILE);
 
-    expect(client.deleteClass).not.toHaveBeenCalled();
-    expect(deps.index.get(FILE)).toEqual(["Foo"]);
-    expect(childrenChanged).toHaveBeenCalledWith("Foo");
-    expect(notifySourceChanged).toHaveBeenCalledWith("Foo.Bar");
+    expect(deps.index.get(FILE)).toEqual(["My.Pkg.Bar"]);
   });
 
-  it("keeps a removed top-level name in the index when it has no surviving parent to prove it gone (#452)", async () => {
-    // Two top-level classes sharing one file, with no dotted relationship
-    // between them — the shape fileOwnerClass can misjudge (#452), where a
-    // self-write to one can drop the other from disk without OMC agreeing
-    // it's gone. `Baz` has no parent in `names` to prove its removal, so it
-    // must survive in the index rather than become unreachable.
+  it("drops a class the file no longer declares from the index on a self-write, without calling deleteClass", async () => {
+    // A file seeded before `handleMoChange` turned multi-top-level files away
+    // can hold two names it no longer declares after a rewrite. OMC already
+    // has the post-write text through `writeFile`'s own `loadString`.
     const guard = createSelfWriteGuard();
     const text = "model Foo end Foo;";
     guard.record(FILE, text);
@@ -143,31 +135,9 @@ describe("handleMoChange", () => {
     await handleMoChange(deps, FILE);
 
     expect(client.deleteClass).not.toHaveBeenCalled();
-    expect(deps.index.get(FILE)).toEqual(["Foo", "Baz"]);
-    expect(childrenChanged).toHaveBeenCalledWith("Baz");
-    expect(notifySourceChanged).toHaveBeenCalledWith("Baz");
-  });
-
-  it("proves a removed grandchild gone transitively, through a removed child that is itself proven", async () => {
-    // Foo.Bar.Baz's own parent (Foo.Bar) is *also* removed, not surviving in
-    // `names` — proving Baz gone requires walking through Bar's own removal,
-    // not just checking Baz's immediate parent.
-    const guard = createSelfWriteGuard();
-    const text = "package Foo end Foo;";
-    guard.record(FILE, text);
-    const { deps, client, notifySourceChanged } = makeDeps({
-      guard,
-      readFile: async () => text,
-    });
-    deps.index.set(FILE, ["Foo", "Foo.Bar", "Foo.Bar.Baz"]);
-    client.parseFile.mockResolvedValue({ classNames: ["Foo"] });
-
-    await handleMoChange(deps, FILE);
-
-    expect(client.deleteClass).not.toHaveBeenCalled();
     expect(deps.index.get(FILE)).toEqual(["Foo"]);
-    expect(notifySourceChanged).toHaveBeenCalledWith("Foo.Bar");
-    expect(notifySourceChanged).toHaveBeenCalledWith("Foo.Bar.Baz");
+    expect(childrenChanged).toHaveBeenCalledWith(null);
+    expect(notifySourceChanged).toHaveBeenCalledWith("Baz");
   });
 
   it("proceeds on a self-write even when isBusy would refuse an external edit", async () => {
@@ -185,36 +155,36 @@ describe("handleMoChange", () => {
     expect(recordedMessages).toHaveLength(0);
   });
 
-  it("does not bump a dirty sibling's document on a self-write to another class in the same file", async () => {
+  it("does not bump a dirty document for the package a self-write to a nested class rewrote", async () => {
+    // Saving `Foo.Bar` rewrites the whole `Foo` file, so the re-list covers
+    // `Foo` — whose own source document is open with unsaved edits, and would
+    // read the bump as a disk change it has to reconcile.
     setTabGroups([
       {
         viewColumn: 1,
         tabs: [
           {
-            input: new TabInputCustom(sourceUriFor("Foo.Bar"), "default"),
+            input: new TabInputCustom(sourceUriFor("Foo"), "default"),
             isDirty: true,
           },
         ],
       },
     ]);
     const guard = createSelfWriteGuard();
-    const text = "package Foo model Bar end Bar; model Baz end Baz; end Foo;";
+    const text = "package Foo model Bar end Bar; end Foo;";
     guard.record(FILE, text);
-    const { deps, client, notifySourceChanged } = makeDeps({
+    const { deps, client, childrenChanged, notifySourceChanged } = makeDeps({
       guard,
       isBusy: isDeclaredClassBusy,
       readFile: async () => text,
     });
-    deps.index.set(FILE, ["Foo", "Foo.Bar", "Foo.Baz"]);
-    client.parseFile.mockResolvedValue({
-      classNames: ["Foo", "Foo.Bar", "Foo.Baz"],
-    });
+    deps.index.set(FILE, ["Foo"]);
+    client.parseFile.mockResolvedValue({ classNames: ["Foo"] });
 
     await handleMoChange(deps, FILE);
 
-    expect(notifySourceChanged).not.toHaveBeenCalledWith("Foo.Bar");
-    expect(notifySourceChanged).toHaveBeenCalledWith("Foo.Baz");
-    expect(notifySourceChanged).toHaveBeenCalledWith("Foo");
+    expect(notifySourceChanged).not.toHaveBeenCalledWith("Foo");
+    expect(childrenChanged).toHaveBeenCalledWith("Foo");
   });
 
   it("loads a foreign edit and refreshes the class's scope and source", async () => {

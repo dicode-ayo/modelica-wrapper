@@ -26,7 +26,8 @@
  * OMC's in-memory model via `loadString` before writing to disk. But it still
  * re-derives the file's declared class set (`parseFile`), updates the
  * path→class index, and re-lists the affected scopes — otherwise a save that
- * adds or removes a nested class leaves the sidebar and the index stale.
+ * adds or removes a nested class leaves the sidebar showing the old children,
+ * and a file the write created never enters the index at all.
  *
  * The watcher leaves one kind of edit alone: an edit to a class open *and
  * dirty* in an editor, where reloading OMC would clobber the unsaved buffer
@@ -218,12 +219,10 @@ function reindexAndRelist(
  * A self-write — recognized by {@link SelfWriteGuard.claim} — still derives
  * the file's current class set via `parseFile` and re-lists, but skips
  * `loadFile`/`deleteClass`: `ModelicaSourceProvider.writeFile` already pushed
- * the new text into OMC via `loadString` before writing it to disk, so those
- * calls here would be redundant at best, and at worst fight the very
- * shadow-buffer sync the guard exists to protect. It also skips the
- * `isBusy` gate that guards `loadFile` — this branch never calls `loadFile`,
- * so there's nothing that gate protects — though {@link reindexAndRelist}
- * still consults `isBusy` per class, for a narrower reason of its own.
+ * the new text into OMC via `loadString` before writing it to disk. It also
+ * skips the `isBusy` gate, which guards `loadFile` alone; {@link
+ * reindexAndRelist} still consults `isBusy` per class, for a narrower reason
+ * of its own.
  */
 export async function handleMoChange(
   deps: MoWatcherDeps,
@@ -262,30 +261,7 @@ export async function handleMoChange(
   const removed = previous.filter((n) => !names.includes(n));
 
   if (isSelfWrite) {
-    // A removed name is only trusted as gone from OMC when its removal is
-    // explained by a still-declared ancestor's redefinition — the one case
-    // loadString's per-class redefinition (`merge: false`) provably drops it
-    // (and, transitively, whatever was nested under it). A removed name
-    // whose ancestor chain never reaches a name `names` still declares (a
-    // second top-level class sharing this file with no dotted relationship
-    // to the one that was actually redefined, per the writeFile/
-    // fileOwnerClass gap tracked as #452) might still be alive in OMC's own
-    // memory, so it stays in the index instead of becoming unreachable.
-    const removedSet = new Set(removed);
-    const isProvenRemoved = (n: string): boolean => {
-      const parent = scopeOf(n);
-      if (parent === null) return false;
-      if (names.includes(parent)) return true;
-      return removedSet.has(parent) && isProvenRemoved(parent);
-    };
-    const provenRemoved = removed.filter(isProvenRemoved);
-    const unprovenRemoved = removed.filter((n) => !provenRemoved.includes(n));
-    reindexAndRelist(
-      deps,
-      fsPath,
-      [...names, ...unprovenRemoved],
-      provenRemoved,
-    );
+    reindexAndRelist(deps, fsPath, names, removed);
     return;
   }
 
