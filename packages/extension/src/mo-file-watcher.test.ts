@@ -66,16 +66,126 @@ beforeEach(() => {
 });
 
 describe("handleMoChange", () => {
-  it("ignores our own write matched by content through the guard", async () => {
+  it("skips loadFile/deleteClass for our own write, matched by content through the guard, but still re-lists its own scope", async () => {
     const guard = createSelfWriteGuard();
     guard.record(FILE, "model Bar end Bar;");
-    const { deps, client, childrenChanged } = makeDeps({ guard });
+    const { deps, client, childrenChanged, notifySourceChanged } = makeDeps({
+      guard,
+    });
 
     await handleMoChange(deps, FILE);
 
-    expect(client.parseFile).not.toHaveBeenCalled();
     expect(client.loadFile).not.toHaveBeenCalled();
-    expect(childrenChanged).not.toHaveBeenCalled();
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(client.parseFile).toHaveBeenCalledWith({ fileName: FILE });
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg.Bar");
+    expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg.Bar");
+    expect(deps.index.get(FILE)).toEqual(["My.Pkg.Bar"]);
+  });
+
+  it("re-lists a class's own scope on a self-write, so a nested class the save added is picked up (#446)", async () => {
+    // `parseFile` reports top-level declarations only, so adding nested `Bar`
+    // leaves the file's class set at `Foo`. What surfaces it is the re-list of
+    // `Foo`'s own children, which the sidebar answers from OMC.
+    const guard = createSelfWriteGuard();
+    const text = "package Foo model Bar end Bar; end Foo;";
+    guard.record(FILE, text);
+    const { deps, client, childrenChanged, notifySourceChanged } = makeDeps({
+      guard,
+      readFile: async () => text,
+    });
+    deps.index.set(FILE, ["Foo"]);
+    client.parseFile.mockResolvedValue({ classNames: ["Foo"] });
+
+    await handleMoChange(deps, FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(childrenChanged).toHaveBeenCalledWith("Foo");
+    expect(childrenChanged).toHaveBeenCalledWith(null);
+    expect(notifySourceChanged).toHaveBeenCalledWith("Foo");
+  });
+
+  it("indexes a file a self-write created, which was never seeded", async () => {
+    const guard = createSelfWriteGuard();
+    const text = "model Bar end Bar;";
+    guard.record(FILE, text);
+    const { deps } = makeDeps({ guard, readFile: async () => text });
+
+    await handleMoChange(deps, FILE);
+
+    expect(deps.index.get(FILE)).toEqual(["My.Pkg.Bar"]);
+  });
+
+  it("drops a class the file no longer declares from the index on a self-write, without calling deleteClass", async () => {
+    // `seedPathClassIndex` indexes a multi-top-level file without refusing it
+    // — only `handleMoChange` turns that shape away — so a seeded entry can
+    // hold names the file no longer declares after a rewrite. OMC already has
+    // the post-write text through `writeFile`'s own `loadString`.
+    const guard = createSelfWriteGuard();
+    const text = "model Foo end Foo;";
+    guard.record(FILE, text);
+    const { deps, client, childrenChanged, notifySourceChanged } = makeDeps({
+      guard,
+      readFile: async () => text,
+    });
+    deps.index.set(FILE, ["Foo", "Baz"]);
+    client.parseFile.mockResolvedValue({ classNames: ["Foo"] });
+
+    await handleMoChange(deps, FILE);
+
+    expect(client.deleteClass).not.toHaveBeenCalled();
+    expect(deps.index.get(FILE)).toEqual(["Foo"]);
+    expect(childrenChanged).toHaveBeenCalledWith(null);
+    expect(notifySourceChanged).toHaveBeenCalledWith("Baz");
+  });
+
+  it("proceeds on a self-write even when isBusy would refuse an external edit", async () => {
+    const guard = createSelfWriteGuard();
+    guard.record(FILE, "model Bar end Bar;");
+    const { deps, client, childrenChanged } = makeDeps({
+      guard,
+      isBusy: () => true,
+    });
+
+    await handleMoChange(deps, FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+    expect(recordedMessages).toHaveLength(0);
+  });
+
+  it("does not bump a dirty document for the package a self-write to a nested class rewrote", async () => {
+    // Saving `Foo.Bar` rewrites the whole `Foo` file, so the re-list covers
+    // `Foo` — whose own source document is open with unsaved edits, and would
+    // read the bump as a disk change it has to reconcile.
+    setTabGroups([
+      {
+        viewColumn: 1,
+        tabs: [
+          {
+            input: new TabInputCustom(sourceUriFor("Foo"), "default"),
+            isDirty: true,
+          },
+        ],
+      },
+    ]);
+    const guard = createSelfWriteGuard();
+    const text = "package Foo model Bar end Bar; end Foo;";
+    guard.record(FILE, text);
+    const { deps, client, childrenChanged, notifySourceChanged } = makeDeps({
+      guard,
+      isBusy: isDeclaredClassBusy,
+      readFile: async () => text,
+    });
+    deps.index.set(FILE, ["Foo"]);
+    client.parseFile.mockResolvedValue({ classNames: ["Foo"] });
+
+    await handleMoChange(deps, FILE);
+
+    expect(notifySourceChanged).not.toHaveBeenCalledWith("Foo");
+    expect(childrenChanged).toHaveBeenCalledWith("Foo");
   });
 
   it("loads a foreign edit and refreshes the class's scope and source", async () => {
