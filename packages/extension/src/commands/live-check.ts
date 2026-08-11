@@ -206,10 +206,27 @@ async function runCheck(
     );
     // `loadString` binds every class in the text to `filename`, so loading a
     // buffer that declares several would leave OMC holding a file no save can
-    // write back without dropping one (#452). The parse diagnostics above
-    // still publish; only the semantic stage is skipped.
+    // write back without dropping one (#452). Such a buffer parses clean, so
+    // it carries no messages of its own — publish a synthetic one rather than
+    // let the set below silently clear the squiggles the user had. Riding the
+    // diagnostic pipeline (not a notification) keeps it from firing per
+    // keystroke, and it clears itself when the second class goes away.
     if (declared.length > 1) {
       log.warn("liveCheck", multiEntityMessage(filename, declared));
+      messages.push({
+        info: {
+          filename,
+          readonly: false,
+          lineStart: 1,
+          columnStart: 1,
+          lineEnd: 1,
+          columnEnd: 1,
+        },
+        message: multiEntityMessage(filename, declared),
+        kind: "scripting",
+        level: "warning",
+        id: 0,
+      });
     } else if (!hasParseError) {
       // Syntax-clean — load into OMC and run the semantic check.
       try {

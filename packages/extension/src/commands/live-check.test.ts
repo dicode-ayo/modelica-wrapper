@@ -224,7 +224,11 @@ describe("registerLiveCheck", () => {
     expect(client.parseString).toHaveBeenCalled();
     expect(client.loadString).not.toHaveBeenCalled();
     expect(client.checkModel).not.toHaveBeenCalled();
-    expect(set).toHaveBeenCalled();
+    // Such a buffer parses clean, so without a synthetic diagnostic the set
+    // below would clear the user's squiggles and say nothing about why.
+    const [, diagnostics] = set.mock.calls.at(-1) ?? [];
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics?.[0]?.message).toContain("P.A, P.B");
   });
 
   it("checks nothing for a class whose file OMC reports read-only", async () => {

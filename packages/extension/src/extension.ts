@@ -332,10 +332,10 @@ async function autoLoadWorkspaceModels(
     );
     if (skipped.length > 0) {
       void vscode.window.showWarningMessage(
-        `Modelica: skipped ${skipped.length} file(s) that declare several ` +
-          `top-level classes — ${skipped
-            .map((s) => path.basename(s.fileName))
-            .join(", ")}. See the Modelica output channel for details.`,
+        `Modelica: skipped ${skipped
+          .map((s) => path.basename(s.fileName))
+          .join(", ")} — each declares several top-level classes. See the ` +
+          `Modelica output channel for details.`,
       );
     }
   } catch (err) {
