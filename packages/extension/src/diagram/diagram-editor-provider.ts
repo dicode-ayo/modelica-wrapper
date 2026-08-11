@@ -9,14 +9,23 @@ import type {
 } from "@dicode/omc-client";
 import { produceSimulationModel } from "@dicode/omc-client";
 
+import { assertUnreachable } from "@dicode/modelica-lang-core";
+
 import { log } from "../logger.js";
 import { qualifiedNameFromUri } from "../source-provider.js";
+import {
+  iconHonorsGesture,
+  isGestureMessage,
+  type ParameterFormKind,
+  type WebviewToExtension,
+} from "../webview/gestures.js";
 import type {
   DiagramCommandId,
   ExtensionToWebview,
-  WebviewToExtension,
 } from "../webview/protocol.js";
 import { createReadyGate, type ReadyGate } from "../webview/ready-gate.js";
+import { renderPlaceholderPage } from "../webview/webview-page.js";
+import type { WriteVerdict, WriteVerdicts } from "../write-verdict.js";
 
 import { applyEdits } from "./apply-edits.js";
 import {
@@ -31,8 +40,6 @@ import {
 } from "./copy-paste.js";
 import {
   defaultScheduler,
-  isReadOnlyDocument,
-  READ_ONLY_EDIT_MESSAGE,
   reloadBufferIntoOmc,
   REVERSE_SYNC_DEBOUNCE_MS,
   type Scheduler,
@@ -43,7 +50,7 @@ import {
   type LayoutEdit,
 } from "./diff-layout.js";
 import { renderDiagramWebviewHtml } from "./diagram-webview-html.js";
-import { isShapeKey, parseEntityKey } from "./entity-key.js";
+import { parseKey } from "@dicode/diagram-ui/entity-keys";
 import { LibrarySource } from "./library-source.js";
 import {
   applyClassParameterEdits,
@@ -115,6 +122,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   private constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly ensureClient: () => Promise<OmcClient>,
+    private readonly writeVerdicts: WriteVerdicts,
     private readonly mode: DiagramMode,
     private readonly onClassContentChanged?: (className: string) => void,
   ) {}
@@ -122,6 +130,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
   static register(
     context: vscode.ExtensionContext,
     ensureClient: () => Promise<OmcClient>,
+    writeVerdicts: WriteVerdicts,
     viewType: string,
     mode: DiagramMode,
     onClassContentChanged?: (className: string) => void,
@@ -129,6 +138,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
     const provider = new DiagramEditorProvider(
       context.extensionUri,
       ensureClient,
+      writeVerdicts,
       mode,
       onClassContentChanged,
     );
@@ -147,6 +157,7 @@ export class DiagramEditorProvider implements vscode.CustomTextEditorProvider {
       webviewPanel,
       this.extensionUri,
       this.ensureClient,
+      this.writeVerdicts,
       document,
       this.mode,
       this.onClassContentChanged,
@@ -250,6 +261,7 @@ export function resolveDiagramEditor(
   webviewPanel: vscode.WebviewPanel,
   extensionUri: vscode.Uri,
   ensureClient: () => Promise<OmcClient>,
+  writeVerdicts: WriteVerdicts,
   document: vscode.TextDocument,
   mode: DiagramMode,
   onClassContentChanged?: (className: string) => void,
@@ -270,7 +282,16 @@ export function resolveDiagramEditor(
   };
   DiagramEditorProvider.addSession(session);
 
-  const sub = webview.onDidReceiveMessage((msg: WebviewToExtension) => {
+  const sub = webview.onDidReceiveMessage((msg: unknown) => {
+    // `postMessage` delivers whatever the webview serialized, and nothing
+    // downstream re-checks it.
+    if (
+      !isGestureMessage(msg, (reason) =>
+        log.warn("diagramEditor", `dropped webview message: ${reason}`),
+      )
+    ) {
+      return;
+    }
     if (msg.type === "ready") {
       gate.markReady();
       return;
@@ -308,12 +329,17 @@ export function resolveDiagramEditor(
           mode === "icon"
             ? await fetchIconLayout(client, className)
             : await fetchDiagramLayout(client, className);
-        // A read-only class (an MSL library, reported by the source provider's
-        // stat) still renders and answers read actions, but rejects edits.
-        // Evaluated after the fetch: fetching resolves a not-yet-loaded class,
-        // so a verdict taken earlier (e.g. on a restored tab) would read as
-        // writable and strand the editor in edit mode.
-        const readOnly = await isReadOnlyDocument(document);
+        // A class that can't be written still renders and answers read
+        // actions, but rejects edits. Evaluated after the fetch: fetching
+        // resolves a not-yet-loaded class, so a verdict taken earlier (e.g. on
+        // a restored tab) would read as writable and strand the editor in edit
+        // mode.
+        const verdict = await writeVerdicts.forDocument(
+          client,
+          document,
+          className,
+          "edit",
+        );
         controller = new DiagramEditController(
           {
             client,
@@ -328,14 +354,14 @@ export function resolveDiagramEditor(
           layout,
           (onForeignChange) => createShadowBuffer(document, onForeignChange),
           defaultScheduler,
-          readOnly,
+          verdict,
           mode,
         );
         gate.send({
           type: "init",
           layout,
           className,
-          readOnly,
+          readOnly: !verdict.ok,
           hasClipboard: !diagramClipboard.isEmpty,
         });
       } catch (err) {
@@ -361,7 +387,12 @@ export function resolveDiagramEditor(
   void (async (): Promise<void> => {
     const className = await classNameFromFile(document, ensureClient);
     if (className === undefined) {
-      webview.html = renderPlaceholderHtml(webview.cspSource);
+      webview.html = renderPlaceholderPage({
+        cspSource: webview.cspSource,
+        title: "Modelica diagram",
+        message:
+          "Open a Modelica class from the library sidebar to see its diagram.",
+      });
       return;
     }
     start(className);
@@ -398,25 +429,37 @@ export class DiagramEditController {
   private prevLayout: DiagramLayout;
   private readonly shadow: ShadowBuffer;
   private reverseTimer: { cancel(): void } | undefined;
+  /**
+   * The layout the webview last reported, waiting to be reconciled. One slot,
+   * not a list: a report supersedes its predecessor rather than following it.
+   */
+  private pendingChange: DiagramLayout | null = null;
+  /**
+   * Set when a settle was suppressed because a report was already queued. The
+   * reconcile of that report pays it: a reported edit needs no settle of its
+   * own, but one owed to some other path — a paste, a drop, a parameter — is
+   * carrying something the webview has no other way to learn.
+   */
+  private settleOwed = false;
   // True from the moment a reverse sync is enqueued until it resolves —
   // covers the gap between the debounce timer firing and the queued unit's
   // `loadString`/refetch actually completing, which `reverseTimer` alone
   // (cleared the instant the timer fires) does not.
   private reverseSyncInFlight = false;
 
-  // Per-modal submit state, captured when a parameter modal opens and read
-  // back when it submits — mirrors the diagram panel's closure state.
+  // Per-modal submit state, captured when a modal opens and read back when it
+  // submits — mirrors the diagram panel's closure state.
   private classParamRefs: Record<string, ClassParameterRef> = {};
   private classParamInitialValues: Record<string, unknown> = {};
   private componentParamRefs: Record<string, ComponentParameterRef> = {};
   private componentParamInitialValues: Record<string, unknown> = {};
   private componentParamComponentName: string | null = null;
-  // The shape a shapeProperties modal is editing — captured on selection, read
+  // The shape a shapeProperties modal is editing — captured when it opens, read
   // back on submit.
   private shapeLayerKind: GraphicsLayer | null = null;
   private shapeIndex: number | null = null;
   private shapeKind: string | null = null;
-  // The exact shape captured at selection. The modal stays open across queued
+  // The exact shape captured when the modal opened. It stays open across queued
   // units, so an interleaved reverse-sync can re-fetch `prevLayout` with shifted
   // graphics indices; submit requires this identity so an edit can't land on a
   // different shape that now occupies the same index/kind/layer.
@@ -438,7 +481,7 @@ export class DiagramEditController {
       onForeignChange: (document: vscode.TextDocument) => void,
     ) => ShadowBuffer,
     private readonly scheduler: Scheduler = defaultScheduler,
-    private readonly readOnly: boolean = false,
+    private readonly verdict: WriteVerdict = { ok: true },
     private readonly mode: DiagramMode = "diagram",
   ) {
     this.prevLayout = initialLayout;
@@ -448,39 +491,40 @@ export class DiagramEditController {
   }
 
   /**
-   * Reject an edit against a read-only class (an MSL / installed-library
-   * source): the diagram renders and read actions work, but mutating the class
-   * source is refused so we never dirty a buffer that can't be saved.
+   * Reject an edit against a class the write verdict refuses: the diagram
+   * renders and read actions work, but mutating the class source is refused so
+   * we never dirty a buffer that can't be saved.
    */
   private rejectIfReadOnly(): boolean {
-    if (!this.readOnly) return false;
-    this.reportError(READ_ONLY_EDIT_MESSAGE);
+    if (this.verdict.ok) return false;
+    this.reportError(this.verdict.reason);
     return true;
   }
 
   private queue: Promise<void> = Promise.resolve();
 
   /**
-   * Serialize edits through a one-slot promise chain so each unit's full
-   * apply→reflect (or reverse sync) — which advances `prevLayout` — completes
-   * before the next one diffs. Otherwise concurrent edits would diff against a
-   * stale layout, and an undo's `loadString` racing an in-flight edit's writes
-   * on the single OMC socket would corrupt state. This orders work within one
-   * editor; cross-editor socket contention is the client's `SerialQueue`'s job.
+   * Serialize work through a one-slot promise chain, so an edit's writes and an
+   * undo's `loadString` never interleave on the single OMC socket, and each
+   * unit sees the class as the one before it left it. This orders work within
+   * one editor; cross-editor socket contention is the client's `SerialQueue`'s
+   * job.
    */
   handle(msg: WebviewToExtension): Promise<void> {
-    if (this.reverseSyncIsRacing() && msg.type === "change") {
-      // `next` was computed by the webview against the diagram as it stood
-      // before the reverse sync racing this message; diffing it against
-      // `prevLayout` once that sync lands could invent edits — e.g. a false
-      // `componentDeleted` for something the sync alone restored — instead of
-      // the drag the user actually made. Drop it: the reverse sync's own
-      // `layout` push resyncs the webview, and the gesture can be repeated
-      // against it.
-      this.reportError(
-        "the diagram was resynced from an external change — please retry the edit",
-      );
-      return this.queue;
+    // Every message, so an undo lands in OMC before the next unit reads the class.
+    const racing = this.flushRacingReverseSync();
+    if (msg.type === "change") {
+      if (racing) {
+        // The webview computed this against the diagram as it stood before the
+        // reverse sync racing it. Reconciling it afterwards would read whatever
+        // the sync restored as something the user deleted. Drop it: the sync's
+        // own `layout` push resyncs the webview to reconcile against.
+        this.reportError(
+          "the diagram was resynced from an external change — please retry the edit",
+        );
+        return this.queue;
+      }
+      this.pendingChange = msg.layout;
     }
     return this.enqueue(() => this.dispatch(msg));
   }
@@ -504,14 +548,13 @@ export class DiagramEditController {
   }
 
   /**
-   * True while a foreign change hasn't finished syncing into OMC — whether
-   * it's still a pending timer (not yet enqueued) or already enqueued/running
-   * (`loadString`/refetch in flight). A pending timer is flushed here
-   * (cancelled and enqueued ahead of the caller) rather than left to fire on
-   * its own, so a racing edit never diffs against a `prevLayout` the sync
-   * hasn't reverted yet — whichever of the two windows it lands in.
+   * Flush a pending reverse sync ahead of the caller and report whether one is
+   * racing it — either still a timer (not yet enqueued) or already
+   * enqueued/running (`loadString`/refetch in flight). Flushing rather than
+   * letting the timer fire on its own is what keeps a racing edit from reading
+   * a class the sync has not reverted yet, whichever window it lands in.
    */
-  private reverseSyncIsRacing(): boolean {
+  private flushRacingReverseSync(): boolean {
     if (this.reverseTimer !== undefined) {
       this.reverseTimer.cancel();
       this.runReverseSyncNow();
@@ -523,6 +566,14 @@ export class DiagramEditController {
   private runReverseSyncNow(): void {
     this.reverseTimer = undefined;
     this.reverseSyncInFlight = true;
+    // Same reason the racing `change` above is dropped: this one was reported
+    // against the pre-sync diagram too.
+    if (this.pendingChange !== null) {
+      this.pendingChange = null;
+      this.reportError(
+        "the diagram was resynced from an external change — please retry the edit",
+      );
+    }
     void this.enqueue(() =>
       this.reverseSync().finally(() => {
         this.reverseSyncInFlight = false;
@@ -553,25 +604,27 @@ export class DiagramEditController {
       const reload = await reloadBufferIntoOmc(client, document);
       if (!reload.ok) {
         this.reportError(reload.message);
+        // This sync dropped whatever was reported to make way for it, and then
+        // wrote nothing. Without a push the webview goes on showing an edit no
+        // class ever took.
+        this.publishLayout(this.prevLayout);
         return;
       }
-      const layout = await this.refetch(client, className);
-      this.prevLayout = layout;
-      this.deps.gate.send({ type: "layout", layout });
+      this.publishLayout(await this.refetch(client, className));
       this.deps.onClassContentChanged?.(className);
     } catch (err) {
       this.reportError(`reverse sync failed: ${(err as Error).message}`);
+      this.publishLayout(this.prevLayout);
     }
   }
 
   private async dispatch(msg: WebviewToExtension): Promise<void> {
-    // Icon mode honors only shape edits and connector placement; every other
-    // gesture (add non-connector, connections, change-class, parameters,
-    // simulate, check) is a no-op here.
-    if (this.mode === "icon" && !iconHonorsMessage(msg)) return;
+    // The icon editor works on the class's own icon annotation, so each
+    // gesture's declaration says whether it belongs to that view.
+    if (this.mode === "icon" && !iconHonorsGesture(msg)) return;
     switch (msg.type) {
       case "change":
-        await this.onChange(msg.layout);
+        await this.drainChange();
         return;
       case "addComponent":
         await this.onAddComponent(msg.className, msg.position);
@@ -597,8 +650,8 @@ export class DiagramEditController {
       case "parametersCancel":
         this.onParametersCancel(msg.kind);
         return;
-      case "selectionChange":
-        this.onSelectionChange(msg.keys);
+      case "editShape":
+        this.onEditShape(msg.key);
         return;
       case "changeClassRequest":
         await this.onChangeClassRequest(msg.componentName, msg.currentClass);
@@ -612,32 +665,125 @@ export class DiagramEditController {
       case "paste":
         await this.onPaste();
         return;
-      default:
+      case "ready":
+      case "inputFocus":
+        // Session-scoped: answered in `resolveDiagramEditor`, which exists
+        // before the controller does and outlives every layout it holds.
         return;
+      case "selectionChange":
+        // Selection is the webview's own state; the host tracks nothing it
+        // would have to reconcile.
+        return;
+      default:
+        return assertUnreachable(msg, "WebviewToExtension");
     }
   }
 
-  private async onChange(next: DiagramLayout): Promise<void> {
-    if (this.rejectIfReadOnly()) return;
+  /**
+   * Take whatever the webview last reported and reconcile OMC to it. A newer
+   * report supersedes an older one outright — each carries the whole layout, so
+   * nothing an earlier one said is missing from it — which is why a burst of
+   * gestures collapses to however many the queue could not keep up with.
+   */
+  private async drainChange(): Promise<void> {
+    const next = this.pendingChange;
+    // An earlier unit already took it; this one has nothing left to do.
+    if (next === null) return;
+    this.pendingChange = null;
+    await this.applyChange(next);
+  }
+
+  /**
+   * Reconcile the class to the layout the webview is showing. The base is read
+   * from OMC here, so that whatever else has touched the class, the difference
+   * between what it holds and what the user is looking at is exactly the set of
+   * edits that closes the gap.
+   */
+  private async applyChange(next: DiagramLayout): Promise<void> {
+    if (this.rejectIfReadOnly()) {
+      // The webview has already moved what the user dragged. Nothing else will
+      // correct it — a reported edit gets no settle of its own — so it would
+      // otherwise keep showing an edit the class never took.
+      await this.pushCanonicalLayout();
+      return;
+    }
     const { client, className } = this.deps;
     try {
-      const result = await applyDiagramEdits(
-        client,
-        className,
-        this.prevLayout,
-        next,
-        this.refetch,
-      );
-      if (result === null) return;
-      if (result.failed.length > 0) {
+      const current = await this.refetch(client, className);
+      const result = await applyDiagramEdits(client, className, current, next);
+      if (result === null) {
+        // Nothing to write, but a withheld settle may have left `prevLayout`
+        // behind what OMC and the screen both already hold. A null diff only
+        // proves the diffed projection matches — an owed settle can be carrying
+        // what the diff never compares, a parameter value read into a label or
+        // a swapped component's icon — so it is paid from the base in hand.
+        this.prevLayout = current;
+        if (this.settleOwed) this.publishLayout(current);
+        return;
+      }
+      if (result.failed.length > 0 || result.rolledBack) {
         this.reportError(
           `${result.failed.length} edit(s) failed: ${result.failed.at(0)?.error ?? "unknown"}`,
         );
+        // A rolled-back batch left the class byte-identical, so writing the
+        // buffer would dirty the document and record an undo step for an edit
+        // that did not happen. A partial failure did change it, so it still
+        // reflects.
+        if (!result.rolledBack) await this.writeBuffer();
+        // Now the screen and the class disagree, which is the one thing a
+        // push is for. A further report reconciles against whatever the failed
+        // batch left behind — the base is read fresh, so it closes the gap from
+        // there rather than needing the burst dropped.
+        await this.pushCanonicalLayout();
+        return;
       }
-      await this.reflect(result.layout);
+      await this.writeBuffer();
+      if (this.settleOwed) {
+        await this.pushCanonicalLayout();
+        return;
+      }
+      // Nothing to tell the webview: it is already showing what the class now
+      // holds, and pushing a re-read of it can only arrive late enough to land
+      // on a gesture that has moved past it. Drift does not accumulate,
+      // because the next reconcile reads its base fresh.
+      this.prevLayout = next;
     } catch (err) {
       this.reportError(`applying edits failed: ${(err as Error).message}`);
+      await this.pushCanonicalLayout();
     }
+  }
+
+  /**
+   * Re-read the class and push it, but only once the webview has stopped
+   * reporting. Pushing a layout that a queued report has already superseded
+   * settles the diagram onto a state the user has moved past, and pushing at
+   * all mid-gesture moves what is under the pointer — which the webview guards
+   * separately, since a gesture in flight has reported nothing yet.
+   */
+  private async pushCanonicalLayout(): Promise<void> {
+    // The re-fetch is the expensive half, so skip it outright when a report is
+    // already waiting; `publishLayout` checks again on the far side of it.
+    if (this.pendingChange !== null) {
+      this.settleOwed = true;
+      return;
+    }
+    const { client, className } = this.deps;
+    this.publishLayout(await this.refetch(client, className));
+  }
+
+  /**
+   * Adopt `layout` as canonical, and hand it to the webview unless a further
+   * report is already queued. That report's settle supersedes this one, and
+   * pushing now would put the diagram back on a state the user has moved past.
+   */
+  private publishLayout(layout: DiagramLayout): void {
+    this.prevLayout = layout;
+    if (this.pendingChange !== null) {
+      this.settleOwed = true;
+      return;
+    }
+    this.settleOwed = false;
+    this.deps.gate.send({ type: "layout", layout });
   }
 
   private async onAddComponent(
@@ -896,19 +1042,32 @@ export class DiagramEditController {
   }
 
   private async onParametersSubmit(
-    kind: string,
+    kind: ParameterFormKind,
     values: Record<string, unknown>,
   ): Promise<void> {
-    const { client, className, gate } = this.deps;
     try {
-      if (kind === "simulate") {
+      await this.applyParameterSubmit(kind, values);
+    } catch (err) {
+      this.reportError(`applying parameters failed: ${(err as Error).message}`);
+    } finally {
+      this.deps.gate.send({ type: "parametersClose" });
+    }
+  }
+
+  private async applyParameterSubmit(
+    kind: ParameterFormKind,
+    values: Record<string, unknown>,
+  ): Promise<void> {
+    const { client, className } = this.deps;
+    switch (kind) {
+      case "simulate":
         // Simulate runs the model and emits a result file; it does not change
-        // the class source, so there is nothing to reflect to the buffer (and
-        // it stays allowed on a read-only class).
+        // the class source, so there is nothing to reflect to the buffer, and
+        // it stays allowed on a read-only class.
         await runSimulate(client, className, values);
-      } else if (this.rejectIfReadOnly()) {
-        // A parameter / shape submit mutates the class source — refused.
-      } else if (kind === "classParams") {
+        return;
+      case "classParams":
+        if (this.rejectIfReadOnly()) return;
         await applyClassParameterEdits(
           client,
           className,
@@ -917,25 +1076,28 @@ export class DiagramEditController {
           values,
         );
         await this.reflect(await this.refetch(client, className));
-      } else if (kind === "componentParams") {
-        if (this.componentParamComponentName !== null) {
-          await applyComponentParameterEdits(
-            client,
-            className,
-            this.componentParamComponentName,
-            this.componentParamRefs,
-            this.componentParamInitialValues,
-            values,
-          );
-          await this.reflect(await this.refetch(client, className));
-        }
-      } else if (kind === "shapeProperties") {
-        await this.applyShapePropertiesSubmit(values);
+        return;
+      case "componentParams": {
+        if (this.rejectIfReadOnly()) return;
+        const componentName = this.componentParamComponentName;
+        if (componentName === null) return;
+        await applyComponentParameterEdits(
+          client,
+          className,
+          componentName,
+          this.componentParamRefs,
+          this.componentParamInitialValues,
+          values,
+        );
+        await this.reflect(await this.refetch(client, className));
+        return;
       }
-    } catch (err) {
-      this.reportError(`applying parameters failed: ${(err as Error).message}`);
-    } finally {
-      gate.send({ type: "parametersClose" });
+      case "shapeProperties":
+        if (this.rejectIfReadOnly()) return;
+        await this.applyShapePropertiesSubmit(values);
+        return;
+      default:
+        return assertUnreachable(kind, "ParameterFormKind");
     }
   }
 
@@ -1013,17 +1175,32 @@ export class DiagramEditController {
     await this.reflect(await this.refetch(client, className));
   }
 
-  private onParametersCancel(kind: string): void {
-    if (kind === "componentParams") this.clearComponentParamState();
-    if (kind === "shapeProperties") this.clearShapeState();
+  private onParametersCancel(kind: ParameterFormKind): void {
+    switch (kind) {
+      case "componentParams":
+        this.clearComponentParamState();
+        return;
+      case "shapeProperties":
+        this.clearShapeState();
+        return;
+      case "classParams":
+      case "simulate":
+        // Neither captures state the modal has to hand back.
+        return;
+      default:
+        return assertUnreachable(kind, "ParameterFormKind");
+    }
   }
 
-  private onSelectionChange(keys: string[]): void {
-    if (keys.length !== 1) return;
-    const key = keys[0];
-    if (key === undefined) return;
-    const parsed = parseEntityKey(key);
-    if (parsed === null || !isShapeKey(parsed)) return;
+  /**
+   * Open the shape properties modal, capturing the shape it was opened on so
+   * the submit can refuse to land on a different one. Driven by a double
+   * click: opening on selection interrupts every pick of a shape, including
+   * the one a drag starts with.
+   */
+  private onEditShape(key: string): void {
+    const parsed = parseKey(key);
+    if (parsed?.kind !== "shape") return;
     if (!Number.isInteger(parsed.index)) return;
     const found = lookupHostShape(
       this.prevLayout,
@@ -1156,45 +1333,30 @@ export class DiagramEditController {
    * document dirty.
    */
   private async reflect(layout: DiagramLayout): Promise<void> {
-    this.prevLayout = layout;
-    this.deps.gate.send({ type: "layout", layout });
-    this.deps.onClassContentChanged?.(this.deps.className);
+    this.publishLayout(layout);
+    await this.writeBuffer();
+  }
+
+  /** Reflect the class's canonical OMC source into the shadow buffer,
+   *  recording one undo step and flipping the document dirty. */
+  private async writeBuffer(): Promise<void> {
     const { contents } = await this.deps.client.listFile({
       typeName: this.deps.className,
     });
     // A built-in with no listable source returns empty; writing that would wipe
     // the buffer.
     if (contents.length > 0) await this.shadow.write(contents);
+    // Tied to the write rather than to the push: the rendered icon is stale
+    // from the moment the class changes, whether or not a settle goes out.
+    this.deps.onClassContentChanged?.(this.deps.className);
   }
 
   private reportError(message: string): void {
     this.deps.gate.send({ type: "error", message });
     log.warn("diagramEditor", message);
-  }
-}
-
-/**
- * Webview messages the icon editor honors. Shape draw/edit flows through
- * `change` and the `shapeProperties` modal (`selectionChange` +
- * `parametersSubmit`/`parametersCancel`); connector placement flows through
- * `addComponent` (restriction-gated in `onAddComponent`), and paste through the
- * same restriction in `pasteableItems`. Everything else — connections,
- * change-class, class/component parameters, simulate, check — is a no-op in
- * icon mode.
- */
-function iconHonorsMessage(msg: WebviewToExtension): boolean {
-  switch (msg.type) {
-    case "change":
-    case "selectionChange":
-    case "addComponent":
-    case "copySelection":
-    case "paste":
-      return true;
-    case "parametersSubmit":
-    case "parametersCancel":
-      return msg.kind === "shapeProperties";
-    default:
-      return false;
+    // The webview has nowhere to show this, and an edit that silently does not
+    // land reads as the diagram losing the user's work for no reason.
+    void vscode.window.showErrorMessage(`Diagram: ${message}`);
   }
 }
 
@@ -1241,33 +1403,4 @@ async function classNameFromFile(
     );
     return undefined;
   }
-}
-
-function renderPlaceholderHtml(cspSource: string): string {
-  const csp = [
-    `default-src 'none'`,
-    `style-src ${cspSource} 'unsafe-inline'`,
-  ].join("; ");
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="${csp}" />
-    <title>Modelica diagram</title>
-    <style>
-      body {
-        margin: 0;
-        height: 100vh;
-        display: grid;
-        place-items: center;
-        font-family: var(--vscode-font-family);
-        color: var(--vscode-descriptionForeground);
-      }
-      p { max-width: 32rem; padding: 1rem; text-align: center; }
-    </style>
-  </head>
-  <body>
-    <p>Open a Modelica class from the library sidebar to see its diagram.</p>
-  </body>
-</html>`;
 }

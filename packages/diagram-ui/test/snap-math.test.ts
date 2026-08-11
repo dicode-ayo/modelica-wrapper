@@ -15,7 +15,7 @@ import {
   snapPlacement,
   snapPoint,
 } from "../src/interaction/snap-math.js";
-import { formatKey } from "../src/interaction/node-keys.js";
+import { formatKey } from "../src/interaction/entity-keys.js";
 
 describe("resolveSnapGrid: priority order", () => {
   it("returns the OMEdit default when the annotation is empty", () => {

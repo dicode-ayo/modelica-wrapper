@@ -1,24 +1,47 @@
+import { readdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import { REGISTRY, functionsByCategory, omcFunctionNames } from "./registry.js";
 
+const API_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "api");
+
+/** `src/api/` directories holding helper modules, not OMC wrappers. */
+const HELPER_DIRS = new Set(["diagram", "parameters-form"]);
+
+const CATEGORY_DIRS = readdirSync(API_DIR, { withFileTypes: true })
+  .filter((dirent) => dirent.isDirectory() && !HELPER_DIRS.has(dirent.name))
+  .map((dirent) => dirent.name);
+
+/** Wrapper file basenames in a category — one file, one OMC function. */
+function wrapperNames(category: string): string[] {
+  return readdirSync(resolve(API_DIR, category))
+    .filter(
+      (name) =>
+        name.endsWith(".ts") &&
+        name !== "index.ts" &&
+        !name.endsWith(".test.ts"),
+    )
+    .map((name) => name.slice(0, -".ts".length));
+}
+
 describe("registry", () => {
-  it("includes all 10 categories", () => {
-    const cats = new Set(omcFunctionNames.map((n) => REGISTRY[n].category));
-    expect(cats).toEqual(
-      new Set([
-        "browsing",
-        "contents",
-        "lifecycle",
-        "parameters",
-        "editing",
-        "elements",
-        "library",
-        "solver",
-        "execution",
-        "results",
-      ]),
-    );
+  /**
+   * The registry is the only surface `invoke()`, `omcFunctionNames`, `help.ts`
+   * and the MCP pipeline can see, so a wrapper file with no entry is invisible
+   * to all of them. Every other assertion here iterates the registry and so
+   * cannot notice; the filesystem is the independent reference.
+   */
+  it("has exactly one entry per wrapper file, in that file's category", () => {
+    const onDisk = CATEGORY_DIRS.flatMap((cat) =>
+      wrapperNames(cat).map((name) => `${cat}/${name}`),
+    ).sort();
+    const registered = omcFunctionNames
+      .map((name) => `${REGISTRY[name].category}/${name}`)
+      .sort();
+    expect(registered).toEqual(onDisk);
   });
 
   it("functionsByCategory groups them correctly", () => {
@@ -93,6 +116,10 @@ describe("registry", () => {
     expect(
       () => REGISTRY.searchClassNames.inputSchema.parse({}), // missing required searchText
     ).toThrow();
+    // An argument-less function takes `{}` and nothing else.
+    expect(() =>
+      REGISTRY.getModelicaPath.inputSchema.parse({ typeName: "Modelica" }),
+    ).toThrow();
   });
 
   it("input schemas accept well-formed inputs", () => {
@@ -105,6 +132,7 @@ describe("registry", () => {
       REGISTRY.searchClassNames.inputSchema.parse({ searchText: "PID" }),
     ).not.toThrow();
     expect(() => REGISTRY.getVersion.inputSchema.parse({})).not.toThrow();
+    expect(() => REGISTRY.getModelicaPath.inputSchema.parse({})).not.toThrow();
   });
 
   it("omcFunctionNames is sorted and complete", () => {

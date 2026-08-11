@@ -1,5 +1,10 @@
 import * as vscode from "vscode";
 
+import {
+  multiEntityMessage,
+  multipleTopLevelClassesInText,
+  type StringParseClient,
+} from "../single-entity-file.js";
 import { omcFilenameForDocument } from "../source-provider.js";
 
 /**
@@ -29,7 +34,7 @@ export const defaultScheduler: Scheduler = {
 export const REVERSE_SYNC_DEBOUNCE_MS = 150;
 
 /** The subset of OMC a reverse sync drives. */
-export interface BufferSyncClient {
+export interface BufferSyncClient extends StringParseClient {
   loadString(input: {
     data: string;
     filename: string;
@@ -41,10 +46,6 @@ export interface BufferSyncClient {
 
 export type ReloadResult = { ok: true } | { ok: false; message: string };
 
-/** Shared refusal message for both edit controllers' read-only gates. */
-export const READ_ONLY_EDIT_MESSAGE =
-  "This class is read-only and can't be edited.";
-
 /**
  * Reload `document`'s text into OMC, replacing the class. Drains stale
  * diagnostics first so a failure's `getErrorString` attributes only errors
@@ -55,9 +56,22 @@ export async function reloadBufferIntoOmc(
   document: vscode.TextDocument,
 ): Promise<ReloadResult> {
   await client.getErrorString();
+  const data = document.getText();
+  const filename = await omcFilenameForDocument(client, document.uri);
+  // `loadString` binds every class in the text to `filename`, so a buffer that
+  // declares several would leave OMC holding a file no save can write back
+  // without dropping one (#452).
+  const multiEntity = await multipleTopLevelClassesInText(
+    client,
+    data,
+    filename,
+  );
+  if (multiEntity) {
+    return { ok: false, message: multiEntityMessage(filename, multiEntity) };
+  }
   const { success } = await client.loadString({
-    data: document.getText(),
-    filename: await omcFilenameForDocument(client, document.uri),
+    data,
+    filename,
     merge: false,
   });
   if (!success) {
@@ -68,21 +82,4 @@ export async function reloadBufferIntoOmc(
     };
   }
   return { ok: true };
-}
-
-/**
- * Whether the document's backing source is read-only — the source provider
- * reports `Readonly` for MSL / installed-library classes, and a `file:` `.mo`
- * carries the real file's permission. Best-effort: a failed stat is treated as
- * writable so a transient error doesn't lock the editor.
- */
-export async function isReadOnlyDocument(
-  document: vscode.TextDocument,
-): Promise<boolean> {
-  try {
-    const stat = await vscode.workspace.fs.stat(document.uri);
-    return ((stat.permissions ?? 0) & vscode.FilePermission.Readonly) !== 0;
-  } catch {
-    return false;
-  }
 }

@@ -1,7 +1,7 @@
 import type { Point } from "@dicode/omc-client";
 
 import type { DiagramPoint } from "./gesture-mode.js";
-import { buildPolyShape } from "./layout-ops.js";
+import { buildPolyShape } from "./shape-build.js";
 import { PolylineDrawing } from "./polyline-drawing.js";
 import { snapPoint, type SnapGrid } from "./snap-math.js";
 import type { ToolEmit, ToolMode } from "./tool-mode.js";

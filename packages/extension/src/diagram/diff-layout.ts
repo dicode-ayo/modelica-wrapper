@@ -1,12 +1,28 @@
 import { moveWithin } from "@dicode/omc-client";
+
+import {
+  BITMAP_DEFAULTS,
+  defaultEllipseClosure,
+  ELLIPSE_DEFAULTS,
+  FILLED_SHAPE_DEFAULTS,
+  GRAPHIC_ITEM_DEFAULTS,
+  LINE_DEFAULTS,
+  POLYGON_DEFAULTS,
+  RECTANGLE_DEFAULTS,
+  TEXT_DEFAULTS,
+} from "@dicode/omc-client/shapes";
 import type {
+  Color,
   ConnectionLayout,
   DiagramLayout,
+  EllipseShape,
   Extent,
   IconLayer,
   LineStyle,
   Placement,
   Point,
+  PolygonShape,
+  RectangleShape,
   Shape,
 } from "@dicode/omc-client";
 
@@ -337,6 +353,112 @@ function ownShapes(
 }
 
 /**
+ * OMC reports an unset `textColor` as this triple rather than as the §18.6
+ * default, so it is what an absent `textColor` has to normalize to. It is a
+ * sentinel, not a color: an explicit black stays distinguishable from unset,
+ * and so stays writable.
+ */
+const UNSET_TEXT_COLOR: Color = [-1, -1, -1];
+
+/** The `FilledShape` five-tuple, resolved against §18.6 for one shape. */
+function filledShapeDefaults(
+  shape: PolygonShape | RectangleShape | EllipseShape,
+): {
+  lineColor: Color;
+  fillColor: Color;
+  pattern: string;
+  fillPattern: string;
+  lineThickness: number;
+} {
+  return {
+    lineColor: shape.lineColor ?? FILLED_SHAPE_DEFAULTS.lineColor,
+    fillColor: shape.fillColor ?? FILLED_SHAPE_DEFAULTS.fillColor,
+    pattern: shape.pattern ?? FILLED_SHAPE_DEFAULTS.pattern,
+    fillPattern: shape.fillPattern ?? FILLED_SHAPE_DEFAULTS.fillPattern,
+    lineThickness: shape.lineThickness ?? FILLED_SHAPE_DEFAULTS.lineThickness,
+  };
+}
+
+/**
+ * Fill a shape's optional §18.6 fields with their spec default, for the
+ * equality check `diffGraphics` runs — never for the edit payload. OMC
+ * materializes every field a shape's record type carries when it answers a
+ * write (an omitted `pattern` comes back `"Solid"`, an omitted `fillPattern`
+ * comes back `"None"`), while the webview only ever sends what the user set.
+ * Comparing the two by raw presence sees a spurious change on the very next
+ * reconcile of a shape nobody touched; comparing them normalized doesn't.
+ *
+ * Every default here is what live OMC answers for an unset field, pinned per
+ * kind by `reconcile-convergence.integration.test.ts`.
+ */
+function normalizeShape(shape: Shape): Shape {
+  const item = {
+    visible: shape.visible ?? GRAPHIC_ITEM_DEFAULTS.visible,
+    rotation: shape.rotation ?? GRAPHIC_ITEM_DEFAULTS.rotation,
+    origin: shape.origin ?? GRAPHIC_ITEM_DEFAULTS.origin,
+  };
+  switch (shape.kind) {
+    case "line":
+      return {
+        ...shape,
+        ...item,
+        color: shape.color ?? LINE_DEFAULTS.color,
+        thickness: shape.thickness ?? LINE_DEFAULTS.thickness,
+        pattern: shape.pattern ?? LINE_DEFAULTS.pattern,
+        smooth: shape.smooth ?? LINE_DEFAULTS.smooth,
+        arrow: shape.arrow ?? LINE_DEFAULTS.arrow,
+        arrowSize: shape.arrowSize ?? LINE_DEFAULTS.arrowSize,
+      };
+    case "polygon":
+      return {
+        ...shape,
+        ...item,
+        ...filledShapeDefaults(shape),
+        smooth: shape.smooth ?? POLYGON_DEFAULTS.smooth,
+      };
+    case "rectangle":
+      return {
+        ...shape,
+        ...item,
+        ...filledShapeDefaults(shape),
+        borderPattern: shape.borderPattern ?? RECTANGLE_DEFAULTS.borderPattern,
+        radius: shape.radius ?? RECTANGLE_DEFAULTS.radius,
+      };
+    case "ellipse": {
+      const startAngle = shape.startAngle ?? ELLIPSE_DEFAULTS.startAngle;
+      const endAngle = shape.endAngle ?? ELLIPSE_DEFAULTS.endAngle;
+      return {
+        ...shape,
+        ...item,
+        ...filledShapeDefaults(shape),
+        startAngle,
+        endAngle,
+        closure:
+          shape.closure ?? defaultEllipseClosure({ startAngle, endAngle }),
+      };
+    }
+    case "text":
+      return {
+        ...shape,
+        ...item,
+        fontName: shape.fontName ?? TEXT_DEFAULTS.fontName,
+        fontSize: shape.fontSize ?? TEXT_DEFAULTS.fontSize,
+        textColor: shape.textColor ?? UNSET_TEXT_COLOR,
+        horizontalAlignment:
+          shape.horizontalAlignment ?? TEXT_DEFAULTS.horizontalAlignment,
+        textStyle: shape.textStyle ?? TEXT_DEFAULTS.textStyle,
+      };
+    case "bitmap":
+      return {
+        ...shape,
+        ...item,
+        fileName: shape.fileName ?? BITMAP_DEFAULTS.fileName,
+        imageSource: shape.imageSource ?? BITMAP_DEFAULTS.imageSource,
+      };
+  }
+}
+
+/**
  * Order-independent, undefined-tolerant JSON of a value: object keys are
  * sorted and `undefined`-valued keys dropped (matching JSON semantics). Two
  * values whose optional fields are present-as-undefined vs absent, or whose
@@ -505,9 +627,9 @@ function diffGraphics(
     const before = ownShapes(prev[field], prev.className);
     const after = ownShapes(next[field], next.className);
     // Serialize once per layer: the reorder probe, the positional scans and
-    // the shrink path's LCS all compare shapes by value.
-    const beforeKeys = before.map(stableJson);
-    const afterKeys = after.map(stableJson);
+    // the shrink path's LCS below all reuse these same normalized keys.
+    const beforeKeys = before.map((s) => stableJson(normalizeShape(s)));
+    const afterKeys = after.map((s) => stableJson(normalizeShape(s)));
 
     if (before.length === after.length) {
       // A reorder permutes the array, which the positional scan below would

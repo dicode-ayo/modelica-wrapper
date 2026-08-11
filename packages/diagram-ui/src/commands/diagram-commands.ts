@@ -9,15 +9,15 @@ import {
   applyShapeSmoothToggle,
   applyShapeVertexDelete,
   ownShapeCount,
-  selectAllKeys,
   zOrderTarget,
   type ZOrderMove,
 } from "../interaction/layout-ops.js";
+import { selectAllKeys } from "../interaction/selection-ops.js";
 import {
   formatShapeKey,
   parseKey,
   vertexShapeKey,
-} from "../interaction/node-keys.js";
+} from "../interaction/entity-keys.js";
 import type { Command, CommandPlacement, CommandTarget } from "./command.js";
 import type { DiagramCommandId } from "./command-ids.js";
 import type { KeyChord } from "./keymap.js";

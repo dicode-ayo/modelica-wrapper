@@ -2,7 +2,8 @@ import type { Container } from "pixi.js";
 
 import type { SceneContext } from "../scene/scene-context.js";
 import type { SelectionProvider } from "./gesture-mode.js";
-import { entityKeyForNode, formatKey } from "./node-keys.js";
+import { formatKey } from "./entity-keys.js";
+import { entityKeyForNode } from "./node-keys.js";
 
 /**
  * Picker function: given client (viewport) pixel coords, return the
@@ -43,7 +44,7 @@ export interface InteractionManagerOptions {
 const DEFAULT_DOUBLE_CLICK_MS = 350;
 
 /** Pointer travel that makes a press a drag rather than a click. */
-const DRAG_SLOP_PX = 3;
+export const DRAG_SLOP_PX = 5;
 
 /**
  * The still-down press being watched, keyed to the pointer that made it. Only

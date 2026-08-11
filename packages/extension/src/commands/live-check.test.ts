@@ -19,7 +19,7 @@ import {
   workspaceListeners,
 } from "../../test-support/vscode-mock.js";
 
-import type { ModelicaSourceProvider } from "../source-provider.js";
+import { WriteVerdicts } from "../write-verdict.js";
 
 import type { CommandContext } from "./context.js";
 import { registerLiveCheck, type LiveCheckClient } from "./live-check.js";
@@ -53,16 +53,14 @@ function makeClient(overrides: Partial<LiveCheckClient> = {}) {
   let pending: ErrorMessage[] = [];
   const client = {
     getSourceFile: vi.fn(async () => ({ fileName: PACKAGE_MO })),
+    getModelicaPath: vi.fn(async () => ({
+      modelicaPath: "/home/u/.openmodelica/libraries",
+    })),
+    getClassInformation: vi.fn(async () => ({ fileReadOnly: false })),
     getErrorString: vi.fn(async () => ({ errorString: "" })),
-    parseString: vi.fn(async () => ({ names: ["P.A"] })),
+    parseString: vi.fn(async () => ({ classNames: ["P.A"] })),
     loadString: vi.fn(async () => ({ success: true })),
     checkModel: vi.fn(async () => ({ result: "" })),
-    // `lineNumberStart: 1` is what makes the derived shift 0; tests that
-    // exercise the shift override this.
-    getClassInformation: vi.fn(async () => ({
-      lineNumberStart: 1,
-      lineNumberEnd: DOC_LINES,
-    })),
     getMessagesStringInternal: vi.fn(async () => {
       const messages = pending;
       pending = [];
@@ -78,36 +76,12 @@ function makeClient(overrides: Partial<LiveCheckClient> = {}) {
   };
 }
 
-/**
- * A client whose `getMessagesStringInternal` returns a different batch on
- * each successive call — the pipeline reads it once after `parseString` and
- * once after `checkModel`, and only the second batch goes through the
- * sibling-file line-offset shift.
- */
-function makeSequencedClient(
-  responses: readonly ErrorMessage[][],
-  overrides: Partial<LiveCheckClient> = {},
-) {
-  let call = 0;
-  const getMessagesStringInternal = vi.fn(async () => {
-    const messages = responses[call] ?? [];
-    call++;
-    return { messages };
-  });
-  return makeClient({ getMessagesStringInternal, ...overrides }).client;
-}
-
-function makeContext(client: LiveCheckClient, readOnly = false) {
+function makeContext(client: LiveCheckClient) {
   const set = vi.fn();
   const ensureClient = vi.fn(async () => client);
-  // Typed against the provider so a rename there fails the build rather than
-  // leaving a green test whose read-only gate silently stopped firing.
-  const sourceProvider: Pick<ModelicaSourceProvider, "isReadOnly"> = {
-    isReadOnly: vi.fn(async () => readOnly),
-  };
   const ctx = {
     ensureClient,
-    sourceProvider,
+    writeVerdicts: new WriteVerdicts(),
     diagnostics: { set } as unknown as vscode.DiagnosticCollection,
   } as unknown as CommandContext;
   return { ctx, set, ensureClient };
@@ -235,171 +209,58 @@ describe("registerLiveCheck", () => {
     });
   });
 
-  it("checks nothing for a class the source provider reports read-only", async () => {
-    const { client } = makeClient();
-    const { ctx, set, ensureClient } = makeContext(client, true);
+  it("skips the load stage for a buffer declaring several top-level classes (#452)", async () => {
+    // Mid-edit the user has typed a second top-level class. `loadString` would
+    // bind both to the real file, leaving OMC holding a shape no save can
+    // write back. Parse diagnostics still publish.
+    const { client } = makeClient({
+      parseString: vi.fn(async () => ({ classNames: ["P.A", "P.B"] })),
+    });
+    const { ctx, set } = makeContext(client);
     register(ctx);
 
     await runPipeline();
 
-    // The gate sits above the client, so a read-only class never even spawns
-    // OMC on a workspace that hasn't needed it yet.
-    expect(ensureClient).not.toHaveBeenCalled();
+    expect(client.parseString).toHaveBeenCalled();
+    expect(client.loadString).not.toHaveBeenCalled();
+    expect(client.checkModel).not.toHaveBeenCalled();
+    // Such a buffer parses clean, so without a synthetic diagnostic the set
+    // below would clear the user's squiggles and say nothing about why.
+    const [, diagnostics] = set.mock.calls.at(-1) ?? [];
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics?.[0]?.message).toContain("P.A, P.B");
+  });
+
+  it("checks nothing for a class whose file OMC reports read-only", async () => {
+    const { client } = makeClient({
+      getClassInformation: vi.fn(async () => ({ fileReadOnly: true })),
+    });
+    const { ctx, set } = makeContext(client);
+    register(ctx);
+
+    await runPipeline();
+
+    // The gate sits above every mutating call, so an uneditable class is never
+    // loaded back into OMC.
     expect(client.parseString).not.toHaveBeenCalled();
     expect(client.loadString).not.toHaveBeenCalled();
     expect(set).not.toHaveBeenCalled();
   });
 
-  describe("a class stored ahead of siblings in a shared file", () => {
-    // The post-load `getClassInformation` says `A` now spans file lines
-    // [6, 8] — e.g. a sibling declared first occupies lines 1-5 of
-    // `package.mo`, and OMC reports `A`'s own diagnostics file-relative.
-    const CLASS_START_LINE = 6;
-    const CLASS_END_LINE = CLASS_START_LINE + DOC_LINES - 1;
-
-    it("drops a sibling's diagnostic even though its line falls inside the buffer's own range", async () => {
-      const client = makeSequencedClient(
-        [
-          [], // parseString read: nothing
-          // checkModel read: a diagnostic against the sibling declared ahead,
-          // at its real (small) file-relative line — inside [1, DOC_LINES]
-          // exactly like a diagnostic for the buffer itself would be.
-          [errorAt(PACKAGE_MO, "sibling error", 2)],
-        ],
-        {
-          getClassInformation: vi.fn(async () => ({
-            lineNumberStart: CLASS_START_LINE,
-            lineNumberEnd: CLASS_END_LINE,
-          })),
-        },
-      );
-      const { ctx, set } = makeContext(client);
-      register(ctx);
-
-      await runPipeline();
-
-      expect(set).toHaveBeenCalledWith(DOC_URI, []);
+  it("checks nothing for a system-library class whose file is writable", async () => {
+    const { client } = makeClient({
+      getSourceFile: vi.fn(async () => ({
+        fileName: "/home/u/.openmodelica/libraries/Modelica 4.0.0/Blocks/A.mo",
+      })),
+      getClassInformation: vi.fn(async () => ({ fileReadOnly: false })),
     });
+    const { ctx, set } = makeContext(client);
+    register(ctx);
 
-    it("shifts the edited class's own diagnostic back to buffer-relative coordinates", async () => {
-      // Buffer line 2 ("Real x;") reported at its real file line: 6 + (2-1).
-      const fileRelativeLine = CLASS_START_LINE + 1;
-      const client = makeSequencedClient(
-        [[], [errorAt(PACKAGE_MO, "own error", fileRelativeLine)]],
-        {
-          getClassInformation: vi.fn(async () => ({
-            lineNumberStart: CLASS_START_LINE,
-            lineNumberEnd: CLASS_END_LINE,
-          })),
-        },
-      );
-      const { ctx, set } = makeContext(client);
-      register(ctx);
+    await runPipeline();
 
-      await runPipeline();
-
-      const [uri, diags] = set.mock.calls[0] ?? [];
-      expect(uri).toBe(DOC_URI);
-      expect(diags).toHaveLength(1);
-      expect((diags as vscode.Diagnostic[])[0]?.range.start.line).toBe(1);
-    });
-
-    it("drops a sibling declared after the edited class in the same file", async () => {
-      // Real file line past the class's own [6, 8] span (3-line DOC_TEXT).
-      const client = makeSequencedClient(
-        [[], [errorAt(PACKAGE_MO, "later sibling", CLASS_END_LINE + 10)]],
-        {
-          getClassInformation: vi.fn(async () => ({
-            lineNumberStart: CLASS_START_LINE,
-            lineNumberEnd: CLASS_END_LINE,
-          })),
-        },
-      );
-      const { ctx, set } = makeContext(client);
-      register(ctx);
-
-      await runPipeline();
-
-      expect(set).toHaveBeenCalledWith(DOC_URI, []);
-    });
-
-    it("grows the class's own bounds when the buffer has grown since the last reload", async () => {
-      // The "residual leak" case: if the class's *current* size (not a stale
-      // pre-edit snapshot) weren't used as the upper bound, a sibling that
-      // used to sit just past the class's old, smaller extent could shift
-      // into what looks like a valid buffer line once the buffer grows.
-      // `keepWithinBuffer` is driven by the post-load range, which — by
-      // construction — already reflects the buffer's current size, so the
-      // sibling here (originally just past the class's *old* end) stays
-      // outside the *current*, larger end and is still dropped.
-      const grownText = `${DOC_TEXT}\n  Real y;\n  Real z;`; // 5 lines now
-      const grownEnd = CLASS_START_LINE + grownText.split("\n").length - 1; // 10
-      const client = makeSequencedClient(
-        [[], [errorAt(PACKAGE_MO, "later sibling", grownEnd + 1)]],
-        {
-          getClassInformation: vi.fn(async () => ({
-            lineNumberStart: CLASS_START_LINE,
-            lineNumberEnd: grownEnd,
-          })),
-        },
-      );
-      const { ctx, set } = makeContext(client);
-      register(ctx);
-
-      await runPipeline(grownText);
-
-      expect(set).toHaveBeenCalledWith(DOC_URI, []);
-    });
-
-    it("keeps a class-level diagnostic with no specific line rather than bounding it", async () => {
-      // `lineStart: 0` is OMC's own "missing/synthetic location" marker
-      // (see `omcToVscodePosition`) — not a real file-relative position, so
-      // it must never be bounds-checked or shifted away.
-      const noLine = errorAt(PACKAGE_MO, "class-level error", 0);
-      const client = makeSequencedClient([[], [noLine]], {
-        getClassInformation: vi.fn(async () => ({
-          lineNumberStart: CLASS_START_LINE,
-          lineNumberEnd: CLASS_END_LINE,
-        })),
-      });
-      const { ctx, set } = makeContext(client);
-      register(ctx);
-
-      await runPipeline();
-
-      const [, diags] = set.mock.calls[0] ?? [];
-      expect(diags).toHaveLength(1);
-    });
-
-    it("clamps a shifted diagnostic's end line to the buffer's own end", async () => {
-      // A multi-line diagnostic whose reported end sits past the class's own
-      // end (file-relative lines up to CLASS_END_LINE + 2) must not leak a
-      // shifted end line past the buffer once converted.
-      const spanning: ErrorMessage = {
-        ...errorAt(PACKAGE_MO, "spanning error", CLASS_START_LINE),
-        info: {
-          ...errorAt(PACKAGE_MO, "spanning error", CLASS_START_LINE).info,
-          lineEnd: CLASS_END_LINE + 2,
-        },
-      };
-      const client = makeSequencedClient([[], [spanning]], {
-        getClassInformation: vi.fn(async () => ({
-          lineNumberStart: CLASS_START_LINE,
-          lineNumberEnd: CLASS_END_LINE,
-        })),
-      });
-      const { ctx, set } = makeContext(client);
-      register(ctx);
-
-      await runPipeline();
-
-      const [, diags] = set.mock.calls[0] ?? [];
-      const diag = (diags as vscode.Diagnostic[])[0];
-      expect(diag).toBeDefined();
-      // `rangeFromInfo` converts an OMC end line to an exclusive VSCode one;
-      // the buffer has DOC_LINES lines (0-based: DOC_LINES - 1), so the
-      // clamped end must not exceed that.
-      expect(diag?.range.end.line).toBeLessThanOrEqual(DOC_LINES);
-    });
+    expect(client.parseString).not.toHaveBeenCalled();
+    expect(client.loadString).not.toHaveBeenCalled();
+    expect(set).not.toHaveBeenCalled();
   });
 });

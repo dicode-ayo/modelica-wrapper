@@ -27,8 +27,10 @@ import type { CallContext } from "../../_shared/callContext.js";
 import { mlBool, quote } from "../../_shared/format.js";
 import { TypeNameAndComponentNameInput } from "../../_shared/inputs.js";
 import { SuccessOutput } from "../../_shared/outputs.js";
-import { parseOutput } from "../../_shared/parseOutput.js";
-import { expectBool, parse } from "../../parse.js";
+import {
+  parseMutationSuccess,
+  parseOutput,
+} from "../../_shared/parseOutput.js";
 
 export const RemoveComponentModifiersInputSchema =
   TypeNameAndComponentNameInput.extend({
@@ -62,7 +64,9 @@ export async function removeComponentModifiers(
   );
   return parseOutput(
     RemoveComponentModifiersOutputSchema,
-    { success: expectBool(parse(raw)) },
+    {
+      success: await parseMutationSuccess(ctx, raw, "removeComponentModifiers"),
+    },
     "removeComponentModifiers",
   );
 }

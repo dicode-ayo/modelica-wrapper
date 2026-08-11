@@ -5,7 +5,8 @@ import {
   type EmitFn,
   type PickerFn,
 } from "./interaction-manager.js";
-import { entityKeyForNode, type EntityKey } from "./node-keys.js";
+import type { EntityKey } from "./entity-keys.js";
+import { entityKeyForNode } from "./node-keys.js";
 import {
   capturePointer,
   releasePointer,
@@ -248,6 +249,8 @@ export class ModeRouter {
       point,
       shiftKey: e.shiftKey,
       getSelectionKeys: this.getSelectionKeys,
+      clientX: e.clientX,
+      clientY: e.clientY,
     });
     if (started) {
       this.active = mode;

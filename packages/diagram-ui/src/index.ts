@@ -81,32 +81,21 @@ export {
   type InteractionManagerOptions,
 } from "./interaction/interaction-manager.js";
 export {
-  entityKeyForNode,
   formatKey,
   formatComponentKey,
   formatConnectorKey,
   formatShapeKey,
   parseKey,
-  isComponentKey,
-  isConnectorKey,
-  isShapeKey,
-  isEdgeKey,
-  isJunctionKey,
-  isLabelKey,
-  isPortKey,
-  isHandleKey,
   isNestedConnector,
   type EntityKind,
   type EntityKey,
-  type ComponentKey,
+  type KeyOf,
   type ConnectorKey,
   type ShapeKey,
-  type EdgeKey,
   type JunctionKey,
-  type LabelKey,
-  type PortKey,
-  type HandleKey,
-} from "./interaction/node-keys.js";
+  type VertexHandleKey,
+} from "./interaction/entity-keys.js";
+export { entityKeyForNode } from "./interaction/node-keys.js";
 export {
   applyDeltaMove,
   applyComponentExtent,
@@ -118,10 +107,12 @@ export {
   applyShapeVertexInsert,
   applyShapeVertexDelete,
   applyShapeSmoothToggle,
+} from "./interaction/layout-ops.js";
+export {
   normaliseRect,
   selectByDiagramRect,
   type DiagramRect,
-} from "./interaction/layout-ops.js";
+} from "./interaction/selection-ops.js";
 export {
   type Picker as DragPicker,
   type ClientToDiagram,

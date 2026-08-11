@@ -8,7 +8,14 @@ import {
   lookupHostShape,
 } from "./shape-properties.js";
 
-import type { DiagramLayout, RectangleShape } from "@dicode/omc-client";
+import type {
+  DiagramLayout,
+  EllipseShape,
+  Extent,
+  ParameterField,
+  RectangleShape,
+  Shape,
+} from "@dicode/omc-client";
 
 // ── colorToHex ────────────────────────────────────────────────────────────────
 
@@ -227,6 +234,81 @@ describe("buildShapePropertiesForm", () => {
     expect(model.fields.find((x) => x.name === "endAngle")?.value).toBe(270);
   });
 
+  it("seeds an omitted closure from the angles, not from a constant", () => {
+    // Seeding every ellipse with the same closure makes Apply write one that
+    // changes how a shape nobody edited renders.
+    const extent: Extent = [
+      [-20, -20],
+      [20, 20],
+    ];
+    const full = buildShapePropertiesForm({ kind: "ellipse", extent }).fields;
+    expect(full.find((x) => x.name === "closure")?.value).toBe("Chord");
+    expect(full.find((x) => x.name === "closure")?.defaultValue).toBe("Chord");
+
+    const arc = buildShapePropertiesForm({
+      kind: "ellipse",
+      extent,
+      startAngle: 45,
+      endAngle: 270,
+    }).fields;
+    expect(arc.find((x) => x.name === "closure")?.value).toBe("Radial");
+    expect(arc.find((x) => x.name === "closure")?.defaultValue).toBe("Radial");
+  });
+
+  it("does not pin a seeded closure onto a submit that moves the angles", () => {
+    // The form submits every field, so the closure derived when the modal
+    // opened comes back whether or not the user chose it. Writing it here
+    // would leave an arc carrying the full ellipse's Chord.
+    const opened: EllipseShape = {
+      kind: "ellipse",
+      extent: [
+        [-20, -20],
+        [20, 20],
+      ],
+    };
+    const submitted = buildShapePropertiesForm(opened).fields.reduce<
+      Record<string, unknown>
+    >((acc, f) => ({ ...acc, [f.name]: f.value ?? f.defaultValue }), {});
+
+    const applied = applyShapeProperties(opened, {
+      ...submitted,
+      startAngle: 45,
+      endAngle: 270,
+    }) as EllipseShape;
+    expect(applied.startAngle).toBe(45);
+    expect(applied.endAngle).toBe(270);
+    expect(applied.closure).toBeUndefined();
+  });
+
+  it("still writes a closure the user picked over the seeded one", () => {
+    const opened: EllipseShape = {
+      kind: "ellipse",
+      extent: [
+        [-20, -20],
+        [20, 20],
+      ],
+    };
+    const applied = applyShapeProperties(opened, {
+      closure: "Radial",
+    }) as EllipseShape;
+    expect(applied.closure).toBe("Radial");
+  });
+
+  it("keeps a closure the source states explicitly", () => {
+    const opened: EllipseShape = {
+      kind: "ellipse",
+      extent: [
+        [-20, -20],
+        [20, 20],
+      ],
+      closure: "Chord",
+    };
+    const applied = applyShapeProperties(opened, {
+      closure: "Chord",
+    }) as EllipseShape;
+    expect(applied.closure).toBe("Chord");
+  });
+
   it("text form exposes textString when it is a plain string", () => {
     const text = {
       kind: "text" as const,
@@ -267,6 +349,25 @@ describe("buildShapePropertiesForm", () => {
     expect(patternField?.kind).toBe("enum");
     expect(patternField?.enumTypeName).toBe("LinePattern");
     expect(patternField?.enumChoices).toContain("Solid");
+  });
+
+  it("seeds a property the shape omits with its Modelica default", () => {
+    const model = buildShapePropertiesForm(RECT);
+    expect(model.fields.find((x) => x.name === "radius")?.value).toBe(0);
+    expect(model.fields.find((x) => x.name === "visible")?.value).toBe(true);
+  });
+
+  it("leaves a colour the shape omits blank rather than seeding its default", () => {
+    // Seeding it would make the next Apply write a colour the source never set.
+    const fillColor = buildShapePropertiesForm(RECT).fields.find(
+      (x) => x.name === "fillColor",
+    );
+    expect(fillColor?.value).toBeNull();
+    expect(fillColor?.defaultValue).toBe("#000000");
+    expect(
+      (applyShapeProperties(RECT, { fillColor: null }) as RectangleShape)
+        .fillColor,
+    ).toBeUndefined();
   });
 });
 
@@ -357,4 +458,141 @@ describe("applyShapeProperties", () => {
     expect(updated.kind).toBe("rectangle");
     expect((updated as RectangleShape).extent).toEqual(RECT.extent);
   });
+
+  it("returns a copy even when no value decodes", () => {
+    // The result becomes a graphicsModified payload; handing back the layout's
+    // own shape would make the edit share an object with the layout it edits.
+    expect(applyShapeProperties(RECT, { radius: "not-a-number" })).not.toBe(
+      RECT,
+    );
+    expect(applyShapeProperties(RECT, {})).not.toBe(RECT);
+  });
+
+  it("throws on an unknown shape kind rather than returning undefined", () => {
+    // Falling through the dispatch would hand writeClassGraphics an undefined
+    // shape typed as one.
+    expect(() =>
+      applyShapeProperties({ kind: "bogus" } as unknown as Shape, {}),
+    ).toThrow(/Shape kind/);
+  });
+});
+
+// ── form ↔ applier field agreement ───────────────────────────────────────────
+
+/**
+ * `buildShapePropertiesForm` names the fields the modal submits, and
+ * `applyShapeProperties` reads them back by name. A name only one side knows
+ * makes the modal look like it works and the shape never change — an Apply that
+ * writes the shape it was already given.
+ */
+describe("shape properties form round-trip", () => {
+  const SHAPES: Shape[] = [
+    {
+      kind: "line",
+      points: [
+        [0, 0],
+        [10, 10],
+      ],
+      color: [0, 0, 0],
+    },
+    {
+      kind: "polygon",
+      points: [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+      ],
+      lineColor: [0, 0, 0],
+      fillColor: [255, 255, 255],
+    },
+    {
+      kind: "rectangle",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      lineColor: [0, 0, 0],
+      fillColor: [255, 255, 255],
+    },
+    {
+      kind: "ellipse",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      lineColor: [0, 0, 0],
+      fillColor: [255, 255, 255],
+    },
+    {
+      kind: "text",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      textString: "hello",
+      textColor: [0, 0, 0],
+    },
+    {
+      kind: "bitmap",
+      extent: [
+        [0, 0],
+        [10, 10],
+      ],
+      fileName: "a.png",
+    },
+  ];
+
+  /** A value distinct from `field.value`, in the shape the modal would submit. */
+  function otherValue(field: ParameterField): unknown {
+    switch (field.kind) {
+      case "boolean":
+        return field.value !== true;
+      case "number":
+        return typeof field.value === "number" ? field.value + 7 : 7;
+      case "enum": {
+        const choices = field.enumChoices ?? [];
+        const other = choices.find((c) => c !== field.value);
+        return other ?? null;
+      }
+      case "color":
+        // A colour field carries `null` when the shape leaves it unset, so the
+        // substitute has to be a valid hex rather than a mutation of it.
+        return field.value === "#123456" ? "#654321" : "#123456";
+      default:
+        return typeof field.value === "string" ? `${field.value}-x` : "changed";
+    }
+  }
+
+  for (const shape of SHAPES) {
+    it(`carries every ${shape.kind} field back onto the shape`, () => {
+      const form = buildShapePropertiesForm(shape);
+      expect(form.fields.length).toBeGreaterThan(0);
+
+      for (const field of form.fields) {
+        const next = otherValue(field);
+        // An enum with a single choice has no other value to offer; anything
+        // else answering null would be a field this test silently skips.
+        if (next === null) {
+          expect((field.enumChoices ?? []).length, field.name).toBeLessThan(2);
+          continue;
+        }
+        if (next === field.value) continue;
+        const edited = applyShapeProperties(shape, { [field.name]: next });
+        expect(
+          JSON.stringify(edited),
+          `field "${field.name}" (${field.kind}) did not reach the shape`,
+        ).not.toBe(JSON.stringify(shape));
+      }
+    });
+  }
+
+  for (const shape of SHAPES) {
+    // Typing a field's key against its shape does not stop a list from
+    // declaring the same key twice — two widgets bound to one property, the
+    // second silently winning on submit.
+    it(`names every ${shape.kind} field once`, () => {
+      const names = buildShapePropertiesForm(shape).fields.map((f) => f.name);
+      expect(names).toEqual([...new Set(names)]);
+    });
+  }
 });

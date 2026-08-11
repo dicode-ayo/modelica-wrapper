@@ -16,7 +16,6 @@ import type { OmcCommand } from "./commands.js";
 import { spawnOmc, type OmcProcess } from "./process.js";
 import { OmcTransport } from "./transport.js";
 import { SerialQueue } from "./queue.js";
-import { expectBool, parse } from "./parse.js";
 
 import * as browsing from "./api/browsing/index.js";
 import * as contents from "./api/contents/index.js";
@@ -153,23 +152,6 @@ export class OmcClient implements CallContext {
     // readable via `lastCall` even if the transport hangs or throws.
     this._lastCall = cmd;
     return this.queue.run(() => this.transport.send(cmd, this.callTimeoutMs));
-  }
-
-  /**
-   * Run a command expected to return bool. On `false`, fetches getErrorString()
-   * and surfaces it as an Error if non-empty. Used by mutation wrappers.
-   */
-  async callBool(cmd: OmcCommand): Promise<boolean> {
-    const v = parse(await this.call(cmd));
-    const b = expectBool(v);
-    if (!b) {
-      const { errorString } = await this.getErrorString();
-      if (errorString.length > 0) {
-        const head = cmd.split("(", 1)[0] ?? cmd;
-        throw new Error(`${head}: ${errorString}`);
-      }
-    }
-    return b;
   }
 
   /**

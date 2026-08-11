@@ -1,4 +1,4 @@
-import type { CoordinateSystem, Placement } from "@dicode/omc-client";
+import type { CoordinateSystem, Placement, Point } from "@dicode/omc-client";
 
 /**
  * Pure placement-math used by the shape elements. Converts a Modelica
@@ -19,6 +19,15 @@ import type { CoordinateSystem, Placement } from "@dicode/omc-client";
  * we anchor at `origin` and offset the icon mesh by `extentCenter -
  * origin` inside the TransformNode so the rotation pivots correctly.
  */
+
+/** Diagram-space centre of a placement — where the renderer anchors the
+ *  entity, and the pivot every rotation is expressed about. */
+export function placementCentre(p: Placement): Point {
+  const [[x1, y1], [x2, y2]] = p.extent;
+  const ox = p.origin?.[0] ?? 0;
+  const oy = p.origin?.[1] ?? 0;
+  return [ox + (x1 + x2) / 2, oy + (y1 + y2) / 2];
+}
 
 export interface AppliedTransform {
   /** World position the TransformNode is set to. */

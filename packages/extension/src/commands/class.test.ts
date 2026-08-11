@@ -1,58 +1,105 @@
 /**
- * `systemLibraryCreateGuard` is what stops `modelica.createClass` from
- * extracting a new file directly into an installed MODELICAPATH library when
- * invoked on a system-library parent node.
+ * `modelica.createClass` consults the write verdict for the parent it would
+ * nest under — and only then. A top-level class has no parent to judge, so a
+ * verdict lookup there would refuse creation on whatever unrelated class the
+ * name happens to collide with.
+ *
+ * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { SystemLibraryClient } from "../system-library.js";
+import type { OmcClient } from "@dicode/omc-client";
 
-import { systemLibraryCreateGuard } from "./class.js";
+import {
+  queuePromptAnswers,
+  recordedMessages,
+  resetCommands,
+  runCommand,
+} from "../../test-support/vscode-mock.js";
+import { WriteVerdicts } from "../write-verdict.js";
 
-function makeClient(sourceFile: string): SystemLibraryClient {
-  return {
+import { registerClassCommands } from "./class.js";
+import type { CommandContext, LibraryNode } from "./context.js";
+
+const MODELICA_PATH = "/home/u/.openmodelica/libraries";
+
+function makeContext(sourceFile: string): {
+  ctx: CommandContext;
+  verdicts: WriteVerdicts;
+  loadString: ReturnType<typeof vi.fn>;
+} {
+  const loadString = vi.fn(() => Promise.resolve({ success: true }));
+  const client = {
+    loadString,
+    getErrorString: vi.fn(() => Promise.resolve({ errorString: "" })),
     getSourceFile: vi.fn(() => Promise.resolve({ fileName: sourceFile })),
     getModelicaPath: vi.fn(() =>
-      Promise.resolve({ modelicaPath: "/home/u/.openmodelica/libraries" }),
+      Promise.resolve({ modelicaPath: MODELICA_PATH }),
     ),
+    getClassInformation: vi.fn(() => Promise.resolve({ fileReadOnly: false })),
+  } as unknown as OmcClient;
+  const verdicts = new WriteVerdicts();
+  const ctx = {
+    ensureClient: () => Promise.resolve(client),
+    writeVerdicts: verdicts,
+    libraryTree: { childrenChanged: vi.fn() },
+    sourceProvider: { notifySourceChanged: vi.fn() },
+  } as unknown as CommandContext;
+  return { ctx, verdicts, loadString };
+}
+
+function packageNode(qualifiedName: string): LibraryNode {
+  return {
+    qualifiedName,
+    displayName: qualifiedName,
+    restriction: "package",
   };
 }
 
-describe("systemLibraryCreateGuard", () => {
-  it("allows a top-level class (no parent)", async () => {
-    const client = makeClient(
-      "/home/u/.openmodelica/libraries/Modelica/package.mo",
+describe("modelica.createClass", () => {
+  beforeEach(() => {
+    resetCommands();
+    recordedMessages.length = 0;
+  });
+
+  it("creates a top-level class without asking for a verdict", async () => {
+    const { ctx, verdicts, loadString } = makeContext("/ws/Pkg/package.mo");
+    const forClass = vi.spyOn(verdicts, "forClass");
+    registerClassCommands(ctx);
+    queuePromptAnswers("model", "MyModel");
+
+    await runCommand("modelica.createClass");
+
+    expect(forClass).not.toHaveBeenCalled();
+    expect(loadString).toHaveBeenCalled();
+  });
+
+  it("refuses to create inside a system-library package", async () => {
+    const { ctx, loadString } = makeContext(
+      `${MODELICA_PATH}/Modelica 4.0.0/Blocks/package.mo`,
     );
-    expect(await systemLibraryCreateGuard(client, undefined)).toBeUndefined();
+    registerClassCommands(ctx);
+    queuePromptAnswers("model", "MyModel");
+
+    await runCommand("modelica.createClass", packageNode("Modelica.Blocks"));
+
+    // Refused before `loadString`, so nothing lands in the installed library.
+    expect(loadString).not.toHaveBeenCalled();
+    expect(recordedMessages).toContainEqual({
+      level: "error",
+      message:
+        "Modelica: Cannot create a class inside Modelica.Blocks — it belongs to a read-only system library.",
+    });
   });
 
-  it("allows creating inside a workspace package", async () => {
-    const client = makeClient("/ws/Pkg/package.mo");
-    expect(await systemLibraryCreateGuard(client, "Pkg")).toBeUndefined();
-  });
+  it("creates inside a workspace package", async () => {
+    const { ctx, loadString } = makeContext("/ws/Pkg/package.mo");
+    registerClassCommands(ctx);
+    queuePromptAnswers("model", "MyModel");
 
-  it("refuses creating inside a system-library package", async () => {
-    const client = makeClient(
-      "/home/u/.openmodelica/libraries/Modelica 4.0.0/Blocks/package.mo",
-    );
+    await runCommand("modelica.createClass", packageNode("Pkg"));
 
-    const refusal = await systemLibraryCreateGuard(client, "Modelica.Blocks");
-
-    expect(refusal).toContain("Modelica.Blocks");
-    expect(refusal).toContain("read-only system library");
-  });
-
-  it("doesn't block creation when the origin lookup fails transiently", async () => {
-    const client: SystemLibraryClient = {
-      getSourceFile: vi.fn(() => Promise.reject(new Error("OMC busy"))),
-      getModelicaPath: vi.fn(() =>
-        Promise.resolve({ modelicaPath: "/home/u/.openmodelica/libraries" }),
-      ),
-    };
-
-    // Matches `ModelicaSourceProvider.isReadOnly`'s "failures don't block
-    // editing" contract for the same origin check.
-    expect(await systemLibraryCreateGuard(client, "Pkg")).toBeUndefined();
+    expect(loadString).toHaveBeenCalled();
   });
 });

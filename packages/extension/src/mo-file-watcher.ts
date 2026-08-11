@@ -5,19 +5,33 @@
  * read-only MODELICAPATH libraries are never watched.
  *
  * OMC stays the single source the tree lists from, so every reaction routes
- * through the targeted change protocol (`childrenChanged` / `iconChanged`)
- * rather than a wholesale reload:
- *   - change / create → `loadFile`, then re-list the affected scopes and
- *     invalidate each class's icon.
+ * through the targeted change protocol (`childrenChanged`) rather than a
+ * wholesale reload:
+ *   - change / create → `loadFile`, then re-list the affected scopes.
  *   - delete → `deleteClass` for the classes the gone file declared (resolved
  *     from a path→class index, since the file can no longer be parsed), then
  *     re-list their enclosing scope.
  *
- * The watcher leaves two kinds of edit alone:
- *   - our own disk writes, matched by content through the {@link SelfWriteGuard}
- *     so a save doesn't fight the custom editor's shadow-buffer sync;
- *   - an edit to a class open *and dirty* in an editor, where reloading OMC
- *     would clobber the unsaved buffer — skipped with a warning until it saves.
+ * Both announce each touched class through `notifySourceChanged`. The
+ * per-class caches — sidebar icons, class restrictions, the language caches —
+ * hang off that one broadcast through `source-invalidation.ts`, so the watcher
+ * invalidates none of them directly.
+ *
+ * A `package.order` edit resolves the owning package from the path→class index
+ * and reloads its `package.mo`, which re-derives the child order from disk.
+ *
+ * A self-write — our own disk write, matched by content through the
+ * {@link SelfWriteGuard} — skips the `loadFile`/`deleteClass` OMC calls: the
+ * {@link ModelicaSourceProvider.writeFile} that produced it already updated
+ * OMC's in-memory model via `loadString` before writing to disk. But it still
+ * re-derives the file's declared class set (`parseFile`), updates the
+ * path→class index, and re-lists the affected scopes — otherwise a save that
+ * adds or removes a nested class leaves the sidebar showing the old children,
+ * and a file the write created never enters the index at all.
+ *
+ * The watcher leaves one kind of edit alone: an edit to a class open *and
+ * dirty* in an editor, where reloading OMC would clobber the unsaved buffer
+ * — skipped with a warning until it saves.
  */
 
 import * as fsp from "node:fs/promises";
@@ -27,7 +41,9 @@ import * as vscode from "vscode";
 
 import { enclosingScope } from "@dicode/modelica-lang-core";
 
+import { pathExists } from "./fs-util.js";
 import { log } from "./logger.js";
+import { multiEntityMessage, multiEntityToast } from "./single-entity-file.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
 import {
   MODELICA_SOURCE_SCHEME,
@@ -42,11 +58,25 @@ interface WatcherOmcClient {
   deleteClass(input: { typeName: string }): Promise<{ success: boolean }>;
 }
 
+/** A file holding classes at or under some scope, paired with just those classes. */
+export interface FilesUnderEntry {
+  fsPath: string;
+  classNames: string[];
+}
+
 /** Maps a normalized `.mo` path to the fully-qualified classes it declares. */
 export interface PathClassIndex {
   get(fsPath: string): string[] | undefined;
   set(fsPath: string, classNames: string[]): void;
   delete(fsPath: string): void;
+  /**
+   * Every indexed file holding a class at or under `qualifiedName` (itself
+   * included), each paired with just the matching classes it declares. A
+   * cascade — `deleteClass` on a package, or a reload of it — can touch
+   * classes spread across several files, not just the file `qualifiedName`
+   * itself lives in.
+   */
+  filesUnder(qualifiedName: string): FilesUnderEntry[];
 }
 
 export function createPathClassIndex(): PathClassIndex {
@@ -56,19 +86,38 @@ export function createPathClassIndex(): PathClassIndex {
     get: (p) => byPath.get(key(p)),
     set: (p, names) => void byPath.set(key(p), names),
     delete: (p) => void byPath.delete(key(p)),
+    filesUnder(qualifiedName) {
+      const prefix = `${qualifiedName}.`;
+      const found: FilesUnderEntry[] = [];
+      for (const [fsPath, names] of byPath) {
+        const matches = names.filter(
+          (name) => name === qualifiedName || name.startsWith(prefix),
+        );
+        if (matches.length > 0) found.push({ fsPath, classNames: matches });
+      }
+      return found;
+    },
   };
 }
 
 export interface MoWatcherDeps {
   ensureClient: () => Promise<WatcherOmcClient>;
-  libraryTree: Pick<LibraryWebviewProvider, "childrenChanged" | "iconChanged">;
+  libraryTree: Pick<LibraryWebviewProvider, "childrenChanged">;
   sourceProvider: Pick<ModelicaSourceProvider, "notifySourceChanged">;
   guard: SelfWriteGuard;
   index: PathClassIndex;
   /** Read a file's text; injected so tests need no real disk. */
   readFile: (fsPath: string) => Promise<string>;
-  /** True when a declared class is open and dirty — reloading would clobber it. */
-  isBusy: (fsPath: string, classNames: string[]) => boolean;
+  /** True iff `fsPath` is still on disk; injected so tests need no real disk. */
+  fileExists: (fsPath: string) => Promise<boolean>;
+  /**
+   * True when a declared class is open and dirty — reloading would clobber
+   * it. Gate callers pass the full cascade a reload or `deleteClass` can
+   * touch, not just the file the triggering event named;
+   * {@link reindexAndRelist} passes a single class and no paths, to filter
+   * its `notifySourceChanged` bumps.
+   */
+  isBusy: (fsPaths: string[], classNames: string[]) => boolean;
 }
 
 /** `""` (top-level scope) maps to the root listing; a nested scope stays as-is. */
@@ -77,17 +126,105 @@ function scopeOf(qualifiedName: string): string | null {
   return scope === "" ? null : scope;
 }
 
+/** `fsPath` is the file whose edit is being skipped — a delete has no "changed" to report either. */
 function warnBusy(fsPath: string, classNames: string[]): void {
   void vscode.window.showWarningMessage(
-    `Modelica: ${path.basename(fsPath)} changed on disk, but ${classNames.join(", ")} ` +
-      `has unsaved edits open — reload skipped. Save or close the editor to pick up the disk version.`,
+    `Modelica: ${classNames.join(", ")} has unsaved edits open, so the ` +
+      `${path.basename(fsPath)} reload was skipped. Save or close the editor to pick up the disk version.`,
   );
+}
+
+/**
+ * A skipped reorder is terminal: saving the busy editor reloads that member
+ * alone, and nothing re-runs the reorder (issue #440). So this says what
+ * actually recovers it, where a `.mo` reload can promise the save is enough
+ * (issue #419).
+ */
+function warnReorderBusy(describedPath: string, classNames: string[]): void {
+  void vscode.window.showWarningMessage(
+    `Modelica: a class in ${classNames.join(", ")} has unsaved edits open, so ` +
+      `the ${path.basename(describedPath)} reload was skipped. Save or close ` +
+      `the editor, then edit ${path.basename(describedPath)} again or refresh ` +
+      `the library.`,
+  );
+}
+
+/**
+ * Every file and class a `deleteClass` or reload of `names` can reach,
+ * deduplicated: each name's own file, plus every file holding a class nested
+ * under it. `extra` is a floor included regardless of what the cascade
+ * search finds — a class the index doesn't know yet (so `filesUnder` can't
+ * cascade from it) still needs to be checked directly. `extra.fsPath`
+ * needn't be pre-resolved by the caller — it's normalized here to match the
+ * paths {@link PathClassIndex.filesUnder} returns, so a caller path carrying
+ * e.g. a `..` segment still dedupes against the same file's cascaded entry.
+ */
+function cascadeReach(
+  index: PathClassIndex,
+  names: string[],
+  extra: { fsPath?: string; classNames?: string[] } = {},
+): { fsPaths: string[]; classNames: string[] } {
+  const matches = names.flatMap((name) => index.filesUnder(name));
+  const fsPaths = new Set(matches.map((f) => f.fsPath));
+  if (extra.fsPath !== undefined) fsPaths.add(path.resolve(extra.fsPath));
+  const classNames = new Set(matches.flatMap((f) => f.classNames));
+  for (const n of extra.classNames ?? []) classNames.add(n);
+  return { fsPaths: [...fsPaths], classNames: [...classNames] };
+}
+
+/**
+ * Update the path→class index for `fsPath` to `names`, then re-list every
+ * scope the change reaches — each declared class and its enclosing scope,
+ * for both the current and now-removed declarations — and announce each
+ * through `notifySourceChanged`, except a still-declared class whose own
+ * document is open and dirty elsewhere (see the loop below).
+ *
+ * Shared by three callers, each already at the OMC state it wants reflected:
+ * {@link handleMoChange}'s self-write branch (synced via `writeFile`'s own
+ * `loadString`), its external-edit branch (synced via `loadFile` +
+ * `deleteClass`), and {@link reorderPackage} (synced via `loadFile`, or — on
+ * a failed reload — still holding the order it had before, which re-listing
+ * correctly shows as unchanged rather than stale).
+ */
+function reindexAndRelist(
+  deps: MoWatcherDeps,
+  fsPath: string,
+  names: string[],
+  removed: string[],
+): void {
+  deps.index.set(fsPath, names);
+
+  const scopes = new Set<string | null>();
+  for (const name of names) {
+    scopes.add(name);
+    scopes.add(scopeOf(name));
+  }
+  for (const name of removed) scopes.add(scopeOf(name));
+  for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
+  for (const name of removed) deps.sourceProvider.notifySourceChanged(name);
+  for (const name of names) {
+    // A still-declared class whose own modelica-source: document is open and
+    // dirty must not be bumped: notifySourceChanged fires onDidChangeFile,
+    // which VSCode reads as "changed on disk" for a document with unsaved
+    // edits — surfacing a conflict prompt over content that, from that
+    // editor's own perspective, never actually changed. A removed class has
+    // no such concern (it really is gone), so only this loop filters.
+    if (!deps.isBusy([], [name])) deps.sourceProvider.notifySourceChanged(name);
+  }
 }
 
 /**
  * React to a `.mo` file appearing or changing on disk. Loads the new content
  * into OMC and refreshes the tree for every class the file now declares, and
  * unloads any class the file previously declared but no longer does.
+ *
+ * A self-write — recognized by {@link SelfWriteGuard.claim} — still derives
+ * the file's current class set via `parseFile` and re-lists, but skips
+ * `loadFile`/`deleteClass`: `ModelicaSourceProvider.writeFile` already pushed
+ * the new text into OMC via `loadString` before writing it to disk. It also
+ * skips the `isBusy` gate, which guards `loadFile` alone; {@link
+ * reindexAndRelist} still consults `isBusy` per class, for a narrower reason
+ * of its own.
  */
 export async function handleMoChange(
   deps: MoWatcherDeps,
@@ -100,7 +237,11 @@ export async function handleMoChange(
     // Raced with a delete, or unreadable — nothing to load.
     return;
   }
-  if (deps.guard.claim(fsPath, text)) return;
+
+  // Claimed immediately after the read, with no intervening await: a second
+  // self-write to the same path racing in here would otherwise desync the
+  // guard's pending entry from the text this call actually read.
+  const isSelfWrite = deps.guard.claim(fsPath, text);
 
   const client = await deps.ensureClient();
   let names: string[];
@@ -110,12 +251,34 @@ export async function handleMoChange(
     log.warn("moWatcher", `parseFile ${fsPath} failed: ${asMessage(err)}`);
     return;
   }
+  if (names.length > 1) {
+    log.warn("moWatcher", multiEntityMessage(fsPath, names));
+    void vscode.window.showWarningMessage(
+      multiEntityToast(fsPath, names, "it was not loaded"),
+    );
+    return;
+  }
 
   const previous = deps.index.get(fsPath) ?? [];
   const removed = previous.filter((n) => !names.includes(n));
-  const affected = [...names, ...removed];
-  if (deps.isBusy(fsPath, affected)) {
-    warnBusy(fsPath, affected);
+
+  if (isSelfWrite) {
+    reindexAndRelist(deps, fsPath, names, removed);
+    return;
+  }
+
+  const directNames = [...names, ...removed];
+  // loadFile on fsPath reloads its whole subtree from disk when fsPath is a
+  // package — same as reorderPackage's reload — so a still-declared class
+  // cascades to its nested members' files exactly as a removed one cascades
+  // its deleteClass to them. `classNames: names` is the floor for a
+  // brand-new class the index doesn't know yet to cascade from.
+  const { fsPaths, classNames } = cascadeReach(deps.index, directNames, {
+    fsPath,
+    classNames: names,
+  });
+  if (deps.isBusy(fsPaths, classNames)) {
+    warnBusy(fsPath, directNames);
     return;
   }
 
@@ -125,20 +288,125 @@ export async function handleMoChange(
     return;
   }
   for (const name of removed) await client.deleteClass({ typeName: name });
-  deps.index.set(fsPath, names);
 
-  const scopes = new Set<string | null>();
-  for (const name of names) {
-    scopes.add(name);
-    scopes.add(scopeOf(name));
+  reindexAndRelist(deps, fsPath, names, removed);
+}
+
+/**
+ * `dirname(fsPath)/package.mo` — the file that owns anything else in its
+ * directory: a `package.order`, or a `.mo` file (itself, if `fsPath` already
+ * is a `package.mo`). Purely lexical, so it's stable across index seeding
+ * and doesn't need `fsPath` to already be indexed.
+ */
+function orderOwner(fsPath: string): string {
+  return path.join(path.dirname(fsPath), "package.mo");
+}
+
+/**
+ * Reload the package that owns `pkgFile`, then re-list it. The class list
+ * itself is unaffected by a reorder, so the index needs no update.
+ *
+ * `describedPath` names the file whose edit triggered this, so a busy warning
+ * points at what the user touched rather than at `package.mo`.
+ */
+async function reorderPackage(
+  deps: MoWatcherDeps,
+  pkgFile: string,
+  describedPath: string,
+): Promise<void> {
+  const names = deps.index.get(pkgFile);
+  if (names === undefined || names.length === 0) {
+    log.warn(
+      "moWatcher",
+      `package.order edit for ${pkgFile}, but it is not indexed`,
+    );
+    return;
   }
-  for (const name of removed) scopes.add(scopeOf(name));
-  for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
-  for (const name of removed) deps.sourceProvider.notifySourceChanged(name);
-  for (const name of names) {
-    deps.libraryTree.iconChanged(name);
-    deps.sourceProvider.notifySourceChanged(name);
+  // Reloading the package re-reads every member from disk, so a dirty buffer
+  // for a *member* — not just the package itself — is at risk of being
+  // clobbered underneath its editor, whichever file that member lives in.
+  const { fsPaths, classNames } = cascadeReach(deps.index, names, {
+    fsPath: pkgFile,
+  });
+  if (deps.isBusy(fsPaths, classNames)) {
+    warnReorderBusy(describedPath, names);
+    return;
   }
+
+  // `loadFile` on the package re-derives the child order from `package.order`,
+  // for nested packages as well as this one, and picks up a member added
+  // alongside it — see `package-order-reload.integration.test.ts`. Nothing has
+  // to be unloaded first, and nothing is: a failed reload leaves OMC holding
+  // the order it already had, which is what the tree goes on showing.
+  const client = await deps.ensureClient();
+  let loaded = false;
+  try {
+    ({ success: loaded } = await client.loadFile({ fileName: pkgFile }));
+  } catch (err) {
+    log.warn("moWatcher", `reload of ${pkgFile} threw: ${asMessage(err)}`);
+  }
+
+  // A reorder doesn't change which classes exist, so `names` (unchanged
+  // above) is also what the index already holds for `pkgFile`.
+  reindexAndRelist(deps, pkgFile, names, []);
+
+  if (!loaded) {
+    // pkgFile can vanish between the busy check above and here — a directory
+    // delete racing this reorder — in which case it's a delete, not a failed
+    // reorder, and handleMoDelete/handleOrderDelete reconcile it instead.
+    if (!(await deps.fileExists(pkgFile))) return;
+    log.warn("moWatcher", `reloading ${pkgFile} after a reorder failed`);
+    void vscode.window.showWarningMessage(
+      `Modelica: ${path.basename(describedPath)} could not be applied — ` +
+        `${names.join(", ")} still has the order OMC loaded before. Edit and ` +
+        `save ${path.basename(pkgFile)} to reload it.`,
+    );
+  }
+}
+
+/**
+ * React to a `package.order` file appearing or changing on disk: resolve the
+ * owning package from the sibling `package.mo` (already keyed in the
+ * path→class index) and re-derive its child order via {@link reorderPackage}.
+ */
+export async function handleOrderChange(
+  deps: MoWatcherDeps,
+  orderFsPath: string,
+): Promise<void> {
+  let text: string;
+  try {
+    text = await deps.readFile(orderFsPath);
+  } catch {
+    // Raced with a delete, or unreadable — nothing to react to.
+    return;
+  }
+  // Unlike a `.mo` self-write, a `package.order` self-write leaves nothing to
+  // catch up on: a child's position in `package.order` affects display order,
+  // never which classes are declared, so the index and the sidebar's
+  // structure are already right.
+  if (deps.guard.claim(orderFsPath, text)) return;
+  await reorderPackage(deps, orderOwner(orderFsPath), orderFsPath);
+}
+
+/**
+ * React to a `package.order` file being deleted — the package reverts to
+ * OMC's default child order, which still needs a fresh `loadFile` to take.
+ * There's no text left to run through the self-write guard, but a delete
+ * only ever removes explicit ordering, so there's nothing of ours to skip.
+ *
+ * Deleting a whole package directory fires this alongside a `.mo` delete for
+ * the same `package.mo`, in no guaranteed order. If the owning `package.mo`
+ * is already gone, the package itself was removed — `handleMoDelete` owns
+ * that case, and reordering a file that no longer exists would only produce
+ * a spurious "reload it" warning for what is really just a normal delete.
+ */
+export async function handleOrderDelete(
+  deps: MoWatcherDeps,
+  orderFsPath: string,
+): Promise<void> {
+  const pkgFile = orderOwner(orderFsPath);
+  if (!(await deps.fileExists(pkgFile))) return;
+  await reorderPackage(deps, pkgFile, orderFsPath);
 }
 
 /**
@@ -155,17 +423,25 @@ export async function handleMoDelete(
     log.warn("moWatcher", `deleted ${fsPath} declared no indexed classes`);
     return;
   }
-  if (deps.isBusy(fsPath, names)) {
+  // Deleting a package cascades to every member nested under it, wherever
+  // those live — widen the busy check to their files and names too.
+  const { fsPaths, classNames } = cascadeReach(deps.index, names, { fsPath });
+  if (deps.isBusy(fsPaths, classNames)) {
     warnBusy(fsPath, names);
     return;
   }
 
   const client = await deps.ensureClient();
-  for (const name of names) {
-    await client.deleteClass({ typeName: name });
+  for (const name of names) await client.deleteClass({ typeName: name });
+
+  // OMC's own deleteClass cascade just took every nested member with it too,
+  // wherever those live — the index and any editor open on one of them have
+  // to be told the same way, not just for fsPath's own direct names.
+  const cascadedFiles = names.flatMap((name) => deps.index.filesUnder(name));
+  for (const file of cascadedFiles) deps.index.delete(file.fsPath);
+  for (const name of new Set(cascadedFiles.flatMap((f) => f.classNames))) {
     deps.sourceProvider.notifySourceChanged(name);
   }
-  deps.index.delete(fsPath);
 
   const scopes = new Set<string | null>();
   for (const name of names) scopes.add(scopeOf(name));
@@ -174,15 +450,17 @@ export async function handleMoDelete(
 
 /**
  * True when any class in `classNames` is open and dirty — as a custom editor
- * over its `modelica-source:` URI, or as a plain text editor over the file on
- * disk. Reloading OMC under such a buffer would discard the unsaved edit.
+ * over its `modelica-source:` URI — or when any file in `fsPaths` is open and
+ * dirty as a plain text editor over the file on disk. Reloading OMC under
+ * such a buffer would discard the unsaved edit. Callers pass the full set a
+ * cascade can touch, not just the file the triggering event named.
  */
 export function isDeclaredClassBusy(
-  fsPath: string,
+  fsPaths: string[],
   classNames: string[],
 ): boolean {
   const sourceUris = new Set(classNames.map((n) => sourceUriFor(n).toString()));
-  const diskUri = vscode.Uri.file(fsPath).toString();
+  const diskUris = new Set(fsPaths.map((p) => vscode.Uri.file(p).toString()));
   for (const group of vscode.window.tabGroups.all) {
     for (const tab of group.tabs) {
       if (!tab.isDirty) continue;
@@ -196,7 +474,7 @@ export function isDeclaredClassBusy(
       }
       if (
         input instanceof vscode.TabInputText &&
-        input.uri.toString() === diskUri
+        diskUris.has(input.uri.toString())
       ) {
         return true;
       }
@@ -250,6 +528,7 @@ export function registerMoFileWatcher(deps: {
     guard: deps.guard,
     index,
     readFile: (fsPath) => fsp.readFile(fsPath, "utf8"),
+    fileExists: pathExists,
     isBusy: isDeclaredClassBusy,
   };
 
@@ -259,33 +538,78 @@ export function registerMoFileWatcher(deps: {
 
   // Serialize per path so overlapping events (a rename is delete+create; rapid
   // saves) can't interleave their index writes and leave it out of sync.
+  // `key` and `describedPath` differ whenever an event is queued under its
+  // owning package's path rather than its own — the failure log should
+  // still name the file that actually triggered the event.
   const inFlight = new Map<string, Promise<void>>();
-  const run = (fsPath: string, fn: () => Promise<void>): void => {
-    const key = path.resolve(fsPath);
-    const prior = inFlight.get(key) ?? Promise.resolve();
+  const run = (
+    key: string,
+    describedPath: string,
+    fn: () => Promise<void>,
+  ): void => {
+    const resolvedKey = path.resolve(key);
+    const prior = inFlight.get(resolvedKey) ?? Promise.resolve();
     const next = prior
       .then(() => seedReady)
       .then(fn)
       .catch((err) =>
-        log.warn("moWatcher", `handling ${fsPath} failed: ${asMessage(err)}`),
+        log.warn(
+          "moWatcher",
+          `handling ${describedPath} failed: ${asMessage(err)}`,
+        ),
       );
-    inFlight.set(key, next);
+    inFlight.set(resolvedKey, next);
     void next.finally(() => {
-      if (inFlight.get(key) === next) inFlight.delete(key);
+      if (inFlight.get(resolvedKey) === next) inFlight.delete(resolvedKey);
     });
   };
 
   const watcher = vscode.workspace.createFileSystemWatcher("**/*.mo");
+  const orderWatcher =
+    vscode.workspace.createFileSystemWatcher("**/package.order");
   const subs = [
     watcher,
+    // Keyed by the owning package's file (`orderOwner`), not the event's own
+    // path, so a member file's event and a reorder or cascaded delete of its
+    // package — which touch that member too — can't run concurrently.
+    // Lexical, not index-derived: computing it from the index instead would
+    // leave events racing during the window before the workspace seed
+    // finishes populating it. The cost is a standalone `.mo` file with no
+    // `package.mo` sibling keying on a path nothing else ever touches,
+    // serializing needlessly against unrelated files sharing its directory.
     watcher.onDidChange((uri) =>
-      run(uri.fsPath, () => handleMoChange(watcherDeps, uri.fsPath)),
+      run(orderOwner(uri.fsPath), uri.fsPath, () =>
+        handleMoChange(watcherDeps, uri.fsPath),
+      ),
     ),
     watcher.onDidCreate((uri) =>
-      run(uri.fsPath, () => handleMoChange(watcherDeps, uri.fsPath)),
+      run(orderOwner(uri.fsPath), uri.fsPath, () =>
+        handleMoChange(watcherDeps, uri.fsPath),
+      ),
     ),
     watcher.onDidDelete((uri) =>
-      run(uri.fsPath, () => handleMoDelete(watcherDeps, uri.fsPath)),
+      run(orderOwner(uri.fsPath), uri.fsPath, () =>
+        handleMoDelete(watcherDeps, uri.fsPath),
+      ),
+    ),
+    orderWatcher,
+    // Keyed by the owning package.mo, not the package.order path itself, so a
+    // reorder and a `.mo` event for that same package.mo can't run
+    // concurrently.
+    orderWatcher.onDidChange((uri) =>
+      run(orderOwner(uri.fsPath), uri.fsPath, () =>
+        handleOrderChange(watcherDeps, uri.fsPath),
+      ),
+    ),
+    orderWatcher.onDidCreate((uri) =>
+      run(orderOwner(uri.fsPath), uri.fsPath, () =>
+        handleOrderChange(watcherDeps, uri.fsPath),
+      ),
+    ),
+    orderWatcher.onDidDelete((uri) =>
+      run(orderOwner(uri.fsPath), uri.fsPath, () =>
+        handleOrderDelete(watcherDeps, uri.fsPath),
+      ),
     ),
   ];
 

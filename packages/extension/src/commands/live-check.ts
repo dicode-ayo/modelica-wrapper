@@ -29,6 +29,11 @@ import { mapOmcMessagesToDiagnostics } from "../diagnostics/from-omc.js";
 import type { FileOwnerClient } from "../file-owner.js";
 import { log } from "../logger.js";
 import {
+  multiEntityMessage,
+  type StringParseClient,
+} from "../single-entity-file.js";
+import type { WriteVerdictClient } from "../write-verdict.js";
+import {
   MODELICA_SOURCE_SCHEME,
   omcFilenameForDocument,
   qualifiedNameFromUri,
@@ -45,9 +50,9 @@ const MIN_DEBOUNCE_MS = 250;
  * `getSourceFile` comes from {@link FileOwnerClient} — the pipeline never calls
  * it itself, it hands the client to `omcFilenameForDocument`.
  */
-export interface LiveCheckClient extends FileOwnerClient {
+export interface LiveCheckClient
+  extends FileOwnerClient, WriteVerdictClient, StringParseClient {
   getErrorString(): Promise<{ errorString: string }>;
-  parseString(input: { data: string; filename: string }): Promise<unknown>;
   loadString(input: {
     data: string;
     filename: string;
@@ -55,9 +60,6 @@ export interface LiveCheckClient extends FileOwnerClient {
   }): Promise<unknown>;
   checkModel(input: { typeName: string }): Promise<unknown>;
   getMessagesStringInternal(): Promise<{ messages: ErrorMessage[] }>;
-  getClassInformation(input: {
-    typeName: string;
-  }): Promise<{ lineNumberStart: number; lineNumberEnd: number }>;
 }
 
 type DocState = {
@@ -65,54 +67,6 @@ type DocState = {
   /** Monotonic generation counter — bumped on every change. */
   token: number;
 };
-
-/**
- * Drop a message reported against `filename` whose (possibly shifted) line
- * falls outside `[lowerBound, upperBound]`, and shift the survivors back to
- * buffer-relative coordinates by `shift`. A message for any other filename
- * passes through untouched.
- *
- * Defaults (`lowerBound=1`, `upperBound=documentLineCount`, `shift=0`) match
- * the buffer's own bounds — correct for a class with no real on-disk source,
- * one that starts its file, or a class whose reload OMC reports positions
- * for relative to the string just loaded rather than the file. A shared
- * file's sibling still bound to its own on-disk position reports a line
- * outside the edited class's bounds and gets dropped instead of mistaken for
- * the edited class's own.
- */
-function keepWithinBuffer(
-  msgs: readonly ErrorMessage[],
-  filename: string,
-  lowerBound: number,
-  upperBound: number,
-  shift: number,
-): ErrorMessage[] {
-  const kept: ErrorMessage[] = [];
-  for (const msg of msgs) {
-    // `lineStart: 0` is OMC's own "missing/synthetic location" marker (see
-    // `omcToVscodePosition`) — not a real position to bound or shift.
-    if (msg.info.filename !== filename || msg.info.lineStart === 0) {
-      kept.push(msg);
-      continue;
-    }
-    if (msg.info.lineStart < lowerBound || msg.info.lineStart > upperBound) {
-      continue;
-    }
-    kept.push(
-      shift === 0
-        ? msg
-        : {
-            ...msg,
-            info: {
-              ...msg.info,
-              lineStart: msg.info.lineStart - shift,
-              lineEnd: Math.min(msg.info.lineEnd - shift, upperBound - shift),
-            },
-          },
-    );
-  }
-  return kept;
-}
 
 /**
  * Subscribe to text edits on modelica-source: documents and run the
@@ -189,25 +143,24 @@ async function runCheck(
     const text = document.getText();
     const typeName = qualifiedNameFromUri(uri);
 
-    // A system-library class can't legitimately be edited, so a change on its
-    // buffer is never the user's; loading one back into OMC would repoint an
-    // installed library's source at this URI. The provider memoizes a
-    // conclusive verdict, and `readFile` forced the lookup when the document
-    // opened, so this costs nothing per keystroke. Origin only — a class whose
-    // file is merely read-only on disk still gets checked, and fails at save.
-    if (
-      typeName !== undefined &&
-      (await ctx.sourceProvider.isReadOnly(typeName))
-    ) {
-      return;
-    }
-    if (state.token !== capturedToken) return;
-
     let client: LiveCheckClient;
     try {
       client = await ctx.ensureClient();
     } catch (err) {
       log.error("liveCheck", "failed to acquire OMC client", err);
+      return;
+    }
+    if (state.token !== capturedToken) return;
+
+    // A class that can't be written can't legitimately be edited either, so a
+    // change on its buffer is never the user's; loading one back into OMC would
+    // repoint an installed library's source at this URI. The permission half is
+    // gated too: VSCode refuses edits on a read-only file's buffer, so a change
+    // event on one is never user-typed either.
+    if (
+      typeName !== undefined &&
+      !(await ctx.writeVerdicts.forClass(client, typeName, "edit")).ok
+    ) {
       return;
     }
     if (state.token !== capturedToken) return;
@@ -235,26 +188,47 @@ async function runCheck(
     // `getErrorString` between parseString and the read, or the buffer
     // is drained before `getMessagesStringInternal` can see it.
     const messages: ErrorMessage[] = [];
+    let declared: string[] = [];
     try {
-      await client.parseString({ data: text, filename });
+      ({ classNames: declared } = await client.parseString({
+        data: text,
+        filename,
+      }));
     } catch (err) {
       log.error("liveCheck", "parseString failed", err);
     }
     if (state.token !== capturedToken) return;
     const { messages: parseMessages } =
       await client.getMessagesStringInternal();
-    // Gate on every message parseString reported: an out-of-range one is
-    // still a syntax error, and skipping straight to `loadString` would
-    // double-check a buffer `parseString` already found broken.
+    messages.push(...parseMessages);
     const hasParseError = parseMessages.some(
       (m) => m.level === "error" || m.level === "internal",
     );
-    // A syntax error is always about the string just parsed — never a
-    // sibling's — so only the buffer-bounds check applies here, no shift.
-    messages.push(
-      ...keepWithinBuffer(parseMessages, filename, 1, document.lineCount, 0),
-    );
-    if (!hasParseError) {
+    // `loadString` binds every class in the text to `filename`, so loading a
+    // buffer that declares several would leave OMC holding a file no save can
+    // write back without dropping one (#452). Such a buffer parses clean, so
+    // it carries no messages of its own — publish a synthetic one rather than
+    // let the set below silently clear the squiggles the user had. Riding the
+    // diagnostic pipeline (not a notification) keeps it from firing per
+    // keystroke, and it clears itself when the second class goes away.
+    if (declared.length > 1) {
+      const message = multiEntityMessage(filename, declared);
+      log.warn("liveCheck", message);
+      messages.push({
+        info: {
+          filename,
+          readonly: false,
+          lineStart: 1,
+          columnStart: 1,
+          lineEnd: 1,
+          columnEnd: 1,
+        },
+        message,
+        kind: "scripting",
+        level: "warning",
+        id: 0,
+      });
+    } else if (!hasParseError) {
       // Syntax-clean — load into OMC and run the semantic check.
       try {
         await client.loadString({ data: text, filename, merge: false });
@@ -263,42 +237,6 @@ async function runCheck(
         return;
       }
       if (state.token !== capturedToken) return;
-
-      // A class stored inline in a shared file keeps its siblings loaded
-      // under that same filename, so `checkModel` can report a diagnostic
-      // against one of them, at their own on-disk position. Asking OMC where
-      // it now believes *this* class sits — after the `loadString` above,
-      // not before — gives the authoritative bounds for the class's own
-      // diagnostics either way: whether OMC reports them relative to the
-      // string just loaded (bounds come back ~`[1, N]`, matching the
-      // buffer, and this is a no-op) or relative to the file (bounds mirror
-      // the class's real position, and this is the fix). A failed or
-      // implausible lookup falls back to the buffer's own bounds, same as
-      // a class with no real on-disk source.
-      let lowerBound = 1;
-      let upperBound = document.lineCount;
-      let shift = 0;
-      if (typeName !== undefined && filename !== uri.toString()) {
-        try {
-          const info = await client.getClassInformation({ typeName });
-          if (
-            info.lineNumberStart >= 1 &&
-            info.lineNumberEnd >= info.lineNumberStart
-          ) {
-            lowerBound = info.lineNumberStart;
-            upperBound = info.lineNumberEnd;
-            shift = info.lineNumberStart - 1;
-          }
-        } catch (err) {
-          log.warn(
-            "liveCheck",
-            `getClassInformation(${typeName}) failed; a sibling's diagnostics may leak through`,
-            err,
-          );
-        }
-      }
-      if (state.token !== capturedToken) return;
-
       if (typeName) {
         try {
           await client.checkModel({ typeName });
@@ -313,17 +251,9 @@ async function runCheck(
         }
       }
       if (state.token !== capturedToken) return;
-      const { messages: rawSemanticMessages } =
+      const { messages: semanticMessages } =
         await client.getMessagesStringInternal();
-      messages.push(
-        ...keepWithinBuffer(
-          rawSemanticMessages,
-          filename,
-          lowerBound,
-          upperBound,
-          shift,
-        ),
-      );
+      messages.push(...semanticMessages);
     }
     if (state.token !== capturedToken) return;
     log.info(
@@ -350,6 +280,14 @@ async function runCheck(
       return undefined;
     };
     const grouped = mapOmcMessagesToDiagnostics(messages, resolver);
-    ctx.diagnostics.set(uri, grouped.get(uri) ?? []);
+    // The filename we checked under can hold sibling classes, whose diagnostics
+    // carry positions in that file rather than in this buffer. VSCode would
+    // clamp an out-of-range one onto the last line as if it were the user's.
+    // Partial: a sibling declared ahead of this class lands inside the range,
+    // and OMC reports a filename, not the class it belongs to.
+    const diagsForUri = (grouped.get(uri) ?? []).filter(
+      (d) => d.range.start.line < document.lineCount,
+    );
+    ctx.diagnostics.set(uri, diagsForUri);
   });
 }

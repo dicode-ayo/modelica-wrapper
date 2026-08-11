@@ -16,14 +16,16 @@ import { customElement, state } from "lit/decorators.js";
 // import: pulls in the default theme CSS and the bridge sheet so all
 // `<wa-*>` elements rendered downstream pick up VSCode's palette
 // automatically. esbuild's `.css` loader collects these into
-// `out/webview.css`, which `diagram/diagram-webview-html.ts` <link>s to.
+// `out/webview.css`, which `webview/webview-page.ts` <link>s to for this
+// entry. `webview/webview-page.test.ts` greps this file for this exact
+// import to check that against reality — deleting or aliasing it changes
+// what that test expects, not just what the bundle contains.
 import "@dicode/ui-common/webawesome-setup";
 
 import "@dicode/diagram-ui";
 import { omTokens } from "@dicode/ui-common";
 import type { DiagramLayout, ParameterModel } from "@dicode/omc-client";
 import {
-  isComponentKey,
   parseKey,
   type ActionFlipDetail,
   type ActionRotateDetail,
@@ -35,7 +37,11 @@ import {
   type ToolId,
 } from "@dicode/diagram-ui";
 
+import { assertUnreachable } from "@dicode/modelica-lang-core";
+
+import { CommitSlot } from "./commit-slot.js";
 import { panelReadonly } from "./panel-readonly.js";
+import { isExtensionMessage } from "./protocol.js";
 import type {
   ExtensionToWebview,
   ParameterFormKind,
@@ -107,6 +113,10 @@ class OmWebviewRoot extends LitElement {
    *  gates whether the form is read-only. Reactive — `render` reads it. */
   @state() private paramKind: ParameterFormKind | null = null;
 
+  private readonly commits = new CommitSlot((layout) =>
+    this.vscode?.postMessage({ type: "change", layout }),
+  );
+
   private vscode: VsCodeApi<WebviewToExtension> | null = null;
   private get diagram(): OmGraphicalLayout | null {
     return this.renderRoot.querySelector("om-graphical-layout");
@@ -116,6 +126,9 @@ class OmWebviewRoot extends LitElement {
     super.connectedCallback();
     this.vscode = getVsCodeApi<WebviewToExtension>();
     window.addEventListener("message", this.onHostMessage);
+    // `disconnectedCallback` is a DOM-removal hook; closing the panel tears the
+    // iframe down without one, which would strand the last queued commit.
+    window.addEventListener("pagehide", this.onPageHide);
     document.addEventListener("focusin", this.onFocusChange);
     document.addEventListener("focusout", this.onFocusChange);
     this.vscode.postMessage({ type: "ready" });
@@ -123,10 +136,16 @@ class OmWebviewRoot extends LitElement {
 
   override disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.commits.flush();
     window.removeEventListener("message", this.onHostMessage);
+    window.removeEventListener("pagehide", this.onPageHide);
     document.removeEventListener("focusin", this.onFocusChange);
     document.removeEventListener("focusout", this.onFocusChange);
   }
+
+  private readonly onPageHide = (): void => {
+    this.commits.flush();
+  };
 
   /** Last reported editable-focus state, so we only post on a transition. */
   private inputFocused = false;
@@ -206,8 +225,11 @@ class OmWebviewRoot extends LitElement {
   }
 
   private readonly onHostMessage = (e: MessageEvent): void => {
-    const data = e.data as ExtensionToWebview | undefined;
-    if (!data || typeof data !== "object" || !("type" in data)) return;
+    const data: unknown = e.data;
+    if (!isExtensionMessage(data)) {
+      console.warn("[diagram-ui] dropped host message of unknown type:", data);
+      return;
+    }
     this.apply(data);
   };
 
@@ -226,6 +248,9 @@ class OmWebviewRoot extends LitElement {
         this.diagram?.setSelection(message.keys);
         return;
       case "layout":
+        if (!this.commits.canApplyPush(this.diagram?.gestureActive === true)) {
+          return;
+        }
         this.layout = message.layout;
         this.renderError = null;
         return;
@@ -271,17 +296,24 @@ class OmWebviewRoot extends LitElement {
       case "error":
         console.error("[diagram-ui] backend error:", message.message);
         return;
+      default:
+        assertUnreachable(message, "ExtensionToWebview");
     }
   }
 
   private post(msg: WebviewToExtension): void {
+    this.commits.beforeSending(msg.type);
     this.vscode?.postMessage(msg);
   }
 
   private onLayoutChange = (
     e: CustomEvent<LayoutEvents["om-graphical-layout-change"]>,
   ): void => {
-    this.post({ type: "change", layout: e.detail });
+    // Keeps the layout this element renders and the layout the diagram shows
+    // as one thing. They diverge from the first gesture otherwise, and every
+    // later render binds one that predates it.
+    this.layout = e.detail;
+    this.commits.commit(e.detail);
   };
 
   private onConnectionCreate = (
@@ -301,11 +333,15 @@ class OmWebviewRoot extends LitElement {
   private onDoubleClick = (
     e: CustomEvent<LayoutEvents["om-double-click"]>,
   ): void => {
-    // Components are the only kind we route to the extension as an
-    // edit gesture. Connectors / labels / empty canvas double-clicks
-    // reach us via the same event — silently ignore them here.
+    // Components and shapes open their editor; connectors, labels and empty
+    // canvas reach us through the same event and are ignored.
     const parsed = parseKey(e.detail.key);
-    if (!parsed || !isComponentKey(parsed) || parsed.nodeId.length === 0) {
+    if (!parsed) return;
+    if (parsed.kind === "shape") {
+      this.post({ type: "editShape", key: e.detail.key });
+      return;
+    }
+    if (parsed.kind !== "component" || parsed.nodeId.length === 0) {
       return;
     }
     this.post({ type: "editComponent", componentName: parsed.nodeId });

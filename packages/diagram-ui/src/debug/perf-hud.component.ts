@@ -29,7 +29,7 @@ import {
   type InteractionState,
   type InteractionStateStore,
 } from "../interaction/interaction-state.js";
-import { parseKey, type EntityKind } from "../interaction/node-keys.js";
+import { parseKey, type EntityKind } from "../interaction/entity-keys.js";
 
 type PerfStats = {
   fps: number;

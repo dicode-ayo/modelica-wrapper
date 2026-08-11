@@ -1,6 +1,7 @@
 import type { Container, Graphics } from "pixi.js";
 
-import { entityKeyForNode, formatKey } from "./node-keys.js";
+import { formatKey } from "./entity-keys.js";
+import { entityKeyForNode } from "./node-keys.js";
 import {
   ownerOfPort,
   type CompatCheck,

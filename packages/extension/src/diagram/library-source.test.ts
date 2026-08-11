@@ -22,7 +22,9 @@ type GetClassNamesInput = Parameters<LibraryOmcClient["getClassNames"]>[0];
 function fakeClient(hits: string[], members: string[] = []) {
   return {
     searchClassNames: vi.fn(async () => ({ classNames: hits })),
-    getClassRestriction: vi.fn(async () => ({ restriction: "model" })),
+    getClassRestriction: vi.fn(async (_input: { typeName: string }) => ({
+      restriction: "model",
+    })),
     getClassNames: vi.fn(async ({ sort }: GetClassNamesInput) => ({
       classNames: sort === true ? [...members].sort() : members,
     })),
@@ -79,6 +81,38 @@ describe("LibrarySource.searchAll", () => {
     await source.searchAll("a");
 
     expect(client.getClassRestriction).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("LibrarySource.invalidateRestriction", () => {
+  it("makes the next lookup of that class re-ask OMC", async () => {
+    const client = fakeClient(["A", "B"]);
+    const source = new LibrarySource(client);
+    await source.searchAll("a");
+
+    source.invalidateRestriction("A");
+    await source.searchAll("a");
+
+    expect(
+      client.getClassRestriction.mock.calls.filter(
+        ([input]) => input.typeName === "A",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("leaves every other class cached", async () => {
+    const client = fakeClient(["A", "B"]);
+    const source = new LibrarySource(client);
+    await source.searchAll("a");
+
+    source.invalidateRestriction("A");
+    await source.searchAll("a");
+
+    expect(
+      client.getClassRestriction.mock.calls.filter(
+        ([input]) => input.typeName === "B",
+      ),
+    ).toHaveLength(1);
   });
 });
 

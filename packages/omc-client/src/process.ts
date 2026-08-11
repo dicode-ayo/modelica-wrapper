@@ -2,26 +2,26 @@
  * OMC subprocess management.
  *
  * Spawns `omc --interactive=zmq -z=<suffix>` and waits for OMC to drop its
- * port file. OMC builds the port-file path from `${TMPDIR}/openmodelica.${USER}.port.${suffix}`
- * (Windows: no user segment), so we control the location precisely by giving
- * OMC its own per-spawn tempdir and a fixed sentinel `USER` via the spawn env.
- * No probing, no platform-specific path drift, no username surprises.
+ * port file. Giving OMC its own per-spawn tempdir and a fixed sentinel `USER`
+ * via the spawn env puts that file where `./session.ts` says it will be. No
+ * probing, no platform-specific path drift, no username surprises.
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const PORT_FILE_TIMEOUT_MS = 30_000;
+import {
+  OMC_PID_FILE,
+  WRAPPER_USER,
+  portFileName,
+  sessionDirPrefix,
+} from "./session.js";
 
-/**
- * Sentinel `USER` value passed to OMC. The actual login user is irrelevant —
- * OMC only uses this string as a path segment in the port-file name.
- */
-const WRAPPER_USER = "mw";
+const PORT_FILE_TIMEOUT_MS = 30_000;
 
 export interface OmcProcess {
   /** ZMQ endpoint, e.g. tcp://127.0.0.1:33421. */
@@ -42,14 +42,8 @@ export async function spawnOmc(
 ): Promise<OmcProcess> {
   const bin = omcPath && omcPath.length > 0 ? omcPath : "omc";
   const suffix = `mw_${randomBytes(8).toString("hex")}`;
-  const tempDir = await mkdtemp(join(tmpdir(), "mw-omc-"));
-
-  // Windows OMC drops the user segment unconditionally (compile-time branch
-  // in `zeromqimpl.c`), Unix includes it.
-  const portFile =
-    process.platform === "win32"
-      ? join(tempDir, `openmodelica.port.${suffix}`)
-      : join(tempDir, `openmodelica.${WRAPPER_USER}.port.${suffix}`);
+  const tempDir = await mkdtemp(join(tmpdir(), sessionDirPrefix(process.pid)));
+  const portFile = join(tempDir, portFileName(suffix));
 
   const env: NodeJS.ProcessEnv = { ...process.env };
   if (process.platform === "win32") {
@@ -80,6 +74,11 @@ export async function spawnOmc(
     child.stderr?.on("data", (chunk: Buffer | string) => {
       process.stderr.write(`[omc] ${chunk}`);
     });
+  }
+
+  killWhenThisProcessExits(child);
+  if (child.pid !== undefined) {
+    await writeFile(join(tempDir, OMC_PID_FILE), `${child.pid}`, "utf8");
   }
 
   // Surface spawn failures (ENOENT for missing binary etc.) as rejection.
@@ -114,6 +113,24 @@ export async function spawnOmc(
     await stop();
     throw err;
   }
+}
+
+const liveChildren = new Set<ChildProcess>();
+let exitHookInstalled = false;
+
+/**
+ * OMC survives its parent, so an exit that skips `stop()` would strand it.
+ * Covers a crash or an explicit `process.exit`; a host killed outright runs no
+ * hook at all and is caught by {@link reapOrphanedOmcSessions} on the next run.
+ */
+function killWhenThisProcessExits(child: ChildProcess): void {
+  liveChildren.add(child);
+  child.once("exit", () => liveChildren.delete(child));
+  if (exitHookInstalled) return;
+  exitHookInstalled = true;
+  process.on("exit", () => {
+    for (const c of liveChildren) c.kill("SIGKILL");
+  });
 }
 
 async function waitForPortFile(

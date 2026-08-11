@@ -18,6 +18,7 @@ import {
   docHtmlUriFor,
   type DocHtmlClient,
 } from "./documentation-html-provider.js";
+import { WriteVerdicts } from "../write-verdict.js";
 
 interface Calls {
   setArgs: { typeName: string; info: string }[];
@@ -63,6 +64,7 @@ describe("DocumentationHtmlProvider", () => {
     const provider = new DocumentationHtmlProvider(
       () => Promise.resolve(client),
       () => {},
+      new WriteVerdicts(),
     );
     const bytes = await provider.readFile(URI);
     expect(Buffer.from(bytes).toString("utf8")).toBe("<html><p>hi</p></html>");
@@ -73,6 +75,7 @@ describe("DocumentationHtmlProvider", () => {
     const provider = new DocumentationHtmlProvider(
       () => Promise.resolve(client),
       () => {},
+      new WriteVerdicts(),
     );
     await expect(provider.readFile(URI)).rejects.toThrow();
   });
@@ -83,6 +86,7 @@ describe("DocumentationHtmlProvider", () => {
     const provider = new DocumentationHtmlProvider(
       () => Promise.resolve(client),
       (name) => notified.push(name),
+      new WriteVerdicts(),
     );
 
     await provider.writeFile(URI, Buffer.from("<html><p>new</p></html>"));
@@ -101,6 +105,7 @@ describe("DocumentationHtmlProvider", () => {
     const provider = new DocumentationHtmlProvider(
       () => Promise.resolve(client),
       () => {},
+      new WriteVerdicts(),
     );
     await expect(
       provider.writeFile(URI, Buffer.from("<html><p>x</p></html>")),
@@ -116,6 +121,7 @@ describe("DocumentationHtmlProvider", () => {
     const provider = new DocumentationHtmlProvider(
       () => Promise.resolve(client),
       () => {},
+      new WriteVerdicts(),
     );
     await expect(
       provider.writeFile(URI, Buffer.from("<html><p>x</p></html>")),
@@ -128,6 +134,7 @@ describe("DocumentationHtmlProvider", () => {
     const provider = new DocumentationHtmlProvider(
       () => Promise.resolve(client),
       () => {},
+      new WriteVerdicts(),
     );
     const fired: vscode.Uri[] = [];
     provider.onDidChangeFile((events) => {

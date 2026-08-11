@@ -13,7 +13,7 @@ import {
 
 import { renderIconLayersToSvg } from "@dicode/diagram-svg";
 
-import { isConnectorKey, parseEntityKey } from "./entity-key.js";
+import { parseKey } from "@dicode/diagram-ui/entity-keys";
 
 import { createReplLog } from "../commands/repl.js";
 import {
@@ -23,7 +23,7 @@ import {
 import { log } from "../logger.js";
 import { sourceUriFor } from "../source-provider.js";
 
-import { applyEdits } from "./apply-edits.js";
+import { applyEdits, type ApplyEditsResult } from "./apply-edits.js";
 import { DIAGRAM_VIEW_TYPE } from "./view-type.js";
 import {
   connectedPortsOf,
@@ -370,33 +370,23 @@ export async function fetchDiagramLayout(
 }
 
 /**
- * Apply the graphical delta between `prevLayout` and `next` to OMC and return
- * the re-fetched layout. Diffs to `LayoutEdit`s, applies them with an OMC-level
- * snapshot so a partial failure rolls the class back, then re-reads the layout
- * from OMC (the render source of truth). Returns `null` when the two layouts
- * are identical (nothing to apply).
+ * Apply the graphical delta between `prevLayout` and `next` to OMC. Diffs to
+ * `LayoutEdit`s and applies them with an OMC-level snapshot so a partial
+ * failure rolls the class back. Returns `null` when the two layouts are
+ * identical (nothing to apply).
  *
- * `refetch` selects which layout the fresh render is read from, so an
- * icon-layer shape edit re-reads the icon layout rather than the diagram one.
+ * Re-reading the layout is the caller's job, so a burst of edits can share one
+ * re-fetch instead of paying for one each.
  */
 export async function applyDiagramEdits(
   client: OmcClient,
   className: string,
   prevLayout: DiagramLayout,
   next: DiagramLayout,
-  refetch: (client: OmcClient, className: string) => Promise<DiagramLayout>,
-): Promise<{
-  layout: DiagramLayout;
-  failed: ReadonlyArray<{ error: string }>;
-  rolledBack: boolean;
-} | null> {
+): Promise<ApplyEditsResult | null> {
   const edits = diffLayouts(prevLayout, next);
   if (edits.length === 0) return null;
-  const result = await applyEdits(client, className, edits, undefined, {
-    snapshot: true,
-  });
-  const layout = await refetch(client, className);
-  return { layout, failed: result.failed, rolledBack: result.rolledBack };
+  return applyEdits(client, className, edits, undefined, { snapshot: true });
 }
 
 /**
@@ -620,8 +610,8 @@ export async function fetchIconLayout(
  */
 function iconDependencies(instance: ModelInstance): string[] {
   const deps = new Set<string>();
-  for (const ancestor of diagram.walkExtendsChain(instance)) {
-    if (ancestor !== instance) deps.add(ancestor.name);
+  for (const { klass } of diagram.walkExtendsChain(instance)) {
+    if (klass !== instance) deps.add(klass.name);
   }
   return [...deps];
 }
@@ -931,8 +921,8 @@ async function resolveClassName(arg: unknown): Promise<string | undefined> {
  * expects on `addConnection`.
  */
 export function keyToCref(layout: DiagramLayout, key: string): string | null {
-  const parsed = parseEntityKey(key);
-  if (!parsed || !isConnectorKey(parsed)) return null;
+  const parsed = parseKey(key);
+  if (parsed?.kind !== "connector") return null;
   if (parsed.componentName === null) {
     return layout.connectors[parsed.portName] ? parsed.portName : null;
   }

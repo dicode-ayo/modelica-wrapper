@@ -13,6 +13,7 @@ import type {
   Shape,
 } from "@dicode/omc-client";
 import { colorToCss } from "@dicode/diagram-svg";
+import { assertUnreachable } from "@dicode/modelica-lang-core";
 import { omTokens } from "@dicode/ui-common";
 
 import { renderShape } from "../primitives/render-shape.js";
@@ -37,23 +38,23 @@ import {
   type PickerFactory,
 } from "../interaction/interaction-manager.js";
 import type { DragEvents } from "../interaction/gesture-mode.js";
+import {
+  resolveDrag,
+  type AnyDragEvent,
+  type DragEffect,
+  type InProgressConnection,
+} from "../interaction/drag-policy.js";
 import { ModeRouter } from "../interaction/mode.js";
 import {
   applyAddGraphic,
-  applyDeltaMove,
-  applyEdgeSegmentDrag,
-  applyResize,
-  applyRotation,
-  applyShapeVertexDrag,
   applyShapeVertexInsert,
-  applySnapToExtents,
-  applyWaypointDelete,
-  applyWaypointDrag,
-  applyWaypointInsert,
-  retainExistingSelection,
-  selectByDiagramRect,
-  shapeCentre,
 } from "../interaction/layout-ops.js";
+import { retainExistingSelection } from "../interaction/selection-ops.js";
+import {
+  applyWaypointDelete,
+  applyWaypointInsert,
+  withMaterialisedRoute,
+} from "../interaction/route-ops.js";
 import {
   chordFromEvent,
   CommandRegistry,
@@ -75,23 +76,14 @@ import {
   type ContextKeys,
 } from "../interaction/context-keys.js";
 import {
-  entityKeyForNode,
   formatComponentKey,
   formatConnectorKey,
   formatShapeKey,
-  isComponentKey,
-  isConnectorKey,
-  isEdgeKey,
-  isJunctionKey,
-  isShapeKey,
   parseKey,
   vertexKeyForEntity,
-  vertexShapeKey,
-} from "../interaction/node-keys.js";
-import {
-  orthogonalRoute,
-  resolveConnectionWaypoints,
-} from "../interaction/connection-route.js";
+} from "../interaction/entity-keys.js";
+import { entityKeyForNode } from "../interaction/node-keys.js";
+import { resolveConnectionWaypoints } from "../interaction/connection-route.js";
 import {
   canConnect,
   resolvePortInfo,
@@ -104,7 +96,6 @@ import {
 } from "../interaction/interaction-state.js";
 import {
   resolveSnapGrid,
-  snapDelta,
   snapPoint,
   type SnapGrid,
 } from "../interaction/snap-math.js";
@@ -395,11 +386,7 @@ export class OmGraphicalLayout extends LitElement {
   /** Current connection-drag state, mirrored from the mode's `connection`
    *  events — drives the source/target port indicators and the red flag
    *  on an incompatible target. `null` outside a connection drag. */
-  @state() private inProgressConnection: {
-    from: string;
-    toKey: string | null;
-    compat: { ok: boolean; reason?: string } | null;
-  } | null = null;
+  @state() private inProgressConnection: InProgressConnection | null = null;
   /** True while a draggable library class hovers the canvas — drives the
    *  drop-affordance outline. Cleared on drop or when the drag leaves. */
   @state() private dropActive = false;
@@ -516,7 +503,17 @@ export class OmGraphicalLayout extends LitElement {
       return html``;
     }
     const active = this.layoutWithPreview(base);
-    const componentEntries = Object.entries(active.components);
+    // Mirrors `renderShape`'s `visible === false` skip (render-shape.ts):
+    // OMEdit doesn't draw a hidden component either, so it gets no
+    // `<om-component>` at all — unpickable and unselectable, same as a
+    // hidden shape. `Placement.visible` is already resolved to a literal
+    // by the producer (`placementFor`), so there's no DynamicSelect case
+    // to peel here. Its connections still route from `layout.components`
+    // directly (`endpointCentreFromLayout`), not from this element, so
+    // they keep anchoring correctly with nothing left to crash into.
+    const componentEntries = Object.entries(active.components).filter(
+      ([, comp]) => comp.placement.visible !== false,
+    );
     const connectorEntries = Object.entries(active.connectors);
     return html`
       <om-scene
@@ -882,7 +879,7 @@ export class OmGraphicalLayout extends LitElement {
    */
   private findConnectorElement(key: string): OmConnector | null {
     const parsed = parseKey(key);
-    if (!parsed || !isConnectorKey(parsed)) {
+    if (parsed?.kind !== "connector") {
       return null;
     }
     const root = this.sceneEl;
@@ -947,9 +944,9 @@ export class OmGraphicalLayout extends LitElement {
       }
     };
     const parsedHover = this.hoverKey ? parseKey(this.hoverKey) : null;
-    if (parsedHover && isComponentKey(parsedHover)) {
+    if (parsedHover?.kind === "component") {
       addAllPortsOfComponent(parsedHover.nodeId);
-    } else if (parsedHover && isConnectorKey(parsedHover) && this.hoverKey) {
+    } else if (parsedHover?.kind === "connector" && this.hoverKey) {
       addByConnectorKey(this.hoverKey);
     }
     const ip = this.inProgressConnection;
@@ -1064,7 +1061,7 @@ export class OmGraphicalLayout extends LitElement {
       return;
     }
     if (
-      isShapeKey(entity) &&
+      entity.kind === "shape" &&
       (entity.shapeKind === "line" || entity.shapeKind === "polygon")
     ) {
       const point = this.sceneEl?.clientToDiagram(e.clientX, e.clientY);
@@ -1080,89 +1077,30 @@ export class OmGraphicalLayout extends LitElement {
       );
       return;
     }
-    if (isEdgeKey(entity)) {
-      // Edge nodeId is the connection index.
-      const connIdx = Number(entity.nodeId);
+    if (entity.kind === "edge") {
+      const connIdx = entity.connIndex;
       const point = this.sceneEl?.clientToDiagram(e.clientX, e.clientY);
       if (Number.isNaN(connIdx) || !point) {
         return;
       }
       this.commitLayout(
         applyWaypointInsert(
-          this.withMaterialisedRoute(this.layout, connIdx),
+          withMaterialisedRoute(this.layout, connIdx),
           connIdx,
           point,
         ),
       );
       return;
     }
-    if (isJunctionKey(entity)) {
-      // Junction nodeId is the compound `<connIdx>/<waypointIdx>`.
-      const slash = entity.nodeId.indexOf("/");
-      if (slash < 0) {
+    if (entity.kind === "junction") {
+      const { connIndex, waypointIndex } = entity;
+      if (Number.isNaN(connIndex) || Number.isNaN(waypointIndex)) {
         return;
       }
-      const connIdx = Number(entity.nodeId.slice(0, slash));
-      const waypointIdx = Number(entity.nodeId.slice(slash + 1));
-      if (Number.isNaN(connIdx) || Number.isNaN(waypointIdx)) {
-        return;
-      }
-      this.commitLayout(applyWaypointDelete(this.layout, connIdx, waypointIdx));
+      this.commitLayout(
+        applyWaypointDelete(this.layout, connIndex, waypointIndex),
+      );
     }
-  }
-
-  /**
-   * Reshape a connection's route around a dragged waypoint, keeping it
-   * orthogonal. `nodeId` is the junction's compound id
-   * (`<connIdx>/<waypointIdx>`); a malformed id leaves the layout
-   * untouched.
-   */
-  private applyJunctionReshape(
-    layout: DiagramLayout,
-    nodeId: string,
-    dx: number,
-    dy: number,
-  ): DiagramLayout {
-    const slash = nodeId.indexOf("/");
-    if (slash < 0) {
-      return layout;
-    }
-    const connIdx = Number(nodeId.slice(0, slash));
-    const waypointIdx = Number(nodeId.slice(slash + 1));
-    if (Number.isNaN(connIdx) || Number.isNaN(waypointIdx)) {
-      return layout;
-    }
-    return applyWaypointDrag(
-      this.withMaterialisedRoute(layout, connIdx),
-      connIdx,
-      waypointIdx,
-      dx,
-      dy,
-    );
-  }
-
-  /**
-   * Returns a layout copy where the connection at `connIdx` has its
-   * waypoints materialised from endpoint positions when they are currently
-   * empty (`waypoints: []`). Returns the original layout reference when the
-   * connection already has a route or can't be resolved.
-   */
-  private withMaterialisedRoute(
-    layout: DiagramLayout,
-    connIdx: number,
-  ): DiagramLayout {
-    const conn = layout.connections[connIdx];
-    if (!conn || conn.waypoints.length > 0) {
-      return layout;
-    }
-    const waypoints = resolveConnectionWaypoints(layout, conn);
-    if (waypoints.length < 2) {
-      return layout;
-    }
-    const connections = layout.connections.map((c, i) =>
-      i === connIdx ? { ...c, waypoints } : c,
-    );
-    return { ...layout, connections };
   }
 
   /** Snap a diagram-space point to the active grid and ask the host to
@@ -1458,218 +1396,66 @@ export class OmGraphicalLayout extends LitElement {
     type: K,
     detail: DragEvents[K],
   ): void {
-    if (!this.layout) {
+    const layout = this.layout;
+    if (!layout) {
       return;
     }
-    // Rubber-band is the one gesture here that moves nothing — it only sets
-    // the selection, so it stays live on a read-only class. Copying a
-    // sub-system out of a system-library model needs multi-select.
-    if (this.readonly && type !== "rubberBand") {
-      return;
+    // `type` and `detail` reach here from one `DragEmit` call, so the pair
+    // is always one member of `AnyDragEvent`; TypeScript can't correlate
+    // the two generic positions on its own.
+    const event = { type, detail } as AnyDragEvent;
+    const effects = resolveDrag(event, {
+      layout,
+      readonly: this.readonly,
+      grid: this.currentSnapGrid(),
+      rotateSnapDegrees: this.rotateSnapDegrees,
+      selectedKeys: this.selectedKeys,
+      connectorPosition: (key) => this.connectorDiagramPosition(key),
+    });
+    for (const effect of effects) {
+      this.applyDragEffect(effect);
     }
-    switch (type) {
-      case "drag": {
-        const d = detail as DragEvents["drag"];
-        // Snap the drag delta to the active grid so components glide
-        // in whole-step increments. With grid {2,2} (the Modelica
-        // default) sub-step pointer moves render as no-ops, which
-        // gives the gesture an OMEdit-style "magnetic" feel.
-        const grid = this.currentSnapGrid();
-        const { dx, dy } = snapDelta(d.dx, d.dy, grid);
-        // A lone waypoint reshapes its route orthogonally (inserting
-        // jogs) rather than translating; anything else (components,
-        // multi-selection) is a plain move.
-        const only = d.keys.length === 1 ? d.keys[0] : undefined;
-        const single = only ? parseKey(only) : null;
-        if (single && isJunctionKey(single)) {
-          const moved = this.applyJunctionReshape(
-            this.layout,
-            single.nodeId,
-            dx,
-            dy,
-          );
-          if (d.draft) {
-            this.draftLayout = moved;
-            this.setInteractionState({ kind: "moving", keys: d.keys });
-          } else {
-            this.commitLayout(moved);
-            this.endInteraction();
-          }
-          return;
+  }
+
+  private applyDragEffect(effect: DragEffect): void {
+    switch (effect.kind) {
+      case "draft":
+        this.draftLayout = effect.layout;
+        return;
+      case "dropDraft":
+        this.draftLayout = null;
+        return;
+      case "commit":
+        this.commitLayout(effect.layout);
+        return;
+      case "state":
+        this.setInteractionState(effect.state);
+        return;
+      case "endInteraction":
+        this.endInteraction();
+        return;
+      case "selection": {
+        const keys = Array.from(effect.keys);
+        this.selectedKeys = effect.keys;
+        if (effect.emit) {
+          this.emit("om-selection-change", { keys });
         }
-        const moved = applyDeltaMove(this.layout, d.keys, dx, dy);
-        if (d.draft) {
-          this.draftLayout = moved;
-          this.setInteractionState({ kind: "moving", keys: d.keys });
-        } else {
-          // On commit, snap each moved entity's extent corners to
-          // the grid. `snapDelta` only rounds the delta, so a
-          // component that started off-grid would stay off-grid
-          // after any move — this pass pulls the final values onto
-          // grid intersections (matches OMEdit's "Snap to Grid" on
-          // mouse-up).
-          this.commitLayout(applySnapToExtents(moved, d.keys, grid));
-          this.endInteraction();
-        }
+        this.interactionStore.next({ selectedKeys: keys });
         return;
       }
-      case "edgeDrag": {
-        const d = detail as DragEvents["edgeDrag"];
-        const grid = this.currentSnapGrid();
-        const { dx, dy } = snapDelta(d.dx, d.dy, grid);
-        const moved = applyEdgeSegmentDrag(
-          this.withMaterialisedRoute(this.layout, d.connIdx),
-          d.connIdx,
-          d.grab,
-          dx,
-          dy,
-        );
-        if (d.draft) {
-          this.draftLayout = moved;
-          this.setInteractionState({
-            kind: "moving",
-            keys: [`edge:${d.connIdx}`],
-          });
-        } else {
-          this.commitLayout(moved);
-          this.endInteraction();
-        }
+      case "connectionDrag":
+        this.inProgressConnection = effect.value;
+        this.refreshPortIndicators();
         return;
-      }
-      case "rubberBand": {
-        const d = detail as DragEvents["rubberBand"];
-        if (d.draft) {
-          // Live selection preview.
-          this.selectedKeys = selectByDiagramRect(this.layout, d.rect);
-          this.interactionStore.next({
-            selectedKeys: Array.from(this.selectedKeys),
-          });
-          this.setInteractionState({ kind: "selecting" });
-        } else {
-          const keys = selectByDiagramRect(this.layout, d.rect);
-          this.selectedKeys = keys;
-          this.emit("om-selection-change", { keys: Array.from(keys) });
-          this.interactionStore.next({ selectedKeys: Array.from(keys) });
-          this.endInteraction();
-        }
+      case "connectionCreate":
+        this.emit("om-connection-create", {
+          fromKey: effect.fromKey,
+          toKey: effect.toKey,
+          waypoints: effect.waypoints,
+        });
         return;
-      }
-      case "connection": {
-        const d = detail as DragEvents["connection"];
-        if (!d.commit) {
-          // `fromPoint` / `compat` are resolved by ConnectMode (which
-          // already needs them to draw the wire) and ride on the event,
-          // so the host doesn't re-walk the shadow DOM or re-run the
-          // compat check on every pointermove.
-          this.inProgressConnection = {
-            from: d.from,
-            toKey: d.toKey,
-            compat: d.compat,
-          };
-          this.refreshPortIndicators();
-          this.setInteractionState({
-            kind: "connecting",
-            fromKey: d.from,
-            toKey: d.toKey,
-          });
-        } else {
-          this.inProgressConnection = null;
-          this.refreshPortIndicators();
-          // Only emit when we have a snap target AND the local check
-          // didn't reject it. Incompatible drops silently fail —
-          // matches what the user just saw (red wire) and avoids a
-          // round-trip to OMC for a connection we know it would reject.
-          if (d.toKey && (d.compat === null || d.compat.ok)) {
-            const toPoint = this.connectorDiagramPosition(d.toKey);
-            const waypoints = toPoint
-              ? orthogonalRoute(d.fromPoint, toPoint)
-              : [];
-            this.emit("om-connection-create", {
-              fromKey: d.from,
-              toKey: d.toKey,
-              waypoints,
-            });
-          }
-          this.endInteraction();
-        }
-        return;
-      }
-      case "resize": {
-        // Snap the moving corner to the grid, then drag that corner of
-        // the shape's extent. Live-preview on draft, persist on commit —
-        // the same draftLayout → commitLayout pipeline `move` uses.
-        const d = detail as DragEvents["resize"];
-        const grid = this.currentSnapGrid();
-        const { x, y } = snapPoint(d.x, d.y, grid);
-        const resized = applyResize(this.layout, d.key, d.corner, x, y);
-        if (d.draft) {
-          this.draftLayout = resized;
-          this.setInteractionState({
-            kind: "resizing",
-            key: d.key,
-            corner: d.corner,
-          });
-        } else {
-          this.commitLayout(resized);
-          this.endInteraction();
-        }
-        return;
-      }
-      case "rotate": {
-        // Drag-to-rotate: derive the angle from the owner shape's centre
-        // to the pointer (the handle sits due north at 0°). Snap to
-        // `rotateSnapDegrees` unless the drag is free (Shift). Rotate
-        // whatever's selected, falling back to the handle's own owner.
-        const d = detail as DragEvents["rotate"];
-        const pivot = shapeCentre(this.layout, d.key);
-        if (!pivot) {
-          return;
-        }
-        // Reuse the live selection when the handle's owner is in it
-        // (the usual case — the handle only shows on a selected shape);
-        // the array fallback mirrors `move`/`resize` and avoids minting
-        // a Set on every pointermove.
-        const keys = this.selectedKeys.has(d.key) ? this.selectedKeys : [d.key];
-        const raw =
-          (Math.atan2(d.y - pivot[1], d.x - pivot[0]) * 180) / Math.PI - 90;
-        const snap = d.free ? 0 : this.rotateSnapDegrees;
-        const deg = snap > 0 ? Math.round(raw / snap) * snap : raw;
-        const rotated = applyRotation(this.layout, keys, deg);
-        if (d.draft) {
-          this.draftLayout = rotated;
-          this.setInteractionState({ kind: "rotating", key: d.key });
-        } else {
-          this.commitLayout(rotated);
-          this.endInteraction();
-        }
-        return;
-      }
-      case "vertexDrag": {
-        // Drag one vertex of a poly shape to the snapped pointer. Live
-        // preview on draft, persist on commit — same pipeline as resize.
-        const d = detail as DragEvents["vertexDrag"];
-        const vertex = parseKey(d.key);
-        if (!vertex || vertex.kind !== "vertex-handle") {
-          return;
-        }
-        const shapeKey = vertexShapeKey(vertex);
-        const { x, y } = snapPoint(d.x, d.y, this.currentSnapGrid());
-        const edited = applyShapeVertexDrag(
-          this.layout,
-          shapeKey,
-          vertex.vertexIndex,
-          x,
-          y,
-        );
-        if (d.draft) {
-          this.draftLayout = edited;
-          this.setInteractionState({ kind: "moving", keys: [shapeKey] });
-        } else {
-          this.commitLayout(edited);
-          this.endInteraction();
-        }
-        return;
-      }
+      default:
+        assertUnreachable(effect, "DragEffect");
     }
   }
 
@@ -1715,7 +1501,8 @@ export class OmGraphicalLayout extends LitElement {
    * Applies a draw step from the armed `ToolMode`. The mode owns the shape
    * (snapping, guards, preview kind); the host only places it into whichever
    * layer this view edits (icon vs diagram): a draft previews, a commit
-   * persists + disarms, a cancel drops the preview and stays armed.
+   * persists, selects what was drawn, and disarms; a cancel drops the
+   * preview and stays armed.
    */
   private onTool(draw: ToolDraw): void {
     if (this.readonly || !this.layout) {
@@ -1726,7 +1513,7 @@ export class OmGraphicalLayout extends LitElement {
       this.endInteraction();
       return;
     }
-    const next = applyAddGraphic(this.layout, this.layout.kind, draw.shape);
+    const { layout: next, key } = applyAddGraphic(this.layout, draw.shape);
     if (draw.phase === "draft") {
       this.draftLayout = next;
       this.setInteractionState({ kind: "drawing" });
@@ -1734,6 +1521,7 @@ export class OmGraphicalLayout extends LitElement {
     }
     this.draftLayout = null;
     this.commitLayout(next);
+    this.setSelection([key]);
     this.endInteraction();
     this.setActiveTool("select"); // one shape per arming
   }
@@ -1812,8 +1600,7 @@ export class OmGraphicalLayout extends LitElement {
     const [key] = this.selectedKeys;
     const parsed = key ? parseKey(key) : null;
     return (
-      !!parsed &&
-      isShapeKey(parsed) &&
+      parsed?.kind === "shape" &&
       (parsed.shapeKind === "line" || parsed.shapeKind === "polygon")
     );
   }
@@ -1919,6 +1706,15 @@ export class OmGraphicalLayout extends LitElement {
     detail: LayoutEvents[K],
   ): void {
     emitEvent(this, name, detail);
+  }
+
+  /**
+   * True from `pointerdown` until the gesture or tool draw ends. Swapping
+   * `layout` while this holds moves what the user has under the pointer, so a
+   * host with a refreshed layout to push drops it and waits for the commit.
+   */
+  get gestureActive(): boolean {
+    return this.modeRouter?.isGestureActive() ?? false;
   }
 
   /** Returns the current selection as an array of canonical keys. */

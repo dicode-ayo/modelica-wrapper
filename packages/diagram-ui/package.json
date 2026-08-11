@@ -7,7 +7,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./command-ids": "./src/commands/command-ids.ts"
+    "./command-ids": "./src/commands/command-ids.ts",
+    "./entity-keys": "./src/interaction/entity-keys.ts"
   },
   "files": [
     "dist"

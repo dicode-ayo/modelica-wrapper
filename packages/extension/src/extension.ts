@@ -14,7 +14,7 @@
 
 import * as vscode from "vscode";
 
-import { OmcClient } from "@dicode/omc-client";
+import { OmcClient, reapOrphanedOmcSessions } from "@dicode/omc-client";
 
 import { registerCommands } from "./commands/index.js";
 import { DiagramEditorProvider } from "./diagram/diagram-editor-provider.js";
@@ -44,9 +44,12 @@ import {
 import { registerMoFileWatcher } from "./mo-file-watcher.js";
 import { createOmcClientCache } from "./omc-client-cache.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
-import { syncIconsWithSource } from "./source-icon-sync.js";
+import { ClassInvalidationRegistry } from "./invalidation.js";
+import { publishSourceChanges } from "./source-invalidation.js";
 import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
+import { WriteVerdicts } from "./write-verdict.js";
+import { multiEntityBatchToast } from "./single-entity-file.js";
 import { loadEntryFilesAndRefresh } from "./workspace-autoload.js";
 import { discoverEntryPoints } from "./workspace-scan.js";
 
@@ -77,9 +80,17 @@ export async function activate(
   context: vscode.ExtensionContext,
 ): Promise<ModelicaExtensionApi> {
   log.info("activate", "extension activating");
+  void reapStrandedOmc();
+
+  // Every cache keyed by a Modelica class hangs off this: producers announce
+  // "class X changed" once and each cache registers its own listener, so the
+  // number of caches is invisible here.
+  const invalidation = new ClassInvalidationRegistry();
+
   const libraryTree = new LibraryWebviewProvider(
     context.extensionUri,
     ensureClient,
+    invalidation,
   );
   const libraryView = vscode.window.registerWebviewViewProvider(
     "modelica.libraries",
@@ -88,9 +99,14 @@ export async function activate(
   );
 
   const selfWriteGuard = createSelfWriteGuard();
+  // One instance for the whole session: the origin half of a verdict has to be
+  // captured before the first mutation, and only a shared memo lets the source
+  // provider's capture protect every later question about the same class.
+  const writeVerdicts = new WriteVerdicts();
   const sourceProvider = new ModelicaSourceProvider(
     ensureClient,
     selfWriteGuard,
+    writeVerdicts,
   );
   const docHtmlProvider = new DocumentationHtmlProvider(
     ensureClient,
@@ -100,6 +116,7 @@ export async function activate(
       notifyDocumentationChanged(name);
       sourceProvider.notifySourceChanged(name);
     },
+    writeVerdicts,
   );
 
   // One DiagnosticCollection shared by the user-triggered Check Model command
@@ -126,11 +143,14 @@ export async function activate(
     ),
   );
 
-  // Save-triggered icon refresh. The diagram/icon editors invalidate their own
-  // class on an unsaved graphical commit (their `iconChanged` callback below);
-  // this is the disjoint path for text-editor saves, which reach the sidebar
-  // only through the source provider's change broadcast.
-  context.subscriptions.push(syncIconsWithSource(sourceProvider, libraryTree));
+  // The source provider's change broadcast is the broad producer feeding the
+  // registry: every write that lands in OMC — a text-editor save, a mutation
+  // command, the `.mo` watcher reloading a foreign edit — ends there. An
+  // unsaved graphical commit reaches OMC but not that broadcast, so the
+  // diagram/icon editors announce their own class (their callback below).
+  context.subscriptions.push(
+    publishSourceChanges(sourceProvider, invalidation),
+  );
 
   // Keep OMC and the sidebar reactive to bare `.mo` edits (text-editor saves,
   // Explorer/external create/delete) that never pass through a mutation command.
@@ -144,29 +164,33 @@ export async function activate(
   );
 
   context.subscriptions.push(
+    libraryTree,
     libraryView,
     diagnostics,
     ResultViewEditorProvider.register(context, ensureClient),
     DiagramEditorProvider.register(
       context,
       ensureClient,
+      writeVerdicts,
       DIAGRAM_VIEW_TYPE,
       "diagram",
-      (className) => libraryTree.iconChanged(className),
+      (className) => invalidation.classChanged(className),
     ),
     DiagramEditorProvider.register(
       context,
       ensureClient,
+      writeVerdicts,
       ICON_VIEW_TYPE,
       "icon",
-      (className) => libraryTree.iconChanged(className),
+      (className) => invalidation.classChanged(className),
     ),
     DocumentationEditorProvider.register(
       context,
       ensureClient,
+      writeVerdicts,
       DOCUMENTATION_VIEW_TYPE,
     ),
-    registerLanguageFeatures(context, ensureClient),
+    registerLanguageFeatures(context, ensureClient, invalidation),
     wireDocHtmlRefresh(docHtmlProvider),
     ...registerCommands({
       extensionContext: context,
@@ -176,6 +200,7 @@ export async function activate(
       sourceProvider,
       diagnostics,
       selfWriteGuard,
+      writeVerdicts,
     }),
   );
 
@@ -209,6 +234,22 @@ export async function deactivate(): Promise<void> {
 
 function ensureClient(): Promise<OmcClient> {
   return omcClientCache.ensure();
+}
+
+/**
+ * Shut down OMC processes left behind by an extension host that died before
+ * `deactivate()`. Runs alongside activation; it only ever touches sessions
+ * whose owning process is gone, so it cannot disturb this window's client.
+ */
+async function reapStrandedOmc(): Promise<void> {
+  try {
+    const count = await reapOrphanedOmcSessions();
+    if (count > 0) {
+      log.info("activate", `reaped ${count} stranded OMC session(s)`);
+    }
+  } catch (err) {
+    log.warn("activate", `reaping stranded OMC failed: ${String(err)}`);
+  }
 }
 
 /**
@@ -285,9 +326,14 @@ async function autoLoadWorkspaceModels(
     // concurrent OMC fetches onto the single ZeroMQ socket during startup. The
     // webview tree's own mount fetch is serialized with this one through the
     // client, so they can't overlap into a busy-socket send.
-    await loadEntryFilesAndRefresh(c, files, () =>
+    const skipped = await loadEntryFilesAndRefresh(c, files, () =>
       libraryTree.childrenChanged(null),
     );
+    if (skipped.length > 0) {
+      void vscode.window.showWarningMessage(
+        multiEntityBatchToast(skipped.map((s) => s.fileName)),
+      );
+    }
   } catch (err) {
     log.warn("autoLoad", `OMC client unavailable: ${(err as Error).message}`);
   }

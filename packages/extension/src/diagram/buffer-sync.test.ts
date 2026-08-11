@@ -6,13 +6,10 @@
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
-import { setStatReadonly } from "../../test-support/vscode-mock.js";
-
 import {
   defaultScheduler,
-  isReadOnlyDocument,
   reloadBufferIntoOmc,
   type BufferSyncClient,
 } from "./buffer-sync.js";
@@ -26,14 +23,11 @@ function docFor(uri: vscode.Uri, text = ""): vscode.TextDocument {
 
 const DOC_URI = vscode.Uri.parse("modelica-source:/Pkg.Model.mo");
 
-beforeEach(() => {
-  setStatReadonly(false);
-});
-
 describe("reloadBufferIntoOmc", () => {
   it("drains stale diagnostics before loading the buffer's text", async () => {
     const calls: string[] = [];
     const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
       getErrorString: vi.fn(async () => {
         calls.push("getErrorString");
         return { errorString: "" };
@@ -58,12 +52,32 @@ describe("reloadBufferIntoOmc", () => {
     expect(calls).toEqual(["getErrorString", "loadString"]);
   });
 
+  it("refuses a buffer declaring several top-level classes (#452)", async () => {
+    // `loadString` binds every class in the text to `filename`, so letting this
+    // through would mint the shape every load path refuses — on a file that
+    // still parses clean from disk.
+    const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["A", "B"] })),
+      getErrorString: vi.fn(async () => ({ errorString: "" })),
+      loadString: vi.fn(async () => ({ success: true })),
+    };
+
+    const result = await reloadBufferIntoOmc(
+      client,
+      docFor(DOC_URI, "model A end A; model B end B;"),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(client.loadString).not.toHaveBeenCalled();
+  });
+
   it("reports the post-load error, not the drained pre-load one", async () => {
     const errorStrings = [
       "stale error from a prior edit",
       "the real rejection",
     ];
     const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
       getErrorString: vi.fn(async () => ({
         errorString: errorStrings.shift() ?? "",
       })),
@@ -80,6 +94,7 @@ describe("reloadBufferIntoOmc", () => {
 
   it("falls back to a generic message when OMC reports no error text", async () => {
     const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
       getErrorString: vi.fn(async () => ({ errorString: "" })),
       loadString: vi.fn(async () => ({ success: false })),
     };
@@ -98,6 +113,7 @@ describe("reloadBufferIntoOmc — source-file resolution", () => {
   it("loads under the class's real source file so an inline member stays put", async () => {
     let loadedFilename: string | undefined;
     const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
       getErrorString: vi.fn(async () => ({ errorString: "" })),
       getSourceFile: vi.fn(async () => ({ fileName: "/ws/Pkg/package.mo" })),
       loadString: vi.fn(async (input) => {
@@ -117,6 +133,7 @@ describe("reloadBufferIntoOmc — source-file resolution", () => {
   it("falls back to the document URI when the source path is non-disk", async () => {
     let loadedFilename: string | undefined;
     const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
       getErrorString: vi.fn(async () => ({ errorString: "" })),
       // A memory-only / already-repointed class has no on-disk source.
       getSourceFile: vi.fn(async () => ({ fileName: "<runtime:Model>" })),
@@ -132,29 +149,6 @@ describe("reloadBufferIntoOmc — source-file resolution", () => {
     );
 
     expect(loadedFilename).toBe(DOC_URI.toString());
-  });
-});
-
-describe("isReadOnlyDocument", () => {
-  it("reports false for a writable document", async () => {
-    setStatReadonly(false);
-    expect(await isReadOnlyDocument(docFor(DOC_URI))).toBe(false);
-  });
-
-  it("reports true for a document the source provider marked readonly", async () => {
-    setStatReadonly(true);
-    expect(await isReadOnlyDocument(docFor(DOC_URI))).toBe(true);
-  });
-
-  it("treats a failed stat as writable", async () => {
-    const statSpy = vi
-      .spyOn(vscode.workspace.fs, "stat")
-      .mockRejectedValueOnce(new Error("ENOENT"));
-    try {
-      expect(await isReadOnlyDocument(docFor(DOC_URI))).toBe(false);
-    } finally {
-      statSpy.mockRestore();
-    }
   });
 });
 

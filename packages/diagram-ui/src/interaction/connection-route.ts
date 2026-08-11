@@ -23,6 +23,23 @@ export function pointsEqual(a: Point[] | null, b: Point[] | null): boolean {
   return true;
 }
 
+/** Closest point to `p` on the segment `a`–`b`, clamped to the segment. */
+export function projectOntoSegment(
+  a: Point,
+  b: Point,
+  p: { x: number; y: number },
+): Point {
+  const abx = b[0] - a[0];
+  const aby = b[1] - a[1];
+  const lenSq = abx * abx + aby * aby;
+  if (lenSq === 0) {
+    return [a[0], a[1]];
+  }
+  const t = ((p.x - a[0]) * abx + (p.y - a[1]) * aby) / lenSq;
+  const clamped = Math.max(0, Math.min(1, t));
+  return [a[0] + clamped * abx, a[1] + clamped * aby];
+}
+
 /**
  * Default routing for a freshly-created connection. Returns waypoints
  * (including both endpoints) forming an orthogonal "Z" between `from`

@@ -428,7 +428,7 @@ grep -hoE 'client\.[a-zA-Z]+\(' packages/omc-client/test/*.test.ts \
 grep -hoE 'invoke\("[a-zA-Z]+"' packages/omc-client/test/*.test.ts \
   | sed -E 's/invoke\("([a-zA-Z]+)"/\1/' | sort -u > /tmp/test-invoke.txt
 sort -u /tmp/test-direct.txt /tmp/test-invoke.txt > /tmp/test-calls.txt
-grep -oE '^\s+[a-zA-Z]+: entry' packages/omc-client/src/registry.ts \
+grep -oE '^\s+[a-zA-Z]+: (entry|noInputEntry)' packages/omc-client/src/registry.ts \
   | awk '{print $1}' | sed 's/://' | sort -u > /tmp/registry-fns.txt
 echo "Tested: $(comm -12 /tmp/registry-fns.txt /tmp/test-calls.txt | wc -l) / $(wc -l < /tmp/registry-fns.txt)"
 ```

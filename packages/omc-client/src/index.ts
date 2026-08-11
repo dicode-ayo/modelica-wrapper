@@ -196,6 +196,7 @@ export {
 export type { OmcCommand, OmcFunction } from "./commands.js";
 export { OmcTransport } from "./transport.js";
 export { spawnOmc, type OmcProcess } from "./process.js";
+export { reapOrphanedOmcSessions, type ReapOptions } from "./orphans.js";
 export {
   parse,
   toJson,
