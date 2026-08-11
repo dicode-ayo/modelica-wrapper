@@ -38,8 +38,9 @@ package ${pkg}
   model T
     Modelica.Blocks.Sources.Step step1 annotation(Placement(transformation(extent = {{-60, -10}, {-40, 10}})));
     Modelica.Blocks.Math.Gain gain1 annotation(Placement(transformation(extent = {{-10, -10}, {10, 10}})));
+    Modelica.Blocks.Math.Gain gain2 annotation(Placement(transformation(extent = {{40, -10}, {60, 10}})));
   equation
-    connect(step1.y, gain1.u) annotation(Line(points = {{-39, 0}, {-12, 0}}));
+    connect(step1.y, gain1.u) annotation(Line(points = {{-39, 0}, {-12, 0}}, color = {255, 0, 0}));
     annotation(Diagram(coordinateSystem(extent = {{-100, -100}, {100, 100}}), graphics = {
       Rectangle(extent = {{-80, 40}, {80, -40}}, lineColor = {255, 0, 0})}));
   end T;
@@ -83,44 +84,168 @@ end ${pkg};
     expect(diffLayouts(afterWrite, reported)).toEqual([]);
   });
 
-  it("answers a drawn shape with every default filled in, which is why a graphics write settles", async () => {
-    // The webview sends a shape carrying what the user chose. OMC returns it
-    // with `pattern`, `fillPattern`, `lineThickness` and the ellipse angles
-    // materialised, so the two never compare equal — and a reconcile that did
-    // not adopt the canonical shape would re-write it on every later gesture,
-    // silently, for as long as the shape lives. `applyDiagramEdits` reports
-    // `touchedGraphics` so the controller settles and the webview adopts it.
+  it("finds nothing left to write when a drawn connection is reconciled twice", async () => {
+    // A connection's visual is a `Line` record carrying the same six §18.6
+    // style fields a shape's is, and `getNthConnectionAnnotation` materializes
+    // them. `diffGraphics` normalizes shapes but `connStyle` compares raw, so
+    // what keeps a drawn wire converging is that the layout read goes through
+    // `getModelInstance`, which reports the annotation as authored. Pin it:
+    // were that to change, connections would gain #415's bug with no other
+    // gate to catch it.
     const base = await fetchDiagramLayout(client, cls);
-    const withShape = structuredClone(base) as DiagramLayout;
-    const layer = withShape.diagramLayers.at(0);
-    if (layer === undefined) throw new Error("no own diagram layer");
-    const drawn = {
-      kind: "ellipse",
-      extent: [
-        [10, 10],
-        [30, 30],
-      ],
-      lineColor: [0, 0, 255],
-      fillColor: [255, 255, 0],
-    };
-    layer.shapes = [...layer.shapes, drawn] as (typeof layer)["shapes"];
+    const withWire = structuredClone(base) as DiagramLayout;
+    withWire.connections = [
+      ...withWire.connections,
+      {
+        lhs: { component: "gain1", port: "y" },
+        rhs: { component: "gain2", port: "u" },
+        waypoints: [
+          [11, 0],
+          [38, 0],
+        ],
+      },
+    ] as DiagramLayout["connections"];
 
-    const first = diffLayouts(base, withShape);
-    expect(first.some((e) => e.kind.startsWith("graphics"))).toBe(true);
+    const first = diffLayouts(base, withWire);
+    expect(first.some((e) => e.kind === "connectionAdded")).toBe(true);
     const applied = await applyEdits(client, cls, first, undefined, {
       snapshot: true,
     });
     expect(applied.failed).toEqual([]);
 
     const afterWrite = await fetchDiagramLayout(client, cls);
-    const canonical = afterWrite.diagramLayers.at(0)?.shapes.at(-1);
-    expect(canonical).toMatchObject(drawn);
-    // More than it was sent, which is the whole point.
-    expect(Object.keys(canonical ?? {}).length).toBeGreaterThan(
-      Object.keys(drawn).length,
-    );
-    // And having adopted it, the next reconcile finds nothing to write.
-    const adopted = structuredClone(afterWrite) as DiagramLayout;
-    expect(diffLayouts(afterWrite, adopted)).toEqual([]);
+    expect(diffLayouts(afterWrite, withWire)).toEqual([]);
   });
+
+  /**
+   * One case per shape kind, each carrying as little as the draw tool sends.
+   * A kind covered only by the unit suite is a kind whose defaults were checked
+   * against our own table rather than against OMC's answer.
+   */
+  const drawn = [
+    {
+      what: "a full ellipse, whose closure OMC defaults by its angles",
+      decodesMoreThanSent: true,
+      shape: {
+        kind: "ellipse",
+        extent: [
+          [10, 10],
+          [30, 30],
+        ],
+        lineColor: [0, 0, 255],
+        fillColor: [255, 255, 0],
+      },
+    },
+    {
+      what: "a partial ellipse, which takes the other closure default",
+      decodesMoreThanSent: true,
+      shape: {
+        kind: "ellipse",
+        extent: [
+          [40, 40],
+          [60, 60],
+        ],
+        startAngle: 0,
+        endAngle: 180,
+      },
+    },
+    {
+      what: "an uncolored rectangle, whose fillColor OMC materializes",
+      decodesMoreThanSent: true,
+      shape: {
+        kind: "rectangle",
+        extent: [
+          [10, -30],
+          [30, -10],
+        ],
+      },
+    },
+    {
+      what: "an uncolored polygon",
+      decodesMoreThanSent: true,
+      shape: {
+        kind: "polygon",
+        points: [
+          [-30, -10],
+          [-20, 10],
+          [-10, -10],
+        ],
+      },
+    },
+    {
+      what: "a line",
+      decodesMoreThanSent: true,
+      shape: {
+        kind: "line",
+        points: [
+          [-60, 20],
+          [-40, 40],
+        ],
+      },
+    },
+    {
+      what: "a text, whose unset textColor OMC reports as a sentinel",
+      decodesMoreThanSent: true,
+      shape: {
+        kind: "text",
+        extent: [
+          [50, -40],
+          [80, -20],
+        ],
+        textString: "hi",
+      },
+    },
+    {
+      what: "a bitmap with no image",
+      shape: {
+        kind: "bitmap",
+        extent: [
+          [-80, -40],
+          [-50, -20],
+        ],
+      },
+      // OMC answers with the empty `fileName`/`imageSource` like any other
+      // default, but `decodeBitmap` drops them again, so the decoded shape
+      // matches what was sent.
+      decodesMoreThanSent: false,
+    },
+  ] as const;
+
+  for (const { what, shape, decodesMoreThanSent } of drawn) {
+    it(`finds nothing left to write when ${what} is reconciled twice`, async () => {
+      // The webview sends a shape carrying what the user chose. OMC answers it
+      // with every field of the record materialized — `diffLayouts` treats an
+      // omitted field as equal to its spec default, so that alone is not a
+      // difference the second reconcile rewrites.
+      const base = await fetchDiagramLayout(client, cls);
+      const withShape = structuredClone(base) as DiagramLayout;
+      const layer = withShape.diagramLayers.at(0);
+      if (layer === undefined) throw new Error("no own diagram layer");
+      layer.shapes = [...layer.shapes, shape] as (typeof layer)["shapes"];
+
+      const first = diffLayouts(base, withShape);
+      expect(first.some((e) => e.kind.startsWith("graphics"))).toBe(true);
+      const applied = await applyEdits(client, cls, first, undefined, {
+        snapshot: true,
+      });
+      expect(applied.failed).toEqual([]);
+
+      const afterWrite = await fetchDiagramLayout(client, cls);
+      const canonical = afterWrite.diagramLayers.at(0)?.shapes.at(-1);
+      expect(canonical).toMatchObject(shape);
+      if (decodesMoreThanSent) {
+        // More than it was sent, which is the whole point: the defaults OMC
+        // materialized are exactly what the next line proves don't matter.
+        expect(Object.keys(canonical ?? {}).length).toBeGreaterThan(
+          Object.keys(shape).length,
+        );
+      }
+
+      // The base the next gesture reconciles against, per `applyChange` in
+      // diagram-editor-provider.ts: diffing the still-partial `withShape`
+      // report against that canonical read is the second reconcile of an
+      // unchanged diagram.
+      expect(diffLayouts(afterWrite, withShape)).toEqual([]);
+    });
+  }
 });

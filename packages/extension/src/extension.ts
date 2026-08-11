@@ -49,6 +49,7 @@ import { publishSourceChanges } from "./source-invalidation.js";
 import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
 import { WriteVerdicts } from "./write-verdict.js";
+import { multiEntityBatchToast } from "./single-entity-file.js";
 import { loadEntryFilesAndRefresh } from "./workspace-autoload.js";
 import { discoverEntryPoints } from "./workspace-scan.js";
 
@@ -325,9 +326,14 @@ async function autoLoadWorkspaceModels(
     // concurrent OMC fetches onto the single ZeroMQ socket during startup. The
     // webview tree's own mount fetch is serialized with this one through the
     // client, so they can't overlap into a busy-socket send.
-    await loadEntryFilesAndRefresh(c, files, () =>
+    const skipped = await loadEntryFilesAndRefresh(c, files, () =>
       libraryTree.childrenChanged(null),
     );
+    if (skipped.length > 0) {
+      void vscode.window.showWarningMessage(
+        multiEntityBatchToast(skipped.map((s) => s.fileName)),
+      );
+    }
   } catch (err) {
     log.warn("autoLoad", `OMC client unavailable: ${(err as Error).message}`);
   }

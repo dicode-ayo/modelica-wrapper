@@ -28,6 +28,10 @@ import type { ErrorMessage } from "@dicode/omc-client";
 import { mapOmcMessagesToDiagnostics } from "../diagnostics/from-omc.js";
 import type { FileOwnerClient } from "../file-owner.js";
 import { log } from "../logger.js";
+import {
+  multiEntityMessage,
+  type StringParseClient,
+} from "../single-entity-file.js";
 import type { WriteVerdictClient } from "../write-verdict.js";
 import {
   MODELICA_SOURCE_SCHEME,
@@ -46,9 +50,9 @@ const MIN_DEBOUNCE_MS = 250;
  * `getSourceFile` comes from {@link FileOwnerClient} — the pipeline never calls
  * it itself, it hands the client to `omcFilenameForDocument`.
  */
-export interface LiveCheckClient extends FileOwnerClient, WriteVerdictClient {
+export interface LiveCheckClient
+  extends FileOwnerClient, WriteVerdictClient, StringParseClient {
   getErrorString(): Promise<{ errorString: string }>;
-  parseString(input: { data: string; filename: string }): Promise<unknown>;
   loadString(input: {
     data: string;
     filename: string;
@@ -184,8 +188,12 @@ async function runCheck(
     // `getErrorString` between parseString and the read, or the buffer
     // is drained before `getMessagesStringInternal` can see it.
     const messages: ErrorMessage[] = [];
+    let declared: string[] = [];
     try {
-      await client.parseString({ data: text, filename });
+      ({ classNames: declared } = await client.parseString({
+        data: text,
+        filename,
+      }));
     } catch (err) {
       log.error("liveCheck", "parseString failed", err);
     }
@@ -196,7 +204,31 @@ async function runCheck(
     const hasParseError = parseMessages.some(
       (m) => m.level === "error" || m.level === "internal",
     );
-    if (!hasParseError) {
+    // `loadString` binds every class in the text to `filename`, so loading a
+    // buffer that declares several would leave OMC holding a file no save can
+    // write back without dropping one (#452). Such a buffer parses clean, so
+    // it carries no messages of its own — publish a synthetic one rather than
+    // let the set below silently clear the squiggles the user had. Riding the
+    // diagnostic pipeline (not a notification) keeps it from firing per
+    // keystroke, and it clears itself when the second class goes away.
+    if (declared.length > 1) {
+      const message = multiEntityMessage(filename, declared);
+      log.warn("liveCheck", message);
+      messages.push({
+        info: {
+          filename,
+          readonly: false,
+          lineStart: 1,
+          columnStart: 1,
+          lineEnd: 1,
+          columnEnd: 1,
+        },
+        message,
+        kind: "scripting",
+        level: "warning",
+        id: 0,
+      });
+    } else if (!hasParseError) {
       // Syntax-clean — load into OMC and run the semantic check.
       try {
         await client.loadString({ data: text, filename, merge: false });

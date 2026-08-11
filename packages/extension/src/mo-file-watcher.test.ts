@@ -388,6 +388,23 @@ describe("handleMoChange", () => {
     expect(deps.index.get(FILE)).toBeUndefined();
   });
 
+  it("refuses a file that declares several top-level classes (#452)", async () => {
+    const { deps, client, childrenChanged } = makeDeps();
+    client.parseFile.mockResolvedValue({ classNames: ["A", "B"] });
+
+    await handleMoChange(deps, FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(deps.index.get(FILE)).toBeUndefined();
+    expect(childrenChanged).not.toHaveBeenCalled();
+    expect(recordedMessages).toContainEqual(
+      expect.objectContaining({
+        level: "warning",
+        message: expect.stringContaining("A, B"),
+      }),
+    );
+  });
+
   it("bails when the file cannot be read", async () => {
     const { deps, client } = makeDeps({
       readFile: async () => {
@@ -870,19 +887,14 @@ describe("class invalidation from a `.mo` change", () => {
     return { libraryTree, sourceProvider };
   }
 
-  it("invalidates each changed class's icon exactly once", async () => {
+  it("invalidates the changed class's icon exactly once", async () => {
     const { libraryTree, sourceProvider } = wireInvalidation();
     const { deps, client } = makeDeps({ libraryTree, sourceProvider });
-    client.parseFile.mockResolvedValue({
-      classNames: ["My.Pkg.Bar", "My.Pkg.Baz"],
-    });
+    client.parseFile.mockResolvedValue({ classNames: ["My.Pkg.Bar"] });
 
     await handleMoChange(deps, FILE);
 
-    expect(libraryTree.iconChanged.mock.calls).toEqual([
-      ["My.Pkg.Bar"],
-      ["My.Pkg.Baz"],
-    ]);
+    expect(libraryTree.iconChanged.mock.calls).toEqual([["My.Pkg.Bar"]]);
   });
 
   it("announces a class the file no longer declares, ahead of the ones it keeps", async () => {

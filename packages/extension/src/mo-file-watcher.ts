@@ -42,6 +42,7 @@ import { enclosingScope } from "@dicode/modelica-lang-core";
 
 import { pathExists } from "./fs-util.js";
 import { log } from "./logger.js";
+import { multiEntityMessage, multiEntityToast } from "./single-entity-file.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
 import {
   MODELICA_SOURCE_SCHEME,
@@ -247,6 +248,13 @@ export async function handleMoChange(
     ({ classNames: names } = await client.parseFile({ fileName: fsPath }));
   } catch (err) {
     log.warn("moWatcher", `parseFile ${fsPath} failed: ${asMessage(err)}`);
+    return;
+  }
+  if (names.length > 1) {
+    log.warn("moWatcher", multiEntityMessage(fsPath, names));
+    void vscode.window.showWarningMessage(
+      multiEntityToast(fsPath, names, "it was not loaded"),
+    );
     return;
   }
 

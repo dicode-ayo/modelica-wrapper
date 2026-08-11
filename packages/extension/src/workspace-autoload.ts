@@ -4,11 +4,21 @@
  */
 
 import { log } from "./logger.js";
+import {
+  multipleTopLevelClasses,
+  type FileParseClient,
+} from "./single-entity-file.js";
 
 /** OMC surface the auto-loader calls. `OmcClient` satisfies it structurally. */
-export interface AutoLoadClient {
+export interface AutoLoadClient extends FileParseClient {
   loadFile(input: { fileName: string }): Promise<{ success: boolean }>;
   getErrorString(): Promise<{ errorString: string }>;
+}
+
+/** An entry file left unloaded because it holds more than one entity. */
+export interface SkippedEntryFile {
+  fileName: string;
+  classNames: string[];
 }
 
 /**
@@ -17,12 +27,15 @@ export interface AutoLoadClient {
  * rebuild to a single, mutex-serialized OMC fetch instead of a concurrent
  * batch; skipping it when nothing loaded lets a genuinely empty workspace keep
  * its "Load Library" state.
+ *
+ * Returns the entry files refused for declaring several top-level classes, so
+ * the caller can report the whole batch in one message.
  */
 export async function loadEntryFilesAndRefresh(
   client: AutoLoadClient,
   files: readonly string[],
   refresh: () => void,
-): Promise<void> {
+): Promise<SkippedEntryFile[]> {
   const tryLoad = async (fileName: string): Promise<boolean> => {
     try {
       const { success } = await client.loadFile({ fileName });
@@ -40,9 +53,30 @@ export async function loadEntryFilesAndRefresh(
     }
   };
 
+  // Screen before the first pass, so a refused file stays out of the retry
+  // loop below as well.
+  const skipped: SkippedEntryFile[] = [];
+  const eligible: string[] = [];
+  for (const fileName of files) {
+    const classNames = await multipleTopLevelClasses(client, fileName);
+    if (classNames) {
+      log.warn(
+        "autoLoad",
+        `skipping ${fileName}: declares ${classNames.join(", ")}`,
+      );
+      skipped.push({ fileName, classNames });
+    } else {
+      eligible.push(fileName);
+    }
+  }
+  // The screen lets a file OMC could not parse through to the load, but
+  // `parseFile` has already deposited that parse error; without a drain the
+  // first failing load's `getErrorString` reports it as its own reason.
+  await client.getErrorString();
+
   let loadedAny = false;
   let failed: string[] = [];
-  for (const fileName of files) {
+  for (const fileName of eligible) {
     if (await tryLoad(fileName)) loadedAny = true;
     else failed.push(fileName);
   }
@@ -64,4 +98,5 @@ export async function loadEntryFilesAndRefresh(
   if (loadedAny) {
     refresh();
   }
+  return skipped;
 }

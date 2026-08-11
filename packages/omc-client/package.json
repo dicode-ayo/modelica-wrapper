@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./api/*": "./src/api/*",
-    "./eval": "./src/eval/index.ts"
+    "./eval": "./src/eval/index.ts",
+    "./shapes": "./src/shapes/index.ts"
   },
   "files": [
     "dist"
@@ -28,6 +29,10 @@
       "./eval": {
         "types": "./dist/eval/index.d.ts",
         "import": "./dist/eval/index.js"
+      },
+      "./shapes": {
+        "types": "./dist/shapes/index.d.ts",
+        "import": "./dist/shapes/index.js"
       },
       "./api/*": {
         "types": "./dist/api/*/index.d.ts",

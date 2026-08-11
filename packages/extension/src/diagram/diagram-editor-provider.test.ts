@@ -1471,8 +1471,8 @@ describe("DiagramEditController: reconciling reports", () => {
     controller.dispose();
   });
 
-  it("settles a reported graphics write, since OMC answers a shape with more than it was sent", async () => {
-    const { client } = makeEditClient({
+  it("does not settle a reported graphics write, same as any other reported edit", async () => {
+    const { client, invoked } = makeEditClient({
       instance: diagramRectInstance([
         [0, 0],
         [10, 10],
@@ -1496,9 +1496,10 @@ describe("DiagramEditController: reconciling reports", () => {
     });
     await drain();
 
-    // Without adopting the canonical shape the webview keeps the one it drew,
-    // and every later reconcile writes the difference again.
-    expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
+    expect(invoked).toContain("writeClassGraphics");
+    // The webview is already showing what it reported; a settle could only
+    // arrive late enough to land on a gesture that has moved past it.
+    expect(posted.filter((m) => m.type === "layout")).toHaveLength(0);
     controller.dispose();
   });
 
@@ -1935,10 +1936,9 @@ describe("DiagramEditController: shape properties", () => {
   });
 
   it("applies a shape-property edit after a reported gesture has moved the base", async () => {
-    // A reported edit leaves `prevLayout` holding either what the webview sent
-    // or, for a graphics write, the re-read that follows it. The shape modal
-    // resolves its target and its identity check through `prevLayout`, so it
-    // has to survive both.
+    // A reported edit leaves `prevLayout` holding what the webview sent. The
+    // shape modal resolves its target and its identity check through
+    // `prevLayout`, so it has to survive the report.
     const { client, invoked } = makeEditClient({
       instance: diagramRectInstance([
         [0, 0],
