@@ -94,7 +94,6 @@ export async function multipleTopLevelClassesInText(
   return classNames === undefined ? undefined : moreThanOne(classNames);
 }
 
-/** The names in `classNames` when there's more than one, `undefined` otherwise. */
 export function moreThanOne(classNames: string[]): string[] | undefined {
   return classNames.length > 1 ? classNames : undefined;
 }
