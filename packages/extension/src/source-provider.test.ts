@@ -260,6 +260,7 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
       listing: {
         Pkg: "package Pkg model M ... end M; model Other ... end Pkg;",
       },
+      bufferDeclares: ["Pkg.M"],
     });
     const { guard, write } = recordingGuard();
     const provider = new ModelicaSourceProvider(
@@ -286,6 +287,7 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
       fileName: "/ws/M.mo",
       sources: { "Pkg.M": "/ws/M.mo", Pkg: "/ws/package.mo" },
       listing: {},
+      bufferDeclares: ["Pkg.M"],
     });
     const { guard, write } = recordingGuard();
     const provider = new ModelicaSourceProvider(
@@ -345,6 +347,31 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
         Buffer.from("model A end A; model B end B;"),
       ),
     ).rejects.toThrow(/more than one top-level class/);
+    expect(loadString).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it("refuses a buffer that renamed its class instead of leaving the old one alive in OMC (#459)", async () => {
+    // `loadString(merge: false)` redefines per class rather than replacing the
+    // file's contents, so an unscreened rename would parse clean and load as a
+    // second, unreachable class alongside the one the save meant to replace.
+    const { client, loadString } = sharedFileClient({
+      fileName: "/ws/A.mo",
+      sources: { A: "/ws/A.mo" },
+      listing: {},
+      declares: ["A"],
+      bufferDeclares: ["A2"],
+    });
+    const { guard, write } = recordingGuard();
+    const provider = new ModelicaSourceProvider(
+      () => Promise.resolve(client),
+      guard,
+      new WriteVerdicts(),
+    );
+
+    await expect(
+      provider.writeFile(sourceUriFor("A"), Buffer.from("model A2 end A2;")),
+    ).rejects.toThrow(/now declares A2/);
     expect(loadString).not.toHaveBeenCalled();
     expect(write).not.toHaveBeenCalled();
   });

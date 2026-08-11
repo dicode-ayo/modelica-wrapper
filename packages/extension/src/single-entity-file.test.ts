@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { multipleTopLevelClasses } from "./single-entity-file.js";
+import { multipleTopLevelClasses, renamedClass } from "./single-entity-file.js";
 
 function client(result: { classNames: string[] } | Error) {
   return {
@@ -46,5 +46,23 @@ describe("multipleTopLevelClasses", () => {
     expect(
       await multipleTopLevelClasses(client(new Error("omc down")), "Gone.mo"),
     ).toBeUndefined();
+  });
+});
+
+describe("renamedClass", () => {
+  it("names the class a buffer declares when it isn't the one expected (#459)", () => {
+    expect(renamedClass(["Foo2"], "Foo")).toBe("Foo2");
+  });
+
+  it("passes a buffer that still declares the expected class", () => {
+    expect(renamedClass(["Foo"], "Foo")).toBeUndefined();
+  });
+
+  it("leaves a multi-class buffer to the multiple-top-level-classes screen", () => {
+    expect(renamedClass(["Foo", "Bar"], "Foo")).toBeUndefined();
+  });
+
+  it("passes an empty buffer, leaving the load to report the parse failure", () => {
+    expect(renamedClass([], "Foo")).toBeUndefined();
   });
 });
