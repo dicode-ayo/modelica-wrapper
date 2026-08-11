@@ -69,6 +69,10 @@ export async function loadEntryFilesAndRefresh(
       eligible.push(fileName);
     }
   }
+  // The screen lets a file OMC could not parse through to the load, but
+  // `parseFile` has already deposited that parse error; without a drain the
+  // first failing load's `getErrorString` reports it as its own reason.
+  await client.getErrorString();
 
   let loadedAny = false;
   let failed: string[] = [];

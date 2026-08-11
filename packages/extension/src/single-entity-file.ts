@@ -98,6 +98,15 @@ export function multiEntityMessage(
   );
 }
 
+/** Batch notification; the per-file detail stays in the output channel. */
+export function multiEntityBatchToast(fileNames: string[]): string {
+  const names = fileNames.map((f) => path.basename(f)).join(", ");
+  return (
+    `Modelica: ${names} left unloaded — a .mo file must declare a single ` +
+    `top-level class. See the Modelica output channel for details.`
+  );
+}
+
 /** Per-file notification; `consequence` names what the guard refused to do. */
 export function multiEntityToast(
   fileName: string,

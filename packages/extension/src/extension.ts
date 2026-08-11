@@ -12,8 +12,6 @@
  * Load Library step required.
  */
 
-import * as path from "node:path";
-
 import * as vscode from "vscode";
 
 import { OmcClient, reapOrphanedOmcSessions } from "@dicode/omc-client";
@@ -51,6 +49,7 @@ import { publishSourceChanges } from "./source-invalidation.js";
 import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
 import { WriteVerdicts } from "./write-verdict.js";
+import { multiEntityBatchToast } from "./single-entity-file.js";
 import { loadEntryFilesAndRefresh } from "./workspace-autoload.js";
 import { discoverEntryPoints } from "./workspace-scan.js";
 
@@ -332,10 +331,7 @@ async function autoLoadWorkspaceModels(
     );
     if (skipped.length > 0) {
       void vscode.window.showWarningMessage(
-        `Modelica: skipped ${skipped
-          .map((s) => path.basename(s.fileName))
-          .join(", ")} — each declares several top-level classes. See the ` +
-          `Modelica output channel for details.`,
+        multiEntityBatchToast(skipped.map((s) => s.fileName)),
       );
     }
   } catch (err) {

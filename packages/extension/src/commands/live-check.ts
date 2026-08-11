@@ -28,7 +28,10 @@ import type { ErrorMessage } from "@dicode/omc-client";
 import { mapOmcMessagesToDiagnostics } from "../diagnostics/from-omc.js";
 import type { FileOwnerClient } from "../file-owner.js";
 import { log } from "../logger.js";
-import { multiEntityMessage } from "../single-entity-file.js";
+import {
+  multiEntityMessage,
+  type StringParseClient,
+} from "../single-entity-file.js";
 import type { WriteVerdictClient } from "../write-verdict.js";
 import {
   MODELICA_SOURCE_SCHEME,
@@ -47,12 +50,9 @@ const MIN_DEBOUNCE_MS = 250;
  * `getSourceFile` comes from {@link FileOwnerClient} — the pipeline never calls
  * it itself, it hands the client to `omcFilenameForDocument`.
  */
-export interface LiveCheckClient extends FileOwnerClient, WriteVerdictClient {
+export interface LiveCheckClient
+  extends FileOwnerClient, WriteVerdictClient, StringParseClient {
   getErrorString(): Promise<{ errorString: string }>;
-  parseString(input: {
-    data: string;
-    filename: string;
-  }): Promise<{ classNames: string[] }>;
   loadString(input: {
     data: string;
     filename: string;
@@ -212,7 +212,8 @@ async function runCheck(
     // diagnostic pipeline (not a notification) keeps it from firing per
     // keystroke, and it clears itself when the second class goes away.
     if (declared.length > 1) {
-      log.warn("liveCheck", multiEntityMessage(filename, declared));
+      const message = multiEntityMessage(filename, declared);
+      log.warn("liveCheck", message);
       messages.push({
         info: {
           filename,
@@ -222,7 +223,7 @@ async function runCheck(
           lineEnd: 1,
           columnEnd: 1,
         },
-        message: multiEntityMessage(filename, declared),
+        message,
         kind: "scripting",
         level: "warning",
         id: 0,
