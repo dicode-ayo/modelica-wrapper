@@ -19,6 +19,7 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, expect, it } from "vitest";
 
+import type { ErrorMessage } from "../src/index.js";
 import { OmcClient } from "../src/client.js";
 import { describeIf } from "./fixtures.js";
 
@@ -61,6 +62,60 @@ end ${packageName};
       typeName: `${packageName}.A`,
     });
     return { packageName, packagePath, memberSource: contents };
+  }
+
+  /**
+   * A single-file package whose second member depends on its first. `Ahead`
+   * carries an error, so checking `Target` surfaces a diagnostic belonging to
+   * a class the buffer does not contain; `breakTarget` moves the error into
+   * `Target` itself instead. Returns `Target`'s source as an editor buffer
+   * would hold it.
+   */
+  async function loadSiblingPackage({ breakTarget = false } = {}): Promise<{
+    packageName: string;
+    packagePath: string;
+    memberSource: string;
+  }> {
+    const packageName = `MwTest_${randomBytes(4).toString("hex")}`;
+    const packagePath = path.join(tmpDir, `${packageName}.mo`);
+    await fsp.writeFile(
+      packagePath,
+      `package ${packageName}
+  model Ahead
+    Real bad = ${breakTarget ? "1.0" : "notDefinedAnywhere"};
+  end Ahead;
+
+  model Target
+    Ahead a;
+    Real x${breakTarget ? " = alsoNotDefined" : ""};
+  end Target;
+end ${packageName};
+`,
+      "utf8",
+    );
+    const { success } = await client.loadFile({ fileName: packagePath });
+    if (!success) {
+      const { errorString } = await client.getErrorString();
+      throw new Error(`loadFile failed for ${packagePath}: ${errorString}`);
+    }
+    const { contents } = await client.listFile({
+      typeName: `${packageName}.Target`,
+    });
+    return { packageName, packagePath, memberSource: contents };
+  }
+
+  /**
+   * `checkModel` stops at the first failure, so a fixture with one error
+   * yields one message.
+   */
+  async function onlyMessageFrom(typeName: string): Promise<ErrorMessage> {
+    await client.checkModel({ typeName });
+    const { messages } = await client.getMessagesStringInternal();
+    const [message] = messages;
+    if (message === undefined) {
+      throw new Error(`checkModel(${typeName}) reported no diagnostic`);
+    }
+    return message;
   }
 
   beforeEach(async () => {
@@ -127,36 +182,110 @@ end ${packageName};
     expect(fileName).toBe(pseudoFilename);
   });
 
-  it("reports the reloaded member's own line range against the file, not the string handed to loadString", async () => {
-    // The load-bearing assumption behind `live-check.ts`'s sibling-diagnostic
-    // fix (packages/extension/src/commands/live-check.ts): after a targeted
-    // reload, does OMC still know a shared-file member's real position in
-    // the file, or does it treat the reload as if `data` alone were now the
-    // whole file (the member's start resets to line 1)? `getClassInformation`
-    // is exactly the signal that fix reads, live, on every check — this pins
-    // what it actually reports post-reload.
+  it("numbers a reloaded member inside the string it was given, and its siblings inside the file", async () => {
+    // `live-check` reads `getClassInformation` to decide which of a shared
+    // file's diagnostics belong to the buffer, so which space each class is
+    // numbered in after a targeted reload is the whole basis of that decision.
     const { packageName, packagePath, memberSource } =
-      await loadInlinePackage();
+      await loadSiblingPackage();
     const before = await client.getClassInformation({
-      typeName: `${packageName}.A`,
+      typeName: `${packageName}.Target`,
     });
-    // `A` sits on the line right after `package …` in the fixture.
-    expect(before.lineNumberStart).toBe(2);
+    expect(before.lineNumberStart).toBe(6);
 
-    // `edited` starts with `model A` on its own first line — if OMC numbered
-    // this reload's diagnostics relative to that string alone, the class's
-    // reported start would now be line 1.
-    const edited = memberSource.replace("Real x;", "Real x;\n  Real edited;");
+    // `listFile` hands back a `within` clause, two lines ahead of the class.
     const { success } = await client.loadString({
-      data: edited,
+      data: memberSource,
       filename: packagePath,
       merge: false,
     });
     expect(success).toBe(true);
 
-    const after = await client.getClassInformation({
-      typeName: `${packageName}.A`,
+    const target = await client.getClassInformation({
+      typeName: `${packageName}.Target`,
     });
-    expect(after.lineNumberStart).toBe(before.lineNumberStart);
+    expect(target.lineNumberStart).toBe(3);
+    const ahead = await client.getClassInformation({
+      typeName: `${packageName}.Ahead`,
+    });
+    expect(ahead.lineNumberStart).toBe(2);
+  });
+
+  it("lands a sibling's diagnostic inside the member's own reported extent", async () => {
+    // The two spaces above overlap, and `ErrorMessage.info` names a filename
+    // rather than the class it belongs to: a sibling declared ahead reports a
+    // line that is also one of the buffer's own. Reloading the whole file is
+    // what pulls them apart.
+    const { packageName, packagePath, memberSource } =
+      await loadSiblingPackage();
+    await client.loadString({
+      data: memberSource,
+      filename: packagePath,
+      merge: false,
+    });
+    await client.getErrorString();
+
+    const aliased = await onlyMessageFrom(`${packageName}.Target`);
+    const inString = await client.getClassInformation({
+      typeName: `${packageName}.Target`,
+    });
+    expect(aliased.message).toContain("Ahead");
+    expect(aliased.info.lineStart).toBeGreaterThanOrEqual(
+      inString.lineNumberStart,
+    );
+    expect(aliased.info.lineStart).toBeLessThanOrEqual(inString.lineNumberEnd);
+
+    const { contents } = await client.listFile({ typeName: packageName });
+    const { success } = await client.loadString({
+      data: contents,
+      filename: packagePath,
+      merge: false,
+    });
+    expect(success).toBe(true);
+    await client.getErrorString();
+
+    const separated = await onlyMessageFrom(`${packageName}.Target`);
+    const inFile = await client.getClassInformation({
+      typeName: `${packageName}.Target`,
+    });
+    expect(separated.info.lineStart).toBeLessThan(inFile.lineNumberStart);
+  });
+
+  it("moves the member's own diagnostic by the same offset as its extent", async () => {
+    // `live-check` derives its shift from the class's extent and applies it to
+    // the diagnostics; that only holds if both move together, in column as
+    // well as line.
+    const { packageName, packagePath, memberSource } = await loadSiblingPackage(
+      { breakTarget: true },
+    );
+    await client.loadString({
+      data: memberSource,
+      filename: packagePath,
+      merge: false,
+    });
+    await client.getErrorString();
+    const inBuffer = await client.getClassInformation({
+      typeName: `${packageName}.Target`,
+    });
+    const bufferDiagnostic = await onlyMessageFrom(`${packageName}.Target`);
+
+    const { contents } = await client.listFile({ typeName: packageName });
+    await client.loadString({
+      data: contents,
+      filename: packagePath,
+      merge: false,
+    });
+    await client.getErrorString();
+    const inFile = await client.getClassInformation({
+      typeName: `${packageName}.Target`,
+    });
+    const fileDiagnostic = await onlyMessageFrom(`${packageName}.Target`);
+
+    expect(
+      fileDiagnostic.info.lineStart - bufferDiagnostic.info.lineStart,
+    ).toBe(inFile.lineNumberStart - inBuffer.lineNumberStart);
+    expect(
+      fileDiagnostic.info.columnStart - bufferDiagnostic.info.columnStart,
+    ).toBe(inFile.columnNumberStart - inBuffer.columnNumberStart);
   });
 });
