@@ -119,9 +119,10 @@ describe("handleMoChange", () => {
   });
 
   it("drops a class the file no longer declares from the index on a self-write, without calling deleteClass", async () => {
-    // A file seeded before `handleMoChange` turned multi-top-level files away
-    // can hold two names it no longer declares after a rewrite. OMC already
-    // has the post-write text through `writeFile`'s own `loadString`.
+    // `seedPathClassIndex` indexes a multi-top-level file without refusing it
+    // — only `handleMoChange` turns that shape away — so a seeded entry can
+    // hold names the file no longer declares after a rewrite. OMC already has
+    // the post-write text through `writeFile`'s own `loadString`.
     const guard = createSelfWriteGuard();
     const text = "model Foo end Foo;";
     guard.record(FILE, text);

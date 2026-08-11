@@ -112,8 +112,10 @@ export interface MoWatcherDeps {
   fileExists: (fsPath: string) => Promise<boolean>;
   /**
    * True when a declared class is open and dirty — reloading would clobber
-   * it. `fsPaths` and `classNames` both cover the full cascade a reload or
-   * `deleteClass` can touch, not just the file the triggering event named.
+   * it. Gate callers pass the full cascade a reload or `deleteClass` can
+   * touch, not just the file the triggering event named;
+   * {@link reindexAndRelist} passes a single class and no paths, to filter
+   * its `notifySourceChanged` bumps.
    */
   isBusy: (fsPaths: string[], classNames: string[]) => boolean;
 }
@@ -378,11 +380,10 @@ export async function handleOrderChange(
     // Raced with a delete, or unreadable — nothing to react to.
     return;
   }
-  // Unlike a `.mo` self-write, a `package.order` self-write has no
-  // structural refresh to skip to: a child's position in `package.order`
-  // affects display order, never which classes are declared, so there is no
-  // class-set change here for the index or the sidebar's structure to catch
-  // up on.
+  // Unlike a `.mo` self-write, a `package.order` self-write leaves nothing to
+  // catch up on: a child's position in `package.order` affects display order,
+  // never which classes are declared, so the index and the sidebar's
+  // structure are already right.
   if (deps.guard.claim(orderFsPath, text)) return;
   await reorderPackage(deps, orderOwner(orderFsPath), orderFsPath);
 }
