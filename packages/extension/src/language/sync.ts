@@ -9,8 +9,12 @@
  */
 
 import { log } from "../logger.js";
+import {
+  multipleTopLevelClasses,
+  type FileParseClient,
+} from "../single-entity-file.js";
 
-export interface SyncClient {
+export interface SyncClient extends FileParseClient {
   loadFile(input: { fileName: string }): Promise<{ success: boolean }>;
 }
 
@@ -21,6 +25,11 @@ export interface OmcSyncOptions {
    * inconsistent fsPath casing across events).
    */
   normalizeKey?: (filePath: string) => string;
+  /**
+   * Called once per path refused for declaring several top-level classes.
+   * Keeps the notification out of this module, which stays host-free.
+   */
+  onMultiEntity?: (filePath: string, classNames: string[]) => void;
 }
 
 /** Case-folds on case-insensitive hosts (win32/darwin); identity elsewhere. */
@@ -38,13 +47,24 @@ export class OmcSync {
    * mid-flight, so the result is discarded.
    */
   private readonly generation = new Map<string, number>();
+  /**
+   * Paths refused for declaring several top-level classes. Remembered so a
+   * touch-per-keystroke doesn't re-`parseFile` a file that cannot load, and so
+   * {@link OmcSyncOptions.onMultiEntity} reports each path once.
+   */
+  private readonly multiEntity = new Set<string>();
   private readonly normalizeKey: (filePath: string) => string;
+  private readonly onMultiEntity: (
+    filePath: string,
+    classNames: string[],
+  ) => void;
 
   constructor(
     private readonly client: SyncClient,
     options: OmcSyncOptions = {},
   ) {
     this.normalizeKey = options.normalizeKey ?? defaultNormalizeKey;
+    this.onMultiEntity = options.onMultiEntity ?? (() => {});
   }
 
   /**
@@ -55,6 +75,7 @@ export class OmcSync {
   async ensureLoaded(filePath: string): Promise<boolean> {
     const key = this.normalizeKey(filePath);
     if (this.loaded.has(key)) return true;
+    if (this.multiEntity.has(key)) return false;
 
     const pending = this.inFlight.get(key);
     if (pending) return pending;
@@ -79,6 +100,9 @@ export class OmcSync {
     const key = this.normalizeKey(filePath);
     this.loaded.delete(key);
     this.inFlight.delete(key);
+    // A save that splits the file out into one class each makes it loadable,
+    // so the refusal must not outlive the text it was based on.
+    this.multiEntity.delete(key);
     this.generation.set(key, (this.generation.get(key) ?? 0) + 1);
   }
 
@@ -89,6 +113,17 @@ export class OmcSync {
   private async load(filePath: string, key: string): Promise<boolean> {
     const snapshot = this.generation.get(key) ?? 0;
     try {
+      const classNames = await multipleTopLevelClasses(this.client, filePath);
+      // Invalidated mid-parse — the parse read stale text, discard. Recording
+      // the refusal would outlive the text it was based on.
+      if (snapshot !== (this.generation.get(key) ?? 0)) {
+        return false;
+      }
+      if (classNames) {
+        this.multiEntity.add(key);
+        this.onMultiEntity(filePath, classNames);
+        return false;
+      }
       const { success } = await this.client.loadFile({ fileName: filePath });
       // Invalidated mid-flight — load read stale text, discard.
       if (snapshot !== (this.generation.get(key) ?? 0)) {

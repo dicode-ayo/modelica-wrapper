@@ -1,5 +1,10 @@
 import * as vscode from "vscode";
 
+import {
+  multiEntityMessage,
+  multipleTopLevelClassesInText,
+  type StringParseClient,
+} from "../single-entity-file.js";
 import { omcFilenameForDocument } from "../source-provider.js";
 
 /**
@@ -29,7 +34,7 @@ export const defaultScheduler: Scheduler = {
 export const REVERSE_SYNC_DEBOUNCE_MS = 150;
 
 /** The subset of OMC a reverse sync drives. */
-export interface BufferSyncClient {
+export interface BufferSyncClient extends StringParseClient {
   loadString(input: {
     data: string;
     filename: string;
@@ -51,9 +56,22 @@ export async function reloadBufferIntoOmc(
   document: vscode.TextDocument,
 ): Promise<ReloadResult> {
   await client.getErrorString();
+  const data = document.getText();
+  const filename = await omcFilenameForDocument(client, document.uri);
+  // `loadString` binds every class in the text to `filename`, so a buffer that
+  // declares several would leave OMC holding a file no save can write back
+  // without dropping one (#452).
+  const multiEntity = await multipleTopLevelClassesInText(
+    client,
+    data,
+    filename,
+  );
+  if (multiEntity) {
+    return { ok: false, message: multiEntityMessage(filename, multiEntity) };
+  }
   const { success } = await client.loadString({
-    data: document.getText(),
-    filename: await omcFilenameForDocument(client, document.uri),
+    data,
+    filename,
     merge: false,
   });
   if (!success) {

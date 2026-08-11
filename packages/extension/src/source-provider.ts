@@ -50,6 +50,11 @@ import {
   realSourceFilename,
   type FileOwnerClient,
 } from "./file-owner.js";
+import {
+  multiEntityMessage,
+  multipleTopLevelClasses,
+  multipleTopLevelClassesInText,
+} from "./single-entity-file.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
 import type { WriteVerdicts } from "./write-verdict.js";
 
@@ -163,6 +168,32 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
     // Read for `fileName` — the verdict above consumed only the permission.
     const info = await client.getClassInformation({ typeName });
     const onDisk = isLikelyDiskPath(info.fileName);
+
+    // Both screens sit ahead of the `loadString` below to keep this method's
+    // "refuse before any OMC mutation" promise. The buffer would bind every
+    // class it declares to `info.fileName`; the file may have gained a class
+    // from an external edit since it loaded. Either way the write that follows
+    // reconstructs the file from one class and drops the rest (#452). A file
+    // OMC cannot parse falls through — refusing there would block saving a fix
+    // over a corrupted file, and the buffer screen still holds.
+    if (onDisk) {
+      const inFile = await multipleTopLevelClasses(client, info.fileName);
+      if (inFile) {
+        throw vscode.FileSystemError.Unavailable(
+          multiEntityMessage(info.fileName, inFile),
+        );
+      }
+    }
+    const inBuffer = await multipleTopLevelClassesInText(
+      client,
+      text,
+      onDisk ? info.fileName : uri.toString(),
+    );
+    if (inBuffer) {
+      throw vscode.FileSystemError.Unavailable(
+        multiEntityMessage(onDisk ? info.fileName : typeName, inBuffer),
+      );
+    }
 
     // Drain any stale errors so the post-loadString check below only sees
     // diagnostics produced by this save.

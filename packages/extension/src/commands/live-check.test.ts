@@ -58,7 +58,7 @@ function makeClient(overrides: Partial<LiveCheckClient> = {}) {
     })),
     getClassInformation: vi.fn(async () => ({ fileReadOnly: false })),
     getErrorString: vi.fn(async () => ({ errorString: "" })),
-    parseString: vi.fn(async () => ({ names: ["P.A"] })),
+    parseString: vi.fn(async () => ({ classNames: ["P.A"] })),
     loadString: vi.fn(async () => ({ success: true })),
     checkModel: vi.fn(async () => ({ result: "" })),
     getMessagesStringInternal: vi.fn(async () => {
@@ -207,6 +207,28 @@ describe("registerLiveCheck", () => {
       filename: DOC_URI.toString(),
       merge: false,
     });
+  });
+
+  it("skips the load stage for a buffer declaring several top-level classes (#452)", async () => {
+    // Mid-edit the user has typed a second top-level class. `loadString` would
+    // bind both to the real file, leaving OMC holding a shape no save can
+    // write back. Parse diagnostics still publish.
+    const { client } = makeClient({
+      parseString: vi.fn(async () => ({ classNames: ["P.A", "P.B"] })),
+    });
+    const { ctx, set } = makeContext(client);
+    register(ctx);
+
+    await runPipeline();
+
+    expect(client.parseString).toHaveBeenCalled();
+    expect(client.loadString).not.toHaveBeenCalled();
+    expect(client.checkModel).not.toHaveBeenCalled();
+    // Such a buffer parses clean, so without a synthetic diagnostic the set
+    // below would clear the user's squiggles and say nothing about why.
+    const [, diagnostics] = set.mock.calls.at(-1) ?? [];
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics?.[0]?.message).toContain("P.A, P.B");
   });
 
   it("checks nothing for a class whose file OMC reports read-only", async () => {

@@ -27,6 +27,7 @@ describe("reloadBufferIntoOmc", () => {
   it("drains stale diagnostics before loading the buffer's text", async () => {
     const calls: string[] = [];
     const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
       getErrorString: vi.fn(async () => {
         calls.push("getErrorString");
         return { errorString: "" };
@@ -51,12 +52,32 @@ describe("reloadBufferIntoOmc", () => {
     expect(calls).toEqual(["getErrorString", "loadString"]);
   });
 
+  it("refuses a buffer declaring several top-level classes (#452)", async () => {
+    // `loadString` binds every class in the text to `filename`, so letting this
+    // through would mint the shape every load path refuses — on a file that
+    // still parses clean from disk.
+    const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["A", "B"] })),
+      getErrorString: vi.fn(async () => ({ errorString: "" })),
+      loadString: vi.fn(async () => ({ success: true })),
+    };
+
+    const result = await reloadBufferIntoOmc(
+      client,
+      docFor(DOC_URI, "model A end A; model B end B;"),
+    );
+
+    expect(result.ok).toBe(false);
+    expect(client.loadString).not.toHaveBeenCalled();
+  });
+
   it("reports the post-load error, not the drained pre-load one", async () => {
     const errorStrings = [
       "stale error from a prior edit",
       "the real rejection",
     ];
     const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
       getErrorString: vi.fn(async () => ({
         errorString: errorStrings.shift() ?? "",
       })),
@@ -73,6 +94,7 @@ describe("reloadBufferIntoOmc", () => {
 
   it("falls back to a generic message when OMC reports no error text", async () => {
     const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
       getErrorString: vi.fn(async () => ({ errorString: "" })),
       loadString: vi.fn(async () => ({ success: false })),
     };
@@ -91,6 +113,7 @@ describe("reloadBufferIntoOmc — source-file resolution", () => {
   it("loads under the class's real source file so an inline member stays put", async () => {
     let loadedFilename: string | undefined;
     const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
       getErrorString: vi.fn(async () => ({ errorString: "" })),
       getSourceFile: vi.fn(async () => ({ fileName: "/ws/Pkg/package.mo" })),
       loadString: vi.fn(async (input) => {
@@ -110,6 +133,7 @@ describe("reloadBufferIntoOmc — source-file resolution", () => {
   it("falls back to the document URI when the source path is non-disk", async () => {
     let loadedFilename: string | undefined;
     const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
       getErrorString: vi.fn(async () => ({ errorString: "" })),
       // A memory-only / already-repointed class has no on-disk source.
       getSourceFile: vi.fn(async () => ({ fileName: "<runtime:Model>" })),
