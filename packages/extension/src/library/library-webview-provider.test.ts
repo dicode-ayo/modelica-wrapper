@@ -158,7 +158,9 @@ function makeInstanceProbe() {
     getClassNames: vi.fn(async () => ({ classNames: ["Modelica"] })),
     searchClassNames: vi.fn(async () => ({ classNames: [] })),
     getClassRestriction: vi.fn(async () => ({ restriction: "model" })),
-    invoke: vi.fn(async () => ({ instance: EMPTY_ICON_INSTANCE })),
+    invoke: vi.fn(async (_fn: string, _input: object) => ({
+      instance: EMPTY_ICON_INSTANCE,
+    })),
   };
   const uri = {
     fsPath: "/ext",
