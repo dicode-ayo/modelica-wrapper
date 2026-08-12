@@ -27,30 +27,23 @@ describeIf("loadString filename binding (live OMC)", () => {
   let client: OmcClient;
   let tmpDir: string;
 
-  /**
-   * A single-file package holding two inline members, loaded from disk. Returns
-   * the package name, its `package.mo` path, and the source text of member `A`
-   * as OMC re-serializes it — what an editor buffer on `A` would contain.
-   */
-  async function loadInlinePackage(): Promise<{
+  interface Fixture {
     packageName: string;
     packagePath: string;
+    /** `member`'s source as OMC re-serializes it — an editor buffer's text. */
     memberSource: string;
-  }> {
+  }
+
+  /** Write a single-file package, load it from disk, and list one member back. */
+  async function loadPackageFixture(
+    member: string,
+    body: string,
+  ): Promise<Fixture> {
     const packageName = `MwTest_${randomBytes(4).toString("hex")}`;
     const packagePath = path.join(tmpDir, `${packageName}.mo`);
     await fsp.writeFile(
       packagePath,
-      `package ${packageName}
-  model A
-    Real x;
-  end A;
-
-  model B
-    Real y;
-  end B;
-end ${packageName};
-`,
+      `package ${packageName}\n${body}end ${packageName};\n`,
       "utf8",
     );
     const { success } = await client.loadFile({ fileName: packagePath });
@@ -59,29 +52,35 @@ end ${packageName};
       throw new Error(`loadFile failed for ${packagePath}: ${errorString}`);
     }
     const { contents } = await client.listFile({
-      typeName: `${packageName}.A`,
+      typeName: `${packageName}.${member}`,
     });
     return { packageName, packagePath, memberSource: contents };
   }
 
+  /** Two independent inline members; the buffer is `A`. */
+  function loadInlinePackage(): Promise<Fixture> {
+    return loadPackageFixture(
+      "A",
+      `  model A
+    Real x;
+  end A;
+
+  model B
+    Real y;
+  end B;
+`,
+    );
+  }
+
   /**
-   * A single-file package whose second member depends on its first. `Ahead`
-   * carries an error, so checking `Target` surfaces a diagnostic belonging to
-   * a class the buffer does not contain; `breakTarget` moves the error into
-   * `Target` itself instead. Returns `Target`'s source as an editor buffer
-   * would hold it.
+   * A package whose second member depends on its first. `Ahead` carries an
+   * error, so checking `Target` surfaces a diagnostic belonging to a class the
+   * buffer does not contain; `breakTarget` moves the error into `Target`.
    */
-  async function loadSiblingPackage({ breakTarget = false } = {}): Promise<{
-    packageName: string;
-    packagePath: string;
-    memberSource: string;
-  }> {
-    const packageName = `MwTest_${randomBytes(4).toString("hex")}`;
-    const packagePath = path.join(tmpDir, `${packageName}.mo`);
-    await fsp.writeFile(
-      packagePath,
-      `package ${packageName}
-  model Ahead
+  function loadSiblingPackage({ breakTarget = false } = {}): Promise<Fixture> {
+    return loadPackageFixture(
+      "Target",
+      `  model Ahead
     Real bad = ${breakTarget ? "1.0" : "notDefinedAnywhere"};
   end Ahead;
 
@@ -89,19 +88,8 @@ end ${packageName};
     Ahead a;
     Real x${breakTarget ? " = alsoNotDefined" : ""};
   end Target;
-end ${packageName};
 `,
-      "utf8",
     );
-    const { success } = await client.loadFile({ fileName: packagePath });
-    if (!success) {
-      const { errorString } = await client.getErrorString();
-      throw new Error(`loadFile failed for ${packagePath}: ${errorString}`);
-    }
-    const { contents } = await client.listFile({
-      typeName: `${packageName}.Target`,
-    });
-    return { packageName, packagePath, memberSource: contents };
   }
 
   /**

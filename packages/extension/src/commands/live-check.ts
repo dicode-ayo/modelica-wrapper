@@ -267,13 +267,15 @@ async function runCheck(
       // one coordinate space so the class's extent separates its diagnostics
       // from theirs, and keep the mapping back to the buffer. A memory-only
       // class was loaded under its own URI and has no siblings to confuse it
-      // with; a failed alignment falls back to the buffer's own bounds, which
-      // still bound a sibling declared past the buffer's end.
+      // with. Alignment leaves OMC on the buffer whenever it does not return a
+      // mapping, so the fallback below reads the coordinates OMC is actually
+      // reporting in.
       let coords = bufferOwnCoords(document.lineCount);
       if (typeName !== undefined && filename !== uri.toString()) {
         try {
           coords =
-            (await alignToSharedFile(client, typeName, filename)) ?? coords;
+            (await alignToSharedFile(client, { typeName, filename, text })) ??
+            coords;
         } catch (err) {
           log.warn(
             "liveCheck",
@@ -284,7 +286,7 @@ async function runCheck(
       }
       if (state.token !== capturedToken) return;
 
-      if (typeName) {
+      if (typeName !== undefined) {
         try {
           await client.checkModel({ typeName });
         } catch (err) {
@@ -326,7 +328,17 @@ async function runCheck(
       }
       return undefined;
     };
-    const grouped = mapOmcMessagesToDiagnostics(messages, resolver);
+    // A message naming the URI reaches the buffer through the branch above
+    // rather than the filename the stages bounded, so bound it too — nothing
+    // published against this document escapes its line range.
+    const grouped = mapOmcMessagesToDiagnostics(
+      keepForBuffer(
+        messages,
+        uri.toString(),
+        bufferOwnCoords(document.lineCount),
+      ),
+      resolver,
+    );
     ctx.diagnostics.set(uri, grouped.get(uri) ?? []);
   });
 }

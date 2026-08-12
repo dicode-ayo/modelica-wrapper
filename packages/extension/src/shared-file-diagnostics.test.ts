@@ -19,6 +19,14 @@ import {
 
 const PACKAGE_MO = "/ws/P/package.mo";
 const PACKAGE_SOURCE = "package P\n  model A\n    Real x;\n  end A;\nend P;";
+const BUFFER_TEXT = "model A\n  Real x;\nend A;";
+const INPUT = { typeName: "P.A", filename: PACKAGE_MO, text: BUFFER_TEXT };
+
+type Extent = {
+  lineNumberStart: number;
+  lineNumberEnd: number;
+  columnNumberStart: number;
+};
 
 function messageAt(
   filename: string,
@@ -63,11 +71,26 @@ function makeClient(overrides: Partial<SharedFileClient> = {}) {
   } satisfies SharedFileClient;
 }
 
+/**
+ * Reports the class in its buffer once — enough to get past the pre-reload
+ * guard — then hands every later read to `after`, which stands in for OMC
+ * losing the class between the reload and the extent read.
+ */
+function readsThenFails(after: () => Extent) {
+  let reads = 0;
+  return vi.fn(async () => {
+    reads += 1;
+    return reads > 1
+      ? after()
+      : { lineNumberStart: 1, lineNumberEnd: 3, columnNumberStart: 1 };
+  });
+}
+
 describe("alignToSharedFile", () => {
   it("reports the line and column shift the file's coordinates impose", async () => {
     const client = makeClient();
 
-    const coords = await alignToSharedFile(client, "P.A", PACKAGE_MO);
+    const coords = await alignToSharedFile(client, INPUT);
 
     expect(coords).toEqual({
       firstLine: 2,
@@ -85,7 +108,7 @@ describe("alignToSharedFile", () => {
     });
 
     expect(
-      await alignToSharedFile(client, "P.A", "/ws/P/A.mo"),
+      await alignToSharedFile(client, { ...INPUT, filename: "/ws/P/A.mo" }),
     ).toBeUndefined();
     expect(client.listFile).not.toHaveBeenCalled();
     expect(client.loadString).not.toHaveBeenCalled();
@@ -96,7 +119,7 @@ describe("alignToSharedFile", () => {
       listFile: vi.fn(async () => ({ contents: "  \n" })),
     });
 
-    expect(await alignToSharedFile(client, "P.A", PACKAGE_MO)).toBeUndefined();
+    expect(await alignToSharedFile(client, INPUT)).toBeUndefined();
     // Loading it would drop the file's classes from OMC, not renumber them.
     expect(client.loadString).not.toHaveBeenCalled();
   });
@@ -106,7 +129,7 @@ describe("alignToSharedFile", () => {
       loadString: vi.fn(async () => ({ success: false })),
     });
 
-    expect(await alignToSharedFile(client, "P.A", PACKAGE_MO)).toBeUndefined();
+    expect(await alignToSharedFile(client, INPUT)).toBeUndefined();
   });
 
   it("gives up on an extent OMC cannot mean", async () => {
@@ -118,7 +141,45 @@ describe("alignToSharedFile", () => {
       })),
     });
 
-    expect(await alignToSharedFile(client, "P.A", PACKAGE_MO)).toBeUndefined();
+    expect(await alignToSharedFile(client, INPUT)).toBeUndefined();
+    expect(client.loadString).not.toHaveBeenCalled();
+  });
+
+  it("puts the buffer back when the reload lands but the extent does not", async () => {
+    // Leaving the file's numbering in place while the caller reads positions
+    // as the buffer's would drop the class's own diagnostics and admit its
+    // siblings' — worse than not aligning at all.
+    const client = makeClient({
+      getClassInformation: readsThenFails(() => ({
+        lineNumberStart: 0,
+        lineNumberEnd: 0,
+        columnNumberStart: 0,
+      })),
+    });
+
+    expect(await alignToSharedFile(client, INPUT)).toBeUndefined();
+    expect(client.loadString).toHaveBeenLastCalledWith({
+      data: BUFFER_TEXT,
+      filename: PACKAGE_MO,
+      merge: false,
+    });
+  });
+
+  it("puts the buffer back when the extent read throws", async () => {
+    const client = makeClient({
+      getClassInformation: readsThenFails(() => {
+        throw new Error("class gone");
+      }),
+    });
+
+    await expect(alignToSharedFile(client, INPUT)).rejects.toThrow(
+      "class gone",
+    );
+    expect(client.loadString).toHaveBeenLastCalledWith({
+      data: BUFFER_TEXT,
+      filename: PACKAGE_MO,
+      merge: false,
+    });
   });
 });
 

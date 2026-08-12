@@ -16,6 +16,7 @@
 import type { ErrorMessage } from "@dicode/omc-client";
 
 import { fileOwnerClass, type FileOwnerClient } from "./file-owner.js";
+import { log } from "./logger.js";
 
 export interface SharedFileClient extends FileOwnerClient {
   getClassInformation(input: { typeName: string }): Promise<{
@@ -57,37 +58,57 @@ export function bufferOwnCoords(lineCount: number): BufferCoords {
  * Reads the class's extent before and after the reload: the pretty-printer
  * indents a member by its nesting depth, so the file's coordinates differ from
  * the buffer's in column as well as line.
+ *
+ * Whether it returns a mapping, returns `undefined`, or throws, OMC is left
+ * holding coordinates the caller can name: the file's on success, the buffer's
+ * otherwise — reloading `text` to get back there when the file reload already
+ * landed.
  */
 export async function alignToSharedFile(
   client: SharedFileClient,
-  typeName: string,
-  filename: string,
+  input: { typeName: string; filename: string; text: string },
 ): Promise<BufferCoords | undefined> {
+  const { typeName, filename, text } = input;
   const owner = await fileOwnerClass(client, typeName);
   if (owner === typeName) return undefined;
 
   const inBuffer = await client.getClassInformation({ typeName });
   if (inBuffer.lineNumberStart < 1 || inBuffer.columnNumberStart < 1) {
+    log.warn("sharedFile", `OMC places ${typeName} nowhere in its buffer`);
     return undefined;
   }
 
   const { contents } = await client.listFile({ typeName: owner });
   // Loading an empty listing would drop the file's classes from OMC rather
   // than renumber them.
-  if (contents.trim() === "") return undefined;
+  if (contents.trim() === "") {
+    log.warn("sharedFile", `listFile(${owner}) came back empty`);
+    return undefined;
+  }
   const { success } = await client.loadString({
     data: contents,
     filename,
     merge: false,
   });
-  if (!success) return undefined;
+  if (!success) {
+    log.warn("sharedFile", `reloading ${filename} failed`);
+    return undefined;
+  }
 
-  const inFile = await client.getClassInformation({ typeName });
+  let inFile;
+  try {
+    inFile = await client.getClassInformation({ typeName });
+  } catch (err) {
+    await restoreBuffer(client, filename, text);
+    throw err;
+  }
   if (
     inFile.lineNumberStart < 1 ||
     inFile.lineNumberEnd < inFile.lineNumberStart ||
     inFile.columnNumberStart < 1
   ) {
+    log.warn("sharedFile", `OMC places ${typeName} nowhere in ${filename}`);
+    await restoreBuffer(client, filename, text);
     return undefined;
   }
 
@@ -97,6 +118,24 @@ export async function alignToSharedFile(
     lineShift: inFile.lineNumberStart - inBuffer.lineNumberStart,
     columnShift: inFile.columnNumberStart - inBuffer.columnNumberStart,
   };
+}
+
+/**
+ * Undo the file reload by loading the buffer back over it. Leaving the file's
+ * numbering in place while the caller reads positions as the buffer's would
+ * drop the class's own diagnostics and admit its siblings' — the pair of
+ * mistakes the alignment exists to prevent.
+ */
+async function restoreBuffer(
+  client: SharedFileClient,
+  filename: string,
+  text: string,
+): Promise<void> {
+  try {
+    await client.loadString({ data: text, filename, merge: false });
+  } catch (err) {
+    log.error("sharedFile", `could not restore ${filename} to the buffer`, err);
+  }
 }
 
 /**
