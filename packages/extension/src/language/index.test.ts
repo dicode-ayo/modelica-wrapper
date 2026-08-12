@@ -46,7 +46,8 @@ function fakeOmcClient(): CachedOmcClient {
       Promise.resolve({ libraries: [] as [string, string][] }),
     parseFile: () => Promise.resolve({ classNames: [] }),
     loadFile: () => Promise.resolve({ loaded: true }),
-    qualifyPath: ({ path }) => Promise.resolve({ qualifiedPath: path }),
+    qualifyPath: ({ path }: { typeName: string; path: string }) =>
+      Promise.resolve({ qualifiedPath: path }),
     getClassInformation: () =>
       Promise.resolve({
         fileName: "",

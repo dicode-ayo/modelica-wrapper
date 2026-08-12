@@ -91,7 +91,9 @@ describe("buildClassParameterForm", () => {
     const form = buildClassParameterForm(mi)!;
     expect(field(form.model, "useReset").kind).toBe("boolean");
     expect(form.values).toEqual({ useReset: false });
-    expect(form.refs.useReset.kind).toBe("boolean");
+    const useResetRef = form.refs.useReset;
+    if (!useResetRef) throw new Error("expected ref 'useReset'");
+    expect(useResetRef.kind).toBe("boolean");
   });
 
   it("emits an enum picker for an enumeration-typed parameter", () => {
@@ -160,7 +162,9 @@ describe("buildClassParameterForm", () => {
     const form = buildClassParameterForm(mi)!;
     expect(form.model.fields.map((f) => f.name)).toEqual(["ok", "weird"]);
     expect(field(form.model, "weird").kind).toBe("unsupported");
-    expect(form.refs.weird.kind).toBe("unsupported");
+    const weirdRef = form.refs.weird;
+    if (!weirdRef) throw new Error("expected ref 'weird'");
+    expect(weirdRef.kind).toBe("unsupported");
   });
 
   it("carries the Dialog.enable expression on the model field for the form's evaluator", () => {
@@ -274,11 +278,13 @@ describe("buildClassParameterForm", () => {
     expect(form.model.fields.map((f) => f.name)).toEqual(["k"]);
     expect(field(form.model, "k").kind).toBe("number");
     expect(form.values).toEqual({ k: 2 });
-    expect(form.refs.k.kind).toBe("number");
+    const kRef = form.refs.k;
+    if (!kRef) throw new Error("expected ref 'k'");
+    expect(kRef.kind).toBe("number");
     // The param is declared on the ancestor `Test.Base`, so its ref
     // carries `inheritedFrom` — the submit handler routes it through
     // `setExtendsModifierValue(host, "Test.Base", "k", expr)`.
-    expect(form.refs.k.inheritedFrom).toBe("Test.Base");
+    expect(kRef.inheritedFrom).toBe("Test.Base");
   });
 
   it("routes a 3-level inherited param to the host's DIRECT extends base (issue #76, item 3)", () => {
@@ -314,9 +320,11 @@ describe("buildClassParameterForm", () => {
       ],
     } as unknown as ModelInstance;
     const form = buildClassParameterForm(mi)!;
-    expect(form.refs.k.kind).toBe("number");
+    const kRef = form.refs.k;
+    if (!kRef) throw new Error("expected ref 'k'");
+    expect(kRef.kind).toBe("number");
     expect(form.values).toEqual({ k: 7 });
-    expect(form.refs.k.inheritedFrom).toBe("Test.B");
+    expect(kRef.inheritedFrom).toBe("Test.B");
   });
 
   it("leaves inheritedFrom unset for a host-declared (own) parameter", () => {
@@ -330,8 +338,10 @@ describe("buildClassParameterForm", () => {
       },
     ]);
     const form = buildClassParameterForm(mi)!;
-    expect(form.refs.k.inheritedFrom).toBeUndefined();
-    expect("inheritedFrom" in form.refs.k).toBe(false);
+    const kRef = form.refs.k;
+    if (!kRef) throw new Error("expected ref 'k'");
+    expect(kRef.inheritedFrom).toBeUndefined();
+    expect("inheritedFrom" in kRef).toBe(false);
   });
 
   it("marks an inherited param but not an own param when the host adds its own", () => {
@@ -365,8 +375,12 @@ describe("buildClassParameterForm", () => {
       ],
     } as unknown as ModelInstance;
     const form = buildClassParameterForm(mi)!;
-    expect(form.refs.k.inheritedFrom).toBe("Test.Base");
-    expect(form.refs.j.inheritedFrom).toBeUndefined();
+    const kRef = form.refs.k;
+    if (!kRef) throw new Error("expected ref 'k'");
+    const jRef = form.refs.j;
+    if (!jRef) throw new Error("expected ref 'j'");
+    expect(kRef.inheritedFrom).toBe("Test.Base");
+    expect(jRef.inheritedFrom).toBeUndefined();
   });
 
   it("when the host overrides an inherited param, the surviving ref is the host's own (no inheritedFrom)", () => {
@@ -400,7 +414,9 @@ describe("buildClassParameterForm", () => {
       ],
     } as unknown as ModelInstance;
     const form = buildClassParameterForm(mi)!;
-    expect(form.refs.k.inheritedFrom).toBeUndefined();
+    const kRef = form.refs.k;
+    if (!kRef) throw new Error("expected ref 'k'");
+    expect(kRef.inheritedFrom).toBeUndefined();
   });
 
   it("host-class parameter overrides an ancestor's same-named parameter (last-write-wins)", () => {
@@ -464,21 +480,40 @@ describe("buildClassParameterForm", () => {
 
 describe("classParameterValueToExpr", () => {
   it("emits unquoted literals for numeric and boolean values", () => {
-    expect(classParameterValueToExpr({ name: "k", kind: "number" }, 12.5)).toBe(
-      "12.5",
-    );
     expect(
-      classParameterValueToExpr({ name: "use", kind: "boolean" }, true),
+      classParameterValueToExpr(
+        { name: "k", kind: "number", tab: "General", group: "Parameters" },
+        12.5,
+      ),
+    ).toBe("12.5");
+    expect(
+      classParameterValueToExpr(
+        {
+          name: "use",
+          kind: "boolean",
+          tab: "General",
+          group: "Parameters",
+        },
+        true,
+      ),
     ).toBe("true");
     expect(
-      classParameterValueToExpr({ name: "use", kind: "boolean" }, false),
+      classParameterValueToExpr(
+        {
+          name: "use",
+          kind: "boolean",
+          tab: "General",
+          group: "Parameters",
+        },
+        false,
+      ),
     ).toBe("false");
   });
 
   it("quotes string values and escapes embedded quotes / backslashes", () => {
     expect(
       classParameterValueToExpr(
-        { name: "label", kind: "string" },
+        { name: "label", kind: "string", tab: "General", group: "Parameters" },
         `she said "hi" \\ ok`,
       ),
     ).toBe(`"she said \\"hi\\" \\\\ ok"`);
@@ -491,6 +526,8 @@ describe("classParameterValueToExpr", () => {
           name: "controllerType",
           kind: "enum",
           enumTypeName: "Modelica.Blocks.Types.SimpleController",
+          tab: "General",
+          group: "Parameters",
         },
         "PI",
       ),
@@ -499,10 +536,16 @@ describe("classParameterValueToExpr", () => {
 
   it("returns empty string when value is cleared, so the caller can drop the modifier", () => {
     expect(
-      classParameterValueToExpr({ name: "k", kind: "number" }, undefined),
+      classParameterValueToExpr(
+        { name: "k", kind: "number", tab: "General", group: "Parameters" },
+        undefined,
+      ),
     ).toBe("");
-    expect(classParameterValueToExpr({ name: "k", kind: "number" }, "")).toBe(
-      "",
-    );
+    expect(
+      classParameterValueToExpr(
+        { name: "k", kind: "number", tab: "General", group: "Parameters" },
+        "",
+      ),
+    ).toBe("");
   });
 });

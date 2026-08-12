@@ -28,6 +28,7 @@ describe("reloadBufferIntoOmc", () => {
     const calls: string[] = [];
     const client: BufferSyncClient = {
       parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
+      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
       getErrorString: vi.fn(async () => {
         calls.push("getErrorString");
         return { errorString: "" };
@@ -58,6 +59,7 @@ describe("reloadBufferIntoOmc", () => {
     // still parses clean from disk.
     const client: BufferSyncClient = {
       parseString: vi.fn(async () => ({ classNames: ["A", "B"] })),
+      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
       getErrorString: vi.fn(async () => ({ errorString: "" })),
       loadString: vi.fn(async () => ({ success: true })),
     };
@@ -78,6 +80,7 @@ describe("reloadBufferIntoOmc", () => {
     ];
     const client: BufferSyncClient = {
       parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
+      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
       getErrorString: vi.fn(async () => ({
         errorString: errorStrings.shift() ?? "",
       })),
@@ -95,6 +98,7 @@ describe("reloadBufferIntoOmc", () => {
   it("falls back to a generic message when OMC reports no error text", async () => {
     const client: BufferSyncClient = {
       parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
+      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
       getErrorString: vi.fn(async () => ({ errorString: "" })),
       loadString: vi.fn(async () => ({ success: false })),
     };
