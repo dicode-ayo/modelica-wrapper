@@ -31,16 +31,48 @@ const DOC_TEXT = "model A\n  Real x;\nend A;";
 /** Diagnostics past the buffer's last line belong to another class. */
 const DOC_LINES = DOC_TEXT.split("\n").length;
 
-/** `line` is 1-based, as OMC reports it. */
-function errorAt(filename: string, message: string, line = 1): ErrorMessage {
+/**
+ * `P.A` as `package.mo` holds it: indented one level, below a sibling. The
+ * buffer above is the same class dedented to its own file, so OMC's positions
+ * for it differ from the buffer's by 5 lines and 2 columns.
+ */
+const PACKAGE_SOURCE = [
+  "package P",
+  "  model Z",
+  "    Real bad;",
+  "  end Z;",
+  "",
+  "  model A",
+  "    Real x;",
+  "  end A;",
+  "end P;",
+].join("\n");
+const A_IN_BUFFER = {
+  lineNumberStart: 1,
+  lineNumberEnd: DOC_LINES,
+  columnNumberStart: 1,
+};
+const A_IN_FILE = {
+  lineNumberStart: 6,
+  lineNumberEnd: 8,
+  columnNumberStart: 3,
+};
+
+/** `line` and `column` are 1-based, as OMC reports them. */
+function errorAt(
+  filename: string,
+  message: string,
+  line = 1,
+  column = 1,
+): ErrorMessage {
   return {
     info: {
       filename,
       readonly: false,
       lineStart: line,
-      columnStart: 1,
+      columnStart: column,
       lineEnd: line,
-      columnEnd: 5,
+      columnEnd: column + 4,
     },
     message,
     kind: "translation",
@@ -48,30 +80,43 @@ function errorAt(filename: string, message: string, line = 1): ErrorMessage {
   };
 }
 
-/** Records the calls the pipeline makes; queued messages drain per read. */
+/**
+ * Records the calls the pipeline makes. Each queued batch drains on one read,
+ * so a caller can aim messages at the parse stage or the semantic one.
+ *
+ * `getClassInformation` mirrors OMC: it reports the class inside whatever
+ * string was loaded last, so the reload of `PACKAGE_SOURCE` is what moves it
+ * from the buffer's coordinates to the file's.
+ */
 function makeClient(overrides: Partial<LiveCheckClient> = {}) {
-  let pending: ErrorMessage[] = [];
+  const batches: ErrorMessage[][] = [];
+  let renumbered = false;
   const client = {
     getSourceFile: vi.fn(async () => ({ fileName: PACKAGE_MO })),
     getModelicaPath: vi.fn(async () => ({
       modelicaPath: "/home/u/.openmodelica/libraries",
     })),
-    getClassInformation: vi.fn(async () => ({ fileReadOnly: false })),
+    getClassInformation: vi.fn(async () => ({
+      fileReadOnly: false,
+      ...(renumbered ? A_IN_FILE : A_IN_BUFFER),
+    })),
     getErrorString: vi.fn(async () => ({ errorString: "" })),
     parseString: vi.fn(async () => ({ classNames: ["P.A"] })),
-    loadString: vi.fn(async () => ({ success: true })),
-    checkModel: vi.fn(async () => ({ result: "" })),
-    getMessagesStringInternal: vi.fn(async () => {
-      const messages = pending;
-      pending = [];
-      return { messages };
+    listFile: vi.fn(async () => ({ contents: PACKAGE_SOURCE })),
+    loadString: vi.fn(async ({ data }: { data: string }) => {
+      if (data === PACKAGE_SOURCE) renumbered = true;
+      return { success: true };
     }),
+    checkModel: vi.fn(async () => ({ result: "" })),
+    getMessagesStringInternal: vi.fn(async () => ({
+      messages: batches.shift() ?? [],
+    })),
     ...overrides,
   } satisfies LiveCheckClient;
   return {
     client,
-    queue(messages: ErrorMessage[]): void {
-      pending = messages;
+    queue(...stages: ErrorMessage[][]): void {
+      batches.push(...stages);
     },
   };
 }
@@ -193,6 +238,94 @@ describe("registerLiveCheck", () => {
     expect(diags).toHaveLength(1);
   });
 
+  it("reloads the whole shared file before checking the class", async () => {
+    const { client } = makeClient();
+    const { ctx } = makeContext(client);
+    register(ctx);
+
+    await runPipeline();
+
+    // Only the class that owns the file puts every class in it under one
+    // coordinate space, which is what separates the members' diagnostics.
+    expect(client.listFile).toHaveBeenCalledWith({ typeName: "P" });
+    expect(client.loadString).toHaveBeenCalledWith({
+      data: PACKAGE_SOURCE,
+      filename: PACKAGE_MO,
+      merge: false,
+    });
+  });
+
+  it("carries the class's own diagnostic back into buffer coordinates", async () => {
+    const { client, queue } = makeClient();
+    const { ctx, set } = makeContext(client);
+    // `Real x;` as the file holds it: line 7, column 5.
+    queue([], [errorAt(PACKAGE_MO, "own", 7, 5)]);
+    register(ctx);
+
+    await runPipeline();
+
+    const [, diags] = set.mock.calls[0] ?? [];
+    expect(diags).toHaveLength(1);
+    // Buffer line 2, column 3 — 0-based for VSCode.
+    expect(diags?.[0]?.range.start.line).toBe(1);
+    expect(diags?.[0]?.range.start.character).toBe(2);
+  });
+
+  it("drops a sibling's diagnostic that aliases a line of the buffer (#370)", async () => {
+    const { client, queue } = makeClient();
+    const { ctx, set } = makeContext(client);
+    // `Z` is declared ahead of `A`, so its error carries a low line number
+    // that is also a real line of the buffer. Bounding against the buffer's
+    // own size cannot catch it; the class's extent in the file can.
+    queue(
+      [],
+      [errorAt(PACKAGE_MO, "Variable bad not found in scope Z.", 3, 5)],
+    );
+    register(ctx);
+
+    await runPipeline();
+
+    expect(set).toHaveBeenCalledWith(DOC_URI, []);
+  });
+
+  it("leaves a class that owns its file in the buffer's own coordinates", async () => {
+    const ownFile = "/ws/P/A.mo";
+    const { client, queue } = makeClient({
+      getSourceFile: vi.fn(async ({ typeName }: { typeName: string }) => ({
+        fileName: typeName === "P.A" ? ownFile : PACKAGE_MO,
+      })),
+    });
+    const { ctx, set } = makeContext(client);
+    queue([], [errorAt(ownFile, "own", 2, 3)]);
+    register(ctx);
+
+    await runPipeline();
+
+    expect(client.listFile).not.toHaveBeenCalled();
+    const [, diags] = set.mock.calls[0] ?? [];
+    expect(diags?.[0]?.range.start.line).toBe(1);
+    expect(diags?.[0]?.range.start.character).toBe(2);
+  });
+
+  it("falls back to the buffer's bounds when the file cannot be reloaded", async () => {
+    const { client, queue } = makeClient({
+      listFile: vi.fn(async () => {
+        throw new Error("no such class");
+      }),
+    });
+    const { ctx, set } = makeContext(client);
+    queue([], [errorAt(PACKAGE_MO, "own", 2), errorAt(PACKAGE_MO, "after", 9)]);
+    register(ctx);
+
+    await runPipeline();
+
+    // Degrades to the guard a class with no siblings gets, rather than
+    // dropping the run's diagnostics wholesale.
+    const [, diags] = set.mock.calls[0] ?? [];
+    expect(diags).toHaveLength(1);
+    expect(diags?.[0]?.range.start.line).toBe(1);
+  });
+
   it("keeps the buffer URI for a class with no on-disk source", async () => {
     const { client } = makeClient({
       getSourceFile: vi.fn(async () => ({ fileName: "<interactive>" })),
@@ -233,7 +366,10 @@ describe("registerLiveCheck", () => {
 
   it("checks nothing for a class whose file OMC reports read-only", async () => {
     const { client } = makeClient({
-      getClassInformation: vi.fn(async () => ({ fileReadOnly: true })),
+      getClassInformation: vi.fn(async () => ({
+        fileReadOnly: true,
+        ...A_IN_BUFFER,
+      })),
     });
     const { ctx, set } = makeContext(client);
     register(ctx);
@@ -252,7 +388,10 @@ describe("registerLiveCheck", () => {
       getSourceFile: vi.fn(async () => ({
         fileName: "/home/u/.openmodelica/libraries/Modelica 4.0.0/Blocks/A.mo",
       })),
-      getClassInformation: vi.fn(async () => ({ fileReadOnly: false })),
+      getClassInformation: vi.fn(async () => ({
+        fileReadOnly: false,
+        ...A_IN_BUFFER,
+      })),
     });
     const { ctx, set } = makeContext(client);
     register(ctx);

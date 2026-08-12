@@ -7,8 +7,9 @@
  *      pipeline, abort silently.
  *   3. `parseString` to detect syntax errors WITHOUT mutating the OMC
  *      registry. If parsing fails, just surface those messages.
- *   4. Otherwise `loadString` the buffer into OMC and run `checkModel`
- *      against the qualified name in the URI.
+ *   4. Otherwise `loadString` the buffer into OMC, align a class that
+ *      shares its file with siblings (see `shared-file-diagnostics.ts`),
+ *      and run `checkModel` against the qualified name in the URI.
  *   5. Drain `getMessagesStringInternal` and replace diagnostics for
  *      THIS URI only (so unrelated diagnostics — e.g. from the
  *      user-triggered `modelica.checkModel` — stay put).
@@ -28,6 +29,12 @@ import type { ErrorMessage } from "@dicode/omc-client";
 import { mapOmcMessagesToDiagnostics } from "../diagnostics/from-omc.js";
 import type { FileOwnerClient } from "../file-owner.js";
 import { log } from "../logger.js";
+import {
+  alignToSharedFile,
+  bufferOwnCoords,
+  keepForBuffer,
+  type SharedFileClient,
+} from "../shared-file-diagnostics.js";
 import {
   multiEntityMessage,
   type StringParseClient,
@@ -51,13 +58,20 @@ const MIN_DEBOUNCE_MS = 250;
  * it itself, it hands the client to `omcFilenameForDocument`.
  */
 export interface LiveCheckClient
-  extends FileOwnerClient, WriteVerdictClient, StringParseClient {
+  extends
+    FileOwnerClient,
+    WriteVerdictClient,
+    StringParseClient,
+    SharedFileClient {
+  // Both bases name `getClassInformation` for their own field; the pipeline
+  // hands one client to each, so it has to satisfy them together.
+  getClassInformation(input: { typeName: string }): Promise<{
+    fileReadOnly: boolean;
+    lineNumberStart: number;
+    lineNumberEnd: number;
+    columnNumberStart: number;
+  }>;
   getErrorString(): Promise<{ errorString: string }>;
-  loadString(input: {
-    data: string;
-    filename: string;
-    merge: boolean;
-  }): Promise<unknown>;
   checkModel(input: { typeName: string }): Promise<unknown>;
   getMessagesStringInternal(): Promise<{ messages: ErrorMessage[] }>;
 }
@@ -200,9 +214,19 @@ async function runCheck(
     if (state.token !== capturedToken) return;
     const { messages: parseMessages } =
       await client.getMessagesStringInternal();
-    messages.push(...parseMessages);
+    // A syntax error is always about the string just parsed, never a sibling's,
+    // so these need no shift. Gate on every message reported, including one
+    // bounded away: an out-of-range line is still a broken buffer, and loading
+    // it would re-check what `parseString` already rejected.
     const hasParseError = parseMessages.some(
       (m) => m.level === "error" || m.level === "internal",
+    );
+    messages.push(
+      ...keepForBuffer(
+        parseMessages,
+        filename,
+        bufferOwnCoords(document.lineCount),
+      ),
     );
     // `loadString` binds every class in the text to `filename`, so loading a
     // buffer that declares several would leave OMC holding a file no save can
@@ -237,7 +261,32 @@ async function runCheck(
         return;
       }
       if (state.token !== capturedToken) return;
-      if (typeName) {
+
+      // The class may share its file with siblings, whose diagnostics arrive
+      // under the same filename at their own positions. Put the whole file in
+      // one coordinate space so the class's extent separates its diagnostics
+      // from theirs, and keep the mapping back to the buffer. A memory-only
+      // class was loaded under its own URI and has no siblings to confuse it
+      // with. Alignment leaves OMC on the buffer whenever it does not return a
+      // mapping, so the fallback below reads the coordinates OMC is actually
+      // reporting in.
+      let coords = bufferOwnCoords(document.lineCount);
+      if (typeName !== undefined && filename !== uri.toString()) {
+        try {
+          coords =
+            (await alignToSharedFile(client, { typeName, filename, text })) ??
+            coords;
+        } catch (err) {
+          log.warn(
+            "liveCheck",
+            `could not align ${typeName} to ${filename}; a sibling's diagnostics may leak through`,
+            err,
+          );
+        }
+      }
+      if (state.token !== capturedToken) return;
+
+      if (typeName !== undefined) {
         try {
           await client.checkModel({ typeName });
         } catch (err) {
@@ -253,7 +302,7 @@ async function runCheck(
       if (state.token !== capturedToken) return;
       const { messages: semanticMessages } =
         await client.getMessagesStringInternal();
-      messages.push(...semanticMessages);
+      messages.push(...keepForBuffer(semanticMessages, filename, coords));
     }
     if (state.token !== capturedToken) return;
     log.info(
@@ -279,15 +328,17 @@ async function runCheck(
       }
       return undefined;
     };
-    const grouped = mapOmcMessagesToDiagnostics(messages, resolver);
-    // The filename we checked under can hold sibling classes, whose diagnostics
-    // carry positions in that file rather than in this buffer. VSCode would
-    // clamp an out-of-range one onto the last line as if it were the user's.
-    // Partial: a sibling declared ahead of this class lands inside the range,
-    // and OMC reports a filename, not the class it belongs to.
-    const diagsForUri = (grouped.get(uri) ?? []).filter(
-      (d) => d.range.start.line < document.lineCount,
+    // A message naming the URI reaches the buffer through the branch above
+    // rather than the filename the stages bounded, so bound it too — nothing
+    // published against this document escapes its line range.
+    const grouped = mapOmcMessagesToDiagnostics(
+      keepForBuffer(
+        messages,
+        uri.toString(),
+        bufferOwnCoords(document.lineCount),
+      ),
+      resolver,
     );
-    ctx.diagnostics.set(uri, diagsForUri);
+    ctx.diagnostics.set(uri, grouped.get(uri) ?? []);
   });
 }
