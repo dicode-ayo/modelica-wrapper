@@ -240,7 +240,6 @@ describe("WriteVerdicts.forDocument", () => {
       ctime: 0,
       mtime: 0,
       size: 0,
-      permissions: 0,
     });
     try {
       const verdict = await new WriteVerdicts().forDocument(
