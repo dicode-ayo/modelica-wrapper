@@ -7,7 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { OmcClient } from "@dicode/omc-client";
+import type { ModelInstance, OmcClient } from "@dicode/omc-client";
 
 import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
 import { ClassInvalidationRegistry } from "../invalidation.js";
@@ -98,7 +98,7 @@ function makeProvider() {
 
 /** A class with no drawable graphics — the icon render still routes through an
  *  OMC read, which is what the freshness probes assert on. */
-const EMPTY_ICON_INSTANCE = {
+const EMPTY_ICON_INSTANCE: ModelInstance = {
   name: "Lib.A",
   restriction: "model",
   annotation: {
@@ -118,11 +118,10 @@ const EMPTY_ICON_INSTANCE = {
 /** `Lib.Sub`, whose icon is inherited from `baseName`. Rendering it records
  *  the base as a dependency, so an edit to the base cascades back to `Lib.Sub`.
  *  Varying `baseName` exercises the reverse-edge prune when the chain changes. */
-function subtypeInstance(baseName: string) {
+function subtypeInstance(baseName: string): ModelInstance {
   return {
     name: "Lib.Sub",
     restriction: "model",
-    annotation: null,
     elements: [
       {
         $kind: "extends",
