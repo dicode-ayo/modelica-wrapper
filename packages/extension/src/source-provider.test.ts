@@ -224,8 +224,12 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
     listing: Record<string, string>;
     /** What `parseFile` reports the file declares; one class unless given. */
     declares?: string[];
-    /** What `parseString` reports the buffer declares; one class unless given. */
-    bufferDeclares?: string[];
+    /**
+     * What `parseString` reports the buffer declares. No default — the
+     * rename screen reads this against the URI's class, so a stand-in value
+     * would either falsely trip it or falsely hide a real mismatch.
+     */
+    bufferDeclares: string[];
   }): { client: OmcClient; loadString: ReturnType<typeof vi.fn> } {
     const loadString = vi.fn(() => Promise.resolve({ success: true }));
     const client = {
@@ -233,7 +237,7 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
         Promise.resolve({ classNames: opts.declares ?? ["Pkg"] }),
       ),
       parseString: vi.fn(() =>
-        Promise.resolve({ classNames: opts.bufferDeclares ?? ["Pkg"] }),
+        Promise.resolve({ classNames: opts.bufferDeclares }),
       ),
       getClassInformation: vi.fn(() =>
         Promise.resolve({ fileName: opts.fileName, fileReadOnly: false }),
@@ -260,6 +264,9 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
       listing: {
         Pkg: "package Pkg model M ... end M; model Other ... end Pkg;",
       },
+      // Bare — the edited buffer text carries no `within` clause of its own,
+      // unlike a `parseFile` read of the file it shares with `Other`.
+      bufferDeclares: ["M"],
     });
     const { guard, write } = recordingGuard();
     const provider = new ModelicaSourceProvider(
@@ -286,6 +293,10 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
       fileName: "/ws/M.mo",
       sources: { "Pkg.M": "/ws/M.mo", Pkg: "/ws/package.mo" },
       listing: {},
+      // Qualified — `M` owns its file but is still nested under `Pkg`, so a
+      // `within Pkg;` clause of its own is exactly what a real buffer for it
+      // would carry.
+      bufferDeclares: ["Pkg.M"],
     });
     const { guard, write } = recordingGuard();
     const provider = new ModelicaSourceProvider(
@@ -308,6 +319,8 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
       sources: { A: "/ws/AB.mo", B: "/ws/AB.mo" },
       listing: {},
       declares: ["A", "B"],
+      // Never read — the on-disk screen throws before `parseString` runs.
+      bufferDeclares: ["A"],
     });
     const { guard, write } = recordingGuard();
     const provider = new ModelicaSourceProvider(
@@ -345,6 +358,28 @@ describe("ModelicaSourceProvider: whole-file save for shared files", () => {
         Buffer.from("model A end A; model B end B;"),
       ),
     ).rejects.toThrow(/more than one top-level class/);
+    expect(loadString).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it("refuses a buffer that renamed its class instead of leaving the old one alive in OMC (#459)", async () => {
+    const { client, loadString } = sharedFileClient({
+      fileName: "/ws/A.mo",
+      sources: { A: "/ws/A.mo" },
+      listing: {},
+      declares: ["A"],
+      bufferDeclares: ["A2"],
+    });
+    const { guard, write } = recordingGuard();
+    const provider = new ModelicaSourceProvider(
+      () => Promise.resolve(client),
+      guard,
+      new WriteVerdicts(),
+    );
+
+    await expect(
+      provider.writeFile(sourceUriFor("A"), Buffer.from("model A2 end A2;")),
+    ).rejects.toThrow(/now declares A2/);
     expect(loadString).not.toHaveBeenCalled();
     expect(write).not.toHaveBeenCalled();
   });

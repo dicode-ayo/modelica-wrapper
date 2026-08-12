@@ -18,6 +18,8 @@
 
 import * as path from "node:path";
 
+import { enclosingScope, leafName } from "@dicode/modelica-lang-core";
+
 import { errorDetail } from "./error-detail.js";
 import { log } from "./logger.js";
 
@@ -59,18 +61,20 @@ export async function multipleTopLevelClasses(
 }
 
 /**
- * {@link multipleTopLevelClasses} for text about to be `loadString`ed under
- * `filename`. `parseString` leaves OMC's class registry untouched, so this can
- * run ahead of the load it guards.
+ * The classes a buffer about to be `loadString`ed under `filename` declares.
+ * `undefined` when OMC couldn't parse it — the load that follows reports that
+ * failure with more context than a refusal here could. `parseString` leaves
+ * OMC's class registry untouched, so this can run ahead of the load it
+ * guards.
  */
-export async function multipleTopLevelClassesInText(
+export async function bufferClassNames(
   client: StringParseClient,
   data: string,
   filename: string,
 ): Promise<string[] | undefined> {
-  let classNames: string[];
   try {
-    ({ classNames } = await client.parseString({ data, filename }));
+    const { classNames } = await client.parseString({ data, filename });
+    return classNames;
   } catch (err) {
     log.warn(
       "singleEntity",
@@ -78,11 +82,52 @@ export async function multipleTopLevelClassesInText(
     );
     return undefined;
   }
-  return moreThanOne(classNames);
 }
 
-function moreThanOne(classNames: string[]): string[] | undefined {
+/** {@link multipleTopLevelClasses} for a buffer's declared classes. */
+export async function multipleTopLevelClassesInText(
+  client: StringParseClient,
+  data: string,
+  filename: string,
+): Promise<string[] | undefined> {
+  const classNames = await bufferClassNames(client, data, filename);
+  return classNames === undefined ? undefined : moreThanOne(classNames);
+}
+
+export function moreThanOne(classNames: string[]): string[] | undefined {
   return classNames.length > 1 ? classNames : undefined;
+}
+
+/**
+ * The name a single-entity buffer declares, when it isn't `expected` — a save
+ * that renamed the class its URI addresses in text, or moved it under a
+ * different `within` scope. Either way `loadString` binds every class in a
+ * buffer to the filename it's given rather than replacing the file's
+ * contents, so the buffer parses clean and loads as a second, unreachable
+ * class alongside the one the save meant to replace (#459). Meaningless once
+ * `classNames` holds more than one name — the multiple-top-level-classes
+ * screen already refuses that buffer outright.
+ *
+ * `parseString` may (like `parseFile`, see `language/owning-class.ts`'s
+ * `confirmLeaf`) return a name qualified by the buffer's own `within` clause.
+ * A bare answer carries no scope of its own — a plain member buffer with no
+ * `within` clause parses bare whether or not it moved, so only its leaf can
+ * be compared. A qualified answer names both scope and leaf, so it must match
+ * `expected` outright: leaf-only comparison would miss a `within` edit that
+ * kept the same leaf name but pointed the class at a different package.
+ */
+export function renamedClass(
+  classNames: string[],
+  expected: string,
+): string | undefined {
+  if (classNames.length !== 1) return undefined;
+  const [only] = classNames;
+  if (only === undefined) return undefined;
+  const moved =
+    enclosingScope(only) === ""
+      ? leafName(only) !== leafName(expected)
+      : only !== expected;
+  return moved ? only : undefined;
 }
 
 /** Shared refusal wording, so every guard site names the same recovery. */
@@ -95,6 +140,18 @@ export function multiEntityMessage(
     `(${classNames.join(", ")}). Modelica stores one class per file, and ` +
     `saving any one of them here would drop the others — split them into a ` +
     `file each, or load the file through the Modelica REPL.`
+  );
+}
+
+/** Shared refusal wording for a buffer save that renamed its class (#459). */
+export function renamedClassMessage(
+  expected: string,
+  declared: string,
+): string {
+  return (
+    `This buffer is ${expected}'s source, but it now declares ${declared}. ` +
+    `Saving here would leave ${expected} alive in OMC's memory, unreachable ` +
+    `from its own file — rename through the Modelica REPL instead.`
   );
 }
 

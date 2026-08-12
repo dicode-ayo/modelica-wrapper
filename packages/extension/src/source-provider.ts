@@ -51,9 +51,12 @@ import {
   type FileOwnerClient,
 } from "./file-owner.js";
 import {
+  bufferClassNames,
+  moreThanOne,
   multiEntityMessage,
   multipleTopLevelClasses,
-  multipleTopLevelClassesInText,
+  renamedClass,
+  renamedClassMessage,
 } from "./single-entity-file.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
 import type { WriteVerdicts } from "./write-verdict.js";
@@ -184,30 +187,38 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
         );
       }
     }
-    const inBuffer = await multipleTopLevelClassesInText(
-      client,
-      text,
-      onDisk ? info.fileName : uri.toString(),
-    );
-    if (inBuffer) {
-      throw vscode.FileSystemError.Unavailable(
-        multiEntityMessage(onDisk ? info.fileName : typeName, inBuffer),
-      );
+    // OMC keys a class to its file, so a class stored inline in a shared
+    // `package.mo` stays in place with its siblings — passing a per-class
+    // pseudo-filename evicts it from that file. A memory-only class has no
+    // disk path yet, so it carries the buffer URI until `setSourceFile`. Both
+    // the buffer screen above and the `loadString` below key off this same
+    // filename: the screen exists to predict what `loadString` binds to.
+    const bindFilename = onDisk ? info.fileName : uri.toString();
+    const bufferClasses = await bufferClassNames(client, text, bindFilename);
+    if (bufferClasses !== undefined) {
+      const inBuffer = moreThanOne(bufferClasses);
+      if (inBuffer) {
+        throw vscode.FileSystemError.Unavailable(
+          multiEntityMessage(onDisk ? info.fileName : typeName, inBuffer),
+        );
+      }
+      const renamed = renamedClass(bufferClasses, typeName);
+      if (renamed !== undefined) {
+        throw vscode.FileSystemError.Unavailable(
+          renamedClassMessage(typeName, renamed),
+        );
+      }
     }
 
     // Drain any stale errors so the post-loadString check below only sees
     // diagnostics produced by this save.
     await client.getErrorString();
 
-    // Update OMC's in-memory AST. Load with the class's real source file as the
-    // filename: OMC keys a class to its file, so a class stored inline in a
-    // shared `package.mo` stays in place with its siblings — passing a
-    // per-class pseudo-filename evicts it from that file. A memory-only class
-    // has no disk path yet, so it carries the buffer URI until `setSourceFile`.
-    const loadFilename = onDisk ? info.fileName : uri.toString();
+    // Update OMC's in-memory AST, under the same filename the screen above
+    // just checked the buffer against.
     const { success } = await client.loadString({
       data: text,
-      filename: loadFilename,
+      filename: bindFilename,
     });
     const { errorString } = await client.getErrorString();
     if (!success || (errorString.length > 0 && /error/i.test(errorString))) {
