@@ -500,10 +500,6 @@ describe("classParameterValueToExpr", () => {
 
   it("returns empty string when value is cleared, so the caller can drop the modifier", () => {
     expect(classParameterValueToExpr({ kind: "number" }, undefined)).toBe("");
-    expect(
-      classParameterValueToExpr({ kind: "number" },
-        "",
-      ),
-    ).toBe("");
+    expect(classParameterValueToExpr({ kind: "number" }, "")).toBe("");
   });
 });
