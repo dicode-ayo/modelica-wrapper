@@ -141,6 +141,34 @@ describe("handleMoChange", () => {
     expect(notifySourceChanged).toHaveBeenCalledWith("Baz");
   });
 
+  it("clears the index and notifies source changed for a removed class's nested member in another file (#451)", async () => {
+    // Foo used to inline-declare Bar; Bar's own nested Baz lives in a
+    // separately-indexed file. Saving Foo without Bar cascades Baz out of
+    // OMC's memory too, the same way deleting a whole file cascades — Baz's
+    // own file's index entry and any (clean) editor on it have to be told,
+    // even though that file itself wasn't touched.
+    const BAZ_FILE = "/ws/My/Pkg/Bar/Baz.mo";
+    const guard = createSelfWriteGuard();
+    const text = "package Bar end Bar;";
+    guard.record(FILE, text);
+    const { deps, client, childrenChanged, notifySourceChanged } = makeDeps({
+      guard,
+      readFile: async () => text,
+    });
+    deps.index.set(FILE, ["My.Pkg.Bar", "My.Pkg.Bar.Removed"]);
+    deps.index.set(BAZ_FILE, ["My.Pkg.Bar.Removed.Baz"]);
+    client.parseFile.mockResolvedValue({ classNames: ["My.Pkg.Bar"] });
+
+    await handleMoChange(deps, FILE);
+
+    // FILE's own freshly-set entry must survive the cascade cleanup — only
+    // BAZ_FILE, the cascaded file, is dropped.
+    expect(deps.index.get(FILE)).toEqual(["My.Pkg.Bar"]);
+    expect(deps.index.get(BAZ_FILE)).toBeUndefined();
+    expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg.Bar.Removed.Baz");
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg.Bar.Removed");
+  });
+
   it("proceeds on a self-write even when isBusy would refuse an external edit", async () => {
     const guard = createSelfWriteGuard();
     guard.record(FILE, "model Bar end Bar;");

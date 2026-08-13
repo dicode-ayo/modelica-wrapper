@@ -179,6 +179,14 @@ function cascadeReach(
  * through `notifySourceChanged`, except a still-declared class whose own
  * document is open and dirty elsewhere (see the loop below).
  *
+ * A `removed` name's own cascade — OMC dropping a nested member stored in a
+ * different file, the same way `deleteClass` does — is cleaned up the same
+ * way {@link handleMoDelete} cleans it up: that file's index entry is
+ * dropped and its classes announced too, not just `removed` itself. Computed
+ * after `deps.index.set` above so `fsPath`'s own now-current entry can't
+ * still hold the removed name and get swept up as if it were a cascaded
+ * file's.
+ *
  * Shared by three callers, each already at the OMC state it wants reflected:
  * {@link handleMoChange}'s self-write branch (synced via `writeFile`'s own
  * `loadString`), its external-edit branch (synced via `loadFile` +
@@ -194,14 +202,23 @@ function reindexAndRelist(
 ): void {
   deps.index.set(fsPath, names);
 
+  const cascadedFiles = removed.flatMap((name) => deps.index.filesUnder(name));
+  for (const file of cascadedFiles) deps.index.delete(file.fsPath);
+
   const scopes = new Set<string | null>();
   for (const name of names) {
     scopes.add(name);
     scopes.add(scopeOf(name));
   }
   for (const name of removed) scopes.add(scopeOf(name));
+  for (const file of cascadedFiles) {
+    for (const name of file.classNames) scopes.add(scopeOf(name));
+  }
   for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
   for (const name of removed) deps.sourceProvider.notifySourceChanged(name);
+  for (const name of new Set(cascadedFiles.flatMap((f) => f.classNames))) {
+    deps.sourceProvider.notifySourceChanged(name);
+  }
   for (const name of names) {
     // A still-declared class whose own modelica-source: document is open and
     // dirty must not be bumped: notifySourceChanged fires onDidChangeFile,
