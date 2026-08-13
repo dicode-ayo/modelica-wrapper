@@ -141,6 +141,28 @@ describe("handleMoChange", () => {
     expect(notifySourceChanged).toHaveBeenCalledWith("Baz");
   });
 
+  it("keeps the file's own freshly-set entry when its new class nests under its own removed name", async () => {
+    // A `within`-clause edit renames My.Pkg.Bar to My.Pkg.Bar.Sub in place:
+    // removed=["My.Pkg.Bar"], and the file's own new entry, My.Pkg.Bar.Sub,
+    // matches that name's own cascade prefix. Without excluding fsPath from
+    // cascadeCleanup, the entry just set for FILE itself would be swept up
+    // as if it were a different, cascaded file's.
+    const guard = createSelfWriteGuard();
+    const text = "within My.Pkg.Bar; model Sub end Sub;";
+    guard.record(FILE, text);
+    const { deps, client, childrenChanged } = makeDeps({
+      guard,
+      readFile: async () => text,
+    });
+    deps.index.set(FILE, ["My.Pkg.Bar"]);
+    client.parseFile.mockResolvedValue({ classNames: ["My.Pkg.Bar.Sub"] });
+
+    await handleMoChange(deps, FILE);
+
+    expect(deps.index.get(FILE)).toEqual(["My.Pkg.Bar.Sub"]);
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg.Bar");
+  });
+
   it("clears the index and notifies source changed for a removed class's nested member in another file (#451)", async () => {
     // FILE's text drops its inline-declared My.Pkg.Bar.Removed; that class's
     // own nested Baz lives in a separately-indexed file (BAZ_FILE). Saving

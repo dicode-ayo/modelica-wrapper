@@ -184,6 +184,14 @@ function cascadeReach(
  * different set of directly-touched names and need the union deduplicated
  * once, not per-name here and again at the call site.
  *
+ * `exclude`, when given, is skipped even if one of its classes matches by
+ * qualified-name prefix — {@link reindexAndRelist} passes its own `fsPath`
+ * so a `removed` name that nests under the file's own brand-new class (e.g.
+ * a `within`-clause edit renaming `Foo.Bar` to `Foo.Bar.Sub` in place) can't
+ * cascade-delete the entry {@link reindexAndRelist} just set for itself.
+ * {@link handleMoDelete} omits it: there, `fsPath`'s own entry is meant to
+ * fall out of the cascade, since the whole file is gone.
+ *
  * Shared by both callers, which reach here only after OMC itself has already
  * dropped the cascade (`deleteClass` or a `loadString`/`loadFile` reload) —
  * this only catches the index and the UI up to a cascade that already
@@ -192,8 +200,12 @@ function cascadeReach(
 function cascadeCleanup(
   deps: Pick<MoWatcherDeps, "index">,
   names: string[],
+  exclude?: string,
 ): FilesUnderEntry[] {
-  const cascadedFiles = names.flatMap((name) => deps.index.filesUnder(name));
+  const excluded = exclude !== undefined ? path.resolve(exclude) : undefined;
+  const cascadedFiles = names
+    .flatMap((name) => deps.index.filesUnder(name))
+    .filter((file) => file.fsPath !== excluded);
   for (const file of cascadedFiles) {
     const remaining = (deps.index.get(file.fsPath) ?? []).filter(
       (name) => !file.classNames.includes(name),
@@ -212,8 +224,8 @@ function cascadeCleanup(
  * document is open and dirty elsewhere (see the loop below).
  *
  * `removed`'s own cascade to other files is cleaned up via
- * {@link cascadeCleanup}, computed after `deps.index.set` above so it can't
- * mistake `fsPath`'s own just-replaced entry for a cascaded file's.
+ * {@link cascadeCleanup}, excluding `fsPath` itself so the entry just set
+ * above is never mistaken for a cascaded file's.
  *
  * Shared by three callers, each already at the OMC state it wants reflected:
  * {@link handleMoChange}'s self-write branch (synced via `writeFile`'s own
@@ -230,7 +242,7 @@ function reindexAndRelist(
 ): void {
   deps.index.set(fsPath, names);
 
-  const cascadedFiles = cascadeCleanup(deps, removed);
+  const cascadedFiles = cascadeCleanup(deps, removed, fsPath);
 
   const scopes = new Set<string | null>();
   for (const name of names) {
