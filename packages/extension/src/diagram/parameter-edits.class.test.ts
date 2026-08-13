@@ -408,8 +408,7 @@ describe("buildClassParameterForm", () => {
       ],
     } as unknown as ModelInstance;
     const form = buildClassParameterForm(mi)!;
-    const kRef = form.refs.k;
-    if (!kRef) throw new Error("expected ref 'k'");
+    const kRef = refOf(form, "k");
     expect(kRef.inheritedFrom).toBeUndefined();
   });
 
@@ -474,42 +473,16 @@ describe("buildClassParameterForm", () => {
 
 describe("classParameterValueToExpr", () => {
   it("emits unquoted literals for numeric and boolean values", () => {
-    expect(
-      classParameterValueToExpr(
-        { name: "k", kind: "number", tab: "General", group: "Parameters" },
-        12.5,
-      ),
-    ).toBe("12.5");
-    expect(
-      classParameterValueToExpr(
-        {
-          name: "use",
-          kind: "boolean",
-          tab: "General",
-          group: "Parameters",
-        },
-        true,
-      ),
-    ).toBe("true");
-    expect(
-      classParameterValueToExpr(
-        {
-          name: "use",
-          kind: "boolean",
-          tab: "General",
-          group: "Parameters",
-        },
-        false,
-      ),
-    ).toBe("false");
+    expect(classParameterValueToExpr({ kind: "number" }, 12.5)).toBe("12.5");
+    expect(classParameterValueToExpr({ kind: "boolean" }, true)).toBe("true");
+    expect(classParameterValueToExpr({ kind: "boolean" }, false)).toBe(
+      "false",
+    );
   });
 
   it("quotes string values and escapes embedded quotes / backslashes", () => {
     expect(
-      classParameterValueToExpr(
-        { name: "label", kind: "string", tab: "General", group: "Parameters" },
-        `she said "hi" \\ ok`,
-      ),
+      classParameterValueToExpr({ kind: "string" }, `she said "hi" \\ ok`),
     ).toBe(`"she said \\"hi\\" \\\\ ok"`);
   });
 
@@ -517,11 +490,8 @@ describe("classParameterValueToExpr", () => {
     expect(
       classParameterValueToExpr(
         {
-          name: "controllerType",
           kind: "enum",
           enumTypeName: "Modelica.Blocks.Types.SimpleController",
-          tab: "General",
-          group: "Parameters",
         },
         "PI",
       ),
@@ -529,15 +499,9 @@ describe("classParameterValueToExpr", () => {
   });
 
   it("returns empty string when value is cleared, so the caller can drop the modifier", () => {
+    expect(classParameterValueToExpr({ kind: "number" }, undefined)).toBe("");
     expect(
-      classParameterValueToExpr(
-        { name: "k", kind: "number", tab: "General", group: "Parameters" },
-        undefined,
-      ),
-    ).toBe("");
-    expect(
-      classParameterValueToExpr(
-        { name: "k", kind: "number", tab: "General", group: "Parameters" },
+      classParameterValueToExpr({ kind: "number" },
         "",
       ),
     ).toBe("");
