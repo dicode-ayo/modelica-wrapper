@@ -8,6 +8,12 @@ import type {
   ParameterRef,
 } from "../src/diagram/parameter-edits.js";
 
+function isFormState(
+  source: ParameterFormState | Record<string, ParameterRef>,
+): source is ParameterFormState {
+  return "model" in source;
+}
+
 export function refOf(form: ParameterFormState, name: string): ParameterRef;
 export function refOf(
   refs: Record<string, ParameterRef>,
@@ -17,7 +23,7 @@ export function refOf(
   source: ParameterFormState | Record<string, ParameterRef>,
   name: string,
 ): ParameterRef {
-  const refs = "model" in source ? source.refs : source;
+  const refs = isFormState(source) ? source.refs : source;
   const ref = refs[name];
   if (ref === undefined) throw new Error(`expected ref '${name}'`);
   return ref;

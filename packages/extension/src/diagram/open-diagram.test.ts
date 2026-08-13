@@ -64,14 +64,14 @@ const WITH_ICON: ModelInstance = {
       graphics: [],
     },
   },
-} as unknown as ModelInstance;
+};
 
 /** An instance whose annotation is null — valid JSON, no Icon to paint. */
 const NULL_ANNOTATION: ModelInstance = {
   name: "Pkg.NullAnno",
   restriction: "model",
   annotation: null,
-} as unknown as ModelInstance;
+};
 
 function makeClient(handlers: {
   annotation?: () => Promise<{ instance: ModelInstance }>;
@@ -137,7 +137,7 @@ describe("fetchIconLayout: when the annotation path is trusted", () => {
       restriction: "model",
       annotation: null,
       elements: [{ $kind: "extends", baseClass: WITH_ICON }],
-    } as unknown as ModelInstance;
+    };
     const { client, calls } = makeClient({
       annotation: async () => ({ instance: inherited }),
     });
@@ -155,7 +155,7 @@ describe("libraryIconSvg: dependency reporting", () => {
       restriction: "model",
       annotation: null,
       elements: [{ $kind: "extends", baseClass: WITH_ICON }],
-    } as unknown as ModelInstance;
+    };
     const { client } = makeClient({
       annotation: async () => ({ instance: derived }),
     });
