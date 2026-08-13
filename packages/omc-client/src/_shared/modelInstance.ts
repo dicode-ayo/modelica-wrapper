@@ -384,7 +384,7 @@ export interface ModelInstance {
   restriction: string;
   comment?: string | undefined;
   prefixes?: Prefixes | undefined;
-  annotation?: Annotation | undefined;
+  annotation?: Annotation | null | undefined;
   elements?: ElementNode[] | undefined;
   imports?: Import[] | undefined;
   connections?: ConnectionNode[] | undefined;
