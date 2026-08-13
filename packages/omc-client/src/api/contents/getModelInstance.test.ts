@@ -44,6 +44,21 @@ describe("getModelInstance: response handling", () => {
     expect(out.instance.restriction).toBe("block");
   });
 
+  it("parses an instance whose annotation is null (no Icon to paint)", async () => {
+    const { ctx } = stubCtx(
+      quote(
+        JSON.stringify({
+          name: "Pkg.NullAnno",
+          restriction: "model",
+          annotation: null,
+        }),
+      ),
+    );
+
+    const out = await getModelInstance(ctx, { typeName: "Pkg.NullAnno" });
+    expect(out.instance.annotation).toBeNull();
+  });
+
   it("throws ModelInstanceNotFullyLoadedError when name is null (partial-load shape)", async () => {
     const { ctx } = stubCtx(
       quote(JSON.stringify({ name: null, restriction: null })),
