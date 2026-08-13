@@ -128,7 +128,7 @@ export class SemanticTokens {
 }
 
 export class SemanticTokensBuilder {
-  constructor(private readonly legend?: SemanticTokensLegend) {}
+  constructor(_legend?: SemanticTokensLegend) {}
   push(_range: Range, _tokenType: string): void {}
   build(): SemanticTokens {
     return new SemanticTokens(new Uint32Array());

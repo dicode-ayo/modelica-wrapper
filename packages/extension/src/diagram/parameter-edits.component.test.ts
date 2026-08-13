@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ComponentElement, ParameterField } from "@dicode/omc-client";
 
+import { refOf } from "../../test-support/parameter-refs.js";
 import {
   buildComponentParameterForm,
   componentParameterEditPlan,
@@ -129,7 +130,8 @@ describe("buildComponentParameterForm", () => {
       tab: "General",
       group: "Parameters",
     });
-    expect(form.refs.k.kind).toBe("number");
+    const kRef = refOf(form.refs, "k");
+    expect(kRef.kind).toBe("number");
   });
 
   it("reads Dialog tab + group from sub-component parameter annotations", () => {
@@ -253,9 +255,11 @@ describe("buildComponentParameterForm", () => {
     // `pi()`'s parameters (controllerType, k, Ti) are all declared
     // directly on the component's type — none are inherited.
     const form = buildComponentParameterForm(pi())!;
-    expect(form.refs.k.inheritedFrom).toBeUndefined();
-    expect("inheritedFrom" in form.refs.k).toBe(false);
-    expect(form.refs.controllerType.inheritedFrom).toBeUndefined();
+    const kRef = refOf(form.refs, "k");
+    expect(kRef.inheritedFrom).toBeUndefined();
+    expect("inheritedFrom" in kRef).toBe(false);
+    const controllerTypeRef = refOf(form.refs, "controllerType");
+    expect(controllerTypeRef.inheritedFrom).toBeUndefined();
   });
 
   it("carries the declaration unit on the field schema (the `Inertia.J → kg.m2` case)", () => {
@@ -346,13 +350,10 @@ describe("buildComponentParameterForm", () => {
 
 describe("componentParameterValueToExpr", () => {
   it("delegates to the shared shape encoder", () => {
-    expect(
-      componentParameterValueToExpr({ name: "k", kind: "number" }, 7.5),
-    ).toBe("7.5");
+    expect(componentParameterValueToExpr({ kind: "number" }, 7.5)).toBe("7.5");
     expect(
       componentParameterValueToExpr(
         {
-          name: "controllerType",
           kind: "enum",
           enumTypeName: "Modelica.Blocks.Types.SimpleController",
         },
@@ -437,7 +438,7 @@ describe("componentParameterEditPlan (issue #76, item 1)", () => {
   it("treats two NaN numeric values as unchanged (blank stays blank)", () => {
     const plan = componentParameterEditPlan(
       "PI",
-      { k: refs.k! },
+      { k: refOf(refs, "k") },
       { k: NaN },
       { k: NaN },
     );

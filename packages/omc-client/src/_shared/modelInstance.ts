@@ -384,7 +384,7 @@ export interface ModelInstance {
   restriction: string;
   comment?: string | undefined;
   prefixes?: Prefixes | undefined;
-  annotation?: Annotation | undefined;
+  annotation?: Annotation | null | undefined;
   elements?: ElementNode[] | undefined;
   imports?: Import[] | undefined;
   connections?: ConnectionNode[] | undefined;
@@ -438,7 +438,7 @@ const ModelInstanceLazy = z.lazy(() =>
       restriction: z.string(),
       comment: z.string().optional(),
       prefixes: PrefixesSchema.optional(),
-      annotation: AnnotationSchema.optional(),
+      annotation: AnnotationSchema.nullable().optional(),
       elements: z.array(ElementSchema).optional(),
       imports: z.array(ImportSchema).optional(),
       connections: z.array(ConnectionSchema).optional(),

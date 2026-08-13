@@ -90,7 +90,10 @@ describe("createOmcClientCache", () => {
   it("closes the old client and respawns on reset", async () => {
     const a = { id: "a" };
     const b = { id: "b" };
-    const spawn = vi.fn().mockResolvedValueOnce(a).mockResolvedValueOnce(b);
+    const spawn = vi
+      .fn<() => Promise<object>>()
+      .mockResolvedValueOnce(a)
+      .mockResolvedValueOnce(b);
     const closed: object[] = [];
     const cache = createOmcClientCache(spawn, async (c) => {
       closed.push(c);

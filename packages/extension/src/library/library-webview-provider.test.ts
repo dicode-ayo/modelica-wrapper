@@ -7,7 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { OmcClient } from "@dicode/omc-client";
+import type { ModelInstance, OmcClient, OmcFnName } from "@dicode/omc-client";
 
 import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
 import { ClassInvalidationRegistry } from "../invalidation.js";
@@ -98,7 +98,7 @@ function makeProvider() {
 
 /** A class with no drawable graphics — the icon render still routes through an
  *  OMC read, which is what the freshness probes assert on. */
-const EMPTY_ICON_INSTANCE = {
+const EMPTY_ICON_INSTANCE: ModelInstance = {
   name: "Lib.A",
   restriction: "model",
   annotation: {
@@ -118,7 +118,7 @@ const EMPTY_ICON_INSTANCE = {
 /** `Lib.Sub`, whose icon is inherited from `baseName`. Rendering it records
  *  the base as a dependency, so an edit to the base cascades back to `Lib.Sub`.
  *  Varying `baseName` exercises the reverse-edge prune when the chain changes. */
-function subtypeInstance(baseName: string) {
+function subtypeInstance(baseName: string): ModelInstance {
   return {
     name: "Lib.Sub",
     restriction: "model",
@@ -158,7 +158,9 @@ function makeInstanceProbe() {
     getClassNames: vi.fn(async () => ({ classNames: ["Modelica"] })),
     searchClassNames: vi.fn(async () => ({ classNames: [] })),
     getClassRestriction: vi.fn(async () => ({ restriction: "model" })),
-    invoke: vi.fn(async () => ({ instance: EMPTY_ICON_INSTANCE })),
+    invoke: vi.fn(async (_fn: OmcFnName, _input: object) => ({
+      instance: EMPTY_ICON_INSTANCE,
+    })),
   };
   const uri = {
     fsPath: "/ext",
@@ -170,7 +172,7 @@ function makeInstanceProbe() {
     async () => client as unknown as OmcClient,
     invalidation,
   );
-  const apis = (): unknown[] => client.invoke.mock.calls.map((c) => c[0]);
+  const apis = (): OmcFnName[] => client.invoke.mock.calls.map((c) => c[0]);
   return { provider, client, apis, invalidation };
 }
 

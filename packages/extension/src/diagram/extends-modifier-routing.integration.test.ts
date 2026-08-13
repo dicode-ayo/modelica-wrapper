@@ -27,6 +27,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { OmcClient } from "@dicode/omc-client";
 
 import { describeIf } from "../../test-support/integration-gate.js";
+import { refOf } from "../../test-support/parameter-refs.js";
 import { buildClassParameterForm } from "./parameter-edits.js";
 
 describeIf("inherited-parameter write routing (#24)", () => {
@@ -72,12 +73,12 @@ end ${pkg};
       typeName: derivedClass,
     });
     const form = buildClassParameterForm(instance)!;
-    expect(form.refs.k).toBeDefined();
+    const kRef = refOf(form.refs, "k");
     // The qualified ancestor name is what the submit handler passes as
     // `extendsBase`. OMC may emit it short (`Base`) or fully qualified
     // (`<pkg>.Base`) depending on the instance tree — assert it resolves
     // to Base either way.
-    expect(form.refs.k.inheritedFrom).toMatch(/(^|\.)Base$/);
+    expect(kRef.inheritedFrom).toMatch(/(^|\.)Base$/);
   });
 
   it("routes the write through setExtendsModifierValue → modifier lands on the extends clause", async () => {
@@ -85,14 +86,15 @@ end ${pkg};
       typeName: derivedClass,
     });
     const form = buildClassParameterForm(instance)!;
-    const ref = form.refs.k;
-    expect(ref.inheritedFrom).toBeDefined();
+    const { inheritedFrom } = refOf(form.refs, "k");
+    if (inheritedFrom === undefined)
+      throw new Error("expected 'k' to be inherited");
 
     // Route exactly as applyClassParameterEdits does for an inherited
     // param: setExtendsModifierValue(host, base, name, expr).
     const { success } = await client.setExtendsModifierValue({
       typeName: derivedClass,
-      extendsBase: ref.inheritedFrom!,
+      extendsBase: inheritedFrom,
       modifier: "k",
       expr: "3.7",
     });
@@ -135,16 +137,17 @@ end ${tri};
     try {
       const { instance } = await client.getModelInstance({ typeName: triC });
       const form = buildClassParameterForm(instance)!;
-      const ref = form.refs.p;
-      expect(ref).toBeDefined();
+      const { inheritedFrom } = refOf(form.refs, "p");
+      if (inheritedFrom === undefined)
+        throw new Error("expected 'p' to be inherited");
       // The captured base must be the DIRECT clause (B), not the deep
       // declaring class (A).
-      expect(ref.inheritedFrom).toMatch(/(^|\.)B$/);
-      expect(ref.inheritedFrom).not.toMatch(/(^|\.)A$/);
+      expect(inheritedFrom).toMatch(/(^|\.)B$/);
+      expect(inheritedFrom).not.toMatch(/(^|\.)A$/);
 
       const { success } = await client.setExtendsModifierValue({
         typeName: triC,
-        extendsBase: ref.inheritedFrom!,
+        extendsBase: inheritedFrom,
         modifier: "p",
         expr: "4.2",
       });
