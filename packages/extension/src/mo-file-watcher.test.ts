@@ -142,11 +142,12 @@ describe("handleMoChange", () => {
   });
 
   it("clears the index and notifies source changed for a removed class's nested member in another file (#451)", async () => {
-    // Foo used to inline-declare Bar; Bar's own nested Baz lives in a
-    // separately-indexed file. Saving Foo without Bar cascades Baz out of
-    // OMC's memory too, the same way deleting a whole file cascades — Baz's
-    // own file's index entry and any (clean) editor on it have to be told,
-    // even though that file itself wasn't touched.
+    // FILE's text drops its inline-declared My.Pkg.Bar.Removed; that class's
+    // own nested Baz lives in a separately-indexed file (BAZ_FILE). Saving
+    // FILE cascades Baz out of OMC's memory too, the same way deleting a
+    // whole file cascades — BAZ_FILE's own index entry and any (clean)
+    // editor on it have to be told, even though BAZ_FILE itself wasn't
+    // touched.
     const BAZ_FILE = "/ws/My/Pkg/Bar/Baz.mo";
     const guard = createSelfWriteGuard();
     const text = "package Bar end Bar;";
@@ -250,6 +251,28 @@ describe("handleMoChange", () => {
     // The removed class's open source doc must be invalidated too.
     expect(notifySourceChanged).toHaveBeenCalledWith("Top.B");
     expect(deps.index.get(FILE)).toEqual(["Top.A"]);
+  });
+
+  it("clears the index and notifies source changed for a removed class's nested member in another file on an external edit (#451)", async () => {
+    // Same cascade as the self-write case above, but through the
+    // external-edit branch: client.deleteClass is called directly for the
+    // removed name, and reindexAndRelist's cascade cleanup must still catch
+    // BAZ_FILE, indexed separately under the removed name.
+    const BAZ_FILE = "/ws/My/Pkg/Bar/Baz.mo";
+    const { deps, client, childrenChanged, notifySourceChanged } = makeDeps();
+    deps.index.set(FILE, ["My.Pkg.Bar", "My.Pkg.Bar.Removed"]);
+    deps.index.set(BAZ_FILE, ["My.Pkg.Bar.Removed.Baz"]);
+    client.parseFile.mockResolvedValue({ classNames: ["My.Pkg.Bar"] });
+
+    await handleMoChange(deps, FILE);
+
+    expect(client.deleteClass).toHaveBeenCalledWith({
+      typeName: "My.Pkg.Bar.Removed",
+    });
+    expect(deps.index.get(FILE)).toEqual(["My.Pkg.Bar"]);
+    expect(deps.index.get(BAZ_FILE)).toBeUndefined();
+    expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg.Bar.Removed.Baz");
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg.Bar.Removed");
   });
 
   it("skips a reload that would clobber an unsaved buffer, and warns", async () => {
@@ -449,6 +472,23 @@ describe("handleMoDelete", () => {
     expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg.Bar");
     expect(deps.index.get(BAR_FILE)).toBeUndefined();
     expect(deps.index.get(PKG_FILE)).toBeUndefined();
+  });
+
+  it("keeps a cascaded file's unrelated class indexed, dropping only the cascaded one", async () => {
+    // MIXED_FILE declares both "My.Pkg.Bar" (nested under the deleted
+    // package) and "Standalone.Thing" (unrelated). Only the former is part
+    // of the cascade, so the file's index entry must narrow, not vanish.
+    const PKG_FILE = "/ws/My/Pkg/package.mo";
+    const MIXED_FILE = "/ws/Mixed.mo";
+    const { deps, notifySourceChanged } = makeDeps();
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+    deps.index.set(MIXED_FILE, ["My.Pkg.Bar", "Standalone.Thing"]);
+
+    await handleMoDelete(deps, PKG_FILE);
+
+    expect(deps.index.get(MIXED_FILE)).toEqual(["Standalone.Thing"]);
+    expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg.Bar");
+    expect(notifySourceChanged).not.toHaveBeenCalledWith("Standalone.Thing");
   });
 
   it("names only the deleted file's own classes in the busy warning, not its whole cascade", async () => {

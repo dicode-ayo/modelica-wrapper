@@ -173,19 +173,47 @@ function cascadeReach(
 }
 
 /**
+ * Clean up every file holding a class nested under one of `names` in the
+ * index, the way OMC's own `deleteClass` cascade does: only the matched
+ * classes are gone from a cascaded file's index entry, not the whole entry —
+ * a file mixing a cascaded class with an unrelated one keeps the unrelated
+ * one indexed. A file left with no classes is dropped outright. Returns the
+ * cascaded files so callers can fold their scopes and classes into their own
+ * re-list/notify pass — notification isn't done here since
+ * {@link handleMoDelete} and {@link reindexAndRelist} each combine it with a
+ * different set of directly-touched names and need the union deduplicated
+ * once, not per-name here and again at the call site.
+ *
+ * Shared by both callers, which reach here only after OMC itself has already
+ * dropped the cascade (`deleteClass` or a `loadString`/`loadFile` reload) —
+ * this only catches the index and the UI up to a cascade that already
+ * happened.
+ */
+function cascadeCleanup(
+  deps: Pick<MoWatcherDeps, "index">,
+  names: string[],
+): FilesUnderEntry[] {
+  const cascadedFiles = names.flatMap((name) => deps.index.filesUnder(name));
+  for (const file of cascadedFiles) {
+    const remaining = (deps.index.get(file.fsPath) ?? []).filter(
+      (name) => !file.classNames.includes(name),
+    );
+    if (remaining.length > 0) deps.index.set(file.fsPath, remaining);
+    else deps.index.delete(file.fsPath);
+  }
+  return cascadedFiles;
+}
+
+/**
  * Update the path→class index for `fsPath` to `names`, then re-list every
  * scope the change reaches — each declared class and its enclosing scope,
  * for both the current and now-removed declarations — and announce each
  * through `notifySourceChanged`, except a still-declared class whose own
  * document is open and dirty elsewhere (see the loop below).
  *
- * A `removed` name's own cascade — OMC dropping a nested member stored in a
- * different file, the same way `deleteClass` does — is cleaned up the same
- * way {@link handleMoDelete} cleans it up: that file's index entry is
- * dropped and its classes announced too, not just `removed` itself. Computed
- * after `deps.index.set` above so `fsPath`'s own now-current entry can't
- * still hold the removed name and get swept up as if it were a cascaded
- * file's.
+ * `removed`'s own cascade to other files is cleaned up via
+ * {@link cascadeCleanup}, computed after `deps.index.set` above so it can't
+ * mistake `fsPath`'s own just-replaced entry for a cascaded file's.
  *
  * Shared by three callers, each already at the OMC state it wants reflected:
  * {@link handleMoChange}'s self-write branch (synced via `writeFile`'s own
@@ -202,8 +230,7 @@ function reindexAndRelist(
 ): void {
   deps.index.set(fsPath, names);
 
-  const cascadedFiles = removed.flatMap((name) => deps.index.filesUnder(name));
-  for (const file of cascadedFiles) deps.index.delete(file.fsPath);
+  const cascadedFiles = cascadeCleanup(deps, removed);
 
   const scopes = new Set<string | null>();
   for (const name of names) {
@@ -215,10 +242,12 @@ function reindexAndRelist(
     for (const name of file.classNames) scopes.add(scopeOf(name));
   }
   for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
-  for (const name of removed) deps.sourceProvider.notifySourceChanged(name);
-  for (const name of new Set(cascadedFiles.flatMap((f) => f.classNames))) {
-    deps.sourceProvider.notifySourceChanged(name);
+  const removedNotified = new Set(removed);
+  for (const file of cascadedFiles) {
+    for (const name of file.classNames) removedNotified.add(name);
   }
+  for (const name of removedNotified)
+    deps.sourceProvider.notifySourceChanged(name);
   for (const name of names) {
     // A still-declared class whose own modelica-source: document is open and
     // dirty must not be bumped: notifySourceChanged fires onDidChangeFile,
@@ -454,8 +483,7 @@ export async function handleMoDelete(
   // OMC's own deleteClass cascade just took every nested member with it too,
   // wherever those live — the index and any editor open on one of them have
   // to be told the same way, not just for fsPath's own direct names.
-  const cascadedFiles = names.flatMap((name) => deps.index.filesUnder(name));
-  for (const file of cascadedFiles) deps.index.delete(file.fsPath);
+  const cascadedFiles = cascadeCleanup(deps, names);
   for (const name of new Set(cascadedFiles.flatMap((f) => f.classNames))) {
     deps.sourceProvider.notifySourceChanged(name);
   }
