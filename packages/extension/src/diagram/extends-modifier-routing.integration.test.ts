@@ -86,11 +86,9 @@ end ${pkg};
       typeName: derivedClass,
     });
     const form = buildClassParameterForm(instance)!;
-    const ref = form.refs.k;
-    if (!ref) throw new Error("expected ref 'k'");
-    const inheritedFrom = ref.inheritedFrom;
-    expect(inheritedFrom).toBeDefined();
-    if (!inheritedFrom) throw new Error("expected 'k' to be inherited");
+    const { inheritedFrom } = refOf(form, "k");
+    if (inheritedFrom === undefined)
+      throw new Error("expected 'k' to be inherited");
 
     // Route exactly as applyClassParameterEdits does for an inherited
     // param: setExtendsModifierValue(host, base, name, expr).
@@ -139,15 +137,13 @@ end ${tri};
     try {
       const { instance } = await client.getModelInstance({ typeName: triC });
       const form = buildClassParameterForm(instance)!;
-      const ref = form.refs.p;
-      expect(ref).toBeDefined();
-      if (!ref) throw new Error("expected ref 'p'");
+      const { inheritedFrom } = refOf(form, "p");
+      if (inheritedFrom === undefined)
+        throw new Error("expected 'p' to be inherited");
       // The captured base must be the DIRECT clause (B), not the deep
       // declaring class (A).
-      expect(ref.inheritedFrom).toMatch(/(^|\.)B$/);
-      expect(ref.inheritedFrom).not.toMatch(/(^|\.)A$/);
-      const inheritedFrom = ref.inheritedFrom;
-      if (!inheritedFrom) throw new Error("expected 'p' to be inherited");
+      expect(inheritedFrom).toMatch(/(^|\.)B$/);
+      expect(inheritedFrom).not.toMatch(/(^|\.)A$/);
 
       const { success } = await client.setExtendsModifierValue({
         typeName: triC,
