@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { ModelInstance, ParameterField } from "@dicode/omc-client";
 
+import { refOf } from "../../test-support/parameter-refs.js";
 import {
   buildClassParameterForm,
   classParameterValueToExpr,
 } from "./parameter-edits.js";
-import { refOf } from "../../test-support/parameter-refs.js";
 
 /**
  * Helper: shape-checked enough to satisfy the typed walker without
@@ -92,8 +92,7 @@ describe("buildClassParameterForm", () => {
     const form = buildClassParameterForm(mi)!;
     expect(field(form.model, "useReset").kind).toBe("boolean");
     expect(form.values).toEqual({ useReset: false });
-    const useResetRef = form.refs.useReset;
-    if (!useResetRef) throw new Error("expected ref 'useReset'");
+    const useResetRef = refOf(form, "useReset");
     expect(useResetRef.kind).toBe("boolean");
   });
 
