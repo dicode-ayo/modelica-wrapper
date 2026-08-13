@@ -475,9 +475,7 @@ describe("classParameterValueToExpr", () => {
   it("emits unquoted literals for numeric and boolean values", () => {
     expect(classParameterValueToExpr({ kind: "number" }, 12.5)).toBe("12.5");
     expect(classParameterValueToExpr({ kind: "boolean" }, true)).toBe("true");
-    expect(classParameterValueToExpr({ kind: "boolean" }, false)).toBe(
-      "false",
-    );
+    expect(classParameterValueToExpr({ kind: "boolean" }, false)).toBe("false");
   });
 
   it("quotes string values and escapes embedded quotes / backslashes", () => {

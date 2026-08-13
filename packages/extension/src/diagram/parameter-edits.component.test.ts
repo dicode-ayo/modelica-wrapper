@@ -350,9 +350,7 @@ describe("buildComponentParameterForm", () => {
 
 describe("componentParameterValueToExpr", () => {
   it("delegates to the shared shape encoder", () => {
-    expect(componentParameterValueToExpr({ kind: "number" }, 7.5)).toBe(
-      "7.5",
-    );
+    expect(componentParameterValueToExpr({ kind: "number" }, 7.5)).toBe("7.5");
     expect(
       componentParameterValueToExpr(
         {
