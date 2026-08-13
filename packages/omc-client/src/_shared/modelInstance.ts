@@ -438,7 +438,7 @@ const ModelInstanceLazy = z.lazy(() =>
       restriction: z.string(),
       comment: z.string().optional(),
       prefixes: PrefixesSchema.optional(),
-      annotation: AnnotationSchema.optional(),
+      annotation: AnnotationSchema.nullable().optional(),
       elements: z.array(ElementSchema).optional(),
       imports: z.array(ImportSchema).optional(),
       connections: z.array(ConnectionSchema).optional(),
