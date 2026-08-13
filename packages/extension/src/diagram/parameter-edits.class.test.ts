@@ -162,8 +162,7 @@ describe("buildClassParameterForm", () => {
     const form = buildClassParameterForm(mi)!;
     expect(form.model.fields.map((f) => f.name)).toEqual(["ok", "weird"]);
     expect(field(form.model, "weird").kind).toBe("unsupported");
-    const weirdRef = form.refs.weird;
-    if (!weirdRef) throw new Error("expected ref 'weird'");
+    const weirdRef = refOf(form, "weird");
     expect(weirdRef.kind).toBe("unsupported");
   });
 
@@ -278,8 +277,7 @@ describe("buildClassParameterForm", () => {
     expect(form.model.fields.map((f) => f.name)).toEqual(["k"]);
     expect(field(form.model, "k").kind).toBe("number");
     expect(form.values).toEqual({ k: 2 });
-    const kRef = form.refs.k;
-    if (!kRef) throw new Error("expected ref 'k'");
+    const kRef = refOf(form, "k");
     expect(kRef.kind).toBe("number");
     // The param is declared on the ancestor `Test.Base`, so its ref
     // carries `inheritedFrom` — the submit handler routes it through
@@ -320,8 +318,7 @@ describe("buildClassParameterForm", () => {
       ],
     } as unknown as ModelInstance;
     const form = buildClassParameterForm(mi)!;
-    const kRef = form.refs.k;
-    if (!kRef) throw new Error("expected ref 'k'");
+    const kRef = refOf(form, "k");
     expect(kRef.kind).toBe("number");
     expect(form.values).toEqual({ k: 7 });
     expect(kRef.inheritedFrom).toBe("Test.B");
@@ -338,8 +335,7 @@ describe("buildClassParameterForm", () => {
       },
     ]);
     const form = buildClassParameterForm(mi)!;
-    const kRef = form.refs.k;
-    if (!kRef) throw new Error("expected ref 'k'");
+    const kRef = refOf(form, "k");
     expect(kRef.inheritedFrom).toBeUndefined();
     expect("inheritedFrom" in kRef).toBe(false);
   });
@@ -375,10 +371,8 @@ describe("buildClassParameterForm", () => {
       ],
     } as unknown as ModelInstance;
     const form = buildClassParameterForm(mi)!;
-    const kRef = form.refs.k;
-    if (!kRef) throw new Error("expected ref 'k'");
-    const jRef = form.refs.j;
-    if (!jRef) throw new Error("expected ref 'j'");
+    const kRef = refOf(form, "k");
+    const jRef = refOf(form, "j");
     expect(kRef.inheritedFrom).toBe("Test.Base");
     expect(jRef.inheritedFrom).toBeUndefined();
   });
