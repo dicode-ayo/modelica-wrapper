@@ -130,7 +130,7 @@ describe("buildComponentParameterForm", () => {
       tab: "General",
       group: "Parameters",
     });
-    const kRef = refOf(form, "k");
+    const kRef = refOf(form.refs, "k");
     expect(kRef.kind).toBe("number");
   });
 
@@ -255,10 +255,10 @@ describe("buildComponentParameterForm", () => {
     // `pi()`'s parameters (controllerType, k, Ti) are all declared
     // directly on the component's type — none are inherited.
     const form = buildComponentParameterForm(pi())!;
-    const kRef = refOf(form, "k");
+    const kRef = refOf(form.refs, "k");
     expect(kRef.inheritedFrom).toBeUndefined();
     expect("inheritedFrom" in kRef).toBe(false);
-    const controllerTypeRef = refOf(form, "controllerType");
+    const controllerTypeRef = refOf(form.refs, "controllerType");
     expect(controllerTypeRef.inheritedFrom).toBeUndefined();
   });
 

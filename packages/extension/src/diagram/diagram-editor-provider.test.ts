@@ -2816,16 +2816,14 @@ describe("DiagramEditController: clipboard", () => {
     const clipboard = new DiagramClipboard();
     let broadcasts = 0;
     const controller = new DiagramEditController(
-      {
+      controllerDeps({
         client,
-        document: SRC_DOC,
-        className: "Pkg.M",
         gate,
         clipboard,
         onClipboardChanged: () => {
           broadcasts += 1;
         },
-      },
+      }),
       twoGains(),
       factory,
       undefined,
@@ -2945,14 +2943,7 @@ describe("DiagramEditController: clipboard", () => {
     const { factory, writes } = makeShadowFactory();
     const clipboard = new DiagramClipboard();
     const controller = new DiagramEditController(
-      {
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-        clipboard,
-        onClipboardChanged: () => {},
-      },
+      controllerDeps({ client, gate, clipboard }),
       twoGains(),
       factory,
     );

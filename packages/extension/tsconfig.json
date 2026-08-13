@@ -13,7 +13,8 @@
     "src/results/**/*.ts",
     "src/webview/protocol.ts",
     "src/webview/postprocessing-protocol.ts",
-    "src/**/*.test.ts"
+    "src/**/*.test.ts",
+    "test-support/**/*.ts"
   ],
   "exclude": [
     "node_modules",

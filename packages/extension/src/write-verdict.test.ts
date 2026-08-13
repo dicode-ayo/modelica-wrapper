@@ -232,9 +232,12 @@ describe("WriteVerdicts.forDocument", () => {
     }
   });
 
-  it.each([undefined, vscode.FilePermission.Readonly])(
+  it.each([
+    ["writable", undefined],
+    ["read-only", vscode.FilePermission.Readonly],
+  ] as const)(
     "refuses a file: document opened on a system library, whatever its mode (%s)",
-    async (permissions) => {
+    async (_label, permissions) => {
       // "Reopen with Modelica Diagram" on an installed library's `.mo` reaches
       // the editors through a `file:` URI, and the install is user-writable —
       // but the refusal must hold whether or not the file is also chmod'ed

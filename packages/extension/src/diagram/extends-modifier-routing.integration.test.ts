@@ -73,7 +73,7 @@ end ${pkg};
       typeName: derivedClass,
     });
     const form = buildClassParameterForm(instance)!;
-    const kRef = refOf(form, "k");
+    const kRef = refOf(form.refs, "k");
     // The qualified ancestor name is what the submit handler passes as
     // `extendsBase`. OMC may emit it short (`Base`) or fully qualified
     // (`<pkg>.Base`) depending on the instance tree — assert it resolves
@@ -86,7 +86,7 @@ end ${pkg};
       typeName: derivedClass,
     });
     const form = buildClassParameterForm(instance)!;
-    const { inheritedFrom } = refOf(form, "k");
+    const { inheritedFrom } = refOf(form.refs, "k");
     if (inheritedFrom === undefined)
       throw new Error("expected 'k' to be inherited");
 
@@ -137,7 +137,7 @@ end ${tri};
     try {
       const { instance } = await client.getModelInstance({ typeName: triC });
       const form = buildClassParameterForm(instance)!;
-      const { inheritedFrom } = refOf(form, "p");
+      const { inheritedFrom } = refOf(form.refs, "p");
       if (inheritedFrom === undefined)
         throw new Error("expected 'p' to be inherited");
       // The captured base must be the DIRECT clause (B), not the deep
