@@ -350,20 +350,14 @@ describe("buildComponentParameterForm", () => {
 
 describe("componentParameterValueToExpr", () => {
   it("delegates to the shared shape encoder", () => {
-    expect(
-      componentParameterValueToExpr(
-        { name: "k", kind: "number", tab: "General", group: "Parameters" },
-        7.5,
-      ),
-    ).toBe("7.5");
+    expect(componentParameterValueToExpr({ kind: "number" }, 7.5)).toBe(
+      "7.5",
+    );
     expect(
       componentParameterValueToExpr(
         {
-          name: "controllerType",
           kind: "enum",
           enumTypeName: "Modelica.Blocks.Types.SimpleController",
-          tab: "General",
-          group: "Parameters",
         },
         "PI",
       ),
@@ -446,7 +440,7 @@ describe("componentParameterEditPlan (issue #76, item 1)", () => {
   it("treats two NaN numeric values as unchanged (blank stays blank)", () => {
     const plan = componentParameterEditPlan(
       "PI",
-      { k: refs.k! },
+      { k: refOf(refs, "k") },
       { k: NaN },
       { k: NaN },
     );

@@ -27,6 +27,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { OmcClient } from "@dicode/omc-client";
 
 import { describeIf } from "../../test-support/integration-gate.js";
+import { refOf } from "../../test-support/parameter-refs.js";
 import { buildClassParameterForm } from "./parameter-edits.js";
 
 describeIf("inherited-parameter write routing (#24)", () => {
@@ -72,9 +73,7 @@ end ${pkg};
       typeName: derivedClass,
     });
     const form = buildClassParameterForm(instance)!;
-    const kRef = form.refs.k;
-    expect(kRef).toBeDefined();
-    if (!kRef) throw new Error("expected ref 'k'");
+    const kRef = refOf(form, "k");
     // The qualified ancestor name is what the submit handler passes as
     // `extendsBase`. OMC may emit it short (`Base`) or fully qualified
     // (`<pkg>.Base`) depending on the instance tree — assert it resolves
