@@ -7,7 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ModelInstance, OmcClient } from "@dicode/omc-client";
+import type { ModelInstance, OmcClient, OmcFnName } from "@dicode/omc-client";
 
 import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
 import { ClassInvalidationRegistry } from "../invalidation.js";
@@ -122,6 +122,7 @@ function subtypeInstance(baseName: string): ModelInstance {
   return {
     name: "Lib.Sub",
     restriction: "model",
+    annotation: null,
     elements: [
       {
         $kind: "extends",
@@ -157,7 +158,7 @@ function makeInstanceProbe() {
     getClassNames: vi.fn(async () => ({ classNames: ["Modelica"] })),
     searchClassNames: vi.fn(async () => ({ classNames: [] })),
     getClassRestriction: vi.fn(async () => ({ restriction: "model" })),
-    invoke: vi.fn(async (_fn: string, _input: object) => ({
+    invoke: vi.fn(async (_fn: OmcFnName, _input: object) => ({
       instance: EMPTY_ICON_INSTANCE,
     })),
   };
@@ -171,7 +172,7 @@ function makeInstanceProbe() {
     async () => client as unknown as OmcClient,
     invalidation,
   );
-  const apis = (): unknown[] => client.invoke.mock.calls.map((c) => c[0]);
+  const apis = (): OmcFnName[] => client.invoke.mock.calls.map((c) => c[0]);
   return { provider, client, apis, invalidation };
 }
 

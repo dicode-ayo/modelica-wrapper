@@ -45,9 +45,7 @@ function fakeOmcClient(): CachedOmcClient {
     getLoadedLibraries: () =>
       Promise.resolve({ libraries: [] as [string, string][] }),
     parseFile: () => Promise.resolve({ classNames: [] }),
-    loadFile: () => Promise.resolve({ loaded: true }),
-    qualifyPath: ({ path }: { typeName: string; path: string }) =>
-      Promise.resolve({ qualifiedPath: path }),
+    qualifyPath: ({ path }) => Promise.resolve({ qualifiedPath: path }),
     getClassInformation: () =>
       Promise.resolve({
         fileName: "",
@@ -63,7 +61,7 @@ function fakeOmcClient(): CachedOmcClient {
     searchClassNames: () => Promise.resolve({ classNames: [] }),
     getParameterNames: () => Promise.resolve({ parameters: [] }),
     isPackage: () => Promise.resolve({ b: false }),
-  } as unknown as CachedOmcClient;
+  };
 }
 
 afterEach(() => {

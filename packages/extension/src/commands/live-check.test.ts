@@ -77,7 +77,7 @@ function errorAt(
     message,
     kind: "translation",
     level: "error",
-    id: 0,
+    id: 1,
   };
 }
 

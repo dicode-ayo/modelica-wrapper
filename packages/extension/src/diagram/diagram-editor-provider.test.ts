@@ -856,11 +856,19 @@ function srcDoc(text = LISTED_SOURCE): vscode.TextDocument {
 
 const SRC_DOC = srcDoc();
 
-function defaultClipboardDeps(): {
-  clipboard: DiagramClipboard;
-  onClipboardChanged: () => void;
-} {
-  return { clipboard: new DiagramClipboard(), onClipboardChanged: () => {} };
+type ControllerDeps = ConstructorParameters<typeof DiagramEditController>[0];
+
+/** The deps every controller test builds; pass only what the test varies. */
+function controllerDeps(
+  base: Pick<ControllerDeps, "client" | "gate"> & Partial<ControllerDeps>,
+): ControllerDeps {
+  return {
+    document: SRC_DOC,
+    className: "Pkg.M",
+    clipboard: new DiagramClipboard(),
+    onClipboardChanged: () => {},
+    ...base,
+  };
 }
 
 function layout(fields: Partial<DiagramLayout>): DiagramLayout {
@@ -900,13 +908,7 @@ describe("DiagramEditController: forward write path", () => {
     const { gate } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       movedComponent([
         [-10, -10],
         [10, 10],
@@ -932,13 +934,7 @@ describe("DiagramEditController: forward write path", () => {
     const { gate } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -964,13 +960,7 @@ describe("DiagramEditController: forward write path", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -995,13 +985,7 @@ describe("DiagramEditController: forward write path", () => {
     const { gate } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({
         connectors: { p: {}, q: {} } as unknown as DiagramLayout["connectors"],
       }),
@@ -1028,13 +1012,7 @@ describe("DiagramEditController: forward write path", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -1056,13 +1034,7 @@ describe("DiagramEditController: forward write path", () => {
     const { gate } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -1099,13 +1071,7 @@ describe("DiagramEditController: forward write path", () => {
       dispose: () => {},
     });
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       rejectingShadow,
     );
@@ -1125,13 +1091,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, writes, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: srcDoc("model M2 end M2;"),
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate, document: srcDoc("model M2 end M2;") }),
       layout({}),
       factory,
       scheduler,
@@ -1157,13 +1117,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
       scheduler,
@@ -1195,13 +1149,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler } = manualScheduler();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
       scheduler,
@@ -1251,13 +1199,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler } = manualScheduler();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
       scheduler,
@@ -1293,13 +1235,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
       scheduler,
@@ -1325,13 +1261,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
       scheduler,
@@ -1363,13 +1293,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
       scheduler,
@@ -1391,13 +1315,7 @@ describe("DiagramEditController: forward write path", () => {
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const doc = srcDoc();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: doc,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate, document: doc }),
       layout({}),
       (onForeignChange) => createShadowBuffer(doc, onForeignChange),
       scheduler,
@@ -1498,13 +1416,7 @@ describe("DiagramEditController: reconciling reports", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       movedComponent(AT(-10)),
       factory,
     );
@@ -1545,13 +1457,7 @@ describe("DiagramEditController: reconciling reports", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       movedComponent(AT(-10)),
       factory,
     );
@@ -1585,13 +1491,7 @@ describe("DiagramEditController: reconciling reports", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       shapeLayout(),
       factory,
     );
@@ -1629,13 +1529,7 @@ describe("DiagramEditController: reconciling reports", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -1665,13 +1559,7 @@ describe("DiagramEditController: reconciling reports", () => {
     const { gate } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       movedComponent(AT(0)),
       factory,
     );
@@ -1692,13 +1580,7 @@ describe("DiagramEditController: reconciling reports", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       movedComponent(AT(-10)),
       factory,
       undefined,
@@ -1737,13 +1619,7 @@ describe("DiagramEditController: reconciling reports", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       movedComponent(AT(-10)),
       factory,
     );
@@ -1778,13 +1654,7 @@ describe("DiagramEditController: reconciling reports", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler } = manualScheduler();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       movedComponent(AT(-10)),
       factory,
       scheduler,
@@ -1813,13 +1683,7 @@ describe("DiagramEditController: parameter editing", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -1839,13 +1703,7 @@ describe("DiagramEditController: parameter editing", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -1873,13 +1731,7 @@ describe("DiagramEditController: parameter editing", () => {
     const { gate } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -1901,13 +1753,7 @@ describe("DiagramEditController: parameter editing", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -1936,13 +1782,7 @@ describe("DiagramEditController: parameter editing", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -1968,13 +1808,7 @@ describe("DiagramEditController: parameter editing", () => {
     const { gate } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -2073,13 +1907,7 @@ describe("DiagramEditController: shape properties", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       shapeLayout(),
       factory,
     );
@@ -2100,13 +1928,7 @@ describe("DiagramEditController: shape properties", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       shapeLayout(),
       factory,
     );
@@ -2136,13 +1958,7 @@ describe("DiagramEditController: shape properties", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       shapeLayout(),
       factory,
     );
@@ -2178,13 +1994,7 @@ describe("DiagramEditController: shape properties", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       shapeLayout(),
       factory,
     );
@@ -2217,13 +2027,7 @@ describe("DiagramEditController: shape properties", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       shapeLayout(),
       factory,
       scheduler,
@@ -2280,13 +2084,7 @@ function iconController(
   initial: DiagramLayout,
 ): DiagramEditController {
   return new DiagramEditController(
-    {
-      ...defaultClipboardDeps(),
-      client,
-      document: SRC_DOC,
-      className: "Pkg.M",
-      gate,
-    },
+    controllerDeps({ client, gate }),
     initial,
     factory,
     undefined,
@@ -2439,13 +2237,7 @@ describe("DiagramEditController: icon mode", () => {
     const { factory } = makeShadowFactory();
     // Default (diagram) mode — the same gesture must target the diagram layer.
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       diagramShapeLayout([]),
       factory,
     );
@@ -2470,13 +2262,7 @@ describe("DiagramEditController: queue resilience", () => {
     // An unknown shape kind makes buildShapePropertiesForm throw synchronously
     // inside the editShape dispatch case.
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({
         diagramLayers: [
           { from: "Pkg.M", shapes: [{ kind: "bogus" }] },
@@ -2527,13 +2313,7 @@ describe("DiagramEditController: change class", () => {
     const { gate } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       swapLayout(),
       factory,
     );
@@ -2559,13 +2339,7 @@ describe("DiagramEditController: change class", () => {
     const { gate } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       swapLayout(),
       factory,
     );
@@ -2587,13 +2361,7 @@ describe("DiagramEditController: change class", () => {
     const { gate } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       swapLayout(),
       factory,
     );
@@ -2628,13 +2396,7 @@ describe("DiagramEditController: change class", () => {
     const { gate } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       swapLayout(),
       factory,
     );
@@ -2655,13 +2417,7 @@ describe("DiagramEditController: simulate and check actions", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -2679,13 +2435,7 @@ describe("DiagramEditController: simulate and check actions", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -2706,13 +2456,7 @@ describe("DiagramEditController: simulate and check actions", () => {
     const { gate } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -2730,13 +2474,7 @@ describe("DiagramEditController: simulate and check actions", () => {
     const { gate } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -2812,13 +2550,7 @@ describe("DiagramEditController: writable-class gate", () => {
     scheduler?: Scheduler;
   }): DiagramEditController {
     return new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client: deps.client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate: deps.gate,
-      },
+      controllerDeps({ client: deps.client, gate: deps.gate }),
       deps.initial ?? layout({}),
       deps.factory,
       deps.scheduler,
@@ -2910,13 +2642,7 @@ describe("DiagramEditController: change-class error branches", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       swapLayout(),
       factory,
     );
@@ -2940,13 +2666,7 @@ describe("DiagramEditController: change-class error branches", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       swapLayout(),
       factory,
     );
@@ -2970,13 +2690,7 @@ describe("DiagramEditController: reset error branches", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -3005,13 +2719,7 @@ describe("DiagramEditController: reset error branches", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -3035,13 +2743,7 @@ describe("DiagramEditController: reset error branches", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -3354,13 +3056,7 @@ describe("the gesture boundary", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      {
-        ...defaultClipboardDeps(),
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );

@@ -46,7 +46,7 @@ function messageAt(
     message: "boom",
     kind: "translation",
     level: "error",
-    id: 0,
+    id: 1,
   };
 }
 
