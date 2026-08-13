@@ -232,32 +232,38 @@ describe("WriteVerdicts.forDocument", () => {
     }
   });
 
-  it("refuses a file: document opened on a system library, whatever its mode", async () => {
-    // "Reopen with Modelica Diagram" on an installed library's `.mo` reaches
-    // the editors through a `file:` URI, and the install is user-writable.
-    const stat = vi.spyOn(vscode.workspace.fs, "stat").mockResolvedValue({
-      type: vscode.FileType.File,
-      ctime: 0,
-      mtime: 0,
-      size: 0,
-    });
-    try {
-      const verdict = await new WriteVerdicts().forDocument(
-        makeClient({ sourceFile: SYSTEM_FILE }),
-        docFor(vscode.Uri.file(SYSTEM_FILE)),
-        "Modelica.Blocks",
-        "edit",
-      );
-
-      expect(verdict).toEqual({
-        ok: false,
-        reason:
-          "Cannot edit Modelica.Blocks — it belongs to a read-only system library.",
+  it.each([undefined, vscode.FilePermission.Readonly])(
+    "refuses a file: document opened on a system library, whatever its mode (%s)",
+    async (permissions) => {
+      // "Reopen with Modelica Diagram" on an installed library's `.mo` reaches
+      // the editors through a `file:` URI, and the install is user-writable —
+      // but the refusal must hold whether or not the file is also chmod'ed
+      // read-only.
+      const stat = vi.spyOn(vscode.workspace.fs, "stat").mockResolvedValue({
+        type: vscode.FileType.File,
+        ctime: 0,
+        mtime: 0,
+        size: 0,
+        ...(permissions === undefined ? {} : { permissions }),
       });
-    } finally {
-      stat.mockRestore();
-    }
-  });
+      try {
+        const verdict = await new WriteVerdicts().forDocument(
+          makeClient({ sourceFile: SYSTEM_FILE }),
+          docFor(vscode.Uri.file(SYSTEM_FILE)),
+          "Modelica.Blocks",
+          "edit",
+        );
+
+        expect(verdict).toEqual({
+          ok: false,
+          reason:
+            "Cannot edit Modelica.Blocks — it belongs to a read-only system library.",
+        });
+      } finally {
+        stat.mockRestore();
+      }
+    },
+  );
 
   it("treats a failed stat as writable", async () => {
     const stat = vi
