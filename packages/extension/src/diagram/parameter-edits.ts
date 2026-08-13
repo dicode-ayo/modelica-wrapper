@@ -203,15 +203,18 @@ export function valueToExpr(
   }
 }
 
+/** The slice of a ref the expression encoder reads. */
+export type ParameterExprRef = Pick<ParameterRef, "kind" | "enumTypeName">;
+
 export function classParameterValueToExpr(
-  ref: ParameterRef,
+  ref: ParameterExprRef,
   value: unknown,
 ): string {
   return valueToExpr(ref.kind, value, ref.enumTypeName);
 }
 
 export function componentParameterValueToExpr(
-  ref: ParameterRef,
+  ref: ParameterExprRef,
   value: unknown,
 ): string {
   return valueToExpr(ref.kind, value, ref.enumTypeName);

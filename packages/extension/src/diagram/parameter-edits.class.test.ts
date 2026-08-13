@@ -5,6 +5,7 @@ import {
   buildClassParameterForm,
   classParameterValueToExpr,
 } from "./parameter-edits.js";
+import { refOf } from "../../test-support/parameter-refs.js";
 
 /**
  * Helper: shape-checked enough to satisfy the typed walker without
