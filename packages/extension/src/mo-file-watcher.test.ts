@@ -194,10 +194,9 @@ describe("handleMoChange", () => {
 
   it("keeps a cascaded file's unrelated class indexed on a self-write, dropping only the cascaded one", async () => {
     // MIXED_FILE declares both "My.Pkg.Bar.Removed.Baz" (nested under the
-    // removed class) and "Standalone.Thing" (unrelated). A whole-entry
-    // delete would satisfy a BAZ_FILE-only fixture even without narrowing —
-    // this pins that only the matched class is dropped, not the file's
-    // whole entry.
+    // removed class) and "Standalone.Thing" (unrelated). Only the former is
+    // part of the cascade, so the file's index entry must narrow, not
+    // vanish.
     const MIXED_FILE = "/ws/Mixed.mo";
     const guard = createSelfWriteGuard();
     const text = "package Bar end Bar;";
