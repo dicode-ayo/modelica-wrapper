@@ -526,7 +526,7 @@ describe("handleMoDelete", () => {
     // of the cascade, so the file's index entry must narrow, not vanish.
     const PKG_FILE = "/ws/My/Pkg/package.mo";
     const MIXED_FILE = "/ws/Mixed.mo";
-    const { deps, notifySourceChanged } = makeDeps();
+    const { deps, notifySourceChanged, childrenChanged } = makeDeps();
     deps.index.set(PKG_FILE, ["My.Pkg"]);
     deps.index.set(MIXED_FILE, ["My.Pkg.Bar", "Standalone.Thing"]);
 
@@ -535,6 +535,10 @@ describe("handleMoDelete", () => {
     expect(deps.index.get(MIXED_FILE)).toEqual(["Standalone.Thing"]);
     expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg.Bar");
     expect(notifySourceChanged).not.toHaveBeenCalledWith("Standalone.Thing");
+    // "My.Pkg" — the cascaded class's own scope, not just the deleted
+    // package's — must re-list too, so a stale "Bar" child doesn't survive
+    // in an already-expanded sidebar node.
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
   });
 
   it("names only the deleted file's own classes in the busy warning, not its whole cascade", async () => {

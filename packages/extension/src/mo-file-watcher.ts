@@ -492,6 +492,9 @@ export async function handleMoDelete(
 
   const scopes = new Set<string | null>();
   for (const name of names) scopes.add(scopeOf(name));
+  for (const file of cascadedFiles) {
+    for (const name of file.classNames) scopes.add(scopeOf(name));
+  }
   for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
 }
 
