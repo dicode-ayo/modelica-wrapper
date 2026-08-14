@@ -173,11 +173,48 @@ function cascadeReach(
 }
 
 /**
+ * Narrow every file holding a class nested under one of `names`, the way
+ * OMC's own `deleteClass` cascade does: only the matched classes are gone
+ * from a cascaded file's entry, not the whole entry — a file mixing a
+ * cascaded class with an unrelated one keeps the unrelated one indexed. A
+ * file left with no classes is dropped. `exclude` skips a file even on a
+ * match — {@link reindexAndRelist} passes its own `fsPath` so a `removed`
+ * name nesting under the file's own brand-new class (a `within`-clause
+ * rename in place) can't cascade-delete the entry it just set for itself;
+ * {@link handleMoDelete} omits it, since there `fsPath`'s own entry is meant
+ * to fall out of the cascade. Notification is left to the caller, which
+ * combines the returned files' classes with its own directly-touched names
+ * and dedupes once.
+ */
+function cascadeCleanup(
+  index: PathClassIndex,
+  names: string[],
+  exclude?: string,
+): FilesUnderEntry[] {
+  const excluded = exclude !== undefined ? path.resolve(exclude) : undefined;
+  const cascadedFiles = names
+    .flatMap((name) => index.filesUnder(name))
+    .filter((file) => file.fsPath !== excluded);
+  for (const file of cascadedFiles) {
+    const remaining = (index.get(file.fsPath) ?? []).filter(
+      (name) => !file.classNames.includes(name),
+    );
+    if (remaining.length > 0) index.set(file.fsPath, remaining);
+    else index.delete(file.fsPath);
+  }
+  return cascadedFiles;
+}
+
+/**
  * Update the path→class index for `fsPath` to `names`, then re-list every
  * scope the change reaches — each declared class and its enclosing scope,
  * for both the current and now-removed declarations — and announce each
  * through `notifySourceChanged`, except a still-declared class whose own
  * document is open and dirty elsewhere (see the loop below).
+ *
+ * `removed`'s own cascade to other files is cleaned up via
+ * {@link cascadeCleanup}, excluding `fsPath` itself so the entry just set
+ * above is never mistaken for a cascaded file's.
  *
  * Shared by three callers, each already at the OMC state it wants reflected:
  * {@link handleMoChange}'s self-write branch (synced via `writeFile`'s own
@@ -194,14 +231,25 @@ function reindexAndRelist(
 ): void {
   deps.index.set(fsPath, names);
 
+  const cascadedFiles = cascadeCleanup(deps.index, removed, fsPath);
+
   const scopes = new Set<string | null>();
   for (const name of names) {
     scopes.add(name);
     scopes.add(scopeOf(name));
   }
   for (const name of removed) scopes.add(scopeOf(name));
+  for (const file of cascadedFiles) {
+    for (const name of file.classNames) scopes.add(scopeOf(name));
+  }
   for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
-  for (const name of removed) deps.sourceProvider.notifySourceChanged(name);
+  const removedNotified = new Set(removed);
+  for (const file of cascadedFiles) {
+    for (const name of file.classNames) removedNotified.add(name);
+  }
+  for (const name of removedNotified) {
+    deps.sourceProvider.notifySourceChanged(name);
+  }
   for (const name of names) {
     // A still-declared class whose own modelica-source: document is open and
     // dirty must not be bumped: notifySourceChanged fires onDidChangeFile,
@@ -437,14 +485,16 @@ export async function handleMoDelete(
   // OMC's own deleteClass cascade just took every nested member with it too,
   // wherever those live — the index and any editor open on one of them have
   // to be told the same way, not just for fsPath's own direct names.
-  const cascadedFiles = names.flatMap((name) => deps.index.filesUnder(name));
-  for (const file of cascadedFiles) deps.index.delete(file.fsPath);
+  const cascadedFiles = cascadeCleanup(deps.index, names);
   for (const name of new Set(cascadedFiles.flatMap((f) => f.classNames))) {
     deps.sourceProvider.notifySourceChanged(name);
   }
 
   const scopes = new Set<string | null>();
   for (const name of names) scopes.add(scopeOf(name));
+  for (const file of cascadedFiles) {
+    for (const name of file.classNames) scopes.add(scopeOf(name));
+  }
   for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
 }
 
