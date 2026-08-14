@@ -13,6 +13,7 @@ import {
   reloadBufferIntoOmc,
   type BufferSyncClient,
 } from "./buffer-sync.js";
+import { renamedClassMessage } from "../single-entity-file.js";
 
 function docFor(uri: vscode.Uri, text = ""): vscode.TextDocument {
   return {
@@ -47,6 +48,7 @@ describe("reloadBufferIntoOmc", () => {
     const result = await reloadBufferIntoOmc(
       client,
       docFor(DOC_URI, "model Model end Model;"),
+      "Pkg.Model",
     );
 
     expect(result).toEqual({ ok: true });
@@ -67,9 +69,34 @@ describe("reloadBufferIntoOmc", () => {
     const result = await reloadBufferIntoOmc(
       client,
       docFor(DOC_URI, "model A end A; model B end B;"),
+      "A",
     );
 
     expect(result.ok).toBe(false);
+    expect(client.loadString).not.toHaveBeenCalled();
+  });
+
+  it("refuses a buffer that renamed its class (#461)", async () => {
+    // `loadString` binds every class in the text to `filename` rather than
+    // replacing the file's contents, so a renamed class would parse clean and
+    // load as a second, unreachable class alongside the one being replaced.
+    const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["Pkg.Renamed"] })),
+      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
+      getErrorString: vi.fn(async () => ({ errorString: "" })),
+      loadString: vi.fn(async () => ({ success: true })),
+    };
+
+    const result = await reloadBufferIntoOmc(
+      client,
+      docFor(DOC_URI, "model Renamed end Renamed;"),
+      "Pkg.Model",
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      message: renamedClassMessage("Pkg.Model", "Pkg.Renamed"),
+    });
     expect(client.loadString).not.toHaveBeenCalled();
   });
 
@@ -87,7 +114,11 @@ describe("reloadBufferIntoOmc", () => {
       loadString: vi.fn(async () => ({ success: false })),
     };
 
-    const result = await reloadBufferIntoOmc(client, docFor(DOC_URI));
+    const result = await reloadBufferIntoOmc(
+      client,
+      docFor(DOC_URI),
+      "Pkg.Model",
+    );
 
     expect(result).toEqual({
       ok: false,
@@ -103,7 +134,11 @@ describe("reloadBufferIntoOmc", () => {
       loadString: vi.fn(async () => ({ success: false })),
     };
 
-    const result = await reloadBufferIntoOmc(client, docFor(DOC_URI));
+    const result = await reloadBufferIntoOmc(
+      client,
+      docFor(DOC_URI),
+      "Pkg.Model",
+    );
 
     expect(result).toEqual({
       ok: false,
@@ -129,6 +164,7 @@ describe("reloadBufferIntoOmc — source-file resolution", () => {
     await reloadBufferIntoOmc(
       client,
       docFor(DOC_URI, "model Model end Model;"),
+      "Pkg.Model",
     );
 
     expect(loadedFilename).toBe("/ws/Pkg/package.mo");
@@ -150,6 +186,7 @@ describe("reloadBufferIntoOmc — source-file resolution", () => {
     await reloadBufferIntoOmc(
       client,
       docFor(DOC_URI, "model Model end Model;"),
+      "Pkg.Model",
     );
 
     expect(loadedFilename).toBe(DOC_URI.toString());

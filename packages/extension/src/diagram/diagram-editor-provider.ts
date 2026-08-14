@@ -601,7 +601,7 @@ export class DiagramEditController {
     if (this.rejectIfReadOnly()) return;
     const { client, className, document } = this.deps;
     try {
-      const reload = await reloadBufferIntoOmc(client, document);
+      const reload = await reloadBufferIntoOmc(client, document, className);
       if (!reload.ok) {
         this.reportError(reload.message);
         // This sync dropped whatever was reported to make way for it, and then
