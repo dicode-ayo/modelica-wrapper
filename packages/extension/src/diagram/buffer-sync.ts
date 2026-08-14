@@ -50,9 +50,10 @@ export type ReloadResult = { ok: true } | { ok: false; message: string };
  * diagnostics first so a failure's `getErrorString` attributes only errors
  * this load produced, not ones left over from an earlier call.
  *
- * `expectedClassName` is the class `document.uri` addresses — the same name
- * the bind filename below resolves from — so the buffer screen can tell a
- * rename from a legitimate edit.
+ * `expectedClassName` is the class OMC currently holds for this buffer, the
+ * one the caller opened its editor on. The rename screen compares what the
+ * buffer declares against it, so a caller that passes anything else turns a
+ * legitimate edit into a refusal.
  */
 export async function reloadBufferIntoOmc(
   client: BufferSyncClient,
