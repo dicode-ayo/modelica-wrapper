@@ -173,45 +173,34 @@ function cascadeReach(
 }
 
 /**
- * Clean up every file holding a class nested under one of `names` in the
- * index, the way OMC's own `deleteClass` cascade does: only the matched
- * classes are gone from a cascaded file's index entry, not the whole entry —
- * a file mixing a cascaded class with an unrelated one keeps the unrelated
- * one indexed. A file left with no classes is dropped outright. Returns the
- * cascaded files so callers can fold their scopes and classes into their own
- * re-list/notify pass — notification isn't done here since
- * {@link handleMoDelete} and {@link reindexAndRelist} each combine it with a
- * different set of directly-touched names and need the union deduplicated
- * once, not per-name here and again at the call site.
- *
- * `exclude`, when given, is skipped even if one of its classes matches by
- * qualified-name prefix — {@link reindexAndRelist} passes its own `fsPath`
- * so a `removed` name that nests under the file's own brand-new class (e.g.
- * a `within`-clause edit renaming `Foo.Bar` to `Foo.Bar.Sub` in place) can't
- * cascade-delete the entry {@link reindexAndRelist} just set for itself.
- * {@link handleMoDelete} omits it: there, `fsPath`'s own entry is meant to
- * fall out of the cascade, since the whole file is gone.
- *
- * Shared by both callers, which reach here only after OMC itself has already
- * dropped the cascade (`deleteClass` or a `loadString`/`loadFile` reload) —
- * this only catches the index and the UI up to a cascade that already
- * happened.
+ * Narrow every file holding a class nested under one of `names`, the way
+ * OMC's own `deleteClass` cascade does: only the matched classes are gone
+ * from a cascaded file's entry, not the whole entry — a file mixing a
+ * cascaded class with an unrelated one keeps the unrelated one indexed. A
+ * file left with no classes is dropped. `exclude` skips a file even on a
+ * match — {@link reindexAndRelist} passes its own `fsPath` so a `removed`
+ * name nesting under the file's own brand-new class (a `within`-clause
+ * rename in place) can't cascade-delete the entry it just set for itself;
+ * {@link handleMoDelete} omits it, since there `fsPath`'s own entry is meant
+ * to fall out of the cascade. Notification is left to the caller, which
+ * combines the returned files' classes with its own directly-touched names
+ * and dedupes once.
  */
 function cascadeCleanup(
-  deps: Pick<MoWatcherDeps, "index">,
+  index: PathClassIndex,
   names: string[],
   exclude?: string,
 ): FilesUnderEntry[] {
   const excluded = exclude !== undefined ? path.resolve(exclude) : undefined;
   const cascadedFiles = names
-    .flatMap((name) => deps.index.filesUnder(name))
+    .flatMap((name) => index.filesUnder(name))
     .filter((file) => file.fsPath !== excluded);
   for (const file of cascadedFiles) {
-    const remaining = (deps.index.get(file.fsPath) ?? []).filter(
+    const remaining = (index.get(file.fsPath) ?? []).filter(
       (name) => !file.classNames.includes(name),
     );
-    if (remaining.length > 0) deps.index.set(file.fsPath, remaining);
-    else deps.index.delete(file.fsPath);
+    if (remaining.length > 0) index.set(file.fsPath, remaining);
+    else index.delete(file.fsPath);
   }
   return cascadedFiles;
 }
@@ -242,7 +231,7 @@ function reindexAndRelist(
 ): void {
   deps.index.set(fsPath, names);
 
-  const cascadedFiles = cascadeCleanup(deps, removed, fsPath);
+  const cascadedFiles = cascadeCleanup(deps.index, removed, fsPath);
 
   const scopes = new Set<string | null>();
   for (const name of names) {
@@ -258,8 +247,9 @@ function reindexAndRelist(
   for (const file of cascadedFiles) {
     for (const name of file.classNames) removedNotified.add(name);
   }
-  for (const name of removedNotified)
+  for (const name of removedNotified) {
     deps.sourceProvider.notifySourceChanged(name);
+  }
   for (const name of names) {
     // A still-declared class whose own modelica-source: document is open and
     // dirty must not be bumped: notifySourceChanged fires onDidChangeFile,
@@ -495,7 +485,7 @@ export async function handleMoDelete(
   // OMC's own deleteClass cascade just took every nested member with it too,
   // wherever those live — the index and any editor open on one of them have
   // to be told the same way, not just for fsPath's own direct names.
-  const cascadedFiles = cascadeCleanup(deps, names);
+  const cascadedFiles = cascadeCleanup(deps.index, names);
   for (const name of new Set(cascadedFiles.flatMap((f) => f.classNames))) {
     deps.sourceProvider.notifySourceChanged(name);
   }

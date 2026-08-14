@@ -192,6 +192,31 @@ describe("handleMoChange", () => {
     expect(childrenChanged).toHaveBeenCalledWith("My.Pkg.Bar.Removed");
   });
 
+  it("keeps a cascaded file's unrelated class indexed on a self-write, dropping only the cascaded one", async () => {
+    // MIXED_FILE declares both "My.Pkg.Bar.Removed.Baz" (nested under the
+    // removed class) and "Standalone.Thing" (unrelated). A whole-entry
+    // delete would satisfy a BAZ_FILE-only fixture even without narrowing —
+    // this pins that only the matched class is dropped, not the file's
+    // whole entry.
+    const MIXED_FILE = "/ws/Mixed.mo";
+    const guard = createSelfWriteGuard();
+    const text = "package Bar end Bar;";
+    guard.record(FILE, text);
+    const { deps, client, notifySourceChanged } = makeDeps({
+      guard,
+      readFile: async () => text,
+    });
+    deps.index.set(FILE, ["My.Pkg.Bar", "My.Pkg.Bar.Removed"]);
+    deps.index.set(MIXED_FILE, ["My.Pkg.Bar.Removed.Baz", "Standalone.Thing"]);
+    client.parseFile.mockResolvedValue({ classNames: ["My.Pkg.Bar"] });
+
+    await handleMoChange(deps, FILE);
+
+    expect(deps.index.get(MIXED_FILE)).toEqual(["Standalone.Thing"]);
+    expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg.Bar.Removed.Baz");
+    expect(notifySourceChanged).not.toHaveBeenCalledWith("Standalone.Thing");
+  });
+
   it("proceeds on a self-write even when isBusy would refuse an external edit", async () => {
     const guard = createSelfWriteGuard();
     guard.record(FILE, "model Bar end Bar;");
