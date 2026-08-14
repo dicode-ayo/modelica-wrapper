@@ -1,11 +1,7 @@
 import * as vscode from "vscode";
 
 import {
-  bufferClassNames,
-  moreThanOne,
-  multiEntityMessage,
-  renamedClass,
-  renamedClassMessage,
+  bufferRefusal,
   type StringParseClient,
 } from "../single-entity-file.js";
 import { omcFilenameForDocument } from "../source-provider.js";
@@ -53,6 +49,10 @@ export type ReloadResult = { ok: true } | { ok: false; message: string };
  * Reload `document`'s text into OMC, replacing the class. Drains stale
  * diagnostics first so a failure's `getErrorString` attributes only errors
  * this load produced, not ones left over from an earlier call.
+ *
+ * `expectedClassName` is the class `document.uri` addresses — the same name
+ * the bind filename below resolves from — so the buffer screen can tell a
+ * rename from a legitimate edit.
  */
 export async function reloadBufferIntoOmc(
   client: BufferSyncClient,
@@ -62,27 +62,12 @@ export async function reloadBufferIntoOmc(
   await client.getErrorString();
   const data = document.getText();
   const filename = await omcFilenameForDocument(client, document.uri);
-  // `loadString` binds every class in the text to `filename`, so a buffer that
-  // declares several would leave OMC holding a file no save can write back
-  // without dropping one (#452), and a buffer that renamed its class would
-  // load the new name as a second, unreachable class alongside the old (#461).
-  const bufferClasses = await bufferClassNames(client, data, filename);
-  if (bufferClasses !== undefined) {
-    const multiEntity = moreThanOne(bufferClasses);
-    if (multiEntity) {
-      return {
-        ok: false,
-        message: multiEntityMessage(filename, multiEntity),
-      };
-    }
-    const renamed = renamedClass(bufferClasses, expectedClassName);
-    if (renamed !== undefined) {
-      return {
-        ok: false,
-        message: renamedClassMessage(expectedClassName, renamed),
-      };
-    }
-  }
+  const refusal = await bufferRefusal(client, {
+    data,
+    filename,
+    expected: expectedClassName,
+  });
+  if (refusal !== undefined) return { ok: false, message: refusal };
   const { success } = await client.loadString({
     data,
     filename,

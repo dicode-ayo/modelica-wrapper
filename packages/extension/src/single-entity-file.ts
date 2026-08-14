@@ -145,6 +145,31 @@ export function renamedClassMessage(
   );
 }
 
+/**
+ * The refusal message a buffer earns before `loadString`, `undefined` when it
+ * passes both screens (or OMC couldn't parse it — the load that follows
+ * reports that failure itself). Runs the multi-entity screen before the
+ * rename screen: `renamedClass` is meaningless once `classNames` holds more
+ * than one name. `label` names the file in a multi-entity refusal when it
+ * differs from `filename` — `writeFile` refuses by `typeName` for a
+ * memory-only class that has no on-disk `filename` of its own yet.
+ */
+export async function bufferRefusal(
+  client: StringParseClient,
+  input: { data: string; filename: string; expected: string; label?: string },
+): Promise<string | undefined> {
+  const classNames = await bufferClassNames(client, input.data, input.filename);
+  if (classNames === undefined) return undefined;
+  const multiEntity = moreThanOne(classNames);
+  if (multiEntity) {
+    return multiEntityMessage(input.label ?? input.filename, multiEntity);
+  }
+  const renamed = renamedClass(classNames, input.expected);
+  return renamed === undefined
+    ? undefined
+    : renamedClassMessage(input.expected, renamed);
+}
+
 /** Batch notification; the per-file detail stays in the output channel. */
 export function multiEntityBatchToast(fileNames: string[]): string {
   const names = fileNames.map((f) => path.basename(f)).join(", ");

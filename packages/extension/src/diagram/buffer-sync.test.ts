@@ -1,19 +1,20 @@
 /**
  * `reloadBufferIntoOmc` pins the stale-diagnostics drain running before the
- * load, and a rejected load's message coming from the *second*
- * `getErrorString` call, not the first.
+ * load, a rejected load's message coming from the *second* `getErrorString`
+ * call rather than the first, and the buffer screen refusing a rename before
+ * `loadString` runs.
  *
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
 
 import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
+import { renamedClassMessage } from "../single-entity-file.js";
 import {
   defaultScheduler,
   reloadBufferIntoOmc,
   type BufferSyncClient,
 } from "./buffer-sync.js";
-import { renamedClassMessage } from "../single-entity-file.js";
 
 function docFor(uri: vscode.Uri, text = ""): vscode.TextDocument {
   return {
@@ -77,9 +78,6 @@ describe("reloadBufferIntoOmc", () => {
   });
 
   it("refuses a buffer that renamed its class (#461)", async () => {
-    // `loadString` binds every class in the text to `filename` rather than
-    // replacing the file's contents, so a renamed class would parse clean and
-    // load as a second, unreachable class alongside the one being replaced.
     const client: BufferSyncClient = {
       parseString: vi.fn(async () => ({ classNames: ["Pkg.Renamed"] })),
       getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
