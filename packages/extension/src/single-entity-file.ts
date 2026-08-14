@@ -84,16 +84,6 @@ export async function bufferClassNames(
   }
 }
 
-/** {@link multipleTopLevelClasses} for a buffer's declared classes. */
-export async function multipleTopLevelClassesInText(
-  client: StringParseClient,
-  data: string,
-  filename: string,
-): Promise<string[] | undefined> {
-  const classNames = await bufferClassNames(client, data, filename);
-  return classNames === undefined ? undefined : moreThanOne(classNames);
-}
-
 export function moreThanOne(classNames: string[]): string[] | undefined {
   return classNames.length > 1 ? classNames : undefined;
 }
