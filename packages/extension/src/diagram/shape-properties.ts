@@ -308,31 +308,20 @@ function fieldOf<S extends object>() {
       write(opened, updated, raw) {
         const decoded = codec.decode(raw);
         if (decoded === undefined) return updated;
-        // A field the shape leaves blank — unset with no seeded fallback, or
-        // (for `textString`) a `null` OMC can't reduce to a literal — renders
-        // seeded with its fallback so the form has something to show. The
-        // webview's working state resubmits that seed on an untouched Apply,
-        // indistinguishable from the user choosing it deliberately; writing
-        // it back would pin a value the shape never had.
+        // The form submits every field, so a field the shape left unset or
+        // null — with nothing bound, and only ever shown seeded with its
+        // fallback (static, or, for an ellipse's closure, derived from the
+        // shape) — comes back on an untouched Apply indistinguishable from
+        // the user choosing that same value deliberately. Writing it would
+        // pin a value the shape never had, or (for a derived fallback like
+        // ellipse closure) a derivation the same submit may have
+        // invalidated: changing the angles would fix the closure to the one
+        // the old angles implied, where left unset §18.6 re-derives it from
+        // the new ones.
         const current = opened[name];
-        const wasBlank =
-          current === null || (current === undefined && !seedsFallback);
         if (
-          wasBlank &&
+          (current === null || current === undefined) &&
           codec.encode(decoded) === codec.encode(fallbackFor(opened))
-        ) {
-          return updated;
-        }
-        // The form submits every field, so a derived fallback returns
-        // untouched and indistinguishable from a choice. Writing it pins a
-        // derivation the same submit may have invalidated — changing an
-        // ellipse's angles would fix its closure to the one the old angles
-        // implied. Left unset, §18.6 re-derives it from the new angles.
-        const derived = spec.fallbackFrom;
-        if (
-          derived !== undefined &&
-          opened[name] === undefined &&
-          codec.encode(decoded) === codec.encode(derived(opened))
         ) {
           return updated;
         }
