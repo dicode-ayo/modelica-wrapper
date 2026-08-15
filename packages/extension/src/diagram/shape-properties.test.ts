@@ -359,10 +359,10 @@ describe("buildShapePropertiesForm", () => {
   });
 
   it("a null textString survives an Apply that resubmits the field untouched", () => {
-    // Regression for #477: `current ?? fallback` used to treat a real `null`
-    // (an unrepresentable Expression) the same as `undefined`, so the form
-    // showed "" instead of blank and an untouched Apply overwrote the shape's
-    // original value with that empty string.
+    // The webview seeds a blank field's working value from
+    // `field.defaultValue` (parameter-fields.ts `initialValuesFromFields`)
+    // and resubmits that seed verbatim when the field is never touched, so
+    // the round-trip raw a real Apply sends is `defaultValue`, not `value`.
     const text = {
       kind: "text" as const,
       extent: [
@@ -373,10 +373,25 @@ describe("buildShapePropertiesForm", () => {
     };
     const model = buildShapePropertiesForm(text);
     const tf = model.fields.find((x) => x.name === "textString");
+    expect(tf?.defaultValue).toBe("");
     const updated = applyShapeProperties(text, {
-      textString: tf?.value,
+      textString: tf?.defaultValue,
     }) as TextShape;
     expect(updated.textString).toBeNull();
+  });
+
+  it("an unset fillColor survives an Apply that resubmits the field untouched", () => {
+    // An untouched color swatch resubmits its own default hex (see the
+    // textString test above), which must not be written back as an explicit
+    // color the shape never had.
+    const fillColor = buildShapePropertiesForm(RECT).fields.find(
+      (x) => x.name === "fillColor",
+    );
+    expect(fillColor?.value).toBeNull();
+    const updated = applyShapeProperties(RECT, {
+      fillColor: fillColor?.defaultValue,
+    }) as RectangleShape;
+    expect(updated.fillColor).toBeUndefined();
   });
 
   it("enum fields carry enumChoices and enumTypeName", () => {

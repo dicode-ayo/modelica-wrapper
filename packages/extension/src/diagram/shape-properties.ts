@@ -308,6 +308,21 @@ function fieldOf<S extends object>() {
       write(opened, updated, raw) {
         const decoded = codec.decode(raw);
         if (decoded === undefined) return updated;
+        // A field the shape leaves blank — unset with no seeded fallback, or
+        // (for `textString`) a `null` OMC can't reduce to a literal — renders
+        // seeded with its fallback so the form has something to show. The
+        // webview's working state resubmits that seed on an untouched Apply,
+        // indistinguishable from the user choosing it deliberately; writing
+        // it back would pin a value the shape never had.
+        const current = opened[name];
+        const wasBlank =
+          current === null || (current === undefined && !seedsFallback);
+        if (
+          wasBlank &&
+          codec.encode(decoded) === codec.encode(fallbackFor(opened))
+        ) {
+          return updated;
+        }
         // The form submits every field, so a derived fallback returns
         // untouched and indistinguishable from a choice. Writing it pins a
         // derivation the same submit may have invalidated — changing an
