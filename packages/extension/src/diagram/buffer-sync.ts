@@ -1,8 +1,7 @@
 import * as vscode from "vscode";
 
 import {
-  multiEntityMessage,
-  multipleTopLevelClassesInText,
+  bufferRefusal,
   type StringParseClient,
 } from "../single-entity-file.js";
 import { omcFilenameForDocument } from "../source-provider.js";
@@ -50,25 +49,26 @@ export type ReloadResult = { ok: true } | { ok: false; message: string };
  * Reload `document`'s text into OMC, replacing the class. Drains stale
  * diagnostics first so a failure's `getErrorString` attributes only errors
  * this load produced, not ones left over from an earlier call.
+ *
+ * `expectedClassName` is the class OMC currently holds for this buffer, the
+ * one the caller opened its editor on. The rename screen compares what the
+ * buffer declares against it, so a caller that passes anything else turns a
+ * legitimate edit into a refusal.
  */
 export async function reloadBufferIntoOmc(
   client: BufferSyncClient,
   document: vscode.TextDocument,
+  expectedClassName: string,
 ): Promise<ReloadResult> {
   await client.getErrorString();
   const data = document.getText();
   const filename = await omcFilenameForDocument(client, document.uri);
-  // `loadString` binds every class in the text to `filename`, so a buffer that
-  // declares several would leave OMC holding a file no save can write back
-  // without dropping one (#452).
-  const multiEntity = await multipleTopLevelClassesInText(
-    client,
+  const refusal = await bufferRefusal(client, {
     data,
     filename,
-  );
-  if (multiEntity) {
-    return { ok: false, message: multiEntityMessage(filename, multiEntity) };
-  }
+    expected: expectedClassName,
+  });
+  if (refusal !== undefined) return { ok: false, message: refusal };
   const { success } = await client.loadString({
     data,
     filename,
