@@ -293,11 +293,9 @@ function fieldOf<S extends object>() {
           // it must not fall through to the fallback the way `undefined`
           // does, or Apply resubmits the fallback and overwrites it.
           value:
-            current === null
+            current === null || (current === undefined && !seedsFallback)
               ? null
-              : current !== undefined || seedsFallback
-                ? codec.encode(current ?? fallback)
-                : null,
+              : codec.encode(current ?? fallback),
           defaultValue: codec.encode(fallback),
           enumChoices: codec.enumChoices,
           enumTypeName: codec.enumTypeName,
@@ -309,15 +307,10 @@ function fieldOf<S extends object>() {
         const decoded = codec.decode(raw);
         if (decoded === undefined) return updated;
         // The form submits every field, so a field the shape left unset or
-        // null — with nothing bound, and only ever shown seeded with its
-        // fallback (static, or, for an ellipse's closure, derived from the
-        // shape) — comes back on an untouched Apply indistinguishable from
-        // the user choosing that same value deliberately. Writing it would
-        // pin a value the shape never had, or (for a derived fallback like
-        // ellipse closure) a derivation the same submit may have
-        // invalidated: changing the angles would fix the closure to the one
-        // the old angles implied, where left unset §18.6 re-derives it from
-        // the new ones.
+        // null comes back on an untouched Apply as its fallback, indistinguishable
+        // from the user choosing that value deliberately. Writing it would pin
+        // a value the shape never had — or, for a derived fallback like
+        // ellipse closure, a derivation the next edit may have invalidated.
         const current = opened[name];
         if (
           (current === null || current === undefined) &&

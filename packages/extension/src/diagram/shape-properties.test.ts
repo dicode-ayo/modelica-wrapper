@@ -351,7 +351,7 @@ describe("buildShapePropertiesForm", () => {
     // `defaultValue` (see `initialValuesFromFields` in
     // packages/diagram-ui/src/parameter-form/parameter-fields.ts) and
     // resubmits that seed verbatim when the field is never touched — so the
-    // raw a real, untouched Apply sends is `defaultValue`, not `value`.
+    // raw value a real, untouched Apply sends is `defaultValue`, not `value`.
     const text = textShape(null);
     const model = buildShapePropertiesForm(text);
     const tf = model.fields.find((x) => x.name === "textString");
