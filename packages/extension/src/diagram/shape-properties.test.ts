@@ -15,6 +15,7 @@ import type {
   ParameterField,
   RectangleShape,
   Shape,
+  TextShape,
 } from "@dicode/omc-client";
 
 // ── colorToHex ────────────────────────────────────────────────────────────────
@@ -341,6 +342,41 @@ describe("buildShapePropertiesForm", () => {
     );
     const tf = model.fields.find((x) => x.name === "textString");
     expect(tf?.value).toBeNull();
+  });
+
+  it("text form shows null for textString when it is null, rather than seeding the empty-string default", () => {
+    const text = {
+      kind: "text" as const,
+      extent: [
+        [-20, -10],
+        [20, 10],
+      ] as [[number, number], [number, number]],
+      textString: null,
+    };
+    const model = buildShapePropertiesForm(text);
+    const tf = model.fields.find((x) => x.name === "textString");
+    expect(tf?.value).toBeNull();
+  });
+
+  it("a null textString survives an Apply that resubmits the field untouched", () => {
+    // Regression for #477: `current ?? fallback` used to treat a real `null`
+    // (an unrepresentable Expression) the same as `undefined`, so the form
+    // showed "" instead of blank and an untouched Apply overwrote the shape's
+    // original value with that empty string.
+    const text = {
+      kind: "text" as const,
+      extent: [
+        [-20, -10],
+        [20, 10],
+      ] as [[number, number], [number, number]],
+      textString: null,
+    };
+    const model = buildShapePropertiesForm(text);
+    const tf = model.fields.find((x) => x.name === "textString");
+    const updated = applyShapeProperties(text, {
+      textString: tf?.value,
+    }) as TextShape;
+    expect(updated.textString).toBeNull();
   });
 
   it("enum fields carry enumChoices and enumTypeName", () => {

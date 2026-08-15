@@ -288,10 +288,16 @@ function fieldOf<S extends object>() {
           name,
           label,
           kind: codec.kind,
+          // `null` is a real, reachable value distinct from "unset" — OMC
+          // reports it for a `textString` it can't reduce to a literal — so
+          // it must not fall through to the fallback the way `undefined`
+          // does, or Apply resubmits the fallback and overwrites it.
           value:
-            current !== undefined || seedsFallback
-              ? codec.encode(current ?? fallback)
-              : null,
+            current === null
+              ? null
+              : current !== undefined || seedsFallback
+                ? codec.encode(current ?? fallback)
+                : null,
           defaultValue: codec.encode(fallback),
           enumChoices: codec.enumChoices,
           enumTypeName: codec.enumTypeName,
