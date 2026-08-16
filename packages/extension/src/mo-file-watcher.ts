@@ -42,6 +42,7 @@ import * as vscode from "vscode";
 import { enclosingScope } from "@dicode/modelica-lang-core";
 
 import { pathExists } from "./fs-util.js";
+import type { ClassInvalidationRegistry } from "./invalidation.js";
 import { log } from "./logger.js";
 import { multiEntityMessage, multiEntityToast } from "./single-entity-file.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
@@ -569,6 +570,7 @@ export function registerMoFileWatcher(deps: {
   libraryTree: LibraryWebviewProvider;
   sourceProvider: ModelicaSourceProvider;
   guard: SelfWriteGuard;
+  invalidation: ClassInvalidationRegistry;
 }): vscode.Disposable {
   const index = createPathClassIndex();
   const watcherDeps: MoWatcherDeps = {
@@ -661,6 +663,14 @@ export function registerMoFileWatcher(deps: {
         handleOrderDelete(watcherDeps, uri.fsPath),
       ),
     ),
+    // `:reset` closes OMC and spawns a fresh one with an empty AST, so every
+    // path→class mapping in `index` now describes classes a dead session
+    // once held. Re-running the same seed the initial mount used is the
+    // whole fix — it re-derives the index from disk against whatever client
+    // `ensureClient` hands back next, fire-and-forget like the initial seed.
+    deps.invalidation.registerSessionReplaced(() => {
+      void seedWorkspaceIndex(deps.ensureClient, index);
+    }),
   ];
 
   return vscode.Disposable.from(...subs);

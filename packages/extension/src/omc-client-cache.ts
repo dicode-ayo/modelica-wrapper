@@ -22,6 +22,13 @@ export interface OmcClientCache<T> {
 export function createOmcClientCache<T>(
   spawn: () => Promise<T>,
   closeClient: (client: T) => Promise<void>,
+  /**
+   * Called synchronously on `reset()`, after the old client is closed and
+   * before the new one starts spawning. Lets a caller fan "the session was
+   * replaced" out to its own listeners (e.g. a class-invalidation registry)
+   * without this module knowing that type exists.
+   */
+  onReset?: () => void,
 ): OmcClientCache<T> {
   let client: T | undefined;
   let inFlight: Promise<T> | undefined;
@@ -64,6 +71,7 @@ export function createOmcClientCache<T>(
 
   async function reset(): Promise<T> {
     await close();
+    onReset?.();
     return ensure();
   }
 

@@ -42,7 +42,10 @@ import {
   ModelicaSourceProvider,
 } from "./source-provider.js";
 import { registerMoFileWatcher } from "./mo-file-watcher.js";
-import { createOmcClientCache } from "./omc-client-cache.js";
+import {
+  createOmcClientCache,
+  type OmcClientCache,
+} from "./omc-client-cache.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import { ClassInvalidationRegistry } from "./invalidation.js";
 import { publishSourceChanges } from "./source-invalidation.js";
@@ -53,16 +56,9 @@ import { multiEntityBatchToast } from "./single-entity-file.js";
 import { loadEntryFilesAndRefresh } from "./workspace-autoload.js";
 import { discoverEntryPoints } from "./workspace-scan.js";
 
-const omcClientCache = createOmcClientCache(
-  async () => {
-    const cfg = vscode.workspace.getConfiguration("modelica");
-    const omcPath = cfg.get<string>("omcPath") ?? "";
-    const c = await OmcClient.create({ omcPath });
-    await cdIntoWorkspaceCacheDir(c);
-    return c;
-  },
-  (c) => c.close(),
-);
+// Built inside `activate()`, not here: `onReset` closes over that run's
+// `ClassInvalidationRegistry`, and the registry is scoped per-activation.
+let omcClientCache: OmcClientCache<OmcClient> | undefined;
 
 /**
  * Public shape returned from `activate()`. Other extensions can reach this
@@ -86,6 +82,21 @@ export async function activate(
   // "class X changed" once and each cache registers its own listener, so the
   // number of caches is invisible here.
   const invalidation = new ClassInvalidationRegistry();
+
+  // `onReset` fans "the session was replaced" out through `invalidation`
+  // rather than a cache reaching for the registry itself — keeps
+  // `omc-client-cache.ts` decoupled from what a reset means to any listener.
+  omcClientCache = createOmcClientCache(
+    async () => {
+      const cfg = vscode.workspace.getConfiguration("modelica");
+      const omcPath = cfg.get<string>("omcPath") ?? "";
+      const c = await OmcClient.create({ omcPath });
+      await cdIntoWorkspaceCacheDir(c);
+      return c;
+    },
+    (c) => c.close(),
+    () => invalidation.sessionReplaced(),
+  );
 
   const libraryTree = new LibraryWebviewProvider(
     context.extensionUri,
@@ -160,6 +171,7 @@ export async function activate(
       libraryTree,
       sourceProvider,
       guard: selfWriteGuard,
+      invalidation,
     }),
   );
 
@@ -228,12 +240,26 @@ export async function activate(
 }
 
 export async function deactivate(): Promise<void> {
-  await omcClientCache.close();
+  await omcClientCache?.close();
   log.dispose();
 }
 
+/**
+ * `ensureClient`/`resetClient` are handed out as bare function references
+ * during `activate()`, but only actually invoked once a command, provider, or
+ * watcher fires — always after `activate()` has run and set the cache. This
+ * only throws if something calls one of them before that, which would be a
+ * wiring bug, not a runtime condition callers need to handle.
+ */
+function requireOmcClientCache(): OmcClientCache<OmcClient> {
+  if (omcClientCache === undefined) {
+    throw new Error("OMC client cache used before activate() initialized it");
+  }
+  return omcClientCache;
+}
+
 function ensureClient(): Promise<OmcClient> {
-  return omcClientCache.ensure();
+  return requireOmcClientCache().ensure();
 }
 
 /**
@@ -297,7 +323,7 @@ async function cdIntoWorkspaceCacheDir(c: OmcClient): Promise<void> {
  * line options) is wiped.
  */
 function resetClient(): Promise<OmcClient> {
-  return omcClientCache.reset();
+  return requireOmcClientCache().reset();
 }
 
 /**

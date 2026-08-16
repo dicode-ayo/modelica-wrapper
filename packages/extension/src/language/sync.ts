@@ -110,6 +110,23 @@ export class OmcSync {
     return this.loaded.has(this.normalizeKey(filePath));
   }
 
+  /**
+   * Forget every load state this instance tracks — the OMC session behind it
+   * is gone (`:reset`), so every "loaded"/"in-flight"/"multi-entity" fact was
+   * about a symbol table that no longer exists. Reuses {@link invalidate} per
+   * tracked key so an in-flight load racing the reset is discarded the same
+   * way a save/close race is, rather than landing its stale answer after.
+   */
+  resetSession(): void {
+    const keys = new Set([
+      ...this.loaded,
+      ...this.inFlight.keys(),
+      ...this.multiEntity,
+      ...this.generation.keys(),
+    ]);
+    for (const key of keys) this.invalidate(key);
+  }
+
   private async load(filePath: string, key: string): Promise<boolean> {
     const snapshot = this.generation.get(key) ?? 0;
     try {

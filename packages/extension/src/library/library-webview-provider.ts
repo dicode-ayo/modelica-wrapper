@@ -89,6 +89,7 @@ export class LibraryWebviewProvider
   private readonly searches = new Map<string, AbortController>();
 
   private readonly onClassChanged: vscode.Disposable;
+  private readonly onSessionReplaced: vscode.Disposable;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -98,10 +99,19 @@ export class LibraryWebviewProvider
     this.onClassChanged = invalidation.register((className) =>
       this.classChanged(className),
     );
+    // `:reset` wipes OMC's AST wholesale — no per-class signal fires for it,
+    // so without this the tree keeps showing the dead session's listing
+    // until a manual window reload. Re-listing the root is enough: OMC
+    // itself is the source the webview lists from, so the re-fetch simply
+    // reflects whatever the fresh session now holds.
+    this.onSessionReplaced = invalidation.registerSessionReplaced(() => {
+      this.childrenChanged(null);
+    });
   }
 
   dispose(): void {
     this.onClassChanged.dispose();
+    this.onSessionReplaced.dispose();
   }
 
   /** Drop everything this sidebar derives from `className`'s definition: its

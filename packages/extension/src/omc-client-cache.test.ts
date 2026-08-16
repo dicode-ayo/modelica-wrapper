@@ -146,6 +146,37 @@ describe("createOmcClientCache", () => {
     expect(spawn).toHaveBeenCalledTimes(2);
   });
 
+  it("fires onReset once per reset(), after close and before the new spawn resolves", async () => {
+    const a = { id: "a" };
+    const b = { id: "b" };
+    const spawn = vi
+      .fn<() => Promise<object>>()
+      .mockResolvedValueOnce(a)
+      .mockResolvedValueOnce(b);
+    const fired: number[] = [];
+    const cache = createOmcClientCache(spawn, noopClose, () => {
+      fired.push(fired.length);
+    });
+
+    await cache.ensure();
+    expect(fired).toEqual([]);
+
+    await cache.reset();
+    expect(fired).toEqual([0]);
+    expect(await cache.ensure()).toBe(b);
+  });
+
+  it("does not require onReset — reset() still works when it's omitted", async () => {
+    const spawn = vi
+      .fn<() => Promise<object>>()
+      .mockResolvedValueOnce({ id: "a" })
+      .mockResolvedValueOnce({ id: "b" });
+    const cache = createOmcClientCache(spawn, noopClose);
+
+    await cache.ensure();
+    await expect(cache.reset()).resolves.toEqual({ id: "b" });
+  });
+
   it("a stale reject doesn't clobber a newer in-flight spawn", async () => {
     const { spawn, pending } = deferredSpawns();
     const cache = createOmcClientCache(spawn, noopClose);
