@@ -310,7 +310,7 @@ function fieldOf<S extends object>() {
         // null comes back on an untouched Apply as its fallback, indistinguishable
         // from the user choosing that value deliberately. Writing it would pin
         // a value the shape never had — or, for a derived fallback like
-        // ellipse closure, a derivation the next edit may have invalidated.
+        // ellipse closure, a derivation the same submit may have invalidated.
         const current = opened[name];
         if (
           (current === null || current === undefined) &&
