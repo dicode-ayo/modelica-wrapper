@@ -288,10 +288,14 @@ function fieldOf<S extends object>() {
           name,
           label,
           kind: codec.kind,
+          // `null` is a real, reachable value distinct from "unset" — OMC
+          // reports it for a `textString` it can't reduce to a literal — so
+          // it must not fall through to the fallback the way `undefined`
+          // does, or Apply resubmits the fallback and overwrites it.
           value:
-            current !== undefined || seedsFallback
-              ? codec.encode(current ?? fallback)
-              : null,
+            current === null || (current === undefined && !seedsFallback)
+              ? null
+              : codec.encode(current ?? fallback),
           defaultValue: codec.encode(fallback),
           enumChoices: codec.enumChoices,
           enumTypeName: codec.enumTypeName,
@@ -302,16 +306,15 @@ function fieldOf<S extends object>() {
       write(opened, updated, raw) {
         const decoded = codec.decode(raw);
         if (decoded === undefined) return updated;
-        // The form submits every field, so a derived fallback returns
-        // untouched and indistinguishable from a choice. Writing it pins a
-        // derivation the same submit may have invalidated — changing an
-        // ellipse's angles would fix its closure to the one the old angles
-        // implied. Left unset, §18.6 re-derives it from the new angles.
-        const derived = spec.fallbackFrom;
+        // The form submits every field, so a field the shape left unset or
+        // null comes back on an untouched Apply as its fallback, indistinguishable
+        // from the user choosing that value deliberately. Writing it would pin
+        // a value the shape never had — or, for a derived fallback like
+        // ellipse closure, a derivation the same submit may have invalidated.
+        const current = opened[name];
         if (
-          derived !== undefined &&
-          opened[name] === undefined &&
-          codec.encode(decoded) === codec.encode(derived(opened))
+          (current === null || current === undefined) &&
+          codec.encode(decoded) === codec.encode(fallbackFor(opened))
         ) {
           return updated;
         }

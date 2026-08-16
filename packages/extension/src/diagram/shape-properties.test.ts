@@ -15,6 +15,7 @@ import type {
   ParameterField,
   RectangleShape,
   Shape,
+  TextShape,
 } from "@dicode/omc-client";
 
 // ── colorToHex ────────────────────────────────────────────────────────────────
@@ -163,6 +164,18 @@ describe("lookupHostShape", () => {
 
 // ── buildShapePropertiesForm ──────────────────────────────────────────────────
 
+/** A minimal Text shape carrying the given `textString`. */
+function textShape(textString: TextShape["textString"]): TextShape {
+  return {
+    kind: "text",
+    extent: [
+      [-20, -10],
+      [20, 10],
+    ],
+    textString,
+  };
+}
+
 describe("buildShapePropertiesForm", () => {
   it("emits model with className matching shape kind", () => {
     const model = buildShapePropertiesForm(RECT);
@@ -310,37 +323,57 @@ describe("buildShapePropertiesForm", () => {
   });
 
   it("text form exposes textString when it is a plain string", () => {
-    const text = {
-      kind: "text" as const,
-      extent: [
-        [-20, -10],
-        [20, 10],
-      ] as [[number, number], [number, number]],
-      textString: "hello",
-    };
-    const model = buildShapePropertiesForm(text);
+    const model = buildShapePropertiesForm(textShape("hello"));
     const tf = model.fields.find((x) => x.name === "textString");
     expect(tf?.value).toBe("hello");
   });
 
   it("text form shows null for textString when it is a complex Expression", () => {
-    const text = {
-      kind: "text" as const,
-      extent: [
-        [-20, -10],
-        [20, 10],
-      ] as [[number, number], [number, number]],
-      textString: {
+    const model = buildShapePropertiesForm(
+      textShape({
         $kind: "call",
         name: "DynamicSelect",
         arguments: ["a", "b"],
-      },
-    };
-    const model = buildShapePropertiesForm(
-      text as unknown as Parameters<typeof buildShapePropertiesForm>[0],
+      }),
     );
     const tf = model.fields.find((x) => x.name === "textString");
     expect(tf?.value).toBeNull();
+  });
+
+  it("text form shows null for textString when it is null, rather than seeding the empty-string default", () => {
+    const model = buildShapePropertiesForm(textShape(null));
+    const tf = model.fields.find((x) => x.name === "textString");
+    expect(tf?.value).toBeNull();
+  });
+
+  it("a null textString survives an Apply that resubmits the field untouched", () => {
+    // The webview seeds a blank field's working value from each field's
+    // `defaultValue` (see `initialValuesFromFields` in
+    // packages/diagram-ui/src/parameter-form/parameter-fields.ts) and
+    // resubmits that seed verbatim when the field is never touched — so the
+    // raw value a real, untouched Apply sends is `defaultValue`, not `value`.
+    const text = textShape(null);
+    const model = buildShapePropertiesForm(text);
+    const tf = model.fields.find((x) => x.name === "textString");
+    expect(tf?.defaultValue).toBe("");
+    const updated = applyShapeProperties(text, {
+      textString: tf?.defaultValue,
+    }) as TextShape;
+    expect(updated.textString).toBeNull();
+  });
+
+  it("an unset fillColor survives an Apply that resubmits the field untouched", () => {
+    // An untouched color swatch resubmits its own default hex (see the
+    // textString test above), which must not be written back as an explicit
+    // color the shape never had.
+    const fillColor = buildShapePropertiesForm(RECT).fields.find(
+      (x) => x.name === "fillColor",
+    );
+    expect(fillColor?.value).toBeNull();
+    const updated = applyShapeProperties(RECT, {
+      fillColor: fillColor?.defaultValue,
+    }) as RectangleShape;
+    expect(updated.fillColor).toBeUndefined();
   });
 
   it("enum fields carry enumChoices and enumTypeName", () => {
