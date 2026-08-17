@@ -42,7 +42,10 @@ import {
   ModelicaSourceProvider,
 } from "./source-provider.js";
 import { registerMoFileWatcher } from "./mo-file-watcher.js";
-import { createOmcClientCache } from "./omc-client-cache.js";
+import {
+  createOmcClientCache,
+  type OmcClientCache,
+} from "./omc-client-cache.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import { ClassInvalidationRegistry } from "./invalidation.js";
 import { publishSourceChanges } from "./source-invalidation.js";
@@ -50,19 +53,13 @@ import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
 import { WriteVerdicts } from "./write-verdict.js";
 import { multiEntityBatchToast } from "./single-entity-file.js";
-import { loadEntryFilesAndRefresh } from "./workspace-autoload.js";
-import { discoverEntryPoints } from "./workspace-scan.js";
+import {
+  registerWorkspaceAutoload,
+  type WorkspaceAutoloadDeps,
+} from "./workspace-autoload.js";
 
-const omcClientCache = createOmcClientCache(
-  async () => {
-    const cfg = vscode.workspace.getConfiguration("modelica");
-    const omcPath = cfg.get<string>("omcPath") ?? "";
-    const c = await OmcClient.create({ omcPath });
-    await cdIntoWorkspaceCacheDir(c);
-    return c;
-  },
-  (c) => c.close(),
-);
+// Only `deactivate()` outlives `activate()`'s scope.
+let closeOmcClientCache: (() => Promise<void>) | undefined;
 
 /**
  * Public shape returned from `activate()`. Other extensions can reach this
@@ -87,6 +84,26 @@ export async function activate(
   // number of caches is invisible here.
   const invalidation = new ClassInvalidationRegistry();
 
+  // `onReset` closes over the per-activation `ClassInvalidationRegistry`, so
+  // this can't be built at module scope.
+  const omcClientCache: OmcClientCache<OmcClient> = createOmcClientCache(
+    async () => {
+      const cfg = vscode.workspace.getConfiguration("modelica");
+      const omcPath = cfg.get<string>("omcPath") ?? "";
+      const c = await OmcClient.create({ omcPath });
+      await cdIntoWorkspaceCacheDir(c);
+      return c;
+    },
+    (c) => c.close(),
+    () => invalidation.sessionReplaced(),
+  );
+  closeOmcClientCache = () => omcClientCache.shutdown();
+  const ensureClient = (): Promise<OmcClient> => omcClientCache.ensure();
+  // Used by the REPL's `:reset` meta-command — anything that survives in
+  // OMC's in-memory state (loaded classes, last simulation result,
+  // command-line options) is wiped.
+  const resetClient = (): Promise<OmcClient> => omcClientCache.reset();
+
   const libraryTree = new LibraryWebviewProvider(
     context.extensionUri,
     ensureClient,
@@ -97,6 +114,22 @@ export async function activate(
     libraryTree,
     { webviewOptions: { retainContextWhenHidden: true } },
   );
+
+  const autoloadDeps: WorkspaceAutoloadDeps = {
+    folders: () =>
+      (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath),
+    ensureClient,
+    refresh: () => libraryTree.childrenChanged(null),
+    onSkipped: (skipped) => {
+      void vscode.window.showWarningMessage(
+        multiEntityBatchToast(skipped.map((s) => s.fileName)),
+      );
+    },
+  };
+  // One queue for both the activation-time sweep (`.run()` below) and every
+  // `:reset` (its own `sessionReplaced` listener), so a reset landing mid-sweep
+  // serializes behind it instead of racing it onto the same OMC client.
+  const autoload = registerWorkspaceAutoload(invalidation, autoloadDeps);
 
   const selfWriteGuard = createSelfWriteGuard();
   // One instance for the whole session: the origin half of a verdict has to be
@@ -160,12 +193,14 @@ export async function activate(
       libraryTree,
       sourceProvider,
       guard: selfWriteGuard,
+      invalidation,
     }),
   );
 
   context.subscriptions.push(
     libraryTree,
     libraryView,
+    autoload,
     diagnostics,
     ResultViewEditorProvider.register(context, ensureClient),
     DiagramEditorProvider.register(
@@ -209,7 +244,7 @@ export async function activate(
   void recoverRestoredCustomEditors();
 
   // Non-blocking — we don't want to delay activation on OMC startup.
-  void autoLoadWorkspaceModels(libraryTree);
+  autoload.run();
 
   // Exported API surface. Tested separately via the `repl-eval` integration
   // suite; the wiring here is just plumbing.
@@ -228,12 +263,8 @@ export async function activate(
 }
 
 export async function deactivate(): Promise<void> {
-  await omcClientCache.close();
+  await closeOmcClientCache?.();
   log.dispose();
-}
-
-function ensureClient(): Promise<OmcClient> {
-  return omcClientCache.ensure();
 }
 
 /**
@@ -287,54 +318,5 @@ async function cdIntoWorkspaceCacheDir(c: OmcClient): Promise<void> {
       "ensureClient",
       `cd ${cacheDir} failed: ${(err as Error).message}`,
     );
-  }
-}
-
-/**
- * Tear down the cached OMC subprocess (if any) and spawn a fresh one.
- * Used by the REPL's `:reset` meta-command — anything that survives in
- * OMC's in-memory state (loaded classes, last simulation result, command-
- * line options) is wiped.
- */
-function resetClient(): Promise<OmcClient> {
-  return omcClientCache.reset();
-}
-
-/**
- * Discover Modelica entry points in each workspace folder and `loadFile`
- * them. Three cases per folder, in order:
- *   1. `<root>/package.mo` — the workspace IS a package, load just that.
- *   2. Otherwise, every top-level `<root>/*.mo` standalone file.
- *   3. Every top-level `<root>/<dir>/package.mo` (subdirectory packages).
- *
- * `uses=true` (the default for `loadFile`) walks `uses(...)` annotations to
- * pull in dependent libraries from MODELICAPATH. Failures are logged but
- * don't abort the whole sweep — one bad file shouldn't block others.
- */
-async function autoLoadWorkspaceModels(
-  libraryTree: LibraryWebviewProvider,
-): Promise<void> {
-  const folders = vscode.workspace.workspaceFolders ?? [];
-  if (folders.length === 0) return;
-  const files = await discoverEntryPoints(folders.map((f) => f.uri.fsPath));
-  if (files.length === 0) {
-    return;
-  }
-  try {
-    const c = await ensureClient();
-    // One refresh after all loads settle — not per file, which would pile
-    // concurrent OMC fetches onto the single ZeroMQ socket during startup. The
-    // webview tree's own mount fetch is serialized with this one through the
-    // client, so they can't overlap into a busy-socket send.
-    const skipped = await loadEntryFilesAndRefresh(c, files, () =>
-      libraryTree.childrenChanged(null),
-    );
-    if (skipped.length > 0) {
-      void vscode.window.showWarningMessage(
-        multiEntityBatchToast(skipped.map((s) => s.fileName)),
-      );
-    }
-  } catch (err) {
-    log.warn("autoLoad", `OMC client unavailable: ${(err as Error).message}`);
   }
 }

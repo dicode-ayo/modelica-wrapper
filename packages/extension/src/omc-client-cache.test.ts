@@ -146,6 +146,97 @@ describe("createOmcClientCache", () => {
     expect(spawn).toHaveBeenCalledTimes(2);
   });
 
+  it("fires onReset once per reset(), interleaved as close -> onReset -> spawn", async () => {
+    const a = { id: "a" };
+    const b = { id: "b" };
+    const order: string[] = [];
+    const spawn = vi
+      .fn<() => Promise<object>>()
+      .mockImplementationOnce(async () => {
+        order.push("spawn");
+        return a;
+      })
+      .mockImplementationOnce(async () => {
+        order.push("spawn");
+        return b;
+      });
+    const cache = createOmcClientCache(
+      spawn,
+      async () => {
+        order.push("close");
+      },
+      () => order.push("onReset"),
+    );
+
+    await cache.ensure();
+    expect(order).toEqual(["spawn"]);
+
+    order.length = 0;
+    expect(await cache.reset()).toBe(b);
+    expect(order).toEqual(["close", "onReset", "spawn"]);
+  });
+
+  it("does not require onReset — reset() still works when it's omitted", async () => {
+    const spawn = vi
+      .fn<() => Promise<object>>()
+      .mockResolvedValueOnce({ id: "a" })
+      .mockResolvedValueOnce({ id: "b" });
+    const cache = createOmcClientCache(spawn, noopClose);
+
+    await cache.ensure();
+    await expect(cache.reset()).resolves.toEqual({ id: "b" });
+  });
+
+  it("shutdown() closes the current client and rejects a later ensure() without spawning", async () => {
+    const a = { id: "a" };
+    const spawn = vi.fn<() => Promise<object>>().mockResolvedValueOnce(a);
+    const closed: object[] = [];
+    const cache = createOmcClientCache(spawn, async (c) => {
+      closed.push(c);
+    });
+
+    expect(await cache.ensure()).toBe(a);
+    await cache.shutdown();
+    expect(closed).toEqual([a]);
+
+    await expect(cache.ensure()).rejects.toThrow(/shut down/);
+    expect(spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it("shutdown() rejects a queued task's ensure() that arrives after it, instead of spawning an orphan", async () => {
+    // Mirrors a `SessionQueue`-queued task (workspace autoload, the
+    // mo-file-watcher reseed) still in flight when `deactivate()` runs: its
+    // `ensureClient()` call lands after shutdown, not before it.
+    const { spawn, pending } = deferredSpawns();
+    const closed: object[] = [];
+    const cache = createOmcClientCache(spawn, async (c) => {
+      closed.push(c);
+    });
+
+    const first = cache.ensure();
+    nth(pending, 0).resolve({ id: "a" });
+    await first;
+
+    await cache.shutdown();
+
+    // A task queued before shutdown but only reaching ensureClient() after it
+    // must not spawn a fresh, never-to-be-closed OMC process.
+    const queuedTask = cache.ensure();
+    await expect(queuedTask).rejects.toThrow(/shut down/);
+    expect(spawn).toHaveBeenCalledTimes(1);
+  });
+
+  it("shutdown() rejects reset() instead of spawning a replacement", async () => {
+    const spawn = vi.fn<() => Promise<object>>().mockResolvedValueOnce({});
+    const cache = createOmcClientCache(spawn, noopClose);
+
+    await cache.ensure();
+    await cache.shutdown();
+
+    await expect(cache.reset()).rejects.toThrow(/shut down/);
+    expect(spawn).toHaveBeenCalledTimes(1);
+  });
+
   it("a stale reject doesn't clobber a newer in-flight spawn", async () => {
     const { spawn, pending } = deferredSpawns();
     const cache = createOmcClientCache(spawn, noopClose);

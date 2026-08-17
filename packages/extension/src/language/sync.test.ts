@@ -62,6 +62,80 @@ describe("OmcSync — invalidate (re-load on save / forget on close)", () => {
   });
 });
 
+describe("OmcSync — resetSession (`:reset`)", () => {
+  it("clears the loaded flag for every tracked file, so the next touch re-loads", async () => {
+    const client = clientOk();
+    const sync = new OmcSync(client);
+
+    await sync.ensureLoaded("/a/Foo.mo");
+    await sync.ensureLoaded("/a/Bar.mo");
+    expect(sync.isLoaded("/a/Foo.mo")).toBe(true);
+    expect(sync.isLoaded("/a/Bar.mo")).toBe(true);
+
+    sync.resetSession();
+
+    expect(sync.isLoaded("/a/Foo.mo")).toBe(false);
+    expect(sync.isLoaded("/a/Bar.mo")).toBe(false);
+    await sync.ensureLoaded("/a/Foo.mo");
+    expect(client.loadFile).toHaveBeenCalledTimes(3);
+  });
+
+  it("discards an in-flight load whose generation predates the session reset", async () => {
+    let resolveLoad: (value: { success: boolean }) => void = () => {};
+    const loadFile = vi.fn(
+      () =>
+        new Promise<{ success: boolean }>((res) => {
+          resolveLoad = res;
+        }),
+    );
+    const sync = new OmcSync({ parseFile: singleEntity(), loadFile });
+
+    const inFlight = sync.ensureLoaded("/a/Foo.mo");
+    await vi.waitFor(() => expect(loadFile).toHaveBeenCalled());
+    sync.resetSession();
+    resolveLoad({ success: true });
+
+    expect(await inFlight).toBe(false);
+    expect(sync.isLoaded("/a/Foo.mo")).toBe(false);
+  });
+
+  it("forgets a multi-entity refusal, so the next touch reconsiders the file", async () => {
+    const client: SyncClient = {
+      parseFile: vi.fn(() => Promise.resolve({ classNames: ["A", "B"] })),
+      loadFile: vi.fn(() => Promise.resolve({ success: true })),
+    };
+    const sync = new OmcSync(client);
+    await sync.ensureLoaded("/a/AB.mo");
+    expect(client.parseFile).toHaveBeenCalledTimes(1);
+
+    sync.resetSession();
+    await sync.ensureLoaded("/a/AB.mo");
+
+    expect(client.parseFile).toHaveBeenCalledTimes(2);
+  });
+
+  it("is a no-op when nothing was ever touched", () => {
+    const sync = new OmcSync(clientOk());
+    expect(() => sync.resetSession()).not.toThrow();
+  });
+
+  it("does not re-normalize an already-normalized key (non-idempotent normalizer)", async () => {
+    // Appends on every call, so normalizing an already-normalized key changes
+    // it again — this only passes if `resetSession` invalidates the tracked
+    // keys directly instead of routing them back through `normalizeKey`.
+    const normalizeKey = (p: string): string => `${p}!`;
+    const client = clientOk();
+    const sync = new OmcSync(client, { normalizeKey });
+
+    await sync.ensureLoaded("/a/Foo.mo");
+    expect(sync.isLoaded("/a/Foo.mo")).toBe(true);
+
+    sync.resetSession();
+
+    expect(sync.isLoaded("/a/Foo.mo")).toBe(false);
+  });
+});
+
 describe("OmcSync — failure handling", () => {
   it("leaves the file unloaded when loadFile reports failure (retries next touch)", async () => {
     const client = clientOk(false);

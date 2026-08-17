@@ -42,7 +42,9 @@ import * as vscode from "vscode";
 import { enclosingScope } from "@dicode/modelica-lang-core";
 
 import { pathExists } from "./fs-util.js";
+import type { ClassInvalidationRegistry } from "./invalidation.js";
 import { log } from "./logger.js";
+import { SessionQueue } from "./session-queue.js";
 import { multiEntityMessage, multiEntityToast } from "./single-entity-file.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
 import {
@@ -569,6 +571,7 @@ export function registerMoFileWatcher(deps: {
   libraryTree: LibraryWebviewProvider;
   sourceProvider: ModelicaSourceProvider;
   guard: SelfWriteGuard;
+  invalidation: ClassInvalidationRegistry;
 }): vscode.Disposable {
   const index = createPathClassIndex();
   const watcherDeps: MoWatcherDeps = {
@@ -584,7 +587,9 @@ export function registerMoFileWatcher(deps: {
 
   // Seed before reacting: a delete resolves its classes from the index, so an
   // event that lands mid-seed must wait or it would no-op a real deletion.
-  const seedReady = seedWorkspaceIndex(deps.ensureClient, index);
+  const seedQueue = new SessionQueue(
+    seedWorkspaceIndex(deps.ensureClient, index),
+  );
 
   // Serialize per path so overlapping events (a rename is delete+create; rapid
   // saves) can't interleave their index writes and leave it out of sync.
@@ -600,7 +605,7 @@ export function registerMoFileWatcher(deps: {
     const resolvedKey = path.resolve(key);
     const prior = inFlight.get(resolvedKey) ?? Promise.resolve();
     const next = prior
-      .then(() => seedReady)
+      .then(() => seedQueue.current)
       .then(fn)
       .catch((err) =>
         log.warn(
@@ -661,6 +666,13 @@ export function registerMoFileWatcher(deps: {
         handleOrderDelete(watcherDeps, uri.fsPath),
       ),
     ),
+    // On `seedQueue` so a queued `.mo` event waits for it and back-to-back
+    // resets serialize. `seedWorkspaceIndex` reads disk, not OMC's AST, so
+    // `:reset` alone doesn't stale the index — this reseed's value is
+    // retrying a mount-time seed that failed because OMC wasn't up yet.
+    deps.invalidation.registerSessionReplaced(() => {
+      seedQueue.enqueue(() => seedWorkspaceIndex(deps.ensureClient, index));
+    }),
   ];
 
   return vscode.Disposable.from(...subs);

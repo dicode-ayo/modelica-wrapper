@@ -179,6 +179,24 @@ describe("registerLanguageFeatures — invalidation wiring", () => {
     disposable.dispose();
     invalidate.mockRestore();
   });
+
+  it("clears every loaded-into-OMC flag on sessionReplaced (`:reset`)", () => {
+    // `:reset` wipes the whole AST at once, unlike a per-class change — the
+    // opposite of the "leave loaded flags alone" case above, and the case
+    // classChanged alone can never cover.
+    const resetSession = vi.spyOn(OmcSync.prototype, "resetSession");
+    const { invalidation, disposable } = register();
+
+    invalidation.sessionReplaced();
+    expect(resetSession).toHaveBeenCalledTimes(1);
+
+    disposable.dispose();
+    resetSession.mockClear();
+    invalidation.sessionReplaced();
+    expect(resetSession).not.toHaveBeenCalled();
+
+    resetSession.mockRestore();
+  });
 });
 
 describe("registerLanguageFeatures — save wiring", () => {

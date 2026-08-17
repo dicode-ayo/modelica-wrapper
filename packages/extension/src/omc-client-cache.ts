@@ -17,16 +17,35 @@ export interface OmcClientCache<T> {
   reset(): Promise<T>;
   /** Close the current client, if any. */
   close(): Promise<void>;
+  /**
+   * Close the current client and permanently reject every later `ensure()`/
+   * `reset()` instead of spawning. For extension deactivation: a queued task
+   * (workspace autoload, the mo-file-watcher reseed) can still be in flight
+   * when `deactivate()` runs, and a client it spawns after shutdown would
+   * never get closed by anything.
+   */
+  shutdown(): Promise<void>;
 }
 
 export function createOmcClientCache<T>(
   spawn: () => Promise<T>,
   closeClient: (client: T) => Promise<void>,
+  /**
+   * Called synchronously on `reset()`, after the old client is closed and
+   * before the new one starts spawning. Lets a caller fan "the session was
+   * replaced" out to its own listeners (e.g. a class-invalidation registry)
+   * without this module knowing that type exists.
+   */
+  onReset?: () => void,
 ): OmcClientCache<T> {
   let client: T | undefined;
   let inFlight: Promise<T> | undefined;
+  let shutDown = false;
 
   function ensure(): Promise<T> {
+    if (shutDown) {
+      return Promise.reject(new Error("OMC client cache is shut down"));
+    }
     if (client !== undefined) return Promise.resolve(client);
     if (inFlight === undefined) {
       // Identity-guard the continuations against `inFlight` being swapped out
@@ -63,9 +82,18 @@ export function createOmcClientCache<T>(
   }
 
   async function reset(): Promise<T> {
+    if (shutDown) {
+      return Promise.reject(new Error("OMC client cache is shut down"));
+    }
     await close();
+    onReset?.();
     return ensure();
   }
 
-  return { ensure, reset, close };
+  async function shutdown(): Promise<void> {
+    shutDown = true;
+    await close();
+  }
+
+  return { ensure, reset, close, shutdown };
 }

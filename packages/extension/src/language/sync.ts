@@ -97,7 +97,11 @@ export class OmcSync {
    * load, and bump the generation so the evicted load discards its result.
    */
   invalidate(filePath: string): void {
-    const key = this.normalizeKey(filePath);
+    this.invalidateKey(this.normalizeKey(filePath));
+  }
+
+  /** {@link invalidate}'s body, for a key already run through {@link normalizeKey}. */
+  private invalidateKey(key: string): void {
     this.loaded.delete(key);
     this.inFlight.delete(key);
     // A save that splits the file out into one class each makes it loadable,
@@ -108,6 +112,22 @@ export class OmcSync {
 
   isLoaded(filePath: string): boolean {
     return this.loaded.has(this.normalizeKey(filePath));
+  }
+
+  /**
+   * Forget every load state this instance tracks: the OMC session those
+   * "loaded"/"in-flight"/"multi-entity" facts describe is gone (`:reset`).
+   * The keys are already normalized and {@link OmcSyncOptions.normalizeKey}
+   * is not required to be idempotent, so they go straight to
+   * {@link invalidateKey}.
+   */
+  resetSession(): void {
+    const keys = new Set([
+      ...this.loaded,
+      ...this.inFlight.keys(),
+      ...this.multiEntity,
+    ]);
+    for (const key of keys) this.invalidateKey(key);
   }
 
   private async load(filePath: string, key: string): Promise<boolean> {

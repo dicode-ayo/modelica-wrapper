@@ -295,6 +295,14 @@ export function completeApply(index = 0): void {
   pending.resolve();
 }
 
+/** Paths `workspace.findFiles` resolves with. */
+let foundFiles: string[] = [];
+
+/** Set the paths the mock's `workspace.findFiles` reports (e.g. an index seed). */
+export function setFindFilesResult(paths: string[]): void {
+  foundFiles = paths;
+}
+
 /**
  * Minimal `window` namespace. The message helpers record their args on a
  * module-level log so unit tests can assert which toast a code path
@@ -402,6 +410,25 @@ export const workspace = {
         permissions: 0,
       });
     },
+  },
+  /** Paths `findFiles` resolves with; set via {@link setFindFilesResult}. */
+  findFiles(_pattern: string): Promise<UriImpl[]> {
+    return Promise.resolve(foundFiles.map((p) => UriImpl.file(p)));
+  },
+  /** No-op watcher: tests drive index/reseed behavior by calling the exported
+   *  handlers directly rather than firing simulated fs events through this. */
+  createFileSystemWatcher(_pattern: string): {
+    onDidChange(listener: (uri: UriImpl) => void): Disposable;
+    onDidCreate(listener: (uri: UriImpl) => void): Disposable;
+    onDidDelete(listener: (uri: UriImpl) => void): Disposable;
+    dispose(): void;
+  } {
+    return {
+      onDidChange: () => new Disposable(),
+      onDidCreate: () => new Disposable(),
+      onDidDelete: () => new Disposable(),
+      dispose: () => {},
+    };
   },
   applyEdit(edit: WorkspaceEdit): Promise<boolean> {
     appliedEdits.push(edit);

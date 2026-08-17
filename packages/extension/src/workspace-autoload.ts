@@ -1,13 +1,21 @@
 /**
  * Workspace auto-load: load discovered entry files into OMC on activation, then
- * refresh the sidebar exactly once.
+ * refresh the sidebar exactly once. Also re-run on `:reset`, serialized
+ * against the activation sweep on the same queue — see
+ * {@link registerWorkspaceAutoload}.
  */
 
+import type * as vscode from "vscode";
+
+import { errorDetail } from "./error-detail.js";
+import type { ClassInvalidationRegistry } from "./invalidation.js";
 import { log } from "./logger.js";
+import { SessionQueue } from "./session-queue.js";
 import {
   multipleTopLevelClasses,
   type FileParseClient,
 } from "./single-entity-file.js";
+import { discoverEntryPoints } from "./workspace-scan.js";
 
 /** OMC surface the auto-loader calls. `OmcClient` satisfies it structurally. */
 export interface AutoLoadClient extends FileParseClient {
@@ -99,4 +107,75 @@ export async function loadEntryFilesAndRefresh(
     refresh();
   }
   return skipped;
+}
+
+/** What {@link autoLoadWorkspace} needs to discover, load, and report on entry files. */
+export interface WorkspaceAutoloadDeps {
+  /** Absolute fs paths of the workspace folders to scan. */
+  folders: () => readonly string[];
+  ensureClient: () => Promise<AutoLoadClient>;
+  /** Told once, after every load settles — see {@link loadEntryFilesAndRefresh}. */
+  refresh: () => void;
+  onSkipped: (skipped: SkippedEntryFile[]) => void;
+}
+
+/**
+ * Discover Modelica entry points across the current workspace folders and
+ * load them into OMC, refreshing the sidebar once. Run directly by
+ * {@link registerWorkspaceAutoload} for both the activation sweep and every
+ * `:reset` — both want the same discover-then-load behavior run against
+ * whatever client `ensureClient` hands back.
+ */
+export async function autoLoadWorkspace(
+  deps: WorkspaceAutoloadDeps,
+): Promise<void> {
+  try {
+    const folders = deps.folders();
+    if (folders.length === 0) return;
+    const files = await discoverEntryPoints([...folders]);
+    if (files.length === 0) return;
+    const c = await deps.ensureClient();
+    // One refresh after all loads settle — not per file, which would pile
+    // concurrent OMC fetches onto the single ZeroMQ socket during startup. The
+    // webview tree's own mount fetch is serialized with this one through the
+    // client, so they can't overlap into a busy-socket send.
+    const skipped = await loadEntryFilesAndRefresh(c, files, deps.refresh);
+    if (skipped.length > 0) deps.onSkipped(skipped);
+  } catch (err) {
+    log.warn("autoLoad", `workspace autoload failed: ${errorDetail(err)}`);
+  }
+}
+
+/** Handle returned by {@link registerWorkspaceAutoload}. `run()` starts a
+ *  sweep, queued behind any sweep already in flight; the handle is itself the
+ *  `vscode.Disposable` that stops the `:reset` listener. */
+export interface WorkspaceAutoload extends vscode.Disposable {
+  run(): void;
+}
+
+/**
+ * Wire up {@link autoLoadWorkspace} to run once, on demand (`run()`, called
+ * at activation), and again on every `:reset`. OMC's AST starts empty after a
+ * reset and nothing else re-populates it into OMC: the mo-file-watcher's own
+ * `sessionReplaced` reseed only rebuilds the local path→class index via
+ * `parseFile`, it never calls `loadFile`. Without this, the library
+ * sidebar's post-reset reload (`library-webview-provider.ts`'s own
+ * `sessionReplaced` listener) just reflects an OMC session autoload never
+ * ran against — an empty listing, not the workspace's real classes.
+ *
+ * Both `run()` and the `:reset` listener chain onto one queue rather than
+ * firing standalone, so an activation sweep still in flight when a `:reset`
+ * lands — or two `:reset`s close together — serialize instead of launching
+ * overlapping discover+load sweeps against the same client.
+ */
+export function registerWorkspaceAutoload(
+  invalidation: ClassInvalidationRegistry,
+  deps: WorkspaceAutoloadDeps,
+): WorkspaceAutoload {
+  const queue = new SessionQueue();
+  const run = (): void => {
+    queue.enqueue(() => autoLoadWorkspace(deps));
+  };
+  const sub = invalidation.registerSessionReplaced(run);
+  return { run, dispose: () => sub.dispose() };
 }

@@ -282,6 +282,15 @@ export function registerLanguageFeatures(
     handleClassChanged(className, cache, () => lookupCache);
   });
 
+  // `:reset` wipes OMC's AST without touching a single class, so the
+  // per-class signal above never fires for it — `sync`'s "loaded" flags would
+  // otherwise keep claiming files are in a symbol table that no longer
+  // exists. The lookup cache needs no wiring here: it re-points itself via
+  // `rewrap` the next time `cachedEnsureClient` sees a new client identity.
+  const onSessionReplaced = invalidation.registerSessionReplaced(() => {
+    sync.resetSession();
+  });
+
   log.info("language", "language features registered");
 
   return new vscode.Disposable(() => {
@@ -294,6 +303,7 @@ export function registerLanguageFeatures(
     onSave.dispose();
     onClose.dispose();
     onClassChanged.dispose();
+    onSessionReplaced.dispose();
     cache.dispose();
   });
 }

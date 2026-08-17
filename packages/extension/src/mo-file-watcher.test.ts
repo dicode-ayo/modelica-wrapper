@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 import {
   recordedMessages,
   resetTabs,
+  setFindFilesResult,
   setTabGroups,
   TabInputCustom,
   TabInputText,
@@ -19,13 +20,18 @@ import {
   handleOrderChange,
   handleOrderDelete,
   isDeclaredClassBusy,
+  registerMoFileWatcher,
   seedPathClassIndex,
   type MoWatcherDeps,
 } from "./mo-file-watcher.js";
 import { ClassInvalidationRegistry } from "./invalidation.js";
+import type { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import { publishSourceChanges } from "./source-invalidation.js";
-import { sourceUriFor } from "./source-provider.js";
+import {
+  sourceUriFor,
+  type ModelicaSourceProvider,
+} from "./source-provider.js";
 
 const FILE = "/ws/My/Pkg/Bar.mo";
 
@@ -63,6 +69,7 @@ function makeDeps(overrides: Partial<MoWatcherDeps> = {}): {
 beforeEach(() => {
   recordedMessages.length = 0;
   resetTabs();
+  setFindFilesResult([]);
 });
 
 describe("handleMoChange", () => {
@@ -1014,5 +1021,123 @@ describe("class invalidation from a `.mo` change", () => {
     await handleOrderChange(deps, ORDER_FILE);
 
     expect(libraryTree.iconChanged.mock.calls).toEqual([["My.Pkg"]]);
+  });
+});
+
+describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
+  function makeWatcherClient() {
+    return {
+      parseFile: vi.fn(async () => ({ classNames: ["My.Pkg.Bar"] })),
+      loadFile: vi.fn(async () => ({ success: true })),
+      deleteClass: vi.fn(async () => ({ success: true })),
+    };
+  }
+
+  it("re-seeds the path→class index from disk against the replaced session", async () => {
+    setFindFilesResult([FILE]);
+    const client = makeWatcherClient();
+    const invalidation = new ClassInvalidationRegistry();
+    const disposable = registerMoFileWatcher({
+      ensureClient: async () => client,
+      libraryTree: {
+        childrenChanged: vi.fn(),
+      } as unknown as LibraryWebviewProvider,
+      sourceProvider: {
+        notifySourceChanged: vi.fn(),
+      } as unknown as ModelicaSourceProvider,
+      guard: createSelfWriteGuard(),
+      invalidation,
+    });
+
+    // The initial mount seed.
+    await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(1));
+
+    invalidation.sessionReplaced();
+
+    await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(2));
+    expect(client.parseFile).toHaveBeenCalledWith({ fileName: FILE });
+
+    disposable.dispose();
+  });
+
+  it("stops re-seeding once the returned disposable is disposed", async () => {
+    setFindFilesResult([FILE]);
+    const client = makeWatcherClient();
+    const invalidation = new ClassInvalidationRegistry();
+    const disposable = registerMoFileWatcher({
+      ensureClient: async () => client,
+      libraryTree: {
+        childrenChanged: vi.fn(),
+      } as unknown as LibraryWebviewProvider,
+      sourceProvider: {
+        notifySourceChanged: vi.fn(),
+      } as unknown as ModelicaSourceProvider,
+      guard: createSelfWriteGuard(),
+      invalidation,
+    });
+    await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(1));
+
+    disposable.dispose();
+    invalidation.sessionReplaced();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(client.parseFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("serializes back-to-back resets instead of racing overlapping reseeds (#466)", async () => {
+    setFindFilesResult([FILE]);
+    const client = makeWatcherClient();
+    const invalidation = new ClassInvalidationRegistry();
+    const findFilesSpy = vi.spyOn(vscode.workspace, "findFiles");
+
+    // `ensureClient()`'s 2nd call overall is the first reseed's — block it so
+    // the test can fire a second `:reset` while that reseed is still pending,
+    // the way a user firing `:reset` twice in quick succession would.
+    let releaseFirstReseed: (() => void) | undefined;
+    let ensureCalls = 0;
+    const disposable = registerMoFileWatcher({
+      ensureClient: async () => {
+        ensureCalls++;
+        if (ensureCalls === 2) {
+          await new Promise<void>((resolve) => {
+            releaseFirstReseed = resolve;
+          });
+        }
+        return client;
+      },
+      libraryTree: {
+        childrenChanged: vi.fn(),
+      } as unknown as LibraryWebviewProvider,
+      sourceProvider: {
+        notifySourceChanged: vi.fn(),
+      } as unknown as ModelicaSourceProvider,
+      guard: createSelfWriteGuard(),
+      invalidation,
+    });
+
+    // The mount seed settles (its ensureClient() call isn't blocked).
+    await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(1));
+    expect(findFilesSpy).toHaveBeenCalledTimes(1);
+
+    invalidation.sessionReplaced(); // 1st `:reset`
+    await vi.waitFor(() => expect(findFilesSpy).toHaveBeenCalledTimes(2));
+    // The 1st reseed is now blocked inside its own ensureClient() call.
+    await vi.waitFor(() => expect(ensureCalls).toBe(2));
+
+    invalidation.sessionReplaced(); // 2nd `:reset`, fired before the 1st reseed settles
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // The 2nd reset's reseed is chained behind the 1st, which is still blocked.
+    expect(findFilesSpy).toHaveBeenCalledTimes(2);
+
+    releaseFirstReseed?.();
+    // The 2nd reset's reseed only starts once the 1st one it was chained
+    // behind resolves.
+    await vi.waitFor(() => expect(findFilesSpy).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(ensureCalls).toBe(3));
+
+    disposable.dispose();
+    findFilesSpy.mockRestore();
   });
 });
