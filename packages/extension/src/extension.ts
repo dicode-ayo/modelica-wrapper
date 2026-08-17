@@ -97,7 +97,7 @@ export async function activate(
     (c) => c.close(),
     () => invalidation.sessionReplaced(),
   );
-  closeOmcClientCache = () => omcClientCache.close();
+  closeOmcClientCache = () => omcClientCache.shutdown();
   const ensureClient = (): Promise<OmcClient> => omcClientCache.ensure();
   // Used by the REPL's `:reset` meta-command — anything that survives in
   // OMC's in-memory state (loaded classes, last simulation result,
