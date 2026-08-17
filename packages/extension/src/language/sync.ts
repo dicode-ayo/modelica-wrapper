@@ -97,7 +97,11 @@ export class OmcSync {
    * load, and bump the generation so the evicted load discards its result.
    */
   invalidate(filePath: string): void {
-    const key = this.normalizeKey(filePath);
+    this.invalidateKey(this.normalizeKey(filePath));
+  }
+
+  /** {@link invalidate}'s body, for a key already run through {@link normalizeKey}. */
+  private invalidateKey(key: string): void {
     this.loaded.delete(key);
     this.inFlight.delete(key);
     // A save that splits the file out into one class each makes it loadable,
@@ -113,18 +117,19 @@ export class OmcSync {
   /**
    * Forget every load state this instance tracks — the OMC session behind it
    * is gone (`:reset`), so every "loaded"/"in-flight"/"multi-entity" fact was
-   * about a symbol table that no longer exists. Reuses {@link invalidate} per
-   * tracked key so an in-flight load racing the reset is discarded the same
-   * way a save/close race is, rather than landing its stale answer after.
+   * about a symbol table that no longer exists. Reuses {@link invalidateKey}
+   * per already-normalized key (not the public {@link invalidate}, which
+   * would re-normalize a key that's already in that form) so an in-flight
+   * load racing the reset is discarded the same way a save/close race is,
+   * rather than landing its stale answer after.
    */
   resetSession(): void {
     const keys = new Set([
       ...this.loaded,
       ...this.inFlight.keys(),
       ...this.multiEntity,
-      ...this.generation.keys(),
     ]);
-    for (const key of keys) this.invalidate(key);
+    for (const key of keys) this.invalidateKey(key);
   }
 
   private async load(filePath: string, key: string): Promise<boolean> {

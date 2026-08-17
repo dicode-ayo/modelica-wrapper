@@ -118,6 +118,22 @@ describe("OmcSync — resetSession (`:reset`)", () => {
     const sync = new OmcSync(clientOk());
     expect(() => sync.resetSession()).not.toThrow();
   });
+
+  it("does not re-normalize an already-normalized key (non-idempotent normalizer)", async () => {
+    // Appends on every call, so normalizing an already-normalized key changes
+    // it again — this only passes if `resetSession` invalidates the tracked
+    // keys directly instead of routing them back through `normalizeKey`.
+    const normalizeKey = (p: string): string => `${p}!`;
+    const client = clientOk();
+    const sync = new OmcSync(client, { normalizeKey });
+
+    await sync.ensureLoaded("/a/Foo.mo");
+    expect(sync.isLoaded("/a/Foo.mo")).toBe(true);
+
+    sync.resetSession();
+
+    expect(sync.isLoaded("/a/Foo.mo")).toBe(false);
+  });
 });
 
 describe("OmcSync — failure handling", () => {
