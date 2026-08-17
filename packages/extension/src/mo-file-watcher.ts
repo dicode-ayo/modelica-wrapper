@@ -589,8 +589,6 @@ export function registerMoFileWatcher(deps: {
 
   // Seed before reacting: a delete resolves its classes from the index, so an
   // event that lands mid-seed must wait or it would no-op a real deletion.
-  // `run()`'s `.then(() => seedQueue.current)` reads the tail at continuation
-  // time, so it picks up the latest reseed too, not just this mount-time one.
   const seedQueue = new SessionQueue(
     seedWorkspaceIndex(deps.ensureClient, index),
   );
@@ -670,13 +668,10 @@ export function registerMoFileWatcher(deps: {
         handleOrderDelete(watcherDeps, uri.fsPath),
       ),
     ),
-    // Queued onto `seedQueue`, not fired standalone, so a queued `.mo` event
-    // waits for it and back-to-back resets serialize instead of overlapping.
-    // `seedWorkspaceIndex` reads disk, not OMC's AST, so `:reset` alone
-    // doesn't stale the index — this reseed's real value is retrying a
-    // mount-time seed that failed (OMC not yet ready), since nothing else
-    // does. Errors are swallowed internally, so the chain can't break on one
-    // bad run.
+    // On `seedQueue` so a queued `.mo` event waits for it and back-to-back
+    // resets serialize. `seedWorkspaceIndex` reads disk, not OMC's AST, so
+    // `:reset` alone doesn't stale the index — this reseed's value is
+    // retrying a mount-time seed that failed because OMC wasn't up yet.
     deps.invalidation.registerSessionReplaced(() => {
       seedQueue.enqueue(() => seedWorkspaceIndex(deps.ensureClient, index));
     }),

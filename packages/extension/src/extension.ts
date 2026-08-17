@@ -200,10 +200,6 @@ export async function activate(
   context.subscriptions.push(
     libraryTree,
     libraryView,
-    // `:reset` wipes OMC's AST; the library tree's own `sessionReplaced`
-    // listener reloads the tree, but with nothing reloaded into OMC that
-    // just shows an empty session. Re-running the same discover-and-load
-    // sweep as the activation-time `.run()` below repopulates OMC first.
     autoload,
     diagnostics,
     ResultViewEditorProvider.register(context, ensureClient),

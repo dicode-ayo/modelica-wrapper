@@ -99,11 +99,8 @@ export class LibraryWebviewProvider
     this.onClassChanged = invalidation.register((className) =>
       this.classChanged(className),
     );
-    // `:reset` wipes OMC's AST wholesale and fires no per-class signal, so
-    // `refresh()` — not the narrower `childrenChanged` — is what's needed
-    // here: it drops the icon caches (host and webview) as well as re-listing
-    // the tree, since a cached icon from the dead session would otherwise
-    // keep serving its stale bytes.
+    // `refresh()` rather than a re-list: an icon cached from the dead
+    // session would otherwise keep serving its stale bytes.
     this.onSessionReplaced = invalidation.registerSessionReplaced(() => {
       this.refresh();
     });
