@@ -4,6 +4,7 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ClassInvalidationRegistry } from "./invalidation.js";
 import {
   autoLoadWorkspace,
   loadEntryFilesAndRefresh,
@@ -246,28 +247,10 @@ describe("autoLoadWorkspace / registerWorkspaceAutoloadOnReset", () => {
   });
 
   describe("registerWorkspaceAutoloadOnReset", () => {
-    /** A fake `ClassInvalidationRegistry` — just enough to fire the one
-     *  registered `sessionReplaced` listener on demand. */
-    function fakeInvalidation(): {
-      registerSessionReplaced(listener: () => void): { dispose(): void };
-      fire(): void;
-    } {
-      const listeners = new Set<() => void>();
-      return {
-        registerSessionReplaced: (listener) => {
-          listeners.add(listener);
-          return { dispose: () => listeners.delete(listener) };
-        },
-        fire: () => {
-          for (const l of [...listeners]) l();
-        },
-      };
-    }
-
     it("re-runs the workspace autoload when the session is replaced (#466)", async () => {
       const refresh = vi.fn();
       const c = client([true]);
-      const invalidation = fakeInvalidation();
+      const invalidation = new ClassInvalidationRegistry();
       const deps: WorkspaceAutoloadDeps = {
         folders: () => [tmp],
         ensureClient: async () => c,
@@ -278,10 +261,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoloadOnReset", () => {
       registerWorkspaceAutoloadOnReset(invalidation, deps);
       expect(c.loadFile).not.toHaveBeenCalled();
 
-      // Before the fix, nothing re-ran the autoload on `:reset` — the library
-      // tree's own `sessionReplaced` listener just re-listed an OMC session
-      // with nothing loaded into it.
-      invalidation.fire();
+      invalidation.sessionReplaced();
 
       await vi.waitFor(() => expect(c.loadFile).toHaveBeenCalledTimes(1));
       expect(c.loadFile).toHaveBeenCalledWith({ fileName: entryFile });
@@ -290,7 +270,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoloadOnReset", () => {
 
     it("stops re-running the autoload once the returned disposable is disposed", async () => {
       const c = client([true]);
-      const invalidation = fakeInvalidation();
+      const invalidation = new ClassInvalidationRegistry();
       const deps: WorkspaceAutoloadDeps = {
         folders: () => [tmp],
         ensureClient: async () => c,
@@ -299,10 +279,56 @@ describe("autoLoadWorkspace / registerWorkspaceAutoloadOnReset", () => {
       };
 
       registerWorkspaceAutoloadOnReset(invalidation, deps).dispose();
-      invalidation.fire();
+      invalidation.sessionReplaced();
       await new Promise((r) => setTimeout(r, 0));
 
       expect(c.loadFile).not.toHaveBeenCalled();
+    });
+
+    it("serializes back-to-back resets instead of racing overlapping sweeps (#483)", async () => {
+      const invalidation = new ClassInvalidationRegistry();
+
+      // The 2nd reset's `ensureClient()` call is blocked so the test can fire
+      // a second `:reset` while the first sweep is still mid-flight, the way
+      // a user firing `:reset` twice in quick succession would.
+      let releaseFirstSweep: (() => void) | undefined;
+      let ensureCalls = 0;
+      const c = client([true, true]);
+      const deps: WorkspaceAutoloadDeps = {
+        folders: () => [tmp],
+        ensureClient: async () => {
+          ensureCalls++;
+          if (ensureCalls === 1) {
+            await new Promise<void>((resolve) => {
+              releaseFirstSweep = resolve;
+            });
+          }
+          return c;
+        },
+        refresh: vi.fn(),
+        onSkipped: vi.fn(),
+      };
+
+      registerWorkspaceAutoloadOnReset(invalidation, deps);
+
+      invalidation.sessionReplaced(); // 1st `:reset`
+      await vi.waitFor(() => expect(ensureCalls).toBe(1));
+
+      invalidation.sessionReplaced(); // 2nd `:reset`, fired before the 1st sweep settles
+      // Real disk I/O (`discoverEntryPoints`), not just microtasks — give an
+      // unserialized 2nd sweep enough real time to reach `ensureClient()` if
+      // nothing is chaining it behind the 1st.
+      await new Promise((r) => setTimeout(r, 100));
+
+      // The 2nd sweep must wait for the 1st instead of starting a second,
+      // overlapping `loadFile` pass against the same entry file.
+      expect(c.loadFile).not.toHaveBeenCalled();
+      expect(ensureCalls).toBe(1);
+
+      releaseFirstSweep?.();
+      // Both sweeps now run in sequence, chained behind one another.
+      await vi.waitFor(() => expect(c.loadFile).toHaveBeenCalledTimes(2));
+      expect(ensureCalls).toBe(2);
     });
   });
 });

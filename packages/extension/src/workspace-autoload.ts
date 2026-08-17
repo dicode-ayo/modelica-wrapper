@@ -4,6 +4,9 @@
  * {@link registerWorkspaceAutoloadOnReset}.
  */
 
+import type * as vscode from "vscode";
+
+import type { ClassInvalidationRegistry } from "./invalidation.js";
 import { log } from "./logger.js";
 import {
   multipleTopLevelClasses,
@@ -125,9 +128,9 @@ export async function autoLoadWorkspace(
 ): Promise<void> {
   const folders = deps.folders();
   if (folders.length === 0) return;
-  const files = await discoverEntryPoints([...folders]);
-  if (files.length === 0) return;
   try {
+    const files = await discoverEntryPoints([...folders]);
+    if (files.length === 0) return;
     const c = await deps.ensureClient();
     // One refresh after all loads settle — not per file, which would pile
     // concurrent OMC fetches onto the single ZeroMQ socket during startup. The
@@ -148,14 +151,18 @@ export async function autoLoadWorkspace(
  * sidebar's post-reset re-list (`library-webview-provider.ts`'s own
  * `sessionReplaced` listener) just reflects an OMC session autoload never
  * ran against — an empty listing, not the workspace's real classes.
+ *
+ * Chained onto a queue rather than fired standalone so two `:reset`s close
+ * together serialize instead of launching overlapping discover+load sweeps
+ * against the same client. `autoLoadWorkspace` never rejects (it catches its
+ * own errors), so the chain can't wedge on one bad run.
  */
 export function registerWorkspaceAutoloadOnReset(
-  invalidation: {
-    registerSessionReplaced(listener: () => void): { dispose(): void };
-  },
+  invalidation: ClassInvalidationRegistry,
   deps: WorkspaceAutoloadDeps,
-): { dispose(): void } {
+): vscode.Disposable {
+  let queue = Promise.resolve();
   return invalidation.registerSessionReplaced(() => {
-    void autoLoadWorkspace(deps);
+    queue = queue.then(() => autoLoadWorkspace(deps));
   });
 }
