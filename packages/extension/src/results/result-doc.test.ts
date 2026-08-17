@@ -389,10 +389,8 @@ describe("removeResult", () => {
     expect(removeResult(base, "r1").results.map((r) => r.id)).toEqual(["r2"]);
   });
 
-  it("leaves a card's dangling trace reference to the removed result in place", () => {
-    expect(removeResult(base, "r1").cards[0]?.traces).toEqual([
-      { result: "r1", variable: "x" },
-    ]);
+  it("prunes a card's trace that referenced the removed result", () => {
+    expect(removeResult(base, "r1").cards[0]?.traces).toEqual([]);
   });
 
   it("is a no-op for an unknown id", () => {

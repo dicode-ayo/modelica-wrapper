@@ -232,14 +232,23 @@ export function addResult(doc: ResultViewDoc, ref: ResultRef): ResultViewDoc {
   return { ...doc, results: [...doc.results, ref] };
 }
 
-/** Remove a result from the view (a no-op when it isn't present). Any card
- *  trace referencing it is left in place — `buildTraceData` already treats a
- *  trace whose result is gone as dangling and skips it. */
+/** Remove a result from the view, and prune any card trace that referenced it. */
 export function removeResult(
   doc: ResultViewDoc,
   resultId: string,
 ): ResultViewDoc {
-  return { ...doc, results: doc.results.filter((r) => r.id !== resultId) };
+  return {
+    ...doc,
+    results: doc.results.filter((r) => r.id !== resultId),
+    cards: doc.cards.map((c) =>
+      c.kind === "plot"
+        ? {
+            ...c,
+            traces: (c.traces ?? []).filter((t) => t.result !== resultId),
+          }
+        : c,
+    ),
+  };
 }
 
 /** Rename a result's display label (a no-op when it isn't present). */

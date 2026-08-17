@@ -120,7 +120,8 @@ export class ResultCache {
     return traj;
   }
 
-  /** Whether `path`'s backing file currently exists on disk. */
+  /** Whether `path` currently exists on disk (a directory counts too — this is
+   *  a plain `stat`, not a file-type check). */
   async exists(path: string): Promise<boolean> {
     return (await this.statMtimeMs(path)) !== undefined;
   }

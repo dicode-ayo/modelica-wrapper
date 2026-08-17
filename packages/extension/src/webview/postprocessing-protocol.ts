@@ -61,6 +61,4 @@ export type WebviewToExtension =
    *  `.modelica` cache quick-pick (`cache`). Matches `ResultSource`. */
   | { type: "addResult"; via: "import" | "cache" }
   | { type: "removeResult"; resultId: string }
-  | { type: "renameResult"; resultId: string; label: string }
-  /** Diagnostic from the webview. */
-  | { type: "error"; message: string };
+  | { type: "renameResult"; resultId: string; label: string };

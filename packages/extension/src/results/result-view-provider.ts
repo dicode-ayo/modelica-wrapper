@@ -6,9 +6,8 @@
  * (root `<om-result-view-root>`), parses the document with the pure
  * `parseResultViewDoc`, reads the referenced `.mat` trajectories through the
  * shared `OmcClient` (cached by path + mtime), and pushes both down. Card edits
- * from the webview (add/delete plot, add/remove trace) are applied as
- * `WorkspaceEdit`s so undo/redo and git come for free. Adding results (file
- * pick / `.modelica` cache / Simulate hook) lands in #86.
+ * from the webview (add/delete plot, add/remove trace, add/remove/rename
+ * result) are applied as `WorkspaceEdit`s so undo/redo and git come for free.
  */
 
 import * as vscode from "vscode";
@@ -57,15 +56,20 @@ export class ResultViewEditorProvider
   private constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly ensureClient: () => Promise<ResultReader>,
+    private readonly statMtimeMs?: (
+      path: string,
+    ) => Promise<number | undefined>,
   ) {}
 
   static register(
     context: vscode.ExtensionContext,
     ensureClient: () => Promise<ResultReader>,
+    statMtimeMs?: (path: string) => Promise<number | undefined>,
   ): vscode.Disposable {
     const provider = new ResultViewEditorProvider(
       context.extensionUri,
       ensureClient,
+      statMtimeMs,
     );
     return vscode.window.registerCustomEditorProvider(
       RESULT_VIEW_VIEW_TYPE,
@@ -91,7 +95,7 @@ export class ResultViewEditorProvider
     // Per-editor cache, lazily backed by the shared OMC client (resolved per
     // read). Reads serialize through the client's promise-chain mutex (OMC is
     // single-threaded).
-    const cache = new ResultCache(this.ensureClient);
+    const cache = new ResultCache(this.ensureClient, this.statMtimeMs);
 
     const post = (msg: ExtensionToWebview): void => {
       void webviewPanel.webview.postMessage(msg);
@@ -139,11 +143,14 @@ export class ResultViewEditorProvider
 
       // Independent of whether any card has traces — a result with no card
       // referencing it yet can still be missing its backing file.
-      const missingIds: string[] = [];
-      for (const result of doc.results) {
-        const filePath = resolveResultPath(document.uri, result.path);
-        if (!(await cache.exists(filePath))) missingIds.push(result.id);
-      }
+      const missingIds = (
+        await Promise.all(
+          doc.results.map(async (result) => {
+            const filePath = resolveResultPath(document.uri, result.path);
+            return (await cache.exists(filePath)) ? null : result.id;
+          }),
+        )
+      ).filter((id): id is string => id !== null);
       if (myGen === generation)
         post({ type: "missingResults", ids: missingIds });
 
@@ -258,9 +265,6 @@ export class ResultViewEditorProvider
               msg.label,
             ),
           );
-          return;
-        case "error":
-          log.warn("resultView", msg.message);
           return;
 
         default:

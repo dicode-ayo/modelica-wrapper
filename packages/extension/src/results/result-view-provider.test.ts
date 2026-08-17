@@ -1,9 +1,8 @@
 /**
  * `ResultViewEditorProvider` pins the invariants the `*.omresults` webview
- * wiring rests on: `removeResult` / `renameResult` land as real `WorkspaceEdit`s
- * (they used to be swallowed by a `default: return` — issue #465), and
- * `missingResults` is actually produced on `ready`, keyed by which results'
- * backing files don't exist on disk.
+ * wiring rests on: `removeResult` / `renameResult` land as real `WorkspaceEdit`s,
+ * and `missingResults` is produced on `ready`, keyed by which results' backing
+ * files don't exist on disk.
  *
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
@@ -24,22 +23,23 @@ import { ResultViewEditorProvider } from "./result-view-provider.js";
 
 const EXT_URI = vscode.Uri.file("/ext");
 
-/** A result view with a result whose file exists (`process.cwd()`, a real
- *  directory `stat` succeeds against) and one whose file doesn't, so a single
- *  document exercises both sides of `missingResults`. */
+/** A result view with a result whose fake `statMtimeMs` resolves ("exists")
+ *  and one whose it resolves `undefined` ("missing"), so a single document
+ *  exercises both sides of `missingResults`. */
 const DOC_TEXT = JSON.stringify({
   version: 1,
   results: [
-    {
-      id: "r1",
-      label: "run-1",
-      path: "/no/such/dir/gone.mat",
-      source: "simulate",
-    },
-    { id: "r2", label: "run-2", path: process.cwd(), source: "simulate" },
+    { id: "r1", label: "run-1", path: "gone.mat", source: "simulate" },
+    { id: "r2", label: "run-2", path: "present.mat", source: "simulate" },
   ],
   cards: [],
 });
+
+/** Fake `statMtimeMs`: resolves for every path except `gone.mat`. */
+function fakeStatMtimeMs(): (path: string) => Promise<number | undefined> {
+  return (path: string) =>
+    Promise.resolve(path.endsWith("gone.mat") ? undefined : 100);
+}
 
 function docFor(text = DOC_TEXT): vscode.TextDocument {
   return {
@@ -112,6 +112,7 @@ function makePanel(): {
  *  since the constructor is private and `register` only returns a `Disposable`. */
 function registerProvider(
   ensureClient: () => Promise<ResultReader>,
+  statMtimeMs?: (path: string) => Promise<number | undefined>,
 ): vscode.CustomTextEditorProvider {
   let captured: vscode.CustomTextEditorProvider | undefined;
   vi.spyOn(
@@ -127,21 +128,9 @@ function registerProvider(
   const context = {
     extensionUri: EXT_URI,
   } as unknown as vscode.ExtensionContext;
-  ResultViewEditorProvider.register(context, ensureClient);
+  ResultViewEditorProvider.register(context, ensureClient, statMtimeMs);
   if (captured === undefined) throw new Error("provider not registered");
   return captured;
-}
-
-/** Wait for a `missingResults` message to land, polling since the scan behind
- *  it is a real `fs.stat` round-trip (no injection point at the provider
- *  level), not a microtask. */
-async function waitForMissingResults(
-  posted: ExtensionToWebview[],
-): Promise<void> {
-  for (let i = 0; i < 50; i++) {
-    if (posted.some((m) => m.type === "missingResults")) return;
-    await new Promise((r) => setTimeout(r, 5));
-  }
 }
 
 beforeEach(() => {
@@ -209,7 +198,10 @@ describe("ResultViewEditorProvider: removeResult / renameResult", () => {
 
 describe("ResultViewEditorProvider: missingResults", () => {
   it("posts the ids whose backing file doesn't exist, on ready", async () => {
-    const provider = registerProvider(async () => fakeReader());
+    const provider = registerProvider(
+      async () => fakeReader(),
+      fakeStatMtimeMs(),
+    );
     const { panel, posted, fireReady } = makePanel();
     provider.resolveCustomTextEditor(
       docFor(),
@@ -218,7 +210,11 @@ describe("ResultViewEditorProvider: missingResults", () => {
     );
 
     fireReady();
-    await waitForMissingResults(posted);
+    await vi.waitFor(() => {
+      if (!posted.some((m) => m.type === "missingResults")) {
+        throw new Error("no missingResults yet");
+      }
+    });
 
     const missing = posted.find((m) => m.type === "missingResults");
     expect(missing?.type === "missingResults" && missing.ids).toEqual(["r1"]);
