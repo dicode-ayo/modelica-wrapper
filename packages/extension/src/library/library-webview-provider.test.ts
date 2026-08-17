@@ -374,7 +374,7 @@ describe("LibraryWebviewProvider", () => {
     expect(client.invoke.mock.calls.length).toBeGreaterThan(afterWarm);
   });
 
-  it("re-lists the root on sessionReplaced (`:reset`), without a window reload", () => {
+  it("wholesale-reloads on sessionReplaced (`:reset`), without a window reload", () => {
     // `:reset` wipes OMC's whole AST — there is no single changed class to
     // name, so this is the signal that keeps the tree from showing a dead
     // session's listing until the user manually reloads the window.
@@ -384,10 +384,26 @@ describe("LibraryWebviewProvider", () => {
 
     invalidation.sessionReplaced();
 
-    expect(posted.at(-1)).toEqual({
-      type: "libraryChildrenChanged",
-      parent: null,
-    });
+    expect(posted.at(-1)).toEqual({ type: "reload" });
+  });
+
+  it("drops the icon cache on sessionReplaced (`:reset`), not just the tree listing", async () => {
+    const { provider, client, invalidation } = makeProvider();
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    send({ type: "libraryIcon", requestId: "1", className: "Modelica" });
+    await flush();
+    const afterFirst = client.invoke.mock.calls.length;
+
+    invalidation.sessionReplaced();
+
+    send({ type: "libraryIcon", requestId: "2", className: "Modelica" });
+    await flush();
+
+    // A cache hit would leave the call count unchanged; the fresh session's
+    // reload must force a re-render instead of serving pre-reset bytes.
+    expect(client.invoke.mock.calls.length).toBeGreaterThan(afterFirst);
   });
 
   it("stops re-listing on sessionReplaced once disposed", () => {
