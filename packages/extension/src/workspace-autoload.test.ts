@@ -260,6 +260,22 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
       ).resolves.toBeUndefined();
       expect(ensureClient).not.toHaveBeenCalled();
     });
+
+    it("does not reject when a thrown value isn't an Error (#483)", async () => {
+      const ensureClient = vi.fn();
+
+      await expect(
+        autoLoadWorkspace({
+          folders: () => {
+            throw "workspaceFolders unavailable";
+          },
+          ensureClient,
+          refresh: vi.fn(),
+          onSkipped: vi.fn(),
+        }),
+      ).resolves.toBeUndefined();
+      expect(ensureClient).not.toHaveBeenCalled();
+    });
   });
 
   describe("registerWorkspaceAutoload", () => {

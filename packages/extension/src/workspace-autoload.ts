@@ -7,6 +7,7 @@
 
 import type * as vscode from "vscode";
 
+import { errorDetail } from "./error-detail.js";
 import {
   SessionQueue,
   type ClassInvalidationRegistry,
@@ -143,7 +144,7 @@ export async function autoLoadWorkspace(
     const skipped = await loadEntryFilesAndRefresh(c, files, deps.refresh);
     if (skipped.length > 0) deps.onSkipped(skipped);
   } catch (err) {
-    log.warn("autoLoad", `OMC client unavailable: ${(err as Error).message}`);
+    log.warn("autoLoad", `workspace autoload failed: ${errorDetail(err)}`);
   }
 }
 
@@ -168,8 +169,6 @@ export interface WorkspaceAutoload extends vscode.Disposable {
  * firing standalone, so an activation sweep still in flight when a `:reset`
  * lands — or two `:reset`s close together — serialize instead of launching
  * overlapping discover+load sweeps against the same client.
- * `autoLoadWorkspace` never rejects (it catches its own errors), so the
- * chain can't wedge on one bad run.
  */
 export function registerWorkspaceAutoload(
   invalidation: ClassInvalidationRegistry,
