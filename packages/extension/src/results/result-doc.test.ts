@@ -8,7 +8,9 @@ import {
   addTrace,
   deleteCard,
   parseResultViewDoc,
+  removeResult,
   removeTrace,
+  renameResult,
   serializeResultViewDoc,
 } from "./result-doc.js";
 
@@ -364,5 +366,59 @@ describe("addResult", () => {
   it("does not mutate the input document", () => {
     addResult(base, { id: "r2", label: "x", path: "x.mat", source: "import" });
     expect(base.results.map((r) => r.id)).toEqual(["r1"]);
+  });
+});
+
+describe("removeResult", () => {
+  const base: ResultViewDoc = {
+    version: 1,
+    results: [
+      { id: "r1", label: "run-1", path: "a.mat", source: "simulate" },
+      { id: "r2", label: "run-2", path: "b.mat", source: "simulate" },
+    ],
+    cards: [
+      {
+        kind: "plot",
+        id: "c1",
+        traces: [{ result: "r1", variable: "x" }],
+      },
+    ],
+  };
+
+  it("drops the target result", () => {
+    expect(removeResult(base, "r1").results.map((r) => r.id)).toEqual(["r2"]);
+  });
+
+  it("leaves a card's dangling trace reference to the removed result in place", () => {
+    expect(removeResult(base, "r1").cards[0]?.traces).toEqual([
+      { result: "r1", variable: "x" },
+    ]);
+  });
+
+  it("is a no-op for an unknown id", () => {
+    expect(removeResult(base, "ghost").results.map((r) => r.id)).toEqual([
+      "r1",
+      "r2",
+    ]);
+  });
+});
+
+describe("renameResult", () => {
+  const base: ResultViewDoc = {
+    version: 1,
+    results: [{ id: "r1", label: "run-1", path: "a.mat", source: "simulate" }],
+    cards: [],
+  };
+
+  it("updates the matching result's label", () => {
+    expect(renameResult(base, "r1", "renamed").results[0]?.label).toBe(
+      "renamed",
+    );
+  });
+
+  it("is a no-op for an unknown id", () => {
+    expect(renameResult(base, "ghost", "renamed").results).toEqual(
+      base.results,
+    );
   });
 });

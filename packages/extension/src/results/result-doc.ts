@@ -231,3 +231,25 @@ export function removeTrace(
 export function addResult(doc: ResultViewDoc, ref: ResultRef): ResultViewDoc {
   return { ...doc, results: [...doc.results, ref] };
 }
+
+/** Remove a result from the view (a no-op when it isn't present). Any card
+ *  trace referencing it is left in place — `buildTraceData` already treats a
+ *  trace whose result is gone as dangling and skips it. */
+export function removeResult(
+  doc: ResultViewDoc,
+  resultId: string,
+): ResultViewDoc {
+  return { ...doc, results: doc.results.filter((r) => r.id !== resultId) };
+}
+
+/** Rename a result's display label (a no-op when it isn't present). */
+export function renameResult(
+  doc: ResultViewDoc,
+  resultId: string,
+  label: string,
+): ResultViewDoc {
+  return {
+    ...doc,
+    results: doc.results.map((r) => (r.id === resultId ? { ...r, label } : r)),
+  };
+}

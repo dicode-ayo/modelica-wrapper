@@ -31,7 +31,9 @@ import {
   addTrace,
   deleteCard,
   parseResultViewDoc,
+  removeResult,
   removeTrace,
+  renameResult,
   serializeResultViewDoc,
 } from "./result-doc.js";
 
@@ -135,6 +137,16 @@ export class ResultViewEditorProvider
       // OMC; charts fill in once the trajectories are read.
       post({ type: "doc", doc, traceData: {} });
 
+      // Independent of whether any card has traces — a result with no card
+      // referencing it yet can still be missing its backing file.
+      const missingIds: string[] = [];
+      for (const result of doc.results) {
+        const filePath = resolveResultPath(document.uri, result.path);
+        if (!(await cache.exists(filePath))) missingIds.push(result.id);
+      }
+      if (myGen === generation)
+        post({ type: "missingResults", ids: missingIds });
+
       const hasTraces = doc.cards.some((c) => (c.traces?.length ?? 0) > 0);
       if (!hasTraces) return;
 
@@ -233,10 +245,28 @@ export class ResultViewEditorProvider
             void addCachedResult(document);
           }
           return;
-
-        // removeResult / renameResult land in #87.
-        default:
+        case "removeResult":
+          applyDocEdit(
+            removeResult(parseResultViewDoc(document.getText()), msg.resultId),
+          );
           return;
+        case "renameResult":
+          applyDocEdit(
+            renameResult(
+              parseResultViewDoc(document.getText()),
+              msg.resultId,
+              msg.label,
+            ),
+          );
+          return;
+        case "error":
+          log.warn("resultView", msg.message);
+          return;
+
+        default:
+          // A new protocol variant must add a case above; this keeps the
+          // compiler enforcing that.
+          return msg satisfies never;
       }
     });
   }

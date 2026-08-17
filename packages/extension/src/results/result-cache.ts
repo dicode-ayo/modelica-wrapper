@@ -120,6 +120,11 @@ export class ResultCache {
     return traj;
   }
 
+  /** Whether `path`'s backing file currently exists on disk. */
+  async exists(path: string): Promise<boolean> {
+    return (await this.statMtimeMs(path)) !== undefined;
+  }
+
   private async closeQuietly(): Promise<void> {
     try {
       const reader = await this.resolveReader();
