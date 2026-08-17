@@ -42,7 +42,10 @@ import * as vscode from "vscode";
 import { enclosingScope } from "@dicode/modelica-lang-core";
 
 import { pathExists } from "./fs-util.js";
-import type { ClassInvalidationRegistry } from "./invalidation.js";
+import {
+  SessionQueue,
+  type ClassInvalidationRegistry,
+} from "./invalidation.js";
 import { log } from "./logger.js";
 import { multiEntityMessage, multiEntityToast } from "./single-entity-file.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
@@ -586,10 +589,11 @@ export function registerMoFileWatcher(deps: {
 
   // Seed before reacting: a delete resolves its classes from the index, so an
   // event that lands mid-seed must wait or it would no-op a real deletion.
-  // Reassigned (not re-declared) by the `sessionReplaced` reseed below, so
-  // `run()`'s `.then(() => seedReady)` picks up the latest reseed too, not
-  // just this mount-time one.
-  let seedReady = seedWorkspaceIndex(deps.ensureClient, index);
+  // `run()`'s `.then(() => seedQueue.current)` reads the tail at continuation
+  // time, so it picks up the latest reseed too, not just this mount-time one.
+  const seedQueue = new SessionQueue(
+    seedWorkspaceIndex(deps.ensureClient, index),
+  );
 
   // Serialize per path so overlapping events (a rename is delete+create; rapid
   // saves) can't interleave their index writes and leave it out of sync.
@@ -605,7 +609,7 @@ export function registerMoFileWatcher(deps: {
     const resolvedKey = path.resolve(key);
     const prior = inFlight.get(resolvedKey) ?? Promise.resolve();
     const next = prior
-      .then(() => seedReady)
+      .then(() => seedQueue.current)
       .then(fn)
       .catch((err) =>
         log.warn(
@@ -666,7 +670,7 @@ export function registerMoFileWatcher(deps: {
         handleOrderDelete(watcherDeps, uri.fsPath),
       ),
     ),
-    // Chained onto `seedReady`, not fired standalone, so a queued `.mo` event
+    // Queued onto `seedQueue`, not fired standalone, so a queued `.mo` event
     // waits for it and back-to-back resets serialize instead of overlapping.
     // `seedWorkspaceIndex` reads disk, not OMC's AST, so `:reset` alone
     // doesn't stale the index — this reseed's real value is retrying a
@@ -674,9 +678,7 @@ export function registerMoFileWatcher(deps: {
     // does. Errors are swallowed internally, so the chain can't break on one
     // bad run.
     deps.invalidation.registerSessionReplaced(() => {
-      seedReady = seedReady.then(() =>
-        seedWorkspaceIndex(deps.ensureClient, index),
-      );
+      seedQueue.enqueue(() => seedWorkspaceIndex(deps.ensureClient, index));
     }),
   ];
 
