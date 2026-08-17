@@ -1,6 +1,7 @@
 /**
  * Workspace auto-load: load discovered entry files into OMC on activation, then
- * refresh the sidebar exactly once.
+ * refresh the sidebar exactly once. Also re-run on `:reset` — see
+ * {@link registerWorkspaceAutoloadOnReset}.
  */
 
 import { log } from "./logger.js";
@@ -8,6 +9,7 @@ import {
   multipleTopLevelClasses,
   type FileParseClient,
 } from "./single-entity-file.js";
+import { discoverEntryPoints } from "./workspace-scan.js";
 
 /** OMC surface the auto-loader calls. `OmcClient` satisfies it structurally. */
 export interface AutoLoadClient extends FileParseClient {
@@ -99,4 +101,61 @@ export async function loadEntryFilesAndRefresh(
     refresh();
   }
   return skipped;
+}
+
+/** What {@link autoLoadWorkspace} needs to discover, load, and report on entry files. */
+export interface WorkspaceAutoloadDeps {
+  /** Absolute fs paths of the workspace folders to scan. */
+  folders: () => readonly string[];
+  ensureClient: () => Promise<AutoLoadClient>;
+  /** Told once, after every load settles — see {@link loadEntryFilesAndRefresh}. */
+  refresh: () => void;
+  onSkipped: (skipped: SkippedEntryFile[]) => void;
+}
+
+/**
+ * Discover Modelica entry points across the current workspace folders and
+ * load them into OMC, refreshing the sidebar once. Shared by the initial
+ * activation sweep and {@link registerWorkspaceAutoloadOnReset} — both want
+ * the same discover-then-load behavior run against whatever client
+ * `ensureClient` hands back.
+ */
+export async function autoLoadWorkspace(
+  deps: WorkspaceAutoloadDeps,
+): Promise<void> {
+  const folders = deps.folders();
+  if (folders.length === 0) return;
+  const files = await discoverEntryPoints([...folders]);
+  if (files.length === 0) return;
+  try {
+    const c = await deps.ensureClient();
+    // One refresh after all loads settle — not per file, which would pile
+    // concurrent OMC fetches onto the single ZeroMQ socket during startup. The
+    // webview tree's own mount fetch is serialized with this one through the
+    // client, so they can't overlap into a busy-socket send.
+    const skipped = await loadEntryFilesAndRefresh(c, files, deps.refresh);
+    if (skipped.length > 0) deps.onSkipped(skipped);
+  } catch (err) {
+    log.warn("autoLoad", `OMC client unavailable: ${(err as Error).message}`);
+  }
+}
+
+/**
+ * Re-run {@link autoLoadWorkspace} on `:reset`. OMC's AST starts empty after
+ * a reset and nothing else re-populates it into OMC: the mo-file-watcher's
+ * own `sessionReplaced` reseed only rebuilds the local path→class index via
+ * `parseFile`, it never calls `loadFile`. Without this, the library
+ * sidebar's post-reset re-list (`library-webview-provider.ts`'s own
+ * `sessionReplaced` listener) just reflects an OMC session autoload never
+ * ran against — an empty listing, not the workspace's real classes.
+ */
+export function registerWorkspaceAutoloadOnReset(
+  invalidation: {
+    registerSessionReplaced(listener: () => void): { dispose(): void };
+  },
+  deps: WorkspaceAutoloadDeps,
+): { dispose(): void } {
+  return invalidation.registerSessionReplaced(() => {
+    void autoLoadWorkspace(deps);
+  });
 }

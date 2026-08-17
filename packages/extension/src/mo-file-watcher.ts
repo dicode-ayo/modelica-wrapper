@@ -586,7 +586,10 @@ export function registerMoFileWatcher(deps: {
 
   // Seed before reacting: a delete resolves its classes from the index, so an
   // event that lands mid-seed must wait or it would no-op a real deletion.
-  const seedReady = seedWorkspaceIndex(deps.ensureClient, index);
+  // Reassigned (not re-declared) by the `sessionReplaced` reseed below, so
+  // `run()`'s `.then(() => seedReady)` picks up the latest reseed too, not
+  // just this mount-time one.
+  let seedReady = seedWorkspaceIndex(deps.ensureClient, index);
 
   // Serialize per path so overlapping events (a rename is delete+create; rapid
   // saves) can't interleave their index writes and leave it out of sync.
@@ -665,11 +668,24 @@ export function registerMoFileWatcher(deps: {
     ),
     // `:reset` closes OMC and spawns a fresh one with an empty AST, so every
     // path→class mapping in `index` now describes classes a dead session
-    // once held. Re-running the same seed the initial mount used is the
-    // whole fix — it re-derives the index from disk against whatever client
-    // `ensureClient` hands back next, fire-and-forget like the initial seed.
+    // once held. Re-running the same seed the initial mount used is the fix
+    // — it re-derives the index from disk against whatever client
+    // `ensureClient` hands back next.
+    //
+    // Chained onto `seedReady` rather than fired standalone: `run()` only
+    // ever awaits `seedReady`, so a reseed that doesn't update it would leave
+    // a `.mo` event queued right after `:reset` racing a rebuild it can't see
+    // finish. Chaining also serializes back-to-back resets — a second
+    // `:reset` firing before the first reseed's `ensureClient()` resolves
+    // would otherwise launch a second, overlapping `findFiles`+`parseFile`
+    // sweep and risk that first `ensureClient()` losing the identity-guard
+    // race in `omc-client-cache.ts` against the second reset's `close()`.
+    // `seedWorkspaceIndex` never rejects (it logs and swallows its own
+    // errors), so this chain is never broken by one bad reseed.
     deps.invalidation.registerSessionReplaced(() => {
-      void seedWorkspaceIndex(deps.ensureClient, index);
+      seedReady = seedReady.then(() =>
+        seedWorkspaceIndex(deps.ensureClient, index),
+      );
     }),
   ];
 

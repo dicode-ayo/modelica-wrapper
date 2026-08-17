@@ -1,8 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import * as fsp from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  autoLoadWorkspace,
   loadEntryFilesAndRefresh,
+  registerWorkspaceAutoloadOnReset,
   type AutoLoadClient,
+  type WorkspaceAutoloadDeps,
 } from "./workspace-autoload.js";
 
 /** Every entry file parses as a single entity unless a test says otherwise. */
@@ -189,5 +196,113 @@ describe("loadEntryFilesAndRefresh", () => {
     await loadEntryFilesAndRefresh(c, ["A.mo", "B.mo"], refresh);
 
     expect(refresh).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("autoLoadWorkspace / registerWorkspaceAutoloadOnReset", () => {
+  let tmp: string;
+  let entryFile: string;
+
+  beforeEach(async () => {
+    tmp = await fsp.mkdtemp(path.join(os.tmpdir(), "ws-autoload-"));
+    entryFile = path.join(tmp, "Foo.mo");
+    await fsp.writeFile(entryFile, "model Foo\nend Foo;\n");
+  });
+
+  afterEach(async () => {
+    await fsp.rm(tmp, { recursive: true, force: true });
+  });
+
+  describe("autoLoadWorkspace", () => {
+    it("discovers and loads the workspace's entry files, then refreshes once", async () => {
+      const refresh = vi.fn();
+      const onSkipped = vi.fn();
+      const c = client([true]);
+
+      await autoLoadWorkspace({
+        folders: () => [tmp],
+        ensureClient: async () => c,
+        refresh,
+        onSkipped,
+      });
+
+      expect(c.loadFile).toHaveBeenCalledWith({ fileName: entryFile });
+      expect(refresh).toHaveBeenCalledTimes(1);
+      expect(onSkipped).not.toHaveBeenCalled();
+    });
+
+    it("does nothing when there are no workspace folders", async () => {
+      const ensureClient = vi.fn();
+
+      await autoLoadWorkspace({
+        folders: () => [],
+        ensureClient,
+        refresh: vi.fn(),
+        onSkipped: vi.fn(),
+      });
+
+      expect(ensureClient).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("registerWorkspaceAutoloadOnReset", () => {
+    /** A fake `ClassInvalidationRegistry` — just enough to fire the one
+     *  registered `sessionReplaced` listener on demand. */
+    function fakeInvalidation(): {
+      registerSessionReplaced(listener: () => void): { dispose(): void };
+      fire(): void;
+    } {
+      const listeners = new Set<() => void>();
+      return {
+        registerSessionReplaced: (listener) => {
+          listeners.add(listener);
+          return { dispose: () => listeners.delete(listener) };
+        },
+        fire: () => {
+          for (const l of [...listeners]) l();
+        },
+      };
+    }
+
+    it("re-runs the workspace autoload when the session is replaced (#466)", async () => {
+      const refresh = vi.fn();
+      const c = client([true]);
+      const invalidation = fakeInvalidation();
+      const deps: WorkspaceAutoloadDeps = {
+        folders: () => [tmp],
+        ensureClient: async () => c,
+        refresh,
+        onSkipped: vi.fn(),
+      };
+
+      registerWorkspaceAutoloadOnReset(invalidation, deps);
+      expect(c.loadFile).not.toHaveBeenCalled();
+
+      // Before the fix, nothing re-ran the autoload on `:reset` — the library
+      // tree's own `sessionReplaced` listener just re-listed an OMC session
+      // with nothing loaded into it.
+      invalidation.fire();
+
+      await vi.waitFor(() => expect(c.loadFile).toHaveBeenCalledTimes(1));
+      expect(c.loadFile).toHaveBeenCalledWith({ fileName: entryFile });
+      expect(refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it("stops re-running the autoload once the returned disposable is disposed", async () => {
+      const c = client([true]);
+      const invalidation = fakeInvalidation();
+      const deps: WorkspaceAutoloadDeps = {
+        folders: () => [tmp],
+        ensureClient: async () => c,
+        refresh: vi.fn(),
+        onSkipped: vi.fn(),
+      };
+
+      registerWorkspaceAutoloadOnReset(invalidation, deps).dispose();
+      invalidation.fire();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(c.loadFile).not.toHaveBeenCalled();
+    });
   });
 });

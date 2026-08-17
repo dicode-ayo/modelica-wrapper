@@ -1085,4 +1085,63 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
 
     expect(client.parseFile).toHaveBeenCalledTimes(1);
   });
+
+  it("serializes back-to-back resets instead of racing overlapping reseeds (#466)", async () => {
+    setFindFilesResult([FILE]);
+    const client = makeWatcherClient();
+    const invalidation = new ClassInvalidationRegistry();
+    const findFilesSpy = vi.spyOn(vscode.workspace, "findFiles");
+
+    // `ensureClient()`'s 2nd call overall is the first reseed's — block it so
+    // the test can fire a second `:reset` while that reseed is still pending,
+    // the way a user firing `:reset` twice in quick succession would.
+    let releaseFirstReseed: (() => void) | undefined;
+    let ensureCalls = 0;
+    const disposable = registerMoFileWatcher({
+      ensureClient: async () => {
+        ensureCalls++;
+        if (ensureCalls === 2) {
+          await new Promise<void>((resolve) => {
+            releaseFirstReseed = resolve;
+          });
+        }
+        return client;
+      },
+      libraryTree: {
+        childrenChanged: vi.fn(),
+      } as unknown as LibraryWebviewProvider,
+      sourceProvider: {
+        notifySourceChanged: vi.fn(),
+      } as unknown as ModelicaSourceProvider,
+      guard: createSelfWriteGuard(),
+      invalidation,
+    });
+
+    // The mount seed settles (its ensureClient() call isn't blocked).
+    await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(1));
+    expect(findFilesSpy).toHaveBeenCalledTimes(1);
+
+    invalidation.sessionReplaced(); // 1st `:reset`
+    await vi.waitFor(() => expect(findFilesSpy).toHaveBeenCalledTimes(2));
+    // The 1st reseed is now blocked inside its own ensureClient() call.
+    await vi.waitFor(() => expect(ensureCalls).toBe(2));
+
+    invalidation.sessionReplaced(); // 2nd `:reset`, fired before the 1st reseed settles
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Before the fix, the 2nd reset's reseed ran standalone (`void
+    // seedWorkspaceIndex(...)`) and called `findFiles` immediately,
+    // overlapping the still-in-flight 1st reseed instead of waiting for it.
+    expect(findFilesSpy).toHaveBeenCalledTimes(2);
+
+    releaseFirstReseed?.();
+    // The 2nd reset's reseed only starts once the 1st one it was chained
+    // behind resolves.
+    await vi.waitFor(() => expect(findFilesSpy).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(ensureCalls).toBe(3));
+
+    disposable.dispose();
+    findFilesSpy.mockRestore();
+  });
 });

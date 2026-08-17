@@ -53,8 +53,11 @@ import { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
 import { WriteVerdicts } from "./write-verdict.js";
 import { multiEntityBatchToast } from "./single-entity-file.js";
-import { loadEntryFilesAndRefresh } from "./workspace-autoload.js";
-import { discoverEntryPoints } from "./workspace-scan.js";
+import {
+  autoLoadWorkspace,
+  registerWorkspaceAutoloadOnReset,
+  type WorkspaceAutoloadDeps,
+} from "./workspace-autoload.js";
 
 // Built inside `activate()`, not here: `onReset` closes over that run's
 // `ClassInvalidationRegistry`, and the registry is scoped per-activation.
@@ -108,6 +111,18 @@ export async function activate(
     libraryTree,
     { webviewOptions: { retainContextWhenHidden: true } },
   );
+
+  const autoloadDeps: WorkspaceAutoloadDeps = {
+    folders: () =>
+      (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath),
+    ensureClient,
+    refresh: () => libraryTree.childrenChanged(null),
+    onSkipped: (skipped) => {
+      void vscode.window.showWarningMessage(
+        multiEntityBatchToast(skipped.map((s) => s.fileName)),
+      );
+    },
+  };
 
   const selfWriteGuard = createSelfWriteGuard();
   // One instance for the whole session: the origin half of a verdict has to be
@@ -178,6 +193,11 @@ export async function activate(
   context.subscriptions.push(
     libraryTree,
     libraryView,
+    // `:reset` wipes OMC's AST; the library tree's own `sessionReplaced`
+    // listener re-lists the root, but with nothing reloaded that just shows
+    // an empty session. Re-running the same discover-and-load sweep as the
+    // activation-time autoload below repopulates OMC first.
+    registerWorkspaceAutoloadOnReset(invalidation, autoloadDeps),
     diagnostics,
     ResultViewEditorProvider.register(context, ensureClient),
     DiagramEditorProvider.register(
@@ -221,7 +241,7 @@ export async function activate(
   void recoverRestoredCustomEditors();
 
   // Non-blocking — we don't want to delay activation on OMC startup.
-  void autoLoadWorkspaceModels(libraryTree);
+  void autoLoadWorkspace(autoloadDeps);
 
   // Exported API surface. Tested separately via the `repl-eval` integration
   // suite; the wiring here is just plumbing.
@@ -324,43 +344,4 @@ async function cdIntoWorkspaceCacheDir(c: OmcClient): Promise<void> {
  */
 function resetClient(): Promise<OmcClient> {
   return requireOmcClientCache().reset();
-}
-
-/**
- * Discover Modelica entry points in each workspace folder and `loadFile`
- * them. Three cases per folder, in order:
- *   1. `<root>/package.mo` — the workspace IS a package, load just that.
- *   2. Otherwise, every top-level `<root>/*.mo` standalone file.
- *   3. Every top-level `<root>/<dir>/package.mo` (subdirectory packages).
- *
- * `uses=true` (the default for `loadFile`) walks `uses(...)` annotations to
- * pull in dependent libraries from MODELICAPATH. Failures are logged but
- * don't abort the whole sweep — one bad file shouldn't block others.
- */
-async function autoLoadWorkspaceModels(
-  libraryTree: LibraryWebviewProvider,
-): Promise<void> {
-  const folders = vscode.workspace.workspaceFolders ?? [];
-  if (folders.length === 0) return;
-  const files = await discoverEntryPoints(folders.map((f) => f.uri.fsPath));
-  if (files.length === 0) {
-    return;
-  }
-  try {
-    const c = await ensureClient();
-    // One refresh after all loads settle — not per file, which would pile
-    // concurrent OMC fetches onto the single ZeroMQ socket during startup. The
-    // webview tree's own mount fetch is serialized with this one through the
-    // client, so they can't overlap into a busy-socket send.
-    const skipped = await loadEntryFilesAndRefresh(c, files, () =>
-      libraryTree.childrenChanged(null),
-    );
-    if (skipped.length > 0) {
-      void vscode.window.showWarningMessage(
-        multiEntityBatchToast(skipped.map((s) => s.fileName)),
-      );
-    }
-  } catch (err) {
-    log.warn("autoLoad", `OMC client unavailable: ${(err as Error).message}`);
-  }
 }
