@@ -59,9 +59,9 @@ import {
   type WorkspaceAutoloadDeps,
 } from "./workspace-autoload.js";
 
-// Built inside `activate()`, not here: `onReset` closes over that run's
-// `ClassInvalidationRegistry`, and the registry is scoped per-activation.
-let omcClientCache: OmcClientCache<OmcClient> | undefined;
+// `deactivate()` is the one consumer that outlives `activate()`'s own scope,
+// and it only ever needs to close the cache, not spawn or reset it.
+let closeOmcClientCache: (() => Promise<void>) | undefined;
 
 /**
  * Public shape returned from `activate()`. Other extensions can reach this
@@ -89,7 +89,7 @@ export async function activate(
   // `onReset` fans "the session was replaced" out through `invalidation`
   // rather than a cache reaching for the registry itself — keeps
   // `omc-client-cache.ts` decoupled from what a reset means to any listener.
-  omcClientCache = createOmcClientCache(
+  const omcClientCache: OmcClientCache<OmcClient> = createOmcClientCache(
     async () => {
       const cfg = vscode.workspace.getConfiguration("modelica");
       const omcPath = cfg.get<string>("omcPath") ?? "";
@@ -100,6 +100,12 @@ export async function activate(
     (c) => c.close(),
     () => invalidation.sessionReplaced(),
   );
+  closeOmcClientCache = () => omcClientCache.close();
+  const ensureClient = (): Promise<OmcClient> => omcClientCache.ensure();
+  // Used by the REPL's `:reset` meta-command — anything that survives in
+  // OMC's in-memory state (loaded classes, last simulation result,
+  // command-line options) is wiped.
+  const resetClient = (): Promise<OmcClient> => omcClientCache.reset();
 
   const libraryTree = new LibraryWebviewProvider(
     context.extensionUri,
@@ -260,26 +266,8 @@ export async function activate(
 }
 
 export async function deactivate(): Promise<void> {
-  await omcClientCache?.close();
+  await closeOmcClientCache?.();
   log.dispose();
-}
-
-/**
- * `ensureClient`/`resetClient` are handed out as bare function references
- * during `activate()`, but only actually invoked once a command, provider, or
- * watcher fires — always after `activate()` has run and set the cache. This
- * only throws if something calls one of them before that, which would be a
- * wiring bug, not a runtime condition callers need to handle.
- */
-function requireOmcClientCache(): OmcClientCache<OmcClient> {
-  if (omcClientCache === undefined) {
-    throw new Error("OMC client cache used before activate() initialized it");
-  }
-  return omcClientCache;
-}
-
-function ensureClient(): Promise<OmcClient> {
-  return requireOmcClientCache().ensure();
 }
 
 /**
@@ -334,14 +322,4 @@ async function cdIntoWorkspaceCacheDir(c: OmcClient): Promise<void> {
       `cd ${cacheDir} failed: ${(err as Error).message}`,
     );
   }
-}
-
-/**
- * Tear down the cached OMC subprocess (if any) and spawn a fresh one.
- * Used by the REPL's `:reset` meta-command — anything that survives in
- * OMC's in-memory state (loaded classes, last simulation result, command-
- * line options) is wiped.
- */
-function resetClient(): Promise<OmcClient> {
-  return requireOmcClientCache().reset();
 }
