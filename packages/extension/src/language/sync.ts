@@ -115,13 +115,11 @@ export class OmcSync {
   }
 
   /**
-   * Forget every load state this instance tracks — the OMC session behind it
-   * is gone (`:reset`), so every "loaded"/"in-flight"/"multi-entity" fact was
-   * about a symbol table that no longer exists. Reuses {@link invalidateKey}
-   * per already-normalized key (not the public {@link invalidate}, which
-   * would re-normalize a key that's already in that form) so an in-flight
-   * load racing the reset is discarded the same way a save/close race is,
-   * rather than landing its stale answer after.
+   * Forget every load state this instance tracks: the OMC session those
+   * "loaded"/"in-flight"/"multi-entity" facts describe is gone (`:reset`).
+   * The keys are already normalized and {@link OmcSyncOptions.normalizeKey}
+   * is not required to be idempotent, so they go straight to
+   * {@link invalidateKey}.
    */
   resetSession(): void {
     const keys = new Set([
