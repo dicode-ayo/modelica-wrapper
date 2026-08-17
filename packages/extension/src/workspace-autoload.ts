@@ -8,11 +8,9 @@
 import type * as vscode from "vscode";
 
 import { errorDetail } from "./error-detail.js";
-import {
-  SessionQueue,
-  type ClassInvalidationRegistry,
-} from "./invalidation.js";
+import type { ClassInvalidationRegistry } from "./invalidation.js";
 import { log } from "./logger.js";
+import { SessionQueue } from "./session-queue.js";
 import {
   multipleTopLevelClasses,
   type FileParseClient,

@@ -42,11 +42,9 @@ import * as vscode from "vscode";
 import { enclosingScope } from "@dicode/modelica-lang-core";
 
 import { pathExists } from "./fs-util.js";
-import {
-  SessionQueue,
-  type ClassInvalidationRegistry,
-} from "./invalidation.js";
+import type { ClassInvalidationRegistry } from "./invalidation.js";
 import { log } from "./logger.js";
+import { SessionQueue } from "./session-queue.js";
 import { multiEntityMessage, multiEntityToast } from "./single-entity-file.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
 import {
