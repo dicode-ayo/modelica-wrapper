@@ -1054,8 +1054,6 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
 
     invalidation.sessionReplaced();
 
-    // Before the fix, nothing told the index the old session (and its
-    // classes) were gone — this reseed is the whole regression.
     await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(2));
     expect(client.parseFile).toHaveBeenCalledWith({ fileName: FILE });
 
@@ -1130,9 +1128,7 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    // Before the fix, the 2nd reset's reseed ran standalone (`void
-    // seedWorkspaceIndex(...)`) and called `findFiles` immediately,
-    // overlapping the still-in-flight 1st reseed instead of waiting for it.
+    // The 2nd reset's reseed is chained behind the 1st, which is still blocked.
     expect(findFilesSpy).toHaveBeenCalledTimes(2);
 
     releaseFirstReseed?.();

@@ -99,14 +99,8 @@ export class LibraryWebviewProvider
     this.onClassChanged = invalidation.register((className) =>
       this.classChanged(className),
     );
-    // `:reset` wipes OMC's AST wholesale — no per-class signal fires for it,
-    // so without this the tree keeps showing the dead session's listing
-    // until a manual window reload. Re-listing the root is enough: OMC
-    // itself is the source the webview lists from, so the re-fetch simply
-    // reflects whatever the fresh session now holds — which is only the
-    // workspace's real classes because `extension.ts` wires its own
-    // `sessionReplaced` listener to re-run the workspace autoload first; this
-    // provider has no workspace-folder access of its own to do that itself.
+    // `:reset` wipes OMC's AST wholesale and fires no per-class signal, so
+    // nothing else re-lists this tree.
     this.onSessionReplaced = invalidation.registerSessionReplaced(() => {
       this.childrenChanged(null);
     });

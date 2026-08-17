@@ -666,22 +666,13 @@ export function registerMoFileWatcher(deps: {
         handleOrderDelete(watcherDeps, uri.fsPath),
       ),
     ),
-    // `:reset` closes OMC and spawns a fresh one with an empty AST, so every
-    // path→class mapping in `index` now describes classes a dead session
-    // once held. Re-running the same seed the initial mount used is the fix
-    // — it re-derives the index from disk against whatever client
-    // `ensureClient` hands back next.
-    //
-    // Chained onto `seedReady` rather than fired standalone: `run()` only
-    // ever awaits `seedReady`, so a reseed that doesn't update it would leave
-    // a `.mo` event queued right after `:reset` racing a rebuild it can't see
-    // finish. Chaining also serializes back-to-back resets — a second
-    // `:reset` firing before the first reseed's `ensureClient()` resolves
-    // would otherwise launch a second, overlapping `findFiles`+`parseFile`
-    // sweep and risk that first `ensureClient()` losing the identity-guard
-    // race in `omc-client-cache.ts` against the second reset's `close()`.
-    // `seedWorkspaceIndex` never rejects (it logs and swallows its own
-    // errors), so this chain is never broken by one bad reseed.
+    // Chained onto `seedReady`, not fired standalone, so a queued `.mo` event
+    // waits for it and back-to-back resets serialize instead of overlapping.
+    // `seedWorkspaceIndex` reads disk, not OMC's AST, so `:reset` alone
+    // doesn't stale the index — this reseed's real value is retrying a
+    // mount-time seed that failed (OMC not yet ready), since nothing else
+    // does. Errors are swallowed internally, so the chain can't break on one
+    // bad run.
     deps.invalidation.registerSessionReplaced(() => {
       seedReady = seedReady.then(() =>
         seedWorkspaceIndex(deps.ensureClient, index),
