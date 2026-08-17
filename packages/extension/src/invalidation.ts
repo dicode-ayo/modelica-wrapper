@@ -88,3 +88,25 @@ export class ClassInvalidationRegistry {
     }
   }
 }
+
+/**
+ * A promise chain serializing tasks appended via {@link enqueue}, so each
+ * starts only after every previously queued one has settled. {@link current}
+ * is the tail of the chain, for a caller that must wait on whatever is
+ * queued as of now, not just what was queued when it first read the chain.
+ */
+export class SessionQueue {
+  private tail: Promise<void>;
+
+  constructor(initial: Promise<void> = Promise.resolve()) {
+    this.tail = initial;
+  }
+
+  enqueue(task: () => Promise<void>): void {
+    this.tail = this.tail.then(task);
+  }
+
+  get current(): Promise<void> {
+    return this.tail;
+  }
+}

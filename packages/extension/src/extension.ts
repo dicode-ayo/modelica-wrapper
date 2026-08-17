@@ -54,13 +54,11 @@ import { WORKSPACE_CACHE_DIRNAME } from "./workspace-cache.js";
 import { WriteVerdicts } from "./write-verdict.js";
 import { multiEntityBatchToast } from "./single-entity-file.js";
 import {
-  autoLoadWorkspace,
-  registerWorkspaceAutoloadOnReset,
+  registerWorkspaceAutoload,
   type WorkspaceAutoloadDeps,
 } from "./workspace-autoload.js";
 
-// `deactivate()` is the one consumer that outlives `activate()`'s own scope,
-// and it only ever needs to close the cache, not spawn or reset it.
+// Only `deactivate()` outlives `activate()`'s scope.
 let closeOmcClientCache: (() => Promise<void>) | undefined;
 
 /**
@@ -86,9 +84,8 @@ export async function activate(
   // number of caches is invisible here.
   const invalidation = new ClassInvalidationRegistry();
 
-  // `onReset` fans "the session was replaced" out through `invalidation`
-  // rather than a cache reaching for the registry itself — keeps
-  // `omc-client-cache.ts` decoupled from what a reset means to any listener.
+  // `onReset` closes over the per-activation `ClassInvalidationRegistry`, so
+  // this can't be built at module scope.
   const omcClientCache: OmcClientCache<OmcClient> = createOmcClientCache(
     async () => {
       const cfg = vscode.workspace.getConfiguration("modelica");
@@ -129,6 +126,10 @@ export async function activate(
       );
     },
   };
+  // One queue for both the activation-time sweep (`.run()` below) and every
+  // `:reset` (its own `sessionReplaced` listener), so a reset landing mid-sweep
+  // serializes behind it instead of racing it onto the same OMC client.
+  const autoload = registerWorkspaceAutoload(invalidation, autoloadDeps);
 
   const selfWriteGuard = createSelfWriteGuard();
   // One instance for the whole session: the origin half of a verdict has to be
@@ -200,10 +201,10 @@ export async function activate(
     libraryTree,
     libraryView,
     // `:reset` wipes OMC's AST; the library tree's own `sessionReplaced`
-    // listener re-lists the root, but with nothing reloaded that just shows
-    // an empty session. Re-running the same discover-and-load sweep as the
-    // activation-time autoload below repopulates OMC first.
-    registerWorkspaceAutoloadOnReset(invalidation, autoloadDeps),
+    // listener reloads the tree, but with nothing reloaded into OMC that
+    // just shows an empty session. Re-running the same discover-and-load
+    // sweep as the activation-time `.run()` below repopulates OMC first.
+    autoload,
     diagnostics,
     ResultViewEditorProvider.register(context, ensureClient),
     DiagramEditorProvider.register(
@@ -247,7 +248,7 @@ export async function activate(
   void recoverRestoredCustomEditors();
 
   // Non-blocking — we don't want to delay activation on OMC startup.
-  void autoLoadWorkspace(autoloadDeps);
+  autoload.run();
 
   // Exported API surface. Tested separately via the `repl-eval` integration
   // suite; the wiring here is just plumbing.

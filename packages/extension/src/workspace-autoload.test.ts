@@ -8,7 +8,7 @@ import { ClassInvalidationRegistry } from "./invalidation.js";
 import {
   autoLoadWorkspace,
   loadEntryFilesAndRefresh,
-  registerWorkspaceAutoloadOnReset,
+  registerWorkspaceAutoload,
   type AutoLoadClient,
   type WorkspaceAutoloadDeps,
 } from "./workspace-autoload.js";
@@ -200,7 +200,7 @@ describe("loadEntryFilesAndRefresh", () => {
   });
 });
 
-describe("autoLoadWorkspace / registerWorkspaceAutoloadOnReset", () => {
+describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
   let tmp: string;
   let entryFile: string;
 
@@ -244,9 +244,25 @@ describe("autoLoadWorkspace / registerWorkspaceAutoloadOnReset", () => {
 
       expect(ensureClient).not.toHaveBeenCalled();
     });
+
+    it("does not reject when deps.folders() throws (#483)", async () => {
+      const ensureClient = vi.fn();
+
+      await expect(
+        autoLoadWorkspace({
+          folders: () => {
+            throw new Error("workspaceFolders unavailable");
+          },
+          ensureClient,
+          refresh: vi.fn(),
+          onSkipped: vi.fn(),
+        }),
+      ).resolves.toBeUndefined();
+      expect(ensureClient).not.toHaveBeenCalled();
+    });
   });
 
-  describe("registerWorkspaceAutoloadOnReset", () => {
+  describe("registerWorkspaceAutoload", () => {
     it("re-runs the workspace autoload when the session is replaced (#466)", async () => {
       const refresh = vi.fn();
       const c = client([true]);
@@ -258,7 +274,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoloadOnReset", () => {
         onSkipped: vi.fn(),
       };
 
-      registerWorkspaceAutoloadOnReset(invalidation, deps);
+      registerWorkspaceAutoload(invalidation, deps);
       expect(c.loadFile).not.toHaveBeenCalled();
 
       invalidation.sessionReplaced();
@@ -268,7 +284,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoloadOnReset", () => {
       expect(refresh).toHaveBeenCalledTimes(1);
     });
 
-    it("stops re-running the autoload once the returned disposable is disposed", async () => {
+    it("stops re-running the autoload once the returned handle is disposed", async () => {
       const c = client([true]);
       const invalidation = new ClassInvalidationRegistry();
       const deps: WorkspaceAutoloadDeps = {
@@ -278,7 +294,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoloadOnReset", () => {
         onSkipped: vi.fn(),
       };
 
-      registerWorkspaceAutoloadOnReset(invalidation, deps).dispose();
+      registerWorkspaceAutoload(invalidation, deps).dispose();
       invalidation.sessionReplaced();
       await new Promise((r) => setTimeout(r, 0));
 
@@ -309,7 +325,7 @@ describe("autoLoadWorkspace / registerWorkspaceAutoloadOnReset", () => {
         onSkipped: vi.fn(),
       };
 
-      registerWorkspaceAutoloadOnReset(invalidation, deps);
+      registerWorkspaceAutoload(invalidation, deps);
 
       invalidation.sessionReplaced(); // 1st `:reset`
       await vi.waitFor(() => expect(ensureCalls).toBe(1));
@@ -326,6 +342,53 @@ describe("autoLoadWorkspace / registerWorkspaceAutoloadOnReset", () => {
       expect(ensureCalls).toBe(1);
 
       releaseFirstSweep?.();
+      // Both sweeps now run in sequence, chained behind one another.
+      await vi.waitFor(() => expect(c.loadFile).toHaveBeenCalledTimes(2));
+      expect(ensureCalls).toBe(2);
+    });
+
+    it("serializes the activation-time run() against an overlapping :reset (#483)", async () => {
+      const invalidation = new ClassInvalidationRegistry();
+
+      // The activation sweep's `ensureClient()` is blocked so the test can
+      // fire a `:reset` while it's still mid-flight, the way a user resetting
+      // during startup would.
+      let releaseActivationSweep: (() => void) | undefined;
+      let ensureCalls = 0;
+      const c = client([true, true]);
+      const deps: WorkspaceAutoloadDeps = {
+        folders: () => [tmp],
+        ensureClient: async () => {
+          ensureCalls++;
+          if (ensureCalls === 1) {
+            await new Promise<void>((resolve) => {
+              releaseActivationSweep = resolve;
+            });
+          }
+          return c;
+        },
+        refresh: vi.fn(),
+        onSkipped: vi.fn(),
+      };
+
+      const autoload = registerWorkspaceAutoload(invalidation, deps);
+
+      autoload.run(); // the activation-time sweep
+      await vi.waitFor(() => expect(ensureCalls).toBe(1));
+
+      invalidation.sessionReplaced(); // `:reset` landing mid-activation-sweep
+      // Real disk I/O (`discoverEntryPoints`), not just microtasks — give an
+      // unserialized reset sweep enough real time to reach `ensureClient()`
+      // if it isn't chained behind the activation sweep.
+      await new Promise((r) => setTimeout(r, 100));
+
+      // The reset sweep must wait for the activation sweep instead of
+      // starting a second, overlapping `loadFile` pass against the client
+      // `reset()` would otherwise have already closed.
+      expect(c.loadFile).not.toHaveBeenCalled();
+      expect(ensureCalls).toBe(1);
+
+      releaseActivationSweep?.();
       // Both sweeps now run in sequence, chained behind one another.
       await vi.waitFor(() => expect(c.loadFile).toHaveBeenCalledTimes(2));
       expect(ensureCalls).toBe(2);
