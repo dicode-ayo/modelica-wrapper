@@ -91,22 +91,31 @@ export class ClassInvalidationRegistry {
 
 /**
  * A promise chain serializing tasks appended via {@link enqueue}, so each
- * starts only after every previously queued one has settled. {@link current}
- * is the tail of the chain, for a caller that must wait on whatever is
- * queued as of now, not just what was queued when it first read the chain.
+ * starts only after every previously queued one has settled. A task that
+ * rejects is logged and absorbed rather than left in the chain: a poisoned
+ * tail would silently drop every task queued after it, and every `.mo`
+ * event waiting on {@link current} with them. {@link current} is the tail,
+ * for a caller that must wait on whatever is queued as of now, not just
+ * what was queued when it first read the chain.
  */
 export class SessionQueue {
   private tail: Promise<void>;
 
   constructor(initial: Promise<void> = Promise.resolve()) {
-    this.tail = initial;
+    this.tail = SessionQueue.absorb(initial);
   }
 
   enqueue(task: () => Promise<void>): void {
-    this.tail = this.tail.then(task);
+    this.tail = SessionQueue.absorb(this.tail.then(task));
   }
 
   get current(): Promise<void> {
     return this.tail;
+  }
+
+  private static absorb(chained: Promise<void>): Promise<void> {
+    return chained.catch((err) => {
+      log.warn("sessionQueue", `a queued task threw: ${errorDetail(err)}`);
+    });
   }
 }
