@@ -142,24 +142,34 @@ export class ResultViewEditorProvider
       post({ type: "doc", doc, traceData: {} });
 
       // Independent of whether any card has traces — a result with no card
-      // referencing it yet can still be missing its backing file.
-      const missingIds = (
-        await Promise.all(
-          doc.results.map(async (result) => {
-            const filePath = resolveResultPath(document.uri, result.path);
-            return (await cache.exists(filePath)) ? null : result.id;
-          }),
-        )
-      ).filter((id): id is string => id !== null);
-      if (myGen === generation)
-        post({ type: "missingResults", ids: missingIds });
+      // referencing it yet can still be missing its backing file. Runs
+      // concurrently with the trace read below: a disk stat and an OMC read
+      // are unrelated I/O with no reason to serialize.
+      const missingScan = (async (): Promise<void> => {
+        const missingIds = (
+          await Promise.all(
+            doc.results.map(async (result) => {
+              const filePath = resolveResultPath(document.uri, result.path);
+              return (await cache.exists(filePath)) ? null : result.id;
+            }),
+          )
+        ).filter((id): id is string => id !== null);
+        if (myGen === generation)
+          post({ type: "missingResults", ids: missingIds });
+      })();
 
       const hasTraces = doc.cards.some((c) => (c.traces?.length ?? 0) > 0);
-      if (!hasTraces) return;
+      if (!hasTraces) {
+        await missingScan;
+        return;
+      }
 
       post({ type: "loading", area: "plots", busy: true });
       try {
-        const traceData = await buildTraceData(doc);
+        const [traceData] = await Promise.all([
+          buildTraceData(doc),
+          missingScan,
+        ]);
         if (myGen === generation) post({ type: "doc", doc, traceData });
       } catch (err) {
         post({ type: "status", message: (err as Error).message, error: true });

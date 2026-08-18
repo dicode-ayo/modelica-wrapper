@@ -118,19 +118,41 @@ function registerProvider(
   vi.spyOn(
     vscodeMock.window,
     "registerCustomEditorProvider",
-  ).mockImplementation(((
-    _viewType: string,
-    provider: vscode.CustomTextEditorProvider,
-  ) => {
-    captured = provider;
-    return { dispose: () => {} };
-  }) as never);
+  ).mockImplementation((_viewType, provider) => {
+    captured = provider as vscode.CustomTextEditorProvider;
+    return new vscodeMock.Disposable(() => {});
+  });
   const context = {
     extensionUri: EXT_URI,
   } as unknown as vscode.ExtensionContext;
   ResultViewEditorProvider.register(context, ensureClient, statMtimeMs);
   if (captured === undefined) throw new Error("provider not registered");
   return captured;
+}
+
+/** Register a provider and resolve it against `docFor()`, returning the panel
+ *  harness. The fake `statMtimeMs` is the default so no test reaches real
+ *  `node:fs` — `applyEdit` fires `onDidChangeTextDocument` synchronously, which
+ *  runs `refresh()` and its missing-file scan on every edit. */
+function mount({
+  statMtimeMs = fakeStatMtimeMs(),
+  docText = DOC_TEXT,
+}: {
+  statMtimeMs?: (path: string) => Promise<number | undefined>;
+  docText?: string;
+} = {}): {
+  posted: ExtensionToWebview[];
+  fireReady: () => void;
+  fireMessage: (m: WebviewToExtension) => void;
+} {
+  const provider = registerProvider(async () => fakeReader(), statMtimeMs);
+  const { panel, posted, fireReady, fireMessage } = makePanel();
+  provider.resolveCustomTextEditor(
+    docFor(docText),
+    panel,
+    {} as vscode.CancellationToken,
+  );
+  return { posted, fireReady, fireMessage };
 }
 
 beforeEach(() => {
@@ -143,13 +165,7 @@ afterEach(() => {
 
 describe("ResultViewEditorProvider: removeResult / renameResult", () => {
   it("removeResult applies an edit whose new doc no longer has the result", () => {
-    const provider = registerProvider(async () => fakeReader());
-    const { panel, fireMessage } = makePanel();
-    provider.resolveCustomTextEditor(
-      docFor(),
-      panel,
-      {} as vscode.CancellationToken,
-    );
+    const { fireMessage } = mount();
 
     fireMessage({ type: "removeResult", resultId: "r1" });
 
@@ -161,13 +177,7 @@ describe("ResultViewEditorProvider: removeResult / renameResult", () => {
   });
 
   it("removeResult is a no-op edit for an unknown id", () => {
-    const provider = registerProvider(async () => fakeReader());
-    const { panel, fireMessage } = makePanel();
-    provider.resolveCustomTextEditor(
-      docFor(),
-      panel,
-      {} as vscode.CancellationToken,
-    );
+    const { fireMessage } = mount();
 
     fireMessage({ type: "removeResult", resultId: "ghost" });
 
@@ -179,13 +189,7 @@ describe("ResultViewEditorProvider: removeResult / renameResult", () => {
   });
 
   it("renameResult applies an edit with the result's label changed", () => {
-    const provider = registerProvider(async () => fakeReader());
-    const { panel, fireMessage } = makePanel();
-    provider.resolveCustomTextEditor(
-      docFor(),
-      panel,
-      {} as vscode.CancellationToken,
-    );
+    const { fireMessage } = mount();
 
     fireMessage({ type: "renameResult", resultId: "r1", label: "renamed" });
 
@@ -198,16 +202,7 @@ describe("ResultViewEditorProvider: removeResult / renameResult", () => {
 
 describe("ResultViewEditorProvider: missingResults", () => {
   it("posts the ids whose backing file doesn't exist, on ready", async () => {
-    const provider = registerProvider(
-      async () => fakeReader(),
-      fakeStatMtimeMs(),
-    );
-    const { panel, posted, fireReady } = makePanel();
-    provider.resolveCustomTextEditor(
-      docFor(),
-      panel,
-      {} as vscode.CancellationToken,
-    );
+    const { posted, fireReady } = mount();
 
     fireReady();
     await vi.waitFor(() => {

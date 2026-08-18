@@ -241,11 +241,8 @@ export function removeResult(
     ...doc,
     results: doc.results.filter((r) => r.id !== resultId),
     cards: doc.cards.map((c) =>
-      c.kind === "plot"
-        ? {
-            ...c,
-            traces: (c.traces ?? []).filter((t) => t.result !== resultId),
-          }
+      c.kind === "plot" && c.traces?.some((t) => t.result === resultId)
+        ? { ...c, traces: c.traces.filter((t) => t.result !== resultId) }
         : c,
     ),
   };

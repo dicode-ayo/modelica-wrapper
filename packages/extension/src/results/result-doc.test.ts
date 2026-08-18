@@ -382,6 +382,11 @@ describe("removeResult", () => {
         id: "c1",
         traces: [{ result: "r1", variable: "x" }],
       },
+      {
+        kind: "plot",
+        id: "c2",
+        title: "Plot 2",
+      },
     ],
   };
 
@@ -393,11 +398,12 @@ describe("removeResult", () => {
     expect(removeResult(base, "r1").cards[0]?.traces).toEqual([]);
   });
 
+  it("leaves a card with no matching trace untouched", () => {
+    expect(removeResult(base, "r1").cards[1]).toBe(base.cards[1]);
+  });
+
   it("is a no-op for an unknown id", () => {
-    expect(removeResult(base, "ghost").results.map((r) => r.id)).toEqual([
-      "r1",
-      "r2",
-    ]);
+    expect(removeResult(base, "ghost")).toEqual(base);
   });
 });
 
@@ -415,8 +421,6 @@ describe("renameResult", () => {
   });
 
   it("is a no-op for an unknown id", () => {
-    expect(renameResult(base, "ghost", "renamed").results).toEqual(
-      base.results,
-    );
+    expect(renameResult(base, "ghost", "renamed")).toEqual(base);
   });
 });
