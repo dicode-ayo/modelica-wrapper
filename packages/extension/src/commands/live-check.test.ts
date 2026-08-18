@@ -365,6 +365,42 @@ describe("registerLiveCheck", () => {
     expect(diagnostics?.[0]?.message).toContain("P.A, P.B");
   });
 
+  it("skips the load stage for a buffer that renamed its class (#459 without saving)", async () => {
+    // The buffer still opens under `P.A`'s URI, but mid-edit the user renamed
+    // the declaration to `P.Renamed`. Loading it as-is would bind a second,
+    // unreachable class under the shared file alongside the one still live
+    // as `P.A` — the same corruption #459 screens for on save.
+    const { client } = makeClient({
+      parseString: vi.fn(async () => ({ classNames: ["P.Renamed"] })),
+    });
+    const { ctx, set } = makeContext(client);
+    register(ctx);
+
+    await runPipeline();
+
+    expect(client.parseString).toHaveBeenCalled();
+    expect(client.loadString).not.toHaveBeenCalled();
+    expect(client.checkModel).not.toHaveBeenCalled();
+    const [, diagnostics] = set.mock.calls.at(-1) ?? [];
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics?.[0]?.message).toContain("P.A");
+    expect(diagnostics?.[0]?.message).toContain("P.Renamed");
+  });
+
+  it("does not treat a bare within-scope answer as a rename", async () => {
+    // A plain member buffer with no `within` clause parses bare regardless of
+    // whether it moved, so only the leaf name is meaningful here.
+    const { client } = makeClient({
+      parseString: vi.fn(async () => ({ classNames: ["A"] })),
+    });
+    const { ctx } = makeContext(client);
+    register(ctx);
+
+    await runPipeline();
+
+    expect(client.loadString).toHaveBeenCalled();
+  });
+
   it("checks nothing for a class whose file OMC reports read-only", async () => {
     const { client } = makeClient({
       getClassInformation: vi.fn(async () => ({

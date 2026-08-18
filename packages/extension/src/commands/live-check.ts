@@ -37,6 +37,8 @@ import {
 } from "../shared-file-diagnostics.js";
 import {
   multiEntityMessage,
+  renamedClass,
+  renamedClassMessage,
   type StringParseClient,
 } from "../single-entity-file.js";
 import type { WriteVerdictClient } from "../write-verdict.js";
@@ -139,6 +141,27 @@ export function registerLiveCheck(ctx: CommandContext): vscode.Disposable {
   });
 }
 
+/** A whole-buffer warning riding the diagnostic pipeline rather than a notification, so it clears itself once the condition that raised it goes away. */
+function syntheticBufferMessage(
+  filename: string,
+  message: string,
+): ErrorMessage {
+  return {
+    info: {
+      filename,
+      readonly: false,
+      lineStart: 1,
+      columnStart: 1,
+      lineEnd: 1,
+      columnEnd: 1,
+    },
+    message,
+    kind: "scripting",
+    level: "warning",
+    id: 0,
+  };
+}
+
 async function runCheck(
   ctx: CommandContext,
   document: vscode.TextDocument,
@@ -235,23 +258,25 @@ async function runCheck(
     // let the set below silently clear the squiggles the user had. Riding the
     // diagnostic pipeline (not a notification) keeps it from firing per
     // keystroke, and it clears itself when the second class goes away.
+    // `renamedClass` is meaningless once `declared` holds more than one name —
+    // the multi-entity screen above already refuses that buffer outright.
+    const renamed =
+      declared.length === 1 && typeName !== undefined
+        ? renamedClass(declared, typeName)
+        : undefined;
+
     if (declared.length > 1) {
       const message = multiEntityMessage(filename, declared);
       log.warn("liveCheck", message);
-      messages.push({
-        info: {
-          filename,
-          readonly: false,
-          lineStart: 1,
-          columnStart: 1,
-          lineEnd: 1,
-          columnEnd: 1,
-        },
-        message,
-        kind: "scripting",
-        level: "warning",
-        id: 0,
-      });
+      messages.push(syntheticBufferMessage(filename, message));
+    } else if (typeName !== undefined && renamed !== undefined) {
+      // `loadString` binds every class in the text to `filename` rather than
+      // replacing what's there, so a buffer that renamed its class would load
+      // as a second, unreachable class alongside the one still live under
+      // `typeName` — #459's failure mode, reached here without ever saving.
+      const message = renamedClassMessage(typeName, renamed);
+      log.warn("liveCheck", message);
+      messages.push(syntheticBufferMessage(filename, message));
     } else if (!hasParseError) {
       // Syntax-clean — load into OMC and run the semantic check.
       try {
