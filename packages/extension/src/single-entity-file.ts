@@ -133,7 +133,10 @@ export function multiEntityMessage(
   );
 }
 
-/** The shared half of both rename refusals: what the class is left as. */
+/**
+ * The shared half of both rename refusals: what the class is left as. Reads
+ * as the object of a modal — callers prefix `would`.
+ */
 export function strandedInMemory(expected: string): string {
   return `leave ${expected} alive in OMC's memory, unreachable from its own file`;
 }
@@ -142,7 +145,9 @@ export function strandedInMemory(expected: string): string {
  * Shared refusal wording for a buffer that renamed its class (#459).
  * `consequence` names what the guard refused to do — the default fits a save;
  * a caller refusing something else (e.g. a live check refusing to load) names
- * its own.
+ * its own. It takes the class name rather than closing over one so a caller
+ * holding `expected` as `string | undefined` can hand it over unnarrowed and
+ * let this function supply the name it has already proven.
  */
 export function renamedClassMessage(
   expected: string,

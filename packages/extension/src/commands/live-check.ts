@@ -258,9 +258,9 @@ async function runCheck(
     // once the buffer no longer earns a refusal.
     //
     // `expected: typeName` assumes the URI's name is still the class OMC
-    // holds for this buffer; `checkModel`/`writeVerdicts.forClass` below
-    // already make the same assumption, so a stale URI is broken for those
-    // reasons first.
+    // holds for this buffer; `writeVerdicts.forClass` above and `checkModel`
+    // below already make the same assumption, so a stale URI is broken for
+    // those reasons first.
     const refusal = classNamesRefusal(declared, {
       filename,
       expected: typeName,
