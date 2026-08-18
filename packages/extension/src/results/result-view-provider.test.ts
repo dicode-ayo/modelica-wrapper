@@ -94,7 +94,6 @@ interface FakeWebview {
 
 function makePanel(): {
   panel: vscode.WebviewPanel;
-  webview: FakeWebview;
   posted: ExtensionToWebview[];
   fireReady: () => void;
   fireMessage: (m: WebviewToExtension) => void;
@@ -123,7 +122,6 @@ function makePanel(): {
   };
   return {
     panel: panel as unknown as vscode.WebviewPanel,
-    webview,
     posted,
     fireReady: () => listener?.({ type: "ready" }),
     fireMessage: (m) => listener?.(m),
