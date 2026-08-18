@@ -23,8 +23,8 @@ import { ResultViewEditorProvider } from "./result-view-provider.js";
 
 const EXT_URI = vscode.Uri.file("/ext");
 
-/** A result view with a result whose fake `statMtimeMs` resolves ("exists")
- *  and one whose it resolves `undefined` ("missing"), so a single document
+/** A result view with one result whose fake `statMtimeMs` resolves ("exists")
+ *  and one where it resolves `undefined` ("missing"), so a single document
  *  exercises both sides of `missingResults`. */
 const DOC_TEXT = JSON.stringify({
   version: 1,
@@ -52,12 +52,34 @@ function docFor(text = DOC_TEXT): vscode.TextDocument {
 function fakeReader(): ResultReader {
   return {
     readSimulationResultVars: () =>
-      Promise.reject(new Error("not used by these tests")),
+      Promise.resolve({ vars: ["time", "motor.w"] }),
     readSimulationResult: () =>
-      Promise.reject(new Error("not used by these tests")),
+      Promise.resolve({
+        result: [
+          [0, 1, 2],
+          [10, 20, 30],
+        ],
+      }),
     closeSimulationResultFile: () => Promise.resolve(undefined),
   };
 }
+
+/** Same two results as `DOC_TEXT`, plus a plot card tracing `r2` (the present
+ *  one) — the only shape that drives `refresh()` down the `hasTraces` branch. */
+const DOC_WITH_TRACE = JSON.stringify({
+  version: 1,
+  results: [
+    { id: "r1", label: "run-1", path: "gone.mat", source: "simulate" },
+    { id: "r2", label: "run-2", path: "present.mat", source: "simulate" },
+  ],
+  cards: [
+    {
+      kind: "plot",
+      id: "c1",
+      traces: [{ result: "r2", variable: "motor.w" }],
+    },
+  ],
+});
 
 interface FakeWebview {
   options: unknown;
@@ -213,5 +235,86 @@ describe("ResultViewEditorProvider: missingResults", () => {
 
     const missing = posted.find((m) => m.type === "missingResults");
     expect(missing?.type === "missingResults" && missing.ids).toEqual(["r1"]);
+  });
+});
+
+describe("ResultViewEditorProvider: refresh with traces", () => {
+  it("runs the missing-file scan and the trace read concurrently, posting both", async () => {
+    const { posted, fireReady } = mount({ docText: DOC_WITH_TRACE });
+
+    fireReady();
+    await vi.waitFor(() => {
+      const tracedDoc = posted.find(
+        (m) => m.type === "doc" && Object.keys(m.traceData).length > 0,
+      );
+      if (!tracedDoc) throw new Error("traced doc not posted yet");
+    });
+
+    const missing = posted.find((m) => m.type === "missingResults");
+    expect(missing?.type === "missingResults" && missing.ids).toEqual(["r1"]);
+
+    const tracedDoc = posted.find(
+      (m) => m.type === "doc" && Object.keys(m.traceData).length > 0,
+    );
+    expect(tracedDoc?.type === "doc" && tracedDoc.traceData).toEqual({
+      c1: [{ t: [0, 1, 2], values: [10, 20, 30], name: "run-2 / motor.w" }],
+    });
+
+    const plotsBusy = posted
+      .filter((m) => m.type === "loading" && m.area === "plots")
+      .map((m) => m.type === "loading" && m.busy);
+    expect(plotsBusy).toEqual([true, false]);
+  });
+
+  it("drops a superseded generation's posts when it settles after a newer refresh", async () => {
+    const stats: { path: string; resolve: (v: number | undefined) => void }[] =
+      [];
+    const statMtimeMs = (path: string): Promise<number | undefined> =>
+      new Promise((resolve) => {
+        stats.push({ path, resolve });
+      });
+    const { posted, fireReady } = mount({
+      docText: DOC_WITH_TRACE,
+      statMtimeMs,
+    });
+
+    fireReady(); // generation 1 — will be superseded before its stats settle
+    fireReady(); // generation 2 — the one that should win
+
+    // Two results scanned by missingScan plus one trace read, per generation.
+    await vi.waitFor(() => {
+      if (stats.length < 6) throw new Error("not all stats requested yet");
+    });
+
+    const resolveStat = (s: (typeof stats)[number]): void =>
+      s.resolve(s.path.endsWith("gone.mat") ? undefined : 100);
+
+    // Let generation 2's stats settle first.
+    stats.slice(3, 6).forEach(resolveStat);
+    await vi.waitFor(() => {
+      if (!posted.some((m) => m.type === "missingResults")) {
+        throw new Error("generation 2 missingResults not posted yet");
+      }
+    });
+
+    // Generation 1's stats settle late, after generation 2 already won.
+    stats.slice(0, 3).forEach(resolveStat);
+    await new Promise((r) => setTimeout(r, 10));
+
+    const missingPosts = posted.filter((m) => m.type === "missingResults");
+    expect(missingPosts).toHaveLength(1);
+    expect(
+      missingPosts[0]?.type === "missingResults" && missingPosts[0].ids,
+    ).toEqual(["r1"]);
+
+    const tracedDocPosts = posted.filter(
+      (m) => m.type === "doc" && Object.keys(m.traceData).length > 0,
+    );
+    expect(tracedDocPosts).toHaveLength(1);
+
+    const plotsDone = posted.filter(
+      (m) => m.type === "loading" && m.area === "plots" && !m.busy,
+    );
+    expect(plotsDone).toHaveLength(1);
   });
 });

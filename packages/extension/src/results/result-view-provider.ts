@@ -166,17 +166,20 @@ export class ResultViewEditorProvider
 
       post({ type: "loading", area: "plots", busy: true });
       try {
-        const [traceData] = await Promise.all([
-          buildTraceData(doc),
-          missingScan,
-        ]);
+        const traceData = await buildTraceData(doc);
         if (myGen === generation) post({ type: "doc", doc, traceData });
       } catch (err) {
-        post({ type: "status", message: (err as Error).message, error: true });
+        if (myGen === generation)
+          post({
+            type: "status",
+            message: (err as Error).message,
+            error: true,
+          });
       } finally {
         if (myGen === generation)
           post({ type: "loading", area: "plots", busy: false });
       }
+      await missingScan;
     };
 
     const applyDocEdit = (doc: ReturnType<typeof parseResultViewDoc>): void => {
