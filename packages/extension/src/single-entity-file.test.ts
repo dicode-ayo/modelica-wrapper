@@ -4,6 +4,7 @@ import {
   classNamesRefusal,
   multipleTopLevelClasses,
   renamedClass,
+  renamedClassMessage,
 } from "./single-entity-file.js";
 
 function client(result: { classNames: string[] } | Error) {
@@ -90,6 +91,18 @@ describe("renamedClass", () => {
   });
 });
 
+describe("renamedClassMessage", () => {
+  it("names a save as the consequence by default", () => {
+    expect(renamedClassMessage("Foo", "Bar")).toContain("Saving here");
+  });
+
+  it("takes a caller's consequence over the default", () => {
+    expect(
+      renamedClassMessage("Foo", "Bar", (name) => `Loading ${name} would stop`),
+    ).toContain("Loading Foo would stop");
+  });
+});
+
 describe("classNamesRefusal", () => {
   it("refuses a multi-entity buffer ahead of the rename screen", () => {
     // Both screens would fire on their own inputs here; multi-entity must win.
@@ -136,5 +149,15 @@ describe("classNamesRefusal", () => {
         label: "Pkg.Foo",
       }),
     ).toContain("Pkg.Foo");
+  });
+
+  it("passes `renamedConsequence` through to the rename refusal", () => {
+    expect(
+      classNamesRefusal(["Foo2"], {
+        filename: "F.mo",
+        expected: "Foo",
+        renamedConsequence: (name) => `Loading ${name} would stop`,
+      }),
+    ).toContain("Loading Foo would stop");
   });
 });

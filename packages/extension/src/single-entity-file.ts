@@ -133,6 +133,11 @@ export function multiEntityMessage(
   );
 }
 
+/** The shared half of both rename refusals: what the class is left as. */
+export function strandedInMemory(expected: string): string {
+  return `leave ${expected} alive in OMC's memory, unreachable from its own file`;
+}
+
 /**
  * Shared refusal wording for a buffer that renamed its class (#459).
  * `consequence` names what the guard refused to do — the default fits a save;
@@ -142,11 +147,12 @@ export function multiEntityMessage(
 export function renamedClassMessage(
   expected: string,
   declared: string,
-  consequence = `Saving here would leave ${expected} alive in OMC's memory, unreachable from its own file`,
+  consequence: (expected: string) => string = (name) =>
+    `Saving here would ${strandedInMemory(name)}`,
 ): string {
   return (
     `This buffer is ${expected}'s source, but it now declares ${declared}. ` +
-    `${consequence} — rename through the Modelica REPL instead.`
+    `${consequence(expected)} — rename through the Modelica REPL instead.`
   );
 }
 
@@ -168,7 +174,7 @@ export function classNamesRefusal(
     filename: string;
     expected: string | undefined;
     label?: string;
-    renamedConsequence?: string | undefined;
+    renamedConsequence?: (expected: string) => string;
   },
 ): string | undefined {
   const multiEntity = moreThanOne(classNames);

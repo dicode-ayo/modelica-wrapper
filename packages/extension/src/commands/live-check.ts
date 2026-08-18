@@ -37,6 +37,7 @@ import {
 } from "../shared-file-diagnostics.js";
 import {
   classNamesRefusal,
+  strandedInMemory,
   type StringParseClient,
 } from "../single-entity-file.js";
 import type { WriteVerdictClient } from "../write-verdict.js";
@@ -139,7 +140,7 @@ export function registerLiveCheck(ctx: CommandContext): vscode.Disposable {
   });
 }
 
-/** Whole-buffer warning at line 1, carrying no coordinates of its own. */
+/** Whole-buffer warning pinned at line 1, for a refusal that carries no coordinates of its own. */
 function syntheticBufferMessage(
   filename: string,
   message: string,
@@ -263,10 +264,8 @@ async function runCheck(
     const refusal = classNamesRefusal(declared, {
       filename,
       expected: typeName,
-      renamedConsequence:
-        typeName === undefined
-          ? undefined
-          : `Loading it would leave ${typeName} alive in OMC's memory, unreachable from its own file, so this buffer is not being checked`,
+      renamedConsequence: (name) =>
+        `Loading it would ${strandedInMemory(name)}, so this buffer is not being checked`,
     });
 
     if (refusal !== undefined) {
