@@ -36,9 +36,7 @@ import {
   type SharedFileClient,
 } from "../shared-file-diagnostics.js";
 import {
-  multiEntityMessage,
-  renamedClass,
-  renamedClassMessage,
+  classNamesRefusal,
   type StringParseClient,
 } from "../single-entity-file.js";
 import type { WriteVerdictClient } from "../write-verdict.js";
@@ -251,32 +249,25 @@ async function runCheck(
         bufferOwnCoords(document.lineCount),
       ),
     );
-    // `loadString` binds every class in the text to `filename`, so loading a
-    // buffer that declares several would leave OMC holding a file no save can
-    // write back without dropping one (#452). Such a buffer parses clean, so
-    // it carries no messages of its own — publish a synthetic one rather than
-    // let the set below silently clear the squiggles the user had. Riding the
-    // diagnostic pipeline (not a notification) keeps it from firing per
-    // keystroke, and it clears itself when the second class goes away.
-    // `renamedClass` is meaningless once `declared` holds more than one name —
-    // the multi-entity screen above already refuses that buffer outright.
-    const renamed =
-      declared.length === 1 && typeName !== undefined
-        ? renamedClass(declared, typeName)
-        : undefined;
+    // `loadString` binds every class in the text to `filename` rather than
+    // replacing what's there, so a buffer declaring several classes would
+    // leave OMC holding a file no save can write back without dropping one
+    // (#452), and a buffer that renamed its class would load as a second,
+    // unreachable class alongside the one still live under `typeName` —
+    // #459's failure mode, reached here without ever saving. Either buffer
+    // parses clean, so it carries no messages of its own — publish a
+    // synthetic one rather than let the set below silently clear the
+    // squiggles the user had. Riding the diagnostic pipeline (not a
+    // notification) keeps it from firing per keystroke, and it clears itself
+    // once the buffer no longer earns a refusal.
+    const refusal = classNamesRefusal(declared, {
+      filename,
+      expected: typeName,
+    });
 
-    if (declared.length > 1) {
-      const message = multiEntityMessage(filename, declared);
-      log.warn("liveCheck", message);
-      messages.push(syntheticBufferMessage(filename, message));
-    } else if (typeName !== undefined && renamed !== undefined) {
-      // `loadString` binds every class in the text to `filename` rather than
-      // replacing what's there, so a buffer that renamed its class would load
-      // as a second, unreachable class alongside the one still live under
-      // `typeName` — #459's failure mode, reached here without ever saving.
-      const message = renamedClassMessage(typeName, renamed);
-      log.warn("liveCheck", message);
-      messages.push(syntheticBufferMessage(filename, message));
+    if (refusal !== undefined) {
+      log.warn("liveCheck", refusal);
+      messages.push(syntheticBufferMessage(filename, refusal));
     } else if (!hasParseError) {
       // Syntax-clean — load into OMC and run the semantic check.
       try {

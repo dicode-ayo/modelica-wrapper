@@ -146,13 +146,35 @@ export function renamedClassMessage(
 }
 
 /**
+ * The refusal message a set of already-parsed class names earns before
+ * `loadString`, `undefined` when it passes both screens. Runs the
+ * multi-entity screen before the rename screen: `renamedClass` is
+ * meaningless once `classNames` holds more than one name. `label` names the
+ * file in a multi-entity refusal when it differs from `filename` —
+ * `writeFile` refuses by `typeName` for a memory-only class that has no
+ * on-disk `filename` of its own yet. `expected` is `undefined` for a caller
+ * with no known class to rename away from, which skips the rename screen but
+ * still runs the multi-entity one.
+ */
+export function classNamesRefusal(
+  classNames: string[],
+  input: { filename: string; expected: string | undefined; label?: string },
+): string | undefined {
+  const multiEntity = moreThanOne(classNames);
+  if (multiEntity) {
+    return multiEntityMessage(input.label ?? input.filename, multiEntity);
+  }
+  if (input.expected === undefined) return undefined;
+  const renamed = renamedClass(classNames, input.expected);
+  return renamed === undefined
+    ? undefined
+    : renamedClassMessage(input.expected, renamed);
+}
+
+/**
  * The refusal message a buffer earns before `loadString`, `undefined` when it
  * passes both screens (or OMC couldn't parse it — the load that follows
- * reports that failure itself). Runs the multi-entity screen before the
- * rename screen: `renamedClass` is meaningless once `classNames` holds more
- * than one name. `label` names the file in a multi-entity refusal when it
- * differs from `filename` — `writeFile` refuses by `typeName` for a
- * memory-only class that has no on-disk `filename` of its own yet.
+ * reports that failure itself).
  */
 export async function bufferRefusal(
   client: StringParseClient,
@@ -160,14 +182,7 @@ export async function bufferRefusal(
 ): Promise<string | undefined> {
   const classNames = await bufferClassNames(client, input.data, input.filename);
   if (classNames === undefined) return undefined;
-  const multiEntity = moreThanOne(classNames);
-  if (multiEntity) {
-    return multiEntityMessage(input.label ?? input.filename, multiEntity);
-  }
-  const renamed = renamedClass(classNames, input.expected);
-  return renamed === undefined
-    ? undefined
-    : renamedClassMessage(input.expected, renamed);
+  return classNamesRefusal(classNames, input);
 }
 
 /** Batch notification; the per-file detail stays in the output channel. */

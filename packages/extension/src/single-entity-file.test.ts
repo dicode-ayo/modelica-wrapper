@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { multipleTopLevelClasses, renamedClass } from "./single-entity-file.js";
+import {
+  classNamesRefusal,
+  multipleTopLevelClasses,
+  renamedClass,
+} from "./single-entity-file.js";
 
 function client(result: { classNames: string[] } | Error) {
   return {
@@ -83,5 +87,54 @@ describe("renamedClass", () => {
 
   it("passes an empty buffer, leaving the load to report the parse failure", () => {
     expect(renamedClass([], "Foo")).toBeUndefined();
+  });
+});
+
+describe("classNamesRefusal", () => {
+  it("refuses a multi-entity buffer ahead of the rename screen", () => {
+    // Both screens would fire on their own inputs here; multi-entity must win.
+    expect(
+      classNamesRefusal(["Foo", "Bar"], {
+        filename: "F.mo",
+        expected: "Foo",
+      }),
+    ).toContain("Foo, Bar");
+  });
+
+  it("refuses a single-class buffer that renamed away from `expected`", () => {
+    expect(
+      classNamesRefusal(["Foo2"], { filename: "F.mo", expected: "Foo" }),
+    ).toContain("Foo2");
+  });
+
+  it("passes a buffer that still declares the expected class", () => {
+    expect(
+      classNamesRefusal(["Foo"], { filename: "F.mo", expected: "Foo" }),
+    ).toBeUndefined();
+  });
+
+  it("skips the rename screen for a caller with no expected class, still runs the multi-entity one", () => {
+    expect(
+      classNamesRefusal(["AnythingAtAll"], {
+        filename: "F.mo",
+        expected: undefined,
+      }),
+    ).toBeUndefined();
+    expect(
+      classNamesRefusal(["Foo", "Bar"], {
+        filename: "F.mo",
+        expected: undefined,
+      }),
+    ).toContain("Foo, Bar");
+  });
+
+  it("names the multi-entity refusal by `label` over `filename` when given", () => {
+    expect(
+      classNamesRefusal(["Foo", "Bar"], {
+        filename: "F.mo",
+        expected: "Foo",
+        label: "Pkg.Foo",
+      }),
+    ).toContain("Pkg.Foo");
   });
 });
