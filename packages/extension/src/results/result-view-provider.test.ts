@@ -239,7 +239,7 @@ describe("ResultViewEditorProvider: missingResults", () => {
 });
 
 describe("ResultViewEditorProvider: refresh with traces", () => {
-  it("runs the missing-file scan and the trace read concurrently, posting both", async () => {
+  it("posts both the missing-file ids and the trace data", async () => {
     const { posted, fireReady } = mount({ docText: DOC_WITH_TRACE });
 
     fireReady();
@@ -264,6 +264,39 @@ describe("ResultViewEditorProvider: refresh with traces", () => {
       .filter((m) => m.type === "loading" && m.area === "plots")
       .map((m) => m.type === "loading" && m.busy);
     expect(plotsBusy).toEqual([true, false]);
+  });
+
+  it("clears the plots spinner on the trace read alone, without waiting for the missing-file scan", async () => {
+    let releaseGone: (v: number | undefined) => void = () => {};
+    const statMtimeMs = (path: string): Promise<number | undefined> =>
+      path.endsWith("gone.mat")
+        ? new Promise<number | undefined>((resolve) => {
+            releaseGone = resolve;
+          })
+        : Promise.resolve(100);
+    const { posted, fireReady } = mount({
+      docText: DOC_WITH_TRACE,
+      statMtimeMs,
+    });
+
+    fireReady();
+    await vi.waitFor(() => {
+      if (
+        !posted.some(
+          (m) => m.type === "loading" && m.area === "plots" && !m.busy,
+        )
+      ) {
+        throw new Error("plots spinner still busy");
+      }
+    });
+    expect(posted.some((m) => m.type === "missingResults")).toBe(false);
+
+    releaseGone(undefined);
+    await vi.waitFor(() => {
+      if (!posted.some((m) => m.type === "missingResults")) {
+        throw new Error("missingResults not posted yet");
+      }
+    });
   });
 
   it("drops a superseded generation's posts when it settles after a newer refresh", async () => {
