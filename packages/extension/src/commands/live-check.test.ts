@@ -385,20 +385,26 @@ describe("registerLiveCheck", () => {
     expect(diagnostics).toHaveLength(1);
     expect(diagnostics?.[0]?.message).toContain("P.A");
     expect(diagnostics?.[0]?.message).toContain("P.Renamed");
+    // Nothing here was saved — the wording must say checking stopped, not
+    // warn about a save the user never asked for.
+    expect(diagnostics?.[0]?.message).toContain("not being checked");
+    expect(diagnostics?.[0]?.message).not.toContain("Saving");
   });
 
-  it("does not treat a bare within-scope answer as a rename", async () => {
+  it("does not treat a bare class name as a rename", async () => {
     // A plain member buffer with no `within` clause parses bare regardless of
     // whether it moved, so only the leaf name is meaningful here.
     const { client } = makeClient({
       parseString: vi.fn(async () => ({ classNames: ["A"] })),
     });
-    const { ctx } = makeContext(client);
+    const { ctx, set } = makeContext(client);
     register(ctx);
 
     await runPipeline();
 
     expect(client.loadString).toHaveBeenCalled();
+    const [, diagnostics] = set.mock.calls.at(-1) ?? [];
+    expect(diagnostics).toHaveLength(0);
   });
 
   it("checks nothing for a class whose file OMC reports read-only", async () => {

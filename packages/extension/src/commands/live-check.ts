@@ -139,7 +139,7 @@ export function registerLiveCheck(ctx: CommandContext): vscode.Disposable {
   });
 }
 
-/** A whole-buffer warning riding the diagnostic pipeline rather than a notification, so it clears itself once the condition that raised it goes away. */
+/** Whole-buffer warning at line 1, carrying no coordinates of its own. */
 function syntheticBufferMessage(
   filename: string,
   message: string,
@@ -249,20 +249,24 @@ async function runCheck(
         bufferOwnCoords(document.lineCount),
       ),
     );
-    // `loadString` binds every class in the text to `filename` rather than
-    // replacing what's there, so a buffer declaring several classes would
-    // leave OMC holding a file no save can write back without dropping one
-    // (#452), and a buffer that renamed its class would load as a second,
-    // unreachable class alongside the one still live under `typeName` —
-    // #459's failure mode, reached here without ever saving. Either buffer
+    // A buffer earning a refusal (#452, #459 — see `classNamesRefusal`)
     // parses clean, so it carries no messages of its own — publish a
     // synthetic one rather than let the set below silently clear the
-    // squiggles the user had. Riding the diagnostic pipeline (not a
-    // notification) keeps it from firing per keystroke, and it clears itself
+    // squiggles the user had. Riding the diagnostic pipeline rather than a
+    // notification keeps it from popping per keystroke, and it clears itself
     // once the buffer no longer earns a refusal.
+    //
+    // `expected: typeName` assumes the URI's name is still the class OMC
+    // holds for this buffer; `checkModel`/`writeVerdicts.forClass` below
+    // already make the same assumption, so a stale URI is broken for those
+    // reasons first.
     const refusal = classNamesRefusal(declared, {
       filename,
       expected: typeName,
+      renamedConsequence:
+        typeName === undefined
+          ? undefined
+          : `Loading it would leave ${typeName} alive in OMC's memory, unreachable from its own file, so this buffer is not being checked`,
     });
 
     if (refusal !== undefined) {

@@ -133,15 +133,20 @@ export function multiEntityMessage(
   );
 }
 
-/** Shared refusal wording for a buffer save that renamed its class (#459). */
+/**
+ * Shared refusal wording for a buffer that renamed its class (#459).
+ * `consequence` names what the guard refused to do — the default fits a save;
+ * a caller refusing something else (e.g. a live check refusing to load) names
+ * its own.
+ */
 export function renamedClassMessage(
   expected: string,
   declared: string,
+  consequence = `Saving here would leave ${expected} alive in OMC's memory, unreachable from its own file`,
 ): string {
   return (
     `This buffer is ${expected}'s source, but it now declares ${declared}. ` +
-    `Saving here would leave ${expected} alive in OMC's memory, unreachable ` +
-    `from its own file — rename through the Modelica REPL instead.`
+    `${consequence} — rename through the Modelica REPL instead.`
   );
 }
 
@@ -154,27 +159,34 @@ export function renamedClassMessage(
  * `writeFile` refuses by `typeName` for a memory-only class that has no
  * on-disk `filename` of its own yet. `expected` is `undefined` for a caller
  * with no known class to rename away from, which skips the rename screen but
- * still runs the multi-entity one.
+ * still runs the multi-entity one. `renamedConsequence` is
+ * {@link renamedClassMessage}'s `consequence`.
  */
 export function classNamesRefusal(
   classNames: string[],
-  input: { filename: string; expected: string | undefined; label?: string },
+  input: {
+    filename: string;
+    expected: string | undefined;
+    label?: string;
+    renamedConsequence?: string | undefined;
+  },
 ): string | undefined {
   const multiEntity = moreThanOne(classNames);
-  if (multiEntity) {
+  if (multiEntity !== undefined) {
     return multiEntityMessage(input.label ?? input.filename, multiEntity);
   }
   if (input.expected === undefined) return undefined;
   const renamed = renamedClass(classNames, input.expected);
   return renamed === undefined
     ? undefined
-    : renamedClassMessage(input.expected, renamed);
+    : renamedClassMessage(input.expected, renamed, input.renamedConsequence);
 }
 
 /**
  * The refusal message a buffer earns before `loadString`, `undefined` when it
  * passes both screens (or OMC couldn't parse it — the load that follows
- * reports that failure itself).
+ * reports that failure itself). `expected` and `label` are as
+ * {@link classNamesRefusal} documents them.
  */
 export async function bufferRefusal(
   client: StringParseClient,
