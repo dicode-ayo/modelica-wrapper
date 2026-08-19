@@ -19,6 +19,15 @@ import {
   setApplyEditResult,
 } from "../../test-support/vscode-mock.js";
 
+import type {
+  ExtensionToWebview,
+  WebviewToExtension,
+} from "../webview/postprocessing-protocol.js";
+import { log } from "../logger.js";
+import { parseResultViewDoc } from "./result-doc.js";
+import type { ResultReader } from "./result-cache.js";
+import { ResultViewEditorProvider } from "./result-view-provider.js";
+
 vi.mock("../logger.js", () => ({
   log: {
     debug: vi.fn(),
@@ -29,15 +38,6 @@ vi.mock("../logger.js", () => ({
     dispose: vi.fn(),
   },
 }));
-
-import type {
-  ExtensionToWebview,
-  WebviewToExtension,
-} from "../webview/postprocessing-protocol.js";
-import { log } from "../logger.js";
-import { parseResultViewDoc } from "./result-doc.js";
-import type { ResultReader } from "./result-cache.js";
-import { ResultViewEditorProvider } from "./result-view-provider.js";
 
 const EXT_URI = vscode.Uri.file("/ext");
 
@@ -228,15 +228,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** Resolve once the provider has landed at least one `WorkspaceEdit`. */
+function waitForEdit(): Promise<void> {
+  return vi.waitFor(() => {
+    if (appliedEdits.length === 0) throw new Error("no edit applied yet");
+  });
+}
+
 describe("ResultViewEditorProvider: removeResult / renameResult", () => {
   it("removeResult applies an edit whose new doc no longer has the result", async () => {
     const { fireMessage } = mount();
 
     fireMessage({ type: "removeResult", resultId: "r1" });
 
-    await vi.waitFor(() => {
-      if (appliedEdits.length === 0) throw new Error("no edit applied yet");
-    });
+    await waitForEdit();
     const text = appliedEdits.at(-1)?.replacements[0]?.text;
     expect(text).toBeDefined();
     expect(parseResultViewDoc(text ?? "").results.map((r) => r.id)).toEqual([
@@ -249,9 +254,7 @@ describe("ResultViewEditorProvider: removeResult / renameResult", () => {
 
     fireMessage({ type: "removeResult", resultId: "ghost" });
 
-    await vi.waitFor(() => {
-      if (appliedEdits.length === 0) throw new Error("no edit applied yet");
-    });
+    await waitForEdit();
     const text = appliedEdits.at(-1)?.replacements[0]?.text;
     expect(parseResultViewDoc(text ?? "").results.map((r) => r.id)).toEqual([
       "r1",
@@ -264,9 +267,7 @@ describe("ResultViewEditorProvider: removeResult / renameResult", () => {
 
     fireMessage({ type: "renameResult", resultId: "r1", label: "renamed" });
 
-    await vi.waitFor(() => {
-      if (appliedEdits.length === 0) throw new Error("no edit applied yet");
-    });
+    await waitForEdit();
     const text = appliedEdits.at(-1)?.replacements[0]?.text;
     const doc = parseResultViewDoc(text ?? "");
     expect(doc.results.find((r) => r.id === "r1")?.label).toBe("renamed");
@@ -413,7 +414,7 @@ describe("ResultViewEditorProvider: backfilled card ids persist across edits", (
   // (a fresh id) and re-write forever, since the mock never advances
   // `getText()` on its own.
 
-  it("lets deletePlot find a card whose id was backfilled from a hand-written file with none — the bug this fix closes", async () => {
+  it("lets deletePlot find a card whose id was backfilled from a hand-written file with none", async () => {
     setApplyEditManual(true);
     const noIdDoc = JSON.stringify({
       version: 1,

@@ -141,10 +141,9 @@ export class ResultViewEditorProvider
     const refresh = async (): Promise<void> => {
       const myGen = ++generation;
       const doc = await resultDoc.read();
-      // Push structure immediately once read — before waiting on OMC; charts
-      // fill in once the trajectories are read. Gated like every other post
-      // below: `read()` is now async, so a superseded refresh can resolve
-      // after a newer one and must not overwrite its already-posted doc.
+      // Push structure before waiting on OMC; charts fill in once the
+      // trajectories are read. Gated like every other post below: `read()` is
+      // async, so a superseded refresh can resolve after a newer one.
       if (myGen === generation) post({ type: "doc", doc, traceData: {} });
 
       // Independent of whether any card has traces — a result with no card
@@ -221,13 +220,7 @@ export class ResultViewEditorProvider
           return;
 
         case "requestVariables":
-          void this.handleRequestVariables(
-            resultDoc,
-            document,
-            cache,
-            msg,
-            post,
-          );
+          void this.handleRequestVariables(resultDoc, cache, msg, post);
           return;
 
         case "addPlot":
@@ -273,7 +266,6 @@ export class ResultViewEditorProvider
 
   private async handleRequestVariables(
     resultDoc: ResultViewDocument,
-    document: vscode.TextDocument,
     cache: ResultCache,
     msg: Extract<WebviewToExtension, { type: "requestVariables" }>,
     post: (msg: ExtensionToWebview) => void,
@@ -288,7 +280,7 @@ export class ResultViewEditorProvider
       });
       return;
     }
-    const filePath = resolveResultPath(document.uri, result.path);
+    const filePath = resolveResultPath(resultDoc.uri, result.path);
     try {
       const vars = await cache.variables(filePath);
       post({ type: "variables", resultId: msg.resultId, vars });
