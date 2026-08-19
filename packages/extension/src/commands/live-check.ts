@@ -36,7 +36,8 @@ import {
   type SharedFileClient,
 } from "../shared-file-diagnostics.js";
 import {
-  multiEntityMessage,
+  classNamesRefusal,
+  strandedInMemory,
   type StringParseClient,
 } from "../single-entity-file.js";
 import type { WriteVerdictClient } from "../write-verdict.js";
@@ -139,6 +140,27 @@ export function registerLiveCheck(ctx: CommandContext): vscode.Disposable {
   });
 }
 
+/** Whole-buffer warning pinned at line 1, for a refusal that carries no coordinates of its own. */
+function syntheticBufferMessage(
+  filename: string,
+  message: string,
+): ErrorMessage {
+  return {
+    info: {
+      filename,
+      readonly: false,
+      lineStart: 1,
+      columnStart: 1,
+      lineEnd: 1,
+      columnEnd: 1,
+    },
+    message,
+    kind: "scripting",
+    level: "warning",
+    id: 0,
+  };
+}
+
 async function runCheck(
   ctx: CommandContext,
   document: vscode.TextDocument,
@@ -228,30 +250,27 @@ async function runCheck(
         bufferOwnCoords(document.lineCount),
       ),
     );
-    // `loadString` binds every class in the text to `filename`, so loading a
-    // buffer that declares several would leave OMC holding a file no save can
-    // write back without dropping one (#452). Such a buffer parses clean, so
-    // it carries no messages of its own — publish a synthetic one rather than
-    // let the set below silently clear the squiggles the user had. Riding the
-    // diagnostic pipeline (not a notification) keeps it from firing per
-    // keystroke, and it clears itself when the second class goes away.
-    if (declared.length > 1) {
-      const message = multiEntityMessage(filename, declared);
-      log.warn("liveCheck", message);
-      messages.push({
-        info: {
-          filename,
-          readonly: false,
-          lineStart: 1,
-          columnStart: 1,
-          lineEnd: 1,
-          columnEnd: 1,
-        },
-        message,
-        kind: "scripting",
-        level: "warning",
-        id: 0,
-      });
+    // A buffer earning a refusal (#452, #459 — see `classNamesRefusal`)
+    // parses clean, so it carries no messages of its own — publish a
+    // synthetic one rather than let the set below silently clear the
+    // squiggles the user had. Riding the diagnostic pipeline rather than a
+    // notification keeps it from popping per keystroke, and it clears itself
+    // once the buffer no longer earns a refusal.
+    //
+    // `expected: typeName` assumes the URI's name is still the class OMC
+    // holds for this buffer; `writeVerdicts.forClass` above and `checkModel`
+    // below already make the same assumption, so a stale URI is broken for
+    // those reasons first.
+    const refusal = classNamesRefusal(declared, {
+      filename,
+      expected: typeName,
+      renamedConsequence: (name) =>
+        `Loading it would ${strandedInMemory(name)}, so this buffer is not being checked`,
+    });
+
+    if (refusal !== undefined) {
+      log.warn("liveCheck", refusal);
+      messages.push(syntheticBufferMessage(filename, refusal));
     } else if (!hasParseError) {
       // Syntax-clean — load into OMC and run the semantic check.
       try {
