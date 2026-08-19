@@ -11,12 +11,30 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
 import * as vscodeMock from "../../test-support/vscode-mock.js";
-import { appliedEdits } from "../../test-support/vscode-mock.js";
+import {
+  appliedEdits,
+  completeApply,
+  pendingApplies,
+  setApplyEditManual,
+  setApplyEditResult,
+} from "../../test-support/vscode-mock.js";
+
+vi.mock("../logger.js", () => ({
+  log: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    show: vi.fn(),
+    dispose: vi.fn(),
+  },
+}));
 
 import type {
   ExtensionToWebview,
   WebviewToExtension,
 } from "../webview/postprocessing-protocol.js";
+import { log } from "../logger.js";
 import { parseResultViewDoc } from "./result-doc.js";
 import type { ResultReader } from "./result-cache.js";
 import { ResultViewEditorProvider } from "./result-view-provider.js";
@@ -47,6 +65,30 @@ function docFor(text = DOC_TEXT): vscode.TextDocument {
     getText: () => text,
     lineCount: 1,
   } as unknown as vscode.TextDocument;
+}
+
+/** A `docFor` whose `getText()` reflects the last edit `landEdit` was told
+ *  about — unlike `docFor`'s fixed closure, the mock's `applyEdit` doesn't
+ *  mutate what `getText()` returns on its own (it only records into
+ *  `appliedEdits`), so a test pinning the id-backfill round trip needs a
+ *  document double that actually advances. */
+function mutableDocFor(text: string): {
+  document: vscode.TextDocument;
+  landEdit: () => void;
+} {
+  let current = text;
+  const document = {
+    uri: vscode.Uri.file("/ws/run.omresults"),
+    getText: () => current,
+    lineCount: 1,
+  } as unknown as vscode.TextDocument;
+  return {
+    document,
+    landEdit: () => {
+      const applied = appliedEdits.at(-1)?.replacements[0]?.text;
+      if (applied !== undefined) current = applied;
+    },
+  };
 }
 
 function fakeReader(): ResultReader {
@@ -177,6 +219,9 @@ function mount({
 
 beforeEach(() => {
   appliedEdits.length = 0;
+  pendingApplies.length = 0;
+  setApplyEditManual(false);
+  setApplyEditResult(true);
 });
 
 afterEach(() => {
@@ -184,11 +229,14 @@ afterEach(() => {
 });
 
 describe("ResultViewEditorProvider: removeResult / renameResult", () => {
-  it("removeResult applies an edit whose new doc no longer has the result", () => {
+  it("removeResult applies an edit whose new doc no longer has the result", async () => {
     const { fireMessage } = mount();
 
     fireMessage({ type: "removeResult", resultId: "r1" });
 
+    await vi.waitFor(() => {
+      if (appliedEdits.length === 0) throw new Error("no edit applied yet");
+    });
     const text = appliedEdits.at(-1)?.replacements[0]?.text;
     expect(text).toBeDefined();
     expect(parseResultViewDoc(text ?? "").results.map((r) => r.id)).toEqual([
@@ -196,11 +244,14 @@ describe("ResultViewEditorProvider: removeResult / renameResult", () => {
     ]);
   });
 
-  it("removeResult is a no-op edit for an unknown id", () => {
+  it("removeResult is a no-op edit for an unknown id", async () => {
     const { fireMessage } = mount();
 
     fireMessage({ type: "removeResult", resultId: "ghost" });
 
+    await vi.waitFor(() => {
+      if (appliedEdits.length === 0) throw new Error("no edit applied yet");
+    });
     const text = appliedEdits.at(-1)?.replacements[0]?.text;
     expect(parseResultViewDoc(text ?? "").results.map((r) => r.id)).toEqual([
       "r1",
@@ -208,11 +259,14 @@ describe("ResultViewEditorProvider: removeResult / renameResult", () => {
     ]);
   });
 
-  it("renameResult applies an edit with the result's label changed", () => {
+  it("renameResult applies an edit with the result's label changed", async () => {
     const { fireMessage } = mount();
 
     fireMessage({ type: "renameResult", resultId: "r1", label: "renamed" });
 
+    await vi.waitFor(() => {
+      if (appliedEdits.length === 0) throw new Error("no edit applied yet");
+    });
     const text = appliedEdits.at(-1)?.replacements[0]?.text;
     const doc = parseResultViewDoc(text ?? "");
     expect(doc.results.find((r) => r.id === "r1")?.label).toBe("renamed");
@@ -347,5 +401,116 @@ describe("ResultViewEditorProvider: refresh with traces", () => {
       (m) => m.type === "loading" && m.area === "plots" && !m.busy,
     );
     expect(plotsDone).toHaveLength(1);
+  });
+});
+
+describe("ResultViewEditorProvider: backfilled card ids persist across edits", () => {
+  // Manual apply mode lets each test decide exactly when the mock's
+  // self-triggered `onDidChangeTextDocument` → `refresh()` cascade runs, and
+  // update the mutable document's text first — mirroring real VSCode, where
+  // `getText()` already reflects an edit by the time its change event fires.
+  // Without this, a still-id-less reparse on that cascade would re-backfill
+  // (a fresh id) and re-write forever, since the mock never advances
+  // `getText()` on its own.
+
+  it("lets deletePlot find a card whose id was backfilled from a hand-written file with none — the bug this fix closes", async () => {
+    setApplyEditManual(true);
+    const noIdDoc = JSON.stringify({
+      version: 1,
+      results: [],
+      cards: [{ kind: "plot", title: "Plot 1" }],
+    });
+    const { document, landEdit } = mutableDocFor(noIdDoc);
+    const provider = registerProvider(async () => fakeReader());
+    const { panel, posted, fireReady, fireMessage } = makePanel();
+    provider.resolveCustomTextEditor(
+      document,
+      panel,
+      {} as vscode.CancellationToken,
+    );
+
+    fireReady();
+    await vi.waitFor(() => {
+      if (pendingApplies.length < 1) throw new Error("no backfill edit yet");
+    });
+    landEdit(); // the backfill write "lands" before its change event fires
+    completeApply(0);
+
+    await vi.waitFor(() => {
+      if (!posted.some((m) => m.type === "doc" && m.doc.cards.length > 0)) {
+        throw new Error("backfilled doc not posted yet");
+      }
+    });
+    const docMsg = posted.find(
+      (m) => m.type === "doc" && m.doc.cards.length > 0,
+    );
+    const cardId = docMsg?.type === "doc" ? docMsg.doc.cards[0]?.id : undefined;
+    expect(cardId).toBeDefined();
+
+    // Before the fix, this id was minted for the *posted* doc but never
+    // written to disk, so the re-parse behind `deletePlot` mints a different
+    // one and the filter below matches nothing.
+    fireMessage({ type: "deletePlot", cardId: cardId ?? "" });
+    await vi.waitFor(() => {
+      if (pendingApplies.length < 2) throw new Error("no delete edit yet");
+    });
+    landEdit();
+    completeApply(1);
+
+    const finalText = appliedEdits.at(-1)?.replacements[0]?.text;
+    expect(parseResultViewDoc(finalText ?? "").cards).toEqual([]);
+  });
+
+  it("persists an applyEdit that backfills ids on the first read, for the plots alias", async () => {
+    setApplyEditManual(true);
+    const plotsAliasDoc = JSON.stringify({
+      version: 1,
+      results: [],
+      plots: [{ kind: "plot", title: "Plot 1" }],
+    });
+    const { document, landEdit } = mutableDocFor(plotsAliasDoc);
+    const provider = registerProvider(async () => fakeReader());
+    const { panel, fireReady } = makePanel();
+    provider.resolveCustomTextEditor(
+      document,
+      panel,
+      {} as vscode.CancellationToken,
+    );
+
+    fireReady();
+    await vi.waitFor(() => {
+      if (pendingApplies.length < 1) throw new Error("no backfill edit yet");
+    });
+    landEdit();
+    completeApply(0);
+
+    // Give the self-triggered refresh a tick to reparse the now-idified text
+    // and confirm it does *not* write again.
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(appliedEdits).toHaveLength(1);
+    const persisted = parseResultViewDoc(
+      appliedEdits[0]?.replacements[0]?.text ?? "",
+    );
+    expect(persisted.cards).toHaveLength(1);
+    expect(persisted.cards[0]?.id).toBeTruthy();
+  });
+
+  it("logs a warning when applyEdit resolves false, instead of swallowing the failure", async () => {
+    vi.mocked(log.warn).mockClear();
+    setApplyEditResult(false);
+    const { fireMessage } = mount();
+
+    fireMessage({ type: "removeResult", resultId: "r1" });
+
+    await vi.waitFor(() => {
+      if (vi.mocked(log.warn).mock.calls.length === 0) {
+        throw new Error("log.warn not called yet");
+      }
+    });
+    expect(log.warn).toHaveBeenCalledWith(
+      "resultView",
+      expect.stringContaining("applyEdit failed"),
+    );
   });
 });

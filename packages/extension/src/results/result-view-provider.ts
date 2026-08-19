@@ -3,14 +3,18 @@
  * postprocessing documents, sibling to the diagram custom editor.
  *
  * It renders a CSP-locked webview that loads the `out/postprocessing` bundle
- * (root `<om-result-view-root>`), parses the document with the pure
- * `parseResultViewDoc`, reads the referenced `.mat` trajectories through the
- * shared `OmcClient` (cached by path + mtime), and pushes both down. Card edits
- * from the webview (add/delete plot, add/remove trace, add/remove/rename
- * result) are applied as `WorkspaceEdit`s so undo/redo and git come for free.
+ * (root `<om-result-view-root>`), reads the document through a
+ * `ResultViewDocument` (which persists any id it backfills before handing the
+ * doc back), reads the referenced `.mat` trajectories through the shared
+ * `OmcClient` (cached by path + mtime), and pushes both down. Card edits from
+ * the webview (add/delete plot, add/remove trace, add/remove/rename result)
+ * are applied as `WorkspaceEdit`s via the same `ResultViewDocument`, so
+ * undo/redo and git come for free.
  */
 
 import * as vscode from "vscode";
+
+import type { ResultViewDoc } from "@dicode/omc-client";
 
 import { log } from "../logger.js";
 import { renderWebviewPage } from "../webview/webview-page.js";
@@ -29,12 +33,11 @@ import {
   addPlotCard,
   addTrace,
   deleteCard,
-  parseResultViewDoc,
   removeResult,
   removeTrace,
   renameResult,
-  serializeResultViewDoc,
 } from "./result-doc.js";
+import { ResultViewDocument } from "./result-view-document.js";
 
 export const RESULT_VIEW_VIEW_TYPE = "modelica.resultView";
 
@@ -96,6 +99,7 @@ export class ResultViewEditorProvider
     // read). Reads serialize through the client's promise-chain mutex (OMC is
     // single-threaded).
     const cache = new ResultCache(this.ensureClient, this.statMtimeMs);
+    const resultDoc = new ResultViewDocument(document);
 
     const post = (msg: ExtensionToWebview): void => {
       void webviewPanel.webview.postMessage(msg);
@@ -105,7 +109,7 @@ export class ResultViewEditorProvider
     let generation = 0;
 
     const buildTraceData = async (
-      doc: ReturnType<typeof parseResultViewDoc>,
+      doc: ResultViewDoc,
     ): Promise<Record<string, TracePayload[]>> => {
       const resultById = new Map(doc.results.map((r) => [r.id, r]));
       const out: Record<string, TracePayload[]> = {};
@@ -136,9 +140,9 @@ export class ResultViewEditorProvider
 
     const refresh = async (): Promise<void> => {
       const myGen = ++generation;
-      const doc = parseResultViewDoc(document.getText());
-      // Push structure immediately so the rail + cards render without waiting on
-      // OMC; charts fill in once the trajectories are read.
+      const doc = await resultDoc.read();
+      // Push structure immediately once read — before waiting on OMC; charts
+      // fill in once the trajectories are read.
       post({ type: "doc", doc, traceData: {} });
 
       // Independent of whether any card has traces — a result with no card
@@ -182,16 +186,6 @@ export class ResultViewEditorProvider
       await missingScan;
     };
 
-    const applyDocEdit = (doc: ReturnType<typeof parseResultViewDoc>): void => {
-      const edit = new vscode.WorkspaceEdit();
-      edit.replace(
-        document.uri,
-        new vscode.Range(0, 0, document.lineCount, 0),
-        serializeResultViewDoc(doc),
-      );
-      void vscode.workspace.applyEdit(edit);
-    };
-
     const changeSub = vscode.workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.toString() === document.uri.toString()) void refresh();
     });
@@ -225,36 +219,29 @@ export class ResultViewEditorProvider
           return;
 
         case "requestVariables":
-          void this.handleRequestVariables(document, cache, msg, post);
+          void this.handleRequestVariables(
+            resultDoc,
+            document,
+            cache,
+            msg,
+            post,
+          );
           return;
 
         case "addPlot":
-          applyDocEdit(
-            addPlotCard(parseResultViewDoc(document.getText()), msg.afterIndex),
-          );
+          void resultDoc.mutate((doc) => addPlotCard(doc, msg.afterIndex));
           return;
         case "deletePlot":
-          applyDocEdit(
-            deleteCard(parseResultViewDoc(document.getText()), msg.cardId),
-          );
+          void resultDoc.mutate((doc) => deleteCard(doc, msg.cardId));
           return;
         case "addTrace":
-          applyDocEdit(
-            addTrace(
-              parseResultViewDoc(document.getText()),
-              msg.cardId,
-              msg.resultId,
-              msg.variable,
-            ),
+          void resultDoc.mutate((doc) =>
+            addTrace(doc, msg.cardId, msg.resultId, msg.variable),
           );
           return;
         case "removeTrace":
-          applyDocEdit(
-            removeTrace(
-              parseResultViewDoc(document.getText()),
-              msg.cardId,
-              msg.traceIndex,
-            ),
+          void resultDoc.mutate((doc) =>
+            removeTrace(doc, msg.cardId, msg.traceIndex),
           );
           return;
 
@@ -266,17 +253,11 @@ export class ResultViewEditorProvider
           }
           return;
         case "removeResult":
-          applyDocEdit(
-            removeResult(parseResultViewDoc(document.getText()), msg.resultId),
-          );
+          void resultDoc.mutate((doc) => removeResult(doc, msg.resultId));
           return;
         case "renameResult":
-          applyDocEdit(
-            renameResult(
-              parseResultViewDoc(document.getText()),
-              msg.resultId,
-              msg.label,
-            ),
+          void resultDoc.mutate((doc) =>
+            renameResult(doc, msg.resultId, msg.label),
           );
           return;
 
@@ -289,12 +270,13 @@ export class ResultViewEditorProvider
   }
 
   private async handleRequestVariables(
+    resultDoc: ResultViewDocument,
     document: vscode.TextDocument,
     cache: ResultCache,
     msg: Extract<WebviewToExtension, { type: "requestVariables" }>,
     post: (msg: ExtensionToWebview) => void,
   ): Promise<void> {
-    const doc = parseResultViewDoc(document.getText());
+    const doc = await resultDoc.read();
     const result = doc.results.find((r) => r.id === msg.resultId);
     if (!result) {
       post({
