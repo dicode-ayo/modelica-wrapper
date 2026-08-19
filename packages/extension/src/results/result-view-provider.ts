@@ -142,8 +142,10 @@ export class ResultViewEditorProvider
       const myGen = ++generation;
       const doc = await resultDoc.read();
       // Push structure immediately once read — before waiting on OMC; charts
-      // fill in once the trajectories are read.
-      post({ type: "doc", doc, traceData: {} });
+      // fill in once the trajectories are read. Gated like every other post
+      // below: `read()` is now async, so a superseded refresh can resolve
+      // after a newer one and must not overwrite its already-posted doc.
+      if (myGen === generation) post({ type: "doc", doc, traceData: {} });
 
       // Independent of whether any card has traces — a result with no card
       // referencing it yet can still be missing its backing file. Runs

@@ -447,9 +447,8 @@ describe("ResultViewEditorProvider: backfilled card ids persist across edits", (
     const cardId = docMsg?.type === "doc" ? docMsg.doc.cards[0]?.id : undefined;
     expect(cardId).toBeDefined();
 
-    // Before the fix, this id was minted for the *posted* doc but never
-    // written to disk, so the re-parse behind `deletePlot` mints a different
-    // one and the filter below matches nothing.
+    // `cardId` came from the posted doc; deletePlot must match against a
+    // re-parse of the on-disk text that carries the same id.
     fireMessage({ type: "deletePlot", cardId: cardId ?? "" });
     await vi.waitFor(() => {
       if (pendingApplies.length < 2) throw new Error("no delete edit yet");
