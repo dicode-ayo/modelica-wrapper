@@ -559,8 +559,7 @@ describe("ResultViewEditorProvider: backfilled card ids persist across edits", (
       expect(status.message).toContain("applyEdit rejected");
     }
     // The unpersisted, freshly-minted id must never reach the webview — that
-    // id would be unfindable on the next parse (the same bug the backfill
-    // persistence in #488 fixed for the write-succeeds case).
+    // id would be unfindable on the next parse.
     expect(posted.some((m) => m.type === "doc" && m.doc.cards.length > 0)).toBe(
       false,
     );
