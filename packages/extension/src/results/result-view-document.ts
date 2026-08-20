@@ -62,6 +62,9 @@ export class ResultViewDocument {
     return { doc, backfilled };
   }
 
+  /** Never throws — a failed write is logged, not propagated, so a card edit
+   *  that can't be persisted degrades to a no-op rather than an unhandled
+   *  rejection at every `mutate`/`read` call site. */
   private async write(doc: ResultViewDoc): Promise<void> {
     const edit = new vscode.WorkspaceEdit();
     edit.replace(
@@ -69,7 +72,16 @@ export class ResultViewDocument {
       new vscode.Range(0, 0, this.document.lineCount, 0),
       serializeResultViewDoc(doc),
     );
-    const ok = await vscode.workspace.applyEdit(edit);
+    let ok: boolean;
+    try {
+      ok = await vscode.workspace.applyEdit(edit);
+    } catch (err) {
+      log.warn(
+        "resultView",
+        `applyEdit threw for ${this.document.uri.toString()}: ${(err as Error).message}`,
+      );
+      return;
+    }
     if (!ok) {
       log.warn(
         "resultView",

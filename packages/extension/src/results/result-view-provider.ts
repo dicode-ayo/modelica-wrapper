@@ -140,18 +140,7 @@ export class ResultViewEditorProvider
 
     const refresh = async (): Promise<void> => {
       const myGen = ++generation;
-      let doc: ResultViewDoc;
-      try {
-        doc = await resultDoc.read();
-      } catch (err) {
-        if (myGen === generation)
-          post({
-            type: "status",
-            message: (err as Error).message,
-            error: true,
-          });
-        return;
-      }
+      const doc = await resultDoc.read();
       // Push structure before waiting on OMC; charts fill in once the
       // trajectories are read. Gated like every other post below: `read()` is
       // async, so a superseded refresh can resolve after a newer one.
@@ -281,17 +270,7 @@ export class ResultViewEditorProvider
     msg: Extract<WebviewToExtension, { type: "requestVariables" }>,
     post: (msg: ExtensionToWebview) => void,
   ): Promise<void> {
-    let doc: ResultViewDoc;
-    try {
-      doc = await resultDoc.read();
-    } catch (err) {
-      post({
-        type: "variables",
-        resultId: msg.resultId,
-        error: (err as Error).message,
-      });
-      return;
-    }
+    const doc = await resultDoc.read();
     const result = doc.results.find((r) => r.id === msg.resultId);
     if (!result) {
       post({
