@@ -66,19 +66,19 @@ export class ResultViewDocument {
    *  that can't be persisted degrades to a no-op rather than an unhandled
    *  rejection at every `mutate`/`read` call site. */
   private async write(doc: ResultViewDoc): Promise<void> {
-    const edit = new vscode.WorkspaceEdit();
-    edit.replace(
-      this.document.uri,
-      new vscode.Range(0, 0, this.document.lineCount, 0),
-      serializeResultViewDoc(doc),
-    );
     let ok: boolean;
     try {
+      const edit = new vscode.WorkspaceEdit();
+      edit.replace(
+        this.document.uri,
+        new vscode.Range(0, 0, this.document.lineCount, 0),
+        serializeResultViewDoc(doc),
+      );
       ok = await vscode.workspace.applyEdit(edit);
     } catch (err) {
       log.warn(
         "resultView",
-        `applyEdit threw for ${this.document.uri.toString()}: ${(err as Error).message}`,
+        `write failed for ${this.document.uri.toString()}: ${(err as Error).message}`,
       );
       return;
     }
