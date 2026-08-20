@@ -1,5 +1,6 @@
 /**
- * Owns all reads/writes of a single `.omresults` `vscode.TextDocument`.
+ * Owns the queued reads/writes of a single `.omresults` `vscode.TextDocument`.
+ * `add-result.ts` writes the same document directly, outside this queue.
  *
  * `parseResultViewDoc` mints a fresh id for any card that lacks one (a
  * hand-written file, or the Dyad-style `plots` alias), so an id handed out
@@ -49,18 +50,15 @@ export class ResultViewDocument {
    *  fire-and-forget `void mutate(...)`, so a throwing `fn` logs and drops
    *  the edit. */
   mutate(fn: (doc: ResultViewDoc) => ResultViewDoc): Promise<void> {
-    return this.enqueue(() => {
-      let next: ResultViewDoc;
+    return this.enqueue(async () => {
       try {
-        next = fn(this.parse().doc);
+        await this.write(fn(this.parse().doc));
       } catch (err) {
         log.warn(
           "resultView",
           `card edit failed for ${this.document.uri.toString()}: ${errorDetail(err)}`,
         );
-        return Promise.resolve();
       }
-      return this.write(next);
     });
   }
 
@@ -86,11 +84,15 @@ export class ResultViewDocument {
    *  rejection at every `mutate`/`read` call site. */
   private async write(doc: ResultViewDoc): Promise<void> {
     try {
+      const text = serializeResultViewDoc(doc);
+      // A no-op transform (e.g. removeResult with an unknown id) would
+      // otherwise still register an undo step and dirty the document.
+      if (text === this.document.getText()) return;
       const edit = new vscode.WorkspaceEdit();
       edit.replace(
         this.document.uri,
         new vscode.Range(0, 0, this.document.lineCount, 0),
-        serializeResultViewDoc(doc),
+        text,
       );
       if (await vscode.workspace.applyEdit(edit)) return;
       log.warn(

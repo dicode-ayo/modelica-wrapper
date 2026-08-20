@@ -24,7 +24,7 @@ import type {
   WebviewToExtension,
 } from "../webview/postprocessing-protocol.js";
 import { log } from "../logger.js";
-import { parseResultViewDoc } from "./result-doc.js";
+import { parseResultViewDoc, serializeResultViewDoc } from "./result-doc.js";
 import type { ResultReader } from "./result-cache.js";
 import { ResultViewEditorProvider } from "./result-view-provider.js";
 
@@ -517,5 +517,22 @@ describe("ResultViewEditorProvider: backfilled card ids persist across edits", (
       "resultView",
       expect.stringContaining("applyEdit rejected"),
     );
+  });
+
+  it("skips the write entirely when a mutate transform is a true no-op", async () => {
+    // Canonical text — matching serializeResultViewDoc's own output exactly —
+    // so a no-op transform's write is skippable by a text comparison, unlike
+    // DOC_TEXT above (compact JSON, so its edits always differ on formatting
+    // alone even when nothing in the doc actually changed).
+    const canonicalText = serializeResultViewDoc(parseResultViewDoc(DOC_TEXT));
+    const { fireMessage } = mount({ docText: canonicalText });
+
+    fireMessage({ type: "removeResult", resultId: "ghost" });
+
+    // No positive signal to wait on — this is the wait-then-assert-nothing
+    // case, so give any (incorrect) write a tick to land first.
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(appliedEdits).toHaveLength(0);
   });
 });

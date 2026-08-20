@@ -16,6 +16,7 @@ import * as vscode from "vscode";
 
 import type { ResultViewDoc } from "@dicode/omc-client";
 
+import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 import { renderWebviewPage } from "../webview/webview-page.js";
 import type {
@@ -130,7 +131,7 @@ export class ResultViewEditorProvider
           } catch (err) {
             log.warn(
               "resultView",
-              `read ${trace.variable} from ${filePath} failed: ${(err as Error).message}`,
+              `read ${trace.variable} from ${filePath} failed: ${errorDetail(err)}`,
             );
           }
         }
@@ -177,7 +178,7 @@ export class ResultViewEditorProvider
         if (myGen === generation)
           post({
             type: "status",
-            message: (err as Error).message,
+            message: errorDetail(err),
             error: true,
           });
       } finally {
@@ -288,7 +289,7 @@ export class ResultViewEditorProvider
       post({
         type: "variables",
         resultId: msg.resultId,
-        error: (err as Error).message,
+        error: errorDetail(err),
       });
     }
   }
