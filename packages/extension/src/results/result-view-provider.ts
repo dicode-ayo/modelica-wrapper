@@ -100,11 +100,12 @@ export class ResultViewEditorProvider
     // read). Reads serialize through the client's promise-chain mutex (OMC is
     // single-threaded).
     const cache = new ResultCache(this.ensureClient, this.statMtimeMs);
-    const resultDoc = new ResultViewDocument(document);
-
     const post = (msg: ExtensionToWebview): void => {
       void webviewPanel.webview.postMessage(msg);
     };
+    const resultDoc = new ResultViewDocument(document, (message) =>
+      post({ type: "status", message, error: true }),
+    );
 
     // Bumped on every refresh so a slow read from a superseded edit is dropped.
     let generation = 0;
@@ -141,7 +142,11 @@ export class ResultViewEditorProvider
 
     const refresh = async (): Promise<void> => {
       const myGen = ++generation;
-      const doc = await resultDoc.read();
+      // A rejection here means the id-backfill write failed to persist;
+      // `onWriteFailure` above already reported it, so just skip this
+      // refresh rather than posting a doc with unpersisted ids.
+      const doc = await resultDoc.read().catch(() => undefined);
+      if (doc === undefined) return;
       // Push structure before waiting on OMC; charts fill in once the
       // trajectories are read. Gated like every other post below: `read()` is
       // async, so a superseded refresh can resolve after a newer one.
@@ -271,7 +276,15 @@ export class ResultViewEditorProvider
     msg: Extract<WebviewToExtension, { type: "requestVariables" }>,
     post: (msg: ExtensionToWebview) => void,
   ): Promise<void> {
-    const doc = await resultDoc.read();
+    const doc = await resultDoc.read().catch((err: unknown) => {
+      post({
+        type: "variables",
+        resultId: msg.resultId,
+        error: errorDetail(err),
+      });
+      return undefined;
+    });
+    if (doc === undefined) return;
     const result = doc.results.find((r) => r.id === msg.resultId);
     if (!result) {
       post({

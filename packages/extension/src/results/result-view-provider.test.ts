@@ -519,6 +519,92 @@ describe("ResultViewEditorProvider: backfilled card ids persist across edits", (
     );
   });
 
+  it("reports a status error and posts no doc when the backfill write is rejected", async () => {
+    // Manual mode + a fixed (non-mutable) document body: the rejected edit
+    // never lands, so every reparse needs a backfill again — same as a real
+    // rejected `applyEdit`, whose target document is unchanged. `completeApply`
+    // is called exactly once; a second backfill attempt (from the change
+    // event's own reentrant `refresh`) is left pending on purpose so it can't
+    // spin the same failure forever.
+    setApplyEditManual(true);
+    setApplyEditResult(false);
+    const noIdDoc = JSON.stringify({
+      version: 1,
+      results: [],
+      cards: [{ kind: "plot", title: "Plot 1" }],
+    });
+    const provider = registerProvider(async () => fakeReader());
+    const { panel, posted, fireReady } = makePanel();
+    provider.resolveCustomTextEditor(
+      docFor(noIdDoc),
+      panel,
+      {} as vscode.CancellationToken,
+    );
+
+    fireReady();
+    await vi.waitFor(() => {
+      if (pendingApplies.length < 1) throw new Error("no backfill edit yet");
+    });
+    completeApply(0);
+
+    await vi.waitFor(() => {
+      if (!posted.some((m) => m.type === "status")) {
+        throw new Error("status error not posted yet");
+      }
+    });
+
+    const status = posted.find((m) => m.type === "status");
+    expect(status).toMatchObject({ error: true });
+    if (status?.type === "status") {
+      expect(status.message).toContain("applyEdit rejected");
+    }
+    // The unpersisted, freshly-minted id must never reach the webview — that
+    // id would be unfindable on the next parse (the same bug the backfill
+    // persistence in #488 fixed for the write-succeeds case).
+    expect(posted.some((m) => m.type === "doc" && m.doc.cards.length > 0)).toBe(
+      false,
+    );
+  });
+
+  it("resolves a pending requestVariables with an error when the backfill write is rejected", async () => {
+    setApplyEditManual(true);
+    setApplyEditResult(false);
+    const noIdDoc = JSON.stringify({
+      version: 1,
+      results: [
+        { id: "r1", label: "run-1", path: "present.mat", source: "simulate" },
+      ],
+      cards: [{ kind: "plot", title: "Plot 1" }],
+    });
+    const provider = registerProvider(
+      async () => fakeReader(),
+      fakeStatMtimeMs(),
+    );
+    const { panel, posted, fireMessage } = makePanel();
+    provider.resolveCustomTextEditor(
+      docFor(noIdDoc),
+      panel,
+      {} as vscode.CancellationToken,
+    );
+
+    fireMessage({ type: "requestVariables", resultId: "r1" });
+    await vi.waitFor(() => {
+      if (pendingApplies.length < 1) throw new Error("no backfill edit yet");
+    });
+    completeApply(0);
+
+    await vi.waitFor(() => {
+      if (!posted.some((m) => m.type === "variables")) {
+        throw new Error("variables response not posted yet");
+      }
+    });
+    const variables = posted.find((m) => m.type === "variables");
+    expect(variables).toMatchObject({
+      resultId: "r1",
+      error: expect.any(String),
+    });
+  });
+
   it("skips the write entirely when a mutate transform is a true no-op", async () => {
     // Canonical text — matching serializeResultViewDoc's own output exactly —
     // so a no-op transform's write is skippable by a text comparison, unlike

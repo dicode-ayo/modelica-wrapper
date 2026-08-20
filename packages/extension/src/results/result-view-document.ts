@@ -8,6 +8,13 @@
  * therefore writes a backfill back before returning it, and `mutate`
  * inherits that. Both serialize through one queue: two edits arriving in the
  * same tick would otherwise read the same stale text and clobber each other.
+ *
+ * A failed backfill write is the one write failure a caller can't just shrug
+ * off: handing back the parsed doc anyway would hand the webview ids that
+ * will never resolve on the next parse (the same bug a missing backfill
+ * causes). `read` rejects in that case instead. Every other write failure
+ * (a `mutate`, or a `read` that didn't need to backfill) still degrades to a
+ * best-effort no-op, reported through `onWriteFailure` rather than thrown.
  */
 
 import { randomUUID } from "node:crypto";
@@ -30,17 +37,29 @@ export interface ResultTextDocument {
 export class ResultViewDocument {
   private queue: Promise<unknown> = Promise.resolve();
 
-  constructor(private readonly document: ResultTextDocument) {}
+  constructor(
+    private readonly document: ResultTextDocument,
+    /** Called with a human-readable message on any write failure — the
+     *  backfill case below as well as every `mutate`. */
+    private readonly onWriteFailure?: (message: string) => void,
+  ) {}
 
   get uri(): vscode.Uri {
     return this.document.uri;
   }
 
-  /** Parse the current text, writing any id backfill back before returning. */
+  /** Parse the current text, writing any id backfill back before returning.
+   *  Rejects if that write fails to persist, instead of handing back a doc
+   *  whose freshly-minted ids are unfindable on the next parse; `write` has
+   *  already reported the failure through `onWriteFailure`. */
   read(): Promise<ResultViewDoc> {
     return this.enqueue(async () => {
       const { doc, backfilled } = this.parse();
-      if (backfilled) await this.write(doc);
+      if (backfilled && !(await this.write(doc))) {
+        throw new Error(
+          `id backfill did not persist for ${this.document.uri.toString()}`,
+        );
+      }
       return doc;
     });
   }
@@ -79,31 +98,33 @@ export class ResultViewDocument {
     return { doc, backfilled };
   }
 
-  /** Never throws — a failed write is logged, not propagated, so a card edit
-   *  that can't be persisted degrades to a no-op rather than an unhandled
-   *  rejection at every `mutate`/`read` call site. */
-  private async write(doc: ResultViewDoc): Promise<void> {
+  /** Never throws — a failure is logged and reported via `onWriteFailure`,
+   *  not propagated, so a card edit that can't be persisted degrades to a
+   *  no-op rather than an unhandled rejection at every `mutate`/`read` call
+   *  site. Returns whether the write (or no-op skip) succeeded, so `read`
+   *  can tell a failed backfill apart from everything else. */
+  private async write(doc: ResultViewDoc): Promise<boolean> {
     try {
       const text = serializeResultViewDoc(doc);
       // A no-op transform (e.g. removeResult with an unknown id) would
       // otherwise still register an undo step and dirty the document.
-      if (text === this.document.getText()) return;
+      if (text === this.document.getText()) return true;
       const edit = new vscode.WorkspaceEdit();
       edit.replace(
         this.document.uri,
         new vscode.Range(0, 0, this.document.lineCount, 0),
         text,
       );
-      if (await vscode.workspace.applyEdit(edit)) return;
-      log.warn(
-        "resultView",
-        `applyEdit rejected for ${this.document.uri.toString()}`,
-      );
+      if (await vscode.workspace.applyEdit(edit)) return true;
+      const message = `applyEdit rejected for ${this.document.uri.toString()}`;
+      log.warn("resultView", message);
+      this.onWriteFailure?.(message);
+      return false;
     } catch (err) {
-      log.warn(
-        "resultView",
-        `write failed for ${this.document.uri.toString()}: ${errorDetail(err)}`,
-      );
+      const message = `write failed for ${this.document.uri.toString()}: ${errorDetail(err)}`;
+      log.warn("resultView", message);
+      this.onWriteFailure?.(message);
+      return false;
     }
   }
 }
