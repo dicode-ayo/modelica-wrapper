@@ -9,12 +9,8 @@
  * inherits that. Both serialize through one queue: two edits arriving in the
  * same tick would otherwise read the same stale text and clobber each other.
  *
- * A failed backfill write is the one write failure a caller can't just shrug
- * off: handing back the parsed doc anyway would hand the webview ids that
- * will never resolve on the next parse (the same bug a missing backfill
- * causes). `read` rejects in that case instead. Every other write failure
- * (a `mutate`, or a `read` that didn't need to backfill) still degrades to a
- * best-effort no-op, reported through `onWriteFailure` rather than thrown.
+ * A failed backfill write is the one write failure `read` can't degrade to a
+ * best-effort no-op like every other write does.
  */
 
 import { randomUUID } from "node:crypto";
@@ -39,9 +35,10 @@ export class ResultViewDocument {
 
   constructor(
     private readonly document: ResultTextDocument,
-    /** Called with a human-readable message on any write failure — the
-     *  backfill case below as well as every `mutate`. */
-    private readonly onWriteFailure?: (message: string) => void,
+    /** Called on any write failure, backfill or `mutate`, so the caller can
+     *  surface it to the user; the failure detail itself is only logged
+     *  (`write` never throws). */
+    private readonly onWriteFailure: () => void,
   ) {}
 
   get uri(): vscode.Uri {
@@ -116,14 +113,18 @@ export class ResultViewDocument {
         text,
       );
       if (await vscode.workspace.applyEdit(edit)) return true;
-      const message = `applyEdit rejected for ${this.document.uri.toString()}`;
-      log.warn("resultView", message);
-      this.onWriteFailure?.(message);
+      log.warn(
+        "resultView",
+        `applyEdit rejected for ${this.document.uri.toString()}`,
+      );
+      this.onWriteFailure();
       return false;
     } catch (err) {
-      const message = `write failed for ${this.document.uri.toString()}: ${errorDetail(err)}`;
-      log.warn("resultView", message);
-      this.onWriteFailure?.(message);
+      log.warn(
+        "resultView",
+        `write failed for ${this.document.uri.toString()}: ${errorDetail(err)}`,
+      );
+      this.onWriteFailure();
       return false;
     }
   }

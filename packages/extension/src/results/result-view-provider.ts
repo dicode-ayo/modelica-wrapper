@@ -103,8 +103,12 @@ export class ResultViewEditorProvider
     const post = (msg: ExtensionToWebview): void => {
       void webviewPanel.webview.postMessage(msg);
     };
-    const resultDoc = new ResultViewDocument(document, (message) =>
-      post({ type: "status", message, error: true }),
+    const resultDoc = new ResultViewDocument(document, () =>
+      post({
+        type: "status",
+        message: `Couldn't save changes to ${document.uri.fsPath} — see the Modelica output channel for details.`,
+        error: true,
+      }),
     );
 
     // Bumped on every refresh so a slow read from a superseded edit is dropped.
@@ -142,10 +146,13 @@ export class ResultViewEditorProvider
 
     const refresh = async (): Promise<void> => {
       const myGen = ++generation;
-      // A rejection here means the id-backfill write failed to persist;
-      // `onWriteFailure` above already reported it, so just skip this
-      // refresh rather than posting a doc with unpersisted ids.
-      const doc = await resultDoc.read().catch(() => undefined);
+      // A rejection means the id-backfill write failed to persist;
+      // `onWriteFailure` above already reported it to the user, so just skip
+      // this refresh rather than posting a doc with unpersisted ids.
+      const doc = await resultDoc.read().catch((err: unknown) => {
+        log.warn("resultView", `refresh failed: ${errorDetail(err)}`);
+        return undefined;
+      });
       if (doc === undefined) return;
       // Push structure before waiting on OMC; charts fill in once the
       // trajectories are read. Gated like every other post below: `read()` is
