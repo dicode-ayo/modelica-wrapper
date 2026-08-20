@@ -470,7 +470,7 @@ describe("ResultViewEditorProvider: backfilled card ids persist across edits", (
     });
     const { document, landEdit } = mutableDocFor(plotsAliasDoc);
     const provider = registerProvider(async () => fakeReader());
-    const { panel, fireReady } = makePanel();
+    const { panel, posted, fireReady } = makePanel();
     provider.resolveCustomTextEditor(
       document,
       panel,
@@ -484,9 +484,14 @@ describe("ResultViewEditorProvider: backfilled card ids persist across edits", (
     landEdit();
     completeApply(0);
 
-    // Give the self-triggered refresh a tick to reparse the now-idified text
-    // and confirm it does *not* write again.
-    await new Promise((r) => setTimeout(r, 10));
+    // The backfill write's onDidChangeTextDocument triggers a second refresh;
+    // wait for its doc post (the reparsed, now-idified text) before asserting
+    // no further write followed it.
+    await vi.waitFor(() => {
+      if (!posted.some((m) => m.type === "doc" && m.doc.cards[0]?.id)) {
+        throw new Error("reparsed doc not posted yet");
+      }
+    });
 
     expect(appliedEdits).toHaveLength(1);
     const persisted = parseResultViewDoc(
@@ -510,7 +515,7 @@ describe("ResultViewEditorProvider: backfilled card ids persist across edits", (
     });
     expect(log.warn).toHaveBeenCalledWith(
       "resultView",
-      expect.stringContaining("applyEdit failed"),
+      expect.stringContaining("applyEdit rejected"),
     );
   });
 });

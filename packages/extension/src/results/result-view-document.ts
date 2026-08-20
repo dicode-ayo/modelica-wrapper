@@ -15,6 +15,7 @@ import * as vscode from "vscode";
 
 import type { ResultViewDoc } from "@dicode/omc-client";
 
+import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 import { parseResultViewDoc, serializeResultViewDoc } from "./result-doc.js";
 
@@ -34,35 +35,39 @@ export class ResultViewDocument {
     return this.document.uri;
   }
 
-  /** Parse the current text, persisting any id backfill before returning. */
+  /** Parse the current text, writing any id backfill back before returning. */
   read(): Promise<ResultViewDoc> {
-    const result = this.queue.then(async () => {
+    return this.enqueue(async () => {
       const { doc, backfilled } = this.parse();
       if (backfilled) await this.write(doc);
       return doc;
     });
-    this.queue = result.catch(() => undefined);
-    return result;
   }
 
-  /** Apply `fn` to the current doc and write the result back. The write
-   *  persists any id backfill the parse produced. Never throws — same
-   *  contract as {@link write}, so a `fn` that throws logs and drops the
-   *  edit rather than rejecting every caller's fire-and-forget `mutate()`. */
+  /** Apply `fn` to the current doc and write the result back, persisting any
+   *  id backfill the parse produced. Never throws: call sites are
+   *  fire-and-forget `void mutate(...)`, so a throwing `fn` logs and drops
+   *  the edit. */
   mutate(fn: (doc: ResultViewDoc) => ResultViewDoc): Promise<void> {
-    const result = this.queue.then(() => {
+    return this.enqueue(() => {
       let next: ResultViewDoc;
       try {
         next = fn(this.parse().doc);
       } catch (err) {
         log.warn(
           "resultView",
-          `card edit failed for ${this.document.uri.toString()}: ${(err as Error).message}`,
+          `card edit failed for ${this.document.uri.toString()}: ${errorDetail(err)}`,
         );
-        return;
+        return Promise.resolve();
       }
       return this.write(next);
     });
+  }
+
+  /** Chain `task` behind every prior `read`/`mutate` on this document, so two
+   *  edits arriving in the same tick can't read the same stale text. */
+  private enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.queue.then(task);
     this.queue = result.catch(() => undefined);
     return result;
   }
@@ -80,7 +85,6 @@ export class ResultViewDocument {
    *  that can't be persisted degrades to a no-op rather than an unhandled
    *  rejection at every `mutate`/`read` call site. */
   private async write(doc: ResultViewDoc): Promise<void> {
-    let ok: boolean;
     try {
       const edit = new vscode.WorkspaceEdit();
       edit.replace(
@@ -88,18 +92,15 @@ export class ResultViewDocument {
         new vscode.Range(0, 0, this.document.lineCount, 0),
         serializeResultViewDoc(doc),
       );
-      ok = await vscode.workspace.applyEdit(edit);
+      if (await vscode.workspace.applyEdit(edit)) return;
+      log.warn(
+        "resultView",
+        `applyEdit rejected for ${this.document.uri.toString()}`,
+      );
     } catch (err) {
       log.warn(
         "resultView",
-        `write failed for ${this.document.uri.toString()}: ${(err as Error).message}`,
-      );
-      return;
-    }
-    if (!ok) {
-      log.warn(
-        "resultView",
-        `applyEdit failed for ${this.document.uri.toString()}`,
+        `write failed for ${this.document.uri.toString()}: ${errorDetail(err)}`,
       );
     }
   }
