@@ -46,9 +46,23 @@ export class ResultViewDocument {
   }
 
   /** Apply `fn` to the current doc and write the result back. The write
-   *  persists any id backfill the parse produced. */
+   *  persists any id backfill the parse produced. Never throws — same
+   *  contract as {@link write}, so a `fn` that throws logs and drops the
+   *  edit rather than rejecting every caller's fire-and-forget `mutate()`. */
   mutate(fn: (doc: ResultViewDoc) => ResultViewDoc): Promise<void> {
-    const result = this.queue.then(() => this.write(fn(this.parse().doc)));
+    const result = this.queue.then(() => {
+      let next: ResultViewDoc;
+      try {
+        next = fn(this.parse().doc);
+      } catch (err) {
+        log.warn(
+          "resultView",
+          `card edit failed for ${this.document.uri.toString()}: ${(err as Error).message}`,
+        );
+        return;
+      }
+      return this.write(next);
+    });
     this.queue = result.catch(() => undefined);
     return result;
   }
