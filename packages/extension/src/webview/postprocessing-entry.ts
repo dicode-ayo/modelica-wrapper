@@ -84,6 +84,9 @@ export class OmResultViewRoot extends LitElement {
             ...this.variablesByResult,
             [msg.resultId]: msg.vars,
           };
+        } else if (msg.error) {
+          console.error(`[result-view] ${msg.error}`);
+          this.statusMessage = msg.error;
         }
         return;
       case "loading":
