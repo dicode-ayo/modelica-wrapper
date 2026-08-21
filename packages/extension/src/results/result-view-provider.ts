@@ -284,10 +284,15 @@ export class ResultViewEditorProvider
     post: (msg: ExtensionToWebview) => void,
   ): Promise<void> {
     const doc = await resultDoc.read().catch((err: unknown) => {
+      log.warn(
+        "resultView",
+        `requestVariables for ${msg.resultId} failed: ${errorDetail(err)}`,
+      );
       post({
         type: "variables",
         resultId: msg.resultId,
-        error: errorDetail(err),
+        error:
+          "Couldn't load this result's variables — see the Modelica output channel for details.",
       });
       return undefined;
     });

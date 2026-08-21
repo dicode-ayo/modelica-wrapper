@@ -239,9 +239,10 @@ function waitForEdit(): Promise<void> {
  *  `applyEdit` set to reject exactly once (manual mode) — mirrors a real
  *  rejected backfill write, whose target document stays unchanged so every
  *  reparse needs a backfill again. Fires `trigger`, waits for the backfill's
- *  `applyEdit`, then completes it. A second backfill attempt, from the
- *  change event's own reentrant `refresh`, is left pending on purpose so it
- *  can't spin the same failure forever. */
+ *  `applyEdit`, then completes it. The mock's `completeApply` fires the
+ *  change event even for a rejected edit (unlike real VS Code), so that
+ *  reentrant `refresh` needs a backfill too — its own `applyEdit` is left
+ *  pending in `pendingApplies`, deliberately never completed. */
 async function mountWithRejectedBackfill(
   docText: string,
   trigger: (
@@ -582,6 +583,7 @@ describe("ResultViewEditorProvider: backfilled card ids persist across edits", (
   });
 
   it("resolves a pending requestVariables with an error when the backfill write is rejected", async () => {
+    vi.mocked(log.warn).mockClear();
     const noIdDoc = JSON.stringify({
       version: 1,
       results: [
@@ -603,8 +605,12 @@ describe("ResultViewEditorProvider: backfilled card ids persist across edits", (
     });
     expect(posted.find((m) => m.type === "variables")).toMatchObject({
       resultId: "r1",
-      error: expect.stringContaining("id backfill did not persist"),
+      error: expect.stringContaining("Couldn't load"),
     });
+    expect(log.warn).toHaveBeenCalledWith(
+      "resultView",
+      expect.stringContaining("id backfill did not persist"),
+    );
   });
 
   it("skips the write entirely when a mutate transform is a true no-op", async () => {
