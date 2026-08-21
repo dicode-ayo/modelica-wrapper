@@ -15,6 +15,7 @@ import {
 
 import {
   createPathClassIndex,
+  createPendingReorders,
   handleMoChange,
   handleMoDelete,
   handleOrderChange,
@@ -58,6 +59,7 @@ function makeDeps(overrides: Partial<MoWatcherDeps> = {}): {
     sourceProvider: { notifySourceChanged },
     guard: createSelfWriteGuard(),
     index: createPathClassIndex(),
+    pendingReorders: createPendingReorders(),
     readFile: async () => "model Bar end Bar;",
     fileExists: async () => true,
     isBusy: () => false,
@@ -791,6 +793,85 @@ describe("handleOrderChange", () => {
 
     expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
     expect(recordedMessages).toHaveLength(0);
+  });
+
+  it("no longer tells the user to re-edit package.order in the busy warning, since saving now retries (#440)", async () => {
+    const { deps } = makeDeps({
+      readFile: async () => "A\nB\n",
+      isBusy: () => true,
+    });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    const [warning] = recordedMessages;
+    expect(warning?.message).not.toContain("refresh the library");
+    expect(warning?.message).not.toContain("edit package.order again");
+    expect(warning?.message).toContain(
+      "Save or close the editor to pick up the change.",
+    );
+  });
+});
+
+describe("reorder retry on save (#440)", () => {
+  it("retries a reorder skipped for a busy buffer once that buffer's own save reports it clean", async () => {
+    let busy = true;
+    const { deps, client, childrenChanged } = makeDeps({
+      readFile: async (fsPath) =>
+        fsPath === ORDER_FILE ? "A\nB\n" : "model Bar end Bar;",
+      isBusy: () => {
+        const wasBusy = busy;
+        busy = false;
+        return wasBusy;
+      },
+    });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+    deps.index.set(FILE, ["My.Pkg.Bar"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(recordedMessages).toHaveLength(1);
+
+    // FILE is the buffer that blocked the reorder; saving it now reports
+    // clean, so its own handleMoChange should retry the pending reorder too.
+    await handleMoChange(deps, FILE);
+
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: FILE });
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: PKG_FILE });
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+  });
+
+  it("leaves a pending reorder in place when its blocking buffer is still busy after an unrelated file's own save", async () => {
+    const UNRELATED_FILE = "/ws/My/Other.mo";
+    const { deps, client, childrenChanged } = makeDeps({
+      readFile: async (fsPath) =>
+        fsPath === ORDER_FILE ? "A\nB\n" : "model Other end Other;",
+      isBusy: (_fsPaths, classNames) =>
+        classNames.includes("My.Pkg") || classNames.includes("My.Pkg.Bar"),
+    });
+    client.parseFile.mockImplementation(async ({ fileName }) =>
+      fileName === UNRELATED_FILE
+        ? { classNames: ["My.Other"] }
+        : { classNames: ["My.Pkg.Bar"] },
+    );
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+    deps.index.set(FILE, ["My.Pkg.Bar"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(recordedMessages).toHaveLength(1);
+
+    // UNRELATED_FILE's own save succeeds, but it never touches My.Pkg or
+    // My.Pkg.Bar, so the pending reorder must stay blocked rather than
+    // re-firing the warning against a buffer that never saved.
+    await handleMoChange(deps, UNRELATED_FILE);
+
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: UNRELATED_FILE });
+    expect(client.loadFile).not.toHaveBeenCalledWith({ fileName: PKG_FILE });
+    expect(recordedMessages).toHaveLength(1);
+    expect(childrenChanged).not.toHaveBeenCalledWith("My.Pkg");
   });
 });
 

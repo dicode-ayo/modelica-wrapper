@@ -18,7 +18,10 @@
  * invalidates none of them directly.
  *
  * A `package.order` edit resolves the owning package from the path→class index
- * and reloads its `package.mo`, which re-derives the child order from disk.
+ * and reloads its `package.mo`, which re-derives the child order from disk. A
+ * reorder skipped because a member's buffer was dirty stays pending and
+ * re-runs once that buffer saves, rather than requiring the user to re-edit
+ * `package.order` themselves.
  *
  * A self-write — our own disk write, matched by content through the
  * {@link SelfWriteGuard} — skips the `loadFile`/`deleteClass` OMC calls: the
@@ -102,12 +105,37 @@ export function createPathClassIndex(): PathClassIndex {
   };
 }
 
+/**
+ * Packages whose reorder was skipped for a busy buffer, keyed by the owning
+ * `package.mo`, so a later save that clears the block can find and re-run it.
+ * Injected — not module-level state — for the same reason `PathClassIndex` is.
+ */
+export interface PendingReorders {
+  set(pkgFile: string, describedPath: string): void;
+  get(pkgFile: string): string | undefined;
+  delete(pkgFile: string): void;
+  keys(): string[];
+}
+
+export function createPendingReorders(): PendingReorders {
+  const byPkgFile = new Map<string, string>();
+  const key = (p: string): string => path.resolve(p);
+  return {
+    set: (p, describedPath) => void byPkgFile.set(key(p), describedPath),
+    get: (p) => byPkgFile.get(key(p)),
+    delete: (p) => void byPkgFile.delete(key(p)),
+    keys: () => [...byPkgFile.keys()],
+  };
+}
+
 export interface MoWatcherDeps {
   ensureClient: () => Promise<WatcherOmcClient>;
   libraryTree: Pick<LibraryWebviewProvider, "childrenChanged">;
   sourceProvider: Pick<ModelicaSourceProvider, "notifySourceChanged">;
   guard: SelfWriteGuard;
   index: PathClassIndex;
+  /** Packages whose reorder is waiting on a busy buffer's save to retry. */
+  pendingReorders: PendingReorders;
   /** Read a file's text; injected so tests need no real disk. */
   readFile: (fsPath: string) => Promise<string>;
   /** True iff `fsPath` is still on disk; injected so tests need no real disk. */
@@ -137,17 +165,15 @@ function warnBusy(fsPath: string, classNames: string[]): void {
 }
 
 /**
- * A skipped reorder is terminal: saving the busy editor reloads that member
- * alone, and nothing re-runs the reorder (issue #440). So this says what
- * actually recovers it, where a `.mo` reload can promise the save is enough
- * (issue #419).
+ * The skipped reorder is recorded in `pendingReorders` before this fires, so
+ * the message can promise the save is enough — the same guarantee a `.mo`
+ * reload's own busy warning makes.
  */
 function warnReorderBusy(describedPath: string, classNames: string[]): void {
   void vscode.window.showWarningMessage(
     `Modelica: a class in ${classNames.join(", ")} has unsaved edits open, so ` +
       `the ${path.basename(describedPath)} reload was skipped. Save or close ` +
-      `the editor, then edit ${path.basename(describedPath)} again or refresh ` +
-      `the library.`,
+      `the editor to pick up the change.`,
   );
 }
 
@@ -314,6 +340,7 @@ export async function handleMoChange(
 
   if (isSelfWrite) {
     reindexAndRelist(deps, fsPath, names, removed);
+    await retryUnblockedReorders(deps);
     return;
   }
 
@@ -340,6 +367,7 @@ export async function handleMoChange(
   for (const name of removed) await client.deleteClass({ typeName: name });
 
   reindexAndRelist(deps, fsPath, names, removed);
+  await retryUnblockedReorders(deps);
 }
 
 /**
@@ -379,9 +407,11 @@ async function reorderPackage(
     fsPath: pkgFile,
   });
   if (deps.isBusy(fsPaths, classNames)) {
+    deps.pendingReorders.set(pkgFile, describedPath);
     warnReorderBusy(describedPath, names);
     return;
   }
+  deps.pendingReorders.delete(pkgFile);
 
   // `loadFile` on the package re-derives the child order from `package.order`,
   // for nested packages as well as this one, and picks up a member added
@@ -411,6 +441,30 @@ async function reorderPackage(
         `${names.join(", ")} still has the order OMC loaded before. Edit and ` +
         `save ${path.basename(pkgFile)} to reload it.`,
     );
+  }
+}
+
+/**
+ * Re-run every pending reorder no longer blocked by a busy buffer. Called
+ * after a `.mo` file's own edit lands cleanly, since the blocking buffer is
+ * always a `.mo` class buffer and that's the only path its save routes
+ * through. A package still genuinely blocked — by some other open buffer than
+ * the one that just saved — is left pending rather than re-warned.
+ */
+async function retryUnblockedReorders(deps: MoWatcherDeps): Promise<void> {
+  for (const pkgFile of deps.pendingReorders.keys()) {
+    const names = deps.index.get(pkgFile);
+    if (names === undefined || names.length === 0) {
+      deps.pendingReorders.delete(pkgFile);
+      continue;
+    }
+    const { fsPaths, classNames } = cascadeReach(deps.index, names, {
+      fsPath: pkgFile,
+    });
+    if (deps.isBusy(fsPaths, classNames)) continue;
+    const describedPath = deps.pendingReorders.get(pkgFile);
+    if (describedPath === undefined) continue;
+    await reorderPackage(deps, pkgFile, describedPath);
   }
 }
 
@@ -580,6 +634,7 @@ export function registerMoFileWatcher(deps: {
     sourceProvider: deps.sourceProvider,
     guard: deps.guard,
     index,
+    pendingReorders: createPendingReorders(),
     readFile: (fsPath) => fsp.readFile(fsPath, "utf8"),
     fileExists: pathExists,
     isBusy: isDeclaredClassBusy,
