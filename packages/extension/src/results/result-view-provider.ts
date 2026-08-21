@@ -100,11 +100,16 @@ export class ResultViewEditorProvider
     // read). Reads serialize through the client's promise-chain mutex (OMC is
     // single-threaded).
     const cache = new ResultCache(this.ensureClient, this.statMtimeMs);
-    const resultDoc = new ResultViewDocument(document);
-
     const post = (msg: ExtensionToWebview): void => {
       void webviewPanel.webview.postMessage(msg);
     };
+    const resultDoc = new ResultViewDocument(document, () =>
+      post({
+        type: "status",
+        message: `Couldn't save changes to ${document.uri.fsPath} — see the Modelica output channel for details.`,
+        error: true,
+      }),
+    );
 
     // Bumped on every refresh so a slow read from a superseded edit is dropped.
     let generation = 0;
@@ -141,7 +146,14 @@ export class ResultViewEditorProvider
 
     const refresh = async (): Promise<void> => {
       const myGen = ++generation;
-      const doc = await resultDoc.read();
+      // A rejection means the id-backfill write failed to persist;
+      // `onWriteFailure` above already reported it to the user, so just skip
+      // this refresh rather than posting a doc with unpersisted ids.
+      const doc = await resultDoc.read().catch((err: unknown) => {
+        log.warn("resultView", `refresh failed: ${errorDetail(err)}`);
+        return undefined;
+      });
+      if (doc === undefined) return;
       // Push structure before waiting on OMC; charts fill in once the
       // trajectories are read. Gated like every other post below: `read()` is
       // async, so a superseded refresh can resolve after a newer one.
@@ -271,13 +283,26 @@ export class ResultViewEditorProvider
     msg: Extract<WebviewToExtension, { type: "requestVariables" }>,
     post: (msg: ExtensionToWebview) => void,
   ): Promise<void> {
-    const doc = await resultDoc.read();
+    const doc = await resultDoc.read().catch((err: unknown) => {
+      log.warn(
+        "resultView",
+        `requestVariables for ${msg.resultId} failed: ${errorDetail(err)}`,
+      );
+      post({
+        type: "variables",
+        resultId: msg.resultId,
+        error:
+          "Couldn't load this result's variables — see the Modelica output channel for details.",
+      });
+      return undefined;
+    });
+    if (doc === undefined) return;
     const result = doc.results.find((r) => r.id === msg.resultId);
     if (!result) {
       post({
         type: "variables",
         resultId: msg.resultId,
-        error: "unknown result",
+        error: "This result no longer exists.",
       });
       return;
     }

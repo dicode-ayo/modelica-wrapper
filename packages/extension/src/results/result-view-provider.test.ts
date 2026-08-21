@@ -235,6 +235,39 @@ function waitForEdit(): Promise<void> {
   });
 }
 
+/** Register+mount a provider whose document needs an id backfill, with
+ *  `applyEdit` set to reject exactly once (manual mode) — mirrors a real
+ *  rejected backfill write, whose target document stays unchanged so every
+ *  reparse needs a backfill again. Fires `trigger`, waits for the backfill's
+ *  `applyEdit`, then completes it. The mock's `completeApply` fires the
+ *  change event even for a rejected edit (unlike real VS Code), so that
+ *  reentrant `refresh` needs a backfill too — its own `applyEdit` is left
+ *  pending in `pendingApplies`, deliberately never completed. */
+async function mountWithRejectedBackfill(
+  docText: string,
+  trigger: (
+    fireReady: () => void,
+    fireMessage: (m: WebviewToExtension) => void,
+  ) => void,
+  statMtimeMs?: (path: string) => Promise<number | undefined>,
+): Promise<{ posted: ExtensionToWebview[] }> {
+  setApplyEditManual(true);
+  setApplyEditResult(false);
+  const provider = registerProvider(async () => fakeReader(), statMtimeMs);
+  const { panel, posted, fireReady, fireMessage } = makePanel();
+  provider.resolveCustomTextEditor(
+    docFor(docText),
+    panel,
+    {} as vscode.CancellationToken,
+  );
+  trigger(fireReady, fireMessage);
+  await vi.waitFor(() => {
+    if (pendingApplies.length < 1) throw new Error("no backfill edit yet");
+  });
+  completeApply(0);
+  return { posted };
+}
+
 describe("ResultViewEditorProvider: removeResult / renameResult", () => {
   it("removeResult applies an edit whose new doc no longer has the result", async () => {
     const { fireMessage } = mount();
@@ -501,10 +534,10 @@ describe("ResultViewEditorProvider: backfilled card ids persist across edits", (
     expect(persisted.cards[0]?.id).toBeTruthy();
   });
 
-  it("logs a warning when applyEdit resolves false, instead of swallowing the failure", async () => {
+  it("logs a warning and posts a status error when applyEdit resolves false, instead of swallowing the failure", async () => {
     vi.mocked(log.warn).mockClear();
     setApplyEditResult(false);
-    const { fireMessage } = mount();
+    const { fireMessage, posted } = mount();
 
     fireMessage({ type: "removeResult", resultId: "r1" });
 
@@ -516,6 +549,67 @@ describe("ResultViewEditorProvider: backfilled card ids persist across edits", (
     expect(log.warn).toHaveBeenCalledWith(
       "resultView",
       expect.stringContaining("applyEdit rejected"),
+    );
+    expect(posted.find((m) => m.type === "status")).toMatchObject({
+      error: true,
+      message: expect.stringContaining("Couldn't save changes"),
+    });
+  });
+
+  it("reports a status error and posts no doc when the backfill write is rejected", async () => {
+    const noIdDoc = JSON.stringify({
+      version: 1,
+      results: [],
+      cards: [{ kind: "plot", title: "Plot 1" }],
+    });
+    const { posted } = await mountWithRejectedBackfill(noIdDoc, (fireReady) =>
+      fireReady(),
+    );
+
+    await vi.waitFor(() => {
+      if (!posted.some((m) => m.type === "status")) {
+        throw new Error("status error not posted yet");
+      }
+    });
+    expect(posted.find((m) => m.type === "status")).toMatchObject({
+      error: true,
+      message: expect.stringContaining("Couldn't save changes"),
+    });
+    // The unpersisted, freshly-minted id must never reach the webview — that
+    // id would be unfindable on the next parse.
+    expect(posted.some((m) => m.type === "doc" && m.doc.cards.length > 0)).toBe(
+      false,
+    );
+  });
+
+  it("resolves a pending requestVariables with an error when the backfill write is rejected", async () => {
+    vi.mocked(log.warn).mockClear();
+    const noIdDoc = JSON.stringify({
+      version: 1,
+      results: [
+        { id: "r1", label: "run-1", path: "present.mat", source: "simulate" },
+      ],
+      cards: [{ kind: "plot", title: "Plot 1" }],
+    });
+    const { posted } = await mountWithRejectedBackfill(
+      noIdDoc,
+      (_fireReady, fireMessage) =>
+        fireMessage({ type: "requestVariables", resultId: "r1" }),
+      fakeStatMtimeMs(),
+    );
+
+    await vi.waitFor(() => {
+      if (!posted.some((m) => m.type === "variables")) {
+        throw new Error("variables response not posted yet");
+      }
+    });
+    expect(posted.find((m) => m.type === "variables")).toMatchObject({
+      resultId: "r1",
+      error: expect.stringContaining("Couldn't load"),
+    });
+    expect(log.warn).toHaveBeenCalledWith(
+      "resultView",
+      expect.stringContaining("id backfill did not persist"),
     );
   });
 

@@ -326,7 +326,7 @@ inside the webview, then `postMessage` across the boundary.
 | `variables` | `{ requestId, resultId, vars?, error? }` | Lazy variable list for one result. |
 | `traceData` | `{ cardIndex, trace: TracePayload }` | Incremental single-trace append. |
 | `loading` | `{ area: "results" \| "plots", busy }` | Spinner gating. |
-| `status` | `{ message, error? }` | Surface a read/parse error. |
+| `status` | `{ message, error? }` | Surface a read/parse error, or a `ResultViewDocument` write failure. |
 
 ### Webview → host
 

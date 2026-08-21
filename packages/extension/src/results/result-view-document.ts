@@ -8,6 +8,9 @@
  * therefore writes a backfill back before returning it, and `mutate`
  * inherits that. Both serialize through one queue: two edits arriving in the
  * same tick would otherwise read the same stale text and clobber each other.
+ *
+ * A failed backfill write is the one write failure `read` can't degrade to a
+ * best-effort no-op like every other write does.
  */
 
 import { randomUUID } from "node:crypto";
@@ -30,17 +33,30 @@ export interface ResultTextDocument {
 export class ResultViewDocument {
   private queue: Promise<unknown> = Promise.resolve();
 
-  constructor(private readonly document: ResultTextDocument) {}
+  constructor(
+    private readonly document: ResultTextDocument,
+    /** Called on any write failure, backfill or `mutate`, so the caller can
+     *  surface it to the user; the failure detail itself is only logged
+     *  (`write` never throws). */
+    private readonly onWriteFailure: () => void,
+  ) {}
 
   get uri(): vscode.Uri {
     return this.document.uri;
   }
 
-  /** Parse the current text, writing any id backfill back before returning. */
+  /** Parse the current text, writing any id backfill back before returning.
+   *  Rejects if that write fails to persist, instead of handing back a doc
+   *  whose freshly-minted ids are unfindable on the next parse; `write` has
+   *  already reported the failure through `onWriteFailure`. */
   read(): Promise<ResultViewDoc> {
     return this.enqueue(async () => {
       const { doc, backfilled } = this.parse();
-      if (backfilled) await this.write(doc);
+      if (backfilled && !(await this.write(doc))) {
+        throw new Error(
+          `id backfill did not persist for ${this.document.uri.toString()}`,
+        );
+      }
       return doc;
     });
   }
@@ -79,31 +95,37 @@ export class ResultViewDocument {
     return { doc, backfilled };
   }
 
-  /** Never throws — a failed write is logged, not propagated, so a card edit
-   *  that can't be persisted degrades to a no-op rather than an unhandled
-   *  rejection at every `mutate`/`read` call site. */
-  private async write(doc: ResultViewDoc): Promise<void> {
+  /** Never throws — a failure is logged and reported via `onWriteFailure`,
+   *  not propagated, so a card edit that can't be persisted degrades to a
+   *  no-op rather than an unhandled rejection at every `mutate`/`read` call
+   *  site. Returns whether the write (or no-op skip) succeeded, so `read`
+   *  can tell a failed backfill apart from everything else. */
+  private async write(doc: ResultViewDoc): Promise<boolean> {
     try {
       const text = serializeResultViewDoc(doc);
       // A no-op transform (e.g. removeResult with an unknown id) would
       // otherwise still register an undo step and dirty the document.
-      if (text === this.document.getText()) return;
+      if (text === this.document.getText()) return true;
       const edit = new vscode.WorkspaceEdit();
       edit.replace(
         this.document.uri,
         new vscode.Range(0, 0, this.document.lineCount, 0),
         text,
       );
-      if (await vscode.workspace.applyEdit(edit)) return;
+      if (await vscode.workspace.applyEdit(edit)) return true;
       log.warn(
         "resultView",
         `applyEdit rejected for ${this.document.uri.toString()}`,
       );
+      this.onWriteFailure();
+      return false;
     } catch (err) {
       log.warn(
         "resultView",
         `write failed for ${this.document.uri.toString()}: ${errorDetail(err)}`,
       );
+      this.onWriteFailure();
+      return false;
     }
   }
 }
