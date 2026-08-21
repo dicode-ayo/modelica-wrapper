@@ -302,7 +302,7 @@ export class ResultViewEditorProvider
       post({
         type: "variables",
         resultId: msg.resultId,
-        error: "unknown result",
+        error: "This result no longer exists.",
       });
       return;
     }
