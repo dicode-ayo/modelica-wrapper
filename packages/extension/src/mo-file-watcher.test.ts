@@ -60,6 +60,9 @@ function makeDeps(overrides: Partial<MoWatcherDeps> = {}): {
     guard: createSelfWriteGuard(),
     index: createPathClassIndex(),
     pendingReorders: createPendingReorders(),
+    scheduleReorderRetry: (_pkgFile, retry) => {
+      void retry();
+    },
     readFile: async () => "model Bar end Bar;",
     fileExists: async () => true,
     isBusy: () => false,
@@ -807,23 +810,17 @@ describe("handleOrderChange", () => {
     const [warning] = recordedMessages;
     expect(warning?.message).not.toContain("refresh the library");
     expect(warning?.message).not.toContain("edit package.order again");
-    expect(warning?.message).toContain(
-      "Save or close the editor to pick up the change.",
-    );
+    expect(warning?.message).toContain("retry automatically");
   });
 });
 
 describe("reorder retry on save (#440)", () => {
   it("retries a reorder skipped for a busy buffer once that buffer's own save reports it clean", async () => {
-    let busy = true;
+    const dirty = new Set(["My.Pkg.Bar"]);
     const { deps, client, childrenChanged } = makeDeps({
       readFile: async (fsPath) =>
         fsPath === ORDER_FILE ? "A\nB\n" : "model Bar end Bar;",
-      isBusy: () => {
-        const wasBusy = busy;
-        busy = false;
-        return wasBusy;
-      },
+      isBusy: (_fsPaths, classNames) => classNames.some((n) => dirty.has(n)),
     });
     deps.index.set(PKG_FILE, ["My.Pkg"]);
     deps.index.set(FILE, ["My.Pkg.Bar"]);
@@ -833,13 +830,16 @@ describe("reorder retry on save (#440)", () => {
     expect(client.loadFile).not.toHaveBeenCalled();
     expect(recordedMessages).toHaveLength(1);
 
-    // FILE is the buffer that blocked the reorder; saving it now reports
-    // clean, so its own handleMoChange should retry the pending reorder too.
+    // The buffer that blocked the reorder actually saves clean now.
+    dirty.delete("My.Pkg.Bar");
     await handleMoChange(deps, FILE);
 
-    expect(client.loadFile).toHaveBeenCalledWith({ fileName: FILE });
-    expect(client.loadFile).toHaveBeenCalledWith({ fileName: PKG_FILE });
+    await vi.waitFor(() =>
+      expect(client.loadFile).toHaveBeenCalledWith({ fileName: PKG_FILE }),
+    );
     expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+    // No second, redundant busy warning was ever emitted for the retry.
+    expect(recordedMessages).toHaveLength(1);
   });
 
   it("leaves a pending reorder in place when its blocking buffer is still busy after an unrelated file's own save", async () => {
@@ -872,6 +872,32 @@ describe("reorder retry on save (#440)", () => {
     expect(client.loadFile).not.toHaveBeenCalledWith({ fileName: PKG_FILE });
     expect(recordedMessages).toHaveLength(1);
     expect(childrenChanged).not.toHaveBeenCalledWith("My.Pkg");
+  });
+
+  it("also retries a pending reorder once the file that was blocking it is deleted", async () => {
+    const dirty = new Set(["My.Pkg.Bar"]);
+    const { deps, client, childrenChanged } = makeDeps({
+      readFile: async (fsPath) =>
+        fsPath === ORDER_FILE ? "A\nB\n" : "model Bar end Bar;",
+      isBusy: (_fsPaths, classNames) => classNames.some((n) => dirty.has(n)),
+    });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+    deps.index.set(FILE, ["My.Pkg.Bar"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(recordedMessages).toHaveLength(1);
+
+    // The blocking buffer closes without saving — no filesystem event of its
+    // own — and the file is then deleted outright.
+    dirty.delete("My.Pkg.Bar");
+    await handleMoDelete(deps, FILE);
+
+    await vi.waitFor(() =>
+      expect(client.loadFile).toHaveBeenCalledWith({ fileName: PKG_FILE }),
+    );
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
   });
 });
 
@@ -1031,6 +1057,31 @@ describe("createPathClassIndex", () => {
         { fsPath: path.resolve("/ws/My/Pkg.mo"), classNames: ["My.Pkg"] },
       ]);
     });
+  });
+});
+
+describe("createPendingReorders", () => {
+  it("returns a set pair through entries(), and drops it on delete", () => {
+    const pending = createPendingReorders();
+    pending.set(PKG_FILE, ORDER_FILE);
+
+    expect(pending.entries()).toEqual([
+      { pkgFile: path.resolve(PKG_FILE), describedPath: ORDER_FILE },
+    ]);
+
+    pending.delete(PKG_FILE);
+
+    expect(pending.entries()).toEqual([]);
+  });
+
+  it("empties every entry on clear(), even with several pending", () => {
+    const pending = createPendingReorders();
+    pending.set(PKG_FILE, ORDER_FILE);
+    pending.set("/ws/My/Other/package.mo", "/ws/My/Other/package.order");
+
+    pending.clear();
+
+    expect(pending.entries()).toEqual([]);
   });
 });
 

@@ -20,8 +20,7 @@
  * A `package.order` edit resolves the owning package from the path→class index
  * and reloads its `package.mo`, which re-derives the child order from disk. A
  * reorder skipped because a member's buffer was dirty stays pending and
- * re-runs once that buffer saves, rather than requiring the user to re-edit
- * `package.order` themselves.
+ * retries once that buffer — or any other `.mo` change or delete — clears it.
  *
  * A self-write — our own disk write, matched by content through the
  * {@link SelfWriteGuard} — skips the `loadFile`/`deleteClass` OMC calls: the
@@ -107,14 +106,15 @@ export function createPathClassIndex(): PathClassIndex {
 
 /**
  * Packages whose reorder was skipped for a busy buffer, keyed by the owning
- * `package.mo`, so a later save that clears the block can find and re-run it.
- * Injected — not module-level state — for the same reason `PathClassIndex` is.
+ * `package.mo`, so a later change that clears the block can find and re-run
+ * it. Injected — not module-level state — for the same reason `PathClassIndex`
+ * is.
  */
 export interface PendingReorders {
   set(pkgFile: string, describedPath: string): void;
-  get(pkgFile: string): string | undefined;
   delete(pkgFile: string): void;
-  keys(): string[];
+  entries(): Array<{ pkgFile: string; describedPath: string }>;
+  clear(): void;
 }
 
 export function createPendingReorders(): PendingReorders {
@@ -122,9 +122,13 @@ export function createPendingReorders(): PendingReorders {
   const key = (p: string): string => path.resolve(p);
   return {
     set: (p, describedPath) => void byPkgFile.set(key(p), describedPath),
-    get: (p) => byPkgFile.get(key(p)),
     delete: (p) => void byPkgFile.delete(key(p)),
-    keys: () => [...byPkgFile.keys()],
+    entries: () =>
+      [...byPkgFile].map(([pkgFile, describedPath]) => ({
+        pkgFile,
+        describedPath,
+      })),
+    clear: () => void byPkgFile.clear(),
   };
 }
 
@@ -136,6 +140,13 @@ export interface MoWatcherDeps {
   index: PathClassIndex;
   /** Packages whose reorder is waiting on a busy buffer's save to retry. */
   pendingReorders: PendingReorders;
+  /**
+   * Run a retried reorder under the same per-package serialization the
+   * watcher's own events use for `pkgFile`, so it can't interleave with
+   * another event already in flight for that package. Fire-and-forget, like
+   * the watcher's own event dispatch — callers don't await the retry itself.
+   */
+  scheduleReorderRetry: (pkgFile: string, retry: () => Promise<void>) => void;
   /** Read a file's text; injected so tests need no real disk. */
   readFile: (fsPath: string) => Promise<string>;
   /** True iff `fsPath` is still on disk; injected so tests need no real disk. */
@@ -166,14 +177,14 @@ function warnBusy(fsPath: string, classNames: string[]): void {
 
 /**
  * The skipped reorder is recorded in `pendingReorders` before this fires, so
- * the message can promise the save is enough — the same guarantee a `.mo`
- * reload's own busy warning makes.
+ * a later change that clears the block can retry it without the user
+ * re-editing anything.
  */
 function warnReorderBusy(describedPath: string, classNames: string[]): void {
   void vscode.window.showWarningMessage(
     `Modelica: a class in ${classNames.join(", ")} has unsaved edits open, so ` +
-      `the ${path.basename(describedPath)} reload was skipped. Save or close ` +
-      `the editor to pick up the change.`,
+      `the ${path.basename(describedPath)} reload was skipped. Save the editor ` +
+      `— or close it without saving — to retry automatically.`,
   );
 }
 
@@ -340,7 +351,7 @@ export async function handleMoChange(
 
   if (isSelfWrite) {
     reindexAndRelist(deps, fsPath, names, removed);
-    await retryUnblockedReorders(deps);
+    retryUnblockedReorders(deps);
     return;
   }
 
@@ -445,14 +456,13 @@ async function reorderPackage(
 }
 
 /**
- * Re-run every pending reorder no longer blocked by a busy buffer. Called
- * after a `.mo` file's own edit lands cleanly, since the blocking buffer is
- * always a `.mo` class buffer and that's the only path its save routes
- * through. A package still genuinely blocked — by some other open buffer than
- * the one that just saved — is left pending rather than re-warned.
+ * Retry every pending reorder no longer blocked by a busy buffer. Checked
+ * after a `.mo` change or delete, since either can be what cleared the
+ * block; a package still blocked by some other open buffer is left pending
+ * rather than re-warned.
  */
-async function retryUnblockedReorders(deps: MoWatcherDeps): Promise<void> {
-  for (const pkgFile of deps.pendingReorders.keys()) {
+function retryUnblockedReorders(deps: MoWatcherDeps): void {
+  for (const { pkgFile, describedPath } of deps.pendingReorders.entries()) {
     const names = deps.index.get(pkgFile);
     if (names === undefined || names.length === 0) {
       deps.pendingReorders.delete(pkgFile);
@@ -462,9 +472,9 @@ async function retryUnblockedReorders(deps: MoWatcherDeps): Promise<void> {
       fsPath: pkgFile,
     });
     if (deps.isBusy(fsPaths, classNames)) continue;
-    const describedPath = deps.pendingReorders.get(pkgFile);
-    if (describedPath === undefined) continue;
-    await reorderPackage(deps, pkgFile, describedPath);
+    deps.scheduleReorderRetry(pkgFile, () =>
+      reorderPackage(deps, pkgFile, describedPath),
+    );
   }
 }
 
@@ -552,6 +562,8 @@ export async function handleMoDelete(
     for (const name of file.classNames) scopes.add(scopeOf(name));
   }
   for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
+
+  retryUnblockedReorders(deps);
 }
 
 /**
@@ -635,6 +647,9 @@ export function registerMoFileWatcher(deps: {
     guard: deps.guard,
     index,
     pendingReorders: createPendingReorders(),
+    scheduleReorderRetry: (pkgFile, retry) => {
+      run(pkgFile, pkgFile, retry);
+    },
     readFile: (fsPath) => fsp.readFile(fsPath, "utf8"),
     fileExists: pathExists,
     isBusy: isDeclaredClassBusy,
@@ -726,6 +741,7 @@ export function registerMoFileWatcher(deps: {
     // `:reset` alone doesn't stale the index — this reseed's value is
     // retrying a mount-time seed that failed because OMC wasn't up yet.
     deps.invalidation.registerSessionReplaced(() => {
+      watcherDeps.pendingReorders.clear();
       seedQueue.enqueue(() => seedWorkspaceIndex(deps.ensureClient, index));
     }),
   ];
