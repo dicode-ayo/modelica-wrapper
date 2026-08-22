@@ -815,7 +815,7 @@ describe("handleOrderChange", () => {
     expect(recordedMessages).toHaveLength(0);
   });
 
-  it("no longer tells the user to re-edit package.order in the busy warning, since saving now retries (#440)", async () => {
+  it("records a reorder skipped for a busy buffer so a later save can retry it (#440)", async () => {
     const { deps } = makeDeps({
       readFile: async () => "A\nB\n",
       isBusy: () => true,
