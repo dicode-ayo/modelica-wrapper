@@ -886,6 +886,11 @@ describe("reorder retry on save (#440)", () => {
     // re-firing the warning against a buffer that never saved.
     await handleMoChange(deps, UNRELATED_FILE);
 
+    // scheduleReorderRetry defers to a later tick — give a wrongly-scheduled
+    // retry a chance to run before asserting it didn't, since the assertions
+    // below would otherwise pass even under a regression.
+    await new Promise((r) => setTimeout(r, 0));
+
     expect(client.loadFile).toHaveBeenCalledWith({ fileName: UNRELATED_FILE });
     expect(client.loadFile).not.toHaveBeenCalledWith({ fileName: PKG_FILE });
     expect(recordedMessages).toHaveLength(1);

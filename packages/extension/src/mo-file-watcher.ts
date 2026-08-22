@@ -113,6 +113,7 @@ export function createPathClassIndex(): PathClassIndex {
 export interface PendingReorders {
   set(pkgFile: string, describedPath: string): void;
   delete(pkgFile: string): void;
+  /** Snapshotted, so a retry loop can mutate the store as it iterates. */
   entries(): Array<{ pkgFile: string; describedPath: string }>;
   clear(): void;
 }
