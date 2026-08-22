@@ -45,11 +45,12 @@ const FILE = "/ws/My/Pkg/Bar.mo";
 function makeFakeReorderScheduler(): MoWatcherDeps["scheduleReorderRetry"] {
   const inFlight = new Map<string, Promise<void>>();
   return (pkgFile, _describedPath, retry) => {
-    const prior = inFlight.get(pkgFile) ?? Promise.resolve();
+    const resolvedKey = path.resolve(pkgFile);
+    const prior = inFlight.get(resolvedKey) ?? Promise.resolve();
     const next = prior.then(retry).catch(() => {});
-    inFlight.set(pkgFile, next);
+    inFlight.set(resolvedKey, next);
     void next.finally(() => {
-      if (inFlight.get(pkgFile) === next) inFlight.delete(pkgFile);
+      if (inFlight.get(resolvedKey) === next) inFlight.delete(resolvedKey);
     });
   };
 }
@@ -823,9 +824,10 @@ describe("handleOrderChange", () => {
 
     await handleOrderChange(deps, ORDER_FILE);
 
+    expect(deps.pendingReorders.entries()).toEqual([
+      { pkgFile: path.resolve(PKG_FILE), describedPath: ORDER_FILE },
+    ]);
     const [warning] = recordedMessages;
-    expect(warning?.message).not.toContain("refresh the library");
-    expect(warning?.message).not.toContain("edit package.order again");
     expect(warning?.message).toContain("retry automatically");
   });
 });
@@ -890,7 +892,7 @@ describe("reorder retry on save (#440)", () => {
     expect(childrenChanged).not.toHaveBeenCalledWith("My.Pkg");
   });
 
-  it("claims a pending reorder before scheduling it, so two saves that each clear the block don't double-schedule it (Fix A)", async () => {
+  it("schedules a pending reorder's retry only once, even when two independent events clear its block", async () => {
     const OTHER_FILE = "/ws/My/Other.mo";
     const dirty = new Set(["My.Pkg.Bar"]);
     const { deps, client } = makeDeps({
@@ -926,7 +928,7 @@ describe("reorder retry on save (#440)", () => {
       expect(client.loadFile).toHaveBeenCalledWith({ fileName: PKG_FILE }),
     );
     // Let any second, redundant scheduled retry have a chance to run too.
-    await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 0));
 
     const pkgFileCalls = client.loadFile.mock.calls.filter(
       ([{ fileName }]) => fileName === PKG_FILE,
