@@ -167,6 +167,67 @@ export function keepForBuffer(
   return kept;
 }
 
+/** Bounds nothing in — every located message against the file is dropped. */
+const NOTHING_IN_BOUNDS: BufferCoords = {
+  firstLine: 1,
+  lastLine: 0,
+  lineShift: 0,
+  columnShift: 0,
+};
+
+/**
+ * Load `typeName`'s own current source standalone under `filename` to get a
+ * known buffer position, then align it back from the shared file's
+ * coordinate space. For a caller with no live document object (unlike
+ * `live-check.ts`, which already has the user's edited buffer text to load),
+ * `typeName`'s own {@link SharedFileClient.listFile} output stands in for it.
+ *
+ * Returns `undefined` when `typeName` owns `filename` outright (the common,
+ * one-class-per-file case) — nothing to align, skip the reload entirely and
+ * leave messages unbounded. On any failure to reload or align, returns
+ * {@link NOTHING_IN_BOUNDS} rather than leaving the caller to fall back to
+ * unbounded messages: a shift we failed to compute is a shift we cannot trust
+ * enough to publish a sibling's diagnostic under a class it doesn't belong to.
+ */
+export async function alignOwnSourceToSharedFile(
+  client: SharedFileClient,
+  input: { typeName: string; filename: string },
+): Promise<BufferCoords | undefined> {
+  const { typeName, filename } = input;
+  const owner = await fileOwnerClass(client, typeName);
+  if (owner === typeName) return undefined;
+
+  try {
+    const { contents } = await client.listFile({ typeName });
+    const { success } = await client.loadString({
+      data: contents,
+      filename,
+      merge: false,
+    });
+    if (!success) {
+      log.warn(
+        "sharedFile",
+        `reloading ${typeName}'s own source under ${filename} failed`,
+      );
+      return NOTHING_IN_BOUNDS;
+    }
+    return (
+      (await alignToSharedFile(client, {
+        typeName,
+        filename,
+        text: contents,
+      })) ?? bufferOwnCoords(contents.split("\n").length)
+    );
+  } catch (err) {
+    log.warn(
+      "sharedFile",
+      `could not align ${typeName} to ${filename}; dropping its diagnostics rather than risk a wrong position`,
+      err,
+    );
+    return NOTHING_IN_BOUNDS;
+  }
+}
+
 function toBufferCoords(msg: ErrorMessage, coords: BufferCoords): ErrorMessage {
   const { info } = msg;
   const shiftColumn = (column: number): number =>

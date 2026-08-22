@@ -31,8 +31,7 @@ import {
 import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
 import { log } from "../logger.js";
 import {
-  alignToSharedFile,
-  bufferOwnCoords,
+  alignOwnSourceToSharedFile,
   keepForBuffer,
   type BufferCoords,
 } from "../shared-file-diagnostics.js";
@@ -126,32 +125,21 @@ export async function runCheckModel(
       // A class stored inline in a shared file (e.g. `package.mo`) is reported
       // by OMC at its real file-relative line, while the virtual editor shows
       // only that class's own pretty-printed text numbered from line 1.
-      // Reload the class's own current source standalone so there's a known
-      // buffer position to align from, then compute the shift back to it —
-      // mirrors what `live-check.ts`'s `runCheck` already does per edit.
-      let coords: BufferCoords | undefined;
-      if (onDiskPath) {
-        try {
-          const { contents } = await client.listFile({ typeName: className });
-          await client.loadString({
-            data: contents,
+      // Compute the shift back to it — mirrors what `live-check.ts`'s
+      // `runCheck` already does per edit, via its own already-loaded buffer.
+      const coords: BufferCoords | undefined = onDiskPath
+        ? await alignOwnSourceToSharedFile(client, {
+            typeName: className,
             filename: onDiskPath,
-            merge: false,
-          });
-          coords =
-            (await alignToSharedFile(client, {
-              typeName: className,
-              filename: onDiskPath,
-              text: contents,
-            })) ?? bufferOwnCoords(contents.split("\n").length);
-        } catch (err) {
-          log.warn(
-            "checkModel",
-            `could not align ${className} to ${onDiskPath}; a sibling's diagnostics may leak through`,
-            err,
-          );
-        }
-      }
+          })
+        : undefined;
+      if (token.isCancellationRequested) return;
+
+      // The alignment reload(s) above can themselves leave messages in OMC's
+      // buffer (e.g. a sibling's pre-existing issue, surfaced only because
+      // realigning reloads the whole file); drain them so the run below
+      // reflects checkModel's own result, not the reload's side effects.
+      if (onDiskPath) await client.getErrorString();
       if (token.isCancellationRequested) return;
 
       const stamp = new Date().toISOString().slice(11, 23);
