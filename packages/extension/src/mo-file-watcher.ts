@@ -146,7 +146,11 @@ export interface MoWatcherDeps {
    * another event already in flight for that package. Fire-and-forget, like
    * the watcher's own event dispatch — callers don't await the retry itself.
    */
-  scheduleReorderRetry: (pkgFile: string, retry: () => Promise<void>) => void;
+  scheduleReorderRetry: (
+    pkgFile: string,
+    describedPath: string,
+    retry: () => Promise<void>,
+  ) => void;
   /** Read a file's text; injected so tests need no real disk. */
   readFile: (fsPath: string) => Promise<string>;
   /** True iff `fsPath` is still on disk; injected so tests need no real disk. */
@@ -184,7 +188,7 @@ function warnReorderBusy(describedPath: string, classNames: string[]): void {
   void vscode.window.showWarningMessage(
     `Modelica: a class in ${classNames.join(", ")} has unsaved edits open, so ` +
       `the ${path.basename(describedPath)} reload was skipped. Save the editor ` +
-      `— or close it without saving — to retry automatically.`,
+      `to retry automatically.`,
   );
 }
 
@@ -378,7 +382,7 @@ export async function handleMoChange(
   for (const name of removed) await client.deleteClass({ typeName: name });
 
   reindexAndRelist(deps, fsPath, names, removed);
-  await retryUnblockedReorders(deps);
+  retryUnblockedReorders(deps);
 }
 
 /**
@@ -472,7 +476,8 @@ function retryUnblockedReorders(deps: MoWatcherDeps): void {
       fsPath: pkgFile,
     });
     if (deps.isBusy(fsPaths, classNames)) continue;
-    deps.scheduleReorderRetry(pkgFile, () =>
+    deps.pendingReorders.delete(pkgFile);
+    deps.scheduleReorderRetry(pkgFile, describedPath, () =>
       reorderPackage(deps, pkgFile, describedPath),
     );
   }
@@ -647,8 +652,8 @@ export function registerMoFileWatcher(deps: {
     guard: deps.guard,
     index,
     pendingReorders: createPendingReorders(),
-    scheduleReorderRetry: (pkgFile, retry) => {
-      run(pkgFile, pkgFile, retry);
+    scheduleReorderRetry: (pkgFile, describedPath, retry) => {
+      run(pkgFile, describedPath, retry);
     },
     readFile: (fsPath) => fsp.readFile(fsPath, "utf8"),
     fileExists: pathExists,

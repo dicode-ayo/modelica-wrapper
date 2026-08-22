@@ -36,6 +36,24 @@ import {
 
 const FILE = "/ws/My/Pkg/Bar.mo";
 
+/**
+ * Mimics `registerMoFileWatcher`'s real `run()` queue closely enough to
+ * exercise deferred, per-package-serialized retries in tests: each `pkgFile`
+ * gets its own promise chain, so a scheduled retry never runs synchronously
+ * inside the call that scheduled it.
+ */
+function makeFakeReorderScheduler(): MoWatcherDeps["scheduleReorderRetry"] {
+  const inFlight = new Map<string, Promise<void>>();
+  return (pkgFile, _describedPath, retry) => {
+    const prior = inFlight.get(pkgFile) ?? Promise.resolve();
+    const next = prior.then(retry).catch(() => {});
+    inFlight.set(pkgFile, next);
+    void next.finally(() => {
+      if (inFlight.get(pkgFile) === next) inFlight.delete(pkgFile);
+    });
+  };
+}
+
 function makeDeps(overrides: Partial<MoWatcherDeps> = {}): {
   deps: MoWatcherDeps;
   client: {
@@ -60,9 +78,7 @@ function makeDeps(overrides: Partial<MoWatcherDeps> = {}): {
     guard: createSelfWriteGuard(),
     index: createPathClassIndex(),
     pendingReorders: createPendingReorders(),
-    scheduleReorderRetry: (_pkgFile, retry) => {
-      void retry();
-    },
+    scheduleReorderRetry: makeFakeReorderScheduler(),
     readFile: async () => "model Bar end Bar;",
     fileExists: async () => true,
     isBusy: () => false,
@@ -874,6 +890,50 @@ describe("reorder retry on save (#440)", () => {
     expect(childrenChanged).not.toHaveBeenCalledWith("My.Pkg");
   });
 
+  it("claims a pending reorder before scheduling it, so two saves that each clear the block don't double-schedule it (Fix A)", async () => {
+    const OTHER_FILE = "/ws/My/Other.mo";
+    const dirty = new Set(["My.Pkg.Bar"]);
+    const { deps, client } = makeDeps({
+      readFile: async (fsPath) => {
+        if (fsPath === ORDER_FILE) return "A\nB\n";
+        if (fsPath === OTHER_FILE) return "model Other end Other;";
+        return "model Bar end Bar;";
+      },
+      isBusy: (_fsPaths, classNames) => classNames.some((n) => dirty.has(n)),
+    });
+    client.parseFile.mockImplementation(async ({ fileName }) =>
+      fileName === OTHER_FILE
+        ? { classNames: ["My.Other"] }
+        : { classNames: ["My.Pkg.Bar"] },
+    );
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+    deps.index.set(FILE, ["My.Pkg.Bar"]);
+    deps.index.set(OTHER_FILE, ["My.Other"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+
+    // Two unrelated files save back-to-back; both clear the block that was
+    // blocking the pending reorder, and each calls retryUnblockedReorders.
+    dirty.delete("My.Pkg.Bar");
+    await Promise.all([
+      handleMoChange(deps, FILE),
+      handleMoChange(deps, OTHER_FILE),
+    ]);
+
+    await vi.waitFor(() =>
+      expect(client.loadFile).toHaveBeenCalledWith({ fileName: PKG_FILE }),
+    );
+    // Let any second, redundant scheduled retry have a chance to run too.
+    await new Promise((r) => setTimeout(r, 10));
+
+    const pkgFileCalls = client.loadFile.mock.calls.filter(
+      ([{ fileName }]) => fileName === PKG_FILE,
+    );
+    expect(pkgFileCalls).toHaveLength(1);
+  });
+
   it("also retries a pending reorder once the file that was blocking it is deleted", async () => {
     const dirty = new Set(["My.Pkg.Bar"]);
     const { deps, client, childrenChanged } = makeDeps({
@@ -1072,6 +1132,18 @@ describe("createPendingReorders", () => {
     pending.delete(PKG_FILE);
 
     expect(pending.entries()).toEqual([]);
+  });
+
+  it("normalizes the pkgFile key, so an unnormalized path still resolves to the same entry", () => {
+    const pending = createPendingReorders();
+    pending.set("/ws/My/../My/Pkg/package.mo", ORDER_FILE);
+
+    expect(pending.entries()).toEqual([
+      {
+        pkgFile: path.resolve("/ws/My/Pkg/package.mo"),
+        describedPath: ORDER_FILE,
+      },
+    ]);
   });
 
   it("empties every entry on clear(), even with several pending", () => {
