@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ErrorMessage } from "@dicode/omc-client";
 
 import {
+  alignOwnSourceToSharedFile,
   alignToSharedFile,
   bufferOwnCoords,
   keepForBuffer,
@@ -180,6 +181,91 @@ describe("alignToSharedFile", () => {
       data: BUFFER_TEXT,
       filename: PACKAGE_MO,
       merge: false,
+    });
+  });
+});
+
+describe("alignOwnSourceToSharedFile", () => {
+  it("skips the reload entirely for a class that owns its file (#462 review)", async () => {
+    const client = makeClient({
+      getSourceFile: vi.fn(async ({ typeName }: { typeName: string }) => ({
+        fileName: typeName === "P.A" ? "/ws/P/A.mo" : PACKAGE_MO,
+      })),
+    });
+
+    const coords = await alignOwnSourceToSharedFile(client, {
+      typeName: "P.A",
+      filename: "/ws/P/A.mo",
+    });
+
+    expect(coords).toBeUndefined();
+    expect(client.listFile).not.toHaveBeenCalled();
+    expect(client.loadString).not.toHaveBeenCalled();
+  });
+
+  it("loads the class's own listing and reports the shift when it shares the file", async () => {
+    const client = makeClient({
+      listFile: vi.fn(async ({ typeName }: { typeName: string }) => ({
+        contents: typeName === "P.A" ? BUFFER_TEXT : PACKAGE_SOURCE,
+      })),
+    });
+
+    const coords = await alignOwnSourceToSharedFile(client, {
+      typeName: "P.A",
+      filename: PACKAGE_MO,
+    });
+
+    expect(coords).toEqual({
+      firstLine: 2,
+      lastLine: 4,
+      lineShift: 1,
+      columnShift: 2,
+    });
+  });
+
+  it("fails closed (bounds nothing in) rather than leaking unbounded when the reload reports failure", async () => {
+    const client = makeClient({
+      loadString: vi.fn(async () => ({ success: false })),
+    });
+
+    const coords = await alignOwnSourceToSharedFile(client, {
+      typeName: "P.A",
+      filename: PACKAGE_MO,
+    });
+
+    expect(coords).toEqual({
+      firstLine: 1,
+      lastLine: 0,
+      lineShift: 0,
+      columnShift: 0,
+    });
+    // Bounding to firstLine > lastLine excludes every located message.
+    expect(
+      keepForBuffer(
+        [messageAt(PACKAGE_MO, 1)],
+        PACKAGE_MO,
+        coords ?? bufferOwnCoords(0),
+      ),
+    ).toEqual([]);
+  });
+
+  it("fails closed when the client throws", async () => {
+    const client = makeClient({
+      listFile: vi.fn(async () => {
+        throw new Error("omc gone");
+      }),
+    });
+
+    const coords = await alignOwnSourceToSharedFile(client, {
+      typeName: "P.A",
+      filename: PACKAGE_MO,
+    });
+
+    expect(coords).toEqual({
+      firstLine: 1,
+      lastLine: 0,
+      lineShift: 0,
+      columnShift: 0,
     });
   });
 });
