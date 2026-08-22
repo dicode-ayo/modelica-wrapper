@@ -8,6 +8,10 @@
  *     The caller surfaces these via the output channel.
  *   - `sourceUriResolver` lets the caller redirect a `modelica-source:/Foo.mo`
  *     filename back to the canonical document URI.
+ *
+ * Also exports {@link hasNoSourceLocation} (the `lineStart: 0` marker, shared
+ * with `shared-file-diagnostics.ts`) and {@link buildSourceUriResolver} (the
+ * resolver shared by `runCheckModel` and `live-check.ts`'s `runCheck`).
  */
 
 import * as vscode from "vscode";
@@ -15,9 +19,36 @@ import * as vscode from "vscode";
 import type { ErrorMessage } from "@dicode/omc-client";
 
 import { omcToVscodePosition } from "../language/position.js";
+import { MODELICA_SOURCE_SCHEME } from "../source-provider.js";
 
 /** Maps an OMC filename to a VSCode Uri; `undefined` falls back to `Uri.file`. */
 export type SourceUriResolver = (filename: string) => vscode.Uri | undefined;
+
+/**
+ * Builds a {@link SourceUriResolver} that redirects a class's real on-disk path (or its
+ * virtual `modelica-source:` URI, echoed back verbatim by OMC in some cases) to the
+ * editor URI the user actually has open. Shared by `runCheckModel` and `live-check.ts`'s
+ * `runCheck` — the two OMC-message-consuming pipelines that both need this same redirect.
+ */
+export function buildSourceUriResolver(input: {
+  onDiskPath: string;
+  virtualUri: vscode.Uri;
+}): SourceUriResolver {
+  const { onDiskPath, virtualUri } = input;
+  const virtualUriString = virtualUri.toString();
+  return (name: string): vscode.Uri | undefined => {
+    if (onDiskPath && name === onDiskPath) return virtualUri;
+    if (name === virtualUriString) return virtualUri;
+    if (name.startsWith(`${MODELICA_SOURCE_SCHEME}:`)) {
+      try {
+        return vscode.Uri.parse(name);
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  };
+}
 
 export function mapOmcMessagesToDiagnostics(
   messages: readonly ErrorMessage[],
@@ -68,6 +99,17 @@ export function severityFromLevel(level: string): vscode.DiagnosticSeverity {
 }
 
 /**
+ * OMC's marker for "this message has no source location" — `getMessagesStringInternal`
+ * reports `lineStart: 0` for a whole-model/whole-file message that isn't about any
+ * particular line. Shared by `rangeFromInfo` below and `shared-file-diagnostics.ts`'s
+ * `keepForBuffer`, which passes such messages through unbounded rather than trying to
+ * shift or bound a position that doesn't exist.
+ */
+export function hasNoSourceLocation(info: { lineStart: number }): boolean {
+  return info.lineStart === 0;
+}
+
+/**
  * VSCode Range from OMC's `getMessagesStringInternal` `info` block. The 1→0
  * shift uses the shared {@link omcToVscodePosition}; diagnostic-specific
  * tweaks (clamp end-before-start, widen zero-width spans so the squiggle
@@ -84,6 +126,9 @@ export function rangeFromInfo(info: {
   lineEnd: number;
   columnEnd: number;
 }): vscode.Range {
+  if (hasNoSourceLocation(info)) {
+    return new vscode.Range(0, 0, 0, 1);
+  }
   const start = omcToVscodePosition(info.lineStart, info.columnStart);
   const rawEnd = omcToVscodePosition(info.lineEnd, info.columnEnd);
   let lineEnd = rawEnd.line;

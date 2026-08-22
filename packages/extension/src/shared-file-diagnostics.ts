@@ -15,6 +15,7 @@
 
 import type { ErrorMessage } from "@dicode/omc-client";
 
+import { hasNoSourceLocation } from "./diagnostics/from-omc.js";
 import { fileOwnerClass, type FileOwnerClient } from "./file-owner.js";
 import { log } from "./logger.js";
 
@@ -150,9 +151,8 @@ export function keepForBuffer(
 ): ErrorMessage[] {
   const kept: ErrorMessage[] = [];
   for (const msg of messages) {
-    // `lineStart: 0` is OMC's marker for a message with no source location
-    // (see `omcToVscodePosition`), not a position to bound or shift.
-    if (msg.info.filename !== filename || msg.info.lineStart === 0) {
+    // A message with no source location is not a position to bound or shift.
+    if (msg.info.filename !== filename || hasNoSourceLocation(msg.info)) {
       kept.push(msg);
       continue;
     }

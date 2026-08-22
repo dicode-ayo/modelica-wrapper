@@ -24,9 +24,18 @@ import * as vscode from "vscode";
 
 import type { OmcClient } from "@dicode/omc-client";
 
-import { mapOmcMessagesToDiagnostics } from "../diagnostics/from-omc.js";
+import {
+  buildSourceUriResolver,
+  mapOmcMessagesToDiagnostics,
+} from "../diagnostics/from-omc.js";
 import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
 import { log } from "../logger.js";
+import {
+  alignToSharedFile,
+  bufferOwnCoords,
+  keepForBuffer,
+  type BufferCoords,
+} from "../shared-file-diagnostics.js";
 import {
   MODELICA_SOURCE_SCHEME,
   qualifiedNameFromUri,
@@ -81,7 +90,7 @@ function resolveTargetClass(): string | undefined {
   return undefined;
 }
 
-async function runCheckModel(
+export async function runCheckModel(
   client: OmcClient,
   diagnostics: vscode.DiagnosticCollection,
   className: string,
@@ -106,28 +115,43 @@ async function runCheckModel(
         .getClassInformation({ typeName: className })
         .catch(() => undefined);
       const virtualUri = sourceUriFor(className);
-      const virtualUriString = virtualUri.toString();
       const onDiskPath = info?.fileName ?? "";
-      const resolver = (name: string): vscode.Uri | undefined => {
-        // The class's on-disk source — map to virtual URI so squiggles land
-        // in the user's open `modelica-source:` editor.
-        if (onDiskPath && name === onDiskPath) return virtualUri;
-        if (name === virtualUriString) return virtualUri;
-        // Belt-and-suspenders: any modelica-source: URI string OMC echoes
-        // back (e.g. from a live-check buffer) parses to its URI.
-        if (name.startsWith(`${MODELICA_SOURCE_SCHEME}:`)) {
-          try {
-            return vscode.Uri.parse(name);
-          } catch {
-            return undefined;
-          }
-        }
-        return undefined;
-      };
+      const resolver = buildSourceUriResolver({ onDiskPath, virtualUri });
 
       // Drain OMC's pre-existing diagnostic buffer so what we read after
       // checkModel reflects this run only.
       await client.getErrorString();
+      if (token.isCancellationRequested) return;
+
+      // A class stored inline in a shared file (e.g. `package.mo`) is reported
+      // by OMC at its real file-relative line, while the virtual editor shows
+      // only that class's own pretty-printed text numbered from line 1.
+      // Reload the class's own current source standalone so there's a known
+      // buffer position to align from, then compute the shift back to it —
+      // mirrors what `live-check.ts`'s `runCheck` already does per edit.
+      let coords: BufferCoords | undefined;
+      if (onDiskPath) {
+        try {
+          const { contents } = await client.listFile({ typeName: className });
+          await client.loadString({
+            data: contents,
+            filename: onDiskPath,
+            merge: false,
+          });
+          coords =
+            (await alignToSharedFile(client, {
+              typeName: className,
+              filename: onDiskPath,
+              text: contents,
+            })) ?? bufferOwnCoords(contents.split("\n").length);
+        } catch (err) {
+          log.warn(
+            "checkModel",
+            `could not align ${className} to ${onDiskPath}; a sibling's diagnostics may leak through`,
+            err,
+          );
+        }
+      }
       if (token.isCancellationRequested) return;
 
       const stamp = new Date().toISOString().slice(11, 23);
@@ -141,8 +165,14 @@ async function runCheckModel(
       if (token.isCancellationRequested) return;
 
       // Clear-all + replace: this is the user-triggered "global refresh" path.
+      // Bound/shift onto the buffer's own coordinates for squiggle placement;
+      // the error/warning counts below still reflect the true check outcome.
+      const bounded =
+        onDiskPath && coords
+          ? keepForBuffer(messages, onDiskPath, coords)
+          : messages;
       diagnostics.clear();
-      const grouped = mapOmcMessagesToDiagnostics(messages, resolver);
+      const grouped = mapOmcMessagesToDiagnostics(bounded, resolver);
       for (const [uri, diags] of grouped) {
         diagnostics.set(uri, diags);
       }

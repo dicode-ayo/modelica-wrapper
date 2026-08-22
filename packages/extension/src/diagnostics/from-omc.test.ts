@@ -4,6 +4,8 @@ import * as vscode from "vscode";
 import type { ErrorMessage } from "@dicode/omc-client";
 
 import {
+  buildSourceUriResolver,
+  hasNoSourceLocation,
   mapOmcMessagesToDiagnostics,
   rangeFromInfo,
   severityFromLevel,
@@ -69,6 +71,21 @@ describe("rangeFromInfo (1-based → 0-based offsetting)", () => {
     });
     expect(r.start.character).toBe(2);
     expect(r.end.character).toBe(3);
+  });
+
+  it("anchors a lineStart: 0 message (no source location) at (0,0)-(0,1)", () => {
+    expect(hasNoSourceLocation({ lineStart: 0 })).toBe(true);
+    expect(hasNoSourceLocation({ lineStart: 1 })).toBe(false);
+    const r = rangeFromInfo({
+      lineStart: 0,
+      columnStart: 0,
+      lineEnd: 0,
+      columnEnd: 0,
+    });
+    expect(r.start.line).toBe(0);
+    expect(r.start.character).toBe(0);
+    expect(r.end.line).toBe(0);
+    expect(r.end.character).toBe(1);
   });
 
   it("clamps end < start to start", () => {
@@ -196,33 +213,9 @@ describe("mapOmcMessagesToDiagnostics", () => {
   // resolver built in `runCheckModel` (and the URI-prefix path in
   // live-check).
   describe("button-check resolver behavior (regression for missing squiggles)", () => {
-    // Mirror of the resolver shape used by runCheckModel & live-check —
-    // keeps the test independent of the command modules' DI surface.
-    function buildResolver({
-      onDiskPath,
-      virtualUri,
-    }: {
-      onDiskPath: string;
-      virtualUri: vscode.Uri;
-    }): (name: string) => vscode.Uri | undefined {
-      const virtualUriString = virtualUri.toString();
-      return (name: string): vscode.Uri | undefined => {
-        if (onDiskPath && name === onDiskPath) return virtualUri;
-        if (name === virtualUriString) return virtualUri;
-        if (name.startsWith("modelica-source:")) {
-          try {
-            return vscode.Uri.parse(name);
-          } catch {
-            return undefined;
-          }
-        }
-        return undefined;
-      };
-    }
-
     it("returns the virtual URI for the class's on-disk path", () => {
       const virtualUri = vscode.Uri.parse("modelica-source:/Foo.mo");
-      const resolver = buildResolver({
+      const resolver = buildSourceUriResolver({
         onDiskPath: "/tmp/lib/Foo.mo",
         virtualUri,
       });
@@ -248,7 +241,7 @@ describe("mapOmcMessagesToDiagnostics", () => {
 
     it("parses a modelica-source: URI string back to a vscode.Uri", () => {
       const virtualUri = vscode.Uri.parse("modelica-source:/Bar.mo");
-      const resolver = buildResolver({ onDiskPath: "", virtualUri });
+      const resolver = buildSourceUriResolver({ onDiskPath: "", virtualUri });
       const out = mapOmcMessagesToDiagnostics(
         [
           makeMessage({
