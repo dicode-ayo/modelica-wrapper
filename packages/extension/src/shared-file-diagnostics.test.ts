@@ -186,7 +186,7 @@ describe("alignToSharedFile", () => {
 });
 
 describe("alignOwnSourceToSharedFile", () => {
-  it("skips the reload entirely for a class that owns its file (#462 review)", async () => {
+  it("skips the reload entirely for a class that owns its file", async () => {
     const client = makeClient({
       getSourceFile: vi.fn(async ({ typeName }: { typeName: string }) => ({
         fileName: typeName === "P.A" ? "/ws/P/A.mo" : PACKAGE_MO,
@@ -221,6 +221,32 @@ describe("alignOwnSourceToSharedFile", () => {
       lineShift: 1,
       columnShift: 2,
     });
+  });
+
+  it("reads OMC's own coordinates when the reload lands but the alignment declines to map", async () => {
+    // The standalone reload succeeds — OMC is left holding the buffer's own
+    // coordinates, per `alignToSharedFile`'s contract — but the subsequent
+    // file-wide reload can't place the class in it (an extent OMC cannot
+    // mean, per `alignToSharedFile`'s own "gives up on an extent" case). That
+    // is a known, well-defined state, not an unknown one: fall back to the
+    // buffer's own coordinates rather than the nothing-in-bounds sentinel.
+    const client = makeClient({
+      listFile: vi.fn(async ({ typeName }: { typeName: string }) => ({
+        contents: typeName === "P.A" ? BUFFER_TEXT : PACKAGE_SOURCE,
+      })),
+      getClassInformation: readsThenFails(() => ({
+        lineNumberStart: 0,
+        lineNumberEnd: 0,
+        columnNumberStart: 0,
+      })),
+    });
+
+    const coords = await alignOwnSourceToSharedFile(client, {
+      typeName: "P.A",
+      filename: PACKAGE_MO,
+    });
+
+    expect(coords).toEqual(bufferOwnCoords(BUFFER_TEXT.split("\n").length));
   });
 
   it("fails closed (bounds nothing in) rather than leaking unbounded when the reload reports failure", async () => {

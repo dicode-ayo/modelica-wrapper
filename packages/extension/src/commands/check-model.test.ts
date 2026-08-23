@@ -1,9 +1,9 @@
 /**
  * `runCheckModel`'s coordinate alignment for a class declared inline inside a
- * shared `package.mo` (issue #462). Without the alignment step, a message
- * OMC reports at the file-relative line lands unshifted on the virtual
- * `modelica-source:` editor, which only ever shows the class's own
- * pretty-printed text numbered from line 1.
+ * shared `package.mo`. Without the alignment step, a message OMC reports at
+ * the file-relative line lands unshifted on the virtual `modelica-source:`
+ * editor, which only ever shows the class's own pretty-printed text numbered
+ * from line 1.
  *
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
@@ -106,15 +106,10 @@ function makeDiagnostics(): {
 }
 
 describe("runCheckModel", () => {
-  it("shifts a shared-file class's diagnostic onto the virtual buffer's own line (#462)", async () => {
-    // getClassInformation resolves to the file owner P (`Foo.Bar`'s parent is
-    // `Foo`, not sharing the same file as `Foo.Bar`) — but for this fixture
-    // the class's own file IS the shared package.mo, so alignToSharedFile's
-    // `fileOwnerClass` walk needs a distinct owner. Model that by having
-    // getSourceFile report the same file for Foo.Bar and its enclosing scope
-    // only up to "Foo", and a *different* file for "P" (the imaginary further
-    // parent) so the walk stops at "Foo" as owner — i.e. Foo.Bar does NOT own
-    // package.mo outright.
+  it("shifts a shared-file class's diagnostic onto the virtual buffer's own line", async () => {
+    // `Foo` shares `package.mo` with `Foo.Bar` and has no further enclosing
+    // scope, so `fileOwnerClass` stops there — `Foo.Bar` does not own the
+    // file outright.
     const { client, queue } = makeSharedFileClient({
       getSourceFile: vi.fn(async ({ typeName }: { typeName: string }) =>
         typeName === "Foo.Bar" || typeName === "Foo"
@@ -133,19 +128,21 @@ describe("runCheckModel", () => {
     const [uri, diags] = set.mock.calls[0] ?? [];
     expect((uri as vscode.Uri).toString()).toBe("modelica-source:/Foo.Bar.mo");
     expect(diags).toHaveLength(1);
-    // Buffer line 2, column 3 (0-based for VSCode) — NOT the raw file-relative
-    // line 7/column 5 the pre-fix code would have published at.
+    // Buffer line 2, column 3 (0-based for VSCode), not the file-relative
+    // line 7 / column 5 OMC reports it at.
     expect(diags?.[0]?.range.start.line).toBe(1);
     expect(diags?.[0]?.range.start.character).toBe(2);
   });
 
-  it("leaves a class that owns its file with a no-op bound (common case, #462 non-regression)", async () => {
+  it("leaves a class that owns its file untouched, skipping the reload entirely", async () => {
     const ownFile = "/ws/Foo/Bar.mo";
     const bufferExtent = {
       lineNumberStart: 1,
       lineNumberEnd: 3,
       columnNumberStart: 1,
     };
+    const listFile = vi.fn(async () => ({ contents: STANDALONE_SOURCE }));
+    const loadString = vi.fn(async () => ({ success: true }));
     const client = {
       // A distinct file for the enclosing package stops `fileOwnerClass`'s
       // walk immediately, so `Foo.Bar` is its own file's owner.
@@ -157,8 +154,8 @@ describe("runCheckModel", () => {
         ...bufferExtent,
       })),
       getErrorString: vi.fn(async () => ({ errorString: "" })),
-      listFile: vi.fn(async () => ({ contents: STANDALONE_SOURCE })),
-      loadString: vi.fn(async () => ({ success: true })),
+      listFile,
+      loadString,
       checkModel: vi.fn(async () => ({ result: "" })),
       getMessagesStringInternal: vi.fn(async () => ({
         messages: [errorAt(ownFile, 2, 3)],
@@ -168,12 +165,15 @@ describe("runCheckModel", () => {
 
     await runCheckModel(client, diagnostics, "Foo.Bar");
 
+    // Nothing shares the file, so `alignOwnSourceToSharedFile` returns before
+    // ever touching `listFile`/`loadString` — no reload, no reparse.
+    expect(listFile).not.toHaveBeenCalled();
+    expect(loadString).not.toHaveBeenCalled();
     expect(set).toHaveBeenCalledTimes(1);
     const [uri, diags] = set.mock.calls[0] ?? [];
     expect((uri as vscode.Uri).toString()).toBe("modelica-source:/Foo.Bar.mo");
     expect(diags).toHaveLength(1);
-    // No shared file to align against — the message's own line/column, just
-    // converted 1-based → 0-based.
+    // The message's own line/column, just converted 1-based → 0-based.
     expect(diags?.[0]?.range.start.line).toBe(1);
     expect(diags?.[0]?.range.start.character).toBe(2);
   });

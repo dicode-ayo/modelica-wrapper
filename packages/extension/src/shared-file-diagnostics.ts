@@ -184,10 +184,16 @@ const NOTHING_IN_BOUNDS: BufferCoords = {
  *
  * Returns `undefined` when `typeName` owns `filename` outright (the common,
  * one-class-per-file case) — nothing to align, skip the reload entirely and
- * leave messages unbounded. On any failure to reload or align, returns
- * {@link NOTHING_IN_BOUNDS} rather than leaving the caller to fall back to
- * unbounded messages: a shift we failed to compute is a shift we cannot trust
- * enough to publish a sibling's diagnostic under a class it doesn't belong to.
+ * leave messages unbounded.
+ *
+ * When the standalone reload lands but `alignToSharedFile` declines to map
+ * (e.g. OMC can't place the class in the reloaded file), it has left OMC
+ * holding the buffer's own coordinates, so those are exactly what the caller
+ * should read — `bufferOwnCoords` reflects that. Only when the reload itself
+ * fails or something throws do we know nothing about the coordinate space OMC
+ * is in; that's the one case {@link NOTHING_IN_BOUNDS} guards, dropping every
+ * located message rather than publishing a sibling's diagnostic under a class
+ * it doesn't belong to.
  */
 export async function alignOwnSourceToSharedFile(
   client: SharedFileClient,

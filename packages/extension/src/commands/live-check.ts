@@ -336,7 +336,7 @@ async function runCheck(
     // matches the name we checked under, so squiggles land in the user's
     // buffer rather than the file it happens to be stored in.
     const resolver = buildSourceUriResolver({
-      onDiskPath: filename,
+      omcFilename: filename,
       virtualUri: uri,
     });
     // A message naming the URI reaches the buffer through the branch above
