@@ -202,12 +202,12 @@ const NOTHING_IN_BOUNDS: BufferCoords = bufferOwnCoords(0);
  * every located message rather than publishing a sibling's diagnostic under
  * a class it doesn't belong to. A throw from the reload itself additionally
  * triggers a best-effort restore ({@link restoreSharedFile}): unlike a clean
- * `success: false`, it may have landed partway through and left `filename`
- * holding only `typeName`'s own text, its siblings gone from OMC's live
- * model. Once the reload lands, `alignToSharedFile` is a known-good state
- * either way it ends (a mapping, `undefined`, or a throw), so its outcome
- * always resolves to a real `BufferCoords`, the same way `live-check.ts`'s
- * `runCheck` already treats it.
+ * `success: false`, it leaves unknown whether the reload landed at all, so
+ * `owner`'s real listing goes back over `filename` rather than leaving OMC's
+ * state to chance. Once the reload lands, `alignToSharedFile` is a known-good
+ * state either way it ends (a mapping, `undefined`, or a throw), so its
+ * outcome always resolves to a real `BufferCoords`, the same way
+ * `live-check.ts`'s `runCheck` already treats it.
  */
 export async function alignOwnSourceToSharedFile(
   client: SharedFileClient,
@@ -243,10 +243,9 @@ export async function alignOwnSourceToSharedFile(
       `could not read or reload ${typeName}'s own source under ${filename}; dropping its diagnostics rather than risk a wrong position`,
       err,
     );
-    // A throw here (unlike a clean `success: false`) may have landed
-    // partway through, leaving `filename` holding only this class's text
-    // and its siblings gone from OMC's live model — restore its real
-    // content rather than leave the shared file silently truncated.
+    // A throw here (unlike a clean `success: false`) leaves it unknown
+    // whether the reload landed at all, so put the owner's real listing
+    // back rather than trust `filename` to hold it.
     await restoreSharedFile(client, owner, filename);
     return NOTHING_IN_BOUNDS;
   }
@@ -259,8 +258,7 @@ export async function alignOwnSourceToSharedFile(
   }
 
   // `owner` is already known, so this skips redoing `alignToSharedFile`'s own
-  // walk — it would otherwise re-query OMC for a class the standalone reload
-  // above may have just evicted from `filename`.
+  // walk — an extra round trip to OMC for a fact already in hand.
   let aligned: BufferCoords | undefined;
   try {
     aligned = await alignToSharedFile(client, {
@@ -280,10 +278,9 @@ export async function alignOwnSourceToSharedFile(
 }
 
 /**
- * Best-effort recovery when a reload under `filename` throws partway through:
- * reload `owner`'s current listing back over it, so a shared file a failed
- * standalone load may have left holding only one class's text gets its
- * siblings back rather than staying silently truncated in OMC's session.
+ * Best-effort recovery when a reload under `filename` throws: it's unknown
+ * whether the reload actually landed, so reload `owner`'s current listing
+ * back over `filename` rather than leave OMC's state to chance.
  */
 async function restoreSharedFile(
   client: SharedFileClient,

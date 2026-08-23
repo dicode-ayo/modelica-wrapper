@@ -21,8 +21,10 @@ const PACKAGE_MO = "/ws/P/package.mo";
 
 /**
  * `Foo.Bar` sits at lines 6-8 of `package.mo` — behind a sibling `Foo.Other`
- * (lines 2-4) — but its own standalone rendering, what `listFile("Foo.Bar")`
- * returns and what the virtual editor shows, starts at line 1.
+ * (lines 2-4) — while its own standalone rendering, what the virtual editor
+ * shows, numbers it from line 1. Real `listFile` output additionally carries a
+ * `within` clause ahead of the class; the mapping is a difference of the two
+ * extents, so a constant offset on both sides cancels and is left out here.
  */
 const STANDALONE_SOURCE = "model Bar\n  Real x;\nend Bar;";
 const PACKAGE_SOURCE =
