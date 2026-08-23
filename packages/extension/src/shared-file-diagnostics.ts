@@ -64,13 +64,17 @@ export function bufferOwnCoords(lineCount: number): BufferCoords {
  * holding coordinates the caller can name: the file's on success, the buffer's
  * otherwise — reloading `text` to get back there when the file reload already
  * landed.
+ *
+ * `owner`, when passed, is `typeName`'s already-known file owner (from a
+ * caller that had to compute it anyway, e.g. `alignOwnSourceToSharedFile`) —
+ * skips redoing the `fileOwnerClass` walk here.
  */
 export async function alignToSharedFile(
   client: SharedFileClient,
-  input: { typeName: string; filename: string; text: string },
+  input: { typeName: string; filename: string; text: string; owner?: string },
 ): Promise<BufferCoords | undefined> {
   const { typeName, filename, text } = input;
-  const owner = await fileOwnerClass(client, typeName);
+  const owner = input.owner ?? (await fileOwnerClass(client, typeName));
   if (owner === typeName) return undefined;
 
   const inBuffer = await client.getClassInformation({ typeName });
@@ -167,13 +171,13 @@ export function keepForBuffer(
   return kept;
 }
 
-/** Bounds nothing in — every located message against the file is dropped. */
-const NOTHING_IN_BOUNDS: BufferCoords = {
-  firstLine: 1,
-  lastLine: 0,
-  lineShift: 0,
-  columnShift: 0,
-};
+/**
+ * Bounds nothing in — every located message against the file is dropped.
+ * `bufferOwnCoords(0)` already has this shape (`firstLine` 1 > `lastLine` 0
+ * excludes every located message); named separately so a caller reads intent
+ * ("nothing is trustworthy") rather than a zero-length buffer.
+ */
+const NOTHING_IN_BOUNDS: BufferCoords = bufferOwnCoords(0);
 
 /**
  * Load `typeName`'s own current source standalone under `filename` to get a
@@ -233,10 +237,14 @@ export async function alignOwnSourceToSharedFile(
   // `alignToSharedFile` either maps the file's coordinates back, or leaves
   // OMC holding the buffer's own coordinates and returns `undefined` or
   // rethrows — both are a known-good state, not "unknown", so neither is
-  // caught here.
+  // caught here. `owner` is already known, so this skips redoing the walk.
   return (
-    (await alignToSharedFile(client, { typeName, filename, text: contents })) ??
-    bufferOwnCoords(contents.split("\n").length)
+    (await alignToSharedFile(client, {
+      typeName,
+      filename,
+      text: contents,
+      owner,
+    })) ?? bufferOwnCoords(contents.split("\n").length)
   );
 }
 

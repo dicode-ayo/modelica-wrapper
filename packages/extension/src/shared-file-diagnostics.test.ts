@@ -221,6 +221,10 @@ describe("alignOwnSourceToSharedFile", () => {
       lineShift: 1,
       columnShift: 2,
     });
+    // fileOwnerClass's walk (getSourceFile("P.A"), getSourceFile("P")) runs
+    // once here, not once more inside alignToSharedFile — the already-known
+    // owner is passed through rather than rediscovered.
+    expect(client.getSourceFile).toHaveBeenCalledTimes(2);
   });
 
   it("reads OMC's own coordinates when the reload lands but the alignment declines to map", async () => {
