@@ -1,6 +1,8 @@
 /**
  * Owns the queued reads/writes of a single `.omresults` `vscode.TextDocument`.
- * `add-result.ts` writes the same document directly, outside this queue.
+ * `add-result.ts`'s `applyAddResults` writes a document directly, outside this
+ * queue — but only one with no open editor yet to share a queue with; once an
+ * editor is open, its adds go through this class via `mutateAddResults`.
  *
  * `parseResultViewDoc` mints a fresh id for any card that lacks one (a
  * hand-written file, or the Dyad-style `plots` alias), so an id handed out
