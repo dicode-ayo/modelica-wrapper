@@ -172,10 +172,10 @@ describe("addResultToView", () => {
     });
 
     const addPromise = addResultToView(RUN);
-    // Before the fix, `addResultToView` parsed and wrote the raw document
-    // directly, issuing its own `applyEdit` immediately rather than queuing
-    // behind the backfill — give that a tick to happen if it's going to.
-    await new Promise((r) => setTimeout(r, 0));
+    // The add must queue behind the backfill on `resultDoc`'s own promise
+    // chain rather than issue its own `applyEdit` immediately — give an
+    // immediate write a tick to happen if it's going to.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(pendingApplies).toHaveLength(1);
 
     landEdit();

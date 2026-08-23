@@ -14,12 +14,9 @@ import * as vscode from "vscode";
 
 import { emptyResultViewDoc, type ResultRef } from "@dicode/omc-client";
 
-import {
-  applyAddResults,
-  buildResultRef,
-  mutateAddResults,
-} from "../results/add-result.js";
+import { buildResultRef, mutateAddResults } from "../results/add-result.js";
 import { serializeResultViewDoc } from "../results/result-doc.js";
+import { ResultViewDocument } from "../results/result-view-document.js";
 import {
   RESULT_VIEW_VIEW_TYPE,
   ResultViewEditorProvider,
@@ -87,7 +84,8 @@ export async function addResultToView(
   const active = ResultViewEditorProvider.getActiveResultDoc();
   if (active) {
     const ref = simulateRef(active.uri, args);
-    if ((await mutateAddResults(active, [ref])) > 0) {
+    const result = await mutateAddResults(active, [ref]);
+    if (result.persisted && result.added > 0) {
       void vscode.window.showInformationMessage(
         `Added ${ref.label} to the result view.`,
       );
@@ -104,13 +102,18 @@ export async function addResultToView(
  * the missing `.omresults` suffix. Once open the view becomes the active target,
  * so follow-up runs append through the focused-view path above rather than here.
  * Revealing the view is the feedback; unlike that path there is no toast.
+ *
+ * Wraps the document in its own throwaway `ResultViewDocument` (no webview to
+ * report a write failure to yet) so the seed write goes through the same
+ * `mutateAddResults` path as every other add, rather than a second one of its own.
  */
 async function surfaceInScratchView(args: AddResultToViewArgs): Promise<void> {
   const document = await vscode.workspace.openTextDocument({
     content: "",
     language: "omresults",
   });
-  await applyAddResults(document, [simulateRef(document.uri, args)]);
+  const resultDoc = new ResultViewDocument(document, () => {});
+  await mutateAddResults(resultDoc, [simulateRef(document.uri, args)]);
   await vscode.commands.executeCommand(
     "vscode.openWith",
     document.uri,

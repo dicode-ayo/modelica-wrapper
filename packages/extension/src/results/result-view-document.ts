@@ -64,18 +64,21 @@ export class ResultViewDocument {
   }
 
   /** Apply `fn` to the current doc and write the result back, persisting any
-   *  id backfill the parse produced. Never throws: call sites are
+   *  id backfill the parse produced. Never throws: most call sites are
    *  fire-and-forget `void mutate(...)`, so a throwing `fn` logs and drops
-   *  the edit. */
-  mutate(fn: (doc: ResultViewDoc) => ResultViewDoc): Promise<void> {
+   *  the edit. Resolves `false` (a throwing `fn`, or a write that didn't
+   *  persist) for a caller that needs to tell an edit that landed from one
+   *  that silently didn't — `onWriteFailure` has already reported why. */
+  mutate(fn: (doc: ResultViewDoc) => ResultViewDoc): Promise<boolean> {
     return this.enqueue(async () => {
       try {
-        await this.write(fn(this.parse().doc));
+        return await this.write(fn(this.parse().doc));
       } catch (err) {
         log.warn(
           "resultView",
           `card edit failed for ${this.document.uri.toString()}: ${errorDetail(err)}`,
         );
+        return false;
       }
     });
   }

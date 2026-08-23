@@ -1,14 +1,12 @@
 /**
  * Host-side flows for adding a `.mat` result to a `*.omresults` view document.
  *
- * Two of the three add paths are triggered from a result view itself (the
- * webview's `addResult` message) and so already know their target document's
- * open `ResultViewDocument`: {@link importResults} (a file dialog) and
- * {@link addCachedResult} (a quick-pick over the `.modelica` cache). The third
- * — auto-add on Simulate — reuses {@link buildResultRef} from the command
- * side, and either {@link mutateAddResults} (a focused view) or
- * {@link applyAddResults} (no view open yet — a fresh scratch document).
- * Path resolution lives here too so all three agree.
+ * All three add paths — {@link importResults} (a file dialog),
+ * {@link addCachedResult} (a quick-pick over the `.modelica` cache), and the
+ * command side's Simulate auto-add — already have or create the target
+ * document's `ResultViewDocument` and write through {@link mutateAddResults},
+ * reusing {@link buildResultRef} for the `ResultRef` itself. Path resolution
+ * lives here too so all three agree.
  */
 
 import { randomUUID } from "node:crypto";
@@ -23,11 +21,7 @@ import type {
 } from "@dicode/omc-client";
 
 import { workspaceCacheUri } from "../workspace-cache.js";
-import {
-  addResult,
-  parseResultViewDoc,
-  serializeResultViewDoc,
-} from "./result-doc.js";
+import { addResult } from "./result-doc.js";
 import type { ResultViewDocument } from "./result-view-document.js";
 
 const MAT_EXTENSION = ".mat";
@@ -109,55 +103,29 @@ function addResultsToDoc(
 }
 
 /**
- * Add results to a view document that has no open editor yet — a brand-new
- * document nothing else can be racing (e.g. the scratch view a Simulate
- * auto-add creates before it's opened). Reads and writes `document` directly
- * in one `WorkspaceEdit` (a single undo step). A document with an open editor
- * must go through {@link mutateAddResults} instead: this bypasses the
- * `ResultViewDocument` queue that serializes every other write to it.
- */
-export async function applyAddResults(
-  document: vscode.TextDocument,
-  refs: readonly ResultRef[],
-): Promise<number> {
-  const { doc, added } = addResultsToDoc(
-    parseResultViewDoc(document.getText()),
-    document.uri,
-    refs,
-  );
-  if (added === 0) {
-    return 0;
-  }
-  const edit = new vscode.WorkspaceEdit();
-  edit.replace(
-    document.uri,
-    new vscode.Range(0, 0, document.lineCount, 0),
-    serializeResultViewDoc(doc),
-  );
-  await vscode.workspace.applyEdit(edit);
-  return added;
-}
-
-/**
  * Add results to a document that already has an open `ResultViewDocument` —
  * the editor's own queue, and the queue the Simulate auto-add path
  * (`commands/results.ts`) shares with it via
  * `ResultViewEditorProvider.getActiveResultDoc()`. Serializing through
  * `.mutate()` here is what stops an add racing a concurrent id-backfill write
- * or card edit on the same document (#489).
+ * or card edit on the same document.
+ *
+ * `persisted` is `false` when the write didn't land — `mutate()` never
+ * throws, so callers can't tell an add that happened from one that silently
+ * didn't unless this says so; `resultDoc`'s own `onWriteFailure` has already
+ * reported the failure itself.
  */
-export function mutateAddResults(
+export async function mutateAddResults(
   resultDoc: ResultViewDocument,
   refs: readonly ResultRef[],
-): Promise<number> {
+): Promise<{ added: number; persisted: boolean }> {
   let added = 0;
-  return resultDoc
-    .mutate((doc) => {
-      const result = addResultsToDoc(doc, resultDoc.uri, refs);
-      added = result.added;
-      return result.doc;
-    })
-    .then(() => added);
+  const persisted = await resultDoc.mutate((doc) => {
+    const result = addResultsToDoc(doc, resultDoc.uri, refs);
+    added = result.added;
+    return result.doc;
+  });
+  return { added, persisted };
 }
 
 /** Tell the user when some picked results were already in the view. */
@@ -188,7 +156,12 @@ export async function importResults(
   const refs = picks.map((uri) =>
     buildResultRef(resultDoc.uri, uri.fsPath, "import"),
   );
-  notifyDuplicates(refs.length, await mutateAddResults(resultDoc, refs));
+  const result = await mutateAddResults(resultDoc, refs);
+  // A failed write already surfaced through `onWriteFailure` — reporting
+  // duplicates on top of that would be a second, contradictory message.
+  if (result.persisted) {
+    notifyDuplicates(refs.length, result.added);
+  }
 }
 
 interface CachedPick extends vscode.QuickPickItem {
@@ -247,5 +220,8 @@ export async function addCachedResult(
   const refs = picked.map((p) =>
     buildResultRef(resultDoc.uri, p.fsPath, "cache"),
   );
-  notifyDuplicates(refs.length, await mutateAddResults(resultDoc, refs));
+  const result = await mutateAddResults(resultDoc, refs);
+  if (result.persisted) {
+    notifyDuplicates(refs.length, result.added);
+  }
 }

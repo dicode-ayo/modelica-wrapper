@@ -45,16 +45,15 @@ export const RESULT_VIEW_VIEW_TYPE = "modelica.resultView";
 export class ResultViewEditorProvider
   implements vscode.CustomTextEditorProvider
 {
-  /** Most-recently focused result view's document, so commands that don't
-   *  carry a target (the Simulate auto-add, fired while the *diagram* is
-   *  focused) know which document to add to — and share its write queue,
-   *  rather than writing around it (#489). Held until that view is closed —
-   *  deliberately NOT cleared on blur, since the user is on the diagram when
-   *  they simulate. */
+  /** Most-recently focused result view's `ResultViewDocument`, so commands that
+   *  don't carry a target (the Simulate auto-add, fired while the *diagram* is
+   *  focused) know which document to add to, and write through the same queue
+   *  its own card edits do. Held until that view is closed — deliberately NOT
+   *  cleared on blur, since the user is on the diagram when they simulate. */
   private static activeResultDoc: ResultViewDocument | undefined;
 
-  /** The most-recently focused result view's document, or `undefined` when none
-   *  is open. */
+  /** The most-recently focused result view's `ResultViewDocument`, or
+   *  `undefined` when none is open. */
   static getActiveResultDoc(): ResultViewDocument | undefined {
     return ResultViewEditorProvider.activeResultDoc;
   }
