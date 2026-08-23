@@ -319,9 +319,9 @@ describe("alignOwnSourceToSharedFile", () => {
   });
 
   it("restores the shared file when the standalone reload throws partway through", async () => {
-    // Unlike a clean `success: false`, a throw here may have landed on OMC's
-    // side already — leaving `filename` holding only P.A's own text and its
-    // siblings gone. The restore reloads the owner's real content back.
+    // Unlike a clean `success: false`, a throw here leaves it unknown whether
+    // the reload landed on OMC's side. The restore reloads the owner's real
+    // content back over `filename` rather than leave that to chance.
     const client = makeClient({
       listFile: vi.fn(async ({ typeName }: { typeName: string }) => ({
         contents: typeName === "P.A" ? BUFFER_TEXT : PACKAGE_SOURCE,
