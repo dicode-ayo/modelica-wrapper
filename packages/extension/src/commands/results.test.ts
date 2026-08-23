@@ -23,7 +23,7 @@ const RUN: AddResultToViewArgs = {
   resultFile: "/ws/DCMotor_res.mat",
 };
 
-/** Empty `file:` result view — `applyAddResults` reads uri/getText/lineCount. */
+/** Empty `file:` result view — `ResultViewDocument` reads uri/getText/lineCount. */
 function focusedView(): vscode.TextDocument {
   return {
     uri: vscode.Uri.file("/ws/run.omresults"),
