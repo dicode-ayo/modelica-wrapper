@@ -294,6 +294,32 @@ describe("alignOwnSourceToSharedFile", () => {
       columnShift: 0,
     });
   });
+
+  it("propagates rather than swallows a throw from alignToSharedFile itself", async () => {
+    // Unlike a failure in this function's own reload (above), a throw from
+    // `alignToSharedFile` after the standalone reload has already landed
+    // means OMC has already been restored to the buffer's own coordinates —
+    // a known-good state, not an unknown one. Swallowing it into
+    // NOTHING_IN_BOUNDS would discard diagnostics OMC can still place
+    // correctly; propagating lets the caller decide (`runCheckModel` aborts
+    // the whole check with an error, rather than silently reporting zero
+    // squiggles for a class whose location is actually known).
+    const client = makeClient({
+      listFile: vi.fn(async ({ typeName }: { typeName: string }) => ({
+        contents: typeName === "P.A" ? BUFFER_TEXT : PACKAGE_SOURCE,
+      })),
+      getClassInformation: readsThenFails(() => {
+        throw new Error("class gone");
+      }),
+    });
+
+    await expect(
+      alignOwnSourceToSharedFile(client, {
+        typeName: "P.A",
+        filename: PACKAGE_MO,
+      }),
+    ).rejects.toThrow("class gone");
+  });
 });
 
 describe("keepForBuffer", () => {

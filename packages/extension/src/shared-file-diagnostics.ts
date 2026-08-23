@@ -186,14 +186,16 @@ const NOTHING_IN_BOUNDS: BufferCoords = {
  * one-class-per-file case) — nothing to align, skip the reload entirely and
  * leave messages unbounded.
  *
- * When the standalone reload lands but `alignToSharedFile` declines to map
- * (e.g. OMC can't place the class in the reloaded file), it has left OMC
- * holding the buffer's own coordinates, so those are exactly what the caller
- * should read — `bufferOwnCoords` reflects that. Only when the reload itself
- * fails or something throws do we know nothing about the coordinate space OMC
- * is in; that's the one case {@link NOTHING_IN_BOUNDS} guards, dropping every
- * located message rather than publishing a sibling's diagnostic under a class
- * it doesn't belong to.
+ * When the standalone reload lands, `alignToSharedFile` takes over: it either
+ * maps the file's coordinates back, or (when it declines to map, or its own
+ * extent read throws) leaves OMC holding the buffer's own coordinates and
+ * either returns `undefined` or rethrows — its own doc comment promises this.
+ * Either way that is a known-good state, so its `undefined` return and its
+ * thrown errors both propagate here as "read the buffer's own coordinates",
+ * not "unknown". Only a failure in *this* function's own reload — before
+ * `alignToSharedFile` is ever reached, so nothing is known about OMC's state —
+ * returns {@link NOTHING_IN_BOUNDS}, dropping every located message rather
+ * than publishing a sibling's diagnostic under a class it doesn't belong to.
  */
 export async function alignOwnSourceToSharedFile(
   client: SharedFileClient,
@@ -203,35 +205,39 @@ export async function alignOwnSourceToSharedFile(
   const owner = await fileOwnerClass(client, typeName);
   if (owner === typeName) return undefined;
 
+  let contents: string;
+  let success: boolean;
   try {
-    const { contents } = await client.listFile({ typeName });
-    const { success } = await client.loadString({
+    ({ contents } = await client.listFile({ typeName }));
+    ({ success } = await client.loadString({
       data: contents,
       filename,
       merge: false,
-    });
-    if (!success) {
-      log.warn(
-        "sharedFile",
-        `reloading ${typeName}'s own source under ${filename} failed`,
-      );
-      return NOTHING_IN_BOUNDS;
-    }
-    return (
-      (await alignToSharedFile(client, {
-        typeName,
-        filename,
-        text: contents,
-      })) ?? bufferOwnCoords(contents.split("\n").length)
-    );
+    }));
   } catch (err) {
     log.warn(
       "sharedFile",
-      `could not align ${typeName} to ${filename}; dropping its diagnostics rather than risk a wrong position`,
+      `could not read or reload ${typeName}'s own source under ${filename}; dropping its diagnostics rather than risk a wrong position`,
       err,
     );
     return NOTHING_IN_BOUNDS;
   }
+  if (!success) {
+    log.warn(
+      "sharedFile",
+      `reloading ${typeName}'s own source under ${filename} failed`,
+    );
+    return NOTHING_IN_BOUNDS;
+  }
+
+  // `alignToSharedFile` either maps the file's coordinates back, or leaves
+  // OMC holding the buffer's own coordinates and returns `undefined` or
+  // rethrows — both are a known-good state, not "unknown", so neither is
+  // caught here.
+  return (
+    (await alignToSharedFile(client, { typeName, filename, text: contents })) ??
+    bufferOwnCoords(contents.split("\n").length)
+  );
 }
 
 function toBufferCoords(msg: ErrorMessage, coords: BufferCoords): ErrorMessage {

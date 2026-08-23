@@ -32,8 +32,8 @@ import {
   mapOmcMessagesToDiagnostics,
 } from "../diagnostics/from-omc.js";
 import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
-import { realSourceFilename } from "../file-owner.js";
 import { log } from "../logger.js";
+import { isLikelyDiskPath } from "../persist.js";
 import {
   alignOwnSourceToSharedFile,
   keepForBuffer,
@@ -108,19 +108,21 @@ export async function runCheckModel(
       title: `Checking ${className}`,
     },
     async (_progress, token) => {
-      // Best-effort: look up the class's on-disk source path so we can map
-      // OMC diagnostics referring to that path back to the user's virtual
-      // editor (`modelica-source:/<Class>.mo`). Errors here are non-fatal —
-      // the class may have failed to load and the resolver still handles the
-      // URI-prefix case below.
-      const info = await client
-        .getClassInformation({ typeName: className })
-        .catch(() => undefined);
+      // Best-effort: look up the name OMC reports this class's source under,
+      // so we can map diagnostics referring to it back to the user's virtual
+      // editor (`modelica-source:/<Class>.mo`). One call feeds both the
+      // resolver (which wants the raw name, even a pseudo one — a message
+      // against a genuinely unresolvable filename never reaches it, since
+      // `mapOmcMessagesToDiagnostics` drops `<interactive>`/empty filenames
+      // first) and the realignment reload below (which needs the real disk
+      // path specifically). Errors here are non-fatal — the class may have
+      // failed to load and the resolver still handles the URI-prefix case.
+      const omcFilename = await client
+        .getSourceFile({ typeName: className })
+        .then((r) => r.fileName)
+        .catch(() => "");
       const virtualUri = sourceUriFor(className);
-      const resolver = buildSourceUriResolver({
-        omcFilename: info?.fileName ?? "",
-        virtualUri,
-      });
+      const resolver = buildSourceUriResolver({ omcFilename, virtualUri });
 
       // Drain OMC's pre-existing diagnostic buffer so what we read after
       // checkModel reflects this run only.
@@ -134,7 +136,9 @@ export async function runCheckModel(
       // realignment reload needs the real disk path — a pseudo filename (a
       // `modelica-source:` URI, `<interactive>`) would evict the class from
       // whatever it's actually stored in.
-      const onDiskPath = await realSourceFilename(client, className);
+      const onDiskPath = isLikelyDiskPath(omcFilename)
+        ? omcFilename
+        : undefined;
       const coords = onDiskPath
         ? await alignOwnSourceToSharedFile(client, {
             typeName: className,
