@@ -25,18 +25,19 @@
 
 import * as vscode from "vscode";
 
-import type { OmcClient } from "@dicode/omc-client";
+import type { ErrorMessage } from "@dicode/omc-client";
 
 import {
   buildSourceUriResolver,
   mapOmcMessagesToDiagnostics,
 } from "../diagnostics/from-omc.js";
 import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
+import { sourceFilenames } from "../file-owner.js";
 import { log } from "../logger.js";
-import { isLikelyDiskPath } from "../persist.js";
 import {
   alignOwnSourceToSharedFile,
   keepForBuffer,
+  type SharedFileClient,
 } from "../shared-file-diagnostics.js";
 import {
   MODELICA_SOURCE_SCHEME,
@@ -92,8 +93,15 @@ function resolveTargetClass(): string | undefined {
   return undefined;
 }
 
+/** The OMC surface `runCheckModel` drives. `OmcClient` satisfies it. */
+export interface CheckModelClient extends SharedFileClient {
+  getErrorString(): Promise<{ errorString: string }>;
+  checkModel(input: { typeName: string }): Promise<{ result: string }>;
+  getMessagesStringInternal(): Promise<{ messages: ErrorMessage[] }>;
+}
+
 export async function runCheckModel(
-  client: OmcClient,
+  client: CheckModelClient,
   diagnostics: vscode.DiagnosticCollection,
   className: string,
 ): Promise<void> {
@@ -108,19 +116,12 @@ export async function runCheckModel(
       title: `Checking ${className}`,
     },
     async (_progress, token) => {
-      // Best-effort: look up the name OMC reports this class's source under,
-      // so we can map diagnostics referring to it back to the user's virtual
-      // editor (`modelica-source:/<Class>.mo`). One call feeds both the
-      // resolver (which wants the raw name, even a pseudo one — a message
-      // against a genuinely unresolvable filename never reaches it, since
-      // `mapOmcMessagesToDiagnostics` drops `<interactive>`/empty filenames
-      // first) and the realignment reload below (which needs the real disk
-      // path specifically). Errors here are non-fatal — the class may have
-      // failed to load and the resolver still handles the URI-prefix case.
-      const omcFilename = await client
-        .getSourceFile({ typeName: className })
-        .then((r) => r.fileName)
-        .catch(() => "");
+      // Best-effort: the name OMC reports this class's source under, mapped
+      // back to the user's virtual editor. A failure here is non-fatal — the
+      // class may have failed to load and the resolver still handles the
+      // URI-prefix case.
+      const { reported: omcFilename, onDisk: onDiskPath } =
+        await sourceFilenames(client, className);
       const virtualUri = sourceUriFor(className);
       const resolver = buildSourceUriResolver({ omcFilename, virtualUri });
 
@@ -132,13 +133,6 @@ export async function runCheckModel(
       // A class stored inline in a shared file (e.g. `package.mo`) is reported
       // by OMC at its real file-relative line, while the virtual editor shows
       // only that class's own pretty-printed text numbered from line 1.
-      // `loadString` binds a class to whatever filename it is handed, so the
-      // realignment reload needs the real disk path — a pseudo filename (a
-      // `modelica-source:` URI, `<interactive>`) would evict the class from
-      // whatever it's actually stored in.
-      const onDiskPath = isLikelyDiskPath(omcFilename)
-        ? omcFilename
-        : undefined;
       const coords = onDiskPath
         ? await alignOwnSourceToSharedFile(client, {
             typeName: className,

@@ -96,9 +96,10 @@ export function severityFromLevel(level: string): vscode.DiagnosticSeverity {
 }
 
 /**
- * OMC's marker for "this message has no source location" — `getMessagesStringInternal`
- * reports `lineStart: 0` for a whole-model or whole-file message that isn't about any
- * particular line, so there is no position to bound or shift.
+ * `getMessagesStringInternal` can report `lineStart: 0` for a message with no
+ * particular line to point to — a missing/synthetic location, mirroring the
+ * same marker `omcToVscodePosition` (`language/position.ts`) hedges on. There
+ * is no position to bound or shift in that case.
  */
 export function hasNoSourceLocation(info: { lineStart: number }): boolean {
   return info.lineStart === 0;
@@ -116,8 +117,8 @@ export function hasNoSourceLocation(info: { lineStart: number }): boolean {
  * not factor these into one helper without reconfirming both conventions.
  *
  * A message where {@link hasNoSourceLocation} holds carries no real position;
- * for the all-zero shape OMC actually emits for one, the clamping below
- * already lands on `(0,0)-(0,1)` without any special-casing here.
+ * for the all-zero shape that marker describes, the clamping below already
+ * lands on `(0,0)-(0,1)` without any special-casing here.
  */
 export function rangeFromInfo(info: {
   lineStart: number;

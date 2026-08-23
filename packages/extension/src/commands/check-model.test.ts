@@ -11,20 +11,23 @@
 import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import type { ErrorMessage, OmcClient } from "@dicode/omc-client";
+import type { ErrorMessage } from "@dicode/omc-client";
 
 import { log } from "../logger.js";
 
-import { runCheckModel } from "./check-model.js";
+import { runCheckModel, type CheckModelClient } from "./check-model.js";
 
 const PACKAGE_MO = "/ws/P/package.mo";
 
 /**
- * `Foo.Bar` sits at lines 6-8 of `package.mo` (a sibling declared ahead of
- * it), but its own standalone rendering — what `listFile("Foo.Bar")` returns
- * and what the virtual editor shows — starts at line 1.
+ * `Foo.Bar` sits at lines 6-8 of `package.mo` — behind a sibling `Foo.Other`
+ * (lines 2-4) — but its own standalone rendering, what `listFile("Foo.Bar")`
+ * returns and what the virtual editor shows, starts at line 1.
  */
 const STANDALONE_SOURCE = "model Bar\n  Real x;\nend Bar;";
+const PACKAGE_SOURCE =
+  "package Foo\n  model Other\n    Real y;\n  end Other;\n\n" +
+  "  model Bar\n    Real x;\n  end Bar;\nend Foo;";
 const BAR_IN_BUFFER = {
   lineNumberStart: 1,
   lineNumberEnd: 3,
@@ -55,11 +58,13 @@ function errorAt(filename: string, line: number, column = 1): ErrorMessage {
 }
 
 /**
- * A shared-file class: `getClassInformation` reports the buffer's own extent
- * until `package.mo` is reloaded, at which point it reports the file's real
- * extent — mirroring what `alignToSharedFile` expects from live OMC.
+ * A shared-file class: `getSourceFile` reports the same file for `Foo.Bar`
+ * and its enclosing `Foo` (so `fileOwnerClass` finds it shared), and
+ * `getClassInformation` reports the buffer's own extent until `package.mo`
+ * is reloaded, at which point it reports the file's real extent — mirroring
+ * what `alignToSharedFile` expects from live OMC.
  */
-function makeSharedFileClient(overrides: Partial<OmcClient> = {}) {
+function makeSharedFileClient(overrides: Partial<CheckModelClient> = {}) {
   const batches: ErrorMessage[][] = [];
   let renumbered = false;
   const client = {
@@ -70,11 +75,10 @@ function makeSharedFileClient(overrides: Partial<OmcClient> = {}) {
     })),
     getErrorString: vi.fn(async () => ({ errorString: "" })),
     listFile: vi.fn(async ({ typeName }: { typeName: string }) => ({
-      contents:
-        typeName === "Foo.Bar" ? STANDALONE_SOURCE : "package P\nend P;",
+      contents: typeName === "Foo.Bar" ? STANDALONE_SOURCE : PACKAGE_SOURCE,
     })),
     loadString: vi.fn(async ({ data }: { data: string }) => {
-      if (data !== STANDALONE_SOURCE) renumbered = true;
+      if (data === PACKAGE_SOURCE) renumbered = true;
       return { success: true };
     }),
     checkModel: vi.fn(async () => ({ result: "" })),
@@ -82,7 +86,7 @@ function makeSharedFileClient(overrides: Partial<OmcClient> = {}) {
       messages: batches.shift() ?? [],
     })),
     ...overrides,
-  } as unknown as OmcClient;
+  } satisfies CheckModelClient;
   return {
     client,
     queue(messages: ErrorMessage[]): void {
@@ -107,16 +111,7 @@ function makeDiagnostics(): {
 
 describe("runCheckModel", () => {
   it("shifts a shared-file class's diagnostic onto the virtual buffer's own line", async () => {
-    // `Foo` shares `package.mo` with `Foo.Bar` and has no further enclosing
-    // scope, so `fileOwnerClass` stops there — `Foo.Bar` does not own the
-    // file outright.
-    const { client, queue } = makeSharedFileClient({
-      getSourceFile: vi.fn(async ({ typeName }: { typeName: string }) =>
-        typeName === "Foo.Bar" || typeName === "Foo"
-          ? { fileName: PACKAGE_MO }
-          : { fileName: "" },
-      ),
-    });
+    const { client, queue } = makeSharedFileClient();
     // File-relative line 7 (matching line 2 of the standalone rendering,
     // `Real x;`) is what OMC reports once package.mo is reloaded.
     queue([errorAt(PACKAGE_MO, 7, 5)]);
@@ -160,7 +155,7 @@ describe("runCheckModel", () => {
       getMessagesStringInternal: vi.fn(async () => ({
         messages: [errorAt(ownFile, 2, 3)],
       })),
-    } as unknown as OmcClient;
+    } satisfies CheckModelClient;
     const { diagnostics, set } = makeDiagnostics();
 
     await runCheckModel(client, diagnostics, "Foo.Bar");
@@ -179,16 +174,11 @@ describe("runCheckModel", () => {
   });
 
   it("counts errors/warnings from the unbounded messages, not the bounded set", async () => {
-    // A sibling's diagnostic falls outside Foo.Bar's own extent in the file
-    // and so is dropped from the published squiggles, but the run's summary
-    // (and REPL mirror) must still reflect it in the error count.
-    const { client, queue } = makeSharedFileClient({
-      getSourceFile: vi.fn(async ({ typeName }: { typeName: string }) =>
-        typeName === "Foo.Bar" || typeName === "Foo"
-          ? { fileName: PACKAGE_MO }
-          : { fileName: "" },
-      ),
-    });
+    // Foo.Other's diagnostic (line 3, inside its own body) falls outside
+    // Foo.Bar's extent in the file and so is dropped from the published
+    // squiggles, but the run's summary (and REPL mirror) must still reflect
+    // it in the error count.
+    const { client, queue } = makeSharedFileClient();
     queue([errorAt(PACKAGE_MO, 3, 1), errorAt(PACKAGE_MO, 7, 5)]);
     const { diagnostics, set } = makeDiagnostics();
     const infoSpy = vi.spyOn(log, "info");
@@ -204,6 +194,28 @@ describe("runCheckModel", () => {
       String(message).includes("<<<"),
     );
     expect(summaryCall?.[1]).toContain("2 errors");
+    infoSpy.mockRestore();
+  });
+
+  it("publishes nothing for a shared-file class when the reload fails, while the summary still counts it", async () => {
+    // Fail-closed: alignment can't be trusted, so nothing gets published for
+    // this file rather than a squiggle at a possibly-wrong position — but the
+    // check still ran and its outcome is still reported.
+    const { client, queue } = makeSharedFileClient({
+      loadString: vi.fn(async () => ({ success: false })),
+    });
+    queue([errorAt(PACKAGE_MO, 7, 5)]);
+    const { diagnostics, set, clear } = makeDiagnostics();
+    const infoSpy = vi.spyOn(log, "info");
+
+    await runCheckModel(client, diagnostics, "Foo.Bar");
+
+    expect(clear).toHaveBeenCalledTimes(1);
+    expect(set).not.toHaveBeenCalled();
+    const summaryCall = infoSpy.mock.calls.find(([, message]) =>
+      String(message).includes("<<<"),
+    );
+    expect(summaryCall?.[1]).toContain("1 error");
     infoSpy.mockRestore();
   });
 });
