@@ -216,7 +216,7 @@ describe("mapOmcMessagesToDiagnostics", () => {
     it("returns the virtual URI for the class's on-disk path", () => {
       const virtualUri = vscode.Uri.parse("modelica-source:/Foo.mo");
       const resolver = buildSourceUriResolver({
-        onDiskPath: "/tmp/lib/Foo.mo",
+        omcFilename: "/tmp/lib/Foo.mo",
         virtualUri,
       });
       const out = mapOmcMessagesToDiagnostics(
@@ -241,7 +241,7 @@ describe("mapOmcMessagesToDiagnostics", () => {
 
     it("parses a modelica-source: URI string back to a vscode.Uri", () => {
       const virtualUri = vscode.Uri.parse("modelica-source:/Bar.mo");
-      const resolver = buildSourceUriResolver({ onDiskPath: "", virtualUri });
+      const resolver = buildSourceUriResolver({ omcFilename: "", virtualUri });
       const out = mapOmcMessagesToDiagnostics(
         [
           makeMessage({

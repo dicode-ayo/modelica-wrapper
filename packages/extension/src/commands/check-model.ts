@@ -11,6 +11,9 @@
  *
  * Behavior (decided in the planning discussion, see PR description):
  *   - Drains OMC's error buffer before kicking off the check.
+ *   - For a class stored inline in a shared file, reloads that file so OMC's
+ *     positions and the virtual editor's agree; this leaves OMC holding the
+ *     file's own coordinates.
  *   - Streams progress to a Notification toast that the user can cancel.
  *   - Logs each phase (>>>, result, summary) to the shared "Modelica" output
  *     channel — no second channel.
@@ -29,11 +32,11 @@ import {
   mapOmcMessagesToDiagnostics,
 } from "../diagnostics/from-omc.js";
 import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
+import { realSourceFilename } from "../file-owner.js";
 import { log } from "../logger.js";
 import {
   alignOwnSourceToSharedFile,
   keepForBuffer,
-  type BufferCoords,
 } from "../shared-file-diagnostics.js";
 import {
   MODELICA_SOURCE_SCHEME,
@@ -114,8 +117,10 @@ export async function runCheckModel(
         .getClassInformation({ typeName: className })
         .catch(() => undefined);
       const virtualUri = sourceUriFor(className);
-      const onDiskPath = info?.fileName ?? "";
-      const resolver = buildSourceUriResolver({ onDiskPath, virtualUri });
+      const resolver = buildSourceUriResolver({
+        omcFilename: info?.fileName ?? "",
+        virtualUri,
+      });
 
       // Drain OMC's pre-existing diagnostic buffer so what we read after
       // checkModel reflects this run only.
@@ -125,9 +130,12 @@ export async function runCheckModel(
       // A class stored inline in a shared file (e.g. `package.mo`) is reported
       // by OMC at its real file-relative line, while the virtual editor shows
       // only that class's own pretty-printed text numbered from line 1.
-      // Compute the shift back to it — mirrors what `live-check.ts`'s
-      // `runCheck` already does per edit, via its own already-loaded buffer.
-      const coords: BufferCoords | undefined = onDiskPath
+      // `loadString` binds a class to whatever filename it is handed, so the
+      // realignment reload needs the real disk path — a pseudo filename (a
+      // `modelica-source:` URI, `<interactive>`) would evict the class from
+      // whatever it's actually stored in.
+      const onDiskPath = await realSourceFilename(client, className);
+      const coords = onDiskPath
         ? await alignOwnSourceToSharedFile(client, {
             typeName: className,
             filename: onDiskPath,
@@ -135,11 +143,11 @@ export async function runCheckModel(
         : undefined;
       if (token.isCancellationRequested) return;
 
-      // The alignment reload(s) above can themselves leave messages in OMC's
-      // buffer (e.g. a sibling's pre-existing issue, surfaced only because
-      // realigning reloads the whole file); drain them so the run below
-      // reflects checkModel's own result, not the reload's side effects.
-      if (onDiskPath) await client.getErrorString();
+      // The alignment reload above can itself leave messages in OMC's buffer
+      // (e.g. a sibling's pre-existing issue, surfaced only because realigning
+      // reloads the whole file); drain them so the run below reflects
+      // checkModel's own result, not the reload's side effects.
+      if (coords) await client.getErrorString();
       if (token.isCancellationRequested) return;
 
       const stamp = new Date().toISOString().slice(11, 23);

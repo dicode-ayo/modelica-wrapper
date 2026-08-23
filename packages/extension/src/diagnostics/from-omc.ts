@@ -8,10 +8,6 @@
  *     The caller surfaces these via the output channel.
  *   - `sourceUriResolver` lets the caller redirect a `modelica-source:/Foo.mo`
  *     filename back to the canonical document URI.
- *
- * Also exports {@link hasNoSourceLocation} (the `lineStart: 0` marker, shared
- * with `shared-file-diagnostics.ts`) and {@link buildSourceUriResolver} (the
- * resolver shared by `runCheckModel` and `live-check.ts`'s `runCheck`).
  */
 
 import * as vscode from "vscode";
@@ -25,19 +21,20 @@ import { MODELICA_SOURCE_SCHEME } from "../source-provider.js";
 export type SourceUriResolver = (filename: string) => vscode.Uri | undefined;
 
 /**
- * Builds a {@link SourceUriResolver} that redirects a class's real on-disk path (or its
- * virtual `modelica-source:` URI, echoed back verbatim by OMC in some cases) to the
- * editor URI the user actually has open. Shared by `runCheckModel` and `live-check.ts`'s
- * `runCheck` — the two OMC-message-consuming pipelines that both need this same redirect.
+ * Builds a {@link SourceUriResolver} that redirects the name OMC reports a class under
+ * (a real on-disk path, or a pseudo filename such as a `modelica-source:` URI echoed
+ * back verbatim) to the editor URI the user actually has open. Shared by `runCheckModel`
+ * and `live-check.ts`'s `runCheck` — the two OMC-message-consuming pipelines that both
+ * need this same redirect.
  */
 export function buildSourceUriResolver(input: {
-  onDiskPath: string;
+  omcFilename: string;
   virtualUri: vscode.Uri;
 }): SourceUriResolver {
-  const { onDiskPath, virtualUri } = input;
+  const { omcFilename, virtualUri } = input;
   const virtualUriString = virtualUri.toString();
   return (name: string): vscode.Uri | undefined => {
-    if (onDiskPath && name === onDiskPath) return virtualUri;
+    if (omcFilename && name === omcFilename) return virtualUri;
     if (name === virtualUriString) return virtualUri;
     if (name.startsWith(`${MODELICA_SOURCE_SCHEME}:`)) {
       try {
@@ -100,10 +97,8 @@ export function severityFromLevel(level: string): vscode.DiagnosticSeverity {
 
 /**
  * OMC's marker for "this message has no source location" — `getMessagesStringInternal`
- * reports `lineStart: 0` for a whole-model/whole-file message that isn't about any
- * particular line. Shared by `rangeFromInfo` below and `shared-file-diagnostics.ts`'s
- * `keepForBuffer`, which passes such messages through unbounded rather than trying to
- * shift or bound a position that doesn't exist.
+ * reports `lineStart: 0` for a whole-model or whole-file message that isn't about any
+ * particular line, so there is no position to bound or shift.
  */
 export function hasNoSourceLocation(info: { lineStart: number }): boolean {
   return info.lineStart === 0;
@@ -119,6 +114,10 @@ export function hasNoSourceLocation(info: { lineStart: number }): boolean {
  * `omcRangeToVscodeRange` in `language/position.ts` treats `getClassInformation`'s
  * end column as **inclusive** instead, because the two OMC APIs disagree. Do
  * not factor these into one helper without reconfirming both conventions.
+ *
+ * A message where {@link hasNoSourceLocation} holds carries no real position;
+ * for the all-zero shape OMC actually emits for one, the clamping below
+ * already lands on `(0,0)-(0,1)` without any special-casing here.
  */
 export function rangeFromInfo(info: {
   lineStart: number;
@@ -126,9 +125,6 @@ export function rangeFromInfo(info: {
   lineEnd: number;
   columnEnd: number;
 }): vscode.Range {
-  if (hasNoSourceLocation(info)) {
-    return new vscode.Range(0, 0, 0, 1);
-  }
   const start = omcToVscodePosition(info.lineStart, info.columnStart);
   const rawEnd = omcToVscodePosition(info.lineEnd, info.columnEnd);
   let lineEnd = rawEnd.line;

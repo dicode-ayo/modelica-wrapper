@@ -340,7 +340,7 @@ async function runCheck(
     // resolver also parses any modelica-source: URI string OMC might emit
     // (in case a future OMC version normalizes the path).
     const resolver = buildSourceUriResolver({
-      onDiskPath: filename,
+      omcFilename: filename,
       virtualUri: uri,
     });
     // A message naming the URI reaches the buffer through the branch above
