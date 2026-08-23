@@ -2,11 +2,13 @@
  * Host-side flows for adding a `.mat` result to a `*.omresults` view document.
  *
  * Two of the three add paths are triggered from a result view itself (the
- * webview's `addResult` message) and so already know their target document:
- * {@link importResults} (a file dialog) and {@link addCachedResult} (a
- * quick-pick over the `.modelica` cache). The third — auto-add on Simulate —
- * reuses {@link buildResultRef} and {@link applyAddResults} from the command
- * side (#86, Stage B). Path resolution lives here too so both sides agree.
+ * webview's `addResult` message) and so already know their target document's
+ * open `ResultViewDocument`: {@link importResults} (a file dialog) and
+ * {@link addCachedResult} (a quick-pick over the `.modelica` cache). The third
+ * — auto-add on Simulate — reuses {@link buildResultRef} from the command
+ * side, and either {@link mutateAddResults} (a focused view) or
+ * {@link applyAddResults} (no view open yet — a fresh scratch document).
+ * Path resolution lives here too so all three agree.
  */
 
 import { randomUUID } from "node:crypto";
@@ -14,7 +16,11 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import type { ResultRef, ResultSource } from "@dicode/omc-client";
+import type {
+  ResultRef,
+  ResultSource,
+  ResultViewDoc,
+} from "@dicode/omc-client";
 
 import { workspaceCacheUri } from "../workspace-cache.js";
 import {
@@ -22,6 +28,7 @@ import {
   parseResultViewDoc,
   serializeResultViewDoc,
 } from "./result-doc.js";
+import type { ResultViewDocument } from "./result-view-document.js";
 
 const MAT_EXTENSION = ".mat";
 
@@ -77,29 +84,47 @@ export function buildResultRef(
   };
 }
 
+/** Fold `refs` into `doc`, skipping any whose resolved path is already in the
+ *  view. Returns how many were actually added so callers can report duplicates. */
+function addResultsToDoc(
+  doc: ResultViewDoc,
+  documentUri: vscode.Uri,
+  refs: readonly ResultRef[],
+): { doc: ResultViewDoc; added: number } {
+  const seen = new Set(
+    doc.results.map((r) => resolveResultPath(documentUri, r.path)),
+  );
+  let next = doc;
+  let added = 0;
+  for (const ref of refs) {
+    const abs = resolveResultPath(documentUri, ref.path);
+    if (seen.has(abs)) {
+      continue;
+    }
+    seen.add(abs);
+    next = addResult(next, ref);
+    added++;
+  }
+  return { doc: next, added };
+}
+
 /**
- * Add results to a view document in one `WorkspaceEdit` (a single undo step),
- * skipping any whose resolved path is already in the view. Returns how many were
- * actually added so callers can report duplicates.
+ * Add results to a view document that has no open editor yet — a brand-new
+ * document nothing else can be racing (e.g. the scratch view a Simulate
+ * auto-add creates before it's opened). Reads and writes `document` directly
+ * in one `WorkspaceEdit` (a single undo step). A document with an open editor
+ * must go through {@link mutateAddResults} instead: this bypasses the
+ * `ResultViewDocument` queue that serializes every other write to it.
  */
 export async function applyAddResults(
   document: vscode.TextDocument,
   refs: readonly ResultRef[],
 ): Promise<number> {
-  let doc = parseResultViewDoc(document.getText());
-  const seen = new Set(
-    doc.results.map((r) => resolveResultPath(document.uri, r.path)),
+  const { doc, added } = addResultsToDoc(
+    parseResultViewDoc(document.getText()),
+    document.uri,
+    refs,
   );
-  let added = 0;
-  for (const ref of refs) {
-    const abs = resolveResultPath(document.uri, ref.path);
-    if (seen.has(abs)) {
-      continue;
-    }
-    seen.add(abs);
-    doc = addResult(doc, ref);
-    added++;
-  }
   if (added === 0) {
     return 0;
   }
@@ -111,6 +136,28 @@ export async function applyAddResults(
   );
   await vscode.workspace.applyEdit(edit);
   return added;
+}
+
+/**
+ * Add results to a document that already has an open `ResultViewDocument` —
+ * the editor's own queue, and the queue the Simulate auto-add path
+ * (`commands/results.ts`) shares with it via
+ * `ResultViewEditorProvider.getActiveResultDoc()`. Serializing through
+ * `.mutate()` here is what stops an add racing a concurrent id-backfill write
+ * or card edit on the same document (#489).
+ */
+export function mutateAddResults(
+  resultDoc: ResultViewDocument,
+  refs: readonly ResultRef[],
+): Promise<number> {
+  let added = 0;
+  return resultDoc
+    .mutate((doc) => {
+      const result = addResultsToDoc(doc, resultDoc.uri, refs);
+      added = result.added;
+      return result.doc;
+    })
+    .then(() => added);
 }
 
 /** Tell the user when some picked results were already in the view. */
@@ -128,7 +175,7 @@ function notifyDuplicates(requested: number, added: number): void {
 
 /** File-dialog path (`via: "import"`): pick one or more `.mat` files to add. */
 export async function importResults(
-  document: vscode.TextDocument,
+  resultDoc: ResultViewDocument,
 ): Promise<void> {
   const picks = await vscode.window.showOpenDialog({
     canSelectMany: true,
@@ -139,9 +186,9 @@ export async function importResults(
     return;
   }
   const refs = picks.map((uri) =>
-    buildResultRef(document.uri, uri.fsPath, "import"),
+    buildResultRef(resultDoc.uri, uri.fsPath, "import"),
   );
-  notifyDuplicates(refs.length, await applyAddResults(document, refs));
+  notifyDuplicates(refs.length, await mutateAddResults(resultDoc, refs));
 }
 
 interface CachedPick extends vscode.QuickPickItem {
@@ -151,7 +198,7 @@ interface CachedPick extends vscode.QuickPickItem {
 
 /** Cache path (`via: "cache"`): quick-pick over `.mat` files in `.modelica`. */
 export async function addCachedResult(
-  document: vscode.TextDocument,
+  resultDoc: ResultViewDocument,
 ): Promise<void> {
   const cacheDir = workspaceCacheUri();
   if (!cacheDir) {
@@ -198,7 +245,7 @@ export async function addCachedResult(
     return;
   }
   const refs = picked.map((p) =>
-    buildResultRef(document.uri, p.fsPath, "cache"),
+    buildResultRef(resultDoc.uri, p.fsPath, "cache"),
   );
-  notifyDuplicates(refs.length, await applyAddResults(document, refs));
+  notifyDuplicates(refs.length, await mutateAddResults(resultDoc, refs));
 }

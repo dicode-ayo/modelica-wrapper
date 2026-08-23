@@ -14,7 +14,11 @@ import * as vscode from "vscode";
 
 import { emptyResultViewDoc, type ResultRef } from "@dicode/omc-client";
 
-import { applyAddResults, buildResultRef } from "../results/add-result.js";
+import {
+  applyAddResults,
+  buildResultRef,
+  mutateAddResults,
+} from "../results/add-result.js";
 import { serializeResultViewDoc } from "../results/result-doc.js";
 import {
   RESULT_VIEW_VIEW_TYPE,
@@ -80,10 +84,10 @@ export async function addResultToView(
   if (typeof args?.resultFile !== "string" || args.resultFile === "") {
     return;
   }
-  const active = ResultViewEditorProvider.getActiveDocument();
+  const active = ResultViewEditorProvider.getActiveResultDoc();
   if (active) {
     const ref = simulateRef(active.uri, args);
-    if ((await applyAddResults(active, [ref])) > 0) {
+    if ((await mutateAddResults(active, [ref])) > 0) {
       void vscode.window.showInformationMessage(
         `Added ${ref.label} to the result view.`,
       );
