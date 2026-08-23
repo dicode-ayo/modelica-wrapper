@@ -318,6 +318,33 @@ describe("alignOwnSourceToSharedFile", () => {
     });
   });
 
+  it("restores the shared file when the standalone reload throws partway through", async () => {
+    // Unlike a clean `success: false`, a throw here may have landed on OMC's
+    // side already — leaving `filename` holding only P.A's own text and its
+    // siblings gone. The restore reloads the owner's real content back.
+    const client = makeClient({
+      listFile: vi.fn(async ({ typeName }: { typeName: string }) => ({
+        contents: typeName === "P.A" ? BUFFER_TEXT : PACKAGE_SOURCE,
+      })),
+      loadString: vi.fn(async ({ data }: { data: string }) => {
+        if (data === BUFFER_TEXT) throw new Error("omc gone");
+        return { success: true };
+      }),
+    });
+
+    const coords = await alignOwnSourceToSharedFile(client, {
+      typeName: "P.A",
+      filename: PACKAGE_MO,
+    });
+
+    expect(coords).toEqual(bufferOwnCoords(0));
+    expect(client.loadString).toHaveBeenLastCalledWith({
+      data: PACKAGE_SOURCE,
+      filename: PACKAGE_MO,
+      merge: false,
+    });
+  });
+
   it("fails closed when fileOwnerClass itself throws", async () => {
     // Nothing is known yet — not even whether the file is shared — so this
     // is the same fail-closed case as the reload steps below it, not the

@@ -197,14 +197,17 @@ const NOTHING_IN_BOUNDS: BufferCoords = bufferOwnCoords(0);
  * one-class-per-file case) — nothing to align, skip the reload entirely and
  * leave messages unbounded.
  *
- * A failure before the standalone reload lands (`fileOwnerClass`, `listFile`,
- * `loadString`) leaves nothing known about OMC's state, so it returns
- * {@link NOTHING_IN_BOUNDS} — dropping every located message rather than
- * publishing a sibling's diagnostic under a class it doesn't belong to. Once
- * the reload lands, `alignToSharedFile` is a known-good state either way it
- * ends (a mapping, `undefined`, or a throw), so its outcome always resolves
- * to a real `BufferCoords`, the same way `live-check.ts`'s `runCheck` already
- * treats it.
+ * A failure before or during the standalone reload (`fileOwnerClass`,
+ * `listFile`, `loadString`) returns {@link NOTHING_IN_BOUNDS} — dropping
+ * every located message rather than publishing a sibling's diagnostic under
+ * a class it doesn't belong to. A throw from the reload itself additionally
+ * triggers a best-effort restore ({@link restoreSharedFile}): unlike a clean
+ * `success: false`, it may have landed partway through and left `filename`
+ * holding only `typeName`'s own text, its siblings gone from OMC's live
+ * model. Once the reload lands, `alignToSharedFile` is a known-good state
+ * either way it ends (a mapping, `undefined`, or a throw), so its outcome
+ * always resolves to a real `BufferCoords`, the same way `live-check.ts`'s
+ * `runCheck` already treats it.
  */
 export async function alignOwnSourceToSharedFile(
   client: SharedFileClient,
@@ -213,11 +216,21 @@ export async function alignOwnSourceToSharedFile(
   const { typeName, filename } = input;
 
   let owner: string;
+  try {
+    owner = await fileOwnerClass(client, typeName);
+  } catch (err) {
+    log.warn(
+      "sharedFile",
+      `could not determine ${typeName}'s file owner; dropping its diagnostics rather than risk a wrong position`,
+      err,
+    );
+    return NOTHING_IN_BOUNDS;
+  }
+  if (owner === typeName) return undefined;
+
   let contents: string;
   let success: boolean;
   try {
-    owner = await fileOwnerClass(client, typeName);
-    if (owner === typeName) return undefined;
     ({ contents } = await client.listFile({ typeName }));
     ({ success } = await client.loadString({
       data: contents,
@@ -230,6 +243,11 @@ export async function alignOwnSourceToSharedFile(
       `could not read or reload ${typeName}'s own source under ${filename}; dropping its diagnostics rather than risk a wrong position`,
       err,
     );
+    // A throw here (unlike a clean `success: false`) may have landed
+    // partway through, leaving `filename` holding only this class's text
+    // and its siblings gone from OMC's live model — restore its real
+    // content rather than leave the shared file silently truncated.
+    await restoreSharedFile(client, owner, filename);
     return NOTHING_IN_BOUNDS;
   }
   if (!success) {
@@ -259,6 +277,29 @@ export async function alignOwnSourceToSharedFile(
     );
   }
   return aligned ?? bufferOwnCoords(contents.split("\n").length);
+}
+
+/**
+ * Best-effort recovery when a reload under `filename` throws partway through:
+ * reload `owner`'s current listing back over it, so a shared file a failed
+ * standalone load may have left holding only one class's text gets its
+ * siblings back rather than staying silently truncated in OMC's session.
+ */
+async function restoreSharedFile(
+  client: SharedFileClient,
+  owner: string,
+  filename: string,
+): Promise<void> {
+  try {
+    const { contents } = await client.listFile({ typeName: owner });
+    await client.loadString({ data: contents, filename, merge: false });
+  } catch (err) {
+    log.error(
+      "sharedFile",
+      `could not restore ${filename} after a failed reload`,
+      err,
+    );
+  }
 }
 
 function toBufferCoords(msg: ErrorMessage, coords: BufferCoords): ErrorMessage {
