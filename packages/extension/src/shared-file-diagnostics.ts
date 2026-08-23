@@ -90,11 +90,17 @@ export async function alignToSharedFile(
     log.warn("sharedFile", `listFile(${owner}) came back empty`);
     return undefined;
   }
-  const { success } = await client.loadString({
-    data: contents,
-    filename,
-    merge: false,
-  });
+  let success: boolean;
+  try {
+    ({ success } = await client.loadString({
+      data: contents,
+      filename,
+      merge: false,
+    }));
+  } catch (err) {
+    await restoreBuffer(client, filename, text);
+    throw err;
+  }
   if (!success) {
     log.warn("sharedFile", `reloading ${filename} failed`);
     return undefined;
@@ -129,7 +135,8 @@ export async function alignToSharedFile(
  * Undo the file reload by loading the buffer back over it. Leaving the file's
  * numbering in place while the caller reads positions as the buffer's would
  * drop the class's own diagnostics and admit its siblings' — the pair of
- * mistakes the alignment exists to prevent.
+ * mistakes the alignment exists to prevent. Best-effort: a failure here just
+ * logs, since the caller already has nothing better to do than proceed.
  */
 async function restoreBuffer(
   client: SharedFileClient,
@@ -190,28 +197,27 @@ const NOTHING_IN_BOUNDS: BufferCoords = bufferOwnCoords(0);
  * one-class-per-file case) — nothing to align, skip the reload entirely and
  * leave messages unbounded.
  *
- * When the standalone reload lands, `alignToSharedFile` takes over: it either
- * maps the file's coordinates back, or (when it declines to map, or its own
- * extent read throws) leaves OMC holding the buffer's own coordinates and
- * either returns `undefined` or rethrows — its own doc comment promises this.
- * Either way that is a known-good state, so its `undefined` return and its
- * thrown errors both propagate here as "read the buffer's own coordinates",
- * not "unknown". Only a failure in *this* function's own reload — before
- * `alignToSharedFile` is ever reached, so nothing is known about OMC's state —
- * returns {@link NOTHING_IN_BOUNDS}, dropping every located message rather
- * than publishing a sibling's diagnostic under a class it doesn't belong to.
+ * A failure before the standalone reload lands (`fileOwnerClass`, `listFile`,
+ * `loadString`) leaves nothing known about OMC's state, so it returns
+ * {@link NOTHING_IN_BOUNDS} — dropping every located message rather than
+ * publishing a sibling's diagnostic under a class it doesn't belong to. Once
+ * the reload lands, `alignToSharedFile` is a known-good state either way it
+ * ends (a mapping, `undefined`, or a throw), so its outcome always resolves
+ * to a real `BufferCoords`, the same way `live-check.ts`'s `runCheck` already
+ * treats it.
  */
 export async function alignOwnSourceToSharedFile(
   client: SharedFileClient,
   input: { typeName: string; filename: string },
 ): Promise<BufferCoords | undefined> {
   const { typeName, filename } = input;
-  const owner = await fileOwnerClass(client, typeName);
-  if (owner === typeName) return undefined;
 
+  let owner: string;
   let contents: string;
   let success: boolean;
   try {
+    owner = await fileOwnerClass(client, typeName);
+    if (owner === typeName) return undefined;
     ({ contents } = await client.listFile({ typeName }));
     ({ success } = await client.loadString({
       data: contents,
@@ -234,18 +240,25 @@ export async function alignOwnSourceToSharedFile(
     return NOTHING_IN_BOUNDS;
   }
 
-  // `alignToSharedFile` either maps the file's coordinates back, or leaves
-  // OMC holding the buffer's own coordinates and returns `undefined` or
-  // rethrows — both are a known-good state, not "unknown", so neither is
-  // caught here. `owner` is already known, so this skips redoing the walk.
-  return (
-    (await alignToSharedFile(client, {
+  // `owner` is already known, so this skips redoing `alignToSharedFile`'s own
+  // walk — it would otherwise re-query OMC for a class the standalone reload
+  // above may have just evicted from `filename`.
+  let aligned: BufferCoords | undefined;
+  try {
+    aligned = await alignToSharedFile(client, {
       typeName,
       filename,
       text: contents,
       owner,
-    })) ?? bufferOwnCoords(contents.split("\n").length)
-  );
+    });
+  } catch (err) {
+    log.warn(
+      "sharedFile",
+      `could not align ${typeName} to ${filename}; reading OMC's positions as the buffer's own`,
+      err,
+    );
+  }
+  return aligned ?? bufferOwnCoords(contents.split("\n").length);
 }
 
 function toBufferCoords(msg: ErrorMessage, coords: BufferCoords): ErrorMessage {
