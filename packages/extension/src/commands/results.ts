@@ -85,7 +85,15 @@ export async function addResultToView(
   if (active) {
     const ref = simulateRef(active.uri, args);
     const result = await mutateAddResults(active, [ref]);
-    if (result.persisted && result.added > 0) {
+    // The user is on the *diagram* when they simulate, so the result view's
+    // own `onWriteFailure` banner (posted into its, currently backgrounded,
+    // webview) isn't enough on its own — without this they'd see nothing at
+    // all for a run that was silently dropped.
+    if (!result.persisted) {
+      void vscode.window.showErrorMessage(
+        `Couldn't add ${ref.label} to the result view — see the Modelica output channel for details.`,
+      );
+    } else if (result.added > 0) {
       void vscode.window.showInformationMessage(
         `Added ${ref.label} to the result view.`,
       );

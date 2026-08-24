@@ -3,9 +3,13 @@
  * `add-result.ts`'s `mutateAddResults` is every add path's entry into this
  * queue — file dialog, cache picker, and Simulate auto-add all wrap their
  * target document in one of these before writing to it. Two instances for the
- * same document would each queue against themselves, not each other, and the
- * race this class exists to prevent would reopen — `ResultViewEditorProvider`
- * registers with `supportsMultipleEditorsPerDocument: false` so that can't happen.
+ * same document queue against themselves, not each other, so the race this
+ * class exists to prevent reopens the moment two of them are live at once —
+ * whether that's `ResultViewEditorProvider` resolving a second editor on the
+ * same document (it registers `supportsMultipleEditorsPerDocument: false` so
+ * that can't happen) or a caller building its own without first letting an
+ * existing one finish (`commands/results.ts`'s scratch-view seed avoids this
+ * by fully awaiting its throwaway instance's write before any editor opens).
  *
  * `parseResultViewDoc` mints a fresh id for any card that lacks one (a
  * hand-written file, or the Dyad-style `plots` alias), so an id handed out
@@ -81,6 +85,7 @@ export class ResultViewDocument {
           "resultView",
           `card edit failed for ${this.document.uri.toString()}: ${errorDetail(err)}`,
         );
+        this.onWriteFailure();
         return false;
       }
     });

@@ -110,10 +110,8 @@ function addResultsToDoc(
  * `.mutate()` here is what stops an add racing a concurrent id-backfill write
  * or card edit on the same document.
  *
- * `persisted` is `false` when the write didn't land — `mutate()` never
- * throws, so callers can't tell an add that happened from one that silently
- * didn't unless this says so; `resultDoc`'s own `onWriteFailure` has already
- * reported the failure itself.
+ * `persisted` mirrors `mutate()`'s own return: `false` for a write that
+ * didn't land, `resultDoc`'s `onWriteFailure` having already reported why.
  *
  * An add that adds nothing (every ref already in the view) still writes: the
  * doc `fn` hands back to `mutate()` is unioned with the parse's own id

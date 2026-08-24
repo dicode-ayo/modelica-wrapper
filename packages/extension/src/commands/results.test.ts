@@ -11,7 +11,10 @@ import {
   setApplyEditResult,
 } from "../../test-support/vscode-mock.js";
 import { parseResultViewDoc } from "../results/result-doc.js";
-import { ResultViewDocument } from "../results/result-view-document.js";
+import {
+  ResultViewDocument,
+  type ResultTextDocument,
+} from "../results/result-view-document.js";
 import {
   RESULT_VIEW_VIEW_TYPE,
   ResultViewEditorProvider,
@@ -24,18 +27,18 @@ const RUN: AddResultToViewArgs = {
   resultFile: "/ws/DCMotor_res.mat",
 };
 
-/** Empty `file:` result view — `ResultViewDocument` reads uri/getText/lineCount. */
-function focusedView(): vscode.TextDocument {
+/** Empty `file:` result view. */
+function focusedView(): ResultTextDocument {
   return {
     uri: vscode.Uri.file("/ws/run.omresults"),
     getText: () => "",
     lineCount: 1,
-  } as unknown as vscode.TextDocument;
+  };
 }
 
 /** Wraps a document as the `ResultViewDocument` the provider would register
  *  for it as the active view's write queue. */
-function activeResultDoc(document: vscode.TextDocument): ResultViewDocument {
+function activeResultDoc(document: ResultTextDocument): ResultViewDocument {
   return new ResultViewDocument(document, () => {});
 }
 
@@ -44,7 +47,7 @@ function activeResultDoc(document: vscode.TextDocument): ResultViewDocument {
  *  write once it lands, not the stale text `focusedView`'s fixed closure
  *  would otherwise return. */
 function mutableFocusedView(text: string): {
-  document: vscode.TextDocument;
+  document: ResultTextDocument;
   landEdit: () => void;
 } {
   let current = text;
@@ -52,7 +55,7 @@ function mutableFocusedView(text: string): {
     uri: vscode.Uri.file("/ws/run.omresults"),
     getText: () => current,
     lineCount: 1,
-  } as unknown as vscode.TextDocument;
+  };
   return {
     document,
     landEdit: () => {
@@ -94,6 +97,23 @@ describe("addResultToView", () => {
       message: "Added DCMotor_res to the result view.",
     });
     expect(openWithCalls()).toHaveLength(0);
+  });
+
+  it("errors instead of toasting success when the focused view's write doesn't persist", async () => {
+    vi.spyOn(ResultViewEditorProvider, "getActiveResultDoc").mockReturnValue(
+      activeResultDoc(focusedView()),
+    );
+    setApplyEditResult(false);
+
+    await addResultToView(RUN);
+
+    expect(recordedMessages).toContainEqual({
+      level: "error",
+      message: expect.stringContaining("Couldn't add"),
+    });
+    expect(recordedMessages.some((m) => m.message.startsWith("Added "))).toBe(
+      false,
+    );
   });
 
   it("opens an unsaved scratch view when no result view is focused", async () => {
@@ -141,7 +161,7 @@ describe("addResultToView", () => {
         uri: scratchUri,
         getText: () => "",
         lineCount: 1,
-      } as unknown as vscode.TextDocument),
+      }),
     );
 
     await addResultToView(RUN);
