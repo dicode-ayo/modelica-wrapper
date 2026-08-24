@@ -141,8 +141,6 @@ describe("addResultToView", () => {
 
     await addResultToView(RUN);
 
-    // Already present at the same resolved path, so the user still sees
-    // positive feedback rather than nothing.
     expect(recordedMessages).toContainEqual({
       level: "info",
       message: "DCMotor_res is already in the result view.",

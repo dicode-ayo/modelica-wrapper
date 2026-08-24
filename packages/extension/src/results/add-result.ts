@@ -131,13 +131,8 @@ export async function mutateAddResults(
   return { added, persisted };
 }
 
-/**
- * Tell the user when some picked results were already in the view. `label`
- * names the single duplicate when the caller already knows which one — the
- * Simulate auto-add path, which only ever adds one ref at a time and whose
- * user is on the diagram rather than the view, so naming the run (rather
- * than a bare count) is what makes the toast legible there.
- */
+/** Tell the user when some picked results were already in the view. `label`
+ *  names the single duplicate, when the caller has exactly one and knows it. */
 export function notifyDuplicates(
   requested: number,
   added: number,
@@ -148,7 +143,7 @@ export function notifyDuplicates(
     return;
   }
   void vscode.window.showInformationMessage(
-    label !== undefined
+    duplicates === 1 && label !== undefined
       ? `${label} is already in the result view.`
       : duplicates === 1
         ? "That result is already in this view."
