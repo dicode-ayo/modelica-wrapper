@@ -114,6 +114,12 @@ function addResultsToDoc(
  * throws, so callers can't tell an add that happened from one that silently
  * didn't unless this says so; `resultDoc`'s own `onWriteFailure` has already
  * reported the failure itself.
+ *
+ * An add that adds nothing (every ref already in the view) still writes: the
+ * doc `fn` hands back to `mutate()` is unioned with the parse's own id
+ * backfill, and `mutate()` has no way to tell "nothing to add" apart from
+ * "nothing changed" — persisting that backfill is the point of routing
+ * through the queue at all.
  */
 export async function mutateAddResults(
   resultDoc: ResultViewDocument,
