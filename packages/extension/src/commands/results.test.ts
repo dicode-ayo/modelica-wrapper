@@ -155,7 +155,12 @@ describe("addResultToView", () => {
 
     await addResultToView(RUN);
     // Opening the scratch makes it the active view; model that for the next run.
-    const scratchUri = openWithCalls()[0]?.args[0] as vscode.Uri;
+    const openCall = openWithCalls().at(0);
+    if (openCall === undefined) throw new Error("scratch view was not opened");
+    const scratchUri = openCall.args[0];
+    if (!(scratchUri instanceof vscode.Uri)) {
+      throw new Error("scratch open's first argument was not a Uri");
+    }
     active.mockReturnValue(
       activeResultDoc({
         uri: scratchUri,
