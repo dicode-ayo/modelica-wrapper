@@ -1,6 +1,15 @@
 /**
  * Owns the queued reads/writes of a single `.omresults` `vscode.TextDocument`.
- * `add-result.ts` writes the same document directly, outside this queue.
+ * `add-result.ts`'s `mutateAddResults` is every add path's entry into this
+ * queue — file dialog, cache picker, and Simulate auto-add all wrap their
+ * target document in one of these before writing to it. Two instances for the
+ * same document queue against themselves, not each other, so the race this
+ * class exists to prevent reopens the moment two of them are live at once —
+ * whether that's `ResultViewEditorProvider` resolving a second editor on the
+ * same document (it registers `supportsMultipleEditorsPerDocument: false` so
+ * that can't happen) or a caller building its own without first letting an
+ * existing one finish (`commands/results.ts`'s scratch-view seed avoids this
+ * by fully awaiting its throwaway instance's write before any editor opens).
  *
  * `parseResultViewDoc` mints a fresh id for any card that lacks one (a
  * hand-written file, or the Dyad-style `plots` alias), so an id handed out
@@ -62,18 +71,22 @@ export class ResultViewDocument {
   }
 
   /** Apply `fn` to the current doc and write the result back, persisting any
-   *  id backfill the parse produced. Never throws: call sites are
+   *  id backfill the parse produced. Never throws: most call sites are
    *  fire-and-forget `void mutate(...)`, so a throwing `fn` logs and drops
-   *  the edit. */
-  mutate(fn: (doc: ResultViewDoc) => ResultViewDoc): Promise<void> {
+   *  the edit. Resolves `false` (a throwing `fn`, or a write that didn't
+   *  persist) for a caller that needs to tell an edit that landed from one
+   *  that silently didn't — `onWriteFailure` has already reported why. */
+  mutate(fn: (doc: ResultViewDoc) => ResultViewDoc): Promise<boolean> {
     return this.enqueue(async () => {
       try {
-        await this.write(fn(this.parse().doc));
+        return await this.write(fn(this.parse().doc));
       } catch (err) {
         log.warn(
           "resultView",
           `card edit failed for ${this.document.uri.toString()}: ${errorDetail(err)}`,
         );
+        this.onWriteFailure();
+        return false;
       }
     });
   }

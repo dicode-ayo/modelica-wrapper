@@ -14,8 +14,9 @@ import * as vscode from "vscode";
 
 import { emptyResultViewDoc, type ResultRef } from "@dicode/omc-client";
 
-import { applyAddResults, buildResultRef } from "../results/add-result.js";
+import { buildResultRef, mutateAddResults } from "../results/add-result.js";
 import { serializeResultViewDoc } from "../results/result-doc.js";
+import { ResultViewDocument } from "../results/result-view-document.js";
 import {
   RESULT_VIEW_VIEW_TYPE,
   ResultViewEditorProvider,
@@ -80,10 +81,19 @@ export async function addResultToView(
   if (typeof args?.resultFile !== "string" || args.resultFile === "") {
     return;
   }
-  const active = ResultViewEditorProvider.getActiveDocument();
+  const active = ResultViewEditorProvider.getActiveResultDoc();
   if (active) {
     const ref = simulateRef(active.uri, args);
-    if ((await applyAddResults(active, [ref])) > 0) {
+    const result = await mutateAddResults(active, [ref]);
+    // The user is on the *diagram* when they simulate, so the result view's
+    // own `onWriteFailure` banner (posted into its, currently backgrounded,
+    // webview) isn't enough on its own — without this they'd see nothing at
+    // all for a run that was silently dropped.
+    if (!result.persisted) {
+      void vscode.window.showErrorMessage(
+        `Couldn't add ${ref.label} to the result view — see the Modelica output channel for details.`,
+      );
+    } else if (result.added > 0) {
       void vscode.window.showInformationMessage(
         `Added ${ref.label} to the result view.`,
       );
@@ -100,13 +110,28 @@ export async function addResultToView(
  * the missing `.omresults` suffix. Once open the view becomes the active target,
  * so follow-up runs append through the focused-view path above rather than here.
  * Revealing the view is the feedback; unlike that path there is no toast.
+ *
+ * Wraps the document in its own throwaway `ResultViewDocument` so the seed
+ * write goes through `mutateAddResults`. There's no webview yet to carry a
+ * failure banner, so a failed seed write shows its own toast and never opens
+ * the view — an empty view opening silently would look like the run vanished.
  */
 async function surfaceInScratchView(args: AddResultToViewArgs): Promise<void> {
   const document = await vscode.workspace.openTextDocument({
     content: "",
     language: "omresults",
   });
-  await applyAddResults(document, [simulateRef(document.uri, args)]);
+  const resultDoc = new ResultViewDocument(document, () => {
+    void vscode.window.showErrorMessage(
+      "Couldn't save the new result view — see the Modelica output channel for details.",
+    );
+  });
+  const { persisted } = await mutateAddResults(resultDoc, [
+    simulateRef(document.uri, args),
+  ]);
+  if (!persisted) {
+    return;
+  }
   await vscode.commands.executeCommand(
     "vscode.openWith",
     document.uri,

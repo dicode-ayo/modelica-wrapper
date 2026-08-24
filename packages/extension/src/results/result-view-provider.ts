@@ -45,16 +45,17 @@ export const RESULT_VIEW_VIEW_TYPE = "modelica.resultView";
 export class ResultViewEditorProvider
   implements vscode.CustomTextEditorProvider
 {
-  /** Most-recently focused result view, so commands that don't carry a target
-   *  (the Simulate auto-add, fired while the *diagram* is focused) know which
-   *  document to add to. Held until that view is closed — deliberately NOT
+  /** Most-recently focused result view's `ResultViewDocument`, so commands that
+   *  don't carry a target (the Simulate auto-add, fired while the *diagram* is
+   *  focused) know which document to add to, and write through the same queue
+   *  its own card edits do. Held until that view is closed — deliberately NOT
    *  cleared on blur, since the user is on the diagram when they simulate. */
-  private static activeDocument: vscode.TextDocument | undefined;
+  private static activeResultDoc: ResultViewDocument | undefined;
 
-  /** The most-recently focused result view's document, or `undefined` when none
-   *  is open. */
-  static getActiveDocument(): vscode.TextDocument | undefined {
-    return ResultViewEditorProvider.activeDocument;
+  /** The most-recently focused result view's `ResultViewDocument`, or
+   *  `undefined` when none is open. */
+  static getActiveResultDoc(): ResultViewDocument | undefined {
+    return ResultViewEditorProvider.activeResultDoc;
   }
 
   private constructor(
@@ -208,7 +209,7 @@ export class ResultViewEditorProvider
     // on focus (never clear on blur): when the user simulates, the *diagram* is
     // focused, so the result they want it added to is the last one they touched.
     const markActive = (): void => {
-      ResultViewEditorProvider.activeDocument = document;
+      ResultViewEditorProvider.activeResultDoc = resultDoc;
     };
     if (webviewPanel.active) {
       markActive();
@@ -221,8 +222,8 @@ export class ResultViewEditorProvider
     webviewPanel.onDidDispose(() => {
       changeSub.dispose();
       viewStateSub.dispose();
-      if (ResultViewEditorProvider.activeDocument === document) {
-        ResultViewEditorProvider.activeDocument = undefined;
+      if (ResultViewEditorProvider.activeResultDoc === resultDoc) {
+        ResultViewEditorProvider.activeResultDoc = undefined;
       }
     });
 
@@ -255,9 +256,9 @@ export class ResultViewEditorProvider
 
         case "addResult":
           if (msg.via === "import") {
-            void importResults(document);
+            void importResults(resultDoc);
           } else {
-            void addCachedResult(document);
+            void addCachedResult(resultDoc);
           }
           return;
         case "removeResult":
