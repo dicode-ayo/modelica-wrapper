@@ -97,6 +97,13 @@ export async function addResultToView(
       void vscode.window.showInformationMessage(
         `Added ${ref.label} to the result view.`,
       );
+    } else {
+      // A re-simulate of the same resultFile path lands as a duplicate and
+      // adds nothing — without this the run looks silently dropped, the same
+      // failure mode the write-failure branch above exists to avoid.
+      void vscode.window.showInformationMessage(
+        `${ref.label} is already in the result view.`,
+      );
     }
     return;
   }

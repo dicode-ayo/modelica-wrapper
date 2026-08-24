@@ -116,6 +116,41 @@ describe("addResultToView", () => {
     );
   });
 
+  it("tells the user the run is already in view instead of staying silent on a re-simulate", async () => {
+    const view: ResultTextDocument = {
+      uri: vscode.Uri.file("/ws/run.omresults"),
+      getText: () =>
+        JSON.stringify({
+          version: 1,
+          results: [
+            {
+              id: "r0",
+              label: "DCMotor_res",
+              path: "DCMotor_res.mat",
+              source: "simulate",
+            },
+          ],
+          cards: [],
+        }),
+      lineCount: 1,
+    };
+    vi.spyOn(ResultViewEditorProvider, "getActiveResultDoc").mockReturnValue(
+      activeResultDoc(view),
+    );
+
+    await addResultToView(RUN);
+
+    // Already present at the same resolved path, so the user still sees
+    // positive feedback rather than nothing.
+    expect(recordedMessages).toContainEqual({
+      level: "info",
+      message: "DCMotor_res is already in the result view.",
+    });
+    expect(recordedMessages.some((m) => m.message.startsWith("Added "))).toBe(
+      false,
+    );
+  });
+
   it("opens an unsaved scratch view when no result view is focused", async () => {
     vi.spyOn(ResultViewEditorProvider, "getActiveResultDoc").mockReturnValue(
       undefined,
