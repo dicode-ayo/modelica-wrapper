@@ -8,6 +8,7 @@ import {
   pendingApplies,
   recordedMessages,
   setApplyEditManual,
+  setApplyEditResult,
 } from "../../test-support/vscode-mock.js";
 import { parseResultViewDoc } from "../results/result-doc.js";
 import { ResultViewDocument } from "../results/result-view-document.js";
@@ -32,9 +33,9 @@ function focusedView(): vscode.TextDocument {
   } as unknown as vscode.TextDocument;
 }
 
-/** A `focusedView()`-backed `ResultViewDocument`, standing in for the one the
- *  provider registers as the active view's write queue. */
-function activeResultDoc(document = focusedView()): ResultViewDocument {
+/** Wraps a document as the `ResultViewDocument` the provider would register
+ *  for it as the active view's write queue. */
+function activeResultDoc(document: vscode.TextDocument): ResultViewDocument {
   return new ResultViewDocument(document, () => {});
 }
 
@@ -72,6 +73,7 @@ describe("addResultToView", () => {
     recordedMessages.length = 0;
     pendingApplies.length = 0;
     setApplyEditManual(false);
+    setApplyEditResult(true);
   });
   afterEach(() => vi.restoreAllMocks());
 
@@ -109,6 +111,21 @@ describe("addResultToView", () => {
     // Seeded, and no toast — the view appearing is the feedback.
     expect(appliedEdits).toHaveLength(1);
     expect(recordedMessages).toHaveLength(0);
+  });
+
+  it("reports the failure and never opens the view when the scratch seed write doesn't persist", async () => {
+    vi.spyOn(ResultViewEditorProvider, "getActiveResultDoc").mockReturnValue(
+      undefined,
+    );
+    setApplyEditResult(false);
+
+    await addResultToView(RUN);
+
+    expect(openWithCalls()).toHaveLength(0);
+    expect(recordedMessages).toContainEqual({
+      level: "error",
+      message: expect.stringContaining("Couldn't save"),
+    });
   });
 
   it("appends the next run to the now-focused scratch instead of a second tab", async () => {
@@ -149,7 +166,7 @@ describe("addResultToView", () => {
     expect(openWithCalls()).toHaveLength(0);
   });
 
-  it("queues behind the focused view's own pending id-backfill write instead of racing it (#489)", async () => {
+  it("queues behind the focused view's own pending id-backfill write instead of racing it", async () => {
     setApplyEditManual(true);
     // A card missing its `id` forces `ResultViewDocument.read()` to backfill
     // one and write it back before resolving.

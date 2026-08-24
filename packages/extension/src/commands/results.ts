@@ -103,17 +103,27 @@ export async function addResultToView(
  * so follow-up runs append through the focused-view path above rather than here.
  * Revealing the view is the feedback; unlike that path there is no toast.
  *
- * Wraps the document in its own throwaway `ResultViewDocument` (no webview to
- * report a write failure to yet) so the seed write goes through the same
- * `mutateAddResults` path as every other add, rather than a second one of its own.
+ * Wraps the document in its own throwaway `ResultViewDocument` so the seed
+ * write goes through `mutateAddResults`. There's no webview yet to carry a
+ * failure banner, so a failed seed write shows its own toast and never opens
+ * the view — an empty view opening silently would look like the run vanished.
  */
 async function surfaceInScratchView(args: AddResultToViewArgs): Promise<void> {
   const document = await vscode.workspace.openTextDocument({
     content: "",
     language: "omresults",
   });
-  const resultDoc = new ResultViewDocument(document, () => {});
-  await mutateAddResults(resultDoc, [simulateRef(document.uri, args)]);
+  const resultDoc = new ResultViewDocument(document, () => {
+    void vscode.window.showErrorMessage(
+      "Couldn't save the new result view — see the Modelica output channel for details.",
+    );
+  });
+  const { persisted } = await mutateAddResults(resultDoc, [
+    simulateRef(document.uri, args),
+  ]);
+  if (!persisted) {
+    return;
+  }
   await vscode.commands.executeCommand(
     "vscode.openWith",
     document.uri,

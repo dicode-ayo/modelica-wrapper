@@ -2,7 +2,10 @@
  * Owns the queued reads/writes of a single `.omresults` `vscode.TextDocument`.
  * `add-result.ts`'s `mutateAddResults` is every add path's entry into this
  * queue — file dialog, cache picker, and Simulate auto-add all wrap their
- * target document in one of these before writing to it.
+ * target document in one of these before writing to it. Two instances for the
+ * same document would each queue against themselves, not each other, and the
+ * race this class exists to prevent would reopen — `ResultViewEditorProvider`
+ * registers with `supportsMultipleEditorsPerDocument: false` so that can't happen.
  *
  * `parseResultViewDoc` mints a fresh id for any card that lacks one (a
  * hand-written file, or the Dyad-style `plots` alias), so an id handed out
