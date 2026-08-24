@@ -14,7 +14,11 @@ import * as vscode from "vscode";
 
 import { emptyResultViewDoc, type ResultRef } from "@dicode/omc-client";
 
-import { buildResultRef, mutateAddResults } from "../results/add-result.js";
+import {
+  buildResultRef,
+  mutateAddResults,
+  notifyDuplicates,
+} from "../results/add-result.js";
 import { serializeResultViewDoc } from "../results/result-doc.js";
 import { ResultViewDocument } from "../results/result-view-document.js";
 import {
@@ -98,12 +102,7 @@ export async function addResultToView(
         `Added ${ref.label} to the result view.`,
       );
     } else {
-      // A re-simulate of the same resultFile path lands as a duplicate and
-      // adds nothing — without this the run looks silently dropped, the same
-      // failure mode the write-failure branch above exists to avoid.
-      void vscode.window.showInformationMessage(
-        `${ref.label} is already in the result view.`,
-      );
+      notifyDuplicates(1, 0, ref.label);
     }
     return;
   }
