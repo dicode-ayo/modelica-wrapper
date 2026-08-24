@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 
-import { setApplyEditResult } from "../../test-support/vscode-mock.js";
+import {
+  appliedEdits,
+  setApplyEditResult,
+} from "../../test-support/vscode-mock.js";
 
 import {
   ResultViewDocument,
@@ -29,6 +32,7 @@ function emptyDoc(): ResultTextDocument {
 
 describe("ResultViewDocument.mutate", () => {
   beforeEach(() => {
+    appliedEdits.length = 0;
     setApplyEditResult(true);
   });
 
