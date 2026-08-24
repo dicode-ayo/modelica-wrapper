@@ -1,5 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
+
+import { setApplyEditResult } from "../../test-support/vscode-mock.js";
 
 import {
   ResultViewDocument,
@@ -26,6 +28,10 @@ function emptyDoc(): ResultTextDocument {
 }
 
 describe("ResultViewDocument.mutate", () => {
+  beforeEach(() => {
+    setApplyEditResult(true);
+  });
+
   it("reports the failure through onWriteFailure when the transform throws", async () => {
     const onWriteFailure = vi.fn();
     const doc = new ResultViewDocument(emptyDoc(), onWriteFailure);
@@ -33,6 +39,28 @@ describe("ResultViewDocument.mutate", () => {
     const persisted = await doc.mutate(() => {
       throw new Error("boom");
     });
+
+    expect(persisted).toBe(false);
+    expect(onWriteFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the failure through onWriteFailure when applyEdit rejects", async () => {
+    const onWriteFailure = vi.fn();
+    const doc = new ResultViewDocument(emptyDoc(), onWriteFailure);
+    setApplyEditResult(false);
+
+    const persisted = await doc.mutate((current) => ({
+      ...current,
+      results: [
+        {
+          id: "r1",
+          label: "run-1",
+          path: "run-1.mat",
+          source: "simulate",
+          createdAt: new Date(0).toISOString(),
+        },
+      ],
+    }));
 
     expect(persisted).toBe(false);
     expect(onWriteFailure).toHaveBeenCalledTimes(1);

@@ -113,11 +113,10 @@ function addResultsToDoc(
  * `persisted` mirrors `mutate()`'s own return: `false` for a write that
  * didn't land, `resultDoc`'s `onWriteFailure` having already reported why.
  *
- * An add that adds nothing (every ref already in the view) still writes: the
- * doc `fn` hands back to `mutate()` is unioned with the parse's own id
- * backfill, and `mutate()` has no way to tell "nothing to add" apart from
- * "nothing changed" — persisting that backfill is the point of routing
- * through the queue at all.
+ * An add that adds nothing (every ref already in the view) still goes through
+ * `mutate()` rather than short-circuiting here, so a parse that needed an id
+ * backfill still gets it persisted — `mutate()`'s own no-op check is what
+ * skips the actual `WorkspaceEdit` once that backfill is already in the text.
  */
 export async function mutateAddResults(
   resultDoc: ResultViewDocument,
