@@ -103,9 +103,36 @@ interface CacheEntry {
 /**
  * Owns the parser + a per-document `Tree` cache. One instance per extension
  * activation; created in `index.ts` and disposed on deactivate.
+ *
+ * `parse()` calls for the same document are serialized through a per-key
+ * queue (`turns`) rather than run independently: without it, several
+ * providers racing the same edit (document-symbols, semantic-tokens,
+ * completion) would each miss the cache, each parse, and each `setEntry` —
+ * the second caller freeing the tree the first is still walking, since
+ * `Tree.delete()` frees WASM-backed memory the tree-sitter binding gives no
+ * safe way to detect use of afterward. Serializing collapses them onto one
+ * physical parse: a later turn's own cache check (`entries.get(key)`) picks
+ * up whatever the previous turn just stored.
+ *
+ * That serialization alone still leaves a gap: the old tree a turn passes to
+ * `parser.parse()` for an incremental re-parse is read (and cached-entry
+ * bookkeeping is written) across an `await` on `getParser()`, so
+ * `invalidate()`/`dispose()` — both synchronous, both reachable from outside
+ * any turn (`onDidCloseTextDocument`, the invalidation registry) — could
+ * still free that exact tree in the gap before `parser.parse()` reads it.
+ * `borrowedOldTree` records which tree a key's current turn is about to hand
+ * to `parser.parse()`, from before the await; `invalidate`/`dispose` check it
+ * and defer freeing a tree that's still borrowed, marking it in
+ * `invalidatedWhileBorrowed` instead — the turn frees it itself, and discards
+ * its own result, once `parser.parse()` is done reading it. `dispose()`
+ * additionally waits out every outstanding turn before freeing the shared
+ * `Parser` itself, for the same reason.
  */
 export class ParseCache implements vscode.Disposable {
   private readonly entries = new Map<string, CacheEntry>();
+  private readonly turns = new Map<string, Promise<void>>();
+  private readonly borrowedOldTree = new Map<string, Tree>();
+  private readonly invalidatedWhileBorrowed = new Set<string>();
   private parser: Parser | undefined;
   private parserPromise: Promise<Parser> | undefined;
 
@@ -134,7 +161,14 @@ export class ParseCache implements vscode.Disposable {
   /**
    * Parse `document`, reusing the cached tree when the version matches and
    * re-parsing incrementally (against the prior tree) otherwise. The returned
-   * tree is owned by the cache — callers must not `delete()` it.
+   * tree is owned by the cache — callers must not `delete()` it, and must
+   * finish reading it before their next `await` (see the class doc).
+   *
+   * A cache hit returns synchronously-fast, without touching the per-key
+   * queue. A miss joins `turns`: if another `parse()` for the same document is
+   * already queued or running, this call rides behind it and then re-checks
+   * the cache — usually finding the prior turn already produced a tree at
+   * (whatever is by then) the current version, rather than parsing again.
    */
   async parse(document: vscode.TextDocument): Promise<Tree> {
     const key = document.uri.toString();
@@ -143,16 +177,66 @@ export class ParseCache implements vscode.Disposable {
       return cached.tree;
     }
 
-    const parser = await this.getParser();
-    const text = document.getText();
-    // `cached.tree` was already `edit()`-ed by `applyChange` for the in-flight
-    // changes, so passing it as the old tree yields an incremental re-parse.
-    const tree = parser.parse(text, cached?.tree ?? null);
-    if (!tree) {
-      throw new Error("tree-sitter returned no tree (no language assigned?)");
+    const previousTurn = this.turns.get(key) ?? Promise.resolve();
+    let result: Tree;
+    const turn = previousTurn.then(async () => {
+      result = await this.parseOnce(document, key);
+    });
+    // A rejected turn must not wedge later ones queued behind it — each
+    // caller still observes its own `turn`'s outcome via the `await` below.
+    const wrapped = turn.catch(() => undefined);
+    this.turns.set(key, wrapped);
+    // Once settled, drop the queue entry so it doesn't outlive every parse
+    // that ever touched this key — but only if nothing queued behind us has
+    // already replaced it.
+    void wrapped.then(() => {
+      if (this.turns.get(key) === wrapped) this.turns.delete(key);
+    });
+    await turn;
+    return result!;
+  }
+
+  private async parseOnce(
+    document: vscode.TextDocument,
+    key: string,
+  ): Promise<Tree> {
+    const cached = this.entries.get(key);
+    if (cached && cached.version === document.version) {
+      return cached.tree;
     }
-    this.setEntry(key, { version: document.version, tree });
-    return tree;
+
+    // Register the borrow before the only `await` below, synchronously with
+    // reading `cached` — so a concurrent `invalidate()`/`dispose()` can never
+    // observe this key's old tree as unborrowed while this turn still means
+    // to hand it to `parser.parse()`.
+    const oldTree = cached?.tree;
+    if (oldTree) this.borrowedOldTree.set(key, oldTree);
+    try {
+      const parser = await this.getParser();
+      const text = document.getText();
+      // `oldTree` was already `edit()`-ed by `applyChange` for the changes
+      // since it was parsed, so passing it here yields an incremental
+      // re-parse.
+      const tree = parser.parse(text, oldTree ?? null);
+      this.borrowedOldTree.delete(key);
+      if (!tree) {
+        throw new Error("tree-sitter returned no tree (no language assigned?)");
+      }
+      if (this.invalidatedWhileBorrowed.delete(key)) {
+        // `invalidate()`/`dispose()` ran for this key while `oldTree` was
+        // still borrowed and deferred freeing it to us (see `invalidate`) —
+        // safe now that `parser.parse()` is done reading it. The document
+        // this parse was for no longer has a cache entry to update, so
+        // there's nothing to store the fresh tree in either.
+        oldTree?.delete();
+        tree.delete();
+        throw new Error(`ParseCache: ${key} was invalidated while parsing`);
+      }
+      this.setEntry(key, { version: document.version, tree });
+      return tree;
+    } finally {
+      this.borrowedOldTree.delete(key);
+    }
   }
 
   /**
@@ -180,9 +264,17 @@ export class ParseCache implements vscode.Disposable {
   invalidate(uri: vscode.Uri): void {
     const key = uri.toString();
     const cached = this.entries.get(key);
-    if (!cached) return;
-    cached.tree.delete();
     this.entries.delete(key);
+    if (!cached) return;
+    if (this.borrowedOldTree.get(key) === cached.tree) {
+      // An in-flight `parseOnce` for this key still means to hand this exact
+      // tree to `parser.parse()` as its incremental-reparse base — freeing it
+      // now would race that read. Defer: `parseOnce` frees it once it's done
+      // (see there).
+      this.invalidatedWhileBorrowed.add(key);
+      return;
+    }
+    cached.tree.delete();
   }
 
   /** Number of cached trees — for tests/diagnostics. */
@@ -191,8 +283,30 @@ export class ParseCache implements vscode.Disposable {
   }
 
   dispose(): void {
-    for (const entry of this.entries.values()) entry.tree.delete();
+    for (const [key, entry] of this.entries) {
+      if (this.borrowedOldTree.get(key) === entry.tree) {
+        this.invalidatedWhileBorrowed.add(key);
+        continue;
+      }
+      entry.tree.delete();
+    }
     this.entries.clear();
+
+    // A key with an outstanding `turns` entry has a `parseOnce` call
+    // somewhere between being queued and fully settled — including the
+    // window where it holds `this.parser` to call `parser.parse()` on.
+    // Freeing the parser out from under that call would be a use-after-free
+    // on the parser itself, not just a tree, so deleting it waits for every
+    // outstanding turn to settle rather than racing them.
+    const outstanding = [...this.turns.values()];
+    if (outstanding.length === 0) {
+      this.deleteParser();
+      return;
+    }
+    void Promise.allSettled(outstanding).then(() => this.deleteParser());
+  }
+
+  private deleteParser(): void {
     this.parser?.delete();
     this.parser = undefined;
     this.parserPromise = undefined;
