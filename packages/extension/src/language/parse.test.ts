@@ -173,6 +173,30 @@ describe("ParseCache", () => {
     expect(cache.size).toBe(1);
   });
 
+  it("does not resurrect a stale entry when invalidate() races a document's first-ever (cold) parse", async () => {
+    // A cold parse has no old tree to borrow, so it's unprotected by
+    // `borrowedOldTree` alone — without also tracking it in `turns`, a
+    // same-tick `invalidate()` (the document closing right after a provider
+    // touches it for the first time) would go through as a no-op (nothing
+    // cached yet to free), and the parse would land anyway once it finished,
+    // caching a tree for a document that's no longer current.
+    const cache = new ParseCache(wasmDir);
+    const uri = Uri.file("/ws/G.mo");
+    const doc = fakeDocument(uri, 1, "model G end G;");
+
+    const inFlight = cache.parse(doc as never); // cold: nothing cached for G.mo yet
+    cache.invalidate(uri as never); // same tick — before the parse has even started
+
+    await expect(inFlight).rejects.toThrow(/invalidated/);
+    expect(cache.size).toBe(0);
+
+    // Reopening the file gets a fresh `TextDocument` whose version again
+    // starts at 1 — must not read back the discarded parse's stale tree.
+    const reopened = fakeDocument(uri, 1, "model G Real z; end G;");
+    const fresh = await cache.parse(reopened as never);
+    expect(fresh.rootNode.text).toBe(reopened.text);
+  });
+
   it("invalidate() on an idle (non-borrowed) entry frees it immediately, as before", async () => {
     const cache = new ParseCache(wasmDir);
     const uri = Uri.file("/ws/E.mo");
