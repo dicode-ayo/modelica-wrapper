@@ -39,7 +39,7 @@ import {
   type ComponentParameterRef,
 } from "./parameter-edits.js";
 import { clearComponentModifiers } from "./clear-modifiers.js";
-import { diffLayouts } from "./diff-layout.js";
+import { diffLayouts, type LayoutEdit } from "./diff-layout.js";
 import { applyDisplayUnits } from "./display-unit.js";
 import { buildUnitTableForModel, sessionUnitCache } from "./unit-table.js";
 import { LibrarySource, SearchAbortedError } from "./library-source.js";
@@ -370,6 +370,18 @@ export async function fetchDiagramLayout(
 }
 
 /**
+ * Every {@link LayoutEdit} kind `diffLayouts` infers purely from something
+ * being absent from `next` — a component, a connection, or a shape the
+ * caller's own class still holds but the report doesn't mention — rather
+ * than from an explicit gesture. These are the kinds `dropDeletes` filters.
+ */
+const INFERRED_DELETE_KINDS: ReadonlySet<LayoutEdit["kind"]> = new Set([
+  "componentDeleted",
+  "connectionDeleted",
+  "graphicsDeleted",
+]);
+
+/**
  * Apply the graphical delta between `prevLayout` and `next` to OMC. Diffs to
  * `LayoutEdit`s and applies them with an OMC-level snapshot so a partial
  * failure rolls the class back. Returns `null` when there is nothing left to
@@ -378,10 +390,12 @@ export async function fetchDiagramLayout(
  *
  * `dropDeletes` (issue #408): `next` may have been reported against a base
  * the webview never fully caught up to — a `layout` push it refused or
- * discarded. `componentDeleted` is `diffLayouts`'s only edit kind inferred
- * from a component's absence rather than an explicit gesture, so it's the one
- * kind such a report cannot be trusted for; every other edit still carries
- * its own absolute value and applies unaffected.
+ * discarded. Every {@link INFERRED_DELETE_KINDS} kind is the one such a
+ * report cannot be trusted for: a component/connection/shape the class
+ * already holds but the report never learned about looks identical, at diff
+ * time, to one the user removed. Every other edit kind still carries its own
+ * absolute value (from the report itself, not inferred from its absence) and
+ * applies unaffected.
  *
  * Re-reading the layout is the caller's job, so a burst of edits can share one
  * re-fetch instead of paying for one each.
@@ -395,7 +409,7 @@ export async function applyDiagramEdits(
 ): Promise<ApplyEditsResult | null> {
   const diffed = diffLayouts(prevLayout, next);
   const edits = options?.dropDeletes
-    ? diffed.filter((edit) => edit.kind !== "componentDeleted")
+    ? diffed.filter((edit) => !INFERRED_DELETE_KINDS.has(edit.kind))
     : diffed;
   if (edits.length === 0) return null;
   return applyEdits(client, className, edits, undefined, { snapshot: true });

@@ -703,13 +703,14 @@ export class DiagramEditController {
    *
    * `staleBase` is the report's own bit (issue #408): the webview refused or
    * discarded a `layout` push since the last one it applied, so `next` may be
-   * missing a component the class already holds — one it was never told
-   * about, not one the user deleted. `componentDeleted` is the only edit kind
-   * `diffLayouts` infers from absence rather than an explicit gesture, so it's
-   * the only one dropped; every other edit still carries its own absolute
-   * value and lands fine. A settle is then forced regardless of `settleOwed`
-   * so the webview is resynced onto the component it never saw — otherwise it
-   * would keep rendering a diagram missing something the class actually has.
+   * missing a component, connection, or shape the class already holds — one
+   * it was never told about, not one the user deleted. Those are the only
+   * edit kinds `diffLayouts` infers from absence rather than an explicit
+   * gesture (see `applyDiagramEdits`'s `dropDeletes`), so they're the only
+   * ones dropped; every other edit still carries its own absolute value and
+   * lands fine. A settle is then forced regardless of `settleOwed` so the
+   * webview is resynced onto what it never saw — otherwise it would keep
+   * rendering a diagram missing something the class actually has.
    */
   private async applyChange(
     next: DiagramLayout,

@@ -10,10 +10,15 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ModelInstance, OmcClient } from "@dicode/omc-client";
+import type {
+  DiagramLayout,
+  ModelInstance,
+  OmcClient,
+} from "@dicode/omc-client";
 
 import { executedCommands } from "../../test-support/vscode-mock.js";
 import {
+  applyDiagramEdits,
   fetchIconLayout,
   guardAddComponent,
   libraryIconSvg,
@@ -218,5 +223,113 @@ describe("guardAddComponent", () => {
       kind: "guard-failed",
       message: "isPartial Pkg.Unknown failed: OMC socket timeout",
     });
+  });
+});
+
+/** A client whose `invoke` records the calls it received and reports success
+ *  for all of them; `listFile` reports empty so `captureSnapshot` (issue #29's
+ *  snapshot/rollback machinery) opts itself out rather than needing a full
+ *  source-text fixture this test doesn't otherwise care about. */
+function stubEditClient(): { client: OmcClient; invoked: string[] } {
+  const invoked: string[] = [];
+  const client = {
+    invoke: vi.fn(async (fn: string) => {
+      invoked.push(fn);
+      return { success: true };
+    }),
+    listFile: vi.fn(async () => ({ contents: "" })),
+    get lastCall() {
+      return "stub(...)";
+    },
+  } as unknown as OmcClient;
+  return { client, invoked };
+}
+
+function connectedLayout(): DiagramLayout {
+  return {
+    kind: "diagram",
+    className: "Pkg.M",
+    source: { file: "Pkg/M.mo", line: 1, column: 1 } as never,
+    iconLayers: [],
+    diagramLayers: [],
+    labels: [],
+    classes: {},
+    components: {
+      gain1: {
+        name: "gain1",
+        classRef: "Modelica.Blocks.Math.Gain",
+        placement: {
+          extent: [
+            [10, 10],
+            [30, 30],
+          ],
+        },
+      },
+      gain2: {
+        name: "gain2",
+        classRef: "Modelica.Blocks.Math.Gain",
+        placement: {
+          extent: [
+            [50, 50],
+            [70, 70],
+          ],
+        },
+      },
+    },
+    connectors: {},
+    connections: [
+      {
+        lhs: { component: "gain1", port: "y" },
+        rhs: { component: "gain2", port: "u" },
+        waypoints: [],
+      },
+    ],
+  } as unknown as DiagramLayout;
+}
+
+describe("applyDiagramEdits: dropDeletes (issue #408)", () => {
+  it("does not delete a component or connection the report never knew about, but still moves the one it reported", async () => {
+    const { client, invoked } = stubEditClient();
+    const current = connectedLayout();
+    const next = connectedLayout();
+    // gain1 moved; gain2 and its connection to gain1 are simply absent —
+    // exactly what a stale-base report looks like, per issue #408.
+    next.components = {
+      gain1: {
+        name: "gain1",
+        classRef: "Modelica.Blocks.Math.Gain",
+        placement: {
+          extent: [
+            [20, 20],
+            [40, 40],
+          ],
+        },
+      },
+    } as unknown as DiagramLayout["components"];
+    next.connections = [];
+
+    const result = await applyDiagramEdits(client, "Pkg.M", current, next, {
+      dropDeletes: true,
+    });
+
+    expect(result).not.toBeNull();
+    expect(invoked).toContain("updateComponent");
+    expect(invoked).not.toContain("deleteComponent");
+    expect(invoked).not.toContain("deleteConnection");
+  });
+
+  it("still deletes a component and connection the user actually removed when dropDeletes is unset", async () => {
+    const { client, invoked } = stubEditClient();
+    const current = connectedLayout();
+    const next = connectedLayout();
+    next.components = {
+      gain1: current.components.gain1,
+    } as unknown as DiagramLayout["components"];
+    next.connections = [];
+
+    await applyDiagramEdits(client, "Pkg.M", current, next);
+
+    expect(invoked).toContain("deleteComponent");
+    expect(invoked).toContain("deleteConnection");
   });
 });
