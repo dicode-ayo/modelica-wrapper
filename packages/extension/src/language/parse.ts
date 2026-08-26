@@ -104,45 +104,46 @@ interface CacheEntry {
  * Owns the parser + a per-document `Tree` cache. One instance per extension
  * activation; created in `index.ts` and disposed on deactivate.
  *
- * `parse()` calls for the same document are serialized through a per-key
- * queue (`turns`) rather than run independently: without it, several
- * providers racing the same edit (document-symbols, semantic-tokens,
- * completion) would each miss the cache, each parse, and each `setEntry` —
- * the second caller freeing the tree the first is still walking, since
- * `Tree.delete()` frees WASM-backed memory the tree-sitter binding gives no
- * safe way to detect use of afterward. Serializing collapses them onto one
- * physical parse: a later turn's own cache check (`entries.get(key)`) picks
- * up whatever the previous turn just stored.
+ * `Tree.delete()` frees WASM-backed memory the tree-sitter binding has no way
+ * to detect use of afterward, so two invariants matter here:
  *
- * That serialization alone still leaves a gap: the old tree a turn passes to
- * `parser.parse()` for an incremental re-parse is read (and cached-entry
- * bookkeeping is written) across an `await` on `getParser()`, so
- * `invalidate()`/`dispose()` — both synchronous, both reachable from outside
- * any turn (`onDidCloseTextDocument`, the invalidation registry) — could
- * still free that exact tree in the gap before `parser.parse()` reads it.
- * `borrowedOldTree` records which tree a key's current turn is about to hand
- * to `parser.parse()`, from before the await; `invalidate`/`dispose` check it
- * and defer freeing a tree that's still borrowed instead of racing it. More
- * generally, ANY key with an outstanding `turns` entry — including a
- * document's first-ever (cold) parse, which has no old tree to borrow — gets
- * marked in `invalidatedWhileInFlight`: without this, a cold parse racing a
- * close/dispose would finish after the fact and `setEntry` a tree for a
- * document that's no longer current, silently poisoning a later `parse()` for
- * the same key (e.g. the file reopened, its version counter restarted at 1).
- * Either way the in-flight turn discards its own result and frees what it
- * borrowed, once `parser.parse()` is done reading it. `dispose()` additionally
- * waits out every outstanding turn before freeing the shared `Parser` itself,
- * for the same reason.
+ *   - `parse()` calls for one document are serialized through a per-key queue
+ *     (`turns`), so two callers racing the same edit collapse onto one
+ *     physical parse instead of each freeing the tree the other is walking.
+ *   - A tree handed to `parser.parse()` as the incremental-reparse base is
+ *     recorded in `borrowedOldTree` before the `await` that follows, so
+ *     `invalidate()`/`dispose()` defer freeing it instead of racing that read.
+ *
+ * `generations` backs both: `invalidate`/`dispose` bump a key's generation
+ * instead of freeing an in-flight turn's result out from under it (or, for a
+ * cold first parse with no old tree to borrow, instead of letting it
+ * `setEntry` a tree for a document that's no longer current). Every turn
+ * queued for that key at that point — not just the one currently running —
+ * compares its own captured generation against the current one and discards
+ * its result on a mismatch, freeing whatever it borrowed itself once
+ * `parser.parse()` is done with it. `dispose()` additionally waits out every
+ * outstanding turn before freeing the shared `Parser` itself, for the same
+ * reason, and refuses further `parse()` calls once it has.
  */
 export class ParseCache implements vscode.Disposable {
   private readonly entries = new Map<string, CacheEntry>();
   private readonly turns = new Map<string, Promise<unknown>>();
   private readonly borrowedOldTree = new Map<string, Tree>();
-  private readonly invalidatedWhileInFlight = new Set<string>();
+  private readonly generations = new Map<string, number>();
+  private disposed = false;
   private parser: Parser | undefined;
   private parserPromise: Promise<Parser> | undefined;
 
   constructor(private readonly wasmDir: string) {}
+
+  private generationOf(key: string): number {
+    return this.generations.get(key) ?? 0;
+  }
+
+  /** Discard every turn currently queued for `key`. */
+  private bumpGeneration(key: string): void {
+    this.generations.set(key, this.generationOf(key) + 1);
+  }
 
   private getParser(): Promise<Parser> {
     if (this.parser) return Promise.resolve(this.parser);
@@ -170,21 +171,32 @@ export class ParseCache implements vscode.Disposable {
    * tree is owned by the cache — callers must not `delete()` it, and must
    * finish reading it before their next `await` (see the class doc).
    *
-   * A cache hit returns synchronously-fast, without touching the per-key
-   * queue. A miss joins `turns`: if another `parse()` for the same document is
-   * already queued or running, this call rides behind it and then re-checks
-   * the cache — usually finding the prior turn already produced a tree at
-   * (whatever is by then) the current version, rather than parsing again.
+   * A cache hit returns without touching the per-key queue. A miss joins
+   * `turns`: if another `parse()` for the same document is already queued or
+   * running, this call rides behind it and then re-checks the cache — usually
+   * finding the prior turn already produced a tree at (whatever is by then)
+   * the current version, rather than parsing again.
    */
   async parse(document: vscode.TextDocument): Promise<Tree> {
+    if (this.disposed) {
+      throw new Error("ParseCache: disposed");
+    }
     const key = document.uri.toString();
     const cached = this.entries.get(key);
     if (cached && cached.version === document.version) {
       return cached.tree;
     }
 
+    // Captured now, not inside `parseOnce` once this turn's own wait is over
+    // — an `invalidate()`/`dispose()` that bumps the generation while this
+    // turn is still queued (behind another one for the same key) must still
+    // be visible to it once its turn comes, not just to the turn running at
+    // the moment of the bump.
+    const generation = this.generationOf(key);
     const previousTurn = this.turns.get(key) ?? Promise.resolve();
-    const turn = previousTurn.then(() => this.parseOnce(document, key));
+    const turn = previousTurn.then(() =>
+      this.parseOnce(document, key, generation),
+    );
     // A rejected turn must not wedge later ones queued behind it — each
     // caller still observes its own `turn`'s outcome via the `return` below.
     const wrapped = turn.catch(() => undefined);
@@ -201,6 +213,7 @@ export class ParseCache implements vscode.Disposable {
   private async parseOnce(
     document: vscode.TextDocument,
     key: string,
+    generation: number,
   ): Promise<Tree> {
     const cached = this.entries.get(key);
     if (cached && cached.version === document.version) {
@@ -220,17 +233,13 @@ export class ParseCache implements vscode.Disposable {
       // since it was parsed, so passing it here yields an incremental
       // re-parse.
       const tree = parser.parse(text, oldTree ?? null);
-      this.borrowedOldTree.delete(key);
       if (!tree) {
         throw new Error("tree-sitter returned no tree (no language assigned?)");
       }
-      if (this.invalidatedWhileInFlight.delete(key)) {
-        // `invalidate()`/`dispose()` ran for this key while we were still in
-        // flight and deferred to us (see `invalidate`) — safe now that
-        // `parser.parse()` is done reading whatever we borrowed. The document
-        // this parse was for no longer has a cache entry to update, so
-        // there's nothing to store the fresh tree in either.
-        oldTree?.delete();
+      if (this.generationOf(key) !== generation) {
+        // `invalidate()`/`dispose()` bumped this key's generation while we
+        // were in flight — the document this parse was for is no longer
+        // current, so there's nothing to store the fresh tree in.
         tree.delete();
         throw new Error(`ParseCache: ${key} was invalidated while parsing`);
       }
@@ -238,6 +247,12 @@ export class ParseCache implements vscode.Disposable {
       return tree;
     } finally {
       this.borrowedOldTree.delete(key);
+      // `invalidate`/`dispose` skipped freeing `oldTree` while it was
+      // borrowed above (see `invalidate`) precisely so it stayed alive for
+      // `parser.parse()` to read — free it here, now that we're done with
+      // it, on every exit (a clean parse discarded above, or a genuine
+      // failure from `getParser`/`parser.parse` themselves).
+      if (oldTree && this.generationOf(key) !== generation) oldTree.delete();
     }
   }
 
@@ -267,18 +282,14 @@ export class ParseCache implements vscode.Disposable {
     const key = uri.toString();
     const cached = this.entries.get(key);
     this.entries.delete(key);
-    if (this.turns.has(key)) {
-      // A `parseOnce` for this key is somewhere between queued and settled —
-      // it may still mean to hand `cached?.tree` to `parser.parse()` as its
-      // reparse base (if borrowed, handled below), or it may simply be a cold
-      // parse about to cache a tree for a document that's no longer current
-      // either way. Defer to it: it discards its own result once it notices
-      // (see `parseOnce`).
-      this.invalidatedWhileInFlight.add(key);
-    }
+    // Every turn queued for this key — not just the one currently running —
+    // discards its result once it notices the bump (see `parseOnce`).
+    if (this.turns.has(key)) this.bumpGeneration(key);
     if (!cached) return;
     if (this.borrowedOldTree.get(key) === cached.tree) {
-      // Freeing this tree now would race `parser.parse()`'s read of it.
+      // A turn still means to hand this exact tree to `parser.parse()` as
+      // its reparse base — freeing it now would race that read. It frees it
+      // itself, once safe (see `parseOnce`).
       return;
     }
     cached.tree.delete();
@@ -290,6 +301,10 @@ export class ParseCache implements vscode.Disposable {
   }
 
   dispose(): void {
+    // Reject every `parse()` from here on — otherwise one could still land
+    // after this method returns, chain onto the (by-then-settled) `turns`
+    // entry it read below, and race the parser teardown at the bottom.
+    this.disposed = true;
     for (const [key, entry] of this.entries) {
       if (this.borrowedOldTree.get(key) === entry.tree) {
         continue;
@@ -300,7 +315,7 @@ export class ParseCache implements vscode.Disposable {
     // Any key still mid-flight — cold parses included — discards its own
     // result instead of caching into a cache nobody will read again; see
     // `invalidate`.
-    for (const key of this.turns.keys()) this.invalidatedWhileInFlight.add(key);
+    for (const key of this.turns.keys()) this.bumpGeneration(key);
 
     // A key with an outstanding `turns` entry has a `parseOnce` call
     // somewhere between being queued and fully settled — including the
