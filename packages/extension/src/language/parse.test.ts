@@ -166,6 +166,7 @@ describe("ParseCache", () => {
     await expect(inFlight).rejects.toThrow(/invalidated/);
     expect(isLive(base)).toBe(false); // freed by the turn itself, once safe
     expect(cache.size).toBe(0);
+    expect(cache.stats.borrowed).toBe(0);
 
     // The cache is left usable afterward — not corrupted by the race.
     replaceText(cache, doc, 3, "model D Real y; end D;");
@@ -192,6 +193,26 @@ describe("ParseCache", () => {
     await expect(first).rejects.toThrow(/invalidated/);
     await expect(second).rejects.toThrow(/invalidated/);
     expect(cache.size).toBe(0);
+  });
+
+  it("still serves a parse queued after invalidate() bumped the key", async () => {
+    // The turn queued behind `cancelled` captures the generation as it stood
+    // when it was called — after the bump — so it must run to completion
+    // rather than inherit a cancellation meant for an earlier turn.
+    const cache = new ParseCache(wasmDir);
+    const uri = Uri.file("/ws/K.mo");
+    const doc = fakeDocument(uri, 1, "model K end K;");
+    await cache.parse(doc);
+
+    replaceText(cache, doc, 2, "model K Real x; end K;");
+    const cancelled = cache.parse(doc);
+    await Promise.resolve();
+    cache.invalidate(fileUri("/ws/K.mo"));
+    const queued = cache.parse(doc);
+
+    await expect(cancelled).rejects.toThrow(/invalidated/);
+    expect((await queued).rootNode.text).toBe(doc.text);
+    expect(cache.stats).toEqual({ turns: 0, generations: 0, borrowed: 0 });
   });
 
   it("does not resurrect a stale entry when invalidate() races a document's first-ever (cold) parse", async () => {
@@ -302,6 +323,7 @@ describe("ParseCache", () => {
 
     await expect(inFlight).rejects.toThrow(/invalidated/);
     expect(isLive(base)).toBe(false);
+    expect(cache.stats.borrowed).toBe(0);
   });
 
   it("rejects a parse() called after dispose() rather than racing the freed parser", async () => {

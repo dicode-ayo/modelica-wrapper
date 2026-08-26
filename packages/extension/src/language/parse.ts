@@ -245,11 +245,11 @@ export class ParseCache implements vscode.Disposable {
       return tree;
     } finally {
       this.borrowedOldTree.delete(key);
-      // `invalidate`/`dispose` skipped freeing `oldTree` while it was
-      // borrowed above (see `invalidate`) precisely so it stayed alive for
-      // `parser.parse()` to read — free it here, now that we're done with
-      // it, on every exit (a clean parse discarded above, or a genuine
-      // failure from `getParser`/`parser.parse` themselves).
+      // On a bump, `invalidate`/`dispose` skipped freeing `oldTree` because
+      // this turn had it borrowed for `parser.parse()` to read, so freeing it
+      // falls to this turn. Without a bump it is still the live `entries`
+      // value: `setEntry` frees it on success, and a failure leaves it as the
+      // cache's tree.
       if (oldTree && this.generationOf(key) !== generation) oldTree.delete();
     }
   }
@@ -275,7 +275,8 @@ export class ParseCache implements vscode.Disposable {
     }
   }
 
-  /** Drop a single document's cache entry, freeing its tree. */
+  /** Drop a single document's cache entry, freeing its tree unless an
+   *  in-flight parse still holds it as its reparse base. */
   invalidate(uri: vscode.Uri): void {
     const key = uri.toString();
     const cached = this.entries.get(key);
@@ -298,16 +299,10 @@ export class ParseCache implements vscode.Disposable {
     return this.entries.size;
   }
 
-  /** Internal map sizes — for tests/diagnostics; asserts the bookkeeping maps
-   *  (`turns`, `generations`, `borrowedOldTree`) don't outlive what they track. */
-  get stats(): {
-    entries: number;
-    turns: number;
-    generations: number;
-    borrowed: number;
-  } {
+  /** Internal map sizes — for tests; `borrowed`/`turns`/`generations` must all
+   *  return to zero once nothing is in flight for a key. */
+  get stats(): { turns: number; generations: number; borrowed: number } {
     return {
-      entries: this.entries.size,
       turns: this.turns.size,
       generations: this.generations.size,
       borrowed: this.borrowedOldTree.size,
