@@ -137,6 +137,7 @@ export class ParseCache implements vscode.Disposable {
 
   constructor(private readonly wasmDir: string) {}
 
+  /** `key`'s current generation — 0 if never bumped. */
   private generationOf(key: string): number {
     return this.generations.get(key) ?? 0;
   }
@@ -208,6 +209,9 @@ export class ParseCache implements vscode.Disposable {
     return turn;
   }
 
+  /** The actual parse, reached only via `parse()`'s per-key queue, one turn
+   *  at a time — `generation` is the value `parse()` captured for this turn
+   *  when it was called, compared below against whatever's current. */
   private async parseOnce(
     document: vscode.TextDocument,
     key: string,
@@ -309,6 +313,8 @@ export class ParseCache implements vscode.Disposable {
     };
   }
 
+  /** Free every cached tree and the shared parser, and reject any further
+   *  `parse()` call. Safe to call with parses in flight — see the class doc. */
   dispose(): void {
     // Reject every `parse()` from here on — otherwise one could still land
     // after this method returns, chain onto the (by-then-settled) `turns`
@@ -340,6 +346,7 @@ export class ParseCache implements vscode.Disposable {
     void Promise.allSettled(outstanding).then(() => this.deleteParser());
   }
 
+  /** Free the shared parser and reset its lazy-init state. */
   private deleteParser(): void {
     this.parser?.delete();
     this.parser = undefined;
