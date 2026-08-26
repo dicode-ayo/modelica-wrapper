@@ -372,8 +372,16 @@ export async function fetchDiagramLayout(
 /**
  * Apply the graphical delta between `prevLayout` and `next` to OMC. Diffs to
  * `LayoutEdit`s and applies them with an OMC-level snapshot so a partial
- * failure rolls the class back. Returns `null` when the two layouts are
- * identical (nothing to apply).
+ * failure rolls the class back. Returns `null` when there is nothing left to
+ * apply (the two layouts are identical, or `dropDeletes` filtered out every
+ * edit the diff produced).
+ *
+ * `dropDeletes` (issue #408): `next` may have been reported against a base
+ * the webview never fully caught up to — a `layout` push it refused or
+ * discarded. `componentDeleted` is `diffLayouts`'s only edit kind inferred
+ * from a component's absence rather than an explicit gesture, so it's the one
+ * kind such a report cannot be trusted for; every other edit still carries
+ * its own absolute value and applies unaffected.
  *
  * Re-reading the layout is the caller's job, so a burst of edits can share one
  * re-fetch instead of paying for one each.
@@ -383,8 +391,12 @@ export async function applyDiagramEdits(
   className: string,
   prevLayout: DiagramLayout,
   next: DiagramLayout,
+  options?: { dropDeletes?: boolean },
 ): Promise<ApplyEditsResult | null> {
-  const edits = diffLayouts(prevLayout, next);
+  const diffed = diffLayouts(prevLayout, next);
+  const edits = options?.dropDeletes
+    ? diffed.filter((edit) => edit.kind !== "componentDeleted")
+    : diffed;
   if (edits.length === 0) return null;
   return applyEdits(client, className, edits, undefined, { snapshot: true });
 }

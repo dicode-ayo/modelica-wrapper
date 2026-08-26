@@ -26,7 +26,7 @@ function layout(): DiagramLayout {
 /** One well-formed message per declared gesture. */
 const SAMPLES: WebviewToExtension[] = [
   { type: "ready" },
-  { type: "change", layout: layout() },
+  { type: "change", layout: layout(), staleBase: false },
   {
     type: "connectionCreate",
     fromKey: "a",
@@ -103,14 +103,32 @@ describe("isGestureMessage", () => {
   it("rejects a change whose layout is not one", () => {
     const reject = vi.fn();
     expect(
-      isGestureMessage({ type: "change", layout: { kind: "x" } }, reject),
+      isGestureMessage(
+        { type: "change", layout: { kind: "x" }, staleBase: false },
+        reject,
+      ),
     ).toBe(false);
+  });
+
+  it("rejects a change whose staleBase is not a boolean", () => {
+    const reject = vi.fn();
+    expect(
+      isGestureMessage(
+        { type: "change", layout: layout(), staleBase: "false" },
+        reject,
+      ),
+    ).toBe(false);
+    expect(reject).toHaveBeenCalledWith(
+      expect.stringContaining("change.staleBase"),
+    );
   });
 });
 
 describe("iconHonorsGesture", () => {
   it("honors shape work, connector placement and the clipboard", () => {
-    expect(iconHonorsGesture({ type: "change", layout: layout() })).toBe(true);
+    expect(
+      iconHonorsGesture({ type: "change", layout: layout(), staleBase: false }),
+    ).toBe(true);
     expect(iconHonorsGesture({ type: "editShape", key: "shape:line:0" })).toBe(
       true,
     );

@@ -29,9 +29,16 @@ const defaultScheduler: CommitScheduler = {
 export class CommitSlot {
   private queued: DiagramLayout | null = null;
   private timer: { cancel(): void } | undefined;
+  /**
+   * True from a refused/discarded `layout` push (per {@link canApplyPush})
+   * until the next one actually lands. Read alongside the layout by `send`,
+   * so the host can tell a component it was never told about (a push it
+   * missed) from one the user genuinely deleted (issue #408).
+   */
+  private stale = false;
 
   constructor(
-    private readonly send: (layout: DiagramLayout) => void,
+    private readonly send: (layout: DiagramLayout, staleBase: boolean) => void,
     private readonly scheduler: CommitScheduler = defaultScheduler,
   ) {}
 
@@ -62,6 +69,18 @@ export class CommitSlot {
     return !gestureActive && this.queued === null;
   }
 
+  /** Record that an arriving `layout` push was refused, per
+   *  {@link canApplyPush}'s verdict — the diagram is now showing state the
+   *  host doesn't know it hasn't seen. */
+  noteRefusedPush(): void {
+    this.stale = true;
+  }
+
+  /** Record that a `layout` push was applied — the diagram is caught up. */
+  notePushApplied(): void {
+    this.stale = false;
+  }
+
   /** Send whatever is held, now — the debounce is an optimisation, and losing
    *  a commit to a teardown is not a trade it is allowed to make. */
   flush(): void {
@@ -70,6 +89,6 @@ export class CommitSlot {
     const layout = this.queued;
     if (layout === null) return;
     this.queued = null;
-    this.send(layout);
+    this.send(layout, this.stale);
   }
 }

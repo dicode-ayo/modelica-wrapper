@@ -113,8 +113,8 @@ class OmWebviewRoot extends LitElement {
    *  gates whether the form is read-only. Reactive — `render` reads it. */
   @state() private paramKind: ParameterFormKind | null = null;
 
-  private readonly commits = new CommitSlot((layout) =>
-    this.vscode?.postMessage({ type: "change", layout }),
+  private readonly commits = new CommitSlot((layout, staleBase) =>
+    this.vscode?.postMessage({ type: "change", layout, staleBase }),
   );
 
   private vscode: VsCodeApi<WebviewToExtension> | null = null;
@@ -249,8 +249,10 @@ class OmWebviewRoot extends LitElement {
         return;
       case "layout":
         if (!this.commits.canApplyPush(this.diagram?.gestureActive === true)) {
+          this.commits.noteRefusedPush();
           return;
         }
+        this.commits.notePushApplied();
         this.layout = message.layout;
         this.renderError = null;
         return;

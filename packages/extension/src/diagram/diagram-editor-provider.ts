@@ -432,8 +432,10 @@ export class DiagramEditController {
   /**
    * The layout the webview last reported, waiting to be reconciled. One slot,
    * not a list: a report supersedes its predecessor rather than following it.
+   * `staleBase` mirrors the report's own bit — see `applyChange`.
    */
-  private pendingChange: DiagramLayout | null = null;
+  private pendingChange: { layout: DiagramLayout; staleBase: boolean } | null =
+    null;
   /**
    * Set when a settle was suppressed because a report was already queued. The
    * reconcile of that report pays it: a reported edit needs no settle of its
@@ -524,7 +526,7 @@ export class DiagramEditController {
         );
         return this.queue;
       }
-      this.pendingChange = msg.layout;
+      this.pendingChange = { layout: msg.layout, staleBase: msg.staleBase };
     }
     return this.enqueue(() => this.dispatch(msg));
   }
@@ -690,7 +692,7 @@ export class DiagramEditController {
     // An earlier unit already took it; this one has nothing left to do.
     if (next === null) return;
     this.pendingChange = null;
-    await this.applyChange(next);
+    await this.applyChange(next.layout, next.staleBase);
   }
 
   /**
@@ -698,8 +700,21 @@ export class DiagramEditController {
    * from OMC here, so that whatever else has touched the class, the difference
    * between what it holds and what the user is looking at is exactly the set of
    * edits that closes the gap.
+   *
+   * `staleBase` is the report's own bit (issue #408): the webview refused or
+   * discarded a `layout` push since the last one it applied, so `next` may be
+   * missing a component the class already holds — one it was never told
+   * about, not one the user deleted. `componentDeleted` is the only edit kind
+   * `diffLayouts` infers from absence rather than an explicit gesture, so it's
+   * the only one dropped; every other edit still carries its own absolute
+   * value and lands fine. A settle is then forced regardless of `settleOwed`
+   * so the webview is resynced onto the component it never saw — otherwise it
+   * would keep rendering a diagram missing something the class actually has.
    */
-  private async applyChange(next: DiagramLayout): Promise<void> {
+  private async applyChange(
+    next: DiagramLayout,
+    staleBase: boolean,
+  ): Promise<void> {
     if (this.rejectIfReadOnly()) {
       // The webview has already moved what the user dragged. Nothing else will
       // correct it — a reported edit gets no settle of its own — so it would
@@ -710,7 +725,10 @@ export class DiagramEditController {
     const { client, className } = this.deps;
     try {
       const current = await this.refetch(client, className);
-      const result = await applyDiagramEdits(client, className, current, next);
+      const result = await applyDiagramEdits(client, className, current, next, {
+        dropDeletes: staleBase,
+      });
+      const mustSettle = this.settleOwed || staleBase;
       if (result === null) {
         // Nothing to write, but a withheld settle may have left `prevLayout`
         // behind what OMC and the screen both already hold. A null diff only
@@ -718,7 +736,7 @@ export class DiagramEditController {
         // what the diff never compares, a parameter value read into a label or
         // a swapped component's icon — so it is paid from the base in hand.
         this.prevLayout = current;
-        if (this.settleOwed) this.publishLayout(current);
+        if (mustSettle) this.publishLayout(current);
         return;
       }
       if (result.failed.length > 0 || result.rolledBack) {
@@ -738,7 +756,7 @@ export class DiagramEditController {
         return;
       }
       await this.writeBuffer();
-      if (this.settleOwed) {
+      if (mustSettle) {
         await this.pushCanonicalLayout();
         return;
       }

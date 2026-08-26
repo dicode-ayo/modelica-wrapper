@@ -50,14 +50,20 @@ function manualScheduler(): {
 function makeSlot(): {
   slot: CommitSlot;
   sent: DiagramLayout[];
+  staleFlags: boolean[];
   fire: () => void;
   armed: () => boolean;
 } {
   const sent: DiagramLayout[] = [];
+  const staleFlags: boolean[] = [];
   const { scheduler, fire, armed } = manualScheduler();
   return {
-    slot: new CommitSlot((l) => sent.push(l), scheduler),
+    slot: new CommitSlot((l, stale) => {
+      sent.push(l);
+      staleFlags.push(stale);
+    }, scheduler),
     sent,
+    staleFlags,
     fire,
     armed,
   };
@@ -132,6 +138,33 @@ describe("CommitSlot", () => {
     const { slot, sent } = makeSlot();
     slot.flush();
     expect(sent).toEqual([]);
+  });
+
+  it("sends staleBase: false when no push has been refused", () => {
+    const { slot, staleFlags, fire } = makeSlot();
+    slot.commit(layout("a"));
+    fire();
+    expect(staleFlags).toEqual([false]);
+  });
+
+  it("sends staleBase: true once a push has been refused, until one is applied", () => {
+    const { slot, staleFlags, fire } = makeSlot();
+    slot.noteRefusedPush();
+
+    slot.commit(layout("a"));
+    fire();
+    expect(staleFlags).toEqual([true]);
+
+    // Still stale for a second commit — nothing has told the host about the
+    // push it missed yet.
+    slot.commit(layout("b"));
+    fire();
+    expect(staleFlags).toEqual([true, true]);
+
+    slot.notePushApplied();
+    slot.commit(layout("c"));
+    fire();
+    expect(staleFlags).toEqual([true, true, false]);
   });
 
   it("drives the real timer when no scheduler is injected", () => {
