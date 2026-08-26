@@ -201,11 +201,14 @@ export class ParseCache implements vscode.Disposable {
     // caller still observes its own `turn`'s outcome via the `return` below.
     const wrapped = turn.catch(() => undefined);
     this.turns.set(key, wrapped);
-    // Once settled, drop the queue entry so it doesn't outlive every parse
-    // that ever touched this key — but only if nothing queued behind us has
-    // already replaced it.
+    // Once settled, drop the queue entry (and this key's generation counter,
+    // now moot — the next `parse()` for this key starts a fresh baseline) so
+    // neither outlives every parse that ever touched this key — but only if
+    // nothing queued behind us has already replaced it.
     void wrapped.then(() => {
-      if (this.turns.get(key) === wrapped) this.turns.delete(key);
+      if (this.turns.get(key) !== wrapped) return;
+      this.turns.delete(key);
+      this.generations.delete(key);
     });
     return turn;
   }
