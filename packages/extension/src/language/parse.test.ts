@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { Tree } from "web-tree-sitter";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import type * as vscode from "vscode";
@@ -83,6 +84,17 @@ function replaceText(
   doc.text = text;
 }
 
+/** `true` while `tree`'s WASM backing is still allocated — a freed tree
+ *  throws reading any node's data. (A double `delete()` is silent, so this
+ *  distinguishes live-vs-freed, not a delete count.) */
+function isLive(tree: Tree): boolean {
+  try {
+    return tree.rootNode.text.length >= 0;
+  } catch {
+    return false;
+  }
+}
+
 describe("ParseCache", () => {
   it("caches one tree per document and reuses it at the same version", async () => {
     const cache = new ParseCache(wasmDir);
@@ -133,10 +145,9 @@ describe("ParseCache", () => {
     const cache = new ParseCache(wasmDir);
     const uri = Uri.file("/ws/D.mo");
     const doc = fakeDocument(uri, 1, "model D end D;");
-    await cache.parse(doc); // now cached at version 1
+    const base = await cache.parse(doc); // now cached at version 1
 
-    doc.version = 2;
-    doc.text = "model D Real x; end D;";
+    replaceText(cache, doc, 2, "model D Real x; end D;");
     // Fire the version-2 parse but don't await it directly. `parser` is
     // already initialized (from the `await` above), so `parseOnce` reaches
     // its own `await getParser()` — registering version 1's tree as the
@@ -147,19 +158,17 @@ describe("ParseCache", () => {
     // describes.
     const inFlight = cache.parse(doc);
     await Promise.resolve();
-    // Assert the window was actually entered — if a future refactor shifts
-    // the tick count, this fails loudly instead of silently exercising the
-    // (already-covered) cold-parse path below instead.
-    expect(cache.size).toBe(1);
+    expect(isLive(base)).toBe(true); // the borrow window was actually entered
 
     cache.invalidate(fileUri("/ws/D.mo"));
+    expect(isLive(base)).toBe(true); // still deferred — invalidate() doesn't free it directly
 
     await expect(inFlight).rejects.toThrow(/invalidated/);
+    expect(isLive(base)).toBe(false); // freed by the turn itself, once safe
     expect(cache.size).toBe(0);
 
     // The cache is left usable afterward — not corrupted by the race.
-    doc.version = 3;
-    doc.text = "model D Real y; end D;";
+    replaceText(cache, doc, 3, "model D Real y; end D;");
     const fresh = await cache.parse(doc);
     expect(fresh.rootNode.text).toBe(doc.text);
     expect(cache.size).toBe(1);
@@ -173,8 +182,7 @@ describe("ParseCache", () => {
     const doc = fakeDocument(uri, 1, "model H end H;");
     await cache.parse(doc); // cached at version 1
 
-    doc.version = 2;
-    doc.text = "model H Real x; end H;";
+    replaceText(cache, doc, 2, "model H Real x; end H;");
     const first = cache.parse(doc);
     const second = cache.parse(doc); // queued behind `first` for the same key
     await Promise.resolve();
@@ -220,8 +228,7 @@ describe("ParseCache", () => {
     const doc = fakeDocument(uri, 1, "model Y end Y;");
     await cache.parse(doc); // cached at version 1
 
-    doc.version = 2;
-    doc.text = "model Y Real x; end Y;";
+    replaceText(cache, doc, 2, "model Y Real x; end Y;");
     let getTextCalls = 0;
     const text = doc.text;
     doc.getText = () => {
@@ -238,10 +245,26 @@ describe("ParseCache", () => {
     await expect(failing).rejects.toThrow("boom");
 
     doc.getText = () => doc.text;
-    doc.version = 3;
-    doc.text = "model Y Real y; end Y;";
+    replaceText(cache, doc, 3, "model Y Real y; end Y;");
     const fresh = await cache.parse(doc);
     expect(fresh.rootNode.text).toBe(doc.text);
+  });
+
+  it("prunes a key's generation counter once nothing is left in flight for it", async () => {
+    const cache = new ParseCache(wasmDir);
+    const uri = Uri.file("/ws/J.mo");
+    const doc = fakeDocument(uri, 1, "model J end J;");
+    await cache.parse(doc);
+
+    replaceText(cache, doc, 2, "model J Real x; end J;");
+    const inFlight = cache.parse(doc);
+    await Promise.resolve();
+    cache.invalidate(fileUri("/ws/J.mo")); // bumps J.mo's generation counter
+
+    await expect(inFlight).rejects.toThrow(/invalidated/);
+
+    expect(cache.stats.generations).toBe(0);
+    expect(cache.stats.turns).toBe(0);
   });
 
   it("invalidate() on an idle (non-borrowed) entry frees it immediately", async () => {
@@ -266,16 +289,19 @@ describe("ParseCache", () => {
     const cache = new ParseCache(wasmDir);
     const uri = Uri.file("/ws/F.mo");
     const doc = fakeDocument(uri, 1, "model F end F;");
-    await cache.parse(doc);
+    const base = await cache.parse(doc);
 
-    doc.version = 2;
-    doc.text = "model F Real x; end F;";
+    replaceText(cache, doc, 2, "model F Real x; end F;");
     // Same one-tick reasoning as the `invalidate()` race above.
     const inFlight = cache.parse(doc);
     await Promise.resolve();
+    expect(isLive(base)).toBe(true);
+
     cache.dispose();
+    expect(isLive(base)).toBe(true); // dispose() also defers, not frees, a borrowed tree
 
     await expect(inFlight).rejects.toThrow(/invalidated/);
+    expect(isLive(base)).toBe(false);
   });
 
   it("rejects a parse() called after dispose() rather than racing the freed parser", async () => {

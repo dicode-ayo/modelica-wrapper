@@ -114,16 +114,17 @@ interface CacheEntry {
  *     recorded in `borrowedOldTree` before the `await` that follows, so
  *     `invalidate()`/`dispose()` defer freeing it instead of racing that read.
  *
- * `generations` backs both: `invalidate`/`dispose` bump a key's generation
- * instead of freeing an in-flight turn's result out from under it (or, for a
- * cold first parse with no old tree to borrow, instead of letting it
- * `setEntry` a tree for a document that's no longer current). Every turn
- * queued for that key at that point — not just the one currently running —
- * compares its own captured generation against the current one and discards
- * its result on a mismatch, freeing whatever it borrowed itself once
- * `parser.parse()` is done with it. `dispose()` additionally waits out every
- * outstanding turn before freeing the shared `Parser` itself, for the same
- * reason, and refuses further `parse()` calls once it has.
+ * `generations` backs the discard half of that second bullet, and extends it
+ * to a cold first parse (no old tree to borrow, so `borrowedOldTree` alone
+ * wouldn't protect it from `setEntry`-ing a tree for a document that's no
+ * longer current): `invalidate`/`dispose` bump a key's generation instead of
+ * freeing an in-flight turn's result directly. Every turn queued for that key
+ * at that point — not just the one currently running — compares its own
+ * captured generation against the current one and discards its result on a
+ * mismatch, freeing whatever it borrowed itself once `parser.parse()` is done
+ * with it. `dispose()` additionally waits out every outstanding turn before
+ * freeing the shared `Parser` itself, for the same reason, and refuses
+ * further `parse()` calls once it has.
  */
 export class ParseCache implements vscode.Disposable {
   private readonly entries = new Map<string, CacheEntry>();
@@ -140,7 +141,8 @@ export class ParseCache implements vscode.Disposable {
     return this.generations.get(key) ?? 0;
   }
 
-  /** Discard every turn currently queued for `key`. */
+  /** Invalidate every turn queued for `key`: each compares its own captured
+   *  generation against this and discards its result on a mismatch. */
   private bumpGeneration(key: string): void {
     this.generations.set(key, this.generationOf(key) + 1);
   }
@@ -170,12 +172,6 @@ export class ParseCache implements vscode.Disposable {
    * re-parsing incrementally (against the prior tree) otherwise. The returned
    * tree is owned by the cache — callers must not `delete()` it, and must
    * finish reading it before their next `await` (see the class doc).
-   *
-   * A cache hit returns without touching the per-key queue. A miss joins
-   * `turns`: if another `parse()` for the same document is already queued or
-   * running, this call rides behind it and then re-checks the cache — usually
-   * finding the prior turn already produced a tree at (whatever is by then)
-   * the current version, rather than parsing again.
    */
   async parse(document: vscode.TextDocument): Promise<Tree> {
     if (this.disposed) {
@@ -201,10 +197,9 @@ export class ParseCache implements vscode.Disposable {
     // caller still observes its own `turn`'s outcome via the `return` below.
     const wrapped = turn.catch(() => undefined);
     this.turns.set(key, wrapped);
-    // Once settled, drop the queue entry (and this key's generation counter,
-    // now moot — the next `parse()` for this key starts a fresh baseline) so
-    // neither outlives every parse that ever touched this key — but only if
-    // nothing queued behind us has already replaced it.
+    // Once settled, drop the queue entry and this key's generation counter so
+    // neither outlives every parse that ever touched the key — the next
+    // `parse()` starts from a fresh baseline.
     void wrapped.then(() => {
       if (this.turns.get(key) !== wrapped) return;
       this.turns.delete(key);
@@ -301,6 +296,22 @@ export class ParseCache implements vscode.Disposable {
   /** Number of cached trees — for tests/diagnostics. */
   get size(): number {
     return this.entries.size;
+  }
+
+  /** Internal map sizes — for tests/diagnostics; asserts the bookkeeping maps
+   *  (`turns`, `generations`, `borrowedOldTree`) don't outlive what they track. */
+  get stats(): {
+    entries: number;
+    turns: number;
+    generations: number;
+    borrowed: number;
+  } {
+    return {
+      entries: this.entries.size,
+      turns: this.turns.size,
+      generations: this.generations.size,
+      borrowed: this.borrowedOldTree.size,
+    };
   }
 
   dispose(): void {
