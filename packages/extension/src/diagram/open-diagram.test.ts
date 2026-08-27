@@ -342,7 +342,7 @@ describe("applyDiagramEdits: dropDeletes (issue #408)", () => {
   });
 });
 
-describe("applyDiagramEdits: dropDeletes graphics (issue #408 review round)", () => {
+describe("applyDiagramEdits: dropDeletes graphics (issue #408)", () => {
   function rect(x: number): RectangleShape {
     return {
       kind: "rectangle",
