@@ -283,11 +283,11 @@ describe("buildShapePropertiesForm", () => {
       Record<string, unknown>
     >((acc, f) => ({ ...acc, [f.name]: f.value ?? f.defaultValue }), {});
 
-    const applied = applyShapeProperties(opened, {
-      ...submitted,
-      startAngle: 45,
-      endAngle: 270,
-    }) as EllipseShape;
+    const applied = applyShapeProperties(
+      opened,
+      { ...submitted, startAngle: 45, endAngle: 270 },
+      new Set(["startAngle", "endAngle"]),
+    ) as EllipseShape;
     expect(applied.startAngle).toBe(45);
     expect(applied.endAngle).toBe(270);
     expect(applied.closure).toBeUndefined();
@@ -301,9 +301,11 @@ describe("buildShapePropertiesForm", () => {
         [20, 20],
       ],
     };
-    const applied = applyShapeProperties(opened, {
-      closure: "Radial",
-    }) as EllipseShape;
+    const applied = applyShapeProperties(
+      opened,
+      { closure: "Radial" },
+      new Set(["closure"]),
+    ) as EllipseShape;
     expect(applied.closure).toBe("Radial");
   });
 
@@ -316,9 +318,11 @@ describe("buildShapePropertiesForm", () => {
       ],
       closure: "Chord",
     };
-    const applied = applyShapeProperties(opened, {
-      closure: "Chord",
-    }) as EllipseShape;
+    const applied = applyShapeProperties(
+      opened,
+      { closure: "Chord" },
+      new Set(),
+    ) as EllipseShape;
     expect(applied.closure).toBe("Chord");
   });
 
@@ -356,10 +360,27 @@ describe("buildShapePropertiesForm", () => {
     const model = buildShapePropertiesForm(text);
     const tf = model.fields.find((x) => x.name === "textString");
     expect(tf?.defaultValue).toBe("");
-    const updated = applyShapeProperties(text, {
-      textString: tf?.defaultValue,
-    }) as TextShape;
+    const updated = applyShapeProperties(
+      text,
+      { textString: tf?.defaultValue },
+      new Set(),
+    ) as TextShape;
     expect(updated.textString).toBeNull();
+  });
+
+  it("writes a deliberately-cleared textString that happens to equal the spec default", () => {
+    // The bug: a `textString` the shape can't reduce to a literal (e.g. bound
+    // via `DynamicSelect`) is null on the shape and seeds the form with the
+    // spec default (""). A user who deliberately clears the box to mean "no
+    // text" submits "" too — indistinguishable from the untouched case above
+    // by value alone, so only the `dirty` flag can tell them apart.
+    const text = textShape(null);
+    const updated = applyShapeProperties(
+      text,
+      { textString: "" },
+      new Set(["textString"]),
+    ) as TextShape;
+    expect(updated.textString).toBe("");
   });
 
   it("an unset fillColor survives an Apply that resubmits the field untouched", () => {
@@ -370,9 +391,11 @@ describe("buildShapePropertiesForm", () => {
       (x) => x.name === "fillColor",
     );
     expect(fillColor?.value).toBeNull();
-    const updated = applyShapeProperties(RECT, {
-      fillColor: fillColor?.defaultValue,
-    }) as RectangleShape;
+    const updated = applyShapeProperties(
+      RECT,
+      { fillColor: fillColor?.defaultValue },
+      new Set(),
+    ) as RectangleShape;
     expect(updated.fillColor).toBeUndefined();
   });
 
@@ -398,8 +421,13 @@ describe("buildShapePropertiesForm", () => {
     expect(fillColor?.value).toBeNull();
     expect(fillColor?.defaultValue).toBe("#000000");
     expect(
-      (applyShapeProperties(RECT, { fillColor: null }) as RectangleShape)
-        .fillColor,
+      (
+        applyShapeProperties(
+          RECT,
+          { fillColor: null },
+          new Set(),
+        ) as RectangleShape
+      ).fillColor,
     ).toBeUndefined();
   });
 });
@@ -408,41 +436,62 @@ describe("buildShapePropertiesForm", () => {
 
 describe("applyShapeProperties", () => {
   it("applies visible and rotation from submitted values", () => {
-    const updated = applyShapeProperties(RECT, {
-      visible: false,
-      rotation: 45,
-    });
+    const updated = applyShapeProperties(
+      RECT,
+      { visible: false, rotation: 45 },
+      new Set(["visible", "rotation"]),
+    );
     expect(updated).toMatchObject({ visible: false, rotation: 45 });
   });
 
   it("converts hex lineColor back to Color", () => {
-    const updated = applyShapeProperties(RECT, { lineColor: "#ff0000" });
+    const updated = applyShapeProperties(
+      RECT,
+      { lineColor: "#ff0000" },
+      new Set(["lineColor"]),
+    );
     expect((updated as RectangleShape).lineColor).toEqual([255, 0, 0]);
   });
 
   it("converts hex fillColor back to Color", () => {
-    const updated = applyShapeProperties(RECT, { fillColor: "#0000ff" });
+    const updated = applyShapeProperties(
+      RECT,
+      { fillColor: "#0000ff" },
+      new Set(["fillColor"]),
+    );
     expect((updated as RectangleShape).fillColor).toEqual([0, 0, 255]);
   });
 
   it("applies pattern enum", () => {
-    const updated = applyShapeProperties(RECT, { pattern: "Dash" });
+    const updated = applyShapeProperties(
+      RECT,
+      { pattern: "Dash" },
+      new Set(["pattern"]),
+    );
     expect((updated as RectangleShape).pattern).toBe("Dash");
   });
 
   it("applies radius", () => {
-    const updated = applyShapeProperties(RECT, { radius: 5 });
+    const updated = applyShapeProperties(
+      RECT,
+      { radius: 5 },
+      new Set(["radius"]),
+    );
     expect((updated as RectangleShape).radius).toBe(5);
   });
 
   it("leaves fields unchanged when value is absent", () => {
-    const updated = applyShapeProperties(RECT, {});
+    const updated = applyShapeProperties(RECT, {}, new Set());
     expect(updated).toMatchObject(RECT);
   });
 
   it("ignores malformed number values", () => {
     const base: RectangleShape = { ...RECT, radius: 3 };
-    const updated = applyShapeProperties(base, { radius: "not-a-number" });
+    const updated = applyShapeProperties(
+      base,
+      { radius: "not-a-number" },
+      new Set(["radius"]),
+    );
     expect((updated as RectangleShape).radius).toBe(3);
   });
 
@@ -454,7 +503,11 @@ describe("applyShapeProperties", () => {
         [10, 10],
       ] as [number, number][],
     };
-    const updated = applyShapeProperties(line, { color: "#0080ff" });
+    const updated = applyShapeProperties(
+      line,
+      { color: "#0080ff" },
+      new Set(["color"]),
+    );
     expect(
       (updated as typeof line & { color?: [number, number, number] }).color,
     ).toEqual([0, 128, 255]);
@@ -469,7 +522,11 @@ describe("applyShapeProperties", () => {
       ] as [[number, number], [number, number]],
       textString: "old",
     };
-    const updated = applyShapeProperties(text, { textString: "new" });
+    const updated = applyShapeProperties(
+      text,
+      { textString: "new" },
+      new Set(["textString"]),
+    );
     expect((updated as typeof text).textString).toBe("new");
   });
 
@@ -482,12 +539,20 @@ describe("applyShapeProperties", () => {
       ] as [[number, number], [number, number]],
       textString: "keep",
     };
-    const updated = applyShapeProperties(text, { textString: 42 });
+    const updated = applyShapeProperties(
+      text,
+      { textString: 42 },
+      new Set(["textString"]),
+    );
     expect((updated as typeof text).textString).toBe("keep");
   });
 
   it("preserves shape kind and structural fields", () => {
-    const updated = applyShapeProperties(RECT, { lineColor: "#ff0000" });
+    const updated = applyShapeProperties(
+      RECT,
+      { lineColor: "#ff0000" },
+      new Set(["lineColor"]),
+    );
     expect(updated.kind).toBe("rectangle");
     expect((updated as RectangleShape).extent).toEqual(RECT.extent);
   });
@@ -495,17 +560,25 @@ describe("applyShapeProperties", () => {
   it("returns a copy even when no value decodes", () => {
     // The result becomes a graphicsModified payload; handing back the layout's
     // own shape would make the edit share an object with the layout it edits.
-    expect(applyShapeProperties(RECT, { radius: "not-a-number" })).not.toBe(
-      RECT,
-    );
-    expect(applyShapeProperties(RECT, {})).not.toBe(RECT);
+    expect(
+      applyShapeProperties(
+        RECT,
+        { radius: "not-a-number" },
+        new Set(["radius"]),
+      ),
+    ).not.toBe(RECT);
+    expect(applyShapeProperties(RECT, {}, new Set())).not.toBe(RECT);
   });
 
   it("throws on an unknown shape kind rather than returning undefined", () => {
     // Falling through the dispatch would hand writeClassGraphics an undefined
     // shape typed as one.
     expect(() =>
-      applyShapeProperties({ kind: "bogus" } as unknown as Shape, {}),
+      applyShapeProperties(
+        { kind: "bogus" } as unknown as Shape,
+        {},
+        new Set(),
+      ),
     ).toThrow(/Shape kind/);
   });
 });
@@ -610,7 +683,11 @@ describe("shape properties form round-trip", () => {
           continue;
         }
         if (next === field.value) continue;
-        const edited = applyShapeProperties(shape, { [field.name]: next });
+        const edited = applyShapeProperties(
+          shape,
+          { [field.name]: next },
+          new Set([field.name]),
+        );
         expect(
           JSON.stringify(edited),
           `field "${field.name}" (${field.kind}) did not reach the shape`,

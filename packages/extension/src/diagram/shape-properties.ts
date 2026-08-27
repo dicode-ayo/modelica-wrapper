@@ -240,7 +240,12 @@ interface ShapeField<S> {
    * decode. `opened` is the shape the form was built from, which a derived
    * fallback resolves against.
    */
-  readonly write: <T extends S>(opened: T, updated: T, raw: unknown) => T;
+  readonly write: <T extends S>(
+    opened: T,
+    updated: T,
+    raw: unknown,
+    touched: boolean,
+  ) => T;
 }
 
 /**
@@ -303,19 +308,15 @@ function fieldOf<S extends object>() {
           unitOptions: [],
         };
       },
-      write(opened, updated, raw) {
+      write(opened, updated, raw, touched) {
         const decoded = codec.decode(raw);
         if (decoded === undefined) return updated;
-        // The form submits every field, so a field the shape left unset or
-        // null comes back on an untouched Apply as its fallback, indistinguishable
-        // from the user choosing that value deliberately. Writing it would pin
-        // a value the shape never had — or, for a derived fallback like
-        // ellipse closure, a derivation the same submit may have invalidated.
         const current = opened[name];
-        if (
-          (current === null || current === undefined) &&
-          codec.encode(decoded) === codec.encode(fallbackFor(opened))
-        ) {
+        // An unset/null field seeds its form value from the spec default (or stays
+        // null for a codec with no empty state), so an untouched Apply resubmits
+        // that seed indistinguishable from the user deliberately choosing it.
+        // Only a field the user actually touched pins a value onto such a field.
+        if ((current === null || current === undefined) && !touched) {
           return updated;
         }
         return { ...updated, [name]: decoded };
@@ -603,6 +604,7 @@ export function buildShapePropertiesForm(shape: Shape): ParameterModel {
 export function applyShapeProperties(
   shape: Shape,
   values: Record<string, unknown>,
+  dirty: ReadonlySet<string>,
 ): Shape {
   return withFields(shape, (narrowed, fields) =>
     // `write` is the identity when nothing decodes, so the seed has to be the
@@ -610,7 +612,13 @@ export function applyShapeProperties(
     // accumulator, so an earlier field's new value cannot shift what a later
     // one treats as its untouched seed.
     fields.reduce(
-      (updated, field) => field.write(narrowed, updated, values[field.name]),
+      (updated, field) =>
+        field.write(
+          narrowed,
+          updated,
+          values[field.name],
+          dirty.has(field.name),
+        ),
       { ...narrowed },
     ),
   );
