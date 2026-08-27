@@ -1757,10 +1757,14 @@ describe("DiagramEditController: stale-base reconcile (issue #408)", () => {
 
     await controller.handle({
       type: "change",
-      // gain1 moved; still no gain2 in this report.
+      // gain1 moved (a genuinely different extent from TWO_COMPONENTS' own —
+      // `movedComponent` also bakes in `rotation: 0`, which the producer's
+      // output for an un-rotated placement omits, so a same-extent report
+      // would still diff as a placement change on that field alone and pass
+      // this assertion for the wrong reason); still no gain2 in this report.
       layout: movedComponent([
-        [10, 10],
-        [30, 30],
+        [20, 20],
+        [40, 40],
       ]),
       staleBase: true,
     });
