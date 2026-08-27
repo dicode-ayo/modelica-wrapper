@@ -373,10 +373,10 @@ export async function fetchDiagramLayout(
  * Apply the graphical delta between `prevLayout` and `next` to OMC. Diffs to
  * `LayoutEdit`s and applies them with an OMC-level snapshot so a partial
  * failure rolls the class back. Returns `null` when there is nothing left to
- * apply (the two layouts are identical, or `dropDeletes` filtered out every
+ * apply (the two layouts are identical, or `staleBase` filtered out every
  * edit the diff produced).
  *
- * `dropDeletes`: `next` may have been reported against a base the webview
+ * `staleBase`: `next` may have been reported against a base the webview
  * never fully caught up to. Every kind {@link TRUSTED_ON_STALE_BASE} marks
  * `false` is dropped in that case — see its doc for why each one can't be
  * trusted from such a report.
@@ -389,10 +389,10 @@ export async function applyDiagramEdits(
   className: string,
   prevLayout: DiagramLayout,
   next: DiagramLayout,
-  options?: { dropDeletes?: boolean },
+  options?: { staleBase?: boolean },
 ): Promise<ApplyEditsResult | null> {
   const diffed = diffLayouts(prevLayout, next);
-  const edits = options?.dropDeletes
+  const edits = options?.staleBase
     ? diffed.filter((edit) => TRUSTED_ON_STALE_BASE[edit.kind])
     : diffed;
   if (edits.length === 0) return null;

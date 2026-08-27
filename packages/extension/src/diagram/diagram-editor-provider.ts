@@ -704,18 +704,20 @@ export class DiagramEditController {
    * `staleBase` is the report's own bit (issue #408): the webview refused or
    * discarded a `layout` push since the last one it applied, so `next` may be
    * missing something the class already holds that it was never told about.
-   * `applyDiagramEdits`'s `dropDeletes` (see `TRUSTED_ON_STALE_BASE` in
+   * `applyDiagramEdits`'s `staleBase` option (see `TRUSTED_ON_STALE_BASE` in
    * `diff-layout.ts` for which edit kinds that drops, and why) handles the
    * diff side; a settle is forced here regardless of `settleOwed` so the
    * webview is resynced onto what it never saw — otherwise it would keep
    * rendering a diagram missing something the class actually has.
    *
    * `staleBase` is one bit for the whole report, not per-entity: while it is
-   * set, a genuine deletion of something the webview already knew about is
-   * dropped alongside the phantom one. Telling the two apart needs the
-   * webview to report what its local base contained, not just that it missed
-   * a push. The window is the gap between a refused push and the forced
-   * settle landing back, and a dropped delete comes back on the next report.
+   * set, a genuine edit to something the webview already knew about — not
+   * just a deletion — is dropped alongside the phantom one, and the forced
+   * settle then visually reverts it. Telling the two apart needs the webview
+   * to report what its local base contained, not just that it missed a push.
+   * The window is the gap between a refused push and the forced settle
+   * landing back, so the failure mode is one edit silently not taking effect
+   * rather than data loss.
    */
   private async applyChange(
     next: DiagramLayout,
@@ -732,7 +734,7 @@ export class DiagramEditController {
     try {
       const current = await this.refetch(client, className);
       const result = await applyDiagramEdits(client, className, current, next, {
-        dropDeletes: staleBase,
+        staleBase,
       });
       const mustSettle = this.settleOwed || staleBase;
       if (result === null) {

@@ -136,14 +136,14 @@ export type LayoutEdit =
  * moment a kind is added to the union above, rather than leaving it to be
  * re-derived by eye at every call site that filters by kind.
  *
- * `false` for two distinct reasons:
+ * `false` for three distinct reasons:
  *   - inferred from absence in `next` (`componentDeleted`, `connectionDeleted`):
  *     an entity the report never learned about looks identical, at diff time,
  *     to one the user deleted.
  *   - keyed by array index (every `graphics*` kind, via `diffGraphics`'s
  *     positional scan): a shape the report never learned about shifts every
  *     later index, so a stale report doesn't miss a shape at the tail — it
- *     silently overwrites or duplicates a neighbour in place.
+ *     silently overwrites or duplicates a neighbor in place.
  *   - `connectionRenamed`: the same absence hazard as `connectionDeleted`, one
  *     level removed — a 1:1 re-index group can pair a connection the report
  *     never knew about with one the user just drew, and rewrite the former's

@@ -298,7 +298,7 @@ function requireGain1(
   return gain1;
 }
 
-describe("applyDiagramEdits: dropDeletes (issue #408)", () => {
+describe("applyDiagramEdits: staleBase (issue #408)", () => {
   it("does not delete a component or connection the report never knew about, but still moves the one it reported", async () => {
     const { client, invoked } = stubEditClient();
     const current = connectedLayout();
@@ -319,7 +319,7 @@ describe("applyDiagramEdits: dropDeletes (issue #408)", () => {
     next.connections = [];
 
     const result = await applyDiagramEdits(client, "Pkg.M", current, next, {
-      dropDeletes: true,
+      staleBase: true,
     });
 
     expect(result).not.toBeNull();
@@ -328,7 +328,7 @@ describe("applyDiagramEdits: dropDeletes (issue #408)", () => {
     expect(invoked).not.toContain("deleteConnection");
   });
 
-  it("still deletes a component and connection the user actually removed when dropDeletes is unset", async () => {
+  it("still deletes a component and connection the user actually removed when staleBase is unset", async () => {
     const { client, invoked } = stubEditClient();
     const current = connectedLayout();
     const next = connectedLayout();
@@ -342,7 +342,7 @@ describe("applyDiagramEdits: dropDeletes (issue #408)", () => {
   });
 });
 
-describe("applyDiagramEdits: dropDeletes graphics (issue #408)", () => {
+describe("applyDiagramEdits: staleBase graphics (issue #408)", () => {
   function rect(x: number): RectangleShape {
     return {
       kind: "rectangle",
@@ -363,14 +363,14 @@ describe("applyDiagramEdits: dropDeletes graphics (issue #408)", () => {
     // A stale report never learned about a shape OMC already holds
     // (`rect(90)` here). `diffGraphics` reads positionally, so the unknown
     // shape doesn't go missing at the tail — it shifts every later index and
-    // turns into an in-place overwrite (`graphicsModified`) of a neighbour,
+    // turns into an in-place overwrite (`graphicsModified`) of a neighbor,
     // not a clean `graphicsDeleted` that filtering only that kind would catch.
     const { client, invoked } = stubEditClient();
     const current = withDiagramShapes([rect(90), rect(10), rect(20)]);
     const next = withDiagramShapes([rect(11), rect(20)]);
 
     await applyDiagramEdits(client, "Pkg.M", current, next, {
-      dropDeletes: true,
+      staleBase: true,
     });
 
     expect(invoked).not.toContain("writeClassGraphics");
@@ -382,13 +382,13 @@ describe("applyDiagramEdits: dropDeletes graphics (issue #408)", () => {
     const next = withDiagramShapes([rect(10), rect(20), rect(30), rect(40)]);
 
     await applyDiagramEdits(client, "Pkg.M", current, next, {
-      dropDeletes: true,
+      staleBase: true,
     });
 
     expect(invoked).not.toContain("writeClassGraphics");
   });
 
-  it("still applies graphics edits when dropDeletes is unset", async () => {
+  it("still applies graphics edits when staleBase is unset", async () => {
     const { client, invoked } = stubEditClient();
     const current = withDiagramShapes([rect(90), rect(10), rect(20)]);
     const next = withDiagramShapes([rect(11), rect(20)]);
@@ -396,5 +396,69 @@ describe("applyDiagramEdits: dropDeletes graphics (issue #408)", () => {
     await applyDiagramEdits(client, "Pkg.M", current, next);
 
     expect(invoked).toContain("writeClassGraphics");
+  });
+});
+
+describe("applyDiagramEdits: staleBase connectionRenamed (issue #408)", () => {
+  function withConnections(
+    connections: DiagramLayout["connections"],
+  ): DiagramLayout {
+    const layout = connectedLayout();
+    layout.connections = connections;
+    return layout;
+  }
+
+  it("drops a connectionRenamed that pairs an unknown connection with a freshly drawn one, rather than rewriting it in place", async () => {
+    // `pins[3].p -> ground.p` is OMC's real state; the stale report never
+    // learned about it. The report instead draws a NEW connection at a
+    // different subscript of the same vector, `pins[2].p -> ground.p` — same
+    // waypoints/style, one endpoint's base matching, only the index differing.
+    // That is exactly the shape `isReindexRename` treats as a lone
+    // `connectorSizing` re-index (issue #26), so left unguarded it would
+    // rewrite the unknown connection's endpoints onto the drawn one instead
+    // of leaving both alone.
+    const { client, invoked } = stubEditClient();
+    const current = withConnections([
+      {
+        lhs: { component: "pins", port: "p", componentSubscripts: "[3]" },
+        rhs: { component: "ground", port: "p" },
+        waypoints: [],
+      },
+    ]);
+    const next = withConnections([
+      {
+        lhs: { component: "pins", port: "p", componentSubscripts: "[2]" },
+        rhs: { component: "ground", port: "p" },
+        waypoints: [],
+      },
+    ]);
+
+    await applyDiagramEdits(client, "Pkg.M", current, next, {
+      staleBase: true,
+    });
+
+    expect(invoked).not.toContain("updateConnectionNames");
+  });
+
+  it("still applies a connectionRenamed when staleBase is unset", async () => {
+    const { client, invoked } = stubEditClient();
+    const current = withConnections([
+      {
+        lhs: { component: "pins", port: "p", componentSubscripts: "[3]" },
+        rhs: { component: "ground", port: "p" },
+        waypoints: [],
+      },
+    ]);
+    const next = withConnections([
+      {
+        lhs: { component: "pins", port: "p", componentSubscripts: "[2]" },
+        rhs: { component: "ground", port: "p" },
+        waypoints: [],
+      },
+    ]);
+
+    await applyDiagramEdits(client, "Pkg.M", current, next);
+
+    expect(invoked).toContain("updateConnectionNames");
   });
 });
