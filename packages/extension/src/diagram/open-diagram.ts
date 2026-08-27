@@ -39,7 +39,7 @@ import {
   type ComponentParameterRef,
 } from "./parameter-edits.js";
 import { clearComponentModifiers } from "./clear-modifiers.js";
-import { diffLayouts, type LayoutEdit } from "./diff-layout.js";
+import { diffLayouts, TRUSTED_ON_STALE_BASE } from "./diff-layout.js";
 import { applyDisplayUnits } from "./display-unit.js";
 import { buildUnitTableForModel, sessionUnitCache } from "./unit-table.js";
 import { LibrarySource, SearchAbortedError } from "./library-source.js";
@@ -370,32 +370,16 @@ export async function fetchDiagramLayout(
 }
 
 /**
- * Every {@link LayoutEdit} kind `diffLayouts` infers purely from something
- * being absent from `next` — a component, a connection, or a shape the
- * caller's own class still holds but the report doesn't mention — rather
- * than from an explicit gesture. These are the kinds `dropDeletes` filters.
- */
-const INFERRED_DELETE_KINDS: ReadonlySet<LayoutEdit["kind"]> = new Set([
-  "componentDeleted",
-  "connectionDeleted",
-  "graphicsDeleted",
-]);
-
-/**
  * Apply the graphical delta between `prevLayout` and `next` to OMC. Diffs to
  * `LayoutEdit`s and applies them with an OMC-level snapshot so a partial
  * failure rolls the class back. Returns `null` when there is nothing left to
  * apply (the two layouts are identical, or `dropDeletes` filtered out every
  * edit the diff produced).
  *
- * `dropDeletes` (issue #408): `next` may have been reported against a base
- * the webview never fully caught up to — a `layout` push it refused or
- * discarded. Every {@link INFERRED_DELETE_KINDS} kind is the one such a
- * report cannot be trusted for: a component/connection/shape the class
- * already holds but the report never learned about looks identical, at diff
- * time, to one the user removed. Every other edit kind still carries its own
- * absolute value (from the report itself, not inferred from its absence) and
- * applies unaffected.
+ * `dropDeletes`: `next` may have been reported against a base the webview
+ * never fully caught up to. Every kind {@link TRUSTED_ON_STALE_BASE} marks
+ * `false` is dropped in that case — see its doc for why each one can't be
+ * trusted from such a report.
  *
  * Re-reading the layout is the caller's job, so a burst of edits can share one
  * re-fetch instead of paying for one each.
@@ -409,7 +393,7 @@ export async function applyDiagramEdits(
 ): Promise<ApplyEditsResult | null> {
   const diffed = diffLayouts(prevLayout, next);
   const edits = options?.dropDeletes
-    ? diffed.filter((edit) => !INFERRED_DELETE_KINDS.has(edit.kind))
+    ? diffed.filter((edit) => TRUSTED_ON_STALE_BASE[edit.kind])
     : diffed;
   if (edits.length === 0) return null;
   return applyEdits(client, className, edits, undefined, { snapshot: true });

@@ -248,11 +248,9 @@ class OmWebviewRoot extends LitElement {
         this.diagram?.setSelection(message.keys);
         return;
       case "layout":
-        if (!this.commits.canApplyPush(this.diagram?.gestureActive === true)) {
-          this.commits.noteRefusedPush();
+        if (!this.commits.takePush(this.diagram?.gestureActive === true)) {
           return;
         }
-        this.commits.notePushApplied();
         this.layout = message.layout;
         this.renderError = null;
         return;

@@ -703,24 +703,19 @@ export class DiagramEditController {
    *
    * `staleBase` is the report's own bit (issue #408): the webview refused or
    * discarded a `layout` push since the last one it applied, so `next` may be
-   * missing a component, connection, or shape the class already holds — one
-   * it was never told about, not one the user deleted. Those are the only
-   * edit kinds `diffLayouts` infers from absence rather than an explicit
-   * gesture (see `applyDiagramEdits`'s `dropDeletes`), so they're the only
-   * ones dropped; every other edit still carries its own absolute value and
-   * lands fine. A settle is then forced regardless of `settleOwed` so the
+   * missing something the class already holds that it was never told about.
+   * `applyDiagramEdits`'s `dropDeletes` (see `TRUSTED_ON_STALE_BASE` in
+   * `diff-layout.ts` for which edit kinds that drops, and why) handles the
+   * diff side; a settle is forced here regardless of `settleOwed` so the
    * webview is resynced onto what it never saw — otherwise it would keep
    * rendering a diagram missing something the class actually has.
    *
-   * `staleBase` is one bit for the whole report, not per-entity: while it's
-   * set, a genuine deletion of something the webview already knew about
-   * (reported in the same batch as the unrelated stale gap) is dropped too,
-   * not just the phantom one. Telling the two apart needs the webview to
-   * report what its own local base actually contained, not just that it
-   * missed a push — a bigger change than this fix's scope. The window is the
-   * gap between a refused push and the forced settle landing back, and the
-   * failure mode is a delete silently not taking effect once rather than data
-   * loss, so it's accepted here rather than chased.
+   * `staleBase` is one bit for the whole report, not per-entity: while it is
+   * set, a genuine deletion of something the webview already knew about is
+   * dropped alongside the phantom one. Telling the two apart needs the
+   * webview to report what its local base contained, not just that it missed
+   * a push. The window is the gap between a refused push and the forced
+   * settle landing back, and a dropped delete comes back on the next report.
    */
   private async applyChange(
     next: DiagramLayout,

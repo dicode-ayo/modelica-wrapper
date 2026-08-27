@@ -164,11 +164,8 @@ const GESTURES = {
 
   /**
    * User committed a layout change — the whole layout, not a diff.
-   * `staleBase` is true when the webview refused or discarded a `layout` push
-   * from the host (a gesture in flight, or an unflushed commit already
-   * queued) since the last one it actually applied — see `CommitSlot`. The
-   * host reads it to tell a component it never got told about from one the
-   * user genuinely deleted (issue #408).
+   * `staleBase` — see `CommitSlot.takePush` — flags a report built on a
+   * `layout` push the webview missed.
    */
   change: gesture({
     payload: { layout: isDiagramLayout, staleBase: isBoolean },

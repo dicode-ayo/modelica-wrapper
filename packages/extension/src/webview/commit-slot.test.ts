@@ -86,18 +86,18 @@ describe("CommitSlot", () => {
 
   it("refuses a push while a commit is held, and allows one once it is sent", () => {
     const { slot, fire } = makeSlot();
-    expect(slot.canApplyPush(false)).toBe(true);
+    expect(slot.takePush(false)).toBe(true);
 
     slot.commit(layout("a"));
-    expect(slot.canApplyPush(false)).toBe(false);
+    expect(slot.takePush(false)).toBe(false);
 
     fire();
-    expect(slot.canApplyPush(false)).toBe(true);
+    expect(slot.takePush(false)).toBe(true);
   });
 
   it("refuses a push during a gesture, which has committed nothing yet", () => {
     const { slot } = makeSlot();
-    expect(slot.canApplyPush(true)).toBe(false);
+    expect(slot.takePush(true)).toBe(false);
   });
 
   it("sends a held commit ahead of a message that reads the class", () => {
@@ -149,7 +149,7 @@ describe("CommitSlot", () => {
 
   it("sends staleBase: true once a push has been refused, until one is applied", () => {
     const { slot, staleFlags, fire } = makeSlot();
-    slot.noteRefusedPush();
+    expect(slot.takePush(true)).toBe(false); // refused: gesture active
 
     slot.commit(layout("a"));
     fire();
@@ -161,10 +161,17 @@ describe("CommitSlot", () => {
     fire();
     expect(staleFlags).toEqual([true, true]);
 
-    slot.notePushApplied();
+    expect(slot.takePush(false)).toBe(true); // applied: re-arms
     slot.commit(layout("c"));
     fire();
     expect(staleFlags).toEqual([true, true, false]);
+
+    // Re-arming clears staleness outright — a fresh refusal starts a new
+    // stale window rather than inheriting the old one.
+    expect(slot.takePush(true)).toBe(false);
+    slot.commit(layout("d"));
+    fire();
+    expect(staleFlags).toEqual([true, true, false, true]);
   });
 
   it("drives the real timer when no scheduler is injected", () => {

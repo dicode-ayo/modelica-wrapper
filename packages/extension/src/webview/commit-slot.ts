@@ -29,12 +29,8 @@ const defaultScheduler: CommitScheduler = {
 export class CommitSlot {
   private queued: DiagramLayout | null = null;
   private timer: { cancel(): void } | undefined;
-  /**
-   * True from a refused/discarded `layout` push (per {@link canApplyPush})
-   * until the next one actually lands. Read alongside the layout by `send`,
-   * so the host can tell a component it was never told about (a push it
-   * missed) from one the user genuinely deleted (issue #408).
-   */
+  /** True from a refused/discarded `layout` push (per {@link takePush}) until
+   *  the next one actually lands. Read alongside the layout by `send`. */
   private stale = false;
 
   constructor(
@@ -58,27 +54,20 @@ export class CommitSlot {
   }
 
   /**
-   * Whether an arriving layout push may be applied. The host settles once its
-   * own queue drains, which says nothing about work the webview has not sent
-   * yet — a commit still held here, or a gesture that has committed nothing at
-   * all. A push raised without sight of either is older than what is on screen,
-   * and applying it puts the user's own edit back undone until the settle for
-   * it arrives.
+   * Whether an arriving layout push may be applied, recording the verdict: a
+   * refused push leaves the diagram showing state the host does not know it
+   * has not seen, which rides out on the next commit as `staleBase`.
+   *
+   * The host settles once its own queue drains, which says nothing about work
+   * the webview has not sent yet — a commit still held here, or a gesture that
+   * has committed nothing at all. A push raised without sight of either is
+   * older than what is on screen, and applying it puts the user's own edit
+   * back undone until the settle for it arrives.
    */
-  canApplyPush(gestureActive: boolean): boolean {
-    return !gestureActive && this.queued === null;
-  }
-
-  /** Record that an arriving `layout` push was refused, per
-   *  {@link canApplyPush}'s verdict — the diagram is now showing state the
-   *  host doesn't know it hasn't seen. */
-  noteRefusedPush(): void {
-    this.stale = true;
-  }
-
-  /** Record that a `layout` push was applied — the diagram is caught up. */
-  notePushApplied(): void {
-    this.stale = false;
+  takePush(gestureActive: boolean): boolean {
+    const applicable = !gestureActive && this.queued === null;
+    this.stale = !applicable;
+    return applicable;
   }
 
   /** Send whatever is held, now — the debounce is an optimisation, and losing

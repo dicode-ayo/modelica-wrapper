@@ -128,6 +128,40 @@ export type LayoutEdit =
       to: number;
     };
 
+/**
+ * Whether a `LayoutEdit` of this kind can be trusted from a report built on a
+ * base the webview never caught up to (a `layout` push it refused or
+ * discarded — see `DiagramEditController.applyChange`'s `staleBase`).
+ * `satisfies Record<LayoutEdit["kind"], boolean>` forces a decision here the
+ * moment a kind is added to the union above, rather than leaving it to be
+ * re-derived by eye at every call site that filters by kind.
+ *
+ * `false` for two distinct reasons:
+ *   - inferred from absence in `next` (`componentDeleted`, `connectionDeleted`):
+ *     an entity the report never learned about looks identical, at diff time,
+ *     to one the user deleted.
+ *   - keyed by array index (every `graphics*` kind, via `diffGraphics`'s
+ *     positional scan): a shape the report never learned about shifts every
+ *     later index, so a stale report doesn't miss a shape at the tail — it
+ *     silently overwrites or duplicates a neighbour in place.
+ *   - `connectionRenamed`: the same absence hazard as `connectionDeleted`, one
+ *     level removed — a 1:1 re-index group can pair a connection the report
+ *     never knew about with one the user just drew, and rewrite the former's
+ *     endpoints onto the latter.
+ */
+export const TRUSTED_ON_STALE_BASE = {
+  componentPlacement: true,
+  componentDeleted: false,
+  connectionAdded: true,
+  connectionDeleted: false,
+  connectionWaypoints: true,
+  connectionRenamed: false,
+  graphicsAdded: false,
+  graphicsModified: false,
+  graphicsDeleted: false,
+  graphicsReordered: false,
+} satisfies Record<LayoutEdit["kind"], boolean>;
+
 export function endpointToCref(c: {
   component: string | undefined;
   port: string;

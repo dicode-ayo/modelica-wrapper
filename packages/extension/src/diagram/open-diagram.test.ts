@@ -14,6 +14,7 @@ import type {
   DiagramLayout,
   ModelInstance,
   OmcClient,
+  RectangleShape,
 } from "@dicode/omc-client";
 
 import { executedCommands } from "../../test-support/vscode-mock.js";
@@ -284,7 +285,17 @@ function connectedLayout(): DiagramLayout {
         waypoints: [],
       },
     ],
-  } as unknown as DiagramLayout;
+  };
+}
+
+/** `components.gain1`, guarded rather than indexed straight past the
+ *  `Record<string, ComponentInstance | undefined>` check. */
+function requireGain1(
+  layout: DiagramLayout,
+): NonNullable<DiagramLayout["components"][string]> {
+  const gain1 = layout.components.gain1;
+  if (gain1 === undefined) throw new Error("fixture is missing gain1");
+  return gain1;
 }
 
 describe("applyDiagramEdits: dropDeletes (issue #408)", () => {
@@ -296,8 +307,7 @@ describe("applyDiagramEdits: dropDeletes (issue #408)", () => {
     // exactly what a stale-base report looks like, per issue #408.
     next.components = {
       gain1: {
-        name: "gain1",
-        classRef: "Modelica.Blocks.Math.Gain",
+        ...requireGain1(current),
         placement: {
           extent: [
             [20, 20],
@@ -305,7 +315,7 @@ describe("applyDiagramEdits: dropDeletes (issue #408)", () => {
           ],
         },
       },
-    } as unknown as DiagramLayout["components"];
+    };
     next.connections = [];
 
     const result = await applyDiagramEdits(client, "Pkg.M", current, next, {
@@ -322,14 +332,69 @@ describe("applyDiagramEdits: dropDeletes (issue #408)", () => {
     const { client, invoked } = stubEditClient();
     const current = connectedLayout();
     const next = connectedLayout();
-    next.components = {
-      gain1: current.components.gain1,
-    } as unknown as DiagramLayout["components"];
+    next.components = { gain1: requireGain1(current) };
     next.connections = [];
 
     await applyDiagramEdits(client, "Pkg.M", current, next);
 
     expect(invoked).toContain("deleteComponent");
     expect(invoked).toContain("deleteConnection");
+  });
+});
+
+describe("applyDiagramEdits: dropDeletes graphics (issue #408 review round)", () => {
+  function rect(x: number): RectangleShape {
+    return {
+      kind: "rectangle",
+      extent: [
+        [x, x],
+        [x + 10, x + 10],
+      ],
+    };
+  }
+
+  function withDiagramShapes(shapes: RectangleShape[]): DiagramLayout {
+    const layout = connectedLayout();
+    layout.diagramLayers = [{ from: "Pkg.M", shapes }];
+    return layout;
+  }
+
+  it("drops every graphics edit on a stale base, not just graphicsDeleted, when the shape count shrinks", async () => {
+    // A stale report never learned about a shape OMC already holds
+    // (`rect(90)` here). `diffGraphics` reads positionally, so the unknown
+    // shape doesn't go missing at the tail — it shifts every later index and
+    // turns into an in-place overwrite (`graphicsModified`) of a neighbour,
+    // not a clean `graphicsDeleted` that filtering only that kind would catch.
+    const { client, invoked } = stubEditClient();
+    const current = withDiagramShapes([rect(90), rect(10), rect(20)]);
+    const next = withDiagramShapes([rect(11), rect(20)]);
+
+    await applyDiagramEdits(client, "Pkg.M", current, next, {
+      dropDeletes: true,
+    });
+
+    expect(invoked).not.toContain("writeClassGraphics");
+  });
+
+  it("drops every graphics edit on a stale base even when the shape count grows, where there is no delete at all to filter", async () => {
+    const { client, invoked } = stubEditClient();
+    const current = withDiagramShapes([rect(90), rect(10), rect(20)]);
+    const next = withDiagramShapes([rect(10), rect(20), rect(30), rect(40)]);
+
+    await applyDiagramEdits(client, "Pkg.M", current, next, {
+      dropDeletes: true,
+    });
+
+    expect(invoked).not.toContain("writeClassGraphics");
+  });
+
+  it("still applies graphics edits when dropDeletes is unset", async () => {
+    const { client, invoked } = stubEditClient();
+    const current = withDiagramShapes([rect(90), rect(10), rect(20)]);
+    const next = withDiagramShapes([rect(11), rect(20)]);
+
+    await applyDiagramEdits(client, "Pkg.M", current, next);
+
+    expect(invoked).toContain("writeClassGraphics");
   });
 });
