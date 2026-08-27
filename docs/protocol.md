@@ -104,7 +104,7 @@ answer all four.
 | `actionParameters` | — | Toolbar class-level Parameters. |
 | `editComponent` | `{ componentName }` | Double-click a sub-component → open its parameter modal. |
 | `editShape` | `{ key }` | Double-click a shape → open its properties modal. |
-| `parametersSubmit` | `{ kind, values }` | Parameter modal Apply/Run. |
+| `parametersSubmit` | `{ kind, values, dirty }` | Parameter modal Apply/Run. `dirty` names the fields the user actually edited in this session — `shapeProperties` uses it to tell a deliberately-submitted default from an untouched field seeded with one; `classParams`/`componentParams`/`simulate` ignore it and diff/use `values` as before. |
 | `parametersCancel` | `{ kind }` | Parameter modal dismissed. |
 | `resetComponentParameters` | `{ componentName }` | "Reset to defaults" in the component modal. |
 | `addComponent` | `{ className, position }` | Instantiate a class onto the canvas at `position`. Restriction-gated host-side, which is what lets the icon editor honor it — only a connector gets through. |

@@ -382,6 +382,7 @@ class OmWebviewRoot extends LitElement {
       type: "parametersSubmit",
       kind: this.paramKind,
       values: e.detail.values,
+      dirty: [...e.detail.dirty],
     });
   };
 

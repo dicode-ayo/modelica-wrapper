@@ -234,7 +234,11 @@ const GESTURES = {
 
   /** Parameter modal Apply/Run. */
   parametersSubmit: gesture({
-    payload: { kind: isParameterFormKind, values: isFormValues },
+    payload: {
+      kind: isParameterFormKind,
+      values: isFormValues,
+      dirty: isStringArray,
+    },
     ordering: "afterCommit",
     icon: "shapeFormOnly",
   }),

@@ -645,7 +645,7 @@ export class DiagramEditController {
         await this.onEditComponent(msg.componentName);
         return;
       case "parametersSubmit":
-        await this.onParametersSubmit(msg.kind, msg.values);
+        await this.onParametersSubmit(msg.kind, msg.values, new Set(msg.dirty));
         return;
       case "parametersCancel":
         this.onParametersCancel(msg.kind);
@@ -1044,9 +1044,10 @@ export class DiagramEditController {
   private async onParametersSubmit(
     kind: ParameterFormKind,
     values: Record<string, unknown>,
+    dirty: ReadonlySet<string>,
   ): Promise<void> {
     try {
-      await this.applyParameterSubmit(kind, values);
+      await this.applyParameterSubmit(kind, values, dirty);
     } catch (err) {
       this.reportError(`applying parameters failed: ${(err as Error).message}`);
     } finally {
@@ -1057,6 +1058,7 @@ export class DiagramEditController {
   private async applyParameterSubmit(
     kind: ParameterFormKind,
     values: Record<string, unknown>,
+    dirty: ReadonlySet<string>,
   ): Promise<void> {
     const { client, className } = this.deps;
     switch (kind) {
@@ -1094,7 +1096,7 @@ export class DiagramEditController {
       }
       case "shapeProperties":
         if (this.rejectIfReadOnly()) return;
-        await this.applyShapePropertiesSubmit(values);
+        await this.applyShapePropertiesSubmit(values, dirty);
         return;
       default:
         return assertUnreachable(kind, "ParameterFormKind");
@@ -1138,6 +1140,7 @@ export class DiagramEditController {
 
   private async applyShapePropertiesSubmit(
     values: Record<string, unknown>,
+    dirty: ReadonlySet<string>,
   ): Promise<void> {
     const { client, className } = this.deps;
     if (this.shapeLayerKind === null || this.shapeIndex === null) return;
@@ -1162,7 +1165,7 @@ export class DiagramEditController {
       kind: "graphicsModified",
       layer,
       index,
-      shape: applyShapeProperties(found.shape, values),
+      shape: applyShapeProperties(found.shape, values, dirty),
     };
     const result = await applyEdits(client, className, [edit], undefined, {
       snapshot: true,

@@ -139,7 +139,11 @@ The webview renders the typed `ParameterModel` **directly** for *all* panels
 `ParameterModel → JsonSchema` adapter and no `x-modelica-*` round-trip:
 
 - `parametersOpen` carries `model: ParameterModel` (not `schema`/`values`); `kind`
-  still routes the submit; `parametersSubmit` is unchanged (a flat `values` map).
+  still routes the submit; `parametersSubmit` carries a flat `values` map plus a
+  `dirty` set of the field names the user actually edited — `shapeProperties` is
+  the only consumer that reads `dirty` (to tell a deliberately-submitted default
+  from an untouched field seeded with one); the other kinds diff `values`
+  against their own initial snapshot as before and ignore it.
 - diagram-ui maps omc-client's `ParameterField` onto its internal render field via
   `parameterFieldsFromModel` (`parameterFieldsFromSchema` is gone for forms),
   keeping `Dialog.enable` re-evaluation, the unit dropdowns (from `unitOptions`),
