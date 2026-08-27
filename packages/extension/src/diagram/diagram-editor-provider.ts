@@ -711,6 +711,16 @@ export class DiagramEditController {
    * lands fine. A settle is then forced regardless of `settleOwed` so the
    * webview is resynced onto what it never saw — otherwise it would keep
    * rendering a diagram missing something the class actually has.
+   *
+   * `staleBase` is one bit for the whole report, not per-entity: while it's
+   * set, a genuine deletion of something the webview already knew about
+   * (reported in the same batch as the unrelated stale gap) is dropped too,
+   * not just the phantom one. Telling the two apart needs the webview to
+   * report what its own local base actually contained, not just that it
+   * missed a push — a bigger change than this fix's scope. The window is the
+   * gap between a refused push and the forced settle landing back, and the
+   * failure mode is a delete silently not taking effect once rather than data
+   * loss, so it's accepted here rather than chased.
    */
   private async applyChange(
     next: DiagramLayout,
