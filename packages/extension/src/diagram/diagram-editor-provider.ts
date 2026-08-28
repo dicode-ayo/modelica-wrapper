@@ -645,7 +645,7 @@ export class DiagramEditController {
         await this.onEditComponent(msg.componentName);
         return;
       case "parametersSubmit":
-        await this.onParametersSubmit(msg.kind, msg.values, new Set(msg.dirty));
+        await this.onParametersSubmit(msg.kind, msg.values, msg.dirty);
         return;
       case "parametersCancel":
         this.onParametersCancel(msg.kind);
@@ -1044,7 +1044,7 @@ export class DiagramEditController {
   private async onParametersSubmit(
     kind: ParameterFormKind,
     values: Record<string, unknown>,
-    dirty: ReadonlySet<string>,
+    dirty: readonly string[],
   ): Promise<void> {
     try {
       await this.applyParameterSubmit(kind, values, dirty);
@@ -1058,7 +1058,7 @@ export class DiagramEditController {
   private async applyParameterSubmit(
     kind: ParameterFormKind,
     values: Record<string, unknown>,
-    dirty: ReadonlySet<string>,
+    dirty: readonly string[],
   ): Promise<void> {
     const { client, className } = this.deps;
     switch (kind) {
@@ -1140,7 +1140,7 @@ export class DiagramEditController {
 
   private async applyShapePropertiesSubmit(
     values: Record<string, unknown>,
-    dirty: ReadonlySet<string>,
+    dirty: readonly string[],
   ): Promise<void> {
     const { client, className } = this.deps;
     if (this.shapeLayerKind === null || this.shapeIndex === null) return;
@@ -1165,7 +1165,7 @@ export class DiagramEditController {
       kind: "graphicsModified",
       layer,
       index,
-      shape: applyShapeProperties(found.shape, values, dirty),
+      shape: applyShapeProperties(found.shape, values, new Set(dirty)),
     };
     const result = await applyEdits(client, className, [edit], undefined, {
       snapshot: true,

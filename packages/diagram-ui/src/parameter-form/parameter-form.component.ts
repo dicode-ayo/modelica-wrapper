@@ -22,7 +22,7 @@
  *
  * Events:
  *   - `om-parameter-change`  — fires on each field edit
- *     `detail: { values: Record<string, unknown>, dirty: Set<string> }`
+ *     `detail: { values: Record<string, unknown>, dirty: ReadonlySet<string> }`
  *   - `om-parameter-submit`  — fires on submit-button click (validates
  *     required fields client-side first)
  *     `detail: { values: Record<string, unknown>, dirty: ReadonlySet<string> }`

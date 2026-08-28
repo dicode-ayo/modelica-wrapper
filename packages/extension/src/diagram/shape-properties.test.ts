@@ -369,11 +369,11 @@ describe("buildShapePropertiesForm", () => {
   });
 
   it("writes a deliberately-cleared textString that happens to equal the spec default", () => {
-    // The bug: a `textString` the shape can't reduce to a literal (e.g. bound
-    // via `DynamicSelect`) is null on the shape and seeds the form with the
-    // spec default (""). A user who deliberately clears the box to mean "no
-    // text" submits "" too — indistinguishable from the untouched case above
-    // by value alone, so only the `dirty` flag can tell them apart.
+    // A `textString` the shape can't reduce to a literal (e.g. bound via
+    // `DynamicSelect`) is null on the shape and seeds the form with the spec
+    // default (""). A user who deliberately clears the box to mean "no text"
+    // submits "" too — indistinguishable from the untouched case above by
+    // value alone, so only the `dirty` flag can tell them apart.
     const text = textShape(null);
     const updated = applyShapeProperties(
       text,
