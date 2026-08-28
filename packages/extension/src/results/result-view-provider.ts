@@ -12,6 +12,8 @@
  * undo/redo and git come for free.
  */
 
+import * as path from "node:path";
+
 import * as vscode from "vscode";
 
 import type { ResultViewDoc } from "@dicode/omc-client";
@@ -160,6 +162,14 @@ export class ResultViewEditorProvider
       // async, so a superseded refresh can resolve after a newer one.
       if (myGen === generation) post({ type: "doc", doc, traceData: {} });
 
+      const resultPaths = doc.results.map((result) => ({
+        id: result.id,
+        filePath: resolveResultPath(document.uri, result.path),
+      }));
+      // A superseded refresh carries a stale path set; the newer one re-syncs.
+      if (myGen === generation)
+        syncWatchers(resultPaths.map((r) => r.filePath));
+
       // Independent of whether any card has traces — a result with no card
       // referencing it yet can still be missing its backing file. Runs
       // concurrently with the trace read below: a disk stat and an OMC read
@@ -167,10 +177,9 @@ export class ResultViewEditorProvider
       const missingScan = (async (): Promise<void> => {
         const missingIds = (
           await Promise.all(
-            doc.results.map(async (result) => {
-              const filePath = resolveResultPath(document.uri, result.path);
-              return (await cache.exists(filePath)) ? null : result.id;
-            }),
+            resultPaths.map(async ({ id, filePath }) =>
+              (await cache.exists(filePath)) ? null : id,
+            ),
           )
         ).filter((id): id is string => id !== null);
         if (myGen === generation)
@@ -201,6 +210,52 @@ export class ResultViewEditorProvider
       await missingScan;
     };
 
+    // A result's backing file can appear or vanish with the document text
+    // untouched — a delete, a move, a re-simulation — and only a rescan can
+    // set or clear its missing chip. Watchers are keyed by containing
+    // directory: a result path resolves anywhere a relative path reaches, not
+    // necessarily inside a workspace folder, and several results usually share
+    // one directory. The set is re-synced on every refresh because the paths a
+    // document references move with its text.
+    const watchers = new Map<string, vscode.Disposable>();
+    let watchedPaths = new Set<string>();
+    let disposed = false;
+
+    const syncWatchers = (filePaths: readonly string[]): void => {
+      // A refresh still in flight when the panel closed must not resurrect
+      // watchers nothing will dispose.
+      if (disposed) return;
+      watchedPaths = new Set(filePaths);
+      const dirs = new Set(filePaths.map((p) => path.dirname(p)));
+      for (const [dir, watcher] of watchers) {
+        if (dirs.has(dir)) continue;
+        watcher.dispose();
+        watchers.delete(dir);
+      }
+      for (const dir of dirs) {
+        if (watchers.has(dir)) continue;
+        // Change events are ignored (the `true`): a rewritten `.mat` still
+        // exists, so only create and delete can move a result's chip.
+        const watcher = vscode.workspace.createFileSystemWatcher(
+          new vscode.RelativePattern(vscode.Uri.file(dir), "*"),
+          false,
+          true,
+          false,
+        );
+        const onFileEvent = (uri: vscode.Uri): void => {
+          if (watchedPaths.has(uri.fsPath)) void refresh();
+        };
+        watchers.set(
+          dir,
+          vscode.Disposable.from(
+            watcher,
+            watcher.onDidCreate(onFileEvent),
+            watcher.onDidDelete(onFileEvent),
+          ),
+        );
+      }
+    };
+
     const changeSub = vscode.workspace.onDidChangeTextDocument((e) => {
       if (e.document.uri.toString() === document.uri.toString()) void refresh();
     });
@@ -220,8 +275,11 @@ export class ResultViewEditorProvider
       }
     });
     webviewPanel.onDidDispose(() => {
+      disposed = true;
       changeSub.dispose();
       viewStateSub.dispose();
+      for (const watcher of watchers.values()) watcher.dispose();
+      watchers.clear();
       if (ResultViewEditorProvider.activeResultDoc === resultDoc) {
         ResultViewEditorProvider.activeResultDoc = undefined;
       }

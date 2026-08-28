@@ -7,6 +7,8 @@
  * stubs here as new tests need them — keep them minimal and observable.
  */
 
+import * as nodePath from "node:path";
+
 export enum DiagnosticSeverity {
   Error = 0,
   Warning = 1,
@@ -200,6 +202,18 @@ class UriImpl {
 export const Uri = UriImpl;
 export type Uri = UriImpl;
 
+/** `RelativePattern` stand-in — a base folder plus the glob matched against
+ *  its direct children, as {@link createFileSystemWatcher} takes it. */
+export class RelativePattern {
+  readonly baseUri: UriImpl;
+  constructor(
+    base: UriImpl | string,
+    public readonly pattern: string,
+  ) {
+    this.baseUri = typeof base === "string" ? UriImpl.file(base) : base;
+  }
+}
+
 /** `TabInputText` stand-in — a text editor's tab input, carrying its `uri`. */
 export class TabInputText {
   constructor(public readonly uri: UriImpl) {}
@@ -357,6 +371,69 @@ function register<T>(list: T[], listener: T): Disposable {
   });
 }
 
+/** One `createFileSystemWatcher` call: its pattern, its ignore flags, and the
+ *  listeners registered on it. */
+export interface WatcherRecord {
+  pattern: string | RelativePattern;
+  ignoreCreateEvents: boolean;
+  ignoreDeleteEvents: boolean;
+  create: Array<(uri: UriImpl) => void>;
+  change: Array<(uri: UriImpl) => void>;
+  delete: Array<(uri: UriImpl) => void>;
+  disposed: boolean;
+}
+
+/** Every watcher `createFileSystemWatcher` handed out, for assertions. */
+export const fileSystemWatchers: WatcherRecord[] = [];
+
+/** Drop recorded watchers between tests. */
+export function resetFileSystemWatchers(): void {
+  fileSystemWatchers.length = 0;
+}
+
+/** Match the `*`, `*.ext`, and plain-name glob forms the callers here use. */
+function globMatches(glob: string, fsPath: string): boolean {
+  const bare = glob.startsWith("**/") ? glob.slice(3) : glob;
+  if (bare.includes("/")) return false;
+  const name = nodePath.basename(fsPath);
+  if (bare === "*") return true;
+  return bare.startsWith("*.") ? name.endsWith(bare.slice(1)) : name === bare;
+}
+
+/** Whether a live watcher's pattern covers `fsPath`. A `RelativePattern` only
+ *  covers direct children of its base; a bare glob covers any directory. */
+function watcherCovers(record: WatcherRecord, fsPath: string): boolean {
+  if (record.disposed) return false;
+  const { pattern } = record;
+  if (typeof pattern === "string") return globMatches(pattern, fsPath);
+  return (
+    nodePath.dirname(fsPath) === pattern.baseUri.fsPath &&
+    globMatches(pattern.pattern, fsPath)
+  );
+}
+
+function emitFileEvent(
+  kind: "create" | "delete",
+  fsPath: string,
+  ignored: (record: WatcherRecord) => boolean,
+): void {
+  const uri = UriImpl.file(fsPath);
+  for (const record of [...fileSystemWatchers]) {
+    if (ignored(record) || !watcherCovers(record, fsPath)) continue;
+    for (const listener of [...record[kind]]) listener(uri);
+  }
+}
+
+/** Fire `onDidCreate` on every live watcher whose pattern covers `fsPath`. */
+export function emitFileCreate(fsPath: string): void {
+  emitFileEvent("create", fsPath, (r) => r.ignoreCreateEvents);
+}
+
+/** Fire `onDidDelete` on every live watcher whose pattern covers `fsPath`. */
+export function emitFileDelete(fsPath: string): void {
+  emitFileEvent("delete", fsPath, (r) => r.ignoreDeleteEvents);
+}
+
 export const workspace = {
   onDidSaveTextDocument(listener: (document: unknown) => void): Disposable {
     return register(workspaceListeners.save, listener);
@@ -415,19 +492,37 @@ export const workspace = {
   findFiles(_pattern: string): Promise<UriImpl[]> {
     return Promise.resolve(foundFiles.map((p) => UriImpl.file(p)));
   },
-  /** No-op watcher: tests drive index/reseed behavior by calling the exported
-   *  handlers directly rather than firing simulated fs events through this. */
-  createFileSystemWatcher(_pattern: string): {
+  /** Watcher stub recording its pattern and listeners in
+   *  {@link fileSystemWatchers}, so tests can drive filesystem events through
+   *  {@link emitFileCreate} / {@link emitFileDelete}. */
+  createFileSystemWatcher(
+    pattern: string | RelativePattern,
+    ignoreCreateEvents = false,
+    _ignoreChangeEvents = false,
+    ignoreDeleteEvents = false,
+  ): {
     onDidChange(listener: (uri: UriImpl) => void): Disposable;
     onDidCreate(listener: (uri: UriImpl) => void): Disposable;
     onDidDelete(listener: (uri: UriImpl) => void): Disposable;
     dispose(): void;
   } {
+    const record: WatcherRecord = {
+      pattern,
+      ignoreCreateEvents,
+      ignoreDeleteEvents,
+      create: [],
+      change: [],
+      delete: [],
+      disposed: false,
+    };
+    fileSystemWatchers.push(record);
     return {
-      onDidChange: () => new Disposable(),
-      onDidCreate: () => new Disposable(),
-      onDidDelete: () => new Disposable(),
-      dispose: () => {},
+      onDidChange: (listener) => register(record.change, listener),
+      onDidCreate: (listener) => register(record.create, listener),
+      onDidDelete: (listener) => register(record.delete, listener),
+      dispose: () => {
+        record.disposed = true;
+      },
     };
   },
   applyEdit(edit: WorkspaceEdit): Promise<boolean> {
