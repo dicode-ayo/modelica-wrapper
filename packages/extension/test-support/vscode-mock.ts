@@ -376,6 +376,7 @@ function register<T>(list: T[], listener: T): Disposable {
 export interface WatcherRecord {
   pattern: string | RelativePattern;
   ignoreCreateEvents: boolean;
+  ignoreChangeEvents: boolean;
   ignoreDeleteEvents: boolean;
   create: Array<(uri: UriImpl) => void>;
   change: Array<(uri: UriImpl) => void>;
@@ -412,26 +413,41 @@ function watcherCovers(record: WatcherRecord, fsPath: string): boolean {
   );
 }
 
+/** Honor the ignore flags the watcher was created with, so a test that fires an
+ *  ignored event sees the same nothing VSCode would deliver. */
+const ignoredBy: Record<
+  "create" | "change" | "delete",
+  (record: WatcherRecord) => boolean
+> = {
+  create: (r) => r.ignoreCreateEvents,
+  change: (r) => r.ignoreChangeEvents,
+  delete: (r) => r.ignoreDeleteEvents,
+};
+
 function emitFileEvent(
-  kind: "create" | "delete",
+  kind: "create" | "change" | "delete",
   fsPath: string,
-  ignored: (record: WatcherRecord) => boolean,
 ): void {
   const uri = UriImpl.file(fsPath);
   for (const record of [...fileSystemWatchers]) {
-    if (ignored(record) || !watcherCovers(record, fsPath)) continue;
+    if (ignoredBy[kind](record) || !watcherCovers(record, fsPath)) continue;
     for (const listener of [...record[kind]]) listener(uri);
   }
 }
 
 /** Fire `onDidCreate` on every live watcher whose pattern covers `fsPath`. */
 export function emitFileCreate(fsPath: string): void {
-  emitFileEvent("create", fsPath, (r) => r.ignoreCreateEvents);
+  emitFileEvent("create", fsPath);
+}
+
+/** Fire `onDidChange` on every live watcher whose pattern covers `fsPath`. */
+export function emitFileChange(fsPath: string): void {
+  emitFileEvent("change", fsPath);
 }
 
 /** Fire `onDidDelete` on every live watcher whose pattern covers `fsPath`. */
 export function emitFileDelete(fsPath: string): void {
-  emitFileEvent("delete", fsPath, (r) => r.ignoreDeleteEvents);
+  emitFileEvent("delete", fsPath);
 }
 
 export const workspace = {
@@ -498,7 +514,7 @@ export const workspace = {
   createFileSystemWatcher(
     pattern: string | RelativePattern,
     ignoreCreateEvents = false,
-    _ignoreChangeEvents = false,
+    ignoreChangeEvents = false,
     ignoreDeleteEvents = false,
   ): {
     onDidChange(listener: (uri: UriImpl) => void): Disposable;
@@ -509,6 +525,7 @@ export const workspace = {
     const record: WatcherRecord = {
       pattern,
       ignoreCreateEvents,
+      ignoreChangeEvents,
       ignoreDeleteEvents,
       create: [],
       change: [],

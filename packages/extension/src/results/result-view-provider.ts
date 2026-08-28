@@ -44,6 +44,12 @@ import { ResultViewDocument } from "./result-view-document.js";
 
 export const RESULT_VIEW_VIEW_TYPE = "modelica.resultView";
 
+/** Trailing window used to coalesce filesystem events into one refresh. Long
+ *  enough to fold a move (delete + create) and a directory-wide delete into a
+ *  single rescan, and to let a re-simulation finish writing a `.mat` before its
+ *  create event triggers a read of it. */
+const FS_EVENT_DEBOUNCE_MS = 150;
+
 export class ResultViewEditorProvider
   implements vscode.CustomTextEditorProvider
 {
@@ -218,15 +224,33 @@ export class ResultViewEditorProvider
     // one directory. The set is re-synced on every refresh because the paths a
     // document references move with its text.
     const watchers = new Map<string, vscode.Disposable>();
-    let watchedPaths = new Set<string>();
+    const watchedPaths = new Set<string>();
     let disposed = false;
+    let fsEventTimer: ReturnType<typeof setTimeout> | undefined;
+
+    // A move arrives as delete + create, and deleting a directory of results
+    // arrives as one event per file; each refresh re-reads the document and
+    // every trajectory through OMC's single mutex, so coalesce the burst.
+    // Trailing, so the rescan reads the filesystem the events left behind.
+    const refreshSoon = (): void => {
+      if (fsEventTimer !== undefined) clearTimeout(fsEventTimer);
+      fsEventTimer = setTimeout(() => {
+        fsEventTimer = undefined;
+        void refresh();
+      }, FS_EVENT_DEBOUNCE_MS);
+    };
 
     const syncWatchers = (filePaths: readonly string[]): void => {
       // A refresh still in flight when the panel closed must not resurrect
       // watchers nothing will dispose.
       if (disposed) return;
-      watchedPaths = new Set(filePaths);
-      const dirs = new Set(filePaths.map((p) => path.dirname(p)));
+      // An event's `fsPath` is normalized by VSCode (separators, drive-letter
+      // case); a stored absolute path reaches `resolveResultPath` verbatim, so
+      // both sides have to be spelled the same way or nothing ever matches.
+      const normalized = filePaths.map((p) => vscode.Uri.file(p).fsPath);
+      watchedPaths.clear();
+      for (const filePath of normalized) watchedPaths.add(filePath);
+      const dirs = new Set(normalized.map((p) => path.dirname(p)));
       for (const [dir, watcher] of watchers) {
         if (dirs.has(dir)) continue;
         watcher.dispose();
@@ -234,16 +258,16 @@ export class ResultViewEditorProvider
       }
       for (const dir of dirs) {
         if (watchers.has(dir)) continue;
-        // Change events are ignored (the `true`): a rewritten `.mat` still
-        // exists, so only create and delete can move a result's chip.
+        // A rewritten `.mat` still exists, so only create and delete can move a
+        // result's chip — hence `ignoreChangeEvents`.
         const watcher = vscode.workspace.createFileSystemWatcher(
           new vscode.RelativePattern(vscode.Uri.file(dir), "*"),
-          false,
-          true,
-          false,
+          /* ignoreCreateEvents */ false,
+          /* ignoreChangeEvents */ true,
+          /* ignoreDeleteEvents */ false,
         );
         const onFileEvent = (uri: vscode.Uri): void => {
-          if (watchedPaths.has(uri.fsPath)) void refresh();
+          if (watchedPaths.has(uri.fsPath)) refreshSoon();
         };
         watchers.set(
           dir,
@@ -278,6 +302,7 @@ export class ResultViewEditorProvider
       disposed = true;
       changeSub.dispose();
       viewStateSub.dispose();
+      if (fsEventTimer !== undefined) clearTimeout(fsEventTimer);
       for (const watcher of watchers.values()) watcher.dispose();
       watchers.clear();
       if (ResultViewEditorProvider.activeResultDoc === resultDoc) {
