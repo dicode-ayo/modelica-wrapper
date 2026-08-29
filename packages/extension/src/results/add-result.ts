@@ -131,16 +131,23 @@ export async function mutateAddResults(
   return { added, persisted };
 }
 
-/** Tell the user when some picked results were already in the view. */
-function notifyDuplicates(requested: number, added: number): void {
+/** Tell the user when some picked results were already in the view. `label`
+ *  names the single duplicate, when the caller has exactly one and knows it. */
+export function notifyDuplicates(
+  requested: number,
+  added: number,
+  label?: string,
+): void {
   const duplicates = requested - added;
   if (duplicates <= 0) {
     return;
   }
   void vscode.window.showInformationMessage(
-    duplicates === 1
-      ? "That result is already in this view."
-      : `${duplicates} results were already in this view.`,
+    duplicates === 1 && label !== undefined
+      ? `${label} is already in the result view.`
+      : duplicates === 1
+        ? "That result is already in this view."
+        : `${duplicates} results were already in this view.`,
   );
 }
 

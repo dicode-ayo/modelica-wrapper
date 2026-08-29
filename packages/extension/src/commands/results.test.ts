@@ -27,11 +27,11 @@ const RUN: AddResultToViewArgs = {
   resultFile: "/ws/DCMotor_res.mat",
 };
 
-/** Empty `file:` result view. */
-function focusedView(): ResultTextDocument {
+/** A `file:` result view, empty unless `text` is given. */
+function focusedView(text = ""): ResultTextDocument {
   return {
     uri: vscode.Uri.file("/ws/run.omresults"),
-    getText: () => "",
+    getText: () => text,
     lineCount: 1,
   };
 }
@@ -110,6 +110,40 @@ describe("addResultToView", () => {
     expect(recordedMessages).toContainEqual({
       level: "error",
       message: expect.stringContaining("Couldn't add"),
+    });
+    expect(recordedMessages.some((m) => m.message.startsWith("Added "))).toBe(
+      false,
+    );
+  });
+
+  it("tells the user the run is already in view instead of staying silent on a re-simulate", async () => {
+    // The view stores the existing result's path relative to its own folder
+    // (`/ws`) while RUN.resultFile is absolute — resolveResultPath in
+    // add-result.ts reconciles the two before the dedup check runs, so this
+    // still needs to land as a duplicate rather than a second entry.
+    const view = focusedView(
+      JSON.stringify({
+        version: 1,
+        results: [
+          {
+            id: "r0",
+            label: "DCMotor_res",
+            path: "DCMotor_res.mat",
+            source: "simulate",
+          },
+        ],
+        cards: [],
+      }),
+    );
+    vi.spyOn(ResultViewEditorProvider, "getActiveResultDoc").mockReturnValue(
+      activeResultDoc(view),
+    );
+
+    await addResultToView(RUN);
+
+    expect(recordedMessages).toContainEqual({
+      level: "info",
+      message: "DCMotor_res is already in the result view.",
     });
     expect(recordedMessages.some((m) => m.message.startsWith("Added "))).toBe(
       false,

@@ -14,7 +14,11 @@ import * as vscode from "vscode";
 
 import { emptyResultViewDoc, type ResultRef } from "@dicode/omc-client";
 
-import { buildResultRef, mutateAddResults } from "../results/add-result.js";
+import {
+  buildResultRef,
+  mutateAddResults,
+  notifyDuplicates,
+} from "../results/add-result.js";
 import { serializeResultViewDoc } from "../results/result-doc.js";
 import { ResultViewDocument } from "../results/result-view-document.js";
 import {
@@ -97,6 +101,8 @@ export async function addResultToView(
       void vscode.window.showInformationMessage(
         `Added ${ref.label} to the result view.`,
       );
+    } else {
+      notifyDuplicates(1, 0, ref.label);
     }
     return;
   }
