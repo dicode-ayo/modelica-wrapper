@@ -14,6 +14,14 @@ name: Release Please
 # wants to `code --install-extension` it without a Marketplace publish (which
 # is a separate, still-to-be-added job — see the follow-up issue).
 #
+# The extension's release is configured `draft: true` in
+# release-please-config.json specifically so it stays unpublished (and
+# editable) until `attach-vsix` uploads the .vsix and un-drafts it as its
+# last step — otherwise the release goes live, and watchers see it, before
+# the artifact it links to exists. A failed build/package step leaves the
+# release in draft rather than publishing an incomplete one. The library
+# packages aren't drafted: they have no artifact-attach step to wait on.
+#
 # Token notes:
 # - GITHUB_TOKEN is used for the release step. Workflows triggered by the
 #   release tag/PR it creates will NOT fire (GitHub suppresses recursive
@@ -132,5 +140,13 @@ jobs:
 
       - name: Upload VSIX to the GitHub Release
         run: gh release upload "${{ needs.release-please.outputs.extension_tag_name }}" packages/extension/modelica-wrapper.vsix --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The release was created as a draft (release-please-config.json) so it
+      # stays unpublished until this point — publish it now that its .vsix
+      # actually exists.
+      - name: Publish the release now that its VSIX is attached
+        run: gh release edit "${{ needs.release-please.outputs.extension_tag_name }}" --draft=false
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
