@@ -17,11 +17,15 @@ permissions:
   pull-requests: write
 
 jobs:
-  audit:
+  # A job-level `container:` image can't reference outputs of its own steps,
+  # so the pin the audit container is derived from gets its own job.
+  pin:
     if: |
       github.event_name == 'workflow_dispatch' ||
       contains(github.event.pull_request.labels.*.name, 'omc-update')
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.pin.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -32,32 +36,41 @@ jobs:
           echo "version=$PIN" >> "$GITHUB_OUTPUT"
           echo "Pinned OMC: $PIN"
 
+  audit:
+    needs: pin
+    runs-on: ubuntu-latest
+    container:
+      image: openmodelica/openmodelica:v${{ needs.pin.outputs.version }}-minimal
+      options: --user root
+    steps:
+      # `git` lets checkout use a real clone; `ca-certificates` covers the
+      # setup action's node/pnpm downloads.
+      - name: Prepare the OMC container
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+
       - name: Run integration tests against the new OMC
         id: tests
         continue-on-error: true
-        uses: addnab/docker-run-action@v3
-        with:
-          image: openmodelica/openmodelica:v${{ steps.pin.outputs.version }}-minimal
-          options: --user root -v ${{ github.workspace }}:/workspace -w /workspace
-          run: |
-            set -e
-            export DEBIAN_FRONTEND=noninteractive
-            apt-get update
-            apt-get install -y --no-install-recommends ca-certificates curl gnupg git
-            curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-            apt-get install -y --no-install-recommends nodejs
-            npm install -g pnpm@10.25.0
-            pnpm install --frozen-lockfile
-            # Full integration suite (assertions). Failures here are real regressions.
-            OMC_INTEGRATION=1 pnpm --filter @dicode/omc-client test 2>&1 \
-              | tee /workspace/test-output.txt
-            # Drift probe (informational). Reports per-call OMC behavior for the ⛔
-            # wrappers in coverage.md so the human reviewer sees ground truth on
-            # the new OMC version. Always succeeds — output is what matters.
-            OMC_INTEGRATION=1 OMC_DRIFT_PROBE=1 \
-              pnpm --filter @dicode/omc-client \
-              vitest run test/drift-probe.integration.test.ts --reporter=verbose 2>&1 \
-              | tee /workspace/drift-probe-output.txt
+        # Explicit bash for its pipefail default: without it a failing suite's
+        # exit status is swallowed by the `tee` and this step reports success.
+        shell: bash
+        run: |
+          # Full integration suite (assertions). Failures here are real regressions.
+          OMC_INTEGRATION=1 pnpm --filter @dicode/omc-client test 2>&1 \
+            | tee test-output.txt
+          # Drift probe (informational). Reports per-call OMC behavior for the ⛔
+          # wrappers in coverage.md so the human reviewer sees ground truth on
+          # the new OMC version. Always succeeds — output is what matters.
+          OMC_INTEGRATION=1 OMC_DRIFT_PROBE=1 \
+            pnpm --filter @dicode/omc-client \
+            vitest run test/drift-probe.integration.test.ts --reporter=verbose 2>&1 \
+            | tee drift-probe-output.txt
 
       - name: Summarize test result
         id: summary
@@ -72,7 +85,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: omc-${{ steps.pin.outputs.version }}-test-output
+          name: omc-${{ needs.pin.outputs.version }}-test-output
           path: test-output.txt
           if-no-files-found: ignore
 
@@ -80,7 +93,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: omc-${{ steps.pin.outputs.version }}-drift-probe
+          name: omc-${{ needs.pin.outputs.version }}-drift-probe
           path: drift-probe-output.txt
           if-no-files-found: ignore
 
@@ -108,11 +121,15 @@ jobs:
         uses: actions/github-script@v7
         env:
           PROBE_SUMMARY: ${{ steps.probe.outputs.summary }}
+          # Branch names are attacker-influenced; ride in via env, never
+          # interpolated into the script body.
+          HEAD_REF: ${{ github.head_ref }}
         with:
           script: |
-            const pin = '${{ steps.pin.outputs.version }}';
+            const pin = '${{ needs.pin.outputs.version }}';
             const result = `${{ steps.summary.outputs.result }}`;
             const probe = (process.env.PROBE_SUMMARY || '(unavailable)').trim();
+            const headRef = process.env.HEAD_REF || 'main';
             const body = [
               `## OMC pin update — \`${pin}\``,
               '',
@@ -134,9 +151,9 @@ jobs:
               '',
               '### Required before merge',
               '',
-              '- [ ] **Read the audit runbook**: [`packages/omc-client/docs/audit.md`](../tree/${{ github.head_ref }}/packages/omc-client/docs/audit.md). Section 0 (calibration) lists the three-way check (pin / runtime / docs).',
+              `- [ ] **Read the audit runbook**: [\`packages/omc-client/docs/audit.md\`](../tree/${headRef}/packages/omc-client/docs/audit.md). Section 0 (calibration) lists the three-way check (pin / runtime / docs).`,
               '- [ ] **Walk the audit checklist for any function that flagged in the diff or in the drift probe above**. ✗ → ✓ transitions mean a wrapper can probably be un-deprecated and tested. ✓ → ✗ transitions are real regressions.',
-              '- [ ] **Update [`packages/omc-client/docs/coverage.md`](../tree/${{ github.head_ref }}/packages/omc-client/docs/coverage.md)** with the new ⛔/✅ verdicts.',
+              `- [ ] **Update [\`packages/omc-client/docs/coverage.md\`](../tree/${headRef}/packages/omc-client/docs/coverage.md)** with the new ⛔/✅ verdicts.`,
               '- [ ] **Bump `SUPPORTED_OMC.auditedOn`** to the date this audit landed.',
               '',
               '### To run the agent audit locally',
@@ -145,7 +162,7 @@ jobs:
               'audit the omc-client package against the OMC docs using packages/omc-client/docs/audit.md',
               '```',
               '',
-              '_This comment was posted by [`omc-update-audit.yml`](../tree/${{ github.head_ref }}/.github/workflows/omc-update-audit.yml). Re-run with the **Re-run jobs** button or via `workflow_dispatch`._',
+              `_This comment was posted by [\`omc-update-audit.yml\`](../tree/${headRef}/.github/workflows/omc-update-audit.yml). Re-run with the **Re-run jobs** button or via \`workflow_dispatch\`._`,
             ].join('\n');
             const { owner, repo } = context.repo;
             const issue_number = context.issue.number;

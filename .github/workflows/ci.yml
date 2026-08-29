@@ -60,17 +60,24 @@ jobs:
       # GitHub Actions runs container jobs as root by default.
       options: --user root
     steps:
-      - name: Install Node 20 + git into the OMC container
+      - name: Prepare the OMC container
         run: |
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl gnupg git
-          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-          apt-get install -y --no-install-recommends nodejs
-          npm install -g pnpm@10.25.0
+          apt-get install -y --no-install-recommends ca-certificates git
           useradd -m -s /bin/bash omcrunner
 
       - uses: actions/checkout@v4
+
+      # Not ./.github/actions/setup: its pnpm/action-setup step installs pnpm
+      # under /root (mode 700), which the `runuser -u omcrunner` test steps
+      # below can't read. A global npm install lands pnpm in /usr, readable by
+      # everyone; setup-node's tool-cache node is world-executable already.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm install -g pnpm@10.25.0
 
       - name: Verify OMC matches the pin
         run: |
