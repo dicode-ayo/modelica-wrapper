@@ -78,7 +78,14 @@ jobs:
       # tarballs (paired with NPM_CONFIG_PROVENANCE below).
       id-token: write
     steps:
+      # Neither this job nor `attach-vsix` below ever does a git push — both
+      # only call `pnpm publish`/`gh` with their own tokens — so the checkout
+      # has no need to leave a write-scoped credential on disk for the
+      # `npm install` further down (and its native-addon build scripts) to
+      # find.
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v4
         with:
@@ -116,7 +123,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      # See the matching comment on publish-npm's checkout: this job's
+      # `contents: write` token has no business persisting to disk for
+      # `npm install`'s native-addon build scripts (zeromq's) to find.
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v4
         with:
