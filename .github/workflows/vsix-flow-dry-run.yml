@@ -5,7 +5,10 @@
 # to non-maintainers and create no git tag. Removed once validated.
 name: VSIX flow dry run
 
-on: workflow_dispatch
+on:
+  push:
+    branches: [claude/elegant-albattani-7fx6po]
+    paths: [".github/workflows/vsix-flow-dry-run.yml"]
 
 permissions:
   contents: write
