@@ -44,15 +44,39 @@ jobs:
       options: --user root
     steps:
       # `git` lets checkout use a real clone; `ca-certificates` covers the
-      # setup action's node/pnpm downloads.
+      # setup-node download. OMC never writes its ZMQ port file when spawned
+      # by root in this image (every spawn times out), so the test steps run
+      # as a non-root user — the same recipe as ci.yml's integration job.
       - name: Prepare the OMC container
         run: |
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates git
+          useradd -m -s /bin/bash omcrunner
 
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup
+
+      # Not ./.github/actions/setup — see the matching comment in ci.yml's
+      # integration job: the composite's pnpm lands under /root (mode 700),
+      # unreadable to the `runuser -u omcrunner` test steps below.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm install -g pnpm@10.25.0
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Hand workspace to non-root user
+        run: chown -R omcrunner:omcrunner "$GITHUB_WORKSPACE"
+
+      - name: Install Modelica Standard Library for omcrunner
+        run: |
+          cat > /tmp/install_msl.mos <<'EOF'
+          installPackage(Modelica, "4.1.0+maint.om", exactMatch=true);
+          getErrorString();
+          EOF
+          runuser -u omcrunner -- omc /tmp/install_msl.mos
 
       - name: Run integration tests against the new OMC
         id: tests
@@ -60,15 +84,18 @@ jobs:
         # Explicit bash for its pipefail default: without it a failing suite's
         # exit status is swallowed by the `tee` and this step reports success.
         shell: bash
+        env:
+          OMC_INTEGRATION: "1"
+          OMC_DEBUG: "1"
         run: |
           # Full integration suite (assertions). Failures here are real regressions.
-          OMC_INTEGRATION=1 pnpm --filter @dicode/omc-client test 2>&1 \
+          runuser -u omcrunner -- pnpm --filter @dicode/omc-client test 2>&1 \
             | tee test-output.txt
           # Drift probe (informational). Reports per-call OMC behavior for the ⛔
           # wrappers in coverage.md so the human reviewer sees ground truth on
           # the new OMC version. Always succeeds — output is what matters.
-          OMC_INTEGRATION=1 OMC_DRIFT_PROBE=1 \
-            pnpm --filter @dicode/omc-client \
+          OMC_DRIFT_PROBE=1 \
+            runuser -u omcrunner -- pnpm --filter @dicode/omc-client \
             vitest run test/drift-probe.integration.test.ts --reporter=verbose 2>&1 \
             | tee drift-probe-output.txt
 
