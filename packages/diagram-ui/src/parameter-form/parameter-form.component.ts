@@ -22,10 +22,10 @@
  *
  * Events:
  *   - `om-parameter-change`  — fires on each field edit
- *     `detail: { values: Record<string, unknown>, dirty: Set<string> }`
+ *     `detail: { values: Record<string, unknown>, dirty: ReadonlySet<string> }`
  *   - `om-parameter-submit`  — fires on submit-button click (validates
  *     required fields client-side first)
- *     `detail: { values: Record<string, unknown> }`
+ *     `detail: { values: Record<string, unknown>, dirty: ReadonlySet<string> }`
  *   - `om-parameter-cancel`  — fires on cancel-button click
  *     `detail: {}`
  *   - `om-parameter-reset`   — fires on reset-button click (only emitted
@@ -125,6 +125,7 @@ export interface ParameterFormChangeDetail {
 
 export interface ParameterFormSubmitDetail {
   values: Record<string, unknown>;
+  dirty: ReadonlySet<string>;
 }
 
 @customElement("om-parameter-form")
@@ -902,7 +903,7 @@ export class OmParameterForm extends LitElement {
         // `submitValues()` emits base-unit values AND drops disabled fields
         // (issue #76, item 4) so we never write a stale binding the user can
         // no longer see.
-        detail: { values: this.submitValues() },
+        detail: { values: this.submitValues(), dirty: this.dirty },
         bubbles: true,
         composed: true,
       }),

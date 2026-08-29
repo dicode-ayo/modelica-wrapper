@@ -40,7 +40,12 @@ const SAMPLES: WebviewToExtension[] = [
   { type: "actionParameters" },
   { type: "editComponent", componentName: "r1" },
   { type: "editShape", key: "shape:line:0" },
-  { type: "parametersSubmit", kind: "classParams", values: { R: 1 } },
+  {
+    type: "parametersSubmit",
+    kind: "classParams",
+    values: { R: 1 },
+    dirty: ["R"],
+  },
   { type: "parametersCancel", kind: "simulate" },
   { type: "resetComponentParameters", componentName: "r1" },
   { type: "addComponent", className: "A.B", position: { x: 1, y: 2 } },
@@ -91,9 +96,28 @@ describe("isGestureMessage", () => {
     );
   });
 
+  it("rejects a parametersSubmit whose dirty is not a string array", () => {
+    const reject = vi.fn();
+    const raw = {
+      type: "parametersSubmit",
+      kind: "classParams",
+      values: {},
+      dirty: "R",
+    };
+    expect(isGestureMessage(raw, reject)).toBe(false);
+    expect(reject).toHaveBeenCalledWith(
+      expect.stringContaining("parametersSubmit.dirty"),
+    );
+  });
+
   it("rejects a misspelled form kind at the boundary, not by dropping the write", () => {
     const reject = vi.fn();
-    const raw = { type: "parametersSubmit", kind: "classParams ", values: {} };
+    const raw = {
+      type: "parametersSubmit",
+      kind: "classParams ",
+      values: {},
+      dirty: [],
+    };
     expect(isGestureMessage(raw, reject)).toBe(false);
     expect(reject).toHaveBeenCalledWith(
       expect.stringContaining("parametersSubmit.kind"),
@@ -148,6 +172,7 @@ describe("iconHonorsGesture", () => {
         type: "parametersSubmit",
         kind: "shapeProperties",
         values: {},
+        dirty: [],
       }),
     ).toBe(true);
     expect(
@@ -155,6 +180,7 @@ describe("iconHonorsGesture", () => {
         type: "parametersSubmit",
         kind: "simulate",
         values: {},
+        dirty: [],
       }),
     ).toBe(false);
     expect(

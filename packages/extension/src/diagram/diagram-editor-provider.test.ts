@@ -1713,6 +1713,7 @@ describe("DiagramEditController: parameter editing", () => {
       type: "parametersSubmit",
       kind: "classParams",
       values: { gain: 5 },
+      dirty: ["gain"],
     });
 
     expect(setModifierCalls[0]).toMatchObject({
@@ -1741,6 +1742,7 @@ describe("DiagramEditController: parameter editing", () => {
       type: "parametersSubmit",
       kind: "classParams",
       values: { gain: 2 },
+      dirty: ["gain"],
     });
 
     expect(setModifierCalls).toEqual([]);
@@ -1766,6 +1768,7 @@ describe("DiagramEditController: parameter editing", () => {
       type: "parametersSubmit",
       kind: "componentParams",
       values: { k: 3 },
+      dirty: ["k"],
     });
 
     expect(setModifierCalls[0]).toMatchObject({
@@ -1823,6 +1826,7 @@ describe("DiagramEditController: parameter editing", () => {
       type: "parametersSubmit",
       kind: "classParams",
       values: { gain: 5 },
+      dirty: ["gain"],
     });
     await Promise.all([edit, submit]);
 
@@ -1978,6 +1982,7 @@ describe("DiagramEditController: shape properties", () => {
       type: "parametersSubmit",
       kind: "shapeProperties",
       values: { lineColor: "#ff0000" },
+      dirty: ["lineColor"],
     });
 
     expect(
@@ -2007,6 +2012,7 @@ describe("DiagramEditController: shape properties", () => {
       type: "parametersSubmit",
       kind: "shapeProperties",
       values: { lineColor: "#ff0000" },
+      dirty: ["lineColor"],
     });
 
     expect(invoked).toContain("writeClassGraphics");
@@ -2049,6 +2055,7 @@ describe("DiagramEditController: shape properties", () => {
       type: "parametersSubmit",
       kind: "shapeProperties",
       values: { lineColor: "#ff0000" },
+      dirty: ["lineColor"],
     });
 
     expect(invoked).not.toContain("writeClassGraphics");
@@ -2146,6 +2153,7 @@ describe("DiagramEditController: icon mode", () => {
       type: "parametersSubmit",
       kind: "shapeProperties",
       values: { lineColor: "#ff0000" },
+      dirty: ["lineColor"],
     });
 
     expect(invoked).toContain("writeClassGraphics");
@@ -2225,6 +2233,7 @@ describe("DiagramEditController: icon mode", () => {
       type: "parametersSubmit",
       kind: "classParams",
       values: { gain: 5 },
+      dirty: ["gain"],
     });
 
     expect(setModifierCalls).toEqual([]);
@@ -2444,6 +2453,7 @@ describe("DiagramEditController: simulate and check actions", () => {
       type: "parametersSubmit",
       kind: "simulate",
       values: { stopTime: 2 },
+      dirty: ["stopTime"],
     });
 
     expect(simulateCalls).toHaveLength(1);
@@ -2488,6 +2498,7 @@ describe("DiagramEditController: simulate and check actions", () => {
       type: "parametersSubmit",
       kind: "simulate",
       values: { stopTime: 1 },
+      dirty: ["stopTime"],
     });
     await Promise.all([edit, sim]);
 
@@ -2588,6 +2599,7 @@ describe("DiagramEditController: writable-class gate", () => {
       type: "parametersSubmit",
       kind: "classParams",
       values: { gain: 5 },
+      dirty: ["gain"],
     });
 
     expect(setModifierCalls).toEqual([]); // mutation refused
@@ -2609,6 +2621,7 @@ describe("DiagramEditController: writable-class gate", () => {
       type: "parametersSubmit",
       kind: "simulate",
       values: { stopTime: 1 },
+      dirty: ["stopTime"],
     });
     expect(simulateCalls).toHaveLength(1);
   });
@@ -2708,6 +2721,7 @@ describe("DiagramEditController: reset error branches", () => {
       type: "parametersSubmit",
       kind: "componentParams",
       values: { k: 9 },
+      dirty: ["k"],
     });
     expect(setModifierCalls).toEqual([]);
   });
@@ -2734,6 +2748,7 @@ describe("DiagramEditController: reset error branches", () => {
       type: "parametersSubmit",
       kind: "componentParams",
       values: { k: 9 },
+      dirty: ["k"],
     });
     expect(setModifierCalls).toEqual([]);
   });
