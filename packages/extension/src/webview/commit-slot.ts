@@ -29,9 +29,12 @@ const defaultScheduler: CommitScheduler = {
 export class CommitSlot {
   private queued: DiagramLayout | null = null;
   private timer: { cancel(): void } | undefined;
+  /** True from a refused/discarded `layout` push (per {@link takePush}) until
+   *  the next one actually lands. Read alongside the layout by `send`. */
+  private stale = false;
 
   constructor(
-    private readonly send: (layout: DiagramLayout) => void,
+    private readonly send: (layout: DiagramLayout, staleBase: boolean) => void,
     private readonly scheduler: CommitScheduler = defaultScheduler,
   ) {}
 
@@ -51,15 +54,20 @@ export class CommitSlot {
   }
 
   /**
-   * Whether an arriving layout push may be applied. The host settles once its
-   * own queue drains, which says nothing about work the webview has not sent
-   * yet — a commit still held here, or a gesture that has committed nothing at
-   * all. A push raised without sight of either is older than what is on screen,
-   * and applying it puts the user's own edit back undone until the settle for
-   * it arrives.
+   * Whether an arriving layout push may be applied, recording the verdict: a
+   * refused push leaves the diagram showing state the host does not know it
+   * has not seen, which rides out on the next commit as `staleBase`.
+   *
+   * The host settles once its own queue drains, which says nothing about work
+   * the webview has not sent yet — a commit still held here, or a gesture that
+   * has committed nothing at all. A push raised without sight of either is
+   * older than what is on screen, and applying it puts the user's own edit
+   * back undone until the settle for it arrives.
    */
-  canApplyPush(gestureActive: boolean): boolean {
-    return !gestureActive && this.queued === null;
+  takePush(gestureActive: boolean): boolean {
+    const applicable = !gestureActive && this.queued === null;
+    this.stale = !applicable;
+    return applicable;
   }
 
   /** Send whatever is held, now — the debounce is an optimisation, and losing
@@ -70,6 +78,6 @@ export class CommitSlot {
     const layout = this.queued;
     if (layout === null) return;
     this.queued = null;
-    this.send(layout);
+    this.send(layout, this.stale);
   }
 }

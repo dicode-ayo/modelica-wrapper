@@ -95,7 +95,7 @@ answer all four.
 | `type` | Payload | Meaning |
 | --- | --- | --- |
 | `ready` | — | Webview finished loading; host sends the parked `init`. |
-| `change` | `{ layout }` | User committed a layout change (move/resize/rotate/draw/delete). The whole layout, not a diff. |
+| `change` | `{ layout, staleBase }` | User committed a layout change (move/resize/rotate/draw/delete). The whole layout, not a diff. `staleBase` is true when the webview refused or discarded a `layout` push from the host since the last one it applied (a gesture in flight, or a commit already queued) — the host then drops the edit kinds it can't trust from such a report (see `TRUSTED_ON_STALE_BASE` in `diff-layout.ts`) rather than reading them off `layout`'s difference from OMC's real state. |
 | `connectionCreate` | `{ fromKey, toKey, waypoints }` | User dragged from one connector to another. Empty `waypoints` ⇒ auto-route. |
 | `selectionChange` | `{ keys }` | Selection set changed. |
 | `inputFocus` | `{ focused }` | Keyboard focus entered/left an editable field; drives `modelicaDiagramInputFocus`. |

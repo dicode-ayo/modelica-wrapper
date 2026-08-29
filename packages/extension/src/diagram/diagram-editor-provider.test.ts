@@ -922,6 +922,7 @@ describe("DiagramEditController: forward write path", () => {
         [0, 0],
         [20, 20],
       ]),
+      staleBase: false,
     });
 
     expect(invoked).toContain("updateComponent");
@@ -1206,7 +1207,11 @@ describe("DiagramEditController: forward write path", () => {
     );
 
     fireForeign();
-    const edit = controller.handle({ type: "change", layout: layout({}) });
+    const edit = controller.handle({
+      type: "change",
+      layout: layout({}),
+      staleBase: false,
+    });
     await edit;
     await drain();
 
@@ -1243,7 +1248,11 @@ describe("DiagramEditController: forward write path", () => {
 
     fireForeign();
     flushDebounce(); // the timer fires; the reverse sync is enqueued, not yet resolved
-    const edit = controller.handle({ type: "change", layout: layout({}) });
+    const edit = controller.handle({
+      type: "change",
+      layout: layout({}),
+      staleBase: false,
+    });
     await edit;
     await drain();
 
@@ -1425,7 +1434,11 @@ describe("DiagramEditController: reconciling reports", () => {
     // still being reconciled. Each carries the whole layout, so the last one
     // says everything its predecessors did.
     const reports = [0, 10, 20].map((x) =>
-      controller.handle({ type: "change", layout: movedComponent(AT(x)) }),
+      controller.handle({
+        type: "change",
+        layout: movedComponent(AT(x)),
+        staleBase: false,
+      }),
     );
     await Promise.all(reports);
     await drain();
@@ -1466,6 +1479,7 @@ describe("DiagramEditController: reconciling reports", () => {
       void controller.handle({
         type: "change",
         layout: movedComponent(AT(0)),
+        staleBase: false,
       });
     };
     await controller.handle({
@@ -1503,6 +1517,7 @@ describe("DiagramEditController: reconciling reports", () => {
           { from: "Pkg.M", shapes: [RECT, RECT] },
         ] as unknown as DiagramLayout["diagramLayers"],
       }),
+      staleBase: false,
     });
     await drain();
 
@@ -1537,7 +1552,11 @@ describe("DiagramEditController: reconciling reports", () => {
     interleave = () => {
       // The default instance renders an empty diagram, so this reports it
       // exactly as OMC already holds it and the reconcile writes nothing.
-      void controller.handle({ type: "change", layout: layout({}) });
+      void controller.handle({
+        type: "change",
+        layout: layout({}),
+        staleBase: false,
+      });
     };
     await controller.handle({
       type: "addComponent",
@@ -1567,6 +1586,7 @@ describe("DiagramEditController: reconciling reports", () => {
     await controller.handle({
       type: "change",
       layout: movedComponent(AT(0)),
+      staleBase: false,
     });
 
     expect(invoked).toContain("updateComponent");
@@ -1590,6 +1610,7 @@ describe("DiagramEditController: reconciling reports", () => {
     await controller.handle({
       type: "change",
       layout: movedComponent(AT(0)),
+      staleBase: false,
     });
     await drain();
 
@@ -1628,11 +1649,13 @@ describe("DiagramEditController: reconciling reports", () => {
       void controller.handle({
         type: "change",
         layout: movedComponent(AT(10)),
+        staleBase: false,
       });
     };
     await controller.handle({
       type: "change",
       layout: movedComponent(AT(0)),
+      staleBase: false,
     });
     await drain();
 
@@ -1664,6 +1687,7 @@ describe("DiagramEditController: reconciling reports", () => {
     await controller.handle({
       type: "change",
       layout: layout({}),
+      staleBase: false,
     });
     await drain();
 
@@ -1671,6 +1695,118 @@ describe("DiagramEditController: reconciling reports", () => {
     // component the sync restored as one the user deleted.
     expect(invoked).not.toContain("deleteComponent");
     expect(posted.some((m) => m.type === "error")).toBe(true);
+    controller.dispose();
+  });
+});
+
+describe("DiagramEditController: stale-base reconcile (issue #408)", () => {
+  /** OMC's real state: `gain1` (as the report also knows it) plus `gain2` —
+   *  e.g. a paste that settled into OMC after the webview's local layout was
+   *  last captured, whose own push the webview then refused. */
+  const TWO_COMPONENTS: ModelInstance = {
+    name: "Pkg.M",
+    restriction: "model",
+    elements: [
+      {
+        $kind: "component",
+        name: "gain1",
+        type: GAIN_TYPE,
+        annotation: {
+          Placement: {
+            transformation: {
+              extent: [
+                [10, 10],
+                [30, 30],
+              ],
+            },
+          },
+        },
+      },
+      {
+        $kind: "component",
+        name: "gain2",
+        type: GAIN_TYPE,
+        annotation: {
+          Placement: {
+            transformation: {
+              extent: [
+                [50, 50],
+                [70, 70],
+              ],
+            },
+          },
+        },
+      },
+    ],
+  } as unknown as ModelInstance;
+
+  it("does not delete a component the report never knew about, and resyncs the webview onto it", async () => {
+    const { client, invoked } = makeEditClient({ instance: TWO_COMPONENTS });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    // The controller's own starting point mirrors the webview's stale local
+    // view: it knows only gain1.
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      movedComponent([
+        [0, 0],
+        [20, 20],
+      ]),
+      factory,
+    );
+
+    await controller.handle({
+      type: "change",
+      // gain1 moved (a genuinely different extent from TWO_COMPONENTS' own —
+      // `movedComponent` also bakes in `rotation: 0`, which the producer's
+      // output for an un-rotated placement omits, so a same-extent report
+      // would still diff as a placement change on that field alone and pass
+      // this assertion for the wrong reason); still no gain2 in this report.
+      layout: movedComponent([
+        [20, 20],
+        [40, 40],
+      ]),
+      staleBase: true,
+    });
+    await drain();
+
+    // gain1's own move still lands...
+    expect(invoked).toContain("updateComponent");
+    // ...but gain2 is not read as a user deletion just because the report
+    // doesn't mention it.
+    expect(invoked).not.toContain("deleteComponent");
+    // The webview never saw gain2 (its push was refused), so a settle is
+    // forced regardless of the usual "nothing left to tell it" shortcut.
+    expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
+    controller.dispose();
+  });
+
+  it("still deletes a component the user actually removed when the report is not stale", async () => {
+    const { client, invoked } = makeEditClient({
+      instance: instanceWithComponent("gain1", [
+        [0, 0],
+        [20, 20],
+      ]),
+    });
+    const { gate } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      movedComponent([
+        [0, 0],
+        [20, 20],
+      ]),
+      factory,
+    );
+
+    await controller.handle({
+      type: "change",
+      layout: layout({}), // report: no components at all — a real deletion
+      staleBase: false,
+    });
+    await drain();
+
+    expect(invoked).toContain("deleteComponent");
     controller.dispose();
   });
 });
@@ -1967,7 +2103,11 @@ describe("DiagramEditController: shape properties", () => {
       factory,
     );
 
-    await controller.handle({ type: "change", layout: shapeLayout() });
+    await controller.handle({
+      type: "change",
+      layout: shapeLayout(),
+      staleBase: false,
+    });
     await drain();
 
     await controller.handle({
@@ -2115,6 +2255,7 @@ describe("DiagramEditController: icon mode", () => {
     await controller.handle({
       type: "change",
       layout: iconShapeLayout([RECT]),
+      staleBase: false,
     });
 
     expect(invoked).toContain("writeClassGraphics");
@@ -2254,6 +2395,7 @@ describe("DiagramEditController: icon mode", () => {
     await controller.handle({
       type: "change",
       layout: diagramShapeLayout([RECT]),
+      staleBase: false,
     });
 
     expect(graphicsWrites[0]).toMatchObject({
