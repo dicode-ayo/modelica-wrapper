@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { access, copyFile, mkdir, readFile } from "node:fs/promises";
+import { access, copyFile, cp, mkdir, readFile, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,6 +11,7 @@ import {
 } from "./grammar/grammar-source.mjs";
 
 const watch = process.argv.includes("--watch");
+const production = process.argv.includes("--production");
 
 const here = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -53,9 +54,16 @@ const wasmAssets = [
 ];
 
 /**
- * Copies the language WASM assets into `out/` on every (re)build so they
- * ship beside `extension.js`. esbuild does not bundle them — they're loaded
- * at runtime by path — so a plain copy on `onEnd` is the right tool.
+ * Copies the runtime assets esbuild can't inline into the bundle — they're
+ * loaded by path at runtime — on every (re)build:
+ *
+ *   - the two language WASM files, into `out/` beside `extension.js`;
+ *   - zeromq's prebuilt native addons (`node_modules/zeromq/build`, all
+ *     platforms), into `build/` at the extension root. zeromq's bundled
+ *     loader (cmake-ts) resolves them at `path.resolve(__dirname, "..",
+ *     "build")`, and `__dirname` inside the bundle is `out/` — so `build/`
+ *     one level up is the one location it will look in, both under F5 and
+ *     inside the installed VSIX.
  *
  * Assets with a pinned `sha256` are verified before the copy: the build fails
  * (`onEnd` errors propagate) if the source bytes don't match, turning the
@@ -67,8 +75,8 @@ const wasmAssets = [
  * install — that case gets a dedicated "run pnpm install" error rather than a
  * raw ENOENT.
  */
-const copyWasm = {
-  name: "copy-wasm",
+const copyRuntimeAssets = {
+  name: "copy-runtime-assets",
   setup(build) {
     build.onEnd(async () => {
       const outDir = resolve(here, "out");
@@ -81,6 +89,11 @@ const copyWasm = {
           }
           await copyFile(a.from, join(outDir, a.to));
         }),
+      );
+      await cp(
+        join(dirname(require.resolve("zeromq/package.json")), "build"),
+        resolve(here, "build"),
+        { recursive: true, dereference: true },
       );
     });
   },
@@ -107,7 +120,7 @@ async function ensureGrammarPresent(filePath) {
 
 /**
  * Throw if the grammar WASM at `filePath` doesn't match the pinned hash. Used by
- * {@link copyWasm} to gate the grammar copy. Shares {@link checkGrammarSha256}
+ * {@link copyRuntimeAssets} to gate the grammar copy. Shares {@link checkGrammarSha256}
  * with the install-time fetch so the two integrity gates can't drift.
  */
 async function verifyGrammarWasm(filePath) {
@@ -170,16 +183,26 @@ const extensionConfig = {
   entryPoints: ["src/extension.ts"],
   bundle: true,
   outfile: "out/extension.js",
-  // `web-tree-sitter` ships an Emscripten glue module that loads its WASM by
-  // path at runtime; bundling it through esbuild breaks that, so keep it
-  // external and let Node resolve it from node_modules at load time.
-  external: ["vscode", "zeromq", "web-tree-sitter"],
+  // Only `vscode` stays external (the extension host provides it; it isn't
+  // an installable package). Everything else — `zeromq` and `web-tree-sitter`
+  // included — is bundled, so the packaged extension needs no node_modules:
+  // `vsce package --no-dependencies` works straight from the pnpm workspace.
+  // Their on-disk runtime assets (native addons, WASM) are copied beside the
+  // bundle by `copyRuntimeAssets`.
+  external: ["vscode"],
   platform: "node",
   target: "node20",
   format: "cjs",
-  sourcemap: true,
+  // web-tree-sitter's Emscripten glue calls `createRequire(import.meta.url)`;
+  // esbuild's ESM→CJS conversion leaves `import.meta.url` undefined, so remap
+  // it to the equivalent computed from CJS `__filename`.
+  define: { "import.meta.url": "__importMetaUrl" },
+  banner: {
+    js: 'const __importMetaUrl = require("url").pathToFileURL(__filename).href;',
+  },
+  sourcemap: !production,
   logLevel: watch ? "warning" : "info",
-  plugins: [copyWasm, ...(watch ? [watchMarkers] : [])],
+  plugins: [copyRuntimeAssets, ...(watch ? [watchMarkers] : [])],
 };
 
 /** @type {import('esbuild').BuildOptions} */
@@ -190,7 +213,7 @@ const webviewConfig = {
   platform: "browser",
   target: "es2022",
   format: "iife",
-  sourcemap: true,
+  sourcemap: !production,
   logLevel: watch ? "warning" : "info",
   // The default tsconfig.json excludes the webview entry and doesn't set
   // experimentalDecorators; without this override esbuild emits TC39
@@ -254,6 +277,13 @@ const documentationConfig = {
   entryPoints: ["src/webview/documentation-entry.ts"],
   outfile: "out/documentation.js",
 };
+
+// A production build must not inherit stale dev artifacts: `.vscodeignore`
+// allowlists `out/**` wholesale, so a leftover dev sourcemap would ship in
+// the VSIX.
+if (production) {
+  await rm(resolve(here, "out"), { recursive: true, force: true });
+}
 
 if (watch) {
   const a = await esbuild.context(extensionConfig);

@@ -1,0 +1,12 @@
+# Allowlist: `vsce package --no-dependencies` ships only what the installed
+# extension loads at runtime. Everything is bundled into out/ except vscode
+# itself; build/ carries zeromq's prebuilt native addons (see
+# esbuild.config.mjs).
+**
+!package.json
+!README.md
+!CHANGELOG.md
+!language-configuration.json
+!syntaxes/**
+!out/**
+!build/**
