@@ -393,7 +393,7 @@ export async function applyDiagramEdits(
 ): Promise<ApplyEditsResult | null> {
   const diffed = diffLayouts(prevLayout, next);
   const edits = options?.staleBase
-    ? diffed.filter((edit) => isTrustedOnStaleBase(edit))
+    ? diffed.filter(isTrustedOnStaleBase)
     : diffed;
   if (edits.length === 0) return null;
   return applyEdits(client, className, edits, undefined, { snapshot: true });

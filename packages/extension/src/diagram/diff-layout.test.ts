@@ -581,7 +581,7 @@ describe("diffLayouts", () => {
       ]);
     });
 
-    it("does NOT rename when the waypoints changed (re-drawn, not re-indexed)", () => {
+    it("does NOT rename when the waypoints changed (re-drawn, not re-indexed), and flags the addition ambiguousReindex", () => {
       const a = vectorLayout("pins[3].p");
       const b = vectorLayout("pins[2].p");
       b.connections[0]!.waypoints = [
@@ -595,6 +595,10 @@ describe("diffLayouts", () => {
         from: "pins[3].p",
         to: "ground.p",
       });
+      // `pins[3].p` shares its re-index group with this addition — a
+      // `connectorSizing` re-index never touches waypoints, so even a lone
+      // 1:1 group where the waypoints changed can be the same logical edge
+      // OMC hasn't yet reported under its new index (issue #503).
       expect(edits).toContainEqual({
         kind: "connectionAdded",
         from: "pins[2].p",
@@ -603,6 +607,7 @@ describe("diffLayouts", () => {
           [5, 5],
           [15, 5],
         ],
+        ambiguousReindex: true,
       });
     });
 
@@ -661,15 +666,15 @@ describe("diffLayouts", () => {
         from: "pins[1].p",
         to: "ground.p",
       });
-      // Flagged cascadeRisk: this group had 2 `prev` members, so the
-      // addition could be completing a rename a stale-base report never
-      // fully saw — see the `cascadeRisk` describe block (issue #503).
+      // Flagged ambiguousReindex: pins[1] existed on this base in `prev`, so
+      // the addition could be completing a rename a stale-base report never
+      // fully saw — see `isTrustedOnStaleBase` (issue #503).
       expect(edits).toContainEqual({
         kind: "connectionAdded",
         from: "pins[3].p",
         to: "ground.p",
         waypoints: [[0, 0]],
-        cascadeRisk: true,
+        ambiguousReindex: true,
       });
       // The bogus pins[1]→pins[3] rename must NOT appear.
       expect(
@@ -703,43 +708,49 @@ describe("diffLayouts", () => {
         from: "pins[1].p",
         to: "ground.p",
       });
-      // Flagged cascadeRisk for the same reason as above: the base has 2
-      // `prev` members, so the group isn't a clean 1:1 pair.
+      // Flagged ambiguousReindex for the same reason as above.
       expect(edits).toContainEqual({
         kind: "connectionAdded",
         from: "pins[2].p",
         to: "ground.p",
         waypoints: [[0, 0]],
-        cascadeRisk: true,
+        ambiguousReindex: true,
       });
     });
 
     // ── Stale-base duplication (issue #503) ─────────────────────────────
-    describe("cascadeRisk: connectionAdded from an ambiguous re-index group", () => {
+    describe("ambiguousReindex: connectionAdded sharing a group with a prev connection", () => {
       it("flags a cascade's connectionAdded", () => {
         // Cascade: 2 prev members on the same base+fixed-endpoint, 1 next —
-        // exactly the shape issue #503 reports (a missed push means the
-        // stale report never learned pins[2] existed at all). The "lone
-        // re-draw" (1:1, not cascade risk) case is already covered by "does
-        // NOT rename when the waypoints changed" above: its exact-match
-        // `connectionAdded` assertion would fail if `cascadeRisk` leaked in.
+        // the shape issue #503 reports.
         const cascadePrev = multiVectorLayout([1, 2]);
         const cascadeNext = multiVectorLayout([3]);
         const cascadeEdits = diffLayouts(cascadePrev, cascadeNext);
         const cascadeAdd = cascadeEdits.find(
           (e) => e.kind === "connectionAdded",
         );
-        expect(cascadeAdd?.cascadeRisk).toBe(true);
+        expect(cascadeAdd?.ambiguousReindex).toBe(true);
       });
 
-      it("isTrustedOnStaleBase distrusts a cascadeRisk addition but trusts a plain one", () => {
+      it("does NOT flag a connectionAdded whose base has no prev member at all", () => {
+        // pins[2].p is a fresh index on a base `prev` never used, so there is
+        // no sibling it could be completing a rename against.
+        const edits = diffLayouts(
+          multiVectorLayout([]),
+          multiVectorLayout([2]),
+        );
+        const add = edits.find((e) => e.kind === "connectionAdded");
+        expect(add?.ambiguousReindex).toBeUndefined();
+      });
+
+      it("isTrustedOnStaleBase distrusts an ambiguousReindex addition but trusts a plain one", () => {
         expect(
           isTrustedOnStaleBase({
             kind: "connectionAdded",
             from: "pins[3].p",
             to: "ground.p",
             waypoints: [],
-            cascadeRisk: true,
+            ambiguousReindex: true,
           }),
         ).toBe(false);
         expect(

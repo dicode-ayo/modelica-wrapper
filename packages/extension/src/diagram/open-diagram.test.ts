@@ -510,7 +510,7 @@ describe("applyDiagramEdits: staleBase cascade re-index duplicate (issue #503)",
 
     // Every edit the diff produced is untrusted from this report — the
     // deletions of pins[1]/pins[2] (absence-inferred) and now also the
-    // pins[3] addition (cascade risk) — so nothing is left to apply.
+    // pins[3] addition (ambiguous re-index) — so nothing is left to apply.
     expect(result).toBeNull();
     expect(invoked).not.toContain("addConnection");
     expect(invoked).not.toContain("deleteConnection");
@@ -542,5 +542,36 @@ describe("applyDiagramEdits: staleBase cascade re-index duplicate (issue #503)",
 
     expect(invoked).toContain("addConnection");
     expect(invoked).toContain("deleteConnection");
+  });
+
+  it("does not duplicate a connection for a lone 1:1 group either, once the waypoints differ", async () => {
+    // A `connectorSizing` re-index never touches waypoints, so even a clean
+    // 1:1 group (a single prev, a single next on the same base) can be the
+    // same logical edge OMC hasn't yet reported under its new index once the
+    // waypoints differ too — `isReindexRename` declines the collapse, but
+    // that's not proof the addition is unrelated to the prev connection.
+    const { client, invoked } = stubEditClient();
+    const current = withConnections([
+      {
+        lhs: { component: "pins", port: "p", componentSubscripts: "[1]" },
+        rhs: { component: "ground", port: "p" },
+        waypoints: [],
+      },
+    ]);
+    const next = withConnections([
+      {
+        lhs: { component: "pins", port: "p", componentSubscripts: "[2]" },
+        rhs: { component: "ground", port: "p" },
+        waypoints: [[5, 5]],
+      },
+    ]);
+
+    const result = await applyDiagramEdits(client, "Pkg.M", current, next, {
+      staleBase: true,
+    });
+
+    expect(result).toBeNull();
+    expect(invoked).not.toContain("addConnection");
+    expect(invoked).not.toContain("deleteConnection");
   });
 });
