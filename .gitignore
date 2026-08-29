@@ -4,6 +4,7 @@ node_modules/
 out/
 dist/
 *.vsix
+packages/extension/.vsix-stage/
 
 # Editor / OS
 .DS_Store
