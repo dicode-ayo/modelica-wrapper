@@ -704,8 +704,8 @@ export class DiagramEditController {
    * `staleBase` is the report's own bit (issue #408): the webview refused or
    * discarded a `layout` push since the last one it applied, so `next` may be
    * missing something the class already holds that it was never told about.
-   * `applyDiagramEdits`'s `staleBase` option (see `TRUSTED_ON_STALE_BASE` in
-   * `diff-layout.ts` for which edit kinds that drops, and why) handles the
+   * `applyDiagramEdits`'s `staleBase` option (see `isTrustedOnStaleBase` in
+   * `diff-layout.ts` for which edits that drops, and why) handles the
    * diff side; a settle is forced here regardless of `settleOwed` so the
    * webview is resynced onto what it never saw — otherwise it would keep
    * rendering a diagram missing something the class actually has.

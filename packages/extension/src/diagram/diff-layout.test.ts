@@ -12,6 +12,7 @@ import type {
 
 import {
   diffLayouts,
+  isTrustedOnStaleBase,
   lineAnnotation,
   placementAnnotation,
   type LayoutEdit,
@@ -660,11 +661,15 @@ describe("diffLayouts", () => {
         from: "pins[1].p",
         to: "ground.p",
       });
+      // Flagged cascadeRisk: this group had 2 `prev` members, so the
+      // addition could be completing a rename a stale-base report never
+      // fully saw — see the `cascadeRisk` describe block (issue #503).
       expect(edits).toContainEqual({
         kind: "connectionAdded",
         from: "pins[3].p",
         to: "ground.p",
         waypoints: [[0, 0]],
+        cascadeRisk: true,
       });
       // The bogus pins[1]→pins[3] rename must NOT appear.
       expect(
@@ -698,11 +703,61 @@ describe("diffLayouts", () => {
         from: "pins[1].p",
         to: "ground.p",
       });
+      // Flagged cascadeRisk for the same reason as above: the base has 2
+      // `prev` members, so the group isn't a clean 1:1 pair.
       expect(edits).toContainEqual({
         kind: "connectionAdded",
         from: "pins[2].p",
         to: "ground.p",
         waypoints: [[0, 0]],
+        cascadeRisk: true,
+      });
+    });
+
+    // ── Stale-base duplication (issue #503) ─────────────────────────────
+    describe("cascadeRisk: connectionAdded from an ambiguous re-index group", () => {
+      it("flags a cascade's connectionAdded, but not a lone re-draw's", () => {
+        // Cascade: 2 prev members on the same base+fixed-endpoint, 1 next —
+        // exactly the shape issue #503 reports (a missed push means the
+        // stale report never learned pins[2] existed at all).
+        const cascadePrev = multiVectorLayout([1, 2]);
+        const cascadeNext = multiVectorLayout([3]);
+        const cascadeEdits = diffLayouts(cascadePrev, cascadeNext);
+        const cascadeAdd = cascadeEdits.find(
+          (e) => e.kind === "connectionAdded",
+        );
+        expect(cascadeAdd?.cascadeRisk).toBe(true);
+
+        // Lone re-draw: 1 prev, 1 next on the same base, but not a re-index
+        // (different waypoints) — an unambiguous 1:1 pair, no sibling on the
+        // base to duplicate. Not cascade risk.
+        const a = vectorLayout("pins[3].p");
+        const b = vectorLayout("pins[2].p");
+        b.connections[0]!.waypoints = [[5, 5]];
+        const redrawAdd = diffLayouts(a, b).find(
+          (e) => e.kind === "connectionAdded",
+        );
+        expect(redrawAdd?.cascadeRisk).toBeUndefined();
+      });
+
+      it("isTrustedOnStaleBase distrusts a cascadeRisk addition but trusts a plain one", () => {
+        expect(
+          isTrustedOnStaleBase({
+            kind: "connectionAdded",
+            from: "pins[3].p",
+            to: "ground.p",
+            waypoints: [],
+            cascadeRisk: true,
+          }),
+        ).toBe(false);
+        expect(
+          isTrustedOnStaleBase({
+            kind: "connectionAdded",
+            from: "a.x",
+            to: "b.y",
+            waypoints: [],
+          }),
+        ).toBe(true);
       });
     });
   });

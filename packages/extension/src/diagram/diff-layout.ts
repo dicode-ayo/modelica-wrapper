@@ -92,6 +92,16 @@ export type LayoutEdit =
       to: string;
       waypoints: ReadonlyArray<readonly [number, number]>;
       style?: ConnectionLineStyle | undefined;
+      /**
+       * Set when this addition shares a re-index group (see
+       * `keysForReindexGroups`) with a `prev` connection, but the group
+       * wasn't a clean 1:1 pair — a cascade or swap that fell through to
+       * this delete+add path rather than collapsing into `connectionRenamed`.
+       * Such an addition can be completing a rename a stale-base report
+       * never fully saw (issue #503), so `isTrustedOnStaleBase` distrusts it
+       * even though `connectionAdded` is otherwise safe under a stale base.
+       */
+      cascadeRisk?: boolean | undefined;
     }
   | {
       kind: "connectionDeleted";
@@ -148,6 +158,14 @@ export type LayoutEdit =
  *     level removed — a 1:1 re-index group can pair a connection the report
  *     never knew about with one the user just drew, and rewrite the former's
  *     endpoints onto the latter.
+ *
+ * `connectionAdded` is `true` here, but that's only the common case: an
+ * addition flagged `cascadeRisk` (a re-index group with 2+ members on
+ * either side, which falls through to delete+add instead of collapsing into
+ * `connectionRenamed`) carries the same absence hazard as `connectionRenamed`
+ * above. Callers filtering a diff for a stale base should go through
+ * {@link isTrustedOnStaleBase}, not this map directly, so that distinction
+ * isn't missed.
  */
 export const TRUSTED_ON_STALE_BASE = {
   componentPlacement: true,
@@ -161,6 +179,19 @@ export const TRUSTED_ON_STALE_BASE = {
   graphicsDeleted: false,
   graphicsReordered: false,
 } satisfies Record<LayoutEdit["kind"], boolean>;
+
+/**
+ * Whether `edit` can be trusted from a report built on a stale base — see
+ * {@link TRUSTED_ON_STALE_BASE}. The map alone is right for every kind except
+ * `connectionAdded`, where a `cascadeRisk` addition is downgraded to
+ * untrusted: it can be completing a rename a stale report never fully saw
+ * (issue #503), the same hazard `connectionRenamed` and `connectionDeleted`
+ * are already excluded for.
+ */
+export function isTrustedOnStaleBase(edit: LayoutEdit): boolean {
+  if (edit.kind === "connectionAdded" && edit.cascadeRisk) return false;
+  return TRUSTED_ON_STALE_BASE[edit.kind];
+}
 
 export function endpointToCref(c: {
   component: string | undefined;
@@ -339,6 +370,27 @@ export function diffLayouts(
     consumedNext.add(afterKey);
   }
 
+  // Endpoint keys of a `next` connection sharing a re-index group with some
+  // `prev` connection, where the group ISN'T a clean 1:1 pair (a cascade or
+  // swap — see the "Safe rule" comment above). A `connectionAdded` under one
+  // of these keys can be completing a rename a stale-base report never fully
+  // saw (issue #503): the group's imbalance means the plain delete/add loops
+  // below, not `connectionRenamed`, produce this addition, and under
+  // `staleBase` the paired deletion is dropped as untrusted while a plain
+  // `connectionAdded` would sail through — net a duplicated connection, not
+  // the dropped-edit trade-off `TRUSTED_ON_STALE_BASE` otherwise accepts. A
+  // clean 1:1 group (e.g. a re-draw that fails `isReindexRename` on waypoints
+  // alone) carries no such ambiguity and is left out.
+  const cascadeRiskNextKeys = new Set<string>();
+  for (const g of groups.values()) {
+    if (g.prev.length === 0 || (g.prev.length === 1 && g.next.length === 1)) {
+      continue;
+    }
+    for (const c of g.next) {
+      cascadeRiskNextKeys.add(`${c.from}|${c.to}`);
+    }
+  }
+
   for (const c of prevConns) {
     const key = `${c.from}|${c.to}`;
     if (consumedPrev.has(key)) continue;
@@ -358,6 +410,7 @@ export function diffLayouts(
         to: c.to,
         waypoints: c.waypoints as ReadonlyArray<readonly [number, number]>,
         ...(style && { style }),
+        ...(cascadeRiskNextKeys.has(key) && { cascadeRisk: true }),
       });
     } else if (
       !deepEqual(before.waypoints, c.waypoints) ||
