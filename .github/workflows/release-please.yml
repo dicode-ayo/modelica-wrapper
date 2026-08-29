@@ -142,16 +142,21 @@ jobs:
         run: pnpm --filter modelica-wrapper package
 
       # The filename carries the version (package-vsix.mjs), so this globs
-      # rather than hardcoding it.
+      # rather than hardcoding it. TAG_NAME rides in via `env` rather than
+      # interpolated straight into the script — release-please computes it
+      # from a fixed component name + SemVer today, but nothing enforces
+      # that going forward, and env-substitution costs nothing.
       - name: Upload VSIX to the GitHub Release
-        run: gh release upload "${{ needs.release-please.outputs.extension_tag_name }}" packages/extension/modelica-wrapper-*.vsix --clobber
+        run: gh release upload "$TAG_NAME" packages/extension/modelica-wrapper-*.vsix --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.extension_tag_name }}
 
       # The release was created as a draft (release-please-config.json) so it
       # stays unpublished until this point — publish it now that its .vsix
       # actually exists.
       - name: Publish the release now that its VSIX is attached
-        run: gh release edit "${{ needs.release-please.outputs.extension_tag_name }}" --draft=false
+        run: gh release edit "$TAG_NAME" --draft=false
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.extension_tag_name }}
