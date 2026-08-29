@@ -130,16 +130,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.25.0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup
 
       - name: Build the extension (esbuild)
         run: pnpm --filter modelica-wrapper build
@@ -150,8 +141,10 @@ jobs:
       - name: Package the VSIX
         run: pnpm --filter modelica-wrapper package
 
+      # The filename carries the version (package-vsix.mjs), so this globs
+      # rather than hardcoding it.
       - name: Upload VSIX to the GitHub Release
-        run: gh release upload "${{ needs.release-please.outputs.extension_tag_name }}" packages/extension/modelica-wrapper.vsix --clobber
+        run: gh release upload "${{ needs.release-please.outputs.extension_tag_name }}" packages/extension/modelica-wrapper-*.vsix --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

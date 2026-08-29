@@ -9,6 +9,7 @@ import {
   GRAMMAR_WASM_SHA256,
   checkGrammarSha256,
 } from "./grammar/grammar-source.mjs";
+import { RUNTIME_EXTERNALS } from "./runtime-externals.mjs";
 
 const watch = process.argv.includes("--watch");
 
@@ -173,7 +174,7 @@ const extensionConfig = {
   // `web-tree-sitter` ships an Emscripten glue module that loads its WASM by
   // path at runtime; bundling it through esbuild breaks that, so keep it
   // external and let Node resolve it from node_modules at load time.
-  external: ["vscode", "zeromq", "web-tree-sitter"],
+  external: RUNTIME_EXTERNALS,
   platform: "node",
   target: "node20",
   format: "cjs",

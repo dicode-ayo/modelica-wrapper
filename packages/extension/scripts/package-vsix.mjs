@@ -9,12 +9,12 @@
  * the packaged extension needs and runs `vsce` there instead of in the repo.
  *
  * `zeromq` and `web-tree-sitter` are the only runtime dependencies esbuild
- * doesn't bundle (see the `external` list in esbuild.config.mjs) — everything
- * else ends up inlined into out/*.js. Both need their real npm dependency
- * closure on disk (zeromq's own native-addon loader pulls in `cmake-ts` and
- * `node-addon-api` at require time), so the stage directory gets a plain
- * `npm install` rather than a hand-picked copy of node_modules — that closure
- * isn't hardcoded here and self-heals across dependency bumps.
+ * doesn't bundle (see runtime-externals.mjs, shared with esbuild.config.mjs)
+ * — everything else ends up inlined into out/*.js. Both need their real npm
+ * dependency closure on disk (zeromq's own native-addon loader pulls in
+ * `cmake-ts` and `node-addon-api` at require time), so the stage directory
+ * gets a plain `npm install` rather than a hand-picked copy of node_modules —
+ * that closure isn't hardcoded here and self-heals across dependency bumps.
  */
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
@@ -31,6 +31,8 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { RUNTIME_EXTERNALS } from "../runtime-externals.mjs";
+
 function removeSourceMaps(dir) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
@@ -45,9 +47,12 @@ function removeSourceMaps(dir) {
 const require = createRequire(import.meta.url);
 const extensionRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const stageDir = join(extensionRoot, ".vsix-stage");
-const outFile = join(extensionRoot, "modelica-wrapper.vsix");
 
-const RUNTIME_DEPENDENCIES = ["zeromq", "web-tree-sitter"];
+// esbuild's own external list minus `vscode`, which isn't an installable
+// dependency (VSCode provides it at runtime) — see runtime-externals.mjs.
+const RUNTIME_DEPENDENCIES = RUNTIME_EXTERNALS.filter(
+  (name) => name !== "vscode",
+);
 const STATIC_ENTRIES = [
   "out",
   "syntaxes",
@@ -67,27 +72,30 @@ mkdirSync(stageDir, { recursive: true });
 const pkg = JSON.parse(
   readFileSync(join(extensionRoot, "package.json"), "utf8"),
 );
+const outFile = join(extensionRoot, `modelica-wrapper-${pkg.version}.vsix`);
+
+// Denylist rather than allowlist: a field this doesn't know to strip (like
+// `scripts`/`devDependencies`/`private` below) ships into the VSIX, but a
+// field a future package.json adds (`icon`, `repository`, `l10n`, …) that an
+// allowlist would silently drop still makes it through.
+const stagedPkg = { ...pkg };
+delete stagedPkg.private;
+delete stagedPkg.scripts;
+delete stagedPkg.devDependencies;
+stagedPkg.dependencies = Object.fromEntries(
+  RUNTIME_DEPENDENCIES.map((name) => {
+    const range = pkg.dependencies[name];
+    if (range === undefined) {
+      throw new Error(
+        `${name} (from runtime-externals.mjs) is not in packages/extension's dependencies`,
+      );
+    }
+    return [name, range];
+  }),
+);
 writeFileSync(
   join(stageDir, "package.json"),
-  JSON.stringify(
-    {
-      name: pkg.name,
-      displayName: pkg.displayName,
-      description: pkg.description,
-      version: pkg.version,
-      publisher: pkg.publisher,
-      engines: pkg.engines,
-      categories: pkg.categories,
-      main: pkg.main,
-      activationEvents: pkg.activationEvents,
-      contributes: pkg.contributes,
-      dependencies: Object.fromEntries(
-        RUNTIME_DEPENDENCIES.map((name) => [name, pkg.dependencies[name]]),
-      ),
-    },
-    null,
-    2,
-  ),
+  JSON.stringify(stagedPkg, null, 2),
 );
 
 for (const entry of STATIC_ENTRIES) {
