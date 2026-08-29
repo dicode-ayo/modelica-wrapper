@@ -14,7 +14,12 @@ import * as vscodeMock from "../../test-support/vscode-mock.js";
 import {
   appliedEdits,
   completeApply,
+  emitFileChange,
+  emitFileCreate,
+  emitFileDelete,
+  fileSystemWatchers,
   pendingApplies,
+  resetFileSystemWatchers,
   setApplyEditManual,
   setApplyEditResult,
 } from "../../test-support/vscode-mock.js";
@@ -139,9 +144,11 @@ function makePanel(): {
   posted: ExtensionToWebview[];
   fireReady: () => void;
   fireMessage: (m: WebviewToExtension) => void;
+  fireDispose: () => void;
 } {
   const posted: ExtensionToWebview[] = [];
   let listener: ((m: WebviewToExtension) => void) | undefined;
+  let disposeListener: (() => void) | undefined;
   const webview: FakeWebview = {
     options: undefined,
     cspSource: "vscode-webview:",
@@ -159,7 +166,10 @@ function makePanel(): {
   const panel = {
     webview,
     active: false,
-    onDidDispose: () => ({ dispose: () => {} }),
+    onDidDispose: (l: () => void) => {
+      disposeListener = l;
+      return { dispose: () => {} };
+    },
     onDidChangeViewState: () => ({ dispose: () => {} }),
   };
   return {
@@ -167,6 +177,7 @@ function makePanel(): {
     posted,
     fireReady: () => listener?.({ type: "ready" }),
     fireMessage: (m) => listener?.(m),
+    fireDispose: () => disposeListener?.(),
   };
 }
 
@@ -206,20 +217,22 @@ function mount({
   posted: ExtensionToWebview[];
   fireReady: () => void;
   fireMessage: (m: WebviewToExtension) => void;
+  fireDispose: () => void;
 } {
   const provider = registerProvider(async () => fakeReader(), statMtimeMs);
-  const { panel, posted, fireReady, fireMessage } = makePanel();
+  const { panel, posted, fireReady, fireMessage, fireDispose } = makePanel();
   provider.resolveCustomTextEditor(
     docFor(docText),
     panel,
     {} as vscode.CancellationToken,
   );
-  return { posted, fireReady, fireMessage };
+  return { posted, fireReady, fireMessage, fireDispose };
 }
 
 beforeEach(() => {
   appliedEdits.length = 0;
   pendingApplies.length = 0;
+  resetFileSystemWatchers();
   setApplyEditManual(false);
   setApplyEditResult(true);
 });
@@ -321,6 +334,165 @@ describe("ResultViewEditorProvider: missingResults", () => {
 
     const missing = posted.find((m) => m.type === "missingResults");
     expect(missing?.type === "missingResults" && missing.ids).toEqual(["r1"]);
+  });
+});
+
+describe("ResultViewEditorProvider: watches the backing .mat files", () => {
+  /** A `statMtimeMs` over a mutable set of existing paths, so a test can make a
+   *  `.mat` appear or vanish between scans the way a delete or a re-simulation
+   *  does — `DOC_TEXT`'s two results resolve to `/ws/gone.mat` + `/ws/present.mat`. */
+  function fakeDisk(existing: string[]): {
+    statMtimeMs: (path: string) => Promise<number | undefined>;
+    add: (path: string) => void;
+    remove: (path: string) => void;
+  } {
+    const paths = new Set(existing);
+    return {
+      statMtimeMs: (p) => Promise.resolve(paths.has(p) ? 100 : undefined),
+      add: (p) => {
+        paths.add(p);
+      },
+      remove: (p) => {
+        paths.delete(p);
+      },
+    };
+  }
+
+  /** The ids of every `missingResults` post so far, in order. */
+  function missingPosts(posted: ExtensionToWebview[]): string[][] {
+    return posted
+      .filter(
+        (m): m is Extract<ExtensionToWebview, { type: "missingResults" }> =>
+          m.type === "missingResults",
+      )
+      .map((m) => m.ids);
+  }
+
+  /** Mount over `fakeDisk`, fire `ready`, and settle the first scan. */
+  async function mountReady(disk: ReturnType<typeof fakeDisk>): Promise<{
+    posted: ExtensionToWebview[];
+    fireDispose: () => void;
+  }> {
+    const { posted, fireReady, fireDispose } = mount({
+      statMtimeMs: disk.statMtimeMs,
+    });
+    fireReady();
+    await vi.waitFor(() => {
+      if (missingPosts(posted).length < 1) {
+        throw new Error("no missingResults yet");
+      }
+    });
+    return { posted, fireDispose };
+  }
+
+  /** Longer than the provider's debounce window, so an event that should be
+   *  ignored has had its chance to (wrongly) land a refresh before we assert. */
+  const PAST_DEBOUNCE_MS = 400;
+
+  it("rescans when a result's backing file is deleted, with no document edit", async () => {
+    const disk = fakeDisk(["/ws/present.mat"]);
+    const { posted } = await mountReady(disk);
+    expect(missingPosts(posted)[0]).toEqual(["r1"]);
+
+    disk.remove("/ws/present.mat");
+    emitFileDelete("/ws/present.mat");
+
+    await vi.waitFor(() => {
+      if (missingPosts(posted).length < 2) throw new Error("no rescan yet");
+    });
+    expect(missingPosts(posted)[1]).toEqual(["r1", "r2"]);
+    expect(appliedEdits).toHaveLength(0);
+  });
+
+  it("watches each referenced result's own directory, not the workspace", async () => {
+    const disk = fakeDisk(["/ws/present.mat"]);
+    await mountReady(disk);
+
+    // Both of DOC_TEXT's results resolve into /ws, so one watcher covers them.
+    expect(fileSystemWatchers).toHaveLength(1);
+    const { pattern } = fileSystemWatchers[0] ?? {};
+    expect(pattern).toBeInstanceOf(vscodeMock.RelativePattern);
+    expect(
+      pattern instanceof vscodeMock.RelativePattern && pattern.baseUri.fsPath,
+    ).toBe("/ws");
+  });
+
+  it("coalesces a burst of events into a single rescan", async () => {
+    const disk = fakeDisk(["/ws/present.mat"]);
+    const { posted } = await mountReady(disk);
+
+    disk.remove("/ws/present.mat");
+    emitFileDelete("/ws/present.mat");
+    disk.add("/ws/gone.mat");
+    emitFileCreate("/ws/gone.mat");
+    emitFileDelete("/ws/gone.mat");
+    disk.remove("/ws/gone.mat");
+
+    await vi.waitFor(() => {
+      if (missingPosts(posted).length < 2) throw new Error("no rescan yet");
+    });
+    await new Promise((r) => setTimeout(r, PAST_DEBOUNCE_MS));
+    expect(missingPosts(posted)).toHaveLength(2);
+    expect(missingPosts(posted)[1]).toEqual(["r1", "r2"]);
+  });
+
+  it("ignores a change to a referenced file — a rewritten .mat still exists", async () => {
+    const disk = fakeDisk(["/ws/present.mat"]);
+    const { posted } = await mountReady(disk);
+
+    emitFileChange("/ws/present.mat");
+
+    await new Promise((r) => setTimeout(r, PAST_DEBOUNCE_MS));
+    expect(missingPosts(posted)).toHaveLength(1);
+  });
+
+  it("rescans when a missing result's backing file is recreated", async () => {
+    const disk = fakeDisk(["/ws/present.mat"]);
+    const { posted } = await mountReady(disk);
+    expect(missingPosts(posted)[0]).toEqual(["r1"]);
+
+    disk.add("/ws/gone.mat");
+    emitFileCreate("/ws/gone.mat");
+
+    await vi.waitFor(() => {
+      if (missingPosts(posted).length < 2) throw new Error("no rescan yet");
+    });
+    expect(missingPosts(posted)[1]).toEqual([]);
+  });
+
+  it("ignores an event for a file the document doesn't reference", async () => {
+    const disk = fakeDisk(["/ws/present.mat"]);
+    const { posted } = await mountReady(disk);
+
+    disk.add("/ws/unrelated.mat");
+    emitFileCreate("/ws/unrelated.mat");
+
+    await new Promise((r) => setTimeout(r, PAST_DEBOUNCE_MS));
+    expect(missingPosts(posted)).toHaveLength(1);
+  });
+
+  it("stops watching once the panel is disposed", async () => {
+    const disk = fakeDisk(["/ws/present.mat"]);
+    const { posted, fireDispose } = await mountReady(disk);
+
+    fireDispose();
+    disk.remove("/ws/present.mat");
+    emitFileDelete("/ws/present.mat");
+
+    await new Promise((r) => setTimeout(r, PAST_DEBOUNCE_MS));
+    expect(missingPosts(posted)).toHaveLength(1);
+  });
+
+  it("drops a debounced rescan queued before the panel was disposed", async () => {
+    const disk = fakeDisk(["/ws/present.mat"]);
+    const { posted, fireDispose } = await mountReady(disk);
+
+    disk.remove("/ws/present.mat");
+    emitFileDelete("/ws/present.mat");
+    fireDispose(); // inside the debounce window
+
+    await new Promise((r) => setTimeout(r, PAST_DEBOUNCE_MS));
+    expect(missingPosts(posted)).toHaveLength(1);
   });
 });
 
