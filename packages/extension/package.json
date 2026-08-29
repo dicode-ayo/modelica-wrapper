@@ -486,7 +486,7 @@
     "test:e2e:ui": "cd e2e && npm run test:ui",
     "test:e2e:debug": "cd e2e && npm run test:debug",
     "test:e2e:omc": "cd e2e && npm run test:omc",
-    "package": "node scripts/package-vsix.mjs"
+    "package": "node esbuild.config.mjs --production && vsce package --no-dependencies --allow-missing-repository"
   },
   "dependencies": {
     "@dicode/diagram-svg": "workspace:*",

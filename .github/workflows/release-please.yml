@@ -81,8 +81,8 @@ jobs:
       # Neither this job nor `attach-vsix` below ever does a git push — both
       # only call `pnpm publish`/`gh` with their own tokens — so the checkout
       # has no need to leave a write-scoped credential on disk for the
-      # `npm install` further down (and its native-addon build scripts) to
-      # find.
+      # dependency install further down (and its native-addon build scripts)
+      # to find.
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -125,23 +125,21 @@ jobs:
     steps:
       # See the matching comment on publish-npm's checkout: this job's
       # `contents: write` token has no business persisting to disk for
-      # `npm install`'s native-addon build scripts (zeromq's) to find.
+      # dependency install scripts to find.
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
       - uses: ./.github/actions/setup
 
-      - name: Build the extension (esbuild)
-        run: pnpm --filter modelica-wrapper build
-
-      # `pnpm --filter modelica-wrapper package` stages a plain-npm copy of
-      # the extension (see packages/extension/scripts/package-vsix.mjs for
-      # why) and runs `vsce package` there.
-      - name: Package the VSIX
+      # Production esbuild build (no sourcemaps) + `vsce package
+      # --no-dependencies`, run straight in the workspace — everything but
+      # `vscode` is bundled, so the VSIX ships no node_modules and packaging
+      # needs no registry access.
+      - name: Build and package the VSIX
         run: pnpm --filter modelica-wrapper package
 
-      # The filename carries the version (package-vsix.mjs), so this globs
+      # The filename carries the version (vsce's default), so this globs
       # rather than hardcoding it. TAG_NAME rides in via `env` rather than
       # interpolated straight into the script — release-please computes it
       # from a fixed component name + SemVer today, but nothing enforces
