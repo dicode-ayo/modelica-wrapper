@@ -716,10 +716,13 @@ describe("diffLayouts", () => {
 
     // ── Stale-base duplication (issue #503) ─────────────────────────────
     describe("cascadeRisk: connectionAdded from an ambiguous re-index group", () => {
-      it("flags a cascade's connectionAdded, but not a lone re-draw's", () => {
+      it("flags a cascade's connectionAdded", () => {
         // Cascade: 2 prev members on the same base+fixed-endpoint, 1 next —
         // exactly the shape issue #503 reports (a missed push means the
-        // stale report never learned pins[2] existed at all).
+        // stale report never learned pins[2] existed at all). The "lone
+        // re-draw" (1:1, not cascade risk) case is already covered by "does
+        // NOT rename when the waypoints changed" above: its exact-match
+        // `connectionAdded` assertion would fail if `cascadeRisk` leaked in.
         const cascadePrev = multiVectorLayout([1, 2]);
         const cascadeNext = multiVectorLayout([3]);
         const cascadeEdits = diffLayouts(cascadePrev, cascadeNext);
@@ -727,17 +730,6 @@ describe("diffLayouts", () => {
           (e) => e.kind === "connectionAdded",
         );
         expect(cascadeAdd?.cascadeRisk).toBe(true);
-
-        // Lone re-draw: 1 prev, 1 next on the same base, but not a re-index
-        // (different waypoints) — an unambiguous 1:1 pair, no sibling on the
-        // base to duplicate. Not cascade risk.
-        const a = vectorLayout("pins[3].p");
-        const b = vectorLayout("pins[2].p");
-        b.connections[0]!.waypoints = [[5, 5]];
-        const redrawAdd = diffLayouts(a, b).find(
-          (e) => e.kind === "connectionAdded",
-        );
-        expect(redrawAdd?.cascadeRisk).toBeUndefined();
       });
 
       it("isTrustedOnStaleBase distrusts a cascadeRisk addition but trusts a plain one", () => {
