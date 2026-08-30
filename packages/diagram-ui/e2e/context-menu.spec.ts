@@ -102,7 +102,7 @@ test("right-click selects the clicked component and opens its menu", async ({
   ]);
 });
 
-test("right-click on empty space clears the selection and shows no menu", async ({
+test("right-click on empty space clears the selection and offers host navigation only", async ({
   page,
 }) => {
   const { name } = await firstComponent(page);
@@ -116,7 +116,11 @@ test("right-click on empty space clears the selection and shows no menu", async 
   await page.mouse.click(box.x + 6, box.y + 6, { button: "right" });
 
   expect(await selection(page)).toEqual([]);
-  await expect(page.locator("om-context-menu button")).toHaveCount(0);
+  // Bare canvas resolves Go to Definition to the host class itself (#514);
+  // Go to Declaration needs a single selected instance, so it stays out.
+  await expect(page.locator("om-context-menu button")).toHaveText([
+    "Go to Definition",
+  ]);
 });
 
 test("picking a command runs it and closes the menu", async ({ page }) => {
