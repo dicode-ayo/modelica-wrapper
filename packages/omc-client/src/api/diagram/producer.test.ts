@@ -2190,9 +2190,10 @@ describe("produceDiagramLayout: standalone connector placement by kind (issue #5
     });
   }
 
-  it("uses `transformation` in a diagram-kind layout, with no counterpart", () => {
+  it("uses `transformation` in a diagram-kind layout and carries the icon counterpart", () => {
     const layout = produceDiagramLayout(hostWithDualPlacement(), "diagram");
     expect(layout.connectors.u?.placement.extent).toEqual(DIAGRAM_EXTENT);
+    expect(layout.connectors.u?.iconPlacement?.extent).toEqual(ICON_EXTENT);
     expect(layout.connectors.u?.diagramPlacement).toBeUndefined();
   });
 
@@ -2202,6 +2203,7 @@ describe("produceDiagramLayout: standalone connector placement by kind (issue #5
     expect(layout.connectors.u?.diagramPlacement?.extent).toEqual(
       DIAGRAM_EXTENT,
     );
+    expect(layout.connectors.u?.iconPlacement).toBeUndefined();
   });
 
   it("falls back to the declared transformation when only one exists", () => {
@@ -2211,6 +2213,9 @@ describe("produceDiagramLayout: standalone connector placement by kind (issue #5
     expect(icon.connectors.u?.placement.extent).toEqual(
       diagram.connectors.u?.placement.extent,
     );
+    // A single declared keyword has no counterpart to carry in either kind.
+    expect(icon.connectors.u?.diagramPlacement).toBeUndefined();
+    expect(diagram.connectors.u?.iconPlacement).toBeUndefined();
   });
 });
 
