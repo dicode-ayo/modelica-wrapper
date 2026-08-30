@@ -12,7 +12,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=24.20.0"
   },
   "publishConfig": {
     "access": "public",
@@ -34,22 +34,25 @@
     "test:watch": "vitest",
     "test:unit": "vitest run",
     "storybook": "storybook dev -p 6008 --no-open",
-    "build-storybook": "storybook build"
+    "build-storybook": "storybook build",
+    "test:coverage": "vitest run --coverage",
+    "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\""
   },
   "dependencies": {
     "@dicode/ui-common": "workspace:*",
-    "echarts": "^5.5.0",
-    "lit": "^3.2.0"
+    "echarts": "^6.1.0",
+    "lit": "^3.3.3"
   },
   "devDependencies": {
     "@storybook/addon-essentials": "^8.4.0",
     "@storybook/web-components": "^8.4.0",
     "@storybook/web-components-vite": "^8.4.0",
-    "@types/node": "^22.0.0",
+    "@types/node": "^24.13.3",
+    "@vitest/coverage-istanbul": "^4.1.11",
     "happy-dom": "^15.11.0",
     "storybook": "^8.4.0",
     "typescript": "^5.6.0",
-    "vite": "^5.4.0",
-    "vitest": "^2.1.0"
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   }
 }

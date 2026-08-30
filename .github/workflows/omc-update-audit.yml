@@ -26,7 +26,7 @@ jobs:
     outputs:
       version: ${{ steps.pin.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -59,7 +59,7 @@ jobs:
           apt-get install -y --no-install-recommends ca-certificates git
           useradd -m -s /bin/bash omcrunner
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -123,7 +123,7 @@ jobs:
 
       - name: Upload test output artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: omc-${{ needs.pin.outputs.version }}-test-output
           path: test-output.txt
@@ -131,7 +131,7 @@ jobs:
 
       - name: Upload drift probe artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: omc-${{ needs.pin.outputs.version }}-drift-probe
           path: drift-probe-output.txt
@@ -158,7 +158,7 @@ jobs:
 
       - name: Comment on PR with audit checklist + drift probe
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           PROBE_SUMMARY: ${{ steps.probe.outputs.summary }}
           # Branch names are attacker-influenced; ride in via env, never

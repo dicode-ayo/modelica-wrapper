@@ -328,11 +328,7 @@ export type Annotation = z.infer<typeof AnnotationSchema>;
  * `final`/`each` may also appear at the modifier level.
  */
 export type Modifier =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Modifier };
+  string | number | boolean | null | { [key: string]: Modifier };
 
 const ModifierLazy = z.lazy(() =>
   z.union([

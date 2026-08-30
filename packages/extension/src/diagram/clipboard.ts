@@ -92,9 +92,7 @@ export interface ClipboardConnection {
 }
 
 export type ClipboardEntry =
-  | ClipboardComponent
-  | ClipboardShape
-  | ClipboardConnection;
+  ClipboardComponent | ClipboardShape | ClipboardConnection;
 
 /**
  * The diagram clipboard, shared by every open diagram/icon editor in the

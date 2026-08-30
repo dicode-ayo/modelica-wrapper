@@ -13,7 +13,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=24.20.0"
   },
   "publishConfig": {
     "access": "public",
@@ -36,26 +36,29 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:unit": "vitest run"
+    "test:unit": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\""
   },
   "dependencies": {
-    "@tiptap/core": "^3.27.4",
-    "@tiptap/extension-image": "^3.27.4",
-    "@tiptap/extension-link": "^3.27.4",
-    "@tiptap/extension-subscript": "^3.27.4",
-    "@tiptap/extension-superscript": "^3.27.4",
-    "@tiptap/extension-table": "^3.27.4",
-    "@tiptap/pm": "^3.27.4",
-    "@tiptap/starter-kit": "^3.27.4",
-    "js-beautify": "^1.15.4",
-    "lit": "^3.2.0"
+    "@tiptap/core": "^3.30.5",
+    "@tiptap/extension-image": "^3.30.5",
+    "@tiptap/extension-link": "^3.30.5",
+    "@tiptap/extension-subscript": "^3.30.5",
+    "@tiptap/extension-superscript": "^3.30.5",
+    "@tiptap/extension-table": "^3.30.5",
+    "@tiptap/pm": "^3.30.5",
+    "@tiptap/starter-kit": "^3.30.5",
+    "js-beautify": "^2.0.3",
+    "lit": "^3.3.3"
   },
   "devDependencies": {
     "@storybook/web-components": "^8.4.0",
     "@types/js-beautify": "^1.14.3",
-    "@types/node": "^22.0.0",
+    "@types/node": "^24.13.3",
+    "@vitest/coverage-istanbul": "^4.1.11",
     "happy-dom": "^15.11.0",
     "typescript": "^5.6.0",
-    "vitest": "^2.1.0"
+    "vitest": "^4.1.11"
   }
 }

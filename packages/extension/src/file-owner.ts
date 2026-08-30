@@ -28,7 +28,7 @@ export async function fileOwnerClass(
 ): Promise<string> {
   const { fileName } = await client.getSourceFile({ typeName: className });
   let owner = className;
-  for (let scope = enclosingScope(owner); scope !== ""; ) {
+  for (let scope = enclosingScope(owner); scope !== "";) {
     let parentFile: string;
     try {
       parentFile = (await client.getSourceFile({ typeName: scope })).fileName;

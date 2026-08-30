@@ -72,15 +72,13 @@ const meta: Meta<StoryArgs> = {
     // by it (matching how the real webview hosts it).
     const openPanel = (): void => {
       const el = document.querySelector("#story-panel") as
-        | (HTMLElement & { open: boolean })
-        | null;
+        (HTMLElement & { open: boolean }) | null;
       if (el) el.open = true;
     };
     const closeReason = (msg: string) => () => {
       console.log(msg);
       const el = document.querySelector("#story-panel") as
-        | (HTMLElement & { open: boolean })
-        | null;
+        (HTMLElement & { open: boolean }) | null;
       if (el) el.open = false;
     };
     return html`

@@ -131,7 +131,7 @@ export class ModelicaReplPty implements vscode.Pseudoterminal {
   handleInput(data: string): void {
     // Treat input as a stream — pasting / IME composition delivers
     // multi-character chunks and ANSI escape sequences arrive whole.
-    for (let i = 0; i < data.length; ) {
+    for (let i = 0; i < data.length;) {
       const ch = data[i];
       if (ch === undefined) break;
 

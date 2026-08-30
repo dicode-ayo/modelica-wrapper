@@ -50,8 +50,7 @@ const meta: Meta<StoryArgs> = {
         ]}
       ></om-split-button>
       <pre class="om-split-status" style="font-size:11px;color:#444;">
-(none)</pre
-      >
+(none)</pre>
     </div>
   `,
   argTypes: {

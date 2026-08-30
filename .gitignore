@@ -34,3 +34,7 @@ packages/extension/grammar/*.wasm*
 
 # OpenModelica workspace build cache (created by the extension in any opened folder)
 .modelica/
+
+# Coverage reports (`pnpm test:coverage`), and the CRAP report derived from them.
+coverage/
+crap-report/

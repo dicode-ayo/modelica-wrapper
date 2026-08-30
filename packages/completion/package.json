@@ -12,7 +12,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=24.20.0"
   },
   "publishConfig": {
     "access": "public",
@@ -30,15 +30,18 @@
     "prepublishOnly": "pnpm build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:unit": "OMC_INTEGRATION=0 vitest run"
+    "test:unit": "OMC_INTEGRATION=0 vitest run",
+    "test:coverage": "OMC_INTEGRATION=0 vitest run --coverage",
+    "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\""
   },
   "dependencies": {
     "@dicode/modelica-lang-core": "workspace:*",
     "web-tree-sitter": "^0.25.10"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^24.13.3",
+    "@vitest/coverage-istanbul": "^4.1.11",
     "typescript": "^5.6.0",
-    "vitest": "^2.1.0"
+    "vitest": "^4.1.11"
   }
 }

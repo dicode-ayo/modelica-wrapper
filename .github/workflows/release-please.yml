@@ -59,7 +59,7 @@ jobs:
       extension_release_created: ${{ steps.release.outputs['packages/extension--release_created'] }}
       extension_tag_name: ${{ steps.release.outputs['packages/extension--tag_name'] }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -83,17 +83,17 @@ jobs:
       # has no need to leave a write-scoped credential on disk for the
       # dependency install further down (and its native-addon build scripts)
       # to find.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
-          version: 10.25.0
+          version: 10.34.5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24.20.0
           registry-url: "https://registry.npmjs.org"
           cache: pnpm
 
@@ -126,7 +126,7 @@ jobs:
       # See the matching comment on publish-npm's checkout: this job's
       # `contents: write` token has no business persisting to disk for
       # dependency install scripts to find.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
