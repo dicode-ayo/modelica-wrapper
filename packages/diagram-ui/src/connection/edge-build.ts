@@ -17,7 +17,11 @@ import {
  * shapes): a fat round-capped stroke at `2 * hitRadius` backed by an
  * explicit point-to-segment `hitArea`, drawn at `alpha = 0`. A caller
  * raises its alpha to reveal a hover band. Both share the same entity tag
- * so the picker resolves the same edge either way.
+ * so the picker resolves the same edge either way. The band's hit area
+ * excludes a `hitRadius` disc around each terminal point: a route ends at
+ * the centre of the connector it lands on, and that spot must stay
+ * pickable as the connector so a connection can start from or drop onto
+ * an already-connected one.
  *
  * `clocked` swaps the visible stroke to a hand-rolled dashed pattern for
  * the Modelica synchronous-clock convention (Pixi v8 has no native dash).
@@ -106,6 +110,7 @@ export function buildEdge(
     options.points,
     options.hitRadius ?? DEFAULT_HIT_RADIUS,
     HIT_HOVER_COLOR,
+    true,
   );
   hitArea.zIndex = zIndex;
 
@@ -145,7 +150,13 @@ export function rebuildHitTube(
   hitRadius: number = DEFAULT_HIT_RADIUS,
   zOffset: number = EDGE_Z_OFFSET,
 ): Graphics {
-  const hitArea = buildHitTube(name, newPoints, hitRadius, HIT_HOVER_COLOR);
+  const hitArea = buildHitTube(
+    name,
+    newPoints,
+    hitRadius,
+    HIT_HOVER_COLOR,
+    true,
+  );
   hitArea.zIndex = -zOffset;
   if (parent) {
     parent.sortableChildren = true;
