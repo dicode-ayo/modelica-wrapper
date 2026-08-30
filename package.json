@@ -28,9 +28,9 @@
     "test:e2e:omc": "pnpm --filter modelica-wrapper test:e2e:omc"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.4",
+    "@eslint/js": "^10.0.1",
     "@sebassdc/crap4ts": "^0.1.1",
-    "eslint": "^9.39.4",
+    "eslint": "^10.9.1",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.11.0",
     "prettier": "^3.8.3",
