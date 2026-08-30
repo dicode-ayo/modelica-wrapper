@@ -829,9 +829,10 @@ describe("<om-library-tree>", () => {
       "connector",
     );
 
-    expect(details).toHaveLength(2);
-    expect(details[0]).toEqual(details[1]);
-    expect(details[0]).toEqual({ className: "Pin", view: "diagram" });
+    expect(details).toEqual([
+      { className: "Pin", view: "diagram" },
+      { className: "Pin", view: "diagram" },
+    ]);
   });
 
   it("shows an optimistic chevron on a non-package class before its children are known", async () => {
