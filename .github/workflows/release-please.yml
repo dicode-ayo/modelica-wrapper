@@ -59,7 +59,7 @@ jobs:
       extension_release_created: ${{ steps.release.outputs['packages/extension--release_created'] }}
       extension_tag_name: ${{ steps.release.outputs['packages/extension--tag_name'] }}
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
