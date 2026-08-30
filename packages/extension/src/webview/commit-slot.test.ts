@@ -50,20 +50,20 @@ function manualScheduler(): {
 function makeSlot(): {
   slot: CommitSlot;
   sent: DiagramLayout[];
-  staleFlags: boolean[];
+  basedOns: number[];
   fire: () => void;
   armed: () => boolean;
 } {
   const sent: DiagramLayout[] = [];
-  const staleFlags: boolean[] = [];
+  const basedOns: number[] = [];
   const { scheduler, fire, armed } = manualScheduler();
   return {
-    slot: new CommitSlot((l, stale) => {
+    slot: new CommitSlot((l, basedOn) => {
       sent.push(l);
-      staleFlags.push(stale);
+      basedOns.push(basedOn);
     }, scheduler),
     sent,
-    staleFlags,
+    basedOns,
     fire,
     armed,
   };
@@ -73,9 +73,9 @@ describe("CommitSlot", () => {
   it("collapses a burst of commits into one report", () => {
     const { slot, sent, fire } = makeSlot();
 
-    slot.commit(layout("a"));
-    slot.commit(layout("b"));
-    slot.commit(layout("c"));
+    slot.commit(layout("a"), 1);
+    slot.commit(layout("b"), 1);
+    slot.commit(layout("c"), 1);
     expect(sent).toEqual([]);
 
     fire();
@@ -86,23 +86,23 @@ describe("CommitSlot", () => {
 
   it("refuses a push while a commit is held, and allows one once it is sent", () => {
     const { slot, fire } = makeSlot();
-    expect(slot.takePush(false)).toBe(true);
+    expect(slot.canApplyPush(false)).toBe(true);
 
-    slot.commit(layout("a"));
-    expect(slot.takePush(false)).toBe(false);
+    slot.commit(layout("a"), 1);
+    expect(slot.canApplyPush(false)).toBe(false);
 
     fire();
-    expect(slot.takePush(false)).toBe(true);
+    expect(slot.canApplyPush(false)).toBe(true);
   });
 
   it("refuses a push during a gesture, which has committed nothing yet", () => {
     const { slot } = makeSlot();
-    expect(slot.takePush(true)).toBe(false);
+    expect(slot.canApplyPush(true)).toBe(false);
   });
 
   it("sends a held commit ahead of a message that reads the class", () => {
     const { slot, sent } = makeSlot();
-    slot.commit(layout("a"));
+    slot.commit(layout("a"), 1);
 
     // Reaching the host first, a paste would be resolved against the diagram
     // as it stood before the gesture — and its own additions then read as
@@ -113,7 +113,7 @@ describe("CommitSlot", () => {
 
   it("lets selection and focus overtake a held commit", () => {
     const { slot, sent } = makeSlot();
-    slot.commit(layout("a"));
+    slot.commit(layout("a"), 1);
 
     slot.beforeSending("selectionChange");
     slot.beforeSending("inputFocus");
@@ -124,7 +124,7 @@ describe("CommitSlot", () => {
 
   it("flushes on demand, and disarms the debounce so it cannot send twice", () => {
     const { slot, sent, fire, armed } = makeSlot();
-    slot.commit(layout("a"));
+    slot.commit(layout("a"), 1);
 
     slot.flush();
     expect(sent).toEqual([layout("a")]);
@@ -140,38 +140,35 @@ describe("CommitSlot", () => {
     expect(sent).toEqual([]);
   });
 
-  it("sends staleBase: false when no push has been refused", () => {
-    const { slot, staleFlags, fire } = makeSlot();
-    slot.commit(layout("a"));
+  it("sends each report with the basedOn its commit named", () => {
+    const { slot, basedOns, fire } = makeSlot();
+    slot.commit(layout("a"), 1);
     fire();
-    expect(staleFlags).toEqual([false]);
+    slot.commit(layout("b"), 3);
+    fire();
+    expect(basedOns).toEqual([1, 3]);
   });
 
-  it("sends staleBase: true once a push has been refused, until one is applied", () => {
-    const { slot, staleFlags, fire } = makeSlot();
-    expect(slot.takePush(true)).toBe(false); // refused: gesture active
-
-    slot.commit(layout("a"));
+  it("carries the superseding commit's basedOn, not the replaced one's", () => {
+    // A commit that replaces a held one replaces its base too: the report is
+    // one layout computed against one base, never a mix of two commits.
+    const { slot, sent, basedOns, fire } = makeSlot();
+    slot.commit(layout("a"), 1);
+    slot.commit(layout("b"), 2);
     fire();
-    expect(staleFlags).toEqual([true]);
+    expect(sent).toEqual([layout("b")]);
+    expect(basedOns).toEqual([2]);
+  });
 
-    // Still stale for a second commit — nothing has told the host about the
-    // push it missed yet.
-    slot.commit(layout("b"));
+  it("refusing a push records nothing — the basedOn a commit named still rides out", () => {
+    // A refused push gets no ack. What tells the host it was missed is that
+    // the webview's applied version — and so every later commit's basedOn —
+    // never advanced to the refused push's stamp.
+    const { slot, basedOns, fire } = makeSlot();
+    slot.commit(layout("a"), 1);
+    expect(slot.canApplyPush(false)).toBe(false);
     fire();
-    expect(staleFlags).toEqual([true, true]);
-
-    expect(slot.takePush(false)).toBe(true); // applied: re-arms
-    slot.commit(layout("c"));
-    fire();
-    expect(staleFlags).toEqual([true, true, false]);
-
-    // Re-arming clears staleness outright — a fresh refusal starts a new
-    // stale window rather than inheriting the old one.
-    expect(slot.takePush(true)).toBe(false);
-    slot.commit(layout("d"));
-    fire();
-    expect(staleFlags).toEqual([true, true, false, true]);
+    expect(basedOns).toEqual([1]);
   });
 
   it("drives the real timer when no scheduler is injected", () => {
@@ -179,7 +176,7 @@ describe("CommitSlot", () => {
     try {
       const sent: DiagramLayout[] = [];
       const slot = new CommitSlot((l) => sent.push(l));
-      slot.commit(layout("a"));
+      slot.commit(layout("a"), 1);
       expect(sent).toEqual([]);
 
       vi.advanceTimersByTime(1000);
@@ -219,7 +216,7 @@ describe("CommitSlot ordering", () => {
   it("holds a queued commit behind exactly the gestures that read or write the class", () => {
     for (const type of gestureNames()) {
       const { slot, sent } = makeSlot();
-      slot.commit(layout("a"));
+      slot.commit(layout("a"), 1);
       slot.beforeSending(type);
       expect(sent, type).toEqual(
         EXPECTED[type] === "afterCommit" ? [layout("a")] : [],
