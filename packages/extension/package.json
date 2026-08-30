@@ -485,7 +485,9 @@
     "test:e2e:headed": "cd e2e && npm run test:headed",
     "test:e2e:ui": "cd e2e && npm run test:ui",
     "test:e2e:debug": "cd e2e && npm run test:debug",
-    "test:e2e:omc": "cd e2e && npm run test:omc"
+    "test:e2e:omc": "cd e2e && npm run test:omc",
+    "test:coverage": "OMC_INTEGRATION=0 vitest run --passWithNoTests --coverage",
+    "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\""
   },
   "dependencies": {
     "@dicode/diagram-svg": "workspace:*",
@@ -503,6 +505,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/vscode": "^1.95.0",
+    "@vitest/coverage-istanbul": "^2.1.0",
     "esbuild": "^0.24.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
