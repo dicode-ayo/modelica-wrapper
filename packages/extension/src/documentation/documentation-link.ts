@@ -14,8 +14,7 @@ interface LinkClient {
  * resource path (contains a `/`, e.g. `Foo/Resources/doc.pdf`).
  */
 export type ModelicaLink =
-  | { kind: "class"; className: string }
-  | { kind: "resource"; uri: string };
+  { kind: "class"; className: string } | { kind: "resource"; uri: string };
 
 /**
  * Classify a `modelica://` href. A path segment (`/`) marks a resource; anything

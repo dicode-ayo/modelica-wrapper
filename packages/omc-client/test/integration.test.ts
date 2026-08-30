@@ -207,8 +207,7 @@ describeIf("OmcClient against real OMC", () => {
     const elements = (instance.elements ?? []) as Array<{ $kind: string }>;
     expect(elements.some((e) => e.$kind === "extends")).toBe(true);
     const icon = instance.annotation?.Icon as
-      | { graphics?: unknown[] }
-      | undefined;
+      { graphics?: unknown[] } | undefined;
     expect(Array.isArray(icon?.graphics)).toBe(true);
     expect((icon?.graphics ?? []).length).toBeGreaterThan(0);
   });

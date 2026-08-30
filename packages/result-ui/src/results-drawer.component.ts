@@ -164,12 +164,14 @@ export class OmResultsDrawer extends LitElement {
         </button>
       </header>
       <div class="list">
-        ${this.results.length === 0
-          ? html`<div class="empty">
-              No results. Add a <code>.mat</code> file, or run Simulate from a
-              diagram.
-            </div>`
-          : this.results.map((r) => this.chip(r))}
+        ${
+          this.results.length === 0
+            ? html`<div class="empty">
+                No results. Add a <code>.mat</code> file, or run Simulate from a
+                diagram.
+              </div>`
+            : this.results.map((r) => this.chip(r))
+        }
       </div>
     `;
   }
@@ -190,38 +192,42 @@ export class OmResultsDrawer extends LitElement {
           ✕
         </om-icon-button>
         <div class="label-row">
-          ${isEditing
-            ? html`<input
-                class="rename-input"
-                .value=${r.label}
-                @keydown=${(e: KeyboardEvent) => {
-                  if (e.key === "Enter") {
-                    this.saveRenameFromInput(r, e.target as HTMLInputElement);
-                  } else if (e.key === "Escape") {
-                    this.editingId = null;
-                  }
-                }}
-                @blur=${(e: Event) =>
-                  this.saveRenameFromInput(r, e.target as HTMLInputElement)}
-              />`
-            : html`
-                <span class="label">${r.label}</span>
-                <om-icon-button
-                  class="rename-icon"
-                  label="Rename"
-                  @click=${() => {
-                    this.editingId = r.id;
+          ${
+            isEditing
+              ? html`<input
+                  class="rename-input"
+                  .value=${r.label}
+                  @keydown=${(e: KeyboardEvent) => {
+                    if (e.key === "Enter") {
+                      this.saveRenameFromInput(r, e.target as HTMLInputElement);
+                    } else if (e.key === "Escape") {
+                      this.editingId = null;
+                    }
                   }}
-                >
-                  ✎
-                </om-icon-button>
-              `}
+                  @blur=${(e: Event) =>
+                    this.saveRenameFromInput(r, e.target as HTMLInputElement)}
+                />`
+              : html`
+                  <span class="label">${r.label}</span>
+                  <om-icon-button
+                    class="rename-icon"
+                    label="Rename"
+                    @click=${() => {
+                      this.editingId = r.id;
+                    }}
+                  >
+                    ✎
+                  </om-icon-button>
+                `
+          }
         </div>
         <div class="meta">
           <span class="badge">${SOURCE_LABEL[r.source]}</span>
-          ${isMissing
-            ? html`<span class="badge missing-badge">missing</span>`
-            : nothing}
+          ${
+            isMissing
+              ? html`<span class="badge missing-badge">missing</span>`
+              : nothing
+          }
           ${r.model ? html`<span>${r.model}</span>` : nothing}
           ${when ? html`<span>· ${when}</span>` : nothing}
         </div>

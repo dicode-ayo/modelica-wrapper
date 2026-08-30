@@ -55,11 +55,7 @@ interface EdgeState {
 }
 
 type DragState =
-  | MoveState
-  | ResizeState
-  | RotateState
-  | VertexState
-  | EdgeState;
+  MoveState | ResizeState | RotateState | VertexState | EdgeState;
 
 /**
  * Manipulating existing entities: move (one or the whole selection),

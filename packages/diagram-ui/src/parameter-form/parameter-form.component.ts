@@ -466,16 +466,18 @@ export class OmParameterForm extends LitElement {
       <form @submit=${this.onSubmit}>
         ${this.renderBody()}
         <div class="actions">
-          ${this.showReset && !this.readonly
-            ? html`<wa-button
-                class="reset"
-                type="button"
-                variant="neutral"
-                appearance="outlined"
-                @click=${this.onReset}
-                >${this.resetLabel}</wa-button
-              >`
-            : nothing}
+          ${
+            this.showReset && !this.readonly
+              ? html`<wa-button
+                  class="reset"
+                  type="button"
+                  variant="neutral"
+                  appearance="outlined"
+                  @click=${this.onReset}
+                  >${this.resetLabel}</wa-button
+                >`
+              : nothing
+          }
           <wa-button
             type="button"
             variant="neutral"
@@ -483,15 +485,17 @@ export class OmParameterForm extends LitElement {
             @click=${this.onCancel}
             >${this.readonly ? "Close" : this.cancelLabel}</wa-button
           >
-          ${this.readonly
-            ? nothing
-            : html`<wa-button
-                type="submit"
-                variant="brand"
-                appearance="filled"
-                ?disabled=${!canSubmit}
-                >${this.submitLabel}</wa-button
-              >`}
+          ${
+            this.readonly
+              ? nothing
+              : html`<wa-button
+                  type="submit"
+                  variant="brand"
+                  appearance="filled"
+                  ?disabled=${!canSubmit}
+                  >${this.submitLabel}</wa-button
+                >`
+          }
         </div>
       </form>
     `;
@@ -537,9 +541,11 @@ export class OmParameterForm extends LitElement {
     return html`${groups.map(
       (g) => html`
         <div class="group">
-          ${g.group !== undefined
-            ? html`<div class="group-title">${g.group}</div>`
-            : nothing}
+          ${
+            g.group !== undefined
+              ? html`<div class="group-title">${g.group}</div>`
+              : nothing
+          }
           ${g.fields.map((f) => this.renderField(f))}
         </div>
       `,
@@ -563,14 +569,16 @@ export class OmParameterForm extends LitElement {
     return html`
       <div class="field row" ?data-disabled=${!enabled}>
         <label class="label" for=${`f-${f.name}`}
-          >${f.name}${f.required
-            ? html`<span class="required">*</span>`
-            : nothing}</label
+          >${f.name}${
+            f.required ? html`<span class="required">*</span>` : nothing
+          }</label
         >
         <div class="control">${this.renderControlWithUnit(f, enabled)}</div>
-        ${f.description
-          ? html`<div class="description">${f.description}</div>`
-          : nothing}
+        ${
+          f.description
+            ? html`<div class="description">${f.description}</div>`
+            : nothing
+        }
       </div>
     `;
   }
@@ -595,9 +603,9 @@ export class OmParameterForm extends LitElement {
   /** Reusable label + hint slot content for wa-input / wa-select. */
   private renderLabelSlot(f: ParameterField): TemplateResult {
     return html`<span slot="label"
-      >${f.name}${f.required
-        ? html`<span class="required">*</span>`
-        : nothing}</span
+      >${f.name}${
+        f.required ? html`<span class="required">*</span>` : nothing
+      }</span
     >`;
   }
 
@@ -716,9 +724,11 @@ export class OmParameterForm extends LitElement {
             }}
           >
             ${this.renderLabelSlot(f)}${this.renderHintSlot(f)}
-            ${!f.required && !f.defaultValue
-              ? html`<wa-option value=""></wa-option>`
-              : nothing}
+            ${
+              !f.required && !f.defaultValue
+                ? html`<wa-option value=""></wa-option>`
+                : nothing
+            }
             ${f.enumValues.map(
               (opt) =>
                 html`<wa-option value=${String(opt)}

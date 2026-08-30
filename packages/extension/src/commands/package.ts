@@ -33,8 +33,7 @@ interface PkgInitClient {
 }
 
 type PkgInitResult =
-  | { success: true; pkgFile: string }
-  | { success: false; errorString: string };
+  { success: true; pkgFile: string } | { success: false; errorString: string };
 
 /**
  * loadString + writeFile + setSourceFile for a workspace-root `package.mo`.

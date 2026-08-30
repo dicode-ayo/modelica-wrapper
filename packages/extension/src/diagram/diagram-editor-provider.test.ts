@@ -187,8 +187,7 @@ function makePanel(active = false): {
   const posted: ExtensionToWebview[] = [];
   let listener: ((m: unknown) => void) | undefined;
   let viewStateListener:
-    | ((e: { webviewPanel: { active: boolean } }) => void)
-    | undefined;
+    ((e: { webviewPanel: { active: boolean } }) => void) | undefined;
   let disposeListener: (() => void) | undefined;
   const webview: FakeWebview = {
     options: undefined,
