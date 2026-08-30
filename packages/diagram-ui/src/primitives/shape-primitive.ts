@@ -165,19 +165,29 @@ export abstract class OmShapePrimitive extends LitElement {
     return null;
   }
 
+  /** `worldPerPixel` the view watcher last saw. View events fire for pans
+   *  too, and the build key serializes the whole shape — comparing the one
+   *  zoom input here keeps a pure pan from paying for that per primitive. */
+  private lastViewWpp: number | undefined = undefined;
+
   /**
    * React to pan/zoom. The default re-runs `updated()` (via
    * `requestUpdate()`) only when the primitive has zoom-coupled stroke
    * state — a dashed pattern, or a stroke the screen-space width floor may
-   * clamp — and its build key folds in `worldPerPixel` below, so the key
-   * comparison itself makes a pure pan (worldPerPixel unchanged) a cheap
-   * no-op rather than a rebuild. Override for state outside the key
-   * mechanism entirely, e.g. `<om-text>`'s zoom-dependent resolution.
+   * clamp — and only when `worldPerPixel` actually changed, so a pure pan
+   * never reaches the build-key comparison. Override for state outside the
+   * key mechanism entirely, e.g. `<om-text>`'s zoom-dependent resolution.
    */
   protected onViewChange(): void {
-    if (dashRunsFor(this.dashPattern()) || this.strokeThickness() !== null) {
-      this.requestUpdate();
+    if (!dashRunsFor(this.dashPattern()) && this.strokeThickness() === null) {
+      return;
     }
+    const wpp = this.sceneCtx?.worldPerPixel();
+    if (wpp === this.lastViewWpp) {
+      return;
+    }
+    this.lastViewWpp = wpp;
+    this.requestUpdate();
   }
 
   override render() {

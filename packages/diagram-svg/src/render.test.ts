@@ -134,7 +134,7 @@ describe("renderIconLayersToSvg", () => {
     // Qt palette tones from the face color: lighter(150) top/left,
     // darker(200) bottom/right.
     expect(svg).toContain(
-      'points="-50,-25 -50,25 50,25" fill="none" stroke="rgb(255,150,60)"',
+      'points="-50,-25 -50,25 50,25" fill="none" stroke="rgb(255,156,96)"',
     );
     expect(svg).toContain(
       'points="50,25 50,-25 -50,-25" fill="none" stroke="rgb(100,50,20)"',
@@ -160,7 +160,7 @@ describe("renderIconLayersToSvg", () => {
       'points="-50,-25 -50,25 50,25" fill="none" stroke="rgb(100,50,20)"',
     );
     expect(svg).toContain(
-      'points="50,25 50,-25 -50,-25" fill="none" stroke="rgb(255,150,60)"',
+      'points="50,25 50,-25 -50,-25" fill="none" stroke="rgb(255,156,96)"',
     );
   });
 
