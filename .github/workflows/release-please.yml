@@ -83,7 +83,7 @@ jobs:
       # has no need to leave a write-scoped credential on disk for the
       # dependency install further down (and its native-addon build scripts)
       # to find.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -126,7 +126,7 @@ jobs:
       # See the matching comment on publish-npm's checkout: this job's
       # `contents: write` token has no business persisting to disk for
       # dependency install scripts to find.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
