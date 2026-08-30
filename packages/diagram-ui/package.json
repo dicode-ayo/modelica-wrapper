@@ -42,7 +42,7 @@
     "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\""
   },
   "dependencies": {
-    "@awesome.me/webawesome": "^3.7.0",
+    "@awesome.me/webawesome": "^3.12.0",
     "@dicode/diagram-svg": "workspace:*",
     "@dicode/modelica-lang-core": "workspace:*",
     "@dicode/omc-client": "workspace:*",
