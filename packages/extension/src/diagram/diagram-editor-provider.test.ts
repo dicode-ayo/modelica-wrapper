@@ -922,7 +922,7 @@ describe("DiagramEditController: forward write path", () => {
         [0, 0],
         [20, 20],
       ]),
-      staleBase: false,
+      basedOn: 1,
     });
 
     expect(invoked).toContain("updateComponent");
@@ -1210,7 +1210,7 @@ describe("DiagramEditController: forward write path", () => {
     const edit = controller.handle({
       type: "change",
       layout: layout({}),
-      staleBase: false,
+      basedOn: 1,
     });
     await edit;
     await drain();
@@ -1251,7 +1251,7 @@ describe("DiagramEditController: forward write path", () => {
     const edit = controller.handle({
       type: "change",
       layout: layout({}),
-      staleBase: false,
+      basedOn: 1,
     });
     await edit;
     await drain();
@@ -1437,7 +1437,7 @@ describe("DiagramEditController: reconciling reports", () => {
       controller.handle({
         type: "change",
         layout: movedComponent(AT(x)),
-        staleBase: false,
+        basedOn: 1,
       }),
     );
     await Promise.all(reports);
@@ -1479,7 +1479,7 @@ describe("DiagramEditController: reconciling reports", () => {
       void controller.handle({
         type: "change",
         layout: movedComponent(AT(0)),
-        staleBase: false,
+        basedOn: 1,
       });
     };
     await controller.handle({
@@ -1517,7 +1517,7 @@ describe("DiagramEditController: reconciling reports", () => {
           { from: "Pkg.M", shapes: [RECT, RECT] },
         ] as unknown as DiagramLayout["diagramLayers"],
       }),
-      staleBase: false,
+      basedOn: 1,
     });
     await drain();
 
@@ -1555,7 +1555,7 @@ describe("DiagramEditController: reconciling reports", () => {
       void controller.handle({
         type: "change",
         layout: layout({}),
-        staleBase: false,
+        basedOn: 1,
       });
     };
     await controller.handle({
@@ -1586,7 +1586,7 @@ describe("DiagramEditController: reconciling reports", () => {
     await controller.handle({
       type: "change",
       layout: movedComponent(AT(0)),
-      staleBase: false,
+      basedOn: 1,
     });
 
     expect(invoked).toContain("updateComponent");
@@ -1610,7 +1610,7 @@ describe("DiagramEditController: reconciling reports", () => {
     await controller.handle({
       type: "change",
       layout: movedComponent(AT(0)),
-      staleBase: false,
+      basedOn: 1,
     });
     await drain();
 
@@ -1649,13 +1649,13 @@ describe("DiagramEditController: reconciling reports", () => {
       void controller.handle({
         type: "change",
         layout: movedComponent(AT(10)),
-        staleBase: false,
+        basedOn: 1,
       });
     };
     await controller.handle({
       type: "change",
       layout: movedComponent(AT(0)),
-      staleBase: false,
+      basedOn: 1,
     });
     await drain();
 
@@ -1687,7 +1687,7 @@ describe("DiagramEditController: reconciling reports", () => {
     await controller.handle({
       type: "change",
       layout: layout({}),
-      staleBase: false,
+      basedOn: 1,
     });
     await drain();
 
@@ -1766,7 +1766,9 @@ describe("DiagramEditController: stale-base reconcile (issue #408)", () => {
         [20, 20],
         [40, 40],
       ]),
-      staleBase: true,
+      // Echoes a stamp the controller has moved past — the report was
+      // computed without sight of the layout carrying gain2.
+      basedOn: 0,
     });
     await drain();
 
@@ -1802,7 +1804,124 @@ describe("DiagramEditController: stale-base reconcile (issue #408)", () => {
     await controller.handle({
       type: "change",
       layout: layout({}), // report: no components at all — a real deletion
-      staleBase: false,
+      basedOn: 1,
+    });
+    await drain();
+
+    expect(invoked).toContain("deleteComponent");
+    controller.dispose();
+  });
+});
+
+describe("DiagramEditController: superseded-report reconcile (issue #513)", () => {
+  /** The class after a drop: it holds `gain1`, which the report — computed
+   *  while the drop's own layout push was still on its way — never saw. */
+  const DROPPED = instanceWithComponent("gain1", [
+    [10, 10],
+    [30, 30],
+  ]);
+
+  it("does not read a component as deleted by the report its layout push was withheld behind", async () => {
+    // The webview commits a gesture while the drop's OMC round-trip is in
+    // flight, so the report reaches the controller before the drop's
+    // `publishLayout` — which then withholds the push behind it. The report
+    // was computed against a layout with no `gain1`, and its `basedOn` says
+    // so: reconciling it as if it had seen everything would read `gain1` as a
+    // user deletion.
+    let interleave: (() => void) | undefined;
+    const { client, invoked } = makeEditClient({
+      instance: DROPPED,
+      onInvoke: (fn) => {
+        // The add path's own re-fetch, which runs just before it publishes.
+        if (fn !== "getModelInstance") return;
+        const fire = interleave;
+        interleave = undefined;
+        fire?.();
+      },
+    });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      layout({}),
+      factory,
+    );
+
+    interleave = () => {
+      void controller.handle({
+        type: "change",
+        // The webview's whole world at commit time: still no gain1.
+        layout: layout({}),
+        basedOn: 1,
+      });
+    };
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 5, y: 5 },
+    });
+    await drain();
+
+    expect(invoked).not.toContain("deleteComponent");
+    // The withheld push is not lost: the report's reconcile settles the
+    // webview onto the layout carrying gain1.
+    expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
+    controller.dispose();
+  });
+
+  it("does not read a component as deleted by a report that crossed its layout push on the wire", async () => {
+    const { client, invoked } = makeEditClient({ instance: DROPPED });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      layout({}),
+      factory,
+    );
+
+    // The drop completes and its layout push goes out...
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 5, y: 5 },
+    });
+    // ...but this report was already in flight, flushed before that push
+    // reached the webview — `basedOn` still names the init layout.
+    await controller.handle({
+      type: "change",
+      layout: layout({}),
+      basedOn: 1,
+    });
+    await drain();
+
+    expect(invoked).not.toContain("deleteComponent");
+    // The forced settle resyncs the webview onto what its report missed.
+    expect(posted.filter((m) => m.type === "layout")).toHaveLength(2);
+    controller.dispose();
+  });
+
+  it("trusts a report raised against the layout the controller last published", async () => {
+    const { client, invoked } = makeEditClient({ instance: DROPPED });
+    const { gate } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      layout({}),
+      factory,
+    );
+
+    await controller.handle({
+      type: "addComponent",
+      className: "Modelica.Blocks.Math.Gain",
+      position: { x: 5, y: 5 },
+    });
+    // The webview applied the drop's push (stamp 2) and the user then deleted
+    // gain1 for real: the report has seen everything, so its omission is an
+    // edit, not a miss.
+    await controller.handle({
+      type: "change",
+      layout: layout({}),
+      basedOn: 2,
     });
     await drain();
 
@@ -2106,7 +2225,7 @@ describe("DiagramEditController: shape properties", () => {
     await controller.handle({
       type: "change",
       layout: shapeLayout(),
-      staleBase: false,
+      basedOn: 1,
     });
     await drain();
 
@@ -2255,7 +2374,7 @@ describe("DiagramEditController: icon mode", () => {
     await controller.handle({
       type: "change",
       layout: iconShapeLayout([RECT]),
-      staleBase: false,
+      basedOn: 1,
     });
 
     expect(invoked).toContain("writeClassGraphics");
@@ -2395,7 +2514,7 @@ describe("DiagramEditController: icon mode", () => {
     await controller.handle({
       type: "change",
       layout: diagramShapeLayout([RECT]),
-      staleBase: false,
+      basedOn: 1,
     });
 
     expect(graphicsWrites[0]).toMatchObject({

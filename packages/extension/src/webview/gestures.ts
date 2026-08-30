@@ -97,6 +97,10 @@ function isBoolean(value: unknown): value is boolean {
   return typeof value === "boolean";
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(isString);
 }
@@ -164,11 +168,14 @@ const GESTURES = {
 
   /**
    * User committed a layout change — the whole layout, not a diff.
-   * `staleBase` — see `CommitSlot.takePush` — flags a report built on a
-   * `layout` push the webview missed.
+   * `basedOn` echoes the `layoutVersion` of the last `init`/`layout` push the
+   * webview applied; a report echoing an older stamp than the host's current
+   * one was computed without sight of a layout the class already holds, and
+   * the host distrusts what such a report omits (see
+   * `DiagramEditController.applyChange`).
    */
   change: gesture({
-    payload: { layout: isDiagramLayout, staleBase: isBoolean },
+    payload: { layout: isDiagramLayout, basedOn: isFiniteNumber },
     ordering: "afterCommit",
     icon: "honored",
   }),

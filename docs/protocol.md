@@ -95,7 +95,7 @@ answer all four.
 | `type` | Payload | Meaning |
 | --- | --- | --- |
 | `ready` | — | Webview finished loading; host sends the parked `init`. |
-| `change` | `{ layout, staleBase }` | User committed a layout change (move/resize/rotate/draw/delete). The whole layout, not a diff. `staleBase` is true when the webview refused or discarded a `layout` push from the host since the last one it applied (a gesture in flight, or a commit already queued) — the host then drops the edit kinds it can't trust from such a report (see `TRUSTED_ON_STALE_BASE` in `diff-layout.ts`) rather than reading them off `layout`'s difference from OMC's real state. |
+| `change` | `{ layout, basedOn }` | User committed a layout change (move/resize/rotate/draw/delete). The whole layout, not a diff. `basedOn` echoes the `layoutVersion` of the last `init`/`layout` push the webview applied; when it trails the host's current stamp, the report was computed without sight of a layout the class already holds — a push the webview refused (a gesture in flight, or a commit already queued), one the report crossed on the wire, or one the host withheld behind the report itself — and the host drops the edit kinds it can't trust from such a report (see `TRUSTED_ON_STALE_BASE` in `diff-layout.ts`) rather than reading them off `layout`'s difference from OMC's real state, then force-settles the webview onto what it missed. |
 | `connectionCreate` | `{ fromKey, toKey, waypoints }` | User dragged from one connector to another. Empty `waypoints` ⇒ auto-route. |
 | `selectionChange` | `{ keys }` | Selection set changed. |
 | `inputFocus` | `{ focused }` | Keyboard focus entered/left an editable field; drives `modelicaDiagramInputFocus`. |
@@ -133,8 +133,8 @@ a misspelled one is rejected at the boundary rather than routed nowhere.
 
 | `type` | Payload | Meaning |
 | --- | --- | --- |
-| `init` | `{ layout, className, readOnly, hasClipboard }` | Sent once after `ready`, to seed the webview. |
-| `layout` | `{ layout }` | Refreshed layout, re-read from OMC after a mutation. Dropped by the webview if a gesture or a held commit means it predates the screen. |
+| `init` | `{ layout, layoutVersion, className, readOnly, hasClipboard }` | Sent once after `ready`, to seed the webview. |
+| `layout` | `{ layout, layoutVersion }` | Refreshed layout, re-read from OMC after a mutation, under a monotonic per-editor stamp. Dropped by the webview if a gesture or a held commit means it predates the screen — the drop is unacknowledged, and the host reads it off the `basedOn` the next `change` echoes. |
 | `clipboard` | `{ hasClipboard }` | The window-wide clipboard filled or emptied; gates the paste affordance. Broadcast to every open editor. |
 | `select` | `{ keys }` | Replace the selection — sent after a paste, so the fresh components are the ones under the next drag. |
 | `error` | `{ message }` | Surface a backend error. |
@@ -248,7 +248,7 @@ sequenceDiagram
     Note over H: layout fetched but parked in the ready gate
     W->>W: load out/webview.js, define om-webview-root element
     W->>H: ready
-    H->>W: init { layout, className, readOnly, hasClipboard }
+    H->>W: init { layout, layoutVersion, className, readOnly, hasClipboard }
     W->>W: render
 ```
 

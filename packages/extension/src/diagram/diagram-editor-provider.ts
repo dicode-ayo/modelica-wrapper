@@ -94,6 +94,14 @@ import {
 export { DIAGRAM_VIEW_TYPE, ICON_VIEW_TYPE };
 
 /**
+ * Stamp of the layout the `init` message seeds the webview with. The
+ * controller's own counter starts here and `publishLayout` bumps it, so the
+ * stamp on the wire and the one reports are checked against never diverge —
+ * `init` goes out before the controller can have published anything.
+ */
+export const INITIAL_LAYOUT_VERSION = 1;
+
+/**
  * Resolve the Modelica class a `.mo` document stands for. The
  * `modelica-source:` virtual scheme encodes the dotted name in its path; a
  * real `file:` `.mo` carries no such mapping, so it returns `undefined` and
@@ -360,6 +368,7 @@ export function resolveDiagramEditor(
         gate.send({
           type: "init",
           layout,
+          layoutVersion: INITIAL_LAYOUT_VERSION,
           className,
           readOnly: !verdict.ok,
           hasClipboard: !diagramClipboard.isEmpty,
@@ -432,10 +441,18 @@ export class DiagramEditController {
   /**
    * The layout the webview last reported, waiting to be reconciled. One slot,
    * not a list: a report supersedes its predecessor rather than following it.
-   * `staleBase` mirrors the report's own bit — see `applyChange`.
+   * `basedOn` is the report's own echo of the layout stamp it was computed
+   * against — see `applyChange`.
    */
-  private pendingChange: { layout: DiagramLayout; staleBase: boolean } | null =
+  private pendingChange: { layout: DiagramLayout; basedOn: number } | null =
     null;
+  /**
+   * Stamp of the canonical layout, bumped by every {@link publishLayout} —
+   * sent or withheld. A report whose `basedOn` trails it was computed without
+   * sight of a layout the class already holds, so what the report omits
+   * cannot be read as a deletion (see `applyChange`).
+   */
+  private layoutVersion = INITIAL_LAYOUT_VERSION;
   /**
    * Set when a settle was suppressed because a report was already queued. The
    * reconcile of that report pays it: a reported edit needs no settle of its
@@ -526,7 +543,7 @@ export class DiagramEditController {
         );
         return this.queue;
       }
-      this.pendingChange = { layout: msg.layout, staleBase: msg.staleBase };
+      this.pendingChange = { layout: msg.layout, basedOn: msg.basedOn };
     }
     return this.enqueue(() => this.dispatch(msg));
   }
@@ -692,7 +709,7 @@ export class DiagramEditController {
     // An earlier unit already took it; this one has nothing left to do.
     if (next === null) return;
     this.pendingChange = null;
-    await this.applyChange(next.layout, next.staleBase);
+    await this.applyChange(next.layout, next.basedOn);
   }
 
   /**
@@ -701,27 +718,30 @@ export class DiagramEditController {
    * between what it holds and what the user is looking at is exactly the set of
    * edits that closes the gap.
    *
-   * `staleBase` is the report's own bit (issue #408): the webview refused or
-   * discarded a `layout` push since the last one it applied, so `next` may be
-   * missing something the class already holds that it was never told about.
-   * `applyDiagramEdits`'s `staleBase` option (see `TRUSTED_ON_STALE_BASE` in
-   * `diff-layout.ts` for which edit kinds that drops, and why) handles the
-   * diff side; a settle is forced here regardless of `settleOwed` so the
-   * webview is resynced onto what it never saw — otherwise it would keep
-   * rendering a diagram missing something the class actually has.
+   * `basedOn` is the report's echo of the layout stamp it was computed
+   * against (issues #408, #513). When it trails `layoutVersion`, `next` may
+   * be missing something the class already holds that the webview was never
+   * told about — a push it refused mid-gesture, one this report crossed on
+   * the wire, or one `publishLayout` withheld behind the report itself. An
+   * entity such a report never saw is indistinguishable at diff time from
+   * one the user deleted, so `applyDiagramEdits`'s `staleBase` option (see
+   * `TRUSTED_ON_STALE_BASE` in `diff-layout.ts` for which edit kinds that
+   * drops, and why) handles the diff side; a settle is forced here regardless
+   * of `settleOwed` so the webview is resynced onto what it never saw —
+   * otherwise it would keep rendering a diagram missing something the class
+   * actually has.
    *
-   * `staleBase` is one bit for the whole report, not per-entity: while it is
-   * set, a genuine edit to something the webview already knew about — not
-   * just a deletion — is dropped alongside the phantom one, and the forced
-   * settle then visually reverts it. Telling the two apart needs the webview
-   * to report what its local base contained, not just that it missed a push.
-   * The window is the gap between a refused push and the forced settle
-   * landing back, so the failure mode is one edit silently not taking effect
-   * rather than data loss.
+   * The distrust is one bit for the whole report, not per-entity: while the
+   * report trails, a genuine edit of an untrusted kind is dropped alongside
+   * the phantom one, and the forced settle then visually reverts it. Telling
+   * the two apart needs the webview to report what its local base contained,
+   * not just which stamp it carried. The window is the gap between the missed
+   * layout and the forced settle landing back, so the failure mode is one
+   * edit silently not taking effect rather than data loss.
    */
   private async applyChange(
     next: DiagramLayout,
-    staleBase: boolean,
+    basedOn: number,
   ): Promise<void> {
     if (this.rejectIfReadOnly()) {
       // The webview has already moved what the user dragged. Nothing else will
@@ -730,6 +750,7 @@ export class DiagramEditController {
       await this.pushCanonicalLayout();
       return;
     }
+    const staleBase = basedOn !== this.layoutVersion;
     const { client, className } = this.deps;
     try {
       const current = await this.refetch(client, className);
@@ -798,18 +819,27 @@ export class DiagramEditController {
   }
 
   /**
-   * Adopt `layout` as canonical, and hand it to the webview unless a further
-   * report is already queued. That report's settle supersedes this one, and
-   * pushing now would put the diagram back on a state the user has moved past.
+   * Adopt `layout` as canonical — bumping the stamp reports are checked
+   * against — and hand it to the webview unless a further report is already
+   * queued. That report's settle supersedes this one, and pushing now would
+   * put the diagram back on a state the user has moved past. Withholding
+   * still bumps: the queued report was computed without sight of this layout,
+   * and the stamp gap is what keeps its omissions from being read as
+   * deletions when it drains (see `applyChange`).
    */
   private publishLayout(layout: DiagramLayout): void {
     this.prevLayout = layout;
+    this.layoutVersion += 1;
     if (this.pendingChange !== null) {
       this.settleOwed = true;
       return;
     }
     this.settleOwed = false;
-    this.deps.gate.send({ type: "layout", layout });
+    this.deps.gate.send({
+      type: "layout",
+      layout,
+      layoutVersion: this.layoutVersion,
+    });
   }
 
   private async onAddComponent(
