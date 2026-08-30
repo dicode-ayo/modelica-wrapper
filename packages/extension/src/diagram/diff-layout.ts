@@ -189,9 +189,20 @@ const TRUSTED_ON_STALE_BASE = {
  * addition while the matching `connectionDeleted` is dropped as untrusted
  * (issue #503) then leaves both in OMC — a duplicated connection, not the
  * `TRUSTED_ON_STALE_BASE` design's accepted "edit silently doesn't take
- * effect" trade-off. A clean 1:1 group already collapses into
- * `connectionRenamed` above and never reaches this addition in the first
- * place, so the exclusion costs nothing there.
+ * effect" trade-off. Group cardinality is deliberately not part of the
+ * test: a 1:1 group only collapses into `connectionRenamed` when
+ * `isReindexRename` also matches waypoints and style, so a lone re-index
+ * whose route was re-drawn falls through to the add loop carrying the same
+ * hazard. The cost is over-flagging a genuinely new connection drawn onto a
+ * base that already had one, which under `staleBase` is dropped and then
+ * resynced by the forced settle (`DiagramEditController.applyChange`).
+ *
+ * `keysForReindexGroups` only groups a connection by ONE re-indexed
+ * endpoint at a time, so a lockstep re-index of BOTH endpoints together
+ * (e.g. `load[1].p → gnd.pin[1]` to `load[2].p → gnd.pin[2]`) shares no
+ * group signature with its own prior connection and isn't caught here —
+ * the same limit `isReindexRename`'s collapse already has for a two-sided
+ * change. Tracked separately (issue #507), not fixed by this function.
  */
 export function isTrustedOnStaleBase(edit: LayoutEdit): boolean {
   if (edit.kind === "connectionAdded" && edit.ambiguousReindex) return false;
@@ -336,16 +347,15 @@ export function diffLayouts(
     next: Conn[];
   }
   const groups = new Map<string, ReindexGroup>();
-  const groupKeyForConn = (c: Conn): string[] => keysForReindexGroups(c);
   for (const c of prevConns) {
-    for (const sig of groupKeyForConn(c)) {
+    for (const sig of keysForReindexGroups(c)) {
       let g = groups.get(sig);
       if (!g) groups.set(sig, (g = { prev: [], next: [] }));
       g.prev.push(c);
     }
   }
   for (const c of nextConns) {
-    for (const sig of groupKeyForConn(c)) {
+    for (const sig of keysForReindexGroups(c)) {
       let g = groups.get(sig);
       if (!g) groups.set(sig, (g = { prev: [], next: [] }));
       g.next.push(c);

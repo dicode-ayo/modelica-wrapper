@@ -743,6 +743,19 @@ describe("diffLayouts", () => {
         expect(add?.ambiguousReindex).toBeUndefined();
       });
 
+      it("flags a genuinely new connection drawn onto an occupied base", () => {
+        // The accepted cost of not gating on group cardinality: pins[1]
+        // survives verbatim and pins[2] is a connection the user just drew,
+        // but the diff can't tell it apart from pins[1] re-indexed, so it is
+        // distrusted under staleBase and resynced by the forced settle.
+        const edits = diffLayouts(
+          multiVectorLayout([1]),
+          multiVectorLayout([1, 2]),
+        );
+        const add = edits.find((e) => e.kind === "connectionAdded");
+        expect(add?.ambiguousReindex).toBe(true);
+      });
+
       it("isTrustedOnStaleBase distrusts an ambiguousReindex addition but trusts a plain one", () => {
         expect(
           isTrustedOnStaleBase({
