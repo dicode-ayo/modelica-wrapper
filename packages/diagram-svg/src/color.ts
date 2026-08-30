@@ -30,3 +30,18 @@ export function clampByte(n: number): number {
   if (n > 255) return 255;
   return Math.round(n);
 }
+
+/**
+ * Light / dark edge tones for a `Rectangle.borderPattern` bevel, derived
+ * from the face (fill) color with Qt's palette factors — `lighter(150)` /
+ * `darker(200)` — because OMEdit draws these bevels via `qDrawShadePanel`
+ * with exactly that palette. A black face yields black on both edges,
+ * matching Qt.
+ */
+export function bevelColors(face: Color): { light: Color; dark: Color } {
+  const [r, g, b] = face;
+  return {
+    light: [clampByte(r * 1.5), clampByte(g * 1.5), clampByte(b * 1.5)],
+    dark: [clampByte(r / 2), clampByte(g / 2), clampByte(b / 2)],
+  };
+}

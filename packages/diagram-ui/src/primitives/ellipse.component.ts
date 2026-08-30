@@ -45,6 +45,13 @@ export class OmEllipse extends OmShapePrimitive {
     return this.shape?.pattern;
   }
 
+  protected override strokeThickness(): {
+    thickness: number | undefined;
+  } | null {
+    const s = this.shape;
+    return s && s.pattern !== "None" ? { thickness: s.lineThickness } : null;
+  }
+
   protected override buildMeshes(
     parent: Container,
     z: number,
