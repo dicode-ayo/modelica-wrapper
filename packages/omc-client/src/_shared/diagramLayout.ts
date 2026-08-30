@@ -331,6 +331,14 @@ export interface ConnectorInstance {
    * diagram.
    */
   diagramPlacement?: Placement | undefined;
+  /**
+   * The connector's icon-view `iconTransformation`, captured when a
+   * diagram-kind layout read the `transformation` and the declaration
+   * defines both — the mirror of `diagramPlacement` on an icon-kind
+   * layout. Write paths (copy/paste) re-emit it so a declaration rebuilt
+   * from `placement` alone keeps its position on the icon.
+   */
+  iconPlacement?: Placement | undefined;
   comment?: string | undefined;
   prefixes?: Prefixes | undefined;
   source?: SourceLocation | undefined;
@@ -601,6 +609,8 @@ export const ConnectorInstanceSchema = z
     name: z.string(),
     classRef: z.string(),
     placement: PlacementSchema,
+    diagramPlacement: PlacementSchema.optional(),
+    iconPlacement: PlacementSchema.optional(),
     comment: z.string().optional(),
     source: SourceLocationSchema.optional(),
   })
