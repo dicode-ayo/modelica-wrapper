@@ -501,10 +501,10 @@ function instanceFromSubComponent(
  * element in the enclosing class's diagram layer, `iconTransformation` in
  * its icon layer — so a standalone connector takes the transformation
  * matching the layout's `kind`, each falling back to the other when only
- * one is declared (`placementFor`). An icon-kind layout additionally
- * carries the unread diagram-view `transformation` as `diagramPlacement`
- * so write paths can re-emit both keywords; a diagram-kind layout's
- * `placement` already is the transformation.
+ * one is declared (`placementFor`). Each kind additionally carries the
+ * unread counterpart when the declaration defines both — `diagramPlacement`
+ * on an icon-kind layout, `iconPlacement` on a diagram-kind one — so write
+ * paths can re-emit both keywords.
  */
 function instanceFromConnector(
   el: ComponentElement,
@@ -523,6 +523,9 @@ function instanceFromConnector(
   if (kind === "icon") {
     const diagram = counterpartPlacementFor(el, "icon");
     if (diagram) inst.diagramPlacement = diagram;
+  } else {
+    const icon = counterpartPlacementFor(el, "diagram");
+    if (icon) inst.iconPlacement = icon;
   }
   if (el.comment !== undefined) inst.comment = el.comment;
   if (el.prefixes !== undefined) inst.prefixes = el.prefixes;

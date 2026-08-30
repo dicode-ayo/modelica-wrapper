@@ -1,6 +1,7 @@
 import { shapeToRecord } from "@dicode/omc-client";
 import type {
   ConnectionEndpoint,
+  ConnectorInstance,
   DiagramLayout,
   Placement,
   Prefixes,
@@ -106,15 +107,16 @@ export async function captureClipboardItems(
     if (parsed.kind === "connector" && parsed.componentName === null) {
       const connector = layout.connectors[parsed.nodeId];
       if (connector === undefined) continue;
+      const views = connectorViewPlacements(layout.kind, connector);
       items.push(
         await captureComponent(
           client,
           layout.className,
           parsed.nodeId,
           connector.classRef,
-          connector.placement,
+          views.placement,
           {
-            diagramPlacement: connector.diagramPlacement,
+            diagramPlacement: views.diagramPlacement,
             prefixes: connector.prefixes,
             comment: connector.comment,
           },
@@ -131,6 +133,38 @@ export async function captureClipboardItems(
   }
   items.push(...connectionsWithin(layout, items));
   return items;
+}
+
+/**
+ * Map a connector's per-view placements onto the clipboard item's shape:
+ * `placementClause` re-emits the item's own fields as `iconTransformation`
+ * and `diagramPlacement` as `transformation` whenever both are present, so
+ * a diagram-kind layout — whose `placement` IS the diagram transformation
+ * and whose icon counterpart rides on `iconPlacement` — swaps the two here.
+ * With no counterpart the declaration had a single keyword, and the paste
+ * writes a single `transformation` back.
+ *
+ * `Placement.visible` sits on the annotation, not on either transformation,
+ * and `placementFor` attaches it to the kind-view placement — so it moves
+ * with the swap onto the item's own fields.
+ */
+function connectorViewPlacements(
+  kind: DiagramLayout["kind"],
+  connector: ConnectorInstance,
+): { placement: Placement; diagramPlacement: Placement | undefined } {
+  if (kind === "diagram" && connector.iconPlacement !== undefined) {
+    return {
+      placement:
+        connector.placement.visible === false
+          ? { ...connector.iconPlacement, visible: false }
+          : connector.iconPlacement,
+      diagramPlacement: connector.placement,
+    };
+  }
+  return {
+    placement: connector.placement,
+    diagramPlacement: connector.diagramPlacement,
+  };
 }
 
 /**
