@@ -16,8 +16,8 @@ describe("fitFontSize", () => {
 
   it("fits the width when the string is long — it shrinks instead of overflowing", () => {
     // A long %name: measured 1000×110 at trial 100. A height-only fit
-    // (the pre-measurement heuristic) would keep ~18 units and overflow
-    // the 100-unit box; the width fit shrinks to 10.
+    // would keep ~18 units and overflow the 100-unit box; the width fit
+    // shrinks to 10.
     const fitted = fitFontSize(100, 20, 1000, 110, 100);
     expect(fitted).toBeCloseTo(10);
     const heightOnly = 100 * (20 / 110);
@@ -53,8 +53,8 @@ describe("quantizeTextResolution", () => {
   });
 
   it("lowers the resolution under minification (power-of-two steps)", () => {
-    // Pre-fix the resolution never dropped below 1, so a heavily
-    // minified label sampled a full-size atlas with no mip chain.
+    // A resolution floored at 1 would make a heavily minified label
+    // sample a full-size atlas with no mip chain.
     expect(quantizeTextResolution(0.6)).toBe(1);
     expect(quantizeTextResolution(0.5)).toBe(0.5);
     expect(quantizeTextResolution(0.3)).toBe(0.5);
