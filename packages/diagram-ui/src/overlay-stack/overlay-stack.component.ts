@@ -18,10 +18,7 @@ import { customElement, property } from "lit/decorators.js";
 import { omTokens } from "@dicode/ui-common";
 
 export type OverlayAnchor =
-  | "top-right"
-  | "top-left"
-  | "bottom-right"
-  | "bottom-left";
+  "top-right" | "top-left" | "bottom-right" | "bottom-left";
 
 @customElement("om-overlay-stack")
 export class OmOverlayStack extends LitElement {

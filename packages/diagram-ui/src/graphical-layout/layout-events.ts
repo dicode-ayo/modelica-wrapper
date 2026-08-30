@@ -70,8 +70,7 @@ export interface ChangeClassRequestDetail {
  * was selected, rather than carrying a payload of its own.
  */
 export type ClipboardRequestDetail =
-  | { action: "copy"; keys: string[] }
-  | { action: "paste" };
+  { action: "copy"; keys: string[] } | { action: "paste" };
 
 /**
  * Event-name → detail-type map. Source of truth shared by:

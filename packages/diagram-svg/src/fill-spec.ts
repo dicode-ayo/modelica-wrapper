@@ -57,12 +57,7 @@ export interface RadialGradientSpec {
 }
 
 export type HatchDirection =
-  | "horizontal"
-  | "vertical"
-  | "forward"
-  | "backward"
-  | "cross"
-  | "cross-diag";
+  "horizontal" | "vertical" | "forward" | "backward" | "cross" | "cross-diag";
 
 /**
  * Hatch: `line` lines of the given `direction` over a `background` fill.

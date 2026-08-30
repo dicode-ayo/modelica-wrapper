@@ -547,12 +547,7 @@ export function expectStringList(v: Value): string[] {
 
 /** Convert a parsed Value into JSON-serializable plain data. */
 export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | Json[]
-  | { [k: string]: Json };
+  string | number | boolean | null | Json[] | { [k: string]: Json };
 
 export function toJson(v: Value): Json {
   switch (v.kind) {

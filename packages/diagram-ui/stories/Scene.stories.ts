@@ -49,8 +49,7 @@ const meta: Meta<StoryArgs> = {
         class="om-scene-status"
         style="font-size:11px;color:#444;margin:8px 0;"
       >
-zoom=${zoom.toFixed(2)}  panX=${panX.toFixed(2)}  panY=${panY.toFixed(2)}</pre
-      >
+zoom=${zoom.toFixed(2)}  panX=${panX.toFixed(2)}  panY=${panY.toFixed(2)}</pre>
     </div>
   `,
   argTypes: {

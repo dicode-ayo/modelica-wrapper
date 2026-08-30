@@ -137,12 +137,16 @@ export class OmDocumentationInterface extends LitElement {
                 href=${`modelica://${node.name}`}
                 @click=${(e: Event) => this.onOpenClass(e, node.name)}
                 >${node.name}</a
-              >${node.comment
-                ? html` <span class="comment">(${node.comment})</span>`
-                : nothing}
-              ${node.children.length > 0
-                ? this.renderExtendsList(node.children)
-                : nothing}
+              >${
+                node.comment
+                  ? html` <span class="comment">(${node.comment})</span>`
+                  : nothing
+              }
+              ${
+                node.children.length > 0
+                  ? this.renderExtendsList(node.children)
+                  : nothing
+              }
             </li>
           `,
         )}
@@ -220,9 +224,13 @@ export class OmDocumentationInterface extends LitElement {
               (row) => html`
                 <tr>
                   <td>
-                    <code>${row.typeName}</code>${row.direction
-                      ? html` <span class="direction">(${row.direction})</span>`
-                      : nothing}
+                    <code>${row.typeName}</code>${
+                      row.direction
+                        ? html` <span class="direction"
+                            >(${row.direction})</span
+                          >`
+                        : nothing
+                    }
                   </td>
                   <td><code>${row.name}</code></td>
                   <td>${row.description ?? nothing}</td>

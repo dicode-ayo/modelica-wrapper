@@ -475,21 +475,25 @@ export class OmLibraryTree extends LitElement {
           class="indent"
           style=${styleMap({ "--om-tree-level": String(level) })}
         ></span>
-        ${item.isFolder()
-          ? html`<span
-              class="chevron"
-              @pointerdown=${(e: Event) => e.stopPropagation()}
-              @click=${(e: Event) => this.onChevronClick(e, item)}
-              >${item.isExpanded() ? "▾" : "▸"}</span
-            >`
-          : html`<span class="leaf-dot">•</span>`}
-        ${loading
-          ? html`<span class="label loading">Loading…</span>`
-          : this.renderClassContent(
-              node.className,
-              node.restriction,
-              node.label,
-            )}
+        ${
+          item.isFolder()
+            ? html`<span
+                class="chevron"
+                @pointerdown=${(e: Event) => e.stopPropagation()}
+                @click=${(e: Event) => this.onChevronClick(e, item)}
+                >${item.isExpanded() ? "▾" : "▸"}</span
+              >`
+            : html`<span class="leaf-dot">•</span>`
+        }
+        ${
+          loading
+            ? html`<span class="label loading">Loading…</span>`
+            : this.renderClassContent(
+                node.className,
+                node.restriction,
+                node.label,
+              )
+        }
       </div>
     `;
   }
@@ -506,9 +510,11 @@ export class OmLibraryTree extends LitElement {
       <span class="label"
         >${opts.highlight ? this.highlight(label) : label}</span
       >
-      ${opts.qualifier
-        ? html`<span class="qualifier">${opts.qualifier}</span>`
-        : nothing}
+      ${
+        opts.qualifier
+          ? html`<span class="qualifier">${opts.qualifier}</span>`
+          : nothing
+      }
     `;
   }
 
@@ -570,9 +576,11 @@ export class OmLibraryTree extends LitElement {
         role="option"
         tabindex="0"
         data-selected=${this.selectedClassName === q ? "true" : "false"}
-        draggable=${!this.placementDrag && isPlaceable(q, row.restriction)
-          ? "true"
-          : "false"}
+        draggable=${
+          !this.placementDrag && isPlaceable(q, row.restriction)
+            ? "true"
+            : "false"
+        }
         @click=${() => this.onSearchRowClick(q)}
         @dblclick=${() => this.fireSelect(q, row.restriction)}
         @keydown=${(e: KeyboardEvent) =>
@@ -588,14 +596,16 @@ export class OmLibraryTree extends LitElement {
           class="indent"
           style=${styleMap({ "--om-tree-level": String(row.level) })}
         ></span>
-        ${row.hasChildren
-          ? html`<span
-              class="chevron"
-              @pointerdown=${(e: Event) => e.stopPropagation()}
-              @click=${(e: Event) => e.stopPropagation()}
-              >▾</span
-            >`
-          : html`<span class="leaf-dot">•</span>`}
+        ${
+          row.hasChildren
+            ? html`<span
+                class="chevron"
+                @pointerdown=${(e: Event) => e.stopPropagation()}
+                @click=${(e: Event) => e.stopPropagation()}
+                >▾</span
+              >`
+            : html`<span class="leaf-dot">•</span>`
+        }
         ${this.renderClassContent(q, row.restriction, row.label, {
           highlight: true,
         })}
