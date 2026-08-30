@@ -499,7 +499,7 @@
     "@dicode/omc-client": "workspace:*",
     "@dicode/result-ui": "workspace:*",
     "@dicode/ui-common": "workspace:*",
-    "lit": "^3.2.0",
+    "lit": "^3.3.3",
     "web-tree-sitter": "^0.25.10",
     "zeromq": "^6.1.0"
   },
