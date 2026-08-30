@@ -51,12 +51,9 @@ import {
   type FileOwnerClient,
 } from "./file-owner.js";
 import {
-  bufferClassNames,
-  moreThanOne,
+  bufferRefusal,
   multiEntityMessage,
   multipleTopLevelClasses,
-  renamedClass,
-  renamedClassMessage,
 } from "./single-entity-file.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
 import type { WriteVerdicts } from "./write-verdict.js";
@@ -194,20 +191,14 @@ export class ModelicaSourceProvider implements vscode.FileSystemProvider {
     // the buffer screen above and the `loadString` below key off this same
     // filename: the screen exists to predict what `loadString` binds to.
     const bindFilename = onDisk ? info.fileName : uri.toString();
-    const bufferClasses = await bufferClassNames(client, text, bindFilename);
-    if (bufferClasses !== undefined) {
-      const inBuffer = moreThanOne(bufferClasses);
-      if (inBuffer) {
-        throw vscode.FileSystemError.Unavailable(
-          multiEntityMessage(onDisk ? info.fileName : typeName, inBuffer),
-        );
-      }
-      const renamed = renamedClass(bufferClasses, typeName);
-      if (renamed !== undefined) {
-        throw vscode.FileSystemError.Unavailable(
-          renamedClassMessage(typeName, renamed),
-        );
-      }
+    const refusal = await bufferRefusal(client, {
+      data: text,
+      filename: bindFilename,
+      expected: typeName,
+      label: onDisk ? info.fileName : typeName,
+    });
+    if (refusal !== undefined) {
+      throw vscode.FileSystemError.Unavailable(refusal);
     }
 
     // Drain any stale errors so the post-loadString check below only sees

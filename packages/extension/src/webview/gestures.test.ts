@@ -26,7 +26,7 @@ function layout(): DiagramLayout {
 /** One well-formed message per declared gesture. */
 const SAMPLES: WebviewToExtension[] = [
   { type: "ready" },
-  { type: "change", layout: layout() },
+  { type: "change", layout: layout(), staleBase: false },
   {
     type: "connectionCreate",
     fromKey: "a",
@@ -40,7 +40,12 @@ const SAMPLES: WebviewToExtension[] = [
   { type: "actionParameters" },
   { type: "editComponent", componentName: "r1" },
   { type: "editShape", key: "shape:line:0" },
-  { type: "parametersSubmit", kind: "classParams", values: { R: 1 } },
+  {
+    type: "parametersSubmit",
+    kind: "classParams",
+    values: { R: 1 },
+    dirty: ["R"],
+  },
   { type: "parametersCancel", kind: "simulate" },
   { type: "resetComponentParameters", componentName: "r1" },
   { type: "addComponent", className: "A.B", position: { x: 1, y: 2 } },
@@ -91,9 +96,28 @@ describe("isGestureMessage", () => {
     );
   });
 
+  it("rejects a parametersSubmit whose dirty is not a string array", () => {
+    const reject = vi.fn();
+    const raw = {
+      type: "parametersSubmit",
+      kind: "classParams",
+      values: {},
+      dirty: "R",
+    };
+    expect(isGestureMessage(raw, reject)).toBe(false);
+    expect(reject).toHaveBeenCalledWith(
+      expect.stringContaining("parametersSubmit.dirty"),
+    );
+  });
+
   it("rejects a misspelled form kind at the boundary, not by dropping the write", () => {
     const reject = vi.fn();
-    const raw = { type: "parametersSubmit", kind: "classParams ", values: {} };
+    const raw = {
+      type: "parametersSubmit",
+      kind: "classParams ",
+      values: {},
+      dirty: [],
+    };
     expect(isGestureMessage(raw, reject)).toBe(false);
     expect(reject).toHaveBeenCalledWith(
       expect.stringContaining("parametersSubmit.kind"),
@@ -103,14 +127,32 @@ describe("isGestureMessage", () => {
   it("rejects a change whose layout is not one", () => {
     const reject = vi.fn();
     expect(
-      isGestureMessage({ type: "change", layout: { kind: "x" } }, reject),
+      isGestureMessage(
+        { type: "change", layout: { kind: "x" }, staleBase: false },
+        reject,
+      ),
     ).toBe(false);
+  });
+
+  it("rejects a change whose staleBase is not a boolean", () => {
+    const reject = vi.fn();
+    expect(
+      isGestureMessage(
+        { type: "change", layout: layout(), staleBase: "false" },
+        reject,
+      ),
+    ).toBe(false);
+    expect(reject).toHaveBeenCalledWith(
+      expect.stringContaining("change.staleBase"),
+    );
   });
 });
 
 describe("iconHonorsGesture", () => {
   it("honors shape work, connector placement and the clipboard", () => {
-    expect(iconHonorsGesture({ type: "change", layout: layout() })).toBe(true);
+    expect(
+      iconHonorsGesture({ type: "change", layout: layout(), staleBase: false }),
+    ).toBe(true);
     expect(iconHonorsGesture({ type: "editShape", key: "shape:line:0" })).toBe(
       true,
     );
@@ -148,6 +190,7 @@ describe("iconHonorsGesture", () => {
         type: "parametersSubmit",
         kind: "shapeProperties",
         values: {},
+        dirty: [],
       }),
     ).toBe(true);
     expect(
@@ -155,6 +198,7 @@ describe("iconHonorsGesture", () => {
         type: "parametersSubmit",
         kind: "simulate",
         values: {},
+        dirty: [],
       }),
     ).toBe(false);
     expect(

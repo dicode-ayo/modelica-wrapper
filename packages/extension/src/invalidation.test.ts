@@ -64,4 +64,39 @@ describe("ClassInvalidationRegistry", () => {
 
     expect(doomed).toHaveBeenCalledWith("Lib.A");
   });
+
+  it("fans sessionReplaced out to every registered listener, independently of classChanged", () => {
+    const registry = new ClassInvalidationRegistry();
+    const classListener = vi.fn();
+    const sessionListener = vi.fn();
+    registry.register(classListener);
+    registry.registerSessionReplaced(sessionListener);
+
+    registry.sessionReplaced();
+
+    expect(sessionListener).toHaveBeenCalledTimes(1);
+    expect(classListener).not.toHaveBeenCalled();
+  });
+
+  it("stops delivering sessionReplaced to a disposed listener", () => {
+    const registry = new ClassInvalidationRegistry();
+    const listener = vi.fn();
+    registry.registerSessionReplaced(listener).dispose();
+
+    registry.sessionReplaced();
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("keeps fanning sessionReplaced out past a listener that throws", () => {
+    const registry = new ClassInvalidationRegistry();
+    const later = vi.fn();
+    registry.registerSessionReplaced(() => {
+      throw new Error("cache exploded");
+    });
+    registry.registerSessionReplaced(later);
+
+    expect(() => registry.sessionReplaced()).not.toThrow();
+    expect(later).toHaveBeenCalledTimes(1);
+  });
 });

@@ -408,9 +408,9 @@ export class DocumentationEditController {
    */
   private async reverseSync(): Promise<void> {
     if (this.rejectIfReadOnly()) return;
-    const { client, document } = this.deps;
+    const { client, className, document } = this.deps;
     try {
-      const reload = await reloadBufferIntoOmc(client, document);
+      const reload = await reloadBufferIntoOmc(client, document, className);
       if (!reload.ok) {
         this.reportError(reload.message);
         return;

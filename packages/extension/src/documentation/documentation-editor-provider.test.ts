@@ -540,6 +540,7 @@ function makeEditClient(
       calls.loaded.push(a.data);
       return Promise.resolve({ success: opts?.loadOk ?? true });
     }),
+    parseString: vi.fn(() => Promise.resolve({ classNames: [CLASS] })),
     getErrorString: vi.fn(() => Promise.resolve({ errorString: "" })),
     uriToFilename: vi.fn(() => Promise.resolve({ filename: "" })),
   };

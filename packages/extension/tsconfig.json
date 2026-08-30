@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "rootDir": "src",
+    "rootDir": ".",
     "outDir": "out",
     "module": "ESNext",
     "moduleResolution": "Bundler"
@@ -12,13 +12,15 @@
     "src/language/**/*.ts",
     "src/results/**/*.ts",
     "src/webview/protocol.ts",
-    "src/webview/postprocessing-protocol.ts"
+    "src/webview/postprocessing-protocol.ts",
+    "src/**/*.test.ts",
+    "test-support/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "out",
-    "**/*.test.ts",
     "src/webview/webview-entry.ts",
-    "src/webview/postprocessing-entry.ts"
+    "src/webview/postprocessing-entry.ts",
+    "src/webview/**/*.test.ts"
   ]
 }

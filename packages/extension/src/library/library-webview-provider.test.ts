@@ -7,7 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { OmcClient } from "@dicode/omc-client";
+import type { ModelInstance, OmcClient, OmcFnName } from "@dicode/omc-client";
 
 import { DiagramEditorProvider } from "../diagram/diagram-editor-provider.js";
 import { ClassInvalidationRegistry } from "../invalidation.js";
@@ -98,7 +98,7 @@ function makeProvider() {
 
 /** A class with no drawable graphics — the icon render still routes through an
  *  OMC read, which is what the freshness probes assert on. */
-const EMPTY_ICON_INSTANCE = {
+const EMPTY_ICON_INSTANCE: ModelInstance = {
   name: "Lib.A",
   restriction: "model",
   annotation: {
@@ -118,7 +118,7 @@ const EMPTY_ICON_INSTANCE = {
 /** `Lib.Sub`, whose icon is inherited from `baseName`. Rendering it records
  *  the base as a dependency, so an edit to the base cascades back to `Lib.Sub`.
  *  Varying `baseName` exercises the reverse-edge prune when the chain changes. */
-function subtypeInstance(baseName: string) {
+function subtypeInstance(baseName: string): ModelInstance {
   return {
     name: "Lib.Sub",
     restriction: "model",
@@ -158,7 +158,9 @@ function makeInstanceProbe() {
     getClassNames: vi.fn(async () => ({ classNames: ["Modelica"] })),
     searchClassNames: vi.fn(async () => ({ classNames: [] })),
     getClassRestriction: vi.fn(async () => ({ restriction: "model" })),
-    invoke: vi.fn(async () => ({ instance: EMPTY_ICON_INSTANCE })),
+    invoke: vi.fn(async (_fn: OmcFnName, _input: object) => ({
+      instance: EMPTY_ICON_INSTANCE,
+    })),
   };
   const uri = {
     fsPath: "/ext",
@@ -170,7 +172,7 @@ function makeInstanceProbe() {
     async () => client as unknown as OmcClient,
     invalidation,
   );
-  const apis = (): unknown[] => client.invoke.mock.calls.map((c) => c[0]);
+  const apis = (): OmcFnName[] => client.invoke.mock.calls.map((c) => c[0]);
   return { provider, client, apis, invalidation };
 }
 
@@ -370,6 +372,49 @@ describe("LibraryWebviewProvider", () => {
     send({ type: "libraryIcon", requestId: "2", className: "Lib.A" });
     await flush();
     expect(client.invoke.mock.calls.length).toBeGreaterThan(afterWarm);
+  });
+
+  it("wholesale-reloads on sessionReplaced (`:reset`), without a window reload", () => {
+    // `:reset` wipes OMC's whole AST — there is no single changed class to
+    // name, so this is the signal that keeps the tree from showing a dead
+    // session's listing until the user manually reloads the window.
+    const { provider, invalidation } = makeProvider();
+    const { view, posted } = fakeView();
+    provider.resolveWebviewView(view);
+
+    invalidation.sessionReplaced();
+
+    expect(posted.at(-1)).toEqual({ type: "reload" });
+  });
+
+  it("drops the icon cache on sessionReplaced (`:reset`), not just the tree listing", async () => {
+    const { provider, client, invalidation } = makeProvider();
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+
+    send({ type: "libraryIcon", requestId: "1", className: "Modelica" });
+    await flush();
+    const afterFirst = client.invoke.mock.calls.length;
+
+    invalidation.sessionReplaced();
+
+    send({ type: "libraryIcon", requestId: "2", className: "Modelica" });
+    await flush();
+
+    // A cache hit would leave the call count unchanged; the fresh session's
+    // reload must force a re-render instead of serving pre-reset bytes.
+    expect(client.invoke.mock.calls.length).toBeGreaterThan(afterFirst);
+  });
+
+  it("stops re-listing on sessionReplaced once disposed", () => {
+    const { provider, invalidation } = makeProvider();
+    const { view, posted } = fakeView();
+    provider.resolveWebviewView(view);
+    provider.dispose();
+
+    invalidation.sessionReplaced();
+
+    expect(posted).toEqual([]);
   });
 
   it("iconChanged evicts only the named class and posts the targeted message", async () => {

@@ -1,0 +1,804 @@
+/**
+ * `ResultViewEditorProvider` pins the invariants the `*.omresults` webview
+ * wiring rests on: `removeResult` / `renameResult` land as real `WorkspaceEdit`s,
+ * and `missingResults` is produced on `ready`, keyed by which results' backing
+ * files don't exist on disk.
+ *
+ * `vscode` is aliased to the in-repo mock via the extension's vitest config.
+ */
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as vscode from "vscode";
+
+import * as vscodeMock from "../../test-support/vscode-mock.js";
+import {
+  appliedEdits,
+  completeApply,
+  emitFileChange,
+  emitFileCreate,
+  emitFileDelete,
+  fileSystemWatchers,
+  pendingApplies,
+  resetFileSystemWatchers,
+  setApplyEditManual,
+  setApplyEditResult,
+} from "../../test-support/vscode-mock.js";
+
+import type {
+  ExtensionToWebview,
+  WebviewToExtension,
+} from "../webview/postprocessing-protocol.js";
+import { log } from "../logger.js";
+import { parseResultViewDoc, serializeResultViewDoc } from "./result-doc.js";
+import type { ResultReader } from "./result-cache.js";
+import { ResultViewEditorProvider } from "./result-view-provider.js";
+
+vi.mock("../logger.js", () => ({
+  log: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    show: vi.fn(),
+    dispose: vi.fn(),
+  },
+}));
+
+const EXT_URI = vscode.Uri.file("/ext");
+
+/** A result view with one result whose fake `statMtimeMs` resolves ("exists")
+ *  and one where it resolves `undefined` ("missing"), so a single document
+ *  exercises both sides of `missingResults`. */
+const DOC_TEXT = JSON.stringify({
+  version: 1,
+  results: [
+    { id: "r1", label: "run-1", path: "gone.mat", source: "simulate" },
+    { id: "r2", label: "run-2", path: "present.mat", source: "simulate" },
+  ],
+  cards: [],
+});
+
+/** Fake `statMtimeMs`: resolves for every path except `gone.mat`. */
+function fakeStatMtimeMs(): (path: string) => Promise<number | undefined> {
+  return (path: string) =>
+    Promise.resolve(path.endsWith("gone.mat") ? undefined : 100);
+}
+
+function docFor(text = DOC_TEXT): vscode.TextDocument {
+  return {
+    uri: vscode.Uri.file("/ws/run.omresults"),
+    getText: () => text,
+    lineCount: 1,
+  } as unknown as vscode.TextDocument;
+}
+
+/** A `docFor` whose `getText()` reflects the last edit `landEdit` was told
+ *  about — unlike `docFor`'s fixed closure, the mock's `applyEdit` doesn't
+ *  mutate what `getText()` returns on its own (it only records into
+ *  `appliedEdits`), so a test pinning the id-backfill round trip needs a
+ *  document double that actually advances. */
+function mutableDocFor(text: string): {
+  document: vscode.TextDocument;
+  landEdit: () => void;
+} {
+  let current = text;
+  const document = {
+    uri: vscode.Uri.file("/ws/run.omresults"),
+    getText: () => current,
+    lineCount: 1,
+  } as unknown as vscode.TextDocument;
+  return {
+    document,
+    landEdit: () => {
+      const applied = appliedEdits.at(-1)?.replacements[0]?.text;
+      if (applied !== undefined) current = applied;
+    },
+  };
+}
+
+function fakeReader(): ResultReader {
+  return {
+    readSimulationResultVars: () =>
+      Promise.resolve({ vars: ["time", "motor.w"] }),
+    readSimulationResult: () =>
+      Promise.resolve({
+        result: [
+          [0, 1, 2],
+          [10, 20, 30],
+        ],
+      }),
+    closeSimulationResultFile: () => Promise.resolve(undefined),
+  };
+}
+
+/** Same two results as `DOC_TEXT`, plus a plot card tracing `r2` (the present
+ *  one) — the only shape that drives `refresh()` down the `hasTraces` branch. */
+const DOC_WITH_TRACE = JSON.stringify({
+  version: 1,
+  results: [
+    { id: "r1", label: "run-1", path: "gone.mat", source: "simulate" },
+    { id: "r2", label: "run-2", path: "present.mat", source: "simulate" },
+  ],
+  cards: [
+    {
+      kind: "plot",
+      id: "c1",
+      traces: [{ result: "r2", variable: "motor.w" }],
+    },
+  ],
+});
+
+interface FakeWebview {
+  options: unknown;
+  cspSource: string;
+  html: string;
+  asWebviewUri: (u: vscode.Uri) => vscode.Uri;
+  postMessage: (m: ExtensionToWebview) => Promise<boolean>;
+  onDidReceiveMessage: (l: (m: WebviewToExtension) => void) => {
+    dispose(): void;
+  };
+}
+
+function makePanel(): {
+  panel: vscode.WebviewPanel;
+  posted: ExtensionToWebview[];
+  fireReady: () => void;
+  fireMessage: (m: WebviewToExtension) => void;
+  fireDispose: () => void;
+} {
+  const posted: ExtensionToWebview[] = [];
+  let listener: ((m: WebviewToExtension) => void) | undefined;
+  let disposeListener: (() => void) | undefined;
+  const webview: FakeWebview = {
+    options: undefined,
+    cspSource: "vscode-webview:",
+    html: "",
+    asWebviewUri: (u) => u,
+    postMessage: (m) => {
+      posted.push(m);
+      return Promise.resolve(true);
+    },
+    onDidReceiveMessage: (l) => {
+      listener = l;
+      return { dispose: () => {} };
+    },
+  };
+  const panel = {
+    webview,
+    active: false,
+    onDidDispose: (l: () => void) => {
+      disposeListener = l;
+      return { dispose: () => {} };
+    },
+    onDidChangeViewState: () => ({ dispose: () => {} }),
+  };
+  return {
+    panel: panel as unknown as vscode.WebviewPanel,
+    posted,
+    fireReady: () => listener?.({ type: "ready" }),
+    fireMessage: (m) => listener?.(m),
+    fireDispose: () => disposeListener?.(),
+  };
+}
+
+/** Capture the provider `register` hands to `registerCustomEditorProvider`,
+ *  since the constructor is private and `register` only returns a `Disposable`. */
+function registerProvider(
+  ensureClient: () => Promise<ResultReader>,
+  statMtimeMs?: (path: string) => Promise<number | undefined>,
+): vscode.CustomTextEditorProvider {
+  let captured: vscode.CustomTextEditorProvider | undefined;
+  vi.spyOn(
+    vscodeMock.window,
+    "registerCustomEditorProvider",
+  ).mockImplementation((_viewType, provider) => {
+    captured = provider as vscode.CustomTextEditorProvider;
+    return new vscodeMock.Disposable(() => {});
+  });
+  const context = {
+    extensionUri: EXT_URI,
+  } as unknown as vscode.ExtensionContext;
+  ResultViewEditorProvider.register(context, ensureClient, statMtimeMs);
+  if (captured === undefined) throw new Error("provider not registered");
+  return captured;
+}
+
+/** Register a provider and resolve it against `docFor()`, returning the panel
+ *  harness. The fake `statMtimeMs` is the default so no test reaches real
+ *  `node:fs` — `applyEdit` fires `onDidChangeTextDocument` synchronously, which
+ *  runs `refresh()` and its missing-file scan on every edit. */
+function mount({
+  statMtimeMs = fakeStatMtimeMs(),
+  docText = DOC_TEXT,
+}: {
+  statMtimeMs?: (path: string) => Promise<number | undefined>;
+  docText?: string;
+} = {}): {
+  posted: ExtensionToWebview[];
+  fireReady: () => void;
+  fireMessage: (m: WebviewToExtension) => void;
+  fireDispose: () => void;
+} {
+  const provider = registerProvider(async () => fakeReader(), statMtimeMs);
+  const { panel, posted, fireReady, fireMessage, fireDispose } = makePanel();
+  provider.resolveCustomTextEditor(
+    docFor(docText),
+    panel,
+    {} as vscode.CancellationToken,
+  );
+  return { posted, fireReady, fireMessage, fireDispose };
+}
+
+beforeEach(() => {
+  appliedEdits.length = 0;
+  pendingApplies.length = 0;
+  resetFileSystemWatchers();
+  setApplyEditManual(false);
+  setApplyEditResult(true);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+/** Resolve once the provider has landed at least one `WorkspaceEdit`. */
+function waitForEdit(): Promise<void> {
+  return vi.waitFor(() => {
+    if (appliedEdits.length === 0) throw new Error("no edit applied yet");
+  });
+}
+
+/** Register+mount a provider whose document needs an id backfill, with
+ *  `applyEdit` set to reject exactly once (manual mode) — mirrors a real
+ *  rejected backfill write, whose target document stays unchanged so every
+ *  reparse needs a backfill again. Fires `trigger`, waits for the backfill's
+ *  `applyEdit`, then completes it. The mock's `completeApply` fires the
+ *  change event even for a rejected edit (unlike real VS Code), so that
+ *  reentrant `refresh` needs a backfill too — its own `applyEdit` is left
+ *  pending in `pendingApplies`, deliberately never completed. */
+async function mountWithRejectedBackfill(
+  docText: string,
+  trigger: (
+    fireReady: () => void,
+    fireMessage: (m: WebviewToExtension) => void,
+  ) => void,
+  statMtimeMs?: (path: string) => Promise<number | undefined>,
+): Promise<{ posted: ExtensionToWebview[] }> {
+  setApplyEditManual(true);
+  setApplyEditResult(false);
+  const provider = registerProvider(async () => fakeReader(), statMtimeMs);
+  const { panel, posted, fireReady, fireMessage } = makePanel();
+  provider.resolveCustomTextEditor(
+    docFor(docText),
+    panel,
+    {} as vscode.CancellationToken,
+  );
+  trigger(fireReady, fireMessage);
+  await vi.waitFor(() => {
+    if (pendingApplies.length < 1) throw new Error("no backfill edit yet");
+  });
+  completeApply(0);
+  return { posted };
+}
+
+describe("ResultViewEditorProvider: removeResult / renameResult", () => {
+  it("removeResult applies an edit whose new doc no longer has the result", async () => {
+    const { fireMessage } = mount();
+
+    fireMessage({ type: "removeResult", resultId: "r1" });
+
+    await waitForEdit();
+    const text = appliedEdits.at(-1)?.replacements[0]?.text;
+    expect(text).toBeDefined();
+    expect(parseResultViewDoc(text ?? "").results.map((r) => r.id)).toEqual([
+      "r2",
+    ]);
+  });
+
+  it("removeResult is a no-op edit for an unknown id", async () => {
+    const { fireMessage } = mount();
+
+    fireMessage({ type: "removeResult", resultId: "ghost" });
+
+    await waitForEdit();
+    const text = appliedEdits.at(-1)?.replacements[0]?.text;
+    expect(parseResultViewDoc(text ?? "").results.map((r) => r.id)).toEqual([
+      "r1",
+      "r2",
+    ]);
+  });
+
+  it("renameResult applies an edit with the result's label changed", async () => {
+    const { fireMessage } = mount();
+
+    fireMessage({ type: "renameResult", resultId: "r1", label: "renamed" });
+
+    await waitForEdit();
+    const text = appliedEdits.at(-1)?.replacements[0]?.text;
+    const doc = parseResultViewDoc(text ?? "");
+    expect(doc.results.find((r) => r.id === "r1")?.label).toBe("renamed");
+    expect(doc.results.find((r) => r.id === "r2")?.label).toBe("run-2");
+  });
+});
+
+describe("ResultViewEditorProvider: missingResults", () => {
+  it("posts the ids whose backing file doesn't exist, on ready", async () => {
+    const { posted, fireReady } = mount();
+
+    fireReady();
+    await vi.waitFor(() => {
+      if (!posted.some((m) => m.type === "missingResults")) {
+        throw new Error("no missingResults yet");
+      }
+    });
+
+    const missing = posted.find((m) => m.type === "missingResults");
+    expect(missing?.type === "missingResults" && missing.ids).toEqual(["r1"]);
+  });
+});
+
+describe("ResultViewEditorProvider: watches the backing .mat files", () => {
+  /** A `statMtimeMs` over a mutable set of existing paths, so a test can make a
+   *  `.mat` appear or vanish between scans the way a delete or a re-simulation
+   *  does — `DOC_TEXT`'s two results resolve to `/ws/gone.mat` + `/ws/present.mat`. */
+  function fakeDisk(existing: string[]): {
+    statMtimeMs: (path: string) => Promise<number | undefined>;
+    add: (path: string) => void;
+    remove: (path: string) => void;
+  } {
+    const paths = new Set(existing);
+    return {
+      statMtimeMs: (p) => Promise.resolve(paths.has(p) ? 100 : undefined),
+      add: (p) => {
+        paths.add(p);
+      },
+      remove: (p) => {
+        paths.delete(p);
+      },
+    };
+  }
+
+  /** The ids of every `missingResults` post so far, in order. */
+  function missingPosts(posted: ExtensionToWebview[]): string[][] {
+    return posted
+      .filter(
+        (m): m is Extract<ExtensionToWebview, { type: "missingResults" }> =>
+          m.type === "missingResults",
+      )
+      .map((m) => m.ids);
+  }
+
+  /** Mount over `fakeDisk`, fire `ready`, and settle the first scan. */
+  async function mountReady(disk: ReturnType<typeof fakeDisk>): Promise<{
+    posted: ExtensionToWebview[];
+    fireDispose: () => void;
+  }> {
+    const { posted, fireReady, fireDispose } = mount({
+      statMtimeMs: disk.statMtimeMs,
+    });
+    fireReady();
+    await vi.waitFor(() => {
+      if (missingPosts(posted).length < 1) {
+        throw new Error("no missingResults yet");
+      }
+    });
+    return { posted, fireDispose };
+  }
+
+  /** Longer than the provider's debounce window, so an event that should be
+   *  ignored has had its chance to (wrongly) land a refresh before we assert. */
+  const PAST_DEBOUNCE_MS = 400;
+
+  it("rescans when a result's backing file is deleted, with no document edit", async () => {
+    const disk = fakeDisk(["/ws/present.mat"]);
+    const { posted } = await mountReady(disk);
+    expect(missingPosts(posted)[0]).toEqual(["r1"]);
+
+    disk.remove("/ws/present.mat");
+    emitFileDelete("/ws/present.mat");
+
+    await vi.waitFor(() => {
+      if (missingPosts(posted).length < 2) throw new Error("no rescan yet");
+    });
+    expect(missingPosts(posted)[1]).toEqual(["r1", "r2"]);
+    expect(appliedEdits).toHaveLength(0);
+  });
+
+  it("watches each referenced result's own directory, not the workspace", async () => {
+    const disk = fakeDisk(["/ws/present.mat"]);
+    await mountReady(disk);
+
+    // Both of DOC_TEXT's results resolve into /ws, so one watcher covers them.
+    expect(fileSystemWatchers).toHaveLength(1);
+    const { pattern } = fileSystemWatchers[0] ?? {};
+    expect(pattern).toBeInstanceOf(vscodeMock.RelativePattern);
+    expect(
+      pattern instanceof vscodeMock.RelativePattern && pattern.baseUri.fsPath,
+    ).toBe("/ws");
+  });
+
+  it("coalesces a burst of events into a single rescan", async () => {
+    const disk = fakeDisk(["/ws/present.mat"]);
+    const { posted } = await mountReady(disk);
+
+    disk.remove("/ws/present.mat");
+    emitFileDelete("/ws/present.mat");
+    disk.add("/ws/gone.mat");
+    emitFileCreate("/ws/gone.mat");
+    emitFileDelete("/ws/gone.mat");
+    disk.remove("/ws/gone.mat");
+
+    await vi.waitFor(() => {
+      if (missingPosts(posted).length < 2) throw new Error("no rescan yet");
+    });
+    await new Promise((r) => setTimeout(r, PAST_DEBOUNCE_MS));
+    expect(missingPosts(posted)).toHaveLength(2);
+    expect(missingPosts(posted)[1]).toEqual(["r1", "r2"]);
+  });
+
+  it("ignores a change to a referenced file — a rewritten .mat still exists", async () => {
+    const disk = fakeDisk(["/ws/present.mat"]);
+    const { posted } = await mountReady(disk);
+
+    emitFileChange("/ws/present.mat");
+
+    await new Promise((r) => setTimeout(r, PAST_DEBOUNCE_MS));
+    expect(missingPosts(posted)).toHaveLength(1);
+  });
+
+  it("rescans when a missing result's backing file is recreated", async () => {
+    const disk = fakeDisk(["/ws/present.mat"]);
+    const { posted } = await mountReady(disk);
+    expect(missingPosts(posted)[0]).toEqual(["r1"]);
+
+    disk.add("/ws/gone.mat");
+    emitFileCreate("/ws/gone.mat");
+
+    await vi.waitFor(() => {
+      if (missingPosts(posted).length < 2) throw new Error("no rescan yet");
+    });
+    expect(missingPosts(posted)[1]).toEqual([]);
+  });
+
+  it("ignores an event for a file the document doesn't reference", async () => {
+    const disk = fakeDisk(["/ws/present.mat"]);
+    const { posted } = await mountReady(disk);
+
+    disk.add("/ws/unrelated.mat");
+    emitFileCreate("/ws/unrelated.mat");
+
+    await new Promise((r) => setTimeout(r, PAST_DEBOUNCE_MS));
+    expect(missingPosts(posted)).toHaveLength(1);
+  });
+
+  it("stops watching once the panel is disposed", async () => {
+    const disk = fakeDisk(["/ws/present.mat"]);
+    const { posted, fireDispose } = await mountReady(disk);
+
+    fireDispose();
+    disk.remove("/ws/present.mat");
+    emitFileDelete("/ws/present.mat");
+
+    await new Promise((r) => setTimeout(r, PAST_DEBOUNCE_MS));
+    expect(missingPosts(posted)).toHaveLength(1);
+  });
+
+  it("drops a debounced rescan queued before the panel was disposed", async () => {
+    const disk = fakeDisk(["/ws/present.mat"]);
+    const { posted, fireDispose } = await mountReady(disk);
+
+    disk.remove("/ws/present.mat");
+    emitFileDelete("/ws/present.mat");
+    fireDispose(); // inside the debounce window
+
+    await new Promise((r) => setTimeout(r, PAST_DEBOUNCE_MS));
+    expect(missingPosts(posted)).toHaveLength(1);
+  });
+});
+
+describe("ResultViewEditorProvider: refresh with traces", () => {
+  it("posts both the missing-file ids and the trace data", async () => {
+    const { posted, fireReady } = mount({ docText: DOC_WITH_TRACE });
+
+    fireReady();
+    await vi.waitFor(() => {
+      const tracedDoc = posted.find(
+        (m) => m.type === "doc" && Object.keys(m.traceData).length > 0,
+      );
+      if (!tracedDoc) throw new Error("traced doc not posted yet");
+    });
+
+    const missing = posted.find((m) => m.type === "missingResults");
+    expect(missing?.type === "missingResults" && missing.ids).toEqual(["r1"]);
+
+    const tracedDoc = posted.find(
+      (m) => m.type === "doc" && Object.keys(m.traceData).length > 0,
+    );
+    expect(tracedDoc?.type === "doc" && tracedDoc.traceData).toEqual({
+      c1: [{ t: [0, 1, 2], values: [10, 20, 30], name: "run-2 / motor.w" }],
+    });
+
+    const plotsBusy = posted
+      .filter((m) => m.type === "loading" && m.area === "plots")
+      .map((m) => m.type === "loading" && m.busy);
+    expect(plotsBusy).toEqual([true, false]);
+  });
+
+  it("clears the plots spinner on the trace read alone, without waiting for the missing-file scan", async () => {
+    let releaseGone: (v: number | undefined) => void = () => {};
+    const statMtimeMs = (path: string): Promise<number | undefined> =>
+      path.endsWith("gone.mat")
+        ? new Promise<number | undefined>((resolve) => {
+            releaseGone = resolve;
+          })
+        : Promise.resolve(100);
+    const { posted, fireReady } = mount({
+      docText: DOC_WITH_TRACE,
+      statMtimeMs,
+    });
+
+    fireReady();
+    await vi.waitFor(() => {
+      if (
+        !posted.some(
+          (m) => m.type === "loading" && m.area === "plots" && !m.busy,
+        )
+      ) {
+        throw new Error("plots spinner still busy");
+      }
+    });
+    expect(posted.some((m) => m.type === "missingResults")).toBe(false);
+
+    releaseGone(undefined);
+    await vi.waitFor(() => {
+      if (!posted.some((m) => m.type === "missingResults")) {
+        throw new Error("missingResults not posted yet");
+      }
+    });
+  });
+
+  it("drops a superseded generation's posts when it settles after a newer refresh", async () => {
+    const stats: { path: string; resolve: (v: number | undefined) => void }[] =
+      [];
+    const statMtimeMs = (path: string): Promise<number | undefined> =>
+      new Promise((resolve) => {
+        stats.push({ path, resolve });
+      });
+    const { posted, fireReady } = mount({
+      docText: DOC_WITH_TRACE,
+      statMtimeMs,
+    });
+
+    fireReady(); // generation 1 — will be superseded before its stats settle
+    fireReady(); // generation 2 — the one that should win
+
+    // Two results scanned by missingScan plus one trace read, per generation.
+    await vi.waitFor(() => {
+      if (stats.length < 6) throw new Error("not all stats requested yet");
+    });
+
+    const resolveStat = (s: (typeof stats)[number]): void =>
+      s.resolve(s.path.endsWith("gone.mat") ? undefined : 100);
+
+    // Let generation 2's stats settle first.
+    stats.slice(3, 6).forEach(resolveStat);
+    await vi.waitFor(() => {
+      if (!posted.some((m) => m.type === "missingResults")) {
+        throw new Error("generation 2 missingResults not posted yet");
+      }
+    });
+
+    // Generation 1's stats settle late, after generation 2 already won.
+    stats.slice(0, 3).forEach(resolveStat);
+    await new Promise((r) => setTimeout(r, 10));
+
+    const missingPosts = posted.filter((m) => m.type === "missingResults");
+    expect(missingPosts).toHaveLength(1);
+    expect(
+      missingPosts[0]?.type === "missingResults" && missingPosts[0].ids,
+    ).toEqual(["r1"]);
+
+    const tracedDocPosts = posted.filter(
+      (m) => m.type === "doc" && Object.keys(m.traceData).length > 0,
+    );
+    expect(tracedDocPosts).toHaveLength(1);
+
+    const plotsDone = posted.filter(
+      (m) => m.type === "loading" && m.area === "plots" && !m.busy,
+    );
+    expect(plotsDone).toHaveLength(1);
+  });
+});
+
+describe("ResultViewEditorProvider: backfilled card ids persist across edits", () => {
+  // Manual apply mode lets each test decide exactly when the mock's
+  // self-triggered `onDidChangeTextDocument` → `refresh()` cascade runs, and
+  // update the mutable document's text first — mirroring real VSCode, where
+  // `getText()` already reflects an edit by the time its change event fires.
+  // Without this, a still-id-less reparse on that cascade would re-backfill
+  // (a fresh id) and re-write forever, since the mock never advances
+  // `getText()` on its own.
+
+  it("lets deletePlot find a card whose id was backfilled from a hand-written file with none", async () => {
+    setApplyEditManual(true);
+    const noIdDoc = JSON.stringify({
+      version: 1,
+      results: [],
+      cards: [{ kind: "plot", title: "Plot 1" }],
+    });
+    const { document, landEdit } = mutableDocFor(noIdDoc);
+    const provider = registerProvider(async () => fakeReader());
+    const { panel, posted, fireReady, fireMessage } = makePanel();
+    provider.resolveCustomTextEditor(
+      document,
+      panel,
+      {} as vscode.CancellationToken,
+    );
+
+    fireReady();
+    await vi.waitFor(() => {
+      if (pendingApplies.length < 1) throw new Error("no backfill edit yet");
+    });
+    landEdit(); // the backfill write "lands" before its change event fires
+    completeApply(0);
+
+    await vi.waitFor(() => {
+      if (!posted.some((m) => m.type === "doc" && m.doc.cards.length > 0)) {
+        throw new Error("backfilled doc not posted yet");
+      }
+    });
+    const docMsg = posted.find(
+      (m) => m.type === "doc" && m.doc.cards.length > 0,
+    );
+    const cardId = docMsg?.type === "doc" ? docMsg.doc.cards[0]?.id : undefined;
+    expect(cardId).toBeDefined();
+
+    // `cardId` came from the posted doc; deletePlot must match against a
+    // re-parse of the on-disk text that carries the same id.
+    fireMessage({ type: "deletePlot", cardId: cardId ?? "" });
+    await vi.waitFor(() => {
+      if (pendingApplies.length < 2) throw new Error("no delete edit yet");
+    });
+    landEdit();
+    completeApply(1);
+
+    const finalText = appliedEdits.at(-1)?.replacements[0]?.text;
+    expect(parseResultViewDoc(finalText ?? "").cards).toEqual([]);
+  });
+
+  it("persists an applyEdit that backfills ids on the first read, for the plots alias", async () => {
+    setApplyEditManual(true);
+    const plotsAliasDoc = JSON.stringify({
+      version: 1,
+      results: [],
+      plots: [{ kind: "plot", title: "Plot 1" }],
+    });
+    const { document, landEdit } = mutableDocFor(plotsAliasDoc);
+    const provider = registerProvider(async () => fakeReader());
+    const { panel, posted, fireReady } = makePanel();
+    provider.resolveCustomTextEditor(
+      document,
+      panel,
+      {} as vscode.CancellationToken,
+    );
+
+    fireReady();
+    await vi.waitFor(() => {
+      if (pendingApplies.length < 1) throw new Error("no backfill edit yet");
+    });
+    landEdit();
+    completeApply(0);
+
+    // The backfill write's onDidChangeTextDocument triggers a second refresh;
+    // wait for its doc post (the reparsed, now-idified text) before asserting
+    // no further write followed it.
+    await vi.waitFor(() => {
+      if (!posted.some((m) => m.type === "doc" && m.doc.cards[0]?.id)) {
+        throw new Error("reparsed doc not posted yet");
+      }
+    });
+
+    expect(appliedEdits).toHaveLength(1);
+    const persisted = parseResultViewDoc(
+      appliedEdits[0]?.replacements[0]?.text ?? "",
+    );
+    expect(persisted.cards).toHaveLength(1);
+    expect(persisted.cards[0]?.id).toBeTruthy();
+  });
+
+  it("logs a warning and posts a status error when applyEdit resolves false, instead of swallowing the failure", async () => {
+    vi.mocked(log.warn).mockClear();
+    setApplyEditResult(false);
+    const { fireMessage, posted } = mount();
+
+    fireMessage({ type: "removeResult", resultId: "r1" });
+
+    await vi.waitFor(() => {
+      if (vi.mocked(log.warn).mock.calls.length === 0) {
+        throw new Error("log.warn not called yet");
+      }
+    });
+    expect(log.warn).toHaveBeenCalledWith(
+      "resultView",
+      expect.stringContaining("applyEdit rejected"),
+    );
+    expect(posted.find((m) => m.type === "status")).toMatchObject({
+      error: true,
+      message: expect.stringContaining("Couldn't save changes"),
+    });
+  });
+
+  it("reports a status error and posts no doc when the backfill write is rejected", async () => {
+    const noIdDoc = JSON.stringify({
+      version: 1,
+      results: [],
+      cards: [{ kind: "plot", title: "Plot 1" }],
+    });
+    const { posted } = await mountWithRejectedBackfill(noIdDoc, (fireReady) =>
+      fireReady(),
+    );
+
+    await vi.waitFor(() => {
+      if (!posted.some((m) => m.type === "status")) {
+        throw new Error("status error not posted yet");
+      }
+    });
+    expect(posted.find((m) => m.type === "status")).toMatchObject({
+      error: true,
+      message: expect.stringContaining("Couldn't save changes"),
+    });
+    // The unpersisted, freshly-minted id must never reach the webview — that
+    // id would be unfindable on the next parse.
+    expect(posted.some((m) => m.type === "doc" && m.doc.cards.length > 0)).toBe(
+      false,
+    );
+  });
+
+  it("resolves a pending requestVariables with an error when the backfill write is rejected", async () => {
+    vi.mocked(log.warn).mockClear();
+    const noIdDoc = JSON.stringify({
+      version: 1,
+      results: [
+        { id: "r1", label: "run-1", path: "present.mat", source: "simulate" },
+      ],
+      cards: [{ kind: "plot", title: "Plot 1" }],
+    });
+    const { posted } = await mountWithRejectedBackfill(
+      noIdDoc,
+      (_fireReady, fireMessage) =>
+        fireMessage({ type: "requestVariables", resultId: "r1" }),
+      fakeStatMtimeMs(),
+    );
+
+    await vi.waitFor(() => {
+      if (!posted.some((m) => m.type === "variables")) {
+        throw new Error("variables response not posted yet");
+      }
+    });
+    expect(posted.find((m) => m.type === "variables")).toMatchObject({
+      resultId: "r1",
+      error: expect.stringContaining("Couldn't load"),
+    });
+    expect(log.warn).toHaveBeenCalledWith(
+      "resultView",
+      expect.stringContaining("id backfill did not persist"),
+    );
+  });
+
+  it("skips the write entirely when a mutate transform is a true no-op", async () => {
+    // Canonical text — matching serializeResultViewDoc's own output exactly —
+    // so a no-op transform's write is skippable by a text comparison, unlike
+    // DOC_TEXT above (compact JSON, so its edits always differ on formatting
+    // alone even when nothing in the doc actually changed).
+    const canonicalText = serializeResultViewDoc(parseResultViewDoc(DOC_TEXT));
+    const { fireMessage } = mount({ docText: canonicalText });
+
+    fireMessage({ type: "removeResult", resultId: "ghost" });
+
+    // No positive signal to wait on — this is the wait-then-assert-nothing
+    // case, so give any (incorrect) write a tick to land first.
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(appliedEdits).toHaveLength(0);
+  });
+});

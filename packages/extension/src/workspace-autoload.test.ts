@@ -1,8 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import * as fsp from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
 
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { ClassInvalidationRegistry } from "./invalidation.js";
 import {
+  autoLoadWorkspace,
   loadEntryFilesAndRefresh,
+  registerWorkspaceAutoload,
   type AutoLoadClient,
+  type WorkspaceAutoloadDeps,
 } from "./workspace-autoload.js";
 
 /** Every entry file parses as a single entity unless a test says otherwise. */
@@ -189,5 +197,217 @@ describe("loadEntryFilesAndRefresh", () => {
     await loadEntryFilesAndRefresh(c, ["A.mo", "B.mo"], refresh);
 
     expect(refresh).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
+  let tmp: string;
+  let entryFile: string;
+
+  beforeEach(async () => {
+    tmp = await fsp.mkdtemp(path.join(os.tmpdir(), "ws-autoload-"));
+    entryFile = path.join(tmp, "Foo.mo");
+    await fsp.writeFile(entryFile, "model Foo\nend Foo;\n");
+  });
+
+  afterEach(async () => {
+    await fsp.rm(tmp, { recursive: true, force: true });
+  });
+
+  describe("autoLoadWorkspace", () => {
+    it("discovers and loads the workspace's entry files, then refreshes once", async () => {
+      const refresh = vi.fn();
+      const onSkipped = vi.fn();
+      const c = client([true]);
+
+      await autoLoadWorkspace({
+        folders: () => [tmp],
+        ensureClient: async () => c,
+        refresh,
+        onSkipped,
+      });
+
+      expect(c.loadFile).toHaveBeenCalledWith({ fileName: entryFile });
+      expect(refresh).toHaveBeenCalledTimes(1);
+      expect(onSkipped).not.toHaveBeenCalled();
+    });
+
+    it("does nothing when there are no workspace folders", async () => {
+      const ensureClient = vi.fn();
+
+      await autoLoadWorkspace({
+        folders: () => [],
+        ensureClient,
+        refresh: vi.fn(),
+        onSkipped: vi.fn(),
+      });
+
+      expect(ensureClient).not.toHaveBeenCalled();
+    });
+
+    it("does not reject when deps.folders() throws (#483)", async () => {
+      const ensureClient = vi.fn();
+
+      await expect(
+        autoLoadWorkspace({
+          folders: () => {
+            throw new Error("workspaceFolders unavailable");
+          },
+          ensureClient,
+          refresh: vi.fn(),
+          onSkipped: vi.fn(),
+        }),
+      ).resolves.toBeUndefined();
+      expect(ensureClient).not.toHaveBeenCalled();
+    });
+
+    it("does not reject when a thrown value isn't an Error (#483)", async () => {
+      const ensureClient = vi.fn();
+
+      await expect(
+        autoLoadWorkspace({
+          folders: () => {
+            throw "workspaceFolders unavailable";
+          },
+          ensureClient,
+          refresh: vi.fn(),
+          onSkipped: vi.fn(),
+        }),
+      ).resolves.toBeUndefined();
+      expect(ensureClient).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("registerWorkspaceAutoload", () => {
+    it("re-runs the workspace autoload when the session is replaced (#466)", async () => {
+      const refresh = vi.fn();
+      const c = client([true]);
+      const invalidation = new ClassInvalidationRegistry();
+      const deps: WorkspaceAutoloadDeps = {
+        folders: () => [tmp],
+        ensureClient: async () => c,
+        refresh,
+        onSkipped: vi.fn(),
+      };
+
+      registerWorkspaceAutoload(invalidation, deps);
+      expect(c.loadFile).not.toHaveBeenCalled();
+
+      invalidation.sessionReplaced();
+
+      await vi.waitFor(() => expect(c.loadFile).toHaveBeenCalledTimes(1));
+      expect(c.loadFile).toHaveBeenCalledWith({ fileName: entryFile });
+      expect(refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it("stops re-running the autoload once the returned handle is disposed", async () => {
+      const c = client([true]);
+      const invalidation = new ClassInvalidationRegistry();
+      const deps: WorkspaceAutoloadDeps = {
+        folders: () => [tmp],
+        ensureClient: async () => c,
+        refresh: vi.fn(),
+        onSkipped: vi.fn(),
+      };
+
+      registerWorkspaceAutoload(invalidation, deps).dispose();
+      invalidation.sessionReplaced();
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(c.loadFile).not.toHaveBeenCalled();
+    });
+
+    it("serializes back-to-back resets instead of racing overlapping sweeps (#483)", async () => {
+      const invalidation = new ClassInvalidationRegistry();
+
+      // The 2nd reset's `ensureClient()` call is blocked so the test can fire
+      // a second `:reset` while the first sweep is still mid-flight, the way
+      // a user firing `:reset` twice in quick succession would.
+      let releaseFirstSweep: (() => void) | undefined;
+      let ensureCalls = 0;
+      const c = client([true, true]);
+      const deps: WorkspaceAutoloadDeps = {
+        folders: () => [tmp],
+        ensureClient: async () => {
+          ensureCalls++;
+          if (ensureCalls === 1) {
+            await new Promise<void>((resolve) => {
+              releaseFirstSweep = resolve;
+            });
+          }
+          return c;
+        },
+        refresh: vi.fn(),
+        onSkipped: vi.fn(),
+      };
+
+      registerWorkspaceAutoload(invalidation, deps);
+
+      invalidation.sessionReplaced(); // 1st `:reset`
+      await vi.waitFor(() => expect(ensureCalls).toBe(1));
+
+      invalidation.sessionReplaced(); // 2nd `:reset`, fired before the 1st sweep settles
+      // Real disk I/O (`discoverEntryPoints`), not just microtasks — give an
+      // unserialized 2nd sweep enough real time to reach `ensureClient()` if
+      // nothing is chaining it behind the 1st.
+      await new Promise((r) => setTimeout(r, 100));
+
+      // The 2nd sweep must wait for the 1st instead of starting a second,
+      // overlapping `loadFile` pass against the same entry file.
+      expect(c.loadFile).not.toHaveBeenCalled();
+      expect(ensureCalls).toBe(1);
+
+      releaseFirstSweep?.();
+      // Both sweeps now run in sequence, chained behind one another.
+      await vi.waitFor(() => expect(c.loadFile).toHaveBeenCalledTimes(2));
+      expect(ensureCalls).toBe(2);
+    });
+
+    it("serializes the activation-time run() against an overlapping :reset (#483)", async () => {
+      const invalidation = new ClassInvalidationRegistry();
+
+      // The activation sweep's `ensureClient()` is blocked so the test can
+      // fire a `:reset` while it's still mid-flight, the way a user resetting
+      // during startup would.
+      let releaseActivationSweep: (() => void) | undefined;
+      let ensureCalls = 0;
+      const c = client([true, true]);
+      const deps: WorkspaceAutoloadDeps = {
+        folders: () => [tmp],
+        ensureClient: async () => {
+          ensureCalls++;
+          if (ensureCalls === 1) {
+            await new Promise<void>((resolve) => {
+              releaseActivationSweep = resolve;
+            });
+          }
+          return c;
+        },
+        refresh: vi.fn(),
+        onSkipped: vi.fn(),
+      };
+
+      const autoload = registerWorkspaceAutoload(invalidation, deps);
+
+      autoload.run(); // the activation-time sweep
+      await vi.waitFor(() => expect(ensureCalls).toBe(1));
+
+      invalidation.sessionReplaced(); // `:reset` landing mid-activation-sweep
+      // Real disk I/O (`discoverEntryPoints`), not just microtasks — give an
+      // unserialized reset sweep enough real time to reach `ensureClient()`
+      // if it isn't chained behind the activation sweep.
+      await new Promise((r) => setTimeout(r, 100));
+
+      // The reset sweep must wait for the activation sweep instead of
+      // starting a second, overlapping `loadFile` pass against the client
+      // `reset()` would otherwise have already closed.
+      expect(c.loadFile).not.toHaveBeenCalled();
+      expect(ensureCalls).toBe(1);
+
+      releaseActivationSweep?.();
+      // Both sweeps now run in sequence, chained behind one another.
+      await vi.waitFor(() => expect(c.loadFile).toHaveBeenCalledTimes(2));
+      expect(ensureCalls).toBe(2);
+    });
   });
 });

@@ -1,13 +1,15 @@
 /**
  * `reloadBufferIntoOmc` pins the stale-diagnostics drain running before the
- * load, and a rejected load's message coming from the *second*
- * `getErrorString` call, not the first.
+ * load, a rejected load's message coming from the *second* `getErrorString`
+ * call rather than the first, and the buffer screen refusing a rename before
+ * `loadString` runs.
  *
  * `vscode` is aliased to the in-repo mock via the extension's vitest config.
  */
 
 import { describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
+import { renamedClassMessage } from "../single-entity-file.js";
 import {
   defaultScheduler,
   reloadBufferIntoOmc,
@@ -28,6 +30,7 @@ describe("reloadBufferIntoOmc", () => {
     const calls: string[] = [];
     const client: BufferSyncClient = {
       parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
+      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
       getErrorString: vi.fn(async () => {
         calls.push("getErrorString");
         return { errorString: "" };
@@ -46,6 +49,7 @@ describe("reloadBufferIntoOmc", () => {
     const result = await reloadBufferIntoOmc(
       client,
       docFor(DOC_URI, "model Model end Model;"),
+      "Pkg.Model",
     );
 
     expect(result).toEqual({ ok: true });
@@ -58,6 +62,7 @@ describe("reloadBufferIntoOmc", () => {
     // still parses clean from disk.
     const client: BufferSyncClient = {
       parseString: vi.fn(async () => ({ classNames: ["A", "B"] })),
+      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
       getErrorString: vi.fn(async () => ({ errorString: "" })),
       loadString: vi.fn(async () => ({ success: true })),
     };
@@ -65,9 +70,31 @@ describe("reloadBufferIntoOmc", () => {
     const result = await reloadBufferIntoOmc(
       client,
       docFor(DOC_URI, "model A end A; model B end B;"),
+      "A",
     );
 
     expect(result.ok).toBe(false);
+    expect(client.loadString).not.toHaveBeenCalled();
+  });
+
+  it("refuses a buffer that renamed its class (#461)", async () => {
+    const client: BufferSyncClient = {
+      parseString: vi.fn(async () => ({ classNames: ["Pkg.Renamed"] })),
+      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
+      getErrorString: vi.fn(async () => ({ errorString: "" })),
+      loadString: vi.fn(async () => ({ success: true })),
+    };
+
+    const result = await reloadBufferIntoOmc(
+      client,
+      docFor(DOC_URI, "model Renamed end Renamed;"),
+      "Pkg.Model",
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      message: renamedClassMessage("Pkg.Model", "Pkg.Renamed"),
+    });
     expect(client.loadString).not.toHaveBeenCalled();
   });
 
@@ -78,13 +105,18 @@ describe("reloadBufferIntoOmc", () => {
     ];
     const client: BufferSyncClient = {
       parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
+      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
       getErrorString: vi.fn(async () => ({
         errorString: errorStrings.shift() ?? "",
       })),
       loadString: vi.fn(async () => ({ success: false })),
     };
 
-    const result = await reloadBufferIntoOmc(client, docFor(DOC_URI));
+    const result = await reloadBufferIntoOmc(
+      client,
+      docFor(DOC_URI),
+      "Pkg.Model",
+    );
 
     expect(result).toEqual({
       ok: false,
@@ -95,11 +127,16 @@ describe("reloadBufferIntoOmc", () => {
   it("falls back to a generic message when OMC reports no error text", async () => {
     const client: BufferSyncClient = {
       parseString: vi.fn(async () => ({ classNames: ["Pkg.Model"] })),
+      getSourceFile: vi.fn(async () => ({ fileName: DOC_URI.toString() })),
       getErrorString: vi.fn(async () => ({ errorString: "" })),
       loadString: vi.fn(async () => ({ success: false })),
     };
 
-    const result = await reloadBufferIntoOmc(client, docFor(DOC_URI));
+    const result = await reloadBufferIntoOmc(
+      client,
+      docFor(DOC_URI),
+      "Pkg.Model",
+    );
 
     expect(result).toEqual({
       ok: false,
@@ -125,6 +162,7 @@ describe("reloadBufferIntoOmc — source-file resolution", () => {
     await reloadBufferIntoOmc(
       client,
       docFor(DOC_URI, "model Model end Model;"),
+      "Pkg.Model",
     );
 
     expect(loadedFilename).toBe("/ws/Pkg/package.mo");
@@ -146,6 +184,7 @@ describe("reloadBufferIntoOmc — source-file resolution", () => {
     await reloadBufferIntoOmc(
       client,
       docFor(DOC_URI, "model Model end Model;"),
+      "Pkg.Model",
     );
 
     expect(loadedFilename).toBe(DOC_URI.toString());

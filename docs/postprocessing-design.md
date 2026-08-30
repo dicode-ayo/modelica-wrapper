@@ -233,6 +233,15 @@ where `pathKey = resolvedPath`. A read is reused while `mtimeMs` is unchanged; a
 rewritten `.mat` (re-run to the same path) invalidates it. On Windows, call
 `closeSimulationResultFile` before re-reading a path whose file changed.
 
+**Refresh triggers.** A refresh — reparse, `doc` post, and the missing-file scan
+behind the chip — runs on the webview's `ready`, on an edit to the `.omresults`
+document, and on a create or delete of a file some result points at. The last of
+those is a `FileSystemWatcher` per directory the open document references
+(result paths resolve anywhere, not just inside a workspace folder), re-synced on
+every refresh and disposed with the panel. Without it a `.mat` deleted, moved, or
+recreated by a re-simulation would leave the chip stale for as long as the view
+stays open: none of that touches the document text.
+
 **Lazy variable lists.** The add-trace picker requests a result's variables on demand
 (`requestVariables { requestId, resultId }` → `variables { requestId, vars }`),
 correlated by `requestId` exactly like the diagram's library browser
@@ -326,7 +335,7 @@ inside the webview, then `postMessage` across the boundary.
 | `variables` | `{ requestId, resultId, vars?, error? }` | Lazy variable list for one result. |
 | `traceData` | `{ cardIndex, trace: TracePayload }` | Incremental single-trace append. |
 | `loading` | `{ area: "results" \| "plots", busy }` | Spinner gating. |
-| `status` | `{ message, error? }` | Surface a read/parse error. |
+| `status` | `{ message, error? }` | Surface a read/parse error, or a `ResultViewDocument` write failure. |
 
 ### Webview → host
 
@@ -429,7 +438,7 @@ Sized for independent review; each ships on its own.
 | **3** ✅ | result-ui: the cards UI | All five `<om-*>` elements + `echart-theme.ts` + pure `chart-option.ts` + `picker.ts`, driven by a hand-built `ResultViewDoc` + mock `TracePayload`s in Storybook. ECharts wired; `lit`/`echarts` deps added; `omTokens` from `ui-common` (no omc-client/diagram-ui dep). result-ui owns its render types in `types.ts`. | Storybook (3 stories) + unit tests: `picker`, `chart-option`, `var-tree`, mount/`om-request-variables`. **(24 tests)** |
 | **4** ✅ | extension: data path | `result-cache.ts` (path+mtime cache over `readSimulationResultVars`/`readSimulationResult`, close-on-invalidate); provider reads trajectories via the shared `OmcClient` and pushes `doc` + `traceData` (keyed by card id), lazy `requestVariables`; the webview entry now mounts `<om-result-view-app>` and bridges events↔postMessage; doc-edit handlers (add/delete plot, add/remove trace) via `WorkspaceEdit`. add-result is #86. | `result-cache` unit tests (fake reader; mtime invalidation, caching). Live `.mat` read verified manually (no OMC in CI). |
 | **5** | extension: the three add paths | `add-result.ts` — file pick, `.modelica` quick-pick, `modelica.addResultToView` command + `runSimulate` auto-add hook + active-view registry. | Integration: simulate → result appears; pick → appears; cache pick → appears. |
-| **6** | polish | rename/remove result, missing-file chip, theme-change refresh, resize, empty states. | Manual smoke + a missing-path unit test. |
+| **6** | polish | rename/remove result and the missing-file chip are wired end-to-end (issue #465): `removeResult`/`renameResult` apply as `WorkspaceEdit`s, and the provider computes + sends `missingResults` on refresh — recomputed on `ready`, on document edits, and (issue #486) on a create/delete of a referenced `.mat`, via a per-directory `FileSystemWatcher`. Still open: theme-change refresh, resize, empty states. | `result-doc`/`result-cache`/`result-view-provider` unit tests cover remove/rename, the missing-file scan, and the watcher-driven rescan. |
 
 PRs 1 and 3 are independently reviewable today. PR 2 is the host scaffold; PR 4
 depends on 1 + 2; PR 5 depends on 4; PR 3's UI meets the host at PR 4.

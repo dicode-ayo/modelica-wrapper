@@ -22,7 +22,8 @@
     "packages/extension": {
       "component": "modelica-wrapper",
       "package-name": "modelica-wrapper",
-      "changelog-path": "CHANGELOG.md"
+      "changelog-path": "CHANGELOG.md",
+      "draft": true
     },
     "packages/diagram-svg": {
       "component": "@dicode/diagram-svg",

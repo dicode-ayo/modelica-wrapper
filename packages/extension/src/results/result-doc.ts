@@ -231,3 +231,31 @@ export function removeTrace(
 export function addResult(doc: ResultViewDoc, ref: ResultRef): ResultViewDoc {
   return { ...doc, results: [...doc.results, ref] };
 }
+
+/** Remove a result from the view, and prune any card trace that referenced it. */
+export function removeResult(
+  doc: ResultViewDoc,
+  resultId: string,
+): ResultViewDoc {
+  return {
+    ...doc,
+    results: doc.results.filter((r) => r.id !== resultId),
+    cards: doc.cards.map((c) =>
+      c.kind === "plot" && c.traces?.some((t) => t.result === resultId)
+        ? { ...c, traces: c.traces.filter((t) => t.result !== resultId) }
+        : c,
+    ),
+  };
+}
+
+/** Rename a result's display label (a no-op when it isn't present). */
+export function renameResult(
+  doc: ResultViewDoc,
+  resultId: string,
+  label: string,
+): ResultViewDoc {
+  return {
+    ...doc,
+    results: doc.results.map((r) => (r.id === resultId ? { ...r, label } : r)),
+  };
+}

@@ -84,16 +84,6 @@ export async function bufferClassNames(
   }
 }
 
-/** {@link multipleTopLevelClasses} for a buffer's declared classes. */
-export async function multipleTopLevelClassesInText(
-  client: StringParseClient,
-  data: string,
-  filename: string,
-): Promise<string[] | undefined> {
-  const classNames = await bufferClassNames(client, data, filename);
-  return classNames === undefined ? undefined : moreThanOne(classNames);
-}
-
 export function moreThanOne(classNames: string[]): string[] | undefined {
   return classNames.length > 1 ? classNames : undefined;
 }
@@ -143,16 +133,79 @@ export function multiEntityMessage(
   );
 }
 
-/** Shared refusal wording for a buffer save that renamed its class (#459). */
+/**
+ * The shared half of both rename refusals: what the class is left as. Reads
+ * as the object of a modal — callers prefix `would`.
+ */
+export function strandedInMemory(expected: string): string {
+  return `leave ${expected} alive in OMC's memory, unreachable from its own file`;
+}
+
+/**
+ * Shared refusal wording for a buffer that renamed its class (#459).
+ * `consequence` names what the guard refused to do — the default fits a save;
+ * a caller refusing something else (e.g. a live check refusing to load) names
+ * its own. It takes the class name rather than closing over one so a caller
+ * holding `expected` as `string | undefined` can hand it over unnarrowed and
+ * let this function supply the name it has already proven.
+ */
 export function renamedClassMessage(
   expected: string,
   declared: string,
+  consequence: (expected: string) => string = (name) =>
+    `Saving here would ${strandedInMemory(name)}`,
 ): string {
   return (
     `This buffer is ${expected}'s source, but it now declares ${declared}. ` +
-    `Saving here would leave ${expected} alive in OMC's memory, unreachable ` +
-    `from its own file — rename through the Modelica REPL instead.`
+    `${consequence(expected)} — rename through the Modelica REPL instead.`
   );
+}
+
+/**
+ * The refusal message a set of already-parsed class names earns before
+ * `loadString`, `undefined` when it passes both screens. Runs the
+ * multi-entity screen before the rename screen: `renamedClass` is
+ * meaningless once `classNames` holds more than one name. `label` names the
+ * file in a multi-entity refusal when it differs from `filename` —
+ * `writeFile` refuses by `typeName` for a memory-only class that has no
+ * on-disk `filename` of its own yet. `expected` is `undefined` for a caller
+ * with no known class to rename away from, which skips the rename screen but
+ * still runs the multi-entity one. `renamedConsequence` is
+ * {@link renamedClassMessage}'s `consequence`.
+ */
+export function classNamesRefusal(
+  classNames: string[],
+  input: {
+    filename: string;
+    expected: string | undefined;
+    label?: string;
+    renamedConsequence?: (expected: string) => string;
+  },
+): string | undefined {
+  const multiEntity = moreThanOne(classNames);
+  if (multiEntity !== undefined) {
+    return multiEntityMessage(input.label ?? input.filename, multiEntity);
+  }
+  if (input.expected === undefined) return undefined;
+  const renamed = renamedClass(classNames, input.expected);
+  return renamed === undefined
+    ? undefined
+    : renamedClassMessage(input.expected, renamed, input.renamedConsequence);
+}
+
+/**
+ * The refusal message a buffer earns before `loadString`, `undefined` when it
+ * passes both screens (or OMC couldn't parse it — the load that follows
+ * reports that failure itself). `expected` and `label` are as
+ * {@link classNamesRefusal} documents them.
+ */
+export async function bufferRefusal(
+  client: StringParseClient,
+  input: { data: string; filename: string; expected: string; label?: string },
+): Promise<string | undefined> {
+  const classNames = await bufferClassNames(client, input.data, input.filename);
+  if (classNames === undefined) return undefined;
+  return classNamesRefusal(classNames, input);
 }
 
 /** Batch notification; the per-file detail stays in the output channel. */

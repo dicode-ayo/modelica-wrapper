@@ -8,9 +8,19 @@ name: Release Please
 # When a release is cut, the `publish-npm` job below builds every workspace
 # library with tsup and publishes the ones Release Please just bumped to the
 # npm registry under the @dicode scope. The VSCode extension stays
-# `private: true`, so it is versioned/tagged by Release Please but skipped by
-# the npm publish (its Marketplace publish is a separate, still-to-be-added
-# job — see the follow-up issue).
+# `private: true`, so it is skipped by the npm publish. Instead, when
+# Release Please bumps the extension specifically, `attach-vsix` packages it
+# and uploads the .vsix to the GitHub Release it just created, for anyone who
+# wants to `code --install-extension` it without a Marketplace publish (which
+# is a separate, still-to-be-added job — see the follow-up issue).
+#
+# The extension's release is configured `draft: true` in
+# release-please-config.json specifically so it stays unpublished (and
+# editable) until `attach-vsix` uploads the .vsix and un-drafts it as its
+# last step — otherwise the release goes live, and watchers see it, before
+# the artifact it links to exists. A failed build/package step leaves the
+# release in draft rather than publishing an incomplete one. The library
+# packages aren't drafted: they have no artifact-attach step to wait on.
 #
 # Token notes:
 # - GITHUB_TOKEN is used for the release step. Workflows triggered by the
@@ -46,6 +56,8 @@ jobs:
     outputs:
       releases_created: ${{ steps.release.outputs.releases_created }}
       paths_released: ${{ steps.release.outputs.paths_released }}
+      extension_release_created: ${{ steps.release.outputs['packages/extension--release_created'] }}
+      extension_tag_name: ${{ steps.release.outputs['packages/extension--tag_name'] }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -66,7 +78,14 @@ jobs:
       # tarballs (paired with NPM_CONFIG_PROVENANCE below).
       id-token: write
     steps:
+      # Neither this job nor `attach-vsix` below ever does a git push — both
+      # only call `pnpm publish`/`gh` with their own tokens — so the checkout
+      # has no need to leave a write-scoped credential on disk for the
+      # dependency install further down (and its native-addon build scripts)
+      # to find.
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: pnpm/action-setup@v4
         with:
@@ -94,3 +113,48 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
+
+  attach-vsix:
+    name: Attach VSIX to GitHub Release
+    needs: release-please
+    # Only when this run's release bumped the extension specifically.
+    if: ${{ needs.release-please.outputs.extension_release_created == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # See the matching comment on publish-npm's checkout: this job's
+      # `contents: write` token has no business persisting to disk for
+      # dependency install scripts to find.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup
+
+      # Production esbuild build (no sourcemaps) + `vsce package
+      # --no-dependencies`, run straight in the workspace — everything but
+      # `vscode` is bundled, so the VSIX ships no node_modules and packaging
+      # needs no registry access.
+      - name: Build and package the VSIX
+        run: pnpm --filter modelica-wrapper package
+
+      # The filename carries the version (vsce's default), so this globs
+      # rather than hardcoding it. TAG_NAME rides in via `env` rather than
+      # interpolated straight into the script — release-please computes it
+      # from a fixed component name + SemVer today, but nothing enforces
+      # that going forward, and env-substitution costs nothing.
+      - name: Upload VSIX to the GitHub Release
+        run: gh release upload "$TAG_NAME" packages/extension/modelica-wrapper-*.vsix --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.extension_tag_name }}
+
+      # The release was created as a draft (release-please-config.json) so it
+      # stays unpublished until this point — publish it now that its .vsix
+      # actually exists.
+      - name: Publish the release now that its VSIX is attached
+        run: gh release edit "$TAG_NAME" --draft=false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.release-please.outputs.extension_tag_name }}

@@ -120,6 +120,12 @@ export class ResultCache {
     return traj;
   }
 
+  /** Whether `path` currently exists on disk (a directory counts too — this is
+   *  a plain `stat`, not a file-type check). */
+  async exists(path: string): Promise<boolean> {
+    return (await this.statMtimeMs(path)) !== undefined;
+  }
+
   private async closeQuietly(): Promise<void> {
     try {
       const reader = await this.resolveReader();

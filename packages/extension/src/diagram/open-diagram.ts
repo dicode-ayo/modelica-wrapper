@@ -39,7 +39,7 @@ import {
   type ComponentParameterRef,
 } from "./parameter-edits.js";
 import { clearComponentModifiers } from "./clear-modifiers.js";
-import { diffLayouts } from "./diff-layout.js";
+import { diffLayouts, TRUSTED_ON_STALE_BASE } from "./diff-layout.js";
 import { applyDisplayUnits } from "./display-unit.js";
 import { buildUnitTableForModel, sessionUnitCache } from "./unit-table.js";
 import { LibrarySource, SearchAbortedError } from "./library-source.js";
@@ -372,8 +372,14 @@ export async function fetchDiagramLayout(
 /**
  * Apply the graphical delta between `prevLayout` and `next` to OMC. Diffs to
  * `LayoutEdit`s and applies them with an OMC-level snapshot so a partial
- * failure rolls the class back. Returns `null` when the two layouts are
- * identical (nothing to apply).
+ * failure rolls the class back. Returns `null` when there is nothing left to
+ * apply (the two layouts are identical, or `staleBase` filtered out every
+ * edit the diff produced).
+ *
+ * `staleBase`: `next` may have been reported against a base the webview
+ * never fully caught up to. Every kind {@link TRUSTED_ON_STALE_BASE} marks
+ * `false` is dropped in that case — see its doc for why each one can't be
+ * trusted from such a report.
  *
  * Re-reading the layout is the caller's job, so a burst of edits can share one
  * re-fetch instead of paying for one each.
@@ -383,8 +389,12 @@ export async function applyDiagramEdits(
   className: string,
   prevLayout: DiagramLayout,
   next: DiagramLayout,
+  options?: { staleBase?: boolean },
 ): Promise<ApplyEditsResult | null> {
-  const edits = diffLayouts(prevLayout, next);
+  const diffed = diffLayouts(prevLayout, next);
+  const edits = options?.staleBase
+    ? diffed.filter((edit) => TRUSTED_ON_STALE_BASE[edit.kind])
+    : diffed;
   if (edits.length === 0) return null;
   return applyEdits(client, className, edits, undefined, { snapshot: true });
 }

@@ -3,16 +3,22 @@
  * postprocessing documents, sibling to the diagram custom editor.
  *
  * It renders a CSP-locked webview that loads the `out/postprocessing` bundle
- * (root `<om-result-view-root>`), parses the document with the pure
- * `parseResultViewDoc`, reads the referenced `.mat` trajectories through the
- * shared `OmcClient` (cached by path + mtime), and pushes both down. Card edits
- * from the webview (add/delete plot, add/remove trace) are applied as
- * `WorkspaceEdit`s so undo/redo and git come for free. Adding results (file
- * pick / `.modelica` cache / Simulate hook) lands in #86.
+ * (root `<om-result-view-root>`), reads the document through a
+ * `ResultViewDocument` (which persists any id it backfills before handing the
+ * doc back), reads the referenced `.mat` trajectories through the shared
+ * `OmcClient` (cached by path + mtime), and pushes both down. Card edits from
+ * the webview (add/delete plot, add/remove trace, add/remove/rename result)
+ * are applied as `WorkspaceEdit`s via the same `ResultViewDocument`, so
+ * undo/redo and git come for free.
  */
+
+import * as path from "node:path";
 
 import * as vscode from "vscode";
 
+import type { ResultViewDoc } from "@dicode/omc-client";
+
+import { errorDetail } from "../error-detail.js";
 import { log } from "../logger.js";
 import { renderWebviewPage } from "../webview/webview-page.js";
 import type {
@@ -30,40 +36,53 @@ import {
   addPlotCard,
   addTrace,
   deleteCard,
-  parseResultViewDoc,
+  removeResult,
   removeTrace,
-  serializeResultViewDoc,
+  renameResult,
 } from "./result-doc.js";
+import { ResultViewDocument } from "./result-view-document.js";
 
 export const RESULT_VIEW_VIEW_TYPE = "modelica.resultView";
+
+/** Trailing window used to coalesce filesystem events into one refresh. Long
+ *  enough to fold a move (delete + create) and a directory-wide delete into a
+ *  single rescan, and to let a re-simulation finish writing a `.mat` before its
+ *  create event triggers a read of it. */
+const FS_EVENT_DEBOUNCE_MS = 150;
 
 export class ResultViewEditorProvider
   implements vscode.CustomTextEditorProvider
 {
-  /** Most-recently focused result view, so commands that don't carry a target
-   *  (the Simulate auto-add, fired while the *diagram* is focused) know which
-   *  document to add to. Held until that view is closed — deliberately NOT
+  /** Most-recently focused result view's `ResultViewDocument`, so commands that
+   *  don't carry a target (the Simulate auto-add, fired while the *diagram* is
+   *  focused) know which document to add to, and write through the same queue
+   *  its own card edits do. Held until that view is closed — deliberately NOT
    *  cleared on blur, since the user is on the diagram when they simulate. */
-  private static activeDocument: vscode.TextDocument | undefined;
+  private static activeResultDoc: ResultViewDocument | undefined;
 
-  /** The most-recently focused result view's document, or `undefined` when none
-   *  is open. */
-  static getActiveDocument(): vscode.TextDocument | undefined {
-    return ResultViewEditorProvider.activeDocument;
+  /** The most-recently focused result view's `ResultViewDocument`, or
+   *  `undefined` when none is open. */
+  static getActiveResultDoc(): ResultViewDocument | undefined {
+    return ResultViewEditorProvider.activeResultDoc;
   }
 
   private constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly ensureClient: () => Promise<ResultReader>,
+    private readonly statMtimeMs?: (
+      path: string,
+    ) => Promise<number | undefined>,
   ) {}
 
   static register(
     context: vscode.ExtensionContext,
     ensureClient: () => Promise<ResultReader>,
+    statMtimeMs?: (path: string) => Promise<number | undefined>,
   ): vscode.Disposable {
     const provider = new ResultViewEditorProvider(
       context.extensionUri,
       ensureClient,
+      statMtimeMs,
     );
     return vscode.window.registerCustomEditorProvider(
       RESULT_VIEW_VIEW_TYPE,
@@ -89,17 +108,23 @@ export class ResultViewEditorProvider
     // Per-editor cache, lazily backed by the shared OMC client (resolved per
     // read). Reads serialize through the client's promise-chain mutex (OMC is
     // single-threaded).
-    const cache = new ResultCache(this.ensureClient);
-
+    const cache = new ResultCache(this.ensureClient, this.statMtimeMs);
     const post = (msg: ExtensionToWebview): void => {
       void webviewPanel.webview.postMessage(msg);
     };
+    const resultDoc = new ResultViewDocument(document, () =>
+      post({
+        type: "status",
+        message: `Couldn't save changes to ${document.uri.fsPath} — see the Modelica output channel for details.`,
+        error: true,
+      }),
+    );
 
     // Bumped on every refresh so a slow read from a superseded edit is dropped.
     let generation = 0;
 
     const buildTraceData = async (
-      doc: ReturnType<typeof parseResultViewDoc>,
+      doc: ResultViewDoc,
     ): Promise<Record<string, TracePayload[]>> => {
       const resultById = new Map(doc.results.map((r) => [r.id, r]));
       const out: Record<string, TracePayload[]> = {};
@@ -120,7 +145,7 @@ export class ResultViewEditorProvider
           } catch (err) {
             log.warn(
               "resultView",
-              `read ${trace.variable} from ${filePath} failed: ${(err as Error).message}`,
+              `read ${trace.variable} from ${filePath} failed: ${errorDetail(err)}`,
             );
           }
         }
@@ -130,34 +155,129 @@ export class ResultViewEditorProvider
 
     const refresh = async (): Promise<void> => {
       const myGen = ++generation;
-      const doc = parseResultViewDoc(document.getText());
-      // Push structure immediately so the rail + cards render without waiting on
-      // OMC; charts fill in once the trajectories are read.
-      post({ type: "doc", doc, traceData: {} });
+      // A rejection means the id-backfill write failed to persist;
+      // `onWriteFailure` above already reported it to the user, so just skip
+      // this refresh rather than posting a doc with unpersisted ids.
+      const doc = await resultDoc.read().catch((err: unknown) => {
+        log.warn("resultView", `refresh failed: ${errorDetail(err)}`);
+        return undefined;
+      });
+      if (doc === undefined) return;
+      // Push structure before waiting on OMC; charts fill in once the
+      // trajectories are read. Gated like every other post below: `read()` is
+      // async, so a superseded refresh can resolve after a newer one.
+      if (myGen === generation) post({ type: "doc", doc, traceData: {} });
+
+      const resultPaths = doc.results.map((result) => ({
+        id: result.id,
+        filePath: resolveResultPath(document.uri, result.path),
+      }));
+      // A superseded refresh carries a stale path set; the newer one re-syncs.
+      if (myGen === generation)
+        syncWatchers(resultPaths.map((r) => r.filePath));
+
+      // Independent of whether any card has traces — a result with no card
+      // referencing it yet can still be missing its backing file. Runs
+      // concurrently with the trace read below: a disk stat and an OMC read
+      // are unrelated I/O with no reason to serialize.
+      const missingScan = (async (): Promise<void> => {
+        const missingIds = (
+          await Promise.all(
+            resultPaths.map(async ({ id, filePath }) =>
+              (await cache.exists(filePath)) ? null : id,
+            ),
+          )
+        ).filter((id): id is string => id !== null);
+        if (myGen === generation)
+          post({ type: "missingResults", ids: missingIds });
+      })();
 
       const hasTraces = doc.cards.some((c) => (c.traces?.length ?? 0) > 0);
-      if (!hasTraces) return;
+      if (!hasTraces) {
+        await missingScan;
+        return;
+      }
 
       post({ type: "loading", area: "plots", busy: true });
       try {
         const traceData = await buildTraceData(doc);
         if (myGen === generation) post({ type: "doc", doc, traceData });
       } catch (err) {
-        post({ type: "status", message: (err as Error).message, error: true });
+        if (myGen === generation)
+          post({
+            type: "status",
+            message: errorDetail(err),
+            error: true,
+          });
       } finally {
         if (myGen === generation)
           post({ type: "loading", area: "plots", busy: false });
       }
+      await missingScan;
     };
 
-    const applyDocEdit = (doc: ReturnType<typeof parseResultViewDoc>): void => {
-      const edit = new vscode.WorkspaceEdit();
-      edit.replace(
-        document.uri,
-        new vscode.Range(0, 0, document.lineCount, 0),
-        serializeResultViewDoc(doc),
-      );
-      void vscode.workspace.applyEdit(edit);
+    // A result's backing file can appear or vanish with the document text
+    // untouched — a delete, a move, a re-simulation — and only a rescan can
+    // set or clear its missing chip. Watchers are keyed by containing
+    // directory: a result path resolves anywhere a relative path reaches, not
+    // necessarily inside a workspace folder, and several results usually share
+    // one directory. The set is re-synced on every refresh because the paths a
+    // document references move with its text.
+    const watchers = new Map<string, vscode.Disposable>();
+    const watchedPaths = new Set<string>();
+    let disposed = false;
+    let fsEventTimer: ReturnType<typeof setTimeout> | undefined;
+
+    // A move arrives as delete + create, and deleting a directory of results
+    // arrives as one event per file; each refresh re-reads the document and
+    // every trajectory through OMC's single mutex, so coalesce the burst.
+    // Trailing, so the rescan reads the filesystem the events left behind.
+    const refreshSoon = (): void => {
+      if (fsEventTimer !== undefined) clearTimeout(fsEventTimer);
+      fsEventTimer = setTimeout(() => {
+        fsEventTimer = undefined;
+        void refresh();
+      }, FS_EVENT_DEBOUNCE_MS);
+    };
+
+    const syncWatchers = (filePaths: readonly string[]): void => {
+      // A refresh still in flight when the panel closed must not resurrect
+      // watchers nothing will dispose.
+      if (disposed) return;
+      // An event's `fsPath` is normalized by VSCode (separators, drive-letter
+      // case); a stored absolute path reaches `resolveResultPath` verbatim, so
+      // both sides have to be spelled the same way or nothing ever matches.
+      const normalized = filePaths.map((p) => vscode.Uri.file(p).fsPath);
+      watchedPaths.clear();
+      for (const filePath of normalized) watchedPaths.add(filePath);
+      const dirs = new Set(normalized.map((p) => path.dirname(p)));
+      for (const [dir, watcher] of watchers) {
+        if (dirs.has(dir)) continue;
+        watcher.dispose();
+        watchers.delete(dir);
+      }
+      for (const dir of dirs) {
+        if (watchers.has(dir)) continue;
+        // A rewritten `.mat` still exists, so only create and delete can move a
+        // result's chip — hence `ignoreChangeEvents`.
+        const watcher = vscode.workspace.createFileSystemWatcher(
+          new vscode.RelativePattern(vscode.Uri.file(dir), "*"),
+          /* ignoreCreateEvents */ false,
+          /* ignoreChangeEvents */ true,
+          /* ignoreDeleteEvents */ false,
+        );
+        const onFileEvent = (uri: vscode.Uri): void => {
+          if (watchedPaths.has(uri.fsPath)) refreshSoon();
+        };
+        watchers.set(
+          dir,
+          vscode.Disposable.from(
+            watcher,
+            watcher.onDidCreate(onFileEvent),
+            watcher.onDidDelete(onFileEvent),
+          ),
+        );
+      }
     };
 
     const changeSub = vscode.workspace.onDidChangeTextDocument((e) => {
@@ -168,7 +288,7 @@ export class ResultViewEditorProvider
     // on focus (never clear on blur): when the user simulates, the *diagram* is
     // focused, so the result they want it added to is the last one they touched.
     const markActive = (): void => {
-      ResultViewEditorProvider.activeDocument = document;
+      ResultViewEditorProvider.activeResultDoc = resultDoc;
     };
     if (webviewPanel.active) {
       markActive();
@@ -179,10 +299,14 @@ export class ResultViewEditorProvider
       }
     });
     webviewPanel.onDidDispose(() => {
+      disposed = true;
       changeSub.dispose();
       viewStateSub.dispose();
-      if (ResultViewEditorProvider.activeDocument === document) {
-        ResultViewEditorProvider.activeDocument = undefined;
+      if (fsEventTimer !== undefined) clearTimeout(fsEventTimer);
+      for (const watcher of watchers.values()) watcher.dispose();
+      watchers.clear();
+      if (ResultViewEditorProvider.activeResultDoc === resultDoc) {
+        ResultViewEditorProvider.activeResultDoc = undefined;
       }
     });
 
@@ -193,71 +317,80 @@ export class ResultViewEditorProvider
           return;
 
         case "requestVariables":
-          void this.handleRequestVariables(document, cache, msg, post);
+          void this.handleRequestVariables(resultDoc, cache, msg, post);
           return;
 
         case "addPlot":
-          applyDocEdit(
-            addPlotCard(parseResultViewDoc(document.getText()), msg.afterIndex),
-          );
+          void resultDoc.mutate((doc) => addPlotCard(doc, msg.afterIndex));
           return;
         case "deletePlot":
-          applyDocEdit(
-            deleteCard(parseResultViewDoc(document.getText()), msg.cardId),
-          );
+          void resultDoc.mutate((doc) => deleteCard(doc, msg.cardId));
           return;
         case "addTrace":
-          applyDocEdit(
-            addTrace(
-              parseResultViewDoc(document.getText()),
-              msg.cardId,
-              msg.resultId,
-              msg.variable,
-            ),
+          void resultDoc.mutate((doc) =>
+            addTrace(doc, msg.cardId, msg.resultId, msg.variable),
           );
           return;
         case "removeTrace":
-          applyDocEdit(
-            removeTrace(
-              parseResultViewDoc(document.getText()),
-              msg.cardId,
-              msg.traceIndex,
-            ),
+          void resultDoc.mutate((doc) =>
+            removeTrace(doc, msg.cardId, msg.traceIndex),
           );
           return;
 
         case "addResult":
           if (msg.via === "import") {
-            void importResults(document);
+            void importResults(resultDoc);
           } else {
-            void addCachedResult(document);
+            void addCachedResult(resultDoc);
           }
           return;
-
-        // removeResult / renameResult land in #87.
-        default:
+        case "removeResult":
+          void resultDoc.mutate((doc) => removeResult(doc, msg.resultId));
           return;
+        case "renameResult":
+          void resultDoc.mutate((doc) =>
+            renameResult(doc, msg.resultId, msg.label),
+          );
+          return;
+
+        default:
+          // A new protocol variant must add a case above; this keeps the
+          // compiler enforcing that.
+          return msg satisfies never;
       }
     });
   }
 
   private async handleRequestVariables(
-    document: vscode.TextDocument,
+    resultDoc: ResultViewDocument,
     cache: ResultCache,
     msg: Extract<WebviewToExtension, { type: "requestVariables" }>,
     post: (msg: ExtensionToWebview) => void,
   ): Promise<void> {
-    const doc = parseResultViewDoc(document.getText());
+    const doc = await resultDoc.read().catch((err: unknown) => {
+      log.warn(
+        "resultView",
+        `requestVariables for ${msg.resultId} failed: ${errorDetail(err)}`,
+      );
+      post({
+        type: "variables",
+        resultId: msg.resultId,
+        error:
+          "Couldn't load this result's variables — see the Modelica output channel for details.",
+      });
+      return undefined;
+    });
+    if (doc === undefined) return;
     const result = doc.results.find((r) => r.id === msg.resultId);
     if (!result) {
       post({
         type: "variables",
         resultId: msg.resultId,
-        error: "unknown result",
+        error: "This result no longer exists.",
       });
       return;
     }
-    const filePath = resolveResultPath(document.uri, result.path);
+    const filePath = resolveResultPath(resultDoc.uri, result.path);
     try {
       const vars = await cache.variables(filePath);
       post({ type: "variables", resultId: msg.resultId, vars });
@@ -265,7 +398,7 @@ export class ResultViewEditorProvider
       post({
         type: "variables",
         resultId: msg.resultId,
-        error: (err as Error).message,
+        error: errorDetail(err),
       });
     }
   }

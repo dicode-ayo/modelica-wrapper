@@ -432,8 +432,10 @@ export class DiagramEditController {
   /**
    * The layout the webview last reported, waiting to be reconciled. One slot,
    * not a list: a report supersedes its predecessor rather than following it.
+   * `staleBase` mirrors the report's own bit — see `applyChange`.
    */
-  private pendingChange: DiagramLayout | null = null;
+  private pendingChange: { layout: DiagramLayout; staleBase: boolean } | null =
+    null;
   /**
    * Set when a settle was suppressed because a report was already queued. The
    * reconcile of that report pays it: a reported edit needs no settle of its
@@ -524,7 +526,7 @@ export class DiagramEditController {
         );
         return this.queue;
       }
-      this.pendingChange = msg.layout;
+      this.pendingChange = { layout: msg.layout, staleBase: msg.staleBase };
     }
     return this.enqueue(() => this.dispatch(msg));
   }
@@ -601,7 +603,7 @@ export class DiagramEditController {
     if (this.rejectIfReadOnly()) return;
     const { client, className, document } = this.deps;
     try {
-      const reload = await reloadBufferIntoOmc(client, document);
+      const reload = await reloadBufferIntoOmc(client, document, className);
       if (!reload.ok) {
         this.reportError(reload.message);
         // This sync dropped whatever was reported to make way for it, and then
@@ -645,7 +647,7 @@ export class DiagramEditController {
         await this.onEditComponent(msg.componentName);
         return;
       case "parametersSubmit":
-        await this.onParametersSubmit(msg.kind, msg.values);
+        await this.onParametersSubmit(msg.kind, msg.values, msg.dirty);
         return;
       case "parametersCancel":
         this.onParametersCancel(msg.kind);
@@ -690,7 +692,7 @@ export class DiagramEditController {
     // An earlier unit already took it; this one has nothing left to do.
     if (next === null) return;
     this.pendingChange = null;
-    await this.applyChange(next);
+    await this.applyChange(next.layout, next.staleBase);
   }
 
   /**
@@ -698,8 +700,29 @@ export class DiagramEditController {
    * from OMC here, so that whatever else has touched the class, the difference
    * between what it holds and what the user is looking at is exactly the set of
    * edits that closes the gap.
+   *
+   * `staleBase` is the report's own bit (issue #408): the webview refused or
+   * discarded a `layout` push since the last one it applied, so `next` may be
+   * missing something the class already holds that it was never told about.
+   * `applyDiagramEdits`'s `staleBase` option (see `TRUSTED_ON_STALE_BASE` in
+   * `diff-layout.ts` for which edit kinds that drops, and why) handles the
+   * diff side; a settle is forced here regardless of `settleOwed` so the
+   * webview is resynced onto what it never saw — otherwise it would keep
+   * rendering a diagram missing something the class actually has.
+   *
+   * `staleBase` is one bit for the whole report, not per-entity: while it is
+   * set, a genuine edit to something the webview already knew about — not
+   * just a deletion — is dropped alongside the phantom one, and the forced
+   * settle then visually reverts it. Telling the two apart needs the webview
+   * to report what its local base contained, not just that it missed a push.
+   * The window is the gap between a refused push and the forced settle
+   * landing back, so the failure mode is one edit silently not taking effect
+   * rather than data loss.
    */
-  private async applyChange(next: DiagramLayout): Promise<void> {
+  private async applyChange(
+    next: DiagramLayout,
+    staleBase: boolean,
+  ): Promise<void> {
     if (this.rejectIfReadOnly()) {
       // The webview has already moved what the user dragged. Nothing else will
       // correct it — a reported edit gets no settle of its own — so it would
@@ -710,7 +733,10 @@ export class DiagramEditController {
     const { client, className } = this.deps;
     try {
       const current = await this.refetch(client, className);
-      const result = await applyDiagramEdits(client, className, current, next);
+      const result = await applyDiagramEdits(client, className, current, next, {
+        staleBase,
+      });
+      const mustSettle = this.settleOwed || staleBase;
       if (result === null) {
         // Nothing to write, but a withheld settle may have left `prevLayout`
         // behind what OMC and the screen both already hold. A null diff only
@@ -718,7 +744,7 @@ export class DiagramEditController {
         // what the diff never compares, a parameter value read into a label or
         // a swapped component's icon — so it is paid from the base in hand.
         this.prevLayout = current;
-        if (this.settleOwed) this.publishLayout(current);
+        if (mustSettle) this.publishLayout(current);
         return;
       }
       if (result.failed.length > 0 || result.rolledBack) {
@@ -738,7 +764,7 @@ export class DiagramEditController {
         return;
       }
       await this.writeBuffer();
-      if (this.settleOwed) {
+      if (mustSettle) {
         await this.pushCanonicalLayout();
         return;
       }
@@ -1044,9 +1070,10 @@ export class DiagramEditController {
   private async onParametersSubmit(
     kind: ParameterFormKind,
     values: Record<string, unknown>,
+    dirty: readonly string[],
   ): Promise<void> {
     try {
-      await this.applyParameterSubmit(kind, values);
+      await this.applyParameterSubmit(kind, values, dirty);
     } catch (err) {
       this.reportError(`applying parameters failed: ${(err as Error).message}`);
     } finally {
@@ -1057,6 +1084,7 @@ export class DiagramEditController {
   private async applyParameterSubmit(
     kind: ParameterFormKind,
     values: Record<string, unknown>,
+    dirty: readonly string[],
   ): Promise<void> {
     const { client, className } = this.deps;
     switch (kind) {
@@ -1094,7 +1122,7 @@ export class DiagramEditController {
       }
       case "shapeProperties":
         if (this.rejectIfReadOnly()) return;
-        await this.applyShapePropertiesSubmit(values);
+        await this.applyShapePropertiesSubmit(values, dirty);
         return;
       default:
         return assertUnreachable(kind, "ParameterFormKind");
@@ -1138,6 +1166,7 @@ export class DiagramEditController {
 
   private async applyShapePropertiesSubmit(
     values: Record<string, unknown>,
+    dirty: readonly string[],
   ): Promise<void> {
     const { client, className } = this.deps;
     if (this.shapeLayerKind === null || this.shapeIndex === null) return;
@@ -1162,7 +1191,7 @@ export class DiagramEditController {
       kind: "graphicsModified",
       layer,
       index,
-      shape: applyShapeProperties(found.shape, values),
+      shape: applyShapeProperties(found.shape, values, new Set(dirty)),
     };
     const result = await applyEdits(client, className, [edit], undefined, {
       snapshot: true,

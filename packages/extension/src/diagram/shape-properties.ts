@@ -236,11 +236,19 @@ interface ShapeField<S> {
   readonly name: string;
   readonly toParameterField: (shape: S) => ParameterField;
   /**
-   * `updated` with `raw` applied, or `updated` itself when `raw` does not
-   * decode. `opened` is the shape the form was built from, which a derived
-   * fallback resolves against.
+   * Returns `updated` with `raw` applied to this field, or `updated`
+   * unchanged when `raw` does not decode. `opened` is the shape the form
+   * was built from; `write` reads `opened[name]` to tell whether the field
+   * was unset when the form opened. `touched` reports whether the user
+   * actually edited this field in the form, as opposed to it merely
+   * carrying its seeded default value on submit.
    */
-  readonly write: <T extends S>(opened: T, updated: T, raw: unknown) => T;
+  readonly write: <T extends S>(
+    opened: T,
+    updated: T,
+    raw: unknown,
+    touched: boolean,
+  ) => T;
 }
 
 /**
@@ -288,10 +296,14 @@ function fieldOf<S extends object>() {
           name,
           label,
           kind: codec.kind,
+          // `null` is a real, reachable value distinct from "unset" — OMC
+          // reports it for a `textString` it can't reduce to a literal — so
+          // it must not fall through to the fallback the way `undefined`
+          // does, or Apply resubmits the fallback and overwrites it.
           value:
-            current !== undefined || seedsFallback
-              ? codec.encode(current ?? fallback)
-              : null,
+            current === null || (current === undefined && !seedsFallback)
+              ? null
+              : codec.encode(current ?? fallback),
           defaultValue: codec.encode(fallback),
           enumChoices: codec.enumChoices,
           enumTypeName: codec.enumTypeName,
@@ -299,20 +311,14 @@ function fieldOf<S extends object>() {
           unitOptions: [],
         };
       },
-      write(opened, updated, raw) {
+      write(opened, updated, raw, touched) {
         const decoded = codec.decode(raw);
         if (decoded === undefined) return updated;
-        // The form submits every field, so a derived fallback returns
-        // untouched and indistinguishable from a choice. Writing it pins a
-        // derivation the same submit may have invalidated — changing an
-        // ellipse's angles would fix its closure to the one the old angles
-        // implied. Left unset, §18.6 re-derives it from the new angles.
-        const derived = spec.fallbackFrom;
-        if (
-          derived !== undefined &&
-          opened[name] === undefined &&
-          codec.encode(decoded) === codec.encode(derived(opened))
-        ) {
+        const current = opened[name];
+        // An unset/null field seeds its form value from the spec default (or stays
+        // null for a codec with no empty state), so an untouched Apply resubmits
+        // that seed indistinguishable from the user deliberately choosing it.
+        if ((current === null || current === undefined) && !touched) {
           return updated;
         }
         return { ...updated, [name]: decoded };
@@ -600,14 +606,21 @@ export function buildShapePropertiesForm(shape: Shape): ParameterModel {
 export function applyShapeProperties(
   shape: Shape,
   values: Record<string, unknown>,
+  dirty: ReadonlySet<string>,
 ): Shape {
   return withFields(shape, (narrowed, fields) =>
     // `write` is the identity when nothing decodes, so the seed has to be the
     // copy. Every field resolves against `narrowed` rather than the
-    // accumulator, so an earlier field's new value cannot shift what a later
-    // one treats as its untouched seed.
+    // accumulator, so an earlier field's new value cannot shift the
+    // pre-submit value a later field's write gates on.
     fields.reduce(
-      (updated, field) => field.write(narrowed, updated, values[field.name]),
+      (updated, field) =>
+        field.write(
+          narrowed,
+          updated,
+          values[field.name],
+          dirty.has(field.name),
+        ),
       { ...narrowed },
     ),
   );

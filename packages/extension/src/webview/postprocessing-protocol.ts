@@ -38,7 +38,8 @@ export type ExtensionToWebview =
   | { type: "variables"; resultId: string; vars?: string[]; error?: string }
   /** Spinner gating while the host reads results / variables. */
   | { type: "loading"; area: "results" | "plots"; busy: boolean }
-  /** A read / parse error; when `error` is set it is also surfaced in the status banner. */
+  /** A read/parse error, or a `ResultViewDocument` write failure; when
+   *  `error` is set it is also surfaced in the status banner. */
   | { type: "status"; message: string; error?: boolean }
   /** Ids of results whose backing `.mat` file could not be found. */
   | { type: "missingResults"; ids: string[] };
@@ -61,6 +62,4 @@ export type WebviewToExtension =
    *  `.modelica` cache quick-pick (`cache`). Matches `ResultSource`. */
   | { type: "addResult"; via: "import" | "cache" }
   | { type: "removeResult"; resultId: string }
-  | { type: "renameResult"; resultId: string; label: string }
-  /** Diagnostic from the webview. */
-  | { type: "error"; message: string };
+  | { type: "renameResult"; resultId: string; label: string };

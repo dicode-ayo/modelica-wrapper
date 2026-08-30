@@ -162,9 +162,13 @@ const GESTURES = {
   /** Webview has finished loading; the host releases the parked `init`. */
   ready: gesture({ payload: noPayload, ordering: "uiOnly", icon: "ignored" }),
 
-  /** User committed a layout change — the whole layout, not a diff. */
+  /**
+   * User committed a layout change — the whole layout, not a diff.
+   * `staleBase` — see `CommitSlot.takePush` — flags a report built on a
+   * `layout` push the webview missed.
+   */
   change: gesture({
-    payload: { layout: isDiagramLayout },
+    payload: { layout: isDiagramLayout, staleBase: isBoolean },
     ordering: "afterCommit",
     icon: "honored",
   }),
@@ -234,7 +238,11 @@ const GESTURES = {
 
   /** Parameter modal Apply/Run. */
   parametersSubmit: gesture({
-    payload: { kind: isParameterFormKind, values: isFormValues },
+    payload: {
+      kind: isParameterFormKind,
+      values: isFormValues,
+      dirty: isStringArray,
+    },
     ordering: "afterCommit",
     icon: "shapeFormOnly",
   }),

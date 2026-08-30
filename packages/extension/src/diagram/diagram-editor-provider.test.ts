@@ -856,6 +856,21 @@ function srcDoc(text = LISTED_SOURCE): vscode.TextDocument {
 
 const SRC_DOC = srcDoc();
 
+type ControllerDeps = ConstructorParameters<typeof DiagramEditController>[0];
+
+/** The deps every controller test builds; pass only what the test varies. */
+function controllerDeps(
+  base: Pick<ControllerDeps, "client" | "gate"> & Partial<ControllerDeps>,
+): ControllerDeps {
+  return {
+    document: SRC_DOC,
+    className: "Pkg.M",
+    clipboard: new DiagramClipboard(),
+    onClipboardChanged: () => {},
+    ...base,
+  };
+}
+
 function layout(fields: Partial<DiagramLayout>): DiagramLayout {
   return {
     className: "Pkg.M",
@@ -893,7 +908,7 @@ describe("DiagramEditController: forward write path", () => {
     const { gate } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       movedComponent([
         [-10, -10],
         [10, 10],
@@ -907,6 +922,7 @@ describe("DiagramEditController: forward write path", () => {
         [0, 0],
         [20, 20],
       ]),
+      staleBase: false,
     });
 
     expect(invoked).toContain("updateComponent");
@@ -919,7 +935,7 @@ describe("DiagramEditController: forward write path", () => {
     const { gate } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -945,7 +961,7 @@ describe("DiagramEditController: forward write path", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -970,7 +986,7 @@ describe("DiagramEditController: forward write path", () => {
     const { gate } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({
         connectors: { p: {}, q: {} } as unknown as DiagramLayout["connectors"],
       }),
@@ -997,7 +1013,7 @@ describe("DiagramEditController: forward write path", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -1019,7 +1035,7 @@ describe("DiagramEditController: forward write path", () => {
     const { gate } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -1056,7 +1072,7 @@ describe("DiagramEditController: forward write path", () => {
       dispose: () => {},
     });
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       rejectingShadow,
     );
@@ -1076,12 +1092,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, writes, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      {
-        client,
-        document: srcDoc("model M2 end M2;"),
-        className: "Pkg.M",
-        gate,
-      },
+      controllerDeps({ client, gate, document: srcDoc("model M2 end M2;") }),
       layout({}),
       factory,
       scheduler,
@@ -1107,7 +1118,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
       scheduler,
@@ -1139,7 +1150,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler } = manualScheduler();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
       scheduler,
@@ -1189,14 +1200,18 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler } = manualScheduler();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
       scheduler,
     );
 
     fireForeign();
-    const edit = controller.handle({ type: "change", layout: layout({}) });
+    const edit = controller.handle({
+      type: "change",
+      layout: layout({}),
+      staleBase: false,
+    });
     await edit;
     await drain();
 
@@ -1225,7 +1240,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
       scheduler,
@@ -1233,7 +1248,11 @@ describe("DiagramEditController: forward write path", () => {
 
     fireForeign();
     flushDebounce(); // the timer fires; the reverse sync is enqueued, not yet resolved
-    const edit = controller.handle({ type: "change", layout: layout({}) });
+    const edit = controller.handle({
+      type: "change",
+      layout: layout({}),
+      staleBase: false,
+    });
     await edit;
     await drain();
 
@@ -1251,7 +1270,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
       scheduler,
@@ -1283,7 +1302,7 @@ describe("DiagramEditController: forward write path", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
       scheduler,
@@ -1305,7 +1324,7 @@ describe("DiagramEditController: forward write path", () => {
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const doc = srcDoc();
     const controller = new DiagramEditController(
-      { client, document: doc, className: "Pkg.M", gate },
+      controllerDeps({ client, gate, document: doc }),
       layout({}),
       (onForeignChange) => createShadowBuffer(doc, onForeignChange),
       scheduler,
@@ -1406,7 +1425,7 @@ describe("DiagramEditController: reconciling reports", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       movedComponent(AT(-10)),
       factory,
     );
@@ -1415,7 +1434,11 @@ describe("DiagramEditController: reconciling reports", () => {
     // still being reconciled. Each carries the whole layout, so the last one
     // says everything its predecessors did.
     const reports = [0, 10, 20].map((x) =>
-      controller.handle({ type: "change", layout: movedComponent(AT(x)) }),
+      controller.handle({
+        type: "change",
+        layout: movedComponent(AT(x)),
+        staleBase: false,
+      }),
     );
     await Promise.all(reports);
     await drain();
@@ -1447,7 +1470,7 @@ describe("DiagramEditController: reconciling reports", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       movedComponent(AT(-10)),
       factory,
     );
@@ -1456,6 +1479,7 @@ describe("DiagramEditController: reconciling reports", () => {
       void controller.handle({
         type: "change",
         layout: movedComponent(AT(0)),
+        staleBase: false,
       });
     };
     await controller.handle({
@@ -1481,7 +1505,7 @@ describe("DiagramEditController: reconciling reports", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       shapeLayout(),
       factory,
     );
@@ -1493,6 +1517,7 @@ describe("DiagramEditController: reconciling reports", () => {
           { from: "Pkg.M", shapes: [RECT, RECT] },
         ] as unknown as DiagramLayout["diagramLayers"],
       }),
+      staleBase: false,
     });
     await drain();
 
@@ -1519,7 +1544,7 @@ describe("DiagramEditController: reconciling reports", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -1527,7 +1552,11 @@ describe("DiagramEditController: reconciling reports", () => {
     interleave = () => {
       // The default instance renders an empty diagram, so this reports it
       // exactly as OMC already holds it and the reconcile writes nothing.
-      void controller.handle({ type: "change", layout: layout({}) });
+      void controller.handle({
+        type: "change",
+        layout: layout({}),
+        staleBase: false,
+      });
     };
     await controller.handle({
       type: "addComponent",
@@ -1549,7 +1578,7 @@ describe("DiagramEditController: reconciling reports", () => {
     const { gate } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       movedComponent(AT(0)),
       factory,
     );
@@ -1557,6 +1586,7 @@ describe("DiagramEditController: reconciling reports", () => {
     await controller.handle({
       type: "change",
       layout: movedComponent(AT(0)),
+      staleBase: false,
     });
 
     expect(invoked).toContain("updateComponent");
@@ -1570,16 +1600,17 @@ describe("DiagramEditController: reconciling reports", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       movedComponent(AT(-10)),
       factory,
       undefined,
-      true, // read-only: an MSL class renders and answers reads, refuses writes
+      { ok: false, reason: REFUSAL }, // read-only: an MSL class renders and answers reads, refuses writes
     );
 
     await controller.handle({
       type: "change",
       layout: movedComponent(AT(0)),
+      staleBase: false,
     });
     await drain();
 
@@ -1609,7 +1640,7 @@ describe("DiagramEditController: reconciling reports", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       movedComponent(AT(-10)),
       factory,
     );
@@ -1618,11 +1649,13 @@ describe("DiagramEditController: reconciling reports", () => {
       void controller.handle({
         type: "change",
         layout: movedComponent(AT(10)),
+        staleBase: false,
       });
     };
     await controller.handle({
       type: "change",
       layout: movedComponent(AT(0)),
+      staleBase: false,
     });
     await drain();
 
@@ -1644,7 +1677,7 @@ describe("DiagramEditController: reconciling reports", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler } = manualScheduler();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       movedComponent(AT(-10)),
       factory,
       scheduler,
@@ -1654,6 +1687,7 @@ describe("DiagramEditController: reconciling reports", () => {
     await controller.handle({
       type: "change",
       layout: layout({}),
+      staleBase: false,
     });
     await drain();
 
@@ -1661,6 +1695,118 @@ describe("DiagramEditController: reconciling reports", () => {
     // component the sync restored as one the user deleted.
     expect(invoked).not.toContain("deleteComponent");
     expect(posted.some((m) => m.type === "error")).toBe(true);
+    controller.dispose();
+  });
+});
+
+describe("DiagramEditController: stale-base reconcile (issue #408)", () => {
+  /** OMC's real state: `gain1` (as the report also knows it) plus `gain2` —
+   *  e.g. a paste that settled into OMC after the webview's local layout was
+   *  last captured, whose own push the webview then refused. */
+  const TWO_COMPONENTS: ModelInstance = {
+    name: "Pkg.M",
+    restriction: "model",
+    elements: [
+      {
+        $kind: "component",
+        name: "gain1",
+        type: GAIN_TYPE,
+        annotation: {
+          Placement: {
+            transformation: {
+              extent: [
+                [10, 10],
+                [30, 30],
+              ],
+            },
+          },
+        },
+      },
+      {
+        $kind: "component",
+        name: "gain2",
+        type: GAIN_TYPE,
+        annotation: {
+          Placement: {
+            transformation: {
+              extent: [
+                [50, 50],
+                [70, 70],
+              ],
+            },
+          },
+        },
+      },
+    ],
+  } as unknown as ModelInstance;
+
+  it("does not delete a component the report never knew about, and resyncs the webview onto it", async () => {
+    const { client, invoked } = makeEditClient({ instance: TWO_COMPONENTS });
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    // The controller's own starting point mirrors the webview's stale local
+    // view: it knows only gain1.
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      movedComponent([
+        [0, 0],
+        [20, 20],
+      ]),
+      factory,
+    );
+
+    await controller.handle({
+      type: "change",
+      // gain1 moved (a genuinely different extent from TWO_COMPONENTS' own —
+      // `movedComponent` also bakes in `rotation: 0`, which the producer's
+      // output for an un-rotated placement omits, so a same-extent report
+      // would still diff as a placement change on that field alone and pass
+      // this assertion for the wrong reason); still no gain2 in this report.
+      layout: movedComponent([
+        [20, 20],
+        [40, 40],
+      ]),
+      staleBase: true,
+    });
+    await drain();
+
+    // gain1's own move still lands...
+    expect(invoked).toContain("updateComponent");
+    // ...but gain2 is not read as a user deletion just because the report
+    // doesn't mention it.
+    expect(invoked).not.toContain("deleteComponent");
+    // The webview never saw gain2 (its push was refused), so a settle is
+    // forced regardless of the usual "nothing left to tell it" shortcut.
+    expect(posted.filter((m) => m.type === "layout")).toHaveLength(1);
+    controller.dispose();
+  });
+
+  it("still deletes a component the user actually removed when the report is not stale", async () => {
+    const { client, invoked } = makeEditClient({
+      instance: instanceWithComponent("gain1", [
+        [0, 0],
+        [20, 20],
+      ]),
+    });
+    const { gate } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      movedComponent([
+        [0, 0],
+        [20, 20],
+      ]),
+      factory,
+    );
+
+    await controller.handle({
+      type: "change",
+      layout: layout({}), // report: no components at all — a real deletion
+      staleBase: false,
+    });
+    await drain();
+
+    expect(invoked).toContain("deleteComponent");
     controller.dispose();
   });
 });
@@ -1673,7 +1819,7 @@ describe("DiagramEditController: parameter editing", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -1693,7 +1839,7 @@ describe("DiagramEditController: parameter editing", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -1703,6 +1849,7 @@ describe("DiagramEditController: parameter editing", () => {
       type: "parametersSubmit",
       kind: "classParams",
       values: { gain: 5 },
+      dirty: ["gain"],
     });
 
     expect(setModifierCalls[0]).toMatchObject({
@@ -1721,7 +1868,7 @@ describe("DiagramEditController: parameter editing", () => {
     const { gate } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -1731,6 +1878,7 @@ describe("DiagramEditController: parameter editing", () => {
       type: "parametersSubmit",
       kind: "classParams",
       values: { gain: 2 },
+      dirty: ["gain"],
     });
 
     expect(setModifierCalls).toEqual([]);
@@ -1743,7 +1891,7 @@ describe("DiagramEditController: parameter editing", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -1756,6 +1904,7 @@ describe("DiagramEditController: parameter editing", () => {
       type: "parametersSubmit",
       kind: "componentParams",
       values: { k: 3 },
+      dirty: ["k"],
     });
 
     expect(setModifierCalls[0]).toMatchObject({
@@ -1772,7 +1921,7 @@ describe("DiagramEditController: parameter editing", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -1798,7 +1947,7 @@ describe("DiagramEditController: parameter editing", () => {
     const { gate } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -1813,6 +1962,7 @@ describe("DiagramEditController: parameter editing", () => {
       type: "parametersSubmit",
       kind: "classParams",
       values: { gain: 5 },
+      dirty: ["gain"],
     });
     await Promise.all([edit, submit]);
 
@@ -1897,7 +2047,7 @@ describe("DiagramEditController: shape properties", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       shapeLayout(),
       factory,
     );
@@ -1918,7 +2068,7 @@ describe("DiagramEditController: shape properties", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       shapeLayout(),
       factory,
     );
@@ -1948,12 +2098,16 @@ describe("DiagramEditController: shape properties", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       shapeLayout(),
       factory,
     );
 
-    await controller.handle({ type: "change", layout: shapeLayout() });
+    await controller.handle({
+      type: "change",
+      layout: shapeLayout(),
+      staleBase: false,
+    });
     await drain();
 
     await controller.handle({
@@ -1968,6 +2122,7 @@ describe("DiagramEditController: shape properties", () => {
       type: "parametersSubmit",
       kind: "shapeProperties",
       values: { lineColor: "#ff0000" },
+      dirty: ["lineColor"],
     });
 
     expect(
@@ -1984,7 +2139,7 @@ describe("DiagramEditController: shape properties", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       shapeLayout(),
       factory,
     );
@@ -1997,6 +2152,7 @@ describe("DiagramEditController: shape properties", () => {
       type: "parametersSubmit",
       kind: "shapeProperties",
       values: { lineColor: "#ff0000" },
+      dirty: ["lineColor"],
     });
 
     expect(invoked).toContain("writeClassGraphics");
@@ -2017,7 +2173,7 @@ describe("DiagramEditController: shape properties", () => {
     const { factory, fireForeign } = makeShadowFactory();
     const { scheduler, flush: flushDebounce } = manualScheduler();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       shapeLayout(),
       factory,
       scheduler,
@@ -2039,6 +2195,7 @@ describe("DiagramEditController: shape properties", () => {
       type: "parametersSubmit",
       kind: "shapeProperties",
       values: { lineColor: "#ff0000" },
+      dirty: ["lineColor"],
     });
 
     expect(invoked).not.toContain("writeClassGraphics");
@@ -2074,7 +2231,7 @@ function iconController(
   initial: DiagramLayout,
 ): DiagramEditController {
   return new DiagramEditController(
-    { client, document: SRC_DOC, className: "Pkg.M", gate },
+    controllerDeps({ client, gate }),
     initial,
     factory,
     undefined,
@@ -2098,6 +2255,7 @@ describe("DiagramEditController: icon mode", () => {
     await controller.handle({
       type: "change",
       layout: iconShapeLayout([RECT]),
+      staleBase: false,
     });
 
     expect(invoked).toContain("writeClassGraphics");
@@ -2136,6 +2294,7 @@ describe("DiagramEditController: icon mode", () => {
       type: "parametersSubmit",
       kind: "shapeProperties",
       values: { lineColor: "#ff0000" },
+      dirty: ["lineColor"],
     });
 
     expect(invoked).toContain("writeClassGraphics");
@@ -2215,6 +2374,7 @@ describe("DiagramEditController: icon mode", () => {
       type: "parametersSubmit",
       kind: "classParams",
       values: { gain: 5 },
+      dirty: ["gain"],
     });
 
     expect(setModifierCalls).toEqual([]);
@@ -2227,7 +2387,7 @@ describe("DiagramEditController: icon mode", () => {
     const { factory } = makeShadowFactory();
     // Default (diagram) mode — the same gesture must target the diagram layer.
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       diagramShapeLayout([]),
       factory,
     );
@@ -2235,6 +2395,7 @@ describe("DiagramEditController: icon mode", () => {
     await controller.handle({
       type: "change",
       layout: diagramShapeLayout([RECT]),
+      staleBase: false,
     });
 
     expect(graphicsWrites[0]).toMatchObject({
@@ -2252,7 +2413,7 @@ describe("DiagramEditController: queue resilience", () => {
     // An unknown shape kind makes buildShapePropertiesForm throw synchronously
     // inside the editShape dispatch case.
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({
         diagramLayers: [
           { from: "Pkg.M", shapes: [{ kind: "bogus" }] },
@@ -2303,7 +2464,7 @@ describe("DiagramEditController: change class", () => {
     const { gate } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       swapLayout(),
       factory,
     );
@@ -2329,7 +2490,7 @@ describe("DiagramEditController: change class", () => {
     const { gate } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       swapLayout(),
       factory,
     );
@@ -2351,7 +2512,7 @@ describe("DiagramEditController: change class", () => {
     const { gate } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       swapLayout(),
       factory,
     );
@@ -2386,7 +2547,7 @@ describe("DiagramEditController: change class", () => {
     const { gate } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       swapLayout(),
       factory,
     );
@@ -2407,7 +2568,7 @@ describe("DiagramEditController: simulate and check actions", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -2425,7 +2586,7 @@ describe("DiagramEditController: simulate and check actions", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -2434,6 +2595,7 @@ describe("DiagramEditController: simulate and check actions", () => {
       type: "parametersSubmit",
       kind: "simulate",
       values: { stopTime: 2 },
+      dirty: ["stopTime"],
     });
 
     expect(simulateCalls).toHaveLength(1);
@@ -2446,7 +2608,7 @@ describe("DiagramEditController: simulate and check actions", () => {
     const { gate } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -2464,7 +2626,7 @@ describe("DiagramEditController: simulate and check actions", () => {
     const { gate } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -2478,6 +2640,7 @@ describe("DiagramEditController: simulate and check actions", () => {
       type: "parametersSubmit",
       kind: "simulate",
       values: { stopTime: 1 },
+      dirty: ["stopTime"],
     });
     await Promise.all([edit, sim]);
 
@@ -2540,12 +2703,7 @@ describe("DiagramEditController: writable-class gate", () => {
     scheduler?: Scheduler;
   }): DiagramEditController {
     return new DiagramEditController(
-      {
-        client: deps.client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate: deps.gate,
-      },
+      controllerDeps({ client: deps.client, gate: deps.gate }),
       deps.initial ?? layout({}),
       deps.factory,
       deps.scheduler,
@@ -2583,6 +2741,7 @@ describe("DiagramEditController: writable-class gate", () => {
       type: "parametersSubmit",
       kind: "classParams",
       values: { gain: 5 },
+      dirty: ["gain"],
     });
 
     expect(setModifierCalls).toEqual([]); // mutation refused
@@ -2604,6 +2763,7 @@ describe("DiagramEditController: writable-class gate", () => {
       type: "parametersSubmit",
       kind: "simulate",
       values: { stopTime: 1 },
+      dirty: ["stopTime"],
     });
     expect(simulateCalls).toHaveLength(1);
   });
@@ -2637,7 +2797,7 @@ describe("DiagramEditController: change-class error branches", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       swapLayout(),
       factory,
     );
@@ -2661,7 +2821,7 @@ describe("DiagramEditController: change-class error branches", () => {
     const { gate, posted } = makeGate();
     const { factory, writes } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       swapLayout(),
       factory,
     );
@@ -2685,7 +2845,7 @@ describe("DiagramEditController: reset error branches", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -2703,6 +2863,7 @@ describe("DiagramEditController: reset error branches", () => {
       type: "parametersSubmit",
       kind: "componentParams",
       values: { k: 9 },
+      dirty: ["k"],
     });
     expect(setModifierCalls).toEqual([]);
   });
@@ -2714,7 +2875,7 @@ describe("DiagramEditController: reset error branches", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -2729,6 +2890,7 @@ describe("DiagramEditController: reset error branches", () => {
       type: "parametersSubmit",
       kind: "componentParams",
       values: { k: 9 },
+      dirty: ["k"],
     });
     expect(setModifierCalls).toEqual([]);
   });
@@ -2738,7 +2900,7 @@ describe("DiagramEditController: reset error branches", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );
@@ -2811,16 +2973,14 @@ describe("DiagramEditController: clipboard", () => {
     const clipboard = new DiagramClipboard();
     let broadcasts = 0;
     const controller = new DiagramEditController(
-      {
+      controllerDeps({
         client,
-        document: SRC_DOC,
-        className: "Pkg.M",
         gate,
         clipboard,
         onClipboardChanged: () => {
           broadcasts += 1;
         },
-      },
+      }),
       twoGains(),
       factory,
       undefined,
@@ -2940,14 +3100,7 @@ describe("DiagramEditController: clipboard", () => {
     const { factory, writes } = makeShadowFactory();
     const clipboard = new DiagramClipboard();
     const controller = new DiagramEditController(
-      {
-        client,
-        document: SRC_DOC,
-        className: "Pkg.M",
-        gate,
-        clipboard,
-        onClipboardChanged: () => {},
-      },
+      controllerDeps({ client, gate, clipboard }),
       twoGains(),
       factory,
     );
@@ -3051,7 +3204,7 @@ describe("the gesture boundary", () => {
     const { gate, posted } = makeGate();
     const { factory } = makeShadowFactory();
     const controller = new DiagramEditController(
-      { client, document: SRC_DOC, className: "Pkg.M", gate },
+      controllerDeps({ client, gate }),
       layout({}),
       factory,
     );

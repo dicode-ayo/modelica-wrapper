@@ -7,6 +7,8 @@
  * stubs here as new tests need them — keep them minimal and observable.
  */
 
+import * as nodePath from "node:path";
+
 export enum DiagnosticSeverity {
   Error = 0,
   Warning = 1,
@@ -128,7 +130,7 @@ export class SemanticTokens {
 }
 
 export class SemanticTokensBuilder {
-  constructor(private readonly legend?: SemanticTokensLegend) {}
+  constructor(_legend?: SemanticTokensLegend) {}
   push(_range: Range, _tokenType: string): void {}
   build(): SemanticTokens {
     return new SemanticTokens(new Uint32Array());
@@ -199,6 +201,18 @@ class UriImpl {
 
 export const Uri = UriImpl;
 export type Uri = UriImpl;
+
+/** `RelativePattern` stand-in — a base folder plus the glob matched against
+ *  its direct children, as {@link createFileSystemWatcher} takes it. */
+export class RelativePattern {
+  readonly baseUri: UriImpl;
+  constructor(
+    base: UriImpl | string,
+    public readonly pattern: string,
+  ) {
+    this.baseUri = typeof base === "string" ? UriImpl.file(base) : base;
+  }
+}
 
 /** `TabInputText` stand-in — a text editor's tab input, carrying its `uri`. */
 export class TabInputText {
@@ -295,6 +309,14 @@ export function completeApply(index = 0): void {
   pending.resolve();
 }
 
+/** Paths `workspace.findFiles` resolves with. */
+let foundFiles: string[] = [];
+
+/** Set the paths the mock's `workspace.findFiles` reports (e.g. an index seed). */
+export function setFindFilesResult(paths: string[]): void {
+  foundFiles = paths;
+}
+
 /**
  * Minimal `window` namespace. The message helpers record their args on a
  * module-level log so unit tests can assert which toast a code path
@@ -347,6 +369,85 @@ function register<T>(list: T[], listener: T): Disposable {
     const i = list.indexOf(listener);
     if (i !== -1) list.splice(i, 1);
   });
+}
+
+/** One `createFileSystemWatcher` call: its pattern, its ignore flags, and the
+ *  listeners registered on it. */
+export interface WatcherRecord {
+  pattern: string | RelativePattern;
+  ignoreCreateEvents: boolean;
+  ignoreChangeEvents: boolean;
+  ignoreDeleteEvents: boolean;
+  create: Array<(uri: UriImpl) => void>;
+  change: Array<(uri: UriImpl) => void>;
+  delete: Array<(uri: UriImpl) => void>;
+  disposed: boolean;
+}
+
+/** Every watcher `createFileSystemWatcher` handed out, for assertions. */
+export const fileSystemWatchers: WatcherRecord[] = [];
+
+/** Drop recorded watchers between tests. */
+export function resetFileSystemWatchers(): void {
+  fileSystemWatchers.length = 0;
+}
+
+/** Match the `*`, `*.ext`, and plain-name glob forms the callers here use. */
+function globMatches(glob: string, fsPath: string): boolean {
+  const bare = glob.startsWith("**/") ? glob.slice(3) : glob;
+  if (bare.includes("/")) return false;
+  const name = nodePath.basename(fsPath);
+  if (bare === "*") return true;
+  return bare.startsWith("*.") ? name.endsWith(bare.slice(1)) : name === bare;
+}
+
+/** Whether a live watcher's pattern covers `fsPath`. A `RelativePattern` only
+ *  covers direct children of its base; a bare glob covers any directory. */
+function watcherCovers(record: WatcherRecord, fsPath: string): boolean {
+  if (record.disposed) return false;
+  const { pattern } = record;
+  if (typeof pattern === "string") return globMatches(pattern, fsPath);
+  return (
+    nodePath.dirname(fsPath) === pattern.baseUri.fsPath &&
+    globMatches(pattern.pattern, fsPath)
+  );
+}
+
+/** Honor the ignore flags the watcher was created with, so a test that fires an
+ *  ignored event sees the same nothing VSCode would deliver. */
+const ignoredBy: Record<
+  "create" | "change" | "delete",
+  (record: WatcherRecord) => boolean
+> = {
+  create: (r) => r.ignoreCreateEvents,
+  change: (r) => r.ignoreChangeEvents,
+  delete: (r) => r.ignoreDeleteEvents,
+};
+
+function emitFileEvent(
+  kind: "create" | "change" | "delete",
+  fsPath: string,
+): void {
+  const uri = UriImpl.file(fsPath);
+  for (const record of [...fileSystemWatchers]) {
+    if (ignoredBy[kind](record) || !watcherCovers(record, fsPath)) continue;
+    for (const listener of [...record[kind]]) listener(uri);
+  }
+}
+
+/** Fire `onDidCreate` on every live watcher whose pattern covers `fsPath`. */
+export function emitFileCreate(fsPath: string): void {
+  emitFileEvent("create", fsPath);
+}
+
+/** Fire `onDidChange` on every live watcher whose pattern covers `fsPath`. */
+export function emitFileChange(fsPath: string): void {
+  emitFileEvent("change", fsPath);
+}
+
+/** Fire `onDidDelete` on every live watcher whose pattern covers `fsPath`. */
+export function emitFileDelete(fsPath: string): void {
+  emitFileEvent("delete", fsPath);
 }
 
 export const workspace = {
@@ -402,6 +503,44 @@ export const workspace = {
         permissions: 0,
       });
     },
+  },
+  /** Paths `findFiles` resolves with; set via {@link setFindFilesResult}. */
+  findFiles(_pattern: string): Promise<UriImpl[]> {
+    return Promise.resolve(foundFiles.map((p) => UriImpl.file(p)));
+  },
+  /** Watcher stub recording its pattern and listeners in
+   *  {@link fileSystemWatchers}, so tests can drive filesystem events through
+   *  {@link emitFileCreate} / {@link emitFileDelete}. */
+  createFileSystemWatcher(
+    pattern: string | RelativePattern,
+    ignoreCreateEvents = false,
+    ignoreChangeEvents = false,
+    ignoreDeleteEvents = false,
+  ): {
+    onDidChange(listener: (uri: UriImpl) => void): Disposable;
+    onDidCreate(listener: (uri: UriImpl) => void): Disposable;
+    onDidDelete(listener: (uri: UriImpl) => void): Disposable;
+    dispose(): void;
+  } {
+    const record: WatcherRecord = {
+      pattern,
+      ignoreCreateEvents,
+      ignoreChangeEvents,
+      ignoreDeleteEvents,
+      create: [],
+      change: [],
+      delete: [],
+      disposed: false,
+    };
+    fileSystemWatchers.push(record);
+    return {
+      onDidChange: (listener) => register(record.change, listener),
+      onDidCreate: (listener) => register(record.create, listener),
+      onDidDelete: (listener) => register(record.delete, listener),
+      dispose: () => {
+        record.disposed = true;
+      },
+    };
   },
   applyEdit(edit: WorkspaceEdit): Promise<boolean> {
     appliedEdits.push(edit);

@@ -10,10 +10,16 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { ModelInstance, OmcClient } from "@dicode/omc-client";
+import type {
+  DiagramLayout,
+  ModelInstance,
+  OmcClient,
+  RectangleShape,
+} from "@dicode/omc-client";
 
 import { executedCommands } from "../../test-support/vscode-mock.js";
 import {
+  applyDiagramEdits,
   fetchIconLayout,
   guardAddComponent,
   libraryIconSvg,
@@ -64,14 +70,14 @@ const WITH_ICON: ModelInstance = {
       graphics: [],
     },
   },
-} as unknown as ModelInstance;
+};
 
 /** An instance whose annotation is null — valid JSON, no Icon to paint. */
 const NULL_ANNOTATION: ModelInstance = {
   name: "Pkg.NullAnno",
   restriction: "model",
   annotation: null,
-} as unknown as ModelInstance;
+};
 
 function makeClient(handlers: {
   annotation?: () => Promise<{ instance: ModelInstance }>;
@@ -137,7 +143,7 @@ describe("fetchIconLayout: when the annotation path is trusted", () => {
       restriction: "model",
       annotation: null,
       elements: [{ $kind: "extends", baseClass: WITH_ICON }],
-    } as unknown as ModelInstance;
+    };
     const { client, calls } = makeClient({
       annotation: async () => ({ instance: inherited }),
     });
@@ -155,7 +161,7 @@ describe("libraryIconSvg: dependency reporting", () => {
       restriction: "model",
       annotation: null,
       elements: [{ $kind: "extends", baseClass: WITH_ICON }],
-    } as unknown as ModelInstance;
+    };
     const { client } = makeClient({
       annotation: async () => ({ instance: derived }),
     });
@@ -218,5 +224,241 @@ describe("guardAddComponent", () => {
       kind: "guard-failed",
       message: "isPartial Pkg.Unknown failed: OMC socket timeout",
     });
+  });
+});
+
+/** A client whose `invoke` records the calls it received and reports success
+ *  for all of them; `listFile` reports empty so `captureSnapshot` (issue #29's
+ *  snapshot/rollback machinery) opts itself out rather than needing a full
+ *  source-text fixture this test doesn't otherwise care about. */
+function stubEditClient(): { client: OmcClient; invoked: string[] } {
+  const invoked: string[] = [];
+  const client = {
+    invoke: vi.fn(async (fn: string) => {
+      invoked.push(fn);
+      return { success: true };
+    }),
+    listFile: vi.fn(async () => ({ contents: "" })),
+    get lastCall() {
+      return "stub(...)";
+    },
+  } as unknown as OmcClient;
+  return { client, invoked };
+}
+
+function connectedLayout(): DiagramLayout {
+  return {
+    kind: "diagram",
+    className: "Pkg.M",
+    source: { file: "Pkg/M.mo", line: 1, column: 1 } as never,
+    iconLayers: [],
+    diagramLayers: [],
+    labels: [],
+    classes: {},
+    components: {
+      gain1: {
+        name: "gain1",
+        classRef: "Modelica.Blocks.Math.Gain",
+        placement: {
+          extent: [
+            [10, 10],
+            [30, 30],
+          ],
+        },
+      },
+      gain2: {
+        name: "gain2",
+        classRef: "Modelica.Blocks.Math.Gain",
+        placement: {
+          extent: [
+            [50, 50],
+            [70, 70],
+          ],
+        },
+      },
+    },
+    connectors: {},
+    connections: [
+      {
+        lhs: { component: "gain1", port: "y" },
+        rhs: { component: "gain2", port: "u" },
+        waypoints: [],
+      },
+    ],
+  };
+}
+
+/** `components.gain1`, guarded rather than indexed straight past the
+ *  `Record<string, ComponentInstance | undefined>` check. */
+function requireGain1(
+  layout: DiagramLayout,
+): NonNullable<DiagramLayout["components"][string]> {
+  const gain1 = layout.components.gain1;
+  if (gain1 === undefined) throw new Error("fixture is missing gain1");
+  return gain1;
+}
+
+describe("applyDiagramEdits: staleBase (issue #408)", () => {
+  it("does not delete a component or connection the report never knew about, but still moves the one it reported", async () => {
+    const { client, invoked } = stubEditClient();
+    const current = connectedLayout();
+    const next = connectedLayout();
+    // gain1 moved; gain2 and its connection to gain1 are simply absent —
+    // exactly what a stale-base report looks like, per issue #408.
+    next.components = {
+      gain1: {
+        ...requireGain1(current),
+        placement: {
+          extent: [
+            [20, 20],
+            [40, 40],
+          ],
+        },
+      },
+    };
+    next.connections = [];
+
+    const result = await applyDiagramEdits(client, "Pkg.M", current, next, {
+      staleBase: true,
+    });
+
+    expect(result).not.toBeNull();
+    expect(invoked).toContain("updateComponent");
+    expect(invoked).not.toContain("deleteComponent");
+    expect(invoked).not.toContain("deleteConnection");
+  });
+
+  it("still deletes a component and connection the user actually removed when staleBase is unset", async () => {
+    const { client, invoked } = stubEditClient();
+    const current = connectedLayout();
+    const next = connectedLayout();
+    next.components = { gain1: requireGain1(current) };
+    next.connections = [];
+
+    await applyDiagramEdits(client, "Pkg.M", current, next);
+
+    expect(invoked).toContain("deleteComponent");
+    expect(invoked).toContain("deleteConnection");
+  });
+});
+
+describe("applyDiagramEdits: staleBase graphics (issue #408)", () => {
+  function rect(x: number): RectangleShape {
+    return {
+      kind: "rectangle",
+      extent: [
+        [x, x],
+        [x + 10, x + 10],
+      ],
+    };
+  }
+
+  function withDiagramShapes(shapes: RectangleShape[]): DiagramLayout {
+    const layout = connectedLayout();
+    layout.diagramLayers = [{ from: "Pkg.M", shapes }];
+    return layout;
+  }
+
+  it("drops every graphics edit on a stale base, not just graphicsDeleted, when the shape count shrinks", async () => {
+    // A stale report never learned about a shape OMC already holds
+    // (`rect(90)` here). `diffGraphics` reads positionally, so the unknown
+    // shape doesn't go missing at the tail — it shifts every later index and
+    // turns into an in-place overwrite (`graphicsModified`) of a neighbor,
+    // not a clean `graphicsDeleted` that filtering only that kind would catch.
+    const { client, invoked } = stubEditClient();
+    const current = withDiagramShapes([rect(90), rect(10), rect(20)]);
+    const next = withDiagramShapes([rect(11), rect(20)]);
+
+    await applyDiagramEdits(client, "Pkg.M", current, next, {
+      staleBase: true,
+    });
+
+    expect(invoked).not.toContain("writeClassGraphics");
+  });
+
+  it("drops every graphics edit on a stale base even when the shape count grows, where there is no delete at all to filter", async () => {
+    const { client, invoked } = stubEditClient();
+    const current = withDiagramShapes([rect(90), rect(10), rect(20)]);
+    const next = withDiagramShapes([rect(10), rect(20), rect(30), rect(40)]);
+
+    await applyDiagramEdits(client, "Pkg.M", current, next, {
+      staleBase: true,
+    });
+
+    expect(invoked).not.toContain("writeClassGraphics");
+  });
+
+  it("still applies graphics edits when staleBase is unset", async () => {
+    const { client, invoked } = stubEditClient();
+    const current = withDiagramShapes([rect(90), rect(10), rect(20)]);
+    const next = withDiagramShapes([rect(11), rect(20)]);
+
+    await applyDiagramEdits(client, "Pkg.M", current, next);
+
+    expect(invoked).toContain("writeClassGraphics");
+  });
+});
+
+describe("applyDiagramEdits: staleBase connectionRenamed (issue #408)", () => {
+  function withConnections(
+    connections: DiagramLayout["connections"],
+  ): DiagramLayout {
+    const layout = connectedLayout();
+    layout.connections = connections;
+    return layout;
+  }
+
+  it("drops a connectionRenamed that pairs an unknown connection with a freshly drawn one, rather than rewriting it in place", async () => {
+    // `pins[3].p -> ground.p` is OMC's real state; the stale report never
+    // learned about it. The report instead draws a NEW connection at a
+    // different subscript of the same vector, `pins[2].p -> ground.p` — same
+    // waypoints/style, one endpoint's base matching, only the index differing.
+    // That is exactly the shape `isReindexRename` treats as a lone
+    // `connectorSizing` re-index (issue #26), so left unguarded it would
+    // rewrite the unknown connection's endpoints onto the drawn one instead
+    // of leaving both alone.
+    const { client, invoked } = stubEditClient();
+    const current = withConnections([
+      {
+        lhs: { component: "pins", port: "p", componentSubscripts: "[3]" },
+        rhs: { component: "ground", port: "p" },
+        waypoints: [],
+      },
+    ]);
+    const next = withConnections([
+      {
+        lhs: { component: "pins", port: "p", componentSubscripts: "[2]" },
+        rhs: { component: "ground", port: "p" },
+        waypoints: [],
+      },
+    ]);
+
+    await applyDiagramEdits(client, "Pkg.M", current, next, {
+      staleBase: true,
+    });
+
+    expect(invoked).not.toContain("updateConnectionNames");
+  });
+
+  it("still applies a connectionRenamed when staleBase is unset", async () => {
+    const { client, invoked } = stubEditClient();
+    const current = withConnections([
+      {
+        lhs: { component: "pins", port: "p", componentSubscripts: "[3]" },
+        rhs: { component: "ground", port: "p" },
+        waypoints: [],
+      },
+    ]);
+    const next = withConnections([
+      {
+        lhs: { component: "pins", port: "p", componentSubscripts: "[2]" },
+        rhs: { component: "ground", port: "p" },
+        waypoints: [],
+      },
+    ]);
+
+    await applyDiagramEdits(client, "Pkg.M", current, next);
+
+    expect(invoked).toContain("updateConnectionNames");
   });
 });

@@ -89,6 +89,7 @@ export class LibraryWebviewProvider
   private readonly searches = new Map<string, AbortController>();
 
   private readonly onClassChanged: vscode.Disposable;
+  private readonly onSessionReplaced: vscode.Disposable;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -98,10 +99,16 @@ export class LibraryWebviewProvider
     this.onClassChanged = invalidation.register((className) =>
       this.classChanged(className),
     );
+    // `refresh()` rather than a re-list: an icon cached from the dead
+    // session would otherwise keep serving its stale bytes.
+    this.onSessionReplaced = invalidation.registerSessionReplaced(() => {
+      this.refresh();
+    });
   }
 
   dispose(): void {
     this.onClassChanged.dispose();
+    this.onSessionReplaced.dispose();
   }
 
   /** Drop everything this sidebar derives from `className`'s definition: its

@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 import {
   recordedMessages,
   resetTabs,
+  setFindFilesResult,
   setTabGroups,
   TabInputCustom,
   TabInputText,
@@ -14,20 +15,45 @@ import {
 
 import {
   createPathClassIndex,
+  createPendingReorders,
   handleMoChange,
   handleMoDelete,
   handleOrderChange,
   handleOrderDelete,
   isDeclaredClassBusy,
+  registerMoFileWatcher,
   seedPathClassIndex,
   type MoWatcherDeps,
 } from "./mo-file-watcher.js";
 import { ClassInvalidationRegistry } from "./invalidation.js";
+import type { LibraryWebviewProvider } from "./library/library-webview-provider.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import { publishSourceChanges } from "./source-invalidation.js";
-import { sourceUriFor } from "./source-provider.js";
+import {
+  sourceUriFor,
+  type ModelicaSourceProvider,
+} from "./source-provider.js";
 
 const FILE = "/ws/My/Pkg/Bar.mo";
+
+/**
+ * Mimics `registerMoFileWatcher`'s real `run()` queue closely enough to
+ * exercise deferred, per-package-serialized retries in tests: each `pkgFile`
+ * gets its own promise chain, so a scheduled retry never runs synchronously
+ * inside the call that scheduled it.
+ */
+function makeFakeReorderScheduler(): MoWatcherDeps["scheduleReorderRetry"] {
+  const inFlight = new Map<string, Promise<void>>();
+  return (pkgFile, _describedPath, retry) => {
+    const resolvedKey = path.resolve(pkgFile);
+    const prior = inFlight.get(resolvedKey) ?? Promise.resolve();
+    const next = prior.then(retry).catch(() => {});
+    inFlight.set(resolvedKey, next);
+    void next.finally(() => {
+      if (inFlight.get(resolvedKey) === next) inFlight.delete(resolvedKey);
+    });
+  };
+}
 
 function makeDeps(overrides: Partial<MoWatcherDeps> = {}): {
   deps: MoWatcherDeps;
@@ -52,6 +78,8 @@ function makeDeps(overrides: Partial<MoWatcherDeps> = {}): {
     sourceProvider: { notifySourceChanged },
     guard: createSelfWriteGuard(),
     index: createPathClassIndex(),
+    pendingReorders: createPendingReorders(),
+    scheduleReorderRetry: makeFakeReorderScheduler(),
     readFile: async () => "model Bar end Bar;",
     fileExists: async () => true,
     isBusy: () => false,
@@ -63,6 +91,7 @@ function makeDeps(overrides: Partial<MoWatcherDeps> = {}): {
 beforeEach(() => {
   recordedMessages.length = 0;
   resetTabs();
+  setFindFilesResult([]);
 });
 
 describe("handleMoChange", () => {
@@ -139,6 +168,81 @@ describe("handleMoChange", () => {
     expect(deps.index.get(FILE)).toEqual(["Foo"]);
     expect(childrenChanged).toHaveBeenCalledWith(null);
     expect(notifySourceChanged).toHaveBeenCalledWith("Baz");
+  });
+
+  it("keeps the file's own freshly-set entry when its new class nests under its own removed name", async () => {
+    // A `within`-clause edit renames My.Pkg.Bar to My.Pkg.Bar.Sub in place:
+    // removed=["My.Pkg.Bar"], and the file's own new entry, My.Pkg.Bar.Sub,
+    // matches that name's own cascade prefix. Without excluding fsPath from
+    // cascadeCleanup, the entry just set for FILE itself would be swept up
+    // as if it were a different, cascaded file's.
+    const guard = createSelfWriteGuard();
+    const text = "within My.Pkg.Bar; model Sub end Sub;";
+    guard.record(FILE, text);
+    const { deps, client, childrenChanged } = makeDeps({
+      guard,
+      readFile: async () => text,
+    });
+    deps.index.set(FILE, ["My.Pkg.Bar"]);
+    client.parseFile.mockResolvedValue({ classNames: ["My.Pkg.Bar.Sub"] });
+
+    await handleMoChange(deps, FILE);
+
+    expect(deps.index.get(FILE)).toEqual(["My.Pkg.Bar.Sub"]);
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg.Bar");
+  });
+
+  it("clears the index and notifies source changed for a removed class's nested member in another file (#451)", async () => {
+    // FILE's text drops its inline-declared My.Pkg.Bar.Removed; that class's
+    // own nested Baz lives in a separately-indexed file (BAZ_FILE). Saving
+    // FILE cascades Baz out of OMC's memory too, the same way deleting a
+    // whole file cascades — BAZ_FILE's own index entry and any (clean)
+    // editor on it have to be told, even though BAZ_FILE itself wasn't
+    // touched.
+    const BAZ_FILE = "/ws/My/Pkg/Bar/Baz.mo";
+    const guard = createSelfWriteGuard();
+    const text = "package Bar end Bar;";
+    guard.record(FILE, text);
+    const { deps, client, childrenChanged, notifySourceChanged } = makeDeps({
+      guard,
+      readFile: async () => text,
+    });
+    deps.index.set(FILE, ["My.Pkg.Bar", "My.Pkg.Bar.Removed"]);
+    deps.index.set(BAZ_FILE, ["My.Pkg.Bar.Removed.Baz"]);
+    client.parseFile.mockResolvedValue({ classNames: ["My.Pkg.Bar"] });
+
+    await handleMoChange(deps, FILE);
+
+    // FILE's own freshly-set entry must survive the cascade cleanup — only
+    // BAZ_FILE, the cascaded file, is dropped.
+    expect(deps.index.get(FILE)).toEqual(["My.Pkg.Bar"]);
+    expect(deps.index.get(BAZ_FILE)).toBeUndefined();
+    expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg.Bar.Removed.Baz");
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg.Bar.Removed");
+  });
+
+  it("keeps a cascaded file's unrelated class indexed on a self-write, dropping only the cascaded one", async () => {
+    // MIXED_FILE declares both "My.Pkg.Bar.Removed.Baz" (nested under the
+    // removed class) and "Standalone.Thing" (unrelated). Only the former is
+    // part of the cascade, so the file's index entry must narrow, not
+    // vanish.
+    const MIXED_FILE = "/ws/Mixed.mo";
+    const guard = createSelfWriteGuard();
+    const text = "package Bar end Bar;";
+    guard.record(FILE, text);
+    const { deps, client, notifySourceChanged } = makeDeps({
+      guard,
+      readFile: async () => text,
+    });
+    deps.index.set(FILE, ["My.Pkg.Bar", "My.Pkg.Bar.Removed"]);
+    deps.index.set(MIXED_FILE, ["My.Pkg.Bar.Removed.Baz", "Standalone.Thing"]);
+    client.parseFile.mockResolvedValue({ classNames: ["My.Pkg.Bar"] });
+
+    await handleMoChange(deps, FILE);
+
+    expect(deps.index.get(MIXED_FILE)).toEqual(["Standalone.Thing"]);
+    expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg.Bar.Removed.Baz");
+    expect(notifySourceChanged).not.toHaveBeenCalledWith("Standalone.Thing");
   });
 
   it("proceeds on a self-write even when isBusy would refuse an external edit", async () => {
@@ -222,6 +326,28 @@ describe("handleMoChange", () => {
     // The removed class's open source doc must be invalidated too.
     expect(notifySourceChanged).toHaveBeenCalledWith("Top.B");
     expect(deps.index.get(FILE)).toEqual(["Top.A"]);
+  });
+
+  it("clears the index and notifies source changed for a removed class's nested member in another file on an external edit (#451)", async () => {
+    // Same cascade as the self-write case above, but through the
+    // external-edit branch: client.deleteClass is called directly for the
+    // removed name, and reindexAndRelist's cascade cleanup must still catch
+    // BAZ_FILE, indexed separately under the removed name.
+    const BAZ_FILE = "/ws/My/Pkg/Bar/Baz.mo";
+    const { deps, client, childrenChanged, notifySourceChanged } = makeDeps();
+    deps.index.set(FILE, ["My.Pkg.Bar", "My.Pkg.Bar.Removed"]);
+    deps.index.set(BAZ_FILE, ["My.Pkg.Bar.Removed.Baz"]);
+    client.parseFile.mockResolvedValue({ classNames: ["My.Pkg.Bar"] });
+
+    await handleMoChange(deps, FILE);
+
+    expect(client.deleteClass).toHaveBeenCalledWith({
+      typeName: "My.Pkg.Bar.Removed",
+    });
+    expect(deps.index.get(FILE)).toEqual(["My.Pkg.Bar"]);
+    expect(deps.index.get(BAZ_FILE)).toBeUndefined();
+    expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg.Bar.Removed.Baz");
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg.Bar.Removed");
   });
 
   it("skips a reload that would clobber an unsaved buffer, and warns", async () => {
@@ -421,6 +547,27 @@ describe("handleMoDelete", () => {
     expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg.Bar");
     expect(deps.index.get(BAR_FILE)).toBeUndefined();
     expect(deps.index.get(PKG_FILE)).toBeUndefined();
+  });
+
+  it("keeps a cascaded file's unrelated class indexed, dropping only the cascaded one", async () => {
+    // MIXED_FILE declares both "My.Pkg.Bar" (nested under the deleted
+    // package) and "Standalone.Thing" (unrelated). Only the former is part
+    // of the cascade, so the file's index entry must narrow, not vanish.
+    const PKG_FILE = "/ws/My/Pkg/package.mo";
+    const MIXED_FILE = "/ws/Mixed.mo";
+    const { deps, notifySourceChanged, childrenChanged } = makeDeps();
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+    deps.index.set(MIXED_FILE, ["My.Pkg.Bar", "Standalone.Thing"]);
+
+    await handleMoDelete(deps, PKG_FILE);
+
+    expect(deps.index.get(MIXED_FILE)).toEqual(["Standalone.Thing"]);
+    expect(notifySourceChanged).toHaveBeenCalledWith("My.Pkg.Bar");
+    expect(notifySourceChanged).not.toHaveBeenCalledWith("Standalone.Thing");
+    // "My.Pkg" — the cascaded class's own scope, not just the deleted
+    // package's — must re-list too, so a stale "Bar" child doesn't survive
+    // in an already-expanded sidebar node.
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
   });
 
   it("names only the deleted file's own classes in the busy warning, not its whole cascade", async () => {
@@ -667,6 +814,158 @@ describe("handleOrderChange", () => {
     expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
     expect(recordedMessages).toHaveLength(0);
   });
+
+  it("records a reorder skipped for a busy buffer so a later save can retry it (#440)", async () => {
+    const { deps } = makeDeps({
+      readFile: async () => "A\nB\n",
+      isBusy: () => true,
+    });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(deps.pendingReorders.entries()).toEqual([
+      { pkgFile: path.resolve(PKG_FILE), describedPath: ORDER_FILE },
+    ]);
+    const [warning] = recordedMessages;
+    expect(warning?.message).toContain("retry automatically");
+  });
+});
+
+describe("reorder retry on save (#440)", () => {
+  it("retries a reorder skipped for a busy buffer once that buffer's own save reports it clean", async () => {
+    const dirty = new Set(["My.Pkg.Bar"]);
+    const { deps, client, childrenChanged } = makeDeps({
+      readFile: async (fsPath) =>
+        fsPath === ORDER_FILE ? "A\nB\n" : "model Bar end Bar;",
+      isBusy: (_fsPaths, classNames) => classNames.some((n) => dirty.has(n)),
+    });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+    deps.index.set(FILE, ["My.Pkg.Bar"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(recordedMessages).toHaveLength(1);
+
+    // The buffer that blocked the reorder actually saves clean now.
+    dirty.delete("My.Pkg.Bar");
+    await handleMoChange(deps, FILE);
+
+    await vi.waitFor(() =>
+      expect(client.loadFile).toHaveBeenCalledWith({ fileName: PKG_FILE }),
+    );
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+    // No second, redundant busy warning was ever emitted for the retry.
+    expect(recordedMessages).toHaveLength(1);
+  });
+
+  it("leaves a pending reorder in place when its blocking buffer is still busy after an unrelated file's own save", async () => {
+    const UNRELATED_FILE = "/ws/My/Other.mo";
+    const { deps, client, childrenChanged } = makeDeps({
+      readFile: async (fsPath) =>
+        fsPath === ORDER_FILE ? "A\nB\n" : "model Other end Other;",
+      isBusy: (_fsPaths, classNames) =>
+        classNames.includes("My.Pkg") || classNames.includes("My.Pkg.Bar"),
+    });
+    client.parseFile.mockImplementation(async ({ fileName }) =>
+      fileName === UNRELATED_FILE
+        ? { classNames: ["My.Other"] }
+        : { classNames: ["My.Pkg.Bar"] },
+    );
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+    deps.index.set(FILE, ["My.Pkg.Bar"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(recordedMessages).toHaveLength(1);
+
+    // UNRELATED_FILE's own save succeeds, but it never touches My.Pkg or
+    // My.Pkg.Bar, so the pending reorder must stay blocked rather than
+    // re-firing the warning against a buffer that never saved.
+    await handleMoChange(deps, UNRELATED_FILE);
+
+    // scheduleReorderRetry defers to a later tick — give a wrongly-scheduled
+    // retry a chance to run before asserting it didn't, since the assertions
+    // below would otherwise pass even under a regression.
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(client.loadFile).toHaveBeenCalledWith({ fileName: UNRELATED_FILE });
+    expect(client.loadFile).not.toHaveBeenCalledWith({ fileName: PKG_FILE });
+    expect(recordedMessages).toHaveLength(1);
+    expect(childrenChanged).not.toHaveBeenCalledWith("My.Pkg");
+  });
+
+  it("schedules a pending reorder's retry only once, even when two independent events clear its block", async () => {
+    const OTHER_FILE = "/ws/My/Other.mo";
+    const dirty = new Set(["My.Pkg.Bar"]);
+    const { deps, client } = makeDeps({
+      readFile: async (fsPath) => {
+        if (fsPath === ORDER_FILE) return "A\nB\n";
+        if (fsPath === OTHER_FILE) return "model Other end Other;";
+        return "model Bar end Bar;";
+      },
+      isBusy: (_fsPaths, classNames) => classNames.some((n) => dirty.has(n)),
+    });
+    client.parseFile.mockImplementation(async ({ fileName }) =>
+      fileName === OTHER_FILE
+        ? { classNames: ["My.Other"] }
+        : { classNames: ["My.Pkg.Bar"] },
+    );
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+    deps.index.set(FILE, ["My.Pkg.Bar"]);
+    deps.index.set(OTHER_FILE, ["My.Other"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+
+    // Two unrelated files save back-to-back; both clear the block that was
+    // blocking the pending reorder, and each calls retryUnblockedReorders.
+    dirty.delete("My.Pkg.Bar");
+    await Promise.all([
+      handleMoChange(deps, FILE),
+      handleMoChange(deps, OTHER_FILE),
+    ]);
+
+    await vi.waitFor(() =>
+      expect(client.loadFile).toHaveBeenCalledWith({ fileName: PKG_FILE }),
+    );
+    // Let any second, redundant scheduled retry have a chance to run too.
+    await new Promise((r) => setTimeout(r, 0));
+
+    const pkgFileCalls = client.loadFile.mock.calls.filter(
+      ([{ fileName }]) => fileName === PKG_FILE,
+    );
+    expect(pkgFileCalls).toHaveLength(1);
+  });
+
+  it("also retries a pending reorder once the file that was blocking it is deleted", async () => {
+    const dirty = new Set(["My.Pkg.Bar"]);
+    const { deps, client, childrenChanged } = makeDeps({
+      readFile: async (fsPath) =>
+        fsPath === ORDER_FILE ? "A\nB\n" : "model Bar end Bar;",
+      isBusy: (_fsPaths, classNames) => classNames.some((n) => dirty.has(n)),
+    });
+    deps.index.set(PKG_FILE, ["My.Pkg"]);
+    deps.index.set(FILE, ["My.Pkg.Bar"]);
+
+    await handleOrderChange(deps, ORDER_FILE);
+
+    expect(client.loadFile).not.toHaveBeenCalled();
+    expect(recordedMessages).toHaveLength(1);
+
+    // The blocking buffer closes without saving — no filesystem event of its
+    // own — and the file is then deleted outright.
+    dirty.delete("My.Pkg.Bar");
+    await handleMoDelete(deps, FILE);
+
+    await vi.waitFor(() =>
+      expect(client.loadFile).toHaveBeenCalledWith({ fileName: PKG_FILE }),
+    );
+    expect(childrenChanged).toHaveBeenCalledWith("My.Pkg");
+  });
 });
 
 describe("handleOrderDelete", () => {
@@ -828,6 +1127,43 @@ describe("createPathClassIndex", () => {
   });
 });
 
+describe("createPendingReorders", () => {
+  it("returns a set pair through entries(), and drops it on delete", () => {
+    const pending = createPendingReorders();
+    pending.set(PKG_FILE, ORDER_FILE);
+
+    expect(pending.entries()).toEqual([
+      { pkgFile: path.resolve(PKG_FILE), describedPath: ORDER_FILE },
+    ]);
+
+    pending.delete(PKG_FILE);
+
+    expect(pending.entries()).toEqual([]);
+  });
+
+  it("normalizes the pkgFile key, so an unnormalized path still resolves to the same entry", () => {
+    const pending = createPendingReorders();
+    pending.set("/ws/My/../My/Pkg/package.mo", ORDER_FILE);
+
+    expect(pending.entries()).toEqual([
+      {
+        pkgFile: path.resolve("/ws/My/Pkg/package.mo"),
+        describedPath: ORDER_FILE,
+      },
+    ]);
+  });
+
+  it("empties every entry on clear(), even with several pending", () => {
+    const pending = createPendingReorders();
+    pending.set(PKG_FILE, ORDER_FILE);
+    pending.set("/ws/My/Other/package.mo", "/ws/My/Other/package.order");
+
+    pending.clear();
+
+    expect(pending.entries()).toEqual([]);
+  });
+});
+
 /**
  * The watcher announces a class through `notifySourceChanged`, whose broadcast
  * is what {@link publishSourceChanges} turns into one invalidation. Wiring the
@@ -896,5 +1232,123 @@ describe("class invalidation from a `.mo` change", () => {
     await handleOrderChange(deps, ORDER_FILE);
 
     expect(libraryTree.iconChanged.mock.calls).toEqual([["My.Pkg"]]);
+  });
+});
+
+describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
+  function makeWatcherClient() {
+    return {
+      parseFile: vi.fn(async () => ({ classNames: ["My.Pkg.Bar"] })),
+      loadFile: vi.fn(async () => ({ success: true })),
+      deleteClass: vi.fn(async () => ({ success: true })),
+    };
+  }
+
+  it("re-seeds the path→class index from disk against the replaced session", async () => {
+    setFindFilesResult([FILE]);
+    const client = makeWatcherClient();
+    const invalidation = new ClassInvalidationRegistry();
+    const disposable = registerMoFileWatcher({
+      ensureClient: async () => client,
+      libraryTree: {
+        childrenChanged: vi.fn(),
+      } as unknown as LibraryWebviewProvider,
+      sourceProvider: {
+        notifySourceChanged: vi.fn(),
+      } as unknown as ModelicaSourceProvider,
+      guard: createSelfWriteGuard(),
+      invalidation,
+    });
+
+    // The initial mount seed.
+    await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(1));
+
+    invalidation.sessionReplaced();
+
+    await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(2));
+    expect(client.parseFile).toHaveBeenCalledWith({ fileName: FILE });
+
+    disposable.dispose();
+  });
+
+  it("stops re-seeding once the returned disposable is disposed", async () => {
+    setFindFilesResult([FILE]);
+    const client = makeWatcherClient();
+    const invalidation = new ClassInvalidationRegistry();
+    const disposable = registerMoFileWatcher({
+      ensureClient: async () => client,
+      libraryTree: {
+        childrenChanged: vi.fn(),
+      } as unknown as LibraryWebviewProvider,
+      sourceProvider: {
+        notifySourceChanged: vi.fn(),
+      } as unknown as ModelicaSourceProvider,
+      guard: createSelfWriteGuard(),
+      invalidation,
+    });
+    await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(1));
+
+    disposable.dispose();
+    invalidation.sessionReplaced();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(client.parseFile).toHaveBeenCalledTimes(1);
+  });
+
+  it("serializes back-to-back resets instead of racing overlapping reseeds (#466)", async () => {
+    setFindFilesResult([FILE]);
+    const client = makeWatcherClient();
+    const invalidation = new ClassInvalidationRegistry();
+    const findFilesSpy = vi.spyOn(vscode.workspace, "findFiles");
+
+    // `ensureClient()`'s 2nd call overall is the first reseed's — block it so
+    // the test can fire a second `:reset` while that reseed is still pending,
+    // the way a user firing `:reset` twice in quick succession would.
+    let releaseFirstReseed: (() => void) | undefined;
+    let ensureCalls = 0;
+    const disposable = registerMoFileWatcher({
+      ensureClient: async () => {
+        ensureCalls++;
+        if (ensureCalls === 2) {
+          await new Promise<void>((resolve) => {
+            releaseFirstReseed = resolve;
+          });
+        }
+        return client;
+      },
+      libraryTree: {
+        childrenChanged: vi.fn(),
+      } as unknown as LibraryWebviewProvider,
+      sourceProvider: {
+        notifySourceChanged: vi.fn(),
+      } as unknown as ModelicaSourceProvider,
+      guard: createSelfWriteGuard(),
+      invalidation,
+    });
+
+    // The mount seed settles (its ensureClient() call isn't blocked).
+    await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(1));
+    expect(findFilesSpy).toHaveBeenCalledTimes(1);
+
+    invalidation.sessionReplaced(); // 1st `:reset`
+    await vi.waitFor(() => expect(findFilesSpy).toHaveBeenCalledTimes(2));
+    // The 1st reseed is now blocked inside its own ensureClient() call.
+    await vi.waitFor(() => expect(ensureCalls).toBe(2));
+
+    invalidation.sessionReplaced(); // 2nd `:reset`, fired before the 1st reseed settles
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // The 2nd reset's reseed is chained behind the 1st, which is still blocked.
+    expect(findFilesSpy).toHaveBeenCalledTimes(2);
+
+    releaseFirstReseed?.();
+    // The 2nd reset's reseed only starts once the 1st one it was chained
+    // behind resolves.
+    await vi.waitFor(() => expect(findFilesSpy).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect(ensureCalls).toBe(3));
+
+    disposable.dispose();
+    findFilesSpy.mockRestore();
   });
 });

@@ -18,7 +18,9 @@
  * invalidates none of them directly.
  *
  * A `package.order` edit resolves the owning package from the path→class index
- * and reloads its `package.mo`, which re-derives the child order from disk.
+ * and reloads its `package.mo`, which re-derives the child order from disk. A
+ * reorder skipped because a member's buffer was dirty stays pending and
+ * retries once that buffer — or any other `.mo` change or delete — clears it.
  *
  * A self-write — our own disk write, matched by content through the
  * {@link SelfWriteGuard} — skips the `loadFile`/`deleteClass` OMC calls: the
@@ -42,7 +44,9 @@ import * as vscode from "vscode";
 import { enclosingScope } from "@dicode/modelica-lang-core";
 
 import { pathExists } from "./fs-util.js";
+import type { ClassInvalidationRegistry } from "./invalidation.js";
 import { log } from "./logger.js";
+import { SessionQueue } from "./session-queue.js";
 import { multiEntityMessage, multiEntityToast } from "./single-entity-file.js";
 import type { SelfWriteGuard } from "./self-write-guard.js";
 import {
@@ -100,12 +104,54 @@ export function createPathClassIndex(): PathClassIndex {
   };
 }
 
+/**
+ * Packages whose reorder was skipped for a busy buffer, keyed by the owning
+ * `package.mo`, so a later change that clears the block can find and re-run
+ * it. Injected — not module-level state — for the same reason `PathClassIndex`
+ * is.
+ */
+export interface PendingReorders {
+  set(pkgFile: string, describedPath: string): void;
+  delete(pkgFile: string): void;
+  /** Snapshotted, so a retry loop can mutate the store as it iterates. */
+  entries(): Array<{ pkgFile: string; describedPath: string }>;
+  clear(): void;
+}
+
+export function createPendingReorders(): PendingReorders {
+  const byPkgFile = new Map<string, string>();
+  const key = (p: string): string => path.resolve(p);
+  return {
+    set: (p, describedPath) => void byPkgFile.set(key(p), describedPath),
+    delete: (p) => void byPkgFile.delete(key(p)),
+    entries: () =>
+      [...byPkgFile].map(([pkgFile, describedPath]) => ({
+        pkgFile,
+        describedPath,
+      })),
+    clear: () => void byPkgFile.clear(),
+  };
+}
+
 export interface MoWatcherDeps {
   ensureClient: () => Promise<WatcherOmcClient>;
   libraryTree: Pick<LibraryWebviewProvider, "childrenChanged">;
   sourceProvider: Pick<ModelicaSourceProvider, "notifySourceChanged">;
   guard: SelfWriteGuard;
   index: PathClassIndex;
+  /** Packages whose reorder is waiting on a busy buffer's save to retry. */
+  pendingReorders: PendingReorders;
+  /**
+   * Run a retried reorder under the same per-package serialization the
+   * watcher's own events use for `pkgFile`, so it can't interleave with
+   * another event already in flight for that package. Fire-and-forget, like
+   * the watcher's own event dispatch — callers don't await the retry itself.
+   */
+  scheduleReorderRetry: (
+    pkgFile: string,
+    describedPath: string,
+    retry: () => Promise<void>,
+  ) => void;
   /** Read a file's text; injected so tests need no real disk. */
   readFile: (fsPath: string) => Promise<string>;
   /** True iff `fsPath` is still on disk; injected so tests need no real disk. */
@@ -135,17 +181,15 @@ function warnBusy(fsPath: string, classNames: string[]): void {
 }
 
 /**
- * A skipped reorder is terminal: saving the busy editor reloads that member
- * alone, and nothing re-runs the reorder (issue #440). So this says what
- * actually recovers it, where a `.mo` reload can promise the save is enough
- * (issue #419).
+ * The skipped reorder is recorded in `pendingReorders` before this fires, so
+ * a later change that clears the block can retry it without the user
+ * re-editing anything.
  */
 function warnReorderBusy(describedPath: string, classNames: string[]): void {
   void vscode.window.showWarningMessage(
     `Modelica: a class in ${classNames.join(", ")} has unsaved edits open, so ` +
-      `the ${path.basename(describedPath)} reload was skipped. Save or close ` +
-      `the editor, then edit ${path.basename(describedPath)} again or refresh ` +
-      `the library.`,
+      `the ${path.basename(describedPath)} reload was skipped. Save the editor ` +
+      `to retry automatically.`,
   );
 }
 
@@ -173,11 +217,48 @@ function cascadeReach(
 }
 
 /**
+ * Narrow every file holding a class nested under one of `names`, the way
+ * OMC's own `deleteClass` cascade does: only the matched classes are gone
+ * from a cascaded file's entry, not the whole entry — a file mixing a
+ * cascaded class with an unrelated one keeps the unrelated one indexed. A
+ * file left with no classes is dropped. `exclude` skips a file even on a
+ * match — {@link reindexAndRelist} passes its own `fsPath` so a `removed`
+ * name nesting under the file's own brand-new class (a `within`-clause
+ * rename in place) can't cascade-delete the entry it just set for itself;
+ * {@link handleMoDelete} omits it, since there `fsPath`'s own entry is meant
+ * to fall out of the cascade. Notification is left to the caller, which
+ * combines the returned files' classes with its own directly-touched names
+ * and dedupes once.
+ */
+function cascadeCleanup(
+  index: PathClassIndex,
+  names: string[],
+  exclude?: string,
+): FilesUnderEntry[] {
+  const excluded = exclude !== undefined ? path.resolve(exclude) : undefined;
+  const cascadedFiles = names
+    .flatMap((name) => index.filesUnder(name))
+    .filter((file) => file.fsPath !== excluded);
+  for (const file of cascadedFiles) {
+    const remaining = (index.get(file.fsPath) ?? []).filter(
+      (name) => !file.classNames.includes(name),
+    );
+    if (remaining.length > 0) index.set(file.fsPath, remaining);
+    else index.delete(file.fsPath);
+  }
+  return cascadedFiles;
+}
+
+/**
  * Update the path→class index for `fsPath` to `names`, then re-list every
  * scope the change reaches — each declared class and its enclosing scope,
  * for both the current and now-removed declarations — and announce each
  * through `notifySourceChanged`, except a still-declared class whose own
  * document is open and dirty elsewhere (see the loop below).
+ *
+ * `removed`'s own cascade to other files is cleaned up via
+ * {@link cascadeCleanup}, excluding `fsPath` itself so the entry just set
+ * above is never mistaken for a cascaded file's.
  *
  * Shared by three callers, each already at the OMC state it wants reflected:
  * {@link handleMoChange}'s self-write branch (synced via `writeFile`'s own
@@ -194,14 +275,25 @@ function reindexAndRelist(
 ): void {
   deps.index.set(fsPath, names);
 
+  const cascadedFiles = cascadeCleanup(deps.index, removed, fsPath);
+
   const scopes = new Set<string | null>();
   for (const name of names) {
     scopes.add(name);
     scopes.add(scopeOf(name));
   }
   for (const name of removed) scopes.add(scopeOf(name));
+  for (const file of cascadedFiles) {
+    for (const name of file.classNames) scopes.add(scopeOf(name));
+  }
   for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
-  for (const name of removed) deps.sourceProvider.notifySourceChanged(name);
+  const removedNotified = new Set(removed);
+  for (const file of cascadedFiles) {
+    for (const name of file.classNames) removedNotified.add(name);
+  }
+  for (const name of removedNotified) {
+    deps.sourceProvider.notifySourceChanged(name);
+  }
   for (const name of names) {
     // A still-declared class whose own modelica-source: document is open and
     // dirty must not be bumped: notifySourceChanged fires onDidChangeFile,
@@ -264,6 +356,7 @@ export async function handleMoChange(
 
   if (isSelfWrite) {
     reindexAndRelist(deps, fsPath, names, removed);
+    retryUnblockedReorders(deps);
     return;
   }
 
@@ -290,6 +383,7 @@ export async function handleMoChange(
   for (const name of removed) await client.deleteClass({ typeName: name });
 
   reindexAndRelist(deps, fsPath, names, removed);
+  retryUnblockedReorders(deps);
 }
 
 /**
@@ -329,9 +423,11 @@ async function reorderPackage(
     fsPath: pkgFile,
   });
   if (deps.isBusy(fsPaths, classNames)) {
+    deps.pendingReorders.set(pkgFile, describedPath);
     warnReorderBusy(describedPath, names);
     return;
   }
+  deps.pendingReorders.delete(pkgFile);
 
   // `loadFile` on the package re-derives the child order from `package.order`,
   // for nested packages as well as this one, and picks up a member added
@@ -360,6 +456,30 @@ async function reorderPackage(
       `Modelica: ${path.basename(describedPath)} could not be applied — ` +
         `${names.join(", ")} still has the order OMC loaded before. Edit and ` +
         `save ${path.basename(pkgFile)} to reload it.`,
+    );
+  }
+}
+
+/**
+ * Retry every pending reorder no longer blocked by a busy buffer. Checked
+ * after a `.mo` change or delete, since either can be what cleared the
+ * block; a package still blocked by some other open buffer is left pending
+ * rather than re-warned.
+ */
+function retryUnblockedReorders(deps: MoWatcherDeps): void {
+  for (const { pkgFile, describedPath } of deps.pendingReorders.entries()) {
+    const names = deps.index.get(pkgFile);
+    if (names === undefined || names.length === 0) {
+      deps.pendingReorders.delete(pkgFile);
+      continue;
+    }
+    const { fsPaths, classNames } = cascadeReach(deps.index, names, {
+      fsPath: pkgFile,
+    });
+    if (deps.isBusy(fsPaths, classNames)) continue;
+    deps.pendingReorders.delete(pkgFile);
+    deps.scheduleReorderRetry(pkgFile, describedPath, () =>
+      reorderPackage(deps, pkgFile, describedPath),
     );
   }
 }
@@ -437,15 +557,19 @@ export async function handleMoDelete(
   // OMC's own deleteClass cascade just took every nested member with it too,
   // wherever those live — the index and any editor open on one of them have
   // to be told the same way, not just for fsPath's own direct names.
-  const cascadedFiles = names.flatMap((name) => deps.index.filesUnder(name));
-  for (const file of cascadedFiles) deps.index.delete(file.fsPath);
+  const cascadedFiles = cascadeCleanup(deps.index, names);
   for (const name of new Set(cascadedFiles.flatMap((f) => f.classNames))) {
     deps.sourceProvider.notifySourceChanged(name);
   }
 
   const scopes = new Set<string | null>();
   for (const name of names) scopes.add(scopeOf(name));
+  for (const file of cascadedFiles) {
+    for (const name of file.classNames) scopes.add(scopeOf(name));
+  }
   for (const scope of scopes) deps.libraryTree.childrenChanged(scope);
+
+  retryUnblockedReorders(deps);
 }
 
 /**
@@ -519,6 +643,7 @@ export function registerMoFileWatcher(deps: {
   libraryTree: LibraryWebviewProvider;
   sourceProvider: ModelicaSourceProvider;
   guard: SelfWriteGuard;
+  invalidation: ClassInvalidationRegistry;
 }): vscode.Disposable {
   const index = createPathClassIndex();
   const watcherDeps: MoWatcherDeps = {
@@ -527,6 +652,10 @@ export function registerMoFileWatcher(deps: {
     sourceProvider: deps.sourceProvider,
     guard: deps.guard,
     index,
+    pendingReorders: createPendingReorders(),
+    scheduleReorderRetry: (pkgFile, describedPath, retry) => {
+      run(pkgFile, describedPath, retry);
+    },
     readFile: (fsPath) => fsp.readFile(fsPath, "utf8"),
     fileExists: pathExists,
     isBusy: isDeclaredClassBusy,
@@ -534,7 +663,9 @@ export function registerMoFileWatcher(deps: {
 
   // Seed before reacting: a delete resolves its classes from the index, so an
   // event that lands mid-seed must wait or it would no-op a real deletion.
-  const seedReady = seedWorkspaceIndex(deps.ensureClient, index);
+  const seedQueue = new SessionQueue(
+    seedWorkspaceIndex(deps.ensureClient, index),
+  );
 
   // Serialize per path so overlapping events (a rename is delete+create; rapid
   // saves) can't interleave their index writes and leave it out of sync.
@@ -550,7 +681,7 @@ export function registerMoFileWatcher(deps: {
     const resolvedKey = path.resolve(key);
     const prior = inFlight.get(resolvedKey) ?? Promise.resolve();
     const next = prior
-      .then(() => seedReady)
+      .then(() => seedQueue.current)
       .then(fn)
       .catch((err) =>
         log.warn(
@@ -611,6 +742,14 @@ export function registerMoFileWatcher(deps: {
         handleOrderDelete(watcherDeps, uri.fsPath),
       ),
     ),
+    // On `seedQueue` so a queued `.mo` event waits for it and back-to-back
+    // resets serialize. `seedWorkspaceIndex` reads disk, not OMC's AST, so
+    // `:reset` alone doesn't stale the index — this reseed's value is
+    // retrying a mount-time seed that failed because OMC wasn't up yet.
+    deps.invalidation.registerSessionReplaced(() => {
+      watcherDeps.pendingReorders.clear();
+      seedQueue.enqueue(() => seedWorkspaceIndex(deps.ensureClient, index));
+    }),
   ];
 
   return vscode.Disposable.from(...subs);

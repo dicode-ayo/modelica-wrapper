@@ -107,6 +107,24 @@ describe("ResultCache.trajectory", () => {
   });
 });
 
+describe("ResultCache.exists", () => {
+  it("true when statMtimeMs resolves a value", async () => {
+    const cache = new ResultCache(
+      async () => fakeReader(),
+      async () => 100,
+    );
+    expect(await cache.exists("a.mat")).toBe(true);
+  });
+
+  it("false when statMtimeMs resolves undefined", async () => {
+    const cache = new ResultCache(
+      async () => fakeReader(),
+      async () => undefined,
+    );
+    expect(await cache.exists("gone.mat")).toBe(false);
+  });
+});
+
 describe("ResultCache invalidation", () => {
   it("re-reads and closes the old handle when mtime changes", async () => {
     const reader = fakeReader();

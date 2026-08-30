@@ -1,5 +1,82 @@
 # Changelog
 
+## [0.0.3](https://github.com/dicode-ayo/modelica-wrapper/compare/modelica-wrapper-v0.0.2...modelica-wrapper-v0.0.3) (2026-08-29)
+
+
+### Features
+
+* **diagram-ui,extension,omc-client:** edit shape z-order in diagram and icon ([#387](https://github.com/dicode-ayo/modelica-wrapper/issues/387)) ([7a93f88](https://github.com/dicode-ayo/modelica-wrapper/commit/7a93f8897531f7294d8a347f080ca08963eeddfa))
+* **diagram-ui,extension:** float the parameter panel over the canvas ([#389](https://github.com/dicode-ayo/modelica-wrapper/issues/389)) ([c4de9a8](https://github.com/dicode-ayo/modelica-wrapper/commit/c4de9a8262fadf4107310a963afe1dc7492dd3a5))
+* **diagram-ui:** expand library tree rows by containment, not restriction ([#372](https://github.com/dicode-ayo/modelica-wrapper/issues/372)) ([8a1a69a](https://github.com/dicode-ayo/modelica-wrapper/commit/8a1a69a2ce1f133012c02e7cdb5e6a1c3b803360))
+* **diagram:** copy/paste for diagram and icon selections ([#377](https://github.com/dicode-ayo/modelica-wrapper/issues/377)) ([fd573cb](https://github.com/dicode-ayo/modelica-wrapper/commit/fd573cbc3345f4b8e1441d3f58d0eac448230f7b))
+* **diagram:** read-only view for system-library classes ([#350](https://github.com/dicode-ayo/modelica-wrapper/issues/350)) ([337cf96](https://github.com/dicode-ayo/modelica-wrapper/commit/337cf963c8de78f3647ffd5343479afb13f7837e))
+* **diagram:** select shapes by rubber band, and add Select All ([#398](https://github.com/dicode-ayo/modelica-wrapper/issues/398)) ([1c451d4](https://github.com/dicode-ayo/modelica-wrapper/commit/1c451d46c702ee964fdf623d9eb65d7602f840c1))
+* **extension:** react to package.order edits through the .mo watcher ([d8a4a74](https://github.com/dicode-ayo/modelica-wrapper/commit/d8a4a7430b5ea73ef935ad6f26b9cbc043e6e8f9))
+* **library:** order a package's members by package.order ([#369](https://github.com/dicode-ayo/modelica-wrapper/issues/369)) ([f39801d](https://github.com/dicode-ayo/modelica-wrapper/commit/f39801dd7f371f678db43d3ff3fe7a140003f72b))
+* **library:** react to bare .mo file edits through OMC ([#344](https://github.com/dicode-ayo/modelica-wrapper/issues/344)) ([54bd30b](https://github.com/dicode-ayo/modelica-wrapper/commit/54bd30bdb31f8442380d1cc4ae5b20551de007d0))
+* **omc-client:** support OpenModelica 1.27.0 ([#360](https://github.com/dicode-ayo/modelica-wrapper/issues/360)) ([40b8615](https://github.com/dicode-ayo/modelica-wrapper/commit/40b861557e775ac29bb012327a96ec674681d56a))
+* **results:** surface a simulation result in an unsaved view when none is open ([#341](https://github.com/dicode-ayo/modelica-wrapper/issues/341)) ([2b0b4b2](https://github.com/dicode-ayo/modelica-wrapper/commit/2b0b4b24fcc9652a310d2d91399a858181062308))
+
+
+### Bug Fixes
+
+* **commands:** attribute live-check diagnostics to the edited class, not a sibling in its file ([#412](https://github.com/dicode-ayo/modelica-wrapper/issues/412)) ([f9d20cb](https://github.com/dicode-ayo/modelica-wrapper/commit/f9d20cb4793fc99cc3158e72a5e64bbc8deaa73a)), closes [#370](https://github.com/dicode-ayo/modelica-wrapper/issues/370)
+* **commands:** live-check the buffer under its real source file ([#367](https://github.com/dicode-ayo/modelica-wrapper/issues/367)) ([c825b0f](https://github.com/dicode-ayo/modelica-wrapper/commit/c825b0f203aae9d8dc3dbc083ce1b46de2918d90))
+* **diagram-ui:** thread touched-field tracking through parameter form submit ([#500](https://github.com/dicode-ayo/modelica-wrapper/issues/500)) ([98da05b](https://github.com/dicode-ayo/modelica-wrapper/commit/98da05b9c679c5f0277b12147d3e13acb58d5f6e))
+* **diagram,documentation:** refuse to reverse-sync a read-only class into OMC ([#373](https://github.com/dicode-ayo/modelica-wrapper/issues/373)) ([8d3b2a0](https://github.com/dicode-ayo/modelica-wrapper/commit/8d3b2a03966e31940fb5a48b7cc4e580c8ca5c2b))
+* **diagram,omc-client:** keep declaration fidelity through copy and paste ([#397](https://github.com/dicode-ayo/modelica-wrapper/issues/397)) ([120bd92](https://github.com/dicode-ayo/modelica-wrapper/commit/120bd92138bf97250ea3ebb4379db8284a6ab318))
+* **diagram:** carry array dimensions through copy/paste ([fc9549a](https://github.com/dicode-ayo/modelica-wrapper/commit/fc9549a97c511cfee027e0f6a3d6da85fdf3e8a6))
+* **diagram:** compare shapes by meaning, not raw field presence ([#449](https://github.com/dicode-ayo/modelica-wrapper/issues/449)) ([e748c08](https://github.com/dicode-ayo/modelica-wrapper/commit/e748c085914a0e99357a5ab9d5faff0ded4a2c10))
+* **diagram:** keep a restored system-library editor read-only ([#362](https://github.com/dicode-ayo/modelica-wrapper/issues/362)) ([d9bbd73](https://github.com/dicode-ayo/modelica-wrapper/commit/d9bbd7364c28293a9051c04be4cec2a020fcc288))
+* **diagram:** keep an entity's origin on a move, and its wires on a delete ([#401](https://github.com/dicode-ayo/modelica-wrapper/issues/401)) ([2221487](https://github.com/dicode-ayo/modelica-wrapper/commit/22214873da3ac4828c306bcf35b28bb196906bde))
+* **diagram:** keep the simulate form usable on a read-only class ([#361](https://github.com/dicode-ayo/modelica-wrapper/issues/361)) ([f19acbd](https://github.com/dicode-ayo/modelica-wrapper/commit/f19acbd951f2807f4152a17fcb3f599f3ad3ac1e))
+* **diagram:** reconcile the class to the layout the webview reports ([6abc3f1](https://github.com/dicode-ayo/modelica-wrapper/commit/6abc3f15e4f826232d1e335e2513db40e8c5955b))
+* **diagram:** resolve vertex and rotate handle keys host-side ([#435](https://github.com/dicode-ayo/modelica-wrapper/issues/435)) ([ddf52eb](https://github.com/dicode-ayo/modelica-wrapper/commit/ddf52eb3c523c5ff42a8af45e3926bec9435305e))
+* **diagram:** stop a null textString Apply from overwriting it with "" ([#481](https://github.com/dicode-ayo/modelica-wrapper/issues/481)) ([a21901a](https://github.com/dicode-ayo/modelica-wrapper/commit/a21901a592c7ae1f35e1f12953f9ff2872939426))
+* **documentation:** keep a restored system-library doc tab read-only ([#365](https://github.com/dicode-ayo/modelica-wrapper/issues/365)) ([b45f1aa](https://github.com/dicode-ayo/modelica-wrapper/commit/b45f1aa4e21e690282148c9c0c781503735853d1))
+* **documentation:** reject read-only reflect in refreshFromExternalWrite ([#375](https://github.com/dicode-ayo/modelica-wrapper/issues/375)) ([a14b797](https://github.com/dicode-ayo/modelica-wrapper/commit/a14b797a74f1402737fee6cb35c9f0b2fb9f5b7d))
+* **extension:** carry a stale-base signal so a reconcile can't read a missed push as a deletion ([#499](https://github.com/dicode-ayo/modelica-wrapper/issues/499)) ([403b748](https://github.com/dicode-ayo/modelica-wrapper/commit/403b748c550f78c0652cb9cc27ea3dbf3290ecf5))
+* **extension:** cascade-clean nested files on handleMoChange removal ([#479](https://github.com/dicode-ayo/modelica-wrapper/issues/479)) ([5ab6591](https://github.com/dicode-ayo/modelica-wrapper/commit/5ab659115b3171d1d688f1df37e44292b16c38ae))
+* **extension:** clear stale caches on OMC session reset ([#483](https://github.com/dicode-ayo/modelica-wrapper/issues/483)) ([1785822](https://github.com/dicode-ayo/modelica-wrapper/commit/1785822dd36095b7a517586a0ee4a27db9f06857))
+* **extension:** close remaining system-library mutation gaps ([#355](https://github.com/dicode-ayo/modelica-wrapper/issues/355)) ([e9c0acb](https://github.com/dicode-ayo/modelica-wrapper/commit/e9c0acbc2d4326f616acec580d40aa9859302c26))
+* **extension:** coalesce concurrent ensureClient callers onto one OMC ([#357](https://github.com/dicode-ayo/modelica-wrapper/issues/357)) ([e990907](https://github.com/dicode-ayo/modelica-wrapper/commit/e990907e0fd71175dfbfb053303dbd7f57f25011))
+* **extension:** cover a deleteClass cascade's full blast radius in mo-file-watcher ([#420](https://github.com/dicode-ayo/modelica-wrapper/issues/420)) ([7a118d4](https://github.com/dicode-ayo/modelica-wrapper/commit/7a118d44969ee06bb96c4f74e567a5cae8fb9002))
+* **extension:** guard the OMC client cache against close/reset mid-spawn ([#359](https://github.com/dicode-ayo/modelica-wrapper/issues/359)) ([facae0f](https://github.com/dicode-ayo/modelica-wrapper/commit/facae0f0e093cad34cb43efe6def57d9ef101293))
+* **extension:** one write verdict for read-only classes ([#441](https://github.com/dicode-ayo/modelica-wrapper/issues/441)) ([485810c](https://github.com/dicode-ayo/modelica-wrapper/commit/485810cd2ff04313f7b84ac42fdffd2a65249ce3))
+* **extension:** re-list scopes and update the path→class index on a self-write ([#450](https://github.com/dicode-ayo/modelica-wrapper/issues/450)) ([bedaab9](https://github.com/dicode-ayo/modelica-wrapper/commit/bedaab926b19c57a6d9868785086c52f935e6f94))
+* **extension:** refuse .mo files declaring several top-level classes ([#458](https://github.com/dicode-ayo/modelica-wrapper/issues/458)) ([688e7ce](https://github.com/dicode-ayo/modelica-wrapper/commit/688e7ce3dcad00ed890ebaf990dc6c7a50fe7d24))
+* **extension:** refuse a buffer save that renames its class ([#460](https://github.com/dicode-ayo/modelica-wrapper/issues/460)) ([4d2a476](https://github.com/dicode-ayo/modelica-wrapper/commit/4d2a476b3f109a95f2814b4b23dce41176d33c3e))
+* **extension:** refuse a reverse sync that renamed its class ([#480](https://github.com/dicode-ayo/modelica-wrapper/issues/480)) ([3f4d61c](https://github.com/dicode-ayo/modelica-wrapper/commit/3f4d61ca76a6799cd3630215cfa4d65b51493036))
+* **extension:** refuse to save read-only system-library classes ([#349](https://github.com/dicode-ayo/modelica-wrapper/issues/349)) ([29c931d](https://github.com/dicode-ayo/modelica-wrapper/commit/29c931d3531502a95d511636f78178ac8b9fd53b))
+* **extension:** reject a read() whose backfill write didn't persist ([#491](https://github.com/dicode-ayo/modelica-wrapper/issues/491)) ([f4ade69](https://github.com/dicode-ayo/modelica-wrapper/commit/f4ade6933cd044434c2eccbbbcfa4e72602b59a3))
+* **extension:** retry a package.order reorder once its blocking buffer saves ([#492](https://github.com/dicode-ayo/modelica-wrapper/issues/492)) ([4cd5206](https://github.com/dicode-ayo/modelica-wrapper/commit/4cd5206ae63a90cbccd5ccb2baf1553019d91fab))
+* **extension:** route class invalidation through one registry ([#442](https://github.com/dicode-ayo/modelica-wrapper/issues/442)) ([6c81202](https://github.com/dicode-ayo/modelica-wrapper/commit/6c812028392031f5914d84467831b03dfa719c6e))
+* **extension:** route every add-result write through ResultViewDocument's queue ([#494](https://github.com/dicode-ayo/modelica-wrapper/issues/494)) ([35d1eea](https://github.com/dicode-ayo/modelica-wrapper/commit/35d1eea113546f39411d0d14a561435d6287b1bc))
+* **extension:** save the whole file for a class stored inline ([#352](https://github.com/dicode-ayo/modelica-wrapper/issues/352)) ([d9ae864](https://github.com/dicode-ayo/modelica-wrapper/commit/d9ae864e229d215b328208e496360a35c3e12263))
+* **extension:** screen live-check buffers for a class rename before loadString ([#487](https://github.com/dicode-ayo/modelica-wrapper/issues/487)) ([6da396a](https://github.com/dicode-ayo/modelica-wrapper/commit/6da396a228b27c92a363eb38704a4475cf95aa9a))
+* **extension:** serialize ParseCache parses and guard borrowed trees ([#498](https://github.com/dicode-ayo/modelica-wrapper/issues/498)) ([983730b](https://github.com/dicode-ayo/modelica-wrapper/commit/983730bfd15191e80c0f07adf541b3f8829a176d))
+* **extension:** tell the user when a re-simulate is already in the view ([#497](https://github.com/dicode-ayo/modelica-wrapper/issues/497)) ([84571ee](https://github.com/dicode-ayo/modelica-wrapper/commit/84571ee1528aae4de9b0002d9689e9e7d2012a24))
+* **extension:** typecheck extension test files ([#475](https://github.com/dicode-ayo/modelica-wrapper/issues/475)) ([11bacc4](https://github.com/dicode-ayo/modelica-wrapper/commit/11bacc444e5f22c0391852a23684bbc3be9a583a))
+* **extension:** watch a result view's backing .mat files for the missing chip ([#501](https://github.com/dicode-ayo/modelica-wrapper/issues/501)) ([1f70238](https://github.com/dicode-ayo/modelica-wrapper/commit/1f70238277b767bbd82cd93814d97a14db2984b0))
+* **extension:** wire remove/rename in results channel, add missingResults producer ([#485](https://github.com/dicode-ayo/modelica-wrapper/issues/485)) ([5aa9d89](https://github.com/dicode-ayo/modelica-wrapper/commit/5aa9d896df999c32a4c15b92f3b4e2a1362d11ba))
+* **library:** close the mid-render base-edit gap in icon invalidation ([#340](https://github.com/dicode-ayo/modelica-wrapper/issues/340)) ([fd0fa3c](https://github.com/dicode-ayo/modelica-wrapper/commit/fd0fa3c7888d10dde810e5bc33c64642a3d312a2))
+* **omc-client:** reap OMC sessions stranded by a dead host ([#419](https://github.com/dicode-ayo/modelica-wrapper/issues/419)) ([a404696](https://github.com/dicode-ayo/modelica-wrapper/commit/a404696f675f55027d288eb56107d97f776ce36e))
+* **omc-client:** resolve inherited units the same way in both producers ([#436](https://github.com/dicode-ayo/modelica-wrapper/issues/436)) ([cd27edc](https://github.com/dicode-ayo/modelica-wrapper/commit/cd27edcbc366e9ac5d75e4c54bf5aa148b982f5c))
+
+
+### Performance Improvements
+
+* **diagram,omc-client:** paste every clipboard item in one OMC call ([#391](https://github.com/dicode-ayo/modelica-wrapper/issues/391)) ([11edf28](https://github.com/dicode-ayo/modelica-wrapper/commit/11edf288f92caa2769b99868ffd210c865a80d95))
+
+
+### Code Refactoring
+
+* **commands:** extract and test systemLibrarySaveGuard ([#356](https://github.com/dicode-ayo/modelica-wrapper/issues/356)) ([87010f7](https://github.com/dicode-ayo/modelica-wrapper/commit/87010f7d6470644adf27b7f7fe57e1f8a9b86c25))
+* **diagram:** declare each shape property once ([#448](https://github.com/dicode-ayo/modelica-wrapper/issues/448)) ([505e979](https://github.com/dicode-ayo/modelica-wrapper/commit/505e979ecad1cb11a9a292648b3606abbb3edb0f))
+* **extension:** consolidate webview HTML into one CSP-locked renderer ([#438](https://github.com/dicode-ayo/modelica-wrapper/issues/438)) ([9979fe8](https://github.com/dicode-ayo/modelica-wrapper/commit/9979fe8c231186120c336318f45a505b61c861f7))
+* **omc-client,extension:** extract shared shouldRun/describeIf integration gate ([#376](https://github.com/dicode-ayo/modelica-wrapper/issues/376)) ([e62c054](https://github.com/dicode-ayo/modelica-wrapper/commit/e62c0541e56f9d653c7fcbdcb420890e0c1b4328)), closes [#371](https://github.com/dicode-ayo/modelica-wrapper/issues/371)
+* **webview:** declare each diagram gesture once ([#443](https://github.com/dicode-ayo/modelica-wrapper/issues/443)) ([e73e3c1](https://github.com/dicode-ayo/modelica-wrapper/commit/e73e3c1703e3bab6c17ee299a56678eb50241d08))
+
 ## [0.0.2](https://github.com/dicode-ayo/modelica-wrapper/compare/modelica-wrapper-v0.0.1...modelica-wrapper-v0.0.2) (2026-07-20)
 
 
