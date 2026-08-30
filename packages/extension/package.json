@@ -7,7 +7,7 @@
   "private": true,
   "engines": {
     "vscode": "^1.95.0",
-    "node": ">=20"
+    "node": ">=20.20.2"
   },
   "categories": [
     "Programming Languages",

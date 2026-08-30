@@ -5,7 +5,7 @@
   "description": "Aggregator Storybook: combines the diagram-svg, diagram-ui, result-ui and documentation-ui stories into one build, published to a single Chromatic project.",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=20.20.2"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

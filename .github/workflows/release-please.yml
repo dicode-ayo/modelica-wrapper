@@ -93,7 +93,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 20.20.2
           registry-url: "https://registry.npmjs.org"
           cache: pnpm
 
