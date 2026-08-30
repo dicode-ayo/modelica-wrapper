@@ -59,7 +59,7 @@
   },
   "dependencies": {
     "zeromq": "^6.1.0",
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@apidevtools/json-schema-ref-parser": "^15.3.5",
