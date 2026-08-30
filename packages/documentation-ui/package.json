@@ -50,7 +50,7 @@
     "@tiptap/pm": "^3.27.4",
     "@tiptap/starter-kit": "^3.27.4",
     "js-beautify": "^1.15.4",
-    "lit": "^3.2.0"
+    "lit": "^3.3.3"
   },
   "devDependencies": {
     "@storybook/web-components": "^8.4.0",
