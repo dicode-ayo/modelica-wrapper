@@ -149,12 +149,14 @@ export interface GestureMode {
 }
 
 /**
- * Entity kinds that begin a move-drag. Connectors are deliberately
- * excluded: clicking anywhere on a connector starts a connection drag
- * instead, matching OMEdit.
+ * Entity kinds that begin a move-drag. A `connector` press reaches this
+ * set only for a standalone connector (a placed, movable entity, matching
+ * OMEdit) — the router sends nested connectors and port discs to the
+ * connect gesture first.
  */
 export const MOVE_KINDS: ReadonlySet<EntityKind> = new Set([
   "component",
+  "connector",
   "shape",
   "label",
   "junction",
