@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
-import type {
-  BitmapShape,
-  DiagramLayout,
-  EllipseShape,
-  LineShape,
-  PolygonShape,
-  RectangleShape,
-  Shape,
-  TextShape,
+import {
+  diagram,
+  ModelInstanceSchema,
+  type BitmapShape,
+  type DiagramLayout,
+  type EllipseShape,
+  type LineShape,
+  type PolygonShape,
+  type RectangleShape,
+  type Shape,
+  type TextShape,
 } from "@dicode/omc-client";
 
 import {
@@ -1495,5 +1497,43 @@ describe("diffLayouts — graphics", () => {
     expect(diffLayouts(prev, next)).toEqual([
       { kind: "graphicsAdded", layer: "diagram", shape: rect(20) },
     ]);
+  });
+});
+
+describe("diffLayouts — NoIcon placeholder stays out of source writes (issue #510)", () => {
+  it("a host class with no graphics still diffs to zero graphics edits", () => {
+    // The renderer substitutes a NoIcon placeholder for classes without
+    // drawable layers by reading the class catalog, never the host's own
+    // layer sets — those are addressed positionally by `shape:<idx>` keys
+    // and diffed here into source writes. Built through the real producer
+    // so a substitution leaking into `iconLayers` / `diagramLayers` fails
+    // this diff, not just a hand-rolled fixture.
+    const host = ModelInstanceSchema.parse({
+      name: "Bare.Host",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "component",
+          name: "p",
+          type: { name: "Bare.Pin", restriction: "connector" },
+          annotation: {
+            Placement: {
+              transformation: {
+                extent: [
+                  [-110, -10],
+                  [-90, 10],
+                ],
+              },
+            },
+          },
+        },
+      ],
+    });
+    const prev = diagram.produceDiagramLayout(host, "diagram");
+    const next = diagram.produceDiagramLayout(host, "diagram");
+
+    expect(prev.iconLayers.flatMap((l) => l.shapes)).toEqual([]);
+    expect(prev.diagramLayers.flatMap((l) => l.shapes)).toEqual([]);
+    expect(diffLayouts(prev, next)).toEqual([]);
   });
 });

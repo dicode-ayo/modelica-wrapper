@@ -1980,3 +1980,236 @@ describe("produceComponentClass", () => {
     }
   });
 });
+
+// =====================================================================
+// Catalog icon fallback (issue #510) — a class whose visuals live only
+// in its Diagram annotation still gets renderable catalog layers.
+// =====================================================================
+
+/** Connector whose graphics live ONLY in the Diagram annotation. */
+const DiagramOnlyPinClass: unknown = {
+  name: "Synth.Interfaces.DiagramOnlyPin",
+  restriction: "connector",
+  annotation: {
+    Diagram: {
+      coordinateSystem: {
+        extent: [
+          [-100, -100],
+          [100, 100],
+        ],
+      },
+      graphics: [
+        rectShape([
+          [-40, -40],
+          [40, 40],
+        ]),
+      ],
+    },
+  },
+};
+
+/** Connector with distinct Icon and Diagram graphics. */
+const DualLayerPinClass: unknown = {
+  name: "Synth.Interfaces.DualLayerPin",
+  restriction: "connector",
+  annotation: {
+    Icon: {
+      graphics: [
+        polygonShape([
+          [-100, 100],
+          [100, 0],
+          [-100, -100],
+        ]),
+      ],
+    },
+    Diagram: {
+      graphics: [
+        rectShape([
+          [-40, -40],
+          [40, 40],
+        ]),
+      ],
+    },
+  },
+};
+
+function hostWithConnector(connectorClass: unknown): ModelInstance {
+  return ModelInstanceSchema.parse({
+    name: "Synth.FallbackHost",
+    restriction: "model",
+    elements: [
+      {
+        $kind: "component",
+        name: "p",
+        type: connectorClass,
+        annotation: placementAnno([
+          [-110, -10],
+          [-90, 10],
+        ]),
+      },
+    ],
+  });
+}
+
+describe("produceDiagramLayout: catalog Icon→Diagram layer fallback (issue #510)", () => {
+  it("substitutes Diagram layers when the Icon draws nothing", () => {
+    const layout = produceDiagramLayout(
+      hostWithConnector(DiagramOnlyPinClass),
+      "diagram",
+    );
+    const cls = layout.classes["Synth.Interfaces.DiagramOnlyPin"];
+    expect(cls).toBeDefined();
+    expect(cls?.iconLayers.flatMap((l) => l.shapes.map((s) => s.kind))).toEqual(
+      ["rectangle"],
+    );
+    // The coordinate system follows the annotation the layers came from.
+    expect(cls?.coordinateSystem?.extent).toEqual([
+      [-100, -100],
+      [100, 100],
+    ]);
+  });
+
+  it("keeps Icon layers when the Icon draws, and surfaces diagramLayers separately", () => {
+    const layout = produceDiagramLayout(
+      hostWithConnector(DualLayerPinClass),
+      "diagram",
+    );
+    const cls = layout.classes["Synth.Interfaces.DualLayerPin"];
+    expect(cls?.iconLayers.flatMap((l) => l.shapes.map((s) => s.kind))).toEqual(
+      ["polygon"],
+    );
+    expect(
+      cls?.diagramLayers?.flatMap((l) => l.shapes.map((s) => s.kind)),
+    ).toEqual(["rectangle"]);
+  });
+
+  it("omits diagramLayers when the Diagram annotation draws nothing", () => {
+    const layout = produceDiagramLayout(makeHostModelInstance(), "diagram");
+    const cls = layout.classes["Synth.Interfaces.RealInput"];
+    expect(cls?.diagramLayers).toBeUndefined();
+  });
+
+  it("applies the fallback to PortDef.iconLayers", () => {
+    const blockWithDiagramOnlyPort: unknown = {
+      name: "Synth.DiagramOnlyPortBlock",
+      restriction: "block",
+      elements: [
+        {
+          $kind: "component",
+          name: "p",
+          type: DiagramOnlyPinClass,
+          annotation: placementAnno([
+            [-110, -10],
+            [-90, 10],
+          ]),
+        },
+      ],
+    };
+    const host = ModelInstanceSchema.parse({
+      name: "Synth.PortFallbackHost",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "component",
+          name: "b",
+          type: blockWithDiagramOnlyPort,
+          annotation: placementAnno([
+            [-20, -20],
+            [20, 20],
+          ]),
+        },
+      ],
+    });
+    const layout = produceDiagramLayout(host, "diagram");
+    const port = layout.classes["Synth.DiagramOnlyPortBlock"]?.connectors.p;
+    expect(
+      port?.iconLayers.flatMap((l) => l.shapes.map((s) => s.kind)),
+    ).toEqual(["rectangle"]);
+  });
+
+  it("never substitutes into the host class's own layer sets", () => {
+    // The host's own layers are positionally addressed by `shape:<idx>` keys
+    // and diffed into source writes — a substituted layer there would shift
+    // indices and leak into user source.
+    const diagramOnlyHost = ModelInstanceSchema.parse({
+      name: "Synth.DiagramOnlyHost",
+      restriction: "model",
+      annotation: {
+        Diagram: {
+          graphics: [
+            rectShape([
+              [-40, -40],
+              [40, 40],
+            ]),
+          ],
+        },
+      },
+    });
+    const layout = produceDiagramLayout(diagramOnlyHost, "icon");
+    expect(layout.iconLayers.flatMap((l) => l.shapes)).toEqual([]);
+    // The catalog entry for the same class still gets the fallback.
+    expect(
+      layout.classes["Synth.DiagramOnlyHost"]?.iconLayers.flatMap((l) =>
+        l.shapes.map((s) => s.kind),
+      ),
+    ).toEqual(["rectangle"]);
+  });
+});
+
+// =====================================================================
+// Standalone connector placement follows the layout kind (issue #516).
+// =====================================================================
+
+describe("produceDiagramLayout: standalone connector placement by kind (issue #516)", () => {
+  const DIAGRAM_EXTENT: [[number, number], [number, number]] = [
+    [-140, -20],
+    [-100, 20],
+  ];
+  const ICON_EXTENT: [[number, number], [number, number]] = [
+    [-110, -10],
+    [-90, 10],
+  ];
+
+  function hostWithDualPlacement(): ModelInstance {
+    return ModelInstanceSchema.parse({
+      name: "Synth.DualPlacementHost",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "component",
+          name: "u",
+          type: RealInputClass,
+          annotation: {
+            Placement: {
+              transformation: { extent: DIAGRAM_EXTENT },
+              iconTransformation: { extent: ICON_EXTENT },
+            },
+          },
+        },
+      ],
+    });
+  }
+
+  it("uses `transformation` in a diagram-kind layout, with no counterpart", () => {
+    const layout = produceDiagramLayout(hostWithDualPlacement(), "diagram");
+    expect(layout.connectors.u?.placement.extent).toEqual(DIAGRAM_EXTENT);
+    expect(layout.connectors.u?.diagramPlacement).toBeUndefined();
+  });
+
+  it("uses `iconTransformation` in an icon-kind layout and carries the diagram counterpart", () => {
+    const layout = produceDiagramLayout(hostWithDualPlacement(), "icon");
+    expect(layout.connectors.u?.placement.extent).toEqual(ICON_EXTENT);
+    expect(layout.connectors.u?.diagramPlacement?.extent).toEqual(
+      DIAGRAM_EXTENT,
+    );
+  });
+
+  it("falls back to the declared transformation when only one exists", () => {
+    // makeHostModelInstance's connectors declare only `transformation`.
+    const icon = produceDiagramLayout(makeHostModelInstance(), "icon");
+    const diagram = produceDiagramLayout(makeHostModelInstance(), "diagram");
+    expect(icon.connectors.u?.placement.extent).toEqual(
+      diagram.connectors.u?.placement.extent,
+    );
+  });
+});
