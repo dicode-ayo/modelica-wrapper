@@ -47,7 +47,6 @@ export class OmText extends OmShapePrimitive {
   private text: Text | null = null;
   private currentResolution = 1;
 
-  /** Retarget the `Text` resolution to the new zoom. */
   protected override onViewChange(): void {
     this.applyResolution();
   }
