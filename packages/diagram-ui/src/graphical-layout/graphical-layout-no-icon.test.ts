@@ -216,6 +216,14 @@ describe("<om-graphical-layout> standalone connector layer selection (issue #516
     expect(standaloneConnector(el).layers).toBe(ICON_LAYERS);
   });
 
+  it("falls back to icon layers when the diagram layers draw nothing", async () => {
+    // The producer omits an undrawn `diagramLayers`, but the schema admits
+    // an explicit empty set — it must not beat a drawable icon.
+    const cls = classDef({ iconLayers: ICON_LAYERS, diagramLayers: [] });
+    const el = await mountLayout({ layout: connectorLayout("diagram", cls) });
+    expect(standaloneConnector(el).layers).toBe(ICON_LAYERS);
+  });
+
   it("renders icon layers in an icon-kind layout even when diagram layers exist", async () => {
     const cls = classDef({
       iconLayers: ICON_LAYERS,

@@ -17,7 +17,10 @@ import { assertUnreachable } from "@dicode/modelica-lang-core";
 import { omTokens } from "@dicode/ui-common";
 
 import { renderShape } from "../primitives/render-shape.js";
-import { withNoIconFallback } from "../icon-provider/no-icon.js";
+import {
+  hasDrawnShapes,
+  withNoIconFallback,
+} from "../icon-provider/no-icon.js";
 import { lineThicknessScaleContext } from "../primitives/stroke-scale-context.js";
 import { buildSubstitutions } from "../label/build-substitutions.js";
 import "../scene/scene.component.js";
@@ -779,9 +782,10 @@ export class OmGraphicalLayout extends LitElement {
     // draws one (MLS §18.2 — e.g. RealInput's smaller triangle + name),
     // falling back to its icon. Nested ports above stay on the icon layer:
     // that is what an enclosing diagram shows for a component's connectors.
+    const diagramLayers = cls?.diagramLayers ?? [];
     const layers =
-      layout.kind === "diagram"
-        ? (cls?.diagramLayers ?? cls?.iconLayers ?? [])
+      layout.kind === "diagram" && hasDrawnShapes(diagramLayers)
+        ? diagramLayers
         : (cls?.iconLayers ?? []);
     return html`<om-connector
       .nodeId=${id}

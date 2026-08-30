@@ -47,9 +47,16 @@ export const NO_ICON_LAYERS: IconLayer[] = [
   },
 ];
 
+/**
+ * Whether anything in `layers` actually draws. The producer omits a layer
+ * set that fails this test, but the schema still admits empty arrays —
+ * layer-availability decisions must use this, not mere presence.
+ */
+export function hasDrawnShapes(layers: IconLayer[]): boolean {
+  return layers.some((layer) => layer.shapes.length > 0);
+}
+
 /** `layers`, or the NoIcon placeholder when nothing in them draws. */
 export function withNoIconFallback(layers: IconLayer[]): IconLayer[] {
-  return layers.some((layer) => layer.shapes.length > 0)
-    ? layers
-    : NO_ICON_LAYERS;
+  return hasDrawnShapes(layers) ? layers : NO_ICON_LAYERS;
 }
