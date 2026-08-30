@@ -276,7 +276,11 @@ export interface ComponentInstance {
   /** Per-instance modifier overrides (param values, redeclares). */
   modifiers?: Modifier | undefined;
   comment?: string | undefined;
+  /** Location of the resolved TYPE's class definition, not of this
+   *  component's declaration — that is `declarationSource`. */
   source?: SourceLocation | undefined;
+  /** Location of this component's own declaration in the host class. */
+  declarationSource?: SourceLocation | undefined;
   /**
    * Names of ports declared on this component's type whose `condition`
    * predicate evaluates to false for THIS instance (e.g. a `Torque`
@@ -333,7 +337,11 @@ export interface ConnectorInstance {
   diagramPlacement?: Placement | undefined;
   comment?: string | undefined;
   prefixes?: Prefixes | undefined;
+  /** Location of the connector TYPE's class definition, not of this
+   *  connector's declaration — that is `declarationSource`. */
   source?: SourceLocation | undefined;
+  /** Location of this connector's own declaration in the host class. */
+  declarationSource?: SourceLocation | undefined;
 }
 
 export interface ConnectionEndpoint {
@@ -591,6 +599,7 @@ export const ComponentInstanceSchema = z
     modifiers: ModifierSchema.optional(),
     comment: z.string().optional(),
     source: SourceLocationSchema.optional(),
+    declarationSource: SourceLocationSchema.optional(),
     hiddenPorts: z.array(z.string()).optional(),
     dims: z.array(z.string()).optional(),
   })
@@ -603,6 +612,7 @@ export const ConnectorInstanceSchema = z
     placement: PlacementSchema,
     comment: z.string().optional(),
     source: SourceLocationSchema.optional(),
+    declarationSource: SourceLocationSchema.optional(),
   })
   .strict();
 

@@ -71,6 +71,8 @@ function ctx(patch: Partial<ContextKeys> = {}): ContextKeys {
     hasClipboard: false,
     vertexTarget: false,
     polySelection: false,
+    hasDefinitionSource: false,
+    hasDeclarationSource: false,
     ...patch,
   };
 }

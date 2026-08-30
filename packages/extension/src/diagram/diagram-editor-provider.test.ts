@@ -9,6 +9,8 @@
  * so this runs in plain Node.
  */
 
+import { fileURLToPath } from "node:url";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as vscode from "vscode";
 import type {
@@ -42,7 +44,7 @@ import type {
 } from "../webview/protocol.js";
 import type { ReadyGate } from "../webview/ready-gate.js";
 import { WriteVerdicts } from "../write-verdict.js";
-import { type Scheduler } from "./buffer-sync.js";
+import { defaultScheduler, type Scheduler } from "./buffer-sync.js";
 import { DiagramClipboard } from "./clipboard.js";
 import {
   classNameFromDocument,
@@ -3337,5 +3339,100 @@ describe("the gesture boundary", () => {
     expect(errors.at(0)).toMatchObject({
       message: expect.stringContaining("WebviewToExtension"),
     });
+  });
+});
+
+describe("DiagramEditController: go to source (issue #514)", () => {
+  // A file guaranteed on disk, so the on-disk branch is the one under test.
+  const ON_DISK = fileURLToPath(import.meta.url);
+
+  beforeEach(() => {
+    vscodeMock.shownTextDocuments.length = 0;
+  });
+
+  function makeController(): DiagramEditController {
+    const { client } = makeEditClient();
+    const { gate } = makeGate();
+    const { factory } = makeShadowFactory();
+    return new DiagramEditController(
+      controllerDeps({ client, gate }),
+      layout({}),
+      factory,
+    );
+  }
+
+  it("opens the on-disk file with OMC's 1-based inclusive-end range converted", async () => {
+    const controller = makeController();
+
+    await controller.handle({
+      type: "goToSource",
+      source: {
+        filename: ON_DISK,
+        lineStart: 3,
+        columnStart: 5,
+        lineEnd: 4,
+        columnEnd: 8,
+      },
+      fallbackClassName: "Pkg.M",
+    });
+
+    const shown = vscodeMock.shownTextDocuments.at(0);
+    expect(vscodeMock.shownTextDocuments).toHaveLength(1);
+    expect(shown?.uri.fsPath).toBe(ON_DISK);
+    // 1-based (3,5) → 0-based (2,4); inclusive end column 8 → exclusive 8.
+    expect(shown?.options?.selection).toMatchObject({
+      start: { line: 2, character: 4 },
+      end: { line: 3, character: 8 },
+    });
+  });
+
+  it("falls back to the class's modelica-source: view when the file is not on disk", async () => {
+    const controller = makeController();
+
+    await controller.handle({
+      type: "goToSource",
+      source: {
+        filename: "<interactive>",
+        lineStart: 1,
+        columnStart: 1,
+        lineEnd: 2,
+        columnEnd: 1,
+      },
+      fallbackClassName: "Modelica.Blocks.Math.Gain",
+    });
+
+    const shown = vscodeMock.shownTextDocuments.at(0);
+    expect(vscodeMock.shownTextDocuments).toHaveLength(1);
+    expect(shown?.uri.toString()).toBe(
+      "modelica-source:/Modelica.Blocks.Math.Gain.mo",
+    );
+  });
+
+  it("still navigates on a read-only class", async () => {
+    const { client } = makeEditClient();
+    const { gate, posted } = makeGate();
+    const { factory } = makeShadowFactory();
+    const controller = new DiagramEditController(
+      controllerDeps({ client, gate }),
+      layout({}),
+      factory,
+      defaultScheduler,
+      { ok: false, reason: REFUSAL },
+    );
+
+    await controller.handle({
+      type: "goToSource",
+      source: {
+        filename: "<interactive>",
+        lineStart: 1,
+        columnStart: 1,
+        lineEnd: 1,
+        columnEnd: 1,
+      },
+      fallbackClassName: "Pkg.M",
+    });
+
+    expect(vscodeMock.shownTextDocuments).toHaveLength(1);
+    expect(posted.filter((m) => m.type === "error")).toHaveLength(0);
   });
 });

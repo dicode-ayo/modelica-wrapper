@@ -20,6 +20,8 @@ const env = {
   hasClipboard: false,
   vertexTarget: false,
   polySelection: false,
+  hasDefinitionSource: false,
+  hasDeclarationSource: false,
 };
 
 describe("deriveContextKeys", () => {
@@ -69,6 +71,8 @@ describe("deriveContextKeys", () => {
         hasClipboard: true,
         vertexTarget: false,
         polySelection: false,
+        hasDefinitionSource: false,
+        hasDeclarationSource: false,
       },
     );
     expect(ctx).toMatchObject({
