@@ -190,7 +190,7 @@ export interface PortDef {
   typeName: string;
   /** Placement of the port on the host class's coordinate system. */
   placement: Placement;
-  /** Walked icon for the connector class itself. */
+  /** Walked icon for the connector class itself, with the same Icon→Diagram fallback as `ClassDef.iconLayers`. */
   iconLayers: IconLayer[];
   /** Class that DECLARED this port — host class name, or an ancestor in its extends chain. */
   from: string;
@@ -240,7 +240,22 @@ export interface ParameterDef {
 export interface ClassDef {
   name: string;
   restriction: string;
+  /**
+   * Layers an icon context shows for this class. Sourced from the `Icon`
+   * annotation; when that draws nothing, the producer substitutes the
+   * `Diagram` annotation's layers (see `iconContextLayers` in the producer
+   * for the rule) — a hand-written connector often carries only a
+   * `Diagram` and would otherwise render as nothing while staying
+   * hit-testable.
+   */
   iconLayers: IconLayer[];
+  /**
+   * The `Diagram` annotation's layers, present only when that annotation
+   * draws something. A diagram context showing the class itself (a
+   * standalone connector on the host) renders these, falling back to
+   * `iconLayers` when absent.
+   */
+  diagramLayers?: IconLayer[] | undefined;
   coordinateSystem?: CoordinateSystem | undefined;
   /** Ports declared on this class or any of its ancestors. */
   connectors: Record<string, PortDef>;
@@ -300,11 +315,20 @@ export interface ComponentInstance {
 export interface ConnectorInstance {
   name: string;
   classRef: string;
+  /**
+   * The transformation for the layout's `kind` view: `transformation` in a
+   * diagram-kind layout, `iconTransformation` in an icon-kind one (each
+   * falling back to the other when only one is declared) — see
+   * `instanceFromConnector` in the producer for the rule.
+   */
   placement: Placement;
   /**
-   * The connector's diagram-view `transformation`, when the declaration
-   * defines both. `placement` above is the icon-view one, so a declaration
-   * rebuilt from `placement` alone loses its position on the diagram.
+   * The connector's diagram-view `transformation`, captured when an
+   * icon-kind layout read the `iconTransformation` and the declaration
+   * defines both. Unset in a diagram-kind layout, where `placement`
+   * already is the transformation. Write paths re-emit it so a
+   * declaration rebuilt from `placement` alone keeps its position on the
+   * diagram.
    */
   diagramPlacement?: Placement | undefined;
   comment?: string | undefined;
@@ -552,6 +576,7 @@ export const ClassDefSchema = z
     name: z.string(),
     restriction: z.string(),
     iconLayers: z.array(IconLayerSchema),
+    diagramLayers: z.array(IconLayerSchema).optional(),
     coordinateSystem: CoordinateSystemSchema.optional(),
     connectors: z.record(z.string(), PortDefSchema),
     parameters: z.record(z.string(), ParameterDefSchema),
