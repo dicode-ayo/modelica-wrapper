@@ -322,7 +322,7 @@ importers:
         specifier: workspace:*
         version: link:../ui-common
       echarts:
-        specifier: ^5.5.0
+        specifier: ^5.6.0
         version: 5.6.0
       lit:
         specifier: ^3.3.3
