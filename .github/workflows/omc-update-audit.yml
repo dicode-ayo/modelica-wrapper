@@ -14,7 +14,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   # A job-level `container:` image can't reference outputs of its own steps,
@@ -28,6 +27,8 @@ jobs:
       version: ${{ steps.pin.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Extract pinned OMC version from version.ts
         id: pin
@@ -38,6 +39,10 @@ jobs:
 
   audit:
     needs: pin
+    # The comment step below posts through the workflow token.
+    permissions:
+      contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
     container:
       image: openmodelica/openmodelica:v${{ needs.pin.outputs.version }}-minimal
@@ -55,6 +60,8 @@ jobs:
           useradd -m -s /bin/bash omcrunner
 
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # Not ./.github/actions/setup — see the matching comment in ci.yml's
       # integration job: the composite's pnpm lands under /root (mode 700),
@@ -88,9 +95,14 @@ jobs:
           OMC_INTEGRATION: "1"
           OMC_DEBUG: "1"
         run: |
+          # `set +e` so a failing suite doesn't errexit past the drift probe —
+          # its output is the audit's product. The step still exits with the
+          # suite's status so `steps.tests.outcome` reflects the failure.
+          set +e
           # Full integration suite (assertions). Failures here are real regressions.
           runuser -u omcrunner -- pnpm --filter @dicode/omc-client test 2>&1 \
             | tee test-output.txt
+          test_status=$?
           # Drift probe (informational). Reports per-call OMC behavior for the ⛔
           # wrappers in coverage.md so the human reviewer sees ground truth on
           # the new OMC version. Always succeeds — output is what matters.
@@ -98,6 +110,7 @@ jobs:
             runuser -u omcrunner -- pnpm --filter @dicode/omc-client \
             vitest run test/drift-probe.integration.test.ts --reporter=verbose 2>&1 \
             | tee drift-probe-output.txt
+          exit "$test_status"
 
       - name: Summarize test result
         id: summary
