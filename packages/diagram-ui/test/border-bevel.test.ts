@@ -1,14 +1,14 @@
 /**
  * `Rectangle.borderPattern` rendering: the annotation asks for a shaded
  * bevel, not an outline, so a Raised/Sunken/Engraved rectangle must draw
- * the two-tone edge frame INSTEAD of the solid `lineColor` stroke (the
- * pre-bevel renderer drew a heavy solid border — exactly what OMEdit does
- * not show for e.g. `Modelica.Blocks.Interaction.Show.RealValue`).
+ * the two-tone edge frame INSTEAD of the solid `lineColor` stroke — a
+ * heavy solid border is exactly what OMEdit does not show for e.g.
+ * `Modelica.Blocks.Interaction.Show.RealValue`.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { Container, Graphics } from "pixi.js";
 import type { Color, RectangleShape } from "@dicode/omc-client";
-import { bevelColors } from "@dicode/diagram-svg";
+import { bevelColors, bevelEdges } from "@dicode/diagram-svg";
 
 import { OmRectangle } from "../src/primitives/rectangle.component.js";
 import { packColor } from "../src/primitives/shape-utils.js";
@@ -108,12 +108,41 @@ describe("<om-rectangle> borderPattern", () => {
   });
 });
 
+describe("bevelEdges", () => {
+  const BOX = { x: -10, y: -5, width: 20, height: 10 };
+
+  it("decides Engraved once, as the sunken tones", () => {
+    const engraved = bevelEdges(BOX, "Engraved", FACE);
+    const sunken = bevelEdges(BOX, "Sunken", FACE);
+    expect(engraved).toEqual(sunken);
+    if (!engraved) throw new Error("expected a bevel");
+    expect(engraved.topLeft.color).toEqual(bevelColors(FACE).dark);
+  });
+
+  it("draws no bevel for None or an absent pattern", () => {
+    expect(bevelEdges(BOX, "None", FACE)).toBeNull();
+    expect(bevelEdges(BOX, undefined, FACE)).toBeNull();
+  });
+});
+
 describe("bevelColors", () => {
   it("derives Qt's lighter(150)/darker(200) tones from the face color", () => {
+    // HSV Value overflows full brightness here, so the excess desaturates —
+    // green stays pinned at 255 while the other channels move toward white.
     expect(bevelColors([100, 200, 40])).toEqual({
-      light: [150, 255, 60],
+      light: [156, 255, 96],
       dark: [50, 100, 20],
     });
+  });
+
+  it("lightens a fully saturated primary toward white, not onto itself", () => {
+    // A per-channel multiply saturates red back to [255,0,0] — an invisible
+    // light edge. Qt's Value-overflow-into-Saturation rule yields pink.
+    expect(bevelColors([255, 0, 0]).light).toEqual([255, 128, 128]);
+  });
+
+  it("matches the plain per-channel multiply while Value stays in range", () => {
+    expect(bevelColors([100, 160, 40]).light).toEqual([150, 240, 60]);
   });
 
   it("keeps a black face black on both edges (Qt does too)", () => {

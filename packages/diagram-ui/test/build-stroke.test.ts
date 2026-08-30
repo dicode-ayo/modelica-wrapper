@@ -57,8 +57,8 @@ describe("resolveStrokeWidth", () => {
   it("keeps the 0.25 spec default literal when it clears the screen-space floor", () => {
     const parent = new Container();
     // Zoomed in: one screen px is 0.05 diagram units, well under 0.25 —
-    // the default thickness must NOT be inflated (the pre-floor 0.5-unit
-    // minimum doubled it at every zoom).
+    // the default thickness must NOT be inflated; a fixed diagram-unit
+    // minimum would thicken it at every zoom level.
     expect(resolveStrokeWidth(parent, undefined, undefined, 0.05)).toBeCloseTo(
       0.25,
     );
