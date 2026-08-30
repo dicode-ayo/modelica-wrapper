@@ -111,6 +111,77 @@ describe("renderIconLayersToSvg", () => {
     expect(svg).toContain('ry="25"');
   });
 
+  it("borderPattern Raised replaces the outline with a light/dark bevel frame", () => {
+    const svg = renderIconLayersToSvg([
+      makeLayer("Test.Raised", [
+        {
+          kind: "rectangle",
+          extent: [
+            [-50, -25],
+            [50, 25],
+          ],
+          lineColor: [0, 0, 127],
+          fillColor: [200, 100, 40],
+          fillPattern: "Solid",
+          borderPattern: "Raised",
+        } satisfies RectangleShape,
+      ]),
+    ]);
+    // The bevel stands in for the pen: no solid lineColor outline.
+    expect(svg).not.toContain('stroke="rgb(0,0,127)"');
+    expect(svg).toContain("<rect");
+    expect(svg).toContain('stroke="none"');
+    // Qt palette tones from the face color: lighter(150) top/left,
+    // darker(200) bottom/right.
+    expect(svg).toContain(
+      'points="-50,-25 -50,25 50,25" fill="none" stroke="rgb(255,150,60)"',
+    );
+    expect(svg).toContain(
+      'points="50,25 50,-25 -50,-25" fill="none" stroke="rgb(100,50,20)"',
+    );
+  });
+
+  it("borderPattern Sunken swaps the bevel tones", () => {
+    const svg = renderIconLayersToSvg([
+      makeLayer("Test.Sunken", [
+        {
+          kind: "rectangle",
+          extent: [
+            [-50, -25],
+            [50, 25],
+          ],
+          fillColor: [200, 100, 40],
+          fillPattern: "Solid",
+          borderPattern: "Sunken",
+        } satisfies RectangleShape,
+      ]),
+    ]);
+    expect(svg).toContain(
+      'points="-50,-25 -50,25 50,25" fill="none" stroke="rgb(100,50,20)"',
+    );
+    expect(svg).toContain(
+      'points="50,25 50,-25 -50,-25" fill="none" stroke="rgb(255,150,60)"',
+    );
+  });
+
+  it("borderPattern None keeps the plain outline", () => {
+    const svg = renderIconLayersToSvg([
+      makeLayer("Test.NoBevel", [
+        {
+          kind: "rectangle",
+          extent: [
+            [-50, -25],
+            [50, 25],
+          ],
+          lineColor: [0, 0, 127],
+          borderPattern: "None",
+        } satisfies RectangleShape,
+      ]),
+    ]);
+    expect(svg).toContain('stroke="rgb(0,0,127)"');
+    expect(svg).not.toContain("<polyline");
+  });
+
   it("omits rx/ry for a zero or missing radius", () => {
     const svg = renderIconLayersToSvg([
       makeLayer("Test.Sharp", [
