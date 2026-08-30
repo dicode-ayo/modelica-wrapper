@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "vitest/config";
 
+import { coverage } from "../../vitest.base.js";
+
 const projectRoot = dirname(fileURLToPath(import.meta.url));
 
 /**
@@ -17,5 +19,6 @@ export default defineConfig({
     include: ["src/**/*.test.ts", "test/**/*.test.ts"],
     environment: "happy-dom",
     testTimeout: 10_000,
+    coverage,
   },
 });

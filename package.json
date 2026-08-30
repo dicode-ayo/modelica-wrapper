@@ -19,6 +19,8 @@
     "format:check": "prettier --check .",
     "test": "pnpm -r test",
     "test:unit": "pnpm -r test:unit",
+    "test:coverage": "pnpm -r test:coverage",
+    "crap": "pnpm -r crap",
     "test:e2e": "pnpm --filter modelica-wrapper test:e2e",
     "test:e2e:headed": "pnpm --filter modelica-wrapper test:e2e:headed",
     "test:e2e:ui": "pnpm --filter modelica-wrapper test:e2e:ui",
@@ -27,6 +29,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@sebassdc/crap4ts": "^0.1.1",
     "eslint": "^9.39.4",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^16.5.0",
