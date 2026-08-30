@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { LibraryDataSource, LibraryClassInfo } from "./library-types.js";
 import {
   LIBRARY_TREE_ROOT_ID,
+  activationViewFor,
   createLibraryDataLoader,
   isExpandable,
   leafLabel,
@@ -11,7 +12,6 @@ import {
   rootNode,
   type LibraryTreeNode,
   isPlaceableRestriction,
-  isOpenableRestriction,
 } from "./library-tree-model.js";
 
 function source(overrides: Partial<LibraryDataSource> = {}): LibraryDataSource {
@@ -226,22 +226,54 @@ describe("restriction gates", () => {
   it.each(notPlaceable)("%s cannot be placed on a diagram", (r) => {
     expect(isPlaceableRestriction(r)).toBe(false);
   });
+});
 
-  // Opening is narrower: a connector is placeable but has no diagram.
-  it.each(["class", "model", "block"] as const)("%s has a diagram", (r) => {
-    expect(isOpenableRestriction(r)).toBe(true);
+describe("activationViewFor", () => {
+  it.each([
+    "class",
+    "model",
+    "block",
+    "connector",
+    "expandable connector",
+  ] as const)("%s activates into the diagram view", (r) => {
+    expect(activationViewFor(r)).toBe("diagram");
   });
 
-  it.each(["connector", "expandable connector", "record", "package"] as const)(
-    "%s has no diagram to open",
-    (r) => {
-      expect(isOpenableRestriction(r)).toBe(false);
-    },
-  );
+  it("routes a package to documentation, never the diagram", () => {
+    // Opening a package as a diagram wedges the view.
+    expect(activationViewFor("package")).toBe("documentation");
+  });
 
-  it("every openable restriction is also placeable", () => {
-    for (const r of [...placeable, ...notPlaceable]) {
-      if (isOpenableRestriction(r)) {
+  it.each([
+    "record",
+    "function",
+    "type",
+    "operator",
+    "operator function",
+    "operator record",
+    "unknown",
+  ] as const)("%s falls back to the source view", (r) => {
+    expect(activationViewFor(r)).toBe("source");
+  });
+
+  it("every diagram-activated restriction is also placeable", () => {
+    const all = [
+      "package",
+      "model",
+      "block",
+      "class",
+      "connector",
+      "expandable connector",
+      "record",
+      "function",
+      "type",
+      "operator",
+      "operator function",
+      "operator record",
+      "unknown",
+    ] as const;
+    for (const r of all) {
+      if (activationViewFor(r) === "diagram") {
         expect(isPlaceableRestriction(r)).toBe(true);
       }
     }
