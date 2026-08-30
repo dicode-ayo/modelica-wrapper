@@ -15,12 +15,19 @@ import type { Point } from "@dicode/omc-client";
  *
  * Shared by connection edges and poly host shapes so both get the same
  * follow-the-line pick behaviour.
+ *
+ * `excludeEnds` carves a `radius` disc around each terminal point out of
+ * the hit area. A connection route terminates at the centre of the entity
+ * it lands on, so without the exclusion the band swallows every pick on
+ * that spot — which belongs to the connector, not the edge. Poly host
+ * shapes keep the full band: their tips terminate on nothing.
  */
 export function buildHitTube(
   name: string,
   points: ReadonlyArray<Point>,
   radius: number,
   color: number,
+  excludeEnds = false,
 ): Graphics {
   const g = new Graphics({ label: name });
   g.alpha = 0;
@@ -39,7 +46,7 @@ export function buildHitTube(
   }
   g.stroke({ width: 2 * radius, color, cap: "round", join: "round" });
   g.eventMode = "static";
-  g.hitArea = new PolylineHitArea(points, radius);
+  g.hitArea = new PolylineHitArea(points, radius, excludeEnds);
   return g;
 }
 
@@ -47,7 +54,8 @@ export function buildHitTube(
  * Hit area matching a stroked polyline: a point is inside when it lies
  * within `radius` of any segment. Precise at bends (a single offset
  * polygon would leave dead zones at corners), and renderer-free so the
- * pick works headless.
+ * pick works headless. With `excludeEnds`, a point within `radius` of a
+ * terminal point is outside regardless of the segment test.
  */
 class PolylineHitArea implements IHitArea {
   private readonly radiusSq: number;
@@ -55,11 +63,22 @@ class PolylineHitArea implements IHitArea {
   constructor(
     private readonly points: ReadonlyArray<Point>,
     radius: number,
+    private readonly excludeEnds = false,
   ) {
     this.radiusSq = radius * radius;
   }
 
   contains(x: number, y: number): boolean {
+    if (this.excludeEnds) {
+      const first = this.points[0];
+      const last = this.points.at(-1);
+      if (first && distSq(x, y, first[0], first[1]) <= this.radiusSq) {
+        return false;
+      }
+      if (last && distSq(x, y, last[0], last[1]) <= this.radiusSq) {
+        return false;
+      }
+    }
     for (let i = 0; i + 1 < this.points.length; i++) {
       const a = this.points[i];
       const b = this.points[i + 1];
@@ -72,6 +91,10 @@ class PolylineHitArea implements IHitArea {
     }
     return false;
   }
+}
+
+function distSq(px: number, py: number, x: number, y: number): number {
+  return (px - x) ** 2 + (py - y) ** 2;
 }
 
 function distSqToSegment(
