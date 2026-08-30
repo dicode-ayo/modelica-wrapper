@@ -70,6 +70,29 @@ describe("<om-label>", () => {
     expect(anchor.position.y).toBeCloseTo(10, 5);
   });
 
+  it("renders a non-positive fontSize (Modelica's materialized 0) at the default size", async () => {
+    const scene = await mountScene();
+    const label = document.createElement("om-label") as OmLabel;
+    label.nodeId = "title";
+    label.text = "Show";
+    label.fontSize = 0;
+    scene.appendChild(label);
+    await label.updateComplete;
+    // The overlay has no extent to fit, so 0 must fall back to the
+    // default instead of building an invisible zero-height glyph.
+    expect(label.resolvedFontSize).toBe(12);
+  });
+
+  it("keeps a stated positive fontSize", async () => {
+    const scene = await mountScene();
+    const label = document.createElement("om-label") as OmLabel;
+    label.nodeId = "title";
+    label.fontSize = 17;
+    scene.appendChild(label);
+    await label.updateComplete;
+    expect(label.resolvedFontSize).toBe(17);
+  });
+
   it("cleans up the anchor on disconnect", async () => {
     const scene = await mountScene();
     const diagramRoot = contextOf(scene).diagramRoot;
