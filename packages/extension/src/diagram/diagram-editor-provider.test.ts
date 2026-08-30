@@ -3347,7 +3347,7 @@ describe("DiagramEditController: go to source (issue #514)", () => {
   const ON_DISK = fileURLToPath(import.meta.url);
 
   beforeEach(() => {
-    vscodeMock.shownTextDocuments.length = 0;
+    vscodeMock.resetShownTextDocuments();
   });
 
   function makeController(): DiagramEditController {

@@ -1290,9 +1290,10 @@ export class DiagramEditController {
    * Open the source behind a diagram entity (go-to-definition /
    * go-to-declaration). `source` is OMC-reported — 1-based with an inclusive
    * end column, the `getClassInformation` convention `omcRangeToVscodeRange`
-   * converts. A filename that is not on disk (a `loadString`ed class, OMC's
-   * `<interactive>` marker) falls back to the class's `modelica-source:`
-   * view, mirroring `modelica.viewSource`.
+   * converts; `go-to-source.integration.test.ts` pins that `getModelInstance`
+   * locations share it. A filename that is not on disk (a `loadString`ed
+   * class, OMC's `<interactive>` marker) falls back to the class's
+   * `modelica-source:` view, mirroring `modelica.viewSource`.
    */
   private async onGoToSource(
     source: SourceLocation,

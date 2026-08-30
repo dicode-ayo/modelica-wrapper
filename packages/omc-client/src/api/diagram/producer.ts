@@ -460,8 +460,8 @@ function dimsFromElement(el: ComponentElement): string[] | undefined {
  * passthrough as `unknown`, so it is only kept when it decodes as a real
  * location.
  */
-function sourceOf(node: Record<string, unknown>): SourceLocation | undefined {
-  const parsed = SourceLocationSchema.safeParse(node["source"]);
+function sourceOf(node: { source?: unknown }): SourceLocation | undefined {
+  const parsed = SourceLocationSchema.safeParse(node.source);
   return parsed.success ? parsed.data : undefined;
 }
 

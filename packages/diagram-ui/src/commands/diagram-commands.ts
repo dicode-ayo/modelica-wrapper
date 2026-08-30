@@ -73,7 +73,12 @@ const orderMenu = (order: number): CommandPlacement => ({
   order,
 });
 
-/** Source-navigation ops sit in their own separated group. */
+/**
+ * Source-navigation ops sit in their own separated group. Group tokens
+ * participate in the registry's alphabetical group sort, so this name
+ * places the group between `edit` and `order` — the menu sequence is
+ * pinned in `command-menu-items.test.ts`.
+ */
 const navigateMenu = (order: number): CommandPlacement => ({
   surface: "contextMenu",
   group: "navigate",

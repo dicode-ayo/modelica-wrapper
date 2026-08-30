@@ -259,6 +259,17 @@ export function resetTabs(): void {
   closedTabs.length = 0;
 }
 
+/** Documents `window.showTextDocument` was asked to open, in call order. */
+export const shownTextDocuments: Array<{
+  uri: UriImpl;
+  options?: { preview?: boolean; selection?: Range } | undefined;
+}> = [];
+
+/** Clear the shown-document record between tests. */
+export function resetShownTextDocuments(): void {
+  shownTextDocuments.length = 0;
+}
+
 let activeTextEditorValue: { document: { uri: UriImpl } } | undefined;
 
 /** Set (or clear) the URI the mock's `window.activeTextEditor` reports. */
@@ -674,12 +685,6 @@ export const window = {
     };
   },
 };
-
-/** Documents `window.showTextDocument` was asked to open, in call order. */
-export const shownTextDocuments: Array<{
-  uri: UriImpl;
-  options?: { preview?: boolean; selection?: Range } | undefined;
-}> = [];
 
 /** Answers `showQuickPick` / `showInputBox` hand back, in prompt order. */
 const promptAnswers: Array<string | undefined> = [];
