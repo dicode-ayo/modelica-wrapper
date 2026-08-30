@@ -51,7 +51,7 @@
     "@lit-labs/virtualizer": "^2.1.1",
     "@lit/context": "^1.1.6",
     "lit": "^3.3.3",
-    "pixi.js": "^8.19.0"
+    "pixi.js": "^8.20.1"
   },
   "devDependencies": {
     "@playwright/test": "1.60.0",
