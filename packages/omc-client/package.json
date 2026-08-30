@@ -58,7 +58,7 @@
     "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\""
   },
   "dependencies": {
-    "zeromq": "^6.1.0",
+    "zeromq": "^6.6.0",
     "zod": "^4.5.4"
   },
   "devDependencies": {

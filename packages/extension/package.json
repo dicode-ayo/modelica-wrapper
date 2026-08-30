@@ -501,7 +501,7 @@
     "@dicode/ui-common": "workspace:*",
     "lit": "^3.3.3",
     "web-tree-sitter": "^0.25.10",
-    "zeromq": "^6.1.0"
+    "zeromq": "^6.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
