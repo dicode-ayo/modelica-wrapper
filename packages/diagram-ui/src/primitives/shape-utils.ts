@@ -4,7 +4,7 @@ import {
   FILLED_SHAPE_DEFAULTS,
   LINE_DEFAULTS,
 } from "@dicode/omc-client/shapes";
-import { bevelColors, type FillSpec } from "@dicode/diagram-svg";
+import { bevelEdges, type FillSpec } from "@dicode/diagram-svg";
 
 import { worldScaleXY } from "../scene/ortho-camera.js";
 import { resolveFillTexture } from "./fill-texture.js";
@@ -522,19 +522,11 @@ export function buildStroke(
 // ---------- borderPattern bevel ----------
 
 /**
- * Two-tone bevel frame for `Rectangle.borderPattern` — light on two edges,
- * dark on the opposite two, the `qDrawShadePanel` look OMEdit draws.
- * §18.6.5.5's `Raised`/`Sunken`/`Engraved` ask for a shaded bevel, not an
- * outline, so callers draw this INSTEAD of the `lineColor` stroke.
- *
- * Supported: `Raised` (light top/left, dark bottom/right), `Sunken` (the
- * inverse), and `Engraved` rendered with the sunken tones — Qt's etched
- * double frame is a one-pixel detail below what an icon resolves at
- * typical zoom. `"None"` and unknown values return `null`; the caller then
- * falls back to its normal outline.
- *
- * The box's max-`y` edge is the screen-top: diagram space is y-up and the
- * root Y-flip puts larger `y` higher on screen.
+ * Two-tone bevel frame for `Rectangle.borderPattern`. The geometry and
+ * tone decision live in `bevelEdges` (`@dicode/diagram-svg`), shared with
+ * the SVG renderer; this builds the two strokes it prescribes. Callers
+ * draw this INSTEAD of the `lineColor` stroke; `null` when the pattern
+ * draws no bevel — the caller then falls back to its normal outline.
  */
 export function buildBorderBevel(
   parent: Container,
@@ -549,33 +541,15 @@ export function buildBorderBevel(
     worldPerPixel?: number | undefined;
   },
 ): OwnedResource | null {
-  if (
-    borderPattern !== "Raised" &&
-    borderPattern !== "Sunken" &&
-    borderPattern !== "Engraved"
-  ) {
+  const edges = bevelEdges(box, borderPattern, faceColor);
+  if (edges === null) {
     return null;
   }
-  const { light, dark } = bevelColors(
-    faceColor ?? FILLED_SHAPE_DEFAULTS.fillColor,
-  );
-  const raised = borderPattern === "Raised";
-  const { x, y, width, height } = box;
-  const topLeft: Array<[number, number]> = [
-    [x, y],
-    [x, y + height],
-    [x + width, y + height],
-  ];
-  const bottomRight: Array<[number, number]> = [
-    [x + width, y + height],
-    [x + width, y],
-    [x, y],
-  ];
   const parts = [
     buildStroke(
       parent,
-      topLeft,
-      raised ? light : dark,
+      edges.topLeft.points,
+      edges.topLeft.color,
       "Solid",
       z,
       `${baseName}.bevel-top`,
@@ -583,8 +557,8 @@ export function buildBorderBevel(
     ),
     buildStroke(
       parent,
-      bottomRight,
-      raised ? dark : light,
+      edges.bottomRight.points,
+      edges.bottomRight.color,
       "Solid",
       z + STROKE_Z_DELTA / 2,
       `${baseName}.bevel-bottom`,

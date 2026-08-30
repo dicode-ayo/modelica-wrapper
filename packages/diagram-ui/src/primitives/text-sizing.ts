@@ -4,11 +4,17 @@
  */
 
 /**
- * Em-size vs box-height fudge used only when glyphs cannot be measured
- * (headless: no 2D canvas): a `font-size: Npx` font has cap+descender
- * height ≈ 0.95N, so a glyph sized to the full extent height overshoots
- * the box. When measurement is available, {@link fitFontSize} replaces
- * this heuristic entirely.
+ * Em-size vs visual-height compensation, applied in two places by
+ * `<om-text>`:
+ *
+ * - Every explicitly stated `fontSize`: a `font-size: Npx` font's em box
+ *   is taller than its visible cap height, so drawing the stated size raw
+ *   renders larger than the same size in other Modelica tools; the
+ *   multiply brings the visual height back in line.
+ * - The auto-fit fallback (`fontSize == 0` with no measurable 2D canvas,
+ *   e.g. headless): the extent height stands in for the measurement, and
+ *   the same factor keeps the glyph from overshooting the box. When
+ *   measurement is available, {@link fitFontSize} replaces this fallback.
  */
 export const FONT_FIT_FACTOR = 0.7;
 
