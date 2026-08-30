@@ -4,7 +4,7 @@
   "private": true,
   "description": "Monorepo root for the modelica-wrapper VSCode extension and the @dicode/omc-client package.",
   "engines": {
-    "node": ">=20"
+    "node": ">=24.20.0"
   },
   "scripts": {
     "start": "pnpm --filter @dicode/diagram-ui start",

@@ -7,7 +7,7 @@
   "private": true,
   "engines": {
     "vscode": "^1.95.0",
-    "node": ">=20"
+    "node": ">=24.20.0"
   },
   "categories": [
     "Programming Languages",
@@ -504,7 +504,7 @@
     "zeromq": "^6.6.0"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^24.13.3",
     "@types/vscode": "^1.95.0",
     "@vitest/coverage-istanbul": "^2.1.0",
     "@vscode/vsce": "^3.9.2",
