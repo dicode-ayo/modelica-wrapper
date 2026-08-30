@@ -42,8 +42,8 @@ importers:
         specifier: workspace:*
         version: link:../lang-core
       web-tree-sitter:
-        specifier: ^0.25.10
-        version: 0.25.10
+        specifier: ^0.27.0
+        version: 0.27.0
     devDependencies:
       '@types/node':
         specifier: ^24.13.3
@@ -244,8 +244,8 @@ importers:
         specifier: ^3.3.3
         version: 3.3.3
       web-tree-sitter:
-        specifier: ^0.25.10
-        version: 0.25.10
+        specifier: ^0.27.0
+        version: 0.27.0
       zeromq:
         specifier: ^6.6.0
         version: 6.6.0
@@ -275,8 +275,8 @@ importers:
   packages/lang-core:
     dependencies:
       web-tree-sitter:
-        specifier: ^0.25.10
-        version: 0.25.10
+        specifier: ^0.27.0
+        version: 0.27.0
     devDependencies:
       '@types/node':
         specifier: ^24.13.3
@@ -3765,13 +3765,8 @@ packages:
     resolution: {integrity: sha512-d2JWLCivmZYTSIoge9MsgFCZrt571BikcWGYkjC1khllbTeDlGqZ2D8vD8E/lJa8WGWbb7Plm8/XJYV7IJHZZw==}
     engines: {node: '>= 8'}
 
-  web-tree-sitter@0.25.10:
-    resolution: {integrity: sha512-Y09sF44/13XvgVKgO2cNDw5rGk6s26MgoZPXLESvMXeefBf7i6/73eFurre0IsTW6E14Y0ArIzhUMmjoc7xyzA==}
-    peerDependencies:
-      '@types/emscripten': ^1.40.0
-    peerDependenciesMeta:
-      '@types/emscripten':
-        optional: true
+  web-tree-sitter@0.27.0:
+    resolution: {integrity: sha512-XK08gj6RwTMQatAG7uVRP8MunqotL/XC19vHgkSPKmELgbGPBj4ECvB8haHOUnyj6ls2B8t42UTro14zxGgAHg==}
 
   webidl-conversions@7.0.0:
     resolution: {integrity: sha512-VwddBukDzu71offAQR975unBIGqfKZpM+8ZX6ySk8nYhVoo5CYaZyzt3YBvYtRtO+aoGlqxPg/B87NGVZ/fu6g==}
@@ -7300,7 +7295,7 @@ snapshots:
 
   web-streams-polyfill@3.3.3: {}
 
-  web-tree-sitter@0.25.10: {}
+  web-tree-sitter@0.27.0: {}
 
   webidl-conversions@7.0.0: {}
 

@@ -35,7 +35,7 @@
     "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\""
   },
   "dependencies": {
-    "web-tree-sitter": "^0.25.10"
+    "web-tree-sitter": "^0.27.0"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
