@@ -35,6 +35,13 @@ export class OmPolygon extends OmShapePrimitive {
     return this.shape?.pattern;
   }
 
+  protected override strokeThickness(): {
+    thickness: number | undefined;
+  } | null {
+    const s = this.shape;
+    return s && s.pattern !== "None" ? { thickness: s.lineThickness } : null;
+  }
+
   protected override entityBounds(): EntityBounds | null {
     const s = this.shape;
     if (!s || s.points.length < 3) {

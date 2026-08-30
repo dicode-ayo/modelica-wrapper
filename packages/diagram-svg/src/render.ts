@@ -28,7 +28,7 @@
  *    Sphere ARE handled via gradient defs (see pattern.ts).
  */
 
-import { colorToCss } from "./color.js";
+import { bevelColors, colorToCss } from "./color.js";
 // Sub-path import: the evaluator subtree only, so the browser bundles
 // this renderer lands in don't drag the OMC transport along.
 import { expressionToString } from "@dicode/omc-client/eval";
@@ -474,13 +474,30 @@ function renderPolygon(s: PolygonShape, ctx: RenderContext): string {
 
 function renderRectangle(s: RectangleShape, ctx: RenderContext): string {
   const { x, y, width, height } = extentToRect(s.extent);
-  const stroke = colorToCss(s.lineColor, "rgb(0,0,0)");
   const fill = fillFor(s.fillColor, s.lineColor, s.fillPattern, ctx);
   const thickness = scaledThickness(s.lineThickness, ctx);
-  const dashArray = linePatternToDashArray(s.pattern);
-  const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
   const r = clampCornerRadius(s.radius, width, height);
   const radiusAttr = r > 0 ? ` rx="${r}" ry="${r}"` : "";
+  const bp = s.borderPattern;
+  if (bp === "Raised" || bp === "Sunken" || bp === "Engraved") {
+    // `borderPattern` asks for a shaded bevel, not an outline — the
+    // `lineColor` stroke is replaced by two-tone edge polylines (OMEdit's
+    // `qDrawShadePanel` look; `Engraved`'s one-pixel etched double frame
+    // collapses to the sunken tones at icon sizes). We're inside the root
+    // `scale(1,-1)`, so the max-`y` edge is the on-screen top.
+    const { light, dark } = bevelColors(s.fillColor ?? [0, 0, 0]);
+    const raised = bp === "Raised";
+    const topLeft = `${x},${y} ${x},${y + height} ${x + width},${y + height}`;
+    const bottomRight = `${x + width},${y + height} ${x + width},${y} ${x},${y}`;
+    return [
+      `<rect x="${x}" y="${y}" width="${width}" height="${height}"${radiusAttr} fill="${fill}" stroke="none"/>`,
+      `<polyline points="${topLeft}" fill="none" stroke="${colorToCss(raised ? light : dark)}" stroke-width="${thickness}"/>`,
+      `<polyline points="${bottomRight}" fill="none" stroke="${colorToCss(raised ? dark : light)}" stroke-width="${thickness}"/>`,
+    ].join("");
+  }
+  const stroke = colorToCss(s.lineColor, "rgb(0,0,0)");
+  const dashArray = linePatternToDashArray(s.pattern);
+  const dashAttr = dashArray ? ` stroke-dasharray="${dashArray}"` : "";
   return `<rect x="${x}" y="${y}" width="${width}" height="${height}"${radiusAttr} fill="${fill}" stroke="${stroke}" stroke-width="${thickness}"${dashAttr}/>`;
 }
 
