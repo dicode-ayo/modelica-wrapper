@@ -17,7 +17,7 @@ jobs:
     name: Lint + format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
       - name: ESLint
@@ -31,7 +31,7 @@ jobs:
     name: Lint + unit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
       - name: Type-check
@@ -70,7 +70,7 @@ jobs:
           npm install -g pnpm@10.25.0
           useradd -m -s /bin/bash omcrunner
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Verify OMC matches the pin
         run: |
@@ -127,7 +127,7 @@ jobs:
     name: E2E (Playwright + code-server)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
       - name: Build the extension bundle
@@ -170,7 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
 
       - name: Install Playwright Chromium + system deps
