@@ -247,8 +247,8 @@ importers:
         specifier: ^0.25.10
         version: 0.25.10
       zeromq:
-        specifier: ^6.1.0
-        version: 6.5.0
+        specifier: ^6.6.0
+        version: 6.6.0
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
@@ -294,8 +294,8 @@ importers:
   packages/omc-client:
     dependencies:
       zeromq:
-        specifier: ^6.1.0
-        version: 6.5.0
+        specifier: ^6.6.0
+        version: 6.6.0
       zod:
         specifier: ^4.5.4
         version: 4.5.4
@@ -4115,8 +4115,8 @@ packages:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
 
-  zeromq@6.5.0:
-    resolution: {integrity: sha512-vWOrt19lvcXTxu5tiHXfEGQuldSlU+qZn2TT+4EbRQzaciWGwNZ99QQTolQOmcwVgZLodv+1QfC6UZs2PX/6pQ==}
+  zeromq@6.6.0:
+    resolution: {integrity: sha512-jo4gsieYiiAoETZnNd1x932QOyMJUY/ixLQZ10dAO5VxIu1PSWbKq+a2EdO1MJAgYjmrscwpm8LU5PvU7edIXQ==}
     engines: {node: '>= 12'}
 
   zod@4.5.4:
@@ -7844,7 +7844,7 @@ snapshots:
 
   yocto-queue@0.1.0: {}
 
-  zeromq@6.5.0:
+  zeromq@6.6.0:
     dependencies:
       cmake-ts: 1.0.2
       node-addon-api: 8.7.0
