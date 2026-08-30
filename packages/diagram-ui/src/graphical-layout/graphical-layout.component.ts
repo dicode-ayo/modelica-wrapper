@@ -63,6 +63,8 @@ import {
   CommandRegistry,
   DEFAULT_KEYMAP,
   DIAGRAM_COMMANDS,
+  resolveDeclarationSource,
+  resolveDefinitionSource,
   type CommandTarget,
   type DiagramCommandId,
 } from "../commands/index.js";
@@ -1567,6 +1569,9 @@ export class OmGraphicalLayout extends LitElement {
             : { action },
         );
       },
+      requestGoToSource: (request) => {
+        this.emit("om-go-to-source", request);
+      },
       showKeymapHelp: () => this.openKeymapHelp(),
     };
   }
@@ -1621,6 +1626,10 @@ export class OmGraphicalLayout extends LitElement {
         hasClipboard: this.hasClipboard,
         vertexTarget: this.contextVertex !== null,
         polySelection: this.singlePolyShapeSelected(),
+        hasDefinitionSource:
+          resolveDefinitionSource(this.layout, this.selectedKeys) !== null,
+        hasDeclarationSource:
+          resolveDeclarationSource(this.layout, this.selectedKeys) !== null,
       },
     );
   }

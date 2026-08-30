@@ -25,4 +25,6 @@ export type DiagramCommandId =
   | "diagram.changeClass"
   | "diagram.copy"
   | "diagram.paste"
+  | "diagram.goToDefinition"
+  | "diagram.goToDeclaration"
   | "diagram.showKeymapHelp";

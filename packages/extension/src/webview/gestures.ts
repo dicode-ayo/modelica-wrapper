@@ -9,7 +9,7 @@
  */
 
 import { assertUnreachable } from "@dicode/modelica-lang-core";
-import type { DiagramLayout } from "@dicode/omc-client";
+import type { DiagramLayout, SourceLocation } from "@dicode/omc-client";
 
 /**
  * Which parameter modal the panel is showing. `classParams`, `componentParams`,
@@ -139,6 +139,17 @@ function isDiagramLayout(value: unknown): value is DiagramLayout {
     isRecord(value) &&
     typeof value.className === "string" &&
     (value.kind === "icon" || value.kind === "diagram")
+  );
+}
+
+function isSourceLocation(value: unknown): value is SourceLocation {
+  return (
+    isRecord(value) &&
+    isString(value.filename) &&
+    isFiniteNumber(value.lineStart) &&
+    isFiniteNumber(value.columnStart) &&
+    isFiniteNumber(value.lineEnd) &&
+    isFiniteNumber(value.columnEnd)
   );
 }
 
@@ -279,6 +290,18 @@ const GESTURES = {
   addComponent: gesture({
     payload: { className: isString, position: isPoint },
     ordering: "afterCommit",
+    icon: "honored",
+  }),
+
+  /**
+   * User asked to open an entity's source (go-to-definition /
+   * go-to-declaration). Opens an editor only — the class is neither read nor
+   * written, so a queued commit may stay queued. Honored by the icon editor:
+   * it places connectors, and navigating from one touches no annotation.
+   */
+  goToSource: gesture({
+    payload: { source: isSourceLocation, fallbackClassName: isString },
+    ordering: "uiOnly",
     icon: "honored",
   }),
 

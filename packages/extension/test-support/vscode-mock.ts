@@ -590,6 +590,13 @@ export const window = {
   get activeTextEditor(): { document: { uri: UriImpl } } | undefined {
     return activeTextEditorValue;
   },
+  showTextDocument(
+    document: { uri: UriImpl },
+    options?: { preview?: boolean; selection?: Range },
+  ): Promise<{ document: { uri: UriImpl } }> {
+    shownTextDocuments.push({ uri: document.uri, options });
+    return Promise.resolve({ document });
+  },
   tabGroups: {
     get activeTabGroup(): { tabs: Tab[] } {
       return {
@@ -667,6 +674,12 @@ export const window = {
     };
   },
 };
+
+/** Documents `window.showTextDocument` was asked to open, in call order. */
+export const shownTextDocuments: Array<{
+  uri: UriImpl;
+  options?: { preview?: boolean; selection?: Range } | undefined;
+}> = [];
 
 /** Answers `showQuickPick` / `showInputBox` hand back, in prompt order. */
 const promptAnswers: Array<string | undefined> = [];

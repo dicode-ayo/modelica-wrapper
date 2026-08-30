@@ -18,7 +18,12 @@ import {
   parseKey,
   vertexShapeKey,
 } from "../interaction/entity-keys.js";
-import type { Command, CommandPlacement, CommandTarget } from "./command.js";
+import type {
+  Command,
+  CommandPlacement,
+  CommandTarget,
+  GoToSourceRequest,
+} from "./command.js";
 import type { DiagramCommandId } from "./command-ids.js";
 import type { KeyChord } from "./keymap.js";
 
@@ -68,6 +73,91 @@ const orderMenu = (order: number): CommandPlacement => ({
   order,
 });
 
+/** Source-navigation ops sit in their own separated group. */
+const navigateMenu = (order: number): CommandPlacement => ({
+  surface: "contextMenu",
+  group: "navigate",
+  order,
+});
+
+/**
+ * The source a "Go to Definition" on the current selection opens, or `null`
+ * when nothing resolves (so the command is not offered): a selected
+ * component / standalone connector opens its TYPE's class, a connection its
+ * `connect(...)` equation, and an empty selection (bare canvas) the host
+ * class itself. Instance `source` IS the type's location — the producer
+ * carries the declaration separately as `declarationSource`.
+ */
+export function resolveDefinitionSource(
+  layout: DiagramLayout | null,
+  selectedKeys: ReadonlySet<string>,
+): GoToSourceRequest | null {
+  if (!layout) return null;
+  if (selectedKeys.size === 0) {
+    return { source: layout.source, fallbackClassName: layout.className };
+  }
+  const parsed = soleSelectedKey(selectedKeys);
+  if (!parsed) return null;
+  switch (parsed.kind) {
+    case "component": {
+      const comp = layout.components[parsed.nodeId];
+      if (comp?.source === undefined) return null;
+      return { source: comp.source, fallbackClassName: comp.classRef };
+    }
+    case "connector": {
+      // Only standalone connectors: a sub-component's port is the
+      // component's business, and the component itself is selectable.
+      if (parsed.componentName !== null) return null;
+      const conn = layout.connectors[parsed.portName];
+      if (conn?.source === undefined) return null;
+      return { source: conn.source, fallbackClassName: conn.classRef };
+    }
+    case "edge": {
+      const connection = layout.connections[parsed.connIndex];
+      if (connection?.source === undefined) return null;
+      // The connect() equation lives in the host class.
+      return { source: connection.source, fallbackClassName: layout.className };
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * The source a "Go to Declaration" on the current selection opens — the
+ * selected instance's own declaration in the host class — or `null` when
+ * nothing resolves. An empty selection is definition territory: the host
+ * class's declaration is its definition.
+ */
+export function resolveDeclarationSource(
+  layout: DiagramLayout | null,
+  selectedKeys: ReadonlySet<string>,
+): GoToSourceRequest | null {
+  if (!layout) return null;
+  const parsed = soleSelectedKey(selectedKeys);
+  if (!parsed) return null;
+  const instance =
+    parsed.kind === "component"
+      ? layout.components[parsed.nodeId]
+      : parsed.kind === "connector" && parsed.componentName === null
+        ? layout.connectors[parsed.portName]
+        : undefined;
+  if (instance?.declarationSource === undefined) return null;
+  return {
+    source: instance.declarationSource,
+    fallbackClassName: layout.className,
+  };
+}
+
+/** The parsed sole selected key, or `null` for any other selection size. */
+function soleSelectedKey(
+  selectedKeys: ReadonlySet<string>,
+): ReturnType<typeof parseKey> {
+  if (selectedKeys.size !== 1) return null;
+  const key = [...selectedKeys][0];
+  return key === undefined ? null : parseKey(key);
+}
+
 /** Reordering is per-shape: a multi-shape selection has no single destination. */
 const requireOneShape = (ctx: ContextKeys): boolean =>
   !ctx.readonly && ctx.selectionKind === "shape" && ctx.selectionCount === 1;
@@ -105,8 +195,8 @@ export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
     title: "Select All",
     category: "Edit",
     // Read-only classes select fine; only the edits are refused. No context
-    // menu: the menu is empty with nothing selected, and a Select All entry
-    // would be the one thing that made a right-click on bare canvas open one.
+    // menu: with nothing selected a right-click on bare canvas offers only
+    // navigation, and with a selection Select All is noise.
     when: (ctx) => ctx.mode !== "draw",
     run: (target) => {
       const { layout } = target;
@@ -262,6 +352,39 @@ export const DIAGRAM_COMMANDS: readonly Command<DiagramCommandId>[] = [
     run: (target) => target.requestClipboard?.("paste"),
   },
   {
+    id: "diagram.goToDefinition",
+    title: "Go to Definition",
+    category: "Navigate",
+    // Navigation only reads sources, so readonly classes keep it. The env
+    // key already encodes what the selection (or bare canvas) resolves —
+    // nothing is offered where nothing would open.
+    when: (ctx) => ctx.hasDefinitionSource,
+    placements: [navigateMenu(0)],
+    run: (target) => {
+      const request = resolveDefinitionSource(
+        target.layout,
+        target.selectedKeys,
+      );
+      if (request === null) return;
+      target.requestGoToSource?.(request);
+    },
+  },
+  {
+    id: "diagram.goToDeclaration",
+    title: "Go to Declaration",
+    category: "Navigate",
+    when: (ctx) => ctx.hasDeclarationSource,
+    placements: [navigateMenu(1)],
+    run: (target) => {
+      const request = resolveDeclarationSource(
+        target.layout,
+        target.selectedKeys,
+      );
+      if (request === null) return;
+      target.requestGoToSource?.(request);
+    },
+  },
+  {
     id: "diagram.showKeymapHelp",
     title: "Show keyboard shortcuts",
     category: "Help",
@@ -292,5 +415,6 @@ export const DEFAULT_KEYMAP: ReadonlyMap<KeyChord, DiagramCommandId> = new Map([
   ["ctrl+[", "diagram.sendBackward"],
   ["ctrl+shift+}", "diagram.bringToFront"],
   ["ctrl+shift+{", "diagram.sendToBack"],
+  ["F12", "diagram.goToDefinition"],
   ["shift+?", "diagram.showKeymapHelp"],
 ]);

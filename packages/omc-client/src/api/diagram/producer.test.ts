@@ -2218,3 +2218,108 @@ describe("produceDiagramLayout: standalone connector placement by kind (issue #5
     expect(diagram.connectors.u?.iconPlacement).toBeUndefined();
   });
 });
+
+// =====================================================================
+// Source locations for go-to-definition / go-to-declaration (issue #514).
+// =====================================================================
+
+describe("produceDiagramLayout: source locations (issue #514)", () => {
+  const GAIN_DECL_SOURCE = {
+    filename: "/lib/Synth/SrcHost.mo",
+    lineStart: 8,
+    columnStart: 3,
+    lineEnd: 8,
+    columnEnd: 40,
+  };
+  const PORT_DECL_SOURCE = {
+    filename: "/lib/Synth/SrcHost.mo",
+    lineStart: 5,
+    columnStart: 3,
+    lineEnd: 5,
+    columnEnd: 30,
+  };
+  const CONNECT_SOURCE = {
+    filename: "/lib/Synth/SrcHost.mo",
+    lineStart: 20,
+    columnStart: 3,
+    lineEnd: 20,
+    columnEnd: 25,
+  };
+
+  function hostWithSources(): ModelInstance {
+    return ModelInstanceSchema.parse({
+      name: "Synth.SrcHost",
+      restriction: "model",
+      elements: [
+        {
+          $kind: "component",
+          name: "u",
+          type: RealInputClass,
+          source: PORT_DECL_SOURCE,
+          annotation: placementAnno([
+            [-110, -10],
+            [-90, 10],
+          ]),
+        },
+        {
+          $kind: "component",
+          name: "gain1",
+          type: GainClass,
+          source: GAIN_DECL_SOURCE,
+          annotation: placementAnno([
+            [-50, -50],
+            [-30, -30],
+          ]),
+        },
+        {
+          // A `source` that is not a location must be dropped, not carried.
+          $kind: "component",
+          name: "gain2",
+          type: GainClass,
+          source: "not-a-location",
+          annotation: placementAnno([
+            [10, -50],
+            [30, -30],
+          ]),
+        },
+      ],
+      connections: [
+        {
+          lhs: { $kind: "cref", parts: [{ name: "u" }] },
+          rhs: { $kind: "cref", parts: [{ name: "gain1" }, { name: "u" }] },
+          annotation: {
+            Line: {
+              points: [
+                [-90, 0],
+                [-50, -40],
+              ],
+            },
+          },
+          source: CONNECT_SOURCE,
+        },
+      ],
+    });
+  }
+
+  it("carries a component's own declaration as declarationSource", () => {
+    const layout = produceDiagramLayout(hostWithSources(), "diagram");
+    expect(layout.components.gain1?.declarationSource).toEqual(
+      GAIN_DECL_SOURCE,
+    );
+  });
+
+  it("carries a standalone connector's declaration as declarationSource", () => {
+    const layout = produceDiagramLayout(hostWithSources(), "diagram");
+    expect(layout.connectors.u?.declarationSource).toEqual(PORT_DECL_SOURCE);
+  });
+
+  it("carries a connect() equation's source on its ConnectionLayout", () => {
+    const layout = produceDiagramLayout(hostWithSources(), "diagram");
+    expect(layout.connections[0]?.source).toEqual(CONNECT_SOURCE);
+  });
+
+  it("drops a malformed element source instead of carrying it", () => {
+    const layout = produceDiagramLayout(hostWithSources(), "diagram");
+    expect(layout.components.gain2?.declarationSource).toBeUndefined();
+  });
+});
