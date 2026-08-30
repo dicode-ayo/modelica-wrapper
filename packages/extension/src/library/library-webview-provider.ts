@@ -7,9 +7,9 @@
  *
  * The webview browses OMC-backed data through `LibrarySource`; this provider
  * owns the host end of that bridge plus
- * the sidebar-only actions (open a class's diagram, relay a placement to the
- * active diagram, run Load Library, signal targeted invalidations after a
- * mutation, run a row's context-menu command).
+ * the sidebar-only actions (open an activated class in the view its restriction
+ * routes to, relay a placement to the active diagram, run Load Library, signal
+ * targeted invalidations after a mutation, run a row's context-menu command).
  */
 
 import * as vscode from "vscode";
@@ -28,6 +28,7 @@ import {
   DIAGRAM_VIEW_TYPE,
   DiagramEditorProvider,
 } from "../diagram/diagram-editor-provider.js";
+import { DOCUMENTATION_VIEW_TYPE } from "../diagram/view-type.js";
 import type { ClassInvalidationRegistry } from "../invalidation.js";
 import { log } from "../logger.js";
 import { sourceUriFor } from "../source-provider.js";
@@ -35,10 +36,24 @@ import { renderWebviewPage } from "../webview/webview-page.js";
 import type { LibraryClassInfo } from "../webview/library-messages.js";
 import type {
   ExtensionToLibraryView,
+  LibraryActivationView,
   LibraryViewToExtension,
 } from "../webview/library-view-protocol.js";
 
 export const LIBRARY_VIEW_ID = "modelica.libraries";
+
+/** The `vscode.openWith` editor for each activation view. `"default"` is the
+ *  built-in text editor — the source view has no custom viewType. */
+function editorForView(view: LibraryActivationView): string {
+  switch (view) {
+    case "diagram":
+      return DIAGRAM_VIEW_TYPE;
+    case "documentation":
+      return DOCUMENTATION_VIEW_TYPE;
+    case "source":
+      return "default";
+  }
+}
 
 type EnsureClient = () => Promise<OmcClient>;
 
@@ -293,11 +308,11 @@ export class LibraryWebviewProvider
           message.className,
         );
         return;
-      case "openDiagram":
+      case "openClassView":
         void vscode.commands.executeCommand(
           "vscode.openWith",
           sourceUriFor(message.className),
-          DIAGRAM_VIEW_TYPE,
+          editorForView(message.view),
         );
         return;
       case "placementStart":

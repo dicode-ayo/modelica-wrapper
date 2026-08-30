@@ -718,17 +718,53 @@ describe("LibraryWebviewProvider", () => {
     expect(reply).toMatchObject({ requestId: "s2" });
   });
 
-  it("opens the class diagram custom editor on the modelica-source doc", () => {
+  it("opens the class diagram custom editor for a diagram activation", () => {
     const { provider } = makeProvider();
     const { view, send } = fakeView();
     provider.resolveWebviewView(view);
-    send({ type: "openDiagram", className: "Modelica.Blocks.Math.Gain" });
+    send({
+      type: "openClassView",
+      className: "Modelica.Blocks.Math.Gain",
+      view: "diagram",
+    });
     const call = executedCommands.find((c) => c.command === "vscode.openWith");
     expect(call).toBeDefined();
     expect(String(call?.args[0])).toBe(
       "modelica-source:/Modelica.Blocks.Math.Gain.mo",
     );
     expect(call?.args[1]).toBe("modelica.diagram");
+  });
+
+  it("opens the documentation editor for a package activation, never the diagram", () => {
+    const { provider } = makeProvider();
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+    send({
+      type: "openClassView",
+      className: "Modelica.Blocks",
+      view: "documentation",
+    });
+    const calls = executedCommands.filter(
+      (c) => c.command === "vscode.openWith",
+    );
+    expect(calls.map((c) => c.args[1])).toEqual(["modelica.documentation"]);
+  });
+
+  it("opens the text editor for a source activation", () => {
+    const { provider } = makeProvider();
+    const { view, send } = fakeView();
+    provider.resolveWebviewView(view);
+    send({
+      type: "openClassView",
+      className: "Modelica.Units.SI.Voltage",
+      view: "source",
+    });
+    const call = executedCommands.find((c) => c.command === "vscode.openWith");
+    expect(call).toBeDefined();
+    expect(String(call?.args[0])).toBe(
+      "modelica-source:/Modelica.Units.SI.Voltage.mo",
+    );
+    expect(call?.args[1]).toBe("default");
   });
 
   it("runs Load Library from the empty-state affordance", () => {
