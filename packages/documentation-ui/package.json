@@ -53,7 +53,7 @@
     "lit": "^3.3.3"
   },
   "devDependencies": {
-    "@storybook/web-components": "^8.4.0",
+    "@storybook/web-components": "^10.5.10",
     "@types/js-beautify": "^1.14.3",
     "@types/node": "^24.13.3",
     "@vitest/coverage-istanbul": "^4.1.11",
