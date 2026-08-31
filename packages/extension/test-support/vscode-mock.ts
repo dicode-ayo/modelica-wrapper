@@ -586,6 +586,34 @@ export const languages = {
   registerCompletionItemProvider: (): Disposable => new Disposable(),
 };
 
+export enum StatusBarAlignment {
+  Left = 1,
+  Right = 2,
+}
+
+export class ThemeColor {
+  constructor(readonly id: string) {}
+}
+
+/** A status bar item the mock handed out, with its rendered state readable. */
+export interface StatusBarItemStub {
+  text: string;
+  tooltip: string | undefined;
+  backgroundColor: ThemeColor | undefined;
+  command: string | undefined;
+  visible: boolean;
+  show(): void;
+  hide(): void;
+  dispose(): void;
+}
+
+/** Every item `createStatusBarItem` handed out, in creation order. */
+export const statusBarItems: StatusBarItemStub[] = [];
+
+export function resetStatusBarItems(): void {
+  statusBarItems.length = 0;
+}
+
 export const window = {
   get activeTextEditor(): { document: { uri: UriImpl } } | undefined {
     return activeTextEditorValue;
@@ -605,6 +633,29 @@ export const window = {
       closedTabs.push(...(Array.isArray(tabOrTabs) ? tabOrTabs : [tabOrTabs]));
       return Promise.resolve();
     },
+  },
+  createStatusBarItem(
+    _alignment?: StatusBarAlignment,
+    _priority?: number,
+  ): StatusBarItemStub {
+    const stub: StatusBarItemStub = {
+      text: "",
+      tooltip: undefined,
+      backgroundColor: undefined,
+      command: undefined,
+      visible: false,
+      show() {
+        stub.visible = true;
+      },
+      hide() {
+        stub.visible = false;
+      },
+      dispose() {
+        stub.visible = false;
+      },
+    };
+    statusBarItems.push(stub);
+    return stub;
   },
   createOutputChannel(_name: string) {
     return {

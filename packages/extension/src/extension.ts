@@ -17,6 +17,7 @@ import * as vscode from "vscode";
 import { OmcClient, reapOrphanedOmcSessions } from "@dicode/omc-client";
 
 import { registerCommands } from "./commands/index.js";
+import { errorDetail } from "./error-detail.js";
 import { DiagramEditorProvider } from "./diagram/diagram-editor-provider.js";
 import {
   DIAGRAM_VIEW_TYPE,
@@ -46,6 +47,7 @@ import {
   createOmcClientCache,
   type OmcClientCache,
 } from "./omc-client-cache.js";
+import { createOmcSetup } from "./omc-setup.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import { ClassInvalidationRegistry } from "./invalidation.js";
 import { publishSourceChanges } from "./source-invalidation.js";
@@ -84,14 +86,28 @@ export async function activate(
   // number of caches is invisible here.
   const invalidation = new ClassInvalidationRegistry();
 
+  // Replacing the session is what re-runs the workspace sweep and rebuilds the
+  // sidebar: a user who points at an `omc` after activation found none has an
+  // empty tree until the load happens against the new process.
+  const omcSetup = createOmcSetup({
+    onOmcChanged: () => {
+      void resetClient().catch((err: unknown) => {
+        log.warn(
+          "omc",
+          `replacing the OMC session failed: ${errorDetail(err)}`,
+        );
+      });
+    },
+  });
+
   // `onReset` closes over the per-activation `ClassInvalidationRegistry`, so
   // this can't be built at module scope.
   const omcClientCache: OmcClientCache<OmcClient> = createOmcClientCache(
     async () => {
-      const cfg = vscode.workspace.getConfiguration("modelica");
-      const omcPath = cfg.get<string>("omcPath") ?? "";
+      const omcPath = await omcSetup.omcPath();
       const c = await OmcClient.create({ omcPath });
       await cdIntoWorkspaceCacheDir(c);
+      void omcSetup.reportVersion(c, omcPath);
       return c;
     },
     (c) => c.close(),
@@ -198,6 +214,7 @@ export async function activate(
   );
 
   context.subscriptions.push(
+    omcSetup,
     libraryTree,
     libraryView,
     autoload,
@@ -243,7 +260,9 @@ export async function activate(
   // on `recoverRestoredCustomEditors`.
   void recoverRestoredCustomEditors();
 
-  // Non-blocking — we don't want to delay activation on OMC startup.
+  // Neither blocks: OMC startup is slow, and the missing-OpenModelica
+  // notification waits on the user.
+  void omcSetup.start();
   autoload.run();
 
   // Exported API surface. Tested separately via the `repl-eval` integration

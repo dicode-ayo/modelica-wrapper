@@ -225,6 +225,9 @@ importers:
       '@dicode/modelica-lang-core':
         specifier: workspace:*
         version: link:../lang-core
+      '@dicode/omc-bootstrap':
+        specifier: workspace:*
+        version: link:../omc-bootstrap
       '@dicode/omc-client':
         specifier: workspace:*
         version: link:../omc-client
