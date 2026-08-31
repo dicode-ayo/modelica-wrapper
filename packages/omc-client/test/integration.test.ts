@@ -19,6 +19,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { OmcClient } from "../src/client.js";
+import { compatibilityReport } from "../src/version.js";
 import { describeIf } from "./fixtures.js";
 
 describeIf("OmcClient against real OMC", () => {
@@ -36,15 +37,19 @@ describeIf("OmcClient against real OMC", () => {
 
   // === Browsing ===
 
-  it("getVersion returns a populated version string", async () => {
+  it("getVersion returns a version the wrappers were audited against", async () => {
     const { version } = await client.getVersion();
-    expect(version).toMatch(/OpenModelica/);
+    const report = compatibilityReport(version);
+
+    expect(["exact", "minor-compatible"], `omc reports "${version}"`).toContain(
+      report.level,
+    );
   });
 
   it("invoke() dispatches by name with full input + output validation", async () => {
     // Class API equivalent: client.getVersion({})
     const r = await client.invoke("getVersion", {});
-    expect(r.version).toMatch(/OpenModelica/);
+    expect(r.version.length).toBeGreaterThan(0);
 
     // Loaded-state browsing via invoke()
     await client.invoke("loadModel", { typeName: "Modelica" });
@@ -66,8 +71,6 @@ describeIf("OmcClient against real OMC", () => {
 
   it("getVersionStatus reports compatibility with the pinned OMC", async () => {
     const r = await client.getVersionStatus();
-    // We pin 1.26.1; the runtime OMC may be exact, minor-compat, or
-    // untested. We don't assert which — just that the contract holds.
     expect(["exact", "minor-compatible", "untested"]).toContain(r.level);
     expect(r.supportedPrimary).toBe(OmcClient.supportedOmcVersion);
     expect(r.omc).toBeDefined();
