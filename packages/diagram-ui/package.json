@@ -54,14 +54,14 @@
     "pixi.js": "^8.20.1"
   },
   "devDependencies": {
-    "@playwright/test": "1.60.0",
+    "@playwright/test": "1.62.1",
     "@storybook/web-components": "^10.5.10",
     "@storybook/web-components-vite": "^10.5.10",
     "@types/node": "^24.13.3",
     "@vitest/coverage-istanbul": "^4.1.11",
-    "happy-dom": "^15.11.0",
+    "happy-dom": "^15.11.7",
     "storybook": "^10.5.10",
-    "typescript": "^5.6.0",
+    "typescript": "^5.9.3",
     "vite": "^8.2.2",
     "vitest": "^4.1.11"
   }
