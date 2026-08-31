@@ -32,6 +32,22 @@ function componentNode(id: string): Container {
   return c;
 }
 
+function standaloneConnectorNode(portName: string): Container {
+  const conn = new Container();
+  tagEntity(conn, "connector", portName);
+  return conn;
+}
+
+/** A connector body parented inside a component, as a nested port is. */
+function nestedConnectorNode(componentId: string, portName: string): Container {
+  const comp = new Container();
+  tagEntity(comp, "component", componentId);
+  const conn = new Container();
+  tagEntity(conn, "connector", portName);
+  comp.addChild(conn);
+  return conn;
+}
+
 interface Harness {
   canvas: HTMLCanvasElement;
   router: ModeRouter;
@@ -144,6 +160,34 @@ describe("ModeRouter", () => {
   it("transitions to connect on a port press", () => {
     const { canvas, store, setPicked, dispose } = setup();
     setPicked(portMesh("p"));
+    canvas.dispatchEvent(down());
+    expect(store.value.mode).toBe("connect");
+    dispose();
+  });
+
+  it("moves a standalone connector on a body press, carrying its key", () => {
+    const { canvas, store, moves, setPicked, dispose } = setup();
+    setPicked(standaloneConnectorNode("p"));
+    canvas.dispatchEvent(down());
+    expect(store.value.mode).toBe("drag");
+    canvas.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: 25, clientY: 25 }),
+    );
+    canvas.dispatchEvent(
+      new PointerEvent("pointerup", { button: 0, clientX: 25, clientY: 25 }),
+    );
+    expect(moves.at(-1)).toEqual({
+      keys: ["k:p"],
+      dx: 20,
+      dy: 20,
+      draft: false,
+    });
+    dispose();
+  });
+
+  it("still starts a connection on a nested connector body press", () => {
+    const { canvas, store, setPicked, dispose } = setup();
+    setPicked(nestedConnectorNode("R1", "p"));
     canvas.dispatchEvent(down());
     expect(store.value.mode).toBe("connect");
     dispose();

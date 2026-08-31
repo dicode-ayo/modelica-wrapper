@@ -5,7 +5,7 @@ import {
   type EmitFn,
   type PickerFn,
 } from "./interaction-manager.js";
-import type { EntityKey } from "./entity-keys.js";
+import { isNestedConnector, type EntityKey } from "./entity-keys.js";
 import { entityKeyForNode } from "./node-keys.js";
 import {
   capturePointer,
@@ -195,7 +195,14 @@ export class ModeRouter {
   }
 
   private modeFor(entity: EntityKey | null): GestureMode {
-    if (entity?.kind === "port" || entity?.kind === "connector") {
+    // A port disc always starts a connection, as does the body of a nested
+    // connector (its placement belongs to the owning sub-component, so it
+    // isn't independently movable). A standalone connector is a placed
+    // entity: its body moves it, and a connection starts from its port disc.
+    if (
+      entity?.kind === "port" ||
+      (entity?.kind === "connector" && isNestedConnector(entity))
+    ) {
       return this.connectMode;
     }
     if (
