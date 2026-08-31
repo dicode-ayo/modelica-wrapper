@@ -9,8 +9,7 @@
     ".": "./src/index.ts"
   },
   "files": [
-    "dist",
-    "lockfiles"
+    "dist"
   ],
   "engines": {
     "node": ">=24.20.0"

@@ -38,8 +38,7 @@ const STAGING = `${ROOT}/staging`;
 const PREVIOUS = `${ROOT}/previous`;
 const TOOL = `${ROOT}/micromamba`;
 const CACHE = `${ROOT}/cache`;
-const LOCKFILES = "/ext/lockfiles";
-const LOCKFILE = `${LOCKFILES}/linux-64.lock`;
+const VERSION = "1.27.0";
 
 const ENOUGH_SPACE = 9_000_000_000;
 
@@ -47,7 +46,7 @@ const input = (overrides: Partial<InstallOmcInput> = {}): InstallOmcInput => ({
   homeDir: HOME,
   platform: "linux",
   arch: "x64",
-  lockfileDirectory: LOCKFILES,
+  version: VERSION,
   ...overrides,
 });
 
@@ -62,7 +61,7 @@ interface HarnessOptions {
 }
 
 function harness(options: HarnessOptions = {}) {
-  const existing = new Set(options.existing ?? [LOCKFILE]);
+  const existing = new Set(options.existing ?? []);
   const ops: string[] = [];
   const runs: ProcessRequest[] = [];
   const downloads: Parameters<DownloadFile>[0][] = [];
@@ -166,7 +165,7 @@ describe("installManagedOmc", () => {
       `remove ${STAGING}`,
       `write ${TOOL}`,
       `chmod ${TOOL}`,
-      `run ${TOOL} create --prefix ${STAGING} --file ${LOCKFILE} --channel conda-forge --override-channels --yes`,
+      `run ${TOOL} create --prefix ${STAGING} --channel conda-forge --override-channels --yes openmodelica=${VERSION}`,
       `run ${STAGING}/bin/omc --version`,
       `move ${STAGING} -> ${CURRENT}`,
     ]);
@@ -226,7 +225,7 @@ describe("installManagedOmc", () => {
 
   it("keeps a working installation when the replacement fails to verify", async () => {
     const h = harness({
-      existing: [LOCKFILE, CURRENT],
+      existing: [CURRENT],
       run: (request) => {
         if (request.command === TOOL) {
           return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
@@ -243,7 +242,7 @@ describe("installManagedOmc", () => {
   });
 
   it("removes the superseded prefix only once the replacement is in place", async () => {
-    const h = harness({ existing: [LOCKFILE, CURRENT] });
+    const h = harness({ existing: [CURRENT] });
 
     await installManagedOmc(input(), h.deps);
 
@@ -256,7 +255,7 @@ describe("installManagedOmc", () => {
 
   it("puts the superseded installation back when the swap fails", async () => {
     const h = harness({
-      existing: [LOCKFILE, CURRENT],
+      existing: [CURRENT],
       moveFails: (from) => from === STAGING,
     });
 
@@ -301,19 +300,19 @@ describe("installManagedOmc", () => {
     expect(h.downloads).toEqual([]);
   });
 
-  it("reports a missing lockfile as itself rather than a micromamba failure", async () => {
-    const h = harness({ existing: [] });
+  it("installs the version the caller was audited against, from conda-forge only", async () => {
+    const h = harness();
 
-    const err = await failure(installManagedOmc(input(), h.deps));
+    await installManagedOmc(input({ version: "1.26.4" }), h.deps);
 
-    expect(err.reason).toBe("install-failed");
-    expect(err.message).toContain(LOCKFILE);
-    expect(h.downloads).toEqual([]);
-    expect(h.runs).toEqual([]);
+    const args = h.runs.find((r) => r.command === TOOL)?.args ?? [];
+    expect(args).toContain("openmodelica=1.26.4");
+    expect(args).toContain("--override-channels");
+    expect(args.at(args.indexOf("--channel") + 1)).toBe("conda-forge");
   });
 
   it("recovers an installation stranded by an interrupted swap", async () => {
-    const h = harness({ existing: [LOCKFILE, PREVIOUS] });
+    const h = harness({ existing: [PREVIOUS] });
 
     await installManagedOmc(input(), h.deps);
 

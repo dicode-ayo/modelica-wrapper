@@ -8,7 +8,7 @@
 
 /**
  * conda's name for a platform. It is also the suffix of the micromamba release
- * asset and of the committed lockfile, so one mapping serves all three.
+ * asset, so one mapping serves both.
  */
 export type CondaSubdir = "linux-64" | "linux-aarch64" | "osx-64" | "osx-arm64";
 

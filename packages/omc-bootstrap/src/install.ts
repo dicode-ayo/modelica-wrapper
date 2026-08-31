@@ -1,7 +1,8 @@
 /**
  * Installing OpenModelica, and removing one we installed.
  *
- * An install builds into a staging prefix, proves it by running `omc --version`,
+ * An install resolves OpenModelica from conda-forge into a staging prefix,
+ * proves it by running `omc --version`,
  * and only then moves it into the location {@link resolveOmc} probes. A prefix
  * at that location has therefore always run, so no health state has to be
  * tracked, and the installation being replaced stays on disk under another name
@@ -157,8 +158,11 @@ export interface InstallOmcInput {
   readonly homeDir: string;
   readonly platform: NodeJS.Platform;
   readonly arch: NodeJS.Architecture;
-  /** Directory holding the committed per-platform lockfiles. */
-  readonly lockfileDirectory: string;
+  /**
+   * The OpenModelica to install. Callers pass the version their wrappers were
+   * audited against, so an install can never produce one they warn about.
+   */
+  readonly version: string;
   /** `http.proxy` as the editor has it; absent when unset. */
   readonly proxy?: string | undefined;
 }
@@ -194,10 +198,6 @@ export async function installManagedOmc(
   }
 
   const layout = layoutFor(input.homeDir, input.platform);
-  const lockfile = platformPath(input.platform).join(
-    input.lockfileDirectory,
-    `${subdir}.lock`,
-  );
 
   throwIfCancelled(deps.signal);
   deps.report({ phase: "checking-space" });
@@ -209,15 +209,6 @@ export async function installManagedOmc(
     );
   }
 
-  // Before anything is downloaded: a platform with no lockfile cannot be
-  // installed, and should not cost a transfer to find that out.
-  if (!(await deps.fs.exists(lockfile))) {
-    throw new OmcInstallError(
-      "install-failed",
-      `No lockfile for ${subdir} at ${lockfile}.`,
-    );
-  }
-
   await deps.fs.makeDirectory(layout.root);
   await restoreInterruptedSwap(layout, deps);
   // Anything already staged is from an install that did not finish. Nothing
@@ -226,7 +217,7 @@ export async function installManagedOmc(
 
   try {
     await installMicromamba(layout, subdir, input, deps);
-    await createPrefix(layout, lockfile, input, deps);
+    await createPrefix(layout, input, deps);
     const version = await verifyPrefix(layout, input.platform, deps);
     await promote(layout, deps);
     return {
@@ -330,7 +321,6 @@ async function installMicromamba(
 
 async function createPrefix(
   layout: ManagedLayout,
-  lockfile: string,
   input: InstallOmcInput,
   deps: InstallOmcDeps,
 ): Promise<void> {
@@ -342,14 +332,13 @@ async function createPrefix(
       "create",
       "--prefix",
       layout.staging,
-      "--file",
-      lockfile,
-      // The lockfile's URLs are the real pin; naming the channel as well keeps
-      // an install from ever falling through to one with other licence terms.
+      // Pinned in code rather than left to micromamba's default, so an install
+      // can never fall through to a channel with other licence terms.
       "--channel",
       "conda-forge",
       "--override-channels",
       "--yes",
+      `openmodelica=${input.version}`,
     ],
     env: micromambaEnvironment(layout, input.proxy),
     signal: deps.signal,
