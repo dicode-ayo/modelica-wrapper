@@ -16,9 +16,7 @@ import { describe, expect, it, vi } from "vitest";
 import type * as vscode from "vscode";
 
 import { resolveDocumentOwner } from "./document-scope.js";
-import type { FileProbe } from "@dicode/omc-bootstrap";
-
-import type { OwningClassClient } from "./owning-class.js";
+import type { FileProbe, OwningClassClient } from "./owning-class.js";
 
 /** Minimal fake document exposing only the `uri` fields the helper reads. */
 function doc(scheme: string, fsPath: string): vscode.TextDocument {

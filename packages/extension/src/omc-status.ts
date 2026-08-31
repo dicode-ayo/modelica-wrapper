@@ -9,6 +9,12 @@
 import type { OmcResolution, OmcSource } from "@dicode/omc-bootstrap";
 import type { CompatibilityReport } from "@dicode/omc-client";
 
+/** A compatibility verdict, paired with the binary it was read from. */
+export interface OmcVerdict {
+  readonly omcPath: string;
+  readonly report: CompatibilityReport;
+}
+
 export interface OmcStatus {
   readonly text: string;
   readonly tooltip: string;
@@ -30,7 +36,7 @@ export function sourceSentence(source: OmcSource): string {
 
 export function omcStatus(
   resolution: OmcResolution,
-  compatibility: CompatibilityReport | undefined,
+  verdict: OmcVerdict | undefined,
 ): OmcStatus {
   if (resolution.source === "missing") {
     return {
@@ -40,6 +46,9 @@ export function omcStatus(
       warn: true,
     };
   }
+  // A verdict read from another binary says nothing about this one.
+  const compatibility =
+    verdict?.omcPath === resolution.omcPath ? verdict.report : undefined;
   const version = compatibility?.omc;
   return {
     text: `$(circuit-board) OpenModelica${version ? ` ${version.major}.${version.minor}.${version.patch}` : ""}`,

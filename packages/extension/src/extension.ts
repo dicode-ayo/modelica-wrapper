@@ -91,9 +91,10 @@ export async function activate(
   // this can't be built at module scope.
   const omcClientCache: OmcClientCache<OmcClient> = createOmcClientCache(
     async () => {
-      const c = await OmcClient.create({ omcPath: await omcSetup.omcPath() });
+      const omcPath = await omcSetup.omcPath();
+      const c = await OmcClient.create({ omcPath });
       await cdIntoWorkspaceCacheDir(c);
-      void omcSetup.reportVersion(c);
+      void omcSetup.reportVersion(c, omcPath);
       return c;
     },
     (c) => c.close(),

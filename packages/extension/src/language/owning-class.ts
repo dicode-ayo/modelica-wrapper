@@ -28,13 +28,15 @@
 import * as path from "node:path";
 
 import { leafName } from "@dicode/modelica-lang-core";
-import type { FileProbe } from "@dicode/omc-bootstrap";
 
 import { pathExists } from "../fs-util.js";
 
 export interface OwningClassClient {
   parseFile(input: { fileName: string }): Promise<{ classNames: string[] }>;
 }
+
+/** Does a path exist? Injectable so tests pass an in-memory set. */
+export type FileProbe = (absolutePath: string) => Promise<boolean>;
 
 export const PACKAGE_FILE = "package.mo";
 

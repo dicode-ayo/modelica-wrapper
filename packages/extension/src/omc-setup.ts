@@ -19,11 +19,13 @@ import {
 } from "@dicode/omc-bootstrap";
 import type { CompatibilityReport } from "@dicode/omc-client";
 
+import { errorDetail } from "./error-detail.js";
 import { pathExists } from "./fs-util.js";
 import { log } from "./logger.js";
-import { omcStatus, sourceSentence } from "./omc-status.js";
+import { omcStatus, sourceSentence, type OmcVerdict } from "./omc-status.js";
 
 const SETUP_COMMAND = "modelica.setupOmc";
+/** Must match the title contributed for `SETUP_COMMAND` in `package.json`. */
 const SETUP_TITLE = "Modelica: Set Up OpenModelica";
 const DOWNLOAD_PAGE = "https://openmodelica.org/download/";
 
@@ -43,8 +45,8 @@ export interface OmcSetup extends vscode.Disposable {
    * every command surfaces names the missing dependency instead of `ENOENT`.
    */
   omcPath(): Promise<string>;
-  /** Fill the status bar's version in once a client has connected. */
-  reportVersion(client: VersionedClient): Promise<void>;
+  /** Fill the version in, for the binary the client was spawned with. */
+  reportVersion(client: VersionedClient, omcPath: string): Promise<void>;
 }
 
 export function createOmcSetup(): OmcSetup {
@@ -55,16 +57,11 @@ export function createOmcSetup(): OmcSetup {
   item.command = SETUP_COMMAND;
 
   let resolution: OmcResolution = { source: "missing" };
-  /** Carries the binary it was read from: a different one invalidates it. */
-  let verdict:
-    | {
-        readonly omcPath: string | undefined;
-        readonly report: CompatibilityReport;
-      }
-    | undefined;
+  let verdict: OmcVerdict | undefined;
+  let generation = 0;
 
   function render(): void {
-    const status = omcStatus(resolution, verdict?.report);
+    const status = omcStatus(resolution, verdict);
     item.text = status.text;
     item.tooltip = status.tooltip;
     item.backgroundColor = status.warn
@@ -74,7 +71,8 @@ export function createOmcSetup(): OmcSetup {
   }
 
   async function resolve(): Promise<OmcResolution> {
-    resolution = await resolveOmc(
+    const mine = ++generation;
+    const resolved = await resolveOmc(
       {
         setting:
           vscode.workspace
@@ -86,9 +84,13 @@ export function createOmcSetup(): OmcSetup {
       },
       pathExists,
     );
-    if (verdict?.omcPath !== resolution.omcPath) verdict = undefined;
-    render();
-    return resolution;
+    // A `PATH` sweep that started earlier can land later; the newest answer is
+    // the one the user is looking at.
+    if (mine === generation) {
+      resolution = resolved;
+      render();
+    }
+    return resolved;
   }
 
   async function locate(): Promise<void> {
@@ -105,15 +107,18 @@ export function createOmcSetup(): OmcSetup {
   }
 
   async function prompt(): Promise<void> {
+    // Re-resolve first: the user reaching for this may have just installed the
+    // OpenModelica the last resolution missed.
+    const current = await resolve();
     const choice =
-      resolution.source === "missing"
+      current.source === "missing"
         ? await vscode.window.showWarningMessage(
             "OpenModelica was not found. Modelica language features and simulation need it.",
             LOCATE,
             DOWNLOAD,
           )
         : await vscode.window.showInformationMessage(
-            `${sourceSentence(resolution.source)} ${resolution.omcPath}`,
+            `${sourceSentence(current.source)} ${current.omcPath}`,
             LOCATE,
             DOWNLOAD,
           );
@@ -146,15 +151,15 @@ export function createOmcSetup(): OmcSetup {
       }
       return resolved.omcPath;
     },
-    async reportVersion(client: VersionedClient): Promise<void> {
-      const asked = resolution.omcPath;
+    async reportVersion(
+      client: VersionedClient,
+      omcPath: string,
+    ): Promise<void> {
       try {
-        const report = await client.getVersionStatus();
-        if (resolution.omcPath !== asked) return;
-        verdict = { omcPath: asked, report };
+        verdict = { omcPath, report: await client.getVersionStatus() };
         render();
       } catch (err) {
-        log.warn("omc", `version status failed: ${(err as Error).message}`);
+        log.warn("omc", `version status failed: ${errorDetail(err)}`);
       }
     },
     dispose(): void {
