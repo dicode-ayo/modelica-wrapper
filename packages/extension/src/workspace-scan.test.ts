@@ -9,7 +9,32 @@ import * as path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { discoverEntryPoints } from "./workspace-scan.js";
+import { deriveEntryPoints, discoverEntryPoints } from "./workspace-scan.js";
+
+/**
+ * Every `.mo` file under `root`, recursively, with NO hidden-directory
+ * filtering — unlike `discoverEntryPoints`, `deriveEntryPoints` is handed a
+ * flat list that a real caller (a `**\/*.mo` glob) would already include
+ * hidden-directory entries in, so the fixture here must too, to prove
+ * `deriveEntryPoints` does its own filtering rather than relying on the
+ * glob to have done it.
+ */
+async function walkAllMoFiles(root: string): Promise<string[]> {
+  const out: string[] = [];
+  async function walk(dir: string): Promise<void> {
+    const entries = await fsp.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(p);
+      } else if (entry.isFile() && entry.name.endsWith(".mo")) {
+        out.push(p);
+      }
+    }
+  }
+  await walk(root);
+  return out;
+}
 
 describe("discoverEntryPoints", () => {
   let tmp: string;
@@ -137,5 +162,123 @@ describe("discoverEntryPoints", () => {
     } finally {
       await fsp.rm(tmp2, { recursive: true, force: true });
     }
+  });
+});
+
+describe("deriveEntryPoints", () => {
+  let tmp: string;
+  beforeEach(async () => {
+    tmp = await fsp.mkdtemp(path.join(os.tmpdir(), "ws-derive-"));
+  });
+  afterEach(async () => {
+    await fsp.rm(tmp, { recursive: true, force: true });
+  });
+
+  /** Asserts `deriveEntryPoints` agrees with `discoverEntryPoints` for `roots`. */
+  async function expectAgreement(roots: string[]): Promise<void> {
+    const allMoFiles = (
+      await Promise.all(roots.map((root) => walkAllMoFiles(root)))
+    ).flat();
+    const [derived, discovered] = await Promise.all([
+      Promise.resolve(deriveEntryPoints(allMoFiles, roots)),
+      discoverEntryPoints(roots),
+    ]);
+    expect([...derived].sort()).toEqual([...discovered].sort());
+  }
+
+  it("returns [] for empty roots / no files", async () => {
+    expect(deriveEntryPoints([], [])).toEqual([]);
+    await expectAgreement([tmp]);
+  });
+
+  it("root package.mo wins — siblings aren't enumerated", async () => {
+    await fsp.writeFile(
+      path.join(tmp, "package.mo"),
+      "package Root\nend Root;\n",
+    );
+    await fsp.writeFile(
+      path.join(tmp, "Other.mo"),
+      "model Other\nend Other;\n",
+    );
+    await fsp.mkdir(path.join(tmp, "Sub"));
+    await fsp.writeFile(
+      path.join(tmp, "Sub", "package.mo"),
+      "within Root;\npackage Sub\nend Sub;\n",
+    );
+    await expectAgreement([tmp]);
+  });
+
+  it("standalone .mo files at root are picked up", async () => {
+    await fsp.writeFile(path.join(tmp, "Foo.mo"), "model Foo\nend Foo;\n");
+    await fsp.writeFile(path.join(tmp, "Bar.mo"), "model Bar\nend Bar;\n");
+    await expectAgreement([tmp]);
+  });
+
+  it("subdirectory packages are picked up via their package.mo", async () => {
+    await fsp.mkdir(path.join(tmp, "LibA"));
+    await fsp.writeFile(
+      path.join(tmp, "LibA", "package.mo"),
+      "package LibA\nend LibA;\n",
+    );
+    await fsp.mkdir(path.join(tmp, "LibB"));
+    await fsp.writeFile(
+      path.join(tmp, "LibB", "package.mo"),
+      "package LibB\nend LibB;\n",
+    );
+    // A subdirectory WITHOUT package.mo is ignored, even though its own
+    // nested .mo file is present in the flat list handed to deriveEntryPoints.
+    await fsp.mkdir(path.join(tmp, "notAPackage"));
+    await fsp.writeFile(
+      path.join(tmp, "notAPackage", "Foo.mo"),
+      "model Foo\nend Foo;\n",
+    );
+    await expectAgreement([tmp]);
+  });
+
+  it("mixed: standalone files + subdirectory packages at the same level", async () => {
+    await fsp.writeFile(path.join(tmp, "Foo.mo"), "model Foo\nend Foo;\n");
+    await fsp.mkdir(path.join(tmp, "LibA"));
+    await fsp.writeFile(
+      path.join(tmp, "LibA", "package.mo"),
+      "package LibA\nend LibA;\n",
+    );
+    await expectAgreement([tmp]);
+  });
+
+  it("skips hidden entries (dotfiles, .git, .vscode, …) even though the flat list still contains them", async () => {
+    await fsp.mkdir(path.join(tmp, ".git"));
+    await fsp.writeFile(
+      path.join(tmp, ".git", "something.mo"),
+      "model X\nend X;\n",
+    );
+    await fsp.writeFile(path.join(tmp, ".hidden.mo"), "model H\nend H;\n");
+    await fsp.writeFile(path.join(tmp, "Foo.mo"), "model Foo\nend Foo;\n");
+    await expectAgreement([tmp]);
+  });
+
+  it("skips a hidden subdirectory's own package.mo", async () => {
+    await fsp.mkdir(path.join(tmp, ".hidden"));
+    await fsp.writeFile(
+      path.join(tmp, ".hidden", "package.mo"),
+      "package Hidden\nend Hidden;\n",
+    );
+    await fsp.writeFile(path.join(tmp, "Foo.mo"), "model Foo\nend Foo;\n");
+    await expectAgreement([tmp]);
+  });
+
+  it("multiple workspace roots are derived independently", async () => {
+    const tmp2 = await fsp.mkdtemp(path.join(os.tmpdir(), "ws-derive-2-"));
+    try {
+      await fsp.writeFile(path.join(tmp, "A.mo"), "model A\nend A;\n");
+      await fsp.writeFile(path.join(tmp2, "package.mo"), "package B\nend B;\n");
+      await expectAgreement([tmp, tmp2]);
+    } finally {
+      await fsp.rm(tmp2, { recursive: true, force: true });
+    }
+  });
+
+  it("ignores a .mo path outside every root", () => {
+    const outside = path.join(os.tmpdir(), "elsewhere", "Foo.mo");
+    expect(deriveEntryPoints([outside], [tmp])).toEqual([]);
   });
 });

@@ -1351,4 +1351,33 @@ describe("registerMoFileWatcher — sessionReplaced (`:reset`)", () => {
     disposable.dispose();
     findFilesSpy.mockRestore();
   });
+
+  it("uses the injected scanMoFiles instead of a fresh findFiles glob, for both the mount seed and :reset (#484)", async () => {
+    const findFilesSpy = vi.spyOn(vscode.workspace, "findFiles");
+    const client = makeWatcherClient();
+    const invalidation = new ClassInvalidationRegistry();
+    const scanMoFiles = vi.fn(async () => [FILE]);
+    const disposable = registerMoFileWatcher({
+      ensureClient: async () => client,
+      libraryTree: {
+        childrenChanged: vi.fn(),
+      } as unknown as LibraryWebviewProvider,
+      sourceProvider: {
+        notifySourceChanged: vi.fn(),
+      } as unknown as ModelicaSourceProvider,
+      guard: createSelfWriteGuard(),
+      invalidation,
+      scanMoFiles,
+    });
+
+    await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(1));
+    invalidation.sessionReplaced();
+    await vi.waitFor(() => expect(client.parseFile).toHaveBeenCalledTimes(2));
+
+    expect(scanMoFiles).toHaveBeenCalledTimes(2);
+    expect(findFilesSpy).not.toHaveBeenCalled();
+
+    disposable.dispose();
+    findFilesSpy.mockRestore();
+  });
 });

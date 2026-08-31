@@ -409,5 +409,44 @@ describe("autoLoadWorkspace / registerWorkspaceAutoload", () => {
       await vi.waitFor(() => expect(c.loadFile).toHaveBeenCalledTimes(2));
       expect(ensureCalls).toBe(2);
     });
+
+    it("derives entry points from scanMoFiles on :reset instead of walking disk again (#484)", async () => {
+      const refresh = vi.fn();
+      const c = client([true]);
+      const invalidation = new ClassInvalidationRegistry();
+      const scanMoFiles = vi.fn(async () => [entryFile]);
+      const deps: WorkspaceAutoloadDeps = {
+        folders: () => [tmp],
+        ensureClient: async () => c,
+        refresh,
+        onSkipped: vi.fn(),
+        scanMoFiles,
+      };
+
+      registerWorkspaceAutoload(invalidation, deps);
+      invalidation.sessionReplaced();
+
+      await vi.waitFor(() => expect(c.loadFile).toHaveBeenCalledTimes(1));
+      expect(c.loadFile).toHaveBeenCalledWith({ fileName: entryFile });
+      expect(scanMoFiles).toHaveBeenCalledTimes(1);
+    });
+
+    it("falls back to discoverEntryPoints on :reset when scanMoFiles is absent", async () => {
+      const refresh = vi.fn();
+      const c = client([true]);
+      const invalidation = new ClassInvalidationRegistry();
+      const deps: WorkspaceAutoloadDeps = {
+        folders: () => [tmp],
+        ensureClient: async () => c,
+        refresh,
+        onSkipped: vi.fn(),
+      };
+
+      registerWorkspaceAutoload(invalidation, deps);
+      invalidation.sessionReplaced();
+
+      await vi.waitFor(() => expect(c.loadFile).toHaveBeenCalledTimes(1));
+      expect(c.loadFile).toHaveBeenCalledWith({ fileName: entryFile });
+    });
   });
 });

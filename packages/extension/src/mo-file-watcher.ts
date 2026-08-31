@@ -644,8 +644,20 @@ export function registerMoFileWatcher(deps: {
   sourceProvider: ModelicaSourceProvider;
   guard: SelfWriteGuard;
   invalidation: ClassInvalidationRegistry;
+  /**
+   * A flat `.mo` path list for the index seed, both at activation and on
+   * every `:reset`. Defaults to a fresh `findFiles` glob per call; extension.ts
+   * instead hands in a scanner memoized per `:reset` and shared with
+   * `registerWorkspaceAutoload`, so the two `sessionReplaced` listeners'
+   * scans coalesce into one.
+   */
+  scanMoFiles?: () => Promise<readonly string[]>;
 }): vscode.Disposable {
   const index = createPathClassIndex();
+  const scanMoFiles =
+    deps.scanMoFiles ??
+    (async (): Promise<readonly string[]> =>
+      (await vscode.workspace.findFiles("**/*.mo")).map((u) => u.fsPath));
   const watcherDeps: MoWatcherDeps = {
     ensureClient: deps.ensureClient,
     libraryTree: deps.libraryTree,
@@ -664,7 +676,7 @@ export function registerMoFileWatcher(deps: {
   // Seed before reacting: a delete resolves its classes from the index, so an
   // event that lands mid-seed must wait or it would no-op a real deletion.
   const seedQueue = new SessionQueue(
-    seedWorkspaceIndex(deps.ensureClient, index),
+    seedWorkspaceIndex(deps.ensureClient, scanMoFiles, index),
   );
 
   // Serialize per path so overlapping events (a rename is delete+create; rapid
@@ -748,7 +760,9 @@ export function registerMoFileWatcher(deps: {
     // retrying a mount-time seed that failed because OMC wasn't up yet.
     deps.invalidation.registerSessionReplaced(() => {
       watcherDeps.pendingReorders.clear();
-      seedQueue.enqueue(() => seedWorkspaceIndex(deps.ensureClient, index));
+      seedQueue.enqueue(() =>
+        seedWorkspaceIndex(deps.ensureClient, scanMoFiles, index),
+      );
     }),
   ];
 
@@ -757,17 +771,14 @@ export function registerMoFileWatcher(deps: {
 
 async function seedWorkspaceIndex(
   ensureClient: () => Promise<WatcherOmcClient>,
+  scanMoFiles: () => Promise<readonly string[]>,
   index: PathClassIndex,
 ): Promise<void> {
   try {
-    const uris = await vscode.workspace.findFiles("**/*.mo");
-    if (uris.length === 0) return;
+    const files = await scanMoFiles();
+    if (files.length === 0) return;
     const client = await ensureClient();
-    await seedPathClassIndex(
-      client,
-      uris.map((u) => u.fsPath),
-      index,
-    );
+    await seedPathClassIndex(client, [...files], index);
   } catch (err) {
     log.warn("moWatcher", `index seed failed: ${asMessage(err)}`);
   }

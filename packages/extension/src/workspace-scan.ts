@@ -45,3 +45,49 @@ export async function discoverEntryPoints(roots: string[]): Promise<string[]> {
   }
   return out;
 }
+
+/**
+ * The same three discovery rules as {@link discoverEntryPoints}, but derived
+ * from an already-known flat list of `.mo` paths (e.g. a recursive
+ * `**\/*.mo` glob) instead of walking disk — so a caller that already has
+ * such a list (the mo-file-watcher's own reseed) can reuse it rather than
+ * paying for a second scan. `allMoFiles` need not be scoped to `roots`; paths
+ * outside every root are ignored.
+ */
+export function deriveEntryPoints(
+  allMoFiles: readonly string[],
+  roots: readonly string[],
+): string[] {
+  const files = new Set(allMoFiles.map((f) => path.resolve(f)));
+  const out: string[] = [];
+  for (const rawRoot of roots) {
+    const root = path.resolve(rawRoot);
+    const rootPkg = path.join(root, "package.mo");
+    if (files.has(rootPkg)) {
+      out.push(rootPkg);
+      continue;
+    }
+
+    const topLevelFiles: string[] = [];
+    const topLevelDirs = new Set<string>();
+    for (const file of files) {
+      const rel = path.relative(root, file);
+      if (rel === "" || rel.startsWith(`..${path.sep}`) || rel === "..") {
+        continue; // not under this root
+      }
+      const [first, ...rest] = rel.split(path.sep);
+      if (first === undefined || first.startsWith(".")) continue;
+      if (rest.length === 0) {
+        topLevelFiles.push(file);
+      } else {
+        topLevelDirs.add(first);
+      }
+    }
+    out.push(...topLevelFiles);
+    for (const dir of topLevelDirs) {
+      const subPkg = path.join(root, dir, "package.mo");
+      if (files.has(subPkg)) out.push(subPkg);
+    }
+  }
+  return out;
+}

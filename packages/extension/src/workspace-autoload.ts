@@ -15,7 +15,7 @@ import {
   multipleTopLevelClasses,
   type FileParseClient,
 } from "./single-entity-file.js";
-import { discoverEntryPoints } from "./workspace-scan.js";
+import { deriveEntryPoints, discoverEntryPoints } from "./workspace-scan.js";
 
 /** OMC surface the auto-loader calls. `OmcClient` satisfies it structurally. */
 export interface AutoLoadClient extends FileParseClient {
@@ -117,14 +117,38 @@ export interface WorkspaceAutoloadDeps {
   /** Told once, after every load settles — see {@link loadEntryFilesAndRefresh}. */
   refresh: () => void;
   onSkipped: (skipped: SkippedEntryFile[]) => void;
+  /**
+   * A flat list of every `.mo` path in the workspace, shared with the
+   * mo-file-watcher's own `sessionReplaced` reseed so `:reset` triggers one
+   * recursive scan instead of two. Used only for the `:reset` path — the
+   * activation sweep has no shared scan to reuse yet, since nothing has asked
+   * for one before activation, so it keeps `discoverEntryPoints`'s own walk.
+   * Omitted, {@link registerWorkspaceAutoload}'s `:reset` listener falls back
+   * to that same walk.
+   */
+  scanMoFiles?: () => Promise<readonly string[]>;
+}
+
+/** The ensureClient+load+refresh tail shared by every entry-point discovery strategy. */
+async function loadDiscoveredFiles(
+  deps: WorkspaceAutoloadDeps,
+  files: readonly string[],
+): Promise<void> {
+  if (files.length === 0) return;
+  const c = await deps.ensureClient();
+  // One refresh after all loads settle — not per file, which would pile
+  // concurrent OMC fetches onto the single ZeroMQ socket during startup. The
+  // webview tree's own mount fetch is serialized with this one through the
+  // client, so they can't overlap into a busy-socket send.
+  const skipped = await loadEntryFilesAndRefresh(c, [...files], deps.refresh);
+  if (skipped.length > 0) deps.onSkipped(skipped);
 }
 
 /**
  * Discover Modelica entry points across the current workspace folders and
  * load them into OMC, refreshing the sidebar once. Run directly by
- * {@link registerWorkspaceAutoload} for both the activation sweep and every
- * `:reset` — both want the same discover-then-load behavior run against
- * whatever client `ensureClient` hands back.
+ * {@link registerWorkspaceAutoload} for the activation sweep, and as the
+ * `:reset` fallback when `deps.scanMoFiles` is absent.
  */
 export async function autoLoadWorkspace(
   deps: WorkspaceAutoloadDeps,
@@ -133,14 +157,31 @@ export async function autoLoadWorkspace(
     const folders = deps.folders();
     if (folders.length === 0) return;
     const files = await discoverEntryPoints([...folders]);
-    if (files.length === 0) return;
-    const c = await deps.ensureClient();
-    // One refresh after all loads settle — not per file, which would pile
-    // concurrent OMC fetches onto the single ZeroMQ socket during startup. The
-    // webview tree's own mount fetch is serialized with this one through the
-    // client, so they can't overlap into a busy-socket send.
-    const skipped = await loadEntryFilesAndRefresh(c, files, deps.refresh);
-    if (skipped.length > 0) deps.onSkipped(skipped);
+    await loadDiscoveredFiles(deps, files);
+  } catch (err) {
+    log.warn("autoLoad", `workspace autoload failed: ${errorDetail(err)}`);
+  }
+}
+
+/**
+ * The `:reset` counterpart of {@link autoLoadWorkspace}: derives entry points
+ * from `deps.scanMoFiles`'s already-known flat file list instead of walking
+ * disk again, so a `:reset` shares its scan with the mo-file-watcher's own
+ * reseed rather than duplicating it.
+ */
+async function autoLoadWorkspaceOnReset(
+  deps: WorkspaceAutoloadDeps,
+): Promise<void> {
+  if (deps.scanMoFiles === undefined) {
+    await autoLoadWorkspace(deps);
+    return;
+  }
+  try {
+    const folders = deps.folders();
+    if (folders.length === 0) return;
+    const allMoFiles = await deps.scanMoFiles();
+    const files = deriveEntryPoints(allMoFiles, folders);
+    await loadDiscoveredFiles(deps, files);
   } catch (err) {
     log.warn("autoLoad", `workspace autoload failed: ${errorDetail(err)}`);
   }
@@ -176,6 +217,8 @@ export function registerWorkspaceAutoload(
   const run = (): void => {
     queue.enqueue(() => autoLoadWorkspace(deps));
   };
-  const sub = invalidation.registerSessionReplaced(run);
+  const sub = invalidation.registerSessionReplaced(() => {
+    queue.enqueue(() => autoLoadWorkspaceOnReset(deps));
+  });
   return { run, dispose: () => sub.dispose() };
 }
