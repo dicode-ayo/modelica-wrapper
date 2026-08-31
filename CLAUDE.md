@@ -6,8 +6,8 @@ browsing the project; this is for *you*.
 
 ## Repo shape
 
-- pnpm workspace, six packages under `packages/`. Most language-feature work
-  lives in `packages/extension/src/`.
+- pnpm workspace, one package per directory under `packages/`. Most
+  language-feature work lives in `packages/extension/src/`.
 - Pure TypeScript, top to bottom. No Rust/Go backend, no separate server.
 - TypeScript is `strict` + `noUncheckedIndexedAccess` (`tsconfig.base.json`).
   Index access types as `T | undefined`; narrow it, don't assert it.

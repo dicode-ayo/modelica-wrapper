@@ -24,7 +24,7 @@ export type OmcSource = "setting" | "managed" | "path";
 
 /**
  * The resolved `omc` and where it came from. The source is reported rather
- * than left to be deduced because the status bar names it: nothing in the
+ * than left to be deduced because consumers surface it: nothing in the
  * settings file says which OpenModelica is in use.
  */
 export type OmcResolution =
@@ -108,7 +108,8 @@ async function searchPath(
 ): Promise<string | undefined> {
   const paths = platformPath(platform);
   const name = binaryName(platform);
-  for (const directory of pathVariable.split(paths.delimiter)) {
+  for (const entry of pathVariable.split(paths.delimiter)) {
+    const directory = unquote(entry, platform);
     // An empty or relative entry resolves against the working directory, which
     // makes it neither a location the user pointed at nor one this probe's
     // contract admits.
@@ -117,4 +118,13 @@ async function searchPath(
     if (await probe(candidate)) return candidate;
   }
   return undefined;
+}
+
+/**
+ * A Windows `PATH` entry may be double-quoted — one holding a space often is —
+ * and the search a spawn performs strips the quotes before looking. POSIX has
+ * no such convention: a quote there is an ordinary filename character.
+ */
+function unquote(entry: string, platform: NodeJS.Platform): string {
+  return platform === "win32" ? entry.replace(/^"(.*)"$/, "$1") : entry;
 }

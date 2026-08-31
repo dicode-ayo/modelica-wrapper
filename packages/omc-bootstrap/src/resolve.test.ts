@@ -141,4 +141,20 @@ describe("resolveOmc", () => {
       omcPath: "C:\\Program Files\\OpenModelica\\bin\\omc.exe",
     });
   });
+
+  it("unquotes a Windows PATH entry the way a spawn does", async () => {
+    const resolution = await resolveOmc(
+      input({
+        managedRoot: "C:\\Users\\u\\.openmodelica\\modelica-wrapper",
+        pathVariable: '"C:\\Program Files\\OpenModelica\\bin"',
+        platform: "win32",
+      }),
+      probeFor(["C:\\Program Files\\OpenModelica\\bin\\omc.exe"]),
+    );
+
+    expect(resolution).toEqual({
+      source: "path",
+      omcPath: "C:\\Program Files\\OpenModelica\\bin\\omc.exe",
+    });
+  });
 });

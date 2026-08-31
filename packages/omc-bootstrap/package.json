@@ -1,7 +1,7 @@
 {
   "name": "@dicode/omc-bootstrap",
   "version": "0.0.1",
-  "description": "Locates and installs OpenModelica for the extension. No VSCode dependency, no OMC protocol knowledge.",
+  "description": "Locates OpenModelica for the extension. No VSCode dependency, no OMC protocol knowledge.",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
@@ -30,8 +30,8 @@
     "prepublishOnly": "pnpm build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:unit": "OMC_INTEGRATION=0 vitest run",
-    "test:coverage": "OMC_INTEGRATION=0 vitest run --coverage",
+    "test:unit": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "crap": "crap4ts --src src --exclude \".test.\" --exclude \".stories.\" --exclude \".fixture\" --coverage-command \"pnpm test:coverage\""
   },
   "devDependencies": {
