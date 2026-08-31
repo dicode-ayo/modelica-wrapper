@@ -104,6 +104,10 @@
     ],
     "commands": [
       {
+        "command": "modelica.setupOmc",
+        "title": "Modelica: Set Up OpenModelica"
+      },
+      {
         "command": "modelica.getOmcVersion",
         "title": "Modelica: Show OMC Version"
       },
@@ -496,6 +500,7 @@
     "@dicode/documentation-ui": "workspace:*",
     "@dicode/modelica-completion": "workspace:*",
     "@dicode/modelica-lang-core": "workspace:*",
+    "@dicode/omc-bootstrap": "workspace:*",
     "@dicode/omc-client": "workspace:*",
     "@dicode/result-ui": "workspace:*",
     "@dicode/ui-common": "workspace:*",

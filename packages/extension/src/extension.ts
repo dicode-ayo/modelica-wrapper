@@ -46,6 +46,7 @@ import {
   createOmcClientCache,
   type OmcClientCache,
 } from "./omc-client-cache.js";
+import { createOmcSetup } from "./omc-setup.js";
 import { createSelfWriteGuard } from "./self-write-guard.js";
 import { ClassInvalidationRegistry } from "./invalidation.js";
 import { publishSourceChanges } from "./source-invalidation.js";
@@ -84,14 +85,15 @@ export async function activate(
   // number of caches is invisible here.
   const invalidation = new ClassInvalidationRegistry();
 
+  const omcSetup = createOmcSetup();
+
   // `onReset` closes over the per-activation `ClassInvalidationRegistry`, so
   // this can't be built at module scope.
   const omcClientCache: OmcClientCache<OmcClient> = createOmcClientCache(
     async () => {
-      const cfg = vscode.workspace.getConfiguration("modelica");
-      const omcPath = cfg.get<string>("omcPath") ?? "";
-      const c = await OmcClient.create({ omcPath });
+      const c = await OmcClient.create({ omcPath: await omcSetup.omcPath() });
       await cdIntoWorkspaceCacheDir(c);
+      void omcSetup.reportVersion(c);
       return c;
     },
     (c) => c.close(),
@@ -198,6 +200,7 @@ export async function activate(
   );
 
   context.subscriptions.push(
+    omcSetup,
     libraryTree,
     libraryView,
     autoload,
@@ -243,7 +246,9 @@ export async function activate(
   // on `recoverRestoredCustomEditors`.
   void recoverRestoredCustomEditors();
 
-  // Non-blocking — we don't want to delay activation on OMC startup.
+  // Neither blocks: OMC startup is slow, and the missing-OpenModelica
+  // notification waits on the user.
+  void omcSetup.start();
   autoload.run();
 
   // Exported API surface. Tested separately via the `repl-eval` integration

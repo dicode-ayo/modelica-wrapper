@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { FileProbe } from "@dicode/omc-bootstrap";
+
 import {
   PACKAGE_FILE,
   owningClassFromQualifiedName,
   resolveOwningClass,
-  type FileProbe,
   type OwningClassClient,
 } from "./owning-class.js";
 

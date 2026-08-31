@@ -19,12 +19,13 @@
 
 import * as vscode from "vscode";
 
+import type { FileProbe } from "@dicode/omc-bootstrap";
+
 import { MODELICA_SOURCE_SCHEME } from "../source-provider.js";
 
 import {
   owningClassFromQualifiedName,
   resolveOwningClass,
-  type FileProbe,
   type OwningClassClient,
 } from "./owning-class.js";
 
