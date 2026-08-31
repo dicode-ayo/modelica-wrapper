@@ -214,6 +214,7 @@ function collectLayers(
         const msg = err instanceof Error ? err.message : String(err);
         throw new Error(
           `collectLayers(${kind}): failed decoding shape on class '${klass.name}': ${msg}`,
+          { cause: err },
         );
       }
     }
