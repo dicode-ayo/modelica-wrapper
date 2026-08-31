@@ -1,0 +1,352 @@
+import { describe, expect, it, vi } from "vitest";
+
+import {
+  OmcInstallError,
+  installManagedOmc,
+  removeManagedOmc,
+  type DownloadFile,
+  type InstallFileSystem,
+  type InstallOmcInput,
+  type InstallProgress,
+  type ProcessRequest,
+  type RunProcess,
+} from "./install.js";
+
+// The audited digest is committed data, so a test cannot produce bytes that
+// match it. Standing in a digest of bytes the fake download can actually
+// return keeps the subject the behaviour — what happens when the digest
+// agrees, and what happens when it does not.
+const stub = vi.hoisted(() => ({
+  url: "https://example.invalid/micromamba-linux-64",
+  bytes: new Uint8Array([0x6d, 0x6d]),
+}));
+
+vi.mock("./micromamba.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./micromamba.js")>();
+  const { createHash } = await import("node:crypto");
+  return {
+    ...actual,
+    micromambaRelease: () => ({
+      url: stub.url,
+      sha256: createHash("sha256").update(stub.bytes).digest("hex"),
+    }),
+  };
+});
+
+const ROOT = "/home/u/.openmodelica/modelica-wrapper";
+const CURRENT = `${ROOT}/current`;
+const STAGING = `${ROOT}/staging`;
+const PREVIOUS = `${ROOT}/previous`;
+const TOOL = `${ROOT}/micromamba`;
+const CACHE = `${ROOT}/cache`;
+const LOCKFILES = "/ext/lockfiles";
+const LOCKFILE = `${LOCKFILES}/linux-64.lock`;
+
+const ENOUGH_SPACE = 9_000_000_000;
+
+const input = (overrides: Partial<InstallOmcInput> = {}): InstallOmcInput => ({
+  managedRoot: ROOT,
+  platform: "linux",
+  arch: "x64",
+  lockfileDirectory: LOCKFILES,
+  ...overrides,
+});
+
+interface HarnessOptions {
+  readonly existing?: readonly string[];
+  readonly free?: number;
+  readonly download?: DownloadFile;
+  readonly run?: RunProcess;
+  /** Which move to fail, so a half-finished swap can be pinned. */
+  readonly moveFails?: (from: string, to: string) => boolean;
+  readonly signal?: AbortSignal;
+}
+
+function harness(options: HarnessOptions = {}) {
+  const existing = new Set(options.existing ?? [LOCKFILE]);
+  const ops: string[] = [];
+  const runs: ProcessRequest[] = [];
+  const downloads: Parameters<DownloadFile>[0][] = [];
+  const progress: InstallProgress[] = [];
+
+  const base: InstallFileSystem = {
+    exists: (target) => Promise.resolve(existing.has(target)),
+    availableBytes: () => Promise.resolve(options.free ?? ENOUGH_SPACE),
+    makeDirectory: (target) => {
+      existing.add(target);
+      ops.push(`mkdir ${target}`);
+      return Promise.resolve();
+    },
+    writeFile: (target) => {
+      existing.add(target);
+      ops.push(`write ${target}`);
+      return Promise.resolve();
+    },
+    makeExecutable: (target) => {
+      ops.push(`chmod ${target}`);
+      return Promise.resolve();
+    },
+    move: (from, to) => {
+      if (options.moveFails?.(from, to) === true) {
+        return Promise.reject(new Error("cross-device link"));
+      }
+      existing.delete(from);
+      existing.add(to);
+      ops.push(`move ${from} -> ${to}`);
+      return Promise.resolve();
+    },
+    remove: (target) => {
+      existing.delete(target);
+      ops.push(`remove ${target}`);
+      return Promise.resolve();
+    },
+  };
+
+  // A successful micromamba leaves a prefix behind; `omc --version` reports one.
+  const installs: RunProcess = (request) => {
+    if (request.command === TOOL) {
+      existing.add(STAGING);
+      return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+    }
+    return Promise.resolve({
+      exitCode: 0,
+      stdout: "OpenModelica 1.27.0\n",
+      stderr: "",
+    });
+  };
+
+  const behaviour = options.run ?? installs;
+  const fetches = options.download ?? (() => Promise.resolve(stub.bytes));
+
+  return {
+    ops,
+    runs,
+    downloads,
+    progress,
+    existing,
+    deps: {
+      fs: base,
+      download: (request) => {
+        downloads.push(request);
+        return fetches(request);
+      },
+      run: (request) => {
+        runs.push(request);
+        ops.push(`run ${request.command} ${request.args.join(" ")}`);
+        return behaviour(request);
+      },
+      report: (update: InstallProgress) => progress.push(update),
+      signal: options.signal,
+    },
+  };
+}
+
+const failure = async (run: Promise<unknown>): Promise<OmcInstallError> => {
+  const err = await run.then(
+    () => undefined,
+    (caught: unknown) => caught,
+  );
+  expect(err).toBeInstanceOf(OmcInstallError);
+  return err as OmcInstallError;
+};
+
+describe("installManagedOmc", () => {
+  it("installs, verifies, and only then moves the prefix into place", async () => {
+    const h = harness();
+
+    const result = await installManagedOmc(input(), h.deps);
+
+    expect(result).toEqual({
+      omcPath: `${CURRENT}/bin/omc`,
+      version: "OpenModelica 1.27.0",
+    });
+    expect(h.ops).toEqual([
+      `mkdir ${ROOT}`,
+      `remove ${STAGING}`,
+      `write ${TOOL}`,
+      `chmod ${TOOL}`,
+      `run ${TOOL} create --prefix ${STAGING} --file ${LOCKFILE} --channel conda-forge --override-channels --yes`,
+      `run ${STAGING}/bin/omc --version`,
+      `move ${STAGING} -> ${CURRENT}`,
+    ]);
+  });
+
+  it("refuses a platform conda-forge publishes no OpenModelica for", async () => {
+    const h = harness();
+
+    const err = await failure(
+      installManagedOmc(input({ platform: "win32" }), h.deps),
+    );
+
+    expect(err.reason).toBe("unsupported-platform");
+    expect(h.downloads).toEqual([]);
+    expect(h.ops).toEqual([]);
+  });
+
+  it("aborts before any transfer when the disk cannot hold the install", async () => {
+    const h = harness({ free: 100_000_000 });
+
+    const err = await failure(installManagedOmc(input(), h.deps));
+
+    expect(err.reason).toBe("insufficient-space");
+    expect(h.downloads).toEqual([]);
+    expect(h.ops).toEqual([]);
+  });
+
+  it("never writes or marks executable a micromamba that hashed wrong", async () => {
+    const h = harness({
+      download: () => Promise.resolve(new Uint8Array([0xba, 0xad])),
+    });
+
+    const err = await failure(installManagedOmc(input(), h.deps));
+
+    expect(err.reason).toBe("checksum-mismatch");
+    expect(h.ops).not.toContain(`write ${TOOL}`);
+    expect(h.ops).not.toContain(`chmod ${TOOL}`);
+    expect(h.runs).toEqual([]);
+  });
+
+  it("leaves nothing at the managed location when the install fails", async () => {
+    const h = harness({
+      run: (request) =>
+        Promise.resolve(
+          request.command === TOOL
+            ? { exitCode: 1, stdout: "", stderr: "solve failed" }
+            : { exitCode: 0, stdout: "OpenModelica 1.27.0", stderr: "" },
+        ),
+    });
+
+    const err = await failure(installManagedOmc(input(), h.deps));
+
+    expect(err.reason).toBe("install-failed");
+    expect(h.existing.has(CURRENT)).toBe(false);
+    expect(h.ops.at(-1)).toBe(`remove ${STAGING}`);
+  });
+
+  it("keeps a working installation when the replacement fails to verify", async () => {
+    const h = harness({
+      existing: [LOCKFILE, CURRENT],
+      run: (request) => {
+        if (request.command === TOOL) {
+          return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+        }
+        return Promise.resolve({ exitCode: 127, stdout: "", stderr: "" });
+      },
+    });
+
+    const err = await failure(installManagedOmc(input(), h.deps));
+
+    expect(err.reason).toBe("verification-failed");
+    expect(h.existing.has(CURRENT)).toBe(true);
+    expect(h.ops).not.toContain(`move ${CURRENT} -> ${PREVIOUS}`);
+  });
+
+  it("removes the superseded prefix only once the replacement is in place", async () => {
+    const h = harness({ existing: [LOCKFILE, CURRENT] });
+
+    await installManagedOmc(input(), h.deps);
+
+    expect(h.ops.slice(-3)).toEqual([
+      `move ${CURRENT} -> ${PREVIOUS}`,
+      `move ${STAGING} -> ${CURRENT}`,
+      `remove ${PREVIOUS}`,
+    ]);
+  });
+
+  it("puts the superseded installation back when the swap fails", async () => {
+    const h = harness({
+      existing: [LOCKFILE, CURRENT],
+      moveFails: (from) => from === STAGING,
+    });
+
+    const err = await failure(installManagedOmc(input(), h.deps));
+
+    expect(err.reason).toBe("install-failed");
+    expect(h.ops).toContain(`move ${PREVIOUS} -> ${CURRENT}`);
+  });
+
+  it("gives micromamba a cache under the managed root and the editor's proxy", async () => {
+    const proxy = "http://proxy.corp:3128";
+    const h = harness();
+
+    await installManagedOmc(input({ proxy }), h.deps);
+
+    expect(h.downloads.at(0)?.proxy).toBe(proxy);
+    expect(h.runs.find((r) => r.command === TOOL)?.env).toEqual({
+      MAMBA_ROOT_PREFIX: CACHE,
+      HTTP_PROXY: proxy,
+      HTTPS_PROXY: proxy,
+    });
+  });
+
+  it("leaves the child environment alone when no proxy is configured", async () => {
+    const h = harness();
+
+    await installManagedOmc(input({ proxy: "  " }), h.deps);
+
+    expect(h.runs.find((r) => r.command === TOOL)?.env).toEqual({
+      MAMBA_ROOT_PREFIX: CACHE,
+    });
+  });
+
+  it("stops before downloading anything once cancelled", async () => {
+    const h = harness({ signal: AbortSignal.abort() });
+
+    const err = await failure(installManagedOmc(input(), h.deps));
+
+    expect(err.reason).toBe("cancelled");
+    expect(h.downloads).toEqual([]);
+  });
+
+  it("reports a missing lockfile as itself rather than a micromamba failure", async () => {
+    const h = harness({ existing: [] });
+
+    const err = await failure(installManagedOmc(input(), h.deps));
+
+    expect(err.reason).toBe("install-failed");
+    expect(err.message).toContain(LOCKFILE);
+    expect(h.runs).toEqual([]);
+  });
+});
+
+describe("removeManagedOmc", () => {
+  it("removes every entry an install creates, and says one was there", async () => {
+    const h = harness({ existing: [CURRENT] });
+
+    const removed = await removeManagedOmc(
+      { managedRoot: ROOT, platform: "linux" },
+      h.deps.fs,
+    );
+
+    expect(removed).toBe(true);
+    expect(h.ops).toEqual([
+      `remove ${CURRENT}`,
+      `remove ${STAGING}`,
+      `remove ${PREVIOUS}`,
+      `remove ${TOOL}`,
+      `remove ${CACHE}`,
+    ]);
+  });
+
+  it("reports nothing removed when no installation was made", async () => {
+    const h = harness({ existing: [] });
+
+    expect(
+      await removeManagedOmc(
+        { managedRoot: ROOT, platform: "linux" },
+        h.deps.fs,
+      ),
+    ).toBe(false);
+  });
+
+  it("refuses a root that no install could have created", async () => {
+    for (const managedRoot of ["", "/", "relative/path"]) {
+      const h = harness();
+
+      await expect(
+        removeManagedOmc({ managedRoot, platform: "linux" }, h.deps.fs),
+      ).rejects.toThrow(/Refusing to remove/);
+      expect(h.ops).toEqual([]);
+    }
+  });
+});
