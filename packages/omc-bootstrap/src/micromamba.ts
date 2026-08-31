@@ -1,13 +1,9 @@
 /**
  * Which micromamba an install runs, and which OpenModelica it can install.
  *
- * The release tag and the SHA-256 of every asset sit in one file so that a
- * bump is a single diff a reviewer can judge whole. A checksum served beside
- * the binary would only show the host agreeing with itself; these were read
- * once by a human and committed.
- *
- * The two pins must move together. A tag bumped on its own fails every install
- * at the digest check, which is the direction this is meant to fail in.
+ * The release tag and the SHA-256 of every asset sit in one file, so a bump is
+ * a single diff a reviewer can judge whole. The two must move together: a tag
+ * bumped on its own fails every install at the digest check.
  */
 
 /**
@@ -30,10 +26,8 @@ const MICROMAMBA_SHA256: Readonly<Record<CondaSubdir, string>> = {
 
 /**
  * Which conda platform this host is, or `undefined` where no managed install
- * is possible.
- *
- * Windows is `undefined` by intent rather than by omission: the conda-forge
- * recipe skips it, so an install action must never be offered there.
+ * is possible. The conda-forge recipe skips Windows, so Windows has no answer
+ * here and no install can be offered there.
  */
 export function condaSubdir(
   platform: NodeJS.Platform,

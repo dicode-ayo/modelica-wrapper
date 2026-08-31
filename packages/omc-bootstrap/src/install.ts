@@ -1,17 +1,17 @@
 /**
  * Installing OpenModelica, and removing one we installed.
  *
- * Every install builds into a staging prefix, proves it by running
- * `omc --version`, and only then moves it into the location {@link resolveOmc}
- * probes. That ordering is the whole design: a prefix at the managed location
- * is, by definition, one that ran, so there is no health state to track and a
- * failed update cannot leave a user with nothing.
+ * An install builds into a staging prefix, proves it by running `omc --version`,
+ * and only then moves it into the location {@link resolveOmc} probes. A prefix
+ * at that location has therefore always run, so no health state has to be
+ * tracked, and the installation being replaced stays on disk under another name
+ * until the new one has landed.
  *
- * Nothing here touches the network, a process, or a disk directly: those four
- * capabilities are injected, so the suite can pin what a failed verification or
- * a half-finished swap leaves behind without any of them. Which micromamba to
- * run, and what it must hash to, stays imported rather than injected — a digest
- * a caller supplies would verify nothing.
+ * Network, subprocess, filesystem and progress are injected. The micromamba to
+ * run and the digest it must match are fixed here, not supplied by a caller.
+ *
+ * Every path is derived from the one root this extension owns, so nothing here
+ * can be aimed at a directory an install did not create.
  */
 
 import { createHash } from "node:crypto";
@@ -21,12 +21,13 @@ import {
   micromambaRelease,
   type CondaSubdir,
 } from "./micromamba.js";
-import { managedPrefix, platformPath, prefixOmcBinary } from "./resolve.js";
+import {
+  managedPrefix,
+  managedRoot,
+  platformPath,
+  prefixOmcBinary,
+} from "./resolve.js";
 
-/**
- * Entries under the managed root that an install creates, and so the only
- * ones removal is ever allowed to touch.
- */
 const STAGING_PREFIX = "staging";
 const SUPERSEDED_PREFIX = "previous";
 const MICROMAMBA_BINARY = "micromamba";
@@ -128,9 +129,32 @@ export class OmcInstallError extends Error {
   }
 }
 
+/** Every path an install touches, all of them under the root we own. */
+interface ManagedLayout {
+  readonly root: string;
+  readonly current: string;
+  readonly staging: string;
+  readonly superseded: string;
+  readonly tool: string;
+  readonly cache: string;
+}
+
+function layoutFor(homeDir: string, platform: NodeJS.Platform): ManagedLayout {
+  const paths = platformPath(platform);
+  const root = managedRoot(homeDir, platform);
+  return {
+    root,
+    current: managedPrefix(root, platform),
+    staging: paths.join(root, STAGING_PREFIX),
+    superseded: paths.join(root, SUPERSEDED_PREFIX),
+    tool: paths.join(root, MICROMAMBA_BINARY),
+    cache: paths.join(root, PACKAGE_CACHE),
+  };
+}
+
 export interface InstallOmcInput {
-  /** The directory this extension owns, from `managedRoot`. */
-  readonly managedRoot: string;
+  /** The user's home directory. The managed root is derived from it. */
+  readonly homeDir: string;
   readonly platform: NodeJS.Platform;
   readonly arch: NodeJS.Architecture;
   /** Directory holding the committed per-platform lockfiles. */
@@ -169,83 +193,101 @@ export async function installManagedOmc(
     );
   }
 
-  const paths = platformPath(input.platform);
-  const root = input.managedRoot;
-  const staging = paths.join(root, STAGING_PREFIX);
-  const target = managedPrefix(root, input.platform);
+  const layout = layoutFor(input.homeDir, input.platform);
+  const lockfile = platformPath(input.platform).join(
+    input.lockfileDirectory,
+    `${subdir}.lock`,
+  );
 
   throwIfCancelled(deps.signal);
   deps.report({ phase: "checking-space" });
-  const free = await deps.fs.availableBytes(root);
+  const free = await deps.fs.availableBytes(layout.root);
   if (free < REQUIRED_FREE_BYTES) {
     throw new OmcInstallError(
       "insufficient-space",
-      `Installing OpenModelica needs about ${gigabytes(REQUIRED_FREE_BYTES)} GB free under ${root}, and ${gigabytes(free)} GB is available.`,
+      `Installing OpenModelica needs about ${gigabytes(REQUIRED_FREE_BYTES)} GB free under ${layout.root}, and ${gigabytes(free)} GB is available.`,
     );
   }
 
-  await deps.fs.makeDirectory(root);
+  // Before anything is downloaded: a platform with no lockfile cannot be
+  // installed, and should not cost a transfer to find that out.
+  if (!(await deps.fs.exists(lockfile))) {
+    throw new OmcInstallError(
+      "install-failed",
+      `No lockfile for ${subdir} at ${lockfile}.`,
+    );
+  }
+
+  await deps.fs.makeDirectory(layout.root);
+  await restoreInterruptedSwap(layout, deps);
   // Anything already staged is from an install that did not finish. Nothing
   // resolves to it and only we create it, so it is ours to discard.
-  await deps.fs.remove(staging);
+  await deps.fs.remove(layout.staging);
 
   try {
-    const tool = await installMicromamba(root, subdir, input, deps);
-    await createPrefix(tool, staging, subdir, input, deps);
-    const version = await verifyPrefix(staging, input.platform, deps);
-    await promote(staging, target, root, input.platform, deps);
-    return { omcPath: prefixOmcBinary(target, input.platform), version };
+    await installMicromamba(layout, subdir, input, deps);
+    await createPrefix(layout, lockfile, input, deps);
+    const version = await verifyPrefix(layout, input.platform, deps);
+    await promote(layout, deps);
+    return {
+      omcPath: prefixOmcBinary(layout.current, input.platform),
+      version,
+    };
   } catch (err) {
-    await deps.fs.remove(staging);
+    await deps.fs.remove(layout.staging);
     throw err;
   }
 }
 
 export interface RemoveOmcInput {
-  readonly managedRoot: string;
+  /** The user's home directory. The managed root is derived from it. */
+  readonly homeDir: string;
   readonly platform: NodeJS.Platform;
 }
 
 /**
  * Remove the installation this extension made, and report whether there was
- * one. Only entries an install creates are touched, so an OpenModelica the
- * user installed themselves is never at risk.
+ * one. No path comes from the caller, so an OpenModelica the user installed
+ * themselves cannot be reached from here.
  */
 export async function removeManagedOmc(
   input: RemoveOmcInput,
   fs: InstallFileSystem,
 ): Promise<boolean> {
-  const paths = platformPath(input.platform);
-  const root = input.managedRoot;
-  // Every path below is a fixed name joined onto this root. A root that is
-  // empty, relative, or the filesystem root would aim that join at directories
-  // no install ever created.
-  if (!paths.isAbsolute(root) || paths.dirname(root) === root) {
-    throw new Error(
-      `Refusing to remove a managed OpenModelica from ${JSON.stringify(root)}: not a directory this extension creates.`,
-    );
-  }
-
-  const prefix = managedPrefix(root, input.platform);
-  const installed = await fs.exists(prefix);
+  const layout = layoutFor(input.homeDir, input.platform);
+  const installed = await fs.exists(layout.current);
   for (const entry of [
-    prefix,
-    paths.join(root, STAGING_PREFIX),
-    paths.join(root, SUPERSEDED_PREFIX),
-    paths.join(root, MICROMAMBA_BINARY),
-    paths.join(root, PACKAGE_CACHE),
+    layout.current,
+    layout.staging,
+    layout.superseded,
+    layout.tool,
+    layout.cache,
   ]) {
     await fs.remove(entry);
   }
   return installed;
 }
 
+/**
+ * A superseded prefix with nothing at the managed location is a swap that was
+ * interrupted between its two renames. The working installation is the one
+ * still under the old name, and nothing resolves to it there.
+ */
+async function restoreInterruptedSwap(
+  layout: ManagedLayout,
+  deps: InstallOmcDeps,
+): Promise<void> {
+  if (await deps.fs.exists(layout.current)) return;
+  if (!(await deps.fs.exists(layout.superseded))) return;
+  await deps.fs.move(layout.superseded, layout.current);
+}
+
 async function installMicromamba(
-  root: string,
+  layout: ManagedLayout,
   subdir: CondaSubdir,
   input: InstallOmcInput,
   deps: InstallOmcDeps,
-): Promise<string> {
+): Promise<void> {
   const release = micromambaRelease(subdir);
   deps.report({ phase: "downloading-micromamba" });
 
@@ -282,38 +324,24 @@ async function installMicromamba(
 
   // Written and made runnable only past the digest check: a binary that failed
   // verification must never reach a state where the OS would execute it.
-  const tool = platformPath(input.platform).join(root, MICROMAMBA_BINARY);
-  await deps.fs.writeFile(tool, bytes);
-  await deps.fs.makeExecutable(tool);
-  return tool;
+  await deps.fs.writeFile(layout.tool, bytes);
+  await deps.fs.makeExecutable(layout.tool);
 }
 
 async function createPrefix(
-  tool: string,
-  staging: string,
-  subdir: CondaSubdir,
+  layout: ManagedLayout,
+  lockfile: string,
   input: InstallOmcInput,
   deps: InstallOmcDeps,
 ): Promise<void> {
-  const lockfile = platformPath(input.platform).join(
-    input.lockfileDirectory,
-    `${subdir}.lock`,
-  );
-  if (!(await deps.fs.exists(lockfile))) {
-    throw new OmcInstallError(
-      "install-failed",
-      `No lockfile for ${subdir} at ${lockfile}.`,
-    );
-  }
-
   throwIfCancelled(deps.signal);
   deps.report({ phase: "installing-openmodelica" });
   const result = await deps.run({
-    command: tool,
+    command: layout.tool,
     args: [
       "create",
       "--prefix",
-      staging,
+      layout.staging,
       "--file",
       lockfile,
       // The lockfile's URLs are the real pin; naming the channel as well keeps
@@ -323,7 +351,7 @@ async function createPrefix(
       "--override-channels",
       "--yes",
     ],
-    env: micromambaEnvironment(input),
+    env: micromambaEnvironment(layout, input.proxy),
     signal: deps.signal,
     onOutput: (output) =>
       deps.report({ phase: "installing-openmodelica", output }),
@@ -340,33 +368,37 @@ async function createPrefix(
 
 /**
  * micromamba is a separate process and cannot read the editor's settings, so
- * the proxy a user configured once has to be handed to it explicitly.
+ * the proxy a user configured once has to be handed to it explicitly. libcurl
+ * ignores an uppercase `HTTP_PROXY` for plain-http URLs, so both casings are
+ * set rather than the one that reads better.
  */
-function micromambaEnvironment(input: InstallOmcInput): Record<string, string> {
+function micromambaEnvironment(
+  layout: ManagedLayout,
+  proxy: string | undefined,
+): Record<string, string> {
   const environment: Record<string, string> = {
     // Keeps the package cache under the root we own, on the filesystem the
     // prefix lands on, which is what lets conda hardlink instead of copy.
-    MAMBA_ROOT_PREFIX: platformPath(input.platform).join(
-      input.managedRoot,
-      PACKAGE_CACHE,
-    ),
+    MAMBA_ROOT_PREFIX: layout.cache,
   };
-  const proxy = input.proxy?.trim();
-  if (proxy !== undefined && proxy.length > 0) {
-    environment.HTTP_PROXY = proxy;
-    environment.HTTPS_PROXY = proxy;
+  const configured = proxy?.trim();
+  if (configured !== undefined && configured.length > 0) {
+    environment.http_proxy = configured;
+    environment.https_proxy = configured;
+    environment.HTTP_PROXY = configured;
+    environment.HTTPS_PROXY = configured;
   }
   return environment;
 }
 
 async function verifyPrefix(
-  staging: string,
+  layout: ManagedLayout,
   platform: NodeJS.Platform,
   deps: InstallOmcDeps,
 ): Promise<string> {
   throwIfCancelled(deps.signal);
   deps.report({ phase: "verifying-openmodelica" });
-  const omc = prefixOmcBinary(staging, platform);
+  const omc = prefixOmcBinary(layout.staging, platform);
   const result = await deps.run({
     command: omc,
     args: ["--version"],
@@ -389,31 +421,27 @@ async function verifyPrefix(
  * on disk until the new one has landed.
  */
 async function promote(
-  staging: string,
-  target: string,
-  root: string,
-  platform: NodeJS.Platform,
+  layout: ManagedLayout,
   deps: InstallOmcDeps,
 ): Promise<void> {
   deps.report({ phase: "finishing" });
-  const superseded = platformPath(platform).join(root, SUPERSEDED_PREFIX);
-  const replacing = await deps.fs.exists(target);
+  const replacing = await deps.fs.exists(layout.current);
 
   if (replacing) {
-    await deps.fs.remove(superseded);
-    await deps.fs.move(target, superseded);
+    await deps.fs.remove(layout.superseded);
+    await deps.fs.move(layout.current, layout.superseded);
   }
   try {
-    await deps.fs.move(staging, target);
+    await deps.fs.move(layout.staging, layout.current);
   } catch (err) {
-    if (replacing) await deps.fs.move(superseded, target);
+    if (replacing) await deps.fs.move(layout.superseded, layout.current);
     throw new OmcInstallError(
       "install-failed",
-      `Moving the verified prefix into ${target} failed.`,
+      `Moving the verified prefix into ${layout.current} failed.`,
       { cause: err },
     );
   }
-  if (replacing) await deps.fs.remove(superseded);
+  if (replacing) await deps.fs.remove(layout.superseded);
 }
 
 function throwIfCancelled(signal: AbortSignal | undefined): void {

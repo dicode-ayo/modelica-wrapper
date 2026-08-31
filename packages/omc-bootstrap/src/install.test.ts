@@ -12,10 +12,8 @@ import {
   type RunProcess,
 } from "./install.js";
 
-// The audited digest is committed data, so a test cannot produce bytes that
-// match it. Standing in a digest of bytes the fake download can actually
-// return keeps the subject the behaviour — what happens when the digest
-// agrees, and what happens when it does not.
+// The audited digest is committed data, so no test can produce bytes matching
+// it. This stands in a digest the fake download's own bytes satisfy.
 const stub = vi.hoisted(() => ({
   url: "https://example.invalid/micromamba-linux-64",
   bytes: new Uint8Array([0x6d, 0x6d]),
@@ -33,7 +31,8 @@ vi.mock("./micromamba.js", async (importOriginal) => {
   };
 });
 
-const ROOT = "/home/u/.openmodelica/modelica-wrapper";
+const HOME = "/home/u";
+const ROOT = `${HOME}/.openmodelica/modelica-wrapper`;
 const CURRENT = `${ROOT}/current`;
 const STAGING = `${ROOT}/staging`;
 const PREVIOUS = `${ROOT}/previous`;
@@ -45,7 +44,7 @@ const LOCKFILE = `${LOCKFILES}/linux-64.lock`;
 const ENOUGH_SPACE = 9_000_000_000;
 
 const input = (overrides: Partial<InstallOmcInput> = {}): InstallOmcInput => ({
-  managedRoot: ROOT,
+  homeDir: HOME,
   platform: "linux",
   arch: "x64",
   lockfileDirectory: LOCKFILES,
@@ -276,6 +275,8 @@ describe("installManagedOmc", () => {
     expect(h.downloads.at(0)?.proxy).toBe(proxy);
     expect(h.runs.find((r) => r.command === TOOL)?.env).toEqual({
       MAMBA_ROOT_PREFIX: CACHE,
+      http_proxy: proxy,
+      https_proxy: proxy,
       HTTP_PROXY: proxy,
       HTTPS_PROXY: proxy,
     });
@@ -307,7 +308,18 @@ describe("installManagedOmc", () => {
 
     expect(err.reason).toBe("install-failed");
     expect(err.message).toContain(LOCKFILE);
+    expect(h.downloads).toEqual([]);
     expect(h.runs).toEqual([]);
+  });
+
+  it("recovers an installation stranded by an interrupted swap", async () => {
+    const h = harness({ existing: [LOCKFILE, PREVIOUS] });
+
+    await installManagedOmc(input(), h.deps);
+
+    expect(h.ops.at(1)).toBe(`move ${PREVIOUS} -> ${CURRENT}`);
+    expect(h.existing.has(PREVIOUS)).toBe(false);
+    expect(h.existing.has(CURRENT)).toBe(true);
   });
 });
 
@@ -316,7 +328,7 @@ describe("removeManagedOmc", () => {
     const h = harness({ existing: [CURRENT] });
 
     const removed = await removeManagedOmc(
-      { managedRoot: ROOT, platform: "linux" },
+      { homeDir: HOME, platform: "linux" },
       h.deps.fs,
     );
 
@@ -334,20 +346,17 @@ describe("removeManagedOmc", () => {
     const h = harness({ existing: [] });
 
     expect(
-      await removeManagedOmc(
-        { managedRoot: ROOT, platform: "linux" },
-        h.deps.fs,
-      ),
+      await removeManagedOmc({ homeDir: HOME, platform: "linux" }, h.deps.fs),
     ).toBe(false);
   });
 
-  it("answers for a Windows root instead of refusing every one of them", async () => {
+  it("answers for a Windows host instead of refusing it", async () => {
     const root = "C:\\Users\\u\\.openmodelica\\modelica-wrapper";
     const h = harness({ existing: [] });
 
     expect(
       await removeManagedOmc(
-        { managedRoot: root, platform: "win32" },
+        { homeDir: "C:\\Users\\u", platform: "win32" },
         h.deps.fs,
       ),
     ).toBe(false);
@@ -360,14 +369,16 @@ describe("removeManagedOmc", () => {
     ]);
   });
 
-  it("refuses a root that no install could have created", async () => {
-    for (const managedRoot of ["", "/", "relative/path"]) {
-      const h = harness();
+  it("cannot be aimed outside the directory this extension owns", async () => {
+    for (const homeDir of ["", "/", "/home/u", "relative/path"]) {
+      const h = harness({ existing: [] });
 
-      await expect(
-        removeManagedOmc({ managedRoot, platform: "linux" }, h.deps.fs),
-      ).rejects.toThrow(/Refusing to remove/);
-      expect(h.ops).toEqual([]);
+      await removeManagedOmc({ homeDir, platform: "linux" }, h.deps.fs);
+
+      for (const op of h.ops) {
+        expect(op).toContain(".openmodelica/modelica-wrapper/");
+      }
+      expect(h.ops).toHaveLength(5);
     }
   });
 });
