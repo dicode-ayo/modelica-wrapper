@@ -6,7 +6,7 @@
  *   1. **Init the parser once** (lazy singleton). `web-tree-sitter` runs the
  *      grammar as WASM in-process, so there's no native rebuild per platform.
  *      Init needs two `.wasm` files shipped beside the bundle (see
- *      `esbuild.config.mjs`): the runtime core (`tree-sitter.wasm`) and the
+ *      `esbuild.config.mjs`): the runtime core (`web-tree-sitter.wasm`) and the
  *      grammar (`tree-sitter-modelica.wasm`, fetched on install — see
  *      `grammar/README.md`).
  *
@@ -23,13 +23,7 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-import {
-  Language,
-  Parser,
-  type Edit,
-  type Point,
-  type Tree,
-} from "web-tree-sitter";
+import { Edit, Language, Parser, type Point, type Tree } from "web-tree-sitter";
 
 import { log } from "../logger.js";
 import { advancePointUtf16 } from "./position.js";
@@ -38,7 +32,7 @@ import { advancePointUtf16 } from "./position.js";
  * Filenames of the two WASM assets copied into `out/` by `esbuild.config.mjs`.
  * Keep these in sync with the `wasmAssets` table there.
  */
-export const RUNTIME_WASM_FILENAME = "tree-sitter.wasm";
+export const RUNTIME_WASM_FILENAME = "web-tree-sitter.wasm";
 export const GRAMMAR_WASM_FILENAME = "tree-sitter-modelica.wasm";
 
 /** The VSCode language id contributed in `package.json` (`contributes.languages`). */
@@ -77,7 +71,7 @@ export async function ensureLanguage(wasmDir: string): Promise<Language> {
     const language = await Language.load(grammarWasm);
     log.info(
       "language.parse",
-      `tree-sitter-modelica loaded (ABI ${language.version})`,
+      `tree-sitter-modelica loaded (ABI ${language.abiVersion})`,
     );
     return language;
   })().catch((err: unknown) => {
@@ -379,14 +373,14 @@ function toTreeEdit(change: vscode.TextDocumentContentChangeEvent): Edit {
   const oldEndPosition = pointOf(change.range.end);
   const newEndPosition = advancePointUtf16(startPosition, change.text);
 
-  return {
+  return new Edit({
     startIndex,
     oldEndIndex,
     newEndIndex,
     startPosition,
     oldEndPosition,
     newEndPosition,
-  };
+  });
 }
 
 /** VSCode `Position` (UTF-16 row/column) → tree-sitter `Point` (UTF-16). */
