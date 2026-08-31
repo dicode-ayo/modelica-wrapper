@@ -96,7 +96,7 @@ export async function captureSnapshot(
     return undefined;
   }
 
-  let filename = "";
+  let filename: string;
   try {
     ({ fileName: filename } = await client.getSourceFile({
       typeName: className,
