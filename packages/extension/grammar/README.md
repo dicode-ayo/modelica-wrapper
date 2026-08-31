@@ -57,6 +57,6 @@ that matches the pin and skips the download entirely (idempotent).
 ## Bundling
 
 `esbuild.config.mjs` copies this file (and the `web-tree-sitter` runtime
-`tree-sitter.wasm`) into `out/` on build. At runtime `parse.ts` resolves both by
+`web-tree-sitter.wasm`) into `out/` on build. At runtime `parse.ts` resolves both by
 absolute path from the extension install directory. If the file is missing at
 build time, the build errors with a "run `pnpm install`" message.

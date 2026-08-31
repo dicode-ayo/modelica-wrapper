@@ -1,5 +1,5 @@
 /**
- * Pin the offset/column contract: `web-tree-sitter` v0.25.x's JavaScript
+ * Pin the offset/column contract: `web-tree-sitter`'s JavaScript
  * string-input path reports and consumes UTF-16 code units (not UTF-8 bytes,
  * despite the `.d.ts` wording), and `advancePointUtf16` must count units (not
  * code points) so surrogate pairs land at column +2, not +1.
@@ -8,7 +8,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { Language, Parser, type Tree } from "web-tree-sitter";
+import { Edit, Language, Parser, type Tree } from "web-tree-sitter";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { GRAMMAR_WASM_FILENAME } from "./parse.js";
@@ -79,20 +79,25 @@ describe("web-tree-sitter string path uses UTF-16 code units (not bytes)", () =>
     const after = before.slice(0, at) + "pp" + before.slice(at + 1);
 
     const oldTree = parse(before);
-    oldTree.edit({
-      startIndex: at,
-      oldEndIndex: at + 1,
-      newEndIndex: at + 2,
-      startPosition: {
-        row: 2,
-        column: at - before.lastIndexOf("\n", at - 1) - 1,
-      },
-      oldEndPosition: { row: 2, column: at - before.lastIndexOf("\n", at - 1) },
-      newEndPosition: {
-        row: 2,
-        column: at - before.lastIndexOf("\n", at - 1) + 1,
-      },
-    });
+    oldTree.edit(
+      new Edit({
+        startIndex: at,
+        oldEndIndex: at + 1,
+        newEndIndex: at + 2,
+        startPosition: {
+          row: 2,
+          column: at - before.lastIndexOf("\n", at - 1) - 1,
+        },
+        oldEndPosition: {
+          row: 2,
+          column: at - before.lastIndexOf("\n", at - 1),
+        },
+        newEndPosition: {
+          row: 2,
+          column: at - before.lastIndexOf("\n", at - 1) + 1,
+        },
+      }),
+    );
     const incremental = parse(after, oldTree);
 
     expect(incremental.rootNode.hasError).toBe(false);
