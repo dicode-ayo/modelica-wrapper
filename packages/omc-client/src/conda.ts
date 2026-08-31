@@ -3,12 +3,13 @@
  *
  * An `omc` built inside a conda environment has that environment's compiler
  * name (`x86_64-conda-linux-gnu-cc`) baked in and invokes it by name when it
- * compiles a simulation. Everything else — parsing, browsing, diagrams —
- * works without the environment, so the omission surfaces only on the user's
- * first simulate, as a missing compiler.
+ * compiles a simulation, so that environment's `bin` has to be on the child's
+ * `PATH`.
  *
  * A `conda-meta` directory beside `bin` is what marks a prefix as a conda
- * environment; conda's own activation reads the same signal.
+ * environment; conda's own activation reads the same signal. That layout is
+ * the Linux/macOS one — a Windows environment keeps its executables in the
+ * prefix root, `Scripts` and `Library\bin`, and matches nothing here.
  */
 
 import { stat } from "node:fs/promises";
@@ -41,9 +42,11 @@ export async function condaActivatedEnv(
   probe: DirectoryProbe,
 ): Promise<NodeJS.ProcessEnv> {
   const env: NodeJS.ProcessEnv = { ...baseEnv };
-  const binDir = path.dirname(binaryPath);
-  if (binDir === ".") return env;
+  // `spawn` looks a bare name up on `PATH` and resolves anything else against
+  // the working directory; the search for a prefix has to agree with it.
+  if (binaryPath === path.basename(binaryPath)) return env;
 
+  const binDir = path.dirname(path.resolve(binaryPath));
   const prefix = path.dirname(binDir);
   if (!(await probe(path.join(prefix, CONDA_MARKER)))) return env;
 

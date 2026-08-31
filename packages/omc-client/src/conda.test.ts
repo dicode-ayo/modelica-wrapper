@@ -1,3 +1,5 @@
+import { join, resolve } from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { type DirectoryProbe, condaActivatedEnv } from "./conda.js";
@@ -49,6 +51,19 @@ describe("condaActivatedEnv", () => {
     const env = await condaActivatedEnv(binary, { PATH: path }, condaProbe);
 
     expect(env.PATH).toBe(expected);
+  });
+
+  it("resolves a relative path before looking for the environment", async () => {
+    const prefix = resolve("vendor/omc-prefix");
+    const probe = probeFor([join(prefix, "conda-meta")]);
+
+    const env = await condaActivatedEnv(
+      "vendor/omc-prefix/bin/omc",
+      { PATH: "/usr/bin" },
+      probe,
+    );
+
+    expect(env.PATH).toBe(`${join(prefix, "bin")}:/usr/bin`);
   });
 
   it("carries the rest of the environment through untouched", async () => {
