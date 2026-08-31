@@ -18,6 +18,7 @@ export default defineConfig({
     root: projectRoot,
     include: ["src/**/*.test.ts", "test/**/*.test.ts"],
     environment: "happy-dom",
+    setupFiles: ["./test/assigned-slot-shim.ts"],
     testTimeout: 10_000,
     coverage,
   },
