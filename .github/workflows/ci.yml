@@ -40,6 +40,11 @@ jobs:
       - name: coverage.md ↔ filesystem recount
         run: pnpm --filter @dicode/omc-client coverage:recount
 
+      # Renovate bumps the micromamba tag but cannot recompute the digests
+      # committed beside it, so a bumped tag arrives with stale hashes.
+      - name: micromamba digests ↔ pinned release
+        run: pnpm --filter @dicode/omc-bootstrap check:pin
+
       - name: Unit tests (parser, version, registry)
         env:
           OMC_INTEGRATION: "0"
