@@ -135,19 +135,21 @@ export function createOmcSetup(
     // The user reaching for this may have just installed the OpenModelica the
     // last resolution missed.
     const current = await resolve();
+    if (current.source !== "missing") {
+      const choice = await vscode.window.showInformationMessage(
+        `${sourceSentence(current.source)} ${current.omcPath}`,
+        LOCATE,
+      );
+      if (choice === LOCATE) await locate();
+      return;
+    }
+
     const guidance = missingOmcGuidance(environment.platform);
-    const choice =
-      current.source === "missing"
-        ? await vscode.window.showWarningMessage(
-            guidance.message,
-            LOCATE,
-            DOWNLOAD,
-          )
-        : await vscode.window.showInformationMessage(
-            `${sourceSentence(current.source)} ${current.omcPath}`,
-            LOCATE,
-            DOWNLOAD,
-          );
+    const choice = await vscode.window.showWarningMessage(
+      guidance.message,
+      LOCATE,
+      DOWNLOAD,
+    );
     if (choice === LOCATE) await locate();
     if (choice === DOWNLOAD) {
       await vscode.env.openExternal(vscode.Uri.parse(guidance.downloadPage));
