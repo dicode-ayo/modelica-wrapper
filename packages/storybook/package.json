@@ -21,7 +21,6 @@
     "@dicode/ui-common": "workspace:*"
   },
   "devDependencies": {
-    "@storybook/addon-essentials": "^8.4.0",
     "@storybook/html": "^10.5.10",
     "@storybook/web-components": "^10.5.10",
     "@storybook/web-components-vite": "^10.5.10",

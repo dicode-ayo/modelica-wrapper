@@ -42,7 +42,6 @@
     "@dicode/omc-client": "workspace:*"
   },
   "devDependencies": {
-    "@storybook/addon-essentials": "^8.4.0",
     "@storybook/html": "^10.5.10",
     "@storybook/html-vite": "^10.5.10",
     "@types/node": "^24.13.3",

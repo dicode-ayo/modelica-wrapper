@@ -55,7 +55,6 @@
   },
   "devDependencies": {
     "@playwright/test": "1.60.0",
-    "@storybook/addon-essentials": "^8.4.0",
     "@storybook/web-components": "^10.5.10",
     "@storybook/web-components-vite": "^10.5.10",
     "@types/node": "^24.13.3",
